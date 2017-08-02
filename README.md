@@ -41,6 +41,22 @@ This is a [Kubernetes Incubator project](https://github.com/kubernetes/community
 - Champion: Timothy St. Clair ([@timothysc](https://github.com/timothysc))
 - SIG: sig-scheduling
 
+## Roadmap
+
+1. Enhance basic user case for quota (in upstream)
+1. Support percentage by ResourceQuotaAllocator (vs. hard code)
+1. Support dynamic ResourceQuotaAllocator:
+    1. Resource allocation by policy (DRF by default)
+    1. Support fair sharing on GPU
+    1. Make policy pluggable
+1. Support Hierarchical namespaces (or other “tenants”)
+1. Support object quota as child Namespace Quota
+1. Integrated with Spark on Kubernetes, and other frameworks, .e.g Tensorflow
+1. Support resource estimation for ResourceQuota & ObjectQuota
+1. Integrated with priority/preemption feature to revoke resource according to policy
+1. Handle unbound Queue (persist in etcd, and external sort)
+
+
 ### Code of conduct
 
 Participation in the Kubernetes community is governed by the [Kubernetes Code of Conduct](code-of-conduct.md).
