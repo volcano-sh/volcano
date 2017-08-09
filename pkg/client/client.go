@@ -21,7 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/rest"
 
-	crv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/cr/v1"
+	crv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 )
 
 func NewClient(cfg *rest.Config) (*rest.RESTClient, *runtime.Scheme, error) {
