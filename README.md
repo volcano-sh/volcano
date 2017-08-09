@@ -1,5 +1,7 @@
 # kube-arbitrator
 
+![build](https://travis-ci.org/kubernetes-incubator/kube-arbitrator.svg?branch=master)
+
 kube-arbitrator provides policy based resource sharing for a Kubernetes cluster. The following section describes the target scenario of this project:
 
 As a cluster admin, I’d like to build an environment to run different workloads together, e.g. long running service, bigdata. As those applications are managed by different departments, I have to provide a resource guarantee to each applications, demonstrated as following:
