@@ -2,6 +2,9 @@
 	"ImportPath": "github.com/kubernetes-incubator/kube-arbitrator",
 	"GoVersion": "go1.8",
 	"GodepVersion": "v79",
+	"Packages": [
+		"./..."
+	],
 	"Deps": [
 		{
 			"ImportPath": "github.com/PuerkitoBio/purell",
@@ -54,12 +57,12 @@
 		},
 		{
 			"ImportPath": "github.com/gogo/protobuf/proto",
-			"Comment": "v0.4-3-gc0656ed",
+			"Comment": "v0.4-3-gc0656edd",
 			"Rev": "c0656edd0d9eab7c66d1eb0c568f9039345796f7"
 		},
 		{
 			"ImportPath": "github.com/gogo/protobuf/sortkeys",
-			"Comment": "v0.4-3-gc0656ed",
+			"Comment": "v0.4-3-gc0656edd",
 			"Rev": "c0656edd0d9eab7c66d1eb0c568f9039345796f7"
 		},
 		{
@@ -103,23 +106,6 @@
 			"Rev": "68f4ded48ba9414dab2ae69b3f0d69971da73aa5"
 		},
 		{
-			"ImportPath": "github.com/hashicorp/golang-lru",
-			"Rev": "a0d98a5f288019575c6d1f4bb1573fef2d1fcdc4"
-		},
-		{
-			"ImportPath": "github.com/hashicorp/golang-lru/simplelru",
-			"Rev": "a0d98a5f288019575c6d1f4bb1573fef2d1fcdc4"
-		},
-		{
-			"ImportPath": "github.com/howeyc/gopass",
-			"Rev": "bf9dde6d0d2c004a008c27aaee91170c786f6db8"
-		},
-		{
-			"ImportPath": "github.com/imdario/mergo",
-			"Comment": "0.1.3-8-g6633656",
-			"Rev": "6633656539c1639d9d78127b7d47c622b5d7b6dc"
-		},
-		{
 			"ImportPath": "github.com/juju/ratelimit",
 			"Rev": "5b9ff866471762aa2ab2dced63c9fb6f53921342"
 		},
@@ -144,10 +130,6 @@
 			"Rev": "ded73eae5db7e7a0ef6f55aace87a2873c5d2b74"
 		},
 		{
-			"ImportPath": "golang.org/x/crypto/ssh/terminal",
-			"Rev": "d172538b2cfce0c13cee31e647d0367aa8cd2486"
-		},
-		{
 			"ImportPath": "golang.org/x/net/http2",
 			"Rev": "f2499483f923065a842d38eb4c7f1927e6fc6e6d"
 		},
@@ -162,10 +144,6 @@
 		{
 			"ImportPath": "golang.org/x/net/lex/httplex",
 			"Rev": "f2499483f923065a842d38eb4c7f1927e6fc6e6d"
-		},
-		{
-			"ImportPath": "golang.org/x/sys/unix",
-			"Rev": "8f0908ab3b2457e2e15403d3697c9ef5cb4b57a9"
 		},
 		{
 			"ImportPath": "golang.org/x/text/cases",
@@ -341,6 +319,34 @@
 			"Rev": "dc1f89aff9a7509782bde3b68824c8043a3e58cc"
 		},
 		{
+			"ImportPath": "k8s.io/apimachinery/pkg/api/testing",
+			"Rev": "dc1f89aff9a7509782bde3b68824c8043a3e58cc"
+		},
+		{
+			"ImportPath": "k8s.io/apimachinery/pkg/api/testing/fuzzer",
+			"Rev": "dc1f89aff9a7509782bde3b68824c8043a3e58cc"
+		},
+		{
+			"ImportPath": "k8s.io/apimachinery/pkg/api/testing/roundtrip",
+			"Rev": "dc1f89aff9a7509782bde3b68824c8043a3e58cc"
+		},
+		{
+			"ImportPath": "k8s.io/apimachinery/pkg/apimachinery",
+			"Rev": "dc1f89aff9a7509782bde3b68824c8043a3e58cc"
+		},
+		{
+			"ImportPath": "k8s.io/apimachinery/pkg/apimachinery/announced",
+			"Rev": "dc1f89aff9a7509782bde3b68824c8043a3e58cc"
+		},
+		{
+			"ImportPath": "k8s.io/apimachinery/pkg/apimachinery/registered",
+			"Rev": "dc1f89aff9a7509782bde3b68824c8043a3e58cc"
+		},
+		{
+			"ImportPath": "k8s.io/apimachinery/pkg/apis/meta/fuzzer",
+			"Rev": "dc1f89aff9a7509782bde3b68824c8043a3e58cc"
+		},
+		{
 			"ImportPath": "k8s.io/apimachinery/pkg/apis/meta/v1",
 			"Rev": "dc1f89aff9a7509782bde3b68824c8043a3e58cc"
 		},
@@ -414,10 +420,6 @@
 		},
 		{
 			"ImportPath": "k8s.io/apimachinery/pkg/types",
-			"Rev": "dc1f89aff9a7509782bde3b68824c8043a3e58cc"
-		},
-		{
-			"ImportPath": "k8s.io/apimachinery/pkg/util/cache",
 			"Rev": "dc1f89aff9a7509782bde3b68824c8043a3e58cc"
 		},
 		{
@@ -510,32 +512,7 @@
 			"Rev": "45673e060eb921b510677b1123737ad1158e49fa"
 		},
 		{
-			"ImportPath": "k8s.io/client-go/tools/auth",
-			"Comment": "v2.0.0-alpha.0-490-g45673e0",
-			"Rev": "45673e060eb921b510677b1123737ad1158e49fa"
-		},
-		{
-			"ImportPath": "k8s.io/client-go/tools/cache",
-			"Comment": "v2.0.0-alpha.0-490-g45673e0",
-			"Rev": "45673e060eb921b510677b1123737ad1158e49fa"
-		},
-		{
-			"ImportPath": "k8s.io/client-go/tools/clientcmd",
-			"Comment": "v2.0.0-alpha.0-490-g45673e0",
-			"Rev": "45673e060eb921b510677b1123737ad1158e49fa"
-		},
-		{
 			"ImportPath": "k8s.io/client-go/tools/clientcmd/api",
-			"Comment": "v2.0.0-alpha.0-490-g45673e0",
-			"Rev": "45673e060eb921b510677b1123737ad1158e49fa"
-		},
-		{
-			"ImportPath": "k8s.io/client-go/tools/clientcmd/api/latest",
-			"Comment": "v2.0.0-alpha.0-490-g45673e0",
-			"Rev": "45673e060eb921b510677b1123737ad1158e49fa"
-		},
-		{
-			"ImportPath": "k8s.io/client-go/tools/clientcmd/api/v1",
 			"Comment": "v2.0.0-alpha.0-490-g45673e0",
 			"Rev": "45673e060eb921b510677b1123737ad1158e49fa"
 		},
@@ -556,11 +533,6 @@
 		},
 		{
 			"ImportPath": "k8s.io/client-go/util/flowcontrol",
-			"Comment": "v2.0.0-alpha.0-490-g45673e0",
-			"Rev": "45673e060eb921b510677b1123737ad1158e49fa"
-		},
-		{
-			"ImportPath": "k8s.io/client-go/util/homedir",
 			"Comment": "v2.0.0-alpha.0-490-g45673e0",
 			"Rev": "45673e060eb921b510677b1123737ad1158e49fa"
 		},
