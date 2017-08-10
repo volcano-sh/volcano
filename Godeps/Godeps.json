@@ -106,6 +106,14 @@
 			"Rev": "68f4ded48ba9414dab2ae69b3f0d69971da73aa5"
 		},
 		{
+			"ImportPath": "github.com/hashicorp/golang-lru",
+			"Rev": "a0d98a5f288019575c6d1f4bb1573fef2d1fcdc4"
+		},
+		{
+			"ImportPath": "github.com/hashicorp/golang-lru/simplelru",
+			"Rev": "a0d98a5f288019575c6d1f4bb1573fef2d1fcdc4"
+		},
+		{
 			"ImportPath": "github.com/juju/ratelimit",
 			"Rev": "5b9ff866471762aa2ab2dced63c9fb6f53921342"
 		},
@@ -423,6 +431,10 @@
 			"Rev": "dc1f89aff9a7509782bde3b68824c8043a3e58cc"
 		},
 		{
+			"ImportPath": "k8s.io/apimachinery/pkg/util/cache",
+			"Rev": "dc1f89aff9a7509782bde3b68824c8043a3e58cc"
+		},
+		{
 			"ImportPath": "k8s.io/apimachinery/pkg/util/clock",
 			"Rev": "dc1f89aff9a7509782bde3b68824c8043a3e58cc"
 		},
@@ -508,6 +520,11 @@
 		},
 		{
 			"ImportPath": "k8s.io/client-go/rest/watch",
+			"Comment": "v2.0.0-alpha.0-490-g45673e0",
+			"Rev": "45673e060eb921b510677b1123737ad1158e49fa"
+		},
+		{
+			"ImportPath": "k8s.io/client-go/tools/cache",
 			"Comment": "v2.0.0-alpha.0-490-g45673e0",
 			"Rev": "45673e060eb921b510677b1123737ad1158e49fa"
 		},
