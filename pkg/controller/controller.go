@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cr
+package controller
 
 import (
 	"context"
@@ -29,7 +29,6 @@ import (
 	crv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 )
 
-// Watcher is an example of watching on resource create/update/delete events
 type ResourceQuotaAllocatorController struct {
 	ResourceQuotaAllocatorClient *rest.RESTClient
 	ResourceQuotaAllocatorScheme *runtime.Scheme
@@ -37,20 +36,6 @@ type ResourceQuotaAllocatorController struct {
 
 // Run starts a ResourceQuotaAllocator resource controller
 func (c *ResourceQuotaAllocatorController) Run(ctx context.Context) error {
-	fmt.Print("Watch ResourceQuotaAllocator objects\n")
-
-	// Watch Example objects
-	_, err := c.watchResourceQuotaAllocators(ctx)
-	if err != nil {
-		fmt.Printf("Failed to register watch for ResourceQuotaAllocator resource: %v\n", err)
-		return err
-	}
-
-	<-ctx.Done()
-	return ctx.Err()
-}
-
-func (c *ResourceQuotaAllocatorController) watchResourceQuotaAllocators(ctx context.Context) (cache.Controller, error) {
 	source := cache.NewListWatchFromClient(
 		c.ResourceQuotaAllocatorClient,
 		crv1.ResourceQuotaAllocatorPlural,
@@ -59,16 +44,8 @@ func (c *ResourceQuotaAllocatorController) watchResourceQuotaAllocators(ctx cont
 
 	_, controller := cache.NewInformer(
 		source,
-
-		// The object type.
 		&crv1.ResourceQuotaAllocator{},
-
-		// resyncPeriod
-		// Every resyncPeriod, all resources in the cache will retrigger events.
-		// Set to 0 to disable the resync.
 		0,
-
-		// Your custom resource event handlers.
 		cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.onAdd,
 			UpdateFunc: c.onUpdate,
@@ -76,7 +53,9 @@ func (c *ResourceQuotaAllocatorController) watchResourceQuotaAllocators(ctx cont
 		})
 
 	go controller.Run(ctx.Done())
-	return controller, nil
+
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 func (c *ResourceQuotaAllocatorController) onAdd(obj interface{}) {
