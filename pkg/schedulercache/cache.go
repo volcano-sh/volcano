@@ -19,22 +19,22 @@ package schedulercache
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 
 	"k8s.io/api/core/v1"
-)
-
-var (
-	cleanAssumedPeriod = 1 * time.Second
+	clientv1 "k8s.io/client-go/informers/core/v1"
+	clientcache "k8s.io/client-go/tools/cache"
 )
 
 // New returns a Cache implementation.
 // It automatically starts a go routine that manages expiration of assumed pods.
 // "ttl" is how long the assumed pod will get expired.
 // "stop" is the channel that would close the background goroutine.
-func New() Cache {
+func New(nodeInformer clientv1.NodeInformer,
+	podInformer clientv1.PodInformer,
+	rqaListWatch *clientcache.ListWatch,
+) Cache {
 	cache := newSchedulerCache()
 	return cache
 }
@@ -44,15 +44,15 @@ type schedulerCache struct {
 	mu sync.Mutex
 
 	// a map from pod key to podState.
-	pods      map[string]*PodInfo
-	nodes     map[string]*NodeInfo
+	pods                    map[string]*PodInfo
+	nodes                   map[string]*NodeInfo
 	resourceQuotaAllocators map[string]*ResourceQuotaAllocatorInfo
 }
 
 func newSchedulerCache() *schedulerCache {
 	return &schedulerCache{
-		nodes:                   make(map[string]*NodeInfo),
-		pods:                    make(map[string]*PodInfo),
+		nodes: make(map[string]*NodeInfo),
+		pods:  make(map[string]*PodInfo),
 		resourceQuotaAllocators: make(map[string]*ResourceQuotaAllocatorInfo),
 	}
 }
@@ -70,7 +70,7 @@ func (cache *schedulerCache) addPod(pod *v1.Pod) error {
 
 	info := &PodInfo{
 		name: key,
-		pod: pod.DeepCopy(),
+		pod:  pod.DeepCopy(),
 	}
 	cache.pods[key] = info
 	return nil
@@ -193,7 +193,7 @@ func (cache *schedulerCache) addResourceQuotaAllocator(rqa *apiv1.ResourceQuotaA
 	}
 
 	info := &ResourceQuotaAllocatorInfo{
-		name: name,
+		name:      name,
 		allocator: rqa.DeepCopy(),
 	}
 	cache.resourceQuotaAllocators[name] = info
