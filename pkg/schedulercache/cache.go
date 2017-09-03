@@ -23,18 +23,13 @@ import (
 	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 
 	"k8s.io/api/core/v1"
-	clientv1 "k8s.io/client-go/informers/core/v1"
-	clientcache "k8s.io/client-go/tools/cache"
 )
 
 // New returns a Cache implementation.
 // It automatically starts a go routine that manages expiration of assumed pods.
 // "ttl" is how long the assumed pod will get expired.
 // "stop" is the channel that would close the background goroutine.
-func New(nodeInformer clientv1.NodeInformer,
-	podInformer clientv1.PodInformer,
-	rqaListWatch *clientcache.ListWatch,
-) Cache {
+func New() Cache {
 	cache := newSchedulerCache()
 	return cache
 }

@@ -54,7 +54,7 @@ func testCacheMain() {
 
 	testDump := func() {
 		for {
-			time.Sleep(10*time.Second)
+			time.Sleep(10 * time.Second)
 			snapshot := c.SchedulerCache.Dump()
 
 			fmt.Printf("====== DUMP NODES size %d\n", len(snapshot.Nodes))
@@ -109,7 +109,7 @@ func testCacheMain() {
 	}
 	go testDump()
 
-	time.Sleep(3600*time.Second)
+	time.Sleep(3600 * time.Second)
 
 	panic("unreachable!")
 }
