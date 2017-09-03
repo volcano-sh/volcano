@@ -152,7 +152,7 @@ func (DeploymentList) SwaggerDoc() map[string]string {
 }
 
 var map_DeploymentRollback = map[string]string{
-	"":                   "DeploymentRollback stores the information required to rollback a deployment.",
+	"":                   "DEPRECATED. DeploymentRollback stores the information required to rollback a deployment.",
 	"name":               "Required: This must match the Name of a deployment.",
 	"updatedAnnotations": "The annotations to be updated to a deployment",
 	"rollbackTo":         "The config of this deployment rollback.",
@@ -171,7 +171,7 @@ var map_DeploymentSpec = map[string]string{
 	"minReadySeconds":         "Minimum number of seconds for which a newly created pod should be ready without any of its container crashing, for it to be considered available. Defaults to 0 (pod will be considered available as soon as it is ready)",
 	"revisionHistoryLimit":    "The number of old ReplicaSets to retain to allow rollback. This is a pointer to distinguish between explicit zero and not specified.",
 	"paused":                  "Indicates that the deployment is paused and will not be processed by the deployment controller.",
-	"rollbackTo":              "The config this deployment is rolling back to. Will be cleared after rollback is done.",
+	"rollbackTo":              "DEPRECATED. The config this deployment is rolling back to. Will be cleared after rollback is done.",
 	"progressDeadlineSeconds": "The maximum time in seconds for a deployment to make progress before it is considered to be failed. The deployment controller will continue to process failed deployments and a condition with a ProgressDeadlineExceeded reason will be surfaced in the deployment status. Once autoRollback is implemented, the deployment controller will automatically rollback failed deployments. Note that progress will not be estimated during the time a deployment is paused. This is not set by default.",
 }
 
@@ -252,6 +252,16 @@ var map_IDRange = map[string]string{
 
 func (IDRange) SwaggerDoc() map[string]string {
 	return map_IDRange
+}
+
+var map_IPBlock = map[string]string{
+	"":       "IPBlock describes a particular CIDR (Ex. \"192.168.1.1/24\") that is allowed to the pods matched by a NetworkPolicySpec's podSelector. The except entry describes CIDRs that should not be included within this rule.",
+	"cidr":   "CIDR is a string representing the IP Block Valid examples are \"192.168.1.1/24\"",
+	"except": "Except is a slice of CIDRs that should not be included within an IP Block Valid examples are \"192.168.1.1/24\" Except values will be rejected if they are outside the CIDR range",
+}
+
+func (IPBlock) SwaggerDoc() map[string]string {
+	return map_IPBlock
 }
 
 var map_Ingress = map[string]string{
@@ -365,6 +375,7 @@ func (NetworkPolicyList) SwaggerDoc() map[string]string {
 var map_NetworkPolicyPeer = map[string]string{
 	"podSelector":       "This is a label selector which selects Pods in this namespace. This field follows standard label selector semantics. If present but empty, this selector selects all pods in this namespace.",
 	"namespaceSelector": "Selects Namespaces using cluster scoped-labels.  This matches all pods in all namespaces selected by this label selector. This field follows standard label selector semantics. If present but empty, this selector selects all namespaces.",
+	"ipBlock":           "IPBlock defines policy on a particular IPBlock",
 }
 
 func (NetworkPolicyPeer) SwaggerDoc() map[string]string {
@@ -502,6 +513,7 @@ func (ReplicationControllerDummy) SwaggerDoc() map[string]string {
 }
 
 var map_RollbackConfig = map[string]string{
+	"":         "DEPRECATED.",
 	"revision": "The revision to rollback to. If set to 0, rollback to the last revision.",
 }
 
