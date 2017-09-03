@@ -1,2 +1,4 @@
 language: go
-script: make
+script:
+  - make verify
+  - make

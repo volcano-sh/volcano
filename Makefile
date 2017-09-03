@@ -3,6 +3,9 @@ BIN_DIR=_output/bin
 kube-arbitrator: init
 	go build -o ${BIN_DIR}/kube-arbitrator cmd/main.go
 
+verify:
+	hack/verify-gofmt.sh
+
 init:
 	mkdir -p ${BIN_DIR}
 

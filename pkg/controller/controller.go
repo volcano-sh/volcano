@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 )
+
 type SchedulerCacheController struct {
 	SchedulerCacheControllerConfig *rest.Config
 	SchedulerCache                 schedulercache.Cache
@@ -65,7 +66,7 @@ func (c *SchedulerCacheController) RunPodsInformer(ctx context.Context) {
 	podInformer := informerFactory.Core().V1().Pods()
 	podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
-			FilterFunc:func(obj interface{}) bool {
+			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
 				case *v1.Pod:
 					fmt.Printf("====== pod filter, name(%s) namespace(%s) status(%s)\n", t.Name, t.Namespace, t.Status.Phase)

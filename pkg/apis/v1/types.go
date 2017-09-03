@@ -17,9 +17,9 @@ limitations under the License.
 package v1
 
 import (
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 const ResourceQuotaAllocatorPlural = "resourcequotaallocators"
@@ -37,8 +37,8 @@ type ResourceQuotaAllocatorSpec struct {
 }
 
 type ResourceQuotaAllocatorStatus struct {
-	Share map[string]intstr.IntOrString  `json:"share"`
-	Usage map[string]ResourceList    `json:"usage"`
+	Share map[string]intstr.IntOrString `json:"share"`
+	Usage map[string]ResourceList       `json:"usage"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -52,7 +52,7 @@ type ResourceQuotaAllocatorList struct {
 type ResourceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
-	Resources map[ResourceName]resource.Quantity `json:"resources"`
+	Resources       map[ResourceName]resource.Quantity `json:"resources"`
 }
 
 type ResourceName string
