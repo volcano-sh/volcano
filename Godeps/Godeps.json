@@ -114,6 +114,15 @@
 			"Rev": "a0d98a5f288019575c6d1f4bb1573fef2d1fcdc4"
 		},
 		{
+			"ImportPath": "github.com/howeyc/gopass",
+			"Rev": "bf9dde6d0d2c004a008c27aaee91170c786f6db8"
+		},
+		{
+			"ImportPath": "github.com/imdario/mergo",
+			"Comment": "0.1.3-8-g6633656",
+			"Rev": "6633656539c1639d9d78127b7d47c622b5d7b6dc"
+		},
+		{
 			"ImportPath": "github.com/juju/ratelimit",
 			"Rev": "5b9ff866471762aa2ab2dced63c9fb6f53921342"
 		},
@@ -138,6 +147,10 @@
 			"Rev": "ded73eae5db7e7a0ef6f55aace87a2873c5d2b74"
 		},
 		{
+			"ImportPath": "golang.org/x/crypto/ssh/terminal",
+			"Rev": "d172538b2cfce0c13cee31e647d0367aa8cd2486"
+		},
+		{
 			"ImportPath": "golang.org/x/net/http2",
 			"Rev": "1c05540f6879653db88113bc4a2b70aec4bd491f"
 		},
@@ -152,6 +165,10 @@
 		{
 			"ImportPath": "golang.org/x/net/lex/httplex",
 			"Rev": "1c05540f6879653db88113bc4a2b70aec4bd491f"
+		},
+		{
+			"ImportPath": "golang.org/x/sys/unix",
+			"Rev": "7a4fde3fda8ef580a89dbae8138c26041be14299"
 		},
 		{
 			"ImportPath": "golang.org/x/text/cases",
@@ -932,12 +949,32 @@
 			"Rev": "db8228460e2de17f5d3a9a453f61dde0ba86545a"
 		},
 		{
+			"ImportPath": "k8s.io/client-go/tools/auth",
+			"Comment": "v2.0.0-alpha.0-579-gdb822846",
+			"Rev": "db8228460e2de17f5d3a9a453f61dde0ba86545a"
+		},
+		{
 			"ImportPath": "k8s.io/client-go/tools/cache",
 			"Comment": "v2.0.0-alpha.0-579-gdb822846",
 			"Rev": "db8228460e2de17f5d3a9a453f61dde0ba86545a"
 		},
 		{
+			"ImportPath": "k8s.io/client-go/tools/clientcmd",
+			"Comment": "v2.0.0-alpha.0-579-gdb822846",
+			"Rev": "db8228460e2de17f5d3a9a453f61dde0ba86545a"
+		},
+		{
 			"ImportPath": "k8s.io/client-go/tools/clientcmd/api",
+			"Comment": "v2.0.0-alpha.0-579-gdb822846",
+			"Rev": "db8228460e2de17f5d3a9a453f61dde0ba86545a"
+		},
+		{
+			"ImportPath": "k8s.io/client-go/tools/clientcmd/api/latest",
+			"Comment": "v2.0.0-alpha.0-579-gdb822846",
+			"Rev": "db8228460e2de17f5d3a9a453f61dde0ba86545a"
+		},
+		{
+			"ImportPath": "k8s.io/client-go/tools/clientcmd/api/v1",
 			"Comment": "v2.0.0-alpha.0-579-gdb822846",
 			"Rev": "db8228460e2de17f5d3a9a453f61dde0ba86545a"
 		},
@@ -963,6 +1000,11 @@
 		},
 		{
 			"ImportPath": "k8s.io/client-go/util/flowcontrol",
+			"Comment": "v2.0.0-alpha.0-579-gdb822846",
+			"Rev": "db8228460e2de17f5d3a9a453f61dde0ba86545a"
+		},
+		{
+			"ImportPath": "k8s.io/client-go/util/homedir",
 			"Comment": "v2.0.0-alpha.0-579-gdb822846",
 			"Rev": "db8228460e2de17f5d3a9a453f61dde0ba86545a"
 		},
