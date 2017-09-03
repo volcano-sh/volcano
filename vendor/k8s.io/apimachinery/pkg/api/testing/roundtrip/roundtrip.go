@@ -19,7 +19,6 @@ package roundtrip
 import (
 	"bytes"
 	"encoding/hex"
-	"fmt"
 	"math/rand"
 	"reflect"
 	"strings"
@@ -269,12 +268,14 @@ func roundTrip(t *testing.T, scheme *runtime.Scheme, codec runtime.Codec, object
 	original := object
 
 	// deep copy the original object
-	copied, err := scheme.DeepCopy(object)
-	if err != nil {
-		panic(fmt.Sprintf("unable to copy: %v", err))
-	}
-	object = copied.(runtime.Object)
+	object = object.DeepCopyObject()
 	name := reflect.TypeOf(object).Elem().Name()
+	if !apiequality.Semantic.DeepEqual(original, object) {
+		t.Errorf("%v: DeepCopy altered the object, diff: %v", name, diff.ObjectReflectDiff(original, object))
+		t.Errorf("%s", spew.Sdump(original))
+		t.Errorf("%s", spew.Sdump(object))
+		return
+	}
 
 	// catch deepcopy errors early
 	if !apiequality.Semantic.DeepEqual(original, object) {
@@ -328,7 +329,7 @@ func roundTrip(t *testing.T, scheme *runtime.Scheme, codec runtime.Codec, object
 	// ensure that the object produced from decoding the encoded data is equal
 	// to the original object
 	if !apiequality.Semantic.DeepEqual(original, obj2) {
-		t.Errorf("%v: diff: %v\nCodec: %#v\nSource:\n\n%#v\n\nEncoded:\n\n%s\n\nFinal:\n\n%#v", name, diff.ObjectReflectDiff(object, obj2), codec, printer.Sprintf("%#v", object), dataAsString(data), printer.Sprintf("%#v", obj2))
+		t.Errorf("%v: diff: %v\nCodec: %#v\nSource:\n\n%#v\n\nEncoded:\n\n%s\n\nFinal:\n\n%#v", name, diff.ObjectReflectDiff(original, obj2), codec, printer.Sprintf("%#v", original), dataAsString(data), printer.Sprintf("%#v", obj2))
 		return
 	}
 
@@ -375,7 +376,7 @@ func roundTrip(t *testing.T, scheme *runtime.Scheme, codec runtime.Codec, object
 	// NOTE: we use the encoding+decoding here as an alternative, guaranteed deep-copy to compare against.
 	fuzzer.ValueFuzz(object)
 	if !apiequality.Semantic.DeepEqual(original, obj3) {
-		t.Errorf("%v: fuzzing a copy altered the original, diff: %v", name, diff.ObjectReflectDiff(original, object))
+		t.Errorf("%v: fuzzing a copy altered the original, diff: %v", name, diff.ObjectReflectDiff(original, obj3))
 		return
 	}
 }

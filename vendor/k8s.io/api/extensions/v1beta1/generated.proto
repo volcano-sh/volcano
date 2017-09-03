@@ -181,7 +181,7 @@ message DaemonSetStatus {
   // uses this field as a collision avoidance mechanism when it needs to
   // create the name for the newest ControllerRevision.
   // +optional
-  optional int64 collisionCount = 9;
+  optional int32 collisionCount = 9;
 }
 
 message DaemonSetUpdateStrategy {
@@ -245,6 +245,7 @@ message DeploymentList {
   repeated Deployment items = 2;
 }
 
+// DEPRECATED.
 // DeploymentRollback stores the information required to rollback a deployment.
 message DeploymentRollback {
   // Required: This must match the Name of a deployment.
@@ -275,6 +276,7 @@ message DeploymentSpec {
 
   // The deployment strategy to use to replace existing pods with new ones.
   // +optional
+  // +patchStrategy=retainKeys
   optional DeploymentStrategy strategy = 4;
 
   // Minimum number of seconds for which a newly created pod should be ready
@@ -293,6 +295,7 @@ message DeploymentSpec {
   // +optional
   optional bool paused = 7;
 
+  // DEPRECATED.
   // The config this deployment is rolling back to. Will be cleared after rollback is done.
   // +optional
   optional RollbackConfig rollbackTo = 8;
@@ -342,7 +345,7 @@ message DeploymentStatus {
   // field as a collision avoidance mechanism when it needs to create the name for the
   // newest ReplicaSet.
   // +optional
-  optional int64 collisionCount = 8;
+  optional int32 collisionCount = 8;
 }
 
 // DeploymentStrategy describes how to replace existing pods with new ones.
@@ -417,6 +420,21 @@ message IDRange {
 
   // Max is the end of the range, inclusive.
   optional int64 max = 2;
+}
+
+// IPBlock describes a particular CIDR (Ex. "192.168.1.1/24") that is allowed to the pods
+// matched by a NetworkPolicySpec's podSelector. The except entry describes CIDRs that should
+// not be included within this rule.
+message IPBlock {
+  // CIDR is a string representing the IP Block
+  // Valid examples are "192.168.1.1/24"
+  optional string cidr = 1;
+
+  // Except is a slice of CIDRs that should not be included within an IP Block
+  // Valid examples are "192.168.1.1/24"
+  // Except values will be rejected if they are outside the CIDR range
+  // +optional
+  repeated string except = 2;
 }
 
 // Ingress is a collection of rules that allow inbound connections to reach the
@@ -600,6 +618,10 @@ message NetworkPolicyPeer {
   // If present but empty, this selector selects all namespaces.
   // +optional
   optional k8s.io.apimachinery.pkg.apis.meta.v1.LabelSelector namespaceSelector = 2;
+
+  // IPBlock defines policy on a particular IPBlock
+  // +optional
+  optional IPBlock ipBlock = 3;
 }
 
 message NetworkPolicyPort {
@@ -852,6 +874,7 @@ message ReplicaSetStatus {
 message ReplicationControllerDummy {
 }
 
+// DEPRECATED.
 message RollbackConfig {
   // The revision to rollback to. If set to 0, rollback to the last revision.
   // +optional
