@@ -19,18 +19,30 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"k8s.io/client-go/rest"
+	"os"
+	"time"
 
-	examplecontroller "github.com/kubernetes-incubator/kube-arbitrator/pkg/controller"
+	"github.com/spf13/pflag"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
+	"github.com/kubernetes-incubator/kube-arbitrator/cmd/app"
+	"github.com/kubernetes-incubator/kube-arbitrator/cmd/app/options"
+	examplecontroller "github.com/kubernetes-incubator/kube-arbitrator/pkg/controller"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
-	"time"
 )
 
 func main() {
-	testCacheMain()
-	panic("The kube-arbitrator is not ready now.")
+	s := options.NewServerOption()
+	s.AddFlags(pflag.CommandLine)
+
+	if err := app.Run(s); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+
+	// testCacheMain()
+	// panic("The kube-arbitrator is not ready now.")
 }
 
 func testCacheMain() {

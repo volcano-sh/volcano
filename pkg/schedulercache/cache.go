@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,23 +20,48 @@ import (
 	"fmt"
 	"sync"
 
-	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-
+	"github.com/golang/glog"
 	"k8s.io/api/core/v1"
+	clientv1 "k8s.io/client-go/informers/core/v1"
+	"k8s.io/client-go/tools/cache"
+
+	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 )
 
 // New returns a Cache implementation.
 // It automatically starts a go routine that manages expiration of assumed pods.
 // "ttl" is how long the assumed pod will get expired.
 // "stop" is the channel that would close the background goroutine.
-func New() Cache {
-	cache := newSchedulerCache()
-	return cache
+func New(podInformer clientv1.PodInformer,
+	nodeInformer clientv1.NodeInformer,
+) Cache {
+
+	schedulerCache := newSchedulerCache()
+
+	podInformer.Informer().AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				switch t := obj.(type) {
+				case *v1.Pod:
+					fmt.Printf("====== pod filter, name(%s) namespace(%s) status(%s)\n", t.Name, t.Namespace, t.Status.Phase)
+					return true
+				default:
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    schedulerCache.AddPod,
+				UpdateFunc: schedulerCache.UpdatePod,
+				DeleteFunc: schedulerCache.DeletePod,
+			},
+		},
+	)
+
+	return schedulerCache
 }
 
 type schedulerCache struct {
-	// This mutex guards all fields within this cache struct.
-	mu sync.Mutex
+	sync.Mutex
 
 	// a map from pod key to podState.
 	pods                    map[string]*PodInfo
@@ -94,10 +119,12 @@ func (cache *schedulerCache) removePod(pod *v1.Pod) error {
 	return nil
 }
 
-func (cache *schedulerCache) AddPod(pod *v1.Pod) error {
+func (cache *schedulerCache) AddPod(obj interface{}) {
+	pod := obj.(*v1.Pod)
+
 	key, err := getPodKey(pod)
 	if err != nil {
-		return err
+		return
 	}
 
 	cache.mu.Lock()
@@ -105,9 +132,9 @@ func (cache *schedulerCache) AddPod(pod *v1.Pod) error {
 
 	err = cache.addPod(pod)
 	if err != nil {
-		return fmt.Errorf("add pod failed. Pod key: %v", key)
+		glog.Errorf("Failed to add pod %s into cache: %v", key, err)
+		return
 	}
-	return nil
 }
 
 func (cache *schedulerCache) UpdatePod(oldPod, newPod *v1.Pod) error {

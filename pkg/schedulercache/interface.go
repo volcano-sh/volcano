@@ -16,12 +16,6 @@ limitations under the License.
 
 package schedulercache
 
-import (
-	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-
-	"k8s.io/api/core/v1"
-)
-
 // Cache collects pods' information and provides node-level aggregated information.
 // It's intended for generic scheduler to do efficient lookup.
 // Cache's operations are pod centric. It does incremental updates based on pod events.
@@ -57,34 +51,6 @@ import (
 // - Both "Expired" and "Deleted" are valid end states. In case of some problems, e.g. network issue,
 //   a pod might have changed its state (e.g. added and deleted) without delivering notification to the cache.
 type Cache interface {
-	// AddPod either confirms a pod if it's assumed, or adds it back if it's expired.
-	// If added back, the pod's information would be added again.
-	AddPod(pod *v1.Pod) error
-
-	// UpdatePod removes oldPod's information and adds newPod's information.
-	UpdatePod(oldPod, newPod *v1.Pod) error
-
-	// RemovePod removes a pod. The pod's information would be subtracted from assigned node.
-	RemovePod(pod *v1.Pod) error
-
-	// AddNode adds overall information about node.
-	AddNode(node *v1.Node) error
-
-	// UpdateNode updates overall information about node.
-	UpdateNode(oldNode, newNode *v1.Node) error
-
-	// RemoveNode removes overall information about node.
-	RemoveNode(node *v1.Node) error
-
-	// AddResourceQuotaAllocator add overall information about ResourceQuotaAllocator.
-	AddResourceQuotaAllocator(rqa *apiv1.ResourceQuotaAllocator) error
-
-	// UpdateResourceQuotaAllocator update overall information about ResourceQuotaAllocator.
-	UpdateResourceQuotaAllocator(oldRqa, newRqa *apiv1.ResourceQuotaAllocator) error
-
-	// RemoveResourceQuotaAllocator remove overall information about ResourceQuotaAllocator.
-	RemoveResourceQuotaAllocator(rqa *apiv1.ResourceQuotaAllocator) error
-
 	// Dump deep copy overall cache information into snapshot
 	Dump() *CacheSnapshot
 }
