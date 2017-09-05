@@ -13,24 +13,35 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package main
+
+package app
 
 import (
-	"fmt"
-	"os"
-
-	"github.com/kubernetes-incubator/kube-arbitrator/cmd/app"
 	"github.com/kubernetes-incubator/kube-arbitrator/cmd/app/options"
-	"github.com/spf13/pflag"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
+
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
-func main() {
-	s := options.NewServerOption()
-	s.AddFlags(pflag.CommandLine)
-	pflag.Parse()
-
-	if err := app.Run(s); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
+func buildConfig(master, kubeconfig string) (*rest.Config, error) {
+	if kubeconfig != "" || master != "" {
+		return clientcmd.BuildConfigFromFlags(master, kubeconfig)
 	}
+	return rest.InClusterConfig()
+}
+
+func Run(opt *options.ServerOption) error {
+	config, err := buildConfig(opt.Master, opt.Kubeconfig)
+	if err != nil {
+		return err
+	}
+
+	neverStop := make(chan struct{})
+	cache := schedulercache.New(config)
+	go cache.Run(neverStop)
+
+	// TODO dump cache information and do something
+
+	return nil
 }
