@@ -18,4 +18,3 @@ package controller
 
 type SchedulerCacheController struct {
 }
-

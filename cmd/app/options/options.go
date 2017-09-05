@@ -22,8 +22,8 @@ import (
 
 // ServerOption is the main context object for the controller manager.
 type ServerOption struct {
-	Master      string
-	Kubeconfig  string
+	Master     string
+	Kubeconfig string
 }
 
 // NewServerOption creates a new CMServer with a default config.

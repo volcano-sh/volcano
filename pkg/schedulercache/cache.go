@@ -28,8 +28,8 @@ import (
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/fields"
-	clientv1 "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/informers"
+	clientv1 "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
@@ -37,7 +37,7 @@ import (
 
 // New returns a Cache implementation.
 func New(
-         config *rest.Config,
+	config *rest.Config,
 ) Cache {
 	return newSchedulerCache(config)
 }
@@ -45,9 +45,9 @@ func New(
 type schedulerCache struct {
 	sync.Mutex
 
-	podInformer             clientv1.PodInformer
-	nodeInformer            clientv1.NodeInformer
-	rqaController           cache.Controller
+	podInformer   clientv1.PodInformer
+	nodeInformer  clientv1.NodeInformer
+	rqaController cache.Controller
 
 	pods                    map[string]*PodInfo
 	nodes                   map[string]*NodeInfo
@@ -56,8 +56,8 @@ type schedulerCache struct {
 
 func newSchedulerCache(config *rest.Config) *schedulerCache {
 	sc := &schedulerCache{
-		nodes:                   make(map[string]*NodeInfo),
-		pods:                    make(map[string]*PodInfo),
+		nodes: make(map[string]*NodeInfo),
+		pods:  make(map[string]*PodInfo),
 		resourceQuotaAllocators: make(map[string]*ResourceQuotaAllocatorInfo),
 	}
 
@@ -79,21 +79,21 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 	sc.podInformer = informerFactory.Core().V1().Pods()
 	sc.podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
-		FilterFunc: func(obj interface{}) bool {
-			switch t := obj.(type) {
-			case *v1.Pod:
-				glog.V(4).Infof("Filter pod name(%s) namespace(%s) status(%s)\n", t.Name, t.Namespace, t.Status.Phase)
-				return true
-			default:
-				return false
-			}
-		},
-		Handler: cache.ResourceEventHandlerFuncs{
-			AddFunc:    sc.AddPod,
-			UpdateFunc: sc.UpdatePod,
-			DeleteFunc: sc.DeletePod,
-		},
-	},)
+			FilterFunc: func(obj interface{}) bool {
+				switch t := obj.(type) {
+				case *v1.Pod:
+					glog.V(4).Infof("Filter pod name(%s) namespace(%s) status(%s)\n", t.Name, t.Namespace, t.Status.Phase)
+					return true
+				default:
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    sc.AddPod,
+				UpdateFunc: sc.UpdatePod,
+				DeleteFunc: sc.DeletePod,
+			},
+		})
 
 	// create resourcequotaallocator resource first
 	err := createResourceQuotaAllocatorCRD(config)

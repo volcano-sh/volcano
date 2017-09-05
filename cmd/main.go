@@ -19,9 +19,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/spf13/pflag"
 	"github.com/kubernetes-incubator/kube-arbitrator/cmd/app"
 	"github.com/kubernetes-incubator/kube-arbitrator/cmd/app/options"
+	"github.com/spf13/pflag"
 )
 
 func main() {
