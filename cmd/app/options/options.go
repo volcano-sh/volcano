@@ -22,7 +22,8 @@ import (
 
 // ServerOption is the main context object for the controller manager.
 type ServerOption struct {
-	Master string
+	Master      string
+	Kubeconfig  string
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -34,4 +35,5 @@ func NewServerOption() *ServerOption {
 // AddFlags adds flags for a specific CMServer to the specified FlagSet
 func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.Master, "master", s.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
+	fs.StringVar(&s.Kubeconfig, "kubeconfig", s.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
 }

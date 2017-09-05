@@ -17,14 +17,11 @@ limitations under the License.
 package app
 
 import (
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
+	"github.com/kubernetes-incubator/kube-arbitrator/cmd/app/options"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
+
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-
-	"github.com/kubernetes-incubator/kube-arbitrator/cmd/app/options"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/controller"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 )
 
 func buildConfig(master, kubeconfig string) (*rest.Config, error) {
@@ -35,24 +32,16 @@ func buildConfig(master, kubeconfig string) (*rest.Config, error) {
 }
 
 func Run(opt *options.ServerOption) error {
-	config, err := buildConfig(opt.Master, "")
+	config, err := buildConfig(opt.Master, opt.Kubeconfig)
 	if err != nil {
 		return err
 	}
 
-	kubecli := kubernetes.NewForConfigOrDie(config)
-	informerFactory := informers.NewSharedInformerFactory(kubecli, 0)
+	neverStop := make(chan struct{})
+	cache := schedulercache.New(config)
+	go cache.Run(neverStop)
 
-	nodeInformer := informerFactory.Core().V1().Nodes()
-	podInformer := informerFactory.Core().V1().Pods()
-
-	cache := schedulercache.New(nodeInformer, podInformer, config)
-
-	rqaController := controller.New(cache)
-
-	go cache.Run()
-
-	rqaController.Run()
+	// TODO dump cache information and do something
 
 	return nil
 }

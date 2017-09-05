@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,18 +49,6 @@ func (n *NodeInfo) Clone() *NodeInfo {
 		node: n.node.DeepCopy(),
 	}
 	return clone
-}
-
-// Sets the overall node information.
-func (n *NodeInfo) SetNode(node *v1.Node) error {
-	n.node = node
-	return nil
-}
-
-// Removes the overall information about the node.
-func (n *NodeInfo) RemoveNode(node *v1.Node) error {
-	n.node = nil
-	return nil
 }
 
 // getPodKey returns the string key of a pod.

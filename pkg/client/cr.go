@@ -32,7 +32,7 @@ import (
 
 const resourceQuotaAllocatorCRDName = crv1.ResourceQuotaAllocatorPlural + "." + crv1.GroupName
 
-func CreateCustomResourceDefinition(clientset apiextensionsclient.Interface) (*apiextensionsv1beta1.CustomResourceDefinition, error) {
+func CreateResourceQuotaAllocatorCRD(clientset apiextensionsclient.Interface) (*apiextensionsv1beta1.CustomResourceDefinition, error) {
 	crd := &apiextensionsv1beta1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: resourceQuotaAllocatorCRDName,
