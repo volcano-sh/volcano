@@ -16,5 +16,40 @@ limitations under the License.
 
 package controller
 
-type SchedulerCacheController struct {
+import (
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
+
+	"k8s.io/apimachinery/pkg/util/wait"
+)
+
+type ResourceQuotaAllocatorController struct {
+	cache        schedulercache.Cache
+	allocator    policy.Interface
+	quotaManager *quotaManager
+}
+
+func NewResourceQuotaAllocatorController(cache schedulercache.Cache, allocator policy.Interface) *ResourceQuotaAllocatorController {
+	rqaController := &ResourceQuotaAllocatorController{
+		cache:        cache,
+		allocator:    allocator,
+		quotaManager: &quotaManager{},
+	}
+
+	return rqaController
+}
+
+func (r *ResourceQuotaAllocatorController) Run() {
+	wait.Until(r.runOnce, 1, wait.NeverStop)
+}
+
+func (r *ResourceQuotaAllocatorController) runOnce() {
+	snapshot := r.cache.Dump()
+	jobGroups := r.allocator.Group(snapshot.Allocators)
+	for name, jobs := range jobGroups {
+		allocations := r.allocator.Allocate(jobs, snapshot.Nodes)
+		for name, alloc := range allocations {
+			r.quotaManager.updateQuota(alloc)
+		}
+	}
 }
