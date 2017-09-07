@@ -17,6 +17,8 @@ limitations under the License.
 package controller
 
 import (
+	"time"
+
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 
@@ -40,15 +42,15 @@ func NewResourceQuotaAllocatorController(cache schedulercache.Cache, allocator p
 }
 
 func (r *ResourceQuotaAllocatorController) Run() {
-	wait.Until(r.runOnce, 1, wait.NeverStop)
+	wait.Until(r.runOnce, 2*time.Second, wait.NeverStop)
 }
 
 func (r *ResourceQuotaAllocatorController) runOnce() {
 	snapshot := r.cache.Dump()
 	jobGroups := r.allocator.Group(snapshot.Allocators)
-	for name, jobs := range jobGroups {
+	for _, jobs := range jobGroups {
 		allocations := r.allocator.Allocate(jobs, snapshot.Nodes)
-		for name, alloc := range allocations {
+		for _, alloc := range allocations {
 			r.quotaManager.updateQuota(alloc)
 		}
 	}

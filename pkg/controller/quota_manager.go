@@ -16,11 +16,30 @@ limitations under the License.
 
 package controller
 
+import (
+	"fmt"
+
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
+)
+
 type quotaManager struct {
 }
 
-func (qm *quotaManager) updateQuota() {
+func (qm *quotaManager) updateQuota(allocator *schedulercache.ResourceQuotaAllocatorInfo) {
 	// Add update request based on ResourceQuotaAllocator to chan.
+	if allocator == nil {
+		return
+	}
+
+	fmt.Println("======================== QuotaManager.updateQuota")
+	fmt.Println("    Spec.Share:")
+	for k, v := range allocator.Allocator().Spec.Share {
+		fmt.Printf("        %s: %s\n", k, v.String())
+	}
+	fmt.Println("    Status.Share:")
+	for k, v := range allocator.Allocator().Status.Share {
+		fmt.Printf("        %s: %s\n", k, v.String())
+	}
 }
 
 func (qm *quotaManager) run() {

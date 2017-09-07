@@ -478,19 +478,19 @@ func (sc *schedulerCache) Dump() *CacheSnapshot {
 	defer sc.Mutex.Unlock()
 
 	snapshot := &CacheSnapshot{
-		Nodes:      make(map[string]*NodeInfo),
-		Pods:       make(map[string]*PodInfo),
-		Allocators: make(map[string]*ResourceQuotaAllocatorInfo),
+		Nodes:      make([]*NodeInfo, 0, len(sc.nodes)),
+		Pods:       make([]*PodInfo, 0, len(sc.pods)),
+		Allocators: make([]*ResourceQuotaAllocatorInfo, 0, len(sc.resourceQuotaAllocators)),
 	}
 
-	for key, value := range sc.nodes {
-		snapshot.Nodes[key] = value.Clone()
+	for _, value := range sc.nodes {
+		snapshot.Nodes = append(snapshot.Nodes, value.Clone())
 	}
-	for key, value := range sc.pods {
-		snapshot.Pods[key] = value.Clone()
+	for _, value := range sc.pods {
+		snapshot.Pods = append(snapshot.Pods, value.Clone())
 	}
-	for key, value := range sc.resourceQuotaAllocators {
-		snapshot.Allocators[key] = value.Clone()
+	for _, value := range sc.resourceQuotaAllocators {
+		snapshot.Allocators = append(snapshot.Allocators, value.Clone())
 	}
 	return snapshot
 }
