@@ -23,6 +23,7 @@ import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/rest"
 )
 
 type ResourceQuotaAllocatorController struct {
@@ -31,11 +32,13 @@ type ResourceQuotaAllocatorController struct {
 	quotaManager *quotaManager
 }
 
-func NewResourceQuotaAllocatorController(cache schedulercache.Cache, allocator policy.Interface) *ResourceQuotaAllocatorController {
+func NewResourceQuotaAllocatorController(config *rest.Config, cache schedulercache.Cache, allocator policy.Interface) *ResourceQuotaAllocatorController {
 	rqaController := &ResourceQuotaAllocatorController{
 		cache:        cache,
 		allocator:    allocator,
-		quotaManager: &quotaManager{},
+		quotaManager: &quotaManager{
+			config: config,
+		},
 	}
 
 	return rqaController

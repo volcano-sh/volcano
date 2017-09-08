@@ -20,9 +20,14 @@ import (
 	"fmt"
 
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/kubernetes"
+	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 type quotaManager struct {
+	config *rest.Config
 }
 
 func (qm *quotaManager) updateQuota(allocator *schedulercache.ResourceQuotaAllocatorInfo) {
@@ -31,14 +36,36 @@ func (qm *quotaManager) updateQuota(allocator *schedulercache.ResourceQuotaAlloc
 		return
 	}
 
-	fmt.Println("======================== QuotaManager.updateQuota")
-	fmt.Println("    Spec.Share:")
-	for k, v := range allocator.Allocator().Spec.Share {
-		fmt.Printf("        %s: %s\n", k, v.String())
+	ns, ok := allocator.Allocator().Spec.Share["ns"]
+	if !ok {
+		fmt.Println("can't find ns field")
+		return
 	}
-	fmt.Println("    Status.Share:")
-	for k, v := range allocator.Allocator().Status.Share {
-		fmt.Printf("        %s: %s\n", k, v.String())
+
+	cs := kubernetes.NewForConfigOrDie(qm.config)
+	rqController := cs.CoreV1().ResourceQuotas(ns.String())
+	var options meta_v1.ListOptions
+	rqList, err := rqController.List(options)
+	if len(rqList.Items) != 1 || err != nil {
+		fmt.Println("failed to list quota")
+		return
+	}
+	for _, rq := range rqList.Items {
+		rqupdate := rq.DeepCopy()
+		for k, v := range allocator.Allocator().Status.Share {
+			switch k {
+			case "cpu":
+				rqupdate.Spec.Hard["limits.cpu"] = resource.MustParse(v.String())
+				rqupdate.Spec.Hard["requests.cpu"] = resource.MustParse(v.String())
+			case "memory":
+				rqupdate.Spec.Hard["limits.memory"] = resource.MustParse(v.String())
+				rqupdate.Spec.Hard["requests.memory"] = resource.MustParse(v.String())
+			}
+		}
+		_, err := rqController.Update(rqupdate)
+		if err != nil {
+			fmt.Println("failed to update")
+		}
 	}
 }
 

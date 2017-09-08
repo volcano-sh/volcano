@@ -44,7 +44,7 @@ func Run(opt *options.ServerOption) error {
 	go cache.Run(neverStop)
 
 	// TODO dump cache information and do something
-	c := controller.NewResourceQuotaAllocatorController(cache, proportion.New())
+	c := controller.NewResourceQuotaAllocatorController(config, cache, proportion.New())
 	c.Run()
 
 	return nil
