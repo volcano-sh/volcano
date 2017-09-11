@@ -52,9 +52,10 @@ This is a [Kubernetes Incubator project](https://github.com/kubernetes/community
     1. Resource allocation by policy (DRF by default)
     1. Support fair sharing on GPU
     1. Make policy pluggable
+1. Support QueueJob based on ResourceQuotaAllocator
+1. Integrate with Spark on Kubernetes, and other frameworks, e.g. Tensorflow
 1. Support Hierarchical namespaces (or other “tenants”)
 1. Support object quota as child Namespace Quota
-1. Integrate with Spark on Kubernetes, and other frameworks, e.g. Tensorflow
 1. Support resource estimation for ResourceQuota & ObjectQuota
 1. Integrate with priority/preemption feature to revoke resource according to policy
 1. Handle unbound Queue (persist in etcd, and external sort)
