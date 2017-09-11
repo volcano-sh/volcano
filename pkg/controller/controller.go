@@ -34,10 +34,11 @@ type ResourceQuotaAllocatorController struct {
 
 func NewResourceQuotaAllocatorController(config *rest.Config, cache schedulercache.Cache, allocator policy.Interface) *ResourceQuotaAllocatorController {
 	rqaController := &ResourceQuotaAllocatorController{
-		cache:        cache,
-		allocator:    allocator,
+		cache:     cache,
+		allocator: allocator,
 		quotaManager: &quotaManager{
 			config: config,
+			ch:     make(chan updatedResource, 100),
 		},
 	}
 
@@ -45,6 +46,7 @@ func NewResourceQuotaAllocatorController(config *rest.Config, cache schedulercac
 }
 
 func (r *ResourceQuotaAllocatorController) Run() {
+	go r.quotaManager.run()
 	wait.Until(r.runOnce, 2*time.Second, wait.NeverStop)
 }
 

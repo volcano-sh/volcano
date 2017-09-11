@@ -27,7 +27,7 @@ import (
 )
 
 func buildConfig(master, kubeconfig string) (*rest.Config, error) {
-	if kubeconfig != "" || master != "" {
+	if master != "" || kubeconfig != "" {
 		return clientcmd.BuildConfigFromFlags(master, kubeconfig)
 	}
 	return rest.InClusterConfig()

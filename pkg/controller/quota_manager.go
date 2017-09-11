@@ -17,17 +17,26 @@ limitations under the License.
 package controller
 
 import (
-	"fmt"
+	"strconv"
 
+	"github.com/golang/glog"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/kubernetes"
-	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"k8s.io/apimachinery/pkg/api/resource"
+	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 type quotaManager struct {
 	config *rest.Config
+	ch     chan updatedResource
+}
+
+type updatedResource struct {
+	ns     string
+	cpu    int64
+	memory int64
 }
 
 func (qm *quotaManager) updateQuota(allocator *schedulercache.ResourceQuotaAllocatorInfo) {
@@ -38,37 +47,62 @@ func (qm *quotaManager) updateQuota(allocator *schedulercache.ResourceQuotaAlloc
 
 	ns, ok := allocator.Allocator().Spec.Share["ns"]
 	if !ok {
-		fmt.Println("can't find ns field")
+		glog.Error("can not find ns field in allocator spec")
 		return
 	}
 
-	cs := kubernetes.NewForConfigOrDie(qm.config)
-	rqController := cs.CoreV1().ResourceQuotas(ns.String())
-	var options meta_v1.ListOptions
-	rqList, err := rqController.List(options)
-	if len(rqList.Items) != 1 || err != nil {
-		fmt.Println("failed to list quota")
-		return
+	res := updatedResource{
+		ns: ns.String(),
 	}
-	for _, rq := range rqList.Items {
-		rqupdate := rq.DeepCopy()
-		for k, v := range allocator.Allocator().Status.Share {
-			switch k {
-			case "cpu":
-				rqupdate.Spec.Hard["limits.cpu"] = resource.MustParse(v.String())
-				rqupdate.Spec.Hard["requests.cpu"] = resource.MustParse(v.String())
-			case "memory":
-				rqupdate.Spec.Hard["limits.memory"] = resource.MustParse(v.String())
-				rqupdate.Spec.Hard["requests.memory"] = resource.MustParse(v.String())
+	for k, v := range allocator.Allocator().Status.Share {
+		switch k {
+		case "cpu":
+			if cpuInf64, err := strconv.ParseInt(v.String(), 10, 64); err == nil {
+				res.cpu = cpuInf64
+			} else {
+				glog.Error(err)
+			}
+		case "memory":
+			if memoryInf64, err := strconv.ParseInt(v.String(), 10, 64); err == nil {
+				res.memory = memoryInf64
+			} else {
+				glog.Error(err)
 			}
 		}
-		_, err := rqController.Update(rqupdate)
-		if err != nil {
-			fmt.Println("failed to update")
-		}
 	}
+
+	qm.ch <- res
 }
 
 func (qm *quotaManager) run() {
 	// get request from chan and update to Quota.
+	cs := kubernetes.NewForConfigOrDie(qm.config)
+	for {
+		res := <-qm.ch
+		rqController := cs.CoreV1().ResourceQuotas(res.ns)
+		var options meta_v1.ListOptions
+		rqList, err := rqController.List(options)
+		if len(rqList.Items) != 1 || err != nil {
+			glog.Error("more than one resourceQuota or ecounter an error")
+		} else {
+			for _, rq := range rqList.Items {
+				rqupdate := rq.DeepCopy()
+				cpuQuota := *resource.NewQuantity(res.cpu, resource.DecimalSI)
+				cpuQuota.String()
+				memoryQuota := *resource.NewQuantity(res.memory, resource.BinarySI)
+				memoryQuota.String()
+				rqupdate.Spec.Hard["limits.cpu"] = cpuQuota
+				rqupdate.Spec.Hard["requests.cpu"] = cpuQuota
+				rqupdate.Spec.Hard["limits.memory"] = memoryQuota
+				rqupdate.Spec.Hard["requests.memory"] = memoryQuota
+
+				_, err := rqController.Update(rqupdate)
+				if err != nil {
+					glog.Error("failed to update resource quota")
+				}
+			}
+		}
+	}
+
+	panic("unreachable!")
 }

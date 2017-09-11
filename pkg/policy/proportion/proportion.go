@@ -19,6 +19,7 @@ package proportion
 import (
 	"fmt"
 
+	"github.com/golang/glog"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 
@@ -63,9 +64,6 @@ func (ps *proportionScheduler) Allocate(
 	jobs []*schedulercache.ResourceQuotaAllocatorInfo,
 	nodes []*schedulercache.NodeInfo,
 ) map[string]*schedulercache.ResourceQuotaAllocatorInfo {
-	fmt.Println("======================== Policy.Allocate")
-
-	// TODO
 	totalCPU := int64(0)
 	totalMEM := int64(0)
 	for _, node := range nodes {
@@ -80,31 +78,30 @@ func (ps *proportionScheduler) Allocate(
 			}
 		}
 	}
-	fmt.Printf("==== totalCPU %d\n", totalCPU)
-	fmt.Printf("==== totalMEM %d\n", totalMEM)
-
 	totalWeight := 0
 	for _, job := range jobs {
 		if weight, ok := job.Allocator().Spec.Share["weight"]; ok {
 			totalWeight += weight.IntValue()
 		}
 	}
-	fmt.Printf("==== totalWeight %d\n", totalWeight)
+	glog.V(4).Infof("proportion scheduler, total cpu %d, total memory %d, total weight %d", totalCPU, totalMEM, totalWeight)
+
 	if totalCPU == 0 || totalMEM == 0 || totalWeight == 0 {
-		fmt.Println("There is no resources or jobs in cluster")
+		glog.V(4).Info("there is no resources or allocators in cluster")
 		return nil
 	}
 
-	result := make(map[string]*schedulercache.ResourceQuotaAllocatorInfo)
+	allocatedResult := make(map[string]*schedulercache.ResourceQuotaAllocatorInfo)
 	for _, job := range jobs {
 		if weight, ok := job.Allocator().Spec.Share["weight"]; ok {
-			result[job.Name()] = job.Clone()
-			result[job.Name()].Allocator().Status.Share = make(map[string]intstr.IntOrString)
-			result[job.Name()].Allocator().Status.Share["cpu"] = intstr.FromString(fmt.Sprintf("%d", int64(weight.IntValue())*totalCPU/int64(totalWeight)))
-			result[job.Name()].Allocator().Status.Share["memory"] = intstr.FromString(fmt.Sprintf("%d", int64(weight.IntValue())*totalMEM/int64(totalWeight)))
+			allocatedResult[job.Name()] = job.Clone()
+			allocatedResult[job.Name()].Allocator().Status.Share = map[string]intstr.IntOrString{
+				"cpu":    intstr.FromString(fmt.Sprintf("%d", int64(weight.IntValue())*totalCPU/int64(totalWeight))),
+				"memory": intstr.FromString(fmt.Sprintf("%d", int64(weight.IntValue())*totalMEM/int64(totalWeight))),
+			}
 		}
 	}
-	return result
+	return allocatedResult
 }
 
 func (ps *proportionScheduler) Assign(
