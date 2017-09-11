@@ -32,7 +32,7 @@ type Interface interface {
 	Group(job []*schedulercache.ResourceQuotaAllocatorInfo) map[string][]*schedulercache.ResourceQuotaAllocatorInfo
 
 	// Allocate allocates the cluster's resources into each group.
-	Allocate(jobs map[string][]*schedulercache.ResourceQuotaAllocatorInfo, nodes []*schedulercache.NodeInfo) map[string]*schedulercache.ResourceQuotaAllocatorInfo
+	Allocate(jobs []*schedulercache.ResourceQuotaAllocatorInfo, nodes []*schedulercache.NodeInfo) map[string]*schedulercache.ResourceQuotaAllocatorInfo
 
 	// Assign allocates resources of group into each jobs.
 	Assign(jobs []*schedulercache.ResourceQuotaAllocatorInfo, alloc *schedulercache.ResourceQuotaAllocatorInfo) *schedulercache.Resource

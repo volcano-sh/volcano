@@ -82,7 +82,7 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
 				case *v1.Pod:
-					glog.V(4).Infof("Filter pod name(%s) namespace(%s) status(%s)\n", t.Name, t.Namespace, t.Status.Phase)
+					glog.V(4).Infof("filter pod name(%s) namespace(%s) status(%s)\n", t.Name, t.Namespace, t.Status.Phase)
 					return true
 				default:
 					return false
@@ -206,7 +206,7 @@ func (sc *schedulerCache) AddPod(obj interface{}) {
 	glog.V(4).Infof("ADD Pod(%s) into cache, status (%s)\n", pod.Name, pod.Status.Phase)
 	err := sc.addPod(pod)
 	if err != nil {
-		glog.Errorf("Failed to add pod %s into cache: %v", pod.Name, err)
+		glog.Errorf("failed to add pod %s into cache: %v", pod.Name, err)
 		return
 	}
 	return
@@ -230,7 +230,7 @@ func (sc *schedulerCache) UpdatePod(oldObj, newObj interface{}) {
 	glog.V(4).Infof("UPDATE oldPod(%s) status(%s) newPod(%s) status(%s) in cache\n", oldPod.Name, oldPod.Status.Phase, newPod.Name, newPod.Status.Phase)
 	err := sc.updatePod(oldPod, newPod)
 	if err != nil {
-		glog.Errorf("Failed to update pod %v in cache: %v", oldPod.Name, err)
+		glog.Errorf("failed to update pod %v in cache: %v", oldPod.Name, err)
 		return
 	}
 	return
@@ -259,7 +259,7 @@ func (sc *schedulerCache) DeletePod(obj interface{}) {
 	glog.V(4).Infof("DELETE Pod(%s) status(%s) from cache\n", pod.Name, pod.Status.Phase)
 	err := sc.deletePod(pod)
 	if err != nil {
-		glog.Errorf("Failed to delete pod %v from cache: %v", pod.Name, err)
+		glog.Errorf("failed to delete pod %v from cache: %v", pod.Name, err)
 		return
 	}
 	return
@@ -310,7 +310,7 @@ func (sc *schedulerCache) AddNode(obj interface{}) {
 	glog.V(4).Infof("ADD Node(%s) into cache\n", node.Name)
 	err := sc.addNode(node)
 	if err != nil {
-		glog.Errorf("Failed to add node %s into cache: %v", node.Name, err)
+		glog.Errorf("failed to add node %s into cache: %v", node.Name, err)
 		return
 	}
 	return
@@ -334,7 +334,7 @@ func (sc *schedulerCache) UpdateNode(oldObj, newObj interface{}) {
 	glog.V(4).Infof("UPDATE oldNode(%s) newNode(%s) in cache\n", oldNode.Name, newNode.Name)
 	err := sc.updateNode(oldNode, newNode)
 	if err != nil {
-		glog.Errorf("Failed to update node %v in cache: %v", oldNode.Name, err)
+		glog.Errorf("failed to update node %v in cache: %v", oldNode.Name, err)
 		return
 	}
 	return
@@ -363,7 +363,7 @@ func (sc *schedulerCache) DeleteNode(obj interface{}) {
 	glog.V(4).Infof("DELETE Node(%s) from cache\n", node.Name)
 	err := sc.deleteNode(node)
 	if err != nil {
-		glog.Errorf("Failed to delete node %s from cache: %v", node.Name, err)
+		glog.Errorf("failed to delete node %s from cache: %v", node.Name, err)
 		return
 	}
 	return
@@ -414,7 +414,7 @@ func (sc *schedulerCache) AddResourceQuotaAllocator(obj interface{}) {
 	glog.V(4).Infof("ADD Allocator(%s) into cache, status(%#v), spec(%#v)\n", rqa.Name, rqa.Status, rqa.Spec)
 	err := sc.addResourceQuotaAllocator(rqa)
 	if err != nil {
-		glog.Errorf("Failed to add allocator %s into cache: %v", rqa.Name, err)
+		glog.Errorf("failed to add allocator %s into cache: %v", rqa.Name, err)
 		return
 	}
 	return
@@ -439,7 +439,7 @@ func (sc *schedulerCache) UpdateResourceQuotaAllocator(oldObj, newObj interface{
 	glog.V(4).Infof("UPDATE newAllocator(%s) in cache, status(%#v), spec(%#v)\n", newRqa.Name, newRqa.Status, newRqa.Spec)
 	err := sc.updateResourceQuotaAllocator(oldRqa, newRqa)
 	if err != nil {
-		glog.Errorf("Failed to update allocator %s into cache: %v", oldRqa.Name, err)
+		glog.Errorf("failed to update allocator %s into cache: %v", oldRqa.Name, err)
 		return
 	}
 	return
@@ -467,7 +467,7 @@ func (sc *schedulerCache) DeleteResourceQuotaAllocator(obj interface{}) {
 
 	err := sc.deleteResourceQuotaAllocator(rqa)
 	if err != nil {
-		glog.Errorf("Failed to delete allocator %s from cache: %v", rqa.Name, err)
+		glog.Errorf("failed to delete allocator %s from cache: %v", rqa.Name, err)
 		return
 	}
 	return
@@ -478,19 +478,19 @@ func (sc *schedulerCache) Dump() *CacheSnapshot {
 	defer sc.Mutex.Unlock()
 
 	snapshot := &CacheSnapshot{
-		Nodes:      make(map[string]*NodeInfo),
-		Pods:       make(map[string]*PodInfo),
-		Allocators: make(map[string]*ResourceQuotaAllocatorInfo),
+		Nodes:      make([]*NodeInfo, 0, len(sc.nodes)),
+		Pods:       make([]*PodInfo, 0, len(sc.pods)),
+		Allocators: make([]*ResourceQuotaAllocatorInfo, 0, len(sc.resourceQuotaAllocators)),
 	}
 
-	for key, value := range sc.nodes {
-		snapshot.Nodes[key] = value.Clone()
+	for _, value := range sc.nodes {
+		snapshot.Nodes = append(snapshot.Nodes, value.Clone())
 	}
-	for key, value := range sc.pods {
-		snapshot.Pods[key] = value.Clone()
+	for _, value := range sc.pods {
+		snapshot.Pods = append(snapshot.Pods, value.Clone())
 	}
-	for key, value := range sc.resourceQuotaAllocators {
-		snapshot.Allocators[key] = value.Clone()
+	for _, value := range sc.resourceQuotaAllocators {
+		snapshot.Allocators = append(snapshot.Allocators, value.Clone())
 	}
 	return snapshot
 }
