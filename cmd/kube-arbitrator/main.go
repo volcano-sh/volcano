@@ -19,8 +19,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/cmd/app"
-	"github.com/kubernetes-incubator/kube-arbitrator/cmd/app/options"
+	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-arbitrator/app"
+	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-arbitrator/app/options"
 	"github.com/spf13/pflag"
 )
 

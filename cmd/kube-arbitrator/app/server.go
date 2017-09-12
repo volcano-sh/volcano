@@ -17,7 +17,7 @@ limitations under the License.
 package app
 
 import (
-	"github.com/kubernetes-incubator/kube-arbitrator/cmd/app/options"
+	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-arbitrator/app/options"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/controller"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/proportion"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
