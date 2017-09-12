@@ -10,6 +10,8 @@ verify:
 
 init:
 	mkdir -p ${BIN_DIR}
+	mkdir -p vendor/k8s.io/kubernetes/hack/boilerplate/
+	cp hack/boilerplate/boilerplate.go.txt vendor/k8s.io/kubernetes/hack/boilerplate/
 
 test-integration:
 	hack/make-rules/test-integration.sh $(WHAT)
