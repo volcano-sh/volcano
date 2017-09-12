@@ -1,6 +1,8 @@
 BIN_DIR=_output/bin
 
 kube-arbitrator: init
+	go build -o ${BIN_DIR}/deepcopy-gen ./vendor/k8s.io/code-generator/cmd/deepcopy-gen/
+	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/v1/
 	go build -o ${BIN_DIR}/kube-arbitrator cmd/main.go
 
 verify:

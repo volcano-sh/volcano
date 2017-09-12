@@ -3,7 +3,8 @@
 	"GoVersion": "go1.8",
 	"GodepVersion": "v79",
 	"Packages": [
-		"./..."
+		"./...",
+		"k8s.io/code-generator/cmd/deepcopy-gen"
 	],
 	"Deps": [
 		{
@@ -1012,6 +1013,38 @@
 			"ImportPath": "k8s.io/client-go/util/integer",
 			"Comment": "v2.0.0-alpha.0-579-gdb822846",
 			"Rev": "db8228460e2de17f5d3a9a453f61dde0ba86545a"
+		},
+		{
+			"ImportPath": "k8s.io/code-generator/cmd/deepcopy-gen",
+			"Rev": "a8e1019df0df00506fe1db5232a2af30ff4c87aa"
+		},
+		{
+			"ImportPath": "k8s.io/gengo/args",
+			"Rev": "75356185a9af8f0464efa792e2e9508d5b4be83c"
+		},
+		{
+			"ImportPath": "k8s.io/gengo/examples/deepcopy-gen/generators",
+			"Rev": "75356185a9af8f0464efa792e2e9508d5b4be83c"
+		},
+		{
+			"ImportPath": "k8s.io/gengo/examples/set-gen/sets",
+			"Rev": "75356185a9af8f0464efa792e2e9508d5b4be83c"
+		},
+		{
+			"ImportPath": "k8s.io/gengo/generator",
+			"Rev": "75356185a9af8f0464efa792e2e9508d5b4be83c"
+		},
+		{
+			"ImportPath": "k8s.io/gengo/namer",
+			"Rev": "75356185a9af8f0464efa792e2e9508d5b4be83c"
+		},
+		{
+			"ImportPath": "k8s.io/gengo/parser",
+			"Rev": "75356185a9af8f0464efa792e2e9508d5b4be83c"
+		},
+		{
+			"ImportPath": "k8s.io/gengo/types",
+			"Rev": "75356185a9af8f0464efa792e2e9508d5b4be83c"
 		},
 		{
 			"ImportPath": "k8s.io/kube-openapi/pkg/common",
