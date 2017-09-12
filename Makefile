@@ -1,8 +1,6 @@
 BIN_DIR=_output/bin
 
-kube-arbitrator: init
-	go build -o ${BIN_DIR}/deepcopy-gen ./cmd/deepcopy-gen/
-	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/v1/
+kube-arbitrator: init generate_code
 	go build -o ${BIN_DIR}/kube-arbitrator ./cmd/kube-arbitrator/
 
 verify:
@@ -10,6 +8,10 @@ verify:
 
 init:
 	mkdir -p ${BIN_DIR}
+
+generate_code:
+	go build -o ${BIN_DIR}/deepcopy-gen ./cmd/deepcopy-gen/
+	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/v1/
 
 test-integration:
 	hack/make-rules/test-integration.sh $(WHAT)
