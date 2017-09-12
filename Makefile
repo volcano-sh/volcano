@@ -1,17 +1,17 @@
 BIN_DIR=_output/bin
 
-kube-arbitrator: init
-	go build -o ${BIN_DIR}/deepcopy-gen ./vendor/k8s.io/code-generator/cmd/deepcopy-gen/
-	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/v1/
-	go build -o ${BIN_DIR}/kube-arbitrator cmd/main.go
+kube-arbitrator: init generate_code
+	go build -o ${BIN_DIR}/kube-arbitrator ./cmd/kube-arbitrator/
 
 verify:
 	hack/verify-gofmt.sh
 
 init:
 	mkdir -p ${BIN_DIR}
-	mkdir -p vendor/k8s.io/kubernetes/hack/boilerplate/
-	cp hack/boilerplate/boilerplate.go.txt vendor/k8s.io/kubernetes/hack/boilerplate/
+
+generate_code:
+	go build -o ${BIN_DIR}/deepcopy-gen ./cmd/deepcopy-gen/
+	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/v1/
 
 test-integration:
 	hack/make-rules/test-integration.sh $(WHAT)
