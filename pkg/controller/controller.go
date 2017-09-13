@@ -24,6 +24,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
+	clientcache "k8s.io/client-go/tools/cache"
 )
 
 type ResourceQuotaAllocatorController struct {
@@ -38,7 +39,7 @@ func NewResourceQuotaAllocatorController(config *rest.Config, cache schedulercac
 		allocator: allocator,
 		quotaManager: &quotaManager{
 			config: config,
-			ch:     make(chan updatedResource, 100),
+			queue:  clientcache.NewFIFO(quotaKeyFunc),
 		},
 	}
 
@@ -53,10 +54,8 @@ func (r *ResourceQuotaAllocatorController) Run() {
 func (r *ResourceQuotaAllocatorController) runOnce() {
 	snapshot := r.cache.Dump()
 	jobGroups := r.allocator.Group(snapshot.Allocators)
-	for _, jobs := range jobGroups {
-		allocations := r.allocator.Allocate(jobs, snapshot.Nodes)
-		for _, alloc := range allocations {
-			r.quotaManager.updateQuota(alloc)
-		}
+	allocations := r.allocator.Allocate(jobGroups, snapshot.Nodes)
+	for _, alloc := range allocations {
+		r.quotaManager.updateQuota(alloc)
 	}
 }
