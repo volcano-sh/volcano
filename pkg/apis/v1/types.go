@@ -37,8 +37,8 @@ type ResourceQuotaAllocatorSpec struct {
 }
 
 type ResourceQuotaAllocatorStatus struct {
-	Share map[string]intstr.IntOrString `json:"share"`
-	Usage map[string]ResourceList       `json:"usage"`
+	Share ResourceList `json:"share"`
+	Usage ResourceList `json:"usage"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
