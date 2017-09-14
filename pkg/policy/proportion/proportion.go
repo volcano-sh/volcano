@@ -17,13 +17,12 @@ limitations under the License.
 package proportion
 
 import (
-	"fmt"
-
 	"github.com/golang/glog"
+	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 
-	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 type proportionScheduler struct {
@@ -52,16 +51,18 @@ func (ps *proportionScheduler) Initialize() {
 }
 
 func (ps *proportionScheduler) Group(
-	job []*schedulercache.ResourceQuotaAllocatorInfo,
+	jobs []*schedulercache.ResourceQuotaAllocatorInfo,
 ) map[string][]*schedulercache.ResourceQuotaAllocatorInfo {
-	// TODO
 	groups := make(map[string][]*schedulercache.ResourceQuotaAllocatorInfo)
-	groups["tmpGroup"] = job
+	for _, job := range jobs {
+		groups[job.Allocator().Namespace] = append(groups[job.Allocator().Namespace], job)
+	}
+
 	return groups
 }
 
 func (ps *proportionScheduler) Allocate(
-	jobs []*schedulercache.ResourceQuotaAllocatorInfo,
+	jobGroup map[string][]*schedulercache.ResourceQuotaAllocatorInfo,
 	nodes []*schedulercache.NodeInfo,
 ) map[string]*schedulercache.ResourceQuotaAllocatorInfo {
 	totalCPU := int64(0)
@@ -78,10 +79,12 @@ func (ps *proportionScheduler) Allocate(
 			}
 		}
 	}
-	totalWeight := 0
-	for _, job := range jobs {
-		if weight, ok := job.Allocator().Spec.Share["weight"]; ok {
-			totalWeight += weight.IntValue()
+	totalWeight := int64(0)
+	for _, jobs := range jobGroup {
+		for _, job := range jobs {
+			if weight, ok := job.Allocator().Spec.Share["weight"]; ok {
+				totalWeight += int64(weight.IntValue())
+			}
 		}
 	}
 	glog.V(4).Infof("proportion scheduler, total cpu %d, total memory %d, total weight %d", totalCPU, totalMEM, totalWeight)
@@ -92,12 +95,16 @@ func (ps *proportionScheduler) Allocate(
 	}
 
 	allocatedResult := make(map[string]*schedulercache.ResourceQuotaAllocatorInfo)
-	for _, job := range jobs {
-		if weight, ok := job.Allocator().Spec.Share["weight"]; ok {
-			allocatedResult[job.Name()] = job.Clone()
-			allocatedResult[job.Name()].Allocator().Status.Share = map[string]intstr.IntOrString{
-				"cpu":    intstr.FromString(fmt.Sprintf("%d", int64(weight.IntValue())*totalCPU/int64(totalWeight))),
-				"memory": intstr.FromString(fmt.Sprintf("%d", int64(weight.IntValue())*totalMEM/int64(totalWeight))),
+	for _, jobs := range jobGroup {
+		for _, job := range jobs {
+			if weight, ok := job.Allocator().Spec.Share["weight"]; ok {
+				allocatedResult[job.Name()] = job.Clone()
+				allocatedResult[job.Name()].Allocator().Status.Share = apiv1.ResourceList{
+					Resources: map[apiv1.ResourceName]resource.Quantity{
+						"cpu":    *resource.NewQuantity(int64(weight.IntValue())*totalCPU/totalWeight, resource.DecimalSI),
+						"memory": *resource.NewQuantity(int64(weight.IntValue())*totalMEM/totalWeight, resource.BinarySI),
+					},
+				}
 			}
 		}
 	}

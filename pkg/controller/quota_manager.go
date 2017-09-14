@@ -17,7 +17,7 @@ limitations under the License.
 package controller
 
 import (
-	"strconv"
+	"fmt"
 
 	"github.com/golang/glog"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
@@ -26,11 +26,12 @@ import (
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	clientcache "k8s.io/client-go/tools/cache"
 )
 
 type quotaManager struct {
 	config *rest.Config
-	ch     chan updatedResource
+	queue  *clientcache.FIFO
 }
 
 type updatedResource struct {
@@ -39,68 +40,81 @@ type updatedResource struct {
 	memory int64
 }
 
+func quotaKeyFunc(obj interface{}) (string, error) {
+	res, ok := obj.(updatedResource)
+	if !ok {
+		return "", fmt.Errorf("obj is not updatedResource type: %v", obj)
+	}
+	return res.ns, nil
+}
+
+// updateQuota add update request based on ResourceQuotaAllocator to queue
 func (qm *quotaManager) updateQuota(allocator *schedulercache.ResourceQuotaAllocatorInfo) {
-	// Add update request based on ResourceQuotaAllocator to chan.
 	if allocator == nil {
 		return
 	}
 
-	ns, ok := allocator.Allocator().Spec.Share["ns"]
-	if !ok {
-		glog.Error("can not find ns field in allocator spec")
-		return
-	}
-
 	res := updatedResource{
-		ns: ns.String(),
+		ns: allocator.Allocator().Namespace,
 	}
-	for k, v := range allocator.Allocator().Status.Share {
+	for k, v := range allocator.Allocator().Status.Share.Resources {
 		switch k {
 		case "cpu":
-			if cpuInf64, err := strconv.ParseInt(v.String(), 10, 64); err == nil {
-				res.cpu = cpuInf64
+			if cpu, ok := v.AsInt64(); ok {
+				res.cpu = cpu
 			} else {
-				glog.Error(err)
+				glog.Errorf("cannot parse share cpu %#v", v)
 			}
 		case "memory":
-			if memoryInf64, err := strconv.ParseInt(v.String(), 10, 64); err == nil {
-				res.memory = memoryInf64
+			if memory, ok := v.AsInt64(); ok {
+				res.memory = memory
 			} else {
-				glog.Error(err)
+				glog.Errorf("cannot parse share memory %#v", v)
 			}
 		}
 	}
 
-	qm.ch <- res
+	qm.queue.Add(res)
 }
 
+// run get request from queue and update to Quota
 func (qm *quotaManager) run() {
-	// get request from chan and update to Quota.
 	cs := kubernetes.NewForConfigOrDie(qm.config)
-	for {
-		res := <-qm.ch
+
+	processToUpdateRQ := func(obj interface{}) error {
+		res, ok := obj.(updatedResource)
+		if !ok {
+			return fmt.Errorf("cannot convert obj %#v to updatedResource", obj)
+		}
+
 		rqController := cs.CoreV1().ResourceQuotas(res.ns)
 		var options meta_v1.ListOptions
 		rqList, err := rqController.List(options)
 		if len(rqList.Items) != 1 || err != nil {
-			glog.Error("more than one resourceQuota or ecounter an error")
-		} else {
-			for _, rq := range rqList.Items {
-				rqupdate := rq.DeepCopy()
-				cpuQuota := *resource.NewQuantity(res.cpu, resource.DecimalSI)
-				cpuQuota.String()
-				memoryQuota := *resource.NewQuantity(res.memory, resource.BinarySI)
-				memoryQuota.String()
-				rqupdate.Spec.Hard["limits.cpu"] = cpuQuota
-				rqupdate.Spec.Hard["requests.cpu"] = cpuQuota
-				rqupdate.Spec.Hard["limits.memory"] = memoryQuota
-				rqupdate.Spec.Hard["requests.memory"] = memoryQuota
+			return fmt.Errorf("more than one resourceQuota or ecounter an error")
+		}
 
-				_, err := rqController.Update(rqupdate)
-				if err != nil {
-					glog.Error("failed to update resource quota")
-				}
+		for _, rq := range rqList.Items {
+			updatedRq := rq.DeepCopy()
+			cpuQuota := *resource.NewQuantity(res.cpu, resource.DecimalSI)
+			memoryQuota := *resource.NewQuantity(res.memory, resource.BinarySI)
+			updatedRq.Spec.Hard["limits.cpu"] = cpuQuota
+			updatedRq.Spec.Hard["requests.cpu"] = cpuQuota
+			updatedRq.Spec.Hard["limits.memory"] = memoryQuota
+			updatedRq.Spec.Hard["requests.memory"] = memoryQuota
+
+			_, err := rqController.Update(updatedRq)
+			if err != nil {
+				return fmt.Errorf("failed to update resource quota")
 			}
+		}
+		return nil
+	}
+
+	for {
+		_, err := qm.queue.Pop(processToUpdateRQ)
+		if err != nil {
+			glog.Error(err)
 		}
 	}
 
