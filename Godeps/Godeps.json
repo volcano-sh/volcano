@@ -139,11 +139,6 @@
 			"Rev": "d5b7844b561a7bc640052f1b935f7b800330d7e0"
 		},
 		{
-			"ImportPath": "github.com/satori/uuid",
-			"Comment": "v1.1.0-8-g5bf94b6",
-			"Rev": "5bf94b69c6b68ee1b541973bb8e1144db23a194b"
-		},
-		{
 			"ImportPath": "github.com/spf13/pflag",
 			"Rev": "9ff6c6923cfffbcd502984b8e0c80539a94968b7"
 		},
@@ -1017,10 +1012,6 @@
 			"ImportPath": "k8s.io/client-go/util/integer",
 			"Comment": "v2.0.0-alpha.0-579-gdb822846",
 			"Rev": "db8228460e2de17f5d3a9a453f61dde0ba86545a"
-		},
-		{
-			"ImportPath": "k8s.io/code-generator/cmd/deepcopy-gen",
-			"Rev": "a8e1019df0df00506fe1db5232a2af30ff4c87aa"
 		},
 		{
 			"ImportPath": "k8s.io/gengo/args",
