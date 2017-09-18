@@ -11,7 +11,7 @@ init:
 
 generate_code:
 	go build -o ${BIN_DIR}/deepcopy-gen ./cmd/deepcopy-gen/
-	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/v1/
+	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/v1/ -O zz_generated.deepcopy
 
 test-integration:
 	hack/make-rules/test-integration.sh $(WHAT)
