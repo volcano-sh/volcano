@@ -42,7 +42,7 @@ This is a [Kubernetes Incubator project](https://github.com/kubernetes/community
 
 - Sponsor: Joe Beda ([@jbeda](https://github.com/jbeda))
 - Champion: Timothy St. Clair ([@timothysc](https://github.com/timothysc))
-- SIG: sig-scheduling
+- SIG: sig-scheduling, sig-bigdata
 
 ## Roadmap
 
