@@ -27,7 +27,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/golang/glog"
@@ -426,20 +425,13 @@ func (b *Builder) typeCheckPackage(pkgPath importPathString) (*tc.Package, error
 // FindPackages fetches a list of the user-imported packages.
 // Note that you need to call b.FindTypes() first.
 func (b *Builder) FindPackages() []string {
-	// Iterate packages in a predictable order.
-	pkgPaths := []string{}
-	for k := range b.typeCheckedPackages {
-		pkgPaths = append(pkgPaths, string(k))
-	}
-	sort.Strings(pkgPaths)
-
 	result := []string{}
-	for _, pkgPath := range pkgPaths {
-		if b.userRequested[importPathString(pkgPath)] {
+	for pkgPath := range b.typeCheckedPackages {
+		if b.userRequested[pkgPath] {
 			// Since walkType is recursive, all types that are in packages that
 			// were directly mentioned will be included.  We don't need to
 			// include all types in all transitive packages, though.
-			result = append(result, pkgPath)
+			result = append(result, string(pkgPath))
 		}
 	}
 	return result
@@ -448,17 +440,16 @@ func (b *Builder) FindPackages() []string {
 // FindTypes finalizes the package imports, and searches through all the
 // packages for types.
 func (b *Builder) FindTypes() (types.Universe, error) {
-	// Take a snapshot of pkgs to iterate, since this will recursively mutate
-	// b.parsed. Iterate in a predictable order.
-	pkgPaths := []string{}
-	for pkgPath := range b.parsed {
-		pkgPaths = append(pkgPaths, string(pkgPath))
-	}
-	sort.Strings(pkgPaths)
-
 	u := types.Universe{}
-	for _, pkgPath := range pkgPaths {
-		if err := b.findTypesIn(importPathString(pkgPath), &u); err != nil {
+
+	// Take a snapshot of pkgs to iterate, since this will recursively mutate
+	// b.parsed.
+	keys := []importPathString{}
+	for pkgPath := range b.parsed {
+		keys = append(keys, pkgPath)
+	}
+	for _, pkgPath := range keys {
+		if err := b.findTypesIn(pkgPath, &u); err != nil {
 			return nil, err
 		}
 	}
@@ -535,13 +526,7 @@ func (b *Builder) findTypesIn(pkgPath importPathString, u *types.Universe) error
 			b.addVariable(*u, nil, tv)
 		}
 	}
-
-	importedPkgs := []string{}
-	for k := range b.importGraph[pkgPath] {
-		importedPkgs = append(importedPkgs, string(k))
-	}
-	sort.Strings(importedPkgs)
-	for _, p := range importedPkgs {
+	for p := range b.importGraph[pkgPath] {
 		u.AddImports(string(pkgPath), p)
 	}
 	return nil
