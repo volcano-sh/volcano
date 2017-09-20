@@ -26,16 +26,10 @@ type PodInfo struct {
 }
 
 func (p *PodInfo) Name() string {
-	if p == nil {
-		return ""
-	}
 	return p.name
 }
 
 func (p *PodInfo) Pod() *v1.Pod {
-	if p == nil {
-		return nil
-	}
 	return p.pod
 }
 

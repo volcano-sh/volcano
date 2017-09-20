@@ -26,16 +26,10 @@ type ResourceQuotaAllocatorInfo struct {
 }
 
 func (r *ResourceQuotaAllocatorInfo) Name() string {
-	if r == nil {
-		return ""
-	}
 	return r.name
 }
 
 func (r *ResourceQuotaAllocatorInfo) Allocator() *apiv1.ResourceQuotaAllocator {
-	if r == nil {
-		return nil
-	}
 	return r.allocator
 }
 
