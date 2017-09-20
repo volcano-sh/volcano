@@ -55,8 +55,6 @@ kube::test::find_dirs() {
           -o -path './output/*' \
           -o -path './release/*' \
           -o -path './target/*' \
-          -o -path './test/e2e/*' \
-          -o -path './test/e2e_node/*' \
           -o -path './test/integration/*' \
           -o -path './third_party/*' \
           -o -path './staging/*' \
@@ -68,7 +66,6 @@ kube::test::find_dirs() {
         -path './_output' -prune \
         -o -path './vendor/k8s.io/client-go/*' \
         -o -path './vendor/k8s.io/apiserver/*' \
-        -o -path './test/e2e_node/system/*' \
       -name '*_test.go' -print0 | xargs -0n1 dirname | sed "s|^\./|${KUBE_GO_PACKAGE}/|" | LC_ALL=C sort -u
 
     # run tests for client-go
@@ -112,7 +109,7 @@ KUBE_GOVERALLS_BIN=${KUBE_GOVERALLS_BIN:-}
 # "v1,compute/v1alpha1,experimental/v1alpha2;v1,compute/v2,experimental/v1alpha3"
 # FIXME: due to current implementation of a test client (see: pkg/api/testapi/testapi.go)
 # ONLY the last version is tested in each group.
-ALL_VERSIONS_CSV=$(IFS=',';echo "${KUBE_AVAILABLE_GROUP_VERSIONS[*]// /,}";IFS=$),federation/v1beta1
+ALL_VERSIONS_CSV=$(IFS=',';echo "${KUBE_AVAILABLE_GROUP_VERSIONS[*]// /,}";IFS=$)
 KUBE_TEST_API_VERSIONS="${KUBE_TEST_API_VERSIONS:-${ALL_VERSIONS_CSV}}"
 # once we have multiple group supports
 # Create a junit-style XML test report in this directory if set.
@@ -274,11 +271,11 @@ runTests() {
   # separate files.
 
   # ignore paths:
-  # vendor/k8s.io/kube-gen/cmd/generator: is fragile when run under coverage, so ignore it for now.
+  # vendor/k8s.io/code-generator/cmd/generator: is fragile when run under coverage, so ignore it for now.
   #                            https://github.com/kubernetes/kubernetes/issues/24967
   # vendor/k8s.io/client-go/1.4/rest: causes cover internal errors
   #                            https://github.com/golang/go/issues/16540
-  cover_ignore_dirs="vendor/k8s.io/kube-gen/cmd/generator|vendor/k8s.io/client-go/1.4/rest"
+  cover_ignore_dirs="vendor/k8s.io/code-generator/cmd/generator|vendor/k8s.io/client-go/1.4/rest"
   for path in $(echo $cover_ignore_dirs | sed 's/|/ /g'); do
       echo -e "skipped\tk8s.io/kubernetes/$path"
   done

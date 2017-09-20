@@ -210,11 +210,6 @@ kube::util::gen-docs() {
   "${genkubedocs}" "${dest}/docs/admin/" "kube-scheduler"
   "${genkubedocs}" "${dest}/docs/admin/" "kubelet"
 
-  # We don't really need federation-apiserver and federation-controller-manager
-  # binaries to generate the docs. We just pass their names to decide which docs
-  # to generate. The actual binary for running federation is hyperkube.
-  "${genfeddocs}" "${dest}/docs/admin/" "federation-apiserver"
-  "${genfeddocs}" "${dest}/docs/admin/" "federation-controller-manager"
   "${genfeddocs}" "${dest}/docs/admin/" "kubefed"
 
   mkdir -p "${dest}/docs/man/man1/"
@@ -331,7 +326,7 @@ kube::util::group-version-to-pkg-path() {
     return
   fi
 
-  # "v1" is the API GroupVersion 
+  # "v1" is the API GroupVersion
   if [[ "${group_version}" == "v1" ]]; then
     echo "vendor/k8s.io/api/core/v1"
     return
@@ -344,9 +339,6 @@ kube::util::group-version-to-pkg-path() {
     # both group and version are "", this occurs when we generate deep copies for internal objects of the legacy v1 API.
     __internal)
       echo "pkg/api"
-      ;;
-    federation/v1beta1)
-      echo "federation/apis/federation/v1beta1"
       ;;
     meta/v1)
       echo "vendor/k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -437,6 +429,23 @@ kube::util::git_upstream_remote_name() {
     head -n 1 | awk '{print $1}'
 }
 
+# Ensures the current directory is a git tree for doing things like restoring or
+# validating godeps
+kube::util::create-fake-git-tree() {
+  local -r target_dir=${1:-$(pwd)}
+
+  pushd "${target_dir}" >/dev/null
+    git init >/dev/null
+    git config --local user.email "nobody@k8s.io"
+    git config --local user.name "$0"
+    git add . >/dev/null
+    git commit -q -m "Snapshot" >/dev/null
+    if (( ${KUBE_VERBOSE:-5} >= 6 )); then
+      kube::log::status "${target_dir} is now a git tree."
+    fi
+  popd >/dev/null
+}
+
 # Checks whether godep restore was run in the current GOPATH, i.e. that all referenced repos exist
 # and are checked out to the referenced rev.
 kube::util::godep_restored() {
@@ -484,10 +493,12 @@ kube::util::godep_restored() {
 kube::util::ensure_clean_working_dir() {
   while ! git diff HEAD --exit-code &>/dev/null; do
     echo -e "\nUnexpected dirty working directory:\n"
-    git status -s | sed 's/^/  /'
-    if ! tty -s; then
+    if tty -s; then
+        git status -s
+    else
+        git diff -a # be more verbose in log files without tty
         exit 1
-    fi
+    fi | sed 's/^/  /'
     echo -e "\nCommit your changes in another terminal and then continue here by pressing enter."
     read
   done 1>&2
@@ -503,7 +514,7 @@ kube::util::ensure_godep_version() {
   kube::util::ensure-temp-dir
   mkdir -p "${KUBE_TEMP}/go/src"
 
-  GOPATH="${KUBE_TEMP}/go" go get -d -u github.com/tools/godep 2>/dev/null
+  GOPATH="${KUBE_TEMP}/go" go get -d -u github.com/tools/godep
   pushd "${KUBE_TEMP}/go/src/github.com/tools/godep" >/dev/null
     git checkout -q "${GODEP_VERSION}"
     GOPATH="${KUBE_TEMP}/go" go install .
@@ -537,7 +548,7 @@ kube::util::go_install_from_commit() {
 
   kube::util::ensure-temp-dir
   mkdir -p "${KUBE_TEMP}/go/src"
-  GOPATH="${KUBE_TEMP}/go" go get -d -u "${pkg}" 2>/dev/null
+  GOPATH="${KUBE_TEMP}/go" go get -d -u "${pkg}"
   (
     cd "${KUBE_TEMP}/go/src/${pkg}"
     git checkout -q "${commit}"
