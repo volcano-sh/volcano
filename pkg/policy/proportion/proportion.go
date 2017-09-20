@@ -40,9 +40,6 @@ func newProportionScheduler(name string) *proportionScheduler {
 }
 
 func (ps *proportionScheduler) Name() string {
-	if ps == nil {
-		return ""
-	}
 	return ps.name
 }
 

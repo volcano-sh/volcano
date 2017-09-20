@@ -29,17 +29,11 @@ type NodeInfo struct {
 }
 
 func (n *NodeInfo) Name() string {
-	if n == nil {
-		return ""
-	}
 	return n.name
 }
 
 // Returns overall information about this node.
 func (n *NodeInfo) Node() *v1.Node {
-	if n == nil {
-		return nil
-	}
 	return n.node
 }
 
