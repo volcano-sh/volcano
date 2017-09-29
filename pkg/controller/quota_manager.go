@@ -49,15 +49,15 @@ func quotaKeyFunc(obj interface{}) (string, error) {
 }
 
 // updateQuota add update request based on ResourceQuotaAllocator to queue
-func (qm *quotaManager) updateQuota(allocator *schedulercache.ResourceQuotaAllocatorInfo) {
-	if allocator == nil {
+func (qm *quotaManager) updateQuota(queue *schedulercache.QueueInfo) {
+	if queue == nil {
 		return
 	}
 
 	res := updatedResource{
-		ns: allocator.Allocator().Namespace,
+		ns: queue.Queue().Namespace,
 	}
-	for k, v := range allocator.Allocator().Status.Share.Resources {
+	for k, v := range queue.Queue().Status.Deserved.Resources {
 		switch k {
 		case "cpu":
 			if cpu, ok := v.AsInt64(); ok {

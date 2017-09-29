@@ -20,23 +20,23 @@ import (
 	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 )
 
-type ResourceQuotaAllocatorInfo struct {
-	name      string
-	allocator *apiv1.ResourceQuotaAllocator
+type QueueInfo struct {
+	name  string
+	queue *apiv1.Queue
 }
 
-func (r *ResourceQuotaAllocatorInfo) Name() string {
+func (r *QueueInfo) Name() string {
 	return r.name
 }
 
-func (r *ResourceQuotaAllocatorInfo) Allocator() *apiv1.ResourceQuotaAllocator {
-	return r.allocator
+func (r *QueueInfo) Queue() *apiv1.Queue {
+	return r.queue
 }
 
-func (r *ResourceQuotaAllocatorInfo) Clone() *ResourceQuotaAllocatorInfo {
-	clone := &ResourceQuotaAllocatorInfo{
-		name:      r.name,
-		allocator: r.allocator.DeepCopy(),
+func (r *QueueInfo) Clone() *QueueInfo {
+	clone := &QueueInfo{
+		name:  r.name,
+		queue: r.queue.DeepCopy(),
 	}
 	return clone
 }

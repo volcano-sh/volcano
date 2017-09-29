@@ -29,16 +29,16 @@ type Interface interface {
 	Initialize()
 
 	// Group grouping the job into different bucket, and allocate those resources based on those groups.
-	Group(jobs []*schedulercache.ResourceQuotaAllocatorInfo) map[string][]*schedulercache.ResourceQuotaAllocatorInfo
+	Group(jobs []*schedulercache.QueueInfo) map[string][]*schedulercache.QueueInfo
 
 	// Allocate allocates the cluster's resources into each group.
-	Allocate(jobGroup map[string][]*schedulercache.ResourceQuotaAllocatorInfo, nodes []*schedulercache.NodeInfo) map[string]*schedulercache.ResourceQuotaAllocatorInfo
+	Allocate(jobGroup map[string][]*schedulercache.QueueInfo, nodes []*schedulercache.NodeInfo) map[string]*schedulercache.QueueInfo
 
 	// Assign allocates resources of group into each jobs.
-	Assign(jobs []*schedulercache.ResourceQuotaAllocatorInfo, alloc *schedulercache.ResourceQuotaAllocatorInfo) *schedulercache.Resource
+	Assign(jobs []*schedulercache.QueueInfo, alloc *schedulercache.QueueInfo) *schedulercache.Resource
 
 	// Polish returns the Pods that should be evict to release resources.
-	Polish(job *schedulercache.ResourceQuotaAllocatorInfo, res *schedulercache.Resource) []*schedulercache.ResourceQuotaAllocatorInfo
+	Polish(job *schedulercache.QueueInfo, res *schedulercache.Resource) []*schedulercache.QueueInfo
 
 	// UnIntialize un-initializes the allocator plugins.
 	UnInitialize()

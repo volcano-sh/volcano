@@ -27,14 +27,14 @@ import (
 	clientcache "k8s.io/client-go/tools/cache"
 )
 
-type ResourceQuotaAllocatorController struct {
+type QueueController struct {
 	cache        schedulercache.Cache
 	allocator    policy.Interface
 	quotaManager *quotaManager
 }
 
-func NewResourceQuotaAllocatorController(config *rest.Config, cache schedulercache.Cache, allocator policy.Interface) *ResourceQuotaAllocatorController {
-	rqaController := &ResourceQuotaAllocatorController{
+func NewQueueController(config *rest.Config, cache schedulercache.Cache, allocator policy.Interface) *QueueController {
+	rqaController := &QueueController{
 		cache:     cache,
 		allocator: allocator,
 		quotaManager: &quotaManager{
@@ -46,14 +46,14 @@ func NewResourceQuotaAllocatorController(config *rest.Config, cache schedulercac
 	return rqaController
 }
 
-func (r *ResourceQuotaAllocatorController) Run() {
+func (r *QueueController) Run() {
 	go r.quotaManager.run()
 	wait.Until(r.runOnce, 2*time.Second, wait.NeverStop)
 }
 
-func (r *ResourceQuotaAllocatorController) runOnce() {
+func (r *QueueController) runOnce() {
 	snapshot := r.cache.Dump()
-	jobGroups := r.allocator.Group(snapshot.Allocators)
+	jobGroups := r.allocator.Group(snapshot.Queues)
 	allocations := r.allocator.Allocate(jobGroups, snapshot.Nodes)
 	for _, alloc := range allocations {
 		r.quotaManager.updateQuota(alloc)

@@ -30,20 +30,20 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
-const resourceQuotaAllocatorCRDName = crv1.ResourceQuotaAllocatorPlural + "." + crv1.GroupName
+const queueCRDName = crv1.QueuePlural + "." + crv1.GroupName
 
-func CreateResourceQuotaAllocatorCRD(clientset apiextensionsclient.Interface) (*apiextensionsv1beta1.CustomResourceDefinition, error) {
+func CreateQueueCRD(clientset apiextensionsclient.Interface) (*apiextensionsv1beta1.CustomResourceDefinition, error) {
 	crd := &apiextensionsv1beta1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: resourceQuotaAllocatorCRDName,
+			Name: queueCRDName,
 		},
 		Spec: apiextensionsv1beta1.CustomResourceDefinitionSpec{
 			Group:   crv1.GroupName,
 			Version: crv1.SchemeGroupVersion.Version,
 			Scope:   apiextensionsv1beta1.NamespaceScoped,
 			Names: apiextensionsv1beta1.CustomResourceDefinitionNames{
-				Plural: crv1.ResourceQuotaAllocatorPlural,
-				Kind:   reflect.TypeOf(crv1.ResourceQuotaAllocator{}).Name(),
+				Plural: crv1.QueuePlural,
+				Kind:   reflect.TypeOf(crv1.Queue{}).Name(),
 			},
 		},
 	}
@@ -54,7 +54,7 @@ func CreateResourceQuotaAllocatorCRD(clientset apiextensionsclient.Interface) (*
 
 	// wait for CRD being established
 	err = wait.Poll(500*time.Millisecond, 60*time.Second, func() (bool, error) {
-		crd, err = clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Get(resourceQuotaAllocatorCRDName, metav1.GetOptions{})
+		crd, err = clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Get(queueCRDName, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -73,7 +73,7 @@ func CreateResourceQuotaAllocatorCRD(clientset apiextensionsclient.Interface) (*
 		return false, err
 	})
 	if err != nil {
-		deleteErr := clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Delete(resourceQuotaAllocatorCRDName, nil)
+		deleteErr := clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Delete(queueCRDName, nil)
 		if deleteErr != nil {
 			return nil, errors.NewAggregate([]error{err, deleteErr})
 		}
