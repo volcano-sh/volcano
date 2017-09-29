@@ -2,3 +2,5 @@ language: go
 script:
   - make verify
   - make
+  - make test
+  - make test-integration
