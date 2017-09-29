@@ -19,33 +19,34 @@ package v1
 import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-const ResourceQuotaAllocatorPlural = "resourcequotaallocators"
+const QueuePlural = "queues"
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type ResourceQuotaAllocator struct {
+type Queue struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              ResourceQuotaAllocatorSpec   `json:"spec"`
-	Status            ResourceQuotaAllocatorStatus `json:"status,omitempty"`
+	Spec              QueueSpec   `json:"spec"`
+	Status            QueueStatus `json:"status,omitempty"`
 }
 
-type ResourceQuotaAllocatorSpec struct {
-	Share map[string]intstr.IntOrString `json:"share"`
+type QueueSpec struct {
+	Weight int `json:"weight"`
 }
 
-type ResourceQuotaAllocatorStatus struct {
-	Share ResourceList `json:"share"`
-	Usage ResourceList `json:"usage"`
+type QueueStatus struct {
+	Deserved   ResourceList `json:"deserved"`
+	Allocated  ResourceList `json:"allocated"`
+	Used       ResourceList `json:"used"`
+	Preempting ResourceList `json:"preempting"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type ResourceQuotaAllocatorList struct {
+type QueueList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
-	Items           []ResourceQuotaAllocator `json:"items"`
+	Items           []Queue `json:"items"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
