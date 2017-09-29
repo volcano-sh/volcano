@@ -31,17 +31,17 @@ import (
 	runtimeserializer "k8s.io/apimachinery/pkg/runtime/serializer"
 )
 
-var _ runtime.Object = &ResourceQuotaAllocator{}
-var _ metav1.ObjectMetaAccessor = &ResourceQuotaAllocator{}
+var _ runtime.Object = &Queue{}
+var _ metav1.ObjectMetaAccessor = &Queue{}
 
-var _ runtime.Object = &ResourceQuotaAllocatorList{}
-var _ metav1.ListMetaAccessor = &ResourceQuotaAllocatorList{}
+var _ runtime.Object = &QueueList{}
+var _ metav1.ListMetaAccessor = &QueueList{}
 
 func exampleFuzzerFuncs(codecs runtimeserializer.CodecFactory) []interface{} {
 	return []interface{}{
-		func(obj *ResourceQuotaAllocatorList, c fuzz.Continue) {
+		func(obj *QueueList, c fuzz.Continue) {
 			c.FuzzNoCustom(obj)
-			obj.Items = make([]ResourceQuotaAllocator, c.Intn(10))
+			obj.Items = make([]Queue, c.Intn(10))
 			for i := range obj.Items {
 				c.Fuzz(&obj.Items[i])
 			}
