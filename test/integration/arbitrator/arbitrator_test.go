@@ -132,16 +132,16 @@ func prepareResourceQuota(cs *clientset.Clientset) error {
 }
 
 // prepareCRD prepare customer resource definition "ResourceQuotaAllocator"
-// create two ResourceQuotaAllocator, "allocator01" and "allocator02"
-// "allocator01" is under namespace "ns01" and has attribute "weight=1"
-// "allocator02" is under namespace "ns02" and has attribute "weight=2"
+// create two ResourceQuotaAllocator, "queue01" and "queue02"
+// "queue01" is under namespace "ns01" and has attribute "weight=1"
+// "queue02" is under namespace "ns02" and has attribute "weight=2"
 func prepareCRD(config *restclient.Config) error {
 	extensionscs, err := apiextensionsclient.NewForConfig(config)
 	if err != nil {
 		return fmt.Errorf("fail to create crd config, %#v", err)
 	}
 
-	_, err = client.CreateResourceQuotaAllocatorCRD(extensionscs)
+	_, err = client.CreateQueueCRD(extensionscs)
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		return fmt.Errorf("fail to create crd, %#v", err)
 	}
@@ -153,7 +153,7 @@ func prepareCRD(config *restclient.Config) error {
 
 	crd01 := &apiv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "allocator01",
+			Name:      "queue01",
 			Namespace: "ns01",
 		},
 		Spec: apiv1.QueueSpec{
@@ -162,7 +162,7 @@ func prepareCRD(config *restclient.Config) error {
 	}
 	crd02 := &apiv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "allocator02",
+			Name:      "queue02",
 			Namespace: "ns02",
 		},
 		Spec: apiv1.QueueSpec{
@@ -222,7 +222,7 @@ func TestArbitrator(t *testing.T) {
 	defer close(neverStop)
 	cache := schedulercache.New(config)
 	go cache.Run(neverStop)
-	c := controller.NewResourceQuotaAllocatorController(config, cache, proportion.New())
+	c := controller.NewQueueController(config, cache, proportion.New())
 	go c.Run()
 
 	// sleep to wait scheduler finish

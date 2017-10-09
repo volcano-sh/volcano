@@ -16,7 +16,7 @@ limitations under the License.
 
 package schedulercache
 
-// Cache collects pods/nodes/resourcequotaallocator information
+// Cache collects pods/nodes/queues information
 // and provides information snapshot
 type Cache interface {
 	// Run start informer

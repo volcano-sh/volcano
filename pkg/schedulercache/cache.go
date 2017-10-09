@@ -45,9 +45,9 @@ func New(
 type schedulerCache struct {
 	sync.Mutex
 
-	podInformer   clientv1.PodInformer
-	nodeInformer  clientv1.NodeInformer
-	rqaController cache.Controller
+	podInformer     clientv1.PodInformer
+	nodeInformer    clientv1.NodeInformer
+	queueController cache.Controller
 
 	pods   map[string]*PodInfo
 	nodes  map[string]*NodeInfo
@@ -101,7 +101,7 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 		panic(err)
 	}
 	// create informer/controller
-	sc.rqaController, err = createQueueCRDController(config, sc)
+	sc.queueController, err = createQueueCRDController(config, sc)
 	if err != nil {
 		panic(err)
 	}
@@ -122,12 +122,12 @@ func createQueueCRD(config *rest.Config) error {
 }
 
 func createQueueCRDController(config *rest.Config, sc *schedulerCache) (cache.Controller, error) {
-	rqaClient, _, err := client.NewClient(config)
+	queueClient, _, err := client.NewClient(config)
 	if err != nil {
 		return nil, err
 	}
 	source := cache.NewListWatchFromClient(
-		rqaClient,
+		queueClient,
 		apiv1.QueuePlural,
 		v1.NamespaceAll,
 		fields.Everything())
@@ -148,7 +148,7 @@ func createQueueCRDController(config *rest.Config, sc *schedulerCache) (cache.Co
 func (sc *schedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.podInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
-	go sc.rqaController.Run(stopCh)
+	go sc.queueController.Run(stopCh)
 }
 
 // Assumes that lock is already acquired.
