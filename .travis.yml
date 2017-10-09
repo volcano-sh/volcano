@@ -1,4 +1,10 @@
 language: go
+
+install: ./hack/install-etcd.sh
+
+before_script:
+  - export PATH=`pwd`/third_party/etcd:${PATH}
+
 script:
   - make verify
   - make
