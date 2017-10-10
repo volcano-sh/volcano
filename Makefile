@@ -1,10 +1,11 @@
 BIN_DIR=_output/bin
 
-kube-arbitrator: init generate_code
+kube-arbitrator: init
 	go build -o ${BIN_DIR}/kube-arbitrator ./cmd/kube-arbitrator/
 
-verify:
+verify: generate_code
 	hack/verify-gofmt.sh
+	hack/verify-gencode.sh
 
 init:
 	mkdir -p ${BIN_DIR}
