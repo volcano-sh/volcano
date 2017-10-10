@@ -18,6 +18,7 @@ package proportion
 
 import (
 	"github.com/golang/glog"
+
 	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
@@ -25,22 +26,19 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
+// PolicyName is the name of proportion policy; it'll be use for any case
+// that need a name, e.g. default policy, register proportion policy.
+var PolicyName = "proportion"
+
+func init() {
+	policy.RegisterPolicy(PolicyName, &proportionScheduler{})
+}
+
 type proportionScheduler struct {
-	name string
-}
-
-func New() policy.Interface {
-	return newProportionScheduler("proportion-scheduler")
-}
-
-func newProportionScheduler(name string) *proportionScheduler {
-	return &proportionScheduler{
-		name: name,
-	}
 }
 
 func (ps *proportionScheduler) Name() string {
-	return ps.name
+	return PolicyName
 }
 
 func (ps *proportionScheduler) Initialize() {
