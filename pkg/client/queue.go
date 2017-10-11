@@ -26,9 +26,32 @@ import (
 	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/rest"
 )
+
+func NewClient(cfg *rest.Config) (*rest.RESTClient, *runtime.Scheme, error) {
+	scheme := runtime.NewScheme()
+	if err := crv1.AddToScheme(scheme); err != nil {
+		return nil, nil, err
+	}
+
+	config := *cfg
+	config.GroupVersion = &crv1.SchemeGroupVersion
+	config.APIPath = "/apis"
+	config.ContentType = runtime.ContentTypeJSON
+	config.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: serializer.NewCodecFactory(scheme)}
+
+	client, err := rest.RESTClientFor(&config)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return client, scheme, nil
+}
 
 const queueCRDName = crv1.QueuePlural + "." + crv1.GroupName
 
