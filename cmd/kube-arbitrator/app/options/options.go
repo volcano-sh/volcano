@@ -18,12 +18,15 @@ package options
 
 import (
 	"github.com/spf13/pflag"
+
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/proportion"
 )
 
 // ServerOption is the main context object for the controller manager.
 type ServerOption struct {
 	Master     string
 	Kubeconfig string
+	Policy     string
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -36,4 +39,6 @@ func NewServerOption() *ServerOption {
 func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.Master, "master", s.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 	fs.StringVar(&s.Kubeconfig, "kubeconfig", s.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
+	// The default policy is Proportion policy.
+	fs.StringVar(&s.Policy, "policy", proportion.PolicyName, "The policy that used to allocate resources")
 }

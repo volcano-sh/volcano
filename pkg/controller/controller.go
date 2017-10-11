@@ -51,7 +51,7 @@ func NewQueueController(config *rest.Config, cache schedulercache.Cache, allocat
 
 func (q *QueueController) Run() {
 	go q.quotaManager.Run()
-	wait.Until(q.runOnce, 2*time.Second, wait.NeverStop)
+	go wait.Until(q.runOnce, 2*time.Second, wait.NeverStop)
 }
 
 func (q *QueueController) runOnce() {

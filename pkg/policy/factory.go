@@ -13,25 +13,40 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package main
 
-import (
-	"fmt"
-	"os"
+package policy
 
-	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-arbitrator/app"
-	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-arbitrator/app/options"
+import "sync"
 
-	"github.com/spf13/pflag"
-)
+var policyMap = make(map[string]Interface)
+var mutex sync.Mutex
 
-func main() {
-	s := options.NewServerOption()
-	s.AddFlags(pflag.CommandLine)
-	pflag.Parse()
+func New(name string) Interface {
+	mutex.Lock()
+	defer mutex.Unlock()
 
-	if err := app.Run(s); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
+	policy, found := policyMap[name]
+	if !found {
+		return nil
 	}
+
+	return policy
+}
+
+func RegisterPolicy(name string, policy Interface) error {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	policyMap[name] = policy
+
+	return nil
+}
+
+func RemovePolicy(name string) error {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	delete(policyMap, name)
+
+	return nil
 }
