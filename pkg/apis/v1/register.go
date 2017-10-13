@@ -44,6 +44,11 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&Queue{},
 		&QueueList{},
 	)
+
+	scheme.AddKnownTypes(SchemeGroupVersion,
+		&QueueJob{},
+		&QueueJobList{},
+	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil
 }
