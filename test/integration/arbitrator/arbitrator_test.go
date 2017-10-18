@@ -25,6 +25,7 @@ import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/controller"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/preemption"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/proportion"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 	"github.com/kubernetes-incubator/kube-arbitrator/test/integration/framework"
@@ -223,7 +224,7 @@ func TestArbitrator(t *testing.T) {
 	defer close(neverStop)
 	cache := schedulercache.New(config)
 	go cache.Run(neverStop)
-	c := controller.NewQueueController(config, cache, policy.New(proportion.PolicyName))
+	c := controller.NewQueueController(config, cache, policy.New(proportion.PolicyName), preemption.New(config))
 	go c.Run()
 
 	// sleep to wait scheduler finish
