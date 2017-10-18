@@ -27,6 +27,7 @@ import (
 	"k8s.io/api/core/v1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/informers"
 	clientv1 "k8s.io/client-go/informers/core/v1"
@@ -378,6 +379,33 @@ func (sc *schedulerCache) addQueue(queue *apiv1.Queue) error {
 	info := &QueueInfo{
 		name:  queue.Name,
 		queue: queue.DeepCopy(),
+		Pods:  make(map[string]*v1.Pod),
+	}
+
+	// init Deserved/Allocated/Used/Preemping if it is nil
+	if info.Queue().Status.Deserved.Resources == nil {
+		info.Queue().Status.Deserved.Resources = map[apiv1.ResourceName]resource.Quantity{
+			"cpu":    resource.MustParse("0"),
+			"memory": resource.MustParse("0"),
+		}
+	}
+	if info.Queue().Status.Allocated.Resources == nil {
+		info.Queue().Status.Allocated.Resources = map[apiv1.ResourceName]resource.Quantity{
+			"cpu":    resource.MustParse("0"),
+			"memory": resource.MustParse("0"),
+		}
+	}
+	if info.Queue().Status.Used.Resources == nil {
+		info.Queue().Status.Used.Resources = map[apiv1.ResourceName]resource.Quantity{
+			"cpu":    resource.MustParse("0"),
+			"memory": resource.MustParse("0"),
+		}
+	}
+	if info.Queue().Status.Preempting.Resources == nil {
+		info.Queue().Status.Preempting.Resources = map[apiv1.ResourceName]resource.Quantity{
+			"cpu":    resource.MustParse("0"),
+			"memory": resource.MustParse("0"),
+		}
 	}
 	sc.queues[queue.Name] = info
 	return nil

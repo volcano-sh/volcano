@@ -78,14 +78,14 @@ func (qm *quotaManager) updateQuotas(queues []apiv1.Queue) {
 		}
 
 		updatedRq := rqList.Items[0].DeepCopy()
-		if cpuQuantity, ok := queue.Status.Deserved.Resources["cpu"]; ok {
+		if cpuQuantity, ok := queue.Status.Allocated.Resources["cpu"]; ok {
 			if cpu, ok := (&cpuQuantity).AsInt64(); ok {
 				cpuQuota := *resource.NewQuantity(cpu, resource.DecimalSI)
 				updatedRq.Spec.Hard["limits.cpu"] = cpuQuota
 				updatedRq.Spec.Hard["requests.cpu"] = cpuQuota
 			}
 		}
-		if memoryQuantity, ok := queue.Status.Deserved.Resources["memory"]; ok {
+		if memoryQuantity, ok := queue.Status.Allocated.Resources["memory"]; ok {
 			if memory, ok := (&memoryQuantity).AsInt64(); ok {
 				memoryQuota := *resource.NewQuantity(memory, resource.BinarySI)
 				updatedRq.Spec.Hard["limits.memory"] = memoryQuota
