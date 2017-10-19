@@ -16,5 +16,87 @@ limitations under the License.
 
 package schedulercache
 
+import (
+	"fmt"
+	"log"
+	"math"
+
+	"k8s.io/api/core/v1"
+)
+
 type Resource struct {
+	MilliCPU float64
+	Memory   float64
+}
+
+func Decorator(fn func(r *Resource)) func(r *Resource) {
+	return func(r *Resource) {
+		log.Println("starting")
+		fn(r)
+		log.Println("completed")
+	}
+}
+
+func EmptyResource() *Resource {
+	return &Resource{
+		MilliCPU: 0,
+		Memory:   0,
+	}
+}
+
+func (r *Resource) Clone() *Resource {
+	clone := &Resource{
+		MilliCPU: r.MilliCPU,
+		Memory:   r.Memory,
+	}
+	return clone
+}
+
+var minMilliCPU float64 = 10
+var minMemory float64 = 10 * 1024 * 1024
+
+func NewResource(rl v1.ResourceList) *Resource {
+	r := EmptyResource()
+	for rName, rQuant := range rl {
+		switch rName {
+		case v1.ResourceCPU:
+			r.MilliCPU += float64(rQuant.MilliValue())
+		case v1.ResourceMemory:
+			r.Memory += float64(rQuant.Value())
+		}
+	}
+	return r
+}
+
+func (r *Resource) IsEmpty() bool {
+	return r.MilliCPU < minMilliCPU && r.Memory < minMemory
+}
+
+func (r *Resource) Add(rr *Resource) *Resource {
+	r.MilliCPU += rr.MilliCPU
+	r.Memory += rr.Memory
+	return r
+}
+
+//A function to Subtract two Resource objects.
+func (r *Resource) Sub(rr *Resource) *Resource {
+	if r.Less(rr) == false {
+		r.MilliCPU -= rr.MilliCPU
+		r.Memory -= rr.Memory
+		return r
+	}
+	panic("Resource is not sufficient to do operation: Sub()")
+}
+
+func (r *Resource) Less(rr *Resource) bool {
+	return r.MilliCPU < rr.MilliCPU && r.Memory < rr.Memory
+}
+
+func (r *Resource) LessEqual(rr *Resource) bool {
+	return (r.MilliCPU < rr.MilliCPU || math.Abs(rr.MilliCPU-r.MilliCPU) < 0.01) &&
+		(r.Memory < rr.Memory || math.Abs(rr.Memory-r.Memory) < 1)
+}
+
+func (r *Resource) String() string {
+	return fmt.Sprintf("cpu %f, memory %f", r.MilliCPU, r.Memory)
 }
