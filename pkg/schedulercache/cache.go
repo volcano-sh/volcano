@@ -24,10 +24,12 @@ import (
 	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
 
+	qInformerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
+	qclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/queue/v1"
+	qjobclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/queuejob/v1"
 	"k8s.io/api/core/v1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/informers"
 	clientv1 "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
@@ -45,10 +47,10 @@ func New(
 type schedulerCache struct {
 	sync.Mutex
 
-	podInformer        clientv1.PodInformer
-	nodeInformer       clientv1.NodeInformer
-	queueController    cache.Controller
-	queuejobController cache.Controller
+	podInformer      clientv1.PodInformer
+	nodeInformer     clientv1.NodeInformer
+	queueInformer    qclient.QueueInformer
+	queueJobInformer qjobclient.QueueJobInformer
 
 	pods      map[string]*PodInfo
 	nodes     map[string]*NodeInfo
@@ -103,11 +105,33 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 	if err != nil {
 		panic(err)
 	}
-	// create informer/controller
-	sc.queueController, err = createQueueCRDController(config, sc)
+
+	// create queue informer
+	queueClient, _, err := client.NewClient(config)
 	if err != nil {
 		panic(err)
 	}
+
+	qInformerFactory := qInformerfactory.NewSharedInformerFactory(queueClient, 0)
+	// create informer for queue information
+	sc.queueInformer = qInformerFactory.Queue().Queues()
+	sc.queueInformer.Informer().AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				switch t := obj.(type) {
+				case *apiv1.Queue:
+					glog.V(4).Infof("filter queue name(%s) namespace(%s)\n", t.Name, t.Namespace)
+					return true
+				default:
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    sc.AddQueue,
+				UpdateFunc: sc.UpdateQueue,
+				DeleteFunc: sc.DeleteQueue,
+			},
+		})
 
 	// create queue resource first
 	err = createQueueJob(config)
@@ -115,11 +139,33 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 		panic(err)
 	}
 
-	// create queuejob informer/controller
-	sc.queuejobController, err = createQueueJobController(config, sc)
+	// create queuejob informer
+	queuejobClient, _, err := client.NewQueueJobClient(config)
 	if err != nil {
 		panic(err)
 	}
+
+	qjobInformerFactory := qInformerfactory.NewSharedInformerFactory(queuejobClient, 0)
+
+	// create informer for queuejob information
+	sc.queueJobInformer = qjobInformerFactory.QueueJob().QueueJobs()
+	sc.queueJobInformer.Informer().AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				switch t := obj.(type) {
+				case *apiv1.QueueJob:
+					glog.V(4).Infof("filter queuejob name(%s) namespace(%s)\n", t.Name, t.Namespace)
+					return true
+				default:
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    sc.AddQueueJob,
+				UpdateFunc: sc.UpdateQueueJob,
+				DeleteFunc: sc.DeleteQueueJob,
+			},
+		})
 
 	return sc
 }
@@ -136,30 +182,6 @@ func createQueueCRD(config *rest.Config) error {
 	return nil
 }
 
-func createQueueCRDController(config *rest.Config, sc *schedulerCache) (cache.Controller, error) {
-	queueClient, _, err := client.NewClient(config)
-	if err != nil {
-		return nil, err
-	}
-	source := cache.NewListWatchFromClient(
-		queueClient,
-		apiv1.QueuePlural,
-		v1.NamespaceAll,
-		fields.Everything())
-
-	_, controller := cache.NewInformer(
-		source,
-		&apiv1.Queue{},
-		0,
-		cache.ResourceEventHandlerFuncs{
-			AddFunc:    sc.AddQueue,
-			UpdateFunc: sc.UpdateQueue,
-			DeleteFunc: sc.DeleteQueue,
-		})
-
-	return controller, nil
-}
-
 func createQueueJob(config *rest.Config) error {
 	extensionscs, err := apiextensionsclient.NewForConfig(config)
 	if err != nil {
@@ -172,34 +194,11 @@ func createQueueJob(config *rest.Config) error {
 	return nil
 }
 
-func createQueueJobController(config *rest.Config, sc *schedulerCache) (cache.Controller, error) {
-	queuejobClient, _, err := client.NewQueueJobClient(config)
-	if err != nil {
-		return nil, err
-	}
-	source := cache.NewListWatchFromClient(
-		queuejobClient,
-		apiv1.QueueJobPlural,
-		v1.NamespaceAll,
-		fields.Everything())
-
-	_, controller := cache.NewInformer(
-		source,
-		&apiv1.QueueJob{},
-		0,
-		cache.ResourceEventHandlerFuncs{
-			AddFunc:    sc.AddQueueJob,
-			UpdateFunc: sc.UpdateQueueJob,
-			DeleteFunc: sc.DeleteQueueJob,
-		})
-
-	return controller, nil
-}
-
 func (sc *schedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.podInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
-	go sc.queueController.Run(stopCh)
+	go sc.queueInformer.Informer().Run(stopCh)
+	go sc.queueJobInformer.Informer().Run(stopCh)
 }
 
 // Assumes that lock is already acquired.
@@ -557,6 +556,7 @@ func (sc *schedulerCache) deleteQueueJob(queuejob *apiv1.QueueJob) error {
 }
 
 func (sc *schedulerCache) AddQueueJob(obj interface{}) {
+
 	queuejob, ok := obj.(*apiv1.QueueJob)
 	if !ok {
 		glog.Errorf("cannot convert to *apiv1.QueueJob: %v", obj)
@@ -626,6 +626,22 @@ func (sc *schedulerCache) DeleteQueueJob(obj interface{}) {
 		return
 	}
 	return
+}
+
+func (sc *schedulerCache) PodInformer() clientv1.PodInformer {
+	return sc.podInformer
+}
+
+func (sc *schedulerCache) NodeInformer() clientv1.NodeInformer {
+	return sc.nodeInformer
+}
+
+func (sc *schedulerCache) QueueInformer() qclient.QueueInformer {
+	return sc.queueInformer
+}
+
+func (sc *schedulerCache) QueueJobInformer() qjobclient.QueueJobInformer {
+	return sc.queueJobInformer
 }
 
 func (sc *schedulerCache) Dump() *CacheSnapshot {
