@@ -600,7 +600,7 @@ func StartTestServer(t *testing.T) (result *restclient.Config, tearDownForCaller
 	s.ServiceClusterIPRange.Mask = net.CIDRMask(16, 32)
 	s.Etcd.StorageConfig = *storageConfig
 	s.Etcd.DefaultStorageMediaType = "application/json"
-	s.Admission.PluginNames = strings.Split("Initializers,NamespaceLifecycle,LimitRanger,ServiceAccount,PersistentVolumeLabel,DefaultStorageClass,ResourceQuota,DefaultTolerationSeconds", ",")
+	s.Admission.PluginNames = strings.Split("Initializers,NamespaceLifecycle,LimitRanger,PersistentVolumeLabel,DefaultStorageClass,ResourceQuota,DefaultTolerationSeconds", ",")
 	s.APIEnablement.RuntimeConfig.Set("api/all=true")
 
 	t.Logf("Starting kube-apiserver...")
