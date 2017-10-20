@@ -21,6 +21,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const QueueJobPlural string = "queuejobs"
+
 // Definition of QueueJob class
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type QueueJob struct {
