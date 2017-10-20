@@ -14,11 +14,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package schedulercache
+package preemption
 
-type CacheSnapshot struct {
-	Pods      []*PodInfo
-	Nodes     []*NodeInfo
-	Queues    []*QueueInfo
-	QueueJobs []*QueueJobInfo
+import (
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
+)
+
+// Interface is the interface of preemption.
+type Interface interface {
+	// Run start informer
+	Run(stopCh <-chan struct{})
+
+	// Preprocessing kill pod to make each queue underused
+	Preprocessing(queues map[string]*schedulercache.QueueInfo, pods []*schedulercache.PodInfo) (map[string]*schedulercache.QueueInfo, error)
+
+	// PreemptResource preempt resources between job
+	PreemptResources(queues map[string]*schedulercache.QueueInfo) error
 }

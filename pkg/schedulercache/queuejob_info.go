@@ -16,9 +16,27 @@ limitations under the License.
 
 package schedulercache
 
-type CacheSnapshot struct {
-	Pods      []*PodInfo
-	Nodes     []*NodeInfo
-	Queues    []*QueueInfo
-	QueueJobs []*QueueJobInfo
+import (
+	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+)
+
+type QueueJobInfo struct {
+	name     string
+	queuejob *apiv1.QueueJob
+}
+
+func (r *QueueJobInfo) Name() string {
+	return r.name
+}
+
+func (r *QueueJobInfo) QueueJob() *apiv1.QueueJob {
+	return r.queuejob
+}
+
+func (r *QueueJobInfo) Clone() *QueueJobInfo {
+	clone := &QueueJobInfo{
+		name:     r.name,
+		queuejob: r.queuejob.DeepCopy(),
+	}
+	return clone
 }

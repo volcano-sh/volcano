@@ -97,6 +97,10 @@ func (ps *proportionScheduler) Allocate(
 					"memory": *resource.NewQuantity(int64(job.Queue().Spec.Weight)*totalMEM/totalWeight, resource.BinarySI),
 				},
 			}
+			// clear Used resources
+			allocatedResult[job.Name()].Queue().Status.Used = apiv1.ResourceList{
+				Resources: make(map[apiv1.ResourceName]resource.Quantity),
+			}
 		}
 	}
 	return allocatedResult

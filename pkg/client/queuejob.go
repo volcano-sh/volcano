@@ -34,10 +34,9 @@ import (
 )
 
 const (
-	QueueJobPlural   string = "queuejobs"
 	QueueJobGroup    string = qjobv1.GroupName
 	QueueJobVersion  string = "v1"
-	FullQueueJobName string = QueueJobPlural + "." + QueueJobGroup
+	FullQueueJobName string = qjobv1.QueueJobPlural + "." + QueueJobGroup
 )
 
 func addKnownTypes(scheme *runtime.Scheme) error {
@@ -79,7 +78,7 @@ func CreateQueueJob(clientset apiextclient.Interface) (*apiextv1beta1.CustomReso
 			Version: QueueJobVersion,
 			Scope:   apiextv1beta1.NamespaceScoped,
 			Names: apiextv1beta1.CustomResourceDefinitionNames{
-				Plural: QueueJobPlural,
+				Plural: qjobv1.QueueJobPlural,
 				Kind:   reflect.TypeOf(qjobv1.QueueJob{}).Name(),
 			},
 		},

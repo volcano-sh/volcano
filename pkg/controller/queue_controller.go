@@ -19,10 +19,8 @@ package controller
 import (
 	"time"
 
-	"github.com/golang/glog"
-	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/preemption"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -33,14 +31,16 @@ type QueueController struct {
 	config       *rest.Config
 	cache        schedulercache.Cache
 	allocator    policy.Interface
+	preemptor    preemption.Interface
 	quotaManager *quotaManager
 }
 
-func NewQueueController(config *rest.Config, cache schedulercache.Cache, allocator policy.Interface) *QueueController {
+func NewQueueController(config *rest.Config, cache schedulercache.Cache, allocator policy.Interface, preemptor preemption.Interface) *QueueController {
 	queueController := &QueueController{
 		config:    config,
 		cache:     cache,
 		allocator: allocator,
+		preemptor: preemptor,
 		quotaManager: &quotaManager{
 			config: config,
 		},
@@ -51,6 +51,7 @@ func NewQueueController(config *rest.Config, cache schedulercache.Cache, allocat
 
 func (q *QueueController) Run() {
 	go q.quotaManager.Run()
+	go q.preemptor.Run(wait.NeverStop)
 	go wait.Until(q.runOnce, 2*time.Second, wait.NeverStop)
 }
 
@@ -59,26 +60,6 @@ func (q *QueueController) runOnce() {
 	jobGroups := q.allocator.Group(snapshot.Queues)
 	queues := q.allocator.Allocate(jobGroups, snapshot.Nodes)
 
-	q.updateQueues(queues)
-}
-
-func (q *QueueController) updateQueues(queues map[string]*schedulercache.QueueInfo) {
-	queueClient, _, err := client.NewClient(q.config)
-	if err != nil {
-		glog.Error("fail to create queue client")
-		return
-	}
-
-	for _, queue := range queues {
-		result := apiv1.Queue{}
-		err = queueClient.Put().
-			Resource(apiv1.QueuePlural).
-			Namespace(queue.Queue().Namespace).
-			Name(queue.Queue().Name).
-			Body(queue.Queue()).
-			Do().Into(&result)
-		if err != nil {
-			glog.Errorf("fail to update queue info, name %s, %#v", queue.Queue().Name, err)
-		}
-	}
+	queuesForPreempt, _ := q.preemptor.Preprocessing(queues, snapshot.Pods)
+	q.preemptor.PreemptResources(queuesForPreempt)
 }
