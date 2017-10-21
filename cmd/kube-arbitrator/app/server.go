@@ -48,6 +48,9 @@ func Run(opt *options.ServerOption) error {
 	c := controller.NewQueueController(config, cache, policy.New(opt.Policy), preemption.New(config))
 	c.Run()
 
+	qjobc := controller.NewQueueJobController(config, cache)
+	qjobc.Run(1, neverStop)
+
 	<-neverStop
 
 	return nil
