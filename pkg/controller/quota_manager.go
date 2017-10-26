@@ -35,7 +35,7 @@ type quotaManager struct {
 }
 
 func (qm *quotaManager) Run() {
-	wait.Until(qm.runOnce, 2*time.Second, wait.NeverStop)
+	wait.Until(qm.runOnce, 500*time.Millisecond, wait.NeverStop)
 }
 
 // run get request from queue and update to Quota
