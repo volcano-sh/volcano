@@ -227,7 +227,7 @@ func (p *basePreemption) Preprocessing(queues map[string]*schedulercache.QueueIn
 func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.QueueInfo) error {
 	// Divided queues into three categories
 	//   queuesOverused    - Deserved < Allocated
-	//   queuesPerfectused - Deserved = Allocated
+	//   queuesPerfectused - Deserved = Allocated, do nothing for these queues in PreemptResources()
 	//   queuesUnderused   - Deserved > Allocated
 	queuesOverused := make(map[string]*schedulercache.QueueInfo)
 	queuesPerfectused := make(map[string]*schedulercache.QueueInfo)
@@ -304,17 +304,14 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 			q.Name(), q.Queue().Status.Deserved.Resources, q.Queue().Status.Allocated.Resources,
 			q.Queue().Status.Used.Resources, q.Queue().Status.Preempting.Resources)
 	}
+	// fork pod info to terminated, kill them after update queue
+	terminatingPods := make([]*v1.Pod, 0)
 	p.dataMu.Lock()
 	for k, v := range preemptingPods {
-		if err := killPod(p.client, v.pod); err != nil {
-			// kill pod failed, it may be terminated before
-			// TODO call terminatePodDone later to update queue
-		}
+		terminatingPods = append(terminatingPods, v.pod)
 		p.terminatingPodsForPreempt[k] = v
 	}
 	p.dataMu.Unlock()
-
-	// do nothing for queuesPerfectused
 
 	// handler queuesUnderused which will preempt resources from other queue
 	resourceTypes := []string{"cpu", "memory"}
@@ -397,7 +394,7 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 		if len(queuesOverused) == 0 && len(queuesUnderused) == 0 {
 			break
 		}
-		// TODO update allocated and preempting for queues01 and queues03
+		// TODO update allocated and preempting for queuesOverused and queuesUnderused
 		q, ok := queuesOverused[oldQueue.Name]
 		if !ok {
 			q, ok = queuesUnderused[oldQueue.Name]
@@ -420,8 +417,15 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 	}
 	p.updateMu.Unlock()
 
-	// wait until terminatingPods is empty
 	p.dataMu.Lock()
+	// terminate pod after queue is updated
+	for _, v := range terminatingPods {
+		if err := killPod(p.client, v); err != nil {
+			// kill pod failed, it may be terminated before
+			// TODO call terminatePodDone later to update queue
+		}
+	}
+	// wait until terminatingPods is empty
 	for len(p.terminatingPodsForPreempt) != 0 {
 		p.dataCond.Wait()
 	}
@@ -463,8 +467,6 @@ func (p *basePreemption) terminatePodDone(obj interface{}) {
 	// update Queue preempting resources, this operation must be under p.updateMu
 	resourceTypes := []string{"cpu", "memory"}
 	if ok {
-		//fmt.Printf("===== terminatePodDone, preempting pod info %#v\n", ppInfo)
-
 		queueClient, _, err := client.NewClient(p.config)
 		if err != nil {
 			return
@@ -496,7 +498,6 @@ func (p *basePreemption) terminatePodDone(obj interface{}) {
 					result.Add(preempting)
 					oldQueue.Status.Allocated.Resources[resType] = result
 				}
-
 			}
 
 			// update Queue
