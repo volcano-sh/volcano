@@ -23,7 +23,6 @@ import (
 	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
 
-	"k8s.io/apimachinery/pkg/api/resource"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -72,30 +71,24 @@ func (qm *quotaManager) updateQuotas(queues []apiv1.Queue) {
 
 		var options meta_v1.ListOptions
 		rqList, err := rqController.List(options)
-		if len(rqList.Items) != 1 || err != nil {
-			glog.Errorf("more than one resourceQuota or ecounter an error, namespace %s", queue.Namespace)
+		if err != nil || len(rqList.Items) != 1 {
+			glog.Errorf("ecounter an error or more than one resourceQuota, namespace %s, err %#v", queue.Namespace, err)
 			continue
 		}
 
 		updatedRq := rqList.Items[0].DeepCopy()
 		if cpuQuantity, ok := queue.Status.Allocated.Resources["cpu"]; ok {
-			if cpu, ok := (&cpuQuantity).AsInt64(); ok {
-				cpuQuota := *resource.NewQuantity(cpu, resource.DecimalSI)
-				updatedRq.Spec.Hard["limits.cpu"] = cpuQuota
-				updatedRq.Spec.Hard["requests.cpu"] = cpuQuota
-			}
+			updatedRq.Spec.Hard["limits.cpu"] = cpuQuantity
+			updatedRq.Spec.Hard["requests.cpu"] = cpuQuantity
 		}
 		if memoryQuantity, ok := queue.Status.Allocated.Resources["memory"]; ok {
-			if memory, ok := (&memoryQuantity).AsInt64(); ok {
-				memoryQuota := *resource.NewQuantity(memory, resource.BinarySI)
-				updatedRq.Spec.Hard["limits.memory"] = memoryQuota
-				updatedRq.Spec.Hard["requests.memory"] = memoryQuota
-			}
+			updatedRq.Spec.Hard["limits.memory"] = memoryQuantity
+			updatedRq.Spec.Hard["requests.memory"] = memoryQuantity
 		}
 
 		_, err = rqController.Update(updatedRq)
 		if err != nil {
-			glog.Errorf("failed to update resource quota")
+			glog.Errorf("failed to update resource quota %s, %#v", updatedRq.Name, err)
 			continue
 		}
 	}
