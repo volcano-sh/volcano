@@ -37,13 +37,11 @@ type QueueController struct {
 
 func NewQueueController(config *rest.Config, cache schedulercache.Cache, allocator policy.Interface, preemptor preemption.Interface) *QueueController {
 	queueController := &QueueController{
-		config:    config,
-		cache:     cache,
-		allocator: allocator,
-		preemptor: preemptor,
-		quotaManager: &quotaManager{
-			config: config,
-		},
+		config:       config,
+		cache:        cache,
+		allocator:    allocator,
+		preemptor:    preemptor,
+		quotaManager: NewQuotaManager(config),
 	}
 
 	return queueController
