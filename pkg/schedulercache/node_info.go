@@ -17,7 +17,13 @@ limitations under the License.
 package schedulercache
 
 import (
+	"time"
+
 	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
+	clientset "k8s.io/client-go/kubernetes"
+	corev1 "k8s.io/client-go/listers/core/v1"
 	clientcache "k8s.io/client-go/tools/cache"
 )
 
@@ -48,4 +54,23 @@ func (n *NodeInfo) Clone() *NodeInfo {
 // getPodKey returns the string key of a pod.
 func getPodKey(pod *v1.Pod) (string, error) {
 	return clientcache.MetaNamespaceKeyFunc(pod)
+}
+
+func NodeLister(client clientset.Interface, stopChannel <-chan struct{}) ([]*v1.Node, error) {
+	nl := GetNodeLister(client, stopChannel)
+	nodes, err := nl.List(labels.Everything())
+	if err != nil {
+		return []*v1.Node{}, err
+	}
+	return nodes, err
+}
+
+func GetNodeLister(client clientset.Interface, stopChannel <-chan struct{}) corev1.NodeLister {
+	listWatcher := clientcache.NewListWatchFromClient(client.Core().RESTClient(), "nodes", v1.NamespaceAll, fields.Everything())
+	store := clientcache.NewIndexer(clientcache.MetaNamespaceKeyFunc, clientcache.Indexers{clientcache.NamespaceIndex: clientcache.MetaNamespaceIndexFunc})
+	nodeLister := corev1.NewNodeLister(store)
+	reflector := clientcache.NewReflector(listWatcher, &v1.Node{}, store, time.Hour)
+	reflector.Run(stopChannel)
+
+	return nodeLister
 }
