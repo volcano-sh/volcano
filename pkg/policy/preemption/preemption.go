@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
+	clientv1 "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
@@ -53,6 +54,8 @@ type basePreemption struct {
 
 	terminatingPodsForPreempt   map[string]preemptedPodInfo
 	terminatingPodsForUnderused map[string]*v1.Pod
+
+	podInformer clientv1.PodInformer
 }
 
 func New(config *rest.Config) Interface {
@@ -70,6 +73,25 @@ func newBasePreemption(name string, config *rest.Config) *basePreemption {
 		terminatingPodsForUnderused: make(map[string]*v1.Pod),
 	}
 	bp.dataCond = sync.NewCond(bp.dataMu)
+
+	informerFactory := informers.NewSharedInformerFactory(bp.client, 0)
+	bp.podInformer = informerFactory.Core().V1().Pods()
+	bp.podInformer.Informer().AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				switch t := obj.(type) {
+				case *v1.Pod:
+					glog.V(4).Infof("filter pod name(%s) namespace(%s) status(%s)\n", t.Name, t.Namespace, t.Status.Phase)
+					return true
+				default:
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				DeleteFunc: bp.terminatePodDone,
+			},
+		})
+
 	return bp
 }
 
@@ -98,31 +120,8 @@ func killPod(client *kubernetes.Clientset, pod *v1.Pod) error {
 	return err
 }
 
-func (p *basePreemption) startPodInformer(stopCh <-chan struct{}) {
-	informerFactory := informers.NewSharedInformerFactory(p.client, 0)
-
-	podInformer := informerFactory.Core().V1().Pods()
-	podInformer.Informer().AddEventHandler(
-		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
-				switch t := obj.(type) {
-				case *v1.Pod:
-					glog.V(4).Infof("filter pod name(%s) namespace(%s) status(%s)\n", t.Name, t.Namespace, t.Status.Phase)
-					return true
-				default:
-					return false
-				}
-			},
-			Handler: cache.ResourceEventHandlerFuncs{
-				DeleteFunc: p.terminatePodDone,
-			},
-		})
-
-	go podInformer.Informer().Run(stopCh)
-}
-
 func (p *basePreemption) Run(stopCh <-chan struct{}) {
-	p.startPodInformer(stopCh)
+	go p.podInformer.Informer().Run(stopCh)
 }
 
 func (p *basePreemption) Preprocessing(queues map[string]*schedulercache.QueueInfo, pods []*schedulercache.PodInfo) (map[string]*schedulercache.QueueInfo, error) {
