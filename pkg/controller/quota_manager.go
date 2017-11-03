@@ -72,9 +72,9 @@ func NewQuotaManager(config *rest.Config) *quotaManager {
 	return qm
 }
 
-func (qm *quotaManager) Run() {
-	go qm.queueInformer.Informer().Run(wait.NeverStop)
-	wait.Until(qm.runOnce, 500*time.Millisecond, wait.NeverStop)
+func (qm *quotaManager) Run(stopCh <-chan struct{}) {
+	go qm.queueInformer.Informer().Run(stopCh)
+	wait.Until(qm.runOnce, 500*time.Millisecond, stopCh)
 }
 
 // run get request from queue and update to Quota
