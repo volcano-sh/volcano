@@ -431,7 +431,7 @@ func TestArbitrator(t *testing.T) {
 	cache := schedulercache.New(config)
 	go cache.Run(neverStop)
 	c := controller.NewQueueController(config, cache, policy.New(proportion.PolicyName), preemption.New(config))
-	go c.Run()
+	go c.Run(neverStop)
 
 	// sleep to wait scheduler finish
 	time.Sleep(10 * time.Second)

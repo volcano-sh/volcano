@@ -47,10 +47,10 @@ func NewQueueController(config *rest.Config, cache schedulercache.Cache, allocat
 	return queueController
 }
 
-func (q *QueueController) Run() {
-	go q.quotaManager.Run()
-	go q.preemptor.Run(wait.NeverStop)
-	go wait.Until(q.runOnce, 2*time.Second, wait.NeverStop)
+func (q *QueueController) Run(stopCh <-chan struct{}) {
+	go q.quotaManager.Run(stopCh)
+	go q.preemptor.Run(stopCh)
+	go wait.Until(q.runOnce, 2*time.Second, stopCh)
 }
 
 func (q *QueueController) runOnce() {
