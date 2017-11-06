@@ -18,6 +18,9 @@ package schedulercache
 
 import (
 	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	clientset "k8s.io/client-go/kubernetes"
 )
 
 type PodInfo struct {
@@ -39,4 +42,19 @@ func (p *PodInfo) Clone() *PodInfo {
 		pod:  p.pod.DeepCopy(),
 	}
 	return clone
+}
+
+func ListPodsOnaNode(client clientset.Interface, node *v1.Node) ([]*v1.Pod, error) {
+	podList, err := client.CoreV1().Pods(v1.NamespaceAll).List(
+		metav1.ListOptions{FieldSelector: fields.SelectorFromSet(fields.Set{"spec.nodeName": node.Name}).String()})
+	if err != nil {
+		return []*v1.Pod{}, err
+	}
+
+	pods := make([]*v1.Pod, 0)
+	for i := range podList.Items {
+		pods = append(pods, &podList.Items[i])
+	}
+
+	return pods, nil
 }

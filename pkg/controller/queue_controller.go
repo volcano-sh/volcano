@@ -37,22 +37,20 @@ type QueueController struct {
 
 func NewQueueController(config *rest.Config, cache schedulercache.Cache, allocator policy.Interface, preemptor preemption.Interface) *QueueController {
 	queueController := &QueueController{
-		config:    config,
-		cache:     cache,
-		allocator: allocator,
-		preemptor: preemptor,
-		quotaManager: &quotaManager{
-			config: config,
-		},
+		config:       config,
+		cache:        cache,
+		allocator:    allocator,
+		preemptor:    preemptor,
+		quotaManager: NewQuotaManager(config),
 	}
 
 	return queueController
 }
 
-func (q *QueueController) Run() {
-	go q.quotaManager.Run()
-	go q.preemptor.Run(wait.NeverStop)
-	go wait.Until(q.runOnce, 2*time.Second, wait.NeverStop)
+func (q *QueueController) Run(stopCh <-chan struct{}) {
+	go q.quotaManager.Run(stopCh)
+	go q.preemptor.Run(stopCh)
+	go wait.Until(q.runOnce, 2*time.Second, stopCh)
 }
 
 func (q *QueueController) runOnce() {

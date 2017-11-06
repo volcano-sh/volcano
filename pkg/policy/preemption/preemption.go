@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
+	clientv1 "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
@@ -53,6 +54,8 @@ type basePreemption struct {
 
 	terminatingPodsForPreempt   map[string]preemptedPodInfo
 	terminatingPodsForUnderused map[string]*v1.Pod
+
+	podInformer clientv1.PodInformer
 }
 
 func New(config *rest.Config) Interface {
@@ -70,6 +73,25 @@ func newBasePreemption(name string, config *rest.Config) *basePreemption {
 		terminatingPodsForUnderused: make(map[string]*v1.Pod),
 	}
 	bp.dataCond = sync.NewCond(bp.dataMu)
+
+	informerFactory := informers.NewSharedInformerFactory(bp.client, 0)
+	bp.podInformer = informerFactory.Core().V1().Pods()
+	bp.podInformer.Informer().AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				switch t := obj.(type) {
+				case *v1.Pod:
+					glog.V(4).Infof("filter pod name(%s) namespace(%s) status(%s)\n", t.Name, t.Namespace, t.Status.Phase)
+					return true
+				default:
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				DeleteFunc: bp.terminatePodDone,
+			},
+		})
+
 	return bp
 }
 
@@ -98,49 +120,8 @@ func killPod(client *kubernetes.Clientset, pod *v1.Pod) error {
 	return err
 }
 
-// -1  - if res1 < res2
-// 0   - if res1 = res2
-// 1   - if not belong above cases
-func compareResources(res1 map[apiv1.ResourceName]resource.Quantity, res2 map[apiv1.ResourceName]resource.Quantity) int {
-	cpu1 := res1["cpu"].DeepCopy()
-	cpu2 := res2["cpu"].DeepCopy()
-	memory1 := res1["memory"].DeepCopy()
-	memory2 := res2["memory"].DeepCopy()
-
-	if cpu1.Cmp(cpu2) < 0 && memory1.Cmp(memory2) < 0 {
-		return -1
-	} else if cpu1.Cmp(cpu2) == 0 && memory1.Cmp(memory2) == 0 {
-		return 0
-	} else {
-		return 1
-	}
-}
-
-func (p *basePreemption) startPodInformer(stopCh <-chan struct{}) {
-	informerFactory := informers.NewSharedInformerFactory(p.client, 0)
-
-	podInformer := informerFactory.Core().V1().Pods()
-	podInformer.Informer().AddEventHandler(
-		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
-				switch t := obj.(type) {
-				case *v1.Pod:
-					glog.V(4).Infof("filter pod name(%s) namespace(%s) status(%s)\n", t.Name, t.Namespace, t.Status.Phase)
-					return true
-				default:
-					return false
-				}
-			},
-			Handler: cache.ResourceEventHandlerFuncs{
-				DeleteFunc: p.terminatePodDone,
-			},
-		})
-
-	go podInformer.Informer().Run(stopCh)
-}
-
 func (p *basePreemption) Run(stopCh <-chan struct{}) {
-	p.startPodInformer(stopCh)
+	go p.podInformer.Informer().Run(stopCh)
 }
 
 func (p *basePreemption) Preprocessing(queues map[string]*schedulercache.QueueInfo, pods []*schedulercache.PodInfo) (map[string]*schedulercache.QueueInfo, error) {
@@ -233,7 +214,7 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 	queuesPerfectused := make(map[string]*schedulercache.QueueInfo)
 	queuesUnderused := make(map[string]*schedulercache.QueueInfo)
 	for _, q := range queues {
-		result := compareResources(q.Queue().Status.Deserved.Resources, q.Queue().Status.Allocated.Resources)
+		result := schedulercache.CompareResources(q.Queue().Status.Deserved.Resources, q.Queue().Status.Allocated.Resources)
 		if result == -1 {
 			queuesOverused[q.Name()] = q
 		} else if result == 0 {
@@ -248,8 +229,7 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 	// handler queuesOverused which will be preempted resources to other queue
 	preemptingPods := make(map[string]preemptedPodInfo)
 	for _, q := range queuesOverused {
-		result := compareResources(q.Queue().Status.Used.Resources, q.Queue().Status.Deserved.Resources)
-		if result <= 0 {
+		if q.UsedUnderDeserved() {
 			// Used <= Deserved
 			// update Allocated to Deserved directly
 			q.Queue().Status.Allocated.Resources = q.Queue().Status.Deserved.Resources
@@ -318,7 +298,7 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 	for _, q := range queuesUnderused {
 		if len(preemptingPods) == 0 {
 			// there is no preemptingPods left
-			// change Allcated to Deserved directly
+			// change Allocated to Deserved directly
 			q.Queue().Status.Allocated.Resources = q.Queue().Status.Deserved.Resources
 		} else {
 			// assign preempting pod resource to each queue
