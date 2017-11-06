@@ -149,7 +149,6 @@ func (qjrPod *QueueJobResPod) getPodTemplate(qjobRes *qjobv1.QueueJobResource) (
 
 	podGVK := schema.GroupVersion{Group: v1.GroupName, Version: "v1"}.WithKind("PodTemplate")
 
-	fmt.Printf("=============== getPodTemplate %s\n", qjobRes.Template.Raw)
 	obj, _, err := qjrPod.jsonSerializer.Decode(qjobRes.Template.Raw, &podGVK, nil)
 	if err != nil {
 		return nil, err
@@ -160,7 +159,6 @@ func (qjrPod *QueueJobResPod) getPodTemplate(qjobRes *qjobv1.QueueJobResource) (
 		return nil, fmt.Errorf("Queuejob resource template not define a Pod")
 	}
 
-	fmt.Printf("=============== getPodTemplate %v\n", template)
 	return template, nil
 
 }
@@ -229,7 +227,6 @@ func (qjrPod *QueueJobResPod) scaleDownQueueJobResource(diff int32, activePods [
 
 func (qjrPod *QueueJobResPod) Sync(resIndex int, queuejob *qjobv1.QueueJob, qjobRes *qjobv1.QueueJobResource) error {
 
-	fmt.Printf("=============== sync  %v\n", qjobRes)
 	startTime := time.Now()
 	defer func() {
 		glog.V(4).Infof("Finished syncing queue job resource %q (%v)", qjobRes.Template, time.Now().Sub(startTime))
