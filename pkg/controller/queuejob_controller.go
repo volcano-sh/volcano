@@ -18,8 +18,8 @@ package controller
 
 import (
 	"fmt"
-	"strconv"
-	"sync"
+	//"strconv"
+	//"sync"
 	"time"
 
 	"github.com/golang/glog"
@@ -28,19 +28,21 @@ import (
 	qInformerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
 	qjobv1informer "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/queuejob/v1"
 	qjobv1lister "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/listers/queuejob/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/controller/queuejobresources"
+	respod "github.com/kubernetes-incubator/kube-arbitrator/pkg/controller/queuejobresources/pod"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	//metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/informers"
-	corev1informer "k8s.io/client-go/informers/core/v1"
+	//"k8s.io/client-go/informers"
+	//corev1informer "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
-	corelisters "k8s.io/client-go/listers/core/v1"
+	//corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -54,7 +56,9 @@ const qjobResIdxLable = "QJOBRES_INDEX"
 
 type QueueJobController struct {
 	kubeClient clientset.Interface
-	podControl controller.PodControlInterface
+	//podControl              controller.PodControlInterface
+	qjobRegisteredResources queuejobresources.RegisteredResources
+	qjobResControls         map[qjobv1.ResourceType]queuejobresources.Interface
 
 	// Kubernetes restful client to operate queuejob
 	qjobClient *rest.RESTClient
@@ -71,13 +75,19 @@ type QueueJobController struct {
 	queueJobInformer qjobv1informer.QueueJobInformer
 
 	// A store of pods, populated by the podController
-	podStore    corelisters.PodLister
-	podInformer corev1informer.PodInformer
+	//podStore    corelisters.PodLister
+	//podInformer corev1informer.PodInformer
 
 	// QueueJobs that need to be updated
 	queue workqueue.RateLimitingInterface
 
 	recorder record.EventRecorder
+}
+
+func RegisterAllQueueJobResourceTypes(regs *queuejobresources.RegisteredResources) {
+
+	respod.Register(regs)
+
 }
 
 func NewQueueJobController(config *rest.Config, schCache schedulercache.Cache) *QueueJobController {
@@ -101,35 +111,14 @@ func NewQueueJobController(config *rest.Config, schCache schedulercache.Cache) *
 	qjm := &QueueJobController{
 		kubeClient: kubeClient,
 		qjobClient: qjobClient,
-		podControl: controller.RealPodControl{
-			KubeClient: kubeClient,
-			Recorder:   eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "queuejob-controller"}),
-		},
+		//podControl: controller.RealPodControl{
+		//	KubeClient: kubeClient,
+		//	Recorder:   eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "queuejob-controller"}),
+		//},
 		expectations: controller.NewControllerExpectations(),
 		queue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "queuejob"),
 		recorder:     eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "queuejob-controller"}),
 	}
-
-	// create informer for pod information
-	informerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
-	qjm.podInformer = informerFactory.Core().V1().Pods()
-	qjm.podInformer.Informer().AddEventHandler(
-		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
-				switch t := obj.(type) {
-				case *v1.Pod:
-					glog.V(4).Infof("filter pod name(%s) namespace(%s) status(%s)\n", t.Name, t.Namespace, t.Status.Phase)
-					return true
-				default:
-					return false
-				}
-			},
-			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc:    qjm.addPod,
-				UpdateFunc: qjm.updatePod,
-				DeleteFunc: qjm.deletePod,
-			},
-		})
 
 	// create informer for queuejob information
 	qjobInformerFactory := qInformerfactory.NewSharedInformerFactory(qjobClient, 0)
@@ -156,6 +145,20 @@ func NewQueueJobController(config *rest.Config, schCache schedulercache.Cache) *
 	qjm.updateHandler = qjm.updateJobStatus
 	qjm.syncHandler = qjm.syncQueueJob
 
+	RegisterAllQueueJobResourceTypes(&qjm.qjobRegisteredResources)
+	resControl, found, err := qjm.qjobRegisteredResources.InitQueueJobResource(qjobv1.ResourceTypePod, config)
+	if err != nil {
+		glog.Errorf("fail to create queuejob resource control")
+		return nil
+	}
+	if !found {
+		glog.Errorf("queuejob resource type Pod not found")
+		return nil
+	}
+
+	qjm.qjobResControls = map[qjobv1.ResourceType]queuejobresources.Interface{}
+	qjm.qjobResControls[qjobv1.ResourceTypePod] = resControl
+
 	return qjm
 }
 
@@ -163,7 +166,8 @@ func NewQueueJobController(config *rest.Config, schCache schedulercache.Cache) *
 func (qjm *QueueJobController) Run(workers int, stopCh <-chan struct{}) {
 
 	go qjm.queueJobInformer.Informer().Run(stopCh)
-	go qjm.podInformer.Informer().Run(stopCh)
+	//go qjm.podInformer.Informer().Run(stopCh)
+	go qjm.qjobResControls[qjobv1.ResourceTypePod].Run(stopCh)
 
 	defer utilruntime.HandleCrash()
 	defer qjm.queue.ShutDown()
@@ -175,21 +179,6 @@ func (qjm *QueueJobController) Run(workers int, stopCh <-chan struct{}) {
 		go wait.Until(qjm.worker, time.Second, stopCh)
 	}
 	<-stopCh
-}
-
-func (qjm *QueueJobController) addPod(obj interface{}) {
-
-	return
-}
-
-func (qjm *QueueJobController) updatePod(old, cur interface{}) {
-
-	return
-}
-
-func (qjm *QueueJobController) deletePod(obj interface{}) {
-
-	return
 }
 
 // obj could be an *QueueJob, or a DeletionFinalStateUnknown marker item.
@@ -216,87 +205,19 @@ func (qjm *QueueJobController) updateQueueJob(old, cur interface{}) {
 	return
 }
 
-func (qjm *QueueJobController) scaleUpQueueJobResource(idx int, diff int32, activePods []*v1.Pod, queuejob *qjobv1.QueueJob, qjobRes *qjobv1.QueueJobResource) error {
-
-	startTime := time.Now()
-	defer func() {
-		glog.V(4).Infof("Finished syncing queue job resource %q (%v)", qjobRes.Template, time.Now().Sub(startTime))
-	}()
-
-	qjobRes.Template.Labels[qjobResIdxLable] = strconv.Itoa(idx)
-
-	wait := sync.WaitGroup{}
-	wait.Add(int(diff))
-	for i := int32(0); i < diff; i++ {
-		go func() {
-			defer wait.Done()
-			err := qjm.podControl.CreatePodsWithControllerRef(queuejob.Namespace, &qjobRes.Template, queuejob, metav1.NewControllerRef(queuejob, controllerKind))
-			if err != nil && errors.IsTimeout(err) {
-				return
-			}
-			if err != nil {
-				defer utilruntime.HandleError(err)
-			}
-		}()
-	}
-	wait.Wait()
-
-	return nil
-
-}
-
-func (qjm *QueueJobController) scaleDownQueueJobResource(idx int, diff int32, activePods []*v1.Pod, queuejob *qjobv1.QueueJob, qjobRes *qjobv1.QueueJobResource) error {
-
-	startTime := time.Now()
-	defer func() {
-		glog.V(4).Infof("Finished syncing queue job resource %q (%v)", qjobRes.Template, time.Now().Sub(startTime))
-	}()
-
-	wait := sync.WaitGroup{}
-	wait.Add(int(diff))
-	for i := int32(0); i < diff; i++ {
-		go func(ix int32) {
-			defer wait.Done()
-			if err := qjm.podControl.DeletePod(queuejob.Namespace, activePods[ix].Name, queuejob); err != nil {
-				defer utilruntime.HandleError(err)
-			}
-		}(i)
-	}
-	wait.Wait()
-	return nil
-
-}
-
 func (qjm *QueueJobController) deleteQueueJob(obj interface{}) {
 
 	qjm.enqueueController(obj)
 
 }
 
-func (qjm *QueueJobController) deleteQueueJobPods(queuejob *qjobv1.QueueJob) error {
+func (qjm *QueueJobController) Cleanup(queuejob *qjobv1.QueueJob) error {
 
-	job := *queuejob
-
-	pods, err := qjm.getPodsForQueueJob(queuejob)
-	if err != nil {
-		return err
+	if queuejob.Spec.AggrResources.Items != nil {
+		for i, ar := range queuejob.Spec.AggrResources.Items {
+			qjm.qjobResControls[ar.Type].Cleanup(i, queuejob, &ar)
+		}
 	}
-
-	activePods := controller.FilterActivePods(pods)
-	active := int32(len(activePods))
-
-	wait := sync.WaitGroup{}
-	wait.Add(int(active))
-	for i := int32(0); i < active; i++ {
-		go func(ix int32) {
-			defer wait.Done()
-			if err := qjm.podControl.DeletePod(queuejob.Namespace, activePods[ix].Name, queuejob); err != nil {
-				defer utilruntime.HandleError(err)
-				glog.V(2).Infof("Failed to delete %v, queue job %q/%q deadline exceeded", activePods[ix].Name, job.Namespace, job.Name)
-			}
-		}(i)
-	}
-	wait.Wait()
 
 	return nil
 }
@@ -328,88 +249,6 @@ func (qjm *QueueJobController) processNextWorkItem() bool {
 	return true
 }
 
-func (qjm *QueueJobController) syncQueueJobResource(idx int, queuejob *qjobv1.QueueJob, qjobRes *qjobv1.QueueJobResource) error {
-
-	startTime := time.Now()
-	defer func() {
-		glog.V(4).Infof("Finished syncing queue job resource %q (%v)", qjobRes.Template, time.Now().Sub(startTime))
-	}()
-
-	if qjobRes.ObjectMeta.Labels == nil {
-		qjobRes.ObjectMeta.Labels = map[string]string{}
-	}
-	qjobRes.ObjectMeta.Labels[qjobResIdxLable] = strconv.Itoa(idx)
-	qjobRes.Template.Labels[qjobResIdxLable] = strconv.Itoa(idx)
-
-	pods, err := qjm.getPodsForQueueJobRes(idx, queuejob)
-	if err != nil {
-		return err
-	}
-
-	activePods := controller.FilterActivePods(pods)
-	numActivePods := int32(len(activePods))
-
-	if qjobRes.DesiredReplicas < numActivePods {
-
-		qjm.scaleDownQueueJobResource(idx,
-			int32(numActivePods-qjobRes.DesiredReplicas),
-			activePods, queuejob, qjobRes)
-	} else if qjobRes.DesiredReplicas > numActivePods {
-
-		qjm.scaleUpQueueJobResource(idx,
-			int32(qjobRes.DesiredReplicas-numActivePods),
-			activePods, queuejob, qjobRes)
-	}
-
-	return nil
-}
-
-func (qjm *QueueJobController) getPodsForQueueJob(j *qjobv1.QueueJob) ([]*v1.Pod, error) {
-	podlist, err := qjm.kubeClient.CoreV1().Pods(j.Namespace).List(metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	pods := []*v1.Pod{}
-	for i, pod := range podlist.Items {
-		meta_pod, err := meta.Accessor(&pod)
-		if err != nil {
-			return nil, err
-		}
-
-		controllerRef := metav1.GetControllerOf(meta_pod)
-		if controllerRef != nil {
-			if controllerRef.UID == j.UID {
-				pods = append(pods, &podlist.Items[i])
-			}
-		}
-	}
-	return pods, nil
-
-}
-
-func (qjm *QueueJobController) getPodsForQueueJobRes(idx int, j *qjobv1.QueueJob) ([]*v1.Pod, error) {
-
-	pods, err := qjm.getPodsForQueueJob(j)
-	if err != nil {
-		return nil, err
-	}
-
-	myPods := []*v1.Pod{}
-	for i, pod := range pods {
-		if pod.Labels[qjobResIdxLable] == strconv.Itoa(idx) {
-			myPods = append(myPods, pods[i])
-		}
-	}
-
-	return myPods, nil
-
-}
-
 func (qjm *QueueJobController) syncQueueJob(key string) error {
 
 	startTime := time.Now()
@@ -436,7 +275,7 @@ func (qjm *QueueJobController) syncQueueJob(key string) error {
 	job := *sharedJob
 
 	if job.DeletionTimestamp != nil {
-		err = qjm.deleteQueueJobPods(sharedJob)
+		err = qjm.Cleanup(sharedJob)
 		if err != nil {
 			return err
 		}
@@ -457,7 +296,7 @@ func (qjm *QueueJobController) syncQueueJob(key string) error {
 
 	if job.Spec.AggrResources.Items != nil {
 		for i, ar := range job.Spec.AggrResources.Items {
-			qjm.syncQueueJobResource(i, sharedJob, &ar)
+			qjm.qjobResControls[ar.Type].Sync(i, sharedJob, &ar)
 		}
 	}
 
