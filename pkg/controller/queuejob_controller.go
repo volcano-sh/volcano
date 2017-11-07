@@ -18,8 +18,6 @@ package controller
 
 import (
 	"fmt"
-	//"strconv"
-	//"sync"
 	"time"
 
 	"github.com/golang/glog"
@@ -34,15 +32,11 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	//metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	//"k8s.io/client-go/informers"
-	//corev1informer "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
-	//corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -55,8 +49,7 @@ var controllerKind = qjobv1.SchemeGroupVersion.WithKind("QueueJob")
 const qjobResIdxLable = "QJOBRES_INDEX"
 
 type QueueJobController struct {
-	kubeClient clientset.Interface
-	//podControl              controller.PodControlInterface
+	kubeClient              clientset.Interface
 	qjobRegisteredResources queuejobresources.RegisteredResources
 	qjobResControls         map[qjobv1.ResourceType]queuejobresources.Interface
 
@@ -73,10 +66,6 @@ type QueueJobController struct {
 	// A store of queuejobs
 	queueJobLister   qjobv1lister.QueueJobLister
 	queueJobInformer qjobv1informer.QueueJobInformer
-
-	// A store of pods, populated by the podController
-	//podStore    corelisters.PodLister
-	//podInformer corev1informer.PodInformer
 
 	// QueueJobs that need to be updated
 	queue workqueue.RateLimitingInterface
@@ -109,12 +98,8 @@ func NewQueueJobController(config *rest.Config, schCache schedulercache.Cache) *
 	qjobClient, _, err := qjobclient.NewQueueJobClient(config)
 
 	qjm := &QueueJobController{
-		kubeClient: kubeClient,
-		qjobClient: qjobClient,
-		//podControl: controller.RealPodControl{
-		//	KubeClient: kubeClient,
-		//	Recorder:   eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "queuejob-controller"}),
-		//},
+		kubeClient:   kubeClient,
+		qjobClient:   qjobClient,
 		expectations: controller.NewControllerExpectations(),
 		queue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "queuejob"),
 		recorder:     eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "queuejob-controller"}),
@@ -166,7 +151,6 @@ func NewQueueJobController(config *rest.Config, schCache schedulercache.Cache) *
 func (qjm *QueueJobController) Run(workers int, stopCh <-chan struct{}) {
 
 	go qjm.queueJobInformer.Informer().Run(stopCh)
-	//go qjm.podInformer.Informer().Run(stopCh)
 	go qjm.qjobResControls[qjobv1.ResourceTypePod].Run(stopCh)
 
 	defer utilruntime.HandleCrash()

@@ -18,7 +18,6 @@ package queuejobresources
 
 import (
 	qjobv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-	//"k8s.io/kubernetes/plugin/pkg/scheduler/schedulercache"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 )
 
