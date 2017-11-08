@@ -18,7 +18,6 @@ package pod
 
 import (
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
@@ -61,7 +60,10 @@ type QueueJobResPod struct {
 	podInformer    corev1informer.PodInformer
 	rtScheme       *runtime.Scheme
 	jsonSerializer *json.Serializer
-	recorder       record.EventRecorder
+
+	// Reference manager to manage membership of queuejob resource and its members
+	refManager queuejobresources.RefManager
+	recorder   record.EventRecorder
 }
 
 // Register registers a queue job resource type
@@ -116,9 +118,10 @@ func NewQueueJobResPod(config *rest.Config) queuejobresources.Interface {
 
 	qjrPod.rtScheme = runtime.NewScheme()
 	v1.AddToScheme(qjrPod.rtScheme)
-	//qjobv1.AddToScheme(qjrPod.scheme)
 
 	qjrPod.jsonSerializer = json.NewYAMLSerializer(json.DefaultMetaFactory, qjrPod.rtScheme, qjrPod.rtScheme)
+
+	qjrPod.refManager = queuejobresources.NewLabelRefManager()
 
 	return qjrPod
 }
@@ -164,7 +167,7 @@ func (qjrPod *QueueJobResPod) getPodTemplate(qjobRes *qjobv1.QueueJobResource) (
 }
 
 // scale up queuejob resource to the desired number
-func (qjrPod *QueueJobResPod) scaleUpQueueJobResource(resIndex int, diff int32, activePods []*v1.Pod, queuejob *qjobv1.QueueJob, qjobRes *qjobv1.QueueJobResource) error {
+func (qjrPod *QueueJobResPod) scaleUpQueueJobResource(diff int32, activePods []*v1.Pod, queuejob *qjobv1.QueueJob, qjobRes *qjobv1.QueueJobResource) error {
 
 	startTime := time.Now()
 	defer func() {
@@ -176,11 +179,12 @@ func (qjrPod *QueueJobResPod) scaleUpQueueJobResource(resIndex int, diff int32, 
 		return err
 	}
 
-	if template.Template.Labels == nil {
-
-		template.Template.Labels = map[string]string{}
+	//TODO: need set reference after Pod has been really dded
+	tmpPod := v1.Pod{}
+	qjrPod.refManager.AddReference(qjobRes, &tmpPod)
+	for k, v := range tmpPod.Labels {
+		template.Template.Labels[k] = v
 	}
-	template.Template.Labels[qjobResIdxLable] = strconv.Itoa(resIndex)
 
 	wait := sync.WaitGroup{}
 	wait.Add(int(diff))
@@ -225,19 +229,14 @@ func (qjrPod *QueueJobResPod) scaleDownQueueJobResource(diff int32, activePods [
 
 }
 
-func (qjrPod *QueueJobResPod) Sync(resIndex int, queuejob *qjobv1.QueueJob, qjobRes *qjobv1.QueueJobResource) error {
+func (qjrPod *QueueJobResPod) Sync(queuejob *qjobv1.QueueJob, qjobRes *qjobv1.QueueJobResource) error {
 
 	startTime := time.Now()
 	defer func() {
 		glog.V(4).Infof("Finished syncing queue job resource %q (%v)", qjobRes.Template, time.Now().Sub(startTime))
 	}()
 
-	if qjobRes.ObjectMeta.Labels == nil {
-		qjobRes.ObjectMeta.Labels = map[string]string{}
-	}
-	qjobRes.ObjectMeta.Labels[qjobResIdxLable] = strconv.Itoa(resIndex)
-
-	pods, err := qjrPod.getPodsForQueueJobRes(resIndex, queuejob)
+	pods, err := qjrPod.getPodsForQueueJobRes(qjobRes, queuejob)
 	if err != nil {
 		return err
 	}
@@ -252,7 +251,7 @@ func (qjrPod *QueueJobResPod) Sync(resIndex int, queuejob *qjobv1.QueueJob, qjob
 			activePods, queuejob, qjobRes)
 	} else if qjobRes.DesiredReplicas > numActivePods {
 
-		qjrPod.scaleUpQueueJobResource(resIndex,
+		qjrPod.scaleUpQueueJobResource(
 			int32(qjobRes.DesiredReplicas-numActivePods),
 			activePods, queuejob, qjobRes)
 	}
@@ -288,7 +287,7 @@ func (qjrPod *QueueJobResPod) getPodsForQueueJob(j *qjobv1.QueueJob) ([]*v1.Pod,
 
 }
 
-func (qjrPod *QueueJobResPod) getPodsForQueueJobRes(resIndex int, j *qjobv1.QueueJob) ([]*v1.Pod, error) {
+func (qjrPod *QueueJobResPod) getPodsForQueueJobRes(qjobRes *qjobv1.QueueJobResource, j *qjobv1.QueueJob) ([]*v1.Pod, error) {
 
 	pods, err := qjrPod.getPodsForQueueJob(j)
 	if err != nil {
@@ -297,7 +296,7 @@ func (qjrPod *QueueJobResPod) getPodsForQueueJobRes(resIndex int, j *qjobv1.Queu
 
 	myPods := []*v1.Pod{}
 	for i, pod := range pods {
-		if pod.Labels[qjobResIdxLable] == strconv.Itoa(resIndex) {
+		if qjrPod.refManager.BelongTo(qjobRes, pod) {
 			myPods = append(myPods, pods[i])
 		}
 	}
@@ -306,11 +305,11 @@ func (qjrPod *QueueJobResPod) getPodsForQueueJobRes(resIndex int, j *qjobv1.Queu
 
 }
 
-func (qjrPod *QueueJobResPod) deleteQueueJobResPods(resIndex int, queuejob *qjobv1.QueueJob) error {
+func (qjrPod *QueueJobResPod) deleteQueueJobResPods(qjobRes *qjobv1.QueueJobResource, queuejob *qjobv1.QueueJob) error {
 
 	job := *queuejob
 
-	pods, err := qjrPod.getPodsForQueueJobRes(resIndex, queuejob)
+	pods, err := qjrPod.getPodsForQueueJobRes(qjobRes, queuejob)
 	if err != nil {
 		return err
 	}
@@ -334,9 +333,9 @@ func (qjrPod *QueueJobResPod) deleteQueueJobResPods(resIndex int, queuejob *qjob
 	return nil
 }
 
-func (qjrPod *QueueJobResPod) Cleanup(resIndex int, queuejob *qjobv1.QueueJob, qjobRes *qjobv1.QueueJobResource) error {
+func (qjrPod *QueueJobResPod) Cleanup(queuejob *qjobv1.QueueJob, qjobRes *qjobv1.QueueJobResource) error {
 
-	return qjrPod.deleteQueueJobResPods(resIndex, queuejob)
+	return qjrPod.deleteQueueJobResPods(qjobRes, queuejob)
 }
 
 func (qjrPod *QueueJobResPod) GetResourceAllocated() *qjobv1.ResourceList {

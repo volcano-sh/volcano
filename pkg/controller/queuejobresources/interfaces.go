@@ -27,7 +27,7 @@ type Interface interface {
 	GetResourceRequest() *schedulercache.Resource
 
 	SetResourceAllocated(qjobv1.ResourceList) error
-	Sync(resIndex int, queuejob *qjobv1.QueueJob, qjobRes *qjobv1.QueueJobResource) error
-	Cleanup(resIndex int, queuejob *qjobv1.QueueJob, qjobRes *qjobv1.QueueJobResource) error
+	Sync(queuejob *qjobv1.QueueJob, qjobRes *qjobv1.QueueJobResource) error
+	Cleanup(queuejob *qjobv1.QueueJob, qjobRes *qjobv1.QueueJobResource) error
 	Run(stopCh <-chan struct{})
 }

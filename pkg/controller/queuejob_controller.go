@@ -18,6 +18,7 @@ package controller
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/golang/glog"
@@ -69,6 +70,9 @@ type QueueJobController struct {
 
 	// QueueJobs that need to be updated
 	queue workqueue.RateLimitingInterface
+
+	// Reference manager to manage membership of queuejob resource and its members
+	refManager queuejobresources.RefManager
 
 	recorder record.EventRecorder
 }
@@ -144,6 +148,8 @@ func NewQueueJobController(config *rest.Config, schCache schedulercache.Cache) *
 	qjm.qjobResControls = map[qjobv1.ResourceType]queuejobresources.Interface{}
 	qjm.qjobResControls[qjobv1.ResourceTypePod] = resControl
 
+	qjm.refManager = queuejobresources.NewLabelRefManager()
+
 	return qjm
 }
 
@@ -198,8 +204,8 @@ func (qjm *QueueJobController) deleteQueueJob(obj interface{}) {
 func (qjm *QueueJobController) Cleanup(queuejob *qjobv1.QueueJob) error {
 
 	if queuejob.Spec.AggrResources.Items != nil {
-		for i, ar := range queuejob.Spec.AggrResources.Items {
-			qjm.qjobResControls[ar.Type].Cleanup(i, queuejob, &ar)
+		for _, ar := range queuejob.Spec.AggrResources.Items {
+			qjm.qjobResControls[ar.Type].Cleanup(queuejob, &ar)
 		}
 	}
 
@@ -279,8 +285,19 @@ func (qjm *QueueJobController) syncQueueJob(key string) error {
 	}
 
 	if job.Spec.AggrResources.Items != nil {
-		for i, ar := range job.Spec.AggrResources.Items {
-			qjm.qjobResControls[ar.Type].Sync(i, sharedJob, &ar)
+		for i, _ := range job.Spec.AggrResources.Items {
+			qjm.refManager.AddTag(&job.Spec.AggrResources.Items[i], func() string {
+				return strconv.Itoa(i)
+			})
+
+		}
+		var result qjobv1.QueueJob
+		qjm.qjobClient.Put().
+			Namespace(ns).Resource(qjobv1.QueueJobPlural).
+			Name(name).Body(sharedJob).Do().Into(&result)
+
+		for _, ar := range job.Spec.AggrResources.Items {
+			qjm.qjobResControls[ar.Type].Sync(sharedJob, &ar)
 		}
 	}
 
