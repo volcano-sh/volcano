@@ -179,9 +179,13 @@ func (qjrPod *QueueJobResPod) scaleUpQueueJobResource(diff int32, activePods []*
 		return err
 	}
 
-	//TODO: need set reference after Pod has been really dded
+	//TODO: need set reference after Pod has been really added
 	tmpPod := v1.Pod{}
-	qjrPod.refManager.AddReference(qjobRes, &tmpPod)
+	err = qjrPod.refManager.AddReference(qjobRes, &tmpPod)
+	if err != nil {
+		return err
+	}
+
 	for k, v := range tmpPod.Labels {
 		template.Template.Labels[k] = v
 	}

@@ -286,9 +286,12 @@ func (qjm *QueueJobController) syncQueueJob(key string) error {
 
 	if job.Spec.AggrResources.Items != nil {
 		for i := range job.Spec.AggrResources.Items {
-			qjm.refManager.AddTag(&job.Spec.AggrResources.Items[i], func() string {
+			err := qjm.refManager.AddTag(&job.Spec.AggrResources.Items[i], func() string {
 				return strconv.Itoa(i)
 			})
+			if err != nil {
+				return err
+			}
 
 		}
 		var result qjobv1.QueueJob
