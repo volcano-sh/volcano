@@ -87,14 +87,21 @@ func (ps *proportionScheduler) Allocate(
 		return nil
 	}
 
+	totalAllocatedCPU := int64(0)
+	totalAllocatedMEM := int64(0)
 	allocatedResult := make(map[string]*schedulercache.QueueInfo)
 	for _, jobs := range jobGroup {
 		for _, job := range jobs {
+			allocatedCPU := int64(job.Queue().Spec.Weight) * totalCPU / totalWeight
+			allocatedMEM := int64(job.Queue().Spec.Weight) * totalMEM / totalWeight
+			totalAllocatedCPU += allocatedCPU
+			totalAllocatedMEM += allocatedMEM
+
 			allocatedResult[job.Name()] = job.Clone()
 			allocatedResult[job.Name()].Queue().Status.Deserved = apiv1.ResourceList{
 				Resources: map[apiv1.ResourceName]resource.Quantity{
-					"cpu":    *resource.NewQuantity(int64(job.Queue().Spec.Weight)*totalCPU/totalWeight, resource.DecimalSI),
-					"memory": *resource.NewQuantity(int64(job.Queue().Spec.Weight)*totalMEM/totalWeight, resource.BinarySI),
+					"cpu":    *resource.NewQuantity(allocatedCPU, resource.DecimalSI),
+					"memory": *resource.NewQuantity(allocatedMEM, resource.BinarySI),
 				},
 			}
 			// clear Used resources
@@ -103,6 +110,28 @@ func (ps *proportionScheduler) Allocate(
 			}
 		}
 	}
+
+	// assign the left resources to queues one by one
+	// leftCPU and leftMEM is less than the size of allocatedResult
+	// so all of them can be allocated in below
+	leftCPU := totalCPU - totalAllocatedCPU
+	leftMEM := totalMEM - totalAllocatedMEM
+	for _, queue := range allocatedResult {
+		resList := queue.Queue().Status.Deserved.DeepCopy()
+		if leftCPU > 0 {
+			leftCPU -= 1
+			result := resList.Resources["cpu"].DeepCopy()
+			result.Add(*resource.NewQuantity(1, resource.DecimalSI))
+			queue.Queue().Status.Deserved.Resources["cpu"] = result
+		}
+		if leftMEM > 0 {
+			leftMEM -= 1
+			result := resList.Resources["memory"].DeepCopy()
+			result.Add(*resource.NewQuantity(1, resource.BinarySI))
+			queue.Queue().Status.Deserved.Resources["memory"] = result
+		}
+	}
+
 	return allocatedResult
 }
 
