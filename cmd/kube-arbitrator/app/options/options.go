@@ -17,6 +17,9 @@ limitations under the License.
 package options
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/spf13/pflag"
 
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/proportion"
@@ -41,4 +44,13 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.Kubeconfig, "kubeconfig", s.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
 	// The default policy is Proportion policy.
 	fs.StringVar(&s.Policy, "policy", proportion.PolicyName, "The policy that used to allocate resources")
+}
+
+func (s *ServerOption) CheckOptionOrDie() {
+	switch s.Policy {
+	case proportion.PolicyName:
+	default:
+		fmt.Fprintf(os.Stderr, "invalid policy name %s\n", s.Policy)
+		os.Exit(1)
+	}
 }

@@ -29,6 +29,7 @@ func main() {
 	s := options.NewServerOption()
 	s.AddFlags(pflag.CommandLine)
 	pflag.Parse()
+	s.CheckOptionOrDie()
 
 	if err := app.Run(s); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
