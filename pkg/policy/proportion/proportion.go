@@ -20,7 +20,6 @@ import (
 	"github.com/golang/glog"
 
 	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -30,11 +29,11 @@ import (
 // that need a name, e.g. default policy, register proportion policy.
 var PolicyName = "proportion"
 
-func init() {
-	policy.RegisterPolicy(PolicyName, &proportionScheduler{})
+type proportionScheduler struct {
 }
 
-type proportionScheduler struct {
+func New() *proportionScheduler {
+	return &proportionScheduler{}
 }
 
 func (ps *proportionScheduler) Name() string {

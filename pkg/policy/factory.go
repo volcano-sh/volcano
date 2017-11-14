@@ -16,10 +16,18 @@ limitations under the License.
 
 package policy
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/proportion"
+)
 
 var policyMap = make(map[string]Interface)
 var mutex sync.Mutex
+
+func init() {
+	RegisterPolicy(proportion.PolicyName, proportion.New())
+}
 
 func New(name string) Interface {
 	mutex.Lock()
