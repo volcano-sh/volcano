@@ -46,8 +46,6 @@ import (
 
 var controllerKind = qjobv1.SchemeGroupVersion.WithKind("QueueJob")
 
-const qjobResIdxLable = "QJOBRES_INDEX"
-
 type QueueJobResPod struct {
 	kubeClient clientset.Interface
 	podControl controller.PodControlInterface
