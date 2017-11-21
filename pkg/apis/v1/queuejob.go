@@ -81,8 +81,9 @@ const (
 
 // QueueJobStatus represents the current state of a QueueJob.
 type QueueJobStatus struct {
-	State   QueueJobState `json:"state,omitempty"`
-	Message string        `json:"message,omitempty"`
+	State         QueueJobState       `json:"state,omitempty"`
+	ResourceUsage ResourceUsageStatus `json:"resources,omitempty"`
+	Message       string              `json:"message,omitempty"`
 }
 
 type QueueJobState string
@@ -94,3 +95,11 @@ const (
 	QueueJobStateDeleted  QueueJobState = "Deleted"
 	QueueJobStateFailed   QueueJobState = "Failed"
 )
+
+// ResourceUsageStatus represents the current state of a QueueJob.
+type ResourceUsageStatus struct {
+	Deserved   ResourceList `json:"deserved"`
+	Allocated  ResourceList `json:"allocated"`
+	Used       ResourceList `json:"used"`
+	Preempting ResourceList `json:"preempting"`
+}
