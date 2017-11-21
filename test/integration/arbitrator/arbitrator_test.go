@@ -101,8 +101,8 @@ func prepareNode(cs *clientset.Clientset) error {
 	}{
 		{
 			name:           "node01",
-			resourceCPU:    resource.MustParse("15"),
-			resourceMemory: resource.MustParse("15Gi"),
+			resourceCPU:    resource.MustParse("8"),
+			resourceMemory: resource.MustParse("32Gi"),
 		},
 	}
 
@@ -173,7 +173,7 @@ func prepareResourceQuota(cs *clientset.Clientset) error {
 // create two Queues, "queue01" and "queue02"
 // "queue01" is under namespace "ns01" and has attribute "weight=1"
 // "queue02" is under namespace "ns02" and has attribute "weight=2"
-func prepareCRD(config *restclient.Config) error {
+func prepareQueue(config *restclient.Config) error {
 	extensionscs, err := apiextensionsclient.NewForConfig(config)
 	if err != nil {
 		return fmt.Errorf("fail to create crd config, %#v", err)
@@ -184,51 +184,64 @@ func prepareCRD(config *restclient.Config) error {
 		return fmt.Errorf("fail to create crd, %#v", err)
 	}
 
-	crdClient, _, err := client.NewClient(config)
+	queueClient, _, err := client.NewClient(config)
 	if err != nil {
 		return fmt.Errorf("fail to create crd client, %#v", err)
 	}
 
-	crd := &apiv1.Queue{
+	queue := &apiv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "xxx",
 			Namespace: "xxx",
 		},
 		Spec: apiv1.QueueSpec{
 			Weight: 0,
+			Request: apiv1.ResourceList{
+				Resources: nil,
+			},
 		},
 	}
 
 	cases := []struct {
-		name   string
-		ns     string
-		weight int
+		name    string
+		ns      string
+		weight  int
+		request map[apiv1.ResourceName]resource.Quantity
 	}{
 		{
 			name:   "queue01",
 			ns:     "ns01",
-			weight: 1,
+			weight: 3,
+			request: map[apiv1.ResourceName]resource.Quantity{
+				"cpu":    resource.MustParse("6"),
+				"memory": resource.MustParse("12Gi"),
+			},
 		},
 		{
 			name:   "queue02",
 			ns:     "ns02",
-			weight: 2,
+			weight: 1,
+			request: map[apiv1.ResourceName]resource.Quantity{
+				"cpu":    resource.MustParse("2"),
+				"memory": resource.MustParse("4Gi"),
+			},
 		},
 	}
 
 	for _, c := range cases {
-		crd.Name = c.name
-		crd.Namespace = c.ns
-		crd.Spec.Weight = c.weight
+		queue.Name = c.name
+		queue.Namespace = c.ns
+		queue.Spec.Weight = c.weight
+		queue.Spec.Request.Resources = c.request
 
 		var result apiv1.Queue
-		err = crdClient.Post().
+		err = queueClient.Post().
 			Resource(apiv1.QueuePlural).
-			Namespace(crd.Namespace).
-			Body(crd).
+			Namespace(queue.Namespace).
+			Body(queue).
 			Do().Into(&result)
 		if err != nil {
-			return fmt.Errorf("fail to create crd %s, %#v", crd.Name, err)
+			return fmt.Errorf("fail to create queue %s, %#v", queue.Name, err)
 		}
 	}
 
@@ -237,7 +250,7 @@ func prepareCRD(config *restclient.Config) error {
 
 // prepareCRDForPreemption create one Queue "queue03"
 // "queue03" is under namespace "ns03" and has attribute "weight=2"
-func prepareCRDForPreemption(config *restclient.Config) error {
+func prepareQueueForPreemption(config *restclient.Config) error {
 	extensionscs, err := apiextensionsclient.NewForConfig(config)
 	if err != nil {
 		return fmt.Errorf("fail to create crd config, %#v", err)
@@ -248,46 +261,55 @@ func prepareCRDForPreemption(config *restclient.Config) error {
 		return fmt.Errorf("fail to create crd, %#v", err)
 	}
 
-	crdClient, _, err := client.NewClient(config)
+	queueClient, _, err := client.NewClient(config)
 	if err != nil {
 		return fmt.Errorf("fail to create crd client, %#v", err)
 	}
 
-	crd := &apiv1.Queue{
+	queue := &apiv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "xxx",
 			Namespace: "xxx",
 		},
 		Spec: apiv1.QueueSpec{
 			Weight: 0,
+			Request: apiv1.ResourceList{
+				Resources: nil,
+			},
 		},
 	}
 
 	cases := []struct {
-		name   string
-		ns     string
-		weight int
+		name    string
+		ns      string
+		weight  int
+		request map[apiv1.ResourceName]resource.Quantity
 	}{
 		{
 			name:   "queue03",
 			ns:     "ns03",
-			weight: 2,
+			weight: 4,
+			request: map[apiv1.ResourceName]resource.Quantity{
+				"cpu":    resource.MustParse("3"),
+				"memory": resource.MustParse("6Gi"),
+			},
 		},
 	}
 
 	for _, c := range cases {
-		crd.Name = c.name
-		crd.Namespace = c.ns
-		crd.Spec.Weight = c.weight
+		queue.Name = c.name
+		queue.Namespace = c.ns
+		queue.Spec.Weight = c.weight
+		queue.Spec.Request.Resources = c.request
 
 		var result apiv1.Queue
-		err = crdClient.Post().
+		err = queueClient.Post().
 			Resource(apiv1.QueuePlural).
-			Namespace(crd.Namespace).
-			Body(crd).
+			Namespace(queue.Namespace).
+			Body(queue).
 			Do().Into(&result)
 		if err != nil {
-			return fmt.Errorf("fail to create crd %s, %#v", crd.Name, err)
+			return fmt.Errorf("fail to create crd %s, %#v", queue.Name, err)
 		}
 	}
 
@@ -353,35 +375,15 @@ func preparePods(cs *clientset.Clientset) error {
 			ns:   "ns01",
 		},
 		{
+			name: "ns01-pod06",
+			ns:   "ns01",
+		},
+		{
 			name: "ns02-pod01",
 			ns:   "ns02",
 		},
 		{
 			name: "ns02-pod02",
-			ns:   "ns02",
-		},
-		{
-			name: "ns02-pod03",
-			ns:   "ns02",
-		},
-		{
-			name: "ns02-pod04",
-			ns:   "ns02",
-		},
-		{
-			name: "ns02-pod05",
-			ns:   "ns02",
-		},
-		{
-			name: "ns02-pod06",
-			ns:   "ns02",
-		},
-		{
-			name: "ns02-pod07",
-			ns:   "ns02",
-		},
-		{
-			name: "ns02-pod08",
 			ns:   "ns02",
 		},
 	}
@@ -421,7 +423,7 @@ func TestArbitrator(t *testing.T) {
 		t.Fatalf("fail to prepare resource quota, %#v", err)
 	}
 
-	err = prepareCRD(config)
+	err = prepareQueue(config)
 	if err != nil {
 		t.Fatalf("fail to prepare CRD, %#v", err)
 	}
@@ -439,13 +441,13 @@ func TestArbitrator(t *testing.T) {
 	// verify scheduler result
 	rq01, _ := cs.CoreV1().ResourceQuotas("ns01").Get("rq01", metav1.GetOptions{})
 	cpu01 := rq01.Spec.Hard["limits.cpu"]
-	if v, _ := (&cpu01).AsInt64(); v != int64(5) {
-		t.Fatalf("after scheduler, cpu is not 5 for rq01, %#v", rq01)
+	if v, _ := (&cpu01).AsInt64(); v != int64(6) {
+		t.Fatalf("after scheduler, cpu is not 6 for rq01, %#v", rq01)
 	}
 	rq02, _ := cs.CoreV1().ResourceQuotas("ns02").Get("rq02", metav1.GetOptions{})
 	cpu02 := rq02.Spec.Hard["limits.cpu"]
-	if v, _ := (&cpu02).AsInt64(); v != int64(10) {
-		t.Fatalf("after scheduler, cpu is not 10 for rq02, %#v", rq02)
+	if v, _ := (&cpu02).AsInt64(); v != int64(2) {
+		t.Fatalf("after scheduler, cpu is not 2 for rq02, %#v", rq02)
 	}
 
 	// test preemption
@@ -456,16 +458,16 @@ func TestArbitrator(t *testing.T) {
 	// sleep to wait pods creation done
 	time.Sleep(10 * time.Second)
 	pods01, _ := cs.CoreV1().Pods("ns01").List(metav1.ListOptions{})
-	if len(pods01.Items) != 5 {
-		t.Fatalf("running pods size is not 5 for ns01, %#v", pods01.Items)
+	if len(pods01.Items) != 6 {
+		t.Fatalf("running pods size is not 6 for ns01, %#v", pods01.Items)
 	}
 	pods02, _ := cs.CoreV1().Pods("ns02").List(metav1.ListOptions{})
-	if len(pods02.Items) != 8 {
-		t.Fatalf("running pods size is not 8 for ns02, %#v", pods02.Items)
+	if len(pods02.Items) != 2 {
+		t.Fatalf("running pods size is not 2 for ns02, %#v", pods02.Items)
 	}
 
 	// create a new queue to trigger preemption
-	err = prepareCRDForPreemption(config)
+	err = prepareQueueForPreemption(config)
 	if err != nil {
 		t.Fatalf("fail to prepare CRD for preemption, %#v", err)
 	}
@@ -474,25 +476,25 @@ func TestArbitrator(t *testing.T) {
 	time.Sleep(20 * time.Second)
 	rq01, _ = cs.CoreV1().ResourceQuotas("ns01").Get("rq01", metav1.GetOptions{})
 	cpu01 = rq01.Spec.Hard["limits.cpu"]
-	if v, _ := (&cpu01).AsInt64(); v != int64(3) {
-		t.Fatalf("after preemption, cpu is not 3 for rq01, %#v", rq01)
+	if v, _ := (&cpu01).AsInt64(); v != int64(4) {
+		t.Fatalf("after preemption, cpu is not 4 for rq01, %#v", rq01)
 	}
 	rq02, _ = cs.CoreV1().ResourceQuotas("ns02").Get("rq02", metav1.GetOptions{})
 	cpu02 = rq02.Spec.Hard["limits.cpu"]
-	if v, _ := (&cpu02).AsInt64(); v != int64(6) {
-		t.Fatalf("after preemption, cpu is not 6 for rq02, %#v", rq02)
+	if v, _ := (&cpu02).AsInt64(); v != int64(1) {
+		t.Fatalf("after preemption, cpu is not 1 for rq02, %#v", rq02)
 	}
 	rq03, _ := cs.CoreV1().ResourceQuotas("ns03").Get("rq03", metav1.GetOptions{})
 	cpu03 := rq03.Spec.Hard["limits.cpu"]
-	if v, _ := (&cpu03).AsInt64(); v != int64(6) {
-		t.Fatalf("after preemption, cpu is not 6 for rq03, %#v", rq03)
+	if v, _ := (&cpu03).AsInt64(); v != int64(3) {
+		t.Fatalf("after preemption, cpu is not 3 for rq03, %#v", rq03)
 	}
 	pods01, _ = cs.CoreV1().Pods("ns01").List(metav1.ListOptions{})
-	if len(pods01.Items) != 3 {
-		t.Fatalf("after preemption, pods size is not 3 for ns01, %#v", pods01.Items)
+	if len(pods01.Items) != 4 {
+		t.Fatalf("after preemption, pods size is not 4 for ns01, %#v", pods01.Items)
 	}
 	pods02, _ = cs.CoreV1().Pods("ns02").List(metav1.ListOptions{})
-	if len(pods02.Items) != 6 {
-		t.Fatalf("after preemption, pods size is not 6 for ns02, %#v", pods02.Items)
+	if len(pods02.Items) != 1 {
+		t.Fatalf("after preemption, pods size is not 1 for ns02, %#v", pods02.Items)
 	}
 }
