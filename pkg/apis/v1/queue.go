@@ -32,7 +32,8 @@ type Queue struct {
 }
 
 type QueueSpec struct {
-	Weight int `json:"weight"`
+	Weight  int          `json:"weight"`
+	Request ResourceList `json:"request"`
 }
 
 type QueueStatus struct {
