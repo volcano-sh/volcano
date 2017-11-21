@@ -25,6 +25,7 @@ import (
 	qjobv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 	qjobclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
 	qInformerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
+	qclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/queue/v1"
 	qjobv1informer "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/queuejob/v1"
 	qjobv1lister "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/listers/queuejob/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/controller/queuejobresources"
@@ -33,6 +34,7 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
@@ -46,8 +48,6 @@ import (
 )
 
 var controllerKind = qjobv1.SchemeGroupVersion.WithKind("QueueJob")
-
-const qjobResIdxLable = "QJOBRES_INDEX"
 
 type QueueJobController struct {
 	kubeClient              clientset.Interface
@@ -67,6 +67,9 @@ type QueueJobController struct {
 	// A store of queuejobs
 	queueJobLister   qjobv1lister.QueueJobLister
 	queueJobInformer qjobv1informer.QueueJobInformer
+
+	// A store of queues
+	queueInformer qclient.QueueInformer
 
 	// QueueJobs that need to be updated
 	queue workqueue.RateLimitingInterface
@@ -134,6 +137,33 @@ func NewQueueJobController(config *rest.Config, schCache schedulercache.Cache) *
 	qjm.updateHandler = qjm.updateJobStatus
 	qjm.syncHandler = qjm.syncQueueJob
 
+	// create queue informer
+	queueClient, _, err := qjobclient.NewClient(config)
+	if err != nil {
+		panic(err)
+	}
+
+	// create informer for queue information
+	qInformerFactory := qInformerfactory.NewSharedInformerFactory(queueClient, 0)
+	qjm.queueInformer = qInformerFactory.Queue().Queues()
+	qjm.queueInformer.Informer().AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				switch t := obj.(type) {
+				case *qjobv1.Queue:
+					glog.V(4).Infof("filter queue name(%s) namespace(%s)\n", t.Name, t.Namespace)
+					return true
+				default:
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    qjm.AddQueue,
+				UpdateFunc: qjm.UpdateQueue,
+				DeleteFunc: qjm.DeleteQueue,
+			},
+		})
+
 	RegisterAllQueueJobResourceTypes(&qjm.qjobRegisteredResources)
 	resControl, found, err := qjm.qjobRegisteredResources.InitQueueJobResource(qjobv1.ResourceTypePod, config)
 	if err != nil {
@@ -157,6 +187,7 @@ func NewQueueJobController(config *rest.Config, schCache schedulercache.Cache) *
 func (qjm *QueueJobController) Run(workers int, stopCh <-chan struct{}) {
 
 	go qjm.queueJobInformer.Informer().Run(stopCh)
+	go qjm.queueInformer.Informer().Run(stopCh)
 	go qjm.qjobResControls[qjobv1.ResourceTypePod].Run(stopCh)
 
 	defer utilruntime.HandleCrash()
@@ -199,6 +230,127 @@ func (qjm *QueueJobController) deleteQueueJob(obj interface{}) {
 
 	qjm.enqueueController(obj)
 
+}
+
+//notification callback function for queue being added
+func (qjm *QueueJobController) AddQueue(obj interface{}) {
+
+	//TODO: adopt queuejobs belong to this queue
+
+	return
+}
+
+//check 2 resources if equal
+func resourcesEqual(r1, r2 *qjobv1.ResourceList) (bool, error) {
+
+	if r1 == nil || r2 == nil {
+		return false, fmt.Errorf("resources null error")
+	}
+
+	q1, found1 := r1.Resources["cpu"]
+	q2, found2 := r2.Resources["cpu"]
+
+	if !found1 || !found2 {
+		return false, fmt.Errorf("cpu resource not found error")
+	}
+
+	if q1.Cmp(q2) != 0 {
+		return false, nil
+	}
+
+	q1, found1 = r1.Resources["memory"]
+	q2, found2 = r2.Resources["memory"]
+
+	if !found1 || !found2 {
+		return false, fmt.Errorf("memory resource not found error")
+	}
+
+	if q1.Cmp(q2) != 0 {
+		return false, nil
+	}
+
+	return true, nil
+
+}
+
+//get all queuejobs belong to a certain queue
+func (qjm *QueueJobController) getQueueJobsForQueue(j *qjobv1.Queue) ([]*qjobv1.QueueJob, error) {
+	qjoblist, err := qjm.queueJobLister.QueueJobs(j.Namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	qjobs := []*qjobv1.QueueJob{}
+	for i, qjob := range qjoblist {
+		meta_qjob, err := meta.Accessor(qjob)
+		if err != nil {
+			return nil, err
+		}
+
+		qjob_queuename, found := meta_qjob.GetLabels()["queue"]
+		if found && qjob_queuename == j.Name {
+			qjobs = append(qjobs, qjoblist[i])
+		}
+	}
+	return qjobs, nil
+
+}
+
+//Handle queue information updating
+func (qjm *QueueJobController) updateQueue(oldQueue, newQueue *qjobv1.Queue) error {
+
+	equal, err := resourcesEqual(&oldQueue.Status.Allocated,
+		&newQueue.Status.Allocated)
+	if err != nil {
+		return err
+	}
+
+	if !equal {
+		qjobs, err := qjm.getQueueJobsForQueue(oldQueue)
+		if err != nil {
+			return err
+		}
+
+		//TODO: add re-schedule queuejob resources' quota handling here
+
+		for _, qjob := range qjobs {
+			qjm.enqueueController(qjob)
+		}
+
+	}
+
+	return nil
+}
+
+//notification callback function for queue being updated
+func (qjm *QueueJobController) UpdateQueue(oldObj, newObj interface{}) {
+	oldQueue, ok := oldObj.(*qjobv1.Queue)
+	if !ok {
+		glog.Errorf("cannot convert oldObj to *qjobv1.Queue: %v", oldObj)
+		return
+	}
+	newQueue, ok := newObj.(*qjobv1.Queue)
+	if !ok {
+		glog.Errorf("cannot convert newObj to *qjobv1.Queue: %v", newObj)
+		return
+	}
+
+	glog.V(4).Infof("UPDATE oldQueue(%s) in cache, status(%#v), spec(%#v)\n", oldQueue.Name, oldQueue.Status, oldQueue.Spec)
+	glog.V(4).Infof("UPDATE newQueue(%s) in cache, status(%#v), spec(%#v)\n", newQueue.Name, newQueue.Status, newQueue.Spec)
+	err := qjm.updateQueue(oldQueue, newQueue)
+	if err != nil {
+		glog.Errorf("failed to update queue %s into cache: %v", oldQueue.Name, err)
+		return
+	}
+	return
+}
+
+//notification callback function for queue being delelted
+func (qjm *QueueJobController) DeleteQueue(obj interface{}) {
+
+	//TODO: cleanup queuejobs belong to this queue
+
+	return
 }
 
 func (qjm *QueueJobController) Cleanup(queuejob *qjobv1.QueueJob) error {
@@ -298,6 +450,8 @@ func (qjm *QueueJobController) syncQueueJob(key string) error {
 		qjm.qjobClient.Put().
 			Namespace(ns).Resource(qjobv1.QueueJobPlural).
 			Name(name).Body(sharedJob).Do().Into(&result)
+
+		//TODO: Add distributing resource quota among sub-resources
 
 		for _, ar := range job.Spec.AggrResources.Items {
 			qjm.qjobResControls[ar.Type].Sync(sharedJob, &ar)
