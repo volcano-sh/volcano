@@ -124,8 +124,11 @@ func (p *basePreemption) Run(stopCh <-chan struct{}) {
 	go p.podInformer.Informer().Run(stopCh)
 }
 
+// Preprocessing kill running pod for each queue to make used < allocated
 func (p *basePreemption) Preprocessing(queues map[string]*schedulercache.QueueInfo, pods []*schedulercache.PodInfo) (map[string]*schedulercache.QueueInfo, error) {
-	// kill running pod for each queue to make used < allocated
+	glog.V(4).Infof("Enter Preprocessing ...")
+	defer glog.V(4).Infof("Leaving Preprocessing ...")
+
 	p.dataMu.Lock()
 	defer p.dataMu.Unlock()
 
@@ -144,7 +147,7 @@ func (p *basePreemption) Preprocessing(queues map[string]*schedulercache.QueueIn
 
 			q.Pods[pod.Name()] = pod.Pod()
 			podResources := calculatePodResources(pod.Pod())
-			glog.V(4).Infof("Preprocessing() total resources for pod %s, %#v", pod.Name(), podResources)
+			glog.V(4).Infof("Total occupied resources by pod %s, %#v", pod.Name(), podResources)
 
 			for k, v := range podResources {
 				if k != "cpu" && k != "memory" {
@@ -160,7 +163,7 @@ func (p *basePreemption) Preprocessing(queues map[string]*schedulercache.QueueIn
 				}
 			}
 		}
-		glog.V(4).Infof("Preprocessing calculate queue, queue %s, deserved (%#v), allocated (%#v), used (%#v), preempting (%#v)",
+		glog.V(4).Infof("Queue %s status, deserved (%#v), allocated (%#v), used (%#v), preempting (%#v)",
 			q.Name(), q.Queue().Status.Deserved.Resources, q.Queue().Status.Allocated.Resources,
 			q.Queue().Status.Used.Resources, q.Queue().Status.Preempting.Resources)
 	}
@@ -169,9 +172,10 @@ func (p *basePreemption) Preprocessing(queues map[string]*schedulercache.QueueIn
 	for _, q := range queues {
 		for k, pod := range q.Pods {
 			if q.UsedUnderAllocated() {
-				glog.V(4).Infof("Preprocessing queue %s is underused, used <= allocated, try next queue", q.Name())
+				glog.V(4).Infof("Queue %s is underused, used <= allocated, try next queue", q.Name())
 				break
 			}
+			glog.V(4).Infof("Queue %s is overused, used > allocated, terminate pod %s to release resources", q.Name(), pod.Name)
 
 			// choose a pod to kill and check used <= allocated again
 			podResources := calculatePodResources(pod)
@@ -189,15 +193,15 @@ func (p *basePreemption) Preprocessing(queues map[string]*schedulercache.QueueIn
 						result.Sub(v)
 						q.Queue().Status.Used.Resources[resType] = result
 					} else {
-						glog.Errorf("cannot find resource %s in queue used resource", k)
+						glog.Errorf("Cannot find resource %s in queue used resource", k)
 					}
 				}
 			} else {
 				// TODO may need some error handling when kill pod failed
-				glog.Errorf("failed to kill pod %s", pod.Name)
+				glog.Errorf("Failed to kill pod %s", pod.Name)
 			}
 		}
-		glog.V(4).Infof("Preprocessing after kill pods, queue %s, deserved (%#v), allocated (%#v), used (%#v), preempting (%#v)",
+		glog.V(4).Infof("Queue %s status after kill pods, deserved (%#v), allocated (%#v), used (%#v), preempting (%#v)",
 			q.Name(), q.Queue().Status.Deserved.Resources, q.Queue().Status.Allocated.Resources,
 			q.Queue().Status.Used.Resources, q.Queue().Status.Preempting.Resources)
 	}
@@ -206,6 +210,9 @@ func (p *basePreemption) Preprocessing(queues map[string]*schedulercache.QueueIn
 }
 
 func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.QueueInfo) error {
+	glog.V(4).Infof("Enter PreemptResources ...")
+	defer glog.V(4).Infof("Leaving PreemptResources ...")
+
 	// Divided queues into three categories
 	//   queuesOverused    - Deserved < Allocated
 	//   queuesPerfectused - Deserved = Allocated, do nothing for these queues in PreemptResources()
@@ -223,17 +230,19 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 			queuesUnderused[q.Name()] = q
 		}
 	}
-	glog.V(4).Infof("PreemptResource after divided, queuesOverused(%d), queuesPerfectused(%d), queuesUnderused(%d)",
+	glog.V(4).Infof("Divided queues into three categories, queuesOverused(%d), queuesPerfectused(%d), queuesUnderused(%d)",
 		len(queuesOverused), len(queuesPerfectused), len(queuesUnderused))
 
 	// handler queuesOverused which will be preempted resources to other queue
 	preemptingPods := make(map[string]preemptedPodInfo)
 	for _, q := range queuesOverused {
 		if q.UsedUnderDeserved() {
+			glog.V(4).Infof("Overused queue %s and it is Used <= Deserved, no pod terminated for it", q.Name())
 			// Used <= Deserved
 			// update Allocated to Deserved directly
 			q.Queue().Status.Allocated.Resources = q.Queue().Status.Deserved.Resources
 		} else {
+			glog.V(4).Infof("Overused queue %s and it is Used > Deserved, some pods will be terminated for it", q.Name())
 			// Used > Deserved
 			// kill pod randomly to make Used <= Deserved
 			// after the pod is terminated, it will release some resource to other queues
@@ -276,11 +285,11 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 					totalReleasingResources:  releasingResources,
 					detailReleasingResources: make(map[string]Resources),
 				}
-				glog.V(4).Infof("PreemptResource() pod %s releasing (%#v)", pod.Name, releasingResources)
+				glog.V(4).Infof("Pod %s will be terminated to release resources (%#v)", pod.Name, releasingResources)
 			}
 			q.Queue().Status.Allocated.Resources = q.Queue().Status.Deserved.Resources
 		}
-		glog.V(4).Infof("PreemptResource queuesOverused calculate, queue %s, deverved (%#v), allocated (%#v), used (%#v), preempting (%#v)",
+		glog.V(4).Infof("Overused queue %s status after preempted resources, deverved (%#v), allocated (%#v), used (%#v), preempting (%#v)",
 			q.Name(), q.Queue().Status.Deserved.Resources, q.Queue().Status.Allocated.Resources,
 			q.Queue().Status.Used.Resources, q.Queue().Status.Preempting.Resources)
 	}
@@ -317,7 +326,7 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 					}
 					releasing, ok := podInfo.totalReleasingResources[resType]
 					if !ok || releasing.IsZero() {
-						glog.V(4).Infof("preempting pod %s has no %s resource left", podInfo.pod.Name, resType)
+						glog.V(4).Infof("Preempting pod %s has no %s resource left", podInfo.pod.Name, resType)
 						continue
 					}
 					if increased.Cmp(releasing) >= 0 {
@@ -351,12 +360,12 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 				}
 			}
 		}
-		glog.V(4).Infof("PreemptResource queuesUnderused calculate, queue %s, deverved (%#v), allocated (%#v), used (%#v), preempting (%#v)",
+		glog.V(4).Infof("Underused queue %s status, deverved (%#v), allocated (%#v), used (%#v), preempting (%#v)",
 			q.Name(), q.Queue().Status.Deserved.Resources, q.Queue().Status.Allocated.Resources,
 			q.Queue().Status.Used.Resources, q.Queue().Status.Preempting.Resources)
 	}
 	if len(preemptingPods) != 0 {
-		glog.Error("preemptingPod is not empty, preemption may be ERROR")
+		glog.Error("PreemptingPod is not empty, preemption may be ERROR")
 	}
 
 	// update Queue to API server under p.updateMu
@@ -379,7 +388,7 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 		if !ok {
 			q, ok = queuesUnderused[oldQueue.Name]
 			if !ok {
-				glog.V(4).Infof("queue %s not exist in queues01(D<A)/queues03(D>A)", oldQueue.Name)
+				glog.V(4).Infof("Queue %s not exist in queues01(D<A)/queues03(D>A)", oldQueue.Name)
 				continue
 			}
 		}
@@ -392,7 +401,7 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 			Body(q.Queue()).
 			Do().Into(&result)
 		if err != nil {
-			glog.Errorf("fail to update queue info, name %s, %#v", q.Queue().Name, err)
+			glog.Errorf("Fail to update queue info, name %s, %#v", q.Queue().Name, err)
 		}
 	}
 	p.updateMu.Unlock()
@@ -407,6 +416,7 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 	}
 	// wait until terminatingPods is empty
 	for len(p.terminatingPodsForPreempt) != 0 {
+		glog.V(4).Infof("Wait terminating pods done, left %d pods", len(p.terminatingPodsForPreempt))
 		p.dataCond.Wait()
 	}
 	p.dataMu.Unlock()
@@ -423,11 +433,11 @@ func (p *basePreemption) terminatePodDone(obj interface{}) {
 		var ok bool
 		pod, ok = t.Obj.(*v1.Pod)
 		if !ok {
-			glog.Errorf("cannot convert to *v1.Pod: %v", t.Obj)
+			glog.Errorf("Cannot convert to *v1.Pod: %v", t.Obj)
 			return
 		}
 	default:
-		glog.Errorf("cannot convert to *v1.Pod: %v", t)
+		glog.Errorf("Cannot convert to *v1.Pod: %v", t)
 		return
 	}
 
@@ -440,6 +450,7 @@ func (p *basePreemption) terminatePodDone(obj interface{}) {
 	ppInfo, ok := p.terminatingPodsForPreempt[pod.Name]
 	if ok {
 		delete(p.terminatingPodsForPreempt, pod.Name)
+		glog.V(4).Infof("Terminating pod %s done for preemption, left pod %d", ppInfo.pod.Name, len(p.terminatingPodsForPreempt))
 	}
 	p.dataMu.Unlock()
 
@@ -489,7 +500,7 @@ func (p *basePreemption) terminatePodDone(obj interface{}) {
 				Body(oldQueue.DeepCopy()).
 				Do().Into(&result)
 			if err != nil {
-				glog.Errorf("fail to update queue info, name %s, %#v", oldQueue.Name, err)
+				glog.Errorf("Fail to update queue info, name %s, %#v", oldQueue.Name, err)
 			}
 		}
 	}
