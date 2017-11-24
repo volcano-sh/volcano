@@ -88,7 +88,7 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
 				case *v1.Pod:
-					glog.V(4).Infof("filter pod name(%s) namespace(%s) status(%s)\n", t.Name, t.Namespace, t.Status.Phase)
+					glog.V(4).Infof("Filter pod name(%s) namespace(%s) status(%s)\n", t.Name, t.Namespace, t.Status.Phase)
 					return true
 				default:
 					return false
@@ -121,7 +121,7 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
 				case *apiv1.Queue:
-					glog.V(4).Infof("filter queue name(%s) namespace(%s)\n", t.Name, t.Namespace)
+					glog.V(4).Infof("Filter queue name(%s) namespace(%s)\n", t.Name, t.Namespace)
 					return true
 				default:
 					return false
@@ -247,17 +247,17 @@ func (sc *schedulerCache) deletePod(pod *v1.Pod) error {
 func (sc *schedulerCache) AddPod(obj interface{}) {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
-		glog.Errorf("cannot convert to *v1.Pod: %v", obj)
+		glog.Errorf("Cannot convert to *v1.Pod: %v", obj)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("ADD Pod(%s) into cache, status (%s)\n", pod.Name, pod.Status.Phase)
+	glog.V(4).Infof("Add pod(%s) into cache, status (%s)", pod.Name, pod.Status.Phase)
 	err := sc.addPod(pod)
 	if err != nil {
-		glog.Errorf("failed to add pod %s into cache: %v", pod.Name, err)
+		glog.Errorf("Failed to add pod %s into cache: %v", pod.Name, err)
 		return
 	}
 	return
@@ -266,22 +266,22 @@ func (sc *schedulerCache) AddPod(obj interface{}) {
 func (sc *schedulerCache) UpdatePod(oldObj, newObj interface{}) {
 	oldPod, ok := oldObj.(*v1.Pod)
 	if !ok {
-		glog.Errorf("cannot convert oldObj to *v1.Pod: %v", oldObj)
+		glog.Errorf("Cannot convert oldObj to *v1.Pod: %v", oldObj)
 		return
 	}
 	newPod, ok := newObj.(*v1.Pod)
 	if !ok {
-		glog.Errorf("cannot convert newObj to *v1.Pod: %v", newObj)
+		glog.Errorf("Cannot convert newObj to *v1.Pod: %v", newObj)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("UPDATE oldPod(%s) status(%s) newPod(%s) status(%s) in cache\n", oldPod.Name, oldPod.Status.Phase, newPod.Name, newPod.Status.Phase)
+	glog.V(4).Infof("Update oldPod(%s) status(%s) newPod(%s) status(%s) in cache", oldPod.Name, oldPod.Status.Phase, newPod.Name, newPod.Status.Phase)
 	err := sc.updatePod(oldPod, newPod)
 	if err != nil {
-		glog.Errorf("failed to update pod %v in cache: %v", oldPod.Name, err)
+		glog.Errorf("Failed to update pod %v in cache: %v", oldPod.Name, err)
 		return
 	}
 	return
@@ -296,21 +296,21 @@ func (sc *schedulerCache) DeletePod(obj interface{}) {
 		var ok bool
 		pod, ok = t.Obj.(*v1.Pod)
 		if !ok {
-			glog.Errorf("cannot convert to *v1.Pod: %v", t.Obj)
+			glog.Errorf("Cannot convert to *v1.Pod: %v", t.Obj)
 			return
 		}
 	default:
-		glog.Errorf("cannot convert to *v1.Pod: %v", t)
+		glog.Errorf("Cannot convert to *v1.Pod: %v", t)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("DELETE Pod(%s) status(%s) from cache\n", pod.Name, pod.Status.Phase)
+	glog.V(4).Infof("Delete pod(%s) status(%s) from cache", pod.Name, pod.Status.Phase)
 	err := sc.deletePod(pod)
 	if err != nil {
-		glog.Errorf("failed to delete pod %v from cache: %v", pod.Name, err)
+		glog.Errorf("Failed to delete pod %v from cache: %v", pod.Name, err)
 		return
 	}
 	return
@@ -351,17 +351,17 @@ func (sc *schedulerCache) deleteNode(node *v1.Node) error {
 func (sc *schedulerCache) AddNode(obj interface{}) {
 	node, ok := obj.(*v1.Node)
 	if !ok {
-		glog.Errorf("cannot convert to *v1.Node: %v", obj)
+		glog.Errorf("Cannot convert to *v1.Node: %v", obj)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("ADD Node(%s) into cache\n", node.Name)
+	glog.V(4).Infof("Add node(%s) into cache", node.Name)
 	err := sc.addNode(node)
 	if err != nil {
-		glog.Errorf("failed to add node %s into cache: %v", node.Name, err)
+		glog.Errorf("Failed to add node %s into cache: %v", node.Name, err)
 		return
 	}
 	return
@@ -370,22 +370,22 @@ func (sc *schedulerCache) AddNode(obj interface{}) {
 func (sc *schedulerCache) UpdateNode(oldObj, newObj interface{}) {
 	oldNode, ok := oldObj.(*v1.Node)
 	if !ok {
-		glog.Errorf("cannot convert oldObj to *v1.Node: %v", oldObj)
+		glog.Errorf("Cannot convert oldObj to *v1.Node: %v", oldObj)
 		return
 	}
 	newNode, ok := newObj.(*v1.Node)
 	if !ok {
-		glog.Errorf("cannot convert newObj to *v1.Node: %v", newObj)
+		glog.Errorf("Cannot convert newObj to *v1.Node: %v", newObj)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("UPDATE oldNode(%s) newNode(%s) in cache\n", oldNode.Name, newNode.Name)
+	glog.V(4).Infof("Update oldNode(%s) newNode(%s) in cache", oldNode.Name, newNode.Name)
 	err := sc.updateNode(oldNode, newNode)
 	if err != nil {
-		glog.Errorf("failed to update node %v in cache: %v", oldNode.Name, err)
+		glog.Errorf("Failed to update node %v in cache: %v", oldNode.Name, err)
 		return
 	}
 	return
@@ -400,21 +400,21 @@ func (sc *schedulerCache) DeleteNode(obj interface{}) {
 		var ok bool
 		node, ok = t.Obj.(*v1.Node)
 		if !ok {
-			glog.Errorf("cannot convert to *v1.Node: %v", t.Obj)
+			glog.Errorf("Cannot convert to *v1.Node: %v", t.Obj)
 			return
 		}
 	default:
-		glog.Errorf("cannot convert to *v1.Node: %v", t)
+		glog.Errorf("Cannot convert to *v1.Node: %v", t)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("DELETE Node(%s) from cache\n", node.Name)
+	glog.V(4).Infof("Delete node(%s) from cache", node.Name)
 	err := sc.deleteNode(node)
 	if err != nil {
-		glog.Errorf("failed to delete node %s from cache: %v", node.Name, err)
+		glog.Errorf("Failed to delete node %s from cache: %v", node.Name, err)
 		return
 	}
 	return
@@ -482,17 +482,17 @@ func (sc *schedulerCache) deleteQueue(queue *apiv1.Queue) error {
 func (sc *schedulerCache) AddQueue(obj interface{}) {
 	queue, ok := obj.(*apiv1.Queue)
 	if !ok {
-		glog.Errorf("cannot convert to *apiv1.Queue: %v", obj)
+		glog.Errorf("Cannot convert to *apiv1.Queue: %v", obj)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("ADD queue(%s) into cache, status(%#v), spec(%#v)\n", queue.Name, queue.Status, queue.Spec)
+	glog.V(4).Infof("Add queue(%s) into cache, status(%#v), spec(%#v)", queue.Name, queue.Status, queue.Spec)
 	err := sc.addQueue(queue)
 	if err != nil {
-		glog.Errorf("failed to add queue %s into cache: %v", queue.Name, err)
+		glog.Errorf("Failed to add queue %s into cache: %v", queue.Name, err)
 		return
 	}
 	return
@@ -501,23 +501,23 @@ func (sc *schedulerCache) AddQueue(obj interface{}) {
 func (sc *schedulerCache) UpdateQueue(oldObj, newObj interface{}) {
 	oldQueue, ok := oldObj.(*apiv1.Queue)
 	if !ok {
-		glog.Errorf("cannot convert oldObj to *apiv1.Queue: %v", oldObj)
+		glog.Errorf("Cannot convert oldObj to *apiv1.Queue: %v", oldObj)
 		return
 	}
 	newQueue, ok := newObj.(*apiv1.Queue)
 	if !ok {
-		glog.Errorf("cannot convert newObj to *apiv1.Queue: %v", newObj)
+		glog.Errorf("Cannot convert newObj to *apiv1.Queue: %v", newObj)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("UPDATE oldQueue(%s) in cache, status(%#v), spec(%#v)\n", oldQueue.Name, oldQueue.Status, oldQueue.Spec)
-	glog.V(4).Infof("UPDATE newQueue(%s) in cache, status(%#v), spec(%#v)\n", newQueue.Name, newQueue.Status, newQueue.Spec)
+	glog.V(4).Infof("Update oldQueue(%s) in cache, status(%#v), spec(%#v)", oldQueue.Name, oldQueue.Status, oldQueue.Spec)
+	glog.V(4).Infof("Update newQueue(%s) in cache, status(%#v), spec(%#v)", newQueue.Name, newQueue.Status, newQueue.Spec)
 	err := sc.updateQueue(oldQueue, newQueue)
 	if err != nil {
-		glog.Errorf("failed to update queue %s into cache: %v", oldQueue.Name, err)
+		glog.Errorf("Failed to update queue %s into cache: %v", oldQueue.Name, err)
 		return
 	}
 	return
@@ -532,11 +532,11 @@ func (sc *schedulerCache) DeleteQueue(obj interface{}) {
 		var ok bool
 		queue, ok = t.Obj.(*apiv1.Queue)
 		if !ok {
-			glog.Errorf("cannot convert to *v1.Queue: %v", t.Obj)
+			glog.Errorf("Cannot convert to *v1.Queue: %v", t.Obj)
 			return
 		}
 	default:
-		glog.Errorf("cannot convert to *v1.Queue: %v", t)
+		glog.Errorf("Cannot convert to *v1.Queue: %v", t)
 		return
 	}
 
@@ -545,7 +545,7 @@ func (sc *schedulerCache) DeleteQueue(obj interface{}) {
 
 	err := sc.deleteQueue(queue)
 	if err != nil {
-		glog.Errorf("failed to delete queue %s from cache: %v", queue.Name, err)
+		glog.Errorf("Failed to delete queue %s from cache: %v", queue.Name, err)
 		return
 	}
 	return
@@ -587,17 +587,17 @@ func (sc *schedulerCache) AddQueueJob(obj interface{}) {
 
 	queuejob, ok := obj.(*apiv1.QueueJob)
 	if !ok {
-		glog.Errorf("cannot convert to *apiv1.QueueJob: %v", obj)
+		glog.Errorf("Cannot convert to *apiv1.QueueJob: %v", obj)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("ADD queuejob(%s) into cache, status(%#v), spec(%#v)\n", queuejob.Name, queuejob.Status, queuejob.Spec)
+	glog.V(4).Infof("Add queuejob(%s) into cache, status(%#v), spec(%#v)\n", queuejob.Name, queuejob.Status, queuejob.Spec)
 	err := sc.addQueueJob(queuejob)
 	if err != nil {
-		glog.Errorf("failed to add queuejob %s into cache: %v", queuejob.Name, err)
+		glog.Errorf("Failed to add queuejob %s into cache: %v", queuejob.Name, err)
 		return
 	}
 	return
@@ -606,23 +606,23 @@ func (sc *schedulerCache) AddQueueJob(obj interface{}) {
 func (sc *schedulerCache) UpdateQueueJob(oldObj, newObj interface{}) {
 	oldQueueJob, ok := oldObj.(*apiv1.QueueJob)
 	if !ok {
-		glog.Errorf("cannot convert oldObj to *apiv1.QueueJob: %v", oldObj)
+		glog.Errorf("Cannot convert oldObj to *apiv1.QueueJob: %v", oldObj)
 		return
 	}
 	newQueueJob, ok := newObj.(*apiv1.QueueJob)
 	if !ok {
-		glog.Errorf("cannot convert newObj to *apiv1.QueueJob: %v", newObj)
+		glog.Errorf("Cannot convert newObj to *apiv1.QueueJob: %v", newObj)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("UPDATE oldQueueJob(%s) in cache, status(%#v), spec(%#v)\n", oldQueueJob.Name, oldQueueJob.Status, oldQueueJob.Spec)
-	glog.V(4).Infof("UPDATE newQueueJob(%s) in cache, status(%#v), spec(%#v)\n", newQueueJob.Name, newQueueJob.Status, newQueueJob.Spec)
+	glog.V(4).Infof("Update oldQueueJob(%s) in cache, status(%#v), spec(%#v)", oldQueueJob.Name, oldQueueJob.Status, oldQueueJob.Spec)
+	glog.V(4).Infof("Update newQueueJob(%s) in cache, status(%#v), spec(%#v)", newQueueJob.Name, newQueueJob.Status, newQueueJob.Spec)
 	err := sc.updateQueueJob(oldQueueJob, newQueueJob)
 	if err != nil {
-		glog.Errorf("failed to update queuejob %s into cache: %v", oldQueueJob.Name, err)
+		glog.Errorf("Failed to update queuejob %s into cache: %v", oldQueueJob.Name, err)
 		return
 	}
 	return
@@ -637,11 +637,11 @@ func (sc *schedulerCache) DeleteQueueJob(obj interface{}) {
 		var ok bool
 		queuejob, ok = t.Obj.(*apiv1.QueueJob)
 		if !ok {
-			glog.Errorf("cannot convert to *v1.QueueJob: %v", t.Obj)
+			glog.Errorf("Cannot convert to *v1.QueueJob: %v", t.Obj)
 			return
 		}
 	default:
-		glog.Errorf("cannot convert to *v1.QueueJob: %v", t)
+		glog.Errorf("Cannot convert to *v1.QueueJob: %v", t)
 		return
 	}
 
@@ -650,7 +650,7 @@ func (sc *schedulerCache) DeleteQueueJob(obj interface{}) {
 
 	err := sc.deleteQueueJob(queuejob)
 	if err != nil {
-		glog.Errorf("failed to delete queuejob %s from cache: %v", queuejob.Name, err)
+		glog.Errorf("Failed to delete queuejob %s from cache: %v", queuejob.Name, err)
 		return
 	}
 	return

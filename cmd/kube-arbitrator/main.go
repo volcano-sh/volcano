@@ -18,18 +18,29 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/golang/glog"
 	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-arbitrator/app"
 	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-arbitrator/app/options"
-
 	"github.com/spf13/pflag"
+
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apiserver/pkg/util/flag"
 )
+
+var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
 
 func main() {
 	s := options.NewServerOption()
 	s.AddFlags(pflag.CommandLine)
-	pflag.Parse()
+
+	flag.InitFlags()
 	s.CheckOptionOrDie()
+
+	// The default glog flush interval is 30 seconds, which is frighteningly long.
+	go wait.Until(glog.Flush, *logFlushFreq, wait.NeverStop)
+	defer glog.Flush()
 
 	if err := app.Run(s); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
