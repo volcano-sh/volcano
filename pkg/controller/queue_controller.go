@@ -19,6 +19,7 @@ package controller
 import (
 	"time"
 
+	"github.com/golang/glog"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/preemption"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
@@ -54,6 +55,8 @@ func (q *QueueController) Run(stopCh <-chan struct{}) {
 }
 
 func (q *QueueController) runOnce() {
+	glog.V(4).Infof("Start scheduling ...")
+	defer glog.V(4).Infof("End scheduling ...")
 	snapshot := q.cache.Dump()
 	jobGroups := q.allocator.Group(snapshot.Queues)
 	queues := q.allocator.Allocate(jobGroups, snapshot.Nodes)

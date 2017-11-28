@@ -130,10 +130,12 @@ func (ps *proportionScheduler) Allocate(
 	jobGroup map[string][]*schedulercache.QueueInfo,
 	nodes []*schedulercache.NodeInfo,
 ) map[string]*schedulercache.QueueInfo {
+	glog.V(4).Infof("Enter Allocate ...")
+	defer glog.V(4).Infof("Leaving Allocate ...")
 
 	totalCPU, totalMEM, totalWeight := ps.collectSchedulingInfo(jobGroup, nodes)
 	if totalCPU == 0 || totalMEM == 0 || totalWeight == 0 {
-		glog.V(4).Info("there is no resources or allocators in cluster, totalCPU %d, totalMEM %d, totalWeight %d", totalCPU, totalMEM, totalWeight)
+		glog.V(4).Infof("There is no resources or queues in cluster, totalCPU %d, totalMEM %d, totalWeight %d", totalCPU, totalMEM, totalWeight)
 		return nil
 	}
 
@@ -146,6 +148,7 @@ func (ps *proportionScheduler) Allocate(
 		"memory": ps.sortQueueByMEM(jobGroup),
 	}
 	jobsSortedByWeight := ps.sortQueueByWeight(jobGroup)
+	glog.V(4).Infof("Scheduler information, totalCPU %d, totalMEM %d, totalWeight %d, queueSize %d", totalCPU, totalMEM, totalWeight, len(jobsSortedByWeight))
 
 	allocatedQueueResult := make(map[string]*schedulercache.QueueInfo)
 	for _, jobs := range jobGroup {
@@ -189,6 +192,7 @@ func (ps *proportionScheduler) Allocate(
 
 			leftRes -= allocatedRes
 			leftWeight -= queueWeight
+			glog.V(4).Infof("First round, assign %s %d to queue %s, weight %d, request %d", resType, allocatedRes, job.Name(), queueWeight, requestRes)
 		}
 	}
 
@@ -222,6 +226,7 @@ func (ps *proportionScheduler) Allocate(
 			res := allocatedQueueResult[job.Name()].Queue().Status.Deserved.Resources[resType]
 			res.Add(*resource.NewQuantity(assignedRes, resource.DecimalSI))
 			allocatedQueueResult[job.Name()].Queue().Status.Deserved.Resources[resType] = res
+			glog.V(4).Infof("Second round, assign %s %d to queue %s", resType, allocatedRes, job.Name())
 		}
 	}
 

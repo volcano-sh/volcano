@@ -57,7 +57,7 @@ func NewQuotaManager(config *rest.Config) *quotaManager {
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
 				case *apiv1.Queue:
-					glog.V(4).Infof("filter queue name(%s) namespace(%s)\n", t.Name, t.Namespace)
+					glog.V(4).Infof("Filter queue name(%s) namespace(%s)\n", t.Name, t.Namespace)
 					return true
 				default:
 					return false
@@ -81,7 +81,7 @@ func (qm *quotaManager) Run(stopCh <-chan struct{}) {
 func (qm *quotaManager) runOnce() {
 	queues, err := qm.fetchAllQueue()
 	if err != nil {
-		glog.Error("fail to fetch all queue info")
+		glog.Error("Fail to fetch all queue info")
 		return
 	}
 
@@ -112,7 +112,7 @@ func (qm *quotaManager) updateQuotas(queues []apiv1.Queue) {
 		var options meta_v1.ListOptions
 		rqList, err := rqController.List(options)
 		if err != nil || len(rqList.Items) != 1 {
-			glog.Errorf("ecounter an error or more than one resourceQuota, namespace %s, err %#v", queue.Namespace, err)
+			glog.V(4).Infof("There are %d quotas under namespace %s, queue %s, err %#v", len(rqList.Items), queue.Namespace, queue.Name, err)
 			continue
 		}
 
@@ -128,7 +128,7 @@ func (qm *quotaManager) updateQuotas(queues []apiv1.Queue) {
 
 		_, err = rqController.Update(updatedRq)
 		if err != nil {
-			glog.Errorf("failed to update resource quota %s, %#v", updatedRq.Name, err)
+			glog.Errorf("Failed to update resource quota %s, %#v", updatedRq.Name, err)
 			continue
 		}
 	}
@@ -137,7 +137,7 @@ func (qm *quotaManager) updateQuotas(queues []apiv1.Queue) {
 func (qm *quotaManager) AddQueue(obj interface{}) {
 	queue, ok := obj.(*apiv1.Queue)
 	if !ok {
-		glog.Errorf("cannot convert to *apiv1.Queue: %v", obj)
+		glog.Errorf("Cannot convert to *apiv1.Queue: %v", obj)
 		return
 	}
 
@@ -146,7 +146,7 @@ func (qm *quotaManager) AddQueue(obj interface{}) {
 
 	rqList, err := rqController.List(meta_v1.ListOptions{})
 	if err != nil || len(rqList.Items) > 0 {
-		glog.V(4).Infof("ecounter an error or a quota is already created for a queue, namespace %s, err %#v", queue.Namespace, err)
+		glog.V(4).Infof("There are %d quotas under namespace %s, queue %s, err %#v", len(rqList.Items), queue.Namespace, queue.Name, err)
 		return
 	}
 
@@ -169,7 +169,7 @@ func (qm *quotaManager) AddQueue(obj interface{}) {
 
 	_, err = rqController.Create(newRq)
 	if err != nil {
-		glog.Errorf("failed to create resource quota %s, %#v", newRq.Name, err)
+		glog.Errorf("Failed to create resource quota %s, %#v", newRq.Name, err)
 	}
 
 	return
@@ -184,11 +184,11 @@ func (qm *quotaManager) DeleteQueue(obj interface{}) {
 		var ok bool
 		queue, ok = t.Obj.(*apiv1.Queue)
 		if !ok {
-			glog.Errorf("cannot convert to *v1.Queue: %v", t.Obj)
+			glog.Errorf("Cannot convert to *v1.Queue: %v", t.Obj)
 			return
 		}
 	default:
-		glog.Errorf("cannot convert to *v1.Queue: %v", t)
+		glog.Errorf("Cannot convert to *v1.Queue: %v", t)
 		return
 	}
 
@@ -198,12 +198,12 @@ func (qm *quotaManager) DeleteQueue(obj interface{}) {
 
 	rqList, err := rqController.List(meta_v1.ListOptions{})
 	if err != nil || len(rqList.Items) != 1 {
-		glog.V(4).Infof("ecounter an error or the quota number of the queue is not 1, namespace %s, err %#v", queue.Namespace, err)
+		glog.V(4).Infof("There are %d quotas under namespace %s, queue %s, err %#v", queue.Namespace, queue.Name, err)
 		return
 	}
 
 	err = rqController.Delete(rqList.Items[0].Name, &meta_v1.DeleteOptions{})
 	if err != nil {
-		glog.Errorf("failed to delete resource quota %s, %#v", rqList.Items[0].Name, err)
+		glog.Errorf("Failed to delete resource quota %s, %#v", rqList.Items[0].Name, err)
 	}
 }
