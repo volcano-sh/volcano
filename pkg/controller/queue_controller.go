@@ -26,6 +26,9 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
+
+	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
 )
 
 type QueueController struct {
@@ -54,13 +57,53 @@ func (q *QueueController) Run(stopCh <-chan struct{}) {
 	go wait.Until(q.runOnce, 2*time.Second, stopCh)
 }
 
+// update assign result to api server
+func (q *QueueController) updateTaskSet(assignedTS map[string]*schedulercache.TaskSetInfo) {
+	for _, ts := range assignedTS {
+		cpuRes := ts.TaskSet().Status.Allocated.Resources["cpu"].DeepCopy()
+		memRes := ts.TaskSet().Status.Allocated.Resources["memory"].DeepCopy()
+		cpuInt, _ := cpuRes.AsInt64()
+		memInt, _ := memRes.AsInt64()
+		glog.V(4).Infof("scheduler, assign taskset %s cpu %d memory %d\n", ts.Name(), cpuInt, memInt)
+	}
+	taskSetClient, _, err := client.NewTaskSetClient(q.config)
+	if err != nil {
+		panic(err)
+	}
+	taskSetList := apiv1.TaskSetList{}
+	err = taskSetClient.Get().Resource(apiv1.TaskSetPlural).Do().Into(&taskSetList)
+	for _, t := range taskSetList.Items {
+		updateTS, exist := assignedTS[t.Name]
+		if !exist {
+			glog.V(4).Infof("taskset %s in api server doesn't exist in scheduler cache\n", t.Name)
+			continue
+		}
+
+		result := apiv1.TaskSet{}
+		err = taskSetClient.Put().
+			Resource(apiv1.TaskSetPlural).
+			Namespace(updateTS.TaskSet().Namespace).
+			Name(updateTS.TaskSet().Name).
+			Body(updateTS.TaskSet()).
+			Do().Into(&result)
+		if err != nil {
+			glog.V(4).Infof("Fail to update taskset %s, %#v\n", updateTS.TaskSet().Name, err)
+		}
+	}
+}
+
 func (q *QueueController) runOnce() {
 	glog.V(4).Infof("Start scheduling ...")
 	defer glog.V(4).Infof("End scheduling ...")
+
 	snapshot := q.cache.Dump()
-	jobGroups := q.allocator.Group(snapshot.Queues)
+	jobGroups, allPods := q.allocator.Group(snapshot.Queues, snapshot.TaskSets, snapshot.Pods)
 	queues := q.allocator.Allocate(jobGroups, snapshot.Nodes)
 
-	queuesForPreempt, _ := q.preemptor.Preprocessing(queues, snapshot.Pods)
+	queuesForPreempt, _ := q.preemptor.Preprocessing(queues, allPods)
 	q.preemptor.PreemptResources(queuesForPreempt)
+
+	assignedTS := q.allocator.Assign(queuesForPreempt, snapshot.TaskSets)
+
+	q.updateTaskSet(assignedTS)
 }

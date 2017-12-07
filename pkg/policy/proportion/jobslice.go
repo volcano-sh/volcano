@@ -67,3 +67,19 @@ func (s WeightJobSlice) Less(i, j int) bool {
 func (s WeightJobSlice) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
+
+type PriorityTaskSetSlice []*schedulercache.TaskSetInfo
+
+func (s PriorityTaskSetSlice) Len() int {
+	return len(s)
+}
+
+func (s PriorityTaskSetSlice) Less(i, j int) bool {
+	priority1 := s[i].TaskSet().Spec.Priority
+	priority2 := s[j].TaskSet().Spec.Priority
+	return priority1 > priority2
+}
+
+func (s PriorityTaskSetSlice) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}

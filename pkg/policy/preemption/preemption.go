@@ -366,6 +366,9 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 	}
 	if len(preemptingPods) != 0 {
 		glog.Error("PreemptingPod is not empty, preemption may be ERROR")
+		for _, podInfo := range preemptingPods {
+			glog.Error("    pod %s", podInfo.pod.Name)
+		}
 	}
 
 	// update Queue to API server under p.updateMu
@@ -412,6 +415,7 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 		if err := killPod(p.client, v); err != nil {
 			// kill pod failed, it may be terminated before
 			// TODO call terminatePodDone later to update queue
+			glog.Errorf("Terminate pod %s failed", v.Name)
 		}
 	}
 	// wait until terminatingPods is empty

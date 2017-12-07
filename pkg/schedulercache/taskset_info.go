@@ -16,10 +16,27 @@ limitations under the License.
 
 package schedulercache
 
-type CacheSnapshot struct {
-	Pods      []*PodInfo
-	Nodes     []*NodeInfo
-	Queues    []*QueueInfo
-	QueueJobs []*QueueJobInfo
-	TaskSets  []*TaskSetInfo
+import (
+	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+)
+
+type TaskSetInfo struct {
+	name    string
+	taskSet *apiv1.TaskSet
+}
+
+func (t *TaskSetInfo) Name() string {
+	return t.name
+}
+
+func (t *TaskSetInfo) TaskSet() *apiv1.TaskSet {
+	return t.taskSet
+}
+
+func (t *TaskSetInfo) Clone() *TaskSetInfo {
+	clone := &TaskSetInfo{
+		name:    t.name,
+		taskSet: t.taskSet.DeepCopy(),
+	}
+	return clone
 }
