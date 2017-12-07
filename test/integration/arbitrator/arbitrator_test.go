@@ -248,6 +248,117 @@ func prepareQueue(config *restclient.Config) error {
 	return nil
 }
 
+// prepareTaskSet prepare customer resource definition "TaskSet"
+// create four taskset
+// "ts01-1" and "ts01-2", under "queue01"
+// "ts02-1" and "ts02-2", under "queue02"
+func prepareTaskSet(config *restclient.Config) error {
+	extensionscs, err := apiextensionsclient.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("fail to create crd config, %#v", err)
+	}
+
+	_, err = client.CreateTaskSetCRD(extensionscs)
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("fail to create crd, %#v", err)
+	}
+
+	taskSetClient, _, err := client.NewTaskSetClient(config)
+	if err != nil {
+		return fmt.Errorf("fail to create crd client, %#v", err)
+	}
+
+	ts := &apiv1.TaskSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "xxx",
+			Namespace: "xxx",
+		},
+		Spec: apiv1.TaskSetSpec{
+			Priority:   0,
+			Queue:      "xxx",
+			ResourceNo: 0,
+			ResourceUnit: apiv1.ResourceList{
+				Resources: nil,
+			},
+		},
+	}
+
+	cases := []struct {
+		name         string
+		namespace    string
+		priority     int
+		queue        string
+		resourceno   int
+		resourceunit map[apiv1.ResourceName]resource.Quantity
+	}{
+		{
+			name:       "ts01-1",
+			namespace:  "ns01",
+			priority:   3,
+			queue:      "queue01",
+			resourceno: 6,
+			resourceunit: map[apiv1.ResourceName]resource.Quantity{
+				"cpu":    resource.MustParse("1"),
+				"memory": resource.MustParse("1Gi"),
+			},
+		},
+		{
+			name:       "ts01-2",
+			namespace:  "ns01",
+			priority:   1,
+			queue:      "queue01",
+			resourceno: 6,
+			resourceunit: map[apiv1.ResourceName]resource.Quantity{
+				"cpu":    resource.MustParse("1"),
+				"memory": resource.MustParse("1Gi"),
+			},
+		},
+		{
+			name:       "ts02-1",
+			namespace:  "ns02",
+			priority:   3,
+			queue:      "queue02",
+			resourceno: 2,
+			resourceunit: map[apiv1.ResourceName]resource.Quantity{
+				"cpu":    resource.MustParse("1"),
+				"memory": resource.MustParse("1Gi"),
+			},
+		},
+		{
+			name:       "ts02-2",
+			namespace:  "ns02",
+			priority:   1,
+			queue:      "queue02",
+			resourceno: 2,
+			resourceunit: map[apiv1.ResourceName]resource.Quantity{
+				"cpu":    resource.MustParse("1"),
+				"memory": resource.MustParse("1Gi"),
+			},
+		},
+	}
+
+	for _, c := range cases {
+		ts.Name = c.name
+		ts.Namespace = c.namespace
+		ts.Spec.Priority = c.priority
+		ts.Spec.Queue = c.queue
+		ts.Spec.ResourceNo = c.resourceno
+		ts.Spec.ResourceUnit.Resources = c.resourceunit
+
+		var result apiv1.TaskSet
+		err = taskSetClient.Post().
+			Resource(apiv1.TaskSetPlural).
+			Namespace(ts.Namespace).
+			Body(ts).
+			Do().Into(&result)
+		if err != nil {
+			return fmt.Errorf("fail to create taskset %s, %#v", ts.Name, err)
+		}
+	}
+
+	return nil
+}
+
 // prepareCRDForPreemption create one Queue "queue03"
 // "queue03" is under namespace "ns03" and has attribute "weight=2"
 func prepareQueueForPreemption(config *restclient.Config) error {
@@ -310,6 +421,94 @@ func prepareQueueForPreemption(config *restclient.Config) error {
 			Do().Into(&result)
 		if err != nil {
 			return fmt.Errorf("fail to create crd %s, %#v", queue.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// prepareTaskSetForPreemption prepare customer resource definition "TaskSet"
+// create two taskset
+// "ts03-1" and "ts03-2", under "queue03"
+func prepareTaskSetForPreemption(config *restclient.Config) error {
+	extensionscs, err := apiextensionsclient.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("fail to create crd config, %#v", err)
+	}
+
+	_, err = client.CreateTaskSetCRD(extensionscs)
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("fail to create crd, %#v", err)
+	}
+
+	taskSetClient, _, err := client.NewTaskSetClient(config)
+	if err != nil {
+		return fmt.Errorf("fail to create crd client, %#v", err)
+	}
+
+	ts := &apiv1.TaskSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "xxx",
+			Namespace: "xxx",
+		},
+		Spec: apiv1.TaskSetSpec{
+			Priority:   0,
+			Queue:      "xxx",
+			ResourceNo: 0,
+			ResourceUnit: apiv1.ResourceList{
+				Resources: nil,
+			},
+		},
+	}
+
+	cases := []struct {
+		name         string
+		namespace    string
+		priority     int
+		queue        string
+		resourceno   int
+		resourceunit map[apiv1.ResourceName]resource.Quantity
+	}{
+		{
+			name:       "ts03-1",
+			namespace:  "ns03",
+			priority:   3,
+			queue:      "queue03",
+			resourceno: 3,
+			resourceunit: map[apiv1.ResourceName]resource.Quantity{
+				"cpu":    resource.MustParse("1"),
+				"memory": resource.MustParse("1Gi"),
+			},
+		},
+		{
+			name:       "ts03-2",
+			namespace:  "ns03",
+			priority:   1,
+			queue:      "queue03",
+			resourceno: 3,
+			resourceunit: map[apiv1.ResourceName]resource.Quantity{
+				"cpu":    resource.MustParse("1"),
+				"memory": resource.MustParse("1Gi"),
+			},
+		},
+	}
+
+	for _, c := range cases {
+		ts.Name = c.name
+		ts.Namespace = c.namespace
+		ts.Spec.Priority = c.priority
+		ts.Spec.Queue = c.queue
+		ts.Spec.ResourceNo = c.resourceno
+		ts.Spec.ResourceUnit.Resources = c.resourceunit
+
+		var result apiv1.TaskSet
+		err = taskSetClient.Post().
+			Resource(apiv1.TaskSetPlural).
+			Namespace(ts.Namespace).
+			Body(ts).
+			Do().Into(&result)
+		if err != nil {
+			return fmt.Errorf("fail to create taskset %s, %#v", ts.Name, err)
 		}
 	}
 
@@ -428,6 +627,11 @@ func TestArbitrator(t *testing.T) {
 		t.Fatalf("fail to prepare CRD, %#v", err)
 	}
 
+	err = prepareTaskSet(config)
+	if err != nil {
+		t.Fatalf("fail to prepare taskset CRD, %#v", err)
+	}
+
 	neverStop := make(chan struct{})
 	defer close(neverStop)
 	cache := schedulercache.New(config)
@@ -472,11 +676,16 @@ func TestArbitrator(t *testing.T) {
 		t.Fatalf("fail to prepare CRD for preemption, %#v", err)
 	}
 
+	err = prepareTaskSetForPreemption(config)
+	if err != nil {
+		t.Fatalf("fail to prepare taskset CRD for preemption, %#v", err)
+	}
+
 	// sleep to wait scheduler finish
 	time.Sleep(20 * time.Second)
 	rq01, _ = cs.CoreV1().ResourceQuotas("ns01").Get("rq01", metav1.GetOptions{})
 	cpu01 = rq01.Spec.Hard["limits.cpu"]
-	if v, _ := (&cpu01).AsInt64(); v != int64(4) {
+	if v, _ := (&cpu01).AsInt64(); v != int64(3) {
 		t.Fatalf("after preemption, cpu is not 4 for rq01, %#v", rq01)
 	}
 	rq02, _ = cs.CoreV1().ResourceQuotas("ns02").Get("rq02", metav1.GetOptions{})
@@ -486,11 +695,11 @@ func TestArbitrator(t *testing.T) {
 	}
 	rq03, _ := cs.CoreV1().ResourceQuotas("ns03").Get("rq03", metav1.GetOptions{})
 	cpu03 := rq03.Spec.Hard["limits.cpu"]
-	if v, _ := (&cpu03).AsInt64(); v != int64(3) {
+	if v, _ := (&cpu03).AsInt64(); v != int64(4) {
 		t.Fatalf("after preemption, cpu is not 3 for rq03, %#v", rq03)
 	}
 	pods01, _ = cs.CoreV1().Pods("ns01").List(metav1.ListOptions{})
-	if len(pods01.Items) != 4 {
+	if len(pods01.Items) != 3 {
 		t.Fatalf("after preemption, pods size is not 4 for ns01, %#v", pods01.Items)
 	}
 	pods02, _ = cs.CoreV1().Pods("ns02").List(metav1.ListOptions{})
