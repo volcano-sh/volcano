@@ -23,6 +23,7 @@ import (
 	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
@@ -107,6 +108,59 @@ func (ps *proportionScheduler) sortQueueByWeight(jobGroup map[string][]*schedule
 	return sortedWeightJobs
 }
 
+// sort taskset under queue by priority from high to low
+func (ps *proportionScheduler) sortTaskSetByPriority(queue string, ts []*schedulercache.TaskSetInfo) []*schedulercache.TaskSetInfo {
+	sortedPriorityTaskSet := PriorityTaskSetSlice{}
+
+	for _, t := range ts {
+		if queue == t.TaskSet().Spec.Queue {
+			sortedPriorityTaskSet = append(sortedPriorityTaskSet, t)
+		}
+	}
+	sort.Sort(sortedPriorityTaskSet)
+
+	return sortedPriorityTaskSet
+}
+
+func resourcesAdd(res1 map[apiv1.ResourceName]resource.Quantity, res2 map[apiv1.ResourceName]resource.Quantity) map[apiv1.ResourceName]resource.Quantity {
+	cpu1 := res1["cpu"].DeepCopy()
+	cpu2 := res2["cpu"].DeepCopy()
+	mem1 := res1["memory"].DeepCopy()
+	mem2 := res2["memory"].DeepCopy()
+
+	cpu1.Add(cpu2)
+	mem1.Add(mem2)
+
+	return map[apiv1.ResourceName]resource.Quantity{
+		"cpu":    cpu1,
+		"memory": mem1,
+	}
+}
+
+func resourcesMultiply(res map[apiv1.ResourceName]resource.Quantity, count int) map[apiv1.ResourceName]resource.Quantity {
+	cpu := res["cpu"].DeepCopy()
+	mem := res["memory"].DeepCopy()
+
+	cpuInt64, _ := (&cpu).AsInt64()
+	memoryInt64, _ := (&mem).AsInt64()
+
+	return map[apiv1.ResourceName]resource.Quantity{
+		"cpu":    *resource.NewQuantity(cpuInt64*int64(count), resource.DecimalSI),
+		"memory": *resource.NewQuantity(memoryInt64*int64(count), resource.BinarySI),
+	}
+}
+
+func resourcesIsZero(res map[apiv1.ResourceName]resource.Quantity) bool {
+	cpu := res["cpu"].DeepCopy()
+	mem := res["memory"].DeepCopy()
+
+	if cpu.IsZero() && mem.IsZero() {
+		return true
+	}
+
+	return false
+}
+
 func (ps *proportionScheduler) Name() string {
 	return PolicyName
 }
@@ -117,13 +171,57 @@ func (ps *proportionScheduler) Initialize() {
 
 func (ps *proportionScheduler) Group(
 	jobs []*schedulercache.QueueInfo,
-) map[string][]*schedulercache.QueueInfo {
-	groups := make(map[string][]*schedulercache.QueueInfo)
+	tasksets []*schedulercache.TaskSetInfo,
+	pods []*schedulercache.PodInfo,
+) (map[string][]*schedulercache.QueueInfo, []*schedulercache.PodInfo) {
+	glog.V(4).Infof("Enter Group ...")
+	defer glog.V(4).Infof("Leaving Group ...")
+
+	// calculate total taskset resource request under queue
+	scheduledJobs := make([]*schedulercache.QueueInfo, 0)
 	for _, job := range jobs {
+		cloneJob := job.Clone()
+		if !resourcesIsZero(cloneJob.Queue().Spec.Request.Resources) {
+			glog.V(4).Infof("the queue %s has resource request, reset to zero to collect taskset resource request\n", cloneJob.Name())
+			cloneJob.Queue().Spec.Request.Resources = map[apiv1.ResourceName]resource.Quantity{
+				"cpu":    resource.MustParse("0"),
+				"memory": resource.MustParse("0"),
+			}
+		}
+		for _, ts := range tasksets {
+			if ts.TaskSet().Spec.Queue != cloneJob.Name() {
+				continue
+			}
+			glog.V(4).Infof("taskset %s belongs to queue %s\n", ts.Name(), cloneJob.Name())
+			totalResOfTaskSet := resourcesMultiply(ts.TaskSet().Spec.ResourceUnit.Resources, ts.TaskSet().Spec.ResourceNo)
+			cloneJob.Queue().Spec.Request.Resources = resourcesAdd(cloneJob.Queue().Spec.Request.Resources, totalResOfTaskSet)
+		}
+		cpuRes, _ := cloneJob.Queue().Spec.Request.Resources["cpu"]
+		memRes, _ := cloneJob.Queue().Spec.Request.Resources["memory"]
+		if cpuRes.Cmp(resource.MustParse("0")) == 0 || memRes.Cmp(resource.MustParse("0")) == 0 {
+			glog.V(4).Infof("there is no resource request in queue %s, remove from scheduling\n", job.Name())
+			continue
+		}
+		scheduledJobs = append(scheduledJobs, cloneJob)
+
+		cpuInt64, _ := cpuRes.AsInt64()
+		memResInt64, _ := memRes.AsInt64()
+		glog.V(4).Infof("the resource request of queue %s, cpu %d, memory %d\n", cloneJob.Name(), cpuInt64, memResInt64)
+	}
+	groups := make(map[string][]*schedulercache.QueueInfo)
+	for _, job := range scheduledJobs {
 		groups[job.Queue().Namespace] = append(groups[job.Queue().Namespace], job)
 	}
 
-	return groups
+	scheduledPods := make([]*schedulercache.PodInfo, 0)
+	for _, pod := range pods {
+		// only schedule Pending/Running pod
+		if pod.Pod().Status.Phase == corev1.PodPending || pod.Pod().Status.Phase == corev1.PodRunning {
+			scheduledPods = append(scheduledPods, pod.Clone())
+		}
+	}
+
+	return groups, scheduledPods
 }
 
 func (ps *proportionScheduler) Allocate(
@@ -226,7 +324,7 @@ func (ps *proportionScheduler) Allocate(
 			res := allocatedQueueResult[job.Name()].Queue().Status.Deserved.Resources[resType]
 			res.Add(*resource.NewQuantity(assignedRes, resource.DecimalSI))
 			allocatedQueueResult[job.Name()].Queue().Status.Deserved.Resources[resType] = res
-			glog.V(4).Infof("Second round, assign %s %d to queue %s", resType, allocatedRes, job.Name())
+			glog.V(4).Infof("Second round, assign %s %d to queue %s", resType, assignedRes, job.Name())
 		}
 	}
 
@@ -234,11 +332,62 @@ func (ps *proportionScheduler) Allocate(
 }
 
 func (ps *proportionScheduler) Assign(
-	jobs []*schedulercache.QueueInfo,
-	alloc *schedulercache.QueueInfo,
-) *schedulercache.Resource {
-	// TODO
-	return nil
+	jobs map[string]*schedulercache.QueueInfo,
+	ts []*schedulercache.TaskSetInfo,
+) map[string]*schedulercache.TaskSetInfo {
+	glog.V(4).Infof("Enter Assign ...")
+	defer glog.V(4).Infof("Leaving Assign ...")
+
+	result := make(map[string]*schedulercache.TaskSetInfo)
+	resourceTypes := []apiv1.ResourceName{"cpu", "memory"}
+	for _, job := range jobs {
+		cpuRes := job.Queue().Status.Allocated.Resources["cpu"].DeepCopy()
+		memRes := job.Queue().Status.Allocated.Resources["memory"].DeepCopy()
+		cpuInt, _ := cpuRes.AsInt64()
+		memInt, _ := memRes.AsInt64()
+		allocatedResources := map[apiv1.ResourceName]resource.Quantity{
+			"cpu":    job.Queue().Status.Allocated.Resources["cpu"].DeepCopy(),
+			"memory": job.Queue().Status.Allocated.Resources["memory"].DeepCopy(),
+		}
+		glog.V(4).Infof("assign resources to taskset under queue %s, cpu %d, memory %d\n", job.Name(), cpuInt, memInt)
+		sortedTaskSet := ps.sortTaskSetByPriority(job.Name(), ts)
+		for _, t := range sortedTaskSet {
+			glog.V(4).Infof("    assign resource to taskset %s, queue %s, priority %d\n", t.Name(), t.TaskSet().Spec.Queue, t.TaskSet().Spec.Priority)
+			totalResOfTaskSet := resourcesMultiply(t.TaskSet().Spec.ResourceUnit.Resources, t.TaskSet().Spec.ResourceNo)
+
+			// reset allocated resource of taskset
+			t.TaskSet().Status.Allocated.Resources = map[apiv1.ResourceName]resource.Quantity{
+				"cpu":    resource.MustParse("0"),
+				"memory": resource.MustParse("0"),
+			}
+
+			for _, resType := range resourceTypes {
+				allocatedRes := allocatedResources[resType].DeepCopy()
+				if allocatedRes.IsZero() {
+					continue
+				}
+
+				requestRes := totalResOfTaskSet[resType].DeepCopy()
+				assignRes := resource.MustParse("0")
+				if allocatedRes.Cmp(requestRes) <= 0 {
+					assignRes = allocatedRes
+					allocatedResources[resType] = resource.MustParse("0")
+				} else {
+					assignRes = requestRes
+					allocatedRes.Sub(requestRes)
+					allocatedResources[resType] = allocatedRes
+				}
+				t.TaskSet().Status.Allocated.Resources[resType] = assignRes
+
+				resInt, _ := assignRes.AsInt64()
+				glog.V(4).Infof("        assign %s resource %d to taskset %s\n", resType, resInt, t.TaskSet().Name)
+			}
+
+			result[t.Name()] = t.Clone()
+		}
+	}
+
+	return result
 }
 
 func (ps *proportionScheduler) Polish(
