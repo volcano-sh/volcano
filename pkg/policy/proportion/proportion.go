@@ -181,12 +181,10 @@ func (ps *proportionScheduler) Group(
 	scheduledJobs := make([]*schedulercache.QueueInfo, 0)
 	for _, job := range jobs {
 		cloneJob := job.Clone()
-		if !resourcesIsZero(cloneJob.Queue().Spec.Request.Resources) {
-			glog.V(4).Infof("the queue %s has resource request, reset to zero to collect taskset resource request\n", cloneJob.Name())
-			cloneJob.Queue().Spec.Request.Resources = map[apiv1.ResourceName]resource.Quantity{
-				"cpu":    resource.MustParse("0"),
-				"memory": resource.MustParse("0"),
-			}
+
+		totalResOfJob := map[apiv1.ResourceName]resource.Quantity{
+			"cpu":    resource.MustParse("0"),
+			"memory": resource.MustParse("0"),
 		}
 		for _, ts := range tasksets {
 			if ts.TaskSet().Spec.Queue != cloneJob.Name() {
@@ -194,19 +192,16 @@ func (ps *proportionScheduler) Group(
 			}
 			glog.V(4).Infof("taskset %s belongs to queue %s\n", ts.Name(), cloneJob.Name())
 			totalResOfTaskSet := resourcesMultiply(ts.TaskSet().Spec.ResourceUnit.Resources, ts.TaskSet().Spec.ResourceNo)
-			cloneJob.Queue().Spec.Request.Resources = resourcesAdd(cloneJob.Queue().Spec.Request.Resources, totalResOfTaskSet)
+			totalResOfJob = resourcesAdd(totalResOfJob, totalResOfTaskSet)
 		}
-		cpuRes, _ := cloneJob.Queue().Spec.Request.Resources["cpu"]
-		memRes, _ := cloneJob.Queue().Spec.Request.Resources["memory"]
-		if cpuRes.Cmp(resource.MustParse("0")) == 0 || memRes.Cmp(resource.MustParse("0")) == 0 {
-			glog.V(4).Infof("there is no resource request in queue %s, remove from scheduling\n", job.Name())
-			continue
+
+		if !resourcesIsZero(totalResOfJob) {
+			// the taskset under this job has resource request, otherwise use the original resource request of job
+			cloneJob.Queue().Spec.Request.Resources = totalResOfJob
 		}
 		scheduledJobs = append(scheduledJobs, cloneJob)
 
-		cpuInt64, _ := cpuRes.AsInt64()
-		memResInt64, _ := memRes.AsInt64()
-		glog.V(4).Infof("the resource request of queue %s, cpu %d, memory %d\n", cloneJob.Name(), cpuInt64, memResInt64)
+		glog.V(4).Infof("the resource request of queue %s, %#v", cloneJob.Name(), cloneJob.Queue().Spec.Request.Resources)
 	}
 	groups := make(map[string][]*schedulercache.QueueInfo)
 	for _, job := range scheduledJobs {
