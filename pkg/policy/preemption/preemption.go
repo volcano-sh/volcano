@@ -396,12 +396,18 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 			}
 		}
 
+		// only update Queue Status Allocated/Deserved/Used/Preempting
+		oldQueue.Status.Allocated.Resources = q.Queue().Status.Allocated.Resources
+		oldQueue.Status.Deserved.Resources = q.Queue().Status.Deserved.Resources
+		oldQueue.Status.Used.Resources = q.Queue().Status.Used.Resources
+		oldQueue.Status.Preempting.Resources = q.Queue().Status.Preempting.Resources
+
 		result := apiv1.Queue{}
 		err = queueClient.Put().
 			Resource(apiv1.QueuePlural).
-			Namespace(q.Queue().Namespace).
-			Name(q.Queue().Name).
-			Body(q.Queue()).
+			Namespace(oldQueue.Namespace).
+			Name(oldQueue.Name).
+			Body(oldQueue.DeepCopy()).
 			Do().Into(&result)
 		if err != nil {
 			glog.Errorf("Fail to update queue info, name %s, %#v", q.Queue().Name, err)
