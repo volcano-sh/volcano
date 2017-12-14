@@ -38,10 +38,13 @@ type QueueSpec struct {
     metav1.TypeMeta   `json:",inline"`
     metav1.ObjectMeta `json:"metadata"`
 
-    // The weight of Queue, which is used by policy to allocatre resource; the 
+    // The weight of Queue, which is used by policy to allocate resource; the 
     // default value is 1. NOTE: it can not expect allocating more resouce with 
-    // higher weithg, it dependent on policy's reaction to the weight.
+    // higher weight, it dependent on policy's reaction to the weight.
     Weight int
+    
+    // The resource request of Queue, which is used by policy to allocate resource.
+    Request ResourceList
 }
 
 type QueueStatus struct {
@@ -105,7 +108,7 @@ type Snapshot struct {
 
 ### Proportion Policy
 
-The policy summary usable resources(CPU and memory) on all nodes and allocate them to each Queue by `Weight` in `QueueSpec` simply. `Pods` is not used in the policy, it is for preemption in next step.
+The policy summary usable resources(CPU and memory) on all nodes and allocate them to each Queue by `Weight` and `Request` in `QueueSpec` according to max-min weighted fairness algorithm. `Pods` is not used in the policy, it is for preemption in next step.
 
 ```
 Snapshot information:
@@ -114,20 +117,24 @@ Snapshot information:
 |   cpu: 6       |    |   cpu: 3       | 
 |   memory: 15Gi |    |   memory: 12Gi | 
 ------------------    ------------------ 
----------------    ---------------
-| Queue-1     |    | Queue-2     |
-|   Weight: 2 |    |   Weight: 4 |
----------------    ---------------
+--------------------------    --------------------------
+| Queue-1                |    | Queue-2                |
+|   Weight: 2            |    |   Weight: 4            |
+|   Request: cpu=5       |    |   Request: cpu=10      |
+|            memory=10Gi |    |            memory=20Gi |
+--------------------------    --------------------------
 
 After policy scheduling:
---------------------    ---------------------
-| Queue-1          |    | Queue-2           |
-|    Weight: 2     |    |    Weight: 4      |
-|                  |    |                   |
-|    Allocated:    |    |    Allocated:     |
-|      cpu: 3      |    |      cpu: 6       |
-|      memory: 9Gi |    |      memory: 18Gi | 
---------------------    ---------------------
+---------------------------    ---------------------------
+| Queue-1                 |    | Queue-2                 |
+|    Weight: 2            |    |    Weight: 4            |
+|    Request: cpu=5       |    |    Request: cpu=10      |
+|             memory=10Gi |    |             memory=20Gi |
+|                         |    |                         |
+|    Deserved:            |    |    Deserved:            |
+|      cpu: 3             |    |      cpu: 6             |
+|      memory: 9Gi        |    |      memory: 18Gi       |
+---------------------------    ---------------------------
 ```
 
 Policy format scheduler results as `QueueInfo` and transfers to Preemption for next step.
