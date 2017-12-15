@@ -26,7 +26,7 @@ import (
 type QueueInfo struct {
 	name  string
 	queue *apiv1.Queue
-	Pods  map[string]*v1.Pod
+	Pods  []*v1.Pod
 }
 
 // -1  - if res1 < res2

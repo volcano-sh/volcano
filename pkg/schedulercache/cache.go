@@ -479,7 +479,7 @@ func (sc *schedulerCache) addQueue(queue *apiv1.Queue) error {
 	info := &QueueInfo{
 		name:  queue.Name,
 		queue: queue.DeepCopy(),
-		Pods:  make(map[string]*v1.Pod),
+		Pods:  make([]*v1.Pod, 0),
 	}
 
 	// init Request if it is nil
