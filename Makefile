@@ -23,3 +23,6 @@ run-test:
 clean:
 	rm -rf _output/
 	rm -f kube-arbitrator
+
+sample:
+	go build -o ${BIN_DIR}/jobclient ./test/taskset-sample/
