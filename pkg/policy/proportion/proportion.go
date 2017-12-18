@@ -122,45 +122,6 @@ func (ps *proportionScheduler) sortTaskSetByPriority(queue string, ts []*schedul
 	return sortedPriorityTaskSet
 }
 
-func resourcesAdd(res1 map[apiv1.ResourceName]resource.Quantity, res2 map[apiv1.ResourceName]resource.Quantity) map[apiv1.ResourceName]resource.Quantity {
-	cpu1 := res1["cpu"].DeepCopy()
-	cpu2 := res2["cpu"].DeepCopy()
-	mem1 := res1["memory"].DeepCopy()
-	mem2 := res2["memory"].DeepCopy()
-
-	cpu1.Add(cpu2)
-	mem1.Add(mem2)
-
-	return map[apiv1.ResourceName]resource.Quantity{
-		"cpu":    cpu1,
-		"memory": mem1,
-	}
-}
-
-func resourcesMultiply(res map[apiv1.ResourceName]resource.Quantity, count int) map[apiv1.ResourceName]resource.Quantity {
-	cpu := res["cpu"].DeepCopy()
-	mem := res["memory"].DeepCopy()
-
-	cpuInt64, _ := (&cpu).AsInt64()
-	memoryInt64, _ := (&mem).AsInt64()
-
-	return map[apiv1.ResourceName]resource.Quantity{
-		"cpu":    *resource.NewQuantity(cpuInt64*int64(count), resource.DecimalSI),
-		"memory": *resource.NewQuantity(memoryInt64*int64(count), resource.BinarySI),
-	}
-}
-
-func resourcesIsZero(res map[apiv1.ResourceName]resource.Quantity) bool {
-	cpu := res["cpu"].DeepCopy()
-	mem := res["memory"].DeepCopy()
-
-	if cpu.IsZero() && mem.IsZero() {
-		return true
-	}
-
-	return false
-}
-
 func (ps *proportionScheduler) Name() string {
 	return PolicyName
 }
@@ -191,11 +152,11 @@ func (ps *proportionScheduler) Group(
 				continue
 			}
 			glog.V(4).Infof("taskset %s belongs to queue %s\n", ts.Name(), cloneJob.Name())
-			totalResOfTaskSet := resourcesMultiply(ts.TaskSet().Spec.ResourceUnit.Resources, ts.TaskSet().Spec.ResourceNo)
-			totalResOfJob = resourcesAdd(totalResOfJob, totalResOfTaskSet)
+			totalResOfTaskSet := schedulercache.ResourcesMultiply(ts.TaskSet().Spec.ResourceUnit.Resources, ts.TaskSet().Spec.ResourceNo)
+			totalResOfJob = schedulercache.ResourcesAdd(totalResOfJob, totalResOfTaskSet)
 		}
 
-		if !resourcesIsZero(totalResOfJob) {
+		if !schedulercache.ResourcesIsZero(totalResOfJob) {
 			// the taskset under this job has resource request, otherwise use the original resource request of job
 			cloneJob.Queue().Spec.Request.Resources = totalResOfJob
 		}
@@ -348,7 +309,7 @@ func (ps *proportionScheduler) Assign(
 		sortedTaskSet := ps.sortTaskSetByPriority(job.Name(), ts)
 		for _, t := range sortedTaskSet {
 			glog.V(4).Infof("    assign resource to taskset %s, queue %s, priority %d\n", t.Name(), t.TaskSet().Spec.Queue, t.TaskSet().Spec.Priority)
-			totalResOfTaskSet := resourcesMultiply(t.TaskSet().Spec.ResourceUnit.Resources, t.TaskSet().Spec.ResourceNo)
+			totalResOfTaskSet := schedulercache.ResourcesMultiply(t.TaskSet().Spec.ResourceUnit.Resources, t.TaskSet().Spec.ResourceNo)
 
 			// reset allocated resource of taskset
 			t.TaskSet().Status.Allocated.Resources = map[apiv1.ResourceName]resource.Quantity{

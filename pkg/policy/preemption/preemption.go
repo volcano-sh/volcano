@@ -35,18 +35,14 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
-type Resources map[apiv1.ResourceName]resource.Quantity
-
 type preemptedPodInfo struct {
-	pod                      *v1.Pod
-	totalReleasingResources  Resources
-	detailReleasingResources map[string]Resources
+	pod                     *v1.Pod
+	totalReleasingResources map[apiv1.ResourceName]resource.Quantity
 }
 
 type basePreemption struct {
-	dataMu   *sync.Mutex
-	updateMu *sync.Mutex
-	dataCond *sync.Cond
+	localDataMutex   *sync.Mutex
+	updateQueueMutex *sync.Mutex
 
 	name   string
 	config *rest.Config
@@ -54,6 +50,7 @@ type basePreemption struct {
 
 	terminatingPodsForPreempt   map[string]preemptedPodInfo
 	terminatingPodsForUnderused map[string]*v1.Pod
+	totalPreemptingResources    map[apiv1.ResourceName]resource.Quantity
 
 	podInformer clientv1.PodInformer
 }
@@ -64,15 +61,18 @@ func New(config *rest.Config) Interface {
 
 func newBasePreemption(name string, config *rest.Config) *basePreemption {
 	bp := &basePreemption{
-		dataMu:   new(sync.Mutex),
-		updateMu: new(sync.Mutex),
-		name:     name,
-		config:   config,
-		client:   kubernetes.NewForConfigOrDie(config),
+		localDataMutex:   new(sync.Mutex),
+		updateQueueMutex: new(sync.Mutex),
+		name:             name,
+		config:           config,
+		client:           kubernetes.NewForConfigOrDie(config),
 		terminatingPodsForPreempt:   make(map[string]preemptedPodInfo),
 		terminatingPodsForUnderused: make(map[string]*v1.Pod),
+		totalPreemptingResources: map[apiv1.ResourceName]resource.Quantity{
+			"cpu":    resource.MustParse("0"),
+			"memory": resource.MustParse("0"),
+		},
 	}
-	bp.dataCond = sync.NewCond(bp.dataMu)
 
 	informerFactory := informers.NewSharedInformerFactory(bp.client, 0)
 	bp.podInformer = informerFactory.Core().V1().Pods()
@@ -120,6 +120,47 @@ func killPod(client *kubernetes.Clientset, pod *v1.Pod) error {
 	return err
 }
 
+func updateQueues(queues map[string]*schedulercache.QueueInfo, config *rest.Config) error {
+	queueClient, _, err := client.NewClient(config)
+	if err != nil {
+		return err
+	}
+	queueList := apiv1.QueueList{}
+	err = queueClient.Get().Resource(apiv1.QueuePlural).Do().Into(&queueList)
+	if err != nil {
+		return err
+	}
+	for _, oldQueue := range queueList.Items {
+		if len(queues) == 0 {
+			break
+		}
+
+		q, ok := queues[oldQueue.Name]
+		if !ok {
+			glog.V(4).Infof("Queue %s not exist in queues", oldQueue.Name)
+			continue
+		}
+
+		// only update Queue Status Allocated/Deserved/Used/Preempting
+		oldQueue.Status.Allocated.Resources = q.Queue().Status.Allocated.Resources
+		oldQueue.Status.Deserved.Resources = q.Queue().Status.Deserved.Resources
+		oldQueue.Status.Used.Resources = q.Queue().Status.Used.Resources
+		oldQueue.Status.Preempting.Resources = q.Queue().Status.Preempting.Resources
+
+		result := apiv1.Queue{}
+		err = queueClient.Put().
+			Resource(apiv1.QueuePlural).
+			Namespace(oldQueue.Namespace).
+			Name(oldQueue.Name).
+			Body(oldQueue.DeepCopy()).
+			Do().Into(&result)
+		if err != nil {
+			glog.Errorf("Fail to update queue info, name %s, %#v", q.Queue().Name, err)
+		}
+	}
+	return nil
+}
+
 func (p *basePreemption) Run(stopCh <-chan struct{}) {
 	go p.podInformer.Informer().Run(stopCh)
 }
@@ -129,8 +170,8 @@ func (p *basePreemption) Preprocessing(queues map[string]*schedulercache.QueueIn
 	glog.V(4).Infof("Enter Preprocessing ...")
 	defer glog.V(4).Infof("Leaving Preprocessing ...")
 
-	p.dataMu.Lock()
-	defer p.dataMu.Unlock()
+	p.localDataMutex.Lock()
+	defer p.localDataMutex.Unlock()
 
 	// calculate used resources for each queue
 	for _, q := range queues {
@@ -220,7 +261,6 @@ func (p *basePreemption) Preprocessing(queues map[string]*schedulercache.QueueIn
 func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.QueueInfo) error {
 	glog.V(4).Infof("Enter PreemptResources ...")
 	defer glog.V(4).Infof("Leaving PreemptResources ...")
-
 	// Divided queues into three categories
 	//   queuesOverused    - Deserved < Allocated
 	//   queuesPerfectused - Deserved = Allocated, do nothing for these queues in PreemptResources()
@@ -240,6 +280,11 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 	}
 	glog.V(4).Infof("Divided queues into three categories, queuesOverused(%d), queuesPerfectused(%d), queuesUnderused(%d)",
 		len(queuesOverused), len(queuesPerfectused), len(queuesUnderused))
+
+	preemptingResources := map[apiv1.ResourceName]resource.Quantity{
+		"cpu":    resource.MustParse("0"),
+		"memory": resource.MustParse("0"),
+	}
 
 	// handler queuesOverused which will be preempted resources to other queue
 	preemptingPods := make(map[string]preemptedPodInfo)
@@ -264,7 +309,10 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 
 				// released resource by the killed pod
 				// it may be not same as its occupied resources
-				releasingResources := make(map[apiv1.ResourceName]resource.Quantity)
+				releasingResources := map[apiv1.ResourceName]resource.Quantity{
+					"cpu":    resource.MustParse("0"),
+					"memory": resource.MustParse("0"),
+				}
 
 				// calculate releasing resources of pod
 				podResources := calculatePodResources(pod)
@@ -290,10 +338,10 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 					q.Queue().Status.Used.Resources[resType] = result
 				}
 
+				preemptingResources = schedulercache.ResourcesAdd(preemptingResources, releasingResources)
 				preemptingPods[pod.Name] = preemptedPodInfo{
 					pod: pod,
-					totalReleasingResources:  releasingResources,
-					detailReleasingResources: make(map[string]Resources),
+					totalReleasingResources: releasingResources,
 				}
 
 				leftPods, pod, findPod = popPod(leftPods)
@@ -302,147 +350,69 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 			q.Pods = leftPods
 			q.Queue().Status.Allocated.Resources = q.Queue().Status.Deserved.Resources
 		}
-		glog.V(4).Infof("Overused queue %s status after preempted resources, deverved (%#v), allocated (%#v), used (%#v), preempting (%#v)",
-			q.Name(), q.Queue().Status.Deserved.Resources, q.Queue().Status.Allocated.Resources,
-			q.Queue().Status.Used.Resources, q.Queue().Status.Preempting.Resources)
 	}
-	// fork pod info to terminated, kill them after update queue
-	terminatingPods := make([]*v1.Pod, 0)
-	p.dataMu.Lock()
+
+	p.localDataMutex.Lock()
+	// record preempting pods
 	for k, v := range preemptingPods {
-		terminatingPods = append(terminatingPods, v.pod)
 		p.terminatingPodsForPreempt[k] = v
 	}
-	p.dataMu.Unlock()
+	p.totalPreemptingResources = schedulercache.ResourcesAdd(p.totalPreemptingResources, preemptingResources)
+	// copy totalPreemptingResources for scheduling
+	leftPreemptingResources := make(map[apiv1.ResourceName]resource.Quantity)
+	for k, v := range p.totalPreemptingResources {
+		leftPreemptingResources[k] = v
+	}
+	p.localDataMutex.Unlock()
 
-	// handler queuesUnderused which will preempt resources from other queue
 	resourceTypes := []string{"cpu", "memory"}
+	// handler queuesUnderused which will preempt resources from other queue
 	for _, q := range queuesUnderused {
-		if len(preemptingPods) == 0 {
-			// there is no preemptingPods left
+		if schedulercache.ResourcesIsZero(leftPreemptingResources) {
+			// there is no preempting resources left
 			// change Allocated to Deserved directly
 			q.Queue().Status.Allocated.Resources = q.Queue().Status.Deserved.Resources
 		} else {
-			// assign preempting pod resource to each queue
-			for _, v := range resourceTypes {
-				resType := apiv1.ResourceName(v)
-				deserved := q.Queue().Status.Deserved.Resources[resType].DeepCopy()
-				allocated := q.Queue().Status.Allocated.Resources[resType].DeepCopy()
-				increased := resource.MustParse("0")
-				if deserved.Cmp(allocated) > 0 {
-					deserved.Sub(allocated)
-					increased = deserved
-				}
-				for _, podInfo := range preemptingPods {
-					if increased.IsZero() {
-						break
-					}
-					releasing, ok := podInfo.totalReleasingResources[resType]
-					if !ok || releasing.IsZero() {
-						glog.V(4).Infof("Preempting pod %s has no %s resource left", podInfo.pod.Name, resType)
-						continue
-					}
-					if increased.Cmp(releasing) >= 0 {
-						if podInfo.detailReleasingResources[q.Queue().Namespace] == nil {
-							podInfo.detailReleasingResources[q.Queue().Namespace] = make(map[apiv1.ResourceName]resource.Quantity)
-						}
-						podInfo.detailReleasingResources[q.Queue().Namespace][resType] = releasing
-						podInfo.totalReleasingResources[resType] = resource.MustParse("0")
-						increased.Sub(releasing)
-					} else {
-						podInfo.detailReleasingResources[q.Queue().Namespace][resType] = increased
-						releasing.Sub(increased)
-						podInfo.totalReleasingResources[resType] = releasing
-					}
-				}
-				if !increased.IsZero() {
-					allocated.Add(increased)
-					if q.Queue().Status.Allocated.Resources == nil {
-						q.Queue().Status.Allocated.Resources = make(map[apiv1.ResourceName]resource.Quantity)
-					}
-					q.Queue().Status.Allocated.Resources[resType] = allocated
-				}
-			}
+			// assign preempting resources to queue first
+			unmetResources := schedulercache.ResourcesSub(q.Queue().Status.Deserved.Resources, q.Queue().Status.Allocated.Resources)
 
-			// clean preemptingPods which is empty
-			for k, podInfo := range preemptingPods {
-				resourceCpu := podInfo.totalReleasingResources["cpu"].DeepCopy()
-				resourceMemory := podInfo.totalReleasingResources["memory"].DeepCopy()
-				if resourceCpu.IsZero() && resourceMemory.IsZero() {
-					delete(preemptingPods, k)
+			for _, res := range resourceTypes {
+				resType := apiv1.ResourceName(res)
+				leftRes := leftPreemptingResources[resType].DeepCopy()
+				unmetRes := unmetResources[resType].DeepCopy()
+				if unmetRes.Cmp(leftRes) <= 0 {
+					leftRes.Sub(unmetRes)
+					leftPreemptingResources[resType] = leftRes
+				} else {
+					unmetRes.Sub(leftRes)
+					leftPreemptingResources[resType] = resource.MustParse("0")
+					allocatedRes := q.Queue().Status.Allocated.Resources[resType].DeepCopy()
+					allocatedRes.Add(unmetRes)
+					q.Queue().Status.Allocated.Resources[resType] = allocatedRes
 				}
 			}
 		}
-		glog.V(4).Infof("Underused queue %s status, deverved (%#v), allocated (%#v), used (%#v), preempting (%#v)",
-			q.Name(), q.Queue().Status.Deserved.Resources, q.Queue().Status.Allocated.Resources,
-			q.Queue().Status.Used.Resources, q.Queue().Status.Preempting.Resources)
 	}
-	if len(preemptingPods) != 0 {
-		glog.Error("PreemptingPod is not empty, preemption may be ERROR")
-		for _, podInfo := range preemptingPods {
-			glog.Error("    pod %s", podInfo.pod.Name)
-		}
+	if !schedulercache.ResourcesIsZero(leftPreemptingResources) {
+		glog.Errorf("leftPreemptingResources is not empty, something error, %#v", leftPreemptingResources)
 	}
 
-	// update Queue to API server under p.updateMu
-	p.updateMu.Lock()
-	queueClient, _, err := client.NewClient(p.config)
-	if err != nil {
-		return err
-	}
-	queueList := apiv1.QueueList{}
-	err = queueClient.Get().Resource(apiv1.QueuePlural).Do().Into(&queueList)
-	if err != nil {
-		return err
-	}
-	for _, oldQueue := range queueList.Items {
-		if len(queuesOverused) == 0 && len(queuesUnderused) == 0 {
-			break
-		}
-		// TODO update allocated and preempting for queuesOverused and queuesUnderused
-		q, ok := queuesOverused[oldQueue.Name]
-		if !ok {
-			q, ok = queuesUnderused[oldQueue.Name]
-			if !ok {
-				glog.V(4).Infof("Queue %s not exist in queues01(D<A)/queues03(D>A)", oldQueue.Name)
-				continue
-			}
-		}
+	// update Queue to API server under p.updateQueueMutex
+	p.updateQueueMutex.Lock()
+	updateQueues(queuesOverused, p.config)
+	updateQueues(queuesUnderused, p.config)
+	p.updateQueueMutex.Unlock()
 
-		// only update Queue Status Allocated/Deserved/Used/Preempting
-		oldQueue.Status.Allocated.Resources = q.Queue().Status.Allocated.Resources
-		oldQueue.Status.Deserved.Resources = q.Queue().Status.Deserved.Resources
-		oldQueue.Status.Used.Resources = q.Queue().Status.Used.Resources
-		oldQueue.Status.Preempting.Resources = q.Queue().Status.Preempting.Resources
-
-		result := apiv1.Queue{}
-		err = queueClient.Put().
-			Resource(apiv1.QueuePlural).
-			Namespace(oldQueue.Namespace).
-			Name(oldQueue.Name).
-			Body(oldQueue.DeepCopy()).
-			Do().Into(&result)
-		if err != nil {
-			glog.Errorf("Fail to update queue info, name %s, %#v", q.Queue().Name, err)
-		}
-	}
-	p.updateMu.Unlock()
-
-	p.dataMu.Lock()
+	p.localDataMutex.Lock()
 	// terminate pod after queue is updated
-	for _, v := range terminatingPods {
-		if err := killPod(p.client, v); err != nil {
+	for _, v := range preemptingPods {
+		if err := killPod(p.client, v.pod); err != nil {
 			// kill pod failed, it may be terminated before
 			// TODO call terminatePodDone later to update queue
-			glog.Errorf("Terminate pod %s failed", v.Name)
+			glog.Errorf("Terminate pod %s failed", v.pod.Name)
 		}
 	}
-	// wait until terminatingPods is empty
-	for len(p.terminatingPodsForPreempt) != 0 {
-		glog.V(4).Infof("Wait terminating pods done, left %d pods", len(p.terminatingPodsForPreempt))
-		p.dataCond.Wait()
-	}
-	p.dataMu.Unlock()
+	p.localDataMutex.Unlock()
 
 	return nil
 }
@@ -464,74 +434,15 @@ func (p *basePreemption) terminatePodDone(obj interface{}) {
 		return
 	}
 
-	p.dataMu.Lock()
+	p.localDataMutex.Lock()
+	defer p.localDataMutex.Unlock()
 	// if the pod is terminated for underused, remove it from terminatingPodsForUnderused directly
 	if _, ok := p.terminatingPodsForUnderused[pod.Name]; ok {
 		delete(p.terminatingPodsForUnderused, pod.Name)
 	}
-	// if the pod is terminated for preemption, remove it from terminatingPods and update Queue
-	ppInfo, ok := p.terminatingPodsForPreempt[pod.Name]
-	if ok {
+	// if the pod is terminated for preemption, remove it from terminatingPods, update totalPreemptingResources
+	if ppInfo, ok := p.terminatingPodsForPreempt[pod.Name]; ok {
 		delete(p.terminatingPodsForPreempt, pod.Name)
-		glog.V(4).Infof("Terminating pod %s done for preemption, left pod %d", ppInfo.pod.Name, len(p.terminatingPodsForPreempt))
+		p.totalPreemptingResources = schedulercache.ResourcesSub(p.totalPreemptingResources, ppInfo.totalReleasingResources)
 	}
-	p.dataMu.Unlock()
-
-	p.updateMu.Lock()
-	// update Queue preempting resources, this operation must be under p.updateMu
-	resourceTypes := []string{"cpu", "memory"}
-	if ok {
-		queueClient, _, err := client.NewClient(p.config)
-		if err != nil {
-			return
-		}
-		queueList := apiv1.QueueList{}
-		err = queueClient.Get().Resource(apiv1.QueuePlural).Do().Into(&queueList)
-		if err != nil {
-			return
-		}
-		for _, oldQueue := range queueList.Items {
-			releasingResource, ok := ppInfo.detailReleasingResources[oldQueue.Namespace]
-			if !ok {
-				continue
-			}
-
-			for _, v := range resourceTypes {
-				resType := apiv1.ResourceName(v)
-				releasing := releasingResource[resType].DeepCopy()
-				preempting := oldQueue.Status.Preempting.Resources[resType].DeepCopy()
-				if releasing.Cmp(preempting) < 0 {
-					preempting.Sub(releasing)
-					oldQueue.Status.Preempting.Resources[resType] = preempting
-					result := oldQueue.Status.Allocated.Resources[resType].DeepCopy()
-					result.Add(releasing)
-					oldQueue.Status.Allocated.Resources[resType] = result
-				} else {
-					oldQueue.Status.Preempting.Resources[resType] = resource.MustParse("0")
-					result := oldQueue.Status.Allocated.Resources[resType].DeepCopy()
-					result.Add(preempting)
-					oldQueue.Status.Allocated.Resources[resType] = result
-				}
-			}
-
-			// update Queue
-			result := apiv1.Queue{}
-			err = queueClient.Put().
-				Resource(apiv1.QueuePlural).
-				Namespace(oldQueue.Namespace).
-				Name(oldQueue.Name).
-				Body(oldQueue.DeepCopy()).
-				Do().Into(&result)
-			if err != nil {
-				glog.Errorf("Fail to update queue info, name %s, %#v", oldQueue.Name, err)
-			}
-		}
-	}
-	p.updateMu.Unlock()
-
-	p.dataMu.Lock()
-	if len(p.terminatingPodsForPreempt) == 0 {
-		p.dataCond.Signal()
-	}
-	p.dataMu.Unlock()
 }
