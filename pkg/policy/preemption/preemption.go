@@ -22,7 +22,7 @@ import (
 
 	"github.com/golang/glog"
 	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/crdclientset"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 
 	"k8s.io/api/core/v1"
@@ -121,15 +121,18 @@ func killPod(client *kubernetes.Clientset, pod *v1.Pod) error {
 }
 
 func updateQueues(queues map[string]*schedulercache.QueueInfo, config *rest.Config) error {
-	queueClient, _, err := client.NewClient(config)
+	cs, err := crdclientset.NewForConfig(config)
 	if err != nil {
-		return err
+		glog.Errorf("Fail to create client for queue, %#v", err)
+		return nil
 	}
-	queueList := apiv1.QueueList{}
-	err = queueClient.Get().Resource(apiv1.QueuePlural).Do().Into(&queueList)
+
+	queueList, err := cs.CrdV1().Queues("").List(meta_v1.ListOptions{})
 	if err != nil {
-		return err
+		glog.Errorf("Fail to get queue list, %#v", err)
+		return nil
 	}
+
 	for _, oldQueue := range queueList.Items {
 		if len(queues) == 0 {
 			break
@@ -147,13 +150,7 @@ func updateQueues(queues map[string]*schedulercache.QueueInfo, config *rest.Conf
 		oldQueue.Status.Used.Resources = q.Queue().Status.Used.Resources
 		oldQueue.Status.Preempting.Resources = q.Queue().Status.Preempting.Resources
 
-		result := apiv1.Queue{}
-		err = queueClient.Put().
-			Resource(apiv1.QueuePlural).
-			Namespace(oldQueue.Namespace).
-			Name(oldQueue.Name).
-			Body(oldQueue.DeepCopy()).
-			Do().Into(&result)
+		_, err := cs.CrdV1().Queues(oldQueue.Namespace).Update(&oldQueue)
 		if err != nil {
 			glog.Errorf("Fail to update queue info, name %s, %#v", q.Queue().Name, err)
 		}

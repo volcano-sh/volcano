@@ -18,6 +18,7 @@ package schedulercache
 
 import (
 	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 

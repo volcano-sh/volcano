@@ -23,11 +23,11 @@ import (
 	"github.com/golang/glog"
 	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
-
 	qInformerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
 	qclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/queue/v1"
 	qjobclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/queuejob/v1"
 	tsclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/taskset/v1"
+
 	"k8s.io/api/core/v1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
