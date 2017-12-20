@@ -17,14 +17,16 @@ limitations under the License.
 package v1
 
 import (
+	time "time"
+
 	q_v1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 	internalinterfaces "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/internalinterfaces"
 	v1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/listers/taskset/v1"
+
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/rest"
 	cache "k8s.io/client-go/tools/cache"
-	time "time"
 )
 
 // TaskSetInformer provides access to a shared informer and lister for
