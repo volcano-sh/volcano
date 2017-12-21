@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/crdclientset"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/arbclientset"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/preemption"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
@@ -57,35 +57,35 @@ func (q *QueueController) Run(stopCh <-chan struct{}) {
 }
 
 // update assign result to api server
-func (q *QueueController) updateTaskSet(assignedTS map[string]*schedulercache.TaskSetInfo) {
-	for _, ts := range assignedTS {
-		cpuRes := ts.TaskSet().Status.Allocated.Resources["cpu"].DeepCopy()
-		memRes := ts.TaskSet().Status.Allocated.Resources["memory"].DeepCopy()
+func (q *QueueController) updateQueueJob(assignedQJ map[string]*schedulercache.QueueJobInfo) {
+	for _, qj := range assignedQJ {
+		cpuRes := qj.QueueJob().Status.Allocated.Resources["cpu"].DeepCopy()
+		memRes := qj.QueueJob().Status.Allocated.Resources["memory"].DeepCopy()
 		cpuInt, _ := cpuRes.AsInt64()
 		memInt, _ := memRes.AsInt64()
-		glog.V(4).Infof("scheduler, assign taskset %s cpu %d memory %d\n", ts.Name(), cpuInt, memInt)
+		glog.V(4).Infof("scheduler, assign queuejob %s cpu %d memory %d\n", qj.Name(), cpuInt, memInt)
 	}
 
-	cs, err := crdclientset.NewForConfig(q.config)
+	cs, err := arbclientset.NewForConfig(q.config)
 	if err != nil {
-		glog.Errorf("Fail to create client for taskset, %#v", err)
+		glog.Errorf("Fail to create client for queuejob, %#v", err)
 		return
 	}
 
-	taskSetList, err := cs.CrdV1().Tasksets("").List(meta_v1.ListOptions{})
+	queueJobList, err := cs.ArbV1().Queuejobs("").List(meta_v1.ListOptions{})
 	if err != nil {
-		glog.Errorf("Fail to get taskset list, %#v", err)
+		glog.Errorf("Fail to get queuejob list, %#v", err)
 		return
 	}
-	for _, t := range taskSetList.Items {
-		updateTS, exist := assignedTS[t.Name]
+	for _, t := range queueJobList.Items {
+		updateQJ, exist := assignedQJ[t.Name]
 		if !exist {
-			glog.V(4).Infof("taskset %s in api server doesn't exist in scheduler cache\n", t.Name)
+			glog.V(4).Infof("queuejob %s in api server doesn't exist in scheduler cache\n", t.Name)
 			continue
 		}
-		_, err = cs.CrdV1().Tasksets(updateTS.TaskSet().Namespace).Update(updateTS.TaskSet())
+		_, err = cs.ArbV1().Queuejobs(updateQJ.QueueJob().Namespace).Update(updateQJ.QueueJob())
 		if err != nil {
-			glog.V(4).Infof("Fail to update taskset %s, %#v\n", updateTS.TaskSet().Name, err)
+			glog.V(4).Infof("Fail to update queuejob %s, %#v\n", updateQJ.QueueJob().Name, err)
 		}
 	}
 }
@@ -95,13 +95,13 @@ func (q *QueueController) runOnce() {
 	defer glog.V(4).Infof("End scheduling ...")
 
 	snapshot := q.cache.Dump()
-	jobGroups, allPods := q.allocator.Group(snapshot.Queues, snapshot.TaskSets, snapshot.Pods)
+	jobGroups, allPods := q.allocator.Group(snapshot.Queues, snapshot.QueueJobs, snapshot.Pods)
 	queues := q.allocator.Allocate(jobGroups, snapshot.Nodes)
 
 	queuesForPreempt, _ := q.preemptor.Preprocessing(queues, allPods)
 	q.preemptor.PreemptResources(queuesForPreempt)
 
-	assignedTS := q.allocator.Assign(queuesForPreempt, snapshot.TaskSets)
+	assignedQJ := q.allocator.Assign(queuesForPreempt, snapshot.QueueJobs)
 
-	q.updateTaskSet(assignedTS)
+	q.updateQueueJob(assignedQJ)
 }

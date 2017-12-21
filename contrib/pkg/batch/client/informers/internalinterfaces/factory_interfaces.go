@@ -14,11 +14,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package schedulercache
+package internalinterfaces
 
-type CacheSnapshot struct {
-	Pods      []*PodInfo
-	Nodes     []*NodeInfo
-	Queues    []*QueueInfo
-	QueueJobs []*QueueJobInfo
+import (
+	runtime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/rest"
+	cache "k8s.io/client-go/tools/cache"
+	time "time"
+)
+
+type NewInformerFunc func(*rest.RESTClient, time.Duration) cache.SharedIndexInformer
+
+// SharedInformerFactory a small interface to allow for adding an informer without an import cycle
+type SharedInformerFactory interface {
+	Start(stopCh <-chan struct{})
+	InformerFor(obj runtime.Object, newFunc NewInformerFunc) cache.SharedIndexInformer
 }

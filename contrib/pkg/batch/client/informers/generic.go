@@ -50,12 +50,8 @@ func (f *genericInformer) Lister() cache.GenericLister {
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
 	// Group=, Version=V1
-
-	case v1.SchemeGroupVersion.WithResource("queues"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Queue().Queues().Informer()}, nil
-
-	case v1.SchemeGroupVersion.WithResource("queuejobs"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.QueueJob().QueueJobs().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("combosets"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.ComboSet().ComboSets().Informer()}, nil
 	}
 
 	return nil, fmt.Errorf("no informer found for %v", resource)

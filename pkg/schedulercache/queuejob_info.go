@@ -22,21 +22,21 @@ import (
 
 type QueueJobInfo struct {
 	name     string
-	queuejob *apiv1.QueueJob
+	queueJob *apiv1.QueueJob
 }
 
-func (r *QueueJobInfo) Name() string {
-	return r.name
+func (t *QueueJobInfo) Name() string {
+	return t.name
 }
 
-func (r *QueueJobInfo) QueueJob() *apiv1.QueueJob {
-	return r.queuejob
+func (t *QueueJobInfo) QueueJob() *apiv1.QueueJob {
+	return t.queueJob
 }
 
-func (r *QueueJobInfo) Clone() *QueueJobInfo {
+func (t *QueueJobInfo) Clone() *QueueJobInfo {
 	clone := &QueueJobInfo{
-		name:     r.name,
-		queuejob: r.queuejob.DeepCopy(),
+		name:     t.name,
+		queueJob: t.queueJob.DeepCopy(),
 	}
 	return clone
 }

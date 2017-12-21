@@ -17,9 +17,8 @@ limitations under the License.
 package informers
 
 import (
+	qjob_v1 "github.com/kubernetes-incubator/kube-arbitrator/contrib/pkg/batch/client/informers/comboset/v1"
 	internalinterfaces "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/internalinterfaces"
-	q_v1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/queue/v1"
-	qj_v1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/queuejob/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
@@ -109,14 +108,9 @@ type SharedInformerFactory interface {
 	ForResource(resource schema.GroupVersionResource) (GenericInformer, error)
 	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
 
-	Queue() q_v1.Interface
-	QueueJob() qj_v1.Interface
+	ComboSet() qjob_v1.Interface
 }
 
-func (f *sharedInformerFactory) Queue() q_v1.Interface {
-	return q_v1.New(f)
-}
-
-func (f *sharedInformerFactory) QueueJob() qj_v1.Interface {
-	return qj_v1.New(f)
+func (f *sharedInformerFactory) ComboSet() qjob_v1.Interface {
+	return qjob_v1.New(f)
 }

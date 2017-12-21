@@ -21,10 +21,10 @@ import (
 	"reflect"
 	"time"
 
-	qjobv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-	apiextv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
-	apiextclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	crv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+
+	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
+	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -33,77 +33,62 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-const (
-	QueueJobGroup    string = qjobv1.GroupName
-	QueueJobVersion  string = "v1"
-	FullQueueJobName string = qjobv1.QueueJobPlural + "." + QueueJobGroup
-)
-
-func addKnownTypes(scheme *runtime.Scheme) error {
-	scheme.AddKnownTypes(qjobv1.SchemeGroupVersion,
-		&qjobv1.QueueJob{},
-		&qjobv1.QueueJobList{},
-	)
-	metav1.AddToGroupVersion(scheme, qjobv1.SchemeGroupVersion)
-	return nil
-}
-
 func NewQueueJobClient(cfg *rest.Config) (*rest.RESTClient, *runtime.Scheme, error) {
 	scheme := runtime.NewScheme()
-	if err := qjobv1.AddToScheme(scheme); err != nil {
+	if err := crv1.AddToScheme(scheme); err != nil {
 		return nil, nil, err
 	}
 
 	config := *cfg
-	config.GroupVersion = &qjobv1.SchemeGroupVersion
+	config.GroupVersion = &crv1.SchemeGroupVersion
 	config.APIPath = "/apis"
 	config.ContentType = runtime.ContentTypeJSON
-	config.NegotiatedSerializer = serializer.DirectCodecFactory{
-		CodecFactory: serializer.NewCodecFactory(scheme)}
+	config.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: serializer.NewCodecFactory(scheme)}
 
 	client, err := rest.RESTClientFor(&config)
 	if err != nil {
 		return nil, nil, err
 	}
+
 	return client, scheme, nil
 }
 
-func CreateQueueJob(clientset apiextclient.Interface) (*apiextv1beta1.CustomResourceDefinition, error) {
-	qjob := &apiextv1beta1.CustomResourceDefinition{
+const queueJobCRDName = crv1.QueueJobPlural + "." + crv1.GroupName
+
+func CreateQueueJobCRD(clientset apiextensionsclient.Interface) (*apiextensionsv1beta1.CustomResourceDefinition, error) {
+	crd := &apiextensionsv1beta1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: FullQueueJobName,
+			Name: queueJobCRDName,
 		},
-		Spec: apiextv1beta1.CustomResourceDefinitionSpec{
-			Group:   QueueJobGroup,
-			Version: QueueJobVersion,
-			Scope:   apiextv1beta1.NamespaceScoped,
-			Names: apiextv1beta1.CustomResourceDefinitionNames{
-				Plural: qjobv1.QueueJobPlural,
-				Kind:   reflect.TypeOf(qjobv1.QueueJob{}).Name(),
+		Spec: apiextensionsv1beta1.CustomResourceDefinitionSpec{
+			Group:   crv1.GroupName,
+			Version: crv1.SchemeGroupVersion.Version,
+			Scope:   apiextensionsv1beta1.NamespaceScoped,
+			Names: apiextensionsv1beta1.CustomResourceDefinitionNames{
+				Plural: crv1.QueueJobPlural,
+				Kind:   reflect.TypeOf(crv1.QueueJob{}).Name(),
 			},
 		},
 	}
-
-	_, err := clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Create(qjob)
-	if err != nil && apierrors.IsAlreadyExists(err) {
+	_, err := clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Create(crd)
+	if err != nil {
 		return nil, err
 	}
-	return nil, err
 
-	// wait for QueueJob being established
+	// wait for CRD being established
 	err = wait.Poll(500*time.Millisecond, 60*time.Second, func() (bool, error) {
-		qjob, err = clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Get(FullQueueJobName, metav1.GetOptions{})
+		crd, err = clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Get(queueJobCRDName, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
-		for _, cond := range qjob.Status.Conditions {
+		for _, cond := range crd.Status.Conditions {
 			switch cond.Type {
-			case apiextv1beta1.Established:
-				if cond.Status == apiextv1beta1.ConditionTrue {
+			case apiextensionsv1beta1.Established:
+				if cond.Status == apiextensionsv1beta1.ConditionTrue {
 					return true, err
 				}
-			case apiextv1beta1.NamesAccepted:
-				if cond.Status == apiextv1beta1.ConditionFalse {
+			case apiextensionsv1beta1.NamesAccepted:
+				if cond.Status == apiextensionsv1beta1.ConditionFalse {
 					fmt.Printf("Name conflict: %v\n", cond.Reason)
 				}
 			}
@@ -111,11 +96,11 @@ func CreateQueueJob(clientset apiextclient.Interface) (*apiextv1beta1.CustomReso
 		return false, err
 	})
 	if err != nil {
-		deleteErr := clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Delete(FullQueueJobName, nil)
+		deleteErr := clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Delete(queueJobCRDName, nil)
 		if deleteErr != nil {
 			return nil, errors.NewAggregate([]error{err, deleteErr})
 		}
 		return nil, err
 	}
-	return qjob, nil
+	return crd, nil
 }

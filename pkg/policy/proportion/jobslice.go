@@ -68,18 +68,18 @@ func (s WeightJobSlice) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
 
-type PriorityTaskSetSlice []*schedulercache.TaskSetInfo
+type PriorityQueueJobSlice []*schedulercache.QueueJobInfo
 
-func (s PriorityTaskSetSlice) Len() int {
+func (s PriorityQueueJobSlice) Len() int {
 	return len(s)
 }
 
-func (s PriorityTaskSetSlice) Less(i, j int) bool {
-	priority1 := s[i].TaskSet().Spec.Priority
-	priority2 := s[j].TaskSet().Spec.Priority
+func (s PriorityQueueJobSlice) Less(i, j int) bool {
+	priority1 := s[i].QueueJob().Spec.Priority
+	priority2 := s[j].QueueJob().Spec.Priority
 	return priority1 > priority2
 }
 
-func (s PriorityTaskSetSlice) Swap(i, j int) {
+func (s PriorityQueueJobSlice) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }

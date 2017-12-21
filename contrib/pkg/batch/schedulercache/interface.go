@@ -16,9 +16,12 @@ limitations under the License.
 
 package schedulercache
 
-type CacheSnapshot struct {
-	Pods      []*PodInfo
-	Nodes     []*NodeInfo
-	Queues    []*QueueInfo
-	QueueJobs []*QueueJobInfo
+// Cache collects pods/nodes/queues information
+// and provides information snapshot
+type Cache interface {
+	// Run start informer
+	Run(stopCh <-chan struct{})
+
+	// Dump deep copy overall cache information into snapshot
+	Dump() *CacheSnapshot
 }

@@ -14,11 +14,5 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package schedulercache
-
-type CacheSnapshot struct {
-	Pods      []*PodInfo
-	Nodes     []*NodeInfo
-	Queues    []*QueueInfo
-	QueueJobs []*QueueJobInfo
-}
+// +k8s:deepcopy-gen=package
+package v1
