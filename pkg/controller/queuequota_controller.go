@@ -23,7 +23,7 @@ import (
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
 	informerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
-	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/queue/v1"
+	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/v1"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"

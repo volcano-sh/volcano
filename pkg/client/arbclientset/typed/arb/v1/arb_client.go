@@ -20,8 +20,8 @@ import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	serializer "k8s.io/apimachinery/pkg/runtime/serializer"
-	rest "k8s.io/client-go/rest"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/client-go/rest"
 )
 
 type ArbV1Interface interface {

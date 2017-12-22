@@ -17,16 +17,16 @@ limitations under the License.
 package v1
 
 import (
-	time "time"
+	"time"
 
-	q_v1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-	internalinterfaces "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/internalinterfaces"
-	v1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/listers/queue/v1"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/internalinterfaces"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/listers/v1"
 
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/rest"
-	cache "k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/cache"
 )
 
 // QueueInformer provides access to a shared informer and lister for
@@ -47,13 +47,13 @@ func NewQueueInformer(client *rest.RESTClient, namespace string, resyncPeriod ti
 
 	source := cache.NewListWatchFromClient(
 		client,
-		q_v1.QueuePlural,
+		arbv1.QueuePlural,
 		namespace,
 		fields.Everything())
 
 	return cache.NewSharedIndexInformer(
 		source,
-		&q_v1.Queue{},
+		&arbv1.Queue{},
 		resyncPeriod,
 		indexers,
 	)
@@ -64,7 +64,7 @@ func defaultQueueInformer(client *rest.RESTClient, resyncPeriod time.Duration) c
 }
 
 func (f *queueInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&q_v1.Queue{}, defaultQueueInformer)
+	return f.factory.InformerFor(&arbv1.Queue{}, defaultQueueInformer)
 }
 
 func (f *queueInformer) Lister() v1.QueueLister {

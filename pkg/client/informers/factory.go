@@ -17,16 +17,17 @@ limitations under the License.
 package informers
 
 import (
-	internalinterfaces "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/internalinterfaces"
-	q_v1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/queue/v1"
-	qj_v1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/queuejob/v1"
-	runtime "k8s.io/apimachinery/pkg/runtime"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
+	"reflect"
+	"sync"
+	"time"
+
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/internalinterfaces"
+	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/v1"
+
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
-	cache "k8s.io/client-go/tools/cache"
-	reflect "reflect"
-	sync "sync"
-	time "time"
+	"k8s.io/client-go/tools/cache"
 )
 
 type sharedInformerFactory struct {
@@ -109,14 +110,14 @@ type SharedInformerFactory interface {
 	ForResource(resource schema.GroupVersionResource) (GenericInformer, error)
 	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
 
-	Queue() q_v1.Interface
-	QueueJob() qj_v1.Interface
+	Queue() arbclient.Interface
+	QueueJob() arbclient.Interface
 }
 
-func (f *sharedInformerFactory) Queue() q_v1.Interface {
-	return q_v1.New(f)
+func (f *sharedInformerFactory) Queue() arbclient.Interface {
+	return arbclient.New(f)
 }
 
-func (f *sharedInformerFactory) QueueJob() qj_v1.Interface {
-	return qj_v1.New(f)
+func (f *sharedInformerFactory) QueueJob() arbclient.Interface {
+	return arbclient.New(f)
 }

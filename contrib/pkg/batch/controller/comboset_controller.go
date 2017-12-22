@@ -32,7 +32,7 @@ import (
 	queuev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 	queueclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
 	queueInformerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
-	qclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/queue/v1"
+	qclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 
 	"k8s.io/api/core/v1"

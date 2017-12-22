@@ -21,7 +21,7 @@ import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/arbclientset/scheme"
 
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	rest "k8s.io/client-go/rest"
+	"k8s.io/client-go/rest"
 )
 
 type QueueGetter interface {
