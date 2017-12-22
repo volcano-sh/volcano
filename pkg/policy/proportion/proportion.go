@@ -20,7 +20,8 @@ import (
 	"sort"
 
 	"github.com/golang/glog"
-	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/util"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 
 	corev1 "k8s.io/api/core/v1"
@@ -68,7 +69,7 @@ func (ps *proportionScheduler) collectSchedulingInfo(jobGroup map[string][]*sche
 
 // sort queue by cpu from low to high
 func (ps *proportionScheduler) sortQueueByCPU(jobGroup map[string][]*schedulercache.QueueInfo) []*schedulercache.QueueInfo {
-	sortedCPUJobs := CPUJobSlice{}
+	sortedCPUJobs := util.CPUJobSlice{}
 
 	for _, jobs := range jobGroup {
 		for _, job := range jobs {
@@ -82,7 +83,7 @@ func (ps *proportionScheduler) sortQueueByCPU(jobGroup map[string][]*schedulerca
 
 // sort queue by memory from low to high
 func (ps *proportionScheduler) sortQueueByMEM(jobGroup map[string][]*schedulercache.QueueInfo) []*schedulercache.QueueInfo {
-	sortedMEMJobs := MEMJobSlice{}
+	sortedMEMJobs := util.MEMJobSlice{}
 
 	for _, jobs := range jobGroup {
 		for _, job := range jobs {
@@ -96,7 +97,7 @@ func (ps *proportionScheduler) sortQueueByMEM(jobGroup map[string][]*schedulerca
 
 // sort queue by weight from high to low
 func (ps *proportionScheduler) sortQueueByWeight(jobGroup map[string][]*schedulercache.QueueInfo) []*schedulercache.QueueInfo {
-	sortedWeightJobs := WeightJobSlice{}
+	sortedWeightJobs := util.WeightJobSlice{}
 
 	for _, jobs := range jobGroup {
 		for _, job := range jobs {
@@ -110,7 +111,7 @@ func (ps *proportionScheduler) sortQueueByWeight(jobGroup map[string][]*schedule
 
 // sort queuejob under queue by priority from high to low
 func (ps *proportionScheduler) sortQueueJobByPriority(queue string, ts []*schedulercache.QueueJobInfo) []*schedulercache.QueueJobInfo {
-	sortedPriorityQueueJob := PriorityQueueJobSlice{}
+	sortedPriorityQueueJob := util.PriorityQueueJobSlice{}
 
 	for _, t := range ts {
 		if queue == t.QueueJob().Spec.Queue {
@@ -143,7 +144,7 @@ func (ps *proportionScheduler) Group(
 	for _, job := range jobs {
 		cloneJob := job.Clone()
 
-		totalResOfJob := map[apiv1.ResourceName]resource.Quantity{
+		totalResOfJob := map[arbv1.ResourceName]resource.Quantity{
 			"cpu":    resource.MustParse("0"),
 			"memory": resource.MustParse("0"),
 		}
@@ -193,11 +194,11 @@ func (ps *proportionScheduler) Allocate(
 		return nil
 	}
 
-	totalResources := map[apiv1.ResourceName]int64{
+	totalResources := map[arbv1.ResourceName]int64{
 		"cpu":    totalCPU,
 		"memory": totalMEM,
 	}
-	sortedJobs := map[apiv1.ResourceName][]*schedulercache.QueueInfo{
+	sortedJobs := map[arbv1.ResourceName][]*schedulercache.QueueInfo{
 		"cpu":    ps.sortQueueByCPU(jobGroup),
 		"memory": ps.sortQueueByMEM(jobGroup),
 	}
@@ -209,15 +210,15 @@ func (ps *proportionScheduler) Allocate(
 		for _, job := range jobs {
 			allocatedQueueResult[job.Name()] = job.Clone()
 			// clear Used resources
-			allocatedQueueResult[job.Name()].Queue().Status.Used = apiv1.ResourceList{
-				Resources: make(map[apiv1.ResourceName]resource.Quantity),
+			allocatedQueueResult[job.Name()].Queue().Status.Used = arbv1.ResourceList{
+				Resources: make(map[arbv1.ResourceName]resource.Quantity),
 			}
 		}
 	}
 
 	// assign resource cpu/memory to each queue by max-min weighted fairness
-	resourceTypes := []apiv1.ResourceName{"cpu", "memory"}
-	totalAllocatedRes := map[apiv1.ResourceName]int64{
+	resourceTypes := []arbv1.ResourceName{"cpu", "memory"}
+	totalAllocatedRes := map[arbv1.ResourceName]int64{
 		"cpu":    int64(0),
 		"memory": int64(0),
 	}
@@ -251,7 +252,7 @@ func (ps *proportionScheduler) Allocate(
 	}
 
 	// assign left resources to queue from high weight to low weight
-	totalUnallocatedRes := map[apiv1.ResourceName]int64{
+	totalUnallocatedRes := map[arbv1.ResourceName]int64{
 		"cpu":    totalResources["cpu"] - totalAllocatedRes["cpu"],
 		"memory": totalResources["memory"] - totalAllocatedRes["memory"],
 	}
@@ -295,13 +296,13 @@ func (ps *proportionScheduler) Assign(
 	defer glog.V(4).Infof("Leaving Assign ...")
 
 	result := make(map[string]*schedulercache.QueueJobInfo)
-	resourceTypes := []apiv1.ResourceName{"cpu", "memory"}
+	resourceTypes := []arbv1.ResourceName{"cpu", "memory"}
 	for _, job := range jobs {
 		cpuRes := job.Queue().Status.Allocated.Resources["cpu"].DeepCopy()
 		memRes := job.Queue().Status.Allocated.Resources["memory"].DeepCopy()
 		cpuInt, _ := cpuRes.AsInt64()
 		memInt, _ := memRes.AsInt64()
-		allocatedResources := map[apiv1.ResourceName]resource.Quantity{
+		allocatedResources := map[arbv1.ResourceName]resource.Quantity{
 			"cpu":    job.Queue().Status.Allocated.Resources["cpu"].DeepCopy(),
 			"memory": job.Queue().Status.Allocated.Resources["memory"].DeepCopy(),
 		}
@@ -312,7 +313,7 @@ func (ps *proportionScheduler) Assign(
 			totalResOfQueueJob := schedulercache.ResourcesMultiply(t.QueueJob().Spec.ResourceUnit.Resources, t.QueueJob().Spec.ResourceNo)
 
 			// reset allocated resource of queuejob
-			t.QueueJob().Status.Allocated.Resources = map[apiv1.ResourceName]resource.Quantity{
+			t.QueueJob().Status.Allocated.Resources = map[arbv1.ResourceName]resource.Quantity{
 				"cpu":    resource.MustParse("0"),
 				"memory": resource.MustParse("0"),
 			}
