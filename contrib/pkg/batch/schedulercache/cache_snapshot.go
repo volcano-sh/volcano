@@ -17,8 +17,5 @@ limitations under the License.
 package schedulercache
 
 type CacheSnapshot struct {
-	Pods      []*PodInfo
-	Nodes     []*NodeInfo
-	Queues    []*QueueInfo
-	QueueJobs []*QueueJobInfo
+	ComboSets []*ComboSetInfo
 }

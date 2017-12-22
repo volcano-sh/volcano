@@ -22,7 +22,7 @@ import (
 
 	"github.com/golang/glog"
 	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/crdclientset"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/arbclientset"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 
 	"k8s.io/api/core/v1"
@@ -121,13 +121,13 @@ func killPod(client *kubernetes.Clientset, pod *v1.Pod) error {
 }
 
 func updateQueues(queues map[string]*schedulercache.QueueInfo, config *rest.Config) error {
-	cs, err := crdclientset.NewForConfig(config)
+	cs, err := arbclientset.NewForConfig(config)
 	if err != nil {
 		glog.Errorf("Fail to create client for queue, %#v", err)
 		return nil
 	}
 
-	queueList, err := cs.CrdV1().Queues("").List(meta_v1.ListOptions{})
+	queueList, err := cs.ArbV1().Queues("").List(meta_v1.ListOptions{})
 	if err != nil {
 		glog.Errorf("Fail to get queue list, %#v", err)
 		return nil
@@ -150,7 +150,7 @@ func updateQueues(queues map[string]*schedulercache.QueueInfo, config *rest.Conf
 		oldQueue.Status.Used.Resources = q.Queue().Status.Used.Resources
 		oldQueue.Status.Preempting.Resources = q.Queue().Status.Preempting.Resources
 
-		_, err := cs.CrdV1().Queues(oldQueue.Namespace).Update(&oldQueue)
+		_, err := cs.ArbV1().Queues(oldQueue.Namespace).Update(&oldQueue)
 		if err != nil {
 			glog.Errorf("Fail to update queue info, name %s, %#v", q.Queue().Name, err)
 		}

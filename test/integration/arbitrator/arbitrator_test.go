@@ -23,7 +23,7 @@ import (
 
 	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/crdclientset"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/arbclientset"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/controller"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/preemption"
@@ -51,9 +51,9 @@ func prepareCRD(config *restclient.Config) error {
 		return fmt.Errorf("fail to create queue crd, %#v", err)
 	}
 
-	_, err = client.CreateTaskSetCRD(extensionscs)
+	_, err = client.CreateQueueJobCRD(extensionscs)
 	if err != nil && !apierrors.IsAlreadyExists(err) {
-		return fmt.Errorf("fail to create taskset crd, %#v", err)
+		return fmt.Errorf("fail to create queuejob crd, %#v", err)
 	}
 
 	return nil
@@ -193,7 +193,7 @@ func prepareResourceQuota(cs *clientset.Clientset) error {
 // create two Queues, "queue01" and "queue02"
 // "queue01" is under namespace "ns01" and has attribute "weight=1"
 // "queue02" is under namespace "ns02" and has attribute "weight=2"
-func prepareQueue(cs *crdclientset.Clientset) error {
+func prepareQueue(cs *arbclientset.Clientset) error {
 	queue := &apiv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "xxx",
@@ -239,7 +239,7 @@ func prepareQueue(cs *crdclientset.Clientset) error {
 		queue.Spec.Weight = c.weight
 		queue.Spec.Request.Resources = c.request
 
-		_, err := cs.CrdV1().Queues(queue.Namespace).Create(queue)
+		_, err := cs.ArbV1().Queues(queue.Namespace).Create(queue)
 		if err != nil {
 			return fmt.Errorf("fail to create queue %s, %#v", queue.Name, err)
 		}
@@ -248,17 +248,17 @@ func prepareQueue(cs *crdclientset.Clientset) error {
 	return nil
 }
 
-// prepareTaskSet prepare customer resource definition "TaskSet"
-// create four taskset
+// prepareQueueJob prepare customer resource definition "QueueJob"
+// create four queuejob
 // "ts01-1" and "ts01-2", under "queue01"
 // "ts02-1" and "ts02-2", under "queue02"
-func prepareTaskSet(cs *crdclientset.Clientset) error {
-	ts := &apiv1.TaskSet{
+func prepareQueueJob(cs *arbclientset.Clientset) error {
+	ts := &apiv1.QueueJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "xxx",
 			Namespace: "xxx",
 		},
-		Spec: apiv1.TaskSetSpec{
+		Spec: apiv1.QueueJobSpec{
 			Priority:   0,
 			Queue:      "xxx",
 			ResourceNo: 0,
@@ -330,9 +330,9 @@ func prepareTaskSet(cs *crdclientset.Clientset) error {
 		ts.Spec.ResourceNo = c.resourceno
 		ts.Spec.ResourceUnit.Resources = c.resourceunit
 
-		_, err := cs.CrdV1().Tasksets(ts.Namespace).Create(ts)
+		_, err := cs.ArbV1().Queuejobs(ts.Namespace).Create(ts)
 		if err != nil {
-			return fmt.Errorf("fail to create taskset %s, %#v", ts.Name, err)
+			return fmt.Errorf("fail to create queuejob %s, %#v", ts.Name, err)
 		}
 	}
 
@@ -341,7 +341,7 @@ func prepareTaskSet(cs *crdclientset.Clientset) error {
 
 // prepareCRDForPreemption create one Queue "queue03"
 // "queue03" is under namespace "ns03" and has attribute "weight=2"
-func prepareQueueForPreemption(cs *crdclientset.Clientset) error {
+func prepareQueueForPreemption(cs *arbclientset.Clientset) error {
 	queue := &apiv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "xxx",
@@ -378,7 +378,7 @@ func prepareQueueForPreemption(cs *crdclientset.Clientset) error {
 		queue.Spec.Weight = c.weight
 		queue.Spec.Request.Resources = c.request
 
-		_, err := cs.CrdV1().Queues(queue.Namespace).Create(queue)
+		_, err := cs.ArbV1().Queues(queue.Namespace).Create(queue)
 		if err != nil {
 			return fmt.Errorf("fail to create queue %s, %#v", queue.Name, err)
 		}
@@ -387,16 +387,16 @@ func prepareQueueForPreemption(cs *crdclientset.Clientset) error {
 	return nil
 }
 
-// prepareTaskSetForPreemption prepare customer resource definition "TaskSet"
-// create two taskset
+// prepareQueueJobForPreemption prepare customer resource definition "QueueJob"
+// create two queuejob
 // "ts03-1" and "ts03-2", under "queue03"
-func prepareTaskSetForPreemption(cs *crdclientset.Clientset) error {
-	ts := &apiv1.TaskSet{
+func prepareQueueJobForPreemption(cs *arbclientset.Clientset) error {
+	ts := &apiv1.QueueJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "xxx",
 			Namespace: "xxx",
 		},
-		Spec: apiv1.TaskSetSpec{
+		Spec: apiv1.QueueJobSpec{
 			Priority:   0,
 			Queue:      "xxx",
 			ResourceNo: 0,
@@ -446,9 +446,9 @@ func prepareTaskSetForPreemption(cs *crdclientset.Clientset) error {
 		ts.Spec.ResourceNo = c.resourceno
 		ts.Spec.ResourceUnit.Resources = c.resourceunit
 
-		_, err := cs.CrdV1().Tasksets(ts.Namespace).Create(ts)
+		_, err := cs.ArbV1().Queuejobs(ts.Namespace).Create(ts)
 		if err != nil {
-			return fmt.Errorf("fail to create taskset %s, %#v", ts.Name, err)
+			return fmt.Errorf("fail to create queuejob %s, %#v", ts.Name, err)
 		}
 	}
 
@@ -547,7 +547,7 @@ func TestArbitrator(t *testing.T) {
 	cs := clientset.NewForConfigOrDie(config)
 	defer cs.CoreV1().Nodes().DeleteCollection(nil, metav1.ListOptions{})
 
-	crdcs := crdclientset.NewForConfigOrDie(config)
+	crdcs := arbclientset.NewForConfigOrDie(config)
 
 	err := prepareCRD(config)
 	if err != nil {
@@ -574,9 +574,9 @@ func TestArbitrator(t *testing.T) {
 		t.Fatalf("fail to prepare queue, %#v", err)
 	}
 
-	err = prepareTaskSet(crdcs)
+	err = prepareQueueJob(crdcs)
 	if err != nil {
-		t.Fatalf("fail to prepare taskset, %#v", err)
+		t.Fatalf("fail to prepare queuejob, %#v", err)
 	}
 
 	neverStop := make(chan struct{})
@@ -623,9 +623,9 @@ func TestArbitrator(t *testing.T) {
 		t.Fatalf("fail to prepare CRD for preemption, %#v", err)
 	}
 
-	err = prepareTaskSetForPreemption(crdcs)
+	err = prepareQueueJobForPreemption(crdcs)
 	if err != nil {
-		t.Fatalf("fail to prepare taskset CRD for preemption, %#v", err)
+		t.Fatalf("fail to prepare queuejob CRD for preemption, %#v", err)
 	}
 
 	// sleep to wait scheduler finish

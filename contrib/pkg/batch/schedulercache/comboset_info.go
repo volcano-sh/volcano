@@ -16,9 +16,27 @@ limitations under the License.
 
 package schedulercache
 
-type CacheSnapshot struct {
-	Pods      []*PodInfo
-	Nodes     []*NodeInfo
-	Queues    []*QueueInfo
-	QueueJobs []*QueueJobInfo
+import (
+	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/contrib/pkg/batch/apis/v1"
+)
+
+type ComboSetInfo struct {
+	name     string
+	comboset *apiv1.ComboSet
+}
+
+func (r *ComboSetInfo) Name() string {
+	return r.name
+}
+
+func (r *ComboSetInfo) QueueJob() *apiv1.ComboSet {
+	return r.comboset
+}
+
+func (r *ComboSetInfo) Clone() *ComboSetInfo {
+	clone := &ComboSetInfo{
+		name:     r.name,
+		comboset: r.comboset.DeepCopy(),
+	}
+	return clone
 }
