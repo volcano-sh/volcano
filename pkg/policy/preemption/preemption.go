@@ -17,12 +17,14 @@ limitations under the License.
 package preemption
 
 import (
+	"sort"
 	"strings"
 	"sync"
 
 	"github.com/golang/glog"
 	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/arbclientset"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/util"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 
 	"k8s.io/api/core/v1"
@@ -442,4 +444,33 @@ func (p *basePreemption) terminatePodDone(obj interface{}) {
 		delete(p.terminatingPodsForPreempt, pod.Name)
 		p.totalPreemptingResources = schedulercache.ResourcesSub(p.totalPreemptingResources, ppInfo.totalReleasingResources)
 	}
+}
+
+func sortPodByPriority(pods map[string]*v1.Pod) []*v1.Pod {
+	sortedPods := util.PodSlice{}
+
+	for _, pod := range pods {
+		sortedPods = append(sortedPods, pod)
+	}
+	sort.Sort(sortedPods)
+
+	return sortedPods
+}
+
+func popPod(pods []*v1.Pod) ([]*v1.Pod, *v1.Pod, bool) {
+	if len(pods) == 0 {
+		return nil, nil, false
+	}
+
+	pod := pods[0]
+	leftPods := append(pods[:0], pods[1:]...)
+
+	return leftPods, pod, true
+}
+
+func addPodFront(pods []*v1.Pod, pod *v1.Pod) []*v1.Pod {
+	front := append([]*v1.Pod{}, pod)
+	result := append(front[0:], pods...)
+
+	return result
 }

@@ -20,10 +20,10 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
-	qInformerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
-	qclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/queue/v1"
+	informerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
+	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/queue/v1"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -36,7 +36,7 @@ import (
 
 type quotaManager struct {
 	config        *rest.Config
-	queueInformer qclient.QueueInformer
+	queueInformer arbclient.QueueInformer
 }
 
 func NewQuotaManager(config *rest.Config) *quotaManager {
@@ -49,14 +49,14 @@ func NewQuotaManager(config *rest.Config) *quotaManager {
 		panic(err)
 	}
 
-	qInformerFactory := qInformerfactory.NewSharedInformerFactory(queueClient, 0)
+	sharedInformerFactory := informerfactory.NewSharedInformerFactory(queueClient, 0)
 	// create informer for queue information
-	qm.queueInformer = qInformerFactory.Queue().Queues()
+	qm.queueInformer = sharedInformerFactory.Queue().Queues()
 	qm.queueInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
-				case *apiv1.Queue:
+				case *arbv1.Queue:
 					glog.V(4).Infof("Filter queue name(%s) namespace(%s)\n", t.Name, t.Namespace)
 					return true
 				default:
@@ -88,14 +88,14 @@ func (qm *quotaManager) runOnce() {
 	qm.updateQuotas(queues)
 }
 
-func (qm *quotaManager) fetchAllQueue() ([]apiv1.Queue, error) {
+func (qm *quotaManager) fetchAllQueue() ([]arbv1.Queue, error) {
 	queueClient, _, err := client.NewClient(qm.config)
 	if err != nil {
 		return nil, err
 	}
 
-	queueList := apiv1.QueueList{}
-	err = queueClient.Get().Resource(apiv1.QueuePlural).Do().Into(&queueList)
+	queueList := arbv1.QueueList{}
+	err = queueClient.Get().Resource(arbv1.QueuePlural).Do().Into(&queueList)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (qm *quotaManager) fetchAllQueue() ([]apiv1.Queue, error) {
 	return queueList.Items, nil
 }
 
-func (qm *quotaManager) updateQuotas(queues []apiv1.Queue) {
+func (qm *quotaManager) updateQuotas(queues []arbv1.Queue) {
 	cs := kubernetes.NewForConfigOrDie(qm.config)
 
 	for _, queue := range queues {
@@ -135,9 +135,9 @@ func (qm *quotaManager) updateQuotas(queues []apiv1.Queue) {
 }
 
 func (qm *quotaManager) AddQueue(obj interface{}) {
-	queue, ok := obj.(*apiv1.Queue)
+	queue, ok := obj.(*arbv1.Queue)
 	if !ok {
-		glog.Errorf("Cannot convert to *apiv1.Queue: %v", obj)
+		glog.Errorf("Cannot convert to *arbv1.Queue: %v", obj)
 		return
 	}
 
@@ -176,13 +176,13 @@ func (qm *quotaManager) AddQueue(obj interface{}) {
 }
 
 func (qm *quotaManager) DeleteQueue(obj interface{}) {
-	var queue *apiv1.Queue
+	var queue *arbv1.Queue
 	switch t := obj.(type) {
-	case *apiv1.Queue:
+	case *arbv1.Queue:
 		queue = t
 	case cache.DeletedFinalStateUnknown:
 		var ok bool
-		queue, ok = t.Obj.(*apiv1.Queue)
+		queue, ok = t.Obj.(*arbv1.Queue)
 		if !ok {
 			glog.Errorf("Cannot convert to *v1.Queue: %v", t.Obj)
 			return

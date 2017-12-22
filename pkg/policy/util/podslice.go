@@ -14,10 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package preemption
+package util
 
 import (
-	"sort"
 	"strconv"
 
 	"k8s.io/api/core/v1"
@@ -58,33 +57,4 @@ func (p PodSlice) Less(i, j int) bool {
 
 func (p PodSlice) Swap(i, j int) {
 	p[i], p[j] = p[j], p[i]
-}
-
-func sortPodByPriority(pods map[string]*v1.Pod) []*v1.Pod {
-	sortedPods := PodSlice{}
-
-	for _, pod := range pods {
-		sortedPods = append(sortedPods, pod)
-	}
-	sort.Sort(sortedPods)
-
-	return sortedPods
-}
-
-func popPod(pods []*v1.Pod) ([]*v1.Pod, *v1.Pod, bool) {
-	if len(pods) == 0 {
-		return nil, nil, false
-	}
-
-	pod := pods[0]
-	leftPods := append(pods[:0], pods[1:]...)
-
-	return leftPods, pod, true
-}
-
-func addPodFront(pods []*v1.Pod, pod *v1.Pod) []*v1.Pod {
-	front := append([]*v1.Pod{}, pod)
-	result := append(front[0:], pods...)
-
-	return result
 }
