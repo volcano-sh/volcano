@@ -234,4 +234,4 @@ After pod-3 in Queue-1 and pod-3 in Queue-2 are terminated, Queue-3 resources wi
 	* Priority. Each pod has a priority, the lower priority pod will be selected first.
 	* Status. The pending pod will be selected first and then running pod will be selected.
 	* Runningtime. The pod with short running time will be selected first.
-* Only `Queue` level (or namespace level) preemption is supported. `QueueJob` level (or `TaskSet` level) preemption is not, and its behaviour will be same as `Queue` level.
+* Only `Queue` level (or namespace level) preemption is supported. `QueueJob` level preemption is not, and its behaviour will be same as `Queue` level.
