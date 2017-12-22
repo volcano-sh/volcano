@@ -93,39 +93,39 @@ spec:
 
 Kube-arbitrator will allocate resources to the two queues `q01` and `q02` according to their weight and resource requirement after it starts up. Now it uses max-min weighted fairness algorithm.
 
-## 4. Create TaskSet CRD
-`TaskSet` is a kubernetes CRD [(custom resources definition)](https://kubernetes.io/docs/tasks/access-kubernetes-api/extend-api-custom-resource-definitions/). Following is the yaml file of TaskSet CRD and it must be created before Kube-arbitrator startup.
+## 4. Create QueueJob CRD
+`QueueJob` is a kubernetes CRD [(custom resources definition)](https://kubernetes.io/docs/tasks/access-kubernetes-api/extend-api-custom-resource-definitions/). Following is the yaml file of QueueJob CRD and it must be created before Kube-arbitrator startup.
 
 ```yaml
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
-  name: tasksets.arbitrator.incubator.k8s.io
+  name: queuejobs.arbitrator.incubator.k8s.io
 spec:
   group: arbitrator.incubator.k8s.io
   names:
-    kind: TaskSet
-    listKind: TaskSetList
-    plural: tasksets
-    singular: taskset
+    kind: QueueJob
+    listKind: QueueJobList
+    plural: queuejobs
+    singular: queuejob
   scope: Namespaced
   version: v1
 ```
 
-Verify taskset crd after creation 
+Verify queuejob crd after creation 
 
 ```
 # kubectl get crd
 NAME                                    KIND
-tasksets.arbitrator.incubator.k8s.io    CustomResourceDefinition.v1beta1.apiextensions.k8s.io
+queuejobs.arbitrator.incubator.k8s.io   CustomResourceDefinition.v1beta1.apiextensions.k8s.io
 ```
 
-## 5. Create TaskSet
-A Queue contains several TaskSet. A taskset is like a batch job. Following is yaml template of `TaskSet`:
+## 5. Create QueueJob
+A Queue contains several QueueJob. A queuejob is like a batch job or big data application. Following is yaml template of `QueueJob`:
 
 ```
 apiVersion: "arbitrator.incubator.k8s.io/v1"
-kind: TaskSet
+kind: QueueJob
 metadata:
   name: xxx
   namespace: xxx
@@ -139,26 +139,26 @@ spec:
       memory: xxxGi
 ```
 
-* `name`: name of this taskset
-* `namespace`: namespace of this taskset
-* `queue`: queue which the taskset belongs to
-* `priority`: higher priority of taskset can resources from the queue first
+* `name`: name of this queuejob
+* `namespace`: namespace of this queuejob
+* `queue`: queue which the queuejob belongs to
+* `priority`: higher priority of queuejob can resources from the queue first
 * `resourceno`: request resources number
 * `resourceunit`: resources unit
 
-For example, create 3 taskset like following, `ts01-1` and `ts01-2` in queue `q01`, `ts02-1` in queue `q02`
+For example, create 3 queuejob like following, `ts01-1` and `ts01-2` in queue `q01`, `ts02-1` in queue `q02`
 
 ```
-# kubectl get taskset --all-namespaces
+# kubectl get queuejob --all-namespaces
 NAMESPACE   NAME      KIND
-ns01        ts01-1    TaskSet.v1.arbitrator.incubator.k8s.io
-ns01        ts01-2    TaskSet.v1.arbitrator.incubator.k8s.io
-ns02        ts02-1    TaskSet.v1.arbitrator.incubator.k8s.io
+ns01        ts01-1    QueueJob.v1.arbitrator.incubator.k8s.io
+ns01        ts01-2    QueueJob.v1.arbitrator.incubator.k8s.io
+ns02        ts02-1    QueueJob.v1.arbitrator.incubator.k8s.io
 ```
 ```
-# cat taskset01-1.yaml 
+# cat queuejob01-1.yaml 
 apiVersion: "arbitrator.incubator.k8s.io/v1"
-kind: TaskSet
+kind: QueueJob
 metadata:
   name: ts01-1
   namespace: ns01
@@ -172,9 +172,9 @@ spec:
       memory: 1Gi
 ```
 ```
-# cat taskset01-2.yaml 
+# cat queuejob01-2.yaml 
 apiVersion: "arbitrator.incubator.k8s.io/v1"
-kind: TaskSet
+kind: QueueJob
 metadata:
   name: ts01-2
   namespace: ns01
@@ -188,9 +188,9 @@ spec:
       memory: 1Gi
 ```
 ```
-# cat taskset02-1.yaml 
+# cat queuejob02-1.yaml 
 apiVersion: "arbitrator.incubator.k8s.io/v1"
-kind: TaskSet
+kind: QueueJob
 metadata:
   name: ts02-1
   namespace: ns02
@@ -204,7 +204,7 @@ spec:
       memory: 1Gi
 ```
 
-After that, resource request of a queue equals the sum of taskset resource request under the queue.
+After that, resource request of a queue equals the sum of queuejob resource request under the queue.
 So in Kube-arbitrator, `q01` resource request is `cpu=11,memory=11Gi`, `q02` resource request is `cpu=5,memory=5Gi`.
 
 ## 6. Create Resource Quota
@@ -297,7 +297,7 @@ spec:
 ... ...
 ```
 ```
-# kubectl get taskset ts01-1 -n ns01 -o yaml
+# kubectl get queuejob ts01-1 -n ns01 -o yaml
 ... ...
 status:
   allocated:
@@ -307,7 +307,7 @@ status:
       memory: 4Gi
 ```
 ```
-# kubectl get taskset ts01-2 -n ns01 -o yaml
+# kubectl get queuejob ts01-2 -n ns01 -o yaml
 ... ...
 status:
   allocated:
@@ -317,7 +317,7 @@ status:
       memory: "7516192768"
 ```
 ```
-# kubectl get taskset ts02-1 -n ns02 -o yaml
+# kubectl get queuejob ts02-1 -n ns02 -o yaml
 ... ...
 status:
   allocated:
