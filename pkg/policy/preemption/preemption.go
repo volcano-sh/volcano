@@ -23,7 +23,7 @@ import (
 
 	"github.com/golang/glog"
 	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/arbclientset"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/util"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 
@@ -123,7 +123,7 @@ func killPod(client *kubernetes.Clientset, pod *v1.Pod) error {
 }
 
 func updateQueues(queues map[string]*schedulercache.QueueInfo, config *rest.Config) error {
-	cs, err := arbclientset.NewForConfig(config)
+	cs, err := clientset.NewForConfig(config)
 	if err != nil {
 		glog.Errorf("Fail to create client for queue, %#v", err)
 		return nil

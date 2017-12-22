@@ -14,12 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package arbclientset
+package clientset
 
 import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/arbclientset/typed/arb/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/typed/v1"
 
-	rest "k8s.io/client-go/rest"
+	"k8s.io/client-go/rest"
 )
 
 type Interface interface {

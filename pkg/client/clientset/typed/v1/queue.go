@@ -18,7 +18,7 @@ package v1
 
 import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/arbclientset/scheme"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/scheme"
 
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"

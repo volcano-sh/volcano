@@ -18,7 +18,7 @@ package v1
 
 import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/arbclientset/scheme"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/scheme"
 
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
@@ -78,7 +78,6 @@ func (c *queuejobs) Update(queuejob *v1.QueueJob) (result *v1.QueueJob, err erro
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-
 func (c *queuejobs) UpdateStatus(queuejob *v1.QueueJob) (result *v1.QueueJob, err error) {
 	result = &v1.QueueJob{}
 	err = c.client.Put().
