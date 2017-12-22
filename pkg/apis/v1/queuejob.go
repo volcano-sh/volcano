@@ -17,14 +17,11 @@ limitations under the License.
 package v1
 
 import (
-	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 )
 
-const QueueJobPlural string = "queuejobs"
+const QueueJobPlural = "queuejobs"
 
-// Definition of QueueJob class
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type QueueJob struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -33,73 +30,20 @@ type QueueJob struct {
 	Status            QueueJobStatus `json:"status,omitempty"`
 }
 
-// QueueJobList is a collection of queuejobs.
+type QueueJobSpec struct {
+	Priority     int          `json:"priority"`
+	ResourceUnit ResourceList `json:"resourceunit"`
+	ResourceNo   int          `json:"resourceno"`
+	Queue        string       `json:"queue"`
+}
+
+type QueueJobStatus struct {
+	Allocated ResourceList `json:"allocated"`
+}
+
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type QueueJobList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
 	Items           []QueueJob `json:"items"`
-}
-
-// JobSpec describes how the queue job will look like.
-type QueueJobSpec struct {
-	Priority      int                  `json:"priority,omitempty"`
-	Service       QueueJobService      `json:"service"`
-	AggrResources QueueJobResourceList `json:"resources"`
-}
-
-// QueueJobService is queue job service definition
-type QueueJobService struct {
-	Spec v1.ServiceSpec `json:"spec"`
-}
-
-// QueueJobResource is queue job aggration resource
-type QueueJobResource struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata"`
-	MinReplicas       int32                `json:"minreplicas"`
-	DesiredReplicas   int32                `json:"desiredreplicas"`
-	Priorty           float64              `json:"priority"`
-	Type              ResourceType         `json:"type"`
-	Template          runtime.RawExtension `json:"template"`
-}
-
-//a collection of QueueJobResource
-type QueueJobResourceList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
-	Items           []QueueJobResource
-}
-
-// queue job resources type
-type ResourceType string
-
-//only support resource type pod for now
-const (
-	ResourceTypePod ResourceType = "Pod"
-)
-
-// QueueJobStatus represents the current state of a QueueJob.
-type QueueJobStatus struct {
-	State         QueueJobState       `json:"state,omitempty"`
-	ResourceUsage ResourceUsageStatus `json:"resources,omitempty"`
-	Message       string              `json:"message,omitempty"`
-}
-
-type QueueJobState string
-
-//enqueued, active, deleting, succeeded, failed
-const (
-	QueueJobStateEnqueued QueueJobState = "Enqueued"
-	QueueJobStateActive   QueueJobState = "Active"
-	QueueJobStateDeleted  QueueJobState = "Deleted"
-	QueueJobStateFailed   QueueJobState = "Failed"
-)
-
-// ResourceUsageStatus represents the current state of a QueueJob.
-type ResourceUsageStatus struct {
-	Deserved   ResourceList `json:"deserved"`
-	Allocated  ResourceList `json:"allocated"`
-	Used       ResourceList `json:"used"`
-	Preempting ResourceList `json:"preempting"`
 }
