@@ -17,13 +17,14 @@ limitations under the License.
 package v1
 
 import (
-	internalinterfaces "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/internalinterfaces"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/internalinterfaces"
 )
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
 	// Queues returns a QueueInformer.
 	Queues() QueueInformer
+	QueueJobs() QueueJobInformer
 }
 
 type version struct {
@@ -38,4 +39,9 @@ func New(f internalinterfaces.SharedInformerFactory) Interface {
 // Queues returns a QueueInformer.
 func (v *version) Queues() QueueInformer {
 	return &queueInformer{factory: v.SharedInformerFactory}
+}
+
+// QueueJobs returns a QueueJobInformer.
+func (v *version) QueueJobs() QueueJobInformer {
+	return &queueJobInformer{factory: v.SharedInformerFactory}
 }

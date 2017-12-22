@@ -21,11 +21,10 @@ import (
 	"sync"
 
 	"github.com/golang/glog"
-	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
-	qInformerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
-	qclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/queue/v1"
-	qjclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/queuejob/v1"
+	informerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
+	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/v1"
 
 	"k8s.io/api/core/v1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -50,8 +49,8 @@ type schedulerCache struct {
 
 	podInformer      clientv1.PodInformer
 	nodeInformer     clientv1.NodeInformer
-	queueInformer    qclient.QueueInformer
-	queueJobInformer qjclient.QueueJobInformer
+	queueInformer    arbclient.QueueInformer
+	queueJobInformer arbclient.QueueJobInformer
 
 	pods      map[string]*PodInfo
 	nodes     map[string]*NodeInfo
@@ -113,14 +112,14 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 		panic(err)
 	}
 
-	qInformerFactory := qInformerfactory.NewSharedInformerFactory(queueClient, 0)
+	qInformerFactory := informerfactory.NewSharedInformerFactory(queueClient, 0)
 	// create informer for queue information
 	sc.queueInformer = qInformerFactory.Queue().Queues()
 	sc.queueInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
-				case *apiv1.Queue:
+				case *arbv1.Queue:
 					glog.V(4).Infof("Filter queue name(%s) namespace(%s)\n", t.Name, t.Namespace)
 					return true
 				default:
@@ -146,14 +145,14 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 		panic(err)
 	}
 
-	qjInformerFactory := qInformerfactory.NewSharedInformerFactory(queuejobClient, 0)
+	qjInformerFactory := informerfactory.NewSharedInformerFactory(queuejobClient, 0)
 	// create informer for queuejob information
 	sc.queueJobInformer = qjInformerFactory.QueueJob().QueueJobs()
 	sc.queueJobInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
-				case *apiv1.QueueJob:
+				case *arbv1.QueueJob:
 					glog.V(4).Infof("Filter queuejob name(%s) namespace(%s)\n", t.Name, t.Namespace)
 					return true
 				default:
@@ -420,7 +419,7 @@ func (sc *schedulerCache) DeleteNode(obj interface{}) {
 }
 
 // Assumes that lock is already acquired.
-func (sc *schedulerCache) addQueue(queue *apiv1.Queue) error {
+func (sc *schedulerCache) addQueue(queue *arbv1.Queue) error {
 	if _, ok := sc.queues[queue.Name]; ok {
 		return fmt.Errorf("queue %v exist", queue.Name)
 	}
@@ -433,7 +432,7 @@ func (sc *schedulerCache) addQueue(queue *apiv1.Queue) error {
 
 	// init Request if it is nil
 	if info.Queue().Spec.Request.Resources == nil {
-		info.Queue().Spec.Request.Resources = map[apiv1.ResourceName]resource.Quantity{
+		info.Queue().Spec.Request.Resources = map[arbv1.ResourceName]resource.Quantity{
 			"cpu":    resource.MustParse("0"),
 			"memory": resource.MustParse("0"),
 		}
@@ -441,25 +440,25 @@ func (sc *schedulerCache) addQueue(queue *apiv1.Queue) error {
 
 	// init Deserved/Allocated/Used/Preemping if it is nil
 	if info.Queue().Status.Deserved.Resources == nil {
-		info.Queue().Status.Deserved.Resources = map[apiv1.ResourceName]resource.Quantity{
+		info.Queue().Status.Deserved.Resources = map[arbv1.ResourceName]resource.Quantity{
 			"cpu":    resource.MustParse("0"),
 			"memory": resource.MustParse("0"),
 		}
 	}
 	if info.Queue().Status.Allocated.Resources == nil {
-		info.Queue().Status.Allocated.Resources = map[apiv1.ResourceName]resource.Quantity{
+		info.Queue().Status.Allocated.Resources = map[arbv1.ResourceName]resource.Quantity{
 			"cpu":    resource.MustParse("0"),
 			"memory": resource.MustParse("0"),
 		}
 	}
 	if info.Queue().Status.Used.Resources == nil {
-		info.Queue().Status.Used.Resources = map[apiv1.ResourceName]resource.Quantity{
+		info.Queue().Status.Used.Resources = map[arbv1.ResourceName]resource.Quantity{
 			"cpu":    resource.MustParse("0"),
 			"memory": resource.MustParse("0"),
 		}
 	}
 	if info.Queue().Status.Preempting.Resources == nil {
-		info.Queue().Status.Preempting.Resources = map[apiv1.ResourceName]resource.Quantity{
+		info.Queue().Status.Preempting.Resources = map[arbv1.ResourceName]resource.Quantity{
 			"cpu":    resource.MustParse("0"),
 			"memory": resource.MustParse("0"),
 		}
@@ -469,7 +468,7 @@ func (sc *schedulerCache) addQueue(queue *apiv1.Queue) error {
 }
 
 // Assumes that lock is already acquired.
-func (sc *schedulerCache) updateQueue(oldQueue, newQueue *apiv1.Queue) error {
+func (sc *schedulerCache) updateQueue(oldQueue, newQueue *arbv1.Queue) error {
 	if err := sc.deleteQueue(oldQueue); err != nil {
 		return err
 	}
@@ -478,7 +477,7 @@ func (sc *schedulerCache) updateQueue(oldQueue, newQueue *apiv1.Queue) error {
 }
 
 // Assumes that lock is already acquired.
-func (sc *schedulerCache) deleteQueue(queue *apiv1.Queue) error {
+func (sc *schedulerCache) deleteQueue(queue *arbv1.Queue) error {
 	if _, ok := sc.queues[queue.Name]; !ok {
 		return fmt.Errorf("queue %v doesn't exist", queue.Name)
 	}
@@ -487,9 +486,9 @@ func (sc *schedulerCache) deleteQueue(queue *apiv1.Queue) error {
 }
 
 func (sc *schedulerCache) AddQueue(obj interface{}) {
-	queue, ok := obj.(*apiv1.Queue)
+	queue, ok := obj.(*arbv1.Queue)
 	if !ok {
-		glog.Errorf("Cannot convert to *apiv1.Queue: %v", obj)
+		glog.Errorf("Cannot convert to *arbv1.Queue: %v", obj)
 		return
 	}
 
@@ -506,14 +505,14 @@ func (sc *schedulerCache) AddQueue(obj interface{}) {
 }
 
 func (sc *schedulerCache) UpdateQueue(oldObj, newObj interface{}) {
-	oldQueue, ok := oldObj.(*apiv1.Queue)
+	oldQueue, ok := oldObj.(*arbv1.Queue)
 	if !ok {
-		glog.Errorf("Cannot convert oldObj to *apiv1.Queue: %v", oldObj)
+		glog.Errorf("Cannot convert oldObj to *arbv1.Queue: %v", oldObj)
 		return
 	}
-	newQueue, ok := newObj.(*apiv1.Queue)
+	newQueue, ok := newObj.(*arbv1.Queue)
 	if !ok {
-		glog.Errorf("Cannot convert newObj to *apiv1.Queue: %v", newObj)
+		glog.Errorf("Cannot convert newObj to *arbv1.Queue: %v", newObj)
 		return
 	}
 
@@ -531,13 +530,13 @@ func (sc *schedulerCache) UpdateQueue(oldObj, newObj interface{}) {
 }
 
 func (sc *schedulerCache) DeleteQueue(obj interface{}) {
-	var queue *apiv1.Queue
+	var queue *arbv1.Queue
 	switch t := obj.(type) {
-	case *apiv1.Queue:
+	case *arbv1.Queue:
 		queue = t
 	case cache.DeletedFinalStateUnknown:
 		var ok bool
-		queue, ok = t.Obj.(*apiv1.Queue)
+		queue, ok = t.Obj.(*arbv1.Queue)
 		if !ok {
 			glog.Errorf("Cannot convert to *v1.Queue: %v", t.Obj)
 			return
@@ -559,7 +558,7 @@ func (sc *schedulerCache) DeleteQueue(obj interface{}) {
 }
 
 // Assumes that lock is already acquired.
-func (sc *schedulerCache) addQueueJob(queuejob *apiv1.QueueJob) error {
+func (sc *schedulerCache) addQueueJob(queuejob *arbv1.QueueJob) error {
 	if _, ok := sc.queuejobs[queuejob.Name]; ok {
 		return fmt.Errorf("queuejob %v exist", queuejob.Name)
 	}
@@ -573,7 +572,7 @@ func (sc *schedulerCache) addQueueJob(queuejob *apiv1.QueueJob) error {
 }
 
 // Assumes that lock is already acquired.
-func (sc *schedulerCache) updateQueueJob(oldQueueJob, newQueueJob *apiv1.QueueJob) error {
+func (sc *schedulerCache) updateQueueJob(oldQueueJob, newQueueJob *arbv1.QueueJob) error {
 	if err := sc.deleteQueueJob(oldQueueJob); err != nil {
 		return err
 	}
@@ -584,7 +583,7 @@ func (sc *schedulerCache) updateQueueJob(oldQueueJob, newQueueJob *apiv1.QueueJo
 }
 
 // Assumes that lock is already acquired.
-func (sc *schedulerCache) deleteQueueJob(queuejob *apiv1.QueueJob) error {
+func (sc *schedulerCache) deleteQueueJob(queuejob *arbv1.QueueJob) error {
 	if _, ok := sc.queuejobs[queuejob.Name]; !ok {
 		return fmt.Errorf("queuejob %v doesn't exist", queuejob.Name)
 	}
@@ -593,9 +592,9 @@ func (sc *schedulerCache) deleteQueueJob(queuejob *apiv1.QueueJob) error {
 }
 
 func (sc *schedulerCache) AddQueueJob(obj interface{}) {
-	queuejob, ok := obj.(*apiv1.QueueJob)
+	queuejob, ok := obj.(*arbv1.QueueJob)
 	if !ok {
-		glog.Errorf("Cannot convert to *apiv1.QueueJob: %v", obj)
+		glog.Errorf("Cannot convert to *arbv1.QueueJob: %v", obj)
 		return
 	}
 
@@ -612,14 +611,14 @@ func (sc *schedulerCache) AddQueueJob(obj interface{}) {
 }
 
 func (sc *schedulerCache) UpdateQueueJob(oldObj, newObj interface{}) {
-	oldQueueJob, ok := oldObj.(*apiv1.QueueJob)
+	oldQueueJob, ok := oldObj.(*arbv1.QueueJob)
 	if !ok {
-		glog.Errorf("Cannot convert oldObj to *apiv1.QueueJob: %v", oldObj)
+		glog.Errorf("Cannot convert oldObj to *arbv1.QueueJob: %v", oldObj)
 		return
 	}
-	newQueueJob, ok := newObj.(*apiv1.QueueJob)
+	newQueueJob, ok := newObj.(*arbv1.QueueJob)
 	if !ok {
-		glog.Errorf("Cannot convert newObj to *apiv1.QueueJob: %v", newObj)
+		glog.Errorf("Cannot convert newObj to *arbv1.QueueJob: %v", newObj)
 		return
 	}
 
@@ -637,13 +636,13 @@ func (sc *schedulerCache) UpdateQueueJob(oldObj, newObj interface{}) {
 }
 
 func (sc *schedulerCache) DeleteQueueJob(obj interface{}) {
-	var queuejob *apiv1.QueueJob
+	var queuejob *arbv1.QueueJob
 	switch t := obj.(type) {
-	case *apiv1.QueueJob:
+	case *arbv1.QueueJob:
 		queuejob = t
 	case cache.DeletedFinalStateUnknown:
 		var ok bool
-		queuejob, ok = t.Obj.(*apiv1.QueueJob)
+		queuejob, ok = t.Obj.(*arbv1.QueueJob)
 		if !ok {
 			glog.Errorf("Cannot convert to *v1.QueueJob: %v", t.Obj)
 			return
@@ -672,11 +671,11 @@ func (sc *schedulerCache) NodeInformer() clientv1.NodeInformer {
 	return sc.nodeInformer
 }
 
-func (sc *schedulerCache) QueueInformer() qclient.QueueInformer {
+func (sc *schedulerCache) QueueInformer() arbclient.QueueInformer {
 	return sc.queueInformer
 }
 
-func (sc *schedulerCache) QueueJobInformer() qjclient.QueueJobInformer {
+func (sc *schedulerCache) QueueJobInformer() arbclient.QueueJobInformer {
 	return sc.queueJobInformer
 }
 

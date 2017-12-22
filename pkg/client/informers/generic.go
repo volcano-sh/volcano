@@ -18,9 +18,11 @@ package informers
 
 import (
 	"fmt"
-	v1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
-	cache "k8s.io/client-go/tools/cache"
+
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/tools/cache"
 )
 
 // GenericInformer is type of SharedIndexInformer which will locate and delegate to other
@@ -51,10 +53,10 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 	switch resource {
 	// Group=, Version=V1
 
-	case v1.SchemeGroupVersion.WithResource("queues"):
+	case arbv1.SchemeGroupVersion.WithResource("queues"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Queue().Queues().Informer()}, nil
 
-	case v1.SchemeGroupVersion.WithResource("queuejobs"):
+	case arbv1.SchemeGroupVersion.WithResource("queuejobs"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.QueueJob().QueueJobs().Informer()}, nil
 	}
 
