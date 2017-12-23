@@ -21,7 +21,7 @@ import (
 	"reflect"
 	"time"
 
-	crv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 
 	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -35,12 +35,12 @@ import (
 
 func NewQueueJobClient(cfg *rest.Config) (*rest.RESTClient, *runtime.Scheme, error) {
 	scheme := runtime.NewScheme()
-	if err := crv1.AddToScheme(scheme); err != nil {
+	if err := arbv1.AddToScheme(scheme); err != nil {
 		return nil, nil, err
 	}
 
 	config := *cfg
-	config.GroupVersion = &crv1.SchemeGroupVersion
+	config.GroupVersion = &arbv1.SchemeGroupVersion
 	config.APIPath = "/apis"
 	config.ContentType = runtime.ContentTypeJSON
 	config.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: serializer.NewCodecFactory(scheme)}
@@ -53,7 +53,7 @@ func NewQueueJobClient(cfg *rest.Config) (*rest.RESTClient, *runtime.Scheme, err
 	return client, scheme, nil
 }
 
-const queueJobCRDName = crv1.QueueJobPlural + "." + crv1.GroupName
+const queueJobCRDName = arbv1.QueueJobPlural + "." + arbv1.GroupName
 
 func CreateQueueJobCRD(clientset apiextensionsclient.Interface) (*apiextensionsv1beta1.CustomResourceDefinition, error) {
 	crd := &apiextensionsv1beta1.CustomResourceDefinition{
@@ -61,12 +61,12 @@ func CreateQueueJobCRD(clientset apiextensionsclient.Interface) (*apiextensionsv
 			Name: queueJobCRDName,
 		},
 		Spec: apiextensionsv1beta1.CustomResourceDefinitionSpec{
-			Group:   crv1.GroupName,
-			Version: crv1.SchemeGroupVersion.Version,
+			Group:   arbv1.GroupName,
+			Version: arbv1.SchemeGroupVersion.Version,
 			Scope:   apiextensionsv1beta1.NamespaceScoped,
 			Names: apiextensionsv1beta1.CustomResourceDefinitionNames{
-				Plural: crv1.QueueJobPlural,
-				Kind:   reflect.TypeOf(crv1.QueueJob{}).Name(),
+				Plural: arbv1.QueueJobPlural,
+				Kind:   reflect.TypeOf(arbv1.QueueJob{}).Name(),
 			},
 		},
 	}

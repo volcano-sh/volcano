@@ -23,7 +23,7 @@ import (
 
 	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/arbclientset"
+	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/controller"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/preemption"
@@ -193,7 +193,7 @@ func prepareResourceQuota(cs *clientset.Clientset) error {
 // create two Queues, "queue01" and "queue02"
 // "queue01" is under namespace "ns01" and has attribute "weight=1"
 // "queue02" is under namespace "ns02" and has attribute "weight=2"
-func prepareQueue(cs *arbclientset.Clientset) error {
+func prepareQueue(cs *arbclient.Clientset) error {
 	queue := &apiv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "xxx",
@@ -252,7 +252,7 @@ func prepareQueue(cs *arbclientset.Clientset) error {
 // create four queuejob
 // "ts01-1" and "ts01-2", under "queue01"
 // "ts02-1" and "ts02-2", under "queue02"
-func prepareQueueJob(cs *arbclientset.Clientset) error {
+func prepareQueueJob(cs *arbclient.Clientset) error {
 	ts := &apiv1.QueueJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "xxx",
@@ -341,7 +341,7 @@ func prepareQueueJob(cs *arbclientset.Clientset) error {
 
 // prepareCRDForPreemption create one Queue "queue03"
 // "queue03" is under namespace "ns03" and has attribute "weight=2"
-func prepareQueueForPreemption(cs *arbclientset.Clientset) error {
+func prepareQueueForPreemption(cs *arbclient.Clientset) error {
 	queue := &apiv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "xxx",
@@ -390,7 +390,7 @@ func prepareQueueForPreemption(cs *arbclientset.Clientset) error {
 // prepareQueueJobForPreemption prepare customer resource definition "QueueJob"
 // create two queuejob
 // "ts03-1" and "ts03-2", under "queue03"
-func prepareQueueJobForPreemption(cs *arbclientset.Clientset) error {
+func prepareQueueJobForPreemption(cs *arbclient.Clientset) error {
 	ts := &apiv1.QueueJob{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "xxx",
@@ -547,7 +547,7 @@ func TestArbitrator(t *testing.T) {
 	cs := clientset.NewForConfigOrDie(config)
 	defer cs.CoreV1().Nodes().DeleteCollection(nil, metav1.ListOptions{})
 
-	crdcs := arbclientset.NewForConfigOrDie(config)
+	crdcs := arbclient.NewForConfigOrDie(config)
 
 	err := prepareCRD(config)
 	if err != nil {
