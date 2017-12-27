@@ -26,7 +26,6 @@ import (
 
 type Resource struct {
 	MilliCPU float64
-	Memory   float64
 }
 
 func Decorator(fn func(r *Resource)) func(r *Resource) {
@@ -40,14 +39,12 @@ func Decorator(fn func(r *Resource)) func(r *Resource) {
 func EmptyResource() *Resource {
 	return &Resource{
 		MilliCPU: 0,
-		Memory:   0,
 	}
 }
 
 func (r *Resource) Clone() *Resource {
 	clone := &Resource{
 		MilliCPU: r.MilliCPU,
-		Memory:   r.Memory,
 	}
 	return clone
 }
@@ -61,20 +58,17 @@ func NewResource(rl v1.ResourceList) *Resource {
 		switch rName {
 		case v1.ResourceCPU:
 			r.MilliCPU += float64(rQuant.MilliValue())
-		case v1.ResourceMemory:
-			r.Memory += float64(rQuant.Value())
 		}
 	}
 	return r
 }
 
 func (r *Resource) IsEmpty() bool {
-	return r.MilliCPU < minMilliCPU && r.Memory < minMemory
+	return r.MilliCPU < minMilliCPU
 }
 
 func (r *Resource) Add(rr *Resource) *Resource {
 	r.MilliCPU += rr.MilliCPU
-	r.Memory += rr.Memory
 	return r
 }
 
@@ -82,21 +76,29 @@ func (r *Resource) Add(rr *Resource) *Resource {
 func (r *Resource) Sub(rr *Resource) *Resource {
 	if r.Less(rr) == false {
 		r.MilliCPU -= rr.MilliCPU
-		r.Memory -= rr.Memory
 		return r
 	}
 	panic("Resource is not sufficient to do operation: Sub()")
 }
 
 func (r *Resource) Less(rr *Resource) bool {
-	return r.MilliCPU < rr.MilliCPU && r.Memory < rr.Memory
+	return r.MilliCPU < rr.MilliCPU
+}
+
+func (r *Resource) Equal(rr *Resource) bool {
+	return math.Abs(r.MilliCPU - rr.MilliCPU) < 0.01
 }
 
 func (r *Resource) LessEqual(rr *Resource) bool {
-	return (r.MilliCPU < rr.MilliCPU || math.Abs(rr.MilliCPU-r.MilliCPU) < 0.01) &&
-		(r.Memory < rr.Memory || math.Abs(rr.Memory-r.Memory) < 1)
+	return (r.MilliCPU < rr.MilliCPU || math.Abs(rr.MilliCPU-r.MilliCPU) < 0.01)
 }
 
 func (r *Resource) String() string {
-	return fmt.Sprintf("cpu %f, memory %f", r.MilliCPU, r.Memory)
+	return fmt.Sprintf("cpu %f", r.MilliCPU)
+}
+
+func (r *Resource) Multiply(fra float64) *Resource {
+	r.MilliCPU *= fra
+
+	return r
 }

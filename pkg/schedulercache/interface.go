@@ -22,6 +22,6 @@ type Cache interface {
 	// Run start informer
 	Run(stopCh <-chan struct{})
 
-	// Dump deep copy overall cache information into snapshot
-	Dump() *CacheSnapshot
+	// Snapshot deep copy overall cache information into snapshot
+	Snapshot() *CacheSnapshot
 }

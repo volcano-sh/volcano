@@ -21,26 +21,22 @@ import (
 	"sync"
 
 	"github.com/golang/glog"
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
-	informerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
-	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/v1"
 
 	"k8s.io/api/core/v1"
-	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/informers"
 	clientv1 "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
+	informerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
+	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/v1"
 )
 
 // New returns a Cache implementation.
-func New(
-	config *rest.Config,
-) Cache {
+func New(config *rest.Config) Cache {
 	return newSchedulerCache(config)
 }
 
@@ -100,21 +96,15 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 			},
 		})
 
-	// create queue resource first
-	err := createQueueCRD(config)
-	if err != nil {
-		panic(err)
-	}
-
 	// create queue informer
 	queueClient, _, err := client.NewClient(config)
 	if err != nil {
 		panic(err)
 	}
 
-	qInformerFactory := informerfactory.NewSharedInformerFactory(queueClient, 0)
+	queueInformerFactory := informerfactory.NewSharedInformerFactory(queueClient, 0)
 	// create informer for queue information
-	sc.queueInformer = qInformerFactory.Queue().Queues()
+	sc.queueInformer = queueInformerFactory.Queue().Queues()
 	sc.queueInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
@@ -133,21 +123,15 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 			},
 		})
 
-	// create queuejob resource first
-	err = createQueueJob(config)
-	if err != nil {
-		panic(err)
-	}
-
 	// create queuejob informer
 	queuejobClient, _, err := client.NewQueueJobClient(config)
 	if err != nil {
 		panic(err)
 	}
 
-	qjInformerFactory := informerfactory.NewSharedInformerFactory(queuejobClient, 0)
+	queueJobInformerFactory := informerfactory.NewSharedInformerFactory(queuejobClient, 0)
 	// create informer for queuejob information
-	sc.queueJobInformer = qjInformerFactory.QueueJob().QueueJobs()
+	sc.queueJobInformer = queueJobInformerFactory.QueueJob().QueueJobs()
 	sc.queueJobInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
@@ -169,30 +153,6 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 	return sc
 }
 
-func createQueueCRD(config *rest.Config) error {
-	extensionscs, err := apiextensionsclient.NewForConfig(config)
-	if err != nil {
-		return err
-	}
-	_, err = client.CreateQueueCRD(extensionscs)
-	if err != nil && !apierrors.IsAlreadyExists(err) {
-		return err
-	}
-	return nil
-}
-
-func createQueueJob(config *rest.Config) error {
-	extensionscs, err := apiextensionsclient.NewForConfig(config)
-	if err != nil {
-		return err
-	}
-	_, err = client.CreateQueueJobCRD(extensionscs)
-	if err != nil && !apierrors.IsAlreadyExists(err) {
-		return err
-	}
-	return nil
-}
-
 func (sc *schedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.podInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
@@ -202,7 +162,7 @@ func (sc *schedulerCache) Run(stopCh <-chan struct{}) {
 
 // Assumes that lock is already acquired.
 func (sc *schedulerCache) addPod(pod *v1.Pod) error {
-	key, err := getPodKey(pod)
+	key, err := podKey(pod)
 	if err != nil {
 		return err
 	}
@@ -211,11 +171,8 @@ func (sc *schedulerCache) addPod(pod *v1.Pod) error {
 		return fmt.Errorf("pod %v exist", key)
 	}
 
-	info := &PodInfo{
-		name: key,
-		pod:  pod.DeepCopy(),
-	}
-	sc.pods[key] = info
+	sc.pods[key] = NewPodInfo(pod)
+
 	return nil
 }
 
@@ -230,7 +187,7 @@ func (sc *schedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 
 // Assumes that lock is already acquired.
 func (sc *schedulerCache) deletePod(pod *v1.Pod) error {
-	key, err := getPodKey(pod)
+	key, err := podKey(pod)
 	if err != nil {
 		return err
 	}
@@ -320,11 +277,8 @@ func (sc *schedulerCache) addNode(node *v1.Node) error {
 		return fmt.Errorf("node %v exist", node.Name)
 	}
 
-	info := &NodeInfo{
-		name: node.Name,
-		node: node.DeepCopy(),
-	}
-	sc.nodes[node.Name] = info
+	sc.nodes[node.Name] = NewNodeInfo(node)
+
 	return nil
 }
 
@@ -424,46 +378,7 @@ func (sc *schedulerCache) addQueue(queue *arbv1.Queue) error {
 		return fmt.Errorf("queue %v exist", queue.Name)
 	}
 
-	info := &QueueInfo{
-		name:  queue.Name,
-		queue: queue.DeepCopy(),
-		Pods:  make([]*v1.Pod, 0),
-	}
-
-	// init Request if it is nil
-	if info.Queue().Spec.Request.Resources == nil {
-		info.Queue().Spec.Request.Resources = map[arbv1.ResourceName]resource.Quantity{
-			"cpu":    resource.MustParse("0"),
-			"memory": resource.MustParse("0"),
-		}
-	}
-
-	// init Deserved/Allocated/Used/Preemping if it is nil
-	if info.Queue().Status.Deserved.Resources == nil {
-		info.Queue().Status.Deserved.Resources = map[arbv1.ResourceName]resource.Quantity{
-			"cpu":    resource.MustParse("0"),
-			"memory": resource.MustParse("0"),
-		}
-	}
-	if info.Queue().Status.Allocated.Resources == nil {
-		info.Queue().Status.Allocated.Resources = map[arbv1.ResourceName]resource.Quantity{
-			"cpu":    resource.MustParse("0"),
-			"memory": resource.MustParse("0"),
-		}
-	}
-	if info.Queue().Status.Used.Resources == nil {
-		info.Queue().Status.Used.Resources = map[arbv1.ResourceName]resource.Quantity{
-			"cpu":    resource.MustParse("0"),
-			"memory": resource.MustParse("0"),
-		}
-	}
-	if info.Queue().Status.Preempting.Resources == nil {
-		info.Queue().Status.Preempting.Resources = map[arbv1.ResourceName]resource.Quantity{
-			"cpu":    resource.MustParse("0"),
-			"memory": resource.MustParse("0"),
-		}
-	}
-	sc.queues[queue.Name] = info
+	sc.queues[queue.Name] = NewQueueInfo(queue)
 	return nil
 }
 
@@ -563,11 +478,7 @@ func (sc *schedulerCache) addQueueJob(queuejob *arbv1.QueueJob) error {
 		return fmt.Errorf("queuejob %v exist", queuejob.Name)
 	}
 
-	info := &QueueJobInfo{
-		name:     queuejob.Name,
-		queueJob: queuejob.DeepCopy(),
-	}
-	sc.queuejobs[queuejob.Name] = info
+	sc.queuejobs[queuejob.Name] = NewQueueJobInfo(queuejob)
 	return nil
 }
 
@@ -679,7 +590,7 @@ func (sc *schedulerCache) QueueJobInformer() arbclient.QueueJobInformer {
 	return sc.queueJobInformer
 }
 
-func (sc *schedulerCache) Dump() *CacheSnapshot {
+func (sc *schedulerCache) Snapshot() *CacheSnapshot {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 

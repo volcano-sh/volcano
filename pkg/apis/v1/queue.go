@@ -17,7 +17,7 @@ limitations under the License.
 package v1
 
 import (
-	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -32,15 +32,15 @@ type Queue struct {
 }
 
 type QueueSpec struct {
-	Weight  int          `json:"weight"`
-	Request ResourceList `json:"request"`
+	Weight  int             `json:"weight"`
+	Request v1.ResourceList `json:"request"`
 }
 
 type QueueStatus struct {
-	Deserved   ResourceList `json:"deserved"`
-	Allocated  ResourceList `json:"allocated"`
-	Used       ResourceList `json:"used"`
-	Preempting ResourceList `json:"preempting"`
+	Deserved   v1.ResourceList `json:"deserved"`
+	Allocated  v1.ResourceList `json:"allocated"`
+	Used       v1.ResourceList `json:"used"`
+	Preempting v1.ResourceList `json:"preempting"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -48,13 +48,6 @@ type QueueList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
 	Items           []Queue `json:"items"`
-}
-
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type ResourceList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
-	Resources       map[ResourceName]resource.Quantity `json:"resources"`
 }
 
 type ResourceName string

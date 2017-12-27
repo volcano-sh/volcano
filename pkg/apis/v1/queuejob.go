@@ -17,6 +17,7 @@ limitations under the License.
 package v1
 
 import (
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -31,14 +32,14 @@ type QueueJob struct {
 }
 
 type QueueJobSpec struct {
-	Priority     int          `json:"priority"`
-	ResourceUnit ResourceList `json:"resourceunit"`
-	ResourceNo   int          `json:"resourceno"`
-	Queue        string       `json:"queue"`
+	Priority     int             `json:"priority"`
+	ResourceUnit v1.ResourceList `json:"resourceunit"`
+	ResourceNo   int             `json:"resourceno"`
+	Queue        string          `json:"queue"`
 }
 
 type QueueJobStatus struct {
-	Allocated ResourceList `json:"allocated"`
+	Allocated v1.ResourceList `json:"allocated"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

@@ -17,26 +17,55 @@ limitations under the License.
 package schedulercache
 
 import (
-	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 )
 
 type QueueJobInfo struct {
-	name     string
-	queueJob *apiv1.QueueJob
+	Name     string
+	QueueJob *arbv1.QueueJob
+
+	QueueName string
+
+	// The total resources of running Pods belong to this QueueJob
+	//   * UnderUsed: Used < Allocated
+	//   * Meet: Used == Allocated
+	//   * OverUsed: Used > Allocated
+	Used *Resource
+
+	// The total resources that a QueueJob can get currently, it's expected to
+	// be equal or less than `Deserved` (when Preemption try to reclaim resource
+	// for this QueueJob)
+	Allocated *Resource
+
+	TaskRequest *Resource
+	// The total task number of this QueueJob
+	TaskNum int
 }
 
-func (t *QueueJobInfo) Name() string {
-	return t.name
-}
-
-func (t *QueueJobInfo) QueueJob() *apiv1.QueueJob {
-	return t.queueJob
-}
-
-func (t *QueueJobInfo) Clone() *QueueJobInfo {
-	clone := &QueueJobInfo{
-		name:     t.name,
-		queueJob: t.queueJob.DeepCopy(),
+func NewQueueJobInfo(queueJob *arbv1.QueueJob) *QueueJobInfo {
+	return &QueueJobInfo{
+		Name:        queueJob.Name,
+		QueueJob:    queueJob,
+		QueueName:   queueJob.Spec.Queue,
+		Used:        EmptyResource(),
+		Allocated:   EmptyResource(),
+		TaskRequest: NewResource(queueJob.Spec.ResourceUnit),
+		TaskNum:     queueJob.Spec.ResourceNo,
 	}
-	return clone
+}
+
+func (qj *QueueJobInfo) Clone() *QueueJobInfo {
+	return &QueueJobInfo{
+		Name:      qj.Name,
+		QueueJob:  qj.QueueJob,
+		QueueName: qj.QueueName,
+		Used:      qj.Used.Clone(),
+		Allocated: qj.Allocated.Clone(),
+
+		TaskRequest: qj.TaskRequest.Clone(),
+		TaskNum:     qj.TaskNum,
+	}
+}
+func (qj *QueueJobInfo) UnderUsed() bool {
+	return qj.Used.Less(qj.Allocated)
 }

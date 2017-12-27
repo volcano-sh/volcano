@@ -17,7 +17,7 @@ limitations under the License.
 package v1
 
 import (
-	v1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -27,7 +27,7 @@ import (
 // QueueLister helps list Queues.
 type QueueLister interface {
 	// List lists all Queues in the indexer.
-	List(selector labels.Selector) (ret []*v1.Queue, err error)
+	List(selector labels.Selector) (ret []*arbv1.Queue, err error)
 	// Queues returns an object that can list and get Queues.
 	Queues(namespace string) QueueNamespaceLister
 }
@@ -43,9 +43,9 @@ func NewQueueLister(indexer cache.Indexer) QueueLister {
 }
 
 // List lists all Queues in the indexer.
-func (s *queueLister) List(selector labels.Selector) (ret []*v1.Queue, err error) {
+func (s *queueLister) List(selector labels.Selector) (ret []*arbv1.Queue, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1.Queue))
+		ret = append(ret, m.(*arbv1.Queue))
 	})
 	return ret, err
 }
@@ -58,9 +58,9 @@ func (s *queueLister) Queues(namespace string) QueueNamespaceLister {
 // QueueNamespaceLister helps list and get Queues.
 type QueueNamespaceLister interface {
 	// List lists all Queues in the indexer for a given namespace.
-	List(selector labels.Selector) (ret []*v1.Queue, err error)
+	List(selector labels.Selector) (ret []*arbv1.Queue, err error)
 	// Get retrieves the Queue from the indexer for a given namespace and name.
-	Get(name string) (*v1.Queue, error)
+	Get(name string) (*arbv1.Queue, error)
 }
 
 // queueNamespaceLister implements the QueueNamespaceLister
@@ -71,21 +71,21 @@ type queueNamespaceLister struct {
 }
 
 // List lists all Queues in the indexer for a given namespace.
-func (s queueNamespaceLister) List(selector labels.Selector) (ret []*v1.Queue, err error) {
+func (s queueNamespaceLister) List(selector labels.Selector) (ret []*arbv1.Queue, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1.Queue))
+		ret = append(ret, m.(*arbv1.Queue))
 	})
 	return ret, err
 }
 
 // Get retrieves the Queue from the indexer for a given namespace and name.
-func (s queueNamespaceLister) Get(name string) (*v1.Queue, error) {
+func (s queueNamespaceLister) Get(name string) (*arbv1.Queue, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err
 	}
 	if !exists {
-		return nil, errors.NewNotFound(v1.Resource("queue"), name)
+		return nil, errors.NewNotFound(arbv1.Resource("queue"), name)
 	}
-	return obj.(*v1.Queue), nil
+	return obj.(*arbv1.Queue), nil
 }

@@ -17,59 +17,69 @@ limitations under the License.
 package schedulercache
 
 import (
-	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-
-	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 )
 
 type QueueInfo struct {
-	name  string
-	queue *apiv1.Queue
-	Pods  []*v1.Pod
+	Name   string
+	Queue  *arbv1.Queue
+	Weight int
+
+	// The total resources that a Queue should get
+	Deserved *Resource
+
+	// The total resources of running Pods belong to this QueueJob
+	//   * UnderUsed: Used < Allocated
+	//   * Meet: Used == Allocated
+	//   * OverUsed: Used > Allocated
+	Used *Resource
+
+	// The total resources that a Queue can get currently, it's expected to
+	// be equal or less than `Deserved` (when Preemption try to reclaim resource
+	// for this Queue)
+	Allocated *Resource
+
+	// All jobs belong to this Queue
+	Jobs []*QueueJobInfo
+
+	// The pod that without `Owners`
+	Pods []*PodInfo
+
+	// The node candidates for Queue and QueueJobs
+	Nodes []*NodeInfo
 }
 
-// -1  - if res1 < res2
-// 0   - if res1 = res2
-// 1   - if not belong above cases
-func CompareResources(res1 map[apiv1.ResourceName]resource.Quantity, res2 map[apiv1.ResourceName]resource.Quantity) int {
-	cpu1 := res1["cpu"].DeepCopy()
-	cpu2 := res2["cpu"].DeepCopy()
-	memory1 := res1["memory"].DeepCopy()
-	memory2 := res2["memory"].DeepCopy()
+func NewQueueInfo(queue *arbv1.Queue) *QueueInfo {
+	return &QueueInfo{
+		Name:      queue.Name,
+		Queue:     queue,
+		Weight:    queue.Spec.Weight,
+		Deserved:  NewResource(queue.Status.Deserved),
+		Used:      NewResource(queue.Status.Used),
+		Allocated: NewResource(queue.Status.Allocated),
 
-	if cpu1.Cmp(cpu2) <= 0 && memory1.Cmp(memory2) <= 0 {
-		if cpu1.Cmp(cpu2) == 0 && memory1.Cmp(memory2) == 0 {
-			return 0
-		} else {
-			return -1
-		}
-	} else {
-		return 1
+		Jobs:  make([]*QueueJobInfo, 10),
+		Pods:  make([]*PodInfo, 10),
+		Nodes: make([]*NodeInfo, 10),
 	}
 }
 
-func (r *QueueInfo) Name() string {
-	return r.name
+func (qi *QueueInfo) UnderUsed() bool {
+	return qi.Used.Less(qi.Allocated)
 }
 
-func (r *QueueInfo) Queue() *apiv1.Queue {
-	return r.queue
+func (qi *QueueInfo) OverUsed() bool {
+	return qi.Allocated.Less(qi.Used)
 }
 
-func (r *QueueInfo) UsedUnderAllocated() bool {
-	return (CompareResources(r.queue.Status.Used.Resources, r.queue.Status.Allocated.Resources) <= 0)
-}
+func (qi *QueueInfo) Clone() *QueueInfo {
+	return &QueueInfo{
+		Name:      qi.Name,
+		Queue:     qi.Queue,
+		Deserved:  qi.Deserved.Clone(),
+		Used:      qi.Used.Clone(),
+		Allocated: qi.Allocated.Clone(),
 
-func (r *QueueInfo) UsedUnderDeserved() bool {
-	return (CompareResources(r.queue.Status.Used.Resources, r.queue.Status.Deserved.Resources) <= 0)
-}
-
-func (r *QueueInfo) Clone() *QueueInfo {
-	clone := &QueueInfo{
-		name:  r.name,
-		queue: r.queue.DeepCopy(),
-		Pods:  r.Pods,
+		// Did not clone jobs, pods, nodes which are update by QueueController.
 	}
-	return clone
 }

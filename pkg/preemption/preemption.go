@@ -22,10 +22,6 @@ import (
 	"sync"
 
 	"github.com/golang/glog"
-	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/util"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -35,14 +31,18 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 )
 
 type preemptedPodInfo struct {
 	pod                     *v1.Pod
-	totalReleasingResources map[apiv1.ResourceName]resource.Quantity
+	totalReleasingResources map[arbv1.ResourceName]resource.Quantity
 }
 
-type basePreemption struct {
+type preemption struct {
 	localDataMutex   *sync.Mutex
 	updateQueueMutex *sync.Mutex
 
@@ -52,25 +52,21 @@ type basePreemption struct {
 
 	terminatingPodsForPreempt   map[string]preemptedPodInfo
 	terminatingPodsForUnderused map[string]*v1.Pod
-	totalPreemptingResources    map[apiv1.ResourceName]resource.Quantity
+	totalPreemptingResources    map[arbv1.ResourceName]resource.Quantity
 
 	podInformer clientv1.PodInformer
 }
 
 func New(config *rest.Config) Interface {
-	return newBasePreemption("base-preemption", config)
-}
-
-func newBasePreemption(name string, config *rest.Config) *basePreemption {
-	bp := &basePreemption{
+	bp := &preemption{
 		localDataMutex:   new(sync.Mutex),
 		updateQueueMutex: new(sync.Mutex),
-		name:             name,
+		name:             "preemption",
 		config:           config,
 		client:           kubernetes.NewForConfigOrDie(config),
 		terminatingPodsForPreempt:   make(map[string]preemptedPodInfo),
 		terminatingPodsForUnderused: make(map[string]*v1.Pod),
-		totalPreemptingResources: map[apiv1.ResourceName]resource.Quantity{
+		totalPreemptingResources: map[arbv1.ResourceName]resource.Quantity{
 			"cpu":    resource.MustParse("0"),
 			"memory": resource.MustParse("0"),
 		},
@@ -147,7 +143,7 @@ func updateQueues(queues map[string]*schedulercache.QueueInfo, config *rest.Conf
 		}
 
 		// only update Queue Status Allocated/Deserved/Used/Preempting
-		oldQueue.Status.Allocated.Resources = q.Queue().Status.Allocated.Resources
+		oldQueue.Status.Allocated.Resources = q.Allocated.ResourceList()
 		oldQueue.Status.Deserved.Resources = q.Queue().Status.Deserved.Resources
 		oldQueue.Status.Used.Resources = q.Queue().Status.Used.Resources
 		oldQueue.Status.Preempting.Resources = q.Queue().Status.Preempting.Resources
@@ -160,12 +156,12 @@ func updateQueues(queues map[string]*schedulercache.QueueInfo, config *rest.Conf
 	return nil
 }
 
-func (p *basePreemption) Run(stopCh <-chan struct{}) {
+func (p *preemption) Run(stopCh <-chan struct{}) {
 	go p.podInformer.Informer().Run(stopCh)
 }
 
 // Preprocessing kill running pod for each queue to make used < allocated
-func (p *basePreemption) Preprocessing(queues map[string]*schedulercache.QueueInfo, pods []*schedulercache.PodInfo) (map[string]*schedulercache.QueueInfo, error) {
+func (p *preemption) Preprocessing(queues map[string]*schedulercache.QueueInfo, pods []*schedulercache.PodInfo) (map[string]*schedulercache.QueueInfo, error) {
 	glog.V(4).Infof("Enter Preprocessing ...")
 	defer glog.V(4).Infof("Leaving Preprocessing ...")
 
@@ -194,7 +190,7 @@ func (p *basePreemption) Preprocessing(queues map[string]*schedulercache.QueueIn
 				if k != "cpu" && k != "memory" {
 					continue
 				}
-				resType := apiv1.ResourceName(k)
+				resType := arbv1.ResourceName(k)
 				if _, ok := q.Queue().Status.Used.Resources[resType]; ok {
 					result := q.Queue().Status.Used.Resources[resType].DeepCopy()
 					result.Add(v)
@@ -232,7 +228,7 @@ func (p *basePreemption) Preprocessing(queues map[string]*schedulercache.QueueIn
 					if k != "cpu" && k != "memory" {
 						continue
 					}
-					resType := apiv1.ResourceName(k)
+					resType := arbv1.ResourceName(k)
 					if _, ok := q.Queue().Status.Used.Resources[resType]; ok {
 						result := q.Queue().Status.Used.Resources[resType].DeepCopy()
 						result.Sub(v)
@@ -257,7 +253,7 @@ func (p *basePreemption) Preprocessing(queues map[string]*schedulercache.QueueIn
 	return queues, nil
 }
 
-func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.QueueInfo) error {
+func (p *preemption) PreemptResources(queues map[string]*schedulercache.QueueInfo) error {
 	glog.V(4).Infof("Enter PreemptResources ...")
 	defer glog.V(4).Infof("Leaving PreemptResources ...")
 	// Divided queues into three categories
@@ -280,7 +276,7 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 	glog.V(4).Infof("Divided queues into three categories, queuesOverused(%d), queuesPerfectused(%d), queuesUnderused(%d)",
 		len(queuesOverused), len(queuesPerfectused), len(queuesUnderused))
 
-	preemptingResources := map[apiv1.ResourceName]resource.Quantity{
+	preemptingResources := map[arbv1.ResourceName]resource.Quantity{
 		"cpu":    resource.MustParse("0"),
 		"memory": resource.MustParse("0"),
 	}
@@ -308,7 +304,7 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 
 				// released resource by the killed pod
 				// it may be not same as its occupied resources
-				releasingResources := map[apiv1.ResourceName]resource.Quantity{
+				releasingResources := map[arbv1.ResourceName]resource.Quantity{
 					"cpu":    resource.MustParse("0"),
 					"memory": resource.MustParse("0"),
 				}
@@ -320,7 +316,7 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 						continue
 					}
 
-					resType := apiv1.ResourceName(k)
+					resType := arbv1.ResourceName(k)
 					usedResource := q.Queue().Status.Used.Resources[resType].DeepCopy()
 					deservedResource := q.Queue().Status.Deserved.Resources[resType].DeepCopy()
 					if usedResource.Cmp(deservedResource) == 1 {
@@ -358,7 +354,7 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 	}
 	p.totalPreemptingResources = schedulercache.ResourcesAdd(p.totalPreemptingResources, preemptingResources)
 	// copy totalPreemptingResources for scheduling
-	leftPreemptingResources := make(map[apiv1.ResourceName]resource.Quantity)
+	leftPreemptingResources := make(map[arbv1.ResourceName]resource.Quantity)
 	for k, v := range p.totalPreemptingResources {
 		leftPreemptingResources[k] = v
 	}
@@ -376,7 +372,7 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 			unmetResources := schedulercache.ResourcesSub(q.Queue().Status.Deserved.Resources, q.Queue().Status.Allocated.Resources)
 
 			for _, res := range resourceTypes {
-				resType := apiv1.ResourceName(res)
+				resType := arbv1.ResourceName(res)
 				leftRes := leftPreemptingResources[resType].DeepCopy()
 				unmetRes := unmetResources[resType].DeepCopy()
 				if unmetRes.Cmp(leftRes) <= 0 {
@@ -416,7 +412,7 @@ func (p *basePreemption) PreemptResources(queues map[string]*schedulercache.Queu
 	return nil
 }
 
-func (p *basePreemption) terminatePodDone(obj interface{}) {
+func (p *preemption) terminatePodDone(obj interface{}) {
 	var pod *v1.Pod
 	switch t := obj.(type) {
 	case *v1.Pod:

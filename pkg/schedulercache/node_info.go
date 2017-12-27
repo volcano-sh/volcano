@@ -17,60 +17,99 @@ limitations under the License.
 package schedulercache
 
 import (
-	"time"
-
 	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/labels"
-	clientset "k8s.io/client-go/kubernetes"
-	corev1 "k8s.io/client-go/listers/core/v1"
-	clientcache "k8s.io/client-go/tools/cache"
 )
+
+type PodInfo struct {
+	Name      string
+	Namespace string
+
+	Pod *v1.Pod
+
+	Request *Resource
+}
+
+func NewPodInfo(pod *v1.Pod) *PodInfo {
+	req := EmptyResource()
+
+	for _, c := range pod.Spec.Containers {
+		req.Add(NewResource(c.Resources.Requests))
+	}
+
+	return &PodInfo{
+		Name:      pod.Name,
+		Namespace: pod.Namespace,
+		Pod:       pod,
+		Request:   req,
+	}
+}
+
+func (pi *PodInfo) Clone() *PodInfo {
+	return &PodInfo{
+		Name:      pi.Name,
+		Namespace: pi.Namespace,
+		Pod:       pi.Pod,
+		Request:   pi.Request.Clone(),
+	}
+}
 
 // NodeInfo is node level aggregated information.
 type NodeInfo struct {
-	// Overall node information.
-	name string
-	node *v1.Node
+	Name string
+	Node *v1.Node
+
+	// The idle resource on that node
+	Idle *Resource
+	// The used resource on that node, including running and terminating
+	// pods
+	Used *Resource
+
+	Allocatable *Resource
+	Capability  *Resource
+
+	Pods []*PodInfo
 }
 
-func (n *NodeInfo) Name() string {
-	return n.name
-}
+func NewNodeInfo(node *v1.Node) *NodeInfo {
+	return &NodeInfo{
+		Name: node.Name,
+		Node: node,
+		Idle: NewResource(node.Status.Allocatable),
+		Used: EmptyResource(),
 
-// Returns overall information about this node.
-func (n *NodeInfo) Node() *v1.Node {
-	return n.node
-}
+		Allocatable: NewResource(node.Status.Allocatable),
+		Capability:  NewResource(node.Status.Capacity),
 
-func (n *NodeInfo) Clone() *NodeInfo {
-	clone := &NodeInfo{
-		name: n.name,
-		node: n.node.DeepCopy(),
+		Pods: make([]*PodInfo, 10),
 	}
-	return clone
 }
 
-// getPodKey returns the string key of a pod.
-func getPodKey(pod *v1.Pod) (string, error) {
-	return clientcache.MetaNamespaceKeyFunc(pod)
-}
+func (ni *NodeInfo) Clone() *NodeInfo {
+	pods := make([]*PodInfo, len(ni.Pods))
 
-func NodeLister(client clientset.Interface, stopChannel <-chan struct{}) ([]*v1.Node, error) {
-	nl := GetNodeLister(client, stopChannel)
-	nodes, err := nl.List(labels.Everything())
-	if err != nil {
-		return []*v1.Node{}, err
+	for _, p := range ni.Pods {
+		pods = append(pods, p.Clone())
 	}
-	return nodes, err
+
+	return &NodeInfo{
+		Name:        ni.Name,
+		Node:        ni.Node,
+		Idle:        ni.Idle.Clone(),
+		Used:        ni.Used.Clone(),
+		Allocatable: ni.Allocatable.Clone(),
+		Capability:  ni.Capability.Clone(),
+
+		Pods: pods,
+	}
 }
 
-func GetNodeLister(client clientset.Interface, stopChannel <-chan struct{}) corev1.NodeLister {
-	listWatcher := clientcache.NewListWatchFromClient(client.Core().RESTClient(), "nodes", v1.NamespaceAll, fields.Everything())
-	store := clientcache.NewIndexer(clientcache.MetaNamespaceKeyFunc, clientcache.Indexers{clientcache.NamespaceIndex: clientcache.MetaNamespaceIndexFunc})
-	nodeLister := corev1.NewNodeLister(store)
-	reflector := clientcache.NewReflector(listWatcher, &v1.Node{}, store, time.Hour)
-	reflector.Run(stopChannel)
+func (ni *NodeInfo) AddPod(pod *PodInfo) {
+	ni.Idle.Sub(pod.Request)
+	ni.Used.Add(pod.Request)
 
-	return nodeLister
+	ni.Pods = append(ni.Pods, pod)
+}
+
+func (ni *NodeInfo) RemovePod(pod *PodInfo) {
+	// TODO:
 }

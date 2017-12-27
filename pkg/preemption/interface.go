@@ -16,18 +16,10 @@ limitations under the License.
 
 package preemption
 
-import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
-)
+import "github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 
-// Interface is the interface of preemption.
 type Interface interface {
-	// Run start informer
 	Run(stopCh <-chan struct{})
 
-	// Preprocessing kill pod to make each queue underused
-	Preprocessing(queues map[string]*schedulercache.QueueInfo, pods []*schedulercache.PodInfo) (map[string]*schedulercache.QueueInfo, error)
-
-	// PreemptResource preempt resources between job
-	PreemptResources(queues map[string]*schedulercache.QueueInfo) error
+	Enqueue(job *schedulercache.QueueInfo)
 }
