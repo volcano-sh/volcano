@@ -20,8 +20,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/proportion"
 	"github.com/spf13/pflag"
+
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/proportion"
 )
 
 // ServerOption is the main context object for the controller manager.

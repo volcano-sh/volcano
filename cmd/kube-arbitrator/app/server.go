@@ -17,14 +17,14 @@ limitations under the License.
 package app
 
 import (
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+
 	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-arbitrator/app/options"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/controller"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/preemption"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/preemption"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
-
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 func buildConfig(master, kubeconfig string) (*rest.Config, error) {
@@ -45,7 +45,11 @@ func Run(opt *options.ServerOption) error {
 	go cache.Run(neverStop)
 
 	// TODO dump cache information and do something
-	c := controller.NewQueueController(config, cache, policy.New(opt.Policy), preemption.New(config))
+	c, err := controller.NewQueueController(config, cache, policy.New(opt.Policy), preemption.New())
+	if err != nil {
+		panic(err)
+	}
+
 	c.Run(neverStop)
 
 	<-neverStop

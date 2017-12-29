@@ -22,6 +22,7 @@ import (
 	"math"
 
 	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 type Resource struct {
@@ -63,6 +64,14 @@ func NewResource(rl v1.ResourceList) *Resource {
 	return r
 }
 
+func (r *Resource) ResourceList() v1.ResourceList {
+	rl := make(v1.ResourceList)
+
+	rl[v1.ResourceCPU] = *resource.NewQuantity(int64(r.MilliCPU), resource.DecimalSI)
+
+	return rl
+}
+
 func (r *Resource) IsEmpty() bool {
 	return r.MilliCPU < minMilliCPU
 }
@@ -86,7 +95,7 @@ func (r *Resource) Less(rr *Resource) bool {
 }
 
 func (r *Resource) Equal(rr *Resource) bool {
-	return math.Abs(r.MilliCPU - rr.MilliCPU) < 0.01
+	return math.Abs(r.MilliCPU-rr.MilliCPU) < 0.01
 }
 
 func (r *Resource) LessEqual(rr *Resource) bool {

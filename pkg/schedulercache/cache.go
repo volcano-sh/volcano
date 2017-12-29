@@ -196,6 +196,7 @@ func (sc *schedulerCache) deletePod(pod *v1.Pod) error {
 		return fmt.Errorf("pod %v doesn't exist", key)
 	}
 	delete(sc.pods, key)
+
 	return nil
 }
 

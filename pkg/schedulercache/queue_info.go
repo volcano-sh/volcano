@@ -21,9 +21,10 @@ import (
 )
 
 type QueueInfo struct {
-	Name   string
-	Queue  *arbv1.Queue
-	Weight int
+	Name      string
+	Namespace string
+	Queue     *arbv1.Queue
+	Weight    int
 
 	// The total resources that a Queue should get
 	Deserved *Resource
@@ -52,6 +53,7 @@ type QueueInfo struct {
 func NewQueueInfo(queue *arbv1.Queue) *QueueInfo {
 	return &QueueInfo{
 		Name:      queue.Name,
+		Namespace: queue.Namespace,
 		Queue:     queue,
 		Weight:    queue.Spec.Weight,
 		Deserved:  NewResource(queue.Status.Deserved),
@@ -75,6 +77,7 @@ func (qi *QueueInfo) OverUsed() bool {
 func (qi *QueueInfo) Clone() *QueueInfo {
 	return &QueueInfo{
 		Name:      qi.Name,
+		Namespace: qi.Namespace,
 		Queue:     qi.Queue,
 		Deserved:  qi.Deserved.Clone(),
 		Used:      qi.Used.Clone(),

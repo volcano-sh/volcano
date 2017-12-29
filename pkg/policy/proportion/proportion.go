@@ -93,13 +93,7 @@ func (ps *proportionScheduler) Allocate(queues map[string]*schedulercache.QueueI
 	for _, queue := range queues {
 		deserved := total.Multiply(float64(queue.Weight) / float64(totalWeight))
 		queue.Deserved = deserved.Clone()
-
-		// allocated resources is init as min(deserved, used)
-		if deserved.Less(queue.Used) {
-			queue.Allocated = deserved.Clone()
-		} else {
-			queue.Allocated = queue.Used.Clone()
-		}
+		queue.Allocated = queue.Used.Clone()
 	}
 
 	// Allocated resources to queue

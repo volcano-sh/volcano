@@ -24,6 +24,9 @@ type PodInfo struct {
 	Name      string
 	Namespace string
 
+	Hostname string
+	Phase    v1.PodPhase
+
 	Pod *v1.Pod
 
 	Request *Resource
@@ -39,6 +42,8 @@ func NewPodInfo(pod *v1.Pod) *PodInfo {
 	return &PodInfo{
 		Name:      pod.Name,
 		Namespace: pod.Namespace,
+		Hostname:  pod.Spec.Hostname,
+		Phase:     pod.Status.Phase,
 		Pod:       pod,
 		Request:   req,
 	}
@@ -48,6 +53,8 @@ func (pi *PodInfo) Clone() *PodInfo {
 	return &PodInfo{
 		Name:      pi.Name,
 		Namespace: pi.Namespace,
+		Hostname:  pi.Hostname,
+		Phase:     pi.Phase,
 		Pod:       pi.Pod,
 		Request:   pi.Request.Clone(),
 	}
@@ -112,4 +119,5 @@ func (ni *NodeInfo) AddPod(pod *PodInfo) {
 
 func (ni *NodeInfo) RemovePod(pod *PodInfo) {
 	// TODO:
+	panic("not support yet.")
 }
