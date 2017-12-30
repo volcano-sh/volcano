@@ -17,7 +17,7 @@ limitations under the License.
 package preemption
 
 import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/cache"
 )
 
 type preemption struct {
@@ -31,7 +31,7 @@ func (p *preemption) Run(stopCh <-chan struct{}) {
 
 }
 
-func (p *preemption) Enqueue(job *schedulercache.QueueInfo) {
+func (p *preemption) Enqueue(job *cache.QueueInfo) {
 
 }
 
@@ -117,7 +117,7 @@ func (p *preemption) Enqueue(job *schedulercache.QueueInfo) {
 //	return err
 //}
 //
-//func updateQueues(queues map[string]*schedulercache.QueueInfo, config *rest.Config) error {
+//func updateQueues(queues map[string]*cache.QueueInfo, config *rest.Config) error {
 //	cs, err := clientset.NewForConfig(config)
 //	if err != nil {
 //		glog.Errorf("Fail to create client for queue, %#v", err)
@@ -160,7 +160,7 @@ func (p *preemption) Enqueue(job *schedulercache.QueueInfo) {
 //}
 //
 //// Preprocessing kill running pod for each queue to make used < allocated
-//func (p *preemption) Preprocessing(queues map[string]*schedulercache.QueueInfo, pods []*schedulercache.PodInfo) (map[string]*schedulercache.QueueInfo, error) {
+//func (p *preemption) Preprocessing(queues map[string]*cache.QueueInfo, pods []*cache.PodInfo) (map[string]*cache.QueueInfo, error) {
 //	glog.V(4).Infof("Enter Preprocessing ...")
 //	defer glog.V(4).Infof("Leaving Preprocessing ...")
 //
@@ -252,18 +252,18 @@ func (p *preemption) Enqueue(job *schedulercache.QueueInfo) {
 //	return queues, nil
 //}
 //
-//func (p *preemption) PreemptResources(queues map[string]*schedulercache.QueueInfo) error {
+//func (p *preemption) PreemptResources(queues map[string]*cache.QueueInfo) error {
 //	glog.V(4).Infof("Enter PreemptResources ...")
 //	defer glog.V(4).Infof("Leaving PreemptResources ...")
 //	// Divided queues into three categories
 //	//   queuesOverused    - Deserved < Allocated
 //	//   queuesPerfectused - Deserved = Allocated, do nothing for these queues in PreemptResources()
 //	//   queuesUnderused   - Deserved > Allocated
-//	queuesOverused := make(map[string]*schedulercache.QueueInfo)
-//	queuesPerfectused := make(map[string]*schedulercache.QueueInfo)
-//	queuesUnderused := make(map[string]*schedulercache.QueueInfo)
+//	queuesOverused := make(map[string]*cache.QueueInfo)
+//	queuesPerfectused := make(map[string]*cache.QueueInfo)
+//	queuesUnderused := make(map[string]*cache.QueueInfo)
 //	for _, q := range queues {
-//		result := schedulercache.CompareResources(q.Queue().Status.Deserved.Resources, q.Queue().Status.Allocated.Resources)
+//		result := cache.CompareResources(q.Queue().Status.Deserved.Resources, q.Queue().Status.Allocated.Resources)
 //		if result == -1 {
 //			queuesOverused[q.Name()] = q
 //		} else if result == 0 {
@@ -332,7 +332,7 @@ func (p *preemption) Enqueue(job *schedulercache.QueueInfo) {
 //					q.Queue().Status.Used.Resources[resType] = result
 //				}
 //
-//				preemptingResources = schedulercache.ResourcesAdd(preemptingResources, releasingResources)
+//				preemptingResources = cache.ResourcesAdd(preemptingResources, releasingResources)
 //				preemptingPods[pod.Name] = preemptedPodInfo{
 //					pod: pod,
 //					totalReleasingResources: releasingResources,
@@ -351,7 +351,7 @@ func (p *preemption) Enqueue(job *schedulercache.QueueInfo) {
 //	for k, v := range preemptingPods {
 //		p.terminatingPodsForPreempt[k] = v
 //	}
-//	p.totalPreemptingResources = schedulercache.ResourcesAdd(p.totalPreemptingResources, preemptingResources)
+//	p.totalPreemptingResources = cache.ResourcesAdd(p.totalPreemptingResources, preemptingResources)
 //	// copy totalPreemptingResources for scheduling
 //	leftPreemptingResources := make(map[arbv1.ResourceName]resource.Quantity)
 //	for k, v := range p.totalPreemptingResources {
@@ -362,13 +362,13 @@ func (p *preemption) Enqueue(job *schedulercache.QueueInfo) {
 //	resourceTypes := []string{"cpu", "memory"}
 //	// handler queuesUnderused which will preempt resources from other queue
 //	for _, q := range queuesUnderused {
-//		if schedulercache.ResourcesIsZero(leftPreemptingResources) {
+//		if cache.ResourcesIsZero(leftPreemptingResources) {
 //			// there is no preempting resources left
 //			// change Allocated to Deserved directly
 //			q.Queue().Status.Allocated.Resources = q.Queue().Status.Deserved.Resources
 //		} else {
 //			// assign preempting resources to queue first
-//			unmetResources := schedulercache.ResourcesSub(q.Queue().Status.Deserved.Resources, q.Queue().Status.Allocated.Resources)
+//			unmetResources := cache.ResourcesSub(q.Queue().Status.Deserved.Resources, q.Queue().Status.Allocated.Resources)
 //
 //			for _, res := range resourceTypes {
 //				resType := arbv1.ResourceName(res)
@@ -387,7 +387,7 @@ func (p *preemption) Enqueue(job *schedulercache.QueueInfo) {
 //			}
 //		}
 //	}
-//	if !schedulercache.ResourcesIsZero(leftPreemptingResources) {
+//	if !cache.ResourcesIsZero(leftPreemptingResources) {
 //		glog.Errorf("leftPreemptingResources is not empty, something error, %#v", leftPreemptingResources)
 //	}
 //
@@ -437,7 +437,7 @@ func (p *preemption) Enqueue(job *schedulercache.QueueInfo) {
 //	// if the pod is terminated for preemption, remove it from terminatingPods, update totalPreemptingResources
 //	if ppInfo, ok := p.terminatingPodsForPreempt[pod.Name]; ok {
 //		delete(p.terminatingPodsForPreempt, pod.Name)
-//		p.totalPreemptingResources = schedulercache.ResourcesSub(p.totalPreemptingResources, ppInfo.totalReleasingResources)
+//		p.totalPreemptingResources = cache.ResourcesSub(p.totalPreemptingResources, ppInfo.totalReleasingResources)
 //	}
 //}
 //

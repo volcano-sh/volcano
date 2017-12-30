@@ -19,7 +19,7 @@ package proportion
 import (
 	"github.com/golang/glog"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/cache"
 )
 
 // PolicyName is the name of proportion policy; it'll be use for any case
@@ -34,9 +34,9 @@ func New() *proportionScheduler {
 }
 
 // collectSchedulingInfo collects total resources of the cluster
-func (ps *proportionScheduler) collectSchedulingInfo(queues map[string]*schedulercache.QueueInfo, nodes []*schedulercache.NodeInfo) (*schedulercache.Resource, *schedulercache.Resource, int64) {
-	total := schedulercache.EmptyResource()
-	available := schedulercache.EmptyResource()
+func (ps *proportionScheduler) collectSchedulingInfo(queues map[string]*cache.QueueInfo, nodes []*cache.NodeInfo) (*cache.Resource, *cache.Resource, int64) {
+	total := cache.EmptyResource()
+	available := cache.EmptyResource()
 	totalWeight := int64(0)
 
 	for _, node := range nodes {
@@ -59,17 +59,17 @@ func (ps *proportionScheduler) Initialize() {
 	// TODO
 }
 
-func (ps *proportionScheduler) Group(queuejobs []*schedulercache.QueueJobInfo) map[string][]*schedulercache.QueueJobInfo {
+func (ps *proportionScheduler) Group(queuejobs []*cache.QueueJobInfo) map[string][]*cache.QueueJobInfo {
 	glog.V(4).Infof("Enter Group ...")
 	defer glog.V(4).Infof("Leaving Group ...")
 
 	// calculate total queuejob resource request under queue
-	queues := make(map[string][]*schedulercache.QueueJobInfo, 0)
+	queues := make(map[string][]*cache.QueueJobInfo, 0)
 
 	for _, job := range queuejobs {
 		// NOTES: Queue name is just an suggestion here; it'll be customized.
 		if _, found := queues[job.QueueName]; !found {
-			queues[job.QueueName] = make([]*schedulercache.QueueJobInfo, 1)
+			queues[job.QueueName] = make([]*cache.QueueJobInfo, 1)
 		}
 		queues[job.QueueName] = append(queues[job.QueueName], job)
 	}
@@ -77,7 +77,7 @@ func (ps *proportionScheduler) Group(queuejobs []*schedulercache.QueueJobInfo) m
 	return queues
 }
 
-func (ps *proportionScheduler) Allocate(queues map[string]*schedulercache.QueueInfo, nodes []*schedulercache.NodeInfo) map[string]*schedulercache.QueueInfo {
+func (ps *proportionScheduler) Allocate(queues map[string]*cache.QueueInfo, nodes []*cache.NodeInfo) map[string]*cache.QueueInfo {
 	glog.V(4).Infof("Enter Allocate ...")
 	defer glog.V(4).Infof("Leaving Allocate ...")
 
@@ -87,7 +87,7 @@ func (ps *proportionScheduler) Allocate(queues map[string]*schedulercache.QueueI
 		return nil
 	}
 
-	glog.V(4).Infof("total resource <%v>, available resource <%v>, total weight <%v>",
+	glog.V(3).Infof("total resource <%v>, available resource <%v>, total weight <%v>",
 		total, available, totalWeight)
 
 	for _, queue := range queues {

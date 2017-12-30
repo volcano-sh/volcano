@@ -17,7 +17,7 @@ limitations under the License.
 package policy
 
 import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/cache"
 )
 
 // Interface is the interface of policy.
@@ -29,10 +29,10 @@ type Interface interface {
 	Initialize()
 
 	// Group grouping the job into different bucket, and allocate those resources based on those groups.
-	Group(queuejobs []*schedulercache.QueueJobInfo) map[string][]*schedulercache.QueueJobInfo
+	Group(queuejobs []*cache.QueueJobInfo) map[string][]*cache.QueueJobInfo
 
 	// Allocate allocates the cluster's resources into each queue.
-	Allocate(queues map[string]*schedulercache.QueueInfo, nodes []*schedulercache.NodeInfo) map[string]*schedulercache.QueueInfo
+	Allocate(queues map[string]*cache.QueueInfo, nodes []*cache.NodeInfo) map[string]*cache.QueueInfo
 
 	// UnIntialize un-initializes the allocator plugins.
 	UnInitialize()

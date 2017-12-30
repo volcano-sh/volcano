@@ -16,10 +16,10 @@ limitations under the License.
 
 package preemption
 
-import "github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
+import "github.com/kubernetes-incubator/kube-arbitrator/pkg/cache"
 
 type Interface interface {
 	Run(stopCh <-chan struct{})
 
-	Enqueue(job *schedulercache.QueueInfo)
+	Enqueue(job *cache.QueueInfo)
 }

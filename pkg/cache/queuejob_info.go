@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package schedulercache
+package cache
 
 import (
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"

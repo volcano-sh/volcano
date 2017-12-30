@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package schedulercache
+package cache
 
 import (
 	"k8s.io/api/core/v1"
@@ -87,7 +87,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		Allocatable: NewResource(node.Status.Allocatable),
 		Capability:  NewResource(node.Status.Capacity),
 
-		Pods: make([]*PodInfo, 10),
+		Pods: make([]*PodInfo, 0),
 	}
 }
 

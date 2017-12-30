@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package schedulercache
+package cache
 
 // Cache collects pods/nodes/queues information
 // and provides information snapshot
@@ -24,4 +24,7 @@ type Cache interface {
 
 	// Snapshot deep copy overall cache information into snapshot
 	Snapshot() *CacheSnapshot
+
+	// WaitForCacheSync waits for all cache synced
+	WaitForCacheSync(stopCh <-chan struct{}) bool
 }

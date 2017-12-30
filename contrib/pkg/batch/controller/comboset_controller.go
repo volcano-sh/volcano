@@ -30,10 +30,10 @@ import (
 	"github.com/kubernetes-incubator/kube-arbitrator/contrib/pkg/batch/controller/combosetresources"
 	respod "github.com/kubernetes-incubator/kube-arbitrator/contrib/pkg/batch/controller/combosetresources/pod"
 	queuev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/cache"
 	queueclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
 	queueInformerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
 	qclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/v1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -90,7 +90,7 @@ func RegisterAllQueueJobResourceTypes(regs *combosetresources.RegisteredResource
 
 }
 
-func NewQueueJobController(config *rest.Config, schCache schedulercache.Cache) *ComboSetController {
+func NewQueueJobController(config *rest.Config, schCache cache.Cache) *ComboSetController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)

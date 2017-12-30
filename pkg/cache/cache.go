@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package schedulercache
+package cache
 
 import (
 	"fmt"
@@ -158,6 +158,14 @@ func (sc *schedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.nodeInformer.Informer().Run(stopCh)
 	go sc.queueInformer.Informer().Run(stopCh)
 	go sc.queueJobInformer.Informer().Run(stopCh)
+}
+
+func (sc *schedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
+	return cache.WaitForCacheSync(stopCh,
+		sc.podInformer.Informer().HasSynced,
+		sc.nodeInformer.Informer().HasSynced,
+		sc.queueInformer.Informer().HasSynced,
+		sc.queueJobInformer.Informer().HasSynced)
 }
 
 // Assumes that lock is already acquired.

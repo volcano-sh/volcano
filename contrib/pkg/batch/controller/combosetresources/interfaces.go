@@ -18,13 +18,13 @@ package combosetresources
 
 import (
 	qjobv1 "github.com/kubernetes-incubator/kube-arbitrator/contrib/pkg/batch/apis/v1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/cache"
 )
 
 // Interface is an abstract interface for queue job resource management.
 type Interface interface {
 	GetResourceAllocated() *qjobv1.ResourceList
-	GetResourceRequest() *schedulercache.Resource
+	GetResourceRequest() *cache.Resource
 
 	SetResourceAllocated(qjobv1.ResourceList) error
 	Sync(queuejob *qjobv1.ComboSet, qjobRes *qjobv1.ComboSetResource) error
