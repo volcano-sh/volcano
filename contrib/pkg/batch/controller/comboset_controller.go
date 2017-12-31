@@ -73,7 +73,7 @@ type ComboSetController struct {
 	queueJobInformer qjobv1informer.ComboSetInformer
 
 	// A store of queues
-	queueInformer qclient.QueueInformer
+	queueInformer qclient.ConsumerInformer
 
 	// QueueJobs that need to be updated
 	queue workqueue.RateLimitingInterface
@@ -149,12 +149,12 @@ func NewQueueJobController(config *rest.Config, schCache cache.Cache) *ComboSetC
 
 	// create informer for queue information
 	qInformerFactory := queueInformerfactory.NewSharedInformerFactory(queueClient, 0)
-	qjm.queueInformer = qInformerFactory.Queue().Queues()
+	qjm.queueInformer = qInformerFactory.Consumer().Consumers()
 	qjm.queueInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
-				case *queuev1.Queue:
+				case *queuev1.Consumer:
 					glog.V(4).Infof("filter queue name(%s) namespace(%s)\n", t.Name, t.Namespace)
 					return true
 				default:
@@ -278,7 +278,7 @@ func resourcesEqual(r1, r2 *qjobv1.ResourceList) (bool, error) {
 }
 
 //get all queuejobs belong to a certain queue
-func (qjm *ComboSetController) getQueueJobsForQueue(j *queuev1.Queue) ([]*qjobv1.ComboSet, error) {
+func (qjm *ComboSetController) getQueueJobsForQueue(j *queuev1.Consumer) ([]*qjobv1.ComboSet, error) {
 	qjoblist, err := qjm.queueJobLister.ComboSets(j.Namespace).List(labels.Everything())
 	if err != nil {
 		return nil, err
@@ -301,7 +301,7 @@ func (qjm *ComboSetController) getQueueJobsForQueue(j *queuev1.Queue) ([]*qjobv1
 }
 
 //Handle queue information updating
-func (qjm *ComboSetController) updateQueue(oldQueue, newQueue *queuev1.Queue) error {
+func (qjm *ComboSetController) updateQueue(oldQueue, newQueue *queuev1.Consumer) error {
 
 	equal, err := resourcesEqual(&oldQueue.Status.Allocated,
 		&newQueue.Status.Allocated)
@@ -328,14 +328,14 @@ func (qjm *ComboSetController) updateQueue(oldQueue, newQueue *queuev1.Queue) er
 
 //notification callback function for queue being updated
 func (qjm *ComboSetController) UpdateQueue(oldObj, newObj interface{}) {
-	oldQueue, ok := oldObj.(*queuev1.Queue)
+	oldQueue, ok := oldObj.(*queuev1.Consumer)
 	if !ok {
-		glog.Errorf("cannot convert oldObj to *qjobv1.Queue: %v", oldObj)
+		glog.Errorf("cannot convert oldObj to *qjobv1.Consumer: %v", oldObj)
 		return
 	}
-	newQueue, ok := newObj.(*queuev1.Queue)
+	newQueue, ok := newObj.(*queuev1.Consumer)
 	if !ok {
-		glog.Errorf("cannot convert newObj to *qjobv1.Queue: %v", newObj)
+		glog.Errorf("cannot convert newObj to *qjobv1.Consumer: %v", newObj)
 		return
 	}
 

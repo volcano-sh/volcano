@@ -20,46 +20,6 @@ import (
 	"k8s.io/api/core/v1"
 )
 
-type PodInfo struct {
-	Name      string
-	Namespace string
-
-	Hostname string
-	Phase    v1.PodPhase
-
-	Pod *v1.Pod
-
-	Request *Resource
-}
-
-func NewPodInfo(pod *v1.Pod) *PodInfo {
-	req := EmptyResource()
-
-	for _, c := range pod.Spec.Containers {
-		req.Add(NewResource(c.Resources.Requests))
-	}
-
-	return &PodInfo{
-		Name:      pod.Name,
-		Namespace: pod.Namespace,
-		Hostname:  pod.Spec.Hostname,
-		Phase:     pod.Status.Phase,
-		Pod:       pod,
-		Request:   req,
-	}
-}
-
-func (pi *PodInfo) Clone() *PodInfo {
-	return &PodInfo{
-		Name:      pi.Name,
-		Namespace: pi.Namespace,
-		Hostname:  pi.Hostname,
-		Phase:     pi.Phase,
-		Pod:       pi.Pod,
-		Request:   pi.Request.Clone(),
-	}
-}
-
 // NodeInfo is node level aggregated information.
 type NodeInfo struct {
 	Name string
@@ -115,9 +75,4 @@ func (ni *NodeInfo) AddPod(pod *PodInfo) {
 	ni.Used.Add(pod.Request)
 
 	ni.Pods = append(ni.Pods, pod)
-}
-
-func (ni *NodeInfo) RemovePod(pod *PodInfo) {
-	// TODO:
-	panic("not support yet.")
 }

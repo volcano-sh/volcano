@@ -45,12 +45,12 @@ type schedulerCache struct {
 
 	podInformer      clientv1.PodInformer
 	nodeInformer     clientv1.NodeInformer
-	queueInformer    arbclient.QueueInformer
-	queueJobInformer arbclient.QueueJobInformer
+	consumerInformer arbclient.ConsumerInformer
+	//queueJobInformer arbclient.QueueJobInformer
 
 	pods      map[string]*PodInfo
 	nodes     map[string]*NodeInfo
-	queues    map[string]*QueueInfo
+	consumers map[string]*ConsumerInfo
 	queuejobs map[string]*QueueJobInfo
 }
 
@@ -58,7 +58,7 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 	sc := &schedulerCache{
 		nodes:     make(map[string]*NodeInfo),
 		pods:      make(map[string]*PodInfo),
-		queues:    make(map[string]*QueueInfo),
+		consumers: make(map[string]*ConsumerInfo),
 		queuejobs: make(map[string]*QueueJobInfo),
 	}
 
@@ -102,14 +102,14 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 		panic(err)
 	}
 
-	queueInformerFactory := informerfactory.NewSharedInformerFactory(queueClient, 0)
+	consumerInformerFactory := informerfactory.NewSharedInformerFactory(queueClient, 0)
 	// create informer for queue information
-	sc.queueInformer = queueInformerFactory.Queue().Queues()
-	sc.queueInformer.Informer().AddEventHandler(
+	sc.consumerInformer = consumerInformerFactory.Consumer().Consumers()
+	sc.consumerInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
-				case *arbv1.Queue:
+				case *arbv1.Consumer:
 					glog.V(4).Infof("Filter queue name(%s) namespace(%s)\n", t.Name, t.Namespace)
 					return true
 				default:
@@ -117,36 +117,9 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 				}
 			},
 			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc:    sc.AddQueue,
-				UpdateFunc: sc.UpdateQueue,
-				DeleteFunc: sc.DeleteQueue,
-			},
-		})
-
-	// create queuejob informer
-	queuejobClient, _, err := client.NewQueueJobClient(config)
-	if err != nil {
-		panic(err)
-	}
-
-	queueJobInformerFactory := informerfactory.NewSharedInformerFactory(queuejobClient, 0)
-	// create informer for queuejob information
-	sc.queueJobInformer = queueJobInformerFactory.QueueJob().QueueJobs()
-	sc.queueJobInformer.Informer().AddEventHandler(
-		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
-				switch t := obj.(type) {
-				case *arbv1.QueueJob:
-					glog.V(4).Infof("Filter queuejob name(%s) namespace(%s)\n", t.Name, t.Namespace)
-					return true
-				default:
-					return false
-				}
-			},
-			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc:    sc.AddQueueJob,
-				UpdateFunc: sc.UpdateQueueJob,
-				DeleteFunc: sc.DeleteQueueJob,
+				AddFunc:    sc.AddConsumer,
+				UpdateFunc: sc.UpdateConsumer,
+				DeleteFunc: sc.DeleteConsumer,
 			},
 		})
 
@@ -156,16 +129,16 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 func (sc *schedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.podInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
-	go sc.queueInformer.Informer().Run(stopCh)
-	go sc.queueJobInformer.Informer().Run(stopCh)
+	go sc.consumerInformer.Informer().Run(stopCh)
+	//go sc.queueJobInformer.Informer().Run(stopCh)
 }
 
 func (sc *schedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 	return cache.WaitForCacheSync(stopCh,
 		sc.podInformer.Informer().HasSynced,
 		sc.nodeInformer.Informer().HasSynced,
-		sc.queueInformer.Informer().HasSynced,
-		sc.queueJobInformer.Informer().HasSynced)
+		sc.consumerInformer.Informer().HasSynced)
+	//sc.queueJobInformer.Informer().HasSynced)
 }
 
 // Assumes that lock is already acquired.
@@ -382,17 +355,17 @@ func (sc *schedulerCache) DeleteNode(obj interface{}) {
 }
 
 // Assumes that lock is already acquired.
-func (sc *schedulerCache) addQueue(queue *arbv1.Queue) error {
-	if _, ok := sc.queues[queue.Name]; ok {
+func (sc *schedulerCache) addQueue(queue *arbv1.Consumer) error {
+	if _, ok := sc.consumers[queue.Name]; ok {
 		return fmt.Errorf("queue %v exist", queue.Name)
 	}
 
-	sc.queues[queue.Name] = NewQueueInfo(queue)
+	sc.consumers[queue.Name] = NewConsumerInfo(queue)
 	return nil
 }
 
 // Assumes that lock is already acquired.
-func (sc *schedulerCache) updateQueue(oldQueue, newQueue *arbv1.Queue) error {
+func (sc *schedulerCache) updateQueue(oldQueue, newQueue *arbv1.Consumer) error {
 	if err := sc.deleteQueue(oldQueue); err != nil {
 		return err
 	}
@@ -401,25 +374,25 @@ func (sc *schedulerCache) updateQueue(oldQueue, newQueue *arbv1.Queue) error {
 }
 
 // Assumes that lock is already acquired.
-func (sc *schedulerCache) deleteQueue(queue *arbv1.Queue) error {
-	if _, ok := sc.queues[queue.Name]; !ok {
+func (sc *schedulerCache) deleteQueue(queue *arbv1.Consumer) error {
+	if _, ok := sc.consumers[queue.Name]; !ok {
 		return fmt.Errorf("queue %v doesn't exist", queue.Name)
 	}
-	delete(sc.queues, queue.Name)
+	delete(sc.consumers, queue.Name)
 	return nil
 }
 
-func (sc *schedulerCache) AddQueue(obj interface{}) {
-	queue, ok := obj.(*arbv1.Queue)
+func (sc *schedulerCache) AddConsumer(obj interface{}) {
+	queue, ok := obj.(*arbv1.Consumer)
 	if !ok {
-		glog.Errorf("Cannot convert to *arbv1.Queue: %v", obj)
+		glog.Errorf("Cannot convert to *arbv1.Consumer: %v", obj)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Add queue(%s) into cache, status(%#v), spec(%#v)", queue.Name, queue.Status, queue.Spec)
+	glog.V(4).Infof("Add queue(%s) into cache, spec(%#v)", queue.Name, queue.Spec)
 	err := sc.addQueue(queue)
 	if err != nil {
 		glog.Errorf("Failed to add queue %s into cache: %v", queue.Name, err)
@@ -428,23 +401,23 @@ func (sc *schedulerCache) AddQueue(obj interface{}) {
 	return
 }
 
-func (sc *schedulerCache) UpdateQueue(oldObj, newObj interface{}) {
-	oldQueue, ok := oldObj.(*arbv1.Queue)
+func (sc *schedulerCache) UpdateConsumer(oldObj, newObj interface{}) {
+	oldQueue, ok := oldObj.(*arbv1.Consumer)
 	if !ok {
-		glog.Errorf("Cannot convert oldObj to *arbv1.Queue: %v", oldObj)
+		glog.Errorf("Cannot convert oldObj to *arbv1.Consumer: %v", oldObj)
 		return
 	}
-	newQueue, ok := newObj.(*arbv1.Queue)
+	newQueue, ok := newObj.(*arbv1.Consumer)
 	if !ok {
-		glog.Errorf("Cannot convert newObj to *arbv1.Queue: %v", newObj)
+		glog.Errorf("Cannot convert newObj to *arbv1.Consumer: %v", newObj)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Update oldQueue(%s) in cache, status(%#v), spec(%#v)", oldQueue.Name, oldQueue.Status, oldQueue.Spec)
-	glog.V(4).Infof("Update newQueue(%s) in cache, status(%#v), spec(%#v)", newQueue.Name, newQueue.Status, newQueue.Spec)
+	glog.V(4).Infof("Update oldQueue(%s) in cache, spec(%#v)", oldQueue.Name, oldQueue.Spec)
+	glog.V(4).Infof("Update newQueue(%s) in cache, spec(%#v)", newQueue.Name, newQueue.Spec)
 	err := sc.updateQueue(oldQueue, newQueue)
 	if err != nil {
 		glog.Errorf("Failed to update queue %s into cache: %v", oldQueue.Name, err)
@@ -453,20 +426,20 @@ func (sc *schedulerCache) UpdateQueue(oldObj, newObj interface{}) {
 	return
 }
 
-func (sc *schedulerCache) DeleteQueue(obj interface{}) {
-	var queue *arbv1.Queue
+func (sc *schedulerCache) DeleteConsumer(obj interface{}) {
+	var queue *arbv1.Consumer
 	switch t := obj.(type) {
-	case *arbv1.Queue:
+	case *arbv1.Consumer:
 		queue = t
 	case cache.DeletedFinalStateUnknown:
 		var ok bool
-		queue, ok = t.Obj.(*arbv1.Queue)
+		queue, ok = t.Obj.(*arbv1.Consumer)
 		if !ok {
-			glog.Errorf("Cannot convert to *v1.Queue: %v", t.Obj)
+			glog.Errorf("Cannot convert to *v1.Consumer: %v", t.Obj)
 			return
 		}
 	default:
-		glog.Errorf("Cannot convert to *v1.Queue: %v", t)
+		glog.Errorf("Cannot convert to *v1.Consumer: %v", t)
 		return
 	}
 
@@ -591,13 +564,13 @@ func (sc *schedulerCache) NodeInformer() clientv1.NodeInformer {
 	return sc.nodeInformer
 }
 
-func (sc *schedulerCache) QueueInformer() arbclient.QueueInformer {
-	return sc.queueInformer
+func (sc *schedulerCache) QueueInformer() arbclient.ConsumerInformer {
+	return sc.consumerInformer
 }
 
-func (sc *schedulerCache) QueueJobInformer() arbclient.QueueJobInformer {
-	return sc.queueJobInformer
-}
+//func (sc *schedulerCache) QueueJobInformer() arbclient.QueueJobInformer {
+//	return sc.queueJobInformer
+//}
 
 func (sc *schedulerCache) Snapshot() *CacheSnapshot {
 	sc.Mutex.Lock()
@@ -606,7 +579,7 @@ func (sc *schedulerCache) Snapshot() *CacheSnapshot {
 	snapshot := &CacheSnapshot{
 		Nodes:     make([]*NodeInfo, 0, len(sc.nodes)),
 		Pods:      make([]*PodInfo, 0, len(sc.pods)),
-		Queues:    make([]*QueueInfo, 0, len(sc.queues)),
+		Consumers: make([]*ConsumerInfo, 0, len(sc.consumers)),
 		QueueJobs: make([]*QueueJobInfo, 0, len(sc.queuejobs)),
 	}
 
@@ -616,8 +589,8 @@ func (sc *schedulerCache) Snapshot() *CacheSnapshot {
 	for _, value := range sc.pods {
 		snapshot.Pods = append(snapshot.Pods, value.Clone())
 	}
-	for _, value := range sc.queues {
-		snapshot.Queues = append(snapshot.Queues, value.Clone())
+	for _, value := range sc.consumers {
+		snapshot.Consumers = append(snapshot.Consumers, value.Clone())
 	}
 	for _, value := range sc.queuejobs {
 		snapshot.QueueJobs = append(snapshot.QueueJobs, value.Clone())

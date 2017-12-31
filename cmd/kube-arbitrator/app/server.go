@@ -22,8 +22,6 @@ import (
 
 	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-arbitrator/app/options"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/controller"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/preemption"
 )
 
 func buildConfig(master, kubeconfig string) (*rest.Config, error) {
@@ -41,12 +39,12 @@ func Run(opt *options.ServerOption) error {
 
 	neverStop := make(chan struct{})
 
-	// Start Queue Controller to create CRD and manage Queue lifecycle.
-	queueController := controller.NewQueueController(config)
-	queueController.Run(neverStop)
+	// Start Consumer Controller to create CRD and manage Consumer lifecycle.
+	consumerController := controller.NewConsumerController(config)
+	consumerController.Run(neverStop)
 
 	// Start policy controller to allocate resources.
-	policyController, err := controller.NewPolicyController(config, policy.New(opt.Policy), preemption.New())
+	policyController, err := controller.NewPolicyController(config, opt.Policy)
 	if err != nil {
 		panic(err)
 	}

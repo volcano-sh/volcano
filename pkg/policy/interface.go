@@ -28,11 +28,8 @@ type Interface interface {
 	// Initialize initializes the allocator plugins.
 	Initialize()
 
-	// Group grouping the job into different bucket, and allocate those resources based on those groups.
-	Group(queuejobs []*cache.QueueJobInfo) map[string][]*cache.QueueJobInfo
-
 	// Allocate allocates the cluster's resources into each queue.
-	Allocate(queues map[string]*cache.QueueInfo, nodes []*cache.NodeInfo) map[string]*cache.QueueInfo
+	Allocate(consumers map[string]*cache.ConsumerInfo, nodes []*cache.NodeInfo) map[string]*cache.ConsumerInfo
 
 	// UnIntialize un-initializes the allocator plugins.
 	UnInitialize()

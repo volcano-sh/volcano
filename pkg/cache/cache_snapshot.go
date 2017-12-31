@@ -19,6 +19,6 @@ package cache
 type CacheSnapshot struct {
 	Pods      []*PodInfo
 	Nodes     []*NodeInfo
-	Queues    []*QueueInfo
+	Consumers []*ConsumerInfo
 	QueueJobs []*QueueJobInfo
 }

@@ -19,54 +19,53 @@ package v1
 import (
 	"time"
 
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/internalinterfaces"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/listers/v1"
-
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/internalinterfaces"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/listers/v1"
 )
 
-// QueueInformer provides access to a shared informer and lister for
-// Queues.
-type QueueInformer interface {
+// ConsumerInformer provides access to a shared informer and lister for
+// Consumers.
+type ConsumerInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.QueueLister
+	Lister() v1.ConsumerLister
 }
 
-type queueInformer struct {
+type consumerInformer struct {
 	factory internalinterfaces.SharedInformerFactory
 }
 
-// NewQueueInformer constructs a new informer for Queue type.
+// NewConsumerInformer constructs a new informer for Consumer type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewQueueInformer(client *rest.RESTClient, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-
+func NewConsumerInformer(client *rest.RESTClient, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	source := cache.NewListWatchFromClient(
 		client,
-		arbv1.QueuePlural,
+		arbv1.ConsumerPlural,
 		namespace,
 		fields.Everything())
 
 	return cache.NewSharedIndexInformer(
 		source,
-		&arbv1.Queue{},
+		&arbv1.Consumer{},
 		resyncPeriod,
 		indexers,
 	)
 }
 
-func defaultQueueInformer(client *rest.RESTClient, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewQueueInformer(client, meta_v1.NamespaceAll, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+func defaultConsumerInformer(client *rest.RESTClient, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	return NewConsumerInformer(client, meta_v1.NamespaceAll, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 }
 
-func (f *queueInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&arbv1.Queue{}, defaultQueueInformer)
+func (f *consumerInformer) Informer() cache.SharedIndexInformer {
+	return f.factory.InformerFor(&arbv1.Consumer{}, defaultConsumerInformer)
 }
 
-func (f *queueInformer) Lister() v1.QueueLister {
-	return v1.NewQueueLister(f.Informer().GetIndexer())
+func (f *consumerInformer) Lister() v1.ConsumerLister {
+	return v1.NewConsumerLister(f.Informer().GetIndexer())
 }

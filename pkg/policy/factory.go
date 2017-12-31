@@ -17,28 +17,29 @@ limitations under the License.
 package policy
 
 import (
+	"fmt"
 	"sync"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/proportion"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/drf"
 )
 
 var policyMap = make(map[string]Interface)
 var mutex sync.Mutex
 
 func init() {
-	RegisterPolicy(proportion.PolicyName, proportion.New())
+	RegisterPolicy(drf.PolicyName, drf.New())
 }
 
-func New(name string) Interface {
+func New(name string) (Interface, error) {
 	mutex.Lock()
 	defer mutex.Unlock()
 
 	policy, found := policyMap[name]
 	if !found {
-		return nil
+		return nil, fmt.Errorf("invalid policy name %s\n", name)
 	}
 
-	return policy
+	return policy, nil
 }
 
 func RegisterPolicy(name string, policy Interface) error {
@@ -46,15 +47,6 @@ func RegisterPolicy(name string, policy Interface) error {
 	defer mutex.Unlock()
 
 	policyMap[name] = policy
-
-	return nil
-}
-
-func RemovePolicy(name string) error {
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	delete(policyMap, name)
 
 	return nil
 }

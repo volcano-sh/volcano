@@ -20,13 +20,14 @@ import (
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 )
 
-type QueueInfo struct {
+type ConsumerInfo struct {
+	Consumer *arbv1.Consumer
+
 	Name      string
 	Namespace string
-	Queue     *arbv1.Queue
 	Weight    int
 
-	// The total resources that a Queue should get
+	// The total resources that a Consumer should get
 	Deserved *Resource
 
 	// The total resources of running Pods belong to this QueueJob
@@ -35,53 +36,53 @@ type QueueInfo struct {
 	//   * OverUsed: Used > Allocated
 	Used *Resource
 
-	// The total resources that a Queue can get currently, it's expected to
+	// The total resources that a Consumer can get currently, it's expected to
 	// be equal or less than `Deserved` (when Preemption try to reclaim resource
-	// for this Queue)
+	// for this Consumer)
 	Allocated *Resource
 
-	// All jobs belong to this Queue
-	Jobs []*QueueJobInfo
+	// All jobs belong to this Consumer
+	PodSets []*PodSet
 
 	// The pod that without `Owners`
 	Pods []*PodInfo
 
-	// The node candidates for Queue and QueueJobs
+	// The node candidates for Consumer and QueueJobs
 	Nodes []*NodeInfo
 }
 
-func NewQueueInfo(queue *arbv1.Queue) *QueueInfo {
-	return &QueueInfo{
+func NewConsumerInfo(queue *arbv1.Consumer) *ConsumerInfo {
+	return &ConsumerInfo{
 		Name:      queue.Name,
 		Namespace: queue.Namespace,
-		Queue:     queue,
+		Consumer:  queue,
 		Weight:    queue.Spec.Weight,
-		Deserved:  NewResource(queue.Status.Deserved),
-		Used:      NewResource(queue.Status.Used),
-		Allocated: NewResource(queue.Status.Allocated),
+		//Deserved:  NewResource(queue.Status.Deserved),
+		//Used:      NewResource(queue.Status.Used),
+		//Allocated: NewResource(queue.Status.Allocated),
 
-		Jobs:  make([]*QueueJobInfo, 10),
-		Pods:  make([]*PodInfo, 10),
-		Nodes: make([]*NodeInfo, 10),
+		PodSets: make([]*PodSet, 0),
+		Pods:    make([]*PodInfo, 0),
+		Nodes:   make([]*NodeInfo, 0),
 	}
 }
 
-func (qi *QueueInfo) UnderUsed() bool {
+func (qi *ConsumerInfo) UnderUsed() bool {
 	return qi.Used.Less(qi.Allocated)
 }
 
-func (qi *QueueInfo) OverUsed() bool {
+func (qi *ConsumerInfo) OverUsed() bool {
 	return qi.Allocated.Less(qi.Used)
 }
 
-func (qi *QueueInfo) Clone() *QueueInfo {
-	return &QueueInfo{
+func (qi *ConsumerInfo) Clone() *ConsumerInfo {
+	return &ConsumerInfo{
 		Name:      qi.Name,
 		Namespace: qi.Namespace,
-		Queue:     qi.Queue,
-		Deserved:  qi.Deserved.Clone(),
-		Used:      qi.Used.Clone(),
-		Allocated: qi.Allocated.Clone(),
+		Consumer:  qi.Consumer,
+		//Deserved:  qi.Deserved.Clone(),
+		//Used:      qi.Used.Clone(),
+		//Allocated: qi.Allocated.Clone(),
 
 		// Did not clone jobs, pods, nodes which are update by QueueController.
 	}
