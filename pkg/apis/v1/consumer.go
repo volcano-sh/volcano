@@ -21,22 +21,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const QueuePlural = "queues"
+const ConsumerPlural = "consumers"
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type Queue struct {
+type Consumer struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              QueueSpec   `json:"spec"`
-	Status            QueueStatus `json:"status,omitempty"`
+	Spec              ConsumerSpec `json:"spec"`
+	//Status ConsumerStatus `json:"status,omitempty"`
 }
 
-type QueueSpec struct {
-	Weight  int             `json:"weight"`
-	Request v1.ResourceList `json:"request"`
+type ConsumerSpec struct {
+	Weight   int             `json:"weight"`
+	Reserved v1.ResourceList `json:"reserved"`
 }
 
-type QueueStatus struct {
+type ConsumerStatus struct {
 	Deserved   v1.ResourceList `json:"deserved"`
 	Allocated  v1.ResourceList `json:"allocated"`
 	Used       v1.ResourceList `json:"used"`
@@ -44,10 +44,10 @@ type QueueStatus struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type QueueList struct {
+type ConsumerList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
-	Items           []Queue `json:"items"`
+	Items           []Consumer `json:"items"`
 }
 
 type ResourceName string
