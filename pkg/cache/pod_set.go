@@ -78,6 +78,9 @@ func (pi *PodInfo) Clone() *PodInfo {
 type PodSet struct {
 	metav1.ObjectMeta
 
+	Allocated    *Resource
+	TotalRequest *Resource
+
 	Running []*PodInfo
 	Pending []*PodInfo
 	Others  []*PodInfo
@@ -89,9 +92,11 @@ func NewPodSet(uid types.UID) *PodSet {
 			Name: string(uid),
 			UID:  uid,
 		},
-		Running: make([]*PodInfo, 0),
-		Pending: make([]*PodInfo, 0),
-		Others:  make([]*PodInfo, 0),
+		Allocated:    EmptyResource(),
+		TotalRequest: EmptyResource(),
+		Running:      make([]*PodInfo, 0),
+		Pending:      make([]*PodInfo, 0),
+		Others:       make([]*PodInfo, 0),
 	}
 }
 
@@ -99,8 +104,11 @@ func (ps *PodSet) AddPodInfo(pi *PodInfo) {
 	switch pi.Phase {
 	case v1.PodRunning:
 		ps.Running = append(ps.Running, pi)
+		ps.Allocated.Add(pi.Request)
+		ps.TotalRequest.Add(pi.Request)
 	case v1.PodPending:
 		ps.Pending = append(ps.Pending, pi)
+		ps.TotalRequest.Add(pi.Request)
 	default:
 		ps.Others = append(ps.Others, pi)
 	}

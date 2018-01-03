@@ -28,7 +28,6 @@ type Resource struct {
 	Memory   float64
 }
 
-
 func EmptyResource() *Resource {
 	return &Resource{
 		MilliCPU: 0,
@@ -91,4 +90,15 @@ func (r *Resource) LessEqual(rr *Resource) bool {
 
 func (r *Resource) String() string {
 	return fmt.Sprintf("cpu %f, memory %f", r.MilliCPU, r.Memory)
+}
+
+func (r *Resource) Get(rn v1.ResourceName) float64 {
+	switch rn {
+	case v1.ResourceCPU:
+		return r.MilliCPU
+	case v1.ResourceMemory:
+		return r.Memory
+	default:
+		panic("not support resource.")
+	}
 }

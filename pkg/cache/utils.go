@@ -19,8 +19,6 @@ package cache
 import (
 	"time"
 
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/fields"
@@ -28,6 +26,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	corev1 "k8s.io/client-go/listers/core/v1"
 	clientcache "k8s.io/client-go/tools/cache"
+
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 )
 
 // TODO some operation for map[arbv1.ResourceName]resource.Quantity, it is better to enhance it in resource_info.go

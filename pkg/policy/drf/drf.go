@@ -37,9 +37,7 @@ func (drf *drfScheduler) Name() string {
 	return PolicyName
 }
 
-func (drf *drfScheduler) Initialize() {
-	// TODO
-}
+func (drf *drfScheduler) Initialize() {}
 
 func (drf *drfScheduler) Allocate(consumers map[string]*cache.ConsumerInfo, nodes []*cache.NodeInfo) map[string]*cache.ConsumerInfo {
 	glog.V(4).Infof("Enter Allocate ...")
@@ -84,6 +82,4 @@ func (drf *drfScheduler) Allocate(consumers map[string]*cache.ConsumerInfo, node
 	return consumers
 }
 
-func (drf *drfScheduler) UnInitialize() {
-	// TODO
-}
+func (drf *drfScheduler) UnInitialize() {}

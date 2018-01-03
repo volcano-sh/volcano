@@ -87,7 +87,7 @@ func (pc *PolicyController) Run(stopCh <-chan struct{}) {
 	pc.cache.WaitForCacheSync(stopCh)
 
 	go wait.Until(pc.runOnce, 2*time.Second, stopCh)
-	go wait.Until(pc.processAllocation, 0, stopCh)
+	go wait.Until(pc.processAllocDecision, 0, stopCh)
 }
 
 func (pc *PolicyController) buildConsumers(
@@ -96,6 +96,8 @@ func (pc *PolicyController) buildConsumers(
 	pods []*schedcache.PodInfo,
 ) map[string]*schedcache.ConsumerInfo {
 	result := map[string]*schedcache.ConsumerInfo{}
+
+	// TODO(k82cn): build consumer in cache.
 
 	// Append user-defined c to the result
 	for _, c := range consumers {
@@ -117,7 +119,7 @@ func (pc *PolicyController) buildConsumers(
 
 // updateNodes updates node's resource usage and running pods; re-build those info in each schedule cycle to
 // avoid race-condition, but may impact performance.
-// TODO: update node info when pod updated.
+// TODO(k82cn): update node info when pod updated.
 func (pc *PolicyController) updateNodes(nodes []*schedcache.NodeInfo, pods []*schedcache.PodInfo) {
 	for _, node := range nodes {
 		node.Idle = node.Allocatable
@@ -137,6 +139,8 @@ func (pc *PolicyController) updateNodes(nodes []*schedcache.NodeInfo, pods []*sc
 func (pc *PolicyController) runOnce() {
 	glog.V(4).Infof("Start scheduling ...")
 	defer glog.V(4).Infof("End scheduling ...")
+
+	// TODO(k82cn): cancel all alloc decision processing firstly.
 
 	snapshot := pc.cache.Snapshot()
 
@@ -169,6 +173,7 @@ func (pc *PolicyController) groupPods(pods []*schedcache.PodInfo) (map[string][]
 			continue
 		}
 
+		// TODO (k82cn): replace Owner with label/selector, e.g. Deployment/RS
 		if _, found := podSets[p.Owner]; !found {
 			ps := schedcache.NewPodSet(p.Owner)
 
@@ -201,7 +206,7 @@ func (pc *PolicyController) enqueue(consumers map[string]*schedcache.ConsumerInf
 	}
 }
 
-func (pc *PolicyController) processAllocation() {
+func (pc *PolicyController) processAllocDecision() {
 	pc.podSets.Pop(func(obj interface{}) error {
 		ps, ok := obj.(*schedcache.PodSet)
 		if !ok {
@@ -225,6 +230,7 @@ func (pc *PolicyController) processAllocation() {
 
 		for _, p := range ps.Running {
 			if len(p.Nodename) == 0 {
+				// TODO(k82cn): it's better to use /eviction instead of delete to avoid race-condition.
 				if err := pc.kubeclient.CoreV1().Pods(p.Namespace).Delete(p.Name, &metav1.DeleteOptions{}); err != nil {
 					glog.Infof("Failed to preempt pod <%v/%v>: %#v", p.Namespace, p.Name, err)
 					return err
