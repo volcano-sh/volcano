@@ -26,7 +26,7 @@ import (
 
 type ArbV1Interface interface {
 	RESTClient() rest.Interface
-	QueueGetter
+	ConsumerGetter
 	QueuejobGetter
 }
 
@@ -35,8 +35,8 @@ type ArbV1Client struct {
 	restClient rest.Interface
 }
 
-func (c *ArbV1Client) Queues(namespace string) QueueInterface {
-	return newQueues(c, namespace)
+func (c *ArbV1Client) Consumers(namespace string) ConsumerInterface {
+	return newConsumers(c, namespace)
 }
 
 func (c *ArbV1Client) Queuejobs(namespace string) QueuejobInterface {

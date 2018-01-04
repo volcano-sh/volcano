@@ -22,13 +22,13 @@ import (
 	"time"
 
 	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/cache"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
 	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/controller"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/drf"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/preemption"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/proportion"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
 	"github.com/kubernetes-incubator/kube-arbitrator/test/integration/framework"
 
 	"k8s.io/api/core/v1"
@@ -46,7 +46,7 @@ func prepareCRD(config *restclient.Config) error {
 		return fmt.Errorf("fail to create crd config, %#v", err)
 	}
 
-	_, err = client.CreateQueueCRD(extensionscs)
+	_, err = client.CreateConsumerCRD(extensionscs)
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		return fmt.Errorf("fail to create queue crd, %#v", err)
 	}
@@ -189,19 +189,19 @@ func prepareResourceQuota(cs *clientset.Clientset) error {
 	return nil
 }
 
-// prepareCRD prepare customer resource definition "Queue"
-// create two Queues, "queue01" and "queue02"
+// prepareCRD prepare customer resource definition "Consumer"
+// create two Consumers, "queue01" and "queue02"
 // "queue01" is under namespace "ns01" and has attribute "weight=1"
 // "queue02" is under namespace "ns02" and has attribute "weight=2"
 func prepareQueue(cs *arbclient.Clientset) error {
-	queue := &apiv1.Queue{
+	queue := &apiv1.Consumer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "xxx",
 			Namespace: "xxx",
 		},
-		Spec: apiv1.QueueSpec{
+		Spec: apiv1.ConsumerSpec{
 			Weight: 0,
-			Request: apiv1.ResourceList{
+			Reserved: apiv1.ResourceList{
 				Resources: nil,
 			},
 		},
@@ -237,7 +237,7 @@ func prepareQueue(cs *arbclient.Clientset) error {
 		queue.Name = c.name
 		queue.Namespace = c.ns
 		queue.Spec.Weight = c.weight
-		queue.Spec.Request.Resources = c.request
+		queue.Spec.Reserved.Resources = c.request
 
 		_, err := cs.ArbV1().Queues(queue.Namespace).Create(queue)
 		if err != nil {
@@ -339,17 +339,17 @@ func prepareQueueJob(cs *arbclient.Clientset) error {
 	return nil
 }
 
-// prepareCRDForPreemption create one Queue "queue03"
+// prepareCRDForPreemption create one Consumer "queue03"
 // "queue03" is under namespace "ns03" and has attribute "weight=2"
 func prepareQueueForPreemption(cs *arbclient.Clientset) error {
-	queue := &apiv1.Queue{
+	queue := &apiv1.Consumer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "xxx",
 			Namespace: "xxx",
 		},
-		Spec: apiv1.QueueSpec{
+		Spec: apiv1.ConsumerSpec{
 			Weight: 0,
-			Request: apiv1.ResourceList{
+			Reserved: apiv1.ResourceList{
 				Resources: nil,
 			},
 		},
@@ -376,7 +376,7 @@ func prepareQueueForPreemption(cs *arbclient.Clientset) error {
 		queue.Name = c.name
 		queue.Namespace = c.ns
 		queue.Spec.Weight = c.weight
-		queue.Spec.Request.Resources = c.request
+		queue.Spec.Reserved.Resources = c.request
 
 		_, err := cs.ArbV1().Queues(queue.Namespace).Create(queue)
 		if err != nil {
@@ -581,9 +581,9 @@ func TestArbitrator(t *testing.T) {
 
 	neverStop := make(chan struct{})
 	defer close(neverStop)
-	cache := schedulercache.New(config)
+	cache := cache.New(config)
 	go cache.Run(neverStop)
-	c := controller.NewQueueController(config, cache, policy.New(proportion.PolicyName), preemption.New(config))
+	c := controller.NewPolicyController(config, cache, policy.New(drf.PolicyName), preemption.New(config))
 	go c.Run(neverStop)
 
 	// sleep to wait scheduler finish

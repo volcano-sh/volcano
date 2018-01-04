@@ -14,29 +14,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package schedulercache
+package drf
 
 import (
-	apiv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/cache"
+	"k8s.io/api/core/v1"
 )
 
-type QueueJobInfo struct {
-	name     string
-	queueJob *apiv1.QueueJob
+type job struct {
+	dominantResource v1.ResourceName
+	podSet           *cache.PodSet
 }
 
-func (t *QueueJobInfo) Name() string {
-	return t.name
-}
+type drfSort []*job
 
-func (t *QueueJobInfo) QueueJob() *apiv1.QueueJob {
-	return t.queueJob
+func (d drfSort) Len() int {
+	return len(d)
 }
+func (d drfSort) Swap(i, j int) {
+	d[i], d[j] = d[j], d[i]
+}
+func (d drfSort) Less(i, j int) bool {
+	j1 := d[i]
+	j2 := d[j]
 
-func (t *QueueJobInfo) Clone() *QueueJobInfo {
-	clone := &QueueJobInfo{
-		name:     t.name,
-		queueJob: t.queueJob.DeepCopy(),
-	}
-	return clone
+	r1 := j1.podSet.Allocated.Get(j1.dominantResource) / j1.podSet.TotalRequest.Get(j1.dominantResource)
+	r2 := j1.podSet.Allocated.Get(j2.dominantResource) / j2.podSet.TotalRequest.Get(j1.dominantResource)
+
+	return r1 < r2
 }

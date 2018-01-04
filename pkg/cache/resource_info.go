@@ -14,11 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package schedulercache
+package cache
 
 import (
 	"fmt"
-	"log"
 	"math"
 
 	"k8s.io/api/core/v1"
@@ -27,14 +26,6 @@ import (
 type Resource struct {
 	MilliCPU float64
 	Memory   float64
-}
-
-func Decorator(fn func(r *Resource)) func(r *Resource) {
-	return func(r *Resource) {
-		log.Println("starting")
-		fn(r)
-		log.Println("completed")
-	}
 }
 
 func EmptyResource() *Resource {
@@ -99,4 +90,15 @@ func (r *Resource) LessEqual(rr *Resource) bool {
 
 func (r *Resource) String() string {
 	return fmt.Sprintf("cpu %f, memory %f", r.MilliCPU, r.Memory)
+}
+
+func (r *Resource) Get(rn v1.ResourceName) float64 {
+	switch rn {
+	case v1.ResourceCPU:
+		return r.MilliCPU
+	case v1.ResourceMemory:
+		return r.Memory
+	default:
+		panic("not support resource.")
+	}
 }

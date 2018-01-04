@@ -5239,7 +5239,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 						},
 						"items": {
 							SchemaProps: spec.SchemaProps{
-								Description: "items is the list of Jobs.",
+								Description: "items is the list of PodSets.",
 								Type:        []string{"array"},
 								Items: &spec.SchemaOrArray{
 									Schema: &spec.Schema{
@@ -5980,7 +5980,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"k8s.io/api/certificates/v1beta1.CertificateSigningRequestSpec": {
 			Schema: spec.Schema{
 				SchemaProps: spec.SchemaProps{
-					Description: "This information is immutable after the request is created. Only the Request and Usages fields can be set on creation, other fields are derived by Kubernetes and cannot be modified by users.",
+					Description: "This information is immutable after the request is created. Only the Reserved and Usages fields can be set on creation, other fields are derived by Kubernetes and cannot be modified by users.",
 					Properties: map[string]spec.Schema{
 						"request": {
 							SchemaProps: spec.SchemaProps{
@@ -7562,7 +7562,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 						},
 						"hostname": {
 							SchemaProps: spec.SchemaProps{
-								Description: "The Hostname of this endpoint",
+								Description: "The Nodename of this endpoint",
 								Type:        []string{"string"},
 								Format:      "",
 							},
@@ -8833,7 +8833,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 						},
 						"hostname": {
 							SchemaProps: spec.SchemaProps{
-								Description: "Hostname is set for load-balancer ingress points that are DNS based (typically AWS load-balancers)",
+								Description: "Nodename is set for load-balancer ingress points that are DNS based (typically AWS load-balancers)",
 								Type:        []string{"string"},
 								Format:      "",
 							},
@@ -9113,7 +9113,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 					Properties: map[string]spec.Schema{
 						"type": {
 							SchemaProps: spec.SchemaProps{
-								Description: "Node address type, one of Hostname, ExternalIP or InternalIP.",
+								Description: "Node address type, one of Nodename, ExternalIP or InternalIP.",
 								Type:        []string{"string"},
 								Format:      "",
 							},
@@ -21877,7 +21877,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 						},
 						"requestObject": {
 							SchemaProps: spec.SchemaProps{
-								Description: "API object from the request, in JSON format. The RequestObject is recorded as-is in the request (possibly re-encoded as JSON), prior to version conversion, defaulting, admission or merging. It is an external versioned object type, and may not be a valid object on its own. Omitted for non-resource requests.  Only logged at Request Level and higher.",
+								Description: "API object from the request, in JSON format. The RequestObject is recorded as-is in the request (possibly re-encoded as JSON), prior to version conversion, defaulting, admission or merging. It is an external versioned object type, and may not be a valid object on its own. Omitted for non-resource requests.  Only logged at Reserved Level and higher.",
 								Ref:         ref("k8s.io/apimachinery/pkg/runtime.Unknown"),
 							},
 						},
@@ -22344,7 +22344,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 						},
 						"requestObject": {
 							SchemaProps: spec.SchemaProps{
-								Description: "API object from the request, in JSON format. The RequestObject is recorded as-is in the request (possibly re-encoded as JSON), prior to version conversion, defaulting, admission or merging. It is an external versioned object type, and may not be a valid object on its own. Omitted for non-resource requests.  Only logged at Request Level and higher.",
+								Description: "API object from the request, in JSON format. The RequestObject is recorded as-is in the request (possibly re-encoded as JSON), prior to version conversion, defaulting, admission or merging. It is an external versioned object type, and may not be a valid object on its own. Omitted for non-resource requests.  Only logged at Reserved Level and higher.",
 								Ref:         ref("k8s.io/apimachinery/pkg/runtime.Unknown"),
 							},
 						},

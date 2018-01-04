@@ -14,20 +14,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package preemption
+package cache
 
-import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
-)
-
-// Interface is the interface of preemption.
-type Interface interface {
+// Cache collects pods/nodes/consumers information
+// and provides information snapshot
+type Cache interface {
 	// Run start informer
 	Run(stopCh <-chan struct{})
 
-	// Preprocessing kill pod to make each queue underused
-	Preprocessing(queues map[string]*schedulercache.QueueInfo, pods []*schedulercache.PodInfo) (map[string]*schedulercache.QueueInfo, error)
+	// Snapshot deep copy overall cache information into snapshot
+	Snapshot() *CacheSnapshot
 
-	// PreemptResource preempt resources between job
-	PreemptResources(queues map[string]*schedulercache.QueueInfo) error
+	// WaitForCacheSync waits for all cache synced
+	WaitForCacheSync(stopCh <-chan struct{}) bool
 }

@@ -17,44 +17,37 @@ limitations under the License.
 package v1
 
 import (
-	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const QueuePlural = "queues"
+const ConsumerPlural = "consumers"
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type Queue struct {
+type Consumer struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              QueueSpec   `json:"spec"`
-	Status            QueueStatus `json:"status,omitempty"`
+	Spec              ConsumerSpec `json:"spec"`
+	//Status ConsumerStatus `json:"status,omitempty"`
 }
 
-type QueueSpec struct {
-	Weight  int          `json:"weight"`
-	Request ResourceList `json:"request"`
+type ConsumerSpec struct {
+	Weight   int             `json:"weight"`
+	Reserved v1.ResourceList `json:"reserved"`
 }
 
-type QueueStatus struct {
-	Deserved   ResourceList `json:"deserved"`
-	Allocated  ResourceList `json:"allocated"`
-	Used       ResourceList `json:"used"`
-	Preempting ResourceList `json:"preempting"`
-}
-
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type QueueList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
-	Items           []Queue `json:"items"`
+type ConsumerStatus struct {
+	Deserved   v1.ResourceList `json:"deserved"`
+	Allocated  v1.ResourceList `json:"allocated"`
+	Used       v1.ResourceList `json:"used"`
+	Preempting v1.ResourceList `json:"preempting"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type ResourceList struct {
+type ConsumerList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
-	Resources       map[ResourceName]resource.Quantity `json:"resources"`
+	Items           []Consumer `json:"items"`
 }
 
 type ResourceName string

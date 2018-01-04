@@ -14,14 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package schedulercache
+package cache
 
-// Cache collects pods/nodes/queues information
-// and provides information snapshot
-type Cache interface {
-	// Run start informer
-	Run(stopCh <-chan struct{})
-
-	// Dump deep copy overall cache information into snapshot
-	Dump() *CacheSnapshot
+type CacheSnapshot struct {
+	Pods      []*PodInfo
+	Nodes     []*NodeInfo
+	Consumers []*ConsumerInfo
+	QueueJobs []*QueueJobInfo
 }

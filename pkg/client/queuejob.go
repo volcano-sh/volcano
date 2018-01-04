@@ -23,6 +23,7 @@ import (
 
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 
+	"github.com/golang/glog"
 	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -102,5 +103,7 @@ func CreateQueueJobCRD(clientset apiextensionsclient.Interface) (*apiextensionsv
 		}
 		return nil, err
 	}
+	glog.V(4).Infof("QueueJob CRD was created.")
+
 	return crd, nil
 }

@@ -10,7 +10,7 @@ verify: generate_code
 init:
 	mkdir -p ${BIN_DIR}
 
-generate_code:
+generate-code:
 	go build -o ${BIN_DIR}/deepcopy-gen ./cmd/deepcopy-gen/
 	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/v1/ -O zz_generated.deepcopy
 

@@ -22,8 +22,8 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
-	// Queues returns a QueueInformer.
-	Queues() QueueInformer
+	// Consumers returns a ConsumerInformer.
+	Consumers() ConsumerInformer
 	QueueJobs() QueueJobInformer
 }
 
@@ -36,9 +36,9 @@ func New(f internalinterfaces.SharedInformerFactory) Interface {
 	return &version{f}
 }
 
-// Queues returns a QueueInformer.
-func (v *version) Queues() QueueInformer {
-	return &queueInformer{factory: v.SharedInformerFactory}
+// Consumers returns a ConsumerInformer.
+func (v *version) Consumers() ConsumerInformer {
+	return &consumerInformer{factory: v.SharedInformerFactory}
 }
 
 // QueueJobs returns a QueueJobInformer.

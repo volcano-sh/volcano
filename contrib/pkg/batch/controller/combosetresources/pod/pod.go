@@ -24,7 +24,7 @@ import (
 	"github.com/golang/glog"
 	qjobv1 "github.com/kubernetes-incubator/kube-arbitrator/contrib/pkg/batch/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/contrib/pkg/batch/controller/combosetresources"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/schedulercache"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/cache"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -345,7 +345,7 @@ func (qjrPod *ComboSetResPod) GetResourceAllocated() *qjobv1.ResourceList {
 	return nil
 }
 
-func (qjrPod *ComboSetResPod) GetResourceRequest() *schedulercache.Resource {
+func (qjrPod *ComboSetResPod) GetResourceRequest() *cache.Resource {
 	return nil
 }
 

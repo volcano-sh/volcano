@@ -24,39 +24,39 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-type QueueGetter interface {
-	Queues(namespaces string) QueueInterface
+type ConsumerGetter interface {
+	Consumers(namespaces string) ConsumerInterface
 }
 
-type QueueInterface interface {
-	Create(*v1.Queue) (*v1.Queue, error)
-	Update(*v1.Queue) (*v1.Queue, error)
-	UpdateStatus(*v1.Queue) (*v1.Queue, error)
+type ConsumerInterface interface {
+	Create(*v1.Consumer) (*v1.Consumer, error)
+	Update(*v1.Consumer) (*v1.Consumer, error)
+	UpdateStatus(*v1.Consumer) (*v1.Consumer, error)
 	Delete(name string, options *meta_v1.DeleteOptions) error
-	Get(name string, options meta_v1.GetOptions) (*v1.Queue, error)
-	List(opts meta_v1.ListOptions) (*v1.QueueList, error)
+	Get(name string, options meta_v1.GetOptions) (*v1.Consumer, error)
+	List(opts meta_v1.ListOptions) (*v1.ConsumerList, error)
 }
 
-// queues implements QueueInterface
-type queues struct {
+// consumers implements ConsumerInterface
+type consumers struct {
 	client rest.Interface
 	ns     string
 }
 
-// newQueues returns a Queues
-func newQueues(c *ArbV1Client, namespace string) *queues {
-	return &queues{
+// newConsumers returns a Consumers
+func newConsumers(c *ArbV1Client, namespace string) *consumers {
+	return &consumers{
 		client: c.RESTClient(),
 		ns:     namespace,
 	}
 }
 
 // Create takes the representation of a queue and creates it.  Returns the server's representation of the queue, and an error, if there is any.
-func (c *queues) Create(queue *v1.Queue) (result *v1.Queue, err error) {
-	result = &v1.Queue{}
+func (c *consumers) Create(queue *v1.Consumer) (result *v1.Consumer, err error) {
+	result = &v1.Consumer{}
 	err = c.client.Post().
 		Namespace(c.ns).
-		Resource(v1.QueuePlural).
+		Resource(v1.ConsumerPlural).
 		Body(queue).
 		Do().
 		Into(result)
@@ -64,11 +64,11 @@ func (c *queues) Create(queue *v1.Queue) (result *v1.Queue, err error) {
 }
 
 // Update takes the representation of a queue and updates it. Returns the server's representation of the queue, and an error, if there is any.
-func (c *queues) Update(queue *v1.Queue) (result *v1.Queue, err error) {
-	result = &v1.Queue{}
+func (c *consumers) Update(queue *v1.Consumer) (result *v1.Consumer, err error) {
+	result = &v1.Consumer{}
 	err = c.client.Put().
 		Namespace(c.ns).
-		Resource(v1.QueuePlural).
+		Resource(v1.ConsumerPlural).
 		Name(queue.Name).
 		Body(queue).
 		Do().
@@ -79,11 +79,11 @@ func (c *queues) Update(queue *v1.Queue) (result *v1.Queue, err error) {
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
 
-func (c *queues) UpdateStatus(queue *v1.Queue) (result *v1.Queue, err error) {
-	result = &v1.Queue{}
+func (c *consumers) UpdateStatus(queue *v1.Consumer) (result *v1.Consumer, err error) {
+	result = &v1.Consumer{}
 	err = c.client.Put().
 		Namespace(c.ns).
-		Resource(v1.QueuePlural).
+		Resource(v1.ConsumerPlural).
 		Name(queue.Name).
 		SubResource("status").
 		Body(queue).
@@ -93,10 +93,10 @@ func (c *queues) UpdateStatus(queue *v1.Queue) (result *v1.Queue, err error) {
 }
 
 // Delete takes name of the queue and deletes it. Returns an error if one occurs.
-func (c *queues) Delete(name string, options *meta_v1.DeleteOptions) error {
+func (c *consumers) Delete(name string, options *meta_v1.DeleteOptions) error {
 	return c.client.Delete().
 		Namespace(c.ns).
-		Resource(v1.QueuePlural).
+		Resource(v1.ConsumerPlural).
 		Name(name).
 		Body(options).
 		Do().
@@ -104,11 +104,11 @@ func (c *queues) Delete(name string, options *meta_v1.DeleteOptions) error {
 }
 
 // Get takes name of the queue, and returns the corresponding queue object, and an error if there is any.
-func (c *queues) Get(name string, options meta_v1.GetOptions) (result *v1.Queue, err error) {
-	result = &v1.Queue{}
+func (c *consumers) Get(name string, options meta_v1.GetOptions) (result *v1.Consumer, err error) {
+	result = &v1.Consumer{}
 	err = c.client.Get().
 		Namespace(c.ns).
-		Resource(v1.QueuePlural).
+		Resource(v1.ConsumerPlural).
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
 		Do().
@@ -116,12 +116,12 @@ func (c *queues) Get(name string, options meta_v1.GetOptions) (result *v1.Queue,
 	return
 }
 
-// List takes label and field selectors, and returns the list of Queues that match those selectors.
-func (c *queues) List(opts meta_v1.ListOptions) (result *v1.QueueList, err error) {
-	result = &v1.QueueList{}
+// List takes label and field selectors, and returns the list of Consumers that match those selectors.
+func (c *consumers) List(opts meta_v1.ListOptions) (result *v1.ConsumerList, err error) {
+	result = &v1.ConsumerList{}
 	err = c.client.Get().
 		Namespace(c.ns).
-		Resource(v1.QueuePlural).
+		Resource(v1.ConsumerPlural).
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Do().
 		Into(result)

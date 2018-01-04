@@ -51,7 +51,7 @@ func (rres *RegisteredResources) Register(t qjobv1.ResourceType, factory Factory
 	if rres.registry != nil {
 		_, found := rres.registry[t]
 		if found {
-			glog.Fatalf("Queue job resource type %s was registered twice", t)
+			glog.Fatalf("Consumer job resource type %s was registered twice", t)
 		}
 	} else {
 		rres.registry = map[qjobv1.ResourceType]Factory{}
