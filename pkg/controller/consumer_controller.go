@@ -50,7 +50,6 @@ func NewConsumerController(config *rest.Config) *ConsumerController {
 func (cc *ConsumerController) Run(stopCh chan struct{}) {
 	// initialized
 	cc.createConsumerCRD()
-	//cc.createQueueJobCRD()
 
 	go cc.nsInformer.Informer().Run(stopCh)
 	cache.WaitForCacheSync(stopCh, cc.nsInformer.Informer().HasSynced)

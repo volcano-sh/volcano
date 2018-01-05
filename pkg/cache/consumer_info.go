@@ -30,7 +30,7 @@ type ConsumerInfo struct {
 	// The total resources that a Consumer should get
 	Deserved *Resource
 
-	// The total resources of running Pods belong to this QueueJob
+	// The total resources of running Pods belong to this Consumer
 	//   * UnderUsed: Used < Allocated
 	//   * Meet: Used == Allocated
 	//   * OverUsed: Used > Allocated
@@ -47,7 +47,7 @@ type ConsumerInfo struct {
 	// The pod that without `Owners`
 	Pods []*PodInfo
 
-	// The node candidates for Consumer and QueueJobs
+	// The node candidates for Consumer
 	Nodes []*NodeInfo
 }
 

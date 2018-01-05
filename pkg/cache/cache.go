@@ -46,12 +46,10 @@ type schedulerCache struct {
 	podInformer      clientv1.PodInformer
 	nodeInformer     clientv1.NodeInformer
 	consumerInformer arbclient.ConsumerInformer
-	//queueJobInformer arbclient.QueueJobInformer
 
 	pods      map[string]*PodInfo
 	nodes     map[string]*NodeInfo
 	consumers map[string]*ConsumerInfo
-	queuejobs map[string]*QueueJobInfo
 }
 
 func newSchedulerCache(config *rest.Config) *schedulerCache {
@@ -59,7 +57,6 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 		nodes:     make(map[string]*NodeInfo),
 		pods:      make(map[string]*PodInfo),
 		consumers: make(map[string]*ConsumerInfo),
-		queuejobs: make(map[string]*QueueJobInfo),
 	}
 
 	kubecli := kubernetes.NewForConfigOrDie(config)
@@ -130,7 +127,6 @@ func (sc *schedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.podInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
 	go sc.consumerInformer.Informer().Run(stopCh)
-	//go sc.queueJobInformer.Informer().Run(stopCh)
 }
 
 func (sc *schedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
@@ -138,7 +134,6 @@ func (sc *schedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 		sc.podInformer.Informer().HasSynced,
 		sc.nodeInformer.Informer().HasSynced,
 		sc.consumerInformer.Informer().HasSynced)
-	//sc.queueJobInformer.Informer().HasSynced)
 }
 
 // Assumes that lock is already acquired.
@@ -454,108 +449,6 @@ func (sc *schedulerCache) DeleteConsumer(obj interface{}) {
 	return
 }
 
-// Assumes that lock is already acquired.
-func (sc *schedulerCache) addQueueJob(queuejob *arbv1.QueueJob) error {
-	if _, ok := sc.queuejobs[queuejob.Name]; ok {
-		return fmt.Errorf("queuejob %v exist", queuejob.Name)
-	}
-
-	sc.queuejobs[queuejob.Name] = NewQueueJobInfo(queuejob)
-	return nil
-}
-
-// Assumes that lock is already acquired.
-func (sc *schedulerCache) updateQueueJob(oldQueueJob, newQueueJob *arbv1.QueueJob) error {
-	if err := sc.deleteQueueJob(oldQueueJob); err != nil {
-		return err
-	}
-	if err := sc.addQueueJob(newQueueJob); err != nil {
-		return err
-	}
-	return nil
-}
-
-// Assumes that lock is already acquired.
-func (sc *schedulerCache) deleteQueueJob(queuejob *arbv1.QueueJob) error {
-	if _, ok := sc.queuejobs[queuejob.Name]; !ok {
-		return fmt.Errorf("queuejob %v doesn't exist", queuejob.Name)
-	}
-	delete(sc.queuejobs, queuejob.Name)
-	return nil
-}
-
-func (sc *schedulerCache) AddQueueJob(obj interface{}) {
-	queuejob, ok := obj.(*arbv1.QueueJob)
-	if !ok {
-		glog.Errorf("Cannot convert to *arbv1.QueueJob: %v", obj)
-		return
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	glog.V(4).Infof("Add queuejob(%s) into cache, status(%#v), spec(%#v)", queuejob.Name, queuejob.Status, queuejob.Spec)
-	err := sc.addQueueJob(queuejob)
-	if err != nil {
-		glog.Errorf("Failed to add queuejob %s into cache: %v", queuejob.Name, err)
-		return
-	}
-	return
-}
-
-func (sc *schedulerCache) UpdateQueueJob(oldObj, newObj interface{}) {
-	oldQueueJob, ok := oldObj.(*arbv1.QueueJob)
-	if !ok {
-		glog.Errorf("Cannot convert oldObj to *arbv1.QueueJob: %v", oldObj)
-		return
-	}
-	newQueueJob, ok := newObj.(*arbv1.QueueJob)
-	if !ok {
-		glog.Errorf("Cannot convert newObj to *arbv1.QueueJob: %v", newObj)
-		return
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	glog.V(4).Infof("Update oldQueueJob(%s) in cache, status(%#v), spec(%#v)", oldQueueJob.Name, oldQueueJob.Status, oldQueueJob.Spec)
-	glog.V(4).Infof("Update newQueueJob(%s) in cache, status(%#v), spec(%#v)", newQueueJob.Name, newQueueJob.Status, newQueueJob.Spec)
-	err := sc.updateQueueJob(oldQueueJob, newQueueJob)
-	if err != nil {
-		glog.Errorf("Failed to update queuejob %s into cache: %v", oldQueueJob.Name, err)
-		return
-	}
-	return
-}
-
-func (sc *schedulerCache) DeleteQueueJob(obj interface{}) {
-	var queuejob *arbv1.QueueJob
-	switch t := obj.(type) {
-	case *arbv1.QueueJob:
-		queuejob = t
-	case cache.DeletedFinalStateUnknown:
-		var ok bool
-		queuejob, ok = t.Obj.(*arbv1.QueueJob)
-		if !ok {
-			glog.Errorf("Cannot convert to *v1.QueueJob: %v", t.Obj)
-			return
-		}
-	default:
-		glog.Errorf("Cannot convert to *v1.QueueJob: %v", t)
-		return
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	err := sc.deleteQueueJob(queuejob)
-	if err != nil {
-		glog.Errorf("Failed to delete queuejob %s from cache: %v", queuejob.Name, err)
-		return
-	}
-	return
-}
-
 func (sc *schedulerCache) PodInformer() clientv1.PodInformer {
 	return sc.podInformer
 }
@@ -568,10 +461,6 @@ func (sc *schedulerCache) QueueInformer() arbclient.ConsumerInformer {
 	return sc.consumerInformer
 }
 
-//func (sc *schedulerCache) QueueJobInformer() arbclient.QueueJobInformer {
-//	return sc.queueJobInformer
-//}
-
 func (sc *schedulerCache) Snapshot() *CacheSnapshot {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
@@ -580,7 +469,6 @@ func (sc *schedulerCache) Snapshot() *CacheSnapshot {
 		Nodes:     make([]*NodeInfo, 0, len(sc.nodes)),
 		Pods:      make([]*PodInfo, 0, len(sc.pods)),
 		Consumers: make([]*ConsumerInfo, 0, len(sc.consumers)),
-		QueueJobs: make([]*QueueJobInfo, 0, len(sc.queuejobs)),
 	}
 
 	for _, value := range sc.nodes {
@@ -591,9 +479,6 @@ func (sc *schedulerCache) Snapshot() *CacheSnapshot {
 	}
 	for _, value := range sc.consumers {
 		snapshot.Consumers = append(snapshot.Consumers, value.Clone())
-	}
-	for _, value := range sc.queuejobs {
-		snapshot.QueueJobs = append(snapshot.QueueJobs, value.Clone())
 	}
 	return snapshot
 }
