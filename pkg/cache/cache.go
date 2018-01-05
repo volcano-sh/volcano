@@ -80,8 +80,7 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
 				case *v1.Pod:
-					glog.V(4).Infof("Filter pod name(%s) namespace(%s) status(%s)\n", t.Name, t.Namespace, t.Status.Phase)
-					return true
+					return nonTerminatedPod(t)
 				default:
 					return false
 				}
@@ -134,6 +133,14 @@ func (sc *schedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 		sc.podInformer.Informer().HasSynced,
 		sc.nodeInformer.Informer().HasSynced,
 		sc.consumerInformer.Informer().HasSynced)
+}
+
+// nonTerminatedPod selects pods that are non-terminal (scheduled and running).
+func nonTerminatedPod(pod *v1.Pod) bool {
+	if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
+		return false
+	}
+	return true
 }
 
 // Assumes that lock is already acquired.
