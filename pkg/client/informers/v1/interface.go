@@ -24,7 +24,6 @@ import (
 type Interface interface {
 	// Consumers returns a ConsumerInformer.
 	Consumers() ConsumerInformer
-	QueueJobs() QueueJobInformer
 }
 
 type version struct {
@@ -39,9 +38,4 @@ func New(f internalinterfaces.SharedInformerFactory) Interface {
 // Consumers returns a ConsumerInformer.
 func (v *version) Consumers() ConsumerInformer {
 	return &consumerInformer{factory: v.SharedInformerFactory}
-}
-
-// QueueJobs returns a QueueJobInformer.
-func (v *version) QueueJobs() QueueJobInformer {
-	return &queueJobInformer{factory: v.SharedInformerFactory}
 }

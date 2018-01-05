@@ -20,5 +20,4 @@ type CacheSnapshot struct {
 	Pods      []*PodInfo
 	Nodes     []*NodeInfo
 	Consumers []*ConsumerInfo
-	QueueJobs []*QueueJobInfo
 }
