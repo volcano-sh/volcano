@@ -63,6 +63,17 @@ func (r *Resource) IsEmpty() bool {
 	return r.MilliCPU < minMilliCPU && r.Memory < minMemory
 }
 
+func (r *Resource) IsZero(rn v1.ResourceName) bool {
+	switch rn {
+	case v1.ResourceCPU:
+		return r.MilliCPU < minMilliCPU
+	case v1.ResourceMemory:
+		return r.Memory < minMemory
+	default:
+		panic("unknown resource")
+	}
+}
+
 func (r *Resource) Add(rr *Resource) *Resource {
 	r.MilliCPU += rr.MilliCPU
 	r.Memory += rr.Memory
@@ -89,7 +100,7 @@ func (r *Resource) LessEqual(rr *Resource) bool {
 }
 
 func (r *Resource) String() string {
-	return fmt.Sprintf("cpu %f, memory %f", r.MilliCPU, r.Memory)
+	return fmt.Sprintf("cpu %0.2f, memory %0.2f", r.MilliCPU, r.Memory)
 }
 
 func (r *Resource) Get(rn v1.ResourceName) float64 {
@@ -101,4 +112,8 @@ func (r *Resource) Get(rn v1.ResourceName) float64 {
 	default:
 		panic("not support resource.")
 	}
+}
+
+func ResourceNames() []v1.ResourceName {
+	return []v1.ResourceName{v1.ResourceCPU, v1.ResourceMemory}
 }

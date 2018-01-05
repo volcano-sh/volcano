@@ -61,37 +61,6 @@ kube::test::find_dirs() {
           -o -path './vendor/*' \
         \) -prune \
       \) -name '*_test.go' -print0 | xargs -0n1 dirname | sed "s|^\./|${KUBE_GO_PACKAGE}/|" | LC_ALL=C sort -u
-
-    find -L . \
-        -path './_output' -prune \
-        -o -path './vendor/k8s.io/client-go/*' \
-        -o -path './vendor/k8s.io/apiserver/*' \
-      -name '*_test.go' -print0 | xargs -0n1 dirname | sed "s|^\./|${KUBE_GO_PACKAGE}/|" | LC_ALL=C sort -u
-
-    # run tests for client-go
-    find ./staging/src/k8s.io/client-go -name '*_test.go' \
-      -name '*_test.go' -print0 | xargs -0n1 dirname | sed 's|^\./staging/src/|./vendor/|' | LC_ALL=C sort -u
-
-    # run tests for apiserver
-    find ./staging/src/k8s.io/apiserver -name '*_test.go' \
-      -name '*_test.go' -print0 | xargs -0n1 dirname | sed 's|^\./staging/src/|./vendor/|' | LC_ALL=C sort -u
-
-    # run tests for apimachinery
-    find ./staging/src/k8s.io/apimachinery -name '*_test.go' \
-      -name '*_test.go' -print0 | xargs -0n1 dirname | sed 's|^\./staging/src/|./vendor/|' | LC_ALL=C sort -u
-
-    find ./staging/src/k8s.io/kube-aggregator -name '*_test.go' \
-      -name '*_test.go' -print0 | xargs -0n1 dirname | sed 's|^\./staging/src/|./vendor/|' | LC_ALL=C sort -u
-
-    find ./staging/src/k8s.io/apiextensions-apiserver -not \( \
-        \( \
-          -path '*/test/integration/*' \
-        \) -prune \
-      \) -name '*_test.go' \
-      -name '*_test.go' -print0 | xargs -0n1 dirname | sed 's|^\./staging/src/|./vendor/|' | LC_ALL=C sort -u
-
-    find ./staging/src/k8s.io/sample-apiserver -name '*_test.go' \
-      -name '*_test.go' -print0 | xargs -0n1 dirname | sed 's|^\./staging/src/|./vendor/|' | LC_ALL=C sort -u
   )
 }
 
