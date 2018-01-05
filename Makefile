@@ -3,7 +3,7 @@ BIN_DIR=_output/bin
 kube-arbitrator: init
 	go build -o ${BIN_DIR}/kube-arbitrator ./cmd/kube-arbitrator/
 
-verify: generate_code
+verify: generate-code
 	hack/verify-gofmt.sh
 	hack/verify-gencode.sh
 
