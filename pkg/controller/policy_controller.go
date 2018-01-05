@@ -163,11 +163,6 @@ func (pc *PolicyController) groupPods(pods []*schedcache.PodInfo) (map[string][]
 	orpPods := make([]*schedcache.PodInfo, 0)
 
 	for _, p := range pods {
-		// TODO: move to cache
-		if p.Phase != v1.PodRunning && p.Phase != v1.PodPending {
-			continue
-		}
-
 		if len(p.Owner) == 0 {
 			orpPods = append(orpPods, p)
 			continue
