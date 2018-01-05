@@ -96,21 +96,21 @@ func newSchedulerCache(config *rest.Config) *schedulerCache {
 			},
 		})
 
-	// create queue informer
-	queueClient, _, err := client.NewClient(config)
+	// create consumer informer
+	consumerClient, _, err := client.NewClient(config)
 	if err != nil {
 		panic(err)
 	}
 
-	consumerInformerFactory := informerfactory.NewSharedInformerFactory(queueClient, 0)
-	// create informer for queue information
+	consumerInformerFactory := informerfactory.NewSharedInformerFactory(consumerClient, 0)
+	// create informer for consumer information
 	sc.consumerInformer = consumerInformerFactory.Consumer().Consumers()
 	sc.consumerInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
 				case *arbv1.Consumer:
-					glog.V(4).Infof("Filter queue name(%s) namespace(%s)\n", t.Name, t.Namespace)
+					glog.V(4).Infof("Filter consumer name(%s) namespace(%s)\n", t.Name, t.Namespace)
 					return true
 				default:
 					return false
@@ -355,35 +355,35 @@ func (sc *schedulerCache) DeleteNode(obj interface{}) {
 }
 
 // Assumes that lock is already acquired.
-func (sc *schedulerCache) addQueue(queue *arbv1.Consumer) error {
-	if _, ok := sc.consumers[queue.Name]; ok {
-		return fmt.Errorf("queue %v exist", queue.Name)
+func (sc *schedulerCache) addConsumer(consumer *arbv1.Consumer) error {
+	if _, ok := sc.consumers[consumer.Name]; ok {
+		return fmt.Errorf("consumer %v exist", consumer.Name)
 	}
 
-	sc.consumers[queue.Name] = NewConsumerInfo(queue)
+	sc.consumers[consumer.Name] = NewConsumerInfo(consumer)
 	return nil
 }
 
 // Assumes that lock is already acquired.
-func (sc *schedulerCache) updateQueue(oldQueue, newQueue *arbv1.Consumer) error {
-	if err := sc.deleteQueue(oldQueue); err != nil {
+func (sc *schedulerCache) updateConsumer(oldConsumer, newConsumer *arbv1.Consumer) error {
+	if err := sc.deleteConsumer(oldConsumer); err != nil {
 		return err
 	}
-	sc.addQueue(newQueue)
+	sc.addConsumer(newConsumer)
 	return nil
 }
 
 // Assumes that lock is already acquired.
-func (sc *schedulerCache) deleteQueue(queue *arbv1.Consumer) error {
-	if _, ok := sc.consumers[queue.Name]; !ok {
-		return fmt.Errorf("queue %v doesn't exist", queue.Name)
+func (sc *schedulerCache) deleteConsumer(consumer *arbv1.Consumer) error {
+	if _, ok := sc.consumers[consumer.Name]; !ok {
+		return fmt.Errorf("consumer %v doesn't exist", consumer.Name)
 	}
-	delete(sc.consumers, queue.Name)
+	delete(sc.consumers, consumer.Name)
 	return nil
 }
 
 func (sc *schedulerCache) AddConsumer(obj interface{}) {
-	queue, ok := obj.(*arbv1.Consumer)
+	consumer, ok := obj.(*arbv1.Consumer)
 	if !ok {
 		glog.Errorf("Cannot convert to *arbv1.Consumer: %v", obj)
 		return
@@ -392,22 +392,22 @@ func (sc *schedulerCache) AddConsumer(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Add queue(%s) into cache, spec(%#v)", queue.Name, queue.Spec)
-	err := sc.addQueue(queue)
+	glog.V(4).Infof("Add consumer(%s) into cache, spec(%#v)", consumer.Name, consumer.Spec)
+	err := sc.addConsumer(consumer)
 	if err != nil {
-		glog.Errorf("Failed to add queue %s into cache: %v", queue.Name, err)
+		glog.Errorf("Failed to add consumer %s into cache: %v", consumer.Name, err)
 		return
 	}
 	return
 }
 
 func (sc *schedulerCache) UpdateConsumer(oldObj, newObj interface{}) {
-	oldQueue, ok := oldObj.(*arbv1.Consumer)
+	oldConsumer, ok := oldObj.(*arbv1.Consumer)
 	if !ok {
 		glog.Errorf("Cannot convert oldObj to *arbv1.Consumer: %v", oldObj)
 		return
 	}
-	newQueue, ok := newObj.(*arbv1.Consumer)
+	newConsumer, ok := newObj.(*arbv1.Consumer)
 	if !ok {
 		glog.Errorf("Cannot convert newObj to *arbv1.Consumer: %v", newObj)
 		return
@@ -416,24 +416,24 @@ func (sc *schedulerCache) UpdateConsumer(oldObj, newObj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Update oldQueue(%s) in cache, spec(%#v)", oldQueue.Name, oldQueue.Spec)
-	glog.V(4).Infof("Update newQueue(%s) in cache, spec(%#v)", newQueue.Name, newQueue.Spec)
-	err := sc.updateQueue(oldQueue, newQueue)
+	glog.V(4).Infof("Update oldConsumer(%s) in cache, spec(%#v)", oldConsumer.Name, oldConsumer.Spec)
+	glog.V(4).Infof("Update newConsumer(%s) in cache, spec(%#v)", newConsumer.Name, newConsumer.Spec)
+	err := sc.updateConsumer(oldConsumer, newConsumer)
 	if err != nil {
-		glog.Errorf("Failed to update queue %s into cache: %v", oldQueue.Name, err)
+		glog.Errorf("Failed to update consumer %s into cache: %v", oldConsumer.Name, err)
 		return
 	}
 	return
 }
 
 func (sc *schedulerCache) DeleteConsumer(obj interface{}) {
-	var queue *arbv1.Consumer
+	var consumer *arbv1.Consumer
 	switch t := obj.(type) {
 	case *arbv1.Consumer:
-		queue = t
+		consumer = t
 	case cache.DeletedFinalStateUnknown:
 		var ok bool
-		queue, ok = t.Obj.(*arbv1.Consumer)
+		consumer, ok = t.Obj.(*arbv1.Consumer)
 		if !ok {
 			glog.Errorf("Cannot convert to *v1.Consumer: %v", t.Obj)
 			return
@@ -446,9 +446,9 @@ func (sc *schedulerCache) DeleteConsumer(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err := sc.deleteQueue(queue)
+	err := sc.deleteConsumer(consumer)
 	if err != nil {
-		glog.Errorf("Failed to delete queue %s from cache: %v", queue.Name, err)
+		glog.Errorf("Failed to delete consumer %s from cache: %v", consumer.Name, err)
 		return
 	}
 	return
