@@ -135,9 +135,11 @@ func (sc *schedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 		sc.consumerInformer.Informer().HasSynced)
 }
 
-// nonTerminatedPod selects pods that are non-terminal (scheduled and running).
+// nonTerminatedPod selects pods that are non-terminal (pending and running).
 func nonTerminatedPod(pod *v1.Pod) bool {
-	if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
+	if pod.Status.Phase == v1.PodSucceeded ||
+		pod.Status.Phase == v1.PodFailed ||
+		pod.Status.Phase == v1.PodUnknown {
 		return false
 	}
 	return true
