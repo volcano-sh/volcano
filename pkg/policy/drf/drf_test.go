@@ -46,15 +46,15 @@ func TestAllocate(t *testing.T) {
 		{
 			name: "one consumer with two Pods on one node",
 			consumers: map[string]*cache.ConsumerInfo{
-				"c1": &cache.ConsumerInfo{
+				"c1": {
 					PodSets: []*cache.PodSet{
-						&cache.PodSet{
+						{
 							ObjectMeta: metav1.ObjectMeta{
 								Namespace: "c1",
 								Name:      "ps1",
 							},
 							Pending: []*cache.PodInfo{
-								&cache.PodInfo{
+								{
 									Name:      "p1",
 									Namespace: "c1",
 									Request: &cache.Resource{
@@ -62,7 +62,7 @@ func TestAllocate(t *testing.T) {
 										Memory:   100,
 									},
 								},
-								&cache.PodInfo{
+								{
 									Name:      "p2",
 									Namespace: "c1",
 									Request: &cache.Resource{
@@ -77,7 +77,7 @@ func TestAllocate(t *testing.T) {
 				},
 			},
 			nodes: []*cache.NodeInfo{
-				&cache.NodeInfo{
+				{
 					Name: "n1",
 					Idle: &cache.Resource{
 						MilliCPU: 2.0,
@@ -97,15 +97,15 @@ func TestAllocate(t *testing.T) {
 		{
 			name: "two consumer on one node",
 			consumers: map[string]*cache.ConsumerInfo{
-				"c1": &cache.ConsumerInfo{
+				"c1": {
 					PodSets: []*cache.PodSet{
-						&cache.PodSet{
+						{
 							ObjectMeta: metav1.ObjectMeta{
 								Namespace: "c1",
 								Name:      "ps1",
 							},
 							Pending: []*cache.PodInfo{
-								&cache.PodInfo{
+								{
 									Name:      "p1",
 									Namespace: "c1",
 									Request: &cache.Resource{
@@ -113,7 +113,7 @@ func TestAllocate(t *testing.T) {
 										Memory:   100,
 									},
 								},
-								&cache.PodInfo{
+								{
 									Name:      "p2",
 									Namespace: "c1",
 									Request: &cache.Resource{
@@ -126,15 +126,15 @@ func TestAllocate(t *testing.T) {
 						},
 					},
 				},
-				"c2": &cache.ConsumerInfo{
+				"c2": {
 					PodSets: []*cache.PodSet{
-						&cache.PodSet{
+						{
 							ObjectMeta: metav1.ObjectMeta{
 								Namespace: "c2",
 								Name:      "ps1",
 							},
 							Pending: []*cache.PodInfo{
-								&cache.PodInfo{
+								{
 									Name:      "p1",
 									Namespace: "c2",
 									Request: &cache.Resource{
@@ -142,7 +142,7 @@ func TestAllocate(t *testing.T) {
 										Memory:   100,
 									},
 								},
-								&cache.PodInfo{
+								{
 									Name:      "p2",
 									Namespace: "c2",
 									Request: &cache.Resource{
@@ -157,7 +157,7 @@ func TestAllocate(t *testing.T) {
 				},
 			},
 			nodes: []*cache.NodeInfo{
-				&cache.NodeInfo{
+				{
 					Name: "n1",
 					Idle: &cache.Resource{
 						MilliCPU: 2.0,
