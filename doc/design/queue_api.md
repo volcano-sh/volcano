@@ -159,7 +159,7 @@ Preemption is used to reclaim resource for overused(`Deserved` < `Allocated`) qu
 * Each queue must meet `Allocated >= Used`, it means the queue won't be overused.
 * `Preempting` of each queue must be empty. If it is not empty, it means some pods are terminated to release resources to this queue, but it is not finished.
 
-####Brief workflow:
+#### Brief workflow:
 
 * Preprocess of `QueueInfo`. Currently, it terminates pods of overused(`Allocated < Used`) queue without preemption. Deserved/Allocated/Used/Preempting will not be adjusted in this stage.
 * Adjust Deserved/Allocated/Used/Preempting of each Queue to trigger preemption, then update results to each Queue.
