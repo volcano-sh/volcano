@@ -34,10 +34,22 @@ type NodeInfo struct {
 	Allocatable *Resource
 	Capability  *Resource
 
-	Pods []*PodInfo
+	Pods map[string]*PodInfo
 }
 
 func NewNodeInfo(node *v1.Node) *NodeInfo {
+	if node == nil {
+		return &NodeInfo{
+			Idle: EmptyResource(),
+			Used: EmptyResource(),
+
+			Allocatable: EmptyResource(),
+			Capability:  EmptyResource(),
+
+			Pods: make(map[string]*PodInfo),
+		}
+	}
+
 	return &NodeInfo{
 		Name: node.Name,
 		Node: node,
@@ -47,15 +59,15 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		Allocatable: NewResource(node.Status.Allocatable),
 		Capability:  NewResource(node.Status.Capacity),
 
-		Pods: make([]*PodInfo, 0),
+		Pods: make(map[string]*PodInfo),
 	}
 }
 
 func (ni *NodeInfo) Clone() *NodeInfo {
-	pods := make([]*PodInfo, len(ni.Pods))
+	pods := make(map[string]*PodInfo, len(ni.Pods))
 
 	for _, p := range ni.Pods {
-		pods = append(pods, p.Clone())
+		pods[podKey(p.Pod)] = p.Clone()
 	}
 
 	return &NodeInfo{
@@ -70,9 +82,36 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 	}
 }
 
-func (ni *NodeInfo) AddPod(pod *PodInfo) {
-	ni.Idle.Sub(pod.Request)
-	ni.Used.Add(pod.Request)
+func (ni *NodeInfo) SetNode(node *v1.Node) {
+	if ni.Node == nil {
+		ni.Idle = NewResource(node.Status.Allocatable)
 
-	ni.Pods = append(ni.Pods, pod)
+		for _, p := range ni.Pods {
+			ni.Idle.Sub(p.Request)
+			ni.Used.Add(p.Request)
+		}
+	}
+
+	ni.Name = node.Name
+	ni.Node = node
+	ni.Allocatable = NewResource(node.Status.Allocatable)
+	ni.Capability = NewResource(node.Status.Capacity)
+}
+
+func (ni *NodeInfo) AddPod(p *PodInfo) {
+	if ni.Node != nil {
+		ni.Idle.Sub(p.Request)
+		ni.Used.Add(p.Request)
+	}
+
+	ni.Pods[podKey(p.Pod)] = p
+}
+
+func (ni *NodeInfo) RemovePod(p *PodInfo) {
+	if ni.Node != nil {
+		ni.Idle.Add(p.Request)
+		ni.Used.Sub(p.Request)
+	}
+
+	delete(ni.Pods, podKey(p.Pod))
 }

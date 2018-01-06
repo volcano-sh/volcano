@@ -62,7 +62,7 @@ func newPodSetInfo(ps *cache.PodSet, t *cache.Resource) *podSetInfo {
 func (psi *podSetInfo) assignPendingPod(nodeName string) {
 	p := psi.podSet.Pending[psi.pendingIndex]
 	psi.allocated.Add(p.Request)
-	p.Nodename = nodeName
+	p.NodeName = nodeName
 
 	// Update related info.
 	psi.pendingIndex++
@@ -74,7 +74,7 @@ func (psi *podSetInfo) assignPendingPod(nodeName string) {
 
 func (psi *podSetInfo) nextPendingPod() *cache.PodInfo {
 	for i := psi.pendingIndex; i < len(psi.podSet.Pending); i++ {
-		if len(psi.podSet.Pending[i].Nodename) == 0 {
+		if len(psi.podSet.Pending[i].NodeName) == 0 {
 			psi.pendingIndex = i
 			return psi.podSet.Pending[i]
 		}

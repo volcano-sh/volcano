@@ -117,25 +117,6 @@ func (pc *PolicyController) buildConsumers(
 	return result
 }
 
-// updateNodes updates node's resource usage and running pods; re-build those info in each schedule cycle to
-// avoid race-condition, but may impact performance.
-// TODO(k82cn): update node info when pod updated.
-func (pc *PolicyController) updateNodes(nodes []*schedcache.NodeInfo, pods []*schedcache.PodInfo) {
-	for _, node := range nodes {
-		node.Idle = node.Allocatable
-		node.Used = schedcache.EmptyResource()
-		node.Pods = []*schedcache.PodInfo{}
-		for _, pod := range pods {
-			if pod.Phase == v1.PodRunning && pod.Nodename == node.Name {
-				node.Pods = append(node.Pods, pod)
-				node.Used.Add(pod.Request)
-			}
-		}
-		node.Idle.Sub(node.Used)
-		glog.V(3).Infof("node <%v>: idle <%v>, used <%v>", node.Name, node.Idle, node.Used)
-	}
-}
-
 func (pc *PolicyController) runOnce() {
 	glog.V(4).Infof("Start scheduling ...")
 	defer glog.V(4).Infof("End scheduling ...")
@@ -147,8 +128,6 @@ func (pc *PolicyController) runOnce() {
 	podSets, pods := pc.groupPods(snapshot.Pods)
 
 	consumers := pc.buildConsumers(snapshot.Consumers, podSets, pods)
-
-	pc.updateNodes(snapshot.Nodes, snapshot.Pods)
 
 	consumers = pc.allocator.Allocate(consumers, snapshot.Nodes)
 
@@ -209,12 +188,12 @@ func (pc *PolicyController) processAllocDecision() {
 		}
 
 		for _, p := range ps.Pending {
-			if len(p.Nodename) != 0 {
+			if len(p.NodeName) != 0 {
 				if err := pc.kubeclient.CoreV1().Pods(p.Namespace).Bind(&v1.Binding{
 					ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: p.UID},
 					Target: v1.ObjectReference{
 						Kind: "Node",
-						Name: p.Nodename,
+						Name: p.NodeName,
 					},
 				}); err != nil {
 					glog.Infof("Failed to bind pod <%v/%v>: %#v", p.Namespace, p.Name, err)
@@ -224,7 +203,7 @@ func (pc *PolicyController) processAllocDecision() {
 		}
 
 		for _, p := range ps.Running {
-			if len(p.Nodename) == 0 {
+			if len(p.NodeName) == 0 {
 				// TODO(k82cn): it's better to use /eviction instead of delete to avoid race-condition.
 				if err := pc.kubeclient.CoreV1().Pods(p.Namespace).Delete(p.Name, &metav1.DeleteOptions{}); err != nil {
 					glog.Infof("Failed to preempt pod <%v/%v>: %#v", p.Namespace, p.Name, err)

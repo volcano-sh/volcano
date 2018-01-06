@@ -184,9 +184,9 @@ func TestAllocate(t *testing.T) {
 			for _, ps := range consumer.PodSets {
 				for _, p := range ps.Pending {
 					pk := fmt.Sprintf("%v/%v", p.Namespace, p.Name)
-					if p.Nodename != test.expected[pk] {
-						t.Errorf("case %d (%s): %v/%v expected %s, got %s",
-							i, test.name, p.Namespace, p.Name, test.expected[pk], p.Nodename)
+					if p.NodeName != test.expected[pk] {
+						t.Errorf("case %d (%s): %v/%v expected %s got %s",
+							i, test.name, p.Namespace, p.Name, test.expected[pk], p.NodeName)
 					}
 				}
 			}
