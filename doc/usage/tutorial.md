@@ -2,6 +2,8 @@
 
 This doc will show the tutorial of Kube-arbitrator.
 
+**NOTES**: this doc is only for [release-pre0.1](https://github.com/kubernetes-incubator/kube-arbitrator/tree/release-pre0.1) branch
+
 ## 1. Pre-condition
 To run Kube-arbitrator, a kubernetes cluster must start up. Here is a document [Using kubeadm to Create a Cluster](https://kubernetes.io/docs/setup/independent/create-cluster-kubeadm/)
 
