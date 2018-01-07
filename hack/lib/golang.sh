@@ -300,9 +300,9 @@ kube::golang::create_gopath_tree() {
   mkdir -p "${go_pkg_basedir}"
 
   # TODO: This symlink should be relative.
-  if [[ ! -e "${go_pkg_dir}" || "$(readlink ${go_pkg_dir})" != "${KUBE_ROOT}" ]]; then
-    ln -snf "${KUBE_ROOT}" "${go_pkg_dir}"
-  fi
+  # if [[ ! -e "${go_pkg_dir}" || "$(readlink ${go_pkg_dir})" != "${KUBE_ROOT}" ]]; then
+  #   ln -snf "${KUBE_ROOT}" "${go_pkg_dir}"
+  # fi
 
   cat >"${KUBE_GOPATH}/BUILD" <<EOF
 # This dummy BUILD file prevents Bazel from trying to descend through the

@@ -17,11 +17,17 @@ limitations under the License.
 package cache
 
 import (
+	"fmt"
+
 	"k8s.io/api/core/v1"
 	clientcache "k8s.io/client-go/tools/cache"
 )
 
 // podKey returns the string key of a pod.
-func podKey(pod *v1.Pod) (string, error) {
-	return clientcache.MetaNamespaceKeyFunc(pod)
+func podKey(pod *v1.Pod) string {
+	if key, err := clientcache.MetaNamespaceKeyFunc(pod); err != nil {
+		return fmt.Sprintf("%v/%v", pod.Namespace, pod.Name)
+	} else {
+		return key
+	}
 }

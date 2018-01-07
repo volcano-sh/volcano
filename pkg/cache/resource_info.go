@@ -100,7 +100,8 @@ func (r *Resource) LessEqual(rr *Resource) bool {
 }
 
 func (r *Resource) String() string {
-	return fmt.Sprintf("cpu %0.2f, memory %0.2f", r.MilliCPU, r.Memory)
+	return fmt.Sprintf("cpu %0.2f, memory %0.2f",
+		r.MilliCPU, r.Memory)
 }
 
 func (r *Resource) Get(rn v1.ResourceName) float64 {

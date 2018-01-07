@@ -28,7 +28,7 @@ type PodInfo struct {
 	Name      string
 	Namespace string
 
-	Nodename string
+	NodeName string
 	Phase    v1.PodPhase
 
 	Pod *v1.Pod
@@ -47,7 +47,7 @@ func NewPodInfo(pod *v1.Pod) *PodInfo {
 		UID:       pod.UID,
 		Name:      pod.Name,
 		Namespace: pod.Namespace,
-		Nodename:  pod.Spec.NodeName,
+		NodeName:  pod.Spec.NodeName,
 		Phase:     pod.Status.Phase,
 
 		Pod:     pod,
@@ -68,7 +68,7 @@ func (pi *PodInfo) Clone() *PodInfo {
 		Owner:     pi.Owner,
 		Name:      pi.Name,
 		Namespace: pi.Namespace,
-		Nodename:  pi.Nodename,
+		NodeName:  pi.NodeName,
 		Phase:     pi.Phase,
 		Pod:       pi.Pod,
 		Request:   pi.Request.Clone(),

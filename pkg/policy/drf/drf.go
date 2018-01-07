@@ -91,7 +91,7 @@ func (drf *drfScheduler) Allocate(consumers map[string]*cache.ConsumerInfo, node
 				assigned = true
 
 				glog.V(3).Infof("assign <%v/%v> to <%s>: available <%v>, request <%v>",
-					p.Namespace, p.Name, p.Nodename, node.Idle, p.Request)
+					p.Namespace, p.Name, p.NodeName, node.Idle, p.Request)
 				break
 			}
 		}

@@ -147,16 +147,22 @@ func nonTerminatedPod(pod *v1.Pod) bool {
 
 // Assumes that lock is already acquired.
 func (sc *schedulerCache) addPod(pod *v1.Pod) error {
-	key, err := podKey(pod)
-	if err != nil {
-		return err
-	}
+	key := podKey(pod)
 
 	if _, ok := sc.pods[key]; ok {
 		return fmt.Errorf("pod %v exist", key)
 	}
 
-	sc.pods[key] = NewPodInfo(pod)
+	pi := NewPodInfo(pod)
+
+	if pod.Status.Phase == v1.PodRunning {
+		if sc.nodes[pod.Spec.NodeName] == nil {
+			sc.nodes[pod.Spec.NodeName] = NewNodeInfo(nil)
+		}
+		sc.nodes[pod.Spec.NodeName].AddPod(pi)
+	}
+
+	sc.pods[key] = pi
 
 	return nil
 }
@@ -172,15 +178,20 @@ func (sc *schedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 
 // Assumes that lock is already acquired.
 func (sc *schedulerCache) deletePod(pod *v1.Pod) error {
-	key, err := podKey(pod)
-	if err != nil {
-		return err
-	}
+	key := podKey(pod)
 
-	if _, ok := sc.pods[key]; !ok {
+	pi, ok := sc.pods[key]
+	if !ok {
 		return fmt.Errorf("pod %v doesn't exist", key)
 	}
 	delete(sc.pods, key)
+
+	if len(pi.NodeName) != 0 && pi.Phase == v1.PodRunning {
+		node := sc.nodes[pod.Spec.NodeName]
+		if node != nil {
+			node.RemovePod(pi)
+		}
+	}
 
 	return nil
 }
@@ -259,28 +270,30 @@ func (sc *schedulerCache) DeletePod(obj interface{}) {
 
 // Assumes that lock is already acquired.
 func (sc *schedulerCache) addNode(node *v1.Node) error {
-	if _, ok := sc.nodes[node.Name]; ok {
-		return fmt.Errorf("node %v exist", node.Name)
+	if sc.nodes[node.Name] != nil {
+		sc.nodes[node.Name].SetNode(node)
+	} else {
+		sc.nodes[node.Name] = NewNodeInfo(node)
 	}
-
-	sc.nodes[node.Name] = NewNodeInfo(node)
 
 	return nil
 }
 
 // Assumes that lock is already acquired.
 func (sc *schedulerCache) updateNode(oldNode, newNode *v1.Node) error {
-	if err := sc.deleteNode(oldNode); err != nil {
-		return err
+	// Did not delete the old node, just update related info, e.g. allocatable.
+	if sc.nodes[newNode.Name] != nil {
+		sc.nodes[newNode.Name].SetNode(newNode)
+		return nil
 	}
-	sc.addNode(newNode)
-	return nil
+
+	return fmt.Errorf("node <%s> does not exist", newNode.Name)
 }
 
 // Assumes that lock is already acquired.
 func (sc *schedulerCache) deleteNode(node *v1.Node) error {
 	if _, ok := sc.nodes[node.Name]; !ok {
-		return fmt.Errorf("node %v doesn't exist", node.Name)
+		return fmt.Errorf("node <%s> does not exist", node.Name)
 	}
 	delete(sc.nodes, node.Name)
 	return nil
@@ -490,4 +503,30 @@ func (sc *schedulerCache) Snapshot() *CacheSnapshot {
 		snapshot.Consumers = append(snapshot.Consumers, value.Clone())
 	}
 	return snapshot
+}
+
+func (sc schedulerCache) String() string {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	str := "Cache:\n"
+
+	if len(sc.nodes) != 0 {
+		str = str + "Nodes:\n"
+		for _, n := range sc.nodes {
+			str = str + fmt.Sprintf("\t %s: idle(%v) used(%v) allocatable(%v) pods(%d)\n",
+				n.Name, n.Idle, n.Used, n.Allocatable, len(n.Pods))
+		}
+	}
+
+	if len(sc.pods) != 0 {
+		str = str + "Pods:\n"
+		for _, p := range sc.pods {
+			str = str + fmt.Sprintf("\t %s/%s: phase (%s), node (%s), request (%v)\n",
+				p.Namespace, p.Name, p.Phase, p.NodeName, p.Request)
+		}
+	}
+
+	return str
+
 }
