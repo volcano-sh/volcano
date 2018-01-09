@@ -42,7 +42,7 @@ func (drf *drfScheduler) Name() string {
 
 func (drf *drfScheduler) Initialize() {}
 
-func (drf *drfScheduler) Allocate(consumers map[string]*cache.ConsumerInfo, nodes []*cache.NodeInfo) map[string]*cache.ConsumerInfo {
+func (drf *drfScheduler) Allocate(consumers []*cache.ConsumerInfo, nodes []*cache.NodeInfo) []*cache.ConsumerInfo {
 	glog.V(4).Infof("Enter Allocate ...")
 	defer glog.V(4).Infof("Leaving Allocate ...")
 
