@@ -29,7 +29,7 @@ type Interface interface {
 	Initialize()
 
 	// Allocate allocates the cluster's resources into each queue.
-	Allocate(consumers map[string]*cache.ConsumerInfo, nodes []*cache.NodeInfo) map[string]*cache.ConsumerInfo
+	Allocate(consumers []*cache.ConsumerInfo, nodes []*cache.NodeInfo) []*cache.ConsumerInfo
 
 	// UnIntialize un-initializes the allocator plugins.
 	UnInitialize()

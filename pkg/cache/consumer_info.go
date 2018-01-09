@@ -18,6 +18,8 @@ package cache
 
 import (
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+
+	"k8s.io/apimachinery/pkg/types"
 )
 
 type ConsumerInfo struct {
@@ -25,65 +27,89 @@ type ConsumerInfo struct {
 
 	Name      string
 	Namespace string
-	Weight    int
-
-	// The total resources that a Consumer should get
-	Deserved *Resource
-
-	// The total resources of running Pods belong to this Consumer
-	//   * UnderUsed: Used < Allocated
-	//   * Meet: Used == Allocated
-	//   * OverUsed: Used > Allocated
-	Used *Resource
-
-	// The total resources that a Consumer can get currently, it's expected to
-	// be equal or less than `Deserved` (when Preemption try to reclaim resource
-	// for this Consumer)
-	Allocated *Resource
 
 	// All jobs belong to this Consumer
-	PodSets []*PodSet
+	PodSets map[types.UID]*PodSet
 
 	// The pod that without `Owners`
-	Pods []*PodInfo
-
-	// The node candidates for Consumer
-	Nodes []*NodeInfo
+	Pods map[string]*PodInfo
 }
 
-func NewConsumerInfo(queue *arbv1.Consumer) *ConsumerInfo {
-	return &ConsumerInfo{
-		Name:      queue.Name,
-		Namespace: queue.Namespace,
-		Consumer:  queue,
-		Weight:    queue.Spec.Weight,
-		//Deserved:  NewResource(queue.Status.Deserved),
-		//Used:      NewResource(queue.Status.Used),
-		//Allocated: NewResource(queue.Status.Allocated),
+func NewConsumerInfo(consumer *arbv1.Consumer) *ConsumerInfo {
+	if consumer == nil {
+		return &ConsumerInfo{
+			Name:      "",
+			Namespace: "",
+			Consumer:  nil,
 
-		PodSets: make([]*PodSet, 0),
-		Pods:    make([]*PodInfo, 0),
-		Nodes:   make([]*NodeInfo, 0),
+			PodSets: make(map[types.UID]*PodSet),
+			Pods:    make(map[string]*PodInfo),
+		}
+	}
+
+	return &ConsumerInfo{
+		Name:      consumer.Name,
+		Namespace: consumer.Namespace,
+		Consumer:  consumer,
+
+		PodSets: make(map[types.UID]*PodSet),
+		Pods:    make(map[string]*PodInfo),
 	}
 }
 
-func (qi *ConsumerInfo) UnderUsed() bool {
-	return qi.Used.Less(qi.Allocated)
-}
-
-func (qi *ConsumerInfo) OverUsed() bool {
-	return qi.Allocated.Less(qi.Used)
-}
-
-func (qi *ConsumerInfo) Clone() *ConsumerInfo {
-	return &ConsumerInfo{
-		Name:      qi.Name,
-		Namespace: qi.Namespace,
-		Consumer:  qi.Consumer,
-		//Deserved:  qi.Deserved.Clone(),
-		//Used:      qi.Used.Clone(),
-		//Allocated: qi.Allocated.Clone(),
-
-		// Did not clone jobs, pods, nodes which are update by QueueController.
+func (ci *ConsumerInfo) SetConsumer(consumer *arbv1.Consumer) {
+	if consumer == nil {
+		ci.Name = ""
+		ci.Namespace = ""
+		ci.Consumer = consumer
+		ci.PodSets = make(map[types.UID]*PodSet)
+		ci.Pods = make(map[string]*PodInfo)
+		return
 	}
+
+	ci.Name = consumer.Name
+	ci.Namespace = consumer.Namespace
+	ci.Consumer = consumer
+}
+
+func (ci *ConsumerInfo) AddPod(pi *PodInfo) {
+	if len(pi.Owner) == 0 {
+		ci.Pods[pi.Name] = pi
+	} else {
+		if _, found := ci.PodSets[pi.Owner]; !found {
+			ci.PodSets[pi.Owner] = NewPodSet(pi.Owner)
+		}
+		ci.PodSets[pi.Owner].AddPodInfo(pi)
+	}
+}
+
+func (ci *ConsumerInfo) RemovePod(pi *PodInfo) {
+	if len(pi.Owner) == 0 {
+		delete(ci.Pods, pi.Name)
+	} else {
+		if _, found := ci.PodSets[pi.Owner]; found {
+			ci.PodSets[pi.Owner].DeletePodInfo(pi)
+		}
+	}
+}
+
+func (ci *ConsumerInfo) Clone() *ConsumerInfo {
+	info := &ConsumerInfo{
+		Name:      ci.Name,
+		Namespace: ci.Namespace,
+		Consumer:  ci.Consumer,
+
+		PodSets: make(map[types.UID]*PodSet),
+		Pods:    make(map[string]*PodInfo),
+	}
+
+	for owner, ps := range ci.PodSets {
+		info.PodSets[owner] = ps.Clone()
+	}
+
+	for name, p := range ci.Pods {
+		info.Pods[name] = p.Clone()
+	}
+
+	return info
 }

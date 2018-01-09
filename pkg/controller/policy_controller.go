@@ -24,7 +24,6 @@ import (
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -90,33 +89,6 @@ func (pc *PolicyController) Run(stopCh <-chan struct{}) {
 	go wait.Until(pc.processAllocDecision, 0, stopCh)
 }
 
-func (pc *PolicyController) buildConsumers(
-	consumers []*schedcache.ConsumerInfo,
-	podSets map[string][]*schedcache.PodSet,
-	pods []*schedcache.PodInfo,
-) map[string]*schedcache.ConsumerInfo {
-	result := map[string]*schedcache.ConsumerInfo{}
-
-	// TODO(k82cn): build consumer in cache.
-
-	// Append user-defined c to the result
-	for _, c := range consumers {
-		for _, pod := range pods {
-			if pod.Namespace == c.Namespace {
-				c.Pods = append(c.Pods, pod)
-			}
-		}
-
-		if ps, exist := podSets[c.Namespace]; exist {
-			c.PodSets = ps
-		}
-
-		result[c.Name] = c
-	}
-
-	return result
-}
-
 func (pc *PolicyController) runOnce() {
 	glog.V(4).Infof("Start scheduling ...")
 	defer glog.V(4).Infof("End scheduling ...")
@@ -125,54 +97,12 @@ func (pc *PolicyController) runOnce() {
 
 	snapshot := pc.cache.Snapshot()
 
-	podSets, pods := pc.groupPods(snapshot.Pods)
-
-	consumers := pc.buildConsumers(snapshot.Consumers, podSets, pods)
-
-	consumers = pc.allocator.Allocate(consumers, snapshot.Nodes)
+	consumers := pc.allocator.Allocate(snapshot.Consumers, snapshot.Nodes)
 
 	pc.enqueue(consumers)
 }
 
-func (pc *PolicyController) groupPods(pods []*schedcache.PodInfo) (map[string][]*schedcache.PodSet, []*schedcache.PodInfo) {
-	glog.V(4).Info("Enter groupPods ...")
-	defer glog.V(4).Info("Leaving groupPods ...")
-
-	podSets := make(map[types.UID]*schedcache.PodSet, 0)
-	orpPods := make([]*schedcache.PodInfo, 0)
-
-	for _, p := range pods {
-		if len(p.Owner) == 0 {
-			orpPods = append(orpPods, p)
-			continue
-		}
-
-		// TODO (k82cn): replace Owner with label/selector, e.g. Deployment/RS
-		if _, found := podSets[p.Owner]; !found {
-			ps := schedcache.NewPodSet(p.Owner)
-
-			ps.Namespace = p.Namespace
-			ps.Name = string(p.Owner)
-
-			podSets[p.Owner] = ps
-		}
-
-		podSets[p.Owner].AddPodInfo(p)
-	}
-
-	res := make(map[string][]*schedcache.PodSet)
-	for _, ps := range podSets {
-		if _, found := res[ps.Namespace]; !found {
-			res[ps.Namespace] = make([]*schedcache.PodSet, 0)
-		}
-
-		res[ps.Namespace] = append(res[ps.Namespace], ps)
-	}
-
-	return res, orpPods
-}
-
-func (pc *PolicyController) enqueue(consumers map[string]*schedcache.ConsumerInfo) {
+func (pc *PolicyController) enqueue(consumers []*schedcache.ConsumerInfo) {
 	for _, c := range consumers {
 		for _, ps := range c.PodSets {
 			pc.podSets.Add(ps)

@@ -113,3 +113,50 @@ func (ps *PodSet) AddPodInfo(pi *PodInfo) {
 		ps.Others = append(ps.Others, pi)
 	}
 }
+
+func (ps *PodSet) DeletePodInfo(pi *PodInfo) {
+	for index, piRunning := range ps.Running {
+		if piRunning.Name == pi.Name {
+			ps.Allocated.Sub(piRunning.Request)
+			ps.TotalRequest.Sub(piRunning.Request)
+			ps.Running = append(ps.Running[:index], ps.Running[index+1:]...)
+			return
+		}
+	}
+
+	for index, piPending := range ps.Pending {
+		if piPending.Name == pi.Name {
+			ps.TotalRequest.Sub(piPending.Request)
+			ps.Pending = append(ps.Pending[:index], ps.Pending[index+1:]...)
+			return
+		}
+	}
+}
+
+func (ps *PodSet) Clone() *PodSet {
+	info := &PodSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: ps.Name,
+			UID:  ps.UID,
+		},
+		Allocated:    ps.Allocated.Clone(),
+		TotalRequest: ps.TotalRequest.Clone(),
+		Running:      make([]*PodInfo, 0),
+		Pending:      make([]*PodInfo, 0),
+		Others:       make([]*PodInfo, 0),
+	}
+
+	for _, pod := range ps.Running {
+		info.Running = append(info.Running, pod.Clone())
+	}
+
+	for _, pod := range ps.Pending {
+		info.Pending = append(info.Pending, pod.Clone())
+	}
+
+	for _, pod := range ps.Others {
+		info.Others = append(info.Others, pod.Clone())
+	}
+
+	return info
+}
