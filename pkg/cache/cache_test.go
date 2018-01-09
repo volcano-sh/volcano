@@ -23,6 +23,8 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 )
 
 func nodesEqual(l, r map[string]*NodeInfo) bool {
@@ -67,10 +69,10 @@ func consumersEqual(l, r map[string]*ConsumerInfo) bool {
 	return true
 }
 
-func cacheEqual(l, r *schedulerCache) bool {
-	return nodesEqual(l.nodes, r.nodes) &&
-		podsEqual(l.pods, r.pods) &&
-		consumersEqual(l.consumers, r.consumers)
+func cacheEqual(l, r *SchedulerCache) bool {
+	return nodesEqual(l.Nodes, r.Nodes) &&
+		podsEqual(l.Pods, r.Pods) &&
+		consumersEqual(l.Consumers, r.Consumers)
 }
 
 func buildNode(name string, alloc v1.ResourceList) *v1.Node {
@@ -107,6 +109,15 @@ func buildPod(ns, n, nn string, p v1.PodPhase, req v1.ResourceList) *v1.Pod {
 	}
 }
 
+func buildConsumer(name string, namespace string) *arbv1.Consumer {
+	return &arbv1.Consumer{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+	}
+}
+
 func TestAddPod(t *testing.T) {
 	node1 := buildNode("n1", v1.ResourceList{
 		v1.ResourceCPU:    resource.MustParse("2000m"),
@@ -123,45 +134,59 @@ func TestAddPod(t *testing.T) {
 		v1.ResourceMemory: resource.MustParse("1G"),
 	})
 
+	consumer1 := buildConsumer("c1", "c1")
+
 	// case 1:
 	ni1 := NewNodeInfo(node1)
 	pi1 := NewPodInfo(pod1)
 	pi2 := NewPodInfo(pod2)
+	ci1 := NewConsumerInfo(consumer1)
 	ni1.AddPod(pi2)
+	ci1.AddPod(pi1)
+	ci1.AddPod(pi2)
 
 	tests := []struct {
-		pods     []*v1.Pod
-		nodes    []*v1.Node
-		expected *schedulerCache
+		pods      []*v1.Pod
+		nodes     []*v1.Node
+		consumers []*arbv1.Consumer
+		expected  *SchedulerCache
 	}{
 		{
-			pods:  []*v1.Pod{pod1, pod2},
-			nodes: []*v1.Node{node1},
-			expected: &schedulerCache{
-				nodes: map[string]*NodeInfo{
+			pods:      []*v1.Pod{pod1, pod2},
+			nodes:     []*v1.Node{node1},
+			consumers: []*arbv1.Consumer{consumer1},
+			expected: &SchedulerCache{
+				Nodes: map[string]*NodeInfo{
 					"n1": ni1,
 				},
-				pods: map[string]*PodInfo{
+				Pods: map[string]*PodInfo{
 					"c1/p1": pi1,
 					"c1/p2": pi2,
+				},
+				Consumers: map[string]*ConsumerInfo{
+					"c1": ci1,
 				},
 			},
 		},
 	}
 
 	for i, test := range tests {
-		cache := &schedulerCache{
-			nodes:     make(map[string]*NodeInfo),
-			pods:      make(map[string]*PodInfo),
-			consumers: make(map[string]*ConsumerInfo),
-		}
-
-		for _, p := range test.pods {
-			cache.AddPod(p)
+		cache := &SchedulerCache{
+			Nodes:     make(map[string]*NodeInfo),
+			Pods:      make(map[string]*PodInfo),
+			Consumers: make(map[string]*ConsumerInfo),
 		}
 
 		for _, n := range test.nodes {
 			cache.AddNode(n)
+		}
+
+		for _, c := range test.consumers {
+			cache.AddConsumer(c)
+		}
+
+		for _, p := range test.pods {
+			cache.AddPod(p)
 		}
 
 		if !cacheEqual(cache, test.expected) {
