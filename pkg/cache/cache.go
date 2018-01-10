@@ -529,6 +529,10 @@ func (sc SchedulerCache) String() string {
 		for _, n := range sc.Nodes {
 			str = str + fmt.Sprintf("\t %s: idle(%v) used(%v) allocatable(%v) pods(%d)\n",
 				n.Name, n.Idle, n.Used, n.Allocatable, len(n.Pods))
+			for index, p := range n.Pods {
+				str = str + fmt.Sprintf("\t\t Pod[%s] uid(%s) owner(%s) name(%s) namespace(%s) nodename(%s) phase(%s) request(%v) pod(%v)\n",
+					index, p.UID, p.Owner, p.Name, p.Namespace, p.NodeName, p.Phase, p.Request, p.Pod)
+			}
 		}
 	}
 
@@ -542,10 +546,14 @@ func (sc SchedulerCache) String() string {
 
 	if len(sc.Consumers) != 0 {
 		str = str + "Consumers:\n"
-		for _, c := range sc.Consumers {
-			str = str + fmt.Sprintf("\t PodSets(%d) Pods(%d)\n", len(c.PodSets), len(c.Pods))
+		for ck, c := range sc.Consumers {
+			str = str + fmt.Sprintf("\t Consumer(%s) name(%s) namespace(%s) PodSets(%d) Pods(%d) value(%v)\n", ck, c.Name, c.Namespace, len(c.PodSets), len(c.Pods), c.Consumer)
 			for k, ps := range c.PodSets {
 				str = str + fmt.Sprintf("\t\t PodSet[%s] running(%d) pending(%d) other(%d)\n", k, len(ps.Running), len(ps.Pending), len(ps.Others))
+			}
+			for k, p := range c.Pods {
+				str = str + fmt.Sprintf("\t\t Pod[%s] uid(%s) owner(%s) name(%s) namespace(%s) nodename(%s) phase(%s) request(%v) pod(%v)\n",
+					k, p.UID, p.Owner, p.Name, p.Namespace, p.NodeName, p.Phase, p.Request, p.Pod)
 			}
 		}
 	}
