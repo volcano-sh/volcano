@@ -23,6 +23,7 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 )
@@ -118,25 +119,27 @@ func buildConsumer(name string, namespace string) *arbv1.Consumer {
 	}
 }
 
+func buildResourceList(cpu string, memory string) v1.ResourceList {
+	return v1.ResourceList{
+		v1.ResourceCPU:    resource.MustParse(cpu),
+		v1.ResourceMemory: resource.MustParse(memory),
+	}
+}
+
+func buildResource(cpu string, memory string) *Resource {
+	return NewResource(v1.ResourceList{
+		v1.ResourceCPU:    resource.MustParse(cpu),
+		v1.ResourceMemory: resource.MustParse(memory),
+	})
+}
+
 func TestAddPod(t *testing.T) {
-	node1 := buildNode("n1", v1.ResourceList{
-		v1.ResourceCPU:    resource.MustParse("2000m"),
-		v1.ResourceMemory: resource.MustParse("10G"),
-	})
-
-	pod1 := buildPod("c1", "p1", "", v1.PodPending, v1.ResourceList{
-		v1.ResourceCPU:    resource.MustParse("1000m"),
-		v1.ResourceMemory: resource.MustParse("1G"),
-	})
-
-	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, v1.ResourceList{
-		v1.ResourceCPU:    resource.MustParse("1000m"),
-		v1.ResourceMemory: resource.MustParse("1G"),
-	})
-
-	consumer1 := buildConsumer("c1", "c1")
 
 	// case 1:
+	node1 := buildNode("n1", buildResourceList("2000m", "10G"))
+	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"))
+	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"))
+	consumer1 := buildConsumer("c1", "c1")
 	ni1 := NewNodeInfo(node1)
 	pi1 := NewPodInfo(pod1)
 	pi2 := NewPodInfo(pod2)
@@ -187,6 +190,136 @@ func TestAddPod(t *testing.T) {
 
 		for _, p := range test.pods {
 			cache.AddPod(p)
+		}
+
+		if !cacheEqual(cache, test.expected) {
+			t.Errorf("case %d: \n expected %v, \n got %v \n",
+				i, test.expected, cache)
+		}
+	}
+}
+
+func TestAddNode(t *testing.T) {
+
+	// case 1
+	node1 := buildNode("n1", buildResourceList("2000m", "10G"))
+	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"))
+	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"))
+	ni1 := NewNodeInfo(node1)
+	pi1 := NewPodInfo(pod1)
+	pi2 := NewPodInfo(pod2)
+	ni1.AddPod(pi2)
+
+	tests := []struct {
+		pods     []*v1.Pod
+		nodes    []*v1.Node
+		expected *SchedulerCache
+	}{
+		{
+			pods:  []*v1.Pod{pod1, pod2},
+			nodes: []*v1.Node{node1},
+			expected: &SchedulerCache{
+				Nodes: map[string]*NodeInfo{
+					"n1": ni1,
+				},
+				Pods: map[string]*PodInfo{
+					"c1/p1": pi1,
+					"c1/p2": pi2,
+				},
+				Consumers: map[string]*ConsumerInfo{
+					"c1": {
+						Namespace: "c1",
+						PodSets:   make(map[types.UID]*PodSet),
+						Pods: map[string]*PodInfo{
+							"p1": pi1,
+							"p2": pi2,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for i, test := range tests {
+		cache := &SchedulerCache{
+			Nodes:     make(map[string]*NodeInfo),
+			Pods:      make(map[string]*PodInfo),
+			Consumers: make(map[string]*ConsumerInfo),
+		}
+
+		for _, p := range test.pods {
+			cache.AddPod(p)
+		}
+
+		for _, n := range test.nodes {
+			cache.AddNode(n)
+		}
+
+		if !cacheEqual(cache, test.expected) {
+			t.Errorf("case %d: \n expected %v, \n got %v \n",
+				i, test.expected, cache)
+		}
+	}
+}
+
+func TestAddConsumer(t *testing.T) {
+
+	// case 1
+	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"))
+	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"))
+	consumer1 := buildConsumer("c1", "c1")
+	pi1 := NewPodInfo(pod1)
+	pi2 := NewPodInfo(pod2)
+	ci1 := NewConsumerInfo(consumer1)
+	ci1.AddPod(pi1)
+	ci1.AddPod(pi2)
+
+	tests := []struct {
+		pods      []*v1.Pod
+		consumers []*arbv1.Consumer
+		expected  *SchedulerCache
+	}{
+		{
+			pods:      []*v1.Pod{pod1, pod2},
+			consumers: []*arbv1.Consumer{consumer1},
+			expected: &SchedulerCache{
+				Nodes: map[string]*NodeInfo{
+					"n1": {
+						Idle: EmptyResource(),
+						Used: EmptyResource(),
+
+						Allocatable: EmptyResource(),
+						Capability:  EmptyResource(),
+
+						Pods: map[string]*PodInfo{
+							"c1/p2": pi2,
+						},
+					},
+				},
+				Pods: map[string]*PodInfo{
+					"c1/p1": pi1,
+					"c1/p2": pi2,
+				},
+				Consumers: map[string]*ConsumerInfo{
+					"c1": ci1,
+				},
+			},
+		},
+	}
+
+	for i, test := range tests {
+		cache := &SchedulerCache{
+			Nodes:     make(map[string]*NodeInfo),
+			Pods:      make(map[string]*PodInfo),
+			Consumers: make(map[string]*ConsumerInfo),
+		}
+
+		for _, p := range test.pods {
+			cache.AddPod(p)
+		}
+
+		for _, c := range test.consumers {
+			cache.AddConsumer(c)
 		}
 
 		if !cacheEqual(cache, test.expected) {
