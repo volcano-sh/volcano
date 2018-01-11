@@ -1,6 +1,6 @@
 # kube-arbitrator
 
-![build](https://travis-ci.org/kubernetes-incubator/kube-arbitrator.svg?branch=master)
+[![Build Status](https://travis-ci.org/kubernetes-incubator/kube-arbitrator.svg?branch=master)](https://travis-ci.org/kubernetes-incubator/kube-arbitrator)
 [![Go Report Card](https://goreportcard.com/badge/github.com/kubernetes-incubator/kube-arbitrator)](https://goreportcard.com/report/github.com/kubernetes-incubator/kube-arbitrator)
 
 kube-arbitrator provides policy based resource sharing for a Kubernetes cluster. The following section describes the target scenario of this project:
