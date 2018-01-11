@@ -9,12 +9,14 @@ load(
 go_test(
     name = "go_default_test",
     srcs = ["modes_test.go"],
-    library = ":go_default_library",
+    embed = [":go_default_library"],
+    importpath = "k8s.io/kubernetes/pkg/kubeapiserver/authorizer/modes",
 )
 
 go_library(
     name = "go_default_library",
     srcs = ["modes.go"],
+    importpath = "k8s.io/kubernetes/pkg/kubeapiserver/authorizer/modes",
 )
 
 filegroup(

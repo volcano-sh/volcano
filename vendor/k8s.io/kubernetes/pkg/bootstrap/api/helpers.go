@@ -18,7 +18,9 @@ package api
 
 import (
 	"fmt"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"regexp"
+	"strings"
 )
 
 var bootstrapGroupRegexp = regexp.MustCompile(`\A` + BootstrapGroupPattern + `\z`)
@@ -31,4 +33,19 @@ func ValidateBootstrapGroupName(name string) error {
 		return nil
 	}
 	return fmt.Errorf("bootstrap group %q is invalid (must match %s)", name, BootstrapGroupPattern)
+}
+
+// ValidateUsages validates that the passed in string are valid usage strings for bootstrap tokens.
+func ValidateUsages(usages []string) error {
+	validUsages := sets.NewString(KnownTokenUsages...)
+	invalidUsages := sets.NewString()
+	for _, usage := range usages {
+		if !validUsages.Has(usage) {
+			invalidUsages.Insert(usage)
+		}
+	}
+	if len(invalidUsages) > 0 {
+		return fmt.Errorf("invalide bootstrap token usage string: %s, valid usage options: %s", strings.Join(invalidUsages.List(), ","), strings.Join(KnownTokenUsages, ","))
+	}
+	return nil
 }
