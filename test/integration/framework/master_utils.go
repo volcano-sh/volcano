@@ -17,17 +17,13 @@ limitations under the License.
 package framework
 
 import (
-	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
+	"path"
 	goruntime "runtime"
 	"strconv"
-	"strings"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/go-openapi/spec"
@@ -41,7 +37,6 @@ import (
 	extensions "k8s.io/api/extensions/v1beta1"
 	rbac "k8s.io/api/rbac/v1alpha1"
 	storage "k8s.io/api/storage/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -49,30 +44,26 @@ import (
 	"k8s.io/apiserver/pkg/authentication/authenticatorfactory"
 	authenticatorunion "k8s.io/apiserver/pkg/authentication/request/union"
 	"k8s.io/apiserver/pkg/authentication/user"
+	"k8s.io/apiserver/pkg/authorization/authorizer"
 	authauthorizer "k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/apiserver/pkg/authorization/authorizerfactory"
 	authorizerunion "k8s.io/apiserver/pkg/authorization/union"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/apiserver/pkg/server/options"
 	serverstorage "k8s.io/apiserver/pkg/server/storage"
-	etcdtesting "k8s.io/apiserver/pkg/storage/etcd/testing"
 	"k8s.io/apiserver/pkg/storage/storagebackend"
 	"k8s.io/client-go/informers"
 	extinformers "k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
-	extclient "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/kubernetes/cmd/kube-apiserver/app"
-	apiserveroptions "k8s.io/kubernetes/cmd/kube-apiserver/app/options"
-	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	"k8s.io/kubernetes/pkg/api/testapi"
 	"k8s.io/kubernetes/pkg/apis/batch"
-	policy "k8s.io/kubernetes/pkg/apis/policy/v1alpha1"
-	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	policy "k8s.io/kubernetes/pkg/apis/policy/v1beta1"
 	"k8s.io/kubernetes/pkg/controller"
 	replicationcontroller "k8s.io/kubernetes/pkg/controller/replication"
-	"k8s.io/kubernetes/pkg/kubectl"
+	"k8s.io/kubernetes/pkg/generated/openapi"
 	kubeletclient "k8s.io/kubernetes/pkg/kubelet/client"
 	"k8s.io/kubernetes/pkg/master"
 	"k8s.io/kubernetes/pkg/version"
@@ -152,8 +143,8 @@ func NewMasterComponents(c *Config) *MasterComponents {
 // alwaysAllow always allows an action
 type alwaysAllow struct{}
 
-func (alwaysAllow) Authorize(requestAttributes authauthorizer.Attributes) (bool, string, error) {
-	return true, "always allow", nil
+func (alwaysAllow) Authorize(requestAttributes authauthorizer.Attributes) (authorizer.Decision, string, error) {
+	return authorizer.DecisionAllow, "always allow", nil
 }
 
 // alwaysEmpty simulates "no authentication" for old tests
@@ -202,7 +193,7 @@ func startMasterOrDie(masterConfig *master.Config, incomingServer *httptest.Serv
 		masterConfig = NewMasterConfig()
 		masterConfig.GenericConfig.EnableProfiling = true
 		masterConfig.GenericConfig.EnableMetrics = true
-		masterConfig.GenericConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(GetOpenAPIDefinitions, api.Scheme)
+		masterConfig.GenericConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(openapi.GetOpenAPIDefinitions, legacyscheme.Scheme)
 		masterConfig.GenericConfig.OpenAPIConfig.Info = &spec.Info{
 			InfoProps: spec.InfoProps{
 				Title:   "Kubernetes",
@@ -214,13 +205,13 @@ func startMasterOrDie(masterConfig *master.Config, incomingServer *httptest.Serv
 				Description: "Default Response.",
 			},
 		}
-		masterConfig.GenericConfig.OpenAPIConfig.GetDefinitions = GetOpenAPIDefinitions
+		masterConfig.GenericConfig.OpenAPIConfig.GetDefinitions = openapi.GetOpenAPIDefinitions
 		masterConfig.GenericConfig.SwaggerConfig = genericapiserver.DefaultSwaggerConfig()
 	}
 
 	// set the loopback client config
 	if masterConfig.GenericConfig.LoopbackClientConfig == nil {
-		masterConfig.GenericConfig.LoopbackClientConfig = &restclient.Config{QPS: 50, Burst: 100, ContentConfig: restclient.ContentConfig{NegotiatedSerializer: api.Codecs}}
+		masterConfig.GenericConfig.LoopbackClientConfig = &restclient.Config{QPS: 50, Burst: 100, ContentConfig: restclient.ContentConfig{NegotiatedSerializer: legacyscheme.Codecs}}
 	}
 	masterConfig.GenericConfig.LoopbackClientConfig.Host = s.URL
 
@@ -249,7 +240,7 @@ func startMasterOrDie(masterConfig *master.Config, incomingServer *httptest.Serv
 
 	masterConfig.GenericConfig.LoopbackClientConfig.BearerToken = privilegedLoopbackToken
 
-	clientset, err := extclient.NewForConfig(masterConfig.GenericConfig.LoopbackClientConfig)
+	clientset, err := clientset.NewForConfig(masterConfig.GenericConfig.LoopbackClientConfig)
 	if err != nil {
 		glog.Fatal(err)
 	}
@@ -299,19 +290,19 @@ func NewMasterConfig() *master.Config {
 	// This causes the integration tests to exercise the etcd
 	// prefix code, so please don't change without ensuring
 	// sufficient coverage in other ways.
-	etcdOptions := options.NewEtcdOptions(storagebackend.NewDefaultConfig(uuid.New(), api.Scheme, nil))
+	etcdOptions := options.NewEtcdOptions(storagebackend.NewDefaultConfig(uuid.New(), nil))
 	etcdOptions.StorageConfig.ServerList = []string{GetEtcdURL()}
 
-	info, _ := runtime.SerializerInfoForMediaType(api.Codecs.SupportedMediaTypes(), runtime.ContentTypeJSON)
-	ns := NewSingleContentTypeSerializer(api.Scheme, info)
+	info, _ := runtime.SerializerInfoForMediaType(legacyscheme.Codecs.SupportedMediaTypes(), runtime.ContentTypeJSON)
+	ns := NewSingleContentTypeSerializer(legacyscheme.Scheme, info)
 
-	resourceEncoding := serverstorage.NewDefaultResourceEncodingConfig(api.Registry)
+	resourceEncoding := serverstorage.NewDefaultResourceEncodingConfig(legacyscheme.Registry)
 	// FIXME (soltysh): this GroupVersionResource override should be configurable
 	// we need to set both for the whole group and for cronjobs, separately
 	resourceEncoding.SetVersionEncoding(batch.GroupName, *testapi.Batch.GroupVersion(), schema.GroupVersion{Group: batch.GroupName, Version: runtime.APIVersionInternal})
 	resourceEncoding.SetResourceEncoding(schema.GroupResource{Group: "batch", Resource: "cronjobs"}, schema.GroupVersion{Group: batch.GroupName, Version: "v1beta1"}, schema.GroupVersion{Group: batch.GroupName, Version: runtime.APIVersionInternal})
 
-	storageFactory := serverstorage.NewDefaultStorageFactory(etcdOptions.StorageConfig, runtime.ContentTypeJSON, ns, resourceEncoding, master.DefaultAPIResourceConfigSource())
+	storageFactory := serverstorage.NewDefaultStorageFactory(etcdOptions.StorageConfig, runtime.ContentTypeJSON, ns, resourceEncoding, master.DefaultAPIResourceConfigSource(), nil)
 	storageFactory.SetSerializer(
 		schema.GroupResource{Group: v1.GroupName, Resource: serverstorage.AllResources},
 		"",
@@ -349,7 +340,7 @@ func NewMasterConfig() *master.Config {
 		"",
 		ns)
 
-	genericConfig := genericapiserver.NewConfig(api.Codecs)
+	genericConfig := genericapiserver.NewConfig(legacyscheme.Codecs)
 	kubeVersion := version.Get()
 	genericConfig.Version = &kubeVersion
 	genericConfig.Authorizer = authorizerfactory.NewAlwaysAllowAuthorizer()
@@ -397,67 +388,6 @@ func (m *MasterComponents) Stop(apiServer, rcManager bool) {
 	if apiServer {
 		m.CloseFn()
 	}
-}
-
-func CreateTestingNamespace(baseName string, apiserver *httptest.Server, t *testing.T) *v1.Namespace {
-	// TODO: Create a namespace with a given basename.
-	// Currently we neither create the namespace nor delete all its contents at the end.
-	// But as long as tests are not using the same namespaces, this should work fine.
-	return &v1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			// TODO: Once we start creating namespaces, switch to GenerateName.
-			Name: baseName,
-		},
-	}
-}
-
-func DeleteTestingNamespace(ns *v1.Namespace, apiserver *httptest.Server, t *testing.T) {
-	// TODO: Remove all resources from a given namespace once we implement CreateTestingNamespace.
-}
-
-// RCFromManifest reads a .json file and returns the rc in it.
-func RCFromManifest(fileName string) *v1.ReplicationController {
-	data, err := ioutil.ReadFile(fileName)
-	if err != nil {
-		glog.Fatalf("Unexpected error reading rc manifest %v", err)
-	}
-	var controller v1.ReplicationController
-	if err := runtime.DecodeInto(testapi.Default.Codec(), data, &controller); err != nil {
-		glog.Fatalf("Unexpected error reading rc manifest %v", err)
-	}
-	return &controller
-}
-
-// StopRC stops the rc via kubectl's stop library
-func StopRC(rc *v1.ReplicationController, clientset internalclientset.Interface) error {
-	reaper, err := kubectl.ReaperFor(api.Kind("ReplicationController"), clientset)
-	if err != nil || reaper == nil {
-		return err
-	}
-	err = reaper.Stop(rc.Namespace, rc.Name, 0, nil)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// ScaleRC scales the given rc to the given replicas.
-func ScaleRC(name, ns string, replicas int32, clientset internalclientset.Interface) (*api.ReplicationController, error) {
-	scaler, err := kubectl.ScalerFor(api.Kind("ReplicationController"), clientset)
-	if err != nil {
-		return nil, err
-	}
-	retry := &kubectl.RetryParams{Interval: 50 * time.Millisecond, Timeout: DefaultTimeout}
-	waitForReplicas := &kubectl.RetryParams{Interval: 50 * time.Millisecond, Timeout: DefaultTimeout}
-	err = scaler.Scale(ns, name, uint(replicas), nil, retry, waitForReplicas)
-	if err != nil {
-		return nil, err
-	}
-	scaled, err := clientset.Core().ReplicationControllers(ns).Get(name, metav1.GetOptions{})
-	if err != nil {
-		return nil, err
-	}
-	return scaled, nil
 }
 
 // CloseFunc can be called to cleanup the master
@@ -529,131 +459,9 @@ func FindFreeLocalPort() (int, error) {
 	return port, nil
 }
 
-// TearDownFunc is to be called to tear down a test server.
-type TearDownFunc func()
-
-// StartTestServerOrDie calls StartTestServer with up to 5 retries on bind error and dies with
-// t.Fatal if it does not succeed.
-func StartTestServerOrDie(t *testing.T) (*restclient.Config, TearDownFunc) {
-	// retry test because the bind might fail due to a race with another process
-	// binding to the port. We cannot listen to :0 (then the kernel would give us
-	// a port which is free for sure), so we need this workaround.
-
-	var err error
-
-	for retry := 0; retry < 5 && !t.Failed(); retry++ {
-		var config *restclient.Config
-		var td TearDownFunc
-
-		config, td, err = StartTestServer(t)
-		if err == nil {
-			return config, td
-		}
-		if err != nil && !strings.Contains(err.Error(), "bind") {
-			break
-		}
-		t.Logf("Bind error, retrying...")
-	}
-
-	t.Fatalf("Failed to launch server: %v", err)
-	return nil, nil
-}
-
-// StartTestServer starts a etcd server and kube-apiserver. A rest client config and a tear-down func
-// are returned.
-//
-// Note: we return a tear-down func instead of a stop channel because the later will leak temporariy
-// 		 files that becaues Golang testing's call to os.Exit will not give a stop channel go routine
-// 		 enough time to remove temporariy files.
-func StartTestServer(t *testing.T) (result *restclient.Config, tearDownForCaller TearDownFunc, err error) {
-	var tmpDir string
-	var etcdServer *etcdtesting.EtcdTestServer
-	stopCh := make(chan struct{})
-	tearDown := func() {
-		close(stopCh)
-		if etcdServer != nil {
-			etcdServer.Terminate(t)
-		}
-		if len(tmpDir) != 0 {
-			os.RemoveAll(tmpDir)
-		}
-	}
-	defer func() {
-		if tearDownForCaller == nil {
-			tearDown()
-		}
-	}()
-
-	t.Logf("Starting etcd...")
-	etcdServer, storageConfig := etcdtesting.NewUnsecuredEtcd3TestClientServer(t, api.Scheme)
-
-	tmpDir, err = ioutil.TempDir("", "kubernetes-kube-apiserver")
-	if err != nil {
-		return nil, nil, fmt.Errorf("Failed to create temp dir: %v", err)
-	}
-
-	s := apiserveroptions.NewServerRunOptions()
-	s.InsecureServing.BindPort = 0
-	s.SecureServing.BindPort = freePort()
-	s.SecureServing.ServerCert.CertDirectory = tmpDir
-	s.ServiceClusterIPRange.IP = net.IPv4(10, 0, 0, 0)
-	s.ServiceClusterIPRange.Mask = net.CIDRMask(16, 32)
-	s.Etcd.StorageConfig = *storageConfig
-	s.Etcd.DefaultStorageMediaType = "application/json"
-	s.Admission.PluginNames = strings.Split("Initializers,NamespaceLifecycle,LimitRanger,PersistentVolumeLabel,DefaultStorageClass,ResourceQuota,DefaultTolerationSeconds", ",")
-	s.APIEnablement.RuntimeConfig.Set("api/all=true")
-
-	t.Logf("Starting kube-apiserver...")
-	runErrCh := make(chan error, 1)
-	server, err := app.CreateServerChain(s, stopCh)
-	if err != nil {
-		return nil, nil, fmt.Errorf("Failed to create server chain: %v", err)
-	}
-	go func(stopCh <-chan struct{}) {
-		if err := server.PrepareRun().Run(stopCh); err != nil {
-			t.Logf("kube-apiserver exited uncleanly: %v", err)
-			runErrCh <- err
-		}
-	}(stopCh)
-
-	t.Logf("Waiting for /healthz to be ok...")
-	client, err := clientset.NewForConfig(server.LoopbackClientConfig)
-	if err != nil {
-		return nil, nil, fmt.Errorf("Failed to create a client: %v", err)
-	}
-	err = wait.Poll(100*time.Millisecond, 30*time.Second, func() (bool, error) {
-		select {
-		case err := <-runErrCh:
-			return false, err
-		default:
-		}
-
-		result := client.CoreV1().RESTClient().Get().AbsPath("/healthz").Do()
-		status := 0
-		result.StatusCode(&status)
-		if status == 200 {
-			return true, nil
-		}
-		return false, nil
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("Failed to wait for /healthz to return ok: %v", err)
-	}
-
-	// from here the caller must call tearDown
-	return server.LoopbackClientConfig, tearDown, nil
-}
-
-func freePort() int {
-	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
-	if err != nil {
-		panic(err)
-	}
-
-	l, err := net.ListenTCP("tcp", addr)
-	if err != nil {
-		panic(err)
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port
+// SharedEtcd creates a storage config for a shared etcd instance, with a unique prefix.
+func SharedEtcd() *storagebackend.Config {
+	cfg := storagebackend.NewDefaultConfig(path.Join(uuid.New(), "registry"), nil)
+	cfg.ServerList = []string{GetEtcdURL()}
+	return cfg
 }
