@@ -21,8 +21,8 @@ import (
 	"io"
 
 	"k8s.io/apiserver/pkg/admission"
-	"k8s.io/kubernetes/pkg/api"
-	apihelper "k8s.io/kubernetes/pkg/api/helper"
+	api "k8s.io/kubernetes/pkg/apis/core"
+	apihelper "k8s.io/kubernetes/pkg/apis/core/helper"
 	informers "k8s.io/kubernetes/pkg/client/informers/informers_generated/internalversion"
 	pvlister "k8s.io/kubernetes/pkg/client/listers/core/internalversion"
 	storagelisters "k8s.io/kubernetes/pkg/client/listers/storage/internalversion"
@@ -43,6 +43,7 @@ func Register(plugins *admission.Plugins) {
 }
 
 var _ admission.Interface = &persistentVolumeClaimResize{}
+var _ admission.ValidationInterface = &persistentVolumeClaimResize{}
 var _ = kubeapiserveradmission.WantsInternalKubeInformerFactory(&persistentVolumeClaimResize{})
 
 type persistentVolumeClaimResize struct {
@@ -68,8 +69,8 @@ func (pvcr *persistentVolumeClaimResize) SetInternalKubeInformerFactory(f inform
 	})
 }
 
-// Validate ensures lister is set.
-func (pvcr *persistentVolumeClaimResize) Validate() error {
+// ValidateInitialization ensures lister is set.
+func (pvcr *persistentVolumeClaimResize) ValidateInitialization() error {
 	if pvcr.pvLister == nil {
 		return fmt.Errorf("missing persistent volume lister")
 	}
@@ -79,7 +80,7 @@ func (pvcr *persistentVolumeClaimResize) Validate() error {
 	return nil
 }
 
-func (pvcr *persistentVolumeClaimResize) Admit(a admission.Attributes) error {
+func (pvcr *persistentVolumeClaimResize) Validate(a admission.Attributes) error {
 	if a.GetResource().GroupResource() != api.Resource("persistentvolumeclaims") {
 		return nil
 	}
@@ -98,6 +99,17 @@ func (pvcr *persistentVolumeClaimResize) Admit(a admission.Attributes) error {
 		return nil
 	}
 
+	oldSize := oldPvc.Spec.Resources.Requests[api.ResourceStorage]
+	newSize := pvc.Spec.Resources.Requests[api.ResourceStorage]
+
+	if newSize.Cmp(oldSize) <= 0 {
+		return nil
+	}
+
+	if oldPvc.Status.Phase != api.ClaimBound {
+		return admission.NewForbidden(a, fmt.Errorf("Only bound persistent volume claims can be expanded"))
+	}
+
 	// Growing Persistent volumes is only allowed for PVCs for which their StorageClass
 	// explicitly allows it
 	if !pvcr.allowResize(pvc, oldPvc) {
@@ -108,13 +120,12 @@ func (pvcr *persistentVolumeClaimResize) Admit(a admission.Attributes) error {
 	// volume plugin must support resize
 	pv, err := pvcr.pvLister.Get(pvc.Spec.VolumeName)
 	if err != nil {
-		return nil
+		return admission.NewForbidden(a, fmt.Errorf("Error updating persistent volume claim because fetching associated persistent volume failed"))
 	}
 
 	if !pvcr.checkVolumePlugin(pv) {
 		return admission.NewForbidden(a, fmt.Errorf("volume plugin does not support resize"))
 	}
-
 	return nil
 }
 
@@ -138,9 +149,17 @@ func (pvcr *persistentVolumeClaimResize) allowResize(pvc, oldPvc *api.Persistent
 
 // checkVolumePlugin checks whether the volume plugin supports resize
 func (pvcr *persistentVolumeClaimResize) checkVolumePlugin(pv *api.PersistentVolume) bool {
-	if pv.Spec.Glusterfs != nil {
+	if pv.Spec.Glusterfs != nil || pv.Spec.Cinder != nil || pv.Spec.RBD != nil {
 		return true
 	}
-	return false
 
+	if pv.Spec.GCEPersistentDisk != nil {
+		return true
+	}
+
+	if pv.Spec.AWSElasticBlockStore != nil {
+		return true
+	}
+
+	return false
 }
