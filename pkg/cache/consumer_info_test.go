@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
@@ -37,9 +38,17 @@ func consumerInfoEqual(l, r *ConsumerInfo) bool {
 func TestConsumerInfo_AddPod(t *testing.T) {
 
 	// case1
-	consumer := buildConsumer("c1", "c1")
-	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"))
-	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"))
+	case01_consumer := buildConsumer("c1", "c1")
+	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
+	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
+
+	// case2
+	case02_consumer := buildConsumer("c1", "c1")
+	case02_owner := metav1.OwnerReference{
+		UID: "owner1",
+	}
+	case02_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner})
+	case02_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner})
 
 	tests := []struct {
 		name     string
@@ -49,17 +58,45 @@ func TestConsumerInfo_AddPod(t *testing.T) {
 	}{
 		{
 			name:     "add 1 pending non-owner pod, add 1 running non-owner pod",
-			consumer: consumer,
-			pods:     []*v1.Pod{pod1, pod2},
+			consumer: case01_consumer,
+			pods:     []*v1.Pod{case01_pod1, case01_pod2},
 			expected: &ConsumerInfo{
-				Consumer:  consumer,
+				Consumer:  case01_consumer,
 				Name:      "c1",
 				Namespace: "c1",
 				PodSets:   make(map[types.UID]*PodSet),
 				Pods: map[string]*PodInfo{
-					"p1": NewPodInfo(pod1),
-					"p2": NewPodInfo(pod2),
+					"p1": NewPodInfo(case01_pod1),
+					"p2": NewPodInfo(case01_pod2),
 				},
+			},
+		},
+		{
+			name:     "add 1 pending owner pod, add 1 running owner pod",
+			consumer: case02_consumer,
+			pods:     []*v1.Pod{case02_pod1, case02_pod2},
+			expected: &ConsumerInfo{
+				Consumer:  case02_consumer,
+				Name:      "c1",
+				Namespace: "c1",
+				PodSets: map[types.UID]*PodSet{
+					"owner1": {
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "owner1",
+							UID:  "owner1",
+						},
+						Allocated:    buildResource("1000m", "1G"),
+						TotalRequest: buildResource("2000m", "2G"),
+						Running: []*PodInfo{
+							NewPodInfo(case02_pod2),
+						},
+						Pending: []*PodInfo{
+							NewPodInfo(case02_pod1),
+						},
+						Others: []*PodInfo{},
+					},
+				},
+				Pods: make(map[string]*PodInfo),
 			},
 		},
 	}
@@ -82,10 +119,19 @@ func TestConsumerInfo_AddPod(t *testing.T) {
 func TestConsumerInfo_RemovePod(t *testing.T) {
 
 	// case1
-	consumer := buildConsumer("c1", "c1")
-	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"))
-	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"))
-	pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("1000m", "1G"))
+	case01_consumer := buildConsumer("c1", "c1")
+	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
+	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
+	case01_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
+
+	// case2
+	case02_consumer := buildConsumer("c1", "c1")
+	case02_owner := metav1.OwnerReference{
+		UID: "owner1",
+	}
+	case02_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner})
+	case02_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner})
+	case02_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner})
 
 	tests := []struct {
 		name     string
@@ -96,18 +142,47 @@ func TestConsumerInfo_RemovePod(t *testing.T) {
 	}{
 		{
 			name:     "add 1 pending non-owner pod, add 2 running non-owner pod, remove 1 running non-owner pod",
-			consumer: consumer,
-			pods:     []*v1.Pod{pod1, pod2, pod3},
-			rmPods:   []*v1.Pod{pod2},
+			consumer: case01_consumer,
+			pods:     []*v1.Pod{case01_pod1, case01_pod2, case01_pod3},
+			rmPods:   []*v1.Pod{case01_pod2},
 			expected: &ConsumerInfo{
-				Consumer:  consumer,
+				Consumer:  case01_consumer,
 				Name:      "c1",
 				Namespace: "c1",
 				PodSets:   make(map[types.UID]*PodSet),
 				Pods: map[string]*PodInfo{
-					"p1": NewPodInfo(pod1),
-					"p3": NewPodInfo(pod3),
+					"p1": NewPodInfo(case01_pod1),
+					"p3": NewPodInfo(case01_pod3),
 				},
+			},
+		},
+		{
+			name:     "add 1 pending owner pod, add 2 running owner pod, remove 1 running owner pod",
+			consumer: case02_consumer,
+			pods:     []*v1.Pod{case02_pod1, case02_pod2, case02_pod3},
+			rmPods:   []*v1.Pod{case02_pod2},
+			expected: &ConsumerInfo{
+				Consumer:  case02_consumer,
+				Name:      "c1",
+				Namespace: "c1",
+				PodSets: map[types.UID]*PodSet{
+					"owner1": {
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "owner1",
+							UID:  "owner1",
+						},
+						Allocated:    buildResource("1000m", "1G"),
+						TotalRequest: buildResource("2000m", "2G"),
+						Running: []*PodInfo{
+							NewPodInfo(case02_pod3),
+						},
+						Pending: []*PodInfo{
+							NewPodInfo(case02_pod1),
+						},
+						Others: []*PodInfo{},
+					},
+				},
+				Pods: make(map[string]*PodInfo),
 			},
 		},
 	}

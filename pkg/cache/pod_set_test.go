@@ -35,9 +35,12 @@ func podSetEqual(l, r *PodSet) bool {
 
 func TestPodSet_AddPodInfo(t *testing.T) {
 	// case1
-	pod1 := buildPod("c1", "p1", "n1", v1.PodPending, buildResourceList("1000m", "1G"))
-	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"))
-	uid := types.UID("uid")
+	case01_uid := types.UID("uid")
+	case01_owner := metav1.OwnerReference{
+		UID: case01_uid,
+	}
+	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner})
+	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case01_owner})
 
 	tests := []struct {
 		name     string
@@ -46,21 +49,21 @@ func TestPodSet_AddPodInfo(t *testing.T) {
 		expected *PodSet
 	}{
 		{
-			name: "add 1 pending pod, 1 running pod",
-			uid:  uid,
-			pods: []*v1.Pod{pod1, pod2},
+			name: "add 1 pending owner pod, 1 running owner pod",
+			uid:  case01_uid,
+			pods: []*v1.Pod{case01_pod1, case01_pod2},
 			expected: &PodSet{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: string(uid),
-					UID:  uid,
+					Name: string(case01_uid),
+					UID:  case01_uid,
 				},
 				Allocated:    buildResource("2000m", "2G"),
 				TotalRequest: buildResource("3000m", "3G"),
 				Running: []*PodInfo{
-					NewPodInfo(pod2),
+					NewPodInfo(case01_pod2),
 				},
 				Pending: []*PodInfo{
-					NewPodInfo(pod1),
+					NewPodInfo(case01_pod1),
 				},
 				Others: []*PodInfo{},
 			},
@@ -84,10 +87,22 @@ func TestPodSet_AddPodInfo(t *testing.T) {
 
 func TestPodSet_DeletePodInfo(t *testing.T) {
 	// case1
-	pod1 := buildPod("c1", "p1", "n1", v1.PodPending, buildResourceList("1000m", "1G"))
-	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"))
-	pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"))
-	uid := types.UID("uid")
+	case01_uid := types.UID("owner1")
+	case01_owner := metav1.OwnerReference{
+		UID: case01_uid,
+	}
+	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner})
+	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case01_owner})
+	case01_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{case01_owner})
+
+	// case2
+	case02_uid := types.UID("owner2")
+	case02_owner := metav1.OwnerReference{
+		UID: case02_uid,
+	}
+	case02_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner})
+	case02_pod2 := buildPod("c1", "p2", "", v1.PodPending, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case02_owner})
+	case02_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{case02_owner})
 
 	tests := []struct {
 		name     string
@@ -97,22 +112,43 @@ func TestPodSet_DeletePodInfo(t *testing.T) {
 		expected *PodSet
 	}{
 		{
-			name:   "add 1 pending pod, 2 running pod, remove 1 running pod",
-			uid:    uid,
-			pods:   []*v1.Pod{pod1, pod2, pod3},
-			rmPods: []*v1.Pod{pod2},
+			name:   "add 1 pending owner pod, 2 running owner pod, remove 1 running owner pod",
+			uid:    case01_uid,
+			pods:   []*v1.Pod{case01_pod1, case01_pod2, case01_pod3},
+			rmPods: []*v1.Pod{case01_pod2},
 			expected: &PodSet{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: string(uid),
-					UID:  uid,
+					Name: string(case01_uid),
+					UID:  case01_uid,
 				},
 				Allocated:    buildResource("3000m", "3G"),
 				TotalRequest: buildResource("4000m", "4G"),
 				Running: []*PodInfo{
-					NewPodInfo(pod3),
+					NewPodInfo(case01_pod3),
 				},
 				Pending: []*PodInfo{
-					NewPodInfo(pod1),
+					NewPodInfo(case01_pod1),
+				},
+				Others: []*PodInfo{},
+			},
+		},
+		{
+			name:   "add 2 pending owner pod, 1 running owner pod, remove 1 pending owner pod",
+			uid:    case02_uid,
+			pods:   []*v1.Pod{case02_pod1, case02_pod2, case02_pod3},
+			rmPods: []*v1.Pod{case02_pod2},
+			expected: &PodSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: string(case02_uid),
+					UID:  case02_uid,
+				},
+				Allocated:    buildResource("3000m", "3G"),
+				TotalRequest: buildResource("4000m", "4G"),
+				Running: []*PodInfo{
+					NewPodInfo(case02_pod3),
+				},
+				Pending: []*PodInfo{
+					NewPodInfo(case02_pod1),
 				},
 				Others: []*PodInfo{},
 			},

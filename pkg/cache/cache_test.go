@@ -88,11 +88,12 @@ func buildNode(name string, alloc v1.ResourceList) *v1.Node {
 	}
 }
 
-func buildPod(ns, n, nn string, p v1.PodPhase, req v1.ResourceList) *v1.Pod {
+func buildPod(ns, n, nn string, p v1.PodPhase, req v1.ResourceList, owner []metav1.OwnerReference) *v1.Pod {
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      n,
-			Namespace: ns,
+			Name:            n,
+			Namespace:       ns,
+			OwnerReferences: owner,
 		},
 		Status: v1.PodStatus{
 			Phase: p,
@@ -137,8 +138,8 @@ func TestAddPod(t *testing.T) {
 
 	// case 1:
 	node1 := buildNode("n1", buildResourceList("2000m", "10G"))
-	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"))
-	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"))
+	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
+	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
 	consumer1 := buildConsumer("c1", "c1")
 	ni1 := NewNodeInfo(node1)
 	pi1 := NewPodInfo(pod1)
@@ -203,8 +204,8 @@ func TestAddNode(t *testing.T) {
 
 	// case 1
 	node1 := buildNode("n1", buildResourceList("2000m", "10G"))
-	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"))
-	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"))
+	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
+	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
 	ni1 := NewNodeInfo(node1)
 	pi1 := NewPodInfo(pod1)
 	pi2 := NewPodInfo(pod2)
@@ -265,8 +266,8 @@ func TestAddNode(t *testing.T) {
 func TestAddConsumer(t *testing.T) {
 
 	// case 1
-	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"))
-	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"))
+	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
+	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
 	consumer1 := buildConsumer("c1", "c1")
 	pi1 := NewPodInfo(pod1)
 	pi2 := NewPodInfo(pod2)

@@ -39,6 +39,13 @@ func init() {
 	}
 }
 
+func buildResourceList(cpu string, memory string) v1.ResourceList {
+	return v1.ResourceList{
+		v1.ResourceCPU:    resource.MustParse(cpu),
+		v1.ResourceMemory: resource.MustParse(memory),
+	}
+}
+
 func buildNode(name string, alloc v1.ResourceList) *v1.Node {
 	return &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
@@ -102,22 +109,13 @@ func TestAllocate(t *testing.T) {
 			name: "one consumer with two Pods on one node",
 			pods: []*v1.Pod{
 				// pending pod with owner, under c1
-				buildPod("c1", "p1", "", v1.PodPending, v1.ResourceList{
-					v1.ResourceCPU:    resource.MustParse("1"),
-					v1.ResourceMemory: resource.MustParse("1G"),
-				}, []metav1.OwnerReference{owner1}),
+				buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}),
 
 				// pending pod with owner, under c1
-				buildPod("c1", "p2", "", v1.PodPending, v1.ResourceList{
-					v1.ResourceCPU:    resource.MustParse("1"),
-					v1.ResourceMemory: resource.MustParse("1G"),
-				}, []metav1.OwnerReference{owner1}),
+				buildPod("c1", "p2", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}),
 			},
 			nodes: []*v1.Node{
-				buildNode("n1", v1.ResourceList{
-					v1.ResourceCPU:    resource.MustParse("2"),
-					v1.ResourceMemory: resource.MustParse("4Gi"),
-				}),
+				buildNode("n1", buildResourceList("2", "4Gi")),
 			},
 			consumers: []*arbv1.Consumer{
 				buildConsumer("c1", "c1"),
@@ -131,34 +129,52 @@ func TestAllocate(t *testing.T) {
 			name: "two consumer on one node",
 			pods: []*v1.Pod{
 				// pending pod with owner1, under c1
-				buildPod("c1", "p1", "", v1.PodPending, v1.ResourceList{
-					v1.ResourceCPU:    resource.MustParse("1"),
-					v1.ResourceMemory: resource.MustParse("1G"),
-				}, []metav1.OwnerReference{owner1}),
+				buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}),
 
 				// pending pod with owner1, under c1
-				buildPod("c1", "p2", "", v1.PodPending, v1.ResourceList{
-					v1.ResourceCPU:    resource.MustParse("1"),
-					v1.ResourceMemory: resource.MustParse("1G"),
-				}, []metav1.OwnerReference{owner1}),
+				buildPod("c1", "p2", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}),
 
 				// pending pod with owner2, under c2
-				buildPod("c2", "p1", "", v1.PodPending, v1.ResourceList{
-					v1.ResourceCPU:    resource.MustParse("1"),
-					v1.ResourceMemory: resource.MustParse("1G"),
-				}, []metav1.OwnerReference{owner2}),
+				buildPod("c2", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}),
 
 				// pending pod with owner, under c2
-				buildPod("c2", "p2", "", v1.PodPending, v1.ResourceList{
-					v1.ResourceCPU:    resource.MustParse("1"),
-					v1.ResourceMemory: resource.MustParse("1G"),
-				}, []metav1.OwnerReference{owner2}),
+				buildPod("c2", "p2", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}),
 			},
 			nodes: []*v1.Node{
-				buildNode("n1", v1.ResourceList{
-					v1.ResourceCPU:    resource.MustParse("2"),
-					v1.ResourceMemory: resource.MustParse("4Gi"),
-				}),
+				buildNode("n1", buildResourceList("2", "4G")),
+			},
+			consumers: []*arbv1.Consumer{
+				buildConsumer("c1", "c1"),
+				buildConsumer("c2", "c2"),
+			},
+			expected: map[string]string{
+				"c1/p1": "n1",
+				"c2/p1": "n1",
+			},
+		},
+		{
+			name: "two consumer on one node, with non-owner pods",
+			pods: []*v1.Pod{
+				// pending pod with owner1, under c1
+				buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}),
+
+				// pending pod with owner1, under c1
+				buildPod("c1", "p2", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}),
+
+				// pending pod without owner, under c1
+				buildPod("c1", "p3", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{}),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p2", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}),
+
+				// pending pod without owner, under c2
+				buildPod("c2", "p3", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{}),
+			},
+			nodes: []*v1.Node{
+				buildNode("n1", buildResourceList("2", "4G")),
 			},
 			consumers: []*arbv1.Consumer{
 				buildConsumer("c1", "c1"),
