@@ -36,9 +36,7 @@ func podSetEqual(l, r *PodSet) bool {
 func TestPodSet_AddPodInfo(t *testing.T) {
 	// case1
 	case01_uid := types.UID("uid")
-	case01_owner := metav1.OwnerReference{
-		UID: case01_uid,
-	}
+	case01_owner := buildOwnerReference("uid")
 	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner})
 	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case01_owner})
 
@@ -88,18 +86,14 @@ func TestPodSet_AddPodInfo(t *testing.T) {
 func TestPodSet_DeletePodInfo(t *testing.T) {
 	// case1
 	case01_uid := types.UID("owner1")
-	case01_owner := metav1.OwnerReference{
-		UID: case01_uid,
-	}
+	case01_owner := buildOwnerReference(string(case01_uid))
 	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner})
 	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case01_owner})
 	case01_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{case01_owner})
 
 	// case2
 	case02_uid := types.UID("owner2")
-	case02_owner := metav1.OwnerReference{
-		UID: case02_uid,
-	}
+	case02_owner := buildOwnerReference(string(case02_uid))
 	case02_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner})
 	case02_pod2 := buildPod("c1", "p2", "", v1.PodPending, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case02_owner})
 	case02_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{case02_owner})
