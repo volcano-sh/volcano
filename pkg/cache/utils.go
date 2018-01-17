@@ -20,6 +20,9 @@ import (
 	"fmt"
 
 	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	clientcache "k8s.io/client-go/tools/cache"
 )
 
@@ -30,4 +33,18 @@ func podKey(pod *v1.Pod) string {
 	} else {
 		return key
 	}
+}
+
+func getPodOwner(pod *v1.Pod) types.UID {
+	meta_pod, err := meta.Accessor(pod)
+	if err != nil {
+		return ""
+	}
+
+	controllerRef := metav1.GetControllerOf(meta_pod)
+	if controllerRef != nil {
+		return controllerRef.UID
+	}
+
+	return ""
 }

@@ -134,6 +134,14 @@ func buildResource(cpu string, memory string) *Resource {
 	})
 }
 
+func buildOwnerReference(owner string) metav1.OwnerReference {
+	controller := true
+	return metav1.OwnerReference{
+		Controller: &controller,
+		UID:        types.UID(owner),
+	}
+}
+
 func TestAddPod(t *testing.T) {
 
 	// case 1:
