@@ -45,6 +45,7 @@ func NewPodInfo(pod *v1.Pod) *PodInfo {
 
 	pi := &PodInfo{
 		UID:       pod.UID,
+		Owner:     getPodOwner(pod),
 		Name:      pod.Name,
 		Namespace: pod.Namespace,
 		NodeName:  pod.Spec.NodeName,
@@ -52,11 +53,6 @@ func NewPodInfo(pod *v1.Pod) *PodInfo {
 
 		Pod:     pod,
 		Request: req,
-	}
-
-	for _, or := range pod.OwnerReferences {
-		pi.Owner = or.UID
-		break
 	}
 
 	return pi

@@ -44,9 +44,7 @@ func TestConsumerInfo_AddPod(t *testing.T) {
 
 	// case2
 	case02_consumer := buildConsumer("c1", "c1")
-	case02_owner := metav1.OwnerReference{
-		UID: "owner1",
-	}
+	case02_owner := buildOwnerReference("owner1")
 	case02_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner})
 	case02_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner})
 
@@ -126,9 +124,7 @@ func TestConsumerInfo_RemovePod(t *testing.T) {
 
 	// case2
 	case02_consumer := buildConsumer("c1", "c1")
-	case02_owner := metav1.OwnerReference{
-		UID: "owner1",
-	}
+	case02_owner := buildOwnerReference("owner1")
 	case02_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner})
 	case02_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner})
 	case02_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner})

@@ -93,7 +93,7 @@ func (pc *PolicyController) runOnce() {
 	glog.V(4).Infof("Start scheduling ...")
 	defer glog.V(4).Infof("End scheduling ...")
 
-	// TODO(k82cn): cancel all alloc decision processing firstly.
+	pc.cancelAllocDecisionProcessing()
 
 	snapshot := pc.cache.Snapshot()
 
@@ -107,6 +107,14 @@ func (pc *PolicyController) enqueue(consumers []*schedcache.ConsumerInfo) {
 		for _, ps := range c.PodSets {
 			pc.podSets.Add(ps)
 		}
+	}
+}
+
+func (pc *PolicyController) cancelAllocDecisionProcessing() {
+	// clean up FIFO Queue podSets
+	err := pc.podSets.Replace([]interface{}{}, "")
+	if err != nil {
+		glog.V(4).Infof("Reset podSets error %v", err)
 	}
 }
 
