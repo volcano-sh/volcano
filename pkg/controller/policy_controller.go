@@ -93,7 +93,7 @@ func (pc *PolicyController) runOnce() {
 	glog.V(4).Infof("Start scheduling ...")
 	defer glog.V(4).Infof("End scheduling ...")
 
-	pc.resetPodSets()
+	pc.cancelAllocDecisionProcessing()
 
 	snapshot := pc.cache.Snapshot()
 
@@ -110,7 +110,7 @@ func (pc *PolicyController) enqueue(consumers []*schedcache.ConsumerInfo) {
 	}
 }
 
-func (pc *PolicyController) resetPodSets() {
+func (pc *PolicyController) cancelAllocDecisionProcessing() {
 	// clean up FIFO Queue podSets
 	err := pc.podSets.Replace([]interface{}{}, "")
 	if err != nil {
