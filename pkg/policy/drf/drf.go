@@ -18,9 +18,9 @@ package drf
 
 import (
 	"container/heap"
+	"sort"
 
 	"github.com/golang/glog"
-
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/cache"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/policy/util"
 )
@@ -46,6 +46,7 @@ func (drf *drfScheduler) Allocate(consumers []*cache.ConsumerInfo, nodes []*cach
 	glog.V(4).Infof("Enter Allocate ...")
 	defer glog.V(4).Infof("Leaving Allocate ...")
 
+	dq := util.NewDictionaryQueue()
 	pq := util.NewPriorityQueue()
 
 	total := cache.EmptyResource()
@@ -58,6 +59,46 @@ func (drf *drfScheduler) Allocate(consumers []*cache.ConsumerInfo, nodes []*cach
 		for _, ps := range c.PodSets {
 			psi := newPodSetInfo(ps, total)
 			pq.Push(util.NewItem(psi, psi.priority))
+			dq.Push(util.NewDictionaryItem(psi, psi.podSet.Name))
+		}
+	}
+
+	sort.Sort(dq)
+	// assign MinAvailable of each podSet first by chronologically
+	for _, q := range dq {
+		psi := q.Value.(*podSetInfo)
+		for {
+			if psi.meetMinAvailable() {
+				glog.V(3).Infof("MinAvailable of podset %s/%s is met, assign next podset",
+					psi.podSet.Namespace, psi.podSet.Name)
+				break
+			}
+
+			p := psi.nextPendingPod()
+			if p == nil {
+				glog.V(3).Infof("no pending Pod in PodSet <%v/%v>",
+					psi.podSet.Namespace, psi.podSet.Name)
+				break
+			}
+
+			assigned := false
+			for _, node := range nodes {
+				if p.Request.LessEqual(node.Idle) {
+					psi.assignPendingPod(node.Name)
+					node.Idle.Sub(p.Request)
+
+					assigned = true
+
+					glog.V(3).Infof("assign <%v/%v> to <%s>: available <%v>, request <%v>",
+						p.Namespace, p.Name, p.NodeName, node.Idle, p.Request)
+					break
+				}
+			}
+
+			// the left resources can not meet any pod in this podset
+			if !assigned {
+				break
+			}
 		}
 	}
 
