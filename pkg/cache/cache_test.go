@@ -21,9 +21,11 @@ import (
 	"testing"
 
 	"k8s.io/api/core/v1"
+	"k8s.io/api/policy/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 )
@@ -88,12 +90,13 @@ func buildNode(name string, alloc v1.ResourceList) *v1.Node {
 	}
 }
 
-func buildPod(ns, n, nn string, p v1.PodPhase, req v1.ResourceList, owner []metav1.OwnerReference) *v1.Pod {
+func buildPod(ns, n, nn string, p v1.PodPhase, req v1.ResourceList, owner []metav1.OwnerReference, labels map[string]string) *v1.Pod {
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            n,
 			Namespace:       ns,
 			OwnerReferences: owner,
+			Labels:          labels,
 		},
 		Status: v1.PodStatus{
 			Phase: p,
@@ -107,6 +110,22 @@ func buildPod(ns, n, nn string, p v1.PodPhase, req v1.ResourceList, owner []meta
 					},
 				},
 			},
+		},
+	}
+}
+
+func buildPdb(n string, min int, selectorMap map[string]string) *v1beta1.PodDisruptionBudget {
+	selector := &metav1.LabelSelector{
+		MatchLabels: selectorMap,
+	}
+	minAvailable := intstr.FromInt(min)
+	return &v1beta1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: n,
+		},
+		Spec: v1beta1.PodDisruptionBudgetSpec{
+			Selector:     selector,
+			MinAvailable: &minAvailable,
 		},
 	}
 }
@@ -146,8 +165,8 @@ func TestAddPod(t *testing.T) {
 
 	// case 1:
 	node1 := buildNode("n1", buildResourceList("2000m", "10G"))
-	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
-	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
+	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	consumer1 := buildConsumer("c1", "c1")
 	ni1 := NewNodeInfo(node1)
 	pi1 := NewPodInfo(pod1)
@@ -212,8 +231,8 @@ func TestAddNode(t *testing.T) {
 
 	// case 1
 	node1 := buildNode("n1", buildResourceList("2000m", "10G"))
-	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
-	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
+	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	ni1 := NewNodeInfo(node1)
 	pi1 := NewPodInfo(pod1)
 	pi2 := NewPodInfo(pod2)
@@ -274,8 +293,8 @@ func TestAddNode(t *testing.T) {
 func TestAddConsumer(t *testing.T) {
 
 	// case 1
-	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
-	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
+	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	consumer1 := buildConsumer("c1", "c1")
 	pi1 := NewPodInfo(pod1)
 	pi2 := NewPodInfo(pod2)

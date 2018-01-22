@@ -37,8 +37,8 @@ func TestPodSet_AddPodInfo(t *testing.T) {
 	// case1
 	case01_uid := types.UID("uid")
 	case01_owner := buildOwnerReference("uid")
-	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner})
-	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case01_owner})
+	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
+	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
 
 	tests := []struct {
 		name     string
@@ -55,6 +55,8 @@ func TestPodSet_AddPodInfo(t *testing.T) {
 					Name: string(case01_uid),
 					UID:  case01_uid,
 				},
+				PdbName:      "",
+				MinAvailable: 0,
 				Allocated:    buildResource("2000m", "2G"),
 				TotalRequest: buildResource("3000m", "3G"),
 				Running: []*PodInfo{
@@ -87,16 +89,16 @@ func TestPodSet_DeletePodInfo(t *testing.T) {
 	// case1
 	case01_uid := types.UID("owner1")
 	case01_owner := buildOwnerReference(string(case01_uid))
-	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner})
-	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case01_owner})
-	case01_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{case01_owner})
+	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
+	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
+	case01_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
 
 	// case2
 	case02_uid := types.UID("owner2")
 	case02_owner := buildOwnerReference(string(case02_uid))
-	case02_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner})
-	case02_pod2 := buildPod("c1", "p2", "", v1.PodPending, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case02_owner})
-	case02_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{case02_owner})
+	case02_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
+	case02_pod2 := buildPod("c1", "p2", "", v1.PodPending, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
+	case02_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
 
 	tests := []struct {
 		name     string
@@ -115,6 +117,8 @@ func TestPodSet_DeletePodInfo(t *testing.T) {
 					Name: string(case01_uid),
 					UID:  case01_uid,
 				},
+				PdbName:      "",
+				MinAvailable: 0,
 				Allocated:    buildResource("3000m", "3G"),
 				TotalRequest: buildResource("4000m", "4G"),
 				Running: []*PodInfo{
@@ -136,6 +140,8 @@ func TestPodSet_DeletePodInfo(t *testing.T) {
 					Name: string(case02_uid),
 					UID:  case02_uid,
 				},
+				PdbName:      "",
+				MinAvailable: 0,
 				Allocated:    buildResource("3000m", "3G"),
 				TotalRequest: buildResource("4000m", "4G"),
 				Running: []*PodInfo{
