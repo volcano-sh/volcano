@@ -74,6 +74,9 @@ func (pi *PodInfo) Clone() *PodInfo {
 type PodSet struct {
 	metav1.ObjectMeta
 
+	PdbName      string
+	MinAvailable int
+
 	Allocated    *Resource
 	TotalRequest *Resource
 
@@ -88,6 +91,8 @@ func NewPodSet(uid types.UID) *PodSet {
 			Name: string(uid),
 			UID:  uid,
 		},
+		PdbName:      "",
+		MinAvailable: 0,
 		Allocated:    EmptyResource(),
 		TotalRequest: EmptyResource(),
 		Running:      make([]*PodInfo, 0),
@@ -107,6 +112,12 @@ func (ps *PodSet) AddPodInfo(pi *PodInfo) {
 		ps.TotalRequest.Add(pi.Request)
 	default:
 		ps.Others = append(ps.Others, pi)
+	}
+
+	// Update PodSet Labels
+	// assume all pods in the same PodSet have same labels
+	if len(ps.Labels) == 0 && len(pi.Pod.Labels) != 0 {
+		ps.Labels = pi.Pod.Labels
 	}
 }
 
@@ -135,6 +146,8 @@ func (ps *PodSet) Clone() *PodSet {
 			Name: ps.Name,
 			UID:  ps.UID,
 		},
+		PdbName:      ps.PdbName,
+		MinAvailable: ps.MinAvailable,
 		Allocated:    ps.Allocated.Clone(),
 		TotalRequest: ps.TotalRequest.Clone(),
 		Running:      make([]*PodInfo, 0),

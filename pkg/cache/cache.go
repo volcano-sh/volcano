@@ -23,8 +23,10 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
+	"k8s.io/api/policy/v1beta1"
 	"k8s.io/client-go/informers"
 	clientv1 "k8s.io/client-go/informers/core/v1"
+	policyv1 "k8s.io/client-go/informers/policy/v1beta1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
@@ -46,10 +48,12 @@ type SchedulerCache struct {
 	podInformer      clientv1.PodInformer
 	nodeInformer     clientv1.NodeInformer
 	consumerInformer arbclient.ConsumerInformer
+	pdbInformer      policyv1.PodDisruptionBudgetInformer
 
 	Pods      map[string]*PodInfo
 	Nodes     map[string]*NodeInfo
 	Consumers map[string]*ConsumerInfo
+	Pdbs      map[string]*PdbInfo
 }
 
 func newSchedulerCache(config *rest.Config) *SchedulerCache {
@@ -57,6 +61,7 @@ func newSchedulerCache(config *rest.Config) *SchedulerCache {
 		Nodes:     make(map[string]*NodeInfo),
 		Pods:      make(map[string]*PodInfo),
 		Consumers: make(map[string]*ConsumerInfo),
+		Pdbs:      make(map[string]*PdbInfo),
 	}
 
 	kubecli := kubernetes.NewForConfigOrDie(config)
@@ -119,6 +124,25 @@ func newSchedulerCache(config *rest.Config) *SchedulerCache {
 			},
 		})
 
+	// create informer for pdb information
+	sc.pdbInformer = informerFactory.Policy().V1beta1().PodDisruptionBudgets()
+	sc.pdbInformer.Informer().AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				switch t := obj.(type) {
+				case *v1beta1.PodDisruptionBudget:
+					glog.V(4).Infof("Filter pdb name(%s)\n", t.Name)
+					return true
+				default:
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    sc.AddPDB,
+				DeleteFunc: sc.DeletePDB,
+			},
+		})
+
 	return sc
 }
 
@@ -126,6 +150,7 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.podInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
 	go sc.consumerInformer.Informer().Run(stopCh)
+	go sc.pdbInformer.Informer().Run(stopCh)
 }
 
 func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
@@ -167,6 +192,10 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 		sc.Consumers[pod.Namespace].Namespace = pod.Namespace
 	}
 	sc.Consumers[pod.Namespace].AddPod(pi)
+
+	for _, pdb := range sc.Pdbs {
+		sc.Consumers[pod.Namespace].AddPdb(pdb)
+	}
 
 	sc.Pods[key] = pi
 
@@ -484,6 +513,77 @@ func (sc *SchedulerCache) DeleteConsumer(obj interface{}) {
 	return
 }
 
+func (sc *SchedulerCache) addPDB(pdb *v1beta1.PodDisruptionBudget) error {
+	pi := NewPdbInfo(pdb)
+	sc.Pdbs[pi.Name] = pi
+	for _, c := range sc.Consumers {
+		c.AddPdb(pi)
+	}
+
+	return nil
+}
+
+func (sc *SchedulerCache) deletePDB(pdb *v1beta1.PodDisruptionBudget) error {
+	pi, exist := sc.Pdbs[pdb.Name]
+	if !exist {
+		return nil
+	}
+	delete(sc.Pdbs, pdb.Name)
+
+	for _, c := range sc.Consumers {
+		c.RemovePdb(pi)
+	}
+
+	return nil
+}
+
+func (sc *SchedulerCache) AddPDB(obj interface{}) {
+	pdb, ok := obj.(*v1beta1.PodDisruptionBudget)
+	if !ok {
+		glog.Errorf("Cannot convert to *v1beta1.PodDisruptionBudget: %v", obj)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	glog.V(4).Infof("Add PodDisruptionBudget(%s) into cache, spec(%#v)", pdb.Name, pdb.Spec)
+	err := sc.addPDB(pdb)
+	if err != nil {
+		glog.Errorf("Failed to add PodDisruptionBudget %s into cache: %v", pdb.Name, err)
+		return
+	}
+	return
+}
+
+func (sc *SchedulerCache) DeletePDB(obj interface{}) {
+	var pdb *v1beta1.PodDisruptionBudget
+	switch t := obj.(type) {
+	case *v1beta1.PodDisruptionBudget:
+		pdb = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		pdb, ok = t.Obj.(*v1beta1.PodDisruptionBudget)
+		if !ok {
+			glog.Errorf("Cannot convert to *v1beta1.PodDisruptionBudget: %v", t.Obj)
+			return
+		}
+	default:
+		glog.Errorf("Cannot convert to *v1beta1.PodDisruptionBudget: %v", t)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	err := sc.deletePDB(pdb)
+	if err != nil {
+		glog.Errorf("Failed to delete PodDisruptionBudget %s from cache: %v", pdb.Name, err)
+		return
+	}
+	return
+}
+
 func (sc *SchedulerCache) PodInformer() clientv1.PodInformer {
 	return sc.podInformer
 }
@@ -494,6 +594,10 @@ func (sc *SchedulerCache) NodeInformer() clientv1.NodeInformer {
 
 func (sc *SchedulerCache) QueueInformer() arbclient.ConsumerInformer {
 	return sc.consumerInformer
+}
+
+func (sc *SchedulerCache) PdbInformer() policyv1.PodDisruptionBudgetInformer {
+	return sc.pdbInformer
 }
 
 func (sc *SchedulerCache) Snapshot() *CacheSnapshot {

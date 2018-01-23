@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"k8s.io/api/core/v1"
+	"k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -39,14 +40,14 @@ func TestConsumerInfo_AddPod(t *testing.T) {
 
 	// case1
 	case01_consumer := buildConsumer("c1", "c1")
-	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
-	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
+	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 
 	// case2
 	case02_consumer := buildConsumer("c1", "c1")
 	case02_owner := buildOwnerReference("owner1")
-	case02_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner})
-	case02_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner})
+	case02_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
+	case02_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
 
 	tests := []struct {
 		name     string
@@ -83,6 +84,8 @@ func TestConsumerInfo_AddPod(t *testing.T) {
 							Name: "owner1",
 							UID:  "owner1",
 						},
+						PdbName:      "",
+						MinAvailable: 0,
 						Allocated:    buildResource("1000m", "1G"),
 						TotalRequest: buildResource("2000m", "2G"),
 						Running: []*PodInfo{
@@ -118,16 +121,16 @@ func TestConsumerInfo_RemovePod(t *testing.T) {
 
 	// case1
 	case01_consumer := buildConsumer("c1", "c1")
-	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
-	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
-	case01_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
+	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+	case01_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 
 	// case2
 	case02_consumer := buildConsumer("c1", "c1")
 	case02_owner := buildOwnerReference("owner1")
-	case02_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner})
-	case02_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner})
-	case02_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner})
+	case02_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
+	case02_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
+	case02_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
 
 	tests := []struct {
 		name     string
@@ -167,6 +170,8 @@ func TestConsumerInfo_RemovePod(t *testing.T) {
 							Name: "owner1",
 							UID:  "owner1",
 						},
+						PdbName:      "",
+						MinAvailable: 0,
 						Allocated:    buildResource("1000m", "1G"),
 						TotalRequest: buildResource("2000m", "2G"),
 						Running: []*PodInfo{
@@ -194,6 +199,165 @@ func TestConsumerInfo_RemovePod(t *testing.T) {
 		for _, pod := range test.rmPods {
 			pi := NewPodInfo(pod)
 			ci.RemovePod(pi)
+		}
+
+		if !consumerInfoEqual(ci, test.expected) {
+			t.Errorf("consumer info %d: \n expected %v, \n got %v \n",
+				i, test.expected, ci)
+		}
+	}
+}
+
+func TestConsumerInfo_AddPdb(t *testing.T) {
+
+	// case1
+	case01_consumer := buildConsumer("c1", "c1")
+	case01_owner := buildOwnerReference("owner1")
+	case01_labels := map[string]string{
+		"app": "nginx",
+	}
+	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner}, case01_labels)
+	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner}, case01_labels)
+	case01_selector := map[string]string{
+		"app": "nginx",
+	}
+	cass01_pdb1 := buildPdb("pdb1", 5, case01_selector)
+
+	tests := []struct {
+		name     string
+		consumer *arbv1.Consumer
+		pods     []*v1.Pod
+		pdbs     []*v1beta1.PodDisruptionBudget
+		expected *ConsumerInfo
+	}{
+		{
+			name:     "add 1 pdb",
+			consumer: case01_consumer,
+			pods:     []*v1.Pod{case01_pod1, case01_pod2},
+			pdbs:     []*v1beta1.PodDisruptionBudget{cass01_pdb1},
+			expected: &ConsumerInfo{
+				Consumer:  case01_consumer,
+				Name:      "c1",
+				Namespace: "c1",
+				PodSets: map[types.UID]*PodSet{
+					"owner1": {
+						ObjectMeta: metav1.ObjectMeta{
+							Name:   "owner1",
+							UID:    "owner1",
+							Labels: case01_labels,
+						},
+						PdbName:      "pdb1",
+						MinAvailable: 5,
+						Allocated:    buildResource("1000m", "1G"),
+						TotalRequest: buildResource("2000m", "2G"),
+						Running: []*PodInfo{
+							NewPodInfo(case01_pod2),
+						},
+						Pending: []*PodInfo{
+							NewPodInfo(case01_pod1),
+						},
+						Others: []*PodInfo{},
+					},
+				},
+				Pods: make(map[string]*PodInfo),
+			},
+		},
+	}
+
+	for i, test := range tests {
+		ci := NewConsumerInfo(test.consumer)
+
+		for _, pod := range test.pods {
+			pi := NewPodInfo(pod)
+			ci.AddPod(pi)
+		}
+
+		for _, pdb := range test.pdbs {
+			pi := NewPdbInfo(pdb)
+			ci.AddPdb(pi)
+		}
+
+		if !consumerInfoEqual(ci, test.expected) {
+			t.Errorf("consumer info %d: \n expected %v, \n got %v \n",
+				i, test.expected, ci)
+		}
+	}
+}
+
+func TestConsumerInfo_RemovePdb(t *testing.T) {
+
+	// case1
+	case01_consumer := buildConsumer("c1", "c1")
+	case01_owner := buildOwnerReference("owner1")
+	case01_labels := map[string]string{
+		"app": "nginx",
+	}
+	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner}, case01_labels)
+	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner}, case01_labels)
+	case01_selector := map[string]string{
+		"app": "nginx",
+	}
+	case01_pdb1 := buildPdb("pdb1", 5, case01_selector)
+
+	tests := []struct {
+		name     string
+		consumer *arbv1.Consumer
+		pods     []*v1.Pod
+		pdbs     []*v1beta1.PodDisruptionBudget
+		rmPdbs   []*v1beta1.PodDisruptionBudget
+		expected *ConsumerInfo
+	}{
+		{
+			name:     "add 1 pdb, remove 1 pdb",
+			consumer: case01_consumer,
+			pods:     []*v1.Pod{case01_pod1, case01_pod2},
+			pdbs:     []*v1beta1.PodDisruptionBudget{case01_pdb1},
+			rmPdbs:   []*v1beta1.PodDisruptionBudget{case01_pdb1},
+			expected: &ConsumerInfo{
+				Consumer:  case01_consumer,
+				Name:      "c1",
+				Namespace: "c1",
+				PodSets: map[types.UID]*PodSet{
+					"owner1": {
+						ObjectMeta: metav1.ObjectMeta{
+							Name:   "owner1",
+							UID:    "owner1",
+							Labels: case01_labels,
+						},
+						PdbName:      "",
+						MinAvailable: 0,
+						Allocated:    buildResource("1000m", "1G"),
+						TotalRequest: buildResource("2000m", "2G"),
+						Running: []*PodInfo{
+							NewPodInfo(case01_pod2),
+						},
+						Pending: []*PodInfo{
+							NewPodInfo(case01_pod1),
+						},
+						Others: []*PodInfo{},
+					},
+				},
+				Pods: make(map[string]*PodInfo),
+			},
+		},
+	}
+
+	for i, test := range tests {
+		ci := NewConsumerInfo(test.consumer)
+
+		for _, pod := range test.pods {
+			pi := NewPodInfo(pod)
+			ci.AddPod(pi)
+		}
+
+		for _, pdb := range test.pdbs {
+			pi := NewPdbInfo(pdb)
+			ci.AddPdb(pi)
+		}
+
+		for _, pdb := range test.rmPdbs {
+			pi := NewPdbInfo(pdb)
+			ci.RemovePdb(pi)
 		}
 
 		if !consumerInfoEqual(ci, test.expected) {

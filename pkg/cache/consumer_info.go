@@ -17,9 +17,13 @@ limitations under the License.
 package cache
 
 import (
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
+
+	"github.com/golang/glog"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 )
 
 type ConsumerInfo struct {
@@ -89,6 +93,46 @@ func (ci *ConsumerInfo) RemovePod(pi *PodInfo) {
 	} else {
 		if _, found := ci.PodSets[pi.Owner]; found {
 			ci.PodSets[pi.Owner].DeletePodInfo(pi)
+		}
+	}
+}
+
+func (ci *ConsumerInfo) AddPdb(pi *PdbInfo) {
+	for _, ps := range ci.PodSets {
+		if len(ps.PdbName) != 0 {
+			continue
+		}
+		selector, err := metav1.LabelSelectorAsSelector(pi.Pdb.Spec.Selector)
+		if err != nil {
+			glog.V(4).Infof("LabelSelectorAsSelector fail for pdb %s", pi.Name)
+			continue
+		}
+		// One PDB is fully for one PodSet
+		// TODO(jinzhej): handle PDB cross different PodSet later on demand
+		if selector.Matches(labels.Set(ps.Labels)) {
+			ps.PdbName = pi.Name
+			if pi.Pdb.Spec.MinAvailable.Type == intstr.Int {
+				// support integer MinAvailable in PodDisruptionBuget
+				// TODO(jinzhej): percentage MinAvailable, integer/percentage MaxUnavailable will be supported on demand
+				ps.MinAvailable = int(pi.Pdb.Spec.MinAvailable.IntVal)
+			}
+		}
+	}
+}
+
+func (ci *ConsumerInfo) RemovePdb(pi *PdbInfo) {
+	for _, ps := range ci.PodSets {
+		if len(ps.PdbName) == 0 {
+			continue
+		}
+		selector, err := metav1.LabelSelectorAsSelector(pi.Pdb.Spec.Selector)
+		if err != nil {
+			glog.V(4).Infof("LabelSelectorAsSelector fail for pdb %s", pi.Name)
+			continue
+		}
+		if selector.Matches(labels.Set(ps.Labels)) {
+			ps.PdbName = ""
+			ps.MinAvailable = 0
 		}
 	}
 }

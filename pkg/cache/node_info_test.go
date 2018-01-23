@@ -35,8 +35,8 @@ func nodeInfoEqual(l, r *NodeInfo) bool {
 func TestNodeInfo_AddPod(t *testing.T) {
 	// case1
 	case01_node := buildNode("n1", buildResourceList("8000m", "10G"))
-	case01_pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
-	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{})
+	case01_pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{}, make(map[string]string))
 
 	tests := []struct {
 		name     string
@@ -81,9 +81,9 @@ func TestNodeInfo_AddPod(t *testing.T) {
 func TestNodeInfo_RemovePod(t *testing.T) {
 	// case1
 	case01_node := buildNode("n1", buildResourceList("8000m", "10G"))
-	case01_pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{})
-	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{})
-	case01_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{})
+	case01_pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{}, make(map[string]string))
+	case01_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{}, make(map[string]string))
 
 	tests := []struct {
 		name     string
