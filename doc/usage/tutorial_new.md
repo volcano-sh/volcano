@@ -139,3 +139,29 @@ spec:
         ports:
         - containerPort: 80
 ```
+
+## 3. Create PodDisruptionBudget for Application
+
+Kube-arbitrator will reuse the number of `PodDisruptionBudget.spec.minAvailable` and change nothing of `PodDisruptionBudget` feature. Here is a sample:
+
+```
+# cat pdb.yaml 
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-01
+spec:
+  minAvailable: 4
+  selector:
+    matchLabels:
+      app: redis
+```
+
+For kube-arbitrator, above yaml file means
+
+* It is for the applications with label `app: redis`. Assume all pods under the same application (such as Deployment/RS/Job) have same `app` label
+* Each application with label `app:redis` need start `minAvailable` pods at least, `minAvailable` is 4.
+* When resources are sufficient, Kube-arbitrator will start `minAvailable` pods of each application one by one, and then start left pods of each application by DRF policy.
+* When resources are not sufficient, Kube-arbitrator just tries to start `minAvailable` pods of each application as much as possible.
+
+If there is no PodDisruptionBudget, `minAvailable` of each application will be 0.
