@@ -82,3 +82,7 @@ func (psi *podSetInfo) nextPendingPod() *cache.PodInfo {
 
 	return nil
 }
+
+func (psi *podSetInfo) meetMinAvailable() bool {
+	return len(psi.podSet.Running)+psi.pendingIndex >= psi.podSet.MinAvailable
+}
