@@ -45,23 +45,23 @@ func New(config *rest.Config) Cache {
 type SchedulerCache struct {
 	sync.Mutex
 
-	podInformer      clientv1.PodInformer
-	nodeInformer     clientv1.NodeInformer
+	podInformer   clientv1.PodInformer
+	nodeInformer  clientv1.NodeInformer
 	queueInformer arbclient.QueueInformer
-	pdbInformer      policyv1.PodDisruptionBudgetInformer
+	pdbInformer   policyv1.PodDisruptionBudgetInformer
 
-	Pods      map[string]*PodInfo
-	Nodes     map[string]*NodeInfo
+	Pods   map[string]*PodInfo
+	Nodes  map[string]*NodeInfo
 	Queues map[string]*QueueInfo
-	Pdbs      map[string]*PdbInfo
+	Pdbs   map[string]*PdbInfo
 }
 
 func newSchedulerCache(config *rest.Config) *SchedulerCache {
 	sc := &SchedulerCache{
-		Nodes:     make(map[string]*NodeInfo),
-		Pods:      make(map[string]*PodInfo),
+		Nodes:  make(map[string]*NodeInfo),
+		Pods:   make(map[string]*PodInfo),
 		Queues: make(map[string]*QueueInfo),
-		Pdbs:      make(map[string]*PdbInfo),
+		Pdbs:   make(map[string]*PdbInfo),
 	}
 
 	kubecli := kubernetes.NewForConfigOrDie(config)

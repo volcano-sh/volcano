@@ -99,11 +99,11 @@ func TestAllocate(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		pods      []*v1.Pod
-		nodes     []*v1.Node
-		queues []*arbv1.Queue
-		expected  map[string]string
+		name     string
+		pods     []*v1.Pod
+		nodes    []*v1.Node
+		queues   []*arbv1.Queue
+		expected map[string]string
 	}{
 		{
 			name: "one queue with two Pods on one node",
@@ -191,8 +191,8 @@ func TestAllocate(t *testing.T) {
 
 	for i, test := range tests {
 		schedulerCache := &cache.SchedulerCache{
-			Nodes:     make(map[string]*cache.NodeInfo),
-			Pods:      make(map[string]*cache.PodInfo),
+			Nodes:  make(map[string]*cache.NodeInfo),
+			Pods:   make(map[string]*cache.PodInfo),
 			Queues: make(map[string]*cache.QueueInfo),
 		}
 		for _, node := range test.nodes {

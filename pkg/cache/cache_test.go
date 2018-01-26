@@ -177,14 +177,14 @@ func TestAddPod(t *testing.T) {
 	ci1.AddPod(pi2)
 
 	tests := []struct {
-		pods      []*v1.Pod
-		nodes     []*v1.Node
-		queues []*arbv1.Queue
-		expected  *SchedulerCache
+		pods     []*v1.Pod
+		nodes    []*v1.Node
+		queues   []*arbv1.Queue
+		expected *SchedulerCache
 	}{
 		{
-			pods:      []*v1.Pod{pod1, pod2},
-			nodes:     []*v1.Node{node1},
+			pods:   []*v1.Pod{pod1, pod2},
+			nodes:  []*v1.Node{node1},
 			queues: []*arbv1.Queue{queue1},
 			expected: &SchedulerCache{
 				Nodes: map[string]*NodeInfo{
@@ -203,8 +203,8 @@ func TestAddPod(t *testing.T) {
 
 	for i, test := range tests {
 		cache := &SchedulerCache{
-			Nodes:     make(map[string]*NodeInfo),
-			Pods:      make(map[string]*PodInfo),
+			Nodes:  make(map[string]*NodeInfo),
+			Pods:   make(map[string]*PodInfo),
 			Queues: make(map[string]*QueueInfo),
 		}
 
@@ -270,8 +270,8 @@ func TestAddNode(t *testing.T) {
 
 	for i, test := range tests {
 		cache := &SchedulerCache{
-			Nodes:     make(map[string]*NodeInfo),
-			Pods:      make(map[string]*PodInfo),
+			Nodes:  make(map[string]*NodeInfo),
+			Pods:   make(map[string]*PodInfo),
 			Queues: make(map[string]*QueueInfo),
 		}
 
@@ -303,12 +303,12 @@ func TestAddQueue(t *testing.T) {
 	ci1.AddPod(pi2)
 
 	tests := []struct {
-		pods      []*v1.Pod
-		queues []*arbv1.Queue
-		expected  *SchedulerCache
+		pods     []*v1.Pod
+		queues   []*arbv1.Queue
+		expected *SchedulerCache
 	}{
 		{
-			pods:      []*v1.Pod{pod1, pod2},
+			pods:   []*v1.Pod{pod1, pod2},
 			queues: []*arbv1.Queue{queue1},
 			expected: &SchedulerCache{
 				Nodes: map[string]*NodeInfo{
@@ -337,8 +337,8 @@ func TestAddQueue(t *testing.T) {
 
 	for i, test := range tests {
 		cache := &SchedulerCache{
-			Nodes:     make(map[string]*NodeInfo),
-			Pods:      make(map[string]*PodInfo),
+			Nodes:  make(map[string]*NodeInfo),
+			Pods:   make(map[string]*PodInfo),
 			Queues: make(map[string]*QueueInfo),
 		}
 
