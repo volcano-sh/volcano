@@ -17,7 +17,7 @@ limitations under the License.
 package cache
 
 type CacheSnapshot struct {
-	Pods      []*PodInfo
-	Nodes     []*NodeInfo
+	Pods   []*PodInfo
+	Nodes  []*NodeInfo
 	Queues []*QueueInfo
 }

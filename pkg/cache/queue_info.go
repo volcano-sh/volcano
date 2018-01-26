@@ -44,7 +44,7 @@ func NewQueueInfo(queue *arbv1.Queue) *QueueInfo {
 		return &QueueInfo{
 			Name:      "",
 			Namespace: "",
-			Queue:  nil,
+			Queue:     nil,
 
 			PodSets: make(map[types.UID]*PodSet),
 			Pods:    make(map[string]*PodInfo),

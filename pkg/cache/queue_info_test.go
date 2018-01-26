@@ -51,14 +51,14 @@ func TestQueueInfo_AddPod(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		queue *arbv1.Queue
+		queue    *arbv1.Queue
 		pods     []*v1.Pod
 		expected *QueueInfo
 	}{
 		{
-			name:     "add 1 pending non-owner pod, add 1 running non-owner pod",
+			name:  "add 1 pending non-owner pod, add 1 running non-owner pod",
 			queue: case01_queue,
-			pods:     []*v1.Pod{case01_pod1, case01_pod2},
+			pods:  []*v1.Pod{case01_pod1, case01_pod2},
 			expected: &QueueInfo{
 				Queue:     case01_queue,
 				Name:      "c1",
@@ -71,9 +71,9 @@ func TestQueueInfo_AddPod(t *testing.T) {
 			},
 		},
 		{
-			name:     "add 1 pending owner pod, add 1 running owner pod",
+			name:  "add 1 pending owner pod, add 1 running owner pod",
 			queue: case02_queue,
-			pods:     []*v1.Pod{case02_pod1, case02_pod2},
+			pods:  []*v1.Pod{case02_pod1, case02_pod2},
 			expected: &QueueInfo{
 				Queue:     case02_queue,
 				Name:      "c1",
@@ -134,16 +134,16 @@ func TestQueueInfo_RemovePod(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		queue *arbv1.Queue
+		queue    *arbv1.Queue
 		pods     []*v1.Pod
 		rmPods   []*v1.Pod
 		expected *QueueInfo
 	}{
 		{
-			name:     "add 1 pending non-owner pod, add 2 running non-owner pod, remove 1 running non-owner pod",
-			queue: case01_queue,
-			pods:     []*v1.Pod{case01_pod1, case01_pod2, case01_pod3},
-			rmPods:   []*v1.Pod{case01_pod2},
+			name:   "add 1 pending non-owner pod, add 2 running non-owner pod, remove 1 running non-owner pod",
+			queue:  case01_queue,
+			pods:   []*v1.Pod{case01_pod1, case01_pod2, case01_pod3},
+			rmPods: []*v1.Pod{case01_pod2},
 			expected: &QueueInfo{
 				Queue:     case01_queue,
 				Name:      "c1",
@@ -156,10 +156,10 @@ func TestQueueInfo_RemovePod(t *testing.T) {
 			},
 		},
 		{
-			name:     "add 1 pending owner pod, add 2 running owner pod, remove 1 running owner pod",
-			queue: case02_queue,
-			pods:     []*v1.Pod{case02_pod1, case02_pod2, case02_pod3},
-			rmPods:   []*v1.Pod{case02_pod2},
+			name:   "add 1 pending owner pod, add 2 running owner pod, remove 1 running owner pod",
+			queue:  case02_queue,
+			pods:   []*v1.Pod{case02_pod1, case02_pod2, case02_pod3},
+			rmPods: []*v1.Pod{case02_pod2},
 			expected: &QueueInfo{
 				Queue:     case02_queue,
 				Name:      "c1",
@@ -225,16 +225,16 @@ func TestQueueInfo_AddPdb(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		queue *arbv1.Queue
+		queue    *arbv1.Queue
 		pods     []*v1.Pod
 		pdbs     []*v1beta1.PodDisruptionBudget
 		expected *QueueInfo
 	}{
 		{
-			name:     "add 1 pdb",
+			name:  "add 1 pdb",
 			queue: case01_queue,
-			pods:     []*v1.Pod{case01_pod1, case01_pod2},
-			pdbs:     []*v1beta1.PodDisruptionBudget{cass01_pdb1},
+			pods:  []*v1.Pod{case01_pod1, case01_pod2},
+			pdbs:  []*v1beta1.PodDisruptionBudget{cass01_pdb1},
 			expected: &QueueInfo{
 				Queue:     case01_queue,
 				Name:      "c1",
@@ -301,18 +301,18 @@ func TestQueueInfo_RemovePdb(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		queue *arbv1.Queue
+		queue    *arbv1.Queue
 		pods     []*v1.Pod
 		pdbs     []*v1beta1.PodDisruptionBudget
 		rmPdbs   []*v1beta1.PodDisruptionBudget
 		expected *QueueInfo
 	}{
 		{
-			name:     "add 1 pdb, remove 1 pdb",
-			queue: case01_queue,
-			pods:     []*v1.Pod{case01_pod1, case01_pod2},
-			pdbs:     []*v1beta1.PodDisruptionBudget{case01_pdb1},
-			rmPdbs:   []*v1beta1.PodDisruptionBudget{case01_pdb1},
+			name:   "add 1 pdb, remove 1 pdb",
+			queue:  case01_queue,
+			pods:   []*v1.Pod{case01_pod1, case01_pod2},
+			pdbs:   []*v1beta1.PodDisruptionBudget{case01_pdb1},
+			rmPdbs: []*v1beta1.PodDisruptionBudget{case01_pdb1},
 			expected: &QueueInfo{
 				Queue:     case01_queue,
 				Name:      "c1",
