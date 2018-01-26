@@ -39,9 +39,9 @@ func Run(opt *options.ServerOption) error {
 
 	neverStop := make(chan struct{})
 
-	// Start Consumer Controller to create CRD and manage Consumer lifecycle.
-	consumerController := controller.NewConsumerController(config)
-	consumerController.Run(neverStop)
+	// Start Queue Controller to create CRD and manage Queue lifecycle.
+	queueController := controller.NewQueueController(config)
+	queueController.Run(neverStop)
 
 	// Start policy controller to allocate resources.
 	policyController, err := controller.NewPolicyController(config, opt.Policy)

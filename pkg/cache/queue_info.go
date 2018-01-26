@@ -26,57 +26,57 @@ import (
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 )
 
-type ConsumerInfo struct {
-	Consumer *arbv1.Consumer
+type QueueInfo struct {
+	Queue *arbv1.Queue
 
 	Name      string
 	Namespace string
 
-	// All jobs belong to this Consumer
+	// All jobs belong to this Queue
 	PodSets map[types.UID]*PodSet
 
 	// The pod that without `Owners`
 	Pods map[string]*PodInfo
 }
 
-func NewConsumerInfo(consumer *arbv1.Consumer) *ConsumerInfo {
-	if consumer == nil {
-		return &ConsumerInfo{
+func NewQueueInfo(queue *arbv1.Queue) *QueueInfo {
+	if queue == nil {
+		return &QueueInfo{
 			Name:      "",
 			Namespace: "",
-			Consumer:  nil,
+			Queue:  nil,
 
 			PodSets: make(map[types.UID]*PodSet),
 			Pods:    make(map[string]*PodInfo),
 		}
 	}
 
-	return &ConsumerInfo{
-		Name:      consumer.Name,
-		Namespace: consumer.Namespace,
-		Consumer:  consumer,
+	return &QueueInfo{
+		Name:      queue.Name,
+		Namespace: queue.Namespace,
+		Queue:     queue,
 
 		PodSets: make(map[types.UID]*PodSet),
 		Pods:    make(map[string]*PodInfo),
 	}
 }
 
-func (ci *ConsumerInfo) SetConsumer(consumer *arbv1.Consumer) {
-	if consumer == nil {
+func (ci *QueueInfo) SetQueue(queue *arbv1.Queue) {
+	if queue == nil {
 		ci.Name = ""
 		ci.Namespace = ""
-		ci.Consumer = consumer
+		ci.Queue = queue
 		ci.PodSets = make(map[types.UID]*PodSet)
 		ci.Pods = make(map[string]*PodInfo)
 		return
 	}
 
-	ci.Name = consumer.Name
-	ci.Namespace = consumer.Namespace
-	ci.Consumer = consumer
+	ci.Name = queue.Name
+	ci.Namespace = queue.Namespace
+	ci.Queue = queue
 }
 
-func (ci *ConsumerInfo) AddPod(pi *PodInfo) {
+func (ci *QueueInfo) AddPod(pi *PodInfo) {
 	if len(pi.Owner) == 0 {
 		ci.Pods[pi.Name] = pi
 	} else {
@@ -87,7 +87,7 @@ func (ci *ConsumerInfo) AddPod(pi *PodInfo) {
 	}
 }
 
-func (ci *ConsumerInfo) RemovePod(pi *PodInfo) {
+func (ci *QueueInfo) RemovePod(pi *PodInfo) {
 	if len(pi.Owner) == 0 {
 		delete(ci.Pods, pi.Name)
 	} else {
@@ -97,7 +97,7 @@ func (ci *ConsumerInfo) RemovePod(pi *PodInfo) {
 	}
 }
 
-func (ci *ConsumerInfo) AddPdb(pi *PdbInfo) {
+func (ci *QueueInfo) AddPdb(pi *PdbInfo) {
 	for _, ps := range ci.PodSets {
 		if len(ps.PdbName) != 0 {
 			continue
@@ -120,7 +120,7 @@ func (ci *ConsumerInfo) AddPdb(pi *PdbInfo) {
 	}
 }
 
-func (ci *ConsumerInfo) RemovePdb(pi *PdbInfo) {
+func (ci *QueueInfo) RemovePdb(pi *PdbInfo) {
 	for _, ps := range ci.PodSets {
 		if len(ps.PdbName) == 0 {
 			continue
@@ -137,11 +137,11 @@ func (ci *ConsumerInfo) RemovePdb(pi *PdbInfo) {
 	}
 }
 
-func (ci *ConsumerInfo) Clone() *ConsumerInfo {
-	info := &ConsumerInfo{
+func (ci *QueueInfo) Clone() *QueueInfo {
+	info := &QueueInfo{
 		Name:      ci.Name,
 		Namespace: ci.Namespace,
-		Consumer:  ci.Consumer,
+		Queue:     ci.Queue,
 
 		PodSets: make(map[types.UID]*PodSet),
 		Pods:    make(map[string]*PodInfo),

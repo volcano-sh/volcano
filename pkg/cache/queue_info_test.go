@@ -28,7 +28,7 @@ import (
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 )
 
-func consumerInfoEqual(l, r *ConsumerInfo) bool {
+func queueInfoEqual(l, r *QueueInfo) bool {
 	if !reflect.DeepEqual(l, r) {
 		return false
 	}
@@ -36,31 +36,31 @@ func consumerInfoEqual(l, r *ConsumerInfo) bool {
 	return true
 }
 
-func TestConsumerInfo_AddPod(t *testing.T) {
+func TestQueueInfo_AddPod(t *testing.T) {
 
 	// case1
-	case01_consumer := buildConsumer("c1", "c1")
+	case01_queue := buildQueue("c1", "c1")
 	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 
 	// case2
-	case02_consumer := buildConsumer("c1", "c1")
+	case02_queue := buildQueue("c1", "c1")
 	case02_owner := buildOwnerReference("owner1")
 	case02_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
 	case02_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
 
 	tests := []struct {
 		name     string
-		consumer *arbv1.Consumer
+		queue *arbv1.Queue
 		pods     []*v1.Pod
-		expected *ConsumerInfo
+		expected *QueueInfo
 	}{
 		{
 			name:     "add 1 pending non-owner pod, add 1 running non-owner pod",
-			consumer: case01_consumer,
+			queue: case01_queue,
 			pods:     []*v1.Pod{case01_pod1, case01_pod2},
-			expected: &ConsumerInfo{
-				Consumer:  case01_consumer,
+			expected: &QueueInfo{
+				Queue:     case01_queue,
 				Name:      "c1",
 				Namespace: "c1",
 				PodSets:   make(map[types.UID]*PodSet),
@@ -72,10 +72,10 @@ func TestConsumerInfo_AddPod(t *testing.T) {
 		},
 		{
 			name:     "add 1 pending owner pod, add 1 running owner pod",
-			consumer: case02_consumer,
+			queue: case02_queue,
 			pods:     []*v1.Pod{case02_pod1, case02_pod2},
-			expected: &ConsumerInfo{
-				Consumer:  case02_consumer,
+			expected: &QueueInfo{
+				Queue:     case02_queue,
 				Name:      "c1",
 				Namespace: "c1",
 				PodSets: map[types.UID]*PodSet{
@@ -103,30 +103,30 @@ func TestConsumerInfo_AddPod(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		ci := NewConsumerInfo(test.consumer)
+		ci := NewQueueInfo(test.queue)
 
 		for _, pod := range test.pods {
 			pi := NewPodInfo(pod)
 			ci.AddPod(pi)
 		}
 
-		if !consumerInfoEqual(ci, test.expected) {
-			t.Errorf("consumer info %d: \n expected %v, \n got %v \n",
+		if !queueInfoEqual(ci, test.expected) {
+			t.Errorf("queue info %d: \n expected %v, \n got %v \n",
 				i, test.expected, ci)
 		}
 	}
 }
 
-func TestConsumerInfo_RemovePod(t *testing.T) {
+func TestQueueInfo_RemovePod(t *testing.T) {
 
 	// case1
-	case01_consumer := buildConsumer("c1", "c1")
+	case01_queue := buildQueue("c1", "c1")
 	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	case01_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 
 	// case2
-	case02_consumer := buildConsumer("c1", "c1")
+	case02_queue := buildQueue("c1", "c1")
 	case02_owner := buildOwnerReference("owner1")
 	case02_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
 	case02_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
@@ -134,18 +134,18 @@ func TestConsumerInfo_RemovePod(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		consumer *arbv1.Consumer
+		queue *arbv1.Queue
 		pods     []*v1.Pod
 		rmPods   []*v1.Pod
-		expected *ConsumerInfo
+		expected *QueueInfo
 	}{
 		{
 			name:     "add 1 pending non-owner pod, add 2 running non-owner pod, remove 1 running non-owner pod",
-			consumer: case01_consumer,
+			queue: case01_queue,
 			pods:     []*v1.Pod{case01_pod1, case01_pod2, case01_pod3},
 			rmPods:   []*v1.Pod{case01_pod2},
-			expected: &ConsumerInfo{
-				Consumer:  case01_consumer,
+			expected: &QueueInfo{
+				Queue:     case01_queue,
 				Name:      "c1",
 				Namespace: "c1",
 				PodSets:   make(map[types.UID]*PodSet),
@@ -157,11 +157,11 @@ func TestConsumerInfo_RemovePod(t *testing.T) {
 		},
 		{
 			name:     "add 1 pending owner pod, add 2 running owner pod, remove 1 running owner pod",
-			consumer: case02_consumer,
+			queue: case02_queue,
 			pods:     []*v1.Pod{case02_pod1, case02_pod2, case02_pod3},
 			rmPods:   []*v1.Pod{case02_pod2},
-			expected: &ConsumerInfo{
-				Consumer:  case02_consumer,
+			expected: &QueueInfo{
+				Queue:     case02_queue,
 				Name:      "c1",
 				Namespace: "c1",
 				PodSets: map[types.UID]*PodSet{
@@ -189,7 +189,7 @@ func TestConsumerInfo_RemovePod(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		ci := NewConsumerInfo(test.consumer)
+		ci := NewQueueInfo(test.queue)
 
 		for _, pod := range test.pods {
 			pi := NewPodInfo(pod)
@@ -201,17 +201,17 @@ func TestConsumerInfo_RemovePod(t *testing.T) {
 			ci.RemovePod(pi)
 		}
 
-		if !consumerInfoEqual(ci, test.expected) {
-			t.Errorf("consumer info %d: \n expected %v, \n got %v \n",
+		if !queueInfoEqual(ci, test.expected) {
+			t.Errorf("queue info %d: \n expected %v, \n got %v \n",
 				i, test.expected, ci)
 		}
 	}
 }
 
-func TestConsumerInfo_AddPdb(t *testing.T) {
+func TestQueueInfo_AddPdb(t *testing.T) {
 
 	// case1
-	case01_consumer := buildConsumer("c1", "c1")
+	case01_queue := buildQueue("c1", "c1")
 	case01_owner := buildOwnerReference("owner1")
 	case01_labels := map[string]string{
 		"app": "nginx",
@@ -225,18 +225,18 @@ func TestConsumerInfo_AddPdb(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		consumer *arbv1.Consumer
+		queue *arbv1.Queue
 		pods     []*v1.Pod
 		pdbs     []*v1beta1.PodDisruptionBudget
-		expected *ConsumerInfo
+		expected *QueueInfo
 	}{
 		{
 			name:     "add 1 pdb",
-			consumer: case01_consumer,
+			queue: case01_queue,
 			pods:     []*v1.Pod{case01_pod1, case01_pod2},
 			pdbs:     []*v1beta1.PodDisruptionBudget{cass01_pdb1},
-			expected: &ConsumerInfo{
-				Consumer:  case01_consumer,
+			expected: &QueueInfo{
+				Queue:     case01_queue,
 				Name:      "c1",
 				Namespace: "c1",
 				PodSets: map[types.UID]*PodSet{
@@ -265,7 +265,7 @@ func TestConsumerInfo_AddPdb(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		ci := NewConsumerInfo(test.consumer)
+		ci := NewQueueInfo(test.queue)
 
 		for _, pod := range test.pods {
 			pi := NewPodInfo(pod)
@@ -277,17 +277,17 @@ func TestConsumerInfo_AddPdb(t *testing.T) {
 			ci.AddPdb(pi)
 		}
 
-		if !consumerInfoEqual(ci, test.expected) {
-			t.Errorf("consumer info %d: \n expected %v, \n got %v \n",
+		if !queueInfoEqual(ci, test.expected) {
+			t.Errorf("queue info %d: \n expected %v, \n got %v \n",
 				i, test.expected, ci)
 		}
 	}
 }
 
-func TestConsumerInfo_RemovePdb(t *testing.T) {
+func TestQueueInfo_RemovePdb(t *testing.T) {
 
 	// case1
-	case01_consumer := buildConsumer("c1", "c1")
+	case01_queue := buildQueue("c1", "c1")
 	case01_owner := buildOwnerReference("owner1")
 	case01_labels := map[string]string{
 		"app": "nginx",
@@ -301,20 +301,20 @@ func TestConsumerInfo_RemovePdb(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		consumer *arbv1.Consumer
+		queue *arbv1.Queue
 		pods     []*v1.Pod
 		pdbs     []*v1beta1.PodDisruptionBudget
 		rmPdbs   []*v1beta1.PodDisruptionBudget
-		expected *ConsumerInfo
+		expected *QueueInfo
 	}{
 		{
 			name:     "add 1 pdb, remove 1 pdb",
-			consumer: case01_consumer,
+			queue: case01_queue,
 			pods:     []*v1.Pod{case01_pod1, case01_pod2},
 			pdbs:     []*v1beta1.PodDisruptionBudget{case01_pdb1},
 			rmPdbs:   []*v1beta1.PodDisruptionBudget{case01_pdb1},
-			expected: &ConsumerInfo{
-				Consumer:  case01_consumer,
+			expected: &QueueInfo{
+				Queue:     case01_queue,
 				Name:      "c1",
 				Namespace: "c1",
 				PodSets: map[types.UID]*PodSet{
@@ -343,7 +343,7 @@ func TestConsumerInfo_RemovePdb(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		ci := NewConsumerInfo(test.consumer)
+		ci := NewQueueInfo(test.queue)
 
 		for _, pod := range test.pods {
 			pi := NewPodInfo(pod)
@@ -360,8 +360,8 @@ func TestConsumerInfo_RemovePdb(t *testing.T) {
 			ci.RemovePdb(pi)
 		}
 
-		if !consumerInfoEqual(ci, test.expected) {
-			t.Errorf("consumer info %d: \n expected %v, \n got %v \n",
+		if !queueInfoEqual(ci, test.expected) {
+			t.Errorf("queue info %d: \n expected %v, \n got %v \n",
 				i, test.expected, ci)
 		}
 	}

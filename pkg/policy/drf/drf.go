@@ -42,7 +42,7 @@ func (drf *drfScheduler) Name() string {
 
 func (drf *drfScheduler) Initialize() {}
 
-func (drf *drfScheduler) Allocate(consumers []*cache.ConsumerInfo, nodes []*cache.NodeInfo) []*cache.ConsumerInfo {
+func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.NodeInfo) []*cache.QueueInfo {
 	glog.V(4).Infof("Enter Allocate ...")
 	defer glog.V(4).Infof("Leaving Allocate ...")
 
@@ -55,7 +55,7 @@ func (drf *drfScheduler) Allocate(consumers []*cache.ConsumerInfo, nodes []*cach
 		total.Add(n.Allocatable)
 	}
 
-	for _, c := range consumers {
+	for _, c := range queues {
 		for _, ps := range c.PodSets {
 			psi := newPodSetInfo(ps, total)
 			pq.Push(util.NewItem(psi, psi.priority))
@@ -146,7 +146,7 @@ func (drf *drfScheduler) Allocate(consumers []*cache.ConsumerInfo, nodes []*cach
 		}
 	}
 
-	return consumers
+	return queues
 }
 
 func (drf *drfScheduler) UnInitialize() {}

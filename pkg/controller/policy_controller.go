@@ -97,13 +97,13 @@ func (pc *PolicyController) runOnce() {
 
 	snapshot := pc.cache.Snapshot()
 
-	consumers := pc.allocator.Allocate(snapshot.Consumers, snapshot.Nodes)
+	queues := pc.allocator.Allocate(snapshot.Queues, snapshot.Nodes)
 
-	pc.enqueue(consumers)
+	pc.enqueue(queues)
 }
 
-func (pc *PolicyController) enqueue(consumers []*schedcache.ConsumerInfo) {
-	for _, c := range consumers {
+func (pc *PolicyController) enqueue(queues []*schedcache.QueueInfo) {
+	for _, c := range queues {
 		for _, ps := range c.PodSets {
 			pc.podSets.Add(ps)
 		}

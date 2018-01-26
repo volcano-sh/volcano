@@ -54,20 +54,20 @@ func NewClient(cfg *rest.Config) (*rest.RESTClient, *runtime.Scheme, error) {
 	return client, scheme, nil
 }
 
-const consumerCRDName = arbv1.ConsumerPlural + "." + arbv1.GroupName
+const queueCRDName = arbv1.QueuePlural + "." + arbv1.GroupName
 
-func CreateConsumerCRD(clientset apiextensionsclient.Interface) (*apiextensionsv1beta1.CustomResourceDefinition, error) {
+func CreateQueueCRD(clientset apiextensionsclient.Interface) (*apiextensionsv1beta1.CustomResourceDefinition, error) {
 	crd := &apiextensionsv1beta1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: consumerCRDName,
+			Name: queueCRDName,
 		},
 		Spec: apiextensionsv1beta1.CustomResourceDefinitionSpec{
 			Group:   arbv1.GroupName,
 			Version: arbv1.SchemeGroupVersion.Version,
 			Scope:   apiextensionsv1beta1.NamespaceScoped,
 			Names: apiextensionsv1beta1.CustomResourceDefinitionNames{
-				Plural: arbv1.ConsumerPlural,
-				Kind:   reflect.TypeOf(arbv1.Consumer{}).Name(),
+				Plural: arbv1.QueuePlural,
+				Kind:   reflect.TypeOf(arbv1.Queue{}).Name(),
 			},
 		},
 	}
@@ -79,7 +79,7 @@ func CreateConsumerCRD(clientset apiextensionsclient.Interface) (*apiextensionsv
 
 	// wait for CRD being established
 	err = wait.Poll(500*time.Millisecond, 60*time.Second, func() (bool, error) {
-		crd, err = clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Get(consumerCRDName, metav1.GetOptions{})
+		crd, err = clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Get(queueCRDName, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -98,14 +98,14 @@ func CreateConsumerCRD(clientset apiextensionsclient.Interface) (*apiextensionsv
 		return false, err
 	})
 	if err != nil {
-		deleteErr := clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Delete(consumerCRDName, nil)
+		deleteErr := clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Delete(queueCRDName, nil)
 		if deleteErr != nil {
 			return nil, errors.NewAggregate([]error{err, deleteErr})
 		}
 		return nil, err
 	}
 
-	glog.V(4).Infof("Consumer CRD was created.")
+	glog.V(4).Infof("Queue CRD was created.")
 
 	return crd, nil
 }

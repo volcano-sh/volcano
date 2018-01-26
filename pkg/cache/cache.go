@@ -47,12 +47,12 @@ type SchedulerCache struct {
 
 	podInformer      clientv1.PodInformer
 	nodeInformer     clientv1.NodeInformer
-	consumerInformer arbclient.ConsumerInformer
+	queueInformer arbclient.QueueInformer
 	pdbInformer      policyv1.PodDisruptionBudgetInformer
 
 	Pods      map[string]*PodInfo
 	Nodes     map[string]*NodeInfo
-	Consumers map[string]*ConsumerInfo
+	Queues map[string]*QueueInfo
 	Pdbs      map[string]*PdbInfo
 }
 
@@ -60,7 +60,7 @@ func newSchedulerCache(config *rest.Config) *SchedulerCache {
 	sc := &SchedulerCache{
 		Nodes:     make(map[string]*NodeInfo),
 		Pods:      make(map[string]*PodInfo),
-		Consumers: make(map[string]*ConsumerInfo),
+		Queues: make(map[string]*QueueInfo),
 		Pdbs:      make(map[string]*PdbInfo),
 	}
 
@@ -97,30 +97,30 @@ func newSchedulerCache(config *rest.Config) *SchedulerCache {
 			},
 		})
 
-	// create consumer informer
-	consumerClient, _, err := client.NewClient(config)
+	// create queue informer
+	queueClient, _, err := client.NewClient(config)
 	if err != nil {
 		panic(err)
 	}
 
-	consumerInformerFactory := informerfactory.NewSharedInformerFactory(consumerClient, 0)
-	// create informer for consumer information
-	sc.consumerInformer = consumerInformerFactory.Consumer().Consumers()
-	sc.consumerInformer.Informer().AddEventHandler(
+	queueInformerFactory := informerfactory.NewSharedInformerFactory(queueClient, 0)
+	// create informer for Queue information
+	sc.queueInformer = queueInformerFactory.Queue().Queues()
+	sc.queueInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
-				case *arbv1.Consumer:
-					glog.V(4).Infof("Filter consumer name(%s) namespace(%s)\n", t.Name, t.Namespace)
+				case *arbv1.Queue:
+					glog.V(4).Infof("Filter Queue name(%s) namespace(%s)\n", t.Name, t.Namespace)
 					return true
 				default:
 					return false
 				}
 			},
 			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc:    sc.AddConsumer,
-				UpdateFunc: sc.UpdateConsumer,
-				DeleteFunc: sc.DeleteConsumer,
+				AddFunc:    sc.AddQueue,
+				UpdateFunc: sc.UpdateQueue,
+				DeleteFunc: sc.DeleteQueue,
 			},
 		})
 
@@ -149,7 +149,7 @@ func newSchedulerCache(config *rest.Config) *SchedulerCache {
 func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.podInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
-	go sc.consumerInformer.Informer().Run(stopCh)
+	go sc.queueInformer.Informer().Run(stopCh)
 	go sc.pdbInformer.Informer().Run(stopCh)
 }
 
@@ -157,7 +157,7 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 	return cache.WaitForCacheSync(stopCh,
 		sc.podInformer.Informer().HasSynced,
 		sc.nodeInformer.Informer().HasSynced,
-		sc.consumerInformer.Informer().HasSynced)
+		sc.queueInformer.Informer().HasSynced)
 }
 
 // nonTerminatedPod selects pods that are non-terminal (pending and running).
@@ -187,14 +187,14 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 		sc.Nodes[pod.Spec.NodeName].AddPod(pi)
 	}
 
-	if sc.Consumers[pod.Namespace] == nil {
-		sc.Consumers[pod.Namespace] = NewConsumerInfo(nil)
-		sc.Consumers[pod.Namespace].Namespace = pod.Namespace
+	if sc.Queues[pod.Namespace] == nil {
+		sc.Queues[pod.Namespace] = NewQueueInfo(nil)
+		sc.Queues[pod.Namespace].Namespace = pod.Namespace
 	}
-	sc.Consumers[pod.Namespace].AddPod(pi)
+	sc.Queues[pod.Namespace].AddPod(pi)
 
 	for _, pdb := range sc.Pdbs {
-		sc.Consumers[pod.Namespace].AddPdb(pdb)
+		sc.Queues[pod.Namespace].AddPdb(pdb)
 	}
 
 	sc.Pods[key] = pi
@@ -228,9 +228,9 @@ func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
 		}
 	}
 
-	consumer := sc.Consumers[pod.Namespace]
-	if consumer != nil {
-		consumer.RemovePod(pi)
+	queue := sc.Queues[pod.Namespace]
+	if queue != nil {
+		queue.RemovePod(pi)
 	}
 
 	return nil
@@ -412,102 +412,102 @@ func (sc *SchedulerCache) DeleteNode(obj interface{}) {
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) addConsumer(consumer *arbv1.Consumer) error {
-	if sc.Consumers[consumer.Namespace] != nil {
-		sc.Consumers[consumer.Namespace].SetConsumer(consumer)
+func (sc *SchedulerCache) addQueue(queue *arbv1.Queue) error {
+	if sc.Queues[queue.Namespace] != nil {
+		sc.Queues[queue.Namespace].SetQueue(queue)
 	} else {
-		sc.Consumers[consumer.Namespace] = NewConsumerInfo(consumer)
+		sc.Queues[queue.Namespace] = NewQueueInfo(queue)
 	}
 
 	return nil
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) updateConsumer(oldConsumer, newConsumer *arbv1.Consumer) error {
-	if sc.Consumers[newConsumer.Namespace] != nil {
-		sc.Consumers[newConsumer.Namespace].SetConsumer(newConsumer)
+func (sc *SchedulerCache) updateQueue(oldQueue, newQueue *arbv1.Queue) error {
+	if sc.Queues[newQueue.Namespace] != nil {
+		sc.Queues[newQueue.Namespace].SetQueue(newQueue)
 		return nil
 	}
 
-	return fmt.Errorf("consumer <%s> does not exist", newConsumer.Namespace)
+	return fmt.Errorf("Queue <%s> does not exist", newQueue.Namespace)
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) deleteConsumer(consumer *arbv1.Consumer) error {
-	if _, ok := sc.Consumers[consumer.Namespace]; !ok {
-		return fmt.Errorf("consumer %v doesn't exist", consumer.Name)
+func (sc *SchedulerCache) deleteQueue(queue *arbv1.Queue) error {
+	if _, ok := sc.Queues[queue.Namespace]; !ok {
+		return fmt.Errorf("Queue %v doesn't exist", queue.Name)
 	}
-	delete(sc.Consumers, consumer.Namespace)
+	delete(sc.Queues, queue.Namespace)
 	return nil
 }
 
-func (sc *SchedulerCache) AddConsumer(obj interface{}) {
-	consumer, ok := obj.(*arbv1.Consumer)
+func (sc *SchedulerCache) AddQueue(obj interface{}) {
+	queue, ok := obj.(*arbv1.Queue)
 	if !ok {
-		glog.Errorf("Cannot convert to *arbv1.Consumer: %v", obj)
+		glog.Errorf("Cannot convert to *arbv1.Queue: %v", obj)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Add consumer(%s) into cache, spec(%#v)", consumer.Name, consumer.Spec)
-	err := sc.addConsumer(consumer)
+	glog.V(4).Infof("Add Queue(%s) into cache, spec(%#v)", queue.Name, queue.Spec)
+	err := sc.addQueue(queue)
 	if err != nil {
-		glog.Errorf("Failed to add consumer %s into cache: %v", consumer.Name, err)
+		glog.Errorf("Failed to add Queue %s into cache: %v", queue.Name, err)
 		return
 	}
 	return
 }
 
-func (sc *SchedulerCache) UpdateConsumer(oldObj, newObj interface{}) {
-	oldConsumer, ok := oldObj.(*arbv1.Consumer)
+func (sc *SchedulerCache) UpdateQueue(oldObj, newObj interface{}) {
+	oldQueue, ok := oldObj.(*arbv1.Queue)
 	if !ok {
-		glog.Errorf("Cannot convert oldObj to *arbv1.Consumer: %v", oldObj)
+		glog.Errorf("Cannot convert oldObj to *arbv1.Queue: %v", oldObj)
 		return
 	}
-	newConsumer, ok := newObj.(*arbv1.Consumer)
+	newQueue, ok := newObj.(*arbv1.Queue)
 	if !ok {
-		glog.Errorf("Cannot convert newObj to *arbv1.Consumer: %v", newObj)
+		glog.Errorf("Cannot convert newObj to *arbv1.Queue: %v", newObj)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Update oldConsumer(%s) in cache, spec(%#v)", oldConsumer.Name, oldConsumer.Spec)
-	glog.V(4).Infof("Update newConsumer(%s) in cache, spec(%#v)", newConsumer.Name, newConsumer.Spec)
-	err := sc.updateConsumer(oldConsumer, newConsumer)
+	glog.V(4).Infof("Update oldQueue(%s) in cache, spec(%#v)", oldQueue.Name, oldQueue.Spec)
+	glog.V(4).Infof("Update newQueue(%s) in cache, spec(%#v)", newQueue.Name, newQueue.Spec)
+	err := sc.updateQueue(oldQueue, newQueue)
 	if err != nil {
-		glog.Errorf("Failed to update consumer %s into cache: %v", oldConsumer.Name, err)
+		glog.Errorf("Failed to update queue %s into cache: %v", oldQueue.Name, err)
 		return
 	}
 	return
 }
 
-func (sc *SchedulerCache) DeleteConsumer(obj interface{}) {
-	var consumer *arbv1.Consumer
+func (sc *SchedulerCache) DeleteQueue(obj interface{}) {
+	var queue *arbv1.Queue
 	switch t := obj.(type) {
-	case *arbv1.Consumer:
-		consumer = t
+	case *arbv1.Queue:
+		queue = t
 	case cache.DeletedFinalStateUnknown:
 		var ok bool
-		consumer, ok = t.Obj.(*arbv1.Consumer)
+		queue, ok = t.Obj.(*arbv1.Queue)
 		if !ok {
-			glog.Errorf("Cannot convert to *v1.Consumer: %v", t.Obj)
+			glog.Errorf("Cannot convert to *v1.Queue: %v", t.Obj)
 			return
 		}
 	default:
-		glog.Errorf("Cannot convert to *v1.Consumer: %v", t)
+		glog.Errorf("Cannot convert to *v1.Queue: %v", t)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err := sc.deleteConsumer(consumer)
+	err := sc.deleteQueue(queue)
 	if err != nil {
-		glog.Errorf("Failed to delete consumer %s from cache: %v", consumer.Name, err)
+		glog.Errorf("Failed to delete Queue %s from cache: %v", queue.Name, err)
 		return
 	}
 	return
@@ -516,7 +516,7 @@ func (sc *SchedulerCache) DeleteConsumer(obj interface{}) {
 func (sc *SchedulerCache) addPDB(pdb *v1beta1.PodDisruptionBudget) error {
 	pi := NewPdbInfo(pdb)
 	sc.Pdbs[pi.Name] = pi
-	for _, c := range sc.Consumers {
+	for _, c := range sc.Queues {
 		c.AddPdb(pi)
 	}
 
@@ -530,7 +530,7 @@ func (sc *SchedulerCache) deletePDB(pdb *v1beta1.PodDisruptionBudget) error {
 	}
 	delete(sc.Pdbs, pdb.Name)
 
-	for _, c := range sc.Consumers {
+	for _, c := range sc.Queues {
 		c.RemovePdb(pi)
 	}
 
@@ -592,8 +592,8 @@ func (sc *SchedulerCache) NodeInformer() clientv1.NodeInformer {
 	return sc.nodeInformer
 }
 
-func (sc *SchedulerCache) QueueInformer() arbclient.ConsumerInformer {
-	return sc.consumerInformer
+func (sc *SchedulerCache) QueueInformer() arbclient.QueueInformer {
+	return sc.queueInformer
 }
 
 func (sc *SchedulerCache) PdbInformer() policyv1.PodDisruptionBudgetInformer {
@@ -605,9 +605,9 @@ func (sc *SchedulerCache) Snapshot() *CacheSnapshot {
 	defer sc.Mutex.Unlock()
 
 	snapshot := &CacheSnapshot{
-		Nodes:     make([]*NodeInfo, 0, len(sc.Nodes)),
-		Pods:      make([]*PodInfo, 0, len(sc.Pods)),
-		Consumers: make([]*ConsumerInfo, 0, len(sc.Consumers)),
+		Nodes:  make([]*NodeInfo, 0, len(sc.Nodes)),
+		Pods:   make([]*PodInfo, 0, len(sc.Pods)),
+		Queues: make([]*QueueInfo, 0, len(sc.Queues)),
 	}
 
 	for _, value := range sc.Nodes {
@@ -616,8 +616,8 @@ func (sc *SchedulerCache) Snapshot() *CacheSnapshot {
 	for _, value := range sc.Pods {
 		snapshot.Pods = append(snapshot.Pods, value.Clone())
 	}
-	for _, value := range sc.Consumers {
-		snapshot.Consumers = append(snapshot.Consumers, value.Clone())
+	for _, value := range sc.Queues {
+		snapshot.Queues = append(snapshot.Queues, value.Clone())
 	}
 	return snapshot
 }
@@ -648,10 +648,10 @@ func (sc SchedulerCache) String() string {
 		}
 	}
 
-	if len(sc.Consumers) != 0 {
-		str = str + "Consumers:\n"
-		for ck, c := range sc.Consumers {
-			str = str + fmt.Sprintf("\t Consumer(%s) name(%s) namespace(%s) PodSets(%d) Pods(%d) value(%v)\n", ck, c.Name, c.Namespace, len(c.PodSets), len(c.Pods), c.Consumer)
+	if len(sc.Queues) != 0 {
+		str = str + "Queues:\n"
+		for ck, c := range sc.Queues {
+			str = str + fmt.Sprintf("\t Queue(%s) name(%s) namespace(%s) PodSets(%d) Pods(%d) value(%v)\n", ck, c.Name, c.Namespace, len(c.PodSets), len(c.Pods), c.Queue)
 			for k, ps := range c.PodSets {
 				str = str + fmt.Sprintf("\t\t PodSet[%s] running(%d) pending(%d) other(%d)\n", k, len(ps.Running), len(ps.Pending), len(ps.Others))
 			}
