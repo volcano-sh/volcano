@@ -18,14 +18,14 @@ import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset"
 )
 
-type ConsumerController struct {
+type QueueController struct {
 	config     *rest.Config
 	arbclient  *clientset.Clientset
 	nsInformer v1.NamespaceInformer
 }
 
-func NewConsumerController(config *rest.Config) *ConsumerController {
-	cc := &ConsumerController{
+func NewQueueController(config *rest.Config) *QueueController {
+	cc := &QueueController{
 		config:    config,
 		arbclient: clientset.NewForConfigOrDie(config),
 	}
@@ -47,52 +47,52 @@ func NewConsumerController(config *rest.Config) *ConsumerController {
 	return cc
 }
 
-func (cc *ConsumerController) Run(stopCh chan struct{}) {
+func (cc *QueueController) Run(stopCh chan struct{}) {
 	// initialized
-	cc.createConsumerCRD()
+	cc.createQueueCRD()
 
 	go cc.nsInformer.Informer().Run(stopCh)
 	cache.WaitForCacheSync(stopCh, cc.nsInformer.Informer().HasSynced)
 }
 
-func (cc *ConsumerController) createConsumerCRD() error {
+func (cc *QueueController) createQueueCRD() error {
 	extensionscs, err := apiextensionsclient.NewForConfig(cc.config)
 	if err != nil {
 		return err
 	}
-	_, err = client.CreateConsumerCRD(extensionscs)
+	_, err = client.CreateQueueCRD(extensionscs)
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		return err
 	}
 	return nil
 }
 
-func (cc *ConsumerController) addNamespace(obj interface{}) {
+func (cc *QueueController) addNamespace(obj interface{}) {
 	ns, ok := obj.(*corev1.Namespace)
 	if !ok {
 		return
 	}
 
-	c := &arbv1.Consumer{
+	c := &arbv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ns.Name,
 			Namespace: ns.Name,
 		},
 	}
 
-	if _, err := cc.arbclient.ArbV1().Consumers(ns.Name).Create(c); err != nil {
-		glog.V(3).Infof("Create Consumer <%v/%v> successfully.", c.Name, c.Name)
+	if _, err := cc.arbclient.ArbV1().Queues(ns.Name).Create(c); err != nil {
+		glog.V(3).Infof("Create Queue <%v/%v> successfully.", c.Name, c.Name)
 	}
 }
 
-func (cc *ConsumerController) deleteNamespace(obj interface{}) {
+func (cc *QueueController) deleteNamespace(obj interface{}) {
 	ns, ok := obj.(*corev1.Namespace)
 	if !ok {
 		return
 	}
 
-	err := cc.arbclient.ArbV1().Consumers(ns.Name).Delete(ns.Name, &metav1.DeleteOptions{})
+	err := cc.arbclient.ArbV1().Queues(ns.Name).Delete(ns.Name, &metav1.DeleteOptions{})
 	if err != nil {
-		glog.V(3).Infof("Failed to delete Consumer <%s>", ns.Name)
+		glog.V(3).Infof("Failed to delete Queue <%s>", ns.Name)
 	}
 }

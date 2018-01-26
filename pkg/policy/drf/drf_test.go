@@ -58,8 +58,8 @@ func buildNode(name string, alloc v1.ResourceList) *v1.Node {
 	}
 }
 
-func buildConsumer(name string, namespace string) *arbv1.Consumer {
-	return &arbv1.Consumer{
+func buildQueue(name string, namespace string) *arbv1.Queue {
+	return &arbv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
@@ -102,11 +102,11 @@ func TestAllocate(t *testing.T) {
 		name      string
 		pods      []*v1.Pod
 		nodes     []*v1.Node
-		consumers []*arbv1.Consumer
+		queues []*arbv1.Queue
 		expected  map[string]string
 	}{
 		{
-			name: "one consumer with two Pods on one node",
+			name: "one queue with two Pods on one node",
 			pods: []*v1.Pod{
 				// pending pod with owner, under c1
 				buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}),
@@ -117,8 +117,8 @@ func TestAllocate(t *testing.T) {
 			nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2", "4Gi")),
 			},
-			consumers: []*arbv1.Consumer{
-				buildConsumer("c1", "c1"),
+			queues: []*arbv1.Queue{
+				buildQueue("c1", "c1"),
 			},
 			expected: map[string]string{
 				"c1/p1": "n1",
@@ -126,7 +126,7 @@ func TestAllocate(t *testing.T) {
 			},
 		},
 		{
-			name: "two consumer on one node",
+			name: "two queue on one node",
 			pods: []*v1.Pod{
 				// pending pod with owner1, under c1
 				buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}),
@@ -143,9 +143,9 @@ func TestAllocate(t *testing.T) {
 			nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2", "4G")),
 			},
-			consumers: []*arbv1.Consumer{
-				buildConsumer("c1", "c1"),
-				buildConsumer("c2", "c2"),
+			queues: []*arbv1.Queue{
+				buildQueue("c1", "c1"),
+				buildQueue("c2", "c2"),
 			},
 			expected: map[string]string{
 				"c1/p1": "n1",
@@ -153,7 +153,7 @@ func TestAllocate(t *testing.T) {
 			},
 		},
 		{
-			name: "two consumer on one node, with non-owner pods",
+			name: "two queue on one node, with non-owner pods",
 			pods: []*v1.Pod{
 				// pending pod with owner1, under c1
 				buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}),
@@ -176,9 +176,9 @@ func TestAllocate(t *testing.T) {
 			nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2", "4G")),
 			},
-			consumers: []*arbv1.Consumer{
-				buildConsumer("c1", "c1"),
-				buildConsumer("c2", "c2"),
+			queues: []*arbv1.Queue{
+				buildQueue("c1", "c1"),
+				buildQueue("c2", "c2"),
 			},
 			expected: map[string]string{
 				"c1/p1": "n1",
@@ -193,13 +193,13 @@ func TestAllocate(t *testing.T) {
 		schedulerCache := &cache.SchedulerCache{
 			Nodes:     make(map[string]*cache.NodeInfo),
 			Pods:      make(map[string]*cache.PodInfo),
-			Consumers: make(map[string]*cache.ConsumerInfo),
+			Queues: make(map[string]*cache.QueueInfo),
 		}
 		for _, node := range test.nodes {
 			schedulerCache.AddNode(node)
 		}
-		for _, consumer := range test.consumers {
-			schedulerCache.AddConsumer(consumer)
+		for _, queue := range test.queues {
+			schedulerCache.AddQueue(queue)
 		}
 		for _, pod := range test.pods {
 			schedulerCache.AddPod(pod)
@@ -207,9 +207,9 @@ func TestAllocate(t *testing.T) {
 
 		snapshot := schedulerCache.Snapshot()
 
-		expected := drf.Allocate(snapshot.Consumers, snapshot.Nodes)
-		for _, consumer := range expected {
-			for _, ps := range consumer.PodSets {
+		expected := drf.Allocate(snapshot.Queues, snapshot.Nodes)
+		for _, queue := range expected {
+			for _, ps := range queue.PodSets {
 				for _, p := range ps.Pending {
 					pk := fmt.Sprintf("%v/%v", p.Namespace, p.Name)
 					if p.NodeName != test.expected[pk] {

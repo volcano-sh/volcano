@@ -22,8 +22,8 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
-	// Consumers returns a ConsumerInformer.
-	Consumers() ConsumerInformer
+	// Queues returns a QueueInformer.
+	Queues() QueueInformer
 }
 
 type version struct {
@@ -35,7 +35,7 @@ func New(f internalinterfaces.SharedInformerFactory) Interface {
 	return &version{f}
 }
 
-// Consumers returns a ConsumerInformer.
-func (v *version) Consumers() ConsumerInformer {
-	return &consumerInformer{factory: v.SharedInformerFactory}
+// Queues returns a QueueInformer.
+func (v *version) Queues() QueueInformer {
+	return &queueInformer{factory: v.SharedInformerFactory}
 }

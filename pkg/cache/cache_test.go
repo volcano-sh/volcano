@@ -58,7 +58,7 @@ func podsEqual(l, r map[string]*PodInfo) bool {
 	return true
 }
 
-func consumersEqual(l, r map[string]*ConsumerInfo) bool {
+func queuesEqual(l, r map[string]*QueueInfo) bool {
 	if len(l) != len(r) {
 		return false
 	}
@@ -75,7 +75,7 @@ func consumersEqual(l, r map[string]*ConsumerInfo) bool {
 func cacheEqual(l, r *SchedulerCache) bool {
 	return nodesEqual(l.Nodes, r.Nodes) &&
 		podsEqual(l.Pods, r.Pods) &&
-		consumersEqual(l.Consumers, r.Consumers)
+		queuesEqual(l.Queues, r.Queues)
 }
 
 func buildNode(name string, alloc v1.ResourceList) *v1.Node {
@@ -130,8 +130,8 @@ func buildPdb(n string, min int, selectorMap map[string]string) *v1beta1.PodDisr
 	}
 }
 
-func buildConsumer(name string, namespace string) *arbv1.Consumer {
-	return &arbv1.Consumer{
+func buildQueue(name string, namespace string) *arbv1.Queue {
+	return &arbv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
@@ -167,11 +167,11 @@ func TestAddPod(t *testing.T) {
 	node1 := buildNode("n1", buildResourceList("2000m", "10G"))
 	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
-	consumer1 := buildConsumer("c1", "c1")
+	queue1 := buildQueue("c1", "c1")
 	ni1 := NewNodeInfo(node1)
 	pi1 := NewPodInfo(pod1)
 	pi2 := NewPodInfo(pod2)
-	ci1 := NewConsumerInfo(consumer1)
+	ci1 := NewQueueInfo(queue1)
 	ni1.AddPod(pi2)
 	ci1.AddPod(pi1)
 	ci1.AddPod(pi2)
@@ -179,13 +179,13 @@ func TestAddPod(t *testing.T) {
 	tests := []struct {
 		pods      []*v1.Pod
 		nodes     []*v1.Node
-		consumers []*arbv1.Consumer
+		queues []*arbv1.Queue
 		expected  *SchedulerCache
 	}{
 		{
 			pods:      []*v1.Pod{pod1, pod2},
 			nodes:     []*v1.Node{node1},
-			consumers: []*arbv1.Consumer{consumer1},
+			queues: []*arbv1.Queue{queue1},
 			expected: &SchedulerCache{
 				Nodes: map[string]*NodeInfo{
 					"n1": ni1,
@@ -194,7 +194,7 @@ func TestAddPod(t *testing.T) {
 					"c1/p1": pi1,
 					"c1/p2": pi2,
 				},
-				Consumers: map[string]*ConsumerInfo{
+				Queues: map[string]*QueueInfo{
 					"c1": ci1,
 				},
 			},
@@ -205,15 +205,15 @@ func TestAddPod(t *testing.T) {
 		cache := &SchedulerCache{
 			Nodes:     make(map[string]*NodeInfo),
 			Pods:      make(map[string]*PodInfo),
-			Consumers: make(map[string]*ConsumerInfo),
+			Queues: make(map[string]*QueueInfo),
 		}
 
 		for _, n := range test.nodes {
 			cache.AddNode(n)
 		}
 
-		for _, c := range test.consumers {
-			cache.AddConsumer(c)
+		for _, c := range test.queues {
+			cache.AddQueue(c)
 		}
 
 		for _, p := range test.pods {
@@ -254,7 +254,7 @@ func TestAddNode(t *testing.T) {
 					"c1/p1": pi1,
 					"c1/p2": pi2,
 				},
-				Consumers: map[string]*ConsumerInfo{
+				Queues: map[string]*QueueInfo{
 					"c1": {
 						Namespace: "c1",
 						PodSets:   make(map[types.UID]*PodSet),
@@ -272,7 +272,7 @@ func TestAddNode(t *testing.T) {
 		cache := &SchedulerCache{
 			Nodes:     make(map[string]*NodeInfo),
 			Pods:      make(map[string]*PodInfo),
-			Consumers: make(map[string]*ConsumerInfo),
+			Queues: make(map[string]*QueueInfo),
 		}
 
 		for _, p := range test.pods {
@@ -290,26 +290,26 @@ func TestAddNode(t *testing.T) {
 	}
 }
 
-func TestAddConsumer(t *testing.T) {
+func TestAddQueue(t *testing.T) {
 
 	// case 1
 	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
-	consumer1 := buildConsumer("c1", "c1")
+	queue1 := buildQueue("c1", "c1")
 	pi1 := NewPodInfo(pod1)
 	pi2 := NewPodInfo(pod2)
-	ci1 := NewConsumerInfo(consumer1)
+	ci1 := NewQueueInfo(queue1)
 	ci1.AddPod(pi1)
 	ci1.AddPod(pi2)
 
 	tests := []struct {
 		pods      []*v1.Pod
-		consumers []*arbv1.Consumer
+		queues []*arbv1.Queue
 		expected  *SchedulerCache
 	}{
 		{
 			pods:      []*v1.Pod{pod1, pod2},
-			consumers: []*arbv1.Consumer{consumer1},
+			queues: []*arbv1.Queue{queue1},
 			expected: &SchedulerCache{
 				Nodes: map[string]*NodeInfo{
 					"n1": {
@@ -328,7 +328,7 @@ func TestAddConsumer(t *testing.T) {
 					"c1/p1": pi1,
 					"c1/p2": pi2,
 				},
-				Consumers: map[string]*ConsumerInfo{
+				Queues: map[string]*QueueInfo{
 					"c1": ci1,
 				},
 			},
@@ -339,15 +339,15 @@ func TestAddConsumer(t *testing.T) {
 		cache := &SchedulerCache{
 			Nodes:     make(map[string]*NodeInfo),
 			Pods:      make(map[string]*PodInfo),
-			Consumers: make(map[string]*ConsumerInfo),
+			Queues: make(map[string]*QueueInfo),
 		}
 
 		for _, p := range test.pods {
 			cache.AddPod(p)
 		}
 
-		for _, c := range test.consumers {
-			cache.AddConsumer(c)
+		for _, c := range test.queues {
+			cache.AddQueue(c)
 		}
 
 		if !cacheEqual(cache, test.expected) {
