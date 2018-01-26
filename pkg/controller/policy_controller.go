@@ -85,7 +85,7 @@ func (pc *PolicyController) Run(stopCh <-chan struct{}) {
 	go pc.cache.Run(stopCh)
 	pc.cache.WaitForCacheSync(stopCh)
 
-	go wait.Until(pc.runOnce, 2*time.Second, stopCh)
+	go wait.Until(pc.runOnce, 20*time.Second, stopCh)
 	go wait.Until(pc.processAllocDecision, 0, stopCh)
 }
 
