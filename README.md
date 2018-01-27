@@ -6,9 +6,13 @@ kube-arbitrator includes two sub projects: kube-batchd (a batch job scheduler) a
 
 `kube-batched` builds upon a decade and a half of experience on running batch workloads at scale using several systems, e.g. [LSF](https://www.ibm.com/us-en/marketplace/hpc-workload-management), [Symphony](https://www.ibm.com/us-en/marketplace/analytics-workload-management), combined with best-of-breed ideas and practices from the community.
 
+Refer to [tutorial](https://github.com/kubernetes-incubator/kube-arbitrator/blob/master/doc/usage/batchd_tutorial.md) on how to use `kube-batched` to run batch job in Kubernetes
+
 ## kube-quotalloc
 
 `kube-quotalloc` is resource management system built on Kubernetes, providing mechanisms for dynamic resource sharing between multiple tenants/namespaces in Kubernetes. It builds upon a decade and a half of experience on resource sharing system in enterprise called [EGO](https://www.ibm.com/developerworks/cn/analytics/library/ba-cn-ego-intro-whitepaper/index.html), combined with best-of-breed ideas and practices from the community
+
+Refer to [tutorial](https://github.com/kubernetes-incubator/kube-arbitrator/blob/master/doc/usage/quotalloc_tutorial.md) on how to use `kube-quotalloc` to share resource dynamically between namespaces in Kubernetes
 
 ## Community, discussion, contribution, and support
 
