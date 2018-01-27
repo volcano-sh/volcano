@@ -1,4 +1,9 @@
-kube-arbitrator includes two sub projects: kube-batchd (a batch job scheduler) and kube-quotalloc (a dynamic quota allocator).
+# kube-arbitrator
+
+[![Build Status](https://travis-ci.org/kubernetes-incubator/kube-arbitrator.svg?branch=master)](https://travis-ci.org/kubernetes-incubator/kube-arbitrator)
+[![Go Report Card](https://goreportcard.com/badge/github.com/kubernetes-incubator/kube-arbitrator)](https://goreportcard.com/report/github.com/kubernetes-incubator/kube-arbitrator)
+
+kube-arbitrator is a policy based resource sharing system for Kubernetes cluster, it includes two sub projects: `kube-batchd` (a batch job scheduler) and `kube-quotalloc` (a dynamic quota allocator).
 
 ## kube-batchd
 
