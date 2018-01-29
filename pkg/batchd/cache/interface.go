@@ -16,7 +16,7 @@ limitations under the License.
 
 package cache
 
-// Cache collects pods/nodes/consumers information
+// Cache collects pods/nodes/queues information
 // and provides information snapshot
 type Cache interface {
 	// Run start informer
