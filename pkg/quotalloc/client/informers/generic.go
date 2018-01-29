@@ -53,7 +53,7 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 	switch resource {
 	// Group=, Version=V1
 
-	case arbv1.SchemeGroupVersion.WithResource("queues"):
+	case arbv1.SchemeGroupVersion.WithResource("quotaallocators"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.QuotaAllocator().QuotaAllocators().Informer()}, nil
 	}
 
