@@ -1,17 +1,17 @@
-# Tutorial of kube-arbitrator
+# Tutorial of kube-batchd
 
-This doc will show how to run Kube-arbitrator as a kubernetes scheduler. It is for [master](https://github.com/kubernetes-incubator/kube-arbitrator/tree/master) branch.
+This doc will show how to run Kube-batchd as a kubernetes scheduler. It is for [master](https://github.com/kubernetes-incubator/kube-arbitrator/tree/master) branch.
 
 ## 1. Pre-condition
-To run Kube-arbitrator, a kubernetes cluster must start up. Here is a document [Using kubeadm to Create a Cluster](https://kubernetes.io/docs/setup/independent/create-cluster-kubeadm/)
+To run Kube-batchd, a kubernetes cluster must start up. Here is a document [Using kubeadm to Create a Cluster](https://kubernetes.io/docs/setup/independent/create-cluster-kubeadm/)
 
-Kube-arbitrator need to run as a kubernetes scheduler. The next step will show how to run kube-arbitrator as kubernetes scheduler quickly. Refer [Configure Multiple Schedulers](https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/) to get more details.
+Kube-batchd need to run as a kubernetes scheduler. The next step will show how to run kube-batchd as kubernetes scheduler quickly. Refer [Configure Multiple Schedulers](https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/) to get more details.
 
-## 2. Config Kube-arbitrator as Kubernetes scheduler
+## 2. Config Kube-batchd as Kubernetes scheduler
 
-### (1) Package Kube-arbitrator
+### (1) Package Kube-batchd
 
-#### Download and Build Kube-arbitrator
+#### Download and Build Kube-batchd
 
 ```
 # mkdir -p $GOPATH/src/github.com/kubernetes-incubator/
@@ -26,7 +26,7 @@ Kube-arbitrator need to run as a kubernetes scheduler. The next step will show h
 ```
 # mkdir -p /tmp/kube-image
 # cd /tmp/kube-images
-# cp $GOPATH/src/github.com/kubernetes-incubator/kube-arbitrator/_output/bin/kube-arbitrator ./
+# cp $GOPATH/src/github.com/kubernetes-incubator/kube-arbitrator/_output/bin/kube-batchd ./
 # cp /root/.kube/config ./
 ```
 
@@ -36,32 +36,32 @@ Create `Dockerfile` in `/tmp/kube-image`
 # cat /tmp/kube-image/Dockerfile 
 From ubuntu
 
-ADD kube-arbitrator /opt
+ADD kube-batchd /opt
 ADD config /opt
 
 # cd /tmp/kube-image/
-# docker build -t kube-arbitrator:v1 .
+# docker build -t kube-batchd:v1 .
 ```
 
-Verify kube-arbitrator images
+Verify kube-batchd images
 
 ```
-# docker images kube-arbitrator
-REPOSITORY          TAG                 IMAGE ID            CREATED              SIZE
-kube-arbitrator     v1                  bc4cec05da6a        About a minute ago   149.3 MB
+# docker images kube-batchd
+REPOSITORY        TAG       IMAGE ID          CREATED              SIZE
+kube-batchd       v1        bc4cec05da6a      About a minute ago   149.3 MB
 ```
 
-### (2) Define a Kubernetes Deployment for kube-arbitartor
+### (2) Define a Kubernetes Deployment for kube-batchd
 
 ```
-# cat kube-arbitrator.yaml 
+# cat kube-batchd.yaml 
 apiVersion: apps/v1beta1
 kind: Deployment
 metadata:
   labels:
     component: scheduler
     tier: control-plane
-  name: kube-arbitrator
+  name: kube-batchd
   namespace: kube-system
 spec:
   replicas: 1
@@ -74,9 +74,9 @@ spec:
     spec:
       containers:
       - command:
-        - /opt/kube-arbitrator
+        - /opt/kube-batchd
         - --kubeconfig=/opt/config
-        image: kube-arbitrator:v1 
+        image: kube-batchd:v1 
         name: kube-second-scheduler
         resources:
           requests:
@@ -89,27 +89,27 @@ spec:
       volumes: []
 ```
 
-Run the kube-arbitrator as kubernetes scheduler
+Run the kube-batchd as kubernetes scheduler
 
 ```
-# kubectl create -f kube-arbitrator.yaml 
+# kubectl create -f kube-batchd.yaml
 ```
 
-Verify kube-arbitrator deployment
+Verify kube-batchd deployment
 
 ```
-# kubectl get deploy kube-arbitrator -n kube-system
-NAME              DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
-kube-arbitrator   1         1         1            1           1m
+# kubectl get deploy kube-batchd -n kube-system
+NAME           DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
+kube-batchd    1         1         1            1           1m
 
 # kubectl get pods --all-namespaces
-NAMESPACE     NAME                                 READY     STATUS       RESTARTS   AGE
+NAMESPACE     NAME                             READY     STATUS       RESTARTS   AGE
 ... ...
-kube-system   kube-arbitrator-2521827519-khmgx     1/1       Running      0          2m
+kube-system   kube-batchd-2521827519-khmgx     1/1       Running      0          2m
 ... ...
 ```
 
-### (3) Specify kube-arbitrator scheduler for deployment
+### (3) Specify kube-batchd scheduler for deployment
 
 ```
 # cat deployment-drf01.yaml 
@@ -125,7 +125,7 @@ spec:
       labels:
         app: redis
     spec:
-      schedulerName: kube-arbitrator
+      schedulerName: kube-batchd
       containers:
       - name: key-value-store
         image: redis
@@ -142,7 +142,7 @@ spec:
 
 ## 3. Create PodDisruptionBudget for Application
 
-Kube-arbitrator will reuse the number of `PodDisruptionBudget.spec.minAvailable` and change nothing of `PodDisruptionBudget` feature. Here is a sample:
+Kube-batchd will reuse the number of `PodDisruptionBudget.spec.minAvailable` and change nothing of `PodDisruptionBudget` feature. Here is a sample:
 
 ```
 # cat pdb.yaml 
@@ -157,11 +157,11 @@ spec:
       app: redis
 ```
 
-For kube-arbitrator, above yaml file means
+For kube-batchd, above yaml file means
 
 * It is for the applications with label `app: redis`. Assume all pods under the same application (such as Deployment/RS/Job) have same `app` label
 * Each application with label `app:redis` need start `minAvailable` pods at least, `minAvailable` is 4.
-* When resources are sufficient, Kube-arbitrator will start `minAvailable` pods of each application one by one, and then start left pods of each application by DRF policy.
-* When resources are not sufficient, Kube-arbitrator just tries to start `minAvailable` pods of each application as much as possible.
+* When resources are sufficient, Kube-batchd will start `minAvailable` pods of each application one by one, and then start left pods of each application by DRF policy.
+* When resources are not sufficient, Kube-batchd just tries to start `minAvailable` pods of each application as much as possible.
 
 If there is no PodDisruptionBudget, `minAvailable` of each application will be 0.
