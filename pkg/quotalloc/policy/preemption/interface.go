@@ -25,9 +25,9 @@ type Interface interface {
 	// Run start informer
 	Run(stopCh <-chan struct{})
 
-	// Preprocessing kill pod to make each queue underused
-	Preprocessing(queues map[string]*cache.QuotaAllocatorInfo, pods []*cache.PodInfo) (map[string]*cache.QuotaAllocatorInfo, error)
+	// Preprocessing kill pod to make each quotaallocator underused
+	Preprocessing(quotaAllocators map[string]*cache.QuotaAllocatorInfo, pods []*cache.PodInfo) (map[string]*cache.QuotaAllocatorInfo, error)
 
 	// PreemptResource preempt resources between job
-	PreemptResources(queues map[string]*cache.QuotaAllocatorInfo) error
+	PreemptResources(quotaAllocators map[string]*cache.QuotaAllocatorInfo) error
 }
