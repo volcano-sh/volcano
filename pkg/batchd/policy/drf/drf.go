@@ -47,7 +47,6 @@ func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.Node
 	defer glog.V(4).Infof("Leaving Allocate ...")
 
 	dq := util.NewDictionaryQueue()
-	pq := util.NewPriorityQueue()
 
 	total := cache.EmptyResource()
 
@@ -58,7 +57,6 @@ func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.Node
 	for _, c := range queues {
 		for _, ps := range c.PodSets {
 			psi := newPodSetInfo(ps, total)
-			pq.Push(util.NewItem(psi, psi.priority))
 			dq.Push(util.NewDictionaryItem(psi, psi.podSet.Name))
 		}
 	}
@@ -100,6 +98,13 @@ func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.Node
 				break
 			}
 		}
+	}
+
+	// build priority queue after assign minAvailable
+	pq := util.NewPriorityQueue()
+	for _, q := range dq {
+		psi := q.Value.(*podSetInfo)
+		pq.Push(util.NewItem(psi, psi.priority))
 	}
 
 	heap.Init(&pq)
