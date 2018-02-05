@@ -16,6 +16,10 @@ limitations under the License.
 
 package cache
 
+import (
+	"k8s.io/api/core/v1"
+)
+
 // Cache collects pods/nodes/queues information
 // and provides information snapshot
 type Cache interface {
@@ -27,4 +31,10 @@ type Cache interface {
 
 	// WaitForCacheSync waits for all cache synced
 	WaitForCacheSync(stopCh <-chan struct{}) bool
+
+	// AssumePod assumes a pod scheduled and aggregates the pod's information into its node.
+	// The implementation also decides the policy to expire pod before being confirmed (receiving Add event).
+	// After expiration, its information would be subtracted.
+	// TODO(jinzhej): clean up expire Pods
+	AssumePod(pod *v1.Pod) error
 }
