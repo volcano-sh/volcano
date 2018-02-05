@@ -50,6 +50,8 @@ type SchedulerCache struct {
 	queueInformer arbclient.QueueInformer
 	pdbInformer   policyv1.PodDisruptionBudgetInformer
 
+	assumedPodStates map[string]*podState
+
 	Pods   map[string]*PodInfo
 	Nodes  map[string]*NodeInfo
 	Queues map[string]*QueueInfo
@@ -58,10 +60,11 @@ type SchedulerCache struct {
 
 func newSchedulerCache(config *rest.Config) *SchedulerCache {
 	sc := &SchedulerCache{
-		Nodes:  make(map[string]*NodeInfo),
-		Pods:   make(map[string]*PodInfo),
-		Queues: make(map[string]*QueueInfo),
-		Pdbs:   make(map[string]*PdbInfo),
+		assumedPodStates: make(map[string]*podState),
+		Nodes:            make(map[string]*NodeInfo),
+		Pods:             make(map[string]*PodInfo),
+		Queues:           make(map[string]*QueueInfo),
+		Pdbs:             make(map[string]*PdbInfo),
 	}
 
 	kubecli := kubernetes.NewForConfigOrDie(config)
@@ -170,6 +173,39 @@ func nonTerminatedPod(pod *v1.Pod) bool {
 	return true
 }
 
+func (sc *SchedulerCache) AssumePod(pod *v1.Pod) error {
+	key := podKey(pod)
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	_, ok := sc.assumedPodStates[key]
+	if ok {
+		glog.V(4).Infof("pod %s already assumed, ignore it")
+		return nil
+	}
+
+	pi, ok := sc.Pods[key]
+	if !ok {
+		return fmt.Errorf("pod %s not in cache but get assumed", pod.Name)
+	}
+
+	if len(pi.NodeName) > 0 {
+		return fmt.Errorf("pod %s is assigned in cache but get assumed", pod.Name)
+	}
+
+	if err := sc.deletePod(pod); err != nil {
+		glog.V(4).Infof("delete pod %s from cache error %v", pod.Name, err)
+	}
+	sc.addPod(pod)
+	ps := &podState{
+		pod: pod,
+	}
+	sc.assumedPodStates[key] = ps
+
+	return nil
+}
+
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 	key := podKey(pod)
@@ -178,9 +214,21 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 		return fmt.Errorf("pod %v exist", key)
 	}
 
+	// for assumed pod, check coming pod status
+	// running, remove from assumed pods and add pod to cache
+	// pending with host(same or different), remove from assumed pods and add pod to cache
+	// pending without host, do nothing for the pod due to it is assumed by policy
+	if _, ok := sc.assumedPodStates[key]; ok {
+		if pod.Status.Phase == v1.PodPending && len(pod.Spec.NodeName) == 0 {
+			return fmt.Errorf("pending pod %s without hostname is assumed", pod.Name)
+		} else {
+			delete(sc.assumedPodStates, key)
+		}
+	}
+
 	pi := NewPodInfo(pod)
 
-	if pod.Status.Phase == v1.PodRunning {
+	if len(pod.Spec.NodeName) > 0 {
 		if sc.Nodes[pod.Spec.NodeName] == nil {
 			sc.Nodes[pod.Spec.NodeName] = NewNodeInfo(nil)
 		}
@@ -215,13 +263,16 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
 	key := podKey(pod)
 
+	// remove assumed Pod directly
+	delete(sc.assumedPodStates, key)
+
 	pi, ok := sc.Pods[key]
 	if !ok {
 		return fmt.Errorf("pod %v doesn't exist", key)
 	}
 	delete(sc.Pods, key)
 
-	if len(pi.NodeName) != 0 && pi.Phase == v1.PodRunning {
+	if len(pi.NodeName) != 0 {
 		node := sc.Nodes[pod.Spec.NodeName]
 		if node != nil {
 			node.RemovePod(pi)

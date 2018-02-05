@@ -17,10 +17,20 @@ limitations under the License.
 package cache
 
 import (
+	"time"
+
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
+
+type podState struct {
+	pod *v1.Pod
+	// Used by assumedPod to determinate expiration.
+	deadline *time.Time
+	// Used to block cache from expiring assumedPod if binding still runs
+	bindingFinished bool
+}
 
 type PodInfo struct {
 	UID       types.UID
@@ -108,6 +118,10 @@ func (ps *PodSet) AddPodInfo(pi *PodInfo) {
 		ps.Allocated.Add(pi.Request)
 		ps.TotalRequest.Add(pi.Request)
 	case v1.PodPending:
+		// treat pending pod with NodeName as allocated
+		if len(pi.Pod.Spec.NodeName) != 0 {
+			ps.Allocated.Add(pi.Request)
+		}
 		ps.Pending = append(ps.Pending, pi)
 		ps.TotalRequest.Add(pi.Request)
 	default:
@@ -133,6 +147,9 @@ func (ps *PodSet) DeletePodInfo(pi *PodInfo) {
 
 	for index, piPending := range ps.Pending {
 		if piPending.Name == pi.Name {
+			if len(piPending.Pod.Spec.NodeName) != 0 {
+				ps.Allocated.Sub(piPending.Request)
+			}
 			ps.TotalRequest.Sub(piPending.Request)
 			ps.Pending = append(ps.Pending[:index], ps.Pending[index+1:]...)
 			return

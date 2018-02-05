@@ -85,7 +85,7 @@ func (pc *PolicyController) Run(stopCh <-chan struct{}) {
 	go pc.cache.Run(stopCh)
 	pc.cache.WaitForCacheSync(stopCh)
 
-	go wait.Until(pc.runOnce, 20*time.Second, stopCh)
+	go wait.Until(pc.runOnce, 2*time.Second, stopCh)
 	go wait.Until(pc.processAllocDecision, 0, stopCh)
 }
 
@@ -98,6 +98,8 @@ func (pc *PolicyController) runOnce() {
 	snapshot := pc.cache.Snapshot()
 
 	queues := pc.allocator.Allocate(snapshot.Queues, snapshot.Nodes)
+
+	pc.assumePods(queues)
 
 	pc.enqueue(queues)
 }
@@ -115,6 +117,28 @@ func (pc *PolicyController) cancelAllocDecisionProcessing() {
 	err := pc.podSets.Replace([]interface{}{}, "")
 	if err != nil {
 		glog.V(4).Infof("Reset podSets error %v", err)
+	}
+}
+
+func (pc *PolicyController) assumePods(queues []*schedcache.QueueInfo) {
+	for _, queue := range queues {
+		for _, ps := range queue.PodSets {
+			for _, p := range ps.Pending {
+				if len(p.NodeName) != 0 {
+					pc.assume(p.Pod.DeepCopy(), p.NodeName)
+				}
+			}
+		}
+	}
+}
+
+// assume signals to the cache that a pod is already in the cache, so that binding can be asynchronous.
+// assume modifies `assumed`
+func (pc *PolicyController) assume(assumed *v1.Pod, host string) {
+	assumed.Spec.NodeName = host
+	err := pc.cache.AssumePod(assumed)
+	if err != nil {
+		glog.V(4).Infof("fail to assume pod %s", assumed.Name)
 	}
 }
 
