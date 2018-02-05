@@ -68,7 +68,7 @@ func NewPolicyController(config *rest.Config, policyName string) (*PolicyControl
 		return nil, fmt.Errorf("failed to create allocator: %#v", err)
 	}
 
-	queueController := &PolicyController{
+	policyController := &PolicyController{
 		config:     config,
 		clientset:  cs,
 		kubeclient: kc,
@@ -77,7 +77,7 @@ func NewPolicyController(config *rest.Config, policyName string) (*PolicyControl
 		podSets:    cache.NewFIFO(podSetKey),
 	}
 
-	return queueController, nil
+	return policyController, nil
 }
 
 func (pc *PolicyController) Run(stopCh <-chan struct{}) {
