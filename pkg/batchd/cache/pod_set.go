@@ -17,10 +17,20 @@ limitations under the License.
 package cache
 
 import (
+	"time"
+
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
+
+type podState struct {
+	pod *v1.Pod
+	// Used by assumedPod to determinate expiration.
+	deadline *time.Time
+	// Used to block cache from expiring assumedPod if binding still runs
+	bindingFinished bool
+}
 
 type PodInfo struct {
 	UID       types.UID
