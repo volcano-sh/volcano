@@ -273,7 +273,7 @@ func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
 	delete(sc.Pods, key)
 
 	if len(pi.NodeName) != 0 {
-		node := sc.Nodes[pod.Spec.NodeName]
+		node := sc.Nodes[pi.NodeName]
 		if node != nil {
 			node.RemovePod(pi)
 		}
