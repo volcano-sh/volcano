@@ -17,7 +17,6 @@ limitations under the License.
 package drf
 
 import (
-	"container/heap"
 	"sort"
 
 	"github.com/golang/glog"
@@ -104,17 +103,15 @@ func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.Node
 	pq := util.NewPriorityQueue()
 	for _, q := range dq {
 		psi := q.Value.(*podSetInfo)
-		pq.Push(util.NewItem(psi, psi.priority))
+		pq.Push(psi, psi.priority)
 	}
 
-	heap.Init(&pq)
-
 	for {
-		if pq.Len() == 0 {
+		if pq.Empty() {
 			break
 		}
 
-		psi := heap.Pop(&pq).(*util.Item).Value.(*podSetInfo)
+		psi := pq.Pop().(*podSetInfo)
 
 		glog.V(3).Infof("try to allocate resources to PodSet <%v/%v>",
 			psi.podSet.Namespace, psi.podSet.Name)
@@ -143,7 +140,7 @@ func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.Node
 		}
 
 		if assigned {
-			heap.Push(&pq, util.NewItem(psi, psi.priority))
+			pq.Push(psi, psi.priority)
 		} else {
 			// If no assignment, did not push PodSet back as no node can be used.
 			glog.V(3).Infof("no node was assigned to <%v/%v> with request <%v>",

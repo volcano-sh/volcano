@@ -16,6 +16,10 @@ limitations under the License.
 
 package util
 
+import (
+	"container/heap"
+)
+
 // An Item is something we manage in a priority queue.
 type Item struct {
 	Value    interface{} // The value of the item; arbitrary.
@@ -30,29 +34,48 @@ func NewItem(v interface{}, p float64) *Item {
 }
 
 // A PriorityQueue implements heap.Interface and holds Items.
-type PriorityQueue []*Item
 
-func NewPriorityQueue() PriorityQueue {
-	return make(PriorityQueue, 0)
+type PriorityQueue struct {
+	queue priorityQueue
 }
 
-func (pq PriorityQueue) Len() int { return len(pq) }
+type priorityQueue []*Item
 
-func (pq PriorityQueue) Less(i, j int) bool {
+func NewPriorityQueue() *PriorityQueue {
+	return &PriorityQueue{
+		queue: make(priorityQueue, 0),
+	}
+}
+
+func (q *PriorityQueue) Push(it interface{}, priority float64) {
+	heap.Push(&q.queue, NewItem(it, priority))
+}
+
+func (q *PriorityQueue) Pop() interface{} {
+	return heap.Pop(&q.queue).(*Item).Value
+}
+
+func (q *PriorityQueue) Empty() bool {
+	return q.queue.Len() == 0
+}
+
+func (pq priorityQueue) Len() int { return len(pq) }
+
+func (pq priorityQueue) Less(i, j int) bool {
 	// We want Pop to give us the highest, not lowest, priority so we use greater than here.
 	return pq[i].Priority < pq[j].Priority
 }
 
-func (pq PriorityQueue) Swap(i, j int) {
+func (pq priorityQueue) Swap(i, j int) {
 	pq[i], pq[j] = pq[j], pq[i]
 }
 
-func (pq *PriorityQueue) Push(x interface{}) {
+func (pq *priorityQueue) Push(x interface{}) {
 	item := x.(*Item)
 	*pq = append(*pq, item)
 }
 
-func (pq *PriorityQueue) Pop() interface{} {
+func (pq *priorityQueue) Pop() interface{} {
 	old := *pq
 	n := len(old)
 	item := old[n-1]
