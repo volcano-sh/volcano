@@ -24,13 +24,15 @@ import (
 )
 
 type podSetInfo struct {
-	podSet           *cache.PodSet
-	dominantResource v1.ResourceName
-	allocated        *cache.Resource
-	priority         float64
-	total            *cache.Resource
-	pendingIndex     int
-	assignedPending  int
+	podSet *cache.PodSet
+
+	dominantResource v1.ResourceName // The dominant resource name of PodSet
+	allocated        *cache.Resource // Allocated resource of PodSet
+	share            float64         // The DRF share of PodSet
+	total            *cache.Resource // The total resource of cluster, used to update DRF share
+
+	pendingIndex    int
+	assignedPending int
 }
 
 func newPodSetInfo(ps *cache.PodSet, t *cache.Resource) *podSetInfo {
@@ -55,14 +57,14 @@ func newPodSetInfo(ps *cache.PodSet, t *cache.Resource) *podSetInfo {
 		}
 
 		p := psi.allocated.Get(rn) / psi.total.Get(rn)
-		if p > psi.priority {
-			psi.priority = p
+		if p > psi.share {
+			psi.share = p
 			psi.dominantResource = rn
 		}
 	}
 
 	glog.V(3).Infof("PodSet <%v/%v>: priority <%f>, dominant resource <%v>",
-		psi.podSet.Namespace, psi.podSet.Name, psi.priority, psi.dominantResource)
+		psi.podSet.Namespace, psi.podSet.Name, psi.share, psi.dominantResource)
 
 	return psi
 }
@@ -75,10 +77,10 @@ func (psi *podSetInfo) assignPendingPod(nodeName string) {
 	// Update related info.
 	psi.pendingIndex++
 	psi.assignedPending++
-	psi.priority = psi.allocated.Get(psi.dominantResource) / psi.total.Get(psi.dominantResource)
+	psi.share = psi.allocated.Get(psi.dominantResource) / psi.total.Get(psi.dominantResource)
 
 	glog.V(3).Infof("PodSet <%v/%v> after assignment: priority <%f>, dominant resource <%v>",
-		psi.podSet.Namespace, psi.podSet.Name, psi.priority, psi.dominantResource)
+		psi.podSet.Namespace, psi.podSet.Name, psi.share, psi.dominantResource)
 }
 
 func (psi *podSetInfo) nextPendingPod() *cache.PodInfo {
