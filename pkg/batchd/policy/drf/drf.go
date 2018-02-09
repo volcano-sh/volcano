@@ -45,14 +45,12 @@ func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.Node
 	glog.V(4).Infof("Enter Allocate ...")
 	defer glog.V(4).Infof("Leaving Allocate ...")
 
-	dq := util.NewDictionaryQueue()
-
 	total := cache.EmptyResource()
-
 	for _, n := range nodes {
 		total.Add(n.Allocatable)
 	}
 
+	dq := util.NewDictionaryQueue()
 	for _, c := range queues {
 		for _, ps := range c.PodSets {
 			psi := newPodSetInfo(ps, total)
@@ -103,7 +101,7 @@ func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.Node
 	pq := util.NewPriorityQueue()
 	for _, q := range dq {
 		psi := q.Value.(*podSetInfo)
-		pq.Push(psi, psi.priority)
+		pq.Push(psi, psi.share)
 	}
 
 	for {
@@ -140,7 +138,7 @@ func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.Node
 		}
 
 		if assigned {
-			pq.Push(psi, psi.priority)
+			pq.Push(psi, psi.share)
 		} else {
 			// If no assignment, did not push PodSet back as no node can be used.
 			glog.V(3).Infof("no node was assigned to <%v/%v> with request <%v>",
