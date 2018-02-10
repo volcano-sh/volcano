@@ -69,7 +69,7 @@ func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.Node
 				break
 			}
 
-			p := psi.nextPendingPod()
+			p := psi.popPendingPod()
 			if p == nil {
 				glog.V(3).Infof("no pending Pod in PodSet <%v/%v>",
 					psi.podSet.Namespace, psi.podSet.Name)
@@ -79,7 +79,7 @@ func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.Node
 			assigned := false
 			for _, node := range nodes {
 				if p.Request.LessEqual(node.Idle) {
-					psi.assignPendingPod(node.Name)
+					psi.assignPendingPod(p, node.Name)
 					node.Idle.Sub(p.Request)
 
 					assigned = true
@@ -114,7 +114,7 @@ func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.Node
 		glog.V(3).Infof("try to allocate resources to PodSet <%v/%v>",
 			psi.podSet.Namespace, psi.podSet.Name)
 
-		p := psi.nextPendingPod()
+		p := psi.popPendingPod()
 
 		// If no pending pods, skip this PodSet without push it back.
 		if p == nil {
@@ -126,7 +126,7 @@ func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.Node
 		assigned := false
 		for _, node := range nodes {
 			if p.Request.LessEqual(node.Idle) {
-				psi.assignPendingPod(node.Name)
+				psi.assignPendingPod(p, node.Name)
 				node.Idle.Sub(p.Request)
 
 				assigned = true
@@ -140,6 +140,8 @@ func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.Node
 		if assigned {
 			pq.Push(psi, psi.share)
 		} else {
+			// push pending pod back for consistent
+			psi.pushPendingPod(p)
 			// If no assignment, did not push PodSet back as no node can be used.
 			glog.V(3).Infof("no node was assigned to <%v/%v> with request <%v>",
 				p.Namespace, p.Name, p.Request)
