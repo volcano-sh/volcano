@@ -43,13 +43,6 @@ func newPodSetInfo(ps *cache.PodSet, t *cache.Resource) *podSetInfo {
 		dominantResource: v1.ResourceCPU,
 	}
 
-	// Calculates pending pod with NodeName
-	for _, p := range psi.podSet.Pending {
-		if len(p.Pod.Spec.NodeName) != 0 {
-			psi.assignedPending++
-		}
-	}
-
 	// Calculates the dominant resource.
 	for _, rn := range cache.ResourceNames() {
 		if psi.total.IsZero(rn) {
@@ -69,31 +62,32 @@ func newPodSetInfo(ps *cache.PodSet, t *cache.Resource) *podSetInfo {
 	return psi
 }
 
-func (psi *podSetInfo) assignPendingPod(nodeName string) {
-	p := psi.podSet.Pending[psi.pendingIndex]
+func (psi *podSetInfo) assignPendingPod(p *cache.PodInfo, nodeName string) {
 	psi.allocated.Add(p.Request)
 	p.NodeName = nodeName
+	psi.podSet.Assigned = append(psi.podSet.Assigned, p)
 
-	// Update related info.
-	psi.pendingIndex++
-	psi.assignedPending++
 	psi.share = psi.allocated.Get(psi.dominantResource) / psi.total.Get(psi.dominantResource)
 
 	glog.V(3).Infof("PodSet <%v/%v> after assignment: priority <%f>, dominant resource <%v>",
 		psi.podSet.Namespace, psi.podSet.Name, psi.share, psi.dominantResource)
 }
 
-func (psi *podSetInfo) nextPendingPod() *cache.PodInfo {
-	for i := psi.pendingIndex; i < len(psi.podSet.Pending); i++ {
-		if len(psi.podSet.Pending[i].NodeName) == 0 {
-			psi.pendingIndex = i
-			return psi.podSet.Pending[i]
-		}
+func (psi *podSetInfo) popPendingPod() *cache.PodInfo {
+	if len(psi.podSet.Pending) == 0 {
+		return nil
 	}
 
-	return nil
+	pi := psi.podSet.Pending[0]
+	psi.podSet.Pending = psi.podSet.Pending[1:]
+
+	return pi
+}
+
+func (psi *podSetInfo) pushPendingPod(p *cache.PodInfo) {
+	psi.podSet.Pending = append(psi.podSet.Pending, p)
 }
 
 func (psi *podSetInfo) meetMinAvailable() bool {
-	return len(psi.podSet.Running)+psi.assignedPending >= psi.podSet.MinAvailable
+	return len(psi.podSet.Running)+len(psi.podSet.Assigned) >= psi.podSet.MinAvailable
 }

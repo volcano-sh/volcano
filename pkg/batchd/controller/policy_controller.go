@@ -149,7 +149,7 @@ func (pc *PolicyController) processAllocDecision() {
 			return fmt.Errorf("not a PodSet")
 		}
 
-		for _, p := range ps.Pending {
+		for _, p := range ps.Assigned {
 			if len(p.NodeName) != 0 {
 				if err := pc.kubeclient.CoreV1().Pods(p.Namespace).Bind(&v1.Binding{
 					ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: p.UID},

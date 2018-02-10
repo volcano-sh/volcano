@@ -90,9 +90,10 @@ type PodSet struct {
 	Allocated    *Resource
 	TotalRequest *Resource
 
-	Running []*PodInfo
-	Pending []*PodInfo
-	Others  []*PodInfo
+	Running  []*PodInfo
+	Pending  []*PodInfo // The pending pod without NodeName
+	Assigned []*PodInfo // The pending pod with NodeName
+	Others   []*PodInfo
 }
 
 func NewPodSet(uid types.UID) *PodSet {
@@ -107,6 +108,7 @@ func NewPodSet(uid types.UID) *PodSet {
 		TotalRequest: EmptyResource(),
 		Running:      make([]*PodInfo, 0),
 		Pending:      make([]*PodInfo, 0),
+		Assigned:     make([]*PodInfo, 0),
 		Others:       make([]*PodInfo, 0),
 	}
 }
@@ -121,8 +123,10 @@ func (ps *PodSet) AddPodInfo(pi *PodInfo) {
 		// treat pending pod with NodeName as allocated
 		if len(pi.Pod.Spec.NodeName) != 0 {
 			ps.Allocated.Add(pi.Request)
+			ps.Assigned = append(ps.Assigned, pi)
+		} else {
+			ps.Pending = append(ps.Pending, pi)
 		}
-		ps.Pending = append(ps.Pending, pi)
 		ps.TotalRequest.Add(pi.Request)
 	default:
 		ps.Others = append(ps.Others, pi)
@@ -155,6 +159,17 @@ func (ps *PodSet) DeletePodInfo(pi *PodInfo) {
 			return
 		}
 	}
+
+	for index, piAssigned := range ps.Assigned {
+		if piAssigned.Name == pi.Name {
+			if len(piAssigned.Pod.Spec.NodeName) != 0 {
+				ps.Allocated.Sub(piAssigned.Request)
+			}
+			ps.TotalRequest.Sub(piAssigned.Request)
+			ps.Assigned = append(ps.Assigned[:index], ps.Assigned[index+1:]...)
+			return
+		}
+	}
 }
 
 func (ps *PodSet) Clone() *PodSet {
@@ -169,6 +184,7 @@ func (ps *PodSet) Clone() *PodSet {
 		TotalRequest: ps.TotalRequest.Clone(),
 		Running:      make([]*PodInfo, 0),
 		Pending:      make([]*PodInfo, 0),
+		Assigned:     make([]*PodInfo, 0),
 		Others:       make([]*PodInfo, 0),
 	}
 
@@ -178,6 +194,10 @@ func (ps *PodSet) Clone() *PodSet {
 
 	for _, pod := range ps.Pending {
 		info.Pending = append(info.Pending, pod.Clone())
+	}
+
+	for _, pod := range ps.Assigned {
+		info.Assigned = append(info.Assigned, pod.Clone())
 	}
 
 	for _, pod := range ps.Others {

@@ -91,6 +91,7 @@ func TestQueueInfo_AddPod(t *testing.T) {
 						Running: []*PodInfo{
 							NewPodInfo(case02_pod2),
 						},
+						Assigned: []*PodInfo{},
 						Pending: []*PodInfo{
 							NewPodInfo(case02_pod1),
 						},
@@ -177,6 +178,7 @@ func TestQueueInfo_RemovePod(t *testing.T) {
 						Running: []*PodInfo{
 							NewPodInfo(case02_pod3),
 						},
+						Assigned: []*PodInfo{},
 						Pending: []*PodInfo{
 							NewPodInfo(case02_pod1),
 						},
@@ -253,6 +255,7 @@ func TestQueueInfo_AddPdb(t *testing.T) {
 						Running: []*PodInfo{
 							NewPodInfo(case01_pod2),
 						},
+						Assigned: []*PodInfo{},
 						Pending: []*PodInfo{
 							NewPodInfo(case01_pod1),
 						},
@@ -331,6 +334,7 @@ func TestQueueInfo_RemovePdb(t *testing.T) {
 						Running: []*PodInfo{
 							NewPodInfo(case01_pod2),
 						},
+						Assigned: []*PodInfo{},
 						Pending: []*PodInfo{
 							NewPodInfo(case01_pod1),
 						},

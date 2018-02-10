@@ -235,7 +235,7 @@ func TestAllocate(t *testing.T) {
 		expected := drf.Allocate(snapshot.Queues, snapshot.Nodes)
 		for _, queue := range expected {
 			for _, ps := range queue.PodSets {
-				for _, p := range ps.Pending {
+				for _, p := range ps.Assigned {
 					pk := fmt.Sprintf("%v/%v", p.Namespace, p.Name)
 					if p.NodeName != test.expected[pk] {
 						t.Errorf("case %d (%s): %v/%v expected %s got %s",
@@ -341,7 +341,7 @@ func TestMinAvailable(t *testing.T) {
 		for _, queue := range expected {
 			assigned := 0
 			for _, ps := range queue.PodSets {
-				for _, pending := range ps.Pending {
+				for _, pending := range ps.Assigned {
 					if len(pending.NodeName) != 0 {
 						assigned++
 					}
