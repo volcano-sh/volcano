@@ -61,7 +61,7 @@ export IFS=$'\n'
 # as the prefix, however if we run it outside it returns the full path of the file
 # with a leading underscore. We'll need to support both scenarios for all_packages.
 all_packages=(
-	$(go list -e ./... | egrep -v "/(third_party|vendor|staging/src/k8s.io/client-go/pkg|generated|clientset_generated)" | sed -e 's|^k8s.io/kubernetes/||' -e "s|^_${KUBE_ROOT}/\?||")
+	$(go list -e ./... | egrep -v "/(third_party|vendor|staging/src/k8s.io/client-go/pkg|generated|clientset_generated)" | sed -e 's|^github.com/kubernetes-incubator/kube-arbitrator/||' -e "s|^_${KUBE_ROOT}/\?||")
 )
 failing_packages=(
 	$(cat $failure_file)
@@ -75,6 +75,8 @@ for p in "${all_packages[@]}"; do
 	# Packages with a corresponding foo_test package will make golint fail
 	# with a useless error. Just ignore that, see golang/lint#68.
 	failedLint=$(golint "$p"/*.go 2>/dev/null)
+	echo $p
+	echo $failedLint
 	array_contains "$p" "${failing_packages[@]}" && in_failing=$? || in_failing=$?
 	if [[ -n "${failedLint}" ]] && [[ "${in_failing}" -ne "0" ]]; then
 		errors+=( "${failedLint}" )
