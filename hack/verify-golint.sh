@@ -75,8 +75,6 @@ for p in "${all_packages[@]}"; do
 	# Packages with a corresponding foo_test package will make golint fail
 	# with a useless error. Just ignore that, see golang/lint#68.
 	failedLint=$(golint "$p"/*.go 2>/dev/null)
-	echo $p
-	echo $failedLint
 	array_contains "$p" "${failing_packages[@]}" && in_failing=$? || in_failing=$?
 	if [[ -n "${failedLint}" ]] && [[ "${in_failing}" -ne "0" ]]; then
 		errors+=( "${failedLint}" )
