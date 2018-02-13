@@ -1,6 +1,10 @@
 language: go
 
-install: ./hack/install-etcd.sh
+go_import_path: github.com/kubernetes-incubator/kube-arbitrator
+
+install:
+  - ./hack/install-etcd.sh
+  - go get -u github.com/golang/lint/golint
 
 before_script:
   - export PATH=`pwd`/third_party/etcd:${PATH}
