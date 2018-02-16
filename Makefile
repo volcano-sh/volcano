@@ -6,6 +6,7 @@ kube-arbitrator: init
 
 verify: generate-code
 	hack/verify-gofmt.sh
+	hack/verify-golint.sh
 	hack/verify-gencode.sh
 
 init:
