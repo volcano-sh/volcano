@@ -197,7 +197,9 @@ func (sc *SchedulerCache) AssumePod(pod *v1.Pod) error {
 	if err := sc.deletePod(pod); err != nil {
 		glog.V(4).Infof("delete pod %s from cache error %v", pod.Name, err)
 	}
-	sc.addPod(pod)
+	if err := sc.addPod(pod); err != nil {
+		glog.V(4).Infof("Failed to add pod %s into cache: %v", pod.Name, err)
+	}
 	ps := &podState{
 		pod: pod,
 	}
@@ -255,8 +257,7 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 	if err := sc.deletePod(oldPod); err != nil {
 		return err
 	}
-	sc.addPod(newPod)
-	return nil
+	return sc.addPod(newPod)
 }
 
 // Assumes that lock is already acquired.
@@ -673,7 +674,7 @@ func (sc *SchedulerCache) Snapshot() *CacheSnapshot {
 	return snapshot
 }
 
-func (sc SchedulerCache) String() string {
+func (sc *SchedulerCache) String() string {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
