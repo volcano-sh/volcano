@@ -18,6 +18,7 @@ package cache
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/golang/glog"
@@ -38,8 +39,8 @@ import (
 )
 
 // New returns a Cache implementation.
-func New(config *rest.Config) Cache {
-	return newSchedulerCache(config)
+func New(config *rest.Config, schedulerName string) Cache {
+	return newSchedulerCache(config, schedulerName)
 }
 
 type SchedulerCache struct {
@@ -58,7 +59,7 @@ type SchedulerCache struct {
 	Pdbs   map[string]*PdbInfo
 }
 
-func newSchedulerCache(config *rest.Config) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCache {
 	sc := &SchedulerCache{
 		assumedPodStates: make(map[string]*podState),
 		Nodes:            make(map[string]*NodeInfo),
@@ -86,9 +87,13 @@ func newSchedulerCache(config *rest.Config) *SchedulerCache {
 	sc.podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
-				switch t := obj.(type) {
+				switch obj.(type) {
 				case *v1.Pod:
-					return nonTerminatedPod(t)
+					pod := obj.(*v1.Pod)
+					if strings.Compare(pod.Spec.SchedulerName, schedulerName) == 0 && pod.Status.Phase == v1.PodPending {
+						return true
+					}
+					return pod.Status.Phase == v1.PodRunning
 				default:
 					return false
 				}
