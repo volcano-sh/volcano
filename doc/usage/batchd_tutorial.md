@@ -25,7 +25,7 @@ Kube-batchd need to run as a kubernetes scheduler. The next step will show how t
 
 ```
 # mkdir -p /tmp/kube-image
-# cd /tmp/kube-images
+# cd /tmp/kube-image
 # cp $GOPATH/src/github.com/kubernetes-incubator/kube-arbitrator/_output/bin/kube-batchd ./
 # cp /root/.kube/config ./
 ```
