@@ -30,9 +30,6 @@ type podSetInfo struct {
 	allocated        *cache.Resource // Allocated resource of PodSet
 	share            float64         // The DRF share of PodSet
 	total            *cache.Resource // The total resource of cluster, used to update DRF share
-
-	pendingIndex    int
-	assignedPending int
 }
 
 func newPodSetInfo(ps *cache.PodSet, t *cache.Resource) *podSetInfo {
@@ -86,6 +83,14 @@ func (psi *podSetInfo) popPendingPod() *cache.PodInfo {
 
 func (psi *podSetInfo) pushPendingPod(p *cache.PodInfo) {
 	psi.podSet.Pending = append(psi.podSet.Pending, p)
+}
+
+func (psi *podSetInfo) insufficientMinAvailable() int {
+	insufficient := 0
+	if len(psi.podSet.Running)+len(psi.podSet.Assigned) < psi.podSet.MinAvailable {
+		insufficient = psi.podSet.MinAvailable - len(psi.podSet.Running) - len(psi.podSet.Assigned)
+	}
+	return insufficient
 }
 
 func (psi *podSetInfo) meetMinAvailable() bool {
