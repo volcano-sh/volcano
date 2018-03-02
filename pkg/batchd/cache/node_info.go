@@ -30,6 +30,9 @@ type NodeInfo struct {
 	// The used resource on that node, including running and terminating
 	// pods
 	Used *Resource
+	// The resources that is planned to used
+	// policy will use it to decide if assign pods on this node
+	UnAcceptedAllocated *Resource
 
 	Allocatable *Resource
 	Capability  *Resource
@@ -40,8 +43,9 @@ type NodeInfo struct {
 func NewNodeInfo(node *v1.Node) *NodeInfo {
 	if node == nil {
 		return &NodeInfo{
-			Idle: EmptyResource(),
-			Used: EmptyResource(),
+			Idle:                EmptyResource(),
+			Used:                EmptyResource(),
+			UnAcceptedAllocated: EmptyResource(),
 
 			Allocatable: EmptyResource(),
 			Capability:  EmptyResource(),
@@ -51,10 +55,11 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 	}
 
 	return &NodeInfo{
-		Name: node.Name,
-		Node: node,
-		Idle: NewResource(node.Status.Allocatable),
-		Used: EmptyResource(),
+		Name:                node.Name,
+		Node:                node,
+		Idle:                NewResource(node.Status.Allocatable),
+		Used:                EmptyResource(),
+		UnAcceptedAllocated: EmptyResource(),
 
 		Allocatable: NewResource(node.Status.Allocatable),
 		Capability:  NewResource(node.Status.Capacity),
@@ -71,12 +76,13 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 	}
 
 	return &NodeInfo{
-		Name:        ni.Name,
-		Node:        ni.Node,
-		Idle:        ni.Idle.Clone(),
-		Used:        ni.Used.Clone(),
-		Allocatable: ni.Allocatable.Clone(),
-		Capability:  ni.Capability.Clone(),
+		Name:                ni.Name,
+		Node:                ni.Node,
+		Idle:                ni.Idle.Clone(),
+		Used:                ni.Used.Clone(),
+		UnAcceptedAllocated: ni.UnAcceptedAllocated.Clone(),
+		Allocatable:         ni.Allocatable.Clone(),
+		Capability:          ni.Capability.Clone(),
 
 		Pods: pods,
 	}
@@ -114,4 +120,13 @@ func (ni *NodeInfo) RemovePod(p *PodInfo) {
 	}
 
 	delete(ni.Pods, podKey(p.Pod))
+}
+
+func (ni *NodeInfo) AcceptAllocated() {
+	ni.Idle.Sub(ni.UnAcceptedAllocated)
+	ni.UnAcceptedAllocated = EmptyResource()
+}
+
+func (ni *NodeInfo) DiscardAllocated() {
+	ni.UnAcceptedAllocated = EmptyResource()
 }

@@ -313,8 +313,9 @@ func TestAddQueue(t *testing.T) {
 			expected: &SchedulerCache{
 				Nodes: map[string]*NodeInfo{
 					"n1": {
-						Idle: EmptyResource(),
-						Used: EmptyResource(),
+						Idle:                EmptyResource(),
+						Used:                EmptyResource(),
+						UnAcceptedAllocated: EmptyResource(),
 
 						Allocatable: EmptyResource(),
 						Capability:  EmptyResource(),
