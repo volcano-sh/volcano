@@ -30,14 +30,19 @@ type podSetInfo struct {
 	allocated        *cache.Resource // Allocated resource of PodSet
 	share            float64         // The DRF share of PodSet
 	total            *cache.Resource // The total resource of cluster, used to update DRF share
+
+	unacceptedAllocated    *cache.Resource
+	unacceptedAssignedPods []*cache.PodInfo
 }
 
 func newPodSetInfo(ps *cache.PodSet, t *cache.Resource) *podSetInfo {
 	psi := &podSetInfo{
-		podSet:           ps,
-		allocated:        ps.Allocated.Clone(),
-		total:            t,
-		dominantResource: v1.ResourceCPU,
+		podSet:                 ps,
+		allocated:              ps.Allocated.Clone(),
+		total:                  t,
+		dominantResource:       v1.ResourceCPU,
+		unacceptedAllocated:    cache.EmptyResource(),
+		unacceptedAssignedPods: make([]*cache.PodInfo, 0),
 	}
 
 	// Calculates the dominant resource.
@@ -60,11 +65,9 @@ func newPodSetInfo(ps *cache.PodSet, t *cache.Resource) *podSetInfo {
 }
 
 func (psi *podSetInfo) assignPendingPod(p *cache.PodInfo, nodeName string) {
-	psi.allocated.Add(p.Request)
+	psi.unacceptedAllocated.Add(p.Request)
 	p.NodeName = nodeName
-	psi.podSet.Assigned = append(psi.podSet.Assigned, p)
-
-	psi.share = psi.allocated.Get(psi.dominantResource) / psi.total.Get(psi.dominantResource)
+	psi.unacceptedAssignedPods = append(psi.unacceptedAssignedPods, p)
 
 	glog.V(3).Infof("PodSet <%v/%v> after assignment: priority <%f>, dominant resource <%v>",
 		psi.podSet.Namespace, psi.podSet.Name, psi.share, psi.dominantResource)
@@ -95,4 +98,35 @@ func (psi *podSetInfo) insufficientMinAvailable() int {
 
 func (psi *podSetInfo) meetMinAvailable() bool {
 	return len(psi.podSet.Running)+len(psi.podSet.Assigned) >= psi.podSet.MinAvailable
+}
+
+func (psi *podSetInfo) acceptAssignedPods() {
+	if len(psi.unacceptedAssignedPods) == 0 {
+		return
+	}
+
+	psi.podSet.Assigned = append(psi.podSet.Assigned, psi.unacceptedAssignedPods...)
+	psi.unacceptedAssignedPods = make([]*cache.PodInfo, 0)
+
+	psi.allocated.Add(psi.unacceptedAllocated)
+	psi.unacceptedAllocated = cache.EmptyResource()
+
+	// update podset share
+	psi.share = psi.allocated.Get(psi.dominantResource) / psi.total.Get(psi.dominantResource)
+}
+
+func (psi *podSetInfo) discardAssignedPods() {
+	if len(psi.unacceptedAssignedPods) == 0 {
+		return
+	}
+
+	// clean assigned node
+	for _, p := range psi.unacceptedAssignedPods {
+		p.NodeName = ""
+	}
+
+	psi.podSet.Pending = append(psi.podSet.Pending, psi.unacceptedAssignedPods...)
+	psi.unacceptedAssignedPods = make([]*cache.PodInfo, 0)
+
+	psi.unacceptedAllocated = cache.EmptyResource()
 }
