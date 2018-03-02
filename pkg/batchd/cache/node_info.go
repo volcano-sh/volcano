@@ -130,3 +130,14 @@ func (ni *NodeInfo) AcceptAllocated() {
 func (ni *NodeInfo) DiscardAllocated() {
 	ni.UnAcceptedAllocated = EmptyResource()
 }
+
+func (ni *NodeInfo) CurrentIdle() *Resource {
+	currentIdle := ni.Idle.Clone()
+	currentIdle.Sub(ni.UnAcceptedAllocated)
+
+	return currentIdle
+}
+
+func (ni *NodeInfo) AddUnAcceptedAllocated(r *Resource) {
+	ni.UnAcceptedAllocated.Add(r)
+}
