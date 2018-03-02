@@ -58,33 +58,23 @@ func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.Node
 		}
 	}
 
-	sort.Sort(dq)
 	// assign MinAvailable of each podSet first by chronologically
+	sort.Sort(dq)
+	pq := util.NewPriorityQueue()
 	for _, q := range dq {
 		psi := q.Value.(*podSetInfo)
-		if psi.meetMinAvailable() {
-			glog.V(3).Infof("MinAvailable of podset %s/%s is met, assign next podset",
-				psi.podSet.Namespace, psi.podSet.Name)
-			continue
-		}
 
 		assigned := drf.assignMinimalPods(psi.insufficientMinAvailable(), psi, nodes)
 		if assigned {
+			// only push PodSet with MinAvailable to priority queue
+			// to avoid PodSet get resources less than MinAvailable by following DRF assignment
+			pq.Push(psi, psi.share)
+
 			glog.V(3).Infof("assign MinAvailable for podset %s/%s successfully",
 				psi.podSet.Namespace, psi.podSet.Name)
 		} else {
 			glog.V(3).Infof("assign MinAvailable for podset %s/%s failed, there is no enough resources",
 				psi.podSet.Namespace, psi.podSet.Name)
-		}
-	}
-
-	// build priority queue after assign minAvailable
-	pq := util.NewPriorityQueue()
-	for _, q := range dq {
-		psi := q.Value.(*podSetInfo)
-		// only assign left resources to PodSet which minAvailable is met by DRF
-		if psi.meetMinAvailable() {
-			pq.Push(psi, psi.share)
 		}
 	}
 
@@ -98,6 +88,7 @@ func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.Node
 		glog.V(3).Infof("try to allocate resources to PodSet <%v/%v>",
 			psi.podSet.Namespace, psi.podSet.Name)
 
+		// assign one pod of PodSet by DRF
 		assigned := drf.assignMinimalPods(1, psi, nodes)
 
 		if assigned {
@@ -117,6 +108,12 @@ func (drf *drfScheduler) assignMinimalPods(min int, psi *podSetInfo, nodes []*ca
 	glog.V(4).Infof("Enter assignMinimalPods ...")
 	defer glog.V(4).Infof("Leaving assignMinimalPods ...")
 
+	if min == 0 {
+		// PodSet need to be assigned 0 Pod this time
+		// the assignment is successful directly
+		return true
+	}
+
 	unacceptedAssignedNodes := make(map[string]*cache.NodeInfo)
 	for min > 0 {
 		p := psi.popPendingPod()
@@ -128,11 +125,14 @@ func (drf *drfScheduler) assignMinimalPods(min int, psi *podSetInfo, nodes []*ca
 
 		assigned := false
 		for _, node := range nodes {
-			currentIdle := node.Idle.Clone()
-			currentIdle.Sub(node.UnAcceptedAllocated)
+			currentIdle := node.CurrentIdle()
 			if p.Request.LessEqual(currentIdle) {
+
+				// record the assignment temporarily in PodSet and Node
+				// this assignment will be accepted (min could be met in this time)
+				// or discarded (min could not be met in this time)
 				psi.assignPendingPod(p, node.Name)
-				node.UnAcceptedAllocated.Add(p.Request)
+				node.AddUnAcceptedAllocated(p.Request)
 
 				assigned = true
 
@@ -144,7 +144,8 @@ func (drf *drfScheduler) assignMinimalPods(min int, psi *podSetInfo, nodes []*ca
 			}
 		}
 
-		// the left resources can not meet any pod in this podset
+		// the left resources can not meet any pod in this PodSet
+		// (assume that all pods in same PodSet share same resource request)
 		if !assigned {
 			// push pending pod back for consistent
 			psi.pushPendingPod(p)
@@ -154,20 +155,21 @@ func (drf *drfScheduler) assignMinimalPods(min int, psi *podSetInfo, nodes []*ca
 		min--
 	}
 
-	// not assign any pods to nodes, just return
 	if len(unacceptedAssignedNodes) == 0 {
+		// there is no nodes assigned pods this time
+		// the assignment is failed(no pod is assigned in this time)
 		return false
 	}
 
 	if min == 0 {
-		// accept all assignment this time
+		// min is met, accept all assignment this time
 		psi.acceptAssignedPods()
 		for _, node := range unacceptedAssignedNodes {
 			node.AcceptAllocated()
 		}
 		return true
 	} else {
-		// discard all assignment this time
+		// min could not be met, discard all assignment this time
 		// to avoid PodSet get resources less than min
 		psi.discardAssignedPods()
 		for _, node := range unacceptedAssignedNodes {

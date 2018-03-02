@@ -51,7 +51,7 @@ func newPodSetInfo(ps *cache.PodSet, t *cache.Resource) *podSetInfo {
 			continue
 		}
 
-		p := psi.allocated.Get(rn) / psi.total.Get(rn)
+		p := psi.calculateShare(rn)
 		if p > psi.share {
 			psi.share = p
 			psi.dominantResource = rn
@@ -65,6 +65,7 @@ func newPodSetInfo(ps *cache.PodSet, t *cache.Resource) *podSetInfo {
 }
 
 func (psi *podSetInfo) assignPendingPod(p *cache.PodInfo, nodeName string) {
+	// assign node to pending pod temporarily
 	psi.unacceptedAllocated.Add(p.Request)
 	p.NodeName = nodeName
 	psi.unacceptedAssignedPods = append(psi.unacceptedAssignedPods, p)
@@ -96,23 +97,22 @@ func (psi *podSetInfo) insufficientMinAvailable() int {
 	return insufficient
 }
 
-func (psi *podSetInfo) meetMinAvailable() bool {
-	return len(psi.podSet.Running)+len(psi.podSet.Assigned) >= psi.podSet.MinAvailable
-}
-
 func (psi *podSetInfo) acceptAssignedPods() {
 	if len(psi.unacceptedAssignedPods) == 0 {
 		return
 	}
 
+	// accept temporary assigned Pods
+	// put them to PodSet assigned queue
 	psi.podSet.Assigned = append(psi.podSet.Assigned, psi.unacceptedAssignedPods...)
 	psi.unacceptedAssignedPods = make([]*cache.PodInfo, 0)
 
+	// update allocate resource for consistent
 	psi.allocated.Add(psi.unacceptedAllocated)
 	psi.unacceptedAllocated = cache.EmptyResource()
 
 	// update podset share
-	psi.share = psi.allocated.Get(psi.dominantResource) / psi.total.Get(psi.dominantResource)
+	psi.share = psi.calculateShare(psi.dominantResource)
 }
 
 func (psi *podSetInfo) discardAssignedPods() {
@@ -125,8 +125,14 @@ func (psi *podSetInfo) discardAssignedPods() {
 		p.NodeName = ""
 	}
 
+	// discard temporary assigned Pods
+	// put them back to PodSet pending queue
 	psi.podSet.Pending = append(psi.podSet.Pending, psi.unacceptedAssignedPods...)
 	psi.unacceptedAssignedPods = make([]*cache.PodInfo, 0)
 
 	psi.unacceptedAllocated = cache.EmptyResource()
+}
+
+func (psi *podSetInfo) calculateShare(rn v1.ResourceName) float64 {
+	return psi.allocated.Get(rn) / psi.total.Get(rn)
 }
