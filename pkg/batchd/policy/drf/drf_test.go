@@ -254,6 +254,9 @@ func TestMinAvailable(t *testing.T) {
 	labels1 := map[string]string{
 		"minarea": "area1",
 	}
+	labels2 := map[string]string{
+		"minarea": "area2",
+	}
 
 	tests := []struct {
 		name     string
@@ -309,6 +312,150 @@ func TestMinAvailable(t *testing.T) {
 			expected: map[string]int{
 				"c1": 4,
 				"c2": 1,
+			},
+		},
+		{
+			name: "two queue on one node, two queues with pdb, only one queue can get minAvailable",
+			pods: []*v1.Pod{
+				// pending pod with owner1, under c1
+				buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, labels1),
+
+				// pending pod with owner1, under c1
+				buildPod("c1", "p2", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, labels1),
+
+				// pending pod with owner1, under c1
+				buildPod("c1", "p3", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, labels1),
+
+				// pending pod with owner1, under c1
+				buildPod("c1", "p4", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, labels1),
+
+				// pending pod with owner1, under c1
+				buildPod("c1", "p5", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, labels1),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, labels2),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p2", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, labels2),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p3", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, labels2),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p4", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, labels2),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p5", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, labels2),
+			},
+			nodes: []*v1.Node{
+				buildNode("n1", buildResourceList("5", "10G")),
+			},
+			queues: []*arbv1.Queue{
+				buildQueue("c1", "c1"),
+				buildQueue("c2", "c2"),
+			},
+			pdbs: []*v1beta1.PodDisruptionBudget{
+				buildPdb("pdb01", 4, labels1),
+				buildPdb("pdb02", 2, labels2),
+			},
+			expected: map[string]int{
+				"c1": 5,
+				"c2": 0,
+			},
+		},
+		{
+			name: "two queue on one node, two queues with pdb, only one queue can get minAvailable",
+			pods: []*v1.Pod{
+				// pending pod with owner1, under c1
+				buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, labels1),
+
+				// pending pod with owner1, under c1
+				buildPod("c1", "p2", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, labels1),
+
+				// pending pod with owner1, under c1
+				buildPod("c1", "p3", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, labels1),
+
+				// pending pod with owner1, under c1
+				buildPod("c1", "p4", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, labels1),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, labels2),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p2", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, labels2),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p3", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, labels2),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p4", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, labels2),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p5", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, labels2),
+			},
+			nodes: []*v1.Node{
+				buildNode("n1", buildResourceList("5", "10G")),
+			},
+			queues: []*arbv1.Queue{
+				buildQueue("c1", "c1"),
+				buildQueue("c2", "c2"),
+			},
+			pdbs: []*v1beta1.PodDisruptionBudget{
+				buildPdb("pdb01", 4, labels1),
+				buildPdb("pdb02", 2, labels2),
+			},
+			expected: map[string]int{
+				"c1": 4,
+				"c2": 0,
+			},
+		},
+		{
+			name: "two queue on one node, two queues with pdb, two queues could get minAvailable",
+			pods: []*v1.Pod{
+				// pending pod with owner1, under c1
+				buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, labels1),
+
+				// pending pod with owner1, under c1
+				buildPod("c1", "p2", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, labels1),
+
+				// pending pod with owner1, under c1
+				buildPod("c1", "p3", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, labels1),
+
+				// pending pod with owner1, under c1
+				buildPod("c1", "p4", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, labels1),
+
+				// pending pod with owner1, under c1
+				buildPod("c1", "p5", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, labels1),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, labels2),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p2", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, labels2),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p3", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, labels2),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p4", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, labels2),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p5", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, labels2),
+			},
+			nodes: []*v1.Node{
+				buildNode("n1", buildResourceList("5", "10G")),
+			},
+			queues: []*arbv1.Queue{
+				buildQueue("c1", "c1"),
+				buildQueue("c2", "c2"),
+			},
+			pdbs: []*v1beta1.PodDisruptionBudget{
+				buildPdb("pdb01", 3, labels1),
+				buildPdb("pdb02", 2, labels2),
+			},
+			expected: map[string]int{
+				"c1": 3,
+				"c2": 2,
 			},
 		},
 	}
