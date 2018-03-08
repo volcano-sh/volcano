@@ -21,6 +21,7 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/util"
 )
 
 type podSetInfo struct {
@@ -33,6 +34,8 @@ type podSetInfo struct {
 
 	unacceptedAllocated    *cache.Resource
 	unacceptedAssignedPods []*cache.PodInfo
+
+	pendingSorted *util.PriorityQueue
 }
 
 func newPodSetInfo(ps *cache.PodSet, t *cache.Resource) *podSetInfo {
@@ -43,6 +46,7 @@ func newPodSetInfo(ps *cache.PodSet, t *cache.Resource) *podSetInfo {
 		dominantResource:       v1.ResourceCPU,
 		unacceptedAllocated:    cache.EmptyResource(),
 		unacceptedAssignedPods: make([]*cache.PodInfo, 0),
+		pendingSorted:          util.NewPriorityQueue(),
 	}
 
 	// Calculates the dominant resource.
@@ -56,6 +60,11 @@ func newPodSetInfo(ps *cache.PodSet, t *cache.Resource) *podSetInfo {
 			psi.share = p
 			psi.dominantResource = rn
 		}
+	}
+
+	// TODO(jinzhejz): it is better to move sorted pods to PodSet
+	for _, ps := range psi.podSet.Pending {
+		psi.pendingSorted.Push(ps, float64(1)/float64(ps.Priority))
 	}
 
 	glog.V(3).Infof("PodSet <%v/%v>: priority <%f>, dominant resource <%v>",
@@ -75,18 +84,17 @@ func (psi *podSetInfo) assignPendingPod(p *cache.PodInfo, nodeName string) {
 }
 
 func (psi *podSetInfo) popPendingPod() *cache.PodInfo {
-	if len(psi.podSet.Pending) == 0 {
+	if psi.pendingSorted.Empty() {
 		return nil
 	}
 
-	pi := psi.podSet.Pending[0]
-	psi.podSet.Pending = psi.podSet.Pending[1:]
+	pi := psi.pendingSorted.Pop().(*cache.PodInfo)
 
 	return pi
 }
 
 func (psi *podSetInfo) pushPendingPod(p *cache.PodInfo) {
-	psi.podSet.Pending = append(psi.podSet.Pending, p)
+	psi.pendingSorted.Push(p, float64(1)/float64(p.Priority))
 }
 
 func (psi *podSetInfo) insufficientMinAvailable() int {
@@ -127,7 +135,9 @@ func (psi *podSetInfo) discardAssignedPods() {
 
 	// discard temporary assigned Pods
 	// put them back to PodSet pending queue
-	psi.podSet.Pending = append(psi.podSet.Pending, psi.unacceptedAssignedPods...)
+	for _, p := range psi.unacceptedAssignedPods {
+		psi.pendingSorted.Push(p, float64(1)/float64(p.Priority))
+	}
 	psi.unacceptedAssignedPods = make([]*cache.PodInfo, 0)
 
 	psi.unacceptedAllocated = cache.EmptyResource()

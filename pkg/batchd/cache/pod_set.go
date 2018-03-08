@@ -40,6 +40,7 @@ type PodInfo struct {
 
 	NodeName string
 	Phase    v1.PodPhase
+	Priority int32
 
 	Pod *v1.Pod
 
@@ -60,9 +61,14 @@ func NewPodInfo(pod *v1.Pod) *PodInfo {
 		Namespace: pod.Namespace,
 		NodeName:  pod.Spec.NodeName,
 		Phase:     pod.Status.Phase,
+		Priority:  1,
 
 		Pod:     pod,
 		Request: req,
+	}
+
+	if pod.Spec.Priority != nil {
+		pi.Priority = *pod.Spec.Priority
 	}
 
 	return pi
@@ -76,6 +82,7 @@ func (pi *PodInfo) Clone() *PodInfo {
 		Namespace: pi.Namespace,
 		NodeName:  pi.NodeName,
 		Phase:     pi.Phase,
+		Priority:  pi.Priority,
 		Pod:       pi.Pod,
 		Request:   pi.Request.Clone(),
 	}
