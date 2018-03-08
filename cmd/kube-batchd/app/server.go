@@ -46,7 +46,7 @@ func Run(opt *options.ServerOption) error {
 	queueController.Run(neverStop)
 
 	// Start policy controller to allocate resources.
-	policyController, err := controller.NewPolicyController(config, opt.Policy)
+	policyController, err := controller.NewPolicyController(config, opt.Policy, opt.SchedulerName)
 	if err != nil {
 		panic(err)
 	}

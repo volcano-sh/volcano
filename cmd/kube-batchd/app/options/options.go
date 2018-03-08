@@ -22,9 +22,10 @@ import (
 
 // ServerOption is the main context object for the controller manager.
 type ServerOption struct {
-	Master     string
-	Kubeconfig string
-	Policy     string
+	Master        string
+	Kubeconfig    string
+	Policy        string
+	SchedulerName string
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -39,6 +40,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.Kubeconfig, "kubeconfig", s.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
 	// The default policy is Proportion policy.
 	fs.StringVar(&s.Policy, "policy", "drf", "The policy that used to allocate resources")
+	// kube-arbitrator will ignore pods with scheduler names other than specified with the option
+	fs.StringVar(&s.SchedulerName, "scheduler-name", "default-scheduler", "kube-arbitrator will handle pods with the scheduler-name")
 }
 
 func (s *ServerOption) CheckOptionOrDie() {
