@@ -162,6 +162,47 @@ For kube-batchd, above yaml file means
 * It is for the applications with label `app: redis`. Assume all pods under the same application (such as Deployment/RS/Job) have same `app` label
 * Each application with label `app:redis` need start `minAvailable` pods at least, `minAvailable` is 4.
 * When resources are sufficient, Kube-batchd will start `minAvailable` pods of each application one by one, and then start left pods of each application by DRF policy.
-* When resources are not sufficient, Kube-batchd just tries to start `minAvailable` pods of each application as much as possible.
+* When resources are not sufficient(`minAvailable` can not be met), Kube-batchd will not start any pod for the PodSet.
 
 If there is no PodDisruptionBudget, `minAvailable` of each application will be 0.
+
+
+## 4. Create PriorityClass for Pod
+
+Kube-batchd will start pods by their priority in the same PodSet, the pod with higher priority will start first. Here is sample to show `PriorityClass` usage:
+
+```
+apiVersion: scheduling.k8s.io/v1alpha1
+kind: PriorityClass
+metadata:
+  name: high-priority
+  namespace: batch-ns01 
+value: 1000
+```
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-ns01-r01
+spec:
+  containers:
+    - name: key-value-store
+      image: redis
+      resources:
+        limits:
+          memory: "1Gi"
+          cpu: "1"
+        requests:
+          memory: "1Gi"
+          cpu: "1"
+      ports:
+        - containerPort: 6379
+  priorityClassName: high-priority  <===
+```
+
+
+NOTE:
+
+* `PriorityClass` is supported in kubernetes 1.9 or later
+* The pod in same Deployment/RS/Job share same pod template, so they have same `PriorityClass`. To specify different `PriorityClass` for pod in same PodSet, user need create controller themselves.
