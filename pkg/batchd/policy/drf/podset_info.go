@@ -64,7 +64,7 @@ func newPodSetInfo(ps *cache.PodSet, t *cache.Resource) *podSetInfo {
 
 	// TODO(jinzhejz): it is better to move sorted pods to PodSet
 	for _, ps := range psi.podSet.Pending {
-		psi.pendingSorted.Push(ps, float64(1)/float64(ps.Priority))
+		psi.pendingSorted.Push(ps, -float64(ps.Priority))
 	}
 
 	glog.V(3).Infof("PodSet <%v/%v>: priority <%f>, dominant resource <%v>",
@@ -94,7 +94,7 @@ func (psi *podSetInfo) popPendingPod() *cache.PodInfo {
 }
 
 func (psi *podSetInfo) pushPendingPod(p *cache.PodInfo) {
-	psi.pendingSorted.Push(p, float64(1)/float64(p.Priority))
+	psi.pendingSorted.Push(p, -float64(p.Priority))
 }
 
 func (psi *podSetInfo) insufficientMinAvailable() int {
@@ -136,7 +136,7 @@ func (psi *podSetInfo) discardAssignedPods() {
 	// discard temporary assigned Pods
 	// put them back to PodSet pending queue
 	for _, p := range psi.unacceptedAssignedPods {
-		psi.pendingSorted.Push(p, float64(1)/float64(p.Priority))
+		psi.pendingSorted.Push(p, -float64(p.Priority))
 	}
 	psi.unacceptedAssignedPods = make([]*cache.PodInfo, 0)
 
