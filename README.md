@@ -9,9 +9,9 @@ kube-arbitrator is a policy based resource sharing system for Kubernetes cluster
 
 `kube-batchd` is batch system built on Kubernetes, providing mechanisms for the applications which would like to run batch jobs in Kubernetes.
 
-`kube-batched` builds upon a decade and a half of experience on running batch workloads at scale using several systems, e.g. [LSF](https://www.ibm.com/us-en/marketplace/hpc-workload-management), [Symphony](https://www.ibm.com/us-en/marketplace/analytics-workload-management), combined with best-of-breed ideas and practices from the community.
+`kube-batchd` builds upon a decade and a half of experience on running batch workloads at scale using several systems, e.g. [LSF](https://www.ibm.com/us-en/marketplace/hpc-workload-management), [Symphony](https://www.ibm.com/us-en/marketplace/analytics-workload-management), combined with best-of-breed ideas and practices from the community.
 
-Refer to [tutorial](https://github.com/kubernetes-incubator/kube-arbitrator/blob/master/doc/usage/batchd_tutorial.md) on how to use `kube-batched` to run batch job in Kubernetes
+Refer to [tutorial](https://github.com/kubernetes-incubator/kube-arbitrator/blob/master/doc/usage/batchd_tutorial.md) on how to use `kube-batchd` to run batch job in Kubernetes
 
 ## kube-quotalloc
 
