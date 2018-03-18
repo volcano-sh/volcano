@@ -9,7 +9,7 @@
 [Resource sharing architecture for batch and serving workloads in Kubernetes](https://docs.google.com/document/d/1-H2hnZap7gQivcSU-9j4ZrJ8wE_WwcfOkTeAGjzUyLA/edit#) proposed
 `QueueJob` feature to run batch job with services workload in Kuberentes. Considering the complexity, the 
 whole batch job proposal was seperated into two phase: `Queue` and `QueueJob`. This document 
-presents the API deinition of `Queue` for MVP.
+presents the API definition of `Queue` for MVP.
 
 ### Scope
 
@@ -81,7 +81,7 @@ Only Quota Manager can update Resource Quota. And it has two responsibility:
 
 ### Scheduler Cache
 
-Scheduler Cache periodically fetches all Node/Pod/Queue information in the cluster from API server. That inforamtion will only be stored in memory and not persisted on disk.
+Scheduler Cache periodically fetches all Node/Pod/Queue information in the cluster from API server. That information will only be stored in memory and not persisted on disk.
 
 It provides two interfaces `Run()` and `Dump()`
 
@@ -108,7 +108,7 @@ type Snapshot struct {
 
 ### Proportion Policy
 
-The policy summary usable resources(CPU and memory) on all nodes and allocate them to each Queue by `Weight` and `Request` in `QueueSpec` according to max-min weighted fairness algorithm. `Pods` is not used in the policy, it is for preemption in next step.
+The policy creates a summary of usable resources(CPU and memory) on all nodes and allocates them to each Queue by `Weight` and `Request` in `QueueSpec` according to max-min weighted fairness algorithm. `Pods` is not used in the policy, it is for preemption in next step.
 
 ```
 Snapshot information:
