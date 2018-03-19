@@ -1,12 +1,12 @@
-#QueueJob API
+# QueueJob API
 
 @jinzhejz, 12/22/2017
 
-##Overview
+## Overview
 [Resource sharing architecture for batch and serving workloads in Kubernetes](https://docs.google.com/document/d/1-H2hnZap7gQivcSU-9j4ZrJ8wE_WwcfOkTeAGjzUyLA/edit#) proposed
-`QueueJob` feature to run batch job with services workload in Kuberentes. Considering the complexity, the whole batch job proposal was seperated into two phase: `Queue` and `QueueJob`. This document presents the API deinition of `QueueJob` and feature interaction with `Queue`.
+`QueueJob` feature to run batch job with services workload in Kuberentes. Considering the complexity, the whole batch job proposal was seperated into two phase: `Queue` and `QueueJob`. This document presents the API definition of `QueueJob` and feature interaction with `Queue`.
 
-##API
+## API
 ```go
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type QueueJob struct {
@@ -39,8 +39,8 @@ type QueueJobList struct {
 }
 ```
 
-##Function details
-###Workflow
+## Function details
+### Workflow
 ![workflow](../images/queuejob.jpg)
 
 It is basically the same as the workflow in Queue API document (`QuotaManager` is not included in above workflow). The difference is just including `QueueJob` in `Queue`.
@@ -53,5 +53,5 @@ A `Queue` can include 0 or more `QueueJob`.
 For Queue `q01` and `q02`, Kube-arbitrator will assign resources to their QueueJob directly.
 For Queue `q03`, Kube-arbitrator will just assign resources to the Queue.
 
-##Future work
+## Future work
 * Now QueueJob is associated not with the real batch job, users who want to submit a batch job need to create their own QueueJob and watch the QueueJob, then submit their batch job after kube-arbitrator assign resources to QueueJob.

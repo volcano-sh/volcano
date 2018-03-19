@@ -1,11 +1,11 @@
-#Preemption design behaviour
+# Preemption design behaviour
 
 @jinzhejz, 12/13/2017
 
-##Overview
+## Overview
 The document shows detail behaviour of preemption.
 
-##API
+## API
 ```go
 type Interface interface {
 	Run(stopCh <-chan struct{})
@@ -22,7 +22,7 @@ A preemptor providers three interfaces, `Run()`,`Preprocessing()` and `PreemptRe
 * `Preprocessing()` to preprocess queues, make sure `Allocated < Used` in each queue.
 * `PreemptResources()` to preempt resources between different queues.
 
-###Preprocess stage
+### Preprocess stage
 Currently, this stage terminates pods of the queue which `Allocated < Used` to avoid overuse(make queue `Allocated >= Used`), preemption will not be triggered between queues.
 
 ```
@@ -59,7 +59,7 @@ However, Queue-1 is overused due to some race condition. So pod-1 will be chosen
 --------------------------------------------------------------------------
 ```
 
-###Preemption stage
+### Preemption stage
 Preempt resources between queues. This stage will divide all queues into three categories:
 
 * Case-01 : `Deserved < Allocated`
@@ -229,7 +229,7 @@ After pod-3 in Queue-1 and pod-3 in Queue-2 are terminated, Queue-3 resources wi
 
 ```
 
-##Future work
+## Future work
 * In preprogress and preemption stage, the pod will be chosen randomly to kill. This may cause some more important pods killed. To solve this case, the following strategy  can be used to choose pod
 	* Priority. Each pod has a priority, the lower priority pod will be selected first.
 	* Status. The pending pod will be selected first and then running pod will be selected.
