@@ -38,7 +38,7 @@ From ubuntu
 ADD kube-batchd /opt
 ```
 
-Build the image and push it to a registry(GCR or DockerHub). We have used DockerHun here.  
+Build the image and push it to a registry(GCR or DockerHub). We have used DockerHub here.  
 ```
 # cd /tmp/kube-image/
 # docker build -t <your_docker_username>/kube-batchd:v1 .
