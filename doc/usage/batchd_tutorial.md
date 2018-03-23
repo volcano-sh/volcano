@@ -27,7 +27,6 @@ kube-batchd need to run as a kubernetes scheduler. The next step will show how t
 # mkdir -p /tmp/kube-image
 # cd /tmp/kube-image
 # cp $GOPATH/src/github.com/kubernetes-incubator/kube-arbitrator/_output/bin/kube-batchd ./
-# cp /root/.kube/config ./
 ```
 
 Create `Dockerfile` in `/tmp/kube-image`
@@ -37,10 +36,13 @@ Create `Dockerfile` in `/tmp/kube-image`
 From ubuntu
 
 ADD kube-batchd /opt
-ADD config /opt
+```
 
+Build the image and push it to a registry(GCR or DockerHub). We have used DockerHub here.  
+```
 # cd /tmp/kube-image/
-# docker build -t kube-batchd:v1 .
+# docker build -t <your_docker_username>/kube-batchd:v1 .
+# docker push <your_docker_username>/kube-batchd:v1
 ```
 
 Verify kube-batchd images
@@ -75,9 +77,9 @@ spec:
     spec:
       containers:
       - command:
-        - /opt/kube-batchd
-        - --kubeconfig=/opt/config
-        image: kube-batchd:v1
+        - ./opt/kube-batchd
+        - --scheduler-name=kube-batchd
+        image: <your_docker_username>/kube-batchd:v1
         name: kube-second-scheduler
         resources:
           requests:
