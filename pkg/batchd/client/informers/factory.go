@@ -111,8 +111,13 @@ type SharedInformerFactory interface {
 	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
 
 	Queue() arbclient.Interface
+	QueueJob() arbclient.Interface
 }
 
 func (f *sharedInformerFactory) Queue() arbclient.Interface {
+	return arbclient.New(f)
+}
+
+func (f *sharedInformerFactory) QueueJob() arbclient.Interface {
 	return arbclient.New(f)
 }
