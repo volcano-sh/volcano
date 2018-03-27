@@ -45,6 +45,10 @@ func Run(opt *options.ServerOption) error {
 	queueController := controller.NewQueueController(config)
 	queueController.Run(neverStop)
 
+	// Start QueueJob Controller to create CRD and manage QueueJob lifecycle.
+	queuejobController := controller.NewQueueJobController(config)
+	queuejobController.Run(neverStop)
+
 	// Start policy controller to allocate resources.
 	policyController, err := controller.NewPolicyController(config, opt.Policy, opt.SchedulerName)
 	if err != nil {
