@@ -23,6 +23,8 @@ import (
 
 const QueueJobPlural = "queuejobs"
 
+const QueueJobType = "QueueJob"
+
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type QueueJob struct {
 	metav1.TypeMeta   `json:",inline"`
