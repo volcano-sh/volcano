@@ -78,11 +78,7 @@ func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.Node
 		}
 	}
 
-	for {
-		if pq.Empty() {
-			break
-		}
-
+	for !pq.Empty() {
 		psi := pq.Pop().(*podSetInfo)
 
 		glog.V(3).Infof("try to allocate resources to PodSet <%v/%v>",
