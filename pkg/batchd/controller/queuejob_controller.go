@@ -119,20 +119,25 @@ func (cc *QueueJobController) startupQueueJob(qj *arbv1.QueueJob) {
 		"queuejob_name": qj.Name,
 	}
 
+	minAvailable := int32(0)
+	if qj.Spec.MinAvailable != nil {
+		minAvailable = *qj.Spec.MinAvailable
+	} else {
+		minAvailable = int32(1)
+	}
+
 	// Create PodDisruptionBudgets for this queue job to support gang-scheduling
-	err := cc.initPDB(int(qj.Spec.Replicas), labels)
+	err := cc.initPDB(int(minAvailable), labels)
 	if err != nil {
 		glog.Errorf("Failed to create PDB for QueueJob %s, error %#v", qj.Name, err)
 		return
 	}
 
 	// Create Pods for QueueJob
-	index := 0
 	owner := buildOwnerReference("v1", arbv1.QueueJobType, string(qj.UID))
 	for i := int32(0); i < qj.Spec.Replicas; i++ {
-		labels["index"] = fmt.Sprintf("%d", index)
-		pod := buildPod(fmt.Sprintf("%s-%d", qj.Name, index), qj.Namespace, qj.Spec.Template, []metav1.OwnerReference{owner}, labels)
-		index++
+		labels["index"] = fmt.Sprintf("%d", i)
+		pod := buildPod(fmt.Sprintf("%s-%d", qj.Name, i), qj.Namespace, qj.Spec.Template, []metav1.OwnerReference{owner}, labels)
 
 		_, err := cc.clients.CoreV1().Pods(pod.Namespace).Create(pod)
 		if err != nil {
