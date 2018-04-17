@@ -27,6 +27,7 @@ import (
 type ArbV1Interface interface {
 	RESTClient() rest.Interface
 	QueueGetter
+	QueueJobGetter
 }
 
 // ArbV1Client is used to interact with features provided by the  group.
@@ -36,6 +37,10 @@ type ArbV1Client struct {
 
 func (c *ArbV1Client) Queues(namespace string) QueueInterface {
 	return newQueues(c, namespace)
+}
+
+func (c *ArbV1Client) QueueJobs(namespace string) QueueJobInterface {
+	return newQueueJobs(c, namespace)
 }
 
 // NewForConfig creates a new ArbV1Client for the given config.
