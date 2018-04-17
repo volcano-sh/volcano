@@ -22,6 +22,7 @@ import (
 
 	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-batchd/app/options"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/controller"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/controller/queuejob"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 )
@@ -46,7 +47,7 @@ func Run(opt *options.ServerOption) error {
 	queueController.Run(neverStop)
 
 	// Start QueueJob Controller to create CRD and manage QueueJob lifecycle.
-	queuejobController := controller.NewQueueJobController(config)
+	queuejobController := queuejob.NewController(config)
 	queuejobController.Run(neverStop)
 
 	// Start policy controller to allocate resources.
