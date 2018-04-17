@@ -39,6 +39,11 @@ type QueueJob struct {
 
 // QueueJobSpec describes how the job execution will look like and when it will actually run
 type QueueJobSpec struct {
+	// A label query over pods that should match the pod count.
+	// Normally, the system sets this field for you.
+	// +optional
+	Selector *metav1.LabelSelector `json:"selector,omitempty" protobuf:"bytes,4,opt,name=selector"`
+
 	// Replicas is the number of desired replicas
 	Replicas int32 `json:"replicas"`
 
