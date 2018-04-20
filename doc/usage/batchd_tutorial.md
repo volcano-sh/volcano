@@ -39,6 +39,7 @@ ADD kube-batchd /opt
 ```
 
 Build the image and push it to a registry(GCR or DockerHub). We have used DockerHub here.  
+
 ```
 # cd /tmp/kube-image/
 # docker build -t <your_docker_username>/kube-batchd:v1 .
@@ -112,22 +113,19 @@ kube-system   kube-batchd-2521827519-khmgx     1/1       Running      0         
 ... ...
 ```
 
-### (3) Specify kube-batchd scheduler for deployment
+### (3) Create a QueueJob
 
-Create a file named `deployment-drf01.yaml` with the following content:
+Create a file named `queuejob-01.yaml` with the following content:
 
 ```yaml
-apiVersion: apps/v1beta1
-kind: Deployment
+apiVersion: "arbitrator.incubator.k8s.io/v1"
+kind: QueueJob
 metadata:
-  name: drf-01
-  namespace: ns01
+  name: qj-01
 spec:
-  replicas: 4
+  replicas: 3
+  minavailable: 3
   template:
-    metadata:
-      labels:
-        app: redis
     spec:
       schedulerName: kube-batchd
       containers:
@@ -136,26 +134,37 @@ spec:
         resources:
           limits:
             memory: "3Gi"
-            cpu: "3"
+            cpu: "7"
           requests:
             memory: "3Gi"
-            cpu: "3"
+            cpu: "7"
         ports:
         - containerPort: 80
 ```
 
-Run the deployment
+The yaml file means a QueueJob named `qj-01` contains 3 pods(it is specified by `replicas`), these pods will be scheduled by scheudler `kube-batchd`(it is specified by `schedulerName`). `kube-batchd` will start `replicas` pods for a QueueJob at the same time, otherwise, such as resources are not sufficient, `kube-batchd` will not start any pods for the QueueJob.
+
+Create the QueueJob
 
 ```
-# kubectl create -f deployment-drf01.yaml
+# kubectl create -f queuejob-01.yaml
 ```
 
-Verify that the deployment named `drf-01` is present in the output of
+Verify that the QueueJob named `qj-01` is present in the output of
+
 ```
-# kubectl get deployments
+# kubectl get queuejob
 ```
+
+Check the pods status
+
+`# kubectl get pod --all-namespaces`
+
+NOTE: `minavailable` is for a future work, not used yet. We can ignore it now.
 
 ## 3. Create PodDisruptionBudget for Application
+
+NOTE: This step is not necessary when using QueueJob because `kube-batchd` will create PDB for a QueueJob automatically. It is needed when you only want to use gang-scheduling of kube-batchd, not QueueJob.
 
 kube-batchd will reuse the number of `PodDisruptionBudget.spec.minAvailable` and change nothing of `PodDisruptionBudget` feature. Here is a sample:
 
