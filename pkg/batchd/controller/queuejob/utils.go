@@ -20,9 +20,13 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
 
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -82,4 +86,16 @@ func buildPod(n, ns string, template corev1.PodTemplateSpec, owner []metav1.Owne
 		},
 		Spec: templateCopy.Spec,
 	}
+}
+
+func createQueueJobCRD(config *rest.Config) error {
+	extensionscs, err := apiextensionsclient.NewForConfig(config)
+	if err != nil {
+		return err
+	}
+	_, err = client.CreateQueueJobCRD(extensionscs)
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+	return nil
 }

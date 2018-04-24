@@ -18,13 +18,11 @@ package queuejob
 
 import (
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/api/policy/v1beta1"
-	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -44,6 +42,14 @@ import (
 	arbinformers "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/informers"
 	informersv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/informers/v1"
 	listersv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/listers/v1"
+)
+
+const (
+	// QueueJobNameLabel label string for queuejob name
+	QueueJobNameLabel string = "queuejob-name"
+
+	// ControllerUIDLabel label string for queuejob controller uid
+	ControllerUIDLabel string = "controller-uid"
 )
 
 // controllerKind contains the schema.GroupVersionKind for this controller type.
@@ -69,16 +75,22 @@ type Controller struct {
 
 	// QueueJobs that need to sync up after initialization
 	updateQueue *cache.FIFO
+
+	// A counter that store the current terminating pods no of QueueJob
+	// this is used to avoid to re-create the pods of a QueueJob before
+	// all the old pods are terminated
+	deletedPodsCounter *syncCounterMap
 }
 
 // NewController create new QueueJob Controller
 func NewController(config *rest.Config) *Controller {
 	cc := &Controller{
-		config:      config,
-		clients:     kubernetes.NewForConfigOrDie(config),
-		arbclients:  clientset.NewForConfigOrDie(config),
-		initQueue:   cache.NewFIFO(queueJobKey),
-		updateQueue: cache.NewFIFO(queueJobKey),
+		config:             config,
+		clients:            kubernetes.NewForConfigOrDie(config),
+		arbclients:         clientset.NewForConfigOrDie(config),
+		initQueue:          cache.NewFIFO(queueJobKey),
+		updateQueue:        cache.NewFIFO(queueJobKey),
+		deletedPodsCounter: newSyncCounterMap(),
 	}
 
 	queueJobClient, _, err := client.NewClient(cc.config)
@@ -131,13 +143,13 @@ func NewController(config *rest.Config) *Controller {
 // Run start QueueJob Controller
 func (cc *Controller) Run(stopCh chan struct{}) {
 	// initialized
-	cc.createQueueJobCRD()
+	createQueueJobCRD(cc.config)
 
 	go cc.queueJobInformer.Informer().Run(stopCh)
 	go cc.podInformer.Informer().Run(stopCh)
 
-	go wait.Until(cc.initQueueWorker, time.Second, stopCh)
-	go wait.Until(cc.updateQueueWorker, time.Second, stopCh)
+	go wait.Until(cc.initWorker, time.Second, stopCh)
+	go wait.Until(cc.updateWorker, time.Second, stopCh)
 }
 
 func (cc *Controller) addQueueJob(obj interface{}) {
@@ -146,6 +158,7 @@ func (cc *Controller) addQueueJob(obj interface{}) {
 		glog.Errorf("obj is not QueueJob")
 		return
 	}
+
 	cc.enqueueInitQueue(qj)
 }
 
@@ -161,9 +174,6 @@ func (cc *Controller) updateQueueJob(oldObj, newObj interface{}) {
 		return
 	}
 
-	// TODO(jinzhejz): Controller only handle the cases
-	// 1. QueueJob Replicas is changed
-	// 2. QueueJob label "controller-uid" is changed
 	cc.enqueueUpdateQueue(newQJ)
 }
 
@@ -173,7 +183,28 @@ func (cc *Controller) addPod(obj interface{}) {}
 
 func (cc *Controller) updatePod(oldObj, newObj interface{}) {}
 
-func (cc *Controller) deletePod(obj interface{}) {}
+func (cc *Controller) deletePod(obj interface{}) {
+	var pod *v1.Pod
+	switch t := obj.(type) {
+	case *v1.Pod:
+		pod = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		pod, ok = t.Obj.(*v1.Pod)
+		if !ok {
+			glog.Errorf("Cannot convert to *v1.Pod: %v", t.Obj)
+			return
+		}
+	default:
+		glog.Errorf("Cannot convert to *v1.Pod: %v", t)
+		return
+	}
+
+	// update delete pod counter for a QueueJob
+	if len(pod.Labels) != 0 && len(pod.Labels[QueueJobNameLabel]) > 0 {
+		cc.deletedPodsCounter.decreaseCounter(fmt.Sprintf("%s/%s", pod.Namespace, pod.Labels[QueueJobNameLabel]))
+	}
+}
 
 func (cc *Controller) enqueueInitQueue(obj interface{}) {
 	err := cc.initQueue.Add(obj)
@@ -189,7 +220,7 @@ func (cc *Controller) enqueueUpdateQueue(obj interface{}) {
 	}
 }
 
-func (cc *Controller) initQueueWorker() {
+func (cc *Controller) initWorker() {
 	item, err := cc.initQueue.Pop(func(obj interface{}) error {
 		return nil
 	})
@@ -224,8 +255,8 @@ func (cc *Controller) initLabelsForQueueJob(qj *arbv1.QueueJob) error {
 	if updated.Labels == nil {
 		updated.Labels = make(map[string]string)
 	}
-	updated.Labels["queuejob-name"] = updated.Name
-	updated.Labels["controller-uid"] = string(updated.UID)
+	updated.Labels[QueueJobNameLabel] = updated.Name
+	updated.Labels[ControllerUIDLabel] = string(updated.UID)
 
 	// Add selector for QueueJob
 	if updated.Spec.Selector == nil {
@@ -233,14 +264,14 @@ func (cc *Controller) initLabelsForQueueJob(qj *arbv1.QueueJob) error {
 			MatchLabels: make(map[string]string),
 		}
 	}
-	updated.Spec.Selector.MatchLabels["controller-uid"] = updated.Labels["controller-uid"]
+	updated.Spec.Selector.MatchLabels[ControllerUIDLabel] = updated.Labels[ControllerUIDLabel]
 
 	// Add labels for pod template
 	if updated.Spec.Template.Labels == nil {
 		updated.Spec.Template.Labels = make(map[string]string)
 	}
-	updated.Spec.Template.Labels["queuejob-name"] = updated.Labels["queuejob-name"]
-	updated.Spec.Template.Labels["controller-uid"] = updated.Labels["controller-uid"]
+	updated.Spec.Template.Labels[QueueJobNameLabel] = updated.Labels[QueueJobNameLabel]
+	updated.Spec.Template.Labels[ControllerUIDLabel] = updated.Labels[ControllerUIDLabel]
 
 	_, err = cc.arbclients.ArbV1().QueueJobs(updated.Namespace).Update(updated)
 	if err != nil {
@@ -250,7 +281,7 @@ func (cc *Controller) initLabelsForQueueJob(qj *arbv1.QueueJob) error {
 	return nil
 }
 
-func (cc *Controller) updateQueueWorker() {
+func (cc *Controller) updateWorker() {
 	item, err := cc.updateQueue.Pop(func(obj interface{}) error {
 		return nil
 	})
@@ -272,9 +303,16 @@ func (cc *Controller) updateQueueWorker() {
 	}
 
 	// sync Pods for a QueueJob
-	err = cc.syncQueueJob(queuejob)
+	jobDone, err := cc.syncQueueJob(queuejob)
 	if err != nil {
 		glog.Errorf("Failed to sync QueueJob %s, err %#v", queuejob.Name, err)
+	}
+	if !jobDone {
+		// QueueJob doesn't finish, re-queue it to handle following case:
+		// 1. pod terminated unexpectedly
+		// 2. queuejob replicas is updated
+		// if the queuejob is not changed, then syncQueueJob will do nothing for it
+		cc.enqueueUpdateQueue(queuejob)
 	}
 }
 
@@ -298,32 +336,26 @@ func (cc *Controller) initPDB(min int, selectorMap map[string]string) error {
 	return err
 }
 
-func (cc *Controller) createQueueJobCRD() error {
-	extensionscs, err := apiextensionsclient.NewForConfig(cc.config)
-	if err != nil {
-		return err
+func (cc *Controller) syncQueueJob(qj *arbv1.QueueJob) (bool, error) {
+	// check if there are still terminating pods for this QueueJob
+	counter, ok := cc.deletedPodsCounter.get(fmt.Sprintf("%s/%s", qj.Namespace, qj.Name))
+	if ok && counter >= 0 {
+		return false, fmt.Errorf("There are still teminating pods for QueueJob %s/%s, can not sync it now", qj.Namespace, qj.Name)
 	}
-	_, err = client.CreateQueueJobCRD(extensionscs)
-	if err != nil && !apierrors.IsAlreadyExists(err) {
-		return err
-	}
-	return nil
-}
 
-func (cc *Controller) syncQueueJob(qj *arbv1.QueueJob) error {
 	sharedQueueJob, err := cc.queueJobLister.QueueJobs(qj.Namespace).Get(qj.Name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			glog.V(4).Infof("Job has been deleted: %v", qj.Name)
-			return nil
+			return true, nil
 		}
-		return err
+		return false, err
 	}
 	queueJob := *sharedQueueJob
 
 	pods, err := cc.getPodsForQueueJob(&queueJob)
 	if err != nil {
-		return err
+		return false, err
 	}
 	glog.V(4).Infof("There are %d pods of QueueJob %s\n", len(pods), queueJob.Name)
 
@@ -331,10 +363,9 @@ func (cc *Controller) syncQueueJob(qj *arbv1.QueueJob) error {
 	glog.V(4).Infof("There are %d active pods of QueueJob %s\n", len(activePods), queueJob.Name)
 
 	succeeded, _ := getStatus(pods)
-	active, err := cc.manageQueueJob(activePods, succeeded, &queueJob)
-	glog.V(4).Infof("There are %d active pods, %d succeeded pods of QueueJob %s\n", active, succeeded, queueJob.Name)
+	jobDone, err := cc.manageQueueJob(activePods, succeeded, &queueJob)
 
-	return nil
+	return jobDone, err
 }
 
 func (cc *Controller) getPodsForQueueJob(qj *arbv1.QueueJob) ([]*v1.Pod, error) {
@@ -355,76 +386,88 @@ func (cc *Controller) getPodsForQueueJob(qj *arbv1.QueueJob) ([]*v1.Pod, error) 
 // manageQueueJob is the core method responsible for managing the number of running
 // pods according to what is specified in the job.Spec.
 // Does NOT modify <activePods>.
-func (cc *Controller) manageQueueJob(activePods []*v1.Pod, succeeded int32, qj *arbv1.QueueJob) (int32, error) {
-	var activeLock sync.Mutex
+func (cc *Controller) manageQueueJob(activePods []*v1.Pod, succeeded int32, qj *arbv1.QueueJob) (bool, error) {
+	jobDone := false
+	var err error
 	active := int32(len(activePods))
 	replicas := qj.Spec.Replicas
 
-	var errCh chan error
 	if active+succeeded > replicas {
-		diff := active + succeeded - replicas
-		errCh = make(chan error, diff)
-		glog.V(4).Infof("Too many pods running job %q, need %d, deleting %d", qj.Name, replicas, diff)
-		// Sort the pods in the order such that not-ready < ready, unscheduled
-		// < scheduled, and pending < running. This ensures that we delete pods
-		// in the earlier stages whenever possible.
-		sort.Sort(controller.ActivePods(activePods))
-
-		active -= diff
-		wait := sync.WaitGroup{}
-		wait.Add(int(diff))
-		for i := int32(0); i < diff; i++ {
-			go func(ix int32) {
-				defer wait.Done()
-				err := cc.clients.Core().Pods(activePods[ix].Namespace).Delete(activePods[ix].Name, &metav1.DeleteOptions{})
-				if err != nil {
-					activeLock.Lock()
-					active++
-					activeLock.Unlock()
-					errCh <- err
-				}
-			}(i)
+		// the QueueJob replicas is reduce by user, terminated all pods for gang scheduling
+		// and re-create pods for the queuejob in next loop
+		jobDone = false
+		// TODO(jinzhejz): need make sure manage this QueueJob after all old pods are terminated
+		err = cc.terminatePodsForQueueJob(qj)
+	} else if active+succeeded == replicas {
+		// pod number match QueueJob replicas perfectly
+		if succeeded == replicas {
+			// all pods exit successfully
+			jobDone = true
+		} else {
+			// some pods are still running
+			jobDone = false
 		}
-		wait.Wait()
 	} else if active+succeeded < replicas {
-		diff := replicas - active - succeeded
-		errCh = make(chan error, diff)
-		glog.V(4).Infof("Too few pods running job %q, need %d, creating %d", qj.Name, replicas, diff)
+		if active+succeeded == 0 {
+			// it is a new QueueJob, create pods for it
+			diff := replicas - active - succeeded
 
-		active += diff
-		wait := sync.WaitGroup{}
-
-		wait.Add(int(diff))
-		for i := int32(0); i < diff; i++ {
-			go func(ix int32) {
-				defer wait.Done()
-				newPod := buildPod(fmt.Sprintf("%s-%d", qj.Name, ix), qj.Namespace, qj.Spec.Template, []metav1.OwnerReference{*metav1.NewControllerRef(qj, controllerKind)}, ix)
-				for {
-					_, err := cc.clients.Core().Pods(newPod.Namespace).Create(newPod)
-					if err == nil {
-						// Create Pod successfully
-						break
-					} else {
-						// Failed to create Pod, wait a moment and then create it again
-						// This is to ensure all pods under the same QueueJob created
-						// So gang-scheduling could schedule the QueueJob successfully
-						glog.Warningf("Failed to create pod %s for QueueJob %s, err %#v, wait 2 seconds and re-create it", newPod.Name, qj.Name, err)
-						time.Sleep(2 * time.Second)
+			wait := sync.WaitGroup{}
+			wait.Add(int(diff))
+			for i := int32(0); i < diff; i++ {
+				go func(ix int32) {
+					defer wait.Done()
+					newPod := buildPod(fmt.Sprintf("%s-%d-%s", qj.Name, ix, generateUUID()), qj.Namespace, qj.Spec.Template, []metav1.OwnerReference{*metav1.NewControllerRef(qj, controllerKind)}, ix)
+					for {
+						_, err := cc.clients.Core().Pods(newPod.Namespace).Create(newPod)
+						if err == nil {
+							// Create Pod successfully
+							break
+						} else {
+							// Failed to create Pod, wait a moment and then create it again
+							// This is to ensure all pods under the same QueueJob created
+							// So gang-scheduling could schedule the QueueJob successfully
+							glog.Warningf("Failed to create pod %s for QueueJob %s, err %#v, wait 2 seconds and re-create it", newPod.Name, qj.Name, err)
+							time.Sleep(2 * time.Second)
+						}
 					}
-				}
-			}(i)
+				}(i)
+			}
+			wait.Wait()
+			jobDone = false
+		} else if active+succeeded > 0 {
+			// the QueueJob replicas is reduce by user, terminated all pods for gang scheduling
+			// and re-create pods for the queuejob in next loop
+			jobDone = false
+			// TODO(jinzhejz): need make sure manage this QueueJob after all old pods are terminated
+			cc.terminatePodsForQueueJob(qj)
 		}
-		wait.Wait()
 	}
 
-	select {
-	case err := <-errCh:
-		// all errors have been reported before, we only need to inform the controller that there was an error and it should re-try this job once more next time.
-		if err != nil {
-			return active, err
-		}
-	default:
+	return jobDone, err
+}
+
+func (cc *Controller) terminatePodsForQueueJob(qj *arbv1.QueueJob) error {
+	pods, err := cc.getPodsForQueueJob(qj)
+	if len(pods) == 0 || err != nil {
+		return err
 	}
 
-	return active, nil
+	cc.deletedPodsCounter.set(fmt.Sprintf("%s/%s", qj.Namespace, qj.Name), len(pods))
+
+	wait := sync.WaitGroup{}
+	wait.Add(len(pods))
+	for _, pod := range pods {
+		go func(p *v1.Pod) {
+			defer wait.Done()
+			err := cc.clients.Core().Pods(p.Namespace).Delete(p.Name, &metav1.DeleteOptions{})
+			if err != nil {
+				glog.Warning("Fail to delete pod %s for QueueJob %s/%s", p.Name, qj.Namespace, qj.Name)
+				cc.deletedPodsCounter.decreaseCounter(fmt.Sprintf("%s/%s", qj.Namespace, qj.Name))
+			}
+		}(pod)
+	}
+	wait.Wait()
+
+	return nil
 }
