@@ -69,7 +69,8 @@ func TestPodSet_AddPodInfo(t *testing.T) {
 				Assigned: []*PodInfo{
 					NewPodInfo(case01_pod3),
 				},
-				Others: []*PodInfo{},
+				Others:       []*PodInfo{},
+				NodeSelector: make(map[string]string),
 			},
 		},
 	}
@@ -132,7 +133,8 @@ func TestPodSet_DeletePodInfo(t *testing.T) {
 				Pending: []*PodInfo{
 					NewPodInfo(case01_pod1),
 				},
-				Others: []*PodInfo{},
+				Others:       []*PodInfo{},
+				NodeSelector: make(map[string]string),
 			},
 		},
 		{
@@ -156,7 +158,8 @@ func TestPodSet_DeletePodInfo(t *testing.T) {
 				Pending: []*PodInfo{
 					NewPodInfo(case02_pod1),
 				},
-				Others: []*PodInfo{},
+				Others:       []*PodInfo{},
+				NodeSelector: make(map[string]string),
 			},
 		},
 	}
