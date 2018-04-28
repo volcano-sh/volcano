@@ -95,7 +95,8 @@ func TestQueueInfo_AddPod(t *testing.T) {
 						Pending: []*PodInfo{
 							NewPodInfo(case02_pod1),
 						},
-						Others: []*PodInfo{},
+						Others:       []*PodInfo{},
+						NodeSelector: make(map[string]string),
 					},
 				},
 				Pods: make(map[string]*PodInfo),
@@ -182,7 +183,8 @@ func TestQueueInfo_RemovePod(t *testing.T) {
 						Pending: []*PodInfo{
 							NewPodInfo(case02_pod1),
 						},
-						Others: []*PodInfo{},
+						Others:       []*PodInfo{},
+						NodeSelector: make(map[string]string),
 					},
 				},
 				Pods: make(map[string]*PodInfo),
@@ -259,7 +261,8 @@ func TestQueueInfo_AddPdb(t *testing.T) {
 						Pending: []*PodInfo{
 							NewPodInfo(case01_pod1),
 						},
-						Others: []*PodInfo{},
+						Others:       []*PodInfo{},
+						NodeSelector: make(map[string]string),
 					},
 				},
 				Pods: make(map[string]*PodInfo),
@@ -338,7 +341,8 @@ func TestQueueInfo_RemovePdb(t *testing.T) {
 						Pending: []*PodInfo{
 							NewPodInfo(case01_pod1),
 						},
-						Others: []*PodInfo{},
+						Others:       []*PodInfo{},
+						NodeSelector: make(map[string]string),
 					},
 				},
 				Pods: make(map[string]*PodInfo),
