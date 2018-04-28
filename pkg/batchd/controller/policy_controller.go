@@ -159,7 +159,7 @@ func (pc *PolicyController) processAllocDecision() {
 					},
 				}); err != nil {
 					glog.Infof("Failed to bind pod <%v/%v>: %#v", p.Namespace, p.Name, err)
-					return err
+					continue
 				}
 			}
 		}
@@ -169,7 +169,7 @@ func (pc *PolicyController) processAllocDecision() {
 				// TODO(k82cn): it's better to use /eviction instead of delete to avoid race-condition.
 				if err := pc.kubeclient.CoreV1().Pods(p.Namespace).Delete(p.Name, &metav1.DeleteOptions{}); err != nil {
 					glog.Infof("Failed to preempt pod <%v/%v>: %#v", p.Namespace, p.Name, err)
-					return err
+					continue
 				}
 			}
 		}
