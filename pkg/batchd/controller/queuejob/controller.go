@@ -235,6 +235,13 @@ func (cc *Controller) initWorker() {
 		return
 	}
 
+	// create PDB for QueueJob to support gang-scheduling
+	err = cc.initPDB(int(queuejob.Spec.Replicas), queuejob.Spec.Template.Labels)
+	if err != nil {
+		glog.Errorf("Failed to create PDB for QueueJob %s, err %#v", queuejob.Name, err)
+		return
+	}
+
 	// Add labels and selectors which are used by controller for a QueueJob
 	// And update to api server
 	err = cc.initLabelsForQueueJob(queuejob)
@@ -293,12 +300,6 @@ func (cc *Controller) updateWorker() {
 	queuejob, ok := item.(*arbv1.QueueJob)
 	if !ok {
 		glog.Errorf("Cannot convert to *arbv1.QueueJob: %v", queuejob)
-		return
-	}
-	// create PDB for QueueJob to support gang-scheduling
-	err = cc.initPDB(int(queuejob.Spec.Replicas), queuejob.Spec.Template.Labels)
-	if err != nil {
-		glog.Errorf("Failed to create PDB for QueueJob %s, err %#v", queuejob.Name, err)
 		return
 	}
 
@@ -440,7 +441,7 @@ func (cc *Controller) manageQueueJob(activePods []*v1.Pod, succeeded int32, qj *
 			// and re-create pods for the queuejob in next loop
 			jobDone = false
 			// TODO(jinzhejz): need make sure manage this QueueJob after all old pods are terminated
-			cc.terminatePodsForQueueJob(qj)
+			err = cc.terminatePodsForQueueJob(qj)
 		}
 	}
 
