@@ -17,6 +17,10 @@ generate-code:
 	${BIN_DIR}/deepcopy-gen -i ./pkg/batchd/apis/v1/ -O zz_generated.deepcopy
 	${BIN_DIR}/deepcopy-gen -i ./pkg/quotalloc/apis/v1/ -O zz_generated.deepcopy
 
+images: kube-arbitrator
+	cp ./_output/bin/kube-batchd ./deployment/
+	docker build ./deployment/ -t kubearbitrator/batchd:v0.1
+
 test-integration:
 	hack/make-rules/test-integration.sh $(WHAT)
 

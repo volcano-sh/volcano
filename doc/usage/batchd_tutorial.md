@@ -9,94 +9,26 @@ kube-batchd need to run as a kubernetes scheduler. The next step will show how t
 
 ## 2. Config Kube-batchd as Kubernetes scheduler
 
-### (1) Package Kube-batchd
+### (1) Kube-batchd image
 
-#### Download and Build kube-batchd
+An official kube-batchd images is provided and you can download it from [DockerHub](https://hub.docker.com/r/kubearbitrator/batchd/). The version is `v0.1` now.
+
+### (2) Create a Kubernetes Deployment for kube-batchd
+
+#### Download kube-batchd
 
 ```
 # mkdir -p $GOPATH/src/github.com/kubernetes-incubator/
 # cd $GOPATH/src/github.com/kubernetes-incubator/
 # git clone git@github.com:kubernetes-incubator/kube-arbitrator.git
-# cd kube-arbitrator
-# make
 ```
 
-#### Build docker image
-
-```
-# mkdir -p /tmp/kube-image
-# cd /tmp/kube-image
-# cp $GOPATH/src/github.com/kubernetes-incubator/kube-arbitrator/_output/bin/kube-batchd ./
-```
-
-Create `Dockerfile` in `/tmp/kube-image`
-
-```
-# cat /tmp/kube-image/Dockerfile
-From ubuntu
-
-ADD kube-batchd /opt
-```
-
-Build the image and push it to a registry(GCR or DockerHub). We have used DockerHub here.  
-
-```
-# cd /tmp/kube-image/
-# docker build -t <your_docker_username>/kube-batchd:v1 .
-# docker push <your_docker_username>/kube-batchd:v1
-```
-
-Verify kube-batchd images
-
-```
-# docker images kube-batchd
-REPOSITORY        TAG       IMAGE ID          CREATED              SIZE
-kube-batchd       v1        bc4cec05da6a      About a minute ago   149.3 MB
-```
-
-### (2) Define a Kubernetes Deployment for kube-batchd
-
-Create a `kube-batchd.yaml` with the following content:
-
-```yaml
-apiVersion: apps/v1beta1
-kind: Deployment
-metadata:
-  labels:
-    component: scheduler
-    tier: control-plane
-  name: kube-batchd
-  namespace: kube-system
-spec:
-  replicas: 1
-  template:
-    metadata:
-      labels:
-        component: scheduler
-        tier: control-plane
-        version: second
-    spec:
-      containers:
-      - command:
-        - ./opt/kube-batchd
-        - --scheduler-name=kube-batchd
-        image: <your_docker_username>/kube-batchd:v1
-        name: kube-second-scheduler
-        resources:
-          requests:
-            cpu: '0.1'
-        securityContext:
-          privileged: false
-        volumeMounts: []
-      hostNetwork: false
-      hostPID: false
-      volumes: []
-```
+#### Create a deployment for kube-batchd
 
 Run the kube-batchd as kubernetes scheduler
 
 ```
-# kubectl create -f kube-batchd.yaml
+# kubectl create -f $GOPATH/src/github.com/kubernetes-incubator/kube-arbitrator/deployment/kube-batchd.yaml
 ```
 
 Verify kube-batchd deployment
@@ -112,6 +44,8 @@ NAMESPACE     NAME                             READY     STATUS       RESTARTS  
 kube-system   kube-batchd-2521827519-khmgx     1/1       Running      0          2m
 ... ...
 ```
+
+NOTE: kube-batchd need to collect cluster information(such as Pod, Node, CRD, etc) for scheduing, so the service account used by the deployment must have permission to access those cluster resources, otherwise, kube-batchd will fail to startup.
 
 ### (3) Create a QueueJob
 
