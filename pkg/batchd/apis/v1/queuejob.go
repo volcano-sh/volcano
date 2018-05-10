@@ -23,18 +23,17 @@ import (
 
 const QueueJobPlural = "queuejobs"
 
-const QueueJobType = "QueueJob"
-
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type QueueJob struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata"`
+	metav1.TypeMeta `json:",inline"`
+
+	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
 	// Specification of the desired behavior of a cron job, including the minAvailable
-	Spec QueueJobSpec `json:"spec"`
+	Spec QueueJobSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
 
 	// Current status of QueueJob
-	Status QueueJobStatus `json:"status"`
+	Status QueueJobStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
 }
 
 // QueueJobSpec describes how the job execution will look like and when it will actually run
@@ -42,51 +41,41 @@ type QueueJobSpec struct {
 	// A label query over pods that should match the pod count.
 	// Normally, the system sets this field for you.
 	// +optional
-	Selector *metav1.LabelSelector `json:"selector,omitempty" protobuf:"bytes,4,opt,name=selector"`
+	Selector *metav1.LabelSelector `json:"selector,omitempty" protobuf:"bytes,1,opt,name=selector"`
 
 	// Replicas is the number of desired replicas
-	Replicas int32 `json:"replicas"`
+	Replicas int32 `json:"replicas,omitempty" protobuf:"bytes,2,opt,name=replicas"`
 
 	// The minimal available pods to run for this QueueJob; the default value is nil
-	MinAvailable *int32 `json:"minavailable"`
-
-	// The controller of Pods; two valid value as follow:
-	//   k8s: the pods are managed by QueueJobController, e.g. creation, termination; default value
-	//   customized: the pods are managed by customized controller, QueueJobController
-	//               only update status accordingly
-	Controller string `json:"controller"`
+	MinAvailable *int32 `json:"minavailable,omitempty" protobuf:"bytes,3,opt,name=minavailable"`
 
 	// Specifies the pod that will be created when executing a QueueJob
-	Template v1.PodTemplateSpec `json:"template"`
-}
-
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type QueueJobList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
-	Items           []QueueJob `json:"items"`
+	Template v1.PodTemplateSpec `json:"template,omitempty" protobuf:"bytes,4,opt,name=template"`
 }
 
 // QueueJobStatus represents the current state of a QueueJob
 type QueueJobStatus struct {
 	// The number of actively running pods.
 	// +optional
-	Running int32 `json:"running"`
+	Running int32 `json:"running,omitempty" protobuf:"bytes,1,opt,name=running"`
 
 	// The number of pods which reached phase Succeeded.
 	// +optional
-	Succeeded int32 `json:"succeeded"`
+	Succeeded int32 `json:"Succeeded,omitempty" protobuf:"bytes,2,opt,name=succeeded"`
 
 	// The number of pods which reached phase Failed.
 	// +optional
-	Failed int32 `json:"failed"`
+	Failed int32 `json:"failed,omitempty" protobuf:"bytes,3,opt,name=failed"`
 
 	// The minimal available pods to run for this QueueJob
 	// +optional
-	MinAvailable int32 `json:"minavailable"`
+	MinAvailable int32 `json:"template,omitempty" protobuf:"bytes,4,opt,name=template"`
 }
 
-const (
-	K8sController        string = "k8s"
-	CustomizedController string = "customized"
-)
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type QueueJobList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	Items []QueueJob `json:"items" protobuf:"bytes,2,rep,name=items"`
+}

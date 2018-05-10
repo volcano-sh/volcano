@@ -21,12 +21,13 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-batchd/app"
-	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-batchd/app/options"
 	"github.com/spf13/pflag"
 
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/util/flag"
+
+	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-batchd/app"
+	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-batchd/app/options"
 )
 
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")

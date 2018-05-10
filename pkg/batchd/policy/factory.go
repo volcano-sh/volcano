@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/drf"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/plugins/drf"
 )
 
 var policyMap = make(map[string]Interface)

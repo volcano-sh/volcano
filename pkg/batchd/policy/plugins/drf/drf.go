@@ -20,6 +20,7 @@ import (
 	"sort"
 
 	"github.com/golang/glog"
+
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/util"
 )
