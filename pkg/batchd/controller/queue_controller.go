@@ -65,7 +65,11 @@ func NewQueueController(config *rest.Config) *QueueController {
 
 func (cc *QueueController) Run(stopCh chan struct{}) {
 	// initialized
-	cc.createQueueCRD()
+	err := cc.createQueueCRD()
+	if err != nil {
+		glog.Errorf("Fail to create crd Queue, error %#v", err)
+		panic(err)
+	}
 
 	go cc.nsInformer.Informer().Run(stopCh)
 	cache.WaitForCacheSync(stopCh, cc.nsInformer.Informer().HasSynced)

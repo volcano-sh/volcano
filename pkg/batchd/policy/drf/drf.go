@@ -61,10 +61,16 @@ func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.Node
 	// assign MinAvailable of each podSet first by chronologically
 	sort.Sort(dq)
 	pq := util.NewPriorityQueue()
+	matchNodesForPodSet := make(map[string][]*cache.NodeInfo)
 	for _, q := range dq {
 		psi := q.Value.(*podSetInfo)
 
-		assigned := drf.assignMinimalPods(psi.insufficientMinAvailable(), psi, nodes)
+		// fetch the nodes that match PodSet NodeSelector and NodeAffinity
+		// and store it for following DRF assignment
+		matchNodes := fetchMatchNodeForPodSet(psi, nodes)
+		matchNodesForPodSet[psi.podSet.Name] = matchNodes
+
+		assigned := drf.assignMinimalPods(psi.insufficientMinAvailable(), psi, matchNodes)
 		if assigned {
 			// only push PodSet with MinAvailable to priority queue
 			// to avoid PodSet get resources less than MinAvailable by following DRF assignment
@@ -85,7 +91,7 @@ func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.Node
 			psi.podSet.Namespace, psi.podSet.Name)
 
 		// assign one pod of PodSet by DRF
-		assigned := drf.assignMinimalPods(1, psi, nodes)
+		assigned := drf.assignMinimalPods(1, psi, matchNodesForPodSet[psi.podSet.Name])
 
 		if assigned {
 			// push PosSet back for next assignment

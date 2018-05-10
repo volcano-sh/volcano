@@ -101,6 +101,8 @@ type PodSet struct {
 	Pending  []*PodInfo // The pending pod without NodeName
 	Assigned []*PodInfo // The pending pod with NodeName
 	Others   []*PodInfo
+
+	NodeSelector map[string]string
 }
 
 func NewPodSet(uid types.UID) *PodSet {
@@ -117,6 +119,7 @@ func NewPodSet(uid types.UID) *PodSet {
 		Pending:      make([]*PodInfo, 0),
 		Assigned:     make([]*PodInfo, 0),
 		Others:       make([]*PodInfo, 0),
+		NodeSelector: make(map[string]string),
 	}
 }
 
@@ -143,6 +146,14 @@ func (ps *PodSet) AddPodInfo(pi *PodInfo) {
 	// assume all pods in the same PodSet have same labels
 	if len(ps.Labels) == 0 && len(pi.Pod.Labels) != 0 {
 		ps.Labels = pi.Pod.Labels
+	}
+
+	// Update PodSet NodeSelector
+	// assume all pods in the same PodSet have same NodeSelector
+	if len(ps.NodeSelector) == 0 && len(pi.Pod.Spec.NodeSelector) != 0 {
+		for k, v := range pi.Pod.Spec.NodeSelector {
+			ps.NodeSelector[k] = v
+		}
 	}
 }
 
@@ -193,6 +204,7 @@ func (ps *PodSet) Clone() *PodSet {
 		Pending:      make([]*PodInfo, 0),
 		Assigned:     make([]*PodInfo, 0),
 		Others:       make([]*PodInfo, 0),
+		NodeSelector: ps.NodeSelector,
 	}
 
 	for _, pod := range ps.Running {
