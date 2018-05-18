@@ -24,9 +24,9 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/v1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/informers/internalinterfaces"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/listers/v1"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/queuejob-ctrl/apis/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/queuejob-ctrl/client/informers/internalinterfaces"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/queuejob-ctrl/client/listers/v1"
 )
 
 // QueueJobInformer provides access to a shared informer and lister for

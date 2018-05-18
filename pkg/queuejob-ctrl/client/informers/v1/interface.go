@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2018 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,13 +17,13 @@ limitations under the License.
 package v1
 
 import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/informers/internalinterfaces"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/queuejob-ctrl/client/informers/internalinterfaces"
 )
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
-	// Queues returns a QueueInformer.
-	Queues() QueueInformer
+	// QueueJobs returns a QueueJobInformer.
+	QueueJobs() QueueJobInformer
 }
 
 type version struct {
@@ -35,7 +35,7 @@ func New(f internalinterfaces.SharedInformerFactory) Interface {
 	return &version{f}
 }
 
-// Queues returns a QueueInformer.
-func (v *version) Queues() QueueInformer {
-	return &queueInformer{factory: v.SharedInformerFactory}
+// QueueJobs returns a QueueJobInformer.
+func (v *version) QueueJobs() QueueJobInformer {
+	return &queueJobInformer{factory: v.SharedInformerFactory}
 }

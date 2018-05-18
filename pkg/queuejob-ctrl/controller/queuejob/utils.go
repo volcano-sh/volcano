@@ -25,8 +25,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/v1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/queuejob-ctrl/apis/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/queuejob-ctrl/client"
 	uuid "github.com/satori/go.uuid"
 )
 

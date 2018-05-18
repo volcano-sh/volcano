@@ -11,11 +11,15 @@ kube-batchd need to run as a kubernetes scheduler. The next step will show how t
 
 ### (1) Kube-batchd image
 
-An official kube-batchd images is provided and you can download it from [DockerHub](https://hub.docker.com/r/kubearbitrator/batchd/). The version is `v0.1` now.
+An official kube-batchd image is provided and you can download it from [DockerHub](https://hub.docker.com/r/kubearbitrator/batchd/). The version is `v0.1` now.
 
-### (2) Create a Kubernetes Deployment for kube-batchd
+### (2) Kube-queuejob-ctrl image
 
-#### Download kube-batchd
+An official kube-queuejob-ctrl image is provided and you can download it from [DockerHub](https://hub.docker.com/r/kubearbitrator/queuejob-ctrl/). The version is `v0.1` now.
+
+### (3) Create a Kubernetes Deployment for kube-batchd and kube-queuejob-ctrl
+
+#### Download kube-arbitrator
 
 ```
 # mkdir -p $GOPATH/src/github.com/kubernetes-incubator/
@@ -23,7 +27,7 @@ An official kube-batchd images is provided and you can download it from [DockerH
 # git clone git@github.com:kubernetes-incubator/kube-arbitrator.git
 ```
 
-#### Create a deployment for kube-batchd
+#### Create a deployments for kube-batchd
 
 Run the kube-batchd as kubernetes scheduler
 
@@ -47,7 +51,29 @@ kube-system   kube-batchd-2521827519-khmgx     1/1       Running      0         
 
 NOTE: kube-batchd need to collect cluster information(such as Pod, Node, CRD, etc) for scheduing, so the service account used by the deployment must have permission to access those cluster resources, otherwise, kube-batchd will fail to startup.
 
-### (3) Create a QueueJob
+#### Create a deployment for kube-queuejob-ctrl
+
+Run the kube-queuejob-ctrl
+
+```
+# kubectl create -f $GOPATH/src/github.com/kubernetes-incubator/kube-arbitrator/deployment/kube-queuejob-ctrl.yaml
+```
+
+Verify kube-queuejob-ctrl deployment
+
+```
+# kubectl get deploy kube-queuejob-ctrl -n kube-system
+NAME                 DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
+kube-queuejob-ctrl   1         1         1            1           2m
+
+# kubectl get pods --all-namespaces
+NAMESPACE     NAME                                           READY     STATUS    RESTARTS   AGE
+... ...
+kube-system   kube-queuejob-ctrl-7d5ff64686-fs979            1/1       Running   0          4m
+... ...
+```
+
+### (4) Create a QueueJob
 
 Create a file named `queuejob-01.yaml` with the following content:
 
