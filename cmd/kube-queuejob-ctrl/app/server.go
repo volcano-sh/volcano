@@ -20,9 +20,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-batchd/app/options"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/controller/policy"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/controller/queue"
+	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-queuejob-ctrl/app/options"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/queuejob-ctrl/controller/queuejob"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 )
@@ -42,17 +41,9 @@ func Run(opt *options.ServerOption) error {
 
 	neverStop := make(chan struct{})
 
-	// Start Queue Controller to create CRD and manage Queue lifecycle.
-	queueController := queue.NewQueueController(config)
-	queueController.Run(neverStop)
-
-	// Start policy controller to allocate resources.
-	policyController, err := policy.NewPolicyController(config, opt.Policy, opt.SchedulerName)
-	if err != nil {
-		panic(err)
-	}
-
-	policyController.Run(neverStop)
+	// Start QueueJob Controller to create CRD and manage QueueJob lifecycle.
+	queuejobController := queuejob.NewController(config)
+	queuejobController.Run(neverStop)
 
 	<-neverStop
 

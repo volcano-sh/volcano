@@ -1,5 +1,7 @@
 cmd/kube-batchd/app
 cmd/kube-batchd/app/options
+cmd/kube-queuejob-ctrl/app
+cmd/kube-queuejob-ctrl/app/options
 cmd/kube-quotalloc/app
 cmd/kube-quotalloc/app/options
 contrib/pkg/batch/apis/v1
@@ -21,6 +23,12 @@ pkg/batchd/controller/queue
 pkg/batchd/policy
 pkg/batchd/policy/plugins/drf
 pkg/batchd/policy/util
+pkg/queuejob-ctrl/apis/v1
+pkg/queuejob-ctrl/client
+pkg/queuejob-ctrl/client/clientset
+pkg/queuejob-ctrl/client/clientset/scheme
+pkg/queuejob-ctrl/client/clientset/typed/v1
+pkg/queuejob-ctrl/client/informers/internalinterfaces
 pkg/quotalloc/apis/v1
 pkg/quotalloc/cache
 pkg/quotalloc/client

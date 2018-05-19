@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2018 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ limitations under the License.
 package v1
 
 import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/queuejob-ctrl/apis/v1"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -26,7 +26,7 @@ import (
 
 type ArbV1Interface interface {
 	RESTClient() rest.Interface
-	QueueGetter
+	QueueJobGetter
 }
 
 // ArbV1Client is used to interact with features provided by the  group.
@@ -34,8 +34,8 @@ type ArbV1Client struct {
 	restClient rest.Interface
 }
 
-func (c *ArbV1Client) Queues(namespace string) QueueInterface {
-	return newQueues(c, namespace)
+func (c *ArbV1Client) QueueJobs(namespace string) QueueJobInterface {
+	return newQueueJobs(c, namespace)
 }
 
 // NewForConfig creates a new ArbV1Client for the given config.

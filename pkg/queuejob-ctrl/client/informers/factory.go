@@ -21,8 +21,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/informers/internalinterfaces"
-	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/informers/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/queuejob-ctrl/client/informers/internalinterfaces"
+	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/queuejob-ctrl/client/informers/v1"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -110,9 +110,9 @@ type SharedInformerFactory interface {
 	ForResource(resource schema.GroupVersionResource) (GenericInformer, error)
 	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
 
-	Queue() arbclient.Interface
+	QueueJob() arbclient.Interface
 }
 
-func (f *sharedInformerFactory) Queue() arbclient.Interface {
+func (f *sharedInformerFactory) QueueJob() arbclient.Interface {
 	return arbclient.New(f)
 }
