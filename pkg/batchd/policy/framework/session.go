@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2018 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,24 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package policy
+package framework
 
 import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/framework"
+	"k8s.io/apimachinery/pkg/types"
 )
 
-// Interface is the interface of policy.
-type Interface interface {
-	// The unique name of allocator.
-	Name() string
+type Session struct {
+	ID types.UID
 
-	// Initialize initializes the allocator plugins.
-	Initialize()
-
-	// Execute allocates the cluster's resources into each queue.
-	Execute(ssn *framework.Session) []*cache.QueueInfo
-
-	// UnIntialize un-initializes the allocator plugins.
-	UnInitialize()
+	Queues []*cache.QueueInfo
+	Nodes  []*cache.NodeInfo
 }

@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2018 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,24 +14,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package policy
+package framework
 
 import (
+	"k8s.io/apimachinery/pkg/util/uuid"
+
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/framework"
 )
 
-// Interface is the interface of policy.
-type Interface interface {
-	// The unique name of allocator.
-	Name() string
+func OpenSession(cache cache.Cache) *Session {
+	snapshot := cache.Snapshot()
 
-	// Initialize initializes the allocator plugins.
-	Initialize()
+	return &Session{
+		ID:     uuid.NewUUID(),
+		Queues: snapshot.Queues,
+		Nodes:  snapshot.Nodes,
+	}
+}
 
-	// Execute allocates the cluster's resources into each queue.
-	Execute(ssn *framework.Session) []*cache.QueueInfo
-
-	// UnIntialize un-initializes the allocator plugins.
-	UnInitialize()
+func CloseSession(ssn *Session) {
+	ssn.Queues = nil
+	ssn.Nodes = nil
 }

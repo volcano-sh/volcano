@@ -32,6 +32,7 @@ import (
 	schedcache "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/clientset"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/framework"
 )
 
 type PolicyController struct {
@@ -95,13 +96,15 @@ func (pc *PolicyController) runOnce() {
 
 	pc.cancelAllocDecisionProcessing()
 
-	snapshot := pc.cache.Snapshot()
+	ssn := framework.OpenSession(pc.cache)
 
-	queues := pc.allocator.Execute(snapshot.Queues, snapshot.Nodes)
+	queues := pc.allocator.Execute(ssn)
 
 	pc.assumePods(queues)
 
 	pc.enqueue(queues)
+
+	framework.CloseSession(ssn)
 }
 
 func (pc *PolicyController) enqueue(queues []*schedcache.QueueInfo) {

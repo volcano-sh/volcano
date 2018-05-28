@@ -22,6 +22,7 @@ import (
 	"github.com/golang/glog"
 
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/framework"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/util"
 )
 
@@ -42,9 +43,12 @@ func (drf *drfScheduler) Name() string {
 
 func (drf *drfScheduler) Initialize() {}
 
-func (drf *drfScheduler) Execute(queues []*cache.QueueInfo, nodes []*cache.NodeInfo) []*cache.QueueInfo {
+func (drf *drfScheduler) Execute(ssn *framework.Session) []*cache.QueueInfo {
 	glog.V(4).Infof("Enter Allocate ...")
 	defer glog.V(4).Infof("Leaving Allocate ...")
+
+	queues := ssn.Queues
+	nodes := ssn.Nodes
 
 	total := cache.EmptyResource()
 	for _, n := range nodes {
