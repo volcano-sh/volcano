@@ -26,24 +26,20 @@ import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/util"
 )
 
-// PolicyName is the name of drf policy; it'll be use for any case
-// that need a name, e.g. default policy, register drf policy.
-var PolicyName = "drf"
-
-type drfScheduler struct {
+type allocateAction struct {
 }
 
-func New() *drfScheduler {
-	return &drfScheduler{}
+func New() *allocateAction {
+	return &allocateAction{}
 }
 
-func (drf *drfScheduler) Name() string {
-	return PolicyName
+func (alloc *allocateAction) Name() string {
+	return "allocate"
 }
 
-func (drf *drfScheduler) Initialize() {}
+func (alloc *allocateAction) Initialize() {}
 
-func (drf *drfScheduler) Execute(ssn *framework.Session) []*cache.QueueInfo {
+func (alloc *allocateAction) Execute(ssn *framework.Session) []*cache.QueueInfo {
 	glog.V(4).Infof("Enter Allocate ...")
 	defer glog.V(4).Infof("Leaving Allocate ...")
 
@@ -75,7 +71,7 @@ func (drf *drfScheduler) Execute(ssn *framework.Session) []*cache.QueueInfo {
 		matchNodes := fetchMatchNodeForPodSet(psi, nodes)
 		matchNodesForPodSet[psi.podSet.Name] = matchNodes
 
-		assigned := drf.assignMinimalPods(psi.insufficientMinAvailable(), psi, matchNodes)
+		assigned := alloc.assignMinimalPods(psi.insufficientMinAvailable(), psi, matchNodes)
 		if assigned {
 			// only push PodSet with MinAvailable to priority queue
 			// to avoid PodSet get resources less than MinAvailable by following DRF assignment
@@ -96,7 +92,7 @@ func (drf *drfScheduler) Execute(ssn *framework.Session) []*cache.QueueInfo {
 			psi.podSet.Namespace, psi.podSet.Name)
 
 		// assign one pod of PodSet by DRF
-		assigned := drf.assignMinimalPods(1, psi, matchNodesForPodSet[psi.podSet.Name])
+		assigned := alloc.assignMinimalPods(1, psi, matchNodesForPodSet[psi.podSet.Name])
 
 		if assigned {
 			// push PosSet back for next assignment
@@ -107,11 +103,11 @@ func (drf *drfScheduler) Execute(ssn *framework.Session) []*cache.QueueInfo {
 	return queues
 }
 
-func (drf *drfScheduler) UnInitialize() {}
+func (alloc *allocateAction) UnInitialize() {}
 
 // Assign node for min Pods of psi
 // If min Pods can not be satisfy, then don't assign any pods
-func (drf *drfScheduler) assignMinimalPods(min int, psi *podSetInfo, nodes []*cache.NodeInfo) bool {
+func (alloc *allocateAction) assignMinimalPods(min int, psi *podSetInfo, nodes []*cache.NodeInfo) bool {
 	glog.V(4).Infof("Enter assignMinimalPods ...")
 	defer glog.V(4).Infof("Leaving assignMinimalPods ...")
 
