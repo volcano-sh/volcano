@@ -63,10 +63,10 @@ func TestQueueInfo_AddPod(t *testing.T) {
 				Queue:     case01_queue,
 				Name:      "c1",
 				Namespace: "c1",
-				PodSets:   make(map[types.UID]*PodSet),
-				Pods: map[string]*PodInfo{
-					"p1": NewPodInfo(case01_pod1),
-					"p2": NewPodInfo(case01_pod2),
+				PodSets:   make(map[types.UID]*JobInfo),
+				Pods: map[string]*TaskInfo{
+					"p1": NewTaskInfo(case01_pod1),
+					"p2": NewTaskInfo(case01_pod2),
 				},
 			},
 		},
@@ -78,7 +78,7 @@ func TestQueueInfo_AddPod(t *testing.T) {
 				Queue:     case02_queue,
 				Name:      "c1",
 				Namespace: "c1",
-				PodSets: map[types.UID]*PodSet{
+				PodSets: map[types.UID]*JobInfo{
 					"owner1": {
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "owner1",
@@ -88,18 +88,18 @@ func TestQueueInfo_AddPod(t *testing.T) {
 						MinAvailable: 0,
 						Allocated:    buildResource("1000m", "1G"),
 						TotalRequest: buildResource("2000m", "2G"),
-						Running: []*PodInfo{
-							NewPodInfo(case02_pod2),
+						Running: []*TaskInfo{
+							NewTaskInfo(case02_pod2),
 						},
-						Assigned: []*PodInfo{},
-						Pending: []*PodInfo{
-							NewPodInfo(case02_pod1),
+						Assigned: []*TaskInfo{},
+						Pending: []*TaskInfo{
+							NewTaskInfo(case02_pod1),
 						},
-						Others:       []*PodInfo{},
+						Others:       []*TaskInfo{},
 						NodeSelector: make(map[string]string),
 					},
 				},
-				Pods: make(map[string]*PodInfo),
+				Pods: make(map[string]*TaskInfo),
 			},
 		},
 	}
@@ -108,7 +108,7 @@ func TestQueueInfo_AddPod(t *testing.T) {
 		ci := NewQueueInfo(test.queue)
 
 		for _, pod := range test.pods {
-			pi := NewPodInfo(pod)
+			pi := NewTaskInfo(pod)
 			ci.AddPod(pi)
 		}
 
@@ -150,10 +150,10 @@ func TestQueueInfo_RemovePod(t *testing.T) {
 				Queue:     case01_queue,
 				Name:      "c1",
 				Namespace: "c1",
-				PodSets:   make(map[types.UID]*PodSet),
-				Pods: map[string]*PodInfo{
-					"p1": NewPodInfo(case01_pod1),
-					"p3": NewPodInfo(case01_pod3),
+				PodSets:   make(map[types.UID]*JobInfo),
+				Pods: map[string]*TaskInfo{
+					"p1": NewTaskInfo(case01_pod1),
+					"p3": NewTaskInfo(case01_pod3),
 				},
 			},
 		},
@@ -166,7 +166,7 @@ func TestQueueInfo_RemovePod(t *testing.T) {
 				Queue:     case02_queue,
 				Name:      "c1",
 				Namespace: "c1",
-				PodSets: map[types.UID]*PodSet{
+				PodSets: map[types.UID]*JobInfo{
 					"owner1": {
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "owner1",
@@ -176,18 +176,18 @@ func TestQueueInfo_RemovePod(t *testing.T) {
 						MinAvailable: 0,
 						Allocated:    buildResource("1000m", "1G"),
 						TotalRequest: buildResource("2000m", "2G"),
-						Running: []*PodInfo{
-							NewPodInfo(case02_pod3),
+						Running: []*TaskInfo{
+							NewTaskInfo(case02_pod3),
 						},
-						Assigned: []*PodInfo{},
-						Pending: []*PodInfo{
-							NewPodInfo(case02_pod1),
+						Assigned: []*TaskInfo{},
+						Pending: []*TaskInfo{
+							NewTaskInfo(case02_pod1),
 						},
-						Others:       []*PodInfo{},
+						Others:       []*TaskInfo{},
 						NodeSelector: make(map[string]string),
 					},
 				},
-				Pods: make(map[string]*PodInfo),
+				Pods: make(map[string]*TaskInfo),
 			},
 		},
 	}
@@ -196,12 +196,12 @@ func TestQueueInfo_RemovePod(t *testing.T) {
 		ci := NewQueueInfo(test.queue)
 
 		for _, pod := range test.pods {
-			pi := NewPodInfo(pod)
+			pi := NewTaskInfo(pod)
 			ci.AddPod(pi)
 		}
 
 		for _, pod := range test.rmPods {
-			pi := NewPodInfo(pod)
+			pi := NewTaskInfo(pod)
 			ci.RemovePod(pi)
 		}
 
@@ -243,7 +243,7 @@ func TestQueueInfo_AddPdb(t *testing.T) {
 				Queue:     case01_queue,
 				Name:      "c1",
 				Namespace: "c1",
-				PodSets: map[types.UID]*PodSet{
+				PodSets: map[types.UID]*JobInfo{
 					"owner1": {
 						ObjectMeta: metav1.ObjectMeta{
 							Name:   "owner1",
@@ -254,18 +254,18 @@ func TestQueueInfo_AddPdb(t *testing.T) {
 						MinAvailable: 5,
 						Allocated:    buildResource("1000m", "1G"),
 						TotalRequest: buildResource("2000m", "2G"),
-						Running: []*PodInfo{
-							NewPodInfo(case01_pod2),
+						Running: []*TaskInfo{
+							NewTaskInfo(case01_pod2),
 						},
-						Assigned: []*PodInfo{},
-						Pending: []*PodInfo{
-							NewPodInfo(case01_pod1),
+						Assigned: []*TaskInfo{},
+						Pending: []*TaskInfo{
+							NewTaskInfo(case01_pod1),
 						},
-						Others:       []*PodInfo{},
+						Others:       []*TaskInfo{},
 						NodeSelector: make(map[string]string),
 					},
 				},
-				Pods: make(map[string]*PodInfo),
+				Pods: make(map[string]*TaskInfo),
 			},
 		},
 	}
@@ -274,7 +274,7 @@ func TestQueueInfo_AddPdb(t *testing.T) {
 		ci := NewQueueInfo(test.queue)
 
 		for _, pod := range test.pods {
-			pi := NewPodInfo(pod)
+			pi := NewTaskInfo(pod)
 			ci.AddPod(pi)
 		}
 
@@ -323,7 +323,7 @@ func TestQueueInfo_RemovePdb(t *testing.T) {
 				Queue:     case01_queue,
 				Name:      "c1",
 				Namespace: "c1",
-				PodSets: map[types.UID]*PodSet{
+				PodSets: map[types.UID]*JobInfo{
 					"owner1": {
 						ObjectMeta: metav1.ObjectMeta{
 							Name:   "owner1",
@@ -334,18 +334,18 @@ func TestQueueInfo_RemovePdb(t *testing.T) {
 						MinAvailable: 0,
 						Allocated:    buildResource("1000m", "1G"),
 						TotalRequest: buildResource("2000m", "2G"),
-						Running: []*PodInfo{
-							NewPodInfo(case01_pod2),
+						Running: []*TaskInfo{
+							NewTaskInfo(case01_pod2),
 						},
-						Assigned: []*PodInfo{},
-						Pending: []*PodInfo{
-							NewPodInfo(case01_pod1),
+						Assigned: []*TaskInfo{},
+						Pending: []*TaskInfo{
+							NewTaskInfo(case01_pod1),
 						},
-						Others:       []*PodInfo{},
+						Others:       []*TaskInfo{},
 						NodeSelector: make(map[string]string),
 					},
 				},
-				Pods: make(map[string]*PodInfo),
+				Pods: make(map[string]*TaskInfo),
 			},
 		},
 	}
@@ -354,7 +354,7 @@ func TestQueueInfo_RemovePdb(t *testing.T) {
 		ci := NewQueueInfo(test.queue)
 
 		for _, pod := range test.pods {
-			pi := NewPodInfo(pod)
+			pi := NewTaskInfo(pod)
 			ci.AddPod(pi)
 		}
 

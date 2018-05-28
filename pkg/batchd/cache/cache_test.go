@@ -44,7 +44,7 @@ func nodesEqual(l, r map[string]*NodeInfo) bool {
 	return true
 }
 
-func podsEqual(l, r map[string]*PodInfo) bool {
+func podsEqual(l, r map[string]*TaskInfo) bool {
 	if len(l) != len(r) {
 		return false
 	}
@@ -169,8 +169,8 @@ func TestAddPod(t *testing.T) {
 	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	queue1 := buildQueue("c1", "c1")
 	ni1 := NewNodeInfo(node1)
-	pi1 := NewPodInfo(pod1)
-	pi2 := NewPodInfo(pod2)
+	pi1 := NewTaskInfo(pod1)
+	pi2 := NewTaskInfo(pod2)
 	ci1 := NewQueueInfo(queue1)
 	ni1.AddPod(pi2)
 	ci1.AddPod(pi1)
@@ -190,7 +190,7 @@ func TestAddPod(t *testing.T) {
 				Nodes: map[string]*NodeInfo{
 					"n1": ni1,
 				},
-				Pods: map[string]*PodInfo{
+				Pods: map[string]*TaskInfo{
 					"c1/p1": pi1,
 					"c1/p2": pi2,
 				},
@@ -204,7 +204,7 @@ func TestAddPod(t *testing.T) {
 	for i, test := range tests {
 		cache := &SchedulerCache{
 			Nodes:  make(map[string]*NodeInfo),
-			Pods:   make(map[string]*PodInfo),
+			Pods:   make(map[string]*TaskInfo),
 			Queues: make(map[string]*QueueInfo),
 		}
 
@@ -234,8 +234,8 @@ func TestAddNode(t *testing.T) {
 	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	ni1 := NewNodeInfo(node1)
-	pi1 := NewPodInfo(pod1)
-	pi2 := NewPodInfo(pod2)
+	pi1 := NewTaskInfo(pod1)
+	pi2 := NewTaskInfo(pod2)
 	ni1.AddPod(pi2)
 
 	tests := []struct {
@@ -250,15 +250,15 @@ func TestAddNode(t *testing.T) {
 				Nodes: map[string]*NodeInfo{
 					"n1": ni1,
 				},
-				Pods: map[string]*PodInfo{
+				Pods: map[string]*TaskInfo{
 					"c1/p1": pi1,
 					"c1/p2": pi2,
 				},
 				Queues: map[string]*QueueInfo{
 					"c1": {
 						Namespace: "c1",
-						PodSets:   make(map[types.UID]*PodSet),
-						Pods: map[string]*PodInfo{
+						PodSets:   make(map[types.UID]*JobInfo),
+						Pods: map[string]*TaskInfo{
 							"p1": pi1,
 							"p2": pi2,
 						},
@@ -271,7 +271,7 @@ func TestAddNode(t *testing.T) {
 	for i, test := range tests {
 		cache := &SchedulerCache{
 			Nodes:  make(map[string]*NodeInfo),
-			Pods:   make(map[string]*PodInfo),
+			Pods:   make(map[string]*TaskInfo),
 			Queues: make(map[string]*QueueInfo),
 		}
 
@@ -296,8 +296,8 @@ func TestAddQueue(t *testing.T) {
 	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	queue1 := buildQueue("c1", "c1")
-	pi1 := NewPodInfo(pod1)
-	pi2 := NewPodInfo(pod2)
+	pi1 := NewTaskInfo(pod1)
+	pi2 := NewTaskInfo(pod2)
 	ci1 := NewQueueInfo(queue1)
 	ci1.AddPod(pi1)
 	ci1.AddPod(pi2)
@@ -320,12 +320,12 @@ func TestAddQueue(t *testing.T) {
 						Allocatable: EmptyResource(),
 						Capability:  EmptyResource(),
 
-						Pods: map[string]*PodInfo{
+						Pods: map[string]*TaskInfo{
 							"c1/p2": pi2,
 						},
 					},
 				},
-				Pods: map[string]*PodInfo{
+				Pods: map[string]*TaskInfo{
 					"c1/p1": pi1,
 					"c1/p2": pi2,
 				},
@@ -339,7 +339,7 @@ func TestAddQueue(t *testing.T) {
 	for i, test := range tests {
 		cache := &SchedulerCache{
 			Nodes:  make(map[string]*NodeInfo),
-			Pods:   make(map[string]*PodInfo),
+			Pods:   make(map[string]*TaskInfo),
 			Queues: make(map[string]*QueueInfo),
 		}
 

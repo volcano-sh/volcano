@@ -129,20 +129,20 @@ func (alloc *allocateAction) assignMinimalPods(min int, psi *podSetInfo, nodes [
 		assigned := false
 		for _, node := range nodes {
 			currentIdle := node.CurrentIdle()
-			if p.Request.LessEqual(currentIdle) {
+			if p.Resreq.LessEqual(currentIdle) {
 
 				// record the assignment temporarily in PodSet and Node
 				// this assignment will be accepted (min could be met in this time)
 				// or discarded (min could not be met in this time)
 				psi.assignPendingPod(p, node.Name)
-				node.AddUnAcceptedAllocated(p.Request)
+				node.AddUnAcceptedAllocated(p.Resreq)
 
 				assigned = true
 
 				unacceptedAssignedNodes[node.Name] = node
 
 				glog.V(3).Infof("assign <%v/%v> to <%s>: available <%v>, request <%v>",
-					p.Namespace, p.Name, p.NodeName, node.Idle, p.Request)
+					p.Namespace, p.Name, p.NodeName, node.Idle, p.Resreq)
 				break
 			}
 		}

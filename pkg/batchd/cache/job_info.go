@@ -32,7 +32,7 @@ type podState struct {
 	bindingFinished bool
 }
 
-type PodInfo struct {
+type TaskInfo struct {
 	UID       types.UID
 	Owner     types.UID
 	Name      string
@@ -44,17 +44,17 @@ type PodInfo struct {
 
 	Pod *v1.Pod
 
-	Request *Resource
+	Resreq *Resource
 }
 
-func NewPodInfo(pod *v1.Pod) *PodInfo {
+func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	req := EmptyResource()
 
 	for _, c := range pod.Spec.Containers {
 		req.Add(NewResource(c.Resources.Requests))
 	}
 
-	pi := &PodInfo{
+	pi := &TaskInfo{
 		UID:       pod.UID,
 		Owner:     getPodOwner(pod),
 		Name:      pod.Name,
@@ -63,8 +63,8 @@ func NewPodInfo(pod *v1.Pod) *PodInfo {
 		Phase:     pod.Status.Phase,
 		Priority:  1,
 
-		Pod:     pod,
-		Request: req,
+		Pod:    pod,
+		Resreq: req,
 	}
 
 	if pod.Spec.Priority != nil {
@@ -74,8 +74,8 @@ func NewPodInfo(pod *v1.Pod) *PodInfo {
 	return pi
 }
 
-func (pi *PodInfo) Clone() *PodInfo {
-	return &PodInfo{
+func (pi *TaskInfo) Clone() *TaskInfo {
+	return &TaskInfo{
 		UID:       pi.UID,
 		Owner:     pi.Owner,
 		Name:      pi.Name,
@@ -84,11 +84,11 @@ func (pi *PodInfo) Clone() *PodInfo {
 		Phase:     pi.Phase,
 		Priority:  pi.Priority,
 		Pod:       pi.Pod,
-		Request:   pi.Request.Clone(),
+		Resreq:    pi.Resreq.Clone(),
 	}
 }
 
-type PodSet struct {
+type JobInfo struct {
 	metav1.ObjectMeta
 
 	PdbName      string
@@ -97,16 +97,16 @@ type PodSet struct {
 	Allocated    *Resource
 	TotalRequest *Resource
 
-	Running  []*PodInfo
-	Pending  []*PodInfo // The pending pod without NodeName
-	Assigned []*PodInfo // The pending pod with NodeName
-	Others   []*PodInfo
+	Running  []*TaskInfo
+	Pending  []*TaskInfo // The pending pod without NodeName
+	Assigned []*TaskInfo // The pending pod with NodeName
+	Others   []*TaskInfo
 
 	NodeSelector map[string]string
 }
 
-func NewPodSet(uid types.UID) *PodSet {
-	return &PodSet{
+func NewJobInfo(uid types.UID) *JobInfo {
+	return &JobInfo{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: string(uid),
 			UID:  uid,
@@ -115,29 +115,29 @@ func NewPodSet(uid types.UID) *PodSet {
 		MinAvailable: 0,
 		Allocated:    EmptyResource(),
 		TotalRequest: EmptyResource(),
-		Running:      make([]*PodInfo, 0),
-		Pending:      make([]*PodInfo, 0),
-		Assigned:     make([]*PodInfo, 0),
-		Others:       make([]*PodInfo, 0),
+		Running:      make([]*TaskInfo, 0),
+		Pending:      make([]*TaskInfo, 0),
+		Assigned:     make([]*TaskInfo, 0),
+		Others:       make([]*TaskInfo, 0),
 		NodeSelector: make(map[string]string),
 	}
 }
 
-func (ps *PodSet) AddPodInfo(pi *PodInfo) {
+func (ps *JobInfo) AddTaskInfo(pi *TaskInfo) {
 	switch pi.Phase {
 	case v1.PodRunning:
 		ps.Running = append(ps.Running, pi)
-		ps.Allocated.Add(pi.Request)
-		ps.TotalRequest.Add(pi.Request)
+		ps.Allocated.Add(pi.Resreq)
+		ps.TotalRequest.Add(pi.Resreq)
 	case v1.PodPending:
 		// treat pending pod with NodeName as allocated
 		if len(pi.Pod.Spec.NodeName) != 0 {
-			ps.Allocated.Add(pi.Request)
+			ps.Allocated.Add(pi.Resreq)
 			ps.Assigned = append(ps.Assigned, pi)
 		} else {
 			ps.Pending = append(ps.Pending, pi)
 		}
-		ps.TotalRequest.Add(pi.Request)
+		ps.TotalRequest.Add(pi.Resreq)
 	default:
 		ps.Others = append(ps.Others, pi)
 	}
@@ -157,11 +157,11 @@ func (ps *PodSet) AddPodInfo(pi *PodInfo) {
 	}
 }
 
-func (ps *PodSet) DeletePodInfo(pi *PodInfo) {
+func (ps *JobInfo) DeleteTaskInfo(pi *TaskInfo) {
 	for index, piRunning := range ps.Running {
 		if piRunning.Name == pi.Name {
-			ps.Allocated.Sub(piRunning.Request)
-			ps.TotalRequest.Sub(piRunning.Request)
+			ps.Allocated.Sub(piRunning.Resreq)
+			ps.TotalRequest.Sub(piRunning.Resreq)
 			ps.Running = append(ps.Running[:index], ps.Running[index+1:]...)
 			return
 		}
@@ -170,9 +170,9 @@ func (ps *PodSet) DeletePodInfo(pi *PodInfo) {
 	for index, piPending := range ps.Pending {
 		if piPending.Name == pi.Name {
 			if len(piPending.Pod.Spec.NodeName) != 0 {
-				ps.Allocated.Sub(piPending.Request)
+				ps.Allocated.Sub(piPending.Resreq)
 			}
-			ps.TotalRequest.Sub(piPending.Request)
+			ps.TotalRequest.Sub(piPending.Resreq)
 			ps.Pending = append(ps.Pending[:index], ps.Pending[index+1:]...)
 			return
 		}
@@ -181,17 +181,17 @@ func (ps *PodSet) DeletePodInfo(pi *PodInfo) {
 	for index, piAssigned := range ps.Assigned {
 		if piAssigned.Name == pi.Name {
 			if len(piAssigned.Pod.Spec.NodeName) != 0 {
-				ps.Allocated.Sub(piAssigned.Request)
+				ps.Allocated.Sub(piAssigned.Resreq)
 			}
-			ps.TotalRequest.Sub(piAssigned.Request)
+			ps.TotalRequest.Sub(piAssigned.Resreq)
 			ps.Assigned = append(ps.Assigned[:index], ps.Assigned[index+1:]...)
 			return
 		}
 	}
 }
 
-func (ps *PodSet) Clone() *PodSet {
-	info := &PodSet{
+func (ps *JobInfo) Clone() *JobInfo {
+	info := &JobInfo{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: ps.Name,
 			UID:  ps.UID,
@@ -200,10 +200,10 @@ func (ps *PodSet) Clone() *PodSet {
 		MinAvailable: ps.MinAvailable,
 		Allocated:    ps.Allocated.Clone(),
 		TotalRequest: ps.TotalRequest.Clone(),
-		Running:      make([]*PodInfo, 0),
-		Pending:      make([]*PodInfo, 0),
-		Assigned:     make([]*PodInfo, 0),
-		Others:       make([]*PodInfo, 0),
+		Running:      make([]*TaskInfo, 0),
+		Pending:      make([]*TaskInfo, 0),
+		Assigned:     make([]*TaskInfo, 0),
+		Others:       make([]*TaskInfo, 0),
 		NodeSelector: ps.NodeSelector,
 	}
 

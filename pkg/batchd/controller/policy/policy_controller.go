@@ -45,7 +45,7 @@ type PolicyController struct {
 }
 
 func podSetKey(obj interface{}) (string, error) {
-	podSet, ok := obj.(*schedcache.PodSet)
+	podSet, ok := obj.(*schedcache.JobInfo)
 	if !ok {
 		return "", fmt.Errorf("not a PodSet")
 	}
@@ -147,7 +147,7 @@ func (pc *PolicyController) assume(assumed *v1.Pod, host string) {
 
 func (pc *PolicyController) processAllocDecision() {
 	pc.podSets.Pop(func(obj interface{}) error {
-		ps, ok := obj.(*schedcache.PodSet)
+		ps, ok := obj.(*schedcache.JobInfo)
 		if !ok {
 			return fmt.Errorf("not a PodSet")
 		}
