@@ -31,6 +31,7 @@ import (
 
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/framework"
 )
 
 func init() {
@@ -232,9 +233,10 @@ func TestExecute(t *testing.T) {
 			schedulerCache.AddPod(pod)
 		}
 
-		snapshot := schedulerCache.Snapshot()
+		ssn := framework.OpenSession(schedulerCache)
+		defer framework.CloseSession(ssn)
 
-		expected := drf.Execute(snapshot.Queues, snapshot.Nodes)
+		expected := drf.Execute(ssn)
 		for _, queue := range expected {
 			for _, ps := range queue.PodSets {
 				for _, p := range ps.Assigned {
@@ -484,9 +486,10 @@ func TestMinAvailable(t *testing.T) {
 			schedulerCache.AddPDB(pdb)
 		}
 
-		snapshot := schedulerCache.Snapshot()
+		ssn := framework.OpenSession(schedulerCache)
+		defer framework.CloseSession(ssn)
 
-		expected := drf.Execute(snapshot.Queues, snapshot.Nodes)
+		expected := drf.Execute(ssn)
 		for _, queue := range expected {
 			assigned := 0
 			for _, ps := range queue.PodSets {
@@ -625,9 +628,10 @@ func TestNodeSelector(t *testing.T) {
 			schedulerCache.AddPDB(pdb)
 		}
 
-		snapshot := schedulerCache.Snapshot()
+		ssn := framework.OpenSession(schedulerCache)
+		defer framework.CloseSession(ssn)
 
-		expected := drf.Execute(snapshot.Queues, snapshot.Nodes)
+		expected := drf.Execute(ssn)
 		for _, queue := range expected {
 			assigned := 0
 			for _, ps := range queue.PodSets {

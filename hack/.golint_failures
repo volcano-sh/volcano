@@ -22,6 +22,7 @@ pkg/batchd/controller/policy
 pkg/batchd/controller/queue
 pkg/batchd/policy
 pkg/batchd/policy/actions/allocate
+pkg/batchd/policy/framework
 pkg/batchd/policy/util
 pkg/queuejob-ctrl/apis/v1
 pkg/queuejob-ctrl/client
