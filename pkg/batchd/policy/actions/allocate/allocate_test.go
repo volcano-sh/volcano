@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package drf
+package allocate
 
 import (
 	"flag"
@@ -120,7 +120,7 @@ func buildOwnerReference(owner string) metav1.OwnerReference {
 	}
 }
 
-func TestAllocate(t *testing.T) {
+func TestExecute(t *testing.T) {
 	owner1 := buildOwnerReference("owner1")
 	owner2 := buildOwnerReference("owner2")
 
@@ -234,7 +234,7 @@ func TestAllocate(t *testing.T) {
 
 		snapshot := schedulerCache.Snapshot()
 
-		expected := drf.Allocate(snapshot.Queues, snapshot.Nodes)
+		expected := drf.Execute(snapshot.Queues, snapshot.Nodes)
 		for _, queue := range expected {
 			for _, ps := range queue.PodSets {
 				for _, p := range ps.Assigned {
@@ -486,7 +486,7 @@ func TestMinAvailable(t *testing.T) {
 
 		snapshot := schedulerCache.Snapshot()
 
-		expected := drf.Allocate(snapshot.Queues, snapshot.Nodes)
+		expected := drf.Execute(snapshot.Queues, snapshot.Nodes)
 		for _, queue := range expected {
 			assigned := 0
 			for _, ps := range queue.PodSets {
@@ -627,7 +627,7 @@ func TestNodeSelector(t *testing.T) {
 
 		snapshot := schedulerCache.Snapshot()
 
-		expected := drf.Allocate(snapshot.Queues, snapshot.Nodes)
+		expected := drf.Execute(snapshot.Queues, snapshot.Nodes)
 		for _, queue := range expected {
 			assigned := 0
 			for _, ps := range queue.PodSets {

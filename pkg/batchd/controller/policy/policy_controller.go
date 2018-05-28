@@ -97,7 +97,7 @@ func (pc *PolicyController) runOnce() {
 
 	snapshot := pc.cache.Snapshot()
 
-	queues := pc.allocator.Allocate(snapshot.Queues, snapshot.Nodes)
+	queues := pc.allocator.Execute(snapshot.Queues, snapshot.Nodes)
 
 	pc.assumePods(queues)
 
