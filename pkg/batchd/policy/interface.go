@@ -28,8 +28,8 @@ type Interface interface {
 	// Initialize initializes the allocator plugins.
 	Initialize()
 
-	// Allocate allocates the cluster's resources into each queue.
-	Allocate(queues []*cache.QueueInfo, nodes []*cache.NodeInfo) []*cache.QueueInfo
+	// Execute allocates the cluster's resources into each queue.
+	Execute(queues []*cache.QueueInfo, nodes []*cache.NodeInfo) []*cache.QueueInfo
 
 	// UnIntialize un-initializes the allocator plugins.
 	UnInitialize()

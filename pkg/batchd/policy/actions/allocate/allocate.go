@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package drf
+package allocate
 
 import (
 	"sort"
@@ -42,7 +42,7 @@ func (drf *drfScheduler) Name() string {
 
 func (drf *drfScheduler) Initialize() {}
 
-func (drf *drfScheduler) Allocate(queues []*cache.QueueInfo, nodes []*cache.NodeInfo) []*cache.QueueInfo {
+func (drf *drfScheduler) Execute(queues []*cache.QueueInfo, nodes []*cache.NodeInfo) []*cache.QueueInfo {
 	glog.V(4).Infof("Enter Allocate ...")
 	defer glog.V(4).Infof("Leaving Allocate ...")
 

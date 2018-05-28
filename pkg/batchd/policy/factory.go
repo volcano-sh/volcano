@@ -20,14 +20,14 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/plugins/drf"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/actions/allocate"
 )
 
 var policyMap = make(map[string]Interface)
 var mutex sync.Mutex
 
 func init() {
-	RegisterPolicy(drf.PolicyName, drf.New())
+	RegisterPolicy(allocate.New())
 }
 
 func New(name string) (Interface, error) {
@@ -42,11 +42,11 @@ func New(name string) (Interface, error) {
 	return policy, nil
 }
 
-func RegisterPolicy(name string, policy Interface) error {
+func RegisterPolicy(policy Interface) error {
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	policyMap[name] = policy
+	policyMap[policy.Name()] = policy
 
 	return nil
 }
