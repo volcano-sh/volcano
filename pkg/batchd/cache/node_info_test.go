@@ -56,9 +56,9 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				UnAcceptedAllocated: EmptyResource(),
 				Allocatable:         buildResource("8000m", "10G"),
 				Capability:          buildResource("8000m", "10G"),
-				Pods: map[string]*PodInfo{
-					"c1/p1": NewPodInfo(case01_pod1),
-					"c1/p2": NewPodInfo(case01_pod2),
+				Pods: map[string]*TaskInfo{
+					"c1/p1": NewTaskInfo(case01_pod1),
+					"c1/p2": NewTaskInfo(case01_pod2),
 				},
 			},
 		},
@@ -68,7 +68,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 		ni := NewNodeInfo(test.node)
 
 		for _, pod := range test.pods {
-			pi := NewPodInfo(pod)
+			pi := NewTaskInfo(pod)
 			ni.AddPod(pi)
 		}
 
@@ -106,9 +106,9 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 				UnAcceptedAllocated: EmptyResource(),
 				Allocatable:         buildResource("8000m", "10G"),
 				Capability:          buildResource("8000m", "10G"),
-				Pods: map[string]*PodInfo{
-					"c1/p1": NewPodInfo(case01_pod1),
-					"c1/p3": NewPodInfo(case01_pod3),
+				Pods: map[string]*TaskInfo{
+					"c1/p1": NewTaskInfo(case01_pod1),
+					"c1/p3": NewTaskInfo(case01_pod3),
 				},
 			},
 		},
@@ -118,12 +118,12 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 		ni := NewNodeInfo(test.node)
 
 		for _, pod := range test.pods {
-			pi := NewPodInfo(pod)
+			pi := NewTaskInfo(pod)
 			ni.AddPod(pi)
 		}
 
 		for _, pod := range test.rmPods {
-			pi := NewPodInfo(pod)
+			pi := NewTaskInfo(pod)
 			ni.RemovePod(pi)
 		}
 

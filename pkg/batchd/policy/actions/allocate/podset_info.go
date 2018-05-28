@@ -25,7 +25,7 @@ import (
 )
 
 type podSetInfo struct {
-	podSet *cache.PodSet
+	podSet *cache.JobInfo
 
 	dominantResource v1.ResourceName // The dominant resource name of PodSet
 	allocated        *cache.Resource // Allocated resource of PodSet
@@ -33,19 +33,19 @@ type podSetInfo struct {
 	total            *cache.Resource // The total resource of cluster, used to update DRF share
 
 	unacceptedAllocated    *cache.Resource
-	unacceptedAssignedPods []*cache.PodInfo
+	unacceptedAssignedPods []*cache.TaskInfo
 
 	pendingSorted *util.PriorityQueue
 }
 
-func newPodSetInfo(ps *cache.PodSet, t *cache.Resource) *podSetInfo {
+func newPodSetInfo(ps *cache.JobInfo, t *cache.Resource) *podSetInfo {
 	psi := &podSetInfo{
 		podSet:                 ps,
 		allocated:              ps.Allocated.Clone(),
 		total:                  t,
 		dominantResource:       v1.ResourceCPU,
 		unacceptedAllocated:    cache.EmptyResource(),
-		unacceptedAssignedPods: make([]*cache.PodInfo, 0),
+		unacceptedAssignedPods: make([]*cache.TaskInfo, 0),
 		pendingSorted:          util.NewPriorityQueue(),
 	}
 
@@ -73,9 +73,9 @@ func newPodSetInfo(ps *cache.PodSet, t *cache.Resource) *podSetInfo {
 	return psi
 }
 
-func (psi *podSetInfo) assignPendingPod(p *cache.PodInfo, nodeName string) {
+func (psi *podSetInfo) assignPendingPod(p *cache.TaskInfo, nodeName string) {
 	// assign node to pending pod temporarily
-	psi.unacceptedAllocated.Add(p.Request)
+	psi.unacceptedAllocated.Add(p.Resreq)
 	p.NodeName = nodeName
 	psi.unacceptedAssignedPods = append(psi.unacceptedAssignedPods, p)
 
@@ -83,17 +83,17 @@ func (psi *podSetInfo) assignPendingPod(p *cache.PodInfo, nodeName string) {
 		psi.podSet.Namespace, psi.podSet.Name, psi.share, psi.dominantResource)
 }
 
-func (psi *podSetInfo) popPendingPod() *cache.PodInfo {
+func (psi *podSetInfo) popPendingPod() *cache.TaskInfo {
 	if psi.pendingSorted.Empty() {
 		return nil
 	}
 
-	pi := psi.pendingSorted.Pop().(*cache.PodInfo)
+	pi := psi.pendingSorted.Pop().(*cache.TaskInfo)
 
 	return pi
 }
 
-func (psi *podSetInfo) pushPendingPod(p *cache.PodInfo) {
+func (psi *podSetInfo) pushPendingPod(p *cache.TaskInfo) {
 	psi.pendingSorted.Push(p, -float64(p.Priority))
 }
 
@@ -113,7 +113,7 @@ func (psi *podSetInfo) acceptAssignedPods() {
 	// accept temporary assigned Pods
 	// put them to PodSet assigned queue
 	psi.podSet.Assigned = append(psi.podSet.Assigned, psi.unacceptedAssignedPods...)
-	psi.unacceptedAssignedPods = make([]*cache.PodInfo, 0)
+	psi.unacceptedAssignedPods = make([]*cache.TaskInfo, 0)
 
 	// update allocate resource for consistent
 	psi.allocated.Add(psi.unacceptedAllocated)
@@ -138,7 +138,7 @@ func (psi *podSetInfo) discardAssignedPods() {
 	for _, p := range psi.unacceptedAssignedPods {
 		psi.pendingSorted.Push(p, -float64(p.Priority))
 	}
-	psi.unacceptedAssignedPods = make([]*cache.PodInfo, 0)
+	psi.unacceptedAssignedPods = make([]*cache.TaskInfo, 0)
 
 	psi.unacceptedAllocated = cache.EmptyResource()
 }

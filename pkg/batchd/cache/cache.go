@@ -53,7 +53,7 @@ type SchedulerCache struct {
 
 	assumedPodStates map[string]*podState
 
-	Pods   map[string]*PodInfo
+	Pods   map[string]*TaskInfo
 	Nodes  map[string]*NodeInfo
 	Queues map[string]*QueueInfo
 	Pdbs   map[string]*PdbInfo
@@ -63,7 +63,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 	sc := &SchedulerCache{
 		assumedPodStates: make(map[string]*podState),
 		Nodes:            make(map[string]*NodeInfo),
-		Pods:             make(map[string]*PodInfo),
+		Pods:             make(map[string]*TaskInfo),
 		Queues:           make(map[string]*QueueInfo),
 		Pdbs:             make(map[string]*PdbInfo),
 	}
@@ -233,7 +233,7 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 		}
 	}
 
-	pi := NewPodInfo(pod)
+	pi := NewTaskInfo(pod)
 
 	if len(pod.Spec.NodeName) > 0 {
 		if sc.Nodes[pod.Spec.NodeName] == nil {
@@ -663,7 +663,7 @@ func (sc *SchedulerCache) Snapshot() *CacheSnapshot {
 
 	snapshot := &CacheSnapshot{
 		Nodes:  make([]*NodeInfo, 0, len(sc.Nodes)),
-		Pods:   make([]*PodInfo, 0, len(sc.Pods)),
+		Pods:   make([]*TaskInfo, 0, len(sc.Pods)),
 		Queues: make([]*QueueInfo, 0, len(sc.Queues)),
 	}
 
@@ -692,7 +692,7 @@ func (sc *SchedulerCache) String() string {
 				n.Name, n.Idle, n.Used, n.Allocatable, len(n.Pods))
 			for index, p := range n.Pods {
 				str = str + fmt.Sprintf("\t\t Pod[%s] uid(%s) owner(%s) name(%s) namespace(%s) nodename(%s) phase(%s) request(%v) pod(%v)\n",
-					index, p.UID, p.Owner, p.Name, p.Namespace, p.NodeName, p.Phase, p.Request, p.Pod)
+					index, p.UID, p.Owner, p.Name, p.Namespace, p.NodeName, p.Phase, p.Resreq, p.Pod)
 			}
 		}
 	}
@@ -701,7 +701,7 @@ func (sc *SchedulerCache) String() string {
 		str = str + "Pods:\n"
 		for _, p := range sc.Pods {
 			str = str + fmt.Sprintf("\t %s/%s: phase (%s), node (%s), request (%v)\n",
-				p.Namespace, p.Name, p.Phase, p.NodeName, p.Request)
+				p.Namespace, p.Name, p.Phase, p.NodeName, p.Resreq)
 		}
 	}
 
@@ -714,7 +714,7 @@ func (sc *SchedulerCache) String() string {
 			}
 			for k, p := range c.Pods {
 				str = str + fmt.Sprintf("\t\t Pod[%s] uid(%s) owner(%s) name(%s) namespace(%s) nodename(%s) phase(%s) request(%v) pod(%v)\n",
-					k, p.UID, p.Owner, p.Name, p.Namespace, p.NodeName, p.Phase, p.Request, p.Pod)
+					k, p.UID, p.Owner, p.Name, p.Namespace, p.NodeName, p.Phase, p.Resreq, p.Pod)
 			}
 		}
 	}

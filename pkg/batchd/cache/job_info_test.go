@@ -25,7 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func podSetEqual(l, r *PodSet) bool {
+func podSetEqual(l, r *JobInfo) bool {
 	if !reflect.DeepEqual(l, r) {
 		return false
 	}
@@ -45,13 +45,13 @@ func TestPodSet_AddPodInfo(t *testing.T) {
 		name     string
 		uid      types.UID
 		pods     []*v1.Pod
-		expected *PodSet
+		expected *JobInfo
 	}{
 		{
 			name: "add 1 pending owner pod, 1 running owner pod",
 			uid:  case01_uid,
 			pods: []*v1.Pod{case01_pod1, case01_pod2, case01_pod3},
-			expected: &PodSet{
+			expected: &JobInfo{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: string(case01_uid),
 					UID:  case01_uid,
@@ -60,27 +60,27 @@ func TestPodSet_AddPodInfo(t *testing.T) {
 				MinAvailable: 0,
 				Allocated:    buildResource("3000m", "3G"),
 				TotalRequest: buildResource("4000m", "4G"),
-				Running: []*PodInfo{
-					NewPodInfo(case01_pod2),
+				Running: []*TaskInfo{
+					NewTaskInfo(case01_pod2),
 				},
-				Pending: []*PodInfo{
-					NewPodInfo(case01_pod1),
+				Pending: []*TaskInfo{
+					NewTaskInfo(case01_pod1),
 				},
-				Assigned: []*PodInfo{
-					NewPodInfo(case01_pod3),
+				Assigned: []*TaskInfo{
+					NewTaskInfo(case01_pod3),
 				},
-				Others:       []*PodInfo{},
+				Others:       []*TaskInfo{},
 				NodeSelector: make(map[string]string),
 			},
 		},
 	}
 
 	for i, test := range tests {
-		ps := NewPodSet(test.uid)
+		ps := NewJobInfo(test.uid)
 
 		for _, pod := range test.pods {
-			pi := NewPodInfo(pod)
-			ps.AddPodInfo(pi)
+			pi := NewTaskInfo(pod)
+			ps.AddTaskInfo(pi)
 		}
 
 		if !podSetEqual(ps, test.expected) {
@@ -110,14 +110,14 @@ func TestPodSet_DeletePodInfo(t *testing.T) {
 		uid      types.UID
 		pods     []*v1.Pod
 		rmPods   []*v1.Pod
-		expected *PodSet
+		expected *JobInfo
 	}{
 		{
 			name:   "add 1 pending owner pod, 2 running owner pod, remove 1 running owner pod",
 			uid:    case01_uid,
 			pods:   []*v1.Pod{case01_pod1, case01_pod2, case01_pod3},
 			rmPods: []*v1.Pod{case01_pod2},
-			expected: &PodSet{
+			expected: &JobInfo{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: string(case01_uid),
 					UID:  case01_uid,
@@ -126,14 +126,14 @@ func TestPodSet_DeletePodInfo(t *testing.T) {
 				MinAvailable: 0,
 				Allocated:    buildResource("3000m", "3G"),
 				TotalRequest: buildResource("4000m", "4G"),
-				Running: []*PodInfo{
-					NewPodInfo(case01_pod3),
+				Running: []*TaskInfo{
+					NewTaskInfo(case01_pod3),
 				},
-				Assigned: []*PodInfo{},
-				Pending: []*PodInfo{
-					NewPodInfo(case01_pod1),
+				Assigned: []*TaskInfo{},
+				Pending: []*TaskInfo{
+					NewTaskInfo(case01_pod1),
 				},
-				Others:       []*PodInfo{},
+				Others:       []*TaskInfo{},
 				NodeSelector: make(map[string]string),
 			},
 		},
@@ -142,7 +142,7 @@ func TestPodSet_DeletePodInfo(t *testing.T) {
 			uid:    case02_uid,
 			pods:   []*v1.Pod{case02_pod1, case02_pod2, case02_pod3},
 			rmPods: []*v1.Pod{case02_pod2},
-			expected: &PodSet{
+			expected: &JobInfo{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: string(case02_uid),
 					UID:  case02_uid,
@@ -151,30 +151,30 @@ func TestPodSet_DeletePodInfo(t *testing.T) {
 				MinAvailable: 0,
 				Allocated:    buildResource("3000m", "3G"),
 				TotalRequest: buildResource("4000m", "4G"),
-				Running: []*PodInfo{
-					NewPodInfo(case02_pod3),
+				Running: []*TaskInfo{
+					NewTaskInfo(case02_pod3),
 				},
-				Assigned: []*PodInfo{},
-				Pending: []*PodInfo{
-					NewPodInfo(case02_pod1),
+				Assigned: []*TaskInfo{},
+				Pending: []*TaskInfo{
+					NewTaskInfo(case02_pod1),
 				},
-				Others:       []*PodInfo{},
+				Others:       []*TaskInfo{},
 				NodeSelector: make(map[string]string),
 			},
 		},
 	}
 
 	for i, test := range tests {
-		ps := NewPodSet(test.uid)
+		ps := NewJobInfo(test.uid)
 
 		for _, pod := range test.pods {
-			pi := NewPodInfo(pod)
-			ps.AddPodInfo(pi)
+			pi := NewTaskInfo(pod)
+			ps.AddTaskInfo(pi)
 		}
 
 		for _, pod := range test.rmPods {
-			pi := NewPodInfo(pod)
-			ps.DeletePodInfo(pi)
+			pi := NewTaskInfo(pod)
+			ps.DeleteTaskInfo(pi)
 		}
 
 		if !podSetEqual(ps, test.expected) {
