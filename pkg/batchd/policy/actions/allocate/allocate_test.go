@@ -45,8 +45,17 @@ func init() {
 
 func buildResourceList(cpu string, memory string) v1.ResourceList {
 	return v1.ResourceList{
-		v1.ResourceCPU:    resource.MustParse(cpu),
-		v1.ResourceMemory: resource.MustParse(memory),
+		v1.ResourceCPU:        resource.MustParse(cpu),
+		v1.ResourceMemory:     resource.MustParse(memory),
+		cache.GPUResourceName: resource.MustParse("0"),
+	}
+}
+
+func buildResourceListWithGPU(cpu string, memory string, GPU string) v1.ResourceList {
+	return v1.ResourceList{
+		v1.ResourceCPU:        resource.MustParse(cpu),
+		v1.ResourceMemory:     resource.MustParse(memory),
+		cache.GPUResourceName: resource.MustParse(GPU),
 	}
 }
 
@@ -460,6 +469,68 @@ func TestMinAvailable(t *testing.T) {
 			expected: map[string]int{
 				"c1": 3,
 				"c2": 2,
+			},
+		},
+		{
+			name: "two queue on one node, one queue with pdb, some nodes require GPU",
+			pods: []*v1.Pod{
+				// pending pod with owner1, under c1
+				buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, labels1, make(map[string]string)),
+
+				// pending pod with owner1, under c1
+				buildPod("c1", "p2", "", v1.PodPending, buildResourceListWithGPU("1", "1G", "1"), []metav1.OwnerReference{owner1}, labels1, make(map[string]string)),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, labels2, make(map[string]string)),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p2", "", v1.PodPending, buildResourceListWithGPU("1", "1G", "1"), []metav1.OwnerReference{owner2}, labels2, make(map[string]string)),
+			},
+			nodes: []*v1.Node{
+				buildNode("n1", buildResourceListWithGPU("5", "10G", "2"), make(map[string]string)),
+			},
+			queues: []*arbv1.Queue{
+				buildQueue("c1", "c1"),
+				buildQueue("c2", "c2"),
+			},
+			pdbs: []*v1beta1.PodDisruptionBudget{
+				buildPdb("pdb01", 2, labels1),
+				buildPdb("pdb02", 2, labels2),
+			},
+			expected: map[string]int{
+				"c1": 2,
+				"c2": 2,
+			},
+		},
+		{
+			name: "two queue on one node, one queue with pdb, some nodes require GPU (c2's allocation must fail)",
+			pods: []*v1.Pod{
+				// pending pod with owner1, under c1
+				buildPod("c1", "p1", "", v1.PodPending, buildResourceListWithGPU("1", "1G", "1"), []metav1.OwnerReference{owner1}, labels1, make(map[string]string)),
+
+				// pending pod with owner1, under c1
+				buildPod("c1", "p2", "", v1.PodPending, buildResourceListWithGPU("1", "1G", "1"), []metav1.OwnerReference{owner1}, labels1, make(map[string]string)),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, labels2, make(map[string]string)),
+
+				// pending pod with owner2, under c2
+				buildPod("c2", "p2", "", v1.PodPending, buildResourceListWithGPU("1", "1G", "1"), []metav1.OwnerReference{owner2}, labels2, make(map[string]string)),
+			},
+			nodes: []*v1.Node{
+				buildNode("n1", buildResourceListWithGPU("5", "10G", "2"), make(map[string]string)),
+			},
+			queues: []*arbv1.Queue{
+				buildQueue("c1", "c1"),
+				buildQueue("c2", "c2"),
+			},
+			pdbs: []*v1beta1.PodDisruptionBudget{
+				buildPdb("pdb01", 2, labels1),
+				buildPdb("pdb02", 2, labels2),
+			},
+			expected: map[string]int{
+				"c1": 2,
+				"c2": 0,
 			},
 		},
 	}
