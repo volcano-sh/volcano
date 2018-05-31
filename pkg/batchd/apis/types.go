@@ -33,3 +33,5 @@ const (
 	// Unknown means the status of task/pod is unknown to the scheduler.
 	Unknown
 )
+
+type LessFn func(interface{}, interface{}) bool

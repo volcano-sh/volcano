@@ -17,8 +17,6 @@ limitations under the License.
 package allocate
 
 import (
-	"sort"
-
 	"github.com/golang/glog"
 
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
@@ -39,6 +37,20 @@ func (alloc *allocateAction) Name() string {
 
 func (alloc *allocateAction) Initialize() {}
 
+func compareShare(l, r interface{}) bool {
+	lv := l.(*podSetInfo)
+	rv := r.(*podSetInfo)
+
+	return lv.share < rv.share
+}
+
+func compareName(l, r interface{}) bool {
+	lv := l.(*podSetInfo)
+	rv := r.(*podSetInfo)
+
+	return lv.podSet.Name < rv.podSet.Name
+}
+
 func (alloc *allocateAction) Execute(ssn *framework.Session) []*cache.QueueInfo {
 	glog.V(4).Infof("Enter Allocate ...")
 	defer glog.V(4).Infof("Leaving Allocate ...")
@@ -51,20 +63,19 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) []*cache.QueueInfo 
 		total.Add(n.Allocatable)
 	}
 
-	dq := util.NewDictionaryQueue()
+	dq := util.NewPriorityQueue(compareName)
 	for _, c := range queues {
 		for _, ps := range c.Jobs {
 			psi := newPodSetInfo(ps, total)
-			dq.Push(util.NewDictionaryItem(psi, psi.podSet.Name))
+			dq.Push(psi)
 		}
 	}
 
 	// assign MinAvailable of each podSet first by chronologically
-	sort.Sort(dq)
-	pq := util.NewPriorityQueue()
+	pq := util.NewPriorityQueue(compareShare)
 	matchNodesForPodSet := make(map[string][]*cache.NodeInfo)
-	for _, q := range dq {
-		psi := q.Value.(*podSetInfo)
+	for !dq.Empty() {
+		psi := dq.Pop().(*podSetInfo)
 
 		// fetch the nodes that match PodSet NodeSelector and NodeAffinity
 		// and store it for following DRF assignment
@@ -75,7 +86,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) []*cache.QueueInfo 
 		if assigned {
 			// only push PodSet with MinAvailable to priority queue
 			// to avoid PodSet get resources less than MinAvailable by following DRF assignment
-			pq.Push(psi, psi.share)
+			pq.Push(psi)
 
 			glog.V(3).Infof("assign MinAvailable for podset %s/%s successfully",
 				psi.podSet.Namespace, psi.podSet.Name)
@@ -96,7 +107,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) []*cache.QueueInfo 
 
 		if assigned {
 			// push PosSet back for next assignment
-			pq.Push(psi, psi.share)
+			pq.Push(psi)
 		}
 	}
 

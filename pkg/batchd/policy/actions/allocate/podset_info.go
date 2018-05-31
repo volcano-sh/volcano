@@ -38,6 +38,13 @@ type podSetInfo struct {
 	pendingSorted *util.PriorityQueue
 }
 
+func compareTaskPriority(l, r interface{}) bool {
+	lv := l.(*cache.TaskInfo)
+	rv := r.(*cache.TaskInfo)
+
+	return lv.Priority > rv.Priority
+}
+
 func newPodSetInfo(ps *cache.JobInfo, t *cache.Resource) *podSetInfo {
 	psi := &podSetInfo{
 		podSet:                 ps,
@@ -46,7 +53,7 @@ func newPodSetInfo(ps *cache.JobInfo, t *cache.Resource) *podSetInfo {
 		dominantResource:       v1.ResourceCPU,
 		unacceptedAllocated:    cache.EmptyResource(),
 		unacceptedAssignedPods: make([]*cache.TaskInfo, 0),
-		pendingSorted:          util.NewPriorityQueue(),
+		pendingSorted:          util.NewPriorityQueue(compareTaskPriority),
 	}
 
 	// Calculates the dominant resource.
@@ -64,7 +71,7 @@ func newPodSetInfo(ps *cache.JobInfo, t *cache.Resource) *podSetInfo {
 
 	// TODO(jinzhejz): it is better to move sorted pods to PodSet
 	for _, ps := range psi.podSet.Pending {
-		psi.pendingSorted.Push(ps, -float64(ps.Priority))
+		psi.pendingSorted.Push(ps)
 	}
 
 	glog.V(3).Infof("PodSet <%v/%v>: priority <%f>, dominant resource <%v>",
@@ -94,7 +101,7 @@ func (psi *podSetInfo) popPendingPod() *cache.TaskInfo {
 }
 
 func (psi *podSetInfo) pushPendingPod(p *cache.TaskInfo) {
-	psi.pendingSorted.Push(p, -float64(p.Priority))
+	psi.pendingSorted.Push(p)
 }
 
 func (psi *podSetInfo) insufficientMinAvailable() int {
@@ -136,7 +143,7 @@ func (psi *podSetInfo) discardAssignedPods() {
 	// discard temporary assigned Pods
 	// put them back to PodSet pending queue
 	for _, p := range psi.unacceptedAssignedPods {
-		psi.pendingSorted.Push(p, -float64(p.Priority))
+		psi.pendingSorted.Push(p)
 	}
 	psi.unacceptedAssignedPods = make([]*cache.TaskInfo, 0)
 

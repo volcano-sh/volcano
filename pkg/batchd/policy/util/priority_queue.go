@@ -18,67 +18,63 @@ package util
 
 import (
 	"container/heap"
+
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis"
 )
-
-// An Item is something we manage in a priority queue.
-type Item struct {
-	Value    interface{} // The value of the item; arbitrary.
-	Priority float64     // The priority of the item in the queue.
-}
-
-func NewItem(v interface{}, p float64) *Item {
-	return &Item{
-		Value:    v,
-		Priority: p,
-	}
-}
-
-// A PriorityQueue implements heap.Interface and holds Items.
 
 type PriorityQueue struct {
 	queue priorityQueue
 }
 
-type priorityQueue []*Item
+type priorityQueue struct {
+	items  []interface{}
+	lessFn apis.LessFn
+}
 
-func NewPriorityQueue() *PriorityQueue {
+func NewPriorityQueue(lessFn apis.LessFn) *PriorityQueue {
 	return &PriorityQueue{
-		queue: make(priorityQueue, 0),
+		queue: priorityQueue{
+			items:  make([]interface{}, 0),
+			lessFn: lessFn,
+		},
 	}
 }
 
-func (q *PriorityQueue) Push(it interface{}, priority float64) {
-	heap.Push(&q.queue, NewItem(it, priority))
+func (q *PriorityQueue) Push(it interface{}) {
+	heap.Push(&q.queue, it)
 }
 
 func (q *PriorityQueue) Pop() interface{} {
-	return heap.Pop(&q.queue).(*Item).Value
+	return heap.Pop(&q.queue)
 }
 
 func (q *PriorityQueue) Empty() bool {
 	return q.queue.Len() == 0
 }
 
-func (pq priorityQueue) Len() int { return len(pq) }
+func (pq *priorityQueue) Len() int { return len(pq.items) }
 
-func (pq priorityQueue) Less(i, j int) bool {
+func (pq *priorityQueue) Less(i, j int) bool {
+	if pq.lessFn == nil {
+		return i < j
+	}
+
 	// We want Pop to give us the highest, not lowest, priority so we use greater than here.
-	return pq[i].Priority < pq[j].Priority
+	return pq.lessFn(pq.items[i], pq.items[j])
 }
 
 func (pq priorityQueue) Swap(i, j int) {
-	pq[i], pq[j] = pq[j], pq[i]
+	pq.items[i], pq.items[j] = pq.items[j], pq.items[i]
 }
 
 func (pq *priorityQueue) Push(x interface{}) {
-	item := x.(*Item)
-	*pq = append(*pq, item)
+	(*pq).items = append((*pq).items, x)
 }
 
 func (pq *priorityQueue) Pop() interface{} {
-	old := *pq
+	old := (*pq).items
 	n := len(old)
 	item := old[n-1]
-	*pq = old[0 : n-1]
+	(*pq).items = old[0 : n-1]
 	return item
 }
