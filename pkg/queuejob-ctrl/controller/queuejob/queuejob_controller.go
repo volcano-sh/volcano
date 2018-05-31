@@ -35,7 +35,6 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/kubernetes/pkg/controller"
 
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/queuejob-ctrl/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/queuejob-ctrl/client"
@@ -365,6 +364,26 @@ func (cc *Controller) initPDB(ns string, min int, selectorMap map[string]string)
 	return pdbName, err
 }
 
+// filterActivePods returns pods that have not terminated.
+func filterActivePods(pods []*v1.Pod) []*v1.Pod {
+	var result []*v1.Pod
+	for _, p := range pods {
+		if isPodActive(p) {
+			result = append(result, p)
+		} else {
+			glog.V(4).Infof("Ignoring inactive pod %v/%v in state %v, deletion time %v",
+				p.Namespace, p.Name, p.Status.Phase, p.DeletionTimestamp)
+		}
+	}
+	return result
+}
+
+func isPodActive(p *v1.Pod) bool {
+	return v1.PodSucceeded != p.Status.Phase &&
+		v1.PodFailed != p.Status.Phase &&
+		p.DeletionTimestamp == nil
+}
+
 func (cc *Controller) syncQueueJob(qj *arbv1.QueueJob) (bool, error) {
 	// check if there are still terminating pods for this QueueJob
 	counter, ok := cc.deletedPodsCounter.get(fmt.Sprintf("%s/%s", qj.Namespace, qj.Name))
@@ -388,7 +407,7 @@ func (cc *Controller) syncQueueJob(qj *arbv1.QueueJob) (bool, error) {
 	}
 	glog.V(4).Infof("There are %d pods of QueueJob %s\n", len(pods), queueJob.Name)
 
-	activePods := controller.FilterActivePods(pods)
+	activePods := filterActivePods(pods)
 	glog.V(4).Infof("There are %d active pods of QueueJob %s\n", len(activePods), queueJob.Name)
 
 	succeeded, _ := getStatus(pods)

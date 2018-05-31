@@ -23,11 +23,11 @@ import (
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/rest"
 
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/queuejob-ctrl/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/queuejob-ctrl/client"
-	uuid "github.com/satori/go.uuid"
 )
 
 func generateUUID() string {
