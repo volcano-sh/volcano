@@ -53,7 +53,7 @@ func podSetKey(obj interface{}) (string, error) {
 	return fmt.Sprintf("%s/%s", podSet.Namespace, podSet.Name), nil
 }
 
-func NewPolicyController(config *rest.Config, policyName string, schedulerName string) (*PolicyController, error) {
+func NewPolicyController(config *rest.Config, schedulerName string) (*PolicyController, error) {
 	cs, err := clientset.NewForConfig(config)
 	if err != nil {
 		return nil, fmt.Errorf("fail to create client for PolicyController: %#v", err)
@@ -64,7 +64,7 @@ func NewPolicyController(config *rest.Config, policyName string, schedulerName s
 		return nil, fmt.Errorf("failed to create kube client for PolicyController: %#v", err)
 	}
 
-	alloc, err := policy.New(policyName)
+	alloc, err := policy.New()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create allocator: %#v", err)
 	}
