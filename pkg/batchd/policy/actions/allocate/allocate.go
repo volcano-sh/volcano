@@ -53,7 +53,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) []*cache.QueueInfo 
 
 	dq := util.NewDictionaryQueue()
 	for _, c := range queues {
-		for _, ps := range c.PodSets {
+		for _, ps := range c.Jobs {
 			psi := newPodSetInfo(ps, total)
 			dq.Push(util.NewDictionaryItem(psi, psi.podSet.Name))
 		}

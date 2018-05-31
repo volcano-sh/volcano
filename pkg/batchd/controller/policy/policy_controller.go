@@ -109,7 +109,7 @@ func (pc *PolicyController) runOnce() {
 
 func (pc *PolicyController) enqueue(queues []*schedcache.QueueInfo) {
 	for _, c := range queues {
-		for _, ps := range c.PodSets {
+		for _, ps := range c.Jobs {
 			pc.podSets.Add(ps)
 		}
 	}
@@ -125,7 +125,7 @@ func (pc *PolicyController) cancelAllocDecisionProcessing() {
 
 func (pc *PolicyController) assumePods(queues []*schedcache.QueueInfo) {
 	for _, queue := range queues {
-		for _, ps := range queue.PodSets {
+		for _, ps := range queue.Jobs {
 			for _, p := range ps.Pending {
 				if len(p.NodeName) != 0 {
 					pc.assume(p.Pod.DeepCopy(), p.NodeName)

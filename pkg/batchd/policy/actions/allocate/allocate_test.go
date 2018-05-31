@@ -247,7 +247,7 @@ func TestExecute(t *testing.T) {
 
 		expected := drf.Execute(ssn)
 		for _, queue := range expected {
-			for _, ps := range queue.PodSets {
+			for _, ps := range queue.Jobs {
 				for _, p := range ps.Assigned {
 					pk := fmt.Sprintf("%v/%v", p.Namespace, p.Name)
 					if p.NodeName != test.expected[pk] {
@@ -563,7 +563,7 @@ func TestMinAvailable(t *testing.T) {
 		expected := drf.Execute(ssn)
 		for _, queue := range expected {
 			assigned := 0
-			for _, ps := range queue.PodSets {
+			for _, ps := range queue.Jobs {
 				for _, pending := range ps.Assigned {
 					if len(pending.NodeName) != 0 {
 						assigned++
@@ -705,7 +705,7 @@ func TestNodeSelector(t *testing.T) {
 		expected := drf.Execute(ssn)
 		for _, queue := range expected {
 			assigned := 0
-			for _, ps := range queue.PodSets {
+			for _, ps := range queue.Jobs {
 				for _, pending := range ps.Assigned {
 					if len(pending.NodeName) != 0 {
 						assigned++

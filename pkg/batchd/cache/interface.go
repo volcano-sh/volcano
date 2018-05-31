@@ -27,7 +27,7 @@ type Cache interface {
 	Run(stopCh <-chan struct{})
 
 	// Snapshot deep copy overall cache information into snapshot
-	Snapshot() *CacheSnapshot
+	Snapshot() *ClusterInfo
 
 	// WaitForCacheSync waits for all cache synced
 	WaitForCacheSync(stopCh <-chan struct{}) bool
