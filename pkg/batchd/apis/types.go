@@ -34,4 +34,5 @@ const (
 	Unknown
 )
 
+// LessFn is the func declaration used by sort or priority queue.
 type LessFn func(interface{}, interface{}) bool

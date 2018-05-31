@@ -26,7 +26,8 @@ func OpenSession(cache cache.Cache) *Session {
 	snapshot := cache.Snapshot()
 
 	return &Session{
-		ID:     uuid.NewUUID(),
+		ID: uuid.NewUUID(),
+
 		Queues: snapshot.Queues,
 		Nodes:  snapshot.Nodes,
 	}
