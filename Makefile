@@ -25,11 +25,7 @@ images: kube-arbitrator
 	docker build ./deployment/ -t kubearbitrator/batchd:v0.1
 	docker build ./deployment/ -t kubearbitrator/queuejob-ctrl:v0.1
 
-
-test-integration:
-	hack/make-rules/test-integration.sh $(WHAT)
-
-run-test:
+test:
 	hack/make-rules/test.sh $(WHAT) $(TESTS)
 
 clean:

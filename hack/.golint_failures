@@ -4,13 +4,6 @@ cmd/kube-queuejob-ctrl/app
 cmd/kube-queuejob-ctrl/app/options
 cmd/kube-quotalloc/app
 cmd/kube-quotalloc/app/options
-contrib/pkg/batch/apis/v1
-contrib/pkg/batch/client
-contrib/pkg/batch/client/informers/internalinterfaces
-contrib/pkg/batch/controller
-contrib/pkg/batch/controller/combosetresources
-contrib/pkg/batch/controller/combosetresources/pod
-contrib/pkg/batch/schedulercache
 pkg/batchd/apis/v1
 pkg/batchd/cache
 pkg/batchd/client
@@ -42,4 +35,3 @@ pkg/quotalloc/policy
 pkg/quotalloc/policy/preemption
 pkg/quotalloc/policy/proportion
 pkg/quotalloc/policy/util
-test/integration/framework
