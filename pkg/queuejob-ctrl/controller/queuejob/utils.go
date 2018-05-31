@@ -31,7 +31,7 @@ import (
 )
 
 func generateUUID() string {
-	id := uuid.NewV1()
+	id := uuid.NewUUID()
 
 	return fmt.Sprintf("%s", id)
 }
