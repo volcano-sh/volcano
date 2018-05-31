@@ -24,6 +24,8 @@ images: kube-arbitrator
 	cp ./_output/bin/kube-queuejob-ctrl ./deployment/
 	docker build ./deployment/ -t kubearbitrator/batchd:v0.1
 	docker build ./deployment/ -t kubearbitrator/queuejob-ctrl:v0.1
+	rm -f ./deployment/kube-batchd
+	rm -f ./deployment/kube-queuejob-ctrl
 
 test:
 	hack/make-rules/test.sh $(WHAT) $(TESTS)
