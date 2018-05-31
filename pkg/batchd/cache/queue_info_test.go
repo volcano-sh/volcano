@@ -63,8 +63,8 @@ func TestQueueInfo_AddPod(t *testing.T) {
 				Queue:     case01_queue,
 				Name:      "c1",
 				Namespace: "c1",
-				PodSets:   make(map[types.UID]*JobInfo),
-				Pods: map[string]*TaskInfo{
+				Jobs:      make(map[types.UID]*JobInfo),
+				Tasks: map[string]*TaskInfo{
 					"p1": NewTaskInfo(case01_pod1),
 					"p2": NewTaskInfo(case01_pod2),
 				},
@@ -78,7 +78,7 @@ func TestQueueInfo_AddPod(t *testing.T) {
 				Queue:     case02_queue,
 				Name:      "c1",
 				Namespace: "c1",
-				PodSets: map[types.UID]*JobInfo{
+				Jobs: map[types.UID]*JobInfo{
 					"owner1": {
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "owner1",
@@ -99,7 +99,7 @@ func TestQueueInfo_AddPod(t *testing.T) {
 						NodeSelector: make(map[string]string),
 					},
 				},
-				Pods: make(map[string]*TaskInfo),
+				Tasks: make(map[string]*TaskInfo),
 			},
 		},
 	}
@@ -150,8 +150,8 @@ func TestQueueInfo_RemovePod(t *testing.T) {
 				Queue:     case01_queue,
 				Name:      "c1",
 				Namespace: "c1",
-				PodSets:   make(map[types.UID]*JobInfo),
-				Pods: map[string]*TaskInfo{
+				Jobs:      make(map[types.UID]*JobInfo),
+				Tasks: map[string]*TaskInfo{
 					"p1": NewTaskInfo(case01_pod1),
 					"p3": NewTaskInfo(case01_pod3),
 				},
@@ -166,7 +166,7 @@ func TestQueueInfo_RemovePod(t *testing.T) {
 				Queue:     case02_queue,
 				Name:      "c1",
 				Namespace: "c1",
-				PodSets: map[types.UID]*JobInfo{
+				Jobs: map[types.UID]*JobInfo{
 					"owner1": {
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "owner1",
@@ -187,7 +187,7 @@ func TestQueueInfo_RemovePod(t *testing.T) {
 						NodeSelector: make(map[string]string),
 					},
 				},
-				Pods: make(map[string]*TaskInfo),
+				Tasks: make(map[string]*TaskInfo),
 			},
 		},
 	}
@@ -243,7 +243,7 @@ func TestQueueInfo_AddPdb(t *testing.T) {
 				Queue:     case01_queue,
 				Name:      "c1",
 				Namespace: "c1",
-				PodSets: map[types.UID]*JobInfo{
+				Jobs: map[types.UID]*JobInfo{
 					"owner1": {
 						ObjectMeta: metav1.ObjectMeta{
 							Name:   "owner1",
@@ -265,7 +265,7 @@ func TestQueueInfo_AddPdb(t *testing.T) {
 						NodeSelector: make(map[string]string),
 					},
 				},
-				Pods: make(map[string]*TaskInfo),
+				Tasks: make(map[string]*TaskInfo),
 			},
 		},
 	}
@@ -323,7 +323,7 @@ func TestQueueInfo_RemovePdb(t *testing.T) {
 				Queue:     case01_queue,
 				Name:      "c1",
 				Namespace: "c1",
-				PodSets: map[types.UID]*JobInfo{
+				Jobs: map[types.UID]*JobInfo{
 					"owner1": {
 						ObjectMeta: metav1.ObjectMeta{
 							Name:   "owner1",
@@ -345,7 +345,7 @@ func TestQueueInfo_RemovePdb(t *testing.T) {
 						NodeSelector: make(map[string]string),
 					},
 				},
-				Pods: make(map[string]*TaskInfo),
+				Tasks: make(map[string]*TaskInfo),
 			},
 		},
 	}

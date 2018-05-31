@@ -33,10 +33,10 @@ type QueueInfo struct {
 	Namespace string
 
 	// All jobs belong to this Queue
-	PodSets map[types.UID]*JobInfo
+	Jobs map[types.UID]*JobInfo
 
 	// The pod that without `Owners`
-	Pods map[string]*TaskInfo
+	Tasks map[string]*TaskInfo
 }
 
 func NewQueueInfo(queue *arbv1.Queue) *QueueInfo {
@@ -46,8 +46,8 @@ func NewQueueInfo(queue *arbv1.Queue) *QueueInfo {
 			Namespace: "",
 			Queue:     nil,
 
-			PodSets: make(map[types.UID]*JobInfo),
-			Pods:    make(map[string]*TaskInfo),
+			Jobs:  make(map[types.UID]*JobInfo),
+			Tasks: make(map[string]*TaskInfo),
 		}
 	}
 
@@ -56,8 +56,8 @@ func NewQueueInfo(queue *arbv1.Queue) *QueueInfo {
 		Namespace: queue.Namespace,
 		Queue:     queue,
 
-		PodSets: make(map[types.UID]*JobInfo),
-		Pods:    make(map[string]*TaskInfo),
+		Jobs:  make(map[types.UID]*JobInfo),
+		Tasks: make(map[string]*TaskInfo),
 	}
 }
 
@@ -66,8 +66,8 @@ func (ci *QueueInfo) SetQueue(queue *arbv1.Queue) {
 		ci.Name = ""
 		ci.Namespace = ""
 		ci.Queue = queue
-		ci.PodSets = make(map[types.UID]*JobInfo)
-		ci.Pods = make(map[string]*TaskInfo)
+		ci.Jobs = make(map[types.UID]*JobInfo)
+		ci.Tasks = make(map[string]*TaskInfo)
 		return
 	}
 
@@ -78,27 +78,27 @@ func (ci *QueueInfo) SetQueue(queue *arbv1.Queue) {
 
 func (ci *QueueInfo) AddPod(pi *TaskInfo) {
 	if len(pi.Owner) == 0 {
-		ci.Pods[pi.Name] = pi
+		ci.Tasks[pi.Name] = pi
 	} else {
-		if _, found := ci.PodSets[pi.Owner]; !found {
-			ci.PodSets[pi.Owner] = NewJobInfo(pi.Owner)
+		if _, found := ci.Jobs[pi.Owner]; !found {
+			ci.Jobs[pi.Owner] = NewJobInfo(pi.Owner)
 		}
-		ci.PodSets[pi.Owner].AddTaskInfo(pi)
+		ci.Jobs[pi.Owner].AddTaskInfo(pi)
 	}
 }
 
 func (ci *QueueInfo) RemovePod(pi *TaskInfo) {
 	if len(pi.Owner) == 0 {
-		delete(ci.Pods, pi.Name)
+		delete(ci.Tasks, pi.Name)
 	} else {
-		if _, found := ci.PodSets[pi.Owner]; found {
-			ci.PodSets[pi.Owner].DeleteTaskInfo(pi)
+		if _, found := ci.Jobs[pi.Owner]; found {
+			ci.Jobs[pi.Owner].DeleteTaskInfo(pi)
 		}
 	}
 }
 
 func (ci *QueueInfo) AddPdb(pi *PdbInfo) {
-	for _, ps := range ci.PodSets {
+	for _, ps := range ci.Jobs {
 		if len(ps.PdbName) != 0 {
 			continue
 		}
@@ -121,7 +121,7 @@ func (ci *QueueInfo) AddPdb(pi *PdbInfo) {
 }
 
 func (ci *QueueInfo) RemovePdb(pi *PdbInfo) {
-	for _, ps := range ci.PodSets {
+	for _, ps := range ci.Jobs {
 		if len(ps.PdbName) == 0 {
 			continue
 		}
@@ -143,16 +143,16 @@ func (ci *QueueInfo) Clone() *QueueInfo {
 		Namespace: ci.Namespace,
 		Queue:     ci.Queue,
 
-		PodSets: make(map[types.UID]*JobInfo),
-		Pods:    make(map[string]*TaskInfo),
+		Jobs:  make(map[types.UID]*JobInfo),
+		Tasks: make(map[string]*TaskInfo),
 	}
 
-	for owner, ps := range ci.PodSets {
-		info.PodSets[owner] = ps.Clone()
+	for owner, ps := range ci.Jobs {
+		info.Jobs[owner] = ps.Clone()
 	}
 
-	for name, p := range ci.Pods {
-		info.Pods[name] = p.Clone()
+	for name, p := range ci.Tasks {
+		info.Tasks[name] = p.Clone()
 	}
 
 	return info

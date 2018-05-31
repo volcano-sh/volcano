@@ -16,8 +16,9 @@ limitations under the License.
 
 package cache
 
-type CacheSnapshot struct {
-	Pods   []*TaskInfo
+// ClusterInfo is a snapshot of cluster by cache.
+type ClusterInfo struct {
+	Tasks  []*TaskInfo
 	Nodes  []*NodeInfo
 	Queues []*QueueInfo
 }

@@ -657,13 +657,13 @@ func (sc *SchedulerCache) PdbInformer() policyv1.PodDisruptionBudgetInformer {
 	return sc.pdbInformer
 }
 
-func (sc *SchedulerCache) Snapshot() *CacheSnapshot {
+func (sc *SchedulerCache) Snapshot() *ClusterInfo {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	snapshot := &CacheSnapshot{
+	snapshot := &ClusterInfo{
 		Nodes:  make([]*NodeInfo, 0, len(sc.Nodes)),
-		Pods:   make([]*TaskInfo, 0, len(sc.Pods)),
+		Tasks:  make([]*TaskInfo, 0, len(sc.Pods)),
 		Queues: make([]*QueueInfo, 0, len(sc.Queues)),
 	}
 
@@ -671,7 +671,7 @@ func (sc *SchedulerCache) Snapshot() *CacheSnapshot {
 		snapshot.Nodes = append(snapshot.Nodes, value.Clone())
 	}
 	for _, value := range sc.Pods {
-		snapshot.Pods = append(snapshot.Pods, value.Clone())
+		snapshot.Tasks = append(snapshot.Tasks, value.Clone())
 	}
 	for _, value := range sc.Queues {
 		snapshot.Queues = append(snapshot.Queues, value.Clone())
@@ -708,11 +708,11 @@ func (sc *SchedulerCache) String() string {
 	if len(sc.Queues) != 0 {
 		str = str + "Queues:\n"
 		for ck, c := range sc.Queues {
-			str = str + fmt.Sprintf("\t Queue(%s) name(%s) namespace(%s) PodSets(%d) Pods(%d) value(%v)\n", ck, c.Name, c.Namespace, len(c.PodSets), len(c.Pods), c.Queue)
-			for k, ps := range c.PodSets {
+			str = str + fmt.Sprintf("\t Queue(%s) name(%s) namespace(%s) PodSets(%d) Pods(%d) value(%v)\n", ck, c.Name, c.Namespace, len(c.Jobs), len(c.Tasks), c.Queue)
+			for k, ps := range c.Jobs {
 				str = str + fmt.Sprintf("\t\t PodSet[%s] running(%d) pending(%d) other(%d)\n", k, len(ps.Running), len(ps.Pending), len(ps.Others))
 			}
-			for k, p := range c.Pods {
+			for k, p := range c.Tasks {
 				str = str + fmt.Sprintf("\t\t Pod[%s] uid(%s) owner(%s) name(%s) namespace(%s) nodename(%s) phase(%s) request(%v) pod(%v)\n",
 					k, p.UID, p.Owner, p.Name, p.Namespace, p.NodeName, p.Phase, p.Resreq, p.Pod)
 			}

@@ -257,8 +257,8 @@ func TestAddNode(t *testing.T) {
 				Queues: map[string]*QueueInfo{
 					"c1": {
 						Namespace: "c1",
-						PodSets:   make(map[types.UID]*JobInfo),
-						Pods: map[string]*TaskInfo{
+						Jobs:      make(map[types.UID]*JobInfo),
+						Tasks: map[string]*TaskInfo{
 							"p1": pi1,
 							"p2": pi2,
 						},
