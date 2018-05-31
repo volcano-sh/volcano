@@ -128,7 +128,10 @@ func (alloc *allocateAction) assignMinimalPods(min int, psi *podSetInfo, nodes [
 		return true
 	}
 
-	unacceptedAssignedNodes := make(map[string]*cache.NodeInfo)
+	unacceptedAllocation := make(map[string]*cache.Resource)
+	var unacceptedAssignment []*cache.TaskInfo
+	nodesMap := make(map[string]*cache.NodeInfo)
+
 	for min > 0 {
 		p := psi.popPendingPod()
 		if p == nil {
@@ -139,21 +142,31 @@ func (alloc *allocateAction) assignMinimalPods(min int, psi *podSetInfo, nodes [
 
 		assigned := false
 		for _, node := range nodes {
-			currentIdle := node.CurrentIdle()
-			if p.Resreq.LessEqual(currentIdle) {
+			currentIdle := node.Idle.Clone()
 
+			if alloc, found := unacceptedAllocation[node.Name]; found {
+				currentIdle.Sub(alloc)
+			}
+
+			if p.Resreq.LessEqual(currentIdle) {
 				// record the assignment temporarily in PodSet and Node
 				// this assignment will be accepted (min could be met in this time)
 				// or discarded (min could not be met in this time)
-				psi.assignPendingPod(p, node.Name)
-				node.AddUnAcceptedAllocated(p.Resreq)
+				p.NodeName = node.Name
+				unacceptedAssignment = append(unacceptedAssignment, p)
+
+				if _, found := unacceptedAllocation[node.Name]; !found {
+					unacceptedAllocation[node.Name] = cache.EmptyResource()
+				}
+
+				alloc := unacceptedAllocation[node.Name]
+				alloc.Add(p.Resreq)
+				nodesMap[node.Name] = node
 
 				assigned = true
 
-				unacceptedAssignedNodes[node.Name] = node
-
 				glog.V(3).Infof("assign <%v/%v> to <%s>: available <%v>, request <%v>",
-					p.Namespace, p.Name, p.NodeName, node.Idle, p.Resreq)
+					p.Namespace, p.Name, p.NodeName, currentIdle, p.Resreq)
 				break
 			}
 		}
@@ -169,26 +182,21 @@ func (alloc *allocateAction) assignMinimalPods(min int, psi *podSetInfo, nodes [
 		min--
 	}
 
-	if len(unacceptedAssignedNodes) == 0 {
+	if len(unacceptedAllocation) == 0 {
 		// there is no nodes assigned pods this time
-		// the assignment is failed(no pod is assigned in this time)
+		// the assignment is failed (no pod is assigned in this time)
 		return false
 	}
 
 	if min == 0 {
 		// min is met, accept all assignment this time
-		psi.acceptAssignedPods()
-		for _, node := range unacceptedAssignedNodes {
-			node.AcceptAllocated()
+		psi.assignPods(unacceptedAssignment)
+		for nodeName, alloc := range unacceptedAllocation {
+			node := nodesMap[nodeName]
+			node.Idle.Sub(alloc)
 		}
 		return true
-	} else {
-		// min could not be met, discard all assignment this time
-		// to avoid PodSet get resources less than min
-		psi.discardAssignedPods()
-		for _, node := range unacceptedAssignedNodes {
-			node.DiscardAllocated()
-		}
-		return false
 	}
+
+	return false
 }

@@ -17,9 +17,10 @@ limitations under the License.
 package allocate
 
 import (
+	"github.com/golang/glog"
+
 	"k8s.io/api/core/v1"
 
-	"github.com/golang/glog"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/util"
 )
@@ -80,16 +81,6 @@ func newPodSetInfo(ps *cache.JobInfo, t *cache.Resource) *podSetInfo {
 	return psi
 }
 
-func (psi *podSetInfo) assignPendingPod(p *cache.TaskInfo, nodeName string) {
-	// assign node to pending pod temporarily
-	psi.unacceptedAllocated.Add(p.Resreq)
-	p.NodeName = nodeName
-	psi.unacceptedAssignedPods = append(psi.unacceptedAssignedPods, p)
-
-	glog.V(3).Infof("PodSet <%v/%v> after assignment: priority <%f>, dominant resource <%v>",
-		psi.podSet.Namespace, psi.podSet.Name, psi.share, psi.dominantResource)
-}
-
 func (psi *podSetInfo) popPendingPod() *cache.TaskInfo {
 	if psi.pendingSorted.Empty() {
 		return nil
@@ -112,42 +103,18 @@ func (psi *podSetInfo) insufficientMinAvailable() int {
 	return insufficient
 }
 
-func (psi *podSetInfo) acceptAssignedPods() {
-	if len(psi.unacceptedAssignedPods) == 0 {
+func (psi *podSetInfo) assignPods(tasks []*cache.TaskInfo) {
+	if len(tasks) == 0 {
 		return
 	}
 
-	// accept temporary assigned Pods
-	// put them to PodSet assigned queue
-	psi.podSet.Assigned = append(psi.podSet.Assigned, psi.unacceptedAssignedPods...)
-	psi.unacceptedAssignedPods = make([]*cache.TaskInfo, 0)
-
-	// update allocate resource for consistent
-	psi.allocated.Add(psi.unacceptedAllocated)
-	psi.unacceptedAllocated = cache.EmptyResource()
+	for _, task := range tasks {
+		psi.podSet.Assigned = append(psi.podSet.Assigned, task)
+		psi.allocated.Add(task.Resreq)
+	}
 
 	// update podset share
 	psi.share = psi.calculateShare(psi.dominantResource)
-}
-
-func (psi *podSetInfo) discardAssignedPods() {
-	if len(psi.unacceptedAssignedPods) == 0 {
-		return
-	}
-
-	// clean assigned node
-	for _, p := range psi.unacceptedAssignedPods {
-		p.NodeName = ""
-	}
-
-	// discard temporary assigned Pods
-	// put them back to PodSet pending queue
-	for _, p := range psi.unacceptedAssignedPods {
-		psi.pendingSorted.Push(p)
-	}
-	psi.unacceptedAssignedPods = make([]*cache.TaskInfo, 0)
-
-	psi.unacceptedAllocated = cache.EmptyResource()
 }
 
 func (psi *podSetInfo) calculateShare(rn v1.ResourceName) float64 {
