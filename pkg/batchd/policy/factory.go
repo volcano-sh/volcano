@@ -30,16 +30,15 @@ func init() {
 	RegisterPolicy(allocate.New())
 }
 
-func New(name string) (Interface, error) {
+func New() (Interface, error) {
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	policy, found := policyMap[name]
-	if !found {
-		return nil, fmt.Errorf("invalid policy name %s\n", name)
+	for _, policy := range policyMap {
+		return policy, nil
 	}
 
-	return policy, nil
+	return nil, fmt.Errorf("not valid policy found")
 }
 
 func RegisterPolicy(policy Interface) error {
