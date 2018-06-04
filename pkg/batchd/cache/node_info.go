@@ -30,61 +30,55 @@ type NodeInfo struct {
 	// The used resource on that node, including running and terminating
 	// pods
 	Used *Resource
-	// The resources that is planned to used
-	// policy will use it to decide if assign pods on this node
-	UnAcceptedAllocated *Resource
 
 	Allocatable *Resource
 	Capability  *Resource
 
-	Pods map[string]*TaskInfo
+	Tasks map[string]*TaskInfo
 }
 
 func NewNodeInfo(node *v1.Node) *NodeInfo {
 	if node == nil {
 		return &NodeInfo{
-			Idle:                EmptyResource(),
-			Used:                EmptyResource(),
-			UnAcceptedAllocated: EmptyResource(),
+			Idle: EmptyResource(),
+			Used: EmptyResource(),
 
 			Allocatable: EmptyResource(),
 			Capability:  EmptyResource(),
 
-			Pods: make(map[string]*TaskInfo),
+			Tasks: make(map[string]*TaskInfo),
 		}
 	}
 
 	return &NodeInfo{
-		Name:                node.Name,
-		Node:                node,
-		Idle:                NewResource(node.Status.Allocatable),
-		Used:                EmptyResource(),
-		UnAcceptedAllocated: EmptyResource(),
+		Name: node.Name,
+		Node: node,
+		Idle: NewResource(node.Status.Allocatable),
+		Used: EmptyResource(),
 
 		Allocatable: NewResource(node.Status.Allocatable),
 		Capability:  NewResource(node.Status.Capacity),
 
-		Pods: make(map[string]*TaskInfo),
+		Tasks: make(map[string]*TaskInfo),
 	}
 }
 
 func (ni *NodeInfo) Clone() *NodeInfo {
-	pods := make(map[string]*TaskInfo, len(ni.Pods))
+	pods := make(map[string]*TaskInfo, len(ni.Tasks))
 
-	for _, p := range ni.Pods {
+	for _, p := range ni.Tasks {
 		pods[podKey(p.Pod)] = p.Clone()
 	}
 
 	return &NodeInfo{
-		Name:                ni.Name,
-		Node:                ni.Node,
-		Idle:                ni.Idle.Clone(),
-		Used:                ni.Used.Clone(),
-		UnAcceptedAllocated: ni.UnAcceptedAllocated.Clone(),
-		Allocatable:         ni.Allocatable.Clone(),
-		Capability:          ni.Capability.Clone(),
+		Name:        ni.Name,
+		Node:        ni.Node,
+		Idle:        ni.Idle.Clone(),
+		Used:        ni.Used.Clone(),
+		Allocatable: ni.Allocatable.Clone(),
+		Capability:  ni.Capability.Clone(),
 
-		Pods: pods,
+		Tasks: pods,
 	}
 }
 
@@ -92,7 +86,7 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 	if ni.Node == nil {
 		ni.Idle = NewResource(node.Status.Allocatable)
 
-		for _, p := range ni.Pods {
+		for _, p := range ni.Tasks {
 			ni.Idle.Sub(p.Resreq)
 			ni.Used.Add(p.Resreq)
 		}
@@ -104,20 +98,20 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.Capability = NewResource(node.Status.Capacity)
 }
 
-func (ni *NodeInfo) AddPod(p *TaskInfo) {
+func (ni *NodeInfo) AddTask(p *TaskInfo) {
 	if ni.Node != nil {
 		ni.Idle.Sub(p.Resreq)
 		ni.Used.Add(p.Resreq)
 	}
 
-	ni.Pods[podKey(p.Pod)] = p
+	ni.Tasks[podKey(p.Pod)] = p
 }
 
-func (ni *NodeInfo) RemovePod(p *TaskInfo) {
+func (ni *NodeInfo) RemoveTask(p *TaskInfo) {
 	if ni.Node != nil {
 		ni.Idle.Add(p.Resreq)
 		ni.Used.Sub(p.Resreq)
 	}
 
-	delete(ni.Pods, podKey(p.Pod))
+	delete(ni.Tasks, podKey(p.Pod))
 }

@@ -229,7 +229,7 @@ func TestExecute(t *testing.T) {
 	for i, test := range tests {
 		schedulerCache := &cache.SchedulerCache{
 			Nodes:  make(map[string]*cache.NodeInfo),
-			Pods:   make(map[string]*cache.TaskInfo),
+			Tasks:  make(map[string]*cache.TaskInfo),
 			Queues: make(map[string]*cache.QueueInfo),
 		}
 		for _, node := range test.nodes {
@@ -540,7 +540,7 @@ func TestMinAvailable(t *testing.T) {
 	for i, test := range tests {
 		schedulerCache := &cache.SchedulerCache{
 			Nodes:  make(map[string]*cache.NodeInfo),
-			Pods:   make(map[string]*cache.TaskInfo),
+			Tasks:  make(map[string]*cache.TaskInfo),
 			Queues: make(map[string]*cache.QueueInfo),
 			Pdbs:   make(map[string]*cache.PdbInfo),
 		}
@@ -682,7 +682,7 @@ func TestNodeSelector(t *testing.T) {
 	for i, test := range tests {
 		schedulerCache := &cache.SchedulerCache{
 			Nodes:  make(map[string]*cache.NodeInfo),
-			Pods:   make(map[string]*cache.TaskInfo),
+			Tasks:  make(map[string]*cache.TaskInfo),
 			Queues: make(map[string]*cache.QueueInfo),
 			Pdbs:   make(map[string]*cache.PdbInfo),
 		}

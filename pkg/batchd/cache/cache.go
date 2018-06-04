@@ -53,7 +53,7 @@ type SchedulerCache struct {
 
 	assumedPodStates map[string]*podState
 
-	Pods   map[string]*TaskInfo
+	Tasks  map[string]*TaskInfo
 	Nodes  map[string]*NodeInfo
 	Queues map[string]*QueueInfo
 	Pdbs   map[string]*PdbInfo
@@ -63,7 +63,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 	sc := &SchedulerCache{
 		assumedPodStates: make(map[string]*podState),
 		Nodes:            make(map[string]*NodeInfo),
-		Pods:             make(map[string]*TaskInfo),
+		Tasks:            make(map[string]*TaskInfo),
 		Queues:           make(map[string]*QueueInfo),
 		Pdbs:             make(map[string]*PdbInfo),
 	}
@@ -190,7 +190,7 @@ func (sc *SchedulerCache) AssumePod(pod *v1.Pod) error {
 		return nil
 	}
 
-	pi, ok := sc.Pods[key]
+	pi, ok := sc.Tasks[key]
 	if !ok {
 		return fmt.Errorf("pod %s not in cache but get assumed", pod.Name)
 	}
@@ -217,7 +217,7 @@ func (sc *SchedulerCache) AssumePod(pod *v1.Pod) error {
 func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 	key := podKey(pod)
 
-	if _, ok := sc.Pods[key]; ok {
+	if _, ok := sc.Tasks[key]; ok {
 		return fmt.Errorf("pod %v exist", key)
 	}
 
@@ -239,7 +239,7 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 		if sc.Nodes[pod.Spec.NodeName] == nil {
 			sc.Nodes[pod.Spec.NodeName] = NewNodeInfo(nil)
 		}
-		sc.Nodes[pod.Spec.NodeName].AddPod(pi)
+		sc.Nodes[pod.Spec.NodeName].AddTask(pi)
 	}
 
 	if sc.Queues[pod.Namespace] == nil {
@@ -252,7 +252,7 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 		sc.Queues[pod.Namespace].AddPdb(pdb)
 	}
 
-	sc.Pods[key] = pi
+	sc.Tasks[key] = pi
 
 	return nil
 }
@@ -272,16 +272,16 @@ func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
 	// remove assumed Pod directly
 	delete(sc.assumedPodStates, key)
 
-	pi, ok := sc.Pods[key]
+	pi, ok := sc.Tasks[key]
 	if !ok {
 		return fmt.Errorf("pod %v doesn't exist", key)
 	}
-	delete(sc.Pods, key)
+	delete(sc.Tasks, key)
 
 	if len(pi.NodeName) != 0 {
 		node := sc.Nodes[pi.NodeName]
 		if node != nil {
-			node.RemovePod(pi)
+			node.RemoveTask(pi)
 		}
 	}
 
@@ -663,14 +663,14 @@ func (sc *SchedulerCache) Snapshot() *ClusterInfo {
 
 	snapshot := &ClusterInfo{
 		Nodes:  make([]*NodeInfo, 0, len(sc.Nodes)),
-		Tasks:  make([]*TaskInfo, 0, len(sc.Pods)),
+		Tasks:  make([]*TaskInfo, 0, len(sc.Tasks)),
 		Queues: make([]*QueueInfo, 0, len(sc.Queues)),
 	}
 
 	for _, value := range sc.Nodes {
 		snapshot.Nodes = append(snapshot.Nodes, value.Clone())
 	}
-	for _, value := range sc.Pods {
+	for _, value := range sc.Tasks {
 		snapshot.Tasks = append(snapshot.Tasks, value.Clone())
 	}
 	for _, value := range sc.Queues {
@@ -689,19 +689,19 @@ func (sc *SchedulerCache) String() string {
 		str = str + "Nodes:\n"
 		for _, n := range sc.Nodes {
 			str = str + fmt.Sprintf("\t %s: idle(%v) used(%v) allocatable(%v) pods(%d)\n",
-				n.Name, n.Idle, n.Used, n.Allocatable, len(n.Pods))
-			for index, p := range n.Pods {
+				n.Name, n.Idle, n.Used, n.Allocatable, len(n.Tasks))
+			for index, p := range n.Tasks {
 				str = str + fmt.Sprintf("\t\t Pod[%s] uid(%s) owner(%s) name(%s) namespace(%s) nodename(%s) phase(%s) request(%v) pod(%v)\n",
-					index, p.UID, p.Owner, p.Name, p.Namespace, p.NodeName, p.Phase, p.Resreq, p.Pod)
+					index, p.UID, p.Owner, p.Name, p.Namespace, p.NodeName, p.Status, p.Resreq, p.Pod)
 			}
 		}
 	}
 
-	if len(sc.Pods) != 0 {
+	if len(sc.Tasks) != 0 {
 		str = str + "Pods:\n"
-		for _, p := range sc.Pods {
+		for _, p := range sc.Tasks {
 			str = str + fmt.Sprintf("\t %s/%s: phase (%s), node (%s), request (%v)\n",
-				p.Namespace, p.Name, p.Phase, p.NodeName, p.Resreq)
+				p.Namespace, p.Name, p.Status, p.NodeName, p.Resreq)
 		}
 	}
 
@@ -714,7 +714,7 @@ func (sc *SchedulerCache) String() string {
 			}
 			for k, p := range c.Tasks {
 				str = str + fmt.Sprintf("\t\t Pod[%s] uid(%s) owner(%s) name(%s) namespace(%s) nodename(%s) phase(%s) request(%v) pod(%v)\n",
-					k, p.UID, p.Owner, p.Name, p.Namespace, p.NodeName, p.Phase, p.Resreq, p.Pod)
+					k, p.UID, p.Owner, p.Name, p.Namespace, p.NodeName, p.Status, p.Resreq, p.Pod)
 			}
 		}
 	}

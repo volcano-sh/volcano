@@ -74,7 +74,7 @@ func queuesEqual(l, r map[string]*QueueInfo) bool {
 
 func cacheEqual(l, r *SchedulerCache) bool {
 	return nodesEqual(l.Nodes, r.Nodes) &&
-		podsEqual(l.Pods, r.Pods) &&
+		podsEqual(l.Tasks, r.Tasks) &&
 		queuesEqual(l.Queues, r.Queues)
 }
 
@@ -172,7 +172,7 @@ func TestAddPod(t *testing.T) {
 	pi1 := NewTaskInfo(pod1)
 	pi2 := NewTaskInfo(pod2)
 	ci1 := NewQueueInfo(queue1)
-	ni1.AddPod(pi2)
+	ni1.AddTask(pi2)
 	ci1.AddPod(pi1)
 	ci1.AddPod(pi2)
 
@@ -190,7 +190,7 @@ func TestAddPod(t *testing.T) {
 				Nodes: map[string]*NodeInfo{
 					"n1": ni1,
 				},
-				Pods: map[string]*TaskInfo{
+				Tasks: map[string]*TaskInfo{
 					"c1/p1": pi1,
 					"c1/p2": pi2,
 				},
@@ -204,7 +204,7 @@ func TestAddPod(t *testing.T) {
 	for i, test := range tests {
 		cache := &SchedulerCache{
 			Nodes:  make(map[string]*NodeInfo),
-			Pods:   make(map[string]*TaskInfo),
+			Tasks:  make(map[string]*TaskInfo),
 			Queues: make(map[string]*QueueInfo),
 		}
 
@@ -236,7 +236,7 @@ func TestAddNode(t *testing.T) {
 	ni1 := NewNodeInfo(node1)
 	pi1 := NewTaskInfo(pod1)
 	pi2 := NewTaskInfo(pod2)
-	ni1.AddPod(pi2)
+	ni1.AddTask(pi2)
 
 	tests := []struct {
 		pods     []*v1.Pod
@@ -250,7 +250,7 @@ func TestAddNode(t *testing.T) {
 				Nodes: map[string]*NodeInfo{
 					"n1": ni1,
 				},
-				Pods: map[string]*TaskInfo{
+				Tasks: map[string]*TaskInfo{
 					"c1/p1": pi1,
 					"c1/p2": pi2,
 				},
@@ -271,7 +271,7 @@ func TestAddNode(t *testing.T) {
 	for i, test := range tests {
 		cache := &SchedulerCache{
 			Nodes:  make(map[string]*NodeInfo),
-			Pods:   make(map[string]*TaskInfo),
+			Tasks:  make(map[string]*TaskInfo),
 			Queues: make(map[string]*QueueInfo),
 		}
 
@@ -313,19 +313,18 @@ func TestAddQueue(t *testing.T) {
 			expected: &SchedulerCache{
 				Nodes: map[string]*NodeInfo{
 					"n1": {
-						Idle:                EmptyResource(),
-						Used:                EmptyResource(),
-						UnAcceptedAllocated: EmptyResource(),
+						Idle: EmptyResource(),
+						Used: EmptyResource(),
 
 						Allocatable: EmptyResource(),
 						Capability:  EmptyResource(),
 
-						Pods: map[string]*TaskInfo{
+						Tasks: map[string]*TaskInfo{
 							"c1/p2": pi2,
 						},
 					},
 				},
-				Pods: map[string]*TaskInfo{
+				Tasks: map[string]*TaskInfo{
 					"c1/p1": pi1,
 					"c1/p2": pi2,
 				},
@@ -339,7 +338,7 @@ func TestAddQueue(t *testing.T) {
 	for i, test := range tests {
 		cache := &SchedulerCache{
 			Nodes:  make(map[string]*NodeInfo),
-			Pods:   make(map[string]*TaskInfo),
+			Tasks:  make(map[string]*TaskInfo),
 			Queues: make(map[string]*QueueInfo),
 		}
 

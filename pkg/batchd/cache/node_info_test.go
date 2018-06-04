@@ -49,14 +49,13 @@ func TestNodeInfo_AddPod(t *testing.T) {
 			node: case01_node,
 			pods: []*v1.Pod{case01_pod1, case01_pod2},
 			expected: &NodeInfo{
-				Name:                "n1",
-				Node:                case01_node,
-				Idle:                buildResource("5000m", "7G"),
-				Used:                buildResource("3000m", "3G"),
-				UnAcceptedAllocated: EmptyResource(),
-				Allocatable:         buildResource("8000m", "10G"),
-				Capability:          buildResource("8000m", "10G"),
-				Pods: map[string]*TaskInfo{
+				Name:        "n1",
+				Node:        case01_node,
+				Idle:        buildResource("5000m", "7G"),
+				Used:        buildResource("3000m", "3G"),
+				Allocatable: buildResource("8000m", "10G"),
+				Capability:  buildResource("8000m", "10G"),
+				Tasks: map[string]*TaskInfo{
 					"c1/p1": NewTaskInfo(case01_pod1),
 					"c1/p2": NewTaskInfo(case01_pod2),
 				},
@@ -69,7 +68,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 
 		for _, pod := range test.pods {
 			pi := NewTaskInfo(pod)
-			ni.AddPod(pi)
+			ni.AddTask(pi)
 		}
 
 		if !nodeInfoEqual(ni, test.expected) {
@@ -99,14 +98,13 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 			pods:   []*v1.Pod{case01_pod1, case01_pod2, case01_pod3},
 			rmPods: []*v1.Pod{case01_pod2},
 			expected: &NodeInfo{
-				Name:                "n1",
-				Node:                case01_node,
-				Idle:                buildResource("4000m", "6G"),
-				Used:                buildResource("4000m", "4G"),
-				UnAcceptedAllocated: EmptyResource(),
-				Allocatable:         buildResource("8000m", "10G"),
-				Capability:          buildResource("8000m", "10G"),
-				Pods: map[string]*TaskInfo{
+				Name:        "n1",
+				Node:        case01_node,
+				Idle:        buildResource("4000m", "6G"),
+				Used:        buildResource("4000m", "4G"),
+				Allocatable: buildResource("8000m", "10G"),
+				Capability:  buildResource("8000m", "10G"),
+				Tasks: map[string]*TaskInfo{
 					"c1/p1": NewTaskInfo(case01_pod1),
 					"c1/p3": NewTaskInfo(case01_pod3),
 				},
@@ -119,12 +117,12 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 
 		for _, pod := range test.pods {
 			pi := NewTaskInfo(pod)
-			ni.AddPod(pi)
+			ni.AddTask(pi)
 		}
 
 		for _, pod := range test.rmPods {
 			pi := NewTaskInfo(pod)
-			ni.RemovePod(pi)
+			ni.RemoveTask(pi)
 		}
 
 		if !nodeInfoEqual(ni, test.expected) {

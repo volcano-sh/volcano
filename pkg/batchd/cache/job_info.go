@@ -39,7 +39,7 @@ type TaskInfo struct {
 	Namespace string
 
 	NodeName string
-	Phase    v1.PodPhase
+	Status   v1.PodPhase
 	Priority int32
 
 	Pod *v1.Pod
@@ -60,7 +60,7 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		Name:      pod.Name,
 		Namespace: pod.Namespace,
 		NodeName:  pod.Spec.NodeName,
-		Phase:     pod.Status.Phase,
+		Status:    pod.Status.Phase,
 		Priority:  1,
 
 		Pod:    pod,
@@ -81,7 +81,7 @@ func (pi *TaskInfo) Clone() *TaskInfo {
 		Name:      pi.Name,
 		Namespace: pi.Namespace,
 		NodeName:  pi.NodeName,
-		Phase:     pi.Phase,
+		Status:    pi.Status,
 		Priority:  pi.Priority,
 		Pod:       pi.Pod,
 		Resreq:    pi.Resreq.Clone(),
@@ -124,7 +124,7 @@ func NewJobInfo(uid types.UID) *JobInfo {
 }
 
 func (ps *JobInfo) AddTaskInfo(pi *TaskInfo) {
-	switch pi.Phase {
+	switch pi.Status {
 	case v1.PodRunning:
 		ps.Running = append(ps.Running, pi)
 		ps.Allocated.Add(pi.Resreq)
