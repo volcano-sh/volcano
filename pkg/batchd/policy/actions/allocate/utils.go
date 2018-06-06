@@ -20,11 +20,11 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
+	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
 )
 
-func fetchMatchNodeForPodSet(psi *podSetInfo, nodes []*cache.NodeInfo) []*cache.NodeInfo {
-	matchNodes := make([]*cache.NodeInfo, 0)
+func fetchMatchNodeForPodSet(psi *podSetInfo, nodes []*arbapi.NodeInfo) []*arbapi.NodeInfo {
+	matchNodes := make([]*arbapi.NodeInfo, 0)
 	for _, node := range nodes {
 		if podSetMatchesNodeLabels(psi, node.Node) {
 			matchNodes = append(matchNodes, node)

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/golang/glog"
 
@@ -32,6 +33,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 
+	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client"
 	informerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/informers"
@@ -53,19 +55,27 @@ type SchedulerCache struct {
 
 	assumedPodStates map[string]*podState
 
-	Tasks  map[string]*TaskInfo
-	Nodes  map[string]*NodeInfo
-	Queues map[string]*QueueInfo
-	Pdbs   map[string]*PdbInfo
+	Tasks  map[string]*arbapi.TaskInfo
+	Nodes  map[string]*arbapi.NodeInfo
+	Queues map[string]*arbapi.QueueInfo
+	Pdbs   map[string]*arbapi.PdbInfo
+}
+
+type podState struct {
+	pod *v1.Pod
+	// Used by assumedPod to determinate expiration.
+	deadline *time.Time
+	// Used to block cache from expiring assumedPod if binding still runs
+	bindingFinished bool
 }
 
 func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCache {
 	sc := &SchedulerCache{
 		assumedPodStates: make(map[string]*podState),
-		Nodes:            make(map[string]*NodeInfo),
-		Tasks:            make(map[string]*TaskInfo),
-		Queues:           make(map[string]*QueueInfo),
-		Pdbs:             make(map[string]*PdbInfo),
+		Nodes:            make(map[string]*arbapi.NodeInfo),
+		Tasks:            make(map[string]*arbapi.TaskInfo),
+		Queues:           make(map[string]*arbapi.QueueInfo),
+		Pdbs:             make(map[string]*arbapi.PdbInfo),
 	}
 
 	kubecli := kubernetes.NewForConfigOrDie(config)
@@ -179,7 +189,7 @@ func nonTerminatedPod(pod *v1.Pod) bool {
 }
 
 func (sc *SchedulerCache) AssumePod(pod *v1.Pod) error {
-	key := podKey(pod)
+	key := arbapi.PodKey(pod)
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
@@ -215,7 +225,7 @@ func (sc *SchedulerCache) AssumePod(pod *v1.Pod) error {
 
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
-	key := podKey(pod)
+	key := arbapi.PodKey(pod)
 
 	if _, ok := sc.Tasks[key]; ok {
 		return fmt.Errorf("pod %v exist", key)
@@ -233,17 +243,17 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 		}
 	}
 
-	pi := NewTaskInfo(pod)
+	pi := arbapi.NewTaskInfo(pod)
 
 	if len(pod.Spec.NodeName) > 0 {
 		if sc.Nodes[pod.Spec.NodeName] == nil {
-			sc.Nodes[pod.Spec.NodeName] = NewNodeInfo(nil)
+			sc.Nodes[pod.Spec.NodeName] = arbapi.NewNodeInfo(nil)
 		}
 		sc.Nodes[pod.Spec.NodeName].AddTask(pi)
 	}
 
 	if sc.Queues[pod.Namespace] == nil {
-		sc.Queues[pod.Namespace] = NewQueueInfo(nil)
+		sc.Queues[pod.Namespace] = arbapi.NewQueueInfo(nil)
 		sc.Queues[pod.Namespace].Namespace = pod.Namespace
 	}
 	sc.Queues[pod.Namespace].AddPod(pi)
@@ -267,7 +277,7 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
-	key := podKey(pod)
+	key := arbapi.PodKey(pod)
 
 	// remove assumed Pod directly
 	delete(sc.assumedPodStates, key)
@@ -370,7 +380,7 @@ func (sc *SchedulerCache) addNode(node *v1.Node) error {
 	if sc.Nodes[node.Name] != nil {
 		sc.Nodes[node.Name].SetNode(node)
 	} else {
-		sc.Nodes[node.Name] = NewNodeInfo(node)
+		sc.Nodes[node.Name] = arbapi.NewNodeInfo(node)
 	}
 
 	return nil
@@ -473,7 +483,7 @@ func (sc *SchedulerCache) addQueue(queue *arbv1.Queue) error {
 	if sc.Queues[queue.Namespace] != nil {
 		sc.Queues[queue.Namespace].SetQueue(queue)
 	} else {
-		sc.Queues[queue.Namespace] = NewQueueInfo(queue)
+		sc.Queues[queue.Namespace] = arbapi.NewQueueInfo(queue)
 	}
 
 	return nil
@@ -571,7 +581,7 @@ func (sc *SchedulerCache) DeleteQueue(obj interface{}) {
 }
 
 func (sc *SchedulerCache) addPDB(pdb *v1beta1.PodDisruptionBudget) error {
-	pi := NewPdbInfo(pdb)
+	pi := arbapi.NewPdbInfo(pdb)
 	sc.Pdbs[pi.Name] = pi
 	for _, c := range sc.Queues {
 		c.AddPdb(pi)
@@ -657,14 +667,14 @@ func (sc *SchedulerCache) PdbInformer() policyv1.PodDisruptionBudgetInformer {
 	return sc.pdbInformer
 }
 
-func (sc *SchedulerCache) Snapshot() *ClusterInfo {
+func (sc *SchedulerCache) Snapshot() *arbapi.ClusterInfo {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	snapshot := &ClusterInfo{
-		Nodes:  make([]*NodeInfo, 0, len(sc.Nodes)),
-		Tasks:  make([]*TaskInfo, 0, len(sc.Tasks)),
-		Queues: make([]*QueueInfo, 0, len(sc.Queues)),
+	snapshot := &arbapi.ClusterInfo{
+		Nodes:  make([]*arbapi.NodeInfo, 0, len(sc.Nodes)),
+		Tasks:  make([]*arbapi.TaskInfo, 0, len(sc.Tasks)),
+		Queues: make([]*arbapi.QueueInfo, 0, len(sc.Queues)),
 	}
 
 	for _, value := range sc.Nodes {

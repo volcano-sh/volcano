@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cache
+package api
 
 import (
 	"fmt"
@@ -24,12 +24,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	clientcache "k8s.io/client-go/tools/cache"
-
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis"
 )
 
 // podKey returns the string key of a pod.
-func podKey(pod *v1.Pod) string {
+func PodKey(pod *v1.Pod) string {
 	if key, err := clientcache.MetaNamespaceKeyFunc(pod); err != nil {
 		return fmt.Sprintf("%v/%v", pod.Namespace, pod.Name)
 	} else {
@@ -51,22 +49,34 @@ func getController(obj interface{}) types.UID {
 	return ""
 }
 
-func getTaskStatus(pod *v1.Pod) apis.TaskStatus {
+func getTaskStatus(pod *v1.Pod) TaskStatus {
 	switch pod.Status.Phase {
 	case v1.PodRunning:
-		return apis.Running
+		return Running
 	case v1.PodPending:
 		if len(pod.Spec.NodeName) == 0 {
-			return apis.Pending
+			return Pending
 		}
-		return apis.Bound
+		return Bound
 	case v1.PodUnknown:
-		return apis.Unknown
+		return Unknown
 	case v1.PodSucceeded:
-		return apis.Succeeded
+		return Succeeded
 	case v1.PodFailed:
-		return apis.Failed
+		return Failed
 	}
 
-	return apis.Unknown
+	return Unknown
+}
+
+// UpdateStatus updates task status to the target status, return error if the transformation
+// is invalid.
+func UpdateStatus(task *TaskInfo, status TaskStatus) error {
+	if err := ValidateStatusUpdate(task.Status, status); err != nil {
+		return err
+	}
+
+	task.Status = status
+
+	return nil
 }

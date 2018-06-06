@@ -19,7 +19,7 @@ package allocate
 import (
 	"github.com/golang/glog"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
+	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/framework"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/util"
 )
@@ -51,14 +51,14 @@ func compareName(l, r interface{}) bool {
 	return lv.podSet.Name < rv.podSet.Name
 }
 
-func (alloc *allocateAction) Execute(ssn *framework.Session) []*cache.QueueInfo {
+func (alloc *allocateAction) Execute(ssn *framework.Session) []*arbapi.QueueInfo {
 	glog.V(4).Infof("Enter Allocate ...")
 	defer glog.V(4).Infof("Leaving Allocate ...")
 
 	queues := ssn.Queues
 	nodes := ssn.Nodes
 
-	total := cache.EmptyResource()
+	total := arbapi.EmptyResource()
 	for _, n := range nodes {
 		total.Add(n.Allocatable)
 	}
@@ -73,7 +73,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) []*cache.QueueInfo 
 
 	// assign MinAvailable of each podSet first by chronologically
 	pq := util.NewPriorityQueue(compareShare)
-	matchNodesForPodSet := make(map[string][]*cache.NodeInfo)
+	matchNodesForPodSet := make(map[string][]*arbapi.NodeInfo)
 	for !dq.Empty() {
 		psi := dq.Pop().(*podSetInfo)
 
@@ -118,7 +118,7 @@ func (alloc *allocateAction) UnInitialize() {}
 
 // Assign node for min Pods of psi
 // If min Pods can not be satisfy, then don't assign any pods
-func (alloc *allocateAction) assignMinimalPods(min int, psi *podSetInfo, nodes []*cache.NodeInfo) bool {
+func (alloc *allocateAction) assignMinimalPods(min int, psi *podSetInfo, nodes []*arbapi.NodeInfo) bool {
 	glog.V(4).Infof("Enter assignMinimalPods ...")
 	defer glog.V(4).Infof("Leaving assignMinimalPods ...")
 
@@ -128,9 +128,9 @@ func (alloc *allocateAction) assignMinimalPods(min int, psi *podSetInfo, nodes [
 		return true
 	}
 
-	unacceptedAllocation := make(map[string]*cache.Resource)
-	var unacceptedAssignment []*cache.TaskInfo
-	nodesMap := make(map[string]*cache.NodeInfo)
+	unacceptedAllocation := make(map[string]*arbapi.Resource)
+	var unacceptedAssignment []*arbapi.TaskInfo
+	nodesMap := make(map[string]*arbapi.NodeInfo)
 
 	for min > 0 {
 		p := psi.popPendingPod()
@@ -156,7 +156,7 @@ func (alloc *allocateAction) assignMinimalPods(min int, psi *podSetInfo, nodes [
 				unacceptedAssignment = append(unacceptedAssignment, p)
 
 				if _, found := unacceptedAllocation[node.Name]; !found {
-					unacceptedAllocation[node.Name] = cache.EmptyResource()
+					unacceptedAllocation[node.Name] = arbapi.EmptyResource()
 				}
 
 				alloc := unacceptedAllocation[node.Name]

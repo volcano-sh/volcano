@@ -14,25 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cache
+package api
 
 import (
-	"time"
-
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis"
 )
-
-type podState struct {
-	pod *v1.Pod
-	// Used by assumedPod to determinate expiration.
-	deadline *time.Time
-	// Used to block cache from expiring assumedPod if binding still runs
-	bindingFinished bool
-}
 
 type TaskID types.UID
 
@@ -46,7 +34,7 @@ type TaskInfo struct {
 	Resreq *Resource
 
 	NodeName string
-	Status   apis.TaskStatus
+	Status   TaskStatus
 	Priority int32
 
 	Pod *v1.Pod
@@ -113,7 +101,7 @@ type JobInfo struct {
 	Others   []*TaskInfo
 
 	// All tasks of the Job.
-	Tasks map[apis.TaskStatus]tasksMap
+	Tasks map[TaskStatus]tasksMap
 
 	NodeSelector map[string]string
 }
@@ -138,14 +126,14 @@ func NewJobInfo(uid JobID) *JobInfo {
 
 func (ps *JobInfo) AddTaskInfo(pi *TaskInfo) {
 	switch pi.Status {
-	case apis.Running:
+	case Running:
 		ps.Running = append(ps.Running, pi)
 		ps.Allocated.Add(pi.Resreq)
 		ps.TotalRequest.Add(pi.Resreq)
-	case apis.Pending:
+	case Pending:
 		ps.Pending = append(ps.Pending, pi)
 		ps.TotalRequest.Add(pi.Resreq)
-	case apis.Bound:
+	case Bound:
 		ps.Assigned = append(ps.Assigned, pi)
 		ps.Allocated.Add(pi.Resreq)
 		ps.TotalRequest.Add(pi.Resreq)

@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,17 +14,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cache
+package api
 
 import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/validation"
+	"k8s.io/api/policy/v1beta1"
 )
 
-func UpdateStatus(task *TaskInfo, status apis.TaskStatus) error {
-	if err := validation.ValidateStatusUpdate(status, status); err != nil {
-		return err
-	}
+type PdbInfo struct {
+	Name string
+	Pdb  *v1beta1.PodDisruptionBudget
+}
 
-	return nil
+func NewPdbInfo(pdb *v1beta1.PodDisruptionBudget) *PdbInfo {
+	return &PdbInfo{
+		Name: pdb.Name,
+		Pdb:  pdb,
+	}
 }

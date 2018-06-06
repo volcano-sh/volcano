@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 
+	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
 	schedcache "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/clientset"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy"
@@ -46,7 +47,7 @@ type PolicyController struct {
 }
 
 func podSetKey(obj interface{}) (string, error) {
-	podSet, ok := obj.(*schedcache.JobInfo)
+	podSet, ok := obj.(*arbapi.JobInfo)
 	if !ok {
 		return "", fmt.Errorf("not a PodSet")
 	}
@@ -108,7 +109,7 @@ func (pc *PolicyController) runOnce() {
 	framework.CloseSession(ssn)
 }
 
-func (pc *PolicyController) enqueue(queues []*schedcache.QueueInfo) {
+func (pc *PolicyController) enqueue(queues []*arbapi.QueueInfo) {
 	for _, c := range queues {
 		for _, ps := range c.Jobs {
 			pc.podSets.Add(ps)
@@ -124,7 +125,7 @@ func (pc *PolicyController) cancelAllocDecisionProcessing() {
 	}
 }
 
-func (pc *PolicyController) assumePods(queues []*schedcache.QueueInfo) {
+func (pc *PolicyController) assumePods(queues []*arbapi.QueueInfo) {
 	for _, queue := range queues {
 		for _, ps := range queue.Jobs {
 			for _, p := range ps.Pending {
@@ -148,7 +149,7 @@ func (pc *PolicyController) assume(assumed *v1.Pod, host string) {
 
 func (pc *PolicyController) processAllocDecision() {
 	pc.podSets.Pop(func(obj interface{}) error {
-		ps, ok := obj.(*schedcache.JobInfo)
+		ps, ok := obj.(*arbapi.JobInfo)
 		if !ok {
 			return fmt.Errorf("not a PodSet")
 		}

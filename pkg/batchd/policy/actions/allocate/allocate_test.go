@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/framework"
@@ -45,17 +46,17 @@ func init() {
 
 func buildResourceList(cpu string, memory string) v1.ResourceList {
 	return v1.ResourceList{
-		v1.ResourceCPU:        resource.MustParse(cpu),
-		v1.ResourceMemory:     resource.MustParse(memory),
-		cache.GPUResourceName: resource.MustParse("0"),
+		v1.ResourceCPU:      resource.MustParse(cpu),
+		v1.ResourceMemory:   resource.MustParse(memory),
+		api.GPUResourceName: resource.MustParse("0"),
 	}
 }
 
 func buildResourceListWithGPU(cpu string, memory string, GPU string) v1.ResourceList {
 	return v1.ResourceList{
-		v1.ResourceCPU:        resource.MustParse(cpu),
-		v1.ResourceMemory:     resource.MustParse(memory),
-		cache.GPUResourceName: resource.MustParse(GPU),
+		v1.ResourceCPU:      resource.MustParse(cpu),
+		v1.ResourceMemory:   resource.MustParse(memory),
+		api.GPUResourceName: resource.MustParse(GPU),
 	}
 }
 
@@ -228,9 +229,9 @@ func TestExecute(t *testing.T) {
 
 	for i, test := range tests {
 		schedulerCache := &cache.SchedulerCache{
-			Nodes:  make(map[string]*cache.NodeInfo),
-			Tasks:  make(map[string]*cache.TaskInfo),
-			Queues: make(map[string]*cache.QueueInfo),
+			Nodes:  make(map[string]*api.NodeInfo),
+			Tasks:  make(map[string]*api.TaskInfo),
+			Queues: make(map[string]*api.QueueInfo),
 		}
 		for _, node := range test.nodes {
 			schedulerCache.AddNode(node)
@@ -539,10 +540,10 @@ func TestMinAvailable(t *testing.T) {
 
 	for i, test := range tests {
 		schedulerCache := &cache.SchedulerCache{
-			Nodes:  make(map[string]*cache.NodeInfo),
-			Tasks:  make(map[string]*cache.TaskInfo),
-			Queues: make(map[string]*cache.QueueInfo),
-			Pdbs:   make(map[string]*cache.PdbInfo),
+			Nodes:  make(map[string]*api.NodeInfo),
+			Tasks:  make(map[string]*api.TaskInfo),
+			Queues: make(map[string]*api.QueueInfo),
+			Pdbs:   make(map[string]*api.PdbInfo),
 		}
 		for _, node := range test.nodes {
 			schedulerCache.AddNode(node)
@@ -681,10 +682,10 @@ func TestNodeSelector(t *testing.T) {
 
 	for i, test := range tests {
 		schedulerCache := &cache.SchedulerCache{
-			Nodes:  make(map[string]*cache.NodeInfo),
-			Tasks:  make(map[string]*cache.TaskInfo),
-			Queues: make(map[string]*cache.QueueInfo),
-			Pdbs:   make(map[string]*cache.PdbInfo),
+			Nodes:  make(map[string]*api.NodeInfo),
+			Tasks:  make(map[string]*api.TaskInfo),
+			Queues: make(map[string]*api.QueueInfo),
+			Pdbs:   make(map[string]*api.PdbInfo),
 		}
 		for _, node := range test.nodes {
 			schedulerCache.AddNode(node)

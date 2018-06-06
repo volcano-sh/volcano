@@ -21,44 +21,44 @@ import (
 
 	"k8s.io/api/core/v1"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
+	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/util"
 )
 
 type podSetInfo struct {
-	podSet *cache.JobInfo
+	podSet *arbapi.JobInfo
 
-	dominantResource v1.ResourceName // The dominant resource name of PodSet
-	allocated        *cache.Resource // Allocated resource of PodSet
-	share            float64         // The DRF share of PodSet
-	total            *cache.Resource // The total resource of cluster, used to update DRF share
+	dominantResource v1.ResourceName  // The dominant resource name of PodSet
+	allocated        *arbapi.Resource // Allocated resource of PodSet
+	share            float64          // The DRF share of PodSet
+	total            *arbapi.Resource // The total resource of cluster, used to update DRF share
 
-	unacceptedAllocated    *cache.Resource
-	unacceptedAssignedPods []*cache.TaskInfo
+	unacceptedAllocated    *arbapi.Resource
+	unacceptedAssignedPods []*arbapi.TaskInfo
 
 	pendingSorted *util.PriorityQueue
 }
 
 func compareTaskPriority(l, r interface{}) bool {
-	lv := l.(*cache.TaskInfo)
-	rv := r.(*cache.TaskInfo)
+	lv := l.(*arbapi.TaskInfo)
+	rv := r.(*arbapi.TaskInfo)
 
 	return lv.Priority > rv.Priority
 }
 
-func newPodSetInfo(ps *cache.JobInfo, t *cache.Resource) *podSetInfo {
+func newPodSetInfo(ps *arbapi.JobInfo, t *arbapi.Resource) *podSetInfo {
 	psi := &podSetInfo{
 		podSet:                 ps,
 		allocated:              ps.Allocated.Clone(),
 		total:                  t,
 		dominantResource:       v1.ResourceCPU,
-		unacceptedAllocated:    cache.EmptyResource(),
-		unacceptedAssignedPods: make([]*cache.TaskInfo, 0),
+		unacceptedAllocated:    arbapi.EmptyResource(),
+		unacceptedAssignedPods: make([]*arbapi.TaskInfo, 0),
 		pendingSorted:          util.NewPriorityQueue(compareTaskPriority),
 	}
 
 	// Calculates the dominant resource.
-	for _, rn := range cache.ResourceNames() {
+	for _, rn := range arbapi.ResourceNames() {
 		if psi.total.IsZero(rn) {
 			continue
 		}
@@ -81,17 +81,17 @@ func newPodSetInfo(ps *cache.JobInfo, t *cache.Resource) *podSetInfo {
 	return psi
 }
 
-func (psi *podSetInfo) popPendingPod() *cache.TaskInfo {
+func (psi *podSetInfo) popPendingPod() *arbapi.TaskInfo {
 	if psi.pendingSorted.Empty() {
 		return nil
 	}
 
-	pi := psi.pendingSorted.Pop().(*cache.TaskInfo)
+	pi := psi.pendingSorted.Pop().(*arbapi.TaskInfo)
 
 	return pi
 }
 
-func (psi *podSetInfo) pushPendingPod(p *cache.TaskInfo) {
+func (psi *podSetInfo) pushPendingPod(p *arbapi.TaskInfo) {
 	psi.pendingSorted.Push(p)
 }
 
@@ -103,7 +103,7 @@ func (psi *podSetInfo) insufficientMinAvailable() int {
 	return insufficient
 }
 
-func (psi *podSetInfo) assignPods(tasks []*cache.TaskInfo) {
+func (psi *podSetInfo) assignPods(tasks []*arbapi.TaskInfo) {
 	if len(tasks) == 0 {
 		return
 	}

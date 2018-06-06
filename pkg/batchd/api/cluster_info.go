@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,12 +13,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+package api
 
-package validation
+// ClusterInfo is a snapshot of cluster by cache.
+type ClusterInfo struct {
+	Tasks  []*TaskInfo
+	Jobs   []*JobInfo
+	Queues []*QueueInfo
 
-import "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis"
-
-// ValidateStatusUpdate validates whether the status transfer is valid.
-func ValidateStatusUpdate(oldStatus, newStatus apis.TaskStatus) error {
-	return nil
+	Nodes []*NodeInfo
 }

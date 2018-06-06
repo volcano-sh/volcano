@@ -27,10 +27,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/v1"
 )
 
-func nodesEqual(l, r map[string]*NodeInfo) bool {
+func nodesEqual(l, r map[string]*api.NodeInfo) bool {
 	if len(l) != len(r) {
 		return false
 	}
@@ -44,7 +45,7 @@ func nodesEqual(l, r map[string]*NodeInfo) bool {
 	return true
 }
 
-func podsEqual(l, r map[string]*TaskInfo) bool {
+func podsEqual(l, r map[string]*api.TaskInfo) bool {
 	if len(l) != len(r) {
 		return false
 	}
@@ -58,7 +59,7 @@ func podsEqual(l, r map[string]*TaskInfo) bool {
 	return true
 }
 
-func queuesEqual(l, r map[string]*QueueInfo) bool {
+func queuesEqual(l, r map[string]*api.QueueInfo) bool {
 	if len(l) != len(r) {
 		return false
 	}
@@ -146,8 +147,8 @@ func buildResourceList(cpu string, memory string) v1.ResourceList {
 	}
 }
 
-func buildResource(cpu string, memory string) *Resource {
-	return NewResource(v1.ResourceList{
+func buildResource(cpu string, memory string) *api.Resource {
+	return api.NewResource(v1.ResourceList{
 		v1.ResourceCPU:    resource.MustParse(cpu),
 		v1.ResourceMemory: resource.MustParse(memory),
 	})
@@ -168,10 +169,10 @@ func TestAddPod(t *testing.T) {
 	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	queue1 := buildQueue("c1", "c1")
-	ni1 := NewNodeInfo(node1)
-	pi1 := NewTaskInfo(pod1)
-	pi2 := NewTaskInfo(pod2)
-	ci1 := NewQueueInfo(queue1)
+	ni1 := api.NewNodeInfo(node1)
+	pi1 := api.NewTaskInfo(pod1)
+	pi2 := api.NewTaskInfo(pod2)
+	ci1 := api.NewQueueInfo(queue1)
 	ni1.AddTask(pi2)
 	ci1.AddPod(pi1)
 	ci1.AddPod(pi2)
@@ -187,14 +188,14 @@ func TestAddPod(t *testing.T) {
 			nodes:  []*v1.Node{node1},
 			queues: []*arbv1.Queue{queue1},
 			expected: &SchedulerCache{
-				Nodes: map[string]*NodeInfo{
+				Nodes: map[string]*api.NodeInfo{
 					"n1": ni1,
 				},
-				Tasks: map[string]*TaskInfo{
+				Tasks: map[string]*api.TaskInfo{
 					"c1/p1": pi1,
 					"c1/p2": pi2,
 				},
-				Queues: map[string]*QueueInfo{
+				Queues: map[string]*api.QueueInfo{
 					"c1": ci1,
 				},
 			},
@@ -203,9 +204,9 @@ func TestAddPod(t *testing.T) {
 
 	for i, test := range tests {
 		cache := &SchedulerCache{
-			Nodes:  make(map[string]*NodeInfo),
-			Tasks:  make(map[string]*TaskInfo),
-			Queues: make(map[string]*QueueInfo),
+			Nodes:  make(map[string]*api.NodeInfo),
+			Tasks:  make(map[string]*api.TaskInfo),
+			Queues: make(map[string]*api.QueueInfo),
 		}
 
 		for _, n := range test.nodes {
@@ -233,9 +234,9 @@ func TestAddNode(t *testing.T) {
 	node1 := buildNode("n1", buildResourceList("2000m", "10G"))
 	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
-	ni1 := NewNodeInfo(node1)
-	pi1 := NewTaskInfo(pod1)
-	pi2 := NewTaskInfo(pod2)
+	ni1 := api.NewNodeInfo(node1)
+	pi1 := api.NewTaskInfo(pod1)
+	pi2 := api.NewTaskInfo(pod2)
 	ni1.AddTask(pi2)
 
 	tests := []struct {
@@ -247,18 +248,18 @@ func TestAddNode(t *testing.T) {
 			pods:  []*v1.Pod{pod1, pod2},
 			nodes: []*v1.Node{node1},
 			expected: &SchedulerCache{
-				Nodes: map[string]*NodeInfo{
+				Nodes: map[string]*api.NodeInfo{
 					"n1": ni1,
 				},
-				Tasks: map[string]*TaskInfo{
+				Tasks: map[string]*api.TaskInfo{
 					"c1/p1": pi1,
 					"c1/p2": pi2,
 				},
-				Queues: map[string]*QueueInfo{
+				Queues: map[string]*api.QueueInfo{
 					"c1": {
 						Namespace: "c1",
-						Jobs:      make(map[JobID]*JobInfo),
-						Tasks: map[string]*TaskInfo{
+						Jobs:      make(map[api.JobID]*api.JobInfo),
+						Tasks: map[string]*api.TaskInfo{
 							"p1": pi1,
 							"p2": pi2,
 						},
@@ -270,9 +271,9 @@ func TestAddNode(t *testing.T) {
 
 	for i, test := range tests {
 		cache := &SchedulerCache{
-			Nodes:  make(map[string]*NodeInfo),
-			Tasks:  make(map[string]*TaskInfo),
-			Queues: make(map[string]*QueueInfo),
+			Nodes:  make(map[string]*api.NodeInfo),
+			Tasks:  make(map[string]*api.TaskInfo),
+			Queues: make(map[string]*api.QueueInfo),
 		}
 
 		for _, p := range test.pods {
@@ -296,9 +297,9 @@ func TestAddQueue(t *testing.T) {
 	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	queue1 := buildQueue("c1", "c1")
-	pi1 := NewTaskInfo(pod1)
-	pi2 := NewTaskInfo(pod2)
-	ci1 := NewQueueInfo(queue1)
+	pi1 := api.NewTaskInfo(pod1)
+	pi2 := api.NewTaskInfo(pod2)
+	ci1 := api.NewQueueInfo(queue1)
 	ci1.AddPod(pi1)
 	ci1.AddPod(pi2)
 
@@ -311,24 +312,24 @@ func TestAddQueue(t *testing.T) {
 			pods:   []*v1.Pod{pod1, pod2},
 			queues: []*arbv1.Queue{queue1},
 			expected: &SchedulerCache{
-				Nodes: map[string]*NodeInfo{
+				Nodes: map[string]*api.NodeInfo{
 					"n1": {
-						Idle: EmptyResource(),
-						Used: EmptyResource(),
+						Idle: api.EmptyResource(),
+						Used: api.EmptyResource(),
 
-						Allocatable: EmptyResource(),
-						Capability:  EmptyResource(),
+						Allocatable: api.EmptyResource(),
+						Capability:  api.EmptyResource(),
 
-						Tasks: map[string]*TaskInfo{
+						Tasks: map[string]*api.TaskInfo{
 							"c1/p2": pi2,
 						},
 					},
 				},
-				Tasks: map[string]*TaskInfo{
+				Tasks: map[string]*api.TaskInfo{
 					"c1/p1": pi1,
 					"c1/p2": pi2,
 				},
-				Queues: map[string]*QueueInfo{
+				Queues: map[string]*api.QueueInfo{
 					"c1": ci1,
 				},
 			},
@@ -337,9 +338,9 @@ func TestAddQueue(t *testing.T) {
 
 	for i, test := range tests {
 		cache := &SchedulerCache{
-			Nodes:  make(map[string]*NodeInfo),
-			Tasks:  make(map[string]*TaskInfo),
-			Queues: make(map[string]*QueueInfo),
+			Nodes:  make(map[string]*api.NodeInfo),
+			Tasks:  make(map[string]*api.TaskInfo),
+			Queues: make(map[string]*api.QueueInfo),
 		}
 
 		for _, p := range test.pods {

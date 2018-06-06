@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cache
+package api
 
 import (
 	"k8s.io/api/core/v1"
@@ -67,7 +67,7 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 	pods := make(map[string]*TaskInfo, len(ni.Tasks))
 
 	for _, p := range ni.Tasks {
-		pods[podKey(p.Pod)] = p.Clone()
+		pods[PodKey(p.Pod)] = p.Clone()
 	}
 
 	return &NodeInfo{
@@ -104,7 +104,7 @@ func (ni *NodeInfo) AddTask(p *TaskInfo) {
 		ni.Used.Add(p.Resreq)
 	}
 
-	ni.Tasks[podKey(p.Pod)] = p
+	ni.Tasks[PodKey(p.Pod)] = p
 }
 
 func (ni *NodeInfo) RemoveTask(p *TaskInfo) {
@@ -113,5 +113,5 @@ func (ni *NodeInfo) RemoveTask(p *TaskInfo) {
 		ni.Used.Sub(p.Resreq)
 	}
 
-	delete(ni.Tasks, podKey(p.Pod))
+	delete(ni.Tasks, PodKey(p.Pod))
 }

@@ -19,7 +19,7 @@ package util
 import (
 	"container/heap"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
 )
 
 type PriorityQueue struct {
@@ -28,10 +28,10 @@ type PriorityQueue struct {
 
 type priorityQueue struct {
 	items  []interface{}
-	lessFn apis.LessFn
+	lessFn api.LessFn
 }
 
-func NewPriorityQueue(lessFn apis.LessFn) *PriorityQueue {
+func NewPriorityQueue(lessFn api.LessFn) *PriorityQueue {
 	return &PriorityQueue{
 		queue: priorityQueue{
 			items:  make([]interface{}, 0),

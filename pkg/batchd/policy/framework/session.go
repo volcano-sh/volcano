@@ -17,13 +17,14 @@ limitations under the License.
 package framework
 
 import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
 	"k8s.io/apimachinery/pkg/types"
+
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
 )
 
 type Session struct {
 	ID types.UID
 
-	Queues []*cache.QueueInfo
-	Nodes  []*cache.NodeInfo
+	Queues []*api.QueueInfo
+	Nodes  []*api.NodeInfo
 }

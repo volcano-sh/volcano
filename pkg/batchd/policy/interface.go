@@ -17,7 +17,7 @@ limitations under the License.
 package policy
 
 import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/framework"
 )
 
@@ -30,7 +30,7 @@ type Interface interface {
 	Initialize()
 
 	// Execute allocates the cluster's resources into each queue.
-	Execute(ssn *framework.Session) []*cache.QueueInfo
+	Execute(ssn *framework.Session) []*api.QueueInfo
 
 	// UnIntialize un-initializes the allocator plugins.
 	UnInitialize()
