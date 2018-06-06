@@ -19,7 +19,6 @@ package cache
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	"github.com/golang/glog"
@@ -33,7 +32,7 @@ type QueueInfo struct {
 	Namespace string
 
 	// All jobs belong to this Queue
-	Jobs map[types.UID]*JobInfo
+	Jobs map[JobID]*JobInfo
 
 	// The pod that without `Owners`
 	Tasks map[string]*TaskInfo
@@ -46,7 +45,7 @@ func NewQueueInfo(queue *arbv1.Queue) *QueueInfo {
 			Namespace: "",
 			Queue:     nil,
 
-			Jobs:  make(map[types.UID]*JobInfo),
+			Jobs:  make(map[JobID]*JobInfo),
 			Tasks: make(map[string]*TaskInfo),
 		}
 	}
@@ -56,7 +55,7 @@ func NewQueueInfo(queue *arbv1.Queue) *QueueInfo {
 		Namespace: queue.Namespace,
 		Queue:     queue,
 
-		Jobs:  make(map[types.UID]*JobInfo),
+		Jobs:  make(map[JobID]*JobInfo),
 		Tasks: make(map[string]*TaskInfo),
 	}
 }
@@ -66,7 +65,7 @@ func (ci *QueueInfo) SetQueue(queue *arbv1.Queue) {
 		ci.Name = ""
 		ci.Namespace = ""
 		ci.Queue = queue
-		ci.Jobs = make(map[types.UID]*JobInfo)
+		ci.Jobs = make(map[JobID]*JobInfo)
 		ci.Tasks = make(map[string]*TaskInfo)
 		return
 	}
@@ -77,22 +76,22 @@ func (ci *QueueInfo) SetQueue(queue *arbv1.Queue) {
 }
 
 func (ci *QueueInfo) AddPod(pi *TaskInfo) {
-	if len(pi.Owner) == 0 {
+	if len(pi.Job) == 0 {
 		ci.Tasks[pi.Name] = pi
 	} else {
-		if _, found := ci.Jobs[pi.Owner]; !found {
-			ci.Jobs[pi.Owner] = NewJobInfo(pi.Owner)
+		if _, found := ci.Jobs[pi.Job]; !found {
+			ci.Jobs[pi.Job] = NewJobInfo(pi.Job)
 		}
-		ci.Jobs[pi.Owner].AddTaskInfo(pi)
+		ci.Jobs[pi.Job].AddTaskInfo(pi)
 	}
 }
 
 func (ci *QueueInfo) RemovePod(pi *TaskInfo) {
-	if len(pi.Owner) == 0 {
+	if len(pi.Job) == 0 {
 		delete(ci.Tasks, pi.Name)
 	} else {
-		if _, found := ci.Jobs[pi.Owner]; found {
-			ci.Jobs[pi.Owner].DeleteTaskInfo(pi)
+		if _, found := ci.Jobs[pi.Job]; found {
+			ci.Jobs[pi.Job].DeleteTaskInfo(pi)
 		}
 	}
 }
@@ -143,7 +142,7 @@ func (ci *QueueInfo) Clone() *QueueInfo {
 		Namespace: ci.Namespace,
 		Queue:     ci.Queue,
 
-		Jobs:  make(map[types.UID]*JobInfo),
+		Jobs:  make(map[JobID]*JobInfo),
 		Tasks: make(map[string]*TaskInfo),
 	}
 

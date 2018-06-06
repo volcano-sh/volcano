@@ -23,7 +23,6 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/v1"
 )
@@ -63,7 +62,7 @@ func TestQueueInfo_AddPod(t *testing.T) {
 				Queue:     case01_queue,
 				Name:      "c1",
 				Namespace: "c1",
-				Jobs:      make(map[types.UID]*JobInfo),
+				Jobs:      make(map[JobID]*JobInfo),
 				Tasks: map[string]*TaskInfo{
 					"p1": NewTaskInfo(case01_pod1),
 					"p2": NewTaskInfo(case01_pod2),
@@ -78,7 +77,7 @@ func TestQueueInfo_AddPod(t *testing.T) {
 				Queue:     case02_queue,
 				Name:      "c1",
 				Namespace: "c1",
-				Jobs: map[types.UID]*JobInfo{
+				Jobs: map[JobID]*JobInfo{
 					"owner1": {
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "owner1",
@@ -150,7 +149,7 @@ func TestQueueInfo_RemovePod(t *testing.T) {
 				Queue:     case01_queue,
 				Name:      "c1",
 				Namespace: "c1",
-				Jobs:      make(map[types.UID]*JobInfo),
+				Jobs:      make(map[JobID]*JobInfo),
 				Tasks: map[string]*TaskInfo{
 					"p1": NewTaskInfo(case01_pod1),
 					"p3": NewTaskInfo(case01_pod3),
@@ -166,7 +165,7 @@ func TestQueueInfo_RemovePod(t *testing.T) {
 				Queue:     case02_queue,
 				Name:      "c1",
 				Namespace: "c1",
-				Jobs: map[types.UID]*JobInfo{
+				Jobs: map[JobID]*JobInfo{
 					"owner1": {
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "owner1",
@@ -243,7 +242,7 @@ func TestQueueInfo_AddPdb(t *testing.T) {
 				Queue:     case01_queue,
 				Name:      "c1",
 				Namespace: "c1",
-				Jobs: map[types.UID]*JobInfo{
+				Jobs: map[JobID]*JobInfo{
 					"owner1": {
 						ObjectMeta: metav1.ObjectMeta{
 							Name:   "owner1",
@@ -323,7 +322,7 @@ func TestQueueInfo_RemovePdb(t *testing.T) {
 				Queue:     case01_queue,
 				Name:      "c1",
 				Namespace: "c1",
-				Jobs: map[types.UID]*JobInfo{
+				Jobs: map[JobID]*JobInfo{
 					"owner1": {
 						ObjectMeta: metav1.ObjectMeta{
 							Name:   "owner1",

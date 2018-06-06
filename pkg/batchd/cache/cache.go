@@ -692,7 +692,7 @@ func (sc *SchedulerCache) String() string {
 				n.Name, n.Idle, n.Used, n.Allocatable, len(n.Tasks))
 			for index, p := range n.Tasks {
 				str = str + fmt.Sprintf("\t\t Pod[%s] uid(%s) owner(%s) name(%s) namespace(%s) nodename(%s) phase(%s) request(%v) pod(%v)\n",
-					index, p.UID, p.Owner, p.Name, p.Namespace, p.NodeName, p.Status, p.Resreq, p.Pod)
+					index, p.UID, p.Job, p.Name, p.Namespace, p.NodeName, p.Status, p.Resreq, p.Pod)
 			}
 		}
 	}
@@ -714,7 +714,7 @@ func (sc *SchedulerCache) String() string {
 			}
 			for k, p := range c.Tasks {
 				str = str + fmt.Sprintf("\t\t Pod[%s] uid(%s) owner(%s) name(%s) namespace(%s) nodename(%s) phase(%s) request(%v) pod(%v)\n",
-					k, p.UID, p.Owner, p.Name, p.Namespace, p.NodeName, p.Status, p.Resreq, p.Pod)
+					k, p.UID, p.Job, p.Name, p.Namespace, p.NodeName, p.Status, p.Resreq, p.Pod)
 			}
 		}
 	}

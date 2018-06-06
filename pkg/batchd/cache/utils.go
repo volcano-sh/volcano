@@ -24,6 +24,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	clientcache "k8s.io/client-go/tools/cache"
+
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis"
 )
 
 // podKey returns the string key of a pod.
@@ -35,16 +37,36 @@ func podKey(pod *v1.Pod) string {
 	}
 }
 
-func getPodOwner(pod *v1.Pod) types.UID {
-	meta_pod, err := meta.Accessor(pod)
+func getController(obj interface{}) types.UID {
+	accessor, err := meta.Accessor(obj)
 	if err != nil {
 		return ""
 	}
 
-	controllerRef := metav1.GetControllerOf(meta_pod)
+	controllerRef := metav1.GetControllerOf(accessor)
 	if controllerRef != nil {
 		return controllerRef.UID
 	}
 
 	return ""
+}
+
+func getTaskStatus(pod *v1.Pod) apis.TaskStatus {
+	switch pod.Status.Phase {
+	case v1.PodRunning:
+		return apis.Running
+	case v1.PodPending:
+		if len(pod.Spec.NodeName) == 0 {
+			return apis.Pending
+		}
+		return apis.Bound
+	case v1.PodUnknown:
+		return apis.Unknown
+	case v1.PodSucceeded:
+		return apis.Succeeded
+	case v1.PodFailed:
+		return apis.Failed
+	}
+
+	return apis.Unknown
 }

@@ -22,6 +22,8 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis"
 )
 
 type podState struct {
@@ -32,19 +34,22 @@ type podState struct {
 	bindingFinished bool
 }
 
+type TaskID types.UID
+
 type TaskInfo struct {
-	UID       types.UID
-	Owner     types.UID
+	UID TaskID
+	Job JobID
+
 	Name      string
 	Namespace string
 
+	Resreq *Resource
+
 	NodeName string
-	Status   v1.PodPhase
+	Status   apis.TaskStatus
 	Priority int32
 
 	Pod *v1.Pod
-
-	Resreq *Resource
 }
 
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
@@ -55,12 +60,12 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	}
 
 	pi := &TaskInfo{
-		UID:       pod.UID,
-		Owner:     getPodOwner(pod),
+		UID:       TaskID(pod.UID),
+		Job:       JobID(getController(pod)),
 		Name:      pod.Name,
 		Namespace: pod.Namespace,
 		NodeName:  pod.Spec.NodeName,
-		Status:    pod.Status.Phase,
+		Status:    getTaskStatus(pod),
 		Priority:  1,
 
 		Pod:    pod,
@@ -77,7 +82,7 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 func (pi *TaskInfo) Clone() *TaskInfo {
 	return &TaskInfo{
 		UID:       pi.UID,
-		Owner:     pi.Owner,
+		Job:       pi.Job,
 		Name:      pi.Name,
 		Namespace: pi.Namespace,
 		NodeName:  pi.NodeName,
@@ -87,6 +92,11 @@ func (pi *TaskInfo) Clone() *TaskInfo {
 		Resreq:    pi.Resreq.Clone(),
 	}
 }
+
+// JobID is the type of JobInfo's ID.
+type JobID types.UID
+
+type tasksMap map[JobID]*TaskInfo
 
 type JobInfo struct {
 	metav1.ObjectMeta
@@ -102,14 +112,17 @@ type JobInfo struct {
 	Assigned []*TaskInfo // The pending pod with NodeName
 	Others   []*TaskInfo
 
+	// All tasks of the Job.
+	Tasks map[apis.TaskStatus]tasksMap
+
 	NodeSelector map[string]string
 }
 
-func NewJobInfo(uid types.UID) *JobInfo {
+func NewJobInfo(uid JobID) *JobInfo {
 	return &JobInfo{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: string(uid),
-			UID:  uid,
+			UID:  types.UID(uid),
 		},
 		PdbName:      "",
 		MinAvailable: 0,
@@ -125,18 +138,16 @@ func NewJobInfo(uid types.UID) *JobInfo {
 
 func (ps *JobInfo) AddTaskInfo(pi *TaskInfo) {
 	switch pi.Status {
-	case v1.PodRunning:
+	case apis.Running:
 		ps.Running = append(ps.Running, pi)
 		ps.Allocated.Add(pi.Resreq)
 		ps.TotalRequest.Add(pi.Resreq)
-	case v1.PodPending:
-		// treat pending pod with NodeName as allocated
-		if len(pi.Pod.Spec.NodeName) != 0 {
-			ps.Allocated.Add(pi.Resreq)
-			ps.Assigned = append(ps.Assigned, pi)
-		} else {
-			ps.Pending = append(ps.Pending, pi)
-		}
+	case apis.Pending:
+		ps.Pending = append(ps.Pending, pi)
+		ps.TotalRequest.Add(pi.Resreq)
+	case apis.Bound:
+		ps.Assigned = append(ps.Assigned, pi)
+		ps.Allocated.Add(pi.Resreq)
 		ps.TotalRequest.Add(pi.Resreq)
 	default:
 		ps.Others = append(ps.Others, pi)

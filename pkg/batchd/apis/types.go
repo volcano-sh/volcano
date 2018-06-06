@@ -30,9 +30,39 @@ const (
 	Running
 	// Releasing means a task/pod is deleted.
 	Releasing
+
+	// Succeeded means that all containers in the pod have voluntarily terminated
+	// with a container exit code of 0, and the system is not going to restart any of these containers.
+	Succeeded
+
+	// Failed means that all containers in the pod have terminated, and at least one container has
+	// terminated in a failure (exited with a non-zero exit code or was stopped by the system).
+	Failed
+
 	// Unknown means the status of task/pod is unknown to the scheduler.
 	Unknown
 )
+
+func (ts TaskStatus) String() string {
+	switch ts {
+	case Pending:
+		return "Pending"
+	case Binding:
+		return "Binding"
+	case Bound:
+		return "Bound"
+	case Running:
+		return "Running"
+	case Releasing:
+		return "Releasing"
+	case Succeeded:
+		return "Succeeded"
+	case Failed:
+		return "Failed"
+	default:
+		return "Unknown"
+	}
+}
 
 // LessFn is the func declaration used by sort or priority queue.
 type LessFn func(interface{}, interface{}) bool

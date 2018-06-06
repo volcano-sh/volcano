@@ -24,6 +24,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -155,7 +156,7 @@ func (pc *PolicyController) processAllocDecision() {
 		for _, p := range ps.Assigned {
 			if len(p.NodeName) != 0 {
 				if err := pc.kubeclient.CoreV1().Pods(p.Namespace).Bind(&v1.Binding{
-					ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: p.UID},
+					ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: types.UID(p.UID)},
 					Target: v1.ObjectReference{
 						Kind: "Node",
 						Name: p.NodeName,

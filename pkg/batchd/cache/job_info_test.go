@@ -35,7 +35,7 @@ func podSetEqual(l, r *JobInfo) bool {
 
 func TestPodSet_AddPodInfo(t *testing.T) {
 	// case1
-	case01_uid := types.UID("uid")
+	case01_uid := JobID("uid")
 	case01_owner := buildOwnerReference("uid")
 	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
 	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
@@ -43,7 +43,7 @@ func TestPodSet_AddPodInfo(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		uid      types.UID
+		uid      JobID
 		pods     []*v1.Pod
 		expected *JobInfo
 	}{
@@ -54,7 +54,7 @@ func TestPodSet_AddPodInfo(t *testing.T) {
 			expected: &JobInfo{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: string(case01_uid),
-					UID:  case01_uid,
+					UID:  types.UID(case01_uid),
 				},
 				PdbName:      "",
 				MinAvailable: 0,
@@ -92,14 +92,14 @@ func TestPodSet_AddPodInfo(t *testing.T) {
 
 func TestPodSet_DeletePodInfo(t *testing.T) {
 	// case1
-	case01_uid := types.UID("owner1")
+	case01_uid := JobID("owner1")
 	case01_owner := buildOwnerReference(string(case01_uid))
 	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
 	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
 	case01_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
 
 	// case2
-	case02_uid := types.UID("owner2")
+	case02_uid := JobID("owner2")
 	case02_owner := buildOwnerReference(string(case02_uid))
 	case02_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
 	case02_pod2 := buildPod("c1", "p2", "n1", v1.PodPending, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
@@ -107,7 +107,7 @@ func TestPodSet_DeletePodInfo(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		uid      types.UID
+		uid      JobID
 		pods     []*v1.Pod
 		rmPods   []*v1.Pod
 		expected *JobInfo
@@ -120,7 +120,7 @@ func TestPodSet_DeletePodInfo(t *testing.T) {
 			expected: &JobInfo{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: string(case01_uid),
-					UID:  case01_uid,
+					UID:  types.UID(case01_uid),
 				},
 				PdbName:      "",
 				MinAvailable: 0,
@@ -145,7 +145,7 @@ func TestPodSet_DeletePodInfo(t *testing.T) {
 			expected: &JobInfo{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: string(case02_uid),
-					UID:  case02_uid,
+					UID:  types.UID(case02_uid),
 				},
 				PdbName:      "",
 				MinAvailable: 0,
