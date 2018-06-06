@@ -4,6 +4,7 @@ cmd/kube-queuejob-ctrl/app
 cmd/kube-queuejob-ctrl/app/options
 cmd/kube-quotalloc/app
 cmd/kube-quotalloc/app/options
+pkg/batchd/api
 pkg/batchd/apis/v1
 pkg/batchd/cache
 pkg/batchd/client
