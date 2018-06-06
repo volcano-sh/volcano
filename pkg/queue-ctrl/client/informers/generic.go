@@ -19,7 +19,7 @@ package informers
 import (
 	"fmt"
 
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/v1"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/queue-ctrl/apis/v1"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/cache"

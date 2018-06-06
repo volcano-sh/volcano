@@ -21,8 +21,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/informers/internalinterfaces"
-	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/informers/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/queue-ctrl/client/informers/internalinterfaces"
+	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/queue-ctrl/client/informers/v1"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"

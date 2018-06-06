@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/v1"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/queue-ctrl/apis/v1"
 )
 
 func nodesEqual(l, r map[string]*NodeInfo) bool {

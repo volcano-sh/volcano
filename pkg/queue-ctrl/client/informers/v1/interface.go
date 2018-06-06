@@ -17,7 +17,7 @@ limitations under the License.
 package v1
 
 import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/informers/internalinterfaces"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/queue-ctrl/client/informers/internalinterfaces"
 )
 
 // Interface provides access to all the informers in this group version.

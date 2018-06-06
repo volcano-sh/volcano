@@ -29,9 +29,9 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/v1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/clientset"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/queue-ctrl/apis/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/queue-ctrl/client"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/queue-ctrl/client/clientset"
 )
 
 type QueueController struct {
