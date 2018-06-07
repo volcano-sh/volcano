@@ -14,38 +14,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package policy
+package scheduler
 
 import (
-	"fmt"
-	"sync"
-
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/actions/allocate"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/scheduler/framework"
 )
 
-var policyMap = make(map[string]Interface)
-var mutex sync.Mutex
+// Interface is the interface of policy.
+type Interface interface {
+	// The unique name of allocator.
+	Name() string
 
-func init() {
-	RegisterPolicy(allocate.New())
-}
+	// Initialize initializes the allocator plugins.
+	Initialize()
 
-func New() (Interface, error) {
-	mutex.Lock()
-	defer mutex.Unlock()
+	// Execute allocates the cluster's resources into each queue.
+	Execute(ssn *framework.Session)
 
-	for _, policy := range policyMap {
-		return policy, nil
-	}
-
-	return nil, fmt.Errorf("not valid policy found")
-}
-
-func RegisterPolicy(policy Interface) error {
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	policyMap[policy.Name()] = policy
-
-	return nil
+	// UnIntialize un-initializes the allocator plugins.
+	UnInitialize()
 }

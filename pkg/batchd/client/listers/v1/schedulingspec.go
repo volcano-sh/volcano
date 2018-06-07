@@ -24,68 +24,68 @@ import (
 	"k8s.io/client-go/tools/cache"
 )
 
-// QueueLister helps list Queues.
-type QueueLister interface {
+// SchedulingSpecLister helps list Queues.
+type SchedulingSpecLister interface {
 	// List lists all Queues in the indexer.
-	List(selector labels.Selector) (ret []*arbv1.Queue, err error)
-	// Queues returns an object that can list and get Queues.
-	Queues(namespace string) QueueNamespaceLister
+	List(selector labels.Selector) (ret []*arbv1.SchedulingSpec, err error)
+	// SchedulingSpecs returns an object that can list and get Queues.
+	SchedulingSpecs(namespace string) SchedulingSpecNamespaceLister
 }
 
 // queueLister implements the QueueLister interface.
-type queueLister struct {
+type schedulingSpecLister struct {
 	indexer cache.Indexer
 }
 
-// NewQueueLister returns a new QueueLister.
-func NewQueueLister(indexer cache.Indexer) QueueLister {
-	return &queueLister{indexer: indexer}
+// NewSchedulingSpecLister returns a new QueueLister.
+func NewSchedulingSpecLister(indexer cache.Indexer) SchedulingSpecLister {
+	return &schedulingSpecLister{indexer: indexer}
 }
 
 // List lists all Queues in the indexer.
-func (s *queueLister) List(selector labels.Selector) (ret []*arbv1.Queue, err error) {
+func (s *schedulingSpecLister) List(selector labels.Selector) (ret []*arbv1.SchedulingSpec, err error) {
 	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
-		ret = append(ret, m.(*arbv1.Queue))
+		ret = append(ret, m.(*arbv1.SchedulingSpec))
 	})
 	return ret, err
 }
 
 // Queues returns an object that can list and get Queues.
-func (s *queueLister) Queues(namespace string) QueueNamespaceLister {
-	return queueNamespaceLister{indexer: s.indexer, namespace: namespace}
+func (s *schedulingSpecLister) SchedulingSpecs(namespace string) SchedulingSpecNamespaceLister {
+	return schedulingSpecNamespaceLister{indexer: s.indexer, namespace: namespace}
 }
 
-// QueueNamespaceLister helps list and get Queues.
-type QueueNamespaceLister interface {
+// SchedulingSpecNamespaceLister helps list and get Queues.
+type SchedulingSpecNamespaceLister interface {
 	// List lists all Queues in the indexer for a given namespace.
-	List(selector labels.Selector) (ret []*arbv1.Queue, err error)
+	List(selector labels.Selector) (ret []*arbv1.SchedulingSpec, err error)
 	// Get retrieves the Queue from the indexer for a given namespace and name.
-	Get(name string) (*arbv1.Queue, error)
+	Get(name string) (*arbv1.SchedulingSpec, error)
 }
 
-// queueNamespaceLister implements the QueueNamespaceLister
+// schedulingSpecNamespaceLister implements the QueueNamespaceLister
 // interface.
-type queueNamespaceLister struct {
+type schedulingSpecNamespaceLister struct {
 	indexer   cache.Indexer
 	namespace string
 }
 
 // List lists all Queues in the indexer for a given namespace.
-func (s queueNamespaceLister) List(selector labels.Selector) (ret []*arbv1.Queue, err error) {
+func (s schedulingSpecNamespaceLister) List(selector labels.Selector) (ret []*arbv1.SchedulingSpec, err error) {
 	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
-		ret = append(ret, m.(*arbv1.Queue))
+		ret = append(ret, m.(*arbv1.SchedulingSpec))
 	})
 	return ret, err
 }
 
 // Get retrieves the Queue from the indexer for a given namespace and name.
-func (s queueNamespaceLister) Get(name string) (*arbv1.Queue, error) {
+func (s schedulingSpecNamespaceLister) Get(name string) (*arbv1.SchedulingSpec, error) {
 	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
 	if err != nil {
 		return nil, err
 	}
 	if !exists {
-		return nil, errors.NewNotFound(arbv1.Resource("queue"), name)
+		return nil, errors.NewNotFound(arbv1.Resource("schedulingspec"), name)
 	}
-	return obj.(*arbv1.Queue), nil
+	return obj.(*arbv1.SchedulingSpec), nil
 }

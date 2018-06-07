@@ -26,16 +26,16 @@ import (
 	clientcache "k8s.io/client-go/tools/cache"
 )
 
-// podKey returns the string key of a pod.
-func PodKey(pod *v1.Pod) string {
+// PodKey returns the string key of a pod.
+func PodKey(pod *v1.Pod) TaskID {
 	if key, err := clientcache.MetaNamespaceKeyFunc(pod); err != nil {
-		return fmt.Sprintf("%v/%v", pod.Namespace, pod.Name)
+		return TaskID(fmt.Sprintf("%v/%v", pod.Namespace, pod.Name))
 	} else {
-		return key
+		return TaskID(key)
 	}
 }
 
-func getController(obj interface{}) types.UID {
+func GetController(obj interface{}) types.UID {
 	accessor, err := meta.Accessor(obj)
 	if err != nil {
 		return ""
@@ -69,14 +69,11 @@ func getTaskStatus(pod *v1.Pod) TaskStatus {
 	return Unknown
 }
 
-// UpdateStatus updates task status to the target status, return error if the transformation
-// is invalid.
-func UpdateStatus(task *TaskInfo, status TaskStatus) error {
-	if err := ValidateStatusUpdate(task.Status, status); err != nil {
-		return err
+func OccupiedResources(status TaskStatus) bool {
+	switch status {
+	case Bound, Binding, Running, Releasing:
+		return true
+	default:
+		return false
 	}
-
-	task.Status = status
-
-	return nil
 }

@@ -23,6 +23,9 @@ const (
 	// Pending means the task is pending in the apiserver.
 	Pending TaskStatus = 1 << iota
 
+	// Allocated means the scheduler assigns a host to it.
+	Allocated
+
 	// Binding means the scheduler send Bind request to apiserver.
 	Binding
 

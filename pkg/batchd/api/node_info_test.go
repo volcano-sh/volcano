@@ -55,7 +55,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				Used:        buildResource("3000m", "3G"),
 				Allocatable: buildResource("8000m", "10G"),
 				Capability:  buildResource("8000m", "10G"),
-				Tasks: map[string]*TaskInfo{
+				Tasks: map[TaskID]*TaskInfo{
 					"c1/p1": NewTaskInfo(case01_pod1),
 					"c1/p2": NewTaskInfo(case01_pod2),
 				},
@@ -104,7 +104,7 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 				Used:        buildResource("4000m", "4G"),
 				Allocatable: buildResource("8000m", "10G"),
 				Capability:  buildResource("8000m", "10G"),
-				Tasks: map[string]*TaskInfo{
+				Tasks: map[TaskID]*TaskInfo{
 					"c1/p1": NewTaskInfo(case01_pod1),
 					"c1/p3": NewTaskInfo(case01_pod3),
 				},

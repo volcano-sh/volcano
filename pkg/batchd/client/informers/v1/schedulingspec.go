@@ -29,43 +29,44 @@ import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/listers/v1"
 )
 
-// QueueInformer provides access to a shared informer and lister for
+// SchedulingSpecInformer provides access to a shared informer and lister for
 // Queues.
-type QueueInformer interface {
+type SchedulingSpecInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1.QueueLister
+	Lister() v1.SchedulingSpecLister
 }
 
-type queueInformer struct {
+type schedulingSpecInformer struct {
 	factory internalinterfaces.SharedInformerFactory
 }
 
-// NewQueueInformer constructs a new informer for Queue type.
+// NewSchedulingSpecInformer constructs a new informer for Queue type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewQueueInformer(client *rest.RESTClient, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+func NewSchedulingSpecInformer(client *rest.RESTClient, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
 	source := cache.NewListWatchFromClient(
 		client,
-		arbv1.QueuePlural,
+		arbv1.SchedulingSpecPlural,
 		namespace,
 		fields.Everything())
 
 	return cache.NewSharedIndexInformer(
 		source,
-		&arbv1.Queue{},
+		&arbv1.SchedulingSpec{},
 		resyncPeriod,
 		indexers,
 	)
 }
 
-func defaultQueueInformer(client *rest.RESTClient, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewQueueInformer(client, meta_v1.NamespaceAll, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+func defaultSchedulingSpecInformer(client *rest.RESTClient, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	return NewSchedulingSpecInformer(client, meta_v1.NamespaceAll,
+		resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 }
 
-func (f *queueInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&arbv1.Queue{}, defaultQueueInformer)
+func (f *schedulingSpecInformer) Informer() cache.SharedIndexInformer {
+	return f.factory.InformerFor(&arbv1.SchedulingSpec{}, defaultSchedulingSpecInformer)
 }
 
-func (f *queueInformer) Lister() v1.QueueLister {
-	return v1.NewQueueLister(f.Informer().GetIndexer())
+func (f *schedulingSpecInformer) Lister() v1.SchedulingSpecLister {
+	return v1.NewSchedulingSpecLister(f.Informer().GetIndexer())
 }

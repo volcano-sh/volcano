@@ -20,11 +20,12 @@ import (
 	"github.com/golang/glog"
 
 	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/framework"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/util"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/scheduler/framework"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/scheduler/util"
 )
 
 type allocateAction struct {
+	ssn *framework.Session
 }
 
 func New() *allocateAction {
@@ -51,11 +52,14 @@ func compareName(l, r interface{}) bool {
 	return lv.podSet.Name < rv.podSet.Name
 }
 
-func (alloc *allocateAction) Execute(ssn *framework.Session) []*arbapi.QueueInfo {
+func (alloc *allocateAction) Execute(ssn *framework.Session) {
 	glog.V(4).Infof("Enter Allocate ...")
 	defer glog.V(4).Infof("Leaving Allocate ...")
 
-	queues := ssn.Queues
+	alloc.ssn = ssn
+	defer func() { alloc.ssn = nil }()
+
+	jobs := ssn.Jobs
 	nodes := ssn.Nodes
 
 	total := arbapi.EmptyResource()
@@ -64,11 +68,10 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) []*arbapi.QueueInfo
 	}
 
 	dq := util.NewPriorityQueue(compareName)
-	for _, c := range queues {
-		for _, ps := range c.Jobs {
-			psi := newPodSetInfo(ps, total)
-			dq.Push(psi)
-		}
+
+	for _, ps := range jobs {
+		psi := newPodSetInfo(ps, total)
+		dq.Push(psi)
 	}
 
 	// assign MinAvailable of each podSet first by chronologically
@@ -88,19 +91,16 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) []*arbapi.QueueInfo
 			// to avoid PodSet get resources less than MinAvailable by following DRF assignment
 			pq.Push(psi)
 
-			glog.V(3).Infof("assign MinAvailable for podset %s/%s successfully",
-				psi.podSet.Namespace, psi.podSet.Name)
+			glog.V(3).Infof("assign MinAvailable for podset %v successfully", psi.podSet.UID)
 		} else {
-			glog.V(3).Infof("assign MinAvailable for podset %s/%s failed, there is no enough resources",
-				psi.podSet.Namespace, psi.podSet.Name)
+			glog.V(3).Infof("assign MinAvailable for podset %v failed, there is no enough resources", psi.podSet.UID)
 		}
 	}
 
 	for !pq.Empty() {
 		psi := pq.Pop().(*podSetInfo)
 
-		glog.V(3).Infof("try to allocate resources to PodSet <%v/%v>",
-			psi.podSet.Namespace, psi.podSet.Name)
+		glog.V(3).Infof("try to allocate resources to PodSet <%v/%v>", psi.podSet.UID)
 
 		// assign one pod of PodSet by DRF
 		assigned := alloc.assignMinimalPods(1, psi, matchNodesForPodSet[psi.podSet.Name])
@@ -110,8 +110,6 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) []*arbapi.QueueInfo
 			pq.Push(psi)
 		}
 	}
-
-	return queues
 }
 
 func (alloc *allocateAction) UnInitialize() {}
@@ -135,8 +133,7 @@ func (alloc *allocateAction) assignMinimalPods(min int, psi *podSetInfo, nodes [
 	for min > 0 {
 		p := psi.popPendingPod()
 		if p == nil {
-			glog.V(3).Infof("no pending Pod in PodSet <%v/%v>",
-				psi.podSet.Namespace, psi.podSet.Name)
+			glog.V(3).Infof("no pending Pod in PodSet <%v>", psi.podSet.UID)
 			break
 		}
 
@@ -190,11 +187,17 @@ func (alloc *allocateAction) assignMinimalPods(min int, psi *podSetInfo, nodes [
 
 	if min == 0 {
 		// min is met, accept all assignment this time
-		psi.assignPods(unacceptedAssignment)
-		for nodeName, alloc := range unacceptedAllocation {
-			node := nodesMap[nodeName]
-			node.Idle.Sub(alloc)
+		for _, task := range unacceptedAssignment {
+			alloc.ssn.Bind(task, task.NodeName)
 		}
+		// update podset share
+		psi.share = psi.calculateShare(psi.dominantResource)
+
+		// psi.assignPods(unacceptedAssignment)
+		// for nodeName, alloc := range unacceptedAllocation {
+		// 	node := nodesMap[nodeName]
+		// 	node.Idle.Sub(alloc)
+		// }
 		return true
 	}
 

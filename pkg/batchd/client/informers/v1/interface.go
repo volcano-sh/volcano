@@ -22,8 +22,8 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
-	// Queues returns a QueueInformer.
-	Queues() QueueInformer
+	// SchedulingSpecs returns a SchedulingSpecInformer.
+	SchedulingSpecs() SchedulingSpecInformer
 }
 
 type version struct {
@@ -36,6 +36,6 @@ func New(f internalinterfaces.SharedInformerFactory) Interface {
 }
 
 // Queues returns a QueueInformer.
-func (v *version) Queues() QueueInformer {
-	return &queueInformer{factory: v.SharedInformerFactory}
+func (v *version) SchedulingSpecs() SchedulingSpecInformer {
+	return &schedulingSpecInformer{factory: v.SharedInformerFactory}
 }

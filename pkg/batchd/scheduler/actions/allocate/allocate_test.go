@@ -32,7 +32,7 @@ import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/framework"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/scheduler/framework"
 )
 
 func init() {
@@ -69,15 +69,6 @@ func buildNode(name string, alloc v1.ResourceList, labels map[string]string) *v1
 		Status: v1.NodeStatus{
 			Capacity:    alloc,
 			Allocatable: alloc,
-		},
-	}
-}
-
-func buildQueue(name string, namespace string) *arbv1.Queue {
-	return &arbv1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
 		},
 	}
 }
@@ -136,10 +127,10 @@ func TestExecute(t *testing.T) {
 	owner2 := buildOwnerReference("owner2")
 
 	tests := []struct {
-		name     string
-		pods     []*v1.Pod
-		nodes    []*v1.Node
-		queues   []*arbv1.Queue
+		name  string
+		pods  []*v1.Pod
+		nodes []*v1.Node
+
 		pdbs     []*v1beta1.PodDisruptionBudget
 		expected map[string]string
 	}{

@@ -28,12 +28,12 @@ func OpenSession(cache cache.Cache) *Session {
 	return &Session{
 		ID: uuid.NewUUID(),
 
-		Queues: snapshot.Queues,
-		Nodes:  snapshot.Nodes,
+		Jobs:  snapshot.Jobs,
+		Nodes: snapshot.Nodes,
 	}
 }
 
 func CloseSession(ssn *Session) {
-	ssn.Queues = nil
+	ssn.Jobs = nil
 	ssn.Nodes = nil
 }

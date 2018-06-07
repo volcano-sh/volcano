@@ -22,10 +22,9 @@ import (
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 )
 
-func podSetEqual(l, r *JobInfo) bool {
+func jobInfoEqual(l, r *JobInfo) bool {
 	if !reflect.DeepEqual(l, r) {
 		return false
 	}
@@ -33,13 +32,19 @@ func podSetEqual(l, r *JobInfo) bool {
 	return true
 }
 
-func TestPodSet_AddPodInfo(t *testing.T) {
+func TestAddTaskInfo(t *testing.T) {
 	// case1
 	case01_uid := JobID("uid")
 	case01_owner := buildOwnerReference("uid")
+
 	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
+	case01_task1 := NewTaskInfo(case01_pod1)
 	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
+	case01_task2 := NewTaskInfo(case01_pod2)
 	case01_pod3 := buildPod("c1", "p3", "n1", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
+	case01_task3 := NewTaskInfo(case01_pod3)
+	case01_pod4 := buildPod("c1", "p4", "n1", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
+	case01_task4 := NewTaskInfo(case01_pod4)
 
 	tests := []struct {
 		name     string
@@ -50,26 +55,24 @@ func TestPodSet_AddPodInfo(t *testing.T) {
 		{
 			name: "add 1 pending owner pod, 1 running owner pod",
 			uid:  case01_uid,
-			pods: []*v1.Pod{case01_pod1, case01_pod2, case01_pod3},
+			pods: []*v1.Pod{case01_pod1, case01_pod2, case01_pod3, case01_pod4},
 			expected: &JobInfo{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: string(case01_uid),
-					UID:  types.UID(case01_uid),
-				},
-				PdbName:      "",
+				UID:          case01_uid,
 				MinAvailable: 0,
-				Allocated:    buildResource("3000m", "3G"),
-				TotalRequest: buildResource("4000m", "4G"),
-				Running: []*TaskInfo{
-					NewTaskInfo(case01_pod2),
+				Allocated:    buildResource("4000m", "4G"),
+				TotalRequest: buildResource("5000m", "5G"),
+				Tasks: map[TaskStatus]tasksMap{
+					Running: tasksMap{
+						case01_task2.UID: case01_task2,
+					},
+					Pending: tasksMap{
+						case01_task1.UID: case01_task1,
+					},
+					Bound: tasksMap{
+						case01_task3.UID: case01_task3,
+						case01_task4.UID: case01_task4,
+					},
 				},
-				Pending: []*TaskInfo{
-					NewTaskInfo(case01_pod1),
-				},
-				Assigned: []*TaskInfo{
-					NewTaskInfo(case01_pod3),
-				},
-				Others:       []*TaskInfo{},
 				NodeSelector: make(map[string]string),
 			},
 		},
@@ -83,27 +86,31 @@ func TestPodSet_AddPodInfo(t *testing.T) {
 			ps.AddTaskInfo(pi)
 		}
 
-		if !podSetEqual(ps, test.expected) {
-			t.Errorf("podset info %d: \n expected %v, \n got %v \n",
+		if !jobInfoEqual(ps, test.expected) {
+			t.Errorf("podset info %d: \n expected: %v, \n got: %v \n",
 				i, test.expected, ps)
 		}
 	}
 }
 
-func TestPodSet_DeletePodInfo(t *testing.T) {
+func TestDeleteTaskInfo(t *testing.T) {
 	// case1
 	case01_uid := JobID("owner1")
 	case01_owner := buildOwnerReference(string(case01_uid))
 	case01_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
+	case01_task1 := NewTaskInfo(case01_pod1)
 	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
 	case01_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
+	case01_task3 := NewTaskInfo(case01_pod3)
 
 	// case2
 	case02_uid := JobID("owner2")
 	case02_owner := buildOwnerReference(string(case02_uid))
 	case02_pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
+	case02_task1 := NewTaskInfo(case02_pod1)
 	case02_pod2 := buildPod("c1", "p2", "n1", v1.PodPending, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
 	case02_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
+	case02_task3 := NewTaskInfo(case02_pod3)
 
 	tests := []struct {
 		name     string
@@ -118,22 +125,14 @@ func TestPodSet_DeletePodInfo(t *testing.T) {
 			pods:   []*v1.Pod{case01_pod1, case01_pod2, case01_pod3},
 			rmPods: []*v1.Pod{case01_pod2},
 			expected: &JobInfo{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: string(case01_uid),
-					UID:  types.UID(case01_uid),
-				},
-				PdbName:      "",
+				UID:          case01_uid,
 				MinAvailable: 0,
 				Allocated:    buildResource("3000m", "3G"),
 				TotalRequest: buildResource("4000m", "4G"),
-				Running: []*TaskInfo{
-					NewTaskInfo(case01_pod3),
+				Tasks: map[TaskStatus]tasksMap{
+					Pending: tasksMap{case01_task1.UID: case01_task1},
+					Running: tasksMap{case01_task3.UID: case01_task3},
 				},
-				Assigned: []*TaskInfo{},
-				Pending: []*TaskInfo{
-					NewTaskInfo(case01_pod1),
-				},
-				Others:       []*TaskInfo{},
 				NodeSelector: make(map[string]string),
 			},
 		},
@@ -143,22 +142,18 @@ func TestPodSet_DeletePodInfo(t *testing.T) {
 			pods:   []*v1.Pod{case02_pod1, case02_pod2, case02_pod3},
 			rmPods: []*v1.Pod{case02_pod2},
 			expected: &JobInfo{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: string(case02_uid),
-					UID:  types.UID(case02_uid),
-				},
-				PdbName:      "",
+				UID:          case02_uid,
 				MinAvailable: 0,
 				Allocated:    buildResource("3000m", "3G"),
 				TotalRequest: buildResource("4000m", "4G"),
-				Running: []*TaskInfo{
-					NewTaskInfo(case02_pod3),
+				Tasks: map[TaskStatus]tasksMap{
+					Pending: tasksMap{
+						case02_task1.UID: case02_task1,
+					},
+					Running: tasksMap{
+						case02_task3.UID: case02_task3,
+					},
 				},
-				Assigned: []*TaskInfo{},
-				Pending: []*TaskInfo{
-					NewTaskInfo(case02_pod1),
-				},
-				Others:       []*TaskInfo{},
 				NodeSelector: make(map[string]string),
 			},
 		},
@@ -177,8 +172,8 @@ func TestPodSet_DeletePodInfo(t *testing.T) {
 			ps.DeleteTaskInfo(pi)
 		}
 
-		if !podSetEqual(ps, test.expected) {
-			t.Errorf("podset info %d: \n expected %v, \n got %v \n",
+		if !jobInfoEqual(ps, test.expected) {
+			t.Errorf("podset info %d: \n expected: %v, \n got: %v \n",
 				i, test.expected, ps)
 		}
 	}

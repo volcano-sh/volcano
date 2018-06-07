@@ -17,36 +17,31 @@ limitations under the License.
 package v1
 
 import (
-	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const QueuePlural = "queues"
+// SchedulingSpecPlural is the plural of SchedulingSpec
+const SchedulingSpecPlural = "schedulingspec"
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type Queue struct {
+type SchedulingSpec struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              QueueSpec `json:"spec"`
+
+	Spec SchedulingSpecTemplate `json:"spec"`
 }
 
-type QueueSpec struct {
-	Weight   int             `json:"weight"`
-	Reserved v1.ResourceList `json:"reserved"`
-}
-
-type QueueStatus struct {
-	Deserved   v1.ResourceList `json:"deserved"`
-	Allocated  v1.ResourceList `json:"allocated"`
-	Used       v1.ResourceList `json:"used"`
-	Preempting v1.ResourceList `json:"preempting"`
+type SchedulingSpecTemplate struct {
+	NodeSelector map[string]string `json:"nodeSelector,omitempty" protobuf:"bytes,1,rep,name=nodeSelector"`
+	MinAvailable int               `json:"minAvailable,omitempty" protobuf:"bytes,2,rep,name=minAvailable"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type QueueList struct {
+type SchedulingSpecList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
-	Items           []Queue `json:"items"`
+
+	Items []SchedulingSpec `json:"items"`
 }
 
 type ResourceName string

@@ -14,9 +14,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package api
+package framework
 
-// ValidateStatusUpdate validates whether the status transfer is valid.
-func ValidateStatusUpdate(oldStatus, newStatus TaskStatus) error {
+import (
+	"k8s.io/apimachinery/pkg/types"
+
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
+)
+
+type Session struct {
+	ID types.UID
+
+	Jobs  []*api.JobInfo
+	Nodes []*api.NodeInfo
+}
+
+func (ssn *Session) Bind(task *api.TaskInfo, hostname string) error {
+	return nil
+}
+
+func (ssn *Session) Evict(task *api.TaskInfo) error {
 	return nil
 }

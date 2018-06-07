@@ -22,7 +22,7 @@ import (
 	"k8s.io/api/core/v1"
 
 	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/util"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/scheduler/util"
 )
 
 type podSetInfo struct {
@@ -71,12 +71,12 @@ func newPodSetInfo(ps *arbapi.JobInfo, t *arbapi.Resource) *podSetInfo {
 	}
 
 	// TODO(jinzhejz): it is better to move sorted pods to PodSet
-	for _, ps := range psi.podSet.Pending {
+	for _, ps := range psi.podSet.Tasks[arbapi.Pending] {
 		psi.pendingSorted.Push(ps)
 	}
 
 	glog.V(3).Infof("PodSet <%v/%v>: priority <%f>, dominant resource <%v>",
-		psi.podSet.Namespace, psi.podSet.Name, psi.share, psi.dominantResource)
+		psi.podSet.UID, psi.podSet.Name, psi.share, psi.dominantResource)
 
 	return psi
 }
@@ -97,24 +97,17 @@ func (psi *podSetInfo) pushPendingPod(p *arbapi.TaskInfo) {
 
 func (psi *podSetInfo) insufficientMinAvailable() int {
 	insufficient := 0
-	if len(psi.podSet.Running)+len(psi.podSet.Assigned) < psi.podSet.MinAvailable {
-		insufficient = psi.podSet.MinAvailable - len(psi.podSet.Running) - len(psi.podSet.Assigned)
+	occupied := 0
+	for status, tasks := range psi.podSet.Tasks {
+		if arbapi.OccupiedResources(status) {
+			occupied = occupied + len(tasks)
+		}
+	}
+
+	if occupied < psi.podSet.MinAvailable {
+		insufficient = psi.podSet.MinAvailable - occupied
 	}
 	return insufficient
-}
-
-func (psi *podSetInfo) assignPods(tasks []*arbapi.TaskInfo) {
-	if len(tasks) == 0 {
-		return
-	}
-
-	for _, task := range tasks {
-		psi.podSet.Assigned = append(psi.podSet.Assigned, task)
-		psi.allocated.Add(task.Resreq)
-	}
-
-	// update podset share
-	psi.share = psi.calculateShare(psi.dominantResource)
 }
 
 func (psi *podSetInfo) calculateShare(rn v1.ResourceName) float64 {

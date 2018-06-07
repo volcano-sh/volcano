@@ -17,9 +17,12 @@ limitations under the License.
 package api
 
 import (
+	"fmt"
+
 	"k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/v1"
 )
 
 type TaskID types.UID
@@ -43,13 +46,14 @@ type TaskInfo struct {
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	req := EmptyResource()
 
+	// TODO(k82cn): also includes initContainers' resource.
 	for _, c := range pod.Spec.Containers {
 		req.Add(NewResource(c.Resources.Requests))
 	}
 
 	pi := &TaskInfo{
 		UID:       TaskID(pod.UID),
-		Job:       JobID(getController(pod)),
+		Job:       JobID(GetController(pod)),
 		Name:      pod.Name,
 		Namespace: pod.Namespace,
 		NodeName:  pod.Spec.NodeName,
@@ -81,146 +85,125 @@ func (pi *TaskInfo) Clone() *TaskInfo {
 	}
 }
 
+func (pi TaskInfo) String() string {
+	return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v, resreq %v",
+		pi.UID, pi.Namespace, pi.Name, pi.Job, pi.Status, pi.Priority, pi.Resreq)
+}
+
 // JobID is the type of JobInfo's ID.
 type JobID types.UID
 
-type tasksMap map[JobID]*TaskInfo
+type tasksMap map[TaskID]*TaskInfo
 
 type JobInfo struct {
-	metav1.ObjectMeta
+	UID JobID
 
-	PdbName      string
+	Name string
+
+	NodeSelector map[string]string
 	MinAvailable int
-
-	Allocated    *Resource
-	TotalRequest *Resource
-
-	Running  []*TaskInfo
-	Pending  []*TaskInfo // The pending pod without NodeName
-	Assigned []*TaskInfo // The pending pod with NodeName
-	Others   []*TaskInfo
 
 	// All tasks of the Job.
 	Tasks map[TaskStatus]tasksMap
 
-	NodeSelector map[string]string
+	Allocated    *Resource
+	TotalRequest *Resource
+
+	SchedSpec *arbv1.SchedulingSpec
 }
 
 func NewJobInfo(uid JobID) *JobInfo {
 	return &JobInfo{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: string(uid),
-			UID:  types.UID(uid),
-		},
-		PdbName:      "",
+		UID: uid,
+
 		MinAvailable: 0,
+		NodeSelector: make(map[string]string),
+
 		Allocated:    EmptyResource(),
 		TotalRequest: EmptyResource(),
-		Running:      make([]*TaskInfo, 0),
-		Pending:      make([]*TaskInfo, 0),
-		Assigned:     make([]*TaskInfo, 0),
-		Others:       make([]*TaskInfo, 0),
-		NodeSelector: make(map[string]string),
+
+		Tasks: map[TaskStatus]tasksMap{},
 	}
 }
 
+func (ps *JobInfo) SetSchedulingSpec(spec *arbv1.SchedulingSpec) {
+	ps.MinAvailable = spec.Spec.MinAvailable
+
+	for k, v := range spec.Spec.NodeSelector {
+		ps.NodeSelector[k] = v
+	}
+
+	ps.SchedSpec = spec
+}
+
 func (ps *JobInfo) AddTaskInfo(pi *TaskInfo) {
-	switch pi.Status {
-	case Running:
-		ps.Running = append(ps.Running, pi)
-		ps.Allocated.Add(pi.Resreq)
-		ps.TotalRequest.Add(pi.Resreq)
-	case Pending:
-		ps.Pending = append(ps.Pending, pi)
-		ps.TotalRequest.Add(pi.Resreq)
-	case Bound:
-		ps.Assigned = append(ps.Assigned, pi)
-		ps.Allocated.Add(pi.Resreq)
-		ps.TotalRequest.Add(pi.Resreq)
-	default:
-		ps.Others = append(ps.Others, pi)
+	if _, found := ps.Tasks[pi.Status]; !found {
+		ps.Tasks[pi.Status] = tasksMap{}
 	}
 
-	// Update PodSet Labels
-	// assume all pods in the same PodSet have same labels
-	if len(ps.Labels) == 0 && len(pi.Pod.Labels) != 0 {
-		ps.Labels = pi.Pod.Labels
-	}
+	ps.Tasks[pi.Status][pi.UID] = pi
 
-	// Update PodSet NodeSelector
-	// assume all pods in the same PodSet have same NodeSelector
-	if len(ps.NodeSelector) == 0 && len(pi.Pod.Spec.NodeSelector) != 0 {
-		for k, v := range pi.Pod.Spec.NodeSelector {
-			ps.NodeSelector[k] = v
-		}
+	ps.TotalRequest.Add(pi.Resreq)
+
+	if OccupiedResources(pi.Status) {
+		ps.Allocated.Add(pi.Resreq)
 	}
 }
 
 func (ps *JobInfo) DeleteTaskInfo(pi *TaskInfo) {
-	for index, piRunning := range ps.Running {
-		if piRunning.Name == pi.Name {
-			ps.Allocated.Sub(piRunning.Resreq)
-			ps.TotalRequest.Sub(piRunning.Resreq)
-			ps.Running = append(ps.Running[:index], ps.Running[index+1:]...)
-			return
-		}
-	}
+	if ts, found := ps.Tasks[pi.Status]; found {
+		if task, ok := ts[pi.UID]; ok {
+			ps.TotalRequest.Sub(task.Resreq)
 
-	for index, piPending := range ps.Pending {
-		if piPending.Name == pi.Name {
-			if len(piPending.Pod.Spec.NodeName) != 0 {
-				ps.Allocated.Sub(piPending.Resreq)
+			if OccupiedResources(task.Status) {
+				ps.Allocated.Sub(task.Resreq)
 			}
-			ps.TotalRequest.Sub(piPending.Resreq)
-			ps.Pending = append(ps.Pending[:index], ps.Pending[index+1:]...)
-			return
 		}
-	}
 
-	for index, piAssigned := range ps.Assigned {
-		if piAssigned.Name == pi.Name {
-			if len(piAssigned.Pod.Spec.NodeName) != 0 {
-				ps.Allocated.Sub(piAssigned.Resreq)
-			}
-			ps.TotalRequest.Sub(piAssigned.Resreq)
-			ps.Assigned = append(ps.Assigned[:index], ps.Assigned[index+1:]...)
-			return
+		delete(ts, pi.UID)
+
+		if len(ts) == 0 {
+			delete(ps.Tasks, pi.Status)
 		}
 	}
 }
 
 func (ps *JobInfo) Clone() *JobInfo {
 	info := &JobInfo{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: ps.Name,
-			UID:  ps.UID,
-		},
-		PdbName:      ps.PdbName,
+		UID: ps.UID,
+
 		MinAvailable: ps.MinAvailable,
+		NodeSelector: map[string]string{},
 		Allocated:    ps.Allocated.Clone(),
 		TotalRequest: ps.TotalRequest.Clone(),
-		Running:      make([]*TaskInfo, 0),
-		Pending:      make([]*TaskInfo, 0),
-		Assigned:     make([]*TaskInfo, 0),
-		Others:       make([]*TaskInfo, 0),
-		NodeSelector: ps.NodeSelector,
+
+		Tasks: map[TaskStatus]tasksMap{},
 	}
 
-	for _, pod := range ps.Running {
-		info.Running = append(info.Running, pod.Clone())
+	for k, v := range ps.NodeSelector {
+		info.NodeSelector[k] = v
 	}
 
-	for _, pod := range ps.Pending {
-		info.Pending = append(info.Pending, pod.Clone())
-	}
-
-	for _, pod := range ps.Assigned {
-		info.Assigned = append(info.Assigned, pod.Clone())
-	}
-
-	for _, pod := range ps.Others {
-		info.Others = append(info.Others, pod.Clone())
+	for status, tasks := range ps.Tasks {
+		info.Tasks[status] = tasksMap{}
+		for id, task := range tasks {
+			info.Tasks[status][id] = task.Clone()
+		}
 	}
 
 	return info
+}
+
+func (ps JobInfo) String() string {
+	res := ""
+	i := 0
+
+	for _, tasks := range ps.Tasks {
+		for _, task := range tasks {
+			res = res + fmt.Sprintf("\n\t %d: %v", i, task)
+			i++
+		}
+	}
+
+	return fmt.Sprintf("Job (%v): name %v, minAvailable %d", ps.UID, ps.Name, ps.MinAvailable) + res
 }

@@ -17,8 +17,6 @@ limitations under the License.
 package cache
 
 import (
-	"k8s.io/api/core/v1"
-
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
 )
 
@@ -38,5 +36,10 @@ type Cache interface {
 	// The implementation also decides the policy to expire pod before being confirmed (receiving Add event).
 	// After expiration, its information would be subtracted.
 	// TODO(jinzhej): clean up expire Pods
-	AssumePod(pod *v1.Pod) error
+	// AssumePod(pod *v1.Pod) error
+
+	// UpdateStatus updates task status to the target status, return error if the transformation
+	// is invalid.
+	// TODO(jinzhej): clean up expire Tasks.
+	UpdateStatus(task *api.TaskInfo, status api.TaskStatus) error
 }

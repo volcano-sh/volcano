@@ -53,8 +53,11 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 	switch resource {
 	// Group=, Version=V1
 
-	case arbv1.SchemeGroupVersion.WithResource("queues"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Queue().Queues().Informer()}, nil
+	case arbv1.SchemeGroupVersion.WithResource("schedulingspecs"):
+		return &genericInformer{
+			resource: resource.GroupResource(),
+			informer: f.SchedulingSpec().SchedulingSpecs().Informer(),
+		}, nil
 	}
 
 	return nil, fmt.Errorf("no informer found for %v", resource)

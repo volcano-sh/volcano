@@ -54,20 +54,20 @@ func NewClient(cfg *rest.Config) (*rest.RESTClient, *runtime.Scheme, error) {
 	return client, scheme, nil
 }
 
-const queueCRDName = arbv1.QueuePlural + "." + arbv1.GroupName
+const schedulingSpecKindName = arbv1.SchedulingSpecPlural + "." + arbv1.GroupName
 
-func CreateQueueCRD(clientset apiextensionsclient.Interface) (*apiextensionsv1beta1.CustomResourceDefinition, error) {
+func CreateSchedulingSpecKind(clientset apiextensionsclient.Interface) (*apiextensionsv1beta1.CustomResourceDefinition, error) {
 	crd := &apiextensionsv1beta1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: queueCRDName,
+			Name: schedulingSpecKindName,
 		},
 		Spec: apiextensionsv1beta1.CustomResourceDefinitionSpec{
 			Group:   arbv1.GroupName,
 			Version: arbv1.SchemeGroupVersion.Version,
 			Scope:   apiextensionsv1beta1.NamespaceScoped,
 			Names: apiextensionsv1beta1.CustomResourceDefinitionNames{
-				Plural: arbv1.QueuePlural,
-				Kind:   reflect.TypeOf(arbv1.Queue{}).Name(),
+				Plural: arbv1.SchedulingSpecPlural,
+				Kind:   reflect.TypeOf(arbv1.SchedulingSpec{}).Name(),
 			},
 		},
 	}
@@ -79,7 +79,8 @@ func CreateQueueCRD(clientset apiextensionsclient.Interface) (*apiextensionsv1be
 
 	// wait for CRD being established
 	err = wait.Poll(500*time.Millisecond, 60*time.Second, func() (bool, error) {
-		crd, err = clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Get(queueCRDName, metav1.GetOptions{})
+		crd, err = clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Get(
+			schedulingSpecKindName, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -98,7 +99,8 @@ func CreateQueueCRD(clientset apiextensionsclient.Interface) (*apiextensionsv1be
 		return false, err
 	})
 	if err != nil {
-		deleteErr := clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Delete(queueCRDName, nil)
+		deleteErr := clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Delete(
+			schedulingSpecKindName, nil)
 		if deleteErr != nil {
 			return nil, errors.NewAggregate([]error{err, deleteErr})
 		}

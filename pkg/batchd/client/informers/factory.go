@@ -110,9 +110,9 @@ type SharedInformerFactory interface {
 	ForResource(resource schema.GroupVersionResource) (GenericInformer, error)
 	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
 
-	Queue() arbclient.Interface
+	SchedulingSpec() arbclient.Interface
 }
 
-func (f *sharedInformerFactory) Queue() arbclient.Interface {
+func (f *sharedInformerFactory) SchedulingSpec() arbclient.Interface {
 	return arbclient.New(f)
 }

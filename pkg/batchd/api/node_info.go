@@ -34,7 +34,7 @@ type NodeInfo struct {
 	Allocatable *Resource
 	Capability  *Resource
 
-	Tasks map[string]*TaskInfo
+	Tasks map[TaskID]*TaskInfo
 }
 
 func NewNodeInfo(node *v1.Node) *NodeInfo {
@@ -46,7 +46,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 			Allocatable: EmptyResource(),
 			Capability:  EmptyResource(),
 
-			Tasks: make(map[string]*TaskInfo),
+			Tasks: make(map[TaskID]*TaskInfo),
 		}
 	}
 
@@ -59,12 +59,12 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		Allocatable: NewResource(node.Status.Allocatable),
 		Capability:  NewResource(node.Status.Capacity),
 
-		Tasks: make(map[string]*TaskInfo),
+		Tasks: make(map[TaskID]*TaskInfo),
 	}
 }
 
 func (ni *NodeInfo) Clone() *NodeInfo {
-	pods := make(map[string]*TaskInfo, len(ni.Tasks))
+	pods := make(map[TaskID]*TaskInfo, len(ni.Tasks))
 
 	for _, p := range ni.Tasks {
 		pods[PodKey(p.Pod)] = p.Clone()

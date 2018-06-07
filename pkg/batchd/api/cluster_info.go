@@ -17,9 +17,7 @@ package api
 
 // ClusterInfo is a snapshot of cluster by cache.
 type ClusterInfo struct {
-	Tasks  []*TaskInfo
-	Jobs   []*JobInfo
-	Queues []*QueueInfo
+	Jobs []*JobInfo
 
 	Nodes []*NodeInfo
 }
