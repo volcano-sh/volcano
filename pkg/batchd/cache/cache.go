@@ -34,10 +34,10 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/v1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client"
-	informerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/informers"
-	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/informers/v1"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/queue-ctrl/apis/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/queue-ctrl/client"
+	informerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/queue-ctrl/client/informers"
+	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/queue-ctrl/client/informers/v1"
 )
 
 // New returns a Cache implementation.

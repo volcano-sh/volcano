@@ -30,9 +30,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/policy/framework"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/queue-ctrl/apis/v1"
 )
 
 func init() {

@@ -17,7 +17,7 @@ limitations under the License.
 package v1
 
 import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/queue-ctrl/apis/v1"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
