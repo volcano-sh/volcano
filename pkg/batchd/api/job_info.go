@@ -104,10 +104,14 @@ type JobInfo struct {
 	MinAvailable int
 
 	// All tasks of the Job.
-	Tasks map[TaskStatus]tasksMap
+	TaskStatusIndex map[TaskStatus]tasksMap
+	Tasks           tasksMap
 
 	Allocated    *Resource
 	TotalRequest *Resource
+
+	// Candidate hosts for this job.
+	Candidates []*NodeInfo
 
 	SchedSpec *arbv1.SchedulingSpec
 }
@@ -122,7 +126,8 @@ func NewJobInfo(uid JobID) *JobInfo {
 		Allocated:    EmptyResource(),
 		TotalRequest: EmptyResource(),
 
-		Tasks: map[TaskStatus]tasksMap{},
+		TaskStatusIndex: map[TaskStatus]tasksMap{},
+		Tasks:           tasksMap{},
 	}
 }
 
@@ -136,12 +141,31 @@ func (ps *JobInfo) SetSchedulingSpec(spec *arbv1.SchedulingSpec) {
 	ps.SchedSpec = spec
 }
 
-func (ps *JobInfo) AddTaskInfo(pi *TaskInfo) {
-	if _, found := ps.Tasks[pi.Status]; !found {
-		ps.Tasks[pi.Status] = tasksMap{}
+func (ps *JobInfo) GetTasks(statuses ...TaskStatus) []*TaskInfo {
+	var res []*TaskInfo
+
+	for _, status := range statuses {
+		if tasks, found := ps.TaskStatusIndex[status]; found {
+			for _, task := range tasks {
+				res = append(res, task.Clone())
+			}
+		}
 	}
 
-	ps.Tasks[pi.Status][pi.UID] = pi
+	return res
+}
+
+func (ps *JobInfo) addTaskIndex(pi *TaskInfo) {
+	if _, found := ps.TaskStatusIndex[pi.Status]; !found {
+		ps.TaskStatusIndex[pi.Status] = tasksMap{}
+	}
+
+	ps.TaskStatusIndex[pi.Status][pi.UID] = pi
+}
+
+func (ps *JobInfo) AddTaskInfo(pi *TaskInfo) {
+	ps.Tasks[pi.UID] = pi
+	ps.addTaskIndex(pi)
 
 	ps.TotalRequest.Add(pi.Resreq)
 
@@ -150,22 +174,43 @@ func (ps *JobInfo) AddTaskInfo(pi *TaskInfo) {
 	}
 }
 
-func (ps *JobInfo) DeleteTaskInfo(pi *TaskInfo) {
-	if ts, found := ps.Tasks[pi.Status]; found {
-		if task, ok := ts[pi.UID]; ok {
-			ps.TotalRequest.Sub(task.Resreq)
+func (ps *JobInfo) UpdateTaskStatus(task *TaskInfo, status TaskStatus) error {
+	if err := validateStatusUpdate(task.Status, status); err != nil {
+		return err
+	}
 
-			if OccupiedResources(task.Status) {
-				ps.Allocated.Sub(task.Resreq)
-			}
-		}
+	// Remove the task from the task list firstly
+	ps.DeleteTaskInfo(task)
 
+	// Update task's status to the target status
+	task.Status = status
+	ps.AddTaskInfo(task)
+
+	return nil
+}
+
+func (ps *JobInfo) deleteTaskIndex(pi *TaskInfo) {
+	if ts, found := ps.TaskStatusIndex[pi.Status]; found {
 		delete(ts, pi.UID)
 
 		if len(ts) == 0 {
-			delete(ps.Tasks, pi.Status)
+			delete(ps.TaskStatusIndex, pi.Status)
 		}
 	}
+}
+
+func (ps *JobInfo) DeleteTaskInfo(pi *TaskInfo) {
+	if task, found := ps.Tasks[pi.UID]; found {
+		ps.TotalRequest.Sub(task.Resreq)
+
+		if OccupiedResources(task.Status) {
+			ps.Allocated.Sub(task.Resreq)
+		}
+
+		delete(ps.Tasks, pi.UID)
+	}
+
+	ps.deleteTaskIndex(pi)
 }
 
 func (ps *JobInfo) Clone() *JobInfo {
@@ -177,18 +222,16 @@ func (ps *JobInfo) Clone() *JobInfo {
 		Allocated:    ps.Allocated.Clone(),
 		TotalRequest: ps.TotalRequest.Clone(),
 
-		Tasks: map[TaskStatus]tasksMap{},
+		TaskStatusIndex: map[TaskStatus]tasksMap{},
+		Tasks:           tasksMap{},
 	}
 
 	for k, v := range ps.NodeSelector {
 		info.NodeSelector[k] = v
 	}
 
-	for status, tasks := range ps.Tasks {
-		info.Tasks[status] = tasksMap{}
-		for id, task := range tasks {
-			info.Tasks[status][id] = task.Clone()
-		}
+	for _, task := range ps.Tasks {
+		info.AddTaskInfo(task.Clone())
 	}
 
 	return info
@@ -196,13 +239,11 @@ func (ps *JobInfo) Clone() *JobInfo {
 
 func (ps JobInfo) String() string {
 	res := ""
-	i := 0
 
-	for _, tasks := range ps.Tasks {
-		for _, task := range tasks {
-			res = res + fmt.Sprintf("\n\t %d: %v", i, task)
-			i++
-		}
+	i := 0
+	for _, task := range ps.Tasks {
+		res = res + fmt.Sprintf("\n\t %d: %v", i, task)
+		i++
 	}
 
 	return fmt.Sprintf("Job (%v): name %v, minAvailable %d", ps.UID, ps.Name, ps.MinAvailable) + res

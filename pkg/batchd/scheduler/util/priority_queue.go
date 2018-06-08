@@ -52,6 +52,10 @@ func (q *PriorityQueue) Empty() bool {
 	return q.queue.Len() == 0
 }
 
+func (q *PriorityQueue) Len() int {
+	return q.queue.Len()
+}
+
 func (pq *priorityQueue) Len() int { return len(pq.items) }
 
 func (pq *priorityQueue) Less(i, j int) bool {

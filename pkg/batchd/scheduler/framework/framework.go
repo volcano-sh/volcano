@@ -25,15 +25,31 @@ import (
 func OpenSession(cache cache.Cache) *Session {
 	snapshot := cache.Snapshot()
 
-	return &Session{
+	ssn := &Session{
 		ID: uuid.NewUUID(),
+
+		cache: cache,
 
 		Jobs:  snapshot.Jobs,
 		Nodes: snapshot.Nodes,
 	}
+
+	for _, pb := range pluginBuilders {
+		ssn.plugins = append(ssn.plugins, pb())
+	}
+
+	for _, plugin := range ssn.plugins {
+		plugin.OnSessionOpen(ssn)
+	}
+
+	return ssn
 }
 
 func CloseSession(ssn *Session) {
+	for _, plugin := range ssn.plugins {
+		plugin.OnSessionClose(ssn)
+	}
+
 	ssn.Jobs = nil
 	ssn.Nodes = nil
 }

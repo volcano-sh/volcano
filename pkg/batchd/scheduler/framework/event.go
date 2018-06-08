@@ -14,11 +14,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package validation
+package framework
 
-import "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
+import (
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
+)
 
-// ValidateStatusUpdate validates whether the status transfer is valid.
-func ValidateStatusUpdate(oldStatus, newStatus api.TaskStatus) error {
-	return nil
+type Event struct {
+	Task *api.TaskInfo
+}
+
+type EventHandler struct {
+	BindFunc  func(event *Event)
+	EvictFunc func(event *Event)
 }

@@ -61,14 +61,20 @@ func TestAddTaskInfo(t *testing.T) {
 				MinAvailable: 0,
 				Allocated:    buildResource("4000m", "4G"),
 				TotalRequest: buildResource("5000m", "5G"),
-				Tasks: map[TaskStatus]tasksMap{
-					Running: tasksMap{
+				Tasks: tasksMap{
+					case01_task1.UID: case01_task1,
+					case01_task2.UID: case01_task2,
+					case01_task3.UID: case01_task3,
+					case01_task4.UID: case01_task4,
+				},
+				TaskStatusIndex: map[TaskStatus]tasksMap{
+					Running: {
 						case01_task2.UID: case01_task2,
 					},
-					Pending: tasksMap{
+					Pending: {
 						case01_task1.UID: case01_task1,
 					},
-					Bound: tasksMap{
+					Bound: {
 						case01_task3.UID: case01_task3,
 						case01_task4.UID: case01_task4,
 					},
@@ -129,9 +135,13 @@ func TestDeleteTaskInfo(t *testing.T) {
 				MinAvailable: 0,
 				Allocated:    buildResource("3000m", "3G"),
 				TotalRequest: buildResource("4000m", "4G"),
-				Tasks: map[TaskStatus]tasksMap{
-					Pending: tasksMap{case01_task1.UID: case01_task1},
-					Running: tasksMap{case01_task3.UID: case01_task3},
+				Tasks: tasksMap{
+					case01_task1.UID: case01_task1,
+					case01_task3.UID: case01_task3,
+				},
+				TaskStatusIndex: map[TaskStatus]tasksMap{
+					Pending: {case01_task1.UID: case01_task1},
+					Running: {case01_task3.UID: case01_task3},
 				},
 				NodeSelector: make(map[string]string),
 			},
@@ -146,11 +156,15 @@ func TestDeleteTaskInfo(t *testing.T) {
 				MinAvailable: 0,
 				Allocated:    buildResource("3000m", "3G"),
 				TotalRequest: buildResource("4000m", "4G"),
-				Tasks: map[TaskStatus]tasksMap{
-					Pending: tasksMap{
+				Tasks: tasksMap{
+					case02_task1.UID: case02_task1,
+					case02_task3.UID: case02_task3,
+				},
+				TaskStatusIndex: map[TaskStatus]tasksMap{
+					Pending: {
 						case02_task1.UID: case02_task1,
 					},
-					Running: tasksMap{
+					Running: {
 						case02_task3.UID: case02_task3,
 					},
 				},

@@ -71,5 +71,13 @@ func (ts TaskStatus) String() string {
 	}
 }
 
+// validateStatusUpdate validates whether the status transfer is valid.
+func validateStatusUpdate(oldStatus, newStatus TaskStatus) error {
+	return nil
+}
+
 // LessFn is the func declaration used by sort or priority queue.
 type LessFn func(interface{}, interface{}) bool
+
+// CompareFn is the func declaration used by sort or priority queue.
+type CompareFn func(interface{}, interface{}) int

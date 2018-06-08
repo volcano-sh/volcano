@@ -14,23 +14,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package scheduler
+package framework
 
-import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/scheduler/framework"
-)
-
-// Interface is the interface of policy.
-type Interface interface {
-	// The unique name of allocator.
+// Action is the interface of scheduler action.
+type Action interface {
+	// The unique name of Action.
 	Name() string
 
 	// Initialize initializes the allocator plugins.
 	Initialize()
 
 	// Execute allocates the cluster's resources into each queue.
-	Execute(ssn *framework.Session)
+	Execute(ssn *Session)
 
 	// UnIntialize un-initializes the allocator plugins.
 	UnInitialize()
+}
+
+type Plugin interface {
+	OnSessionOpen(ssn *Session)
+	OnSessionClose(ssn *Session)
 }

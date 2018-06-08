@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2018 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,18 +14,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package scheduler
+package framework
 
-import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/scheduler/actions/allocate"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/scheduler/actions/decorate"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/scheduler/framework"
+import "sync"
 
-	// Import drf plugins
-	_ "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/scheduler/plugins/drf"
-)
+// Plugin management
+var pluginBuilders []func() Plugin
+var pluginMutex sync.Mutex
 
-var Actions = []framework.Action{
-	decorate.New(),
-	allocate.New(),
+func RegisterPluginBuilder(pc func() Plugin) {
+	pluginMutex.Lock()
+	defer pluginMutex.Unlock()
+
+	pluginBuilders = append(pluginBuilders, pc)
 }

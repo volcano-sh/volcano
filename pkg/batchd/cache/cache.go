@@ -24,6 +24,7 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	clientv1 "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
@@ -31,7 +32,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api/validation"
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client"
 	informerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/client/informers"
@@ -46,13 +46,34 @@ func New(config *rest.Config, schedulerName string) Cache {
 type SchedulerCache struct {
 	sync.Mutex
 
+	kubeclient *kubernetes.Clientset
+
 	podInformer            clientv1.PodInformer
 	nodeInformer           clientv1.NodeInformer
 	schedulingSpecInformer arbclient.SchedulingSpecInformer
 
-	Tasks map[arbapi.TaskID]*arbapi.TaskInfo
+	Binder Binder
+
 	Jobs  map[arbapi.JobID]*arbapi.JobInfo
 	Nodes map[string]*arbapi.NodeInfo
+}
+
+type defaultBinder struct {
+	kubeclient *kubernetes.Clientset
+}
+
+func (db *defaultBinder) Bind(p *v1.Pod, hostname string) error {
+	if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(&v1.Binding{
+		ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: p.UID},
+		Target: v1.ObjectReference{
+			Kind: "Node",
+			Name: hostname,
+		},
+	}); err != nil {
+		glog.Infof("Failed to bind pod <%v/%v>: %#v", p.Namespace, p.Name, err)
+		return err
+	}
+	return nil
 }
 
 func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCache {
@@ -61,8 +82,13 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 		Nodes: make(map[string]*arbapi.NodeInfo),
 	}
 
-	kubecli := kubernetes.NewForConfigOrDie(config)
-	informerFactory := informers.NewSharedInformerFactory(kubecli, 0)
+	sc.kubeclient = kubernetes.NewForConfigOrDie(config)
+
+	sc.Binder = &defaultBinder{
+		kubeclient: sc.kubeclient,
+	}
+
+	informerFactory := informers.NewSharedInformerFactory(sc.kubeclient, 0)
 
 	// create informer for node information
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
@@ -151,14 +177,52 @@ func nonTerminatedPod(pod *v1.Pod) bool {
 	return true
 }
 
-// UpdateStatus updates task status to the target status, return error if the transformation
-// is invalid.
-func (sc *SchedulerCache) UpdateStatus(task *arbapi.TaskInfo, status arbapi.TaskStatus) error {
-	if err := validation.ValidateStatusUpdate(task.Status, status); err != nil {
+func (sc *SchedulerCache) findJobAndTask(taskInfo *arbapi.TaskInfo) (*arbapi.JobInfo, *arbapi.TaskInfo, error) {
+	job, found := sc.Jobs[taskInfo.Job]
+	if !found {
+		return nil, nil, fmt.Errorf("failed to find Job %v for Task %v",
+			taskInfo.Job, taskInfo.UID)
+	}
+
+	task, found := job.Tasks[taskInfo.UID]
+	if !found {
+		return nil, nil, fmt.Errorf("failed to find task in status %v by id %v",
+			taskInfo.Status, taskInfo.UID)
+	}
+
+	return job, task, nil
+}
+
+// Bind binds task to the target host.
+func (sc *SchedulerCache) Bind(taskInfo *arbapi.TaskInfo, hostname string) error {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	job, task, err := sc.findJobAndTask(taskInfo)
+
+	if err != nil {
 		return err
 	}
 
-	task.Status = status
+	node, found := sc.Nodes[hostname]
+	if !found {
+		return fmt.Errorf("failed to bind Task %v to host %v, host does not exist",
+			task.UID, hostname)
+	}
+
+	err = job.UpdateTaskStatus(task, arbapi.Binding)
+	if err != nil {
+		return err
+	}
+
+	// Add task to the node.
+	node.AddTask(task)
+
+	p := task.Pod
+
+	go func() {
+		sc.Binder.Bind(p, hostname)
+	}()
 
 	return nil
 }
@@ -210,11 +274,9 @@ func (sc *SchedulerCache) String() string {
 				job.UID, job.Name, job.MinAvailable)
 
 			i := 0
-			for _, tasks := range job.Tasks {
-				for _, task := range tasks {
-					str = str + fmt.Sprintf("\t\t %d: %v\n", i, task)
-					i++
-				}
+			for _, task := range job.Tasks {
+				str = str + fmt.Sprintf("\t\t %d: %v\n", i, task)
+				i++
 			}
 		}
 	}

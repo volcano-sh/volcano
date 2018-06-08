@@ -29,14 +29,7 @@ import (
 
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
-	key := arbapi.PodKey(pod)
-
-	if _, ok := sc.Tasks[key]; ok {
-		return fmt.Errorf("pod %v exist", key)
-	}
-
 	pi := arbapi.NewTaskInfo(pod)
-	sc.Tasks[key] = pi
 
 	if len(pi.Job) != 0 {
 		if _, found := sc.Jobs[pi.Job]; !found {
@@ -47,6 +40,15 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 	} else {
 		glog.Warningf("The controller of pod %v/%v is empty, can not schedule it.",
 			pod.Namespace, pod.Name)
+	}
+
+	if len(pi.NodeName) != 0 {
+		if _, found := sc.Nodes[pi.NodeName]; !found {
+			sc.Nodes[pi.NodeName] = arbapi.NewNodeInfo(nil)
+		}
+
+		node := sc.Nodes[pi.NodeName]
+		node.AddTask(pi)
 	}
 
 	return nil
@@ -62,13 +64,7 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
-	key := arbapi.PodKey(pod)
-
-	pi, ok := sc.Tasks[key]
-	if !ok {
-		return fmt.Errorf("pod %v doesn't exist", key)
-	}
-	delete(sc.Tasks, key)
+	pi := arbapi.NewTaskInfo(pod)
 
 	if len(pi.Job) != 0 {
 		if job, found := sc.Jobs[pi.Job]; found {
@@ -293,7 +289,7 @@ func (sc *SchedulerCache) deleteSchedulingSpec(queue *arbv1.SchedulingSpec) erro
 }
 
 func (sc *SchedulerCache) AddSchedulingSpec(obj interface{}) {
-	queue, ok := obj.(*arbv1.SchedulingSpec)
+	ss, ok := obj.(*arbv1.SchedulingSpec)
 	if !ok {
 		glog.Errorf("Cannot convert to *arbv1.Queue: %v", obj)
 		return
@@ -302,10 +298,10 @@ func (sc *SchedulerCache) AddSchedulingSpec(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Add Queue(%s) into cache, spec(%#v)", queue.Name, queue.Spec)
-	err := sc.setSchedulingSpec(queue)
+	glog.V(4).Infof("Add SchedulingSpec(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
+	err := sc.setSchedulingSpec(ss)
 	if err != nil {
-		glog.Errorf("Failed to add Queue %s into cache: %v", queue.Name, err)
+		glog.Errorf("Failed to add SchedulingSpec %s into cache: %v", ss.Name, err)
 		return
 	}
 	return

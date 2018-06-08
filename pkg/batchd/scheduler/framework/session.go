@@ -17,22 +17,101 @@ limitations under the License.
 package framework
 
 import (
+	"fmt"
+
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/cache"
 )
 
 type Session struct {
 	ID types.UID
 
-	Jobs  []*api.JobInfo
-	Nodes []*api.NodeInfo
+	cache cache.Cache
+
+	Jobs    []*api.JobInfo
+	Nodes   []*api.NodeInfo
+	Backlog []*api.JobInfo
+
+	plugins       []Plugin
+	eventHandlers []*EventHandler
+	jobOrderFns   []api.CompareFn
 }
 
 func (ssn *Session) Bind(task *api.TaskInfo, hostname string) error {
+	if err := ssn.cache.Bind(task, hostname); err != nil {
+		return err
+	}
+
+	// Update status in session
+	// TODO(k82cn): add index to speedup.
+	for _, job := range ssn.Jobs {
+		if job.UID == task.Job {
+			job.UpdateTaskStatus(task, api.Binding)
+		}
+	}
+
+	for _, node := range ssn.Nodes {
+		if hostname == node.Name {
+			node.AddTask(task)
+		}
+	}
+
+	// Callbacks
+	for _, eh := range ssn.eventHandlers {
+		eh.BindFunc(&Event{
+			Task: task,
+		})
+	}
+
 	return nil
 }
 
 func (ssn *Session) Evict(task *api.TaskInfo) error {
+	return fmt.Errorf("not supported")
+}
+
+func (ssn *Session) ForgetJob(job *api.JobInfo) error {
+	for i, j := range ssn.Jobs {
+		if j.UID == job.UID {
+			ssn.Backlog = append(ssn.Backlog, j)
+			ssn.Jobs[i] = ssn.Jobs[len(ssn.Jobs)-1]
+			ssn.Jobs = ssn.Jobs[:len(ssn.Jobs)-1]
+		}
+	}
+
 	return nil
+}
+
+func (ssn *Session) AddEventHandler(eh *EventHandler) {
+	ssn.eventHandlers = append(ssn.eventHandlers, eh)
+}
+
+func (ssn *Session) AddJobOrderFn(cf api.CompareFn) {
+	ssn.jobOrderFns = append(ssn.jobOrderFns, cf)
+}
+
+func (ssn *Session) JobOrderFn(l, r interface{}) bool {
+	for _, jof := range ssn.jobOrderFns {
+		if j := jof(l, r); j != 0 {
+			return j < 0
+		}
+	}
+
+	// If no job order funcs, order job by UID.
+	lv := l.(*api.JobInfo)
+	rv := r.(*api.JobInfo)
+
+	return lv.UID < rv.UID
+}
+
+func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
+	// TODO (k82cn): add callback func to add TaskOrderFn for
+	// task priority case.
+
+	lv := l.(*api.TaskInfo)
+	rv := r.(*api.TaskInfo)
+
+	return lv.UID < rv.UID
 }
