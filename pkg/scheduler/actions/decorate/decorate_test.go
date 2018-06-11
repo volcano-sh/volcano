@@ -28,9 +28,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/api"
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/cache"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/cache"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 )
 
