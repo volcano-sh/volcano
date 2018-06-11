@@ -84,7 +84,7 @@ func CreateSchedulingSpecKind(clientset apiextensionsclient.Interface) (*apiexte
 		return nil, err
 	}
 
-	glog.V(4).Infof("Queue CRD was created.")
+	glog.V(3).Infof("SchedulingSpec CRD was created.")
 
 	return crd, nil
 }

@@ -22,11 +22,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/rest"
 
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
 )
 
@@ -54,13 +54,13 @@ func filterPods(pods []*corev1.Pod, phase corev1.PodPhase) int {
 	return result
 }
 
-func queueJobKey(obj interface{}) (string, error) {
-	qj, ok := obj.(*arbv1.QueueJob)
-	if !ok {
-		return "", fmt.Errorf("not a QueueJob")
+func eventKey(obj interface{}) (string, error) {
+	accessor, err := meta.Accessor(obj)
+	if err != nil {
+		return "", err
 	}
 
-	return fmt.Sprintf("%s/%s", qj.Namespace, qj.Name), nil
+	return string(accessor.GetUID()), nil
 }
 
 func buildPod(n, ns string, template corev1.PodTemplateSpec, owner []metav1.OwnerReference, index int32) *corev1.Pod {

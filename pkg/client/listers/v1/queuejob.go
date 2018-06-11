@@ -85,7 +85,7 @@ func (s queueJobNamespaceLister) Get(name string) (*arbv1.QueueJob, error) {
 		return nil, err
 	}
 	if !exists {
-		return nil, errors.NewNotFound(arbv1.Resource("queueJob"), name)
+		return nil, errors.NewNotFound(arbv1.Resource("queuejobs"), name)
 	}
 	return obj.(*arbv1.QueueJob), nil
 }

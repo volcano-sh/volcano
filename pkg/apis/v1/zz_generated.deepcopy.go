@@ -98,15 +98,7 @@ func (in *QueueJobSpec) DeepCopyInto(out *QueueJobSpec) {
 			(*in).DeepCopyInto(*out)
 		}
 	}
-	if in.SchedSpec != nil {
-		in, out := &in.SchedSpec, &out.SchedSpec
-		if *in == nil {
-			*out = nil
-		} else {
-			*out = new(SchedulingSpec)
-			(*in).DeepCopyInto(*out)
-		}
-	}
+	in.SchedSpec.DeepCopyInto(&out.SchedSpec)
 	in.Template.DeepCopyInto(&out.Template)
 	return
 }

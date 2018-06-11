@@ -85,7 +85,7 @@ func (s schedulingSpecNamespaceLister) Get(name string) (*arbv1.SchedulingSpec, 
 		return nil, err
 	}
 	if !exists {
-		return nil, errors.NewNotFound(arbv1.Resource("schedulingspec"), name)
+		return nil, errors.NewNotFound(arbv1.Resource("schedulingspecs"), name)
 	}
 	return obj.(*arbv1.SchedulingSpec), nil
 }

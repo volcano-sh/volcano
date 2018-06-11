@@ -47,7 +47,7 @@ type QueueJobSpec struct {
 	Replicas int32 `json:"replicas,omitempty" protobuf:"bytes,2,opt,name=replicas"`
 
 	// SchedSpec specifies the parameters for scheduling.
-	SchedSpec *SchedulingSpec `json:"schedulingSpec,omitempty" protobuf:"bytes,2,opt,name=schedulingSpec"`
+	SchedSpec SchedulingSpecTemplate `json:"schedulingSpec,omitempty" protobuf:"bytes,2,opt,name=schedulingSpec"`
 
 	// Specifies the pod that will be created when executing a QueueJob
 	Template v1.PodTemplateSpec `json:"template,omitempty" protobuf:"bytes,3,opt,name=template"`
@@ -69,7 +69,7 @@ type QueueJobStatus struct {
 
 	// The minimal available pods to run for this QueueJob
 	// +optional
-	MinAvailable int32 `json:"template,omitempty" protobuf:"bytes,4,opt,name=template"`
+	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,4,opt,name=minAvailable"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
