@@ -21,26 +21,33 @@ import (
 
 	"github.com/golang/glog"
 
+	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 
 	schedcache "github.com/kubernetes-incubator/kube-arbitrator/pkg/cache"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 )
 
 type Scheduler struct {
-	cache schedcache.Cache
+	cache  schedcache.Cache
+	config *rest.Config
 }
 
 func NewScheduler(config *rest.Config, schedulerName string) (*Scheduler, error) {
 	scheduler := &Scheduler{
-		cache: schedcache.New(config, schedulerName),
+		config: config,
+		cache:  schedcache.New(config, schedulerName),
 	}
 
 	return scheduler, nil
 }
 
 func (pc *Scheduler) Run(stopCh <-chan struct{}) {
+	createSchedulingSpecKind(pc.config)
+
 	// Start cache for policy.
 	go pc.cache.Run(stopCh)
 	pc.cache.WaitForCacheSync(stopCh)
@@ -59,4 +66,16 @@ func (pc *Scheduler) runOnce() {
 	}
 
 	framework.CloseSession(ssn)
+}
+
+func createSchedulingSpecKind(config *rest.Config) error {
+	extensionscs, err := apiextensionsclient.NewForConfig(config)
+	if err != nil {
+		return err
+	}
+	_, err = client.CreateSchedulingSpecKind(extensionscs)
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+	return nil
 }

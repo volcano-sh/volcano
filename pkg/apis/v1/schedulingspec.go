@@ -21,7 +21,7 @@ import (
 )
 
 // SchedulingSpecPlural is the plural of SchedulingSpec
-const SchedulingSpecPlural = "schedulingspec"
+const SchedulingSpecPlural = "schedulingspecs"
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type SchedulingSpec struct {
