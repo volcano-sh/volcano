@@ -19,13 +19,16 @@ package scheduler
 import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/actions/allocate"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/actions/decorate"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/actions/garantee"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 
 	// Import drf plugins
 	_ "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/drf"
 )
 
+// Actions is a list of action that should be executed in order.
 var Actions = []framework.Action{
 	decorate.New(),
+	garantee.New(),
 	allocate.New(),
 }

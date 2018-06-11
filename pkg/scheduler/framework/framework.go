@@ -19,7 +19,7 @@ package framework
 import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/cache"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/cache"
 )
 
 func OpenSession(cache cache.Cache) *Session {

@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,18 +13,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+package api
 
-package framework
+// ClusterInfo is a snapshot of cluster by cache.
+type ClusterInfo struct {
+	Jobs []*JobInfo
 
-import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
-)
-
-type Event struct {
-	Task *api.TaskInfo
-}
-
-type EventHandler struct {
-	BindFunc  func(event *Event)
-	EvictFunc func(event *Event)
+	Nodes []*NodeInfo
 }
