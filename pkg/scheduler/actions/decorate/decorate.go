@@ -51,12 +51,14 @@ func (alloc *decorateAction) Execute(ssn *framework.Session) {
 func (alloc *decorateAction) UnInitialize() {}
 
 func fetchMatchNodeForPodSet(job *arbapi.JobInfo, nodes []*arbapi.NodeInfo) []*arbapi.NodeInfo {
-	var matchNodes []*arbapi.NodeInfo
 
 	if len(job.NodeSelector) == 0 {
+		// nil slice means select everything.
 		return nil
 	}
 
+	// Empty slice means no object selected.
+	matchNodes := []*arbapi.NodeInfo{}
 	selector := labels.SelectorFromSet(labels.Set(job.NodeSelector))
 
 	for _, node := range nodes {
