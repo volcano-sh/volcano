@@ -1,5 +1,5 @@
-cmd/kube-batchd/app
-cmd/kube-batchd/app/options
+cmd/kar-scheduler/app
+cmd/kar-scheduler/app/options
 pkg/api
 pkg/apis/v1
 pkg/cache
@@ -8,7 +8,7 @@ pkg/client/clientset
 pkg/client/clientset/scheme
 pkg/client/clientset/typed/v1
 pkg/client/informers/internalinterfaces
-pkg/controller
+pkg/controller/queuejob
 pkg/scheduler
 pkg/scheduler/actions/allocate
 pkg/scheduler/actions/decorate
@@ -16,4 +16,3 @@ pkg/scheduler/actions/garantee
 pkg/scheduler/framework
 pkg/scheduler/plugins/drf
 pkg/scheduler/util
-

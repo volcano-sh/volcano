@@ -308,7 +308,6 @@ func (cc *QueueJobController) syncQueueJob(qj *arbv1.QueueJob) error {
 	if err != nil {
 		return err
 	}
-	glog.V(3).Infof("There are %d pods of QueueJob %s\n", len(pods), queueJob.Name)
 
 	return cc.manageQueueJob(queueJob, pods)
 
@@ -340,8 +339,11 @@ func (cc *QueueJobController) manageQueueJob(qj *arbv1.QueueJob, pods []*v1.Pod)
 	succeeded := int32(filterPods(pods, v1.PodSucceeded))
 	failed := int32(filterPods(pods, v1.PodFailed))
 
+	glog.V(3).Infof("There are %d pods of QueueJob %s: replicas %d, active %d, succeeded %d, failed %d",
+		len(pods), qj.Name, active, replicas, succeeded, failed)
+
 	ss, err := cc.arbclients.ArbV1().SchedulingSpecs(qj.Namespace).List(metav1.ListOptions{
-		FieldSelector: fmt.Sprintf("name=%s", qj.Name),
+		FieldSelector: fmt.Sprintf("metadata.name=%s", qj.Name),
 	})
 
 	if len(ss.Items) == 0 {
@@ -358,6 +360,9 @@ func (cc *QueueJobController) manageQueueJob(qj *arbv1.QueueJob, pods []*v1.Pod)
 			glog.Errorf("Failed to create SchedulingSpec for QueueJob %v/%v: %v",
 				qj.Namespace, qj.Name, err)
 		}
+	} else {
+		glog.V(3).Infof("There's %v SchedulingSpec for QueueJob %v/%v",
+			len(ss.Items), qj.Namespace, qj.Name)
 	}
 
 	// Create pod if necessary
