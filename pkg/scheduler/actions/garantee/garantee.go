@@ -17,7 +17,7 @@ limitations under the License.
 package garantee
 
 import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/api"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/util"
 )

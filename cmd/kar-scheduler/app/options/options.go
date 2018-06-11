@@ -38,7 +38,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.Master, "master", s.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 	fs.StringVar(&s.Kubeconfig, "kubeconfig", s.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
 	// kube-arbitrator will ignore pods with scheduler names other than specified with the option
-	fs.StringVar(&s.SchedulerName, "scheduler-name", "default-scheduler", "kube-arbitrator will handle pods with the scheduler-name")
+	fs.StringVar(&s.SchedulerName, "scheduler-name", "kar-scheduler", "kube-arbitrator will handle pods with the scheduler-name")
 }
 
 func (s *ServerOption) CheckOptionOrDie() {

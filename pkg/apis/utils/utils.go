@@ -14,17 +14,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package framework
+package utils
 
 import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
-type Event struct {
-	Task *api.TaskInfo
-}
+func GetController(obj interface{}) types.UID {
+	accessor, err := meta.Accessor(obj)
+	if err != nil {
+		return ""
+	}
 
-type EventHandler struct {
-	BindFunc  func(event *Event)
-	EvictFunc func(event *Event)
+	controllerRef := metav1.GetControllerOf(accessor)
+	if controllerRef != nil {
+		return controllerRef.UID
+	}
+
+	return ""
 }

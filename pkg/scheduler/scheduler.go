@@ -26,8 +26,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 
-	schedcache "github.com/kubernetes-incubator/kube-arbitrator/pkg/cache"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
+	schedcache "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/cache"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 )
 

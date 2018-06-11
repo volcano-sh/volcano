@@ -31,11 +31,11 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 
-	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/api"
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
 	informerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
 	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/v1"
+	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 )
 
 // New returns a Cache implementation.

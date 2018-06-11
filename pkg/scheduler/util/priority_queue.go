@@ -19,7 +19,7 @@ package util
 import (
 	"container/heap"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/api"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 )
 
 type PriorityQueue struct {

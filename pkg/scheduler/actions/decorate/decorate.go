@@ -19,7 +19,7 @@ package decorate
 import (
 	"k8s.io/apimachinery/pkg/labels"
 
-	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/api"
+	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 )
 

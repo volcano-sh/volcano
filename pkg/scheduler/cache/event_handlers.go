@@ -19,12 +19,14 @@ package cache
 import (
 	"fmt"
 
+	"github.com/golang/glog"
+
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
 
-	"github.com/golang/glog"
-	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/api"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/utils"
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 )
 
 // Assumes that lock is already acquired.
@@ -262,7 +264,7 @@ func (sc *SchedulerCache) DeleteNode(obj interface{}) {
 
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) setSchedulingSpec(ss *arbv1.SchedulingSpec) error {
-	job := arbapi.JobID(arbapi.GetController(ss))
+	job := arbapi.JobID(utils.GetController(ss))
 
 	if len(job) == 0 {
 		return fmt.Errorf("the controller of SchedulingSpec is empty")

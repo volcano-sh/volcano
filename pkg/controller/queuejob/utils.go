@@ -27,8 +27,11 @@ import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/rest"
 
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
 )
+
+var queueJobKind = arbv1.SchemeGroupVersion.WithKind("QueueJob")
 
 func generateUUID() string {
 	id := uuid.NewUUID()
@@ -63,26 +66,32 @@ func eventKey(obj interface{}) (string, error) {
 	return string(accessor.GetUID()), nil
 }
 
-func buildPod(n, ns string, template corev1.PodTemplateSpec, owner []metav1.OwnerReference, index int32) *corev1.Pod {
-	templateCopy := template.DeepCopy()
-
-	// Add env MPI_INDEX for MPI job
-	if index >= 0 {
-		indexEnv := corev1.EnvVar{
-			Name:  "MPI_INDEX",
-			Value: fmt.Sprintf("%d", index),
-		}
-		for index := range templateCopy.Spec.Containers {
-			templateCopy.Spec.Containers[index].Env = append(templateCopy.Spec.Containers[index].Env, indexEnv)
-		}
+func createQueueJobSchedulingSpec(qj *arbv1.QueueJob) *arbv1.SchedulingSpec {
+	return &arbv1.SchedulingSpec{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      qj.Name,
+			Namespace: qj.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(qj, queueJobKind),
+			},
+		},
+		Spec: qj.Spec.SchedSpec,
 	}
+}
+
+func createQueueJobPod(qj *arbv1.QueueJob, ix int32) *corev1.Pod {
+	templateCopy := qj.Spec.Template.DeepCopy()
+
+	podName := fmt.Sprintf("%s-%d-%s", qj.Name, ix, generateUUID())
 
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            n,
-			Namespace:       ns,
-			OwnerReferences: owner,
-			Labels:          templateCopy.Labels,
+			Name:      podName,
+			Namespace: qj.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(qj, queueJobKind),
+			},
+			Labels: templateCopy.Labels,
 		},
 		Spec: templateCopy.Spec,
 	}

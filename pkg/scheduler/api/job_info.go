@@ -22,6 +22,7 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/utils"
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 )
 
@@ -53,7 +54,7 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 
 	pi := &TaskInfo{
 		UID:       TaskID(pod.UID),
-		Job:       JobID(GetController(pod)),
+		Job:       JobID(utils.GetController(pod)),
 		Name:      pod.Name,
 		Namespace: pod.Namespace,
 		NodeName:  pod.Spec.NodeName,
