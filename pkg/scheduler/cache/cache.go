@@ -167,16 +167,6 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 		sc.nodeInformer.Informer().HasSynced)
 }
 
-// nonTerminatedPod selects pods that are non-terminal (pending and running).
-func nonTerminatedPod(pod *v1.Pod) bool {
-	if pod.Status.Phase == v1.PodSucceeded ||
-		pod.Status.Phase == v1.PodFailed ||
-		pod.Status.Phase == v1.PodUnknown {
-		return false
-	}
-	return true
-}
-
 func (sc *SchedulerCache) findJobAndTask(taskInfo *arbapi.TaskInfo) (*arbapi.JobInfo, *arbapi.TaskInfo, error) {
 	job, found := sc.Jobs[taskInfo.Job]
 	if !found {

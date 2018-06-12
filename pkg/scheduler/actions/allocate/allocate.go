@@ -39,8 +39,8 @@ func (alloc *allocateAction) Name() string {
 func (alloc *allocateAction) Initialize() {}
 
 func (alloc *allocateAction) Execute(ssn *framework.Session) {
-	glog.V(4).Infof("Enter Allocate ...")
-	defer glog.V(4).Infof("Leaving Allocate ...")
+	glog.V(3).Infof("Enter Allocate ...")
+	defer glog.V(3).Infof("Leaving Allocate ...")
 
 	jobs := util.NewPriorityQueue(ssn.JobOrderFn)
 
@@ -59,8 +59,6 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 
 		job := jobs.Pop().(*api.JobInfo)
 
-		glog.V(3).Infof("try to allocate resource to Job <%v>", job.UID)
-
 		if _, found := pendingTasks[job.UID]; !found {
 			tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
@@ -69,6 +67,9 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 			pendingTasks[job.UID] = tasks
 		}
 		tasks := pendingTasks[job.UID]
+
+		glog.V(3).Infof("Try to allocate resource to %d tasks of Job <%v>",
+			tasks.Len(), job.UID)
 
 		for !tasks.Empty() {
 			task := tasks.Pop().(*api.TaskInfo)

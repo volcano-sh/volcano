@@ -45,6 +45,10 @@ func (q *PriorityQueue) Push(it interface{}) {
 }
 
 func (q *PriorityQueue) Pop() interface{} {
+	if q.Len() == 0 {
+		return nil
+	}
+
 	return heap.Pop(&q.queue)
 }
 

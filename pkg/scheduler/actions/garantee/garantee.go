@@ -17,6 +17,8 @@ limitations under the License.
 package garantee
 
 import (
+	"github.com/golang/glog"
+
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/util"
@@ -37,9 +39,17 @@ func (alloc *garanteeAction) Name() string {
 func (alloc *garanteeAction) Initialize() {}
 
 func (alloc *garanteeAction) Execute(ssn *framework.Session) {
+	glog.V(3).Infof("Enter Garantee ...")
+	defer glog.V(3).Infof("Leaving Garantee ...")
+
 	jobs := ssn.Jobs
 
 	for _, job := range jobs {
+		if len(job.TaskStatusIndex[api.Pending]) == 0 {
+			glog.V(3).Infof("No pending tasks in Job <%v>", job.UID)
+			continue
+		}
+
 		tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
 		for _, task := range job.TaskStatusIndex[api.Pending] {
 			tasks.Push(task)
@@ -52,15 +62,34 @@ func (alloc *garanteeAction) Execute(ssn *framework.Session) {
 			}
 		}
 
+		if tasks.Len() < job.MinAvailable-occupied {
+			glog.V(3).Infof("Not enough pending tasks %v in QueueJob %v to start (min %v, occupied %v).",
+				tasks.Len(), job.Name, job.MinAvailable, occupied)
+			continue
+		}
+
 		binds := map[api.TaskID]string{}
 		allocates := map[string]*api.Resource{}
+
+		glog.V(3).Infof("Try to allocate resource to <%d> Tasks of Job <%s>",
+			job.MinAvailable-occupied, job.UID)
 
 		for ; occupied < job.MinAvailable; occupied++ {
 			task := tasks.Pop().(*api.TaskInfo)
 
+			if task == nil {
+				break
+			}
+
 			assigned := false
 
-			for _, node := range job.Candidates {
+			nodes := job.Candidates
+			// If candidate list is nil, it means all nodes.
+			if job.Candidates == nil {
+				nodes = ssn.Nodes
+			}
+
+			for _, node := range nodes {
 				currentIdle := node.Idle.Clone()
 
 				if alloc, found := allocates[node.Name]; found {

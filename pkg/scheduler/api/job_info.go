@@ -22,6 +22,7 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/golang/glog"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/utils"
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
 )
@@ -161,6 +162,9 @@ func (ps *JobInfo) addTaskIndex(pi *TaskInfo) {
 		ps.TaskStatusIndex[pi.Status] = tasksMap{}
 	}
 
+	glog.V(3).Infof("Added tasks %v:%v/%v to index %v",
+		pi.UID, pi.Namespace, pi.Name, pi.Status)
+
 	ps.TaskStatusIndex[pi.Status][pi.UID] = pi
 }
 
@@ -173,6 +177,9 @@ func (ps *JobInfo) AddTaskInfo(pi *TaskInfo) {
 	if OccupiedResources(pi.Status) {
 		ps.Allocated.Add(pi.Resreq)
 	}
+
+	glog.V(3).Infof("Added tasks %v:%v/%v to Job %v",
+		pi.UID, pi.Namespace, pi.Name, ps.UID)
 }
 
 func (ps *JobInfo) UpdateTaskStatus(task *TaskInfo, status TaskStatus) error {
