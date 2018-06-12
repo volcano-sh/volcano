@@ -2,6 +2,7 @@ BIN_DIR=_output/bin
 
 kube-arbitrator: init
 	go build -o ${BIN_DIR}/kar-scheduler ./cmd/kar-scheduler/
+	go build -o ${BIN_DIR}/kar-controllers ./cmd/kar-controllers/
 	go build -o ${BIN_DIR}/karcli ./cmd/karcli
 
 verify: generate-code

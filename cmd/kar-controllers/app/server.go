@@ -20,8 +20,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kar-scheduler/app/options"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler"
+	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kar-controllers/app/options"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/controller/queuejob"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 )
@@ -41,13 +41,8 @@ func Run(opt *options.ServerOption) error {
 
 	neverStop := make(chan struct{})
 
-	// Start policy controller to allocate resources.
-	sched, err := scheduler.NewScheduler(config, opt.SchedulerName)
-	if err != nil {
-		panic(err)
-	}
-
-	sched.Run(neverStop)
+	queuejobctrl := queuejob.NewQueueJobController(config)
+	queuejobctrl.Run(neverStop)
 
 	<-neverStop
 
