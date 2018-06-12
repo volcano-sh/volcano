@@ -19,6 +19,7 @@ package decorate
 import (
 	"k8s.io/apimachinery/pkg/labels"
 
+	"github.com/golang/glog"
 	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 )
@@ -38,6 +39,9 @@ func (alloc *decorateAction) Name() string {
 func (alloc *decorateAction) Initialize() {}
 
 func (alloc *decorateAction) Execute(ssn *framework.Session) {
+	glog.V(3).Infof("Enter Decorate ...")
+	defer glog.V(3).Infof("Leaving Decorate ...")
+
 	// fetch the nodes that match PodSet NodeSelector and NodeAffinity
 	// and store it for following DRF assignment
 	jobs := ssn.Jobs
@@ -45,13 +49,13 @@ func (alloc *decorateAction) Execute(ssn *framework.Session) {
 
 	for _, job := range jobs {
 		job.Candidates = fetchMatchNodeForPodSet(job, nodes)
+		glog.V(3).Infof("Got %d candidate nodes for QueueJob %v", len(job.Candidates), job.UID)
 	}
 }
 
 func (alloc *decorateAction) UnInitialize() {}
 
 func fetchMatchNodeForPodSet(job *arbapi.JobInfo, nodes []*arbapi.NodeInfo) []*arbapi.NodeInfo {
-
 	if len(job.NodeSelector) == 0 {
 		// nil slice means select everything.
 		return nil

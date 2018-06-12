@@ -25,6 +25,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -254,7 +255,10 @@ func (cc *Controller) worker() {
 		}
 
 		if queuejob == nil {
-			glog.Warningf("Failed to get QueueJob for %v", obj)
+			if acc, err := meta.Accessor(obj); err != nil {
+				glog.Warningf("Failed to get QueueJob for %v/%v", acc.GetNamespace(), acc.GetName())
+			}
+
 			return nil
 		}
 
