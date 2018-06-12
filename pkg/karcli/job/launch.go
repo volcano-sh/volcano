@@ -26,33 +26,34 @@ import (
 )
 
 type launchFlags struct {
-	Name          string
-	Namespace     string
-	Image         string
-	Master        string
-	MinAvailable  int
-	Replicas      int
-	Requests      string
-	SchedulerName string
+	commonFlags
+
+	Name      string
+	Namespace string
+	Image     string
+
+	MinAvailable int
+	Replicas     int
+	Requests     string
 }
 
 var launchJobFlags = &launchFlags{}
 
 func InitLaunchFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVarP(&launchJobFlags.Image, "image", "i", "busybox", "the container image of job")
+	initFlags(cmd, &launchJobFlags.commonFlags)
+
+	cmd.Flags().StringVarP(&launchJobFlags.Image, "image", "", "busybox", "the container image of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "", "default", "the namespace of job")
-	cmd.Flags().StringVarP(&launchJobFlags.Name, "name", "n", "test", "the name of job")
-	cmd.Flags().IntVarP(&launchJobFlags.MinAvailable, "min", "m", 1, "the minimal available tasks of job")
-	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "r", 1, "the total tasks of job")
+	cmd.Flags().StringVarP(&launchJobFlags.Name, "name", "", "test", "the name of job")
+	cmd.Flags().IntVarP(&launchJobFlags.MinAvailable, "min", "", 1, "the minimal available tasks of job")
+	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "", 1, "the total tasks of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Requests, "requests", "", "cpu=1000m,memory=100Mi", "the resource request of the task")
-	cmd.Flags().StringVarP(&launchJobFlags.SchedulerName, "scheduler", "", "kar-scheduler", "the scheduler for this job")
-	cmd.Flags().StringVarP(&launchJobFlags.Master, "master", "s", "localhost:8080", "the address of api server")
 }
 
 var queueJobName = "queuejob.arbitrator.k8s.io"
 
 func LaunchJob() {
-	config, err := buildConfig(launchJobFlags.Master, "")
+	config, err := buildConfig(launchJobFlags.Master, launchJobFlags.Kubeconfig)
 	if err != nil {
 		panic(err)
 	}

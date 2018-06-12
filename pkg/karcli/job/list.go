@@ -25,20 +25,21 @@ import (
 )
 
 type listFlags struct {
-	Namespace string
+	commonFlags
 
-	Master string
+	Namespace string
 }
 
 var listJobFlags = &listFlags{}
 
 func InitListFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "", "default", "the namespace of job")
-	cmd.Flags().StringVarP(&launchJobFlags.Master, "master", "s", "localhost:8080", "the address of api server")
+	initFlags(cmd, &listJobFlags.commonFlags)
+
+	cmd.Flags().StringVarP(&listJobFlags.Namespace, "namespace", "", "default", "the namespace of job")
 }
 
 func ListJobs() {
-	config, err := buildConfig(launchJobFlags.Master, "")
+	config, err := buildConfig(listJobFlags.Master, listJobFlags.Kubeconfig)
 	if err != nil {
 		panic(err)
 	}

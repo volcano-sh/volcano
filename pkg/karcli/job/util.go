@@ -17,6 +17,7 @@ package job
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"k8s.io/api/core/v1"
@@ -25,11 +26,15 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-func buildConfig(master, kubeconfig string) (*rest.Config, error) {
-	if master != "" || kubeconfig != "" {
-		return clientcmd.BuildConfigFromFlags(master, kubeconfig)
+func homeDir() string {
+	if h := os.Getenv("HOME"); h != "" {
+		return h
 	}
-	return rest.InClusterConfig()
+	return os.Getenv("USERPROFILE") // windows
+}
+
+func buildConfig(master, kubeconfig string) (*rest.Config, error) {
+	return clientcmd.BuildConfigFromFlags(master, kubeconfig)
 }
 
 // populateResourceListV1 takes strings of form <resourceName1>=<value1>,<resourceName1>=<value2>

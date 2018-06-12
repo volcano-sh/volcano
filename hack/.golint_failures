@@ -1,3 +1,5 @@
+cmd/kar-controllers/app
+cmd/kar-controllers/app/options
 cmd/kar-scheduler/app
 cmd/kar-scheduler/app/options
 pkg/apis/utils
