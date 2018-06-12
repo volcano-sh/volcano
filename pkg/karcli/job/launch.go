@@ -26,13 +26,14 @@ import (
 )
 
 type launchFlags struct {
-	Name         string
-	Namespace    string
-	Image        string
-	Master       string
-	MinAvailable int
-	Replicas     int
-	Requests     string
+	Name          string
+	Namespace     string
+	Image         string
+	Master        string
+	MinAvailable  int
+	Replicas      int
+	Requests      string
+	SchedulerName string
 }
 
 var launchJobFlags = &launchFlags{}
@@ -44,6 +45,7 @@ func InitLaunchFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVarP(&launchJobFlags.MinAvailable, "min", "m", 1, "the minimal available tasks of job")
 	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "r", 1, "the total tasks of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Requests, "requests", "", "cpu=1000m,memory=100Mi", "the resource request of the task")
+	cmd.Flags().StringVarP(&launchJobFlags.SchedulerName, "scheduler", "", "kar-scheduler", "the scheduler for this job")
 	cmd.Flags().StringVarP(&launchJobFlags.Master, "master", "s", "localhost:8080", "the address of api server")
 }
 
@@ -72,6 +74,7 @@ func LaunchJob() {
 			},
 			Template: v1.PodTemplateSpec{
 				Spec: v1.PodSpec{
+					SchedulerName: launchJobFlags.SchedulerName,
 					Containers: []v1.Container{
 						{
 							Image: launchJobFlags.Image,
