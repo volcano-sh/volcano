@@ -43,14 +43,14 @@ func main() {
 		Use: "job",
 	}
 
-	jobLaunchCmd := &cobra.Command{
-		Use: "launch",
+	jobRunCmd := &cobra.Command{
+		Use: "run",
 		Run: func(cmd *cobra.Command, args []string) {
-			job.LaunchJob()
+			job.RunJob()
 		},
 	}
-	job.InitLaunchFlags(jobLaunchCmd)
-	jobCmd.AddCommand(jobLaunchCmd)
+	job.InitRunFlags(jobRunCmd)
+	jobCmd.AddCommand(jobRunCmd)
 
 	jobListCmd := &cobra.Command{
 		Use: "list",

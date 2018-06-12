@@ -57,7 +57,7 @@ func ListJobs() {
 	}
 
 	fmt.Printf("%-30s%-25s%-15s%-15s%-15s%-15s%-15s\n",
-		"Name", "Creation", "Replicas", "MinAvailable", "Running", "Succeeded", "Failed")
+		"Name", "Creation", "Replicas", "Min", "Active", "Succeeded", "Failed")
 	for _, qj := range queueJobs.Items {
 		fmt.Printf("%-30s%-25s%-15d%-15d%-15d%-15d%-15d\n",
 			qj.Name, qj.CreationTimestamp.Format("2006-01-02 15:04:05"), qj.Spec.Replicas,

@@ -25,7 +25,7 @@ import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset"
 )
 
-type launchFlags struct {
+type runFlags struct {
 	commonFlags
 
 	Name      string
@@ -37,9 +37,9 @@ type launchFlags struct {
 	Requests     string
 }
 
-var launchJobFlags = &launchFlags{}
+var launchJobFlags = &runFlags{}
 
-func InitLaunchFlags(cmd *cobra.Command) {
+func InitRunFlags(cmd *cobra.Command) {
 	initFlags(cmd, &launchJobFlags.commonFlags)
 
 	cmd.Flags().StringVarP(&launchJobFlags.Image, "image", "", "busybox", "the container image of job")
@@ -52,7 +52,7 @@ func InitLaunchFlags(cmd *cobra.Command) {
 
 var queueJobName = "queuejob.arbitrator.k8s.io"
 
-func LaunchJob() {
+func RunJob() {
 	config, err := buildConfig(launchJobFlags.Master, launchJobFlags.Kubeconfig)
 	if err != nil {
 		panic(err)
