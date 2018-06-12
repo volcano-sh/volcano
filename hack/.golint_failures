@@ -7,6 +7,7 @@ pkg/client/clientset
 pkg/client/clientset/scheme
 pkg/client/clientset/typed/v1
 pkg/client/informers/internalinterfaces
+pkg/karcli/job
 pkg/scheduler
 pkg/scheduler/actions/allocate
 pkg/scheduler/actions/decorate
