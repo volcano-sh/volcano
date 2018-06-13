@@ -76,9 +76,30 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
 
+		if drf.jobOpts[lv.UID].share == drf.jobOpts[rv.UID].share {
+			return 0
+		}
+
 		if drf.jobOpts[lv.UID].share < drf.jobOpts[rv.UID].share {
 			return -1
 		}
+
+		return 1
+	})
+
+	// Add Task Order function
+	ssn.AddTaskOrderFn(func(l interface{}, r interface{}) int {
+		lv := l.(*api.TaskInfo)
+		rv := r.(*api.TaskInfo)
+
+		if lv.Priority == rv.Priority {
+			return 0
+		}
+
+		if lv.Priority > rv.Priority {
+			return -1
+		}
+
 		return 1
 	})
 
