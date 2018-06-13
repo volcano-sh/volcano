@@ -335,13 +335,15 @@ func (cc *Controller) getPodsForQueueJob(qj *arbv1.QueueJob) ([]*v1.Pod, error) 
 func (cc *Controller) manageQueueJob(qj *arbv1.QueueJob, pods []*v1.Pod) error {
 	var err error
 
-	active := int32(len(filterActivePods(pods)))
 	replicas := qj.Spec.Replicas
+
+	running := int32(filterPods(pods, v1.PodRunning))
+	pending := int32(filterPods(pods, v1.PodPending))
 	succeeded := int32(filterPods(pods, v1.PodSucceeded))
 	failed := int32(filterPods(pods, v1.PodFailed))
 
-	glog.V(3).Infof("There are %d pods of QueueJob %s: replicas %d, active %d, succeeded %d, failed %d",
-		len(pods), qj.Name, active, replicas, succeeded, failed)
+	glog.V(3).Infof("There are %d pods of QueueJob %s: replicas %d, pending %d, running %d, succeeded %d, failed %d",
+		len(pods), qj.Name, pending, running, replicas, succeeded, failed)
 
 	ss, err := cc.arbclients.ArbV1().SchedulingSpecs(qj.Namespace).List(metav1.ListOptions{
 		FieldSelector: fmt.Sprintf("metadata.name=%s", qj.Name),
@@ -360,7 +362,7 @@ func (cc *Controller) manageQueueJob(qj *arbv1.QueueJob, pods []*v1.Pod) error {
 	}
 
 	// Create pod if necessary
-	if diff := replicas - active - succeeded; diff > 0 {
+	if diff := replicas - pending - running - succeeded; diff > 0 {
 		glog.V(3).Infof("Try to create %v Pods for QueueJob %v/%v", diff, qj.Namespace, qj.Name)
 
 		var errs []error
@@ -389,7 +391,8 @@ func (cc *Controller) manageQueueJob(qj *arbv1.QueueJob, pods []*v1.Pod) error {
 	}
 
 	qj.Status = arbv1.QueueJobStatus{
-		Running:      active,
+		Pending:      pending,
+		Running:      running,
 		Succeeded:    succeeded,
 		Failed:       failed,
 		MinAvailable: int32(qj.Spec.SchedSpec.MinAvailable),
