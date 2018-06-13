@@ -16,6 +16,7 @@ limitations under the License.
 package main
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/golang/glog"
@@ -46,7 +47,7 @@ func main() {
 	jobRunCmd := &cobra.Command{
 		Use: "run",
 		Run: func(cmd *cobra.Command, args []string) {
-			job.RunJob()
+			checkError(cmd, job.RunJob())
 		},
 	}
 	job.InitRunFlags(jobRunCmd)
@@ -55,7 +56,7 @@ func main() {
 	jobListCmd := &cobra.Command{
 		Use: "list",
 		Run: func(cmd *cobra.Command, args []string) {
-			job.ListJobs()
+			checkError(cmd, job.ListJobs())
 		},
 	}
 	job.InitListFlags(jobListCmd)
@@ -64,4 +65,17 @@ func main() {
 	rootCmd.AddCommand(jobCmd)
 
 	rootCmd.Execute()
+}
+
+func checkError(cmd *cobra.Command, err error) {
+	if err != nil {
+		msg := "Failed to"
+
+		// Ignore the root command.
+		for cur := cmd; cur.Parent() != nil; cur = cur.Parent() {
+			msg = msg + fmt.Sprintf(" %s", cur.Name())
+		}
+
+		fmt.Printf("%s: %v\n", msg, err)
+	}
 }

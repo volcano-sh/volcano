@@ -38,29 +38,31 @@ func InitListFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&listJobFlags.Namespace, "namespace", "", "default", "the namespace of job")
 }
 
-func ListJobs() {
+func ListJobs() error {
 	config, err := buildConfig(listJobFlags.Master, listJobFlags.Kubeconfig)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	queueClient := clientset.NewForConfigOrDie(config)
 
 	queueJobs, err := queueClient.ArbV1().QueueJobs(listJobFlags.Namespace).List(metav1.ListOptions{})
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	if len(queueJobs.Items) == 0 {
 		fmt.Printf("No resources found\n")
-		return
+		return nil
 	}
 
-	fmt.Printf("%-30s%-25s%-12s%-12s%-12s%-12s%-12s%-12s\n",
+	fmt.Printf("%-30s%-25s%-12s%-8s%-12s%-12s%-12s%-12s\n",
 		"Name", "Creation", "Replicas", "Min", "Pending", "Running", "Succeeded", "Failed")
 	for _, qj := range queueJobs.Items {
-		fmt.Printf("%-30s%-25s%-12d%-12d%-12d%-12d%-12d%-12d\n",
+		fmt.Printf("%-30s%-25s%-12d%-8d%-12d%-12d%-12d%-12d\n",
 			qj.Name, qj.CreationTimestamp.Format("2006-01-02 15:04:05"), qj.Spec.Replicas,
 			qj.Status.MinAvailable, qj.Status.Pending, qj.Status.Running, qj.Status.Succeeded, qj.Status.Failed)
 	}
+
+	return nil
 }

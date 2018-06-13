@@ -52,17 +52,17 @@ func InitRunFlags(cmd *cobra.Command) {
 
 var queueJobName = "queuejob.arbitrator.k8s.io"
 
-func RunJob() {
+func RunJob() error {
 	config, err := buildConfig(launchJobFlags.Master, launchJobFlags.Kubeconfig)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	queueClient := clientset.NewForConfigOrDie(config)
 
 	req, err := populateResourceListV1(launchJobFlags.Requests)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	qj := &arbv1.QueueJob{
@@ -102,6 +102,8 @@ func RunJob() {
 	}
 
 	if _, err := queueClient.ArbV1().QueueJobs(launchJobFlags.Namespace).Create(qj); err != nil {
-		panic(err)
+		return err
 	}
+
+	return nil
 }
