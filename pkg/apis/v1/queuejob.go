@@ -55,7 +55,11 @@ type QueueJobSpec struct {
 
 // QueueJobStatus represents the current state of a QueueJob
 type QueueJobStatus struct {
-	// The number of actively running pods.
+	// The number of pending pods.
+	// +optional
+	Pending int32 `json:"pending,omitempty" protobuf:"bytes,1,opt,name=pending"`
+
+	// The number of running pods.
 	// +optional
 	Running int32 `json:"running,omitempty" protobuf:"bytes,1,opt,name=running"`
 
