@@ -19,7 +19,10 @@ package framework
 import (
 	"fmt"
 
+	"github.com/golang/glog"
+
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/uuid"
 
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/cache"
@@ -30,13 +33,49 @@ type Session struct {
 
 	cache cache.Cache
 
-	Jobs    []*api.JobInfo
-	Nodes   []*api.NodeInfo
-	Backlog []*api.JobInfo
+	Jobs      []*api.JobInfo
+	JobIndex  map[api.JobID]*api.JobInfo
+	Nodes     []*api.NodeInfo
+	NodeIndex map[string]*api.NodeInfo
+	Backlog   []*api.JobInfo
 
 	plugins       []Plugin
 	eventHandlers []*EventHandler
 	jobOrderFns   []api.CompareFn
+}
+
+func openSession(cache cache.Cache) *Session {
+	ssn := &Session{
+		ID:        uuid.NewUUID(),
+		cache:     cache,
+		JobIndex:  map[api.JobID]*api.JobInfo{},
+		NodeIndex: map[string]*api.NodeInfo{},
+	}
+
+	snapshot := cache.Snapshot()
+
+	ssn.Jobs = snapshot.Jobs
+	for _, job := range ssn.Jobs {
+		ssn.JobIndex[job.UID] = job
+	}
+
+	ssn.Nodes = snapshot.Nodes
+	for _, node := range ssn.Nodes {
+		ssn.NodeIndex[node.Name] = node
+	}
+
+	return ssn
+}
+
+func closeSession(ssn *Session) {
+	ssn.Jobs = nil
+	ssn.JobIndex = nil
+	ssn.Nodes = nil
+	ssn.NodeIndex = nil
+	ssn.Backlog = nil
+	ssn.plugins = nil
+	ssn.eventHandlers = nil
+	ssn.jobOrderFns = nil
 }
 
 func (ssn *Session) Bind(task *api.TaskInfo, hostname string) error {
@@ -45,17 +84,18 @@ func (ssn *Session) Bind(task *api.TaskInfo, hostname string) error {
 	}
 
 	// Update status in session
-	// TODO(k82cn): add index to speedup.
-	for _, job := range ssn.Jobs {
-		if job.UID == task.Job {
-			job.UpdateTaskStatus(task, api.Binding)
-		}
+	if job, found := ssn.JobIndex[task.Job]; found {
+		job.UpdateTaskStatus(task, api.Binding)
+	} else {
+		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
+			task.Job, ssn.ID)
 	}
 
-	for _, node := range ssn.Nodes {
-		if hostname == node.Name {
-			node.AddTask(task)
-		}
+	if node, found := ssn.NodeIndex[hostname]; found {
+		node.AddTask(task)
+	} else {
+		glog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
+			hostname, ssn.ID)
 	}
 
 	// Callbacks
@@ -78,6 +118,8 @@ func (ssn *Session) ForgetJob(job *api.JobInfo) error {
 			ssn.Backlog = append(ssn.Backlog, j)
 			ssn.Jobs[i] = ssn.Jobs[len(ssn.Jobs)-1]
 			ssn.Jobs = ssn.Jobs[:len(ssn.Jobs)-1]
+			// NOTES: did not update JobIndex, the index is used for both
+			// backlog & jobs.
 		}
 	}
 

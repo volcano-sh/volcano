@@ -17,22 +17,11 @@ limitations under the License.
 package framework
 
 import (
-	"k8s.io/apimachinery/pkg/util/uuid"
-
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/cache"
 )
 
 func OpenSession(cache cache.Cache) *Session {
-	snapshot := cache.Snapshot()
-
-	ssn := &Session{
-		ID: uuid.NewUUID(),
-
-		cache: cache,
-
-		Jobs:  snapshot.Jobs,
-		Nodes: snapshot.Nodes,
-	}
+	ssn := openSession(cache)
 
 	for _, pb := range pluginBuilders {
 		ssn.plugins = append(ssn.plugins, pb())
@@ -50,6 +39,5 @@ func CloseSession(ssn *Session) {
 		plugin.OnSessionClose(ssn)
 	}
 
-	ssn.Jobs = nil
-	ssn.Nodes = nil
+	closeSession(ssn)
 }
