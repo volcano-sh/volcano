@@ -42,6 +42,7 @@ type Session struct {
 	plugins       []Plugin
 	eventHandlers []*EventHandler
 	jobOrderFns   []api.CompareFn
+	taskOrderFns  []api.CompareFn
 }
 
 func openSession(cache cache.Cache) *Session {
@@ -134,6 +135,10 @@ func (ssn *Session) AddJobOrderFn(cf api.CompareFn) {
 	ssn.jobOrderFns = append(ssn.jobOrderFns, cf)
 }
 
+func (ssn *Session) AddTaskOrderFn(cf api.CompareFn) {
+	ssn.taskOrderFns = append(ssn.taskOrderFns, cf)
+}
+
 func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 	for _, jof := range ssn.jobOrderFns {
 		if j := jof(l, r); j != 0 {
@@ -149,9 +154,13 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 }
 
 func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
-	// TODO (k82cn): add callback func to add TaskOrderFn for
-	// task priority case.
+	for _, tof := range ssn.taskOrderFns {
+		if j := tof(l, r); j != 0 {
+			return j < 0
+		}
+	}
 
+	// If no task order funcs, order task by UID.
 	lv := l.(*api.TaskInfo)
 	rv := r.(*api.TaskInfo)
 
