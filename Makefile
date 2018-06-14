@@ -23,7 +23,7 @@ images: kube-arbitrator
 	cp ./_output/bin/kar-controllers ./deployment/
 	cp ./_output/bin/karcli ./deployment/
 	docker build ./deployment/ -t kubearbitrator/kube-arbitrator:${RELEASE_VER}
-	rm -f ./deployment/kar-*
+	rm -f ./deployment/kar*
 
 test:
 	hack/make-rules/test.sh $(WHAT) $(TESTS)

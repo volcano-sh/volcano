@@ -94,15 +94,17 @@ func (r *Resource) Add(rr *Resource) *Resource {
 	return r
 }
 
-//A function to Subtract two Resource objects.
+//Sub subtracts two Resource objects.
 func (r *Resource) Sub(rr *Resource) *Resource {
-	if r.Less(rr) == false {
+	if rr.LessEqual(r) {
 		r.MilliCPU -= rr.MilliCPU
 		r.Memory -= rr.Memory
 		r.GPU -= rr.GPU
 		return r
 	}
-	panic("Resource is not sufficient to do operation: Sub()")
+
+	panic(fmt.Errorf("Resource is not sufficient to do operation: <%v> sub <%v>",
+		r, rr))
 }
 
 func (r *Resource) Less(rr *Resource) bool {

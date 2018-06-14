@@ -29,6 +29,10 @@ import (
 	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 )
 
+func isTerminated(status arbapi.TaskStatus) bool {
+	return status == arbapi.Succeeded || status == arbapi.Failed
+}
+
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 	pi := arbapi.NewTaskInfo(pod)
@@ -38,6 +42,10 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 			sc.Jobs[pi.Job] = arbapi.NewJobInfo(pi.Job)
 		}
 
+		// TODO(k82cn): it's found that the Add event will be sent
+		// multiple times without update/delete. That should be a
+		// client-go issue, we need to dig deeper for that.
+		sc.Jobs[pi.Job].DeleteTaskInfo(pi)
 		sc.Jobs[pi.Job].AddTaskInfo(pi)
 	} else {
 		glog.Warningf("The controller of pod %v/%v is empty, can not schedule it.",
@@ -45,12 +53,18 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 	}
 
 	if len(pi.NodeName) != 0 {
+		glog.V(3).Infof("Add task %v/%v into host %v", pi.Namespace, pi.Name, pi.NodeName)
+
 		if _, found := sc.Nodes[pi.NodeName]; !found {
 			sc.Nodes[pi.NodeName] = arbapi.NewNodeInfo(nil)
 		}
 
 		node := sc.Nodes[pi.NodeName]
-		node.AddTask(pi)
+		node.RemoveTask(pi)
+
+		if !isTerminated(pi.Status) {
+			node.AddTask(pi)
+		}
 	}
 
 	return nil
@@ -80,6 +94,7 @@ func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
 	if len(pi.NodeName) != 0 {
 		node := sc.Nodes[pi.NodeName]
 		if node != nil {
+			glog.V(3).Infof("Delete task %v/%v from host %v", pi.Namespace, pi.Name, pi.NodeName)
 			node.RemoveTask(pi)
 		}
 	}
