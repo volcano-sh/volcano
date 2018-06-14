@@ -1,3 +1,0 @@
-From ubuntu:18.04
-
-ADD kube-queuejob-ctrl /opt

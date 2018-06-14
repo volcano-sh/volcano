@@ -18,12 +18,10 @@ generate-code:
 	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/v1/ -O zz_generated.deepcopy
 
 images: kube-arbitrator
-	cp ./_output/bin/kube-batchd ./deployment/
-	cp ./_output/bin/kube-queuejob-ctrl ./deployment/
-	docker build ./deployment/ -t kubearbitrator/batchd:v0.1
-	docker build ./deployment/ -t kubearbitrator/queuejob-ctrl:v0.1
-	rm -f ./deployment/kube-batchd
-	rm -f ./deployment/kube-queuejob-ctrl
+	cp ./_output/bin/kar-scheduler ./deployment/
+	cp ./_output/bin/kar-controllers ./deployment/
+	docker build ./deployment/ -t kubearbitrator/kube-arbitrator:v0.1
+	rm -f ./deployment/kar-*
 
 test:
 	hack/make-rules/test.sh $(WHAT) $(TESTS)

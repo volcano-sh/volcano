@@ -1,3 +1,6 @@
 From ubuntu:18.04
 
-ADD kube-batchd /opt
+ADD kar-scheduler /usr/local/bin
+ADD kar-controllers /usr/local/bin
+
+
