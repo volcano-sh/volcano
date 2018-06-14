@@ -17,6 +17,8 @@ limitations under the License.
 package api
 
 import (
+	"github.com/golang/glog"
+
 	"k8s.io/api/core/v1"
 )
 
@@ -99,15 +101,27 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 }
 
 func (ni *NodeInfo) AddTask(p *TaskInfo) {
+	key := PodKey(p.Pod)
+	if _, found := ni.Tasks[key]; found {
+		glog.Errorf("Task <%v/%v> already on node <%v>, should not add again.",
+			p.Namespace, p.Name, ni.Name)
+		return
+	}
+
 	if ni.Node != nil {
 		ni.Idle.Sub(p.Resreq)
 		ni.Used.Add(p.Resreq)
 	}
 
-	ni.Tasks[PodKey(p.Pod)] = p
+	ni.Tasks[key] = p
 }
 
 func (ni *NodeInfo) RemoveTask(p *TaskInfo) {
+	key := PodKey(p.Pod)
+	if _, found := ni.Tasks[key]; !found {
+		return
+	}
+
 	if ni.Node != nil {
 		ni.Idle.Add(p.Resreq)
 		ni.Used.Sub(p.Resreq)

@@ -48,7 +48,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 		jobs.Push(job)
 	}
 
-	glog.V(3).Infof("try to allocate resource to %d Jobs", jobs.Len())
+	glog.V(3).Infof("Try to allocate resource to %d Jobs", jobs.Len())
 
 	pendingTasks := map[api.JobID]*util.PriorityQueue{}
 
@@ -68,8 +68,8 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 		}
 		tasks := pendingTasks[job.UID]
 
-		glog.V(3).Infof("Try to allocate resource to %d tasks of Job <%v>",
-			tasks.Len(), job.UID)
+		glog.V(3).Infof("Try to allocate resource to %d tasks of Job <%v:%v>",
+			tasks.Len(), job.UID, job.Name)
 
 		for !tasks.Empty() {
 			task := tasks.Pop().(*api.TaskInfo)
@@ -83,10 +83,10 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 				nodes = ssn.Nodes
 			}
 
-			glog.V(3).Infof("there are <%d> nodes for Job <%v>", len(nodes), job.UID)
+			glog.V(3).Infof("there are <%d> nodes for Job <%v:%v>", len(nodes), job.UID, job.Name)
 
 			for _, node := range nodes {
-				glog.V(3).Infof("considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
+				glog.V(3).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
 					task.Job, task.UID, node.Name, task.Resreq, node.Idle)
 				if task.Resreq.LessEqual(node.Idle) {
 					glog.V(3).Infof("binding Task <%v/%v> to node <%v>",

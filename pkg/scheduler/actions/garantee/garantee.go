@@ -55,26 +55,33 @@ func (alloc *garanteeAction) Execute(ssn *framework.Session) {
 			tasks.Push(task)
 		}
 
-		occupied := 0
+		start := 0
 		for status, tasks := range job.TaskStatusIndex {
-			if api.OccupiedResources(status) {
-				occupied = occupied + len(tasks)
+			// Also include succeeded task.
+			if api.OccupiedResources(status) || status == api.Succeeded {
+				start = start + len(tasks)
 			}
 		}
 
-		if tasks.Len() < job.MinAvailable-occupied {
+		if job.MinAvailable < start {
+			glog.V(3).Infof("QueueJob %v already starts enough Tasks (min %v, start %v).",
+				job.Name, job.MinAvailable, start)
+			continue
+		}
+
+		if tasks.Len() < job.MinAvailable-start {
 			glog.V(3).Infof("Not enough pending tasks %v in QueueJob %v to start (min %v, occupied %v).",
-				tasks.Len(), job.Name, job.MinAvailable, occupied)
+				tasks.Len(), job.Name, job.MinAvailable, start)
 			continue
 		}
 
 		binds := map[api.TaskID]string{}
 		allocates := map[string]*api.Resource{}
 
-		glog.V(3).Infof("Try to allocate resource to <%d> Tasks of Job <%s>",
-			job.MinAvailable-occupied, job.UID)
+		glog.V(3).Infof("Try to allocate resource to <%d> Tasks of Job <%s:%s>",
+			job.MinAvailable-start, job.UID, job.Name)
 
-		for ; occupied < job.MinAvailable; occupied++ {
+		for ; start < job.MinAvailable; start++ {
 			task := tasks.Pop().(*api.TaskInfo)
 
 			if task == nil {
@@ -96,6 +103,9 @@ func (alloc *garanteeAction) Execute(ssn *framework.Session) {
 					currentIdle.Sub(alloc)
 				}
 
+				glog.V(3).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
+					task.Job, task.UID, node.Name, task.Resreq, currentIdle)
+
 				if task.Resreq.LessEqual(currentIdle) {
 					binds[task.UID] = node.Name
 					if _, found := allocates[node.Name]; !found {
@@ -113,10 +123,12 @@ func (alloc *garanteeAction) Execute(ssn *framework.Session) {
 		}
 
 		// Got enough occupied, bind them all.
-		if occupied >= job.MinAvailable {
+		if start >= job.MinAvailable {
 			for taskID, host := range binds {
 				task := job.Tasks[taskID]
 				ssn.Bind(task, host)
+				glog.V(3).Infof("Bind task <%v/%v> to host <%v>",
+					task.Namespace, task.Name, host)
 			}
 		} else {
 			// If job can not get enough resource, forget it for following
