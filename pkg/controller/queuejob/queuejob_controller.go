@@ -343,7 +343,7 @@ func (cc *Controller) manageQueueJob(qj *arbv1.QueueJob, pods []*v1.Pod) error {
 	failed := int32(filterPods(pods, v1.PodFailed))
 
 	glog.V(3).Infof("There are %d pods of QueueJob %s: replicas %d, pending %d, running %d, succeeded %d, failed %d",
-		len(pods), qj.Name, pending, running, replicas, succeeded, failed)
+		len(pods), qj.Name, replicas, pending, running, succeeded, failed)
 
 	ss, err := cc.arbclients.ArbV1().SchedulingSpecs(qj.Namespace).List(metav1.ListOptions{
 		FieldSelector: fmt.Sprintf("metadata.name=%s", qj.Name),
