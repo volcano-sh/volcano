@@ -7,8 +7,7 @@
 
 `kube-arbitrator` builds upon a decade and a half of experience on running batch workloads at scale using several systems, e.g. [LSF](https://www.ibm.com/us-en/marketplace/hpc-workload-management), [Symphony](https://www.ibm.com/us-en/marketplace/analytics-workload-management), combined with best-of-breed ideas and practices from the community.
 
-Refer to [tutorial](https://github.com/kubernetes-incubator/kube-arbitrator/blob/master/doc/usage/batchd_tutorial.md) on how to use `kube-arbitrator` to run batch job in Kubernetes
-
+Refer to [tutorial](doc/usage/tutorial.md) on how to use `kube-arbitrator` to run batch job in Kubernetes
 
 ## Community, discussion, contribution, and support
 
