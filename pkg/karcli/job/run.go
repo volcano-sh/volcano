@@ -89,8 +89,9 @@ func RunJob() error {
 					RestartPolicy: v1.RestartPolicyNever,
 					Containers: []v1.Container{
 						{
-							Image: launchJobFlags.Image,
-							Name:  launchJobFlags.Name,
+							Image:           launchJobFlags.Image,
+							Name:            launchJobFlags.Name,
+							ImagePullPolicy: v1.PullIfNotPresent,
 							Resources: v1.ResourceRequirements{
 								Requests: req,
 							},
