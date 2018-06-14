@@ -3,21 +3,12 @@
 [![Build Status](https://travis-ci.org/kubernetes-incubator/kube-arbitrator.svg?branch=master)](https://travis-ci.org/kubernetes-incubator/kube-arbitrator)
 [![Go Report Card](https://goreportcard.com/badge/github.com/kubernetes-incubator/kube-arbitrator)](https://goreportcard.com/report/github.com/kubernetes-incubator/kube-arbitrator)
 
-kube-arbitrator is a policy based resource sharing system for Kubernetes cluster, it includes two sub projects: `kube-batchd` (a batch job scheduler) and `kube-quotalloc` (a dynamic quota allocator).
+`kube-arbitrator` is batch system built on Kubernetes, providing mechanisms for the applications which would like to run batch jobs in Kubernetes.
 
-## kube-batchd
+`kube-arbitrator` builds upon a decade and a half of experience on running batch workloads at scale using several systems, e.g. [LSF](https://www.ibm.com/us-en/marketplace/hpc-workload-management), [Symphony](https://www.ibm.com/us-en/marketplace/analytics-workload-management), combined with best-of-breed ideas and practices from the community.
 
-`kube-batchd` is batch system built on Kubernetes, providing mechanisms for the applications which would like to run batch jobs in Kubernetes.
+Refer to [tutorial](https://github.com/kubernetes-incubator/kube-arbitrator/blob/master/doc/usage/batchd_tutorial.md) on how to use `kube-arbitrator` to run batch job in Kubernetes
 
-`kube-batchd` builds upon a decade and a half of experience on running batch workloads at scale using several systems, e.g. [LSF](https://www.ibm.com/us-en/marketplace/hpc-workload-management), [Symphony](https://www.ibm.com/us-en/marketplace/analytics-workload-management), combined with best-of-breed ideas and practices from the community.
-
-Refer to [tutorial](https://github.com/kubernetes-incubator/kube-arbitrator/blob/master/doc/usage/batchd_tutorial.md) on how to use `kube-batchd` to run batch job in Kubernetes
-
-## kube-quotalloc
-
-`kube-quotalloc` is resource management system built on Kubernetes, providing mechanisms for dynamic resource sharing between multiple tenants/namespaces in Kubernetes. It builds upon a decade and a half of experience on resource sharing system in enterprise called [EGO](https://www.ibm.com/developerworks/cn/analytics/library/ba-cn-ego-intro-whitepaper/index.html), combined with best-of-breed ideas and practices from the community
-
-Refer to [tutorial](https://github.com/kubernetes-incubator/kube-arbitrator/blob/master/doc/usage/quotalloc_tutorial.md) on how to use `kube-quotalloc` to share resource dynamically between namespaces in Kubernetes
 
 ## Community, discussion, contribution, and support
 
