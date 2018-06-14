@@ -123,4 +123,3 @@ kubernetes.tar.gz
 /bazel-*
 *.pyc
 
-kube-arbitrator

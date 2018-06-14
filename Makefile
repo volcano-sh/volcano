@@ -1,4 +1,5 @@
 BIN_DIR=_output/bin
+RELEASE_VER=0.1
 
 kube-arbitrator: init
 	go build -o ${BIN_DIR}/kar-scheduler ./cmd/kar-scheduler/
@@ -20,7 +21,7 @@ generate-code:
 images: kube-arbitrator
 	cp ./_output/bin/kar-scheduler ./deployment/
 	cp ./_output/bin/kar-controllers ./deployment/
-	docker build ./deployment/ -t kubearbitrator/kube-arbitrator:v0.1
+	docker build ./deployment/ -t kubearbitrator/kube-arbitrator:${RELEASE_VER}
 	rm -f ./deployment/kar-*
 
 test:
