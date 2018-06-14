@@ -60,12 +60,12 @@ func (pc *Scheduler) runOnce() {
 	defer glog.V(4).Infof("End scheduling ...")
 
 	ssn := framework.OpenSession(pc.cache)
+	defer framework.CloseSession(ssn)
 
 	for _, action := range Actions {
 		action.Execute(ssn)
 	}
 
-	framework.CloseSession(ssn)
 }
 
 func createSchedulingSpecKind(config *rest.Config) error {
