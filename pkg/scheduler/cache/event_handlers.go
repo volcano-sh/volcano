@@ -22,6 +22,7 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1beta1"
 	"k8s.io/client-go/tools/cache"
 
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/utils"
@@ -301,7 +302,6 @@ func (sc *SchedulerCache) updateSchedulingSpec(oldQueue, newQueue *arbv1.Schedul
 
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) deleteSchedulingSpec(queue *arbv1.SchedulingSpec) error {
-
 	return nil
 }
 
@@ -325,53 +325,152 @@ func (sc *SchedulerCache) AddSchedulingSpec(obj interface{}) {
 }
 
 func (sc *SchedulerCache) UpdateSchedulingSpec(oldObj, newObj interface{}) {
-	oldQueue, ok := oldObj.(*arbv1.SchedulingSpec)
+	oldSS, ok := oldObj.(*arbv1.SchedulingSpec)
 	if !ok {
-		glog.Errorf("Cannot convert oldObj to *arbv1.Queue: %v", oldObj)
+		glog.Errorf("Cannot convert oldObj to *arbv1.SchedulingSpec: %v", oldObj)
 		return
 	}
-	newQueue, ok := newObj.(*arbv1.SchedulingSpec)
+	newSS, ok := newObj.(*arbv1.SchedulingSpec)
 	if !ok {
-		glog.Errorf("Cannot convert newObj to *arbv1.Queue: %v", newObj)
+		glog.Errorf("Cannot convert newObj to *arbv1.SchedulingSpec: %v", newObj)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Update oldQueue(%s) in cache, spec(%#v)", oldQueue.Name, oldQueue.Spec)
-	glog.V(4).Infof("Update newQueue(%s) in cache, spec(%#v)", newQueue.Name, newQueue.Spec)
-	err := sc.updateSchedulingSpec(oldQueue, newQueue)
+	glog.V(4).Infof("Update oldSchedulingSpec(%s) in cache, spec(%#v)", oldSS.Name, oldSS.Spec)
+	glog.V(4).Infof("Update newSchedulingSpec(%s) in cache, spec(%#v)", newSS.Name, newSS.Spec)
+	err := sc.updateSchedulingSpec(oldSS, newSS)
 	if err != nil {
-		glog.Errorf("Failed to update queue %s into cache: %v", oldQueue.Name, err)
+		glog.Errorf("Failed to update SchedulingSpec %s into cache: %v", oldSS.Name, err)
 		return
 	}
 	return
 }
 
 func (sc *SchedulerCache) DeleteSchedulingSpec(obj interface{}) {
-	var queue *arbv1.SchedulingSpec
+	var ss *arbv1.SchedulingSpec
 	switch t := obj.(type) {
 	case *arbv1.SchedulingSpec:
-		queue = t
+		ss = t
 	case cache.DeletedFinalStateUnknown:
 		var ok bool
-		queue, ok = t.Obj.(*arbv1.SchedulingSpec)
+		ss, ok = t.Obj.(*arbv1.SchedulingSpec)
 		if !ok {
-			glog.Errorf("Cannot convert to *v1.Queue: %v", t.Obj)
+			glog.Errorf("Cannot convert to *arbv1.SchedulingSpec: %v", t.Obj)
 			return
 		}
 	default:
-		glog.Errorf("Cannot convert to *v1.Queue: %v", t)
+		glog.Errorf("Cannot convert to *arbv1.SchedulingSpec: %v", t)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err := sc.deleteSchedulingSpec(queue)
+	err := sc.deleteSchedulingSpec(ss)
 	if err != nil {
-		glog.Errorf("Failed to delete Queue %s from cache: %v", queue.Name, err)
+		glog.Errorf("Failed to delete SchedulingSpec %s from cache: %v", ss.Name, err)
+		return
+	}
+	return
+}
+
+// Assumes that lock is already acquired.
+func (sc *SchedulerCache) setPDB(pdb *policyv1.PodDisruptionBudget) error {
+	job := arbapi.JobID(utils.GetController(pdb))
+
+	if len(job) == 0 {
+		return fmt.Errorf("the controller of SchedulingSpec is empty")
+	}
+
+	if _, found := sc.Jobs[job]; !found {
+		sc.Jobs[job] = arbapi.NewJobInfo(job)
+	}
+
+	sc.Jobs[job].SetPDB(pdb)
+
+	return nil
+}
+
+// Assumes that lock is already acquired.
+func (sc *SchedulerCache) updatePDB(oldQueue, newQueue *policyv1.PodDisruptionBudget) error {
+	return sc.setPDB(newQueue)
+}
+
+// Assumes that lock is already acquired.
+func (sc *SchedulerCache) deletePDB(queue *policyv1.PodDisruptionBudget) error {
+	return nil
+}
+
+func (sc *SchedulerCache) AddPDB(obj interface{}) {
+	pdb, ok := obj.(*policyv1.PodDisruptionBudget)
+	if !ok {
+		glog.Errorf("Cannot convert to *policyv1.PodDisruptionBudget: %v", obj)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	glog.V(4).Infof("Add PodDisruptionBudget(%s) into cache, spec(%#v)", pdb.Name, pdb.Spec)
+	err := sc.setPDB(pdb)
+	if err != nil {
+		glog.Errorf("Failed to add PodDisruptionBudget %s into cache: %v", pdb.Name, err)
+		return
+	}
+	return
+}
+
+func (sc *SchedulerCache) UpdatePDB(oldObj, newObj interface{}) {
+	oldPDB, ok := oldObj.(*policyv1.PodDisruptionBudget)
+	if !ok {
+		glog.Errorf("Cannot convert oldObj to *policyv1.PodDisruptionBudget: %v", oldObj)
+		return
+	}
+	newPDB, ok := newObj.(*policyv1.PodDisruptionBudget)
+	if !ok {
+		glog.Errorf("Cannot convert newObj to *policyv1.PodDisruptionBudget: %v", newObj)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	glog.V(4).Infof("Update oldPDB(%s) in cache, spec(%#v)", oldPDB.Name, oldPDB.Spec)
+	glog.V(4).Infof("Update newPDB(%s) in cache, spec(%#v)", newPDB.Name, newPDB.Spec)
+	err := sc.updatePDB(oldPDB, newPDB)
+	if err != nil {
+		glog.Errorf("Failed to update PodDisruptionBudget %s into cache: %v", oldPDB.Name, err)
+		return
+	}
+	return
+}
+
+func (sc *SchedulerCache) DeletePDB(obj interface{}) {
+	var pdb *policyv1.PodDisruptionBudget
+	switch t := obj.(type) {
+	case *policyv1.PodDisruptionBudget:
+		pdb = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		pdb, ok = t.Obj.(*policyv1.PodDisruptionBudget)
+		if !ok {
+			glog.Errorf("Cannot convert to *policyv1.PodDisruptionBudget: %v", t.Obj)
+			return
+		}
+	default:
+		glog.Errorf("Cannot convert to *policyv1.PodDisruptionBudget: %v", t)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	err := sc.deletePDB(pdb)
+	if err != nil {
+		glog.Errorf("Failed to delete PodDisruptionBudget %s from cache: %v", pdb.Name, err)
 		return
 	}
 	return
