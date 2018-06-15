@@ -31,7 +31,7 @@ import (
 
 	_ "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/drf"
 
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1alpha1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/cache"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"

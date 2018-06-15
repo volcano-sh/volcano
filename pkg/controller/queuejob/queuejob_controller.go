@@ -37,7 +37,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/utils"
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1alpha1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset"
 	arbinformers "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"

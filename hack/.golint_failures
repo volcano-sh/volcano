@@ -3,7 +3,7 @@ cmd/kar-controllers/app/options
 cmd/kar-scheduler/app
 cmd/kar-scheduler/app/options
 pkg/apis/utils
-pkg/apis/v1
+pkg/apis/v1alpha1
 pkg/client
 pkg/client/clientset
 pkg/client/clientset/scheme

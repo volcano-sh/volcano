@@ -17,7 +17,7 @@ limitations under the License.
 package v1
 
 import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	v1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1alpha1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/scheme"
 
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"

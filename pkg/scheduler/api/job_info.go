@@ -24,7 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/utils"
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1alpha1"
 )
 
 type TaskID types.UID
