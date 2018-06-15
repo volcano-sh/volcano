@@ -27,6 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	clientv1 "k8s.io/client-go/informers/core/v1"
+	policyv1 "k8s.io/client-go/informers/policy/v1beta1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
@@ -50,6 +51,7 @@ type SchedulerCache struct {
 
 	podInformer            clientv1.PodInformer
 	nodeInformer           clientv1.NodeInformer
+	pdbInformer            policyv1.PodDisruptionBudgetInformer
 	schedulingSpecInformer arbclient.SchedulingSpecInformer
 
 	Binder Binder
@@ -124,6 +126,16 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 			},
 		})
 
+	sc.pdbInformer = informerFactory.Policy().V1beta1().PodDisruptionBudgets()
+	sc.pdbInformer.Informer().AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    sc.AddPDB,
+				UpdateFunc: sc.UpdatePDB,
+				DeleteFunc: sc.DeletePDB,
+			},
+		})
+
 	// create queue informer
 	queueClient, _, err := client.NewClient(config)
 	if err != nil {
@@ -162,6 +174,7 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 
 func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 	return cache.WaitForCacheSync(stopCh,
+		sc.pdbInformer.Informer().HasSynced,
 		sc.podInformer.Informer().HasSynced,
 		sc.schedulingSpecInformer.Informer().HasSynced,
 		sc.nodeInformer.Informer().HasSynced)
@@ -232,7 +245,7 @@ func (sc *SchedulerCache) Snapshot() *arbapi.ClusterInfo {
 
 	for _, value := range sc.Jobs {
 		// If no scheduling spec, does not handle it.
-		if value.SchedSpec == nil {
+		if value.SchedSpec == nil && value.PDB == nil {
 			glog.V(3).Infof("The scheduling spec of Job <%v> is nil, ignore it.", value.UID)
 			continue
 		}
