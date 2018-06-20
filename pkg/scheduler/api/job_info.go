@@ -100,7 +100,8 @@ type tasksMap map[TaskID]*TaskInfo
 type JobInfo struct {
 	UID JobID
 
-	Name string
+	Name      string
+	Namespace string
 
 	NodeSelector map[string]string
 	MinAvailable int
@@ -138,6 +139,7 @@ func NewJobInfo(uid JobID) *JobInfo {
 
 func (ps *JobInfo) SetSchedulingSpec(spec *arbv1.SchedulingSpec) {
 	ps.Name = spec.Name
+	ps.Namespace = spec.Namespace
 	ps.MinAvailable = spec.Spec.MinAvailable
 
 	for k, v := range spec.Spec.NodeSelector {
