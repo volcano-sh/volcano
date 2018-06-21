@@ -128,9 +128,9 @@ labels:
   color: eb6420
 - name: retest-not-required-docs-only
   color: fbca04
-- name: sig/batchd
+- name: sig/scheduler
   color: d2b48c
-- name: sig/quotalloc
+- name: sig/controllers
   color: d2b48c
 - name: size/L
   color: ee9900

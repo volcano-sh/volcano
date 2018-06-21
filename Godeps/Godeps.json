@@ -93,6 +93,11 @@
 			"Rev": "6633656539c1639d9d78127b7d47c622b5d7b6dc"
 		},
 		{
+			"ImportPath": "github.com/inconshreveable/mousetrap",
+			"Comment": "v1.0",
+			"Rev": "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75"
+		},
+		{
 			"ImportPath": "github.com/json-iterator/go",
 			"Comment": "1.0.4-7-g13f8643",
 			"Rev": "13f86432b882000a51c6e610c620974462691a97"
@@ -100,6 +105,11 @@
 		{
 			"ImportPath": "github.com/pborman/uuid",
 			"Rev": "ca53cad383cad2479bbba7f7a1a05797ec1386e4"
+		},
+		{
+			"ImportPath": "github.com/spf13/cobra",
+			"Comment": "v0.0.1-32-g6644d46",
+			"Rev": "6644d46b81fa1831979c4cded0106e774e0ef0ab"
 		},
 		{
 			"ImportPath": "github.com/spf13/pflag",
