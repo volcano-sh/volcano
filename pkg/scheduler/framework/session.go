@@ -17,8 +17,6 @@ limitations under the License.
 package framework
 
 import (
-	"fmt"
-
 	"github.com/golang/glog"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -39,10 +37,12 @@ type Session struct {
 	NodeIndex map[string]*api.NodeInfo
 	Backlog   []*api.JobInfo
 
-	plugins       []Plugin
-	eventHandlers []*EventHandler
-	jobOrderFns   []api.CompareFn
-	taskOrderFns  []api.CompareFn
+	plugins        []Plugin
+	eventHandlers  []*EventHandler
+	jobOrderFns    []api.CompareFn
+	taskOrderFns   []api.CompareFn
+	preemptableFns []api.LessFn
+	jobReadyFns    []api.ValidateFn
 }
 
 func openSession(cache cache.Cache) *Session {
@@ -79,8 +79,75 @@ func closeSession(ssn *Session) {
 	ssn.jobOrderFns = nil
 }
 
-func (ssn *Session) Bind(task *api.TaskInfo, hostname string) error {
-	if err := ssn.cache.Bind(task, hostname); err != nil {
+func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
+	// Only update status in session
+	job, found := ssn.JobIndex[task.Job]
+	if found {
+		job.UpdateTaskStatus(task, api.Pipelined)
+	} else {
+		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
+			task.Job, ssn.ID)
+	}
+
+	task.NodeName = hostname
+
+	if node, found := ssn.NodeIndex[hostname]; found {
+		node.PipelineTask(task)
+	} else {
+		glog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
+			hostname, ssn.ID)
+	}
+
+	for _, eh := range ssn.eventHandlers {
+		if eh.PipelineFunc != nil {
+			eh.PipelineFunc(&Event{
+				Task: task,
+			})
+		}
+	}
+
+	return nil
+}
+
+func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
+	// Only update status in session
+	job, found := ssn.JobIndex[task.Job]
+	if found {
+		job.UpdateTaskStatus(task, api.Allocated)
+	} else {
+		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
+			task.Job, ssn.ID)
+	}
+
+	task.NodeName = hostname
+
+	if node, found := ssn.NodeIndex[hostname]; found {
+		node.AddTask(task)
+	} else {
+		glog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
+			hostname, ssn.ID)
+	}
+
+	// Callbacks
+	for _, eh := range ssn.eventHandlers {
+		if eh.AllocateFunc != nil {
+			eh.AllocateFunc(&Event{
+				Task: task,
+			})
+		}
+	}
+
+	if ssn.JobReady(job) {
+		for _, task := range job.TaskStatusIndex[api.Allocated] {
+			ssn.dispatch(task)
+		}
+	}
+
+	return nil
+}
+
+func (ssn *Session) dispatch(task *api.TaskInfo) error {
+	if err := ssn.cache.Bind(task, task.NodeName); err != nil {
 		return err
 	}
 
@@ -92,35 +159,48 @@ func (ssn *Session) Bind(task *api.TaskInfo, hostname string) error {
 			task.Job, ssn.ID)
 	}
 
-	if node, found := ssn.NodeIndex[hostname]; found {
-		node.AddTask(task)
-	} else {
-		glog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
-			hostname, ssn.ID)
-	}
-
 	// Callbacks
 	for _, eh := range ssn.eventHandlers {
-		eh.BindFunc(&Event{
-			Task: task,
-		})
+		if eh.BindFunc != nil {
+			eh.BindFunc(&Event{
+				Task: task,
+			})
+		}
 	}
 
 	return nil
 }
 
-func (ssn *Session) Evict(task *api.TaskInfo) error {
-	return fmt.Errorf("not supported")
+func (ssn *Session) Preemptable(preemptor, preemptee *api.TaskInfo) bool {
+	if len(ssn.preemptableFns) == 0 {
+		return false
+	}
+
+	for _, preemptable := range ssn.preemptableFns {
+		if !preemptable(preemptor, preemptee) {
+			return false
+		}
+	}
+
+	return true
 }
 
-func (ssn *Session) ForgetJob(job *api.JobInfo) error {
-	for i, j := range ssn.Jobs {
-		if j.UID == job.UID {
-			ssn.Backlog = append(ssn.Backlog, j)
-			ssn.Jobs[i] = ssn.Jobs[len(ssn.Jobs)-1]
-			ssn.Jobs = ssn.Jobs[:len(ssn.Jobs)-1]
-			// NOTES: did not update JobIndex, the index is used for both
-			// backlog & jobs.
+func (ssn *Session) Preempt(preemptor, preemptee *api.TaskInfo) error {
+	if err := ssn.cache.Evict(preemptee); err != nil {
+		return err
+	}
+
+	for _, eh := range ssn.eventHandlers {
+		if eh.PreemptFunc != nil {
+			eh.PreemptFunc(&Event{
+				Task: preemptor,
+			})
+		}
+
+		if eh.EvictFunc != nil {
+			eh.EvictFunc(&Event{
+				Task: preemptee,
+			})
 		}
 	}
 
@@ -137,6 +217,24 @@ func (ssn *Session) AddJobOrderFn(cf api.CompareFn) {
 
 func (ssn *Session) AddTaskOrderFn(cf api.CompareFn) {
 	ssn.taskOrderFns = append(ssn.taskOrderFns, cf)
+}
+
+func (ssn *Session) AddPreemptableFn(cf api.LessFn) {
+	ssn.preemptableFns = append(ssn.preemptableFns, cf)
+}
+
+func (ssn *Session) AddJobReadyFn(vf api.ValidateFn) {
+	ssn.jobReadyFns = append(ssn.jobReadyFns, vf)
+}
+
+func (ssn *Session) JobReady(obj interface{}) bool {
+	for _, jrf := range ssn.jobReadyFns {
+		if !jrf(obj) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (ssn *Session) JobOrderFn(l, r interface{}) bool {

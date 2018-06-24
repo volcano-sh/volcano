@@ -54,7 +54,8 @@ type SchedulerCache struct {
 	pdbInformer            policyv1.PodDisruptionBudgetInformer
 	schedulingSpecInformer arbclient.SchedulingSpecInformer
 
-	Binder Binder
+	Binder  Binder
+	Evictor Evictor
 
 	Jobs  map[arbapi.JobID]*arbapi.JobInfo
 	Nodes map[string]*arbapi.NodeInfo
@@ -78,6 +79,23 @@ func (db *defaultBinder) Bind(p *v1.Pod, hostname string) error {
 	return nil
 }
 
+type defaultEvictor struct {
+	kubeclient *kubernetes.Clientset
+}
+
+func (de *defaultEvictor) Evict(p *v1.Pod) error {
+	// TODO (k82cn): makes grace period configurable.
+	threeSecs := int64(3)
+
+	if err := de.kubeclient.CoreV1().Pods(p.Namespace).Delete(p.Name, &metav1.DeleteOptions{
+		GracePeriodSeconds: &threeSecs,
+	}); err != nil {
+		glog.Infof("Failed to evict pod <%v/%v>: %#v", p.Namespace, p.Name, err)
+		return err
+	}
+	return nil
+}
+
 func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCache {
 	sc := &SchedulerCache{
 		Jobs:  make(map[arbapi.JobID]*arbapi.JobInfo),
@@ -87,6 +105,10 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 	sc.kubeclient = kubernetes.NewForConfigOrDie(config)
 
 	sc.Binder = &defaultBinder{
+		kubeclient: sc.kubeclient,
+	}
+
+	sc.Evictor = &defaultEvictor{
 		kubeclient: sc.kubeclient,
 	}
 
@@ -168,6 +190,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 
 func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.podInformer.Informer().Run(stopCh)
+	go sc.pdbInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
 	go sc.schedulingSpecInformer.Informer().Run(stopCh)
 }
@@ -194,6 +217,42 @@ func (sc *SchedulerCache) findJobAndTask(taskInfo *arbapi.TaskInfo) (*arbapi.Job
 	}
 
 	return job, task, nil
+}
+
+func (sc *SchedulerCache) Evict(taskInfo *arbapi.TaskInfo) error {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	job, task, err := sc.findJobAndTask(taskInfo)
+
+	if err != nil {
+		return err
+	}
+
+	node, found := sc.Nodes[task.NodeName]
+	if !found {
+		return fmt.Errorf("failed to bind Task %v to host %v, host does not exist",
+			task.UID, task.NodeName)
+	}
+
+	// Remove task from node because of eviction.
+	node.RemoveTask(task)
+
+	err = job.UpdateTaskStatus(task, arbapi.Releasing)
+	if err != nil {
+		return err
+	}
+
+	// Add task back to the node for releasing resources.
+	node.AddTask(task)
+
+	p := task.Pod
+
+	go func() {
+		sc.Evictor.Evict(p)
+	}()
+
+	return nil
 }
 
 // Bind binds task to the target host.

@@ -25,6 +25,9 @@ type Event struct {
 }
 
 type EventHandler struct {
-	BindFunc  func(event *Event)
-	EvictFunc func(event *Event)
+	AllocateFunc func(event *Event)
+	PipelineFunc func(event *Event)
+	BindFunc     func(event *Event)
+	EvictFunc    func(event *Event)
+	PreemptFunc  func(event *Event)
 }

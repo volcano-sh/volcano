@@ -14,24 +14,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package framework
+package preempt
 
-import "sync"
+import (
+	"testing"
 
-// Plugin management
-var pluginBuilders []func() Plugin
-var pluginMutex sync.Mutex
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 
-func RegisterPluginBuilder(pc func() Plugin) {
-	pluginMutex.Lock()
-	defer pluginMutex.Unlock()
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/drf"
+)
 
-	pluginBuilders = append(pluginBuilders, pc)
-}
+func TestPreempt(t *testing.T) {
+	framework.RegisterPluginBuilder(drf.New)
+	defer framework.CleanupPluginBuilders()
 
-func CleanupPluginBuilders() {
-	pluginMutex.Lock()
-	defer pluginMutex.Unlock()
-
-	pluginBuilders = []func() Plugin{}
+	// TODO (k82cn): Add UT cases here.
 }
