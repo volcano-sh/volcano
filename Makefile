@@ -25,7 +25,7 @@ images: kube-arbitrator
 	docker build ./deployment/ -t kubearbitrator/kube-arbitrator:${RELEASE_VER}
 	rm -f ./deployment/kar*
 
-test:
+run-test:
 	hack/make-rules/test.sh $(WHAT) $(TESTS)
 
 clean:

@@ -103,6 +103,8 @@ type JobInfo struct {
 	Name      string
 	Namespace string
 
+	Priority int
+
 	NodeSelector map[string]string
 	MinAvailable int
 
@@ -230,8 +232,9 @@ func (ps *JobInfo) DeleteTaskInfo(pi *TaskInfo) {
 
 func (ps *JobInfo) Clone() *JobInfo {
 	info := &JobInfo{
-		UID:  ps.UID,
-		Name: ps.Name,
+		UID:       ps.UID,
+		Name:      ps.Name,
+		Namespace: ps.Namespace,
 
 		MinAvailable: ps.MinAvailable,
 		NodeSelector: map[string]string{},

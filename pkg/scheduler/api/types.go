@@ -26,6 +26,9 @@ const (
 	// Allocated means the scheduler assigns a host to it.
 	Allocated
 
+	// Pipelined means the scheduler assigns a host to wait for releasing resource.
+	Pipelined
+
 	// Binding means the scheduler send Bind request to apiserver.
 	Binding
 
@@ -81,3 +84,6 @@ type LessFn func(interface{}, interface{}) bool
 
 // CompareFn is the func declaration used by sort or priority queue.
 type CompareFn func(interface{}, interface{}) int
+
+// ValidateFn is the func declaration used to check object's status.
+type ValidateFn func(interface{}) bool

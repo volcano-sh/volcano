@@ -13,4 +13,4 @@ before_script:
 script:
   - make verify
   - make
-  - make test
+  - make run-test

@@ -13,9 +13,12 @@ pkg/karcli/job
 pkg/scheduler
 pkg/scheduler/actions/allocate
 pkg/scheduler/actions/decorate
-pkg/scheduler/actions/garantee
+pkg/scheduler/actions/preempt
 pkg/scheduler/api
 pkg/scheduler/cache
 pkg/scheduler/framework
 pkg/scheduler/plugins/drf
+pkg/scheduler/plugins/gang
+pkg/scheduler/plugins/priority
 pkg/scheduler/util
+test
