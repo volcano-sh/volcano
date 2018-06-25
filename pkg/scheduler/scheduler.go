@@ -52,7 +52,7 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	go pc.cache.Run(stopCh)
 	pc.cache.WaitForCacheSync(stopCh)
 
-	go wait.Until(pc.runOnce, 2*time.Second, stopCh)
+	go wait.Until(pc.runOnce, 1*time.Second, stopCh)
 }
 
 func (pc *Scheduler) runOnce() {

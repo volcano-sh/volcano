@@ -37,8 +37,14 @@ type Cache interface {
 	// Bind binds Task to the target host.
 	// TODO(jinzhej): clean up expire Tasks.
 	Bind(task *api.TaskInfo, hostname string) error
+
+	Evict(task *api.TaskInfo) error
 }
 
 type Binder interface {
 	Bind(task *v1.Pod, hostname string) error
+}
+
+type Evictor interface {
+	Evict(pod *v1.Pod) error
 }

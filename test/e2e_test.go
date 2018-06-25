@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,24 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package framework
+package test
 
-import "sync"
+import (
+	"testing"
 
-// Plugin management
-var pluginBuilders []func() Plugin
-var pluginMutex sync.Mutex
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+)
 
-func RegisterPluginBuilder(pc func() Plugin) {
-	pluginMutex.Lock()
-	defer pluginMutex.Unlock()
-
-	pluginBuilders = append(pluginBuilders, pc)
-}
-
-func CleanupPluginBuilders() {
-	pluginMutex.Lock()
-	defer pluginMutex.Unlock()
-
-	pluginBuilders = []func() Plugin{}
+func TestE2E(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "kube-arbitrator Test Suite")
 }

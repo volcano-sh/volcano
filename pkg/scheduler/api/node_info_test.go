@@ -53,6 +53,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				Node:        case01_node,
 				Idle:        buildResource("5000m", "7G"),
 				Used:        buildResource("3000m", "3G"),
+				Releasing:   EmptyResource(),
 				Allocatable: buildResource("8000m", "10G"),
 				Capability:  buildResource("8000m", "10G"),
 				Tasks: map[TaskID]*TaskInfo{
@@ -102,6 +103,7 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 				Node:        case01_node,
 				Idle:        buildResource("4000m", "6G"),
 				Used:        buildResource("4000m", "4G"),
+				Releasing:   EmptyResource(),
 				Allocatable: buildResource("8000m", "10G"),
 				Capability:  buildResource("8000m", "10G"),
 				Tasks: map[TaskID]*TaskInfo{
