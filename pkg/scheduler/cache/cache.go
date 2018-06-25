@@ -189,6 +189,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 }
 
 func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
+	go sc.pdbInformer.Informer().Run(stopCh)
 	go sc.podInformer.Informer().Run(stopCh)
 	go sc.pdbInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
