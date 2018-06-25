@@ -35,8 +35,16 @@ func PodKey(pod *v1.Pod) TaskID {
 func getTaskStatus(pod *v1.Pod) TaskStatus {
 	switch pod.Status.Phase {
 	case v1.PodRunning:
+		if pod.DeletionTimestamp != nil {
+			return Releasing
+		}
+
 		return Running
 	case v1.PodPending:
+		if pod.DeletionTimestamp != nil {
+			return Releasing
+		}
+
 		if len(pod.Spec.NodeName) == 0 {
 			return Pending
 		}
@@ -54,7 +62,7 @@ func getTaskStatus(pod *v1.Pod) TaskStatus {
 
 func OccupiedResources(status TaskStatus) bool {
 	switch status {
-	case Bound, Binding, Running, Releasing:
+	case Bound, Binding, Running, Allocated:
 		return true
 	default:
 		return false

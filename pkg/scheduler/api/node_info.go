@@ -27,6 +27,8 @@ type NodeInfo struct {
 	Name string
 	Node *v1.Node
 
+	// The releasing resource on that node
+	Releasing *Resource
 	// The idle resource on that node
 	Idle *Resource
 	// The used resource on that node, including running and terminating
@@ -42,8 +44,9 @@ type NodeInfo struct {
 func NewNodeInfo(node *v1.Node) *NodeInfo {
 	if node == nil {
 		return &NodeInfo{
-			Idle: EmptyResource(),
-			Used: EmptyResource(),
+			Releasing: EmptyResource(),
+			Idle:      EmptyResource(),
+			Used:      EmptyResource(),
 
 			Allocatable: EmptyResource(),
 			Capability:  EmptyResource(),
@@ -55,8 +58,10 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 	return &NodeInfo{
 		Name: node.Name,
 		Node: node,
-		Idle: NewResource(node.Status.Allocatable),
-		Used: EmptyResource(),
+
+		Releasing: EmptyResource(),
+		Idle:      NewResource(node.Status.Allocatable),
+		Used:      EmptyResource(),
 
 		Allocatable: NewResource(node.Status.Allocatable),
 		Capability:  NewResource(node.Status.Capacity),
@@ -77,6 +82,7 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 		Node:        ni.Node,
 		Idle:        ni.Idle.Clone(),
 		Used:        ni.Used.Clone(),
+		Releasing:   ni.Releasing.Clone(),
 		Allocatable: ni.Allocatable.Clone(),
 		Capability:  ni.Capability.Clone(),
 
@@ -88,9 +94,13 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 	if ni.Node == nil {
 		ni.Idle = NewResource(node.Status.Allocatable)
 
-		for _, p := range ni.Tasks {
-			ni.Idle.Sub(p.Resreq)
-			ni.Used.Add(p.Resreq)
+		for _, task := range ni.Tasks {
+			if task.Status == Releasing {
+				ni.Releasing.Add(task.Resreq)
+			}
+
+			ni.Idle.Sub(task.Resreq)
+			ni.Used.Add(task.Resreq)
 		}
 	}
 
@@ -100,32 +110,55 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.Capability = NewResource(node.Status.Capacity)
 }
 
-func (ni *NodeInfo) AddTask(p *TaskInfo) {
-	key := PodKey(p.Pod)
+func (ni *NodeInfo) PipelineTask(task *TaskInfo) {
+	key := PodKey(task.Pod)
 	if _, found := ni.Tasks[key]; found {
 		glog.Errorf("Task <%v/%v> already on node <%v>, should not add again.",
-			p.Namespace, p.Name, ni.Name)
+			task.Namespace, task.Name, ni.Name)
 		return
 	}
 
 	if ni.Node != nil {
-		ni.Idle.Sub(p.Resreq)
-		ni.Used.Add(p.Resreq)
+		ni.Releasing.Sub(task.Resreq)
+		ni.Used.Add(task.Resreq)
 	}
 
-	ni.Tasks[key] = p
+	ni.Tasks[key] = task
 }
 
-func (ni *NodeInfo) RemoveTask(p *TaskInfo) {
-	key := PodKey(p.Pod)
+func (ni *NodeInfo) AddTask(task *TaskInfo) {
+	key := PodKey(task.Pod)
+	if _, found := ni.Tasks[key]; found {
+		glog.Errorf("Task <%v/%v> already on node <%v>, should not add again.",
+			task.Namespace, task.Name, ni.Name)
+		return
+	}
+
+	if ni.Node != nil {
+		if task.Status == Releasing {
+			ni.Releasing.Add(task.Resreq)
+		}
+		ni.Idle.Sub(task.Resreq)
+		ni.Used.Add(task.Resreq)
+	}
+
+	ni.Tasks[key] = task
+}
+
+func (ni *NodeInfo) RemoveTask(task *TaskInfo) {
+	key := PodKey(task.Pod)
 	if _, found := ni.Tasks[key]; !found {
 		return
 	}
 
 	if ni.Node != nil {
-		ni.Idle.Add(p.Resreq)
-		ni.Used.Sub(p.Resreq)
+		if task.Status == Releasing {
+			ni.Releasing.Sub(task.Resreq)
+		}
+
+		ni.Idle.Add(task.Resreq)
+		ni.Used.Sub(task.Resreq)
 	}
 
-	delete(ni.Tasks, PodKey(p.Pod))
+	delete(ni.Tasks, PodKey(task.Pod))
 }

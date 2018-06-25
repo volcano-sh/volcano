@@ -301,7 +301,29 @@ func (sc *SchedulerCache) updateSchedulingSpec(oldQueue, newQueue *arbv1.Schedul
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) deleteSchedulingSpec(queue *arbv1.SchedulingSpec) error {
+func (sc *SchedulerCache) deleteSchedulingSpec(ss *arbv1.SchedulingSpec) error {
+	jobID := arbapi.JobID(utils.GetController(ss))
+
+	job, found := sc.Jobs[jobID]
+	if !found {
+		return fmt.Errorf("can not found job %v:%v/%v", jobID, ss.Namespace, ss.Name)
+	}
+
+	// Removed tasks from nodes.
+	for _, task := range job.Tasks {
+		if len(task.NodeName) != 0 {
+			if node, found := sc.Nodes[task.NodeName]; found {
+				node.RemoveTask(task)
+			} else {
+				glog.V(3).Infof("Failed to find node <%v> for task %v:%v/%v",
+					task.NodeName, task.UID, task.Namespace, task.Name)
+			}
+		}
+	}
+
+	// Deleted Job from cache.
+	delete(sc.Jobs, jobID)
+
 	return nil
 }
 
