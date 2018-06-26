@@ -17,6 +17,7 @@ limitations under the License.
 package scheduler
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/golang/glog"
@@ -32,14 +33,32 @@ import (
 )
 
 type Scheduler struct {
-	cache  schedcache.Cache
-	config *rest.Config
+	cache   schedcache.Cache
+	config  *rest.Config
+	actions []framework.Action
 }
 
-func NewScheduler(config *rest.Config, schedulerName string) (*Scheduler, error) {
+func NewScheduler(
+	config *rest.Config,
+	schedulerName string,
+	actionNames []string,
+) (*Scheduler, error) {
+
+	var actions []framework.Action
+
+	for _, name := range actionNames {
+		act, found := framework.GetAction(name)
+		if found {
+			actions = append(actions, act)
+		} else {
+			return nil, fmt.Errorf("Action %s is not supported", name)
+		}
+	}
+
 	scheduler := &Scheduler{
-		config: config,
-		cache:  schedcache.New(config, schedulerName),
+		config:  config,
+		cache:   schedcache.New(config, schedulerName),
+		actions: actions,
 	}
 
 	return scheduler, nil
@@ -62,7 +81,7 @@ func (pc *Scheduler) runOnce() {
 	ssn := framework.OpenSession(pc.cache)
 	defer framework.CloseSession(ssn)
 
-	for _, action := range Actions {
+	for _, action := range pc.actions {
 		action.Execute(ssn)
 	}
 
