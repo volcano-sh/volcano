@@ -42,7 +42,7 @@ func Run(opt *options.ServerOption) error {
 	neverStop := make(chan struct{})
 
 	// Start policy controller to allocate resources.
-	sched, err := scheduler.NewScheduler(config, opt.SchedulerName)
+	sched, err := scheduler.NewScheduler(config, opt.SchedulerName, opt.Actions)
 	if err != nil {
 		panic(err)
 	}

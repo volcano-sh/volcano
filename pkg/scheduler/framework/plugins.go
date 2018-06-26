@@ -18,9 +18,10 @@ package framework
 
 import "sync"
 
+var pluginMutex sync.Mutex
+
 // Plugin management
 var pluginBuilders []func() Plugin
-var pluginMutex sync.Mutex
 
 func RegisterPluginBuilder(pc func() Plugin) {
 	pluginMutex.Lock()
@@ -34,4 +35,22 @@ func CleanupPluginBuilders() {
 	defer pluginMutex.Unlock()
 
 	pluginBuilders = []func() Plugin{}
+}
+
+// Action management
+var actionMap = map[string]Action{}
+
+func RegisterAction(act Action) {
+	pluginMutex.Lock()
+	defer pluginMutex.Unlock()
+
+	actionMap[act.Name()] = act
+}
+
+func GetAction(name string) (Action, bool) {
+	pluginMutex.Lock()
+	defer pluginMutex.Unlock()
+
+	act, found := actionMap[name]
+	return act, found
 }
