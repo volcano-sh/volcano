@@ -32,11 +32,8 @@ func init() {
 	framework.RegisterPluginBuilder(priority.New)
 	framework.RegisterPluginBuilder(gang.New)
 	framework.RegisterPluginBuilder(drf.New)
-}
 
-// Actions is a list of action that should be executed in order.
-var Actions = []framework.Action{
-	decorate.New(),
-	allocate.New(),
-	preempt.New(),
+	framework.RegisterAction(decorate.New())
+	framework.RegisterAction(allocate.New())
+	framework.RegisterAction(preempt.New())
 }
