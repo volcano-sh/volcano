@@ -142,12 +142,17 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) {
 		ni.Used.Add(task.Resreq)
 	}
 
+	glog.V(3).Infof("After added Task <%v> from Node <%v>: idle <%v>, used <%v>, releasing <%v>",
+		key, ni.Name, ni.Idle, ni.Used, ni.Releasing)
+
 	ni.Tasks[key] = task
 }
 
-func (ni *NodeInfo) RemoveTask(task *TaskInfo) {
-	key := PodKey(task.Pod)
-	if _, found := ni.Tasks[key]; !found {
+func (ni *NodeInfo) RemoveTask(ti *TaskInfo) {
+	key := PodKey(ti.Pod)
+
+	task, found := ni.Tasks[key]
+	if !found {
 		return
 	}
 
@@ -160,5 +165,8 @@ func (ni *NodeInfo) RemoveTask(task *TaskInfo) {
 		ni.Used.Sub(task.Resreq)
 	}
 
-	delete(ni.Tasks, PodKey(task.Pod))
+	glog.V(3).Infof("After removed Task <%v> from Node <%v>: idle <%v>, used <%v>, releasing <%v>",
+		key, ni.Name, ni.Idle, ni.Used, ni.Releasing)
+
+	delete(ni.Tasks, key)
 }

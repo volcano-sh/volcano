@@ -39,6 +39,8 @@ import (
 )
 
 var oneCPU = v1.ResourceList{"cpu": resource.MustParse("1000m")}
+var twoCPU = v1.ResourceList{"cpu": resource.MustParse("2000m")}
+var threeCPU = v1.ResourceList{"cpu": resource.MustParse("3000m")}
 
 func homeDir() string {
 	if h := os.Getenv("HOME"); h != "" {
