@@ -104,8 +104,8 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 
 				// Allocate releasing resource to the task if any.
 				if task.Resreq.LessEqual(node.Releasing) {
-					glog.V(3).Infof("Pipelining Task <%v/%v> to node <%v>",
-						task.Job, task.UID, node.Name)
+					glog.V(3).Infof("Pipelining Task <%v:%v/%v> to node <%v> for <%v> on <%v>",
+						task.UID, task.Namespace, task.Name, node.Name, task.Resreq, node.Releasing)
 					if err := ssn.Pipeline(task, node.Name); err != nil {
 						glog.Errorf("Failed to pipeline Task %v on %v in Session %v",
 							task.UID, node.Name, ssn.ID)
