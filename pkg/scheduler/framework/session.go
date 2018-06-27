@@ -99,8 +99,8 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	}
 
 	for _, eh := range ssn.eventHandlers {
-		if eh.PipelineFunc != nil {
-			eh.PipelineFunc(&Event{
+		if eh.AllocateFunc != nil {
+			eh.AllocateFunc(&Event{
 				Task: task,
 			})
 		}
@@ -159,15 +159,6 @@ func (ssn *Session) dispatch(task *api.TaskInfo) error {
 			task.Job, ssn.ID)
 	}
 
-	// Callbacks
-	for _, eh := range ssn.eventHandlers {
-		if eh.BindFunc != nil {
-			eh.BindFunc(&Event{
-				Task: task,
-			})
-		}
-	}
-
 	return nil
 }
 
@@ -191,8 +182,8 @@ func (ssn *Session) Preempt(preemptor, preemptee *api.TaskInfo) error {
 	}
 
 	for _, eh := range ssn.eventHandlers {
-		if eh.PreemptFunc != nil {
-			eh.PreemptFunc(&Event{
+		if eh.AllocateFunc != nil {
+			eh.AllocateFunc(&Event{
 				Task: preemptor,
 			})
 		}

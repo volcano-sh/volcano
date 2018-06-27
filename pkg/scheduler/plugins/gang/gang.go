@@ -33,7 +33,7 @@ func New() framework.Plugin {
 func readyTaskNum(job *api.JobInfo) int {
 	occupid := 0
 	for status, tasks := range job.TaskStatusIndex {
-		if api.OccupiedResources(status) || status == api.Succeeded {
+		if api.AllocatedStatus(status) || status == api.Succeeded {
 			occupid = occupid + len(tasks)
 		}
 	}

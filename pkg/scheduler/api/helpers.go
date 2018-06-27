@@ -60,7 +60,7 @@ func getTaskStatus(pod *v1.Pod) TaskStatus {
 	return Unknown
 }
 
-func OccupiedResources(status TaskStatus) bool {
+func AllocatedStatus(status TaskStatus) bool {
 	switch status {
 	case Bound, Binding, Running, Allocated:
 		return true
