@@ -59,6 +59,8 @@ type SchedulerCache struct {
 
 	Jobs  map[arbapi.JobID]*arbapi.JobInfo
 	Nodes map[string]*arbapi.NodeInfo
+
+	errTasks *cache.FIFO
 }
 
 type defaultBinder struct {
@@ -73,7 +75,7 @@ func (db *defaultBinder) Bind(p *v1.Pod, hostname string) error {
 			Name: hostname,
 		},
 	}); err != nil {
-		glog.Infof("Failed to bind pod <%v/%v>: %#v", p.Namespace, p.Name, err)
+		glog.Errorf("Failed to bind pod <%v/%v>: %#v", p.Namespace, p.Name, err)
 		return err
 	}
 	return nil
@@ -90,7 +92,7 @@ func (de *defaultEvictor) Evict(p *v1.Pod) error {
 	if err := de.kubeclient.CoreV1().Pods(p.Namespace).Delete(p.Name, &metav1.DeleteOptions{
 		GracePeriodSeconds: &threeSecs,
 	}); err != nil {
-		glog.Infof("Failed to evict pod <%v/%v>: %#v", p.Namespace, p.Name, err)
+		glog.Errorf("Failed to evict pod <%v/%v>: %#v", p.Namespace, p.Name, err)
 		return err
 	}
 	return nil
@@ -98,8 +100,9 @@ func (de *defaultEvictor) Evict(p *v1.Pod) error {
 
 func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCache {
 	sc := &SchedulerCache{
-		Jobs:  make(map[arbapi.JobID]*arbapi.JobInfo),
-		Nodes: make(map[string]*arbapi.NodeInfo),
+		Jobs:     make(map[arbapi.JobID]*arbapi.JobInfo),
+		Nodes:    make(map[string]*arbapi.NodeInfo),
+		errTasks: cache.NewFIFO(cache.MetaNamespaceKeyFunc),
 	}
 
 	sc.kubeclient = kubernetes.NewForConfigOrDie(config)
@@ -194,6 +197,9 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.pdbInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
 	go sc.schedulingSpecInformer.Informer().Run(stopCh)
+
+	// Re-sync error tasks.
+	go sc.resync()
 }
 
 func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
@@ -236,21 +242,21 @@ func (sc *SchedulerCache) Evict(taskInfo *arbapi.TaskInfo) error {
 			task.UID, task.NodeName)
 	}
 
-	// Remove task from node because of eviction.
-	node.RemoveTask(task)
-
 	err = job.UpdateTaskStatus(task, arbapi.Releasing)
 	if err != nil {
 		return err
 	}
 
-	// Add task back to the node for releasing resources.
-	node.AddTask(task)
+	// Add new task to node.
+	node.UpdateTask(task)
 
 	p := task.Pod
 
 	go func() {
-		sc.Evictor.Evict(p)
+		err := sc.Evictor.Evict(p)
+		if err != nil {
+			sc.enqueue(task)
+		}
 	}()
 
 	return nil
@@ -278,16 +284,51 @@ func (sc *SchedulerCache) Bind(taskInfo *arbapi.TaskInfo, hostname string) error
 		return err
 	}
 
+	// Set `.nodeName` to the hostname
+	task.NodeName = hostname
+
 	// Add task to the node.
 	node.AddTask(task)
 
 	p := task.Pod
 
 	go func() {
-		sc.Binder.Bind(p, hostname)
+		if err := sc.Binder.Bind(p, hostname); err != nil {
+			sc.enqueue(task)
+		}
 	}()
 
 	return nil
+}
+
+func (sc *SchedulerCache) enqueue(task *arbapi.TaskInfo) {
+	sc.errTasks.AddIfNotPresent(task.Pod)
+}
+
+func (sc *SchedulerCache) resync() {
+	for {
+		err := sc.processWorkItem()
+		if err != nil {
+			glog.Errorf("Failed to process resync: %v", err)
+		}
+	}
+}
+
+func (sc *SchedulerCache) processWorkItem() error {
+	_, err := sc.errTasks.Pop(func(obj interface{}) error {
+		pod, ok := obj.(*v1.Pod)
+		if !ok {
+			return fmt.Errorf("failed to convert %v to *v1.Pod", obj)
+		}
+
+		if err := sc.syncPod(pod); err != nil {
+			glog.Errorf("Failed to sync pod <%v/%v>", pod.Namespace, pod.Name)
+			return err
+		}
+		return nil
+	})
+
+	return err
 }
 
 func (sc *SchedulerCache) Snapshot() *arbapi.ClusterInfo {
