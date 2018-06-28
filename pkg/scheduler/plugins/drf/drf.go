@@ -89,8 +89,8 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		ls := drf.calculateShare(lalloc, drf.totalResource)
 		rs := drf.calculateShare(ralloc, drf.totalResource)
 
-		glog.V(3).Infof("DRF PreemptableFn: preemptor <%v:%v/%v>, alloc <%v>, share <%v>; preemptee <%v:%v/%v>, alloc <%v>, share <%v>",
-			lv.UID, lv.Namespace, lv.Name, lalloc, ls, rv.UID, rv.Namespace, rv.Name, ralloc, rs)
+		glog.V(3).Infof("DRF PreemptableFn: preemptor <%v/%v>, alloc <%v>, share <%v>; preemptee <%v/%v>, alloc <%v>, share <%v>",
+			lv.Namespace, lv.Name, lalloc, ls, rv.Namespace, rv.Name, ralloc, rs)
 
 		return ls < rs || math.Abs(ls-rs) <= shareDelta
 	})
@@ -119,8 +119,8 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			drf.updateShare(attr)
 
-			glog.V(3).Infof("DRF AllocateFunc: task <%v:%v/%v>, resreq <%v>,  share <%v>",
-				event.Task.UID, event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
+			glog.V(3).Infof("DRF AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>",
+				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 		EvictFunc: func(event *framework.Event) {
 			attr := drf.jobOpts[event.Task.Job]
@@ -128,8 +128,8 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			drf.updateShare(attr)
 
-			glog.V(3).Infof("DRF EvictFunc: task <%v:%v/%v>, resreq <%v>,  share <%v>",
-				event.Task.UID, event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
+			glog.V(3).Infof("DRF EvictFunc: task <%v/%v>, resreq <%v>,  share <%v>",
+				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 	})
 }

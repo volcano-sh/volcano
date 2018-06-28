@@ -256,7 +256,7 @@ func jobNotReady(ctx *context, jobName string) wait.ConditionFunc {
 }
 
 func waitJobNotReady(ctx *context, name string) error {
-	return wait.Poll(2*time.Second, 30*time.Second, jobNotReady(ctx, name))
+	return wait.Poll(10*time.Second, 60*time.Second, jobNotReady(ctx, name))
 }
 
 func replicaSetReady(ctx *context, name string) wait.ConditionFunc {
