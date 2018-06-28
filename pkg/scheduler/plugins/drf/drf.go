@@ -17,16 +17,19 @@ limitations under the License.
 package drf
 
 import (
+	"math"
+
 	"github.com/golang/glog"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 )
 
+var shareDelta = 0.000001
+
 type drfAttr struct {
 	share            float64
 	dominantResource string
 	allocated        *api.Resource
-	preempting       *api.Resource
 }
 
 type drfPlugin struct {
@@ -55,12 +58,11 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	for _, job := range ssn.Jobs {
 		attr := &drfAttr{
-			allocated:  api.EmptyResource(),
-			preempting: api.EmptyResource(),
+			allocated: api.EmptyResource(),
 		}
 
 		for status, tasks := range job.TaskStatusIndex {
-			if api.OccupiedResources(status) {
+			if api.AllocatedStatus(status) {
 				for _, t := range tasks {
 					attr.allocated.Add(t.Resreq)
 				}
@@ -81,8 +83,8 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		ratt := drf.jobOpts[rv.Job]
 
 		// Also includes preempting resources.
-		lalloc := latt.allocated.Clone().Add(lv.Resreq).Add(latt.preempting)
-		ralloc := ratt.allocated.Clone().Sub(rv.Resreq).Add(ratt.preempting)
+		lalloc := latt.allocated.Clone().Add(lv.Resreq)
+		ralloc := ratt.allocated.Clone().Sub(rv.Resreq)
 
 		ls := drf.calculateShare(lalloc, drf.totalResource)
 		rs := drf.calculateShare(ralloc, drf.totalResource)
@@ -90,7 +92,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		glog.V(3).Infof("DRF PreemptableFn: preemptor <%v:%v/%v>, alloc <%v>, share <%v>; preemptee <%v:%v/%v>, alloc <%v>, share <%v>",
 			lv.UID, lv.Namespace, lv.Name, lalloc, ls, rv.UID, rv.Namespace, rv.Name, ralloc, rs)
 
-		return ls < rs
+		return ls < rs || math.Abs(ls-rs) <= shareDelta
 	})
 
 	// Add Job Order function.
@@ -115,31 +117,19 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr := drf.jobOpts[event.Task.Job]
 			attr.allocated.Add(event.Task.Resreq)
 
-			if event.Task.Resreq.LessEqual(attr.preempting) {
-				attr.preempting.Sub(event.Task.Resreq)
-			}
-
 			drf.updateShare(attr)
-		},
-		PipelineFunc: func(event *framework.Event) {
-			attr := drf.jobOpts[event.Task.Job]
-			attr.allocated.Add(event.Task.Resreq)
 
-			if event.Task.Resreq.LessEqual(attr.preempting) {
-				attr.preempting.Sub(event.Task.Resreq)
-			}
-
-			drf.updateShare(attr)
+			glog.V(3).Infof("DRF AllocateFunc: task <%v:%v/%v>, resreq <%v>,  share <%v>",
+				event.Task.UID, event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 		EvictFunc: func(event *framework.Event) {
 			attr := drf.jobOpts[event.Task.Job]
 			attr.allocated.Sub(event.Task.Resreq)
 
 			drf.updateShare(attr)
-		},
-		PreemptFunc: func(event *framework.Event) {
-			attr := drf.jobOpts[event.Task.Job]
-			attr.preempting.Add(event.Task.Resreq)
+
+			glog.V(3).Infof("DRF EvictFunc: task <%v:%v/%v>, resreq <%v>,  share <%v>",
+				event.Task.UID, event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 	})
 }

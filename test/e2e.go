@@ -55,13 +55,14 @@ var _ = Describe("E2E Test", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
-		rep := clusterSize(context, oneCPU)
+		slot := oneCPU
+		rep := clusterSize(context, slot)
 
-		qj1 := createQueueJob(context, "qj-1", 1, rep, "nginx", oneCPU)
+		qj1 := createQueueJob(context, "qj-1", 1, rep, "nginx", slot)
 		err := waitTasksReady(context, qj1.Name, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
-		qj2 := createQueueJob(context, "qj-2", 1, rep, "nginx", oneCPU)
+		qj2 := createQueueJob(context, "qj-2", 1, rep, "nginx", slot)
 		err = waitTasksReady(context, qj2.Name, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 

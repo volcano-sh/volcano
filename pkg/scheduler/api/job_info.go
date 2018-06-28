@@ -186,7 +186,7 @@ func (ps *JobInfo) AddTaskInfo(pi *TaskInfo) {
 
 	ps.TotalRequest.Add(pi.Resreq)
 
-	if OccupiedResources(pi.Status) {
+	if AllocatedStatus(pi.Status) {
 		ps.Allocated.Add(pi.Resreq)
 	}
 }
@@ -220,7 +220,7 @@ func (ps *JobInfo) DeleteTaskInfo(pi *TaskInfo) {
 	if task, found := ps.Tasks[pi.UID]; found {
 		ps.TotalRequest.Sub(task.Resreq)
 
-		if OccupiedResources(task.Status) {
+		if AllocatedStatus(task.Status) {
 			ps.Allocated.Sub(task.Resreq)
 		}
 
