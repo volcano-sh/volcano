@@ -139,6 +139,10 @@ func NewJobInfo(uid JobID) *JobInfo {
 	}
 }
 
+func (ps *JobInfo) UnsetSchedulingSpec() {
+	ps.SchedSpec = nil
+}
+
 func (ps *JobInfo) SetSchedulingSpec(spec *arbv1.SchedulingSpec) {
 	ps.Name = spec.Name
 	ps.Namespace = spec.Namespace

@@ -17,6 +17,8 @@ limitations under the License.
 package framework
 
 import (
+	"fmt"
+
 	"github.com/golang/glog"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -276,4 +278,19 @@ func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 	rv := r.(*api.TaskInfo)
 
 	return lv.UID < rv.UID
+}
+
+func (ssn Session) String() string {
+	msg := fmt.Sprintf("Session %v: \n", ssn.UID)
+
+	for _, job := range ssn.Jobs {
+		msg = fmt.Sprintf("%s%v\n", msg, job)
+	}
+
+	for _, node := range ssn.Nodes {
+		msg = fmt.Sprintf("%s%v\n", msg, node)
+	}
+
+	return msg
+
 }
