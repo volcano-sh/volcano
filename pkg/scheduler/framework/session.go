@@ -27,7 +27,7 @@ import (
 )
 
 type Session struct {
-	ID types.UID
+	UID types.UID
 
 	cache cache.Cache
 
@@ -47,11 +47,13 @@ type Session struct {
 
 func openSession(cache cache.Cache) *Session {
 	ssn := &Session{
-		ID:        uuid.NewUUID(),
+		UID:       uuid.NewUUID(),
 		cache:     cache,
 		JobIndex:  map[api.JobID]*api.JobInfo{},
 		NodeIndex: map[string]*api.NodeInfo{},
 	}
+
+	glog.V(3).Infof("Open Session %v", ssn.UID)
 
 	snapshot := cache.Snapshot()
 
@@ -77,6 +79,8 @@ func closeSession(ssn *Session) {
 	ssn.plugins = nil
 	ssn.eventHandlers = nil
 	ssn.jobOrderFns = nil
+
+	glog.V(3).Infof("Close Session %v", ssn.UID)
 }
 
 func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
@@ -86,16 +90,18 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 		job.UpdateTaskStatus(task, api.Pipelined)
 	} else {
 		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
-			task.Job, ssn.ID)
+			task.Job, ssn.UID)
 	}
 
 	task.NodeName = hostname
 
 	if node, found := ssn.NodeIndex[hostname]; found {
 		node.PipelineTask(task)
+		glog.V(3).Infof("After pipelined Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
+			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
 	} else {
 		glog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
-			hostname, ssn.ID)
+			hostname, ssn.UID)
 	}
 
 	for _, eh := range ssn.eventHandlers {
@@ -116,16 +122,18 @@ func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
 		job.UpdateTaskStatus(task, api.Allocated)
 	} else {
 		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
-			task.Job, ssn.ID)
+			task.Job, ssn.UID)
 	}
 
 	task.NodeName = hostname
 
 	if node, found := ssn.NodeIndex[hostname]; found {
 		node.AddTask(task)
+		glog.V(3).Infof("After allocated Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
+			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
 	} else {
 		glog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
-			hostname, ssn.ID)
+			hostname, ssn.UID)
 	}
 
 	// Callbacks
@@ -156,7 +164,7 @@ func (ssn *Session) dispatch(task *api.TaskInfo) error {
 		job.UpdateTaskStatus(task, api.Binding)
 	} else {
 		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
-			task.Job, ssn.ID)
+			task.Job, ssn.UID)
 	}
 
 	return nil
@@ -179,6 +187,20 @@ func (ssn *Session) Preemptable(preemptor, preemptee *api.TaskInfo) bool {
 func (ssn *Session) Preempt(preemptor, preemptee *api.TaskInfo) error {
 	if err := ssn.cache.Evict(preemptee); err != nil {
 		return err
+	}
+
+	// Update status in session
+	job, found := ssn.JobIndex[preemptee.Job]
+	if found {
+		job.UpdateTaskStatus(preemptee, api.Releasing)
+	} else {
+		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
+			preemptee.Job, ssn.UID)
+	}
+
+	// Update task in node.
+	if node, found := ssn.NodeIndex[preemptee.NodeName]; found {
+		node.UpdateTask(preemptee)
 	}
 
 	for _, eh := range ssn.eventHandlers {

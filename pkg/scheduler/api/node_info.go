@@ -17,7 +17,7 @@ limitations under the License.
 package api
 
 import (
-	"github.com/golang/glog"
+	"fmt"
 
 	"k8s.io/api/core/v1"
 )
@@ -110,50 +110,56 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.Capability = NewResource(node.Status.Capacity)
 }
 
-func (ni *NodeInfo) PipelineTask(task *TaskInfo) {
+func (ni *NodeInfo) PipelineTask(task *TaskInfo) error {
 	key := PodKey(task.Pod)
 	if _, found := ni.Tasks[key]; found {
-		glog.Errorf("Task <%v/%v> already on node <%v>, should not add again.",
+		return fmt.Errorf("task <%v/%v> already on node <%v>",
 			task.Namespace, task.Name, ni.Name)
-		return
 	}
+
+	ti := task.Clone()
 
 	if ni.Node != nil {
-		ni.Releasing.Sub(task.Resreq)
-		ni.Used.Add(task.Resreq)
+		ni.Releasing.Sub(ti.Resreq)
+		ni.Used.Add(ti.Resreq)
 	}
 
-	ni.Tasks[key] = task
+	ni.Tasks[key] = ti
+
+	return nil
 }
 
-func (ni *NodeInfo) AddTask(task *TaskInfo) {
+func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 	key := PodKey(task.Pod)
 	if _, found := ni.Tasks[key]; found {
-		glog.Errorf("Task <%v/%v> already on node <%v>, should not add again.",
+		return fmt.Errorf("task <%v/%v> already on node <%v>",
 			task.Namespace, task.Name, ni.Name)
-		return
 	}
 
+	// Node will hold a copy of task to make sure the status
+	// change will not impact resource in node.
+	ti := task.Clone()
+
 	if ni.Node != nil {
-		if task.Status == Releasing {
-			ni.Releasing.Add(task.Resreq)
+		if ti.Status == Releasing {
+			ni.Releasing.Add(ti.Resreq)
 		}
-		ni.Idle.Sub(task.Resreq)
-		ni.Used.Add(task.Resreq)
+		ni.Idle.Sub(ti.Resreq)
+		ni.Used.Add(ti.Resreq)
 	}
 
-	glog.V(3).Infof("After added Task <%v> from Node <%v>: idle <%v>, used <%v>, releasing <%v>",
-		key, ni.Name, ni.Idle, ni.Used, ni.Releasing)
+	ni.Tasks[key] = ti
 
-	ni.Tasks[key] = task
+	return nil
 }
 
-func (ni *NodeInfo) RemoveTask(ti *TaskInfo) {
+func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 	key := PodKey(ti.Pod)
 
 	task, found := ni.Tasks[key]
 	if !found {
-		return
+		return fmt.Errorf("failed to find task <%v/%v> on host <%v>",
+			ti.Namespace, ti.Name, ni.Name)
 	}
 
 	if ni.Node != nil {
@@ -165,8 +171,15 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) {
 		ni.Used.Sub(task.Resreq)
 	}
 
-	glog.V(3).Infof("After removed Task <%v> from Node <%v>: idle <%v>, used <%v>, releasing <%v>",
-		key, ni.Name, ni.Idle, ni.Used, ni.Releasing)
-
 	delete(ni.Tasks, key)
+
+	return nil
+}
+
+func (ni *NodeInfo) UpdateTask(ti *TaskInfo) error {
+	if err := ni.RemoveTask(ti); err != nil {
+		return err
+	}
+
+	return ni.AddTask(ti)
 }

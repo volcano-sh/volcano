@@ -60,8 +60,8 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		preemptable := job.MinAvailable <= occupid-1
 
 		if !preemptable {
-			glog.V(3).Infof("Can not preempt task <%v:%v/%v> because of gang-scheduling",
-				preemptee.UID, preemptee.Namespace, preemptee.Name)
+			glog.V(3).Infof("Can not preempt task <%v/%v> because of gang-scheduling",
+				preemptee.Namespace, preemptee.Name)
 		}
 
 		return preemptable
