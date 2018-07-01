@@ -49,8 +49,8 @@ func (alloc *decorateAction) Execute(ssn *framework.Session) {
 
 	for _, job := range jobs {
 		job.Candidates = fetchMatchNodeForPodSet(job, nodes)
-		glog.V(3).Infof("Got %d candidate nodes for Job %v:%v/%v",
-			len(job.Candidates), job.UID, job.Namespace, job.Name)
+		glog.V(3).Infof("Got %d candidate nodes for Job %v/%v",
+			len(job.Candidates), job.Namespace, job.Name)
 	}
 }
 

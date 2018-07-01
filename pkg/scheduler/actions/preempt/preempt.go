@@ -97,9 +97,9 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 			break
 		}
 
-		glog.V(3).Infof("The preemptor is %v:%v/%v, the preemptee is %v:%v/%v",
-			preemptorJob.UID, preemptorJob.Namespace, preemptorJob.Name,
-			preempteeJob.UID, preempteeJob.Namespace, preempteeJob.Name)
+		glog.V(3).Infof("The preemptor is %v/%v, the preemptee is %v/%v",
+			preemptorJob.Namespace, preemptorJob.Name,
+			preempteeJob.Namespace, preempteeJob.Name)
 
 		preemptor := preemptorTasks[preemptorJob.UID].Pop().(*api.TaskInfo)
 		preemptee := preempteeTasks[preempteeJob.UID].Pop().(*api.TaskInfo)
@@ -108,14 +108,16 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 
 		if ssn.Preemptable(preemptor, preemptee) {
 			if err := ssn.Preempt(preemptor, preemptee); err != nil {
-				glog.Errorf("Failed to evict task %v for task %v: %v", nil, nil, err)
+				glog.Errorf("Failed to evict task %v/%v for task %v/%v: %v",
+					preemptee.Namespace, preemptee.Name,
+					preemptor.Namespace, preemptor.Name, err)
 			} else {
 				preempted = true
 			}
 		} else {
-			glog.V(3).Infof("Can not preempt task <%v:%v/%v> for task <%v:%v/%v>",
-				preemptee.UID, preemptee.Namespace, preemptee.Name,
-				preemptor.UID, preemptor.Namespace, preemptor.Name)
+			glog.V(3).Infof("Can not preempt task <%v/%v> for task <%v/%v>",
+				preemptee.Namespace, preemptee.Name,
+				preemptor.Namespace, preemptor.Name)
 		}
 
 		// If preempted resource, put it back to the queue.

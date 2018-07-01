@@ -23,6 +23,8 @@ import (
 
 	"k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1beta1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/utils"
@@ -54,8 +56,6 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 	}
 
 	if len(pi.NodeName) != 0 {
-		glog.V(3).Infof("Add task %v/%v into host %v", pi.Namespace, pi.Name, pi.NodeName)
-
 		if _, found := sc.Nodes[pi.NodeName]; !found {
 			sc.Nodes[pi.NodeName] = arbapi.NewNodeInfo(nil)
 		}
@@ -64,11 +64,29 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 		node.RemoveTask(pi)
 
 		if !isTerminated(pi.Status) {
-			node.AddTask(pi)
+			return node.AddTask(pi)
 		}
 	}
 
 	return nil
+}
+
+func (sc *SchedulerCache) syncPod(oldPod *v1.Pod) error {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	newPod, err := sc.kubeclient.CoreV1().Pods(oldPod.Namespace).Get(oldPod.Name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			sc.deletePod(oldPod)
+			glog.V(3).Infof("Pod <%v/%v> was deleted, removed from cache.", oldPod.Namespace, oldPod.Name)
+
+			return nil
+		}
+		return fmt.Errorf("failed to get Pod <%v/%v>: err %v", oldPod.Namespace, oldPod.Name, err)
+	}
+
+	return sc.updatePod(oldPod, newPod)
 }
 
 // Assumes that lock is already acquired.
@@ -83,21 +101,25 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
 	pi := arbapi.NewTaskInfo(pod)
 
+	var jobErr, nodeErr error
+
 	if len(pi.Job) != 0 {
 		if job, found := sc.Jobs[pi.Job]; found {
-			job.DeleteTaskInfo(pi)
+			jobErr = job.DeleteTaskInfo(pi)
 		} else {
-			glog.Warningf("Failed to find Job for Task %v:%v/%v.",
-				pi.UID, pi.Namespace, pi.Name)
+			jobErr = fmt.Errorf("failed to find Job for Task %v/%v", pi.Namespace, pi.Name)
 		}
 	}
 
 	if len(pi.NodeName) != 0 {
 		node := sc.Nodes[pi.NodeName]
 		if node != nil {
-			glog.V(3).Infof("Delete task %v/%v from host %v", pi.Namespace, pi.Name, pi.NodeName)
-			node.RemoveTask(pi)
+			nodeErr = node.RemoveTask(pi)
 		}
+	}
+
+	if jobErr != nil || nodeErr != nil {
+		return arbapi.MergeErrors(jobErr, nodeErr)
 	}
 
 	return nil
@@ -113,10 +135,10 @@ func (sc *SchedulerCache) AddPod(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Add pod(%s) into cache, status (%s)", pod.Name, pod.Status.Phase)
 	err := sc.addPod(pod)
 	if err != nil {
-		glog.Errorf("Failed to add pod %s into cache: %v", pod.Name, err)
+		glog.Errorf("Failed to add pod <%s/%s> into cache: %v",
+			pod.Namespace, pod.Name, err)
 		return
 	}
 	return
@@ -137,7 +159,6 @@ func (sc *SchedulerCache) UpdatePod(oldObj, newObj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Update oldPod(%s) status(%s) newPod(%s) status(%s) in cache", oldPod.Name, oldPod.Status.Phase, newPod.Name, newPod.Status.Phase)
 	err := sc.updatePod(oldPod, newPod)
 	if err != nil {
 		glog.Errorf("Failed to update pod %v in cache: %v", oldPod.Name, err)
@@ -166,7 +187,6 @@ func (sc *SchedulerCache) DeletePod(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Delete pod(%s) status(%s) from cache", pod.Name, pod.Status.Phase)
 	err := sc.deletePod(pod)
 	if err != nil {
 		glog.Errorf("Failed to delete pod %v from cache: %v", pod.Name, err)
@@ -216,7 +236,6 @@ func (sc *SchedulerCache) AddNode(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Add node(%s) into cache", node.Name)
 	err := sc.addNode(node)
 	if err != nil {
 		glog.Errorf("Failed to add node %s into cache: %v", node.Name, err)
@@ -240,7 +259,6 @@ func (sc *SchedulerCache) UpdateNode(oldObj, newObj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Update oldNode(%s) newNode(%s) in cache", oldNode.Name, newNode.Name)
 	err := sc.updateNode(oldNode, newNode)
 	if err != nil {
 		glog.Errorf("Failed to update node %v in cache: %v", oldNode.Name, err)
@@ -269,7 +287,6 @@ func (sc *SchedulerCache) DeleteNode(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Delete node(%s) from cache", node.Name)
 	err := sc.deleteNode(node)
 	if err != nil {
 		glog.Errorf("Failed to delete node %s from cache: %v", node.Name, err)
@@ -361,8 +378,6 @@ func (sc *SchedulerCache) UpdateSchedulingSpec(oldObj, newObj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Update oldSchedulingSpec(%s) in cache, spec(%#v)", oldSS.Name, oldSS.Spec)
-	glog.V(4).Infof("Update newSchedulingSpec(%s) in cache, spec(%#v)", newSS.Name, newSS.Spec)
 	err := sc.updateSchedulingSpec(oldSS, newSS)
 	if err != nil {
 		glog.Errorf("Failed to update SchedulingSpec %s into cache: %v", oldSS.Name, err)
@@ -436,7 +451,6 @@ func (sc *SchedulerCache) AddPDB(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Add PodDisruptionBudget(%s) into cache, spec(%#v)", pdb.Name, pdb.Spec)
 	err := sc.setPDB(pdb)
 	if err != nil {
 		glog.Errorf("Failed to add PodDisruptionBudget %s into cache: %v", pdb.Name, err)
@@ -460,8 +474,6 @@ func (sc *SchedulerCache) UpdatePDB(oldObj, newObj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Update oldPDB(%s) in cache, spec(%#v)", oldPDB.Name, oldPDB.Spec)
-	glog.V(4).Infof("Update newPDB(%s) in cache, spec(%#v)", newPDB.Name, newPDB.Spec)
 	err := sc.updatePDB(oldPDB, newPDB)
 	if err != nil {
 		glog.Errorf("Failed to update PodDisruptionBudget %s into cache: %v", oldPDB.Name, err)

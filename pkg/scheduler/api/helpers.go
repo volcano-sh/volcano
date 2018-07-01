@@ -68,3 +68,30 @@ func AllocatedStatus(status TaskStatus) bool {
 		return false
 	}
 }
+
+func MergeErrors(errs ...error) error {
+	msg := "errors: "
+
+	foundErr := false
+	i := 1
+
+	for _, e := range errs {
+		if e != nil {
+			if foundErr {
+				msg = fmt.Sprintf("%s, %d: ", msg, i)
+			} else {
+				msg = fmt.Sprintf("%s %d: ", msg, i)
+			}
+
+			msg = fmt.Sprintf("%s%v", msg, e)
+			foundErr = true
+			i++
+		}
+	}
+
+	if foundErr {
+		return fmt.Errorf("%s", msg)
+	}
+
+	return nil
+}
