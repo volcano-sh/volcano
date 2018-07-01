@@ -350,7 +350,7 @@ func (sc *SchedulerCache) cleanupJob(job *arbapi.JobInfo) error {
 		return nil
 	}
 
-	return fmt.Errorf("Job is not ready to clean up")
+	return fmt.Errorf("Job <%v/%v> is not ready to clean up", job.Namespace, job.Name)
 }
 
 func (sc *SchedulerCache) processCleanupJob() error {
@@ -361,8 +361,7 @@ func (sc *SchedulerCache) processCleanupJob() error {
 		}
 
 		if err := sc.cleanupJob(job); err != nil {
-			glog.Errorf("Failed to delete job <%v/%v>, retry ...", job.Namespace, job.Name)
-
+			// Requeue Job to wait for all tasks deleted.
 			sc.deleteJob(job)
 			return err
 		}
