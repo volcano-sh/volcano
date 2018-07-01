@@ -81,6 +81,10 @@ func (pc *Scheduler) runOnce() {
 	ssn := framework.OpenSession(pc.cache)
 	defer framework.CloseSession(ssn)
 
+	if glog.V(3) {
+		glog.V(3).Infof("Session %v", ssn)
+	}
+
 	for _, action := range pc.actions {
 		action.Execute(ssn)
 	}
