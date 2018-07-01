@@ -36,10 +36,7 @@ func isTerminated(status arbapi.TaskStatus) bool {
 	return status == arbapi.Succeeded || status == arbapi.Failed
 }
 
-// Assumes that lock is already acquired.
-func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
-	pi := arbapi.NewTaskInfo(pod)
-
+func (sc *SchedulerCache) addTask(pi *arbapi.TaskInfo) error {
 	if len(pi.Job) != 0 {
 		if _, found := sc.Jobs[pi.Job]; !found {
 			sc.Jobs[pi.Job] = arbapi.NewJobInfo(pi.Job)
@@ -50,9 +47,6 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 		// client-go issue, we need to dig deeper for that.
 		sc.Jobs[pi.Job].DeleteTaskInfo(pi)
 		sc.Jobs[pi.Job].AddTaskInfo(pi)
-	} else {
-		glog.Warningf("The controller of pod %v/%v is empty, can not schedule it.",
-			pod.Namespace, pod.Name)
 	}
 
 	if len(pi.NodeName) != 0 {
@@ -71,22 +65,39 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 	return nil
 }
 
-func (sc *SchedulerCache) syncPod(oldPod *v1.Pod) error {
+// Assumes that lock is already acquired.
+func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
+	pi := arbapi.NewTaskInfo(pod)
+
+	return sc.addTask(pi)
+}
+
+func (sc *SchedulerCache) syncTask(oldTask *arbapi.TaskInfo) error {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	newPod, err := sc.kubeclient.CoreV1().Pods(oldPod.Namespace).Get(oldPod.Name, metav1.GetOptions{})
+	newPod, err := sc.kubeclient.CoreV1().Pods(oldTask.Namespace).Get(oldTask.Name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			sc.deletePod(oldPod)
-			glog.V(3).Infof("Pod <%v/%v> was deleted, removed from cache.", oldPod.Namespace, oldPod.Name)
+			sc.deleteTask(oldTask)
+			glog.V(3).Infof("Pod <%v/%v> was deleted, removed from cache.", oldTask.Namespace, oldTask.Name)
 
 			return nil
 		}
-		return fmt.Errorf("failed to get Pod <%v/%v>: err %v", oldPod.Namespace, oldPod.Name, err)
+		return fmt.Errorf("failed to get Pod <%v/%v>: err %v", oldTask.Namespace, oldTask.Name, err)
 	}
 
-	return sc.updatePod(oldPod, newPod)
+	newTask := arbapi.NewTaskInfo(newPod)
+
+	return sc.updateTask(oldTask, newTask)
+}
+
+func (sc *SchedulerCache) updateTask(oldTask, newTask *arbapi.TaskInfo) error {
+	if err := sc.deleteTask(oldTask); err != nil {
+		return err
+	}
+
+	return sc.addTask(newTask)
 }
 
 // Assumes that lock is already acquired.
@@ -97,17 +108,15 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 	return sc.addPod(newPod)
 }
 
-// Assumes that lock is already acquired.
-func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
-	pi := arbapi.NewTaskInfo(pod)
-
+func (sc *SchedulerCache) deleteTask(pi *arbapi.TaskInfo) error {
 	var jobErr, nodeErr error
 
 	if len(pi.Job) != 0 {
 		if job, found := sc.Jobs[pi.Job]; found {
 			jobErr = job.DeleteTaskInfo(pi)
 		} else {
-			jobErr = fmt.Errorf("failed to find Job for Task %v/%v", pi.Namespace, pi.Name)
+			jobErr = fmt.Errorf("failed to find Job <%v> for Task %v/%v",
+				pi.Job, pi.Namespace, pi.Name)
 		}
 	}
 
@@ -125,6 +134,12 @@ func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
 	return nil
 }
 
+// Assumes that lock is already acquired.
+func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
+	pi := arbapi.NewTaskInfo(pod)
+	return sc.deleteTask(pi)
+}
+
 func (sc *SchedulerCache) AddPod(obj interface{}) {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
@@ -140,6 +155,8 @@ func (sc *SchedulerCache) AddPod(obj interface{}) {
 		glog.Errorf("Failed to add pod <%s/%s> into cache: %v",
 			pod.Namespace, pod.Name, err)
 		return
+	} else {
+		glog.V(3).Infof("Added pod <%s/%v> into cache.", pod.Namespace, pod.Name)
 	}
 	return
 }
@@ -164,6 +181,9 @@ func (sc *SchedulerCache) UpdatePod(oldObj, newObj interface{}) {
 		glog.Errorf("Failed to update pod %v in cache: %v", oldPod.Name, err)
 		return
 	}
+
+	glog.V(3).Infof("Updated pod <%s/%v> in cache.", oldPod.Namespace, oldPod.Name)
+
 	return
 }
 
@@ -192,6 +212,8 @@ func (sc *SchedulerCache) DeletePod(obj interface{}) {
 		glog.Errorf("Failed to delete pod %v from cache: %v", pod.Name, err)
 		return
 	}
+
+	glog.V(3).Infof("Deleted pod <%s/%v> from cache.", pod.Namespace, pod.Name)
 	return
 }
 
@@ -326,20 +348,11 @@ func (sc *SchedulerCache) deleteSchedulingSpec(ss *arbv1.SchedulingSpec) error {
 		return fmt.Errorf("can not found job %v:%v/%v", jobID, ss.Namespace, ss.Name)
 	}
 
-	// Removed tasks from nodes.
-	for _, task := range job.Tasks {
-		if len(task.NodeName) != 0 {
-			if node, found := sc.Nodes[task.NodeName]; found {
-				node.RemoveTask(task)
-			} else {
-				glog.V(3).Infof("Failed to find node <%v> for task %v:%v/%v",
-					task.NodeName, task.UID, task.Namespace, task.Name)
-			}
-		}
-	}
+	// Unset SchedulingSpec
+	job.UnsetSchedulingSpec()
 
-	// Deleted Job from cache.
-	delete(sc.Jobs, jobID)
+	// TODO (k82cn): find another way to clean up Job.
+	sc.deleteJob(job)
 
 	return nil
 }
