@@ -69,6 +69,9 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
+		// Calculate the init share of Job
+		drf.updateShare(attr)
+
 		drf.jobOpts[job.UID] = attr
 	}
 
