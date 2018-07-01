@@ -38,6 +38,8 @@ import (
 	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 )
 
+var oneMinute = 1 * time.Minute
+
 var oneCPU = v1.ResourceList{"cpu": resource.MustParse("1000m")}
 var twoCPU = v1.ResourceList{"cpu": resource.MustParse("2000m")}
 var threeCPU = v1.ResourceList{"cpu": resource.MustParse("3000m")}
@@ -97,7 +99,7 @@ func cleanupTestContext(cxt *context) {
 	Expect(err).NotTo(HaveOccurred())
 
 	// Wait for namespace deleted.
-	err = wait.Poll(100*time.Millisecond, 30*time.Second, namespaceNotExist(cxt))
+	err = wait.Poll(100*time.Millisecond, oneMinute, namespaceNotExist(cxt))
 	Expect(err).NotTo(HaveOccurred())
 }
 
@@ -224,11 +226,11 @@ func taskReady(ctx *context, jobName string, taskNum int) wait.ConditionFunc {
 }
 
 func waitJobReady(ctx *context, name string) error {
-	return wait.Poll(100*time.Millisecond, 30*time.Second, taskReady(ctx, name, -1))
+	return wait.Poll(100*time.Millisecond, oneMinute, taskReady(ctx, name, -1))
 }
 
 func waitTasksReady(ctx *context, name string, taskNum int) error {
-	return wait.Poll(100*time.Millisecond, 30*time.Second, taskReady(ctx, name, taskNum))
+	return wait.Poll(100*time.Millisecond, oneMinute, taskReady(ctx, name, taskNum))
 }
 
 func jobNotReady(ctx *context, jobName string) wait.ConditionFunc {
@@ -256,7 +258,7 @@ func jobNotReady(ctx *context, jobName string) wait.ConditionFunc {
 }
 
 func waitJobNotReady(ctx *context, name string) error {
-	return wait.Poll(10*time.Second, 60*time.Second, jobNotReady(ctx, name))
+	return wait.Poll(10*time.Second, oneMinute, jobNotReady(ctx, name))
 }
 
 func replicaSetReady(ctx *context, name string) wait.ConditionFunc {
@@ -284,7 +286,7 @@ func replicaSetReady(ctx *context, name string) wait.ConditionFunc {
 }
 
 func waitReplicaSetReady(ctx *context, name string) error {
-	return wait.Poll(100*time.Millisecond, 30*time.Second, replicaSetReady(ctx, name))
+	return wait.Poll(100*time.Millisecond, oneMinute, replicaSetReady(ctx, name))
 }
 
 func clusterSize(ctx *context, req v1.ResourceList) int32 {

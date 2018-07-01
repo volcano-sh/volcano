@@ -71,23 +71,13 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 }
 
 func (ni *NodeInfo) Clone() *NodeInfo {
-	pods := make(map[TaskID]*TaskInfo, len(ni.Tasks))
+	res := NewNodeInfo(ni.Node)
 
 	for _, p := range ni.Tasks {
-		pods[PodKey(p.Pod)] = p.Clone()
+		res.AddTask(p)
 	}
 
-	return &NodeInfo{
-		Name:        ni.Name,
-		Node:        ni.Node,
-		Idle:        ni.Idle.Clone(),
-		Used:        ni.Used.Clone(),
-		Releasing:   ni.Releasing.Clone(),
-		Allocatable: ni.Allocatable.Clone(),
-		Capability:  ni.Capability.Clone(),
-
-		Tasks: pods,
-	}
+	return res
 }
 
 func (ni *NodeInfo) SetNode(node *v1.Node) {
@@ -182,4 +172,18 @@ func (ni *NodeInfo) UpdateTask(ti *TaskInfo) error {
 	}
 
 	return ni.AddTask(ti)
+}
+
+func (ni NodeInfo) String() string {
+	res := ""
+
+	i := 0
+	for _, task := range ni.Tasks {
+		res = res + fmt.Sprintf("\n\t %d: %v", i, task)
+		i++
+	}
+
+	return fmt.Sprintf("Node (%s): idle <%v>, used <%v>, releasing <%v>%s",
+		ni.Name, ni.Idle, ni.Used, ni.Releasing, res)
+
 }
