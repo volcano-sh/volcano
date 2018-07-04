@@ -82,7 +82,7 @@ func (pc *Scheduler) runOnce() {
 	defer framework.CloseSession(ssn)
 
 	if glog.V(3) {
-		glog.V(3).Infof("Session %v", ssn)
+		glog.V(3).Infof("%v", ssn)
 	}
 
 	for _, action := range pc.actions {
