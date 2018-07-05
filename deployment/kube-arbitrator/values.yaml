@@ -3,7 +3,7 @@
 # Declare variables to be passed into your templates.
 replicaCount: 1
 image:
-  repository: kubearbitrator/kube-arbitrator
+  repository: kubearbitrator
   tag: 0.1
   pullPolicy: IfNotPresent
 resources:
