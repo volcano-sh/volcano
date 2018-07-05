@@ -63,7 +63,7 @@ type Controller struct {
 	queueJobSynced func() bool
 
 	// A store of pods, populated by the podController
-	podStore  corelisters.PodLister
+	podListr  corelisters.PodLister
 	podSynced func() bool
 
 	// eventQueue that need to sync up
@@ -122,7 +122,7 @@ func NewQueueJobController(config *rest.Config) *Controller {
 			DeleteFunc: cc.deletePod,
 		},
 	})
-	cc.podStore = cc.podInformer.Lister()
+	cc.podListr = cc.podInformer.Lister()
 	cc.podSynced = cc.podInformer.Informer().HasSynced
 
 	return cc
@@ -314,16 +314,29 @@ func (cc *Controller) syncQueueJob(qj *arbv1.QueueJob) error {
 	return cc.manageQueueJob(queueJob, pods)
 }
 
-func (cc *Controller) getPodsForQueueJob(qj *arbv1.QueueJob) ([]*v1.Pod, error) {
-	selector, err := metav1.LabelSelectorAsSelector(qj.Spec.Selector)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't convert QueueJob selector: %v", err)
-	}
+func (cc *Controller) getPodsForQueueJob(qj *arbv1.QueueJob) (map[string][]*v1.Pod, error) {
+	pods := map[string][]*v1.Pod{}
 
-	// List all pods under QueueJob
-	pods, err := cc.podStore.Pods(qj.Namespace).List(selector)
-	if err != nil {
-		return nil, err
+	for _, ts := range qj.Spec.TaskSpecs {
+		selector, err := metav1.LabelSelectorAsSelector(ts.Selector)
+		if err != nil {
+			return nil, fmt.Errorf("couldn't convert QueueJob selector: %v", err)
+		}
+
+		// List all pods under QueueJob
+		ps, err := cc.podListr.Pods(qj.Namespace).List(selector)
+		if err != nil {
+			return nil, err
+		}
+
+		// TODO (k82cn): optimic by cache
+		for _, pod := range ps {
+			if !metav1.IsControlledBy(pod, qj) {
+				continue
+			}
+			// Hash by TaskSpec.Template.Name
+			pods[ts.Template.Name] = append(pods[ts.Template.Name], pod)
+		}
 	}
 
 	return pods, nil
@@ -331,19 +344,13 @@ func (cc *Controller) getPodsForQueueJob(qj *arbv1.QueueJob) ([]*v1.Pod, error) 
 
 // manageQueueJob is the core method responsible for managing the number of running
 // pods according to what is specified in the job.Spec.
-// Does NOT modify <activePods>.
-func (cc *Controller) manageQueueJob(qj *arbv1.QueueJob, pods []*v1.Pod) error {
+func (cc *Controller) manageQueueJob(qj *arbv1.QueueJob, pods map[string][]*v1.Pod) error {
 	var err error
 
-	replicas := qj.Spec.Replicas
-
-	running := int32(filterPods(pods, v1.PodRunning))
-	pending := int32(filterPods(pods, v1.PodPending))
-	succeeded := int32(filterPods(pods, v1.PodSucceeded))
-	failed := int32(filterPods(pods, v1.PodFailed))
-
-	glog.V(3).Infof("There are %d pods of QueueJob %s: replicas %d, pending %d, running %d, succeeded %d, failed %d",
-		len(pods), qj.Name, replicas, pending, running, succeeded, failed)
+	runningSum := int32(0)
+	pendingSum := int32(0)
+	succeededSum := int32(0)
+	failedSum := int32(0)
 
 	ss, err := cc.arbclients.ArbV1().SchedulingSpecs(qj.Namespace).List(metav1.ListOptions{
 		FieldSelector: fmt.Sprintf("metadata.name=%s", qj.Name),
@@ -361,40 +368,58 @@ func (cc *Controller) manageQueueJob(qj *arbv1.QueueJob, pods []*v1.Pod) error {
 			len(ss.Items), qj.Namespace, qj.Name)
 	}
 
-	// Create pod if necessary
-	if diff := replicas - pending - running - succeeded; diff > 0 {
-		glog.V(3).Infof("Try to create %v Pods for QueueJob %v/%v", diff, qj.Namespace, qj.Name)
+	for _, ts := range qj.Spec.TaskSpecs {
+		replicas := ts.Replicas
+		name := ts.Template.Name
 
-		var errs []error
-		wait := sync.WaitGroup{}
-		wait.Add(int(diff))
-		for i := int32(0); i < diff; i++ {
-			go func(ix int32) {
-				defer wait.Done()
-				newPod := createQueueJobPod(qj, ix)
-				_, err := cc.clients.Core().Pods(newPod.Namespace).Create(newPod)
-				if err != nil {
-					// Failed to create Pod, wait a moment and then create it again
-					// This is to ensure all pods under the same QueueJob created
-					// So gang-scheduling could schedule the QueueJob successfully
-					glog.Errorf("Failed to create pod %s for QueueJob %s, err %#v",
-						newPod.Name, qj.Name, err)
-					errs = append(errs, err)
-				}
-			}(i)
-		}
-		wait.Wait()
+		running := int32(filterPods(pods[name], v1.PodRunning))
+		pending := int32(filterPods(pods[name], v1.PodPending))
+		succeeded := int32(filterPods(pods[name], v1.PodSucceeded))
+		failed := int32(filterPods(pods[name], v1.PodFailed))
 
-		if len(errs) != 0 {
-			return fmt.Errorf("failed to create %d pods of %d", len(errs), diff)
+		runningSum += running
+		pendingSum += pending
+		succeededSum += succeeded
+		failedSum += failed
+
+		glog.V(3).Infof("There are %d pods of QueueJob %s (%s): replicas %d, pending %d, running %d, succeeded %d, failed %d",
+			len(pods), qj.Name, name, replicas, pending, running, succeeded, failed)
+
+		// Create pod if necessary
+		if diff := replicas - pending - running - succeeded; diff > 0 {
+			glog.V(3).Infof("Try to create %v Pods for QueueJob %v/%v", diff, qj.Namespace, qj.Name)
+
+			var errs []error
+			wait := sync.WaitGroup{}
+			wait.Add(int(diff))
+			for i := int32(0); i < diff; i++ {
+				go func(ix int32) {
+					defer wait.Done()
+					newPod := createQueueJobPod(qj, &ts.Template, ix)
+					_, err := cc.clients.Core().Pods(newPod.Namespace).Create(newPod)
+					if err != nil {
+						// Failed to create Pod, wait a moment and then create it again
+						// This is to ensure all pods under the same QueueJob created
+						// So gang-scheduling could schedule the QueueJob successfully
+						glog.Errorf("Failed to create pod %s for QueueJob %s, err %#v",
+							newPod.Name, qj.Name, err)
+						errs = append(errs, err)
+					}
+				}(i)
+			}
+			wait.Wait()
+
+			if len(errs) != 0 {
+				return fmt.Errorf("failed to create %d pods of %d", len(errs), diff)
+			}
 		}
 	}
 
 	qj.Status = arbv1.QueueJobStatus{
-		Pending:      pending,
-		Running:      running,
-		Succeeded:    succeeded,
-		Failed:       failed,
+		Pending:      pendingSum,
+		Running:      runningSum,
+		Succeeded:    succeededSum,
+		Failed:       failedSum,
 		MinAvailable: int32(qj.Spec.SchedSpec.MinAvailable),
 	}
 

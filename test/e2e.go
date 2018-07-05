@@ -69,4 +69,39 @@ var _ = Describe("E2E Test", func() {
 		err = waitTasksReady(context, qj1.Name, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 	})
+
+	It("TaskPriority", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		slot := oneCPU
+		rep := clusterSize(context, slot)
+
+		replicaset := createReplicaSet(context, "rs-1", rep/2, "nginx", slot)
+		err := waitReplicaSetReady(context, replicaset.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		ts := []taskSpec{
+			{
+				name: "worker",
+				img:  "nginx",
+				pri:  workerPriority,
+				rep:  rep,
+				req:  slot,
+			},
+			{
+				name: "master",
+				img:  "nginx",
+				pri:  masterPriority,
+				rep:  1,
+				req:  slot,
+			},
+		}
+
+		qj := createQueueJobEx(context, "multi-pod-qj", rep/2, ts)
+
+		expectedTasks := map[string]int32{"master": 1, "worker": rep/2 - 1}
+		err = waitTasksReadyEx(context, qj.Name, expectedTasks)
+		Expect(err).NotTo(HaveOccurred())
+	})
 })

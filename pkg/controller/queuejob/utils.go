@@ -79,8 +79,8 @@ func createQueueJobSchedulingSpec(qj *arbv1.QueueJob) *arbv1.SchedulingSpec {
 	}
 }
 
-func createQueueJobPod(qj *arbv1.QueueJob, ix int32) *corev1.Pod {
-	templateCopy := qj.Spec.Template.DeepCopy()
+func createQueueJobPod(qj *arbv1.QueueJob, template *corev1.PodTemplateSpec, ix int32) *corev1.Pod {
+	templateCopy := template.DeepCopy()
 
 	prefix := fmt.Sprintf("%s-", qj.Name)
 
