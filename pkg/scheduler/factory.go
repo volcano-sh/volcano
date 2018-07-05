@@ -37,3 +37,10 @@ func init() {
 	framework.RegisterAction(allocate.New())
 	framework.RegisterAction(preempt.New())
 }
+
+// TODO (k82cn): make Actions configurable
+var actionChain = []framework.Action{
+	decorate.New(),
+	allocate.New(),
+	preempt.New(),
+}
