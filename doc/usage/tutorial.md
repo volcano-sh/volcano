@@ -5,13 +5,13 @@ This doc will show how to run `kube-arbitrator` as a kubernetes batch system. It
 ## 1. Pre-condition
 To run `kube-arbitrator`, a Kubernetes cluster must start up. Here is a document on [Using kubeadm to Create a Cluster](https://kubernetes.io/docs/setup/independent/create-cluster-kubeadm/). Additionally, for common purposes and testing and deploying on local machine, one can use Minikube. This is a document on [Running Kubernetes Locally via Minikube](https://kubernetes.io/docs/getting-started-guides/minikube/).
 
-`kube-arbitrator/kar-scheduler` need to run as a kubernetes scheduler. The next step will show how to run kube-batchd as kubernetes scheduler quickly. Refer [Configure Multiple Schedulers](https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/) to get more details.
+`kube-arbitrator/kar-scheduler` need to run as a kubernetes scheduler. The next step will show how to run `kar-scheduler` as kubernetes scheduler quickly. Refer [Configure Multiple Schedulers](https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/) to get more details.
 
 ## 2. Config kube-arbitrator for Kubernetes
 
 ### (1) kube-arbitrator image
 
-An official kube-arbitrator image is provided and you can download it from [DockerHub](https://hub.docker.com/r/kubearbitrator/kube-arbitrator/). The version is `0.1` now.
+An official kube-arbitrator image is provided and you can download it from [DockerHub](https://hub.docker.com/r/kubearbitrator/kar-scheduler/). The version is `0.1` now.
 
 ### (2) Create a Kubernetes Deployment for kube-arbitrator
 
@@ -25,7 +25,7 @@ An official kube-arbitrator image is provided and you can download it from [Dock
 
 #### Deploys `kube-arbitrator` by Helm
 
-Run the kube-batchd as kubernetes scheduler
+Run the `kar-scheduler` as kubernetes scheduler
 
 ```
 # helm install $GOPATH/src/github.com/kubernetes-incubator/kube-arbitrator/deployment/kube-arbitrator --namespace kube-system
@@ -93,7 +93,7 @@ Check the pods status
 
 ## 4. Create PriorityClass for Pod
 
-kube-batchd will start pods by their priority in the same PodSet, pods with higher priority will start first. Here is sample to show `PriorityClass` usage:
+`kar-scheduler` will start pods by their priority in the same QueueJob, pods with higher priority will start first. Here is sample to show `PriorityClass` usage:
 
 Create a `priority_1000.yaml` with the following contents:
 
@@ -145,4 +145,5 @@ Create the Pod with priority 1000.
 NOTE:
 
 * `PriorityClass` is supported in kubernetes 1.9 or later.
-* The pod in same Deployment/RS/Job share the same pod template, so they have the same `PriorityClass`. To specify a different `PriorityClass` for pods in same PodSet, users need to create controllers by themselves.
+* The pod in same Deployment/RS/Job share the same pod template, so they have the same `PriorityClass`.
+  To specify a different `PriorityClass` for pods in same QueueJob, users need to create controllers by themselves.
