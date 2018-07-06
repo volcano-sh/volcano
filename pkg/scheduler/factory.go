@@ -29,9 +29,9 @@ import (
 )
 
 func init() {
-	framework.RegisterPluginBuilder(priority.New)
-	framework.RegisterPluginBuilder(gang.New)
-	framework.RegisterPluginBuilder(drf.New)
+	framework.RegisterPluginBuilder("priority", priority.New)
+	framework.RegisterPluginBuilder("gang", gang.New)
+	framework.RegisterPluginBuilder("drf", drf.New)
 
 	framework.RegisterAction(decorate.New())
 	framework.RegisterAction(allocate.New())

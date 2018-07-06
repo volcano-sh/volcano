@@ -17,22 +17,28 @@ limitations under the License.
 package priority
 
 import (
+	"github.com/golang/glog"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 )
 
 type priorityPlugin struct {
+	args *framework.PluginArgs
 }
 
-func New() framework.Plugin {
-	return &priorityPlugin{}
+func New(args *framework.PluginArgs) framework.Plugin {
+	return &priorityPlugin{
+		args: args,
+	}
 }
 
-func (gp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
-	// Add Task Order function
-	ssn.AddTaskOrderFn(func(l interface{}, r interface{}) int {
+func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
+	taskOrderFn := func(l interface{}, r interface{}) int {
 		lv := l.(*api.TaskInfo)
 		rv := r.(*api.TaskInfo)
+
+		glog.V(3).Infof("Priority TaskOrder: <%v/%v> prority is %v, <%v/%v> priority is %v",
+			lv.Namespace, lv.Name, lv.Priority, rv.Namespace, rv.Name, rv.Priority)
 
 		if lv.Priority == rv.Priority {
 			return 0
@@ -43,12 +49,19 @@ func (gp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		return 1
-	})
+	}
 
-	// Add Job Order function
-	ssn.AddJobOrderFn(func(l, r interface{}) int {
+	// Add Task Order function
+	if pp.args.TaskOrderFnEnabled {
+		ssn.AddTaskOrderFn(taskOrderFn)
+	}
+
+	jobOrderFn := func(l, r interface{}) int {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
+
+		glog.V(3).Infof("Priority JobOrderFn: <%v/%v> is ready: %d, <%v/%v> is ready: %d",
+			lv.Namespace, lv.Name, lv.Priority, rv.Namespace, rv.Name, rv.Priority)
 
 		if lv.Priority > rv.Priority {
 			return -1
@@ -59,7 +72,12 @@ func (gp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		return 0
-	})
+	}
+
+	if pp.args.JobOrderFnEnabled {
+		// Add Job Order function
+		ssn.AddJobOrderFn(jobOrderFn)
+	}
 }
 
-func (gp *priorityPlugin) OnSessionClose(ssn *framework.Session) {}
+func (pp *priorityPlugin) OnSessionClose(ssn *framework.Session) {}
