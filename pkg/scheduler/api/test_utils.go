@@ -26,11 +26,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-<<<<<<< HEAD:pkg/batchd/api/test_utils.go
-
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/queue-ctrl/apis/v1"
-=======
->>>>>>> upstream/master:pkg/scheduler/api/test_utils.go
 )
 
 func nodesEqual(l, r map[string]*NodeInfo) bool {
