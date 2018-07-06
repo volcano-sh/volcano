@@ -436,6 +436,20 @@ func (sc *SchedulerCache) Snapshot() *arbapi.ClusterInfo {
 	return snapshot
 }
 
+func (sc *SchedulerCache) LoadSchedulerConf(path string) (map[string]string, error) {
+	ns, name, err := cache.SplitMetaNamespaceKey(path)
+	if err != nil {
+		return nil, err
+	}
+
+	confMap, err := sc.kubeclient.CoreV1().ConfigMaps(ns).Get(name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return confMap.Data, nil
+}
+
 func (sc *SchedulerCache) String() string {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()

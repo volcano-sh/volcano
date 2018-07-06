@@ -17,9 +17,7 @@ limitations under the License.
 package allocate
 
 import (
-	"flag"
 	"fmt"
-	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -35,15 +33,6 @@ import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/drf"
 )
-
-func init() {
-	logLevel := os.Getenv("TEST_LOG_LEVEL")
-	if len(logLevel) != 0 {
-		flag.Parse()
-		flag.Lookup("logtostderr").Value.Set("true")
-		flag.Lookup("v").Value.Set(logLevel)
-	}
-}
 
 func buildResourceList(cpu string, memory string) v1.ResourceList {
 	return v1.ResourceList{
@@ -124,7 +113,7 @@ func (fb *fakeBinder) Bind(p *v1.Pod, hostname string) error {
 }
 
 func TestAllocate(t *testing.T) {
-	framework.RegisterPluginBuilder(drf.New)
+	framework.RegisterPluginBuilder("drf", drf.New)
 	defer framework.CleanupPluginBuilders()
 
 	owner1 := buildOwnerReference("owner1")
@@ -222,7 +211,13 @@ func TestAllocate(t *testing.T) {
 			schedulerCache.AddSchedulingSpec(ss)
 		}
 
-		ssn := framework.OpenSession(schedulerCache)
+		args := &framework.PluginArgs{
+			Name:                 "drf",
+			PreemptableFnEnabled: true,
+			JobOrderFnEnabled:    true,
+		}
+
+		ssn := framework.OpenSession(schedulerCache, []*framework.PluginArgs{args})
 		defer framework.CloseSession(ssn)
 
 		allocate.Execute(ssn)
