@@ -17,14 +17,19 @@ limitations under the License.
 package framework
 
 import (
+	"github.com/golang/glog"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/cache"
 )
 
-func OpenSession(cache cache.Cache) *Session {
+func OpenSession(cache cache.Cache, args []*PluginArgs) *Session {
 	ssn := openSession(cache)
 
-	for _, pb := range pluginBuilders {
-		ssn.plugins = append(ssn.plugins, pb())
+	for _, arg := range args {
+		if pb, found := GetPluginBuilder(arg.Name); !found {
+			glog.Errorf("Failed to get plugin %s.", arg.Name)
+		} else {
+			ssn.plugins = append(ssn.plugins, pb(arg))
+		}
 	}
 
 	for _, plugin := range ssn.plugins {

@@ -25,7 +25,7 @@ import (
 )
 
 func TestPreempt(t *testing.T) {
-	framework.RegisterPluginBuilder(drf.New)
+	framework.RegisterPluginBuilder("drf", drf.New)
 	defer framework.CleanupPluginBuilders()
 
 	// TODO (k82cn): Add UT cases here.
