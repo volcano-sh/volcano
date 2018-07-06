@@ -79,15 +79,15 @@ func createQueueJobSchedulingSpec(qj *arbv1.QueueJob) *arbv1.SchedulingSpec {
 	}
 }
 
-func createQueueJobPod(qj *arbv1.QueueJob, ix int32) *corev1.Pod {
-	templateCopy := qj.Spec.Template.DeepCopy()
+func createQueueJobPod(qj *arbv1.QueueJob, template *corev1.PodTemplateSpec, ix int32) *corev1.Pod {
+	templateCopy := template.DeepCopy()
 
-	podName := fmt.Sprintf("%s-%d-%s", qj.Name, ix, generateUUID())
+	prefix := fmt.Sprintf("%s-", qj.Name)
 
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      podName,
-			Namespace: qj.Namespace,
+			GenerateName: prefix,
+			Namespace:    qj.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(qj, queueJobKind),
 			},

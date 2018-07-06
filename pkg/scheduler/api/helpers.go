@@ -35,8 +35,16 @@ func PodKey(pod *v1.Pod) TaskID {
 func getTaskStatus(pod *v1.Pod) TaskStatus {
 	switch pod.Status.Phase {
 	case v1.PodRunning:
+		if pod.DeletionTimestamp != nil {
+			return Releasing
+		}
+
 		return Running
 	case v1.PodPending:
+		if pod.DeletionTimestamp != nil {
+			return Releasing
+		}
+
 		if len(pod.Spec.NodeName) == 0 {
 			return Pending
 		}
@@ -52,11 +60,38 @@ func getTaskStatus(pod *v1.Pod) TaskStatus {
 	return Unknown
 }
 
-func OccupiedResources(status TaskStatus) bool {
+func AllocatedStatus(status TaskStatus) bool {
 	switch status {
-	case Bound, Binding, Running, Releasing:
+	case Bound, Binding, Running, Allocated:
 		return true
 	default:
 		return false
 	}
+}
+
+func MergeErrors(errs ...error) error {
+	msg := "errors: "
+
+	foundErr := false
+	i := 1
+
+	for _, e := range errs {
+		if e != nil {
+			if foundErr {
+				msg = fmt.Sprintf("%s, %d: ", msg, i)
+			} else {
+				msg = fmt.Sprintf("%s %d: ", msg, i)
+			}
+
+			msg = fmt.Sprintf("%s%v", msg, e)
+			foundErr = true
+			i++
+		}
+	}
+
+	if foundErr {
+		return fmt.Errorf("%s", msg)
+	}
+
+	return nil
 }

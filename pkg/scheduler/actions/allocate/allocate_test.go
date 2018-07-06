@@ -17,9 +17,7 @@ limitations under the License.
 package allocate
 
 import (
-	"flag"
 	"fmt"
-	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -29,22 +27,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	_ "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/drf"
-
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1alpha1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/cache"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/drf"
 )
-
-func init() {
-	logLevel := os.Getenv("TEST_LOG_LEVEL")
-	if len(logLevel) != 0 {
-		flag.Parse()
-		flag.Lookup("logtostderr").Value.Set("true")
-		flag.Lookup("v").Value.Set(logLevel)
-	}
-}
 
 func buildResourceList(cpu string, memory string) v1.ResourceList {
 	return v1.ResourceList{
@@ -125,6 +113,9 @@ func (fb *fakeBinder) Bind(p *v1.Pod, hostname string) error {
 }
 
 func TestAllocate(t *testing.T) {
+	framework.RegisterPluginBuilder("drf", drf.New)
+	defer framework.CleanupPluginBuilders()
+
 	owner1 := buildOwnerReference("owner1")
 	owner2 := buildOwnerReference("owner2")
 
@@ -220,7 +211,13 @@ func TestAllocate(t *testing.T) {
 			schedulerCache.AddSchedulingSpec(ss)
 		}
 
-		ssn := framework.OpenSession(schedulerCache)
+		args := &framework.PluginArgs{
+			Name:                 "drf",
+			PreemptableFnEnabled: true,
+			JobOrderFnEnabled:    true,
+		}
+
+		ssn := framework.OpenSession(schedulerCache, []*framework.PluginArgs{args})
 		defer framework.CloseSession(ssn)
 
 		allocate.Execute(ssn)

@@ -31,14 +31,23 @@ type Cache interface {
 	// Snapshot deep copy overall cache information into snapshot
 	Snapshot() *api.ClusterInfo
 
+	// SchedulerConf return the property of scheduler configuration
+	LoadSchedulerConf(path string) (map[string]string, error)
+
 	// WaitForCacheSync waits for all cache synced
 	WaitForCacheSync(stopCh <-chan struct{}) bool
 
 	// Bind binds Task to the target host.
 	// TODO(jinzhej): clean up expire Tasks.
 	Bind(task *api.TaskInfo, hostname string) error
+
+	Evict(task *api.TaskInfo) error
 }
 
 type Binder interface {
 	Bind(task *v1.Pod, hostname string) error
+}
+
+type Evictor interface {
+	Evict(pod *v1.Pod) error
 }

@@ -29,7 +29,7 @@ import (
 )
 
 type Session struct {
-	ID types.UID
+	UID types.UID
 
 	cache cache.Cache
 
@@ -39,19 +39,23 @@ type Session struct {
 	NodeIndex map[string]*api.NodeInfo
 	Backlog   []*api.JobInfo
 
-	plugins       []Plugin
-	eventHandlers []*EventHandler
-	jobOrderFns   []api.CompareFn
-	taskOrderFns  []api.CompareFn
+	plugins        []Plugin
+	eventHandlers  []*EventHandler
+	jobOrderFns    []api.CompareFn
+	taskOrderFns   []api.CompareFn
+	preemptableFns []api.LessFn
+	jobReadyFns    []api.ValidateFn
 }
 
 func openSession(cache cache.Cache) *Session {
 	ssn := &Session{
-		ID:        uuid.NewUUID(),
+		UID:       uuid.NewUUID(),
 		cache:     cache,
 		JobIndex:  map[api.JobID]*api.JobInfo{},
 		NodeIndex: map[string]*api.NodeInfo{},
 	}
+
+	glog.V(3).Infof("Open Session %v", ssn.UID)
 
 	snapshot := cache.Snapshot()
 
@@ -77,10 +81,83 @@ func closeSession(ssn *Session) {
 	ssn.plugins = nil
 	ssn.eventHandlers = nil
 	ssn.jobOrderFns = nil
+
+	glog.V(3).Infof("Close Session %v", ssn.UID)
 }
 
-func (ssn *Session) Bind(task *api.TaskInfo, hostname string) error {
-	if err := ssn.cache.Bind(task, hostname); err != nil {
+func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
+	// Only update status in session
+	job, found := ssn.JobIndex[task.Job]
+	if found {
+		job.UpdateTaskStatus(task, api.Pipelined)
+	} else {
+		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
+			task.Job, ssn.UID)
+	}
+
+	task.NodeName = hostname
+
+	if node, found := ssn.NodeIndex[hostname]; found {
+		node.PipelineTask(task)
+		glog.V(3).Infof("After pipelined Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
+			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
+	} else {
+		glog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
+			hostname, ssn.UID)
+	}
+
+	for _, eh := range ssn.eventHandlers {
+		if eh.AllocateFunc != nil {
+			eh.AllocateFunc(&Event{
+				Task: task,
+			})
+		}
+	}
+
+	return nil
+}
+
+func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
+	// Only update status in session
+	job, found := ssn.JobIndex[task.Job]
+	if found {
+		job.UpdateTaskStatus(task, api.Allocated)
+	} else {
+		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
+			task.Job, ssn.UID)
+	}
+
+	task.NodeName = hostname
+
+	if node, found := ssn.NodeIndex[hostname]; found {
+		node.AddTask(task)
+		glog.V(3).Infof("After allocated Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
+			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
+	} else {
+		glog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
+			hostname, ssn.UID)
+	}
+
+	// Callbacks
+	for _, eh := range ssn.eventHandlers {
+		if eh.AllocateFunc != nil {
+			eh.AllocateFunc(&Event{
+				Task: task,
+			})
+		}
+	}
+
+	if ssn.JobReady(job) {
+		for _, task := range job.TaskStatusIndex[api.Allocated] {
+			ssn.dispatch(task)
+		}
+	}
+
+	return nil
+}
+
+func (ssn *Session) dispatch(task *api.TaskInfo) error {
+	if err := ssn.cache.Bind(task, task.NodeName); err != nil {
 		return err
 	}
 
@@ -89,38 +166,56 @@ func (ssn *Session) Bind(task *api.TaskInfo, hostname string) error {
 		job.UpdateTaskStatus(task, api.Binding)
 	} else {
 		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
-			task.Job, ssn.ID)
-	}
-
-	if node, found := ssn.NodeIndex[hostname]; found {
-		node.AddTask(task)
-	} else {
-		glog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
-			hostname, ssn.ID)
-	}
-
-	// Callbacks
-	for _, eh := range ssn.eventHandlers {
-		eh.BindFunc(&Event{
-			Task: task,
-		})
+			task.Job, ssn.UID)
 	}
 
 	return nil
 }
 
-func (ssn *Session) Evict(task *api.TaskInfo) error {
-	return fmt.Errorf("not supported")
+func (ssn *Session) Preemptable(preemptor, preemptee *api.TaskInfo) bool {
+	if len(ssn.preemptableFns) == 0 {
+		return false
+	}
+
+	for _, preemptable := range ssn.preemptableFns {
+		if !preemptable(preemptor, preemptee) {
+			return false
+		}
+	}
+
+	return true
 }
 
-func (ssn *Session) ForgetJob(job *api.JobInfo) error {
-	for i, j := range ssn.Jobs {
-		if j.UID == job.UID {
-			ssn.Backlog = append(ssn.Backlog, j)
-			ssn.Jobs[i] = ssn.Jobs[len(ssn.Jobs)-1]
-			ssn.Jobs = ssn.Jobs[:len(ssn.Jobs)-1]
-			// NOTES: did not update JobIndex, the index is used for both
-			// backlog & jobs.
+func (ssn *Session) Preempt(preemptor, preemptee *api.TaskInfo) error {
+	if err := ssn.cache.Evict(preemptee); err != nil {
+		return err
+	}
+
+	// Update status in session
+	job, found := ssn.JobIndex[preemptee.Job]
+	if found {
+		job.UpdateTaskStatus(preemptee, api.Releasing)
+	} else {
+		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
+			preemptee.Job, ssn.UID)
+	}
+
+	// Update task in node.
+	if node, found := ssn.NodeIndex[preemptee.NodeName]; found {
+		node.UpdateTask(preemptee)
+	}
+
+	for _, eh := range ssn.eventHandlers {
+		if eh.AllocateFunc != nil {
+			eh.AllocateFunc(&Event{
+				Task: preemptor,
+			})
+		}
+
+		if eh.EvictFunc != nil {
+			eh.EvictFunc(&Event{
+				Task: preemptee,
+			})
 		}
 	}
 
@@ -137,6 +232,24 @@ func (ssn *Session) AddJobOrderFn(cf api.CompareFn) {
 
 func (ssn *Session) AddTaskOrderFn(cf api.CompareFn) {
 	ssn.taskOrderFns = append(ssn.taskOrderFns, cf)
+}
+
+func (ssn *Session) AddPreemptableFn(cf api.LessFn) {
+	ssn.preemptableFns = append(ssn.preemptableFns, cf)
+}
+
+func (ssn *Session) AddJobReadyFn(vf api.ValidateFn) {
+	ssn.jobReadyFns = append(ssn.jobReadyFns, vf)
+}
+
+func (ssn *Session) JobReady(obj interface{}) bool {
+	for _, jrf := range ssn.jobReadyFns {
+		if !jrf(obj) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (ssn *Session) JobOrderFn(l, r interface{}) bool {
@@ -165,4 +278,19 @@ func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 	rv := r.(*api.TaskInfo)
 
 	return lv.UID < rv.UID
+}
+
+func (ssn Session) String() string {
+	msg := fmt.Sprintf("Session %v: \n", ssn.UID)
+
+	for _, job := range ssn.Jobs {
+		msg = fmt.Sprintf("%s%v\n", msg, job)
+	}
+
+	for _, node := range ssn.Nodes {
+		msg = fmt.Sprintf("%s%v\n", msg, node)
+	}
+
+	return msg
+
 }

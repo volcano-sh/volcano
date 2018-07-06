@@ -47,19 +47,9 @@ kube::test::find_dirs() {
     find -L . -not \( \
         \( \
           -path './_artifacts/*' \
-          -o -path './bazel-*/*' \
           -o -path './_output/*' \
-          -o -path './_gopath/*' \
-          -o -path './cmd/kubeadm/test/*' \
-          -o -path './contrib/podex/*' \
-          -o -path './output/*' \
-          -o -path './release/*' \
-          -o -path './target/*' \
-          -o -path './test/integration/*' \
+          -o -path './test/*' \
           -o -path './third_party/*' \
-          -o -path './staging/*' \
-          -o -path './vendor/*' \
-          -o -path './kube-arbitrator/*' \
         \) -prune \
       \) -name '*_test.go' -print0 | xargs -0n1 dirname | sed "s|^\./|${KUBE_GO_PACKAGE}/|" | LC_ALL=C sort -u
   )

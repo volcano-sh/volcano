@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/golang/glog"
 
@@ -54,10 +55,14 @@ type SchedulerCache struct {
 	pdbInformer            policyv1.PodDisruptionBudgetInformer
 	schedulingSpecInformer arbclient.SchedulingSpecInformer
 
-	Binder Binder
+	Binder  Binder
+	Evictor Evictor
 
 	Jobs  map[arbapi.JobID]*arbapi.JobInfo
 	Nodes map[string]*arbapi.NodeInfo
+
+	errTasks    *cache.FIFO
+	deletedJobs *cache.FIFO
 }
 
 type defaultBinder struct {
@@ -72,21 +77,72 @@ func (db *defaultBinder) Bind(p *v1.Pod, hostname string) error {
 			Name: hostname,
 		},
 	}); err != nil {
-		glog.Infof("Failed to bind pod <%v/%v>: %#v", p.Namespace, p.Name, err)
+		glog.Errorf("Failed to bind pod <%v/%v>: %#v", p.Namespace, p.Name, err)
 		return err
 	}
 	return nil
 }
 
+type defaultEvictor struct {
+	kubeclient *kubernetes.Clientset
+}
+
+func (de *defaultEvictor) Evict(p *v1.Pod) error {
+	// TODO (k82cn): makes grace period configurable.
+	threeSecs := int64(3)
+
+	if err := de.kubeclient.CoreV1().Pods(p.Namespace).Delete(p.Name, &metav1.DeleteOptions{
+		GracePeriodSeconds: &threeSecs,
+	}); err != nil {
+		glog.Errorf("Failed to evict pod <%v/%v>: %#v", p.Namespace, p.Name, err)
+		return err
+	}
+	return nil
+}
+
+func taskKey(obj interface{}) (string, error) {
+	if obj == nil {
+		return "", fmt.Errorf("the object is nil")
+	}
+
+	task, ok := obj.(*arbapi.TaskInfo)
+
+	if !ok {
+		return "", fmt.Errorf("failed to convert %v to TaskInfo", obj)
+	}
+
+	return string(task.UID), nil
+}
+
+func jobKey(obj interface{}) (string, error) {
+	if obj == nil {
+		return "", fmt.Errorf("the object is nil")
+	}
+
+	job, ok := obj.(*arbapi.JobInfo)
+
+	if !ok {
+		return "", fmt.Errorf("failed to convert %v to TaskInfo", obj)
+	}
+
+	return string(job.UID), nil
+}
+
 func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCache {
 	sc := &SchedulerCache{
-		Jobs:  make(map[arbapi.JobID]*arbapi.JobInfo),
-		Nodes: make(map[string]*arbapi.NodeInfo),
+		Jobs:        make(map[arbapi.JobID]*arbapi.JobInfo),
+		Nodes:       make(map[string]*arbapi.NodeInfo),
+		errTasks:    cache.NewFIFO(taskKey),
+		deletedJobs: cache.NewFIFO(jobKey),
 	}
 
 	sc.kubeclient = kubernetes.NewForConfigOrDie(config)
 
 	sc.Binder = &defaultBinder{
+		kubeclient: sc.kubeclient,
+	}
+
+	sc.Evictor = &defaultEvictor{
 		kubeclient: sc.kubeclient,
 	}
 
@@ -167,9 +223,17 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 }
 
 func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
+	go sc.pdbInformer.Informer().Run(stopCh)
 	go sc.podInformer.Informer().Run(stopCh)
+	go sc.pdbInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
 	go sc.schedulingSpecInformer.Informer().Run(stopCh)
+
+	// Re-sync error tasks.
+	go sc.resync()
+
+	// Cleanup jobs.
+	go sc.cleanupJobs()
 }
 
 func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
@@ -196,6 +260,42 @@ func (sc *SchedulerCache) findJobAndTask(taskInfo *arbapi.TaskInfo) (*arbapi.Job
 	return job, task, nil
 }
 
+func (sc *SchedulerCache) Evict(taskInfo *arbapi.TaskInfo) error {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	job, task, err := sc.findJobAndTask(taskInfo)
+
+	if err != nil {
+		return err
+	}
+
+	node, found := sc.Nodes[task.NodeName]
+	if !found {
+		return fmt.Errorf("failed to bind Task %v to host %v, host does not exist",
+			task.UID, task.NodeName)
+	}
+
+	err = job.UpdateTaskStatus(task, arbapi.Releasing)
+	if err != nil {
+		return err
+	}
+
+	// Add new task to node.
+	node.UpdateTask(task)
+
+	p := task.Pod
+
+	go func() {
+		err := sc.Evictor.Evict(p)
+		if err != nil {
+			sc.resyncTask(task)
+		}
+	}()
+
+	return nil
+}
+
 // Bind binds task to the target host.
 func (sc *SchedulerCache) Bind(taskInfo *arbapi.TaskInfo, hostname string) error {
 	sc.Mutex.Lock()
@@ -218,16 +318,96 @@ func (sc *SchedulerCache) Bind(taskInfo *arbapi.TaskInfo, hostname string) error
 		return err
 	}
 
+	// Set `.nodeName` to the hostname
+	task.NodeName = hostname
+
 	// Add task to the node.
 	node.AddTask(task)
 
 	p := task.Pod
 
 	go func() {
-		sc.Binder.Bind(p, hostname)
+		if err := sc.Binder.Bind(p, hostname); err != nil {
+			sc.resyncTask(task)
+		}
 	}()
 
 	return nil
+}
+
+func (sc *SchedulerCache) deleteJob(job *arbapi.JobInfo) {
+	time.AfterFunc(5*time.Second, func() {
+		sc.deletedJobs.AddIfNotPresent(job)
+	})
+}
+
+func (sc *SchedulerCache) cleanupJob(job *arbapi.JobInfo) error {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	if job.SchedSpec == nil && len(job.Tasks) == 0 {
+		delete(sc.Jobs, job.UID)
+		return nil
+	}
+
+	return fmt.Errorf("Job <%v/%v> is not ready to clean up", job.Namespace, job.Name)
+}
+
+func (sc *SchedulerCache) processCleanupJob() error {
+	_, err := sc.deletedJobs.Pop(func(obj interface{}) error {
+		job, ok := obj.(*arbapi.JobInfo)
+		if !ok {
+			return fmt.Errorf("failed to convert %v to *v1.Pod", obj)
+		}
+
+		if err := sc.cleanupJob(job); err != nil {
+			// Requeue Job to wait for all tasks deleted.
+			sc.deleteJob(job)
+			return err
+		}
+		return nil
+	})
+
+	return err
+}
+
+func (sc *SchedulerCache) cleanupJobs() {
+	for {
+		err := sc.processCleanupJob()
+		if err != nil {
+			glog.Errorf("Failed to process job clean up: %v", err)
+		}
+	}
+}
+
+func (sc *SchedulerCache) resyncTask(task *arbapi.TaskInfo) {
+	sc.errTasks.AddIfNotPresent(task)
+}
+
+func (sc *SchedulerCache) resync() {
+	for {
+		err := sc.processResyncTask()
+		if err != nil {
+			glog.Errorf("Failed to process resync: %v", err)
+		}
+	}
+}
+
+func (sc *SchedulerCache) processResyncTask() error {
+	_, err := sc.errTasks.Pop(func(obj interface{}) error {
+		task, ok := obj.(*arbapi.TaskInfo)
+		if !ok {
+			return fmt.Errorf("failed to convert %v to *v1.Pod", obj)
+		}
+
+		if err := sc.syncTask(task); err != nil {
+			glog.Errorf("Failed to sync pod <%v/%v>", task.Namespace, task.Name)
+			return err
+		}
+		return nil
+	})
+
+	return err
 }
 
 func (sc *SchedulerCache) Snapshot() *arbapi.ClusterInfo {
@@ -254,6 +434,20 @@ func (sc *SchedulerCache) Snapshot() *arbapi.ClusterInfo {
 	}
 
 	return snapshot
+}
+
+func (sc *SchedulerCache) LoadSchedulerConf(path string) (map[string]string, error) {
+	ns, name, err := cache.SplitMetaNamespaceKey(path)
+	if err != nil {
+		return nil, err
+	}
+
+	confMap, err := sc.kubeclient.CoreV1().ConfigMaps(ns).Get(name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return confMap.Data, nil
 }
 
 func (sc *SchedulerCache) String() string {

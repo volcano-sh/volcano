@@ -71,29 +71,35 @@ func RunJob() error {
 			Namespace: launchJobFlags.Namespace,
 		},
 		Spec: arbv1.QueueJobSpec{
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					queueJobName: launchJobFlags.Name,
-				},
-			},
-			Replicas: int32(launchJobFlags.Replicas),
 			SchedSpec: arbv1.SchedulingSpecTemplate{
 				MinAvailable: launchJobFlags.MinAvailable,
 			},
-			Template: v1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{queueJobName: launchJobFlags.Name},
-				},
-				Spec: v1.PodSpec{
-					SchedulerName: launchJobFlags.SchedulerName,
-					RestartPolicy: v1.RestartPolicyNever,
-					Containers: []v1.Container{
-						{
-							Image:           launchJobFlags.Image,
-							Name:            launchJobFlags.Name,
-							ImagePullPolicy: v1.PullIfNotPresent,
-							Resources: v1.ResourceRequirements{
-								Requests: req,
+			TaskSpecs: []arbv1.TaskSpec{
+				{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							queueJobName: launchJobFlags.Name,
+						},
+					},
+					Replicas: int32(launchJobFlags.Replicas),
+
+					Template: v1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:   launchJobFlags.Name,
+							Labels: map[string]string{queueJobName: launchJobFlags.Name},
+						},
+						Spec: v1.PodSpec{
+							SchedulerName: launchJobFlags.SchedulerName,
+							RestartPolicy: v1.RestartPolicyNever,
+							Containers: []v1.Container{
+								{
+									Image:           launchJobFlags.Image,
+									Name:            launchJobFlags.Name,
+									ImagePullPolicy: v1.PullIfNotPresent,
+									Resources: v1.ResourceRequirements{
+										Requests: req,
+									},
+								},
 							},
 						},
 					},

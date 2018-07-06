@@ -14,17 +14,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package framework
+package preempt
 
 import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
+	"testing"
+
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
+
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/drf"
 )
 
-type Event struct {
-	Task *api.TaskInfo
-}
+func TestPreempt(t *testing.T) {
+	framework.RegisterPluginBuilder("drf", drf.New)
+	defer framework.CleanupPluginBuilders()
 
-type EventHandler struct {
-	AllocateFunc func(event *Event)
-	EvictFunc    func(event *Event)
+	// TODO (k82cn): Add UT cases here.
 }
