@@ -17,11 +17,7 @@ limitations under the License.
 package clientset
 
 import (
-<<<<<<< HEAD:pkg/batchd/client/clientset/clientset.go
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/queue-ctrl/client/clientset/typed/v1"
-=======
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/typed/v1"
->>>>>>> upstream/master:pkg/client/clientset/clientset.go
 
 	"k8s.io/client-go/rest"
 )

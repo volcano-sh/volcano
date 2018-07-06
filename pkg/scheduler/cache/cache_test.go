@@ -26,12 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-<<<<<<< HEAD:pkg/batchd/cache/cache_test.go
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/batchd/api"
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/queue-ctrl/apis/v1"
-=======
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
->>>>>>> upstream/master:pkg/scheduler/cache/cache_test.go
 )
 
 func nodesEqual(l, r map[string]*api.NodeInfo) bool {
