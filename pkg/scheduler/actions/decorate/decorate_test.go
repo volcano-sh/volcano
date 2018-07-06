@@ -17,8 +17,6 @@ limitations under the License.
 package decorate
 
 import (
-	"flag"
-	"os"
 	"reflect"
 	"sort"
 	"testing"
@@ -33,15 +31,6 @@ import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/cache"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 )
-
-func init() {
-	logLevel := os.Getenv("TEST_LOG_LEVEL")
-	if len(logLevel) != 0 {
-		flag.Parse()
-		flag.Lookup("logtostderr").Value.Set("true")
-		flag.Lookup("v").Value.Set(logLevel)
-	}
-}
 
 func buildResourceList(cpu string, memory string) v1.ResourceList {
 	return v1.ResourceList{
@@ -126,7 +115,7 @@ func TestExecute(t *testing.T) {
 
 		schedulerCache.AddSchedulingSpec(test.schedSpec)
 
-		ssn := framework.OpenSession(schedulerCache)
+		ssn := framework.OpenSession(schedulerCache, nil)
 		defer framework.CloseSession(ssn)
 
 		decorate.Execute(ssn)

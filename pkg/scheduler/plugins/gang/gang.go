@@ -24,10 +24,13 @@ import (
 )
 
 type gangPlugin struct {
+	args *framework.PluginArgs
 }
 
-func New() framework.Plugin {
-	return &gangPlugin{}
+func New(args *framework.PluginArgs) framework.Plugin {
+	return &gangPlugin{
+		args: args,
+	}
 }
 
 func readyTaskNum(job *api.JobInfo) int {
@@ -50,7 +53,7 @@ func jobReady(obj interface{}) bool {
 }
 
 func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
-	ssn.AddPreemptableFn(func(l, v interface{}) bool {
+	preemptableFn := func(l, v interface{}) bool {
 		preemptee := v.(*api.TaskInfo)
 
 		job := ssn.JobIndex[preemptee.Job]
@@ -65,14 +68,20 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		return preemptable
-	})
+	}
+	if gp.args.PreemptableFnEnabled {
+		ssn.AddPreemptableFn(preemptableFn)
+	}
 
-	ssn.AddJobOrderFn(func(l, r interface{}) int {
+	jobOrderFn := func(l, r interface{}) int {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
 
 		lReady := jobReady(lv)
 		rReady := jobReady(rv)
+
+		glog.V(3).Infof("Gang JobOrderFn: <%v/%v> is ready: %t, <%v/%v> is ready: %t",
+			lv.Namespace, lv.Name, lReady, rv.Namespace, rv.Name, rReady)
 
 		if lReady && rReady {
 			return 0
@@ -94,9 +103,15 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		return 0
-	})
+	}
 
-	ssn.AddJobReadyFn(jobReady)
+	if gp.args.JobOrderFnEnabled {
+		ssn.AddJobOrderFn(jobOrderFn)
+	}
+
+	if gp.args.JobReadyFnEnabled {
+		ssn.AddJobReadyFn(jobReady)
+	}
 }
 
 func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {

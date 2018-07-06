@@ -25,6 +25,7 @@ type ServerOption struct {
 	Master        string
 	Kubeconfig    string
 	SchedulerName string
+	SchedulerConf string
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -36,9 +37,10 @@ func NewServerOption() *ServerOption {
 // AddFlags adds flags for a specific CMServer to the specified FlagSet
 func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.Master, "master", s.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
-	fs.StringVar(&s.Kubeconfig, "kubeconfig", s.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
+	fs.StringVar(&s.Kubeconfig, "kubeconfig", s.Kubeconfig, "Path to kubeconfig file with authorization and master location information")
 	// kube-arbitrator will ignore pods with scheduler names other than specified with the option
 	fs.StringVar(&s.SchedulerName, "scheduler-name", "kar-scheduler", "kube-arbitrator will handle pods with the scheduler-name")
+	fs.StringVar(&s.SchedulerConf, "scheduler-conf", "", "The namespace and name of ConfigMap for scheduler configuration")
 }
 
 func (s *ServerOption) CheckOptionOrDie() {

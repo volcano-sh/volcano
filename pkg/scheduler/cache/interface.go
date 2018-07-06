@@ -31,6 +31,9 @@ type Cache interface {
 	// Snapshot deep copy overall cache information into snapshot
 	Snapshot() *api.ClusterInfo
 
+	// SchedulerConf return the property of scheduler configuration
+	LoadSchedulerConf(path string) (map[string]string, error)
+
 	// WaitForCacheSync waits for all cache synced
 	WaitForCacheSync(stopCh <-chan struct{}) bool
 

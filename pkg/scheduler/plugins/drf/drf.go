@@ -33,14 +33,17 @@ type drfAttr struct {
 }
 
 type drfPlugin struct {
+	args *framework.PluginArgs
+
 	totalResource *api.Resource
 
 	// Key is Job ID
 	jobOpts map[api.JobID]*drfAttr
 }
 
-func New() framework.Plugin {
+func New(args *framework.PluginArgs) framework.Plugin {
 	return &drfPlugin{
+		args:          args,
 		totalResource: api.EmptyResource(),
 		jobOpts:       map[api.JobID]*drfAttr{},
 	}
@@ -75,8 +78,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		drf.jobOpts[job.UID] = attr
 	}
 
-	// Add Preemptable function.
-	ssn.AddPreemptableFn(func(l interface{}, r interface{}) bool {
+	preemptableFn := func(l interface{}, r interface{}) bool {
 		// Re-calculate the share of lv when run one task
 		// Re-calculate the share of rv when evict on task
 		lv := l.(*api.TaskInfo)
@@ -96,12 +98,19 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			lv.Namespace, lv.Name, lalloc, ls, rv.Namespace, rv.Name, ralloc, rs)
 
 		return ls < rs || math.Abs(ls-rs) <= shareDelta
-	})
+	}
 
-	// Add Job Order function.
-	ssn.AddJobOrderFn(func(l interface{}, r interface{}) int {
+	if drf.args.PreemptableFnEnabled {
+		// Add Preemptable function.
+		ssn.AddPreemptableFn(preemptableFn)
+	}
+
+	jobOrderFn := func(l interface{}, r interface{}) int {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
+
+		glog.V(3).Infof("DRF JobOrderFn: <%v/%v> is ready: %d, <%v/%v> is ready: %d",
+			lv.Namespace, lv.Name, lv.Priority, rv.Namespace, rv.Name, rv.Priority)
 
 		if drf.jobOpts[lv.UID].share == drf.jobOpts[rv.UID].share {
 			return 0
@@ -112,7 +121,12 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		return 1
-	})
+	}
+
+	if drf.args.JobOrderFnEnabled {
+		// Add Job Order function.
+		ssn.AddJobOrderFn(jobOrderFn)
+	}
 
 	// Register event handlers.
 	ssn.AddEventHandler(&framework.EventHandler{
