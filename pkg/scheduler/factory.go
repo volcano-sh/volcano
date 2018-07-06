@@ -19,16 +19,28 @@ package scheduler
 import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/actions/allocate"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/actions/decorate"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/actions/garantee"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/actions/preempt"
 
-	// Import drf plugins
-	_ "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/drf"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/drf"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/gang"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/priority"
+
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 )
 
-// Actions is a list of action that should be executed in order.
-var Actions = []framework.Action{
+func init() {
+	framework.RegisterPluginBuilder("priority", priority.New)
+	framework.RegisterPluginBuilder("gang", gang.New)
+	framework.RegisterPluginBuilder("drf", drf.New)
+
+	framework.RegisterAction(decorate.New())
+	framework.RegisterAction(allocate.New())
+	framework.RegisterAction(preempt.New())
+}
+
+// TODO (k82cn): make Actions configurable
+var actionChain = []framework.Action{
 	decorate.New(),
-	garantee.New(),
 	allocate.New(),
+	preempt.New(),
 }

@@ -17,7 +17,7 @@ limitations under the License.
 package api
 
 import (
-	"github.com/golang/glog"
+	"fmt"
 
 	"k8s.io/api/core/v1"
 )
@@ -27,6 +27,8 @@ type NodeInfo struct {
 	Name string
 	Node *v1.Node
 
+	// The releasing resource on that node
+	Releasing *Resource
 	// The idle resource on that node
 	Idle *Resource
 	// The used resource on that node, including running and terminating
@@ -42,8 +44,9 @@ type NodeInfo struct {
 func NewNodeInfo(node *v1.Node) *NodeInfo {
 	if node == nil {
 		return &NodeInfo{
-			Idle: EmptyResource(),
-			Used: EmptyResource(),
+			Releasing: EmptyResource(),
+			Idle:      EmptyResource(),
+			Used:      EmptyResource(),
 
 			Allocatable: EmptyResource(),
 			Capability:  EmptyResource(),
@@ -55,8 +58,10 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 	return &NodeInfo{
 		Name: node.Name,
 		Node: node,
-		Idle: NewResource(node.Status.Allocatable),
-		Used: EmptyResource(),
+
+		Releasing: EmptyResource(),
+		Idle:      NewResource(node.Status.Allocatable),
+		Used:      EmptyResource(),
 
 		Allocatable: NewResource(node.Status.Allocatable),
 		Capability:  NewResource(node.Status.Capacity),
@@ -66,31 +71,26 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 }
 
 func (ni *NodeInfo) Clone() *NodeInfo {
-	pods := make(map[TaskID]*TaskInfo, len(ni.Tasks))
+	res := NewNodeInfo(ni.Node)
 
 	for _, p := range ni.Tasks {
-		pods[PodKey(p.Pod)] = p.Clone()
+		res.AddTask(p)
 	}
 
-	return &NodeInfo{
-		Name:        ni.Name,
-		Node:        ni.Node,
-		Idle:        ni.Idle.Clone(),
-		Used:        ni.Used.Clone(),
-		Allocatable: ni.Allocatable.Clone(),
-		Capability:  ni.Capability.Clone(),
-
-		Tasks: pods,
-	}
+	return res
 }
 
 func (ni *NodeInfo) SetNode(node *v1.Node) {
 	if ni.Node == nil {
 		ni.Idle = NewResource(node.Status.Allocatable)
 
-		for _, p := range ni.Tasks {
-			ni.Idle.Sub(p.Resreq)
-			ni.Used.Add(p.Resreq)
+		for _, task := range ni.Tasks {
+			if task.Status == Releasing {
+				ni.Releasing.Add(task.Resreq)
+			}
+
+			ni.Idle.Sub(task.Resreq)
+			ni.Used.Add(task.Resreq)
 		}
 	}
 
@@ -100,32 +100,90 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.Capability = NewResource(node.Status.Capacity)
 }
 
-func (ni *NodeInfo) AddTask(p *TaskInfo) {
-	key := PodKey(p.Pod)
+func (ni *NodeInfo) PipelineTask(task *TaskInfo) error {
+	key := PodKey(task.Pod)
 	if _, found := ni.Tasks[key]; found {
-		glog.Errorf("Task <%v/%v> already on node <%v>, should not add again.",
-			p.Namespace, p.Name, ni.Name)
-		return
+		return fmt.Errorf("task <%v/%v> already on node <%v>",
+			task.Namespace, task.Name, ni.Name)
 	}
+
+	ti := task.Clone()
 
 	if ni.Node != nil {
-		ni.Idle.Sub(p.Resreq)
-		ni.Used.Add(p.Resreq)
+		ni.Releasing.Sub(ti.Resreq)
+		ni.Used.Add(ti.Resreq)
 	}
 
-	ni.Tasks[key] = p
+	ni.Tasks[key] = ti
+
+	return nil
 }
 
-func (ni *NodeInfo) RemoveTask(p *TaskInfo) {
-	key := PodKey(p.Pod)
-	if _, found := ni.Tasks[key]; !found {
-		return
+func (ni *NodeInfo) AddTask(task *TaskInfo) error {
+	key := PodKey(task.Pod)
+	if _, found := ni.Tasks[key]; found {
+		return fmt.Errorf("task <%v/%v> already on node <%v>",
+			task.Namespace, task.Name, ni.Name)
+	}
+
+	// Node will hold a copy of task to make sure the status
+	// change will not impact resource in node.
+	ti := task.Clone()
+
+	if ni.Node != nil {
+		if ti.Status == Releasing {
+			ni.Releasing.Add(ti.Resreq)
+		}
+		ni.Idle.Sub(ti.Resreq)
+		ni.Used.Add(ti.Resreq)
+	}
+
+	ni.Tasks[key] = ti
+
+	return nil
+}
+
+func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
+	key := PodKey(ti.Pod)
+
+	task, found := ni.Tasks[key]
+	if !found {
+		return fmt.Errorf("failed to find task <%v/%v> on host <%v>",
+			ti.Namespace, ti.Name, ni.Name)
 	}
 
 	if ni.Node != nil {
-		ni.Idle.Add(p.Resreq)
-		ni.Used.Sub(p.Resreq)
+		if task.Status == Releasing {
+			ni.Releasing.Sub(task.Resreq)
+		}
+
+		ni.Idle.Add(task.Resreq)
+		ni.Used.Sub(task.Resreq)
 	}
 
-	delete(ni.Tasks, PodKey(p.Pod))
+	delete(ni.Tasks, key)
+
+	return nil
+}
+
+func (ni *NodeInfo) UpdateTask(ti *TaskInfo) error {
+	if err := ni.RemoveTask(ti); err != nil {
+		return err
+	}
+
+	return ni.AddTask(ti)
+}
+
+func (ni NodeInfo) String() string {
+	res := ""
+
+	i := 0
+	for _, task := range ni.Tasks {
+		res = res + fmt.Sprintf("\n\t %d: %v", i, task)
+		i++
+	}
+
+	return fmt.Sprintf("Node (%s): idle <%v>, used <%v>, releasing <%v>%s",
+		ni.Name, ni.Idle, ni.Used, ni.Releasing, res)
+
 }

@@ -68,8 +68,8 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 		}
 		tasks := pendingTasks[job.UID]
 
-		glog.V(3).Infof("Try to allocate resource to %d tasks of Job <%v:%v>",
-			tasks.Len(), job.UID, job.Name)
+		glog.V(3).Infof("Try to allocate resource to %d tasks of Job <%v/%v>",
+			tasks.Len(), job.Namespace, job.Name)
 
 		for !tasks.Empty() {
 			task := tasks.Pop().(*api.TaskInfo)
@@ -83,19 +83,35 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 				nodes = ssn.Nodes
 			}
 
-			glog.V(3).Infof("there are <%d> nodes for Job <%v:%v>", len(nodes), job.UID, job.Name)
+			glog.V(3).Infof("There are <%d> nodes for Job <%v/%v>",
+				len(nodes), job.Namespace, job.Name)
 
 			for _, node := range nodes {
 				glog.V(3).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
-					task.Job, task.UID, node.Name, task.Resreq, node.Idle)
+					task.Namespace, task.Name, node.Name, task.Resreq, node.Idle)
+				// Allocate idle resource to the task.
 				if task.Resreq.LessEqual(node.Idle) {
-					glog.V(3).Infof("binding Task <%v/%v> to node <%v>",
-						task.Job, task.UID, node.Name)
-					if err := ssn.Bind(task, node.Name); err != nil {
+					glog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
+						task.Namespace, task.Name, node.Name)
+					if err := ssn.Allocate(task, node.Name); err != nil {
 						glog.Errorf("Failed to bind Task %v on %v in Session %v",
-							task.UID, node.Name, ssn.ID)
+							task.UID, node.Name, ssn.UID)
 						continue
 					}
+					assigned = true
+					break
+				}
+
+				// Allocate releasing resource to the task if any.
+				if task.Resreq.LessEqual(node.Releasing) {
+					glog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
+						task.Namespace, task.Name, node.Name, task.Resreq, node.Releasing)
+					if err := ssn.Pipeline(task, node.Name); err != nil {
+						glog.Errorf("Failed to pipeline Task %v on %v in Session %v",
+							task.UID, node.Name, ssn.UID)
+						continue
+					}
+
 					assigned = true
 					break
 				}

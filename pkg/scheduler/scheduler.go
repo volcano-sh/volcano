@@ -32,37 +32,62 @@ import (
 )
 
 type Scheduler struct {
-	cache  schedcache.Cache
-	config *rest.Config
+	cache         schedcache.Cache
+	config        *rest.Config
+	actions       []framework.Action
+	pluginArgs    []*framework.PluginArgs
+	schedulerConf string
 }
 
-func NewScheduler(config *rest.Config, schedulerName string) (*Scheduler, error) {
+func NewScheduler(
+	config *rest.Config,
+	schedulerName string,
+	conf string,
+) (*Scheduler, error) {
 	scheduler := &Scheduler{
-		config: config,
-		cache:  schedcache.New(config, schedulerName),
+		config:        config,
+		schedulerConf: conf,
+		cache:         schedcache.New(config, schedulerName),
 	}
 
 	return scheduler, nil
 }
 
 func (pc *Scheduler) Run(stopCh <-chan struct{}) {
+	var err error
+
 	createSchedulingSpecKind(pc.config)
 
 	// Start cache for policy.
 	go pc.cache.Run(stopCh)
 	pc.cache.WaitForCacheSync(stopCh)
 
-	go wait.Until(pc.runOnce, 2*time.Second, stopCh)
+	// Load configuration of scheduler
+	conf := defaultSchedulerConf
+	if len(pc.schedulerConf) != 0 {
+		if conf, err = pc.cache.LoadSchedulerConf(pc.schedulerConf); err != nil {
+			glog.Errorf("Failed to load scheduler configuration '%s', using default configuration: %v",
+				pc.schedulerConf, err)
+		}
+	}
+
+	pc.actions, pc.pluginArgs = loadSchedulerConf(conf)
+
+	go wait.Until(pc.runOnce, 1*time.Second, stopCh)
 }
 
 func (pc *Scheduler) runOnce() {
 	glog.V(4).Infof("Start scheduling ...")
 	defer glog.V(4).Infof("End scheduling ...")
 
-	ssn := framework.OpenSession(pc.cache)
+	ssn := framework.OpenSession(pc.cache, pc.pluginArgs)
 	defer framework.CloseSession(ssn)
 
-	for _, action := range Actions {
+	if glog.V(3) {
+		glog.V(3).Infof("%v", ssn)
+	}
+
+	for _, action := range pc.actions {
 		action.Execute(ssn)
 	}
 

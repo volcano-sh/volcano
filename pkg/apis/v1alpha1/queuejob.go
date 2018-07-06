@@ -38,18 +38,25 @@ type QueueJob struct {
 
 // QueueJobSpec describes how the job execution will look like and when it will actually run
 type QueueJobSpec struct {
+	// SchedSpec specifies the parameters for scheduling.
+	SchedSpec SchedulingSpecTemplate `json:"schedulingSpec,omitempty" protobuf:"bytes,1,opt,name=schedulingSpec"`
+
+	// TaskSpecs specifies the task specification of QueueJob
+	TaskSpecs []TaskSpec `json:"taskSpecs,omitempty" protobuf:"bytes,2,opt,name=taskSpecs"`
+}
+
+// TaskSpec specifies the task specification of QueueJob
+type TaskSpec struct {
 	// A label query over pods that should match the pod count.
 	// Normally, the system sets this field for you.
 	// +optional
 	Selector *metav1.LabelSelector `json:"selector,omitempty" protobuf:"bytes,1,opt,name=selector"`
 
-	// Replicas specifies the replicas of this QueueJob.
+	// Replicas specifies the replicas of this TaskSpec in QueueJob.
 	Replicas int32 `json:"replicas,omitempty" protobuf:"bytes,2,opt,name=replicas"`
 
-	// SchedSpec specifies the parameters for scheduling.
-	SchedSpec SchedulingSpecTemplate `json:"schedulingSpec,omitempty" protobuf:"bytes,2,opt,name=schedulingSpec"`
-
-	// Specifies the pod that will be created when executing a QueueJob
+	// Specifies the pod that will be created for this TaskSpec
+	// when executing a QueueJob
 	Template v1.PodTemplateSpec `json:"template,omitempty" protobuf:"bytes,3,opt,name=template"`
 }
 
@@ -61,19 +68,19 @@ type QueueJobStatus struct {
 
 	// The number of running pods.
 	// +optional
-	Running int32 `json:"running,omitempty" protobuf:"bytes,1,opt,name=running"`
+	Running int32 `json:"running,omitempty" protobuf:"bytes,2,opt,name=running"`
 
 	// The number of pods which reached phase Succeeded.
 	// +optional
-	Succeeded int32 `json:"Succeeded,omitempty" protobuf:"bytes,2,opt,name=succeeded"`
+	Succeeded int32 `json:"Succeeded,omitempty" protobuf:"bytes,3,opt,name=succeeded"`
 
 	// The number of pods which reached phase Failed.
 	// +optional
-	Failed int32 `json:"failed,omitempty" protobuf:"bytes,3,opt,name=failed"`
+	Failed int32 `json:"failed,omitempty" protobuf:"bytes,4,opt,name=failed"`
 
 	// The minimal available pods to run for this QueueJob
 	// +optional
-	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,4,opt,name=minAvailable"`
+	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,5,opt,name=minAvailable"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
