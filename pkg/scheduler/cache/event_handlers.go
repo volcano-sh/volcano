@@ -42,10 +42,6 @@ func (sc *SchedulerCache) addTask(pi *arbapi.TaskInfo) error {
 			sc.Jobs[pi.Job] = arbapi.NewJobInfo(pi.Job)
 		}
 
-		// TODO(k82cn): it's found that the Add event will be sent
-		// multiple times without update/delete. That should be a
-		// client-go issue, we need to dig deeper for that.
-		sc.Jobs[pi.Job].DeleteTaskInfo(pi)
 		sc.Jobs[pi.Job].AddTaskInfo(pi)
 	}
 
@@ -55,8 +51,6 @@ func (sc *SchedulerCache) addTask(pi *arbapi.TaskInfo) error {
 		}
 
 		node := sc.Nodes[pi.NodeName]
-		node.RemoveTask(pi)
-
 		if !isTerminated(pi.Status) {
 			return node.AddTask(pi)
 		}
