@@ -14,7 +14,7 @@ spec:
       containers:
       - name: {{ .Chart.Name }}
         image: "{{ .Values.image.repository }}/kar-scheduler:{{ .Values.image.tag }}"
-        # args: ["--logtostderr", "--v", "3", "--action", "decorate", "--action", "allocate", "--action", "preempt"]
+        args: ["--logtostderr", "--v", "3"]
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         resources:
 {{ toYaml .Values.resources | indent 10 }}
@@ -36,7 +36,7 @@ spec:
       containers:
       - name: {{ .Chart.Name }}
         image: "{{ .Values.image.repository }}/kar-controllers:{{ .Values.image.tag }}"
-        # args: ["--logtostderr", "--v", "3"]
+        args: ["--logtostderr", "--v", "3"]
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         resources:
 {{ toYaml .Values.resources | indent 10 }}
