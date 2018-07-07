@@ -28,7 +28,7 @@ type SchedulingSpec struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
 
-	Spec SchedulingSpecTemplate `json:"spec"`
+	Spec SchedulingSpecTemplate `json:"spec,omitempty" protobuf:"bytes,1,rep,name=spec"`
 }
 
 type SchedulingSpecTemplate struct {
