@@ -214,12 +214,8 @@ func (in *TaskSpec) DeepCopyInto(out *TaskSpec) {
 	*out = *in
 	if in.Selector != nil {
 		in, out := &in.Selector, &out.Selector
-		if *in == nil {
-			*out = nil
-		} else {
-			*out = new(v1.LabelSelector)
-			(*in).DeepCopyInto(*out)
-		}
+		*out = new(v1.LabelSelector)
+		(*in).DeepCopyInto(*out)
 	}
 	in.Template.DeepCopyInto(&out.Template)
 	return
@@ -303,12 +299,8 @@ func (in *XQueueJobResource) DeepCopyInto(out *XQueueJobResource) {
 	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
 	if in.MinAvailable != nil {
 		in, out := &in.MinAvailable, &out.MinAvailable
-		if *in == nil {
-			*out = nil
-		} else {
-			*out = new(int32)
-			**out = **in
-		}
+		*out = new(int32)
+		**out = **in
 	}
 	in.Template.DeepCopyInto(&out.Template)
 	return
@@ -373,12 +365,8 @@ func (in *XQueueJobSpec) DeepCopyInto(out *XQueueJobSpec) {
 	in.AggrResources.DeepCopyInto(&out.AggrResources)
 	if in.Selector != nil {
 		in, out := &in.Selector, &out.Selector
-		if *in == nil {
-			*out = nil
-		} else {
-			*out = new(v1.LabelSelector)
-			(*in).DeepCopyInto(*out)
-		}
+		*out = new(v1.LabelSelector)
+		(*in).DeepCopyInto(*out)
 	}
 	in.SchedSpec.DeepCopyInto(&out.SchedSpec)
 	return
