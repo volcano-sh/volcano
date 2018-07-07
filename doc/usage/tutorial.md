@@ -46,27 +46,34 @@ NOTE: `kube-arbitrator` need to collect cluster information(such as Pod, Node, C
 Create a file named `queuejob-01.yaml` with the following content:
 
 ```yaml
-apiVersion: "arbitrator.incubator.k8s.io/v1"
+apiVersion: arbitrator.incubator.k8s.io/v1alpha1
 kind: QueueJob
 metadata:
+  namespace: default
   name: qj-01
 spec:
-  replicas: 3
-  schedSpec:
-    minAvailable: 2
-  template:
-    spec:
-      schedulerName: kar-scheduler
-      containers:
-      - name: busybox
-        image: busybox
-        resources:
-          limits:
-            memory: "3Gi"
-            cpu: "1000m"
-          requests:
-            memory: "3Gi"
-            cpu: "1000m"
+  schedulingSpec:
+    minAvailable: 1
+  taskSpecs:
+  - replicas: 3
+    selector:
+      matchLabels:
+        queuejob.arbitrator.k8s.io: test
+    template:
+      metadata:
+        labels:
+          queuejob.arbitrator.k8s.io: test
+        name: test
+      spec:
+        containers:
+        - image: busybox
+          imagePullPolicy: IfNotPresent
+          name: test
+          resources:
+            requests:
+              cpu: "1"
+              memory: 100Mi
+        schedulerName: kar-scheduler
 ```
 
 The yaml file means a QueueJob named `qj-01` contains 3 pods(it is specified by `replicas`), these pods will be scheduled by scheudler `kar-scheduler` (it is specified by `schedulerName`). `kar-scheduler` will start `.schedSpec.minAvailable` pods for a QueueJob at the same time, otherwise, such as resources are not sufficient, `kar-scheduler` will not start any pods for the QueueJob.
