@@ -319,21 +319,11 @@ func (sc *SchedulerCache) Bind(taskInfo *arbapi.TaskInfo, hostname string) error
 }
 
 func (sc *SchedulerCache) deleteJob(job *arbapi.JobInfo) {
+	glog.V(3).Infof("Try to delete Job <%v:%v/%v>", job.UID, job.Namespace, job.Name)
+
 	time.AfterFunc(5*time.Second, func() {
 		sc.deletedJobs.AddIfNotPresent(job)
 	})
-}
-
-func (sc *SchedulerCache) cleanupJob(job *arbapi.JobInfo) error {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	if job.SchedSpec == nil && len(job.Tasks) == 0 {
-		delete(sc.Jobs, job.UID)
-		return nil
-	}
-
-	return fmt.Errorf("Job <%v/%v> is not ready to clean up", job.Namespace, job.Name)
 }
 
 func (sc *SchedulerCache) processCleanupJob() error {
@@ -343,11 +333,19 @@ func (sc *SchedulerCache) processCleanupJob() error {
 			return fmt.Errorf("failed to convert %v to *v1.Pod", obj)
 		}
 
-		if err := sc.cleanupJob(job); err != nil {
-			// Requeue Job to wait for all tasks deleted.
-			sc.deleteJob(job)
-			return err
-		}
+		func() {
+			sc.Mutex.Lock()
+			defer sc.Mutex.Unlock()
+
+			if arbapi.JobTerminated(job) {
+				delete(sc.Jobs, job.UID)
+				glog.V(3).Infof("Job <%v:%v/%v> was deleted.", job.UID, job.Namespace, job.Name)
+			} else {
+				// Retry
+				sc.deleteJob(job)
+			}
+		}()
+
 		return nil
 	})
 
