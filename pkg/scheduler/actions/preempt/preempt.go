@@ -56,9 +56,11 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}
 	preempteeTasks := map[api.JobID]*util.PriorityQueue{}
 
+	var underRequest []*api.JobInfo
 	for _, job := range ssn.Jobs {
 		if len(job.TaskStatusIndex[api.Pending]) != 0 {
 			preemptors.Push(job)
+			underRequest = append(underRequest, job)
 			preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
 				preemptorTasks[job.UID].Push(task)
@@ -135,14 +137,8 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 	}
 
 	// Preemption between Task within Job.
-	for {
-		if preemptors.Empty() {
-			break
-		}
-
+	for _, job := range underRequest {
 		for {
-			job := preemptors.Pop().(*api.JobInfo)
-
 			if _, found := preempteeTasks[job.UID]; !found {
 				break
 			}
