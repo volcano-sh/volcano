@@ -57,10 +57,12 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 	preempteeTasks := map[api.JobID]*util.PriorityQueue{}
 
 	for _, job := range ssn.Jobs {
-		preemptors.Push(job)
-		preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
-		for _, task := range job.TaskStatusIndex[api.Pending] {
-			preemptorTasks[job.UID].Push(task)
+		if len(job.TaskStatusIndex[api.Pending]) != 0 {
+			preemptors.Push(job)
+			preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
+			for _, task := range job.TaskStatusIndex[api.Pending] {
+				preemptorTasks[job.UID].Push(task)
+			}
 		}
 
 		// If no running tasks in job, skip it as preemptee.
@@ -74,6 +76,7 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 		}
 	}
 
+	// Preemption between Jobs.
 	for {
 		// If no preemptors nor preemptees, no preemption.
 		if preemptors.Empty() || preemptees.Empty() {
@@ -130,6 +133,46 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 
 		preemptees.Push(preempteeJob)
 	}
+
+	// Preemption between Task within Job.
+	for {
+		if preemptors.Empty() {
+			break
+		}
+
+		for {
+			job := preemptors.Pop().(*api.JobInfo)
+
+			if _, found := preempteeTasks[job.UID]; !found {
+				break
+			}
+
+			if _, found := preemptorTasks[job.UID]; !found {
+				break
+			}
+
+			if preemptorTasks[job.UID].Empty() || preempteeTasks[job.UID].Empty() {
+				break
+			}
+
+			preemptor := preemptorTasks[job.UID].Pop().(*api.TaskInfo)
+			preemptee := preempteeTasks[job.UID].Pop().(*api.TaskInfo)
+
+			if ssn.TaskCompareFns(preemptor, preemptee) < 0 {
+				if err := ssn.Preempt(preemptor, preemptee); err != nil {
+					glog.Errorf("Failed to rebalance tasks in job <%v/%v>: %v",
+						job.Namespace, job.Name, err)
+					break
+				}
+				// If preempted, continue to check next pair.
+				continue
+			}
+
+			// If no preemption, next job.
+			break
+		}
+	}
+
 }
 
 func (alloc *preemptAction) UnInitialize() {}
