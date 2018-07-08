@@ -266,11 +266,19 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 	return lv.UID < rv.UID
 }
 
-func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
+func (ssn *Session) TaskCompareFns(l, r interface{}) int {
 	for _, tof := range ssn.taskOrderFns {
 		if j := tof(l, r); j != 0 {
-			return j < 0
+			return j
 		}
+	}
+
+	return 0
+}
+
+func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
+	if res := ssn.TaskCompareFns(l, r); res != 0 {
+		return res < 0
 	}
 
 	// If no task order funcs, order task by UID.
