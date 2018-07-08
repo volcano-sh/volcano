@@ -131,7 +131,16 @@ func (sc *SchedulerCache) deleteTask(pi *arbapi.TaskInfo) error {
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
 	pi := arbapi.NewTaskInfo(pod)
-	return sc.deleteTask(pi)
+	if err := sc.deleteTask(pi); err != nil {
+		return err
+	}
+
+	// If job was terminated, delete it.
+	if job, found := sc.Jobs[pi.Job]; found && arbapi.JobTerminated(job) {
+		sc.deleteJob(job)
+	}
+
+	return nil
 }
 
 func (sc *SchedulerCache) AddPod(obj interface{}) {
