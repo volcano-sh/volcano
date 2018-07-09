@@ -162,6 +162,10 @@ func (ps *JobInfo) SetPDB(pbd *policyv1.PodDisruptionBudget) {
 	ps.PDB = pbd
 }
 
+func (ps *JobInfo) UnsetPDB() {
+	ps.PDB = nil
+}
+
 func (ps *JobInfo) GetTasks(statuses ...TaskStatus) []*TaskInfo {
 	var res []*TaskInfo
 
