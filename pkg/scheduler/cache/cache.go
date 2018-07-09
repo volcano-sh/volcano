@@ -33,7 +33,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1alpha1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
 	informerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
 	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/v1"
@@ -183,14 +182,11 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 		})
 
 	sc.pdbInformer = informerFactory.Policy().V1beta1().PodDisruptionBudgets()
-	sc.pdbInformer.Informer().AddEventHandler(
-		cache.FilteringResourceEventHandler{
-			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc:    sc.AddPDB,
-				UpdateFunc: sc.UpdatePDB,
-				DeleteFunc: sc.DeletePDB,
-			},
-		})
+	sc.pdbInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddPDB,
+		UpdateFunc: sc.UpdatePDB,
+		DeleteFunc: sc.DeletePDB,
+	})
 
 	// create queue informer
 	queueClient, _, err := client.NewClient(config)
@@ -200,24 +196,12 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 
 	schedulingSpecInformerFactory := informerfactory.NewSharedInformerFactory(queueClient, 0)
 	// create informer for Queue information
-	sc.schedulingSpecInformer = schedulingSpecInformerFactory.SchedulingSpec().SchedulingSpecs()
-	sc.schedulingSpecInformer.Informer().AddEventHandler(
-		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
-				switch t := obj.(type) {
-				case *arbv1.SchedulingSpec:
-					glog.V(4).Infof("Filter Queue name(%s) namespace(%s)\n", t.Name, t.Namespace)
-					return true
-				default:
-					return false
-				}
-			},
-			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc:    sc.AddSchedulingSpec,
-				UpdateFunc: sc.UpdateSchedulingSpec,
-				DeleteFunc: sc.DeleteSchedulingSpec,
-			},
-		})
+	sc.schedulingSpecInformer = schedulingSpecInformerFactory.Batch().SchedulingSpecs()
+	sc.schedulingSpecInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddSchedulingSpec,
+		UpdateFunc: sc.UpdateSchedulingSpec,
+		DeleteFunc: sc.DeleteSchedulingSpec,
+	})
 
 	return sc
 }
@@ -225,7 +209,6 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.pdbInformer.Informer().Run(stopCh)
 	go sc.podInformer.Informer().Run(stopCh)
-	go sc.pdbInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
 	go sc.schedulingSpecInformer.Informer().Run(stopCh)
 
@@ -336,21 +319,11 @@ func (sc *SchedulerCache) Bind(taskInfo *arbapi.TaskInfo, hostname string) error
 }
 
 func (sc *SchedulerCache) deleteJob(job *arbapi.JobInfo) {
+	glog.V(3).Infof("Try to delete Job <%v:%v/%v>", job.UID, job.Namespace, job.Name)
+
 	time.AfterFunc(5*time.Second, func() {
 		sc.deletedJobs.AddIfNotPresent(job)
 	})
-}
-
-func (sc *SchedulerCache) cleanupJob(job *arbapi.JobInfo) error {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	if job.SchedSpec == nil && len(job.Tasks) == 0 {
-		delete(sc.Jobs, job.UID)
-		return nil
-	}
-
-	return fmt.Errorf("Job <%v/%v> is not ready to clean up", job.Namespace, job.Name)
 }
 
 func (sc *SchedulerCache) processCleanupJob() error {
@@ -360,11 +333,19 @@ func (sc *SchedulerCache) processCleanupJob() error {
 			return fmt.Errorf("failed to convert %v to *v1.Pod", obj)
 		}
 
-		if err := sc.cleanupJob(job); err != nil {
-			// Requeue Job to wait for all tasks deleted.
-			sc.deleteJob(job)
-			return err
-		}
+		func() {
+			sc.Mutex.Lock()
+			defer sc.Mutex.Unlock()
+
+			if arbapi.JobTerminated(job) {
+				delete(sc.Jobs, job.UID)
+				glog.V(3).Infof("Job <%v:%v/%v> was deleted.", job.UID, job.Namespace, job.Name)
+			} else {
+				// Retry
+				sc.deleteJob(job)
+			}
+		}()
+
 		return nil
 	})
 
