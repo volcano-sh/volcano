@@ -131,7 +131,15 @@ func (sc *SchedulerCache) deleteTask(pi *arbapi.TaskInfo) error {
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
 	pi := arbapi.NewTaskInfo(pod)
-	if err := sc.deleteTask(pi); err != nil {
+
+	// Delete the Task in cache to handle Binding status.
+	task := pi
+	if job, found := sc.Jobs[pi.Job]; found {
+		if t, found := job.Tasks[pi.UID]; found {
+			task = t
+		}
+	}
+	if err := sc.deleteTask(task); err != nil {
 		return err
 	}
 
