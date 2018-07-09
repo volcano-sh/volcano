@@ -84,7 +84,7 @@ func createQueueJobPod(qj *arbv1.QueueJob, template *corev1.PodTemplateSpec, ix 
 
 	prefix := fmt.Sprintf("%s-", qj.Name)
 
-	return &corev1.Pod{
+	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: prefix,
 			Namespace:    qj.Namespace,
@@ -95,6 +95,11 @@ func createQueueJobPod(qj *arbv1.QueueJob, template *corev1.PodTemplateSpec, ix 
 		},
 		Spec: templateCopy.Spec,
 	}
+	// we replace the scheduler name (if any) specified in the pod definition with the one specified in the QJ template
+	if qj.Spec.SchedulerName != "" {
+		pod.Spec.SchedulerName = qj.Spec.SchedulerName
+	}
+	return pod
 }
 
 func createQueueJobKind(config *rest.Config) error {

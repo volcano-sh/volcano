@@ -38,11 +38,13 @@ type QueueJob struct {
 
 // QueueJobSpec describes how the job execution will look like and when it will actually run
 type QueueJobSpec struct {
+	SchedulerName string `json:"schedulerName,omitempty" protobuf:"bytes,1,opt,name=schedulerName"`
+
 	// SchedSpec specifies the parameters for scheduling.
-	SchedSpec SchedulingSpecTemplate `json:"schedulingSpec,omitempty" protobuf:"bytes,1,opt,name=schedulingSpec"`
+	SchedSpec SchedulingSpecTemplate `json:"schedulingSpec,omitempty" protobuf:"bytes,2,opt,name=schedulingSpec"`
 
 	// TaskSpecs specifies the task specification of QueueJob
-	TaskSpecs []TaskSpec `json:"taskSpecs,omitempty" protobuf:"bytes,2,opt,name=taskSpecs"`
+	TaskSpecs []TaskSpec `json:"taskSpecs,omitempty" protobuf:"bytes,3,opt,name=taskSpecs"`
 }
 
 // TaskSpec specifies the task specification of QueueJob
