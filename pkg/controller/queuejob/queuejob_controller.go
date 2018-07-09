@@ -84,44 +84,22 @@ func NewQueueJobController(config *rest.Config) *Controller {
 		panic(err)
 	}
 
-	cc.queueJobInformer = arbinformers.NewSharedInformerFactory(queueJobClient, 0).QueueJob().QueueJobs()
-	cc.queueJobInformer.Informer().AddEventHandler(
-		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
-				switch t := obj.(type) {
-				case *arbv1.QueueJob:
-					glog.V(4).Infof("Filter QueueJob name(%s) namespace(%s)\n", t.Name, t.Namespace)
-					return true
-				default:
-					return false
-				}
-			},
-			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc:    cc.addQueueJob,
-				UpdateFunc: cc.updateQueueJob,
-				DeleteFunc: cc.deleteQueueJob,
-			},
-		})
+	cc.queueJobInformer = arbinformers.NewSharedInformerFactory(queueJobClient, 0).Batch().QueueJobs()
+	cc.queueJobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    cc.addQueueJob,
+		UpdateFunc: cc.updateQueueJob,
+		DeleteFunc: cc.deleteQueueJob,
+	})
 	cc.queueJobLister = cc.queueJobInformer.Lister()
 	cc.queueJobSynced = cc.queueJobInformer.Informer().HasSynced
 
 	cc.podInformer = informers.NewSharedInformerFactory(cc.clients, 0).Core().V1().Pods()
-	cc.podInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-		FilterFunc: func(obj interface{}) bool {
-			switch t := obj.(type) {
-			case *v1.Pod:
-				glog.V(4).Infof("Filter Pod name(%s) namespace(%s)\n", t.Name, t.Namespace)
-				return true
-			default:
-				return false
-			}
-		},
-		Handler: cache.ResourceEventHandlerFuncs{
-			AddFunc:    cc.addPod,
-			UpdateFunc: cc.updatePod,
-			DeleteFunc: cc.deletePod,
-		},
+	cc.podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    cc.addPod,
+		UpdateFunc: cc.updatePod,
+		DeleteFunc: cc.deletePod,
 	})
+
 	cc.podListr = cc.podInformer.Lister()
 	cc.podSynced = cc.podInformer.Informer().HasSynced
 

@@ -89,7 +89,10 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	// Only update status in session
 	job, found := ssn.JobIndex[task.Job]
 	if found {
-		job.UpdateTaskStatus(task, api.Pipelined)
+		if err := job.UpdateTaskStatus(task, api.Pipelined); err != nil {
+			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
+				task.Namespace, task.Name, api.Pipelined, ssn.UID, err)
+		}
 	} else {
 		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
 			task.Job, ssn.UID)
@@ -98,7 +101,10 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	task.NodeName = hostname
 
 	if node, found := ssn.NodeIndex[hostname]; found {
-		node.PipelineTask(task)
+		if err := node.PipelineTask(task); err != nil {
+			glog.Errorf("Failed to pipeline task <%v/%v> to node <%v> in Session <%v>: %v",
+				task.Namespace, task.Name, hostname, ssn.UID, err)
+		}
 		glog.V(3).Infof("After pipelined Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
 			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
 	} else {
@@ -121,7 +127,10 @@ func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
 	// Only update status in session
 	job, found := ssn.JobIndex[task.Job]
 	if found {
-		job.UpdateTaskStatus(task, api.Allocated)
+		if err := job.UpdateTaskStatus(task, api.Allocated); err != nil {
+			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
+				task.Namespace, task.Name, api.Allocated, ssn.UID, err)
+		}
 	} else {
 		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
 			task.Job, ssn.UID)
@@ -130,7 +139,10 @@ func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
 	task.NodeName = hostname
 
 	if node, found := ssn.NodeIndex[hostname]; found {
-		node.AddTask(task)
+		if err := node.AddTask(task); err != nil {
+			glog.Errorf("Failed to add task <%v/%v> to node <%v> in Session <%v>: %v",
+				task.Namespace, task.Name, hostname, ssn.UID, err)
+		}
 		glog.V(3).Infof("After allocated Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
 			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
 	} else {
@@ -163,7 +175,10 @@ func (ssn *Session) dispatch(task *api.TaskInfo) error {
 
 	// Update status in session
 	if job, found := ssn.JobIndex[task.Job]; found {
-		job.UpdateTaskStatus(task, api.Binding)
+		if err := job.UpdateTaskStatus(task, api.Binding); err != nil {
+			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
+				task.Namespace, task.Name, api.Binding, ssn.UID, err)
+		}
 	} else {
 		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
 			task.Job, ssn.UID)
@@ -194,7 +209,10 @@ func (ssn *Session) Preempt(preemptor, preemptee *api.TaskInfo) error {
 	// Update status in session
 	job, found := ssn.JobIndex[preemptee.Job]
 	if found {
-		job.UpdateTaskStatus(preemptee, api.Releasing)
+		if err := job.UpdateTaskStatus(preemptee, api.Releasing); err != nil {
+			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
+				preemptee.Namespace, preemptee.Name, api.Releasing, ssn.UID, err)
+		}
 	} else {
 		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
 			preemptee.Job, ssn.UID)
@@ -266,11 +284,19 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 	return lv.UID < rv.UID
 }
 
-func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
+func (ssn *Session) TaskCompareFns(l, r interface{}) int {
 	for _, tof := range ssn.taskOrderFns {
 		if j := tof(l, r); j != 0 {
-			return j < 0
+			return j
 		}
+	}
+
+	return 0
+}
+
+func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
+	if res := ssn.TaskCompareFns(l, r); res != 0 {
+		return res < 0
 	}
 
 	// If no task order funcs, order task by UID.
