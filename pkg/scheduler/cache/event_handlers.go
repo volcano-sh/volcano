@@ -442,7 +442,7 @@ func (sc *SchedulerCache) setPDB(pdb *policyv1.PodDisruptionBudget) error {
 	job := arbapi.JobID(utils.GetController(pdb))
 
 	if len(job) == 0 {
-		return fmt.Errorf("the controller of SchedulingSpec is empty")
+		return fmt.Errorf("the controller of PodDisruptionBudget is empty")
 	}
 
 	if _, found := sc.Jobs[job]; !found {
