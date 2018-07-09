@@ -459,6 +459,10 @@ func clusterSize(ctx *context, req v1.ResourceList) int32 {
 			continue
 		}
 
+		if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
+			continue
+		}
+
 		if _, found := used[nodeName]; !found {
 			used[nodeName] = arbapi.EmptyResource()
 		}
