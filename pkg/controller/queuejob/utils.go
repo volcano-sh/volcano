@@ -95,8 +95,8 @@ func createQueueJobPod(qj *arbv1.QueueJob, template *corev1.PodTemplateSpec, ix 
 		},
 		Spec: templateCopy.Spec,
 	}
-	// we replace the scheduler name (if any) specified in the pod definition with the one specified in the QJ template
-	if qj.Spec.SchedulerName != "" {
+	// we fill the schedulerName in the pod definition with the one specified in the QJ template
+	if qj.Spec.SchedulerName != "" && pod.Spec.SchedulerName == "" {
 		pod.Spec.SchedulerName = qj.Spec.SchedulerName
 	}
 	return pod
