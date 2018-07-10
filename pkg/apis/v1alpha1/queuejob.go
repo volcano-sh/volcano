@@ -30,20 +30,26 @@ type QueueJob struct {
 	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
 	// Specification of the desired behavior of a cron job, including the minAvailable
+	// +optional
 	Spec QueueJobSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
 
 	// Current status of QueueJob
+	// +optional
 	Status QueueJobStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
 }
 
 // QueueJobSpec describes how the job execution will look like and when it will actually run
 type QueueJobSpec struct {
+	// SchedulerName is the default value of `taskSpecs.template.spec.schedulerName`.
+	// +optional
 	SchedulerName string `json:"schedulerName,omitempty" protobuf:"bytes,1,opt,name=schedulerName"`
 
 	// SchedSpec specifies the parameters for scheduling.
+	// +optional
 	SchedSpec SchedulingSpecTemplate `json:"schedulingSpec,omitempty" protobuf:"bytes,2,opt,name=schedulingSpec"`
 
 	// TaskSpecs specifies the task specification of QueueJob
+	// +optional
 	TaskSpecs []TaskSpec `json:"taskSpecs,omitempty" protobuf:"bytes,3,opt,name=taskSpecs"`
 }
 
