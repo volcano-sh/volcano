@@ -252,6 +252,57 @@ func createQueueJob(context *context, name string, min, rep int32, img string, r
 	return queueJob
 }
 
+func createQueueJobWithScheduler(context *context, scheduler string, name string, min, rep int32, img string, req v1.ResourceList) *arbv1.QueueJob {
+	queueJobName := "queuejob.k8s.io"
+
+	queueJob := &arbv1.QueueJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: context.namespace,
+		},
+		Spec: arbv1.QueueJobSpec{
+			SchedulerName: scheduler,
+			SchedSpec: arbv1.SchedulingSpecTemplate{
+				MinAvailable: int(min),
+			},
+			TaskSpecs: []arbv1.TaskSpec{
+				{
+
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							queueJobName: name,
+						},
+					},
+					Replicas: rep,
+					Template: v1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{queueJobName: name},
+						},
+						Spec: v1.PodSpec{
+							RestartPolicy: v1.RestartPolicyNever,
+							Containers: []v1.Container{
+								{
+									Image:           img,
+									Name:            name,
+									ImagePullPolicy: v1.PullIfNotPresent,
+									Resources: v1.ResourceRequirements{
+										Requests: req,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	queueJob, err := context.karclient.ArbV1().QueueJobs(context.namespace).Create(queueJob)
+	Expect(err).NotTo(HaveOccurred())
+
+	return queueJob
+}
+
 func createReplicaSet(context *context, name string, rep int32, img string, req v1.ResourceList) *appv1.ReplicaSet {
 	deploymentName := "deployment.k8s.io"
 	deployment := &appv1.ReplicaSet{

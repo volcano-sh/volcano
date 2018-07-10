@@ -22,6 +22,15 @@ import (
 )
 
 var _ = Describe("E2E Test", func() {
+	It("Schedule QueueJob with SchedulerName", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+		rep := clusterSize(context, oneCPU)
+		queueJob := createQueueJobWithScheduler(context, "kar-scheduler", "qj-1", 2, rep, "busybox", oneCPU)
+		err := waitJobReady(context, queueJob.Name)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 	It("Schedule QueueJob", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
