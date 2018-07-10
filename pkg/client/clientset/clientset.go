@@ -17,7 +17,7 @@ limitations under the License.
 package clientset
 
 import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/typed/v1"
+	v1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/typed/v1alpha1"
 
 	"k8s.io/client-go/rest"
 )

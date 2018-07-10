@@ -26,7 +26,7 @@ import (
 
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1alpha1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/internalinterfaces"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/listers/v1"
+	v1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/listers/v1alpha1"
 )
 
 // SchedulingSpecInformer provides access to a shared informer and lister for

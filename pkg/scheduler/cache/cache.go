@@ -35,7 +35,7 @@ import (
 
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
 	informerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
-	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/v1"
+	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/v1alpha1"
 	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 )
 
