@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/internalinterfaces"
-	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/v1"
+	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/v1alpha1"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
