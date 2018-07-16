@@ -29,6 +29,9 @@ images: kube-arbitrator
 run-test:
 	hack/make-rules/test.sh $(WHAT) $(TESTS)
 
+coverage:
+	KUBE_COVER=y hack/make-rules/test.sh $(WHAT) $(TESTS)
+
 clean:
 	rm -rf _output/
 	rm -f kube-arbitrator

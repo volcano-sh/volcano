@@ -7,7 +7,7 @@ pkg/apis/v1alpha1
 pkg/client
 pkg/client/clientset
 pkg/client/clientset/scheme
-pkg/client/clientset/typed/v1
+pkg/client/clientset/typed/v1alpha1
 pkg/client/informers/internalinterfaces
 pkg/karcli/job
 pkg/scheduler

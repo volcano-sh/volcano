@@ -41,8 +41,8 @@ import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset"
 	arbinformers "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
-	informersv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/v1"
-	listersv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/listers/v1"
+	informersv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/v1alpha1"
+	listersv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/listers/v1alpha1"
 )
 
 const (
