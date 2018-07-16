@@ -18,6 +18,7 @@ package cache
 
 import (
 	"fmt"
+	"reflect"
 
 	"github.com/golang/glog"
 
@@ -239,11 +240,16 @@ func (sc *SchedulerCache) addNode(node *v1.Node) error {
 	return nil
 }
 
+func isNodeInfoUpdated(oldNode, newNode *v1.Node) bool {
+	return !reflect.DeepEqual(oldNode.Status.Allocatable, newNode.Status.Allocatable)
+}
+
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) updateNode(oldNode, newNode *v1.Node) error {
-	// Did not delete the old node, just update related info, e.g. allocatable.
 	if sc.Nodes[newNode.Name] != nil {
-		sc.Nodes[newNode.Name].SetNode(newNode)
+		if isNodeInfoUpdated(oldNode, newNode) {
+			sc.Nodes[newNode.Name].SetNode(newNode)
+		}
 		return nil
 	}
 
