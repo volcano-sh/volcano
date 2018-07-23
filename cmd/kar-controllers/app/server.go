@@ -17,13 +17,31 @@ limitations under the License.
 package app
 
 import (
+	"fmt"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"os"
+	"time"
 
+	"github.com/golang/glog"
 	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kar-controllers/app/options"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/controller/queuejob"
-
+	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/uuid"
+	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+	restclient "k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
+	"k8s.io/client-go/tools/record"
+)
+
+const (
+	leaseDuration = 15 * time.Second
+	renewDeadline = 10 * time.Second
+	retryPeriod   = 5 * time.Second
 )
 
 func buildConfig(master, kubeconfig string) (*rest.Config, error) {
@@ -42,9 +60,57 @@ func Run(opt *options.ServerOption) error {
 	neverStop := make(chan struct{})
 
 	queuejobctrl := queuejob.NewQueueJobController(config)
-	queuejobctrl.Run(neverStop)
 
-	<-neverStop
+	run := func(stopCh <-chan struct{}) {
+		queuejobctrl.Run(stopCh)
+		<-stopCh
+	}
 
-	return nil
+	if !opt.EnableLeaderElection {
+		run(neverStop)
+		return fmt.Errorf("finished without leader elect")
+	}
+
+	leaderElectionClient, err := clientset.NewForConfig(restclient.AddUserAgent(config, "leader-election"))
+	if err != nil {
+		return err
+	}
+
+	// Prepare event clients.
+	broadcaster := record.NewBroadcaster()
+	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: leaderElectionClient.CoreV1().Events(opt.LockObjectNamespace)})
+	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "kar-controller"})
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		return fmt.Errorf("unable to get hostname: %v", err)
+	}
+	// add a uniquifier so that two processes on the same host don't accidentally both become active
+	id := hostname + "_" + string(uuid.NewUUID())
+
+	rl, err := resourcelock.New(resourcelock.ConfigMapsResourceLock,
+		opt.LockObjectNamespace,
+		"kar-controller",
+		leaderElectionClient.CoreV1(),
+		resourcelock.ResourceLockConfig{
+			Identity:      id,
+			EventRecorder: eventRecorder,
+		})
+	if err != nil {
+		return fmt.Errorf("couldn't create resource lock: %v", err)
+	}
+
+	leaderelection.RunOrDie(leaderelection.LeaderElectionConfig{
+		Lock:          rl,
+		LeaseDuration: leaseDuration,
+		RenewDeadline: renewDeadline,
+		RetryPeriod:   retryPeriod,
+		Callbacks: leaderelection.LeaderCallbacks{
+			OnStartedLeading: run,
+			OnStoppedLeading: func() {
+				glog.Fatalf("leaderelection lost")
+			},
+		},
+	})
+	return fmt.Errorf("lost lease")
 }
