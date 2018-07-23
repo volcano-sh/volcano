@@ -81,23 +81,21 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 }
 
 func (ni *NodeInfo) SetNode(node *v1.Node) {
-	if ni.Node == nil {
-		ni.Idle = NewResource(node.Status.Allocatable)
-
-		for _, task := range ni.Tasks {
-			if task.Status == Releasing {
-				ni.Releasing.Add(task.Resreq)
-			}
-
-			ni.Idle.Sub(task.Resreq)
-			ni.Used.Add(task.Resreq)
-		}
-	}
-
 	ni.Name = node.Name
 	ni.Node = node
+
 	ni.Allocatable = NewResource(node.Status.Allocatable)
 	ni.Capability = NewResource(node.Status.Capacity)
+	ni.Idle = NewResource(node.Status.Allocatable)
+
+	for _, task := range ni.Tasks {
+		if task.Status == Releasing {
+			ni.Releasing.Add(task.Resreq)
+		}
+
+		ni.Idle.Sub(task.Resreq)
+		ni.Used.Add(task.Resreq)
+	}
 }
 
 func (ni *NodeInfo) PipelineTask(task *TaskInfo) error {
