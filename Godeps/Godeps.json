@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/kubernetes-incubator/kube-arbitrator",
 	"GoVersion": "go1.10",
-	"GodepVersion": "v79",
+	"GodepVersion": "v80",
 	"Packages": [
 		"./..."
 	],
@@ -38,6 +38,10 @@
 		{
 			"ImportPath": "github.com/golang/glog",
 			"Rev": "44145f04b68cf362d9c4df2182967c2275eaefed"
+		},
+		{
+			"ImportPath": "github.com/golang/groupcache/lru",
+			"Rev": "24b0969c4cb722950103eed87108c8d291a8df00"
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/proto",
@@ -770,6 +774,11 @@
 			"Rev": "103fd098999dc9c0c88536f5c9ad2e5da39373ae"
 		},
 		{
+			"ImportPath": "k8s.io/apimachinery/pkg/util/mergepatch",
+			"Comment": "kubernetes-1.11.2-beta.0",
+			"Rev": "103fd098999dc9c0c88536f5c9ad2e5da39373ae"
+		},
+		{
 			"ImportPath": "k8s.io/apimachinery/pkg/util/net",
 			"Comment": "kubernetes-1.11.1-beta.0",
 			"Rev": "103fd098999dc9c0c88536f5c9ad2e5da39373ae"
@@ -782,6 +791,11 @@
 		{
 			"ImportPath": "k8s.io/apimachinery/pkg/util/sets",
 			"Comment": "kubernetes-1.11.1-beta.0",
+			"Rev": "103fd098999dc9c0c88536f5c9ad2e5da39373ae"
+		},
+		{
+			"ImportPath": "k8s.io/apimachinery/pkg/util/strategicpatch",
+			"Comment": "kubernetes-1.11.2-beta.0",
 			"Rev": "103fd098999dc9c0c88536f5c9ad2e5da39373ae"
 		},
 		{
@@ -817,6 +831,11 @@
 		{
 			"ImportPath": "k8s.io/apimachinery/pkg/watch",
 			"Comment": "kubernetes-1.11.1-beta.0",
+			"Rev": "103fd098999dc9c0c88536f5c9ad2e5da39373ae"
+		},
+		{
+			"ImportPath": "k8s.io/apimachinery/third_party/forked/golang/json",
+			"Comment": "kubernetes-1.11.2-beta.0",
 			"Rev": "103fd098999dc9c0c88536f5c9ad2e5da39373ae"
 		},
 		{
@@ -1395,6 +1414,16 @@
 			"Rev": "e5bc2a7bbbdf78f2a331b8c23838d1bbb1c6b40a"
 		},
 		{
+			"ImportPath": "k8s.io/client-go/tools/leaderelection",
+			"Comment": "kubernetes-1.11.0-beta.0-53-ge5bc2a7",
+			"Rev": "e5bc2a7bbbdf78f2a331b8c23838d1bbb1c6b40a"
+		},
+		{
+			"ImportPath": "k8s.io/client-go/tools/leaderelection/resourcelock",
+			"Comment": "kubernetes-1.11.0-beta.0-53-ge5bc2a7",
+			"Rev": "e5bc2a7bbbdf78f2a331b8c23838d1bbb1c6b40a"
+		},
+		{
 			"ImportPath": "k8s.io/client-go/tools/metrics",
 			"Comment": "kubernetes-1.11.0-beta.0-53-ge5bc2a7b",
 			"Rev": "e5bc2a7bbbdf78f2a331b8c23838d1bbb1c6b40a"
@@ -1402,6 +1431,11 @@
 		{
 			"ImportPath": "k8s.io/client-go/tools/pager",
 			"Comment": "kubernetes-1.11.0-beta.0-53-ge5bc2a7b",
+			"Rev": "e5bc2a7bbbdf78f2a331b8c23838d1bbb1c6b40a"
+		},
+		{
+			"ImportPath": "k8s.io/client-go/tools/record",
+			"Comment": "kubernetes-1.11.0-beta.0-53-ge5bc2a7",
 			"Rev": "e5bc2a7bbbdf78f2a331b8c23838d1bbb1c6b40a"
 		},
 		{
@@ -1481,6 +1515,10 @@
 		{
 			"ImportPath": "k8s.io/gengo/types",
 			"Rev": "fdcf9f9480fdd5bf2b3c3df9bf4ecd22b25b87e2"
+		},
+		{
+			"ImportPath": "k8s.io/kube-openapi/pkg/util/proto",
+			"Rev": "d8ea2fe547a448256204cfc68dfee7b26c720acb"
 		}
 	]
 }
