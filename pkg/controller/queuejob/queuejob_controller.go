@@ -107,7 +107,7 @@ func NewQueueJobController(config *rest.Config) *Controller {
 }
 
 // Run start QueueJob Controller
-func (cc *Controller) Run(stopCh chan struct{}) {
+func (cc *Controller) Run(stopCh <-chan struct{}) {
 	// initialized
 	createQueueJobKind(cc.config)
 

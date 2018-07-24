@@ -17,13 +17,16 @@ limitations under the License.
 package options
 
 import (
+	"fmt"
 	"github.com/spf13/pflag"
 )
 
 // ServerOption is the main context object for the controller manager.
 type ServerOption struct {
-	Master     string
-	Kubeconfig string
+	Master               string
+	Kubeconfig           string
+	EnableLeaderElection bool
+	LockObjectNamespace  string
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -36,8 +39,14 @@ func NewServerOption() *ServerOption {
 func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.Master, "master", s.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 	fs.StringVar(&s.Kubeconfig, "kubeconfig", s.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
+	fs.BoolVar(&s.EnableLeaderElection, "leader-elect", s.EnableLeaderElection, "Start a leader election client and gain leadership before "+
+		"executing the main loop. Enable this when running replicated kar-scheduler for high availability.")
+	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", s.LockObjectNamespace, "Define the namespace of the lock object.")
 }
 
-func (s *ServerOption) CheckOptionOrDie() {
-
+func (s *ServerOption) CheckOptionOrDie() error {
+	if s.EnableLeaderElection && s.LockObjectNamespace == "" {
+		return fmt.Errorf("lock-object-namespace must not be nil when LeaderElection is enabled")
+	}
+	return nil
 }

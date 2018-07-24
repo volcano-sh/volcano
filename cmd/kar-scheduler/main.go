@@ -37,7 +37,10 @@ func main() {
 	s.AddFlags(pflag.CommandLine)
 
 	flag.InitFlags()
-	s.CheckOptionOrDie()
+	if err := s.CheckOptionOrDie(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
 
 	// The default glog flush interval is 30 seconds, which is frighteningly long.
 	go wait.Until(glog.Flush, *logFlushFreq, wait.NeverStop)
