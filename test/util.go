@@ -25,7 +25,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	appv1 "k8s.io/api/extensions/v1beta1"
-	schedv1 "k8s.io/api/scheduling/v1alpha1"
+	schedv1 "k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -86,7 +86,7 @@ func initTestContext() *context {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	_, err = cxt.kubeclient.SchedulingV1alpha1().PriorityClasses().Create(&schedv1.PriorityClass{
+	_, err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Create(&schedv1.PriorityClass{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: masterPriority,
 		},
@@ -95,7 +95,7 @@ func initTestContext() *context {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	_, err = cxt.kubeclient.SchedulingV1alpha1().PriorityClasses().Create(&schedv1.PriorityClass{
+	_, err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Create(&schedv1.PriorityClass{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: workerPriority,
 		},
@@ -122,12 +122,12 @@ func cleanupTestContext(cxt *context) {
 	Expect(err).NotTo(HaveOccurred())
 
 	foreground := metav1.DeletePropagationForeground
-	err = cxt.kubeclient.SchedulingV1alpha1().PriorityClasses().Delete(masterPriority, &metav1.DeleteOptions{
+	err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(masterPriority, &metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	err = cxt.kubeclient.SchedulingV1alpha1().PriorityClasses().Delete(workerPriority, &metav1.DeleteOptions{
+	err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(workerPriority, &metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
 	Expect(err).NotTo(HaveOccurred())

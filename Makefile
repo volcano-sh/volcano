@@ -29,6 +29,10 @@ images: kube-arbitrator
 run-test:
 	hack/make-rules/test.sh $(WHAT) $(TESTS)
 
+e2e: kube-arbitrator
+	hack/e2e-cluster.sh
+	cd test && go test -v
+
 coverage:
 	KUBE_COVER=y hack/make-rules/test.sh $(WHAT) $(TESTS)
 

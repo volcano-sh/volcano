@@ -1,5 +1,10 @@
 language: go
 
+sudo: required
+
+services:
+  - docker
+
 go:
   - "1.10"
 
@@ -7,16 +12,15 @@ go_import_path: github.com/kubernetes-incubator/kube-arbitrator
 
 install:
   - go get -u github.com/golang/lint/golint
-  #  - ./hack/install-etcd.sh
 
 before_script:
   - export TEST_LOG_LEVEL=4
-  # - export PATH=`pwd`/third_party/etcd:${PATH}
 
 script:
   - make verify
   - make
   - make run-test
+  - make e2e
 
 notifications:
   webhooks: https://www.travisbuddy.com/
