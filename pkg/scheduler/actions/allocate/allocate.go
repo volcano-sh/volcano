@@ -76,11 +76,15 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 
 			assigned := false
 
-			// If candidates is nil, it means all nodes.
-			// If candidates is empty, it means none.
-			nodes := job.Candidates
-			if nodes == nil {
-				nodes = ssn.Nodes
+			// TODO (k82cn): Enable eCache for performance improvement.
+			var nodes []*api.NodeInfo
+			for _, node := range ssn.Nodes {
+				if err := ssn.PredicateFn(task, node); err == nil {
+					nodes = append(nodes, node)
+				} else {
+					glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
+						task.Namespace, task.Name, node.Name, err)
+				}
 			}
 
 			glog.V(3).Infof("There are <%d> nodes for Job <%v/%v>",

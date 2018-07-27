@@ -43,6 +43,7 @@ type Session struct {
 	eventHandlers  []*EventHandler
 	jobOrderFns    []api.CompareFn
 	taskOrderFns   []api.CompareFn
+	predicateFns   []api.PredicateFn
 	preemptableFns []api.LessFn
 	jobReadyFns    []api.ValidateFn
 }
@@ -260,6 +261,10 @@ func (ssn *Session) AddJobReadyFn(vf api.ValidateFn) {
 	ssn.jobReadyFns = append(ssn.jobReadyFns, vf)
 }
 
+func (ssn *Session) AddPredicateFn(pf api.PredicateFn) {
+	ssn.predicateFns = append(ssn.predicateFns, pf)
+}
+
 func (ssn *Session) JobReady(obj interface{}) bool {
 	for _, jrf := range ssn.jobReadyFns {
 		if !jrf(obj) {
@@ -304,6 +309,17 @@ func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 	rv := r.(*api.TaskInfo)
 
 	return lv.UID < rv.UID
+}
+
+func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
+	for _, pfn := range ssn.predicateFns {
+		err := pfn(task, node)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (ssn Session) String() string {

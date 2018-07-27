@@ -115,9 +115,6 @@ type JobInfo struct {
 	Allocated    *Resource
 	TotalRequest *Resource
 
-	// Candidate hosts for this job.
-	Candidates []*NodeInfo
-
 	SchedSpec *arbv1.SchedulingSpec
 
 	// TODO(k82cn): keep backward compatbility, removed it when v1alpha1 finalized.
@@ -147,10 +144,6 @@ func (ps *JobInfo) SetSchedulingSpec(spec *arbv1.SchedulingSpec) {
 	ps.Name = spec.Name
 	ps.Namespace = spec.Namespace
 	ps.MinAvailable = spec.Spec.MinAvailable
-
-	for k, v := range spec.Spec.NodeSelector {
-		ps.NodeSelector[k] = v
-	}
 
 	ps.SchedSpec = spec
 }

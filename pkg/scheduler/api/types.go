@@ -87,3 +87,6 @@ type CompareFn func(interface{}, interface{}) int
 
 // ValidateFn is the func declaration used to check object's status.
 type ValidateFn func(interface{}) bool
+
+// PredicateFn is the func declaration used to predicate node for task.
+type PredicateFn func(*TaskInfo, *NodeInfo) error
