@@ -185,3 +185,11 @@ func (ni NodeInfo) String() string {
 		ni.Name, ni.Idle, ni.Used, ni.Releasing, res)
 
 }
+
+func (ni *NodeInfo) Pods() (pods []*v1.Pod) {
+	for _, t := range ni.Tasks {
+		pods = append(pods, t.Pod)
+	}
+
+	return
+}
