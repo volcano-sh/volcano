@@ -43,6 +43,26 @@ var _ = Describe("E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
+	It("Multiple Schedule QueueJobs", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		rep := clusterSize(context, oneCPU)
+
+		qj1 := createQueueJob(context, "qj-1", 2, rep, "busybox", oneCPU, nil)
+		qj2 := createQueueJob(context, "qj-2", 2, rep, "busybox", oneCPU, nil)
+		qj3 := createQueueJob(context, "qj-3", 2, rep, "busybox", oneCPU, nil)
+
+		err := waitJobReady(context, qj1.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = waitJobReady(context, qj2.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = waitJobReady(context, qj3.Name)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 	It("Gang scheduling", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
@@ -79,6 +99,33 @@ var _ = Describe("E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitTasksReady(context, qj1.Name, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("Multiple Preemption", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		slot := oneCPU
+		rep := clusterSize(context, slot)
+
+		qj1 := createQueueJob(context, "preemptee-qj", 1, rep, "nginx", slot, nil)
+		err := waitTasksReady(context, qj1.Name, int(rep))
+		Expect(err).NotTo(HaveOccurred())
+
+		qj2 := createQueueJob(context, "preemptor-qj", 1, rep, "nginx", slot, nil)
+		Expect(err).NotTo(HaveOccurred())
+
+		qj3 := createQueueJob(context, "preemptor-qj2", 1, rep, "nginx", slot, nil)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = waitTasksReady(context, qj1.Name, int(rep)/3)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = waitTasksReady(context, qj2.Name, int(rep)/3)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = waitTasksReady(context, qj3.Name, int(rep)/3)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
