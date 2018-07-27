@@ -80,6 +80,7 @@ var _ = Describe("E2E Test", func() {
 	})
 
 	It("TaskPriority", func() {
+		Skip("Skip TaskPriority test because of dind setting.")
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
