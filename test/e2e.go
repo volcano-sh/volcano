@@ -19,6 +19,9 @@ package test
 import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	"k8s.io/api/core/v1"
+	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 )
 
 var _ = Describe("E2E Test", func() {
@@ -35,7 +38,7 @@ var _ = Describe("E2E Test", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
-		queueJob := createQueueJob(context, "qj-1", 2, rep, "busybox", oneCPU)
+		queueJob := createQueueJob(context, "qj-1", 2, rep, "busybox", oneCPU, nil)
 		err := waitJobReady(context, queueJob.Name)
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -49,7 +52,7 @@ var _ = Describe("E2E Test", func() {
 		err := waitReplicaSetReady(context, replicaset.Name)
 		Expect(err).NotTo(HaveOccurred())
 
-		queueJob := createQueueJob(context, "gang-qj", rep, rep, "busybox", oneCPU)
+		queueJob := createQueueJob(context, "gang-qj", rep, rep, "busybox", oneCPU, nil)
 		err = waitJobNotReady(context, queueJob.Name)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -67,11 +70,11 @@ var _ = Describe("E2E Test", func() {
 		slot := oneCPU
 		rep := clusterSize(context, slot)
 
-		qj1 := createQueueJob(context, "preemptee-qj", 1, rep, "nginx", slot)
+		qj1 := createQueueJob(context, "preemptee-qj", 1, rep, "nginx", slot, nil)
 		err := waitTasksReady(context, qj1.Name, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
-		qj2 := createQueueJob(context, "preemptor-qj", 1, rep, "nginx", slot)
+		qj2 := createQueueJob(context, "preemptor-qj", 1, rep, "nginx", slot, nil)
 		err = waitTasksReady(context, qj2.Name, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -113,5 +116,41 @@ var _ = Describe("E2E Test", func() {
 		expectedTasks := map[string]int32{"master": 1, "worker": rep/2 - 1}
 		err = waitTasksReadyEx(context, qj.Name, expectedTasks)
 		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("NodeAffinity", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		slot := oneCPU
+		nodeName, rep := computeNode(context, oneCPU)
+		Expect(rep).NotTo(Equal(0))
+
+		affinity := &v1.Affinity{
+			NodeAffinity: &v1.NodeAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
+					NodeSelectorTerms: []v1.NodeSelectorTerm{
+						{
+							MatchFields: []v1.NodeSelectorRequirement{
+								{
+									Key:      algorithm.NodeFieldSelectorKeyNodeName,
+									Operator: v1.NodeSelectorOpIn,
+									Values:   []string{nodeName},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		qj := createQueueJob(context, "queuejob", rep, rep, "nginx", slot, affinity)
+		err := waitJobReady(context, qj.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		pods := getPodOfQueueJob(context, "queuejob")
+		for _, pod := range pods {
+			Expect(pod.Spec.NodeName).To(Equal(nodeName))
+		}
 	})
 })
