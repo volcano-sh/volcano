@@ -201,7 +201,14 @@ func createQueueJobEx(context *context, name string, min int32, tss []taskSpec) 
 	return queueJob
 }
 
-func createQueueJob(context *context, name string, min, rep int32, img string, req v1.ResourceList) *arbv1.QueueJob {
+func createQueueJob(
+	context *context,
+	name string,
+	min, rep int32,
+	img string,
+	req v1.ResourceList,
+	affinity *v1.Affinity,
+) *arbv1.QueueJob {
 	queueJobName := "queuejob.k8s.io"
 
 	queueJob := &arbv1.QueueJob{
@@ -229,6 +236,7 @@ func createQueueJob(context *context, name string, min, rep int32, img string, r
 						Spec: v1.PodSpec{
 							SchedulerName: "kar-scheduler",
 							RestartPolicy: v1.RestartPolicyNever,
+							Affinity:      affinity,
 							Containers: []v1.Container{
 								{
 									Image:           img,
@@ -499,7 +507,7 @@ func clusterSize(ctx *context, req v1.ResourceList) int32 {
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
-	pods, err := ctx.kubeclient.CoreV1().Pods("").List(metav1.ListOptions{})
+	pods, err := ctx.kubeclient.CoreV1().Pods(metav1.NamespaceAll).List(metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
 	used := map[string]*arbapi.Resource{}
@@ -542,4 +550,76 @@ func clusterSize(ctx *context, req v1.ResourceList) int32 {
 	}
 
 	return res
+}
+
+func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
+	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	pods, err := ctx.kubeclient.CoreV1().Pods(metav1.NamespaceAll).List(metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	used := map[string]*arbapi.Resource{}
+
+	for _, pod := range pods.Items {
+		nodeName := pod.Spec.NodeName
+		if len(nodeName) == 0 || pod.DeletionTimestamp != nil {
+			continue
+		}
+
+		if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
+			continue
+		}
+
+		if _, found := used[nodeName]; !found {
+			used[nodeName] = arbapi.EmptyResource()
+		}
+
+		for _, c := range pod.Spec.Containers {
+			req := arbapi.NewResource(c.Resources.Requests)
+			used[nodeName].Add(req)
+		}
+	}
+
+	for _, node := range nodes.Items {
+		res := int32(0)
+
+		alloc := arbapi.NewResource(node.Status.Allocatable)
+		slot := arbapi.NewResource(req)
+
+		// Removed used resources.
+		if res, found := used[node.Name]; found {
+			alloc.Sub(res)
+		}
+
+		for slot.LessEqual(alloc) {
+			alloc.Sub(slot)
+			res++
+		}
+
+		if res > 0 {
+			return node.Name, res
+		}
+	}
+
+	return "", 0
+}
+
+func getPodOfQueueJob(ctx *context, jobName string) []*v1.Pod {
+	queueJob, err := ctx.karclient.ArbV1().QueueJobs(ctx.namespace).Get(jobName, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	var qjpod []*v1.Pod
+
+	for _, pod := range pods.Items {
+		if !metav1.IsControlledBy(&pod, queueJob) {
+			continue
+		}
+		qjpod = append(qjpod, &pod)
+	}
+
+	return qjpod
 }
