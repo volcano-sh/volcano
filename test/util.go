@@ -215,9 +215,7 @@ func createJob(
 			Namespace: context.namespace,
 		},
 		Spec: arbextv1.JobSpec{
-
 			MinAvailable: min,
-
 			TaskSpecs: []arbextv1.TaskSpec{
 				{
 
