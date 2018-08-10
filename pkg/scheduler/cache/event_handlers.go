@@ -334,12 +334,13 @@ func (sc *SchedulerCache) DeleteNode(obj interface{}) {
 	return
 }
 
+func getJobID(pg *arbv1.PodGroup) arbapi.JobID {
+	return arbapi.JobID(fmt.Sprintf("%s/%s", pg.Namespace, pg.Name))
+}
+
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) setPodGroup(ss *arbv1.PodGroup) error {
-	ctrl := utils.GetController(ss)
-	job := arbapi.JobID(ctrl)
-
-	glog.V(3).Infof("The controller of PodGroup %v/%v is %s", ss.Namespace, ss.Name, ctrl)
+	job := getJobID(ss)
 
 	if len(job) == 0 {
 		return fmt.Errorf("the controller of PodGroup is empty")
@@ -361,7 +362,7 @@ func (sc *SchedulerCache) updatePodGroup(oldQueue, newQueue *arbv1.PodGroup) err
 
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) deletePodGroup(ss *arbv1.PodGroup) error {
-	jobID := arbapi.JobID(utils.GetController(ss))
+	jobID := getJobID(ss)
 
 	job, found := sc.Jobs[jobID]
 	if !found {
