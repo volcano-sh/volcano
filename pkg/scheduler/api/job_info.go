@@ -45,6 +45,17 @@ type TaskInfo struct {
 	Pod *v1.Pod
 }
 
+func getJobID(pod *v1.Pod) JobID {
+	if len(pod.Annotations) != 0 {
+		if gn, found := pod.Annotations[arbcorev1.GroupNameAnnotationKey]; found && len(gn) != 0 {
+			// Make sure Pod and PodGroup belong to the same namespace.
+			jobID := fmt.Sprintf("%s/%s", pod.Namespace, gn)
+			return JobID(jobID)
+		}
+	}
+	return JobID(utils.GetController(pod))
+}
+
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	req := EmptyResource()
 
@@ -55,7 +66,7 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 
 	pi := &TaskInfo{
 		UID:       TaskID(pod.UID),
-		Job:       JobID(utils.GetController(pod)),
+		Job:       getJobID(pod),
 		Name:      pod.Name,
 		Namespace: pod.Namespace,
 		NodeName:  pod.Spec.NodeName,
