@@ -23,8 +23,8 @@ import (
 	policyv1 "k8s.io/api/policy/v1beta1"
 	"k8s.io/apimachinery/pkg/types"
 
+	arbcorev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/core/v1alpha1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/utils"
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1alpha1"
 )
 
 type TaskID types.UID
@@ -106,7 +106,7 @@ type JobInfo struct {
 	Priority int
 
 	NodeSelector map[string]string
-	MinAvailable int
+	MinAvailable int32
 
 	// All tasks of the Job.
 	TaskStatusIndex map[TaskStatus]tasksMap
@@ -115,7 +115,7 @@ type JobInfo struct {
 	Allocated    *Resource
 	TotalRequest *Resource
 
-	SchedSpec *arbv1.SchedulingSpec
+	PodGroup *arbcorev1.PodGroup
 
 	// TODO(k82cn): keep backward compatbility, removed it when v1alpha1 finalized.
 	PDB *policyv1.PodDisruptionBudget
@@ -136,21 +136,21 @@ func NewJobInfo(uid JobID) *JobInfo {
 	}
 }
 
-func (ps *JobInfo) UnsetSchedulingSpec() {
-	ps.SchedSpec = nil
+func (ps *JobInfo) UnsetPodGroup() {
+	ps.PodGroup = nil
 }
 
-func (ps *JobInfo) SetSchedulingSpec(spec *arbv1.SchedulingSpec) {
+func (ps *JobInfo) SetPodGroup(spec *arbcorev1.PodGroup) {
 	ps.Name = spec.Name
 	ps.Namespace = spec.Namespace
-	ps.MinAvailable = spec.Spec.MinAvailable
+	ps.MinAvailable = spec.Spec.NumMember
 
-	ps.SchedSpec = spec
+	ps.PodGroup = spec
 }
 
 func (ps *JobInfo) SetPDB(pbd *policyv1.PodDisruptionBudget) {
 	ps.Name = pbd.Name
-	ps.MinAvailable = int(pbd.Spec.MinAvailable.IntVal)
+	ps.MinAvailable = pbd.Spec.MinAvailable.IntVal
 
 	ps.PDB = pbd
 }
