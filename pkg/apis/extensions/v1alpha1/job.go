@@ -21,32 +21,33 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const QueueJobPlural = "queuejobs"
-
+// +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type QueueJob struct {
+type Job struct {
 	metav1.TypeMeta `json:",inline"`
 
 	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
-	// Specification of the desired behavior of a cron job, including the minAvailable
+	// Specification of the desired behavior of a job, including the minAvailable
 	// +optional
-	Spec QueueJobSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
+	Spec JobSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
 
 	// Current status of QueueJob
 	// +optional
-	Status QueueJobStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
+	Status JobStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
 }
 
-// QueueJobSpec describes how the job execution will look like and when it will actually run
-type QueueJobSpec struct {
+// JobSpec describes how the job execution will look like and when it will actually run
+type JobSpec struct {
 	// SchedulerName is the default value of `taskSpecs.template.spec.schedulerName`.
 	// +optional
 	SchedulerName string `json:"schedulerName,omitempty" protobuf:"bytes,1,opt,name=schedulerName"`
 
-	// SchedSpec specifies the parameters for scheduling.
+	// NumMember defines the number of members/tasks to run the pod group;
+	// if there's not enough resources to start all tasks, the scheduler
+	// will not start anyone.
 	// +optional
-	SchedSpec SchedulingSpecTemplate `json:"schedulingSpec,omitempty" protobuf:"bytes,2,opt,name=schedulingSpec"`
+	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,rep,name=minAvailable"`
 
 	// TaskSpecs specifies the task specification of QueueJob
 	// +optional
@@ -68,8 +69,8 @@ type TaskSpec struct {
 	Template v1.PodTemplateSpec `json:"template,omitempty" protobuf:"bytes,3,opt,name=template"`
 }
 
-// QueueJobStatus represents the current state of a QueueJob
-type QueueJobStatus struct {
+// JobStatus represents the current state of a QueueJob
+type JobStatus struct {
 	// The number of pending pods.
 	// +optional
 	Pending int32 `json:"pending,omitempty" protobuf:"bytes,1,opt,name=pending"`
@@ -92,9 +93,9 @@ type QueueJobStatus struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type QueueJobList struct {
+type JobList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
-	Items []QueueJob `json:"items" protobuf:"bytes,2,rep,name=items"`
+	Items []Job `json:"items" protobuf:"bytes,2,rep,name=items"`
 }
