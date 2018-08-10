@@ -35,6 +35,11 @@ type PodGroup struct {
 	// More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status
 	// +optional
 	Spec PodGroupSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
+
+	// Status represents the current information about a pod group.
+	// This data may not be up to date.
+	// +optional
+	Status PodGroupStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
 }
 
 // PodGroupSpec represents the template of a pod group.
@@ -43,6 +48,19 @@ type PodGroupSpec struct {
 	// if there's not enough resources to start all tasks, the scheduler
 	// will not start anyone.
 	NumMember int32 `json:"numMember,omitempty" protobuf:"bytes,1,opt,name=numMember"`
+}
+
+// PodGroupStatus represents the current state of a pod group.
+type PodGroupStatus struct {
+	// The number of actively running pods.
+	// +optional
+	Running int32 `json:"running,omitempty" protobuf:"bytes,3,opt,name=running"`
+	// The number of pods which reached phase Succeeded.
+	// +optional
+	Succeeded int32 `json:"succeeded,omitempty" protobuf:"bytes,3,opt,name=succeeded"`
+	// The number of pods which reached phase Failed.
+	// +optional
+	Failed int32 `json:"failed,omitempty" protobuf:"bytes,3,opt,name=failed"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
