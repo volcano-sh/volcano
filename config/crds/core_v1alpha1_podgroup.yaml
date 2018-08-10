@@ -23,5 +23,17 @@ spec:
               format: int32
               type: integer
           type: object
+        status:
+          properties:
+            succeeded:
+              format: int32
+              type: integer
+            failed:
+              format: int32
+              type: integer
+            running:
+              format: int32
+              type: integer
+          type: object
       type: object
   version: v1alpha1
