@@ -20,7 +20,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned"
 	"github.com/spf13/cobra"
 )
 
@@ -44,9 +44,9 @@ func ListJobs() error {
 		return err
 	}
 
-	queueClient := clientset.NewForConfigOrDie(config)
+	queueClient := versioned.NewForConfigOrDie(config)
 
-	queueJobs, err := queueClient.ArbV1().QueueJobs(listJobFlags.Namespace).List(metav1.ListOptions{})
+	queueJobs, err := queueClient.Extensions().Jobs(listJobFlags.Namespace).List(metav1.ListOptions{})
 	if err != nil {
 		return err
 	}

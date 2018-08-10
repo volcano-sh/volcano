@@ -27,7 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1alpha1"
+	arbcorev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/core/v1alpha1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/cache"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
@@ -120,15 +120,15 @@ func TestAllocate(t *testing.T) {
 	owner2 := buildOwnerReference("owner2")
 
 	tests := []struct {
-		name       string
-		schedSpecs []*arbv1.SchedulingSpec
-		pods       []*v1.Pod
-		nodes      []*v1.Node
-		expected   map[string]string
+		name      string
+		podGroups []*arbcorev1.PodGroup
+		pods      []*v1.Pod
+		nodes     []*v1.Node
+		expected  map[string]string
 	}{
 		{
 			name: "one Job with two Pods on one node",
-			schedSpecs: []*arbv1.SchedulingSpec{
+			podGroups: []*arbcorev1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						OwnerReferences: []metav1.OwnerReference{owner1},
@@ -152,7 +152,7 @@ func TestAllocate(t *testing.T) {
 		},
 		{
 			name: "two Jobs on one node",
-			schedSpecs: []*arbv1.SchedulingSpec{
+			podGroups: []*arbcorev1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						OwnerReferences: []metav1.OwnerReference{owner1},
@@ -207,8 +207,8 @@ func TestAllocate(t *testing.T) {
 			schedulerCache.AddPod(pod)
 		}
 
-		for _, ss := range test.schedSpecs {
-			schedulerCache.AddSchedulingSpec(ss)
+		for _, ss := range test.podGroups {
+			schedulerCache.AddPodGroup(ss)
 		}
 
 		args := &framework.PluginArgs{

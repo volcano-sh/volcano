@@ -18,24 +18,26 @@ package app
 
 import (
 	"fmt"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"os"
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kar-controllers/app/options"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/controller/queuejob"
+
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+	"k8s.io/client-go/rest"
 	restclient "k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
+
+	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kar-controllers/app/options"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/controller/job"
 )
 
 const (
@@ -59,7 +61,7 @@ func Run(opt *options.ServerOption) error {
 
 	neverStop := make(chan struct{})
 
-	queuejobctrl := queuejob.NewQueueJobController(config)
+	queuejobctrl := job.NewController(config)
 
 	run := func(stopCh <-chan struct{}) {
 		queuejobctrl.Run(stopCh)

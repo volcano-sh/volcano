@@ -33,7 +33,7 @@ func New(args *framework.PluginArgs) framework.Plugin {
 	}
 }
 
-func readyTaskNum(job *api.JobInfo) int {
+func readyTaskNum(job *api.JobInfo) int32 {
 	occupid := 0
 	for status, tasks := range job.TaskStatusIndex {
 		if api.AllocatedStatus(status) || status == api.Succeeded {
@@ -41,7 +41,7 @@ func readyTaskNum(job *api.JobInfo) int {
 		}
 	}
 
-	return occupid
+	return int32(occupid)
 }
 
 func jobReady(obj interface{}) bool {
