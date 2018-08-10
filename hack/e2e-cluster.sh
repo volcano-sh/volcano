@@ -16,6 +16,11 @@ ${kc} config set-cluster dind --server=http://localhost:8080 --insecure-skip-tls
 ${kc} config set-context dind --cluster=dind --namespace=default
 ${kc} config set current-context dind
 
+${kc} create -f config/crds/core_v1alpha1_podgroup.yaml
+${kc} create -f config/crds/extensions_v1alpha1_job.yaml
+
+killall -9 kar-controllers kar-scheduler
+
 nohup _output/bin/kar-controllers --master localhost:8080 --logtostderr --v 3 > controller.log 2>&1 &
 nohup _output/bin/kar-scheduler --master localhost:8080 --logtostderr --v 3 > scheduler.log 2>&1 &
 

@@ -34,8 +34,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1alpha1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset"
+	arbextv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/extensions/v1alpha1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned"
 	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 )
 
@@ -59,7 +59,7 @@ func homeDir() string {
 
 type context struct {
 	kubeclient *kubernetes.Clientset
-	karclient  *clientset.Clientset
+	karclient  *versioned.Clientset
 
 	namespace string
 }
@@ -75,7 +75,7 @@ func initTestContext() *context {
 	config, err := clientcmd.BuildConfigFromFlags("", filepath.Join(home, ".kube", "config"))
 	Expect(err).NotTo(HaveOccurred())
 
-	cxt.karclient = clientset.NewForConfigOrDie(config)
+	cxt.karclient = versioned.NewForConfigOrDie(config)
 	cxt.kubeclient = kubernetes.NewForConfigOrDie(config)
 
 	_, err = cxt.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
@@ -145,13 +145,13 @@ type taskSpec struct {
 	req  v1.ResourceList
 }
 
-func createQueueJobEx(context *context, name string, min int32, tss []taskSpec) *arbv1.QueueJob {
+func createJobEx(context *context, name string, min int32, tss []taskSpec) *arbextv1.Job {
 	taskName := "task.queuejob.k8s.io"
 
-	var taskSpecs []arbv1.TaskSpec
+	var taskSpecs []arbextv1.TaskSpec
 
 	for _, ts := range tss {
-		taskSpecs = append(taskSpecs, arbv1.TaskSpec{
+		taskSpecs = append(taskSpecs, arbextv1.TaskSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					taskName: ts.name,
@@ -182,45 +182,43 @@ func createQueueJobEx(context *context, name string, min int32, tss []taskSpec) 
 		})
 	}
 
-	queueJob := &arbv1.QueueJob{
+	queueJob := &arbextv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: context.namespace,
 		},
-		Spec: arbv1.QueueJobSpec{
-			SchedSpec: arbv1.SchedulingSpecTemplate{
-				MinAvailable: int(min),
-			},
-			TaskSpecs: taskSpecs,
+		Spec: arbextv1.JobSpec{
+			MinAvailable: min,
+			TaskSpecs:    taskSpecs,
 		},
 	}
 
-	queueJob, err := context.karclient.ArbV1().QueueJobs(context.namespace).Create(queueJob)
+	queueJob, err := context.karclient.Extensions().Jobs(context.namespace).Create(queueJob)
 	Expect(err).NotTo(HaveOccurred())
 
 	return queueJob
 }
 
-func createQueueJob(
+func createJob(
 	context *context,
 	name string,
 	min, rep int32,
 	img string,
 	req v1.ResourceList,
 	affinity *v1.Affinity,
-) *arbv1.QueueJob {
+) *arbextv1.Job {
 	queueJobName := "queuejob.k8s.io"
 
-	queueJob := &arbv1.QueueJob{
+	queueJob := &arbextv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: context.namespace,
 		},
-		Spec: arbv1.QueueJobSpec{
-			SchedSpec: arbv1.SchedulingSpecTemplate{
-				MinAvailable: int(min),
-			},
-			TaskSpecs: []arbv1.TaskSpec{
+		Spec: arbextv1.JobSpec{
+
+			MinAvailable: min,
+
+			TaskSpecs: []arbextv1.TaskSpec{
 				{
 
 					Selector: &metav1.LabelSelector{
@@ -254,26 +252,24 @@ func createQueueJob(
 		},
 	}
 
-	queueJob, err := context.karclient.ArbV1().QueueJobs(context.namespace).Create(queueJob)
+	queueJob, err := context.karclient.Extensions().Jobs(context.namespace).Create(queueJob)
 	Expect(err).NotTo(HaveOccurred())
 
 	return queueJob
 }
 
-func createQueueJobWithScheduler(context *context, scheduler string, name string, min, rep int32, img string, req v1.ResourceList) *arbv1.QueueJob {
+func createQueueJobWithScheduler(context *context, scheduler string, name string, min, rep int32, img string, req v1.ResourceList) *arbextv1.Job {
 	queueJobName := "queuejob.k8s.io"
 
-	queueJob := &arbv1.QueueJob{
+	queueJob := &arbextv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: context.namespace,
 		},
-		Spec: arbv1.QueueJobSpec{
+		Spec: arbextv1.JobSpec{
 			SchedulerName: scheduler,
-			SchedSpec: arbv1.SchedulingSpecTemplate{
-				MinAvailable: int(min),
-			},
-			TaskSpecs: []arbv1.TaskSpec{
+			MinAvailable:  min,
+			TaskSpecs: []arbextv1.TaskSpec{
 				{
 
 					Selector: &metav1.LabelSelector{
@@ -305,7 +301,7 @@ func createQueueJobWithScheduler(context *context, scheduler string, name string
 		},
 	}
 
-	queueJob, err := context.karclient.ArbV1().QueueJobs(context.namespace).Create(queueJob)
+	queueJob, err := context.karclient.Extensions().Jobs(context.namespace).Create(queueJob)
 	Expect(err).NotTo(HaveOccurred())
 
 	return queueJob
@@ -361,7 +357,7 @@ func deleteReplicaSet(ctx *context, name string) error {
 
 func taskReady(ctx *context, jobName string, taskNum int) wait.ConditionFunc {
 	return func() (bool, error) {
-		queueJob, err := ctx.karclient.ArbV1().QueueJobs(ctx.namespace).Get(jobName, metav1.GetOptions{})
+		queueJob, err := ctx.karclient.Extensions().Jobs(ctx.namespace).Get(jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(metav1.ListOptions{})
@@ -382,7 +378,7 @@ func taskReady(ctx *context, jobName string, taskNum int) wait.ConditionFunc {
 		}
 
 		if taskNum < 0 {
-			taskNum = queueJob.Spec.SchedSpec.MinAvailable
+			taskNum = int(queueJob.Spec.MinAvailable)
 		}
 
 		return taskNum <= readyTaskNum, nil
@@ -391,13 +387,13 @@ func taskReady(ctx *context, jobName string, taskNum int) wait.ConditionFunc {
 
 func taskReadyEx(ctx *context, jobName string, tss map[string]int32) wait.ConditionFunc {
 	return func() (bool, error) {
-		queueJob, err := ctx.karclient.ArbV1().QueueJobs(ctx.namespace).Get(jobName, metav1.GetOptions{})
+		queueJob, err := ctx.karclient.Extensions().Jobs(ctx.namespace).Get(jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		var taskSpecs []arbv1.TaskSpec
+		var taskSpecs []arbextv1.TaskSpec
 		for _, ts := range queueJob.Spec.TaskSpecs {
 			if _, found := tss[ts.Template.Name]; found {
 				taskSpecs = append(taskSpecs, ts)
@@ -442,7 +438,7 @@ func waitTasksReadyEx(ctx *context, name string, ts map[string]int32) error {
 
 func jobNotReady(ctx *context, jobName string) wait.ConditionFunc {
 	return func() (bool, error) {
-		queueJob, err := ctx.karclient.ArbV1().QueueJobs(ctx.namespace).Get(jobName, metav1.GetOptions{})
+		queueJob, err := ctx.karclient.Extensions().Jobs(ctx.namespace).Get(jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(metav1.ListOptions{})
@@ -605,8 +601,8 @@ func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
 	return "", 0
 }
 
-func getPodOfQueueJob(ctx *context, jobName string) []*v1.Pod {
-	queueJob, err := ctx.karclient.ArbV1().QueueJobs(ctx.namespace).Get(jobName, metav1.GetOptions{})
+func getPodOfJob(ctx *context, jobName string) []*v1.Pod {
+	queueJob, err := ctx.karclient.Extensions().Jobs(ctx.namespace).Get(jobName, metav1.GetOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
 	pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(metav1.ListOptions{})

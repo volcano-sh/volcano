@@ -21,8 +21,8 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1alpha1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/extensions/v1alpha1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned"
 )
 
 type runFlags struct {
@@ -32,7 +32,7 @@ type runFlags struct {
 	Namespace string
 	Image     string
 
-	MinAvailable int
+	MinAvailable int32
 	Replicas     int
 	Requests     string
 }
@@ -45,7 +45,7 @@ func InitRunFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&launchJobFlags.Image, "image", "", "busybox", "the container image of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "", "default", "the namespace of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Name, "name", "", "test", "the name of job")
-	cmd.Flags().IntVarP(&launchJobFlags.MinAvailable, "min", "", 1, "the minimal available tasks of job")
+	cmd.Flags().Int32VarP(&launchJobFlags.MinAvailable, "min", "", 1, "the minimal available tasks of job")
 	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "", 1, "the total tasks of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Requests, "requests", "", "cpu=1000m,memory=100Mi", "the resource request of the task")
 }
@@ -58,22 +58,20 @@ func RunJob() error {
 		return err
 	}
 
-	queueClient := clientset.NewForConfigOrDie(config)
+	queueClient := versioned.NewForConfigOrDie(config)
 
 	req, err := populateResourceListV1(launchJobFlags.Requests)
 	if err != nil {
 		return err
 	}
 
-	qj := &arbv1.QueueJob{
+	qj := &arbv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      launchJobFlags.Name,
 			Namespace: launchJobFlags.Namespace,
 		},
-		Spec: arbv1.QueueJobSpec{
-			SchedSpec: arbv1.SchedulingSpecTemplate{
-				MinAvailable: launchJobFlags.MinAvailable,
-			},
+		Spec: arbv1.JobSpec{
+			MinAvailable: launchJobFlags.MinAvailable,
 			TaskSpecs: []arbv1.TaskSpec{
 				{
 					Selector: &metav1.LabelSelector{
@@ -108,7 +106,7 @@ func RunJob() error {
 		},
 	}
 
-	if _, err := queueClient.ArbV1().QueueJobs(launchJobFlags.Namespace).Create(qj); err != nil {
+	if _, err := queueClient.Extensions().Jobs(launchJobFlags.Namespace).Create(qj); err != nil {
 		return err
 	}
 

@@ -33,9 +33,9 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
-	informerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
-	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/v1alpha1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned"
+	arbinfo "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions"
+	arbcoreinfo "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions/core/v1alpha1"
 	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 )
 
@@ -48,11 +48,12 @@ type SchedulerCache struct {
 	sync.Mutex
 
 	kubeclient *kubernetes.Clientset
+	arbclient  *versioned.Clientset
 
-	podInformer            clientv1.PodInformer
-	nodeInformer           clientv1.NodeInformer
-	pdbInformer            policyv1.PodDisruptionBudgetInformer
-	schedulingSpecInformer arbclient.SchedulingSpecInformer
+	podInformer      clientv1.PodInformer
+	nodeInformer     clientv1.NodeInformer
+	pdbInformer      policyv1.PodDisruptionBudgetInformer
+	podGroupInformer arbcoreinfo.PodGroupInformer
 
 	Binder  Binder
 	Evictor Evictor
@@ -133,9 +134,9 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 		Nodes:       make(map[string]*arbapi.NodeInfo),
 		errTasks:    cache.NewFIFO(taskKey),
 		deletedJobs: cache.NewFIFO(jobKey),
+		kubeclient:  kubernetes.NewForConfigOrDie(config),
+		arbclient:   versioned.NewForConfigOrDie(config),
 	}
-
-	sc.kubeclient = kubernetes.NewForConfigOrDie(config)
 
 	sc.Binder = &defaultBinder{
 		kubeclient: sc.kubeclient,
@@ -188,19 +189,13 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 		DeleteFunc: sc.DeletePDB,
 	})
 
-	// create queue informer
-	queueClient, _, err := client.NewClient(config)
-	if err != nil {
-		panic(err)
-	}
-
-	schedulingSpecInformerFactory := informerfactory.NewSharedInformerFactory(queueClient, 0)
+	arbinformer := arbinfo.NewSharedInformerFactory(sc.arbclient, 0)
 	// create informer for Queue information
-	sc.schedulingSpecInformer = schedulingSpecInformerFactory.Batch().SchedulingSpecs()
-	sc.schedulingSpecInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddSchedulingSpec,
-		UpdateFunc: sc.UpdateSchedulingSpec,
-		DeleteFunc: sc.DeleteSchedulingSpec,
+	sc.podGroupInformer = arbinformer.Core().V1alpha1().PodGroups()
+	sc.podGroupInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddPodGroup,
+		UpdateFunc: sc.UpdatePodGroup,
+		DeleteFunc: sc.DeletePodGroup,
 	})
 
 	return sc
@@ -210,7 +205,7 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.pdbInformer.Informer().Run(stopCh)
 	go sc.podInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
-	go sc.schedulingSpecInformer.Informer().Run(stopCh)
+	go sc.podGroupInformer.Informer().Run(stopCh)
 
 	// Re-sync error tasks.
 	go sc.resync()
@@ -223,7 +218,7 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 	return cache.WaitForCacheSync(stopCh,
 		sc.pdbInformer.Informer().HasSynced,
 		sc.podInformer.Informer().HasSynced,
-		sc.schedulingSpecInformer.Informer().HasSynced,
+		sc.podGroupInformer.Informer().HasSynced,
 		sc.nodeInformer.Informer().HasSynced)
 }
 
@@ -406,7 +401,7 @@ func (sc *SchedulerCache) Snapshot() *arbapi.ClusterInfo {
 
 	for _, value := range sc.Jobs {
 		// If no scheduling spec, does not handle it.
-		if value.SchedSpec == nil && value.PDB == nil {
+		if value.PodGroup == nil && value.PDB == nil {
 			glog.V(3).Infof("The scheduling spec of Job <%v> is nil, ignore it.", value.UID)
 			continue
 		}

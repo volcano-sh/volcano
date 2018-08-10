@@ -16,7 +16,8 @@ init:
 
 generate-code:
 	go build -o ${BIN_DIR}/deepcopy-gen ./cmd/deepcopy-gen/
-	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/v1alpha1/ -O zz_generated.deepcopy
+	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/core/v1alpha1/ -O zz_generated.deepcopy
+	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/extensions/v1alpha1/ -O zz_generated.deepcopy
 
 images: kube-arbitrator
 	cp ./_output/bin/kar-scheduler ./deployment/
@@ -31,7 +32,11 @@ run-test:
 
 e2e: kube-arbitrator
 	hack/e2e-cluster.sh
-	cd test && go test -v
+	cd test && go test -v && cd -
+	echo "=================================> Controller <================================="
+	cat controller.log
+	echo "=================================> Scheduler <================================="
+	cat scheduler.log
 
 coverage:
 	KUBE_COVER=y hack/make-rules/test.sh $(WHAT) $(TESTS)

@@ -28,8 +28,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/core/v1alpha1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/utils"
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1alpha1"
 	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 )
 
@@ -335,29 +335,32 @@ func (sc *SchedulerCache) DeleteNode(obj interface{}) {
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) setSchedulingSpec(ss *arbv1.SchedulingSpec) error {
-	job := arbapi.JobID(utils.GetController(ss))
+func (sc *SchedulerCache) setPodGroup(ss *arbv1.PodGroup) error {
+	ctrl := utils.GetController(ss)
+	job := arbapi.JobID(ctrl)
+
+	glog.V(3).Infof("The controller of PodGroup %v/%v is %s", ss.Namespace, ss.Name, ctrl)
 
 	if len(job) == 0 {
-		return fmt.Errorf("the controller of SchedulingSpec is empty")
+		return fmt.Errorf("the controller of PodGroup is empty")
 	}
 
 	if _, found := sc.Jobs[job]; !found {
 		sc.Jobs[job] = arbapi.NewJobInfo(job)
 	}
 
-	sc.Jobs[job].SetSchedulingSpec(ss)
+	sc.Jobs[job].SetPodGroup(ss)
 
 	return nil
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) updateSchedulingSpec(oldQueue, newQueue *arbv1.SchedulingSpec) error {
-	return sc.setSchedulingSpec(newQueue)
+func (sc *SchedulerCache) updatePodGroup(oldQueue, newQueue *arbv1.PodGroup) error {
+	return sc.setPodGroup(newQueue)
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) deleteSchedulingSpec(ss *arbv1.SchedulingSpec) error {
+func (sc *SchedulerCache) deletePodGroup(ss *arbv1.PodGroup) error {
 	jobID := arbapi.JobID(utils.GetController(ss))
 
 	job, found := sc.Jobs[jobID]
@@ -366,39 +369,39 @@ func (sc *SchedulerCache) deleteSchedulingSpec(ss *arbv1.SchedulingSpec) error {
 	}
 
 	// Unset SchedulingSpec
-	job.UnsetSchedulingSpec()
+	job.UnsetPodGroup()
 
 	sc.deleteJob(job)
 
 	return nil
 }
 
-func (sc *SchedulerCache) AddSchedulingSpec(obj interface{}) {
-	ss, ok := obj.(*arbv1.SchedulingSpec)
+func (sc *SchedulerCache) AddPodGroup(obj interface{}) {
+	ss, ok := obj.(*arbv1.PodGroup)
 	if !ok {
-		glog.Errorf("Cannot convert to *arbv1.Queue: %v", obj)
+		glog.Errorf("Cannot convert to *arbv1.PodGroup: %v", obj)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Add SchedulingSpec(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
-	err := sc.setSchedulingSpec(ss)
+	glog.V(4).Infof("Add PodGroup(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
+	err := sc.setPodGroup(ss)
 	if err != nil {
-		glog.Errorf("Failed to add SchedulingSpec %s into cache: %v", ss.Name, err)
+		glog.Errorf("Failed to add PodGroup %s into cache: %v", ss.Name, err)
 		return
 	}
 	return
 }
 
-func (sc *SchedulerCache) UpdateSchedulingSpec(oldObj, newObj interface{}) {
-	oldSS, ok := oldObj.(*arbv1.SchedulingSpec)
+func (sc *SchedulerCache) UpdatePodGroup(oldObj, newObj interface{}) {
+	oldSS, ok := oldObj.(*arbv1.PodGroup)
 	if !ok {
 		glog.Errorf("Cannot convert oldObj to *arbv1.SchedulingSpec: %v", oldObj)
 		return
 	}
-	newSS, ok := newObj.(*arbv1.SchedulingSpec)
+	newSS, ok := newObj.(*arbv1.PodGroup)
 	if !ok {
 		glog.Errorf("Cannot convert newObj to *arbv1.SchedulingSpec: %v", newObj)
 		return
@@ -407,7 +410,7 @@ func (sc *SchedulerCache) UpdateSchedulingSpec(oldObj, newObj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err := sc.updateSchedulingSpec(oldSS, newSS)
+	err := sc.updatePodGroup(oldSS, newSS)
 	if err != nil {
 		glog.Errorf("Failed to update SchedulingSpec %s into cache: %v", oldSS.Name, err)
 		return
@@ -415,14 +418,14 @@ func (sc *SchedulerCache) UpdateSchedulingSpec(oldObj, newObj interface{}) {
 	return
 }
 
-func (sc *SchedulerCache) DeleteSchedulingSpec(obj interface{}) {
-	var ss *arbv1.SchedulingSpec
+func (sc *SchedulerCache) DeletePodGroup(obj interface{}) {
+	var ss *arbv1.PodGroup
 	switch t := obj.(type) {
-	case *arbv1.SchedulingSpec:
+	case *arbv1.PodGroup:
 		ss = t
 	case cache.DeletedFinalStateUnknown:
 		var ok bool
-		ss, ok = t.Obj.(*arbv1.SchedulingSpec)
+		ss, ok = t.Obj.(*arbv1.PodGroup)
 		if !ok {
 			glog.Errorf("Cannot convert to *arbv1.SchedulingSpec: %v", t.Obj)
 			return
@@ -435,7 +438,7 @@ func (sc *SchedulerCache) DeleteSchedulingSpec(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err := sc.deleteSchedulingSpec(ss)
+	err := sc.deletePodGroup(ss)
 	if err != nil {
 		glog.Errorf("Failed to delete SchedulingSpec %s from cache: %v", ss.Name, err)
 		return
