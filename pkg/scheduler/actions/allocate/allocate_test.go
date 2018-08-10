@@ -63,14 +63,17 @@ func buildNode(name string, alloc v1.ResourceList, labels map[string]string) *v1
 	}
 }
 
-func buildPod(ns, n, nn string, p v1.PodPhase, req v1.ResourceList, owner []metav1.OwnerReference, labels map[string]string, selector map[string]string) *v1.Pod {
+func buildPod(ns, n, nn string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string) *v1.Pod {
+
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			UID:             types.UID(fmt.Sprintf("%v-%v", ns, n)),
-			Name:            n,
-			Namespace:       ns,
-			OwnerReferences: owner,
-			Labels:          labels,
+			UID:       types.UID(fmt.Sprintf("%v-%v", ns, n)),
+			Name:      n,
+			Namespace: ns,
+			Labels:    labels,
+			Annotations: map[string]string{
+				arbcorev1.GroupNameAnnotationKey: groupName,
+			},
 		},
 		Status: v1.PodStatus{
 			Phase: p,
@@ -116,9 +119,6 @@ func TestAllocate(t *testing.T) {
 	framework.RegisterPluginBuilder("drf", drf.New)
 	defer framework.CleanupPluginBuilders()
 
-	owner1 := buildOwnerReference("owner1")
-	owner2 := buildOwnerReference("owner2")
-
 	tests := []struct {
 		name      string
 		podGroups []*arbcorev1.PodGroup
@@ -131,16 +131,14 @@ func TestAllocate(t *testing.T) {
 			podGroups: []*arbcorev1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						OwnerReferences: []metav1.OwnerReference{owner1},
+						Name:      "pg1",
+						Namespace: "c1",
 					},
 				},
 			},
 			pods: []*v1.Pod{
-				// pending pod with owner, under c1
-				buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, make(map[string]string), make(map[string]string)),
-
-				// pending pod with owner, under c1
-				buildPod("c1", "p2", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, make(map[string]string), make(map[string]string)),
+				buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				buildPod("c1", "p2", "", v1.PodPending, buildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
 			},
 			nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2", "4Gi"), make(map[string]string)),
@@ -155,28 +153,27 @@ func TestAllocate(t *testing.T) {
 			podGroups: []*arbcorev1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						OwnerReferences: []metav1.OwnerReference{owner1},
+						Name:      "pg1",
+						Namespace: "c1",
 					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						OwnerReferences: []metav1.OwnerReference{owner2},
+						Name:      "pg2",
+						Namespace: "c2",
 					},
 				},
 			},
 
 			pods: []*v1.Pod{
 				// pending pod with owner1, under c1
-				buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, make(map[string]string), make(map[string]string)),
-
+				buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
 				// pending pod with owner1, under c1
-				buildPod("c1", "p2", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, make(map[string]string), make(map[string]string)),
-
+				buildPod("c1", "p2", "", v1.PodPending, buildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
 				// pending pod with owner2, under c2
-				buildPod("c2", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, make(map[string]string), make(map[string]string)),
-
+				buildPod("c2", "p1", "", v1.PodPending, buildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
 				// pending pod with owner, under c2
-				buildPod("c2", "p2", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, make(map[string]string), make(map[string]string)),
+				buildPod("c2", "p2", "", v1.PodPending, buildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
 			},
 			nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2", "4G"), make(map[string]string)),

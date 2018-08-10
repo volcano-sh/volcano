@@ -81,6 +81,13 @@ func createPodGroup(qj *extv1.Job) *arbv1.PodGroup {
 func createJobPod(qj *extv1.Job, template *corev1.PodTemplateSpec, ix int32) *corev1.Pod {
 	templateCopy := template.DeepCopy()
 	prefix := fmt.Sprintf("%s-", qj.Name)
+
+	// Set Pod's GroupName by annotations.
+	if len(templateCopy.Annotations) == 0 {
+		templateCopy.Annotations = map[string]string{}
+	}
+	templateCopy.Annotations[arbv1.GroupNameAnnotationKey] = qj.Name
+
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: prefix,
@@ -88,7 +95,8 @@ func createJobPod(qj *extv1.Job, template *corev1.PodTemplateSpec, ix int32) *co
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(qj, JobKind),
 			},
-			Labels: templateCopy.Labels,
+			Labels:      templateCopy.Labels,
+			Annotations: templateCopy.Annotations,
 		},
 		Spec: templateCopy.Spec,
 	}
