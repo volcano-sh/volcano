@@ -27,13 +27,16 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
-	clientv1 "k8s.io/client-go/informers/core/v1"
+	infov1 "k8s.io/client-go/informers/core/v1"
 	policyv1 "k8s.io/client-go/informers/policy/v1beta1"
 	"k8s.io/client-go/kubernetes"
+	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/scheme"
 	arbinfo "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions"
 	arbcoreinfo "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions/core/v1alpha1"
 	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
@@ -50,13 +53,15 @@ type SchedulerCache struct {
 	kubeclient *kubernetes.Clientset
 	arbclient  *versioned.Clientset
 
-	podInformer      clientv1.PodInformer
-	nodeInformer     clientv1.NodeInformer
+	podInformer      infov1.PodInformer
+	nodeInformer     infov1.NodeInformer
 	pdbInformer      policyv1.PodDisruptionBudgetInformer
 	podGroupInformer arbcoreinfo.PodGroupInformer
 
 	Binder  Binder
 	Evictor Evictor
+
+	recorder record.EventRecorder
 
 	Jobs  map[arbapi.JobID]*arbapi.JobInfo
 	Nodes map[string]*arbapi.NodeInfo
@@ -137,6 +142,11 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 		kubeclient:  kubernetes.NewForConfigOrDie(config),
 		arbclient:   versioned.NewForConfigOrDie(config),
 	}
+
+	// Prepare event clients.
+	broadcaster := record.NewBroadcaster()
+	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: sc.kubeclient.CoreV1().Events("")})
+	sc.recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "kar-scheduler"})
 
 	sc.Binder = &defaultBinder{
 		kubeclient: sc.kubeclient,
@@ -461,4 +471,17 @@ func (sc *SchedulerCache) String() string {
 	}
 
 	return str
+}
+
+// Backoff record event for job
+func (sc *SchedulerCache) Backoff(job *arbapi.JobInfo, reason arbapi.Reason) error {
+	if job.PodGroup != nil {
+		sc.recorder.Eventf(job.PodGroup, v1.EventTypeWarning, string(reason.Event), reason.Message)
+	} else if job.PDB != nil {
+		sc.recorder.Eventf(job.PDB, v1.EventTypeWarning, string(reason.Event), reason.Message)
+	} else {
+		return fmt.Errorf("no scheduling specification for job")
+	}
+
+	return nil
 }
