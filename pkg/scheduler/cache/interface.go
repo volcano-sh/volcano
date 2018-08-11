@@ -41,7 +41,11 @@ type Cache interface {
 	// TODO(jinzhej): clean up expire Tasks.
 	Bind(task *api.TaskInfo, hostname string) error
 
+	// Evict evicts the task to release resources.
 	Evict(task *api.TaskInfo) error
+
+	// Backoff puts job in backlog for a while.
+	Backoff(job *api.JobInfo, reason api.Reason) error
 }
 
 type Binder interface {

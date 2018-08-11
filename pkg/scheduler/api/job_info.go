@@ -257,6 +257,9 @@ func (ps *JobInfo) Clone() *JobInfo {
 		Allocated:    ps.Allocated.Clone(),
 		TotalRequest: ps.TotalRequest.Clone(),
 
+		PDB:      ps.PDB,
+		PodGroup: ps.PodGroup,
+
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},
 	}
