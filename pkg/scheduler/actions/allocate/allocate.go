@@ -73,26 +73,22 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 
 		for !tasks.Empty() {
 			task := tasks.Pop().(*api.TaskInfo)
-
 			assigned := false
 
-			// TODO (k82cn): Enable eCache for performance improvement.
-			var nodes []*api.NodeInfo
-			for _, node := range ssn.Nodes {
-				if err := ssn.PredicateFn(task, node); err == nil {
-					nodes = append(nodes, node)
-				} else {
-					glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
-						task.Namespace, task.Name, node.Name, err)
-				}
-			}
-
 			glog.V(3).Infof("There are <%d> nodes for Job <%v/%v>",
-				len(nodes), job.Namespace, job.Name)
+				len(ssn.Nodes), job.Namespace, job.Name)
 
-			for _, node := range nodes {
+			for _, node := range ssn.Nodes {
 				glog.V(3).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
 					task.Namespace, task.Name, node.Name, task.Resreq, node.Idle)
+
+				// TODO (k82cn): Enable eCache for performance improvement.
+				if err := ssn.PredicateFn(task, node); err != nil {
+					glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
+						task.Namespace, task.Name, node.Name, err)
+					continue
+				}
+
 				// Allocate idle resource to the task.
 				if task.Resreq.LessEqual(node.Idle) {
 					glog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
