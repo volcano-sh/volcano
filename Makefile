@@ -1,5 +1,5 @@
 BIN_DIR=_output/bin
-RELEASE_VER=0.1
+RELEASE_VER=0.2
 
 kube-arbitrator: init
 	go build -o ${BIN_DIR}/kar-scheduler ./cmd/kar-scheduler/
@@ -32,10 +32,8 @@ run-test:
 
 e2e: kube-arbitrator
 	hack/e2e-cluster.sh
-	cd test && go test -v && cd -
-	echo "=================================> Controller <================================="
+	go test ./test -v
 	cat controller.log
-	echo "=================================> Scheduler <================================="
 	cat scheduler.log
 
 coverage:
