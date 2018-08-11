@@ -241,6 +241,27 @@ func (ssn *Session) Preempt(preemptor, preemptee *api.TaskInfo) error {
 	return nil
 }
 
+// Discard discards a job from session, so no plugin/action handles it.
+func (ssn *Session) Discard(job *api.JobInfo, reason api.Reason) error {
+	if err := ssn.cache.Backoff(job, reason); err != nil {
+		glog.Errorf("Failed to backoff job <%s/%s>: %v",
+			job.Namespace, job.Name, err)
+		return err
+	}
+
+	// Delete Job from Session after recording event.
+	delete(ssn.JobIndex, job.UID)
+	for i, j := range ssn.Jobs {
+		if j.UID == job.UID {
+			ssn.Jobs[i] = ssn.Jobs[len(ssn.Jobs)-1]
+			ssn.Jobs = ssn.Jobs[:len(ssn.Jobs)-1]
+			break
+		}
+	}
+
+	return nil
+}
+
 func (ssn *Session) AddEventHandler(eh *EventHandler) {
 	ssn.eventHandlers = append(ssn.eventHandlers, eh)
 }

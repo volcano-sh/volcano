@@ -19,6 +19,7 @@ package gang
 import (
 	"github.com/golang/glog"
 
+	arbcorev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/core/v1alpha1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 )
@@ -44,6 +45,19 @@ func readyTaskNum(job *api.JobInfo) int32 {
 	return int32(occupid)
 }
 
+func validTaskNum(job *api.JobInfo) int32 {
+	occupid := 0
+	for status, tasks := range job.TaskStatusIndex {
+		if api.AllocatedStatus(status) ||
+			status == api.Succeeded ||
+			status == api.Pending {
+			occupid = occupid + len(tasks)
+		}
+	}
+
+	return int32(occupid)
+}
+
 func jobReady(obj interface{}) bool {
 	job := obj.(*api.JobInfo)
 
@@ -53,6 +67,15 @@ func jobReady(obj interface{}) bool {
 }
 
 func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
+	for _, job := range ssn.Jobs {
+		if validTaskNum(job) < job.MinAvailable {
+			ssn.Discard(job, api.Reason{
+				Event:   arbcorev1.UnschedulableEvent,
+				Message: "not enough valid tasks for gang-scheduling",
+			})
+		}
+	}
+
 	preemptableFn := func(l, v interface{}) bool {
 		preemptee := v.(*api.TaskInfo)
 
