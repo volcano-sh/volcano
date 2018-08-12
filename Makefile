@@ -31,10 +31,7 @@ run-test:
 	hack/make-rules/test.sh $(WHAT) $(TESTS)
 
 e2e: kube-arbitrator
-	hack/e2e-cluster.sh
-	go test ./test -v
-	cat controller.log
-	cat scheduler.log
+	hack/run-e2e.sh
 
 coverage:
 	KUBE_COVER=y hack/make-rules/test.sh $(WHAT) $(TESTS)

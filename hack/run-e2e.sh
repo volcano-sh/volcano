@@ -1,0 +1,24 @@
+#!/bin/bash
+
+export PATH="${HOME}/.kubeadm-dind-cluster:${PATH}"
+
+# start k8s dind cluster
+APISERVER_enable_admission_plugins=Initializers,NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,DefaultTolerationSeconds,NodeRestriction,MutatingAdmissionWebhook,ValidatingAdmissionWebhook,Priority,ResourceQuota ./hack/dind-cluster-v1.11.sh up
+
+kubectl create -f config/crds/core_v1alpha1_podgroup.yaml
+kubectl create -f config/crds/extensions_v1alpha1_job.yaml
+
+# start kube-arbitrator
+nohup _output/bin/kar-controllers --kubeconfig ${HOME}/.kube/config --logtostderr --v 3 > controller.log 2>&1 &
+nohup _output/bin/kar-scheduler --kubeconfig ${HOME}/.kube/config --logtostderr --v 3 > scheduler.log 2>&1 &
+
+# clean up
+function cleanup {
+	killall -9 kar-controllers kar-scheduler
+	./hack/dind-cluster-v1.11.sh down
+}
+
+trap cleanup EXIT
+
+# Run e2e test
+go test ./test -v
