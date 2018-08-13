@@ -218,7 +218,6 @@ func createJob(
 			MinAvailable: min,
 			TaskSpecs: []arbextv1.TaskSpec{
 				{
-
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							queueJobName: name,
