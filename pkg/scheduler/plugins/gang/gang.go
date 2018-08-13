@@ -19,7 +19,7 @@ package gang
 import (
 	"github.com/golang/glog"
 
-	arbcorev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/core/v1alpha1"
+	arbcorev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 )
