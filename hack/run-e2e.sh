@@ -5,7 +5,7 @@ export PATH="${HOME}/.kubeadm-dind-cluster:${PATH}"
 # start k8s dind cluster
 APISERVER_enable_admission_plugins=Initializers,NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,DefaultTolerationSeconds,NodeRestriction,MutatingAdmissionWebhook,ValidatingAdmissionWebhook,Priority,ResourceQuota ./hack/dind-cluster-v1.11.sh up
 
-kubectl create -f config/crds/core_v1alpha1_podgroup.yaml
+kubectl create -f config/crds/scheduling_v1alpha1_podgroup.yaml
 kubectl create -f config/crds/extensions_v1alpha1_job.yaml
 
 # start kube-arbitrator

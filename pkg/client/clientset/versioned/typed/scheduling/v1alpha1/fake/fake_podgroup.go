@@ -19,7 +19,7 @@ limitations under the License.
 package fake
 
 import (
-	v1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/core/v1alpha1"
+	v1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -30,13 +30,13 @@ import (
 
 // FakePodGroups implements PodGroupInterface
 type FakePodGroups struct {
-	Fake *FakeCoreV1alpha1
+	Fake *FakeSchedulingV1alpha1
 	ns   string
 }
 
-var podgroupsResource = schema.GroupVersionResource{Group: "", Version: "v1alpha1", Resource: "podgroups"}
+var podgroupsResource = schema.GroupVersionResource{Group: "scheduling", Version: "v1alpha1", Resource: "podgroups"}
 
-var podgroupsKind = schema.GroupVersionKind{Group: "", Version: "v1alpha1", Kind: "PodGroup"}
+var podgroupsKind = schema.GroupVersionKind{Group: "scheduling", Version: "v1alpha1", Kind: "PodGroup"}
 
 // Get takes name of the podGroup, and returns the corresponding podGroup object, and an error if there is any.
 func (c *FakePodGroups) Get(name string, options v1.GetOptions) (result *v1alpha1.PodGroup, err error) {
@@ -93,6 +93,18 @@ func (c *FakePodGroups) Create(podGroup *v1alpha1.PodGroup) (result *v1alpha1.Po
 func (c *FakePodGroups) Update(podGroup *v1alpha1.PodGroup) (result *v1alpha1.PodGroup, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewUpdateAction(podgroupsResource, c.ns, podGroup), &v1alpha1.PodGroup{})
+
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1alpha1.PodGroup), err
+}
+
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+func (c *FakePodGroups) UpdateStatus(podGroup *v1alpha1.PodGroup) (*v1alpha1.PodGroup, error) {
+	obj, err := c.Fake.
+		Invokes(testing.NewUpdateSubresourceAction(podgroupsResource, "status", c.ns, podGroup), &v1alpha1.PodGroup{})
 
 	if obj == nil {
 		return nil, err

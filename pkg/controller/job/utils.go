@@ -24,8 +24,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/core/v1alpha1"
 	extv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/extensions/v1alpha1"
+	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
 )
 
 var JobKind = arbv1.SchemeGroupVersion.WithKind("Job")

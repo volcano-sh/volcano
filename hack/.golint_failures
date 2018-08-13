@@ -2,10 +2,11 @@ cmd/kar-controllers/app
 cmd/kar-controllers/app/options
 cmd/kar-scheduler/app
 cmd/kar-scheduler/app/options
-pkg/apis/core/v1alpha1
 pkg/apis/extensions/v1alpha1
+pkg/apis/scheduling/v1alpha1
 pkg/apis/utils
 pkg/controller/job
+pkg/controller/queue
 pkg/karcli/job
 pkg/scheduler
 pkg/scheduler/actions/allocate

@@ -21,10 +21,10 @@ package v1alpha1
 import (
 	time "time"
 
-	core_v1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/core/v1alpha1"
+	scheduling_v1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
 	versioned "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/listers/core/v1alpha1"
+	v1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/listers/scheduling/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -61,16 +61,16 @@ func NewFilteredPodGroupInformer(client versioned.Interface, namespace string, r
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.CoreV1alpha1().PodGroups(namespace).List(options)
+				return client.SchedulingV1alpha1().PodGroups(namespace).List(options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.CoreV1alpha1().PodGroups(namespace).Watch(options)
+				return client.SchedulingV1alpha1().PodGroups(namespace).Watch(options)
 			},
 		},
-		&core_v1alpha1.PodGroup{},
+		&scheduling_v1alpha1.PodGroup{},
 		resyncPeriod,
 		indexers,
 	)
@@ -81,7 +81,7 @@ func (f *podGroupInformer) defaultInformer(client versioned.Interface, resyncPer
 }
 
 func (f *podGroupInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&core_v1alpha1.PodGroup{}, f.defaultInformer)
+	return f.factory.InformerFor(&scheduling_v1alpha1.PodGroup{}, f.defaultInformer)
 }
 
 func (f *podGroupInformer) Lister() v1alpha1.PodGroupLister {

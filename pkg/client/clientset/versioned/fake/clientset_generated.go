@@ -20,10 +20,10 @@ package fake
 
 import (
 	clientset "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned"
-	corev1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/typed/core/v1alpha1"
-	fakecorev1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/typed/core/v1alpha1/fake"
 	extensionsv1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/typed/extensions/v1alpha1"
 	fakeextensionsv1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/typed/extensions/v1alpha1/fake"
+	schedulingv1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/typed/scheduling/v1alpha1"
+	fakeschedulingv1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/typed/scheduling/v1alpha1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
@@ -73,16 +73,6 @@ func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 
 var _ clientset.Interface = &Clientset{}
 
-// CoreV1alpha1 retrieves the CoreV1alpha1Client
-func (c *Clientset) CoreV1alpha1() corev1alpha1.CoreV1alpha1Interface {
-	return &fakecorev1alpha1.FakeCoreV1alpha1{Fake: &c.Fake}
-}
-
-// Core retrieves the CoreV1alpha1Client
-func (c *Clientset) Core() corev1alpha1.CoreV1alpha1Interface {
-	return &fakecorev1alpha1.FakeCoreV1alpha1{Fake: &c.Fake}
-}
-
 // ExtensionsV1alpha1 retrieves the ExtensionsV1alpha1Client
 func (c *Clientset) ExtensionsV1alpha1() extensionsv1alpha1.ExtensionsV1alpha1Interface {
 	return &fakeextensionsv1alpha1.FakeExtensionsV1alpha1{Fake: &c.Fake}
@@ -91,4 +81,14 @@ func (c *Clientset) ExtensionsV1alpha1() extensionsv1alpha1.ExtensionsV1alpha1In
 // Extensions retrieves the ExtensionsV1alpha1Client
 func (c *Clientset) Extensions() extensionsv1alpha1.ExtensionsV1alpha1Interface {
 	return &fakeextensionsv1alpha1.FakeExtensionsV1alpha1{Fake: &c.Fake}
+}
+
+// SchedulingV1alpha1 retrieves the SchedulingV1alpha1Client
+func (c *Clientset) SchedulingV1alpha1() schedulingv1alpha1.SchedulingV1alpha1Interface {
+	return &fakeschedulingv1alpha1.FakeSchedulingV1alpha1{Fake: &c.Fake}
+}
+
+// Scheduling retrieves the SchedulingV1alpha1Client
+func (c *Clientset) Scheduling() schedulingv1alpha1.SchedulingV1alpha1Interface {
+	return &fakeschedulingv1alpha1.FakeSchedulingV1alpha1{Fake: &c.Fake}
 }

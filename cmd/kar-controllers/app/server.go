@@ -38,6 +38,7 @@ import (
 
 	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kar-controllers/app/options"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/controller/job"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/controller/queue"
 )
 
 const (
@@ -62,9 +63,11 @@ func Run(opt *options.ServerOption) error {
 	neverStop := make(chan struct{})
 
 	queuejobctrl := job.NewController(config)
+	queueController := queue.NewController(config)
 
 	run := func(stopCh <-chan struct{}) {
 		queuejobctrl.Run(stopCh)
+		queueController.Run(stopCh)
 		<-stopCh
 	}
 
