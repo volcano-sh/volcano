@@ -16,7 +16,7 @@ init:
 
 generate-code:
 	go build -o ${BIN_DIR}/deepcopy-gen ./cmd/deepcopy-gen/
-	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/core/v1alpha1/ -O zz_generated.deepcopy
+	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/scheduling/v1alpha1/ -O zz_generated.deepcopy
 	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/extensions/v1alpha1/ -O zz_generated.deepcopy
 
 images: kube-arbitrator

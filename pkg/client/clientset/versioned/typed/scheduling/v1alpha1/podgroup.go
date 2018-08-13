@@ -19,7 +19,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/core/v1alpha1"
+	v1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
 	scheme "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
@@ -37,6 +37,7 @@ type PodGroupsGetter interface {
 type PodGroupInterface interface {
 	Create(*v1alpha1.PodGroup) (*v1alpha1.PodGroup, error)
 	Update(*v1alpha1.PodGroup) (*v1alpha1.PodGroup, error)
+	UpdateStatus(*v1alpha1.PodGroup) (*v1alpha1.PodGroup, error)
 	Delete(name string, options *v1.DeleteOptions) error
 	DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error
 	Get(name string, options v1.GetOptions) (*v1alpha1.PodGroup, error)
@@ -53,7 +54,7 @@ type podGroups struct {
 }
 
 // newPodGroups returns a PodGroups
-func newPodGroups(c *CoreV1alpha1Client, namespace string) *podGroups {
+func newPodGroups(c *SchedulingV1alpha1Client, namespace string) *podGroups {
 	return &podGroups{
 		client: c.RESTClient(),
 		ns:     namespace,
@@ -114,6 +115,22 @@ func (c *podGroups) Update(podGroup *v1alpha1.PodGroup) (result *v1alpha1.PodGro
 		Namespace(c.ns).
 		Resource("podgroups").
 		Name(podGroup.Name).
+		Body(podGroup).
+		Do().
+		Into(result)
+	return
+}
+
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+
+func (c *podGroups) UpdateStatus(podGroup *v1alpha1.PodGroup) (result *v1alpha1.PodGroup, err error) {
+	result = &v1alpha1.PodGroup{}
+	err = c.client.Put().
+		Namespace(c.ns).
+		Resource("podgroups").
+		Name(podGroup.Name).
+		SubResource("status").
 		Body(podGroup).
 		Do().
 		Into(result)

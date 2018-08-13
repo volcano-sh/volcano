@@ -19,28 +19,33 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/core/v1alpha1"
+	v1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/scheme"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer"
 	rest "k8s.io/client-go/rest"
 )
 
-type CoreV1alpha1Interface interface {
+type SchedulingV1alpha1Interface interface {
 	RESTClient() rest.Interface
 	PodGroupsGetter
+	QueuesGetter
 }
 
-// CoreV1alpha1Client is used to interact with features provided by the  group.
-type CoreV1alpha1Client struct {
+// SchedulingV1alpha1Client is used to interact with features provided by the scheduling group.
+type SchedulingV1alpha1Client struct {
 	restClient rest.Interface
 }
 
-func (c *CoreV1alpha1Client) PodGroups(namespace string) PodGroupInterface {
+func (c *SchedulingV1alpha1Client) PodGroups(namespace string) PodGroupInterface {
 	return newPodGroups(c, namespace)
 }
 
-// NewForConfig creates a new CoreV1alpha1Client for the given config.
-func NewForConfig(c *rest.Config) (*CoreV1alpha1Client, error) {
+func (c *SchedulingV1alpha1Client) Queues() QueueInterface {
+	return newQueues(c)
+}
+
+// NewForConfig creates a new SchedulingV1alpha1Client for the given config.
+func NewForConfig(c *rest.Config) (*SchedulingV1alpha1Client, error) {
 	config := *c
 	if err := setConfigDefaults(&config); err != nil {
 		return nil, err
@@ -49,12 +54,12 @@ func NewForConfig(c *rest.Config) (*CoreV1alpha1Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &CoreV1alpha1Client{client}, nil
+	return &SchedulingV1alpha1Client{client}, nil
 }
 
-// NewForConfigOrDie creates a new CoreV1alpha1Client for the given config and
+// NewForConfigOrDie creates a new SchedulingV1alpha1Client for the given config and
 // panics if there is an error in the config.
-func NewForConfigOrDie(c *rest.Config) *CoreV1alpha1Client {
+func NewForConfigOrDie(c *rest.Config) *SchedulingV1alpha1Client {
 	client, err := NewForConfig(c)
 	if err != nil {
 		panic(err)
@@ -62,9 +67,9 @@ func NewForConfigOrDie(c *rest.Config) *CoreV1alpha1Client {
 	return client
 }
 
-// New creates a new CoreV1alpha1Client for the given RESTClient.
-func New(c rest.Interface) *CoreV1alpha1Client {
-	return &CoreV1alpha1Client{c}
+// New creates a new SchedulingV1alpha1Client for the given RESTClient.
+func New(c rest.Interface) *SchedulingV1alpha1Client {
+	return &SchedulingV1alpha1Client{c}
 }
 
 func setConfigDefaults(config *rest.Config) error {
@@ -82,7 +87,7 @@ func setConfigDefaults(config *rest.Config) error {
 
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
-func (c *CoreV1alpha1Client) RESTClient() rest.Interface {
+func (c *SchedulingV1alpha1Client) RESTClient() rest.Interface {
 	if c == nil {
 		return nil
 	}

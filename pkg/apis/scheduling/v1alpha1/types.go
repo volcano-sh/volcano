@@ -107,3 +107,40 @@ type PodGroupList struct {
 	// items is the list of PodGroup
 	Items []PodGroup `json:"items" protobuf:"bytes,2,rep,name=items"`
 }
+
+// +genclient
+// +genclient:nonNamespaced
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// Queue is a queue of PodGroup.
+type Queue struct {
+	metav1.TypeMeta `json:",inline"`
+	// Standard object's metadata.
+	// More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata
+	// +optional
+	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	// Specification of the desired behavior of the pod group.
+	// More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status
+	// +optional
+	Spec QueueSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
+}
+
+// QueueSpec represents the template of Queue.
+type QueueSpec struct {
+	Weight int32 `json:"weight,omitempty" protobuf:"bytes,1,opt,name=weight"`
+}
+
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// QueueList is a collection of queues.
+type QueueList struct {
+	metav1.TypeMeta `json:",inline"`
+	// Standard list metadata
+	// More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata
+	// +optional
+	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	// items is the list of PodGroup
+	Items []PodGroup `json:"items" protobuf:"bytes,2,rep,name=items"`
+}

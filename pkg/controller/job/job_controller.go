@@ -316,13 +316,13 @@ func (cc *Controller) manageJob(qj *arbextv1.Job, pods map[string][]*v1.Pod) err
 	succeededSum := int32(0)
 	failedSum := int32(0)
 
-	ss, err := cc.arbclients.Core().PodGroups(qj.Namespace).List(metav1.ListOptions{
+	ss, err := cc.arbclients.Scheduling().PodGroups(qj.Namespace).List(metav1.ListOptions{
 		FieldSelector: fmt.Sprintf("metadata.name=%s", qj.Name),
 	})
 
 	if len(ss.Items) == 0 {
 		schedSpc := createPodGroup(qj)
-		_, err := cc.arbclients.Core().PodGroups(qj.Namespace).Create(schedSpc)
+		_, err := cc.arbclients.Scheduling().PodGroups(qj.Namespace).Create(schedSpc)
 		if err != nil {
 			glog.Errorf("Failed to create PodGroup for Job %v/%v: %v",
 				qj.Namespace, qj.Name, err)

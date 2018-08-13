@@ -19,22 +19,26 @@ limitations under the License.
 package fake
 
 import (
-	v1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/typed/core/v1alpha1"
+	v1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/typed/scheduling/v1alpha1"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
 )
 
-type FakeCoreV1alpha1 struct {
+type FakeSchedulingV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeCoreV1alpha1) PodGroups(namespace string) v1alpha1.PodGroupInterface {
+func (c *FakeSchedulingV1alpha1) PodGroups(namespace string) v1alpha1.PodGroupInterface {
 	return &FakePodGroups{c, namespace}
+}
+
+func (c *FakeSchedulingV1alpha1) Queues() v1alpha1.QueueInterface {
+	return &FakeQueues{c}
 }
 
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
-func (c *FakeCoreV1alpha1) RESTClient() rest.Interface {
+func (c *FakeSchedulingV1alpha1) RESTClient() rest.Interface {
 	var ret *rest.RESTClient
 	return ret
 }
