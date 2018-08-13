@@ -14,8 +14,13 @@ nohup _output/bin/kar-scheduler --kubeconfig ${HOME}/.kube/config --logtostderr 
 
 # clean up
 function cleanup {
-	killall -9 kar-controllers kar-scheduler
-	./hack/dind-cluster-v1.11.sh down
+    killall -9 kar-controllers kar-scheduler
+    ./hack/dind-cluster-v1.11.sh down
+
+    echo "=================================> Controller Logs <================================="
+    cat controller.log
+    echo "=================================> Scheduler Logs <================================="
+    cat scheduler.log
 }
 
 trap cleanup EXIT
