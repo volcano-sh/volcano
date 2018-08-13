@@ -75,6 +75,9 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 			for _, task := range job.TaskStatusIndex[api.Running] {
 				preempteeTasks[job.UID].Push(task)
 			}
+
+			glog.V(3).Infof("Put job <%s/%s> as preemptee with %d tasks.",
+				job.Namespace, job.Name, preempteeTasks[job.UID].Len())
 		}
 	}
 
@@ -82,6 +85,7 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 	for {
 		// If no preemptors nor preemptees, no preemption.
 		if preemptors.Empty() || preemptees.Empty() {
+			glog.V(3).Infof("No preemptors nor preemptees, break.")
 			break
 		}
 
@@ -89,16 +93,42 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 
 		// If not preemptor tasks, next job.
 		if preemptorTasks[preemptorJob.UID].Empty() {
+			glog.V(3).Infof("No preemptor task in job <%s/%s>.",
+				preemptorJob.Namespace, preemptorJob.Name)
 			continue
 		}
 
-		preempteeJob := preemptees.Pop().(*api.JobInfo)
-		for preempteeTasks[preempteeJob.UID].Empty() && preemptorJob.UID != preempteeJob.UID {
+		// Find the preemptee job:
+		//   - More than one running tasks
+		//   - Different job
+		var preempteeJob *api.JobInfo
+		for !preemptees.Empty() {
 			preempteeJob = preemptees.Pop().(*api.JobInfo)
+
+			// If found itself, then no preemptees anymore.
+			if preemptorJob.UID == preempteeJob.UID {
+				glog.V(3).Infof("Can not preempt itself <%s/%s>.",
+					preemptorJob.Namespace, preemptorJob.Name)
+				preempteeJob = nil
+				break
+			}
+
+			if preempteeTasks[preempteeJob.UID].Empty() {
+				glog.V(3).Infof("No preemptable tasks in job <%s/%s>, next",
+					preempteeJob.Namespace, preempteeJob.Name)
+
+				preempteeJob = nil
+				continue
+			}
+
+			// If found a preemptee job, break
+			break
 		}
 
-		// The most underused job can not preempt any resource, break the loop.
-		if preemptorJob.UID == preempteeJob.UID {
+		if preempteeJob == nil {
+			glog.V(3).Infof("Can not found preemptee job for %v/%v",
+				preemptorJob.Namespace, preemptorJob.Name)
+
 			break
 		}
 
