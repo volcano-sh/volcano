@@ -17,6 +17,8 @@ limitations under the License.
 package nodeaffinity
 
 import (
+	"fmt"
+
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
 	"k8s.io/kubernetes/pkg/scheduler/cache"
 
@@ -38,8 +40,17 @@ func (pp *nodeAffinityPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddPredicateFn(func(task *api.TaskInfo, node *api.NodeInfo) error {
 		nodeInfo := cache.NewNodeInfo(node.Pods()...)
 		nodeInfo.SetNode(node.Node)
-		_, _, err := predicates.PodMatchNodeSelector(task.Pod, nil, nodeInfo)
-		return err
+		fit, _, err := predicates.PodMatchNodeSelector(task.Pod, nil, nodeInfo)
+		if err != nil {
+			return err
+		}
+
+		if !fit {
+			return fmt.Errorf("node <%s> didn't match task <%s/%s> node selector",
+				node.Name, task.Namespace, task.Name)
+		}
+
+		return nil
 	})
 }
 
