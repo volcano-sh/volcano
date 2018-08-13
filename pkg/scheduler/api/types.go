@@ -17,7 +17,7 @@ limitations under the License.
 package api
 
 import (
-	arbcorev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/core/v1alpha1"
+	arbcorev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
 )
 
 // TaskStatus defines the status of a task/pod.

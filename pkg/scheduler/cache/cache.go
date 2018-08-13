@@ -38,7 +38,7 @@ import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/scheme"
 	arbinfo "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions"
-	arbcoreinfo "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions/core/v1alpha1"
+	arbcoreinfo "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 )
 
@@ -201,7 +201,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 
 	arbinformer := arbinfo.NewSharedInformerFactory(sc.arbclient, 0)
 	// create informer for Queue information
-	sc.podGroupInformer = arbinformer.Core().V1alpha1().PodGroups()
+	sc.podGroupInformer = arbinformer.Scheduling().V1alpha1().PodGroups()
 	sc.podGroupInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.AddPodGroup,
 		UpdateFunc: sc.UpdatePodGroup,
