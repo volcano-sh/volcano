@@ -33,15 +33,18 @@ type Session struct {
 
 	cache cache.Cache
 
-	Jobs      []*api.JobInfo
-	JobIndex  map[api.JobID]*api.JobInfo
-	Nodes     []*api.NodeInfo
-	NodeIndex map[string]*api.NodeInfo
-	Backlog   []*api.JobInfo
+	Jobs       []*api.JobInfo
+	JobIndex   map[api.JobID]*api.JobInfo
+	Nodes      []*api.NodeInfo
+	NodeIndex  map[string]*api.NodeInfo
+	Queues     []*api.QueueInfo
+	QueueIndex map[api.QueueID]*api.QueueInfo
+	Backlog    []*api.JobInfo
 
 	plugins        []Plugin
 	eventHandlers  []*EventHandler
 	jobOrderFns    []api.CompareFn
+	queueOrderFns  []api.CompareFn
 	taskOrderFns   []api.CompareFn
 	predicateFns   []api.PredicateFn
 	preemptableFns []api.LessFn
@@ -50,10 +53,11 @@ type Session struct {
 
 func openSession(cache cache.Cache) *Session {
 	ssn := &Session{
-		UID:       uuid.NewUUID(),
-		cache:     cache,
-		JobIndex:  map[api.JobID]*api.JobInfo{},
-		NodeIndex: map[string]*api.NodeInfo{},
+		UID:        uuid.NewUUID(),
+		cache:      cache,
+		JobIndex:   map[api.JobID]*api.JobInfo{},
+		NodeIndex:  map[string]*api.NodeInfo{},
+		QueueIndex: map[api.QueueID]*api.QueueInfo{},
 	}
 
 	glog.V(3).Infof("Open Session %v", ssn.UID)
@@ -70,6 +74,11 @@ func openSession(cache cache.Cache) *Session {
 		ssn.NodeIndex[node.Name] = node
 	}
 
+	ssn.Queues = snapshot.Queues
+	for _, queue := range ssn.Queues {
+		ssn.QueueIndex[queue.UID] = queue
+	}
+
 	return ssn
 }
 
@@ -82,6 +91,7 @@ func closeSession(ssn *Session) {
 	ssn.plugins = nil
 	ssn.eventHandlers = nil
 	ssn.jobOrderFns = nil
+	ssn.queueOrderFns = nil
 
 	glog.V(3).Infof("Close Session %v", ssn.UID)
 }
@@ -270,6 +280,10 @@ func (ssn *Session) AddJobOrderFn(cf api.CompareFn) {
 	ssn.jobOrderFns = append(ssn.jobOrderFns, cf)
 }
 
+func (ssn *Session) AddQueueOrderFn(qf api.CompareFn) {
+	ssn.queueOrderFns = append(ssn.queueOrderFns, qf)
+}
+
 func (ssn *Session) AddTaskOrderFn(cf api.CompareFn) {
 	ssn.taskOrderFns = append(ssn.taskOrderFns, cf)
 }
@@ -306,6 +320,20 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 	// If no job order funcs, order job by UID.
 	lv := l.(*api.JobInfo)
 	rv := r.(*api.JobInfo)
+
+	return lv.UID < rv.UID
+}
+
+func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
+	for _, qof := range ssn.queueOrderFns {
+		if j := qof(l, r); j != 0 {
+			return j < 0
+		}
+	}
+
+	// If no queue order funcs, order queue by UID.
+	lv := l.(*api.QueueInfo)
+	rv := r.(*api.QueueInfo)
 
 	return lv.UID < rv.UID
 }

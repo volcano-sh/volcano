@@ -32,6 +32,7 @@ import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/cache"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/drf"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/proportion"
 )
 
 func buildResourceList(cpu string, memory string) v1.ResourceList {
@@ -64,7 +65,6 @@ func buildNode(name string, alloc v1.ResourceList, labels map[string]string) *v1
 }
 
 func buildPod(ns, n, nn string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string) *v1.Pod {
-
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			UID:       types.UID(fmt.Sprintf("%v-%v", ns, n)),
@@ -117,6 +117,7 @@ func (fb *fakeBinder) Bind(p *v1.Pod, hostname string) error {
 
 func TestAllocate(t *testing.T) {
 	framework.RegisterPluginBuilder("drf", drf.New)
+	framework.RegisterPluginBuilder("proportion", proportion.New)
 	defer framework.CleanupPluginBuilders()
 
 	tests := []struct {
@@ -124,6 +125,7 @@ func TestAllocate(t *testing.T) {
 		podGroups []*arbcorev1.PodGroup
 		pods      []*v1.Pod
 		nodes     []*v1.Node
+		queues    []*arbcorev1.Queue
 		expected  map[string]string
 	}{
 		{
@@ -142,6 +144,13 @@ func TestAllocate(t *testing.T) {
 			},
 			nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2", "4Gi"), make(map[string]string)),
+			},
+			queues: []*arbcorev1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c1",
+					},
+				},
 			},
 			expected: map[string]string{
 				"c1/p1": "n1",
@@ -178,6 +187,24 @@ func TestAllocate(t *testing.T) {
 			nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2", "4G"), make(map[string]string)),
 			},
+			queues: []*arbcorev1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c1",
+					},
+					Spec: arbcorev1.QueueSpec{
+						Weight: 1,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c2",
+					},
+					Spec: arbcorev1.QueueSpec{
+						Weight: 1,
+					},
+				},
+			},
 			expected: map[string]string{
 				"c2/p1": "n1",
 				"c1/p1": "n1",
@@ -195,6 +222,7 @@ func TestAllocate(t *testing.T) {
 		schedulerCache := &cache.SchedulerCache{
 			Nodes:  make(map[string]*api.NodeInfo),
 			Jobs:   make(map[api.JobID]*api.JobInfo),
+			Queues: make(map[api.QueueID]*api.QueueInfo),
 			Binder: binder,
 		}
 		for _, node := range test.nodes {
@@ -208,13 +236,20 @@ func TestAllocate(t *testing.T) {
 			schedulerCache.AddPodGroup(ss)
 		}
 
-		args := &framework.PluginArgs{
+		for _, q := range test.queues {
+			schedulerCache.AddQueue(q)
+		}
+
+		drfArgs := &framework.PluginArgs{
 			Name:                 "drf",
 			PreemptableFnEnabled: true,
 			JobOrderFnEnabled:    true,
 		}
+		proArgs := &framework.PluginArgs{
+			Name: "proportion",
+		}
 
-		ssn := framework.OpenSession(schedulerCache, []*framework.PluginArgs{args})
+		ssn := framework.OpenSession(schedulerCache, []*framework.PluginArgs{proArgs, drfArgs})
 		defer framework.CloseSession(ssn)
 
 		allocate.Execute(ssn)
