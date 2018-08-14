@@ -554,3 +554,94 @@ func (sc *SchedulerCache) DeletePDB(obj interface{}) {
 	}
 	return
 }
+
+func (sc *SchedulerCache) AddQueue(obj interface{}) {
+	ss, ok := obj.(*arbv1.Queue)
+	if !ok {
+		glog.Errorf("Cannot convert to *arbv1.Queue: %v", obj)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	glog.V(4).Infof("Add Queue(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
+	err := sc.addQueue(ss)
+	if err != nil {
+		glog.Errorf("Failed to add Queue %s into cache: %v", ss.Name, err)
+		return
+	}
+	return
+}
+
+func (sc *SchedulerCache) UpdateQueue(oldObj, newObj interface{}) {
+	oldSS, ok := oldObj.(*arbv1.Queue)
+	if !ok {
+		glog.Errorf("Cannot convert oldObj to *arbv1.Queue: %v", oldObj)
+		return
+	}
+	newSS, ok := newObj.(*arbv1.Queue)
+	if !ok {
+		glog.Errorf("Cannot convert newObj to *arbv1.Queue: %v", newObj)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	err := sc.updateQueue(oldSS, newSS)
+	if err != nil {
+		glog.Errorf("Failed to update Queue %s into cache: %v", oldSS.Name, err)
+		return
+	}
+	return
+}
+
+func (sc *SchedulerCache) DeleteQueue(obj interface{}) {
+	var ss *arbv1.Queue
+	switch t := obj.(type) {
+	case *arbv1.Queue:
+		ss = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		ss, ok = t.Obj.(*arbv1.Queue)
+		if !ok {
+			glog.Errorf("Cannot convert to *arbv1.Queue: %v", t.Obj)
+			return
+		}
+	default:
+		glog.Errorf("Cannot convert to *arbv1.Queue: %v", t)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	err := sc.deleteQueue(ss)
+	if err != nil {
+		glog.Errorf("Failed to delete Queue %s from cache: %v", ss.Name, err)
+		return
+	}
+	return
+}
+
+func (sc *SchedulerCache) addQueue(queue *arbv1.Queue) error {
+	qi := arbapi.NewQueueInfo(queue)
+	sc.Queues[qi.UID] = qi
+
+	return nil
+}
+
+func (sc *SchedulerCache) updateQueue(oldObj, newObj *arbv1.Queue) error {
+	sc.deleteQueue(oldObj)
+	sc.addQueue(newObj)
+
+	return nil
+}
+
+func (sc *SchedulerCache) deleteQueue(queue *arbv1.Queue) error {
+	qi := arbapi.NewQueueInfo(queue)
+	delete(sc.Queues, qi.UID)
+
+	return nil
+}

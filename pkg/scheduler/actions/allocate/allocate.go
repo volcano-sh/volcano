@@ -42,23 +42,42 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 	glog.V(3).Infof("Enter Allocate ...")
 	defer glog.V(3).Infof("Leaving Allocate ...")
 
-	jobs := util.NewPriorityQueue(ssn.JobOrderFn)
+	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 
-	for _, job := range ssn.Jobs {
-		jobs.Push(job)
+	for _, queue := range ssn.Queues {
+		queues.Push(queue)
 	}
 
-	glog.V(3).Infof("Try to allocate resource to %d Jobs", jobs.Len())
+	jobsMap := map[api.QueueID]*util.PriorityQueue{}
+
+	for _, job := range ssn.Jobs {
+		if _, found := jobsMap[job.Queue]; !found {
+			jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+		}
+		glog.V(3).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
+		jobsMap[job.Queue].Push(job)
+	}
+
+	glog.V(3).Infof("Try to allocate resource to %d Queues", len(jobsMap))
 
 	pendingTasks := map[api.JobID]*util.PriorityQueue{}
 
 	for {
-		if jobs.Empty() {
+		if queues.Empty() {
 			break
 		}
 
-		job := jobs.Pop().(*api.JobInfo)
+		queue := queues.Pop().(*api.QueueInfo)
+		jobs, found := jobsMap[queue.UID]
 
+		glog.V(3).Infof("Try to allocate resource to Jobs in Queue <%v>", queue.Name)
+
+		if !found || jobs.Empty() {
+			glog.V(3).Infof("Can not find jobs for queue %s.", queue.Name)
+			continue
+		}
+
+		job := jobs.Pop().(*api.JobInfo)
 		if _, found := pendingTasks[job.UID]; !found {
 			tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
@@ -124,6 +143,9 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 			// Handle one pending task in each loop.
 			break
 		}
+
+		// Added Queue back until no job in Queue.
+		queues.Push(queue)
 	}
 }
 
