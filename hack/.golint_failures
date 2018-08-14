@@ -13,6 +13,7 @@ pkg/scheduler/actions/allocate
 pkg/scheduler/actions/preempt
 pkg/scheduler/actions/reclaim
 pkg/scheduler/api
+pkg/scheduler/api/helpers
 pkg/scheduler/cache
 pkg/scheduler/framework
 pkg/scheduler/plugins/drf
