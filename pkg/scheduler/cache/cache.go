@@ -57,14 +57,16 @@ type SchedulerCache struct {
 	nodeInformer     infov1.NodeInformer
 	pdbInformer      policyv1.PodDisruptionBudgetInformer
 	podGroupInformer arbcoreinfo.PodGroupInformer
+	queueInformer    arbcoreinfo.QueueInformer
 
 	Binder  Binder
 	Evictor Evictor
 
 	recorder record.EventRecorder
 
-	Jobs  map[arbapi.JobID]*arbapi.JobInfo
-	Nodes map[string]*arbapi.NodeInfo
+	Jobs   map[arbapi.JobID]*arbapi.JobInfo
+	Nodes  map[string]*arbapi.NodeInfo
+	Queues map[arbapi.QueueID]*arbapi.QueueInfo
 
 	errTasks    *cache.FIFO
 	deletedJobs *cache.FIFO
@@ -137,6 +139,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 	sc := &SchedulerCache{
 		Jobs:        make(map[arbapi.JobID]*arbapi.JobInfo),
 		Nodes:       make(map[string]*arbapi.NodeInfo),
+		Queues:      make(map[arbapi.QueueID]*arbapi.QueueInfo),
 		errTasks:    cache.NewFIFO(taskKey),
 		deletedJobs: cache.NewFIFO(jobKey),
 		kubeclient:  kubernetes.NewForConfigOrDie(config),
@@ -200,12 +203,20 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 	})
 
 	arbinformer := arbinfo.NewSharedInformerFactory(sc.arbclient, 0)
-	// create informer for Queue information
+	// create informer for PodGroup information
 	sc.podGroupInformer = arbinformer.Scheduling().V1alpha1().PodGroups()
 	sc.podGroupInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.AddPodGroup,
 		UpdateFunc: sc.UpdatePodGroup,
 		DeleteFunc: sc.DeletePodGroup,
+	})
+
+	// create informer for Queue information
+	sc.queueInformer = arbinformer.Scheduling().V1alpha1().Queues()
+	sc.queueInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddQueue,
+		UpdateFunc: sc.UpdateQueue,
+		DeleteFunc: sc.DeleteQueue,
 	})
 
 	return sc
@@ -216,6 +227,7 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.podInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
 	go sc.podGroupInformer.Informer().Run(stopCh)
+	go sc.queueInformer.Informer().Run(stopCh)
 
 	// Re-sync error tasks.
 	go sc.resync()
@@ -401,12 +413,17 @@ func (sc *SchedulerCache) Snapshot() *arbapi.ClusterInfo {
 	defer sc.Mutex.Unlock()
 
 	snapshot := &arbapi.ClusterInfo{
-		Nodes: make([]*arbapi.NodeInfo, 0, len(sc.Nodes)),
-		Jobs:  make([]*arbapi.JobInfo, 0, len(sc.Jobs)),
+		Nodes:  make([]*arbapi.NodeInfo, 0, len(sc.Nodes)),
+		Jobs:   make([]*arbapi.JobInfo, 0, len(sc.Jobs)),
+		Queues: make([]*arbapi.QueueInfo, 0, len(sc.Queues)),
 	}
 
 	for _, value := range sc.Nodes {
 		snapshot.Nodes = append(snapshot.Nodes, value.Clone())
+	}
+
+	for _, value := range sc.Queues {
+		snapshot.Queues = append(snapshot.Queues, value.Clone())
 	}
 
 	for _, value := range sc.Jobs {

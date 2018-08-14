@@ -14,16 +14,41 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package queue
+package api
 
 import (
-	"fmt"
+	"k8s.io/apimachinery/pkg/types"
+
+	arbcorev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
 )
 
-func eventKey(obj interface{}) (string, error) {
-	key, ok := obj.(string)
-	if !ok {
-		return "", fmt.Errorf("failed to convert %v to string", obj)
+type QueueID types.UID
+
+type QueueInfo struct {
+	UID  QueueID
+	Name string
+
+	Weight int32
+
+	Queue *arbcorev1.Queue
+}
+
+func NewQueueInfo(queue *arbcorev1.Queue) *QueueInfo {
+	return &QueueInfo{
+		UID:  QueueID(queue.Name),
+		Name: queue.Name,
+
+		Weight: queue.Spec.Weight,
+
+		Queue: queue,
 	}
-	return key, nil
+}
+
+func (q *QueueInfo) Clone() *QueueInfo {
+	return &QueueInfo{
+		UID:    q.UID,
+		Name:   q.Name,
+		Weight: q.Weight,
+		Queue:  q.Queue,
+	}
 }

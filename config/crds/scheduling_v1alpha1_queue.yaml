@@ -6,7 +6,7 @@ spec:
   group: scheduling.arbitrator.incubator.k8s.io
   names:
     kind: Queue
-    plural: Queues
+    plural: queues
   scope: Cluster
   validation:
     openAPIV3Schema:

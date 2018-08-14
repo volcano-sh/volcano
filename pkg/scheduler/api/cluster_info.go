@@ -22,6 +22,8 @@ type ClusterInfo struct {
 	Jobs []*JobInfo
 
 	Nodes []*NodeInfo
+
+	Queues []*QueueInfo
 }
 
 func (ci ClusterInfo) String() string {
