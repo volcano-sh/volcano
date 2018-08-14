@@ -62,12 +62,13 @@ func Run(opt *options.ServerOption) error {
 
 	neverStop := make(chan struct{})
 
-	queuejobctrl := job.NewController(config)
+	queuejobController := job.NewController(config)
 	queueController := queue.NewController(config)
 
 	run := func(stopCh <-chan struct{}) {
-		queuejobctrl.Run(stopCh)
 		queueController.Run(stopCh)
+		queuejobController.Run(stopCh)
+
 		<-stopCh
 	}
 

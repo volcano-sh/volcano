@@ -114,6 +114,8 @@ type JobInfo struct {
 	Name      string
 	Namespace string
 
+	Queue QueueID
+
 	Priority int
 
 	NodeSelector map[string]string
@@ -155,6 +157,9 @@ func (ps *JobInfo) SetPodGroup(spec *arbcorev1.PodGroup) {
 	ps.Name = spec.Name
 	ps.Namespace = spec.Namespace
 	ps.MinAvailable = spec.Spec.NumMember
+
+	// TODO(k82cn): replaced by PodGroup field.
+	ps.Queue = QueueID(spec.Namespace)
 
 	ps.PodGroup = spec
 }
@@ -251,6 +256,7 @@ func (ps *JobInfo) Clone() *JobInfo {
 		UID:       ps.UID,
 		Name:      ps.Name,
 		Namespace: ps.Namespace,
+		Queue:     ps.Queue,
 
 		MinAvailable: ps.MinAvailable,
 		NodeSelector: map[string]string{},

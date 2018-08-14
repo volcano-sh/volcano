@@ -14,16 +14,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package queue
+package reclaim
 
-import (
-	"fmt"
-)
+import "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 
-func eventKey(obj interface{}) (string, error) {
-	key, ok := obj.(string)
-	if !ok {
-		return "", fmt.Errorf("failed to convert %v to string", obj)
-	}
-	return key, nil
+type reclaimAction struct {
+	ssn *framework.Session
 }
+
+func New() *reclaimAction {
+	return &reclaimAction{}
+}
+
+func (alloc *reclaimAction) Name() string {
+	return "reclaim"
+}
+
+func (alloc *reclaimAction) Initialize() {}
+
+func (alloc *reclaimAction) Execute(ssn *framework.Session) {
+}
+
+func (alloc *reclaimAction) UnInitialize() {}

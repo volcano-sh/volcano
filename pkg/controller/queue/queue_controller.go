@@ -19,6 +19,8 @@ package queue
 import (
 	"time"
 
+	"github.com/golang/glog"
+
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -124,6 +126,7 @@ func (c *Controller) worker() {
 					},
 				}
 				_, err := c.arbclients.SchedulingV1alpha1().Queues().Create(q)
+				glog.V(3).Infof("Create Queue <%s> for Namespace <%s>: %v.", q.Name, nsName, err)
 				return err
 			}
 			return err
