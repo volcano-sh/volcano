@@ -20,6 +20,7 @@ import (
 	"github.com/golang/glog"
 
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api/helpers"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 )
 
@@ -140,11 +141,11 @@ func (pp *proportionPlugin) OnSessionClose(ssn *framework.Session) {
 func (pp *proportionPlugin) updateShare(attr *queueAttr) {
 	res := float64(0)
 
-	deserved := api.Min(attr.deserved, attr.request)
+	deserved := helpers.Min(attr.deserved, attr.request)
 
 	// TODO(k82cn): how to handle fragement issues?
 	for _, rn := range api.ResourceNames() {
-		share := attr.allocated.Get(rn) / deserved.Get(rn)
+		share := helpers.Share(attr.allocated.Get(rn), deserved.Get(rn))
 		if share > res {
 			res = share
 		}

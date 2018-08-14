@@ -145,13 +145,3 @@ func (r *Resource) Get(rn v1.ResourceName) float64 {
 func ResourceNames() []v1.ResourceName {
 	return []v1.ResourceName{v1.ResourceCPU, v1.ResourceMemory, GPUResourceName}
 }
-
-func Min(l, v *Resource) *Resource {
-	r := &Resource{}
-
-	r.MilliCPU = math.Min(l.MilliCPU, r.MilliCPU)
-	r.MilliGPU = math.Min(l.MilliGPU, r.MilliGPU)
-	r.Memory = math.Min(l.Memory, r.Memory)
-
-	return r
-}
