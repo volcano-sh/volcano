@@ -20,7 +20,9 @@ import (
 	"math"
 
 	"github.com/golang/glog"
+
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api/helpers"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 )
 
@@ -158,7 +160,7 @@ func (drf *drfPlugin) updateShare(attr *drfAttr) {
 func (drf *drfPlugin) calculateShare(allocated, totalResource *api.Resource) float64 {
 	res := float64(0)
 	for _, rn := range api.ResourceNames() {
-		share := allocated.Get(rn) / totalResource.Get(rn)
+		share := helpers.Share(allocated.Get(rn), totalResource.Get(rn))
 		if share > res {
 			res = share
 		}
