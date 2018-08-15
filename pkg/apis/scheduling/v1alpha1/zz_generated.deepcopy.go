@@ -173,7 +173,7 @@ func (in *QueueList) DeepCopyInto(out *QueueList) {
 	out.ListMeta = in.ListMeta
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
-		*out = make([]PodGroup, len(*in))
+		*out = make([]Queue, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
