@@ -142,5 +142,5 @@ type QueueList struct {
 	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
 	// items is the list of PodGroup
-	Items []PodGroup `json:"items" protobuf:"bytes,2,rep,name=items"`
+	Items []Queue `json:"items" protobuf:"bytes,2,rep,name=items"`
 }
