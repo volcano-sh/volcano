@@ -19,6 +19,7 @@ package test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/gomega"
@@ -62,11 +63,22 @@ type context struct {
 	karclient  *versioned.Clientset
 
 	namespace string
+	queues    []string
+}
+
+func splictJobName(cxt *context, jn string) (string, string) {
+	nss := strings.Split(jn, "/")
+	if len(nss) == 1 {
+		return cxt.namespace, nss[0]
+	}
+
+	return nss[0], nss[1]
 }
 
 func initTestContext() *context {
 	cxt := &context{
 		namespace: "test",
+		queues:    []string{"q1", "q2"},
 	}
 
 	home := homeDir()
@@ -85,6 +97,16 @@ func initTestContext() *context {
 		},
 	})
 	Expect(err).NotTo(HaveOccurred())
+
+	for _, q := range cxt.queues {
+		_, err = cxt.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      q,
+				Namespace: q,
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+	}
 
 	_, err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Create(&schedv1.PriorityClass{
 		ObjectMeta: metav1.ObjectMeta{
@@ -110,18 +132,36 @@ func initTestContext() *context {
 func namespaceNotExist(ctx *context) wait.ConditionFunc {
 	return func() (bool, error) {
 		_, err := ctx.kubeclient.CoreV1().Namespaces().Get(ctx.namespace, metav1.GetOptions{})
-		if err != nil && errors.IsNotFound(err) {
-			return true, nil
+		if !(err != nil && errors.IsNotFound(err)) {
+			return false, err
 		}
-		return false, err
+
+		for _, q := range ctx.queues {
+			_, err := ctx.kubeclient.CoreV1().Namespaces().Get(q, metav1.GetOptions{})
+			if !(err != nil && errors.IsNotFound(err)) {
+				return false, err
+			}
+		}
+
+		return true, nil
 	}
 }
 
 func cleanupTestContext(cxt *context) {
-	err := cxt.kubeclient.CoreV1().Namespaces().Delete(cxt.namespace, &metav1.DeleteOptions{})
+	foreground := metav1.DeletePropagationForeground
+
+	err := cxt.kubeclient.CoreV1().Namespaces().Delete(cxt.namespace, &metav1.DeleteOptions{
+		PropagationPolicy: &foreground,
+	})
 	Expect(err).NotTo(HaveOccurred())
 
-	foreground := metav1.DeletePropagationForeground
+	for _, q := range cxt.queues {
+		err := cxt.kubeclient.CoreV1().Namespaces().Delete(q, &metav1.DeleteOptions{
+			PropagationPolicy: &foreground,
+		})
+		Expect(err).NotTo(HaveOccurred())
+	}
+
 	err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(masterPriority, &metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
@@ -209,10 +249,12 @@ func createJob(
 ) *arbextv1.Job {
 	queueJobName := "queuejob.k8s.io"
 
+	jns, jn := splictJobName(context, name)
+
 	queueJob := &arbextv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: context.namespace,
+			Name:      jn,
+			Namespace: jns,
 		},
 		Spec: arbextv1.JobSpec{
 			MinAvailable: min,
@@ -220,13 +262,13 @@ func createJob(
 				{
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
-							queueJobName: name,
+							queueJobName: jn,
 						},
 					},
 					Replicas: rep,
 					Template: v1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
-							Labels: map[string]string{queueJobName: name},
+							Labels: map[string]string{queueJobName: jn},
 						},
 						Spec: v1.PodSpec{
 							SchedulerName: "kar-scheduler",
@@ -235,7 +277,7 @@ func createJob(
 							Containers: []v1.Container{
 								{
 									Image:           img,
-									Name:            name,
+									Name:            jn,
 									ImagePullPolicy: v1.PullIfNotPresent,
 									Resources: v1.ResourceRequirements{
 										Requests: req,
@@ -249,7 +291,7 @@ func createJob(
 		},
 	}
 
-	queueJob, err := context.karclient.Extensions().Jobs(context.namespace).Create(queueJob)
+	queueJob, err := context.karclient.Extensions().Jobs(jns).Create(queueJob)
 	Expect(err).NotTo(HaveOccurred())
 
 	return queueJob
@@ -353,11 +395,13 @@ func deleteReplicaSet(ctx *context, name string) error {
 }
 
 func taskReady(ctx *context, jobName string, taskNum int) wait.ConditionFunc {
+	jns, jn := splictJobName(ctx, jobName)
+
 	return func() (bool, error) {
-		queueJob, err := ctx.karclient.Extensions().Jobs(ctx.namespace).Get(jobName, metav1.GetOptions{})
+		queueJob, err := ctx.karclient.Extensions().Jobs(jns).Get(jn, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(metav1.ListOptions{})
+		pods, err := ctx.kubeclient.CoreV1().Pods(jns).List(metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		readyTaskNum := 0

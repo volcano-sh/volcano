@@ -17,6 +17,8 @@ limitations under the License.
 package test
 
 import (
+	"fmt"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
@@ -199,5 +201,36 @@ var _ = Describe("E2E Test", func() {
 		for _, pod := range pods {
 			Expect(pod.Spec.NodeName).To(Equal(nodeName))
 		}
+	})
+
+	It("Reclaim", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		jobName1 := "q1/qj"
+		jobName2 := "q2/qj"
+
+		slot := oneCPU
+		rep := clusterSize(context, slot)
+
+		createJob(context, jobName1, 1, rep, "nginx", slot, nil)
+		err := waitJobReady(context, jobName1)
+		Expect(err).NotTo(HaveOccurred())
+
+		expected := int(rep) / 2
+		// Reduce one pod to tolerate decimal fraction.
+		if expected > 1 {
+			expected--
+		} else {
+			err := fmt.Errorf("expected replica <%d> is too small", expected)
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		createJob(context, jobName2, 1, rep, "nginx", slot, nil)
+		err = waitTasksReady(context, jobName2, expected)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = waitTasksReady(context, jobName1, expected)
+		Expect(err).NotTo(HaveOccurred())
 	})
 })
