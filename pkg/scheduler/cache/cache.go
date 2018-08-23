@@ -416,20 +416,34 @@ func (sc *SchedulerCache) Snapshot() *arbapi.ClusterInfo {
 		Nodes:  make([]*arbapi.NodeInfo, 0, len(sc.Nodes)),
 		Jobs:   make([]*arbapi.JobInfo, 0, len(sc.Jobs)),
 		Queues: make([]*arbapi.QueueInfo, 0, len(sc.Queues)),
+		Others: make([]*arbapi.TaskInfo, 0, 10),
 	}
 
 	for _, value := range sc.Nodes {
 		snapshot.Nodes = append(snapshot.Nodes, value.Clone())
 	}
 
+	queues := map[arbapi.QueueID]struct{}{}
 	for _, value := range sc.Queues {
 		snapshot.Queues = append(snapshot.Queues, value.Clone())
+		queues[value.UID] = struct{}{}
 	}
 
 	for _, value := range sc.Jobs {
 		// If no scheduling spec, does not handle it.
 		if value.PodGroup == nil && value.PDB == nil {
 			glog.V(3).Infof("The scheduling spec of Job <%v> is nil, ignore it.", value.UID)
+
+			// Also tracing the running task assigned by other scheduler.
+			for _, task := range value.TaskStatusIndex[arbapi.Running] {
+				snapshot.Others = append(snapshot.Others, task.Clone())
+			}
+
+			continue
+		}
+
+		if _, found := queues[value.Queue]; !found {
+			glog.V(3).Infof("The Queue of Job <%v> does not exist, ignore it.", value.UID)
 			continue
 		}
 

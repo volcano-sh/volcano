@@ -31,9 +31,10 @@ type proportionPlugin struct {
 }
 
 type queueAttr struct {
-	name   string
-	weight int32
-	share  float64
+	queueID api.QueueID
+	name    string
+	weight  int32
+	share   float64
 
 	deserved  *api.Resource
 	allocated *api.Resource
@@ -54,21 +55,32 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		pp.totalResource.Add(n.Allocatable)
 	}
 
-	totalWeight := int32(0)
-	for _, queue := range ssn.Queues {
-		attr := &queueAttr{
-			name:   queue.Name,
-			weight: queue.Weight,
-
-			deserved:  api.EmptyResource(),
-			allocated: api.EmptyResource(),
-			request:   api.EmptyResource(),
-		}
-		totalWeight += queue.Weight
-		pp.queueOpts[queue.UID] = attr
+	// Also remove the resource used by other scheduler.
+	for _, task := range ssn.Others {
+		pp.totalResource.Sub(task.Resreq)
 	}
 
+	glog.V(3).Infof("The total resource is <%v>", pp.totalResource)
+
+	// Build attributes for Queues.
 	for _, job := range ssn.Jobs {
+		glog.V(3).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
+
+		if _, found := pp.queueOpts[job.Queue]; !found {
+			queue := ssn.QueueIndex[job.Queue]
+			attr := &queueAttr{
+				queueID: queue.UID,
+				name:    queue.Name,
+				weight:  queue.Weight,
+
+				deserved:  api.EmptyResource(),
+				allocated: api.EmptyResource(),
+				request:   api.EmptyResource(),
+			}
+			pp.queueOpts[job.Queue] = attr
+			glog.V(3).Infof("Added Queue <%s> attributes.", job.Queue)
+		}
+
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
 				for _, t := range tasks {
@@ -85,12 +97,48 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
-	for _, attr := range pp.queueOpts {
-		attr.deserved = pp.totalResource.Clone().Multi(float64(attr.weight) / float64(totalWeight))
-		pp.updateShare(attr)
+	remaining := pp.totalResource.Clone()
+	meet := map[api.QueueID]struct{}{}
+	for {
+		totalWeight := int32(0)
+		for _, attr := range pp.queueOpts {
+			if _, found := meet[attr.queueID]; found {
+				continue
+			}
+			totalWeight += attr.weight
+		}
 
-		glog.V(3).Infof("The proportion attributes of Queue <%s>: share: %0.2f, deserved: %v, allocated: %v, request: %v",
-			attr.name, attr.share, attr.deserved, attr.allocated, attr.request)
+		// If no queues, break
+		if totalWeight == 0 {
+			break
+		}
+
+		// Calculates the deserved of each Queue.
+		deserved := api.EmptyResource()
+		for _, attr := range pp.queueOpts {
+			glog.V(3).Infof("Considering Queue <%s>: weight <%d>, total weight <%d>.",
+				attr.name, attr.weight, totalWeight)
+			if _, found := meet[attr.queueID]; found {
+				continue
+			}
+
+			attr.deserved.Add(remaining.Clone().Multi(float64(attr.weight) / float64(totalWeight)))
+			if !attr.deserved.LessEqual(attr.request) {
+				attr.deserved = helpers.Min(attr.deserved, attr.request)
+				meet[attr.queueID] = struct{}{}
+			}
+			pp.updateShare(attr)
+
+			glog.V(3).Infof("The attributes of queue <%s> in proportion: deserved <%v>, allocate <%v>, request <%v>, share <%0.2f>",
+				attr.name, attr.deserved, attr.allocated, attr.request, attr.share)
+
+			deserved.Add(attr.deserved)
+		}
+
+		remaining.Sub(deserved)
+		if remaining.IsEmpty() {
+			break
+		}
 	}
 
 	ssn.AddQueueOrderFn(func(l, r interface{}) int {
@@ -106,6 +154,36 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		return 1
+	})
+
+	ssn.AddReclaimableFn(func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
+		var victims []*api.TaskInfo
+
+		for _, reclaimee := range reclaimees {
+			job := ssn.JobIndex[reclaimee.Job]
+			attr := pp.queueOpts[job.Queue]
+
+			allocated := attr.allocated.Clone()
+			if allocated.Less(reclaimee.Resreq) {
+				glog.Errorf("Failed to calculate the allocation of Task <%s/%s> in Queue <%s>.",
+					reclaimee.Namespace, reclaimee.Name, job.Queue)
+				continue
+			}
+
+			allocated.Sub(reclaimee.Resreq)
+			if attr.deserved.LessEqual(allocated) {
+				victims = append(victims, reclaimee)
+			}
+		}
+
+		return victims
+	})
+
+	ssn.AddOverusedFn(func(obj interface{}) bool {
+		queue := obj.(*api.QueueInfo)
+		attr := pp.queueOpts[queue.UID]
+
+		return attr.deserved.LessEqual(attr.allocated)
 	})
 
 	// Register event handlers.
@@ -141,11 +219,9 @@ func (pp *proportionPlugin) OnSessionClose(ssn *framework.Session) {
 func (pp *proportionPlugin) updateShare(attr *queueAttr) {
 	res := float64(0)
 
-	deserved := helpers.Min(attr.deserved, attr.request)
-
 	// TODO(k82cn): how to handle fragement issues?
 	for _, rn := range api.ResourceNames() {
-		share := helpers.Share(attr.allocated.Get(rn), deserved.Get(rn))
+		share := helpers.Share(attr.allocated.Get(rn), attr.deserved.Get(rn))
 		if share > res {
 			res = share
 		}

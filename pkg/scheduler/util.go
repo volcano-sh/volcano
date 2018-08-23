@@ -27,8 +27,8 @@ import (
 )
 
 var defaultSchedulerConf = map[string]string{
-	"actions":                   "allocate, preempt",
-	"plugins":                   "gang, priority, drf, nodeaffinity",
+	"actions":                   "reclaim, allocate, preempt",
+	"plugins":                   "gang, priority, drf, nodeaffinity, proportion",
 	"plugin.gang.jobready":      "true",
 	"plugin.gang.joborder":      "true",
 	"plugin.gang.preemptable":   "true",

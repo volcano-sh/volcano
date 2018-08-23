@@ -22,14 +22,14 @@ import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 )
 
-func Min(l, v *api.Resource) *api.Resource {
-	r := &api.Resource{}
+func Min(l, r *api.Resource) *api.Resource {
+	res := &api.Resource{}
 
-	r.MilliCPU = math.Min(l.MilliCPU, r.MilliCPU)
-	r.MilliGPU = math.Min(l.MilliGPU, r.MilliGPU)
-	r.Memory = math.Min(l.Memory, r.Memory)
+	res.MilliCPU = math.Min(l.MilliCPU, r.MilliCPU)
+	res.MilliGPU = math.Min(l.MilliGPU, r.MilliGPU)
+	res.Memory = math.Min(l.Memory, r.Memory)
 
-	return r
+	return res
 }
 
 func Share(l, r float64) float64 {
