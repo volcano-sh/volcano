@@ -57,7 +57,16 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 	preempteeTasks := map[api.JobID]*util.PriorityQueue{}
 
 	var underRequest []*api.JobInfo
+	var queues []*api.QueueInfo
 	for _, job := range ssn.Jobs {
+		if queue, found := ssn.QueueIndex[job.Queue]; !found {
+			continue
+		} else {
+			glog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
+				queue.Name, job.Namespace, job.Name)
+			queues = append(queues, queue)
+		}
+
 		if len(job.TaskStatusIndex[api.Pending]) != 0 {
 			if _, found := preemptorsMap[job.Queue]; !found {
 				preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
@@ -89,7 +98,7 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 	}
 
 	// Preemption between Jobs within Queue.
-	for _, queue := range ssn.Queues {
+	for _, queue := range queues {
 		for {
 			preemptors := preemptorsMap[queue.UID]
 			preemptees := preempteesMap[queue.UID]

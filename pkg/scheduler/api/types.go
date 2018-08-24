@@ -100,3 +100,9 @@ type Reason struct {
 	Event   arbcorev1.Event
 	Message string
 }
+
+// ReclaimableFn is the func declaration used to reclaim tasks.
+type ReclaimableFn func(*TaskInfo, []*TaskInfo) []*TaskInfo
+
+// PreemptableFn is the func declaration used to reclaim tasks.
+type PreemptableFn func(*TaskInfo, []*TaskInfo) []*TaskInfo

@@ -43,17 +43,17 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 	defer glog.V(3).Infof("Leaving Allocate ...")
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
-
-	for _, queue := range ssn.Queues {
-		queues.Push(queue)
-	}
-
 	jobsMap := map[api.QueueID]*util.PriorityQueue{}
 
 	for _, job := range ssn.Jobs {
 		if _, found := jobsMap[job.Queue]; !found {
 			jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 		}
+
+		if queue, found := ssn.QueueIndex[job.Queue]; found {
+			queues.Push(queue)
+		}
+
 		glog.V(3).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
 		jobsMap[job.Queue].Push(job)
 	}
@@ -68,6 +68,11 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 		}
 
 		queue := queues.Pop().(*api.QueueInfo)
+		if ssn.Overused(queue) {
+			glog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
+			continue
+		}
+
 		jobs, found := jobsMap[queue.UID]
 
 		glog.V(3).Infof("Try to allocate resource to Jobs in Queue <%v>", queue.Name)

@@ -19,6 +19,7 @@ package allocate
 import (
 	"fmt"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -101,13 +102,16 @@ func buildOwnerReference(owner string) metav1.OwnerReference {
 }
 
 type fakeBinder struct {
+	sync.Mutex
 	binds map[string]string
 	c     chan string
 }
 
 func (fb *fakeBinder) Bind(p *v1.Pod, hostname string) error {
-	key := fmt.Sprintf("%v/%v", p.Namespace, p.Name)
+	fb.Lock()
+	defer fb.Unlock()
 
+	key := fmt.Sprintf("%v/%v", p.Namespace, p.Name)
 	fb.binds[key] = hostname
 
 	fb.c <- key
@@ -149,6 +153,9 @@ func TestAllocate(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "c1",
+					},
+					Spec: arbcorev1.QueueSpec{
+						Weight: 1,
 					},
 				},
 			},
