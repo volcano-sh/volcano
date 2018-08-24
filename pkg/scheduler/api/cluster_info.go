@@ -24,6 +24,8 @@ type ClusterInfo struct {
 	Nodes []*NodeInfo
 
 	Queues []*QueueInfo
+
+	Others []*TaskInfo
 }
 
 func (ci ClusterInfo) String() string {

@@ -19,6 +19,7 @@ package scheduler
 import (
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/actions/allocate"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/actions/preempt"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/actions/reclaim"
 
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/drf"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/gang"
@@ -40,6 +41,7 @@ func init() {
 	framework.RegisterPluginBuilder("proportion", proportion.New)
 
 	// Actions
+	framework.RegisterAction(reclaim.New())
 	framework.RegisterAction(allocate.New())
 	framework.RegisterAction(preempt.New())
 }
