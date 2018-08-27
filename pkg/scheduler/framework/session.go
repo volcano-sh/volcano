@@ -131,7 +131,8 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	for _, eh := range ssn.eventHandlers {
 		if eh.AllocateFunc != nil {
 			eh.AllocateFunc(&Event{
-				Task: task,
+				Task:     task,
+				Resource: task.Resreq.Clone(),
 			})
 		}
 	}
@@ -170,7 +171,8 @@ func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
 	for _, eh := range ssn.eventHandlers {
 		if eh.AllocateFunc != nil {
 			eh.AllocateFunc(&Event{
-				Task: task,
+				Task:     task,
+				Resource: task.Resreq.Clone(),
 			})
 		}
 	}
@@ -254,13 +256,15 @@ func (ssn *Session) Reclaim(reclaimer, reclaimee *api.TaskInfo) error {
 	for _, eh := range ssn.eventHandlers {
 		if eh.AllocateFunc != nil {
 			eh.AllocateFunc(&Event{
-				Task: reclaimer,
+				Task:     reclaimer,
+				Resource: reclaimee.Resreq.Clone(),
 			})
 		}
 
 		if eh.EvictFunc != nil {
 			eh.EvictFunc(&Event{
-				Task: reclaimee,
+				Task:     reclaimee,
+				Resource: reclaimee.Resreq.Clone(),
 			})
 		}
 	}
@@ -307,13 +311,15 @@ func (ssn *Session) Preempt(preemptor, preemptee *api.TaskInfo) error {
 	for _, eh := range ssn.eventHandlers {
 		if eh.AllocateFunc != nil {
 			eh.AllocateFunc(&Event{
-				Task: preemptor,
+				Task:     preemptor,
+				Resource: preemptee.Resreq.Clone(),
 			})
 		}
 
 		if eh.EvictFunc != nil {
 			eh.EvictFunc(&Event{
-				Task: preemptee,
+				Task:     preemptee,
+				Resource: preemptee.Resreq.Clone(),
 			})
 		}
 	}
