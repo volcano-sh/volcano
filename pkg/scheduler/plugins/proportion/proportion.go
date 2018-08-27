@@ -158,12 +158,16 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddReclaimableFn(func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
 		var victims []*api.TaskInfo
+		allocations := map[api.QueueID]*api.Resource{}
 
 		for _, reclaimee := range reclaimees {
 			job := ssn.JobIndex[reclaimee.Job]
 			attr := pp.queueOpts[job.Queue]
 
-			allocated := attr.allocated.Clone()
+			if _, found := allocations[job.Queue]; !found {
+				allocations[job.Queue] = attr.allocated.Clone()
+			}
+			allocated := allocations[job.Queue]
 			if allocated.Less(reclaimee.Resreq) {
 				glog.Errorf("Failed to calculate the allocation of Task <%s/%s> in Queue <%s>.",
 					reclaimee.Namespace, reclaimee.Name, job.Queue)
@@ -191,7 +195,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		AllocateFunc: func(event *framework.Event) {
 			job := ssn.JobIndex[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
-			attr.allocated.Add(event.Task.Resreq)
+			attr.allocated.Add(event.Resource)
 
 			pp.updateShare(attr)
 
@@ -201,7 +205,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		EvictFunc: func(event *framework.Event) {
 			job := ssn.JobIndex[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
-			attr.allocated.Sub(event.Task.Resreq)
+			attr.allocated.Sub(event.Resource)
 
 			pp.updateShare(attr)
 
