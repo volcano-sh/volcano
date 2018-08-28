@@ -116,6 +116,11 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 
 			var reclaimees []*api.TaskInfo
 			for _, task := range n.Tasks {
+				// Ignore non running task.
+				if task.Status != api.Running {
+					continue
+				}
+
 				if j, found := ssn.JobIndex[task.Job]; !found {
 					continue
 				} else if j.Queue != job.Queue {
@@ -144,7 +149,7 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 			for _, reclaimee := range victims {
 				glog.Errorf("Try to reclaim Task <%s/%s> for Tasks <%s/%s>",
 					reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name)
-				if err := ssn.Reclaim(task, reclaimee); err != nil {
+				if err := ssn.Evict(reclaimee); err != nil {
 					glog.Errorf("Failed to reclaim Task <%s/%s> for Tasks <%s/%s>: %v",
 						reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name, err)
 					continue
@@ -160,6 +165,12 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 			glog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>.",
 				reclaimed, task.Namespace, task.Name, task.Resreq)
 
+			if err := ssn.Pipeline(task, n.Name); err != nil {
+				glog.Errorf("Failed to pipline Task <%s/%s> on Node <%s>",
+					task.Namespace, task.Name, n.Name)
+			}
+
+			// Ignore error of pipeline, will be corrected in next scheduling loop.
 			assigned = true
 
 			break
@@ -172,5 +183,5 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 
 }
 
-func (alloc *reclaimAction) UnInitialize() {
+func (ra *reclaimAction) UnInitialize() {
 }

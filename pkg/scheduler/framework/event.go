@@ -21,8 +21,7 @@ import (
 )
 
 type Event struct {
-	Task     *api.TaskInfo
-	Resource *api.Resource
+	Task *api.TaskInfo
 }
 
 type EventHandler struct {
