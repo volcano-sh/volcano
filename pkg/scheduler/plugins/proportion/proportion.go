@@ -195,7 +195,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		AllocateFunc: func(event *framework.Event) {
 			job := ssn.JobIndex[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
-			attr.allocated.Add(event.Resource)
+			attr.allocated.Add(event.Task.Resreq)
 
 			pp.updateShare(attr)
 
@@ -205,7 +205,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		EvictFunc: func(event *framework.Event) {
 			job := ssn.JobIndex[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
-			attr.allocated.Sub(event.Resource)
+			attr.allocated.Sub(event.Task.Resreq)
 
 			pp.updateShare(attr)
 

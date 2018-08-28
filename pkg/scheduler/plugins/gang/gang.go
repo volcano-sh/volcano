@@ -76,21 +76,22 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
-	preemptableFn := func(l, v interface{}) bool {
-		preemptee := v.(*api.TaskInfo)
+	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
+		var victims []*api.TaskInfo
 
-		job := ssn.JobIndex[preemptee.Job]
+		for _, preemptee := range preemptees {
+			job := ssn.JobIndex[preemptee.Job]
+			occupid := readyTaskNum(job)
+			preemptable := job.MinAvailable <= occupid-1
 
-		occupid := readyTaskNum(job)
-
-		preemptable := job.MinAvailable <= occupid-1
-
-		if !preemptable {
-			glog.V(3).Infof("Can not preempt task <%v/%v> because of gang-scheduling",
-				preemptee.Namespace, preemptee.Name)
+			if !preemptable {
+				glog.V(3).Infof("Can not preempt task <%v/%v> because of gang-scheduling",
+					preemptee.Namespace, preemptee.Name)
+				victims = append(victims, preemptee)
+			}
 		}
 
-		return preemptable
+		return victims
 	}
 	if gp.args.PreemptableFnEnabled {
 		ssn.AddPreemptableFn(preemptableFn)
