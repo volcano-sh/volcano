@@ -48,7 +48,7 @@ type Session struct {
 	queueOrderFns  []api.CompareFn
 	taskOrderFns   []api.CompareFn
 	predicateFns   []api.PredicateFn
-	preemptableFns []api.LessFn
+	preemptableFns []api.PreemptableFn
 	reclaimableFns []api.ReclaimableFn
 	overusedFns    []api.ValidateFn
 	jobReadyFns    []api.ValidateFn
@@ -131,8 +131,7 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	for _, eh := range ssn.eventHandlers {
 		if eh.AllocateFunc != nil {
 			eh.AllocateFunc(&Event{
-				Task:     task,
-				Resource: task.Resreq.Clone(),
+				Task: task,
 			})
 		}
 	}
@@ -171,8 +170,7 @@ func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
 	for _, eh := range ssn.eventHandlers {
 		if eh.AllocateFunc != nil {
 			eh.AllocateFunc(&Event{
-				Task:     task,
-				Resource: task.Resreq.Clone(),
+				Task: task,
 			})
 		}
 	}
@@ -231,7 +229,7 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 	return victims
 }
 
-func (ssn *Session) Reclaim(reclaimer, reclaimee *api.TaskInfo) error {
+func (ssn *Session) Evict(reclaimee *api.TaskInfo) error {
 	if err := ssn.cache.Evict(reclaimee); err != nil {
 		return err
 	}
@@ -254,17 +252,9 @@ func (ssn *Session) Reclaim(reclaimer, reclaimee *api.TaskInfo) error {
 	}
 
 	for _, eh := range ssn.eventHandlers {
-		if eh.AllocateFunc != nil {
-			eh.AllocateFunc(&Event{
-				Task:     reclaimer,
-				Resource: reclaimee.Resreq.Clone(),
-			})
-		}
-
 		if eh.EvictFunc != nil {
 			eh.EvictFunc(&Event{
-				Task:     reclaimee,
-				Resource: reclaimee.Resreq.Clone(),
+				Task: reclaimee,
 			})
 		}
 	}
@@ -272,59 +262,30 @@ func (ssn *Session) Reclaim(reclaimer, reclaimee *api.TaskInfo) error {
 	return nil
 }
 
-func (ssn *Session) Preemptable(preemptor, preemptee *api.TaskInfo) bool {
-	if len(ssn.preemptableFns) == 0 {
-		return false
-	}
+func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
+	var victims []*api.TaskInfo
 
-	for _, preemptable := range ssn.preemptableFns {
-		if !preemptable(preemptor, preemptee) {
-			return false
+	for _, pf := range ssn.preemptableFns {
+		candidates := pf(preemptor, preemptees)
+		if victims == nil {
+			victims = candidates
+		} else {
+			intersection := []*api.TaskInfo{}
+			// Get intersection of victims and candidates.
+			for _, v := range victims {
+				for _, c := range candidates {
+					if v.UID == c.UID {
+						intersection = append(intersection, v)
+					}
+				}
+			}
+
+			// Update victims to intersection
+			victims = intersection
 		}
 	}
 
-	return true
-}
-
-func (ssn *Session) Preempt(preemptor, preemptee *api.TaskInfo) error {
-	if err := ssn.cache.Evict(preemptee); err != nil {
-		return err
-	}
-
-	// Update status in session
-	job, found := ssn.JobIndex[preemptee.Job]
-	if found {
-		if err := job.UpdateTaskStatus(preemptee, api.Releasing); err != nil {
-			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
-				preemptee.Namespace, preemptee.Name, api.Releasing, ssn.UID, err)
-		}
-	} else {
-		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
-			preemptee.Job, ssn.UID)
-	}
-
-	// Update task in node.
-	if node, found := ssn.NodeIndex[preemptee.NodeName]; found {
-		node.UpdateTask(preemptee)
-	}
-
-	for _, eh := range ssn.eventHandlers {
-		if eh.AllocateFunc != nil {
-			eh.AllocateFunc(&Event{
-				Task:     preemptor,
-				Resource: preemptee.Resreq.Clone(),
-			})
-		}
-
-		if eh.EvictFunc != nil {
-			eh.EvictFunc(&Event{
-				Task:     preemptee,
-				Resource: preemptee.Resreq.Clone(),
-			})
-		}
-	}
-
-	return nil
+	return victims
 }
 
 // Discard discards a job from session, so no plugin/action handles it.
@@ -364,7 +325,7 @@ func (ssn *Session) AddTaskOrderFn(cf api.CompareFn) {
 	ssn.taskOrderFns = append(ssn.taskOrderFns, cf)
 }
 
-func (ssn *Session) AddPreemptableFn(cf api.LessFn) {
+func (ssn *Session) AddPreemptableFn(cf api.PreemptableFn) {
 	ssn.preemptableFns = append(ssn.preemptableFns, cf)
 }
 
