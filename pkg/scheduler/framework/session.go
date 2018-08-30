@@ -63,8 +63,6 @@ func openSession(cache cache.Cache) *Session {
 		QueueIndex: map[api.QueueID]*api.QueueInfo{},
 	}
 
-	glog.V(3).Infof("Open Session %v", ssn.UID)
-
 	snapshot := cache.Snapshot()
 
 	ssn.Jobs = snapshot.Jobs
@@ -83,6 +81,9 @@ func openSession(cache cache.Cache) *Session {
 	}
 
 	ssn.Others = snapshot.Others
+
+	glog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues",
+		ssn.UID, len(ssn.Jobs), len(ssn.Queues))
 
 	return ssn
 }
@@ -295,6 +296,9 @@ func (ssn *Session) Discard(job *api.JobInfo, reason api.Reason) error {
 			job.Namespace, job.Name, err)
 		return err
 	}
+
+	glog.V(3).Infof("Discard Job <%s/%s> because %s",
+		job.Namespace, job.Name, reason.Message)
 
 	// Delete Job from Session after recording event.
 	delete(ssn.JobIndex, job.UID)

@@ -432,7 +432,8 @@ func (sc *SchedulerCache) Snapshot() *arbapi.ClusterInfo {
 	for _, value := range sc.Jobs {
 		// If no scheduling spec, does not handle it.
 		if value.PodGroup == nil && value.PDB == nil {
-			glog.V(3).Infof("The scheduling spec of Job <%v> is nil, ignore it.", value.UID)
+			glog.V(3).Infof("The scheduling spec of Job <%v:%s/%s> is nil, ignore it.",
+				value.UID, value.Namespace, value.Name)
 
 			// Also tracing the running task assigned by other scheduler.
 			for _, task := range value.TaskStatusIndex[arbapi.Running] {
@@ -449,6 +450,9 @@ func (sc *SchedulerCache) Snapshot() *arbapi.ClusterInfo {
 
 		snapshot.Jobs = append(snapshot.Jobs, value.Clone())
 	}
+
+	glog.V(3).Infof("There are <%d> Jobs and <%d> Queues in total for scheduling.",
+		len(snapshot.Jobs), len(snapshot.Queues))
 
 	return snapshot
 }
