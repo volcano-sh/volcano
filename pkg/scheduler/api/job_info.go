@@ -153,15 +153,15 @@ func (ps *JobInfo) UnsetPodGroup() {
 	ps.PodGroup = nil
 }
 
-func (ps *JobInfo) SetPodGroup(spec *arbcorev1.PodGroup) {
-	ps.Name = spec.Name
-	ps.Namespace = spec.Namespace
-	ps.MinAvailable = spec.Spec.NumMember
+func (ps *JobInfo) SetPodGroup(pg *arbcorev1.PodGroup) {
+	ps.Name = pg.Name
+	ps.Namespace = pg.Namespace
+	ps.MinAvailable = pg.Spec.NumMember
 
 	// TODO(k82cn): replaced by PodGroup field.
-	ps.Queue = QueueID(spec.Namespace)
+	ps.Queue = QueueID(pg.Namespace)
 
-	ps.PodGroup = spec
+	ps.PodGroup = pg
 }
 
 func (ps *JobInfo) SetPDB(pbd *policyv1.PodDisruptionBudget) {
