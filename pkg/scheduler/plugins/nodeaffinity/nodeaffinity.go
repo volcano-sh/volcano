@@ -19,6 +19,8 @@ package nodeaffinity
 import (
 	"fmt"
 
+	"github.com/golang/glog"
+
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
 	"k8s.io/kubernetes/pkg/scheduler/cache"
 
@@ -44,6 +46,9 @@ func (pp *nodeAffinityPlugin) OnSessionOpen(ssn *framework.Session) {
 		if err != nil {
 			return err
 		}
+
+		glog.V(3).Infof("Predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+			task.Namespace, task.Name, node.Name, fit, err)
 
 		if !fit {
 			return fmt.Errorf("node <%s> didn't match task <%s/%s> node selector",
