@@ -26,8 +26,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/util/flag"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kar-controllers/app"
-	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kar-controllers/app/options"
+	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-batchd/app"
+	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-batchd/app/options"
 )
 
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
@@ -41,6 +41,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
+
 	// The default glog flush interval is 30 seconds, which is frighteningly long.
 	go wait.Until(glog.Flush, *logFlushFreq, wait.NeverStop)
 	defer glog.Flush()

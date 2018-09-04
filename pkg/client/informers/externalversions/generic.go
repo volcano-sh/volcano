@@ -21,8 +21,7 @@ package externalversions
 import (
 	"fmt"
 
-	v1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/extensions/v1alpha1"
-	scheduling_v1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
+	v1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
 )
@@ -53,14 +52,10 @@ func (f *genericInformer) Lister() cache.GenericLister {
 // TODO extend this to unknown resources with a client pool
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
-	// Group=extensions, Version=v1alpha1
-	case v1alpha1.SchemeGroupVersion.WithResource("jobs"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Extensions().V1alpha1().Jobs().Informer()}, nil
-
-		// Group=scheduling, Version=v1alpha1
-	case scheduling_v1alpha1.SchemeGroupVersion.WithResource("podgroups"):
+	// Group=scheduling, Version=v1alpha1
+	case v1alpha1.SchemeGroupVersion.WithResource("podgroups"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Scheduling().V1alpha1().PodGroups().Informer()}, nil
-	case scheduling_v1alpha1.SchemeGroupVersion.WithResource("queues"):
+	case v1alpha1.SchemeGroupVersion.WithResource("queues"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Scheduling().V1alpha1().Queues().Informer()}, nil
 
 	}

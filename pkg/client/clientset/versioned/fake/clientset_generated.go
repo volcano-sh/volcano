@@ -20,8 +20,6 @@ package fake
 
 import (
 	clientset "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned"
-	extensionsv1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/typed/extensions/v1alpha1"
-	fakeextensionsv1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/typed/extensions/v1alpha1/fake"
 	schedulingv1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/typed/scheduling/v1alpha1"
 	fakeschedulingv1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/typed/scheduling/v1alpha1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -72,16 +70,6 @@ func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 }
 
 var _ clientset.Interface = &Clientset{}
-
-// ExtensionsV1alpha1 retrieves the ExtensionsV1alpha1Client
-func (c *Clientset) ExtensionsV1alpha1() extensionsv1alpha1.ExtensionsV1alpha1Interface {
-	return &fakeextensionsv1alpha1.FakeExtensionsV1alpha1{Fake: &c.Fake}
-}
-
-// Extensions retrieves the ExtensionsV1alpha1Client
-func (c *Clientset) Extensions() extensionsv1alpha1.ExtensionsV1alpha1Interface {
-	return &fakeextensionsv1alpha1.FakeExtensionsV1alpha1{Fake: &c.Fake}
-}
 
 // SchedulingV1alpha1 retrieves the SchedulingV1alpha1Client
 func (c *Clientset) SchedulingV1alpha1() schedulingv1alpha1.SchedulingV1alpha1Interface {

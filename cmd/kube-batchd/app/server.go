@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kar-scheduler/app/options"
+	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-batchd/app/options"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"

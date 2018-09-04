@@ -47,9 +47,14 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 	preemptorsMap := map[api.QueueID]*util.PriorityQueue{}
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}
 
+	glog.V(3).Infof("There are <%d> Jobs and <%d> Queues in total for scheduling.",
+		len(ssn.Jobs), len(ssn.Queues))
+
 	var underRequest []*api.JobInfo
 	for _, job := range ssn.Jobs {
 		if queue, found := ssn.QueueIndex[job.Queue]; !found {
+			glog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
+				job.Queue, job.Namespace, job.Name)
 			continue
 		} else {
 			glog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",

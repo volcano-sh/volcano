@@ -24,7 +24,6 @@ import (
 	time "time"
 
 	versioned "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned"
-	extensions "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions/extensions"
 	internalinterfaces "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions/internalinterfaces"
 	scheduling "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions/scheduling"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -173,12 +172,7 @@ type SharedInformerFactory interface {
 	ForResource(resource schema.GroupVersionResource) (GenericInformer, error)
 	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
 
-	Extensions() extensions.Interface
 	Scheduling() scheduling.Interface
-}
-
-func (f *sharedInformerFactory) Extensions() extensions.Interface {
-	return extensions.New(f, f.namespace, f.tweakListOptions)
 }
 
 func (f *sharedInformerFactory) Scheduling() scheduling.Interface {

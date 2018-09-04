@@ -21,7 +21,6 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-
 	"k8s.io/api/core/v1"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 )
@@ -31,7 +30,7 @@ var _ = Describe("E2E Test", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
-		job := createQueueJobWithScheduler(context, "kar-scheduler", "qj-1", 2, rep, "busybox", oneCPU)
+		job := createQueueJobWithScheduler(context, "kube-batchd", "qj-1", 2, rep, "busybox", oneCPU, nil)
 		err := waitJobReady(context, job.Name)
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -131,42 +130,6 @@ var _ = Describe("E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("TaskPriority", func() {
-		Skip("Skip TaskPriority test because of dind setting.")
-		context := initTestContext()
-		defer cleanupTestContext(context)
-
-		slot := oneCPU
-		rep := clusterSize(context, slot)
-
-		replicaset := createReplicaSet(context, "rs-1", rep/2, "nginx", slot)
-		err := waitReplicaSetReady(context, replicaset.Name)
-		Expect(err).NotTo(HaveOccurred())
-
-		ts := []taskSpec{
-			{
-				name: "worker",
-				img:  "nginx",
-				pri:  workerPriority,
-				rep:  rep,
-				req:  slot,
-			},
-			{
-				name: "master",
-				img:  "nginx",
-				pri:  masterPriority,
-				rep:  1,
-				req:  slot,
-			},
-		}
-
-		job := createJobEx(context, "multi-pod-qj", rep/2, ts)
-
-		expectedTasks := map[string]int32{"master": 1, "worker": rep/2 - 1}
-		err = waitTasksReadyEx(context, job.Name, expectedTasks)
-		Expect(err).NotTo(HaveOccurred())
-	})
-
 	It("NodeAffinity", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
@@ -193,11 +156,11 @@ var _ = Describe("E2E Test", func() {
 			},
 		}
 
-		job := createJob(context, "queuejob", rep, rep, "nginx", slot, affinity)
+		job := createJob(context, "na-job", 1, 1, "nginx", slot, affinity)
 		err := waitJobReady(context, job.Name)
 		Expect(err).NotTo(HaveOccurred())
 
-		pods := getPodOfJob(context, "queuejob")
+		pods := getPodOfJob(context, "na-job")
 		for _, pod := range pods {
 			Expect(pod.Spec.NodeName).To(Equal(nodeName))
 		}
@@ -207,8 +170,8 @@ var _ = Describe("E2E Test", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
-		jobName1 := "q1/qj"
-		jobName2 := "q2/qj"
+		jobName1 := "q1/qj-1"
+		jobName2 := "q2/qj-2"
 
 		slot := oneCPU
 		rep := clusterSize(context, slot)

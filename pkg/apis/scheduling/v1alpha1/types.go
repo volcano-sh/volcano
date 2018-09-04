@@ -48,6 +48,10 @@ type PodGroupSpec struct {
 	// if there's not enough resources to start all tasks, the scheduler
 	// will not start anyone.
 	NumMember int32 `json:"numMember,omitempty" protobuf:"bytes,1,opt,name=numMember"`
+
+	// Queue defines the queue to allocate resource for PodGroup; if queue does not exist,
+	// the PodGroup will not be scheduled.
+	Queue string `json:"queue,omitempty" protobuf:"bytes,2,opt,name=queue"`
 }
 
 // PodGroupStatus represents the current state of a pod group.

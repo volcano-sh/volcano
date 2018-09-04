@@ -19,7 +19,6 @@ limitations under the License.
 package versioned
 
 import (
-	extensionsv1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/typed/extensions/v1alpha1"
 	schedulingv1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/typed/scheduling/v1alpha1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
@@ -28,9 +27,6 @@ import (
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
-	ExtensionsV1alpha1() extensionsv1alpha1.ExtensionsV1alpha1Interface
-	// Deprecated: please explicitly pick a version if possible.
-	Extensions() extensionsv1alpha1.ExtensionsV1alpha1Interface
 	SchedulingV1alpha1() schedulingv1alpha1.SchedulingV1alpha1Interface
 	// Deprecated: please explicitly pick a version if possible.
 	Scheduling() schedulingv1alpha1.SchedulingV1alpha1Interface
@@ -40,19 +36,7 @@ type Interface interface {
 // version included in a Clientset.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	extensionsV1alpha1 *extensionsv1alpha1.ExtensionsV1alpha1Client
 	schedulingV1alpha1 *schedulingv1alpha1.SchedulingV1alpha1Client
-}
-
-// ExtensionsV1alpha1 retrieves the ExtensionsV1alpha1Client
-func (c *Clientset) ExtensionsV1alpha1() extensionsv1alpha1.ExtensionsV1alpha1Interface {
-	return c.extensionsV1alpha1
-}
-
-// Deprecated: Extensions retrieves the default version of ExtensionsClient.
-// Please explicitly pick a version.
-func (c *Clientset) Extensions() extensionsv1alpha1.ExtensionsV1alpha1Interface {
-	return c.extensionsV1alpha1
 }
 
 // SchedulingV1alpha1 retrieves the SchedulingV1alpha1Client
@@ -82,10 +66,6 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 	}
 	var cs Clientset
 	var err error
-	cs.extensionsV1alpha1, err = extensionsv1alpha1.NewForConfig(&configShallowCopy)
-	if err != nil {
-		return nil, err
-	}
 	cs.schedulingV1alpha1, err = schedulingv1alpha1.NewForConfig(&configShallowCopy)
 	if err != nil {
 		return nil, err
@@ -102,7 +82,6 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 // panics if there is an error in the config.
 func NewForConfigOrDie(c *rest.Config) *Clientset {
 	var cs Clientset
-	cs.extensionsV1alpha1 = extensionsv1alpha1.NewForConfigOrDie(c)
 	cs.schedulingV1alpha1 = schedulingv1alpha1.NewForConfigOrDie(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClientForConfigOrDie(c)
@@ -112,7 +91,6 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
-	cs.extensionsV1alpha1 = extensionsv1alpha1.New(c)
 	cs.schedulingV1alpha1 = schedulingv1alpha1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
