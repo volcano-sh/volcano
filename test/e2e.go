@@ -21,20 +21,12 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
 	"k8s.io/api/core/v1"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 )
 
 var _ = Describe("E2E Test", func() {
-	It("Schedule Job with SchedulerName", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
-		rep := clusterSize(context, oneCPU)
-		job := createQueueJobWithScheduler(context, "kube-batchd", "qj-1", 2, rep, "busybox", oneCPU, nil)
-		err := waitJobReady(context, job.Name)
-		Expect(err).NotTo(HaveOccurred())
-	})
-
 	It("Schedule Job", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
@@ -196,4 +188,21 @@ var _ = Describe("E2E Test", func() {
 		err = waitTasksReady(context, jobName1, expected)
 		Expect(err).NotTo(HaveOccurred())
 	})
+
+	It("Hostport", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		nn := clusterNodeNumber(context)
+
+		containers := createContainers("nginx", oneCPU, 28080)
+		job := createJobWithOptions(context, "kube-batchd", "qj-1", int32(nn), int32(nn*2), nil, containers)
+
+		err := waitTasksReady(context, job.Name, nn)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = waitTasksNotReady(context, job.Name, nn)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 })
