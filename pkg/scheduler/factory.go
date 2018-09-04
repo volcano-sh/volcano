@@ -23,6 +23,7 @@ import (
 
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/drf"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/gang"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/hostport"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/nodeaffinity"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/priority"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/proportion"
@@ -32,10 +33,11 @@ import (
 
 func init() {
 	// Plugins for Jobs
-	framework.RegisterPluginBuilder("priority", priority.New)
-	framework.RegisterPluginBuilder("gang", gang.New)
 	framework.RegisterPluginBuilder("drf", drf.New)
+	framework.RegisterPluginBuilder("gang", gang.New)
+	framework.RegisterPluginBuilder("hostport", hostport.New)
 	framework.RegisterPluginBuilder("nodeaffinity", nodeaffinity.New)
+	framework.RegisterPluginBuilder("priority", priority.New)
 
 	// Plugins for Queues
 	framework.RegisterPluginBuilder("proportion", proportion.New)
