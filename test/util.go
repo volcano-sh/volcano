@@ -207,16 +207,38 @@ func createJob(
 	req v1.ResourceList,
 	affinity *v1.Affinity,
 ) *batchv1.Job {
-	return createQueueJobWithScheduler(context, "kube-batchd", name, min, rep, img, req, affinity)
+	containers := createContainers(img, req, 0)
+	return createJobWithOptions(context, "kube-batchd", name, min, rep, affinity, containers)
 }
 
-func createQueueJobWithScheduler(context *context,
+func createContainers(img string, req v1.ResourceList, hostport int32) []v1.Container {
+	container := v1.Container{
+		Image:           img,
+		Name:            img,
+		ImagePullPolicy: v1.PullIfNotPresent,
+		Resources: v1.ResourceRequirements{
+			Requests: req,
+		},
+	}
+
+	if hostport > 0 {
+		container.Ports = []v1.ContainerPort{
+			{
+				ContainerPort: hostport,
+				HostPort:      hostport,
+			},
+		}
+	}
+
+	return []v1.Container{container}
+}
+
+func createJobWithOptions(context *context,
 	scheduler string,
 	name string,
 	min, rep int32,
-	img string,
-	req v1.ResourceList,
 	affinity *v1.Affinity,
+	containers []v1.Container,
 ) *batchv1.Job {
 	queueJobName := "queuejob.k8s.io"
 	jns, jn := splictJobName(context, name)
@@ -237,17 +259,8 @@ func createQueueJobWithScheduler(context *context,
 				Spec: v1.PodSpec{
 					SchedulerName: scheduler,
 					RestartPolicy: v1.RestartPolicyNever,
-					Containers: []v1.Container{
-						{
-							Image:           img,
-							Name:            jn,
-							ImagePullPolicy: v1.PullIfNotPresent,
-							Resources: v1.ResourceRequirements{
-								Requests: req,
-							},
-						},
-					},
-					Affinity: affinity,
+					Containers:    containers,
+					Affinity:      affinity,
 				},
 			},
 		},
@@ -355,12 +368,42 @@ func taskReady(ctx *context, jobName string, taskNum int) wait.ConditionFunc {
 	}
 }
 
+func taskNotReady(ctx *context, jobName string, taskNum int) wait.ConditionFunc {
+	_, jn := splictJobName(ctx, jobName)
+
+	return func() (bool, error) {
+		queueJob, err := ctx.kubeclient.BatchV1().Jobs(ctx.namespace).Get(jn, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		notReadyTaskNum := 0
+		for _, pod := range pods.Items {
+			labelSelector := labels.SelectorFromSet(queueJob.Spec.Selector.MatchLabels)
+			if !labelSelector.Matches(labels.Set(pod.Labels)) ||
+				!metav1.IsControlledBy(&pod, queueJob) {
+				continue
+			}
+			if pod.Status.Phase == v1.PodPending {
+				notReadyTaskNum++
+			}
+		}
+
+		return taskNum <= notReadyTaskNum, nil
+	}
+}
+
 func waitJobReady(ctx *context, name string) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, taskReady(ctx, name, -1))
 }
 
 func waitTasksReady(ctx *context, name string, taskNum int) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, taskReady(ctx, name, taskNum))
+}
+
+func waitTasksNotReady(ctx *context, name string, taskNum int) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, taskNotReady(ctx, name, taskNum))
 }
 
 func jobNotReady(ctx *context, jobName string) wait.ConditionFunc {
@@ -466,6 +509,13 @@ func clusterSize(ctx *context, req v1.ResourceList) int32 {
 	}
 
 	return res
+}
+
+func clusterNodeNumber(ctx *context) int {
+	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	return len(nodes.Items)
 }
 
 func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
