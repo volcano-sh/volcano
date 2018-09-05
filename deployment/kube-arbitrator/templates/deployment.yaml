@@ -14,7 +14,7 @@ spec:
       containers:
       - name: {{ .Chart.Name }}
         image: "{{ .Values.image.repository }}/kar-scheduler:{{ .Values.image.tag }}"
-        args: ["--logtostderr", "--v", "3"]
+        args: ["--logtostderr", "--v", "3", "--enable-namespace-as-queue"]
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         resources:
 {{ toYaml .Values.resources | indent 10 }}
