@@ -28,6 +28,7 @@ type ServerOption struct {
 	Kubeconfig           string
 	SchedulerName        string
 	SchedulerConf        string
+	NamespaceAsQueue     bool
 	EnableLeaderElection bool
 	LockObjectNamespace  string
 }
@@ -46,8 +47,10 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.SchedulerName, "scheduler-name", "kube-batchd", "kube-batchd will handle pods with the scheduler-name")
 	fs.StringVar(&s.SchedulerConf, "scheduler-conf", "", "The namespace and name of ConfigMap for scheduler configuration")
 	fs.BoolVar(&s.EnableLeaderElection, "leader-elect", s.EnableLeaderElection, "Start a leader election client and gain leadership before "+
-		"executing the main loop. Enable this when running replicated kar-scheduler for high availability.")
-	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", s.LockObjectNamespace, "Define the namespace of the lock object.")
+		"executing the main loop. Enable this when running replicated kar-scheduler for high availability")
+	fs.BoolVar(&s.NamespaceAsQueue, "enable-namespace-as-queue", s.NamespaceAsQueue, "Make Namespace as Queue with weight one, "+
+		"but kube-batchd will not handle Queue CRD anymore")
+	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", s.LockObjectNamespace, "Define the namespace of the lock object")
 }
 
 func (s *ServerOption) CheckOptionOrDie() error {

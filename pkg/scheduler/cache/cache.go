@@ -43,8 +43,8 @@ import (
 )
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerName string) Cache {
-	return newSchedulerCache(config, schedulerName)
+func New(config *rest.Config, schedulerName string, nsAsQueue bool) Cache {
+	return newSchedulerCache(config, schedulerName, nsAsQueue)
 }
 
 type SchedulerCache struct {
@@ -56,6 +56,7 @@ type SchedulerCache struct {
 	podInformer      infov1.PodInformer
 	nodeInformer     infov1.NodeInformer
 	pdbInformer      policyv1.PodDisruptionBudgetInformer
+	nsInformer       infov1.NamespaceInformer
 	podGroupInformer arbcoreinfo.PodGroupInformer
 	queueInformer    arbcoreinfo.QueueInformer
 
@@ -70,6 +71,8 @@ type SchedulerCache struct {
 
 	errTasks    *cache.FIFO
 	deletedJobs *cache.FIFO
+
+	namespaceAsQueue bool
 }
 
 type defaultBinder struct {
@@ -135,15 +138,16 @@ func jobKey(obj interface{}) (string, error) {
 	return string(job.UID), nil
 }
 
-func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerName string, nsAsQueue bool) *SchedulerCache {
 	sc := &SchedulerCache{
-		Jobs:        make(map[arbapi.JobID]*arbapi.JobInfo),
-		Nodes:       make(map[string]*arbapi.NodeInfo),
-		Queues:      make(map[arbapi.QueueID]*arbapi.QueueInfo),
-		errTasks:    cache.NewFIFO(taskKey),
-		deletedJobs: cache.NewFIFO(jobKey),
-		kubeclient:  kubernetes.NewForConfigOrDie(config),
-		arbclient:   versioned.NewForConfigOrDie(config),
+		Jobs:             make(map[arbapi.JobID]*arbapi.JobInfo),
+		Nodes:            make(map[string]*arbapi.NodeInfo),
+		Queues:           make(map[arbapi.QueueID]*arbapi.QueueInfo),
+		errTasks:         cache.NewFIFO(taskKey),
+		deletedJobs:      cache.NewFIFO(jobKey),
+		kubeclient:       kubernetes.NewForConfigOrDie(config),
+		arbclient:        versioned.NewForConfigOrDie(config),
+		namespaceAsQueue: nsAsQueue,
 	}
 
 	// Prepare event clients.
@@ -211,13 +215,23 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 		DeleteFunc: sc.DeletePodGroup,
 	})
 
-	// create informer for Queue information
-	sc.queueInformer = arbinformer.Scheduling().V1alpha1().Queues()
-	sc.queueInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddQueue,
-		UpdateFunc: sc.UpdateQueue,
-		DeleteFunc: sc.DeleteQueue,
-	})
+	if sc.namespaceAsQueue {
+		// create informer for Namespace information
+		sc.nsInformer = informerFactory.Core().V1().Namespaces()
+		sc.nsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.AddNamespace,
+			UpdateFunc: sc.UpdateNamespace,
+			DeleteFunc: sc.DeleteNamespace,
+		})
+	} else {
+		// create informer for Queue information
+		sc.queueInformer = arbinformer.Scheduling().V1alpha1().Queues()
+		sc.queueInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.AddQueue,
+			UpdateFunc: sc.UpdateQueue,
+			DeleteFunc: sc.DeleteQueue,
+		})
+	}
 
 	return sc
 }
@@ -227,7 +241,12 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.podInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
 	go sc.podGroupInformer.Informer().Run(stopCh)
-	go sc.queueInformer.Informer().Run(stopCh)
+
+	if sc.namespaceAsQueue {
+		go sc.nsInformer.Informer().Run(stopCh)
+	} else {
+		go sc.queueInformer.Informer().Run(stopCh)
+	}
 
 	// Re-sync error tasks.
 	go sc.resync()
@@ -237,11 +256,20 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 }
 
 func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
+	var queueSync func() bool
+	if sc.namespaceAsQueue {
+		queueSync = sc.nsInformer.Informer().HasSynced
+	} else {
+		queueSync = sc.queueInformer.Informer().HasSynced
+	}
+
 	return cache.WaitForCacheSync(stopCh,
 		sc.pdbInformer.Informer().HasSynced,
 		sc.podInformer.Informer().HasSynced,
 		sc.podGroupInformer.Informer().HasSynced,
-		sc.nodeInformer.Informer().HasSynced)
+		sc.nodeInformer.Informer().HasSynced,
+		queueSync,
+	)
 }
 
 func (sc *SchedulerCache) findJobAndTask(taskInfo *arbapi.TaskInfo) (*arbapi.JobInfo, *arbapi.TaskInfo, error) {

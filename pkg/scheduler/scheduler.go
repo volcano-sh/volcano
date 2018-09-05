@@ -40,11 +40,12 @@ func NewScheduler(
 	config *rest.Config,
 	schedulerName string,
 	conf string,
+	nsAsQueue bool,
 ) (*Scheduler, error) {
 	scheduler := &Scheduler{
 		config:        config,
 		schedulerConf: conf,
-		cache:         schedcache.New(config, schedulerName),
+		cache:         schedcache.New(config, schedulerName, nsAsQueue),
 	}
 
 	return scheduler, nil
