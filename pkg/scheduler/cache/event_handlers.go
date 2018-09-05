@@ -645,3 +645,104 @@ func (sc *SchedulerCache) deleteQueue(queue *arbv1.Queue) error {
 
 	return nil
 }
+
+func (sc *SchedulerCache) AddNamespace(obj interface{}) {
+	ss, ok := obj.(*v1.Namespace)
+	if !ok {
+		glog.Errorf("Cannot convert to *v1.Namespace: %v", obj)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	glog.V(4).Infof("Add Queue(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
+	err := sc.addNamespace(ss)
+	if err != nil {
+		glog.Errorf("Failed to add Queue %s into cache: %v", ss.Name, err)
+		return
+	}
+	return
+}
+
+func (sc *SchedulerCache) UpdateNamespace(oldObj, newObj interface{}) {
+	oldSS, ok := oldObj.(*v1.Namespace)
+	if !ok {
+		glog.Errorf("Cannot convert oldObj to *v1.Namespace: %v", oldObj)
+		return
+	}
+	newSS, ok := newObj.(*v1.Namespace)
+	if !ok {
+		glog.Errorf("Cannot convert newObj to *v1.Namespace: %v", newObj)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	err := sc.updateNamespace(oldSS, newSS)
+	if err != nil {
+		glog.Errorf("Failed to update Queue (NS) %s into cache: %v", oldSS.Name, err)
+		return
+	}
+	return
+}
+
+func (sc *SchedulerCache) DeleteNamespace(obj interface{}) {
+	var ss *v1.Namespace
+	switch t := obj.(type) {
+	case *v1.Namespace:
+		ss = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		ss, ok = t.Obj.(*v1.Namespace)
+		if !ok {
+			glog.Errorf("Cannot convert to *v1.Namespace: %v", t.Obj)
+			return
+		}
+	default:
+		glog.Errorf("Cannot convert to *v1.Namespace: %v", t)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	err := sc.deleteNamespace(ss)
+	if err != nil {
+		glog.Errorf("Failed to delete Queue (NS) %s from cache: %v", ss.Name, err)
+		return
+	}
+	return
+}
+
+func (sc *SchedulerCache) addNamespace(ns *v1.Namespace) error {
+	qi := &arbapi.QueueInfo{
+		UID:  arbapi.QueueID(ns.Name),
+		Name: ns.Name,
+
+		Weight: 1,
+	}
+	sc.Queues[qi.UID] = qi
+
+	return nil
+}
+
+func (sc *SchedulerCache) updateNamespace(oldObj, newObj *v1.Namespace) error {
+	sc.deleteNamespace(oldObj)
+	sc.addNamespace(newObj)
+
+	return nil
+}
+
+func (sc *SchedulerCache) deleteNamespace(ns *v1.Namespace) error {
+	qi := &arbapi.QueueInfo{
+		UID:  arbapi.QueueID(ns.Name),
+		Name: ns.Name,
+
+		Weight: 1,
+	}
+	delete(sc.Queues, qi.UID)
+
+	return nil
+}

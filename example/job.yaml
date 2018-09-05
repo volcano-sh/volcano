@@ -1,0 +1,29 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: qj-1
+spec:
+  backoffLimit: 6
+  completions: 6
+  parallelism: 6
+  template:
+    metadata:
+      annotations:
+        scheduling.k8s.io/group-name: qj-1
+    spec:
+      containers:
+      - image: busybox
+        imagePullPolicy: IfNotPresent
+        name: busybox
+        resources:
+          requests:
+            cpu: "1"
+      restartPolicy: Never
+      schedulerName: kube-batchd
+---
+apiVersion: scheduling.incubator.k8s.io/v1alpha1
+kind: PodGroup
+metadata:
+  name: qj-1
+spec:
+  numMember: 6
