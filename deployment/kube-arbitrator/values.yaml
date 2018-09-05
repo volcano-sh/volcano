@@ -4,7 +4,7 @@
 replicaCount: 1
 image:
   repository: kubearbitrator
-  tag: 0.1
+  tag: 0.2
   pullPolicy: IfNotPresent
 resources:
   limits:

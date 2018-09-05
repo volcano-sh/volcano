@@ -18,7 +18,7 @@ generate-code:
 
 images: kube-arbitrator
 	cp ./_output/bin/kube-batchd ./deployment/
-	docker build ./deployment/ -f ./deployment/Dockerfile.sched -t kubearbitrator/kube-batchd:${RELEASE_VER}
+	docker build ./deployment/ -f ./deployment/Dockerfile -t kubearbitrator/kube-batchd:${RELEASE_VER}
 	rm -f ./deployment/kube-batchd
 
 run-test:
