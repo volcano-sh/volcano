@@ -1,4 +1,4 @@
 apiVersion: v1
 description: The batch scheduler of Kubernetes
-name: kube-arbitrator
+name: kube-batchd
 version: 0.2.0

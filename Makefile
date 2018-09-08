@@ -1,5 +1,5 @@
 BIN_DIR=_output/bin
-RELEASE_VER=0.2
+RELEASE_VER=v0.2
 
 kube-arbitrator: init
 	go build -o ${BIN_DIR}/kube-batchd ./cmd/kube-batchd/
@@ -18,7 +18,7 @@ generate-code:
 
 images: kube-arbitrator
 	cp ./_output/bin/kube-batchd ./deployment/
-	docker build ./deployment/ -f ./deployment/Dockerfile -t kubearbitrator/kube-batchd:${RELEASE_VER}
+	docker build ./deployment/ -f ./deployment/Dockerfile -t kubesigs/kube-batchd:${RELEASE_VER}
 	rm -f ./deployment/kube-batchd
 
 run-test:
