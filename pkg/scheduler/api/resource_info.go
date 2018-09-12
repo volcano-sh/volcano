@@ -121,7 +121,7 @@ func (r *Resource) Less(rr *Resource) bool {
 func (r *Resource) LessEqual(rr *Resource) bool {
 	return (r.MilliCPU < rr.MilliCPU || math.Abs(rr.MilliCPU-r.MilliCPU) < minMilliCPU) &&
 		(r.Memory < rr.Memory || math.Abs(rr.Memory-r.Memory) < minMemory) &&
-		(r.MilliGPU < rr.MilliGPU || math.Abs(rr.MilliGPU-rr.MilliGPU) < minMilliGPU)
+		(r.MilliGPU < rr.MilliGPU || math.Abs(rr.MilliGPU-r.MilliGPU) < minMilliGPU)
 }
 
 func (r *Resource) String() string {
