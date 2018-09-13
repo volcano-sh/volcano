@@ -39,7 +39,7 @@ NAME        	REVISION	UPDATED                 	STATUS  	CHART                	NA
 dozing-otter	1       	Thu Jun 14 18:52:15 2018	DEPLOYED	kube-arbitrator-0.2.0	kube-system
 ```
 
-NOTE: `kube-arbitrator` need to collect cluster information(such as Pod, Node, CRD, etc) for scheduing, so the service account used by the deployment must have permission to access those cluster resources, otherwise, `kube-arbitrator` will fail to startup.
+NOTE: `kube-arbitrator` need to collect cluster information(such as Pod, Node, CRD, etc) for scheduing, so the service account used by the deployment must have permission to access those cluster resources, otherwise, `kube-arbitrator` will fail to startup. For users who are not familiar with Kubernetes RBAC, please copy the example/role.yaml into `$GOPATH/src/github.com/kubernetes-incubator/kube-arbitrator/deployment/kube-arbitrator/templates/` and reinstall arbitrator.
 
 ### (3) Create a Job
 
