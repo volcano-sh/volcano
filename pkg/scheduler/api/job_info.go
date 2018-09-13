@@ -173,7 +173,7 @@ func (ji *JobInfo) SetPDB(pdb *policyv1.PodDisruptionBudget) {
 	ji.Namespace = pdb.Namespace
 	ji.Queue = QueueID(pdb.Namespace)
 
-	ji.PDB = pbd
+	ji.PDB = pdb
 }
 
 func (ji *JobInfo) UnsetPDB() {
