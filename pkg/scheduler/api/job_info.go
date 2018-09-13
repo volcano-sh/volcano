@@ -167,9 +167,11 @@ func (ji *JobInfo) SetPodGroup(pg *arbcorev1.PodGroup) {
 	ji.PodGroup = pg
 }
 
-func (ji *JobInfo) SetPDB(pbd *policyv1.PodDisruptionBudget) {
-	ji.Name = pbd.Name
-	ji.MinAvailable = pbd.Spec.MinAvailable.IntVal
+func (ji *JobInfo) SetPDB(pdb *policyv1.PodDisruptionBudget) {
+	ji.Name = pdb.Name
+	ji.MinAvailable = pdb.Spec.MinAvailable.IntVal
+	ji.Namespace = pdb.Namespace
+	ji.Queue = QueueID(pdb.Namespace)
 
 	ji.PDB = pbd
 }
