@@ -77,7 +77,7 @@ spec:
   numMember: 6
 ```
 
-The yaml file means a Job named `qj-01` to create 6 pods(it is specified by `parallelism`), these pods will be scheduled by scheudler `kube-batchd` (it is specified by `schedulerName`). `kube-batchd` will watch `PodGroup`, and the annotation `scheduling.k8s.io/group-name` identify which group the pod belongs to. `kube-batchd` will start `.spec.numMember` pods for a Job at the same time; otherwise, such as resources are not sufficient, `kube-batchd` will not start any pods for the Job.
+The yaml file means a Job named `qj-01` to create 6 pods(it is specified by `parallelism`), these pods will be scheduled by scheduler `kube-batchd` (it is specified by `schedulerName`). `kube-batchd` will watch `PodGroup`, and the annotation `scheduling.k8s.io/group-name` identify which group the pod belongs to. `kube-batchd` will start `.spec.numMember` pods for a Job at the same time; otherwise, such as resources are not sufficient, `kube-batchd` will not start any pods for the Job.
 
 Create the Job
 
@@ -107,7 +107,7 @@ Check the pods status
 Create a `priority_1000.yaml` with the following contents:
 
 ```yaml
-apiVersion: scheduling.k8s.io/v1alpha1
+apiVersion: scheduling.k8s.io/v1beta1
 kind: PriorityClass
 metadata:
   name: high-priority
