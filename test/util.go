@@ -39,6 +39,7 @@ import (
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned"
 	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
+	"strconv"
 )
 
 var oneMinute = 1 * time.Minute
@@ -63,24 +64,25 @@ type context struct {
 	kubeclient *kubernetes.Clientset
 	karclient  *versioned.Clientset
 
-	namespace string
-	queues    []string
+	namespaces             []string
+	queues                 []string
+	enableNamespaceAsQueue bool
 }
 
-func splictJobName(cxt *context, jn string) (string, string) {
+func splictJobName(cxt *context, jn string) (string, string, string) {
 	nss := strings.Split(jn, "/")
 	if len(nss) == 1 {
-		return cxt.namespace, nss[0]
+		return cxt.namespaces[0], nss[0], cxt.namespaces[0]
 	}
-
-	return nss[0], nss[1]
+	if !cxt.enableNamespaceAsQueue {
+		return cxt.namespaces[0], nss[1], nss[0]
+	}
+	return nss[0], nss[1], nss[0]
 }
 
 func initTestContext() *context {
-	cxt := &context{
-		namespace: "test",
-		queues:    []string{"q1", "q2", "test"},
-	}
+	enableNamespaceAsQueue, _ := strconv.ParseBool(os.Getenv("ENABLE_NAMESPACES_AS_QUEUE"))
+	cxt := &context{}
 
 	home := homeDir()
 	Expect(home).NotTo(Equal(""))
@@ -91,13 +93,23 @@ func initTestContext() *context {
 	cxt.karclient = versioned.NewForConfigOrDie(config)
 	cxt.kubeclient = kubernetes.NewForConfigOrDie(config)
 
-	_, err = cxt.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cxt.namespace,
-			Namespace: cxt.namespace,
-		},
-	})
-	Expect(err).NotTo(HaveOccurred())
+	if enableNamespaceAsQueue {
+		cxt.namespaces = []string{"test", "n1", "n2"}
+	} else {
+		cxt.namespaces = []string{"test"}
+		cxt.queues = []string{"test", "n1", "n2"}
+	}
+	cxt.enableNamespaceAsQueue = enableNamespaceAsQueue
+
+	for _, ns := range cxt.namespaces {
+		_, err = cxt.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      ns,
+				Namespace: ns,
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+	}
 
 	for _, q := range cxt.queues {
 		_, err = cxt.karclient.Scheduling().Queues().Create(&arbv1.Queue{
@@ -135,11 +147,12 @@ func initTestContext() *context {
 
 func namespaceNotExist(ctx *context) wait.ConditionFunc {
 	return func() (bool, error) {
-		_, err := ctx.kubeclient.CoreV1().Namespaces().Get(ctx.namespace, metav1.GetOptions{})
-		if !(err != nil && errors.IsNotFound(err)) {
-			return false, err
+		for _, ns := range ctx.namespaces {
+			_, err := ctx.kubeclient.CoreV1().Namespaces().Get(ns, metav1.GetOptions{})
+			if !(err != nil && errors.IsNotFound(err)) {
+				return false, err
+			}
 		}
-
 		return true, nil
 	}
 }
@@ -160,10 +173,12 @@ func queueNotExist(ctx *context) wait.ConditionFunc {
 func cleanupTestContext(cxt *context) {
 	foreground := metav1.DeletePropagationForeground
 
-	err := cxt.kubeclient.CoreV1().Namespaces().Delete(cxt.namespace, &metav1.DeleteOptions{
-		PropagationPolicy: &foreground,
-	})
-	Expect(err).NotTo(HaveOccurred())
+	for _, ns := range cxt.namespaces {
+		err := cxt.kubeclient.CoreV1().Namespaces().Delete(ns, &metav1.DeleteOptions{
+			PropagationPolicy: &foreground,
+		})
+		Expect(err).NotTo(HaveOccurred())
+	}
 
 	for _, q := range cxt.queues {
 		err := cxt.karclient.Scheduling().Queues().Delete(q, &metav1.DeleteOptions{
@@ -172,7 +187,7 @@ func cleanupTestContext(cxt *context) {
 		Expect(err).NotTo(HaveOccurred())
 	}
 
-	err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(masterPriority, &metav1.DeleteOptions{
+	err := cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(masterPriority, &metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
 	Expect(err).NotTo(HaveOccurred())
@@ -241,12 +256,12 @@ func createJobWithOptions(context *context,
 	containers []v1.Container,
 ) *batchv1.Job {
 	queueJobName := "queuejob.k8s.io"
-	jns, jn := splictJobName(context, name)
+	jns, jn, jq := splictJobName(context, name)
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jn,
-			Namespace: context.namespace,
+			Namespace: jns,
 		},
 		Spec: batchv1.JobSpec{
 			Parallelism: &rep,
@@ -269,11 +284,11 @@ func createJobWithOptions(context *context,
 	pg := &arbv1.PodGroup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jn,
-			Namespace: context.namespace,
+			Namespace: jns,
 		},
 		Spec: arbv1.PodGroupSpec{
 			NumMember: min,
-			Queue:     jns,
+			Queue:     jq,
 		},
 	}
 
@@ -291,7 +306,7 @@ func createReplicaSet(context *context, name string, rep int32, img string, req 
 	deployment := &appv1.ReplicaSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: context.namespace,
+			Namespace: context.namespaces[0],
 		},
 		Spec: appv1.ReplicaSetSpec{
 			Replicas: &rep,
@@ -321,7 +336,7 @@ func createReplicaSet(context *context, name string, rep int32, img string, req 
 		},
 	}
 
-	deployment, err := context.kubeclient.AppsV1().ReplicaSets(context.namespace).Create(deployment)
+	deployment, err := context.kubeclient.AppsV1().ReplicaSets(context.namespaces[0]).Create(deployment)
 	Expect(err).NotTo(HaveOccurred())
 
 	return deployment
@@ -329,22 +344,22 @@ func createReplicaSet(context *context, name string, rep int32, img string, req 
 
 func deleteReplicaSet(ctx *context, name string) error {
 	foreground := metav1.DeletePropagationForeground
-	return ctx.kubeclient.AppsV1().ReplicaSets(ctx.namespace).Delete(name, &metav1.DeleteOptions{
+	return ctx.kubeclient.AppsV1().ReplicaSets(ctx.namespaces[0]).Delete(name, &metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
 }
 
 func taskReady(ctx *context, jobName string, taskNum int) wait.ConditionFunc {
-	_, jn := splictJobName(ctx, jobName)
+	jns, jn, _ := splictJobName(ctx, jobName)
 
 	return func() (bool, error) {
-		queueJob, err := ctx.kubeclient.BatchV1().Jobs(ctx.namespace).Get(jn, metav1.GetOptions{})
+		queueJob, err := ctx.kubeclient.BatchV1().Jobs(jns).Get(jn, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(metav1.ListOptions{})
+		pods, err := ctx.kubeclient.CoreV1().Pods(jns).List(metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		pg, err := ctx.karclient.Scheduling().PodGroups(ctx.namespace).Get(jn, metav1.GetOptions{})
+		pg, err := ctx.karclient.Scheduling().PodGroups(jns).Get(jn, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		readyTaskNum := 0
@@ -369,13 +384,13 @@ func taskReady(ctx *context, jobName string, taskNum int) wait.ConditionFunc {
 }
 
 func taskNotReady(ctx *context, jobName string, taskNum int) wait.ConditionFunc {
-	_, jn := splictJobName(ctx, jobName)
+	jns, jn, _ := splictJobName(ctx, jobName)
 
 	return func() (bool, error) {
-		queueJob, err := ctx.kubeclient.BatchV1().Jobs(ctx.namespace).Get(jn, metav1.GetOptions{})
+		queueJob, err := ctx.kubeclient.BatchV1().Jobs(jns).Get(jn, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(metav1.ListOptions{})
+		pods, err := ctx.kubeclient.CoreV1().Pods(jns).List(metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		notReadyTaskNum := 0
@@ -408,10 +423,10 @@ func waitTasksNotReady(ctx *context, name string, taskNum int) error {
 
 func jobNotReady(ctx *context, jobName string) wait.ConditionFunc {
 	return func() (bool, error) {
-		queueJob, err := ctx.kubeclient.BatchV1().Jobs(ctx.namespace).Get(jobName, metav1.GetOptions{})
+		queueJob, err := ctx.kubeclient.BatchV1().Jobs(ctx.namespaces[0]).Get(jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(metav1.ListOptions{})
+		pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespaces[0]).List(metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		pendingTaskNum := int32(0)
@@ -436,10 +451,10 @@ func waitJobNotReady(ctx *context, name string) error {
 
 func replicaSetReady(ctx *context, name string) wait.ConditionFunc {
 	return func() (bool, error) {
-		deployment, err := ctx.kubeclient.ExtensionsV1beta1().ReplicaSets(ctx.namespace).Get(name, metav1.GetOptions{})
+		deployment, err := ctx.kubeclient.ExtensionsV1beta1().ReplicaSets(ctx.namespaces[0]).Get(name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(metav1.ListOptions{})
+		pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespaces[0]).List(metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		labelSelector := labels.SelectorFromSet(deployment.Spec.Selector.MatchLabels)
@@ -572,10 +587,10 @@ func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
 }
 
 func getPodOfJob(ctx *context, jobName string) []*v1.Pod {
-	queueJob, err := ctx.kubeclient.BatchV1().Jobs(ctx.namespace).Get(jobName, metav1.GetOptions{})
+	queueJob, err := ctx.kubeclient.BatchV1().Jobs(ctx.namespaces[0]).Get(jobName, metav1.GetOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
-	pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(metav1.ListOptions{})
+	pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespaces[0]).List(metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
 	var qjpod []*v1.Pod

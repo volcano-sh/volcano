@@ -162,8 +162,8 @@ var _ = Describe("E2E Test", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
-		jobName1 := "q1/qj-1"
-		jobName2 := "q2/qj-2"
+		jobName1 := "n1/qj-1"
+		jobName2 := "n2/qj-2"
 
 		slot := oneCPU
 		rep := clusterSize(context, slot)
