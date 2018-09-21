@@ -81,23 +81,21 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 }
 
 func (ni *NodeInfo) SetNode(node *v1.Node) {
-	if ni.Node == nil {
-		ni.Idle = NewResource(node.Status.Allocatable)
-
-		for _, task := range ni.Tasks {
-			if task.Status == Releasing {
-				ni.Releasing.Add(task.Resreq)
-			}
-
-			ni.Idle.Sub(task.Resreq)
-			ni.Used.Add(task.Resreq)
-		}
-	}
-
 	ni.Name = node.Name
 	ni.Node = node
+
 	ni.Allocatable = NewResource(node.Status.Allocatable)
 	ni.Capability = NewResource(node.Status.Capacity)
+	ni.Idle = NewResource(node.Status.Allocatable)
+
+	for _, task := range ni.Tasks {
+		if task.Status == Releasing {
+			ni.Releasing.Add(task.Resreq)
+		}
+
+		ni.Idle.Sub(task.Resreq)
+		ni.Used.Add(task.Resreq)
+	}
 }
 
 func (ni *NodeInfo) PipelineTask(task *TaskInfo) error {
@@ -186,4 +184,12 @@ func (ni NodeInfo) String() string {
 	return fmt.Sprintf("Node (%s): idle <%v>, used <%v>, releasing <%v>%s",
 		ni.Name, ni.Idle, ni.Used, ni.Releasing, res)
 
+}
+
+func (ni *NodeInfo) Pods() (pods []*v1.Pod) {
+	for _, t := range ni.Tasks {
+		pods = append(pods, t.Pod)
+	}
+
+	return
 }

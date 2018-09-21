@@ -27,11 +27,16 @@ var (
 	AddToScheme   = SchemeBuilder.AddToScheme
 )
 
-// GroupName is the group name used in this package.
-const GroupName = "arbitrator.incubator.k8s.io"
+const (
+	// GroupName is the group name used in this package.
+	GroupName = "scheduling.incubator.k8s.io"
+
+	// GroupVersion is the version of scheduling group
+	GroupVersion = "v1alpha1"
+)
 
 // SchemeGroupVersion is the group version used to register these objects.
-var SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: "v1alpha1"}
+var SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: GroupVersion}
 
 // Resource takes an unqualified resource and returns a Group-qualified GroupResource.
 func Resource(resource string) schema.GroupResource {
@@ -41,12 +46,10 @@ func Resource(resource string) schema.GroupResource {
 // addKnownTypes adds the set of types defined in this package to the supplied scheme.
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
-		&SchedulingSpec{},
-		&SchedulingSpecList{},
-		&QueueJob{},
-		&QueueJobList{},
-		&XQueueJob{},
-		&XQueueJobList{},
+		&PodGroup{},
+		&PodGroupList{},
+		&Queue{},
+		&QueueList{},
 	)
 
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)

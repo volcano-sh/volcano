@@ -26,7 +26,7 @@ import (
 type Resource struct {
 	MilliCPU float64
 	Memory   float64
-	GPU      int64
+	MilliGPU float64
 }
 
 const (
@@ -38,7 +38,7 @@ func EmptyResource() *Resource {
 	return &Resource{
 		MilliCPU: 0,
 		Memory:   0,
-		GPU:      0,
+		MilliGPU: 0,
 	}
 }
 
@@ -46,12 +46,13 @@ func (r *Resource) Clone() *Resource {
 	clone := &Resource{
 		MilliCPU: r.MilliCPU,
 		Memory:   r.Memory,
-		GPU:      r.GPU,
+		MilliGPU: r.MilliGPU,
 	}
 	return clone
 }
 
 var minMilliCPU float64 = 10
+var minMilliGPU float64 = 10
 var minMemory float64 = 10 * 1024 * 1024
 
 func NewResource(rl v1.ResourceList) *Resource {
@@ -63,15 +64,14 @@ func NewResource(rl v1.ResourceList) *Resource {
 		case v1.ResourceMemory:
 			r.Memory += float64(rQuant.Value())
 		case GPUResourceName:
-			q, _ := rQuant.AsInt64()
-			r.GPU += q
+			r.MilliGPU += float64(rQuant.MilliValue())
 		}
 	}
 	return r
 }
 
 func (r *Resource) IsEmpty() bool {
-	return r.MilliCPU < minMilliCPU && r.Memory < minMemory && r.GPU == 0
+	return r.MilliCPU < minMilliCPU && r.Memory < minMemory && r.MilliGPU < minMilliGPU
 }
 
 func (r *Resource) IsZero(rn v1.ResourceName) bool {
@@ -81,7 +81,7 @@ func (r *Resource) IsZero(rn v1.ResourceName) bool {
 	case v1.ResourceMemory:
 		return r.Memory < minMemory
 	case GPUResourceName:
-		return r.GPU == 0
+		return r.MilliGPU < minMilliGPU
 	default:
 		panic("unknown resource")
 	}
@@ -90,7 +90,7 @@ func (r *Resource) IsZero(rn v1.ResourceName) bool {
 func (r *Resource) Add(rr *Resource) *Resource {
 	r.MilliCPU += rr.MilliCPU
 	r.Memory += rr.Memory
-	r.GPU += rr.GPU
+	r.MilliGPU += rr.MilliGPU
 	return r
 }
 
@@ -99,7 +99,7 @@ func (r *Resource) Sub(rr *Resource) *Resource {
 	if rr.LessEqual(r) {
 		r.MilliCPU -= rr.MilliCPU
 		r.Memory -= rr.Memory
-		r.GPU -= rr.GPU
+		r.MilliGPU -= rr.MilliGPU
 		return r
 	}
 
@@ -107,19 +107,26 @@ func (r *Resource) Sub(rr *Resource) *Resource {
 		r, rr))
 }
 
+func (r *Resource) Multi(ratio float64) *Resource {
+	r.MilliCPU = r.MilliCPU * ratio
+	r.Memory = r.Memory * ratio
+	r.MilliGPU = r.MilliGPU * ratio
+	return r
+}
+
 func (r *Resource) Less(rr *Resource) bool {
-	return r.MilliCPU < rr.MilliCPU && r.Memory < rr.Memory && r.GPU < rr.GPU
+	return r.MilliCPU < rr.MilliCPU && r.Memory < rr.Memory && r.MilliGPU < rr.MilliGPU
 }
 
 func (r *Resource) LessEqual(rr *Resource) bool {
-	return (r.MilliCPU < rr.MilliCPU || math.Abs(rr.MilliCPU-r.MilliCPU) < 0.01) &&
-		(r.Memory < rr.Memory || math.Abs(rr.Memory-r.Memory) < 1) &&
-		(r.GPU <= rr.GPU)
+	return (r.MilliCPU < rr.MilliCPU || math.Abs(rr.MilliCPU-r.MilliCPU) < minMilliCPU) &&
+		(r.Memory < rr.Memory || math.Abs(rr.Memory-r.Memory) < minMemory) &&
+		(r.MilliGPU < rr.MilliGPU || math.Abs(rr.MilliGPU-r.MilliGPU) < minMilliGPU)
 }
 
 func (r *Resource) String() string {
-	return fmt.Sprintf("cpu %0.2f, memory %0.2f, GPU %d",
-		r.MilliCPU, r.Memory, r.GPU)
+	return fmt.Sprintf("cpu %0.2f, memory %0.2f, GPU %0.2f",
+		r.MilliCPU, r.Memory, r.MilliGPU)
 }
 
 func (r *Resource) Get(rn v1.ResourceName) float64 {
@@ -129,7 +136,7 @@ func (r *Resource) Get(rn v1.ResourceName) float64 {
 	case v1.ResourceMemory:
 		return r.Memory
 	case GPUResourceName:
-		return float64(r.GPU)
+		return r.MilliGPU
 	default:
 		panic("not support resource.")
 	}

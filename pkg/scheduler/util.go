@@ -27,8 +27,8 @@ import (
 )
 
 var defaultSchedulerConf = map[string]string{
-	"actions":                   "decorate, allocate, preempt",
-	"plugins":                   "gang, priority, drf",
+	"actions":                   "reclaim, allocate, preempt",
+	"plugins":                   "gang, priority, drf, nodeaffinity, proportion, hostport",
 	"plugin.gang.jobready":      "true",
 	"plugin.gang.joborder":      "true",
 	"plugin.gang.preemptable":   "true",
@@ -44,7 +44,7 @@ func loadSchedulerConf(conf map[string]string) ([]framework.Action, []*framework
 
 	actionsConf, found := conf["actions"]
 	if !found {
-		actionsConf = "decorate, allocate, preempt"
+		actionsConf = "allocate, preempt"
 	}
 
 	actionNames := strings.Split(actionsConf, ",")
