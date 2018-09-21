@@ -19,6 +19,7 @@ package gang
 import (
 	"github.com/golang/glog"
 
+	arbcorev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 )
@@ -33,7 +34,7 @@ func New(args *framework.PluginArgs) framework.Plugin {
 	}
 }
 
-func readyTaskNum(job *api.JobInfo) int {
+func readyTaskNum(job *api.JobInfo) int32 {
 	occupid := 0
 	for status, tasks := range job.TaskStatusIndex {
 		if api.AllocatedStatus(status) || status == api.Succeeded {
@@ -41,7 +42,20 @@ func readyTaskNum(job *api.JobInfo) int {
 		}
 	}
 
-	return occupid
+	return int32(occupid)
+}
+
+func validTaskNum(job *api.JobInfo) int32 {
+	occupid := 0
+	for status, tasks := range job.TaskStatusIndex {
+		if api.AllocatedStatus(status) ||
+			status == api.Succeeded ||
+			status == api.Pending {
+			occupid = occupid + len(tasks)
+		}
+	}
+
+	return int32(occupid)
 }
 
 func jobReady(obj interface{}) bool {
@@ -53,21 +67,31 @@ func jobReady(obj interface{}) bool {
 }
 
 func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
-	preemptableFn := func(l, v interface{}) bool {
-		preemptee := v.(*api.TaskInfo)
+	for _, job := range ssn.Jobs {
+		if validTaskNum(job) < job.MinAvailable {
+			ssn.Discard(job, api.Reason{
+				Event:   arbcorev1.UnschedulableEvent,
+				Message: "not enough valid tasks for gang-scheduling",
+			})
+		}
+	}
 
-		job := ssn.JobIndex[preemptee.Job]
+	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
+		var victims []*api.TaskInfo
 
-		occupid := readyTaskNum(job)
+		for _, preemptee := range preemptees {
+			job := ssn.JobIndex[preemptee.Job]
+			occupid := readyTaskNum(job)
+			preemptable := job.MinAvailable <= occupid-1
 
-		preemptable := job.MinAvailable <= occupid-1
-
-		if !preemptable {
-			glog.V(3).Infof("Can not preempt task <%v/%v> because of gang-scheduling",
-				preemptee.Namespace, preemptee.Name)
+			if !preemptable {
+				glog.V(3).Infof("Can not preempt task <%v/%v> because of gang-scheduling",
+					preemptee.Namespace, preemptee.Name)
+				victims = append(victims, preemptee)
+			}
 		}
 
-		return preemptable
+		return victims
 	}
 	if gp.args.PreemptableFnEnabled {
 		ssn.AddPreemptableFn(preemptableFn)

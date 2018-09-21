@@ -1,42 +1,24 @@
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kar-scheduler
+  name: kube-batchd
   labels:
     chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
 spec:
   replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: kube-batchd
   template:
     metadata:
       labels:
-        app: kar-scheduler
+        app: kube-batchd
     spec:
       containers:
       - name: {{ .Chart.Name }}
-        image: "{{ .Values.image.repository }}/kar-scheduler:{{ .Values.image.tag }}"
-        args: ["--logtostderr", "--v", "3"]
+        image: "{{ .Values.image.repository }}/kube-batchd:{{ .Values.image.tag }}"
+        args: ["--logtostderr", "--v", "3", "--enable-namespace-as-queue"]
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         resources:
 {{ toYaml .Values.resources | indent 10 }}
 
----
-apiVersion: extensions/v1beta1
-kind: Deployment
-metadata:
-  name: kar-controllers
-  labels:
-    chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
-spec:
-  replicas: {{ .Values.replicaCount }}
-  template:
-    metadata:
-      labels:
-        app: kar-controllers
-    spec:
-      containers:
-      - name: {{ .Chart.Name }}
-        image: "{{ .Values.image.repository }}/kar-controllers:{{ .Values.image.tag }}"
-        args: ["--logtostderr", "--v", "3"]
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
-        resources:
-{{ toYaml .Values.resources | indent 10 }}

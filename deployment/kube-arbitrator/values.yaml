@@ -1,10 +1,10 @@
-# Default values for kube-arbitrator.
+# Default values for kube-batchd.
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 replicaCount: 1
 image:
-  repository: kubearbitrator
-  tag: 0.1
+  repository: kubesigs
+  tag: v0.2
   pullPolicy: IfNotPresent
 resources:
   limits:

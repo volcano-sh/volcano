@@ -27,41 +27,52 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
-	clientv1 "k8s.io/client-go/informers/core/v1"
+	infov1 "k8s.io/client-go/informers/core/v1"
 	policyv1 "k8s.io/client-go/informers/policy/v1beta1"
 	"k8s.io/client-go/kubernetes"
+	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client"
-	informerfactory "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers"
-	arbclient "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/v1"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/scheme"
+	arbinfo "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions"
+	arbcoreinfo "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 )
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerName string) Cache {
-	return newSchedulerCache(config, schedulerName)
+func New(config *rest.Config, schedulerName string, nsAsQueue bool) Cache {
+	return newSchedulerCache(config, schedulerName, nsAsQueue)
 }
 
 type SchedulerCache struct {
 	sync.Mutex
 
 	kubeclient *kubernetes.Clientset
+	arbclient  *versioned.Clientset
 
-	podInformer            clientv1.PodInformer
-	nodeInformer           clientv1.NodeInformer
-	pdbInformer            policyv1.PodDisruptionBudgetInformer
-	schedulingSpecInformer arbclient.SchedulingSpecInformer
+	podInformer      infov1.PodInformer
+	nodeInformer     infov1.NodeInformer
+	pdbInformer      policyv1.PodDisruptionBudgetInformer
+	nsInformer       infov1.NamespaceInformer
+	podGroupInformer arbcoreinfo.PodGroupInformer
+	queueInformer    arbcoreinfo.QueueInformer
 
 	Binder  Binder
 	Evictor Evictor
 
-	Jobs  map[arbapi.JobID]*arbapi.JobInfo
-	Nodes map[string]*arbapi.NodeInfo
+	recorder record.EventRecorder
+
+	Jobs   map[arbapi.JobID]*arbapi.JobInfo
+	Nodes  map[string]*arbapi.NodeInfo
+	Queues map[arbapi.QueueID]*arbapi.QueueInfo
 
 	errTasks    *cache.FIFO
 	deletedJobs *cache.FIFO
+
+	namespaceAsQueue bool
 }
 
 type defaultBinder struct {
@@ -127,15 +138,22 @@ func jobKey(obj interface{}) (string, error) {
 	return string(job.UID), nil
 }
 
-func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerName string, nsAsQueue bool) *SchedulerCache {
 	sc := &SchedulerCache{
-		Jobs:        make(map[arbapi.JobID]*arbapi.JobInfo),
-		Nodes:       make(map[string]*arbapi.NodeInfo),
-		errTasks:    cache.NewFIFO(taskKey),
-		deletedJobs: cache.NewFIFO(jobKey),
+		Jobs:             make(map[arbapi.JobID]*arbapi.JobInfo),
+		Nodes:            make(map[string]*arbapi.NodeInfo),
+		Queues:           make(map[arbapi.QueueID]*arbapi.QueueInfo),
+		errTasks:         cache.NewFIFO(taskKey),
+		deletedJobs:      cache.NewFIFO(jobKey),
+		kubeclient:       kubernetes.NewForConfigOrDie(config),
+		arbclient:        versioned.NewForConfigOrDie(config),
+		namespaceAsQueue: nsAsQueue,
 	}
 
-	sc.kubeclient = kubernetes.NewForConfigOrDie(config)
+	// Prepare event clients.
+	broadcaster := record.NewBroadcaster()
+	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: sc.kubeclient.CoreV1().Events("")})
+	sc.recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "kar-scheduler"})
 
 	sc.Binder = &defaultBinder{
 		kubeclient: sc.kubeclient,
@@ -188,20 +206,32 @@ func newSchedulerCache(config *rest.Config, schedulerName string) *SchedulerCach
 		DeleteFunc: sc.DeletePDB,
 	})
 
-	// create queue informer
-	queueClient, _, err := client.NewClient(config)
-	if err != nil {
-		panic(err)
-	}
-
-	schedulingSpecInformerFactory := informerfactory.NewSharedInformerFactory(queueClient, 0)
-	// create informer for Queue information
-	sc.schedulingSpecInformer = schedulingSpecInformerFactory.Batch().SchedulingSpecs()
-	sc.schedulingSpecInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddSchedulingSpec,
-		UpdateFunc: sc.UpdateSchedulingSpec,
-		DeleteFunc: sc.DeleteSchedulingSpec,
+	arbinformer := arbinfo.NewSharedInformerFactory(sc.arbclient, 0)
+	// create informer for PodGroup information
+	sc.podGroupInformer = arbinformer.Scheduling().V1alpha1().PodGroups()
+	sc.podGroupInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddPodGroup,
+		UpdateFunc: sc.UpdatePodGroup,
+		DeleteFunc: sc.DeletePodGroup,
 	})
+
+	if sc.namespaceAsQueue {
+		// create informer for Namespace information
+		sc.nsInformer = informerFactory.Core().V1().Namespaces()
+		sc.nsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.AddNamespace,
+			UpdateFunc: sc.UpdateNamespace,
+			DeleteFunc: sc.DeleteNamespace,
+		})
+	} else {
+		// create informer for Queue information
+		sc.queueInformer = arbinformer.Scheduling().V1alpha1().Queues()
+		sc.queueInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.AddQueue,
+			UpdateFunc: sc.UpdateQueue,
+			DeleteFunc: sc.DeleteQueue,
+		})
+	}
 
 	return sc
 }
@@ -210,7 +240,13 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.pdbInformer.Informer().Run(stopCh)
 	go sc.podInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
-	go sc.schedulingSpecInformer.Informer().Run(stopCh)
+	go sc.podGroupInformer.Informer().Run(stopCh)
+
+	if sc.namespaceAsQueue {
+		go sc.nsInformer.Informer().Run(stopCh)
+	} else {
+		go sc.queueInformer.Informer().Run(stopCh)
+	}
 
 	// Re-sync error tasks.
 	go sc.resync()
@@ -220,11 +256,20 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 }
 
 func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
+	var queueSync func() bool
+	if sc.namespaceAsQueue {
+		queueSync = sc.nsInformer.Informer().HasSynced
+	} else {
+		queueSync = sc.queueInformer.Informer().HasSynced
+	}
+
 	return cache.WaitForCacheSync(stopCh,
 		sc.pdbInformer.Informer().HasSynced,
 		sc.podInformer.Informer().HasSynced,
-		sc.schedulingSpecInformer.Informer().HasSynced,
-		sc.nodeInformer.Informer().HasSynced)
+		sc.podGroupInformer.Informer().HasSynced,
+		sc.nodeInformer.Informer().HasSynced,
+		queueSync,
+	)
 }
 
 func (sc *SchedulerCache) findJobAndTask(taskInfo *arbapi.TaskInfo) (*arbapi.JobInfo, *arbapi.TaskInfo, error) {
@@ -396,23 +441,46 @@ func (sc *SchedulerCache) Snapshot() *arbapi.ClusterInfo {
 	defer sc.Mutex.Unlock()
 
 	snapshot := &arbapi.ClusterInfo{
-		Nodes: make([]*arbapi.NodeInfo, 0, len(sc.Nodes)),
-		Jobs:  make([]*arbapi.JobInfo, 0, len(sc.Jobs)),
+		Nodes:  make([]*arbapi.NodeInfo, 0, len(sc.Nodes)),
+		Jobs:   make([]*arbapi.JobInfo, 0, len(sc.Jobs)),
+		Queues: make([]*arbapi.QueueInfo, 0, len(sc.Queues)),
+		Others: make([]*arbapi.TaskInfo, 0, 10),
 	}
 
 	for _, value := range sc.Nodes {
 		snapshot.Nodes = append(snapshot.Nodes, value.Clone())
 	}
 
+	queues := map[arbapi.QueueID]struct{}{}
+	for _, value := range sc.Queues {
+		snapshot.Queues = append(snapshot.Queues, value.Clone())
+		queues[value.UID] = struct{}{}
+	}
+
 	for _, value := range sc.Jobs {
 		// If no scheduling spec, does not handle it.
-		if value.SchedSpec == nil && value.PDB == nil {
-			glog.V(3).Infof("The scheduling spec of Job <%v> is nil, ignore it.", value.UID)
+		if value.PodGroup == nil && value.PDB == nil {
+			glog.V(3).Infof("The scheduling spec of Job <%v:%s/%s> is nil, ignore it.",
+				value.UID, value.Namespace, value.Name)
+
+			// Also tracing the running task assigned by other scheduler.
+			for _, task := range value.TaskStatusIndex[arbapi.Running] {
+				snapshot.Others = append(snapshot.Others, task.Clone())
+			}
+
+			continue
+		}
+
+		if _, found := queues[value.Queue]; !found {
+			glog.V(3).Infof("The Queue of Job <%v> does not exist, ignore it.", value.UID)
 			continue
 		}
 
 		snapshot.Jobs = append(snapshot.Jobs, value.Clone())
 	}
+
+	glog.V(3).Infof("There are <%d> Jobs and <%d> Queues in total for scheduling.",
+		len(snapshot.Jobs), len(snapshot.Queues))
 
 	return snapshot
 }
@@ -466,4 +534,17 @@ func (sc *SchedulerCache) String() string {
 	}
 
 	return str
+}
+
+// Backoff record event for job
+func (sc *SchedulerCache) Backoff(job *arbapi.JobInfo, reason arbapi.Reason) error {
+	if job.PodGroup != nil {
+		sc.recorder.Eventf(job.PodGroup, v1.EventTypeWarning, string(reason.Event), reason.Message)
+	} else if job.PDB != nil {
+		sc.recorder.Eventf(job.PDB, v1.EventTypeWarning, string(reason.Event), reason.Message)
+	} else {
+		return fmt.Errorf("no scheduling specification for job")
+	}
+
+	return nil
 }

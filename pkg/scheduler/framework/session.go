@@ -33,29 +33,35 @@ type Session struct {
 
 	cache cache.Cache
 
-	Jobs      []*api.JobInfo
-	JobIndex  map[api.JobID]*api.JobInfo
-	Nodes     []*api.NodeInfo
-	NodeIndex map[string]*api.NodeInfo
-	Backlog   []*api.JobInfo
+	Jobs       []*api.JobInfo
+	JobIndex   map[api.JobID]*api.JobInfo
+	Nodes      []*api.NodeInfo
+	NodeIndex  map[string]*api.NodeInfo
+	Queues     []*api.QueueInfo
+	QueueIndex map[api.QueueID]*api.QueueInfo
+	Others     []*api.TaskInfo
+	Backlog    []*api.JobInfo
 
 	plugins        []Plugin
 	eventHandlers  []*EventHandler
 	jobOrderFns    []api.CompareFn
+	queueOrderFns  []api.CompareFn
 	taskOrderFns   []api.CompareFn
-	preemptableFns []api.LessFn
+	predicateFns   []api.PredicateFn
+	preemptableFns []api.PreemptableFn
+	reclaimableFns []api.ReclaimableFn
+	overusedFns    []api.ValidateFn
 	jobReadyFns    []api.ValidateFn
 }
 
 func openSession(cache cache.Cache) *Session {
 	ssn := &Session{
-		UID:       uuid.NewUUID(),
-		cache:     cache,
-		JobIndex:  map[api.JobID]*api.JobInfo{},
-		NodeIndex: map[string]*api.NodeInfo{},
+		UID:        uuid.NewUUID(),
+		cache:      cache,
+		JobIndex:   map[api.JobID]*api.JobInfo{},
+		NodeIndex:  map[string]*api.NodeInfo{},
+		QueueIndex: map[api.QueueID]*api.QueueInfo{},
 	}
-
-	glog.V(3).Infof("Open Session %v", ssn.UID)
 
 	snapshot := cache.Snapshot()
 
@@ -69,6 +75,16 @@ func openSession(cache cache.Cache) *Session {
 		ssn.NodeIndex[node.Name] = node
 	}
 
+	ssn.Queues = snapshot.Queues
+	for _, queue := range ssn.Queues {
+		ssn.QueueIndex[queue.UID] = queue
+	}
+
+	ssn.Others = snapshot.Others
+
+	glog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues",
+		ssn.UID, len(ssn.Jobs), len(ssn.Queues))
+
 	return ssn
 }
 
@@ -81,6 +97,7 @@ func closeSession(ssn *Session) {
 	ssn.plugins = nil
 	ssn.eventHandlers = nil
 	ssn.jobOrderFns = nil
+	ssn.queueOrderFns = nil
 
 	glog.V(3).Infof("Close Session %v", ssn.UID)
 }
@@ -187,53 +204,109 @@ func (ssn *Session) dispatch(task *api.TaskInfo) error {
 	return nil
 }
 
-func (ssn *Session) Preemptable(preemptor, preemptee *api.TaskInfo) bool {
-	if len(ssn.preemptableFns) == 0 {
-		return false
-	}
+func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
+	var victims []*api.TaskInfo
 
-	for _, preemptable := range ssn.preemptableFns {
-		if !preemptable(preemptor, preemptee) {
-			return false
+	for _, rf := range ssn.reclaimableFns {
+		candidates := rf(reclaimer, reclaimees)
+		if victims == nil {
+			victims = candidates
+		} else {
+			intersection := []*api.TaskInfo{}
+			// Get intersection of victims and candidates.
+			for _, v := range victims {
+				for _, c := range candidates {
+					if v.UID == c.UID {
+						intersection = append(intersection, v)
+					}
+				}
+			}
+
+			// Update victims to intersection
+			victims = intersection
 		}
 	}
 
-	return true
+	return victims
 }
 
-func (ssn *Session) Preempt(preemptor, preemptee *api.TaskInfo) error {
-	if err := ssn.cache.Evict(preemptee); err != nil {
+func (ssn *Session) Evict(reclaimee *api.TaskInfo) error {
+	if err := ssn.cache.Evict(reclaimee); err != nil {
 		return err
 	}
 
 	// Update status in session
-	job, found := ssn.JobIndex[preemptee.Job]
+	job, found := ssn.JobIndex[reclaimee.Job]
 	if found {
-		if err := job.UpdateTaskStatus(preemptee, api.Releasing); err != nil {
+		if err := job.UpdateTaskStatus(reclaimee, api.Releasing); err != nil {
 			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
-				preemptee.Namespace, preemptee.Name, api.Releasing, ssn.UID, err)
+				reclaimee.Namespace, reclaimee.Name, api.Releasing, ssn.UID, err)
 		}
 	} else {
 		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
-			preemptee.Job, ssn.UID)
+			reclaimee.Job, ssn.UID)
 	}
 
 	// Update task in node.
-	if node, found := ssn.NodeIndex[preemptee.NodeName]; found {
-		node.UpdateTask(preemptee)
+	if node, found := ssn.NodeIndex[reclaimee.NodeName]; found {
+		node.UpdateTask(reclaimee)
 	}
 
 	for _, eh := range ssn.eventHandlers {
-		if eh.AllocateFunc != nil {
-			eh.AllocateFunc(&Event{
-				Task: preemptor,
-			})
-		}
-
 		if eh.EvictFunc != nil {
 			eh.EvictFunc(&Event{
-				Task: preemptee,
+				Task: reclaimee,
 			})
+		}
+	}
+
+	return nil
+}
+
+func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
+	var victims []*api.TaskInfo
+
+	for _, pf := range ssn.preemptableFns {
+		candidates := pf(preemptor, preemptees)
+		if victims == nil {
+			victims = candidates
+		} else {
+			intersection := []*api.TaskInfo{}
+			// Get intersection of victims and candidates.
+			for _, v := range victims {
+				for _, c := range candidates {
+					if v.UID == c.UID {
+						intersection = append(intersection, v)
+					}
+				}
+			}
+
+			// Update victims to intersection
+			victims = intersection
+		}
+	}
+
+	return victims
+}
+
+// Discard discards a job from session, so no plugin/action handles it.
+func (ssn *Session) Discard(job *api.JobInfo, reason api.Reason) error {
+	if err := ssn.cache.Backoff(job, reason); err != nil {
+		glog.Errorf("Failed to backoff job <%s/%s>: %v",
+			job.Namespace, job.Name, err)
+		return err
+	}
+
+	glog.V(3).Infof("Discard Job <%s/%s> because %s",
+		job.Namespace, job.Name, reason.Message)
+
+	// Delete Job from Session after recording event.
+	delete(ssn.JobIndex, job.UID)
+	for i, j := range ssn.Jobs {
+		if j.UID == job.UID {
+			ssn.Jobs[i] = ssn.Jobs[len(ssn.Jobs)-1]
+			ssn.Jobs = ssn.Jobs[:len(ssn.Jobs)-1]
+			break
 		}
 	}
 
@@ -248,16 +321,42 @@ func (ssn *Session) AddJobOrderFn(cf api.CompareFn) {
 	ssn.jobOrderFns = append(ssn.jobOrderFns, cf)
 }
 
+func (ssn *Session) AddQueueOrderFn(qf api.CompareFn) {
+	ssn.queueOrderFns = append(ssn.queueOrderFns, qf)
+}
+
 func (ssn *Session) AddTaskOrderFn(cf api.CompareFn) {
 	ssn.taskOrderFns = append(ssn.taskOrderFns, cf)
 }
 
-func (ssn *Session) AddPreemptableFn(cf api.LessFn) {
+func (ssn *Session) AddPreemptableFn(cf api.PreemptableFn) {
 	ssn.preemptableFns = append(ssn.preemptableFns, cf)
+}
+
+func (ssn *Session) AddReclaimableFn(rf api.ReclaimableFn) {
+	ssn.reclaimableFns = append(ssn.reclaimableFns, rf)
 }
 
 func (ssn *Session) AddJobReadyFn(vf api.ValidateFn) {
 	ssn.jobReadyFns = append(ssn.jobReadyFns, vf)
+}
+
+func (ssn *Session) AddPredicateFn(pf api.PredicateFn) {
+	ssn.predicateFns = append(ssn.predicateFns, pf)
+}
+
+func (ssn *Session) AddOverusedFn(fn api.ValidateFn) {
+	ssn.overusedFns = append(ssn.overusedFns, fn)
+}
+
+func (ssn *Session) Overused(queue *api.QueueInfo) bool {
+	for _, of := range ssn.overusedFns {
+		if of(queue) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (ssn *Session) JobReady(obj interface{}) bool {
@@ -284,6 +383,20 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 	return lv.UID < rv.UID
 }
 
+func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
+	for _, qof := range ssn.queueOrderFns {
+		if j := qof(l, r); j != 0 {
+			return j < 0
+		}
+	}
+
+	// If no queue order funcs, order queue by UID.
+	lv := l.(*api.QueueInfo)
+	rv := r.(*api.QueueInfo)
+
+	return lv.UID < rv.UID
+}
+
 func (ssn *Session) TaskCompareFns(l, r interface{}) int {
 	for _, tof := range ssn.taskOrderFns {
 		if j := tof(l, r); j != 0 {
@@ -304,6 +417,17 @@ func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 	rv := r.(*api.TaskInfo)
 
 	return lv.UID < rv.UID
+}
+
+func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
+	for _, pfn := range ssn.predicateFns {
+		err := pfn(task, node)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (ssn Session) String() string {

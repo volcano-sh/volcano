@@ -19,6 +19,7 @@ package allocate
 import (
 	"fmt"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,11 +28,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/v1alpha1"
+	arbcorev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/cache"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/drf"
+	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/proportion"
 )
 
 func buildResourceList(cpu string, memory string) v1.ResourceList {
@@ -63,14 +65,16 @@ func buildNode(name string, alloc v1.ResourceList, labels map[string]string) *v1
 	}
 }
 
-func buildPod(ns, n, nn string, p v1.PodPhase, req v1.ResourceList, owner []metav1.OwnerReference, labels map[string]string, selector map[string]string) *v1.Pod {
+func buildPod(ns, n, nn string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string) *v1.Pod {
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			UID:             types.UID(fmt.Sprintf("%v-%v", ns, n)),
-			Name:            n,
-			Namespace:       ns,
-			OwnerReferences: owner,
-			Labels:          labels,
+			UID:       types.UID(fmt.Sprintf("%v-%v", ns, n)),
+			Name:      n,
+			Namespace: ns,
+			Labels:    labels,
+			Annotations: map[string]string{
+				arbcorev1.GroupNameAnnotationKey: groupName,
+			},
 		},
 		Status: v1.PodStatus{
 			Phase: p,
@@ -98,13 +102,16 @@ func buildOwnerReference(owner string) metav1.OwnerReference {
 }
 
 type fakeBinder struct {
+	sync.Mutex
 	binds map[string]string
 	c     chan string
 }
 
 func (fb *fakeBinder) Bind(p *v1.Pod, hostname string) error {
-	key := fmt.Sprintf("%v/%v", p.Namespace, p.Name)
+	fb.Lock()
+	defer fb.Unlock()
 
+	key := fmt.Sprintf("%v/%v", p.Namespace, p.Name)
 	fb.binds[key] = hostname
 
 	fb.c <- key
@@ -114,36 +121,43 @@ func (fb *fakeBinder) Bind(p *v1.Pod, hostname string) error {
 
 func TestAllocate(t *testing.T) {
 	framework.RegisterPluginBuilder("drf", drf.New)
+	framework.RegisterPluginBuilder("proportion", proportion.New)
 	defer framework.CleanupPluginBuilders()
 
-	owner1 := buildOwnerReference("owner1")
-	owner2 := buildOwnerReference("owner2")
-
 	tests := []struct {
-		name       string
-		schedSpecs []*arbv1.SchedulingSpec
-		pods       []*v1.Pod
-		nodes      []*v1.Node
-		expected   map[string]string
+		name      string
+		podGroups []*arbcorev1.PodGroup
+		pods      []*v1.Pod
+		nodes     []*v1.Node
+		queues    []*arbcorev1.Queue
+		expected  map[string]string
 	}{
 		{
 			name: "one Job with two Pods on one node",
-			schedSpecs: []*arbv1.SchedulingSpec{
+			podGroups: []*arbcorev1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						OwnerReferences: []metav1.OwnerReference{owner1},
+						Name:      "pg1",
+						Namespace: "c1",
 					},
 				},
 			},
 			pods: []*v1.Pod{
-				// pending pod with owner, under c1
-				buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, make(map[string]string), make(map[string]string)),
-
-				// pending pod with owner, under c1
-				buildPod("c1", "p2", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, make(map[string]string), make(map[string]string)),
+				buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				buildPod("c1", "p2", "", v1.PodPending, buildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
 			},
 			nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2", "4Gi"), make(map[string]string)),
+			},
+			queues: []*arbcorev1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c1",
+					},
+					Spec: arbcorev1.QueueSpec{
+						Weight: 1,
+					},
+				},
 			},
 			expected: map[string]string{
 				"c1/p1": "n1",
@@ -152,34 +166,51 @@ func TestAllocate(t *testing.T) {
 		},
 		{
 			name: "two Jobs on one node",
-			schedSpecs: []*arbv1.SchedulingSpec{
+			podGroups: []*arbcorev1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						OwnerReferences: []metav1.OwnerReference{owner1},
+						Name:      "pg1",
+						Namespace: "c1",
 					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						OwnerReferences: []metav1.OwnerReference{owner2},
+						Name:      "pg2",
+						Namespace: "c2",
 					},
 				},
 			},
 
 			pods: []*v1.Pod{
 				// pending pod with owner1, under c1
-				buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, make(map[string]string), make(map[string]string)),
-
+				buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
 				// pending pod with owner1, under c1
-				buildPod("c1", "p2", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner1}, make(map[string]string), make(map[string]string)),
-
+				buildPod("c1", "p2", "", v1.PodPending, buildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
 				// pending pod with owner2, under c2
-				buildPod("c2", "p1", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, make(map[string]string), make(map[string]string)),
-
+				buildPod("c2", "p1", "", v1.PodPending, buildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
 				// pending pod with owner, under c2
-				buildPod("c2", "p2", "", v1.PodPending, buildResourceList("1", "1G"), []metav1.OwnerReference{owner2}, make(map[string]string), make(map[string]string)),
+				buildPod("c2", "p2", "", v1.PodPending, buildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
 			},
 			nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2", "4G"), make(map[string]string)),
+			},
+			queues: []*arbcorev1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c1",
+					},
+					Spec: arbcorev1.QueueSpec{
+						Weight: 1,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c2",
+					},
+					Spec: arbcorev1.QueueSpec{
+						Weight: 1,
+					},
+				},
 			},
 			expected: map[string]string{
 				"c2/p1": "n1",
@@ -198,6 +229,7 @@ func TestAllocate(t *testing.T) {
 		schedulerCache := &cache.SchedulerCache{
 			Nodes:  make(map[string]*api.NodeInfo),
 			Jobs:   make(map[api.JobID]*api.JobInfo),
+			Queues: make(map[api.QueueID]*api.QueueInfo),
 			Binder: binder,
 		}
 		for _, node := range test.nodes {
@@ -207,17 +239,24 @@ func TestAllocate(t *testing.T) {
 			schedulerCache.AddPod(pod)
 		}
 
-		for _, ss := range test.schedSpecs {
-			schedulerCache.AddSchedulingSpec(ss)
+		for _, ss := range test.podGroups {
+			schedulerCache.AddPodGroup(ss)
 		}
 
-		args := &framework.PluginArgs{
+		for _, q := range test.queues {
+			schedulerCache.AddQueue(q)
+		}
+
+		drfArgs := &framework.PluginArgs{
 			Name:                 "drf",
 			PreemptableFnEnabled: true,
 			JobOrderFnEnabled:    true,
 		}
+		proArgs := &framework.PluginArgs{
+			Name: "proportion",
+		}
 
-		ssn := framework.OpenSession(schedulerCache, []*framework.PluginArgs{args})
+		ssn := framework.OpenSession(schedulerCache, []*framework.PluginArgs{proArgs, drfArgs})
 		defer framework.CloseSession(ssn)
 
 		allocate.Execute(ssn)
