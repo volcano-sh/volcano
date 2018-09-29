@@ -13,6 +13,10 @@ To run `kube-arbitrator`, a Kubernetes cluster must start up. Here is a document
 
 An official kube-arbitrator image is provided and you can download it from [DockerHub](https://hub.docker.com/r/kubesigs/kube-batchd/). The version is `v0.2` now.
 
+```bash
+# docker pull  kubesigs/kube-batchd:v0.2
+```
+
 ### (2) Create a Kubernetes Deployment for kube-arbitrator
 
 #### Download kube-arbitrator
@@ -20,7 +24,7 @@ An official kube-arbitrator image is provided and you can download it from [Dock
 ```bash
 # mkdir -p $GOPATH/src/github.com/kubernetes-incubator/
 # cd $GOPATH/src/github.com/kubernetes-incubator/
-# git clone git@github.com:kubernetes-incubator/kube-arbitrator.git
+# git clone http://github.com/kubernetes-incubator/kube-arbitrator
 ```
 
 #### Deploys `kube-arbitrator` by Helm
