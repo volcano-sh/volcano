@@ -87,6 +87,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 			if !preemptable {
 				glog.V(3).Infof("Can not preempt task <%v/%v> because of gang-scheduling",
 					preemptee.Namespace, preemptee.Name)
+			} else {
 				victims = append(victims, preemptee)
 			}
 		}

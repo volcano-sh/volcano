@@ -264,26 +264,26 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo) error {
 }
 
 func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
-	var victims []*api.TaskInfo
+	if len(ssn.preemptableFns) == 0 {
+		return nil
+	}
 
-	for _, pf := range ssn.preemptableFns {
+	victims := ssn.preemptableFns[0](preemptor, preemptees)
+	for _, pf := range ssn.preemptableFns[1:] {
+		intersection := []*api.TaskInfo{}
+
 		candidates := pf(preemptor, preemptees)
-		if victims == nil {
-			victims = candidates
-		} else {
-			intersection := []*api.TaskInfo{}
-			// Get intersection of victims and candidates.
-			for _, v := range victims {
-				for _, c := range candidates {
-					if v.UID == c.UID {
-						intersection = append(intersection, v)
-					}
+		// Get intersection of victims and candidates.
+		for _, v := range victims {
+			for _, c := range candidates {
+				if v.UID == c.UID {
+					intersection = append(intersection, v)
 				}
 			}
-
-			// Update victims to intersection
-			victims = intersection
 		}
+
+		// Update victims to intersection
+		victims = intersection
 	}
 
 	return victims
