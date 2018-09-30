@@ -3,6 +3,7 @@
 export PATH="${HOME}/.kubeadm-dind-cluster:${PATH}"
 export KA_BIN=_output/bin
 export LOG_LEVEL=3
+export NUM_NODES=3
 
 if [ $(echo $RANDOM%2 | bc) -eq 1 ]
 then

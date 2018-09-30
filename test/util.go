@@ -19,6 +19,7 @@ package test
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,7 +40,6 @@ import (
 	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned"
 	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
-	"strconv"
 )
 
 var oneMinute = 1 * time.Minute
@@ -372,7 +372,6 @@ func taskReady(ctx *context, jobName string, taskNum int) wait.ConditionFunc {
 			if pod.Status.Phase == v1.PodRunning || pod.Status.Phase == v1.PodSucceeded {
 				readyTaskNum++
 			}
-
 		}
 
 		if taskNum < 0 {
@@ -509,6 +508,11 @@ func clusterSize(ctx *context, req v1.ResourceList) int32 {
 	res := int32(0)
 
 	for _, node := range nodes.Items {
+		// Skip node with taints
+		if len(node.Spec.Taints) != 0 {
+			continue
+		}
+
 		alloc := arbapi.NewResource(node.Status.Allocatable)
 		slot := arbapi.NewResource(req)
 
@@ -530,7 +534,15 @@ func clusterNodeNumber(ctx *context) int {
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
-	return len(nodes.Items)
+	nn := 0
+	for _, node := range nodes.Items {
+		if len(node.Spec.Taints) != 0 {
+			continue
+		}
+		nn++
+	}
+
+	return nn
 }
 
 func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
@@ -563,6 +575,10 @@ func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
 	}
 
 	for _, node := range nodes.Items {
+		if len(node.Spec.Taints) != 0 {
+			continue
+		}
+
 		res := int32(0)
 
 		alloc := arbapi.NewResource(node.Status.Allocatable)
