@@ -76,6 +76,23 @@ var _ = Describe("E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
+	It("Gang scheduling: Full Occupied", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+		rep := clusterSize(context, oneCPU)
+
+		job1 := createJob(context, "gang-fq-qj1", rep, rep, "nginx", oneCPU, nil)
+		err := waitJobReady(context, job1.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		job2 := createJob(context, "gang-fq-qj2", rep, rep, "nginx", oneCPU, nil)
+		err = waitJobNotReady(context, job2.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = waitJobReady(context, job1.Name)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 	It("Preemption", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
@@ -204,5 +221,4 @@ var _ = Describe("E2E Test", func() {
 		err = waitTasksNotReady(context, job.Name, nn)
 		Expect(err).NotTo(HaveOccurred())
 	})
-
 })

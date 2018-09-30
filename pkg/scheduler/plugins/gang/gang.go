@@ -92,6 +92,8 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
+		glog.V(3).Infof("Victims from Gang plugins are %+v", victims)
+
 		return victims
 	}
 	if gp.args.PreemptableFnEnabled {

@@ -102,6 +102,8 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
+		glog.V(3).Infof("Victims from DRF plugins are %+v", victims)
+
 		return victims
 	}
 
