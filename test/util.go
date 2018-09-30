@@ -287,7 +287,7 @@ func createJobWithOptions(context *context,
 			Namespace: jns,
 		},
 		Spec: arbv1.PodGroupSpec{
-			NumMember: min,
+			MinMember: min,
 			Queue:     jq,
 		},
 	}
@@ -375,7 +375,7 @@ func taskReady(ctx *context, jobName string, taskNum int) wait.ConditionFunc {
 		}
 
 		if taskNum < 0 {
-			taskNum = int(pg.Spec.NumMember)
+			taskNum = int(pg.Spec.MinMember)
 		}
 
 		return taskNum <= readyTaskNum, nil
