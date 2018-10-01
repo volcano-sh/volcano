@@ -154,7 +154,7 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 			for _, reclaimee := range victims {
 				glog.Errorf("Try to reclaim Task <%s/%s> for Tasks <%s/%s>",
 					reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name)
-				if err := ssn.Evict(reclaimee); err != nil {
+				if err := ssn.Evict(reclaimee, "reclaim"); err != nil {
 					glog.Errorf("Failed to reclaim Task <%s/%s> for Tasks <%s/%s>: %v",
 						reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name, err)
 					continue
