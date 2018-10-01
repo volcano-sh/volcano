@@ -35,6 +35,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
+	arbcorev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/scheme"
 	arbinfo "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions"
@@ -288,7 +289,7 @@ func (sc *SchedulerCache) findJobAndTask(taskInfo *arbapi.TaskInfo) (*arbapi.Job
 	return job, task, nil
 }
 
-func (sc *SchedulerCache) Evict(taskInfo *arbapi.TaskInfo) error {
+func (sc *SchedulerCache) Evict(taskInfo *arbapi.TaskInfo, reason string) error {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
@@ -320,6 +321,8 @@ func (sc *SchedulerCache) Evict(taskInfo *arbapi.TaskInfo) error {
 			sc.resyncTask(task)
 		}
 	}()
+
+	sc.recorder.Eventf(job.PodGroup, v1.EventTypeNormal, string(arbcorev1.EvictEvent), reason)
 
 	return nil
 }
@@ -537,11 +540,11 @@ func (sc *SchedulerCache) String() string {
 }
 
 // Backoff record event for job
-func (sc *SchedulerCache) Backoff(job *arbapi.JobInfo, reason arbapi.Reason) error {
+func (sc *SchedulerCache) Backoff(job *arbapi.JobInfo, event arbcorev1.Event, reason string) error {
 	if job.PodGroup != nil {
-		sc.recorder.Eventf(job.PodGroup, v1.EventTypeWarning, string(reason.Event), reason.Message)
+		sc.recorder.Eventf(job.PodGroup, v1.EventTypeWarning, string(event), reason)
 	} else if job.PDB != nil {
-		sc.recorder.Eventf(job.PDB, v1.EventTypeWarning, string(reason.Event), reason.Message)
+		sc.recorder.Eventf(job.PDB, v1.EventTypeWarning, string(event), reason)
 	} else {
 		return fmt.Errorf("no scheduling specification for job")
 	}

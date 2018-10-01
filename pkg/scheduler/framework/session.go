@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
 
+	arbcorev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
 	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/cache"
 )
@@ -230,8 +231,8 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 	return victims
 }
 
-func (ssn *Session) Evict(reclaimee *api.TaskInfo) error {
-	if err := ssn.cache.Evict(reclaimee); err != nil {
+func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
+	if err := ssn.cache.Evict(reclaimee, reason); err != nil {
 		return err
 	}
 
@@ -290,15 +291,15 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 }
 
 // Discard discards a job from session, so no plugin/action handles it.
-func (ssn *Session) Discard(job *api.JobInfo, reason api.Reason) error {
-	if err := ssn.cache.Backoff(job, reason); err != nil {
+func (ssn *Session) Discard(job *api.JobInfo, event arbcorev1.Event, reason string) error {
+	if err := ssn.cache.Backoff(job, event, reason); err != nil {
 		glog.Errorf("Failed to backoff job <%s/%s>: %v",
 			job.Namespace, job.Name, err)
 		return err
 	}
 
 	glog.V(3).Infof("Discard Job <%s/%s> because %s",
-		job.Namespace, job.Name, reason.Message)
+		job.Namespace, job.Name, reason)
 
 	// Delete Job from Session after recording event.
 	delete(ssn.JobIndex, job.UID)
