@@ -74,8 +74,9 @@ type Action string
 type Event string
 
 const (
-	UnschedulableEvent Event = "unschedulable"
-	PodFailedEvent     Event = "podfailed"
+	UnschedulableEvent Event = "Unschedulable"
+	EvictEvent         Event = "Evict"
+	PodFailedEvent     Event = "PodFailed"
 
 	RestartAction Action = "restart"
 )

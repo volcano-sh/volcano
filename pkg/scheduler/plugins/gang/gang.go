@@ -69,10 +69,7 @@ func jobReady(obj interface{}) bool {
 func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 	for _, job := range ssn.Jobs {
 		if validTaskNum(job) < job.MinAvailable {
-			ssn.Discard(job, api.Reason{
-				Event:   arbcorev1.UnschedulableEvent,
-				Message: "not enough valid tasks for gang-scheduling",
-			})
+			ssn.Discard(job, arbcorev1.UnschedulableEvent, "not enough valid tasks for gang-scheduling")
 		}
 	}
 

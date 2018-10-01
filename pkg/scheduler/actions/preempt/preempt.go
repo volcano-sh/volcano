@@ -179,7 +179,7 @@ func preempt(ssn *framework.Session, preemptor *api.TaskInfo, nodes []*api.NodeI
 		for _, preemptee := range victims {
 			glog.Errorf("Try to preempt Task <%s/%s> for Tasks <%s/%s>",
 				preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name)
-			if err := ssn.Evict(preemptee); err != nil {
+			if err := ssn.Evict(preemptee, "preempt"); err != nil {
 				glog.Errorf("Failed to preempt Task <%s/%s> for Tasks <%s/%s>: %v",
 					preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name, err)
 				continue
