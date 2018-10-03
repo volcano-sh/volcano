@@ -24,8 +24,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 
-	schedcache "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/cache"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
+	schedcache "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 )
 
 type Scheduler struct {

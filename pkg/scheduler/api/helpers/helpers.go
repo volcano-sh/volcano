@@ -19,7 +19,7 @@ package helpers
 import (
 	"math"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
 func Min(l, r *api.Resource) *api.Resource {
