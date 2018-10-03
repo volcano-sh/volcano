@@ -1,8 +1,10 @@
-approver:
+approvers:
   - timothysc
   - k82cn
   - foxish
-reviewer:
+  - jinzhejz
+reviewers:
   - timothysc
   - k82cn
   - foxish
+  - jinzhejz
