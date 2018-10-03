@@ -213,7 +213,7 @@ var _ = Describe("E2E Test", func() {
 		nn := clusterNodeNumber(context)
 
 		containers := createContainers("nginx", oneCPU, 28080)
-		job := createJobWithOptions(context, "kube-batchd", "qj-1", int32(nn), int32(nn*2), nil, containers)
+		job := createJobWithOptions(context, "kube-batch", "qj-1", int32(nn), int32(nn*2), nil, containers)
 
 		err := waitTasksReady(context, job.Name, nn)
 		Expect(err).NotTo(HaveOccurred())

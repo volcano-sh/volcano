@@ -11,7 +11,7 @@ Refer to [tutorial](doc/usage/tutorial.md) on how to use `kube-batch` to run bat
 
 ## Overall Architect
 
-![kube-batchd](doc/images/kube-batchd.png)
+![kube-batch](doc/images/kube-batch.png)
 
 ## Community, discussion, contribution, and support
 
