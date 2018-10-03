@@ -1,10 +1,10 @@
 ---
-title: Powered By kube-arbitrator
+title: Powered By kube-batch
 ---
 
-# Powered By kube-arbitrator
+# Powered By kube-batch
 
-## Organizations using kube-arbitrator
+## Organizations using kube-batch
 
 * [FfDL](http://github.com/ffdl)
 * [Tusimple](https://www.tusimple.com)

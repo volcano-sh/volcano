@@ -24,9 +24,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
 
-	arbcorev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/cache"
+	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache"
 )
 
 type Session struct {

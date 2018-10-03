@@ -19,7 +19,7 @@ limitations under the License.
 package versioned
 
 import (
-	schedulingv1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/typed/scheduling/v1alpha1"
+	schedulingv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/typed/scheduling/v1alpha1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"

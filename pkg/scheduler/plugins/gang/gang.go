@@ -19,9 +19,9 @@ package gang
 import (
 	"github.com/golang/glog"
 
-	arbcorev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
+	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 )
 
 type gangPlugin struct {

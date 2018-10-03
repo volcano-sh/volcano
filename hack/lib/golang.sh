@@ -15,7 +15,7 @@
 # limitations under the License.
 
 # The golang package that we are building.
-readonly KUBE_GO_PACKAGE=github.com/kubernetes-incubator/kube-arbitrator
+readonly KUBE_GO_PACKAGE=github.com/kubernetes-sigs/kube-batch
 readonly KUBE_GOPATH="${GOPATH}"
 
 # The set of server targets that we are only building for Linux

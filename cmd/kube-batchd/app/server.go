@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-batchd/app/options"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler"
+	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batchd/app/options"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	clientset "k8s.io/client-go/kubernetes"

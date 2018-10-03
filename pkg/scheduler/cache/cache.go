@@ -35,12 +35,12 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
-	arbcorev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned/scheme"
-	arbinfo "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions"
-	arbcoreinfo "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions/scheduling/v1alpha1"
-	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
+	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
+	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/scheme"
+	arbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
+	arbcoreinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
+	arbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
 // New returns a Cache implementation.
