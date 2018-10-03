@@ -61,7 +61,7 @@ export IFS=$'\n'
 # as the prefix, however if we run it outside it returns the full path of the file
 # with a leading underscore. We'll need to support both scenarios for all_packages.
 all_packages=(
-	$(go list -e ./... | egrep -v "/(third_party|vendor|staging/src/k8s.io/client-go/pkg|generated|clientset_generated)" | sed -e 's|^github.com/kubernetes-incubator/kube-arbitrator/||' -e "s|^_${KUBE_ROOT}/\?||")
+	$(go list -e ./... | egrep -v "/(third_party|vendor|staging/src/k8s.io/client-go/pkg|generated|clientset_generated)" | sed -e 's|^github.com/kubernetes-sigs/kube-batch/||' -e "s|^_${KUBE_ROOT}/\?||")
 )
 failing_packages=(
 	$(cat $failure_file)

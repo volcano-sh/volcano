@@ -1,38 +1,38 @@
-# Tutorial of kube-arbitrator
+# Tutorial of kube-batch
 
-This doc will show how to run `kube-arbitrator` as a kubernetes batch scheduler. It is for [master](https://github.com/kubernetes-incubator/kube-arbitrator/tree/master) branch.
+This doc will show how to run `kube-batch` as a kubernetes batch scheduler. It is for [master](https://github.com/kubernetes-sigs/kube-batch/tree/master) branch.
 
 ## 1. Pre-condition
-To run `kube-arbitrator`, a Kubernetes cluster must start up. Here is a document on [Using kubeadm to Create a Cluster](https://kubernetes.io/docs/setup/independent/create-cluster-kubeadm/). Additionally, for common purposes and testing and deploying on local machine, one can use Minikube. This is a document on [Running Kubernetes Locally via Minikube](https://kubernetes.io/docs/getting-started-guides/minikube/).
+To run `kube-batch`, a Kubernetes cluster must start up. Here is a document on [Using kubeadm to Create a Cluster](https://kubernetes.io/docs/setup/independent/create-cluster-kubeadm/). Additionally, for common purposes and testing and deploying on local machine, one can use Minikube. This is a document on [Running Kubernetes Locally via Minikube](https://kubernetes.io/docs/getting-started-guides/minikube/).
 
-`kube-arbitrator` need to run as a kubernetes scheduler. The next step will show how to run `kube-arbitrator` as kubernetes scheduler quickly. Refer [Configure Multiple Schedulers](https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/) to get more details.
+`kube-batch` need to run as a kubernetes scheduler. The next step will show how to run `kube-batch` as kubernetes scheduler quickly. Refer [Configure Multiple Schedulers](https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/) to get more details.
 
-## 2. Config kube-arbitrator for Kubernetes
+## 2. Config kube-batch for Kubernetes
 
-### (1) kube-arbitrator image
+### (1) kube-batch image
 
-An official kube-arbitrator image is provided and you can download it from [DockerHub](https://hub.docker.com/r/kubesigs/kube-batchd/). The version is `v0.2` now.
+An official kube-batch image is provided and you can download it from [DockerHub](https://hub.docker.com/r/kubesigs/kube-batchd/). The version is `v0.2` now.
 
 ```bash
 # docker pull  kubesigs/kube-batchd:v0.2
 ```
 
-### (2) Create a Kubernetes Deployment for kube-arbitrator
+### (2) Create a Kubernetes Deployment for kube-batch
 
-#### Download kube-arbitrator
+#### Download kube-batch
 
 ```bash
-# mkdir -p $GOPATH/src/github.com/kubernetes-incubator/
-# cd $GOPATH/src/github.com/kubernetes-incubator/
-# git clone http://github.com/kubernetes-incubator/kube-arbitrator
+# mkdir -p $GOPATH/src/github.com/kubernetes-sigs/
+# cd $GOPATH/src/github.com/kubernetes-sigs/
+# git clone http://github.com/kubernetes-sigs/kube-batch
 ```
 
-#### Deploys `kube-arbitrator` by Helm
+#### Deploys `kube-batch` by Helm
 
-Run the `kube-arbitrator` as kubernetes scheduler
+Run the `kube-batch` as kubernetes scheduler
 
 ```bash
-# helm install $GOPATH/src/github.com/kubernetes-incubator/kube-arbitrator/deployment/kube-arbitrator --namespace kube-system
+# helm install $GOPATH/src/github.com/kubernetes-sigs/kube-batch/deployment/kube-batch --namespace kube-system
 ```
 
 Verify the release
@@ -40,10 +40,10 @@ Verify the release
 ```bash
 # helm list
 NAME        	REVISION	UPDATED                 	STATUS  	CHART                	NAMESPACE
-dozing-otter	1       	Thu Jun 14 18:52:15 2018	DEPLOYED	kube-arbitrator-0.2.0	kube-system
+dozing-otter	1       	Thu Jun 14 18:52:15 2018	DEPLOYED	kube-batch-0.2.0    	kube-system
 ```
 
-NOTE: `kube-arbitrator` need to collect cluster information(such as Pod, Node, CRD, etc) for scheduing, so the service account used by the deployment must have permission to access those cluster resources, otherwise, `kube-arbitrator` will fail to startup. For users who are not familiar with Kubernetes RBAC, please copy the example/role.yaml into `$GOPATH/src/github.com/kubernetes-incubator/kube-arbitrator/deployment/kube-arbitrator/templates/` and reinstall arbitrator.
+NOTE: `kube-batch` need to collect cluster information(such as Pod, Node, CRD, etc) for scheduing, so the service account used by the deployment must have permission to access those cluster resources, otherwise, `kube-batch` will fail to startup. For users who are not familiar with Kubernetes RBAC, please copy the example/role.yaml into `$GOPATH/src/github.com/kubernetes-sigs/kube-batch/deployment/kube-batch/templates/` and reinstall batch.
 
 ### (3) Create a Job
 

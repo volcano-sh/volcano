@@ -19,8 +19,8 @@ limitations under the License.
 package scheduling
 
 import (
-	internalinterfaces "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions/scheduling/v1alpha1"
+	internalinterfaces "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/internalinterfaces"
+	v1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
 )
 
 // Interface provides access to each of this group's versions.

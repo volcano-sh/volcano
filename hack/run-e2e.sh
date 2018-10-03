@@ -20,7 +20,7 @@ export ENABLE_NAMESPACES_AS_QUEUE=$enable_namespace_as_queue
 kubectl create -f config/crds/scheduling_v1alpha1_podgroup.yaml
 kubectl create -f config/crds/scheduling_v1alpha1_queue.yaml
 
-# start kube-arbitrator
+# start kube-batch
 nohup ${KA_BIN}/kube-batchd --kubeconfig ${HOME}/.kube/config --enable-namespace-as-queue=${ENABLE_NAMESPACES_AS_QUEUE} --logtostderr --v ${LOG_LEVEL} > scheduler.log 2>&1 &
 
 # clean up

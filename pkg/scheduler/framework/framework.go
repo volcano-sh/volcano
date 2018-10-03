@@ -18,7 +18,7 @@ package framework
 
 import (
 	"github.com/golang/glog"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/cache"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache"
 )
 
 func OpenSession(cache cache.Cache, args []*PluginArgs) *Session {

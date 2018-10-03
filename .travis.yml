@@ -11,7 +11,7 @@ services:
 go:
   - "1.10"
 
-go_import_path: github.com/kubernetes-incubator/kube-arbitrator
+go_import_path: github.com/kubernetes-sigs/kube-batch
 
 install:
   - go get -u github.com/golang/lint/golint

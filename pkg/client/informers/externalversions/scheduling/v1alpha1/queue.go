@@ -21,10 +21,10 @@ package v1alpha1
 import (
 	time "time"
 
-	scheduling_v1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
-	versioned "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned"
-	internalinterfaces "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/client/listers/scheduling/v1alpha1"
+	scheduling_v1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	versioned "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
+	internalinterfaces "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/internalinterfaces"
+	v1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
