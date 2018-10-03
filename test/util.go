@@ -223,7 +223,7 @@ func createJob(
 	affinity *v1.Affinity,
 ) *batchv1.Job {
 	containers := createContainers(img, req, 0)
-	return createJobWithOptions(context, "kube-batchd", name, min, rep, affinity, containers)
+	return createJobWithOptions(context, "kube-batch", name, min, rep, affinity, containers)
 }
 
 func createContainers(img string, req v1.ResourceList, hostport int32) []v1.Container {

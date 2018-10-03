@@ -26,8 +26,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/util/flag"
 
-	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batchd/app"
-	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batchd/app/options"
+	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app"
+	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
 )
 
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")

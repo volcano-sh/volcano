@@ -1,4 +1,4 @@
-apiVersion: v1
+apiVersion: v1alpha1
 description: The batch scheduler of Kubernetes
-name: kube-batchd
+name: kube-batch
 version: 0.2.0

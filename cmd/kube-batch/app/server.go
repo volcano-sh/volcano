@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batchd/app/options"
+	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"

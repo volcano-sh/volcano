@@ -1,5 +1,5 @@
 From ubuntu:18.04
 
-ADD kube-batchd /usr/local/bin
+ADD kube-batch /usr/local/bin
 
-ENTRYPOINT ["/usr/local/bin/kube-batchd"]
+ENTRYPOINT ["/usr/local/bin/kube-batch"]
