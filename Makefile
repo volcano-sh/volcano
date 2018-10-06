@@ -19,7 +19,7 @@ generate-code:
 images: kube-batch
 	cp ./_output/bin/kube-batch ./deployment/images/
 	docker build ./deployment/images -t kubesigs/kube-batch:${RELEASE_VER}
-	rm -f ./deployment/kube-batch
+	rm -f ./deployment/images/kube-batch
 
 run-test:
 	hack/make-rules/test.sh $(WHAT) $(TESTS)
