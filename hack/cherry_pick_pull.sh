@@ -140,7 +140,7 @@ Cherry pick of ${PULLSUBJ} on ${rel}.
 ${numandtitle}
 EOF
 
-  hub pull-request -F "${prtext}" -h "${GITHUB_USER}:${NEWBRANCH}" -b "kube-batch:${rel}"
+  hub pull-request -F "${prtext}" -h "${GITHUB_USER}:${NEWBRANCH}" -b "kubernetes-sigs:${rel}"
 }
 
 git checkout -b "${NEWBRANCHUNIQ}" "${BRANCH}"
