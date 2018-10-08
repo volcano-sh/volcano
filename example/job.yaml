@@ -26,4 +26,4 @@ kind: PodGroup
 metadata:
   name: qj-1
 spec:
-  numMember: 6
+  minMember: 6
