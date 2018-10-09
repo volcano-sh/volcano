@@ -23,7 +23,6 @@ script:
   - make verify
   - make
   - make run-test
-  - make e2e
 
 notifications:
   webhooks: https://www.travisbuddy.com/
