@@ -38,4 +38,4 @@ function cleanup {
 trap cleanup EXIT
 
 # Run e2e test
-go test ./test -v
+go test ./test/e2e -v

@@ -16,4 +16,4 @@ pkg/scheduler/plugins/predicates
 pkg/scheduler/plugins/priority
 pkg/scheduler/plugins/proportion
 pkg/scheduler/util
-test
+test/e2e
