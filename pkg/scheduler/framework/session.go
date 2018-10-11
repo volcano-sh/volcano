@@ -24,8 +24,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/cache"
+	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache"
 )
 
 type Session struct {
@@ -230,8 +231,8 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 	return victims
 }
 
-func (ssn *Session) Evict(reclaimee *api.TaskInfo) error {
-	if err := ssn.cache.Evict(reclaimee); err != nil {
+func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
+	if err := ssn.cache.Evict(reclaimee, reason); err != nil {
 		return err
 	}
 
@@ -264,41 +265,41 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo) error {
 }
 
 func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
-	var victims []*api.TaskInfo
+	if len(ssn.preemptableFns) == 0 {
+		return nil
+	}
 
-	for _, pf := range ssn.preemptableFns {
+	victims := ssn.preemptableFns[0](preemptor, preemptees)
+	for _, pf := range ssn.preemptableFns[1:] {
+		intersection := []*api.TaskInfo{}
+
 		candidates := pf(preemptor, preemptees)
-		if victims == nil {
-			victims = candidates
-		} else {
-			intersection := []*api.TaskInfo{}
-			// Get intersection of victims and candidates.
-			for _, v := range victims {
-				for _, c := range candidates {
-					if v.UID == c.UID {
-						intersection = append(intersection, v)
-					}
+		// Get intersection of victims and candidates.
+		for _, v := range victims {
+			for _, c := range candidates {
+				if v.UID == c.UID {
+					intersection = append(intersection, v)
 				}
 			}
-
-			// Update victims to intersection
-			victims = intersection
 		}
+
+		// Update victims to intersection
+		victims = intersection
 	}
 
 	return victims
 }
 
 // Discard discards a job from session, so no plugin/action handles it.
-func (ssn *Session) Discard(job *api.JobInfo, reason api.Reason) error {
-	if err := ssn.cache.Backoff(job, reason); err != nil {
+func (ssn *Session) Discard(job *api.JobInfo, event arbcorev1.Event, reason string) error {
+	if err := ssn.cache.Backoff(job, event, reason); err != nil {
 		glog.Errorf("Failed to backoff job <%s/%s>: %v",
 			job.Namespace, job.Name, err)
 		return err
 	}
 
 	glog.V(3).Infof("Discard Job <%s/%s> because %s",
-		job.Namespace, job.Name, reason.Message)
+		job.Namespace, job.Name, reason)
 
 	// Delete Job from Session after recording event.
 	delete(ssn.JobIndex, job.UID)

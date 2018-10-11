@@ -28,12 +28,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	arbcorev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/cache"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/drf"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/proportion"
+	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/drf"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/proportion"
 )
 
 func buildResourceList(cpu string, memory string) v1.ResourceList {

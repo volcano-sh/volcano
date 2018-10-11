@@ -44,10 +44,10 @@ type PodGroup struct {
 
 // PodGroupSpec represents the template of a pod group.
 type PodGroupSpec struct {
-	// NumMember defines the number of members/tasks to run the pod group;
+	// MinMember defines the minimal number of members/tasks to run the pod group;
 	// if there's not enough resources to start all tasks, the scheduler
 	// will not start anyone.
-	NumMember int32 `json:"numMember,omitempty" protobuf:"bytes,1,opt,name=numMember"`
+	MinMember int32 `json:"minMember,omitempty" protobuf:"bytes,1,opt,name=minMember"`
 
 	// Queue defines the queue to allocate resource for PodGroup; if queue does not exist,
 	// the PodGroup will not be scheduled.
@@ -74,8 +74,9 @@ type Action string
 type Event string
 
 const (
-	UnschedulableEvent Event = "unschedulable"
-	PodFailedEvent     Event = "podfailed"
+	UnschedulableEvent Event = "Unschedulable"
+	EvictEvent         Event = "Evict"
+	PodFailedEvent     Event = "PodFailed"
 
 	RestartAction Action = "restart"
 )

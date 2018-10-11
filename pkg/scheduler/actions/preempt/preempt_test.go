@@ -19,9 +19,9 @@ package preempt
 import (
 	"testing"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/drf"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/drf"
 )
 
 func TestPreempt(t *testing.T) {
