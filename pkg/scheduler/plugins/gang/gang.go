@@ -19,9 +19,9 @@ package gang
 import (
 	"github.com/golang/glog"
 
-	arbcorev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
+	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 )
 
 type gangPlugin struct {
@@ -69,10 +69,7 @@ func jobReady(obj interface{}) bool {
 func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 	for _, job := range ssn.Jobs {
 		if validTaskNum(job) < job.MinAvailable {
-			ssn.Discard(job, api.Reason{
-				Event:   arbcorev1.UnschedulableEvent,
-				Message: "not enough valid tasks for gang-scheduling",
-			})
+			ssn.Discard(job, arbcorev1.UnschedulableEvent, "not enough valid tasks for gang-scheduling")
 		}
 	}
 
@@ -87,9 +84,12 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 			if !preemptable {
 				glog.V(3).Infof("Can not preempt task <%v/%v> because of gang-scheduling",
 					preemptee.Namespace, preemptee.Name)
+			} else {
 				victims = append(victims, preemptee)
 			}
 		}
+
+		glog.V(3).Infof("Victims from Gang plugins are %+v", victims)
 
 		return victims
 	}

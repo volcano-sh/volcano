@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/kubernetes-incubator/kube-arbitrator/cmd/kube-batchd/app/options"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler"
+	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	clientset "k8s.io/client-go/kubernetes"
@@ -60,7 +60,8 @@ func Run(opt *options.ServerOption) error {
 	neverStop := make(chan struct{})
 
 	// Start policy controller to allocate resources.
-	sched, err := scheduler.NewScheduler(config, opt.SchedulerName, opt.SchedulerConf, opt.NamespaceAsQueue)
+	sched, err := scheduler.NewScheduler(config, opt.SchedulerName,
+		opt.SchedulerConf, opt.SchedulePeriod, opt.NamespaceAsQueue)
 	if err != nil {
 		panic(err)
 	}
@@ -83,7 +84,7 @@ func Run(opt *options.ServerOption) error {
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: leaderElectionClient.CoreV1().Events(opt.LockObjectNamespace)})
-	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "kar-scheduler"})
+	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "kube-batch"})
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -94,7 +95,7 @@ func Run(opt *options.ServerOption) error {
 
 	rl, err := resourcelock.New(resourcelock.ConfigMapsResourceLock,
 		opt.LockObjectNamespace,
-		"kar-scheduler",
+		"kube-batch",
 		leaderElectionClient.CoreV1(),
 		resourcelock.ResourceLockConfig{
 			Identity:      id,

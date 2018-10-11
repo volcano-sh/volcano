@@ -1,5 +1,5 @@
 {
-	"ImportPath": "github.com/kubernetes-incubator/kube-arbitrator",
+	"ImportPath": "github.com/kubernetes-sigs/kube-batch",
 	"GoVersion": "go1.10",
 	"GodepVersion": "v79",
 	"Packages": [

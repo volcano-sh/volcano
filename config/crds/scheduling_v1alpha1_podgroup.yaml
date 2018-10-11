@@ -19,7 +19,7 @@ spec:
           type: object
         spec:
           properties:
-            numMember:
+            minMember:
               format: int32
               type: integer
           type: object

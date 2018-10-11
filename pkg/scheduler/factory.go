@@ -17,26 +17,24 @@ limitations under the License.
 package scheduler
 
 import (
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/actions/allocate"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/actions/preempt"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/actions/reclaim"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/allocate"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/preempt"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/reclaim"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/drf"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/gang"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/hostport"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/nodeaffinity"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/priority"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/plugins/proportion"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/drf"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/gang"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/predicates"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/priority"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/proportion"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 )
 
 func init() {
 	// Plugins for Jobs
 	framework.RegisterPluginBuilder("drf", drf.New)
 	framework.RegisterPluginBuilder("gang", gang.New)
-	framework.RegisterPluginBuilder("hostport", hostport.New)
-	framework.RegisterPluginBuilder("nodeaffinity", nodeaffinity.New)
+	framework.RegisterPluginBuilder("predicates", predicates.New)
 	framework.RegisterPluginBuilder("priority", priority.New)
 
 	// Plugins for Queues

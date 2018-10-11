@@ -50,8 +50,8 @@ A `Queue` can include 0 or more `QueueJob`.
 * If a Queue includes 0 QueueJob, its resource request is same as before. Such as `q03` in above.
 * If a Queue includes 1 or more QueueJob, the resource request of the queue equals the sum of all QueueJob resource request. Such as `q01` and `q02` in above.
 
-For Queue `q01` and `q02`, Kube-arbitrator will assign resources to their QueueJob directly.
-For Queue `q03`, Kube-arbitrator will just assign resources to the Queue.
+For Queue `q01` and `q02`, Kube-batch will assign resources to their QueueJob directly.
+For Queue `q03`, Kube-batch will just assign resources to the Queue.
 
 ## Future work
-* Now QueueJob is associated not with the real batch job, users who want to submit a batch job need to create their own QueueJob and watch the QueueJob, then submit their batch job after kube-arbitrator assign resources to QueueJob.
+* Now QueueJob is associated not with the real batch job, users who want to submit a batch job need to create their own QueueJob and watch the QueueJob, then submit their batch job after kube-batch assign resources to QueueJob.

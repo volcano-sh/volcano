@@ -19,6 +19,7 @@ package test
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,10 +37,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	arbv1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/client/clientset/versioned"
-	arbapi "github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
-	"strconv"
+	arbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
+	arbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
 var oneMinute = 1 * time.Minute
@@ -223,7 +223,7 @@ func createJob(
 	affinity *v1.Affinity,
 ) *batchv1.Job {
 	containers := createContainers(img, req, 0)
-	return createJobWithOptions(context, "kube-batchd", name, min, rep, affinity, containers)
+	return createJobWithOptions(context, "kube-batch", name, min, rep, affinity, containers)
 }
 
 func createContainers(img string, req v1.ResourceList, hostport int32) []v1.Container {
@@ -287,7 +287,7 @@ func createJobWithOptions(context *context,
 			Namespace: jns,
 		},
 		Spec: arbv1.PodGroupSpec{
-			NumMember: min,
+			MinMember: min,
 			Queue:     jq,
 		},
 	}
@@ -372,11 +372,10 @@ func taskReady(ctx *context, jobName string, taskNum int) wait.ConditionFunc {
 			if pod.Status.Phase == v1.PodRunning || pod.Status.Phase == v1.PodSucceeded {
 				readyTaskNum++
 			}
-
 		}
 
 		if taskNum < 0 {
-			taskNum = int(pg.Spec.NumMember)
+			taskNum = int(pg.Spec.MinMember)
 		}
 
 		return taskNum <= readyTaskNum, nil
@@ -509,6 +508,11 @@ func clusterSize(ctx *context, req v1.ResourceList) int32 {
 	res := int32(0)
 
 	for _, node := range nodes.Items {
+		// Skip node with taints
+		if len(node.Spec.Taints) != 0 {
+			continue
+		}
+
 		alloc := arbapi.NewResource(node.Status.Allocatable)
 		slot := arbapi.NewResource(req)
 
@@ -530,7 +534,15 @@ func clusterNodeNumber(ctx *context) int {
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
-	return len(nodes.Items)
+	nn := 0
+	for _, node := range nodes.Items {
+		if len(node.Spec.Taints) != 0 {
+			continue
+		}
+		nn++
+	}
+
+	return nn
 }
 
 func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
@@ -563,6 +575,10 @@ func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
 	}
 
 	for _, node := range nodes.Items {
+		if len(node.Spec.Taints) != 0 {
+			continue
+		}
+
 		res := int32(0)
 
 		alloc := arbapi.NewResource(node.Status.Allocatable)

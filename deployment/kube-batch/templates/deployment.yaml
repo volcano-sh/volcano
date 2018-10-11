@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kube-batchd
+  name: kube-batch
   labels:
     chart: "{{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}"
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: kube-batchd
+      app: kube-batch
   template:
     metadata:
       labels:
-        app: kube-batchd
+        app: kube-batch
     spec:
       containers:
       - name: {{ .Chart.Name }}
-        image: "{{ .Values.image.repository }}/kube-batchd:{{ .Values.image.tag }}"
+        image: "{{ .Values.image.repository }}/kube-batch:{{ .Values.image.tag }}"
         args: ["--logtostderr", "--v", "3", "--enable-namespace-as-queue"]
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         resources:

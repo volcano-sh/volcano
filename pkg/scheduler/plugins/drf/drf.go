@@ -21,9 +21,9 @@ import (
 
 	"github.com/golang/glog"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api/helpers"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/framework"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api/helpers"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 )
 
 var shareDelta = 0.000001
@@ -101,6 +101,8 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 				victims = append(victims, preemptee)
 			}
 		}
+
+		glog.V(3).Infof("Victims from DRF plugins are %+v", victims)
 
 		return victims
 	}

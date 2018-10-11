@@ -19,7 +19,8 @@ package cache
 import (
 	"k8s.io/api/core/v1"
 
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/scheduler/api"
+	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
 // Cache collects pods/nodes/queues information
@@ -42,10 +43,10 @@ type Cache interface {
 	Bind(task *api.TaskInfo, hostname string) error
 
 	// Evict evicts the task to release resources.
-	Evict(task *api.TaskInfo) error
+	Evict(task *api.TaskInfo, reason string) error
 
 	// Backoff puts job in backlog for a while.
-	Backoff(job *api.JobInfo, reason api.Reason) error
+	Backoff(job *api.JobInfo, event arbcorev1.Event, reason string) error
 }
 
 type Binder interface {

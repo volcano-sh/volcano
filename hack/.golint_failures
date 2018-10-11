@@ -1,5 +1,5 @@
-cmd/kube-batchd/app
-cmd/kube-batchd/app/options
+cmd/kube-batch/app
+cmd/kube-batch/app/options
 pkg/apis/scheduling/v1alpha1
 pkg/apis/utils
 pkg/scheduler
@@ -12,9 +12,8 @@ pkg/scheduler/cache
 pkg/scheduler/framework
 pkg/scheduler/plugins/drf
 pkg/scheduler/plugins/gang
-pkg/scheduler/plugins/hostport
-pkg/scheduler/plugins/nodeaffinity
+pkg/scheduler/plugins/predicates
 pkg/scheduler/plugins/priority
 pkg/scheduler/plugins/proportion
 pkg/scheduler/util
-test
+test/e2e

@@ -19,7 +19,7 @@ presents the API definition of `Queue` for MVP.
 
 ## Terminology
 
-  * Deserved (Resource): The total number of resources that the arbitrator allocated to the namespace
+  * Deserved (Resource): The total number of resources that the batch allocated to the namespace
   * Overused: The namespace is overused if it used more resources than deserved resources
   * Underused: The namespace is underused if it used less resource than deserved resources
 

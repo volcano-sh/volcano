@@ -19,11 +19,11 @@ spec:
           requests:
             cpu: "1"
       restartPolicy: Never
-      schedulerName: kube-batchd
+      schedulerName: kube-batch
 ---
 apiVersion: scheduling.incubator.k8s.io/v1alpha1
 kind: PodGroup
 metadata:
   name: qj-1
 spec:
-  numMember: 6
+  minMember: 6

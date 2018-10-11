@@ -23,8 +23,8 @@ import (
 	policyv1 "k8s.io/api/policy/v1beta1"
 	"k8s.io/apimachinery/pkg/types"
 
-	arbcorev1 "github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/scheduling/v1alpha1"
-	"github.com/kubernetes-incubator/kube-arbitrator/pkg/apis/utils"
+	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/apis/utils"
 )
 
 type TaskID types.UID
@@ -156,7 +156,7 @@ func (ji *JobInfo) UnsetPodGroup() {
 func (ji *JobInfo) SetPodGroup(pg *arbcorev1.PodGroup) {
 	ji.Name = pg.Name
 	ji.Namespace = pg.Namespace
-	ji.MinAvailable = pg.Spec.NumMember
+	ji.MinAvailable = pg.Spec.MinMember
 
 	if len(pg.Spec.Queue) == 0 {
 		ji.Queue = QueueID(pg.Namespace)

@@ -140,7 +140,7 @@ Cherry pick of ${PULLSUBJ} on ${rel}.
 ${numandtitle}
 EOF
 
-  hub pull-request -F "${prtext}" -h "${GITHUB_USER}:${NEWBRANCH}" -b "kube-arbitrator:${rel}"
+  hub pull-request -F "${prtext}" -h "${GITHUB_USER}:${NEWBRANCH}" -b "kubernetes-sigs:${rel}"
 }
 
 git checkout -b "${NEWBRANCHUNIQ}" "${BRANCH}"
@@ -149,7 +149,7 @@ cleanbranch="${NEWBRANCHUNIQ}"
 gitamcleanup=true
 for pull in "${PULLS[@]}"; do
   echo "+++ Downloading patch to /tmp/${pull}.patch (in case you need to do this again)"
-  curl -o "/tmp/${pull}.patch" -sSL "https://github.com/kubernetes-incubator/kube-arbitrator/pull/${pull}.patch"
+  curl -o "/tmp/${pull}.patch" -sSL "https://github.com/kubernetes-sigs/kube-batch/pull/${pull}.patch"
   echo
   echo "+++ About to attempt cherry pick of PR. To reattempt:"
   echo "  $ git am -3 /tmp/${pull}.patch"
@@ -211,8 +211,8 @@ if [[ -n "${DRY_RUN}" ]]; then
   exit 0
 fi
 
-if git remote -v | grep ^${FORK_REMOTE} | grep kubernetes-incubator/kube-arbitrator.git; then
-  echo "!!! You have ${FORK_REMOTE} configured as your kubernetes-incubator/kube-arbitrator.git"
+if git remote -v | grep ^${FORK_REMOTE} | grep kubernetes-sigs/kube-batch.git; then
+  echo "!!! You have ${FORK_REMOTE} configured as your kubernetes-sigs/kube-batch.git"
   echo "This isn't normal. Leaving you with push instructions:"
   echo
   echo "+++ First manually push the branch this script created:"

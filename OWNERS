@@ -1,8 +1,8 @@
-approver:
-  - timothysc
+approvers:
   - k82cn
-  - foxish
-reviewer:
-  - timothysc
+  - jinzhejz
+  - suleisl2000
+reviewers:
   - k82cn
-  - foxish
+  - jinzhejz
+  - suleisl2000
