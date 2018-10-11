@@ -29,23 +29,27 @@ import (
 )
 
 type Scheduler struct {
-	cache         schedcache.Cache
-	config        *rest.Config
-	actions       []framework.Action
-	pluginArgs    []*framework.PluginArgs
-	schedulerConf string
+	cache          schedcache.Cache
+	config         *rest.Config
+	actions        []framework.Action
+	pluginArgs     []*framework.PluginArgs
+	schedulerConf  string
+	schedulePeriod time.Duration
 }
 
 func NewScheduler(
 	config *rest.Config,
 	schedulerName string,
 	conf string,
+	period string,
 	nsAsQueue bool,
 ) (*Scheduler, error) {
+	sp, _ := time.ParseDuration(period)
 	scheduler := &Scheduler{
-		config:        config,
-		schedulerConf: conf,
-		cache:         schedcache.New(config, schedulerName, nsAsQueue),
+		config:         config,
+		schedulerConf:  conf,
+		cache:          schedcache.New(config, schedulerName, nsAsQueue),
+		schedulePeriod: sp,
 	}
 
 	return scheduler, nil
@@ -69,7 +73,7 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 
 	pc.actions, pc.pluginArgs = loadSchedulerConf(conf)
 
-	go wait.Until(pc.runOnce, 1*time.Second, stopCh)
+	go wait.Until(pc.runOnce, pc.schedulePeriod, stopCh)
 }
 
 func (pc *Scheduler) runOnce() {
