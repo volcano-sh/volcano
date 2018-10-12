@@ -14,19 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package test
+package e2e
 
 import (
-	"fmt"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-
-	"k8s.io/api/core/v1"
-	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 )
 
-var _ = Describe("E2E Test", func() {
+var _ = Describe("Job E2E Test", func() {
 	It("Schedule Job", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
@@ -138,90 +133,6 @@ var _ = Describe("E2E Test", func() {
 		err = waitTasksReady(context, job3.Name, int(rep)/3)
 		Expect(err).NotTo(HaveOccurred())
 	})
-
-	It("NodeAffinity", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
-
-		slot := oneCPU
-		nodeName, rep := computeNode(context, oneCPU)
-		Expect(rep).NotTo(Equal(0))
-
-		affinity := &v1.Affinity{
-			NodeAffinity: &v1.NodeAffinity{
-				RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
-					NodeSelectorTerms: []v1.NodeSelectorTerm{
-						{
-							MatchFields: []v1.NodeSelectorRequirement{
-								{
-									Key:      algorithm.NodeFieldSelectorKeyNodeName,
-									Operator: v1.NodeSelectorOpIn,
-									Values:   []string{nodeName},
-								},
-							},
-						},
-					},
-				},
-			},
-		}
-
-		job := createJob(context, "na-job", 1, 1, "nginx", slot, affinity)
-		err := waitJobReady(context, job.Name)
-		Expect(err).NotTo(HaveOccurred())
-
-		pods := getPodOfJob(context, "na-job")
-		for _, pod := range pods {
-			Expect(pod.Spec.NodeName).To(Equal(nodeName))
-		}
-	})
-
-	It("Reclaim", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
-
-		jobName1 := "n1/qj-1"
-		jobName2 := "n2/qj-2"
-
-		slot := oneCPU
-		rep := clusterSize(context, slot)
-
-		createJob(context, jobName1, 1, rep, "nginx", slot, nil)
-		err := waitJobReady(context, jobName1)
-		Expect(err).NotTo(HaveOccurred())
-
-		expected := int(rep) / 2
-		// Reduce one pod to tolerate decimal fraction.
-		if expected > 1 {
-			expected--
-		} else {
-			err := fmt.Errorf("expected replica <%d> is too small", expected)
-			Expect(err).NotTo(HaveOccurred())
-		}
-
-		createJob(context, jobName2, 1, rep, "nginx", slot, nil)
-		err = waitTasksReady(context, jobName2, expected)
-		Expect(err).NotTo(HaveOccurred())
-
-		err = waitTasksReady(context, jobName1, expected)
-		Expect(err).NotTo(HaveOccurred())
-	})
-
-	It("Hostport", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
-
-		nn := clusterNodeNumber(context)
-
-		containers := createContainers("nginx", oneCPU, 28080)
-		job := createJobWithOptions(context, "kube-batch", "qj-1", int32(nn), int32(nn*2), nil, containers)
-
-		err := waitTasksReady(context, job.Name, nn)
-		Expect(err).NotTo(HaveOccurred())
-
-		err = waitTasksNotReady(context, job.Name, nn)
-		Expect(err).NotTo(HaveOccurred())
-	})
-	
 	It("Schedule BestEffort Job", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
