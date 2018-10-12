@@ -20,6 +20,8 @@ import (
 	"github.com/golang/glog"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+
+	"k8s.io/api/core/v1"
 )
 
 type priorityPlugin struct {
@@ -36,6 +38,11 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 	taskOrderFn := func(l interface{}, r interface{}) int {
 		lv := l.(*api.TaskInfo)
 		rv := r.(*api.TaskInfo)
+
+		// TODO quick fix, enhance it later by other option.
+		if res := compareQoS(lv.Pod, rv.Pod); res != 0 {
+			return res
+		}
 
 		glog.V(3).Infof("Priority TaskOrder: <%v/%v> prority is %v, <%v/%v> priority is %v",
 			lv.Namespace, lv.Name, lv.Priority, rv.Namespace, rv.Name, rv.Priority)
@@ -81,3 +88,28 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 }
 
 func (pp *priorityPlugin) OnSessionClose(ssn *framework.Session) {}
+
+// make BestEffort > Burstable/Guarantee
+func compareQoS(l, r *v1.Pod) int {
+	lq := l.Status.QOSClass
+	rq := r.Status.QOSClass
+
+	glog.V(3).Infof("Priority TaskOrder: <%v/%v> QoS is %v, <%v/%v> QoS is %v",
+		l.Namespace, l.Name, lq, r.Namespace, r.Name, rq)
+
+	if lq == rq {
+		return 0
+	}
+
+	// BestEffort > Burstable/Guarantee
+	if lq == v1.PodQOSBestEffort {
+		return -1
+	}
+
+	// Burstable/Guarantee < BestEffort
+	if rq == v1.PodQOSBestEffort {
+		return 1
+	}
+
+	return 0
+}
