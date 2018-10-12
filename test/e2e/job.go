@@ -133,5 +133,18 @@ var _ = Describe("Job E2E Test", func() {
 		err = waitTasksReady(context, job3.Name, int(rep)/3)
 		Expect(err).NotTo(HaveOccurred())
 	})
+	It("Schedule BestEffort Job", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
 
+		pgName := "test"
+
+		createPodGroup(context, "burstable", pgName, 2)
+
+		bestEffort := createJobWithoutPodGroup(context, "besteffort", 1, "busybox", nil, pgName)
+		burstable := createJobWithoutPodGroup(context, "burstable", 1, "busybox", oneCPU, pgName)
+
+		err := waitJobReadyWithPodGroup(context, pgName, bestEffort.Name, burstable.Name)
+		Expect(err).NotTo(HaveOccurred())
+	})
 })
