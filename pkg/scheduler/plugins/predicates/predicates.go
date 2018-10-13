@@ -82,7 +82,7 @@ func (pp *nodeAffinityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		if !fit {
 			return fmt.Errorf("task <%s/%s> does not tolerate node <%s> taints",
-				node.Name, task.Namespace, task.Name)
+				task.Namespace, task.Name, node.Name)
 		}
 
 		return nil
