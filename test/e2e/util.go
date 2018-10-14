@@ -303,8 +303,69 @@ func taskReadyEx(ctx *context, pg *arbv1.PodGroup, taskNum int) wait.ConditionFu
 	}
 }
 
+func taskCreated(ctx *context, pg *arbv1.PodGroup, taskNum int) wait.ConditionFunc {
+	return func() (bool, error) {
+		pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		pods, err := ctx.kubeclient.CoreV1().Pods(pg.Namespace).List(metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		readyTaskNum := 0
+		for _, pod := range pods.Items {
+			if gn, found := pod.Annotations[arbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
+				continue
+			}
+
+			switch pod.Status.Phase {
+			case v1.PodRunning, v1.PodSucceeded, v1.PodPending:
+				readyTaskNum++
+			}
+		}
+
+		if taskNum < 0 {
+			taskNum = int(pg.Spec.MinMember)
+		}
+
+		return taskNum <= readyTaskNum, nil
+	}
+}
+
+func podGroupUnschedulable(ctx *context, pg *arbv1.PodGroup, time time.Time) wait.ConditionFunc {
+	return func() (bool, error) {
+		pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		events, err := ctx.kubeclient.CoreV1().Events(pg.Namespace).List(metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		for _, event := range events.Items {
+			target := event.InvolvedObject
+			if target.Name == pg.Name && target.Namespace == pg.Namespace {
+				if event.Reason == string(arbv1.UnschedulableEvent) && event.LastTimestamp.After(time) {
+					return true, nil
+				}
+			}
+		}
+
+		return false, nil
+	}
+}
+
 func waitPodGroupReady(ctx *context, pg *arbv1.PodGroup) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, taskReadyEx(ctx, pg, -1))
+}
+
+func waitTasksReadyEx(ctx *context, pg *arbv1.PodGroup, taskNum int) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, taskReadyEx(ctx, pg, taskNum))
+}
+
+func waitPodGroupUnschedulable(ctx *context, pg *arbv1.PodGroup) error {
+	if err := wait.Poll(100*time.Millisecond, oneMinute, taskCreated(ctx, pg, -1)); err != nil {
+		return err
+	}
+	now := time.Now()
+	return wait.Poll(100*time.Millisecond, oneMinute, podGroupUnschedulable(ctx, pg, now))
 }
 
 func createJob(
