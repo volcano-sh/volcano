@@ -88,30 +88,27 @@ var _ = Describe("Job E2E Test", func() {
 		err := waitReplicaSetReady(context, replicaset.Name)
 		Expect(err).NotTo(HaveOccurred())
 
-		// job := &jobSpec{
-		// 	name:      "gang-qj",
-		// 	namespace: "test",
-		// 	tasks: []taskSpec{
-		// 		{
-		// 			img: "busybox",
-		// 			req: oneCPU,
-		// 			min: rep,
-		// 			rep: rep,
-		// 		},
-		// 	},
-		// }
+		job := &jobSpec{
+			name:      "gang-qj",
+			namespace: "test",
+			tasks: []taskSpec{
+				{
+					img: "busybox",
+					req: oneCPU,
+					min: rep,
+					rep: rep,
+				},
+			},
+		}
 
-		job := createJob(context, "gang-qj", rep, rep, "busybox", oneCPU, nil, nil)
-		err = waitJobNotReady(context, job.Name)
-		// _, pg := createJobEx(context, job)
-		// err = waitPodGroupUnschedulable(context, pg)
+		_, pg := createJobEx(context, job)
+		err = waitPodGroupPending(context, pg)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = deleteReplicaSet(context, replicaset.Name)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobReady(context, job.Name)
-		// err = waitPodGroupReady(context, pg)
+		err = waitPodGroupReady(context, pg)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -120,15 +117,29 @@ var _ = Describe("Job E2E Test", func() {
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
 
-		job1 := createJob(context, "gang-fq-qj1", rep, rep, "nginx", oneCPU, nil, nil)
-		err := waitJobReady(context, job1.Name)
+		job := &jobSpec{
+			namespace: "test",
+			tasks: []taskSpec{
+				{
+					img: "nginx",
+					req: oneCPU,
+					min: rep,
+					rep: rep,
+				},
+			},
+		}
+
+		job.name = "gang-fq-qj1"
+		_, pg1 := createJobEx(context, job)
+		err := waitPodGroupReady(context, pg1)
 		Expect(err).NotTo(HaveOccurred())
 
-		job2 := createJob(context, "gang-fq-qj2", rep, rep, "nginx", oneCPU, nil, nil)
-		err = waitJobNotReady(context, job2.Name)
+		job.name = "gang-fq-qj2"
+		_, pg2 := createJobEx(context, job)
+		err = waitPodGroupPending(context, pg2)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobReady(context, job1.Name)
+		err = waitPodGroupReady(context, pg1)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -222,7 +233,7 @@ var _ = Describe("Job E2E Test", func() {
 					img: "nginx",
 					req: slot,
 					min: 2,
-					rep: rep / 2,
+					rep: rep,
 				},
 				{
 					img: "nginx",
