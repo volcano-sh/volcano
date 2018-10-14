@@ -172,23 +172,38 @@ var _ = Describe("Job E2E Test", func() {
 		slot := oneCPU
 		rep := clusterSize(context, slot)
 
-		job1 := createJob(context, "preemptee-qj", 1, rep, "nginx", slot, nil, nil)
-		err := waitTasksReady(context, job1.Name, int(rep))
+		job := &jobSpec{
+			namespace: "test",
+			tasks: []taskSpec{
+				{
+					img: "nginx",
+					req: slot,
+					min: 1,
+					rep: rep,
+				},
+			},
+		}
+
+		job.name = "preemptee-qj"
+		_, pg1 := createJobEx(context, job)
+		err := waitTasksReadyEx(context, pg1, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
-		job2 := createJob(context, "preemptor-qj", 1, rep, "nginx", slot, nil, nil)
+		job.name = "preemptor-qj1"
+		_, pg2 := createJobEx(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		job3 := createJob(context, "preemptor-qj2", 1, rep, "nginx", slot, nil, nil)
+		job.name = "preemptor-qj2"
+		_, pg3 := createJobEx(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReady(context, job1.Name, int(rep)/3)
+		err = waitTasksReadyEx(context, pg1, int(rep)/3)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReady(context, job2.Name, int(rep)/3)
+		err = waitTasksReadyEx(context, pg2, int(rep)/3)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReady(context, job3.Name, int(rep)/3)
+		err = waitTasksReadyEx(context, pg3, int(rep)/3)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -196,14 +211,30 @@ var _ = Describe("Job E2E Test", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
-		pgName := "test"
+		slot := oneCPU
+		rep := clusterSize(context, slot)
 
-		createPodGroup(context, "burstable", pgName, 2)
+		job := &jobSpec{
+			name:      "test",
+			namespace: "test",
+			tasks: []taskSpec{
+				{
+					img: "nginx",
+					req: slot,
+					min: 2,
+					rep: rep / 2,
+				},
+				{
+					img: "nginx",
+					min: 2,
+					rep: rep / 2,
+				},
+			},
+		}
 
-		bestEffort := createJobWithoutPodGroup(context, "besteffort", 1, "busybox", nil, pgName)
-		burstable := createJobWithoutPodGroup(context, "burstable", 1, "busybox", oneCPU, pgName)
+		_, pg := createJobEx(context, job)
 
-		err := waitJobReadyWithPodGroup(context, pgName, bestEffort.Name, burstable.Name)
+		err := waitPodGroupReady(context, pg)
 		Expect(err).NotTo(HaveOccurred())
 	})
 })
