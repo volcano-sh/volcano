@@ -50,17 +50,32 @@ var _ = Describe("Job E2E Test", func() {
 
 		rep := clusterSize(context, oneCPU)
 
-		job1 := createJob(context, "qj-1", 2, rep, "busybox", oneCPU, nil, nil)
-		qj2 := createJob(context, "qj-2", 2, rep, "busybox", oneCPU, nil, nil)
-		qj3 := createJob(context, "qj-3", 2, rep, "busybox", oneCPU, nil, nil)
+		job := &jobSpec{
+			namespace: "test",
+			tasks: []taskSpec{
+				{
+					img: "busybox",
+					req: oneCPU,
+					min: 2,
+					rep: rep,
+				},
+			},
+		}
 
-		err := waitJobReady(context, job1.Name)
+		job.name = "mqj-1"
+		_, pg1 := createJobEx(context, job)
+		job.name = "mqj-2"
+		_, pg2 := createJobEx(context, job)
+		job.name = "mqj-3"
+		_, pg3 := createJobEx(context, job)
+
+		err := waitPodGroupReady(context, pg1)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobReady(context, qj2.Name)
+		err = waitPodGroupReady(context, pg2)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobReady(context, qj3.Name)
+		err = waitPodGroupReady(context, pg3)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -73,14 +88,30 @@ var _ = Describe("Job E2E Test", func() {
 		err := waitReplicaSetReady(context, replicaset.Name)
 		Expect(err).NotTo(HaveOccurred())
 
+		// job := &jobSpec{
+		// 	name:      "gang-qj",
+		// 	namespace: "test",
+		// 	tasks: []taskSpec{
+		// 		{
+		// 			img: "busybox",
+		// 			req: oneCPU,
+		// 			min: rep,
+		// 			rep: rep,
+		// 		},
+		// 	},
+		// }
+
 		job := createJob(context, "gang-qj", rep, rep, "busybox", oneCPU, nil, nil)
 		err = waitJobNotReady(context, job.Name)
+		// _, pg := createJobEx(context, job)
+		// err = waitPodGroupUnschedulable(context, pg)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = deleteReplicaSet(context, replicaset.Name)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitJobReady(context, job.Name)
+		// err = waitPodGroupReady(context, pg)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -108,15 +139,29 @@ var _ = Describe("Job E2E Test", func() {
 		slot := oneCPU
 		rep := clusterSize(context, slot)
 
-		job1 := createJob(context, "preemptee-qj", 1, rep, "nginx", slot, nil, nil)
-		err := waitTasksReady(context, job1.Name, int(rep))
+		job := &jobSpec{
+			namespace: "test",
+			tasks: []taskSpec{
+				{
+					img: "nginx",
+					req: slot,
+					min: 1,
+					rep: rep,
+				},
+			},
+		}
+
+		job.name = "preemptee-qj"
+		_, pg1 := createJobEx(context, job)
+		err := waitTasksReadyEx(context, pg1, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
-		job2 := createJob(context, "preemptor-qj", 1, rep, "nginx", slot, nil, nil)
-		err = waitTasksReady(context, job2.Name, int(rep)/2)
+		job.name = "preemptor-qj"
+		_, pg2 := createJobEx(context, job)
+		err = waitTasksReadyEx(context, pg1, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReady(context, job1.Name, int(rep)/2)
+		err = waitTasksReadyEx(context, pg2, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -146,6 +191,7 @@ var _ = Describe("Job E2E Test", func() {
 		err = waitTasksReady(context, job3.Name, int(rep)/3)
 		Expect(err).NotTo(HaveOccurred())
 	})
+
 	It("Schedule BestEffort Job", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
