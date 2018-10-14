@@ -52,11 +52,25 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		job := createJob(context, "na-job", 1, 1, "nginx", slot, affinity, nil)
-		err := waitJobReady(context, job.Name)
+		job := &jobSpec{
+			name:      "na-job",
+			namespace: "test",
+			tasks: []taskSpec{
+				{
+					img:      "nginx",
+					req:      slot,
+					min:      1,
+					rep:      1,
+					affinity: affinity,
+				},
+			},
+		}
+
+		_, pg := createJobEx(context, job)
+		err := waitPodGroupReady(context, pg)
 		Expect(err).NotTo(HaveOccurred())
 
-		pods := getPodOfJob(context, "na-job")
+		pods := getPodOfPodGroup(context, pg)
 		for _, pod := range pods {
 			Expect(pod.Spec.NodeName).To(Equal(nodeName))
 		}
@@ -68,13 +82,26 @@ var _ = Describe("Predicates E2E Test", func() {
 
 		nn := clusterNodeNumber(context)
 
-		containers := createContainers("nginx", oneCPU, 28080)
-		job := createJobWithOptions(context, "kube-batch", "qj-1", int32(nn), int32(nn*2), nil, nil, containers)
+		job := &jobSpec{
+			name:      "hp-job",
+			namespace: "test",
+			tasks: []taskSpec{
+				{
+					img:      "nginx",
+					min:      int32(nn),
+					req:      oneCPU,
+					rep:      int32(nn * 2),
+					hostport: 28080,
+				},
+			},
+		}
 
-		err := waitTasksReady(context, job.Name, nn)
+		_, pg := createJobEx(context, job)
+
+		err := waitTasksReadyEx(context, pg, nn)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksNotReady(context, job.Name, nn)
+		err = waitTasksPendingEx(context, pg, nn)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -101,11 +128,26 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		job := createJob(context, "pa-job", rep, rep, "nginx", slot, affinity, labels)
-		err := waitJobReady(context, job.Name)
+		job := &jobSpec{
+			name:      "pa-job",
+			namespace: "test",
+			tasks: []taskSpec{
+				{
+					img:      "nginx",
+					req:      slot,
+					min:      rep,
+					rep:      rep,
+					affinity: affinity,
+					labels:   labels,
+				},
+			},
+		}
+
+		_, pg := createJobEx(context, job)
+		err := waitPodGroupReady(context, pg)
 		Expect(err).NotTo(HaveOccurred())
 
-		pods := getPodOfJob(context, "pa-job")
+		pods := getPodOfPodGroup(context, pg)
 		// All pods should be scheduled to the same node.
 		nodeName := pods[0].Spec.NodeName
 		for _, pod := range pods {
