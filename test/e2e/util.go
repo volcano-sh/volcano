@@ -276,7 +276,7 @@ func createJobEx(context *context, job *jobSpec) ([]*batchv1.Job, *arbv1.PodGrou
 	return jobs, podgroup
 }
 
-func taskReadyEx(ctx *context, pg *arbv1.PodGroup, taskNum int) wait.ConditionFunc {
+func taskPhase(ctx *context, pg *arbv1.PodGroup, phase []v1.PodPhase, taskNum int) wait.ConditionFunc {
 	return func() (bool, error) {
 		pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
@@ -290,41 +290,12 @@ func taskReadyEx(ctx *context, pg *arbv1.PodGroup, taskNum int) wait.ConditionFu
 				continue
 			}
 
-			if pod.Status.Phase == v1.PodRunning || pod.Status.Phase == v1.PodSucceeded {
-				readyTaskNum++
+			for _, p := range phase {
+				if pod.Status.Phase == p {
+					readyTaskNum++
+					break
+				}
 			}
-		}
-
-		if taskNum < 0 {
-			taskNum = int(pg.Spec.MinMember)
-		}
-
-		return taskNum <= readyTaskNum, nil
-	}
-}
-
-func taskCreated(ctx *context, pg *arbv1.PodGroup, taskNum int) wait.ConditionFunc {
-	return func() (bool, error) {
-		pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
-
-		pods, err := ctx.kubeclient.CoreV1().Pods(pg.Namespace).List(metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred())
-
-		readyTaskNum := 0
-		for _, pod := range pods.Items {
-			if gn, found := pod.Annotations[arbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
-				continue
-			}
-
-			switch pod.Status.Phase {
-			case v1.PodRunning, v1.PodSucceeded, v1.PodPending:
-				readyTaskNum++
-			}
-		}
-
-		if taskNum < 0 {
-			taskNum = int(pg.Spec.MinMember)
 		}
 
 		return taskNum <= readyTaskNum, nil
@@ -353,15 +324,22 @@ func podGroupUnschedulable(ctx *context, pg *arbv1.PodGroup, time time.Time) wai
 }
 
 func waitPodGroupReady(ctx *context, pg *arbv1.PodGroup) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, taskReadyEx(ctx, pg, -1))
+	return waitTasksReadyEx(ctx, pg, int(pg.Spec.MinMember))
 }
 
 func waitTasksReadyEx(ctx *context, pg *arbv1.PodGroup, taskNum int) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, taskReadyEx(ctx, pg, taskNum))
+	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
+		[]v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum))
+}
+
+func waitTasksPendingEx(ctx *context, pg *arbv1.PodGroup, taskNum int) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
+		[]v1.PodPhase{v1.PodPending}, taskNum))
 }
 
 func waitPodGroupUnschedulable(ctx *context, pg *arbv1.PodGroup) error {
-	if err := wait.Poll(100*time.Millisecond, oneMinute, taskCreated(ctx, pg, -1)); err != nil {
+	if err := wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
+		[]v1.PodPhase{v1.PodRunning, v1.PodPending, v1.PodSucceeded}, int(pg.Spec.MinMember))); err != nil {
 		return err
 	}
 	now := time.Now()
@@ -763,20 +741,21 @@ func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
 	return "", 0
 }
 
-func getPodOfJob(ctx *context, jobName string) []*v1.Pod {
-	queueJob, err := ctx.kubeclient.BatchV1().Jobs(ctx.namespaces[0]).Get(jobName, metav1.GetOptions{})
+func getPodOfPodGroup(ctx *context, pg *arbv1.PodGroup) []*v1.Pod {
+	pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
-	pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespaces[0]).List(metav1.ListOptions{})
+	pods, err := ctx.kubeclient.CoreV1().Pods(pg.Namespace).List(metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
 	var qjpod []*v1.Pod
 
 	for _, pod := range pods.Items {
-		if !metav1.IsControlledBy(&pod, queueJob) {
+		if gn, found := pod.Annotations[arbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
 			continue
 		}
 		qjpod = append(qjpod, &pod)
+
 	}
 
 	return qjpod
