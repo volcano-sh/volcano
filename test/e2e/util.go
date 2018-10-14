@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -207,11 +208,103 @@ func cleanupTestContext(cxt *context) {
 }
 
 type taskSpec struct {
-	name string
-	pri  string
-	rep  int32
-	img  string
-	req  v1.ResourceList
+	min, rep int32
+	img      string
+	hostport int32
+	req      v1.ResourceList
+	affinity *v1.Affinity
+	labels   map[string]string
+}
+
+type jobSpec struct {
+	name      string
+	namespace string
+	queue     string
+	tasks     []taskSpec
+}
+
+func createJobEx(context *context, job *jobSpec) ([]*batchv1.Job, *arbv1.PodGroup) {
+	var jobs []*batchv1.Job
+	var podgroup *arbv1.PodGroup
+	var min int32
+
+	for i, task := range job.tasks {
+		job := &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("%s-%d", job.name, i),
+				Namespace: job.namespace,
+			},
+			Spec: batchv1.JobSpec{
+				Parallelism: &task.rep,
+				Completions: &task.rep,
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels:      task.labels,
+						Annotations: map[string]string{arbv1.GroupNameAnnotationKey: job.name},
+					},
+					Spec: v1.PodSpec{
+						SchedulerName: "kube-batch",
+						RestartPolicy: v1.RestartPolicyNever,
+						Containers:    createContainers(task.img, task.req, task.hostport),
+						Affinity:      task.affinity,
+					},
+				},
+			},
+		}
+
+		job, err := context.kubeclient.BatchV1().Jobs(job.Namespace).Create(job)
+		Expect(err).NotTo(HaveOccurred())
+		jobs = append(jobs, job)
+
+		min = min + task.min
+	}
+
+	pg := &arbv1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      job.name,
+			Namespace: job.namespace,
+		},
+		Spec: arbv1.PodGroupSpec{
+			MinMember: min,
+			Queue:     job.queue,
+		},
+	}
+
+	podgroup, err := context.karclient.Scheduling().PodGroups(pg.Namespace).Create(pg)
+	Expect(err).NotTo(HaveOccurred())
+
+	return jobs, podgroup
+}
+
+func taskReadyEx(ctx *context, pg *arbv1.PodGroup, taskNum int) wait.ConditionFunc {
+	return func() (bool, error) {
+		pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		pods, err := ctx.kubeclient.CoreV1().Pods(pg.Namespace).List(metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		readyTaskNum := 0
+		for _, pod := range pods.Items {
+			if gn, found := pod.Annotations[arbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
+				continue
+			}
+
+			if pod.Status.Phase == v1.PodRunning || pod.Status.Phase == v1.PodSucceeded {
+				readyTaskNum++
+			}
+		}
+
+		if taskNum < 0 {
+			taskNum = int(pg.Spec.MinMember)
+		}
+
+		return taskNum <= readyTaskNum, nil
+	}
+}
+
+func waitPodGroupReady(ctx *context, pg *arbv1.PodGroup) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, taskReadyEx(ctx, pg, -1))
 }
 
 func createJob(

@@ -26,8 +26,21 @@ var _ = Describe("Job E2E Test", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
-		job := createJob(context, "qj-1", 2, rep, "busybox", oneCPU, nil, nil)
-		err := waitJobReady(context, job.Name)
+
+		_, pg := createJobEx(context, &jobSpec{
+			name:      "qj-1",
+			namespace: "test",
+			tasks: []taskSpec{
+				{
+					img: "busybox",
+					req: oneCPU,
+					min: 2,
+					rep: rep,
+				},
+			},
+		})
+
+		err := waitPodGroupReady(context, pg)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
