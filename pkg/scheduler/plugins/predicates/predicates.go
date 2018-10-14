@@ -21,6 +21,8 @@ import (
 
 	"github.com/golang/glog"
 
+	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
 	"k8s.io/kubernetes/pkg/scheduler/cache"
 
@@ -38,7 +40,74 @@ func New(args *framework.PluginArgs) framework.Plugin {
 	}
 }
 
+type podLister struct {
+	session *framework.Session
+}
+
+func (pl *podLister) List(selector labels.Selector) ([]*v1.Pod, error) {
+	var pods []*v1.Pod
+	for _, job := range pl.session.Jobs {
+		for status, tasks := range job.TaskStatusIndex {
+			if !api.AllocatedStatus(status) {
+				continue
+			}
+
+			for _, task := range tasks {
+				if selector.Matches(labels.Set(task.Pod.Labels)) {
+					pod := task.Pod.DeepCopy()
+					pod.Spec.NodeName = task.NodeName
+					pods = append(pods, pod)
+				}
+			}
+		}
+	}
+
+	return pods, nil
+}
+
+func (pl *podLister) FilteredList(podFilter cache.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
+	var pods []*v1.Pod
+	for _, job := range pl.session.Jobs {
+		for status, tasks := range job.TaskStatusIndex {
+			if !api.AllocatedStatus(status) {
+				continue
+			}
+
+			for _, task := range tasks {
+				if podFilter(task.Pod) && selector.Matches(labels.Set(task.Pod.Labels)) {
+					pod := task.Pod.DeepCopy()
+					pod.Spec.NodeName = task.NodeName
+					pods = append(pods, pod)
+				}
+			}
+		}
+	}
+
+	return pods, nil
+}
+
+type cachedNodeInfo struct {
+	session *framework.Session
+}
+
+func (c *cachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
+	node, found := c.session.NodeIndex[name]
+	if !found {
+		return nil, fmt.Errorf("failed to find node <%s>", name)
+	}
+
+	return node.Node, nil
+}
+
 func (pp *nodeAffinityPlugin) OnSessionOpen(ssn *framework.Session) {
+	pl := &podLister{
+		session: ssn,
+	}
+
+	ni := &cachedNodeInfo{
+		session: ssn,
+	}
+
 	ssn.AddPredicateFn(func(task *api.TaskInfo, node *api.NodeInfo) error {
 		nodeInfo := cache.NewNodeInfo(node.Pods()...)
 		nodeInfo.SetNode(node.Node)
@@ -83,6 +152,21 @@ func (pp *nodeAffinityPlugin) OnSessionOpen(ssn *framework.Session) {
 		if !fit {
 			return fmt.Errorf("task <%s/%s> does not tolerate node <%s> taints",
 				task.Namespace, task.Name, node.Name)
+		}
+
+		// Pod Affinity/Anti-Affinity Predicate
+		podAffinityPredicate := predicates.NewPodAffinityPredicate(ni, pl)
+		fit, _, err = podAffinityPredicate(task.Pod, nil, nodeInfo)
+		if err != nil {
+			return err
+		}
+
+		glog.V(3).Infof("Pod Affinity/Anti-Affinity predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+			task.Namespace, task.Name, node.Name, fit, err)
+
+		if !fit {
+			return fmt.Errorf("task <%s/%s> affinity/anti-affinity failed on node <%s>",
+				node.Name, task.Namespace, task.Name)
 		}
 
 		return nil

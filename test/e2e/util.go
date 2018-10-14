@@ -221,9 +221,10 @@ func createJob(
 	img string,
 	req v1.ResourceList,
 	affinity *v1.Affinity,
+	labels map[string]string,
 ) *batchv1.Job {
 	containers := createContainers(img, req, 0)
-	return createJobWithOptions(context, "kube-batch", name, min, rep, affinity, containers)
+	return createJobWithOptions(context, "kube-batch", name, min, rep, affinity, labels, containers)
 }
 
 func createContainers(img string, req v1.ResourceList, hostport int32) []v1.Container {
@@ -253,10 +254,16 @@ func createJobWithOptions(context *context,
 	name string,
 	min, rep int32,
 	affinity *v1.Affinity,
+	labels map[string]string,
 	containers []v1.Container,
 ) *batchv1.Job {
 	queueJobName := "queuejob.k8s.io"
 	jns, jn, jq := splictJobName(context, name)
+
+	podLabels := map[string]string{queueJobName: jn}
+	for k, v := range labels {
+		podLabels[k] = v
+	}
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -268,7 +275,7 @@ func createJobWithOptions(context *context,
 			Completions: &rep,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels:      map[string]string{queueJobName: jn},
+					Labels:      podLabels,
 					Annotations: map[string]string{arbv1.GroupNameAnnotationKey: jn},
 				},
 				Spec: v1.PodSpec{

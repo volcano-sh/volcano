@@ -35,7 +35,7 @@ var _ = Describe("Predicates E2E Test", func() {
 		slot := oneCPU
 		rep := clusterSize(context, slot)
 
-		createJob(context, jobName1, 1, rep, "nginx", slot, nil)
+		createJob(context, jobName1, 1, rep, "nginx", slot, nil, nil)
 		err := waitJobReady(context, jobName1)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -48,7 +48,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			Expect(err).NotTo(HaveOccurred())
 		}
 
-		createJob(context, jobName2, 1, rep, "nginx", slot, nil)
+		createJob(context, jobName2, 1, rep, "nginx", slot, nil, nil)
 		err = waitTasksReady(context, jobName2, expected)
 		Expect(err).NotTo(HaveOccurred())
 

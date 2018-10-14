@@ -26,7 +26,7 @@ var _ = Describe("Job E2E Test", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
-		job := createJob(context, "qj-1", 2, rep, "busybox", oneCPU, nil)
+		job := createJob(context, "qj-1", 2, rep, "busybox", oneCPU, nil, nil)
 		err := waitJobReady(context, job.Name)
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -37,9 +37,9 @@ var _ = Describe("Job E2E Test", func() {
 
 		rep := clusterSize(context, oneCPU)
 
-		job1 := createJob(context, "qj-1", 2, rep, "busybox", oneCPU, nil)
-		qj2 := createJob(context, "qj-2", 2, rep, "busybox", oneCPU, nil)
-		qj3 := createJob(context, "qj-3", 2, rep, "busybox", oneCPU, nil)
+		job1 := createJob(context, "qj-1", 2, rep, "busybox", oneCPU, nil, nil)
+		qj2 := createJob(context, "qj-2", 2, rep, "busybox", oneCPU, nil, nil)
+		qj3 := createJob(context, "qj-3", 2, rep, "busybox", oneCPU, nil, nil)
 
 		err := waitJobReady(context, job1.Name)
 		Expect(err).NotTo(HaveOccurred())
@@ -60,7 +60,7 @@ var _ = Describe("Job E2E Test", func() {
 		err := waitReplicaSetReady(context, replicaset.Name)
 		Expect(err).NotTo(HaveOccurred())
 
-		job := createJob(context, "gang-qj", rep, rep, "busybox", oneCPU, nil)
+		job := createJob(context, "gang-qj", rep, rep, "busybox", oneCPU, nil, nil)
 		err = waitJobNotReady(context, job.Name)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -76,11 +76,11 @@ var _ = Describe("Job E2E Test", func() {
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
 
-		job1 := createJob(context, "gang-fq-qj1", rep, rep, "nginx", oneCPU, nil)
+		job1 := createJob(context, "gang-fq-qj1", rep, rep, "nginx", oneCPU, nil, nil)
 		err := waitJobReady(context, job1.Name)
 		Expect(err).NotTo(HaveOccurred())
 
-		job2 := createJob(context, "gang-fq-qj2", rep, rep, "nginx", oneCPU, nil)
+		job2 := createJob(context, "gang-fq-qj2", rep, rep, "nginx", oneCPU, nil, nil)
 		err = waitJobNotReady(context, job2.Name)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -95,11 +95,11 @@ var _ = Describe("Job E2E Test", func() {
 		slot := oneCPU
 		rep := clusterSize(context, slot)
 
-		job1 := createJob(context, "preemptee-qj", 1, rep, "nginx", slot, nil)
+		job1 := createJob(context, "preemptee-qj", 1, rep, "nginx", slot, nil, nil)
 		err := waitTasksReady(context, job1.Name, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
-		job2 := createJob(context, "preemptor-qj", 1, rep, "nginx", slot, nil)
+		job2 := createJob(context, "preemptor-qj", 1, rep, "nginx", slot, nil, nil)
 		err = waitTasksReady(context, job2.Name, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -114,14 +114,14 @@ var _ = Describe("Job E2E Test", func() {
 		slot := oneCPU
 		rep := clusterSize(context, slot)
 
-		job1 := createJob(context, "preemptee-qj", 1, rep, "nginx", slot, nil)
+		job1 := createJob(context, "preemptee-qj", 1, rep, "nginx", slot, nil, nil)
 		err := waitTasksReady(context, job1.Name, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
-		job2 := createJob(context, "preemptor-qj", 1, rep, "nginx", slot, nil)
+		job2 := createJob(context, "preemptor-qj", 1, rep, "nginx", slot, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 
-		job3 := createJob(context, "preemptor-qj2", 1, rep, "nginx", slot, nil)
+		job3 := createJob(context, "preemptor-qj2", 1, rep, "nginx", slot, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitTasksReady(context, job1.Name, int(rep)/3)
