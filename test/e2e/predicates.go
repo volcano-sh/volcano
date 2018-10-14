@@ -21,6 +21,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 )
 
@@ -51,7 +52,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		job := createJob(context, "na-job", 1, 1, "nginx", slot, affinity)
+		job := createJob(context, "na-job", 1, 1, "nginx", slot, affinity, nil)
 		err := waitJobReady(context, job.Name)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -68,12 +69,47 @@ var _ = Describe("Predicates E2E Test", func() {
 		nn := clusterNodeNumber(context)
 
 		containers := createContainers("nginx", oneCPU, 28080)
-		job := createJobWithOptions(context, "kube-batch", "qj-1", int32(nn), int32(nn*2), nil, containers)
+		job := createJobWithOptions(context, "kube-batch", "qj-1", int32(nn), int32(nn*2), nil, nil, containers)
 
 		err := waitTasksReady(context, job.Name, nn)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitTasksNotReady(context, job.Name, nn)
 		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("Pod Affinity", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		slot := oneCPU
+		_, rep := computeNode(context, oneCPU)
+		Expect(rep).NotTo(Equal(0))
+
+		labels := map[string]string{"foo": "bar"}
+
+		affinity := &v1.Affinity{
+			PodAffinity: &v1.PodAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{
+					{
+						LabelSelector: &metav1.LabelSelector{
+							MatchLabels: labels,
+						},
+						TopologyKey: "kubernetes.io/hostname",
+					},
+				},
+			},
+		}
+
+		job := createJob(context, "pa-job", rep, rep, "nginx", slot, affinity, labels)
+		err := waitJobReady(context, job.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		pods := getPodOfJob(context, "pa-job")
+		// All pods should be scheduled to the same node.
+		nodeName := pods[0].Spec.NodeName
+		for _, pod := range pods {
+			Expect(pod.Spec.NodeName).To(Equal(nodeName))
+		}
 	})
 })
