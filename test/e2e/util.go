@@ -14,9 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package test
+package e2e
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -207,11 +208,143 @@ func cleanupTestContext(cxt *context) {
 }
 
 type taskSpec struct {
-	name string
-	pri  string
-	rep  int32
-	img  string
-	req  v1.ResourceList
+	min, rep int32
+	img      string
+	hostport int32
+	req      v1.ResourceList
+	affinity *v1.Affinity
+	labels   map[string]string
+}
+
+type jobSpec struct {
+	name      string
+	namespace string
+	queue     string
+	tasks     []taskSpec
+}
+
+func createJobEx(context *context, job *jobSpec) ([]*batchv1.Job, *arbv1.PodGroup) {
+	var jobs []*batchv1.Job
+	var podgroup *arbv1.PodGroup
+	var min int32
+
+	for i, task := range job.tasks {
+		job := &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("%s-%d", job.name, i),
+				Namespace: job.namespace,
+			},
+			Spec: batchv1.JobSpec{
+				Parallelism: &task.rep,
+				Completions: &task.rep,
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels:      task.labels,
+						Annotations: map[string]string{arbv1.GroupNameAnnotationKey: job.name},
+					},
+					Spec: v1.PodSpec{
+						SchedulerName: "kube-batch",
+						RestartPolicy: v1.RestartPolicyNever,
+						Containers:    createContainers(task.img, task.req, task.hostport),
+						Affinity:      task.affinity,
+					},
+				},
+			},
+		}
+
+		job, err := context.kubeclient.BatchV1().Jobs(job.Namespace).Create(job)
+		Expect(err).NotTo(HaveOccurred())
+		jobs = append(jobs, job)
+
+		min = min + task.min
+	}
+
+	pg := &arbv1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      job.name,
+			Namespace: job.namespace,
+		},
+		Spec: arbv1.PodGroupSpec{
+			MinMember: min,
+			Queue:     job.queue,
+		},
+	}
+
+	podgroup, err := context.karclient.Scheduling().PodGroups(pg.Namespace).Create(pg)
+	Expect(err).NotTo(HaveOccurred())
+
+	return jobs, podgroup
+}
+
+func taskPhase(ctx *context, pg *arbv1.PodGroup, phase []v1.PodPhase, taskNum int) wait.ConditionFunc {
+	return func() (bool, error) {
+		pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		pods, err := ctx.kubeclient.CoreV1().Pods(pg.Namespace).List(metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		readyTaskNum := 0
+		for _, pod := range pods.Items {
+			if gn, found := pod.Annotations[arbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
+				continue
+			}
+
+			for _, p := range phase {
+				if pod.Status.Phase == p {
+					readyTaskNum++
+					break
+				}
+			}
+		}
+
+		return taskNum <= readyTaskNum, nil
+	}
+}
+
+func podGroupUnschedulable(ctx *context, pg *arbv1.PodGroup, time time.Time) wait.ConditionFunc {
+	return func() (bool, error) {
+		pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		events, err := ctx.kubeclient.CoreV1().Events(pg.Namespace).List(metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		for _, event := range events.Items {
+			target := event.InvolvedObject
+			if target.Name == pg.Name && target.Namespace == pg.Namespace {
+				if event.Reason == string(arbv1.UnschedulableEvent) && event.LastTimestamp.After(time) {
+					return true, nil
+				}
+			}
+		}
+
+		return false, nil
+	}
+}
+
+func waitPodGroupReady(ctx *context, pg *arbv1.PodGroup) error {
+	return waitTasksReadyEx(ctx, pg, int(pg.Spec.MinMember))
+}
+
+func waitPodGroupPending(ctx *context, pg *arbv1.PodGroup) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
+		[]v1.PodPhase{v1.PodPending}, int(pg.Spec.MinMember)))
+}
+
+func waitTasksReadyEx(ctx *context, pg *arbv1.PodGroup, taskNum int) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
+		[]v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum))
+}
+
+func waitTasksPendingEx(ctx *context, pg *arbv1.PodGroup, taskNum int) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
+		[]v1.PodPhase{v1.PodPending}, taskNum))
+}
+
+func waitPodGroupUnschedulable(ctx *context, pg *arbv1.PodGroup) error {
+	now := time.Now()
+	return wait.Poll(10*time.Second, oneMinute, podGroupUnschedulable(ctx, pg, now))
 }
 
 func createJob(
@@ -221,9 +354,10 @@ func createJob(
 	img string,
 	req v1.ResourceList,
 	affinity *v1.Affinity,
+	labels map[string]string,
 ) *batchv1.Job {
 	containers := createContainers(img, req, 0)
-	return createJobWithOptions(context, "kube-batch", name, min, rep, affinity, containers)
+	return createJobWithOptions(context, "kube-batch", name, min, rep, affinity, labels, containers)
 }
 
 func createContainers(img string, req v1.ResourceList, hostport int32) []v1.Container {
@@ -253,10 +387,16 @@ func createJobWithOptions(context *context,
 	name string,
 	min, rep int32,
 	affinity *v1.Affinity,
+	labels map[string]string,
 	containers []v1.Container,
 ) *batchv1.Job {
 	queueJobName := "queuejob.k8s.io"
 	jns, jn, jq := splictJobName(context, name)
+
+	podLabels := map[string]string{queueJobName: jn}
+	for k, v := range labels {
+		podLabels[k] = v
+	}
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -268,7 +408,7 @@ func createJobWithOptions(context *context,
 			Completions: &rep,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels:      map[string]string{queueJobName: jn},
+					Labels:      podLabels,
 					Annotations: map[string]string{arbv1.GroupNameAnnotationKey: jn},
 				},
 				Spec: v1.PodSpec{
@@ -602,20 +742,21 @@ func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
 	return "", 0
 }
 
-func getPodOfJob(ctx *context, jobName string) []*v1.Pod {
-	queueJob, err := ctx.kubeclient.BatchV1().Jobs(ctx.namespaces[0]).Get(jobName, metav1.GetOptions{})
+func getPodOfPodGroup(ctx *context, pg *arbv1.PodGroup) []*v1.Pod {
+	pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
-	pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespaces[0]).List(metav1.ListOptions{})
+	pods, err := ctx.kubeclient.CoreV1().Pods(pg.Namespace).List(metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
 	var qjpod []*v1.Pod
 
 	for _, pod := range pods.Items {
-		if !metav1.IsControlledBy(&pod, queueJob) {
+		if gn, found := pod.Annotations[arbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
 			continue
 		}
 		qjpod = append(qjpod, &pod)
+
 	}
 
 	return qjpod
