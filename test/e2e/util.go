@@ -327,6 +327,11 @@ func waitPodGroupReady(ctx *context, pg *arbv1.PodGroup) error {
 	return waitTasksReadyEx(ctx, pg, int(pg.Spec.MinMember))
 }
 
+func waitPodGroupPending(ctx *context, pg *arbv1.PodGroup) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
+		[]v1.PodPhase{v1.PodPending}, int(pg.Spec.MinMember)))
+}
+
 func waitTasksReadyEx(ctx *context, pg *arbv1.PodGroup, taskNum int) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
 		[]v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum))
@@ -338,12 +343,8 @@ func waitTasksPendingEx(ctx *context, pg *arbv1.PodGroup, taskNum int) error {
 }
 
 func waitPodGroupUnschedulable(ctx *context, pg *arbv1.PodGroup) error {
-	if err := wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
-		[]v1.PodPhase{v1.PodRunning, v1.PodPending, v1.PodSucceeded}, int(pg.Spec.MinMember))); err != nil {
-		return err
-	}
 	now := time.Now()
-	return wait.Poll(100*time.Millisecond, oneMinute, podGroupUnschedulable(ctx, pg, now))
+	return wait.Poll(10*time.Second, oneMinute, podGroupUnschedulable(ctx, pg, now))
 }
 
 func createJob(
