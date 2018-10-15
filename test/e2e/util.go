@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,6 +34,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -639,4 +642,90 @@ func getPodOfPodGroup(ctx *context, pg *arbv1.PodGroup) []*v1.Pod {
 	}
 
 	return qjpod
+}
+
+func taintAllNodes(ctx *context, taints []v1.Taint) error {
+	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	for _, node := range nodes.Items {
+		newNode := node.DeepCopy()
+
+		newTaints := newNode.Spec.Taints
+		for _, t := range taints {
+			found := false
+			for _, nt := range newTaints {
+				if nt.Key == t.Key {
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				newTaints = append(newTaints, t)
+			}
+		}
+
+		newNode.Spec.Taints = newTaints
+
+		patchBytes, err := preparePatchBytesforNode(node.Name, &node, newNode)
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = ctx.kubeclient.CoreV1().Nodes().Patch(node.Name, types.StrategicMergePatchType, patchBytes)
+		Expect(err).NotTo(HaveOccurred())
+	}
+
+	return nil
+}
+
+func removeTaintsFromAllNodes(ctx *context, taints []v1.Taint) error {
+	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	for _, node := range nodes.Items {
+		newNode := node.DeepCopy()
+
+		var newTaints []v1.Taint
+		for _, nt := range newTaints {
+			found := false
+			for _, t := range taints {
+				if nt.Key == t.Key {
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				newTaints = append(newTaints, nt)
+			}
+		}
+		newNode.Spec.Taints = newTaints
+
+		patchBytes, err := preparePatchBytesforNode(node.Name, &node, newNode)
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = ctx.kubeclient.CoreV1().Nodes().Patch(node.Name, types.StrategicMergePatchType, patchBytes)
+		Expect(err).NotTo(HaveOccurred())
+	}
+
+	return nil
+}
+
+func preparePatchBytesforNode(nodeName string, oldNode *v1.Node, newNode *v1.Node) ([]byte, error) {
+	oldData, err := json.Marshal(oldNode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to Marshal oldData for node %q: %v", nodeName, err)
+	}
+
+	newData, err := json.Marshal(newNode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to Marshal newData for node %q: %v", nodeName, err)
+	}
+
+	patchBytes, err := strategicpatch.CreateTwoWayMergePatch(oldData, newData, v1.Node{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to CreateTwoWayMergePatch for node %q: %v", nodeName, err)
+	}
+
+	return patchBytes, nil
 }
