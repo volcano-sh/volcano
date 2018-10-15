@@ -387,6 +387,11 @@ func (sc *SchedulerCache) AddPodGroup(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
+	// If namespace as queue, the `.spec.Queue` of PodGroup is ignored.
+	if sc.namespaceAsQueue {
+		ss.Spec.Queue = ""
+	}
+
 	glog.V(4).Infof("Add PodGroup(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
 	err := sc.setPodGroup(ss)
 	if err != nil {
