@@ -103,6 +103,9 @@ var _ = Describe("Job E2E Test", func() {
 		err = waitPodGroupPending(context, pg)
 		Expect(err).NotTo(HaveOccurred())
 
+		waitPodGroupUnschedulable(context, pg)
+		Expect(err).NotTo(HaveOccurred())
+
 		err = deleteReplicaSet(context, replicaset.Name)
 		Expect(err).NotTo(HaveOccurred())
 
