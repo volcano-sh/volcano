@@ -241,7 +241,9 @@ func (sc *SchedulerCache) addNode(node *v1.Node) error {
 }
 
 func isNodeInfoUpdated(oldNode, newNode *v1.Node) bool {
-	return !reflect.DeepEqual(oldNode.Status.Allocatable, newNode.Status.Allocatable)
+	return !reflect.DeepEqual(oldNode.Status.Allocatable, newNode.Status.Allocatable) ||
+		!reflect.DeepEqual(oldNode.Spec.Taints, newNode.Spec.Taints) ||
+		!reflect.DeepEqual(oldNode.Labels, newNode.Labels)
 }
 
 // Assumes that lock is already acquired.
@@ -386,6 +388,11 @@ func (sc *SchedulerCache) AddPodGroup(obj interface{}) {
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
+
+	// If namespace as queue, the `.spec.Queue` of PodGroup is ignored.
+	if sc.namespaceAsQueue {
+		ss.Spec.Queue = ""
+	}
 
 	glog.V(4).Infof("Add PodGroup(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
 	err := sc.setPodGroup(ss)
