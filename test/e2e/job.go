@@ -28,8 +28,7 @@ var _ = Describe("Job E2E Test", func() {
 		rep := clusterSize(context, oneCPU)
 
 		_, pg := createJobEx(context, &jobSpec{
-			name:      "qj-1",
-			namespace: "test",
+			name: "qj-1",
 			tasks: []taskSpec{
 				{
 					img: "busybox",
@@ -51,7 +50,6 @@ var _ = Describe("Job E2E Test", func() {
 		rep := clusterSize(context, oneCPU)
 
 		job := &jobSpec{
-			namespace: "test",
 			tasks: []taskSpec{
 				{
 					img: "busybox",
@@ -151,7 +149,6 @@ var _ = Describe("Job E2E Test", func() {
 		rep := clusterSize(context, slot)
 
 		job := &jobSpec{
-			namespace: "test",
 			tasks: []taskSpec{
 				{
 					img: "nginx",
@@ -184,7 +181,6 @@ var _ = Describe("Job E2E Test", func() {
 		rep := clusterSize(context, slot)
 
 		job := &jobSpec{
-			namespace: "test",
 			tasks: []taskSpec{
 				{
 					img: "nginx",
@@ -226,8 +222,7 @@ var _ = Describe("Job E2E Test", func() {
 		rep := clusterSize(context, slot)
 
 		job := &jobSpec{
-			name:      "test",
-			namespace: "test",
+			name: "test",
 			tasks: []taskSpec{
 				{
 					img: "nginx",

@@ -53,8 +53,7 @@ var _ = Describe("Predicates E2E Test", func() {
 		}
 
 		job := &jobSpec{
-			name:      "na-job",
-			namespace: "test",
+			name: "na-job",
 			tasks: []taskSpec{
 				{
 					img:      "nginx",
@@ -83,8 +82,7 @@ var _ = Describe("Predicates E2E Test", func() {
 		nn := clusterNodeNumber(context)
 
 		job := &jobSpec{
-			name:      "hp-job",
-			namespace: "test",
+			name: "hp-job",
 			tasks: []taskSpec{
 				{
 					img:      "nginx",
@@ -129,8 +127,7 @@ var _ = Describe("Predicates E2E Test", func() {
 		}
 
 		job := &jobSpec{
-			name:      "pa-job",
-			namespace: "test",
+			name: "pa-job",
 			tasks: []taskSpec{
 				{
 					img:      "nginx",

@@ -24,19 +24,28 @@ import (
 )
 
 var _ = Describe("Predicates E2E Test", func() {
-
 	It("Reclaim", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
-		jobName1 := "n1/qj-1"
-		jobName2 := "n2/qj-2"
-
 		slot := oneCPU
 		rep := clusterSize(context, slot)
 
-		createJob(context, jobName1, 1, rep, "nginx", slot, nil, nil)
-		err := waitJobReady(context, jobName1)
+		job := &jobSpec{
+			tasks: []taskSpec{
+				{
+					img: "nginx",
+					req: slot,
+					min: 1,
+					rep: rep,
+				},
+			},
+		}
+
+		job.name = "q1-qj-1"
+		job.queue = "q1"
+		_, pg1 := createJobEx(context, job)
+		err := waitPodGroupReady(context, pg1)
 		Expect(err).NotTo(HaveOccurred())
 
 		expected := int(rep) / 2
@@ -48,11 +57,13 @@ var _ = Describe("Predicates E2E Test", func() {
 			Expect(err).NotTo(HaveOccurred())
 		}
 
-		createJob(context, jobName2, 1, rep, "nginx", slot, nil, nil)
-		err = waitTasksReady(context, jobName2, expected)
+		job.name = "q2-qj-2"
+		job.queue = "q2"
+		_, pg2 := createJobEx(context, job)
+		err = waitTasksReadyEx(context, pg2, expected)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReady(context, jobName1, expected)
+		err = waitTasksReadyEx(context, pg1, expected)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
