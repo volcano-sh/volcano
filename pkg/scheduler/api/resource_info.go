@@ -27,6 +27,9 @@ type Resource struct {
 	MilliCPU float64
 	Memory   float64
 	MilliGPU float64
+	// MaxTaskNum is only used by predicates; it should NOT
+	// be accounted in other operators, e.g. Add.
+	MaxTaskNum int
 }
 
 const (
@@ -35,18 +38,15 @@ const (
 )
 
 func EmptyResource() *Resource {
-	return &Resource{
-		MilliCPU: 0,
-		Memory:   0,
-		MilliGPU: 0,
-	}
+	return &Resource{}
 }
 
 func (r *Resource) Clone() *Resource {
 	clone := &Resource{
-		MilliCPU: r.MilliCPU,
-		Memory:   r.Memory,
-		MilliGPU: r.MilliGPU,
+		MilliCPU:   r.MilliCPU,
+		Memory:     r.Memory,
+		MilliGPU:   r.MilliGPU,
+		MaxTaskNum: r.MaxTaskNum,
 	}
 	return clone
 }
@@ -63,6 +63,8 @@ func NewResource(rl v1.ResourceList) *Resource {
 			r.MilliCPU += float64(rQuant.MilliValue())
 		case v1.ResourceMemory:
 			r.Memory += float64(rQuant.Value())
+		case v1.ResourcePods:
+			r.MaxTaskNum += int(rQuant.Value())
 		case GPUResourceName:
 			r.MilliGPU += float64(rQuant.MilliValue())
 		}
