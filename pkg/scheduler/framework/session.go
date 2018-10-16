@@ -290,8 +290,8 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 	return victims
 }
 
-// Discard discards a job from session, so no plugin/action handles it.
-func (ssn *Session) Discard(job *api.JobInfo, event arbcorev1.Event, reason string) error {
+// Backoff discards a job from session, so no plugin/action handles it.
+func (ssn *Session) Backoff(job *api.JobInfo, event arbcorev1.Event, reason string) error {
 	if err := ssn.cache.Backoff(job, event, reason); err != nil {
 		glog.Errorf("Failed to backoff job <%s/%s>: %v",
 			job.Namespace, job.Name, err)
