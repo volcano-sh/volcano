@@ -1,20 +1,31 @@
-**FOUND IN VERSION** (Details about the version, e.g. 0.7. Please list the other versions which this bug exist.)
+<!-- This form is for bug reports and feature requests ONLY!
+
+If you're looking for help check [Stack Overflow](https://stackoverflow.com/questions/tagged/kubernetes) and the [troubleshooting guide](https://kubernetes.io/docs/tasks/debug-application-cluster/troubleshooting/).
+
+If the matter is security related, please disclose it privately via https://kubernetes.io/security/.
+-->
+
+**Is this a BUG REPORT or FEATURE REQUEST?**:
+
+> Uncomment only one, leave it on its own line:
+>
+> /kind bug
+> /kind feature
 
 
-**PLATFORMS e.g. 'uname -a'**:
+**What happened**:
+
+**What you expected to happen**:
+
+**How to reproduce it (as minimally and precisely as possible)**:
 
 
-**COMMANDS OR DAEMONS**: -- list all related components
+**Anything else we need to know?**:
 
-
-**DESCRIPTION**: -- symptom of the problem a customer would see
-
-
-**IMPACT**: -- impact of problem in customer env (best/worse case scenarios)
-
-
-**EXPECTED BEHAVIOR**:
-
-
-**HOW TO REPRODUCE/DETAILS OF PROBLEM**: -- full details of the problem
-
+**Environment**:
+- Kubernetes version (use `kubectl version`):
+- Cloud provider or hardware configuration:
+- OS (e.g. from /etc/os-release):
+- Kernel (e.g. `uname -a`):
+- Install tools:
+- Others:
