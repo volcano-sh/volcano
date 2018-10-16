@@ -53,8 +53,7 @@ var _ = Describe("Predicates E2E Test", func() {
 		}
 
 		job := &jobSpec{
-			name:      "na-job",
-			namespace: "test",
+			name: "na-job",
 			tasks: []taskSpec{
 				{
 					img:      "nginx",
@@ -83,8 +82,7 @@ var _ = Describe("Predicates E2E Test", func() {
 		nn := clusterNodeNumber(context)
 
 		job := &jobSpec{
-			name:      "hp-job",
-			namespace: "test",
+			name: "hp-job",
 			tasks: []taskSpec{
 				{
 					img:      "nginx",
@@ -129,8 +127,7 @@ var _ = Describe("Predicates E2E Test", func() {
 		}
 
 		job := &jobSpec{
-			name:      "pa-job",
-			namespace: "test",
+			name: "pa-job",
 			tasks: []taskSpec{
 				{
 					img:      "nginx",
@@ -154,4 +151,43 @@ var _ = Describe("Predicates E2E Test", func() {
 			Expect(pod.Spec.NodeName).To(Equal(nodeName))
 		}
 	})
+
+	It("Taints/Tolerations", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		taints := []v1.Taint{
+			{
+				Key:    "test-taint-key",
+				Value:  "test-taint-val",
+				Effect: v1.TaintEffectNoSchedule,
+			},
+		}
+
+		err := taintAllNodes(context, taints)
+		Expect(err).NotTo(HaveOccurred())
+
+		job := &jobSpec{
+			name: "tt-job",
+			tasks: []taskSpec{
+				{
+					img: "nginx",
+					req: oneCPU,
+					min: 1,
+					rep: 1,
+				},
+			},
+		}
+
+		_, pg := createJobEx(context, job)
+		err = waitPodGroupPending(context, pg)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = removeTaintsFromAllNodes(context, taints)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = waitPodGroupReady(context, pg)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 })
