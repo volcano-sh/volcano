@@ -112,6 +112,10 @@ func (pp *nodeAffinityPlugin) OnSessionOpen(ssn *framework.Session) {
 		nodeInfo := cache.NewNodeInfo(node.Pods()...)
 		nodeInfo.SetNode(node.Node)
 
+		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods()) {
+			return fmt.Errorf("Node <%s> can not allow more task running on it.", node.Name)
+		}
+
 		// NodeSeletor Predicate
 		fit, _, err := predicates.PodMatchNodeSelector(task.Pod, nil, nodeInfo)
 		if err != nil {
