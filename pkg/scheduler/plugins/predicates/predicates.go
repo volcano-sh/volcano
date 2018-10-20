@@ -23,6 +23,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
 	"k8s.io/kubernetes/pkg/scheduler/cache"
 
@@ -99,6 +100,14 @@ func (c *cachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
 	return node.Node, nil
 }
 
+// Check to see if node spec is set to Schedulable or not
+func CheckNodeUnschedulable(pod *v1.Pod, nodeInfo *cache.NodeInfo) (bool, []algorithm.PredicateFailureReason, error) {
+	if nodeInfo.Node().Spec.Unschedulable {
+		return false, []algorithm.PredicateFailureReason{predicates.ErrNodeUnschedulable}, nil
+	}
+	return true, nil, nil
+}
+
 func (pp *nodeAffinityPlugin) OnSessionOpen(ssn *framework.Session) {
 	pl := &podLister{
 		session: ssn,
@@ -142,6 +151,20 @@ func (pp *nodeAffinityPlugin) OnSessionOpen(ssn *framework.Session) {
 		if !fit {
 			return fmt.Errorf("node <%s> didn't have available host ports for task <%s/%s>",
 				node.Name, task.Namespace, task.Name)
+		}
+
+		// Check to see if node.Spec.Unschedulable is set
+		fit, _, err = CheckNodeUnschedulable(task.Pod, nodeInfo)
+		if err != nil {
+			return err
+		}
+
+		glog.V(3).Infof("Check Unschedulable Task <%s/%s> on Node <%s>: fit %t, err %v",
+			task.Namespace, task.Name, node.Name, fit, err)
+
+		if !fit {
+			return fmt.Errorf("task <%s/%s> node <%s> set to unschedulable",
+				task.Namespace, task.Name, node.Name)
 		}
 
 		// Toleration/Taint Predicate
