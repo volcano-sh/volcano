@@ -119,11 +119,11 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	task.NodeName = hostname
 
 	if node, found := ssn.NodeIndex[hostname]; found {
-		if err := node.PipelineTask(task); err != nil {
-			glog.Errorf("Failed to pipeline task <%v/%v> to node <%v> in Session <%v>: %v",
+		if err := node.AddTask(task); err != nil {
+			glog.Errorf("Failed to add task <%v/%v> to node <%v> in Session <%v>: %v",
 				task.Namespace, task.Name, hostname, ssn.UID, err)
 		}
-		glog.V(3).Infof("After pipelined Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
+		glog.V(3).Infof("After added Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
 			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
 	} else {
 		glog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
