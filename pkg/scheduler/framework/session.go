@@ -254,8 +254,8 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 	}
 
 	for _, eh := range ssn.eventHandlers {
-		if eh.EvictFunc != nil {
-			eh.EvictFunc(&Event{
+		if eh.DeallocateFunc != nil {
+			eh.DeallocateFunc(&Event{
 				Task: reclaimee,
 			})
 		}

@@ -146,7 +146,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			glog.V(3).Infof("DRF AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
-		EvictFunc: func(event *framework.Event) {
+		DeallocateFunc: func(event *framework.Event) {
 			attr := drf.jobOpts[event.Task.Job]
 			attr.allocated.Sub(event.Task.Resreq)
 
