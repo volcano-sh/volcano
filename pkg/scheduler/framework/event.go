@@ -25,6 +25,6 @@ type Event struct {
 }
 
 type EventHandler struct {
-	AllocateFunc func(event *Event)
-	EvictFunc    func(event *Event)
+	AllocateFunc   func(event *Event)
+	DeallocateFunc func(event *Event)
 }
