@@ -48,10 +48,9 @@ limitations under the License.
 package main
 
 import (
-	"path/filepath"
-
 	"k8s.io/gengo/args"
 	"k8s.io/gengo/examples/deepcopy-gen/generators"
+	"path/filepath"
 
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
@@ -62,7 +61,8 @@ func main() {
 
 	// Override defaults.
 	arguments.OutputFileBaseName = "deepcopy_generated"
-	arguments.GoHeaderFilePath = filepath.Join(args.DefaultSourceTree(), "github.com/kubernetes-sigs/kube-batch/hack/boilerplate/boilerplate.go.txt")
+	current_loc, _:= filepath.Abs(".")
+	arguments.GoHeaderFilePath = filepath.Join(current_loc, "hack/boilerplate/boilerplate.go.txt")
 
 	// Custom args.
 	customArgs := &generators.CustomArgs{}

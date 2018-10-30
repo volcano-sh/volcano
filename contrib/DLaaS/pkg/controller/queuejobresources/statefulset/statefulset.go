@@ -18,7 +18,7 @@ import (
 	"github.com/golang/glog"
 	arbv1 "github.com/kubernetes-sigs/kube-batch/contrib/DLaaS/pkg/apis/controller/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/contrib/DLaaS/pkg/controller/queuejobresources"
-	schedulerapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	schedulerapi "github.com/kubernetes-sigs/kube-batch/contrib/DLaaS/pkg/scheduler/api"
 	apps "k8s.io/api/apps/v1"
 	"k8s.io/api/core/v1"
 	"k8s.io/api/extensions/v1beta1"
@@ -132,7 +132,7 @@ func (qjrPod *QueueJobResSS) GetAggregatedResources(job *arbv1.XQueueJob) *sched
 			myres := queuejobresources.GetPodResources(template)
 			myres.MilliCPU = float64(replicas) * myres.MilliCPU
 			myres.Memory = float64(replicas) * myres.Memory
-			myres.MilliGPU = float64(replicas) * myres.MilliGPU
+			myres.GPU = int64(replicas) * myres.GPU
 			total = total.Add(myres)
                 }
             }
@@ -153,7 +153,7 @@ func (qjrPod *QueueJobResSS) GetAggregatedResourcesByPriority(priority int, job 
                 	myres := queuejobresources.GetPodResources(template)
                         myres.MilliCPU = float64(replicas) * myres.MilliCPU
                         myres.Memory = float64(replicas) * myres.Memory
-                        myres.MilliGPU = float64(replicas) * myres.MilliGPU
+                        myres.GPU = int64(replicas) * myres.GPU
                         total = total.Add(myres)
 		}
             }

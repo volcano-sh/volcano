@@ -16,22 +16,76 @@ limitations under the License.
 
 package v1beta1
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 // CustomResourceDefinitionSpec describes how a user wants their resource to appear
 type CustomResourceDefinitionSpec struct {
 	// Group is the group this resource belongs in
 	Group string `json:"group" protobuf:"bytes,1,opt,name=group"`
 	// Version is the version this resource belongs in
-	Version string `json:"version" protobuf:"bytes,2,opt,name=version"`
+	// Should be always first item in Versions field if provided.
+	// Optional, but at least one of Version or Versions must be set.
+	// Deprecated: Please use `Versions`.
+	// +optional
+	Version string `json:"version,omitempty" protobuf:"bytes,2,opt,name=version"`
 	// Names are the names used to describe this custom resource
 	Names CustomResourceDefinitionNames `json:"names" protobuf:"bytes,3,opt,name=names"`
 	// Scope indicates whether this resource is cluster or namespace scoped.  Default is namespaced
 	Scope ResourceScope `json:"scope" protobuf:"bytes,4,opt,name=scope,casttype=ResourceScope"`
 	// Validation describes the validation methods for CustomResources
-	// This field is alpha-level and should only be sent to servers that enable the CustomResourceValidation feature.
 	// +optional
 	Validation *CustomResourceValidation `json:"validation,omitempty" protobuf:"bytes,5,opt,name=validation"`
+	// Subresources describes the subresources for CustomResources
+	// +optional
+	Subresources *CustomResourceSubresources `json:"subresources,omitempty" protobuf:"bytes,6,opt,name=subresources"`
+	// Versions is the list of all supported versions for this resource.
+	// If Version field is provided, this field is optional.
+	// Validation: All versions must use the same validation schema for now. i.e., top
+	// level Validation field is applied to all of these versions.
+	// Order: The version name will be used to compute the order.
+	// If the version string is "kube-like", it will sort above non "kube-like" version strings, which are ordered
+	// lexicographically. "Kube-like" versions start with a "v", then are followed by a number (the major version),
+	// then optionally the string "alpha" or "beta" and another number (the minor version). These are sorted first
+	// by GA > beta > alpha (where GA is a version with no suffix such as beta or alpha), and then by comparing
+	// major version, then minor version. An example sorted list of versions:
+	// v10, v2, v1, v11beta2, v10beta3, v3beta1, v12alpha1, v11alpha2, foo1, foo10.
+	Versions []CustomResourceDefinitionVersion `json:"versions,omitempty" protobuf:"bytes,7,rep,name=versions"`
+	// AdditionalPrinterColumns are additional columns shown e.g. in kubectl next to the name. Defaults to a created-at column.
+	AdditionalPrinterColumns []CustomResourceColumnDefinition `json:"additionalPrinterColumns,omitempty" protobuf:"bytes,8,rep,name=additionalPrinterColumns"`
+}
+
+type CustomResourceDefinitionVersion struct {
+	// Name is the version name, e.g. “v1”, “v2beta1”, etc.
+	Name string `json:"name" protobuf:"bytes,1,opt,name=name"`
+	// Served is a flag enabling/disabling this version from being served via REST APIs
+	Served bool `json:"served" protobuf:"varint,2,opt,name=served"`
+	// Storage flags the version as storage version. There must be exactly one
+	// flagged as storage version.
+	Storage bool `json:"storage" protobuf:"varint,3,opt,name=storage"`
+}
+
+// CustomResourceColumnDefinition specifies a column for server side printing.
+type CustomResourceColumnDefinition struct {
+	// name is a human readable name for the column.
+	Name string `json:"name" protobuf:"bytes,1,opt,name=name"`
+	// type is an OpenAPI type definition for this column.
+	// See https://github.com/OAI/OpenAPI-Specification/blob/master/versions/2.0.md#data-types for more.
+	Type string `json:"type" protobuf:"bytes,2,opt,name=type"`
+	// format is an optional OpenAPI type definition for this column. The 'name' format is applied
+	// to the primary identifier column to assist in clients identifying column is the resource name.
+	// See https://github.com/OAI/OpenAPI-Specification/blob/master/versions/2.0.md#data-types for more.
+	Format string `json:"format,omitempty" protobuf:"bytes,3,opt,name=format"`
+	// description is a human readable description of this column.
+	Description string `json:"description,omitempty" protobuf:"bytes,4,opt,name=description"`
+	// priority is an integer defining the relative importance of this column compared to others. Lower
+	// numbers are considered higher priority. Columns that may be omitted in limited space scenarios
+	// should be given a higher priority.
+	Priority int32 `json:"priority,omitempty" protobuf:"bytes,5,opt,name=priority"`
+
+	// JSONPath is a simple JSON path, i.e. with array notation.
+	JSONPath string `json:"JSONPath" protobuf:"bytes,6,opt,name=JSONPath"`
 }
 
 // CustomResourceDefinitionNames indicates the names to serve this CustomResourceDefinition
@@ -47,9 +101,12 @@ type CustomResourceDefinitionNames struct {
 	Kind string `json:"kind" protobuf:"bytes,4,opt,name=kind"`
 	// ListKind is the serialized kind of the list for this resource.  Defaults to <kind>List.
 	ListKind string `json:"listKind,omitempty" protobuf:"bytes,5,opt,name=listKind"`
+	// Categories is a list of grouped resources custom resources belong to (e.g. 'all')
+	// +optional
+	Categories []string `json:"categories,omitempty" protobuf:"bytes,6,rep,name=categories"`
 }
 
-// ResourceScope is an enum defining the different scopes availabe to a custom resource
+// ResourceScope is an enum defining the different scopes available to a custom resource
 type ResourceScope string
 
 const (
@@ -110,6 +167,14 @@ type CustomResourceDefinitionStatus struct {
 	// AcceptedNames are the names that are actually being used to serve discovery
 	// They may be different than the names in spec.
 	AcceptedNames CustomResourceDefinitionNames `json:"acceptedNames" protobuf:"bytes,2,opt,name=acceptedNames"`
+
+	// StoredVersions are all versions of CustomResources that were ever persisted. Tracking these
+	// versions allows a migration path for stored versions in etcd. The field is mutable
+	// so the migration controller can first finish a migration to another version (i.e.
+	// that no old objects are left in the storage), and then remove the rest of the
+	// versions from this list.
+	// None of the versions in this list can be removed from the spec.Versions field.
+	StoredVersions []string `json:"storedVersions" protobuf:"bytes,3,rep,name=storedVersions"`
 }
 
 // CustomResourceCleanupFinalizer is the name of the finalizer which will delete instances of
@@ -147,4 +212,42 @@ type CustomResourceDefinitionList struct {
 type CustomResourceValidation struct {
 	// OpenAPIV3Schema is the OpenAPI v3 schema to be validated against.
 	OpenAPIV3Schema *JSONSchemaProps `json:"openAPIV3Schema,omitempty" protobuf:"bytes,1,opt,name=openAPIV3Schema"`
+}
+
+// CustomResourceSubresources defines the status and scale subresources for CustomResources.
+type CustomResourceSubresources struct {
+	// Status denotes the status subresource for CustomResources
+	Status *CustomResourceSubresourceStatus `json:"status,omitempty" protobuf:"bytes,1,opt,name=status"`
+	// Scale denotes the scale subresource for CustomResources
+	Scale *CustomResourceSubresourceScale `json:"scale,omitempty" protobuf:"bytes,2,opt,name=scale"`
+}
+
+// CustomResourceSubresourceStatus defines how to serve the status subresource for CustomResources.
+// Status is represented by the `.status` JSON path inside of a CustomResource. When set,
+// * exposes a /status subresource for the custom resource
+// * PUT requests to the /status subresource take a custom resource object, and ignore changes to anything except the status stanza
+// * PUT/POST/PATCH requests to the custom resource ignore changes to the status stanza
+type CustomResourceSubresourceStatus struct{}
+
+// CustomResourceSubresourceScale defines how to serve the scale subresource for CustomResources.
+type CustomResourceSubresourceScale struct {
+	// SpecReplicasPath defines the JSON path inside of a CustomResource that corresponds to Scale.Spec.Replicas.
+	// Only JSON paths without the array notation are allowed.
+	// Must be a JSON Path under .spec.
+	// If there is no value under the given path in the CustomResource, the /scale subresource will return an error on GET.
+	SpecReplicasPath string `json:"specReplicasPath" protobuf:"bytes,1,name=specReplicasPath"`
+	// StatusReplicasPath defines the JSON path inside of a CustomResource that corresponds to Scale.Status.Replicas.
+	// Only JSON paths without the array notation are allowed.
+	// Must be a JSON Path under .status.
+	// If there is no value under the given path in the CustomResource, the status replica value in the /scale subresource
+	// will default to 0.
+	StatusReplicasPath string `json:"statusReplicasPath" protobuf:"bytes,2,opt,name=statusReplicasPath"`
+	// LabelSelectorPath defines the JSON path inside of a CustomResource that corresponds to Scale.Status.Selector.
+	// Only JSON paths without the array notation are allowed.
+	// Must be a JSON Path under .status.
+	// Must be set to work with HPA.
+	// If there is no value under the given path in the CustomResource, the status label selector value in the /scale
+	// subresource will default to the empty string.
+	// +optional
+	LabelSelectorPath *string `json:"labelSelectorPath,omitempty" protobuf:"bytes,3,opt,name=labelSelectorPath"`
 }

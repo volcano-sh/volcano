@@ -43,9 +43,9 @@ import (
 	resservice "github.com/kubernetes-sigs/kube-batch/contrib/DLaaS/pkg/controller/queuejobresources/service"
 	resstatefulset "github.com/kubernetes-sigs/kube-batch/contrib/DLaaS/pkg/controller/queuejobresources/statefulset"
 
-	schedulercache "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache"
+	schedulercache "github.com/kubernetes-sigs/kube-batch/contrib/DLaaS/pkg/scheduler/cache"
 
-	schedulerapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	schedulerapi "github.com/kubernetes-sigs/kube-batch/contrib/DLaaS/pkg/scheduler/api"
 
 	arbv1 "github.com/kubernetes-sigs/kube-batch/contrib/DLaaS/pkg/apis/controller/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/contrib/DLaaS/pkg/client/clientset/controller-versioned/clients"
@@ -132,7 +132,7 @@ func NewXQueueJobController(config *rest.Config, schedulerName string) *XControl
 		initQueue:   cache.NewFIFO(queueJobKey),
 		updateQueue: cache.NewFIFO(queueJobKey),
 		qjqueue:	  NewSchedulingQueue(),
-		cache:		  schedulercache.New(config, schedulerName, false),
+		cache:		  schedulercache.New(config, schedulerName),
 	}
 
 	queueJobClient, _, err := clients.NewClient(cc.config)
@@ -330,7 +330,7 @@ func (qjm *XController) getAggregatedAvailableResourcesPriority(targetpr int, cq
 
 	glog.Infof("I have allocated %+v, total %+v", total, allocated)
 
-	if allocated.MilliCPU > total.MilliCPU || allocated.Memory > total.Memory || allocated.MilliGPU > total.MilliGPU {
+	if allocated.MilliCPU > total.MilliCPU || allocated.Memory > total.Memory || allocated.GPU > total.GPU {
 		return r
 	}
 	
