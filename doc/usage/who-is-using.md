@@ -2,6 +2,6 @@
 
 | Organization | Contact (Github User Name) | Environment | Description of Use |
 | ------------- | ------------- | ------------- | ------------- |
-| Baidu Inc |@tizhou86| Production | The scheduler for PaddlePaddle offline training |
-| [FfDL](http://github.com/ffdl)|| |  |
-| [Tusimple](https://www.tusimple.com)|| |  |
+| [Baidu Inc](http://www.baidu.com) |[@tizhou86](https://github.com/tizhou86)| Production | The scheduler for PaddlePaddle offline training |
+| [Tusimple](https://www.tusimple.com)| [@suleisl2000](https://github.com/suleisl2000) | | The scheduler for MxNet offline training |
+| [FfDL](https://github.com/IBM/FfDL)| [@animeshsingh](https://github.com/animeshsingh)| |  |
