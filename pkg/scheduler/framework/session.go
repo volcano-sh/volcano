@@ -119,11 +119,11 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	task.NodeName = hostname
 
 	if node, found := ssn.NodeIndex[hostname]; found {
-		if err := node.PipelineTask(task); err != nil {
-			glog.Errorf("Failed to pipeline task <%v/%v> to node <%v> in Session <%v>: %v",
+		if err := node.AddTask(task); err != nil {
+			glog.Errorf("Failed to add task <%v/%v> to node <%v> in Session <%v>: %v",
 				task.Namespace, task.Name, hostname, ssn.UID, err)
 		}
-		glog.V(3).Infof("After pipelined Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
+		glog.V(3).Infof("After added Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
 			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
 	} else {
 		glog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
@@ -254,8 +254,8 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 	}
 
 	for _, eh := range ssn.eventHandlers {
-		if eh.EvictFunc != nil {
-			eh.EvictFunc(&Event{
+		if eh.DeallocateFunc != nil {
+			eh.DeallocateFunc(&Event{
 				Task: reclaimee,
 			})
 		}
@@ -290,8 +290,8 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 	return victims
 }
 
-// Discard discards a job from session, so no plugin/action handles it.
-func (ssn *Session) Discard(job *api.JobInfo, event arbcorev1.Event, reason string) error {
+// Backoff discards a job from session, so no plugin/action handles it.
+func (ssn *Session) Backoff(job *api.JobInfo, event arbcorev1.Event, reason string) error {
 	if err := ssn.cache.Backoff(job, event, reason); err != nil {
 		glog.Errorf("Failed to backoff job <%s/%s>: %v",
 			job.Namespace, job.Name, err)
