@@ -202,7 +202,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			glog.V(3).Infof("Proportion AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
-		EvictFunc: func(event *framework.Event) {
+		DeallocateFunc: func(event *framework.Event) {
 			job := ssn.JobIndex[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Sub(event.Task.Resreq)

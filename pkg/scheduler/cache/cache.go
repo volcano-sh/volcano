@@ -475,7 +475,8 @@ func (sc *SchedulerCache) Snapshot() *arbapi.ClusterInfo {
 		}
 
 		if _, found := queues[value.Queue]; !found {
-			glog.V(3).Infof("The Queue of Job <%v> does not exist, ignore it.", value.UID)
+			glog.V(3).Infof("The Queue <%v> of Job <%v> does not exist, ignore it.",
+				value.Queue, value.UID)
 			continue
 		}
 
