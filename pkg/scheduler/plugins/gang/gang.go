@@ -120,11 +120,11 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		if !lReady && !rReady {
-			if lv.PodGroup.GetCreationTimestamp().Time.Equal(rv.PodGroup.GetCreationTimestamp().Time) {
+			if lv.CreationTimestamp.Equal(&rv.CreationTimestamp) {
 				if lv.UID < rv.UID {
 					return -1;
 				}
-			} else if lv.PodGroup.GetCreationTimestamp().Time.Before(rv.PodGroup.GetCreationTimestamp().Time) {
+			} else if lv.CreationTimestamp.Before(&rv.CreationTimestamp) {
 				return -1
 			}
 			return 1
