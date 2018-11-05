@@ -23,9 +23,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
 	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/apis/utils"
-	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"	
 )
 
 type TaskID types.UID
