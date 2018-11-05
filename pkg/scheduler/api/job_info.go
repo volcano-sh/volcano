@@ -18,9 +18,9 @@ package api
 
 import (
 	"fmt"
-
 	"k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
@@ -128,7 +128,8 @@ type JobInfo struct {
 	Allocated    *Resource
 	TotalRequest *Resource
 
-	PodGroup *arbcorev1.PodGroup
+	CreationTimestamp metav1.Time
+	PodGroup          *arbcorev1.PodGroup
 
 	// TODO(k82cn): keep backward compatbility, removed it when v1alpha1 finalized.
 	PDB *policyv1.PodDisruptionBudget
@@ -164,6 +165,7 @@ func (ji *JobInfo) SetPodGroup(pg *arbcorev1.PodGroup) {
 		ji.Queue = QueueID(pg.Spec.Queue)
 	}
 
+	ji.CreationTimestamp = pg.GetCreationTimestamp()
 	ji.PodGroup = pg
 }
 
@@ -173,6 +175,7 @@ func (ji *JobInfo) SetPDB(pdb *policyv1.PodDisruptionBudget) {
 	ji.Namespace = pdb.Namespace
 	ji.Queue = QueueID(pdb.Namespace)
 
+	ji.CreationTimestamp = pdb.GetCreationTimestamp()
 	ji.PDB = pdb
 }
 
@@ -274,6 +277,8 @@ func (ji *JobInfo) Clone() *JobInfo {
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},
 	}
+
+	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
 
 	for k, v := range ji.NodeSelector {
 		info.NodeSelector[k] = v
