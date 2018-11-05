@@ -18,13 +18,14 @@ package api
 
 import (
 	"fmt"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/apis/utils"
+	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"	
 )
 
 type TaskID types.UID
@@ -129,8 +130,7 @@ type JobInfo struct {
 	TotalRequest *Resource
 
 	CreationTimestamp metav1.Time
-	
-	PodGroup *arbcorev1.PodGroup
+	PodGroup          *arbcorev1.PodGroup
 
 	// TODO(k82cn): keep backward compatbility, removed it when v1alpha1 finalized.
 	PDB *policyv1.PodDisruptionBudget
@@ -174,7 +174,11 @@ func (ji *JobInfo) SetPDB(pdb *policyv1.PodDisruptionBudget) {
 	ji.Name = pdb.Name
 	ji.MinAvailable = pdb.Spec.MinAvailable.IntVal
 	ji.Namespace = pdb.Namespace
-	ji.Queue = QueueID(pdb.Namespace)
+	if len(options.Options().PdbQueue) == 0 {
+		ji.Queue = QueueID(pdb.Namespace)
+	} else {
+		ji.Queue = QueueID(options.Options().PdbQueue)
+	}
 
 	ji.CreationTimestamp = pdb.GetCreationTimestamp()
 	ji.PDB = pdb
@@ -271,16 +275,16 @@ func (ji *JobInfo) Clone() *JobInfo {
 		NodeSelector: map[string]string{},
 		Allocated:    ji.Allocated.Clone(),
 		TotalRequest: ji.TotalRequest.Clone(),
-		
+
 		PDB:      ji.PDB,
 		PodGroup: ji.PodGroup,
-		
+
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
-	
+
 	for k, v := range ji.NodeSelector {
 		info.NodeSelector[k] = v
 	}
