@@ -33,7 +33,7 @@ import (
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
 
 func main() {
-	s := options.NewServerOption()
+	s := options.Options()
 	s.AddFlags(pflag.CommandLine)
 
 	flag.InitFlags()
