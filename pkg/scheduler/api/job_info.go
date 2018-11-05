@@ -25,6 +25,7 @@ import (
 
 	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/apis/utils"
+	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"	
 )
 
 type TaskID types.UID
@@ -173,7 +174,11 @@ func (ji *JobInfo) SetPDB(pdb *policyv1.PodDisruptionBudget) {
 	ji.Name = pdb.Name
 	ji.MinAvailable = pdb.Spec.MinAvailable.IntVal
 	ji.Namespace = pdb.Namespace
-	ji.Queue = QueueID(pdb.Namespace)
+	if len(options.Options().PdbQueue) == 0 {
+		ji.Queue = QueueID(pdb.Namespace)
+	} else {
+		ji.Queue = QueueID(options.Options().PdbQueue)
+	}
 
 	ji.CreationTimestamp = pdb.GetCreationTimestamp()
 	ji.PDB = pdb
