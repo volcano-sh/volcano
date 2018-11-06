@@ -145,6 +145,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 	for _, job := range ssn.Jobs {
 		if len(job.TaskStatusIndex[api.Allocated]) != 0 {
+			glog.V(3).Infof("Gang: <%v/%v> allocated: %v, pending: %v", job.Namespace, job.Name, len(job.TaskStatusIndex[api.Allocated]), len(job.TaskStatusIndex[api.Pending]))  			
 			ssn.Backoff(job, arbcorev1.UnschedulableEvent, "not enough resource for job")
 		}
 	}
