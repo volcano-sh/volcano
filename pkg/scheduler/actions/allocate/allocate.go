@@ -124,7 +124,12 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 					}
 					assigned = true
 					break
+				} else {
+					//store information about missing resources
+					task.NodeResreqDelta[node.Name] = node.Idle.Clone()
+					task.NodeResreqDelta[node.Name].Delta(task.Resreq)
 				}
+				
 
 				// Allocate releasing resource to the task if any.
 				if task.Resreq.LessEqual(node.Releasing) {

@@ -32,15 +32,18 @@ type Resource struct {
 	MaxTaskNum int
 }
 
+type ResourceClassID int;
+
 const (
 	// need to follow https://github.com/NVIDIA/k8s-device-plugin/blob/66a35b71ac4b5cbfb04714678b548bd77e5ba719/server.go#L20
 	GPUResourceName = "nvidia.com/gpu"
+	ResourceClassCount = 3
 )
 
 func EmptyResource() *Resource {
 	return &Resource{}
 }
-
+	
 func (r *Resource) Clone() *Resource {
 	clone := &Resource{
 		MilliCPU:   r.MilliCPU,
@@ -109,6 +112,24 @@ func (r *Resource) Sub(rr *Resource) *Resource {
 		r, rr))
 }
 
+//Computes 
+func (r *Resource) Delta(rr *Resource) *Resource {
+	r.MilliCPU -= rr.MilliCPU
+	if r.MilliCPU < minMilliCPU {
+		r.MilliCPU = 0
+	}
+
+	r.Memory -= rr.Memory
+	if r.Memory < minMemory {
+		r.Memory = 0
+	}
+
+	r.MilliGPU -= rr.MilliGPU
+	if r.MilliGPU < minMilliGPU {
+		r.MilliGPU = 0
+	}
+}
+
 func (r *Resource) Multi(ratio float64) *Resource {
 	r.MilliCPU = r.MilliCPU * ratio
 	r.Memory = r.Memory * ratio
@@ -146,4 +167,17 @@ func (r *Resource) Get(rn v1.ResourceName) float64 {
 
 func ResourceNames() []v1.ResourceName {
 	return []v1.ResourceName{v1.ResourceCPU, v1.ResourceMemory, GPUResourceName}
+}
+
+func GetResourceClassID(rn v1.ResourceName) ResourceClassID {
+		switch rn {
+		case v1.ResourceCPU:
+			return 0
+		case v1.ResourceMemory:
+			return 1
+		case GPUResourceName:
+			return 2
+		default:
+			panic("not support resource.")
+		}
 }

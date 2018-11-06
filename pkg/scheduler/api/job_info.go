@@ -37,7 +37,9 @@ type TaskInfo struct {
 	Namespace string
 
 	Resreq *Resource
-
+	
+	NodeResreqDelta map[string]*Resource 
+	
 	NodeName string
 	Status   TaskStatus
 	Priority int32
@@ -301,4 +303,25 @@ func (ji JobInfo) String() string {
 	}
 
 	return fmt.Sprintf("Job (%v): name %v, minAvailable %d", ji.UID, ji.Name, ji.MinAvailable) + res
+}
+
+// Error returns detailed information of why the pod failed to fit on each node
+func (f *TaskInfo) Error() string {
+	reasons := make(map[string]int)
+	for _, predicates := range f.FailedPredicates {
+		for _, pred := range predicates {
+			reasons[pred.GetReason()]++
+		}
+	}
+
+	sortReasonsHistogram := func() []string {
+		reasonStrings := []string{}
+		for k, v := range reasons {
+			reasonStrings = append(reasonStrings, fmt.Sprintf("%v %v", v, k))
+		}
+		sort.Strings(reasonStrings)
+		return reasonStrings
+	}
+	reasonMsg := fmt.Sprintf(NoNodeAvailableMsg+": %v.", f.NumAllNodes, strings.Join(sortReasonsHistogram(), ", "))
+	return reasonMsg
 }
