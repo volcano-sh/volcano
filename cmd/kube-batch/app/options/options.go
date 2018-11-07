@@ -33,6 +33,18 @@ type ServerOption struct {
 	NamespaceAsQueue     bool
 	EnableLeaderElection bool
 	LockObjectNamespace  string
+	DefaultQueue         string
+}
+
+var (
+	opts *ServerOption
+)
+
+func Options() *ServerOption {
+	if opts == nil {
+		opts = &ServerOption{}
+	}
+	return opts
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -49,6 +61,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.SchedulerName, "scheduler-name", "kube-batch", "kube-batch will handle pods with the scheduler-name")
 	fs.StringVar(&s.SchedulerConf, "scheduler-conf", "", "The namespace and name of ConfigMap for scheduler configuration")
 	fs.StringVar(&s.SchedulePeriod, "schedule-period", "1s", "The period between each scheduling cycle")
+	fs.StringVar(&s.DefaultQueue, "default-queue", "", "The name of the queue to fall-back to instead of namespace name")
 	fs.BoolVar(&s.EnableLeaderElection, "leader-elect", s.EnableLeaderElection, "Start a leader election client and gain leadership before "+
 		"executing the main loop. Enable this when running replicated kube-batch for high availability")
 	fs.BoolVar(&s.NamespaceAsQueue, "enable-namespace-as-queue", true, "Make Namespace as Queue with weight one, "+
