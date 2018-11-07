@@ -112,22 +112,23 @@ func (r *Resource) Sub(rr *Resource) *Resource {
 		r, rr))
 }
 
-//Computes 
-func (r *Resource) Delta(rr *Resource) *Resource {
-	r.MilliCPU -= rr.MilliCPU
-	if r.MilliCPU < minMilliCPU {
-		r.MilliCPU = 0
+//Computes the delta between a resource oject representing available
+//resources an operand representing resources being requested.  Any
+//field that is less than 0 after the operation represents an
+//insufficient resource.
+func (r *Resource) FitDelta(rr *Resource) *Resource {
+	if rr.MilliCPU > 0 {
+		r.MilliCPU -= rr.MilliCPU + minMilliCPU
 	}
 
-	r.Memory -= rr.Memory
-	if r.Memory < minMemory {
-		r.Memory = 0
+	if rr.Memory > 0 {
+		r.Memory -= rr.Memory + minMemory
 	}
 
-	r.MilliGPU -= rr.MilliGPU
-	if r.MilliGPU < minMilliGPU {
-		r.MilliGPU = 0
+	if rr.MilliGPU > 0 {
+		r.MilliGPU -= rr.MilliGPU + minMilliGPU
 	}
+	return r
 }
 
 func (r *Resource) Multi(ratio float64) *Resource {
@@ -169,15 +170,3 @@ func ResourceNames() []v1.ResourceName {
 	return []v1.ResourceName{v1.ResourceCPU, v1.ResourceMemory, GPUResourceName}
 }
 
-func GetResourceClassID(rn v1.ResourceName) ResourceClassID {
-		switch rn {
-		case v1.ResourceCPU:
-			return 0
-		case v1.ResourceMemory:
-			return 1
-		case GPUResourceName:
-			return 2
-		default:
-			panic("not support resource.")
-		}
-}
