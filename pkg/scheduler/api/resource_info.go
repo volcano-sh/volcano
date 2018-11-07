@@ -32,18 +32,15 @@ type Resource struct {
 	MaxTaskNum int
 }
 
-type ResourceClassID int;
-
 const (
 	// need to follow https://github.com/NVIDIA/k8s-device-plugin/blob/66a35b71ac4b5cbfb04714678b548bd77e5ba719/server.go#L20
 	GPUResourceName = "nvidia.com/gpu"
-	ResourceClassCount = 3
 )
 
 func EmptyResource() *Resource {
 	return &Resource{}
 }
-	
+
 func (r *Resource) Clone() *Resource {
 	clone := &Resource{
 		MilliCPU:   r.MilliCPU,
@@ -169,4 +166,3 @@ func (r *Resource) Get(rn v1.ResourceName) float64 {
 func ResourceNames() []v1.ResourceName {
 	return []v1.ResourceName{v1.ResourceCPU, v1.ResourceMemory, GPUResourceName}
 }
-

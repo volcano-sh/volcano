@@ -136,7 +136,6 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 					job.NodesFitDelta[node.Name] = node.Idle.Clone()
 					job.NodesFitDelta[node.Name].FitDelta(task.Resreq)
 				}
-				
 
 				// Allocate releasing resource to the task if any.
 				if task.Resreq.LessEqual(node.Releasing) {

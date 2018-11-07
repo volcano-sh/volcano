@@ -147,7 +147,7 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 	for _, job := range ssn.Jobs {
 		if len(job.TaskStatusIndex[api.Pending]) != 0 {
 			glog.V(3).Infof("Gang: <%v/%v> allocated: %v, pending: %v", job.Namespace, job.Name, len(job.TaskStatusIndex[api.Allocated]), len(job.TaskStatusIndex[api.Pending]))
-			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v", len(job.TaskStatusIndex[api.Pending]), len(job.TaskStatusIndex[api.Pending]) + len(job.TaskStatusIndex[api.Allocated]), job.FitError())
+			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v", len(job.TaskStatusIndex[api.Pending]), len(job.TaskStatusIndex[api.Pending])+len(job.TaskStatusIndex[api.Allocated]), job.FitError())
 			ssn.Backoff(job, arbcorev1.UnschedulableEvent, msg)
 		}
 	}
