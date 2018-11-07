@@ -17,8 +17,6 @@ limitations under the License.
 package api
 
 import (
-	"sort"
-	"strings"
 	"fmt"
 	"k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1beta1"
@@ -27,6 +25,8 @@ import (
 
 	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/apis/utils"
+	"sort"
+	"strings"
 )
 
 type TaskID types.UID
@@ -39,7 +39,7 @@ type TaskInfo struct {
 	Namespace string
 
 	Resreq *Resource
-	
+
 	NodeName string
 	Status   TaskStatus
 	Priority int32
@@ -74,8 +74,8 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		NodeName:  pod.Spec.NodeName,
 		Status:    getTaskStatus(pod),
 		Priority:  1,
-		Pod:    pod,
-		Resreq: req,
+		Pod:       pod,
+		Resreq:    req,
 	}
 
 	if pod.Spec.Priority != nil {
@@ -144,11 +144,11 @@ func NewJobInfo(uid JobID) *JobInfo {
 	return &JobInfo{
 		UID: uid,
 
-		MinAvailable: 0,
-		NodeSelector: make(map[string]string),
+		MinAvailable:  0,
+		NodeSelector:  make(map[string]string),
 		NodesFitDelta: make(NodeResourceMap),
-		Allocated:    EmptyResource(),
-		TotalRequest: EmptyResource(),
+		Allocated:     EmptyResource(),
+		TotalRequest:  EmptyResource(),
 
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},
@@ -271,10 +271,10 @@ func (ji *JobInfo) Clone() *JobInfo {
 		Namespace: ji.Namespace,
 		Queue:     ji.Queue,
 
-		MinAvailable: ji.MinAvailable,
-		NodeSelector: map[string]string{},
-		Allocated:    ji.Allocated.Clone(),
-		TotalRequest: ji.TotalRequest.Clone(),
+		MinAvailable:  ji.MinAvailable,
+		NodeSelector:  map[string]string{},
+		Allocated:     ji.Allocated.Clone(),
+		TotalRequest:  ji.TotalRequest.Clone(),
 		NodesFitDelta: make(NodeResourceMap),
 
 		PDB:      ji.PDB,

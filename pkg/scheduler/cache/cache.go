@@ -558,4 +558,3 @@ func (sc *SchedulerCache) Backoff(job *arbapi.JobInfo, event arbcorev1.Event, re
 
 	return nil
 }
-
