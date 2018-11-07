@@ -17,6 +17,7 @@ limitations under the License.
 package gang
 
 import (
+	"fmt"
 	"github.com/golang/glog"
 
 	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
@@ -144,9 +145,10 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 	for _, job := range ssn.Jobs {
-		if len(job.TaskStatusIndex[api.Allocated]) != 0 {
-			glog.V(3).Infof("Gang: <%v/%v> allocated: %v, pending: %v", job.Namespace, job.Name, len(job.TaskStatusIndex[api.Allocated]), len(job.TaskStatusIndex[api.Pending]))  			
-			ssn.Backoff(job, arbcorev1.UnschedulableEvent, "not enough resource for job")
+		if len(job.TaskStatusIndex[api.Pending]) != 0 {
+			glog.V(3).Infof("Gang: <%v/%v> allocated: %v, pending: %v", job.Namespace, job.Name, len(job.TaskStatusIndex[api.Allocated]), len(job.TaskStatusIndex[api.Pending]))
+			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v", len(job.TaskStatusIndex[api.Pending]), len(job.TaskStatusIndex[api.Pending]) + len(job.TaskStatusIndex[api.Allocated]), job.FitError())
+			ssn.Backoff(job, arbcorev1.UnschedulableEvent, msg)
 		}
 	}
 }

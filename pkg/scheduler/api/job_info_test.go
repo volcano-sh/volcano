@@ -80,6 +80,7 @@ func TestAddTaskInfo(t *testing.T) {
 					},
 				},
 				NodeSelector: make(map[string]string),
+				NodesFitDelta: make(NodeResourceMap),
 			},
 		},
 	}
@@ -144,6 +145,7 @@ func TestDeleteTaskInfo(t *testing.T) {
 					Running: {case01_task3.UID: case01_task3},
 				},
 				NodeSelector: make(map[string]string),
+				NodesFitDelta: make(NodeResourceMap),
 			},
 		},
 		{
@@ -169,6 +171,7 @@ func TestDeleteTaskInfo(t *testing.T) {
 					},
 				},
 				NodeSelector: make(map[string]string),
+				NodesFitDelta: make(NodeResourceMap),
 			},
 		},
 	}

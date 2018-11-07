@@ -102,6 +102,13 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 			glog.V(3).Infof("There are <%d> nodes for Job <%v/%v>",
 				len(ssn.Nodes), job.Namespace, job.Name)
 
+			//any task that doesn't fit will be the last processed
+			//within this loop context so any existing contents of
+			//NodesFitDelta are for tasks that eventually did fit on a
+			//node
+			if len(job.NodesFitDelta) > 0 {
+				job.NodesFitDelta = make(api.NodeResourceMap)
+			}
 			for _, node := range ssn.Nodes {
 				glog.V(3).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
 					task.Namespace, task.Name, node.Name, task.Resreq, node.Idle)
@@ -126,8 +133,8 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 					break
 				} else {
 					//store information about missing resources
-					task.NodeResreqDelta[node.Name] = node.Idle.Clone()
-					task.NodeResreqDelta[node.Name].Delta(task.Resreq)
+					job.NodesFitDelta[node.Name] = node.Idle.Clone()
+					job.NodesFitDelta[node.Name].FitDelta(task.Resreq)
 				}
 				
 

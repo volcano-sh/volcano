@@ -17,6 +17,8 @@ limitations under the License.
 package api
 
 import (
+	"sort"
+	"strings"
 	"fmt"
 	"k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1beta1"
@@ -37,8 +39,6 @@ type TaskInfo struct {
 	Namespace string
 
 	Resreq *Resource
-	
-	NodeResreqDelta map[string]*Resource 
 	
 	NodeName string
 	Status   TaskStatus
@@ -74,7 +74,6 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		NodeName:  pod.Spec.NodeName,
 		Status:    getTaskStatus(pod),
 		Priority:  1,
-
 		Pod:    pod,
 		Resreq: req,
 	}
@@ -110,6 +109,8 @@ type JobID types.UID
 
 type tasksMap map[TaskID]*TaskInfo
 
+type NodeResourceMap map[string]*Resource
+
 type JobInfo struct {
 	UID JobID
 
@@ -122,6 +123,8 @@ type JobInfo struct {
 
 	NodeSelector map[string]string
 	MinAvailable int32
+
+	NodesFitDelta NodeResourceMap
 
 	// All tasks of the Job.
 	TaskStatusIndex map[TaskStatus]tasksMap
@@ -143,7 +146,7 @@ func NewJobInfo(uid JobID) *JobInfo {
 
 		MinAvailable: 0,
 		NodeSelector: make(map[string]string),
-
+		NodesFitDelta: make(NodeResourceMap),
 		Allocated:    EmptyResource(),
 		TotalRequest: EmptyResource(),
 
@@ -272,6 +275,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		NodeSelector: map[string]string{},
 		Allocated:    ji.Allocated.Clone(),
 		TotalRequest: ji.TotalRequest.Clone(),
+		NodesFitDelta: make(NodeResourceMap),
 
 		PDB:      ji.PDB,
 		PodGroup: ji.PodGroup,
@@ -305,23 +309,35 @@ func (ji JobInfo) String() string {
 	return fmt.Sprintf("Job (%v): name %v, minAvailable %d", ji.UID, ji.Name, ji.MinAvailable) + res
 }
 
-// Error returns detailed information of why the pod failed to fit on each node
-func (f *TaskInfo) Error() string {
+// Error returns detailed information on why a job's task failed to fit on
+// each available node
+func (f *JobInfo) FitError() string {
+	if len(f.NodesFitDelta) == 0 {
+		reasonMsg := fmt.Sprintf("0 nodes are available")
+		return reasonMsg
+	}
+
 	reasons := make(map[string]int)
-	for _, predicates := range f.FailedPredicates {
-		for _, pred := range predicates {
-			reasons[pred.GetReason()]++
+	for _, v := range f.NodesFitDelta {
+		if v.Get(v1.ResourceCPU) < 0 {
+			reasons["cpu"]++
+		}
+		if v.Get(v1.ResourceMemory) < 0 {
+			reasons["memory"]++
+		}
+		if v.Get(GPUResourceName) < 0 {
+			reasons["GPU"]++
 		}
 	}
 
 	sortReasonsHistogram := func() []string {
 		reasonStrings := []string{}
 		for k, v := range reasons {
-			reasonStrings = append(reasonStrings, fmt.Sprintf("%v %v", v, k))
+			reasonStrings = append(reasonStrings, fmt.Sprintf("%v insufficient %v", v, k))
 		}
 		sort.Strings(reasonStrings)
 		return reasonStrings
 	}
-	reasonMsg := fmt.Sprintf(NoNodeAvailableMsg+": %v.", f.NumAllNodes, strings.Join(sortReasonsHistogram(), ", "))
+	reasonMsg := fmt.Sprintf("0/%v nodes are available, %v.", len(f.NodesFitDelta), strings.Join(sortReasonsHistogram(), ", "))
 	return reasonMsg
 }
