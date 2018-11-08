@@ -381,7 +381,12 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 	lv := l.(*api.JobInfo)
 	rv := r.(*api.JobInfo)
 
-	return lv.UID < rv.UID
+	if lv.CreationTimestamp.Equal(&rv.CreationTimestamp) {
+		return lv.UID < rv.UID
+	}
+
+	return lv.CreationTimestamp.Before(&rv.CreationTimestamp)
+
 }
 
 func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
