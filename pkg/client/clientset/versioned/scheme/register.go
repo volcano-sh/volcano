@@ -24,6 +24,10 @@ import (
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer"
+
+	corev1 "k8s.io/api/core/v1"
+	//PDB defintions
+	policyv1beta1 "k8s.io/api/policy/v1beta1"
 )
 
 var Scheme = runtime.NewScheme()
@@ -51,4 +55,6 @@ func init() {
 // correctly.
 func AddToScheme(scheme *runtime.Scheme) {
 	schedulingv1alpha1.AddToScheme(scheme)
+	corev1.AddToScheme(scheme)
+	policyv1beta1.AddToScheme(scheme)
 }
