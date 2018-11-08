@@ -34,7 +34,7 @@ e2e:
 #	hack/run-e2e.sh
 
 coverage:
-	KUBE_COVER=y hack/make-rules/test.sh $(WHAT) $(TESTS)
+#	KUBE_COVER=y hack/make-rules/test.sh $(WHAT) $(TESTS)
 
 clean:
 	rm -rf _output/
