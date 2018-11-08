@@ -18,11 +18,12 @@ package api
 
 import (
 	"fmt"
-
 	"k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
 	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/apis/utils"
 )
@@ -128,7 +129,8 @@ type JobInfo struct {
 	Allocated    *Resource
 	TotalRequest *Resource
 
-	PodGroup *arbcorev1.PodGroup
+	CreationTimestamp metav1.Time
+	PodGroup          *arbcorev1.PodGroup
 
 	// TODO(k82cn): keep backward compatbility, removed it when v1alpha1 finalized.
 	PDB *policyv1.PodDisruptionBudget
@@ -158,12 +160,20 @@ func (ji *JobInfo) SetPodGroup(pg *arbcorev1.PodGroup) {
 	ji.Namespace = pg.Namespace
 	ji.MinAvailable = pg.Spec.MinMember
 
-	if len(pg.Spec.Queue) == 0 {
-		ji.Queue = QueueID(pg.Namespace)
-	} else {
+	//set queue name based on the available information
+	//in the following priority order:
+	// 1. queue name from PodGroup spec (if available)
+	// 2. queue name from default-queue command line option (if specified)
+	// 3. namespace name
+	if len(pg.Spec.Queue) > 0 {
 		ji.Queue = QueueID(pg.Spec.Queue)
+	} else if len(options.Options().DefaultQueue) > 0 {
+		ji.Queue = QueueID(options.Options().DefaultQueue)
+	} else {
+		ji.Queue = QueueID(pg.Namespace)
 	}
 
+	ji.CreationTimestamp = pg.GetCreationTimestamp()
 	ji.PodGroup = pg
 }
 
@@ -171,8 +181,13 @@ func (ji *JobInfo) SetPDB(pdb *policyv1.PodDisruptionBudget) {
 	ji.Name = pdb.Name
 	ji.MinAvailable = pdb.Spec.MinAvailable.IntVal
 	ji.Namespace = pdb.Namespace
-	ji.Queue = QueueID(pdb.Namespace)
+	if len(options.Options().DefaultQueue) == 0 {
+		ji.Queue = QueueID(pdb.Namespace)
+	} else {
+		ji.Queue = QueueID(options.Options().DefaultQueue)
+	}
 
+	ji.CreationTimestamp = pdb.GetCreationTimestamp()
 	ji.PDB = pdb
 }
 
@@ -274,6 +289,8 @@ func (ji *JobInfo) Clone() *JobInfo {
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},
 	}
+
+	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
 
 	for k, v := range ji.NodeSelector {
 		info.NodeSelector[k] = v
