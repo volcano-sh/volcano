@@ -197,7 +197,7 @@ func (qjrPod *QueueJobResPod) SyncQueueJob(queuejob *arbv1.XQueueJob, qjobRes *a
 	// check if there are still terminating pods for this QueueJob
 	//counter, ok := qjrPod.deletedPodsCounter.Get(fmt.Sprintf("%s/%s", queuejob.Namespace, queuejob.Name))
 	//if ok && counter >= 0 {
-	//	return fmt.Errorf("There are still teminating pods for QueueJob %s/%s, can not sync it now", queuejob.Namespace, queuejob.Name)
+	//	return fmt.Errorf("There are still terminating pods for QueueJob %s/%s, can not sync it now", queuejob.Namespace, queuejob.Name)
 	//}
 
 	pods, err := qjrPod.getPodsForQueueJob(queuejob)
