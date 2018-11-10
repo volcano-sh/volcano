@@ -43,7 +43,7 @@ NAME        	REVISION	UPDATED                 	STATUS  	CHART                	NA
 dozing-otter	1       	Thu Jun 14 18:52:15 2018	DEPLOYED	kube-batch-0.2.0    	kube-system
 ```
 
-NOTE: `kube-batch` need to collect cluster information(such as Pod, Node, CRD, etc) for scheduing, so the service account used by the deployment must have permission to access those cluster resources, otherwise, `kube-batch` will fail to startup. For users who are not familiar with Kubernetes RBAC, please copy the example/role.yaml into `$GOPATH/src/github.com/kubernetes-sigs/kube-batch/deployment/kube-batch/templates/` and reinstall batch.
+NOTE: `kube-batch` need to collect cluster information(such as Pod, Node, CRD, etc) for scheduling, so the service account used by the deployment must have permission to access those cluster resources, otherwise, `kube-batch` will fail to startup. For users who are not familiar with Kubernetes RBAC, please copy the example/role.yaml into `$GOPATH/src/github.com/kubernetes-sigs/kube-batch/deployment/kube-batch/templates/` and reinstall batch.
 
 ### (3) Create a Job
 
