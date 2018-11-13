@@ -167,9 +167,8 @@ func (sc *SchedulerCache) AddPod(obj interface{}) {
 		glog.Errorf("Failed to add pod <%s/%s> into cache: %v",
 			pod.Namespace, pod.Name, err)
 		return
-	} else {
-		glog.V(3).Infof("Added pod <%s/%v> into cache.", pod.Namespace, pod.Name)
 	}
+	glog.V(3).Infof("Added pod <%s/%v> into cache.", pod.Namespace, pod.Name)
 	return
 }
 
