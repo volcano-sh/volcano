@@ -14,7 +14,7 @@ To run `kube-batch`, a Kubernetes cluster must start up. Here is a document on [
 An official kube-batch image is provided and you can download it from [DockerHub](https://hub.docker.com/r/kubesigs/kube-batch/). The version is `v0.2` now.
 
 ```bash
-# docker pull  kubesigs/kube-batch:v0.2
+# docker pull kubesigs/kube-batch:v0.2
 ```
 
 ### (2) Create a Kubernetes Deployment for kube-batch
@@ -27,7 +27,7 @@ An official kube-batch image is provided and you can download it from [DockerHub
 # git clone http://github.com/kubernetes-sigs/kube-batch
 ```
 
-#### Deploys `kube-batch` by Helm
+#### Deploy `kube-batch` by Helm
 
 Run the `kube-batch` as kubernetes scheduler
 
@@ -106,7 +106,7 @@ Check the pods status
 
 ## 4. Create PriorityClass for Pod
 
-`kar-scheduler` will start pods by their priority in the same QueueJob, pods with higher priority will start first. Here is sample to show `PriorityClass` usage:
+`kube-batch` scheduler will start pods by their priority in the same QueueJob, pods with higher priority will start first. Here is sample to show `PriorityClass` usage:
 
 Create a `priority_1000.yaml` with the following contents:
 
