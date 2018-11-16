@@ -550,5 +550,11 @@ func (sc *SchedulerCache) Backoff(job *arbapi.JobInfo, event arbcorev1.Event, re
 		return fmt.Errorf("no scheduling specification for job")
 	}
 
+	for _, tasks := range job.TaskStatusIndex {
+		for _, t := range tasks {
+			sc.recorder.Eventf(t.Pod, v1.EventTypeWarning, string(event), reason)
+		}
+	}
+
 	return nil
 }
