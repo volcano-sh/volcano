@@ -1,7 +1,7 @@
 package queuejobresources
 
 import(
-	schedulerapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	schedulerapi "github.com/kubernetes-sigs/kube-batch/contrib/DLaaS/pkg/scheduler/api"
 	"k8s.io/api/core/v1"
 )
 
@@ -21,8 +21,8 @@ func GetPodResources(template *v1.PodTemplateSpec) *schedulerapi.Resource {
         req := schedulerapi.EmptyResource()
         limit := schedulerapi.EmptyResource()
         for _, c := range template.Spec.Containers {
-                                        req.Add(schedulerapi.NewResource(c.Resources.Requests))
-                                        limit.Add(schedulerapi.NewResource(c.Resources.Limits))
+            req.Add(schedulerapi.NewResource(c.Resources.Requests))
+            limit.Add(schedulerapi.NewResource(c.Resources.Limits))
         }
         if req.MilliCPU < limit.MilliCPU {
                                 req.MilliCPU = limit.MilliCPU
@@ -30,8 +30,8 @@ func GetPodResources(template *v1.PodTemplateSpec) *schedulerapi.Resource {
         if req.Memory < limit.Memory {
                                 req.Memory = limit.Memory
         }
-        if req.MilliGPU < limit.MilliGPU {
-                                req.MilliGPU = limit.MilliGPU
+        if req.GPU < limit.GPU {
+                                req.GPU = limit.GPU
         }
         total = total.Add(req)
         return total

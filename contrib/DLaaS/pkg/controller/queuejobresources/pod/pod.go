@@ -24,7 +24,7 @@ import (
 	clientset "github.com/kubernetes-sigs/kube-batch/contrib/DLaaS/pkg/client/clientset/controller-versioned"
 	"github.com/kubernetes-sigs/kube-batch/contrib/DLaaS/pkg/controller/maputils"
 	"github.com/kubernetes-sigs/kube-batch/contrib/DLaaS/pkg/controller/queuejobresources"
-	schedulerapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	schedulerapi "github.com/kubernetes-sigs/kube-batch/contrib/DLaaS/pkg/scheduler/api"
 	"k8s.io/api/core/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -549,7 +549,7 @@ func (qjrPod *QueueJobResPod) GetAggregatedResources(job *arbv1.XQueueJob) *sche
 			myres := queuejobresources.GetPodResources(template)
                         myres.MilliCPU = float64(replicas) * myres.MilliCPU
                         myres.Memory = float64(replicas) * myres.Memory
-                        myres.MilliGPU = float64(replicas) * myres.MilliGPU
+                        myres.GPU = int64(replicas) * myres.GPU
                         total = total.Add(myres)
 		}
             }

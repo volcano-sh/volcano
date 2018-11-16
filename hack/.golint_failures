@@ -1,7 +1,9 @@
 cmd/kube-batch/app
 cmd/kube-batch/app/options
+contrib/DLaaS/cmd/deepcopy-gen
 contrib/DLaaS/cmd/kar-controllers/app
 contrib/DLaaS/cmd/kar-controllers/app/options
+contrib/DLaaS/pkg/apis/controller/utils
 contrib/DLaaS/pkg/apis/controller/v1alpha1
 contrib/DLaaS/pkg/client/clientset/controller-versioned
 contrib/DLaaS/pkg/client/clientset/controller-versioned/clients
@@ -16,6 +18,17 @@ contrib/DLaaS/pkg/controller/queuejobresources/deployment
 contrib/DLaaS/pkg/controller/queuejobresources/pod
 contrib/DLaaS/pkg/controller/queuejobresources/service
 contrib/DLaaS/pkg/controller/queuejobresources/statefulset
+contrib/DLaaS/pkg/scheduler
+contrib/DLaaS/pkg/scheduler/actions/allocate
+contrib/DLaaS/pkg/scheduler/actions/decorate
+contrib/DLaaS/pkg/scheduler/actions/preempt
+contrib/DLaaS/pkg/scheduler/api
+contrib/DLaaS/pkg/scheduler/cache
+contrib/DLaaS/pkg/scheduler/framework
+contrib/DLaaS/pkg/scheduler/plugins/drf
+contrib/DLaaS/pkg/scheduler/plugins/gang
+contrib/DLaaS/pkg/scheduler/plugins/priority
+contrib/DLaaS/pkg/scheduler/util
 pkg/apis/scheduling/v1alpha1
 pkg/apis/utils
 pkg/scheduler

@@ -18,7 +18,7 @@ package queuejobresources
 
 import (
 	qjobv1 "github.com/kubernetes-sigs/kube-batch/contrib/DLaaS/pkg/apis/controller/v1alpha1"
-	schedulerapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	schedulerapi "github.com/kubernetes-sigs/kube-batch/contrib/DLaaS/pkg/scheduler/api"
 
 )
 
