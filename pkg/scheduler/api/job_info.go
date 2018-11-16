@@ -26,6 +26,8 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
 	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/apis/utils"
+	"sort"
+	"strings"
 )
 
 type TaskID types.UID
@@ -73,9 +75,8 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		NodeName:  pod.Spec.NodeName,
 		Status:    getTaskStatus(pod),
 		Priority:  1,
-
-		Pod:    pod,
-		Resreq: req,
+		Pod:       pod,
+		Resreq:    req,
 	}
 
 	if pod.Spec.Priority != nil {
@@ -109,6 +110,8 @@ type JobID types.UID
 
 type tasksMap map[TaskID]*TaskInfo
 
+type NodeResourceMap map[string]*Resource
+
 type JobInfo struct {
 	UID JobID
 
@@ -121,6 +124,8 @@ type JobInfo struct {
 
 	NodeSelector map[string]string
 	MinAvailable int32
+
+	NodesFitDelta NodeResourceMap
 
 	// All tasks of the Job.
 	TaskStatusIndex map[TaskStatus]tasksMap
@@ -140,11 +145,11 @@ func NewJobInfo(uid JobID) *JobInfo {
 	return &JobInfo{
 		UID: uid,
 
-		MinAvailable: 0,
-		NodeSelector: make(map[string]string),
-
-		Allocated:    EmptyResource(),
-		TotalRequest: EmptyResource(),
+		MinAvailable:  0,
+		NodeSelector:  make(map[string]string),
+		NodesFitDelta: make(NodeResourceMap),
+		Allocated:     EmptyResource(),
+		TotalRequest:  EmptyResource(),
 
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},
@@ -278,10 +283,11 @@ func (ji *JobInfo) Clone() *JobInfo {
 		Namespace: ji.Namespace,
 		Queue:     ji.Queue,
 
-		MinAvailable: ji.MinAvailable,
-		NodeSelector: map[string]string{},
-		Allocated:    ji.Allocated.Clone(),
-		TotalRequest: ji.TotalRequest.Clone(),
+		MinAvailable:  ji.MinAvailable,
+		NodeSelector:  map[string]string{},
+		Allocated:     ji.Allocated.Clone(),
+		TotalRequest:  ji.TotalRequest.Clone(),
+		NodesFitDelta: make(NodeResourceMap),
 
 		PDB:      ji.PDB,
 		PodGroup: ji.PodGroup,
@@ -313,4 +319,37 @@ func (ji JobInfo) String() string {
 	}
 
 	return fmt.Sprintf("Job (%v): name %v, minAvailable %d", ji.UID, ji.Name, ji.MinAvailable) + res
+}
+
+// Error returns detailed information on why a job's task failed to fit on
+// each available node
+func (f *JobInfo) FitError() string {
+	if len(f.NodesFitDelta) == 0 {
+		reasonMsg := fmt.Sprintf("0 nodes are available")
+		return reasonMsg
+	}
+
+	reasons := make(map[string]int)
+	for _, v := range f.NodesFitDelta {
+		if v.Get(v1.ResourceCPU) < 0 {
+			reasons["cpu"]++
+		}
+		if v.Get(v1.ResourceMemory) < 0 {
+			reasons["memory"]++
+		}
+		if v.Get(GPUResourceName) < 0 {
+			reasons["GPU"]++
+		}
+	}
+
+	sortReasonsHistogram := func() []string {
+		reasonStrings := []string{}
+		for k, v := range reasons {
+			reasonStrings = append(reasonStrings, fmt.Sprintf("%v insufficient %v", v, k))
+		}
+		sort.Strings(reasonStrings)
+		return reasonStrings
+	}
+	reasonMsg := fmt.Sprintf("0/%v nodes are available, %v.", len(f.NodesFitDelta), strings.Join(sortReasonsHistogram(), ", "))
+	return reasonMsg
 }
