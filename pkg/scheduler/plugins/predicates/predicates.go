@@ -131,7 +131,7 @@ func (pp *nodeAffinityPlugin) OnSessionOpen(ssn *framework.Session) {
 			return err
 		}
 
-		glog.V(3).Infof("NodeSelect predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+		glog.V(4).Infof("NodeSelect predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
 			task.Namespace, task.Name, node.Name, fit, err)
 
 		if !fit {
@@ -145,7 +145,7 @@ func (pp *nodeAffinityPlugin) OnSessionOpen(ssn *framework.Session) {
 			return err
 		}
 
-		glog.V(3).Infof("HostPorts predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+		glog.V(4).Infof("HostPorts predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
 			task.Namespace, task.Name, node.Name, fit, err)
 
 		if !fit {
@@ -159,7 +159,7 @@ func (pp *nodeAffinityPlugin) OnSessionOpen(ssn *framework.Session) {
 			return err
 		}
 
-		glog.V(3).Infof("Check Unschedulable Task <%s/%s> on Node <%s>: fit %t, err %v",
+		glog.V(4).Infof("Check Unschedulable Task <%s/%s> on Node <%s>: fit %t, err %v",
 			task.Namespace, task.Name, node.Name, fit, err)
 
 		if !fit {
@@ -173,7 +173,7 @@ func (pp *nodeAffinityPlugin) OnSessionOpen(ssn *framework.Session) {
 			return err
 		}
 
-		glog.V(3).Infof("Toleration/Taint predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+		glog.V(4).Infof("Toleration/Taint predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
 			task.Namespace, task.Name, node.Name, fit, err)
 
 		if !fit {
@@ -188,7 +188,7 @@ func (pp *nodeAffinityPlugin) OnSessionOpen(ssn *framework.Session) {
 			return err
 		}
 
-		glog.V(3).Infof("Pod Affinity/Anti-Affinity predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+		glog.V(4).Infof("Pod Affinity/Anti-Affinity predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
 			task.Namespace, task.Name, node.Name, fit, err)
 
 		if !fit {
