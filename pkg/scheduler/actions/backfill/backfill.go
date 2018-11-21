@@ -32,7 +32,7 @@ func New() *backfillAction {
 }
 
 func (alloc *backfillAction) Name() string {
-	return "preempt"
+	return "backfill"
 }
 
 func (alloc *backfillAction) Initialize() {}
