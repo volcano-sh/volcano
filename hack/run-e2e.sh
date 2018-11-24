@@ -31,7 +31,7 @@ nohup ${KA_BIN}/kube-batch --kubeconfig ${HOME}/.kube/config --enable-namespace-
 # clean up
 function cleanup {
     killall -9 kube-batch
-    ./hack/dind-cluster-v1.11.sh down
+    ./hack/dind-cluster-v1.12.sh down
 
     echo "===================================================================================="
     echo "=============================>>>>> Scheduler Logs <<<<<============================="
