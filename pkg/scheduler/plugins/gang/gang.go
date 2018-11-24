@@ -35,6 +35,7 @@ func New(args *framework.PluginArgs) framework.Plugin {
 	}
 }
 
+// readyTaskNum return the number of tasks that are ready to run.
 func readyTaskNum(job *api.JobInfo) int32 {
 	occupid := 0
 	for status, tasks := range job.TaskStatusIndex {
@@ -46,11 +47,13 @@ func readyTaskNum(job *api.JobInfo) int32 {
 	return int32(occupid)
 }
 
+// validTaskNum return the number of tasks that are valid.
 func validTaskNum(job *api.JobInfo) int32 {
 	occupid := 0
 	for status, tasks := range job.TaskStatusIndex {
 		if api.AllocatedStatus(status) ||
 			status == api.Succeeded ||
+			status == api.Pipelined ||
 			status == api.Pending {
 			occupid = occupid + len(tasks)
 		}
