@@ -19,7 +19,7 @@ type Interface interface {
 A preemptor providers three interfaces, `Run()`,`Preprocessing()` and `PreemptResources()`
 
 * `Run()` to start informer for preemption.
-* `Preprocessing()` to preprocess queues, make sure `Allocated < Used` in each queue.
+* `Preprocessing()` to preprocess queues, make sure `Allocated >= Used` in each queue.
 * `PreemptResources()` to preempt resources between different queues.
 
 ### Preprocess stage
@@ -63,8 +63,8 @@ However, Queue-1 is overused due to some race condition. So pod-1 will be chosen
 Preempt resources between queues. This stage will divide all queues into three categories:
 
 * Case-01 : `Deserved < Allocated`
-* Case-02 : `Deverved = Allocated`
-* Case-03 : `Deverved > Allocated`
+* Case-02 : `Deserved = Allocated`
+* Case-03 : `Deserved > Allocated`
 
 The queues in case-01 will be preempted resources to other queues. It contains two subcases:
 
