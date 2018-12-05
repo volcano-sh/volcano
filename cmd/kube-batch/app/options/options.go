@@ -34,6 +34,7 @@ type ServerOption struct {
 	EnableLeaderElection bool
 	LockObjectNamespace  string
 	DefaultQueue         string
+	PrintVersion         bool
 }
 
 var (
@@ -66,6 +67,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 		"executing the main loop. Enable this when running replicated kube-batch for high availability")
 	fs.BoolVar(&s.NamespaceAsQueue, "enable-namespace-as-queue", true, "Make Namespace as Queue with weight one, "+
 		"but kube-batch will not handle Queue CRD anymore")
+	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
 	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", s.LockObjectNamespace, "Define the namespace of the lock object")
 }
 
