@@ -1,8 +1,15 @@
 BIN_DIR=_output/bin
 RELEASE_VER=v0.2
+REPO_PATH=github.com/kubernetes-sigs/kube-batch
+GitSHA=`git rev-parse HEAD`
+Date=`date "+%Y-%m-%d %H:%M:%S"`
 
 kube-batch: init
-	go build -o ${BIN_DIR}/kube-batch ./cmd/kube-batch/
+	go build  -ldflags " \
+	-X '${REPO_PATH}/pkg/version.GitSHA=${GitSHA}' \
+	-X '${REPO_PATH}/pkg/version.Built=${Date}'   \
+	-X '${REPO_PATH}/pkg/version.Version=${RELEASE_VER}'" \
+	-o _output/bin/kube-batch ./cmd/kube-batch
 
 verify: generate-code
 	hack/verify-gofmt.sh

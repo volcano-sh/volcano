@@ -24,6 +24,8 @@ import (
 	"github.com/golang/glog"
 	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler"
+	"github.com/kubernetes-sigs/kube-batch/pkg/version"
+
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	clientset "k8s.io/client-go/kubernetes"
@@ -42,6 +44,7 @@ const (
 	leaseDuration = 15 * time.Second
 	renewDeadline = 10 * time.Second
 	retryPeriod   = 5 * time.Second
+	apiVersion    = "v1alpha1"
 )
 
 func buildConfig(master, kubeconfig string) (*rest.Config, error) {
@@ -52,6 +55,10 @@ func buildConfig(master, kubeconfig string) (*rest.Config, error) {
 }
 
 func Run(opt *options.ServerOption) error {
+	if opt.PrintVersion {
+		version.PrintVersionAndExit(apiVersion)
+	}
+
 	config, err := buildConfig(opt.Master, opt.Kubeconfig)
 	if err != nil {
 		return err
