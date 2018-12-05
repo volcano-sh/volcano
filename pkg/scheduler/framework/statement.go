@@ -22,6 +22,7 @@ import (
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
+*/
 
 type Statement struct {
 	operations []operation
@@ -33,6 +34,7 @@ type operation struct {
 	args []interface{}
 }
 
+/*
 func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 	// Update status in session
 	job, found := s.ssn.JobIndex[reclaimee.Job]
