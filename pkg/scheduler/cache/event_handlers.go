@@ -242,7 +242,8 @@ func (sc *SchedulerCache) addNode(node *v1.Node) error {
 func isNodeInfoUpdated(oldNode, newNode *v1.Node) bool {
 	return !reflect.DeepEqual(oldNode.Status.Allocatable, newNode.Status.Allocatable) ||
 		!reflect.DeepEqual(oldNode.Spec.Taints, newNode.Spec.Taints) ||
-		!reflect.DeepEqual(oldNode.Labels, newNode.Labels)
+		!reflect.DeepEqual(oldNode.Labels, newNode.Labels) ||
+		!reflect.DeepEqual(oldNode.Spec.Unschedulable, newNode.Spec.Unschedulable)
 }
 
 // Assumes that lock is already acquired.
