@@ -7,7 +7,7 @@
 ## Overview
 
 [Resource sharing architecture for batch and serving workloads in Kubernetes](https://docs.google.com/document/d/1-H2hnZap7gQivcSU-9j4ZrJ8wE_WwcfOkTeAGjzUyLA/edit#) proposed
-`QueueJob` feature to run batch job with services workload in Kuberentes. Considering the complexity, the 
+`QueueJob` feature to run batch job with services workload in Kubernetes. Considering the complexity, the 
 whole batch job proposal was separated into two phase: `Queue` and `QueueJob`. This document 
 presents the API definition of `Queue` for MVP.
 
