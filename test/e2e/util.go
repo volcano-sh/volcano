@@ -297,7 +297,7 @@ func createJobEx(context *context, job *jobSpec) ([]*batchv1.Job, *arbv1.PodGrou
 					},
 					Spec: v1.PodSpec{
 						SchedulerName: "kube-batch",
-						RestartPolicy: v1.RestartPolicyNever,
+						RestartPolicy: v1.RestartPolicyOnFailure,
 						Containers:    createContainers(task.img, task.req, task.hostport),
 						Affinity:      task.affinity,
 					},

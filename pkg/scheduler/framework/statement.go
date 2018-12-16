@@ -16,13 +16,11 @@ limitations under the License.
 
 package framework
 
-/*
 import (
 	"github.com/golang/glog"
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
-*/
 
 type Statement struct {
 	operations []operation
@@ -34,7 +32,6 @@ type operation struct {
 	args []interface{}
 }
 
-/*
 func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 	// Update status in session
 	job, found := s.ssn.JobIndex[reclaimee.Job]
@@ -195,6 +192,7 @@ func (s *Statement) unpipeline(task *api.TaskInfo) error {
 }
 
 func (s *Statement) Discard() {
+	glog.V(3).Info("Discarding operations ...")
 	for i := len(s.operations) - 1; i >= 0; i-- {
 		op := s.operations[i]
 		switch op.name {
@@ -207,6 +205,7 @@ func (s *Statement) Discard() {
 }
 
 func (s *Statement) Commit() {
+	glog.V(3).Info("Committing operations ...")
 	for _, op := range s.operations {
 		switch op.name {
 		case "evict":
@@ -216,4 +215,3 @@ func (s *Statement) Commit() {
 		}
 	}
 }
-*/

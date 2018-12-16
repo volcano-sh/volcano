@@ -103,6 +103,12 @@ func closeSession(ssn *Session) {
 	glog.V(3).Infof("Close Session %v", ssn.UID)
 }
 
+func (ssn *Session) Statement() *Statement {
+	return &Statement{
+		ssn: ssn,
+	}
+}
+
 func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	// Only update status in session
 	job, found := ssn.JobIndex[task.Job]

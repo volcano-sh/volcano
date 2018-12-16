@@ -84,28 +84,46 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 
 			preemptorJob := preemptors.Pop().(*api.JobInfo)
 
-			// If not preemptor tasks, next job.
-			if preemptorTasks[preemptorJob.UID].Empty() {
-				glog.V(3).Infof("No preemptor task in job <%s/%s>.",
-					preemptorJob.Namespace, preemptorJob.Name)
-				continue
+			stmt := ssn.Statement()
+			assigned := false
+			for {
+				// If not preemptor tasks, next job.
+				if preemptorTasks[preemptorJob.UID].Empty() {
+					glog.V(3).Infof("No preemptor task in job <%s/%s>.",
+						preemptorJob.Namespace, preemptorJob.Name)
+					break
+				}
+
+				preemptor := preemptorTasks[preemptorJob.UID].Pop().(*api.TaskInfo)
+
+				if preempted, _ := preempt(ssn, stmt, preemptor, ssn.Nodes, func(task *api.TaskInfo) bool {
+					// Ignore non running task.
+					if task.Status != api.Running {
+						return false
+					}
+
+					job, found := ssn.JobIndex[task.Job]
+					if !found {
+						return false
+					}
+					// Preempt other jobs within queue
+					return job.Queue == preemptorJob.Queue && preemptor.Job != task.Job
+				}); preempted {
+					assigned = true
+				}
+
+				// If job not ready, keep preempting
+				if ssn.JobReady(preemptorJob) {
+					stmt.Commit()
+					break
+				}
 			}
 
-			preemptor := preemptorTasks[preemptorJob.UID].Pop().(*api.TaskInfo)
-
-			assigned, _ := preempt(ssn, preemptor, ssn.Nodes, func(task *api.TaskInfo) bool {
-				// Ignore non running task.
-				if task.Status != api.Running {
-					return false
-				}
-
-				job, found := ssn.JobIndex[task.Job]
-				if !found {
-					return false
-				}
-				// Preempt other jobs within queue
-				return job.Queue == preemptorJob.Queue && preemptor.Job != task.Job
-			})
+			// If job not ready after try all tasks, next job.
+			if !ssn.JobReady(preemptorJob) {
+				stmt.Discard()
+				continue
+			}
 
 			if assigned {
 				preemptors.Push(preemptorJob)
@@ -125,7 +143,8 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 
 				preemptor := preemptorTasks[job.UID].Pop().(*api.TaskInfo)
 
-				assigned, _ := preempt(ssn, preemptor, ssn.Nodes, func(task *api.TaskInfo) bool {
+				stmt := ssn.Statement()
+				assigned, _ := preempt(ssn, stmt, preemptor, ssn.Nodes, func(task *api.TaskInfo) bool {
 					// Ignore non running task.
 					if task.Status != api.Running {
 						return false
@@ -134,6 +153,7 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 					// Preempt tasks within job.
 					return preemptor.Job == task.Job
 				})
+				stmt.Commit()
 
 				// If no preemption, next job.
 				if !assigned {
@@ -146,7 +166,13 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 
 func (alloc *preemptAction) UnInitialize() {}
 
-func preempt(ssn *framework.Session, preemptor *api.TaskInfo, nodes []*api.NodeInfo, filter func(*api.TaskInfo) bool) (bool, error) {
+func preempt(
+	ssn *framework.Session,
+	stmt *framework.Statement,
+	preemptor *api.TaskInfo,
+	nodes []*api.NodeInfo,
+	filter func(*api.TaskInfo) bool,
+) (bool, error) {
 	resreq := preemptor.Resreq.Clone()
 	preempted := api.EmptyResource()
 
@@ -179,7 +205,7 @@ func preempt(ssn *framework.Session, preemptor *api.TaskInfo, nodes []*api.NodeI
 		for _, preemptee := range victims {
 			glog.Errorf("Try to preempt Task <%s/%s> for Tasks <%s/%s>",
 				preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name)
-			if err := ssn.Evict(preemptee, "preempt"); err != nil {
+			if err := stmt.Evict(preemptee, "preempt"); err != nil {
 				glog.Errorf("Failed to preempt Task <%s/%s> for Tasks <%s/%s>: %v",
 					preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name, err)
 				continue
@@ -195,7 +221,7 @@ func preempt(ssn *framework.Session, preemptor *api.TaskInfo, nodes []*api.NodeI
 		glog.V(3).Infof("Preempted <%v> for task <%s/%s> requested <%v>.",
 			preempted, preemptor.Namespace, preemptor.Name, preemptor.Resreq)
 
-		if err := ssn.Pipeline(preemptor, node.Name); err != nil {
+		if err := stmt.Pipeline(preemptor, node.Name); err != nil {
 			glog.Errorf("Failed to pipline Task <%s/%s> on Node <%s>",
 				preemptor.Namespace, preemptor.Name, node.Name)
 		}
