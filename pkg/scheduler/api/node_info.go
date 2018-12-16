@@ -138,11 +138,16 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 	}
 
 	if ni.Node != nil {
-		if task.Status == Releasing {
+		switch task.Status {
+		case Releasing:
 			ni.Releasing.Sub(task.Resreq)
+			ni.Idle.Add(task.Resreq)
+		case Pipelined:
+			ni.Releasing.Add(task.Resreq)
+		default:
+			ni.Idle.Add(task.Resreq)
 		}
 
-		ni.Idle.Add(task.Resreq)
 		ni.Used.Sub(task.Resreq)
 	}
 

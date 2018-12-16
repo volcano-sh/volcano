@@ -18,6 +18,7 @@ package gang
 
 import (
 	"fmt"
+
 	"github.com/golang/glog"
 
 	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
@@ -39,7 +40,9 @@ func New(args *framework.PluginArgs) framework.Plugin {
 func readyTaskNum(job *api.JobInfo) int32 {
 	occupid := 0
 	for status, tasks := range job.TaskStatusIndex {
-		if api.AllocatedStatus(status) || status == api.Succeeded {
+		if api.AllocatedStatus(status) ||
+			status == api.Succeeded ||
+			status == api.Pipelined {
 			occupid = occupid + len(tasks)
 		}
 	}
