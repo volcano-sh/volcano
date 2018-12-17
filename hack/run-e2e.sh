@@ -3,7 +3,7 @@
 export PATH="${HOME}/.kubeadm-dind-cluster:${PATH}"
 export KA_BIN=_output/bin
 export LOG_LEVEL=3
-export NUM_NODES=3
+export NUM_NODES=2
 
 dind_url=https://cdn.rawgit.com/kubernetes-sigs/kubeadm-dind-cluster/master/fixed/dind-cluster-v1.12.sh
 dind_dest=./hack/dind-cluster-v1.12.sh
