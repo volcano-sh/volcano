@@ -84,7 +84,6 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 		var job *api.JobInfo
 		var task *api.TaskInfo
 
-		// TODO (k82cn): we should check whether queue deserved more resources.
 		queue := queues.Pop().(*api.QueueInfo)
 		if ssn.Overused(queue) {
 			glog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)

@@ -24,7 +24,7 @@ import (
 
 	"github.com/golang/glog"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	infov1 "k8s.io/client-go/informers/core/v1"
@@ -101,6 +101,8 @@ type defaultEvictor struct {
 func (de *defaultEvictor) Evict(p *v1.Pod) error {
 	// TODO (k82cn): makes grace period configurable.
 	threeSecs := int64(3)
+
+	glog.V(3).Infof("Evicting pod %v/%v", p.Namespace, p.Name)
 
 	if err := de.kubeclient.CoreV1().Pods(p.Namespace).Delete(p.Name, &metav1.DeleteOptions{
 		GracePeriodSeconds: &threeSecs,
@@ -188,7 +190,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, nsAsQueue bool
 					if strings.Compare(pod.Spec.SchedulerName, schedulerName) == 0 && pod.Status.Phase == v1.PodPending {
 						return true
 					}
-					return pod.Status.Phase == v1.PodRunning
+					return pod.Status.Phase != v1.PodPending
 				default:
 					return false
 				}
