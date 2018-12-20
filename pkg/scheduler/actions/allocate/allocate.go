@@ -86,6 +86,13 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 		if _, found := pendingTasks[job.UID]; !found {
 			tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
+				// Skip BestEffort task in 'allocate' action.
+				if task.Resreq.IsEmpty() {
+					glog.V(3).Infof("Task <%v/%v> is BestEffort task, skip it.",
+						task.Namespace, task.Name)
+					continue
+				}
+
 				tasks.Push(task)
 			}
 			pendingTasks[job.UID] = tasks
