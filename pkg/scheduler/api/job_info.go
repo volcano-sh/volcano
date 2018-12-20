@@ -18,6 +18,9 @@ package api
 
 import (
 	"fmt"
+	"sort"
+	"strings"
+
 	"k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,8 +29,6 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
 	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/apis/utils"
-	"sort"
-	"strings"
 )
 
 type TaskID types.UID
