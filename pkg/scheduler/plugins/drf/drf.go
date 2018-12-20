@@ -102,7 +102,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
-		glog.V(3).Infof("Victims from DRF plugins are %+v", victims)
+		glog.V(4).Infof("Victims from DRF plugins are %+v", victims)
 
 		return victims
 	}
@@ -116,7 +116,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
 
-		glog.V(3).Infof("DRF JobOrderFn: <%v/%v> is ready: %d, <%v/%v> is ready: %d",
+		glog.V(4).Infof("DRF JobOrderFn: <%v/%v> is ready: %d, <%v/%v> is ready: %d",
 			lv.Namespace, lv.Name, lv.Priority, rv.Namespace, rv.Name, rv.Priority)
 
 		if drf.jobOpts[lv.UID].share == drf.jobOpts[rv.UID].share {
@@ -143,7 +143,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			drf.updateShare(attr)
 
-			glog.V(3).Infof("DRF AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>",
+			glog.V(4).Infof("DRF AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 		DeallocateFunc: func(event *framework.Event) {
@@ -152,7 +152,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			drf.updateShare(attr)
 
-			glog.V(3).Infof("DRF EvictFunc: task <%v/%v>, resreq <%v>,  share <%v>",
+			glog.V(4).Infof("DRF EvictFunc: task <%v/%v>, resreq <%v>,  share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 	})
