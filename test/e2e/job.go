@@ -17,6 +17,8 @@ limitations under the License.
 package e2e
 
 import (
+	"time"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
@@ -245,5 +247,42 @@ var _ = Describe("Job E2E Test", func() {
 
 		err := waitPodGroupReady(context, pg)
 		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("Statement", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		slot := oneCPU
+		rep := clusterSize(context, slot)
+
+		job := &jobSpec{
+			namespace: "test",
+			tasks: []taskSpec{
+				{
+					img: "nginx",
+					req: slot,
+					min: rep,
+					rep: rep,
+				},
+			},
+		}
+
+		job.name = "st-qj-1"
+		_, pg1 := createJobEx(context, job)
+		err := waitPodGroupReady(context, pg1)
+		Expect(err).NotTo(HaveOccurred())
+
+		now := time.Now()
+
+		job.name = "st-qj-2"
+		_, pg2 := createJobEx(context, job)
+		err = waitPodGroupUnschedulable(context, pg2)
+		Expect(err).NotTo(HaveOccurred())
+
+		// No preemption event
+		evicted, err := podGroupEvicted(context, pg1, now)()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(evicted).NotTo(BeTrue())
 	})
 })
