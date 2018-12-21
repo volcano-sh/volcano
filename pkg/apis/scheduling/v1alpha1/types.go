@@ -20,6 +20,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Event represent the phase of PodGroup, e.g. pod-failed.
+type Event string
+
+const (
+	EvictEvent         Event = "Evict"
+	UnschedulableEvent Event = "Unschedulable"
+)
+
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
@@ -65,38 +73,6 @@ type PodGroupStatus struct {
 	// The number of pods which reached phase Failed.
 	// +optional
 	Failed int32 `json:"failed,omitempty" protobuf:"bytes,3,opt,name=failed"`
-}
-
-// Action is the action that PodGroup controller will take according to the event.
-type Action string
-
-// Event represent the phase of PodGroup, e.g. pod-failed.
-type Event string
-
-const (
-	UnschedulableEvent Event = "Unschedulable"
-	EvictEvent         Event = "Evict"
-	PodFailedEvent     Event = "PodFailed"
-
-	RestartAction Action = "restart"
-)
-
-// LifecyclePolicy represents the lifecycle policy of PodGroup.
-type LifeCyclePolicy struct {
-	// The action that will be taken to the PodGroup according to Event.
-	// One of "Restart", "None".
-	// Default to None.
-	// +optional
-	Action Action
-	// The Event recorded by scheduler; the controller takes actions
-	// according to this Event.
-	// One of "PodFailed", "Unschedulable".
-	// +optional
-	Event Event
-	// Timeout is the grace period for controller to take actions.
-	// Default to nil (take action immediately).
-	// +optional
-	Timeout *metav1.Duration
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
