@@ -376,6 +376,27 @@ func podGroupUnschedulable(ctx *context, pg *arbv1.PodGroup, time time.Time) wai
 	}
 }
 
+func podGroupEvicted(ctx *context, pg *arbv1.PodGroup, time time.Time) wait.ConditionFunc {
+	return func() (bool, error) {
+		pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		events, err := ctx.kubeclient.CoreV1().Events(pg.Namespace).List(metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		for _, event := range events.Items {
+			target := event.InvolvedObject
+			if target.Name == pg.Name && target.Namespace == pg.Namespace {
+				if event.Reason == string(arbv1.EvictEvent) && event.LastTimestamp.After(time) {
+					return true, nil
+				}
+			}
+		}
+
+		return false, nil
+	}
+}
+
 func waitPodGroupReady(ctx *context, pg *arbv1.PodGroup) error {
 	return waitTasksReadyEx(ctx, pg, int(pg.Spec.MinMember))
 }
@@ -683,10 +704,14 @@ func removeTaintsFromAllNodes(ctx *context, taints []v1.Taint) error {
 	Expect(err).NotTo(HaveOccurred())
 
 	for _, node := range nodes.Items {
+		if len(node.Spec.Taints) == 0 {
+			continue
+		}
+
 		newNode := node.DeepCopy()
 
 		var newTaints []v1.Taint
-		for _, nt := range newTaints {
+		for _, nt := range newNode.Spec.Taints {
 			found := false
 			for _, t := range taints {
 				if nt.Key == t.Key {
