@@ -166,15 +166,15 @@ var _ = Describe("Job E2E Test", func() {
 
 		job.name = "preemptee-qj"
 		_, pg1 := createJobEx(context, job)
-		err := waitTasksReadyEx(context, pg1, int(rep))
+		err := waitTasksReady(context, pg1, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
 		job.name = "preemptor-qj"
 		_, pg2 := createJobEx(context, job)
-		err = waitTasksReadyEx(context, pg1, int(rep)/2)
+		err = waitTasksReady(context, pg1, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReadyEx(context, pg2, int(rep)/2)
+		err = waitTasksReady(context, pg2, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -198,7 +198,7 @@ var _ = Describe("Job E2E Test", func() {
 
 		job.name = "preemptee-qj"
 		_, pg1 := createJobEx(context, job)
-		err := waitTasksReadyEx(context, pg1, int(rep))
+		err := waitTasksReady(context, pg1, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
 		job.name = "preemptor-qj1"
@@ -209,13 +209,13 @@ var _ = Describe("Job E2E Test", func() {
 		_, pg3 := createJobEx(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReadyEx(context, pg1, int(rep)/3)
+		err = waitTasksReady(context, pg1, int(rep)/3)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReadyEx(context, pg2, int(rep)/3)
+		err = waitTasksReady(context, pg2, int(rep)/3)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReadyEx(context, pg3, int(rep)/3)
+		err = waitTasksReady(context, pg3, int(rep)/3)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -284,5 +284,45 @@ var _ = Describe("Job E2E Test", func() {
 		evicted, err := podGroupEvicted(context, pg1, now)()
 		Expect(err).NotTo(HaveOccurred())
 		Expect(evicted).NotTo(BeTrue())
+	})
+
+	It("TaskPriority", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		slot := oneCPU
+		rep := clusterSize(context, slot)
+
+		replicaset := createReplicaSet(context, "rs-1", rep/2, "nginx", slot)
+		err := waitReplicaSetReady(context, replicaset.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		_, pg := createJobEx(context, &jobSpec{
+			name: "multi-pod-job",
+			tasks: []taskSpec{
+				{
+					img: "nginx",
+					pri: workerPriority,
+					min: rep/2 - 1,
+					rep: rep,
+					req: slot,
+				},
+				{
+					img: "nginx",
+					pri: masterPriority,
+					min: 1,
+					rep: 1,
+					req: slot,
+				},
+			},
+		})
+
+		expteced := map[string]int{
+			masterPriority: 1,
+			workerPriority: int(rep/2) - 1,
+		}
+
+		err = waitTasksReadyEx(context, pg, expteced)
+		Expect(err).NotTo(HaveOccurred())
 	})
 })

@@ -20,7 +20,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 )
@@ -96,10 +96,10 @@ var _ = Describe("Predicates E2E Test", func() {
 
 		_, pg := createJobEx(context, job)
 
-		err := waitTasksReadyEx(context, pg, nn)
+		err := waitTasksReady(context, pg, nn)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksPendingEx(context, pg, nn)
+		err = waitTasksPending(context, pg, nn)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

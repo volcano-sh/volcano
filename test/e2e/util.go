@@ -28,7 +28,7 @@ import (
 
 	appv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	schedv1 "k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -247,6 +247,7 @@ func deleteQueues(cxt *context) {
 type taskSpec struct {
 	min, rep int32
 	img      string
+	pri      string
 	hostport int32
 	req      v1.ResourceList
 	affinity *v1.Affinity
@@ -305,6 +306,10 @@ func createJobEx(context *context, job *jobSpec) ([]*batchv1.Job, *arbv1.PodGrou
 			},
 		}
 
+		if len(task.pri) != 0 {
+			job.Spec.Template.Spec.PriorityClassName = task.pri
+		}
+
 		job, err := context.kubeclient.BatchV1().Jobs(job.Namespace).Create(job)
 		Expect(err).NotTo(HaveOccurred())
 		jobs = append(jobs, job)
@@ -355,6 +360,38 @@ func taskPhase(ctx *context, pg *arbv1.PodGroup, phase []v1.PodPhase, taskNum in
 	}
 }
 
+func taskPhaseEx(ctx *context, pg *arbv1.PodGroup, phase []v1.PodPhase, taskNum map[string]int) wait.ConditionFunc {
+	return func() (bool, error) {
+		pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		pods, err := ctx.kubeclient.CoreV1().Pods(pg.Namespace).List(metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		readyTaskNum := map[string]int{}
+		for _, pod := range pods.Items {
+			if gn, found := pod.Annotations[arbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
+				continue
+			}
+
+			for _, p := range phase {
+				if pod.Status.Phase == p {
+					readyTaskNum[pod.Spec.PriorityClassName]++
+					break
+				}
+			}
+		}
+
+		for k, v := range taskNum {
+			if v > readyTaskNum[k] {
+				return false, nil
+			}
+		}
+
+		return true, nil
+	}
+}
+
 func podGroupUnschedulable(ctx *context, pg *arbv1.PodGroup, time time.Time) wait.ConditionFunc {
 	return func() (bool, error) {
 		pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
@@ -398,7 +435,7 @@ func podGroupEvicted(ctx *context, pg *arbv1.PodGroup, time time.Time) wait.Cond
 }
 
 func waitPodGroupReady(ctx *context, pg *arbv1.PodGroup) error {
-	return waitTasksReadyEx(ctx, pg, int(pg.Spec.MinMember))
+	return waitTasksReady(ctx, pg, int(pg.Spec.MinMember))
 }
 
 func waitPodGroupPending(ctx *context, pg *arbv1.PodGroup) error {
@@ -406,12 +443,17 @@ func waitPodGroupPending(ctx *context, pg *arbv1.PodGroup) error {
 		[]v1.PodPhase{v1.PodPending}, int(pg.Spec.MinMember)))
 }
 
-func waitTasksReadyEx(ctx *context, pg *arbv1.PodGroup, taskNum int) error {
+func waitTasksReady(ctx *context, pg *arbv1.PodGroup, taskNum int) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
 		[]v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum))
 }
 
-func waitTasksPendingEx(ctx *context, pg *arbv1.PodGroup, taskNum int) error {
+func waitTasksReadyEx(ctx *context, pg *arbv1.PodGroup, taskNum map[string]int) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, taskPhaseEx(ctx, pg,
+		[]v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum))
+}
+
+func waitTasksPending(ctx *context, pg *arbv1.PodGroup, taskNum int) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
 		[]v1.PodPhase{v1.PodPending}, taskNum))
 }
