@@ -60,10 +60,10 @@ var _ = Describe("Predicates E2E Test", func() {
 		job.name = "q2-qj-2"
 		job.queue = "q2"
 		_, pg2 := createJobEx(context, job)
-		err = waitTasksReadyEx(context, pg2, expected)
+		err = waitTasksReady(context, pg2, expected)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReadyEx(context, pg1, expected)
+		err = waitTasksReady(context, pg1, expected)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
