@@ -68,8 +68,8 @@ const (
 	RestartTask Action = "RestartTask"
 )
 
-// Lifecycle specifies the lifecycle and error handling of task and job.
-type Lifecycle struct {
+// LifecyclePolicy specifies the lifecycle and error handling of task and job.
+type LifecyclePolicy struct {
 	Event  Event  `json:"event,omitempty" protobuf:"bytes,1,opt,name=event"`
 	Action Action `json:"action,omitempty" protobuf:"bytes,2,opt,name=action"`
 }
@@ -90,7 +90,7 @@ type TaskSpec struct {
 
 	// Specifies the lifecycle of task
 	// +optional
-	Lifecycle Lifecycle `json:"lifecycle,omitempty" protobuf:"bytes,4,opt,name=lifecycle"`
+	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,4,opt,name=policies"`
 }
 
 // JobStatus represents the current state of a Job
