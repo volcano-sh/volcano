@@ -83,12 +83,7 @@ func (pc *Scheduler) runOnce() {
 	ssn := framework.OpenSession(pc.cache, pc.pluginArgs)
 	defer framework.CloseSession(ssn)
 
-	if glog.V(3) {
-		glog.V(3).Infof("%v", ssn)
-	}
-
 	for _, action := range pc.actions {
 		action.Execute(ssn)
 	}
-
 }
