@@ -63,8 +63,8 @@ const (
 type Action string
 
 const (
-	None        Action = "None"
 	RestartJob  Action = "RestartJob"
+	AbortJob    Action = "AbortJob"
 	RestartTask Action = "RestartTask"
 )
 
@@ -93,27 +93,90 @@ type TaskSpec struct {
 	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,4,opt,name=policies"`
 }
 
+type JobPhase string
+
+const (
+	Pending    JobPhase = "Pending"
+	Abort      JobPhase = "Abort"
+	Running    JobPhase = "Running"
+	Restarting JobPhase = "Restarting"
+	Completed  JobPhase = "Completed"
+	Failed     JobPhase = "Failed"
+)
+
+type ConditionType string
+
+const (
+	TaskScheduled    ConditionType = "TaskScheduled"
+	JobTerminated    ConditionType = "JobTerminated"
+	JobUnschedulable ConditionType = "JobUnschedulable"
+)
+
+type ConditionStatus string
+
+// These are valid condition statuses. "ConditionTrue" means a resource is in the condition.
+// "ConditionFalse" means a resource is not in the condition. "ConditionUnknown" means kubernetes
+// can't decide if a resource is in the condition or not. In the future, we could add other
+// intermediate conditions, e.g. ConditionDegraded.
+const (
+	ConditionTrue    ConditionStatus = "True"
+	ConditionFalse   ConditionStatus = "False"
+	ConditionUnknown ConditionStatus = "Unknown"
+)
+
+type Condition struct {
+	// Type is the type of the condition.
+	Type ConditionType `json:"type" protobuf:"bytes,1,opt,name=type,casttype=ConditionType"`
+	// Status is the status of the condition.
+	// Can be True, False, Unknown.
+	Status ConditionStatus `json:"status" protobuf:"bytes,2,opt,name=status,casttype=ConditionStatus"`
+	// Last time we probed the condition.
+	// +optional
+	LastProbeTime metav1.Time `json:"lastProbeTime,omitempty" protobuf:"bytes,3,opt,name=lastProbeTime"`
+	// Last time the condition transitioned from one status to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,4,opt,name=lastTransitionTime"`
+	// Unique, one-word, CamelCase reason for the condition's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty" protobuf:"bytes,5,opt,name=reason"`
+	// Human-readable message indicating details about last transition.
+	// +optional
+	Message string `json:"message,omitempty" protobuf:"bytes,6,opt,name=message"`
+}
+
 // JobStatus represents the current state of a Job
 type JobStatus struct {
+	// The phase of a Pod is a simple, high-level summary of where the Pod is in its lifecycle.
+	// The conditions array, the reason and message fields, and the individual container status
+	// arrays contain more detail about the pod's status.
+	// +optional
+	Phase JobPhase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
+
+	// Current service state of Job.
+	// +optional
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	Conditions []Condition `json:"conditions,omitempty" protobuf:"bytes,2,opt,name=conditions"`
+
 	// The number of pending pods.
 	// +optional
-	Pending int32 `json:"pending,omitempty" protobuf:"bytes,1,opt,name=pending"`
+	Pending int32 `json:"pending,omitempty" protobuf:"bytes,3,opt,name=pending"`
 
 	// The number of running pods.
 	// +optional
-	Running int32 `json:"running,omitempty" protobuf:"bytes,2,opt,name=running"`
+	Running int32 `json:"running,omitempty" protobuf:"bytes,4,opt,name=running"`
 
 	// The number of pods which reached phase Succeeded.
 	// +optional
-	Succeeded int32 `json:"Succeeded,omitempty" protobuf:"bytes,3,opt,name=succeeded"`
+	Succeeded int32 `json:"Succeeded,omitempty" protobuf:"bytes,5,opt,name=succeeded"`
 
 	// The number of pods which reached phase Failed.
 	// +optional
-	Failed int32 `json:"failed,omitempty" protobuf:"bytes,4,opt,name=failed"`
+	Failed int32 `json:"failed,omitempty" protobuf:"bytes,6,opt,name=failed"`
 
 	// The minimal available pods to run for this Job
 	// +optional
-	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,5,opt,name=minAvailable"`
+	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,7,opt,name=minAvailable"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
