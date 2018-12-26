@@ -60,7 +60,7 @@ func (cc *Controller) deleteJob(obj interface{}) {
 func (cc *Controller) addPod(obj interface{}) {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
-		glog.Error("Failed to convert %v to v1.Pod", obj)
+		glog.Errorf("Failed to convert %v to v1.Pod", obj)
 		return
 	}
 
@@ -70,7 +70,7 @@ func (cc *Controller) addPod(obj interface{}) {
 func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 	pod, ok := newObj.(*v1.Pod)
 	if !ok {
-		glog.Error("Failed to convert %v to v1.Pod", newObj)
+		glog.Errorf("Failed to convert %v to v1.Pod", newObj)
 		return
 	}
 
