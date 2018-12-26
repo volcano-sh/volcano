@@ -25,6 +25,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	kbv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+
 	vulcanv1 "hpw.cloud/volcano/pkg/apis/core/v1alpha1"
 	"hpw.cloud/volcano/pkg/apis/helpers"
 )
@@ -72,7 +74,11 @@ func createJobPod(qj *vulcanv1.Job, template *corev1.PodTemplateSpec, ix int32) 
 		},
 		Spec: templateCopy.Spec,
 	}
-	// we fill the schedulerName in the pod definition with the one specified in the QJ template
+
+	// Set pod's annotation for PodGroup
+	pod.Annotations[kbv1alpha1.GroupNameAnnotationKey] = qj.Name
+
+	// We fill the schedulerName in the pod definition with the one specified in the QJ template
 	if qj.Spec.SchedulerName != "" && pod.Spec.SchedulerName == "" {
 		pod.Spec.SchedulerName = qj.Spec.SchedulerName
 	}
