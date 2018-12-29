@@ -19,10 +19,10 @@ limitations under the License.
 package v1alpha1
 
 import (
+	v1alpha1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
-	v1alpha1 "hpw.cloud/volcano/pkg/apis/core/v1alpha1"
 )
 
 // JobLister helps list Jobs.

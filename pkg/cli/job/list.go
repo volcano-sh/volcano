@@ -46,7 +46,7 @@ func ListJobs() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	jobs, err := jobClient.Core().Jobs(listJobFlags.Namespace).List(metav1.ListOptions{})
+	jobs, err := jobClient.Batch().Jobs(listJobFlags.Namespace).List(metav1.ListOptions{})
 	if err != nil {
 		return err
 	}

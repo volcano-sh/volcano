@@ -27,7 +27,7 @@ import (
 
 	kbv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 
-	vulcanv1 "hpw.cloud/volcano/pkg/apis/core/v1alpha1"
+	vulcanv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"hpw.cloud/volcano/pkg/apis/helpers"
 )
 

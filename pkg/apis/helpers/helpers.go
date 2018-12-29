@@ -22,7 +22,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	vulcanv1 "hpw.cloud/volcano/pkg/apis/core/v1alpha1"
+	vulcanv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 )
 
 var JobKind = vulcanv1.SchemeGroupVersion.WithKind("Job")

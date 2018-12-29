@@ -42,12 +42,12 @@ import (
 	kbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	kblister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
 
-	vnapi "hpw.cloud/volcano/pkg/apis/core/v1alpha1"
+	vnapi "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"hpw.cloud/volcano/pkg/apis/helpers"
 	"hpw.cloud/volcano/pkg/client/clientset/versioned"
 	informersv1 "hpw.cloud/volcano/pkg/client/informers/externalversions"
-	vninfo "hpw.cloud/volcano/pkg/client/informers/externalversions/core/v1alpha1"
-	listersv1 "hpw.cloud/volcano/pkg/client/listers/core/v1alpha1"
+	vninfo "hpw.cloud/volcano/pkg/client/informers/externalversions/batch/v1alpha1"
+	listersv1 "hpw.cloud/volcano/pkg/client/listers/batch/v1alpha1"
 )
 
 // Controller the Job Controller type
@@ -90,7 +90,7 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.pgLister = cc.pgInformer.Lister()
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
-	cc.jobInformer = informersv1.NewSharedInformerFactory(cc.vnClients, 0).Core().V1alpha1().Jobs()
+	cc.jobInformer = informersv1.NewSharedInformerFactory(cc.vnClients, 0).Batch().V1alpha1().Jobs()
 	cc.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    cc.addJob,
 		UpdateFunc: cc.updateJob,
@@ -306,7 +306,7 @@ func (cc *Controller) manageJob(job *vnapi.Job, pods map[string][]*v1.Pod) error
 	}
 
 	// TODO(k82cn): replaced it with `UpdateStatus`
-	if _, err := cc.vnClients.CoreV1alpha1().Jobs(job.Namespace).Update(job); err != nil {
+	if _, err := cc.vnClients.BatchV1alpha1().Jobs(job.Namespace).Update(job); err != nil {
 		glog.Errorf("Failed to update status of QueueJob %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err

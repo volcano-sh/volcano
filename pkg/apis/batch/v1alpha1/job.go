@@ -55,17 +55,17 @@ type JobSpec struct {
 type Event string
 
 const (
-	PodFailed     Event = "PodFailed"
-	PodEvicted    Event = "PodEvicted"
-	Unschedulable Event = "Unschedulable"
+	PodFailedEvent        Event = "PodFailed"
+	PodEvictedEvent       Event = "PodEvicted"
+	JobUnschedulableEvent Event = "JobUnschedulable"
 )
 
 type Action string
 
 const (
-	RestartJob  Action = "RestartJob"
-	AbortJob    Action = "AbortJob"
-	RestartTask Action = "RestartTask"
+	RestartJobAction  Action = "RestartJob"
+	AbortJobAction    Action = "AbortJob"
+	RestartTaskAction Action = "RestartTask"
 )
 
 // LifecyclePolicy specifies the lifecycle and error handling of task and job.
@@ -88,20 +88,21 @@ type TaskSpec struct {
 	// when executing a Job
 	Template v1.PodTemplateSpec `json:"template,omitempty" protobuf:"bytes,3,opt,name=template"`
 
-	// Specifies the lifecycle of task
+	// Specifies the lifecycle of tasks
 	// +optional
-	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,4,opt,name=policies"`
+	// Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,4,opt,name=policies"`
 }
 
 type JobPhase string
 
 const (
-	Pending    JobPhase = "Pending"
-	Abort      JobPhase = "Abort"
-	Running    JobPhase = "Running"
-	Restarting JobPhase = "Restarting"
-	Completed  JobPhase = "Completed"
-	Failed     JobPhase = "Failed"
+	Pending       JobPhase = "Pending"
+	Abort         JobPhase = "Abort"
+	Running       JobPhase = "Running"
+	Restarting    JobPhase = "Restarting"
+	Completed     JobPhase = "Completed"
+	Failed        JobPhase = "Failed"
+	Unschedulable JobPhase = "Unschedulable"
 )
 
 type ConditionType string
@@ -146,9 +147,8 @@ type Condition struct {
 
 // JobStatus represents the current state of a Job
 type JobStatus struct {
-	// The phase of a Pod is a simple, high-level summary of where the Pod is in its lifecycle.
-	// The conditions array, the reason and message fields, and the individual container status
-	// arrays contain more detail about the pod's status.
+	// The phase of a Job is a simple, high-level summary of where the Job is in its lifecycle.
+	// The conditions array, the reason and message field contain more detail about the job's status.
 	// +optional
 	Phase JobPhase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
 
