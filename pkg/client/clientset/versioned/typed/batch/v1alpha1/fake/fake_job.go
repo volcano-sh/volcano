@@ -19,24 +19,24 @@ limitations under the License.
 package fake
 
 import (
+	v1alpha1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
-	v1alpha1 "hpw.cloud/volcano/pkg/apis/core/v1alpha1"
 )
 
 // FakeJobs implements JobInterface
 type FakeJobs struct {
-	Fake *FakeCoreV1alpha1
+	Fake *FakeBatchV1alpha1
 	ns   string
 }
 
-var jobsResource = schema.GroupVersionResource{Group: "", Version: "v1alpha1", Resource: "jobs"}
+var jobsResource = schema.GroupVersionResource{Group: "batch", Version: "v1alpha1", Resource: "jobs"}
 
-var jobsKind = schema.GroupVersionKind{Group: "", Version: "v1alpha1", Kind: "Job"}
+var jobsKind = schema.GroupVersionKind{Group: "batch", Version: "v1alpha1", Kind: "Job"}
 
 // Get takes name of the job, and returns the corresponding job object, and an error if there is any.
 func (c *FakeJobs) Get(name string, options v1.GetOptions) (result *v1alpha1.Job, err error) {
@@ -131,7 +131,7 @@ func (c *FakeJobs) DeleteCollection(options *v1.DeleteOptions, listOptions v1.Li
 // Patch applies the patch and returns the patched job.
 func (c *FakeJobs) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.Job, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(jobsResource, c.ns, name, data, subresources...), &v1alpha1.Job{})
+		Invokes(testing.NewPatchSubresourceAction(jobsResource, c.ns, name, pt, data, subresources...), &v1alpha1.Job{})
 
 	if obj == nil {
 		return nil, err

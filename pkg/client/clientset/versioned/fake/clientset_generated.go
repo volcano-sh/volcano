@@ -19,14 +19,14 @@ limitations under the License.
 package fake
 
 import (
+	clientset "hpw.cloud/volcano/pkg/client/clientset/versioned"
+	batchv1alpha1 "hpw.cloud/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1"
+	fakebatchv1alpha1 "hpw.cloud/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	"k8s.io/client-go/testing"
-	clientset "hpw.cloud/volcano/pkg/client/clientset/versioned"
-	corev1alpha1 "hpw.cloud/volcano/pkg/client/clientset/versioned/typed/core/v1alpha1"
-	fakecorev1alpha1 "hpw.cloud/volcano/pkg/client/clientset/versioned/typed/core/v1alpha1/fake"
 )
 
 // NewSimpleClientset returns a clientset that will respond with the provided objects.
@@ -71,12 +71,12 @@ func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 
 var _ clientset.Interface = &Clientset{}
 
-// CoreV1alpha1 retrieves the CoreV1alpha1Client
-func (c *Clientset) CoreV1alpha1() corev1alpha1.CoreV1alpha1Interface {
-	return &fakecorev1alpha1.FakeCoreV1alpha1{Fake: &c.Fake}
+// BatchV1alpha1 retrieves the BatchV1alpha1Client
+func (c *Clientset) BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface {
+	return &fakebatchv1alpha1.FakeBatchV1alpha1{Fake: &c.Fake}
 }
 
-// Core retrieves the CoreV1alpha1Client
-func (c *Clientset) Core() corev1alpha1.CoreV1alpha1Interface {
-	return &fakecorev1alpha1.FakeCoreV1alpha1{Fake: &c.Fake}
+// Batch retrieves the BatchV1alpha1Client
+func (c *Clientset) Batch() batchv1alpha1.BatchV1alpha1Interface {
+	return &fakebatchv1alpha1.FakeBatchV1alpha1{Fake: &c.Fake}
 }

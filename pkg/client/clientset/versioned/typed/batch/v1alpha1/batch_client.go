@@ -19,28 +19,28 @@ limitations under the License.
 package v1alpha1
 
 import (
+	v1alpha1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	"hpw.cloud/volcano/pkg/client/clientset/versioned/scheme"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer"
 	rest "k8s.io/client-go/rest"
-	v1alpha1 "hpw.cloud/volcano/pkg/apis/core/v1alpha1"
-	"hpw.cloud/volcano/pkg/client/clientset/versioned/scheme"
 )
 
-type CoreV1alpha1Interface interface {
+type BatchV1alpha1Interface interface {
 	RESTClient() rest.Interface
 	JobsGetter
 }
 
-// CoreV1alpha1Client is used to interact with features provided by the  group.
-type CoreV1alpha1Client struct {
+// BatchV1alpha1Client is used to interact with features provided by the batch group.
+type BatchV1alpha1Client struct {
 	restClient rest.Interface
 }
 
-func (c *CoreV1alpha1Client) Jobs(namespace string) JobInterface {
+func (c *BatchV1alpha1Client) Jobs(namespace string) JobInterface {
 	return newJobs(c, namespace)
 }
 
-// NewForConfig creates a new CoreV1alpha1Client for the given config.
-func NewForConfig(c *rest.Config) (*CoreV1alpha1Client, error) {
+// NewForConfig creates a new BatchV1alpha1Client for the given config.
+func NewForConfig(c *rest.Config) (*BatchV1alpha1Client, error) {
 	config := *c
 	if err := setConfigDefaults(&config); err != nil {
 		return nil, err
@@ -49,12 +49,12 @@ func NewForConfig(c *rest.Config) (*CoreV1alpha1Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &CoreV1alpha1Client{client}, nil
+	return &BatchV1alpha1Client{client}, nil
 }
 
-// NewForConfigOrDie creates a new CoreV1alpha1Client for the given config and
+// NewForConfigOrDie creates a new BatchV1alpha1Client for the given config and
 // panics if there is an error in the config.
-func NewForConfigOrDie(c *rest.Config) *CoreV1alpha1Client {
+func NewForConfigOrDie(c *rest.Config) *BatchV1alpha1Client {
 	client, err := NewForConfig(c)
 	if err != nil {
 		panic(err)
@@ -62,15 +62,15 @@ func NewForConfigOrDie(c *rest.Config) *CoreV1alpha1Client {
 	return client
 }
 
-// New creates a new CoreV1alpha1Client for the given RESTClient.
-func New(c rest.Interface) *CoreV1alpha1Client {
-	return &CoreV1alpha1Client{c}
+// New creates a new BatchV1alpha1Client for the given RESTClient.
+func New(c rest.Interface) *BatchV1alpha1Client {
+	return &BatchV1alpha1Client{c}
 }
 
 func setConfigDefaults(config *rest.Config) error {
 	gv := v1alpha1.SchemeGroupVersion
 	config.GroupVersion = &gv
-	config.APIPath = "/api"
+	config.APIPath = "/apis"
 	config.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: scheme.Codecs}
 
 	if config.UserAgent == "" {
@@ -82,7 +82,7 @@ func setConfigDefaults(config *rest.Config) error {
 
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
-func (c *CoreV1alpha1Client) RESTClient() rest.Interface {
+func (c *BatchV1alpha1Client) RESTClient() rest.Interface {
 	if c == nil {
 		return nil
 	}

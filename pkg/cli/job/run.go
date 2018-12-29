@@ -21,7 +21,7 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	vuclanapi "hpw.cloud/volcano/pkg/apis/core/v1alpha1"
+	vuclanapi "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"hpw.cloud/volcano/pkg/client/clientset/versioned"
 )
 
@@ -105,7 +105,7 @@ func RunJob() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	if _, err := jobClient.Core().Jobs(launchJobFlags.Namespace).Create(job); err != nil {
+	if _, err := jobClient.Batch().Jobs(launchJobFlags.Namespace).Create(job); err != nil {
 		return err
 	}
 

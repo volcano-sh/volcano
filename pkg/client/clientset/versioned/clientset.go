@@ -19,35 +19,35 @@ limitations under the License.
 package versioned
 
 import (
+	batchv1alpha1 "hpw.cloud/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
-	corev1alpha1 "hpw.cloud/volcano/pkg/client/clientset/versioned/typed/core/v1alpha1"
 )
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
-	CoreV1alpha1() corev1alpha1.CoreV1alpha1Interface
+	BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface
 	// Deprecated: please explicitly pick a version if possible.
-	Core() corev1alpha1.CoreV1alpha1Interface
+	Batch() batchv1alpha1.BatchV1alpha1Interface
 }
 
 // Clientset contains the clients for groups. Each group has exactly one
 // version included in a Clientset.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	coreV1alpha1 *corev1alpha1.CoreV1alpha1Client
+	batchV1alpha1 *batchv1alpha1.BatchV1alpha1Client
 }
 
-// CoreV1alpha1 retrieves the CoreV1alpha1Client
-func (c *Clientset) CoreV1alpha1() corev1alpha1.CoreV1alpha1Interface {
-	return c.coreV1alpha1
+// BatchV1alpha1 retrieves the BatchV1alpha1Client
+func (c *Clientset) BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface {
+	return c.batchV1alpha1
 }
 
-// Deprecated: Core retrieves the default version of CoreClient.
+// Deprecated: Batch retrieves the default version of BatchClient.
 // Please explicitly pick a version.
-func (c *Clientset) Core() corev1alpha1.CoreV1alpha1Interface {
-	return c.coreV1alpha1
+func (c *Clientset) Batch() batchv1alpha1.BatchV1alpha1Interface {
+	return c.batchV1alpha1
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -66,7 +66,7 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 	}
 	var cs Clientset
 	var err error
-	cs.coreV1alpha1, err = corev1alpha1.NewForConfig(&configShallowCopy)
+	cs.batchV1alpha1, err = batchv1alpha1.NewForConfig(&configShallowCopy)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 // panics if there is an error in the config.
 func NewForConfigOrDie(c *rest.Config) *Clientset {
 	var cs Clientset
-	cs.coreV1alpha1 = corev1alpha1.NewForConfigOrDie(c)
+	cs.batchV1alpha1 = batchv1alpha1.NewForConfigOrDie(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClientForConfigOrDie(c)
 	return &cs
@@ -91,7 +91,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
-	cs.coreV1alpha1 = corev1alpha1.New(c)
+	cs.batchV1alpha1 = batchv1alpha1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs
