@@ -28,6 +28,63 @@ const (
 	UnschedulableEvent Event = "Unschedulable"
 )
 
+// PodGroupPhase is the phase of a pod group at the current time.
+type PodGroupPhase string
+
+// These are the valid phase of podGroups.
+const (
+	// PodPending means the pod group has been accepted by the system, but scheduler can not allocate
+	// enough resources to it.
+	PodGroupPending PodGroupPhase = "Pending"
+
+	// PodRunning means `spec.minMember` pods of PodGroups has been in running phase.
+	PodGroupRunning PodGroupPhase = "Running"
+
+	// PodGroupRecovering means part of `spec.minMember` pods have exception, e.g. killed; scheduler will
+	// wait for related controller to recover it.
+	PodGroupRecovering PodGroupPhase = "Recovering"
+
+	// PodGroupUnschedulable means part of `spec.minMember` pods are running but the other part can not
+	// be scheduled, e.g. not enough resource; scheduler will wait for related controller to recover it.
+	PodGroupUnschedulable PodGroupPhase = "Unschedulable"
+)
+
+// PodGroupState contains details for the current state of this pod group.
+type PodGroupState struct {
+	// Current phase of PodGroup.
+	Phase PodGroupPhase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
+
+	// Last time we probed to this Phase.
+	// +optional
+	LastProbeTime metav1.Time `json:"lastProbeTime,omitempty" protobuf:"bytes,2,opt,name=lastProbeTime"`
+
+	// Last time the phase transitioned from another to current phase.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,3,opt,name=lastTransitionTime"`
+
+	// Unique, one-word, CamelCase reason for the phase's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty" protobuf:"bytes,4,opt,name=reason"`
+
+	// Human-readable message indicating details about last transition.
+	// +optional
+	Message string `json:"message,omitempty" protobuf:"bytes,5,opt,name=message"`
+}
+
+const (
+	// PodFailedReason is probed if pod of PodGroup failed
+	PodFailedReason string = "PodFailed"
+
+	// PodDeletedReason is probed if pod of PodGroup deleted
+	PodDeletedReason string = "PodDeleted"
+
+	// NotEnoughResourcesReason is probed if there're not enough resources to schedule pods
+	NotEnoughResourcesReason string = "NotEnoughResources"
+
+	// NotEnoughPodsReason is probed if there're not enough tasks compared to `spec.minMember`
+	NotEnoughPodsReason string = "NotEnoughTasks"
+)
+
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
@@ -67,12 +124,17 @@ type PodGroupStatus struct {
 	// The number of actively running pods.
 	// +optional
 	Running int32 `json:"running,omitempty" protobuf:"bytes,3,opt,name=running"`
+
 	// The number of pods which reached phase Succeeded.
 	// +optional
 	Succeeded int32 `json:"succeeded,omitempty" protobuf:"bytes,3,opt,name=succeeded"`
+
 	// The number of pods which reached phase Failed.
 	// +optional
 	Failed int32 `json:"failed,omitempty" protobuf:"bytes,3,opt,name=failed"`
+
+	// +optional
+	State PodGroupState `json:"state,omitempty" protobuf:"bytes,1,opt,name=state,casttype=State"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
