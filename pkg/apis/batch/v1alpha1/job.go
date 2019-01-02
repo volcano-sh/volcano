@@ -50,28 +50,48 @@ type JobSpec struct {
 	// TaskSpecs specifies the task specification of Job
 	// +optional
 	TaskSpecs []TaskSpec `json:"taskSpecs,omitempty" protobuf:"bytes,3,opt,name=taskSpecs"`
+
+	// Specifies the default lifecycle of tasks
+	// +optional
+	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,4,opt,name=policies"`
 }
 
+// Event represent the phase of Job, e.g. pod-failed.
 type Event string
 
 const (
-	PodFailedEvent        Event = "PodFailed"
-	PodEvictedEvent       Event = "PodEvicted"
-	JobUnschedulableEvent Event = "JobUnschedulable"
+	PodFailed        Event = "PodFailed"
+	PodEvicted       Event = "PodEvicted"
+	JobUnschedulable Event = "Unschedulable"
 )
 
+// Action is the action that Job controller will take according to the event.
 type Action string
 
 const (
-	RestartJobAction  Action = "RestartJob"
-	AbortJobAction    Action = "AbortJob"
-	RestartTaskAction Action = "RestartTask"
+	AbortJob    Action = "AbortJob"
+	RestartJob  Action = "RestartJob"
+	RestartTask Action = "RestartTask"
 )
 
 // LifecyclePolicy specifies the lifecycle and error handling of task and job.
 type LifecyclePolicy struct {
-	Event  Event  `json:"event,omitempty" protobuf:"bytes,1,opt,name=event"`
-	Action Action `json:"action,omitempty" protobuf:"bytes,2,opt,name=action"`
+	// The action that will be taken to the PodGroup according to Event.
+	// One of "Restart", "None".
+	// Default to None.
+	// +optional
+	Action Action `json:"action,omitempty" protobuf:"bytes,1,opt,name=action"`
+
+	// The Event recorded by scheduler; the controller takes actions
+	// according to this Event.
+	// One of "PodFailed", "Unschedulable".
+	// +optional
+	Event Event `json:"event,omitempty" protobuf:"bytes,2,opt,name=event"`
+
+	// Timeout is the grace period for controller to take actions.
+	// Default to nil (take action immediately).
+	// +optional
+	Timeout *metav1.Duration `json:"timeout,omitempty" protobuf:"bytes,3,opt,name=timeout"`
 }
 
 // TaskSpec specifies the task specification of Job
@@ -88,31 +108,28 @@ type TaskSpec struct {
 	// when executing a Job
 	Template v1.PodTemplateSpec `json:"template,omitempty" protobuf:"bytes,3,opt,name=template"`
 
-	// Specifies the lifecycle of tasks
+	// Specifies the lifecycle of task
 	// +optional
-	// Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,4,opt,name=policies"`
+	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,4,opt,name=policies"`
 }
 
 type JobPhase string
 
 const (
 	Pending       JobPhase = "Pending"
-	Abort         JobPhase = "Abort"
+	Aborted       JobPhase = "Aborted"
 	Running       JobPhase = "Running"
 	Restarting    JobPhase = "Restarting"
 	Completed     JobPhase = "Completed"
 	Failed        JobPhase = "Failed"
+	Error         JobPhase = "Error"
 	Unschedulable JobPhase = "Unschedulable"
 )
 
-type ConditionType string
+// JobConditionType is a valid value for JobCondition.Type
+type JobConditionType string
 
-const (
-	TaskScheduled    ConditionType = "TaskScheduled"
-	JobTerminated    ConditionType = "JobTerminated"
-	JobUnschedulable ConditionType = "JobUnschedulable"
-)
-
+// ConditionStatus is a value of valid condition statuses
 type ConditionStatus string
 
 // These are valid condition statuses. "ConditionTrue" means a resource is in the condition.
@@ -125,9 +142,10 @@ const (
 	ConditionUnknown ConditionStatus = "Unknown"
 )
 
-type Condition struct {
+// JobCondition contains details for the current condition of this job.
+type JobCondition struct {
 	// Type is the type of the condition.
-	Type ConditionType `json:"type" protobuf:"bytes,1,opt,name=type,casttype=ConditionType"`
+	Type JobConditionType `json:"type" protobuf:"bytes,1,opt,name=type,casttype=JobConditionType"`
 	// Status is the status of the condition.
 	// Can be True, False, Unknown.
 	Status ConditionStatus `json:"status" protobuf:"bytes,2,opt,name=status,casttype=ConditionStatus"`
@@ -147,16 +165,18 @@ type Condition struct {
 
 // JobStatus represents the current state of a Job
 type JobStatus struct {
-	// The phase of a Job is a simple, high-level summary of where the Job is in its lifecycle.
-	// The conditions array, the reason and message field contain more detail about the job's status.
+	// The phase of a Pod is a simple, high-level summary of where the Pod is in its lifecycle.
+	// The conditions array, the reason and message fields, and the individual container status
+	// arrays contain more detail about the pod's status.
+	// There are five possible phase values:
 	// +optional
-	Phase JobPhase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
-
-	// Current service state of Job.
+	Phase JobPhase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase,casttype=JobPhase"`
+	// Current service state of pod.
+	// More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#pod-conditions
 	// +optional
 	// +patchMergeKey=type
 	// +patchStrategy=merge
-	Conditions []Condition `json:"conditions,omitempty" protobuf:"bytes,2,opt,name=conditions"`
+	Conditions []JobCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,2,rep,name=conditions"`
 
 	// The number of pending pods.
 	// +optional

@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2018 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,8 +27,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	appv1 "k8s.io/api/apps/v1"
-	batchv1 "k8s.io/api/batch/v1"
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	schedv1 "k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -40,16 +39,17 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	arbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
-	arbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	vkver "hpw.cloud/volcano/pkg/client/clientset/versioned"
+
+	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
+	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
 var oneMinute = 1 * time.Minute
 
 var oneCPU = v1.ResourceList{"cpu": resource.MustParse("1000m")}
-var twoCPU = v1.ResourceList{"cpu": resource.MustParse("2000m")}
-var threeCPU = v1.ResourceList{"cpu": resource.MustParse("3000m")}
 
 const (
 	workerPriority = "worker-pri"
@@ -65,7 +65,8 @@ func homeDir() string {
 
 type context struct {
 	kubeclient *kubernetes.Clientset
-	karclient  *versioned.Clientset
+	kbclient   *kbver.Clientset
+	vkclient   *vkver.Clientset
 
 	namespace              string
 	queues                 []string
@@ -85,8 +86,9 @@ func initTestContext() *context {
 	config, err := clientcmd.BuildConfigFromFlags("", filepath.Join(home, ".kube", "config"))
 	Expect(err).NotTo(HaveOccurred())
 
-	cxt.karclient = versioned.NewForConfigOrDie(config)
+	cxt.kbclient = kbver.NewForConfigOrDie(config)
 	cxt.kubeclient = kubernetes.NewForConfigOrDie(config)
+	cxt.vkclient = vkver.NewForConfigOrDie(config)
 
 	cxt.enableNamespaceAsQueue = enableNamespaceAsQueue
 
@@ -137,7 +139,7 @@ func queueNotExist(ctx *context) wait.ConditionFunc {
 			if ctx.enableNamespaceAsQueue {
 				_, err = ctx.kubeclient.CoreV1().Namespaces().Get(q, metav1.GetOptions{})
 			} else {
-				_, err = ctx.karclient.Scheduling().Queues().Get(q, metav1.GetOptions{})
+				_, err = ctx.kbclient.SchedulingV1alpha1().Queues().Get(q, metav1.GetOptions{})
 			}
 
 			if !(err != nil && errors.IsNotFound(err)) {
@@ -189,11 +191,11 @@ func createQueues(cxt *context) {
 				},
 			})
 		} else {
-			_, err = cxt.karclient.Scheduling().Queues().Create(&arbv1.Queue{
+			_, err = cxt.kbclient.SchedulingV1alpha1().Queues().Create(&kbv1.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: q,
 				},
-				Spec: arbv1.QueueSpec{
+				Spec: kbv1.QueueSpec{
 					Weight: 1,
 				},
 			})
@@ -203,11 +205,11 @@ func createQueues(cxt *context) {
 	}
 
 	if !cxt.enableNamespaceAsQueue {
-		_, err := cxt.karclient.Scheduling().Queues().Create(&arbv1.Queue{
+		_, err := cxt.kbclient.SchedulingV1alpha1().Queues().Create(&kbv1.Queue{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: cxt.namespace,
 			},
-			Spec: arbv1.QueueSpec{
+			Spec: kbv1.QueueSpec{
 				Weight: 1,
 			},
 		})
@@ -227,7 +229,7 @@ func deleteQueues(cxt *context) {
 				PropagationPolicy: &foreground,
 			})
 		} else {
-			err = cxt.karclient.Scheduling().Queues().Delete(q, &metav1.DeleteOptions{
+			err = cxt.kbclient.SchedulingV1alpha1().Queues().Delete(q, &metav1.DeleteOptions{
 				PropagationPolicy: &foreground,
 			})
 		}
@@ -236,7 +238,7 @@ func deleteQueues(cxt *context) {
 	}
 
 	if !cxt.enableNamespaceAsQueue {
-		err := cxt.karclient.Scheduling().Queues().Delete(cxt.namespace, &metav1.DeleteOptions{
+		err := cxt.kbclient.SchedulingV1alpha1().Queues().Delete(cxt.namespace, &metav1.DeleteOptions{
 			PropagationPolicy: &foreground,
 		})
 
@@ -247,7 +249,6 @@ func deleteQueues(cxt *context) {
 type taskSpec struct {
 	min, rep int32
 	img      string
-	pri      string
 	hostport int32
 	req      v1.ResourceList
 	affinity *v1.Affinity
@@ -275,76 +276,57 @@ func getNS(context *context, job *jobSpec) string {
 	return context.namespace
 }
 
-func createJobEx(context *context, job *jobSpec) ([]*batchv1.Job, *arbv1.PodGroup) {
-	var jobs []*batchv1.Job
-	var podgroup *arbv1.PodGroup
+func createJob(context *context, jobSpec *jobSpec) (*vkv1.Job) {
+	ns := getNS(context, jobSpec)
+
+	job := &vkv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      jobSpec.name,
+			Namespace: ns,
+		},
+		Spec: vkv1.JobSpec{
+
+		},
+	}
+
 	var min int32
-
-	ns := getNS(context, job)
-
-	for i, task := range job.tasks {
-		job := &batchv1.Job{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("%s-%d", job.name, i),
-				Namespace: ns,
-			},
-			Spec: batchv1.JobSpec{
-				Parallelism: &task.rep,
-				Completions: &task.rep,
-				Template: v1.PodTemplateSpec{
-					ObjectMeta: metav1.ObjectMeta{
-						Labels:      task.labels,
-						Annotations: map[string]string{arbv1.GroupNameAnnotationKey: job.name},
-					},
-					Spec: v1.PodSpec{
-						SchedulerName: "kube-batch",
-						RestartPolicy: v1.RestartPolicyOnFailure,
-						Containers:    createContainers(task.img, task.req, task.hostport),
-						Affinity:      task.affinity,
-					},
+	for _, task := range jobSpec.tasks {
+		ts := vkv1.TaskSpec{
+			Replicas: task.rep,
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: task.labels,
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "kube-batch",
+					RestartPolicy: v1.RestartPolicyOnFailure,
+					Containers:    createContainers(task.img, task.req, task.hostport),
+					Affinity:      task.affinity,
 				},
 			},
 		}
 
-		if len(task.pri) != 0 {
-			job.Spec.Template.Spec.PriorityClassName = task.pri
-		}
+		job.Spec.TaskSpecs = append(job.Spec.TaskSpecs, ts)
 
-		job, err := context.kubeclient.BatchV1().Jobs(job.Namespace).Create(job)
-		Expect(err).NotTo(HaveOccurred())
-		jobs = append(jobs, job)
-
-		min = min + task.min
+		min += task.min
 	}
 
-	pg := &arbv1.PodGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      job.name,
-			Namespace: ns,
-		},
-		Spec: arbv1.PodGroupSpec{
-			MinMember: min,
-			Queue:     job.queue,
-		},
-	}
+	job.Spec.MinAvailable = min
 
-	podgroup, err := context.karclient.Scheduling().PodGroups(pg.Namespace).Create(pg)
+	job, err := context.vkclient.BatchV1alpha1().Jobs(job.Namespace).Create(job)
 	Expect(err).NotTo(HaveOccurred())
 
-	return jobs, podgroup
+	return job
 }
 
-func taskPhase(ctx *context, pg *arbv1.PodGroup, phase []v1.PodPhase, taskNum int) wait.ConditionFunc {
+func taskPhase(ctx *context, job *vkv1.Job, phase []v1.PodPhase, taskNum int) wait.ConditionFunc {
 	return func() (bool, error) {
-		pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
-
-		pods, err := ctx.kubeclient.CoreV1().Pods(pg.Namespace).List(metav1.ListOptions{})
+		pods, err := ctx.kubeclient.CoreV1().Pods(job.Namespace).List(metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		readyTaskNum := 0
 		for _, pod := range pods.Items {
-			if gn, found := pod.Annotations[arbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
+			if !metav1.IsControlledBy(&pod, job) {
 				continue
 			}
 
@@ -360,41 +342,10 @@ func taskPhase(ctx *context, pg *arbv1.PodGroup, phase []v1.PodPhase, taskNum in
 	}
 }
 
-func taskPhaseEx(ctx *context, pg *arbv1.PodGroup, phase []v1.PodPhase, taskNum map[string]int) wait.ConditionFunc {
+func jobUnschedulable(ctx *context, job *vkv1.Job, time time.Time) wait.ConditionFunc {
+	// TODO(k82cn): check Job's Condition instead of PodGroup's event.
 	return func() (bool, error) {
-		pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
-
-		pods, err := ctx.kubeclient.CoreV1().Pods(pg.Namespace).List(metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred())
-
-		readyTaskNum := map[string]int{}
-		for _, pod := range pods.Items {
-			if gn, found := pod.Annotations[arbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
-				continue
-			}
-
-			for _, p := range phase {
-				if pod.Status.Phase == p {
-					readyTaskNum[pod.Spec.PriorityClassName]++
-					break
-				}
-			}
-		}
-
-		for k, v := range taskNum {
-			if v > readyTaskNum[k] {
-				return false, nil
-			}
-		}
-
-		return true, nil
-	}
-}
-
-func podGroupUnschedulable(ctx *context, pg *arbv1.PodGroup, time time.Time) wait.ConditionFunc {
-	return func() (bool, error) {
-		pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
+		pg, err := ctx.kbclient.SchedulingV1alpha1().PodGroups(job.Namespace).Get(job.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		events, err := ctx.kubeclient.CoreV1().Events(pg.Namespace).List(metav1.ListOptions{})
@@ -403,7 +354,7 @@ func podGroupUnschedulable(ctx *context, pg *arbv1.PodGroup, time time.Time) wai
 		for _, event := range events.Items {
 			target := event.InvolvedObject
 			if target.Name == pg.Name && target.Namespace == pg.Namespace {
-				if event.Reason == string(arbv1.UnschedulableEvent) && event.LastTimestamp.After(time) {
+				if event.Reason == string(kbv1.UnschedulableEvent) && event.LastTimestamp.After(time) {
 					return true, nil
 				}
 			}
@@ -413,9 +364,10 @@ func podGroupUnschedulable(ctx *context, pg *arbv1.PodGroup, time time.Time) wai
 	}
 }
 
-func podGroupEvicted(ctx *context, pg *arbv1.PodGroup, time time.Time) wait.ConditionFunc {
+func jobEvicted(ctx *context, job *vkv1.Job, time time.Time) wait.ConditionFunc {
+	// TODO(k82cn): check Job's conditions instead of PodGroup's event.
 	return func() (bool, error) {
-		pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
+		pg, err := ctx.kbclient.SchedulingV1alpha1().PodGroups(job.Namespace).Get(job.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		events, err := ctx.kubeclient.CoreV1().Events(pg.Namespace).List(metav1.ListOptions{})
@@ -424,7 +376,7 @@ func podGroupEvicted(ctx *context, pg *arbv1.PodGroup, time time.Time) wait.Cond
 		for _, event := range events.Items {
 			target := event.InvolvedObject
 			if target.Name == pg.Name && target.Namespace == pg.Namespace {
-				if event.Reason == string(arbv1.EvictEvent) && event.LastTimestamp.After(time) {
+				if event.Reason == string(kbv1.EvictEvent) && event.LastTimestamp.After(time) {
 					return true, nil
 				}
 			}
@@ -434,33 +386,28 @@ func podGroupEvicted(ctx *context, pg *arbv1.PodGroup, time time.Time) wait.Cond
 	}
 }
 
-func waitPodGroupReady(ctx *context, pg *arbv1.PodGroup) error {
-	return waitTasksReady(ctx, pg, int(pg.Spec.MinMember))
+func waitJobReady(ctx *context, job *vkv1.Job) error {
+	return waitTasksReady(ctx, job, int(job.Spec.MinAvailable))
 }
 
-func waitPodGroupPending(ctx *context, pg *arbv1.PodGroup) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
-		[]v1.PodPhase{v1.PodPending}, int(pg.Spec.MinMember)))
+func waitJobPending(ctx *context, job *vkv1.Job) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, job,
+		[]v1.PodPhase{v1.PodPending}, int(job.Spec.MinAvailable)))
 }
 
-func waitTasksReady(ctx *context, pg *arbv1.PodGroup, taskNum int) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
+func waitTasksReady(ctx *context, job *vkv1.Job, taskNum int) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, job,
 		[]v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum))
 }
 
-func waitTasksReadyEx(ctx *context, pg *arbv1.PodGroup, taskNum map[string]int) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, taskPhaseEx(ctx, pg,
-		[]v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum))
-}
-
-func waitTasksPending(ctx *context, pg *arbv1.PodGroup, taskNum int) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
+func waitTasksPending(ctx *context, job *vkv1.Job, taskNum int) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, job,
 		[]v1.PodPhase{v1.PodPending}, taskNum))
 }
 
-func waitPodGroupUnschedulable(ctx *context, pg *arbv1.PodGroup) error {
+func waitJobUnschedulable(ctx *context, job *vkv1.Job) error {
 	now := time.Now()
-	return wait.Poll(10*time.Second, oneMinute, podGroupUnschedulable(ctx, pg, now))
+	return wait.Poll(10*time.Second, oneMinute, jobUnschedulable(ctx, job, now))
 }
 
 func createContainers(img string, req v1.ResourceList, hostport int32) []v1.Container {
@@ -568,7 +515,7 @@ func clusterSize(ctx *context, req v1.ResourceList) int32 {
 	pods, err := ctx.kubeclient.CoreV1().Pods(metav1.NamespaceAll).List(metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
-	used := map[string]*arbapi.Resource{}
+	used := map[string]*kbapi.Resource{}
 
 	for _, pod := range pods.Items {
 		nodeName := pod.Spec.NodeName
@@ -581,11 +528,11 @@ func clusterSize(ctx *context, req v1.ResourceList) int32 {
 		}
 
 		if _, found := used[nodeName]; !found {
-			used[nodeName] = arbapi.EmptyResource()
+			used[nodeName] = kbapi.EmptyResource()
 		}
 
 		for _, c := range pod.Spec.Containers {
-			req := arbapi.NewResource(c.Resources.Requests)
+			req := kbapi.NewResource(c.Resources.Requests)
 			used[nodeName].Add(req)
 		}
 	}
@@ -598,8 +545,8 @@ func clusterSize(ctx *context, req v1.ResourceList) int32 {
 			continue
 		}
 
-		alloc := arbapi.NewResource(node.Status.Allocatable)
-		slot := arbapi.NewResource(req)
+		alloc := kbapi.NewResource(node.Status.Allocatable)
+		slot := kbapi.NewResource(req)
 
 		// Removed used resources.
 		if res, found := used[node.Name]; found {
@@ -637,7 +584,7 @@ func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
 	pods, err := ctx.kubeclient.CoreV1().Pods(metav1.NamespaceAll).List(metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
-	used := map[string]*arbapi.Resource{}
+	used := map[string]*kbapi.Resource{}
 
 	for _, pod := range pods.Items {
 		nodeName := pod.Spec.NodeName
@@ -650,11 +597,11 @@ func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
 		}
 
 		if _, found := used[nodeName]; !found {
-			used[nodeName] = arbapi.EmptyResource()
+			used[nodeName] = kbapi.EmptyResource()
 		}
 
 		for _, c := range pod.Spec.Containers {
-			req := arbapi.NewResource(c.Resources.Requests)
+			req := kbapi.NewResource(c.Resources.Requests)
 			used[nodeName].Add(req)
 		}
 	}
@@ -666,8 +613,8 @@ func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
 
 		res := int32(0)
 
-		alloc := arbapi.NewResource(node.Status.Allocatable)
-		slot := arbapi.NewResource(req)
+		alloc := kbapi.NewResource(node.Status.Allocatable)
+		slot := kbapi.NewResource(req)
 
 		// Removed used resources.
 		if res, found := used[node.Name]; found {
@@ -687,24 +634,20 @@ func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
 	return "", 0
 }
 
-func getPodOfPodGroup(ctx *context, pg *arbv1.PodGroup) []*v1.Pod {
-	pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
+func getTasksOfJob(ctx *context, job *vkv1.Job) []*v1.Pod {
+	pods, err := ctx.kubeclient.CoreV1().Pods(job.Namespace).List(metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
-	pods, err := ctx.kubeclient.CoreV1().Pods(pg.Namespace).List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
-
-	var qjpod []*v1.Pod
+	var tasks []*v1.Pod
 
 	for _, pod := range pods.Items {
-		if gn, found := pod.Annotations[arbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
+		if !metav1.IsControlledBy(&pod, job) {
 			continue
 		}
-		qjpod = append(qjpod, &pod)
-
+		tasks = append(tasks, &pod)
 	}
 
-	return qjpod
+	return tasks
 }
 
 func taintAllNodes(ctx *context, taints []v1.Taint) error {
