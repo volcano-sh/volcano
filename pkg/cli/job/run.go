@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Volcano Authors.
+Copyright 2018 The Vulcan Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	vuclanapi "hpw.cloud/volcano/pkg/apis/core/v1alpha1"
+	vuclanapi "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"hpw.cloud/volcano/pkg/client/clientset/versioned"
 )
 
@@ -50,7 +50,7 @@ func InitRunFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&launchJobFlags.Requests, "requests", "", "cpu=1000m,memory=100Mi", "the resource request of the task")
 }
 
-var jobName = "job.hpw.cloud"
+var jobName = "job.volcanproj.org"
 
 func RunJob() error {
 	config, err := buildConfig(launchJobFlags.Master, launchJobFlags.Kubeconfig)
@@ -105,7 +105,7 @@ func RunJob() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	if _, err := jobClient.Core().Jobs(launchJobFlags.Namespace).Create(job); err != nil {
+	if _, err := jobClient.Batch().Jobs(launchJobFlags.Namespace).Create(job); err != nil {
 		return err
 	}
 

@@ -21,9 +21,9 @@ package externalversions
 import (
 	"fmt"
 
+	v1alpha1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
-	v1alpha1 "hpw.cloud/volcano/pkg/apis/core/v1alpha1"
 )
 
 // GenericInformer is type of SharedIndexInformer which will locate and delegate to other
@@ -52,9 +52,9 @@ func (f *genericInformer) Lister() cache.GenericLister {
 // TODO extend this to unknown resources with a client pool
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
-	// Group=core, Version=v1alpha1
+	// Group=batch, Version=v1alpha1
 	case v1alpha1.SchemeGroupVersion.WithResource("jobs"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Core().V1alpha1().Jobs().Informer()}, nil
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Batch().V1alpha1().Jobs().Informer()}, nil
 
 	}
 

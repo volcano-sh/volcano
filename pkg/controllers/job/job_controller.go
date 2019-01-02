@@ -36,61 +36,58 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 
-	kbv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
-	kbext "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
+	kbinfoext "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
 	kbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	kblister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
 
-	vnapi "hpw.cloud/volcano/pkg/apis/core/v1alpha1"
+	vkapi "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"hpw.cloud/volcano/pkg/apis/helpers"
 	"hpw.cloud/volcano/pkg/client/clientset/versioned"
-	informersv1 "hpw.cloud/volcano/pkg/client/informers/externalversions"
-	vninfo "hpw.cloud/volcano/pkg/client/informers/externalversions/core/v1alpha1"
-	listersv1 "hpw.cloud/volcano/pkg/client/listers/core/v1alpha1"
+	vkinfoext "hpw.cloud/volcano/pkg/client/informers/externalversions"
+	vkinfo "hpw.cloud/volcano/pkg/client/informers/externalversions/batch/v1alpha1"
+	vklister "hpw.cloud/volcano/pkg/client/listers/batch/v1alpha1"
 )
 
 // Controller the Job Controller type
 type Controller struct {
 	config      *rest.Config
 	kubeClients *kubernetes.Clientset
-	vnClients   *versioned.Clientset
+	vkClients   *versioned.Clientset
 	kbClients   *kbver.Clientset
 
-	jobInformer vninfo.JobInformer
+	jobInformer vkinfo.JobInformer
 	podInformer coreinformers.PodInformer
 	pgInformer  kbinfo.PodGroupInformer
 
-	pgLister kblister.PodGroupLister
-	pgSynced func() bool
-
 	// A store of jobs
-	jobLister listersv1.JobLister
+	jobLister vklister.JobLister
 	jobSynced func() bool
 
 	// A store of pods, populated by the podController
 	podListr  corelisters.PodLister
 	podSynced func() bool
 
+	// A store of pods, populated by the podController
+	pgLister kblister.PodGroupLister
+	pgSynced func() bool
+
 	// eventQueue that need to sync up
 	eventQueue *cache.FIFO
 }
 
-// NewJobController create new QueueJob Controller
+// NewJobController create new Job Controller
 func NewJobController(config *rest.Config) *Controller {
 	cc := &Controller{
 		config:      config,
 		kubeClients: kubernetes.NewForConfigOrDie(config),
-		vnClients:   versioned.NewForConfigOrDie(config),
+		vkClients:   versioned.NewForConfigOrDie(config),
 		kbClients:   kbver.NewForConfigOrDie(config),
 		eventQueue:  cache.NewFIFO(eventKey),
 	}
 
-	cc.pgInformer = kbext.NewSharedInformerFactory(cc.kbClients, 0).Scheduling().V1alpha1().PodGroups()
-	cc.pgLister = cc.pgInformer.Lister()
-	cc.pgSynced = cc.pgInformer.Informer().HasSynced
-
-	cc.jobInformer = informersv1.NewSharedInformerFactory(cc.vnClients, 0).Core().V1alpha1().Jobs()
+	cc.jobInformer = vkinfoext.NewSharedInformerFactory(cc.vkClients, 0).Batch().V1alpha1().Jobs()
 	cc.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    cc.addJob,
 		UpdateFunc: cc.updateJob,
@@ -109,6 +106,10 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.podListr = cc.podInformer.Lister()
 	cc.podSynced = cc.podInformer.Informer().HasSynced
 
+	cc.pgInformer = kbinfoext.NewSharedInformerFactory(cc.kbClients, 0).Scheduling().V1alpha1().PodGroups()
+	cc.pgLister = cc.pgInformer.Lister()
+	cc.pgSynced = cc.pgInformer.Informer().HasSynced
+
 	return cc
 }
 
@@ -116,99 +117,101 @@ func NewJobController(config *rest.Config) *Controller {
 func (cc *Controller) Run(stopCh <-chan struct{}) {
 	go cc.jobInformer.Informer().Run(stopCh)
 	go cc.podInformer.Informer().Run(stopCh)
+	go cc.pgInformer.Informer().Run(stopCh)
 
 	cache.WaitForCacheSync(stopCh, cc.jobSynced, cc.podSynced, cc.pgSynced)
 
 	go wait.Until(cc.worker, time.Second, stopCh)
+
+	glog.Infof("JobController is running ...... ")
 }
 
 func (cc *Controller) worker() {
-	if _, err := cc.eventQueue.Pop(func(obj interface{}) error {
-		var job *vnapi.Job
-		switch v := obj.(type) {
-		case *vnapi.Job:
-			job = v
-		case *v1.Pod:
-			jobs, err := cc.jobLister.List(labels.Everything())
-			if err != nil {
-				glog.Errorf("Failed to list QueueJobs for Pod %v/%v", v.Namespace, v.Name)
-			}
+	obj := cache.Pop(cc.eventQueue)
+	if obj == nil {
+		glog.Errorf("Fail to pop item from updateQueue")
+	}
 
-			ctl := helpers.GetController(v)
-			for _, j := range jobs {
-				if j.UID == ctl {
-					job = j
-					break
-				}
-			}
-
-		default:
-			glog.Errorf("Un-supported type of %v", obj)
-			return nil
+	var job *vkapi.Job
+	switch v := obj.(type) {
+	case *vkapi.Job:
+		job = v
+	case *v1.Pod:
+		jobs, err := cc.jobLister.List(labels.Everything())
+		if err != nil {
+			glog.Errorf("Failed to list Jobs for Pod %v/%v", v.Namespace, v.Name)
 		}
 
-		if job == nil {
-			if acc, err := meta.Accessor(obj); err != nil {
-				glog.Warningf("Failed to get QueueJob for %v/%v", acc.GetNamespace(), acc.GetName())
+		// TODO(k82cn): select by UID instead of loop
+		ctl := helpers.GetController(v)
+		for _, j := range jobs {
+			if j.UID == ctl {
+				job = j
+				break
 			}
-
-			return nil
 		}
 
-		// sync Pods for a QueueJob
-		if err := cc.syncJob(job); err != nil {
-			glog.Errorf("Failed to sync QueueJob %s, err %#v", job.Name, err)
-			// If any error, requeue it.
-			return err
-		}
-
-		return nil
-	}); err != nil {
-		glog.Errorf("Fail to pop item from updateQueue, err %#v", err)
+	default:
+		glog.Errorf("Un-supported type of %v", obj)
 		return
 	}
+
+	if job == nil {
+		if acc, err := meta.Accessor(obj); err != nil {
+			glog.Warningf("Failed to get Job for %v/%v", acc.GetNamespace(), acc.GetName())
+		}
+
+		return
+	}
+
+	// sync Pods for a Job
+	if err := cc.syncJob(job); err != nil {
+		glog.Errorf("Failed to sync Job %s, err %#v", job.Name, err)
+		// If any error, requeue it.
+		// TODO(k82cn): replace with RateLimteQueue
+		cc.eventQueue.Add(job)
+	}
 }
 
-func (cc *Controller) syncJob(qj *vnapi.Job) error {
-	queueJob, err := cc.jobLister.Jobs(qj.Namespace).Get(qj.Name)
+func (cc *Controller) syncJob(j *vkapi.Job) error {
+	job, err := cc.jobLister.Jobs(j.Namespace).Get(j.Name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			glog.V(3).Infof("Job has been deleted: %v", qj.Name)
+			glog.V(3).Infof("Job has been deleted: %v", j.Name)
 			return nil
 		}
 		return err
 	}
 
-	pods, err := cc.getPodsForJob(queueJob)
+	pods, err := cc.getPodsForJob(job)
 	if err != nil {
 		return err
 	}
 
-	return cc.manageJob(queueJob, pods)
+	return cc.manageJob(job, pods)
 }
 
-func (cc *Controller) getPodsForJob(job *vnapi.Job) (map[string][]*v1.Pod, error) {
+func (cc *Controller) getPodsForJob(job *vkapi.Job) (map[string][]*v1.Pod, error) {
 	pods := map[string][]*v1.Pod{}
 
-	for _, ts := range job.Spec.TaskSpecs {
-		selector, err := metav1.LabelSelectorAsSelector(ts.Selector)
-		if err != nil {
-			return nil, fmt.Errorf("couldn't convert Job selector: %v", err)
-		}
+	// TODO (k82cn): optimic by cache and index of ownew
+	ps, err := cc.podListr.Pods(job.Namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
 
-		// List all pods under Job
-		ps, err := cc.podListr.Pods(job.Namespace).List(selector)
-		if err != nil {
-			return nil, err
+	for _, pod := range ps {
+		if !metav1.IsControlledBy(pod, job) {
+			continue
 		}
-
-		// TODO (k82cn): optimize by cache
-		for _, pod := range ps {
-			if !metav1.IsControlledBy(pod, job) {
-				continue
-			}
+		if len(pod.Annotations) == 0 {
+			glog.Errorf("The annotations of pod <%s/%s> is empty", pod.Namespace, pod.Name)
+			continue
+		}
+		tsName, found := pod.Annotations[vkapi.TaskSpecKey]
+		if found {
 			// Hash by TaskSpec.Template.Name
-			pods[ts.Template.Name] = append(pods[ts.Template.Name], pod)
+			pods[tsName] = append(pods[tsName], pod)
 		}
 	}
 
@@ -217,21 +220,35 @@ func (cc *Controller) getPodsForJob(job *vnapi.Job) (map[string][]*v1.Pod, error
 
 // manageJob is the core method responsible for managing the number of running
 // pods according to what is specified in the job.Spec.
-func (cc *Controller) manageJob(job *vnapi.Job, pods map[string][]*v1.Pod) error {
+func (cc *Controller) manageJob(job *vkapi.Job, pods map[string][]*v1.Pod) error {
 	var err error
+
+	if job.DeletionTimestamp != nil {
+		glog.Infof("Job <%s/%s> is terminating, skip management process.",
+			job.Namespace, job.Name)
+		return nil
+	}
+
+	glog.V(3).Infof("Start to manage job <%s/%s>", job.Namespace, job.Name)
+
+	// TODO(k82cn): add WebHook to validate job.
+	if err := validate(job); err != nil {
+		glog.Errorf("Failed to validate Job <%s/%s>: %v", job.Namespace, job.Name, err)
+	}
 
 	runningSum := int32(0)
 	pendingSum := int32(0)
 	succeededSum := int32(0)
 	failedSum := int32(0)
 
-	// If no PodGroup of this Job, create it.
-	if _, err := cc.pgLister.PodGroups(job.Namespace).Get(job.Name); err != nil {
+	// If PodGroup does not exist, create one for Job.
+	if _, err := cc.pgLister.PodGroups((job.Namespace)).Get(job.Name); err != nil {
 		if !apierrors.IsNotFound(err) {
+			glog.V(3).Infof("Failed to get PodGroup for Job <%s/%s>: %v",
+				job.Namespace, job.Name, err)
 			return err
 		}
-
-		pg := &kbv1alpha1.PodGroup{
+		pg := &kbv1.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: job.Namespace,
 				Name:      job.Name,
@@ -239,13 +256,15 @@ func (cc *Controller) manageJob(job *vnapi.Job, pods map[string][]*v1.Pod) error
 					*metav1.NewControllerRef(job, helpers.JobKind),
 				},
 			},
-			Spec: kbv1alpha1.PodGroupSpec{
+			Spec: kbv1.PodGroupSpec{
 				MinMember: job.Spec.MinAvailable,
 			},
 		}
 
 		if _, e := cc.kbClients.SchedulingV1alpha1().PodGroups(job.Namespace).Create(pg); e != nil {
-			// If failed to create PodGroup, return error.
+			glog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
+				job.Namespace, job.Name, err)
+
 			return e
 		}
 	}
@@ -253,6 +272,11 @@ func (cc *Controller) manageJob(job *vnapi.Job, pods map[string][]*v1.Pod) error
 	for _, ts := range job.Spec.TaskSpecs {
 		replicas := ts.Replicas
 		name := ts.Template.Name
+
+		// TODO(k82cn): the template name should be set in default func.
+		if len(name) == 0 {
+			name = vkapi.DefaultTaskSpec
+		}
 
 		running := int32(filterPods(pods[name], v1.PodRunning))
 		pending := int32(filterPods(pods[name], v1.PodPending))
@@ -264,12 +288,12 @@ func (cc *Controller) manageJob(job *vnapi.Job, pods map[string][]*v1.Pod) error
 		succeededSum += succeeded
 		failedSum += failed
 
-		glog.V(3).Infof("There are %d pods of QueueJob %s (%s): replicas %d, pending %d, running %d, succeeded %d, failed %d",
-			len(pods), job.Name, name, replicas, pending, running, succeeded, failed)
+		glog.V(3).Infof("There are %d pods of Job %s (%s): replicas %d, pending %d, running %d, succeeded %d, failed %d",
+			len(pods[name]), job.Name, name, replicas, pending, running, succeeded, failed)
 
 		// Create pod if necessary
 		if diff := replicas - pending - running - succeeded; diff > 0 {
-			glog.V(3).Infof("Try to create %v Pods for QueueJob %v/%v", diff, job.Namespace, job.Name)
+			glog.V(3).Infof("Try to create %v Pods for Job %v/%v", diff, job.Namespace, job.Name)
 
 			var errs []error
 			wait := sync.WaitGroup{}
@@ -278,14 +302,16 @@ func (cc *Controller) manageJob(job *vnapi.Job, pods map[string][]*v1.Pod) error
 				go func(ix int32) {
 					defer wait.Done()
 					newPod := createJobPod(job, &ts.Template, ix)
-					_, err := cc.kubeClients.Core().Pods(newPod.Namespace).Create(newPod)
+					_, err := cc.kubeClients.CoreV1().Pods(newPod.Namespace).Create(newPod)
 					if err != nil {
 						// Failed to create Pod, wait a moment and then create it again
-						// This is to ensure all pods under the same QueueJob created
-						// So gang-scheduling could schedule the QueueJob successfully
-						glog.Errorf("Failed to create pod %s for QueueJob %s, err %#v",
+						// This is to ensure all pods under the same Job created
+						// So gang-scheduling could schedule the Job successfully
+						glog.Errorf("Failed to create pod %s for Job %s, err %#v",
 							newPod.Name, job.Name, err)
 						errs = append(errs, err)
+					} else {
+						glog.V(3).Infof("Create Task <%d> of Job <%s/%s>", ix, job.Namespace, job.Name)
 					}
 				}(i)
 			}
@@ -297,7 +323,7 @@ func (cc *Controller) manageJob(job *vnapi.Job, pods map[string][]*v1.Pod) error
 		}
 	}
 
-	job.Status = vnapi.JobStatus{
+	job.Status = vkapi.JobStatus{
 		Pending:      pendingSum,
 		Running:      runningSum,
 		Succeeded:    succeededSum,
@@ -306,8 +332,8 @@ func (cc *Controller) manageJob(job *vnapi.Job, pods map[string][]*v1.Pod) error
 	}
 
 	// TODO(k82cn): replaced it with `UpdateStatus`
-	if _, err := cc.vnClients.CoreV1alpha1().Jobs(job.Namespace).Update(job); err != nil {
-		glog.Errorf("Failed to update status of QueueJob %v/%v: %v",
+	if _, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).Update(job); err != nil {
+		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
 	}

@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Volcano Authors.
+Copyright 2018 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,9 +25,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kbv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 
-	vulcanv1 "hpw.cloud/volcano/pkg/apis/core/v1alpha1"
+	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"hpw.cloud/volcano/pkg/apis/helpers"
 )
 
@@ -58,7 +58,7 @@ func eventKey(obj interface{}) (string, error) {
 	return string(accessor.GetUID()), nil
 }
 
-func createJobPod(qj *vulcanv1.Job, template *corev1.PodTemplateSpec, ix int32) *corev1.Pod {
+func createJobPod(qj *vkv1.Job, template *corev1.PodTemplateSpec, ix int32) *corev1.Pod {
 	templateCopy := template.DeepCopy()
 
 	prefix := fmt.Sprintf("%s-", qj.Name)
@@ -70,15 +70,29 @@ func createJobPod(qj *vulcanv1.Job, template *corev1.PodTemplateSpec, ix int32) 
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(qj, helpers.JobKind),
 			},
-			Labels: templateCopy.Labels,
+			Labels:      templateCopy.Labels,
+			Annotations: templateCopy.Annotations,
 		},
 		Spec: templateCopy.Spec,
 	}
 
-	// Set pod's annotation for PodGroup
-	pod.Annotations[kbv1alpha1.GroupNameAnnotationKey] = qj.Name
+	if len(pod.Annotations) == 0 {
+		pod.Annotations = make(map[string]string)
+	}
 
-	// We fill the schedulerName in the pod definition with the one specified in the QJ template
+	tsKey := templateCopy.Name
+	if len(tsKey) == 0 {
+		tsKey = vkv1.DefaultTaskSpec
+	}
+	pod.Annotations[vkv1.TaskSpecKey] = tsKey
+
+	if len(pod.Annotations) == 0 {
+		pod.Annotations = make(map[string]string)
+	}
+
+	pod.Annotations[kbapi.GroupNameAnnotationKey] = qj.Name
+
+	// we fill the schedulerName in the pod definition with the one specified in the QJ template
 	if qj.Spec.SchedulerName != "" && pod.Spec.SchedulerName == "" {
 		pod.Spec.SchedulerName = qj.Spec.SchedulerName
 	}

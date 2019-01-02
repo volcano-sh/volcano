@@ -1,5 +1,5 @@
 {
-	"ImportPath": "volcanoproj.org/volcano",
+	"ImportPath": "hpw.cloud/volcano",
 	"GoVersion": "go1.11",
 	"GodepVersion": "v80",
 	"Packages": [
@@ -135,143 +135,143 @@
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/apis/utils",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/scheme",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/typed/scheduling/v1alpha1",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/internalinterfaces",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/scheduler",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/allocate",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/backfill",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/preempt",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/reclaim",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api/helpers",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/drf",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/gang",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/predicates",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/priority",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/proportion",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/util",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/kubernetes-sigs/kube-batch/pkg/version",
-			"Comment": "0.3-rc1-10-gae5007e",
-			"Rev": "ae5007e41f859bce70120c557cbe6d950d582a9d"
+			"Comment": "0.3-rc1-12-g00442dd",
+			"Rev": "00442dd6609fbb5e96db9598386c8acd72d4915b"
 		},
 		{
 			"ImportPath": "github.com/matttproud/golang_protobuf_extensions/pbutil",
@@ -286,6 +286,156 @@
 			"ImportPath": "github.com/modern-go/reflect2",
 			"Comment": "1.0.0-9-g05fbef0",
 			"Rev": "05fbef0ca5da472bbf96c9322b84a53edc03c9fd"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo",
+			"Comment": "v1.5.0-5-ge51bee6",
+			"Rev": "e51bee6c2dd1df84f9cdde1e21f62f6d5a825a90"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo/config",
+			"Comment": "v1.5.0-5-ge51bee6",
+			"Rev": "e51bee6c2dd1df84f9cdde1e21f62f6d5a825a90"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo/internal/codelocation",
+			"Comment": "v1.5.0-5-ge51bee6",
+			"Rev": "e51bee6c2dd1df84f9cdde1e21f62f6d5a825a90"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo/internal/containernode",
+			"Comment": "v1.5.0-5-ge51bee6",
+			"Rev": "e51bee6c2dd1df84f9cdde1e21f62f6d5a825a90"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo/internal/failer",
+			"Comment": "v1.5.0-5-ge51bee6",
+			"Rev": "e51bee6c2dd1df84f9cdde1e21f62f6d5a825a90"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo/internal/leafnodes",
+			"Comment": "v1.5.0-5-ge51bee6",
+			"Rev": "e51bee6c2dd1df84f9cdde1e21f62f6d5a825a90"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo/internal/remote",
+			"Comment": "v1.5.0-5-ge51bee6",
+			"Rev": "e51bee6c2dd1df84f9cdde1e21f62f6d5a825a90"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo/internal/spec",
+			"Comment": "v1.5.0-5-ge51bee6",
+			"Rev": "e51bee6c2dd1df84f9cdde1e21f62f6d5a825a90"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo/internal/spec_iterator",
+			"Comment": "v1.5.0-5-ge51bee6",
+			"Rev": "e51bee6c2dd1df84f9cdde1e21f62f6d5a825a90"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo/internal/specrunner",
+			"Comment": "v1.5.0-5-ge51bee6",
+			"Rev": "e51bee6c2dd1df84f9cdde1e21f62f6d5a825a90"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo/internal/suite",
+			"Comment": "v1.5.0-5-ge51bee6",
+			"Rev": "e51bee6c2dd1df84f9cdde1e21f62f6d5a825a90"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo/internal/testingtproxy",
+			"Comment": "v1.5.0-5-ge51bee6",
+			"Rev": "e51bee6c2dd1df84f9cdde1e21f62f6d5a825a90"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo/internal/writer",
+			"Comment": "v1.5.0-5-ge51bee6",
+			"Rev": "e51bee6c2dd1df84f9cdde1e21f62f6d5a825a90"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo/reporters",
+			"Comment": "v1.5.0-5-ge51bee6",
+			"Rev": "e51bee6c2dd1df84f9cdde1e21f62f6d5a825a90"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo/reporters/stenographer",
+			"Comment": "v1.5.0-5-ge51bee6",
+			"Rev": "e51bee6c2dd1df84f9cdde1e21f62f6d5a825a90"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo/reporters/stenographer/support/go-colorable",
+			"Comment": "v1.5.0-5-ge51bee6",
+			"Rev": "e51bee6c2dd1df84f9cdde1e21f62f6d5a825a90"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo/reporters/stenographer/support/go-isatty",
+			"Comment": "v1.5.0-5-ge51bee6",
+			"Rev": "e51bee6c2dd1df84f9cdde1e21f62f6d5a825a90"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo/types",
+			"Comment": "v1.5.0-5-ge51bee6",
+			"Rev": "e51bee6c2dd1df84f9cdde1e21f62f6d5a825a90"
+		},
+		{
+			"ImportPath": "github.com/onsi/gomega",
+			"Comment": "v1.4.0-4-g9be8410",
+			"Rev": "9be84105672ba4433a3b61f1b4d7f9ff8b022293"
+		},
+		{
+			"ImportPath": "github.com/onsi/gomega/format",
+			"Comment": "v1.4.0-4-g9be8410",
+			"Rev": "9be84105672ba4433a3b61f1b4d7f9ff8b022293"
+		},
+		{
+			"ImportPath": "github.com/onsi/gomega/internal/assertion",
+			"Comment": "v1.4.0-4-g9be8410",
+			"Rev": "9be84105672ba4433a3b61f1b4d7f9ff8b022293"
+		},
+		{
+			"ImportPath": "github.com/onsi/gomega/internal/asyncassertion",
+			"Comment": "v1.4.0-4-g9be8410",
+			"Rev": "9be84105672ba4433a3b61f1b4d7f9ff8b022293"
+		},
+		{
+			"ImportPath": "github.com/onsi/gomega/internal/oraclematcher",
+			"Comment": "v1.4.0-4-g9be8410",
+			"Rev": "9be84105672ba4433a3b61f1b4d7f9ff8b022293"
+		},
+		{
+			"ImportPath": "github.com/onsi/gomega/internal/testingtsupport",
+			"Comment": "v1.4.0-4-g9be8410",
+			"Rev": "9be84105672ba4433a3b61f1b4d7f9ff8b022293"
+		},
+		{
+			"ImportPath": "github.com/onsi/gomega/matchers",
+			"Comment": "v1.4.0-4-g9be8410",
+			"Rev": "9be84105672ba4433a3b61f1b4d7f9ff8b022293"
+		},
+		{
+			"ImportPath": "github.com/onsi/gomega/matchers/support/goraph/bipartitegraph",
+			"Comment": "v1.4.0-4-g9be8410",
+			"Rev": "9be84105672ba4433a3b61f1b4d7f9ff8b022293"
+		},
+		{
+			"ImportPath": "github.com/onsi/gomega/matchers/support/goraph/edge",
+			"Comment": "v1.4.0-4-g9be8410",
+			"Rev": "9be84105672ba4433a3b61f1b4d7f9ff8b022293"
+		},
+		{
+			"ImportPath": "github.com/onsi/gomega/matchers/support/goraph/node",
+			"Comment": "v1.4.0-4-g9be8410",
+			"Rev": "9be84105672ba4433a3b61f1b4d7f9ff8b022293"
+		},
+		{
+			"ImportPath": "github.com/onsi/gomega/matchers/support/goraph/util",
+			"Comment": "v1.4.0-4-g9be8410",
+			"Rev": "9be84105672ba4433a3b61f1b4d7f9ff8b022293"
+		},
+		{
+			"ImportPath": "github.com/onsi/gomega/types",
+			"Comment": "v1.4.0-4-g9be8410",
+			"Rev": "9be84105672ba4433a3b61f1b4d7f9ff8b022293"
 		},
 		{
 			"ImportPath": "github.com/opencontainers/go-digest",
@@ -362,6 +512,18 @@
 			"Rev": "1c05540f6879653db88113bc4a2b70aec4bd491f"
 		},
 		{
+			"ImportPath": "golang.org/x/net/html",
+			"Rev": "1c05540f6879653db88113bc4a2b70aec4bd491f"
+		},
+		{
+			"ImportPath": "golang.org/x/net/html/atom",
+			"Rev": "1c05540f6879653db88113bc4a2b70aec4bd491f"
+		},
+		{
+			"ImportPath": "golang.org/x/net/html/charset",
+			"Rev": "1c05540f6879653db88113bc4a2b70aec4bd491f"
+		},
+		{
 			"ImportPath": "golang.org/x/net/http2",
 			"Rev": "1c05540f6879653db88113bc4a2b70aec4bd491f"
 		},
@@ -404,6 +566,62 @@
 		{
 			"ImportPath": "golang.org/x/sys/windows",
 			"Rev": "95c6576299259db960f6c5b9b69ea52422860fce"
+		},
+		{
+			"ImportPath": "golang.org/x/text/encoding",
+			"Rev": "b19bf474d317b857955b12035d2c5acb57ce8b01"
+		},
+		{
+			"ImportPath": "golang.org/x/text/encoding/charmap",
+			"Rev": "b19bf474d317b857955b12035d2c5acb57ce8b01"
+		},
+		{
+			"ImportPath": "golang.org/x/text/encoding/htmlindex",
+			"Rev": "b19bf474d317b857955b12035d2c5acb57ce8b01"
+		},
+		{
+			"ImportPath": "golang.org/x/text/encoding/internal",
+			"Rev": "b19bf474d317b857955b12035d2c5acb57ce8b01"
+		},
+		{
+			"ImportPath": "golang.org/x/text/encoding/internal/identifier",
+			"Rev": "b19bf474d317b857955b12035d2c5acb57ce8b01"
+		},
+		{
+			"ImportPath": "golang.org/x/text/encoding/japanese",
+			"Rev": "b19bf474d317b857955b12035d2c5acb57ce8b01"
+		},
+		{
+			"ImportPath": "golang.org/x/text/encoding/korean",
+			"Rev": "b19bf474d317b857955b12035d2c5acb57ce8b01"
+		},
+		{
+			"ImportPath": "golang.org/x/text/encoding/simplifiedchinese",
+			"Rev": "b19bf474d317b857955b12035d2c5acb57ce8b01"
+		},
+		{
+			"ImportPath": "golang.org/x/text/encoding/traditionalchinese",
+			"Rev": "b19bf474d317b857955b12035d2c5acb57ce8b01"
+		},
+		{
+			"ImportPath": "golang.org/x/text/encoding/unicode",
+			"Rev": "b19bf474d317b857955b12035d2c5acb57ce8b01"
+		},
+		{
+			"ImportPath": "golang.org/x/text/internal/tag",
+			"Rev": "b19bf474d317b857955b12035d2c5acb57ce8b01"
+		},
+		{
+			"ImportPath": "golang.org/x/text/internal/utf8internal",
+			"Rev": "b19bf474d317b857955b12035d2c5acb57ce8b01"
+		},
+		{
+			"ImportPath": "golang.org/x/text/language",
+			"Rev": "b19bf474d317b857955b12035d2c5acb57ce8b01"
+		},
+		{
+			"ImportPath": "golang.org/x/text/runes",
+			"Rev": "b19bf474d317b857955b12035d2c5acb57ce8b01"
 		},
 		{
 			"ImportPath": "golang.org/x/text/secure/bidirule",

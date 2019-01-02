@@ -1,0 +1,169 @@
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  creationTimestamp: null
+  labels:
+    controller-tools.k8s.io: "1.0"
+  name: jobs.batch.hpw.cloud
+spec:
+  group: batch.hpw.cloud
+  names:
+    kind: Job
+    plural: jobs
+  scope: Namespaced
+  validation:
+    openAPIV3Schema:
+      properties:
+        apiVersion:
+          description: 'APIVersion defines the versioned schema of this representation
+            of an object. Servers should convert recognized schemas to the latest
+            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources'
+          type: string
+        kind:
+          description: 'Kind is a string value representing the REST resource this
+            object represents. Servers may infer this from the endpoint the client
+            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds'
+          type: string
+        metadata:
+          type: object
+        spec:
+          description: Specification of the desired behavior of a cron job, including
+            the minAvailable
+          properties:
+            minAvailable:
+              description: The minimal available pods to run for this Job
+              format: int32
+              type: integer
+            policies:
+              description: Specifies the default lifecycle of tasks
+              items:
+                properties:
+                  action:
+                    description: The action that will be taken to the PodGroup according
+                      to Event. One of "Restart", "None". Default to None.
+                    type: string
+                  event:
+                    description: The Event recorded by scheduler; the controller takes
+                      actions according to this Event. One of "PodFailed", "Unschedulable".
+                    type: string
+                  timeout:
+                    description: Timeout is the grace period for controller to take
+                      actions. Default to nil (take action immediately).
+                    type: object
+                type: object
+              type: array
+            schedulerName:
+              description: SchedulerName is the default value of `taskSpecs.template.spec.schedulerName`.
+              type: string
+            taskSpecs:
+              description: TaskSpecs specifies the task specification of Job
+              items:
+                properties:
+                  policies:
+                    description: Specifies the lifecycle of task
+                    items:
+                      properties:
+                        action:
+                          description: The action that will be taken to the PodGroup
+                            according to Event. One of "Restart", "None". Default
+                            to None.
+                          type: string
+                        event:
+                          description: The Event recorded by scheduler; the controller
+                            takes actions according to this Event. One of "PodFailed",
+                            "Unschedulable".
+                          type: string
+                        timeout:
+                          description: Timeout is the grace period for controller
+                            to take actions. Default to nil (take action immediately).
+                          type: object
+                      type: object
+                    type: array
+                  replicas:
+                    description: Replicas specifies the replicas of this TaskSpec
+                      in Job
+                    format: int32
+                    type: integer
+                  selector:
+                    description: A label query over pods that should match the pod
+                      count. Normally, the system sets this field for you.
+                    type: object
+                  template:
+                    description: Specifies the pod that will be created for this TaskSpec
+                      when executing a Job
+                    type: object
+                type: object
+              type: array
+          type: object
+        status:
+          description: Current status of Job
+          properties:
+            Succeeded:
+              description: The number of pods which reached phase Succeeded.
+              format: int32
+              type: integer
+            conditions:
+              description: 'Current service state of pod. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#pod-conditions
+                +patchMergeKey=type +patchStrategy=merge'
+              items:
+                properties:
+                  lastProbeTime:
+                    description: Last time we probed the condition.
+                    format: date-time
+                    type: string
+                  lastTransitionTime:
+                    description: Last time the condition transitioned from one status
+                      to another.
+                    format: date-time
+                    type: string
+                  message:
+                    description: Human-readable message indicating details about last
+                      transition.
+                    type: string
+                  reason:
+                    description: Unique, one-word, CamelCase reason for the condition's
+                      last transition.
+                    type: string
+                  status:
+                    description: Status is the status of the condition. Can be True,
+                      False, Unknown.
+                    type: string
+                  type:
+                    description: Type is the type of the condition.
+                    type: string
+                required:
+                - type
+                - status
+                type: object
+              type: array
+            failed:
+              description: The number of pods which reached phase Failed.
+              format: int32
+              type: integer
+            minAvailable:
+              description: The minimal available pods to run for this Job
+              format: int32
+              type: integer
+            pending:
+              description: The number of pending pods.
+              format: int32
+              type: integer
+            phase:
+              description: 'The phase of a Pod is a simple, high-level summary of
+                where the Pod is in its lifecycle. The conditions array, the reason
+                and message fields, and the individual container status arrays contain
+                more detail about the pod''s status. There are five possible phase
+                values:'
+              type: string
+            running:
+              description: The number of running pods.
+              format: int32
+              type: integer
+          type: object
+  version: v1alpha1
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
