@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Volcano Authors.
+Copyright 2017 The Vulcan Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,18 +17,20 @@ limitations under the License.
 package job
 
 import (
+	"reflect"
+
 	"github.com/golang/glog"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
 
-	vuclanapi "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	vkapi "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"hpw.cloud/volcano/pkg/apis/helpers"
 )
 
 func (cc *Controller) addJob(obj interface{}) {
-	job, ok := obj.(*vuclanapi.Job)
+	job, ok := obj.(*vkapi.Job)
 	if !ok {
 		glog.Errorf("obj is not Job")
 		return
@@ -38,17 +40,25 @@ func (cc *Controller) addJob(obj interface{}) {
 }
 
 func (cc *Controller) updateJob(oldObj, newObj interface{}) {
-	newJob, ok := newObj.(*vuclanapi.Job)
+	newJob, ok := newObj.(*vkapi.Job)
 	if !ok {
 		glog.Errorf("newObj is not Job")
 		return
 	}
 
-	cc.enqueue(newJob)
+	oldJob, ok := oldObj.(*vkapi.Job)
+	if !ok {
+		glog.Errorf("oldObj is not Job")
+		return
+	}
+
+	if !reflect.DeepEqual(oldJob.Spec, newJob.Spec) {
+		cc.enqueue(newJob)
+	}
 }
 
 func (cc *Controller) deleteJob(obj interface{}) {
-	job, ok := obj.(*vuclanapi.Job)
+	job, ok := obj.(*vkapi.Job)
 	if !ok {
 		glog.Errorf("obj is not Job")
 		return

@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright 2018 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ var _ = Describe("Predicates E2E Test", func() {
 		slot := oneCPU
 		rep := clusterSize(context, slot)
 
-		job := &jobSpec{
+		spec := &jobSpec{
 			tasks: []taskSpec{
 				{
 					img: "nginx",
@@ -42,10 +42,10 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		job.name = "q1-qj-1"
-		job.queue = "q1"
-		_, pg1 := createJobEx(context, job)
-		err := waitPodGroupReady(context, pg1)
+		spec.name = "q1-qj-1"
+		spec.queue = "q1"
+		job1 := createJob(context, spec)
+		err := waitJobReady(context, job1)
 		Expect(err).NotTo(HaveOccurred())
 
 		expected := int(rep) / 2
@@ -57,13 +57,13 @@ var _ = Describe("Predicates E2E Test", func() {
 			Expect(err).NotTo(HaveOccurred())
 		}
 
-		job.name = "q2-qj-2"
-		job.queue = "q2"
-		_, pg2 := createJobEx(context, job)
-		err = waitTasksReady(context, pg2, expected)
+		spec.name = "q2-qj-2"
+		spec.queue = "q2"
+		job2 := createJob(context, spec)
+		err = waitTasksReady(context, job2, expected)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReady(context, pg1, expected)
+		err = waitTasksReady(context, job1, expected)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

@@ -100,6 +100,10 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		return victims
 	}
+
+	// TODO(k82cn): Support preempt/reclaim batch job.
+	ssn.AddReclaimableFn(preemptableFn)
+
 	if gp.args.PreemptableFnEnabled {
 		ssn.AddPreemptableFn(preemptableFn)
 	}

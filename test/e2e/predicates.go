@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright 2018 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 )
@@ -52,8 +52,8 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		job := &jobSpec{
-			name: "na-job",
+		spec := &jobSpec{
+			name: "na-spec",
 			tasks: []taskSpec{
 				{
 					img:      "nginx",
@@ -65,11 +65,11 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		_, pg := createJobEx(context, job)
-		err := waitPodGroupReady(context, pg)
+		job := createJob(context, spec)
+		err := waitJobReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pods := getPodOfPodGroup(context, pg)
+		pods := getTasksOfJob(context, job)
 		for _, pod := range pods {
 			Expect(pod.Spec.NodeName).To(Equal(nodeName))
 		}
@@ -81,8 +81,8 @@ var _ = Describe("Predicates E2E Test", func() {
 
 		nn := clusterNodeNumber(context)
 
-		job := &jobSpec{
-			name: "hp-job",
+		spec := &jobSpec{
+			name: "hp-spec",
 			tasks: []taskSpec{
 				{
 					img:      "nginx",
@@ -94,12 +94,12 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		_, pg := createJobEx(context, job)
+		job := createJob(context, spec)
 
-		err := waitTasksReady(context, pg, nn)
+		err := waitTasksReady(context, job, nn)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksPending(context, pg, nn)
+		err = waitTasksPending(context, job, nn)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -126,8 +126,8 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		job := &jobSpec{
-			name: "pa-job",
+		spec := &jobSpec{
+			name: "pa-spec",
 			tasks: []taskSpec{
 				{
 					img:      "nginx",
@@ -140,11 +140,11 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		_, pg := createJobEx(context, job)
-		err := waitPodGroupReady(context, pg)
+		job := createJob(context, spec)
+		err := waitJobReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pods := getPodOfPodGroup(context, pg)
+		pods := getTasksOfJob(context, job)
 		// All pods should be scheduled to the same node.
 		nodeName := pods[0].Spec.NodeName
 		for _, pod := range pods {
@@ -167,8 +167,8 @@ var _ = Describe("Predicates E2E Test", func() {
 		err := taintAllNodes(context, taints)
 		Expect(err).NotTo(HaveOccurred())
 
-		job := &jobSpec{
-			name: "tt-job",
+		spec := &jobSpec{
+			name: "tt-spec",
 			tasks: []taskSpec{
 				{
 					img: "nginx",
@@ -179,14 +179,14 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		_, pg := createJobEx(context, job)
-		err = waitPodGroupPending(context, pg)
+		job := createJob(context, spec)
+		err = waitJobPending(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = removeTaintsFromAllNodes(context, taints)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitPodGroupReady(context, pg)
+		err = waitJobReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
