@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Volcano Authors.
+Copyright 2018 The Vulcan Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ func ListJobs() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	jobs, err := jobClient.Core().Jobs(listJobFlags.Namespace).List(metav1.ListOptions{})
+	jobs, err := jobClient.Batch().Jobs(listJobFlags.Namespace).List(metav1.ListOptions{})
 	if err != nil {
 		return err
 	}

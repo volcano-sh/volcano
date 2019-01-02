@@ -23,13 +23,13 @@ import (
 	sync "sync"
 	time "time"
 
+	versioned "hpw.cloud/volcano/pkg/client/clientset/versioned"
+	batch "hpw.cloud/volcano/pkg/client/informers/externalversions/batch"
+	internalinterfaces "hpw.cloud/volcano/pkg/client/informers/externalversions/internalinterfaces"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
-	versioned "hpw.cloud/volcano/pkg/client/clientset/versioned"
-	core "hpw.cloud/volcano/pkg/client/informers/externalversions/core"
-	internalinterfaces "hpw.cloud/volcano/pkg/client/informers/externalversions/internalinterfaces"
 )
 
 // SharedInformerOption defines the functional option type for SharedInformerFactory.
@@ -172,9 +172,9 @@ type SharedInformerFactory interface {
 	ForResource(resource schema.GroupVersionResource) (GenericInformer, error)
 	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
 
-	Core() core.Interface
+	Batch() batch.Interface
 }
 
-func (f *sharedInformerFactory) Core() core.Interface {
-	return core.New(f, f.namespace, f.tweakListOptions)
+func (f *sharedInformerFactory) Batch() batch.Interface {
+	return batch.New(f, f.namespace, f.tweakListOptions)
 }
