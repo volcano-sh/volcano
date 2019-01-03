@@ -60,6 +60,7 @@ type Controller struct {
 	jobInformer vkinfo.JobInformer
 	podInformer coreinformers.PodInformer
 	pgInformer  kbinfo.PodGroupInformer
+	svcInformer coreinformers.ServiceInformer
 
 	// A store of jobs
 	jobLister vklister.JobLister
@@ -72,6 +73,9 @@ type Controller struct {
 	// A store of pods, populated by the podController
 	pgLister kblister.PodGroupLister
 	pgSynced func() bool
+
+	svcLister corelisters.ServiceLister
+	svcSynced func() bool
 
 	// eventQueue that need to sync up
 	eventQueue *cache.FIFO
@@ -106,6 +110,10 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.podListr = cc.podInformer.Lister()
 	cc.podSynced = cc.podInformer.Informer().HasSynced
 
+	cc.svcInformer = informers.NewSharedInformerFactory(cc.kubeClients, 0).Core().V1().Services()
+	cc.svcLister = cc.svcInformer.Lister()
+	cc.svcSynced = cc.svcInformer.Informer().HasSynced
+
 	cc.pgInformer = kbinfoext.NewSharedInformerFactory(cc.kbClients, 0).Scheduling().V1alpha1().PodGroups()
 	cc.pgLister = cc.pgInformer.Lister()
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
@@ -118,8 +126,9 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 	go cc.jobInformer.Informer().Run(stopCh)
 	go cc.podInformer.Informer().Run(stopCh)
 	go cc.pgInformer.Informer().Run(stopCh)
+	go cc.svcInformer.Informer().Run(stopCh)
 
-	cache.WaitForCacheSync(stopCh, cc.jobSynced, cc.podSynced, cc.pgSynced)
+	cache.WaitForCacheSync(stopCh, cc.jobSynced, cc.podSynced, cc.pgSynced, cc.svcSynced)
 
 	go wait.Until(cc.worker, time.Second, stopCh)
 
@@ -191,10 +200,10 @@ func (cc *Controller) syncJob(j *vkapi.Job) error {
 	return cc.manageJob(job, pods)
 }
 
-func (cc *Controller) getPodsForJob(job *vkapi.Job) (map[string][]*v1.Pod, error) {
-	pods := map[string][]*v1.Pod{}
+func (cc *Controller) getPodsForJob(job *vkapi.Job) (map[string]map[string]*v1.Pod, error) {
+	pods := map[string]map[string]*v1.Pod{}
 
-	// TODO (k82cn): optimic by cache and index of ownew
+	// TODO (k82cn): optimist by cache and index of owner; add 'ControlledBy' extended interface.
 	ps, err := cc.podListr.Pods(job.Namespace).List(labels.Everything())
 	if err != nil {
 		return nil, err
@@ -211,7 +220,10 @@ func (cc *Controller) getPodsForJob(job *vkapi.Job) (map[string][]*v1.Pod, error
 		tsName, found := pod.Annotations[vkapi.TaskSpecKey]
 		if found {
 			// Hash by TaskSpec.Template.Name
-			pods[tsName] = append(pods[tsName], pod)
+			if _, exist := pods[tsName]; !exist {
+				pods[tsName] = make(map[string]*v1.Pod)
+			}
+			pods[tsName][pod.Name] = pod
 		}
 	}
 
@@ -220,7 +232,7 @@ func (cc *Controller) getPodsForJob(job *vkapi.Job) (map[string][]*v1.Pod, error
 
 // manageJob is the core method responsible for managing the number of running
 // pods according to what is specified in the job.Spec.
-func (cc *Controller) manageJob(job *vkapi.Job, pods map[string][]*v1.Pod) error {
+func (cc *Controller) manageJob(job *vkapi.Job, podsMap map[string]map[string]*v1.Pod) error {
 	var err error
 
 	if job.DeletionTimestamp != nil {
@@ -236,13 +248,8 @@ func (cc *Controller) manageJob(job *vkapi.Job, pods map[string][]*v1.Pod) error
 		glog.Errorf("Failed to validate Job <%s/%s>: %v", job.Namespace, job.Name, err)
 	}
 
-	runningSum := int32(0)
-	pendingSum := int32(0)
-	succeededSum := int32(0)
-	failedSum := int32(0)
-
 	// If PodGroup does not exist, create one for Job.
-	if _, err := cc.pgLister.PodGroups((job.Namespace)).Get(job.Name); err != nil {
+	if _, err := cc.pgLister.PodGroups(job.Namespace).Get(job.Name); err != nil {
 		if !apierrors.IsNotFound(err) {
 			glog.V(3).Infof("Failed to get PodGroup for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
@@ -269,69 +276,142 @@ func (cc *Controller) manageJob(job *vkapi.Job, pods map[string][]*v1.Pod) error
 		}
 	}
 
-	for _, ts := range job.Spec.TaskSpecs {
-		replicas := ts.Replicas
-		name := ts.Template.Name
+	if _, err := cc.svcLister.Services(job.Namespace).Get(job.Name); err != nil {
+		if !apierrors.IsNotFound(err) {
+			glog.V(3).Infof("Failed to get Service for Job <%s/%s>: %v",
+				job.Namespace, job.Name, err)
+			return err
+		}
 
+		svc := &v1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: job.Namespace,
+				Name:      job.Name,
+				OwnerReferences: []metav1.OwnerReference{
+					*metav1.NewControllerRef(job, helpers.JobKind),
+				},
+			},
+			Spec: v1.ServiceSpec{
+				ClusterIP: "None",
+				Selector: map[string]string{
+					vkapi.JobNameKey:      job.Name,
+					vkapi.JobNamespaceKey: job.Namespace,
+				},
+			},
+		}
+
+		if _, e := cc.kubeClients.CoreV1().Services(job.Namespace).Create(svc); e != nil {
+			glog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v",
+				job.Namespace, job.Name, err)
+
+			return e
+		}
+	}
+
+	var podToCreate []*v1.Pod
+	var podToDelete []*v1.Pod
+
+	var running, pending, succeeded, failed int32
+
+	for _, ts := range job.Spec.TaskSpecs {
+		name := ts.Template.Name
 		// TODO(k82cn): the template name should be set in default func.
 		if len(name) == 0 {
 			name = vkapi.DefaultTaskSpec
 		}
 
-		running := int32(filterPods(pods[name], v1.PodRunning))
-		pending := int32(filterPods(pods[name], v1.PodPending))
-		succeeded := int32(filterPods(pods[name], v1.PodSucceeded))
-		failed := int32(filterPods(pods[name], v1.PodFailed))
+		pods, found := podsMap[name]
+		if !found {
+			pods = map[string]*v1.Pod{}
+		}
 
-		runningSum += running
-		pendingSum += pending
-		succeededSum += succeeded
-		failedSum += failed
-
-		glog.V(3).Infof("There are %d pods of Job %s (%s): replicas %d, pending %d, running %d, succeeded %d, failed %d",
-			len(pods[name]), job.Name, name, replicas, pending, running, succeeded, failed)
-
-		// Create pod if necessary
-		if diff := replicas - pending - running - succeeded; diff > 0 {
-			glog.V(3).Infof("Try to create %v Pods for Job %v/%v", diff, job.Namespace, job.Name)
-
-			var errs []error
-			wait := sync.WaitGroup{}
-			wait.Add(int(diff))
-			for i := int32(0); i < diff; i++ {
-				go func(ix int32) {
-					defer wait.Done()
-					newPod := createJobPod(job, &ts.Template, ix)
-					_, err := cc.kubeClients.CoreV1().Pods(newPod.Namespace).Create(newPod)
-					if err != nil {
-						// Failed to create Pod, wait a moment and then create it again
-						// This is to ensure all pods under the same Job created
-						// So gang-scheduling could schedule the Job successfully
-						glog.Errorf("Failed to create pod %s for Job %s, err %#v",
-							newPod.Name, job.Name, err)
-						errs = append(errs, err)
-					} else {
-						glog.V(3).Infof("Create Task <%d> of Job <%s/%s>", ix, job.Namespace, job.Name)
-					}
-				}(i)
+		for i := 0; i < int(ts.Replicas); i++ {
+			podName := fmt.Sprintf("%s-%s-%d", job.Name, name, i)
+			if pod, found := pods[podName]; !found {
+				newPod := createJobPod(job, &ts.Template, i)
+				podToCreate = append(podToCreate, newPod)
+			} else {
+				switch pod.Status.Phase {
+				case v1.PodPending:
+					pending ++
+				case v1.PodRunning:
+					running++
+				case v1.PodSucceeded:
+					succeeded++
+				case v1.PodFailed:
+					failed++
+				}
+				delete(pods, podName)
 			}
-			wait.Wait()
+		}
 
-			if len(errs) != 0 {
-				return fmt.Errorf("failed to create %d pods of %d", len(errs), diff)
-			}
+		for _, pod := range pods {
+			podToDelete = append(podToDelete, pod)
+		}
+
+		var creationErrs []error
+		waitCreationGroup := sync.WaitGroup{}
+		waitCreationGroup.Add(len(podToCreate))
+		for _, pod := range podToCreate {
+			go func(pod *v1.Pod) {
+				defer waitCreationGroup.Done()
+				_, err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Create(pod)
+				if err != nil {
+					// Failed to create Pod, waitCreationGroup a moment and then create it again
+					// This is to ensure all podsMap under the same Job created
+					// So gang-scheduling could schedule the Job successfully
+					glog.Errorf("Failed to create pod %s for Job %s, err %#v",
+						pod.Name, job.Name, err)
+					creationErrs = append(creationErrs, err)
+				} else {
+					glog.V(3).Infof("Created Task <%d> of Job <%s/%s>",
+						pod.Name, job.Namespace, job.Name)
+				}
+			}(pod)
+		}
+		waitCreationGroup.Wait()
+
+		if len(creationErrs) != 0 {
+			return fmt.Errorf("failed to create %d pods of %d", len(creationErrs), len(podToCreate))
+		}
+
+		// Delete unnecessary pods.
+		var deletionErrs []error
+		waitDeletionGroup := sync.WaitGroup{}
+		waitDeletionGroup.Add(len(podToDelete))
+		for _, pod := range podToDelete {
+			go func(pod *v1.Pod) {
+				defer waitDeletionGroup.Done()
+				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, &metav1.DeleteOptions{})
+				if err != nil {
+					// Failed to create Pod, waitCreationGroup a moment and then create it again
+					// This is to ensure all podsMap under the same Job created
+					// So gang-scheduling could schedule the Job successfully
+					glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
+						pod.Name, job.Name, err)
+					deletionErrs = append(deletionErrs, err)
+				} else {
+					glog.V(3).Infof("Deleted Task <%d> of Job <%s/%s>",
+						pod.Name, job.Namespace, job.Name)
+				}
+			}(pod)
+		}
+		waitDeletionGroup.Wait()
+
+		if len(deletionErrs) != 0 {
+			return fmt.Errorf("failed to delete %d pods of %d", len(deletionErrs), len(podToDelete))
 		}
 	}
 
 	job.Status = vkapi.JobStatus{
-		Pending:      pendingSum,
-		Running:      runningSum,
-		Succeeded:    succeededSum,
-		Failed:       failedSum,
+		Pending:      pending,
+		Running:      running,
+		Succeeded:    succeeded,
+		Failed:       failed,
 		MinAvailable: int32(job.Spec.MinAvailable),
 	}
 
-	// TODO(k82cn): replaced it with `UpdateStatus`
+	// TODO(k82cn): replaced it with `UpdateStatus` or `Patch`
 	if _, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).Update(job); err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
