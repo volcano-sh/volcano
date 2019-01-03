@@ -18,5 +18,7 @@ package v1alpha1
 
 const (
 	TaskSpecKey     = "hpw.cloud/task-spec"
+	JobNameKey      = "hpw.cloud/job-name"
+	JobNamespaceKey = "hpw.cloud/job-namespace"
 	DefaultTaskSpec = "default"
 )
