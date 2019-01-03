@@ -19,8 +19,6 @@ package job
 import (
 	"fmt"
 
-	"github.com/golang/glog"
-
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,13 +28,6 @@ import (
 	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"hpw.cloud/volcano/pkg/apis/helpers"
 )
-
-// getStatus returns no of succeeded and failed pods running a job
-func getStatus(pods []*corev1.Pod) (succeeded, failed int32) {
-	succeeded = int32(filterPods(pods, corev1.PodSucceeded))
-	failed = int32(filterPods(pods, corev1.PodFailed))
-	return
-}
 
 // filterPods returns pods based on their phase.
 func filterPods(pods []*corev1.Pod, phase corev1.PodPhase) int {
@@ -58,17 +49,15 @@ func eventKey(obj interface{}) (string, error) {
 	return string(accessor.GetUID()), nil
 }
 
-func createJobPod(qj *vkv1.Job, template *corev1.PodTemplateSpec, ix int32) *corev1.Pod {
+func createJobPod(job *vkv1.Job, template *corev1.PodTemplateSpec, ix int) *corev1.Pod {
 	templateCopy := template.DeepCopy()
-
-	prefix := fmt.Sprintf("%s-", qj.Name)
 
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: prefix,
-			Namespace:    qj.Namespace,
+			Name:      fmt.Sprintf("%s-%s-%d", job.Name, template.Name, ix),
+			Namespace: job.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(qj, helpers.JobKind),
+				*metav1.NewControllerRef(job, helpers.JobKind),
 			},
 			Labels:      templateCopy.Labels,
 			Annotations: templateCopy.Annotations,
@@ -90,25 +79,19 @@ func createJobPod(qj *vkv1.Job, template *corev1.PodTemplateSpec, ix int32) *cor
 		pod.Annotations = make(map[string]string)
 	}
 
-	pod.Annotations[kbapi.GroupNameAnnotationKey] = qj.Name
+	pod.Annotations[kbapi.GroupNameAnnotationKey] = job.Name
+
+	if len(pod.Labels) == 0 {
+		pod.Labels = make(map[string]string)
+	}
+
+	// Set pod labels for Service.
+	pod.Labels[vkv1.JobNameKey] = job.Name
+	pod.Labels[vkv1.JobNamespaceKey] = job.Namespace
 
 	// we fill the schedulerName in the pod definition with the one specified in the QJ template
-	if qj.Spec.SchedulerName != "" && pod.Spec.SchedulerName == "" {
-		pod.Spec.SchedulerName = qj.Spec.SchedulerName
+	if job.Spec.SchedulerName != "" && pod.Spec.SchedulerName == "" {
+		pod.Spec.SchedulerName = job.Spec.SchedulerName
 	}
 	return pod
-}
-
-// filterActivePods returns pods that have not terminated.
-func filterActivePods(pods []*corev1.Pod) []*corev1.Pod {
-	var result []*corev1.Pod
-	for _, p := range pods {
-		if helpers.IsPodActive(p) {
-			result = append(result, p)
-		} else {
-			glog.V(4).Infof("Ignoring inactive pod %v/%v in state %v, deletion time %v",
-				p.Namespace, p.Name, p.Status.Phase, p.DeletionTimestamp)
-		}
-	}
-	return result
 }
