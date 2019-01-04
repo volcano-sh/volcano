@@ -23,4 +23,4 @@ Follow either of the two links above to access the appropriate CLA and instructi
 
 ### Adding dependencies
 
-If your patch depends on new packages, add that package with [`godep`](https://github.com/tools/godep). Follow the [instructions to add a dependency](https://github.com/kubernetes/kubernetes/blob/master/docs/devel/development.md#godep-and-dependency-management).
+If your patch depends on new packages, add that package with [`dep`](https://github.com/golang/dep). Follow the [instructions to add a dependency](https://golang.github.io/dep/docs/daily-dep.html#adding-a-new-dependency).

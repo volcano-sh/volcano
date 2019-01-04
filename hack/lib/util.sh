@@ -429,65 +429,6 @@ kube::util::git_upstream_remote_name() {
     head -n 1 | awk '{print $1}'
 }
 
-# Ensures the current directory is a git tree for doing things like restoring or
-# validating godeps
-kube::util::create-fake-git-tree() {
-  local -r target_dir=${1:-$(pwd)}
-
-  pushd "${target_dir}" >/dev/null
-    git init >/dev/null
-    git config --local user.email "nobody@k8s.io"
-    git config --local user.name "$0"
-    git add . >/dev/null
-    git commit -q -m "Snapshot" >/dev/null
-    if (( ${KUBE_VERBOSE:-5} >= 6 )); then
-      kube::log::status "${target_dir} is now a git tree."
-    fi
-  popd >/dev/null
-}
-
-# Checks whether godep restore was run in the current GOPATH, i.e. that all referenced repos exist
-# and are checked out to the referenced rev.
-kube::util::godep_restored() {
-  local -r godeps_json=${1:-Godeps/Godeps.json}
-  local -r gopath=${2:-${GOPATH%:*}}
-  if ! which jq &>/dev/null; then
-    echo "jq not found. Please install." 1>&2
-    return 1
-  fi
-  local root
-  local old_rev=""
-  while read path rev; do
-    rev=$(echo "${rev}" | sed "s/['\"]//g") # remove quotes which are around revs sometimes
-
-    if [[ "${rev}" == "${old_rev}" ]] && [[ "${path}" == "${root}"* ]]; then
-      # avoid checking the same git/hg root again
-      continue
-    fi
-
-    root="${path}"
-    while [ "${root}" != "." -a ! -d "${gopath}/src/${root}/.git" -a ! -d "${gopath}/src/${root}/.hg" ]; do
-      root=$(dirname "${root}")
-    done
-    if [ "${root}" == "." ]; then
-      echo "No checkout of ${path} found in GOPATH \"${gopath}\"." 1>&2
-      return 1
-    fi
-    local head
-    if [ -d "${gopath}/src/${root}/.git" ]; then
-      head="$(cd "${gopath}/src/${root}" && git rev-parse HEAD)"
-    else
-      head="$(cd "${gopath}/src/${root}" && hg parent --template '{node}')"
-    fi
-    if [ "${head}" != "${rev}" ]; then
-      echo "Unexpected HEAD '${head}' at ${gopath}/src/${root}, expected '${rev}'." 1>&2
-      return 1
-    fi
-    old_rev="${rev}"
-  done < <(jq '.Deps|.[]|.ImportPath + " " + .Rev' -r < "${godeps_json}")
-  return 0
-}
-
 # Exits script if working directory is dirty. If it's run interactively in the terminal
 # the user can commit changes in a second terminal. This script will wait.
 kube::util::ensure_clean_working_dir() {
@@ -504,42 +445,6 @@ kube::util::ensure_clean_working_dir() {
   done 1>&2
 }
 
-# Ensure that the given godep version is installed and in the path
-kube::util::ensure_godep_version() {
-  GODEP_VERSION=${1:-"v79"}
-  if [[ "$(godep version 2>/dev/null)" == *"godep ${GODEP_VERSION}"* ]]; then
-    return
-  fi
-
-  kube::util::ensure-temp-dir
-  mkdir -p "${KUBE_TEMP}/go/src"
-
-  GOPATH="${KUBE_TEMP}/go" go get -d -u github.com/tools/godep
-  pushd "${KUBE_TEMP}/go/src/github.com/tools/godep" >/dev/null
-    git checkout -q "${GODEP_VERSION}"
-    GOPATH="${KUBE_TEMP}/go" go install .
-  popd >/dev/null
-
-  PATH="${KUBE_TEMP}/go/bin:${PATH}"
-  hash -r # force bash to clear PATH cache
-  godep version
-}
-
-# Ensure that none of the staging repos is checked out in the GOPATH because this
-# easily confused godep.
-kube::util::ensure_no_staging_repos_in_gopath() {
-  kube::util::ensure_single_dir_gopath
-  local error=0
-  for repo in $(ls ${KUBE_ROOT}/staging/src/k8s.io); do
-    if [ -e "${GOPATH}/src/k8s.io/${repo}" ]; then
-      echo "k8s.io/${repo} exists in GOPATH. Remove before running godep-save.sh." 1>&2
-      error=1
-    fi
-  done
-  if [ "${error}" = "1" ]; then
-    exit 1
-  fi
-}
 
 # Installs the specified go package at a particular commit.
 kube::util::go_install_from_commit() {
