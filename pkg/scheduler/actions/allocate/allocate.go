@@ -161,9 +161,11 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 
 			if assigned {
 				jobs.Push(job)
-				// Handle one pending task in each loop.
+				// Handle one assigned task in each loop.
 				break
 			}
+
+			// If current task is not assgined, try to fit all rest tasks.
 		}
 
 		// Added Queue back until no job in Queue.
