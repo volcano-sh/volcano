@@ -1,0 +1,21 @@
+apiVersion: batch.hpw.cloud/v1alpha1
+kind: Job
+metadata:
+  name: test-job
+spec:
+  minAvailable: 3
+  taskSpecs:
+  - replicas: 6
+    template:
+      metadata:
+        name: web
+      spec:
+        containers:
+        - image: nginx
+          imagePullPolicy: IfNotPresent
+          name: nginx
+          resources:
+            requests:
+              cpu: "1"
+        restartPolicy: OnFailure
+        schedulerName: kube-batch
