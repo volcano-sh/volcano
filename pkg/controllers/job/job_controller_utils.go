@@ -95,3 +95,18 @@ func createJobPod(job *vkv1.Job, template *corev1.PodTemplateSpec, ix int) *core
 	}
 	return pod
 }
+
+
+func validate(job *vkv1.Job) error {
+	tsNames := map[string]string{}
+
+	for _, ts := range job.Spec.TaskSpecs {
+		if _, found := tsNames[ts.Template.Name]; found {
+			return fmt.Errorf("duplicated TaskSpec")
+		}
+
+		tsNames[ts.Template.Name] = ts.Template.Name
+	}
+
+	return nil
+}
