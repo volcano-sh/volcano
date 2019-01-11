@@ -121,9 +121,13 @@ type PodGroupSpec struct {
 
 // PodGroupStatus represents the current state of a pod group.
 type PodGroupStatus struct {
+	// The state of PodGroup.
+	// +optional
+	State PodGroupState `json:"state,omitempty" protobuf:"bytes,1,opt,name=state,casttype=State"`
+
 	// The number of actively running pods.
 	// +optional
-	Running int32 `json:"running,omitempty" protobuf:"bytes,3,opt,name=running"`
+	Running int32 `json:"running,omitempty" protobuf:"bytes,2,opt,name=running"`
 
 	// The number of pods which reached phase Succeeded.
 	// +optional
@@ -131,10 +135,7 @@ type PodGroupStatus struct {
 
 	// The number of pods which reached phase Failed.
 	// +optional
-	Failed int32 `json:"failed,omitempty" protobuf:"bytes,3,opt,name=failed"`
-
-	// +optional
-	State PodGroupState `json:"state,omitempty" protobuf:"bytes,1,opt,name=state,casttype=State"`
+	Failed int32 `json:"failed,omitempty" protobuf:"bytes,4,opt,name=failed"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
