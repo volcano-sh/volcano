@@ -105,7 +105,7 @@ var _ = Describe("Job E2E Test", func() {
 		err = waitPodGroupPending(context, pg)
 		Expect(err).NotTo(HaveOccurred())
 
-		waitPodGroupUnschedulable(context, pg)
+		err = waitPodGroupUnschedulable(context, pg)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = deleteReplicaSet(context, replicaset.Name)
@@ -323,6 +323,50 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		err = waitTasksReadyEx(context, pg, expteced)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("Try to fit unassigned task with different resource requests in one loop", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		slot := oneCPU
+		rep := clusterSize(context, slot)
+		minMemberOverride := int32(1)
+
+		replicaset := createReplicaSet(context, "rs-1", rep-1, "nginx", slot)
+		err := waitReplicaSetReady(context, replicaset.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		_, pg := createJobEx(context, &jobSpec{
+			name: "multi-task-diff-resource-job",
+			tasks: []taskSpec{
+				{
+					img: "nginx",
+					pri: masterPriority,
+					min: 1,
+					rep: 1,
+					req: twoCPU,
+				},
+				{
+					img: "nginx",
+					pri: workerPriority,
+					min: 1,
+					rep: 1,
+					req: halfCPU,
+				},
+			},
+			minMember: &minMemberOverride,
+		})
+
+		err = waitPodGroupPending(context, pg)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = waitPodGroupUnschedulable(context, pg)
+		Expect(err).NotTo(HaveOccurred())
+
+		// task_1 has been scheduled
+		err = waitTasksReady(context, pg, int(minMemberOverride))
 		Expect(err).NotTo(HaveOccurred())
 	})
 })
