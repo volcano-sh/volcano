@@ -22,7 +22,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/kubernetes/pkg/scheduler/algorithm"
+	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 )
 
 var _ = Describe("Predicates E2E Test", func() {
@@ -41,7 +41,7 @@ var _ = Describe("Predicates E2E Test", func() {
 						{
 							MatchFields: []v1.NodeSelectorRequirement{
 								{
-									Key:      algorithm.NodeFieldSelectorKeyNodeName,
+									Key:      schedulerapi.NodeFieldSelectorKeyNodeName,
 									Operator: v1.NodeSelectorOpIn,
 									Values:   []string{nodeName},
 								},
