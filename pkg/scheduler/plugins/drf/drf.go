@@ -107,10 +107,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		return victims
 	}
 
-	if drf.args.PreemptableFnEnabled {
-		// Add Preemptable function.
-		ssn.AddPreemptableFn(preemptableFn)
-	}
+	ssn.AddPreemptableFn(drf.Name(), preemptableFn)
 
 	jobOrderFn := func(l interface{}, r interface{}) int {
 		lv := l.(*api.JobInfo)
@@ -130,10 +127,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		return 1
 	}
 
-	if drf.args.JobOrderFnEnabled {
-		// Add Job Order function.
-		ssn.AddJobOrderFn(jobOrderFn)
-	}
+	ssn.AddJobOrderFn(drf.Name(), jobOrderFn)
 
 	// Register event handlers.
 	ssn.AddEventHandler(&framework.EventHandler{

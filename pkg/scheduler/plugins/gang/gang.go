@@ -36,6 +36,10 @@ func New(args *framework.PluginArgs) framework.Plugin {
 	}
 }
 
+func (gp *gangPlugin) Name() string {
+	return "gang"
+}
+
 // readyTaskNum return the number of tasks that are ready to run.
 func readyTaskNum(job *api.JobInfo) int32 {
 	occupid := 0
@@ -102,11 +106,8 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	// TODO(k82cn): Support preempt/reclaim batch job.
-	ssn.AddReclaimableFn(preemptableFn)
-
-	if gp.args.PreemptableFnEnabled {
-		ssn.AddPreemptableFn(preemptableFn)
-	}
+	ssn.AddReclaimableFn(gp.Name(), preemptableFn)
+	ssn.AddPreemptableFn(gp.Name(), preemptableFn)
 
 	jobOrderFn := func(l, r interface{}) int {
 		lv := l.(*api.JobInfo)
@@ -144,13 +145,8 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		return 0
 	}
 
-	if gp.args.JobOrderFnEnabled {
-		ssn.AddJobOrderFn(jobOrderFn)
-	}
-
-	if gp.args.JobReadyFnEnabled {
-		ssn.AddJobReadyFn(jobReady)
-	}
+	ssn.AddJobOrderFn(gp.Name(), jobOrderFn)
+	ssn.AddJobReadyFn(gp.Name(), jobReady)
 }
 
 func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {

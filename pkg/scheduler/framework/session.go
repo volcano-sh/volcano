@@ -45,14 +45,14 @@ type Session struct {
 
 	plugins        []Plugin
 	eventHandlers  []*EventHandler
-	jobOrderFns    []api.CompareFn
-	queueOrderFns  []api.CompareFn
-	taskOrderFns   []api.CompareFn
-	predicateFns   []api.PredicateFn
-	preemptableFns []api.PreemptableFn
-	reclaimableFns []api.ReclaimableFn
-	overusedFns    []api.ValidateFn
-	jobReadyFns    []api.ValidateFn
+	jobOrderFns    map[string]api.CompareFn
+	queueOrderFns  map[string]api.CompareFn
+	taskOrderFns   map[string]api.CompareFn
+	predicateFns   map[string]api.PredicateFn
+	preemptableFns map[string]api.PreemptableFn
+	reclaimableFns map[string]api.ReclaimableFn
+	overusedFns    map[string]api.ValidateFn
+	jobReadyFns    map[string]api.ValidateFn
 }
 
 func openSession(cache cache.Cache) *Session {
@@ -62,6 +62,15 @@ func openSession(cache cache.Cache) *Session {
 		JobIndex:   map[api.JobID]*api.JobInfo{},
 		NodeIndex:  map[string]*api.NodeInfo{},
 		QueueIndex: map[api.QueueID]*api.QueueInfo{},
+
+		jobOrderFns:    map[string]api.CompareFn{},
+		queueOrderFns:  map[string]api.CompareFn{},
+		taskOrderFns:   map[string]api.CompareFn{},
+		predicateFns:   map[string]api.PredicateFn{},
+		preemptableFns: map[string]api.PreemptableFn{},
+		reclaimableFns: map[string]api.ReclaimableFn{},
+		overusedFns:    map[string]api.ValidateFn{},
+		jobReadyFns:    map[string]api.ValidateFn{},
 	}
 
 	snapshot := cache.Snapshot()
@@ -213,13 +222,15 @@ func (ssn *Session) dispatch(task *api.TaskInfo) error {
 
 func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
+	var init bool
 
 	for _, rf := range ssn.reclaimableFns {
 		candidates := rf(reclaimer, reclaimees)
-		if victims == nil {
+		if !init {
 			victims = candidates
+			init = true
 		} else {
-			intersection := []*api.TaskInfo{}
+			var intersection []*api.TaskInfo
 			// Get intersection of victims and candidates.
 			for _, v := range victims {
 				for _, c := range candidates {
@@ -256,7 +267,10 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 
 	// Update task in node.
 	if node, found := ssn.NodeIndex[reclaimee.NodeName]; found {
-		node.UpdateTask(reclaimee)
+		if err := node.UpdateTask(reclaimee); err != nil {
+			glog.Errorf("Failed to update task <%v/%v> in Session <%v>: %v",
+				reclaimee.Namespace, reclaimee.Name, ssn.UID, err)
+		}
 	}
 
 	for _, eh := range ssn.eventHandlers {
@@ -275,22 +289,28 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 		return nil
 	}
 
-	victims := ssn.preemptableFns[0](preemptor, preemptees)
-	for _, pf := range ssn.preemptableFns[1:] {
-		intersection := []*api.TaskInfo{}
+	var victims []*api.TaskInfo
+	var init bool
 
+	for _, pf := range ssn.preemptableFns {
 		candidates := pf(preemptor, preemptees)
-		// Get intersection of victims and candidates.
-		for _, v := range victims {
-			for _, c := range candidates {
-				if v.UID == c.UID {
-					intersection = append(intersection, v)
+		if !init {
+			victims = candidates
+			init = true
+		} else {
+			var intersection []*api.TaskInfo
+			// Get intersection of victims and candidates.
+			for _, v := range victims {
+				for _, c := range candidates {
+					if v.UID == c.UID {
+						intersection = append(intersection, v)
+					}
 				}
 			}
-		}
 
-		// Update victims to intersection
-		victims = intersection
+			// Update victims to intersection
+			victims = intersection
+		}
 	}
 
 	return victims
@@ -324,36 +344,36 @@ func (ssn *Session) AddEventHandler(eh *EventHandler) {
 	ssn.eventHandlers = append(ssn.eventHandlers, eh)
 }
 
-func (ssn *Session) AddJobOrderFn(cf api.CompareFn) {
-	ssn.jobOrderFns = append(ssn.jobOrderFns, cf)
+func (ssn *Session) AddJobOrderFn(name string, cf api.CompareFn) {
+	ssn.jobOrderFns[name] = cf
 }
 
-func (ssn *Session) AddQueueOrderFn(qf api.CompareFn) {
-	ssn.queueOrderFns = append(ssn.queueOrderFns, qf)
+func (ssn *Session) AddQueueOrderFn(name string, qf api.CompareFn) {
+	ssn.queueOrderFns[name] = qf
 }
 
-func (ssn *Session) AddTaskOrderFn(cf api.CompareFn) {
-	ssn.taskOrderFns = append(ssn.taskOrderFns, cf)
+func (ssn *Session) AddTaskOrderFn(name string, cf api.CompareFn) {
+	ssn.taskOrderFns[name] = cf
 }
 
-func (ssn *Session) AddPreemptableFn(cf api.PreemptableFn) {
-	ssn.preemptableFns = append(ssn.preemptableFns, cf)
+func (ssn *Session) AddPreemptableFn(name string, cf api.PreemptableFn) {
+	ssn.preemptableFns[name] = cf
 }
 
-func (ssn *Session) AddReclaimableFn(rf api.ReclaimableFn) {
-	ssn.reclaimableFns = append(ssn.reclaimableFns, rf)
+func (ssn *Session) AddReclaimableFn(name string, rf api.ReclaimableFn) {
+	ssn.reclaimableFns[name] = rf
 }
 
-func (ssn *Session) AddJobReadyFn(vf api.ValidateFn) {
-	ssn.jobReadyFns = append(ssn.jobReadyFns, vf)
+func (ssn *Session) AddJobReadyFn(name string, vf api.ValidateFn) {
+	ssn.jobReadyFns[name] = vf
 }
 
-func (ssn *Session) AddPredicateFn(pf api.PredicateFn) {
-	ssn.predicateFns = append(ssn.predicateFns, pf)
+func (ssn *Session) AddPredicateFn(name string, pf api.PredicateFn) {
+	ssn.predicateFns[name] = pf
 }
 
-func (ssn *Session) AddOverusedFn(fn api.ValidateFn) {
-	ssn.overusedFns = append(ssn.overusedFns, fn)
+func (ssn *Session) AddOverusedFn(name string, fn api.ValidateFn) {
+	ssn.overusedFns[name] = fn
 }
 
 func (ssn *Session) Overused(queue *api.QueueInfo) bool {
