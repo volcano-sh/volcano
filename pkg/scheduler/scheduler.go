@@ -17,6 +17,7 @@ limitations under the License.
 package scheduler
 
 import (
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/conf"
 	"time"
 
 	"github.com/golang/glog"
@@ -32,7 +33,7 @@ type Scheduler struct {
 	cache          schedcache.Cache
 	config         *rest.Config
 	actions        []framework.Action
-	pluginArgs     []*framework.PluginArgs
+	plugins        []conf.Tier
 	schedulerConf  string
 	schedulePeriod time.Duration
 }
@@ -63,15 +64,18 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	pc.cache.WaitForCacheSync(stopCh)
 
 	// Load configuration of scheduler
-	conf := defaultSchedulerConf
+	schedConf := defaultSchedulerConf
 	if len(pc.schedulerConf) != 0 {
-		if conf, err = pc.cache.LoadSchedulerConf(pc.schedulerConf); err != nil {
-			glog.Errorf("Failed to load scheduler configuration '%s', using default configuration: %v",
+		if schedConf, err = readSchedulerConf(pc.schedulerConf); err != nil {
+			glog.Errorf("Failed to read scheduler configuration '%s', using default configuration: %v",
 				pc.schedulerConf, err)
 		}
 	}
 
-	pc.actions, pc.pluginArgs = loadSchedulerConf(conf)
+	pc.actions, pc.plugins, err = loadSchedulerConf(schedConf)
+	if err != nil {
+		panic(err)
+	}
 
 	go wait.Until(pc.runOnce, pc.schedulePeriod, stopCh)
 }
@@ -80,7 +84,7 @@ func (pc *Scheduler) runOnce() {
 	glog.V(4).Infof("Start scheduling ...")
 	defer glog.V(4).Infof("End scheduling ...")
 
-	ssn := framework.OpenSession(pc.cache, pc.pluginArgs)
+	ssn := framework.OpenSession(pc.cache, pc.plugins)
 	defer framework.CloseSession(ssn)
 
 	for _, action := range pc.actions {

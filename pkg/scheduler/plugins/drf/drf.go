@@ -35,17 +35,14 @@ type drfAttr struct {
 }
 
 type drfPlugin struct {
-	args *framework.PluginArgs
-
 	totalResource *api.Resource
 
 	// Key is Job ID
 	jobOpts map[api.JobID]*drfAttr
 }
 
-func New(args *framework.PluginArgs) framework.Plugin {
+func New() framework.Plugin {
 	return &drfPlugin{
-		args:          args,
 		totalResource: api.EmptyResource(),
 		jobOpts:       map[api.JobID]*drfAttr{},
 	}
