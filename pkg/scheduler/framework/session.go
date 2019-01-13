@@ -318,6 +318,17 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 
 // Backoff discards a job from session, so no plugin/action handles it.
 func (ssn *Session) Backoff(job *api.JobInfo, event arbcorev1.Event, reason string) error {
+	jobErrMsg := job.FitError()
+
+	// Update podCondition for tasks Allocated and Pending before job discarded
+	for _, taskInfo := range job.TaskStatusIndex[api.Pending] {
+		ssn.TaskUnschedulable(taskInfo, arbcorev1.FailedSchedulingEvent, jobErrMsg)
+	}
+
+	for _, taskInfo := range job.TaskStatusIndex[api.Allocated] {
+		ssn.TaskUnschedulable(taskInfo, arbcorev1.FailedSchedulingEvent, jobErrMsg)
+	}
+
 	if err := ssn.cache.Backoff(job, event, reason); err != nil {
 		glog.Errorf("Failed to backoff job <%s/%s>: %v",
 			job.Namespace, job.Name, err)
@@ -335,6 +346,17 @@ func (ssn *Session) Backoff(job *api.JobInfo, event arbcorev1.Event, reason stri
 			ssn.Jobs = ssn.Jobs[:len(ssn.Jobs)-1]
 			break
 		}
+	}
+
+	return nil
+}
+
+// TaskUnschedulable updates task status
+func (ssn *Session) TaskUnschedulable(task *api.TaskInfo, event arbcorev1.Event, reason string) error {
+	if err := ssn.cache.TaskUnschedulable(task, event, reason); err != nil {
+		glog.Errorf("Failed to update unschedulable task status <%s/%s>: %v",
+			task.Namespace, task.Name, err)
+		return err
 	}
 
 	return nil

@@ -34,12 +34,14 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 
 	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/scheme"
 	arbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
 	arbcoreinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	arbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
@@ -61,8 +63,9 @@ type SchedulerCache struct {
 	podGroupInformer arbcoreinfo.PodGroupInformer
 	queueInformer    arbcoreinfo.QueueInformer
 
-	Binder  Binder
-	Evictor Evictor
+	Binder    Binder
+	Evictor   Evictor
+	TsUpdater TaskStatusUpdater
 
 	recorder record.EventRecorder
 
@@ -108,6 +111,21 @@ func (de *defaultEvictor) Evict(p *v1.Pod) error {
 		GracePeriodSeconds: &threeSecs,
 	}); err != nil {
 		glog.Errorf("Failed to evict pod <%v/%v>: %#v", p.Namespace, p.Name, err)
+		return err
+	}
+	return nil
+}
+
+// defaultTaskStatusUpdater is the default implementation of the TaskStatusUpdater interface
+type defaultTaskStatusUpdater struct {
+	kubeclient *kubernetes.Clientset
+}
+
+// Update pod with podCondition
+func (tsUpdater *defaultTaskStatusUpdater) Update(pod *v1.Pod, condition *v1.PodCondition) error {
+	glog.V(3).Infof("Updating pod condition for %s/%s to (%s==%s)", pod.Namespace, pod.Name, condition.Type, condition.Status)
+	if podutil.UpdatePodCondition(&pod.Status, condition) {
+		_, err := tsUpdater.kubeclient.CoreV1().Pods(pod.Namespace).UpdateStatus(pod)
 		return err
 	}
 	return nil
@@ -165,6 +183,8 @@ func newSchedulerCache(config *rest.Config, schedulerName string, nsAsQueue bool
 	sc.Evictor = &defaultEvictor{
 		kubeclient: sc.kubeclient,
 	}
+
+	sc.TsUpdater = &defaultTaskStatusUpdater{kubeclient: sc.kubeclient}
 
 	informerFactory := informers.NewSharedInformerFactory(sc.kubeclient, 0)
 
@@ -364,6 +384,24 @@ func (sc *SchedulerCache) Bind(taskInfo *arbapi.TaskInfo, hostname string) error
 			sc.resyncTask(task)
 		}
 	}()
+
+	return nil
+}
+
+// TaskUnschedulable updates pod status of pending task
+func (sc *SchedulerCache) TaskUnschedulable(task *api.TaskInfo, event arbcorev1.Event, reason string) error {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	pod := task.Pod.DeepCopy()
+
+	sc.recorder.Eventf(pod, v1.EventTypeWarning, string(event), reason)
+	sc.TsUpdater.Update(pod, &v1.PodCondition{
+		Type:    v1.PodScheduled,
+		Status:  v1.ConditionFalse,
+		Reason:  v1.PodReasonUnschedulable,
+		Message: reason,
+	})
 
 	return nil
 }

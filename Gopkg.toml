@@ -52,6 +52,14 @@
   name = "k8s.io/client-go"
   version = "v10.0.0"
 
+[[constraint]]
+  name = "github.com/stretchr/testify"
+  version = "1.1.4"
+
+[[override]]
+  name = "gopkg.in/fsnotify.v1"
+  source = "https://github.com/fsnotify/fsnotify.git"
+
 [[override]]
   name = "github.com/imdario/mergo"
   revision = "9316a62528ac99aaecb4e47eadd6dc8aa6533d58"

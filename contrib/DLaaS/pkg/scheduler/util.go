@@ -23,7 +23,7 @@ import (
 
 	"github.com/golang/glog"
 
-	"github.com/kubernetes-sigs/kube-batch/contrib/DLaaS/contrib/DLaaS/pkg/scheduler/framework"
+	"github.com/kubernetes-sigs/kube-batch/contrib/DLaaS/pkg/scheduler/framework"
 )
 
 var defaultSchedulerConf = map[string]string{
