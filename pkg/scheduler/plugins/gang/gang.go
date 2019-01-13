@@ -27,13 +27,10 @@ import (
 )
 
 type gangPlugin struct {
-	args *framework.PluginArgs
 }
 
-func New(args *framework.PluginArgs) framework.Plugin {
-	return &gangPlugin{
-		args: args,
-	}
+func New() framework.Plugin {
+	return &gangPlugin{}
 }
 
 func (gp *gangPlugin) Name() string {
