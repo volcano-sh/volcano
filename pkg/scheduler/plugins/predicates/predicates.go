@@ -70,7 +70,7 @@ func (pl *podLister) List(selector labels.Selector) ([]*v1.Pod, error) {
 	return pods, nil
 }
 
-func (pl *podLister) FilteredList(podFilter cache.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
+func (pl *podLister) FilteredList(podFilter algorithm.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
 	var pods []*v1.Pod
 	for _, job := range pl.session.Jobs {
 		for status, tasks := range job.TaskStatusIndex {

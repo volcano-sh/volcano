@@ -5,8 +5,8 @@ export KA_BIN=_output/bin
 export LOG_LEVEL=3
 export NUM_NODES=3
 
-dind_url=https://cdn.rawgit.com/kubernetes-sigs/kubeadm-dind-cluster/master/fixed/dind-cluster-v1.12.sh
-dind_dest=./hack/dind-cluster-v1.12.sh
+dind_url=https://cdn.rawgit.com/kubernetes-sigs/kubeadm-dind-cluster/master/fixed/dind-cluster-v1.13.sh
+dind_dest=./hack/dind-cluster-v1.13.sh
 
 if [ $(echo $RANDOM%2 | bc) -eq 1 ]
 then
@@ -31,7 +31,7 @@ nohup ${KA_BIN}/kube-batch --kubeconfig ${HOME}/.kube/config --enable-namespace-
 # clean up
 function cleanup {
     killall -9 kube-batch
-    ./hack/dind-cluster-v1.12.sh down
+    ./hack/dind-cluster-v1.13.sh down
 
     echo "===================================================================================="
     echo "=============================>>>>> Scheduler Logs <<<<<============================="
