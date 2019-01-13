@@ -24,9 +24,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
 
-	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/conf"
 )
 
 type Session struct {
@@ -42,8 +43,9 @@ type Session struct {
 	QueueIndex map[api.QueueID]*api.QueueInfo
 	Others     []*api.TaskInfo
 	Backlog    []*api.JobInfo
+	Tiers      []conf.Tier
 
-	plugins        []Plugin
+	plugins        map[string]Plugin
 	eventHandlers  []*EventHandler
 	jobOrderFns    map[string]api.CompareFn
 	queueOrderFns  map[string]api.CompareFn
@@ -63,6 +65,7 @@ func openSession(cache cache.Cache) *Session {
 		NodeIndex:  map[string]*api.NodeInfo{},
 		QueueIndex: map[api.QueueID]*api.QueueInfo{},
 
+		plugins:        map[string]Plugin{},
 		jobOrderFns:    map[string]api.CompareFn{},
 		queueOrderFns:  map[string]api.CompareFn{},
 		taskOrderFns:   map[string]api.CompareFn{},
@@ -194,7 +197,10 @@ func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
 
 	if ssn.JobReady(job) {
 		for _, task := range job.TaskStatusIndex[api.Allocated] {
-			ssn.dispatch(task)
+			if err := ssn.dispatch(task); err != nil {
+				glog.Errorf("Failed to dispatch task <%v/%v>: %v",
+					task.Namespace, task.Name, err)
+			}
 		}
 	}
 
@@ -218,34 +224,6 @@ func (ssn *Session) dispatch(task *api.TaskInfo) error {
 	}
 
 	return nil
-}
-
-func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
-	var victims []*api.TaskInfo
-	var init bool
-
-	for _, rf := range ssn.reclaimableFns {
-		candidates := rf(reclaimer, reclaimees)
-		if !init {
-			victims = candidates
-			init = true
-		} else {
-			var intersection []*api.TaskInfo
-			// Get intersection of victims and candidates.
-			for _, v := range victims {
-				for _, c := range candidates {
-					if v.UID == c.UID {
-						intersection = append(intersection, v)
-					}
-				}
-			}
-
-			// Update victims to intersection
-			victims = intersection
-		}
-	}
-
-	return victims
 }
 
 func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
@@ -284,49 +262,17 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 	return nil
 }
 
-func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
-	if len(ssn.preemptableFns) == 0 {
-		return nil
-	}
-
-	var victims []*api.TaskInfo
-	var init bool
-
-	for _, pf := range ssn.preemptableFns {
-		candidates := pf(preemptor, preemptees)
-		if !init {
-			victims = candidates
-			init = true
-		} else {
-			var intersection []*api.TaskInfo
-			// Get intersection of victims and candidates.
-			for _, v := range victims {
-				for _, c := range candidates {
-					if v.UID == c.UID {
-						intersection = append(intersection, v)
-					}
-				}
-			}
-
-			// Update victims to intersection
-			victims = intersection
-		}
-	}
-
-	return victims
-}
-
 // Backoff discards a job from session, so no plugin/action handles it.
-func (ssn *Session) Backoff(job *api.JobInfo, event arbcorev1.Event, reason string) error {
+func (ssn *Session) Backoff(job *api.JobInfo, event kbv1.Event, reason string) error {
 	jobErrMsg := job.FitError()
 
 	// Update podCondition for tasks Allocated and Pending before job discarded
 	for _, taskInfo := range job.TaskStatusIndex[api.Pending] {
-		ssn.TaskUnschedulable(taskInfo, arbcorev1.FailedSchedulingEvent, jobErrMsg)
+		ssn.TaskUnschedulable(taskInfo, kbv1.FailedSchedulingEvent, jobErrMsg)
 	}
 
 	for _, taskInfo := range job.TaskStatusIndex[api.Allocated] {
-		ssn.TaskUnschedulable(taskInfo, arbcorev1.FailedSchedulingEvent, jobErrMsg)
+		ssn.TaskUnschedulable(taskInfo, kbv1.FailedSchedulingEvent, jobErrMsg)
 	}
 
 	if err := ssn.cache.Backoff(job, event, reason); err != nil {
@@ -352,7 +298,7 @@ func (ssn *Session) Backoff(job *api.JobInfo, event arbcorev1.Event, reason stri
 }
 
 // TaskUnschedulable updates task status
-func (ssn *Session) TaskUnschedulable(task *api.TaskInfo, event arbcorev1.Event, reason string) error {
+func (ssn *Session) TaskUnschedulable(task *api.TaskInfo, event kbv1.Event, reason string) error {
 	if err := ssn.cache.TaskUnschedulable(task, event, reason); err != nil {
 		glog.Errorf("Failed to update unschedulable task status <%s/%s>: %v",
 			task.Namespace, task.Name, err)
@@ -364,124 +310,6 @@ func (ssn *Session) TaskUnschedulable(task *api.TaskInfo, event arbcorev1.Event,
 
 func (ssn *Session) AddEventHandler(eh *EventHandler) {
 	ssn.eventHandlers = append(ssn.eventHandlers, eh)
-}
-
-func (ssn *Session) AddJobOrderFn(name string, cf api.CompareFn) {
-	ssn.jobOrderFns[name] = cf
-}
-
-func (ssn *Session) AddQueueOrderFn(name string, qf api.CompareFn) {
-	ssn.queueOrderFns[name] = qf
-}
-
-func (ssn *Session) AddTaskOrderFn(name string, cf api.CompareFn) {
-	ssn.taskOrderFns[name] = cf
-}
-
-func (ssn *Session) AddPreemptableFn(name string, cf api.PreemptableFn) {
-	ssn.preemptableFns[name] = cf
-}
-
-func (ssn *Session) AddReclaimableFn(name string, rf api.ReclaimableFn) {
-	ssn.reclaimableFns[name] = rf
-}
-
-func (ssn *Session) AddJobReadyFn(name string, vf api.ValidateFn) {
-	ssn.jobReadyFns[name] = vf
-}
-
-func (ssn *Session) AddPredicateFn(name string, pf api.PredicateFn) {
-	ssn.predicateFns[name] = pf
-}
-
-func (ssn *Session) AddOverusedFn(name string, fn api.ValidateFn) {
-	ssn.overusedFns[name] = fn
-}
-
-func (ssn *Session) Overused(queue *api.QueueInfo) bool {
-	for _, of := range ssn.overusedFns {
-		if of(queue) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func (ssn *Session) JobReady(obj interface{}) bool {
-	for _, jrf := range ssn.jobReadyFns {
-		if !jrf(obj) {
-			return false
-		}
-	}
-
-	return true
-}
-
-func (ssn *Session) JobOrderFn(l, r interface{}) bool {
-	for _, jof := range ssn.jobOrderFns {
-		if j := jof(l, r); j != 0 {
-			return j < 0
-		}
-	}
-
-	// If no job order funcs, order job by UID.
-	lv := l.(*api.JobInfo)
-	rv := r.(*api.JobInfo)
-
-	if lv.CreationTimestamp.Equal(&rv.CreationTimestamp) {
-		return lv.UID < rv.UID
-	}
-
-	return lv.CreationTimestamp.Before(&rv.CreationTimestamp)
-
-}
-
-func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
-	for _, qof := range ssn.queueOrderFns {
-		if j := qof(l, r); j != 0 {
-			return j < 0
-		}
-	}
-
-	// If no queue order funcs, order queue by UID.
-	lv := l.(*api.QueueInfo)
-	rv := r.(*api.QueueInfo)
-
-	return lv.UID < rv.UID
-}
-
-func (ssn *Session) TaskCompareFns(l, r interface{}) int {
-	for _, tof := range ssn.taskOrderFns {
-		if j := tof(l, r); j != 0 {
-			return j
-		}
-	}
-
-	return 0
-}
-
-func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
-	if res := ssn.TaskCompareFns(l, r); res != 0 {
-		return res < 0
-	}
-
-	// If no task order funcs, order task by UID.
-	lv := l.(*api.TaskInfo)
-	rv := r.(*api.TaskInfo)
-
-	return lv.UID < rv.UID
-}
-
-func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
-	for _, pfn := range ssn.predicateFns {
-		err := pfn(task, node)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 func (ssn Session) String() string {

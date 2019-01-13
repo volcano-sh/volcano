@@ -32,13 +32,10 @@ import (
 )
 
 type predicatesPlugin struct {
-	args *framework.PluginArgs
 }
 
-func New(args *framework.PluginArgs) framework.Plugin {
-	return &predicatesPlugin{
-		args: args,
-	}
+func New() framework.Plugin {
+	return &predicatesPlugin{}
 }
 
 func (pp *predicatesPlugin) Name() string {

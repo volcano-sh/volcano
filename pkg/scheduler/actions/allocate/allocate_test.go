@@ -18,6 +18,7 @@ package allocate
 
 import (
 	"fmt"
+
 	"reflect"
 	"sync"
 	"testing"
@@ -28,9 +29,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/conf"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/drf"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/proportion"
@@ -73,7 +75,7 @@ func buildPod(ns, n, nn string, p v1.PodPhase, req v1.ResourceList, groupName st
 			Namespace: ns,
 			Labels:    labels,
 			Annotations: map[string]string{
-				arbcorev1.GroupNameAnnotationKey: groupName,
+				kbv1.GroupNameAnnotationKey: groupName,
 			},
 		},
 		Status: v1.PodStatus{
@@ -134,15 +136,15 @@ func TestAllocate(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		podGroups []*arbcorev1.PodGroup
+		podGroups []*kbv1.PodGroup
 		pods      []*v1.Pod
 		nodes     []*v1.Node
-		queues    []*arbcorev1.Queue
+		queues    []*kbv1.Queue
 		expected  map[string]string
 	}{
 		{
 			name: "one Job with two Pods on one node",
-			podGroups: []*arbcorev1.PodGroup{
+			podGroups: []*kbv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
@@ -157,12 +159,12 @@ func TestAllocate(t *testing.T) {
 			nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2", "4Gi"), make(map[string]string)),
 			},
-			queues: []*arbcorev1.Queue{
+			queues: []*kbv1.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "c1",
 					},
-					Spec: arbcorev1.QueueSpec{
+					Spec: kbv1.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -174,7 +176,7 @@ func TestAllocate(t *testing.T) {
 		},
 		{
 			name: "two Jobs on one node",
-			podGroups: []*arbcorev1.PodGroup{
+			podGroups: []*kbv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
@@ -202,12 +204,12 @@ func TestAllocate(t *testing.T) {
 			nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2", "4G"), make(map[string]string)),
 			},
-			queues: []*arbcorev1.Queue{
+			queues: []*kbv1.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "c1",
 					},
-					Spec: arbcorev1.QueueSpec{
+					Spec: kbv1.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -215,7 +217,7 @@ func TestAllocate(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "c2",
 					},
-					Spec: arbcorev1.QueueSpec{
+					Spec: kbv1.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -256,16 +258,18 @@ func TestAllocate(t *testing.T) {
 			schedulerCache.AddQueue(q)
 		}
 
-		drfArgs := &framework.PluginArgs{
-			Name:                 "drf",
-			PreemptableFnEnabled: true,
-			JobOrderFnEnabled:    true,
-		}
-		proArgs := &framework.PluginArgs{
-			Name: "proportion",
-		}
-
-		ssn := framework.OpenSession(schedulerCache, []*framework.PluginArgs{proArgs, drfArgs})
+		ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+			{
+				Plugins: []conf.PluginOption{
+					{
+						Name: "drf",
+					},
+					{
+						Name: "proportion",
+					},
+				},
+			},
+		})
 		defer framework.CloseSession(ssn)
 
 		allocate.Execute(ssn)

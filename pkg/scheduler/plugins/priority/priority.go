@@ -23,13 +23,10 @@ import (
 )
 
 type priorityPlugin struct {
-	args *framework.PluginArgs
 }
 
-func New(args *framework.PluginArgs) framework.Plugin {
-	return &priorityPlugin{
-		args: args,
-	}
+func New() framework.Plugin {
+	return &priorityPlugin{}
 }
 
 func (pp *priorityPlugin) Name() string {
