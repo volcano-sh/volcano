@@ -21,12 +21,16 @@ import (
 	"reflect"
 	"testing"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 
+	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func nodesEqual(l, r map[string]*api.NodeInfo) bool {
@@ -233,4 +237,38 @@ func TestAddNode(t *testing.T) {
 				i, test.expected, cache)
 		}
 	}
+}
+
+func TestTaskUnschedulable(t *testing.T) {
+	pod := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"),
+		[]metav1.OwnerReference{}, make(map[string]string))
+	taskInfo := api.NewTaskInfo(pod)
+	jobInfo := api.NewJobInfo("job_id")
+	jobInfo.AddTaskInfo(taskInfo)
+
+	tsUpdater := new(TaskStatusUpdaterMock)
+
+	tsUpdater.On("Update", taskInfo.Pod, mock.Anything).Return(nil)
+
+	cache := &SchedulerCache{
+		Nodes:     make(map[string]*api.NodeInfo),
+		Jobs:      make(map[api.JobID]*api.JobInfo),
+		TsUpdater: tsUpdater,
+		recorder:  record.NewFakeRecorder(100),
+	}
+
+	result := cache.TaskUnschedulable(taskInfo, arbcorev1.FailedSchedulingEvent, jobInfo.FitError())
+	assert.Nil(t, result)
+
+	tsUpdater.AssertExpectations(t)
+
+}
+
+type TaskStatusUpdaterMock struct {
+	mock.Mock
+}
+
+func (m *TaskStatusUpdaterMock) Update(pod *v1.Pod, condition *v1.PodCondition) error {
+	args := m.Called(pod, condition)
+	return args.Error(0)
 }

@@ -142,6 +142,8 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 					//store information about missing resources
 					job.NodesFitDelta[node.Name] = node.Idle.Clone()
 					job.NodesFitDelta[node.Name].FitDelta(task.Resreq)
+					glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s> with limited resources",
+						task.Namespace, task.Name, node.Name)
 				}
 
 				// Allocate releasing resource to the task if any.
