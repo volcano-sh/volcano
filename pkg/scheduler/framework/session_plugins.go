@@ -32,11 +32,11 @@ func (ssn *Session) AddTaskOrderFn(name string, cf api.CompareFn) {
 	ssn.taskOrderFns[name] = cf
 }
 
-func (ssn *Session) AddPreemptableFn(name string, cf api.PreemptableFn) {
+func (ssn *Session) AddPreemptableFn(name string, cf api.EvictableFn) {
 	ssn.preemptableFns[name] = cf
 }
 
-func (ssn *Session) AddReclaimableFn(name string, rf api.ReclaimableFn) {
+func (ssn *Session) AddReclaimableFn(name string, rf api.EvictableFn) {
 	ssn.reclaimableFns[name] = rf
 }
 
