@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -116,6 +116,14 @@ func (fb *fakeBinder) Bind(p *v1.Pod, hostname string) error {
 
 	fb.c <- key
 
+	return nil
+}
+
+type fakeTaskStatusUpdater struct {
+}
+
+func (ftsu *fakeTaskStatusUpdater) Update(pod *v1.Pod, podCondition *v1.PodCondition) error {
+	// do nothing here
 	return nil
 }
 
@@ -227,10 +235,11 @@ func TestAllocate(t *testing.T) {
 			c:     make(chan string),
 		}
 		schedulerCache := &cache.SchedulerCache{
-			Nodes:  make(map[string]*api.NodeInfo),
-			Jobs:   make(map[api.JobID]*api.JobInfo),
-			Queues: make(map[api.QueueID]*api.QueueInfo),
-			Binder: binder,
+			Nodes:     make(map[string]*api.NodeInfo),
+			Jobs:      make(map[api.JobID]*api.JobInfo),
+			Queues:    make(map[api.QueueID]*api.QueueInfo),
+			Binder:    binder,
+			TsUpdater: &fakeTaskStatusUpdater{},
 		}
 		for _, node := range test.nodes {
 			schedulerCache.AddNode(node)

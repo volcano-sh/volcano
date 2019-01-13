@@ -24,8 +24,9 @@ import (
 type Event string
 
 const (
-	EvictEvent         Event = "Evict"
-	UnschedulableEvent Event = "Unschedulable"
+	EvictEvent            Event = "Evict"
+	UnschedulableEvent    Event = "Unschedulable"
+	FailedSchedulingEvent Event = "FailedScheduling"
 )
 
 // PodGroupPhase is the phase of a pod group at the current time.
