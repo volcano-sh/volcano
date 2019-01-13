@@ -38,11 +38,3 @@ type Plugin interface {
 	OnSessionOpen(ssn *Session)
 	OnSessionClose(ssn *Session)
 }
-
-type PluginArgs struct {
-	Name                 string
-	PreemptableFnEnabled bool
-	JobOrderFnEnabled    bool
-	TaskOrderFnEnabled   bool
-	JobReadyFnEnabled    bool
-}

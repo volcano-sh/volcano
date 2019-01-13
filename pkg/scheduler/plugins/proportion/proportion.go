@@ -25,7 +25,6 @@ import (
 )
 
 type proportionPlugin struct {
-	args          *framework.PluginArgs
 	totalResource *api.Resource
 	queueOpts     map[api.QueueID]*queueAttr
 }
@@ -41,9 +40,8 @@ type queueAttr struct {
 	request   *api.Resource
 }
 
-func New(args *framework.PluginArgs) framework.Plugin {
+func New() framework.Plugin {
 	return &proportionPlugin{
-		args:          args,
 		totalResource: api.EmptyResource(),
 		queueOpts:     map[api.QueueID]*queueAttr{},
 	}
