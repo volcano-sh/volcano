@@ -17,10 +17,9 @@ limitations under the License.
 package cache
 
 import (
-	"k8s.io/api/core/v1"
-
 	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	v1 "k8s.io/api/core/v1"
 )
 
 // Cache collects pods/nodes/queues information
@@ -47,6 +46,9 @@ type Cache interface {
 
 	// Backoff puts job in backlog for a while.
 	Backoff(job *api.JobInfo, event arbcorev1.Event, reason string) error
+
+	// TaskUnschedulable updates pod status of pending task
+	TaskUnschedulable(task *api.TaskInfo, event arbcorev1.Event, reason string) error
 }
 
 type Binder interface {
@@ -55,4 +57,9 @@ type Binder interface {
 
 type Evictor interface {
 	Evict(pod *v1.Pod) error
+}
+
+// TaskStatusUpdater updates pod with given PodCondition
+type TaskStatusUpdater interface {
+	Update(pod *v1.Pod, podCondition *v1.PodCondition) error
 }
