@@ -60,11 +60,12 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.Kubeconfig, "kubeconfig", s.Kubeconfig, "Path to kubeconfig file with authorization and master location information")
 	// kube-batch will ignore pods with scheduler names other than specified with the option
 	fs.StringVar(&s.SchedulerName, "scheduler-name", "kube-batch", "kube-batch will handle pods with the scheduler-name")
-	fs.StringVar(&s.SchedulerConf, "scheduler-conf", "", "The namespace and name of ConfigMap for scheduler configuration")
+	fs.StringVar(&s.SchedulerConf, "scheduler-conf", "", "The absolute path of scheduler configuration file")
 	fs.StringVar(&s.SchedulePeriod, "schedule-period", "1s", "The period between each scheduling cycle")
 	fs.StringVar(&s.DefaultQueue, "default-queue", "", "The name of the queue to fall-back to instead of namespace name")
-	fs.BoolVar(&s.EnableLeaderElection, "leader-elect", s.EnableLeaderElection, "Start a leader election client and gain leadership before "+
-		"executing the main loop. Enable this when running replicated kube-batch for high availability")
+	fs.BoolVar(&s.EnableLeaderElection, "leader-elect", s.EnableLeaderElection,
+		"Start a leader election client and gain leadership before "+
+			"executing the main loop. Enable this when running replicated kube-batch for high availability")
 	fs.BoolVar(&s.NamespaceAsQueue, "enable-namespace-as-queue", true, "Make Namespace as Queue with weight one, "+
 		"but kube-batch will not handle Queue CRD anymore")
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
