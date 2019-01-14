@@ -30,10 +30,70 @@ spec:
           description: Specification of the desired behavior of a cron job, including
             the minAvailable
           properties:
+            input:
+              description: The volume mount for input of Job
+              properties:
+                claim:
+                  description: VolumeClaim defines the PVC used by the VolumeMount.
+                  type: object
+                mountPath:
+                  description: Path within the container at which the volume should
+                    be mounted.  Must not contain ':'.
+                  type: string
+                mountPropagation:
+                  description: mountPropagation determines how mounts are propagated
+                    from the host to container and the other way around. When not
+                    set, MountPropagationNone is used. This field is beta in 1.10.
+                  type: string
+                name:
+                  description: This must match the Name of a Volume.
+                  type: string
+                readOnly:
+                  description: Mounted read-only if true, read-write otherwise (false
+                    or unspecified). Defaults to false.
+                  type: boolean
+                subPath:
+                  description: Path within the volume from which the container's volume
+                    should be mounted. Defaults to "" (volume's root).
+                  type: string
+              required:
+              - name
+              - mountPath
+              type: object
             minAvailable:
               description: The minimal available pods to run for this Job
               format: int32
               type: integer
+            output:
+              description: The volume mount for output of Job
+              properties:
+                claim:
+                  description: VolumeClaim defines the PVC used by the VolumeMount.
+                  type: object
+                mountPath:
+                  description: Path within the container at which the volume should
+                    be mounted.  Must not contain ':'.
+                  type: string
+                mountPropagation:
+                  description: mountPropagation determines how mounts are propagated
+                    from the host to container and the other way around. When not
+                    set, MountPropagationNone is used. This field is beta in 1.10.
+                  type: string
+                name:
+                  description: This must match the Name of a Volume.
+                  type: string
+                readOnly:
+                  description: Mounted read-only if true, read-write otherwise (false
+                    or unspecified). Defaults to false.
+                  type: boolean
+                subPath:
+                  description: Path within the volume from which the container's volume
+                    should be mounted. Defaults to "" (volume's root).
+                  type: string
+              required:
+              - name
+              - mountPath
+              type: object
             policies:
               description: Specifies the default lifecycle of tasks
               items:
@@ -56,9 +116,12 @@ spec:
               description: SchedulerName is the default value of `taskSpecs.template.spec.schedulerName`.
               type: string
             taskSpecs:
-              description: TaskSpecs specifies the task specification of Job
+              description: Tasks specifies the task specification of Job
               items:
                 properties:
+                  name:
+                    description: Name specifies the name of tasks
+                    type: string
                   policies:
                     description: Specifies the lifecycle of task
                     items:
@@ -84,10 +147,6 @@ spec:
                       in Job
                     format: int32
                     type: integer
-                  selector:
-                    description: A label query over pods that should match the pod
-                      count. Normally, the system sets this field for you.
-                    type: object
                   template:
                     description: Specifies the pod that will be created for this TaskSpec
                       when executing a Job
