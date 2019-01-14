@@ -219,7 +219,7 @@ func (in *VolumeSpec) DeepCopyInto(out *VolumeSpec) {
 	in.VolumeMount.DeepCopyInto(&out.VolumeMount)
 	if in.VolumeClaim != nil {
 		in, out := &in.VolumeClaim, &out.VolumeClaim
-		*out = new(corev1.PersistentVolumeClaim)
+		*out = new(corev1.PersistentVolumeClaimSpec)
 		(*in).DeepCopyInto(*out)
 	}
 	return
