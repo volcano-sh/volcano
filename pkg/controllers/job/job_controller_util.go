@@ -25,7 +25,7 @@ import (
 func validate(job *vkapi.Job) error {
 	tsNames := map[string]string{}
 
-	for _, ts := range job.Spec.TaskSpecs {
+	for _, ts := range job.Spec.Tasks {
 		if _, found := tsNames[ts.Template.Name]; found {
 			return fmt.Errorf("duplicated TaskSpec")
 		}
