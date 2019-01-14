@@ -313,7 +313,7 @@ func (cc *Controller) manageJob(job *vkapi.Job, podsMap map[string]map[string]*v
 
 	var running, pending, succeeded, failed int32
 
-	for _, ts := range job.Spec.TaskSpecs {
+	for _, ts := range job.Spec.Tasks {
 		name := ts.Template.Name
 		// TODO(k82cn): the template name should be set in default func.
 		if len(name) == 0 {

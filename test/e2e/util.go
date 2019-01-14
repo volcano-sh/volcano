@@ -306,7 +306,7 @@ func createJob(context *context, jobSpec *jobSpec) (*vkv1.Job) {
 			},
 		}
 
-		job.Spec.TaskSpecs = append(job.Spec.TaskSpecs, ts)
+		job.Spec.Tasks = append(job.Spec.Tasks, ts)
 
 		min += task.min
 	}

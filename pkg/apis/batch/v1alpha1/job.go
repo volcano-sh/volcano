@@ -17,7 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -47,31 +47,59 @@ type JobSpec struct {
 	// +optional
 	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
 
-	// TaskSpecs specifies the task specification of Job
+	// The volume mount for input of Job
+	Input *VolumeSpec `json:"input,omitempty" protobuf:"bytes,3,opt,name=input"`
+
+	// The volume mount for output of Job
+	Output *VolumeSpec `json:"output,omitempty" protobuf:"bytes,4,opt,name=output"`
+
+	// Tasks specifies the task specification of Job
 	// +optional
-	TaskSpecs []TaskSpec `json:"taskSpecs,omitempty" protobuf:"bytes,3,opt,name=taskSpecs"`
+	Tasks []TaskSpec `json:"taskSpecs,omitempty" protobuf:"bytes,5,opt,name=taskSpecs"`
 
 	// Specifies the default lifecycle of tasks
 	// +optional
-	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,4,opt,name=policies"`
+	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,6,opt,name=policies"`
+}
+
+// VolumeSpec defines the specification of Volume, e.g. PVC
+type VolumeSpec struct {
+	v1.VolumeMount `json:",inline"`
+
+	// VolumeClaim defines the PVC used by the VolumeMount.
+	VolumeClaim *v1.PersistentVolumeClaim `json:"claim,omitempty" protobuf:"bytes,1,opt,name=claim"`
 }
 
 // Event represent the phase of Job, e.g. pod-failed.
 type Event string
 
 const (
-	PodFailed        Event = "PodFailed"
-	PodEvicted       Event = "PodEvicted"
-	JobUnschedulable Event = "Unschedulable"
+	// AllEvent means all event
+	AllEvents             Event = "*"
+	// PodFailedEvent is triggered if Pod was failed
+	PodFailedEvent        Event = "PodFailed"
+	// PodEvictedEvent is triggered if Pod was deleted
+	PodEvictedEvent       Event = "PodEvicted"
+	// JobUnschedulableEvent is triggered if part of pod can be scheduled
+	// when gang-scheduling enabled
+	JobUnschedulableEvent Event = "Unschedulable"
 )
 
 // Action is the action that Job controller will take according to the event.
 type Action string
 
 const (
-	AbortJob    Action = "AbortJob"
-	RestartJob  Action = "RestartJob"
-	RestartTask Action = "RestartTask"
+	// AbortJobAction if this action is set, the whole job will be aborted:
+	// all Pod of Job will be evicted, and no Pod will be recreated
+	AbortJobAction     Action = "AbortJob"
+	// RestartJobAction if this action is set, the whole job will be restarted
+	RestartJobAction   Action = "RestartJob"
+	// RestartTaskAction if this action is set, only the task will be restarted; default action.
+	// This action can not work togther with job level events, e.g. JobUnschedulable
+	RestartTaskAction  Action = "RestartTask"
+	// TerminateJobAction if this action is set, the whole job wil be terminated
+	// and can not be resumed: all Pod of Job will be evicted, and no Pod will be recreated.
+	TerminateJobAction Action = "TerminateJob"
 )
 
 // LifecyclePolicy specifies the lifecycle and error handling of task and job.
@@ -96,10 +124,8 @@ type LifecyclePolicy struct {
 
 // TaskSpec specifies the task specification of Job
 type TaskSpec struct {
-	// A label query over pods that should match the pod count.
-	// Normally, the system sets this field for you.
-	// +optional
-	Selector *metav1.LabelSelector `json:"selector,omitempty" protobuf:"bytes,1,opt,name=selector"`
+	// Name specifies the name of tasks
+	Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
 
 	// Replicas specifies the replicas of this TaskSpec in Job
 	Replicas int32 `json:"replicas,omitempty" protobuf:"bytes,2,opt,name=replicas"`
@@ -116,14 +142,16 @@ type TaskSpec struct {
 type JobPhase string
 
 const (
-	Pending       JobPhase = "Pending"
-	Aborted       JobPhase = "Aborted"
-	Running       JobPhase = "Running"
-	Restarting    JobPhase = "Restarting"
-	Completed     JobPhase = "Completed"
-	Failed        JobPhase = "Failed"
-	Error         JobPhase = "Error"
-	Unschedulable JobPhase = "Unschedulable"
+	// Pending is the phase that job is pending in the queue, waiting for scheduling decision
+	Pending     JobPhase = "Pending"
+	// Aborted is the phase that job is aborted by user or error handling
+	Aborted     JobPhase = "Aborted"
+	// Running is the phase that minimal available tasks of Job are running
+	Running     JobPhase = "Running"
+	// Completed is the phase that all tasks of Job are completed successfully
+	Completed   JobPhase = "Completed"
+	// Teriminated is the phase that the job is finished unexpected, e.g. events
+	Teriminated JobPhase = "Terminated"
 )
 
 // JobConditionType is a valid value for JobCondition.Type
