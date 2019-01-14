@@ -67,7 +67,7 @@ type VolumeSpec struct {
 	v1.VolumeMount `json:",inline"`
 
 	// VolumeClaim defines the PVC used by the VolumeMount.
-	VolumeClaim *v1.PersistentVolumeClaim `json:"claim,omitempty" protobuf:"bytes,1,opt,name=claim"`
+	VolumeClaim *v1.PersistentVolumeClaimSpec `json:"claim,omitempty" protobuf:"bytes,1,opt,name=claim"`
 }
 
 // Event represent the phase of Job, e.g. pod-failed.
@@ -75,11 +75,11 @@ type Event string
 
 const (
 	// AllEvent means all event
-	AllEvents             Event = "*"
+	AllEvents Event = "*"
 	// PodFailedEvent is triggered if Pod was failed
-	PodFailedEvent        Event = "PodFailed"
+	PodFailedEvent Event = "PodFailed"
 	// PodEvictedEvent is triggered if Pod was deleted
-	PodEvictedEvent       Event = "PodEvicted"
+	PodEvictedEvent Event = "PodEvicted"
 	// JobUnschedulableEvent is triggered if part of pod can be scheduled
 	// when gang-scheduling enabled
 	JobUnschedulableEvent Event = "Unschedulable"
@@ -91,12 +91,12 @@ type Action string
 const (
 	// AbortJobAction if this action is set, the whole job will be aborted:
 	// all Pod of Job will be evicted, and no Pod will be recreated
-	AbortJobAction     Action = "AbortJob"
+	AbortJobAction Action = "AbortJob"
 	// RestartJobAction if this action is set, the whole job will be restarted
-	RestartJobAction   Action = "RestartJob"
+	RestartJobAction Action = "RestartJob"
 	// RestartTaskAction if this action is set, only the task will be restarted; default action.
 	// This action can not work togther with job level events, e.g. JobUnschedulable
-	RestartTaskAction  Action = "RestartTask"
+	RestartTaskAction Action = "RestartTask"
 	// TerminateJobAction if this action is set, the whole job wil be terminated
 	// and can not be resumed: all Pod of Job will be evicted, and no Pod will be recreated.
 	TerminateJobAction Action = "TerminateJob"
@@ -143,13 +143,15 @@ type JobPhase string
 
 const (
 	// Pending is the phase that job is pending in the queue, waiting for scheduling decision
-	Pending     JobPhase = "Pending"
+	Pending JobPhase = "Pending"
 	// Aborted is the phase that job is aborted by user or error handling
-	Aborted     JobPhase = "Aborted"
+	Aborted JobPhase = "Aborted"
 	// Running is the phase that minimal available tasks of Job are running
-	Running     JobPhase = "Running"
+	Running JobPhase = "Running"
+	// Restarting is the phase that the Job is restarting
+	Restarting JobPhase = "Restarting"
 	// Completed is the phase that all tasks of Job are completed successfully
-	Completed   JobPhase = "Completed"
+	Completed JobPhase = "Completed"
 	// Teriminated is the phase that the job is finished unexpected, e.g. events
 	Teriminated JobPhase = "Terminated"
 )
