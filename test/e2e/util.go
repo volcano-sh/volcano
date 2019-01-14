@@ -47,6 +47,7 @@ import (
 
 var oneMinute = 1 * time.Minute
 
+var halfCPU = v1.ResourceList{"cpu": resource.MustParse("500m")}
 var oneCPU = v1.ResourceList{"cpu": resource.MustParse("1000m")}
 var twoCPU = v1.ResourceList{"cpu": resource.MustParse("2000m")}
 var threeCPU = v1.ResourceList{"cpu": resource.MustParse("3000m")}
@@ -259,6 +260,7 @@ type jobSpec struct {
 	namespace string
 	queue     string
 	tasks     []taskSpec
+	minMember *int32
 }
 
 func getNS(context *context, job *jobSpec) string {
@@ -326,6 +328,10 @@ func createJobEx(context *context, job *jobSpec) ([]*batchv1.Job, *arbv1.PodGrou
 			MinMember: min,
 			Queue:     job.queue,
 		},
+	}
+
+	if job.minMember != nil {
+		pg.Spec.MinMember = *job.minMember
 	}
 
 	podgroup, err := context.karclient.Scheduling().PodGroups(pg.Namespace).Create(pg)
