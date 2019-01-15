@@ -83,6 +83,11 @@ const (
 	// JobUnschedulableEvent is triggered if part of pod can be scheduled
 	// when gang-scheduling enabled
 	JobUnschedulableEvent Event = "Unschedulable"
+
+	// OutOfSyncEvent is triggered if Pod/Job were updated
+	OutOfSyncEvent Event = "OutOfSync"
+	// CommandIssuedEvent is triggered if a command is raised by user
+	CommandIssuedEvent Event = "CommandIssued"
 )
 
 // Action is the action that Job controller will take according to the event.
@@ -100,6 +105,11 @@ const (
 	// TerminateJobAction if this action is set, the whole job wil be terminated
 	// and can not be resumed: all Pod of Job will be evicted, and no Pod will be recreated.
 	TerminateJobAction Action = "TerminateJob"
+
+	// ResumeJobAction is the action to resume an aborted job.
+	ResumeJobAction Action = "ResumeJob"
+	// SyncJobAction is the action to sync Job/Pod status.
+	SyncJobAction Action = "SyncJob"
 )
 
 // LifecyclePolicy specifies the lifecycle and error handling of task and job.
@@ -112,7 +122,6 @@ type LifecyclePolicy struct {
 
 	// The Event recorded by scheduler; the controller takes actions
 	// according to this Event.
-	// One of "PodFailed", "Unschedulable".
 	// +optional
 	Event Event `json:"event,omitempty" protobuf:"bytes,2,opt,name=event"`
 
@@ -144,14 +153,18 @@ type JobPhase string
 const (
 	// Pending is the phase that job is pending in the queue, waiting for scheduling decision
 	Pending JobPhase = "Pending"
+	// Aborting is the phase that job is aborted, waiting for releasing pods
+	Aborting JobPhase = "Aborting"
 	// Aborted is the phase that job is aborted by user or error handling
 	Aborted JobPhase = "Aborted"
 	// Running is the phase that minimal available tasks of Job are running
 	Running JobPhase = "Running"
-	// Restarting is the phase that the Job is restarting
+	// Restarting is the phase that the Job is restarted, waiting for pod releasing and recreating
 	Restarting JobPhase = "Restarting"
 	// Completed is the phase that all tasks of Job are completed successfully
 	Completed JobPhase = "Completed"
+	// Terminating is the phase that the Job is terminated, waiting for releasing pods
+	Terminating JobPhase = "Terminating"
 	// Teriminated is the phase that the job is finished unexpected, e.g. events
 	Teriminated JobPhase = "Terminated"
 )

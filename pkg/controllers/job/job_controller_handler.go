@@ -22,11 +22,10 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
 
 	vkapi "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
-	"hpw.cloud/volcano/pkg/apis/helpers"
+	"hpw.cloud/volcano/pkg/controllers/job/state"
 )
 
 func (cc *Controller) addJob(obj interface{}) {
@@ -36,7 +35,10 @@ func (cc *Controller) addJob(obj interface{}) {
 		return
 	}
 
-	cc.enqueue(job)
+	cc.enqueue(&state.Request{
+		Event: vkapi.OutOfSyncEvent,
+		Job:   job,
+	})
 }
 
 func (cc *Controller) updateJob(oldObj, newObj interface{}) {
@@ -53,7 +55,10 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 	}
 
 	if !reflect.DeepEqual(oldJob.Spec, newJob.Spec) {
-		cc.enqueue(newJob)
+		cc.enqueue(&state.Request{
+			Event: vkapi.OutOfSyncEvent,
+			Job:   newJob,
+		})
 	}
 }
 
@@ -64,7 +69,10 @@ func (cc *Controller) deleteJob(obj interface{}) {
 		return
 	}
 
-	cc.enqueue(job)
+	cc.enqueue(&state.Request{
+		Event: vkapi.OutOfSyncEvent,
+		Job:   job,
+	})
 }
 
 func (cc *Controller) addPod(obj interface{}) {
@@ -74,7 +82,10 @@ func (cc *Controller) addPod(obj interface{}) {
 		return
 	}
 
-	cc.enqueue(pod)
+	cc.enqueue(&state.Request{
+		Event: vkapi.OutOfSyncEvent,
+		Pod:   pod,
+	})
 }
 
 func (cc *Controller) updatePod(oldObj, newObj interface{}) {
@@ -84,7 +95,10 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		return
 	}
 
-	cc.enqueue(pod)
+	cc.enqueue(&state.Request{
+		Event: vkapi.OutOfSyncEvent,
+		Pod:   pod,
+	})
 }
 
 func (cc *Controller) deletePod(obj interface{}) {
@@ -104,23 +118,15 @@ func (cc *Controller) deletePod(obj interface{}) {
 		return
 	}
 
-	jobs, err := cc.jobLister.List(labels.Everything())
-	if err != nil {
-		glog.Errorf("Failed to list Jobs for Pod %v/%v", pod.Namespace, pod.Name)
-	}
-
-	ctl := helpers.GetController(pod)
-	for _, job := range jobs {
-		if job.UID == ctl {
-			cc.enqueue(job)
-			break
-		}
-	}
+	cc.enqueue(&state.Request{
+		Event: vkapi.OutOfSyncEvent,
+		Pod:   pod,
+	})
 }
 
 func (cc *Controller) enqueue(obj interface{}) {
 	err := cc.eventQueue.Add(obj)
 	if err != nil {
-		glog.Errorf("Fail to enqueue Job to update queue, err %#v", err)
+		glog.Errorf("Fail to enqueue Job to update queue, err %v", err)
 	}
 }
