@@ -25,6 +25,7 @@ import (
 
 	versioned "hpw.cloud/volcano/pkg/client/clientset/versioned"
 	batch "hpw.cloud/volcano/pkg/client/informers/externalversions/batch"
+	bus "hpw.cloud/volcano/pkg/client/informers/externalversions/bus"
 	internalinterfaces "hpw.cloud/volcano/pkg/client/informers/externalversions/internalinterfaces"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
@@ -173,8 +174,13 @@ type SharedInformerFactory interface {
 	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
 
 	Batch() batch.Interface
+	Bus() bus.Interface
 }
 
 func (f *sharedInformerFactory) Batch() batch.Interface {
 	return batch.New(f, f.namespace, f.tweakListOptions)
+}
+
+func (f *sharedInformerFactory) Bus() bus.Interface {
+	return bus.New(f, f.namespace, f.tweakListOptions)
 }
