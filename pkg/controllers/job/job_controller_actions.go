@@ -25,15 +25,44 @@ import (
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 
 	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 
 	vkapi "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"hpw.cloud/volcano/pkg/apis/helpers"
+	"hpw.cloud/volcano/pkg/controllers/job/state"
 )
 
-func (cc *Controller) syncJob(j *vkapi.Job) error {
+func (cc *Controller) resumeJob(req *state.Request) error {
+	switch req.Reason {
+
+	}
+	return nil
+}
+
+func (cc *Controller) abortJob(req *state.Request) error {
+	switch req.Reason {
+
+	}
+	return nil
+}
+
+func (cc *Controller) terminateJob(req *state.Request) error {
+	switch req.Reason {
+
+	}
+	return nil
+}
+
+func (cc *Controller) restartJob(req *state.Request) error {
+	switch req.Reason {
+
+	}
+	return nil
+}
+
+func (cc *Controller) syncJob(req *state.Request) error {
+	j := req.Job
 	job, err := cc.jobLister.Jobs(j.Namespace).Get(j.Name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -43,48 +72,10 @@ func (cc *Controller) syncJob(j *vkapi.Job) error {
 		return err
 	}
 
-	pods, err := cc.getPodsForJob(job)
+	podsMap, err := getPodsForJob(cc.podLister, job)
 	if err != nil {
 		return err
 	}
-
-	return cc.manageJob(job, pods)
-}
-
-func (cc *Controller) getPodsForJob(job *vkapi.Job) (map[string]map[string]*v1.Pod, error) {
-	pods := map[string]map[string]*v1.Pod{}
-
-	// TODO (k82cn): optimist by cache and index of owner; add 'ControlledBy' extended interface.
-	ps, err := cc.podListr.Pods(job.Namespace).List(labels.Everything())
-	if err != nil {
-		return nil, err
-	}
-
-	for _, pod := range ps {
-		if !metav1.IsControlledBy(pod, job) {
-			continue
-		}
-		if len(pod.Annotations) == 0 {
-			glog.Errorf("The annotations of pod <%s/%s> is empty", pod.Namespace, pod.Name)
-			continue
-		}
-		tsName, found := pod.Annotations[vkapi.TaskSpecKey]
-		if found {
-			// Hash by TaskSpec.Template.Name
-			if _, exist := pods[tsName]; !exist {
-				pods[tsName] = make(map[string]*v1.Pod)
-			}
-			pods[tsName][pod.Name] = pod
-		}
-	}
-
-	return pods, nil
-}
-
-// manageJob is the core method responsible for managing the number of running
-// pods according to what is specified in the job.Spec.
-func (cc *Controller) manageJob(job *vkapi.Job, podsMap map[string]map[string]*v1.Pod) error {
-	var err error
 
 	if job.DeletionTimestamp != nil {
 		glog.Infof("Job <%s/%s> is terminating, skip management process.",
@@ -215,7 +206,7 @@ func (cc *Controller) manageJob(job *vkapi.Job, podsMap map[string]map[string]*v
 						pod.Name, job.Name, err)
 					creationErrs = append(creationErrs, err)
 				} else {
-					glog.V(3).Infof("Created Task <%d> of Job <%s/%s>",
+					glog.V(3).Infof("Created Task <%s> of Job <%s/%s>",
 						pod.Name, job.Namespace, job.Name)
 				}
 			}(pod)
@@ -242,7 +233,7 @@ func (cc *Controller) manageJob(job *vkapi.Job, podsMap map[string]map[string]*v
 						pod.Name, job.Name, err)
 					deletionErrs = append(deletionErrs, err)
 				} else {
-					glog.V(3).Infof("Deleted Task <%d> of Job <%s/%s>",
+					glog.V(3).Infof("Deleted Task <%s> of Job <%s/%s>",
 						pod.Name, job.Namespace, job.Name)
 				}
 			}(pod)
