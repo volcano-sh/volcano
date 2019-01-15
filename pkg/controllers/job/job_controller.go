@@ -17,13 +17,13 @@ limitations under the License.
 package job
 
 import (
-	"time"
+	"fmt"
 
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -43,6 +43,7 @@ import (
 	vkinfoext "hpw.cloud/volcano/pkg/client/informers/externalversions"
 	vkinfo "hpw.cloud/volcano/pkg/client/informers/externalversions/batch/v1alpha1"
 	vklister "hpw.cloud/volcano/pkg/client/listers/batch/v1alpha1"
+	"hpw.cloud/volcano/pkg/controllers/job/state"
 )
 
 // Controller the Job Controller type
@@ -62,7 +63,7 @@ type Controller struct {
 	jobSynced func() bool
 
 	// A store of pods, populated by the podController
-	podListr  corelisters.PodLister
+	podLister corelisters.PodLister
 	podSynced func() bool
 
 	// A store of pods, populated by the podController
@@ -96,13 +97,31 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.jobSynced = cc.jobInformer.Informer().HasSynced
 
 	cc.podInformer = informers.NewSharedInformerFactory(cc.kubeClients, 0).Core().V1().Pods()
-	cc.podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    cc.addPod,
-		UpdateFunc: cc.updatePod,
-		DeleteFunc: cc.deletePod,
+
+	cc.podInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			switch t := obj.(type) {
+			case *v1.Pod:
+				return helpers.ControlledByJob(t)
+			case cache.DeletedFinalStateUnknown:
+				if pod, ok := t.Obj.(*v1.Pod); ok {
+					return helpers.ControlledByJob(pod)
+				}
+				runtime.HandleError(fmt.Errorf("unable to convert object %T to *v1.Pod", obj))
+				return false
+			default:
+				runtime.HandleError(fmt.Errorf("unable to handle object %T", obj))
+				return false
+			}
+		},
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    cc.addPod,
+			UpdateFunc: cc.updatePod,
+			DeleteFunc: cc.deletePod,
+		},
 	})
 
-	cc.podListr = cc.podInformer.Lister()
+	cc.podLister = cc.podInformer.Lister()
 	cc.podSynced = cc.podInformer.Informer().HasSynced
 
 	cc.svcInformer = informers.NewSharedInformerFactory(cc.kubeClients, 0).Core().V1().Services()
@@ -112,6 +131,17 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.pgInformer = kbinfoext.NewSharedInformerFactory(cc.kbClients, 0).Scheduling().V1alpha1().PodGroups()
 	cc.pgLister = cc.pgInformer.Lister()
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
+
+	// Register actions
+	actionFns := map[vkapi.Action]state.ActionFn{
+		vkapi.ResumeJobAction:    cc.resumeJob,
+		vkapi.SyncJobAction:      cc.syncJob,
+		vkapi.AbortJobAction:     cc.abortJob,
+		vkapi.TerminateJobAction: cc.terminateJob,
+		vkapi.RestartJobAction:   cc.restartJob,
+		vkapi.RestartTaskAction:  cc.syncJob,
+	}
+	state.RegisterActions(actionFns)
 
 	return cc
 }
@@ -125,7 +155,7 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 
 	cache.WaitForCacheSync(stopCh, cc.jobSynced, cc.podSynced, cc.pgSynced, cc.svcSynced)
 
-	go wait.Until(cc.worker, time.Second, stopCh)
+	go wait.Until(cc.worker, 0, stopCh)
 
 	glog.Infof("JobController is running ...... ")
 }
@@ -133,46 +163,42 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 func (cc *Controller) worker() {
 	obj := cache.Pop(cc.eventQueue)
 	if obj == nil {
-		glog.Errorf("Fail to pop item from updateQueue")
+		glog.Errorf("Fail to pop item from eventQueue")
 	}
 
-	var job *vkapi.Job
-	switch v := obj.(type) {
-	case *vkapi.Job:
-		job = v
-	case *v1.Pod:
+	req := obj.(*state.Request)
+	if req.Job == nil {
+		if req.Pod == nil {
+			glog.Errorf("Empty data for request %v", req)
+			return
+		}
 		jobs, err := cc.jobLister.List(labels.Everything())
 		if err != nil {
-			glog.Errorf("Failed to list Jobs for Pod %v/%v", v.Namespace, v.Name)
+			glog.Errorf("Failed to list Jobs for Pod %v/%v", req.Pod.Namespace, req.Pod.Name)
 		}
 
 		// TODO(k82cn): select by UID instead of loop
-		ctl := helpers.GetController(v)
+		ctl := helpers.GetController(req.Pod)
 		for _, j := range jobs {
 			if j.UID == ctl {
-				job = j
+				req.Job = j
 				break
 			}
 		}
+	}
 
-	default:
-		glog.Errorf("Un-supported type of %v", obj)
+	if req.Job == nil {
+		glog.Errorf("No Job for request %v from pod %v/%v",
+			req.Event, req.Pod.Namespace, req.Pod.Name)
 		return
 	}
 
-	if job == nil {
-		if acc, err := meta.Accessor(obj); err != nil {
-			glog.Warningf("Failed to get Job for %v/%v", acc.GetNamespace(), acc.GetName())
-		}
-
-		return
-	}
-
-	// sync Pods for a Job
-	if err := cc.syncJob(job); err != nil {
-		glog.Errorf("Failed to sync Job %s, err %#v", job.Name, err)
+	st := state.NewState(req)
+	if err := st.Execute(); err != nil {
+		glog.Errorf("Failed to handle Job %s/%s: %v",
+			req.Job.Namespace, req.Job.Name, err)
 		// If any error, requeue it.
 		// TODO(k82cn): replace with RateLimteQueue
-		cc.eventQueue.Add(job)
+		cc.eventQueue.Add(req)
 	}
 }

@@ -17,6 +17,7 @@ limitations under the License.
 package helpers
 
 import (
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -38,4 +39,18 @@ func GetController(obj interface{}) types.UID {
 	}
 
 	return ""
+}
+
+func ControlledByJob(pod *v1.Pod) bool {
+	accessor, err := meta.Accessor(pod)
+	if err != nil {
+		return false
+	}
+
+	controllerRef := metav1.GetControllerOf(accessor)
+	if controllerRef != nil {
+		return controllerRef.Kind == JobKind.Kind
+	}
+
+	return false
 }
