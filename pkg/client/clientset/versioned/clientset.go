@@ -20,6 +20,7 @@ package versioned
 
 import (
 	batchv1alpha1 "hpw.cloud/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1"
+	busv1alpha1 "hpw.cloud/volcano/pkg/client/clientset/versioned/typed/bus/v1alpha1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
@@ -30,6 +31,9 @@ type Interface interface {
 	BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface
 	// Deprecated: please explicitly pick a version if possible.
 	Batch() batchv1alpha1.BatchV1alpha1Interface
+	BusV1alpha1() busv1alpha1.BusV1alpha1Interface
+	// Deprecated: please explicitly pick a version if possible.
+	Bus() busv1alpha1.BusV1alpha1Interface
 }
 
 // Clientset contains the clients for groups. Each group has exactly one
@@ -37,6 +41,7 @@ type Interface interface {
 type Clientset struct {
 	*discovery.DiscoveryClient
 	batchV1alpha1 *batchv1alpha1.BatchV1alpha1Client
+	busV1alpha1   *busv1alpha1.BusV1alpha1Client
 }
 
 // BatchV1alpha1 retrieves the BatchV1alpha1Client
@@ -48,6 +53,17 @@ func (c *Clientset) BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface {
 // Please explicitly pick a version.
 func (c *Clientset) Batch() batchv1alpha1.BatchV1alpha1Interface {
 	return c.batchV1alpha1
+}
+
+// BusV1alpha1 retrieves the BusV1alpha1Client
+func (c *Clientset) BusV1alpha1() busv1alpha1.BusV1alpha1Interface {
+	return c.busV1alpha1
+}
+
+// Deprecated: Bus retrieves the default version of BusClient.
+// Please explicitly pick a version.
+func (c *Clientset) Bus() busv1alpha1.BusV1alpha1Interface {
+	return c.busV1alpha1
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -70,6 +86,10 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 	if err != nil {
 		return nil, err
 	}
+	cs.busV1alpha1, err = busv1alpha1.NewForConfig(&configShallowCopy)
+	if err != nil {
+		return nil, err
+	}
 
 	cs.DiscoveryClient, err = discovery.NewDiscoveryClientForConfig(&configShallowCopy)
 	if err != nil {
@@ -83,6 +103,7 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 func NewForConfigOrDie(c *rest.Config) *Clientset {
 	var cs Clientset
 	cs.batchV1alpha1 = batchv1alpha1.NewForConfigOrDie(c)
+	cs.busV1alpha1 = busv1alpha1.NewForConfigOrDie(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClientForConfigOrDie(c)
 	return &cs
@@ -92,6 +113,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
 	cs.batchV1alpha1 = batchv1alpha1.New(c)
+	cs.busV1alpha1 = busv1alpha1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs

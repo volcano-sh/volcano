@@ -17,6 +17,7 @@ cli:
 generate-code:
 	go build -o ${BIN_DIR}/deepcopy-gen ./cmd/deepcopy-gen/
 	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/batch/v1alpha1/ -O zz_generated.deepcopy
+	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/core/v1alpha1/ -O zz_generated.deepcopy
 
 e2e-test:
 	./hack/run-e2e.sh

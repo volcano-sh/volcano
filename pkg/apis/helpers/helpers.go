@@ -17,15 +17,17 @@ limitations under the License.
 package helpers
 
 import (
-	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 
-	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	vkbatchv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	vkcorev1 "hpw.cloud/volcano/pkg/apis/bus/v1alpha1"
 )
 
-var JobKind = vkv1.SchemeGroupVersion.WithKind("Job")
+var JobKind = vkbatchv1.SchemeGroupVersion.WithKind("Job")
+var CommandKind = vkcorev1.SchemeGroupVersion.WithKind("Command")
 
 func GetController(obj interface{}) types.UID {
 	accessor, err := meta.Accessor(obj)
@@ -41,8 +43,16 @@ func GetController(obj interface{}) types.UID {
 	return ""
 }
 
-func IsPodActive(p *v1.Pod) bool {
-	return v1.PodSucceeded != p.Status.Phase &&
-		v1.PodFailed != p.Status.Phase &&
-		p.DeletionTimestamp == nil
+func ControlledBy(obj interface{}, gvk schema.GroupVersionKind) bool {
+	accessor, err := meta.Accessor(obj)
+	if err != nil {
+		return false
+	}
+
+	controllerRef := metav1.GetControllerOf(accessor)
+	if controllerRef != nil {
+		return controllerRef.Kind == gvk.Kind
+	}
+
+	return false
 }
