@@ -24,31 +24,48 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
 
-	vkapi "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	vkbatch "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	vkcore "hpw.cloud/volcano/pkg/apis/bus/v1alpha1"
 	"hpw.cloud/volcano/pkg/controllers/job/state"
 )
 
+func (cc *Controller) addCommand(obj interface{}) {
+	cmd, ok := obj.(*vkcore.Command)
+	if !ok {
+		glog.Errorf("obj is not Command")
+		return
+	}
+
+	cc.enqueue(&state.Request{
+		Event:  vkbatch.CommandIssuedEvent,
+		Action: vkbatch.Action(cmd.Action),
+
+		Namespace: cmd.Namespace,
+		Target:    cmd.TargetObject,
+	})
+}
+
 func (cc *Controller) addJob(obj interface{}) {
-	job, ok := obj.(*vkapi.Job)
+	job, ok := obj.(*vkbatch.Job)
 	if !ok {
 		glog.Errorf("obj is not Job")
 		return
 	}
 
 	cc.enqueue(&state.Request{
-		Event: vkapi.OutOfSyncEvent,
+		Event: vkbatch.OutOfSyncEvent,
 		Job:   job,
 	})
 }
 
 func (cc *Controller) updateJob(oldObj, newObj interface{}) {
-	newJob, ok := newObj.(*vkapi.Job)
+	newJob, ok := newObj.(*vkbatch.Job)
 	if !ok {
 		glog.Errorf("newObj is not Job")
 		return
 	}
 
-	oldJob, ok := oldObj.(*vkapi.Job)
+	oldJob, ok := oldObj.(*vkbatch.Job)
 	if !ok {
 		glog.Errorf("oldObj is not Job")
 		return
@@ -56,21 +73,21 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 
 	if !reflect.DeepEqual(oldJob.Spec, newJob.Spec) {
 		cc.enqueue(&state.Request{
-			Event: vkapi.OutOfSyncEvent,
+			Event: vkbatch.OutOfSyncEvent,
 			Job:   newJob,
 		})
 	}
 }
 
 func (cc *Controller) deleteJob(obj interface{}) {
-	job, ok := obj.(*vkapi.Job)
+	job, ok := obj.(*vkbatch.Job)
 	if !ok {
 		glog.Errorf("obj is not Job")
 		return
 	}
 
 	cc.enqueue(&state.Request{
-		Event: vkapi.OutOfSyncEvent,
+		Event: vkbatch.OutOfSyncEvent,
 		Job:   job,
 	})
 }
@@ -83,7 +100,7 @@ func (cc *Controller) addPod(obj interface{}) {
 	}
 
 	cc.enqueue(&state.Request{
-		Event: vkapi.OutOfSyncEvent,
+		Event: vkbatch.OutOfSyncEvent,
 		Pod:   pod,
 	})
 }
@@ -96,7 +113,7 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 	}
 
 	cc.enqueue(&state.Request{
-		Event: vkapi.OutOfSyncEvent,
+		Event: vkbatch.OutOfSyncEvent,
 		Pod:   pod,
 	})
 }
@@ -119,7 +136,7 @@ func (cc *Controller) deletePod(obj interface{}) {
 	}
 
 	cc.enqueue(&state.Request{
-		Event: vkapi.OutOfSyncEvent,
+		Event: vkbatch.OutOfSyncEvent,
 		Pod:   pod,
 	})
 }

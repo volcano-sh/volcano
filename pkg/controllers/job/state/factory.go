@@ -18,6 +18,7 @@ package state
 
 import (
 	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 
@@ -27,6 +28,9 @@ import (
 type Request struct {
 	Event  vkv1.Event
 	Action vkv1.Action
+
+	Namespace string
+	Target    *metav1.OwnerReference
 
 	Job      *vkv1.Job
 	Pod      *v1.Pod
@@ -51,7 +55,7 @@ type State interface {
 func NewState(req *Request) State {
 	policies := parsePolicies(req)
 
-	switch req.Job.Status.Phase {
+	switch req.Job.Status.State.Phase {
 	case vkv1.Restarting:
 		return &restartingState{
 			request:  req,
