@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Volcano Authors.
+Copyright 2017 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,41 +18,57 @@ package job
 
 import (
 	"fmt"
+	"github.com/golang/glog"
 
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	corelisters "k8s.io/client-go/listers/core/v1"
 
 	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 
 	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"hpw.cloud/volcano/pkg/apis/helpers"
+	"hpw.cloud/volcano/pkg/controllers/job/state"
 )
 
-// filterPods returns pods based on their phase.
-func filterPods(pods []*corev1.Pod, phase corev1.PodPhase) int {
-	result := 0
-	for i := range pods {
-		if phase == pods[i].Status.Phase {
-			result++
+func validate(job *vkv1.Job) error {
+	tsNames := map[string]string{}
+
+	for _, ts := range job.Spec.Tasks {
+		if _, found := tsNames[ts.Template.Name]; found {
+			return fmt.Errorf("duplicated TaskSpec")
 		}
+
+		tsNames[ts.Template.Name] = ts.Template.Name
 	}
-	return result
+
+	return nil
 }
 
 func eventKey(obj interface{}) (string, error) {
-	accessor, err := meta.Accessor(obj)
-	if err != nil {
-		return "", err
+	req := obj.(*state.Request)
+
+	if req.Pod == nil && req.Job == nil {
+		return "", fmt.Errorf("empty data for request")
 	}
 
-	return string(accessor.GetUID()), nil
+	if req.Job != nil {
+		return fmt.Sprintf("%s/%s", req.Job.Namespace, req.Job.Name), nil
+	}
+
+	name, found := req.Pod.Annotations[vkv1.JobNameKey]
+	if !found {
+		return "", fmt.Errorf("failed to find job of pod <%s/%s>",
+			req.Pod.Namespace, req.Pod.Name)
+	}
+	return fmt.Sprintf("%s/%s", req.Pod.Namespace, name), nil
 }
 
-func createJobPod(job *vkv1.Job, template *corev1.PodTemplateSpec, ix int) *corev1.Pod {
+func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 	templateCopy := template.DeepCopy()
 
-	pod := &corev1.Pod{
+	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-%s-%d", job.Name, template.Name, ix),
 			Namespace: job.Namespace,
@@ -80,6 +96,7 @@ func createJobPod(job *vkv1.Job, template *corev1.PodTemplateSpec, ix int) *core
 	}
 
 	pod.Annotations[kbapi.GroupNameAnnotationKey] = job.Name
+	pod.Annotations[vkv1.JobNameKey] = job.Name
 
 	if len(pod.Labels) == 0 {
 		pod.Labels = make(map[string]string)
@@ -96,17 +113,32 @@ func createJobPod(job *vkv1.Job, template *corev1.PodTemplateSpec, ix int) *core
 	return pod
 }
 
+func getPodsForJob(podLister corelisters.PodLister, job *vkv1.Job) (map[string]map[string]*v1.Pod, error) {
+	pods := map[string]map[string]*v1.Pod{}
 
-func validate(job *vkv1.Job) error {
-	tsNames := map[string]string{}
-
-	for _, ts := range job.Spec.TaskSpecs {
-		if _, found := tsNames[ts.Template.Name]; found {
-			return fmt.Errorf("duplicated TaskSpec")
-		}
-
-		tsNames[ts.Template.Name] = ts.Template.Name
+	// TODO (k82cn): optimist by cache and index of owner; add 'ControlledBy' extended interface.
+	ps, err := podLister.Pods(job.Namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
 	}
 
-	return nil
+	for _, pod := range ps {
+		if !metav1.IsControlledBy(pod, job) {
+			continue
+		}
+		if len(pod.Annotations) == 0 {
+			glog.Errorf("The annotations of pod <%s/%s> is empty", pod.Namespace, pod.Name)
+			continue
+		}
+		tsName, found := pod.Annotations[vkv1.TaskSpecKey]
+		if found {
+			// Hash by TaskSpec.Template.Name
+			if _, exist := pods[tsName]; !exist {
+				pods[tsName] = make(map[string]*v1.Pod)
+			}
+			pods[tsName][pod.Name] = pod
+		}
+	}
+
+	return pods, nil
 }
