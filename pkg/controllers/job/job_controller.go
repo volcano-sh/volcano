@@ -37,12 +37,15 @@ import (
 	kbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	kblister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
 
-	vkapi "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	vkbatchv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	v1corev1 "hpw.cloud/volcano/pkg/apis/bus/v1alpha1"
 	"hpw.cloud/volcano/pkg/apis/helpers"
-	"hpw.cloud/volcano/pkg/client/clientset/versioned"
+	vkver "hpw.cloud/volcano/pkg/client/clientset/versioned"
 	vkinfoext "hpw.cloud/volcano/pkg/client/informers/externalversions"
-	vkinfo "hpw.cloud/volcano/pkg/client/informers/externalversions/batch/v1alpha1"
-	vklister "hpw.cloud/volcano/pkg/client/listers/batch/v1alpha1"
+	vkbatchinfo "hpw.cloud/volcano/pkg/client/informers/externalversions/batch/v1alpha1"
+	vkcoreinfo "hpw.cloud/volcano/pkg/client/informers/externalversions/bus/v1alpha1"
+	vkbatchlister "hpw.cloud/volcano/pkg/client/listers/batch/v1alpha1"
+	vkcorelister "hpw.cloud/volcano/pkg/client/listers/bus/v1alpha1"
 	"hpw.cloud/volcano/pkg/controllers/job/state"
 )
 
@@ -50,28 +53,33 @@ import (
 type Controller struct {
 	config      *rest.Config
 	kubeClients *kubernetes.Clientset
-	vkClients   *versioned.Clientset
+	vkClients   *vkver.Clientset
 	kbClients   *kbver.Clientset
 
-	jobInformer vkinfo.JobInformer
+	jobInformer vkbatchinfo.JobInformer
 	podInformer coreinformers.PodInformer
 	pgInformer  kbinfo.PodGroupInformer
 	svcInformer coreinformers.ServiceInformer
+	cmdInformer vkcoreinfo.CommandInformer
 
 	// A store of jobs
-	jobLister vklister.JobLister
+	jobLister vkbatchlister.JobLister
 	jobSynced func() bool
 
-	// A store of pods, populated by the podController
+	// A store of pods
 	podLister corelisters.PodLister
 	podSynced func() bool
 
-	// A store of pods, populated by the podController
+	// A store of podgroups
 	pgLister kblister.PodGroupLister
 	pgSynced func() bool
 
+	// A store of service
 	svcLister corelisters.ServiceLister
 	svcSynced func() bool
+
+	cmdLister vkcorelister.CommandLister
+	cmdSynced func() bool
 
 	// eventQueue that need to sync up
 	eventQueue *cache.FIFO
@@ -82,7 +90,7 @@ func NewJobController(config *rest.Config) *Controller {
 	cc := &Controller{
 		config:      config,
 		kubeClients: kubernetes.NewForConfigOrDie(config),
-		vkClients:   versioned.NewForConfigOrDie(config),
+		vkClients:   vkver.NewForConfigOrDie(config),
 		kbClients:   kbver.NewForConfigOrDie(config),
 		eventQueue:  cache.NewFIFO(eventKey),
 	}
@@ -96,16 +104,40 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.jobLister = cc.jobInformer.Lister()
 	cc.jobSynced = cc.jobInformer.Informer().HasSynced
 
+	cc.cmdInformer = vkinfoext.NewSharedInformerFactory(cc.vkClients, 0).Bus().V1alpha1().Commands()
+	cc.cmdInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			switch t := obj.(type) {
+			case *v1corev1.Command:
+				return helpers.ControlledBy(t, helpers.JobKind)
+			case cache.DeletedFinalStateUnknown:
+				if pod, ok := t.Obj.(*v1corev1.Command); ok {
+					return helpers.ControlledBy(pod, helpers.JobKind)
+				}
+				runtime.HandleError(fmt.Errorf("unable to convert object %T to *v1.Pod", obj))
+				return false
+			default:
+				runtime.HandleError(fmt.Errorf("unable to handle object %T", obj))
+				return false
+			}
+		},
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc: cc.addCommand,
+		},
+	})
+	cc.cmdLister = cc.cmdInformer.Lister()
+	cc.cmdSynced = cc.cmdInformer.Informer().HasSynced
+
 	cc.podInformer = informers.NewSharedInformerFactory(cc.kubeClients, 0).Core().V1().Pods()
 
 	cc.podInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
 			switch t := obj.(type) {
 			case *v1.Pod:
-				return helpers.ControlledByJob(t)
+				return helpers.ControlledBy(t, helpers.JobKind)
 			case cache.DeletedFinalStateUnknown:
 				if pod, ok := t.Obj.(*v1.Pod); ok {
-					return helpers.ControlledByJob(pod)
+					return helpers.ControlledBy(pod, helpers.JobKind)
 				}
 				runtime.HandleError(fmt.Errorf("unable to convert object %T to *v1.Pod", obj))
 				return false
@@ -133,13 +165,13 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
 	// Register actions
-	actionFns := map[vkapi.Action]state.ActionFn{
-		vkapi.ResumeJobAction:    cc.resumeJob,
-		vkapi.SyncJobAction:      cc.syncJob,
-		vkapi.AbortJobAction:     cc.abortJob,
-		vkapi.TerminateJobAction: cc.terminateJob,
-		vkapi.RestartJobAction:   cc.restartJob,
-		vkapi.RestartTaskAction:  cc.syncJob,
+	actionFns := map[vkbatchv1.Action]state.ActionFn{
+		vkbatchv1.ResumeJobAction:    cc.resumeJob,
+		vkbatchv1.SyncJobAction:      cc.syncJob,
+		vkbatchv1.AbortJobAction:     cc.abortJob,
+		vkbatchv1.TerminateJobAction: cc.terminateJob,
+		vkbatchv1.RestartJobAction:   cc.restartJob,
+		vkbatchv1.RestartTaskAction:  cc.syncJob,
 	}
 	state.RegisterActions(actionFns)
 
@@ -152,8 +184,10 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 	go cc.podInformer.Informer().Run(stopCh)
 	go cc.pgInformer.Informer().Run(stopCh)
 	go cc.svcInformer.Informer().Run(stopCh)
+	go cc.cmdInformer.Informer().Run(stopCh)
 
-	cache.WaitForCacheSync(stopCh, cc.jobSynced, cc.podSynced, cc.pgSynced, cc.svcSynced)
+	cache.WaitForCacheSync(stopCh, cc.jobSynced, cc.podSynced, cc.pgSynced,
+		cc.svcSynced, cc.cmdSynced)
 
 	go wait.Until(cc.worker, 0, stopCh)
 
@@ -167,6 +201,13 @@ func (cc *Controller) worker() {
 	}
 
 	req := obj.(*state.Request)
+
+	if req.Target != nil {
+		if job, err := cc.jobLister.Jobs(req.Namespace).Get(req.Target.Name); err != nil {
+			req.Job = job
+		}
+	}
+
 	if req.Job == nil {
 		if req.Pod == nil {
 			glog.Errorf("Empty data for request %v", req)
