@@ -16,6 +16,7 @@ ${dind_dest} up
 kubectl create -f config/crds/scheduling_v1alpha1_podgroup.yaml
 kubectl create -f config/crds/scheduling_v1alpha1_queue.yaml
 kubectl create -f config/crds/batch_v1alpha1_job.yaml
+kubectl create -f config/crds/bus_v1alpha1_command.yaml
 
 # start controller
 nohup ${VK_BIN}/vk-controllers --kubeconfig ${HOME}/.kube/config --logtostderr --v ${LOG_LEVEL} > controller.log 2>&1 &

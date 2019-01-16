@@ -22,6 +22,8 @@ import (
 	clientset "hpw.cloud/volcano/pkg/client/clientset/versioned"
 	batchv1alpha1 "hpw.cloud/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1"
 	fakebatchv1alpha1 "hpw.cloud/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1/fake"
+	busv1alpha1 "hpw.cloud/volcano/pkg/client/clientset/versioned/typed/bus/v1alpha1"
+	fakebusv1alpha1 "hpw.cloud/volcano/pkg/client/clientset/versioned/typed/bus/v1alpha1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
@@ -79,4 +81,14 @@ func (c *Clientset) BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface {
 // Batch retrieves the BatchV1alpha1Client
 func (c *Clientset) Batch() batchv1alpha1.BatchV1alpha1Interface {
 	return &fakebatchv1alpha1.FakeBatchV1alpha1{Fake: &c.Fake}
+}
+
+// BusV1alpha1 retrieves the BusV1alpha1Client
+func (c *Clientset) BusV1alpha1() busv1alpha1.BusV1alpha1Interface {
+	return &fakebusv1alpha1.FakeBusV1alpha1{Fake: &c.Fake}
+}
+
+// Bus retrieves the BusV1alpha1Client
+func (c *Clientset) Bus() busv1alpha1.BusV1alpha1Interface {
+	return &fakebusv1alpha1.FakeBusV1alpha1{Fake: &c.Fake}
 }
