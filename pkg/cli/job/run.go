@@ -21,7 +21,7 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	vuclanapi "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	vkapi "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"hpw.cloud/volcano/pkg/client/clientset/versioned"
 )
 
@@ -63,20 +63,15 @@ func RunJob() error {
 		return err
 	}
 
-	job := &vuclanapi.Job{
+	job := &vkapi.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      launchJobFlags.Name,
 			Namespace: launchJobFlags.Namespace,
 		},
-		Spec: vuclanapi.JobSpec{
+		Spec: vkapi.JobSpec{
 			MinAvailable: int32(launchJobFlags.MinAvailable),
-			TaskSpecs: []vuclanapi.TaskSpec{
+			Tasks: []vkapi.TaskSpec{
 				{
-					Selector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							jobName: launchJobFlags.Name,
-						},
-					},
 					Replicas: int32(launchJobFlags.Replicas),
 
 					Template: v1.PodTemplateSpec{

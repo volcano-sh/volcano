@@ -60,7 +60,7 @@ func ListJobs() error {
 		"Name", "Creation", "Replicas", "Min", "Pending", "Running", "Succeeded", "Failed")
 	for _, job := range jobs.Items {
 		replicas := int32(0)
-		for _, ts := range job.Spec.TaskSpecs {
+		for _, ts := range job.Spec.Tasks {
 			replicas += ts.Replicas
 		}
 

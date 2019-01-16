@@ -276,7 +276,7 @@ func getNS(context *context, job *jobSpec) string {
 	return context.namespace
 }
 
-func createJob(context *context, jobSpec *jobSpec) (*vkv1.Job) {
+func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
 	ns := getNS(context, jobSpec)
 
 	job := &vkv1.Job{
@@ -284,9 +284,7 @@ func createJob(context *context, jobSpec *jobSpec) (*vkv1.Job) {
 			Name:      jobSpec.name,
 			Namespace: ns,
 		},
-		Spec: vkv1.JobSpec{
-
-		},
+		Spec: vkv1.JobSpec{},
 	}
 
 	var min int32
@@ -306,7 +304,7 @@ func createJob(context *context, jobSpec *jobSpec) (*vkv1.Job) {
 			},
 		}
 
-		job.Spec.TaskSpecs = append(job.Spec.TaskSpecs, ts)
+		job.Spec.Tasks = append(job.Spec.Tasks, ts)
 
 		min += task.min
 	}
