@@ -18,6 +18,7 @@ package job
 
 import (
 	"fmt"
+
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
@@ -81,6 +82,56 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 		Spec: templateCopy.Spec,
 	}
 
+	if job.Spec.Output != nil {
+		if job.Spec.Output.VolumeClaim == nil {
+			volume := v1.Volume{
+				Name: fmt.Sprintf("%s-output", job.Name),
+			}
+			volume.EmptyDir = &v1.EmptyDirVolumeSource{}
+			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
+		} else {
+			volume := v1.Volume{
+				Name: fmt.Sprintf("%s-output", job.Name),
+			}
+			volume.PersistentVolumeClaim = &v1.PersistentVolumeClaimVolumeSource{
+				ClaimName: fmt.Sprintf("%s-output", job.Name),
+			}
+
+			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
+		}
+
+		for i, c := range pod.Spec.Containers {
+			vm := job.Spec.Output.VolumeMount
+			vm.Name = fmt.Sprintf("%s-output", job.Name)
+			pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
+		}
+	}
+
+	if job.Spec.Input != nil {
+		if job.Spec.Input.VolumeClaim == nil {
+			volume := v1.Volume{
+				Name: fmt.Sprintf("%s-input", job.Name),
+			}
+			volume.EmptyDir = &v1.EmptyDirVolumeSource{}
+			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
+		} else {
+			volume := v1.Volume{
+				Name: fmt.Sprintf("%s-input", job.Name),
+			}
+			volume.PersistentVolumeClaim = &v1.PersistentVolumeClaimVolumeSource{
+				ClaimName: fmt.Sprintf("%s-input", job.Name),
+			}
+
+			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
+		}
+
+		for i, c := range pod.Spec.Containers {
+			vm := job.Spec.Input.VolumeMount
+			vm.Name = fmt.Sprintf("%s-input", job.Name)
+			pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
+		}
+	}
+
 	if len(pod.Annotations) == 0 {
 		pod.Annotations = make(map[string]string)
 	}
@@ -110,6 +161,7 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 	if job.Spec.SchedulerName != "" && pod.Spec.SchedulerName == "" {
 		pod.Spec.SchedulerName = job.Spec.SchedulerName
 	}
+
 	return pod
 }
 
