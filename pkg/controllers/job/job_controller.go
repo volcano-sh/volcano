@@ -58,6 +58,7 @@ type Controller struct {
 
 	jobInformer vkbatchinfo.JobInformer
 	podInformer coreinformers.PodInformer
+	pvcInformer coreinformers.PersistentVolumeClaimInformer
 	pgInformer  kbinfo.PodGroupInformer
 	svcInformer coreinformers.ServiceInformer
 	cmdInformer vkcoreinfo.CommandInformer
@@ -69,6 +70,9 @@ type Controller struct {
 	// A store of pods
 	podLister corelisters.PodLister
 	podSynced func() bool
+
+	pvcLister corelisters.PersistentVolumeClaimLister
+	pvcSynced func() bool
 
 	// A store of podgroups
 	pgLister kblister.PodGroupLister
@@ -156,6 +160,10 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.podLister = cc.podInformer.Lister()
 	cc.podSynced = cc.podInformer.Informer().HasSynced
 
+	cc.pvcInformer = informers.NewSharedInformerFactory(cc.kubeClients, 0).Core().V1().PersistentVolumeClaims()
+	cc.pvcLister = cc.pvcInformer.Lister()
+	cc.pvcSynced = cc.pvcInformer.Informer().HasSynced
+
 	cc.svcInformer = informers.NewSharedInformerFactory(cc.kubeClients, 0).Core().V1().Services()
 	cc.svcLister = cc.svcInformer.Lister()
 	cc.svcSynced = cc.svcInformer.Informer().HasSynced
@@ -182,12 +190,13 @@ func NewJobController(config *rest.Config) *Controller {
 func (cc *Controller) Run(stopCh <-chan struct{}) {
 	go cc.jobInformer.Informer().Run(stopCh)
 	go cc.podInformer.Informer().Run(stopCh)
+	go cc.pvcInformer.Informer().Run(stopCh)
 	go cc.pgInformer.Informer().Run(stopCh)
 	go cc.svcInformer.Informer().Run(stopCh)
 	go cc.cmdInformer.Informer().Run(stopCh)
 
 	cache.WaitForCacheSync(stopCh, cc.jobSynced, cc.podSynced, cc.pgSynced,
-		cc.svcSynced, cc.cmdSynced)
+		cc.svcSynced, cc.cmdSynced, cc.pvcSynced)
 
 	go wait.Until(cc.worker, 0, stopCh)
 
