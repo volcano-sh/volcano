@@ -54,7 +54,6 @@ spec:
                     should be mounted. Defaults to "" (volume's root).
                   type: string
               required:
-              - name
               - mountPath
               type: object
             minAvailable:
@@ -88,7 +87,6 @@ spec:
                     should be mounted. Defaults to "" (volume's root).
                   type: string
               required:
-              - name
               - mountPath
               type: object
             policies:

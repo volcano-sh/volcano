@@ -118,6 +118,72 @@ func (cc *Controller) syncJob(req *state.Request) error {
 		}
 	}
 
+	// If input/output PVC does not exist, create them for Job.
+	inputPVC := fmt.Sprintf("%s-input", job.Name)
+	outputPVC := fmt.Sprintf("%s-output", job.Name)
+	if job.Spec.Input != nil {
+		if job.Spec.Input.VolumeClaim != nil {
+			if _, err := cc.pvcLister.PersistentVolumeClaims(job.Namespace).Get(inputPVC); err != nil {
+				if !apierrors.IsNotFound(err) {
+					glog.V(3).Infof("Failed to get input PVC for Job <%s/%s>: %v",
+						job.Namespace, job.Name, err)
+					return err
+				}
+
+				pvc := &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: job.Namespace,
+						Name:      inputPVC,
+						OwnerReferences: []metav1.OwnerReference{
+							*metav1.NewControllerRef(job, helpers.JobKind),
+						},
+					},
+					Spec: *job.Spec.Input.VolumeClaim,
+				}
+
+				glog.V(3).Infof("Try to create input PVC: %v", pvc)
+
+				if _, e := cc.kubeClients.CoreV1().PersistentVolumeClaims(job.Namespace).Create(pvc); e != nil {
+					glog.V(3).Infof("Failed to create input PVC for Job <%s/%s>: %v",
+						job.Namespace, job.Name, err)
+					return e
+				}
+			}
+		}
+	}
+
+	if job.Spec.Output != nil {
+		if job.Spec.Output.VolumeClaim != nil {
+			if _, err := cc.pvcLister.PersistentVolumeClaims(job.Namespace).Get(outputPVC); err != nil {
+				if !apierrors.IsNotFound(err) {
+					glog.V(3).Infof("Failed to get output PVC for Job <%s/%s>: %v",
+						job.Namespace, job.Name, err)
+					return err
+				}
+
+				pvc := &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: job.Namespace,
+						Name:      outputPVC,
+						OwnerReferences: []metav1.OwnerReference{
+							*metav1.NewControllerRef(job, helpers.JobKind),
+						},
+					},
+					Spec: *job.Spec.Output.VolumeClaim,
+				}
+
+				glog.V(3).Infof("Try to create output PVC: %v", pvc)
+
+				if _, e := cc.kubeClients.CoreV1().PersistentVolumeClaims(job.Namespace).Create(pvc); e != nil {
+					glog.V(3).Infof("Failed to create input PVC for Job <%s/%s>: %v",
+						job.Namespace, job.Name, err)
+					return e
+				}
+			}
+		}
+	}
+
+	// If Service does not exist, create one for Job.
 	if _, err := cc.svcLister.Services(job.Namespace).Get(job.Name); err != nil {
 		if !apierrors.IsNotFound(err) {
 			glog.V(3).Infof("Failed to get Service for Job <%s/%s>: %v",
