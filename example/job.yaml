@@ -4,6 +4,16 @@ metadata:
   name: test-job
 spec:
   minAvailable: 3
+  input:
+    mountPath: "/myinput"
+  output:
+    mountPath: "/myoutput"
+    claim:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "my-storage-class"
+      resources:
+        requests:
+          storage: 1Gi
   taskSpecs:
   - replicas: 6
     template:
