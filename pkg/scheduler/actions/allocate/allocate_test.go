@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -95,14 +95,6 @@ func buildPod(ns, n, nn string, p v1.PodPhase, req v1.ResourceList, groupName st
 	}
 }
 
-func buildOwnerReference(owner string) metav1.OwnerReference {
-	controller := true
-	return metav1.OwnerReference{
-		Controller: &controller,
-		UID:        types.UID(owner),
-	}
-}
-
 type fakeBinder struct {
 	sync.Mutex
 	binds map[string]string
@@ -126,6 +118,16 @@ type fakeTaskStatusUpdater struct {
 
 func (ftsu *fakeTaskStatusUpdater) Update(pod *v1.Pod, podCondition *v1.PodCondition) error {
 	// do nothing here
+	return nil
+}
+
+type fakeVolumeBinder struct {
+}
+
+func (fvb *fakeVolumeBinder) AllocateVolumes(task *api.TaskInfo, hostname string) error {
+	return nil
+}
+func (fvb *fakeVolumeBinder) BindVolumes(task *api.TaskInfo) error {
 	return nil
 }
 
@@ -237,11 +239,12 @@ func TestAllocate(t *testing.T) {
 			c:     make(chan string),
 		}
 		schedulerCache := &cache.SchedulerCache{
-			Nodes:     make(map[string]*api.NodeInfo),
-			Jobs:      make(map[api.JobID]*api.JobInfo),
-			Queues:    make(map[api.QueueID]*api.QueueInfo),
-			Binder:    binder,
-			TsUpdater: &fakeTaskStatusUpdater{},
+			Nodes:             make(map[string]*api.NodeInfo),
+			Jobs:              make(map[api.JobID]*api.JobInfo),
+			Queues:            make(map[api.QueueID]*api.QueueInfo),
+			Binder:            binder,
+			TaskStatusUpdater: &fakeTaskStatusUpdater{},
+			VolumeBinder:      &fakeVolumeBinder{},
 		}
 		for _, node := range test.nodes {
 			schedulerCache.AddNode(node)

@@ -19,7 +19,7 @@ package cache
 import (
 	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 )
 
 // Cache collects pods/nodes/queues information
@@ -49,6 +49,17 @@ type Cache interface {
 
 	// TaskUnschedulable updates pod status of pending task
 	TaskUnschedulable(task *api.TaskInfo, event arbcorev1.Event, reason string) error
+
+	// AllocateVolumes allocates volume on the host to the task
+	AllocateVolumes(task *api.TaskInfo, hostname string) error
+
+	// BindVolumes binds volumes to the task
+	BindVolumes(task *api.TaskInfo) error
+}
+
+type VolumeBinder interface {
+	AllocateVolumes(task *api.TaskInfo, hostname string) error
+	BindVolumes(task *api.TaskInfo) error
 }
 
 type Binder interface {
