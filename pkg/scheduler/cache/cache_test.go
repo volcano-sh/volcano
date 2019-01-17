@@ -251,10 +251,10 @@ func TestTaskUnschedulable(t *testing.T) {
 	tsUpdater.On("Update", taskInfo.Pod, mock.Anything).Return(nil)
 
 	cache := &SchedulerCache{
-		Nodes:     make(map[string]*api.NodeInfo),
-		Jobs:      make(map[api.JobID]*api.JobInfo),
-		TsUpdater: tsUpdater,
-		recorder:  record.NewFakeRecorder(100),
+		Nodes:             make(map[string]*api.NodeInfo),
+		Jobs:              make(map[api.JobID]*api.JobInfo),
+		TaskStatusUpdater: tsUpdater,
+		recorder:          record.NewFakeRecorder(100),
 	}
 
 	result := cache.TaskUnschedulable(taskInfo, arbcorev1.FailedSchedulingEvent, jobInfo.FitError())

@@ -160,6 +160,10 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 }
 
 func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
+	if err := ssn.cache.AllocateVolumes(task, hostname); err != nil {
+		return err
+	}
+
 	// Only update status in session
 	job, found := ssn.JobIndex[task.Job]
 	if found {
@@ -208,6 +212,10 @@ func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
 }
 
 func (ssn *Session) dispatch(task *api.TaskInfo) error {
+	if err := ssn.cache.BindVolumes(task); err != nil {
+		return err
+	}
+
 	if err := ssn.cache.Bind(task, task.NodeName); err != nil {
 		return err
 	}

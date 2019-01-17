@@ -21,7 +21,7 @@ import (
 
 	"github.com/golang/glog"
 
-	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 )
@@ -77,7 +77,7 @@ func jobReady(obj interface{}) bool {
 func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 	for _, job := range ssn.Jobs {
 		if validTaskNum(job) < job.MinAvailable {
-			ssn.Backoff(job, arbcorev1.UnschedulableEvent, "not enough valid tasks for gang-scheduling")
+			ssn.Backoff(job, kbv1.UnschedulableEvent, "not enough valid tasks for gang-scheduling")
 		}
 	}
 
@@ -151,7 +151,10 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 		if len(job.TaskStatusIndex[api.Pending]) != 0 {
 			glog.V(3).Infof("Gang: <%v/%v> allocated: %v, pending: %v", job.Namespace, job.Name, len(job.TaskStatusIndex[api.Allocated]), len(job.TaskStatusIndex[api.Pending]))
 			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v", len(job.TaskStatusIndex[api.Pending]), len(job.Tasks), job.FitError())
-			ssn.Backoff(job, arbcorev1.UnschedulableEvent, msg)
+			if err := ssn.Backoff(job, kbv1.UnschedulableEvent, msg); err != nil {
+				glog.Errorf("Failed to backoff job <%s/%s>: %v",
+					job.Namespace, job.Name, err)
+			}
 		}
 	}
 }

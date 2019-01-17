@@ -42,9 +42,10 @@ type TaskInfo struct {
 
 	Resreq *Resource
 
-	NodeName string
-	Status   TaskStatus
-	Priority int32
+	NodeName    string
+	Status      TaskStatus
+	Priority    int32
+	VolumeReady bool
 
 	Pod *v1.Pod
 }
@@ -89,15 +90,16 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 
 func (ti *TaskInfo) Clone() *TaskInfo {
 	return &TaskInfo{
-		UID:       ti.UID,
-		Job:       ti.Job,
-		Name:      ti.Name,
-		Namespace: ti.Namespace,
-		NodeName:  ti.NodeName,
-		Status:    ti.Status,
-		Priority:  ti.Priority,
-		Pod:       ti.Pod,
-		Resreq:    ti.Resreq.Clone(),
+		UID:         ti.UID,
+		Job:         ti.Job,
+		Name:        ti.Name,
+		Namespace:   ti.Namespace,
+		NodeName:    ti.NodeName,
+		Status:      ti.Status,
+		Priority:    ti.Priority,
+		Pod:         ti.Pod,
+		Resreq:      ti.Resreq.Clone(),
+		VolumeReady: ti.VolumeReady,
 	}
 }
 
