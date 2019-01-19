@@ -17,26 +17,15 @@ limitations under the License.
 package state
 
 import (
-	"github.com/golang/glog"
-
 	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 )
 
-type baseState struct {
-	request  *Request
-	policies map[vkv1.Event]vkv1.Action
+type finishedState struct {
+	job *vkv1.Job
 }
 
-func (ps *baseState) Execute() error {
-	action := ps.policies[ps.request.Event]
-	glog.V(3).Infof("The action for event <%s> is <%s>",
-		ps.request.Event, action)
-	switch action {
-	case vkv1.RestartJobAction:
-		fn := actionFns[action]
-		return fn(ps.request)
-	default:
-		fn := actionFns[action]
-		return fn(ps.request)
-	}
+func (ps *finishedState) Execute(action vkv1.Action, reason string, msg string) (error) {
+	// In finished state, e.g. Completed, always kill the whole job.
+	return KillJob(ps.job, nil)
 }
+

@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Vulcan Authors.
+Copyright 2017 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,71 +24,76 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
 
-	vkbatch "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
-	vkcore "hpw.cloud/volcano/pkg/apis/bus/v1alpha1"
-	"hpw.cloud/volcano/pkg/controllers/job/state"
+	vkbatchv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	vkbusv1 "hpw.cloud/volcano/pkg/apis/bus/v1alpha1"
 )
 
 func (cc *Controller) addCommand(obj interface{}) {
-	cmd, ok := obj.(*vkcore.Command)
+	cmd, ok := obj.(*vkbusv1.Command)
 	if !ok {
 		glog.Errorf("obj is not Command")
 		return
 	}
 
-	cc.enqueue(&state.Request{
-		Event:  vkbatch.CommandIssuedEvent,
-		Action: vkbatch.Action(cmd.Action),
-
+	cc.eventQueue.Add(&Request{
 		Namespace: cmd.Namespace,
-		Target:    cmd.TargetObject,
+		JobName:   cmd.TargetObject.Name,
+
+		Event:  vkbatchv1.CommandIssuedEvent,
+		Action: vkbatchv1.Action(cmd.Action),
 	})
 }
 
 func (cc *Controller) addJob(obj interface{}) {
-	job, ok := obj.(*vkbatch.Job)
+	job, ok := obj.(*vkbatchv1.Job)
 	if !ok {
 		glog.Errorf("obj is not Job")
 		return
 	}
 
-	cc.enqueue(&state.Request{
-		Event: vkbatch.OutOfSyncEvent,
-		Job:   job,
+	cc.eventQueue.Add(&Request{
+		Namespace: job.Namespace,
+		JobName:   job.Name,
+
+		Event: vkbatchv1.OutOfSyncEvent,
 	})
 }
 
 func (cc *Controller) updateJob(oldObj, newObj interface{}) {
-	newJob, ok := newObj.(*vkbatch.Job)
+	newJob, ok := newObj.(*vkbatchv1.Job)
 	if !ok {
 		glog.Errorf("newObj is not Job")
 		return
 	}
 
-	oldJob, ok := oldObj.(*vkbatch.Job)
+	oldJob, ok := oldObj.(*vkbatchv1.Job)
 	if !ok {
 		glog.Errorf("oldObj is not Job")
 		return
 	}
 
 	if !reflect.DeepEqual(oldJob.Spec, newJob.Spec) {
-		cc.enqueue(&state.Request{
-			Event: vkbatch.OutOfSyncEvent,
-			Job:   newJob,
+		cc.eventQueue.Add(&Request{
+			Namespace: newJob.Namespace,
+			JobName:   newJob.Name,
+
+			Event: vkbatchv1.OutOfSyncEvent,
 		})
 	}
 }
 
 func (cc *Controller) deleteJob(obj interface{}) {
-	job, ok := obj.(*vkbatch.Job)
+	job, ok := obj.(*vkbatchv1.Job)
 	if !ok {
 		glog.Errorf("obj is not Job")
 		return
 	}
 
-	cc.enqueue(&state.Request{
-		Event: vkbatch.OutOfSyncEvent,
-		Job:   job,
+	cc.eventQueue.Add(&Request{
+		Namespace: job.Namespace,
+		JobName:   job.Name,
+
+		Event: vkbatchv1.OutOfSyncEvent,
 	})
 }
 
@@ -99,9 +104,17 @@ func (cc *Controller) addPod(obj interface{}) {
 		return
 	}
 
-	cc.enqueue(&state.Request{
-		Event: vkbatch.OutOfSyncEvent,
-		Pod:   pod,
+	jobName, found := pod.Annotations[vkbatchv1.JobNameKey]
+	if !found {
+		return
+	}
+
+	cc.eventQueue.Add(&Request{
+		Namespace: pod.Namespace,
+		JobName:   jobName,
+		PodName:   pod.Name,
+
+		Event: vkbatchv1.OutOfSyncEvent,
 	})
 }
 
@@ -112,9 +125,17 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		return
 	}
 
-	cc.enqueue(&state.Request{
-		Event: vkbatch.OutOfSyncEvent,
-		Pod:   pod,
+	jobName, found := pod.Annotations[vkbatchv1.JobNameKey]
+	if !found {
+		return
+	}
+
+	cc.eventQueue.Add(&Request{
+		Namespace: pod.Namespace,
+		JobName:   jobName,
+		PodName:   pod.Name,
+
+		Event: vkbatchv1.OutOfSyncEvent,
 	})
 }
 
@@ -135,15 +156,16 @@ func (cc *Controller) deletePod(obj interface{}) {
 		return
 	}
 
-	cc.enqueue(&state.Request{
-		Event: vkbatch.OutOfSyncEvent,
-		Pod:   pod,
-	})
-}
-
-func (cc *Controller) enqueue(obj interface{}) {
-	err := cc.eventQueue.Add(obj)
-	if err != nil {
-		glog.Errorf("Fail to enqueue Job to update queue, err %v", err)
+	jobName, found := pod.Annotations[vkbatchv1.JobNameKey]
+	if !found {
+		return
 	}
+
+	cc.eventQueue.Add(&Request{
+		Namespace: pod.Namespace,
+		JobName:   jobName,
+		PodName:   pod.Name,
+
+		Event: vkbatchv1.OutOfSyncEvent,
+	})
 }
