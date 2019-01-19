@@ -21,22 +21,10 @@ import (
 
 	"github.com/golang/glog"
 
-	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/informers"
-	coreinformers "k8s.io/client-go/informers/core/v1"
-	"k8s.io/client-go/kubernetes"
-	corelisters "k8s.io/client-go/listers/core/v1"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/cache"
-
 	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 	kbinfoext "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
 	kbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	kblister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
-
 	vkbatchv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	v1corev1 "hpw.cloud/volcano/pkg/apis/bus/v1alpha1"
 	"hpw.cloud/volcano/pkg/apis/helpers"
@@ -47,6 +35,15 @@ import (
 	vkbatchlister "hpw.cloud/volcano/pkg/client/listers/batch/v1alpha1"
 	vkcorelister "hpw.cloud/volcano/pkg/client/listers/bus/v1alpha1"
 	"hpw.cloud/volcano/pkg/controllers/job/state"
+	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
+	coreinformers "k8s.io/client-go/informers/core/v1"
+	"k8s.io/client-go/kubernetes"
+	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 )
 
 // Controller the Job Controller type
@@ -173,15 +170,8 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
 	// Register actions
-	actionFns := map[vkbatchv1.Action]state.ActionFn{
-		vkbatchv1.ResumeJobAction:    cc.resumeJob,
-		vkbatchv1.SyncJobAction:      cc.syncJob,
-		vkbatchv1.AbortJobAction:     cc.abortJob,
-		vkbatchv1.TerminateJobAction: cc.terminateJob,
-		vkbatchv1.RestartJobAction:   cc.restartJob,
-		vkbatchv1.RestartTaskAction:  cc.syncJob,
-	}
-	state.RegisterActions(actionFns)
+	state.SyncJob = cc.syncJob
+	state.KillJob = cc.killJob
 
 	return cc
 }
@@ -203,52 +193,54 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 	glog.Infof("JobController is running ...... ")
 }
 
+type Request struct {
+	Namespace string
+	JobName   string
+	PodName   string
+
+	Event  vkbatchv1.Event
+	Action vkbatchv1.Action
+
+	Reason  string
+	Message string
+}
+
 func (cc *Controller) worker() {
 	obj := cache.Pop(cc.eventQueue)
 	if obj == nil {
 		glog.Errorf("Fail to pop item from eventQueue")
-	}
-
-	req := obj.(*state.Request)
-
-	if req.Target != nil {
-		if job, err := cc.jobLister.Jobs(req.Namespace).Get(req.Target.Name); err != nil {
-			req.Job = job
-		}
-	}
-
-	if req.Job == nil {
-		if req.Pod == nil {
-			glog.Errorf("Empty data for request %v", req)
-			return
-		}
-		jobs, err := cc.jobLister.List(labels.Everything())
-		if err != nil {
-			glog.Errorf("Failed to list Jobs for Pod %v/%v", req.Pod.Namespace, req.Pod.Name)
-		}
-
-		// TODO(k82cn): select by UID instead of loop
-		ctl := helpers.GetController(req.Pod)
-		for _, j := range jobs {
-			if j.UID == ctl {
-				req.Job = j
-				break
-			}
-		}
-	}
-
-	if req.Job == nil {
-		glog.Errorf("No Job for request %v from pod %v/%v",
-			req.Event, req.Pod.Namespace, req.Pod.Name)
 		return
 	}
 
-	st := state.NewState(req)
-	if err := st.Execute(); err != nil {
-		glog.Errorf("Failed to handle Job %s/%s: %v",
-			req.Job.Namespace, req.Job.Name, err)
+	req := obj.(*Request)
+
+	job, err := cc.jobLister.Jobs(req.Namespace).Get(req.JobName)
+	if err != nil {
+		return
+	}
+
+	st := state.NewState(job)
+	if st == nil {
+		glog.Errorf("Invalid state <%s> of Job <%v/%v>",
+			job.Status.State, job.Namespace, job.Name)
+		return
+	}
+
+	action := req.Action
+	if len(action) == 0 {
+		pod, err := cc.podLister.Pods(req.Namespace).Get(req.PodName)
+		if err != nil {
+			pod = nil
+		}
+		action = applyPolicies(req.Event, job, pod)
+	}
+
+	if err := st.Execute(action, req.Reason, req.Message); err != nil {
+		glog.Errorf("Failed to handle Job <%s/%s>: %v",
+			job.Namespace, job.Name, err)
 		// If any error, requeue it.
-		// TODO(k82cn): replace with RateLimteQueue
-		cc.eventQueue.Add(req)
+		if e := cc.eventQueue.Add(req); e != nil {
+			glog.Errorf("Failed to reqeueue request <%v>", req)
+		}
 	}
 }

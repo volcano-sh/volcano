@@ -18,7 +18,6 @@ package job
 
 import (
 	"fmt"
-
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
@@ -30,7 +29,6 @@ import (
 
 	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"hpw.cloud/volcano/pkg/apis/helpers"
-	"hpw.cloud/volcano/pkg/controllers/job/state"
 )
 
 func validate(job *vkv1.Job) error {
@@ -48,22 +46,12 @@ func validate(job *vkv1.Job) error {
 }
 
 func eventKey(obj interface{}) (string, error) {
-	req := obj.(*state.Request)
-
-	if req.Pod == nil && req.Job == nil {
-		return "", fmt.Errorf("empty data for request")
+	req, ok := obj.(*Request)
+	if !ok {
+		return "", fmt.Errorf("failed to convert %v to *Request", obj)
 	}
 
-	if req.Job != nil {
-		return fmt.Sprintf("%s/%s", req.Job.Namespace, req.Job.Name), nil
-	}
-
-	name, found := req.Pod.Annotations[vkv1.JobNameKey]
-	if !found {
-		return "", fmt.Errorf("failed to find job of pod <%s/%s>",
-			req.Pod.Namespace, req.Pod.Name)
-	}
-	return fmt.Sprintf("%s/%s", req.Pod.Namespace, name), nil
+	return fmt.Sprintf("%s/%s", req.Namespace, req.JobName), nil
 }
 
 func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
@@ -71,7 +59,7 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-%s-%d", job.Name, template.Name, ix),
+			Name:      fmt.Sprintf(TaskNameFmt, job.Name, template.Name, ix),
 			Namespace: job.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(job, helpers.JobKind),
@@ -101,8 +89,10 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 		}
 
 		for i, c := range pod.Spec.Containers {
-			vm := job.Spec.Output.VolumeMount
-			vm.Name = fmt.Sprintf("%s-output", job.Name)
+			vm := v1.VolumeMount{
+				MountPath: job.Spec.Output.MountPath,
+				Name:      fmt.Sprintf("%s-output", job.Name),
+			}
 			pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
 		}
 	}
@@ -126,9 +116,13 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 		}
 
 		for i, c := range pod.Spec.Containers {
-			vm := job.Spec.Input.VolumeMount
-			vm.Name = fmt.Sprintf("%s-input", job.Name)
+			vm := v1.VolumeMount{
+				MountPath: job.Spec.Input.MountPath,
+				Name:      fmt.Sprintf("%s-input", job.Name),
+			}
+
 			pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
+
 		}
 	}
 
@@ -193,4 +187,34 @@ func getPodsForJob(podLister corelisters.PodLister, job *vkv1.Job) (map[string]m
 	}
 
 	return pods, nil
+}
+
+func applyPolicies(event vkv1.Event, job *vkv1.Job, pod *v1.Pod) vkv1.Action {
+	// Overwrite Job level policies
+	if pod != nil {
+		// Parse task level policies
+		if taskName, found := pod.Annotations[vkv1.TaskSpecKey]; found {
+			for _, task := range job.Spec.Tasks {
+				if task.Name == taskName {
+					for _, policy := range task.Policies {
+						if policy.Event == event || policy.Event == vkv1.AnyEvent {
+							return policy.Action
+						}
+					}
+				}
+			}
+		} else {
+			glog.Errorf("Failed to find taskSpecKey in Pod <%s/%s>",
+				pod.Namespace, pod.Name)
+		}
+	}
+
+	// Parse Job level policies
+	for _, policy := range job.Spec.Policies {
+		if policy.Event == event || policy.Event == vkv1.AnyEvent {
+			return policy.Action
+		}
+	}
+
+	return vkv1.SyncJobAction
 }
