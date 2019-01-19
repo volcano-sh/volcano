@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Volcano Authors.
+Copyright 2019 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,25 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package state
+package job
 
-import (
-	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+const (
+	TaskNameFmt = "%s-%s-%d"
 )
-
-type restartingState struct {
-	request  *Request
-	policies map[vkv1.Event]vkv1.Action
-}
-
-func (ps *restartingState) Execute() error {
-	action := ps.policies[ps.request.Event]
-	switch action {
-	case vkv1.RestartJobAction, vkv1.RestartTaskAction:
-		// Already in Restarting phase, just sync it
-		return actionFns[vkv1.SyncJobAction](ps.request)
-	default:
-		fn := actionFns[action]
-		return fn(ps.request)
-	}
-}
