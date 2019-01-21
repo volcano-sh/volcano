@@ -19,12 +19,14 @@ package job
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 
@@ -34,6 +36,9 @@ import (
 )
 
 func (cc *Controller) killJob(job *vkv1.Job, nextState state.NextStateFn) error {
+	glog.V(3).Infof("Killing Job <%s/%s>", job.Namespace, job.Name)
+	defer glog.V(3).Infof("Finished Job <%s/%s> killing", job.Namespace, job.Name)
+
 	job, err := cc.jobLister.Jobs(job.Namespace).Get(job.Name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -93,6 +98,8 @@ func (cc *Controller) killJob(job *vkv1.Job, nextState state.NextStateFn) error 
 	}
 
 	job.Status = vkv1.JobStatus{
+		State: job.Status.State,
+
 		Pending:      pending,
 		Running:      running,
 		Succeeded:    succeeded,
@@ -100,9 +107,11 @@ func (cc *Controller) killJob(job *vkv1.Job, nextState state.NextStateFn) error 
 		Terminating:  terminating,
 		MinAvailable: int32(job.Spec.MinAvailable),
 	}
+
 	if nextState != nil {
 		job.Status.State = nextState(job.Status)
 	}
+	newState := job.Status.State
 
 	// Update Job status
 	if _, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).Update(job); err != nil {
@@ -111,18 +120,27 @@ func (cc *Controller) killJob(job *vkv1.Job, nextState state.NextStateFn) error 
 		return err
 	}
 
+	if err := cc.waitForJobState(job, newState); err != nil {
+		glog.Errorf("Failed to sync Job's status.")
+		return err
+	}
+
 	// Delete PodGroup
 	if err := cc.kbClients.SchedulingV1alpha1().PodGroups(job.Namespace).Delete(job.Name, nil); err != nil {
-		glog.Errorf("Failed to delete PodGroup of Job %v/%v: %v",
-			job.Namespace, job.Name, err)
-		return err
+		if !apierrors.IsNotFound(err) {
+			glog.Errorf("Failed to delete PodGroup of Job %v/%v: %v",
+				job.Namespace, job.Name, err)
+			return err
+		}
 	}
 
 	// Delete Service
 	if err := cc.kubeClients.CoreV1().Services(job.Namespace).Delete(job.Name, nil); err != nil {
-		glog.Errorf("Failed to delete Service of Job %v/%v: %v",
-			job.Namespace, job.Name, err)
-		return err
+		if !apierrors.IsNotFound(err) {
+			glog.Errorf("Failed to delete Service of Job %v/%v: %v",
+				job.Namespace, job.Name, err)
+			return err
+		}
 	}
 
 	// NOTE(k82cn): DO NOT delete input/output until job is deleted.
@@ -131,6 +149,9 @@ func (cc *Controller) killJob(job *vkv1.Job, nextState state.NextStateFn) error 
 }
 
 func (cc *Controller) syncJob(job *vkv1.Job, nextState state.NextStateFn) error {
+	glog.V(3).Infof("Starting to sync up Job <%s/%s>", job.Namespace, job.Name)
+	defer glog.V(3).Infof("Finished Job <%s/%s> sync up", job.Namespace, job.Name)
+
 	job, err := cc.jobLister.Jobs(job.Namespace).Get(job.Name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -275,6 +296,8 @@ func (cc *Controller) syncJob(job *vkv1.Job, nextState state.NextStateFn) error 
 	}
 
 	job.Status = vkv1.JobStatus{
+		State: job.Status.State,
+
 		Pending:      pending,
 		Running:      running,
 		Succeeded:    succeeded,
@@ -286,10 +309,15 @@ func (cc *Controller) syncJob(job *vkv1.Job, nextState state.NextStateFn) error 
 	if nextState != nil {
 		job.Status.State = nextState(job.Status)
 	}
+	newState := job.Status.State
 
 	if _, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).Update(job); err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
+		return err
+	}
+
+	if err := cc.waitForJobState(job, newState); err != nil {
 		return err
 	}
 
@@ -427,6 +455,27 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 
 			return e
 		}
+	}
+
+	return nil
+}
+
+// waitForJobState will wait for job's state changed to the target status.
+// TODO(k82cn): enhance by cache/assume
+func (cc *Controller) waitForJobState(job *vkv1.Job, newState vkv1.JobState) error {
+	if err := wait.Poll(100*time.Microsecond, 10*time.Second, func() (bool, error) {
+		newJob, err := cc.jobLister.Jobs(job.Namespace).Get(job.Name)
+		if err != nil {
+			return false, err
+		}
+
+		if newJob.Status.State == newState {
+			return true, nil
+		}
+
+		return false, nil
+	}); err != nil {
+		return err
 	}
 
 	return nil

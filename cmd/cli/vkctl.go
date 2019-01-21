@@ -24,8 +24,6 @@ import (
 	"github.com/spf13/pflag"
 
 	"k8s.io/apimachinery/pkg/util/wait"
-
-	"hpw.cloud/volcano/pkg/cli/job"
 )
 
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
@@ -38,32 +36,10 @@ func main() {
 	defer glog.Flush()
 
 	rootCmd := cobra.Command{
-		Use: "vncli",
+		Use: "vkctl",
 	}
 
-	jobCmd := &cobra.Command{
-		Use: "job",
-	}
-
-	jobRunCmd := &cobra.Command{
-		Use: "run",
-		Run: func(cmd *cobra.Command, args []string) {
-			checkError(cmd, job.RunJob())
-		},
-	}
-	job.InitRunFlags(jobRunCmd)
-	jobCmd.AddCommand(jobRunCmd)
-
-	jobListCmd := &cobra.Command{
-		Use: "list",
-		Run: func(cmd *cobra.Command, args []string) {
-			checkError(cmd, job.ListJobs())
-		},
-	}
-	job.InitListFlags(jobListCmd)
-	jobCmd.AddCommand(jobListCmd)
-
-	rootCmd.AddCommand(jobCmd)
+	rootCmd.AddCommand(buildJobCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Printf("Failed to execute command: %v", err)
