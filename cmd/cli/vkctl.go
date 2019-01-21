@@ -65,7 +65,9 @@ func main() {
 
 	rootCmd.AddCommand(jobCmd)
 
-	rootCmd.Execute()
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Printf("Failed to execute command: %v", err)
+	}
 }
 
 func checkError(cmd *cobra.Command, err error) {
