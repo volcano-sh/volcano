@@ -54,7 +54,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 			queues.Push(queue)
 		}
 
-		glog.V(3).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
+		glog.V(4).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
 		jobsMap[job.Queue].Push(job)
 	}
 
@@ -78,7 +78,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 		glog.V(3).Infof("Try to allocate resource to Jobs in Queue <%v>", queue.Name)
 
 		if !found || jobs.Empty() {
-			glog.V(3).Infof("Can not find jobs for queue %s.", queue.Name)
+			glog.V(4).Infof("Can not find jobs for queue %s.", queue.Name)
 			continue
 		}
 
@@ -88,7 +88,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 			for _, task := range job.TaskStatusIndex[api.Pending] {
 				// Skip BestEffort task in 'allocate' action.
 				if task.Resreq.IsEmpty() {
-					glog.V(3).Infof("Task <%v/%v> is BestEffort task, skip it.",
+					glog.V(4).Infof("Task <%v/%v> is BestEffort task, skip it.",
 						task.Namespace, task.Name)
 					continue
 				}

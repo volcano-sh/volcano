@@ -113,7 +113,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		lReady := jobReady(lv)
 		rReady := jobReady(rv)
 
-		glog.V(3).Infof("Gang JobOrderFn: <%v/%v> is ready: %t, <%v/%v> is ready: %t",
+		glog.V(4).Infof("Gang JobOrderFn: <%v/%v> is ready: %t, <%v/%v> is ready: %t",
 			lv.Namespace, lv.Name, lReady, rv.Namespace, rv.Name, rReady)
 
 		if lReady && rReady {
