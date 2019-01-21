@@ -18,7 +18,6 @@ package job
 
 import (
 	"fmt"
-
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
@@ -114,8 +113,8 @@ func NewJobController(config *rest.Config) *Controller {
 			case *v1corev1.Command:
 				return helpers.ControlledBy(t, helpers.JobKind)
 			case cache.DeletedFinalStateUnknown:
-				if pod, ok := t.Obj.(*v1corev1.Command); ok {
-					return helpers.ControlledBy(pod, helpers.JobKind)
+				if cmd, ok := t.Obj.(*v1corev1.Command); ok {
+					return helpers.ControlledBy(cmd, helpers.JobKind)
 				}
 				runtime.HandleError(fmt.Errorf("unable to convert object %T to *v1.Pod", obj))
 				return false
@@ -236,6 +235,9 @@ func (cc *Controller) worker() {
 		}
 		action = applyPolicies(req.Event, job, pod)
 	}
+
+	glog.V(3).Infof("Execute <%v> on Job <%s/%s> in <%s> by <%T>.",
+		action, req.Namespace, req.JobName, job.Status.State.Phase, st)
 
 	if err := st.Execute(action, req.Reason, req.Message); err != nil {
 		glog.Errorf("Failed to handle Job <%s/%s>: %v",

@@ -39,6 +39,20 @@ func (ps *pendingState) Execute(action vkv1.Action, reason string, msg string) e
 				Message: msg,
 			}
 		})
+
+	case vkv1.AbortJobAction:
+		return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
+			phase := vkv1.Pending
+			if status.Terminating != 0 {
+				phase = vkv1.Aborting
+			}
+
+			return vkv1.JobState{
+				Phase:   phase,
+				Reason:  reason,
+				Message: msg,
+			}
+		})
 	default:
 		return SyncJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
 			total := totalTasks(ps.job)

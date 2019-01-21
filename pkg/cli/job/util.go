@@ -20,10 +20,17 @@ import (
 	"os"
 	"strings"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+
+	vkbatchv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	vkbusv1 "hpw.cloud/volcano/pkg/apis/bus/v1alpha1"
+	"hpw.cloud/volcano/pkg/apis/helpers"
+	"hpw.cloud/volcano/pkg/client/clientset/versioned"
 )
 
 func homeDir() string {
@@ -60,4 +67,32 @@ func populateResourceListV1(spec string) (v1.ResourceList, error) {
 		result[resourceName] = resourceQuantity
 	}
 	return result, nil
+}
+
+func createJobCommand(config *rest.Config, ns, name string, action vkbatchv1.Action) error {
+	jobClient := versioned.NewForConfigOrDie(config)
+	job, err := jobClient.BatchV1alpha1().Jobs(ns).Get(name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	ctrlRef := metav1.NewControllerRef(job, helpers.JobKind)
+	cmd := &vkbusv1.Command{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: fmt.Sprintf("%s-%s-",
+				job.Name, strings.ToLower(string(action))),
+			Namespace: job.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*ctrlRef,
+			},
+		},
+		TargetObject: ctrlRef,
+		Action:       string(action),
+	}
+
+	if _, err := jobClient.BusV1alpha1().Commands(ns).Create(cmd); err != nil {
+		return err
+	}
+
+	return nil
 }
