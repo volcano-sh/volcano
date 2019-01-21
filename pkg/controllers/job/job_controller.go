@@ -21,10 +21,21 @@ import (
 
 	"github.com/golang/glog"
 
+	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
+	coreinformers "k8s.io/client-go/informers/core/v1"
+	"k8s.io/client-go/kubernetes"
+	corelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
+
 	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 	kbinfoext "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
 	kbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	kblister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
+
 	vkbatchv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	v1corev1 "hpw.cloud/volcano/pkg/apis/bus/v1alpha1"
 	"hpw.cloud/volcano/pkg/apis/helpers"
@@ -35,15 +46,6 @@ import (
 	vkbatchlister "hpw.cloud/volcano/pkg/client/listers/batch/v1alpha1"
 	vkcorelister "hpw.cloud/volcano/pkg/client/listers/bus/v1alpha1"
 	"hpw.cloud/volcano/pkg/controllers/job/state"
-	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/informers"
-	coreinformers "k8s.io/client-go/informers/core/v1"
-	"k8s.io/client-go/kubernetes"
-	corelisters "k8s.io/client-go/listers/core/v1"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/cache"
 )
 
 // Controller the Job Controller type
