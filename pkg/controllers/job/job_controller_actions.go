@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Vulcan Authors.
+Copyright 2019 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -104,18 +104,21 @@ func (cc *Controller) killJob(job *vkv1.Job, nextState state.NextStateFn) error 
 		job.Status.State = nextState(job.Status)
 	}
 
+	// Update Job status
 	if _, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).Update(job); err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
 	}
 
+	// Delete PodGroup
 	if err := cc.kbClients.SchedulingV1alpha1().PodGroups(job.Namespace).Delete(job.Name, nil); err != nil {
 		glog.Errorf("Failed to delete PodGroup of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
 	}
 
+	// Delete Service
 	if err := cc.kubeClients.CoreV1().Services(job.Namespace).Delete(job.Name, nil); err != nil {
 		glog.Errorf("Failed to delete Service of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
