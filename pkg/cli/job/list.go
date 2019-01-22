@@ -56,16 +56,16 @@ func ListJobs() error {
 		return nil
 	}
 
-	fmt.Printf("%-30s%-25s%-12s%-8s%-12s%-12s%-12s%-12s\n",
-		"Name", "Creation", "Replicas", "Min", "Pending", "Running", "Succeeded", "Failed")
+	fmt.Printf("%-25s%-25s%-12s%-12s%-6s%-10s%-10s%-12s%-10s\n",
+		"Name", "Creation", "Phase", "Replicas", "Min", "Pending", "Running", "Succeeded", "Failed")
 	for _, job := range jobs.Items {
 		replicas := int32(0)
 		for _, ts := range job.Spec.Tasks {
 			replicas += ts.Replicas
 		}
 
-		fmt.Printf("%-30s%-25s%-12d%-8d%-12d%-12d%-12d%-12d\n",
-			job.Name, job.CreationTimestamp.Format("2006-01-02 15:04:05"), replicas,
+		fmt.Printf("%-25s%-25s%-12s%-12d%-6d%-10d%-10d%-12d%-10d\n",
+			job.Name, job.CreationTimestamp.Format("2006-01-02 15:04:05"), job.Status.State.Phase, replicas,
 			job.Status.MinAvailable, job.Status.Pending, job.Status.Running, job.Status.Succeeded, job.Status.Failed)
 	}
 

@@ -17,8 +17,6 @@ limitations under the License.
 package job
 
 import (
-	"reflect"
-
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
@@ -43,10 +41,21 @@ func (cc *Controller) addCommand(obj interface{}) {
 		Action: vkbatchv1.Action(cmd.Action),
 	}
 
+	glog.V(3).Infof("Try to execute command <%v> on Job <%s/%s>",
+		cmd.Action, req.Namespace, req.JobName)
+
 	if err := cc.eventQueue.Add(req); err != nil {
 		glog.Errorf("Failed to add request <%v> into queue: %v",
 			req, err)
 	}
+
+	go func() {
+		if err := cc.vkClients.BusV1alpha1().Commands(cmd.Namespace).Delete(cmd.Name, nil); err != nil {
+			glog.Errorf("Failed to delete Command <%s/%s> which maybe executed again.",
+				cmd.Namespace, cmd.Name)
+		}
+	}()
+
 }
 
 func (cc *Controller) addJob(obj interface{}) {
@@ -76,25 +85,18 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 		return
 	}
 
-	oldJob, ok := oldObj.(*vkbatchv1.Job)
-	if !ok {
-		glog.Errorf("oldObj is not Job")
-		return
+	req := &Request{
+		Namespace: newJob.Namespace,
+		JobName:   newJob.Name,
+
+		Event: vkbatchv1.OutOfSyncEvent,
 	}
 
-	if !reflect.DeepEqual(oldJob.Spec, newJob.Spec) {
-		req := &Request{
-			Namespace: newJob.Namespace,
-			JobName:   newJob.Name,
-
-			Event: vkbatchv1.OutOfSyncEvent,
-		}
-
-		if err := cc.eventQueue.Add(req); err != nil {
-			glog.Errorf("Failed to add request <%v> into queue: %v",
-				req, err)
-		}
+	if err := cc.eventQueue.Add(req); err != nil {
+		glog.Errorf("Failed to add request <%v> into queue: %v",
+			req, err)
 	}
+
 }
 
 func (cc *Controller) deleteJob(obj interface{}) {
@@ -215,6 +217,5 @@ func (cc *Controller) deletePod(obj interface{}) {
 			req, err)
 	}
 }
-
 
 // TODO(k82cn): add handler for PodGroup unschedulable event.
