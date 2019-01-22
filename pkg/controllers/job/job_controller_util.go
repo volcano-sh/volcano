@@ -19,17 +19,14 @@ package job
 import (
 	"fmt"
 
-	"github.com/golang/glog"
-
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	corelisters "k8s.io/client-go/listers/core/v1"
 
 	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 
 	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"hpw.cloud/volcano/pkg/apis/helpers"
+	"hpw.cloud/volcano/pkg/controllers/job/apis"
 )
 
 func validate(job *vkv1.Job) error {
@@ -46,13 +43,16 @@ func validate(job *vkv1.Job) error {
 	return nil
 }
 
-func eventKey(obj interface{}) (string, error) {
-	req, ok := obj.(*Request)
+func eventKey(obj interface{}) interface{} {
+	req, ok := obj.(apis.Request)
 	if !ok {
-		return "", fmt.Errorf("failed to convert %v to *Request", obj)
+		return obj
 	}
 
-	return fmt.Sprintf("%s/%s", req.Namespace, req.JobName), nil
+	return apis.Request{
+		Namespace: req.Namespace,
+		JobName:   req.JobName,
+	}
 }
 
 func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
@@ -160,59 +160,28 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 	return pod
 }
 
-func getPodsForJob(podLister corelisters.PodLister, job *vkv1.Job) (map[string]map[string]*v1.Pod, error) {
-	pods := map[string]map[string]*v1.Pod{}
-
-	// TODO (k82cn): optimist by cache and index of owner; add 'ControlledBy' extended interface.
-	ps, err := podLister.Pods(job.Namespace).List(labels.Everything())
-	if err != nil {
-		return nil, err
+func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
+	if len(req.Action) != 0 {
+		return req.Action
 	}
 
-	for _, pod := range ps {
-		if !metav1.IsControlledBy(pod, job) {
-			continue
-		}
-		if len(pod.Annotations) == 0 {
-			glog.Errorf("The annotations of pod <%s/%s> is empty", pod.Namespace, pod.Name)
-			continue
-		}
-		tsName, found := pod.Annotations[vkv1.TaskSpecKey]
-		if found {
-			// Hash by TaskSpec.Template.Name
-			if _, exist := pods[tsName]; !exist {
-				pods[tsName] = make(map[string]*v1.Pod)
-			}
-			pods[tsName][pod.Name] = pod
-		}
-	}
-
-	return pods, nil
-}
-
-func applyPolicies(event vkv1.Event, job *vkv1.Job, pod *v1.Pod) vkv1.Action {
 	// Overwrite Job level policies
-	if pod != nil {
+	if len(req.TaskName) != 0 {
 		// Parse task level policies
-		if taskName, found := pod.Annotations[vkv1.TaskSpecKey]; found {
-			for _, task := range job.Spec.Tasks {
-				if task.Name == taskName {
-					for _, policy := range task.Policies {
-						if policy.Event == event || policy.Event == vkv1.AnyEvent {
-							return policy.Action
-						}
+		for _, task := range job.Spec.Tasks {
+			if task.Name == req.TaskName {
+				for _, policy := range task.Policies {
+					if policy.Event == req.Event || policy.Event == vkv1.AnyEvent {
+						return policy.Action
 					}
 				}
 			}
-		} else {
-			glog.Errorf("Failed to find taskSpecKey in Pod <%s/%s>",
-				pod.Namespace, pod.Name)
 		}
 	}
 
 	// Parse Job level policies
 	for _, policy := range job.Spec.Policies {
-		if policy.Event == event || policy.Event == vkv1.AnyEvent {
+		if policy.Event == req.Event || policy.Event == vkv1.AnyEvent {
 			return policy.Action
 		}
 	}
