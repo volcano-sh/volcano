@@ -362,9 +362,6 @@ var _ = Describe("Job E2E Test", func() {
 		err = waitPodGroupPending(context, pg)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitPodGroupUnschedulable(context, pg)
-		Expect(err).NotTo(HaveOccurred())
-
 		// task_1 has been scheduled
 		err = waitTasksReady(context, pg, int(minMemberOverride))
 		Expect(err).NotTo(HaveOccurred())

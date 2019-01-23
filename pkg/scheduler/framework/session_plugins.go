@@ -52,6 +52,10 @@ func (ssn *Session) AddOverusedFn(name string, fn api.ValidateFn) {
 	ssn.overusedFns[name] = fn
 }
 
+func (ssn *Session) AddJobValidFn(name string, fn api.ValidateExFn) {
+	ssn.jobValidFns[name] = fn
+}
+
 func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
 	var init bool
@@ -169,6 +173,24 @@ func (ssn *Session) JobReady(obj interface{}) bool {
 	}
 
 	return true
+}
+
+func (ssn *Session) JobValid(obj interface{}) *api.ValidateResult {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			jrf, found := ssn.jobValidFns[plugin.Name]
+			if !found {
+				continue
+			}
+
+			if vr := jrf(obj); vr != nil && !vr.Pass {
+				return vr
+			}
+
+		}
+	}
+
+	return nil
 }
 
 func (ssn *Session) JobOrderFn(l, r interface{}) bool {

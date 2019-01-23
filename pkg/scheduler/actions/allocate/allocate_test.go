@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 
 	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
@@ -113,12 +114,17 @@ func (fb *fakeBinder) Bind(p *v1.Pod, hostname string) error {
 	return nil
 }
 
-type fakeTaskStatusUpdater struct {
+type fakeStatusUpdater struct {
 }
 
-func (ftsu *fakeTaskStatusUpdater) Update(pod *v1.Pod, podCondition *v1.PodCondition) error {
+func (ftsu *fakeStatusUpdater) UpdatePod(pod *v1.Pod, podCondition *v1.PodCondition) (*v1.Pod, error) {
 	// do nothing here
-	return nil
+	return nil, nil
+}
+
+func (ftsu *fakeStatusUpdater) UpdatePodGroup(pg *kbv1.PodGroup) (*kbv1.PodGroup, error) {
+	// do nothing here
+	return nil, nil
 }
 
 type fakeVolumeBinder struct {
@@ -239,12 +245,14 @@ func TestAllocate(t *testing.T) {
 			c:     make(chan string),
 		}
 		schedulerCache := &cache.SchedulerCache{
-			Nodes:             make(map[string]*api.NodeInfo),
-			Jobs:              make(map[api.JobID]*api.JobInfo),
-			Queues:            make(map[api.QueueID]*api.QueueInfo),
-			Binder:            binder,
-			TaskStatusUpdater: &fakeTaskStatusUpdater{},
-			VolumeBinder:      &fakeVolumeBinder{},
+			Nodes:         make(map[string]*api.NodeInfo),
+			Jobs:          make(map[api.JobID]*api.JobInfo),
+			Queues:        make(map[api.QueueID]*api.QueueInfo),
+			Binder:        binder,
+			StatusUpdater: &fakeStatusUpdater{},
+			VolumeBinder:  &fakeVolumeBinder{},
+
+			Recorder: record.NewFakeRecorder(100),
 		}
 		for _, node := range test.nodes {
 			schedulerCache.AddNode(node)

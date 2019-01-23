@@ -139,9 +139,6 @@ type JobInfo struct {
 
 	CreationTimestamp metav1.Time
 	PodGroup          *arbcorev1.PodGroup
-
-	// TODO(k82cn): keep backward compatbility, removed it when v1alpha1 finalized.
-	PDB *policyv1.PodDisruptionBudget
 }
 
 func NewJobInfo(uid JobID) *JobInfo {
@@ -196,11 +193,6 @@ func (ji *JobInfo) SetPDB(pdb *policyv1.PodDisruptionBudget) {
 	}
 
 	ji.CreationTimestamp = pdb.GetCreationTimestamp()
-	ji.PDB = pdb
-}
-
-func (ji *JobInfo) UnsetPDB() {
-	ji.PDB = nil
 }
 
 func (ji *JobInfo) GetTasks(statuses ...TaskStatus) []*TaskInfo {
@@ -292,7 +284,6 @@ func (ji *JobInfo) Clone() *JobInfo {
 		TotalRequest:  ji.TotalRequest.Clone(),
 		NodesFitDelta: make(NodeResourceMap),
 
-		PDB:      ji.PDB,
 		PodGroup: ji.PodGroup,
 
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
@@ -326,14 +317,14 @@ func (ji JobInfo) String() string {
 
 // Error returns detailed information on why a job's task failed to fit on
 // each available node
-func (f *JobInfo) FitError() string {
-	if len(f.NodesFitDelta) == 0 {
+func (ji *JobInfo) FitError() string {
+	if len(ji.NodesFitDelta) == 0 {
 		reasonMsg := fmt.Sprintf("0 nodes are available")
 		return reasonMsg
 	}
 
 	reasons := make(map[string]int)
-	for _, v := range f.NodesFitDelta {
+	for _, v := range ji.NodesFitDelta {
 		if v.Get(v1.ResourceCPU) < 0 {
 			reasons["cpu"]++
 		}
@@ -353,6 +344,6 @@ func (f *JobInfo) FitError() string {
 		sort.Strings(reasonStrings)
 		return reasonStrings
 	}
-	reasonMsg := fmt.Sprintf("0/%v nodes are available, %v.", len(f.NodesFitDelta), strings.Join(sortReasonsHistogram(), ", "))
+	reasonMsg := fmt.Sprintf("0/%v nodes are available, %v.", len(ji.NodesFitDelta), strings.Join(sortReasonsHistogram(), ", "))
 	return reasonMsg
 }

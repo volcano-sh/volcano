@@ -17,16 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
-
-// Event represent the phase of PodGroup, e.g. pod-failed.
-type Event string
-
-const (
-	EvictEvent            Event = "Evict"
-	UnschedulableEvent    Event = "Unschedulable"
-	FailedSchedulingEvent Event = "FailedScheduling"
 )
 
 // PodGroupPhase is the phase of a pod group at the current time.
@@ -41,35 +33,39 @@ const (
 	// PodRunning means `spec.minMember` pods of PodGroups has been in running phase.
 	PodGroupRunning PodGroupPhase = "Running"
 
-	// PodGroupRecovering means part of `spec.minMember` pods have exception, e.g. killed; scheduler will
-	// wait for related controller to recover it.
-	PodGroupRecovering PodGroupPhase = "Recovering"
-
-	// PodGroupUnschedulable means part of `spec.minMember` pods are running but the other part can not
+	// PodGroupUnknown means part of `spec.minMember` pods are running but the other part can not
 	// be scheduled, e.g. not enough resource; scheduler will wait for related controller to recover it.
-	PodGroupUnschedulable PodGroupPhase = "Unschedulable"
+	PodGroupUnknown PodGroupPhase = "Unknown"
 )
 
-// PodGroupState contains details for the current state of this pod group.
-type PodGroupState struct {
-	// Current phase of PodGroup.
-	Phase PodGroupPhase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
+type PodGroupConditionType string
 
-	// Last time we probed to this Phase.
-	// +optional
-	LastProbeTime metav1.Time `json:"lastProbeTime,omitempty" protobuf:"bytes,2,opt,name=lastProbeTime"`
+const (
+	PodGroupUnschedulableType PodGroupConditionType = "Unschedulable"
+)
+
+// PodGroupCondition contains details for the current state of this pod group.
+type PodGroupCondition struct {
+	// Type is the type of the condition
+	Type PodGroupConditionType `json:"type,omitempty" protobuf:"bytes,1,opt,name=type"`
+
+	// Status is the status of the condition.
+	Status v1.ConditionStatus `json:"status,omitempty" protobuf:"bytes,2,opt,name=status"`
+
+	// The ID of condition transition.
+	TransitionID string `json:"transitionID,omitempty" protobuf:"bytes,3,opt,name=transitionID"`
 
 	// Last time the phase transitioned from another to current phase.
 	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,3,opt,name=lastTransitionTime"`
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,4,opt,name=lastTransitionTime"`
 
 	// Unique, one-word, CamelCase reason for the phase's last transition.
 	// +optional
-	Reason string `json:"reason,omitempty" protobuf:"bytes,4,opt,name=reason"`
+	Reason string `json:"reason,omitempty" protobuf:"bytes,5,opt,name=reason"`
 
 	// Human-readable message indicating details about last transition.
 	// +optional
-	Message string `json:"message,omitempty" protobuf:"bytes,5,opt,name=message"`
+	Message string `json:"message,omitempty" protobuf:"bytes,6,opt,name=message"`
 }
 
 const (
@@ -122,21 +118,24 @@ type PodGroupSpec struct {
 
 // PodGroupStatus represents the current state of a pod group.
 type PodGroupStatus struct {
-	// The state of PodGroup.
+	// Current phase of PodGroup.
+	Phase PodGroupPhase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
+
+	// The conditions of PodGroup.
 	// +optional
-	State PodGroupState `json:"state,omitempty" protobuf:"bytes,1,opt,name=state,casttype=State"`
+	Conditions []PodGroupCondition `json:"conditions,omitempty" protobuf:"bytes,2,opt,name=conditions"`
 
 	// The number of actively running pods.
 	// +optional
-	Running int32 `json:"running,omitempty" protobuf:"bytes,2,opt,name=running"`
+	Running int32 `json:"running,omitempty" protobuf:"bytes,3,opt,name=running"`
 
 	// The number of pods which reached phase Succeeded.
 	// +optional
-	Succeeded int32 `json:"succeeded,omitempty" protobuf:"bytes,3,opt,name=succeeded"`
+	Succeeded int32 `json:"succeeded,omitempty" protobuf:"bytes,4,opt,name=succeeded"`
 
 	// The number of pods which reached phase Failed.
 	// +optional
-	Failed int32 `json:"failed,omitempty" protobuf:"bytes,4,opt,name=failed"`
+	Failed int32 `json:"failed,omitempty" protobuf:"bytes,5,opt,name=failed"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

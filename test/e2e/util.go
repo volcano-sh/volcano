@@ -28,7 +28,7 @@ import (
 
 	appv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	schedv1 "k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -40,7 +40,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	arbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 	arbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
@@ -190,11 +190,11 @@ func createQueues(cxt *context) {
 				},
 			})
 		} else {
-			_, err = cxt.karclient.Scheduling().Queues().Create(&arbv1.Queue{
+			_, err = cxt.karclient.Scheduling().Queues().Create(&kbv1.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: q,
 				},
-				Spec: arbv1.QueueSpec{
+				Spec: kbv1.QueueSpec{
 					Weight: 1,
 				},
 			})
@@ -204,11 +204,11 @@ func createQueues(cxt *context) {
 	}
 
 	if !cxt.enableNamespaceAsQueue {
-		_, err := cxt.karclient.Scheduling().Queues().Create(&arbv1.Queue{
+		_, err := cxt.karclient.Scheduling().Queues().Create(&kbv1.Queue{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: cxt.namespace,
 			},
-			Spec: arbv1.QueueSpec{
+			Spec: kbv1.QueueSpec{
 				Weight: 1,
 			},
 		})
@@ -277,9 +277,9 @@ func getNS(context *context, job *jobSpec) string {
 	return context.namespace
 }
 
-func createJobEx(context *context, job *jobSpec) ([]*batchv1.Job, *arbv1.PodGroup) {
+func createJobEx(context *context, job *jobSpec) ([]*batchv1.Job, *kbv1.PodGroup) {
 	var jobs []*batchv1.Job
-	var podgroup *arbv1.PodGroup
+	var podgroup *kbv1.PodGroup
 	var min int32
 
 	ns := getNS(context, job)
@@ -296,7 +296,7 @@ func createJobEx(context *context, job *jobSpec) ([]*batchv1.Job, *arbv1.PodGrou
 				Template: v1.PodTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{
 						Labels:      task.labels,
-						Annotations: map[string]string{arbv1.GroupNameAnnotationKey: job.name},
+						Annotations: map[string]string{kbv1.GroupNameAnnotationKey: job.name},
 					},
 					Spec: v1.PodSpec{
 						SchedulerName: "kube-batch",
@@ -319,12 +319,12 @@ func createJobEx(context *context, job *jobSpec) ([]*batchv1.Job, *arbv1.PodGrou
 		min = min + task.min
 	}
 
-	pg := &arbv1.PodGroup{
+	pg := &kbv1.PodGroup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      job.name,
 			Namespace: ns,
 		},
-		Spec: arbv1.PodGroupSpec{
+		Spec: kbv1.PodGroupSpec{
 			MinMember: min,
 			Queue:     job.queue,
 		},
@@ -340,7 +340,7 @@ func createJobEx(context *context, job *jobSpec) ([]*batchv1.Job, *arbv1.PodGrou
 	return jobs, podgroup
 }
 
-func taskPhase(ctx *context, pg *arbv1.PodGroup, phase []v1.PodPhase, taskNum int) wait.ConditionFunc {
+func taskPhase(ctx *context, pg *kbv1.PodGroup, phase []v1.PodPhase, taskNum int) wait.ConditionFunc {
 	return func() (bool, error) {
 		pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
@@ -350,7 +350,7 @@ func taskPhase(ctx *context, pg *arbv1.PodGroup, phase []v1.PodPhase, taskNum in
 
 		readyTaskNum := 0
 		for _, pod := range pods.Items {
-			if gn, found := pod.Annotations[arbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
+			if gn, found := pod.Annotations[kbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
 				continue
 			}
 
@@ -366,7 +366,7 @@ func taskPhase(ctx *context, pg *arbv1.PodGroup, phase []v1.PodPhase, taskNum in
 	}
 }
 
-func taskPhaseEx(ctx *context, pg *arbv1.PodGroup, phase []v1.PodPhase, taskNum map[string]int) wait.ConditionFunc {
+func taskPhaseEx(ctx *context, pg *kbv1.PodGroup, phase []v1.PodPhase, taskNum map[string]int) wait.ConditionFunc {
 	return func() (bool, error) {
 		pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
@@ -376,7 +376,7 @@ func taskPhaseEx(ctx *context, pg *arbv1.PodGroup, phase []v1.PodPhase, taskNum 
 
 		readyTaskNum := map[string]int{}
 		for _, pod := range pods.Items {
-			if gn, found := pod.Annotations[arbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
+			if gn, found := pod.Annotations[kbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
 				continue
 			}
 
@@ -398,18 +398,16 @@ func taskPhaseEx(ctx *context, pg *arbv1.PodGroup, phase []v1.PodPhase, taskNum 
 	}
 }
 
-func podGroupUnschedulable(ctx *context, pg *arbv1.PodGroup, time time.Time) wait.ConditionFunc {
+func podGroupUnschedulable(ctx *context, pg *kbv1.PodGroup, time time.Time) wait.ConditionFunc {
 	return func() (bool, error) {
-		pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
-
 		events, err := ctx.kubeclient.CoreV1().Events(pg.Namespace).List(metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		for _, event := range events.Items {
 			target := event.InvolvedObject
 			if target.Name == pg.Name && target.Namespace == pg.Namespace {
-				if event.Reason == string(arbv1.UnschedulableEvent) && event.LastTimestamp.After(time) {
+				if event.Reason == string(kbv1.PodGroupUnschedulableType) &&
+					event.LastTimestamp.After(time) {
 					return true, nil
 				}
 			}
@@ -419,9 +417,9 @@ func podGroupUnschedulable(ctx *context, pg *arbv1.PodGroup, time time.Time) wai
 	}
 }
 
-func podGroupEvicted(ctx *context, pg *arbv1.PodGroup, time time.Time) wait.ConditionFunc {
+func podGroupEvicted(ctx *context, pg *kbv1.PodGroup, time time.Time) wait.ConditionFunc {
 	return func() (bool, error) {
-		pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
+		pg, err := ctx.karclient.SchedulingV1alpha1().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		events, err := ctx.kubeclient.CoreV1().Events(pg.Namespace).List(metav1.ListOptions{})
@@ -430,7 +428,7 @@ func podGroupEvicted(ctx *context, pg *arbv1.PodGroup, time time.Time) wait.Cond
 		for _, event := range events.Items {
 			target := event.InvolvedObject
 			if target.Name == pg.Name && target.Namespace == pg.Namespace {
-				if event.Reason == string(arbv1.EvictEvent) && event.LastTimestamp.After(time) {
+				if event.Reason == "Evict" && event.LastTimestamp.After(time) {
 					return true, nil
 				}
 			}
@@ -440,33 +438,32 @@ func podGroupEvicted(ctx *context, pg *arbv1.PodGroup, time time.Time) wait.Cond
 	}
 }
 
-func waitPodGroupReady(ctx *context, pg *arbv1.PodGroup) error {
+func waitPodGroupReady(ctx *context, pg *kbv1.PodGroup) error {
 	return waitTasksReady(ctx, pg, int(pg.Spec.MinMember))
 }
 
-func waitPodGroupPending(ctx *context, pg *arbv1.PodGroup) error {
+func waitPodGroupPending(ctx *context, pg *kbv1.PodGroup) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
 		[]v1.PodPhase{v1.PodPending}, int(pg.Spec.MinMember)))
 }
 
-func waitTasksReady(ctx *context, pg *arbv1.PodGroup, taskNum int) error {
+func waitTasksReady(ctx *context, pg *kbv1.PodGroup, taskNum int) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
 		[]v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum))
 }
 
-func waitTasksReadyEx(ctx *context, pg *arbv1.PodGroup, taskNum map[string]int) error {
+func waitTasksReadyEx(ctx *context, pg *kbv1.PodGroup, taskNum map[string]int) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, taskPhaseEx(ctx, pg,
 		[]v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum))
 }
 
-func waitTasksPending(ctx *context, pg *arbv1.PodGroup, taskNum int) error {
+func waitTasksPending(ctx *context, pg *kbv1.PodGroup, taskNum int) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
 		[]v1.PodPhase{v1.PodPending}, taskNum))
 }
 
-func waitPodGroupUnschedulable(ctx *context, pg *arbv1.PodGroup) error {
-	now := time.Now()
-	return wait.Poll(10*time.Second, oneMinute, podGroupUnschedulable(ctx, pg, now))
+func waitPodGroupUnschedulable(ctx *context, pg *kbv1.PodGroup) error {
+	return wait.Poll(10*time.Second, oneMinute, podGroupUnschedulable(ctx, pg, time.Now()))
 }
 
 func createContainers(img string, req v1.ResourceList, hostport int32) []v1.Container {
@@ -693,7 +690,7 @@ func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
 	return "", 0
 }
 
-func getPodOfPodGroup(ctx *context, pg *arbv1.PodGroup) []*v1.Pod {
+func getPodOfPodGroup(ctx *context, pg *kbv1.PodGroup) []*v1.Pod {
 	pg, err := ctx.karclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
@@ -703,7 +700,7 @@ func getPodOfPodGroup(ctx *context, pg *arbv1.PodGroup) []*v1.Pod {
 	var qjpod []*v1.Pod
 
 	for _, pod := range pods.Items {
-		if gn, found := pod.Annotations[arbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
+		if gn, found := pod.Annotations[kbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
 			continue
 		}
 		qjpod = append(qjpod, &pod)
