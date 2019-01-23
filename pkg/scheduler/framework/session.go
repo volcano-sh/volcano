@@ -21,10 +21,12 @@ import (
 
 	"github.com/golang/glog"
 
+	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
 
-	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/conf"
@@ -55,6 +57,7 @@ type Session struct {
 	reclaimableFns map[string]api.EvictableFn
 	overusedFns    map[string]api.ValidateFn
 	jobReadyFns    map[string]api.ValidateFn
+	jobValidFns    map[string]api.ValidateExFn
 }
 
 func openSession(cache cache.Cache) *Session {
@@ -74,11 +77,34 @@ func openSession(cache cache.Cache) *Session {
 		reclaimableFns: map[string]api.EvictableFn{},
 		overusedFns:    map[string]api.ValidateFn{},
 		jobReadyFns:    map[string]api.ValidateFn{},
+		jobValidFns:    map[string]api.ValidateExFn{},
 	}
 
 	snapshot := cache.Snapshot()
 
-	ssn.Jobs = snapshot.Jobs
+	for _, job := range snapshot.Jobs {
+		if vjr := ssn.JobValid(job); vjr != nil {
+			if !vjr.Pass {
+				jc := &v1alpha1.PodGroupCondition{
+					Type:               v1alpha1.PodGroupUnschedulableType,
+					Status:             v1.ConditionTrue,
+					LastTransitionTime: metav1.Now(),
+					TransitionID:       string(ssn.UID),
+					Reason:             vjr.Reason,
+					Message:            vjr.Message,
+				}
+
+				if err := ssn.UpdateJobCondition(job, jc); err != nil {
+					glog.Errorf("Failed to update job condition: %v", err)
+				}
+			}
+
+			continue
+		}
+
+		ssn.Jobs = append(ssn.Jobs, job)
+	}
+
 	for _, job := range ssn.Jobs {
 		ssn.JobIndex[job.UID] = job
 	}
@@ -102,6 +128,14 @@ func openSession(cache cache.Cache) *Session {
 }
 
 func closeSession(ssn *Session) {
+	for _, job := range ssn.Jobs {
+		job.PodGroup.Status = jobStatus(ssn, job)
+		if _, err := ssn.cache.UpdateJobStatus(job); err != nil {
+			glog.Errorf("Failed to update job <%s/%s>: %v",
+				job.Namespace, job.Name, err)
+		}
+	}
+
 	ssn.Jobs = nil
 	ssn.JobIndex = nil
 	ssn.Nodes = nil
@@ -113,6 +147,46 @@ func closeSession(ssn *Session) {
 	ssn.queueOrderFns = nil
 
 	glog.V(3).Infof("Close Session %v", ssn.UID)
+}
+
+func jobStatus(ssn *Session, jobInfo *api.JobInfo) v1alpha1.PodGroupStatus {
+	status := jobInfo.PodGroup.Status
+
+	unschedulable := false
+	for _, c := range status.Conditions {
+		if c.Type == v1alpha1.PodGroupUnschedulableType &&
+			c.Status == v1.ConditionTrue &&
+			c.TransitionID == string(ssn.UID) {
+
+			unschedulable = true
+			break
+		}
+	}
+
+	// If running tasks && unschedulable, unknown phase
+	if len(jobInfo.TaskStatusIndex[api.Running]) != 0 && unschedulable {
+		status.Phase = v1alpha1.PodGroupUnknown
+	} else {
+		allocated := 0
+		for status, tasks := range jobInfo.TaskStatusIndex {
+			if api.AllocatedStatus(status) {
+				allocated += len(tasks)
+			}
+		}
+
+		// If there're enough allocated resource, it's running
+		if int32(allocated) > jobInfo.PodGroup.Spec.MinMember {
+			status.Phase = v1alpha1.PodGroupRunning
+		} else {
+			status.Phase = v1alpha1.PodGroupPending
+		}
+	}
+
+	status.Running = int32(len(jobInfo.TaskStatusIndex[api.Running]))
+	status.Failed = int32(len(jobInfo.TaskStatusIndex[api.Failed]))
+	status.Succeeded = int32(len(jobInfo.TaskStatusIndex[api.Succeeded]))
+
+	return status
 }
 
 func (ssn *Session) Statement() *Statement {
@@ -270,47 +344,26 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 	return nil
 }
 
-// Backoff discards a job from session, so no plugin/action handles it.
-func (ssn *Session) Backoff(job *api.JobInfo, event kbv1.Event, reason string) error {
-	jobErrMsg := job.FitError()
-
-	// Update podCondition for tasks Allocated and Pending before job discarded
-	for _, taskInfo := range job.TaskStatusIndex[api.Pending] {
-		ssn.TaskUnschedulable(taskInfo, kbv1.FailedSchedulingEvent, jobErrMsg)
+// UpdateJobStatus update job condition accordingly.
+func (ssn *Session) UpdateJobCondition(jobInfo *api.JobInfo, cond *v1alpha1.PodGroupCondition) error {
+	job, ok := ssn.JobIndex[jobInfo.UID]
+	if !ok {
+		return fmt.Errorf("failed to find job <%s/%s>", jobInfo.Namespace, jobInfo.Name)
 	}
 
-	for _, taskInfo := range job.TaskStatusIndex[api.Allocated] {
-		ssn.TaskUnschedulable(taskInfo, kbv1.FailedSchedulingEvent, jobErrMsg)
-	}
-
-	if err := ssn.cache.Backoff(job, event, reason); err != nil {
-		glog.Errorf("Failed to backoff job <%s/%s>: %v",
-			job.Namespace, job.Name, err)
-		return err
-	}
-
-	glog.V(3).Infof("Discard Job <%s/%s> because %s",
-		job.Namespace, job.Name, reason)
-
-	// Delete Job from Session after recording event.
-	delete(ssn.JobIndex, job.UID)
-	for i, j := range ssn.Jobs {
-		if j.UID == job.UID {
-			ssn.Jobs[i] = ssn.Jobs[len(ssn.Jobs)-1]
-			ssn.Jobs = ssn.Jobs[:len(ssn.Jobs)-1]
+	index := -1
+	for i, c := range job.PodGroup.Status.Conditions {
+		if c.Type == cond.Type {
+			index = i
 			break
 		}
 	}
 
-	return nil
-}
-
-// TaskUnschedulable updates task status
-func (ssn *Session) TaskUnschedulable(task *api.TaskInfo, event kbv1.Event, reason string) error {
-	if err := ssn.cache.TaskUnschedulable(task, event, reason); err != nil {
-		glog.Errorf("Failed to update unschedulable task status <%s/%s>: %v",
-			task.Namespace, task.Name, err)
-		return err
+	// Update condition to the new condition.
+	if index < 0 {
+		job.PodGroup.Status.Conditions = append(job.PodGroup.Status.Conditions, *cond)
+	} else {
+		job.PodGroup.Status.Conditions[index] = *cond
 	}
 
 	return nil

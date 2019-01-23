@@ -28,7 +28,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	infov1 "k8s.io/client-go/informers/core/v1"
-	policyv1 "k8s.io/client-go/informers/policy/v1beta1"
 	storagev1 "k8s.io/client-go/informers/storage/v1"
 	"k8s.io/client-go/kubernetes"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -38,7 +37,7 @@ import (
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/scheduler/volumebinder"
 
-	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/scheme"
 	kbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
@@ -60,7 +59,6 @@ type SchedulerCache struct {
 
 	podInformer      infov1.PodInformer
 	nodeInformer     infov1.NodeInformer
-	pdbInformer      policyv1.PodDisruptionBudgetInformer
 	nsInformer       infov1.NamespaceInformer
 	podGroupInformer kbinfov1.PodGroupInformer
 	queueInformer    kbinfov1.QueueInformer
@@ -68,12 +66,12 @@ type SchedulerCache struct {
 	pvcInformer      infov1.PersistentVolumeClaimInformer
 	scInformer       storagev1.StorageClassInformer
 
-	Binder            Binder
-	Evictor           Evictor
-	TaskStatusUpdater TaskStatusUpdater
-	VolumeBinder      VolumeBinder
+	Binder        Binder
+	Evictor       Evictor
+	StatusUpdater StatusUpdater
+	VolumeBinder  VolumeBinder
 
-	recorder record.EventRecorder
+	Recorder record.EventRecorder
 
 	Jobs   map[kbapi.JobID]*kbapi.JobInfo
 	Nodes  map[string]*kbapi.NodeInfo
@@ -122,19 +120,24 @@ func (de *defaultEvictor) Evict(p *v1.Pod) error {
 	return nil
 }
 
-// defaultTaskStatusUpdater is the default implementation of the TaskStatusUpdater interface
-type defaultTaskStatusUpdater struct {
+// defaultStatusUpdater is the default implementation of the StatusUpdater interface
+type defaultStatusUpdater struct {
 	kubeclient *kubernetes.Clientset
+	kbclient   *kbver.Clientset
 }
 
 // Update pod with podCondition
-func (tsUpdater *defaultTaskStatusUpdater) Update(pod *v1.Pod, condition *v1.PodCondition) error {
+func (su *defaultStatusUpdater) UpdatePod(pod *v1.Pod, condition *v1.PodCondition) (*v1.Pod, error) {
 	glog.V(3).Infof("Updating pod condition for %s/%s to (%s==%s)", pod.Namespace, pod.Name, condition.Type, condition.Status)
 	if podutil.UpdatePodCondition(&pod.Status, condition) {
-		_, err := tsUpdater.kubeclient.CoreV1().Pods(pod.Namespace).UpdateStatus(pod)
-		return err
+		return su.kubeclient.CoreV1().Pods(pod.Namespace).UpdateStatus(pod)
 	}
-	return nil
+	return nil, fmt.Errorf("failed to update pod condition")
+}
+
+// Update pod with podCondition
+func (su *defaultStatusUpdater) UpdatePodGroup(pg *v1alpha1.PodGroup) (*v1alpha1.PodGroup, error) {
+	return su.kbclient.SchedulingV1alpha1().PodGroups(pg.Namespace).Update(pg)
 }
 
 type defaultVolumeBinder struct {
@@ -202,7 +205,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, nsAsQueue bool
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: sc.kubeclient.CoreV1().Events("")})
-	sc.recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "kube-batch"})
+	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "kube-batch"})
 
 	sc.Binder = &defaultBinder{
 		kubeclient: sc.kubeclient,
@@ -212,7 +215,10 @@ func newSchedulerCache(config *rest.Config, schedulerName string, nsAsQueue bool
 		kubeclient: sc.kubeclient,
 	}
 
-	sc.TaskStatusUpdater = &defaultTaskStatusUpdater{kubeclient: sc.kubeclient}
+	sc.StatusUpdater = &defaultStatusUpdater{
+		kubeclient: sc.kubeclient,
+		kbclient:   sc.kbclient,
+	}
 
 	informerFactory := informers.NewSharedInformerFactory(sc.kubeclient, 0)
 
@@ -263,13 +269,6 @@ func newSchedulerCache(config *rest.Config, schedulerName string, nsAsQueue bool
 			},
 		})
 
-	sc.pdbInformer = informerFactory.Policy().V1beta1().PodDisruptionBudgets()
-	sc.pdbInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddPDB,
-		UpdateFunc: sc.UpdatePDB,
-		DeleteFunc: sc.DeletePDB,
-	})
-
 	kbinformer := kbinfo.NewSharedInformerFactory(sc.kbclient, 0)
 	// create informer for PodGroup information
 	sc.podGroupInformer = kbinformer.Scheduling().V1alpha1().PodGroups()
@@ -301,7 +300,6 @@ func newSchedulerCache(config *rest.Config, schedulerName string, nsAsQueue bool
 }
 
 func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
-	go sc.pdbInformer.Informer().Run(stopCh)
 	go sc.podInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
 	go sc.podGroupInformer.Informer().Run(stopCh)
@@ -331,7 +329,6 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 	}
 
 	return cache.WaitForCacheSync(stopCh,
-		sc.pdbInformer.Informer().HasSynced,
 		sc.podInformer.Informer().HasSynced,
 		sc.podGroupInformer.Informer().HasSynced,
 		sc.nodeInformer.Informer().HasSynced,
@@ -391,7 +388,7 @@ func (sc *SchedulerCache) Evict(taskInfo *kbapi.TaskInfo, reason string) error {
 		}
 	}()
 
-	sc.recorder.Eventf(job.PodGroup, v1.EventTypeNormal, string(kbv1.EvictEvent), reason)
+	sc.Recorder.Eventf(job.PodGroup, v1.EventTypeNormal, "Evict", reason)
 
 	return nil
 }
@@ -445,20 +442,22 @@ func (sc *SchedulerCache) BindVolumes(task *api.TaskInfo) error {
 	return sc.VolumeBinder.BindVolumes(task)
 }
 
-// TaskUnschedulable updates pod status of pending task
-func (sc *SchedulerCache) TaskUnschedulable(task *api.TaskInfo, event kbv1.Event, reason string) error {
+// taskUnschedulable updates pod status of pending task
+func (sc *SchedulerCache) taskUnschedulable(task *api.TaskInfo, message string) error {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
 	pod := task.Pod.DeepCopy()
 
-	sc.recorder.Eventf(pod, v1.EventTypeWarning, string(event), reason)
-	sc.TaskStatusUpdater.Update(pod, &v1.PodCondition{
+	sc.Recorder.Eventf(pod, v1.EventTypeWarning, string(v1.PodReasonUnschedulable), message)
+	if _, err := sc.StatusUpdater.UpdatePod(pod, &v1.PodCondition{
 		Type:    v1.PodScheduled,
 		Status:  v1.ConditionFalse,
 		Reason:  v1.PodReasonUnschedulable,
-		Message: reason,
-	})
+		Message: message,
+	}); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -559,7 +558,7 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 
 	for _, value := range sc.Jobs {
 		// If no scheduling spec, does not handle it.
-		if value.PodGroup == nil && value.PDB == nil {
+		if value.PodGroup == nil {
 			glog.V(4).Infof("The scheduling spec of Job <%v:%s/%s> is nil, ignore it.",
 				value.UID, value.Namespace, value.Name)
 
@@ -584,20 +583,6 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 		len(snapshot.Jobs), len(snapshot.Queues))
 
 	return snapshot
-}
-
-func (sc *SchedulerCache) LoadSchedulerConf(path string) (map[string]string, error) {
-	ns, name, err := cache.SplitMetaNamespaceKey(path)
-	if err != nil {
-		return nil, err
-	}
-
-	confMap, err := sc.kubeclient.CoreV1().ConfigMaps(ns).Get(name, metav1.GetOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	return confMap.Data, nil
 }
 
 func (sc *SchedulerCache) String() string {
@@ -637,21 +622,35 @@ func (sc *SchedulerCache) String() string {
 	return str
 }
 
-// Backoff record event for job
-func (sc *SchedulerCache) Backoff(job *kbapi.JobInfo, event kbv1.Event, reason string) error {
-	if job.PodGroup != nil {
-		sc.recorder.Eventf(job.PodGroup, v1.EventTypeWarning, string(event), reason)
-	} else if job.PDB != nil {
-		sc.recorder.Eventf(job.PDB, v1.EventTypeWarning, string(event), reason)
-	} else {
-		return fmt.Errorf("no scheduling specification for job")
+// UpdateJobStatus update the status of job and its tasks.
+func (sc *SchedulerCache) UpdateJobStatus(job *kbapi.JobInfo) (*kbapi.JobInfo, error) {
+	jobErrMsg := job.FitError()
+
+	// If pending or unschedulable, record unschedulable event.
+	if job.PodGroup.Status.Phase == v1alpha1.PodGroupUnknown ||
+		job.PodGroup.Status.Phase == v1alpha1.PodGroupPending {
+
+		msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
+			len(job.TaskStatusIndex[api.Pending]), len(job.Tasks), job.FitError())
+		sc.Recorder.Eventf(job.PodGroup, v1.EventTypeWarning,
+			string(v1alpha1.PodGroupUnschedulableType), msg)
 	}
 
-	for _, tasks := range job.TaskStatusIndex {
-		for _, t := range tasks {
-			sc.recorder.Eventf(t.Pod, v1.EventTypeWarning, string(event), reason)
+	pg, err := sc.StatusUpdater.UpdatePodGroup(job.PodGroup)
+	if err != nil {
+		return nil, err
+	}
+	job.PodGroup = pg
+
+	// Update podCondition for tasks Allocated and Pending before job discarded
+	for _, status := range []api.TaskStatus{api.Allocated, api.Pending} {
+		for _, taskInfo := range job.TaskStatusIndex[status] {
+			if err := sc.taskUnschedulable(taskInfo, jobErrMsg); err != nil {
+				glog.Errorf("Failed to update unschedulable task status <%s/%s>: %v",
+					taskInfo.Namespace, taskInfo.Name, err)
+			}
 		}
 	}
 
-	return nil
+	return job, nil
 }
