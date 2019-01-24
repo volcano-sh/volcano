@@ -17,54 +17,42 @@ limitations under the License.
 package state
 
 import (
-	"k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-
 	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 )
 
-type Request struct {
-	Event  vkv1.Event
-	Action vkv1.Action
+type NextStateFn func(status vkv1.JobStatus) vkv1.JobState
+type ActionFn func(job *vkv1.Job, fn NextStateFn) error
 
-	Namespace string
-	Target    *metav1.OwnerReference
-
-	Job      *vkv1.Job
-	Pod      *v1.Pod
-	PodGroup *kbv1.PodGroup
-
-	Reason  string
-	Message string
-}
-
-type ActionFn func(req *Request) error
-
-var actionFns = map[vkv1.Action]ActionFn{}
-
-func RegisterActions(afs map[vkv1.Action]ActionFn) {
-	actionFns = afs
-}
+var (
+	// SyncJob will create or delete Pods according to Job's spec.
+	SyncJob ActionFn
+	// KillJob kill all Pods of Job.
+	KillJob ActionFn
+)
 
 type State interface {
-	Execute() error
+	// Execute executes the actions based on current state.
+	Execute(act vkv1.Action, reason string, msg string) error
 }
 
-func NewState(req *Request) State {
-	policies := parsePolicies(req)
-
-	switch req.Job.Status.State.Phase {
+func NewState(job *vkv1.Job) State {
+	switch job.Status.State.Phase {
+	case vkv1.Pending:
+		return &pendingState{job: job}
+	case vkv1.Running:
+		return &runningState{job: job}
 	case vkv1.Restarting:
-		return &restartingState{
-			request:  req,
-			policies: policies,
-		}
-	default:
-		return &baseState{
-			request:  req,
-			policies: policies,
-		}
+		return &restartingState{job: job}
+	case vkv1.Terminated, vkv1.Completed:
+		return &finishedState{job: job}
+	case vkv1.Terminating:
+		return &terminatingState{job: job}
+	case vkv1.Aborting:
+		return &abortingState{job: job}
+	case vkv1.Aborted:
+		return &abortedState{job: job}
 	}
+
+	// It's pending by default.
+	return &pendingState{job: job}
 }

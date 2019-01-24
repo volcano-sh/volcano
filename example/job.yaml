@@ -4,11 +4,14 @@ metadata:
   name: test-job
 spec:
   minAvailable: 3
+  policies:
+  - event: PodEvicted
+    action: RestartJob
   input:
     mountPath: "/myinput"
   output:
     mountPath: "/myoutput"
-    claim:
+    volumeClaim:
       accessModes: [ "ReadWriteOnce" ]
       storageClassName: "my-storage-class"
       resources:

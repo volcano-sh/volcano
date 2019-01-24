@@ -64,10 +64,12 @@ type JobSpec struct {
 
 // VolumeSpec defines the specification of Volume, e.g. PVC
 type VolumeSpec struct {
-	v1.VolumeMount `json:",inline"`
+	// Path within the container at which the volume should be mounted.  Must
+	// not contain ':'.
+	MountPath string `json:"mountPath" protobuf:"bytes,1,opt,name=mountPath"`
 
 	// VolumeClaim defines the PVC used by the VolumeMount.
-	VolumeClaim *v1.PersistentVolumeClaimSpec `json:"claim,omitempty" protobuf:"bytes,1,opt,name=claim"`
+	VolumeClaim *v1.PersistentVolumeClaimSpec `json:"volumeClaim,omitempty" protobuf:"bytes,1,opt,name=volumeClaim"`
 }
 
 // Event represent the phase of Job, e.g. pod-failed.
@@ -75,7 +77,7 @@ type Event string
 
 const (
 	// AllEvent means all event
-	AllEvents Event = "*"
+	AnyEvent Event = "*"
 	// PodFailedEvent is triggered if Pod was failed
 	PodFailedEvent Event = "PodFailed"
 	// PodEvictedEvent is triggered if Pod was deleted
@@ -165,8 +167,8 @@ const (
 	Completed JobPhase = "Completed"
 	// Terminating is the phase that the Job is terminated, waiting for releasing pods
 	Terminating JobPhase = "Terminating"
-	// Teriminated is the phase that the job is finished unexpected, e.g. events
-	Teriminated JobPhase = "Terminated"
+	// Terminated is the phase that the job is finished unexpected, e.g. events
+	Terminated JobPhase = "Terminated"
 )
 
 // JobState contains details for the current state of the job.
@@ -189,25 +191,29 @@ type JobStatus struct {
 	// Current state of Job.
 	State JobState `json:"state,omitempty" protobuf:"bytes,1,opt,name=state"`
 
+	// The minimal available pods to run for this Job
+	// +optional
+	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
+
 	// The number of pending pods.
 	// +optional
-	Pending int32 `json:"pending,omitempty" protobuf:"bytes,2,opt,name=pending"`
+	Pending int32 `json:"pending,omitempty" protobuf:"bytes,3,opt,name=pending"`
 
 	// The number of running pods.
 	// +optional
-	Running int32 `json:"running,omitempty" protobuf:"bytes,3,opt,name=running"`
+	Running int32 `json:"running,omitempty" protobuf:"bytes,4,opt,name=running"`
 
 	// The number of pods which reached phase Succeeded.
 	// +optional
-	Succeeded int32 `json:"Succeeded,omitempty" protobuf:"bytes,4,opt,name=succeeded"`
+	Succeeded int32 `json:"Succeeded,omitempty" protobuf:"bytes,5,opt,name=succeeded"`
 
 	// The number of pods which reached phase Failed.
 	// +optional
-	Failed int32 `json:"failed,omitempty" protobuf:"bytes,5,opt,name=failed"`
+	Failed int32 `json:"failed,omitempty" protobuf:"bytes,6,opt,name=failed"`
 
-	// The minimal available pods to run for this Job
+	// The number of pods which reached phase Terminating.
 	// +optional
-	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,6,opt,name=minAvailable"`
+	Terminating int32 `json:"terminating,omitempty" protobuf:"bytes,7,opt,name=terminating"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

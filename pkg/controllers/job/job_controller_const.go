@@ -14,18 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package state
+package job
 
-import (
-	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+const (
+	TaskNameFmt = "%s-%s-%d"
 )
-
-func totalTasks(job *vkv1.Job) int32 {
-	var rep int32
-
-	for _, task := range job.Spec.Tasks {
-		rep += task.Replicas
-	}
-
-	return rep
-}
