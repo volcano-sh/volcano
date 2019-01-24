@@ -4,6 +4,7 @@ export PATH="${HOME}/.kubeadm-dind-cluster:${PATH}"
 export VK_BIN=_output/bin
 export LOG_LEVEL=3
 export NUM_NODES=3
+export CERT_PATH=/etc/kubernetes/pki
 
 dind_url=https://cdn.rawgit.com/kubernetes-sigs/kubeadm-dind-cluster/master/fixed/dind-cluster-v1.12.sh
 dind_dest=./hack/dind-cluster-v1.12.sh
@@ -17,6 +18,22 @@ kubectl create -f config/crds/scheduling_v1alpha1_podgroup.yaml
 kubectl create -f config/crds/scheduling_v1alpha1_queue.yaml
 kubectl create -f config/crds/batch_v1alpha1_job.yaml
 kubectl create -f config/crds/bus_v1alpha1_command.yaml
+
+# get certificate
+tls_crt=`cat ${CERT_PATH}/apiserver.crt | base64`
+tls_crt=`echo $tls_crt | sed 's/ //g'`
+sed -i "s|{{tls.crt}}|$tls_crt|g" config/webhook-deploy/webhook-secret.yaml
+tls_key=`cat ${CERT_PATH}/apiserver.key | base64`
+tls_key=`echo $tls_key | sed 's/ //g'`
+sed -i "s|{{tls.key}}|$tls_key|g" config/webhook-deploy/webhook-secret.yaml
+ca_crt=`cat ${CERT_PATH}/ca.crt | base64`
+ca_crt=`echo $ca_crt | sed 's/ //g'`
+sed -i "s|{{ca.crt}}|$ca_crt|g" config/webhook-deploy/webhook-config.yaml
+
+#deploy webhook-server
+kubectl create -f config/webhook-deploy/webhook-server.yaml
+kubectl create -f config/webhook-deploy/webhook-secret.yaml
+kubectl create -f config/webhook-deploy/webhook-config.yaml
 
 # start controller
 nohup ${VK_BIN}/vk-controllers --kubeconfig ${HOME}/.kube/config --logtostderr --v ${LOG_LEVEL} > controller.log 2>&1 &
