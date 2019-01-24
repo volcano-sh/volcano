@@ -18,10 +18,11 @@ package state
 
 import (
 	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	"hpw.cloud/volcano/pkg/controllers/job/apis"
 )
 
 type NextStateFn func(status vkv1.JobStatus) vkv1.JobState
-type ActionFn func(job *vkv1.Job, fn NextStateFn) error
+type ActionFn func(job *apis.JobInfo, fn NextStateFn) error
 
 var (
 	// SyncJob will create or delete Pods according to Job's spec.
@@ -32,27 +33,28 @@ var (
 
 type State interface {
 	// Execute executes the actions based on current state.
-	Execute(act vkv1.Action, reason string, msg string) error
+	Execute(act vkv1.Action) error
 }
 
-func NewState(job *vkv1.Job) State {
+func NewState(jobInfo *apis.JobInfo) State {
+	job := jobInfo.Job
 	switch job.Status.State.Phase {
 	case vkv1.Pending:
-		return &pendingState{job: job}
+		return &pendingState{job: jobInfo}
 	case vkv1.Running:
-		return &runningState{job: job}
+		return &runningState{job: jobInfo}
 	case vkv1.Restarting:
-		return &restartingState{job: job}
+		return &restartingState{job: jobInfo}
 	case vkv1.Terminated, vkv1.Completed:
-		return &finishedState{job: job}
+		return &finishedState{job: jobInfo}
 	case vkv1.Terminating:
-		return &terminatingState{job: job}
+		return &terminatingState{job: jobInfo}
 	case vkv1.Aborting:
-		return &abortingState{job: job}
+		return &abortingState{job: jobInfo}
 	case vkv1.Aborted:
-		return &abortedState{job: job}
+		return &abortedState{job: jobInfo}
 	}
 
 	// It's pending by default.
-	return &pendingState{job: job}
+	return &pendingState{job: jobInfo}
 }

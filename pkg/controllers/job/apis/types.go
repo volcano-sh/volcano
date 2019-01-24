@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Volcano Authors.
+Copyright 2019 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,18 +14,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package state
+package apis
 
 import (
-	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
-	"hpw.cloud/volcano/pkg/controllers/job/apis"
+	"k8s.io/api/core/v1"
+
+	vkbatchv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 )
 
-type finishedState struct {
-	job *apis.JobInfo
+type JobInfo struct {
+	Job  *vkbatchv1.Job
+	Pods map[string]map[string]*v1.Pod
 }
 
-func (ps *finishedState) Execute(action vkv1.Action) error {
-	// In finished state, e.g. Completed, always kill the whole job.
-	return KillJob(ps.job, nil)
+type Request struct {
+	Namespace string
+	JobName   string
+	TaskName  string
+
+	Event  vkbatchv1.Event
+	Action vkbatchv1.Action
 }
