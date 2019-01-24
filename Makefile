@@ -14,6 +14,10 @@ scheduler:
 cli:
 	go build -o ${BIN_DIR}/vkctl ./cmd/cli
 
+webhook:
+	CGO_ENABLED=0 gox -os="linux" -output ./cmd/webhook/webhook ./cmd/webhook
+	docker build --no-cache -t webhook-server:1.0 ./cmd/webhook
+
 generate-code:
 	go build -o ${BIN_DIR}/deepcopy-gen ./cmd/deepcopy-gen/
 	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/batch/v1alpha1/ -O zz_generated.deepcopy
