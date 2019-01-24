@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2017 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,12 +20,12 @@ import (
 	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 )
 
-func totalTasks(job *vkv1.Job) int32 {
-	var rep int32
-
-	for _, task := range job.Spec.Tasks {
-		rep += task.Replicas
-	}
-
-	return rep
+type finishedState struct {
+	job *vkv1.Job
 }
+
+func (ps *finishedState) Execute(action vkv1.Action, reason string, msg string) (error) {
+	// In finished state, e.g. Completed, always kill the whole job.
+	return KillJob(ps.job, nil)
+}
+
