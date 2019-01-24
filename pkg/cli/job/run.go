@@ -50,7 +50,7 @@ func InitRunFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&launchJobFlags.Requests, "requests", "", "cpu=1000m,memory=100Mi", "the resource request of the task")
 }
 
-var jobName = "job.volcanproj.org"
+var jobName = "job.volcano.hpw.cloud"
 
 func RunJob() error {
 	config, err := buildConfig(launchJobFlags.Master, launchJobFlags.Kubeconfig)
@@ -100,7 +100,7 @@ func RunJob() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	if _, err := jobClient.Batch().Jobs(launchJobFlags.Namespace).Create(job); err != nil {
+	if _, err := jobClient.BatchV1alpha1().Jobs(launchJobFlags.Namespace).Create(job); err != nil {
 		return err
 	}
 
