@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2017 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,12 +20,25 @@ import (
 	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 )
 
-func totalTasks(job *vkv1.Job) int32 {
-	var rep int32
+type terminatingState struct {
+	job *vkv1.Job
+}
 
-	for _, task := range job.Spec.Tasks {
-		rep += task.Replicas
-	}
+func (ps *terminatingState) Execute(action vkv1.Action, reason string, msg string) (error) {
+	return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
+		// If any "alive" pods, still in Terminating phase
+		if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {
+			return vkv1.JobState{
+				Phase:   vkv1.Terminating,
+				Reason:  reason,
+				Message: msg,
+			}
+		}
 
-	return rep
+		return vkv1.JobState{
+			Phase:   vkv1.Terminated,
+			Reason:  reason,
+			Message: msg,
+		}
+	})
 }

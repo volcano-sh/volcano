@@ -344,10 +344,14 @@ func jobUnschedulable(ctx *context, job *vkv1.Job, time time.Time) wait.Conditio
 	// TODO(k82cn): check Job's Condition instead of PodGroup's event.
 	return func() (bool, error) {
 		pg, err := ctx.kbclient.SchedulingV1alpha1().PodGroups(job.Namespace).Get(job.Name, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		if err != nil {
+			return false, nil
+		}
 
 		events, err := ctx.kubeclient.CoreV1().Events(pg.Namespace).List(metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		if err != nil {
+			return false, nil
+		}
 
 		for _, event := range events.Items {
 			target := event.InvolvedObject
