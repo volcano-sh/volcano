@@ -25,14 +25,6 @@ go get -u github.com/evanphx/json-patch
 * [Comparing JSON documents](#comparing-json-documents)
 * [Combine merge patches](#combine-merge-patches)
 
-
-# Configuration
-
-There is a single global configuration variable `jsonpatch.SupportNegativeIndices'. This
-defaults to `true` and enables the non-standard practice of allowing negative indices
-to mean indices starting at the end of an array. This functionality can be disabled
-by setting `jsonpatch.SupportNegativeIndices = false`.
-
 ## Create and apply a merge patch
 Given both an original JSON document and a modified JSON document, you can create
 a [Merge Patch](https://tools.ietf.org/html/rfc7396) document. 

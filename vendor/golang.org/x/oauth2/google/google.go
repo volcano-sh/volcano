@@ -2,10 +2,19 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package google
+// Package google provides support for making OAuth2 authorized and
+// authenticated HTTP requests to Google APIs.
+// It supports the Web server flow, client-side credentials, service accounts,
+// Google Compute Engine service accounts, and Google App Engine service
+// accounts.
+//
+// For more information, please read
+// https://developers.google.com/accounts/docs/OAuth2
+// and
+// https://developers.google.com/accounts/docs/application-default-credentials.
+package google // import "golang.org/x/oauth2/google"
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +22,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/compute/metadata"
+	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/jwt"
 )
