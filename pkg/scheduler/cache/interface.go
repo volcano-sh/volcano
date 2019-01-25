@@ -17,9 +17,10 @@ limitations under the License.
 package cache
 
 import (
-	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"k8s.io/api/core/v1"
+
+	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
 // Cache collects pods/nodes/queues information
@@ -31,9 +32,6 @@ type Cache interface {
 	// Snapshot deep copy overall cache information into snapshot
 	Snapshot() *api.ClusterInfo
 
-	// SchedulerConf return the property of scheduler configuration
-	LoadSchedulerConf(path string) (map[string]string, error)
-
 	// WaitForCacheSync waits for all cache synced
 	WaitForCacheSync(stopCh <-chan struct{}) bool
 
@@ -44,11 +42,8 @@ type Cache interface {
 	// Evict evicts the task to release resources.
 	Evict(task *api.TaskInfo, reason string) error
 
-	// Backoff puts job in backlog for a while.
-	Backoff(job *api.JobInfo, event arbcorev1.Event, reason string) error
-
-	// TaskUnschedulable updates pod status of pending task
-	TaskUnschedulable(task *api.TaskInfo, event arbcorev1.Event, reason string) error
+	// UpdateJobStatus puts job in backlog for a while.
+	UpdateJobStatus(job *api.JobInfo) (*api.JobInfo, error)
 
 	// AllocateVolumes allocates volume on the host to the task
 	AllocateVolumes(task *api.TaskInfo, hostname string) error
@@ -70,7 +65,8 @@ type Evictor interface {
 	Evict(pod *v1.Pod) error
 }
 
-// TaskStatusUpdater updates pod with given PodCondition
-type TaskStatusUpdater interface {
-	Update(pod *v1.Pod, podCondition *v1.PodCondition) error
+// StatusUpdater updates pod with given PodCondition
+type StatusUpdater interface {
+	UpdatePod(pod *v1.Pod, podCondition *v1.PodCondition) (*v1.Pod, error)
+	UpdatePodGroup(pg *v1alpha1.PodGroup) (*v1alpha1.PodGroup, error)
 }
