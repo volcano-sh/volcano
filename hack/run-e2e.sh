@@ -26,7 +26,7 @@ kubectl create -f config/crds/scheduling_v1alpha1_podgroup.yaml
 kubectl create -f config/crds/scheduling_v1alpha1_queue.yaml
 
 # start kube-batch
-nohup ${KA_BIN}/kube-batch --kubeconfig ${HOME}/.kube/config --enable-namespace-as-queue=${ENABLE_NAMESPACES_AS_QUEUE} --logtostderr --v ${LOG_LEVEL} > scheduler.log 2>&1 &
+nohup ${KA_BIN}/kube-batch --kubeconfig ${HOME}/.kube/config --scheduler-conf=example/kube-batch-conf.yaml --enable-namespace-as-queue=${ENABLE_NAMESPACES_AS_QUEUE} --logtostderr --v ${LOG_LEVEL} > scheduler.log 2>&1 &
 
 # clean up
 function cleanup {
