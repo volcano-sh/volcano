@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Vulcan Authors.
+Copyright 2018 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,15 +19,20 @@ package fairshare
 import "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 
 type fairsharePlugin struct {
-	args *framework.PluginArgs
 }
 
-func New(args *framework.PluginArgs) framework.Plugin {
-	return &fairsharePlugin{
-		args: args,
-	}
+func New() framework.Plugin {
+	return &fairsharePlugin{}
 }
 
-func (dp *fairsharePlugin) OnSessionOpen(ssn *framework.Session) {}
+func (dp *fairsharePlugin) Name() string {
+	return "fairshare"
+}
 
-func (dp *fairsharePlugin) OnSessionClose(ssn *framework.Session) {}
+func (dp *fairsharePlugin) OnSessionOpen(ssn *framework.Session) {
+
+}
+
+func (dp *fairsharePlugin) OnSessionClose(ssn *framework.Session) {
+
+}
