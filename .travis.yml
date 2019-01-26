@@ -15,6 +15,7 @@ go_import_path: github.com/kubernetes-sigs/kube-batch
 
 install:
   - go get -u golang.org/x/lint/golint
+  - curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
 
 before_script:
   - export TEST_LOG_LEVEL=4
