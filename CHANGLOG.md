@@ -1,3 +1,29 @@
+## v0.4
+
+### Notes:
+
+  * Gang-scheduling/Coscheduling by PDB is depreciated.
+
+### Issues:
+
+  * [#534](https://github.com/kubernetes-sigs/kube-batch/pull/534) Removed old design doc to avoid confusion. ([@k82cn](https://github.com/k82cn))
+  * [#536](https://github.com/kubernetes-sigs/kube-batch/pull/536) Migrate from Godep to dep ([@Jeffwan](https://github.com/Jeffwan))
+  * [#533](https://github.com/kubernetes-sigs/kube-batch/pull/533) The design doc of PodGroup Phase in Status. ([@k82cn](https://github.com/k82cn))
+  * [#540](https://github.com/kubernetes-sigs/kube-batch/pull/540) Examine all pending tasks in a job ([@Jeffwan](https://github.com/Jeffwan))
+  * [#544](https://github.com/kubernetes-sigs/kube-batch/pull/544) The design doc of "Dynamic Plugin Configuration" ([@k82cn](https://github.com/k82cn))
+  * [#525](https://github.com/kubernetes-sigs/kube-batch/pull/525) Added Phase and Conditions to PodGroup.Status struct ([@Zyqsempai](https://github.com/Zyqsempai))
+  * [#547](https://github.com/kubernetes-sigs/kube-batch/pull/547) Fixed status protobuf id. ([@k82cn](https://github.com/k82cn))
+  * [#549](https://github.com/kubernetes-sigs/kube-batch/pull/549) Added name when register plugin. ([@k82cn](https://github.com/k82cn))
+  * [#550](https://github.com/kubernetes-sigs/kube-batch/pull/550) Added SchedulerConfiguration type. ([@k82cn](https://github.com/k82cn))
+  * [#551](https://github.com/kubernetes-sigs/kube-batch/pull/551) Upgrade k8s dependencies to v1.13 ([@Jeffwan](https://github.com/Jeffwan))
+  * [#535](https://github.com/kubernetes-sigs/kube-batch/pull/535) Add Unschedulable PodCondition for pods in pending ([@Jeffwan](https://github.com/Jeffwan))
+  * [#552](https://github.com/kubernetes-sigs/kube-batch/pull/552) Multi tiers for plugins. ([@k82cn](https://github.com/k82cn))
+  * [#548](https://github.com/kubernetes-sigs/kube-batch/pull/548) Add e2e test for different task resource requests ([@Jeffwan](https://github.com/Jeffwan))
+  * [#556](https://github.com/kubernetes-sigs/kube-batch/pull/556) Added VolumeScheduling. ([@k82cn](https://github.com/k82cn))
+  * [#558](https://github.com/kubernetes-sigs/kube-batch/pull/558) Reduce verbosity level for recurring logs ([@mateusz-ciesielski](https://github.com/mateusz-ciesielski))
+  * [#560](https://github.com/kubernetes-sigs/kube-batch/pull/560) Update PodGroup status. ([@k82cn](https://github.com/k82cn))
+  * [#565](https://github.com/kubernetes-sigs/kube-batch/pull/565) Removed reclaim&preempt by default. ([@k82cn](https://github.com/k82cn))
+
 ## v0.3
 
 ### Issues:
