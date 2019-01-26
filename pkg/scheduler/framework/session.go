@@ -129,6 +129,13 @@ func openSession(cache cache.Cache) *Session {
 
 func closeSession(ssn *Session) {
 	for _, job := range ssn.Jobs {
+		// If job is using PDB, ignore it.
+		// TODO(k82cn): remove it when removing PDB support
+		if job.PodGroup == nil {
+			ssn.cache.RecordJobStatusEvent(job)
+			continue
+		}
+
 		job.PodGroup.Status = jobStatus(ssn, job)
 		if _, err := ssn.cache.UpdateJobStatus(job); err != nil {
 			glog.Errorf("Failed to update job <%s/%s>: %v",

@@ -139,6 +139,9 @@ type JobInfo struct {
 
 	CreationTimestamp metav1.Time
 	PodGroup          *arbcorev1.PodGroup
+
+	// TODO(k82cn): keep backward compatbility, removed it when v1alpha1 finalized.
+	PDB *policyv1.PodDisruptionBudget
 }
 
 func NewJobInfo(uid JobID) *JobInfo {
@@ -193,6 +196,11 @@ func (ji *JobInfo) SetPDB(pdb *policyv1.PodDisruptionBudget) {
 	}
 
 	ji.CreationTimestamp = pdb.GetCreationTimestamp()
+	ji.PDB = pdb
+}
+
+func (ji *JobInfo) UnsetPDB() {
+	ji.PDB = nil
 }
 
 func (ji *JobInfo) GetTasks(statuses ...TaskStatus) []*TaskInfo {
@@ -284,6 +292,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		TotalRequest:  ji.TotalRequest.Clone(),
 		NodesFitDelta: make(NodeResourceMap),
 
+		PDB:      ji.PDB,
 		PodGroup: ji.PodGroup,
 
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
