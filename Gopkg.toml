@@ -65,6 +65,10 @@
   name = "k8s.io/apiserver"
   version = "kubernetes-1.13.2"
 
+[[override]]
+  name = "k8s.io/apiextensions-apiserver"
+  version = "kubernetes-1.13.2"
+
 [prune]
   go-tests = true
   unused-packages = true
