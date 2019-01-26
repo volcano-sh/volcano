@@ -31,14 +31,15 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 )
 
-type nodeAffinityPlugin struct {
-	args *framework.PluginArgs
+type predicatesPlugin struct {
 }
 
-func New(args *framework.PluginArgs) framework.Plugin {
-	return &nodeAffinityPlugin{
-		args: args,
-	}
+func New() framework.Plugin {
+	return &predicatesPlugin{}
+}
+
+func (pp *predicatesPlugin) Name() string {
+	return "predicates"
 }
 
 type podLister struct {
@@ -66,7 +67,7 @@ func (pl *podLister) List(selector labels.Selector) ([]*v1.Pod, error) {
 	return pods, nil
 }
 
-func (pl *podLister) FilteredList(podFilter cache.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
+func (pl *podLister) FilteredList(podFilter algorithm.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
 	var pods []*v1.Pod
 	for _, job := range pl.session.Jobs {
 		for status, tasks := range job.TaskStatusIndex {
@@ -108,7 +109,7 @@ func CheckNodeUnschedulable(pod *v1.Pod, nodeInfo *cache.NodeInfo) (bool, []algo
 	return true, nil, nil
 }
 
-func (pp *nodeAffinityPlugin) OnSessionOpen(ssn *framework.Session) {
+func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	pl := &podLister{
 		session: ssn,
 	}
@@ -117,7 +118,7 @@ func (pp *nodeAffinityPlugin) OnSessionOpen(ssn *framework.Session) {
 		session: ssn,
 	}
 
-	ssn.AddPredicateFn(func(task *api.TaskInfo, node *api.NodeInfo) error {
+	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
 		nodeInfo := cache.NewNodeInfo(node.Pods()...)
 		nodeInfo.SetNode(node.Node)
 
@@ -200,4 +201,4 @@ func (pp *nodeAffinityPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 }
 
-func (pp *nodeAffinityPlugin) OnSessionClose(ssn *framework.Session) {}
+func (pp *predicatesPlugin) OnSessionClose(ssn *framework.Session) {}
