@@ -42,6 +42,10 @@ type Cache interface {
 	// Evict evicts the task to release resources.
 	Evict(task *api.TaskInfo, reason string) error
 
+	// RecordJobStatusEvent records related events according to job status.
+	// Deprecated: remove it after removed PDB support.
+	RecordJobStatusEvent(job *api.JobInfo)
+
 	// UpdateJobStatus puts job in backlog for a while.
 	UpdateJobStatus(job *api.JobInfo) (*api.JobInfo, error)
 
