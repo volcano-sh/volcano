@@ -42,7 +42,6 @@ find_files() {
         -o -wholename './target' \
         -o -wholename '*/third_party/*' \
         -o -wholename '*/vendor/*' \
-        -o -wholename './contrib/DLaaS/*' \
         -o -wholename './staging/src/k8s.io/client-go/*vendor/*' \
         -o -wholename '*/bindata.go' \
       \) -prune \

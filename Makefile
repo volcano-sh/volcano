@@ -19,8 +19,9 @@ verify: generate-code
 
 init:
 	mkdir -p ${BIN_DIR}
+	dep ensure
 
-generate-code:
+generate-code: init
 	go build -o ${BIN_DIR}/deepcopy-gen ./cmd/deepcopy-gen/
 	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/scheduling/v1alpha1/ -O zz_generated.deepcopy
 

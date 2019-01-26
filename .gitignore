@@ -21,6 +21,10 @@
 /_output*/
 /_output
 
+# The dependencies of this project.
+/vendor
+/vendor*/
+
 # Emacs save files
 *~
 \#*\#
