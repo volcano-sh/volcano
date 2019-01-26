@@ -28,6 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	infov1 "k8s.io/client-go/informers/core/v1"
+	policyv1 "k8s.io/client-go/informers/policy/v1beta1"
 	storagev1 "k8s.io/client-go/informers/storage/v1"
 	"k8s.io/client-go/kubernetes"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -59,6 +60,7 @@ type SchedulerCache struct {
 
 	podInformer      infov1.PodInformer
 	nodeInformer     infov1.NodeInformer
+	pdbInformer      policyv1.PodDisruptionBudgetInformer
 	nsInformer       infov1.NamespaceInformer
 	podGroupInformer kbinfov1.PodGroupInformer
 	queueInformer    kbinfov1.QueueInformer
@@ -269,6 +271,13 @@ func newSchedulerCache(config *rest.Config, schedulerName string, nsAsQueue bool
 			},
 		})
 
+	sc.pdbInformer = informerFactory.Policy().V1beta1().PodDisruptionBudgets()
+	sc.pdbInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddPDB,
+		UpdateFunc: sc.UpdatePDB,
+		DeleteFunc: sc.DeletePDB,
+	})
+
 	kbinformer := kbinfo.NewSharedInformerFactory(sc.kbclient, 0)
 	// create informer for PodGroup information
 	sc.podGroupInformer = kbinformer.Scheduling().V1alpha1().PodGroups()
@@ -300,6 +309,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, nsAsQueue bool
 }
 
 func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
+	go sc.pdbInformer.Informer().Run(stopCh)
 	go sc.podInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
 	go sc.podGroupInformer.Informer().Run(stopCh)
@@ -329,6 +339,7 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 	}
 
 	return cache.WaitForCacheSync(stopCh,
+		sc.pdbInformer.Informer().HasSynced,
 		sc.podInformer.Informer().HasSynced,
 		sc.podGroupInformer.Informer().HasSynced,
 		sc.nodeInformer.Informer().HasSynced,
@@ -558,7 +569,7 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 
 	for _, value := range sc.Jobs {
 		// If no scheduling spec, does not handle it.
-		if value.PodGroup == nil {
+		if value.PodGroup == nil && value.PDB == nil {
 			glog.V(4).Infof("The scheduling spec of Job <%v:%s/%s> is nil, ignore it.",
 				value.UID, value.Namespace, value.Name)
 
@@ -622,25 +633,22 @@ func (sc *SchedulerCache) String() string {
 	return str
 }
 
-// UpdateJobStatus update the status of job and its tasks.
-func (sc *SchedulerCache) UpdateJobStatus(job *kbapi.JobInfo) (*kbapi.JobInfo, error) {
+// RecordJobStatusEvent records related events according to job status.
+func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
 	jobErrMsg := job.FitError()
 
-	// If pending or unschedulable, record unschedulable event.
-	if job.PodGroup.Status.Phase == v1alpha1.PodGroupUnknown ||
-		job.PodGroup.Status.Phase == v1alpha1.PodGroupPending {
+	pgUnschedulable := job.PodGroup != nil &&
+		(job.PodGroup.Status.Phase == v1alpha1.PodGroupUnknown ||
+			job.PodGroup.Status.Phase == v1alpha1.PodGroupPending)
+	pdbUnschedulabe := job.PDB != nil && len(job.TaskStatusIndex[api.Pending]) != 0
 
+	// If pending or unschedulable, record unschedulable event.
+	if pgUnschedulable || pdbUnschedulabe {
 		msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
 			len(job.TaskStatusIndex[api.Pending]), len(job.Tasks), job.FitError())
 		sc.Recorder.Eventf(job.PodGroup, v1.EventTypeWarning,
 			string(v1alpha1.PodGroupUnschedulableType), msg)
 	}
-
-	pg, err := sc.StatusUpdater.UpdatePodGroup(job.PodGroup)
-	if err != nil {
-		return nil, err
-	}
-	job.PodGroup = pg
 
 	// Update podCondition for tasks Allocated and Pending before job discarded
 	for _, status := range []api.TaskStatus{api.Allocated, api.Pending} {
@@ -651,6 +659,17 @@ func (sc *SchedulerCache) UpdateJobStatus(job *kbapi.JobInfo) (*kbapi.JobInfo, e
 			}
 		}
 	}
+}
+
+// UpdateJobStatus update the status of job and its tasks.
+func (sc *SchedulerCache) UpdateJobStatus(job *kbapi.JobInfo) (*kbapi.JobInfo, error) {
+	pg, err := sc.StatusUpdater.UpdatePodGroup(job.PodGroup)
+	if err != nil {
+		return nil, err
+	}
+	job.PodGroup = pg
+
+	sc.RecordJobStatusEvent(job)
 
 	return job, nil
 }
