@@ -18,98 +18,55 @@ package scheduler
 
 import (
 	"fmt"
-	"strconv"
+	"io/ioutil"
 	"strings"
 
-	"github.com/golang/glog"
+	"gopkg.in/yaml.v2"
 
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/conf"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 )
 
-var defaultSchedulerConf = map[string]string{
-	"actions":                   "reclaim, allocate, backfill, preempt",
-	"plugins":                   "gang, priority, drf, predicates, proportion",
-	"plugin.gang.jobready":      "true",
-	"plugin.gang.joborder":      "true",
-	"plugin.gang.preemptable":   "true",
-	"plugin.priority.joborder":  "true",
-	"plugin.priority.taskorder": "true",
-	"plugin.drf.preemptable":    "true",
-	"plugin.drf.joborder":       "true",
-}
+var defaultSchedulerConf = `
+actions: "allocate, backfill"
+tiers:
+- plugins:
+  - name: priority
+  - name: gang
+- plugins:
+  - name: drf
+  - name: predicates
+  - name: proportion
+`
 
-func loadSchedulerConf(conf map[string]string) ([]framework.Action, []*framework.PluginArgs) {
+func loadSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, error) {
 	var actions []framework.Action
-	var pluginArgs []*framework.PluginArgs
 
-	actionsConf, found := conf["actions"]
-	if !found {
-		actionsConf = "allocate, preempt"
+	schedulerConf := &conf.SchedulerConfiguration{}
+
+	buf := make([]byte, len(confStr))
+	copy(buf, confStr)
+
+	if err := yaml.Unmarshal(buf, schedulerConf); err != nil {
+		return nil, nil, err
 	}
 
-	actionNames := strings.Split(actionsConf, ",")
+	actionNames := strings.Split(schedulerConf.Actions, ",")
 	for _, actionName := range actionNames {
 		if action, found := framework.GetAction(strings.TrimSpace(actionName)); found {
 			actions = append(actions, action)
 		} else {
-			glog.Errorf("Failed to found Action %s, ignore it.", actionName)
+			return nil, nil, fmt.Errorf("failed to found Action %s, ignore it", actionName)
 		}
 	}
 
-	pluginsConf, found := conf["plugins"]
-	if !found {
-		pluginsConf = "gang, priority, drf"
-	}
-
-	pluginNames := strings.Split(pluginsConf, ",")
-	for _, pluginName := range pluginNames {
-		pName := strings.TrimSpace(pluginName)
-		pluginArgs = append(pluginArgs, newPluginArgs(pName, conf))
-	}
-
-	return actions, pluginArgs
+	return actions, schedulerConf.Tiers, nil
 }
 
-func newPluginArgs(name string, conf map[string]string) *framework.PluginArgs {
-	args := &framework.PluginArgs{
-		Name: name,
+func readSchedulerConf(confPath string) (string, error) {
+	dat, err := ioutil.ReadFile(confPath)
+	if err != nil {
+		return "", err
 	}
-
-	key := fmt.Sprintf("plugin.%s.preemptable", name)
-	if preemptable, found := conf[key]; found {
-		if enable, err := strconv.ParseBool(preemptable); err != nil {
-			glog.Error("Failed to parse '%s' value '%s', ignore it.", key, preemptable)
-		} else {
-			args.PreemptableFnEnabled = enable
-		}
-	}
-
-	key = fmt.Sprintf("plugin.%s.joborder", name)
-	if joborder, found := conf[key]; found {
-		if enable, err := strconv.ParseBool(joborder); err != nil {
-			glog.Error("Failed to parse '%s' value '%s', ignore it.", key, joborder)
-		} else {
-			args.JobOrderFnEnabled = enable
-		}
-	}
-
-	key = fmt.Sprintf("plugin.%s.taskorder", name)
-	if taskorder, found := conf[key]; found {
-		if enable, err := strconv.ParseBool(taskorder); err != nil {
-			glog.Error("Failed to parse '%s' value '%s', ignore it.", key, taskorder)
-		} else {
-			args.TaskOrderFnEnabled = enable
-		}
-	}
-
-	key = fmt.Sprintf("plugin.%s.jobready", name)
-	if jobready, found := conf[key]; found {
-		if enable, err := strconv.ParseBool(jobready); err != nil {
-			glog.Error("Failed to parse '%s' value '%s', ignore it.", key, jobready)
-		} else {
-			args.JobReadyFnEnabled = enable
-		}
-	}
-
-	return args
+	return string(dat), nil
 }
