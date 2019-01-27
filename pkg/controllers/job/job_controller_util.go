@@ -71,6 +71,11 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 		Spec: templateCopy.Spec,
 	}
 
+	// If no scheduler name in Pod, use scheduler name from Job.
+	if len(pod.Spec.SchedulerName) == 0 {
+		pod.Spec.SchedulerName = job.Spec.SchedulerName
+	}
+
 	if job.Spec.Output != nil {
 		if job.Spec.Output.VolumeClaim == nil {
 			volume := v1.Volume{
