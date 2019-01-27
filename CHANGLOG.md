@@ -3,6 +3,7 @@
 ### Notes:
 
   * Gang-scheduling/Coscheduling by PDB is depreciated.
+  * Scheduler configuration format and related start up parameter is updated, refer to [example](https://github.com/kubernetes-sigs/kube-batch/blob/release-0.4/example/kube-batch-conf.yaml) for detail.
 
 ### Issues:
 
