@@ -19,7 +19,6 @@ verify: generate-code
 
 init:
 	mkdir -p ${BIN_DIR}
-	dep ensure
 
 generate-code: init
 	go build -o ${BIN_DIR}/deepcopy-gen ./cmd/deepcopy-gen/
