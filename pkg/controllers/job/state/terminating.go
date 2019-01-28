@@ -18,27 +18,24 @@ package state
 
 import (
 	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	"hpw.cloud/volcano/pkg/controllers/job/apis"
 )
 
 type terminatingState struct {
-	job *vkv1.Job
+	job *apis.JobInfo
 }
 
-func (ps *terminatingState) Execute(action vkv1.Action, reason string, msg string) (error) {
+func (ps *terminatingState) Execute(action vkv1.Action) error {
 	return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
 		// If any "alive" pods, still in Terminating phase
 		if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {
 			return vkv1.JobState{
-				Phase:   vkv1.Terminating,
-				Reason:  reason,
-				Message: msg,
+				Phase: vkv1.Terminating,
 			}
 		}
 
 		return vkv1.JobState{
-			Phase:   vkv1.Terminated,
-			Reason:  reason,
-			Message: msg,
+			Phase: vkv1.Terminated,
 		}
 	})
 }
