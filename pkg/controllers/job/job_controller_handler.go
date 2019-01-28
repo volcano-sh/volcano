@@ -47,6 +47,8 @@ func (cc *Controller) addCommand(obj interface{}) {
 
 	cc.queue.Add(req)
 
+	// TODO(k82cn): Added a queue to make sure the command are deleted; it's ok to
+	//              miss some commands, but we can not execute it more than once.
 	go func() {
 		// TODO(k82cn): record event for this Command
 		if err := cc.vkClients.BusV1alpha1().Commands(cmd.Namespace).Delete(cmd.Name, nil); err != nil {
