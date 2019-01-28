@@ -1,6 +1,6 @@
 BIN_DIR=_output/bin
 
-all: controllers scheduler cli
+all: controllers scheduler cli admission-controller
 
 init:
 	mkdir -p ${BIN_DIR}
@@ -14,9 +14,12 @@ scheduler:
 cli:
 	go build -o ${BIN_DIR}/vkctl ./cmd/cli
 
-webhook:
-	CGO_ENABLED=0 gox -os="linux" -output ./cmd/webhook/webhook ./cmd/webhook
-	docker build --no-cache -t webhook-server:1.0 ./cmd/webhook
+admission-controller:
+	CGO_ENABLED=0 go build -a -installsuffix cgo -o  ${BIN_DIR}/ad-controller ./cmd/admission-controller
+
+admission-images: admission-controller
+	cp ${BIN_DIR}/ad-controller ./cmd/admission-controller/
+	docker build --no-cache -t admission-controller-server:1.0 ./cmd/admission-controller
 
 generate-code:
 	go build -o ${BIN_DIR}/deepcopy-gen ./cmd/deepcopy-gen/

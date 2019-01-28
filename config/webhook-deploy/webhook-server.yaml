@@ -33,7 +33,7 @@ spec:
         - --alsologtostderr
         - -v=4
         - 2>&1
-        image: webhook-server:1.10v2
+        image: admission-controller-server:1.0
         imagePullPolicy: IfNotPresent
         name: sample-webhook
         volumeMounts:
