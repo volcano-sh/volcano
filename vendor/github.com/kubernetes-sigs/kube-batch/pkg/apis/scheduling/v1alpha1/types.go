@@ -17,7 +17,69 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+// PodGroupPhase is the phase of a pod group at the current time.
+type PodGroupPhase string
+
+// These are the valid phase of podGroups.
+const (
+	// PodPending means the pod group has been accepted by the system, but scheduler can not allocate
+	// enough resources to it.
+	PodGroupPending PodGroupPhase = "Pending"
+
+	// PodRunning means `spec.minMember` pods of PodGroups has been in running phase.
+	PodGroupRunning PodGroupPhase = "Running"
+
+	// PodGroupUnknown means part of `spec.minMember` pods are running but the other part can not
+	// be scheduled, e.g. not enough resource; scheduler will wait for related controller to recover it.
+	PodGroupUnknown PodGroupPhase = "Unknown"
+)
+
+type PodGroupConditionType string
+
+const (
+	PodGroupUnschedulableType PodGroupConditionType = "Unschedulable"
+)
+
+// PodGroupCondition contains details for the current state of this pod group.
+type PodGroupCondition struct {
+	// Type is the type of the condition
+	Type PodGroupConditionType `json:"type,omitempty" protobuf:"bytes,1,opt,name=type"`
+
+	// Status is the status of the condition.
+	Status v1.ConditionStatus `json:"status,omitempty" protobuf:"bytes,2,opt,name=status"`
+
+	// The ID of condition transition.
+	TransitionID string `json:"transitionID,omitempty" protobuf:"bytes,3,opt,name=transitionID"`
+
+	// Last time the phase transitioned from another to current phase.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,4,opt,name=lastTransitionTime"`
+
+	// Unique, one-word, CamelCase reason for the phase's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty" protobuf:"bytes,5,opt,name=reason"`
+
+	// Human-readable message indicating details about last transition.
+	// +optional
+	Message string `json:"message,omitempty" protobuf:"bytes,6,opt,name=message"`
+}
+
+const (
+	// PodFailedReason is probed if pod of PodGroup failed
+	PodFailedReason string = "PodFailed"
+
+	// PodDeletedReason is probed if pod of PodGroup deleted
+	PodDeletedReason string = "PodDeleted"
+
+	// NotEnoughResourcesReason is probed if there're not enough resources to schedule pods
+	NotEnoughResourcesReason string = "NotEnoughResources"
+
+	// NotEnoughPodsReason is probed if there're not enough tasks compared to `spec.minMember`
+	NotEnoughPodsReason string = "NotEnoughTasks"
 )
 
 // +genclient
@@ -56,47 +118,24 @@ type PodGroupSpec struct {
 
 // PodGroupStatus represents the current state of a pod group.
 type PodGroupStatus struct {
+	// Current phase of PodGroup.
+	Phase PodGroupPhase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
+
+	// The conditions of PodGroup.
+	// +optional
+	Conditions []PodGroupCondition `json:"conditions,omitempty" protobuf:"bytes,2,opt,name=conditions"`
+
 	// The number of actively running pods.
 	// +optional
 	Running int32 `json:"running,omitempty" protobuf:"bytes,3,opt,name=running"`
+
 	// The number of pods which reached phase Succeeded.
 	// +optional
-	Succeeded int32 `json:"succeeded,omitempty" protobuf:"bytes,3,opt,name=succeeded"`
+	Succeeded int32 `json:"succeeded,omitempty" protobuf:"bytes,4,opt,name=succeeded"`
+
 	// The number of pods which reached phase Failed.
 	// +optional
-	Failed int32 `json:"failed,omitempty" protobuf:"bytes,3,opt,name=failed"`
-}
-
-// Action is the action that PodGroup controller will take according to the event.
-type Action string
-
-// Event represent the phase of PodGroup, e.g. pod-failed.
-type Event string
-
-const (
-	UnschedulableEvent Event = "Unschedulable"
-	EvictEvent         Event = "Evict"
-	PodFailedEvent     Event = "PodFailed"
-
-	RestartAction Action = "restart"
-)
-
-// LifecyclePolicy represents the lifecycle policy of PodGroup.
-type LifeCyclePolicy struct {
-	// The action that will be taken to the PodGroup according to Event.
-	// One of "Restart", "None".
-	// Default to None.
-	// +optional
-	Action Action
-	// The Event recorded by scheduler; the controller takes actions
-	// according to this Event.
-	// One of "PodFailed", "Unschedulable".
-	// +optional
-	Event Event
-	// Timeout is the grace period for controller to take actions.
-	// Default to nil (take action immediately).
-	// +optional
-	Timeout *metav1.Duration
+	Failed int32 `json:"failed,omitempty" protobuf:"bytes,5,opt,name=failed"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

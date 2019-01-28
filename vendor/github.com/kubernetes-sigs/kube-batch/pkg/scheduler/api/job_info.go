@@ -42,9 +42,10 @@ type TaskInfo struct {
 
 	Resreq *Resource
 
-	NodeName string
-	Status   TaskStatus
-	Priority int32
+	NodeName    string
+	Status      TaskStatus
+	Priority    int32
+	VolumeReady bool
 
 	Pod *v1.Pod
 }
@@ -89,15 +90,16 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 
 func (ti *TaskInfo) Clone() *TaskInfo {
 	return &TaskInfo{
-		UID:       ti.UID,
-		Job:       ti.Job,
-		Name:      ti.Name,
-		Namespace: ti.Namespace,
-		NodeName:  ti.NodeName,
-		Status:    ti.Status,
-		Priority:  ti.Priority,
-		Pod:       ti.Pod,
-		Resreq:    ti.Resreq.Clone(),
+		UID:         ti.UID,
+		Job:         ti.Job,
+		Name:        ti.Name,
+		Namespace:   ti.Namespace,
+		NodeName:    ti.NodeName,
+		Status:      ti.Status,
+		Priority:    ti.Priority,
+		Pod:         ti.Pod,
+		Resreq:      ti.Resreq.Clone(),
+		VolumeReady: ti.VolumeReady,
 	}
 }
 
@@ -324,14 +326,14 @@ func (ji JobInfo) String() string {
 
 // Error returns detailed information on why a job's task failed to fit on
 // each available node
-func (f *JobInfo) FitError() string {
-	if len(f.NodesFitDelta) == 0 {
+func (ji *JobInfo) FitError() string {
+	if len(ji.NodesFitDelta) == 0 {
 		reasonMsg := fmt.Sprintf("0 nodes are available")
 		return reasonMsg
 	}
 
 	reasons := make(map[string]int)
-	for _, v := range f.NodesFitDelta {
+	for _, v := range ji.NodesFitDelta {
 		if v.Get(v1.ResourceCPU) < 0 {
 			reasons["cpu"]++
 		}
@@ -351,6 +353,6 @@ func (f *JobInfo) FitError() string {
 		sort.Strings(reasonStrings)
 		return reasonStrings
 	}
-	reasonMsg := fmt.Sprintf("0/%v nodes are available, %v.", len(f.NodesFitDelta), strings.Join(sortReasonsHistogram(), ", "))
+	reasonMsg := fmt.Sprintf("0/%v nodes are available, %v.", len(ji.NodesFitDelta), strings.Join(sortReasonsHistogram(), ", "))
 	return reasonMsg
 }

@@ -57,7 +57,7 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 				job.Queue, job.Namespace, job.Name)
 			continue
 		} else {
-			glog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
+			glog.V(4).Infof("Added Queue <%s> for Job <%s/%s>",
 				queue.Name, job.Namespace, job.Name)
 			queues.Push(queue)
 		}

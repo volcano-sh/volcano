@@ -4,6 +4,7 @@ metadata:
   name: test-job
 spec:
   minAvailable: 3
+  schedulerName: kube-batch
   policies:
   - event: PodEvicted
     action: RestartJob
@@ -31,4 +32,3 @@ spec:
             requests:
               cpu: "1"
         restartPolicy: OnFailure
-        schedulerName: kube-batch

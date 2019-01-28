@@ -88,11 +88,17 @@ type CompareFn func(interface{}, interface{}) int
 // ValidateFn is the func declaration used to check object's status.
 type ValidateFn func(interface{}) bool
 
+//
+type ValidateResult struct {
+	Pass    bool
+	Reason  string
+	Message string
+}
+
+type ValidateExFn func(interface{}) *ValidateResult
+
 // PredicateFn is the func declaration used to predicate node for task.
 type PredicateFn func(*TaskInfo, *NodeInfo) error
 
-// ReclaimableFn is the func declaration used to reclaim tasks.
-type ReclaimableFn func(*TaskInfo, []*TaskInfo) []*TaskInfo
-
-// PreemptableFn is the func declaration used to reclaim tasks.
-type PreemptableFn func(*TaskInfo, []*TaskInfo) []*TaskInfo
+// EvictableFn is the func declaration used to evict tasks.
+type EvictableFn func(*TaskInfo, []*TaskInfo) []*TaskInfo

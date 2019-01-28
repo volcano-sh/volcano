@@ -18,17 +18,23 @@ package framework
 
 import (
 	"github.com/golang/glog"
+
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/conf"
 )
 
-func OpenSession(cache cache.Cache, args []*PluginArgs) *Session {
+func OpenSession(cache cache.Cache, tiers []conf.Tier) *Session {
 	ssn := openSession(cache)
+	ssn.Tiers = tiers
 
-	for _, arg := range args {
-		if pb, found := GetPluginBuilder(arg.Name); !found {
-			glog.Errorf("Failed to get plugin %s.", arg.Name)
-		} else {
-			ssn.plugins = append(ssn.plugins, pb(arg))
+	for _, tier := range tiers {
+		for _, plugin := range tier.Plugins {
+			if pb, found := GetPluginBuilder(plugin.Name); !found {
+				glog.Errorf("Failed to get plugin %s.", plugin.Name)
+			} else {
+				plugin := pb()
+				ssn.plugins[plugin.Name()] = plugin
+			}
 		}
 	}
 
