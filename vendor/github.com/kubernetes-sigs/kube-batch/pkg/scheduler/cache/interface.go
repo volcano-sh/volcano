@@ -19,7 +19,7 @@ package cache
 import (
 	"k8s.io/api/core/v1"
 
-	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
@@ -32,9 +32,6 @@ type Cache interface {
 	// Snapshot deep copy overall cache information into snapshot
 	Snapshot() *api.ClusterInfo
 
-	// SchedulerConf return the property of scheduler configuration
-	LoadSchedulerConf(path string) (map[string]string, error)
-
 	// WaitForCacheSync waits for all cache synced
 	WaitForCacheSync(stopCh <-chan struct{}) bool
 
@@ -45,8 +42,23 @@ type Cache interface {
 	// Evict evicts the task to release resources.
 	Evict(task *api.TaskInfo, reason string) error
 
-	// Backoff puts job in backlog for a while.
-	Backoff(job *api.JobInfo, event arbcorev1.Event, reason string) error
+	// RecordJobStatusEvent records related events according to job status.
+	// Deprecated: remove it after removed PDB support.
+	RecordJobStatusEvent(job *api.JobInfo)
+
+	// UpdateJobStatus puts job in backlog for a while.
+	UpdateJobStatus(job *api.JobInfo) (*api.JobInfo, error)
+
+	// AllocateVolumes allocates volume on the host to the task
+	AllocateVolumes(task *api.TaskInfo, hostname string) error
+
+	// BindVolumes binds volumes to the task
+	BindVolumes(task *api.TaskInfo) error
+}
+
+type VolumeBinder interface {
+	AllocateVolumes(task *api.TaskInfo, hostname string) error
+	BindVolumes(task *api.TaskInfo) error
 }
 
 type Binder interface {
@@ -55,4 +67,10 @@ type Binder interface {
 
 type Evictor interface {
 	Evict(pod *v1.Pod) error
+}
+
+// StatusUpdater updates pod with given PodCondition
+type StatusUpdater interface {
+	UpdatePod(pod *v1.Pod, podCondition *v1.PodCondition) (*v1.Pod, error)
+	UpdatePodGroup(pg *v1alpha1.PodGroup) (*v1alpha1.PodGroup, error)
 }

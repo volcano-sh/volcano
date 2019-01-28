@@ -18,13 +18,14 @@ package state
 
 import (
 	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	"hpw.cloud/volcano/pkg/controllers/job/apis"
 )
 
 type runningState struct {
-	job *vkv1.Job
+	job *apis.JobInfo
 }
 
-func (ps *runningState) Execute(action vkv1.Action, reason string, msg string) (error) {
+func (ps *runningState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.RestartJobAction:
 		return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
@@ -34,9 +35,7 @@ func (ps *runningState) Execute(action vkv1.Action, reason string, msg string) (
 			}
 
 			return vkv1.JobState{
-				Phase:   phase,
-				Reason:  reason,
-				Message: msg,
+				Phase: phase,
 			}
 		})
 	case vkv1.AbortJobAction:
@@ -47,9 +46,7 @@ func (ps *runningState) Execute(action vkv1.Action, reason string, msg string) (
 			}
 
 			return vkv1.JobState{
-				Phase:   phase,
-				Reason:  reason,
-				Message: msg,
+				Phase: phase,
 			}
 		})
 	case vkv1.TerminateJobAction:
@@ -60,22 +57,18 @@ func (ps *runningState) Execute(action vkv1.Action, reason string, msg string) (
 			}
 
 			return vkv1.JobState{
-				Phase:   phase,
-				Reason:  reason,
-				Message: msg,
+				Phase: phase,
 			}
 		})
 	default:
 		return SyncJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
 			phase := vkv1.Running
-			if status.Succeeded+status.Failed == totalTasks(ps.job) {
+			if status.Succeeded+status.Failed == totalTasks(ps.job.Job) {
 				phase = vkv1.Completed
 			}
 
 			return vkv1.JobState{
-				Phase:   phase,
-				Reason:  reason,
-				Message: msg,
+				Phase: phase,
 			}
 		})
 	}

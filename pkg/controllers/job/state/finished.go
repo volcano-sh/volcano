@@ -18,14 +18,14 @@ package state
 
 import (
 	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	"hpw.cloud/volcano/pkg/controllers/job/apis"
 )
 
 type finishedState struct {
-	job *vkv1.Job
+	job *apis.JobInfo
 }
 
-func (ps *finishedState) Execute(action vkv1.Action, reason string, msg string) (error) {
+func (ps *finishedState) Execute(action vkv1.Action) error {
 	// In finished state, e.g. Completed, always kill the whole job.
 	return KillJob(ps.job, nil)
 }
-
