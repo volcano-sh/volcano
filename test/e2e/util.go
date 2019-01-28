@@ -356,7 +356,7 @@ func jobUnschedulable(ctx *context, job *vkv1.Job, time time.Time) wait.Conditio
 		for _, event := range events.Items {
 			target := event.InvolvedObject
 			if target.Name == pg.Name && target.Namespace == pg.Namespace {
-				if event.Reason == string(kbv1.UnschedulableEvent) && event.LastTimestamp.After(time) {
+				if event.Reason == string("Unschedulable") && event.LastTimestamp.After(time) {
 					return true, nil
 				}
 			}
@@ -378,7 +378,7 @@ func jobEvicted(ctx *context, job *vkv1.Job, time time.Time) wait.ConditionFunc 
 		for _, event := range events.Items {
 			target := event.InvolvedObject
 			if target.Name == pg.Name && target.Namespace == pg.Namespace {
-				if event.Reason == string(kbv1.EvictEvent) && event.LastTimestamp.After(time) {
+				if event.Reason == string("Evict") && event.LastTimestamp.After(time) {
 					return true, nil
 				}
 			}

@@ -25,7 +25,6 @@ import (
 )
 
 type proportionPlugin struct {
-	args          *framework.PluginArgs
 	totalResource *api.Resource
 	queueOpts     map[api.QueueID]*queueAttr
 }
@@ -41,12 +40,15 @@ type queueAttr struct {
 	request   *api.Resource
 }
 
-func New(args *framework.PluginArgs) framework.Plugin {
+func New() framework.Plugin {
 	return &proportionPlugin{
-		args:          args,
 		totalResource: api.EmptyResource(),
 		queueOpts:     map[api.QueueID]*queueAttr{},
 	}
+}
+
+func (pp *proportionPlugin) Name() string {
+	return "proportion"
 }
 
 func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
@@ -141,7 +143,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
-	ssn.AddQueueOrderFn(func(l, r interface{}) int {
+	ssn.AddQueueOrderFn(pp.Name(), func(l, r interface{}) int {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
 
@@ -156,7 +158,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return 1
 	})
 
-	ssn.AddReclaimableFn(func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
+	ssn.AddReclaimableFn(pp.Name(), func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
 		var victims []*api.TaskInfo
 		allocations := map[api.QueueID]*api.Resource{}
 
@@ -183,7 +185,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return victims
 	})
 
-	ssn.AddOverusedFn(func(obj interface{}) bool {
+	ssn.AddOverusedFn(pp.Name(), func(obj interface{}) bool {
 		queue := obj.(*api.QueueInfo)
 		attr := pp.queueOpts[queue.UID]
 

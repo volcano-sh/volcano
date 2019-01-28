@@ -18,13 +18,14 @@ package state
 
 import (
 	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	"hpw.cloud/volcano/pkg/controllers/job/apis"
 )
 
 type pendingState struct {
-	job *vkv1.Job
+	job *apis.JobInfo
 }
 
-func (ps *pendingState) Execute(action vkv1.Action, reason string, msg string) error {
+func (ps *pendingState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.RestartJobAction:
 		return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
@@ -34,9 +35,7 @@ func (ps *pendingState) Execute(action vkv1.Action, reason string, msg string) e
 			}
 
 			return vkv1.JobState{
-				Phase:   phase,
-				Reason:  reason,
-				Message: msg,
+				Phase: phase,
 			}
 		})
 
@@ -48,23 +47,19 @@ func (ps *pendingState) Execute(action vkv1.Action, reason string, msg string) e
 			}
 
 			return vkv1.JobState{
-				Phase:   phase,
-				Reason:  reason,
-				Message: msg,
+				Phase: phase,
 			}
 		})
 	default:
 		return SyncJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
-			total := totalTasks(ps.job)
+			total := totalTasks(ps.job.Job)
 			phase := vkv1.Pending
 
 			if total == status.Running {
 				phase = vkv1.Running
 			}
 			return vkv1.JobState{
-				Phase:   phase,
-				Reason:  reason,
-				Message: msg,
+				Phase: phase,
 			}
 		})
 	}

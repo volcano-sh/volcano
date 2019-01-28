@@ -78,7 +78,7 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 
 			// If no preemptors, no preemption.
 			if preemptors == nil || preemptors.Empty() {
-				glog.V(3).Infof("No preemptors in Queue <%s>, break.", queue.Name)
+				glog.V(4).Infof("No preemptors in Queue <%s>, break.", queue.Name)
 				break
 			}
 

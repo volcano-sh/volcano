@@ -18,21 +18,20 @@ package state
 
 import (
 	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	"hpw.cloud/volcano/pkg/controllers/job/apis"
 )
 
 type abortingState struct {
-	job *vkv1.Job
+	job *apis.JobInfo
 }
 
-func (ps *abortingState) Execute(action vkv1.Action, reason string, msg string) (error) {
+func (ps *abortingState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.ResumeJobAction:
 		// Already in Restarting phase, just sync it
 		return SyncJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
 			return vkv1.JobState{
-				Phase:   vkv1.Restarting,
-				Reason:  reason,
-				Message: msg,
+				Phase: vkv1.Restarting,
 			}
 		})
 	default:
@@ -40,16 +39,12 @@ func (ps *abortingState) Execute(action vkv1.Action, reason string, msg string) 
 			// If any "alive" pods, still in Aborting phase
 			if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {
 				return vkv1.JobState{
-					Phase:   vkv1.Aborting,
-					Reason:  reason,
-					Message: msg,
+					Phase: vkv1.Aborting,
 				}
 			}
 
 			return vkv1.JobState{
-				Phase:   vkv1.Aborted,
-				Reason:  reason,
-				Message: msg,
+				Phase: vkv1.Aborted,
 			}
 		})
 	}
