@@ -18,7 +18,7 @@ spec:
       resources:
         requests:
           storage: 1Gi
-  taskSpecs:
+  tasks:
   - replicas: 6
     template:
       metadata:
