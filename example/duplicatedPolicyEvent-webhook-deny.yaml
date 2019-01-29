@@ -23,5 +23,5 @@ spec:
   policies:
     - event: PodFailed
       action: RestartJob
-    - event: PodFailed
+    - event: PodFailed  ## this job will be rejected because one event should not have different action
       action: AbortJob
