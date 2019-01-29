@@ -28,5 +28,3 @@ webhooks:
     - UPDATE
     resources:
     - jobs
-
-

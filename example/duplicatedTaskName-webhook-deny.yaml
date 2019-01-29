@@ -21,7 +21,7 @@ spec:
         restartPolicy: OnFailure
         schedulerName: kube-batch
   - replicas: 2
-    name: task-1
+    name: task-1 ## this job will be rejected due to duplicated task name
     template:
       metadata:
         name: web-1

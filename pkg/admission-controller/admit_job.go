@@ -78,11 +78,11 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 			taskNames[task.Name] = task.Name
 		}
 
-		//duplicate task policies event
+		//duplicate task event policies
 		for _, taskPolicy := range task.Policies {
 			if _, found := taskPolicyEvents[taskPolicy.Event]; found{
 				reviewResponse.Allowed = false
-				msg = msg + " duplicated task policies event"
+				msg = msg + " duplicated task event policies"
 				break
 			}else{
 				taskPolicyEvents[taskPolicy.Event] = taskPolicy.Event
@@ -92,14 +92,14 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
 	if totalReplicas < minAvailable {
 		reviewResponse.Allowed = false;
-		msg = msg + " minAvailable should not be larger than total replicas in tasks"
+		msg = msg + " minAvailable should not be greater than total replicas in tasks"
 	}
 
-	//duplicate job policies event
+	//duplicate job event policies
 	for _, jobPolicy := range job.Spec.Policies {
 		if _, found := jobPolicyEvents[jobPolicy.Event]; found{
 			reviewResponse.Allowed = false
-			msg = msg + " duplicated task policies event"
+			msg = msg + " duplicated job event policies"
 			break
 		}else{
 			jobPolicyEvents[jobPolicy.Event] = jobPolicy.Event
