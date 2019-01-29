@@ -46,4 +46,3 @@ func configTLS(config Config, clientset *kubernetes.Clientset) *tls.Config {
 		Certificates: []tls.Certificate{sCert},
 	}
 }
-
