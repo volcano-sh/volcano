@@ -17,19 +17,20 @@ limitations under the License.
 package admission
 
 import (
-
 	"github.com/golang/glog"
+
 	"k8s.io/api/admission/v1beta1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 
+	v1alpha1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 )
 
 const (
-	AdmitJobPath     = "/jobs"
+	AdmitJobPath = "/jobs"
 )
 
 type AdmitFunc func(v1beta1.AdmissionReview) *v1beta1.AdmissionResponse
@@ -52,5 +53,18 @@ func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
 		Result: &metav1.Status{
 			Message: err.Error(),
 		},
+	}
+}
+
+func CheckPolicyDuplicate(eventMap map[v1alpha1.Event]v1alpha1.Event, event v1alpha1.Event) bool {
+	if _, all := eventMap[v1alpha1.AnyEvent]; all {
+		return true
+	}
+
+	if _, found := eventMap[event]; found {
+		return true
+	} else {
+		eventMap[event] = event
+		return false
 	}
 }

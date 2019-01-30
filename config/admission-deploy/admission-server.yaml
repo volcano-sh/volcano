@@ -31,6 +31,7 @@ spec:
         - --tls-cert-file=/admission.local.config/certificates/tls.crt
         - --tls-private-key-file=/admission.local.config/certificates/tls.key
         - --alsologtostderr
+        - --port=443
         - -v=4
         - 2>&1
         image: admission-controller-server:1.0

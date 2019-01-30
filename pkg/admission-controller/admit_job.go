@@ -21,10 +21,11 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
+
 	"k8s.io/api/admission/v1beta1"
-	v1alpha1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	
+
+	v1alpha1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 )
 
 // job admit.
@@ -36,11 +37,6 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		return ToAdmissionResponse(err)
 	}
 
-	if ar.Request.Operation != "CREATE" && ar.Request.Operation != "UPDATE" {
-		err := fmt.Errorf("expect operation to be 'CREATE' or 'UPDATE'")
-		return ToAdmissionResponse(err)
-	}
-
 	raw := ar.Request.Object.Raw
 	job := v1alpha1.Job{}
 
@@ -49,15 +45,36 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		return ToAdmissionResponse(err)
 	}
 
-	reviewResponse := v1beta1.AdmissionResponse{}
-	reviewResponse.Allowed = true
-
 	glog.V(3).Infof("the job struct is %+v", job)
 
 	var msg string
+	reviewResponse := v1beta1.AdmissionResponse{}
+	reviewResponse.Allowed = true
 
-	taskPolicyEvents :=  map[v1alpha1.Event]v1alpha1.Event{}
-	jobPolicyEvents :=  map[v1alpha1.Event]v1alpha1.Event{}
+	switch ar.Request.Operation {
+	case v1beta1.Create:
+		msg = validateJob(job, &reviewResponse)
+		break
+	case v1beta1.Update:
+		msg = validateJob(job, &reviewResponse)
+		break
+	default:
+		err := fmt.Errorf("expect operation to be 'CREATE' or 'UPDATE'")
+		return ToAdmissionResponse(err)
+	}
+
+	if !reviewResponse.Allowed {
+		reviewResponse.Result = &metav1.Status{Message: strings.TrimSpace(msg)}
+	}
+	return &reviewResponse
+}
+
+func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) string {
+
+	var msg string
+
+	taskPolicyEvents := map[v1alpha1.Event]v1alpha1.Event{}
+	jobPolicyEvents := map[v1alpha1.Event]v1alpha1.Event{}
 	taskNames := map[string]string{}
 
 	var totalReplicas int32
@@ -69,45 +86,37 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		// count replicas
 		totalReplicas = totalReplicas + task.Replicas
 
-		// duplicate task name 
+		// duplicate task name
 		if _, found := taskNames[task.Name]; found {
 			reviewResponse.Allowed = false
-			msg = msg + " duplicated task name"
+			msg = msg + " duplicated task name;"
 			break
-		}else{
+		} else {
 			taskNames[task.Name] = task.Name
 		}
 
 		//duplicate task event policies
 		for _, taskPolicy := range task.Policies {
-			if _, found := taskPolicyEvents[taskPolicy.Event]; found{
+			if ok := CheckPolicyDuplicate(taskPolicyEvents, taskPolicy.Event); ok {
 				reviewResponse.Allowed = false
-				msg = msg + " duplicated task event policies"
+				msg = msg + " duplicated task event policies;"
 				break
-			}else{
-				taskPolicyEvents[taskPolicy.Event] = taskPolicy.Event
 			}
 		}
 	}
 
 	if totalReplicas < minAvailable {
-		reviewResponse.Allowed = false;
-		msg = msg + " minAvailable should not be greater than total replicas in tasks"
+		reviewResponse.Allowed = false
+		msg = msg + " minAvailable should not be greater than total replicas in tasks;"
 	}
 
 	//duplicate job event policies
 	for _, jobPolicy := range job.Spec.Policies {
-		if _, found := jobPolicyEvents[jobPolicy.Event]; found{
+		if ok := CheckPolicyDuplicate(jobPolicyEvents, jobPolicy.Event); ok {
 			reviewResponse.Allowed = false
-			msg = msg + " duplicated job event policies"
+			msg = msg + " duplicated job event policies;"
 			break
-		}else{
-			jobPolicyEvents[jobPolicy.Event] = jobPolicy.Event
 		}
 	}
-
-	if !reviewResponse.Allowed {
-		reviewResponse.Result = &metav1.Status{Message: strings.TrimSpace(msg)}
-	}
-	return &reviewResponse
+	return msg
 }

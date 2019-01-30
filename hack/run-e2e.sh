@@ -19,7 +19,7 @@ kubectl create -f config/crds/scheduling_v1alpha1_queue.yaml
 kubectl create -f config/crds/batch_v1alpha1_job.yaml
 kubectl create -f config/crds/bus_v1alpha1_command.yaml
 
-# get certificate
+# get certificate TODO: make it easier to deploy
 tls_crt=`cat ${CERT_PATH}/apiserver.crt | base64`
 tls_crt=`echo $tls_crt | sed 's/ //g'`
 sed -i "s|{{tls.crt}}|$tls_crt|g" config/webhook-deploy/webhook-secret.yaml
