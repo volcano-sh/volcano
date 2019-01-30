@@ -7,7 +7,7 @@ webhooks:
     #caBundle should be provided accordingly, inverted from ca.crt; 
     caBundle: {{ca.crt}}
 
-    # When using clientConfig.service, the server cert must be valid for <svc_name>.<svc_namespace>.svc
+    # TODO: When using clientConfig.service, the server cert must be valid for <svc_name>.<svc_namespace>.svc
     # service:
     #  name: webhook-service
     #  namespace: webhook
