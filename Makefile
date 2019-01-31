@@ -22,5 +22,9 @@ generate-code:
 e2e-test:
 	./hack/run-e2e.sh
 
+e2e-test-kind:
+	./hack/run-e2e-kind.sh
+
 clean:
 	rm -rf _output/
+	rm -f *.log
