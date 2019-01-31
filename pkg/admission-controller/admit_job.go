@@ -83,16 +83,16 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 		// duplicate task name
 		if _, found := taskNames[task.Name]; found {
 			reviewResponse.Allowed = false
-			msg = msg + " duplicated task name;"
+			msg = msg + fmt.Sprintf(" duplicated task name %s;", task.Name)
 			break
 		} else {
 			taskNames[task.Name] = task.Name
 		}
 
 		//duplicate task event policies
-		if ok := CheckPolicyDuplicate(task.Policies); ok {
+		if duplicateInfo, ok := CheckPolicyDuplicate(task.Policies); ok {
 			reviewResponse.Allowed = false
-			msg = msg + " duplicated task event policies;"
+			msg = msg + fmt.Sprintf(" duplicated task event policies: %s;", duplicateInfo)
 		}
 	}
 
@@ -102,9 +102,9 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 	}
 
 	//duplicate job event policies
-	if ok := CheckPolicyDuplicate(job.Spec.Policies); ok {
+	if duplicateInfo, ok := CheckPolicyDuplicate(job.Spec.Policies); ok {
 		reviewResponse.Allowed = false
-		msg = msg + " duplicated job event policies;"
+		msg = msg + fmt.Sprintf(" duplicated job event policies: %s;", duplicateInfo)
 	}
 
 	return msg

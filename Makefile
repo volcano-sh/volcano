@@ -20,7 +20,7 @@ admission-controller:
 	go build -o ${BIN_DIR}/ad-controller ./cmd/admission-controller
 
 rel-admission-controller:
-	CGO_ENABLED=0 go build -a -installsuffix cgo -o  ${BIN_DIR}/rel/ad-controller ./cmd/admission-controller
+	CGO_ENABLED=0 go build -o  ${BIN_DIR}/rel/ad-controller ./cmd/admission-controller
 
 admission-images: rel-admission-controller
 	cp ${BIN_DIR}/rel/ad-controller ./cmd/admission-controller/

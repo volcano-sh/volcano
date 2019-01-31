@@ -17,6 +17,7 @@ package configure
 
 import (
 	"flag"
+	"fmt"
 )
 
 // Config contains the server (the admission controller) cert and key and port used by server.
@@ -37,5 +38,12 @@ func (c *Config) AddFlags() {
 		"after server cert).")
 	flag.StringVar(&c.KeyFile, "tls-private-key-file", c.KeyFile, ""+
 		"File containing the default x509 private key matching --tls-cert-file.")
-	flag.IntVar(&c.Port, "port", c.Port, "the port used by admission-controller-server.")
+	flag.IntVar(&c.Port, "port", 443, "the port used by admission-controller-server.")
+}
+
+func (c *Config) CheckPortOrDie() error {
+	if c.Port < 1 || c.Port > 65535 {
+		return fmt.Errorf("the port should be in the range of 1 and 65535")
+	}
+	return nil
 }
