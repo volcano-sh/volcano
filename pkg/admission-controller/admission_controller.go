@@ -56,15 +56,28 @@ func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
 	}
 }
 
-func CheckPolicyDuplicate(eventMap map[v1alpha1.Event]v1alpha1.Event, event v1alpha1.Event) bool {
-	if _, all := eventMap[v1alpha1.AnyEvent]; all {
-		return true
+func CheckPolicyDuplicate(policies []v1alpha1.LifecyclePolicy) bool {
+	policyEvents := map[v1alpha1.Event]v1alpha1.Event{}
+	hasDuplicate := false
+
+	for _, policy := range policies {
+		if _, found := policyEvents[v1alpha1.AnyEvent]; found {
+			hasDuplicate = true
+			break
+		}
+		// * at the end of policies
+		if policy.Event == v1alpha1.AnyEvent && len(policyEvents) > 0 {
+			hasDuplicate = true
+			break
+		}
+
+		if _, found := policyEvents[policy.Event]; found {
+			hasDuplicate = true
+			break
+		} else {
+			policyEvents[policy.Event] = policy.Event
+		}
 	}
 
-	if _, found := eventMap[event]; found {
-		return true
-	} else {
-		eventMap[event] = event
-		return false
-	}
+	return hasDuplicate
 }

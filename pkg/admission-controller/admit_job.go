@@ -72,15 +72,9 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) string {
 
 	var msg string
-
-	taskPolicyEvents := map[v1alpha1.Event]v1alpha1.Event{}
-	jobPolicyEvents := map[v1alpha1.Event]v1alpha1.Event{}
 	taskNames := map[string]string{}
-
 	var totalReplicas int32
-	totalReplicas = 0
 
-	minAvailable := job.Spec.MinAvailable
 	for _, task := range job.Spec.Tasks {
 
 		// count replicas
@@ -96,27 +90,22 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 		}
 
 		//duplicate task event policies
-		for _, taskPolicy := range task.Policies {
-			if ok := CheckPolicyDuplicate(taskPolicyEvents, taskPolicy.Event); ok {
-				reviewResponse.Allowed = false
-				msg = msg + " duplicated task event policies;"
-				break
-			}
+		if ok := CheckPolicyDuplicate(task.Policies); ok {
+			reviewResponse.Allowed = false
+			msg = msg + " duplicated task event policies;"
 		}
 	}
 
-	if totalReplicas < minAvailable {
+	if totalReplicas < job.Spec.MinAvailable {
 		reviewResponse.Allowed = false
 		msg = msg + " minAvailable should not be greater than total replicas in tasks;"
 	}
 
 	//duplicate job event policies
-	for _, jobPolicy := range job.Spec.Policies {
-		if ok := CheckPolicyDuplicate(jobPolicyEvents, jobPolicy.Event); ok {
-			reviewResponse.Allowed = false
-			msg = msg + " duplicated job event policies;"
-			break
-		}
+	if ok := CheckPolicyDuplicate(job.Spec.Policies); ok {
+		reviewResponse.Allowed = false
+		msg = msg + " duplicated job event policies;"
 	}
+
 	return msg
 }
