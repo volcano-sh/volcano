@@ -112,7 +112,7 @@ func (c *FakeQueues) DeleteCollection(options *v1.DeleteOptions, listOptions v1.
 // Patch applies the patch and returns the patched queue.
 func (c *FakeQueues) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.Queue, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(queuesResource, name, data, subresources...), &v1alpha1.Queue{})
+		Invokes(testing.NewRootPatchSubresourceAction(queuesResource, name, pt, data, subresources...), &v1alpha1.Queue{})
 	if obj == nil {
 		return nil, err
 	}
