@@ -19,14 +19,13 @@ import (
 	"flag"
 )
 
-// Config contains the server (the admission controller) cert and key.
+// Config contains the server (the admission controller) cert and key and port used by server.
 type Config struct {
 	CertFile string
 	KeyFile  string
 	Port     int
 }
 
-// NewServerOption creates a new CMServer with a default config.
 func NewConfig() *Config {
 	c := Config{}
 	return &c
