@@ -17,6 +17,8 @@ limitations under the License.
 package admission
 
 import (
+	"fmt"
+
 	"github.com/golang/glog"
 
 	"k8s.io/api/admission/v1beta1"
@@ -56,28 +58,25 @@ func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
 	}
 }
 
-func CheckPolicyDuplicate(policies []v1alpha1.LifecyclePolicy) bool {
+func CheckPolicyDuplicate(policies []v1alpha1.LifecyclePolicy) (string, bool) {
 	policyEvents := map[v1alpha1.Event]v1alpha1.Event{}
 	hasDuplicate := false
+	var duplicateInfo string
 
 	for _, policy := range policies {
-		if _, found := policyEvents[v1alpha1.AnyEvent]; found {
-			hasDuplicate = true
-			break
-		}
-		// * at the end of policies
-		if policy.Event == v1alpha1.AnyEvent && len(policyEvents) > 0 {
-			hasDuplicate = true
-			break
-		}
-
 		if _, found := policyEvents[policy.Event]; found {
 			hasDuplicate = true
+			duplicateInfo = fmt.Sprintf("%v", policy.Event)
 			break
 		} else {
 			policyEvents[policy.Event] = policy.Event
 		}
 	}
 
-	return hasDuplicate
+	if _, found := policyEvents[v1alpha1.AnyEvent]; found && len(policyEvents) > 1 {
+		hasDuplicate = true
+		duplicateInfo = "if there's * here, no other policy should be here"
+	}
+
+	return duplicateInfo, hasDuplicate
 }

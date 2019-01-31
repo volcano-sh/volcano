@@ -17,7 +17,9 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 
 	"hpw.cloud/volcano/cmd/admission-controller/app"
@@ -36,10 +38,12 @@ func main() {
 
 	http.HandleFunc(admissioncontroller.AdmitJobPath, serveJobs)
 
-	addr := ":443"
-	if config.Port > 0 && config.Port < 65536 {
-		addr = ":" + strconv.Itoa(config.Port)
+	if err := config.CheckPortOrDie(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
 	}
+	addr := ":" + strconv.Itoa(config.Port)
+
 	clientset := app.GetClient()
 	server := &http.Server{
 		Addr:      addr,
