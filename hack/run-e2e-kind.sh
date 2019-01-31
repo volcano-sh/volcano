@@ -3,8 +3,7 @@
 export VK_ROOT=$(dirname "${BASH_SOURCE}")/..
 export VK_BIN=${VK_ROOT}/_output/bin
 export LOG_LEVEL=3
-export NUM_NODES=3
-
+export SHOW_VOLCANO_LOGS=${SHOW_VOLCANO_LOGS:-1}
 
 if [ "${CLUSTER_NAME}xxx" != "xxx" ];then
   export CLUSTER_CONTEXT="--name ${CLUSTER_NAME}"
@@ -84,19 +83,43 @@ function cleanup {
 
   echo "Running kind: [kind delete cluster ${CLUSTER_CONTEXT}]"
   kind delete cluster ${CLUSTER_CONTEXT}
-  
-  #echo "===================================================================================="
-  #echo "=============================>>>>> Scheduler Logs <<<<<============================="
-  #echo "===================================================================================="
 
-  #cat scheduler.log
+  if [ ${SHOW_VOLCANO_LOGS} -eq 1 ]; then
+    echo "===================================================================================="
+    echo "=============================>>>>> Scheduler Logs <<<<<============================="
+    echo "===================================================================================="
 
-  #echo "===================================================================================="
-  #echo "=============================>>>>> Controller Logs <<<<<============================"
-  #echo "===================================================================================="
+    cat scheduler.log
 
-  #cat controller.log
+    echo "===================================================================================="
+    echo "=============================>>>>> Controller Logs <<<<<============================"
+    echo "===================================================================================="
+
+    cat controller.log
+  fi
 }
+
+echo $* | grep -E -q "\-\-help|\-h"
+if [ $? -eq 0 ]; then
+  echo "Customize the kind-cluster name:
+
+    export CLUSTER_NAME=<custom cluster name>
+
+Customize kind options other than --name:
+
+    export KIND_OPT=<kind options>
+
+Disable displaying volcano component logs:
+
+    export SHOW_VOLCANO_LOGS=0
+
+If you don't have kindest/node:v1.13.2-huawei on the host, checkout the following url to build.
+
+    http://code-cbu.huawei.com/CBU-PaaS/Community/K8S/kind/tags/v0.1.0-huawei
+"
+  exit 0
+fi
+
 
 trap cleanup EXIT
 
