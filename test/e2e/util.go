@@ -63,6 +63,13 @@ func homeDir() string {
 	return os.Getenv("USERPROFILE") // windows
 }
 
+func masterURL() string {
+	if m := os.Getenv("MASTER"); m != "" {
+		return m
+	}
+	return "127.0.0.1:8080" // default apiserver url
+}
+
 type context struct {
 	kubeclient *kubernetes.Clientset
 	kbclient   *kbver.Clientset
@@ -82,8 +89,10 @@ func initTestContext() *context {
 
 	home := homeDir()
 	Expect(home).NotTo(Equal(""))
+	master := masterURL()
+	Expect(master).NotTo(Equal(""))
 
-	config, err := clientcmd.BuildConfigFromFlags("", filepath.Join(home, ".kube", "config"))
+	config, err := clientcmd.BuildConfigFromFlags(master, filepath.Join(home, ".kube", "config1"))
 	Expect(err).NotTo(HaveOccurred())
 
 	cxt.kbclient = kbver.NewForConfigOrDie(config)
