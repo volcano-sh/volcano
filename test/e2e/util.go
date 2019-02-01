@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	. "github.com/onsi/gomega"
@@ -92,7 +93,7 @@ func initTestContext() *context {
 	master := masterURL()
 	Expect(master).NotTo(Equal(""))
 
-	config, err := clientcmd.BuildConfigFromFlags(master, filepath.Join(home, ".kube", "config1"))
+	config, err := clientcmd.BuildConfigFromFlags(master, filepath.Join(home, ".kube", "config"))
 	Expect(err).NotTo(HaveOccurred())
 
 	cxt.kbclient = kbver.NewForConfigOrDie(config)
@@ -431,7 +432,7 @@ func waitJobUnschedulable(ctx *context, job *vkv1.Job) error {
 func createContainers(img string, req v1.ResourceList, hostport int32) []v1.Container {
 	container := v1.Container{
 		Image:           img,
-		Name:            img,
+		Name:            img[:strings.Index(img, ":")],
 		ImagePullPolicy: v1.PullIfNotPresent,
 		Resources: v1.ResourceRequirements{
 			Requests: req,
