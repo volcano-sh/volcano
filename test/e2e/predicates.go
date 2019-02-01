@@ -25,6 +25,11 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/api"
 )
 
+const (
+	defaultNginxImage   = "nginx:1.14"
+	defaultBusyBoxImage = "busybox:1.24"
+)
+
 var _ = Describe("Predicates E2E Test", func() {
 	It("NodeAffinity", func() {
 		context := initTestContext()
@@ -56,7 +61,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			name: "na-spec",
 			tasks: []taskSpec{
 				{
-					img:      "nginx",
+					img:      defaultNginxImage,
 					req:      slot,
 					min:      1,
 					rep:      1,
@@ -85,7 +90,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			name: "hp-spec",
 			tasks: []taskSpec{
 				{
-					img:      "nginx",
+					img:      defaultNginxImage,
 					min:      int32(nn),
 					req:      oneCPU,
 					rep:      int32(nn * 2),
@@ -130,7 +135,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			name: "pa-spec",
 			tasks: []taskSpec{
 				{
-					img:      "nginx",
+					img:      defaultNginxImage,
 					req:      slot,
 					min:      rep,
 					rep:      rep,
@@ -171,7 +176,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			name: "tt-spec",
 			tasks: []taskSpec{
 				{
-					img: "nginx",
+					img: defaultNginxImage,
 					req: oneCPU,
 					min: 1,
 					rep: 1,
