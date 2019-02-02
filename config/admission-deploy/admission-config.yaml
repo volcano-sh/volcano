@@ -14,9 +14,9 @@ webhooks:
     #  path: /jobs
 
     # the url should agree with webhook service
-    url: https://{{hostIP}}:32222/jobs
+    url: https://{{host}}:{{hostPort}}/jobs
   failurePolicy: Ignore
-  name: validcontainer.k8s.io
+  name: validjob.k8s.io
   namespaceSelector: {}
   rules:
   - apiGroups:

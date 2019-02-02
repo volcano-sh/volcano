@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 
 	appConf "hpw.cloud/volcano/cmd/admission-controller/app/configure"
 	admissioncontroller "hpw.cloud/volcano/pkg/admission-controller"
@@ -38,8 +39,15 @@ const (
 )
 
 // Get a clientset with in-cluster config.
-func GetClient() *kubernetes.Clientset {
-	config, err := rest.InClusterConfig()
+func GetClient(c *appConf.Config) *kubernetes.Clientset {
+	var config *rest.Config
+	var err error
+	if c.Master != "" || c.Kubeconfig != "" {
+		config, err = clientcmd.BuildConfigFromFlags(c.Master, c.Kubeconfig)
+	} else {
+		config, err = rest.InClusterConfig()
+	}
+
 	if err != nil {
 		glog.Fatal(err)
 	}

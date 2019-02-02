@@ -20,11 +20,13 @@ import (
 	"fmt"
 )
 
-// Config contains the server (the admission controller) cert and key and port used by server.
+// admission-controller server config.
 type Config struct {
-	CertFile string
-	KeyFile  string
-	Port     int
+	Master     string
+	Kubeconfig string
+	CertFile   string
+	KeyFile    string
+	Port       int
 }
 
 func NewConfig() *Config {
@@ -33,11 +35,12 @@ func NewConfig() *Config {
 }
 
 func (c *Config) AddFlags() {
+	flag.StringVar(&c.Master, "master", c.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
+	flag.StringVar(&c.Kubeconfig, "kubeconfig", c.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
 	flag.StringVar(&c.CertFile, "tls-cert-file", c.CertFile, ""+
 		"File containing the default x509 Certificate for HTTPS. (CA cert, if any, concatenated "+
 		"after server cert).")
-	flag.StringVar(&c.KeyFile, "tls-private-key-file", c.KeyFile, ""+
-		"File containing the default x509 private key matching --tls-cert-file.")
+	flag.StringVar(&c.KeyFile, "tls-private-key-file", c.KeyFile, "File containing the default x509 private key matching --tls-cert-file.")
 	flag.IntVar(&c.Port, "port", 443, "the port used by admission-controller-server.")
 }
 

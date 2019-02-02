@@ -44,7 +44,7 @@ func main() {
 	}
 	addr := ":" + strconv.Itoa(config.Port)
 
-	clientset := app.GetClient()
+	clientset := app.GetClient(config)
 	server := &http.Server{
 		Addr:      addr,
 		TLSConfig: app.ConfigTLS(config, clientset),

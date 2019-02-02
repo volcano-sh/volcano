@@ -5,6 +5,8 @@ export VK_BIN=_output/bin
 export LOG_LEVEL=3
 export NUM_NODES=3
 export CERT_PATH=/etc/kubernetes/pki
+export HOST=localhost
+export HOSTPORT=32222
 
 dind_url=https://cdn.rawgit.com/kubernetes-sigs/kubeadm-dind-cluster/master/fixed/dind-cluster-v1.12.sh
 dind_dest=./hack/dind-cluster-v1.12.sh
@@ -19,21 +21,14 @@ kubectl create -f config/crds/scheduling_v1alpha1_queue.yaml
 kubectl create -f config/crds/batch_v1alpha1_job.yaml
 kubectl create -f config/crds/bus_v1alpha1_command.yaml
 
-# get certificate TODO: make it easier to deploy
-tls_crt=`cat ${CERT_PATH}/apiserver.crt | base64`
-tls_crt=`echo $tls_crt | sed 's/ //g'`
-sed -i "s|{{tls.crt}}|$tls_crt|g" config/webhook-deploy/webhook-secret.yaml
-tls_key=`cat ${CERT_PATH}/apiserver.key | base64`
-tls_key=`echo $tls_key | sed 's/ //g'`
-sed -i "s|{{tls.key}}|$tls_key|g" config/webhook-deploy/webhook-secret.yaml
+# config admission-controller TODO: make it easier to deploy
 ca_crt=`cat ${CERT_PATH}/ca.crt | base64`
 ca_crt=`echo $ca_crt | sed 's/ //g'`
-sed -i "s|{{ca.crt}}|$ca_crt|g" config/webhook-deploy/webhook-config.yaml
+sed -i "s|{{ca.crt}}|$ca_crt|g" config/admission-deploy/admission-config.yaml
+sed -i "s|{{host}}|${HOST}|g" config/admission-deploy/admission-config.yaml
+sed -i "s|{{hostPort}}|${HOSTPORT}|g" config/admission-deploy/admission-config.yaml
 
-#deploy webhook-server
-kubectl create -f config/webhook-deploy/webhook-server.yaml
-kubectl create -f config/webhook-deploy/webhook-secret.yaml
-kubectl create -f config/webhook-deploy/webhook-config.yaml
+kubectl create -f config/admission-deploy/admission-config.yaml
 
 # start controller
 nohup ${VK_BIN}/vk-controllers --kubeconfig ${HOME}/.kube/config --logtostderr --v ${LOG_LEVEL} > controller.log 2>&1 &
@@ -41,9 +36,12 @@ nohup ${VK_BIN}/vk-controllers --kubeconfig ${HOME}/.kube/config --logtostderr -
 # start scheduler
 nohup ${VK_BIN}/vk-scheduler --kubeconfig ${HOME}/.kube/config --logtostderr --v ${LOG_LEVEL} > scheduler.log 2>&1 &
 
+# start admission-controller
+nohup ${VK_BIN}/ad-controller --tls-cert-file=${CERT_PATH}/apiserver.crt --tls-private-key-file=${CERT_PATH}/apiserver.key --kubeconfig ${HOME}/.kube/config --port ${HOSTPORT} --logtostderr --v ${LOG_LEVEL} > admission.log 2>&1 &
+
 # clean up
 function cleanup {
-    killall -9 vk-scheduler vk-controller
+    killall -9 vk-scheduler vk-controller ad-controller
     ./hack/dind-cluster-v1.12.sh down
 
     echo "===================================================================================="
@@ -57,6 +55,12 @@ function cleanup {
     echo "===================================================================================="
 
     cat controller.log
+
+    echo "===================================================================================="
+    echo "=============================>>>>> admission Logs <<<<<============================"
+    echo "===================================================================================="
+
+    cat admission.log
 }
 
 trap cleanup EXIT
