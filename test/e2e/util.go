@@ -63,6 +63,13 @@ func homeDir() string {
 	return os.Getenv("USERPROFILE") // windows
 }
 
+func masterURL() string {
+	if m := os.Getenv("MASTER"); m != "" {
+		return m
+	}
+	return "127.0.0.1:8080" // default apiserver url
+}
+
 type context struct {
 	kubeclient *kubernetes.Clientset
 	kbclient   *kbver.Clientset
@@ -82,8 +89,10 @@ func initTestContext() *context {
 
 	home := homeDir()
 	Expect(home).NotTo(Equal(""))
+	master := masterURL()
+	Expect(master).NotTo(Equal(""))
 
-	config, err := clientcmd.BuildConfigFromFlags("", filepath.Join(home, ".kube", "config"))
+	config, err := clientcmd.BuildConfigFromFlags(master, filepath.Join(home, ".kube", "config1"))
 	Expect(err).NotTo(HaveOccurred())
 
 	cxt.kbclient = kbver.NewForConfigOrDie(config)
@@ -356,7 +365,7 @@ func jobUnschedulable(ctx *context, job *vkv1.Job, time time.Time) wait.Conditio
 		for _, event := range events.Items {
 			target := event.InvolvedObject
 			if target.Name == pg.Name && target.Namespace == pg.Namespace {
-				if event.Reason == string(kbv1.UnschedulableEvent) && event.LastTimestamp.After(time) {
+				if event.Reason == string("Unschedulable") && event.LastTimestamp.After(time) {
 					return true, nil
 				}
 			}
@@ -378,7 +387,7 @@ func jobEvicted(ctx *context, job *vkv1.Job, time time.Time) wait.ConditionFunc 
 		for _, event := range events.Items {
 			target := event.InvolvedObject
 			if target.Name == pg.Name && target.Namespace == pg.Namespace {
-				if event.Reason == string(kbv1.EvictEvent) && event.LastTimestamp.After(time) {
+				if event.Reason == string("Evict") && event.LastTimestamp.After(time) {
 					return true, nil
 				}
 			}

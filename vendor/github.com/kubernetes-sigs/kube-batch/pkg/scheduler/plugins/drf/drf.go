@@ -35,17 +35,14 @@ type drfAttr struct {
 }
 
 type drfPlugin struct {
-	args *framework.PluginArgs
-
 	totalResource *api.Resource
 
 	// Key is Job ID
 	jobOpts map[api.JobID]*drfAttr
 }
 
-func New(args *framework.PluginArgs) framework.Plugin {
+func New() framework.Plugin {
 	return &drfPlugin{
-		args:          args,
 		totalResource: api.EmptyResource(),
 		jobOpts:       map[api.JobID]*drfAttr{},
 	}
@@ -107,10 +104,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		return victims
 	}
 
-	if drf.args.PreemptableFnEnabled {
-		// Add Preemptable function.
-		ssn.AddPreemptableFn(preemptableFn)
-	}
+	ssn.AddPreemptableFn(drf.Name(), preemptableFn)
 
 	jobOrderFn := func(l interface{}, r interface{}) int {
 		lv := l.(*api.JobInfo)
@@ -130,10 +124,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		return 1
 	}
 
-	if drf.args.JobOrderFnEnabled {
-		// Add Job Order function.
-		ssn.AddJobOrderFn(jobOrderFn)
-	}
+	ssn.AddJobOrderFn(drf.Name(), jobOrderFn)
 
 	// Register event handlers.
 	ssn.AddEventHandler(&framework.EventHandler{

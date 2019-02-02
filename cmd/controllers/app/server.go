@@ -17,6 +17,7 @@ limitations under the License.
 package app
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -59,17 +60,15 @@ func Run(opt *options.ServerOption) error {
 		return err
 	}
 
-	neverStop := make(chan struct{})
-
 	queuejobctrl := job.NewJobController(config)
 
-	run := func(stopCh <-chan struct{}) {
-		queuejobctrl.Run(stopCh)
-		<-stopCh
+	run := func(ctx context.Context) {
+		queuejobctrl.Run(ctx.Done())
+		<-ctx.Done()
 	}
 
 	if !opt.EnableLeaderElection {
-		run(neverStop)
+		run(context.TODO())
 		return fmt.Errorf("finished without leader elect")
 	}
 
@@ -102,7 +101,7 @@ func Run(opt *options.ServerOption) error {
 		return fmt.Errorf("couldn't create resource lock: %v", err)
 	}
 
-	leaderelection.RunOrDie(leaderelection.LeaderElectionConfig{
+	leaderelection.RunOrDie(context.TODO(), leaderelection.LeaderElectionConfig{
 		Lock:          rl,
 		LeaseDuration: leaseDuration,
 		RenewDeadline: renewDeadline,

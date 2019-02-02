@@ -19,44 +19,29 @@ package job
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/golang/glog"
 
+	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
-
-	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 
 	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"hpw.cloud/volcano/pkg/apis/helpers"
+	"hpw.cloud/volcano/pkg/controllers/job/apis"
 	"hpw.cloud/volcano/pkg/controllers/job/state"
 )
 
-func (cc *Controller) killJob(job *vkv1.Job, nextState state.NextStateFn) error {
-	glog.V(3).Infof("Killing Job <%s/%s>", job.Namespace, job.Name)
-	defer glog.V(3).Infof("Finished Job <%s/%s> killing", job.Namespace, job.Name)
+func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn) error {
+	glog.V(3).Infof("Killing Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
+	defer glog.V(3).Infof("Finished Job <%s/%s> killing", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
-	job, err := cc.jobLister.Jobs(job.Namespace).Get(job.Name)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			glog.V(3).Infof("Job has been deleted: %v", job.Name)
-			return nil
-		}
-		return err
-	}
-
+	job := jobInfo.Job
 	if job.DeletionTimestamp != nil {
 		glog.Infof("Job <%s/%s> is terminating, skip management process.",
 			job.Namespace, job.Name)
 		return nil
-	}
-
-	podsMap, err := getPodsForJob(cc.podLister, job)
-	if err != nil {
-		return err
 	}
 
 	var pending, running, terminating, succeeded, failed int32
@@ -64,7 +49,7 @@ func (cc *Controller) killJob(job *vkv1.Job, nextState state.NextStateFn) error 
 	var errs []error
 	var total int
 
-	for _, pods := range podsMap {
+	for _, pods := range jobInfo.Pods {
 		for _, pod := range pods {
 			total++
 
@@ -111,18 +96,16 @@ func (cc *Controller) killJob(job *vkv1.Job, nextState state.NextStateFn) error 
 	if nextState != nil {
 		job.Status.State = nextState(job.Status)
 	}
-	newState := job.Status.State
 
 	// Update Job status
-	if _, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).Update(job); err != nil {
+	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).Update(job); err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
-	}
-
-	if err := cc.waitForJobState(job, newState); err != nil {
-		glog.Errorf("Failed to sync Job's status.")
-		return err
+	} else {
+		if e := cc.cache.Update(job); e != nil {
+			return e
+		}
 	}
 
 	// Delete PodGroup
@@ -148,30 +131,17 @@ func (cc *Controller) killJob(job *vkv1.Job, nextState state.NextStateFn) error 
 	return nil
 }
 
-func (cc *Controller) syncJob(job *vkv1.Job, nextState state.NextStateFn) error {
-	glog.V(3).Infof("Starting to sync up Job <%s/%s>", job.Namespace, job.Name)
-	defer glog.V(3).Infof("Finished Job <%s/%s> sync up", job.Namespace, job.Name)
+func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn) error {
+	glog.V(3).Infof("Starting to sync up Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
+	defer glog.V(3).Infof("Finished Job <%s/%s> sync up", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
-	job, err := cc.jobLister.Jobs(job.Namespace).Get(job.Name)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
+	job := jobInfo.Job
 
 	if job.DeletionTimestamp != nil {
 		glog.Infof("Job <%s/%s> is terminating, skip management process.",
 			job.Namespace, job.Name)
 		return nil
 	}
-
-	podsMap, err := getPodsForJob(cc.podLister, job)
-	if err != nil {
-		return err
-	}
-
-	glog.V(3).Infof("Start to manage job <%s/%s>", job.Namespace, job.Name)
 
 	// TODO(k82cn): add WebHook to validate job.
 	if err := validate(job); err != nil {
@@ -202,7 +172,7 @@ func (cc *Controller) syncJob(job *vkv1.Job, nextState state.NextStateFn) error 
 			name = vkv1.DefaultTaskSpec
 		}
 
-		pods, found := podsMap[name]
+		pods, found := jobInfo.Pods[name]
 		if !found {
 			pods = map[string]*v1.Pod{}
 		}
@@ -309,19 +279,18 @@ func (cc *Controller) syncJob(job *vkv1.Job, nextState state.NextStateFn) error 
 	if nextState != nil {
 		job.Status.State = nextState(job.Status)
 	}
-	newState := job.Status.State
 
-	if _, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).Update(job); err != nil {
+	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).Update(job); err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
+	} else {
+		if e := cc.cache.Update(job); e != nil {
+			return e
+		}
 	}
 
-	if err := cc.waitForJobState(job, newState); err != nil {
-		return err
-	}
-
-	return err
+	return nil
 }
 
 func (cc *Controller) createServiceIfNotExist(job *vkv1.Job) error {
@@ -455,27 +424,6 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 
 			return e
 		}
-	}
-
-	return nil
-}
-
-// waitForJobState will wait for job's state changed to the target status.
-// TODO(k82cn): enhance by cache/assume
-func (cc *Controller) waitForJobState(job *vkv1.Job, newState vkv1.JobState) error {
-	if err := wait.Poll(100*time.Microsecond, 10*time.Second, func() (bool, error) {
-		newJob, err := cc.jobLister.Jobs(job.Namespace).Get(job.Name)
-		if err != nil {
-			return false, err
-		}
-
-		if newJob.Status.State == newState {
-			return true, nil
-		}
-
-		return false, nil
-	}); err != nil {
-		return err
 	}
 
 	return nil

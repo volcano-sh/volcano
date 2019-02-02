@@ -18,13 +18,14 @@ package state
 
 import (
 	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	"hpw.cloud/volcano/pkg/controllers/job/apis"
 )
 
 type restartingState struct {
-	job *vkv1.Job
+	job *apis.JobInfo
 }
 
-func (ps *restartingState) Execute(action vkv1.Action, reason string, msg string) ( error) {
+func (ps *restartingState) Execute(action vkv1.Action) error {
 	return SyncJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
 		phase := vkv1.Restarting
 		if status.Terminating == 0 {
@@ -36,9 +37,7 @@ func (ps *restartingState) Execute(action vkv1.Action, reason string, msg string
 		}
 
 		return vkv1.JobState{
-			Phase:   phase,
-			Reason:  reason,
-			Message: msg,
+			Phase: phase,
 		}
 	})
 

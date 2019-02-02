@@ -18,6 +18,7 @@ package job
 
 import (
 	"fmt"
+
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
@@ -29,13 +30,13 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/workqueue"
 
 	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 	kbinfoext "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
 	kbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	kblister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
 
-	vkbatchv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	v1corev1 "hpw.cloud/volcano/pkg/apis/bus/v1alpha1"
 	"hpw.cloud/volcano/pkg/apis/helpers"
 	vkver "hpw.cloud/volcano/pkg/client/clientset/versioned"
@@ -44,6 +45,9 @@ import (
 	vkcoreinfo "hpw.cloud/volcano/pkg/client/informers/externalversions/bus/v1alpha1"
 	vkbatchlister "hpw.cloud/volcano/pkg/client/listers/batch/v1alpha1"
 	vkcorelister "hpw.cloud/volcano/pkg/client/listers/bus/v1alpha1"
+	"hpw.cloud/volcano/pkg/controllers/job/apis"
+	jobcache "hpw.cloud/volcano/pkg/controllers/job/cache"
+	"hpw.cloud/volcano/pkg/controllers/job/queue"
 	"hpw.cloud/volcano/pkg/controllers/job/state"
 )
 
@@ -83,8 +87,9 @@ type Controller struct {
 	cmdLister vkcorelister.CommandLister
 	cmdSynced func() bool
 
-	// eventQueue that need to sync up
-	eventQueue *cache.FIFO
+	// queue that need to sync up
+	queue workqueue.RateLimitingInterface
+	cache jobcache.Cache
 }
 
 // NewJobController create new Job Controller
@@ -94,7 +99,8 @@ func NewJobController(config *rest.Config) *Controller {
 		kubeClients: kubernetes.NewForConfigOrDie(config),
 		vkClients:   vkver.NewForConfigOrDie(config),
 		kbClients:   kbver.NewForConfigOrDie(config),
-		eventQueue:  cache.NewFIFO(eventKey),
+		queue:       queue.New(eventKey),
+		cache:       jobcache.New(),
 	}
 
 	cc.jobInformer = vkinfoext.NewSharedInformerFactory(cc.vkClients, 0).Batch().V1alpha1().Jobs()
@@ -194,57 +200,44 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 	glog.Infof("JobController is running ...... ")
 }
 
-type Request struct {
-	Namespace string
-	JobName   string
-	PodName   string
-
-	Event  vkbatchv1.Event
-	Action vkbatchv1.Action
-
-	Reason  string
-	Message string
-}
-
 func (cc *Controller) worker() {
-	obj := cache.Pop(cc.eventQueue)
-	if obj == nil {
-		glog.Errorf("Fail to pop item from eventQueue")
+	obj, shutdown := cc.queue.Get()
+	if shutdown {
+		glog.Errorf("Fail to pop item from queue")
 		return
 	}
 
-	req := obj.(*Request)
+	req := obj.(apis.Request)
+	defer cc.queue.Done(req)
 
-	job, err := cc.jobLister.Jobs(req.Namespace).Get(req.JobName)
+	glog.V(3).Infof("Try to handle request <%v>", req)
+
+	jobInfo, err := cc.cache.Get(jobcache.JobKeyByReq(&req))
 	if err != nil {
 		return
 	}
 
-	st := state.NewState(job)
-	if st == nil {
-		glog.Errorf("Invalid state <%s> of Job <%v/%v>",
-			job.Status.State, job.Namespace, job.Name)
+	if jobInfo.Job == nil {
+		glog.V(3).Infof("Cache is out of sync for <%v>, retry it.", req)
+		cc.queue.AddRateLimited(req)
 		return
 	}
 
-	action := req.Action
-	if len(action) == 0 {
-		pod, err := cc.podLister.Pods(req.Namespace).Get(req.PodName)
-		if err != nil {
-			pod = nil
-		}
-		action = applyPolicies(req.Event, job, pod)
+	st := state.NewState(jobInfo)
+	if st == nil {
+		glog.Errorf("Invalid state <%s> of Job <%v/%v>",
+			jobInfo.Job.Status.State, jobInfo.Job.Namespace, jobInfo.Job.Name)
+		return
 	}
 
+	action := applyPolicies(jobInfo.Job, &req)
 	glog.V(3).Infof("Execute <%v> on Job <%s/%s> in <%s> by <%T>.",
-		action, req.Namespace, req.JobName, job.Status.State.Phase, st)
+		action, req.Namespace, req.JobName, jobInfo.Job.Status.State.Phase, st)
 
-	if err := st.Execute(action, req.Reason, req.Message); err != nil {
+	if err := st.Execute(action); err != nil {
 		glog.Errorf("Failed to handle Job <%s/%s>: %v",
-			job.Namespace, job.Name, err)
+			jobInfo.Job.Namespace, jobInfo.Job.Name, err)
 		// If any error, requeue it.
-		if e := cc.eventQueue.Add(req); e != nil {
-			glog.Errorf("Failed to reqeueue request <%v>", req)
-		}
+		cc.queue.AddRateLimited(req)
 	}
 }
