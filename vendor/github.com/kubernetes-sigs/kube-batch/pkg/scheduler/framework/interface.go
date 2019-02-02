@@ -32,14 +32,9 @@ type Action interface {
 }
 
 type Plugin interface {
+	// The unique name of Plugin.
+	Name() string
+
 	OnSessionOpen(ssn *Session)
 	OnSessionClose(ssn *Session)
-}
-
-type PluginArgs struct {
-	Name                 string
-	PreemptableFnEnabled bool
-	JobOrderFnEnabled    bool
-	TaskOrderFnEnabled   bool
-	JobReadyFnEnabled    bool
 }

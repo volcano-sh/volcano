@@ -24,6 +24,7 @@ import (
 
 	vkbatchv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	vkbusv1 "hpw.cloud/volcano/pkg/apis/bus/v1alpha1"
+	"hpw.cloud/volcano/pkg/controllers/job/apis"
 )
 
 func (cc *Controller) addCommand(obj interface{}) {
@@ -33,7 +34,7 @@ func (cc *Controller) addCommand(obj interface{}) {
 		return
 	}
 
-	req := &Request{
+	req := apis.Request{
 		Namespace: cmd.Namespace,
 		JobName:   cmd.TargetObject.Name,
 
@@ -44,18 +45,17 @@ func (cc *Controller) addCommand(obj interface{}) {
 	glog.V(3).Infof("Try to execute command <%v> on Job <%s/%s>",
 		cmd.Action, req.Namespace, req.JobName)
 
-	if err := cc.eventQueue.Add(req); err != nil {
-		glog.Errorf("Failed to add request <%v> into queue: %v",
-			req, err)
-	}
+	cc.queue.Add(req)
 
+	// TODO(k82cn): Added a queue to make sure the command are deleted; it's ok to
+	//              miss some commands, but we can not execute it more than once.
 	go func() {
+		// TODO(k82cn): record event for this Command
 		if err := cc.vkClients.BusV1alpha1().Commands(cmd.Namespace).Delete(cmd.Name, nil); err != nil {
 			glog.Errorf("Failed to delete Command <%s/%s> which maybe executed again.",
 				cmd.Namespace, cmd.Name)
 		}
 	}()
-
 }
 
 func (cc *Controller) addJob(obj interface{}) {
@@ -65,17 +65,19 @@ func (cc *Controller) addJob(obj interface{}) {
 		return
 	}
 
-	req := &Request{
+	req := apis.Request{
 		Namespace: job.Namespace,
 		JobName:   job.Name,
 
 		Event: vkbatchv1.OutOfSyncEvent,
 	}
 
-	if err := cc.eventQueue.Add(req); err != nil {
-		glog.Errorf("Failed to add request <%v> into queue: %v",
-			req, err)
+	// TODO(k82cn): if failed to add job, the cache should be refresh
+	if err := cc.cache.Add(job); err != nil {
+		glog.Errorf("Failed to add job <%s/%s>: %v",
+			job.Namespace, job.Name, err)
 	}
+	cc.queue.Add(req)
 }
 
 func (cc *Controller) updateJob(oldObj, newObj interface{}) {
@@ -85,18 +87,19 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 		return
 	}
 
-	req := &Request{
+	req := apis.Request{
 		Namespace: newJob.Namespace,
 		JobName:   newJob.Name,
 
 		Event: vkbatchv1.OutOfSyncEvent,
 	}
 
-	if err := cc.eventQueue.Add(req); err != nil {
-		glog.Errorf("Failed to add request <%v> into queue: %v",
-			req, err)
+	if err := cc.cache.Update(newJob); err != nil {
+		glog.Errorf("Failed to update job <%s/%s>: %v",
+			newJob.Namespace, newJob.Name, err)
 	}
 
+	cc.queue.Add(req)
 }
 
 func (cc *Controller) deleteJob(obj interface{}) {
@@ -106,16 +109,9 @@ func (cc *Controller) deleteJob(obj interface{}) {
 		return
 	}
 
-	req := &Request{
-		Namespace: job.Namespace,
-		JobName:   job.Name,
-
-		Event: vkbatchv1.OutOfSyncEvent,
-	}
-
-	if err := cc.eventQueue.Add(req); err != nil {
-		glog.Errorf("Failed to add request <%v> into queue: %v",
-			req, err)
+	if err := cc.cache.Delete(job); err != nil {
+		glog.Errorf("Failed to delete job <%s/%s>: %v",
+			job.Namespace, job.Name, err)
 	}
 }
 
@@ -128,21 +124,23 @@ func (cc *Controller) addPod(obj interface{}) {
 
 	jobName, found := pod.Annotations[vkbatchv1.JobNameKey]
 	if !found {
+		glog.Errorf("Failed to find jobName of Pod <%s/%s>",
+			pod.Namespace, pod.Name)
 		return
 	}
 
-	req := &Request{
+	req := apis.Request{
 		Namespace: pod.Namespace,
 		JobName:   jobName,
-		PodName:   pod.Name,
 
 		Event: vkbatchv1.OutOfSyncEvent,
 	}
 
-	if err := cc.eventQueue.Add(req); err != nil {
-		glog.Errorf("Failed to add request <%v> into queue: %v",
-			req, err)
+	if err := cc.cache.AddPod(pod); err != nil {
+		glog.Errorf("Failed to add Pod <%s/%s>: %v",
+			pod.Namespace, pod.Name, err)
 	}
+	cc.queue.Add(req)
 }
 
 func (cc *Controller) updatePod(oldObj, newObj interface{}) {
@@ -158,8 +156,17 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		return
 	}
 
+	taskName, found := newPod.Annotations[vkbatchv1.TaskSpecKey]
+	if !found {
+		glog.Errorf("Failed to find taskName of Pod <%s/%s>",
+			newPod.Namespace, newPod.Name)
+		return
+	}
+
 	jobName, found := newPod.Annotations[vkbatchv1.JobNameKey]
 	if !found {
+		glog.Errorf("Failed to find jobName of Pod <%s/%s>",
+			newPod.Namespace, newPod.Name)
 		return
 	}
 
@@ -169,17 +176,20 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		event = vkbatchv1.PodFailedEvent
 	}
 
-	req := &Request{
+	req := apis.Request{
 		Namespace: newPod.Namespace,
 		JobName:   jobName,
-		PodName:   newPod.Name,
+		TaskName:  taskName,
 
 		Event: event,
 	}
-	if err := cc.eventQueue.Add(req); err != nil {
-		glog.Errorf("Failed to add request <%v> into queue: %v",
-			req, err)
+
+	if err := cc.cache.UpdatePod(newPod); err != nil {
+		glog.Errorf("Failed to update Pod <%s/%s>: %v",
+			newPod.Namespace, newPod.Name, err)
 	}
+
+	cc.queue.Add(req)
 }
 
 func (cc *Controller) deletePod(obj interface{}) {
@@ -199,23 +209,34 @@ func (cc *Controller) deletePod(obj interface{}) {
 		return
 	}
 
-	jobName, found := pod.Annotations[vkbatchv1.JobNameKey]
+	taskName, found := pod.Annotations[vkbatchv1.TaskSpecKey]
 	if !found {
+		glog.Errorf("Failed to find taskName of Pod <%s/%s>",
+			pod.Namespace, pod.Name)
 		return
 	}
 
-	req := &Request{
+	jobName, found := pod.Annotations[vkbatchv1.JobNameKey]
+	if !found {
+		glog.Errorf("Failed to find jobName of Pod <%s/%s>",
+			pod.Namespace, pod.Name)
+		return
+	}
+
+	req := apis.Request{
 		Namespace: pod.Namespace,
 		JobName:   jobName,
-		PodName:   pod.Name,
+		TaskName:  taskName,
 
 		Event: vkbatchv1.PodEvictedEvent,
 	}
 
-	if err := cc.eventQueue.Add(req); err != nil {
-		glog.Errorf("Failed to add request <%v> into queue: %v",
-			req, err)
+	if err := cc.cache.DeletePod(pod); err != nil {
+		glog.Errorf("Failed to update Pod <%s/%s>: %v",
+			pod.Namespace, pod.Name, err)
 	}
+
+	cc.queue.Add(req)
 }
 
 // TODO(k82cn): add handler for PodGroup unschedulable event.
