@@ -281,11 +281,17 @@
   version = "v2.0.1"
 
 [[projects]]
-  digest = "1:1cec06981f734a2a5927ce17a22b34e9f3fa458b5c70f5db9ed58f7e389338f7"
+  digest = "1:ef03fb1dae4d010196652653f00a8002e94c19bcabdc8ca5100a804ffef63a47"
   name = "github.com/prometheus/client_golang"
-  packages = ["prometheus"]
+  packages = [
+    "prometheus",
+    "prometheus/internal",
+    "prometheus/promauto",
+    "prometheus/promhttp",
+  ]
   pruneopts = "UT"
-  revision = "e7e903064f5e9eb5da98208bae10b475d4db0f8c"
+  revision = "505eaef017263e299324067d40ca2c48f6a2cf50"
+  version = "v0.9.2"
 
 [[projects]]
   branch = "master"
@@ -1008,6 +1014,9 @@
     "github.com/golang/glog",
     "github.com/onsi/ginkgo",
     "github.com/onsi/gomega",
+    "github.com/prometheus/client_golang/prometheus",
+    "github.com/prometheus/client_golang/prometheus/promauto",
+    "github.com/prometheus/client_golang/prometheus/promhttp",
     "github.com/spf13/pflag",
     "gopkg.in/yaml.v2",
     "k8s.io/api/apps/v1",
