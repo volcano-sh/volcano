@@ -21,12 +21,13 @@ import (
 
 	"github.com/golang/glog"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/metrics"
 )
 
 type gangPlugin struct {
@@ -156,10 +157,17 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 }
 
 func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
+	var unreadyTaskCount int32
+	var unScheduleJobCount int
 	for _, job := range ssn.Jobs {
 		if !jobReady(job) {
+			unreadyTaskCount = job.MinAvailable - readyTaskNum(job)
 			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
 				job.MinAvailable-readyTaskNum(job), len(job.Tasks), job.FitError())
+
+			unScheduleJobCount += 1
+			metrics.UpdateUnscheduleTaskCount(job.Name, int(unreadyTaskCount))
+			metrics.RegisterJobRetries(job.Name)
 
 			jc := &v1alpha1.PodGroupCondition{
 				Type:               v1alpha1.PodGroupUnschedulableType,
@@ -176,4 +184,6 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			}
 		}
 	}
+
+	metrics.UpdateUnscheduleJobCount(unScheduleJobCount)
 }

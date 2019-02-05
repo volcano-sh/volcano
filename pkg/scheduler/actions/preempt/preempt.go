@@ -23,6 +23,7 @@ import (
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/metrics"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/util"
 )
 
@@ -212,6 +213,7 @@ func preempt(
 			}
 		}
 		victims := ssn.Preemptable(preemptor, preemptees)
+		metrics.UpdatePreemptionVictimsCount(len(victims))
 
 		if err := validateVictims(victims, resreq); err != nil {
 			glog.V(3).Infof("No validated victims on Node <%s>: %v", node.Name, err)
@@ -235,6 +237,7 @@ func preempt(
 			resreq.Sub(preemptee.Resreq)
 		}
 
+		metrics.RegisterPreemptionAttempts()
 		glog.V(3).Infof("Preempted <%v> for task <%s/%s> requested <%v>.",
 			preempted, preemptor.Namespace, preemptor.Name, preemptor.Resreq)
 
