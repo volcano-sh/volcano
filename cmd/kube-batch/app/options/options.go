@@ -34,6 +34,7 @@ type ServerOption struct {
 	LockObjectNamespace  string
 	DefaultQueue         string
 	PrintVersion         bool
+	ListenAddress        string
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -56,6 +57,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 			"executing the main loop. Enable this when running replicated kube-batch for high availability")
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
 	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", s.LockObjectNamespace, "Define the namespace of the lock object")
+	fs.StringVar(&s.ListenAddress, "listen-address", ":8080", "The address to listen on for HTTP requests.")
 }
 
 func (s *ServerOption) CheckOptionOrDie() error {

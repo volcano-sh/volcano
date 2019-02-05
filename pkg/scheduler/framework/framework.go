@@ -17,10 +17,13 @@ limitations under the License.
 package framework
 
 import (
+	"time"
+
 	"github.com/golang/glog"
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/conf"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/metrics"
 )
 
 func OpenSession(cache cache.Cache, tiers []conf.Tier) *Session {
@@ -39,7 +42,9 @@ func OpenSession(cache cache.Cache, tiers []conf.Tier) *Session {
 	}
 
 	for _, plugin := range ssn.plugins {
+		onSessionOpenStart := time.Now()
 		plugin.OnSessionOpen(ssn)
+		metrics.UpdatePluginDuration(plugin.Name(), metrics.OnSessionOpen, metrics.Duration(onSessionOpenStart))
 	}
 
 	return ssn
@@ -47,7 +52,9 @@ func OpenSession(cache cache.Cache, tiers []conf.Tier) *Session {
 
 func CloseSession(ssn *Session) {
 	for _, plugin := range ssn.plugins {
+		onSessionCloseStart := time.Now()
 		plugin.OnSessionClose(ssn)
+		metrics.UpdatePluginDuration(plugin.Name(), metrics.OnSessionClose, metrics.Duration(onSessionCloseStart))
 	}
 
 	closeSession(ssn)

@@ -19,6 +19,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler"
 	"github.com/kubernetes-sigs/kube-batch/pkg/version"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -74,6 +76,11 @@ func Run(opt *options.ServerOption) error {
 	if err != nil {
 		panic(err)
 	}
+
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		glog.Fatalf("Prometheus Http Server failed %s", http.ListenAndServe(opt.ListenAddress, nil))
+	}()
 
 	run := func(ctx context.Context) {
 		sched.Run(ctx.Done())
