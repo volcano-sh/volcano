@@ -26,7 +26,7 @@ nohup ${VK_BIN}/vk-scheduler --kubeconfig ${HOME}/.kube/config --logtostderr --v
 
 # clean up
 function cleanup {
-    killall -9 vk-scheduler vk-controller
+    killall -9 vk-scheduler vk-controllers
     ./hack/dind-cluster-v1.12.sh down
 
     echo "===================================================================================="
