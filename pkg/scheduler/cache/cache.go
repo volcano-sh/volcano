@@ -517,7 +517,10 @@ func (sc *SchedulerCache) cleanupJobs() {
 }
 
 func (sc *SchedulerCache) resyncTask(task *kbapi.TaskInfo) {
-	sc.errTasks.AddIfNotPresent(task)
+	if err := sc.errTasks.AddIfNotPresent(task); err != nil {
+		glog.Errorf("Failed to re-sync tasks <%v/%v>: %v",
+			task.Namespace, task.Name, err)
+	}
 }
 
 func (sc *SchedulerCache) resync() {
