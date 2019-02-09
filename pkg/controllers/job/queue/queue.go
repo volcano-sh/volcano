@@ -126,7 +126,13 @@ func (q *queue) Get() (item interface{}, shutdown bool) {
 		return key, sd
 	}
 
-	return q.getQueue(key).Get()
+	glog.V(3).Infof("try to get item by key <%v>", key)
+
+	item, shutdown = q.getQueue(key).Get()
+
+	glog.V(3).Infof("get item <%v> by key <%v>", item, key)
+
+	return
 }
 
 func (q *queue) Done(item interface{}) {
@@ -134,8 +140,10 @@ func (q *queue) Done(item interface{}) {
 	defer glog.V(3).Infof("queue.Done finished")
 
 	key := q.indexFn(item)
-	q.index.Done(key)
 	q.getQueue(key).Done(item)
+	q.index.Done(key)
+
+	glog.V(3).Infof("item <%v> is done in queue <%v>", item, key)
 
 	q.Lock()
 	defer q.Unlock()
