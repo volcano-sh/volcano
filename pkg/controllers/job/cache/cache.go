@@ -19,16 +19,20 @@ package cache
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/golang/glog"
 
+	"k8s.io/api/core/v1"
+	"k8s.io/client-go/tools/cache"
+
 	"hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"hpw.cloud/volcano/pkg/controllers/job/apis"
-
-	"k8s.io/api/core/v1"
 )
 
 type Cache interface {
+	Run(stopCh <-chan struct{})
+
 	Get(key string) (*apis.JobInfo, error)
 	GetStatus(key string) (*v1alpha1.JobStatus, error)
 	Add(obj *v1alpha1.Job) error
@@ -43,7 +47,8 @@ type Cache interface {
 type jobCache struct {
 	sync.Mutex
 
-	jobs map[string]*apis.JobInfo
+	jobs        map[string]*apis.JobInfo
+	deletedJobs *cache.FIFO
 }
 
 func keyFn(ns, name string) string {
@@ -58,6 +63,18 @@ func JobKey(req *v1alpha1.Job) string {
 	return keyFn(req.Namespace, req.Name)
 }
 
+func jobTerminated(job *apis.JobInfo) bool {
+	return job.Job == nil && len(job.Pods) == 0
+}
+
+func jobKey(obj interface{}) (string, error) {
+	job, ok := obj.(*v1alpha1.Job)
+	if !ok {
+		return "", fmt.Errorf("failed to convert <%v> to *v1alpha1.Job", obj)
+	}
+	return keyFn(job.Namespace, job.Name), nil
+}
+
 func jobKeyOfPod(pod *v1.Pod) (string, error) {
 	jobName, found := pod.Annotations[v1alpha1.JobNameKey]
 	if !found {
@@ -70,7 +87,8 @@ func jobKeyOfPod(pod *v1.Pod) (string, error) {
 
 func New() Cache {
 	return &jobCache{
-		jobs: map[string]*apis.JobInfo{},
+		jobs:        map[string]*apis.JobInfo{},
+		deletedJobs: cache.NewFIFO(jobKey),
 	}
 }
 
@@ -258,4 +276,53 @@ func (jc *jobCache) DeletePod(pod *v1.Pod) error {
 	}
 
 	return nil
+}
+
+func (jc *jobCache) Run(stopCh <-chan struct{}) {
+	go jc.cleanupJobs()
+}
+
+func (jc *jobCache) cleanupJobs() {
+	for {
+		err := jc.processCleanupJob()
+		if err != nil {
+			glog.Errorf("Failed to process job clean up: %v", err)
+		}
+	}
+}
+
+func (jc *jobCache) processCleanupJob() error {
+	_, err := jc.deletedJobs.Pop(func(obj interface{}) error {
+		job, ok := obj.(*apis.JobInfo)
+		if !ok {
+			return fmt.Errorf("failed to convert %v to *v1.Pod", obj)
+		}
+
+		func() {
+			jc.Mutex.Lock()
+			defer jc.Mutex.Unlock()
+
+			if jobTerminated(job) {
+				key, _ := jobKey(job)
+				delete(jc.jobs, key)
+				glog.V(3).Infof("Job <%s> was deleted.", key)
+			} else {
+				// Retry
+				jc.deleteJob(job)
+			}
+		}()
+
+		return nil
+	})
+
+	return err
+}
+
+func (jc *jobCache) deleteJob(job *apis.JobInfo) {
+	glog.V(3).Infof("Try to delete Job <%v/%v>",
+		job.Job.Namespace, job.Job.Name)
+
+	time.AfterFunc(5*time.Second, func() {
+		jc.deletedJobs.AddIfNotPresent(job)
+	})
 }
