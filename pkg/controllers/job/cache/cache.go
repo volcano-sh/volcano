@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/golang/glog"
+
 	"hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"hpw.cloud/volcano/pkg/controllers/job/apis"
 
@@ -116,7 +118,14 @@ func (jc *jobCache) Add(obj *v1alpha1.Job) error {
 	defer jc.Unlock()
 
 	key := JobKey(obj)
-	if _, found := jc.jobs[key]; found {
+	if job, found := jc.jobs[key]; found {
+		if job.Job == nil {
+			job.Job = obj
+			return nil
+		}
+
+		glog.Errorf("Found duplicated jobs by <%v>", key)
+
 		return fmt.Errorf("duplicated job <%v>", key)
 	}
 
