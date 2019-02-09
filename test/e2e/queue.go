@@ -23,7 +23,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Predicates E2E Test", func() {
+var _ = Describe("Queue E2E Test", func() {
 	It("Reclaim", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
