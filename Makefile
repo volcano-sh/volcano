@@ -19,7 +19,7 @@ generate-code:
 	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/batch/v1alpha1/ -O zz_generated.deepcopy
 	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/bus/v1alpha1/ -O zz_generated.deepcopy
 
-e2e-test:
+e2e-test: all
 	./hack/run-e2e.sh
 
 clean:
