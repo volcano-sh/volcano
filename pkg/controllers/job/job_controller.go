@@ -197,6 +197,8 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 
 	go wait.Until(cc.worker, 0, stopCh)
 
+	go cc.cache.Run(stopCh)
+
 	glog.Infof("JobController is running ...... ")
 }
 
