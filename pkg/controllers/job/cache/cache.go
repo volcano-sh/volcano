@@ -101,6 +101,10 @@ func (jc *jobCache) Get(key string) (*apis.JobInfo, error) {
 		return nil, fmt.Errorf("failed to find job <%s>", key)
 	}
 
+	if job.Job == nil {
+		return nil, fmt.Errorf("job <%s> is not ready", key)
+	}
+
 	jobInfo := &apis.JobInfo{
 		Job:  job.Job,
 		Pods: make(map[string]map[string]*v1.Pod),
