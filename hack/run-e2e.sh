@@ -22,7 +22,7 @@ kubectl create -f config/crds/bus_v1alpha1_command.yaml
 nohup ${VK_BIN}/vk-controllers --kubeconfig ${HOME}/.kube/config --logtostderr --v ${LOG_LEVEL} > controller.log 2>&1 &
 
 # start scheduler
-nohup ${VK_BIN}/vk-scheduler --kubeconfig ${HOME}/.kube/config --logtostderr --v ${LOG_LEVEL} > scheduler.log 2>&1 &
+nohup ${VK_BIN}/vk-scheduler --kubeconfig ${HOME}/.kube/config --scheduler-conf=example/kube-batch-conf.yaml --logtostderr --v ${LOG_LEVEL} > scheduler.log 2>&1 &
 
 # clean up
 function cleanup {
