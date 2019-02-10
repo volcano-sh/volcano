@@ -178,11 +178,11 @@ func (jc *jobCache) Delete(obj *v1alpha1.Job) error {
 	defer jc.Unlock()
 
 	key := JobKey(obj)
-	if _, found := jc.jobs[key]; !found {
+	if jobInfo, found := jc.jobs[key]; !found {
 		return fmt.Errorf("failed to find job <%v>", key)
+	} else {
+		jc.deleteJob(jobInfo)
 	}
-
-	delete(jc.jobs, key)
 
 	return nil
 }
@@ -279,6 +279,8 @@ func (jc *jobCache) DeletePod(pod *v1.Pod) error {
 		delete(pods, pod.Name)
 	}
 
+	jc.deleteJob(job)
+
 	return nil
 }
 
@@ -326,7 +328,7 @@ func (jc *jobCache) deleteJob(job *apis.JobInfo) {
 	glog.V(3).Infof("Try to delete Job <%v/%v>",
 		job.Job.Namespace, job.Job.Name)
 
-	time.AfterFunc(5*time.Second, func() {
+	time.AfterFunc(1*time.Second, func() {
 		jc.deletedJobs.AddIfNotPresent(job)
 	})
 }
