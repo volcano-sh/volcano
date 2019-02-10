@@ -247,6 +247,7 @@ func deleteQueues(cxt *context) {
 }
 
 type taskSpec struct {
+	name     string
 	min, rep int32
 	img      string
 	hostport int32
@@ -288,8 +289,15 @@ func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
 	}
 
 	var min int32
-	for _, task := range jobSpec.tasks {
+	for i, task := range jobSpec.tasks {
+		name := task.name
+
+		if len(name) == 0 {
+			name = fmt.Sprintf("%s-task-%d", jobSpec.name, i)
+		}
+
 		ts := vkv1.TaskSpec{
+			Name:     name,
 			Replicas: task.rep,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
