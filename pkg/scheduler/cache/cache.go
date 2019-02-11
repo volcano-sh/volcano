@@ -131,12 +131,12 @@ type defaultStatusUpdater struct {
 }
 
 // Update pod with podCondition
-func (su *defaultStatusUpdater) UpdatePod(pod *v1.Pod, condition *v1.PodCondition) (*v1.Pod, error) {
+func (su *defaultStatusUpdater) UpdatePodCondition(pod *v1.Pod, condition *v1.PodCondition) (*v1.Pod, error) {
 	glog.V(3).Infof("Updating pod condition for %s/%s to (%s==%s)", pod.Namespace, pod.Name, condition.Type, condition.Status)
 	if podutil.UpdatePodCondition(&pod.Status, condition) {
 		return su.kubeclient.CoreV1().Pods(pod.Namespace).UpdateStatus(pod)
 	}
-	return nil, fmt.Errorf("failed to update pod condition")
+	return pod, nil
 }
 
 // Update pod with podCondition
@@ -439,7 +439,7 @@ func (sc *SchedulerCache) taskUnschedulable(task *api.TaskInfo, message string) 
 	pod := task.Pod.DeepCopy()
 
 	sc.Recorder.Eventf(pod, v1.EventTypeWarning, string(v1.PodReasonUnschedulable), message)
-	if _, err := sc.StatusUpdater.UpdatePod(pod, &v1.PodCondition{
+	if _, err := sc.StatusUpdater.UpdatePodCondition(pod, &v1.PodCondition{
 		Type:    v1.PodScheduled,
 		Status:  v1.ConditionFalse,
 		Reason:  v1.PodReasonUnschedulable,
