@@ -47,7 +47,6 @@ import (
 	vkcorelister "hpw.cloud/volcano/pkg/client/listers/bus/v1alpha1"
 	"hpw.cloud/volcano/pkg/controllers/job/apis"
 	jobcache "hpw.cloud/volcano/pkg/controllers/job/cache"
-	"hpw.cloud/volcano/pkg/controllers/job/queue"
 	"hpw.cloud/volcano/pkg/controllers/job/state"
 )
 
@@ -99,7 +98,7 @@ func NewJobController(config *rest.Config) *Controller {
 		kubeClients: kubernetes.NewForConfigOrDie(config),
 		vkClients:   vkver.NewForConfigOrDie(config),
 		kbClients:   kbver.NewForConfigOrDie(config),
-		queue:       queue.New(eventKey),
+		queue:       workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		cache:       jobcache.New(),
 	}
 
@@ -197,6 +196,8 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 
 	go wait.Until(cc.worker, 0, stopCh)
 
+	go cc.cache.Run(stopCh)
+
 	glog.Infof("JobController is running ...... ")
 }
 
@@ -214,12 +215,8 @@ func (cc *Controller) worker() {
 
 	jobInfo, err := cc.cache.Get(jobcache.JobKeyByReq(&req))
 	if err != nil {
-		return
-	}
-
-	if jobInfo.Job == nil {
-		glog.V(3).Infof("Cache is out of sync for <%v>, retry it.", req)
-		cc.queue.AddRateLimited(req)
+		// TODO(k82cn): ignore not-ready error.
+		glog.Errorf("Failed to get job by <%v> from cache: %v", req, err)
 		return
 	}
 
