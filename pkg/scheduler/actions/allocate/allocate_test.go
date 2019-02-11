@@ -117,7 +117,7 @@ func (fb *fakeBinder) Bind(p *v1.Pod, hostname string) error {
 type fakeStatusUpdater struct {
 }
 
-func (ftsu *fakeStatusUpdater) UpdatePod(pod *v1.Pod, podCondition *v1.PodCondition) (*v1.Pod, error) {
+func (ftsu *fakeStatusUpdater) UpdatePodCondition(pod *v1.Pod, podCondition *v1.PodCondition) (*v1.Pod, error) {
 	// do nothing here
 	return nil, nil
 }
