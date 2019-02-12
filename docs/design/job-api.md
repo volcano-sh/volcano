@@ -4,7 +4,7 @@
 
 ## Motivation
 
-`Job` is the fundamental object of high performance workload; this document provide the definition of `Job` in Volcano.
+`Job` is the fundamental object of high performance workload; this document provides the definition of `Job` in Volcano.
 
 ## Scope
 
@@ -26,9 +26,9 @@ the major functions of `Job`, refer to [Appendix](#appendix) section for the who
 
 ### Multiple Pod Template
 
-As most job of high performance workload include different type of tasks, e.g. TensorFlow (ps/worker), Spark (driver/executor);
+As most jobs of high performance workload include different type of tasks, e.g. TensorFlow (ps/worker), Spark (driver/executor);
 `Job` introduces `taskSpecs` to support multiple pod template, defined as follow.  The `Policies` will describe in
- [Error Handling](error%20handling) section.
+ [Error Handling](#error-handling) section.
  
  ```go
 // JobSpec describes how the job execution will look like and when it will actually run
@@ -92,7 +92,7 @@ The following types are introduced for Job's input/output.
 
 ```go
 type VolumeSpec struct {
-	v1.VolumeMount `json:",inline"`
+	MountPath string `json:"mountPath" protobuf:"bytes,1,opt,name=mountPath"`
 
 	 // VolumeClaim defines the PVC used by the VolumeSpec.
 	// + optional
@@ -115,7 +115,7 @@ type JobSpec struct{
 The `Input`&`Output` of Job can be `nil` which means user will manage data themselves. If `*put.volumeClaim` is `nil`,
 `emptyDir` volume will be used for each Task/Pod.
 
-### Conditions and Phase
+### Conditions and Phases
 
 The following phases are introduced to give a simple, high-level summary of where the Job is in its lifecycle; and the conditions array,
 the reason and message field contain more detail about the job's status. 
@@ -184,7 +184,7 @@ phase if the cell is empty.
 
 After Job was created in system, there'll be several events related to the Job, e.g. Pod succeeded, Pod failed;
 and some events are critical to the Job, e.g. Pod of MPIJob failed. So `LifecyclePolicy` is introduced to handle different
-event based on user's configuration.
+events based on user's configuration.
 
 ```go
 // Event is the type of Event related to the Job
@@ -217,7 +217,7 @@ const (
     // RestartJobAction if this action is set, the whole job will be restarted
     RestartJobAction Action = "RestartJob"
     // RestartTaskAction if this action is set, only the task will be restarted; default action.
-    // This action can not work togther with job level events, e.g. JobUnschedulable
+    // This action can not work together with job level events, e.g. JobUnschedulable
     RestartTaskAction Action = "RestartTask"
     // TerminateJobAction if this action is set, the whole job wil be terminated
     // and can not be resumed: all Pod of Job will be evicted, and no Pod will be recreated.
@@ -233,6 +233,7 @@ const (
 type LifecyclePolicy struct {
     Event  Event  `json:"event,omitempty" protobuf:"bytes,1,opt,name=event"`
     Action Action `json:"action,omitempty" protobuf:"bytes,2,opt,name=action"`
+    Timeout *metav1.Duration `json:"timeout,omitempty" protobuf:"bytes,3,opt,name=timeout"`
 }
 ```
 
@@ -266,8 +267,8 @@ type TaskSpec struct {
 The following examples demonstrate the usage of `LifecyclePolicy` for job and task.
 
 For the training job of machine learning framework, the whole job should be restarted if any task was failed or evicted.
-To simplify the configuration, a job level `LifecyclePolicy` is set as follows.  As no `LifecyclePolicy` is set, all tasks
-will use the policies in `spec.policies`.
+To simplify the configuration, a job level `LifecyclePolicy` is set as follows.  As no `LifecyclePolicy` is set for any 
+task, all tasks will use the policies in `spec.policies`.
 
 ```yaml
 apiVersion: batch.hpw.cloud/v1alpha1
@@ -299,7 +300,7 @@ spec:
 
 Some BigData framework (e.g. Spark) may have different requirements. Take Spark as example, the whole job will be restarted
 if 'driver' tasks failed and only restart the task if 'executor' tasks failed. As `RestartTask` is the default action of 
-events, `RestartJob` is set for driver `spec.tasks.policies` as follow.  
+task events, `RestartJob` is set for driver `spec.tasks.policies` as follow.  
 
 ```yaml
 apiVersion: batch.hpw.cloud/v1alpha1
@@ -333,18 +334,18 @@ spec:
 
 The following validations must be included to make sure expected behaviours:   
 
-* `spec.minAvailable` < sum(`spec.taskSpecs.replicas`)
+* `spec.minAvailable` <= sum(`spec.taskSpecs.replicas`)
 * no duplicated name in `spec.taskSpecs` array
 * no duplicated event handler in `LifecyclePolicy` array, both job policies and task policies
  
-### Coscheduling
+### CoScheduling
 
-Coscheduling (or Gang-scheduling) is required by most of high performance workload, e.g. TF training job, MPI job.
-The `spec.minAvailable` is used to identify how many pods will be schedule together. The default value of `spec.minAvailable`
+CoScheduling (or Gang-scheduling) is required by most of high performance workload, e.g. TF training job, MPI job.
+The `spec.minAvailable` is used to identify how many pods will be scheduled together. The default value of `spec.minAvailable`
 is summary of `spec.tasks.replicas`. The admission controller web hook will check `spec.minAvailable` against
 the summary of `spec.tasks.replicas`; the job creation will be rejected if `spec.minAvailable` > sum(`spec.tasks.replicas`).
 If `spec.minAvailable` < sum(`spec.tasks.replicas`), the pod of `spec.tasks` will be created randomly; 
-refer to [Task Priority with Job](#task%20priority%20with%20job) section on how to create tasks in order.
+refer to [Task Priority with Job](#task-priority-within-job) section on how to create tasks in order.
 
 ```yaml
 apiVersion: batch.hpw.cloud/v1alpha1
@@ -481,7 +482,7 @@ type JobSpec struct {
 
 // VolumeSpec defines the specification of Volume, e.g. PVC
 type VolumeSpec struct {
-    v1.VolumeMount `json:",inline"`
+    MountPath string `json:"mountPath" protobuf:"bytes,1,opt,name=mountPath"`
 
     // VolumeClaim defines the PVC used by the VolumeMount.
     VolumeClaim *v1.PersistentVolumeClaimSpec `json:"claim,omitempty" protobuf:"bytes,1,opt,name=claim"`
@@ -517,7 +518,7 @@ const (
     // RestartJobAction if this action is set, the whole job will be restarted
     RestartJobAction Action = "RestartJob"
     // RestartTaskAction if this action is set, only the task will be restarted; default action.
-    // This action can not work togther with job level events, e.g. JobUnschedulable
+    // This action can not work together with job level events, e.g. JobUnschedulable
     RestartTaskAction Action = "RestartTask"
     // TerminateJobAction if this action is set, the whole job wil be terminated
     // and can not be resumed: all Pod of Job will be evicted, and no Pod will be recreated.
@@ -582,8 +583,8 @@ const (
     Completed JobPhase = "Completed"
     // Terminating is the phase that the Job is terminated, waiting for releasing pods
     Terminating JobPhase = "Terminating"
-    // Teriminated is the phase that the job is finished unexpected, e.g. events
-    Teriminated JobPhase = "Terminated"
+    // Terminated is the phase that the job is finished unexpected, e.g. events
+    Terminated JobPhase = "Terminated"
 )
 
 // JobState contains details for the current state of the job.
@@ -625,6 +626,10 @@ type JobStatus struct {
     // The minimal available pods to run for this Job
     // +optional
     MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,6,opt,name=minAvailable"`
+    
+    // The number of pods which reached phase Terminating.
+    // +optional
+    Terminating int32 `json:"terminating,omitempty" protobuf:"bytes,7,opt,name=terminating"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
