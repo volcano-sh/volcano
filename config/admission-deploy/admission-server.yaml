@@ -57,10 +57,8 @@ metadata:
 spec:
   ports:
   - port: 443
-    nodePort: 32222
     protocol: TCP
     targetPort: 443
   selector:
     admission: "true"
   sessionAffinity: None
-  type: NodePort

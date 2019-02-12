@@ -3,15 +3,14 @@ kind: ValidatingWebhookConfiguration
 metadata:
   name: validating-custom-job
 webhooks:
-- clientConfig:
-    #caBundle should be provided accordingly, inverted from ca.crt; 
-    caBundle: {{ca.crt}}
+- clientConfig: 
+    caBundle: {{CA_BUNDLE}}
 
     # TODO: When using clientConfig.service, the server cert must be valid for <svc_name>.<svc_namespace>.svc
-    # service:
-    #  name: webhook-service
-    #  namespace: webhook
-    #  path: /jobs
+    #service:
+    # name: admission-service
+    # namespace: admission
+    # path: /jobs
 
     # the url should agree with webhook service
     url: https://{{host}}:{{hostPort}}/jobs
