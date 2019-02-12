@@ -15,9 +15,8 @@ kubectl --server=http://${MASTER} create -f config/crds/batch_v1alpha1_job.yaml
 kubectl --server=http://${MASTER} create -f config/crds/bus_v1alpha1_command.yaml
 
 # config admission-controller TODO: make it easier to deploy
-ca_crt=`cat ${CERT_PATH}/ca.crt | base64`
-ca_crt=`echo $ca_crt | sed 's/ //g'`
-sed -i "s|{{ca.crt}}|$ca_crt|g" config/admission-deploy/admission-config.yaml
+CA_BUNDLE=`kubectl get configmap -n kube-system extension-apiserver-authentication -o=jsonpath='{.data.client-ca-file}' | base64 | tr -d '\n'`
+sed -i "s|{{CA_BUNDLE}}|$CA_BUNDLE|g" config/admission-deploy/admission-config.yaml
 sed -i "s|{{host}}|${HOST}|g" config/admission-deploy/admission-config.yaml
 sed -i "s|{{hostPort}}|${HOSTPORT}|g" config/admission-deploy/admission-config.yaml
 
