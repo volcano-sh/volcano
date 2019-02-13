@@ -18,10 +18,10 @@ package allocate
 
 import (
 	"github.com/golang/glog"
-
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/util"
+	"sort"
 )
 
 type allocateAction struct {
@@ -44,6 +44,8 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 	jobsMap := map[api.QueueID]*util.PriorityQueue{}
+	predicateNodes := []*api.NodeInfo{}
+	nodeScores := map[int][]*api.NodeInfo{}
 
 	for _, job := range ssn.Jobs {
 		if _, found := jobsMap[job.Queue]; !found {
@@ -125,34 +127,47 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 					glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
 						task.Namespace, task.Name, node.Name, err)
 					continue
+				} else {
+					predicateNodes = append(predicateNodes, node)
 				}
+			}
+			for _, node := range predicateNodes {
+				score, err := ssn.PriorityFn(task, node, predicateNodes)
+				if err != nil {
+					glog.V(3).Infof("Error in Calculating Priority for the node:%v", err)
+				} else {
+					nodeScores[score] = append(nodeScores[score], node)
+				}
+			}
 
+			selectedNodes := selectBestNode(nodeScores)
+			for _, selectedNode := range selectedNodes {
 				// Allocate idle resource to the task.
-				if task.Resreq.LessEqual(node.Idle) {
+				if task.Resreq.LessEqual(selectedNode.Idle) {
 					glog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
-						task.Namespace, task.Name, node.Name)
-					if err := ssn.Allocate(task, node.Name); err != nil {
+						task.Namespace, task.Name, selectedNode.Name)
+					if err := ssn.Allocate(task, selectedNode.Name); err != nil {
 						glog.Errorf("Failed to bind Task %v on %v in Session %v",
-							task.UID, node.Name, ssn.UID)
+							task.UID, selectedNode.Name, ssn.UID)
 						continue
 					}
 					assigned = true
 					break
 				} else {
 					//store information about missing resources
-					job.NodesFitDelta[node.Name] = node.Idle.Clone()
-					job.NodesFitDelta[node.Name].FitDelta(task.Resreq)
+					job.NodesFitDelta[selectedNode.Name] = selectedNode.Idle.Clone()
+					job.NodesFitDelta[selectedNode.Name].FitDelta(task.Resreq)
 					glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s> with limited resources",
-						task.Namespace, task.Name, node.Name)
+						task.Namespace, task.Name, selectedNode.Name)
 				}
 
 				// Allocate releasing resource to the task if any.
-				if task.Resreq.LessEqual(node.Releasing) {
+				if task.Resreq.LessEqual(selectedNode.Releasing) {
 					glog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
-						task.Namespace, task.Name, node.Name, task.Resreq, node.Releasing)
-					if err := ssn.Pipeline(task, node.Name); err != nil {
+						task.Namespace, task.Name, selectedNode.Name, task.Resreq, selectedNode.Releasing)
+					if err := ssn.Pipeline(task, selectedNode.Name); err != nil {
 						glog.Errorf("Failed to pipeline Task %v on %v in Session %v",
-							task.UID, node.Name, ssn.UID)
+							task.UID, selectedNode.Name, ssn.UID)
 						continue
 					}
 
@@ -173,6 +188,22 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 		// Added Queue back until no job in Queue.
 		queues.Push(queue)
 	}
+}
+
+func selectBestNode(nodeScores map[int][]*api.NodeInfo) []*api.NodeInfo {
+	var nodesInorder []*api.NodeInfo
+	var keys []int
+	for key, _ := range nodeScores {
+		keys = append(keys, key)
+	}
+	sort.Ints(keys)
+	for _, key := range keys {
+		nodes := nodeScores[key]
+		for _, node := range nodes {
+			nodesInorder = append(nodesInorder, node)
+		}
+	}
+	return nodesInorder
 }
 
 func (alloc *allocateAction) UnInitialize() {}
