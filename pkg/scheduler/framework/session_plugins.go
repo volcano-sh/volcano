@@ -48,6 +48,10 @@ func (ssn *Session) AddPredicateFn(name string, pf api.PredicateFn) {
 	ssn.predicateFns[name] = pf
 }
 
+func (ssn *Session) AddPriorityFn(name string, pf api.PriorityFn) {
+	ssn.priorityFns[name] = pf
+}
+
 func (ssn *Session) AddOverusedFn(name string, fn api.ValidateFn) {
 	ssn.overusedFns[name] = fn
 }
@@ -292,4 +296,27 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 		}
 	}
 	return nil
+}
+
+func (ssn *Session) PriorityFn(task *api.TaskInfo, node *api.NodeInfo, nodes []*api.NodeInfo) (int, error) {
+	var priorityScore int
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if plugin.PredicateDisabled {
+				continue
+			}
+			pfn, found := ssn.priorityFns[plugin.Name]
+			if !found {
+				continue
+			}
+			score, err := pfn(task, node, nodes)
+			if err != nil {
+				return 0, err
+			} else {
+				priorityScore = score
+				break
+			}
+		}
+	}
+	return priorityScore, nil
 }

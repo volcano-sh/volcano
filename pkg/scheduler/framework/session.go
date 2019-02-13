@@ -53,6 +53,7 @@ type Session struct {
 	queueOrderFns  map[string]api.CompareFn
 	taskOrderFns   map[string]api.CompareFn
 	predicateFns   map[string]api.PredicateFn
+	priorityFns    map[string]api.PriorityFn
 	preemptableFns map[string]api.EvictableFn
 	reclaimableFns map[string]api.EvictableFn
 	overusedFns    map[string]api.ValidateFn
@@ -73,6 +74,7 @@ func openSession(cache cache.Cache) *Session {
 		queueOrderFns:  map[string]api.CompareFn{},
 		taskOrderFns:   map[string]api.CompareFn{},
 		predicateFns:   map[string]api.PredicateFn{},
+		priorityFns:    map[string]api.PriorityFn{},
 		preemptableFns: map[string]api.EvictableFn{},
 		reclaimableFns: map[string]api.EvictableFn{},
 		overusedFns:    map[string]api.ValidateFn{},
