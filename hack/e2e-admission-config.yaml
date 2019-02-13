@@ -5,10 +5,9 @@ metadata:
 webhooks:
 - clientConfig: 
     caBundle: {{CA_BUNDLE}}
-    service:
-      name: admission-service
-      namespace: admission
-      path: /jobs
+    
+    # the url should agree with webhook service
+    url: https://{{host}}:{{hostPort}}/jobs
   failurePolicy: Ignore
   name: validjob.k8s.io
   namespaceSelector: {}

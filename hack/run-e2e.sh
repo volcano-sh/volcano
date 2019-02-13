@@ -16,11 +16,11 @@ kubectl --server=http://${MASTER} create -f config/crds/bus_v1alpha1_command.yam
 
 # config admission-controller TODO: make it easier to deploy
 CA_BUNDLE=`kubectl get configmap -n kube-system extension-apiserver-authentication -o=jsonpath='{.data.client-ca-file}' | base64 | tr -d '\n'`
-sed -i "s|{{CA_BUNDLE}}|$CA_BUNDLE|g" config/admission-deploy/admission-config.yaml
-sed -i "s|{{host}}|${HOST}|g" config/admission-deploy/admission-config.yaml
-sed -i "s|{{hostPort}}|${HOSTPORT}|g" config/admission-deploy/admission-config.yaml
+sed -i "s|{{CA_BUNDLE}}|$CA_BUNDLE|g" hack/e2e-admission-config.yaml
+sed -i "s|{{host}}|${HOST}|g" hack/e2e-admission-config.yaml
+sed -i "s|{{hostPort}}|${HOSTPORT}|g" hack/e2e-admission-config.yaml
 
-kubectl create -f config/admission-deploy/admission-config.yaml
+kubectl create -f hack/e2e-admission-config.yaml
 
 # start controller
 nohup ${VK_BIN}/vk-controllers --kubeconfig ${HOME}/.kube/config --master=${MASTER} --logtostderr --v ${LOG_LEVEL} > controller.log 2>&1 &
