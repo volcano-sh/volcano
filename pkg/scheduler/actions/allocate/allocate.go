@@ -21,7 +21,6 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/util"
-	"sort"
 )
 
 type allocateAction struct {
@@ -44,8 +43,6 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 	jobsMap := map[api.QueueID]*util.PriorityQueue{}
-	predicateNodes := []*api.NodeInfo{}
-	nodeScores := map[int][]*api.NodeInfo{}
 
 	for _, job := range ssn.Jobs {
 		if _, found := jobsMap[job.Queue]; !found {
@@ -105,6 +102,8 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 			tasks.Len(), job.Namespace, job.Name)
 
 		for !tasks.Empty() {
+			predicateNodes := []*api.NodeInfo{}
+			nodeScores := map[int][]*api.NodeInfo{}
 			task := tasks.Pop().(*api.TaskInfo)
 			assigned := false
 
@@ -132,15 +131,14 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 				}
 			}
 			for _, node := range predicateNodes {
-				score, err := ssn.PriorityFn(task, node, predicateNodes)
+				score, err := ssn.PriorityFn(task, node)
 				if err != nil {
 					glog.V(3).Infof("Error in Calculating Priority for the node:%v", err)
 				} else {
 					nodeScores[score] = append(nodeScores[score], node)
 				}
 			}
-
-			selectedNodes := selectBestNode(nodeScores)
+			selectedNodes := util.SelectBestNode(nodeScores)
 			for _, selectedNode := range selectedNodes {
 				// Allocate idle resource to the task.
 				if task.Resreq.LessEqual(selectedNode.Idle) {
@@ -188,22 +186,6 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 		// Added Queue back until no job in Queue.
 		queues.Push(queue)
 	}
-}
-
-func selectBestNode(nodeScores map[int][]*api.NodeInfo) []*api.NodeInfo {
-	var nodesInorder []*api.NodeInfo
-	var keys []int
-	for key, _ := range nodeScores {
-		keys = append(keys, key)
-	}
-	sort.Ints(keys)
-	for _, key := range keys {
-		nodes := nodeScores[key]
-		for _, node := range nodes {
-			nodesInorder = append(nodesInorder, node)
-		}
-	}
-	return nodesInorder
 }
 
 func (alloc *allocateAction) UnInitialize() {}

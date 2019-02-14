@@ -298,23 +298,22 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 	return nil
 }
 
-func (ssn *Session) PriorityFn(task *api.TaskInfo, node *api.NodeInfo, nodes []*api.NodeInfo) (int, error) {
-	var priorityScore int
+func (ssn *Session) PriorityFn(task *api.TaskInfo, node *api.NodeInfo) (int, error) {
+	priorityScore := 0
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
-			if plugin.PredicateDisabled {
+			if plugin.PriortizeDisabled {
 				continue
 			}
 			pfn, found := ssn.priorityFns[plugin.Name]
 			if !found {
 				continue
 			}
-			score, err := pfn(task, node, nodes)
+			score, err := pfn(task, node)
 			if err != nil {
 				return 0, err
 			} else {
-				priorityScore = score
-				break
+				priorityScore = priorityScore + score
 			}
 		}
 	}
