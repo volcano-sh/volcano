@@ -3,7 +3,7 @@
 export PATH="${HOME}/.kubeadm-dind-cluster:${PATH}"
 export MASTER="http://127.0.0.1:8080"
 export VK_BIN=_output/bin
-export LOG_LEVEL=3
+export LOG_LEVEL=2
 export NUM_NODES=3
 
 kubectl --server=${MASTER} apply -f config/crds/scheduling_v1alpha1_podgroup.yaml
