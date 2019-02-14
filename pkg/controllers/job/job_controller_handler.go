@@ -74,7 +74,7 @@ func (cc *Controller) addJob(obj interface{}) {
 
 	// TODO(k82cn): if failed to add job, the cache should be refresh
 	if err := cc.cache.Add(job); err != nil {
-		glog.Errorf("Failed to add job <%s/%s>: %v",
+		glog.Errorf("Failed to add job <%s/%s>: %v in cache",
 			job.Namespace, job.Name, err)
 	}
 	cc.queue.Add(req)
@@ -95,7 +95,7 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 	}
 
 	if err := cc.cache.Update(newJob); err != nil {
-		glog.Errorf("Failed to update job <%s/%s>: %v",
+		glog.Errorf("Failed to update job <%s/%s>: %v in cache",
 			newJob.Namespace, newJob.Name, err)
 	}
 
@@ -110,7 +110,7 @@ func (cc *Controller) deleteJob(obj interface{}) {
 	}
 
 	if err := cc.cache.Delete(job); err != nil {
-		glog.Errorf("Failed to delete job <%s/%s>: %v",
+		glog.Errorf("Failed to delete job <%s/%s>: %v in cache",
 			job.Namespace, job.Name, err)
 	}
 }
@@ -124,7 +124,7 @@ func (cc *Controller) addPod(obj interface{}) {
 
 	jobName, found := pod.Annotations[vkbatchv1.JobNameKey]
 	if !found {
-		glog.Errorf("Failed to find jobName of Pod <%s/%s>",
+		glog.Warningf("Failed to find jobName of Pod <%s/%s>, skipping",
 			pod.Namespace, pod.Name)
 		return
 	}
@@ -137,7 +137,7 @@ func (cc *Controller) addPod(obj interface{}) {
 	}
 
 	if err := cc.cache.AddPod(pod); err != nil {
-		glog.Errorf("Failed to add Pod <%s/%s>: %v",
+		glog.Errorf("Failed to add Pod <%s/%s>: %v to cache",
 			pod.Namespace, pod.Name, err)
 	}
 	cc.queue.Add(req)
@@ -158,14 +158,14 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 
 	taskName, found := newPod.Annotations[vkbatchv1.TaskSpecKey]
 	if !found {
-		glog.Errorf("Failed to find taskName of Pod <%s/%s>",
+		glog.Warningf("Failed to find taskName of Pod <%s/%s>, skipping",
 			newPod.Namespace, newPod.Name)
 		return
 	}
 
 	jobName, found := newPod.Annotations[vkbatchv1.JobNameKey]
 	if !found {
-		glog.Errorf("Failed to find jobName of Pod <%s/%s>",
+		glog.Warningf("Failed to find jobName of Pod <%s/%s>, skipping",
 			newPod.Namespace, newPod.Name)
 		return
 	}
@@ -185,7 +185,7 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 	}
 
 	if err := cc.cache.UpdatePod(newPod); err != nil {
-		glog.Errorf("Failed to update Pod <%s/%s>: %v",
+		glog.Errorf("Failed to update Pod <%s/%s>: %v in cache",
 			newPod.Namespace, newPod.Name, err)
 	}
 
@@ -211,14 +211,14 @@ func (cc *Controller) deletePod(obj interface{}) {
 
 	taskName, found := pod.Annotations[vkbatchv1.TaskSpecKey]
 	if !found {
-		glog.Errorf("Failed to find taskName of Pod <%s/%s>",
+		glog.Warningf("Failed to find taskName of Pod <%s/%s>, skipping",
 			pod.Namespace, pod.Name)
 		return
 	}
 
 	jobName, found := pod.Annotations[vkbatchv1.JobNameKey]
 	if !found {
-		glog.Errorf("Failed to find jobName of Pod <%s/%s>",
+		glog.Warningf("Failed to find jobName of Pod <%s/%s>, skipping",
 			pod.Namespace, pod.Name)
 		return
 	}
@@ -232,11 +232,11 @@ func (cc *Controller) deletePod(obj interface{}) {
 	}
 
 	if err := cc.cache.DeletePod(pod); err != nil {
-		glog.Errorf("Failed to update Pod <%s/%s>: %v",
+		glog.Errorf("Failed to update Pod <%s/%s>: %v in cache",
 			pod.Namespace, pod.Name, err)
 	}
 
 	cc.queue.Add(req)
 }
 
-// TODO(k82cn): add handler for PodGroup unschedulable event.
+// TODO(k82cn): add handler for PodGroup unscheduable event.
