@@ -288,8 +288,8 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 		MinAvailable:  ji.MinAvailable,
 		NodeSelector:  map[string]string{},
-		Allocated:     ji.Allocated.Clone(),
-		TotalRequest:  ji.TotalRequest.Clone(),
+		Allocated:     EmptyResource(),
+		TotalRequest:  EmptyResource(),
 		NodesFitDelta: make(NodeResourceMap),
 
 		PDB:      ji.PDB,
