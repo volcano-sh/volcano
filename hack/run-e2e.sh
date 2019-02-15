@@ -1,18 +1,18 @@
 #!/bin/bash
 
 export PATH="${HOME}/.kubeadm-dind-cluster:${PATH}"
-export MASTER="127.0.0.1:8080"
+export MASTER="http://127.0.0.1:8080"
 export VK_BIN=_output/bin
-export LOG_LEVEL=3
+export LOG_LEVEL=2
 export NUM_NODES=3
 export CERT_PATH=/etc/kubernetes/pki
 export HOST=localhost
 export HOSTPORT=32222
 
-kubectl --server=http://${MASTER} create -f config/crds/scheduling_v1alpha1_podgroup.yaml
-kubectl --server=http://${MASTER} create -f config/crds/scheduling_v1alpha1_queue.yaml
-kubectl --server=http://${MASTER} create -f config/crds/batch_v1alpha1_job.yaml
-kubectl --server=http://${MASTER} create -f config/crds/bus_v1alpha1_command.yaml
+kubectl --server=${MASTER} apply -f config/crds/scheduling_v1alpha1_podgroup.yaml
+kubectl --server=${MASTER} apply -f config/crds/scheduling_v1alpha1_queue.yaml
+kubectl --server=${MASTER} apply -f config/crds/batch_v1alpha1_job.yaml
+kubectl --server=${MASTER} apply -f config/crds/bus_v1alpha1_command.yaml
 
 # config admission-controller TODO: make it easier to deploy
 CA_BUNDLE=`kubectl get configmap -n kube-system extension-apiserver-authentication -o=jsonpath='{.data.client-ca-file}' | base64 | tr -d '\n'`
@@ -33,19 +33,21 @@ nohup ${VK_BIN}/ad-controller --tls-cert-file=${CERT_PATH}/apiserver.crt --tls-p
 
 # clean up
 function cleanup {
-    killall -9 vk-scheduler vk-controller ad-controller
+    killall -9 -r vk-scheduler -r vk-controllers -r ad-controller
 
-    echo "===================================================================================="
-    echo "=============================>>>>> Scheduler Logs <<<<<============================="
-    echo "===================================================================================="
+    if [[ -f scheduler.log ]] ; then
+        echo "===================================================================================="
+        echo "=============================>>>>> Scheduler Logs <<<<<============================="
+        echo "===================================================================================="
+        cat scheduler.log
+    fi
 
-    cat scheduler.log
-
-    echo "===================================================================================="
-    echo "=============================>>>>> Controller Logs <<<<<============================"
-    echo "===================================================================================="
-
-    cat controller.log
+    if [[ -f controller.log ]] ; then
+        echo "===================================================================================="
+        echo "=============================>>>>> Controller Logs <<<<<============================"
+        echo "===================================================================================="
+        cat controller.log
+    fi
 
     echo "===================================================================================="
     echo "=============================>>>>> admission Logs <<<<<============================"
