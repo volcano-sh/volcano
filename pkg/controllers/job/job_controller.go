@@ -218,7 +218,9 @@ func (cc *Controller) worker() {
 	}
 
 	if jobInfo.Job == nil {
-		glog.V(3).Infof("Cache is out of sync for <%v>, retry it.", req)
+		glog.V(3).Infof(
+			"Cache is incomplete for request <%v>, will retry it later.",
+			req)
 		cc.queue.AddRateLimited(req)
 		return
 	}
