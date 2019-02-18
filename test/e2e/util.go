@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -78,6 +79,13 @@ func kubeconfigPath(home string) string {
 	return filepath.Join(home, ".kube", "config") // default kubeconfig path is $HOME/.kube/config
 }
 
+func VolcanoCliBinary() string {
+	if bin := os.Getenv("VK_BIN"); bin != "" {
+		return filepath.Join(bin, "vkctl")
+	}
+	return ""
+}
+
 type context struct {
 	kubeclient *kubernetes.Clientset
 	kbclient   *kbver.Clientset
@@ -99,7 +107,9 @@ func initTestContext() *context {
 	Expect(home).NotTo(Equal(""))
 	configPath := kubeconfigPath(home)
 	Expect(configPath).NotTo(Equal(""))
-
+	vkctl := VolcanoCliBinary()
+	Expect(fileExist(vkctl)).To(BeTrue(), fmt.Sprintf(
+		"vkctl binary: %s is required for E2E tests, please update VK_BIN environment", vkctl))
 	config, err := clientcmd.BuildConfigFromFlags(masterURL(), configPath)
 	Expect(err).NotTo(HaveOccurred())
 
@@ -166,6 +176,15 @@ func queueNotExist(ctx *context) wait.ConditionFunc {
 
 		return true, nil
 	}
+}
+
+func fileExist(name string) bool {
+	if _, err := os.Stat(name); err != nil {
+		if os.IsNotExist(err) {
+			return false
+		}
+	}
+	return true
 }
 
 func cleanupTestContext(cxt *context) {
@@ -271,6 +290,7 @@ type taskSpec struct {
 	req      v1.ResourceList
 	affinity *v1.Affinity
 	labels   map[string]string
+	commands []string
 }
 
 type jobSpec struct {
@@ -322,7 +342,7 @@ func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
 				Spec: v1.PodSpec{
 					SchedulerName: "kube-batch",
 					RestartPolicy: v1.RestartPolicyOnFailure,
-					Containers:    createContainers(task.img, task.req, task.hostport),
+					Containers:    createContainers(task.img, task.req, task.hostport, task.commands),
 					Affinity:      task.affinity,
 				},
 			},
@@ -436,14 +456,18 @@ func waitJobUnschedulable(ctx *context, job *vkv1.Job) error {
 	return wait.Poll(10*time.Second, oneMinute, jobUnschedulable(ctx, job, now))
 }
 
-func createContainers(img string, req v1.ResourceList, hostport int32) []v1.Container {
+func createContainers(img string, req v1.ResourceList, hostport int32, commands []string) []v1.Container {
 	container := v1.Container{
 		Image:           img,
-		Name:            img[:strings.Index(img, ":")],
+		Name:            img,
 		ImagePullPolicy: v1.PullIfNotPresent,
 		Resources: v1.ResourceRequirements{
 			Requests: req,
 		},
+	}
+
+	if len(commands) > 0 {
+		container.Command = commands
 	}
 
 	if hostport > 0 {
@@ -764,4 +788,20 @@ func preparePatchBytesforNode(nodeName string, oldNode *v1.Node, newNode *v1.Nod
 	}
 
 	return patchBytes, nil
+}
+
+func ListJobs(namespace string) string {
+	command := []string{"job", "list"}
+	if namespace != "" {
+		command = append(command, "--namespace", namespace)
+	}
+	return RunCliCommand(command)
+}
+
+func RunCliCommand(command []string) string {
+	command = append(command, "--master", masterURL())
+	output, err := exec.Command(VolcanoCliBinary(), command...).Output()
+	Expect(err).NotTo(HaveOccurred(),
+		fmt.Sprintf("Command %s failed to execute: %s", strings.Join(command, ""), err))
+	return string(output)
 }
