@@ -33,7 +33,7 @@ var _ = Describe("Job E2E Test", func() {
 			name: "qj-1",
 			tasks: []taskSpec{
 				{
-					img: "busybox",
+					img: defaultBusyBoxImage,
 					req: oneCPU,
 					min: 2,
 					rep: rep,
@@ -54,7 +54,7 @@ var _ = Describe("Job E2E Test", func() {
 		job := &jobSpec{
 			tasks: []taskSpec{
 				{
-					img: "busybox",
+					img: defaultBusyBoxImage,
 					req: oneCPU,
 					min: 2,
 					rep: rep,
@@ -84,7 +84,7 @@ var _ = Describe("Job E2E Test", func() {
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)/2 + 1
 
-		replicaset := createReplicaSet(context, "rs-1", rep, "nginx", oneCPU)
+		replicaset := createReplicaSet(context, "rs-1", rep, defaultNginxImage, oneCPU)
 		err := waitReplicaSetReady(context, replicaset.Name)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -93,7 +93,7 @@ var _ = Describe("Job E2E Test", func() {
 			namespace: "test",
 			tasks: []taskSpec{
 				{
-					img: "busybox",
+					img: defaultBusyBoxImage,
 					req: oneCPU,
 					min: rep,
 					rep: rep,
@@ -124,7 +124,7 @@ var _ = Describe("Job E2E Test", func() {
 			namespace: "test",
 			tasks: []taskSpec{
 				{
-					img: "nginx",
+					img: defaultNginxImage,
 					req: oneCPU,
 					min: rep,
 					rep: rep,
@@ -156,7 +156,7 @@ var _ = Describe("Job E2E Test", func() {
 		job := &jobSpec{
 			tasks: []taskSpec{
 				{
-					img: "nginx",
+					img: defaultNginxImage,
 					req: slot,
 					min: 1,
 					rep: rep,
@@ -188,7 +188,7 @@ var _ = Describe("Job E2E Test", func() {
 		job := &jobSpec{
 			tasks: []taskSpec{
 				{
-					img: "nginx",
+					img: defaultNginxImage,
 					req: slot,
 					min: 1,
 					rep: rep,
@@ -230,13 +230,13 @@ var _ = Describe("Job E2E Test", func() {
 			name: "test",
 			tasks: []taskSpec{
 				{
-					img: "nginx",
+					img: defaultNginxImage,
 					req: slot,
 					min: 2,
 					rep: rep,
 				},
 				{
-					img: "nginx",
+					img: defaultNginxImage,
 					min: 2,
 					rep: rep / 2,
 				},
@@ -260,7 +260,7 @@ var _ = Describe("Job E2E Test", func() {
 			namespace: "test",
 			tasks: []taskSpec{
 				{
-					img: "nginx",
+					img: defaultNginxImage,
 					req: slot,
 					min: rep,
 					rep: rep,

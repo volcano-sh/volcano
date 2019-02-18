@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	. "github.com/onsi/gomega"
@@ -67,7 +68,14 @@ func masterURL() string {
 	if m := os.Getenv("MASTER"); m != "" {
 		return m
 	}
-	return "127.0.0.1:8080" // default apiserver url
+	return ""
+}
+
+func kubeconfigPath(home string) string {
+	if m := os.Getenv("KUBECONFIG"); m != "" {
+		return m
+	}
+	return filepath.Join(home, ".kube", "config") // default kubeconfig path is $HOME/.kube/config
 }
 
 type context struct {
@@ -89,10 +97,10 @@ func initTestContext() *context {
 
 	home := homeDir()
 	Expect(home).NotTo(Equal(""))
-	master := masterURL()
-	Expect(master).NotTo(Equal(""))
+	configPath := kubeconfigPath(home)
+	Expect(configPath).NotTo(Equal(""))
 
-	config, err := clientcmd.BuildConfigFromFlags(master, filepath.Join(home, ".kube", "config1"))
+	config, err := clientcmd.BuildConfigFromFlags(masterURL(), configPath)
 	Expect(err).NotTo(HaveOccurred())
 
 	cxt.kbclient = kbver.NewForConfigOrDie(config)
@@ -431,7 +439,7 @@ func waitJobUnschedulable(ctx *context, job *vkv1.Job) error {
 func createContainers(img string, req v1.ResourceList, hostport int32) []v1.Container {
 	container := v1.Container{
 		Image:           img,
-		Name:            img,
+		Name:            img[:strings.Index(img, ":")],
 		ImagePullPolicy: v1.PullIfNotPresent,
 		Resources: v1.ResourceRequirements{
 			Requests: req,
