@@ -1,0 +1,9 @@
+actions: "reclaim, allocate, backfill, preempt"
+tiers:
+- plugins:
+  - name: priority
+  - name: gang
+- plugins:
+  - name: drf
+  - name: predicates
+  - name: proportion

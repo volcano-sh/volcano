@@ -26,7 +26,7 @@ kubectl create -f hack/e2e-admission-config.yaml
 nohup ${VK_BIN}/vk-controllers --kubeconfig ${HOME}/.kube/config --master=${MASTER} --logtostderr --v ${LOG_LEVEL} > controller.log 2>&1 &
 
 # start scheduler
-nohup ${VK_BIN}/vk-scheduler --kubeconfig ${HOME}/.kube/config --master=${MASTER} --logtostderr --v ${LOG_LEVEL} > scheduler.log 2>&1 &
+nohup ${VK_BIN}/vk-scheduler --kubeconfig ${HOME}/.kube/config --scheduler-conf=example/kube-batch-conf.yaml --master=${MASTER} --logtostderr --v ${LOG_LEVEL} > scheduler.log 2>&1 &
 
 # start admission-controller
 nohup ${VK_BIN}/ad-controller --tls-cert-file=${CERT_PATH}/apiserver.crt --tls-private-key-file=${CERT_PATH}/apiserver.key --kubeconfig ${HOME}/.kube/config --port ${HOSTPORT} --logtostderr --v ${LOG_LEVEL} > admission.log 2>&1 &
