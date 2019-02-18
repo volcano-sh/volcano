@@ -17,6 +17,7 @@ limitations under the License.
 package apis
 
 import (
+	"fmt"
 	"k8s.io/api/core/v1"
 
 	vkbatchv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
@@ -34,4 +35,10 @@ type Request struct {
 
 	Event  vkbatchv1.Event
 	Action vkbatchv1.Action
+}
+
+func (r Request) String() string {
+	return fmt.Sprintf(
+		"Job: %s/%s, Task:%s, Event:%s, Action:%s",
+		r.Namespace, r.JobName, r.TaskName, r.Event, r.Action)
 }

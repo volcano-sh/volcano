@@ -116,8 +116,14 @@ func (jc *jobCache) Add(obj *v1alpha1.Job) error {
 	defer jc.Unlock()
 
 	key := JobKey(obj)
-	if _, found := jc.jobs[key]; found {
-		return fmt.Errorf("duplicated job <%v>", key)
+	if job, found := jc.jobs[key]; found {
+		// JobInfo was created by pod event previously,
+		// therefore we will have an empty Job attribute.
+		if job.Job == nil {
+			job.Job = obj
+		} else {
+			return fmt.Errorf("duplicated job <%v>", key)
+		}
 	}
 
 	jc.jobs[key] = &apis.JobInfo{
