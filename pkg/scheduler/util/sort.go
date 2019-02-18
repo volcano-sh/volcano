@@ -28,7 +28,7 @@ func SelectBestNode(nodeScores map[int][]*api.NodeInfo) []*api.NodeInfo {
 	for key := range nodeScores {
 		keys = append(keys, key)
 	}
-	sort.Ints(keys)
+	sort.Sort(sort.Reverse(sort.IntSlice(keys)))
 	for _, key := range keys {
 		nodes := nodeScores[key]
 		nodesInorder = append(nodesInorder, nodes...)

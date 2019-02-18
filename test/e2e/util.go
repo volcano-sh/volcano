@@ -780,6 +780,21 @@ func removeTaintsFromAllNodes(ctx *context, taints []v1.Taint) error {
 	return nil
 }
 
+func getAllWorkerNodes(ctx *context) []string {
+	nodeNames := make([]string, 0)
+
+	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	for _, node := range nodes.Items {
+		if len(node.Spec.Taints) != 0 {
+			continue
+		}
+		nodeNames = append(nodeNames, node.Name)
+	}
+	return nodeNames
+}
+
 func preparePatchBytesforNode(nodeName string, oldNode *v1.Node, newNode *v1.Node) ([]byte, error) {
 	oldData, err := json.Marshal(oldNode)
 	if err != nil {
