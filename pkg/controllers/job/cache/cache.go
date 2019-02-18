@@ -190,7 +190,7 @@ func (jc *jobCache) UpdatePod(pod *v1.Pod) error {
 		jc.jobs[key] = job
 	}
 
-	return job.AddPod(pod)
+	return job.UpdatePod(pod)
 }
 
 func (jc *jobCache) DeletePod(pod *v1.Pod) error {
