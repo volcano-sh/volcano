@@ -62,7 +62,7 @@ function install-volcano {
   echo $! > vk-controllers.pid
 
   # start scheduler
-  nohup ${VK_BIN}/vk-scheduler --kubeconfig ${KUBECONFIG} --logtostderr --v ${LOG_LEVEL} > scheduler.log 2>&1 &
+  nohup ${VK_BIN}/vk-scheduler --kubeconfig ${KUBECONFIG} --scheduler-conf=example/kube-batch-conf.yaml --logtostderr --v ${LOG_LEVEL} > scheduler.log 2>&1 &
   echo $! > vk-scheduler.pid
 }
 

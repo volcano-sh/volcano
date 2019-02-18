@@ -166,10 +166,12 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	var running, pending, terminating, succeeded, failed int32
 
 	for _, ts := range job.Spec.Tasks {
+		tc := ts.Template.DeepCopy()
 		name := ts.Template.Name
 		// TODO(k82cn): the template name should be set in default func.
 		if len(name) == 0 {
 			name = vkv1.DefaultTaskSpec
+			tc.Name = vkv1.DefaultTaskSpec
 		}
 
 		pods, found := jobInfo.Pods[name]
@@ -180,7 +182,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		for i := 0; i < int(ts.Replicas); i++ {
 			podName := fmt.Sprintf(TaskNameFmt, job.Name, name, i)
 			if pod, found := pods[podName]; !found {
-				newPod := createJobPod(job, &ts.Template, i)
+				newPod := createJobPod(job, tc, i)
 				podToCreate = append(podToCreate, newPod)
 			} else {
 				switch pod.Status.Phase {
