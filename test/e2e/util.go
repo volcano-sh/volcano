@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -290,7 +289,6 @@ type taskSpec struct {
 	req      v1.ResourceList
 	affinity *v1.Affinity
 	labels   map[string]string
-	commands []string
 }
 
 type jobSpec struct {
@@ -342,7 +340,7 @@ func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
 				Spec: v1.PodSpec{
 					SchedulerName: "kube-batch",
 					RestartPolicy: v1.RestartPolicyOnFailure,
-					Containers:    createContainers(task.img, task.req, task.hostport, task.commands),
+					Containers:    createContainers(task.img, task.req, task.hostport),
 					Affinity:      task.affinity,
 				},
 			},
@@ -456,18 +454,14 @@ func waitJobUnschedulable(ctx *context, job *vkv1.Job) error {
 	return wait.Poll(10*time.Second, oneMinute, jobUnschedulable(ctx, job, now))
 }
 
-func createContainers(img string, req v1.ResourceList, hostport int32, commands []string) []v1.Container {
+func createContainers(img string, req v1.ResourceList, hostport int32) []v1.Container {
 	container := v1.Container{
 		Image:           img,
-		Name:            img,
+		Name:            img[:strings.Index(img, ":")],
 		ImagePullPolicy: v1.PullIfNotPresent,
 		Resources: v1.ResourceRequirements{
 			Requests: req,
 		},
-	}
-
-	if len(commands) > 0 {
-		container.Command = commands
 	}
 
 	if hostport > 0 {
@@ -788,20 +782,4 @@ func preparePatchBytesforNode(nodeName string, oldNode *v1.Node, newNode *v1.Nod
 	}
 
 	return patchBytes, nil
-}
-
-func ListJobs(namespace string) string {
-	command := []string{"job", "list"}
-	if namespace != "" {
-		command = append(command, "--namespace", namespace)
-	}
-	return RunCliCommand(command)
-}
-
-func RunCliCommand(command []string) string {
-	command = append(command, "--master", masterURL())
-	output, err := exec.Command(VolcanoCliBinary(), command...).Output()
-	Expect(err).NotTo(HaveOccurred(),
-		fmt.Sprintf("Command %s failed to execute: %s", strings.Join(command, ""), err))
-	return string(output)
 }
