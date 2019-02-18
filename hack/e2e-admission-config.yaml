@@ -1,0 +1,23 @@
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: validating-custom-job
+webhooks:
+- clientConfig: 
+    caBundle: {{CA_BUNDLE}}
+    
+    # the url should agree with webhook service
+    url: https://{{host}}:{{hostPort}}/jobs
+  failurePolicy: Ignore
+  name: validjob.k8s.io
+  namespaceSelector: {}
+  rules:
+  - apiGroups:
+    - "batch.hpw.cloud"
+    apiVersions:
+    - "v1alpha1"
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - jobs

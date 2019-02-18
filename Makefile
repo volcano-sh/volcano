@@ -1,6 +1,8 @@
 BIN_DIR=_output/bin
+IMAGE = admission-controller-server
+TAG = 1.0
 
-all: controllers scheduler cli
+all: controllers scheduler cli admission-controller
 
 init:
 	mkdir -p ${BIN_DIR}
@@ -13,6 +15,16 @@ scheduler:
 
 cli:
 	go build -o ${BIN_DIR}/vkctl ./cmd/cli
+
+admission-controller:
+	go build -o ${BIN_DIR}/ad-controller ./cmd/admission-controller
+
+rel-admission-controller:
+	CGO_ENABLED=0 go build -o  ${BIN_DIR}/rel/ad-controller ./cmd/admission-controller
+
+admission-images: rel-admission-controller
+	cp ${BIN_DIR}/rel/ad-controller ./cmd/admission-controller/
+	docker build --no-cache -t $(IMAGE):$(TAG) ./cmd/admission-controller
 
 generate-code:
 	go build -o ${BIN_DIR}/deepcopy-gen ./cmd/deepcopy-gen/
