@@ -40,15 +40,18 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	vkver "volcano.sh/volcano/pkg/client/clientset/versioned"
-
 	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+
+	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vkver "volcano.sh/volcano/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
 var oneMinute = 1 * time.Minute
+
+var twoMinute = 2 * time.Minute
 
 var oneCPU = v1.ResourceList{"cpu": resource.MustParse("1000m")}
 
@@ -282,13 +285,16 @@ func deleteQueues(cxt *context) {
 }
 
 type taskSpec struct {
-	name     string
-	min, rep int32
-	img      string
-	hostport int32
-	req      v1.ResourceList
-	affinity *v1.Affinity
-	labels   map[string]string
+	name          string
+	min, rep      int32
+	img           string
+	command       string
+	hostport      int32
+	req           v1.ResourceList
+	affinity      *v1.Affinity
+	labels        map[string]string
+	policies      []vkv1.LifecyclePolicy
+	restartPolicy v1.RestartPolicy
 }
 
 type jobSpec struct {
@@ -296,6 +302,7 @@ type jobSpec struct {
 	namespace string
 	queue     string
 	tasks     []taskSpec
+	policies  []vkv1.LifecyclePolicy
 }
 
 func getNS(context *context, job *jobSpec) string {
@@ -320,7 +327,9 @@ func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
 			Name:      jobSpec.name,
 			Namespace: ns,
 		},
-		Spec: vkv1.JobSpec{},
+		Spec: vkv1.JobSpec{
+			Policies: jobSpec.policies,
+		},
 	}
 
 	var min int32
@@ -330,17 +339,24 @@ func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
 			name = fmt.Sprintf("%s-task-%d", jobSpec.name, i)
 		}
 
+		restartPolicy := v1.RestartPolicyOnFailure
+		if len(task.restartPolicy) > 0 {
+			restartPolicy = task.restartPolicy
+		}
+
 		ts := vkv1.TaskSpec{
 			Name:     name,
 			Replicas: task.rep,
+			Policies: task.policies,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
+					Name:   name,
 					Labels: task.labels,
 				},
 				Spec: v1.PodSpec{
 					SchedulerName: "kube-batch",
-					RestartPolicy: v1.RestartPolicyOnFailure,
-					Containers:    createContainers(task.img, task.req, task.hostport),
+					RestartPolicy: restartPolicy,
+					Containers:    createContainers(task.img, task.command, task.req, task.hostport),
 					Affinity:      task.affinity,
 				},
 			},
@@ -430,6 +446,48 @@ func jobEvicted(ctx *context, job *vkv1.Job, time time.Time) wait.ConditionFunc 
 	}
 }
 
+func waitJobPhases(ctx *context, job *vkv1.Job, phases []vkv1.JobPhase) error {
+	for _, phase := range phases {
+		err := waitJobPhase(ctx, job, phase)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
+	return wait.Poll(100*time.Millisecond, twoMinute, func() (bool, error) {
+		newJob, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		fmt.Println(fmt.Sprintf("job phase %s", newJob.Status.State.Phase))
+		if newJob.Status.State.Phase != phase {
+			return false, nil
+		}
+
+		var flag = false
+		switch phase {
+		case vkv1.Pending:
+			flag = newJob.Status.Pending > 0
+		case vkv1.Terminating, vkv1.Aborting, vkv1.Restarting:
+			flag = newJob.Status.Terminating > 0
+		case vkv1.Terminated, vkv1.Aborted:
+			flag = newJob.Status.Pending == 0 &&
+				newJob.Status.Running == 0 &&
+				newJob.Status.Terminating == 0
+		case vkv1.Completed:
+			flag = newJob.Status.Succeeded == state.TotalTasks(newJob)
+		case vkv1.Running:
+			flag = newJob.Status.Running >= newJob.Spec.MinAvailable
+		default:
+			return false, fmt.Errorf("unknown phase %s", phase)
+		}
+
+		return flag, nil
+	})
+}
+
 func waitJobReady(ctx *context, job *vkv1.Job) error {
 	return waitTasksReady(ctx, job, int(job.Spec.MinAvailable))
 }
@@ -466,7 +524,7 @@ func waitJobUnschedulable(ctx *context, job *vkv1.Job) error {
 	return wait.Poll(10*time.Second, oneMinute, jobUnschedulable(ctx, job, now))
 }
 
-func createContainers(img string, req v1.ResourceList, hostport int32) []v1.Container {
+func createContainers(img, command string, req v1.ResourceList, hostport int32) []v1.Container {
 	container := v1.Container{
 		Image:           img,
 		Name:            img[:strings.Index(img, ":")],
@@ -474,6 +532,11 @@ func createContainers(img string, req v1.ResourceList, hostport int32) []v1.Cont
 		Resources: v1.ResourceRequirements{
 			Requests: req,
 		},
+	}
+
+	if len(command) > 0 {
+		container.Command = []string{"/bin/sh"}
+		container.Args = []string{"-c", command}
 	}
 
 	if hostport > 0 {
