@@ -75,6 +75,25 @@ func (ji *JobInfo) AddPod(pod *v1.Pod) error {
 	return nil
 }
 
+func (ji *JobInfo) UpdatePod(pod *v1.Pod) error {
+	taskName, found := pod.Annotations[v1alpha1.TaskSpecKey]
+	if !found {
+		return fmt.Errorf("failed to taskName of Pod <%s/%s>",
+			pod.Namespace, pod.Name)
+	}
+
+	if _, found := ji.Pods[taskName]; !found {
+		return fmt.Errorf("can not find task %s in cache", taskName)
+	}
+	if _, found := ji.Pods[taskName][pod.Name]; !found {
+		return fmt.Errorf("can not find pod <%s/%s> in cache",
+			pod.Namespace, pod.Name)
+	}
+	ji.Pods[taskName][pod.Name] = pod
+
+	return nil
+}
+
 func (ji *JobInfo) DeletePod(pod *v1.Pod) error {
 	taskName, found := pod.Annotations[v1alpha1.TaskSpecKey]
 	if !found {
