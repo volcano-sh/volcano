@@ -18,6 +18,7 @@ package allocate
 
 import (
 	"github.com/golang/glog"
+
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/util"
@@ -139,33 +140,33 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 				}
 			}
 			selectedNodes := util.SelectBestNode(nodeScores)
-			for _, selectedNode := range selectedNodes {
+			for _, node := range selectedNodes {
 				// Allocate idle resource to the task.
-				if task.Resreq.LessEqual(selectedNode.Idle) {
+				if task.Resreq.LessEqual(node.Idle) {
 					glog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
-						task.Namespace, task.Name, selectedNode.Name)
-					if err := ssn.Allocate(task, selectedNode.Name); err != nil {
+						task.Namespace, task.Name, node.Name)
+					if err := ssn.Allocate(task, node.Name); err != nil {
 						glog.Errorf("Failed to bind Task %v on %v in Session %v",
-							task.UID, selectedNode.Name, ssn.UID)
+							task.UID, node.Name, ssn.UID)
 						continue
 					}
 					assigned = true
 					break
 				} else {
 					//store information about missing resources
-					job.NodesFitDelta[selectedNode.Name] = selectedNode.Idle.Clone()
-					job.NodesFitDelta[selectedNode.Name].FitDelta(task.Resreq)
+					job.NodesFitDelta[node.Name] = node.Idle.Clone()
+					job.NodesFitDelta[node.Name].FitDelta(task.Resreq)
 					glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s> with limited resources",
-						task.Namespace, task.Name, selectedNode.Name)
+						task.Namespace, task.Name, node.Name)
 				}
 
 				// Allocate releasing resource to the task if any.
-				if task.Resreq.LessEqual(selectedNode.Releasing) {
+				if task.Resreq.LessEqual(node.Releasing) {
 					glog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
-						task.Namespace, task.Name, selectedNode.Name, task.Resreq, selectedNode.Releasing)
-					if err := ssn.Pipeline(task, selectedNode.Name); err != nil {
+						task.Namespace, task.Name, node.Name, task.Resreq, node.Releasing)
+					if err := ssn.Pipeline(task, node.Name); err != nil {
 						glog.Errorf("Failed to pipeline Task %v on %v in Session %v",
-							task.UID, selectedNode.Name, ssn.UID)
+							task.UID, node.Name, ssn.UID)
 						continue
 					}
 

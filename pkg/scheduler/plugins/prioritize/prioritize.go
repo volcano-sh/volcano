@@ -64,6 +64,14 @@ type cachedNodeInfo struct {
 func (c *cachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
 	node, found := c.session.NodeIndex[name]
 	if !found {
+		for _, cacheNode := range c.session.Nodes {
+			pods := cacheNode.Pods()
+			for _, pod := range pods {
+				if pod.Spec.NodeName == "" {
+					return cacheNode.Node, nil
+				}
+			}
+		}
 		return nil, fmt.Errorf("failed to find node <%s>", name)
 	}
 
@@ -84,9 +92,13 @@ func (pl *podLister) List(selector labels.Selector) ([]*v1.Pod, error) {
 
 			for _, task := range tasks {
 				if selector.Matches(labels.Set(task.Pod.Labels)) {
-					pod := task.Pod.DeepCopy()
-					pod.Spec.NodeName = task.NodeName
-					pods = append(pods, pod)
+					if task.NodeName != task.Pod.Spec.NodeName {
+						pod := task.Pod.DeepCopy()
+						pod.Spec.NodeName = task.NodeName
+						pods = append(pods, pod)
+					} else {
+						pods = append(pods, task.Pod)
+					}
 				}
 			}
 		}
@@ -105,9 +117,13 @@ func (pl *podLister) FilteredList(podFilter algorithm.PodFilter, selector labels
 
 			for _, task := range tasks {
 				if podFilter(task.Pod) && selector.Matches(labels.Set(task.Pod.Labels)) {
-					pod := task.Pod.DeepCopy()
-					pod.Spec.NodeName = task.NodeName
-					pods = append(pods, pod)
+					if task.NodeName != task.Pod.Spec.NodeName {
+						pod := task.Pod.DeepCopy()
+						pod.Spec.NodeName = task.NodeName
+						pods = append(pods, pod)
+					} else {
+						pods = append(pods, task.Pod)
+					}
 				}
 			}
 		}
@@ -163,6 +179,7 @@ func (pp *prioritizePlugin) OnSessionOpen(ssn *framework.Session) {
 		var score = 0
 
 		//TODO: Add ImageLocalityPriority Function once priorityMetadata is published
+		//Issue: #74132 in kubernetes ( https://github.com/kubernetes/kubernetes/issues/74132 )
 
 		host, err := priorities.LeastRequestedPriorityMap(task.Pod, nil, nodeInfo)
 		if err != nil {
