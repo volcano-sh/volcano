@@ -46,15 +46,15 @@ function check-kind-image {
 function kind-up-cluster {
   check-prerequisites
   check-kind-image
-  echo "Running kind: [kind create cluster ${CLUSTER_CONTEXT} ${KIND_ARGS}]"
-  kind create cluster ${CLUSTER_CONTEXT} ${KIND_ARGS}
+  echo "Running kind: [kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}]"
+  kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}
 }
 
 function install-volcano {
-  kubectl create -f ${VK_ROOT}/config/crds/scheduling_v1alpha1_podgroup.yaml
-  kubectl create -f ${VK_ROOT}/config/crds/scheduling_v1alpha1_queue.yaml
-  kubectl create -f ${VK_ROOT}/config/crds/batch_v1alpha1_job.yaml
-  kubectl create -f ${VK_ROOT}/config/crds/bus_v1alpha1_command.yaml
+  kubectl --kubeconfig ${KUBECONFIG} create -f ${VK_ROOT}/config/crds/scheduling_v1alpha1_podgroup.yaml
+  kubectl --kubeconfig ${KUBECONFIG} create -f ${VK_ROOT}/config/crds/scheduling_v1alpha1_queue.yaml
+  kubectl --kubeconfig ${KUBECONFIG} create -f ${VK_ROOT}/config/crds/batch_v1alpha1_job.yaml
+  kubectl --kubeconfig ${KUBECONFIG} create -f ${VK_ROOT}/config/crds/bus_v1alpha1_command.yaml
 
   # TODO: make vk-controllers and vk-scheduler run in container / in k8s
   # start controller
@@ -67,10 +67,10 @@ function install-volcano {
 }
 
 function uninstall-volcano {
-  kubectl delete -f ${VK_ROOT}/config/crds/scheduling_v1alpha1_podgroup.yaml
-  kubectl delete -f ${VK_ROOT}/config/crds/scheduling_v1alpha1_queue.yaml
-  kubectl delete -f ${VK_ROOT}/config/crds/batch_v1alpha1_job.yaml
-  kubectl delete -f ${VK_ROOT}/config/crds/bus_v1alpha1_command.yaml
+  kubectl --kubeconfig ${KUBECONFIG} delete -f ${VK_ROOT}/config/crds/scheduling_v1alpha1_podgroup.yaml
+  kubectl --kubeconfig ${KUBECONFIG} delete -f ${VK_ROOT}/config/crds/scheduling_v1alpha1_queue.yaml
+  kubectl --kubeconfig ${KUBECONFIG} delete -f ${VK_ROOT}/config/crds/batch_v1alpha1_job.yaml
+  kubectl --kubeconfig ${KUBECONFIG} delete -f ${VK_ROOT}/config/crds/bus_v1alpha1_command.yaml
 
   kill -9 $(cat vk-controllers.pid)
   kill -9 $(cat vk-scheduler.pid)
@@ -126,12 +126,10 @@ trap cleanup EXIT
 
 kind-up-cluster
 
-export KUBECONFIG="$(kind get kubeconfig-path ${CLUSTER_CONTEXT})"
-
-# TODO: remove dependency of ${HOME}/.kube/config, make e2e read from $KUBECONFIG env
-cp ${KUBECONFIG} ${HOME}/.kube/config
+KUBECONFIG="$(kind get kubeconfig-path ${CLUSTER_CONTEXT})"
 
 install-volcano
 
 # Run e2e test
-go test ${VK_ROOT}/test/e2e -v
+cd ${VK_ROOT}
+KUBECONFIG=${KUBECONFIG} go test ./test/e2e -v

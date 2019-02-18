@@ -34,9 +34,17 @@ generate-code:
 e2e-test:
 	./hack/run-e2e.sh
 
+unit-test:
+	go list ./... | grep -v e2e | xargs go test -v
+
 e2e-test-kind:
 	./hack/run-e2e-kind.sh
 
 clean:
 	rm -rf _output/
 	rm -f *.log
+
+verify: generate-code
+	hack/verify-gofmt.sh
+	hack/verify-golint.sh
+	hack/verify-gencode.sh
