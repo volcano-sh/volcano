@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Volcano Authors.
+Copyright 2019 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,11 +20,15 @@ import (
 	"fmt"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	ctlJob "hpw.cloud/volcano/pkg/cli/job"
+	"k8s.io/apimachinery/pkg/util/uuid"
+	"strconv"
 )
 
 var _ = Describe("Job E2E Test: List Job Command", func() {
 	It("List running jobs", func() {
-		jobName := "qj-1"
+		jobName := fmt.Sprintf("RandomName_%s", uuid.NewUUID())
 		namespace := "test"
 		context := initTestContext()
 		defer cleanupTestContext(context)
@@ -35,11 +39,10 @@ var _ = Describe("Job E2E Test: List Job Command", func() {
 			name:      jobName,
 			tasks: []taskSpec{
 				{
-					img:      "busybox",
-					req:      oneCPU,
-					min:      1,
-					rep:      rep,
-					commands: []string{"sleep", "10"},
+					img: defaultNginxImage,
+					req: oneCPU,
+					min: 1,
+					rep: rep,
 				},
 			},
 		})
@@ -47,9 +50,11 @@ var _ = Describe("Job E2E Test: List Job Command", func() {
 		err := waitJobReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 		outputs := ListJobs(namespace)
-		Expect(outputs).NotTo(Equal(""), "List job output should not be empty")
-		Expect(outputs).To(ContainSubstring(jobName),
-			fmt.Sprintf("Job %s should in list job command result", jobName))
+		jobs := ParseListOutput(outputs, jobName)
+		Expect(strconv.Atoi(jobs[0][ctlJob.Running])).Should(
+			BeNumerically(">=", 1), "There should be at least one pod running")
+		Expect(jobs[0][ctlJob.Phase]).To(
+			Equal(v1alpha1.Running), fmt.Sprintf("Job Phase should be: %s", v1alpha1.Running))
 
 	})
 })
