@@ -22,3 +22,27 @@ webhooks:
     - UPDATE
     resources:
     - jobs
+---
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: mutate-custom-job
+webhooks:
+- clientConfig: 
+    caBundle: {{CA_BUNDLE}}
+    service:
+      name: admission-service
+      namespace: admission
+      path: /jobs
+  failurePolicy: Ignore
+  name: mutatejob.k8s.io
+  namespaceSelector: {}
+  rules:
+  - apiGroups:
+    - "batch.hpw.cloud"
+    apiVersions:
+    - "v1alpha1"
+    operations:
+    - CREATE
+    resources:
+    - jobs

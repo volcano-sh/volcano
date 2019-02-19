@@ -27,6 +27,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	admissioncontroller "hpw.cloud/volcano/pkg/admission-controller"
 	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"hpw.cloud/volcano/pkg/apis/helpers"
 	"hpw.cloud/volcano/pkg/controllers/job/apis"
@@ -334,8 +335,8 @@ func (cc *Controller) createServiceIfNotExist(job *vkv1.Job) error {
 
 func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) error {
 	// If input/output PVC does not exist, create them for Job.
-	inputPVC := fmt.Sprintf("%s-input", job.Name)
-	outputPVC := fmt.Sprintf("%s-output", job.Name)
+	inputPVC := job.Annotations[admissioncontroller.PVCInputName]
+	outputPVC := job.Annotations[admissioncontroller.PVCOutputName]
 	if job.Spec.Input != nil {
 		if job.Spec.Input.VolumeClaim != nil {
 			if _, err := cc.pvcLister.PersistentVolumeClaims(job.Namespace).Get(inputPVC); err != nil {

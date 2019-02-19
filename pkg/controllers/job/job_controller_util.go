@@ -24,6 +24,7 @@ import (
 
 	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 
+	admissioncontroller "hpw.cloud/volcano/pkg/admission-controller"
 	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	"hpw.cloud/volcano/pkg/apis/helpers"
 	"hpw.cloud/volcano/pkg/controllers/job/apis"
@@ -76,19 +77,21 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 		pod.Spec.SchedulerName = job.Spec.SchedulerName
 	}
 
+	inputPVC := job.Annotations[admissioncontroller.PVCInputName]
+	outputPVC := job.Annotations[admissioncontroller.PVCOutputName]
 	if job.Spec.Output != nil {
 		if job.Spec.Output.VolumeClaim == nil {
 			volume := v1.Volume{
-				Name: fmt.Sprintf("%s-output", job.Name),
+				Name: outputPVC,
 			}
 			volume.EmptyDir = &v1.EmptyDirVolumeSource{}
 			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
 		} else {
 			volume := v1.Volume{
-				Name: fmt.Sprintf("%s-output", job.Name),
+				Name: outputPVC,
 			}
 			volume.PersistentVolumeClaim = &v1.PersistentVolumeClaimVolumeSource{
-				ClaimName: fmt.Sprintf("%s-output", job.Name),
+				ClaimName: outputPVC,
 			}
 
 			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
@@ -97,7 +100,7 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 		for i, c := range pod.Spec.Containers {
 			vm := v1.VolumeMount{
 				MountPath: job.Spec.Output.MountPath,
-				Name:      fmt.Sprintf("%s-output", job.Name),
+				Name:      outputPVC,
 			}
 			pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
 		}
@@ -106,16 +109,16 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 	if job.Spec.Input != nil {
 		if job.Spec.Input.VolumeClaim == nil {
 			volume := v1.Volume{
-				Name: fmt.Sprintf("%s-input", job.Name),
+				Name: inputPVC,
 			}
 			volume.EmptyDir = &v1.EmptyDirVolumeSource{}
 			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
 		} else {
 			volume := v1.Volume{
-				Name: fmt.Sprintf("%s-input", job.Name),
+				Name: inputPVC,
 			}
 			volume.PersistentVolumeClaim = &v1.PersistentVolumeClaimVolumeSource{
-				ClaimName: fmt.Sprintf("%s-input", job.Name),
+				ClaimName: inputPVC,
 			}
 
 			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
@@ -124,7 +127,7 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 		for i, c := range pod.Spec.Containers {
 			vm := v1.VolumeMount{
 				MountPath: job.Spec.Input.MountPath,
-				Name:      fmt.Sprintf("%s-input", job.Name),
+				Name:      inputPVC,
 			}
 
 			pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)

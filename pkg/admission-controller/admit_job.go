@@ -18,6 +18,7 @@ package admission
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/golang/glog"
@@ -30,23 +31,12 @@ import (
 
 // job admit.
 func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
-	glog.V(3).Infof("admitting jobs")
-	jobResource := metav1.GroupVersionResource{Group: v1alpha1.SchemeGroupVersion.Group, Version: v1alpha1.SchemeGroupVersion.Version, Resource: "jobs"}
-	if ar.Request.Resource != jobResource {
-		err := fmt.Errorf("expect resource to be %s", jobResource)
+	glog.V(3).Infof("admitting jobs -- %s", ar.Request.Operation)
+
+	job, err := DecodeJob(ar.Request.Object, ar.Request.Resource)
+	if err != nil {
 		return ToAdmissionResponse(err)
 	}
-
-	raw := ar.Request.Object.Raw
-	job := v1alpha1.Job{}
-
-	deserializer := Codecs.UniversalDeserializer()
-	if _, _, err := deserializer.Decode(raw, nil, &job); err != nil {
-		return ToAdmissionResponse(err)
-	}
-
-	glog.V(3).Infof("the job struct is %+v", job)
-
 	var msg string
 	reviewResponse := v1beta1.AdmissionResponse{}
 	reviewResponse.Allowed = true
@@ -57,6 +47,11 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		break
 	case v1beta1.Update:
 		msg = validateJob(job, &reviewResponse)
+		oldJob, err := DecodeJob(ar.Request.OldObject, ar.Request.Resource)
+		if err != nil {
+			return ToAdmissionResponse(err)
+		}
+		msg = msg + validateSpec(job, oldJob, &reviewResponse)
 		break
 	default:
 		err := fmt.Errorf("expect operation to be 'CREATE' or 'UPDATE'")
@@ -105,6 +100,16 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 	if duplicateInfo, ok := CheckPolicyDuplicate(job.Spec.Policies); ok {
 		reviewResponse.Allowed = false
 		msg = msg + fmt.Sprintf(" duplicated job event policies: %s;", duplicateInfo)
+	}
+
+	return msg
+}
+
+func validateSpec(newJob v1alpha1.Job, oldJob v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) string {
+	var msg string
+	if !reflect.DeepEqual(newJob.Spec, oldJob.Spec) {
+		reviewResponse.Allowed = false
+		msg = "job.spec is not allowed to modify when update jobs;"
 	}
 
 	return msg

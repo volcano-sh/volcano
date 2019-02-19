@@ -32,7 +32,10 @@ import (
 )
 
 const (
-	AdmitJobPath = "/jobs"
+	AdmitJobPath  = "/jobs"
+	MutateJobPath = "/mutating-jobs"
+	PVCInputName  = "pvc-input-name"
+	PVCOutputName = "pvc-output-name"
 )
 
 type AdmitFunc func(v1beta1.AdmissionReview) *v1beta1.AdmissionResponse
@@ -79,4 +82,23 @@ func CheckPolicyDuplicate(policies []v1alpha1.LifecyclePolicy) (string, bool) {
 	}
 
 	return duplicateInfo, hasDuplicate
+}
+
+func DecodeJob(object runtime.RawExtension, resource metav1.GroupVersionResource) (v1alpha1.Job, error) {
+	jobResource := metav1.GroupVersionResource{Group: v1alpha1.SchemeGroupVersion.Group, Version: v1alpha1.SchemeGroupVersion.Version, Resource: "jobs"}
+	raw := object.Raw
+	job := v1alpha1.Job{}
+
+	if resource != jobResource {
+		err := fmt.Errorf("expect resource to be %s", jobResource)
+		return job, err
+	}
+
+	deserializer := Codecs.UniversalDeserializer()
+	if _, _, err := deserializer.Decode(raw, nil, &job); err != nil {
+		return job, err
+	}
+	glog.V(3).Infof("the job struct is %+v", job)
+
+	return job, nil
 }
