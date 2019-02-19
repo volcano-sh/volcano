@@ -17,18 +17,17 @@ limitations under the License.
 package e2e
 
 import (
-	"fmt"
+	"bytes"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
 	ctlJob "hpw.cloud/volcano/pkg/cli/job"
-	"k8s.io/apimachinery/pkg/util/uuid"
-	"strconv"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("Job E2E Test: List Job Command", func() {
 	It("List running jobs", func() {
-		jobName := fmt.Sprintf("RandomName_%s", uuid.NewUUID())
+		var outBuffer bytes.Buffer
+		jobName := "test-job"
 		namespace := "test"
 		context := initTestContext()
 		defer cleanupTestContext(context)
@@ -46,15 +45,17 @@ var _ = Describe("Job E2E Test: List Job Command", func() {
 				},
 			},
 		})
-
+		//Pod is running
 		err := waitJobReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
+		//Job Status is running
+		err = waitJobStateReady(context, job)
+		Expect(err).NotTo(HaveOccurred())
+		//Command outputs are identical
 		outputs := ListJobs(namespace)
-		jobs := ParseListOutput(outputs, jobName)
-		Expect(strconv.Atoi(jobs[0][ctlJob.Running])).Should(
-			BeNumerically(">=", 1), "There should be at least one pod running")
-		Expect(jobs[0][ctlJob.Phase]).To(
-			Equal(v1alpha1.Running), fmt.Sprintf("Job Phase should be: %s", v1alpha1.Running))
-
+		jobs, err := context.vkclient.BatchV1alpha1().Jobs(namespace).List(metav1.ListOptions{})
+		ctlJob.PrintJobs(jobs, &outBuffer)
+		Expect(outputs).To(Equal(outBuffer.String()), "List command result should be %s.",
+			outBuffer.String())
 	})
 })

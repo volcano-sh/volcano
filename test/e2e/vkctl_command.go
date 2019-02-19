@@ -18,7 +18,6 @@ package e2e
 
 import (
 	"fmt"
-	ctlJob "hpw.cloud/volcano/pkg/cli/job"
 	"os/exec"
 	"strings"
 
@@ -39,25 +38,4 @@ func RunCliCommand(command []string) string {
 	Expect(err).NotTo(HaveOccurred(),
 		fmt.Sprintf("Command %s failed to execute: %s", strings.Join(command, ""), err))
 	return string(output)
-}
-
-func ParseListOutput(content string, jobName string) []map[string]string {
-	var parsedJobs []map[string]string
-	results := strings.Split(content, "/n")
-	Expect(len(results)).Should(BeNumerically(">=", 1),
-		"List Command Expected to have one result at least.")
-	for _, job := range results[1:] {
-		jobAttrs := strings.Split(job, " ")
-		jobResult := make(map[string]string)
-		for i, t := range ctlJob.ListColumns {
-			jobResult[t] = jobAttrs[i]
-		}
-		if jobName != "" && jobName != jobResult[ctlJob.Name] {
-			continue
-		}
-		parsedJobs = append(parsedJobs, jobResult)
-	}
-	Expect(len(parsedJobs)).Should(BeNumerically(">=", 1),
-		fmt.Sprintf("Can't find Job within name: %s", jobName))
-	return parsedJobs
 }
