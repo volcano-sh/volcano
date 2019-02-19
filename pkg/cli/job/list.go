@@ -17,6 +17,9 @@ package job
 
 import (
 	"fmt"
+	"hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	"io"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -42,8 +45,6 @@ const(
 	Succeeded string = "Succeeded"
 	Failed string = "Failed"
 )
-//NOTE: Need to update the print command result codes as well if columns are add/delete/update
-var ListColumns = []string{Name, Creation, Phase, Replicas, Min, Pending, Running, Succeeded, Failed}
 
 var listJobFlags = &listFlags{}
 
@@ -69,22 +70,27 @@ func ListJobs() error {
 		fmt.Printf("No resources found\n")
 		return nil
 	}
+	PrintJobs(jobs, os.Stdout)
 
-	Headers := make([]interface{}, len(ListColumns))
-	for i,h := range ListColumns{
-		Headers[i] = h
+	return nil
+}
+
+func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer){
+	_, err := fmt.Fprintf(writer, "%-25s%-25s%-12s%-12s%-6s%-10s%-10s%-12s%-10s\n",
+		Name, Creation, Phase, Replicas, Min, Pending, Running, Succeeded, Failed)
+	if err != nil{
+		fmt.Printf("Failed to print list command result: %s.\n", err)
 	}
-	fmt.Printf("%-25s%-25s%-12s%-12s%-6s%-10s%-10s%-12s%-10s\n",Headers...)
 	for _, job := range jobs.Items {
 		replicas := int32(0)
 		for _, ts := range job.Spec.Tasks {
 			replicas += ts.Replicas
 		}
-		//Print job attributes according to the sequence of header's
-		fmt.Printf("%-25s%-25s%-12s%-12d%-6d%-10d%-10d%-12d%-10d\n",
+		_, err = fmt.Fprintf(writer, "%-25s%-25s%-12s%-12d%-6d%-10d%-10d%-12d%-10d\n",
 			job.Name, job.CreationTimestamp.Format("2006-01-02 15:04:05"), job.Status.State.Phase, replicas,
 			job.Status.MinAvailable, job.Status.Pending, job.Status.Running, job.Status.Succeeded, job.Status.Failed)
+		if err != nil{
+			fmt.Printf("Failed to print list command result: %s.\n", err)
+		}
 	}
-
-	return nil
 }
