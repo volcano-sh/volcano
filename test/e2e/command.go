@@ -19,16 +19,18 @@ package e2e
 import (
 	"bytes"
 	"fmt"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	ctlJob "hpw.cloud/volcano/pkg/cli/job"
-	jobUtil "hpw.cloud/volcano/pkg/controllers/job"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	ctlJob "volcano.sh/volcano/pkg/cli/job"
+	jobUtil "volcano.sh/volcano/pkg/controllers/job"
 )
 
-var _ = Describe("Job E2E Test: List Job Command", func() {
+var _ = Describe("Job E2E Test: Test Job Command", func() {
 	It("List running jobs", func() {
 		var outBuffer bytes.Buffer
 		jobName := "test-job"
@@ -62,10 +64,8 @@ var _ = Describe("Job E2E Test: List Job Command", func() {
 		Expect(outputs).To(Equal(outBuffer.String()), "List command result should be:\n %s",
 			outBuffer.String())
 	})
-})
 
-var _ = Describe("Job E2E Test: Suspend Job Command", func() {
-	It("Suspend running jobs", func() {
+	It("Suspend running job&Resume aborted job", func() {
 		jobName := "test-suspend-running-job"
 		taskName := "long-live-task"
 		namespace := "test"
@@ -79,7 +79,6 @@ var _ = Describe("Job E2E Test: Suspend Job Command", func() {
 				{
 					name: taskName,
 					img:  defaultNginxImage,
-					req:  oneCPU,
 					min:  1,
 					rep:  1,
 				},
@@ -97,14 +96,23 @@ var _ = Describe("Job E2E Test: Suspend Job Command", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		//Pod is gone
-		podName := jobUtil.generatePodName(jobName, taskName, 0)
+		podName := jobUtil.GeneratePodName(jobName, taskName, 0)
 		_, err = context.kubeclient.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
 		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 			"Job related pod should be deleted when aborting job.")
 
+		//Resume job
+		ResumeJob(jobName, namespace)
+
+		//Job is running again
+		err = waitJobReady(context, job)
+		Expect(err).NotTo(HaveOccurred())
+		err = waitJobStateReady(context, job)
+		Expect(err).NotTo(HaveOccurred())
+
 	})
 
-	It("Suspend pending jobs", func() {
+	It("Suspend pending job", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU) * 2
@@ -120,7 +128,7 @@ var _ = Describe("Job E2E Test: Suspend Job Command", func() {
 				{
 					name: taskName,
 					img:  defaultNginxImage,
-					req:  cpuResource(fmt.Sprintf("%sm", string(1000*rep))),
+					req:  cpuResource(fmt.Sprintf("%dm", 1000*rep)),
 					min:  1,
 					rep:  1,
 				},
@@ -139,7 +147,7 @@ var _ = Describe("Job E2E Test: Suspend Job Command", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		//Pod is gone
-		podName := jobUtil.generatePodName(jobName, taskName, 0)
+		podName := jobUtil.GeneratePodName(jobName, taskName, 0)
 		_, err = context.kubeclient.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
 		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 			"Job related pod should be deleted when job aborted.")
