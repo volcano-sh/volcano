@@ -24,6 +24,16 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+func SuspendJob(name string, namespace string) string {
+	command := []string{"job", "suspend"}
+	Expect(name).NotTo(Equal(""), "Job name should not be empty in suspend job command")
+	command = append(command, "--name", name)
+	if namespace != "" {
+		command = append(command, "--namespace", namespace)
+	}
+	return RunCliCommand(command)
+}
+
 func ListJobs(namespace string) string {
 	command := []string{"job", "list"}
 	if namespace != "" {
