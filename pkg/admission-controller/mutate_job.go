@@ -72,7 +72,7 @@ func MutateJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
 func createPatch(job v1alpha1.Job) ([]byte, error) {
 	var patch []patchOperation
-	patch = append(patch, mutateSpec(job.Spec.Tasks, "/spec/taskSpecs")...)
+	patch = append(patch, mutateSpec(job.Spec.Tasks, "/spec/tasks")...)
 	patch = append(patch, mutateMetadata(job.ObjectMeta, "/metadata")...)
 
 	return json.Marshal(patch)
