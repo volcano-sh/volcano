@@ -163,7 +163,7 @@ const (
 	Running JobPhase = "Running"
 	// Restarting is the phase that the Job is restarted, waiting for pod releasing and recreating
 	Restarting JobPhase = "Restarting"
-	// Completed is the phase that all tasks of Job are completed successfully
+	// Completed is the phase that all tasks of Job are completed
 	Completed JobPhase = "Completed"
 	// Terminating is the phase that the Job is terminated, waiting for releasing pods
 	Terminating JobPhase = "Terminating"
