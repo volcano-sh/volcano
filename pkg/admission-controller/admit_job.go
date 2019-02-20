@@ -67,7 +67,6 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 
 	var msg string
 	taskNames := map[string]string{}
-	tempNames := map[string]string{}
 	var totalReplicas int32
 
 	for _, task := range job.Spec.Tasks {
