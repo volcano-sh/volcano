@@ -46,12 +46,11 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		msg = validateJob(job, &reviewResponse)
 		break
 	case v1beta1.Update:
-		msg = validateJob(job, &reviewResponse)
 		oldJob, err := DecodeJob(ar.Request.OldObject, ar.Request.Resource)
 		if err != nil {
 			return ToAdmissionResponse(err)
 		}
-		msg = msg + validateSpec(job, oldJob, &reviewResponse)
+		msg = specDeepEqual(job, oldJob, &reviewResponse)
 		break
 	default:
 		err := fmt.Errorf("expect operation to be 'CREATE' or 'UPDATE'")
@@ -68,6 +67,7 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 
 	var msg string
 	taskNames := map[string]string{}
+	tempNames := map[string]string{}
 	var totalReplicas int32
 
 	for _, task := range job.Spec.Tasks {
@@ -82,6 +82,15 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 			break
 		} else {
 			taskNames[task.Name] = task.Name
+		}
+
+		// duplicate task template name
+		if _, found := tempNames[task.Template.ObjectMeta.Name]; found {
+			reviewResponse.Allowed = false
+			msg = msg + fmt.Sprintf(" duplicated task template name %s;", task.Template.ObjectMeta.Name)
+			break
+		} else {
+			tempNames[task.Template.ObjectMeta.Name] = task.Template.ObjectMeta.Name
 		}
 
 		//duplicate task event policies
@@ -105,7 +114,7 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 	return msg
 }
 
-func validateSpec(newJob v1alpha1.Job, oldJob v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) string {
+func specDeepEqual(newJob v1alpha1.Job, oldJob v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) string {
 	var msg string
 	if !reflect.DeepEqual(newJob.Spec, oldJob.Spec) {
 		reviewResponse.Allowed = false

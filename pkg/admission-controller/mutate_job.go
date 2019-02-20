@@ -86,10 +86,10 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string) (patch []patchOperat
 			tasks[index].Name = v1alpha1.DefaultTaskSpec
 		}
 
-		// add default task template name
+		// add task template name
 		tempName := tasks[index].Template.ObjectMeta.Name
 		if len(tempName) == 0 {
-			tasks[index].Template.ObjectMeta.Name = v1alpha1.DefaultTaskSpec
+			tasks[index].Template.ObjectMeta.Name = tasks[index].Name
 		}
 	}
 	patch = append(patch, patchOperation{

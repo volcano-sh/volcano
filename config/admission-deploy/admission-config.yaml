@@ -33,7 +33,7 @@ webhooks:
     service:
       name: admission-service
       namespace: admission
-      path: /jobs
+      path: /mutating-jobs
   failurePolicy: Ignore
   name: mutatejob.k8s.io
   namespaceSelector: {}

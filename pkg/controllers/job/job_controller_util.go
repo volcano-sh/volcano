@@ -30,20 +30,6 @@ import (
 	"hpw.cloud/volcano/pkg/controllers/job/apis"
 )
 
-func validate(job *vkv1.Job) error {
-	tsNames := map[string]string{}
-
-	for _, ts := range job.Spec.Tasks {
-		if _, found := tsNames[ts.Template.Name]; found {
-			return fmt.Errorf("duplicated TaskSpec")
-		}
-
-		tsNames[ts.Template.Name] = ts.Template.Name
-	}
-
-	return nil
-}
-
 func eventKey(obj interface{}) interface{} {
 	req, ok := obj.(apis.Request)
 	if !ok {
