@@ -17,6 +17,8 @@ limitations under the License.
 package job
 
 import (
+	"reflect"
+
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
@@ -87,16 +89,27 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 		return
 	}
 
-	req := apis.Request{
-		Namespace: newJob.Namespace,
-		JobName:   newJob.Name,
-
-		Event: vkbatchv1.OutOfSyncEvent,
+	oldJob, ok := oldObj.(*vkbatchv1.Job)
+	if !ok {
+		glog.Errorf("oldJob is not Job")
+		return
 	}
 
 	if err := cc.cache.Update(newJob); err != nil {
 		glog.Errorf("Failed to update job <%s/%s>: %v",
 			newJob.Namespace, newJob.Name, err)
+	}
+
+	// if no status changed, we just return.
+	if reflect.DeepEqual(newJob.Status, oldJob.Status) {
+		return
+	}
+
+	req := apis.Request{
+		Namespace: newJob.Namespace,
+		JobName:   newJob.Name,
+
+		Event: vkbatchv1.OutOfSyncEvent,
 	}
 
 	cc.queue.Add(req)

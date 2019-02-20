@@ -156,6 +156,8 @@ spec:
               type: object
           type: object
   version: v1alpha1
+  subresources:
+    status: {}
 status:
   acceptedNames:
     kind: ""
