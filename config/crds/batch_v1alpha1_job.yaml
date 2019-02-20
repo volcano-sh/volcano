@@ -76,9 +76,9 @@ spec:
                 type: object
               type: array
             schedulerName:
-              description: SchedulerName is the default value of `taskSpecs.template.spec.schedulerName`.
+              description: SchedulerName is the default value of `tasks.template.spec.schedulerName`.
               type: string
-            taskSpecs:
+            tasks:
               description: Tasks specifies the task specification of Job
               items:
                 properties:
@@ -156,6 +156,8 @@ spec:
               type: object
           type: object
   version: v1alpha1
+  subresources:
+    status: {}
 status:
   acceptedNames:
     kind: ""

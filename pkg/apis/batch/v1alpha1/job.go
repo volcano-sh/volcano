@@ -39,7 +39,7 @@ type Job struct {
 
 // JobSpec describes how the job execution will look like and when it will actually run
 type JobSpec struct {
-	// SchedulerName is the default value of `taskSpecs.template.spec.schedulerName`.
+	// SchedulerName is the default value of `tasks.template.spec.schedulerName`.
 	// +optional
 	SchedulerName string `json:"schedulerName,omitempty" protobuf:"bytes,1,opt,name=schedulerName"`
 
@@ -55,7 +55,7 @@ type JobSpec struct {
 
 	// Tasks specifies the task specification of Job
 	// +optional
-	Tasks []TaskSpec `json:"taskSpecs,omitempty" protobuf:"bytes,5,opt,name=taskSpecs"`
+	Tasks []TaskSpec `json:"tasks,omitempty" protobuf:"bytes,5,opt,name=tasks"`
 
 	// Specifies the default lifecycle of tasks
 	// +optional
@@ -163,7 +163,7 @@ const (
 	Running JobPhase = "Running"
 	// Restarting is the phase that the Job is restarted, waiting for pod releasing and recreating
 	Restarting JobPhase = "Restarting"
-	// Completed is the phase that all tasks of Job are completed successfully
+	// Completed is the phase that all tasks of Job are completed
 	Completed JobPhase = "Completed"
 	// Terminating is the phase that the Job is terminated, waiting for releasing pods
 	Terminating JobPhase = "Terminating"
