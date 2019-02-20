@@ -144,11 +144,6 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		return nil
 	}
 
-	// TODO(k82cn): add WebHook to validate job.
-	if err := validate(job); err != nil {
-		glog.Errorf("Failed to validate Job <%s/%s>: %v", job.Namespace, job.Name, err)
-	}
-
 	if err := cc.createPodGroupIfNotExist(job); err != nil {
 		return err
 	}
@@ -169,11 +164,6 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	for _, ts := range job.Spec.Tasks {
 		tc := ts.Template.DeepCopy()
 		name := ts.Template.Name
-		// TODO(k82cn): the template name should be set in default func.
-		if len(name) == 0 {
-			name = vkv1.DefaultTaskSpec
-			tc.Name = vkv1.DefaultTaskSpec
-		}
 
 		pods, found := jobInfo.Pods[name]
 		if !found {

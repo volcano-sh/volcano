@@ -30,7 +30,7 @@ webhooks:
     caBundle: {{CA_BUNDLE}}
     
     # the url should agree with webhook service
-    url: https://{{host}}:{{hostPort}}/jobs
+    url: https://{{host}}:{{hostPort}}/mutating-jobs
   failurePolicy: Ignore
   name: mutatejob.k8s.io
   rules:
