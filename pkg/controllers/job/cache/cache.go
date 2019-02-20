@@ -147,6 +147,7 @@ func (jc *jobCache) Delete(obj *v1alpha1.Job) error {
 	if jobInfo, found := jc.jobs[key]; !found {
 		return fmt.Errorf("failed to find job <%v>", key)
 	} else {
+		jobInfo.Job = nil
 		jc.deleteJob(jobInfo)
 	}
 
@@ -220,7 +221,7 @@ func (jc *jobCache) DeletePod(pod *v1.Pod) error {
 }
 
 func (jc *jobCache) Run(stopCh <-chan struct{}) {
-	go wait.Until(jc.processCleanupJob, 0, stopCh)
+	wait.Until(jc.processCleanupJob, 0, stopCh)
 }
 
 func (jc *jobCache) processCleanupJob() {
@@ -228,10 +229,11 @@ func (jc *jobCache) processCleanupJob() {
 	if shutdown {
 		return
 	}
+	defer jc.deletedJobs.Done(obj)
 
 	job, ok := obj.(*apis.JobInfo)
 	if !ok {
-		glog.Errorf("failed to convert %v to *v1.Pod", obj)
+		glog.Errorf("failed to convert %v to *apis.JobInfo", obj)
 		return
 	}
 
@@ -239,6 +241,7 @@ func (jc *jobCache) processCleanupJob() {
 	defer jc.Mutex.Unlock()
 
 	if jobTerminated(job) {
+		jc.deletedJobs.Forget(obj)
 		key := keyFn(job.Namespace, job.Name)
 		delete(jc.jobs, key)
 		glog.V(3).Infof("Job <%s> was deleted.", key)
