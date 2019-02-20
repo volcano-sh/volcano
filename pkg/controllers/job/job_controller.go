@@ -236,5 +236,9 @@ func (cc *Controller) worker() {
 			jobInfo.Job.Namespace, jobInfo.Job.Name, err)
 		// If any error, requeue it.
 		cc.queue.AddRateLimited(req)
+		return
 	}
+
+	// If no error, forget it.
+	cc.queue.Forget(req)
 }
