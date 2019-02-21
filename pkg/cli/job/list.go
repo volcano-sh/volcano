@@ -17,6 +17,9 @@ package job
 
 import (
 	"fmt"
+	"hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	"io"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -30,6 +33,18 @@ type listFlags struct {
 
 	Namespace string
 }
+
+const (
+	Name      string = "Name"
+	Creation  string = "Creation"
+	Phase     string = "Phase"
+	Replicas  string = "Replicas"
+	Min       string = "Min"
+	Pending   string = "Pending"
+	Running   string = "Running"
+	Succeeded string = "Succeeded"
+	Failed    string = "Failed"
+)
 
 var listJobFlags = &listFlags{}
 
@@ -55,19 +70,27 @@ func ListJobs() error {
 		fmt.Printf("No resources found\n")
 		return nil
 	}
+	PrintJobs(jobs, os.Stdout)
 
-	fmt.Printf("%-25s%-25s%-12s%-12s%-6s%-10s%-10s%-12s%-10s\n",
-		"Name", "Creation", "Phase", "Replicas", "Min", "Pending", "Running", "Succeeded", "Failed")
+	return nil
+}
+
+func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
+	_, err := fmt.Fprintf(writer, "%-25s%-25s%-12s%-12s%-6s%-10s%-10s%-12s%-10s\n",
+		Name, Creation, Phase, Replicas, Min, Pending, Running, Succeeded, Failed)
+	if err != nil {
+		fmt.Printf("Failed to print list command result: %s.\n", err)
+	}
 	for _, job := range jobs.Items {
 		replicas := int32(0)
 		for _, ts := range job.Spec.Tasks {
 			replicas += ts.Replicas
 		}
-
-		fmt.Printf("%-25s%-25s%-12s%-12d%-6d%-10d%-10d%-12d%-10d\n",
+		_, err = fmt.Fprintf(writer, "%-25s%-25s%-12s%-12d%-6d%-10d%-10d%-12d%-10d\n",
 			job.Name, job.CreationTimestamp.Format("2006-01-02 15:04:05"), job.Status.State.Phase, replicas,
 			job.Status.MinAvailable, job.Status.Pending, job.Status.Running, job.Status.Succeeded, job.Status.Failed)
+		if err != nil {
+			fmt.Printf("Failed to print list command result: %s.\n", err)
+		}
 	}
-
-	return nil
 }
