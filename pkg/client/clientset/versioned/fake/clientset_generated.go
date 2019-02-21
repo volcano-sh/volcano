@@ -19,16 +19,16 @@ limitations under the License.
 package fake
 
 import (
-	clientset "volcano.sh/volcano/pkg/client/clientset/versioned"
-	batchv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1"
-	fakebatchv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1/fake"
-	busv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/bus/v1alpha1"
-	fakebusv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/bus/v1alpha1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	"k8s.io/client-go/testing"
+	clientset "volcano.sh/volcano/pkg/client/clientset/versioned"
+	batchv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1"
+	fakebatchv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1/fake"
+	busv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/bus/v1alpha1"
+	fakebusv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/bus/v1alpha1/fake"
 )
 
 // NewSimpleClientset returns a clientset that will respond with the provided objects.
