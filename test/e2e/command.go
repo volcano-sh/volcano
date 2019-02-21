@@ -22,8 +22,8 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	ctlJob "volcano.sh/volcano/pkg/cli/job"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ctlJob "volcano.sh/volcano/pkg/cli/job"
 )
 
 var _ = Describe("Job E2E Test: List Job Command", func() {

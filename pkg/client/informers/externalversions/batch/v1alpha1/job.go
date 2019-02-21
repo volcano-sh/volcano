@@ -21,14 +21,14 @@ package v1alpha1
 import (
 	time "time"
 
-	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	versioned "volcano.sh/volcano/pkg/client/clientset/versioned"
-	internalinterfaces "volcano.sh/volcano/pkg/client/informers/externalversions/internalinterfaces"
-	v1alpha1 "volcano.sh/volcano/pkg/client/listers/batch/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
 	cache "k8s.io/client-go/tools/cache"
+	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	versioned "volcano.sh/volcano/pkg/client/clientset/versioned"
+	internalinterfaces "volcano.sh/volcano/pkg/client/informers/externalversions/internalinterfaces"
+	v1alpha1 "volcano.sh/volcano/pkg/client/listers/batch/v1alpha1"
 )
 
 // JobInformer provides access to a shared informer and lister for
