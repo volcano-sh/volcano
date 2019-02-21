@@ -22,7 +22,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	ctlJob "hpw.cloud/volcano/pkg/cli/job"
+	ctlJob "volcano.sh/volcano/pkg/cli/job"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
