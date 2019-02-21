@@ -24,9 +24,9 @@ import (
 
 	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 
-	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
-	"hpw.cloud/volcano/pkg/apis/helpers"
-	"hpw.cloud/volcano/pkg/controllers/job/apis"
+	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/helpers"
+	"volcano.sh/volcano/pkg/controllers/job/apis"
 )
 
 func validate(job *vkv1.Job) error {

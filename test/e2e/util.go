@@ -40,8 +40,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
-	vkver "hpw.cloud/volcano/pkg/client/clientset/versioned"
+	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vkver "volcano.sh/volcano/pkg/client/clientset/versioned"
 
 	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"

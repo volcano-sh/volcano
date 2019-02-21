@@ -37,8 +37,8 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 
-	"hpw.cloud/volcano/cmd/controllers/app/options"
-	"hpw.cloud/volcano/pkg/controllers/job"
+	"volcano.sh/volcano/cmd/controllers/app/options"
+	"volcano.sh/volcano/pkg/controllers/job"
 )
 
 const (
