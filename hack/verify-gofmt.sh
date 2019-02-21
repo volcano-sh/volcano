@@ -30,7 +30,7 @@ find_files() {
 # formatting (e.g., a file does not parse correctly). Without "|| true" this
 # would have led to no useful error message from gofmt, because the script would
 # have failed before getting to the "echo" in the block below.
-GOFMT="gofmt -s -w"
+GOFMT="gofmt -d -s"
 diff=$(find_files | xargs ${GOFMT} 2>&1) || true
 if [[ -n "${diff}" ]]; then
   echo "${diff}"
