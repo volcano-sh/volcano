@@ -170,6 +170,10 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 		return req.Action
 	}
 
+	if req.Event == vkv1.OutOfSyncEvent {
+		return vkv1.SyncJobAction
+	}
+
 	// Overwrite Job level policies
 	if len(req.TaskName) != 0 {
 		// Parse task level policies
