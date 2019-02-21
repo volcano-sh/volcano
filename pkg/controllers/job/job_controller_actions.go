@@ -53,6 +53,12 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		for _, pod := range pods {
 			total++
 
+			if pod.DeletionTimestamp != nil {
+				glog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
+				terminating++
+				continue
+			}
+
 			switch pod.Status.Phase {
 			case v1.PodRunning:
 				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
@@ -73,7 +79,13 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 			case v1.PodSucceeded:
 				succeeded++
 			case v1.PodFailed:
-				failed++
+				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+				if err != nil {
+					failed++
+					errs = append(errs, err)
+					continue
+				}
+				terminating++
 			}
 		}
 	}
@@ -98,7 +110,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	}
 
 	// Update Job status
-	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).Update(job); err != nil {
+	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
@@ -185,6 +197,13 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 				newPod := createJobPod(job, tc, i)
 				podToCreate = append(podToCreate, newPod)
 			} else {
+				if pod.DeletionTimestamp != nil {
+					glog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
+					terminating++
+					delete(pods, podName)
+					continue
+				}
+
 				switch pod.Status.Phase {
 				case v1.PodPending:
 					if pod.DeletionTimestamp != nil {
