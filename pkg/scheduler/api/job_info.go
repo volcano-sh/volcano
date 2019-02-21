@@ -27,7 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
-	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/apis/utils"
 )
 
@@ -40,6 +40,8 @@ type TaskInfo struct {
 	Name      string
 	Namespace string
 
+	PodGroup *v1alpha1.PodGroup
+
 	Resreq *Resource
 
 	NodeName    string
@@ -50,15 +52,34 @@ type TaskInfo struct {
 	Pod *v1.Pod
 }
 
-func getJobID(pod *v1.Pod) JobID {
+func getOwners(pod *v1.Pod) (JobID, *v1alpha1.PodGroup) {
 	if len(pod.Annotations) != 0 {
-		if gn, found := pod.Annotations[arbcorev1.GroupNameAnnotationKey]; found && len(gn) != 0 {
+		if gn, found := pod.Annotations[v1alpha1.GroupNameAnnotationKey]; found && len(gn) != 0 {
 			// Make sure Pod and PodGroup belong to the same namespace.
 			jobID := fmt.Sprintf("%s/%s", pod.Namespace, gn)
-			return JobID(jobID)
+			return JobID(jobID), nil
 		}
 	}
-	return JobID(utils.GetController(pod))
+
+	jobID := JobID(utils.GetController(pod))
+	if len(jobID) == 0 {
+		jobID = JobID(pod.UID)
+	}
+
+	pg := &v1alpha1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: pod.Namespace,
+			Name:      string(jobID),
+			Annotations: map[string]string{
+				ShadowPodGroupKey: string(jobID),
+			},
+		},
+		Spec: v1alpha1.PodGroupSpec{
+			MinMember: 1,
+		},
+	}
+
+	return jobID, pg
 }
 
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
@@ -69,9 +90,12 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		req.Add(NewResource(c.Resources.Requests))
 	}
 
+	jobID, pg := getOwners(pod)
+
 	ti := &TaskInfo{
 		UID:       TaskID(pod.UID),
-		Job:       getJobID(pod),
+		Job:       jobID,
+		PodGroup:  pg,
 		Name:      pod.Name,
 		Namespace: pod.Namespace,
 		NodeName:  pod.Spec.NodeName,
@@ -94,6 +118,7 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		Job:         ti.Job,
 		Name:        ti.Name,
 		Namespace:   ti.Namespace,
+		PodGroup:    ti.PodGroup,
 		NodeName:    ti.NodeName,
 		Status:      ti.Status,
 		Priority:    ti.Priority,
@@ -104,8 +129,8 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 }
 
 func (ti TaskInfo) String() string {
-	return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v, resreq %v",
-		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority, ti.Resreq)
+	return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, type %v, pri %v, resreq %v",
+		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.PodGroup, ti.Priority, ti.Resreq)
 }
 
 // JobID is the type of JobInfo's ID.
@@ -138,14 +163,14 @@ type JobInfo struct {
 	TotalRequest *Resource
 
 	CreationTimestamp metav1.Time
-	PodGroup          *arbcorev1.PodGroup
+	PodGroup          *v1alpha1.PodGroup
 
 	// TODO(k82cn): keep backward compatbility, removed it when v1alpha1 finalized.
 	PDB *policyv1.PodDisruptionBudget
 }
 
-func NewJobInfo(uid JobID) *JobInfo {
-	return &JobInfo{
+func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
+	job := &JobInfo{
 		UID: uid,
 
 		MinAvailable:  0,
@@ -157,13 +182,19 @@ func NewJobInfo(uid JobID) *JobInfo {
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},
 	}
+
+	for _, task := range tasks {
+		job.AddTaskInfo(task)
+	}
+
+	return job
 }
 
 func (ji *JobInfo) UnsetPodGroup() {
 	ji.PodGroup = nil
 }
 
-func (ji *JobInfo) SetPodGroup(pg *arbcorev1.PodGroup) {
+func (ji *JobInfo) SetPodGroup(pg *v1alpha1.PodGroup) {
 	ji.Name = pg.Name
 	ji.Namespace = pg.Namespace
 	ji.MinAvailable = pg.Spec.MinMember
@@ -233,6 +264,10 @@ func (ji *JobInfo) AddTaskInfo(ti *TaskInfo) {
 
 	if AllocatedStatus(ti.Status) {
 		ji.Allocated.Add(ti.Resreq)
+	}
+
+	if ji.PodGroup == nil && ti.PodGroup != nil {
+		ji.SetPodGroup(ti.PodGroup)
 	}
 }
 
@@ -321,7 +356,8 @@ func (ji JobInfo) String() string {
 		i++
 	}
 
-	return fmt.Sprintf("Job (%v): name %v, minAvailable %d", ji.UID, ji.Name, ji.MinAvailable) + res
+	return fmt.Sprintf("Job (%v): namespace %v (%v), name %v, minAvailable %d, podGroup %+v",
+		ji.UID, ji.Namespace, ji.Queue, ji.Name, ji.MinAvailable, ji.PodGroup) + res
 }
 
 // Error returns detailed information on why a job's task failed to fit on

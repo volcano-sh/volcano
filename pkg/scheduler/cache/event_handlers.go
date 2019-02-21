@@ -40,10 +40,10 @@ func isTerminated(status kbapi.TaskStatus) bool {
 func (sc *SchedulerCache) addTask(pi *kbapi.TaskInfo) error {
 	if len(pi.Job) != 0 {
 		if _, found := sc.Jobs[pi.Job]; !found {
-			sc.Jobs[pi.Job] = kbapi.NewJobInfo(pi.Job)
+			sc.Jobs[pi.Job] = kbapi.NewJobInfo(pi.Job, pi)
+		} else {
+			sc.Jobs[pi.Job].AddTaskInfo(pi)
 		}
-
-		sc.Jobs[pi.Job].AddTaskInfo(pi)
 	}
 
 	if len(pi.NodeName) != 0 {
