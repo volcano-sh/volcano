@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"hpw.cloud/volcano/pkg/cli/job"
+	"volcano.sh/volcano/pkg/cli/job"
 )
 
 func buildJobCmd() *cobra.Command {
