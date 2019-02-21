@@ -33,7 +33,10 @@ func ListJobs(namespace string) string {
 }
 
 func RunCliCommand(command []string) string {
-	command = append(command, "--master", masterURL())
+	if masterURL() != "" {
+		command = append(command, "--master", masterURL())
+	}
+	command = append(command, "--kubeconfig", kubeconfigPath(homeDir()))
 	output, err := exec.Command(VolcanoCliBinary(), command...).Output()
 	Expect(err).NotTo(HaveOccurred(),
 		fmt.Sprintf("Command %s failed to execute: %s", strings.Join(command, ""), err))
