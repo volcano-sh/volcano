@@ -17,9 +17,9 @@ package job
 
 import (
 	"fmt"
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"io"
 	"os"
+	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 
 	"github.com/spf13/cobra"
 
