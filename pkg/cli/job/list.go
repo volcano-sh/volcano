@@ -34,16 +34,16 @@ type listFlags struct {
 	Namespace string
 }
 
-const(
-	Name string = "Name"
-	Creation string = "Creation"
-	Phase string = "Phase"
-	Replicas string = "Replicas"
-	Min string = "Min"
-	Pending string = "Pending"
-	Running string = "Running"
+const (
+	Name      string = "Name"
+	Creation  string = "Creation"
+	Phase     string = "Phase"
+	Replicas  string = "Replicas"
+	Min       string = "Min"
+	Pending   string = "Pending"
+	Running   string = "Running"
 	Succeeded string = "Succeeded"
-	Failed string = "Failed"
+	Failed    string = "Failed"
 )
 
 var listJobFlags = &listFlags{}
@@ -75,10 +75,10 @@ func ListJobs() error {
 	return nil
 }
 
-func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer){
+func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 	_, err := fmt.Fprintf(writer, "%-25s%-25s%-12s%-12s%-6s%-10s%-10s%-12s%-10s\n",
 		Name, Creation, Phase, Replicas, Min, Pending, Running, Succeeded, Failed)
-	if err != nil{
+	if err != nil {
 		fmt.Printf("Failed to print list command result: %s.\n", err)
 	}
 	for _, job := range jobs.Items {
@@ -89,7 +89,7 @@ func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer){
 		_, err = fmt.Fprintf(writer, "%-25s%-25s%-12s%-12d%-6d%-10d%-10d%-12d%-10d\n",
 			job.Name, job.CreationTimestamp.Format("2006-01-02 15:04:05"), job.Status.State.Phase, replicas,
 			job.Status.MinAvailable, job.Status.Pending, job.Status.Running, job.Status.Succeeded, job.Status.Failed)
-		if err != nil{
+		if err != nil {
 			fmt.Printf("Failed to print list command result: %s.\n", err)
 		}
 	}

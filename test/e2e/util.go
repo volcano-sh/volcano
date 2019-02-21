@@ -449,13 +449,13 @@ func waitTasksPending(ctx *context, job *vkv1.Job, taskNum int) error {
 		[]v1.PodPhase{v1.PodPending}, taskNum))
 }
 
-func waitJobStateReady(ctx *context, job *vkv1.Job) error{
+func waitJobStateReady(ctx *context, job *vkv1.Job) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, vkv1.Running))
 }
 
-func jobPhaseExpect(ctx *context, job *vkv1.Job, state vkv1.JobPhase) wait.ConditionFunc{
-	return func() (bool, error){
-		job,err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name,metav1.GetOptions{})
+func jobPhaseExpect(ctx *context, job *vkv1.Job, state vkv1.JobPhase) wait.ConditionFunc {
+	return func() (bool, error) {
+		job, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		return job.Status.State.Phase == state, err
 	}
