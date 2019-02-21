@@ -575,14 +575,7 @@ func (sc *SchedulerCache) String() string {
 	if len(sc.Jobs) != 0 {
 		str = str + "Jobs:\n"
 		for _, job := range sc.Jobs {
-			str = str + fmt.Sprintf("\t Job(%s) name(%s) minAvailable(%v)\n",
-				job.UID, job.Name, job.MinAvailable)
-
-			i := 0
-			for _, task := range job.Tasks {
-				str = str + fmt.Sprintf("\t\t %d: %v\n", i, task)
-				i++
-			}
+			str = str + fmt.Sprintf("\t %s\n", job)
 		}
 	}
 
@@ -593,17 +586,19 @@ func (sc *SchedulerCache) String() string {
 func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
 	jobErrMsg := job.FitError()
 
-	pgUnschedulable := job.PodGroup != nil &&
-		(job.PodGroup.Status.Phase == v1alpha1.PodGroupUnknown ||
-			job.PodGroup.Status.Phase == v1alpha1.PodGroupPending)
-	pdbUnschedulabe := job.PDB != nil && len(job.TaskStatusIndex[api.Pending]) != 0
+	if !kbapi.ShadowPodGroup(job.PodGroup) {
+		pgUnschedulable := job.PodGroup != nil &&
+			(job.PodGroup.Status.Phase == v1alpha1.PodGroupUnknown ||
+				job.PodGroup.Status.Phase == v1alpha1.PodGroupPending)
+		pdbUnschedulabe := job.PDB != nil && len(job.TaskStatusIndex[api.Pending]) != 0
 
-	// If pending or unschedulable, record unschedulable event.
-	if pgUnschedulable || pdbUnschedulabe {
-		msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
-			len(job.TaskStatusIndex[api.Pending]), len(job.Tasks), job.FitError())
-		sc.Recorder.Eventf(job.PodGroup, v1.EventTypeWarning,
-			string(v1alpha1.PodGroupUnschedulableType), msg)
+		// If pending or unschedulable, record unschedulable event.
+		if pgUnschedulable || pdbUnschedulabe {
+			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
+				len(job.TaskStatusIndex[api.Pending]), len(job.Tasks), job.FitError())
+			sc.Recorder.Eventf(job.PodGroup, v1.EventTypeWarning,
+				string(v1alpha1.PodGroupUnschedulableType), msg)
+		}
 	}
 
 	// Update podCondition for tasks Allocated and Pending before job discarded
@@ -619,11 +614,13 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
 
 // UpdateJobStatus update the status of job and its tasks.
 func (sc *SchedulerCache) UpdateJobStatus(job *kbapi.JobInfo) (*kbapi.JobInfo, error) {
-	pg, err := sc.StatusUpdater.UpdatePodGroup(job.PodGroup)
-	if err != nil {
-		return nil, err
+	if !kbapi.ShadowPodGroup(job.PodGroup) {
+		pg, err := sc.StatusUpdater.UpdatePodGroup(job.PodGroup)
+		if err != nil {
+			return nil, err
+		}
+		job.PodGroup = pg
 	}
-	job.PodGroup = pg
 
 	sc.RecordJobStatusEvent(job)
 
