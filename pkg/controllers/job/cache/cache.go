@@ -215,7 +215,9 @@ func (jc *jobCache) DeletePod(pod *v1.Pod) error {
 		return err
 	}
 
-	jc.deleteJob(job)
+	if jc.jobs[key].Job == nil {
+		jc.deleteJob(job)
+	}
 
 	return nil
 }
