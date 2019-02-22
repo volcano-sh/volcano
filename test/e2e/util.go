@@ -461,7 +461,6 @@ func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
 		newJob, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		fmt.Println(fmt.Sprintf("job phase %s", newJob.Status.State.Phase))
 		if newJob.Status.State.Phase != phase {
 			return false, nil
 		}
