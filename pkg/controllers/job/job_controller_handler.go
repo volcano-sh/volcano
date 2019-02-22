@@ -240,7 +240,6 @@ func (cc *Controller) handleCommands() {
 	cmd := obj.(*vkbusv1.Command)
 	defer cc.queue.Done(cmd)
 
-	//NOTE: It's possible that we miss some of the commands during crash situation
 	if err := cc.vkClients.BusV1alpha1().Commands(cmd.Namespace).Delete(cmd.Name, nil); err != nil {
 		glog.Errorf("Failed to delete Command <%s/%s>.", cmd.Namespace, cmd.Name)
 	}
@@ -253,8 +252,6 @@ func (cc *Controller) handleCommands() {
 		Action: vkbatchv1.Action(cmd.Action),
 	}
 
-	glog.V(3).Infof("Try to execute command <%v> on Job <%s/%s>",
-		cmd.Action, req.Namespace, req.JobName)
 	cc.queue.Add(req)
 
 }

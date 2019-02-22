@@ -25,6 +25,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -41,6 +42,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	jobv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	v1corev1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	vkver "volcano.sh/volcano/pkg/client/clientset/versioned"
@@ -104,20 +106,19 @@ func NewJobController(config *rest.Config) *Controller {
 	kubeClients := kubernetes.NewForConfigOrDie(config)
 
 	//Initialize event client
+	utilruntime.Must(jobv1.AddToScheme(scheme.Scheme))
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
 	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClients.CoreV1().Events("")})
-	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "volcano.sh"})
+	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "vk-controller"})
 
-	//eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: leaderElectionClient.CoreV1().Events(opt.LockObjectNamespace)})
-	//eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "kube-batch"})
 	cc := &Controller{
 		config:       config,
 		kubeClients:  kubeClients,
 		vkClients:    vkver.NewForConfigOrDie(config),
 		kbClients:    kbver.NewForConfigOrDie(config),
 		queue:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		commandQueue: workqueue.NewNamed("command_handler_queue"),
+		commandQueue: workqueue.NewNamed("vk-command-queue"),
 		cache:        jobcache.New(),
 		recorder:     recorder,
 	}
@@ -259,6 +260,7 @@ func (cc *Controller) worker() {
 		cc.queue.AddRateLimited(req)
 		return
 	}
+	//Report Command Event
 	if req.Event == v1alpha1.CommandIssuedEvent {
 		if job, err := cc.cache.Get(jobcache.JobKeyByReq(&req)); err != nil {
 			glog.Warningf("Unable to find job in cache when reporting job event <%s/%s>: %v",
