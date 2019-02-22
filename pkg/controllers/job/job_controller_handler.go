@@ -36,28 +36,7 @@ func (cc *Controller) addCommand(obj interface{}) {
 		return
 	}
 
-	req := apis.Request{
-		Namespace: cmd.Namespace,
-		JobName:   cmd.TargetObject.Name,
-
-		Event:  vkbatchv1.CommandIssuedEvent,
-		Action: vkbatchv1.Action(cmd.Action),
-	}
-
-	glog.V(3).Infof("Try to execute command <%v> on Job <%s/%s>",
-		cmd.Action, req.Namespace, req.JobName)
-
-	cc.queue.Add(req)
-
-	// TODO(k82cn): Added a queue to make sure the command are deleted; it's ok to
-	//              miss some commands, but we can not execute it more than once.
-	go func() {
-		// TODO(k82cn): record event for this Command
-		if err := cc.vkClients.BusV1alpha1().Commands(cmd.Namespace).Delete(cmd.Name, nil); err != nil {
-			glog.Errorf("Failed to delete Command <%s/%s> which maybe executed again.",
-				cmd.Namespace, cmd.Name)
-		}
-	}()
+	cc.commandQueue.Add(cmd)
 }
 
 func (cc *Controller) addJob(obj interface{}) {
@@ -250,6 +229,34 @@ func (cc *Controller) deletePod(obj interface{}) {
 	}
 
 	cc.queue.Add(req)
+}
+
+func (cc *Controller) handleCommands() {
+	obj, shutdown := cc.commandQueue.Get()
+	if shutdown {
+		glog.Errorf("Fail to pop command from command queue.")
+		return
+	}
+	cmd := obj.(*vkbusv1.Command)
+	defer cc.queue.Done(cmd)
+
+	//NOTE: It's possible that we miss some of the commands during crash situation
+	if err := cc.vkClients.BusV1alpha1().Commands(cmd.Namespace).Delete(cmd.Name, nil); err != nil {
+		glog.Errorf("Failed to delete Command <%s/%s>.", cmd.Namespace, cmd.Name)
+	}
+
+	req := apis.Request{
+		Namespace: cmd.Namespace,
+		JobName:   cmd.TargetObject.Name,
+
+		Event:  vkbatchv1.CommandIssuedEvent,
+		Action: vkbatchv1.Action(cmd.Action),
+	}
+
+	glog.V(3).Infof("Try to execute command <%v> on Job <%s/%s>",
+		cmd.Action, req.Namespace, req.JobName)
+	cc.queue.Add(req)
+
 }
 
 // TODO(k82cn): add handler for PodGroup unschedulable event.

@@ -18,6 +18,8 @@ package job
 
 import (
 	"fmt"
+	"k8s.io/client-go/tools/record"
+	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 
 	"github.com/golang/glog"
 
@@ -36,6 +38,8 @@ import (
 	kbinfoext "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
 	kbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	kblister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
+	"k8s.io/client-go/kubernetes/scheme"
+	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	v1corev1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
@@ -87,19 +91,35 @@ type Controller struct {
 	cmdSynced func() bool
 
 	// queue that need to sync up
-	queue workqueue.RateLimitingInterface
-	cache jobcache.Cache
+	queue        workqueue.RateLimitingInterface
+	commandQueue workqueue.Interface
+	cache        jobcache.Cache
+	//Job Event recorder
+	recorder record.EventRecorder
 }
 
 // NewJobController create new Job Controller
 func NewJobController(config *rest.Config) *Controller {
+
+	kubeClients := kubernetes.NewForConfigOrDie(config)
+
+	//Initialize event client
+	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster.StartLogging(glog.Infof)
+	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClients.CoreV1().Events("")})
+	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "volcano.sh"})
+
+	//eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: leaderElectionClient.CoreV1().Events(opt.LockObjectNamespace)})
+	//eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "kube-batch"})
 	cc := &Controller{
-		config:      config,
-		kubeClients: kubernetes.NewForConfigOrDie(config),
-		vkClients:   vkver.NewForConfigOrDie(config),
-		kbClients:   kbver.NewForConfigOrDie(config),
-		queue:       workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		cache:       jobcache.New(),
+		config:       config,
+		kubeClients:  kubeClients,
+		vkClients:    vkver.NewForConfigOrDie(config),
+		kbClients:    kbver.NewForConfigOrDie(config),
+		queue:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		commandQueue: workqueue.NewNamed("command_handler_queue"),
+		cache:        jobcache.New(),
+		recorder:     recorder,
 	}
 
 	cc.jobInformer = vkinfoext.NewSharedInformerFactory(cc.vkClients, 0).Batch().V1alpha1().Jobs()
@@ -121,7 +141,7 @@ func NewJobController(config *rest.Config) *Controller {
 				if cmd, ok := t.Obj.(*v1corev1.Command); ok {
 					return helpers.ControlledBy(cmd, helpers.JobKind)
 				}
-				runtime.HandleError(fmt.Errorf("unable to convert object %T to *v1.Pod", obj))
+				runtime.HandleError(fmt.Errorf("unable to convert object %T to *v1.Command", obj))
 				return false
 			default:
 				runtime.HandleError(fmt.Errorf("unable to handle object %T", obj))
@@ -194,6 +214,7 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 	cache.WaitForCacheSync(stopCh, cc.jobSynced, cc.podSynced, cc.pgSynced,
 		cc.svcSynced, cc.cmdSynced, cc.pvcSynced)
 
+	go wait.Until(cc.handleCommands, 0, stopCh)
 	go wait.Until(cc.worker, 0, stopCh)
 
 	go cc.cache.Run(stopCh)
@@ -237,6 +258,15 @@ func (cc *Controller) worker() {
 		// If any error, requeue it.
 		cc.queue.AddRateLimited(req)
 		return
+	}
+	if req.Event == v1alpha1.CommandIssuedEvent {
+		if job, err := cc.cache.Get(jobcache.JobKeyByReq(&req)); err != nil {
+			glog.Warningf("Unable to find job in cache when reporting job event <%s/%s>: %v",
+				jobInfo.Job.Namespace, jobInfo.Job.Name, err)
+		} else {
+			cc.recorder.Eventf(job.Job, v1.EventTypeNormal,
+				string(v1alpha1.CommandCompleted), "Command %s has been successfully executed", req.Action)
+		}
 	}
 
 	// If no error, forget it.
