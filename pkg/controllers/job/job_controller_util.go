@@ -24,10 +24,10 @@ import (
 
 	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 
-	admissioncontroller "hpw.cloud/volcano/pkg/admission-controller"
-	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
-	"hpw.cloud/volcano/pkg/apis/helpers"
-	"hpw.cloud/volcano/pkg/controllers/job/apis"
+	admissioncontroller "volcano.sh/volcano/pkg/admission-controller"
+	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/helpers"
+	"volcano.sh/volcano/pkg/controllers/job/apis"
 )
 
 func eventKey(obj interface{}) interface{} {
@@ -157,6 +157,10 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 	if len(req.Action) != 0 {
 		return req.Action
+	}
+
+	if req.Event == vkv1.OutOfSyncEvent {
+		return vkv1.SyncJobAction
 	}
 
 	// Overwrite Job level policies

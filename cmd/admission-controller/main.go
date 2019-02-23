@@ -22,9 +22,9 @@ import (
 	"os"
 	"strconv"
 
-	"hpw.cloud/volcano/cmd/admission-controller/app"
-	appConf "hpw.cloud/volcano/cmd/admission-controller/app/configure"
-	admissioncontroller "hpw.cloud/volcano/pkg/admission-controller"
+	"volcano.sh/volcano/cmd/admission-controller/app"
+	appConf "volcano.sh/volcano/cmd/admission-controller/app/configure"
+	admissioncontroller "volcano.sh/volcano/pkg/admission-controller"
 )
 
 func serveJobs(w http.ResponseWriter, r *http.Request) {

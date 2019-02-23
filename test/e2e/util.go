@@ -40,8 +40,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
-	vkver "hpw.cloud/volcano/pkg/client/clientset/versioned"
+	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vkver "volcano.sh/volcano/pkg/client/clientset/versioned"
 
 	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
@@ -78,6 +78,13 @@ func kubeconfigPath(home string) string {
 	return filepath.Join(home, ".kube", "config") // default kubeconfig path is $HOME/.kube/config
 }
 
+func VolcanoCliBinary() string {
+	if bin := os.Getenv("VK_BIN"); bin != "" {
+		return filepath.Join(bin, "vkctl")
+	}
+	return ""
+}
+
 type context struct {
 	kubeclient *kubernetes.Clientset
 	kbclient   *kbver.Clientset
@@ -99,7 +106,9 @@ func initTestContext() *context {
 	Expect(home).NotTo(Equal(""))
 	configPath := kubeconfigPath(home)
 	Expect(configPath).NotTo(Equal(""))
-
+	vkctl := VolcanoCliBinary()
+	Expect(fileExist(vkctl)).To(BeTrue(), fmt.Sprintf(
+		"vkctl binary: %s is required for E2E tests, please update VK_BIN environment", vkctl))
 	config, err := clientcmd.BuildConfigFromFlags(masterURL(), configPath)
 	Expect(err).NotTo(HaveOccurred())
 
@@ -166,6 +175,15 @@ func queueNotExist(ctx *context) wait.ConditionFunc {
 
 		return true, nil
 	}
+}
+
+func fileExist(name string) bool {
+	if _, err := os.Stat(name); err != nil {
+		if os.IsNotExist(err) {
+			return false
+		}
+	}
+	return true
 }
 
 func cleanupTestContext(cxt *context) {
@@ -429,6 +447,18 @@ func waitTasksReady(ctx *context, job *vkv1.Job, taskNum int) error {
 func waitTasksPending(ctx *context, job *vkv1.Job, taskNum int) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, job,
 		[]v1.PodPhase{v1.PodPending}, taskNum))
+}
+
+func waitJobStateReady(ctx *context, job *vkv1.Job) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, vkv1.Running))
+}
+
+func jobPhaseExpect(ctx *context, job *vkv1.Job, state vkv1.JobPhase) wait.ConditionFunc {
+	return func() (bool, error) {
+		job, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		return job.Status.State.Phase == state, err
+	}
 }
 
 func waitJobUnschedulable(ctx *context, job *vkv1.Job) error {
