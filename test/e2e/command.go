@@ -96,7 +96,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		//Pod is gone
-		podName := jobUtil.GeneratePodName(jobName, taskName, 0)
+		podName := jobUtil.MakePodName(jobName, taskName, 0)
 		_, err = context.kubeclient.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
 		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 			"Job related pod should be deleted when aborting job.")
@@ -147,7 +147,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		//Pod is gone
-		podName := jobUtil.GeneratePodName(jobName, taskName, 0)
+		podName := jobUtil.MakePodName(jobName, taskName, 0)
 		_, err = context.kubeclient.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
 		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 			"Job related pod should be deleted when job aborted.")
