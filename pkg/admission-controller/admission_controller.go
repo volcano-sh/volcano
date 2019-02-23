@@ -28,7 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 
-	v1alpha1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
 const (

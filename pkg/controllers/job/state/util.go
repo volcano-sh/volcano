@@ -17,7 +17,7 @@ limitations under the License.
 package state
 
 import (
-	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
 func totalTasks(job *vkv1.Job) int32 {

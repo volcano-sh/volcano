@@ -26,8 +26,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"
 
-	"hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
-	"hpw.cloud/volcano/pkg/controllers/job/apis"
+	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/controllers/job/apis"
 )
 
 type jobCache struct {
@@ -215,7 +215,9 @@ func (jc *jobCache) DeletePod(pod *v1.Pod) error {
 		return err
 	}
 
-	jc.deleteJob(job)
+	if jc.jobs[key].Job == nil {
+		jc.deleteJob(job)
+	}
 
 	return nil
 }

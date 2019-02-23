@@ -21,7 +21,7 @@ import (
 
 	"k8s.io/api/core/v1"
 
-	"hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
 type JobInfo struct {
@@ -118,4 +118,10 @@ type Request struct {
 
 	Event  v1alpha1.Event
 	Action v1alpha1.Action
+}
+
+func (r Request) String() string {
+	return fmt.Sprintf(
+		"Job: %s/%s, Task:%s, Event:%s, Action:%s",
+		r.Namespace, r.JobName, r.TaskName, r.Event, r.Action)
 }
