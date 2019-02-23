@@ -31,12 +31,17 @@ func serveJobs(w http.ResponseWriter, r *http.Request) {
 	app.Serve(w, r, admissioncontroller.AdmitJobs)
 }
 
+func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
+	app.Serve(w, r, admissioncontroller.MutateJobs)
+}
+
 func main() {
 	config := appConf.NewConfig()
 	config.AddFlags()
 	flag.Parse()
 
 	http.HandleFunc(admissioncontroller.AdmitJobPath, serveJobs)
+	http.HandleFunc(admissioncontroller.MutateJobPath, serveMutateJobs)
 
 	if err := config.CheckPortOrDie(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
