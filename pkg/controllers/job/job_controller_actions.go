@@ -27,6 +27,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	admissioncontroller "volcano.sh/volcano/pkg/admission-controller"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
@@ -153,11 +154,6 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		glog.Infof("Job <%s/%s> is terminating, skip management process.",
 			job.Namespace, job.Name)
 		return nil
-	}
-
-	// TODO(k82cn): add WebHook to validate job.
-	if err := validate(job); err != nil {
-		glog.Errorf("Failed to validate Job <%s/%s>: %v", job.Namespace, job.Name, err)
 	}
 
 	if err := cc.createPodGroupIfNotExist(job); err != nil {
@@ -353,8 +349,8 @@ func (cc *Controller) createServiceIfNotExist(job *vkv1.Job) error {
 
 func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) error {
 	// If input/output PVC does not exist, create them for Job.
-	inputPVC := fmt.Sprintf("%s-input", job.Name)
-	outputPVC := fmt.Sprintf("%s-output", job.Name)
+	inputPVC := job.Annotations[admissioncontroller.PVCInputName]
+	outputPVC := job.Annotations[admissioncontroller.PVCOutputName]
 	if job.Spec.Input != nil {
 		if job.Spec.Input.VolumeClaim != nil {
 			if _, err := cc.pvcLister.PersistentVolumeClaims(job.Namespace).Get(inputPVC); err != nil {
