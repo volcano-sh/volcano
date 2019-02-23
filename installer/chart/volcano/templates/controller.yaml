@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vk-controllers
+  namespace: {{.Values.basic.namespace}}
+
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: vk-controllers
+  namespace: {{.Values.basic.namespace}}
+rules:
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete", "update"]
+  - apiGroups: ["batch.hpw.cloud"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "update", "delete"]
+  - apiGroups: ["batch.hpw.cloud"]
+    resources: ["jobs/status"]
+    verbs: ["update", "patch"]
+  - apiGroups: ["bus.hpw.cloud"]
+    resources: ["commands"]
+    verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "list", "watch", "update"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["scheduling.incubator.k8s.io"]
+    resources: ["podgroups"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: vk-controllers-role
+  namespace: {{.Values.basic.namespace}}
+subjects:
+  - kind: ServiceAccount
+    name: vk-controllers
+    # replace with non-default namespace name
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: vk-controllers
+  apiGroup: rbac.authorization.k8s.io
+
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: vk-controllers
+  namespace: {{.Values.basic.namespace}}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      vk-controllers: test
+  template:
+    metadata:
+      labels:
+        vk-controllers: test
+    spec:
+      serviceAccount: vk-controllers
+      containers:
+        - name: vk-controllers
+          image: vk-controllers:{{.Values.basic.image_tag_version}}
+          args:
+            - --alsologtostderr
+            - -v=4
+            - 2>&1
+          imagePullPolicy: "IfNotPresent"

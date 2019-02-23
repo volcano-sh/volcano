@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: admission
+    admission: "true"
+  name: admission
+  namespace: {{.Values.basic.namespace}}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: admission
+      admission: "true"
+  template:
+    metadata:
+      labels:
+        app: admission
+        admission: "true"
+    spec:
+      containers:
+      - args:
+        - --tls-cert-file=/admission.local.config/certificates/tls.crt
+        - --tls-private-key-file=/admission.local.config/certificates/tls.key
+        - --alsologtostderr
+        - --port=443
+        - -v=4
+        - 2>&1
+        image: vk-admission:{{.Values.basic.image_tag_version}}
+        imagePullPolicy: IfNotPresent
+        name: admission
+        volumeMounts:
+        - mountPath: /admission.local.config/certificates
+          name: admission-certs
+          readOnly: true
+      volumes:
+      - name: admission-certs
+        secret:
+          defaultMode: 420
+          secretName: admission-secret
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    test: admission
+  name: admission-service
+  namespace: {{.Values.basic.namespace}}
+spec:
+  ports:
+  - port: 443
+    protocol: TCP
+    targetPort: 443
+  selector:
+    admission: "true"
+  sessionAffinity: None
