@@ -75,7 +75,7 @@ type VolumeSpec struct {
 type JobEvent string
 
 const (
-	CommandCompleted JobEvent = "CommandCompleted"
+	CommandIssued JobEvent = "CommandIssued"
 )
 
 // Event represent the phase of Job, e.g. pod-failed.

@@ -17,6 +17,7 @@ limitations under the License.
 package job
 
 import (
+	"fmt"
 	"reflect"
 
 	"github.com/golang/glog"
@@ -27,6 +28,7 @@ import (
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkbusv1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
+	vkcache "volcano.sh/volcano/pkg/controllers/job/cache"
 )
 
 func (cc *Controller) addCommand(obj interface{}) {
@@ -231,25 +233,39 @@ func (cc *Controller) deletePod(obj interface{}) {
 	cc.queue.Add(req)
 }
 
+func (cc *Controller) recordJobEvent(namespace, name string, event vkbatchv1.JobEvent, message string) {
+	job, err := cc.cache.Get(vkcache.JobKeyByName(namespace, name))
+	if err != nil {
+		glog.Warningf("Failed to find job in cache when reporting job event <%s/%s>: %v",
+			namespace, name, err)
+		return
+	}
+	cc.recorder.Event(job.Job, v1.EventTypeNormal, string(event), message)
+
+}
+
 func (cc *Controller) handleCommands() {
 	obj, shutdown := cc.commandQueue.Get()
 	if shutdown {
-		glog.Errorf("Fail to pop command from command queue.")
 		return
 	}
 	cmd := obj.(*vkbusv1.Command)
-	defer cc.queue.Done(cmd)
+	defer cc.commandQueue.Done(cmd)
 
 	if err := cc.vkClients.BusV1alpha1().Commands(cmd.Namespace).Delete(cmd.Name, nil); err != nil {
 		glog.Errorf("Failed to delete Command <%s/%s>.", cmd.Namespace, cmd.Name)
+		cc.commandQueue.AddRateLimited(cmd)
+		return
 	}
-
+	cc.recordJobEvent(cmd.Namespace, cmd.TargetObject.Name,
+		vkbatchv1.CommandIssued,
+		fmt.Sprintf(
+			"Start to execute command %s, and clean it up to make sure executed not more than once.", cmd.Action))
 	req := apis.Request{
 		Namespace: cmd.Namespace,
 		JobName:   cmd.TargetObject.Name,
-
-		Event:  vkbatchv1.CommandIssuedEvent,
-		Action: vkbatchv1.Action(cmd.Action),
+		Event:     vkbatchv1.CommandIssuedEvent,
+		Action:    vkbatchv1.Action(cmd.Action),
 	}
 
 	cc.queue.Add(req)
