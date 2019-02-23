@@ -33,7 +33,6 @@ var _ = Describe("Job E2E Test: List Job Command", func() {
 		namespace := "test"
 		context := initTestContext()
 		defer cleanupTestContext(context)
-		rep := clusterSize(context, oneCPU)
 
 		job := createJob(context, &jobSpec{
 			namespace: namespace,
@@ -43,7 +42,7 @@ var _ = Describe("Job E2E Test: List Job Command", func() {
 					img: defaultNginxImage,
 					req: oneCPU,
 					min: 1,
-					rep: rep,
+					rep: 1,
 				},
 			},
 		})
