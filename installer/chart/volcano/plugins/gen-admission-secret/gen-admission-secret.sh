@@ -42,8 +42,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 [ -z ${service} ] && service=admission-service
-[ -z ${secret} ] && secret=admission-controller-secret
-[ -z ${namespace} ] && namespace=admission
+[ -z ${secret} ] && secret=admission-secret
+[ -z ${namespace} ] && namespace=default
 
 if [ ! -x "$(command -v openssl)" ]; then
     echo "openssl not found"

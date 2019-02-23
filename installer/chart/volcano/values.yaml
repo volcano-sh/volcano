@@ -1,0 +1,3 @@
+basic:
+  image_tag_version: "1.0"
+  namespace: default
