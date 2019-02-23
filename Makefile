@@ -27,9 +27,7 @@ admission-images: rel-admission-controller
 	docker build --no-cache -t $(IMAGE):$(TAG) ./cmd/admission-controller
 
 generate-code:
-	go build -o ${BIN_DIR}/deepcopy-gen ./cmd/deepcopy-gen/
-	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/batch/v1alpha1/ -O zz_generated.deepcopy
-	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/bus/v1alpha1/ -O zz_generated.deepcopy
+	./hack/update-gencode.sh
 
 e2e-test:
 	./hack/run-e2e.sh
