@@ -18,8 +18,6 @@ package job
 
 import (
 	"fmt"
-	"k8s.io/client-go/tools/record"
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 
 	"github.com/golang/glog"
 
@@ -30,19 +28,20 @@ import (
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
 	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 	kbinfoext "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
 	kbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	kblister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
-	"k8s.io/client-go/kubernetes/scheme"
-	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 
-	jobv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	v1corev1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	vkver "volcano.sh/volcano/pkg/client/clientset/versioned"
@@ -94,7 +93,7 @@ type Controller struct {
 
 	// queue that need to sync up
 	queue        workqueue.RateLimitingInterface
-	commandQueue workqueue.Interface
+	commandQueue workqueue.RateLimitingInterface
 	cache        jobcache.Cache
 	//Job Event recorder
 	recorder record.EventRecorder
@@ -106,7 +105,7 @@ func NewJobController(config *rest.Config) *Controller {
 	kubeClients := kubernetes.NewForConfigOrDie(config)
 
 	//Initialize event client
-	utilruntime.Must(jobv1.AddToScheme(scheme.Scheme))
+	utilruntime.Must(vkbatchv1.AddToScheme(scheme.Scheme))
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
 	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClients.CoreV1().Events("")})
@@ -118,7 +117,7 @@ func NewJobController(config *rest.Config) *Controller {
 		vkClients:    vkver.NewForConfigOrDie(config),
 		kbClients:    kbver.NewForConfigOrDie(config),
 		queue:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		commandQueue: workqueue.NewNamed("vk-command-queue"),
+		commandQueue: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		cache:        jobcache.New(),
 		recorder:     recorder,
 	}
@@ -259,16 +258,6 @@ func (cc *Controller) worker() {
 		// If any error, requeue it.
 		cc.queue.AddRateLimited(req)
 		return
-	}
-	//Report Command Event
-	if req.Event == v1alpha1.CommandIssuedEvent {
-		if job, err := cc.cache.Get(jobcache.JobKeyByReq(&req)); err != nil {
-			glog.Warningf("Unable to find job in cache when reporting job event <%s/%s>: %v",
-				jobInfo.Job.Namespace, jobInfo.Job.Name, err)
-		} else {
-			cc.recorder.Eventf(job.Job, v1.EventTypeNormal,
-				string(v1alpha1.CommandCompleted), "Command %s has been successfully executed", req.Action)
-		}
 	}
 
 	// If no error, forget it.
