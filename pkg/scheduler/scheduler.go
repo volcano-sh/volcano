@@ -17,7 +17,6 @@ limitations under the License.
 package scheduler
 
 import (
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/conf"
 	"time"
 
 	"github.com/golang/glog"
@@ -26,6 +25,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	schedcache "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/conf"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 )
 
