@@ -63,7 +63,7 @@ the controlled `OwnerReference` of Pod will be set to the `Job`. The following i
 an example YAML with multiple pod template.  
 
 ```yaml
-apiVersion: batch.hpw.cloud/v1alpha1
+apiVersion: batch.volcano.sh/v1alpha1
 kind: Job
 metadata:
   name: tf-job
@@ -271,7 +271,7 @@ To simplify the configuration, a job level `LifecyclePolicy` is set as follows. 
 task, all tasks will use the policies in `spec.policies`.
 
 ```yaml
-apiVersion: batch.hpw.cloud/v1alpha1
+apiVersion: batch.volcano.sh/v1alpha1
 kind: Job
 metadata:
   name: tf-job
@@ -303,7 +303,7 @@ if 'driver' tasks failed and only restart the task if 'executor' tasks failed. A
 task events, `RestartJob` is set for driver `spec.tasks.policies` as follow.  
 
 ```yaml
-apiVersion: batch.hpw.cloud/v1alpha1
+apiVersion: batch.volcano.sh/v1alpha1
 kind: Job
 metadata:
   name: spark-job
@@ -348,7 +348,7 @@ If `spec.minAvailable` < sum(`spec.tasks.replicas`), the pod of `spec.tasks` wil
 refer to [Task Priority with Job](#task-priority-within-job) section on how to create tasks in order.
 
 ```yaml
-apiVersion: batch.hpw.cloud/v1alpha1
+apiVersion: batch.volcano.sh/v1alpha1
 kind: Job
 metadata:
   name: tf-job
@@ -380,7 +380,7 @@ priority is `master-pri` which is higher than normal pods; as `spec.minAvailable
 with 2 executors will be scheduled if not enough resources. 
 
 ```yaml
-apiVersion: batch.hpw.cloud/v1alpha1
+apiVersion: batch.volcano.sh/v1alpha1
 kind: Job
 metadata:
   name: spark-job
@@ -414,7 +414,7 @@ By default, the `spec.minAvailable` is set to the summary of `spec.tasks.replica
 the pod beyond `spec.minAvailable` will share resource between jobs.
 
 ```yaml
-apiVersion: batch.hpw.cloud/v1alpha1
+apiVersion: batch.volcano.sh/v1alpha1
 kind: Job
 metadata:
   name: spark-job
