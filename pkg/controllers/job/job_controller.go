@@ -66,7 +66,6 @@ type Controller struct {
 	pgInformer  kbinfo.PodGroupInformer
 	svcInformer coreinformers.ServiceInformer
 	cmdInformer vkcoreinfo.CommandInformer
-	eventInformer coreinformers.EventInformer
 
 	// A store of jobs
 	jobLister vkbatchlister.JobLister
@@ -176,28 +175,6 @@ func NewJobController(config *rest.Config) *Controller {
 			UpdateFunc: cc.updatePod,
 			DeleteFunc: cc.deletePod,
 		},
-	})
-
-	cc.eventInformer = informers.NewSharedInformerFactory(cc.kubeClients, 0).Core().V1().Events()
-	cc.eventInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-		FilterFunc: func(obj interface{}) bool{
-			switch t := obj.(type) {
-			case *v1.Event:
-				event, ok := t.Obj.(*v1.Event)
-				if ok {
-					fmt.Println("event name", event.Name)
-					fmt.Println("event namespace", event.Namespace)
-					fmt.Println("event target", event.InvolvedObject)
-				}
-				return true
-			default:
-				return true
-			}
-		},
-		Handler: cache.ResourceEventHandlerFuncs{
-			AddFunc: cc.addEvent,
-		},
-
 	})
 
 	cc.podLister = cc.podInformer.Lister()
