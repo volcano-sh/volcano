@@ -28,7 +28,6 @@ import (
 	kbtype "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkbusv1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	vkcache "volcano.sh/volcano/pkg/controllers/job/cache"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
 	vkcache "volcano.sh/volcano/pkg/controllers/job/cache"
 )
@@ -287,7 +286,7 @@ func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
 		return
 	}
 
-	_, err := cc.cache.Get(vkcache.KeyByName(newPG.Namespace, newPG.Name))
+	_, err := cc.cache.Get(vkcache.JobKeyByName(newPG.Namespace, newPG.Name))
 	if err != nil {
 		glog.Warningf(
 			"Failed to find job in cache by PodGroup, this may not be a PodGroup for volcano job.")
@@ -305,14 +304,12 @@ func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
 		}
 	}
 
-	//Rely on latest PodGroup condition to assemble request
 	if newCondition != nil {
-		if newCondition.Status == v1.ConditionTrue && (
-			oldCondition == nil || newCondition.Status != oldCondition.Status) {
+		if newCondition.Status == v1.ConditionTrue && (oldCondition == nil || newCondition.Status != oldCondition.Status) {
 			req := apis.Request{
 				Namespace: newPG.Namespace,
 				JobName:   newPG.Name,
-				Event: vkbatchv1.JobUnschedulableEvent,
+				Event:     vkbatchv1.JobUnschedulableEvent,
 			}
 			cc.queue.Add(req)
 		}
