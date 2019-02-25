@@ -105,7 +105,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		var victims []*api.TaskInfo
 
 		for _, preemptee := range preemptees {
-			job := ssn.JobIndex[preemptee.Job]
+			job := ssn.Jobs[preemptee.Job]
 			occupid := readyTaskNum(job)
 			preemptable := job.MinAvailable <= occupid-1
 

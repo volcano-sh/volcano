@@ -93,7 +93,7 @@ type cachedNodeInfo struct {
 }
 
 func (c *cachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
-	node, found := c.session.NodeIndex[name]
+	node, found := c.session.Nodes[name]
 	if !found {
 		return nil, fmt.Errorf("failed to find node <%s>", name)
 	}

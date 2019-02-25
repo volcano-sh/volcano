@@ -34,7 +34,7 @@ type operation struct {
 
 func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 	// Update status in session
-	job, found := s.ssn.JobIndex[reclaimee.Job]
+	job, found := s.ssn.Jobs[reclaimee.Job]
 	if found {
 		if err := job.UpdateTaskStatus(reclaimee, api.Releasing); err != nil {
 			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
@@ -46,7 +46,7 @@ func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 	}
 
 	// Update task in node.
-	if node, found := s.ssn.NodeIndex[reclaimee.NodeName]; found {
+	if node, found := s.ssn.Nodes[reclaimee.NodeName]; found {
 		node.UpdateTask(reclaimee)
 	}
 
@@ -80,7 +80,7 @@ func (s *Statement) evict(reclaimee *api.TaskInfo, reason string) error {
 
 func (s *Statement) unevict(reclaimee *api.TaskInfo, reason string) error {
 	// Update status in session
-	job, found := s.ssn.JobIndex[reclaimee.Job]
+	job, found := s.ssn.Jobs[reclaimee.Job]
 	if found {
 		if err := job.UpdateTaskStatus(reclaimee, api.Running); err != nil {
 			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
@@ -92,7 +92,7 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo, reason string) error {
 	}
 
 	// Update task in node.
-	if node, found := s.ssn.NodeIndex[reclaimee.NodeName]; found {
+	if node, found := s.ssn.Nodes[reclaimee.NodeName]; found {
 		node.AddTask(reclaimee)
 	}
 
@@ -109,7 +109,7 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo, reason string) error {
 
 func (s *Statement) Pipeline(task *api.TaskInfo, hostname string) error {
 	// Only update status in session
-	job, found := s.ssn.JobIndex[task.Job]
+	job, found := s.ssn.Jobs[task.Job]
 	if found {
 		if err := job.UpdateTaskStatus(task, api.Pipelined); err != nil {
 			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
@@ -122,7 +122,7 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string) error {
 
 	task.NodeName = hostname
 
-	if node, found := s.ssn.NodeIndex[hostname]; found {
+	if node, found := s.ssn.Nodes[hostname]; found {
 		if err := node.AddTask(task); err != nil {
 			glog.Errorf("Failed to pipeline task <%v/%v> to node <%v> in Session <%v>: %v",
 				task.Namespace, task.Name, hostname, s.ssn.UID, err)
@@ -155,7 +155,7 @@ func (s *Statement) pipeline(task *api.TaskInfo) {
 
 func (s *Statement) unpipeline(task *api.TaskInfo) error {
 	// Only update status in session
-	job, found := s.ssn.JobIndex[task.Job]
+	job, found := s.ssn.Jobs[task.Job]
 	if found {
 		if err := job.UpdateTaskStatus(task, api.Pending); err != nil {
 			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
@@ -168,7 +168,7 @@ func (s *Statement) unpipeline(task *api.TaskInfo) error {
 
 	hostname := task.NodeName
 
-	if node, found := s.ssn.NodeIndex[hostname]; found {
+	if node, found := s.ssn.Nodes[hostname]; found {
 		if err := node.RemoveTask(task); err != nil {
 			glog.Errorf("Failed to pipeline task <%v/%v> to node <%v> in Session <%v>: %v",
 				task.Namespace, task.Name, hostname, s.ssn.UID, err)
