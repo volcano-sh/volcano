@@ -48,14 +48,15 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}
 
 	var underRequest []*api.JobInfo
-	var queues []*api.QueueInfo
+	queues := map[api.QueueID]*api.QueueInfo{}
+
 	for _, job := range ssn.Jobs {
 		if queue, found := ssn.QueueIndex[job.Queue]; !found {
 			continue
-		} else {
+		} else if _, existed := queues[queue.UID]; !existed {
 			glog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
 				queue.Name, job.Namespace, job.Name)
-			queues = append(queues, queue)
+			queues[queue.UID] = queue
 		}
 
 		if len(job.TaskStatusIndex[api.Pending]) != 0 {
