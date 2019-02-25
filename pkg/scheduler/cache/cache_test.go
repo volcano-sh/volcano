@@ -137,9 +137,7 @@ func TestAddPod(t *testing.T) {
 		[]metav1.OwnerReference{owner}, make(map[string]string))
 	pi2 := api.NewTaskInfo(pod2)
 
-	j1 := api.NewJobInfo(api.JobID("j1"))
-	j1.AddTaskInfo(pi1)
-	j1.AddTaskInfo(pi2)
+	j1 := api.NewJobInfo(api.JobID("j1"), pi1, pi2)
 
 	node1 := buildNode("n1", buildResourceList("2000m", "10G"))
 	ni1 := api.NewNodeInfo(node1)
@@ -186,7 +184,6 @@ func TestAddPod(t *testing.T) {
 }
 
 func TestAddNode(t *testing.T) {
-
 	// case 1
 	node1 := buildNode("n1", buildResourceList("2000m", "10G"))
 	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"),
@@ -197,6 +194,11 @@ func TestAddNode(t *testing.T) {
 
 	ni1 := api.NewNodeInfo(node1)
 	ni1.AddTask(pi2)
+
+	j1 := api.NewJobInfo("c1-p1")
+	j1.AddTaskInfo(api.NewTaskInfo(pod1))
+	j2 := api.NewJobInfo("c1-p2")
+	j2.AddTaskInfo(api.NewTaskInfo(pod2))
 
 	tests := []struct {
 		pods     []*v1.Pod
@@ -209,6 +211,10 @@ func TestAddNode(t *testing.T) {
 			expected: &SchedulerCache{
 				Nodes: map[string]*api.NodeInfo{
 					"n1": ni1,
+				},
+				Jobs: map[api.JobID]*api.JobInfo{
+					"c1-p1": j1,
+					"c1-p2": j2,
 				},
 			},
 		},
