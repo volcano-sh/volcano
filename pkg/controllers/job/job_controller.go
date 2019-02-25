@@ -189,6 +189,9 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.svcSynced = cc.svcInformer.Informer().HasSynced
 
 	cc.pgInformer = kbinfoext.NewSharedInformerFactory(cc.kbClients, 0).Scheduling().V1alpha1().PodGroups()
+	cc.pgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc:cc.updatePodGroup,
+	})
 	cc.pgLister = cc.pgInformer.Lister()
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
