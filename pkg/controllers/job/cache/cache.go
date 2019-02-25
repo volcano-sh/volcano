@@ -41,6 +41,10 @@ func keyFn(ns, name string) string {
 	return fmt.Sprintf("%s/%s", ns, name)
 }
 
+func JobKeyByName(namespace string, name string) string {
+	return keyFn(namespace, name)
+}
+
 func JobKeyByReq(req *apis.Request) string {
 	return keyFn(req.Namespace, req.JobName)
 }
