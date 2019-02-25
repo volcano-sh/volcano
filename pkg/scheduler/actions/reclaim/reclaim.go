@@ -43,6 +43,7 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 	defer glog.V(3).Infof("Leaving Reclaim ...")
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
+	queueMap := map[api.QueueID]*api.QueueInfo{}
 
 	preemptorsMap := map[api.QueueID]*util.PriorityQueue{}
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}
@@ -57,9 +58,13 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 				job.Queue, job.Namespace, job.Name)
 			continue
 		} else {
-			glog.V(4).Infof("Added Queue <%s> for Job <%s/%s>",
-				queue.Name, job.Namespace, job.Name)
-			queues.Push(queue)
+			if _, existed := queueMap[queue.UID]; !existed {
+				glog.V(4).Infof("Added Queue <%s> for Job <%s/%s>",
+					queue.Name, job.Namespace, job.Name)
+
+				queueMap[queue.UID] = queue
+				queues.Push(queue)
+			}
 		}
 
 		if len(job.TaskStatusIndex[api.Pending]) != 0 {
