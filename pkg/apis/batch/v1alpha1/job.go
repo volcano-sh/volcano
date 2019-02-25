@@ -72,6 +72,12 @@ type VolumeSpec struct {
 	VolumeClaim *v1.PersistentVolumeClaimSpec `json:"volumeClaim,omitempty" protobuf:"bytes,1,opt,name=volumeClaim"`
 }
 
+type JobEvent string
+
+const (
+	CommandIssued JobEvent = "CommandIssued"
+)
+
 // Event represent the phase of Job, e.g. pod-failed.
 type Event string
 
