@@ -53,7 +53,7 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 
 	var underRequest []*api.JobInfo
 	for _, job := range ssn.Jobs {
-		if queue, found := ssn.QueueIndex[job.Queue]; !found {
+		if queue, found := ssn.Queues[job.Queue]; !found {
 			glog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
 				job.Queue, job.Namespace, job.Name)
 			continue
@@ -130,7 +130,7 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 					continue
 				}
 
-				if j, found := ssn.JobIndex[task.Job]; !found {
+				if j, found := ssn.Jobs[task.Job]; !found {
 					continue
 				} else if j.Queue != job.Queue {
 					// Clone task to avoid modify Task's status on node.

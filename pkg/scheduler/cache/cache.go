@@ -26,6 +26,8 @@ import (
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	infov1 "k8s.io/client-go/informers/core/v1"
@@ -43,11 +45,20 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/scheme"
+	kbschema "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/scheme"
 	kbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
 	kbinfov1 "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
+
+func init() {
+	schemeBuilder := runtime.SchemeBuilder{
+		v1.AddToScheme,
+	}
+
+	utilruntime.Must(schemeBuilder.AddToScheme(kbschema.Scheme))
+}
 
 // New returns a Cache implementation.
 func New(config *rest.Config, schedulerName string, nsAsQueue bool) Cache {
@@ -507,20 +518,17 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 	defer sc.Mutex.Unlock()
 
 	snapshot := &kbapi.ClusterInfo{
-		Nodes:  make([]*kbapi.NodeInfo, 0, len(sc.Nodes)),
-		Jobs:   make([]*kbapi.JobInfo, 0, len(sc.Jobs)),
-		Queues: make([]*kbapi.QueueInfo, 0, len(sc.Queues)),
-		Others: make([]*kbapi.TaskInfo, 0, 10),
+		Nodes:  make(map[string]*kbapi.NodeInfo),
+		Jobs:   make(map[kbapi.JobID]*kbapi.JobInfo),
+		Queues: make(map[kbapi.QueueID]*kbapi.QueueInfo),
 	}
 
 	for _, value := range sc.Nodes {
-		snapshot.Nodes = append(snapshot.Nodes, value.Clone())
+		snapshot.Nodes[value.Name] = value.Clone()
 	}
 
-	queues := map[kbapi.QueueID]struct{}{}
 	for _, value := range sc.Queues {
-		snapshot.Queues = append(snapshot.Queues, value.Clone())
-		queues[value.UID] = struct{}{}
+		snapshot.Queues[value.UID] = value.Clone()
 	}
 
 	for _, value := range sc.Jobs {
@@ -529,21 +537,16 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 			glog.V(4).Infof("The scheduling spec of Job <%v:%s/%s> is nil, ignore it.",
 				value.UID, value.Namespace, value.Name)
 
-			// Also tracing the running task assigned by other scheduler.
-			for _, task := range value.TaskStatusIndex[kbapi.Running] {
-				snapshot.Others = append(snapshot.Others, task.Clone())
-			}
-
 			continue
 		}
 
-		if _, found := queues[value.Queue]; !found {
+		if _, found := snapshot.Queues[value.Queue]; !found {
 			glog.V(3).Infof("The Queue <%v> of Job <%v> does not exist, ignore it.",
 				value.Queue, value.UID)
 			continue
 		}
 
-		snapshot.Jobs = append(snapshot.Jobs, value.Clone())
+		snapshot.Jobs[value.UID] = value.Clone()
 	}
 
 	glog.V(3).Infof("There are <%d> Jobs and <%d> Queues in total for scheduling.",
