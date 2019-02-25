@@ -301,7 +301,7 @@ func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
 	}
 	for _, c := range newPG.Status.Conditions {
 		if c.Type == kbtype.PodGroupUnschedulableType {
-			oldCondition = &c
+			newCondition = &c
 		}
 	}
 
@@ -315,7 +315,6 @@ func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
 				Event: vkbatchv1.JobUnschedulableEvent,
 			}
 			cc.queue.Add(req)
-			fmt.Println("going to add request pod unschedulable into queue")
 		}
 	}
 }
