@@ -42,7 +42,7 @@ var _ = Describe("Job E2E Test: List Job Command", func() {
 				{
 					img: defaultNginxImage,
 					req: oneCPU,
-					min: 1,
+					min: rep,
 					rep: rep,
 				},
 			},
@@ -57,7 +57,7 @@ var _ = Describe("Job E2E Test: List Job Command", func() {
 		outputs := ListJobs(namespace)
 		jobs, err := context.vkclient.BatchV1alpha1().Jobs(namespace).List(metav1.ListOptions{})
 		ctlJob.PrintJobs(jobs, &outBuffer)
-		Expect(outputs).To(Equal(outBuffer.String()), "List command result should be %s.",
+		Expect(outputs).To(Equal(outBuffer.String()), "List command result should be:\n %s",
 			outBuffer.String())
 	})
 })
