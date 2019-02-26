@@ -42,7 +42,7 @@ var _ = Describe("Job E2E Test: List Job Command", func() {
 				{
 					img: defaultNginxImage,
 					req: oneCPU,
-					min: 1,
+					min: rep,
 					rep: rep,
 				},
 			},
