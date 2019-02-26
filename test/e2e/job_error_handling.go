@@ -323,6 +323,12 @@ var _ = Describe("Job Error Handling", func() {
 		jobSpec := &jobSpec{
 			name:      "job-restart-when-unschedulable",
 			namespace: "test",
+			policies: []vkv1.LifecyclePolicy{
+				{
+					Event:  vkv1.JobUnschedulableEvent,
+					Action: vkv1.RestartJobAction,
+				},
+			},
 			tasks: []taskSpec{
 				{
 					name: "test",
