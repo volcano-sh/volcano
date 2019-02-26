@@ -1,7 +1,7 @@
 apiVersion: admissionregistration.k8s.io/v1beta1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: validating-custom-job
+  name: validate-volcano-job
 webhooks:
 - clientConfig: 
     caBundle: {{CA_BUNDLE}}
@@ -9,7 +9,7 @@ webhooks:
     # the url should agree with webhook service
     url: https://{{host}}:{{hostPort}}/jobs
   failurePolicy: Ignore
-  name: validjob.k8s.io
+  name: validatejob.volcano.sh
   rules:
   - apiGroups:
     - "batch.hpw.cloud"
@@ -24,7 +24,7 @@ webhooks:
 apiVersion: admissionregistration.k8s.io/v1beta1
 kind: MutatingWebhookConfiguration
 metadata:
-  name: mutate-custom-job
+  name: mutate-volcano-job
 webhooks:
 - clientConfig: 
     caBundle: {{CA_BUNDLE}}
@@ -32,7 +32,7 @@ webhooks:
     # the url should agree with webhook service
     url: https://{{host}}:{{hostPort}}/mutating-jobs
   failurePolicy: Ignore
-  name: mutatejob.k8s.io
+  name: mutatejob.volcano.sh
   rules:
   - apiGroups:
     - "batch.hpw.cloud"

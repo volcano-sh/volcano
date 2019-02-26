@@ -18,13 +18,14 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
 
-	"volcano.sh/volcano/cmd/admission-controller/app"
-	appConf "volcano.sh/volcano/cmd/admission-controller/app/configure"
-	admissioncontroller "volcano.sh/volcano/pkg/admission-controller"
+	"volcano.sh/volcano/cmd/admission/app"
+	appConf "volcano.sh/volcano/cmd/admission/app/configure"
+	admissioncontroller "volcano.sh/volcano/pkg/admission"
 )
 
 func serveJobs(w http.ResponseWriter, r *http.Request) {
@@ -50,6 +51,21 @@ func main() {
 	addr := ":" + strconv.Itoa(config.Port)
 
 	clientset := app.GetClient(config)
+
+	caCertPem, err := ioutil.ReadFile(config.CaCertFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+	} else {
+		// patch caBundle in webhook
+		if err = appConf.PatchMutateWebhookConfig(clientset.AdmissionregistrationV1beta1().MutatingWebhookConfigurations(),
+			config.MutateWebhookConfigName, config.MutateWebhookName, caCertPem); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+		}
+		if err = appConf.PatchValidateWebhookConfig(clientset.AdmissionregistrationV1beta1().ValidatingWebhookConfigurations(),
+			config.ValidateWebhookConfigName, config.ValidateWebhookName, caCertPem); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+		}
+	}
 	server := &http.Server{
 		Addr:      addr,
 		TLSConfig: app.ConfigTLS(config, clientset),

@@ -41,8 +41,8 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-[ -z ${service} ] && service=admission-service
-[ -z ${secret} ] && secret=admission-secret
+[ -z ${service} ] && service=volcano-admission-service
+[ -z ${secret} ] && secret=volcano-admission-secret
 [ -z ${namespace} ] && namespace=default
 
 if [ ! -x "$(command -v openssl)" ]; then
@@ -116,10 +116,13 @@ if [[ ${serverCert} == '' ]]; then
 fi
 echo ${serverCert} | openssl base64 -d -A -out ${tmpdir}/server-cert.pem
 
+# ca cert
+kubectl get configmap -n kube-system extension-apiserver-authentication -o=jsonpath='{.data.client-ca-file}' >> ${tmpdir}/ca-cert.pem
 
 # create the secret with CA cert and server cert/key
 kubectl create secret generic ${secret} \
         --from-file=tls.key=${tmpdir}/server-key.pem \
         --from-file=tls.crt=${tmpdir}/server-cert.pem \
+        --from-file=ca.crt=${tmpdir}/ca-cert.pem \
         --dry-run -o yaml |
     kubectl -n ${namespace} apply -f -

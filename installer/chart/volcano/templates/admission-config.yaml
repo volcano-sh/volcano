@@ -1,17 +1,18 @@
 apiVersion: admissionregistration.k8s.io/v1beta1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: validating-custom-job
+  name: {{ .Release.Name }}-validate-job
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade,post-delete
 webhooks:
 - clientConfig: 
-    caBundle: {{CA_BUNDLE}}
+    caBundle: ""
     service:
-      name: admission-service
-      # replace with non-default namespace name
-      namespace: default
+      name: {{ .Release.Name }}-admission-service
+      namespace: {{.Values.basic.namespace}}
       path: /jobs
   failurePolicy: Ignore
-  name: validjob.k8s.io
+  name: validatejob.volcano.sh
   namespaceSelector: {}
   rules:
   - apiGroups:
@@ -27,17 +28,18 @@ webhooks:
 apiVersion: admissionregistration.k8s.io/v1beta1
 kind: MutatingWebhookConfiguration
 metadata:
-  name: mutate-custom-job
+  name: {{ .Release.Name }}-mutate-job
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade,post-delete
 webhooks:
 - clientConfig: 
-    caBundle: {{CA_BUNDLE}}
+    caBundle: ""
     service:
-      name: admission-service
-      # replace with non-default namespace name
-      namespace: default
+      name: {{ .Release.Name }}-admission-service
+      namespace: {{.Values.basic.namespace}}
       path: /mutating-jobs
   failurePolicy: Ignore
-  name: mutatejob.k8s.io
+  name: mutatejob.volcano.sh
   namespaceSelector: {}
   rules:
   - apiGroups:
