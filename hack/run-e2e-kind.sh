@@ -51,10 +51,10 @@ function kind-up-cluster {
 }
 
 function install-volcano {
-  kubectl --kubeconfig ${KUBECONFIG} create -f ${VK_ROOT}/config/crds/scheduling_v1alpha1_podgroup.yaml
-  kubectl --kubeconfig ${KUBECONFIG} create -f ${VK_ROOT}/config/crds/scheduling_v1alpha1_queue.yaml
-  kubectl --kubeconfig ${KUBECONFIG} create -f ${VK_ROOT}/config/crds/batch_v1alpha1_job.yaml
-  kubectl --kubeconfig ${KUBECONFIG} create -f ${VK_ROOT}/config/crds/bus_v1alpha1_command.yaml
+  kubectl --kubeconfig ${KUBECONFIG} create -f ${VK_ROOT}/installer/chart/volcano-init/templates/scheduling_v1alpha1_podgroup.yaml
+  kubectl --kubeconfig ${KUBECONFIG} create -f ${VK_ROOT}/installer/chart/volcano-init/templates/scheduling_v1alpha1_queue.yaml
+  kubectl --kubeconfig ${KUBECONFIG} create -f ${VK_ROOT}/installer/chart/volcano-init/templates/batch_v1alpha1_job.yaml
+  kubectl --kubeconfig ${KUBECONFIG} create -f ${VK_ROOT}/installer/chart/volcano-init/templates/bus_v1alpha1_command.yaml
 
   # TODO: make vk-controllers and vk-scheduler run in container / in k8s
   # start controller
@@ -67,10 +67,10 @@ function install-volcano {
 }
 
 function uninstall-volcano {
-  kubectl --kubeconfig ${KUBECONFIG} delete -f ${VK_ROOT}/config/crds/scheduling_v1alpha1_podgroup.yaml
-  kubectl --kubeconfig ${KUBECONFIG} delete -f ${VK_ROOT}/config/crds/scheduling_v1alpha1_queue.yaml
-  kubectl --kubeconfig ${KUBECONFIG} delete -f ${VK_ROOT}/config/crds/batch_v1alpha1_job.yaml
-  kubectl --kubeconfig ${KUBECONFIG} delete -f ${VK_ROOT}/config/crds/bus_v1alpha1_command.yaml
+  kubectl --kubeconfig ${KUBECONFIG} delete -f ${VK_ROOT}/installer/chart/volcano-init/templates/scheduling_v1alpha1_podgroup.yaml
+  kubectl --kubeconfig ${KUBECONFIG} delete -f ${VK_ROOT}/installer/chart/volcano-init/templates/scheduling_v1alpha1_queue.yaml
+  kubectl --kubeconfig ${KUBECONFIG} delete -f ${VK_ROOT}/installer/chart/volcano-init/templates/batch_v1alpha1_job.yaml
+  kubectl --kubeconfig ${KUBECONFIG} delete -f ${VK_ROOT}/installer/chart/volcano-init/templates/bus_v1alpha1_command.yaml
 
   kill -9 $(cat vk-controllers.pid)
   kill -9 $(cat vk-scheduler.pid)

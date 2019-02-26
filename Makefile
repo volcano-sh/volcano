@@ -1,8 +1,8 @@
 BIN_DIR=_output/bin
-IMAGE = admission-controller-server
+IMAGE=volcano
 TAG = 1.0
 
-all: controllers scheduler cli admission-controller
+all: controllers scheduler cli admission
 
 init:
 	mkdir -p ${BIN_DIR}
@@ -16,15 +16,20 @@ scheduler:
 cli:
 	go build -o ${BIN_DIR}/vkctl ./cmd/cli
 
-admission-controller:
-	go build -o ${BIN_DIR}/ad-controller ./cmd/admission-controller
+admission:
+	go build -o ${BIN_DIR}/vk-admission ./cmd/admission
 
-rel-admission-controller:
-	CGO_ENABLED=0 go build -o  ${BIN_DIR}/rel/ad-controller ./cmd/admission-controller
+release:
+	CGO_ENABLED=0 go build -o ${BIN_DIR}/rel/vk-controllers ./cmd/controllers
+	CGO_ENABLED=0 go build -o ${BIN_DIR}/rel/vk-scheduler ./cmd/scheduler
+	CGO_ENABLED=0 go build -o  ${BIN_DIR}/rel/vk-admission ./cmd/admission
 
-admission-images: rel-admission-controller
-	cp ${BIN_DIR}/rel/ad-controller ./cmd/admission-controller/
-	docker build --no-cache -t $(IMAGE):$(TAG) ./cmd/admission-controller
+docker: release
+	for name in controllers scheduler admission; do\
+		cp ${BIN_DIR}/rel/vk-$$name ./installer/dockerfile/$$name/; \
+		docker build --no-cache -t $(IMAGE)-$$name:$(TAG) ./installer/dockerfile/$$name; \
+		rm installer/dockerfile/$$name/vk-$$name; \
+	done
 
 generate-code:
 	./hack/update-gencode.sh

@@ -9,10 +9,10 @@ export CERT_PATH=/etc/kubernetes/pki
 export HOST=localhost
 export HOSTPORT=32222
 
-kubectl --server=${MASTER} apply -f config/crds/scheduling_v1alpha1_podgroup.yaml
-kubectl --server=${MASTER} apply -f config/crds/scheduling_v1alpha1_queue.yaml
-kubectl --server=${MASTER} apply -f config/crds/batch_v1alpha1_job.yaml
-kubectl --server=${MASTER} apply -f config/crds/bus_v1alpha1_command.yaml
+kubectl --server=${MASTER} apply -f installer/chart/volcano-init/templates/scheduling_v1alpha1_podgroup.yaml
+kubectl --server=${MASTER} apply -f installer/chart/volcano-init/templates/scheduling_v1alpha1_queue.yaml
+kubectl --server=${MASTER} apply -f installer/chart/volcano-init/templates/batch_v1alpha1_job.yaml
+kubectl --server=${MASTER} apply -f installer/chart/volcano-init/templates/bus_v1alpha1_command.yaml
 
 # config admission-controller TODO: make it easier to deploy
 CA_BUNDLE=`kubectl get configmap -n kube-system extension-apiserver-authentication -o=jsonpath='{.data.client-ca-file}' | base64 | tr -d '\n'`
@@ -29,11 +29,11 @@ nohup ${VK_BIN}/vk-controllers --kubeconfig ${HOME}/.kube/config --master=${MAST
 nohup ${VK_BIN}/vk-scheduler --kubeconfig ${HOME}/.kube/config --scheduler-conf=example/kube-batch-conf.yaml --master=${MASTER} --logtostderr --v ${LOG_LEVEL} > scheduler.log 2>&1 &
 
 # start admission-controller
-nohup ${VK_BIN}/ad-controller --tls-cert-file=${CERT_PATH}/apiserver.crt --tls-private-key-file=${CERT_PATH}/apiserver.key --kubeconfig ${HOME}/.kube/config --port ${HOSTPORT} --logtostderr --v ${LOG_LEVEL} > admission.log 2>&1 &
+nohup ${VK_BIN}/vk-admission --tls-cert-file=${CERT_PATH}/apiserver.crt --tls-private-key-file=${CERT_PATH}/apiserver.key --kubeconfig ${HOME}/.kube/config --port ${HOSTPORT} --logtostderr --v ${LOG_LEVEL} > admission.log 2>&1 &
 
 # clean up
 function cleanup {
-    killall -9 -r vk-scheduler -r vk-controllers -r ad-controller
+    killall -9 -r vk-scheduler -r vk-controllers -r vk-admission
 
     if [[ -f scheduler.log ]] ; then
         echo "===================================================================================="
