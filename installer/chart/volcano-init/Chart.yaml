@@ -1,0 +1,4 @@
+name: volcano-init
+version: 0.0.1
+description: volcano crds and admission-controller config
+apiVersion: v1

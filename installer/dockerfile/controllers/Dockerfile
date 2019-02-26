@@ -15,5 +15,5 @@
 
 FROM alpine:latest
 
-ADD ad-controller /ad-controller
-ENTRYPOINT ["/ad-controller"]
+ADD vk-controllers /vk-controllers
+ENTRYPOINT ["/vk-controllers"]
