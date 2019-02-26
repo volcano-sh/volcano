@@ -12,7 +12,7 @@ webhooks:
   name: validatejob.volcano.sh
   rules:
   - apiGroups:
-    - "batch.hpw.cloud"
+    - "batch.volcano.sh"
     apiVersions:
     - "v1alpha1"
     operations:
@@ -35,7 +35,7 @@ webhooks:
   name: mutatejob.volcano.sh
   rules:
   - apiGroups:
-    - "batch.hpw.cloud"
+    - "batch.volcano.sh"
     apiVersions:
     - "v1alpha1"
     operations:

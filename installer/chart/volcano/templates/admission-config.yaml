@@ -16,7 +16,7 @@ webhooks:
   namespaceSelector: {}
   rules:
   - apiGroups:
-    - "batch.hpw.cloud"
+    - "batch.volcano.sh"
     apiVersions:
     - "v1alpha1"
     operations:
@@ -43,7 +43,7 @@ webhooks:
   namespaceSelector: {}
   rules:
   - apiGroups:
-    - "batch.hpw.cloud"
+    - "batch.volcano.sh"
     apiVersions:
     - "v1alpha1"
     operations:
