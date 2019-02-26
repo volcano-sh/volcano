@@ -315,71 +315,92 @@ var _ = Describe("Job Error Handling", func() {
 	})
 
 	It("Job error handling: Restart job when job is unschedulable", func() {
+		By("init test context")
 		context := initTestContext()
 		defer cleanupTestContext(context)
-		rep := clusterSize(context, oneCPU)/2 + 1
-
-		replicaset := createReplicaSet(context, "rs-1", rep, defaultNginxImage, oneCPU)
-		err := waitReplicaSetReady(context, replicaset.Name)
-		Expect(err).NotTo(HaveOccurred())
+		rep := clusterSize(context, oneCPU)
 
 		jobSpec := &jobSpec{
 			name:      "job-restart-when-unschedulable",
 			namespace: "test",
 			tasks: []taskSpec{
 				{
-					img: defaultNginxImage,
-					req: oneCPU,
-					min: rep,
-					rep: rep,
+					name: "test",
+					img:  defaultNginxImage,
+					req:  oneCPU,
+					min:  rep,
+					rep:  rep,
 				},
 			},
 		}
-
+		By("Create the Job")
 		job := createJob(context, jobSpec)
+		err := waitJobReady(context, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		replicaset := createReplicaSet(context, "rs-1", 1, defaultNginxImage, oneCPU)
+
+		podName := jobutil.MakePodName(job.Name, "test", 0)
+		By("Kill one of the pod in order to trigger unschedulable status")
+		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		err = waitReplicaSetReady(context, replicaset.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Job is restarting")
 		err = waitJobPhases(context, job, []vkv1.JobPhase{
-			vkv1.Pending, vkv1.Restarting})
+			vkv1.Restarting, vkv1.Pending})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = deleteReplicaSet(context, replicaset.Name)
 		Expect(err).NotTo(HaveOccurred())
+		By("Job is running again")
 		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("Job error handling: Abort job when job is unschedulable", func() {
+		By("init test context")
 		context := initTestContext()
 		defer cleanupTestContext(context)
-		rep := clusterSize(context, oneCPU)/2 + 1
-
-		replicaset := createReplicaSet(context, "rs-1", rep, defaultNginxImage, oneCPU)
-		err := waitReplicaSetReady(context, replicaset.Name)
-		Expect(err).NotTo(HaveOccurred())
+		rep := clusterSize(context, oneCPU)
 
 		jobSpec := &jobSpec{
 			name:      "job-abort-when-unschedulable",
 			namespace: "test",
 			policies: []vkv1.LifecyclePolicy{
 				{
-					Action: vkv1.AbortJobAction,
 					Event:  vkv1.JobUnschedulableEvent,
+					Action: vkv1.AbortJobAction,
 				},
 			},
 			tasks: []taskSpec{
 				{
-					img: defaultNginxImage,
-					req: oneCPU,
-					min: rep,
-					rep: rep,
+					name: "test",
+					img:  defaultNginxImage,
+					req:  oneCPU,
+					min:  rep,
+					rep:  rep,
 				},
 			},
 		}
-
+		By("Create the Job")
 		job := createJob(context, jobSpec)
-		err = waitJobPending(context, job)
+		err := waitJobReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Aborted})
+		replicaset := createReplicaSet(context, "rs-1", 1, defaultNginxImage, oneCPU)
+
+		podName := jobutil.MakePodName(job.Name, "test", 0)
+		By("Kill one of the pod in order to trigger unschedulable status")
+		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		err = waitReplicaSetReady(context, replicaset.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Job is aborted")
+		err = waitJobPhases(context, job, []vkv1.JobPhase{
+			vkv1.Aborting, vkv1.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = deleteReplicaSet(context, replicaset.Name)

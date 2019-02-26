@@ -292,7 +292,6 @@ func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
 			"Failed to find job in cache by PodGroup, this may not be a PodGroup for volcano job.")
 	}
 
-	//Now status unknown is caused by pod group unschedulable
 	if newPG.Status.Phase == kbtype.PodGroupUnknown && newPG.Status.Phase != oldPG.Status.Phase {
 		req := apis.Request{
 			Namespace: newPG.Namespace,
