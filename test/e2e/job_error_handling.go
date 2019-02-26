@@ -314,4 +314,76 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
+	It("Job error handling: Restart job when job is unschedulable", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+		rep := clusterSize(context, oneCPU)/2 + 1
+
+		replicaset := createReplicaSet(context, "rs-1", rep, defaultNginxImage, oneCPU)
+		err := waitReplicaSetReady(context, replicaset.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		jobSpec := &jobSpec{
+			name:      "job-restart-when-unschedulable",
+			namespace: "test",
+			tasks: []taskSpec{
+				{
+					img: defaultNginxImage,
+					req: oneCPU,
+					min: rep,
+					rep: rep,
+				},
+			},
+		}
+
+		job := createJob(context, jobSpec)
+		err = waitJobPhases(context, job, []vkv1.JobPhase{
+			vkv1.Pending, vkv1.Restarting})
+		Expect(err).NotTo(HaveOccurred())
+
+		err = deleteReplicaSet(context, replicaset.Name)
+		Expect(err).NotTo(HaveOccurred())
+		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Running})
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("Job error handling: Abort job when job is unschedulable", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+		rep := clusterSize(context, oneCPU)/2 + 1
+
+		replicaset := createReplicaSet(context, "rs-1", rep, defaultNginxImage, oneCPU)
+		err := waitReplicaSetReady(context, replicaset.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		jobSpec := &jobSpec{
+			name:      "job-abort-when-unschedulable",
+			namespace: "test",
+			policies: []vkv1.LifecyclePolicy{
+				{
+					Action: vkv1.AbortJobAction,
+					Event:  vkv1.JobUnschedulableEvent,
+				},
+			},
+			tasks: []taskSpec{
+				{
+					img: defaultNginxImage,
+					req: oneCPU,
+					min: rep,
+					rep: rep,
+				},
+			},
+		}
+
+		job := createJob(context, jobSpec)
+		err = waitJobPending(context, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Aborted})
+		Expect(err).NotTo(HaveOccurred())
+
+		err = deleteReplicaSet(context, replicaset.Name)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 })
