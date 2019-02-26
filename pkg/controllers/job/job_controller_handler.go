@@ -292,27 +292,14 @@ func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
 			"Failed to find job in cache by PodGroup, this may not be a PodGroup for volcano job.")
 	}
 
-	var oldCondition, newCondition *kbtype.PodGroupCondition
-	for _, c := range oldPG.Status.Conditions {
-		if c.Type == kbtype.PodGroupUnschedulableType {
-			oldCondition = &c
+	//Now status unknown is caused by pod group unschedulable
+	if newPG.Status.Phase == kbtype.PodGroupUnknown && newPG.Status.Phase != oldPG.Status.Phase {
+		req := apis.Request{
+			Namespace: newPG.Namespace,
+			JobName:   newPG.Name,
+			Event:     vkbatchv1.JobUnschedulableEvent,
 		}
-	}
-	for _, c := range newPG.Status.Conditions {
-		if c.Type == kbtype.PodGroupUnschedulableType {
-			newCondition = &c
-		}
-	}
-
-	if newCondition != nil {
-		if newCondition.Status == v1.ConditionTrue && (oldCondition == nil || newCondition.Status != oldCondition.Status) {
-			req := apis.Request{
-				Namespace: newPG.Namespace,
-				JobName:   newPG.Name,
-				Event:     vkbatchv1.JobUnschedulableEvent,
-			}
-			cc.queue.Add(req)
-		}
+		cc.queue.Add(req)
 	}
 }
 
