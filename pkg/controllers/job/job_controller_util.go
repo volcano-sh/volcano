@@ -188,9 +188,5 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 		}
 	}
 
-	if req.Event == vkv1.JobUnschedulableEvent {
-		return vkv1.RestartJobAction
-	} else {
-		return vkv1.SyncJobAction
-	}
+	return vkv1.SyncJobAction
 }
