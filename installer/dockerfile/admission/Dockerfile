@@ -15,5 +15,5 @@
 
 FROM alpine:latest
 
-ADD ad-controller /ad-controller
-ENTRYPOINT ["/ad-controller"]
+ADD vk-admission /vk-admission
+ENTRYPOINT ["/vk-admission"]

@@ -27,7 +27,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	admissioncontroller "volcano.sh/volcano/pkg/admission-controller"
+	admissioncontroller "volcano.sh/volcano/pkg/admission"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
@@ -174,13 +174,9 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	var running, pending, terminating, succeeded, failed int32
 
 	for _, ts := range job.Spec.Tasks {
+		ts.Template.Name = ts.Name
 		tc := ts.Template.DeepCopy()
 		name := ts.Template.Name
-		// TODO(k82cn): the template name should be set in default func.
-		if len(name) == 0 {
-			name = vkv1.DefaultTaskSpec
-			tc.Name = vkv1.DefaultTaskSpec
-		}
 
 		pods, found := jobInfo.Pods[name]
 		if !found {

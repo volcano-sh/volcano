@@ -1,10 +1,49 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-admission
+  namespace: {{.Values.basic.namespace}}
+
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ .Release.Name }}-admission
+  namespace: {{.Values.basic.namespace}}
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["mutatingwebhookconfigurations"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["validatingwebhookconfigurations"]
+    verbs: ["get", "list", "watch", "patch"]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ .Release.Name }}-admission-role
+  namespace: {{.Values.basic.namespace}}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-admission
+    namespace: {{.Values.basic.namespace}}
+roleRef:
+  kind: ClusterRole
+  name: {{ .Release.Name }}-admission
+  apiGroup: rbac.authorization.k8s.io
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
     app: admission
     admission: "true"
-  name: admission
+  name: {{ .Release.Name }}-admission
   namespace: {{.Values.basic.namespace}}
 spec:
   replicas: 1
@@ -18,15 +57,19 @@ spec:
         app: admission
         admission: "true"
     spec:
+      serviceAccount: {{ .Release.Name }}-admission
       containers:
       - args:
         - --tls-cert-file=/admission.local.config/certificates/tls.crt
         - --tls-private-key-file=/admission.local.config/certificates/tls.key
+        - --ca-cert-file=/admission.local.config/certificates/ca.crt
+        - --mutate-webhook-config-name={{ .Release.Name }}-mutate-job
+        - --validate-webhook-config-name={{ .Release.Name }}-validate-job
         - --alsologtostderr
         - --port=443
         - -v=4
         - 2>&1
-        image: vk-admission:{{.Values.basic.image_tag_version}}
+        image: {{.Values.basic.admission_image_name}}:{{.Values.basic.image_tag_version}}
         imagePullPolicy: IfNotPresent
         name: admission
         volumeMounts:
@@ -37,7 +80,7 @@ spec:
       - name: admission-certs
         secret:
           defaultMode: 420
-          secretName: admission-secret
+          secretName: {{.Values.basic.admission_secret_name}}
 
 ---
 apiVersion: v1
@@ -45,7 +88,7 @@ kind: Service
 metadata:
   labels:
     test: admission
-  name: admission-service
+  name: {{ .Release.Name }}-admission-service
   namespace: {{.Values.basic.namespace}}
 spec:
   ports:

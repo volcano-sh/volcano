@@ -24,7 +24,7 @@ import (
 
 	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 
-	admissioncontroller "volcano.sh/volcano/pkg/admission-controller"
+	admissioncontroller "volcano.sh/volcano/pkg/admission"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/apis"

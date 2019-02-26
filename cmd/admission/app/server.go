@@ -29,8 +29,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	appConf "volcano.sh/volcano/cmd/admission-controller/app/configure"
-	admissioncontroller "volcano.sh/volcano/pkg/admission-controller"
+	appConf "volcano.sh/volcano/cmd/admission/app/configure"
+	admissioncontroller "volcano.sh/volcano/pkg/admission"
 )
 
 const (
