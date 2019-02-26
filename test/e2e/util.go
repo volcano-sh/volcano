@@ -56,8 +56,10 @@ var twoMinute = 2 * time.Minute
 var oneCPU = v1.ResourceList{"cpu": resource.MustParse("1000m")}
 
 const (
-	workerPriority = "worker-pri"
-	masterPriority = "master-pri"
+	workerPriority      = "worker-pri"
+	masterPriority      = "master-pri"
+	defaultNginxImage   = "nginx:1.14"
+	defaultBusyBoxImage = "busybox:1.24"
 )
 
 func homeDir() string {
