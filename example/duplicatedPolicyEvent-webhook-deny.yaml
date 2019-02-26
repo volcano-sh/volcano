@@ -3,8 +3,9 @@ kind: Job
 metadata:
   name: test-job-webhook-disallow
 spec:
+  schedulerName: kube-batch
   minAvailable: 1
-  taskSpecs:
+  tasks:
   - replicas: 2
     name: task-1
     template:
@@ -19,7 +20,6 @@ spec:
             requests:
               cpu: "1"
         restartPolicy: OnFailure
-        schedulerName: kube-batch
   policies:
     - event: PodFailed
       action: RestartJob
