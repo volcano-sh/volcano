@@ -839,7 +839,7 @@
   revision = "ced9eb3070a5f1c548ef46e8dfe2a97c208d9f03"
 
 [[projects]]
-  digest = "1:80cf299f6e921f8581ddf2e1cc3a16f60476312b7f9845ba1ce9e9ecf2824909"
+  digest = "1:9606efb9b925b1dc2ca37607033c62f13032d91031fd168bb34847a5aecb9c39"
   name = "k8s.io/kubernetes"
   packages = [
     "pkg/api/legacyscheme",
@@ -951,6 +951,7 @@
     "pkg/master/ports",
     "pkg/scheduler/algorithm",
     "pkg/scheduler/algorithm/predicates",
+    "pkg/scheduler/algorithm/priorities",
     "pkg/scheduler/algorithm/priorities/util",
     "pkg/scheduler/api",
     "pkg/scheduler/cache",
@@ -965,6 +966,7 @@
     "pkg/util/io",
     "pkg/util/mount",
     "pkg/util/net/sets",
+    "pkg/util/node",
     "pkg/util/nsenter",
     "pkg/util/parsers",
     "pkg/util/resizefs",
@@ -1047,15 +1049,18 @@
     "k8s.io/client-go/tools/leaderelection/resourcelock",
     "k8s.io/client-go/tools/record",
     "k8s.io/client-go/util/flowcontrol",
+    "k8s.io/client-go/util/workqueue",
     "k8s.io/gengo/args",
     "k8s.io/gengo/examples/deepcopy-gen/generators",
     "k8s.io/kubernetes/pkg/api/v1/pod",
     "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset",
     "k8s.io/kubernetes/pkg/scheduler/algorithm",
     "k8s.io/kubernetes/pkg/scheduler/algorithm/predicates",
+    "k8s.io/kubernetes/pkg/scheduler/algorithm/priorities",
     "k8s.io/kubernetes/pkg/scheduler/api",
     "k8s.io/kubernetes/pkg/scheduler/cache",
     "k8s.io/kubernetes/pkg/scheduler/volumebinder",
+    "k8s.io/kubernetes/pkg/util/parsers",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1
