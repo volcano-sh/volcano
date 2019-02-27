@@ -69,14 +69,21 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 	taskNames := map[string]string{}
 	var totalReplicas int32
 
+	if len(job.Spec.Tasks) == 0 {
+		reviewResponse.Allowed = false
+		return fmt.Sprintf("No task specified in job spec")
+	}
+
 	for _, task := range job.Spec.Tasks {
+		if task.Replicas == 0 {
+			msg = msg + fmt.Sprintf("'replicas' is set '0' in task: %s;", task.Name)
+		}
 
 		// count replicas
 		totalReplicas = totalReplicas + task.Replicas
 
 		// duplicate task name
 		if _, found := taskNames[task.Name]; found {
-			reviewResponse.Allowed = false
 			msg = msg + fmt.Sprintf(" duplicated task name %s;", task.Name)
 			break
 		} else {
@@ -85,20 +92,21 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 
 		//duplicate task event policies
 		if duplicateInfo, ok := CheckPolicyDuplicate(task.Policies); ok {
-			reviewResponse.Allowed = false
 			msg = msg + fmt.Sprintf(" duplicated task event policies: %s;", duplicateInfo)
 		}
 	}
 
 	if totalReplicas < job.Spec.MinAvailable {
-		reviewResponse.Allowed = false
-		msg = msg + " minAvailable should not be greater than total replicas in tasks;"
+		msg = msg + " 'minAvailable' should not be greater than total replicas in tasks;"
 	}
 
 	//duplicate job event policies
 	if duplicateInfo, ok := CheckPolicyDuplicate(job.Spec.Policies); ok {
-		reviewResponse.Allowed = false
 		msg = msg + fmt.Sprintf(" duplicated job event policies: %s;", duplicateInfo)
+	}
+
+	if msg != "" {
+		reviewResponse.Allowed = false
 	}
 
 	return msg
