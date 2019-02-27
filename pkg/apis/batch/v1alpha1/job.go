@@ -88,9 +88,10 @@ const (
 	PodFailedEvent Event = "PodFailed"
 	// PodEvictedEvent is triggered if Pod was deleted
 	PodEvictedEvent Event = "PodEvicted"
-	// JobUnschedulableEvent is triggered if part of pod can be scheduled
-	// when gang-scheduling enabled
-	JobUnschedulableEvent Event = "Unschedulable"
+	// These below are several events can lead to job 'Unknown'
+	// 1. Task Unschedulable, this is triggered when part of
+	//    pods can't be scheduled while some are already running in gang-scheduling case.
+	JobUnknownEvent Event = "Unknown"
 
 	// OutOfSyncEvent is triggered if Pod/Job were updated
 	OutOfSyncEvent Event = "OutOfSync"

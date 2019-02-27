@@ -326,7 +326,7 @@ var _ = Describe("Job Error Handling", func() {
 			namespace: "test",
 			policies: []vkv1.LifecyclePolicy{
 				{
-					Event:  vkv1.JobUnschedulableEvent,
+					Event:  vkv1.JobUnknownEvent,
 					Action: vkv1.RestartJobAction,
 				},
 			},
@@ -385,7 +385,7 @@ var _ = Describe("Job Error Handling", func() {
 			namespace: "test",
 			policies: []vkv1.LifecyclePolicy{
 				{
-					Event:  vkv1.JobUnschedulableEvent,
+					Event:  vkv1.JobUnknownEvent,
 					Action: vkv1.AbortJobAction,
 				},
 			},
