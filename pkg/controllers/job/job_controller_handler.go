@@ -25,6 +25,7 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
 
+	kbtype "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkbusv1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
@@ -270,6 +271,35 @@ func (cc *Controller) handleCommands() {
 
 	cc.queue.Add(req)
 
+}
+
+func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
+	oldPG, ok := oldObj.(*kbtype.PodGroup)
+	if !ok {
+		glog.Errorf("Failed to convert %v to PodGroup", newObj)
+		return
+	}
+
+	newPG, ok := newObj.(*kbtype.PodGroup)
+	if !ok {
+		glog.Errorf("Failed to convert %v to PodGroup", newObj)
+		return
+	}
+
+	_, err := cc.cache.Get(vkcache.JobKeyByName(newPG.Namespace, newPG.Name))
+	if err != nil {
+		glog.Warningf(
+			"Failed to find job in cache by PodGroup, this may not be a PodGroup for volcano job.")
+	}
+
+	if newPG.Status.Phase == kbtype.PodGroupUnknown && newPG.Status.Phase != oldPG.Status.Phase {
+		req := apis.Request{
+			Namespace: newPG.Namespace,
+			JobName:   newPG.Name,
+			Event:     vkbatchv1.JobUnschedulableEvent,
+		}
+		cc.queue.Add(req)
+	}
 }
 
 // TODO(k82cn): add handler for PodGroup unschedulable event.
