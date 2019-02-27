@@ -263,7 +263,8 @@ var _ = Describe("Job Error Handling", func() {
 
 		By("delete one pod of job")
 		podName := jobutil.MakePodName(job.Name, "delete", 0)
-		context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Aborting -> Aborted
 		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Aborting, vkv1.Aborted})
@@ -344,13 +345,20 @@ var _ = Describe("Job Error Handling", func() {
 		err := waitJobReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		replicaset := createReplicaSet(context, "rs-1", 1, defaultNginxImage, oneCPU)
+		By("Taint all nodes")
+		taints := []v1.Taint{
+			{
+				Key:    "unschedulable-taint-key",
+				Value:  "unschedulable-taint-val",
+				Effect: v1.TaintEffectNoSchedule,
+			},
+		}
+		err = taintAllNodes(context, taints)
+		Expect(err).NotTo(HaveOccurred())
 
 		podName := jobutil.MakePodName(job.Name, "test", 0)
 		By("Kill one of the pod in order to trigger unschedulable status")
 		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
-		Expect(err).NotTo(HaveOccurred())
-		err = waitReplicaSetReady(context, replicaset.Name)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Job is restarting")
@@ -358,7 +366,8 @@ var _ = Describe("Job Error Handling", func() {
 			vkv1.Restarting, vkv1.Pending})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = deleteReplicaSet(context, replicaset.Name)
+		By("Untaint all nodes")
+		err = removeTaintsFromAllNodes(context, taints)
 		Expect(err).NotTo(HaveOccurred())
 		By("Job is running again")
 		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Running})
@@ -395,13 +404,20 @@ var _ = Describe("Job Error Handling", func() {
 		err := waitJobReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		replicaset := createReplicaSet(context, "rs-1", 1, defaultNginxImage, oneCPU)
+		By("Taint all nodes")
+		taints := []v1.Taint{
+			{
+				Key:    "unschedulable-taint-key",
+				Value:  "unschedulable-taint-val",
+				Effect: v1.TaintEffectNoSchedule,
+			},
+		}
+		err = taintAllNodes(context, taints)
+		Expect(err).NotTo(HaveOccurred())
 
 		podName := jobutil.MakePodName(job.Name, "test", 0)
 		By("Kill one of the pod in order to trigger unschedulable status")
 		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
-		Expect(err).NotTo(HaveOccurred())
-		err = waitReplicaSetReady(context, replicaset.Name)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Job is aborted")
@@ -409,7 +425,7 @@ var _ = Describe("Job Error Handling", func() {
 			vkv1.Aborting, vkv1.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = deleteReplicaSet(context, replicaset.Name)
+		err = removeTaintsFromAllNodes(context, taints)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
