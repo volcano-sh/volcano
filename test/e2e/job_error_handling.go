@@ -263,7 +263,8 @@ var _ = Describe("Job Error Handling", func() {
 
 		By("delete one pod of job")
 		podName := jobutil.MakePodName(job.Name, "delete", 0)
-		context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Aborting -> Aborted
 		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Aborting, vkv1.Aborted})
@@ -311,6 +312,120 @@ var _ = Describe("Job Error Handling", func() {
 
 		// job phase: Restarting -> Running
 		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Restarting, vkv1.Running})
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("Job error handling: Restart job when job is unschedulable", func() {
+		By("init test context")
+		context := initTestContext()
+		defer cleanupTestContext(context)
+		rep := clusterSize(context, oneCPU)
+
+		jobSpec := &jobSpec{
+			name:      "job-restart-when-unschedulable",
+			namespace: "test",
+			policies: []vkv1.LifecyclePolicy{
+				{
+					Event:  vkv1.JobUnschedulableEvent,
+					Action: vkv1.RestartJobAction,
+				},
+			},
+			tasks: []taskSpec{
+				{
+					name: "test",
+					img:  defaultNginxImage,
+					req:  oneCPU,
+					min:  rep,
+					rep:  rep,
+				},
+			},
+		}
+		By("Create the Job")
+		job := createJob(context, jobSpec)
+		err := waitJobReady(context, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Taint all nodes")
+		taints := []v1.Taint{
+			{
+				Key:    "unschedulable-taint-key",
+				Value:  "unschedulable-taint-val",
+				Effect: v1.TaintEffectNoSchedule,
+			},
+		}
+		err = taintAllNodes(context, taints)
+		Expect(err).NotTo(HaveOccurred())
+
+		podName := jobutil.MakePodName(job.Name, "test", 0)
+		By("Kill one of the pod in order to trigger unschedulable status")
+		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Job is restarting")
+		err = waitJobPhases(context, job, []vkv1.JobPhase{
+			vkv1.Restarting, vkv1.Pending})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Untaint all nodes")
+		err = removeTaintsFromAllNodes(context, taints)
+		Expect(err).NotTo(HaveOccurred())
+		By("Job is running again")
+		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Running})
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("Job error handling: Abort job when job is unschedulable", func() {
+		By("init test context")
+		context := initTestContext()
+		defer cleanupTestContext(context)
+		rep := clusterSize(context, oneCPU)
+
+		jobSpec := &jobSpec{
+			name:      "job-abort-when-unschedulable",
+			namespace: "test",
+			policies: []vkv1.LifecyclePolicy{
+				{
+					Event:  vkv1.JobUnschedulableEvent,
+					Action: vkv1.AbortJobAction,
+				},
+			},
+			tasks: []taskSpec{
+				{
+					name: "test",
+					img:  defaultNginxImage,
+					req:  oneCPU,
+					min:  rep,
+					rep:  rep,
+				},
+			},
+		}
+		By("Create the Job")
+		job := createJob(context, jobSpec)
+		err := waitJobReady(context, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Taint all nodes")
+		taints := []v1.Taint{
+			{
+				Key:    "unschedulable-taint-key",
+				Value:  "unschedulable-taint-val",
+				Effect: v1.TaintEffectNoSchedule,
+			},
+		}
+		err = taintAllNodes(context, taints)
+		Expect(err).NotTo(HaveOccurred())
+
+		podName := jobutil.MakePodName(job.Name, "test", 0)
+		By("Kill one of the pod in order to trigger unschedulable status")
+		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("Job is aborted")
+		err = waitJobPhases(context, job, []vkv1.JobPhase{
+			vkv1.Aborting, vkv1.Aborted})
+		Expect(err).NotTo(HaveOccurred())
+
+		err = removeTaintsFromAllNodes(context, taints)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
