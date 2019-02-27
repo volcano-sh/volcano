@@ -60,6 +60,7 @@ const (
 	masterPriority      = "master-pri"
 	defaultNginxImage   = "nginx:1.14"
 	defaultBusyBoxImage = "busybox:1.24"
+	labelNodeMaster     = "node-role.kubernetes.io/master"
 )
 
 func homeDir() string {
@@ -120,6 +121,11 @@ func initTestContext() *context {
 	cxt.kbclient = kbver.NewForConfigOrDie(config)
 	cxt.kubeclient = kubernetes.NewForConfigOrDie(config)
 	cxt.vkclient = vkver.NewForConfigOrDie(config)
+
+	//Ensure at least one worker is ready
+	err = waitClusterReady(cxt)
+	Expect(err).NotTo(HaveOccurred(),
+		"k8s cluster is required to have one ready worker node at least.")
 
 	cxt.enableNamespaceAsQueue = enableNamespaceAsQueue
 
@@ -678,7 +684,8 @@ func clusterSize(ctx *context, req v1.ResourceList) int32 {
 			res++
 		}
 	}
-
+	Expect(res).Should(BeNumerically(">=", 1),
+		"Current cluster does not have enough resource for request")
 	return res
 }
 
@@ -858,4 +865,39 @@ func preparePatchBytesforNode(nodeName string, oldNode *v1.Node, newNode *v1.Nod
 	}
 
 	return patchBytes, nil
+}
+
+func IsNodeReady(node *v1.Node) bool {
+	for _, c := range node.Status.Conditions {
+		if c.Type == v1.NodeReady {
+			return c.Status == v1.ConditionTrue
+		}
+	}
+	return false
+}
+
+func waitClusterReady(ctx *context) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+		if readyWorkNodeAmount(ctx) >= 1 {
+			return true, nil
+		} else {
+			return false, nil
+		}
+	})
+}
+
+func readyWorkNodeAmount(ctx *context) int {
+	var amount int
+	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+	for _, n := range nodes.Items {
+		_, found := n.Labels[labelNodeMaster]
+		if found {
+			continue
+		}
+		if IsNodeReady(&n) {
+			amount++
+		}
+	}
+	return amount
 }
