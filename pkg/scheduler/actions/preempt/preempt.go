@@ -51,7 +51,7 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 	queues := map[api.QueueID]*api.QueueInfo{}
 
 	for _, job := range ssn.Jobs {
-		if queue, found := ssn.QueueIndex[job.Queue]; !found {
+		if queue, found := ssn.Queues[job.Queue]; !found {
 			continue
 		} else if _, existed := queues[queue.UID]; !existed {
 			glog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
@@ -103,7 +103,7 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 						return false
 					}
 
-					job, found := ssn.JobIndex[task.Job]
+					job, found := ssn.Jobs[task.Job]
 					if !found {
 						return false
 					}
@@ -171,7 +171,7 @@ func preempt(
 	ssn *framework.Session,
 	stmt *framework.Statement,
 	preemptor *api.TaskInfo,
-	nodes []*api.NodeInfo,
+	nodes map[string]*api.NodeInfo,
 	filter func(*api.TaskInfo) bool,
 ) (bool, error) {
 	resreq := preemptor.Resreq.Clone()
