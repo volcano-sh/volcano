@@ -303,6 +303,8 @@ type taskSpec struct {
 	labels        map[string]string
 	policies      []vkv1.LifecyclePolicy
 	restartPolicy v1.RestartPolicy
+	//NOTE: TerminationGracePeriodSeconds is set to 0 in default in case of timeout when restarting tasks in test.
+	defaultGracefulPeriod int64
 }
 
 type jobSpec struct {
@@ -362,10 +364,11 @@ func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
 					Labels: task.labels,
 				},
 				Spec: v1.PodSpec{
-					SchedulerName: "kube-batch",
-					RestartPolicy: restartPolicy,
-					Containers:    createContainers(task.img, task.command, task.req, task.hostport),
-					Affinity:      task.affinity,
+					SchedulerName:                 "kube-batch",
+					RestartPolicy:                 restartPolicy,
+					Containers:                    createContainers(task.img, task.command, task.req, task.hostport),
+					Affinity:                      task.affinity,
+					TerminationGracePeriodSeconds: &task.defaultGracefulPeriod,
 				},
 			},
 		}
