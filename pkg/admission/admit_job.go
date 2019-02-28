@@ -76,7 +76,7 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 
 	for _, task := range job.Spec.Tasks {
 		if task.Replicas == 0 {
-			msg = msg + fmt.Sprintf("'replicas' is set '0' in task: %s;", task.Name)
+			msg = msg + fmt.Sprintf(" 'replicas' is set '0' in task: %s;", task.Name)
 		}
 
 		// count replicas
