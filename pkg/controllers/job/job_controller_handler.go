@@ -296,7 +296,7 @@ func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
 		req := apis.Request{
 			Namespace: newPG.Namespace,
 			JobName:   newPG.Name,
-			Event:     vkbatchv1.JobUnschedulableEvent,
+			Event:     vkbatchv1.JobUnknownEvent,
 		}
 		cc.queue.Add(req)
 	}
