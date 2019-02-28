@@ -44,7 +44,7 @@ func getInterPodAffinityScore(name string, interPodAffinityScore schedulerapi.Ho
 	return 0
 }
 
-func generateNodeMapAndSlice(nodes []*api.NodeInfo) (map[string]*cache.NodeInfo, []*v1.Node) {
+func generateNodeMapAndSlice(nodes map[string]*api.NodeInfo) (map[string]*cache.NodeInfo, []*v1.Node) {
 	var nodeMap map[string]*cache.NodeInfo
 	var nodeSlice []*v1.Node
 	nodeMap = make(map[string]*cache.NodeInfo)
@@ -62,7 +62,7 @@ type cachedNodeInfo struct {
 }
 
 func (c *cachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
-	node, found := c.session.NodeIndex[name]
+	node, found := c.session.Nodes[name]
 	if !found {
 		for _, cacheNode := range c.session.Nodes {
 			pods := cacheNode.Pods()

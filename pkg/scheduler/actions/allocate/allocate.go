@@ -50,7 +50,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 			jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 		}
 
-		if queue, found := ssn.QueueIndex[job.Queue]; found {
+		if queue, found := ssn.Queues[job.Queue]; found {
 			queues.Push(queue)
 		}
 
