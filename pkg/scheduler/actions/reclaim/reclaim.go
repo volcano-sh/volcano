@@ -174,15 +174,17 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 			glog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>.",
 				reclaimed, task.Namespace, task.Name, task.Resreq)
 
-			if err := ssn.Pipeline(task, n.Name); err != nil {
-				glog.Errorf("Failed to pipline Task <%s/%s> on Node <%s>",
-					task.Namespace, task.Name, n.Name)
+			if task.Resreq.LessEqual(reclaimed) {
+				if err := ssn.Pipeline(task, n.Name); err != nil {
+					glog.Errorf("Failed to pipline Task <%s/%s> on Node <%s>",
+						task.Namespace, task.Name, n.Name)
+				}
+
+				// Ignore error of pipeline, will be corrected in next scheduling loop.
+				assigned = true
+
+				break
 			}
-
-			// Ignore error of pipeline, will be corrected in next scheduling loop.
-			assigned = true
-
-			break
 		}
 
 		if assigned {

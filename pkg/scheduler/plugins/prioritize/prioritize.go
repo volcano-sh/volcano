@@ -183,14 +183,14 @@ func (pp *prioritizePlugin) OnSessionOpen(ssn *framework.Session) {
 
 		host, err := priorities.LeastRequestedPriorityMap(task.Pod, nil, nodeInfo)
 		if err != nil {
-			glog.V(3).Infof("Least Requested Priority Failed because of Error: %v", err)
+			glog.Warningf("Least Requested Priority Failed because of Error: %v", err)
 			return 0, err
 		}
 		score = score + host.Score
 
 		host, err = priorities.CalculateNodeAffinityPriorityMap(task.Pod, nil, nodeInfo)
 		if err != nil {
-			glog.V(3).Infof("Calculate Node Affinity Priority Failed because of Error: %v", err)
+			glog.Warningf("Calculate Node Affinity Priority Failed because of Error: %v", err)
 			return 0, err
 		}
 		score = score + host.Score
@@ -198,13 +198,13 @@ func (pp *prioritizePlugin) OnSessionOpen(ssn *framework.Session) {
 		mapFn := priorities.NewInterPodAffinityPriority(cn, nl, pl, v1.DefaultHardPodAffinitySymmetricWeight)
 		interPodAffinityScore, err = mapFn(task.Pod, nodeMap, nodeSlice)
 		if err != nil {
-			glog.V(3).Infof("Calculate Inter Pod Affinity Priority Failed because of Error: %v", err)
+			glog.Warningf("Calculate Inter Pod Affinity Priority Failed because of Error: %v", err)
 			return 0, err
 		}
 		hostScore := getInterPodAffinityScore(node.Name, interPodAffinityScore)
 		score = score + hostScore
 
-		glog.V(3).Infof("Total Score for that node is: %f", score)
+		glog.V(4).Infof("Total Score for that node is: %d", score)
 		return score, nil
 	}
 	ssn.AddPriorityFn(pp.Name(), priorityFn)
