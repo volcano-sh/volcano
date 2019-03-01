@@ -62,7 +62,7 @@ var _ = Describe("Prioritize E2E Test", func() {
 
 		_, pg := createJobEx(context, job)
 		err := waitPodGroupReady(context, pg)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		pods := getPodOfPodGroup(context, pg)
 		//All pods should be scheduled in particular node
@@ -100,7 +100,7 @@ var _ = Describe("Prioritize E2E Test", func() {
 
 		_, pg1 := createJobEx(context, job1)
 		err := waitPodGroupReady(context, pg1)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		pods := getPodOfPodGroup(context, pg1)
 		nodeName := pods[0].Spec.NodeName
@@ -126,7 +126,7 @@ var _ = Describe("Prioritize E2E Test", func() {
 
 		_, pg2 := createJobEx(context, job2)
 		err = waitPodGroupReady(context, pg2)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		podsWithAffinity := getPodOfPodGroup(context, pg2)
 		// All Pods Should be Scheduled in same node
@@ -174,7 +174,7 @@ var _ = Describe("Prioritize E2E Test", func() {
 		//Schedule Job in first Node
 		_, pg1 := createJobEx(context, job1)
 		err := waitPodGroupReady(context, pg1)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		affinityNodeTwo := &v1.Affinity{
 			NodeAffinity: &v1.NodeAffinity{
@@ -210,7 +210,7 @@ var _ = Describe("Prioritize E2E Test", func() {
 		//Schedule Job in Second Node
 		_, pg2 := createJobEx(context, job2)
 		err = waitPodGroupReady(context, pg2)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		testJob := &jobSpec{
 			name: "pa-test-job",
@@ -227,7 +227,7 @@ var _ = Describe("Prioritize E2E Test", func() {
 		//This job should be scheduled in third node
 		_, pg3 := createJobEx(context, testJob)
 		err = waitPodGroupReady(context, pg3)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		pods := getPodOfPodGroup(context, pg3)
 		for _, pod := range pods {
