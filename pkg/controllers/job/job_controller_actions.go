@@ -168,12 +168,11 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		return err
 	}
 
-	var podToCreate []*v1.Pod
-	var podToDelete []*v1.Pod
-
 	var running, pending, terminating, succeeded, failed int32
 
 	for _, ts := range job.Spec.Tasks {
+		var podToCreate []*v1.Pod
+		var podToDelete []*v1.Pod
 		ts.Template.Name = ts.Name
 		tc := ts.Template.DeepCopy()
 		name := ts.Template.Name
