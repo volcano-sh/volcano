@@ -20,7 +20,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 )
@@ -67,7 +67,7 @@ var _ = Describe("Predicates E2E Test", func() {
 
 		_, pg := createJobEx(context, job)
 		err := waitPodGroupReady(context, pg)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		pods := getPodOfPodGroup(context, pg)
 		for _, pod := range pods {
@@ -97,10 +97,10 @@ var _ = Describe("Predicates E2E Test", func() {
 		_, pg := createJobEx(context, job)
 
 		err := waitTasksReady(context, pg, nn)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		err = waitTasksPending(context, pg, nn)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 	})
 
 	It("Pod Affinity", func() {
@@ -142,7 +142,7 @@ var _ = Describe("Predicates E2E Test", func() {
 
 		_, pg := createJobEx(context, job)
 		err := waitPodGroupReady(context, pg)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		pods := getPodOfPodGroup(context, pg)
 		// All pods should be scheduled to the same node.
@@ -165,7 +165,7 @@ var _ = Describe("Predicates E2E Test", func() {
 		}
 
 		err := taintAllNodes(context, taints)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		job := &jobSpec{
 			name: "tt-job",
@@ -181,13 +181,13 @@ var _ = Describe("Predicates E2E Test", func() {
 
 		_, pg := createJobEx(context, job)
 		err = waitPodGroupPending(context, pg)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		err = removeTaintsFromAllNodes(context, taints)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		err = waitPodGroupReady(context, pg)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 	})
 
 })

@@ -11,6 +11,7 @@ pkg/scheduler/api
 pkg/scheduler/api/helpers
 pkg/scheduler/cache
 pkg/scheduler/framework
+pkg/scheduler/plugins/conformance
 pkg/scheduler/plugins/drf
 pkg/scheduler/plugins/gang
 pkg/scheduler/plugins/predicates

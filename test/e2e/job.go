@@ -42,7 +42,7 @@ var _ = Describe("Job E2E Test", func() {
 		})
 
 		err := waitPodGroupReady(context, pg)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 	})
 
 	It("Schedule Multiple Jobs", func() {
@@ -70,13 +70,13 @@ var _ = Describe("Job E2E Test", func() {
 		_, pg3 := createJobEx(context, job)
 
 		err := waitPodGroupReady(context, pg1)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		err = waitPodGroupReady(context, pg2)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		err = waitPodGroupReady(context, pg3)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 	})
 
 	It("Gang scheduling", func() {
@@ -86,7 +86,7 @@ var _ = Describe("Job E2E Test", func() {
 
 		replicaset := createReplicaSet(context, "rs-1", rep, "nginx", oneCPU)
 		err := waitReplicaSetReady(context, replicaset.Name)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		job := &jobSpec{
 			name:      "gang-qj",
@@ -103,16 +103,16 @@ var _ = Describe("Job E2E Test", func() {
 
 		_, pg := createJobEx(context, job)
 		err = waitPodGroupPending(context, pg)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		err = waitPodGroupUnschedulable(context, pg)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		err = deleteReplicaSet(context, replicaset.Name)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		err = waitPodGroupReady(context, pg)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 	})
 
 	It("Gang scheduling: Full Occupied", func() {
@@ -135,15 +135,15 @@ var _ = Describe("Job E2E Test", func() {
 		job.name = "gang-fq-qj1"
 		_, pg1 := createJobEx(context, job)
 		err := waitPodGroupReady(context, pg1)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		job.name = "gang-fq-qj2"
 		_, pg2 := createJobEx(context, job)
 		err = waitPodGroupPending(context, pg2)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		err = waitPodGroupReady(context, pg1)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 	})
 
 	It("Preemption", func() {
@@ -167,15 +167,15 @@ var _ = Describe("Job E2E Test", func() {
 		job.name = "preemptee-qj"
 		_, pg1 := createJobEx(context, job)
 		err := waitTasksReady(context, pg1, int(rep))
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		job.name = "preemptor-qj"
 		_, pg2 := createJobEx(context, job)
 		err = waitTasksReady(context, pg1, int(rep)/2)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		err = waitTasksReady(context, pg2, int(rep)/2)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 	})
 
 	It("Multiple Preemption", func() {
@@ -199,24 +199,24 @@ var _ = Describe("Job E2E Test", func() {
 		job.name = "preemptee-qj"
 		_, pg1 := createJobEx(context, job)
 		err := waitTasksReady(context, pg1, int(rep))
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		job.name = "preemptor-qj1"
 		_, pg2 := createJobEx(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		job.name = "preemptor-qj2"
 		_, pg3 := createJobEx(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		err = waitTasksReady(context, pg1, int(rep)/3)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		err = waitTasksReady(context, pg2, int(rep)/3)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		err = waitTasksReady(context, pg3, int(rep)/3)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 	})
 
 	It("Schedule BestEffort Job", func() {
@@ -246,7 +246,7 @@ var _ = Describe("Job E2E Test", func() {
 		_, pg := createJobEx(context, job)
 
 		err := waitPodGroupReady(context, pg)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 	})
 
 	It("Statement", func() {
@@ -271,18 +271,18 @@ var _ = Describe("Job E2E Test", func() {
 		job.name = "st-qj-1"
 		_, pg1 := createJobEx(context, job)
 		err := waitPodGroupReady(context, pg1)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		now := time.Now()
 
 		job.name = "st-qj-2"
 		_, pg2 := createJobEx(context, job)
 		err = waitPodGroupUnschedulable(context, pg2)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		// No preemption event
 		evicted, err := podGroupEvicted(context, pg1, now)()
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 		Expect(evicted).NotTo(BeTrue())
 	})
 
@@ -295,7 +295,7 @@ var _ = Describe("Job E2E Test", func() {
 
 		replicaset := createReplicaSet(context, "rs-1", rep/2, "nginx", slot)
 		err := waitReplicaSetReady(context, replicaset.Name)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		_, pg := createJobEx(context, &jobSpec{
 			name: "multi-pod-job",
@@ -323,7 +323,7 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		err = waitTasksReadyEx(context, pg, expteced)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 	})
 
 	It("Try to fit unassigned task with different resource requests in one loop", func() {
@@ -336,7 +336,7 @@ var _ = Describe("Job E2E Test", func() {
 
 		replicaset := createReplicaSet(context, "rs-1", rep-1, "nginx", slot)
 		err := waitReplicaSetReady(context, replicaset.Name)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		_, pg := createJobEx(context, &jobSpec{
 			name: "multi-task-diff-resource-job",
@@ -360,10 +360,10 @@ var _ = Describe("Job E2E Test", func() {
 		})
 
 		err = waitPodGroupPending(context, pg)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
 		// task_1 has been scheduled
 		err = waitTasksReady(context, pg, int(minMemberOverride))
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 	})
 })
