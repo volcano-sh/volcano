@@ -386,7 +386,9 @@ func (sc *SchedulerCache) Evict(taskInfo *kbapi.TaskInfo, reason string) error {
 		}
 	}()
 
-	sc.Recorder.Eventf(job.PodGroup, v1.EventTypeNormal, "Evict", reason)
+	if !kbapi.ShadowPodGroup(job.PodGroup) {
+		sc.Recorder.Eventf(job.PodGroup, v1.EventTypeNormal, "Evict", reason)
+	}
 
 	return nil
 }
@@ -541,16 +543,16 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 		}
 
 		if _, found := snapshot.Queues[value.Queue]; !found {
-			glog.V(3).Infof("The Queue <%v> of Job <%v> does not exist, ignore it.",
-				value.Queue, value.UID)
+			glog.V(3).Infof("The Queue <%v> of Job <%v/%v> does not exist, ignore it.",
+				value.Queue, value.Namespace, value.Name)
 			continue
 		}
 
 		snapshot.Jobs[value.UID] = value.Clone()
 	}
 
-	glog.V(3).Infof("There are <%d> Jobs and <%d> Queues in total for scheduling.",
-		len(snapshot.Jobs), len(snapshot.Queues))
+	glog.V(3).Infof("There are <%d> Jobs, <%d> Queues and <%d> Nodes in total for scheduling.",
+		len(snapshot.Jobs), len(snapshot.Queues), len(snapshot.Nodes))
 
 	return snapshot
 }
