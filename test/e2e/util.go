@@ -296,16 +296,17 @@ func deleteQueues(cxt *context) {
 }
 
 type taskSpec struct {
-	name          string
-	min, rep      int32
-	img           string
-	command       string
-	hostport      int32
-	req           v1.ResourceList
-	affinity      *v1.Affinity
-	labels        map[string]string
-	policies      []vkv1.LifecyclePolicy
-	restartPolicy v1.RestartPolicy
+	name                  string
+	min, rep              int32
+	img                   string
+	command               string
+	hostport              int32
+	req                   v1.ResourceList
+	affinity              *v1.Affinity
+	labels                map[string]string
+	policies              []vkv1.LifecyclePolicy
+	restartPolicy         v1.RestartPolicy
+	defaultGracefulPeriod *int64
 }
 
 type jobSpec struct {
@@ -371,6 +372,14 @@ func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
 					Affinity:      task.affinity,
 				},
 			},
+		}
+
+		if task.defaultGracefulPeriod != nil {
+			ts.Template.Spec.TerminationGracePeriodSeconds = task.defaultGracefulPeriod
+		} else {
+			//NOTE: TerminationGracePeriodSeconds is set to 3 in default in case of timeout when restarting tasks in test.
+			var defaultPeriod int64 = 3
+			ts.Template.Spec.TerminationGracePeriodSeconds = &defaultPeriod
 		}
 
 		job.Spec.Tasks = append(job.Spec.Tasks, ts)
