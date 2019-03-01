@@ -62,6 +62,10 @@ const (
 	defaultBusyBoxImage = "busybox:1.24"
 )
 
+func cpuResource(request string) v1.ResourceList {
+	return v1.ResourceList{v1.ResourceCPU: resource.MustParse(request)}
+}
+
 func homeDir() string {
 	if h := os.Getenv("HOME"); h != "" {
 		return h
@@ -515,6 +519,14 @@ func waitTasksPending(ctx *context, job *vkv1.Job, taskNum int) error {
 
 func waitJobStateReady(ctx *context, job *vkv1.Job) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, vkv1.Running))
+}
+
+func waitJobStatePending(ctx *context, job *vkv1.Job) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, vkv1.Pending))
+}
+
+func waitJobStateAborted(ctx *context, job *vkv1.Job) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, vkv1.Aborted))
 }
 
 func jobPhaseExpect(ctx *context, job *vkv1.Job, state vkv1.JobPhase) wait.ConditionFunc {
