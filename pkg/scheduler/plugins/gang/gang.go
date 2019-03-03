@@ -107,7 +107,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		for _, preemptee := range preemptees {
 			job := ssn.Jobs[preemptee.Job]
 			occupid := readyTaskNum(job)
-			preemptable := job.MinAvailable <= occupid-1
+			preemptable := job.MinAvailable <= occupid-1 || job.MinAvailable == 1
 
 			if !preemptable {
 				glog.V(3).Infof("Can not preempt task <%v/%v> because of gang-scheduling",
@@ -146,17 +146,6 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		if rReady {
 			return -1
-		}
-
-		if !lReady && !rReady {
-			if lv.CreationTimestamp.Equal(&rv.CreationTimestamp) {
-				if lv.UID < rv.UID {
-					return -1
-				}
-			} else if lv.CreationTimestamp.Before(&rv.CreationTimestamp) {
-				return -1
-			}
-			return 1
 		}
 
 		return 0
