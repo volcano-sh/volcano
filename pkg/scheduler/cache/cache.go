@@ -61,8 +61,8 @@ func init() {
 }
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerName string, nsAsQueue bool) Cache {
-	return newSchedulerCache(config, schedulerName, nsAsQueue)
+func New(config *rest.Config, schedulerName string, defaultQueue string) Cache {
+	return newSchedulerCache(config, schedulerName, defaultQueue)
 }
 
 type SchedulerCache struct {
@@ -70,6 +70,8 @@ type SchedulerCache struct {
 
 	kubeclient *kubernetes.Clientset
 	kbclient   *kbver.Clientset
+
+	defaultQueue string
 
 	podInformer      infov1.PodInformer
 	nodeInformer     infov1.NodeInformer
@@ -94,8 +96,6 @@ type SchedulerCache struct {
 
 	errTasks    workqueue.RateLimitingInterface
 	deletedJobs workqueue.RateLimitingInterface
-
-	namespaceAsQueue bool
 }
 
 type defaultBinder struct {
@@ -177,16 +177,16 @@ func (dvb *defaultVolumeBinder) BindVolumes(task *api.TaskInfo) error {
 	return dvb.volumeBinder.Binder.BindPodVolumes(task.Pod)
 }
 
-func newSchedulerCache(config *rest.Config, schedulerName string, nsAsQueue bool) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue string) *SchedulerCache {
 	sc := &SchedulerCache{
-		Jobs:             make(map[kbapi.JobID]*kbapi.JobInfo),
-		Nodes:            make(map[string]*kbapi.NodeInfo),
-		Queues:           make(map[kbapi.QueueID]*kbapi.QueueInfo),
-		errTasks:         workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		deletedJobs:      workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		kubeclient:       kubernetes.NewForConfigOrDie(config),
-		kbclient:         kbver.NewForConfigOrDie(config),
-		namespaceAsQueue: nsAsQueue,
+		Jobs:         make(map[kbapi.JobID]*kbapi.JobInfo),
+		Nodes:        make(map[string]*kbapi.NodeInfo),
+		Queues:       make(map[kbapi.QueueID]*kbapi.QueueInfo),
+		errTasks:     workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		deletedJobs:  workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		kubeclient:   kubernetes.NewForConfigOrDie(config),
+		kbclient:     kbver.NewForConfigOrDie(config),
+		defaultQueue: defaultQueue,
 	}
 
 	// Prepare event clients.
@@ -272,23 +272,13 @@ func newSchedulerCache(config *rest.Config, schedulerName string, nsAsQueue bool
 		DeleteFunc: sc.DeletePodGroup,
 	})
 
-	if sc.namespaceAsQueue {
-		// create informer for Namespace information
-		sc.nsInformer = informerFactory.Core().V1().Namespaces()
-		sc.nsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    sc.AddNamespace,
-			UpdateFunc: sc.UpdateNamespace,
-			DeleteFunc: sc.DeleteNamespace,
-		})
-	} else {
-		// create informer for Queue information
-		sc.queueInformer = kbinformer.Scheduling().V1alpha1().Queues()
-		sc.queueInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    sc.AddQueue,
-			UpdateFunc: sc.UpdateQueue,
-			DeleteFunc: sc.DeleteQueue,
-		})
-	}
+	// create informer for Queue information
+	sc.queueInformer = kbinformer.Scheduling().V1alpha1().Queues()
+	sc.queueInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddQueue,
+		UpdateFunc: sc.UpdateQueue,
+		DeleteFunc: sc.DeleteQueue,
+	})
 
 	return sc
 }
@@ -301,12 +291,7 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.pvInformer.Informer().Run(stopCh)
 	go sc.pvcInformer.Informer().Run(stopCh)
 	go sc.scInformer.Informer().Run(stopCh)
-
-	if sc.namespaceAsQueue {
-		go sc.nsInformer.Informer().Run(stopCh)
-	} else {
-		go sc.queueInformer.Informer().Run(stopCh)
-	}
+	go sc.queueInformer.Informer().Run(stopCh)
 
 	// Re-sync error tasks.
 	go wait.Until(sc.processResyncTask, 0, stopCh)
@@ -316,12 +301,6 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 }
 
 func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
-	var queueSync func() bool
-	if sc.namespaceAsQueue {
-		queueSync = sc.nsInformer.Informer().HasSynced
-	} else {
-		queueSync = sc.queueInformer.Informer().HasSynced
-	}
 
 	return cache.WaitForCacheSync(stopCh,
 		sc.pdbInformer.Informer().HasSynced,
@@ -331,7 +310,7 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 		sc.pvInformer.Informer().HasSynced,
 		sc.pvcInformer.Informer().HasSynced,
 		sc.scInformer.Informer().HasSynced,
-		queueSync,
+		sc.queueInformer.Informer().HasSynced,
 	)
 }
 
@@ -386,7 +365,7 @@ func (sc *SchedulerCache) Evict(taskInfo *kbapi.TaskInfo, reason string) error {
 		}
 	}()
 
-	if !kbapi.ShadowPodGroup(job.PodGroup) {
+	if !shadowPodGroup(job.PodGroup) {
 		sc.Recorder.Eventf(job.PodGroup, v1.EventTypeNormal, "Evict", reason)
 	}
 
@@ -591,7 +570,7 @@ func (sc *SchedulerCache) String() string {
 func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
 	jobErrMsg := job.FitError()
 
-	if !kbapi.ShadowPodGroup(job.PodGroup) {
+	if !shadowPodGroup(job.PodGroup) {
 		pgUnschedulable := job.PodGroup != nil &&
 			(job.PodGroup.Status.Phase == v1alpha1.PodGroupUnknown ||
 				job.PodGroup.Status.Phase == v1alpha1.PodGroupPending)
@@ -619,7 +598,7 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
 
 // UpdateJobStatus update the status of job and its tasks.
 func (sc *SchedulerCache) UpdateJobStatus(job *kbapi.JobInfo) (*kbapi.JobInfo, error) {
-	if !kbapi.ShadowPodGroup(job.PodGroup) {
+	if !shadowPodGroup(job.PodGroup) {
 		pg, err := sc.StatusUpdater.UpdatePodGroup(job.PodGroup)
 		if err != nil {
 			return nil, err

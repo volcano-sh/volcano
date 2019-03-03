@@ -158,6 +158,9 @@ func TestAllocate(t *testing.T) {
 						Name:      "pg1",
 						Namespace: "c1",
 					},
+					Spec: kbv1.PodGroupSpec{
+						Queue: "c1",
+					},
 				},
 			},
 			pods: []*v1.Pod{
@@ -190,11 +193,17 @@ func TestAllocate(t *testing.T) {
 						Name:      "pg1",
 						Namespace: "c1",
 					},
+					Spec: kbv1.PodGroupSpec{
+						Queue: "c1",
+					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg2",
 						Namespace: "c2",
+					},
+					Spec: kbv1.PodGroupSpec{
+						Queue: "c2",
 					},
 				},
 			},

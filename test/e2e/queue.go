@@ -27,6 +27,9 @@ var _ = Describe("Queue E2E Test", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
+		createQueues(context)
+		defer deleteQueues(context)
+
 		slot := oneCPU
 		rep := clusterSize(context, slot)
 

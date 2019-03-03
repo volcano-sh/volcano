@@ -66,8 +66,11 @@ func Run(opt *options.ServerOption) error {
 	}
 
 	// Start policy controller to allocate resources.
-	sched, err := scheduler.NewScheduler(config, opt.SchedulerName,
-		opt.SchedulerConf, opt.SchedulePeriod, opt.NamespaceAsQueue)
+	sched, err := scheduler.NewScheduler(config,
+		opt.SchedulerName,
+		opt.SchedulerConf,
+		opt.SchedulePeriod,
+		opt.DefaultQueue)
 	if err != nil {
 		panic(err)
 	}

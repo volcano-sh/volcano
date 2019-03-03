@@ -53,10 +53,6 @@ const (
 	Unknown
 )
 
-const (
-	ShadowPodGroupKey = "kube-batch/shadow-pod-group"
-)
-
 func (ts TaskStatus) String() string {
 	switch ts {
 	case Pending:
