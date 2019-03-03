@@ -19,6 +19,7 @@ package plugins
 import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/conformance"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/drf"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/gang"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/predicates"
@@ -34,6 +35,7 @@ func init() {
 	framework.RegisterPluginBuilder("predicates", predicates.New)
 	framework.RegisterPluginBuilder("priority", priority.New)
 	framework.RegisterPluginBuilder("prioritize", prioritize.New)
+	framework.RegisterPluginBuilder("conformance", conformance.New)
 
 	// Plugins for Queues
 	framework.RegisterPluginBuilder("proportion", proportion.New)
