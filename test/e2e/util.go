@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"text/template"
 	"time"
 
@@ -69,13 +68,11 @@ type context struct {
 	kubeclient *kubernetes.Clientset
 	kbclient   *kbver.Clientset
 
-	namespace              string
-	queues                 []string
-	enableNamespaceAsQueue bool
+	namespace string
+	queues    []string
 }
 
 func initTestContext() *context {
-	enableNamespaceAsQueue, _ := strconv.ParseBool(os.Getenv("ENABLE_NAMESPACES_AS_QUEUE"))
 	cxt := &context{
 		namespace: "test",
 		queues:    []string{"q1", "q2"},
@@ -90,16 +87,12 @@ func initTestContext() *context {
 	cxt.kbclient = kbver.NewForConfigOrDie(config)
 	cxt.kubeclient = kubernetes.NewForConfigOrDie(config)
 
-	cxt.enableNamespaceAsQueue = enableNamespaceAsQueue
-
 	_, err = cxt.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: cxt.namespace,
 		},
 	})
 	checkError(cxt, err)
-
-	createQueues(cxt)
 
 	_, err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Create(&schedv1.PriorityClass{
 		ObjectMeta: metav1.ObjectMeta{
@@ -135,13 +128,7 @@ func namespaceNotExist(ctx *context) wait.ConditionFunc {
 func queueNotExist(ctx *context) wait.ConditionFunc {
 	return func() (bool, error) {
 		for _, q := range ctx.queues {
-			var err error
-			if ctx.enableNamespaceAsQueue {
-				_, err = ctx.kubeclient.CoreV1().Namespaces().Get(q, metav1.GetOptions{})
-			} else {
-				_, err = ctx.kbclient.Scheduling().Queues().Get(q, metav1.GetOptions{})
-			}
-
+			_, err := ctx.kbclient.SchedulingV1alpha1().Queues().Get(q, metav1.GetOptions{})
 			if !(err != nil && errors.IsNotFound(err)) {
 				return false, err
 			}
@@ -159,8 +146,6 @@ func cleanupTestContext(cxt *context) {
 	})
 	checkError(cxt, err)
 
-	deleteQueues(cxt)
-
 	err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(masterPriority, &metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
@@ -173,10 +158,6 @@ func cleanupTestContext(cxt *context) {
 
 	// Wait for namespace deleted.
 	err = wait.Poll(100*time.Millisecond, oneMinute, namespaceNotExist(cxt))
-	checkError(cxt, err)
-
-	// Wait for queues deleted
-	err = wait.Poll(100*time.Millisecond, oneMinute, queueNotExist(cxt))
 	checkError(cxt, err)
 }
 
@@ -232,7 +213,7 @@ Cluster Info:
 
 func checkError(cxt *context, err error) {
 	if err != nil {
-		Expect(err).NotTo(HaveOccurred(), clusterInfo(cxt))
+		ExpectWithOffset(1, err).NotTo(HaveOccurred(), clusterInfo(cxt))
 	}
 }
 
@@ -240,30 +221,9 @@ func createQueues(cxt *context) {
 	var err error
 
 	for _, q := range cxt.queues {
-		if cxt.enableNamespaceAsQueue {
-			_, err = cxt.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: q,
-				},
-			})
-		} else {
-			_, err = cxt.kbclient.Scheduling().Queues().Create(&kbv1.Queue{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: q,
-				},
-				Spec: kbv1.QueueSpec{
-					Weight: 1,
-				},
-			})
-		}
-
-		checkError(cxt, err)
-	}
-
-	if !cxt.enableNamespaceAsQueue {
-		_, err := cxt.kbclient.Scheduling().Queues().Create(&kbv1.Queue{
+		_, err = cxt.kbclient.SchedulingV1alpha1().Queues().Create(&kbv1.Queue{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: cxt.namespace,
+				Name: q,
 			},
 			Spec: kbv1.QueueSpec{
 				Weight: 1,
@@ -278,28 +238,16 @@ func deleteQueues(cxt *context) {
 	foreground := metav1.DeletePropagationForeground
 
 	for _, q := range cxt.queues {
-		var err error
-
-		if cxt.enableNamespaceAsQueue {
-			err = cxt.kubeclient.CoreV1().Namespaces().Delete(q, &metav1.DeleteOptions{
-				PropagationPolicy: &foreground,
-			})
-		} else {
-			err = cxt.kbclient.Scheduling().Queues().Delete(q, &metav1.DeleteOptions{
-				PropagationPolicy: &foreground,
-			})
-		}
-
-		checkError(cxt, err)
-	}
-
-	if !cxt.enableNamespaceAsQueue {
-		err := cxt.kbclient.Scheduling().Queues().Delete(cxt.namespace, &metav1.DeleteOptions{
+		err := cxt.kbclient.SchedulingV1alpha1().Queues().Delete(q, &metav1.DeleteOptions{
 			PropagationPolicy: &foreground,
 		})
 
 		checkError(cxt, err)
 	}
+
+	// Wait for queues deleted
+	err := wait.Poll(100*time.Millisecond, oneMinute, queueNotExist(cxt))
+	checkError(cxt, err)
 }
 
 type taskSpec struct {
@@ -323,12 +271,6 @@ type jobSpec struct {
 func getNS(context *context, job *jobSpec) string {
 	if len(job.namespace) != 0 {
 		return job.namespace
-	}
-
-	if context.enableNamespaceAsQueue {
-		if len(job.queue) != 0 {
-			return job.queue
-		}
 	}
 
 	return context.namespace

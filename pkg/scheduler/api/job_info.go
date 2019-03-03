@@ -26,9 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
 	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	"github.com/kubernetes-sigs/kube-batch/pkg/apis/utils"
 )
 
 type TaskID types.UID
@@ -40,8 +38,6 @@ type TaskInfo struct {
 	Name      string
 	Namespace string
 
-	PodGroup *v1alpha1.PodGroup
-
 	Resreq *Resource
 
 	NodeName    string
@@ -52,34 +48,16 @@ type TaskInfo struct {
 	Pod *v1.Pod
 }
 
-func getOwners(pod *v1.Pod) (JobID, *v1alpha1.PodGroup) {
+func getJobID(pod *v1.Pod) JobID {
 	if len(pod.Annotations) != 0 {
 		if gn, found := pod.Annotations[v1alpha1.GroupNameAnnotationKey]; found && len(gn) != 0 {
 			// Make sure Pod and PodGroup belong to the same namespace.
 			jobID := fmt.Sprintf("%s/%s", pod.Namespace, gn)
-			return JobID(jobID), nil
+			return JobID(jobID)
 		}
 	}
 
-	jobID := JobID(utils.GetController(pod))
-	if len(jobID) == 0 {
-		jobID = JobID(pod.UID)
-	}
-
-	pg := &v1alpha1.PodGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: pod.Namespace,
-			Name:      string(jobID),
-			Annotations: map[string]string{
-				ShadowPodGroupKey: string(jobID),
-			},
-		},
-		Spec: v1alpha1.PodGroupSpec{
-			MinMember: 1,
-		},
-	}
-
-	return jobID, pg
+	return ""
 }
 
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
@@ -90,12 +68,11 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		req.Add(NewResource(c.Resources.Requests))
 	}
 
-	jobID, pg := getOwners(pod)
+	jobID := getJobID(pod)
 
 	ti := &TaskInfo{
 		UID:       TaskID(pod.UID),
 		Job:       jobID,
-		PodGroup:  pg,
 		Name:      pod.Name,
 		Namespace: pod.Namespace,
 		NodeName:  pod.Spec.NodeName,
@@ -118,7 +95,6 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		Job:         ti.Job,
 		Name:        ti.Name,
 		Namespace:   ti.Namespace,
-		PodGroup:    ti.PodGroup,
 		NodeName:    ti.NodeName,
 		Status:      ti.Status,
 		Priority:    ti.Priority,
@@ -129,8 +105,8 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 }
 
 func (ti TaskInfo) String() string {
-	return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, type %v, pri %v, resreq %v",
-		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.PodGroup, ti.Priority, ti.Resreq)
+	return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v, resreq %v",
+		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority, ti.Resreq)
 }
 
 // JobID is the type of JobInfo's ID.
@@ -198,21 +174,9 @@ func (ji *JobInfo) SetPodGroup(pg *v1alpha1.PodGroup) {
 	ji.Name = pg.Name
 	ji.Namespace = pg.Namespace
 	ji.MinAvailable = pg.Spec.MinMember
-
-	//set queue name based on the available information
-	//in the following priority order:
-	// 1. queue name from PodGroup spec (if available)
-	// 2. queue name from default-queue command line option (if specified)
-	// 3. namespace name
-	if len(pg.Spec.Queue) > 0 {
-		ji.Queue = QueueID(pg.Spec.Queue)
-	} else if len(options.Options().DefaultQueue) > 0 {
-		ji.Queue = QueueID(options.Options().DefaultQueue)
-	} else {
-		ji.Queue = QueueID(pg.Namespace)
-	}
-
+	ji.Queue = QueueID(pg.Spec.Queue)
 	ji.CreationTimestamp = pg.GetCreationTimestamp()
+
 	ji.PodGroup = pg
 }
 
@@ -220,11 +184,6 @@ func (ji *JobInfo) SetPDB(pdb *policyv1.PodDisruptionBudget) {
 	ji.Name = pdb.Name
 	ji.MinAvailable = pdb.Spec.MinAvailable.IntVal
 	ji.Namespace = pdb.Namespace
-	if len(options.Options().DefaultQueue) == 0 {
-		ji.Queue = QueueID(pdb.Namespace)
-	} else {
-		ji.Queue = QueueID(options.Options().DefaultQueue)
-	}
 
 	ji.CreationTimestamp = pdb.GetCreationTimestamp()
 	ji.PDB = pdb
@@ -264,10 +223,6 @@ func (ji *JobInfo) AddTaskInfo(ti *TaskInfo) {
 
 	if AllocatedStatus(ti.Status) {
 		ji.Allocated.Add(ti.Resreq)
-	}
-
-	if ji.PodGroup == nil && ti.PodGroup != nil {
-		ji.SetPodGroup(ti.PodGroup)
 	}
 }
 
