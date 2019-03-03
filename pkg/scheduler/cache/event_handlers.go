@@ -37,14 +37,31 @@ func isTerminated(status kbapi.TaskStatus) bool {
 	return status == kbapi.Succeeded || status == kbapi.Failed
 }
 
-func (sc *SchedulerCache) addTask(pi *kbapi.TaskInfo) error {
-	if len(pi.Job) != 0 {
+func (sc *SchedulerCache) getOrCreateJob(pi *kbapi.TaskInfo) *kbapi.JobInfo {
+	if len(pi.Job) == 0 {
+		pb := createShadowPodGroup(pi.Pod)
+		pi.Job = kbapi.JobID(pb.Name)
+
 		if _, found := sc.Jobs[pi.Job]; !found {
-			sc.Jobs[pi.Job] = kbapi.NewJobInfo(pi.Job, pi)
-		} else {
-			sc.Jobs[pi.Job].AddTaskInfo(pi)
+			job := kbapi.NewJobInfo(pi.Job)
+			job.SetPodGroup(pb)
+			// Set default queue for shadow podgroup.
+			job.Queue = kbapi.QueueID(sc.defaultQueue)
+
+			sc.Jobs[pi.Job] = job
+		}
+	} else {
+		if _, found := sc.Jobs[pi.Job]; !found {
+			sc.Jobs[pi.Job] = kbapi.NewJobInfo(pi.Job)
 		}
 	}
+
+	return sc.Jobs[pi.Job]
+}
+
+func (sc *SchedulerCache) addTask(pi *kbapi.TaskInfo) error {
+	job := sc.getOrCreateJob(pi)
+	job.AddTaskInfo(pi)
 
 	if len(pi.NodeName) != 0 {
 		if _, found := sc.Nodes[pi.NodeName]; !found {
@@ -354,6 +371,11 @@ func (sc *SchedulerCache) setPodGroup(ss *kbv1.PodGroup) error {
 
 	sc.Jobs[job].SetPodGroup(ss)
 
+	// TODO(k82cn): set default queue in admission.
+	if len(ss.Spec.Queue) == 0 {
+		sc.Jobs[job].Queue = kbapi.QueueID(sc.defaultQueue)
+	}
+
 	return nil
 }
 
@@ -388,11 +410,6 @@ func (sc *SchedulerCache) AddPodGroup(obj interface{}) {
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
-
-	// If namespace as queue, the `.spec.Queue` of PodGroup is ignored.
-	if sc.namespaceAsQueue {
-		ss.Spec.Queue = ""
-	}
 
 	glog.V(4).Infof("Add PodGroup(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
 	err := sc.setPodGroup(ss)
@@ -467,6 +484,8 @@ func (sc *SchedulerCache) setPDB(pdb *policyv1.PodDisruptionBudget) error {
 	}
 
 	sc.Jobs[job].SetPDB(pdb)
+	// Set it to default queue, as PDB did not support queue right now.
+	sc.Jobs[job].Queue = kbapi.QueueID(sc.defaultQueue)
 
 	return nil
 }
@@ -648,107 +667,6 @@ func (sc *SchedulerCache) updateQueue(oldObj, newObj *kbv1.Queue) error {
 
 func (sc *SchedulerCache) deleteQueue(queue *kbv1.Queue) error {
 	qi := kbapi.NewQueueInfo(queue)
-	delete(sc.Queues, qi.UID)
-
-	return nil
-}
-
-func (sc *SchedulerCache) AddNamespace(obj interface{}) {
-	ss, ok := obj.(*v1.Namespace)
-	if !ok {
-		glog.Errorf("Cannot convert to *v1.Namespace: %v", obj)
-		return
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	glog.V(4).Infof("Add Queue(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
-	err := sc.addNamespace(ss)
-	if err != nil {
-		glog.Errorf("Failed to add Queue %s into cache: %v", ss.Name, err)
-		return
-	}
-	return
-}
-
-func (sc *SchedulerCache) UpdateNamespace(oldObj, newObj interface{}) {
-	oldSS, ok := oldObj.(*v1.Namespace)
-	if !ok {
-		glog.Errorf("Cannot convert oldObj to *v1.Namespace: %v", oldObj)
-		return
-	}
-	newSS, ok := newObj.(*v1.Namespace)
-	if !ok {
-		glog.Errorf("Cannot convert newObj to *v1.Namespace: %v", newObj)
-		return
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	err := sc.updateNamespace(oldSS, newSS)
-	if err != nil {
-		glog.Errorf("Failed to update Queue (NS) %s into cache: %v", oldSS.Name, err)
-		return
-	}
-	return
-}
-
-func (sc *SchedulerCache) DeleteNamespace(obj interface{}) {
-	var ss *v1.Namespace
-	switch t := obj.(type) {
-	case *v1.Namespace:
-		ss = t
-	case cache.DeletedFinalStateUnknown:
-		var ok bool
-		ss, ok = t.Obj.(*v1.Namespace)
-		if !ok {
-			glog.Errorf("Cannot convert to *v1.Namespace: %v", t.Obj)
-			return
-		}
-	default:
-		glog.Errorf("Cannot convert to *v1.Namespace: %v", t)
-		return
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	err := sc.deleteNamespace(ss)
-	if err != nil {
-		glog.Errorf("Failed to delete Queue (NS) %s from cache: %v", ss.Name, err)
-		return
-	}
-	return
-}
-
-func (sc *SchedulerCache) addNamespace(ns *v1.Namespace) error {
-	qi := &kbapi.QueueInfo{
-		UID:  kbapi.QueueID(ns.Name),
-		Name: ns.Name,
-
-		Weight: 1,
-	}
-	sc.Queues[qi.UID] = qi
-
-	return nil
-}
-
-func (sc *SchedulerCache) updateNamespace(oldObj, newObj *v1.Namespace) error {
-	sc.deleteNamespace(oldObj)
-	sc.addNamespace(newObj)
-
-	return nil
-}
-
-func (sc *SchedulerCache) deleteNamespace(ns *v1.Namespace) error {
-	qi := &kbapi.QueueInfo{
-		UID:  kbapi.QueueID(ns.Name),
-		Name: ns.Name,
-
-		Weight: 1,
-	}
 	delete(sc.Queues, qi.UID)
 
 	return nil

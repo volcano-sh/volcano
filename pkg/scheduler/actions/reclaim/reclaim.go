@@ -109,9 +109,6 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 			task = tasks.Pop().(*api.TaskInfo)
 		}
 
-		resreq := task.Resreq.Clone()
-		reclaimed := api.EmptyResource()
-
 		assigned := false
 
 		for _, n := range ssn.Nodes {
@@ -119,6 +116,9 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 			if err := ssn.PredicateFn(task, n); err != nil {
 				continue
 			}
+
+			resreq := task.Resreq.Clone()
+			reclaimed := api.EmptyResource()
 
 			glog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
 				task.Namespace, task.Name, n.Name)

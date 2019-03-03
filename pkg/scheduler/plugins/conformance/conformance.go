@@ -17,10 +17,11 @@ limitations under the License.
 package conformance
 
 import (
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/apis/scheduling"
+
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 )
 
 type conformancePlugin struct {
@@ -44,6 +45,7 @@ func (pp *conformancePlugin) OnSessionOpen(ssn *framework.Session) {
 			if className == scheduling.SystemClusterCritical ||
 				className == scheduling.SystemNodeCritical ||
 				evictee.Namespace == v1.NamespaceSystem {
+
 				continue
 			}
 

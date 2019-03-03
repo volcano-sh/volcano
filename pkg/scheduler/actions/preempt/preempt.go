@@ -174,8 +174,6 @@ func preempt(
 	nodes map[string]*api.NodeInfo,
 	filter func(*api.TaskInfo) bool,
 ) (bool, error) {
-	resreq := preemptor.Resreq.Clone()
-	preempted := api.EmptyResource()
 	predicateNodes := []*api.NodeInfo{}
 	nodeScores := map[int][]*api.NodeInfo{}
 	assigned := false
@@ -203,6 +201,9 @@ func preempt(
 			preemptor.Namespace, preemptor.Name, node.Name)
 
 		var preemptees []*api.TaskInfo
+		preempted := api.EmptyResource()
+		resreq := preemptor.Resreq.Clone()
+
 		for _, task := range node.Tasks {
 			if filter == nil {
 				preemptees = append(preemptees, task.Clone())
@@ -237,15 +238,17 @@ func preempt(
 		glog.V(3).Infof("Preempted <%v> for task <%s/%s> requested <%v>.",
 			preempted, preemptor.Namespace, preemptor.Name, preemptor.Resreq)
 
-		if err := stmt.Pipeline(preemptor, node.Name); err != nil {
-			glog.Errorf("Failed to pipline Task <%s/%s> on Node <%s>",
-				preemptor.Namespace, preemptor.Name, node.Name)
+		if preemptor.Resreq.LessEqual(preempted) {
+			if err := stmt.Pipeline(preemptor, node.Name); err != nil {
+				glog.Errorf("Failed to pipline Task <%s/%s> on Node <%s>",
+					preemptor.Namespace, preemptor.Name, node.Name)
+			}
+
+			// Ignore pipeline error, will be corrected in next scheduling loop.
+			assigned = true
+
+			break
 		}
-
-		// Ignore pipeline error, will be corrected in next scheduling loop.
-		assigned = true
-
-		break
 	}
 
 	return assigned, nil
