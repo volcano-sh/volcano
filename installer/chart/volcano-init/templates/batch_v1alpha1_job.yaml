@@ -153,6 +153,10 @@ spec:
                   description: Unique, one-word, CamelCase reason for the condition's
                     last transition.
                   type: string
+                version:
+                  description: Job's current version.
+                  type: integer
+                  format: int32
               type: object
           type: object
   version: v1alpha1
