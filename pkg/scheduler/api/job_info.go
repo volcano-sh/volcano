@@ -124,7 +124,7 @@ type JobInfo struct {
 
 	Queue QueueID
 
-	Priority int
+	Priority int32
 
 	NodeSelector map[string]string
 	MinAvailable int32
