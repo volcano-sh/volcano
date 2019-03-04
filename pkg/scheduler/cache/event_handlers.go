@@ -18,6 +18,7 @@ package cache
 
 import (
 	"fmt"
+	"k8s.io/api/scheduling/v1beta1"
 	"reflect"
 
 	"github.com/golang/glog"
@@ -670,4 +671,98 @@ func (sc *SchedulerCache) deleteQueue(queue *kbv1.Queue) error {
 	delete(sc.Queues, qi.UID)
 
 	return nil
+}
+
+func (sc *SchedulerCache) DeletePriorityClass(obj interface{}) {
+	var ss *v1beta1.PriorityClass
+	switch t := obj.(type) {
+	case *v1beta1.PriorityClass:
+		ss = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		ss, ok = t.Obj.(*v1beta1.PriorityClass)
+		if !ok {
+			glog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t.Obj)
+			return
+		}
+	default:
+		glog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	sc.deletePriorityClass(ss)
+}
+
+func (sc *SchedulerCache) UpdatePriorityClass(oldObj, newObj interface{}) {
+	oldSS, ok := oldObj.(*v1beta1.PriorityClass)
+	if !ok {
+		glog.Errorf("Cannot convert oldObj to *v1beta1.PriorityClass: %v", oldObj)
+
+		return
+
+	}
+
+	newSS, ok := newObj.(*v1beta1.PriorityClass)
+	if !ok {
+		glog.Errorf("Cannot convert newObj to *v1beta1.PriorityClass: %v", newObj)
+
+		return
+
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	sc.deletePriorityClass(oldSS)
+	sc.addPriorityClass(newSS)
+}
+
+func (sc *SchedulerCache) AddPriorityClass(obj interface{}) {
+	var ss *v1beta1.PriorityClass
+	switch t := obj.(type) {
+	case *v1beta1.PriorityClass:
+		ss = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		ss, ok = t.Obj.(*v1beta1.PriorityClass)
+		if !ok {
+			glog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t.Obj)
+			return
+		}
+	default:
+		glog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	sc.addPriorityClass(ss)
+}
+
+func (sc *SchedulerCache) deletePriorityClass(pc *v1beta1.PriorityClass) {
+	if pc.GlobalDefault {
+		sc.defaultPriorityClass = nil
+		sc.defaultPriority = 0
+
+	}
+
+	delete(sc.PriorityClasses, pc.Name)
+}
+
+func (sc *SchedulerCache) addPriorityClass(pc *v1beta1.PriorityClass) {
+	if pc.GlobalDefault {
+		if sc.defaultPriorityClass != nil {
+			glog.Errorf("Updated default priority class from <%s> to <%s> forcefully.",
+				sc.defaultPriorityClass.Name, pc.Name)
+
+		}
+		sc.defaultPriorityClass = pc
+		sc.defaultPriority = pc.Value
+	}
+
+	sc.PriorityClasses[pc.Name] = pc
 }
