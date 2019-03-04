@@ -119,6 +119,8 @@ const (
 	ResumeJobAction Action = "ResumeJob"
 	// SyncJobAction is the action to sync Job/Pod status.
 	SyncJobAction Action = "SyncJob"
+	// Start a new job
+	StartJobAction Action = "StartJob"
 )
 
 // LifecyclePolicy specifies the lifecycle and error handling of task and job.

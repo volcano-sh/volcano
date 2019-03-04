@@ -124,7 +124,7 @@ func (ji *JobInfo) AddPod(pod *v1.Pod) error {
 	if _, found := ji.Pods[taskName][pod.Name]; !found {
 		ji.Pods[taskName][pod.Name] = make(map[string]*v1.Pod)
 	}
-	if _, found := ji.Pods[taskName][pod.Name][jobVersion]; !found{
+	if _, found := ji.Pods[taskName][pod.Name][jobVersion]; found{
 		return fmt.Errorf("duplicated pod")
 	}
 	ji.Pods[taskName][pod.Name][jobVersion] = pod
