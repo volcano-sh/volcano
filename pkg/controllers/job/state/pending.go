@@ -17,6 +17,7 @@ limitations under the License.
 package state
 
 import (
+	"fmt"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
 )
@@ -28,28 +29,19 @@ type pendingState struct {
 func (ps *pendingState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.RestartJobAction:
-		return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
-			phase := vkv1.Pending
-			if status.Terminating != 0 {
-				phase = vkv1.Restarting
-			}
-
-			return vkv1.JobState{
-				Phase: phase,
-			}
-		})
-
+		newJob := ps.job.Clone()
+		newJob.StartNewRound(
+			vkv1.Restarting,
+			fmt.Sprintf("Job Restarted"),
+			fmt.Sprintf("Job is restarted in pending state."))
+		return ConfigJob(newJob)
 	case vkv1.AbortJobAction:
-		return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
-			phase := vkv1.Pending
-			if status.Terminating != 0 {
-				phase = vkv1.Aborting
-			}
-
-			return vkv1.JobState{
-				Phase: phase,
-			}
-		})
+		newJob := ps.job.Clone()
+		newJob.AbortCurrentRound(
+			vkv1.Aborting,
+			fmt.Sprintf("Job aborted"),
+			fmt.Sprintf("Job is aborted in pending state."))
+		return ConfigJob(newJob)
 	default:
 		return SyncJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
 			phase := vkv1.Pending

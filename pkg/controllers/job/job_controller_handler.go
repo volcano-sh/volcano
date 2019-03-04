@@ -77,10 +77,9 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 		return
 	}
 
-	//NOTE: Since we only reconcile job based on Spec, we will ignore other attributes
-	// For Job status, it's used internally and always been updated via our controller.
-	if reflect.DeepEqual(newJob.Spec, oldJob.Spec) {
-		glog.Infof("Job update event is ignored since no update in 'Spec'.")
+
+	if reflect.DeepEqual(newJob.Spec, oldJob.Spec) && newJob.Status.State.Version == oldJob.Status.State.Version {
+		glog.Infof("Job update event is ignored since no update in 'Spec' or 'Version'.")
 		return
 	}
 
@@ -126,11 +125,22 @@ func (cc *Controller) addPod(obj interface{}) {
 		return
 	}
 
+	version, found := pod.Annotations[vkbatchv1.JobVersion]
+	if !found {
+		glog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
+			pod.Namespace, pod.Name)
+		return
+	}
+
 	req := apis.Request{
 		Namespace: pod.Namespace,
 		JobName:   jobName,
 
 		Event: vkbatchv1.OutOfSyncEvent,
+		PodID: &apis.PodIdentity{
+			Name: pod.Name,
+			Version: version,
+		},
 	}
 
 	if err := cc.cache.AddPod(pod); err != nil {
@@ -167,6 +177,13 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		return
 	}
 
+	version, found := newPod.Annotations[vkbatchv1.JobVersion]
+	if !found {
+		glog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
+			newPod.Namespace, newPod.Name)
+		return
+	}
+
 	event := vkbatchv1.OutOfSyncEvent
 	if oldPod.Status.Phase != v1.PodFailed &&
 		newPod.Status.Phase == v1.PodFailed {
@@ -179,6 +196,10 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		TaskName:  taskName,
 
 		Event: event,
+		PodID: &apis.PodIdentity{
+			Name: newPod.Name,
+			Version: version,
+		},
 	}
 
 	if err := cc.cache.UpdatePod(newPod); err != nil {
@@ -220,12 +241,24 @@ func (cc *Controller) deletePod(obj interface{}) {
 		return
 	}
 
+	version, found := pod.Annotations[vkbatchv1.JobVersion]
+	if !found {
+		glog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
+			pod.Namespace, pod.Name)
+		return
+	}
+
 	req := apis.Request{
 		Namespace: pod.Namespace,
 		JobName:   jobName,
 		TaskName:  taskName,
 
 		Event: vkbatchv1.PodEvictedEvent,
+		PodID: &apis.PodIdentity{
+			Name: pod.Name,
+			Version: version,
+		},
+
 	}
 
 	if err := cc.cache.DeletePod(pod); err != nil {
