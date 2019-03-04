@@ -17,6 +17,7 @@ limitations under the License.
 package state
 
 import (
+	"fmt"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
 )
@@ -28,12 +29,13 @@ type abortedState struct {
 func (as *abortedState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.ResumeJobAction:
-		return SyncJob(as.job, func(status vkv1.JobStatus) vkv1.JobState {
-			return vkv1.JobState{
-				Phase: vkv1.Restarting,
-			}
-		})
+		newJob := as.job.Clone()
+		newJob.ResumeCurrentRound(
+			vkv1.Restarting,
+			fmt.Sprintf("Job Resumed"),
+			fmt.Sprintf("Job is resumed in aborted state."))
+		return ConfigJob(newJob)
 	default:
-		return KillJob(as.job, nil)
+		return SyncJob(as.job, nil)
 	}
 }

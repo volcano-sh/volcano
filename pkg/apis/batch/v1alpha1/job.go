@@ -180,6 +180,8 @@ const (
 
 // JobState contains details for the current state of the job.
 type JobState struct {
+	//Current version of job
+	Version int32
 	// The phase of Job.
 	// +optional
 	Phase JobPhase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`

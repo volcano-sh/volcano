@@ -123,7 +123,7 @@ func (jc *jobCache) Add(job *v1alpha1.Job) error {
 		Namespace: job.Namespace,
 
 		Job:  job,
-		Pods: make(map[string]map[string]*v1.Pod),
+		Pods: make(map[string]map[string]map[string]*v1.Pod),
 	}
 
 	return nil
@@ -170,7 +170,7 @@ func (jc *jobCache) AddPod(pod *v1.Pod) error {
 	job, found := jc.jobs[key]
 	if !found {
 		job = &apis.JobInfo{
-			Pods: make(map[string]map[string]*v1.Pod),
+			Pods: make(map[string]map[string]map[string]*v1.Pod),
 		}
 		jc.jobs[key] = job
 	}
@@ -190,9 +190,10 @@ func (jc *jobCache) UpdatePod(pod *v1.Pod) error {
 	job, found := jc.jobs[key]
 	if !found {
 		job = &apis.JobInfo{
-			Pods: make(map[string]map[string]*v1.Pod),
+			Pods: make(map[string]map[string]map[string]*v1.Pod),
 		}
 		jc.jobs[key] = job
+		return nil
 	}
 
 	return job.UpdatePod(pod)
@@ -210,7 +211,7 @@ func (jc *jobCache) DeletePod(pod *v1.Pod) error {
 	job, found := jc.jobs[key]
 	if !found {
 		job = &apis.JobInfo{
-			Pods: make(map[string]map[string]*v1.Pod),
+			Pods: make(map[string]map[string]map[string]*v1.Pod),
 		}
 		jc.jobs[key] = job
 	}
