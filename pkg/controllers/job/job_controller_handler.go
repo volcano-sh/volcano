@@ -55,6 +55,9 @@ func (cc *Controller) addJob(obj interface{}) {
 
 		Event: vkbatchv1.OutOfSyncEvent,
 	}
+	if job.Status.State.Version == 0 {
+		req.Action = vkbatchv1.StartJobAction
+	}
 
 	// TODO(k82cn): if failed to add job, the cache should be refresh
 	if err := cc.cache.Add(job); err != nil {

@@ -28,7 +28,7 @@ type pendingState struct {
 
 func (ps *pendingState) Execute(action vkv1.Action) error {
 	switch action {
-	case vkv1.RestartJobAction:
+	case vkv1.RestartJobAction, vkv1.StartJobAction:
 		newJob := ps.job.Clone()
 		newJob.StartNewRound(
 			vkv1.Restarting,
