@@ -25,6 +25,7 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
+	"k8s.io/api/scheduling/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -32,6 +33,7 @@ import (
 	"k8s.io/client-go/informers"
 	infov1 "k8s.io/client-go/informers/core/v1"
 	policyv1 "k8s.io/client-go/informers/policy/v1beta1"
+	schedv1 "k8s.io/client-go/informers/scheduling/v1beta1"
 	storagev1 "k8s.io/client-go/informers/storage/v1"
 	"k8s.io/client-go/kubernetes"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -82,6 +84,7 @@ type SchedulerCache struct {
 	pvInformer       infov1.PersistentVolumeInformer
 	pvcInformer      infov1.PersistentVolumeClaimInformer
 	scInformer       storagev1.StorageClassInformer
+	pcInformer       schedv1.PriorityClassInformer
 
 	Binder        Binder
 	Evictor       Evictor
@@ -90,9 +93,12 @@ type SchedulerCache struct {
 
 	Recorder record.EventRecorder
 
-	Jobs   map[kbapi.JobID]*kbapi.JobInfo
-	Nodes  map[string]*kbapi.NodeInfo
-	Queues map[kbapi.QueueID]*kbapi.QueueInfo
+	Jobs                 map[kbapi.JobID]*kbapi.JobInfo
+	Nodes                map[string]*kbapi.NodeInfo
+	Queues               map[kbapi.QueueID]*kbapi.QueueInfo
+	PriorityClasses      map[string]*v1beta1.PriorityClass
+	defaultPriorityClass *v1beta1.PriorityClass
+	defaultPriority      int32
 
 	errTasks    workqueue.RateLimitingInterface
 	deletedJobs workqueue.RateLimitingInterface
@@ -179,14 +185,15 @@ func (dvb *defaultVolumeBinder) BindVolumes(task *api.TaskInfo) error {
 
 func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue string) *SchedulerCache {
 	sc := &SchedulerCache{
-		Jobs:         make(map[kbapi.JobID]*kbapi.JobInfo),
-		Nodes:        make(map[string]*kbapi.NodeInfo),
-		Queues:       make(map[kbapi.QueueID]*kbapi.QueueInfo),
-		errTasks:     workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		deletedJobs:  workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		kubeclient:   kubernetes.NewForConfigOrDie(config),
-		kbclient:     kbver.NewForConfigOrDie(config),
-		defaultQueue: defaultQueue,
+		Jobs:            make(map[kbapi.JobID]*kbapi.JobInfo),
+		Nodes:           make(map[string]*kbapi.NodeInfo),
+		Queues:          make(map[kbapi.QueueID]*kbapi.QueueInfo),
+		PriorityClasses: make(map[string]*v1beta1.PriorityClass),
+		errTasks:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		deletedJobs:     workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		kubeclient:      kubernetes.NewForConfigOrDie(config),
+		kbclient:        kbver.NewForConfigOrDie(config),
+		defaultQueue:    defaultQueue,
 	}
 
 	// Prepare event clients.
@@ -263,6 +270,13 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		DeleteFunc: sc.DeletePDB,
 	})
 
+	sc.pcInformer = informerFactory.Scheduling().V1beta1().PriorityClasses()
+	sc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddPriorityClass,
+		UpdateFunc: sc.UpdatePriorityClass,
+		DeleteFunc: sc.DeletePriorityClass,
+	})
+
 	kbinformer := kbinfo.NewSharedInformerFactory(sc.kbclient, 0)
 	// create informer for PodGroup information
 	sc.podGroupInformer = kbinformer.Scheduling().V1alpha1().PodGroups()
@@ -292,6 +306,7 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.pvcInformer.Informer().Run(stopCh)
 	go sc.scInformer.Informer().Run(stopCh)
 	go sc.queueInformer.Informer().Run(stopCh)
+	go sc.pcInformer.Informer().Run(stopCh)
 
 	// Re-sync error tasks.
 	go wait.Until(sc.processResyncTask, 0, stopCh)
@@ -311,6 +326,7 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 		sc.pvcInformer.Informer().HasSynced,
 		sc.scInformer.Informer().HasSynced,
 		sc.queueInformer.Informer().HasSynced,
+		sc.pcInformer.Informer().HasSynced,
 	)
 }
 
@@ -525,6 +541,15 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 			glog.V(3).Infof("The Queue <%v> of Job <%v/%v> does not exist, ignore it.",
 				value.Queue, value.Namespace, value.Name)
 			continue
+		}
+
+		if value.PodGroup != nil {
+			value.Priority = sc.defaultPriority
+
+			priName := value.PodGroup.Spec.PriorityClassName
+			if priorityClass, found := sc.PriorityClasses[priName]; found {
+				value.Priority = priorityClass.Value
+			}
 		}
 
 		snapshot.Jobs[value.UID] = value.Clone()
