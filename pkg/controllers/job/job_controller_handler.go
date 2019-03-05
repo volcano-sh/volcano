@@ -83,15 +83,8 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 		return
 	}
 
-	fmt.Println("====================this is the job difference")
-	fmt.Println(oldJob)
-	fmt.Println(newJob)
-	fmt.Println("====================this is the job difference")
-	fmt.Println(oldJob.Status)
-	fmt.Println(newJob.Status)
 	if reflect.DeepEqual(newJob.Spec, oldJob.Spec) && newJob.Status.State.Version == oldJob.Status.State.Version {
 		glog.Infof("Job update event is ignored since no update in 'Spec' or 'Version'.")
-		return
 	}
 
 	if err := cc.cache.Update(newJob); err != nil {

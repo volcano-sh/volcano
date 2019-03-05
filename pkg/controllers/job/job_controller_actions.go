@@ -208,12 +208,26 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	var running, pending, terminating, succeeded, failed int32
 	jobVersion := fmt.Sprintf("%d", job.Status.State.Version)
 
+	fmt.Println("============================pods in cache====================")
+	for k, pods := range jobInfo.Pods {
+		for podName, pd := range pods {
+			for v, pod := range pd{
+				fmt.Printf("Pod:%s %s %s %s\n", k, podName, pod.Name, v)
+			}
+		}
+	}
+
+	for _, ts := range job.Spec.Tasks {
+		fmt.Println("this is the task")
+		fmt.Printf(ts.Name)
+	}
 	for _, ts := range job.Spec.Tasks {
 		var podToCreate []*v1.Pod
 		var podToDelete []*v1.Pod
 		ts.Template.Name = ts.Name
 		tc := ts.Template.DeepCopy()
 		name := ts.Template.Name
+		fmt.Printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!starting to handle job %s\n", name)
 
 		pods, found := jobInfo.Pods[name]
 		if !found {
@@ -224,9 +238,11 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 			podName := fmt.Sprintf(TaskNameFmt, job.Name, name, i)
 			if _, found := pods[podName]; !found {
 				newPod := createJobPod(job, tc, i)
+				fmt.Printf("going to append pod to create: %s, %s\n", newPod.Name,GetPodVersion(newPod))
 				podToCreate = append(podToCreate, newPod)
 			} else if _, found := pods[podName][jobVersion]; !found{
 				newPod := createJobPod(job, tc, i)
+				fmt.Printf("going to append pod to create: %s, %s\n", newPod.Name,GetPodVersion(newPod))
 				podToCreate = append(podToCreate, newPod)
 			} else {
 				pod := pods[podName][jobVersion]
@@ -236,7 +252,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 					delete(pods[podName], jobVersion)
 					continue
 				}
-
+				glog.Infof("Starting to refresh Pod status <%s/%s/%s>", pod.Namespace, pod.Name, GetPodVersion(pod))
 				switch pod.Status.Phase {
 				case v1.PodPending:
 					if pod.DeletionTimestamp != nil {
