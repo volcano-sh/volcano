@@ -139,7 +139,6 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 		pod.Annotations = make(map[string]string)
 	}
 
-
 	pod.Annotations[vkv1.TaskSpecKey] = tsKey
 	pod.Annotations[kbapi.GroupNameAnnotationKey] = job.Name
 	pod.Annotations[vkv1.JobNameKey] = job.Name
@@ -166,13 +165,11 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 		return req.Action
 	}
 
-	//For all the requests triggered from discarded job resource will perform sync action instead
+	//For all the requests triggered from discarded job resources will perform sync action instead
 	if req.JobVersion > 0 && req.JobVersion < job.Status.Version {
 		glog.Infof("Request %s is outdated, will perform sync instead.", req)
 		return vkv1.SyncJobAction
 	}
-
-
 
 	if req.Event == vkv1.OutOfSyncEvent {
 		return vkv1.SyncJobAction

@@ -132,8 +132,8 @@ type Request struct {
 	JobName   string
 	TaskName  string
 
-	Event  v1alpha1.Event
-	Action v1alpha1.Action
+	Event      v1alpha1.Event
+	Action     v1alpha1.Action
 	JobVersion int32
 }
 

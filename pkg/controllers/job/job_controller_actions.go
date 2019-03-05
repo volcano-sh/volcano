@@ -18,8 +18,9 @@ package job
 
 import (
 	"fmt"
-	"github.com/golang/glog"
 	"sync"
+
+	"github.com/golang/glog"
 
 	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"k8s.io/api/core/v1"
@@ -312,7 +313,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	return nil
 }
 
-func (cc *Controller) calculateVersion(current int32, bumpVersion bool) int32{
+func (cc *Controller) calculateVersion(current int32, bumpVersion bool) int32 {
 	if current == 0 {
 		current += 1
 	}
@@ -321,7 +322,6 @@ func (cc *Controller) calculateVersion(current int32, bumpVersion bool) int32{
 	}
 	return current
 }
-
 
 func (cc *Controller) createServiceIfNotExist(job *vkv1.Job) error {
 	// If Service does not exist, create one for Job.
