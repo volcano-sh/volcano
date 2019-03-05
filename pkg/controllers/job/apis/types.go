@@ -42,6 +42,10 @@ func (ji *JobInfo) JobAbandoned() bool{
 	return ji.Job.Status.State.Version < 0
 }
 
+func (ji *JobInfo) JobStarted() bool{
+	return ji.Job.Status.State.Version > 0
+}
+
 func (ji *JobInfo) StartNewRound(phase v1alpha1.JobPhase, reason, message string) {
 	if ji.Job.Status.State.Version < 0 {
 		glog.Errorf("Can not start a job while it's in terminated or aborted status.")
@@ -52,6 +56,7 @@ func (ji *JobInfo) StartNewRound(phase v1alpha1.JobPhase, reason, message string
 		Reason: reason,
 		Message: message,
 	}
+	glog.Infof("Job <%s/%s> Started a new round %s", ji.Job.Namespace, ji.Job.Name, ji.Job.Status.State)
 }
 
 func (ji *JobInfo) AbortCurrentRound(phase v1alpha1.JobPhase, reason, message string) {
@@ -64,6 +69,7 @@ func (ji *JobInfo) AbortCurrentRound(phase v1alpha1.JobPhase, reason, message st
 		Reason: reason,
 		Message: message,
 	}
+	glog.Infof("Job <%s/%s> Aborted current round %s", ji.Job.Namespace, ji.Job.Name, ji.Job.Status.State)
 }
 
 func (ji *JobInfo) ResumeCurrentRound(phase v1alpha1.JobPhase, reason, message string) {
@@ -76,6 +82,7 @@ func (ji *JobInfo) ResumeCurrentRound(phase v1alpha1.JobPhase, reason, message s
 		Reason: reason,
 		Message: message,
 	}
+	glog.Infof("Job <%s/%s> resumed current round %s", ji.Job.Namespace, ji.Job.Name, ji.Job.Status.State)
 }
 
 func (ji *JobInfo) Clone() *JobInfo {

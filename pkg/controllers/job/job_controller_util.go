@@ -162,6 +162,14 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 	return pod
 }
 
+func GetPodVersion(pod *v1.Pod) string {
+	version, found := pod.Annotations[vkv1.JobVersion]
+	if !found{
+		return ""
+	}
+	return version
+}
+
 func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 	if len(req.Action) != 0 {
 		return req.Action

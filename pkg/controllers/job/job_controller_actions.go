@@ -35,6 +35,8 @@ import (
 )
 
 func (cc * Controller) ConfigureJob(jobInfo *apis.JobInfo) error{
+	fmt.Println("going to ConfigureJob job info==================================================")
+	fmt.Println(jobInfo.Job.Status)
 	if job, err := cc.vkClients.BatchV1alpha1().Jobs(jobInfo.Job.Namespace).UpdateStatus(jobInfo.Job); err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v in configuration action",
 			job.Namespace, job.Name, err)
@@ -162,6 +164,10 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 
 func (cc *Controller) syncJobs(jobInfo *apis.JobInfo, nextState state.NextStateFn) error {
 
+	if !jobInfo.JobStarted() {
+		glog.Warningf("Job %s/%s has not been started, skipping sync",
+			jobInfo.Namespace, jobInfo.Name)
+	}
 	if jobInfo.JobAbandoned(){
 		if err := cc.killJob(jobInfo, nextState); err != nil {
 			return err
@@ -258,43 +264,16 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 				podToDelete = append(podToDelete, pod)
 			}
 		}
-
-		var creationErrs []error
-		waitCreationGroup := sync.WaitGroup{}
-		waitCreationGroup.Add(len(podToCreate))
-		for _, pod := range podToCreate {
-			go func(pod *v1.Pod) {
-				defer waitCreationGroup.Done()
-				_, err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Create(pod)
-				if err != nil {
-					// Failed to create Pod, waitCreationGroup a moment and then create it again
-					// This is to ensure all podsMap under the same Job created
-					// So gang-scheduling could schedule the Job successfully
-					glog.Errorf("Failed to create pod %s for Job %s, err %#v",
-						pod.Name, job.Name, err)
-					creationErrs = append(creationErrs, err)
-				} else {
-					pending++
-					glog.V(3).Infof("Created Task <%s> of Job <%s/%s>",
-						pod.Name, job.Namespace, job.Name)
-				}
-			}(pod)
-		}
-		waitCreationGroup.Wait()
-
-		if len(creationErrs) != 0 {
-			return fmt.Errorf("failed to create %d pods of %d", len(creationErrs), len(podToCreate))
-		}
-
 		// Delete unnecessary pods.
 		var deletionErrs []error
 		waitDeletionGroup := sync.WaitGroup{}
 		waitDeletionGroup.Add(len(podToDelete))
 		for _, pod := range podToDelete {
 			go func(pod *v1.Pod) {
+				glog.Infof("Starting to terminate Pod <%s/%s/%s>", pod.Namespace, pod.Name, GetPodVersion(pod))
 				defer waitDeletionGroup.Done()
 				if pod.DeletionTimestamp != nil {
-					glog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
+					glog.Infof("Pod <%s/%s/%s> is terminating", pod.Namespace, pod.Name, GetPodVersion(pod))
 					terminating++
 					return
 				}
@@ -318,6 +297,34 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		if len(deletionErrs) != 0 {
 			return fmt.Errorf("failed to delete %d pods of %d", len(deletionErrs), len(podToDelete))
 		}
+
+		var creationErrs []error
+		waitCreationGroup := sync.WaitGroup{}
+		waitCreationGroup.Add(len(podToCreate))
+		for _, pod := range podToCreate {
+			go func(pod *v1.Pod) {
+				glog.Infof("Starting to create Pod <%s/%s/%s>", pod.Namespace, pod.Name, GetPodVersion(pod))
+				defer waitCreationGroup.Done()
+				_, err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Create(pod)
+				if err != nil {
+					// Failed to create Pod, waitCreationGroup a moment and then create it again
+					// This is to ensure all podsMap under the same Job created
+					// So gang-scheduling could schedule the Job successfully
+					glog.Errorf("Failed to create pod %s for Job %s, err %#v",
+						pod.Name, job.Name, err)
+					creationErrs = append(creationErrs, err)
+				} else {
+					pending++
+					glog.V(3).Infof("Created Task <%s> of Job <%s/%s>",
+						pod.Name, job.Namespace, job.Name)
+				}
+			}(pod)
+		}
+		waitCreationGroup.Wait()
+
+		if len(creationErrs) != 0 {
+			return fmt.Errorf("failed to create %d pods of %d", len(creationErrs), len(podToCreate))
+		}
 	}
 
 	job.Status = vkv1.JobStatus{
@@ -332,8 +339,12 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	}
 
 	if nextState != nil {
+		oldState := job.Status.State.DeepCopy()
 		job.Status.State = nextState(job.Status)
+		job.Status.State.Version = oldState.Version
 	}
+	fmt.Println("going to update jobs=in sync methods========================")
+	fmt.Println(job.Status)
 
 	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",

@@ -55,6 +55,9 @@ func (cc *Controller) addJob(obj interface{}) {
 
 		Event: vkbatchv1.OutOfSyncEvent,
 	}
+	fmt.Println("====================this is the started job difference")
+	fmt.Println(job)
+
 	if job.Status.State.Version == 0 {
 		req.Action = vkbatchv1.StartJobAction
 	}
@@ -80,7 +83,12 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 		return
 	}
 
-
+	fmt.Println("====================this is the job difference")
+	fmt.Println(oldJob)
+	fmt.Println(newJob)
+	fmt.Println("====================this is the job difference")
+	fmt.Println(oldJob.Status)
+	fmt.Println(newJob.Status)
 	if reflect.DeepEqual(newJob.Spec, oldJob.Spec) && newJob.Status.State.Version == oldJob.Status.State.Version {
 		glog.Infof("Job update event is ignored since no update in 'Spec' or 'Version'.")
 		return
@@ -97,6 +105,9 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 
 		Event: vkbatchv1.OutOfSyncEvent,
 	}
+	job2,_ := cc.cache.Get(vkcache.JobKey(newJob))
+	fmt.Println(job2)
+	fmt.Println(job2.Job)
 
 	cc.queue.Add(req)
 }
