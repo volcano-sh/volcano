@@ -145,7 +145,7 @@ func (cc *Controller) addPod(obj interface{}) {
 		Namespace: pod.Namespace,
 		JobName:   jobName,
 
-		Event: vkbatchv1.OutOfSyncEvent,
+		Event:      vkbatchv1.OutOfSyncEvent,
 		JobVersion: int32(dVersion),
 	}
 
@@ -208,7 +208,7 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		JobName:   jobName,
 		TaskName:  taskName,
 
-		Event: event,
+		Event:      event,
 		JobVersion: int32(dVersion),
 	}
 
@@ -270,7 +270,7 @@ func (cc *Controller) deletePod(obj interface{}) {
 		JobName:   jobName,
 		TaskName:  taskName,
 
-		Event: vkbatchv1.PodEvictedEvent,
+		Event:      vkbatchv1.PodEvictedEvent,
 		JobVersion: int32(dVersion),
 	}
 
