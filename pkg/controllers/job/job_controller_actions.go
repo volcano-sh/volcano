@@ -35,8 +35,6 @@ import (
 )
 
 func (cc * Controller) ConfigureJob(jobInfo *apis.JobInfo) error{
-	fmt.Println("going to ConfigureJob job info==================================================")
-	fmt.Println(jobInfo.Job.Status)
 	if job, err := cc.vkClients.BatchV1alpha1().Jobs(jobInfo.Job.Namespace).UpdateStatus(jobInfo.Job); err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v in configuration action",
 			job.Namespace, job.Name, err)
@@ -125,7 +123,9 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	}
 
 	if nextState != nil {
+		oldState := job.Status.State.DeepCopy()
 		job.Status.State = nextState(job.Status)
+		job.Status.State.Version = oldState.Version
 	}
 
 	// Update Job status
@@ -206,21 +206,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	}
 
 	var running, pending, terminating, succeeded, failed int32
-	jobVersion := fmt.Sprintf("%d", job.Status.State.Version)
 
-	fmt.Println("============================pods in cache====================")
-	for k, pods := range jobInfo.Pods {
-		for podName, pd := range pods {
-			for v, pod := range pd{
-				fmt.Printf("Pod:%s %s %s %s\n", k, podName, pod.Name, v)
-			}
-		}
-	}
-
-	for _, ts := range job.Spec.Tasks {
-		fmt.Println("this is the task")
-		fmt.Printf(ts.Name)
-	}
 	var podToCreate []*v1.Pod
 	var podToDelete []*v1.Pod
 	var deletionErrs []error
@@ -229,7 +215,6 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		ts.Template.Name = ts.Name
 		tc := ts.Template.DeepCopy()
 		name := ts.Template.Name
-		fmt.Printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!starting to handle job %s\n", name)
 
 		pods, found := jobInfo.Pods[name]
 		if !found {
@@ -240,11 +225,9 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 			podName := fmt.Sprintf(TaskNameFmt, job.Name, name, i)
 			if _, found := pods[podName]; !found {
 				newPod := createJobPod(job, tc, i)
-				fmt.Printf("going to append pod to create: %s, %s\n", newPod.Name,GetPodVersion(newPod))
 				podToCreate = append(podToCreate, newPod)
 			} else if _, found := pods[podName][jobVersion]; !found{
 				newPod := createJobPod(job, tc, i)
-				fmt.Printf("going to append pod to create: %s, %s\n", newPod.Name,GetPodVersion(newPod))
 				podToCreate = append(podToCreate, newPod)
 			} else {
 				pod := pods[podName][jobVersion]
@@ -360,8 +343,6 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		job.Status.State = nextState(job.Status)
 		job.Status.State.Version = oldState.Version
 	}
-	fmt.Println("going to update jobs=in sync methods========================")
-	fmt.Println(job.Status)
 
 	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",

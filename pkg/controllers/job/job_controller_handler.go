@@ -18,9 +18,9 @@ package job
 
 import (
 	"fmt"
-	"reflect"
-
 	"github.com/golang/glog"
+	"reflect"
+	"strconv"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -54,11 +54,10 @@ func (cc *Controller) addJob(obj interface{}) {
 		JobName:   job.Name,
 
 		Event: vkbatchv1.OutOfSyncEvent,
+		JobVersion: job.Status.State.Version,
 	}
-	fmt.Println("====================this is the started job difference")
-	fmt.Println(job)
 
-	if job.Status.State.Version == 0 {
+	if job.Status.State.Version == NewStarted {
 		req.Action = vkbatchv1.StartJobAction
 	}
 
@@ -72,6 +71,7 @@ func (cc *Controller) addJob(obj interface{}) {
 
 func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 	newJob, ok := newObj.(*vkbatchv1.Job)
+	validJobUpdate := false
 	if !ok {
 		glog.Errorf("newObj is not Job")
 		return
@@ -83,26 +83,31 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 		return
 	}
 
-	if reflect.DeepEqual(newJob.Spec, oldJob.Spec) && newJob.Status.State.Version == oldJob.Status.State.Version {
-		glog.Infof("Job update event is ignored since no update in 'Spec' or 'Version'.")
+	if !reflect.DeepEqual(newJob.Spec, oldJob.Spec) {
+		glog.Infof("Job Spec update event found'.")
+		validJobUpdate = true
 	}
 
-	if err := cc.cache.Update(newJob); err != nil {
-		glog.Errorf("Failed to update job <%s/%s>: %v in cache",
-			newJob.Namespace, newJob.Name, err)
+	if newJob.Status.State.Version != oldJob.Status.State.Version {
+		glog.Infof("Job Version update event found'.")
+		validJobUpdate = true
 	}
-
+	if ! validJobUpdate {
+		return
+	}
 	req := apis.Request{
 		Namespace: newJob.Namespace,
 		JobName:   newJob.Name,
 
 		Event: vkbatchv1.OutOfSyncEvent,
+		JobVersion: newJob.Status.State.Version,
 	}
-	job2,_ := cc.cache.Get(vkcache.JobKey(newJob))
-	fmt.Println(job2)
-	fmt.Println(job2.Job)
-
 	cc.queue.Add(req)
+
+	if err := cc.cache.Update(newJob); err != nil {
+		glog.Errorf("Failed to update job <%s/%s>: %v in cache",
+			newJob.Namespace, newJob.Name, err)
+	}
 }
 
 func (cc *Controller) deleteJob(obj interface{}) {
@@ -139,15 +144,19 @@ func (cc *Controller) addPod(obj interface{}) {
 		return
 	}
 
+	dVersion, err := strconv.Atoi(version)
+	if err != nil {
+		glog.Infof("Failed to convert jobVersion of Pod into number <%s/%s>, skipping",
+			pod.Namespace, pod.Name)
+		return
+	}
+
 	req := apis.Request{
 		Namespace: pod.Namespace,
 		JobName:   jobName,
 
 		Event: vkbatchv1.OutOfSyncEvent,
-		PodID: &apis.PodIdentity{
-			Name: pod.Name,
-			Version: version,
-		},
+		JobVersion: int32(dVersion),
 	}
 
 	if err := cc.cache.AddPod(pod); err != nil {
@@ -191,6 +200,13 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		return
 	}
 
+	dVersion, err := strconv.Atoi(version)
+	if err != nil {
+		glog.Infof("Failed to convert jobVersion of Pod into number <%s/%s>, skipping",
+			newPod.Namespace, newPod.Name)
+		return
+	}
+
 	event := vkbatchv1.OutOfSyncEvent
 	if oldPod.Status.Phase != v1.PodFailed &&
 		newPod.Status.Phase == v1.PodFailed {
@@ -203,10 +219,7 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		TaskName:  taskName,
 
 		Event: event,
-		PodID: &apis.PodIdentity{
-			Name: newPod.Name,
-			Version: version,
-		},
+		JobVersion: int32(dVersion),
 	}
 
 	if err := cc.cache.UpdatePod(newPod); err != nil {
@@ -255,17 +268,20 @@ func (cc *Controller) deletePod(obj interface{}) {
 		return
 	}
 
+	dVersion, err := strconv.Atoi(version)
+	if err != nil {
+		glog.Infof("Failed to convert jobVersion of Pod into number <%s/%s>, skipping",
+			pod.Namespace, pod.Name)
+		return
+	}
+
 	req := apis.Request{
 		Namespace: pod.Namespace,
 		JobName:   jobName,
 		TaskName:  taskName,
 
 		Event: vkbatchv1.PodEvictedEvent,
-		PodID: &apis.PodIdentity{
-			Name: pod.Name,
-			Version: version,
-		},
-
+		JobVersion: int32(dVersion),
 	}
 
 	if err := cc.cache.DeletePod(pod); err != nil {

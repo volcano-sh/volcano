@@ -19,8 +19,6 @@ package job
 import (
 	"fmt"
 	"github.com/golang/glog"
-	"strconv"
-
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -30,6 +28,10 @@ import (
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
+)
+
+const (
+	NewStarted = 0
 )
 
 func eventKey(obj interface{}) interface{} {
@@ -175,15 +177,13 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 		return req.Action
 	}
 
-	//For all the requests triggered from discarded pods will have sync action
-	if req.PodID != nil {
-		if version, err := strconv.Atoi(req.PodID.Version); err != nil{
-			if version < int(job.Status.State.Version) {
-				glog.Infof("Request %s is outdated, will perform sync instead.", req)
-				return vkv1.SyncJobAction
-			}
-		}
+	//For all the requests triggered from discarded job resource will perform sync action instead
+	if req.JobVersion > NewStarted && req.JobVersion < job.Status.State.Version {
+		glog.Infof("Request %s is outdated, will perform sync instead.", req)
+		return vkv1.SyncJobAction
 	}
+
+
 
 	if req.Event == vkv1.OutOfSyncEvent {
 		return vkv1.SyncJobAction

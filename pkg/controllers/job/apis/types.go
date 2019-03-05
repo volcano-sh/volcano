@@ -30,11 +30,11 @@ type JobInfo struct {
 
 	Job  *v1alpha1.Job
 	// We construct pods map in the style of:
-	// |--->Job 1
-	// |     |--->Task 1
-	// |           |--->Pod 1
-	// |                 |---> Version 1
-	// |                 |---> Version 2
+	// |--->Job Name
+	// |     |--->Task Name
+	// |           |--->Pod Name
+	// |                 |---> Version 1 : Pod
+	// |                 |---> Version 2 : Pod
 	Pods map[string]map[string]map[string]*v1.Pod
 }
 
@@ -43,7 +43,7 @@ func (ji *JobInfo) JobAbandoned() bool{
 }
 
 func (ji *JobInfo) JobStarted() bool{
-	return ji.Job.Status.State.Version > 0
+	return ji.Job.Status.State.Version != 0
 }
 
 func (ji *JobInfo) StartNewRound(phase v1alpha1.JobPhase, reason, message string) {
@@ -89,7 +89,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 	job := &JobInfo{
 		Namespace: ji.Namespace,
 		Name:      ji.Name,
-		Job:       ji.Job,
+		Job:       ji.Job.DeepCopy(),
 
 		Pods: make(map[string]map[string]map[string]*v1.Pod),
 	}
@@ -201,23 +201,12 @@ type Request struct {
 
 	Event  v1alpha1.Event
 	Action v1alpha1.Action
-	PodID *PodIdentity
+	JobVersion int32
 }
-
-type PodIdentity struct {
-	Name string
-	Version string
-}
-
 
 func (r Request) String() string {
-	if r.PodID != nil{
-		return fmt.Sprintf(
-			"Job: %s/%s, Task:%s, Event:%s, Action:%s Source Pod: %s/%s",
-			r.Namespace, r.JobName, r.TaskName, r.Event, r.Action, r.PodID.Name, r.PodID.Version)
-	}else{
-		return fmt.Sprintf(
-			"Job: %s/%s, Task:%s, Event:%s, Action:%s",
-			r.Namespace, r.JobName, r.TaskName, r.Event, r.Action)
-	}
+	return fmt.Sprintf(
+		"Job: %s/%s, Task:%s, Event:%s, Action:%s, JobVersion: %d",
+		r.Namespace, r.JobName, r.TaskName, r.Event, r.Action, r.JobVersion)
+
 }
