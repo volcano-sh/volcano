@@ -23,15 +23,12 @@ import (
 
 type NextStateFn func(status vkv1.JobStatus) vkv1.JobState
 type ActionFn func(job *apis.JobInfo, fn NextStateFn) error
-type ConfigureFn func(job *apis.JobInfo) error
 
 var (
 	// SyncJob will create or delete Pods according to Job's spec.
 	SyncJob ActionFn
 	// KillJob kill all Pods of Job.
 	KillJob ActionFn
-	// ConfigureJob configure current statues of job
-	ConfigJob ConfigureFn
 )
 
 type State interface {

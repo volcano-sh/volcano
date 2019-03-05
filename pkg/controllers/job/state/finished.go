@@ -27,5 +27,5 @@ type finishedState struct {
 
 func (ps *finishedState) Execute(action vkv1.Action) error {
 	// In finished state, e.g. Completed, always kill the whole job.
-	return SyncJob(ps.job, nil)
+	return KillJob(ps.job, nil)
 }

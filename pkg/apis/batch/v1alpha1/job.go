@@ -119,8 +119,6 @@ const (
 	ResumeJobAction Action = "ResumeJob"
 	// SyncJobAction is the action to sync Job/Pod status.
 	SyncJobAction Action = "SyncJob"
-	// Start a new job
-	StartJobAction Action = "StartJob"
 )
 
 // LifecyclePolicy specifies the lifecycle and error handling of task and job.
@@ -182,8 +180,6 @@ const (
 
 // JobState contains details for the current state of the job.
 type JobState struct {
-	//Current version of job
-	Version int32
 	// The phase of Job.
 	// +optional
 	Phase JobPhase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
@@ -225,6 +221,8 @@ type JobStatus struct {
 	// The number of pods which reached phase Terminating.
 	// +optional
 	Terminating int32 `json:"terminating,omitempty" protobuf:"bytes,7,opt,name=terminating"`
+	//Current version of job
+	Version int32
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
