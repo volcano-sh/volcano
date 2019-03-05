@@ -17,7 +17,6 @@ limitations under the License.
 package state
 
 import (
-	"fmt"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
 )
@@ -29,26 +28,38 @@ type runningState struct {
 func (ps *runningState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.RestartJobAction:
-		newJob := ps.job.Clone()
-		newJob.StartNewRound(
-			vkv1.Restarting,
-			fmt.Sprintf("Job Restarted"),
-			fmt.Sprintf("Job is restarted in running state."))
-		return ConfigJob(newJob)
+		return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
+			phase := vkv1.Running
+			if status.Terminating != 0 {
+				phase = vkv1.Restarting
+			}
+
+			return vkv1.JobState{
+				Phase: phase,
+			}
+		})
 	case vkv1.AbortJobAction:
-		newJob := ps.job.Clone()
-		newJob.AbortCurrentRound(
-			vkv1.Aborting,
-			fmt.Sprintf("Job Aborting"),
-			fmt.Sprintf("Job is aborting in running state."))
-		return ConfigJob(newJob)
+		return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
+			phase := vkv1.Running
+			if status.Terminating != 0 {
+				phase = vkv1.Aborting
+			}
+
+			return vkv1.JobState{
+				Phase: phase,
+			}
+		})
 	case vkv1.TerminateJobAction:
-		newJob := ps.job.Clone()
-		newJob.AbortCurrentRound(
-			vkv1.Terminating,
-			fmt.Sprintf("Job Terminating"),
-			fmt.Sprintf("Job is terminating in running state."))
-		return ConfigJob(newJob)
+		return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
+			phase := vkv1.Running
+			if status.Terminating != 0 {
+				phase = vkv1.Terminating
+			}
+
+			return vkv1.JobState{
+				Phase: phase,
+			}
+		})
 	default:
 		return SyncJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
 			phase := vkv1.Running

@@ -18,9 +18,10 @@ package job
 
 import (
 	"fmt"
-	"github.com/golang/glog"
 	"reflect"
 	"strconv"
+
+	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -54,11 +55,6 @@ func (cc *Controller) addJob(obj interface{}) {
 		JobName:   job.Name,
 
 		Event: vkbatchv1.OutOfSyncEvent,
-		JobVersion: job.Status.State.Version,
-	}
-
-	if job.Status.State.Version == NewStarted {
-		req.Action = vkbatchv1.StartJobAction
 	}
 
 	// TODO(k82cn): if failed to add job, the cache should be refresh
@@ -71,7 +67,6 @@ func (cc *Controller) addJob(obj interface{}) {
 
 func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 	newJob, ok := newObj.(*vkbatchv1.Job)
-	validJobUpdate := false
 	if !ok {
 		glog.Errorf("newObj is not Job")
 		return
@@ -83,31 +78,26 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 		return
 	}
 
-	if !reflect.DeepEqual(newJob.Spec, oldJob.Spec) {
-		glog.Infof("Job Spec update event found'.")
-		validJobUpdate = true
-	}
-
-	if newJob.Status.State.Version != oldJob.Status.State.Version {
-		glog.Infof("Job Version update event found'.")
-		validJobUpdate = true
-	}
-	if ! validJobUpdate {
+	//NOTE: Since we only reconcile job based on Spec, we will ignore other attributes
+	// For Job status, it's used internally and always been updated via our controller.
+	if reflect.DeepEqual(newJob.Spec, oldJob.Spec) {
+		glog.Infof("Job update event is ignored since no update in 'Spec'.")
 		return
 	}
-	req := apis.Request{
-		Namespace: newJob.Namespace,
-		JobName:   newJob.Name,
-
-		Event: vkbatchv1.OutOfSyncEvent,
-		JobVersion: newJob.Status.State.Version,
-	}
-	cc.queue.Add(req)
 
 	if err := cc.cache.Update(newJob); err != nil {
 		glog.Errorf("Failed to update job <%s/%s>: %v in cache",
 			newJob.Namespace, newJob.Name, err)
 	}
+
+	req := apis.Request{
+		Namespace: newJob.Namespace,
+		JobName:   newJob.Name,
+
+		Event: vkbatchv1.OutOfSyncEvent,
+	}
+
+	cc.queue.Add(req)
 }
 
 func (cc *Controller) deleteJob(obj interface{}) {

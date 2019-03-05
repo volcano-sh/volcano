@@ -18,9 +18,8 @@ package job
 
 import (
 	"fmt"
-	"sync"
-
 	"github.com/golang/glog"
+	"sync"
 
 	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"k8s.io/api/core/v1"
@@ -34,25 +33,14 @@ import (
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
-func (cc * Controller) ConfigureJob(jobInfo *apis.JobInfo) error{
-	if job, err := cc.vkClients.BatchV1alpha1().Jobs(jobInfo.Job.Namespace).UpdateStatus(jobInfo.Job); err != nil {
-		glog.Errorf("Failed to update status of Job %v/%v: %v in configuration action",
-			job.Namespace, job.Name, err)
-		return err
-	} else {
-		if e := cc.cache.Update(job); e != nil {
-			return e
-		}
-	}
-	return nil
-}
-
-
 func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn) error {
 	glog.V(3).Infof("Killing Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
 	defer glog.V(3).Infof("Finished Job <%s/%s> killing", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
 	job := jobInfo.Job
+	//Calculate current job version, it's bumped only when job is killed
+	job.Status.Version = cc.calculateVersion(job.Status.Version, true)
+	glog.Infof("Current Version is set to: %d for job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 	if job.DeletionTimestamp != nil {
 		glog.Infof("Job <%s/%s> is terminating, skip management process.",
 			job.Namespace, job.Name)
@@ -65,44 +53,42 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	var total int
 
 	for _, pods := range jobInfo.Pods {
-		for _, pds := range pods {
-			for _, pod := range pds {
-				total++
+		for _, pod := range pods {
+			total++
 
-				if pod.DeletionTimestamp != nil {
-					glog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
-					terminating++
+			if pod.DeletionTimestamp != nil {
+				glog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
+				terminating++
+				continue
+			}
+
+			switch pod.Status.Phase {
+			case v1.PodRunning:
+				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+				if err != nil {
+					running++
+					errs = append(errs, err)
 					continue
 				}
-
-				switch pod.Status.Phase {
-				case v1.PodRunning:
-					err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
-					if err != nil {
-						running++
-						errs = append(errs, err)
-						continue
-					}
-					terminating++
-				case v1.PodPending:
-					err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
-					if err != nil {
-						pending++
-						errs = append(errs, err)
-						continue
-					}
-					terminating++
-				case v1.PodSucceeded:
-					succeeded++
-				case v1.PodFailed:
-					err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
-					if err != nil {
-						failed++
-						errs = append(errs, err)
-						continue
-					}
-					terminating++
+				terminating++
+			case v1.PodPending:
+				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+				if err != nil {
+					pending++
+					errs = append(errs, err)
+					continue
 				}
+				terminating++
+			case v1.PodSucceeded:
+				succeeded++
+			case v1.PodFailed:
+				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+				if err != nil {
+					failed++
+					errs = append(errs, err)
+					continue
+				}
+				terminating++
 			}
 		}
 	}
@@ -119,13 +105,12 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		Succeeded:    succeeded,
 		Failed:       failed,
 		Terminating:  terminating,
+		Version:      job.Status.Version,
 		MinAvailable: int32(job.Spec.MinAvailable),
 	}
 
 	if nextState != nil {
-		oldState := job.Status.State.DeepCopy()
 		job.Status.State = nextState(job.Status)
-		job.Status.State.Version = oldState.Version
 	}
 
 	// Update Job status
@@ -162,30 +147,14 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	return nil
 }
 
-func (cc *Controller) syncJobs(jobInfo *apis.JobInfo, nextState state.NextStateFn) error {
-
-	if !jobInfo.JobStarted() {
-		glog.Warningf("Job %s/%s has not been started, skipping sync",
-			jobInfo.Namespace, jobInfo.Name)
-	}
-	if jobInfo.JobAbandoned(){
-		if err := cc.killJob(jobInfo, nextState); err != nil {
-			return err
-		}
-
-	}else{
-		if err := cc.syncJob(jobInfo, nextState); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn) error {
 	glog.V(3).Infof("Starting to sync up Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
 	defer glog.V(3).Infof("Finished Job <%s/%s> sync up", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
-	job := jobInfo.Job.DeepCopy()
+	job := jobInfo.Job
+	//Calculate current job version, it's bumped only when job is killed
+	job.Status.Version = cc.calculateVersion(job.Status.Version, false)
+	glog.Infof("Current Version is set to: %d for job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 
 	if job.DeletionTimestamp != nil {
 		glog.Infof("Job <%s/%s> is terminating, skip management process.",
@@ -207,37 +176,31 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 
 	var running, pending, terminating, succeeded, failed int32
 
-	var podToCreate []*v1.Pod
-	var podToDelete []*v1.Pod
-	var deletionErrs []error
-	var creationErrs []error
 	for _, ts := range job.Spec.Tasks {
+		var podToCreate []*v1.Pod
+		var podToDelete []*v1.Pod
 		ts.Template.Name = ts.Name
 		tc := ts.Template.DeepCopy()
 		name := ts.Template.Name
 
 		pods, found := jobInfo.Pods[name]
 		if !found {
-			pods = map[string]map[string]*v1.Pod{}
+			pods = map[string]*v1.Pod{}
 		}
 
 		for i := 0; i < int(ts.Replicas); i++ {
 			podName := fmt.Sprintf(TaskNameFmt, job.Name, name, i)
-			if _, found := pods[podName]; !found {
-				newPod := createJobPod(job, tc, i)
-				podToCreate = append(podToCreate, newPod)
-			} else if _, found := pods[podName][jobVersion]; !found{
+			if pod, found := pods[podName]; !found {
 				newPod := createJobPod(job, tc, i)
 				podToCreate = append(podToCreate, newPod)
 			} else {
-				pod := pods[podName][jobVersion]
 				if pod.DeletionTimestamp != nil {
 					glog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
 					terminating++
-					delete(pods[podName], jobVersion)
+					delete(pods, podName)
 					continue
 				}
-				glog.Infof("Starting to refresh Pod status <%s/%s/%s>", pod.Namespace, pod.Name, GetPodVersion(pod))
+
 				switch pod.Status.Phase {
 				case v1.PodPending:
 					if pod.DeletionTimestamp != nil {
@@ -256,75 +219,68 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 				case v1.PodFailed:
 					failed++
 				}
-				delete(pods[podName], jobVersion)
+				delete(pods, podName)
 			}
 		}
 
-		for _, pds := range pods {
-			for _, pod := range pds {
-				podToDelete = append(podToDelete, pod)
-			}
+		for _, pod := range pods {
+			podToDelete = append(podToDelete, pod)
 		}
-	}
 
-	// Delete unnecessary pods.
-	waitDeletionGroup := sync.WaitGroup{}
-	waitDeletionGroup.Add(len(podToDelete))
-	for _, pod := range podToDelete {
-		go func(pod *v1.Pod) {
-			glog.Infof("Starting to terminate Pod <%s/%s/%s>", pod.Namespace, pod.Name, GetPodVersion(pod))
-			defer waitDeletionGroup.Done()
-			if pod.DeletionTimestamp != nil {
-				glog.Infof("Pod <%s/%s/%s> is terminating", pod.Namespace, pod.Name, GetPodVersion(pod))
-				terminating++
-				return
-			}
-			err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
-			if err != nil {
-				// Failed to create Pod, waitCreationGroup a moment and then create it again
-				// This is to ensure all podsMap under the same Job created
-				// So gang-scheduling could schedule the Job successfully
-				glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
-					pod.Name, job.Name, err)
-				deletionErrs = append(deletionErrs, err)
-			} else {
-				glog.V(3).Infof("Deleted Task <%s> of Job <%s/%s>",
-					pod.Name, job.Namespace, job.Name)
-				terminating++
-			}
-		}(pod)
-	}
-	waitDeletionGroup.Wait()
+		var creationErrs []error
+		waitCreationGroup := sync.WaitGroup{}
+		waitCreationGroup.Add(len(podToCreate))
+		for _, pod := range podToCreate {
+			go func(pod *v1.Pod) {
+				defer waitCreationGroup.Done()
+				_, err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Create(pod)
+				if err != nil {
+					// Failed to create Pod, waitCreationGroup a moment and then create it again
+					// This is to ensure all podsMap under the same Job created
+					// So gang-scheduling could schedule the Job successfully
+					glog.Errorf("Failed to create pod %s for Job %s, err %#v",
+						pod.Name, job.Name, err)
+					creationErrs = append(creationErrs, err)
+				} else {
+					pending++
+					glog.V(3).Infof("Created Task <%s> of Job <%s/%s>",
+						pod.Name, job.Namespace, job.Name)
+				}
+			}(pod)
+		}
+		waitCreationGroup.Wait()
 
-	if len(deletionErrs) != 0 {
-		return fmt.Errorf("failed to delete %d pods of %d", len(deletionErrs), len(podToDelete))
-	}
+		if len(creationErrs) != 0 {
+			return fmt.Errorf("failed to create %d pods of %d", len(creationErrs), len(podToCreate))
+		}
 
-	waitCreationGroup := sync.WaitGroup{}
-	waitCreationGroup.Add(len(podToCreate))
-	for _, pod := range podToCreate {
-		go func(pod *v1.Pod) {
-			glog.Infof("Starting to create Pod <%s/%s/%s>", pod.Namespace, pod.Name, GetPodVersion(pod))
-			defer waitCreationGroup.Done()
-			_, err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Create(pod)
-			if err != nil {
-				// Failed to create Pod, waitCreationGroup a moment and then create it again
-				// This is to ensure all podsMap under the same Job created
-				// So gang-scheduling could schedule the Job successfully
-				glog.Errorf("Failed to create pod %s for Job %s, err %#v",
-					pod.Name, job.Name, err)
-				creationErrs = append(creationErrs, err)
-			} else {
-				pending++
-				glog.V(3).Infof("Created Task <%s> of Job <%s/%s>",
-					pod.Name, job.Namespace, job.Name)
-			}
-		}(pod)
-	}
-	waitCreationGroup.Wait()
+		// Delete unnecessary pods.
+		var deletionErrs []error
+		waitDeletionGroup := sync.WaitGroup{}
+		waitDeletionGroup.Add(len(podToDelete))
+		for _, pod := range podToDelete {
+			go func(pod *v1.Pod) {
+				defer waitDeletionGroup.Done()
+				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+				if err != nil {
+					// Failed to create Pod, waitCreationGroup a moment and then create it again
+					// This is to ensure all podsMap under the same Job created
+					// So gang-scheduling could schedule the Job successfully
+					glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
+						pod.Name, job.Name, err)
+					deletionErrs = append(deletionErrs, err)
+				} else {
+					glog.V(3).Infof("Deleted Task <%s> of Job <%s/%s>",
+						pod.Name, job.Namespace, job.Name)
+					terminating++
+				}
+			}(pod)
+		}
+		waitDeletionGroup.Wait()
 
-	if len(creationErrs) != 0 {
-		return fmt.Errorf("failed to create %d pods of %d", len(creationErrs), len(podToCreate))
+		if len(deletionErrs) != 0 {
+			return fmt.Errorf("failed to delete %d pods of %d", len(deletionErrs), len(podToDelete))
+		}
 	}
 
 	job.Status = vkv1.JobStatus{
@@ -335,13 +291,12 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		Succeeded:    succeeded,
 		Failed:       failed,
 		Terminating:  terminating,
+		Version:      job.Status.Version,
 		MinAvailable: int32(job.Spec.MinAvailable),
 	}
 
 	if nextState != nil {
-		oldState := job.Status.State.DeepCopy()
 		job.Status.State = nextState(job.Status)
-		job.Status.State.Version = oldState.Version
 	}
 
 	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
@@ -356,6 +311,17 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 
 	return nil
 }
+
+func (cc *Controller) calculateVersion(current int32, bumpVersion bool) int32{
+	if current == 0 {
+		current += 1
+	}
+	if bumpVersion {
+		current += 1
+	}
+	return current
+}
+
 
 func (cc *Controller) createServiceIfNotExist(job *vkv1.Job) error {
 	// If Service does not exist, create one for Job.

@@ -196,9 +196,9 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
 	// Register actions
-	state.SyncJob = cc.syncJobs
+	state.SyncJob = cc.syncJob
 	state.KillJob = cc.killJob
-	state.ConfigJob = cc.ConfigureJob
+
 	return cc
 }
 

@@ -139,6 +139,10 @@ spec:
               description: The number of running pods.
               format: int32
               type: integer
+            version:
+              description: Job's current version.
+              type: integer
+              format: int32
             state:
               description: Current state of Job.
               properties:
@@ -153,10 +157,6 @@ spec:
                   description: Unique, one-word, CamelCase reason for the condition's
                     last transition.
                   type: string
-                version:
-                  description: Job's current version.
-                  type: integer
-                  format: int32
               type: object
           type: object
   version: v1alpha1

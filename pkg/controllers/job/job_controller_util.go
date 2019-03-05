@@ -19,6 +19,7 @@ package job
 import (
 	"fmt"
 	"github.com/golang/glog"
+
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -28,10 +29,6 @@ import (
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
-)
-
-const (
-	NewStarted = 0
 )
 
 func eventKey(obj interface{}) interface{} {
@@ -146,7 +143,7 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 	pod.Annotations[vkv1.TaskSpecKey] = tsKey
 	pod.Annotations[kbapi.GroupNameAnnotationKey] = job.Name
 	pod.Annotations[vkv1.JobNameKey] = job.Name
-	pod.Annotations[vkv1.JobVersion] = fmt.Sprintf("%d", job.Status.State.Version)
+	pod.Annotations[vkv1.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
 
 	if len(pod.Labels) == 0 {
 		pod.Labels = make(map[string]string)
@@ -164,21 +161,13 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 	return pod
 }
 
-func GetPodVersion(pod *v1.Pod) string {
-	version, found := pod.Annotations[vkv1.JobVersion]
-	if !found{
-		return ""
-	}
-	return version
-}
-
 func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 	if len(req.Action) != 0 {
 		return req.Action
 	}
 
 	//For all the requests triggered from discarded job resource will perform sync action instead
-	if req.JobVersion > NewStarted && req.JobVersion < job.Status.State.Version {
+	if req.JobVersion > 0 && req.JobVersion < job.Status.Version {
 		glog.Infof("Request %s is outdated, will perform sync instead.", req)
 		return vkv1.SyncJobAction
 	}
