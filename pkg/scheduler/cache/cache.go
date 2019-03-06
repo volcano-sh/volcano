@@ -550,6 +550,9 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 			if priorityClass, found := sc.PriorityClasses[priName]; found {
 				value.Priority = priorityClass.Value
 			}
+
+			glog.V(4).Infof("The priority of job <%s/%s> is <%s/%d>",
+				value.Namespace, value.Name, priName, value.Priority)
 		}
 
 		snapshot.Jobs[value.UID] = value.Clone()
