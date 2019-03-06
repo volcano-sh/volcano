@@ -170,9 +170,12 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 
 	var running, pending, terminating, succeeded, failed int32
 
+	var podToCreate []*v1.Pod
+	var podToDelete []*v1.Pod
+	var creationErrs []error
+	var deletionErrs []error
+
 	for _, ts := range job.Spec.Tasks {
-		var podToCreate []*v1.Pod
-		var podToDelete []*v1.Pod
 		ts.Template.Name = ts.Name
 		tc := ts.Template.DeepCopy()
 		name := ts.Template.Name
@@ -220,61 +223,59 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		for _, pod := range pods {
 			podToDelete = append(podToDelete, pod)
 		}
+	}
 
-		var creationErrs []error
-		waitCreationGroup := sync.WaitGroup{}
-		waitCreationGroup.Add(len(podToCreate))
-		for _, pod := range podToCreate {
-			go func(pod *v1.Pod) {
-				defer waitCreationGroup.Done()
-				_, err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Create(pod)
-				if err != nil {
-					// Failed to create Pod, waitCreationGroup a moment and then create it again
-					// This is to ensure all podsMap under the same Job created
-					// So gang-scheduling could schedule the Job successfully
-					glog.Errorf("Failed to create pod %s for Job %s, err %#v",
-						pod.Name, job.Name, err)
-					creationErrs = append(creationErrs, err)
-				} else {
-					pending++
-					glog.V(3).Infof("Created Task <%s> of Job <%s/%s>",
-						pod.Name, job.Namespace, job.Name)
-				}
-			}(pod)
-		}
-		waitCreationGroup.Wait()
+	waitCreationGroup := sync.WaitGroup{}
+	waitCreationGroup.Add(len(podToCreate))
+	for _, pod := range podToCreate {
+		go func(pod *v1.Pod) {
+			defer waitCreationGroup.Done()
+			_, err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Create(pod)
+			if err != nil {
+				// Failed to create Pod, waitCreationGroup a moment and then create it again
+				// This is to ensure all podsMap under the same Job created
+				// So gang-scheduling could schedule the Job successfully
+				glog.Errorf("Failed to create pod %s for Job %s, err %#v",
+					pod.Name, job.Name, err)
+				creationErrs = append(creationErrs, err)
+			} else {
+				pending++
+				glog.V(3).Infof("Created Task <%s> of Job <%s/%s>",
+					pod.Name, job.Namespace, job.Name)
+			}
+		}(pod)
+	}
+	waitCreationGroup.Wait()
 
-		if len(creationErrs) != 0 {
-			return fmt.Errorf("failed to create %d pods of %d", len(creationErrs), len(podToCreate))
-		}
+	if len(creationErrs) != 0 {
+		return fmt.Errorf("failed to create %d pods of %d", len(creationErrs), len(podToCreate))
+	}
 
-		// Delete unnecessary pods.
-		var deletionErrs []error
-		waitDeletionGroup := sync.WaitGroup{}
-		waitDeletionGroup.Add(len(podToDelete))
-		for _, pod := range podToDelete {
-			go func(pod *v1.Pod) {
-				defer waitDeletionGroup.Done()
-				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
-				if err != nil {
-					// Failed to create Pod, waitCreationGroup a moment and then create it again
-					// This is to ensure all podsMap under the same Job created
-					// So gang-scheduling could schedule the Job successfully
-					glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
-						pod.Name, job.Name, err)
-					deletionErrs = append(deletionErrs, err)
-				} else {
-					glog.V(3).Infof("Deleted Task <%s> of Job <%s/%s>",
-						pod.Name, job.Namespace, job.Name)
-					terminating++
-				}
-			}(pod)
-		}
-		waitDeletionGroup.Wait()
+	// Delete unnecessary pods.
+	waitDeletionGroup := sync.WaitGroup{}
+	waitDeletionGroup.Add(len(podToDelete))
+	for _, pod := range podToDelete {
+		go func(pod *v1.Pod) {
+			defer waitDeletionGroup.Done()
+			err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+			if err != nil {
+				// Failed to create Pod, waitCreationGroup a moment and then create it again
+				// This is to ensure all podsMap under the same Job created
+				// So gang-scheduling could schedule the Job successfully
+				glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
+					pod.Name, job.Name, err)
+				deletionErrs = append(deletionErrs, err)
+			} else {
+				glog.V(3).Infof("Deleted Task <%s> of Job <%s/%s>",
+					pod.Name, job.Namespace, job.Name)
+				terminating++
+			}
+		}(pod)
+	}
+	waitDeletionGroup.Wait()
 
-		if len(deletionErrs) != 0 {
-			return fmt.Errorf("failed to delete %d pods of %d", len(deletionErrs), len(podToDelete))
-		}
+	if len(deletionErrs) != 0 {
+		return fmt.Errorf("failed to delete %d pods of %d", len(deletionErrs), len(podToDelete))
 	}
 
 	job.Status = vkv1.JobStatus{
