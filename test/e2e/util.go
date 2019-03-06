@@ -264,6 +264,7 @@ type jobSpec struct {
 	name      string
 	namespace string
 	queue     string
+	pri       string
 	tasks     []taskSpec
 	minMember *int32
 }
@@ -276,7 +277,7 @@ func getNS(context *context, job *jobSpec) string {
 	return context.namespace
 }
 
-func createJobEx(context *context, job *jobSpec) ([]*batchv1.Job, *kbv1.PodGroup) {
+func createJob(context *context, job *jobSpec) ([]*batchv1.Job, *kbv1.PodGroup) {
 	var jobs []*batchv1.Job
 	var podgroup *kbv1.PodGroup
 	var min int32
@@ -324,8 +325,9 @@ func createJobEx(context *context, job *jobSpec) ([]*batchv1.Job, *kbv1.PodGroup
 			Namespace: ns,
 		},
 		Spec: kbv1.PodGroupSpec{
-			MinMember: min,
-			Queue:     job.queue,
+			MinMember:         min,
+			Queue:             job.queue,
+			PriorityClassName: job.pri,
 		},
 	}
 
@@ -333,7 +335,7 @@ func createJobEx(context *context, job *jobSpec) ([]*batchv1.Job, *kbv1.PodGroup
 		pg.Spec.MinMember = *job.minMember
 	}
 
-	podgroup, err := context.kbclient.Scheduling().PodGroups(pg.Namespace).Create(pg)
+	podgroup, err := context.kbclient.SchedulingV1alpha1().PodGroups(pg.Namespace).Create(pg)
 	checkError(context, err)
 
 	return jobs, podgroup

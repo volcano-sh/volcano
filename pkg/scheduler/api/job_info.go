@@ -275,6 +275,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		Name:      ji.Name,
 		Namespace: ji.Namespace,
 		Queue:     ji.Queue,
+		Priority:  ji.Priority,
 
 		MinAvailable:  ji.MinAvailable,
 		NodeSelector:  map[string]string{},

@@ -46,7 +46,7 @@ var _ = Describe("Queue E2E Test", func() {
 
 		job.name = "q1-qj-1"
 		job.queue = "q1"
-		_, pg1 := createJobEx(context, job)
+		_, pg1 := createJob(context, job)
 		err := waitPodGroupReady(context, pg1)
 		checkError(context, err)
 
@@ -61,7 +61,7 @@ var _ = Describe("Queue E2E Test", func() {
 
 		job.name = "q2-qj-2"
 		job.queue = "q2"
-		_, pg2 := createJobEx(context, job)
+		_, pg2 := createJob(context, job)
 		err = waitTasksReady(context, pg2, expected)
 		checkError(context, err)
 

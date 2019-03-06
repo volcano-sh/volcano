@@ -29,7 +29,7 @@ var _ = Describe("Job E2E Test", func() {
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
 
-		_, pg := createJobEx(context, &jobSpec{
+		_, pg := createJob(context, &jobSpec{
 			name: "qj-1",
 			tasks: []taskSpec{
 				{
@@ -63,11 +63,11 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		job.name = "mqj-1"
-		_, pg1 := createJobEx(context, job)
+		_, pg1 := createJob(context, job)
 		job.name = "mqj-2"
-		_, pg2 := createJobEx(context, job)
+		_, pg2 := createJob(context, job)
 		job.name = "mqj-3"
-		_, pg3 := createJobEx(context, job)
+		_, pg3 := createJob(context, job)
 
 		err := waitPodGroupReady(context, pg1)
 		checkError(context, err)
@@ -101,7 +101,7 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		_, pg := createJobEx(context, job)
+		_, pg := createJob(context, job)
 		err = waitPodGroupPending(context, pg)
 		checkError(context, err)
 
@@ -133,12 +133,12 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		job.name = "gang-fq-qj1"
-		_, pg1 := createJobEx(context, job)
+		_, pg1 := createJob(context, job)
 		err := waitPodGroupReady(context, pg1)
 		checkError(context, err)
 
 		job.name = "gang-fq-qj2"
-		_, pg2 := createJobEx(context, job)
+		_, pg2 := createJob(context, job)
 		err = waitPodGroupPending(context, pg2)
 		checkError(context, err)
 
@@ -165,12 +165,12 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		job.name = "preemptee-qj"
-		_, pg1 := createJobEx(context, job)
+		_, pg1 := createJob(context, job)
 		err := waitTasksReady(context, pg1, int(rep))
 		checkError(context, err)
 
 		job.name = "preemptor-qj"
-		_, pg2 := createJobEx(context, job)
+		_, pg2 := createJob(context, job)
 		err = waitTasksReady(context, pg1, int(rep)/2)
 		checkError(context, err)
 
@@ -197,16 +197,16 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		job.name = "preemptee-qj"
-		_, pg1 := createJobEx(context, job)
+		_, pg1 := createJob(context, job)
 		err := waitTasksReady(context, pg1, int(rep))
 		checkError(context, err)
 
 		job.name = "preemptor-qj1"
-		_, pg2 := createJobEx(context, job)
+		_, pg2 := createJob(context, job)
 		checkError(context, err)
 
 		job.name = "preemptor-qj2"
-		_, pg3 := createJobEx(context, job)
+		_, pg3 := createJob(context, job)
 		checkError(context, err)
 
 		err = waitTasksReady(context, pg1, int(rep)/3)
@@ -243,7 +243,7 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		_, pg := createJobEx(context, job)
+		_, pg := createJob(context, job)
 
 		err := waitPodGroupReady(context, pg)
 		checkError(context, err)
@@ -269,14 +269,14 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		job.name = "st-qj-1"
-		_, pg1 := createJobEx(context, job)
+		_, pg1 := createJob(context, job)
 		err := waitPodGroupReady(context, pg1)
 		checkError(context, err)
 
 		now := time.Now()
 
 		job.name = "st-qj-2"
-		_, pg2 := createJobEx(context, job)
+		_, pg2 := createJob(context, job)
 		err = waitPodGroupUnschedulable(context, pg2)
 		checkError(context, err)
 
@@ -297,7 +297,7 @@ var _ = Describe("Job E2E Test", func() {
 		err := waitReplicaSetReady(context, replicaset.Name)
 		checkError(context, err)
 
-		_, pg := createJobEx(context, &jobSpec{
+		_, pg := createJob(context, &jobSpec{
 			name: "multi-pod-job",
 			tasks: []taskSpec{
 				{
@@ -338,7 +338,7 @@ var _ = Describe("Job E2E Test", func() {
 		err := waitReplicaSetReady(context, replicaset.Name)
 		checkError(context, err)
 
-		_, pg := createJobEx(context, &jobSpec{
+		_, pg := createJob(context, &jobSpec{
 			name: "multi-task-diff-resource-job",
 			tasks: []taskSpec{
 				{
@@ -364,6 +364,54 @@ var _ = Describe("Job E2E Test", func() {
 
 		// task_1 has been scheduled
 		err = waitTasksReady(context, pg, int(minMemberOverride))
+		checkError(context, err)
+	})
+
+	It("Job Priority", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		slot := oneCPU
+		rep := clusterSize(context, slot)
+
+		replicaset := createReplicaSet(context, "rs-1", rep, "nginx", slot)
+		err := waitReplicaSetReady(context, replicaset.Name)
+		checkError(context, err)
+
+		job1 := &jobSpec{
+			name: "pri-job-1",
+			pri:  workerPriority,
+			tasks: []taskSpec{
+				{
+					img: "nginx",
+					req: oneCPU,
+					min: rep/2 + 1,
+					rep: rep,
+				},
+			},
+		}
+
+		job2 := &jobSpec{
+			name: "pri-job-2",
+			pri:  masterPriority,
+			tasks: []taskSpec{
+				{
+					img: "nginx",
+					req: oneCPU,
+					min: rep/2 + 1,
+					rep: rep,
+				},
+			},
+		}
+
+		createJob(context, job1)
+		_, pg2 := createJob(context, job2)
+
+		// Delete ReplicaSet
+		err = deleteReplicaSet(context, replicaset.Name)
+		checkError(context, err)
+
+		err = waitPodGroupReady(context, pg2)
 		checkError(context, err)
 	})
 })
