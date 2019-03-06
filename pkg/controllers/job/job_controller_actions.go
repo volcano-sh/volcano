@@ -39,9 +39,9 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	defer glog.V(3).Infof("Finished Job <%s/%s> killing", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
 	job := jobInfo.Job
-	//Calculate current job version, it's bumped only when job is killed
-	job.Status.Version = cc.calculateVersion(job.Status.Version, true)
-	glog.Infof("Current Version is set to: %d for job: %s/%s", job.Status.Version, job.Namespace, job.Name)
+	//Job version is bumped only when job is killed
+	job.Status.Version = job.Status.Version + 1
+	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 	if job.DeletionTimestamp != nil {
 		glog.Infof("Job <%s/%s> is terminating, skip management process.",
 			job.Namespace, job.Name)
@@ -153,9 +153,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	defer glog.V(3).Infof("Finished Job <%s/%s> sync up", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
 	job := jobInfo.Job
-	//Calculate current job version, it's bumped only when job is killed
-	job.Status.Version = cc.calculateVersion(job.Status.Version, false)
-	glog.Infof("Current Version is set to: %d for job: %s/%s", job.Status.Version, job.Namespace, job.Name)
+	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 
 	if job.DeletionTimestamp != nil {
 		glog.Infof("Job <%s/%s> is terminating, skip management process.",
