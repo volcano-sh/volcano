@@ -193,7 +193,6 @@ func (jc *jobCache) UpdatePod(pod *v1.Pod) error {
 			Pods: make(map[string]map[string]*v1.Pod),
 		}
 		jc.jobs[key] = job
-		return nil
 	}
 
 	return job.UpdatePod(pod)

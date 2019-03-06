@@ -136,7 +136,7 @@ func (cc *Controller) addPod(obj interface{}) {
 
 	dVersion, err := strconv.Atoi(version)
 	if err != nil {
-		glog.Infof("Failed to convert jobVersion of Pod into number <%s/%s>, skipping",
+		glog.Infof("Failed to convert jobVersion of Pod <%s/%s> into number, skipping",
 			pod.Namespace, pod.Name)
 		return
 	}
@@ -260,7 +260,7 @@ func (cc *Controller) deletePod(obj interface{}) {
 
 	dVersion, err := strconv.Atoi(version)
 	if err != nil {
-		glog.Infof("Failed to convert jobVersion of Pod into number <%s/%s>, skipping",
+		glog.Infof("Failed to convert jobVersion of Pod <%s/%s> into number, skipping",
 			pod.Namespace, pod.Name)
 		return
 	}
