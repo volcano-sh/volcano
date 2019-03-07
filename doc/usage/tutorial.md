@@ -11,10 +11,10 @@ To run `kube-batch`, a Kubernetes cluster must start up. Here is a document on [
 
 ### (1) kube-batch image
 
-An official kube-batch image is provided and you can download it from [DockerHub](https://hub.docker.com/r/kubesigs/kube-batch/). The version is `v0.4` now.
+An official kube-batch image is provided and you can download it from [DockerHub](https://hub.docker.com/r/kubesigs/kube-batch/). The version is `v0.4.1` now.
 
 ```bash
-# docker pull kubesigs/kube-batch:v0.4
+# docker pull kubesigs/kube-batch:v0.4.1
 ```
 
 ### (2) Create a Kubernetes Deployment for kube-batch
@@ -40,7 +40,7 @@ Verify the release
 ```bash
 # helm list
 NAME        	REVISION	UPDATED                 	STATUS  	CHART                	NAMESPACE
-dozing-otter	1       	Thu Jun 14 18:52:15 2018	DEPLOYED	kube-batch-0.4.0    	kube-system
+dozing-otter	1       	Thu Jun 14 18:52:15 2018	DEPLOYED	kube-batch-0.4.1    	kube-system
 ```
 
 NOTE: `kube-batch` need to collect cluster information(such as Pod, Node, CRD, etc) for scheduling, so the service account used by the deployment must have permission to access those cluster resources, otherwise, `kube-batch` will fail to startup. For users who are not familiar with Kubernetes RBAC, please copy the example/role.yaml into `$GOPATH/src/github.com/kubernetes-sigs/kube-batch/deployment/kube-batch/templates/` and reinstall batch.

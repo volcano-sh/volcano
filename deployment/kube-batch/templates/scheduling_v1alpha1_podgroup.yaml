@@ -19,9 +19,13 @@ spec:
           type: object
         spec:
           properties:
-            numMember:
+            minMember:
               format: int32
               type: integer
+            queue:
+              type: string
+            priorityClassName:
+              type: string
           type: object
         status:
           properties:
