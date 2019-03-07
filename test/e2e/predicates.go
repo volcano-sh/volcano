@@ -65,7 +65,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		_, pg := createJobEx(context, job)
+		_, pg := createJob(context, job)
 		err := waitPodGroupReady(context, pg)
 		checkError(context, err)
 
@@ -94,7 +94,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		_, pg := createJobEx(context, job)
+		_, pg := createJob(context, job)
 
 		err := waitTasksReady(context, pg, nn)
 		checkError(context, err)
@@ -140,7 +140,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		_, pg := createJobEx(context, job)
+		_, pg := createJob(context, job)
 		err := waitPodGroupReady(context, pg)
 		checkError(context, err)
 
@@ -179,7 +179,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		_, pg := createJobEx(context, job)
+		_, pg := createJob(context, job)
 		err = waitPodGroupPending(context, pg)
 		checkError(context, err)
 

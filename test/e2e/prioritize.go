@@ -60,7 +60,7 @@ var _ = Describe("Prioritize E2E Test", func() {
 			},
 		}
 
-		_, pg := createJobEx(context, job)
+		_, pg := createJob(context, job)
 		err := waitPodGroupReady(context, pg)
 		checkError(context, err)
 
@@ -98,7 +98,7 @@ var _ = Describe("Prioritize E2E Test", func() {
 			},
 		}
 
-		_, pg1 := createJobEx(context, job1)
+		_, pg1 := createJob(context, job1)
 		err := waitPodGroupReady(context, pg1)
 		checkError(context, err)
 
@@ -124,7 +124,7 @@ var _ = Describe("Prioritize E2E Test", func() {
 			},
 		}
 
-		_, pg2 := createJobEx(context, job2)
+		_, pg2 := createJob(context, job2)
 		err = waitPodGroupReady(context, pg2)
 		checkError(context, err)
 
@@ -172,7 +172,7 @@ var _ = Describe("Prioritize E2E Test", func() {
 		}
 
 		//Schedule Job in first Node
-		_, pg1 := createJobEx(context, job1)
+		_, pg1 := createJob(context, job1)
 		err := waitPodGroupReady(context, pg1)
 		checkError(context, err)
 
@@ -208,7 +208,7 @@ var _ = Describe("Prioritize E2E Test", func() {
 		}
 
 		//Schedule Job in Second Node
-		_, pg2 := createJobEx(context, job2)
+		_, pg2 := createJob(context, job2)
 		err = waitPodGroupReady(context, pg2)
 		checkError(context, err)
 
@@ -225,7 +225,7 @@ var _ = Describe("Prioritize E2E Test", func() {
 		}
 
 		//This job should be scheduled in third node
-		_, pg3 := createJobEx(context, testJob)
+		_, pg3 := createJob(context, testJob)
 		err = waitPodGroupReady(context, pg3)
 		checkError(context, err)
 
