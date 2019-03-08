@@ -37,7 +37,7 @@ tiers:
   - name: drf
   - name: predicates
   - name: proportion
-  - name: prioritize
+  - name: nodeorder
 `
 
 func loadSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, error) {
