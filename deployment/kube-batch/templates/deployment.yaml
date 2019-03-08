@@ -17,7 +17,7 @@ spec:
       containers:
       - name: {{ .Chart.Name }}
         image: "{{ .Values.image.repository }}/kube-batch:{{ .Values.image.tag }}"
-        args: ["--logtostderr", "--v", "3", "--enable-namespace-as-queue"]
+        args: ["--logtostderr", "--v", "3"]
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         resources:
 {{ toYaml .Values.resources | indent 10 }}
