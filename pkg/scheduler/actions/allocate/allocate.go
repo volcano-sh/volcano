@@ -132,7 +132,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 				}
 			}
 			for _, node := range predicateNodes {
-				score, err := ssn.PriorityFn(task, node)
+				score, err := ssn.NodeOrderFn(task, node)
 				if err != nil {
 					glog.V(3).Infof("Error in Calculating Priority for the node:%v", err)
 				} else {

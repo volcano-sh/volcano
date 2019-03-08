@@ -188,7 +188,7 @@ func preempt(
 		}
 	}
 	for _, node := range predicateNodes {
-		score, err := ssn.PriorityFn(preemptor, node)
+		score, err := ssn.NodeOrderFn(preemptor, node)
 		if err != nil {
 			glog.V(3).Infof("Error in Calculating Priority for the node:%v", err)
 		} else {
