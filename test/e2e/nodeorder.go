@@ -25,7 +25,7 @@ import (
 	kubeletapi "k8s.io/kubernetes/pkg/kubelet/apis"
 )
 
-var _ = Describe("Prioritize E2E Test", func() {
+var _ = Describe("NodeOrder E2E Test", func() {
 	It("Node Affinity Test", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
