@@ -8,4 +8,4 @@ tiers:
   - name: drf
   - name: predicates
   - name: proportion
-  - name: prioritize
+  - name: nodeorder

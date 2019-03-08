@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package prioritize
+package nodeorder
 
 import (
 	"fmt"
@@ -32,7 +32,7 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 )
 
-type prioritizePlugin struct {
+type nodeOrderPlugin struct {
 }
 
 func getInterPodAffinityScore(name string, interPodAffinityScore schedulerapi.HostPriorityList) int {
@@ -146,15 +146,15 @@ func (nl *nodeLister) List() ([]*v1.Node, error) {
 
 //New function returns prioritizePlugin object
 func New() framework.Plugin {
-	return &prioritizePlugin{}
+	return &nodeOrderPlugin{}
 }
 
-func (pp *prioritizePlugin) Name() string {
-	return "prioritize"
+func (pp *nodeOrderPlugin) Name() string {
+	return "nodeorder"
 }
 
-func (pp *prioritizePlugin) OnSessionOpen(ssn *framework.Session) {
-	priorityFn := func(task *api.TaskInfo, node *api.NodeInfo) (int, error) {
+func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
+	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (int, error) {
 
 		pl := &podLister{
 			session: ssn,
@@ -207,8 +207,8 @@ func (pp *prioritizePlugin) OnSessionOpen(ssn *framework.Session) {
 		glog.V(4).Infof("Total Score for that node is: %d", score)
 		return score, nil
 	}
-	ssn.AddPriorityFn(pp.Name(), priorityFn)
+	ssn.AddNodeOrderFn(pp.Name(), nodeOrderFn)
 }
 
-func (pp *prioritizePlugin) OnSessionClose(ssn *framework.Session) {
+func (pp *nodeOrderPlugin) OnSessionClose(ssn *framework.Session) {
 }
