@@ -27,6 +27,7 @@ import (
 	schedcache "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/conf"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/metrics"
 )
 
 type Scheduler struct {
@@ -82,12 +83,16 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 
 func (pc *Scheduler) runOnce() {
 	glog.V(4).Infof("Start scheduling ...")
+	scheduleStartTime := time.Now()
 	defer glog.V(4).Infof("End scheduling ...")
+	defer metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
 
 	ssn := framework.OpenSession(pc.cache, pc.plugins)
 	defer framework.CloseSession(ssn)
 
 	for _, action := range pc.actions {
+		actionStartTime := time.Now()
 		action.Execute(ssn)
+		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
 	}
 }
