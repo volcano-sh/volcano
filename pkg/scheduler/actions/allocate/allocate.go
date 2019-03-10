@@ -105,6 +105,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 		for !tasks.Empty() {
 			predicateNodes := []*api.NodeInfo{}
 			nodeScores := map[int][]*api.NodeInfo{}
+
 			task := tasks.Pop().(*api.TaskInfo)
 			assigned := false
 
