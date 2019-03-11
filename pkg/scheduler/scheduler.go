@@ -70,6 +70,7 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 		if schedConf, err = readSchedulerConf(pc.schedulerConf); err != nil {
 			glog.Errorf("Failed to read scheduler configuration '%s', using default configuration: %v",
 				pc.schedulerConf, err)
+			schedConf = defaultSchedulerConf
 		}
 	}
 
