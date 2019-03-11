@@ -10,6 +10,8 @@
   
 ### Issues:
 
+  * [#632](https://github.com/kubernetes-sigs/kube-batch/pull/632) Set schedConf to defaultSchedulerConf if failing to readSchedulerConf ([@hex108](https://github.com/hex108))
+  * [#631](https://github.com/kubernetes-sigs/kube-batch/pull/631) Add helm hook crd-install to fix helm install error ([@hex108](https://github.com/hex108))
   * [#584](https://github.com/kubernetes-sigs/kube-batch/pull/584) Replaced FIFO by workqueue. ([@k82cn](https://github.com/k82cn))
   * [#585](https://github.com/kubernetes-sigs/kube-batch/pull/585) Removed invalid error log. ([@k82cn](https://github.com/k82cn))
   * [#594](https://github.com/kubernetes-sigs/kube-batch/pull/594) Fixed Job.Clone issue. ([@k82cn](https://github.com/k82cn))
