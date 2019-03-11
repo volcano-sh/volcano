@@ -1,3 +1,34 @@
+## v0.4.1
+
+### Notes:
+
+  * Added NodeOrder Plugin
+  * Added Conformance Plugin
+  * Removed namespaceAsQueue feature
+  * Supported Pod without PodGroup
+  * Added performance metrics for scheduling
+  
+### Issues:
+
+  * [#584](https://github.com/kubernetes-sigs/kube-batch/pull/584) Replaced FIFO by workqueue. ([@k82cn](https://github.com/k82cn))
+  * [#585](https://github.com/kubernetes-sigs/kube-batch/pull/585) Removed invalid error log. ([@k82cn](https://github.com/k82cn))
+  * [#594](https://github.com/kubernetes-sigs/kube-batch/pull/594) Fixed Job.Clone issue. ([@k82cn](https://github.com/k82cn))
+  * [#600](https://github.com/kubernetes-sigs/kube-batch/pull/600) Fixed duplicated queue in preempt action. ([@k82cn](https://github.com/k82cn))
+  * [#596](https://github.com/kubernetes-sigs/kube-batch/pull/596) Set default PodGroup for Pods. ([@k82cn](https://github.com/k82cn))
+  * [#587](https://github.com/kubernetes-sigs/kube-batch/pull/587) Adding node priority ([@thandayuthapani](https://github.com/thandayuthapani))
+  * [#607](https://github.com/kubernetes-sigs/kube-batch/pull/607) Fixed flaky test. ([@k82cn](https://github.com/k82cn))
+  * [#610](https://github.com/kubernetes-sigs/kube-batch/pull/610) Updated log level. ([@k82cn](https://github.com/k82cn))
+  * [#609](https://github.com/kubernetes-sigs/kube-batch/pull/609) Added conformance plugin. ([@k82cn](https://github.com/k82cn))
+  * [#604](https://github.com/kubernetes-sigs/kube-batch/pull/604) Moved default implementation from pkg. ([@k82cn](https://github.com/k82cn))
+  * [#613](https://github.com/kubernetes-sigs/kube-batch/pull/613) Removed namespaceAsQueue. ([@k82cn](https://github.com/k82cn))
+  * [#615](https://github.com/kubernetes-sigs/kube-batch/pull/615) Handled minAvailable task everytime. ([@k82cn](https://github.com/k82cn))
+  * [#603](https://github.com/kubernetes-sigs/kube-batch/pull/603) Added PriorityClass to PodGroup. ([@k82cn](https://github.com/k82cn))
+  * [#618](https://github.com/kubernetes-sigs/kube-batch/pull/618) Added JobPriority e2e. ([@k82cn](https://github.com/k82cn))
+  * [#622](https://github.com/kubernetes-sigs/kube-batch/pull/622) Update doc & deployment. ([@k82cn](https://github.com/k82cn))
+  * [#626](https://github.com/kubernetes-sigs/kube-batch/pull/626) Fix helm deployment ([@thandayuthapani](https://github.com/thandayuthapani))
+  * [#625](https://github.com/kubernetes-sigs/kube-batch/pull/625) Rename PrioritizeFn to NodeOrderFn ([@thandayuthapani](https://github.com/thandayuthapani))
+  * [#592](https://github.com/kubernetes-sigs/kube-batch/pull/592) Add performance metrics for scheduling ([@Jeffwan](https://github.com/Jeffwan))
+
 ## v0.4
 
 ### Notes:
