@@ -188,6 +188,13 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 		score = score + host.Score
 
+		host, err = priorities.BalancedResourceAllocationMap(task.Pod, nil, nodeInfo)
+		if err != nil {
+			glog.Warningf("Balanced Resource Allocation Priority Failed because of Error: %v", err)
+			return 0, err
+		}
+		score = score + host.Score
+
 		host, err = priorities.CalculateNodeAffinityPriorityMap(task.Pod, nil, nodeInfo)
 		if err != nil {
 			glog.Warningf("Calculate Node Affinity Priority Failed because of Error: %v", err)
