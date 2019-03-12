@@ -221,6 +221,8 @@ type JobStatus struct {
 	// The number of pods which reached phase Terminating.
 	// +optional
 	Terminating int32 `json:"terminating,omitempty" protobuf:"bytes,7,opt,name=terminating"`
+	//Current version of job
+	Version int32
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

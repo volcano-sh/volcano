@@ -39,6 +39,9 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	defer glog.V(3).Infof("Finished Job <%s/%s> killing", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
 	job := jobInfo.Job
+	//Job version is bumped only when job is killed
+	job.Status.Version = job.Status.Version + 1
+	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 	if job.DeletionTimestamp != nil {
 		glog.Infof("Job <%s/%s> is terminating, skip management process.",
 			job.Namespace, job.Name)
@@ -103,6 +106,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		Succeeded:    succeeded,
 		Failed:       failed,
 		Terminating:  terminating,
+		Version:      job.Status.Version,
 		MinAvailable: int32(job.Spec.MinAvailable),
 	}
 
@@ -149,6 +153,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	defer glog.V(3).Infof("Finished Job <%s/%s> sync up", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
 	job := jobInfo.Job
+	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 
 	if job.DeletionTimestamp != nil {
 		glog.Infof("Job <%s/%s> is terminating, skip management process.",
@@ -286,6 +291,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		Succeeded:    succeeded,
 		Failed:       failed,
 		Terminating:  terminating,
+		Version:      job.Status.Version,
 		MinAvailable: int32(job.Spec.MinAvailable),
 	}
 
@@ -304,6 +310,16 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	}
 
 	return nil
+}
+
+func (cc *Controller) calculateVersion(current int32, bumpVersion bool) int32 {
+	if current == 0 {
+		current += 1
+	}
+	if bumpVersion {
+		current += 1
+	}
+	return current
 }
 
 func (cc *Controller) createServiceIfNotExist(job *vkv1.Job) error {

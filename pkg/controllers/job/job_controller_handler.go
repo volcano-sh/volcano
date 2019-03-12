@@ -19,6 +19,7 @@ package job
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 
 	"github.com/golang/glog"
 
@@ -126,11 +127,26 @@ func (cc *Controller) addPod(obj interface{}) {
 		return
 	}
 
+	version, found := pod.Annotations[vkbatchv1.JobVersion]
+	if !found {
+		glog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
+			pod.Namespace, pod.Name)
+		return
+	}
+
+	dVersion, err := strconv.Atoi(version)
+	if err != nil {
+		glog.Infof("Failed to convert jobVersion of Pod <%s/%s> into number, skipping",
+			pod.Namespace, pod.Name)
+		return
+	}
+
 	req := apis.Request{
 		Namespace: pod.Namespace,
 		JobName:   jobName,
 
-		Event: vkbatchv1.OutOfSyncEvent,
+		Event:      vkbatchv1.OutOfSyncEvent,
+		JobVersion: int32(dVersion),
 	}
 
 	if err := cc.cache.AddPod(pod); err != nil {
@@ -167,6 +183,20 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		return
 	}
 
+	version, found := newPod.Annotations[vkbatchv1.JobVersion]
+	if !found {
+		glog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
+			newPod.Namespace, newPod.Name)
+		return
+	}
+
+	dVersion, err := strconv.Atoi(version)
+	if err != nil {
+		glog.Infof("Failed to convert jobVersion of Pod into number <%s/%s>, skipping",
+			newPod.Namespace, newPod.Name)
+		return
+	}
+
 	event := vkbatchv1.OutOfSyncEvent
 	if oldPod.Status.Phase != v1.PodFailed &&
 		newPod.Status.Phase == v1.PodFailed {
@@ -178,7 +208,8 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		JobName:   jobName,
 		TaskName:  taskName,
 
-		Event: event,
+		Event:      event,
+		JobVersion: int32(dVersion),
 	}
 
 	if err := cc.cache.UpdatePod(newPod); err != nil {
@@ -220,12 +251,27 @@ func (cc *Controller) deletePod(obj interface{}) {
 		return
 	}
 
+	version, found := pod.Annotations[vkbatchv1.JobVersion]
+	if !found {
+		glog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
+			pod.Namespace, pod.Name)
+		return
+	}
+
+	dVersion, err := strconv.Atoi(version)
+	if err != nil {
+		glog.Infof("Failed to convert jobVersion of Pod <%s/%s> into number, skipping",
+			pod.Namespace, pod.Name)
+		return
+	}
+
 	req := apis.Request{
 		Namespace: pod.Namespace,
 		JobName:   jobName,
 		TaskName:  taskName,
 
-		Event: vkbatchv1.PodEvictedEvent,
+		Event:      vkbatchv1.PodEvictedEvent,
+		JobVersion: int32(dVersion),
 	}
 
 	if err := cc.cache.DeletePod(pod); err != nil {
