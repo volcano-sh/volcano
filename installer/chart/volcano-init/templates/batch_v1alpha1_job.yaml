@@ -139,6 +139,10 @@ spec:
               description: The number of running pods.
               format: int32
               type: integer
+            version:
+              description: Job's current version.
+              type: integer
+              format: int32
             state:
               description: Current state of Job.
               properties:

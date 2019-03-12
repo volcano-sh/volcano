@@ -64,6 +64,12 @@ func (ji *JobInfo) AddPod(pod *v1.Pod) error {
 			pod.Namespace, pod.Name)
 	}
 
+	_, found = pod.Annotations[v1alpha1.JobVersion]
+	if !found {
+		return fmt.Errorf("failed to find jobVersion of Pod <%s/%s>",
+			pod.Namespace, pod.Name)
+	}
+
 	if _, found := ji.Pods[taskName]; !found {
 		ji.Pods[taskName] = make(map[string]*v1.Pod)
 	}
@@ -78,7 +84,12 @@ func (ji *JobInfo) AddPod(pod *v1.Pod) error {
 func (ji *JobInfo) UpdatePod(pod *v1.Pod) error {
 	taskName, found := pod.Annotations[v1alpha1.TaskSpecKey]
 	if !found {
-		return fmt.Errorf("failed to taskName of Pod <%s/%s>",
+		return fmt.Errorf("failed to find taskName of Pod <%s/%s>",
+			pod.Namespace, pod.Name)
+	}
+	_, found = pod.Annotations[v1alpha1.JobVersion]
+	if !found {
+		return fmt.Errorf("failed to find jobVersion of Pod <%s/%s>",
 			pod.Namespace, pod.Name)
 	}
 
@@ -97,7 +108,12 @@ func (ji *JobInfo) UpdatePod(pod *v1.Pod) error {
 func (ji *JobInfo) DeletePod(pod *v1.Pod) error {
 	taskName, found := pod.Annotations[v1alpha1.TaskSpecKey]
 	if !found {
-		return fmt.Errorf("failed to taskName of Pod <%s/%s>",
+		return fmt.Errorf("failed to find taskName of Pod <%s/%s>",
+			pod.Namespace, pod.Name)
+	}
+	_, found = pod.Annotations[v1alpha1.JobVersion]
+	if !found {
+		return fmt.Errorf("failed to find jobVersion of Pod <%s/%s>",
 			pod.Namespace, pod.Name)
 	}
 
@@ -116,12 +132,14 @@ type Request struct {
 	JobName   string
 	TaskName  string
 
-	Event  v1alpha1.Event
-	Action v1alpha1.Action
+	Event      v1alpha1.Event
+	Action     v1alpha1.Action
+	JobVersion int32
 }
 
 func (r Request) String() string {
 	return fmt.Sprintf(
-		"Job: %s/%s, Task:%s, Event:%s, Action:%s",
-		r.Namespace, r.JobName, r.TaskName, r.Event, r.Action)
+		"Job: %s/%s, Task:%s, Event:%s, Action:%s, JobVersion: %d",
+		r.Namespace, r.JobName, r.TaskName, r.Event, r.Action, r.JobVersion)
+
 }
