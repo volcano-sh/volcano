@@ -203,7 +203,7 @@ func preempt(
 
 		var preemptees []*api.TaskInfo
 		preempted := api.EmptyResource()
-		resreq := preemptor.Resreq.Clone()
+		resreq := preemptor.InitResreq.Clone()
 
 		for _, task := range node.Tasks {
 			if filter == nil {
@@ -239,9 +239,9 @@ func preempt(
 
 		metrics.RegisterPreemptionAttempts()
 		glog.V(3).Infof("Preempted <%v> for task <%s/%s> requested <%v>.",
-			preempted, preemptor.Namespace, preemptor.Name, preemptor.Resreq)
+			preempted, preemptor.Namespace, preemptor.Name, preemptor.InitResreq)
 
-		if preemptor.Resreq.LessEqual(preempted) {
+		if preemptor.InitResreq.LessEqual(preempted) {
 			if err := stmt.Pipeline(preemptor, node.Name); err != nil {
 				glog.Errorf("Failed to pipline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
