@@ -23,6 +23,7 @@ import (
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/metrics"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/util"
 )
 
@@ -48,14 +49,15 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}
 
 	var underRequest []*api.JobInfo
-	var queues []*api.QueueInfo
+	queues := map[api.QueueID]*api.QueueInfo{}
+
 	for _, job := range ssn.Jobs {
-		if queue, found := ssn.QueueIndex[job.Queue]; !found {
+		if queue, found := ssn.Queues[job.Queue]; !found {
 			continue
-		} else {
+		} else if _, existed := queues[queue.UID]; !existed {
 			glog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
 				queue.Name, job.Namespace, job.Name)
-			queues = append(queues, queue)
+			queues[queue.UID] = queue
 		}
 
 		if len(job.TaskStatusIndex[api.Pending]) != 0 {
@@ -102,7 +104,7 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 						return false
 					}
 
-					job, found := ssn.JobIndex[task.Job]
+					job, found := ssn.Jobs[task.Job]
 					if !found {
 						return false
 					}
@@ -170,23 +172,39 @@ func preempt(
 	ssn *framework.Session,
 	stmt *framework.Statement,
 	preemptor *api.TaskInfo,
-	nodes []*api.NodeInfo,
+	nodes map[string]*api.NodeInfo,
 	filter func(*api.TaskInfo) bool,
 ) (bool, error) {
-	resreq := preemptor.Resreq.Clone()
-	preempted := api.EmptyResource()
-
+	predicateNodes := []*api.NodeInfo{}
+	nodeScores := map[int][]*api.NodeInfo{}
 	assigned := false
 
 	for _, node := range nodes {
 		if err := ssn.PredicateFn(preemptor, node); err != nil {
+			glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
+				preemptor.Namespace, preemptor.Name, node.Name, err)
 			continue
+		} else {
+			predicateNodes = append(predicateNodes, node)
 		}
-
+	}
+	for _, node := range predicateNodes {
+		score, err := ssn.NodeOrderFn(preemptor, node)
+		if err != nil {
+			glog.V(3).Infof("Error in Calculating Priority for the node:%v", err)
+		} else {
+			nodeScores[score] = append(nodeScores[score], node)
+		}
+	}
+	selectedNodes := util.SelectBestNode(nodeScores)
+	for _, node := range selectedNodes {
 		glog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
 			preemptor.Namespace, preemptor.Name, node.Name)
 
 		var preemptees []*api.TaskInfo
+		preempted := api.EmptyResource()
+		resreq := preemptor.Resreq.Clone()
+
 		for _, task := range node.Tasks {
 			if filter == nil {
 				preemptees = append(preemptees, task.Clone())
@@ -195,6 +213,7 @@ func preempt(
 			}
 		}
 		victims := ssn.Preemptable(preemptor, preemptees)
+		metrics.UpdatePreemptionVictimsCount(len(victims))
 
 		if err := validateVictims(victims, resreq); err != nil {
 			glog.V(3).Infof("No validated victims on Node <%s>: %v", node.Name, err)
@@ -218,18 +237,21 @@ func preempt(
 			resreq.Sub(preemptee.Resreq)
 		}
 
+		metrics.RegisterPreemptionAttempts()
 		glog.V(3).Infof("Preempted <%v> for task <%s/%s> requested <%v>.",
 			preempted, preemptor.Namespace, preemptor.Name, preemptor.Resreq)
 
-		if err := stmt.Pipeline(preemptor, node.Name); err != nil {
-			glog.Errorf("Failed to pipline Task <%s/%s> on Node <%s>",
-				preemptor.Namespace, preemptor.Name, node.Name)
+		if preemptor.Resreq.LessEqual(preempted) {
+			if err := stmt.Pipeline(preemptor, node.Name); err != nil {
+				glog.Errorf("Failed to pipline Task <%s/%s> on Node <%s>",
+					preemptor.Namespace, preemptor.Name, node.Name)
+			}
+
+			// Ignore pipeline error, will be corrected in next scheduling loop.
+			assigned = true
+
+			break
 		}
-
-		// Ignore pipeline error, will be corrected in next scheduling loop.
-		assigned = true
-
-		break
 	}
 
 	return assigned, nil

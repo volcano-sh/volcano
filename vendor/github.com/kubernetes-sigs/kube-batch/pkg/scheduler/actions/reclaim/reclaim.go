@@ -43,6 +43,7 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 	defer glog.V(3).Infof("Leaving Reclaim ...")
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
+	queueMap := map[api.QueueID]*api.QueueInfo{}
 
 	preemptorsMap := map[api.QueueID]*util.PriorityQueue{}
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}
@@ -52,14 +53,18 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 
 	var underRequest []*api.JobInfo
 	for _, job := range ssn.Jobs {
-		if queue, found := ssn.QueueIndex[job.Queue]; !found {
+		if queue, found := ssn.Queues[job.Queue]; !found {
 			glog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
 				job.Queue, job.Namespace, job.Name)
 			continue
 		} else {
-			glog.V(4).Infof("Added Queue <%s> for Job <%s/%s>",
-				queue.Name, job.Namespace, job.Name)
-			queues.Push(queue)
+			if _, existed := queueMap[queue.UID]; !existed {
+				glog.V(4).Infof("Added Queue <%s> for Job <%s/%s>",
+					queue.Name, job.Namespace, job.Name)
+
+				queueMap[queue.UID] = queue
+				queues.Push(queue)
+			}
 		}
 
 		if len(job.TaskStatusIndex[api.Pending]) != 0 {
@@ -104,9 +109,6 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 			task = tasks.Pop().(*api.TaskInfo)
 		}
 
-		resreq := task.Resreq.Clone()
-		reclaimed := api.EmptyResource()
-
 		assigned := false
 
 		for _, n := range ssn.Nodes {
@@ -114,6 +116,9 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 			if err := ssn.PredicateFn(task, n); err != nil {
 				continue
 			}
+
+			resreq := task.Resreq.Clone()
+			reclaimed := api.EmptyResource()
 
 			glog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
 				task.Namespace, task.Name, n.Name)
@@ -125,7 +130,7 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 					continue
 				}
 
-				if j, found := ssn.JobIndex[task.Job]; !found {
+				if j, found := ssn.Jobs[task.Job]; !found {
 					continue
 				} else if j.Queue != job.Queue {
 					// Clone task to avoid modify Task's status on node.
@@ -169,15 +174,17 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 			glog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>.",
 				reclaimed, task.Namespace, task.Name, task.Resreq)
 
-			if err := ssn.Pipeline(task, n.Name); err != nil {
-				glog.Errorf("Failed to pipline Task <%s/%s> on Node <%s>",
-					task.Namespace, task.Name, n.Name)
+			if task.Resreq.LessEqual(reclaimed) {
+				if err := ssn.Pipeline(task, n.Name); err != nil {
+					glog.Errorf("Failed to pipline Task <%s/%s> on Node <%s>",
+						task.Namespace, task.Name, n.Name)
+				}
+
+				// Ignore error of pipeline, will be corrected in next scheduling loop.
+				assigned = true
+
+				break
 			}
-
-			// Ignore error of pipeline, will be corrected in next scheduling loop.
-			assigned = true
-
-			break
 		}
 
 		if assigned {
