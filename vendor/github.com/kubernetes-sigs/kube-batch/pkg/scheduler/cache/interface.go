@@ -71,6 +71,6 @@ type Evictor interface {
 
 // StatusUpdater updates pod with given PodCondition
 type StatusUpdater interface {
-	UpdatePod(pod *v1.Pod, podCondition *v1.PodCondition) (*v1.Pod, error)
+	UpdatePodCondition(pod *v1.Pod, podCondition *v1.PodCondition) (*v1.Pod, error)
 	UpdatePodGroup(pg *v1alpha1.PodGroup) (*v1alpha1.PodGroup, error)
 }

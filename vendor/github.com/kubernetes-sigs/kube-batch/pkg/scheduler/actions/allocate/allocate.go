@@ -50,7 +50,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 			jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 		}
 
-		if queue, found := ssn.QueueIndex[job.Queue]; found {
+		if queue, found := ssn.Queues[job.Queue]; found {
 			queues.Push(queue)
 		}
 
@@ -103,6 +103,9 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 			tasks.Len(), job.Namespace, job.Name)
 
 		for !tasks.Empty() {
+			predicateNodes := []*api.NodeInfo{}
+			nodeScores := map[int][]*api.NodeInfo{}
+
 			task := tasks.Pop().(*api.TaskInfo)
 			assigned := false
 
@@ -125,8 +128,20 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 					glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
 						task.Namespace, task.Name, node.Name, err)
 					continue
+				} else {
+					predicateNodes = append(predicateNodes, node)
 				}
-
+			}
+			for _, node := range predicateNodes {
+				score, err := ssn.NodeOrderFn(task, node)
+				if err != nil {
+					glog.V(3).Infof("Error in Calculating Priority for the node:%v", err)
+				} else {
+					nodeScores[score] = append(nodeScores[score], node)
+				}
+			}
+			selectedNodes := util.SelectBestNode(nodeScores)
+			for _, node := range selectedNodes {
 				// Allocate idle resource to the task.
 				if task.Resreq.LessEqual(node.Idle) {
 					glog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
@@ -161,13 +176,14 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 				}
 			}
 
-			if assigned {
-				jobs.Push(job)
-				// Handle one assigned task in each loop.
+			if !assigned {
 				break
 			}
 
-			// If current task is not assgined, try to fit all rest tasks.
+			if ssn.JobReady(job) {
+				jobs.Push(job)
+				break
+			}
 		}
 
 		// Added Queue back until no job in Queue.
