@@ -37,6 +37,7 @@ tiers:
   - name: drf
   - name: predicates
   - name: proportion
+  - name: nodeorder
 `
 
 func loadSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, error) {
@@ -50,7 +51,6 @@ func loadSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, error) 
 	if err := yaml.Unmarshal(buf, schedulerConf); err != nil {
 		return nil, nil, err
 	}
-
 	actionNames := strings.Split(schedulerConf.Actions, ",")
 	for _, actionName := range actionNames {
 		if action, found := framework.GetAction(strings.TrimSpace(actionName)); found {

@@ -24,6 +24,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1beta1"
+	"k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
@@ -37,14 +38,31 @@ func isTerminated(status kbapi.TaskStatus) bool {
 	return status == kbapi.Succeeded || status == kbapi.Failed
 }
 
-func (sc *SchedulerCache) addTask(pi *kbapi.TaskInfo) error {
-	if len(pi.Job) != 0 {
+func (sc *SchedulerCache) getOrCreateJob(pi *kbapi.TaskInfo) *kbapi.JobInfo {
+	if len(pi.Job) == 0 {
+		pb := createShadowPodGroup(pi.Pod)
+		pi.Job = kbapi.JobID(pb.Name)
+
+		if _, found := sc.Jobs[pi.Job]; !found {
+			job := kbapi.NewJobInfo(pi.Job)
+			job.SetPodGroup(pb)
+			// Set default queue for shadow podgroup.
+			job.Queue = kbapi.QueueID(sc.defaultQueue)
+
+			sc.Jobs[pi.Job] = job
+		}
+	} else {
 		if _, found := sc.Jobs[pi.Job]; !found {
 			sc.Jobs[pi.Job] = kbapi.NewJobInfo(pi.Job)
 		}
-
-		sc.Jobs[pi.Job].AddTaskInfo(pi)
 	}
+
+	return sc.Jobs[pi.Job]
+}
+
+func (sc *SchedulerCache) addTask(pi *kbapi.TaskInfo) error {
+	job := sc.getOrCreateJob(pi)
+	job.AddTaskInfo(pi)
 
 	if len(pi.NodeName) != 0 {
 		if _, found := sc.Nodes[pi.NodeName]; !found {
@@ -354,6 +372,11 @@ func (sc *SchedulerCache) setPodGroup(ss *kbv1.PodGroup) error {
 
 	sc.Jobs[job].SetPodGroup(ss)
 
+	// TODO(k82cn): set default queue in admission.
+	if len(ss.Spec.Queue) == 0 {
+		sc.Jobs[job].Queue = kbapi.QueueID(sc.defaultQueue)
+	}
+
 	return nil
 }
 
@@ -388,11 +411,6 @@ func (sc *SchedulerCache) AddPodGroup(obj interface{}) {
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
-
-	// If namespace as queue, the `.spec.Queue` of PodGroup is ignored.
-	if sc.namespaceAsQueue {
-		ss.Spec.Queue = ""
-	}
 
 	glog.V(4).Infof("Add PodGroup(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
 	err := sc.setPodGroup(ss)
@@ -467,6 +485,8 @@ func (sc *SchedulerCache) setPDB(pdb *policyv1.PodDisruptionBudget) error {
 	}
 
 	sc.Jobs[job].SetPDB(pdb)
+	// Set it to default queue, as PDB did not support queue right now.
+	sc.Jobs[job].Queue = kbapi.QueueID(sc.defaultQueue)
 
 	return nil
 }
@@ -653,103 +673,96 @@ func (sc *SchedulerCache) deleteQueue(queue *kbv1.Queue) error {
 	return nil
 }
 
-func (sc *SchedulerCache) AddNamespace(obj interface{}) {
-	ss, ok := obj.(*v1.Namespace)
-	if !ok {
-		glog.Errorf("Cannot convert to *v1.Namespace: %v", obj)
-		return
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	glog.V(4).Infof("Add Queue(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
-	err := sc.addNamespace(ss)
-	if err != nil {
-		glog.Errorf("Failed to add Queue %s into cache: %v", ss.Name, err)
-		return
-	}
-	return
-}
-
-func (sc *SchedulerCache) UpdateNamespace(oldObj, newObj interface{}) {
-	oldSS, ok := oldObj.(*v1.Namespace)
-	if !ok {
-		glog.Errorf("Cannot convert oldObj to *v1.Namespace: %v", oldObj)
-		return
-	}
-	newSS, ok := newObj.(*v1.Namespace)
-	if !ok {
-		glog.Errorf("Cannot convert newObj to *v1.Namespace: %v", newObj)
-		return
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	err := sc.updateNamespace(oldSS, newSS)
-	if err != nil {
-		glog.Errorf("Failed to update Queue (NS) %s into cache: %v", oldSS.Name, err)
-		return
-	}
-	return
-}
-
-func (sc *SchedulerCache) DeleteNamespace(obj interface{}) {
-	var ss *v1.Namespace
+func (sc *SchedulerCache) DeletePriorityClass(obj interface{}) {
+	var ss *v1beta1.PriorityClass
 	switch t := obj.(type) {
-	case *v1.Namespace:
+	case *v1beta1.PriorityClass:
 		ss = t
 	case cache.DeletedFinalStateUnknown:
 		var ok bool
-		ss, ok = t.Obj.(*v1.Namespace)
+		ss, ok = t.Obj.(*v1beta1.PriorityClass)
 		if !ok {
-			glog.Errorf("Cannot convert to *v1.Namespace: %v", t.Obj)
+			glog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t.Obj)
 			return
 		}
 	default:
-		glog.Errorf("Cannot convert to *v1.Namespace: %v", t)
+		glog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err := sc.deleteNamespace(ss)
-	if err != nil {
-		glog.Errorf("Failed to delete Queue (NS) %s from cache: %v", ss.Name, err)
+	sc.deletePriorityClass(ss)
+}
+
+func (sc *SchedulerCache) UpdatePriorityClass(oldObj, newObj interface{}) {
+	oldSS, ok := oldObj.(*v1beta1.PriorityClass)
+	if !ok {
+		glog.Errorf("Cannot convert oldObj to *v1beta1.PriorityClass: %v", oldObj)
+
+		return
+
+	}
+
+	newSS, ok := newObj.(*v1beta1.PriorityClass)
+	if !ok {
+		glog.Errorf("Cannot convert newObj to *v1beta1.PriorityClass: %v", newObj)
+
+		return
+
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	sc.deletePriorityClass(oldSS)
+	sc.addPriorityClass(newSS)
+}
+
+func (sc *SchedulerCache) AddPriorityClass(obj interface{}) {
+	var ss *v1beta1.PriorityClass
+	switch t := obj.(type) {
+	case *v1beta1.PriorityClass:
+		ss = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		ss, ok = t.Obj.(*v1beta1.PriorityClass)
+		if !ok {
+			glog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t.Obj)
+			return
+		}
+	default:
+		glog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t)
 		return
 	}
-	return
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	sc.addPriorityClass(ss)
 }
 
-func (sc *SchedulerCache) addNamespace(ns *v1.Namespace) error {
-	qi := &kbapi.QueueInfo{
-		UID:  kbapi.QueueID(ns.Name),
-		Name: ns.Name,
+func (sc *SchedulerCache) deletePriorityClass(pc *v1beta1.PriorityClass) {
+	if pc.GlobalDefault {
+		sc.defaultPriorityClass = nil
+		sc.defaultPriority = 0
 
-		Weight: 1,
 	}
-	sc.Queues[qi.UID] = qi
 
-	return nil
+	delete(sc.PriorityClasses, pc.Name)
 }
 
-func (sc *SchedulerCache) updateNamespace(oldObj, newObj *v1.Namespace) error {
-	sc.deleteNamespace(oldObj)
-	sc.addNamespace(newObj)
+func (sc *SchedulerCache) addPriorityClass(pc *v1beta1.PriorityClass) {
+	if pc.GlobalDefault {
+		if sc.defaultPriorityClass != nil {
+			glog.Errorf("Updated default priority class from <%s> to <%s> forcefully.",
+				sc.defaultPriorityClass.Name, pc.Name)
 
-	return nil
-}
-
-func (sc *SchedulerCache) deleteNamespace(ns *v1.Namespace) error {
-	qi := &kbapi.QueueInfo{
-		UID:  kbapi.QueueID(ns.Name),
-		Name: ns.Name,
-
-		Weight: 1,
+		}
+		sc.defaultPriorityClass = pc
+		sc.defaultPriority = pc.Value
 	}
-	delete(sc.Queues, qi.UID)
 
-	return nil
+	sc.PriorityClasses[pc.Name] = pc
 }

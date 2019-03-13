@@ -30,22 +30,11 @@ type ServerOption struct {
 	SchedulerName        string
 	SchedulerConf        string
 	SchedulePeriod       string
-	NamespaceAsQueue     bool
 	EnableLeaderElection bool
 	LockObjectNamespace  string
 	DefaultQueue         string
 	PrintVersion         bool
-}
-
-var (
-	opts *ServerOption
-)
-
-func Options() *ServerOption {
-	if opts == nil {
-		opts = &ServerOption{}
-	}
-	return opts
+	ListenAddress        string
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -62,14 +51,13 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.SchedulerName, "scheduler-name", "kube-batch", "kube-batch will handle pods with the scheduler-name")
 	fs.StringVar(&s.SchedulerConf, "scheduler-conf", "", "The absolute path of scheduler configuration file")
 	fs.StringVar(&s.SchedulePeriod, "schedule-period", "1s", "The period between each scheduling cycle")
-	fs.StringVar(&s.DefaultQueue, "default-queue", "", "The name of the queue to fall-back to instead of namespace name")
+	fs.StringVar(&s.DefaultQueue, "default-queue", "default", "The default queue name of the job")
 	fs.BoolVar(&s.EnableLeaderElection, "leader-elect", s.EnableLeaderElection,
 		"Start a leader election client and gain leadership before "+
 			"executing the main loop. Enable this when running replicated kube-batch for high availability")
-	fs.BoolVar(&s.NamespaceAsQueue, "enable-namespace-as-queue", true, "Make Namespace as Queue with weight one, "+
-		"but kube-batch will not handle Queue CRD anymore")
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
 	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", s.LockObjectNamespace, "Define the namespace of the lock object")
+	fs.StringVar(&s.ListenAddress, "listen-address", ":8080", "The address to listen on for HTTP requests.")
 }
 
 func (s *ServerOption) CheckOptionOrDie() error {

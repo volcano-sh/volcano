@@ -27,6 +27,7 @@ import (
 
 	schedcache "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/metrics"
 )
 
 type Scheduler struct {
@@ -43,13 +44,13 @@ func NewScheduler(
 	schedulerName string,
 	conf string,
 	period string,
-	nsAsQueue bool,
+	defaultQueue string,
 ) (*Scheduler, error) {
 	sp, _ := time.ParseDuration(period)
 	scheduler := &Scheduler{
 		config:         config,
 		schedulerConf:  conf,
-		cache:          schedcache.New(config, schedulerName, nsAsQueue),
+		cache:          schedcache.New(config, schedulerName, defaultQueue),
 		schedulePeriod: sp,
 	}
 
@@ -69,6 +70,7 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 		if schedConf, err = readSchedulerConf(pc.schedulerConf); err != nil {
 			glog.Errorf("Failed to read scheduler configuration '%s', using default configuration: %v",
 				pc.schedulerConf, err)
+			schedConf = defaultSchedulerConf
 		}
 	}
 
@@ -82,12 +84,16 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 
 func (pc *Scheduler) runOnce() {
 	glog.V(4).Infof("Start scheduling ...")
+	scheduleStartTime := time.Now()
 	defer glog.V(4).Infof("End scheduling ...")
+	defer metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
 
 	ssn := framework.OpenSession(pc.cache, pc.plugins)
 	defer framework.CloseSession(ssn)
 
 	for _, action := range pc.actions {
+		actionStartTime := time.Now()
 		action.Execute(ssn)
+		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
 	}
 }
