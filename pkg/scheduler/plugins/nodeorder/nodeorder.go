@@ -33,6 +33,8 @@ import (
 )
 
 type nodeOrderPlugin struct {
+	// Arguments given for the plugin
+	pluginArguments map[string]string
 }
 
 func getInterPodAffinityScore(name string, interPodAffinityScore schedulerapi.HostPriorityList) int {
@@ -145,8 +147,8 @@ func (nl *nodeLister) List() ([]*v1.Node, error) {
 }
 
 //New function returns prioritizePlugin object
-func New() framework.Plugin {
-	return &nodeOrderPlugin{}
+func New(aruguments map[string]string) framework.Plugin {
+	return &nodeOrderPlugin{pluginArguments: aruguments}
 }
 
 func (pp *nodeOrderPlugin) Name() string {
