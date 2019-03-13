@@ -23,10 +23,12 @@ import (
 )
 
 type priorityPlugin struct {
+	// Arguments given for the plugin
+	pluginArguments map[string]string
 }
 
-func New() framework.Plugin {
-	return &priorityPlugin{}
+func New(arguments map[string]string) framework.Plugin {
+	return &priorityPlugin{pluginArguments: arguments}
 }
 
 func (pp *priorityPlugin) Name() string {
