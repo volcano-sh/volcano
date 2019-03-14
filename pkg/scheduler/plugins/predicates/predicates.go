@@ -125,10 +125,10 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		nodeInfo.SetNode(node.Node)
 
 		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods()) {
-			return fmt.Errorf("Node <%s> can not allow more task running on it.", node.Name)
+			return fmt.Errorf("node <%s> can not allow more task running on it", node.Name)
 		}
 
-		// NodeSeletor Predicate
+		// NodeSelector Predicate
 		fit, _, err := predicates.PodMatchNodeSelector(task.Pod, nil, nodeInfo)
 		if err != nil {
 			return err
