@@ -169,7 +169,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			allocated := allocations[job.Queue]
 			if allocated.Less(reclaimee.Resreq) {
-				glog.Errorf("Failed to calculate the allocation of Task <%s/%s> in Queue <%s>.",
+				glog.Errorf("Failed to allocate resource for Task <%s/%s> in Queue <%s>， not enough resource.",
 					reclaimee.Namespace, reclaimee.Name, job.Queue)
 				continue
 			}
@@ -229,7 +229,7 @@ func (pp *proportionPlugin) OnSessionClose(ssn *framework.Session) {
 func (pp *proportionPlugin) updateShare(attr *queueAttr) {
 	res := float64(0)
 
-	// TODO(k82cn): how to handle fragement issues?
+	// TODO(k82cn): how to handle fragment issues?
 	for _, rn := range api.ResourceNames() {
 		share := helpers.Share(attr.allocated.Get(rn), attr.deserved.Get(rn))
 		if share > res {
