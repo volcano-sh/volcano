@@ -363,7 +363,7 @@ func (sc *SchedulerCache) setPodGroup(ss *kbv1.PodGroup) error {
 	job := getJobID(ss)
 
 	if len(job) == 0 {
-		return fmt.Errorf("the controller of PodGroup is empty")
+		return fmt.Errorf("the identity of PodGroup is empty")
 	}
 
 	if _, found := sc.Jobs[job]; !found {

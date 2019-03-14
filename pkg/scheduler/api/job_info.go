@@ -141,7 +141,7 @@ type JobInfo struct {
 	CreationTimestamp metav1.Time
 	PodGroup          *v1alpha1.PodGroup
 
-	// TODO(k82cn): keep backward compatbility, removed it when v1alpha1 finalized.
+	// TODO(k82cn): keep backward compatibility, removed it when v1alpha1 finalized.
 	PDB *policyv1.PodDisruptionBudget
 }
 
