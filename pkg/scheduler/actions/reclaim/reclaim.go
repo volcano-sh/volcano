@@ -176,7 +176,7 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 
 			if task.Resreq.LessEqual(reclaimed) {
 				if err := ssn.Pipeline(task, n.Name); err != nil {
-					glog.Errorf("Failed to pipline Task <%s/%s> on Node <%s>",
+					glog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 						task.Namespace, task.Name, n.Name)
 				}
 
