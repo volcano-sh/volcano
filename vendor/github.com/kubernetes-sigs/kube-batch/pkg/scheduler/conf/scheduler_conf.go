@@ -47,4 +47,6 @@ type PluginOption struct {
 	QueueOrderDisabled bool `yaml:"disableQueueOrder"`
 	// PredicateDisabled defines whether predicateFn is disabled
 	PredicateDisabled bool `yaml:"disablePredicate"`
+	// NodeOrderDisabled defines whether NodeOrderFn is disabled
+	NodeOrderDisabled bool `yaml:"disableNodeOrder"`
 }
