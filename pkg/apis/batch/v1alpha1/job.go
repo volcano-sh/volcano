@@ -39,7 +39,7 @@ type Job struct {
 
 // JobSpec describes how the job execution will look like and when it will actually run
 type JobSpec struct {
-	// SchedulerName is the default value of `taskSpecs.template.spec.schedulerName`.
+	// SchedulerName is the default value of `tasks.template.spec.schedulerName`.
 	// +optional
 	SchedulerName string `json:"schedulerName,omitempty" protobuf:"bytes,1,opt,name=schedulerName"`
 
@@ -55,7 +55,7 @@ type JobSpec struct {
 
 	// Tasks specifies the task specification of Job
 	// +optional
-	Tasks []TaskSpec `json:"taskSpecs,omitempty" protobuf:"bytes,5,opt,name=taskSpecs"`
+	Tasks []TaskSpec `json:"tasks,omitempty" protobuf:"bytes,5,opt,name=tasks"`
 
 	// Specifies the default lifecycle of tasks
 	// +optional
@@ -72,6 +72,12 @@ type VolumeSpec struct {
 	VolumeClaim *v1.PersistentVolumeClaimSpec `json:"volumeClaim,omitempty" protobuf:"bytes,1,opt,name=volumeClaim"`
 }
 
+type JobEvent string
+
+const (
+	CommandIssued JobEvent = "CommandIssued"
+)
+
 // Event represent the phase of Job, e.g. pod-failed.
 type Event string
 
@@ -82,9 +88,10 @@ const (
 	PodFailedEvent Event = "PodFailed"
 	// PodEvictedEvent is triggered if Pod was deleted
 	PodEvictedEvent Event = "PodEvicted"
-	// JobUnschedulableEvent is triggered if part of pod can be scheduled
-	// when gang-scheduling enabled
-	JobUnschedulableEvent Event = "Unschedulable"
+	// These below are several events can lead to job 'Unknown'
+	// 1. Task Unschedulable, this is triggered when part of
+	//    pods can't be scheduled while some are already running in gang-scheduling case.
+	JobUnknownEvent Event = "Unknown"
 
 	// OutOfSyncEvent is triggered if Pod/Job were updated
 	OutOfSyncEvent Event = "OutOfSync"
@@ -102,7 +109,7 @@ const (
 	// RestartJobAction if this action is set, the whole job will be restarted
 	RestartJobAction Action = "RestartJob"
 	// RestartTaskAction if this action is set, only the task will be restarted; default action.
-	// This action can not work togther with job level events, e.g. JobUnschedulable
+	// This action can not work together with job level events, e.g. JobUnschedulable
 	RestartTaskAction Action = "RestartTask"
 	// TerminateJobAction if this action is set, the whole job wil be terminated
 	// and can not be resumed: all Pod of Job will be evicted, and no Pod will be recreated.
@@ -163,7 +170,7 @@ const (
 	Running JobPhase = "Running"
 	// Restarting is the phase that the Job is restarted, waiting for pod releasing and recreating
 	Restarting JobPhase = "Restarting"
-	// Completed is the phase that all tasks of Job are completed successfully
+	// Completed is the phase that all tasks of Job are completed
 	Completed JobPhase = "Completed"
 	// Terminating is the phase that the Job is terminated, waiting for releasing pods
 	Terminating JobPhase = "Terminating"
@@ -214,6 +221,8 @@ type JobStatus struct {
 	// The number of pods which reached phase Terminating.
 	// +optional
 	Terminating int32 `json:"terminating,omitempty" protobuf:"bytes,7,opt,name=terminating"`
+	//Current version of job
+	Version int32
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
