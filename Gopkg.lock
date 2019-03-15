@@ -568,9 +568,10 @@
   version = "v2.2.2"
 
 [[projects]]
-  digest = "1:0d299a04c6472e4458461d7034c76d014cc6f632a3262cbf21d123b19ce13e65"
+  digest = "1:3ca4baec1a14e727951288f091badc5d403096d1c00d3ff5299f273a0c6db85d"
   name = "k8s.io/api"
   packages = [
+    "admission/v1beta1",
     "admissionregistration/v1alpha1",
     "admissionregistration/v1beta1",
     "apps/v1",
@@ -988,6 +989,8 @@
     "github.com/onsi/gomega",
     "github.com/spf13/cobra",
     "github.com/spf13/pflag",
+    "k8s.io/api/admission/v1beta1",
+    "k8s.io/api/admissionregistration/v1beta1",
     "k8s.io/api/apps/v1",
     "k8s.io/api/core/v1",
     "k8s.io/api/scheduling/v1beta1",
@@ -1012,6 +1015,7 @@
     "k8s.io/client-go/informers/core/v1",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/kubernetes/scheme",
+    "k8s.io/client-go/kubernetes/typed/admissionregistration/v1beta1",
     "k8s.io/client-go/kubernetes/typed/core/v1",
     "k8s.io/client-go/listers/core/v1",
     "k8s.io/client-go/plugin/pkg/client/auth/gcp",
@@ -1026,7 +1030,7 @@
     "k8s.io/client-go/util/workqueue",
     "k8s.io/gengo/args",
     "k8s.io/gengo/examples/deepcopy-gen/generators",
-    "k8s.io/kubernetes/pkg/scheduler/algorithm",
+    "k8s.io/kubernetes/pkg/scheduler/api",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1
