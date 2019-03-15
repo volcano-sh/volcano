@@ -60,10 +60,10 @@ func Run(opt *options.ServerOption) error {
 		return err
 	}
 
-	JobController := job.NewJobController(config)
+	jobController := job.NewJobController(config)
 
 	run := func(ctx context.Context) {
-		JobController.Run(ctx.Done())
+		jobController.Run(ctx.Done())
 		<-ctx.Done()
 	}
 
