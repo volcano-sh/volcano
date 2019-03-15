@@ -17,8 +17,8 @@ limitations under the License.
 package v1alpha1
 
 const (
-	TaskSpecKey     = "hpw.cloud/task-spec"
-	JobNameKey      = "hpw.cloud/job-name"
-	JobNamespaceKey = "hpw.cloud/job-namespace"
+	TaskSpecKey     = "volcano.sh/task-spec"
+	JobNameKey      = "volcano.sh/job-name"
+	JobNamespaceKey = "volcano.sh/job-namespace"
 	DefaultTaskSpec = "default"
 )

@@ -28,7 +28,7 @@ var (
 )
 
 // GroupName is the group name used in this package.
-const GroupName = "batch.hpw.cloud"
+const GroupName = "batch.volcano.sh"
 
 // SchemeGroupVersion is the group version used to register these objects.
 var SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: "v1alpha1"}

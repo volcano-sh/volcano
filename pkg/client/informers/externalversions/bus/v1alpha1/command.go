@@ -21,10 +21,10 @@ package v1alpha1
 import (
 	time "time"
 
-	busv1alpha1 "hpw.cloud/volcano/pkg/apis/bus/v1alpha1"
-	versioned "hpw.cloud/volcano/pkg/client/clientset/versioned"
-	internalinterfaces "hpw.cloud/volcano/pkg/client/informers/externalversions/internalinterfaces"
-	v1alpha1 "hpw.cloud/volcano/pkg/client/listers/bus/v1alpha1"
+	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	versioned "volcano.sh/volcano/pkg/client/clientset/versioned"
+	internalinterfaces "volcano.sh/volcano/pkg/client/informers/externalversions/internalinterfaces"
+	v1alpha1 "volcano.sh/volcano/pkg/client/listers/bus/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"

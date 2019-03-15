@@ -19,7 +19,7 @@ package apis
 import (
 	"k8s.io/api/core/v1"
 
-	vkbatchv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
 type JobInfo struct {

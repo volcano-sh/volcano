@@ -21,8 +21,8 @@ package v1alpha1
 import (
 	"time"
 
-	v1alpha1 "hpw.cloud/volcano/pkg/apis/bus/v1alpha1"
-	scheme "hpw.cloud/volcano/pkg/client/clientset/versioned/scheme"
+	v1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	scheme "volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"

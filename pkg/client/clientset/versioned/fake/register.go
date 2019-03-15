@@ -19,8 +19,8 @@ limitations under the License.
 package fake
 
 import (
-	batchv1alpha1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
-	busv1alpha1 "hpw.cloud/volcano/pkg/apis/bus/v1alpha1"
+	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
