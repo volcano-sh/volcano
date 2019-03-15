@@ -19,8 +19,8 @@ limitations under the License.
 package bus
 
 import (
-	v1alpha1 "hpw.cloud/volcano/pkg/client/informers/externalversions/bus/v1alpha1"
-	internalinterfaces "hpw.cloud/volcano/pkg/client/informers/externalversions/internalinterfaces"
+	v1alpha1 "volcano.sh/volcano/pkg/client/informers/externalversions/bus/v1alpha1"
+	internalinterfaces "volcano.sh/volcano/pkg/client/informers/externalversions/internalinterfaces"
 )
 
 // Interface provides access to each of this group's versions.

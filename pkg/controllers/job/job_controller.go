@@ -37,17 +37,17 @@ import (
 	kbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	kblister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
 
-	v1corev1 "hpw.cloud/volcano/pkg/apis/bus/v1alpha1"
-	"hpw.cloud/volcano/pkg/apis/helpers"
-	vkver "hpw.cloud/volcano/pkg/client/clientset/versioned"
-	vkinfoext "hpw.cloud/volcano/pkg/client/informers/externalversions"
-	vkbatchinfo "hpw.cloud/volcano/pkg/client/informers/externalversions/batch/v1alpha1"
-	vkcoreinfo "hpw.cloud/volcano/pkg/client/informers/externalversions/bus/v1alpha1"
-	vkbatchlister "hpw.cloud/volcano/pkg/client/listers/batch/v1alpha1"
-	vkcorelister "hpw.cloud/volcano/pkg/client/listers/bus/v1alpha1"
-	"hpw.cloud/volcano/pkg/controllers/job/apis"
-	jobcache "hpw.cloud/volcano/pkg/controllers/job/cache"
-	"hpw.cloud/volcano/pkg/controllers/job/state"
+	v1corev1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/helpers"
+	vkver "volcano.sh/volcano/pkg/client/clientset/versioned"
+	vkinfoext "volcano.sh/volcano/pkg/client/informers/externalversions"
+	vkbatchinfo "volcano.sh/volcano/pkg/client/informers/externalversions/batch/v1alpha1"
+	vkcoreinfo "volcano.sh/volcano/pkg/client/informers/externalversions/bus/v1alpha1"
+	vkbatchlister "volcano.sh/volcano/pkg/client/listers/batch/v1alpha1"
+	vkcorelister "volcano.sh/volcano/pkg/client/listers/bus/v1alpha1"
+	"volcano.sh/volcano/pkg/controllers/job/apis"
+	jobcache "volcano.sh/volcano/pkg/controllers/job/cache"
+	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
 // Controller the Job Controller type
