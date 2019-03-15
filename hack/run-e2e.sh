@@ -1,48 +1,62 @@
 #!/bin/bash
 
 export PATH="${HOME}/.kubeadm-dind-cluster:${PATH}"
-export VK_BIN=_output/bin
-export LOG_LEVEL=3
+export MASTER="http://127.0.0.1:8080"
+export VK_BIN=$PWD/_output/bin
+export LOG_LEVEL=2
 export NUM_NODES=3
+export CERT_PATH=/etc/kubernetes/pki
+export HOST=localhost
+export HOSTPORT=32222
 
-dind_url=https://cdn.rawgit.com/kubernetes-sigs/kubeadm-dind-cluster/master/fixed/dind-cluster-v1.12.sh
-dind_dest=./hack/dind-cluster-v1.12.sh
+kubectl --server=${MASTER} apply -f installer/chart/volcano-init/templates/scheduling_v1alpha1_podgroup.yaml
+kubectl --server=${MASTER} apply -f installer/chart/volcano-init/templates/scheduling_v1alpha1_queue.yaml
+kubectl --server=${MASTER} apply -f installer/chart/volcano-init/templates/batch_v1alpha1_job.yaml
+kubectl --server=${MASTER} apply -f installer/chart/volcano-init/templates/bus_v1alpha1_command.yaml
 
-# start k8s dind cluster
-curl ${dind_url} --output ${dind_dest}
-chmod +x ${dind_dest}
-${dind_dest} up
+# config admission-controller TODO: make it easier to deploy
+CA_BUNDLE=`kubectl get configmap -n kube-system extension-apiserver-authentication -o=jsonpath='{.data.client-ca-file}' | base64 | tr -d '\n'`
+sed -i "s|{{CA_BUNDLE}}|$CA_BUNDLE|g" hack/e2e-admission-config.yaml
+sed -i "s|{{host}}|${HOST}|g" hack/e2e-admission-config.yaml
+sed -i "s|{{hostPort}}|${HOSTPORT}|g" hack/e2e-admission-config.yaml
 
-kubectl create -f config/crds/scheduling_v1alpha1_podgroup.yaml
-kubectl create -f config/crds/scheduling_v1alpha1_queue.yaml
-kubectl create -f config/crds/batch_v1alpha1_job.yaml
-kubectl create -f config/crds/bus_v1alpha1_command.yaml
+kubectl create -f hack/e2e-admission-config.yaml
 
 # start controller
-nohup ${VK_BIN}/vk-controllers --kubeconfig ${HOME}/.kube/config --logtostderr --v ${LOG_LEVEL} > controller.log 2>&1 &
+nohup ${VK_BIN}/vk-controllers --kubeconfig ${HOME}/.kube/config --master=${MASTER} --logtostderr --v ${LOG_LEVEL} > controller.log 2>&1 &
 
 # start scheduler
-nohup ${VK_BIN}/vk-scheduler --kubeconfig ${HOME}/.kube/config --scheduler-conf=example/kube-batch-conf.yaml --logtostderr --v ${LOG_LEVEL} > scheduler.log 2>&1 &
+nohup ${VK_BIN}/vk-scheduler --kubeconfig ${HOME}/.kube/config --scheduler-conf=example/kube-batch-conf.yaml --master=${MASTER} --logtostderr --v ${LOG_LEVEL} > scheduler.log 2>&1 &
+
+# start admission-controller
+nohup ${VK_BIN}/vk-admission --tls-cert-file=${CERT_PATH}/apiserver.crt --tls-private-key-file=${CERT_PATH}/apiserver.key --kubeconfig ${HOME}/.kube/config --port ${HOSTPORT} --logtostderr --v ${LOG_LEVEL} > admission.log 2>&1 &
 
 # clean up
 function cleanup {
-    killall -9 vk-scheduler vk-controllers
-    ./hack/dind-cluster-v1.12.sh down
+    killall -9 -r vk-scheduler -r vk-controllers -r vk-admission
+
+    if [[ -f scheduler.log ]] ; then
+        echo "===================================================================================="
+        echo "=============================>>>>> Scheduler Logs <<<<<============================="
+        echo "===================================================================================="
+        cat scheduler.log
+    fi
+
+    if [[ -f controller.log ]] ; then
+        echo "===================================================================================="
+        echo "=============================>>>>> Controller Logs <<<<<============================"
+        echo "===================================================================================="
+        cat controller.log
+    fi
 
     echo "===================================================================================="
-    echo "=============================>>>>> Scheduler Logs <<<<<============================="
+    echo "=============================>>>>> admission Logs <<<<<============================"
     echo "===================================================================================="
 
-    cat scheduler.log
-
-    echo "===================================================================================="
-    echo "=============================>>>>> Controller Logs <<<<<============================"
-    echo "===================================================================================="
-
-    cat controller.log
+    cat admission.log
 }
 
 trap cleanup EXIT
 
 # Run e2e test
-go test ./test/e2e -v
+go test ./test/e2e -v -timeout 30m

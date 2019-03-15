@@ -1,0 +1,44 @@
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: validate-volcano-job
+webhooks:
+  - clientConfig:
+      caBundle: {{CA_BUNDLE}}
+
+      # the url should agree with webhook service
+      url: https://{{host}}:{{hostPort}}/jobs
+    failurePolicy: Ignore
+    name: validatejob.volcano.sh
+    rules:
+      - apiGroups:
+          - "batch.volcano.sh"
+        apiVersions:
+          - "v1alpha1"
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - jobs
+---
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: mutate-volcano-job
+webhooks:
+  - clientConfig:
+      caBundle: {{CA_BUNDLE}}
+
+      # the url should agree with webhook service
+      url: https://{{host}}:{{hostPort}}/mutating-jobs
+    failurePolicy: Ignore
+    name: mutatejob.volcano.sh
+    rules:
+      - apiGroups:
+          - "batch.volcano.sh"
+        apiVersions:
+          - "v1alpha1"
+        operations:
+          - CREATE
+        resources:
+          - jobs
