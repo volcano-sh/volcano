@@ -11,7 +11,7 @@ services:
 go:
   - "1.11"
 
-go_import_path: hpw.cloud/volcano
+go_import_path: volcano.sh/volcano
 
 install:
   - go get -u golang.org/x/lint/golint
