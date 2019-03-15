@@ -21,7 +21,7 @@ import (
 
 	"github.com/golang/glog"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -30,6 +30,7 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/conf"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/metrics"
 )
 
 type Session struct {
@@ -37,15 +38,11 @@ type Session struct {
 
 	cache cache.Cache
 
-	Jobs       []*api.JobInfo
-	JobIndex   map[api.JobID]*api.JobInfo
-	Nodes      []*api.NodeInfo
-	NodeIndex  map[string]*api.NodeInfo
-	Queues     []*api.QueueInfo
-	QueueIndex map[api.QueueID]*api.QueueInfo
-	Others     []*api.TaskInfo
-	Backlog    []*api.JobInfo
-	Tiers      []conf.Tier
+	Jobs    map[api.JobID]*api.JobInfo
+	Nodes   map[string]*api.NodeInfo
+	Queues  map[api.QueueID]*api.QueueInfo
+	Backlog []*api.JobInfo
+	Tiers   []conf.Tier
 
 	plugins        map[string]Plugin
 	eventHandlers  []*EventHandler
@@ -53,6 +50,7 @@ type Session struct {
 	queueOrderFns  map[string]api.CompareFn
 	taskOrderFns   map[string]api.CompareFn
 	predicateFns   map[string]api.PredicateFn
+	nodeOrderFns   map[string]api.NodeOrderFn
 	preemptableFns map[string]api.EvictableFn
 	reclaimableFns map[string]api.EvictableFn
 	overusedFns    map[string]api.ValidateFn
@@ -62,17 +60,19 @@ type Session struct {
 
 func openSession(cache cache.Cache) *Session {
 	ssn := &Session{
-		UID:        uuid.NewUUID(),
-		cache:      cache,
-		JobIndex:   map[api.JobID]*api.JobInfo{},
-		NodeIndex:  map[string]*api.NodeInfo{},
-		QueueIndex: map[api.QueueID]*api.QueueInfo{},
+		UID:   uuid.NewUUID(),
+		cache: cache,
+
+		Jobs:   map[api.JobID]*api.JobInfo{},
+		Nodes:  map[string]*api.NodeInfo{},
+		Queues: map[api.QueueID]*api.QueueInfo{},
 
 		plugins:        map[string]Plugin{},
 		jobOrderFns:    map[string]api.CompareFn{},
 		queueOrderFns:  map[string]api.CompareFn{},
 		taskOrderFns:   map[string]api.CompareFn{},
 		predicateFns:   map[string]api.PredicateFn{},
+		nodeOrderFns:   map[string]api.NodeOrderFn{},
 		preemptableFns: map[string]api.EvictableFn{},
 		reclaimableFns: map[string]api.EvictableFn{},
 		overusedFns:    map[string]api.ValidateFn{},
@@ -82,7 +82,8 @@ func openSession(cache cache.Cache) *Session {
 
 	snapshot := cache.Snapshot()
 
-	for _, job := range snapshot.Jobs {
+	ssn.Jobs = snapshot.Jobs
+	for _, job := range ssn.Jobs {
 		if vjr := ssn.JobValid(job); vjr != nil {
 			if !vjr.Pass {
 				jc := &v1alpha1.PodGroupCondition{
@@ -99,27 +100,12 @@ func openSession(cache cache.Cache) *Session {
 				}
 			}
 
-			continue
+			delete(ssn.Jobs, job.UID)
 		}
-
-		ssn.Jobs = append(ssn.Jobs, job)
-	}
-
-	for _, job := range ssn.Jobs {
-		ssn.JobIndex[job.UID] = job
 	}
 
 	ssn.Nodes = snapshot.Nodes
-	for _, node := range ssn.Nodes {
-		ssn.NodeIndex[node.Name] = node
-	}
-
 	ssn.Queues = snapshot.Queues
-	for _, queue := range ssn.Queues {
-		ssn.QueueIndex[queue.UID] = queue
-	}
-
-	ssn.Others = snapshot.Others
 
 	glog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues",
 		ssn.UID, len(ssn.Jobs), len(ssn.Queues))
@@ -144,9 +130,7 @@ func closeSession(ssn *Session) {
 	}
 
 	ssn.Jobs = nil
-	ssn.JobIndex = nil
 	ssn.Nodes = nil
-	ssn.NodeIndex = nil
 	ssn.Backlog = nil
 	ssn.plugins = nil
 	ssn.eventHandlers = nil
@@ -204,7 +188,7 @@ func (ssn *Session) Statement() *Statement {
 
 func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	// Only update status in session
-	job, found := ssn.JobIndex[task.Job]
+	job, found := ssn.Jobs[task.Job]
 	if found {
 		if err := job.UpdateTaskStatus(task, api.Pipelined); err != nil {
 			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
@@ -217,7 +201,7 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 
 	task.NodeName = hostname
 
-	if node, found := ssn.NodeIndex[hostname]; found {
+	if node, found := ssn.Nodes[hostname]; found {
 		if err := node.AddTask(task); err != nil {
 			glog.Errorf("Failed to add task <%v/%v> to node <%v> in Session <%v>: %v",
 				task.Namespace, task.Name, hostname, ssn.UID, err)
@@ -246,7 +230,7 @@ func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
 	}
 
 	// Only update status in session
-	job, found := ssn.JobIndex[task.Job]
+	job, found := ssn.Jobs[task.Job]
 	if found {
 		if err := job.UpdateTaskStatus(task, api.Allocated); err != nil {
 			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
@@ -259,7 +243,7 @@ func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
 
 	task.NodeName = hostname
 
-	if node, found := ssn.NodeIndex[hostname]; found {
+	if node, found := ssn.Nodes[hostname]; found {
 		if err := node.AddTask(task); err != nil {
 			glog.Errorf("Failed to add task <%v/%v> to node <%v> in Session <%v>: %v",
 				task.Namespace, task.Name, hostname, ssn.UID, err)
@@ -302,7 +286,7 @@ func (ssn *Session) dispatch(task *api.TaskInfo) error {
 	}
 
 	// Update status in session
-	if job, found := ssn.JobIndex[task.Job]; found {
+	if job, found := ssn.Jobs[task.Job]; found {
 		if err := job.UpdateTaskStatus(task, api.Binding); err != nil {
 			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
 				task.Namespace, task.Name, api.Binding, ssn.UID, err)
@@ -312,6 +296,7 @@ func (ssn *Session) dispatch(task *api.TaskInfo) error {
 			task.Job, ssn.UID)
 	}
 
+	metrics.UpdateTaskScheduleDuration(metrics.Duration(task.Pod.CreationTimestamp.Time))
 	return nil
 }
 
@@ -321,7 +306,7 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 	}
 
 	// Update status in session
-	job, found := ssn.JobIndex[reclaimee.Job]
+	job, found := ssn.Jobs[reclaimee.Job]
 	if found {
 		if err := job.UpdateTaskStatus(reclaimee, api.Releasing); err != nil {
 			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
@@ -333,7 +318,7 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 	}
 
 	// Update task in node.
-	if node, found := ssn.NodeIndex[reclaimee.NodeName]; found {
+	if node, found := ssn.Nodes[reclaimee.NodeName]; found {
 		if err := node.UpdateTask(reclaimee); err != nil {
 			glog.Errorf("Failed to update task <%v/%v> in Session <%v>: %v",
 				reclaimee.Namespace, reclaimee.Name, ssn.UID, err)
@@ -353,7 +338,7 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 
 // UpdateJobStatus update job condition accordingly.
 func (ssn *Session) UpdateJobCondition(jobInfo *api.JobInfo, cond *v1alpha1.PodGroupCondition) error {
-	job, ok := ssn.JobIndex[jobInfo.UID]
+	job, ok := ssn.Jobs[jobInfo.UID]
 	if !ok {
 		return fmt.Errorf("failed to find job <%s/%s>", jobInfo.Namespace, jobInfo.Name)
 	}

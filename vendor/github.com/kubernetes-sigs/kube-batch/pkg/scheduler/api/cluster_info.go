@@ -19,13 +19,9 @@ import "fmt"
 
 // ClusterInfo is a snapshot of cluster by cache.
 type ClusterInfo struct {
-	Jobs []*JobInfo
-
-	Nodes []*NodeInfo
-
-	Queues []*QueueInfo
-
-	Others []*TaskInfo
+	Jobs   map[JobID]*JobInfo
+	Nodes  map[string]*NodeInfo
+	Queues map[QueueID]*QueueInfo
 }
 
 func (ci ClusterInfo) String() string {
