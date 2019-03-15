@@ -9,7 +9,7 @@ if [ "${CLUSTER_NAME}xxx" != "xxx" ];then
   export CLUSTER_CONTEXT="--name ${CLUSTER_NAME}"
 fi
 
-export KIND_OPT=${KIND_OPT:="--image kindest/node:v1.13.2-huawei --config ${VK_ROOT}/hack/e2e-kind-config.yaml"}
+export KIND_OPT=${KIND_OPT:="--image kindest/node:v1.13.2 --config ${VK_ROOT}/hack/e2e-kind-config.yaml"}
 
 export KIND_IMAGE=$(echo ${KIND_OPT} |grep -E -o "image \w+\/[^ ]*" | sed "s/image //")
 
@@ -112,10 +112,6 @@ Customize kind options other than --name:
 Disable displaying volcano component logs:
 
     export SHOW_VOLCANO_LOGS=0
-
-If you don't have kindest/node:v1.13.2-huawei on the host, checkout the following url to build.
-
-    http://code-cbu.huawei.com/CBU-PaaS/Community/K8S/kind/tags/v0.1.0-huawei
 "
   exit 0
 fi
