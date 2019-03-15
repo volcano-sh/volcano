@@ -27,9 +27,11 @@ import (
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
+	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
 	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
@@ -40,6 +42,7 @@ import (
 	v1corev1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	vkver "volcano.sh/volcano/pkg/client/clientset/versioned"
+	vkscheme "volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 	vkinfoext "volcano.sh/volcano/pkg/client/informers/externalversions"
 	vkbatchinfo "volcano.sh/volcano/pkg/client/informers/externalversions/batch/v1alpha1"
 	vkcoreinfo "volcano.sh/volcano/pkg/client/informers/externalversions/bus/v1alpha1"
@@ -87,19 +90,33 @@ type Controller struct {
 	cmdSynced func() bool
 
 	// queue that need to sync up
-	queue workqueue.RateLimitingInterface
-	cache jobcache.Cache
+	queue        workqueue.RateLimitingInterface
+	commandQueue workqueue.RateLimitingInterface
+	cache        jobcache.Cache
+	//Job Event recorder
+	recorder record.EventRecorder
 }
 
 // NewJobController create new Job Controller
 func NewJobController(config *rest.Config) *Controller {
+
+	kubeClients := kubernetes.NewForConfigOrDie(config)
+
+	//Initialize event client
+	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster.StartLogging(glog.Infof)
+	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClients.CoreV1().Events("")})
+	recorder := eventBroadcaster.NewRecorder(vkscheme.Scheme, v1.EventSource{Component: "vk-controller"})
+
 	cc := &Controller{
-		config:      config,
-		kubeClients: kubernetes.NewForConfigOrDie(config),
-		vkClients:   vkver.NewForConfigOrDie(config),
-		kbClients:   kbver.NewForConfigOrDie(config),
-		queue:       workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		cache:       jobcache.New(),
+		config:       config,
+		kubeClients:  kubeClients,
+		vkClients:    vkver.NewForConfigOrDie(config),
+		kbClients:    kbver.NewForConfigOrDie(config),
+		queue:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		commandQueue: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		cache:        jobcache.New(),
+		recorder:     recorder,
 	}
 
 	cc.jobInformer = vkinfoext.NewSharedInformerFactory(cc.vkClients, 0).Batch().V1alpha1().Jobs()
@@ -121,7 +138,7 @@ func NewJobController(config *rest.Config) *Controller {
 				if cmd, ok := t.Obj.(*v1corev1.Command); ok {
 					return helpers.ControlledBy(cmd, helpers.JobKind)
 				}
-				runtime.HandleError(fmt.Errorf("unable to convert object %T to *v1.Pod", obj))
+				runtime.HandleError(fmt.Errorf("unable to convert object %T to *v1.Command", obj))
 				return false
 			default:
 				runtime.HandleError(fmt.Errorf("unable to handle object %T", obj))
@@ -172,6 +189,9 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.svcSynced = cc.svcInformer.Informer().HasSynced
 
 	cc.pgInformer = kbinfoext.NewSharedInformerFactory(cc.kbClients, 0).Scheduling().V1alpha1().PodGroups()
+	cc.pgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: cc.updatePodGroup,
+	})
 	cc.pgLister = cc.pgInformer.Lister()
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
@@ -194,6 +214,7 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 	cache.WaitForCacheSync(stopCh, cc.jobSynced, cc.podSynced, cc.pgSynced,
 		cc.svcSynced, cc.cmdSynced, cc.pvcSynced)
 
+	go wait.Until(cc.handleCommands, 0, stopCh)
 	go wait.Until(cc.worker, 0, stopCh)
 
 	go cc.cache.Run(stopCh)
@@ -215,6 +236,7 @@ func (cc *Controller) worker() {
 
 	jobInfo, err := cc.cache.Get(jobcache.JobKeyByReq(&req))
 	if err != nil {
+		// TODO(k82cn): ignore not-ready error.
 		glog.Errorf("Failed to get job by <%v> from cache: %v", req, err)
 		return
 	}
@@ -235,5 +257,10 @@ func (cc *Controller) worker() {
 			jobInfo.Job.Namespace, jobInfo.Job.Name, err)
 		// If any error, requeue it.
 		cc.queue.AddRateLimited(req)
+		return
 	}
+
+	// If no error, forget it.
+	cc.queue.Forget(req)
 }
+
