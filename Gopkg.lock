@@ -187,7 +187,7 @@
   version = "1.1.4"
 
 [[projects]]
-  digest = "1:2e5b5bac4f747101897401aba132817ab6b939120de01feb9e81e6322d118881"
+  digest = "1:052fe7e741ee380d4cff1792d4f7637802a3bf56d9198d01b264a6e179aad677"
   name = "github.com/kubernetes-sigs/kube-batch"
   packages = [
     "cmd/kube-batch/app",
@@ -203,26 +203,16 @@
     "pkg/client/informers/externalversions/scheduling/v1alpha1",
     "pkg/client/listers/scheduling/v1alpha1",
     "pkg/scheduler",
-    "pkg/scheduler/actions/allocate",
-    "pkg/scheduler/actions/backfill",
-    "pkg/scheduler/actions/preempt",
-    "pkg/scheduler/actions/reclaim",
     "pkg/scheduler/api",
-    "pkg/scheduler/api/helpers",
     "pkg/scheduler/cache",
     "pkg/scheduler/conf",
     "pkg/scheduler/framework",
-    "pkg/scheduler/plugins/drf",
-    "pkg/scheduler/plugins/gang",
-    "pkg/scheduler/plugins/predicates",
-    "pkg/scheduler/plugins/priority",
-    "pkg/scheduler/plugins/proportion",
-    "pkg/scheduler/util",
+    "pkg/scheduler/metrics",
     "pkg/version",
   ]
   pruneopts = "UT"
-  revision = "1d38effcf9cdec90d43c4782ad129282aa16cc12"
-  version = "v0.4"
+  revision = "3a1f9d7d0a7f7f12be6dd52927fcd0cd9de72ec7"
+  version = "v0.4.1"
 
 [[projects]]
   digest = "1:ff5ebae34cfbf047d505ee150de27e60570e8c394b3b8fdbb720ff6ac71985fc"
@@ -327,11 +317,17 @@
   version = "v2.0.1"
 
 [[projects]]
-  digest = "1:1cec06981f734a2a5927ce17a22b34e9f3fa458b5c70f5db9ed58f7e389338f7"
+  digest = "1:ef03fb1dae4d010196652653f00a8002e94c19bcabdc8ca5100a804ffef63a47"
   name = "github.com/prometheus/client_golang"
-  packages = ["prometheus"]
+  packages = [
+    "prometheus",
+    "prometheus/internal",
+    "prometheus/promauto",
+    "prometheus/promhttp",
+  ]
   pruneopts = "UT"
-  revision = "e7e903064f5e9eb5da98208bae10b475d4db0f8c"
+  revision = "505eaef017263e299324067d40ca2c48f6a2cf50"
+  version = "v0.9.2"
 
 [[projects]]
   branch = "master"
@@ -894,7 +890,7 @@
   revision = "ced9eb3070a5f1c548ef46e8dfe2a97c208d9f03"
 
 [[projects]]
-  digest = "1:17143472ba531e409a230b49319bb339dc6c898e77a6a537e8532c9b7a724735"
+  digest = "1:1744502c1e6fa8d32a7237bdc1c251ce60254736f741c1065a7869e66ac40326"
   name = "k8s.io/kubernetes"
   packages = [
     "pkg/api/legacyscheme",
@@ -908,7 +904,6 @@
     "pkg/apis/core/pods",
     "pkg/apis/core/v1",
     "pkg/apis/core/v1/helper",
-    "pkg/apis/core/v1/helper/qos",
     "pkg/apis/core/validation",
     "pkg/apis/scheduling",
     "pkg/capabilities",
@@ -921,12 +916,7 @@
     "pkg/kubelet/apis",
     "pkg/kubelet/types",
     "pkg/master/ports",
-    "pkg/scheduler/algorithm",
-    "pkg/scheduler/algorithm/predicates",
-    "pkg/scheduler/algorithm/priorities/util",
     "pkg/scheduler/api",
-    "pkg/scheduler/cache",
-    "pkg/scheduler/util",
     "pkg/scheduler/volumebinder",
     "pkg/security/apparmor",
     "pkg/serviceaccount",
