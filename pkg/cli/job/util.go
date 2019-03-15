@@ -27,10 +27,10 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	vkbatchv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
-	vkbusv1 "hpw.cloud/volcano/pkg/apis/bus/v1alpha1"
-	"hpw.cloud/volcano/pkg/apis/helpers"
-	"hpw.cloud/volcano/pkg/client/clientset/versioned"
+	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vkbusv1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/helpers"
+	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
 func homeDir() string {

@@ -18,7 +18,7 @@ package job
 import (
 	"github.com/spf13/cobra"
 
-	"hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
 type resumeFlags struct {

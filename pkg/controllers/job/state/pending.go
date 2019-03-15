@@ -17,8 +17,8 @@ limitations under the License.
 package state
 
 import (
-	vkv1 "hpw.cloud/volcano/pkg/apis/batch/v1alpha1"
-	"hpw.cloud/volcano/pkg/controllers/job/apis"
+	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/controllers/job/apis"
 )
 
 type pendingState struct {

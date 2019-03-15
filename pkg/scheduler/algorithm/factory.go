@@ -17,7 +17,7 @@ limitations under the License.
 package algorithm
 
 import (
-	"hpw.cloud/volcano/pkg/scheduler/algorithm/fairshare"
+	"volcano.sh/volcano/pkg/scheduler/algorithm/fairshare"
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 )
