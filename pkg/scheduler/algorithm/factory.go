@@ -17,9 +17,13 @@ limitations under the License.
 package algorithm
 
 import (
-	"volcano.sh/volcano/pkg/scheduler/algorithm/fairshare"
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+	// Import default actions/plugins.
+	_ "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions"
+	_ "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins"
+
+	"volcano.sh/volcano/pkg/scheduler/algorithm/fairshare"
 )
 
 func init() {

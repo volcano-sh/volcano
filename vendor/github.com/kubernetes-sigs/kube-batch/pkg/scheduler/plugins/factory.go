@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2019 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,21 +14,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package scheduler
+package plugins
 
 import (
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/allocate"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/backfill"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/preempt"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/reclaim"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/conformance"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/drf"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/gang"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/nodeorder"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/predicates"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/priority"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/proportion"
-
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 )
 
 func init() {
@@ -37,13 +34,9 @@ func init() {
 	framework.RegisterPluginBuilder("gang", gang.New)
 	framework.RegisterPluginBuilder("predicates", predicates.New)
 	framework.RegisterPluginBuilder("priority", priority.New)
+	framework.RegisterPluginBuilder("nodeorder", nodeorder.New)
+	framework.RegisterPluginBuilder("conformance", conformance.New)
 
 	// Plugins for Queues
 	framework.RegisterPluginBuilder("proportion", proportion.New)
-
-	// Actions
-	framework.RegisterAction(reclaim.New())
-	framework.RegisterAction(allocate.New())
-	framework.RegisterAction(backfill.New())
-	framework.RegisterAction(preempt.New())
 }

@@ -57,11 +57,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		pp.totalResource.Add(n.Allocatable)
 	}
 
-	// Also remove the resource used by other scheduler.
-	for _, task := range ssn.Others {
-		pp.totalResource.Sub(task.Resreq)
-	}
-
 	glog.V(4).Infof("The total resource is <%v>", pp.totalResource)
 
 	// Build attributes for Queues.
@@ -69,7 +64,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		glog.V(4).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
 
 		if _, found := pp.queueOpts[job.Queue]; !found {
-			queue := ssn.QueueIndex[job.Queue]
+			queue := ssn.Queues[job.Queue]
 			attr := &queueAttr{
 				queueID: queue.UID,
 				name:    queue.Name,
@@ -163,7 +158,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		allocations := map[api.QueueID]*api.Resource{}
 
 		for _, reclaimee := range reclaimees {
-			job := ssn.JobIndex[reclaimee.Job]
+			job := ssn.Jobs[reclaimee.Job]
 			attr := pp.queueOpts[job.Queue]
 
 			if _, found := allocations[job.Queue]; !found {
@@ -189,13 +184,19 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		queue := obj.(*api.QueueInfo)
 		attr := pp.queueOpts[queue.UID]
 
-		return attr.deserved.LessEqual(attr.allocated)
+		overused := attr.deserved.LessEqual(attr.allocated)
+		if overused {
+			glog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
+				queue.Name, attr.deserved, attr.allocated, attr.share)
+		}
+
+		return overused
 	})
 
 	// Register event handlers.
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
-			job := ssn.JobIndex[event.Task.Job]
+			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Add(event.Task.Resreq)
 
@@ -205,7 +206,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 		DeallocateFunc: func(event *framework.Event) {
-			job := ssn.JobIndex[event.Task.Job]
+			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Sub(event.Task.Resreq)
 
