@@ -19,8 +19,8 @@ limitations under the License.
 package versioned
 
 import (
-	batchv1alpha1 "hpw.cloud/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1"
-	busv1alpha1 "hpw.cloud/volcano/pkg/client/clientset/versioned/typed/bus/v1alpha1"
+	batchv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1"
+	busv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/bus/v1alpha1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"

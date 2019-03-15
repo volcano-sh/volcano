@@ -1,4 +1,4 @@
-apiVersion: batch.hpw.cloud/v1alpha1
+apiVersion: batch.volcano.sh/v1alpha1
 kind: Job
 metadata:
   name: test-job
