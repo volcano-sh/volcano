@@ -20,7 +20,7 @@ import (
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
-func totalTasks(job *vkv1.Job) int32 {
+func TotalTasks(job *vkv1.Job) int32 {
 	var rep int32
 
 	for _, task := range job.Spec.Tasks {

@@ -29,7 +29,7 @@ func (ps *restartingState) Execute(action vkv1.Action) error {
 	return SyncJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
 		phase := vkv1.Restarting
 		if status.Terminating == 0 {
-			if status.Pending == 0 && status.Running != 0 {
+			if status.Running >= ps.job.Job.Spec.MinAvailable {
 				phase = vkv1.Running
 			} else {
 				phase = vkv1.Pending

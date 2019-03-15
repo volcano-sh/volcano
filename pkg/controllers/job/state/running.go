@@ -63,7 +63,7 @@ func (ps *runningState) Execute(action vkv1.Action) error {
 	default:
 		return SyncJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
 			phase := vkv1.Running
-			if status.Succeeded+status.Failed == totalTasks(ps.job.Job) {
+			if status.Succeeded+status.Failed == TotalTasks(ps.job.Job) {
 				phase = vkv1.Completed
 			}
 

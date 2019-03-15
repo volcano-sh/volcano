@@ -19,60 +19,42 @@ package cache
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
-	"k8s.io/client-go/tools/cache"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/workqueue"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
 )
 
-type Cache interface {
-	Run(stopCh <-chan struct{})
-
-	Get(key string) (*apis.JobInfo, error)
-	GetStatus(key string) (*v1alpha1.JobStatus, error)
-	Add(obj *v1alpha1.Job) error
-	Update(obj *v1alpha1.Job) error
-	Delete(obj *v1alpha1.Job) error
-
-	AddPod(pod *v1.Pod) error
-	UpdatePod(pod *v1.Pod) error
-	DeletePod(pod *v1.Pod) error
-}
-
 type jobCache struct {
 	sync.Mutex
 
 	jobs        map[string]*apis.JobInfo
-	deletedJobs *cache.FIFO
+	deletedJobs workqueue.RateLimitingInterface
 }
 
 func keyFn(ns, name string) string {
 	return fmt.Sprintf("%s/%s", ns, name)
 }
 
+func JobKeyByName(namespace string, name string) string {
+	return keyFn(namespace, name)
+}
+
 func JobKeyByReq(req *apis.Request) string {
 	return keyFn(req.Namespace, req.JobName)
 }
 
-func JobKey(req *v1alpha1.Job) string {
-	return keyFn(req.Namespace, req.Name)
+func JobKey(job *v1alpha1.Job) string {
+	return keyFn(job.Namespace, job.Name)
 }
 
 func jobTerminated(job *apis.JobInfo) bool {
 	return job.Job == nil && len(job.Pods) == 0
-}
-
-func jobKey(obj interface{}) (string, error) {
-	job, ok := obj.(*v1alpha1.Job)
-	if !ok {
-		return "", fmt.Errorf("failed to convert <%v> to *v1alpha1.Job", obj)
-	}
-	return keyFn(job.Namespace, job.Name), nil
 }
 
 func jobKeyOfPod(pod *v1.Pod) (string, error) {
@@ -88,7 +70,7 @@ func jobKeyOfPod(pod *v1.Pod) (string, error) {
 func New() Cache {
 	return &jobCache{
 		jobs:        map[string]*apis.JobInfo{},
-		deletedJobs: cache.NewFIFO(jobKey),
+		deletedJobs: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 	}
 }
 
@@ -105,20 +87,7 @@ func (jc *jobCache) Get(key string) (*apis.JobInfo, error) {
 		return nil, fmt.Errorf("job <%s> is not ready", key)
 	}
 
-	jobInfo := &apis.JobInfo{
-		Job:  job.Job,
-		Pods: make(map[string]map[string]*v1.Pod),
-	}
-
-	// Copy Pods.
-	for key, pods := range job.Pods {
-		jobInfo.Pods[key] = make(map[string]*v1.Pod)
-		for pn, pod := range pods {
-			jobInfo.Pods[key][pn] = pod
-		}
-	}
-
-	return jobInfo, nil
+	return job.Clone(), nil
 }
 
 func (jc *jobCache) GetStatus(key string) (*v1alpha1.JobStatus, error) {
@@ -135,24 +104,25 @@ func (jc *jobCache) GetStatus(key string) (*v1alpha1.JobStatus, error) {
 	return &status, nil
 }
 
-func (jc *jobCache) Add(obj *v1alpha1.Job) error {
+func (jc *jobCache) Add(job *v1alpha1.Job) error {
 	jc.Lock()
 	defer jc.Unlock()
 
-	key := JobKey(obj)
-	if job, found := jc.jobs[key]; found {
-		if job.Job == nil {
-			job.Job = obj
+	key := JobKey(job)
+	if jobInfo, found := jc.jobs[key]; found {
+		if jobInfo.Job == nil {
+			jobInfo.SetJob(job)
+
 			return nil
 		}
-
-		glog.Errorf("Found duplicated jobs by <%v>", key)
-
-		return fmt.Errorf("duplicated job <%v>", key)
+		return fmt.Errorf("duplicated jobInfo <%v>", key)
 	}
 
 	jc.jobs[key] = &apis.JobInfo{
-		Job:  obj,
+		Name:      job.Name,
+		Namespace: job.Namespace,
+
+		Job:  job,
 		Pods: make(map[string]map[string]*v1.Pod),
 	}
 
@@ -181,6 +151,7 @@ func (jc *jobCache) Delete(obj *v1alpha1.Job) error {
 	if jobInfo, found := jc.jobs[key]; !found {
 		return fmt.Errorf("failed to find job <%v>", key)
 	} else {
+		jobInfo.Job = nil
 		jc.deleteJob(jobInfo)
 	}
 
@@ -204,21 +175,7 @@ func (jc *jobCache) AddPod(pod *v1.Pod) error {
 		jc.jobs[key] = job
 	}
 
-	taskName, found := pod.Annotations[v1alpha1.TaskSpecKey]
-	if !found {
-		return fmt.Errorf("failed to taskName of Pod <%s/%s>",
-			pod.Namespace, pod.Name)
-	}
-
-	if _, found := job.Pods[taskName]; !found {
-		job.Pods[taskName] = make(map[string]*v1.Pod)
-	}
-	if _, found := job.Pods[taskName][pod.Name]; found {
-		return fmt.Errorf("duplicated pod")
-	}
-	job.Pods[taskName][pod.Name] = pod
-
-	return nil
+	return job.AddPod(pod)
 }
 
 func (jc *jobCache) UpdatePod(pod *v1.Pod) error {
@@ -238,18 +195,7 @@ func (jc *jobCache) UpdatePod(pod *v1.Pod) error {
 		jc.jobs[key] = job
 	}
 
-	taskName, found := pod.Annotations[v1alpha1.TaskSpecKey]
-	if !found {
-		return fmt.Errorf("failed to taskName of Pod <%s/%s>",
-			pod.Namespace, pod.Name)
-	}
-
-	if _, found := job.Pods[taskName]; !found {
-		job.Pods[taskName] = make(map[string]*v1.Pod)
-	}
-	job.Pods[taskName][pod.Name] = pod
-
-	return nil
+	return job.UpdatePod(pod)
 }
 
 func (jc *jobCache) DeletePod(pod *v1.Pod) error {
@@ -269,66 +215,51 @@ func (jc *jobCache) DeletePod(pod *v1.Pod) error {
 		jc.jobs[key] = job
 	}
 
-	taskName, found := pod.Annotations[v1alpha1.TaskSpecKey]
-	if !found {
-		return fmt.Errorf("failed to taskName of Pod <%s/%s>",
-			pod.Namespace, pod.Name)
+	if err := job.DeletePod(pod); err != nil {
+		return err
 	}
 
-	if pods, found := job.Pods[taskName]; found {
-		delete(pods, pod.Name)
+	if jc.jobs[key].Job == nil {
+		jc.deleteJob(job)
 	}
-
-	jc.deleteJob(job)
 
 	return nil
 }
 
 func (jc *jobCache) Run(stopCh <-chan struct{}) {
-	go jc.cleanupJobs()
+	wait.Until(jc.processCleanupJob, 0, stopCh)
 }
 
-func (jc *jobCache) cleanupJobs() {
-	for {
-		err := jc.processCleanupJob()
-		if err != nil {
-			glog.Errorf("Failed to process job clean up: %v", err)
-		}
+func (jc *jobCache) processCleanupJob() {
+	obj, shutdown := jc.deletedJobs.Get()
+	if shutdown {
+		return
 	}
-}
+	defer jc.deletedJobs.Done(obj)
 
-func (jc *jobCache) processCleanupJob() error {
-	_, err := jc.deletedJobs.Pop(func(obj interface{}) error {
-		job, ok := obj.(*apis.JobInfo)
-		if !ok {
-			return fmt.Errorf("failed to convert %v to *v1.Pod", obj)
-		}
+	job, ok := obj.(*apis.JobInfo)
+	if !ok {
+		glog.Errorf("failed to convert %v to *apis.JobInfo", obj)
+		return
+	}
 
-		func() {
-			jc.Mutex.Lock()
-			defer jc.Mutex.Unlock()
+	jc.Mutex.Lock()
+	defer jc.Mutex.Unlock()
 
-			if jobTerminated(job) {
-				key, _ := jobKey(job)
-				delete(jc.jobs, key)
-				glog.V(3).Infof("Job <%s> was deleted.", key)
-			} else {
-				// Retry
-				jc.deleteJob(job)
-			}
-		}()
-
-		return nil
-	})
-
-	return err
+	if jobTerminated(job) {
+		jc.deletedJobs.Forget(obj)
+		key := keyFn(job.Namespace, job.Name)
+		delete(jc.jobs, key)
+		glog.V(3).Infof("Job <%s> was deleted.", key)
+	} else {
+		// Retry
+		jc.deleteJob(job)
+	}
 }
 
 func (jc *jobCache) deleteJob(job *apis.JobInfo) {
 	glog.V(3).Infof("Try to delete Job <%v/%v>",
-		job.Job.Namespace, job.Job.Name)
+		job.Namespace, job.Name)
 
-	time.AfterFunc(1*time.Second, func() {
-		jc.deletedJobs.AddIfNotPresent(job)
-	})
+	jc.deletedJobs.AddRateLimited(job)
 }

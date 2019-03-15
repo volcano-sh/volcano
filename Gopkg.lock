@@ -187,7 +187,7 @@
   version = "1.1.4"
 
 [[projects]]
-  digest = "1:2e5b5bac4f747101897401aba132817ab6b939120de01feb9e81e6322d118881"
+  digest = "1:e968e93cc59d6e1d913f881809239827f45c067e5ee5025002e68e39bba7dc87"
   name = "github.com/kubernetes-sigs/kube-batch"
   packages = [
     "cmd/kube-batch/app",
@@ -203,6 +203,7 @@
     "pkg/client/informers/externalversions/scheduling/v1alpha1",
     "pkg/client/listers/scheduling/v1alpha1",
     "pkg/scheduler",
+    "pkg/scheduler/actions",
     "pkg/scheduler/actions/allocate",
     "pkg/scheduler/actions/backfill",
     "pkg/scheduler/actions/preempt",
@@ -212,8 +213,12 @@
     "pkg/scheduler/cache",
     "pkg/scheduler/conf",
     "pkg/scheduler/framework",
+    "pkg/scheduler/metrics",
+    "pkg/scheduler/plugins",
+    "pkg/scheduler/plugins/conformance",
     "pkg/scheduler/plugins/drf",
     "pkg/scheduler/plugins/gang",
+    "pkg/scheduler/plugins/nodeorder",
     "pkg/scheduler/plugins/predicates",
     "pkg/scheduler/plugins/priority",
     "pkg/scheduler/plugins/proportion",
@@ -221,8 +226,8 @@
     "pkg/version",
   ]
   pruneopts = "UT"
-  revision = "1d38effcf9cdec90d43c4782ad129282aa16cc12"
-  version = "v0.4"
+  revision = "3a1f9d7d0a7f7f12be6dd52927fcd0cd9de72ec7"
+  version = "v0.4.1"
 
 [[projects]]
   digest = "1:ff5ebae34cfbf047d505ee150de27e60570e8c394b3b8fdbb720ff6ac71985fc"
@@ -327,11 +332,17 @@
   version = "v2.0.1"
 
 [[projects]]
-  digest = "1:1cec06981f734a2a5927ce17a22b34e9f3fa458b5c70f5db9ed58f7e389338f7"
+  digest = "1:ef03fb1dae4d010196652653f00a8002e94c19bcabdc8ca5100a804ffef63a47"
   name = "github.com/prometheus/client_golang"
-  packages = ["prometheus"]
+  packages = [
+    "prometheus",
+    "prometheus/internal",
+    "prometheus/promauto",
+    "prometheus/promhttp",
+  ]
   pruneopts = "UT"
-  revision = "e7e903064f5e9eb5da98208bae10b475d4db0f8c"
+  revision = "505eaef017263e299324067d40ca2c48f6a2cf50"
+  version = "v0.9.2"
 
 [[projects]]
   branch = "master"
@@ -849,6 +860,34 @@
   revision = "2325825fd8d83744804a701fd1e00d2ebee92cb3"
 
 [[projects]]
+  digest = "1:dc1ae99dcab96913d81ae970b1f7a7411a54199b14bfb17a7e86f9a56979c720"
+  name = "k8s.io/code-generator"
+  packages = [
+    "cmd/client-gen",
+    "cmd/client-gen/args",
+    "cmd/client-gen/generators",
+    "cmd/client-gen/generators/fake",
+    "cmd/client-gen/generators/scheme",
+    "cmd/client-gen/generators/util",
+    "cmd/client-gen/path",
+    "cmd/client-gen/types",
+    "cmd/deepcopy-gen",
+    "cmd/deepcopy-gen/args",
+    "cmd/defaulter-gen",
+    "cmd/defaulter-gen/args",
+    "cmd/informer-gen",
+    "cmd/informer-gen/args",
+    "cmd/informer-gen/generators",
+    "cmd/lister-gen",
+    "cmd/lister-gen/args",
+    "cmd/lister-gen/generators",
+    "pkg/util",
+  ]
+  pruneopts = "T"
+  revision = "c2090bec4d9b1fb25de3812f868accc2bc9ecbae"
+  version = "kubernetes-1.13.2"
+
+[[projects]]
   branch = "master"
   digest = "1:e79eeb85f6f9636d4a9f1c36f1bdab1b2684db3621d7feea1d087edab281154c"
   name = "k8s.io/csi-api"
@@ -863,11 +902,12 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:28514fabca4356625720ffb012408790a9d00d31963a9bd9daf7b5ccd894c301"
+  digest = "1:61024ed77a53ac618effed55043bf6a9afbdeb64136bd6a5b0c992d4c0363766"
   name = "k8s.io/gengo"
   packages = [
     "args",
     "examples/deepcopy-gen/generators",
+    "examples/defaulter-gen/generators",
     "examples/set-gen/sets",
     "generator",
     "namer",
@@ -894,7 +934,7 @@
   revision = "ced9eb3070a5f1c548ef46e8dfe2a97c208d9f03"
 
 [[projects]]
-  digest = "1:17143472ba531e409a230b49319bb339dc6c898e77a6a537e8532c9b7a724735"
+  digest = "1:c42bc2f7b63720036166c67e48f2d2187e99626d677ef52a1baa3fc56b21efa6"
   name = "k8s.io/kubernetes"
   packages = [
     "pkg/api/legacyscheme",
@@ -923,6 +963,7 @@
     "pkg/master/ports",
     "pkg/scheduler/algorithm",
     "pkg/scheduler/algorithm/predicates",
+    "pkg/scheduler/algorithm/priorities",
     "pkg/scheduler/algorithm/priorities/util",
     "pkg/scheduler/api",
     "pkg/scheduler/cache",
@@ -937,6 +978,7 @@
     "pkg/util/io",
     "pkg/util/mount",
     "pkg/util/net/sets",
+    "pkg/util/node",
     "pkg/util/nsenter",
     "pkg/util/parsers",
     "pkg/util/resizefs",
@@ -983,8 +1025,10 @@
     "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions",
     "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1",
     "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1",
+    "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions",
     "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api",
     "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework",
+    "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins",
     "github.com/onsi/ginkgo",
     "github.com/onsi/gomega",
     "github.com/spf13/cobra",
@@ -1028,6 +1072,11 @@
     "k8s.io/client-go/tools/record",
     "k8s.io/client-go/util/flowcontrol",
     "k8s.io/client-go/util/workqueue",
+    "k8s.io/code-generator/cmd/client-gen",
+    "k8s.io/code-generator/cmd/deepcopy-gen",
+    "k8s.io/code-generator/cmd/defaulter-gen",
+    "k8s.io/code-generator/cmd/informer-gen",
+    "k8s.io/code-generator/cmd/lister-gen",
     "k8s.io/gengo/args",
     "k8s.io/gengo/examples/deepcopy-gen/generators",
     "k8s.io/kubernetes/pkg/scheduler/api",
