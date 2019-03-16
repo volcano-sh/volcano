@@ -143,7 +143,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 			selectedNodes := util.SelectBestNode(nodeScores)
 			for _, node := range selectedNodes {
 				// Allocate idle resource to the task.
-				if task.Resreq.LessEqual(node.Idle) {
+				if task.InitResreq.LessEqual(node.Idle) {
 					glog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
 						task.Namespace, task.Name, node.Name)
 					if err := ssn.Allocate(task, node.Name); err != nil {
@@ -162,9 +162,9 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 				}
 
 				// Allocate releasing resource to the task if any.
-				if task.Resreq.LessEqual(node.Releasing) {
+				if task.InitResreq.LessEqual(node.Releasing) {
 					glog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
-						task.Namespace, task.Name, node.Name, task.Resreq, node.Releasing)
+						task.Namespace, task.Name, node.Name, task.InitResreq, node.Releasing)
 					if err := ssn.Pipeline(task, node.Name); err != nil {
 						glog.Errorf("Failed to pipeline Task %v on %v in Session %v",
 							task.UID, node.Name, ssn.UID)
