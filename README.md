@@ -16,5 +16,6 @@ using several systems, combined with best-of-breed ideas and practices from the 
 
 You can reach the maintainers of this project at:
 
-Slack: #volcano-sh
+Slack: [#volcano-sh](http://t.cn/Efa7LKx)
+
 Mailing List: https://groups.google.com/forum/#!forum/volcano-sh
