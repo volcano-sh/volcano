@@ -1,5 +1,5 @@
 /*
-Copyright The Kubernetes Authors.
+Copyright 2019 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,9 +19,9 @@ limitations under the License.
 package fake
 
 import (
-	v1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
+	v1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1"
 )
 
 type FakeBatchV1alpha1 struct {
