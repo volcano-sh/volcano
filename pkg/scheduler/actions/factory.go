@@ -19,10 +19,10 @@ package actions
 import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/allocate"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/backfill"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/preempt"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/reclaim"
+	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
+	"volcano.sh/volcano/pkg/scheduler/actions/backfill"
+	"volcano.sh/volcano/pkg/scheduler/actions/preempt"
+	"volcano.sh/volcano/pkg/scheduler/actions/reclaim"
 )
 
 func init() {

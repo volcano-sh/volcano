@@ -24,7 +24,8 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/metrics"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/util"
+
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 type preemptAction struct {
