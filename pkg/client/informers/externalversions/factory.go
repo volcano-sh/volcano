@@ -1,5 +1,5 @@
 /*
-Copyright The Kubernetes Authors.
+Copyright 2019 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,14 +23,14 @@ import (
 	sync "sync"
 	time "time"
 
-	versioned "volcano.sh/volcano/pkg/client/clientset/versioned"
-	batch "volcano.sh/volcano/pkg/client/informers/externalversions/batch"
-	bus "volcano.sh/volcano/pkg/client/informers/externalversions/bus"
-	internalinterfaces "volcano.sh/volcano/pkg/client/informers/externalversions/internalinterfaces"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
+	versioned "volcano.sh/volcano/pkg/client/clientset/versioned"
+	batch "volcano.sh/volcano/pkg/client/informers/externalversions/batch"
+	bus "volcano.sh/volcano/pkg/client/informers/externalversions/bus"
+	internalinterfaces "volcano.sh/volcano/pkg/client/informers/externalversions/internalinterfaces"
 )
 
 // SharedInformerOption defines the functional option type for SharedInformerFactory.
