@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Vulcan Authors.
+Copyright 2018 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,17 +14,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package algorithm
+package preempt
 
 import (
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
-	// Import default actions/plugins.
-	_ "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions"
-	_ "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins"
+	"testing"
 
-	"volcano.sh/volcano/pkg/scheduler/algorithm/fairshare"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+
+	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 )
 
-func init() {
-	framework.RegisterPluginBuilder("fairshare", fairshare.New)
+func TestPreempt(t *testing.T) {
+	framework.RegisterPluginBuilder("drf", drf.New)
+	defer framework.CleanupPluginBuilders()
+
+	// TODO (k82cn): Add UT cases here.
 }
