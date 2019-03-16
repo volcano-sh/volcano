@@ -263,4 +263,3 @@ func (cc *Controller) worker() {
 	// If no error, forget it.
 	cc.queue.Forget(req)
 }
-
