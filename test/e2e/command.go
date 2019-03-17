@@ -153,4 +153,3 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 			"Job related pod should be deleted when job aborted.")
 	})
 })
-
