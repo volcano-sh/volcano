@@ -46,12 +46,16 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 	jobsMap := map[api.QueueID]*util.PriorityQueue{}
 
 	for _, job := range ssn.Jobs {
-		if _, found := jobsMap[job.Queue]; !found {
-			jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
-		}
-
 		if queue, found := ssn.Queues[job.Queue]; found {
 			queues.Push(queue)
+		} else {
+			glog.Warningf("Skip adding Job <%s/%s> because its queue %s is not found",
+				job.Namespace, job.Name, job.Queue)
+			continue
+		}
+
+		if _, found := jobsMap[job.Queue]; !found {
+			jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 		}
 
 		glog.V(4).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
