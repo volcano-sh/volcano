@@ -9,9 +9,7 @@ assignees: ''
 
 <!-- This form is for bug reports and feature requests ONLY!
 
-If you're looking for help check [Stack Overflow](https://stackoverflow.com/questions/tagged/kubernetes) and the [troubleshooting guide](https://kubernetes.io/docs/tasks/debug-application-cluster/troubleshooting/).
-
-If the matter is security related, please disclose it privately via https://kubernetes.io/security/.
+If you're looking for a help then check our [Slack Channel](http://volcano-sh.slack.com/) or have a look at our [dev mailing](https://groups.google.com/forum/#!forum/volcano-sh) 
 -->
 
 **Is this a BUG REPORT or FEATURE REQUEST?**:
