@@ -20,15 +20,16 @@ sed -i "s|{{CA_BUNDLE}}|$CA_BUNDLE|g" hack/e2e-admission-config.yaml
 sed -i "s|{{host}}|${HOST}|g" hack/e2e-admission-config.yaml
 sed -i "s|{{hostPort}}|${HOSTPORT}|g" hack/e2e-admission-config.yaml
 
-kubectl create -f hack/e2e-admission-config.yaml
+kubectl apply -f hack/e2e-admission-config.yaml
+
+# Create default queue for tests
+kubectl apply -f installer/chart/volcano/templates/default-queue.yaml
 
 # start controller
 nohup ${VK_BIN}/vk-controllers --kubeconfig ${HOME}/.kube/config --master=${MASTER} --logtostderr --v ${LOG_LEVEL} > controller.log 2>&1 &
 
 # start scheduler
-# NOTE(tommylikehu): Now we set default batch queue to 'test', it's SHOULD be updated once it's come to
-# a conclusion how to handle the queue either in kube batch or volcano.
-nohup ${VK_BIN}/vk-scheduler --kubeconfig ${HOME}/.kube/config --scheduler-conf=example/kube-batch-conf.yaml --master=${MASTER} --default-queue test --logtostderr --v ${LOG_LEVEL} > scheduler.log 2>&1 &
+nohup ${VK_BIN}/vk-scheduler --kubeconfig ${HOME}/.kube/config --scheduler-conf=example/kube-batch-conf.yaml --master=${MASTER} --logtostderr --v ${LOG_LEVEL} > scheduler.log 2>&1 &
 
 # start admission-controller
 nohup ${VK_BIN}/vk-admission --tls-cert-file=${CERT_PATH}/apiserver.crt --tls-private-key-file=${CERT_PATH}/apiserver.key --kubeconfig ${HOME}/.kube/config --port ${HOSTPORT} --logtostderr --v ${LOG_LEVEL} > admission.log 2>&1 &
