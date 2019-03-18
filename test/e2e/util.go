@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -105,7 +104,7 @@ type context struct {
 }
 
 func initTestContext() *context {
-	enableNamespaceAsQueue, _ := strconv.ParseBool(os.Getenv("ENABLE_NAMESPACES_AS_QUEUE"))
+	//enableNamespaceAsQueue, _ := strconv.ParseBool(os.Getenv("ENABLE_NAMESPACES_AS_QUEUE"))
 	cxt := &context{
 		namespace: "test",
 		queues:    []string{"q1", "q2"},
@@ -130,7 +129,9 @@ func initTestContext() *context {
 	Expect(err).NotTo(HaveOccurred(),
 		"k8s cluster is required to have one ready worker node at least.")
 
-	cxt.enableNamespaceAsQueue = enableNamespaceAsQueue
+	//NOTE(tommylikehu):NamespaceAsQueue feature was removed from kube-batch,
+	//we will eventually remove this logic in test as well.
+	cxt.enableNamespaceAsQueue = false
 
 	_, err = cxt.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
