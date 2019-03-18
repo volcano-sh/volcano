@@ -19,3 +19,13 @@ package job
 const (
 	TaskNameFmt = "%s-%s-%d"
 )
+
+const (
+	ConfigMapTaskHostFmt = "%s.host"
+	ConfigMapVolumeName = "volcano-configmap"
+	ConfigMapMountPath  = "/etc/worker"
+)
+
+const (
+	TaskVkIndex = "VK_INDEX"
+)
