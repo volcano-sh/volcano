@@ -9,6 +9,12 @@ source "${KUBE_ROOT}/hack/lib/init.sh"
 
 kube::golang::verify_go_version
 
+if ! which golint > /dev/null; then
+  echo 'Can not find golint, install with:'
+  echo 'go get -u github.com/golang/lint/golint'
+  exit 1
+fi
+
 cd "${KUBE_ROOT}"
 
 array_contains () {
@@ -54,7 +60,7 @@ for p in "${all_packages[@]}"; do
 	# and not just the ones for the current platform.
 	# Packages with a corresponding foo_test package will make golint fail
 	# with a useless error. Just ignore that, see golang/lint#68.
-	failedLint=$(golint "$p" 2>/dev/null)
+	failedLint=$(golint "$p"/*.go 2>/dev/null)
 	array_contains "$p" "${failing_packages[@]}" && in_failing=$? || in_failing=$?
 	if [[ -n "${failedLint}" ]] && [[ "${in_failing}" -ne "0" ]]; then
 		errors+=( "${failedLint}" )
