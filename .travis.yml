@@ -18,5 +18,6 @@ install:
 
 script:
   - make
+  - make verify
   - make e2e-test
 
