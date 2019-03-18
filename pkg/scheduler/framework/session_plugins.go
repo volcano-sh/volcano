@@ -213,15 +213,14 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 		}
 	}
 
-	// If no job order funcs, order job by UID.
+	// If no job order funcs, order job by CreationTimestamp first, then by UID.
 	lv := l.(*api.JobInfo)
 	rv := r.(*api.JobInfo)
-
 	if lv.CreationTimestamp.Equal(&rv.CreationTimestamp) {
 		return lv.UID < rv.UID
+	} else {
+		return lv.CreationTimestamp.Before(&rv.CreationTimestamp)
 	}
-
-	return lv.CreationTimestamp.Before(&rv.CreationTimestamp)
 }
 
 func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
