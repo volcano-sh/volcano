@@ -1,6 +1,6 @@
 # Volcano
 
-![travis](https://travis-ci.com/k82cn/volcano.svg?token=Qogbzw9M3Q6qBwA56otg&branch=master) [![slack](https://img.shields.io/badge/Volcano-%23SLACK-red.svg)](https://volcano-sh.slack.com/messages/CGET876H5/) 
+[![Build Status](https://travis-ci.com/volcano-sh/volcano.svg?token=sstuqFE81ukmNz9cEEtd&branch=master)](https://travis-ci.com/volcano-sh/volcano) [![slack](https://img.shields.io/badge/Volcano-%23SLACK-red.svg)](https://volcano-sh.slack.com/messages/CGET876H5/) 
 
 Volcano is a Kubernetes-based system for high performance workload, providing mechanisms for applications
 which would like to run high performance workload leveraging Kubernetes, e.g. Tensorflow, Spark, MPI.
