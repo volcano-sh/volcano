@@ -24,8 +24,8 @@ rules:
     resources: ["events"]
     verbs: ["create", "list", "watch", "update", "patch"]
   - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["create", "get", "list", "watch", "update", "bind", "updateStatus", "delete"]
+    resources: ["pods", "pods/status"]
+    verbs: ["create", "get", "list", "watch", "update", "bind", "delete"]
   - apiGroups: [""]
     resources: ["pods/binding"]
     verbs: ["create"]
@@ -36,7 +36,10 @@ rules:
     resources: ["persistentvolumes"]
     verbs: ["list", "watch"]
   - apiGroups: ["scheduling.incubator.k8s.io"]
-    resources: ["podgroups"]
+    resources: ["podgroups", "queues"]
+    verbs: ["list", "watch", "update"]
+  - apiGroups: ["scheduling.k8s.io"]
+    resources: ["priorityclasses"]
     verbs: ["list", "watch", "update"]
   - apiGroups: [""]
     resources: ["namespaces"]
@@ -84,6 +87,10 @@ spec:
         vk-scheduler: test
     spec:
       serviceAccount: {{ .Release.Name }}-scheduler
+      {{ if .Values.basic.image_pull_secret }}
+      imagePullSecrets:
+        - name: {{ .Values.basic.image_pull_secret }}
+      {{ end }}
       containers:
         - name: {{ .Release.Name }}-scheduler
           image: {{.Values.basic.scheduler_image_name}}:{{.Values.basic.image_tag_version}}
