@@ -24,7 +24,7 @@ rules:
     resources: ["events"]
     verbs: ["create", "list", "watch", "update", "patch"]
   - apiGroups: [""]
-    resources: ["pods"]
+    resources: ["pods", "pods/status"]
     verbs: ["create", "get", "list", "watch", "update", "bind", "updateStatus", "delete"]
   - apiGroups: [""]
     resources: ["pods/binding"]
@@ -50,6 +50,12 @@ rules:
   - apiGroups: ["policy"]
     resources: ["poddisruptionbudgets"]
     verbs: ["list", "watch"]
+  - apiGroups: ["scheduling.incubator.k8s.io"]
+    resources: ["queues"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["scheduling.k8s.io"]
+    resources: ["priorityclasses"]
+    verbs: ["get", "list", "watch"]
 
 ---
 kind: ClusterRoleBinding

@@ -68,6 +68,8 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
 				if err != nil {
 					running++
+					glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
+						pod.Name, job.Name, err)
 					errs = append(errs, err)
 					continue
 				}
@@ -76,6 +78,8 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
 				if err != nil {
 					pending++
+					glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
+						pod.Name, job.Name, err)
 					errs = append(errs, err)
 					continue
 				}
@@ -86,6 +90,8 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
 				if err != nil {
 					failed++
+					glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
+						pod.Name, job.Name, err)
 					errs = append(errs, err)
 					continue
 				}
