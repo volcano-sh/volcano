@@ -18,6 +18,8 @@ package job
 
 import (
 	"fmt"
+	"strconv"
+
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
@@ -155,6 +157,44 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 	// we fill the schedulerName in the pod definition with the one specified in the QJ template
 	if job.Spec.SchedulerName != "" && pod.Spec.SchedulerName == "" {
 		pod.Spec.SchedulerName = job.Spec.SchedulerName
+	}
+
+	// use podName.serviceName as default pod DNS domain
+	if len(pod.Spec.Hostname) == 0 {
+		pod.Spec.Hostname = pod.Name
+	}
+	if len(pod.Spec.Subdomain) == 0 {
+		pod.Spec.Subdomain = job.Name
+	}
+
+	// add VK_INDEX env to each container
+	for i, c := range pod.Spec.Containers {
+		vkIndex := v1.EnvVar{
+			Name: TaskVkIndex,
+			Value: strconv.FormatInt(int64(ix), 10),
+		}
+
+		pod.Spec.Containers[i].Env = append(c.Env, vkIndex)
+	}
+
+	// add configMap volume
+	cmVolume := v1.Volume{
+		Name: ConfigMapVolumeName,
+	}
+	cmVolume.ConfigMap = &v1.ConfigMapVolumeSource{
+		LocalObjectReference: v1.LocalObjectReference{
+			Name: job.Name,
+		},
+	}
+	pod.Spec.Volumes = append(pod.Spec.Volumes, cmVolume)
+
+	for i, c := range pod.Spec.Containers {
+		vm := v1.VolumeMount{
+			MountPath: ConfigMapMountPath,
+			Name:      ConfigMapVolumeName,
+		}
+
+		pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
 	}
 
 	return pod
