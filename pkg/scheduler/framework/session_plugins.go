@@ -241,11 +241,14 @@ func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
 		}
 	}
 
-	// If no queue order funcs, order queue by UID.
+	// If no queue order funcs, order queue by CreationTimestamp first, then by UID.
 	lv := l.(*api.QueueInfo)
 	rv := r.(*api.QueueInfo)
-
-	return lv.UID < rv.UID
+	if lv.Queue.CreationTimestamp.Equal(&rv.Queue.CreationTimestamp) {
+		return lv.UID < rv.UID
+	} else {
+		return lv.Queue.CreationTimestamp.Before(&rv.Queue.CreationTimestamp)
+	}
 }
 
 func (ssn *Session) TaskCompareFns(l, r interface{}) int {
