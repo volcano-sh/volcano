@@ -30,6 +30,7 @@ If you're looking for a help then check our [Slack Channel](http://volcano-sh.sl
 **Anything else we need to know?**:
 
 **Environment**:
+- Volcano Version:
 - Kubernetes version (use `kubectl version`):
 - Cloud provider or hardware configuration:
 - OS (e.g. from /etc/os-release):
