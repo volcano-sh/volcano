@@ -1,6 +1,6 @@
 name: "gen-admission-secret"
 version: "1.0.0"
-usage: "Integrate Keybase.io tools with Helm"
+usage: "Generate valid cert for admission server"
 description: This plugin provides signed cert to admission server.
 ignoreFlags: false
 useTunnel: false
