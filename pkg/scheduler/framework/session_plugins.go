@@ -272,11 +272,14 @@ func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 		return res < 0
 	}
 
-	// If no task order funcs, order task by UID.
+	// If no task order funcs, order task by CreationTimestamp first, then by UID.
 	lv := l.(*api.TaskInfo)
 	rv := r.(*api.TaskInfo)
-
-	return lv.UID < rv.UID
+	if lv.Pod.CreationTimestamp.Equal(&rv.Pod.CreationTimestamp) {
+		return lv.UID < rv.UID
+	} else {
+		return lv.Pod.CreationTimestamp.Before(&rv.Pod.CreationTimestamp)
+	}
 }
 
 func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
