@@ -33,19 +33,20 @@ First of all, clone repo to your local path
 # cd $GOPATH/src/volcano.sh/
 # git clone https://github.com/volcano-sh/volcano.git
 ```
-Volcano introduces a helm plugin **gen-admission-secret** to generate valid cert (stored in k8s secret) for
-admission service, therefore you are required to install & execute the plugin before installing the chart.
+Second, install required helm plugin and generate valid certificate, volcano uses a helm plugin **gen-admission-secret**
+to generate certificate for admission service to communicate with kubernetes API server.
 ```
 #1. Install helm plugin
 helm plugin install installer/chart/volcano/plugins/gen-admission-secret
 
 #2. Generate secret within service name
 helm gen-admission-secret --service <specified-name>-admission-service --namespace <namespace>
-
-#3. Install helm chart
+```
+Finally, install helm chart.
+```
 helm install installer/chart/volcano --namespace <namespace> --name <specified-name>
 ```
-The **<specified-name>** used in the two commands above should be identical.
+**NOTE**:The ```<specified-name>``` used in the two commands above should be identical.
 
 
 
