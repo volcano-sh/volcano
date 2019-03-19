@@ -18,8 +18,8 @@ package job
 
 import (
 	"fmt"
-	"sync"
 	"strings"
+	"sync"
 
 	"github.com/golang/glog"
 
@@ -97,6 +97,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	}
 
 	if len(errs) != 0 {
+		glog.Errorf("failed to kill pods for job %s/%s, with err %+v", job.Namespace, job.Name, errs)
 		return fmt.Errorf("failed to kill %d pods of %d", len(errs), total)
 	}
 
@@ -431,9 +432,9 @@ func (cc *Controller) createServiceIfNotExist(job *vkv1.Job) error {
 				},
 				Ports: []v1.ServicePort{
 					{
-						Name: "placeholder",
-						Port: 80,
-						Protocol: v1.ProtocolTCP,
+						Name:       "placeholder",
+						Port:       80,
+						Protocol:   v1.ProtocolTCP,
 						TargetPort: intstr.FromInt(80),
 					},
 				},

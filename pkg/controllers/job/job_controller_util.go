@@ -170,7 +170,7 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 	// add VK_INDEX env to each container
 	for i, c := range pod.Spec.Containers {
 		vkIndex := v1.EnvVar{
-			Name: TaskVkIndex,
+			Name:  TaskVkIndex,
 			Value: strconv.FormatInt(int64(ix), 10),
 		}
 
