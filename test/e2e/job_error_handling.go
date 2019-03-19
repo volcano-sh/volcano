@@ -445,13 +445,15 @@ var _ = Describe("Job Error Handling", func() {
 			},
 			tasks: []taskSpec{
 				{
-					name: "completed_task",
+					name: "completed-task",
 					img:  defaultBusyBoxImage,
 					min:  2,
 					rep:  2,
+					//Sleep 5 seconds ensure job in running state
+					command: "sleep 5",
 				},
 				{
-					name: "terminating_task",
+					name: "terminating-task",
 					img:  defaultNginxImage,
 					min:  2,
 					rep:  2,
@@ -461,9 +463,10 @@ var _ = Describe("Job Error Handling", func() {
 
 		By("job scheduled, then task 'completed_task' finished and job finally complete")
 		// job phase: pending -> running -> completing -> completed
-		err := waitJobPhases(context, job, []vkv1.JobPhase{
+		err := waitJobStates(context, job, []vkv1.JobPhase{
 			vkv1.Pending, vkv1.Running, vkv1.Completing, vkv1.Completed})
 		Expect(err).NotTo(HaveOccurred())
 
 	})
+
 })
