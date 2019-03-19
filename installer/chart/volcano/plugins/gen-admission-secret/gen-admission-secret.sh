@@ -41,7 +41,12 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-[ -z ${service} ] && service=volcano-admission-service
+if [ -z ${service} ]; then
+    echo "'--service' must be specified"
+    exit 1
+fi
+
+
 [ -z ${secret} ] && secret=volcano-admission-secret
 [ -z ${namespace} ] && namespace=default
 
