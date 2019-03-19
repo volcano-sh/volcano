@@ -14,7 +14,7 @@ using several systems, combined with best-of-breed ideas and practices from the 
 
 ## Installation
 
-The easiest way to use Volcano is to use the Helm [chart](https://github.com/helm/charts/tree/master/incubator/sparkoperator).
+The easiest way to use Volcano is to use the Helm chart.
 
 
 ### 1. Volcano Image
