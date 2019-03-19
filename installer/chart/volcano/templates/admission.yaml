@@ -2,14 +2,12 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ .Release.Name }}-admission
-  namespace: {{.Values.basic.namespace}}
 
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Release.Name }}-admission
-  namespace: {{.Values.basic.namespace}}
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
@@ -26,11 +24,9 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Release.Name }}-admission-role
-  namespace: {{.Values.basic.namespace}}
 subjects:
   - kind: ServiceAccount
     name: {{ .Release.Name }}-admission
-    namespace: {{.Values.basic.namespace}}
 roleRef:
   kind: ClusterRole
   name: {{ .Release.Name }}-admission
@@ -44,7 +40,6 @@ metadata:
     app: admission
     admission: "true"
   name: {{ .Release.Name }}-admission
-  namespace: {{.Values.basic.namespace}}
 spec:
   replicas: 1
   selector:
@@ -89,7 +84,6 @@ metadata:
   labels:
     test: admission
   name: {{ .Release.Name }}-admission-service
-  namespace: {{.Values.basic.namespace}}
 spec:
   ports:
     - port: 443

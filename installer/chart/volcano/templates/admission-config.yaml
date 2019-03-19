@@ -9,7 +9,6 @@ webhooks:
       caBundle: ""
       service:
         name: {{ .Release.Name }}-admission-service
-        namespace: {{.Values.basic.namespace}}
         path: /jobs
     failurePolicy: Ignore
     name: validatejob.volcano.sh
@@ -36,7 +35,6 @@ webhooks:
       caBundle: ""
       service:
         name: {{ .Release.Name }}-admission-service
-        namespace: {{.Values.basic.namespace}}
         path: /mutating-jobs
     failurePolicy: Ignore
     name: mutatejob.volcano.sh
