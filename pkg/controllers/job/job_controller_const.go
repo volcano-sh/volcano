@@ -22,8 +22,8 @@ const (
 
 const (
 	ConfigMapTaskHostFmt = "%s.host"
-	ConfigMapVolumeName = "volcano-configmap"
-	ConfigMapMountPath  = "/etc/worker"
+	ConfigMapVolumeName  = "volcano-configmap"
+	ConfigMapMountPath   = "/etc/worker"
 )
 
 const (
