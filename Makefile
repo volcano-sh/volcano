@@ -41,7 +41,6 @@ unit-test:
 	go list ./... | grep -v e2e | xargs go test -v
 
 e2e-test-kind:
-
 	./hack/run-e2e-kind.sh
 
 clean:
