@@ -1,6 +1,6 @@
 BIN_DIR=_output/bin
-IMAGE=volcano
-TAG = 1.0
+export IMAGE=volcano
+export TAG = 1.0
 
 all: controllers scheduler cli admission
 
@@ -41,6 +41,7 @@ unit-test:
 	go list ./... | grep -v e2e | xargs go test -v
 
 e2e-test-kind:
+
 	./hack/run-e2e-kind.sh
 
 clean:
