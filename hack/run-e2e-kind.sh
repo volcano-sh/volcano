@@ -34,36 +34,30 @@ function check-prerequisites {
 # spin up cluster with kind command
 function kind-up-cluster {
   check-prerequisites
-  check-kind-image
   echo "Running kind: [kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}]"
   kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}
 }
 
 function install-volcano {
-  kubectl --kubeconfig ${KUBECONFIG} create -f ${VK_ROOT}/installer/chart/volcano-init/templates/scheduling_v1alpha1_podgroup.yaml
-  kubectl --kubeconfig ${KUBECONFIG} create -f ${VK_ROOT}/installer/chart/volcano-init/templates/scheduling_v1alpha1_queue.yaml
-  kubectl --kubeconfig ${KUBECONFIG} create -f ${VK_ROOT}/installer/chart/volcano-init/templates/batch_v1alpha1_job.yaml
-  kubectl --kubeconfig ${KUBECONFIG} create -f ${VK_ROOT}/installer/chart/volcano-init/templates/bus_v1alpha1_command.yaml
-
-  # TODO: make vk-controllers and vk-scheduler run in container / in k8s
-  # start controller
-  nohup ${VK_BIN}/vk-controllers --kubeconfig ${KUBECONFIG} --logtostderr --v ${LOG_LEVEL} > controller.log 2>&1 &
-  echo $! > vk-controllers.pid
-
-  # start scheduler
-  nohup ${VK_BIN}/vk-scheduler --kubeconfig ${KUBECONFIG} --scheduler-conf=example/kube-batch-conf.yaml --logtostderr --v ${LOG_LEVEL} > scheduler.log 2>&1 &
-  echo $! > vk-scheduler.pid
+  echo "Install helm via script"
+  curl https://raw.githubusercontent.com/helm/helm/master/scripts/get > get_helm.sh
+  chmod 700 get_helm.sh
+  #TODO: There are some issue with helm's latest version, remove '--version' when it get fixed.
+  ./get_helm.sh   --version v2.12.0
+  helm init
+  echo "Loading docker images into kind cluster"
+  kind load docker-image ${IMAGE}-controllers:${TAG}
+  kind load docker-image ${IMAGE}-scheduler:${TAG}
+  kind load docker-image ${IMAGE}-admission:${TAG}
+  echo "Install volcano plugin...."
+  helm plugin install installer/chart/volcano/plugins/gen-admission-secret
+  helm gen-admission-secret --service integration-admission-service --namespace kube-system
+  echo "Install volcano chart"
+  helm install installer/chart/volcano --namespace kube-system --name integration
 }
 
 function uninstall-volcano {
-  kubectl --kubeconfig ${KUBECONFIG} delete -f ${VK_ROOT}/installer/chart/volcano-init/templates/scheduling_v1alpha1_podgroup.yaml
-  kubectl --kubeconfig ${KUBECONFIG} delete -f ${VK_ROOT}/installer/chart/volcano-init/templates/scheduling_v1alpha1_queue.yaml
-  kubectl --kubeconfig ${KUBECONFIG} delete -f ${VK_ROOT}/installer/chart/volcano-init/templates/batch_v1alpha1_job.yaml
-  kubectl --kubeconfig ${KUBECONFIG} delete -f ${VK_ROOT}/installer/chart/volcano-init/templates/bus_v1alpha1_command.yaml
-
-  kill -9 $(cat vk-controllers.pid)
-  kill -9 $(cat vk-scheduler.pid)
-  rm vk-controllers.pid vk-scheduler.pid
+  helm delete integration
 }
 
 # clean up
