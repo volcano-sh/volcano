@@ -10,7 +10,7 @@ services:
 go_import_path: volcano.sh/volcano
 jobs:
   include:
-    - stage: Make Verify
+    - stage: Golint & Gofmt
       before_script:
         - go get -u golang.org/x/lint/golint
       script:
@@ -26,4 +26,6 @@ jobs:
         - sudo apt-get install -y kubectl
         # Download and build kind
         - go get sigs.k8s.io/kind
-      script: make e2e-test-kind
+      script:
+        - make docker
+        - make e2e-test-kind

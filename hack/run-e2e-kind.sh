@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export VK_ROOT=$(dirname "${BASH_SOURCE}")/..
+export VK_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
 export VK_BIN=${VK_ROOT}/_output/bin
 export LOG_LEVEL=3
 export SHOW_VOLCANO_LOGS=${SHOW_VOLCANO_LOGS:-1}
@@ -39,25 +39,31 @@ function kind-up-cluster {
 }
 
 function install-volcano {
-  echo "Install helm via script"
+  echo "Preparing helm tiller service account"
+  kubectl create serviceaccount --namespace kube-system tiller
+  kubectl create clusterrolebinding tiller-cluster-rule --clusterrole=cluster-admin --serviceaccount=kube-system:tiller
+
+  echo "Install helm via script and waiting tiller becomes ready"
   curl https://raw.githubusercontent.com/helm/helm/master/scripts/get > get_helm.sh
-  chmod 700 get_helm.sh
   #TODO: There are some issue with helm's latest version, remove '--version' when it get fixed.
-  ./get_helm.sh   --version v2.12.0
-  helm init
+  chmod 700 get_helm.sh && ./get_helm.sh   --version v2.13.0
+  helm init --service-account tiller --kubeconfig ${KUBECONFIG} --wait
+
   echo "Loading docker images into kind cluster"
   kind load docker-image ${IMAGE}-controllers:${TAG}
   kind load docker-image ${IMAGE}-scheduler:${TAG}
   kind load docker-image ${IMAGE}-admission:${TAG}
+
   echo "Install volcano plugin...."
-  helm plugin install installer/chart/volcano/plugins/gen-admission-secret
+  helm plugin install --kubeconfig ${KUBECONFIG} installer/chart/volcano/plugins/gen-admission-secret
   helm gen-admission-secret --service integration-admission-service --namespace kube-system
+
   echo "Install volcano chart"
-  helm install installer/chart/volcano --namespace kube-system --name integration
+  helm install installer/chart/volcano --namespace kube-system --name integration --kubeconfig ${KUBECONFIG}
 }
 
 function uninstall-volcano {
-  helm delete integration
+  helm delete integration --purge --kubeconfig ${KUBECONFIG}
 }
 
 # clean up
@@ -68,17 +74,8 @@ function cleanup {
   kind delete cluster ${CLUSTER_CONTEXT}
 
   if [ ${SHOW_VOLCANO_LOGS} -eq 1 ]; then
-    echo "===================================================================================="
-    echo "=============================>>>>> Scheduler Logs <<<<<============================="
-    echo "===================================================================================="
-
-    cat scheduler.log
-
-    echo "===================================================================================="
-    echo "=============================>>>>> Controller Logs <<<<<============================"
-    echo "===================================================================================="
-
-    cat controller.log
+    #TODO: Add volcano logs support in future.
+    echo "Volcano logs are currently not supported."
   fi
 }
 
@@ -105,7 +102,7 @@ trap cleanup EXIT
 
 kind-up-cluster
 
-KUBECONFIG="$(kind get kubeconfig-path ${CLUSTER_CONTEXT})"
+export KUBECONFIG="$(kind get kubeconfig-path ${CLUSTER_CONTEXT})"
 
 install-volcano
 
