@@ -1,23 +1,29 @@
+dist: xenial
 language: go
-
+go:
+  - '1.11.x'
 sudo: required
-
 env:
   - HOME=/home/travis
-
 services:
   - docker
-
-go:
-  - "1.11"
-
 go_import_path: volcano.sh/volcano
-
-install:
-  - go get -u golang.org/x/lint/golint
-
-script:
-  - make
-  - make verify
-  - make e2e-test
-
+jobs:
+  include:
+    - stage: Make Verify
+      before_script:
+        - go get -u golang.org/x/lint/golint
+      script:
+        - make
+        - make verify
+    - stage: E2E Tests
+      before_script:
+        # Download kubectl
+        - sudo apt-get update && sudo apt-get install -y apt-transport-https
+        - curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+        - echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
+        - sudo apt-get update
+        - sudo apt-get install -y kubectl
+        # Download and build kind
+        - go get sigs.k8s.io/kind
+      script: make e2e-test-kind

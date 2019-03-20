@@ -23,5 +23,5 @@ nodes:
             value: my-hostname
   # the three workers
   - role: worker
-    # replicas specifes the number of nodes to create with this configuration
+    # replicas specifies the number of nodes to create with this configuration
     replicas: 3
