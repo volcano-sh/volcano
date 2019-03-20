@@ -27,5 +27,6 @@ jobs:
         # Download and build kind
         - go get sigs.k8s.io/kind
       script:
+        - make cli
         - make docker
         - make e2e-test-kind
