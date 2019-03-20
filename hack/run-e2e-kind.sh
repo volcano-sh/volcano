@@ -54,7 +54,7 @@ function install-volcano {
   kind load docker-image ${IMAGE}-scheduler:${TAG}
   kind load docker-image ${IMAGE}-admission:${TAG}
 
-  echo "Install volcano plugin...."
+  echo "Install volcano plugin into cluster...."
   helm plugin install --kubeconfig ${KUBECONFIG} installer/chart/volcano/plugins/gen-admission-secret
   helm gen-admission-secret --service integration-admission-service --namespace kube-system
 
