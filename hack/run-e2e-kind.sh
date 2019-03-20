@@ -9,9 +9,7 @@ if [ "${CLUSTER_NAME}xxx" != "xxx" ];then
   export CLUSTER_CONTEXT="--name ${CLUSTER_NAME}"
 fi
 
-export KIND_OPT=${KIND_OPT:="--image kindest/node:v1.13.2 --config ${VK_ROOT}/hack/e2e-kind-config.yaml"}
-
-export KIND_IMAGE=$(echo ${KIND_OPT} |grep -E -o "image \w+\/[^ ]*" | sed "s/image //")
+export KIND_OPT=${KIND_OPT:=" --config ${VK_ROOT}/hack/e2e-kind-config.yaml"}
 
 # check if kind installed
 function check-prerequisites {
@@ -30,15 +28,6 @@ function check-prerequisites {
     exit 1
   else
     echo -n "found kubectl, " && kubectl version --short --client
-  fi
-}
-
-# check if the images that kind use exists.
-function check-kind-image {
-  docker images | awk '{print $1":"$2}' | grep -q "${KIND_IMAGE}"
-  if [ $? -ne 0 ]; then
-    echo "image: ${KIND_IMAGE} not found."
-    exit 1
   fi
 }
 
