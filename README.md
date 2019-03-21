@@ -49,7 +49,21 @@ helm install installer/chart/volcano --namespace <namespace> --name <specified-n
 **NOTE**:The ```<specified-name>``` used in the two commands above should be identical.
 
 
+To Verify your installation run the below commands
+```
+#1. Verify the Running Pods
+# kubectl get pods --namespace <namespace> 
+NAME                                                READY   STATUS    RESTARTS   AGE
+<specified-name>-admission-84fd9b9dd8-9trxn          1/1     Running   0          43s
+<specified-name>-controllers-75dcc8ff89-42v6r        1/1     Running   0          43s
+<specified-name>-scheduler-b94cdb867-89pm2           1/1     Running   0          43s
 
+#2. Verify the Services
+# kubectl get services --namespace <namespace> 
+NAME                                     TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
+<specified-name>-admission-service       ClusterIP   10.105.78.53   <none>        443/TCP   91s
+
+```
 
 
 ## Community, discussion, contribution, and support
