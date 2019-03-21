@@ -230,10 +230,10 @@ func (jc *jobCache) Run(stopCh <-chan struct{}) {
 	wait.Until(jc.processCleanupJob, 0, stopCh)
 }
 
-func (jc jobCache) TaskCompleted(jobName, taskName string) bool {
+func (jc jobCache) TaskCompleted(jobKey, taskName string) bool {
 	var taskReplicas, completed int32
 
-	jobInfo, found := jc.jobs[jobName]
+	jobInfo, found := jc.jobs[jobKey]
 	if !found {
 		return false
 	}

@@ -210,7 +210,7 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 
 	if oldPod.Status.Phase != v1.PodSucceeded &&
 		newPod.Status.Phase == v1.PodSucceeded {
-		if cc.cache.(vkcache.JobStateStore).TaskCompleted(vkcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
+		if cc.cache.TaskCompleted(vkcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
 			event = vkbatchv1.TaskCompletedEvent
 		}
 	}
