@@ -97,7 +97,7 @@ const (
 	OutOfSyncEvent Event = "OutOfSync"
 	// CommandIssuedEvent is triggered if a command is raised by user
 	CommandIssuedEvent Event = "CommandIssued"
-	// TaskCompletedEvent is triggered if the 'Replicas' amount of pods are succeed
+	// TaskCompletedEvent is triggered if the 'Replicas' amount of pods in one task are succeed
 	TaskCompletedEvent Event = "TaskCompleted"
 )
 
@@ -117,7 +117,7 @@ const (
 	// and can not be resumed: all Pod of Job will be evicted, and no Pod will be recreated.
 	TerminateJobAction Action = "TerminateJob"
 	//CompleteJobAction if this action is set, the unfinished pods will be killed, job completed.
-	CompleteJobAction Action = "CompleteJobAction"
+	CompleteJobAction Action = "CompleteJob"
 
 	// ResumeJobAction is the action to resume an aborted job.
 	ResumeJobAction Action = "ResumeJob"
