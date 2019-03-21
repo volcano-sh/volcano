@@ -24,8 +24,9 @@ jobs:
         - echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
         - sudo apt-get update
         - sudo apt-get install -y kubectl
-        # Download and build kind
-        - go get sigs.k8s.io/kind
+        # Download kind binary (0.2.0)
+        - curl -o /usr/local/bin/kind -L https://github.com/kubernetes-sigs/kind/releases/download/0.2.0/kind-linux-amd64
+        - chmod +x /usr/local/bin/kind
       script:
         - make cli
         - make docker
