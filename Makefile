@@ -1,6 +1,6 @@
 BIN_DIR=_output/bin
-IMAGE=volcano
-TAG = 1.0
+export IMAGE=volcano
+export TAG = 1.0
 
 all: controllers scheduler cli admission
 
