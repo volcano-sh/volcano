@@ -60,6 +60,11 @@ type JobSpec struct {
 	// Specifies the default lifecycle of tasks
 	// +optional
 	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,6,opt,name=policies"`
+
+	// Specifies the plugin of job
+	// Key is plugin name, value is the arguments of the plugin
+	// +optional
+	Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,7,opt,name=plugins"`
 }
 
 // VolumeSpec defines the specification of Volume, e.g. PVC
@@ -76,6 +81,7 @@ type JobEvent string
 
 const (
 	CommandIssued JobEvent = "CommandIssued"
+	PluginError   JobEvent = "PluginError"
 )
 
 // Event represent the phase of Job, e.g. pod-failed.
@@ -221,8 +227,12 @@ type JobStatus struct {
 	// The number of pods which reached phase Terminating.
 	// +optional
 	Terminating int32 `json:"terminating,omitempty" protobuf:"bytes,7,opt,name=terminating"`
+
 	//Current version of job
 	Version int32
+
+	// The resources that controlled by this job, e.g. Service, ConfigMap
+	ControlledResources map[string]string
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

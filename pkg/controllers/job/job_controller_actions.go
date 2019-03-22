@@ -18,21 +18,22 @@ package job
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/golang/glog"
-
 	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	admissioncontroller "volcano.sh/volcano/pkg/admission"
+	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
+	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
@@ -146,13 +147,13 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		}
 	}
 
+	if err := cc.pluginOnJobDelete(job); err != nil {
+		return err
+	}
+
 	// NOTE(k82cn): DO NOT delete input/output until job is deleted.
 
 	return nil
-}
-
-func podDomain(pod *v1.Pod) string {
-	return pod.Spec.Hostname + "." + pod.Spec.Subdomain
 }
 
 func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn) error {
@@ -180,14 +181,10 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		return err
 	}
 
-	var data map[string]string = nil
-	exist, err := cc.checkConfigMapExist(job)
-	if err != nil {
+	if err := cc.pluginOnJobAdd(job); err != nil {
+		cc.recorder.Event(job, v1.EventTypeWarning, string(vkbatchv1.PluginError),
+			fmt.Sprintf("Execute plugin when job add failed, err: %v", err))
 		return err
-	}
-	if !exist {
-		data = make(map[string]string, len(job.Spec.Tasks))
-		glog.Infof("service %s/%s not exist", job.Namespace, job.Name)
 	}
 
 	var running, pending, terminating, succeeded, failed int32
@@ -207,26 +204,15 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 			pods = map[string]*v1.Pod{}
 		}
 
-		var hosts []string
-		if data != nil {
-			hosts = make([]string, 0, ts.Replicas)
-			glog.Infof("service %s/%s add host %s", job.Namespace, job.Name)
-		}
 		for i := 0; i < int(ts.Replicas); i++ {
-			podName := fmt.Sprintf(TaskNameFmt, job.Name, name, i)
+			podName := fmt.Sprintf(vkjobhelpers.TaskNameFmt, job.Name, name, i)
 			if pod, found := pods[podName]; !found {
 				newPod := createJobPod(job, tc, i)
+				if err := cc.pluginOnPodCreate(job, newPod); err != nil {
+					return err
+				}
 				podToCreate = append(podToCreate, newPod)
-				if hosts != nil {
-					hosts = append(hosts, podDomain(newPod))
-					glog.Infof("service %s/%s add host %s", job.Namespace, job.Name, podDomain(newPod))
-				}
 			} else {
-				if hosts != nil {
-					hosts = append(hosts, podDomain(pod))
-					glog.Infof("service %s/%s add host %s", job.Namespace, job.Name, podDomain(pod))
-				}
-
 				if pod.DeletionTimestamp != nil {
 					glog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
 					terminating++
@@ -256,20 +242,8 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 			}
 		}
 
-		if data != nil {
-			key := fmt.Sprintf(ConfigMapTaskHostFmt, name)
-			data[key] = strings.Join(hosts, "\n")
-			glog.Infof("service %s/%s add %s / %s", job.Namespace, job.Name)
-		}
-
 		for _, pod := range pods {
 			podToDelete = append(podToDelete, pod)
-		}
-	}
-
-	if data != nil {
-		if err := cc.createConfigMapIfNotExist(job, data); err != nil {
-			return err
 		}
 	}
 
@@ -329,13 +303,14 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	job.Status = vkv1.JobStatus{
 		State: job.Status.State,
 
-		Pending:      pending,
-		Running:      running,
-		Succeeded:    succeeded,
-		Failed:       failed,
-		Terminating:  terminating,
-		Version:      job.Status.Version,
-		MinAvailable: int32(job.Spec.MinAvailable),
+		Pending:             pending,
+		Running:             running,
+		Succeeded:           succeeded,
+		Failed:              failed,
+		Terminating:         terminating,
+		Version:             job.Status.Version,
+		MinAvailable:        int32(job.Spec.MinAvailable),
+		ControlledResources: job.Status.ControlledResources,
 	}
 
 	if nextState != nil {
@@ -365,48 +340,6 @@ func (cc *Controller) calculateVersion(current int32, bumpVersion bool) int32 {
 	return current
 }
 
-func (cc *Controller) checkConfigMapExist(job *vkv1.Job) (bool, error) {
-	if _, err := cc.cmLister.ConfigMaps(job.Namespace).Get(job.Name); err != nil {
-		if apierrors.IsNotFound(err) {
-			return false, nil
-		}
-		return false, err
-	}
-
-	return true, nil
-}
-
-func (cc *Controller) createConfigMapIfNotExist(job *vkv1.Job, data map[string]string) error {
-	// If ConfigMap does not exist, create one for Job.
-	if _, err := cc.cmLister.ConfigMaps(job.Namespace).Get(job.Name); err != nil {
-		if !apierrors.IsNotFound(err) {
-			glog.V(3).Infof("Failed to get Service for Job <%s/%s>: %v",
-				job.Namespace, job.Name, err)
-			return err
-		}
-
-		cm := &v1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: job.Namespace,
-				Name:      job.Name,
-				OwnerReferences: []metav1.OwnerReference{
-					*metav1.NewControllerRef(job, helpers.JobKind),
-				},
-			},
-			Data: data,
-		}
-
-		if _, e := cc.kubeClients.CoreV1().ConfigMaps(job.Namespace).Create(cm); e != nil {
-			glog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v",
-				job.Namespace, job.Name, err)
-
-			return e
-		}
-	}
-
-	return nil
-}
-
 func (cc *Controller) createServiceIfNotExist(job *vkv1.Job) error {
 	// If Service does not exist, create one for Job.
 	if _, err := cc.svcLister.Services(job.Namespace).Get(job.Name); err != nil {
@@ -432,10 +365,10 @@ func (cc *Controller) createServiceIfNotExist(job *vkv1.Job) error {
 				},
 				Ports: []v1.ServicePort{
 					{
-						Name:       "placeholder",
-						Port:       80,
+						Name:       "placeholder-volcano",
+						Port:       1,
 						Protocol:   v1.ProtocolTCP,
-						TargetPort: intstr.FromInt(80),
+						TargetPort: intstr.FromInt(1),
 					},
 				},
 			},
