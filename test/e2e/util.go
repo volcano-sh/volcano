@@ -294,6 +294,8 @@ type jobSpec struct {
 	queue     string
 	tasks     []taskSpec
 	policies  []vkv1.LifecyclePolicy
+	min       int32
+	version   int32
 }
 
 func getNS(context *context, job *jobSpec) string {
@@ -311,6 +313,14 @@ func getNS(context *context, job *jobSpec) string {
 }
 
 func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
+
+	job, err := createJobInner(context, jobSpec)
+	Expect(err).NotTo(HaveOccurred())
+
+	return job
+}
+
+func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 	ns := getNS(context, jobSpec)
 
 	job := &vkv1.Job{
@@ -366,12 +376,17 @@ func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
 		min += task.min
 	}
 
-	job.Spec.MinAvailable = min
+	if jobSpec.version > 0 {
+		job.Status.Version = jobSpec.version
+	}
 
-	job, err := context.vkclient.BatchV1alpha1().Jobs(job.Namespace).Create(job)
-	Expect(err).NotTo(HaveOccurred())
+	if jobSpec.min > 0 {
+		job.Spec.MinAvailable = jobSpec.min
+	} else {
+		job.Spec.MinAvailable = min
+	}
 
-	return job
+	return context.vkclient.BatchV1alpha1().Jobs(job.Namespace).Create(job)
 }
 
 func taskPhase(ctx *context, job *vkv1.Job, phase []v1.PodPhase, taskNum int) wait.ConditionFunc {
