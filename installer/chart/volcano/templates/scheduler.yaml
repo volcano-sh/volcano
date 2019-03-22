@@ -100,13 +100,13 @@ spec:
           image: {{.Values.basic.scheduler_image_name}}:{{.Values.basic.image_tag_version}}
           args:
             - --alsologtostderr
-            - --scheduler-conf=/volcano.scheduler/kube-batch-conf.yaml
-            - -v=2
+            - --scheduler-conf=/volcano.scheduler/kube-batch.conf
+            - -v=3
             - 2>&1
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
-            -name: scheduler-config
-             mountPath: /volcano.scheduler
+            - name: scheduler-config
+              mountPath: /volcano.scheduler
       volumes:
         - name: scheduler-config
           configMap:
