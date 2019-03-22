@@ -66,7 +66,6 @@ type Controller struct {
 	pgInformer  kbinfo.PodGroupInformer
 	svcInformer coreinformers.ServiceInformer
 	cmdInformer vkcoreinfo.CommandInformer
-	cmInformer  coreinformers.ConfigMapInformer
 
 	// A store of jobs
 	jobLister vkbatchlister.JobLister
@@ -89,9 +88,6 @@ type Controller struct {
 
 	cmdLister vkcorelister.CommandLister
 	cmdSynced func() bool
-
-	cmLister corelisters.ConfigMapLister
-	cmSynced func() bool
 
 	// queue that need to sync up
 	queue        workqueue.RateLimitingInterface
@@ -199,10 +195,6 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.pgLister = cc.pgInformer.Lister()
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
-	cc.cmInformer = informers.NewSharedInformerFactory(cc.kubeClients, 0).Core().V1().ConfigMaps()
-	cc.cmLister = cc.cmInformer.Lister()
-	cc.cmSynced = cc.cmInformer.Informer().HasSynced
-
 	// Register actions
 	state.SyncJob = cc.syncJob
 	state.KillJob = cc.killJob
@@ -218,10 +210,9 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 	go cc.pgInformer.Informer().Run(stopCh)
 	go cc.svcInformer.Informer().Run(stopCh)
 	go cc.cmdInformer.Informer().Run(stopCh)
-	go cc.cmInformer.Informer().Run(stopCh)
 
 	cache.WaitForCacheSync(stopCh, cc.jobSynced, cc.podSynced, cc.pgSynced,
-		cc.svcSynced, cc.cmdSynced, cc.pvcSynced, cc.cmSynced)
+		cc.svcSynced, cc.cmdSynced, cc.pvcSynced)
 
 	go wait.Until(cc.handleCommands, 0, stopCh)
 	go wait.Until(cc.worker, 0, stopCh)
