@@ -533,11 +533,15 @@ func waitJobUnschedulable(ctx *context, job *vkv1.Job) error {
 func createContainers(img, command string, req v1.ResourceList, hostport int32) []v1.Container {
 	container := v1.Container{
 		Image:           img,
-		Name:            img[:strings.Index(img, ":")],
 		ImagePullPolicy: v1.PullIfNotPresent,
 		Resources: v1.ResourceRequirements{
 			Requests: req,
 		},
+	}
+	if strings.Index(img, ":") < 0 {
+		container.Name = img
+	} else {
+		container.Name = img[:strings.Index(img, ":")]
 	}
 
 	if len(command) > 0 {
