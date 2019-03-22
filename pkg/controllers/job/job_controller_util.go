@@ -198,3 +198,12 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 
 	return vkv1.SyncJobAction
 }
+
+func GetJobQueueName(job *vkv1.Job) string {
+	for key, value := range job.Labels {
+		if key == vkv1.QueueNameKey {
+			return value
+		}
+	}
+	return ""
+}
