@@ -453,6 +453,11 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 			},
 		}
 
+		queue := GetJobQueueName(job)
+		if queue != "" {
+			pg.Spec.Queue = queue
+		}
+
 		if _, e := cc.kbClients.SchedulingV1alpha1().PodGroups(job.Namespace).Create(pg); e != nil {
 			glog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)

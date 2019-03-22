@@ -22,4 +22,5 @@ const (
 	JobNamespaceKey = "volcano.sh/job-namespace"
 	DefaultTaskSpec = "default"
 	JobVersion      = "volcano.sh/job-version"
+	QueueNameKey    = "volcano.sh/queue-name"
 )
