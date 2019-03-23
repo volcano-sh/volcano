@@ -38,4 +38,3 @@ type Cache interface {
 
 	TaskCompleted(jobKey, taskName string) bool
 }
-
