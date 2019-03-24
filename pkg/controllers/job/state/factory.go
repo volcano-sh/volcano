@@ -53,6 +53,8 @@ func NewState(jobInfo *apis.JobInfo) State {
 		return &abortingState{job: jobInfo}
 	case vkv1.Aborted:
 		return &abortedState{job: jobInfo}
+	case vkv1.Completing:
+		return &completingState{job: jobInfo}
 	}
 
 	// It's pending by default.

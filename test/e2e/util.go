@@ -455,6 +455,16 @@ func waitJobPhases(ctx *context, job *vkv1.Job, phases []vkv1.JobPhase) error {
 	return nil
 }
 
+func waitJobStates(ctx *context, job *vkv1.Job, phases []vkv1.JobPhase) error {
+	for _, phase := range phases {
+		err := wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, phase))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
 	return wait.Poll(100*time.Millisecond, twoMinute, func() (bool, error) {
 		newJob, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})

@@ -197,10 +197,22 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		return
 	}
 
+	if err := cc.cache.UpdatePod(newPod); err != nil {
+		glog.Errorf("Failed to update Pod <%s/%s>: %v in cache",
+			newPod.Namespace, newPod.Name, err)
+	}
+
 	event := vkbatchv1.OutOfSyncEvent
 	if oldPod.Status.Phase != v1.PodFailed &&
 		newPod.Status.Phase == v1.PodFailed {
 		event = vkbatchv1.PodFailedEvent
+	}
+
+	if oldPod.Status.Phase != v1.PodSucceeded &&
+		newPod.Status.Phase == v1.PodSucceeded {
+		if cc.cache.TaskCompleted(vkcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
+			event = vkbatchv1.TaskCompletedEvent
+		}
 	}
 
 	req := apis.Request{
@@ -210,11 +222,6 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 
 		Event:      event,
 		JobVersion: int32(dVersion),
-	}
-
-	if err := cc.cache.UpdatePod(newPod); err != nil {
-		glog.Errorf("Failed to update Pod <%s/%s>: %v in cache",
-			newPod.Namespace, newPod.Name, err)
 	}
 
 	cc.queue.Add(req)
