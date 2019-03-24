@@ -35,6 +35,8 @@ Run the `kube-batch` as kubernetes scheduler
 # helm install $GOPATH/src/github.com/kubernetes-sigs/kube-batch/deployment/kube-batch --namespace kube-system
 ```
 
+Note: If there is an error `Error: apiVersion "scheduling.incubator.k8s.io/v1alpha1" in kube-batch/templates/default.yaml is not available`, please update your helm to latest version and try it again.
+
 Verify the release
 
 ```bash
