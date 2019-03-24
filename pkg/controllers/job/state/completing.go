@@ -14,27 +14,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cache
+package state
 
 import (
-	"k8s.io/api/core/v1"
-
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
 )
 
-type Cache interface {
-	Run(stopCh <-chan struct{})
+type completingState struct {
+	job *apis.JobInfo
+}
 
-	Get(key string) (*apis.JobInfo, error)
-	GetStatus(key string) (*v1alpha1.JobStatus, error)
-	Add(obj *v1alpha1.Job) error
-	Update(obj *v1alpha1.Job) error
-	Delete(obj *v1alpha1.Job) error
+func (ps *completingState) Execute(action vkv1.Action) error {
+	return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
+		// If any "alive" pods, still in Completing phase
+		if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {
+			return vkv1.JobState{
+				Phase: vkv1.Completing,
+			}
+		}
 
-	AddPod(pod *v1.Pod) error
-	UpdatePod(pod *v1.Pod) error
-	DeletePod(pod *v1.Pod) error
-
-	TaskCompleted(jobKey, taskName string) bool
+		return vkv1.JobState{
+			Phase: vkv1.Completed,
+		}
+	})
 }

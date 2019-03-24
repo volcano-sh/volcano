@@ -50,6 +50,17 @@ func (ps *pendingState) Execute(action vkv1.Action) error {
 				Phase: phase,
 			}
 		})
+	case vkv1.CompleteJobAction:
+		return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
+			phase := vkv1.Completed
+			if status.Terminating != 0 {
+				phase = vkv1.Completing
+			}
+
+			return vkv1.JobState{
+				Phase: phase,
+			}
+		})
 	default:
 		return SyncJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
 			phase := vkv1.Pending
