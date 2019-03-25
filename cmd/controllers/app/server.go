@@ -21,8 +21,6 @@ import (
 	"fmt"
 	"os"
 	"time"
-	"volcano.sh/volcano/pkg/controllers/cronjob"
-	"volcano.sh/volcano/pkg/controllers/job"
 
 	"github.com/golang/glog"
 
@@ -40,6 +38,8 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	"volcano.sh/volcano/cmd/controllers/app/options"
+	"volcano.sh/volcano/pkg/controllers/cronjob"
+	"volcano.sh/volcano/pkg/controllers/job"
 )
 
 const (
@@ -119,4 +119,3 @@ func Run(opt *options.ServerOption) error {
 	})
 	return fmt.Errorf("lost lease")
 }
-

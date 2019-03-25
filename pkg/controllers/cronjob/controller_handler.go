@@ -18,7 +18,8 @@ package cronjob
 
 import (
 	"github.com/golang/glog"
-        "github.com/robfig/cron"
+	"github.com/robfig/cron"
+
 
 	"k8s.io/client-go/tools/cache"
 
@@ -84,7 +85,7 @@ func (cc *Controller) deleteCronJob(obj interface{}) {
 func (cc *Controller) syncCronJob(cronjobKey string) error {
 	cronJob, err := cc.jobStore.Get(cronjobKey)
 	if err != nil {
-		glog.Errorf("Unable to find CronJob %s in cache : %s",cronjobKey, err)
+		glog.Errorf("Unable to find CronJob %s in cache : %s", cronjobKey, err)
 		return err
 	}
 	glog.Infof("Starting to synchronize CronJob: %s/%s", cronJob.Namespace, cronJob.Name)
@@ -100,6 +101,5 @@ func (cc *Controller) syncCronJob(cronjobKey string) error {
 			cronJob.Status.NextRun = now
 		}
 	}
-
 
 }
