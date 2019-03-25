@@ -295,7 +295,6 @@ type jobSpec struct {
 	tasks     []taskSpec
 	policies  []vkv1.LifecyclePolicy
 	min       int32
-	version   int32
 }
 
 func getNS(context *context, job *jobSpec) string {
@@ -374,10 +373,6 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 		job.Spec.Tasks = append(job.Spec.Tasks, ts)
 
 		min += task.min
-	}
-
-	if jobSpec.version > 0 {
-		job.Status.Version = jobSpec.version
 	}
 
 	if jobSpec.min > 0 {
