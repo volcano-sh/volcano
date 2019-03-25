@@ -4,6 +4,7 @@ export VK_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
 export VK_BIN=${VK_ROOT}/_output/bin
 export LOG_LEVEL=3
 export SHOW_VOLCANO_LOGS=${SHOW_VOLCANO_LOGS:-1}
+export CLEANUP_CLUSTER=${CLEANUP_CLUSTER:-1}
 
 if [[ "${CLUSTER_NAME}xxx" != "xxx" ]];then
   export CLUSTER_CONTEXT="--name ${CLUSTER_NAME}"
@@ -98,8 +99,9 @@ Disable displaying volcano component logs:
   exit 0
 fi
 
-
-trap cleanup EXIT
+if [[ $CLEANUP_CLUSTER -eq 1 ]]; then
+    trap cleanup EXIT
+fi
 
 
 kind-up-cluster

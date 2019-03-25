@@ -20,7 +20,6 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
@@ -122,33 +121,5 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 		Expect(ok).To(Equal(true))
 		Expect(stError.ErrStatus.Code).To(Equal(int32(500)))
 		Expect(stError.ErrStatus.Message).To(ContainSubstring("'minAvailable' should not be greater than total replicas in tasks"))
-	})
-
-	It("Job version illegal", func() {
-		jobName := "job-version-illegal"
-		namespace := "test"
-		context := initTestContext()
-		defer cleanupTestContext(context)
-		rep := clusterSize(context, oneCPU)
-
-		_, err := createJobInner(context, &jobSpec{
-			version:   12,
-			namespace: namespace,
-			name:      jobName,
-			tasks: []taskSpec{
-				{
-					img:  defaultNginxImage,
-					req:  oneCPU,
-					min:  rep,
-					rep:  rep,
-					name: "taskname",
-				},
-			},
-		})
-		Expect(err).NotTo(HaveOccurred())
-		job, err := context.vkclient.BatchV1alpha1().Jobs("test").Get(jobName, v1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
-		//Job version are always set to 1
-		Expect(job.Status.Version).To(Equal(int32(1)))
 	})
 })
