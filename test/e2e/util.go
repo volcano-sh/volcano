@@ -317,10 +317,10 @@ func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobSpec.name,
 			Namespace: ns,
-			Labels:    map[string]string{vkv1.QueueNameKey: jobSpec.queue},
 		},
 		Spec: vkv1.JobSpec{
 			Policies: jobSpec.policies,
+			Queue:    jobSpec.queue,
 		},
 	}
 
