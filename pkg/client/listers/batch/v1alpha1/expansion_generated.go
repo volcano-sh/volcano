@@ -18,6 +18,14 @@ limitations under the License.
 
 package v1alpha1
 
+// CronJobListerExpansion allows custom methods to be added to
+// CronJobLister.
+type CronJobListerExpansion interface{}
+
+// CronJobNamespaceListerExpansion allows custom methods to be added to
+// CronJobNamespaceLister.
+type CronJobNamespaceListerExpansion interface{}
+
 // JobListerExpansion allows custom methods to be added to
 // JobLister.
 type JobListerExpansion interface{}

@@ -34,6 +34,7 @@ import (
 
 var JobKind = vkbatchv1.SchemeGroupVersion.WithKind("Job")
 var CommandKind = vkcorev1.SchemeGroupVersion.WithKind("Command")
+var CronJobKind = vkcorev1.SchemeGroupVersion.WithKind("CronJob")
 
 func GetController(obj interface{}) types.UID {
 	accessor, err := meta.Accessor(obj)

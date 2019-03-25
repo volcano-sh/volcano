@@ -53,7 +53,7 @@ function install-volcano {
   chmod 700 get_helm.sh && ./get_helm.sh   --version v2.13.0
   helm init --service-account tiller --kubeconfig ${KUBECONFIG} --wait
 
-  echo "Pulling required docker images"
+  echo "Pulling required docker images, tag ${TAG}"
   docker pull ${MPI_EXAMPLE_IMAGE}
 
   echo "Loading docker images into kind cluster"
