@@ -221,11 +221,11 @@ func cleanupTestContext(cxt *context) {
 	Expect(err).NotTo(HaveOccurred())
 
 	// Wait for namespace deleted.
-	err = wait.Poll(100*time.Millisecond, oneMinute, namespaceNotExist(cxt))
+	err = wait.Poll(100*time.Millisecond, twoMinute, namespaceNotExist(cxt))
 	Expect(err).NotTo(HaveOccurred())
 
 	// Wait for queues deleted
-	err = wait.Poll(100*time.Millisecond, oneMinute, queueNotExist(cxt))
+	err = wait.Poll(100*time.Millisecond, twoMinute, queueNotExist(cxt))
 	Expect(err).NotTo(HaveOccurred())
 }
 

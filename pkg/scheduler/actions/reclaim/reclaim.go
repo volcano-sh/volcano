@@ -166,10 +166,9 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 				}
 				reclaimed.Add(reclaimee.Resreq)
 				// If reclaimed enough resources, break loop to avoid Sub panic.
-				if resreq.LessEqual(reclaimee.Resreq) {
+				if resreq.LessEqual(reclaimed) {
 					break
 				}
-				resreq.Sub(reclaimee.Resreq)
 			}
 
 			glog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>.",

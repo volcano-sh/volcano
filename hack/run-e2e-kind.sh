@@ -62,7 +62,7 @@ function install-volcano {
   helm gen-admission-secret --service integration-admission-service --namespace kube-system
 
   echo "Install volcano chart"
-  helm install installer/chart/volcano --namespace kube-system --name integration --kubeconfig ${KUBECONFIG}
+  helm install installer/chart/volcano --namespace kube-system --name integration --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG}
 }
 
 function uninstall-volcano {

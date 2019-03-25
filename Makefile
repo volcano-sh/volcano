@@ -1,6 +1,6 @@
 BIN_DIR=_output/bin
 IMAGE=volcano
-TAG = 1.0
+TAG = 0.1
 
 .EXPORT_ALL_VARIABLES:
 
