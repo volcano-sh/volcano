@@ -111,6 +111,12 @@ const (
 	PluginError   JobEvent = "PluginError"
 )
 
+type CronJobEvent string
+
+const (
+	JobTriggered CronJobEvent = "JobTriggered"
+)
+
 // Event represent the phase of Job, e.g. pod-failed.
 type Event string
 

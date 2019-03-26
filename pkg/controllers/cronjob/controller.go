@@ -109,20 +109,20 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 
 	cache.WaitForCacheSync(stopCh, cc.cronJobSynced)
 
-	go wait.Until(cc.worker, ProcessInterval, stopCh)
+	go wait.Until(cc.handleCronJobs, ProcessInterval, stopCh)
 
 	glog.Infof("CronJobController is running ...... ")
 }
 
-func (cc *Controller) worker() {
-	for cc.handleCronJob() {
+func (cc *Controller) handleCronJobs() {
+	for cc.handleSingleCronJob() {
 	}
 }
 
-func (cc *Controller) handleCronJob() bool {
+func (cc *Controller) handleSingleCronJob() bool {
 	obj, shutdown := cc.queue.Get()
 	if shutdown {
-		glog.Errorf("Fail to pop item from queue")
+		glog.Errorf("Fail to CronJob key from queue")
 		return false
 	}
 	defer cc.queue.Done(obj)

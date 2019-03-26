@@ -17,9 +17,13 @@ limitations under the License.
 package cronjob
 
 import (
+	"fmt"
 	"github.com/golang/glog"
+	"github.com/pborman/uuid"
 	"github.com/robfig/cron"
-
+	core "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"volcano.sh/volcano/pkg/apis/helpers"
 
 	"k8s.io/client-go/tools/cache"
 
@@ -82,24 +86,94 @@ func (cc *Controller) deleteCronJob(obj interface{}) {
 }
 
 
-func (cc *Controller) syncCronJob(cronjobKey string) error {
-	cronJob, err := cc.jobStore.Get(cronjobKey)
+func (cc *Controller) syncCronJob(key string) error {
+	cronJob, err := cc.jobStore.Get(key)
 	if err != nil {
-		glog.Errorf("Unable to find CronJob %s in cache : %s", cronjobKey, err)
+		glog.Errorf("Unable to find CronJob %s in cache : %s",key, err)
 		return err
 	}
+
+	newStatus, err := cc.processCronJobSync(cronJob)
+	if err != nil {
+		glog.Errorf("Unable to process CronJob %s sync operation : %s",key, err)
+		return err
+	}
+
+	return cc.updateCronJobStatus(cronJob, newStatus)
+
+}
+
+func (cc *Controller) processCronJobSync(cronJob *vkbatchv1.CronJob) (vkbatchv1.CronJobStatus, error) {
 	glog.Infof("Starting to synchronize CronJob: %s/%s", cronJob.Namespace, cronJob.Name)
-	//schedule, err := cron.ParseStandard(cronJob.Spec.Schedule)
+	newCJob := cronJob.DeepCopy()
+
+	schedule, err := cron.ParseStandard(cronJob.Spec.Schedule)
 	if err != nil {
 		glog.Errorf("failed to parse schedule %s of CronJob %s/%s: %v", cronJob.Spec.Schedule, cronJob.Namespace, cronJob.Name, err)
-		cronJob.Status.State = vkbatchv1.Stopped
-		cronJob.Status.Reason = err.Error()
-	} else {
-		cronJob.Status.State = vkbatchv1.Scheduled
-		now := cc.clock.Now()
-		if cronJob.Status.NextRun.Time.IsZero() {
-			cronJob.Status.NextRun = now
-		}
+		newCJob.Status.State = vkbatchv1.Stopped
+		newCJob.Status.Reason = err.Error()
+		return newCJob.Status, nil
 	}
+
+	cronJob.Status.State = vkbatchv1.Scheduled
+	now := cc.clock.Now()
+	nextRunTime := newCJob.Status.NextRun.Time
+	if nextRunTime.IsZero() {
+		nextRunTime = schedule.Next(now)
+		newCJob.Status.NextRun = v1.NewTime(nextRunTime)
+	}
+	if nextRunTime.Before(now) {
+		glog.Infof("Start to create new job for CronJob: <%s/%s>", cronJob.Namespace, cronJob.Name)
+		name, err := cc.createNewJob(newCJob)
+		if err != nil {
+			return vkbatchv1.CronJobStatus{}, err
+		}
+		cronJob.Status.LastRun = v1.NewTime(now)
+		cronJob.Status.NextRun = v1.NewTime(schedule.Next(newCJob.Status.LastRun.Time))
+		cronJob.Status.LastRunName = name
+		//Record event
+		cc.recorder.Event(cronJob, core.EventTypeNormal, string(vkbatchv1.JobTriggered),
+			fmt.Sprintf("New job %s started at %s", name, now))
+	}
+}
+
+func (cc *Controller) createNewJob(cronJob *vkbatchv1.CronJob) (string, error) {
+	newJob := &vkbatchv1.Job{}
+	newJob.Name = fmt.Sprintf("%s-%s", cronJob.Name, uuid.NewUUID())
+	newJob.Spec = cronJob.Spec.Template
+	newJob.OwnerReferences = []v1.OwnerReference{
+		*v1.NewControllerRef(cronJob, helpers.CronJobKind),
+	}
+	newJob.Annotations = make(map[string]string)
+	newJob.Annotations[vkbatchv1.CronJobNameKey] = cronJob.Name
+	job, err := cc.vkClients.BatchV1alpha1().Jobs(cronJob.Namespace).Create(newJob)
+	if err != nil {
+		glog.Errorf("Failed to create job %s for CronJob %s, error: %s", job.Name, cronJob.Name, err.Error())
+		return "", err
+	}
+	return job.Name, nil
+}
+
+
+func (cc *Controller) updateCronJobStatus(job *vkbatchv1.CronJob, newStatus vkbatchv1.CronJobStatus) error {
+	if StatusEqual(job.Status, newStatus) {
+		return nil
+	}
+	newJob := job.DeepCopy()
+	newJob.Status = newStatus
+	_, err := cc.vkClients.BatchV1alpha1().CronJobs(job.Namespace).Update(newJob)
+	if err != nil {
+		glog.Errorf("Failed to update CronJob's status <%s/%s>", job.Namespace, job.Name)
+		return err
+	}
+	return nil
+}
+
+func StatusEqual(oldStatus, newStatus  vkbatchv1.CronJobStatus) bool{
+	return oldStatus.NextRun == newStatus.NextRun &&
+		oldStatus.LastRun == newStatus.LastRun &&
+		oldStatus.LastRunName == newStatus.LastRunName &&
+		oldStatus.State == newStatus.State &&
+		oldStatus.Reason == newStatus.Reason
 
 }
