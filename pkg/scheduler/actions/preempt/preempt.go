@@ -232,10 +232,9 @@ func preempt(
 			}
 			preempted.Add(preemptee.Resreq)
 			// If reclaimed enough resources, break loop to avoid Sub panic.
-			if resreq.LessEqual(preemptee.Resreq) {
+			if resreq.LessEqual(preempted) {
 				break
 			}
-			resreq.Sub(preemptee.Resreq)
 		}
 
 		metrics.RegisterPreemptionAttempts()

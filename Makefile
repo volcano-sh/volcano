@@ -1,6 +1,8 @@
 BIN_DIR=_output/bin
-export IMAGE=volcano
-export TAG = 1.0
+IMAGE=volcano
+TAG = 0.1
+
+.EXPORT_ALL_VARIABLES:
 
 all: controllers scheduler cli admission
 
