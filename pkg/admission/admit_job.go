@@ -69,11 +69,6 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 	taskNames := map[string]string{}
 	var totalReplicas int32
 
-	if job.Status.Version != 0 {
-		reviewResponse.Allowed = false
-		return fmt.Sprintf("Job Version is used internally, should not be specified.")
-	}
-
 	if len(job.Spec.Tasks) == 0 {
 		reviewResponse.Allowed = false
 		return fmt.Sprintf("No task specified in job spec")

@@ -231,6 +231,9 @@ func (jc *jobCache) Run(stopCh <-chan struct{}) {
 }
 
 func (jc jobCache) TaskCompleted(jobKey, taskName string) bool {
+	jc.Lock()
+	defer jc.Unlock()
+
 	var taskReplicas, completed int32
 
 	jobInfo, found := jc.jobs[jobKey]
@@ -241,6 +244,10 @@ func (jc jobCache) TaskCompleted(jobKey, taskName string) bool {
 	taskPods, found := jobInfo.Pods[taskName]
 
 	if !found {
+		return false
+	}
+
+	if jobInfo.Job == nil {
 		return false
 	}
 

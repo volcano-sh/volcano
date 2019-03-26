@@ -221,11 +221,11 @@ func cleanupTestContext(cxt *context) {
 	Expect(err).NotTo(HaveOccurred())
 
 	// Wait for namespace deleted.
-	err = wait.Poll(100*time.Millisecond, oneMinute, namespaceNotExist(cxt))
+	err = wait.Poll(100*time.Millisecond, twoMinute, namespaceNotExist(cxt))
 	Expect(err).NotTo(HaveOccurred())
 
 	// Wait for queues deleted
-	err = wait.Poll(100*time.Millisecond, oneMinute, queueNotExist(cxt))
+	err = wait.Poll(100*time.Millisecond, twoMinute, queueNotExist(cxt))
 	Expect(err).NotTo(HaveOccurred())
 }
 
@@ -294,6 +294,7 @@ type jobSpec struct {
 	queue     string
 	tasks     []taskSpec
 	policies  []vkv1.LifecyclePolicy
+	min       int32
 }
 
 func getNS(context *context, job *jobSpec) string {
@@ -311,6 +312,14 @@ func getNS(context *context, job *jobSpec) string {
 }
 
 func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
+
+	job, err := createJobInner(context, jobSpec)
+	Expect(err).NotTo(HaveOccurred())
+
+	return job
+}
+
+func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 	ns := getNS(context, jobSpec)
 
 	job := &vkv1.Job{
@@ -366,12 +375,13 @@ func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
 		min += task.min
 	}
 
-	job.Spec.MinAvailable = min
+	if jobSpec.min > 0 {
+		job.Spec.MinAvailable = jobSpec.min
+	} else {
+		job.Spec.MinAvailable = min
+	}
 
-	job, err := context.vkclient.BatchV1alpha1().Jobs(job.Namespace).Create(job)
-	Expect(err).NotTo(HaveOccurred())
-
-	return job
+	return context.vkclient.BatchV1alpha1().Jobs(job.Namespace).Create(job)
 }
 
 func taskPhase(ctx *context, job *vkv1.Job, phase []v1.PodPhase, taskNum int) wait.ConditionFunc {
