@@ -58,14 +58,14 @@ type Controller struct {
 	cronJobSynced func() bool
 
 	// queue that need to sync up
-	queue        workqueue.RateLimitingInterface
+	queue workqueue.RateLimitingInterface
 	//CronJob Event recorder
 	recorder record.EventRecorder
 
 	// CronJob Store
 	jobStore cronJobStore
 
-	clock    clock.Clock
+	clock clock.Clock
 }
 
 // NewCronJobController create new CronJob Controller
@@ -80,13 +80,13 @@ func NewCronJobController(config *rest.Config) *Controller {
 	recorder := eventBroadcaster.NewRecorder(vkscheme.Scheme, v1.EventSource{Component: "vk-controller"})
 
 	cc := &Controller{
-		config:       config,
-		kubeClients:  kubeClients,
-		vkClients:    vkver.NewForConfigOrDie(config),
-		kbClients:    kbver.NewForConfigOrDie(config),
-		queue:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		recorder:     recorder,
-		jobStore:     cronJobStore{
+		config:      config,
+		kubeClients: kubeClients,
+		vkClients:   vkver.NewForConfigOrDie(config),
+		kbClients:   kbver.NewForConfigOrDie(config),
+		queue:       workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		recorder:    recorder,
+		jobStore: cronJobStore{
 			cJobs: map[string]*v1alpha1.CronJob{},
 		},
 		clock: clock.RealClock{},
@@ -138,13 +138,12 @@ func (cc *Controller) handleSingleCronJob() bool {
 	return true
 }
 
-
 type cronJobStore struct {
 	sync.Mutex
-	cJobs        map[string]*v1alpha1.CronJob
+	cJobs map[string]*v1alpha1.CronJob
 }
 
-func (cs *cronJobStore) AddOrUpdate(key string, job *v1alpha1.CronJob){
+func (cs *cronJobStore) AddOrUpdate(key string, job *v1alpha1.CronJob) {
 	cs.Lock()
 	defer cs.Unlock()
 	cs.cJobs[key] = job

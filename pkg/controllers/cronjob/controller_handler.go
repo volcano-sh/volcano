@@ -40,7 +40,7 @@ func (cc *Controller) addCronJob(obj interface{}) {
 	jobKey, err := cache.DeletionHandlingMetaNamespaceKeyFunc(cronJob)
 
 	if err != nil {
-		glog.Errorf("Failed to get key for CronJob: %s, %s",cronJob, err)
+		glog.Errorf("Failed to get key for CronJob: %s, %s", cronJob, err)
 	}
 	cc.jobStore.AddOrUpdate(jobKey, cronJob)
 	cc.queue.Add(jobKey)
@@ -62,7 +62,7 @@ func (cc *Controller) updateCronJob(oldObj, newObj interface{}) {
 	jobKey, err := cache.DeletionHandlingMetaNamespaceKeyFunc(newCronJob)
 
 	if err != nil {
-		glog.Errorf("Failed to get key for CronJob: %s, %s",newCronJob, err)
+		glog.Errorf("Failed to get key for CronJob: %s, %s", newCronJob, err)
 	}
 
 	cc.jobStore.AddOrUpdate(jobKey, newCronJob)
@@ -78,24 +78,23 @@ func (cc *Controller) deleteCronJob(obj interface{}) {
 
 	jobKey, err := cache.DeletionHandlingMetaNamespaceKeyFunc(cronJob)
 	if err != nil {
-		glog.Errorf("Failed to get key for CronJob: %s, %s",cronJob, err)
+		glog.Errorf("Failed to get key for CronJob: %s, %s", cronJob, err)
 	}
 	cc.jobStore.Delete(jobKey)
 	cc.queue.Forget(jobKey)
 	cc.queue.Done(jobKey)
 }
 
-
 func (cc *Controller) syncCronJob(key string) error {
 	cronJob, err := cc.jobStore.Get(key)
 	if err != nil {
-		glog.Errorf("Unable to find CronJob %s in cache : %s",key, err)
+		glog.Errorf("Unable to find CronJob %s in cache : %s", key, err)
 		return err
 	}
 
 	newStatus, err := cc.processCronJobSync(cronJob)
 	if err != nil {
-		glog.Errorf("Unable to process CronJob %s sync operation : %s",key, err)
+		glog.Errorf("Unable to process CronJob %s sync operation : %s", key, err)
 		return err
 	}
 
@@ -107,15 +106,15 @@ func (cc *Controller) processCronJobSync(cronJob *vkbatchv1.CronJob) (vkbatchv1.
 	glog.Infof("Starting to synchronize CronJob: %s/%s", cronJob.Namespace, cronJob.Name)
 	newCJob := cronJob.DeepCopy()
 
-	schedule, err := cron.ParseStandard(cronJob.Spec.Schedule)
+	schedule, err := cron.ParseStandard(newCJob.Spec.Schedule)
 	if err != nil {
-		glog.Errorf("failed to parse schedule %s of CronJob %s/%s: %v", cronJob.Spec.Schedule, cronJob.Namespace, cronJob.Name, err)
+		glog.Errorf("failed to parse schedule %s of CronJob %s/%s: %v", newCJob.Spec.Schedule, newCJob.Namespace, newCJob.Name, err)
 		newCJob.Status.State = vkbatchv1.Stopped
 		newCJob.Status.Reason = err.Error()
 		return newCJob.Status, nil
 	}
 
-	cronJob.Status.State = vkbatchv1.Scheduled
+	newCJob.Status.State = vkbatchv1.Scheduled
 	now := cc.clock.Now()
 	nextRunTime := newCJob.Status.NextRun.Time
 	if nextRunTime.IsZero() {
@@ -123,18 +122,19 @@ func (cc *Controller) processCronJobSync(cronJob *vkbatchv1.CronJob) (vkbatchv1.
 		newCJob.Status.NextRun = v1.NewTime(nextRunTime)
 	}
 	if nextRunTime.Before(now) {
-		glog.Infof("Start to create new job for CronJob: <%s/%s>", cronJob.Namespace, cronJob.Name)
+		glog.Infof("Start to create new job for CronJob: <%s/%s>", newCJob.Namespace, newCJob.Name)
 		name, err := cc.createNewJob(newCJob)
 		if err != nil {
 			return vkbatchv1.CronJobStatus{}, err
 		}
-		cronJob.Status.LastRun = v1.NewTime(now)
-		cronJob.Status.NextRun = v1.NewTime(schedule.Next(newCJob.Status.LastRun.Time))
-		cronJob.Status.LastRunName = name
+		newCJob.Status.LastRun = v1.NewTime(now)
+		newCJob.Status.NextRun = v1.NewTime(schedule.Next(newCJob.Status.LastRun.Time))
+		newCJob.Status.LastRunName = name
 		//Record event
-		cc.recorder.Event(cronJob, core.EventTypeNormal, string(vkbatchv1.JobTriggered),
+		cc.recorder.Event(newCJob, core.EventTypeNormal, string(vkbatchv1.JobTriggered),
 			fmt.Sprintf("New job %s started at %s", name, now))
 	}
+	return newCJob.Status, nil
 }
 
 func (cc *Controller) createNewJob(cronJob *vkbatchv1.CronJob) (string, error) {
@@ -154,7 +154,6 @@ func (cc *Controller) createNewJob(cronJob *vkbatchv1.CronJob) (string, error) {
 	return job.Name, nil
 }
 
-
 func (cc *Controller) updateCronJobStatus(job *vkbatchv1.CronJob, newStatus vkbatchv1.CronJobStatus) error {
 	if StatusEqual(job.Status, newStatus) {
 		return nil
@@ -169,11 +168,10 @@ func (cc *Controller) updateCronJobStatus(job *vkbatchv1.CronJob, newStatus vkba
 	return nil
 }
 
-func StatusEqual(oldStatus, newStatus  vkbatchv1.CronJobStatus) bool{
+func StatusEqual(oldStatus, newStatus vkbatchv1.CronJobStatus) bool {
 	return oldStatus.NextRun == newStatus.NextRun &&
 		oldStatus.LastRun == newStatus.LastRun &&
 		oldStatus.LastRunName == newStatus.LastRunName &&
 		oldStatus.State == newStatus.State &&
 		oldStatus.Reason == newStatus.Reason
-
 }

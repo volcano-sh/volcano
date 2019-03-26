@@ -1027,6 +1027,7 @@
     "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/metrics",
     "github.com/onsi/ginkgo",
     "github.com/onsi/gomega",
+    "github.com/pborman/uuid",
     "github.com/robfig/cron",
     "github.com/spf13/cobra",
     "github.com/spf13/pflag",
