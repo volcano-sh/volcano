@@ -14,8 +14,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package job
+package helpers
+
+import (
+	"strings"
+
+	"k8s.io/api/core/v1"
+)
 
 const (
 	TaskNameFmt = "%s-%s-%d"
 )
+
+func GetTaskIndex(pod *v1.Pod) string {
+	num := strings.Split(pod.Name, "-")
+	if len(num) >= 3 {
+		return num[len(num)-1]
+	}
+
+	return ""
+}

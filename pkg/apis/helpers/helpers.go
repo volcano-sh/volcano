@@ -17,12 +17,18 @@ limitations under the License.
 package helpers
 
 import (
+	"github.com/golang/glog"
+
+	"k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkcorev1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 )
 
@@ -55,4 +61,56 @@ func ControlledBy(obj interface{}, gvk schema.GroupVersionKind) bool {
 	}
 
 	return false
+}
+
+func CreateConfigMapIfNotExist(job *vkv1.Job, kubeClients *kubernetes.Clientset, data map[string]string, cmName string) error {
+	// If ConfigMap does not exist, create one for Job.
+	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{}); err != nil {
+		if !apierrors.IsNotFound(err) {
+			glog.V(3).Infof("Failed to get Configmap for Job <%s/%s>: %v",
+				job.Namespace, job.Name, err)
+			return err
+		}
+	}
+
+	cm := &v1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: job.Namespace,
+			Name:      cmName,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(job, JobKind),
+			},
+		},
+		Data: data,
+	}
+
+	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Create(cm); err != nil {
+		glog.V(3).Infof("Failed to create ConfigMap for Job <%s/%s>: %v",
+			job.Namespace, job.Name, err)
+		return err
+	}
+
+	return nil
+}
+
+func DeleteConfigmap(job *vkv1.Job, kubeClients *kubernetes.Clientset, cmName string) error {
+	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{}); err != nil {
+		if !apierrors.IsNotFound(err) {
+			glog.V(3).Infof("Failed to get Configmap for Job <%s/%s>: %v",
+				job.Namespace, job.Name, err)
+			return err
+		} else {
+			return nil
+		}
+	}
+
+	if err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Delete(cmName, nil); err != nil {
+		if !apierrors.IsNotFound(err) {
+			glog.Errorf("Failed to delete Configmap of Job %v/%v: %v",
+				job.Namespace, job.Name, err)
+			return err
+		}
+	}
+
+	return nil
 }
