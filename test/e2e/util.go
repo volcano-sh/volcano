@@ -329,6 +329,7 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 		},
 		Spec: vkv1.JobSpec{
 			Policies: jobSpec.policies,
+			Queue:    jobSpec.queue,
 		},
 	}
 
