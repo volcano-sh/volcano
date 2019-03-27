@@ -112,8 +112,16 @@ func (cc *Controller) processCronJobSync(cronJob *vkbatchv1.CronJob) (vkbatchv1.
 	if err != nil {
 		glog.Errorf("failed to parse schedule %s of CronJob %s/%s: %v", newCJob.Spec.Schedule, newCJob.Namespace, newCJob.Name, err)
 		newCJob.Status.State = vkbatchv1.Stopped
-		newCJob.Status.Reason = err.Error()
+		newCJob.Status.Reason = fmt.Sprint("Unable to recognize CronJob's schedule attribute")
 		return newCJob.Status, nil
+	}
+
+	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(newCJob)
+	if err != nil {
+		glog.Errorf("Failed to get key for CronJob: %s, %s", cronJob, err)
+		newCJob.Status.State = vkbatchv1.Stopped
+		newCJob.Status.Reason = fmt.Sprint("Unable to get key for CronJob")
+		return newCJob.Status, err
 	}
 
 	newCJob.Status.State = vkbatchv1.Scheduled
@@ -136,6 +144,11 @@ func (cc *Controller) processCronJobSync(cronJob *vkbatchv1.CronJob) (vkbatchv1.
 		//Record event
 		cc.recorder.Event(newCJob, core.EventTypeNormal, string(vkbatchv1.JobTriggered),
 			fmt.Sprintf("New job %s started at %s", name, now))
+		//Delete from watch
+		cc.jobStore.DeleteFromWatch(key)
+	} else {
+		//Add to watch
+		cc.jobStore.AddToWatch(key)
 	}
 	glog.Infof("==========the new status for cronjob is: %s", newCJob.Status)
 	return newCJob.Status, nil

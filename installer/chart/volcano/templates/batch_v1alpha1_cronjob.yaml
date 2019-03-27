@@ -126,25 +126,6 @@ spec:
                 object
           type:
             object
-        status:
-          description: Current status of CronJob
-          properties:
-            lastRun:
-              description: LastRun is the time when the last job started.
-              type: date
-            nextRun:
-              description: NextRun is the time when the next run of Job will start.
-              type: date
-            lastRunName:
-              description: LastRunName is the name of the last run Job.
-              type: string
-          type: object
   version: v1alpha1
   subresources:
     status: {}
-status:
-  acceptedNames:
-    kind: ""
-    plural: ""
-  conditions: []
-  storedVersions: []

@@ -40,10 +40,6 @@ import (
 	vkbatchlister "volcano.sh/volcano/pkg/client/listers/batch/v1alpha1"
 )
 
-const (
-	ProcessInterval = time.Second * 2
-)
-
 // Controller for cron job
 type Controller struct {
 	config      *rest.Config
@@ -88,6 +84,7 @@ func NewCronJobController(config *rest.Config) *Controller {
 		recorder:    recorder,
 		jobStore: cronJobStore{
 			cJobs: map[string]*v1alpha1.CronJob{},
+			watchedCJobs: map[string]string{},
 		},
 		clock: clock.RealClock{},
 	}
@@ -109,7 +106,8 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 
 	cache.WaitForCacheSync(stopCh, cc.cronJobSynced)
 
-	go wait.Until(cc.handleCronJobs, ProcessInterval, stopCh)
+	go wait.Until(cc.handleCronJobs, time.Second, stopCh)
+	go wait.Until(cc.handleWatchedCronJobs, time.Second, stopCh)
 
 	glog.Infof("CronJobController is running ...... ")
 }
@@ -138,9 +136,16 @@ func (cc *Controller) handleSingleCronJob() bool {
 	return true
 }
 
+func (cc *Controller) handleWatchedCronJobs() {
+	for cJobs := range cc.jobStore.GetWatchList() {
+		cc.queue.AddRateLimited(cJobs)
+	}
+}
+
 type cronJobStore struct {
 	sync.Mutex
 	cJobs map[string]*v1alpha1.CronJob
+	watchedCJobs map[string]string
 }
 
 func (cs *cronJobStore) AddOrUpdate(key string, job *v1alpha1.CronJob) {
@@ -163,4 +168,28 @@ func (cs *cronJobStore) Delete(key string) {
 	cs.Lock()
 	defer cs.Unlock()
 	delete(cs.cJobs, key)
+	delete(cs.watchedCJobs, key)
+}
+
+func (cs *cronJobStore) AddToWatch(key string) {
+	cs.Lock()
+	defer  cs.Unlock()
+	cs.watchedCJobs[key] = key
+}
+
+func (cs *cronJobStore) DeleteFromWatch(key string)  {
+	cs.Lock()
+	defer cs.Unlock()
+	delete(cs.watchedCJobs, key)
+}
+
+func (cs *cronJobStore) GetWatchList() []string {
+	var cJobs []string
+	for name := range cs.watchedCJobs {
+		_, found := cs.cJobs[name]
+		if found {
+			cJobs = append(cJobs, name)
+		}
+	}
+	return cJobs
 }
