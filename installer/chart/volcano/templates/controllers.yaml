@@ -31,12 +31,12 @@ rules:
     verbs: ["create", "list", "watch", "update", "patch"]
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["create", "list", "watch", "update"]
+    verbs: ["create", "list", "watch", "update", "delete"]
   - apiGroups: [""]
     resources: ["persistentvolumeclaims"]
     verbs: ["get", "list", "watch", "create"]
   - apiGroups: [""]
-    resources: ["services"]
+    resources: ["services", "configmaps"]
     verbs: ["get", "list", "watch", "create", "delete"]
   - apiGroups: ["scheduling.incubator.k8s.io"]
     resources: ["podgroups"]
@@ -75,6 +75,10 @@ spec:
         vk-controllers: test
     spec:
       serviceAccount: {{ .Release.Name }}-controllers
+      {{ if .Values.basic.image_pull_secret }}
+      imagePullSecrets:
+        - name: {{ .Values.basic.image_pull_secret }}
+      {{ end }}
       containers:
         - name: {{ .Release.Name }}-controllers
           image: {{.Values.basic.controller_image_name}}:{{.Values.basic.image_tag_version}}

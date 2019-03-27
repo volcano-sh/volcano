@@ -5,8 +5,8 @@ metadata:
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade,post-delete
 webhooks:
-- clientConfig: 
-    caBundle: ""
+- clientConfig:
+    caBundle: "{{ .Values.basic.ca_bundle }}"
     service:
       name: {{ .Release.Name }}-admission-service
       namespace: {{.Values.basic.namespace}}
@@ -32,8 +32,8 @@ metadata:
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade,post-delete
 webhooks:
-- clientConfig: 
-    caBundle: ""
+- clientConfig:
+    caBundle: "{{ .Values.basic.ca_bundle }}"
     service:
       name: {{ .Release.Name }}-admission-service
       namespace: {{.Values.basic.namespace}}

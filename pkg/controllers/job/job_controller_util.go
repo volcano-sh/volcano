@@ -18,6 +18,7 @@ package job
 
 import (
 	"fmt"
+
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
@@ -29,6 +30,7 @@ import (
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
+	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
 
 func eventKey(obj interface{}) interface{} {
@@ -44,7 +46,7 @@ func eventKey(obj interface{}) interface{} {
 }
 
 func MakePodName(jobName string, taskName string, index int) string {
-	return fmt.Sprintf(TaskNameFmt, jobName, taskName, index)
+	return fmt.Sprintf(vkjobhelpers.TaskNameFmt, jobName, taskName, index)
 }
 
 func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
