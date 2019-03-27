@@ -19,10 +19,9 @@ package app
 import (
 	"context"
 	"fmt"
+	"github.com/golang/glog"
 	"os"
 	"time"
-
-	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
