@@ -40,33 +40,32 @@ type patchOperation struct {
 func MutateJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	glog.V(3).Infof("mutating jobs")
 
-	job, err := DecodeJob(ar.Request.Object, ar.Request.Resource)
+	object, err := DecodeJoborCronJob(ar.Request.Object, ar.Request.Resource)
 	if err != nil {
 		return ToAdmissionResponse(err)
 	}
-
 	reviewResponse := v1beta1.AdmissionResponse{}
 	reviewResponse.Allowed = true
+	if job, ok := object.(v1alpha1.Job); ok {
 
-	var patchBytes []byte
-	switch ar.Request.Operation {
-	case v1beta1.Create:
-		patchBytes, err = createPatch(job)
-		break
-	default:
-		err = fmt.Errorf("expect operation to be 'CREATE' ")
-		return ToAdmissionResponse(err)
+		var patchBytes []byte
+		switch ar.Request.Operation {
+		case v1beta1.Create:
+			patchBytes, err = createPatch(job)
+			break
+		default:
+			err = fmt.Errorf("expect operation to be 'CREATE' ")
+			return ToAdmissionResponse(err)
+		}
+
+		if err != nil {
+			return ToAdmissionResponse(err)
+		}
+		glog.V(3).Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
+		reviewResponse.Patch = patchBytes
+		pt := v1beta1.PatchTypeJSONPatch
+		reviewResponse.PatchType = &pt
 	}
-
-	if err != nil {
-		reviewResponse.Result = &metav1.Status{Message: err.Error()}
-		return &reviewResponse
-	}
-	glog.V(3).Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
-	reviewResponse.Patch = patchBytes
-	pt := v1beta1.PatchTypeJSONPatch
-	reviewResponse.PatchType = &pt
-
 	return &reviewResponse
 }
 

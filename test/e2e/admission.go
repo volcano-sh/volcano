@@ -20,6 +20,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
@@ -121,6 +122,30 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 		Expect(ok).To(Equal(true))
 		Expect(stError.ErrStatus.Code).To(Equal(int32(500)))
 		Expect(stError.ErrStatus.Message).To(ContainSubstring("'minAvailable' should not be greater than total replicas in tasks"))
+	})
+
+	It("CronJob schedule Illegal", func() {
+		cronJobName := "cronjob-schedule-illegal"
+		namespace := "test"
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		cronJob := v1alpha1.CronJob{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      cronJobName,
+				Namespace: namespace,
+			},
+			Spec: v1alpha1.CronJobSpec{
+				Schedule: "invalid-schedule",
+				Template: v1alpha1.JobSpec{},
+			},
+		}
+		_, err := context.vkclient.BatchV1alpha1().CronJobs(namespace).Create(&cronJob)
+		Expect(err).To(HaveOccurred())
+		stError, ok := err.(*errors.StatusError)
+		Expect(ok).To(Equal(true))
+		Expect(stError.ErrStatus.Code).To(Equal(int32(500)))
+		Expect(stError.ErrStatus.Message).To(ContainSubstring("unable to parse CronJob"))
 	})
 
 	It("Job Plugin illegal", func() {

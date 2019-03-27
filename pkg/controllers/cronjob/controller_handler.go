@@ -31,7 +31,6 @@ import (
 )
 
 func (cc *Controller) addCronJob(obj interface{}) {
-	fmt.Printf("CronJob has been added %s", obj)
 	cronJob, ok := obj.(*vkbatchv1.CronJob)
 	if !ok {
 		glog.Errorf("obj is not a CronJob")
@@ -43,6 +42,7 @@ func (cc *Controller) addCronJob(obj interface{}) {
 	if err != nil {
 		glog.Errorf("Failed to get key for CronJob: %s, %s", cronJob, err)
 	}
+	glog.Infof("CronJob has been added: %s", jobKey)
 	cc.jobStore.AddOrUpdate(jobKey, cronJob)
 	cc.queue.Add(jobKey)
 }
@@ -108,7 +108,6 @@ func (cc *Controller) processCronJobSync(cronJob *vkbatchv1.CronJob) (vkbatchv1.
 	newCJob := cronJob.DeepCopy()
 
 	schedule, err := cron.ParseStandard(newCJob.Spec.Schedule)
-	glog.Infof("============the converted schedule is %s", schedule)
 	if err != nil {
 		glog.Errorf("failed to parse schedule %s of CronJob %s/%s: %v", newCJob.Spec.Schedule, newCJob.Namespace, newCJob.Name, err)
 		newCJob.Status.State = vkbatchv1.Stopped
@@ -124,6 +123,12 @@ func (cc *Controller) processCronJobSync(cronJob *vkbatchv1.CronJob) (vkbatchv1.
 		return newCJob.Status, err
 	}
 
+	if newCJob.Status.State == vkbatchv1.Suspended {
+		//CronJob is suspended now
+		cc.jobStore.DeleteFromWatch(key)
+		return vkbatchv1.CronJobStatus{}, nil
+	}
+
 	newCJob.Status.State = vkbatchv1.Scheduled
 	now := cc.clock.Now()
 	nextRunTime := newCJob.Status.NextRun.Time
@@ -131,7 +136,6 @@ func (cc *Controller) processCronJobSync(cronJob *vkbatchv1.CronJob) (vkbatchv1.
 		nextRunTime = schedule.Next(now)
 		newCJob.Status.NextRun = v1.NewTime(nextRunTime)
 	}
-	glog.Infof("============the next run time is %s", nextRunTime)
 	if nextRunTime.Before(now) {
 		glog.Infof("Start to create new job for CronJob: <%s/%s>", newCJob.Namespace, newCJob.Name)
 		name, err := cc.createNewJob(newCJob)
@@ -150,7 +154,6 @@ func (cc *Controller) processCronJobSync(cronJob *vkbatchv1.CronJob) (vkbatchv1.
 		//Add to watch
 		cc.jobStore.AddToWatch(key)
 	}
-	glog.Infof("==========the new status for cronjob is: %s", newCJob.Status)
 	return newCJob.Status, nil
 }
 
@@ -172,23 +175,21 @@ func (cc *Controller) createNewJob(cronJob *vkbatchv1.CronJob) (string, error) {
 }
 
 func (cc *Controller) updateCronJobStatus(job *vkbatchv1.CronJob, newStatus vkbatchv1.CronJobStatus) error {
-	if StatusEqual(job.Status, newStatus) {
+	if statusEqual(job.Status, newStatus) {
 		return nil
 	}
 	newJob := job.DeepCopy()
 	newJob.Status = newStatus
-	glog.Infof("=========Starting to update cronjob: %s", newJob)
-	nnJob, err := cc.vkClients.BatchV1alpha1().CronJobs(job.Namespace).UpdateStatus(newJob)
+	_, err := cc.vkClients.BatchV1alpha1().CronJobs(job.Namespace).UpdateStatus(newJob)
 	if err != nil {
 		glog.Errorf("Failed to update CronJob's status <%s/%s>, %s", job.Namespace, job.Name, err.Error())
 		return err
 	}
-	glog.Infof("======the status of new cronjob %s ", nnJob.Status)
 
 	return nil
 }
 
-func StatusEqual(oldStatus, newStatus vkbatchv1.CronJobStatus) bool {
+func statusEqual(oldStatus, newStatus vkbatchv1.CronJobStatus) bool {
 	return oldStatus.NextRun == newStatus.NextRun &&
 		oldStatus.LastRun == newStatus.LastRun &&
 		oldStatus.LastRunName == newStatus.LastRunName &&

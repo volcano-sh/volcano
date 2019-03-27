@@ -18,9 +18,9 @@ package admission
 
 import (
 	"fmt"
+	"github.com/robfig/cron"
 	"reflect"
 	"strings"
-	"volcano.sh/volcano/pkg/controllers/job/plugins"
 
 	"github.com/golang/glog"
 
@@ -30,14 +30,24 @@ import (
 	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
-// job admit.
-func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
-	glog.V(3).Infof("admitting jobs -- %s", ar.Request.Operation)
-
-	job, err := DecodeJob(ar.Request.Object, ar.Request.Resource)
+func AdmitJobOrCronJob(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
+	object, err := DecodeJoborCronJob(ar.Request.Object, ar.Request.Resource)
 	if err != nil {
 		return ToAdmissionResponse(err)
 	}
+
+	if job, ok := object.(v1alpha1.Job); ok {
+		return AdmitJob(ar, job)
+	}
+	if cronJob, ok := object.(v1alpha1.CronJob); ok {
+		return AdmitCronJob(ar, cronJob)
+	}
+	return ToAdmissionResponse(fmt.Errorf("unable to convert object into Job or CronJob"))
+}
+
+// job admit.
+func AdmitJob(ar v1beta1.AdmissionReview, job v1alpha1.Job) *v1beta1.AdmissionResponse {
+	glog.V(3).Infof("admitting job -- %s", ar.Request.Operation)
 	var msg string
 	reviewResponse := v1beta1.AdmissionResponse{}
 	reviewResponse.Allowed = true
@@ -47,17 +57,41 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		msg = validateJobSpec(job.Spec, &reviewResponse)
 		break
 	case v1beta1.Update:
-		oldJob, err := DecodeJob(ar.Request.OldObject, ar.Request.Resource)
+		object, err := DecodeJoborCronJob(ar.Request.OldObject, ar.Request.Resource)
 		if err != nil {
 			return ToAdmissionResponse(err)
 		}
-		msg = specDeepEqual(job, oldJob, &reviewResponse)
-		break
+
+		if oldJob, ok := object.(v1alpha1.Job); !ok {
+			return ToAdmissionResponse(fmt.Errorf("unable to convert old object into Job"))
+		} else {
+			msg = specDeepEqual(job, oldJob, &reviewResponse)
+			break
+		}
+
 	default:
 		err := fmt.Errorf("expect operation to be 'CREATE' or 'UPDATE'")
 		return ToAdmissionResponse(err)
 	}
 
+	if !reviewResponse.Allowed {
+		reviewResponse.Result = &metav1.Status{Message: strings.TrimSpace(msg)}
+	}
+	return &reviewResponse
+}
+
+// cronJob admit.
+func AdmitCronJob(ar v1beta1.AdmissionReview, job v1alpha1.CronJob) *v1beta1.AdmissionResponse {
+	glog.V(3).Infof("admitting CronJob -- %s", ar.Request.Operation)
+	var msg string
+	reviewResponse := v1beta1.AdmissionResponse{}
+	reviewResponse.Allowed = true
+
+	_, err := cron.ParseStandard(job.Spec.Schedule)
+	if err != nil {
+		return ToAdmissionResponse(fmt.Errorf("unable to parse CronJob %s schedule attribute", job.Spec.Schedule))
+	}
+	msg = validateJobSpec(job.Spec.Template, &reviewResponse)
 	if !reviewResponse.Allowed {
 		reviewResponse.Result = &metav1.Status{Message: strings.TrimSpace(msg)}
 	}
@@ -104,15 +138,6 @@ func validateJobSpec(jobSpec v1alpha1.JobSpec, reviewResponse *v1beta1.Admission
 	//duplicate job event policies
 	if duplicateInfo, ok := CheckPolicyDuplicate(jobSpec.Policies); ok {
 		msg = msg + fmt.Sprintf(" duplicated job event policies: %s;", duplicateInfo)
-	}
-
-	//invalid job plugins
-	if len(jobSpec.Plugins) != 0 {
-		for name := range jobSpec.Plugins {
-			if _, found := plugins.GetPluginBuilder(name); !found {
-				msg = msg + fmt.Sprintf(" unable to find job plugin: %s", name)
-			}
-		}
 	}
 
 	if msg != "" {

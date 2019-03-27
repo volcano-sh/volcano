@@ -66,6 +66,7 @@ type CronJobState string
 const (
 	Scheduled CronJobState = "Scheduled"
 	Stopped   CronJobState = "Stopped"
+	Suspended CronJobState = "Suspended"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

@@ -40,6 +40,11 @@ import (
 	vkbatchlister "volcano.sh/volcano/pkg/client/listers/batch/v1alpha1"
 )
 
+// Used for recheck watched CronJobs
+const (
+	JobCheckInterval = time.Second * 5
+)
+
 // Controller for cron job
 type Controller struct {
 	config      *rest.Config
@@ -83,7 +88,7 @@ func NewCronJobController(config *rest.Config) *Controller {
 		queue:       workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		recorder:    recorder,
 		jobStore: cronJobStore{
-			cJobs: map[string]*v1alpha1.CronJob{},
+			cJobs:        map[string]*v1alpha1.CronJob{},
 			watchedCJobs: map[string]string{},
 		},
 		clock: clock.RealClock{},
@@ -107,7 +112,7 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 	cache.WaitForCacheSync(stopCh, cc.cronJobSynced)
 
 	go wait.Until(cc.handleCronJobs, time.Second, stopCh)
-	go wait.Until(cc.handleWatchedCronJobs, time.Second, stopCh)
+	go wait.Until(cc.handleWatchedCronJobs, JobCheckInterval, stopCh)
 
 	glog.Infof("CronJobController is running ...... ")
 }
@@ -137,14 +142,14 @@ func (cc *Controller) handleSingleCronJob() bool {
 }
 
 func (cc *Controller) handleWatchedCronJobs() {
-	for cJobs := range cc.jobStore.GetWatchList() {
-		cc.queue.AddRateLimited(cJobs)
+	for _, cJob := range cc.jobStore.GetWatchList() {
+		cc.queue.AddRateLimited(cJob)
 	}
 }
 
 type cronJobStore struct {
 	sync.Mutex
-	cJobs map[string]*v1alpha1.CronJob
+	cJobs        map[string]*v1alpha1.CronJob
 	watchedCJobs map[string]string
 }
 
@@ -173,11 +178,11 @@ func (cs *cronJobStore) Delete(key string) {
 
 func (cs *cronJobStore) AddToWatch(key string) {
 	cs.Lock()
-	defer  cs.Unlock()
+	defer cs.Unlock()
 	cs.watchedCJobs[key] = key
 }
 
-func (cs *cronJobStore) DeleteFromWatch(key string)  {
+func (cs *cronJobStore) DeleteFromWatch(key string) {
 	cs.Lock()
 	defer cs.Unlock()
 	delete(cs.watchedCJobs, key)

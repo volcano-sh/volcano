@@ -29,7 +29,7 @@ import (
 )
 
 func serveJobs(w http.ResponseWriter, r *http.Request) {
-	app.Serve(w, r, admissioncontroller.AdmitJobs)
+	app.Serve(w, r, admissioncontroller.AdmitJobOrCronJob)
 }
 
 func serveMutateJobs(w http.ResponseWriter, r *http.Request) {

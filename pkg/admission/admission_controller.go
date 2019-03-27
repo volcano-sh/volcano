@@ -58,6 +58,7 @@ func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
 		Result: &metav1.Status{
 			Message: err.Error(),
 		},
+		Allowed: false,
 	}
 }
 
@@ -84,21 +85,36 @@ func CheckPolicyDuplicate(policies []v1alpha1.LifecyclePolicy) (string, bool) {
 	return duplicateInfo, hasDuplicate
 }
 
-func DecodeJob(object runtime.RawExtension, resource metav1.GroupVersionResource) (v1alpha1.Job, error) {
+func DecodeJoborCronJob(object runtime.RawExtension, resource metav1.GroupVersionResource) (interface{}, error) {
 	jobResource := metav1.GroupVersionResource{Group: v1alpha1.SchemeGroupVersion.Group, Version: v1alpha1.SchemeGroupVersion.Version, Resource: "jobs"}
+	cronJobResource := metav1.GroupVersionResource{Group: v1alpha1.SchemeGroupVersion.Group, Version: v1alpha1.SchemeGroupVersion.Version, Resource: "cronjobs"}
 	raw := object.Raw
-	job := v1alpha1.Job{}
-
-	if resource != jobResource {
-		err := fmt.Errorf("expect resource to be %s", jobResource)
-		return job, err
-	}
+	job := &v1alpha1.Job{}
+	cronJob := &v1alpha1.CronJob{}
+	var decodeError error
 
 	deserializer := Codecs.UniversalDeserializer()
-	if _, _, err := deserializer.Decode(raw, nil, &job); err != nil {
-		return job, err
-	}
-	glog.V(3).Infof("the job struct is %+v", job)
 
-	return job, nil
+	if resource == jobResource {
+		if _, _, err := deserializer.Decode(raw, nil, job); err != nil {
+			glog.Errorf("Failed to decode object into job %s", err)
+			decodeError = err
+		} else {
+			glog.V(3).Infof("the job struct is %+v", *job)
+			return *job, nil
+		}
+	} else if resource == cronJobResource {
+		if _, _, err := deserializer.Decode(raw, nil, cronJob); err != nil {
+			glog.Errorf("Failed to decode object into CronJob %s", err)
+			decodeError = err
+		} else {
+			glog.V(3).Infof("the cronJob struct is %+v", *cronJob)
+			return *cronJob, nil
+		}
+	} else {
+		err := fmt.Errorf("expect resource to be %s or %s", jobResource, cronJobResource)
+		return nil, err
+	}
+
+	return nil, decodeError
 }
