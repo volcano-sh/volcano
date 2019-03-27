@@ -60,6 +60,9 @@ type JobSpec struct {
 	// Specifies the default lifecycle of tasks
 	// +optional
 	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,6,opt,name=policies"`
+
+	//Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
+	Queue string `json:"queue,omitempty" protobuf:"bytes,7,opt,name=queue"`
 }
 
 // VolumeSpec defines the specification of Volume, e.g. PVC

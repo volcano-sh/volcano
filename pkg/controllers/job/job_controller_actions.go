@@ -450,6 +450,7 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 			},
 			Spec: kbv1.PodGroupSpec{
 				MinMember: job.Spec.MinAvailable,
+				Queue:     job.Spec.Queue,
 			},
 		}
 
