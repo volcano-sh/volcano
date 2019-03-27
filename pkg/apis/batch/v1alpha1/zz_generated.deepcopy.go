@@ -91,11 +91,6 @@ func (in *CronJobList) DeepCopyObject() runtime.Object {
 func (in *CronJobSpec) DeepCopyInto(out *CronJobSpec) {
 	*out = *in
 	in.Template.DeepCopyInto(&out.Template)
-	if in.Suspend != nil {
-		in, out := &in.Suspend, &out.Suspend
-		*out = new(bool)
-		**out = **in
-	}
 	return
 }
 

@@ -1,0 +1,21 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: CronJob
+metadata:
+  name: test-cronjob
+spec:
+  schedule: "*/1 * * * *"
+  template:
+    minAvailable: 2
+    schedulerName: kube-batch
+    tasks:
+      - replicas: 2
+        template:
+          metadata:
+            name: web
+          spec:
+            containers:
+              - image: nginx
+                imagePullPolicy: IfNotPresent
+                name: nginx
+            restartPolicy: OnFailure
+  suspend: false

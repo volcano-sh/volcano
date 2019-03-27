@@ -40,8 +40,6 @@ type CronJobSpec struct {
 	Schedule string `json:"schedule" protobuf:"bytes,1,opt,name=schedule"`
 	// Template is a template based on which the Job should run.
 	Template JobSpec `json:"template" protobuf:"bytes,2,opt,name=spec"`
-	// Whether to suspend current CronJob
-	Suspend *bool `json:"suspend,omitempty" protobuf:"bytes,3,opt,name=suspend"`
 }
 
 type CronJobEvent string
@@ -56,11 +54,11 @@ type CronJobStatus struct {
 	// Reason shows detail on CronJob.
 	Reason string `json:"reason,omitempty"`
 	// LastRun is the time when the last job started.
-	LastRun metav1.Time `json:"lastRun,omitempty" protobuf:"bytes,1,opt,name=lastRun"`
+	LastRun metav1.Time `json:"lastRun,omitempty"`
 	// NextRun is the time when the next run of Job will start.
-	NextRun metav1.Time `json:"nextRun,omitempty" protobuf:"bytes,2,opt,name=NextRun"`
+	NextRun metav1.Time `json:"nextRun,omitempty"`
 	// LastRunName is the name of the last run Job.
-	LastRunName string `json:"lastRunName,omitempty" protobuf:"bytes,3,opt,name=LastRunName"`
+	LastRunName string `json:"lastRunName,omitempty"`
 }
 
 type CronJobState string

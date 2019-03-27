@@ -124,9 +124,6 @@ spec:
                   type: array
               type:
                 object
-            suspend:
-              description: Whether the CronJob has been suspended.
-              type: boolean
           type:
             object
         status:
@@ -134,10 +131,10 @@ spec:
           properties:
             lastRun:
               description: LastRun is the time when the last job started.
-              type: string
+              type: date
             nextRun:
               description: NextRun is the time when the next run of Job will start.
-              type: string
+              type: date
             lastRunName:
               description: LastRunName is the name of the last run Job.
               type: string

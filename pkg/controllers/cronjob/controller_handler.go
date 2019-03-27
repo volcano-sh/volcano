@@ -31,6 +31,7 @@ import (
 )
 
 func (cc *Controller) addCronJob(obj interface{}) {
+	fmt.Printf("CronJob has been added %s", obj)
 	cronJob, ok := obj.(*vkbatchv1.CronJob)
 	if !ok {
 		glog.Errorf("obj is not a CronJob")
@@ -107,6 +108,7 @@ func (cc *Controller) processCronJobSync(cronJob *vkbatchv1.CronJob) (vkbatchv1.
 	newCJob := cronJob.DeepCopy()
 
 	schedule, err := cron.ParseStandard(newCJob.Spec.Schedule)
+	glog.Infof("============the converted schedule is %s", schedule)
 	if err != nil {
 		glog.Errorf("failed to parse schedule %s of CronJob %s/%s: %v", newCJob.Spec.Schedule, newCJob.Namespace, newCJob.Name, err)
 		newCJob.Status.State = vkbatchv1.Stopped
@@ -121,6 +123,7 @@ func (cc *Controller) processCronJobSync(cronJob *vkbatchv1.CronJob) (vkbatchv1.
 		nextRunTime = schedule.Next(now)
 		newCJob.Status.NextRun = v1.NewTime(nextRunTime)
 	}
+	glog.Infof("============the next run time is %s", nextRunTime)
 	if nextRunTime.Before(now) {
 		glog.Infof("Start to create new job for CronJob: <%s/%s>", newCJob.Namespace, newCJob.Name)
 		name, err := cc.createNewJob(newCJob)
@@ -134,6 +137,7 @@ func (cc *Controller) processCronJobSync(cronJob *vkbatchv1.CronJob) (vkbatchv1.
 		cc.recorder.Event(newCJob, core.EventTypeNormal, string(vkbatchv1.JobTriggered),
 			fmt.Sprintf("New job %s started at %s", name, now))
 	}
+	glog.Infof("==========the new status for cronjob is: %s", newCJob.Status)
 	return newCJob.Status, nil
 }
 
@@ -160,11 +164,14 @@ func (cc *Controller) updateCronJobStatus(job *vkbatchv1.CronJob, newStatus vkba
 	}
 	newJob := job.DeepCopy()
 	newJob.Status = newStatus
-	_, err := cc.vkClients.BatchV1alpha1().CronJobs(job.Namespace).Update(newJob)
+	glog.Infof("=========Starting to update cronjob: %s", newJob)
+	nnJob, err := cc.vkClients.BatchV1alpha1().CronJobs(job.Namespace).UpdateStatus(newJob)
 	if err != nil {
-		glog.Errorf("Failed to update CronJob's status <%s/%s>", job.Namespace, job.Name)
+		glog.Errorf("Failed to update CronJob's status <%s/%s>, %s", job.Namespace, job.Name, err.Error())
 		return err
 	}
+	glog.Infof("======the status of new cronjob %s ", nnJob.Status)
+
 	return nil
 }
 
