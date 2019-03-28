@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"volcano.sh/volcano/pkg/controllers/job/plugins"
 
 	"github.com/golang/glog"
 
@@ -43,7 +44,7 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
 	switch ar.Request.Operation {
 	case v1beta1.Create:
-		msg = validateJob(job, &reviewResponse)
+		msg = validateJobSpec(job.Spec, &reviewResponse)
 		break
 	case v1beta1.Update:
 		oldJob, err := DecodeJob(ar.Request.OldObject, ar.Request.Resource)
@@ -63,18 +64,18 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	return &reviewResponse
 }
 
-func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) string {
+func validateJobSpec(jobSpec v1alpha1.JobSpec, reviewResponse *v1beta1.AdmissionResponse) string {
 
 	var msg string
 	taskNames := map[string]string{}
 	var totalReplicas int32
 
-	if len(job.Spec.Tasks) == 0 {
+	if len(jobSpec.Tasks) == 0 {
 		reviewResponse.Allowed = false
 		return fmt.Sprintf("No task specified in job spec")
 	}
 
-	for _, task := range job.Spec.Tasks {
+	for _, task := range jobSpec.Tasks {
 		if task.Replicas == 0 {
 			msg = msg + fmt.Sprintf(" 'replicas' is set '0' in task: %s;", task.Name)
 		}
@@ -96,17 +97,26 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 		}
 	}
 
-	if totalReplicas < job.Spec.MinAvailable {
+	if totalReplicas < jobSpec.MinAvailable {
 		msg = msg + " 'minAvailable' should not be greater than total replicas in tasks;"
 	}
 
 	//duplicate job event policies
-	if duplicateInfo, ok := CheckPolicyDuplicate(job.Spec.Policies); ok {
+	if duplicateInfo, ok := CheckPolicyDuplicate(jobSpec.Policies); ok {
 		msg = msg + fmt.Sprintf(" duplicated job event policies: %s;", duplicateInfo)
 	}
 
 	if msg != "" {
 		reviewResponse.Allowed = false
+	}
+
+	//invalid job plugins
+	if len(jobSpec.Plugins) != 0 {
+		for name := range jobSpec.Plugins {
+			if _, found := plugins.GetPluginBuilder(name); !found {
+				msg = msg + fmt.Sprintf(" unable to find job plugin: %s", name)
+			}
+		}
 	}
 
 	return msg
