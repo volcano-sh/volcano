@@ -230,6 +230,44 @@ func (jc *jobCache) Run(stopCh <-chan struct{}) {
 	wait.Until(jc.processCleanupJob, 0, stopCh)
 }
 
+func (jc jobCache) TaskCompleted(jobKey, taskName string) bool {
+	jc.Lock()
+	defer jc.Unlock()
+
+	var taskReplicas, completed int32
+
+	jobInfo, found := jc.jobs[jobKey]
+	if !found {
+		return false
+	}
+
+	taskPods, found := jobInfo.Pods[taskName]
+
+	if !found {
+		return false
+	}
+
+	if jobInfo.Job == nil {
+		return false
+	}
+
+	for _, task := range jobInfo.Job.Spec.Tasks {
+		if task.Name == taskName {
+			taskReplicas = task.Replicas
+		}
+	}
+	if taskReplicas <= 0 {
+		return false
+	}
+
+	for _, pod := range taskPods {
+		if pod.Status.Phase == v1.PodSucceeded {
+			completed += 1
+		}
+	}
+	return completed >= taskReplicas
+}
+
 func (jc *jobCache) processCleanupJob() {
 	obj, shutdown := jc.deletedJobs.Get()
 	if shutdown {
