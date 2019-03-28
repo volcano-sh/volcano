@@ -32,6 +32,7 @@ import (
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
+	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
@@ -109,14 +110,13 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	job.Status = vkv1.JobStatus{
 		State: job.Status.State,
 
-		Pending:             pending,
-		Running:             running,
-		Succeeded:           succeeded,
-		Failed:              failed,
-		Terminating:         terminating,
-		Version:             job.Status.Version,
-		MinAvailable:        int32(job.Spec.MinAvailable),
-		ControlledResources: job.Status.ControlledResources,
+		Pending:      pending,
+		Running:      running,
+		Succeeded:    succeeded,
+		Failed:       failed,
+		Terminating:  terminating,
+		Version:      job.Status.Version,
+		MinAvailable: int32(job.Spec.MinAvailable),
 	}
 
 	if nextState != nil {
@@ -210,7 +210,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		}
 
 		for i := 0; i < int(ts.Replicas); i++ {
-			podName := fmt.Sprintf(TaskNameFmt, job.Name, name, i)
+			podName := fmt.Sprintf(vkjobhelpers.TaskNameFmt, job.Name, name, i)
 			if pod, found := pods[podName]; !found {
 				newPod := createJobPod(job, tc, i)
 				if err := cc.pluginOnPodCreate(job, newPod); err != nil {
@@ -308,13 +308,14 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	job.Status = vkv1.JobStatus{
 		State: job.Status.State,
 
-		Pending:      pending,
-		Running:      running,
-		Succeeded:    succeeded,
-		Failed:       failed,
-		Terminating:  terminating,
-		Version:      job.Status.Version,
-		MinAvailable: int32(job.Spec.MinAvailable),
+		Pending:             pending,
+		Running:             running,
+		Succeeded:           succeeded,
+		Failed:              failed,
+		Terminating:         terminating,
+		Version:             job.Status.Version,
+		MinAvailable:        int32(job.Spec.MinAvailable),
+		ControlledResources: job.Status.ControlledResources,
 	}
 
 	if nextState != nil {

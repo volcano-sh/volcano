@@ -23,6 +23,7 @@ export WEAVE_NET_IMAGE=${WEAVE_NET_IMAGE:-"weaveworks/weave-npc:2.5.1"}
 export WEAVE_KUBE_IMAGE=${WEAVE_KUBE_IMAGE:-"weaveworks/weave-kube:2.5.1"}
 export TEST_NGINX_IMAGE=${TEST_NGINX_IMAGE:-"nginx:1.14"}
 export TEST_BUSYBOX_IMAGE=${TEST_BUSYBOX_IMAGE:-"busybox:1.24"}
+export TEST_MPI_IMAGE=${TEST_MPI_IMAGE:-"openmpi-hello:3.28"}
 
 # check if kind installed
 function check-prerequisites {
@@ -88,6 +89,7 @@ function check-all-image {
   # used for volcano test
   check-image ${TEST_BUSYBOX_IMAGE}
   check-image ${TEST_NGINX_IMAGE}
+  check-image ${TEST_MPI_IMAGE}
 }
 check-all-image
 
@@ -102,8 +104,6 @@ function kind-up-cluster {
 }
 
 function install-volcano {
-  echo "Checking required image"
-
   echo "Preparing helm tiller service account"
   kubectl create serviceaccount --namespace kube-system tiller
   kubectl create clusterrolebinding tiller-cluster-rule --clusterrole=cluster-admin --serviceaccount=kube-system:tiller
@@ -129,8 +129,10 @@ function install-volcano {
   echo "Install volcano chart"
   helm install installer/chart/volcano --namespace kube-system --name integration --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG}
 
+  echo "Load required image"
   kind load docker-image ${TEST_BUSYBOX_IMAGE} ${CLUSTER_CONTEXT}
   kind load docker-image ${TEST_NGINX_IMAGE} ${CLUSTER_CONTEXT}
+  kind load docker-image ${TEST_MPI_IMAGE} ${CLUSTER_CONTEXT}
 }
 
 function uninstall-volcano {
