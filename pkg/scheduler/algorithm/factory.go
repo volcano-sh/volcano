@@ -17,7 +17,6 @@ limitations under the License.
 package algorithm
 
 import (
-
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 	// Import default actions/plugins.
 	_ "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions"
@@ -29,4 +28,3 @@ import (
 func init() {
 	framework.RegisterPluginBuilder("fairshare", fairshare.New)
 }
-
