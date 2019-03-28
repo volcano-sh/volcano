@@ -6,7 +6,6 @@ metadata:
     "helm.sh/hook": pre-install,pre-upgrade,post-delete
 webhooks:
   - clientConfig:
-      caBundle: ""
       service:
         name: {{ .Release.Name }}-admission-service
         namespace: {{ .Release.Namespace }}
@@ -33,7 +32,6 @@ metadata:
     "helm.sh/hook": pre-install,pre-upgrade,post-delete
 webhooks:
   - clientConfig:
-      caBundle: ""
       service:
         name: {{ .Release.Name }}-admission-service
         namespace: {{ .Release.Namespace }}
