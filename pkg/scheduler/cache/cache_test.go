@@ -257,3 +257,53 @@ func TestAddNode(t *testing.T) {
 		}
 	}
 }
+
+func TestGetOrCreateJob(t *testing.T) {
+	owner1 := buildOwnerReference("j1")
+	owner2 := buildOwnerReference("j2")
+
+	pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"),
+		[]metav1.OwnerReference{owner1}, make(map[string]string))
+	pi1 := api.NewTaskInfo(pod1)
+	pi1.Job = "j1" // The job name is set by cache.
+
+	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"),
+		[]metav1.OwnerReference{owner2}, make(map[string]string))
+	pod2.Spec.SchedulerName = "kube-batch"
+	pi2 := api.NewTaskInfo(pod2)
+
+	pod3 := buildPod("c3", "p3", "n1", v1.PodRunning, buildResourceList("1000m", "1G"),
+		[]metav1.OwnerReference{owner2}, make(map[string]string))
+	pi3 := api.NewTaskInfo(pod3)
+
+	cache := &SchedulerCache{
+		Nodes:         make(map[string]*api.NodeInfo),
+		Jobs:          make(map[api.JobID]*api.JobInfo),
+		schedulerName: "kube-batch",
+	}
+
+	tests := []struct {
+		task   *api.TaskInfo
+		gotJob bool // whether getOrCreateJob will return job for corresponding task
+	}{
+		{
+			task:   pi1,
+			gotJob: true,
+		},
+		{
+			task:   pi2,
+			gotJob: true,
+		},
+		{
+			task:   pi3,
+			gotJob: false,
+		},
+	}
+	for i, test := range tests {
+		result := cache.getOrCreateJob(test.task) != nil
+		if result != test.gotJob {
+			t.Errorf("case %d: \n expected %t, \n got %t \n",
+				i, test.gotJob, result)
+		}
+	}
+}
