@@ -295,6 +295,7 @@ type jobSpec struct {
 	tasks     []taskSpec
 	policies  []vkv1.LifecyclePolicy
 	min       int32
+	plugins   map[string][]string
 }
 
 func getNS(context *context, job *jobSpec) string {
@@ -330,6 +331,7 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 		Spec: vkv1.JobSpec{
 			Policies: jobSpec.policies,
 			Queue:    jobSpec.queue,
+			Plugins:  jobSpec.plugins,
 		},
 	}
 
