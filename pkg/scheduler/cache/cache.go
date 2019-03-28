@@ -74,6 +74,8 @@ type SchedulerCache struct {
 	kbclient   *kbver.Clientset
 
 	defaultQueue string
+	// schedulerName is the name for kube-batch scheduler
+	schedulerName string
 
 	podInformer      infov1.PodInformer
 	nodeInformer     infov1.NodeInformer
@@ -189,6 +191,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		kubeclient:      kubernetes.NewForConfigOrDie(config),
 		kbclient:        kbver.NewForConfigOrDie(config),
 		defaultQueue:    defaultQueue,
+		schedulerName:   schedulerName,
 	}
 
 	// Prepare event clients.
