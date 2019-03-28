@@ -106,10 +106,6 @@ func validateJobSpec(jobSpec v1alpha1.JobSpec, reviewResponse *v1beta1.Admission
 		msg = msg + fmt.Sprintf(" duplicated job event policies: %s;", duplicateInfo)
 	}
 
-	if msg != "" {
-		reviewResponse.Allowed = false
-	}
-
 	//invalid job plugins
 	if len(jobSpec.Plugins) != 0 {
 		for name := range jobSpec.Plugins {
@@ -117,6 +113,10 @@ func validateJobSpec(jobSpec v1alpha1.JobSpec, reviewResponse *v1beta1.Admission
 				msg = msg + fmt.Sprintf(" unable to find job plugin: %s", name)
 			}
 		}
+	}
+
+	if msg != "" {
+		reviewResponse.Allowed = false
 	}
 
 	return msg

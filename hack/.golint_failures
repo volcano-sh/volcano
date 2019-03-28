@@ -13,6 +13,7 @@ volcano.sh/volcano/pkg/controllers/job/cache
 volcano.sh/volcano/pkg/controllers/job/helpers
 volcano.sh/volcano/pkg/controllers/job/plugins
 volcano.sh/volcano/pkg/controllers/job/plugins/env
+volcano.sh/volcano/pkg/controllers/job/plugins/interface
 volcano.sh/volcano/pkg/controllers/job/plugins/ssh
 volcano.sh/volcano/pkg/controllers/job/state
 volcano.sh/volcano/pkg/scheduler/actions/allocate
