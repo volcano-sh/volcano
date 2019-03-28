@@ -36,6 +36,7 @@ func (cc *Controller) pluginOnPodCreate(job *vkv1.Job, pod *v1.Pod) error {
 			glog.Error(err)
 			return err
 		} else {
+			glog.Infof("Starting to execute plugin at <pluginOnPodCreate>: %s on job: <%s/%s>", name, job.Namespace, job.Name)
 			if err := pb(client, args).OnPodCreate(pod, job); err != nil {
 				glog.Errorf("Failed to process on pod create plugin %s, err %v.", name, err)
 				return err
@@ -56,6 +57,7 @@ func (cc *Controller) pluginOnJobAdd(job *vkv1.Job) error {
 			glog.Error(err)
 			return err
 		} else {
+			glog.Infof("Starting to execute plugin at <pluginOnJobAdd>: %s on job: <%s/%s>", name, job.Namespace, job.Name)
 			if err := pb(client, args).OnJobAdd(job); err != nil {
 				glog.Errorf("Failed to process on job add plugin %s, err %v.", name, err)
 				return err
@@ -74,6 +76,7 @@ func (cc *Controller) pluginOnJobDelete(job *vkv1.Job) error {
 			glog.Error(err)
 			return err
 		} else {
+			glog.Infof("Starting to execute plugin at <pluginOnJobDelete>: %s on job: <%s/%s>", name, job.Namespace, job.Name)
 			if err := pb(client, args).OnJobDelete(job); err != nil {
 				glog.Errorf("failed to process on job delete plugin %s, err %v.", name, err)
 				return err
