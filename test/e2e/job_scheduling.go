@@ -196,16 +196,16 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		job.name = "preemptee-qj"
+		job.name = "multipreemptee-qj"
 		job1 := createJob(context, job)
 		err := waitTasksReady(context, job1, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
-		job.name = "preemptor-qj1"
+		job.name = "multipreemptor-qj1"
 		job2 := createJob(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		job.name = "preemptor-qj2"
+		job.name = "multipreemptor-qj2"
 		job3 := createJob(context, job)
 		Expect(err).NotTo(HaveOccurred())
 

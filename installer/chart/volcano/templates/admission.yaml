@@ -2,14 +2,13 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ .Release.Name }}-admission
-  namespace: {{.Values.basic.namespace}}
-
+  namespace: {{ .Release.Namespace }}
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Release.Name }}-admission
-  namespace: {{.Values.basic.namespace}}
+  namespace: {{ .Release.Namespace }}
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
@@ -26,11 +25,11 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Release.Name }}-admission-role
-  namespace: {{.Values.basic.namespace}}
+  namespace: {{ .Release.Namespace }}
 subjects:
   - kind: ServiceAccount
     name: {{ .Release.Name }}-admission
-    namespace: {{.Values.basic.namespace}}
+    namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
   name: {{ .Release.Name }}-admission
@@ -44,7 +43,7 @@ metadata:
     app: admission
     admission: "true"
   name: {{ .Release.Name }}-admission
-  namespace: {{.Values.basic.namespace}}
+  namespace: {{ .Release.Namespace }}
 spec:
   replicas: 1
   selector:
@@ -63,28 +62,28 @@ spec:
         - name: {{ .Values.basic.image_pull_secret }}
       {{ end }}
       containers:
-      - args:
-        - --tls-cert-file=/admission.local.config/certificates/tls.crt
-        - --tls-private-key-file=/admission.local.config/certificates/tls.key
-        - --ca-cert-file=/admission.local.config/certificates/ca.crt
-        - --mutate-webhook-config-name={{ .Release.Name }}-mutate-job
-        - --validate-webhook-config-name={{ .Release.Name }}-validate-job
-        - --alsologtostderr
-        - --port=443
-        - -v=4
-        - 2>&1
-        image: {{.Values.basic.admission_image_name}}:{{.Values.basic.image_tag_version}}
-        imagePullPolicy: IfNotPresent
-        name: admission
-        volumeMounts:
-        - mountPath: /admission.local.config/certificates
-          name: admission-certs
-          readOnly: true
+        - args:
+            - --tls-cert-file=/admission.local.config/certificates/tls.crt
+            - --tls-private-key-file=/admission.local.config/certificates/tls.key
+            - --ca-cert-file=/admission.local.config/certificates/ca.crt
+            - --mutate-webhook-config-name={{ .Release.Name }}-mutate-job
+            - --validate-webhook-config-name={{ .Release.Name }}-validate-job
+            - --alsologtostderr
+            - --port=443
+            - -v=4
+            - 2>&1
+          image: {{.Values.basic.admission_image_name}}:{{.Values.basic.image_tag_version}}
+          imagePullPolicy: IfNotPresent
+          name: admission
+          volumeMounts:
+            - mountPath: /admission.local.config/certificates
+              name: admission-certs
+              readOnly: true
       volumes:
-      - name: admission-certs
-        secret:
-          defaultMode: 420
-          secretName: {{.Values.basic.admission_secret_name}}
+        - name: admission-certs
+          secret:
+            defaultMode: 420
+            secretName: {{.Values.basic.admission_secret_name}}
 
 ---
 apiVersion: v1
@@ -93,12 +92,12 @@ metadata:
   labels:
     test: admission
   name: {{ .Release.Name }}-admission-service
-  namespace: {{.Values.basic.namespace}}
+  namespace: {{ .Release.Namespace }}
 spec:
   ports:
-  - port: 443
-    protocol: TCP
-    targetPort: 443
+    - port: 443
+      protocol: TCP
+      targetPort: 443
   selector:
     admission: "true"
   sessionAffinity: None

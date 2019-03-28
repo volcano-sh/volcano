@@ -22,7 +22,6 @@ import (
 
 	"github.com/golang/glog"
 	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,7 +32,6 @@ import (
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
-	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
@@ -71,6 +69,8 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
 				if err != nil {
 					running++
+					glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
+						pod.Name, job.Name, err)
 					errs = append(errs, err)
 					continue
 				}
@@ -79,6 +79,8 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
 				if err != nil {
 					pending++
+					glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
+						pod.Name, job.Name, err)
 					errs = append(errs, err)
 					continue
 				}
@@ -89,6 +91,8 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
 				if err != nil {
 					failed++
+					glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
+						pod.Name, job.Name, err)
 					errs = append(errs, err)
 					continue
 				}
@@ -105,13 +109,14 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	job.Status = vkv1.JobStatus{
 		State: job.Status.State,
 
-		Pending:      pending,
-		Running:      running,
-		Succeeded:    succeeded,
-		Failed:       failed,
-		Terminating:  terminating,
-		Version:      job.Status.Version,
-		MinAvailable: int32(job.Spec.MinAvailable),
+		Pending:             pending,
+		Running:             running,
+		Succeeded:           succeeded,
+		Failed:              failed,
+		Terminating:         terminating,
+		Version:             job.Status.Version,
+		MinAvailable:        int32(job.Spec.MinAvailable),
+		ControlledResources: job.Status.ControlledResources,
 	}
 
 	if nextState != nil {
@@ -205,7 +210,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		}
 
 		for i := 0; i < int(ts.Replicas); i++ {
-			podName := fmt.Sprintf(vkjobhelpers.TaskNameFmt, job.Name, name, i)
+			podName := fmt.Sprintf(TaskNameFmt, job.Name, name, i)
 			if pod, found := pods[podName]; !found {
 				newPod := createJobPod(job, tc, i)
 				if err := cc.pluginOnPodCreate(job, newPod); err != nil {
@@ -303,14 +308,13 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	job.Status = vkv1.JobStatus{
 		State: job.Status.State,
 
-		Pending:             pending,
-		Running:             running,
-		Succeeded:           succeeded,
-		Failed:              failed,
-		Terminating:         terminating,
-		Version:             job.Status.Version,
-		MinAvailable:        int32(job.Spec.MinAvailable),
-		ControlledResources: job.Status.ControlledResources,
+		Pending:      pending,
+		Running:      running,
+		Succeeded:    succeeded,
+		Failed:       failed,
+		Terminating:  terminating,
+		Version:      job.Status.Version,
+		MinAvailable: int32(job.Spec.MinAvailable),
 	}
 
 	if nextState != nil {
@@ -470,6 +474,7 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 			},
 			Spec: kbv1.PodGroupSpec{
 				MinMember: job.Spec.MinAvailable,
+				Queue:     job.Spec.Queue,
 			},
 		}
 

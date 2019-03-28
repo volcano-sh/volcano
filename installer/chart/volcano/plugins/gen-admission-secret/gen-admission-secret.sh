@@ -9,7 +9,7 @@ This script uses k8s' CertificateSigningRequest API to a generate a
 certificate signed by k8s CA suitable for use with webhook
 services. This requires permissions to create and approve CSR. See
 https://kubernetes.io/docs/tasks/tls/managing-tls-in-a-cluster for
-detailed explantion and additional instructions.
+detailed explanation and additional instructions.
 The server key/cert k8s CA cert are stored in a k8s secret.
 usage: ${0} [OPTIONS]
 The following flags are required.
@@ -17,7 +17,7 @@ The following flags are required.
        --namespace        Namespace where webhook service and secret reside.
        --secret           Secret name for CA certificate and server certificate/key pair.
 EOF
-    exit 1
+    exit 0
 }
 
 while [[ $# -gt 0 ]]; do
@@ -41,7 +41,11 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-[ -z ${service} ] && service=volcano-admission-service
+if [ -z ${service} ]; then
+    echo "'--service' must be specified"
+    exit 1
+fi
+
 [ -z ${secret} ] && secret=volcano-admission-secret
 [ -z ${namespace} ] && namespace=default
 

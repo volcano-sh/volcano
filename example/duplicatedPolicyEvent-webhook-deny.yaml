@@ -6,20 +6,20 @@ spec:
   schedulerName: kube-batch
   minAvailable: 1
   tasks:
-  - replicas: 2
-    name: task-1
-    template:
-      metadata:
-        name: web-1
-      spec:
-        containers:
-        - image: nginx
-          imagePullPolicy: IfNotPresent
-          name: nginx
-          resources:
-            requests:
-              cpu: "1"
-        restartPolicy: OnFailure
+    - replicas: 2
+      name: task-1
+      template:
+        metadata:
+          name: web-1
+        spec:
+          containers:
+            - image: nginx
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "1"
+          restartPolicy: OnFailure
   policies:
     - event: PodFailed
       action: RestartJob
