@@ -34,3 +34,4 @@ ${CODEGEN_PKG}/generate-groups.sh "deepcopy,client,informer,lister" \
 
 # To use your own boilerplate text use:
 #   --go-header-file ${SCRIPT_ROOT}/hack/custom-boilerplate.go.txt
+

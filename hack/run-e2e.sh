@@ -20,7 +20,10 @@ sed -i "s|{{CA_BUNDLE}}|$CA_BUNDLE|g" hack/e2e-admission-config.yaml
 sed -i "s|{{host}}|${HOST}|g" hack/e2e-admission-config.yaml
 sed -i "s|{{hostPort}}|${HOSTPORT}|g" hack/e2e-admission-config.yaml
 
-kubectl create -f hack/e2e-admission-config.yaml
+kubectl apply -f hack/e2e-admission-config.yaml
+
+# Create default queue for tests
+kubectl apply -f installer/chart/volcano/templates/default-queue.yaml
 
 # start controller
 nohup ${VK_BIN}/vk-controllers --kubeconfig ${HOME}/.kube/config --master=${MASTER} --logtostderr --v ${LOG_LEVEL} > controller.log 2>&1 &

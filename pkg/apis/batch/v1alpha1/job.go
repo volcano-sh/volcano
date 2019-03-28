@@ -65,6 +65,9 @@ type JobSpec struct {
 	// Key is plugin name, value is the arguments of the plugin
 	// +optional
 	Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,7,opt,name=plugins"`
+
+	//Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
+	Queue string `json:"queue,omitempty" protobuf:"bytes,7,opt,name=queue"`
 }
 
 // VolumeSpec defines the specification of Volume, e.g. PVC
@@ -103,6 +106,8 @@ const (
 	OutOfSyncEvent Event = "OutOfSync"
 	// CommandIssuedEvent is triggered if a command is raised by user
 	CommandIssuedEvent Event = "CommandIssued"
+	// TaskCompletedEvent is triggered if the 'Replicas' amount of pods in one task are succeed
+	TaskCompletedEvent Event = "TaskCompleted"
 )
 
 // Action is the action that Job controller will take according to the event.
@@ -120,6 +125,8 @@ const (
 	// TerminateJobAction if this action is set, the whole job wil be terminated
 	// and can not be resumed: all Pod of Job will be evicted, and no Pod will be recreated.
 	TerminateJobAction Action = "TerminateJob"
+	//CompleteJobAction if this action is set, the unfinished pods will be killed, job completed.
+	CompleteJobAction Action = "CompleteJob"
 
 	// ResumeJobAction is the action to resume an aborted job.
 	ResumeJobAction Action = "ResumeJob"
@@ -176,6 +183,8 @@ const (
 	Running JobPhase = "Running"
 	// Restarting is the phase that the Job is restarted, waiting for pod releasing and recreating
 	Restarting JobPhase = "Restarting"
+	// Completing is the phase that required tasks of job are completed, job starts to clean up
+	Completing JobPhase = "Completing"
 	// Completed is the phase that all tasks of Job are completed
 	Completed JobPhase = "Completed"
 	// Terminating is the phase that the Job is terminated, waiting for releasing pods
@@ -229,7 +238,7 @@ type JobStatus struct {
 	Terminating int32 `json:"terminating,omitempty" protobuf:"bytes,7,opt,name=terminating"`
 
 	//Current version of job
-	Version int32
+	Version int32 `json:"version,omitempty" protobuf:"bytes,8,opt,name=version"`
 
 	// The resources that controlled by this job, e.g. Service, ConfigMap
 	ControlledResources map[string]string

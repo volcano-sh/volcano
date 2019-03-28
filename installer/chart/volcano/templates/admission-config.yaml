@@ -5,25 +5,25 @@ metadata:
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade,post-delete
 webhooks:
-- clientConfig:
-    caBundle: "{{ .Values.basic.ca_bundle }}"
-    service:
-      name: {{ .Release.Name }}-admission-service
-      namespace: {{.Values.basic.namespace}}
-      path: /jobs
-  failurePolicy: Ignore
-  name: validatejob.volcano.sh
-  namespaceSelector: {}
-  rules:
-  - apiGroups:
-    - "batch.volcano.sh"
-    apiVersions:
-    - "v1alpha1"
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - jobs
+  - clientConfig:
+      caBundle: "{{ .Values.basic.ca_bundle }}"
+      service:
+        name: {{ .Release.Name }}-admission-service
+        namespace: {{ .Release.Namespace }}
+        path: /jobs
+    failurePolicy: Ignore
+    name: validatejob.volcano.sh
+    namespaceSelector: {}
+    rules:
+      - apiGroups:
+          - "batch.volcano.sh"
+        apiVersions:
+          - "v1alpha1"
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - jobs
 ---
 apiVersion: admissionregistration.k8s.io/v1beta1
 kind: MutatingWebhookConfiguration
@@ -32,21 +32,21 @@ metadata:
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade,post-delete
 webhooks:
-- clientConfig:
-    caBundle: "{{ .Values.basic.ca_bundle }}"
-    service:
-      name: {{ .Release.Name }}-admission-service
-      namespace: {{.Values.basic.namespace}}
-      path: /mutating-jobs
-  failurePolicy: Ignore
-  name: mutatejob.volcano.sh
-  namespaceSelector: {}
-  rules:
-  - apiGroups:
-    - "batch.volcano.sh"
-    apiVersions:
-    - "v1alpha1"
-    operations:
-    - CREATE
-    resources:
-    - jobs
+  - clientConfig:
+      caBundle: "{{ .Values.basic.ca_bundle }}"
+      service:
+        name: {{ .Release.Name }}-admission-service
+        namespace: {{ .Release.Namespace }}
+        path: /mutating-jobs
+    failurePolicy: Ignore
+    name: mutatejob.volcano.sh
+    namespaceSelector: {}
+    rules:
+      - apiGroups:
+          - "batch.volcano.sh"
+        apiVersions:
+          - "v1alpha1"
+        operations:
+          - CREATE
+        resources:
+          - jobs
