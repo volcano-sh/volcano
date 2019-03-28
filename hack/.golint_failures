@@ -10,6 +10,10 @@ volcano.sh/volcano/pkg/cli/job
 volcano.sh/volcano/pkg/controllers/job
 volcano.sh/volcano/pkg/controllers/job/apis
 volcano.sh/volcano/pkg/controllers/job/cache
+volcano.sh/volcano/pkg/controllers/job/helpers
+volcano.sh/volcano/pkg/controllers/job/plugins
+volcano.sh/volcano/pkg/controllers/job/plugins/env
+volcano.sh/volcano/pkg/controllers/job/plugins/ssh
 volcano.sh/volcano/pkg/controllers/job/state
 volcano.sh/volcano/pkg/scheduler/actions/allocate
 volcano.sh/volcano/pkg/scheduler/actions/backfill
