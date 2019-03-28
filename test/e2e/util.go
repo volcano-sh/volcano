@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -105,7 +104,6 @@ type context struct {
 }
 
 func initTestContext() *context {
-	enableNamespaceAsQueue, _ := strconv.ParseBool(os.Getenv("ENABLE_NAMESPACES_AS_QUEUE"))
 	cxt := &context{
 		namespace: "test",
 		queues:    []string{"q1", "q2"},
@@ -130,7 +128,9 @@ func initTestContext() *context {
 	Expect(err).NotTo(HaveOccurred(),
 		"k8s cluster is required to have one ready worker node at least.")
 
-	cxt.enableNamespaceAsQueue = enableNamespaceAsQueue
+	//NOTE(tommylikehu):NamespaceAsQueue feature was removed from kube-batch,
+	//we will eventually remove this logic in test as well.
+	cxt.enableNamespaceAsQueue = false
 
 	_, err = cxt.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -221,11 +221,11 @@ func cleanupTestContext(cxt *context) {
 	Expect(err).NotTo(HaveOccurred())
 
 	// Wait for namespace deleted.
-	err = wait.Poll(100*time.Millisecond, oneMinute, namespaceNotExist(cxt))
+	err = wait.Poll(100*time.Millisecond, twoMinute, namespaceNotExist(cxt))
 	Expect(err).NotTo(HaveOccurred())
 
 	// Wait for queues deleted
-	err = wait.Poll(100*time.Millisecond, oneMinute, queueNotExist(cxt))
+	err = wait.Poll(100*time.Millisecond, twoMinute, queueNotExist(cxt))
 	Expect(err).NotTo(HaveOccurred())
 }
 
@@ -252,19 +252,6 @@ func createQueues(cxt *context) {
 
 		Expect(err).NotTo(HaveOccurred())
 	}
-
-	if !cxt.enableNamespaceAsQueue {
-		_, err := cxt.kbclient.SchedulingV1alpha1().Queues().Create(&kbv1.Queue{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: cxt.namespace,
-			},
-			Spec: kbv1.QueueSpec{
-				Weight: 1,
-			},
-		})
-
-		Expect(err).NotTo(HaveOccurred())
-	}
 }
 
 func deleteQueues(cxt *context) {
@@ -282,14 +269,6 @@ func deleteQueues(cxt *context) {
 				PropagationPolicy: &foreground,
 			})
 		}
-
-		Expect(err).NotTo(HaveOccurred())
-	}
-
-	if !cxt.enableNamespaceAsQueue {
-		err := cxt.kbclient.SchedulingV1alpha1().Queues().Delete(cxt.namespace, &metav1.DeleteOptions{
-			PropagationPolicy: &foreground,
-		})
 
 		Expect(err).NotTo(HaveOccurred())
 	}
@@ -315,6 +294,7 @@ type jobSpec struct {
 	queue     string
 	tasks     []taskSpec
 	policies  []vkv1.LifecyclePolicy
+	min       int32
 }
 
 func getNS(context *context, job *jobSpec) string {
@@ -332,6 +312,14 @@ func getNS(context *context, job *jobSpec) string {
 }
 
 func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
+
+	job, err := createJobInner(context, jobSpec)
+	Expect(err).NotTo(HaveOccurred())
+
+	return job
+}
+
+func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 	ns := getNS(context, jobSpec)
 
 	job := &vkv1.Job{
@@ -341,6 +329,7 @@ func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
 		},
 		Spec: vkv1.JobSpec{
 			Policies: jobSpec.policies,
+			Queue:    jobSpec.queue,
 		},
 	}
 
@@ -387,12 +376,13 @@ func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
 		min += task.min
 	}
 
-	job.Spec.MinAvailable = min
+	if jobSpec.min > 0 {
+		job.Spec.MinAvailable = jobSpec.min
+	} else {
+		job.Spec.MinAvailable = min
+	}
 
-	job, err := context.vkclient.BatchV1alpha1().Jobs(job.Namespace).Create(job)
-	Expect(err).NotTo(HaveOccurred())
-
-	return job
+	return context.vkclient.BatchV1alpha1().Jobs(job.Namespace).Create(job)
 }
 
 func taskPhase(ctx *context, job *vkv1.Job, phase []v1.PodPhase, taskNum int) wait.ConditionFunc {
@@ -469,6 +459,16 @@ func jobEvicted(ctx *context, job *vkv1.Job, time time.Time) wait.ConditionFunc 
 func waitJobPhases(ctx *context, job *vkv1.Job, phases []vkv1.JobPhase) error {
 	for _, phase := range phases {
 		err := waitJobPhase(ctx, job, phase)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func waitJobStates(ctx *context, job *vkv1.Job, phases []vkv1.JobPhase) error {
+	for _, phase := range phases {
+		err := wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, phase))
 		if err != nil {
 			return err
 		}
@@ -559,6 +559,11 @@ func createContainers(img, command string, req v1.ResourceList, hostport int32) 
 		Resources: v1.ResourceRequirements{
 			Requests: req,
 		},
+	}
+	if strings.Index(img, ":") < 0 {
+		container.Name = img
+	} else {
+		container.Name = img[:strings.Index(img, ":")]
 	}
 
 	if len(command) > 0 {

@@ -429,4 +429,44 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
+	It("job level LifecyclePolicy, Event: TaskCompleted; Action: CompletedJob", func() {
+		By("init test context")
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		By("create job")
+		job := createJob(context, &jobSpec{
+			name: "any-restart-job",
+			policies: []vkv1.LifecyclePolicy{
+				{
+					Action: vkv1.CompleteJobAction,
+					Event:  vkv1.TaskCompletedEvent,
+				},
+			},
+			tasks: []taskSpec{
+				{
+					name: "completed-task",
+					img:  defaultBusyBoxImage,
+					min:  2,
+					rep:  2,
+					//Sleep 5 seconds ensure job in running state
+					command: "sleep 5",
+				},
+				{
+					name: "terminating-task",
+					img:  defaultNginxImage,
+					min:  2,
+					rep:  2,
+				},
+			},
+		})
+
+		By("job scheduled, then task 'completed_task' finished and job finally complete")
+		// job phase: pending -> running -> completing -> completed
+		err := waitJobStates(context, job, []vkv1.JobPhase{
+			vkv1.Pending, vkv1.Running, vkv1.Completing, vkv1.Completed})
+		Expect(err).NotTo(HaveOccurred())
+
+	})
+
 })

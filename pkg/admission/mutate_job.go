@@ -72,7 +72,6 @@ func MutateJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
 func createPatch(job v1alpha1.Job) ([]byte, error) {
 	var patch []patchOperation
-	patch = append(patch, mutateJobVersion(job.Status, "/status")...)
 	patch = append(patch, mutateSpec(job.Spec.Tasks, "/spec/tasks")...)
 	patch = append(patch, mutateMetadata(job.ObjectMeta, "/metadata")...)
 
@@ -93,16 +92,6 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string) (patch []patchOperat
 		Value: tasks,
 	})
 
-	return patch
-}
-
-func mutateJobVersion(jobStatus v1alpha1.JobStatus, basePath string) (patch []patchOperation) {
-	jobStatus.Version = 1
-	patch = append(patch, patchOperation{
-		Op:    "replace",
-		Path:  basePath,
-		Value: jobStatus,
-	})
 	return patch
 }
 
