@@ -26,7 +26,7 @@ generate-code: init
 
 rel_bins:
 	go get github.com/mitchellh/gox
-	gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} \
+	CGO_ENABLED=0 gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} \
 	-output=${BIN_DIR}/{{.OS}}/{{.Arch}}/kube-batch ./cmd/kube-batch
 
 images: rel_bins

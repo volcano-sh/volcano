@@ -1,4 +1,4 @@
-From ubuntu:18.04
+From alpine:3.9
 
 ADD kube-batch /usr/local/bin
 
