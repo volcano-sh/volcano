@@ -32,7 +32,7 @@ func (cc *Controller) pluginOnPodCreate(job *vkv1.Job, pod *v1.Pod) error {
 	client := vkinterface.PluginClientset{KubeClients: cc.kubeClients}
 	for name, args := range job.Spec.Plugins {
 		if pb, found := vkplugin.GetPluginBuilder(name); !found {
-			err := fmt.Errorf("Failed to get plugin %s.", name)
+			err := fmt.Errorf("failed to get plugin %s", name)
 			glog.Error(err)
 			return err
 		} else {
