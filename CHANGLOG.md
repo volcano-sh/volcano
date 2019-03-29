@@ -1,3 +1,32 @@
+## v0.4.2
+
+### Notes:
+ * Added Balanced Resource Priority
+ * Support Plugin Arguments
+ * Support Weight for Node order plugin
+
+### Issues:
+		
+ * [#636](https://github.com/kubernetes-sigs/kube-batch/pull/636)	add balanced resource priority	([@DeliangFan](https://github.com/DeliangFan))
+ * [#638](https://github.com/kubernetes-sigs/kube-batch/pull/638)	Take init containers into account when getting pod resource request	([@hex108](https://github.com/hex108))
+ * [#639](https://github.com/kubernetes-sigs/kube-batch/pull/639)	Support Plugin Arguments	([@thandayuthapani](https://github.com/thandayuthapani))
+ * [#640](https://github.com/kubernetes-sigs/kube-batch/pull/640)	Support Weight for NodeOrder Plugin	([@thandayuthapani](https://github.com/thandayuthapani))
+ * [#642](https://github.com/kubernetes-sigs/kube-batch/pull/642)	Add event when task is scheduled	([@Rajadeepan](https://github.com/Rajadeepan))
+ * [#643](https://github.com/kubernetes-sigs/kube-batch/pull/643)	Return err in Allocate if any error occurs	([@hex108](https://github.com/hex108))
+ * [#644](https://github.com/kubernetes-sigs/kube-batch/pull/644)	Fix Typos	([@TommyLike](https://github.com/TommyLike))
+ * [#645](https://github.com/kubernetes-sigs/kube-batch/pull/645)	Order task by CreationTimestamp first, then by UID	([@hex108](https://github.com/hex108))
+ * [#647](https://github.com/kubernetes-sigs/kube-batch/pull/647)	In allocate, skip adding Job if its queue is not found	([@hex108](https://github.com/hex108))
+ * [#649](https://github.com/kubernetes-sigs/kube-batch/pull/649)	Preempt lowest priority task first	([@hex108](https://github.com/hex108))
+ * [#651](https://github.com/kubernetes-sigs/kube-batch/pull/651)	Return err in functions of session.go if any error occurs	([@hex108](https://github.com/hex108))
+ * [#652](https://github.com/kubernetes-sigs/kube-batch/pull/652)	Change run option SchedulePeriod's type to make it clear	([@hex108](https://github.com/hex108))
+ * [#655](https://github.com/kubernetes-sigs/kube-batch/pull/655)	Do graceful eviction using default policy	([@hex108](https://github.com/hex108))
+ * [#658](https://github.com/kubernetes-sigs/kube-batch/pull/658)	Address helm install error in tutorial.md	([@hex108](https://github.com/hex108))
+ * [#660](https://github.com/kubernetes-sigs/kube-batch/pull/660)	Fix sub exception in reclaim and preempt	([@TommyLike](https://github.com/TommyLike))
+ * [#666](https://github.com/kubernetes-sigs/kube-batch/pull/666)	Fix wrong caculation for deserved in proportion plugin	([@zionwu](https://github.com/zionwu))
+ * [#671](https://github.com/kubernetes-sigs/kube-batch/pull/671)	Change base image to alphine to reduce image size	([@hex108](https://github.com/hex108))
+ * [#673](https://github.com/kubernetes-sigs/kube-batch/pull/673)	Do not create PodGroup and Job for task whose scheduler is not kube-batch	([@hex108](https://github.com/hex108))
+
+
 ## v0.4.1
 
 ### Notes:
