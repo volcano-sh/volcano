@@ -11,10 +11,10 @@ To run `kube-batch`, a Kubernetes cluster must start up. Here is a document on [
 
 ### (1) kube-batch image
 
-An official kube-batch image is provided and you can download it from [DockerHub](https://hub.docker.com/r/kubesigs/kube-batch/). The version is `v0.4.1` now.
+An official kube-batch image is provided and you can download it from [DockerHub](https://hub.docker.com/r/kubesigs/kube-batch/). The version is `v0.4.2` now.
 
 ```bash
-# docker pull kubesigs/kube-batch:v0.4.1
+# docker pull kubesigs/kube-batch:v0.4.2
 ```
 
 ### (2) Create a Kubernetes Deployment for kube-batch
