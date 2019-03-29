@@ -59,6 +59,7 @@ const (
 	masterPriority      = "master-pri"
 	defaultNginxImage   = "nginx:1.14"
 	defaultBusyBoxImage = "busybox:1.24"
+	defaultMPIImage     = "openmpi-hello:3.28"
 )
 
 func cpuResource(request string) v1.ResourceList {
@@ -279,6 +280,7 @@ type taskSpec struct {
 	min, rep              int32
 	img                   string
 	command               string
+	workingDir            string
 	hostport              int32
 	req                   v1.ResourceList
 	affinity              *v1.Affinity
@@ -295,6 +297,7 @@ type jobSpec struct {
 	tasks     []taskSpec
 	policies  []vkv1.LifecyclePolicy
 	min       int32
+	plugins   map[string][]string
 }
 
 func getNS(context *context, job *jobSpec) string {
@@ -330,6 +333,7 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 		Spec: vkv1.JobSpec{
 			Policies: jobSpec.policies,
 			Queue:    jobSpec.queue,
+			Plugins:  jobSpec.plugins,
 		},
 	}
 
@@ -357,7 +361,7 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 				Spec: v1.PodSpec{
 					SchedulerName: "kube-batch",
 					RestartPolicy: restartPolicy,
-					Containers:    createContainers(task.img, task.command, task.req, task.hostport),
+					Containers:    createContainers(task.img, task.command, task.workingDir, task.req, task.hostport),
 					Affinity:      task.affinity,
 				},
 			},
@@ -551,7 +555,7 @@ func waitJobUnschedulable(ctx *context, job *vkv1.Job) error {
 	return wait.Poll(10*time.Second, oneMinute, jobUnschedulable(ctx, job, now))
 }
 
-func createContainers(img, command string, req v1.ResourceList, hostport int32) []v1.Container {
+func createContainers(img, command, workingDir string, req v1.ResourceList, hostport int32) []v1.Container {
 	container := v1.Container{
 		Image:           img,
 		Name:            img[:strings.Index(img, ":")],
@@ -578,6 +582,10 @@ func createContainers(img, command string, req v1.ResourceList, hostport int32) 
 				HostPort:      hostport,
 			},
 		}
+	}
+
+	if len(workingDir) > 0 {
+		container.WorkingDir = workingDir
 	}
 
 	return []v1.Container{container}
