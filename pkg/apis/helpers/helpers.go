@@ -65,27 +65,36 @@ func ControlledBy(obj interface{}, gvk schema.GroupVersionKind) bool {
 
 func CreateConfigMapIfNotExist(job *vkv1.Job, kubeClients *kubernetes.Clientset, data map[string]string, cmName string) error {
 	// If ConfigMap does not exist, create one for Job.
-	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{}); err != nil {
+	cmOld, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{})
+	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			glog.V(3).Infof("Failed to get Configmap for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
 			return err
 		}
-	}
 
-	cm := &v1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: job.Namespace,
-			Name:      cmName,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(job, JobKind),
+		cm := &v1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: job.Namespace,
+				Name:      cmName,
+				OwnerReferences: []metav1.OwnerReference{
+					*metav1.NewControllerRef(job, JobKind),
+				},
 			},
-		},
-		Data: data,
+			Data: data,
+		}
+
+		if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Create(cm); err != nil {
+			glog.V(3).Infof("Failed to create ConfigMap for Job <%s/%s>: %v",
+				job.Namespace, job.Name, err)
+			return err
+		}
+		return nil
 	}
 
-	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Create(cm); err != nil {
-		glog.V(3).Infof("Failed to create ConfigMap for Job <%s/%s>: %v",
+	cmOld.Data = data
+	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Update(cmOld); err != nil {
+		glog.V(3).Infof("Failed to update ConfigMap for Job <%s/%s>: %v",
 			job.Namespace, job.Name, err)
 		return err
 	}
