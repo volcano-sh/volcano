@@ -63,6 +63,11 @@ type JobSpec struct {
 
 	//Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
 	Queue string `json:"queue,omitempty" protobuf:"bytes,7,opt,name=queue"`
+
+	// Specifies the plugin of job
+	// Key is plugin name, value is the arguments of the plugin
+	// +optional
+	Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,7,opt,name=plugins"`
 }
 
 // VolumeSpec defines the specification of Volume, e.g. PVC
@@ -79,6 +84,7 @@ type JobEvent string
 
 const (
 	CommandIssued JobEvent = "CommandIssued"
+	PluginError   JobEvent = "PluginError"
 )
 
 // Event represent the phase of Job, e.g. pod-failed.
@@ -232,6 +238,8 @@ type JobStatus struct {
 	Terminating int32 `json:"terminating,omitempty" protobuf:"bytes,7,opt,name=terminating"`
 	//Current version of job
 	Version int32 `json:"version,omitempty" protobuf:"bytes,8,opt,name=version"`
+	// The resources that controlled by this job, e.g. Service, ConfigMap
+	ControlledResources map[string]string
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

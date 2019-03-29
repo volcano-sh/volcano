@@ -26,11 +26,14 @@ import (
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 
 	admissioncontroller "volcano.sh/volcano/pkg/admission"
+	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
+	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
@@ -101,6 +104,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	}
 
 	if len(errs) != 0 {
+		glog.Errorf("failed to kill pods for job %s/%s, with err %+v", job.Namespace, job.Name, errs)
 		return fmt.Errorf("failed to kill %d pods of %d", len(errs), total)
 	}
 
@@ -149,6 +153,12 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		}
 	}
 
+	if err := cc.pluginOnJobDelete(job); err != nil {
+		cc.recorder.Event(job, v1.EventTypeWarning, string(vkbatchv1.PluginError),
+			fmt.Sprintf("Plugin failed when been executed at job delete, err: %v", err))
+		return err
+	}
+
 	// NOTE(k82cn): DO NOT delete input/output until job is deleted.
 
 	return nil
@@ -179,6 +189,12 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		return err
 	}
 
+	if err := cc.pluginOnJobAdd(job); err != nil {
+		cc.recorder.Event(job, v1.EventTypeWarning, string(vkbatchv1.PluginError),
+			fmt.Sprintf("Plugin failed when been executed at job add, err: %v", err))
+		return err
+	}
+
 	var running, pending, terminating, succeeded, failed int32
 
 	var podToCreate []*v1.Pod
@@ -197,9 +213,12 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		}
 
 		for i := 0; i < int(ts.Replicas); i++ {
-			podName := fmt.Sprintf(TaskNameFmt, job.Name, name, i)
+			podName := fmt.Sprintf(vkjobhelpers.TaskNameFmt, job.Name, name, i)
 			if pod, found := pods[podName]; !found {
 				newPod := createJobPod(job, tc, i)
+				if err := cc.pluginOnPodCreate(job, newPod); err != nil {
+					return err
+				}
 				podToCreate = append(podToCreate, newPod)
 			} else {
 				if pod.DeletionTimestamp != nil {
@@ -292,13 +311,14 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	job.Status = vkv1.JobStatus{
 		State: job.Status.State,
 
-		Pending:      pending,
-		Running:      running,
-		Succeeded:    succeeded,
-		Failed:       failed,
-		Terminating:  terminating,
-		Version:      job.Status.Version,
-		MinAvailable: int32(job.Spec.MinAvailable),
+		Pending:             pending,
+		Running:             running,
+		Succeeded:           succeeded,
+		Failed:              failed,
+		Terminating:         terminating,
+		Version:             job.Status.Version,
+		MinAvailable:        int32(job.Spec.MinAvailable),
+		ControlledResources: job.Status.ControlledResources,
 	}
 
 	if nextState != nil {
@@ -350,6 +370,14 @@ func (cc *Controller) createServiceIfNotExist(job *vkv1.Job) error {
 				Selector: map[string]string{
 					vkv1.JobNameKey:      job.Name,
 					vkv1.JobNamespaceKey: job.Namespace,
+				},
+				Ports: []v1.ServicePort{
+					{
+						Name:       "placeholder-volcano",
+						Port:       1,
+						Protocol:   v1.ProtocolTCP,
+						TargetPort: intstr.FromInt(1),
+					},
 				},
 			},
 		}

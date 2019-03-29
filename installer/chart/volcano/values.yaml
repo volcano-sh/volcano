@@ -4,3 +4,4 @@ basic:
   scheduler_image_name: "volcano-scheduler"
   admission_image_name: "volcano-admission"
   admission_secret_name: "volcano-admission-secret"
+  image_pull_secret: ""
