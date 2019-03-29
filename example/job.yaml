@@ -20,6 +20,7 @@ spec:
           storage: 1Gi
   tasks:
   - replicas: 6
+    name: "default-nginx"
     template:
       metadata:
         name: web
