@@ -59,7 +59,8 @@ const (
 	masterPriority      = "master-pri"
 	defaultNginxImage   = "nginx:1.14"
 	defaultBusyBoxImage = "busybox:1.24"
-	defaultMPIImage     = "tommylike/volcano-example-mpi:0.0.1"
+	//TODO: Use volcano repo instead in the future
+	defaultMPIImage = "tommylike/volcano-example-mpi:0.0.1"
 )
 
 func cpuResource(request string) v1.ResourceList {
@@ -556,6 +557,7 @@ func waitJobUnschedulable(ctx *context, job *vkv1.Job) error {
 }
 
 func createContainers(img, command, workingDir string, req v1.ResourceList, hostport int32) []v1.Container {
+	var imageRepo []string
 	container := v1.Container{
 		Image:           img,
 		ImagePullPolicy: v1.PullIfNotPresent,
@@ -564,10 +566,11 @@ func createContainers(img, command, workingDir string, req v1.ResourceList, host
 		},
 	}
 	if strings.Index(img, ":") < 0 {
-		container.Name = img
+		imageRepo = strings.Split(img, "/")
 	} else {
-		container.Name = img[:strings.Index(img, ":")]
+		imageRepo = strings.Split(img[:strings.Index(img, ":")], "/")
 	}
+	container.Name = imageRepo[len(imageRepo)-1]
 
 	if len(command) > 0 {
 		container.Command = []string{"/bin/sh"}
