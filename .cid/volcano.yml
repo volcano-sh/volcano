@@ -19,7 +19,7 @@ machine:
 
 #  定义构建的命令行，通过定义的构建命令行可以构建出artifacts中定义的构建产物。
 scripts:
-- make package -e TAG=${TAG}  #  请修改成业务使用的构建脚本文件相对路径
+- set -ex; export GOPATH=`pwd`; mkdir -p volcano; find ./* -maxdepth 0 ! -name "volcano" -exec mv {} volcano/ \; ; mkdir -p src/volcano.sh/; mv volcano src/volcano.sh/; cd src/volcano.sh/volcano; make package -e TAG=${TAG}  #  请修改成业务使用的构建脚本文件相对路径
 
 #  定义构建产物，在编译完成后根据此配置项上传构建产物。
 artifacts:
