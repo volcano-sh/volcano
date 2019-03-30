@@ -1,6 +1,10 @@
 BIN_DIR=_output/bin
+CHART_DIR=_output/chart
+IMAGE_DIR=_output/image
 IMAGE=volcano
-TAG = 0.1
+TAG=0.1
+VERSION?=${TAG}
+CHART_VERSION?=${VERSION}
 
 .EXPORT_ALL_VARIABLES:
 
@@ -8,6 +12,8 @@ all: controllers scheduler cli admission
 
 init:
 	mkdir -p ${BIN_DIR}
+	mkdir -p ${CHART_DIR}
+	mkdir -p ${IMAGE_DIR}
 
 controllers:
 	go build -o ${BIN_DIR}/vk-controllers ./cmd/controllers
@@ -53,3 +59,13 @@ verify: generate-code
 	hack/verify-gofmt.sh
 	hack/verify-golint.sh
 	hack/verify-gencode.sh
+
+chart: init
+	helm package installer/chart/volcano --version=${CHART_VERSION} --destination=${CHART_DIR}
+
+package: docker chart cli
+	for name in controllers scheduler admission; do \
+		docker save $(IMAGE)-$$name:$(TAG) > ${IMAGE_DIR}/$(IMAGE)-$$name.$(TAG).tar; \
+	done
+	gzip ${IMAGE_DIR}/*.tar
+	tar -zcvf _output/Volcano-package-${VERSION}.tgz -C _output/ ./bin/vkctl ./chart ./image
