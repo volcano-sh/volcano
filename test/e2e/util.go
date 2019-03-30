@@ -59,6 +59,8 @@ const (
 	masterPriority      = "master-pri"
 	defaultNginxImage   = "nginx:1.14"
 	defaultBusyBoxImage = "busybox:1.24"
+	//TODO: Use volcano repo instead in the future
+	defaultMPIImage = "tommylike/volcano-example-mpi:0.0.1"
 )
 
 func cpuResource(request string) v1.ResourceList {
@@ -279,6 +281,7 @@ type taskSpec struct {
 	min, rep              int32
 	img                   string
 	command               string
+	workingDir            string
 	hostport              int32
 	req                   v1.ResourceList
 	affinity              *v1.Affinity
@@ -359,7 +362,7 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 				Spec: v1.PodSpec{
 					SchedulerName: "kube-batch",
 					RestartPolicy: restartPolicy,
-					Containers:    createContainers(task.img, task.command, task.req, task.hostport),
+					Containers:    createContainers(task.img, task.command, task.workingDir, task.req, task.hostport),
 					Affinity:      task.affinity,
 				},
 			},
@@ -553,7 +556,8 @@ func waitJobUnschedulable(ctx *context, job *vkv1.Job) error {
 	return wait.Poll(10*time.Second, oneMinute, jobUnschedulable(ctx, job, now))
 }
 
-func createContainers(img, command string, req v1.ResourceList, hostport int32) []v1.Container {
+func createContainers(img, command, workingDir string, req v1.ResourceList, hostport int32) []v1.Container {
+	var imageRepo []string
 	container := v1.Container{
 		Image:           img,
 		ImagePullPolicy: v1.PullIfNotPresent,
@@ -562,10 +566,11 @@ func createContainers(img, command string, req v1.ResourceList, hostport int32) 
 		},
 	}
 	if strings.Index(img, ":") < 0 {
-		container.Name = img
+		imageRepo = strings.Split(img, "/")
 	} else {
-		container.Name = img[:strings.Index(img, ":")]
+		imageRepo = strings.Split(img[:strings.Index(img, ":")], "/")
 	}
+	container.Name = imageRepo[len(imageRepo)-1]
 
 	if len(command) > 0 {
 		container.Command = []string{"/bin/sh"}
@@ -579,6 +584,10 @@ func createContainers(img, command string, req v1.ResourceList, hostport int32) 
 				HostPort:      hostport,
 			},
 		}
+	}
+
+	if len(workingDir) > 0 {
+		container.WorkingDir = workingDir
 	}
 
 	return []v1.Container{container}

@@ -239,7 +239,7 @@ type JobStatus struct {
 	//Current version of job
 	Version int32 `json:"version,omitempty" protobuf:"bytes,8,opt,name=version"`
 	// The resources that controlled by this job, e.g. Service, ConfigMap
-	ControlledResources map[string]string
+	ControlledResources map[string]string `json:"controlledResources,omitempty" protobuf:"bytes,8,opt,name=controlledResources"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
