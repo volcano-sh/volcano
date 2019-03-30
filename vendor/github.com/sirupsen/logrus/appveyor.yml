@@ -12,4 +12,3 @@ install:
 build_script:  
   - go get -t
   - go test
-
