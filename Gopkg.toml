@@ -88,6 +88,10 @@ required = [
   name = "k8s.io/code-generator"
   version = "kubernetes-1.13.2"
 
+[[constraint]]
+  name = "golang.org/x/crypto"  
+  branch = "release-branch.go1.12"
+
 [prune]
   go-tests = true
   unused-packages = true
