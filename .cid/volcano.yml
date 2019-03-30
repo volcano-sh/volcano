@@ -1,0 +1,27 @@
+version: 1.0
+name: volcano
+#  开发语言
+language:
+  - go
+
+#  构建工具
+dependencies:
+  base:
+    godk: 1.10.3
+    helm: 2.6.1
+
+
+#  编译机类型
+machine:
+  standard:
+    euler:
+    - default
+
+#  定义构建的命令行，通过定义的构建命令行可以构建出artifacts中定义的构建产物。
+scripts:
+- make package -e TAG=${TAG}  #  请修改成业务使用的构建脚本文件相对路径
+
+#  定义构建产物，在编译完成后根据此配置项上传构建产物。
+artifacts:
+  cdk:
+  - _output/Volcano-package-.*.tgz
