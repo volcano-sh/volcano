@@ -27,7 +27,8 @@ import (
 	"k8s.io/api/admission/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/controllers/job/plugins"
 )
 
 func AdmitJobOrCronJob(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
@@ -138,6 +139,15 @@ func validateJobSpec(jobSpec v1alpha1.JobSpec, reviewResponse *v1beta1.Admission
 	//duplicate job event policies
 	if duplicateInfo, ok := CheckPolicyDuplicate(jobSpec.Policies); ok {
 		msg = msg + fmt.Sprintf(" duplicated job event policies: %s;", duplicateInfo)
+	}
+
+	//invalid job plugins
+	if len(jobSpec.Plugins) != 0 {
+		for name := range jobSpec.Plugins {
+			if _, found := plugins.GetPluginBuilder(name); !found {
+				msg = msg + fmt.Sprintf(" unable to find job plugin: %s", name)
+			}
+		}
 	}
 
 	if msg != "" {
