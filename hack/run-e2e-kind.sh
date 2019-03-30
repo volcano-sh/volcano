@@ -5,8 +5,7 @@ export VK_BIN=${VK_ROOT}/_output/bin
 export LOG_LEVEL=3
 export SHOW_VOLCANO_LOGS=${SHOW_VOLCANO_LOGS:-1}
 export CLEANUP_CLUSTER=${CLEANUP_CLUSTER:-1}
-#TODO: Use volcano repo instead in the future
-export MPI_EXAMPLE_IMAGE=${MPI_EXAMPLE_IMAGE:-"tommylike/volcano-example-mpi:0.0.1"}
+export MPI_EXAMPLE_IMAGE=${MPI_EXAMPLE_IMAGE:-"volcanosh/example-mpi:0.0.1"}
 
 if [[ "${CLUSTER_NAME}xxx" != "xxx" ]];then
   export CLUSTER_CONTEXT="--name ${CLUSTER_NAME}"

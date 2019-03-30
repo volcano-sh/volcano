@@ -59,8 +59,7 @@ const (
 	masterPriority      = "master-pri"
 	defaultNginxImage   = "nginx:1.14"
 	defaultBusyBoxImage = "busybox:1.24"
-	//TODO: Use volcano repo instead in the future
-	defaultMPIImage = "tommylike/volcano-example-mpi:0.0.1"
+	defaultMPIImage     = "volcanosh/example-mpi:0.0.1"
 )
 
 func cpuResource(request string) v1.ResourceList {
