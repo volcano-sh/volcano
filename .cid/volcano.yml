@@ -17,6 +17,9 @@ machine:
     euler:
     - default
 
+variables:
+  TAG: 0.0.1
+
 #  定义构建的命令行，通过定义的构建命令行可以构建出artifacts中定义的构建产物。
 scripts:
 - set -ex; export GOPATH=`pwd`; find ./installer/dockerfile/ -maxdepth 2 -name Dockerfile -exec sed -i 's#FROM .*$#FROM registry.huawei.com/huawei-paas/euleros:2.2.5#' {} \; ; mkdir -p fuxi-prepare; mkdir -p fuxi-prepare; rsync -ac --exclude fuxi-prepare/ ./ fuxi-prepare; mkdir -p src/volcano.sh; mv fuxi-prepare/ src/volcano.sh/volcano; cd src/volcano.sh/volcano; make package -e TAG=${TAG}  #  请修改成业务使用的构建脚本文件相对路径
