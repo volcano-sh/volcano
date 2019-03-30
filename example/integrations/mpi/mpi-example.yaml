@@ -3,7 +3,7 @@ kind: Job
 metadata:
   name: lm-mpi-job
 spec:
-  minAvailable: 2
+  minAvailable: 3
   schedulerName: kube-batch
   plugins:
     ssh: []
@@ -24,8 +24,7 @@ spec:
                   MPI_HOST=`cat /etc/volcano/mpiworker.host | tr "\n" ","`;
                   mkdir -p /var/run/sshd; /usr/sbin/sshd;
                   mpiexec --allow-run-as-root --host ${MPI_HOST} -np 2 mpi_hello_world > /home/re;
-              #TODO: use volcano repo instead in the future.
-              image: tommylike/volcano-example-mpi:0.0.1
+              image: volcanosh/example-mpi:0.0.1
               name: mpimaster
               ports:
                 - containerPort: 22
@@ -42,7 +41,7 @@ spec:
                 - -c
                 - |
                   mkdir -p /var/run/sshd; /usr/sbin/sshd -D;
-              image: tommylike/volcano-example-mpi:0.0.1
+              image: volcanosh/example-mpi:0.0.1
               name: mpiworker
               ports:
                 - containerPort: 22
