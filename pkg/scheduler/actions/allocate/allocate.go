@@ -47,12 +47,16 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 	jobsMap := map[api.QueueID]*util.PriorityQueue{}
 
 	for _, job := range ssn.Jobs {
-		if _, found := jobsMap[job.Queue]; !found {
-			jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
-		}
-
 		if queue, found := ssn.Queues[job.Queue]; found {
 			queues.Push(queue)
+		} else {
+			glog.Warningf("Skip adding Job <%s/%s> because its queue %s is not found",
+				job.Namespace, job.Name, job.Queue)
+			continue
+		}
+
+		if _, found := jobsMap[job.Queue]; !found {
+			jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 		}
 
 		glog.V(4).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
@@ -144,12 +148,12 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 			selectedNodes := util.SelectBestNode(nodeScores)
 			for _, node := range selectedNodes {
 				// Allocate idle resource to the task.
-				if task.Resreq.LessEqual(node.Idle) {
+				if task.InitResreq.LessEqual(node.Idle) {
 					glog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
 						task.Namespace, task.Name, node.Name)
 					if err := ssn.Allocate(task, node.Name); err != nil {
-						glog.Errorf("Failed to bind Task %v on %v in Session %v",
-							task.UID, node.Name, ssn.UID)
+						glog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
+							task.UID, node.Name, ssn.UID, err)
 						continue
 					}
 					assigned = true
@@ -163,9 +167,9 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 				}
 
 				// Allocate releasing resource to the task if any.
-				if task.Resreq.LessEqual(node.Releasing) {
+				if task.InitResreq.LessEqual(node.Releasing) {
 					glog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
-						task.Namespace, task.Name, node.Name, task.Resreq, node.Releasing)
+						task.Namespace, task.Name, node.Name, task.InitResreq, node.Releasing)
 					if err := ssn.Pipeline(task, node.Name); err != nil {
 						glog.Errorf("Failed to pipeline Task %v on %v in Session %v",
 							task.UID, node.Name, ssn.UID)

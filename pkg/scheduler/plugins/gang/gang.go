@@ -31,10 +31,12 @@ import (
 )
 
 type gangPlugin struct {
+	// Arguments given for the plugin
+	pluginArguments map[string]string
 }
 
-func New() framework.Plugin {
-	return &gangPlugin{}
+func New(arguments map[string]string) framework.Plugin {
+	return &gangPlugin{pluginArguments: arguments}
 }
 
 func (gp *gangPlugin) Name() string {

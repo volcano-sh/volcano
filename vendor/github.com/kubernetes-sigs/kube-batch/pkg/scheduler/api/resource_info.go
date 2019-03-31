@@ -109,6 +109,23 @@ func (r *Resource) Sub(rr *Resource) *Resource {
 		r, rr))
 }
 
+// SetMaxResource compares with ResourceList and takes max value for each Resource.
+func (r *Resource) SetMaxResource(rr *Resource) {
+	if r == nil || rr == nil {
+		return
+	}
+
+	if rr.MilliCPU > r.MilliCPU {
+		r.MilliCPU = rr.MilliCPU
+	}
+	if rr.Memory > r.Memory {
+		r.Memory = rr.Memory
+	}
+	if rr.MilliGPU > r.MilliGPU {
+		r.MilliGPU = rr.MilliGPU
+	}
+}
+
 //Computes the delta between a resource oject representing available
 //resources an operand representing resources being requested.  Any
 //field that is less than 0 after the operation represents an

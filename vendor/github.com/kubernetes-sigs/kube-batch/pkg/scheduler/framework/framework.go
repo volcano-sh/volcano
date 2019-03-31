@@ -35,7 +35,7 @@ func OpenSession(cache cache.Cache, tiers []conf.Tier) *Session {
 			if pb, found := GetPluginBuilder(plugin.Name); !found {
 				glog.Errorf("Failed to get plugin %s.", plugin.Name)
 			} else {
-				plugin := pb()
+				plugin := pb(plugin.Arguments)
 				ssn.plugins[plugin.Name()] = plugin
 			}
 		}

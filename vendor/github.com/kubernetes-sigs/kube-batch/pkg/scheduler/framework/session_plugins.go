@@ -213,15 +213,14 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 		}
 	}
 
-	// If no job order funcs, order job by UID.
+	// If no job order funcs, order job by CreationTimestamp first, then by UID.
 	lv := l.(*api.JobInfo)
 	rv := r.(*api.JobInfo)
-
 	if lv.CreationTimestamp.Equal(&rv.CreationTimestamp) {
 		return lv.UID < rv.UID
+	} else {
+		return lv.CreationTimestamp.Before(&rv.CreationTimestamp)
 	}
-
-	return lv.CreationTimestamp.Before(&rv.CreationTimestamp)
 }
 
 func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
@@ -241,11 +240,14 @@ func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
 		}
 	}
 
-	// If no queue order funcs, order queue by UID.
+	// If no queue order funcs, order queue by CreationTimestamp first, then by UID.
 	lv := l.(*api.QueueInfo)
 	rv := r.(*api.QueueInfo)
-
-	return lv.UID < rv.UID
+	if lv.Queue.CreationTimestamp.Equal(&rv.Queue.CreationTimestamp) {
+		return lv.UID < rv.UID
+	} else {
+		return lv.Queue.CreationTimestamp.Before(&rv.Queue.CreationTimestamp)
+	}
 }
 
 func (ssn *Session) TaskCompareFns(l, r interface{}) int {
@@ -272,11 +274,14 @@ func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 		return res < 0
 	}
 
-	// If no task order funcs, order task by UID.
+	// If no task order funcs, order task by CreationTimestamp first, then by UID.
 	lv := l.(*api.TaskInfo)
 	rv := r.(*api.TaskInfo)
-
-	return lv.UID < rv.UID
+	if lv.Pod.CreationTimestamp.Equal(&rv.Pod.CreationTimestamp) {
+		return lv.UID < rv.UID
+	} else {
+		return lv.Pod.CreationTimestamp.Before(&rv.Pod.CreationTimestamp)
+	}
 }
 
 func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {

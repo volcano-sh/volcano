@@ -43,15 +43,14 @@ func NewScheduler(
 	config *rest.Config,
 	schedulerName string,
 	conf string,
-	period string,
+	period time.Duration,
 	defaultQueue string,
 ) (*Scheduler, error) {
-	sp, _ := time.ParseDuration(period)
 	scheduler := &Scheduler{
 		config:         config,
 		schedulerConf:  conf,
 		cache:          schedcache.New(config, schedulerName, defaultQueue),
-		schedulePeriod: sp,
+		schedulePeriod: period,
 	}
 
 	return scheduler, nil

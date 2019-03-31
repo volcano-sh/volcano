@@ -18,16 +18,17 @@ package priority
 
 import (
 	"github.com/golang/glog"
-
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 )
 
 type priorityPlugin struct {
+	// Arguments given for the plugin
+	pluginArguments map[string]string
 }
 
-func New() framework.Plugin {
-	return &priorityPlugin{}
+func New(arguments map[string]string) framework.Plugin {
+	return &priorityPlugin{pluginArguments: arguments}
 }
 
 func (pp *priorityPlugin) Name() string {
@@ -39,7 +40,7 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.TaskInfo)
 		rv := r.(*api.TaskInfo)
 
-		glog.V(4).Infof("Priority TaskOrder: <%v/%v> prority is %v, <%v/%v> priority is %v",
+		glog.V(4).Infof("Priority TaskOrder: <%v/%v> priority is %v, <%v/%v> priority is %v",
 			lv.Namespace, lv.Name, lv.Priority, rv.Namespace, rv.Name, rv.Priority)
 
 		if lv.Priority == rv.Priority {
@@ -60,7 +61,7 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
 
-		glog.V(4).Infof("Priority JobOrderFn: <%v/%v> is ready: %d, <%v/%v> is ready: %d",
+		glog.V(4).Infof("Priority JobOrderFn: <%v/%v> priority: %d, <%v/%v> priority: %d",
 			lv.Namespace, lv.Name, lv.Priority, rv.Namespace, rv.Name, rv.Priority)
 
 		if lv.Priority > rv.Priority {
