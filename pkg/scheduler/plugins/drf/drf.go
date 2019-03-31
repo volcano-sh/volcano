@@ -39,12 +39,16 @@ type drfPlugin struct {
 
 	// Key is Job ID
 	jobOpts map[api.JobID]*drfAttr
+
+	// Arguments given for the plugin
+	pluginArguments map[string]string
 }
 
-func New() framework.Plugin {
+func New(arguments map[string]string) framework.Plugin {
 	return &drfPlugin{
-		totalResource: api.EmptyResource(),
-		jobOpts:       map[api.JobID]*drfAttr{},
+		totalResource:   api.EmptyResource(),
+		jobOpts:         map[api.JobID]*drfAttr{},
+		pluginArguments: arguments,
 	}
 }
 
@@ -110,8 +114,8 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
 
-		glog.V(4).Infof("DRF JobOrderFn: <%v/%v> is ready: %d, <%v/%v> is ready: %d",
-			lv.Namespace, lv.Name, lv.Priority, rv.Namespace, rv.Name, rv.Priority)
+		glog.V(4).Infof("DRF JobOrderFn: <%v/%v> share state: %d, <%v/%v> share state: %d",
+			lv.Namespace, lv.Name, drf.jobOpts[lv.UID].share, rv.Namespace, rv.Name, drf.jobOpts[rv.UID].share)
 
 		if drf.jobOpts[lv.UID].share == drf.jobOpts[rv.UID].share {
 			return 0

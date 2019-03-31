@@ -32,10 +32,12 @@ import (
 )
 
 type predicatesPlugin struct {
+	// Arguments given for the plugin
+	pluginArguments map[string]string
 }
 
-func New() framework.Plugin {
-	return &predicatesPlugin{}
+func New(arguments map[string]string) framework.Plugin {
+	return &predicatesPlugin{pluginArguments: arguments}
 }
 
 func (pp *predicatesPlugin) Name() string {
@@ -123,10 +125,10 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		nodeInfo.SetNode(node.Node)
 
 		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods()) {
-			return fmt.Errorf("Node <%s> can not allow more task running on it.", node.Name)
+			return fmt.Errorf("node <%s> can not allow more task running on it", node.Name)
 		}
 
-		// NodeSeletor Predicate
+		// NodeSelector Predicate
 		fit, _, err := predicates.PodMatchNodeSelector(task.Pod, nil, nodeInfo)
 		if err != nil {
 			return err
