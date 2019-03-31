@@ -38,7 +38,10 @@ type TaskInfo struct {
 	Name      string
 	Namespace string
 
+	// Resreq is the resource that used when task running.
 	Resreq *Resource
+	// InitResreq is the resource that used to launch a task.
+	InitResreq *Resource
 
 	NodeName    string
 	Status      TaskStatus
@@ -61,25 +64,22 @@ func getJobID(pod *v1.Pod) JobID {
 }
 
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
-	req := EmptyResource()
-
-	// TODO(k82cn): also includes initContainers' resource.
-	for _, c := range pod.Spec.Containers {
-		req.Add(NewResource(c.Resources.Requests))
-	}
+	req := GetPodResourceWithoutInitContainers(pod)
+	initResreq := GetPodResourceRequest(pod)
 
 	jobID := getJobID(pod)
 
 	ti := &TaskInfo{
-		UID:       TaskID(pod.UID),
-		Job:       jobID,
-		Name:      pod.Name,
-		Namespace: pod.Namespace,
-		NodeName:  pod.Spec.NodeName,
-		Status:    getTaskStatus(pod),
-		Priority:  1,
-		Pod:       pod,
-		Resreq:    req,
+		UID:        TaskID(pod.UID),
+		Job:        jobID,
+		Name:       pod.Name,
+		Namespace:  pod.Namespace,
+		NodeName:   pod.Spec.NodeName,
+		Status:     getTaskStatus(pod),
+		Priority:   1,
+		Pod:        pod,
+		Resreq:     req,
+		InitResreq: initResreq,
 	}
 
 	if pod.Spec.Priority != nil {
@@ -100,6 +100,7 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		Priority:    ti.Priority,
 		Pod:         ti.Pod,
 		Resreq:      ti.Resreq.Clone(),
+		InitResreq:  ti.InitResreq.Clone(),
 		VolumeReady: ti.VolumeReady,
 	}
 }
@@ -141,7 +142,7 @@ type JobInfo struct {
 	CreationTimestamp metav1.Time
 	PodGroup          *v1alpha1.PodGroup
 
-	// TODO(k82cn): keep backward compatbility, removed it when v1alpha1 finalized.
+	// TODO(k82cn): keep backward compatibility, removed it when v1alpha1 finalized.
 	PDB *policyv1.PodDisruptionBudget
 }
 

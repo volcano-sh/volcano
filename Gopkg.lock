@@ -187,7 +187,7 @@
   version = "1.1.4"
 
 [[projects]]
-  digest = "1:0e1349e70c404904a06de0d026c75970db957cd0f34ce637e1574e2a67abbd59"
+  digest = "1:dbf8cf42233bd9e45479e210f4e21e1139f90ee6d4683bdb13df77c53f06015e"
   name = "github.com/kubernetes-sigs/kube-batch"
   packages = [
     "cmd/kube-batch/app",
@@ -212,8 +212,8 @@
     "pkg/version",
   ]
   pruneopts = "UT"
-  revision = "3a1f9d7d0a7f7f12be6dd52927fcd0cd9de72ec7"
-  version = "v0.4.1"
+  revision = "ba47bbbbd95185404cd1aa4ce8653e7bd60ab096"
+  version = "v0.4.2"
 
 [[projects]]
   digest = "1:ff5ebae34cfbf047d505ee150de27e60570e8c394b3b8fdbb720ff6ac71985fc"

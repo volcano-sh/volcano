@@ -38,8 +38,15 @@ func isTerminated(status kbapi.TaskStatus) bool {
 	return status == kbapi.Succeeded || status == kbapi.Failed
 }
 
+// getOrCreateJob will return corresponding Job for pi if it exists, or it will create a Job and return it if
+// pi.Pod.Spec.SchedulerName is same as kube-batch scheduler's name, otherwise it will return nil.
 func (sc *SchedulerCache) getOrCreateJob(pi *kbapi.TaskInfo) *kbapi.JobInfo {
 	if len(pi.Job) == 0 {
+		if pi.Pod.Spec.SchedulerName != sc.schedulerName {
+			glog.V(4).Infof("Pod %s/%s will not not scheduled by %s, skip creating PodGroup and Job for it",
+				pi.Pod.Namespace, pi.Pod.Name, sc.schedulerName)
+			return nil
+		}
 		pb := createShadowPodGroup(pi.Pod)
 		pi.Job = kbapi.JobID(pb.Name)
 
@@ -62,7 +69,9 @@ func (sc *SchedulerCache) getOrCreateJob(pi *kbapi.TaskInfo) *kbapi.JobInfo {
 
 func (sc *SchedulerCache) addTask(pi *kbapi.TaskInfo) error {
 	job := sc.getOrCreateJob(pi)
-	job.AddTaskInfo(pi)
+	if job != nil {
+		job.AddTaskInfo(pi)
+	}
 
 	if len(pi.NodeName) != 0 {
 		if _, found := sc.Nodes[pi.NodeName]; !found {
@@ -363,7 +372,7 @@ func (sc *SchedulerCache) setPodGroup(ss *kbv1.PodGroup) error {
 	job := getJobID(ss)
 
 	if len(job) == 0 {
-		return fmt.Errorf("the controller of PodGroup is empty")
+		return fmt.Errorf("the identity of PodGroup is empty")
 	}
 
 	if _, found := sc.Jobs[job]; !found {

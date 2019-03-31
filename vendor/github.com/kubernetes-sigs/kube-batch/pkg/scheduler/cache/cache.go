@@ -74,6 +74,8 @@ type SchedulerCache struct {
 	kbclient   *kbver.Clientset
 
 	defaultQueue string
+	// schedulerName is the name for kube-batch scheduler
+	schedulerName string
 
 	podInformer      infov1.PodInformer
 	nodeInformer     infov1.NodeInformer
@@ -127,14 +129,9 @@ type defaultEvictor struct {
 }
 
 func (de *defaultEvictor) Evict(p *v1.Pod) error {
-	// TODO (k82cn): makes grace period configurable.
-	threeSecs := int64(3)
-
 	glog.V(3).Infof("Evicting pod %v/%v", p.Namespace, p.Name)
 
-	if err := de.kubeclient.CoreV1().Pods(p.Namespace).Delete(p.Name, &metav1.DeleteOptions{
-		GracePeriodSeconds: &threeSecs,
-	}); err != nil {
+	if err := de.kubeclient.CoreV1().Pods(p.Namespace).Delete(p.Name, nil); err != nil {
 		glog.Errorf("Failed to evict pod <%v/%v>: %#v", p.Namespace, p.Name, err)
 		return err
 	}
@@ -194,6 +191,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		kubeclient:      kubernetes.NewForConfigOrDie(config),
 		kbclient:        kbver.NewForConfigOrDie(config),
 		defaultQueue:    defaultQueue,
+		schedulerName:   schedulerName,
 	}
 
 	// Prepare event clients.
@@ -423,6 +421,8 @@ func (sc *SchedulerCache) Bind(taskInfo *kbapi.TaskInfo, hostname string) error 
 	go func() {
 		if err := sc.Binder.Bind(p, hostname); err != nil {
 			sc.resyncTask(task)
+		} else {
+			sc.Recorder.Eventf(p, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", p.Namespace, p.Name, hostname)
 		}
 	}()
 

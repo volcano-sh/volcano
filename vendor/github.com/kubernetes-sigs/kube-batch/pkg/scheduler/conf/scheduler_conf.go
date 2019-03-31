@@ -49,4 +49,6 @@ type PluginOption struct {
 	PredicateDisabled bool `yaml:"disablePredicate"`
 	// NodeOrderDisabled defines whether NodeOrderFn is disabled
 	NodeOrderDisabled bool `yaml:"disableNodeOrder"`
+	// Arguments defines the different arguments that can be given to different plugins
+	Arguments map[string]string `yaml:"arguments"`
 }

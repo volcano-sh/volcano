@@ -111,14 +111,13 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 		}
 
 		assigned := false
-
 		for _, n := range ssn.Nodes {
 			// If predicates failed, next node.
 			if err := ssn.PredicateFn(task, n); err != nil {
 				continue
 			}
 
-			resreq := task.Resreq.Clone()
+			resreq := task.InitResreq.Clone()
 			reclaimed := api.EmptyResource()
 
 			glog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
@@ -172,11 +171,11 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 			}
 
 			glog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>.",
-				reclaimed, task.Namespace, task.Name, task.Resreq)
+				reclaimed, task.Namespace, task.Name, task.InitResreq)
 
-			if task.Resreq.LessEqual(reclaimed) {
+			if task.InitResreq.LessEqual(reclaimed) {
 				if err := ssn.Pipeline(task, n.Name); err != nil {
-					glog.Errorf("Failed to pipline Task <%s/%s> on Node <%s>",
+					glog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 						task.Namespace, task.Name, n.Name)
 				}
 
