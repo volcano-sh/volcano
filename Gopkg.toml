@@ -33,6 +33,8 @@ required = [
   "k8s.io/code-generator/cmd/defaulter-gen",
 ]
 
+noverify = ["k8s.io/kubernetes"]
+
 [[constraint]]
   branch = "master"
   name = "github.com/golang/glog"
