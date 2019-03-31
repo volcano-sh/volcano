@@ -20,12 +20,12 @@ import "sync"
 
 var pluginMutex sync.Mutex
 
-type PluginBuilder func() Plugin
+type PluginBuilder func(map[string]string) Plugin
 
 // Plugin management
 var pluginBuilders = map[string]PluginBuilder{}
 
-func RegisterPluginBuilder(name string, pc func() Plugin) {
+func RegisterPluginBuilder(name string, pc func(map[string]string) Plugin) {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
 

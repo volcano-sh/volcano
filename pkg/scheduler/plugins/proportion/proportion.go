@@ -27,6 +27,8 @@ import (
 type proportionPlugin struct {
 	totalResource *api.Resource
 	queueOpts     map[api.QueueID]*queueAttr
+	// Arguments given for the plugin
+	pluginArguments map[string]string
 }
 
 type queueAttr struct {
@@ -40,10 +42,11 @@ type queueAttr struct {
 	request   *api.Resource
 }
 
-func New() framework.Plugin {
+func New(arguments map[string]string) framework.Plugin {
 	return &proportionPlugin{
-		totalResource: api.EmptyResource(),
-		queueOpts:     map[api.QueueID]*queueAttr{},
+		totalResource:   api.EmptyResource(),
+		queueOpts:       map[api.QueueID]*queueAttr{},
+		pluginArguments: arguments,
 	}
 }
 
@@ -119,6 +122,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				continue
 			}
 
+			oldDeserved := attr.deserved.Clone()
 			attr.deserved.Add(remaining.Clone().Multi(float64(attr.weight) / float64(totalWeight)))
 			if !attr.deserved.LessEqual(attr.request) {
 				attr.deserved = helpers.Min(attr.deserved, attr.request)
@@ -129,7 +133,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			glog.V(4).Infof("The attributes of queue <%s> in proportion: deserved <%v>, allocate <%v>, request <%v>, share <%0.2f>",
 				attr.name, attr.deserved, attr.allocated, attr.request, attr.share)
 
-			deserved.Add(attr.deserved)
+			deserved.Add(attr.deserved.Clone().Sub(oldDeserved))
 		}
 
 		remaining.Sub(deserved)
@@ -166,7 +170,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			allocated := allocations[job.Queue]
 			if allocated.Less(reclaimee.Resreq) {
-				glog.Errorf("Failed to calculate the allocation of Task <%s/%s> in Queue <%s>.",
+				glog.Errorf("Failed to allocate resource for Task <%s/%s> in Queue <%s>， not enough resource.",
 					reclaimee.Namespace, reclaimee.Name, job.Queue)
 				continue
 			}
@@ -226,7 +230,7 @@ func (pp *proportionPlugin) OnSessionClose(ssn *framework.Session) {
 func (pp *proportionPlugin) updateShare(attr *queueAttr) {
 	res := float64(0)
 
-	// TODO(k82cn): how to handle fragement issues?
+	// TODO(k82cn): how to handle fragment issues?
 	for _, rn := range api.ResourceNames() {
 		share := helpers.Share(attr.allocated.Get(rn), attr.deserved.Get(rn))
 		if share > res {

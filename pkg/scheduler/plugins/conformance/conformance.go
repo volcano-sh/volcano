@@ -25,10 +25,12 @@ import (
 )
 
 type conformancePlugin struct {
+	// Arguments given for the plugin
+	pluginArguments map[string]string
 }
 
-func New() framework.Plugin {
-	return &conformancePlugin{}
+func New(arguments map[string]string) framework.Plugin {
+	return &conformancePlugin{pluginArguments: arguments}
 }
 
 func (pp *conformancePlugin) Name() string {

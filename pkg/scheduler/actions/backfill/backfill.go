@@ -44,7 +44,7 @@ func (alloc *backfillAction) Execute(ssn *framework.Session) {
 	// TODO (k82cn): When backfill, it's also need to balance between Queues.
 	for _, job := range ssn.Jobs {
 		for _, task := range job.TaskStatusIndex[api.Pending] {
-			if task.Resreq.IsEmpty() {
+			if task.InitResreq.IsEmpty() {
 				// As task did not request resources, so it only need to meet predicates.
 				// TODO (k82cn): need to prioritize nodes to avoid pod hole.
 				for _, node := range ssn.Nodes {
