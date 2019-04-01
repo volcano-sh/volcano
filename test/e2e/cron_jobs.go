@@ -30,28 +30,42 @@ var _ = Describe("Job E2E Test: Test CronJobs", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
+		jobSpec := jobSpec{
+			namespace: namespace,
+			name:      "inner-job-name",
+			tasks: []taskSpec{
+				{
+					img: defaultNginxImage,
+					req: oneCPU,
+					min: 1,
+					rep: 1,
+				},
+			},
+		}
+		jobObject := generateJobObject(context, &jobSpec)
+
 		cronJob := v1alpha1.CronJob{
 			ObjectMeta: v1.ObjectMeta{
 				Name:      cronJobName,
 				Namespace: namespace,
 			},
 			Spec: v1alpha1.CronJobSpec{
-				Schedule: "*/5 * * * * *",
-				Template: v1alpha1.JobSpec{},
+				Schedule: "@every 10s",
+				Template: jobObject.Spec,
 			},
 		}
 		_, err := context.vkclient.BatchV1alpha1().CronJobs(namespace).Create(&cronJob)
 		Expect(err).NotTo(HaveOccurred())
 
 		//Wait for job running
-		err = waitCronJobLastRunNameNotEmpty(context, namespace, namespace)
+		err = waitCronJobLastRunNameNotEmpty(context, namespace, cronJobName)
 		Expect(err).NotTo(HaveOccurred())
-		lastRunName := getCronJobLastRunName(context, namespace, namespace)
+		lastRunName := getCronJobLastRunName(context, namespace, cronJobName)
 
 		job, err := context.vkclient.BatchV1alpha1().Jobs(namespace).Get(lastRunName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		//Job exist and will complete
-		err = waitJobPhases(context, job, []v1alpha1.JobPhase{v1alpha1.Running, v1alpha1.Completed})
+		err = waitJobPhases(context, job, []v1alpha1.JobPhase{v1alpha1.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 })

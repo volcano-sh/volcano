@@ -19,7 +19,7 @@ rules:
     verbs: ["create", "get", "list", "watch", "delete", "update"]
   - apiGroups: ["batch.volcano.sh"]
     resources: ["jobs"]
-    verbs: ["get", "list", "watch", "update", "delete"]
+    verbs: ["create", "get", "list", "watch", "update", "delete"]
   - apiGroups: ["batch.volcano.sh"]
     resources: ["jobs/status"]
     verbs: ["update", "patch"]

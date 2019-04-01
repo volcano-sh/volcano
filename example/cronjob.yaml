@@ -18,4 +18,3 @@ spec:
                 imagePullPolicy: IfNotPresent
                 name: nginx
             restartPolicy: OnFailure
-  suspend: false

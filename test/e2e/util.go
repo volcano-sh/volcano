@@ -323,8 +323,13 @@ func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
 }
 
 func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
-	ns := getNS(context, jobSpec)
+	job := generateJobObject(context, jobSpec)
 
+	return context.vkclient.BatchV1alpha1().Jobs(job.Namespace).Create(job)
+}
+
+func generateJobObject(context *context, jobSpec *jobSpec) *vkv1.Job {
+	ns := getNS(context, jobSpec)
 	job := &vkv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobSpec.name,
@@ -385,8 +390,7 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 	} else {
 		job.Spec.MinAvailable = min
 	}
-
-	return context.vkclient.BatchV1alpha1().Jobs(job.Namespace).Create(job)
+	return job
 }
 
 func taskPhase(ctx *context, job *vkv1.Job, phase []v1.PodPhase, taskNum int) wait.ConditionFunc {

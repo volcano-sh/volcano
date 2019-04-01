@@ -40,7 +40,7 @@ type patchOperation struct {
 func MutateJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	glog.V(3).Infof("mutating jobs")
 
-	object, err := DecodeJoborCronJob(ar.Request.Object, ar.Request.Resource)
+	object, err := DecodeObject(ar.Request.Object, ar.Request.Resource)
 	if err != nil {
 		return ToAdmissionResponse(err)
 	}
