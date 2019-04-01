@@ -104,6 +104,3 @@ required = [
     name = "k8s.io/code-generator"
     unused-packages = false
 
-[[constraint]]
-  name = "github.com/robfig/cron"
-  version = "1.1.0"

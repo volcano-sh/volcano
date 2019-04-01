@@ -31,8 +31,8 @@ import (
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
 )
 
-func AdmitJobOrCronJob(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
-	object, err := DecodeJoborCronJob(ar.Request.Object, ar.Request.Resource)
+func AdmitRequestObject(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
+	object, err := DecodeObject(ar.Request.Object, ar.Request.Resource)
 	if err != nil {
 		return ToAdmissionResponse(err)
 	}
@@ -58,7 +58,7 @@ func AdmitJob(ar v1beta1.AdmissionReview, job v1alpha1.Job) *v1beta1.AdmissionRe
 		msg = validateJobSpec(job.Spec, &reviewResponse)
 		break
 	case v1beta1.Update:
-		object, err := DecodeJoborCronJob(ar.Request.OldObject, ar.Request.Resource)
+		object, err := DecodeObject(ar.Request.OldObject, ar.Request.Resource)
 		if err != nil {
 			return ToAdmissionResponse(err)
 		}
