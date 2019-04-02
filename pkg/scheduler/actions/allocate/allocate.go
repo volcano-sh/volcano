@@ -17,7 +17,10 @@ limitations under the License.
 package allocate
 
 import (
+	"context"
+
 	"github.com/golang/glog"
+	"k8s.io/client-go/util/workqueue"
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
@@ -65,6 +68,11 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 	glog.V(3).Infof("Try to allocate resource to %d Queues", len(jobsMap))
 
 	pendingTasks := map[api.JobID]*util.PriorityQueue{}
+
+	var allNodes []*api.NodeInfo
+	for _, v := range ssn.Nodes {
+		allNodes = append(allNodes, v)
+	}
 
 	for {
 		if queues.Empty() {
@@ -123,7 +131,9 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 			if len(job.NodesFitDelta) > 0 {
 				job.NodesFitDelta = make(api.NodeResourceMap)
 			}
-			for _, node := range ssn.Nodes {
+
+			checkNode := func(index int) {
+				node := allNodes[index]
 				glog.V(3).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
 					task.Namespace, task.Name, node.Name, task.Resreq, node.Idle)
 
@@ -131,12 +141,14 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 				if err := ssn.PredicateFn(task, node); err != nil {
 					glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
 						task.Namespace, task.Name, node.Name, err)
-					continue
 				} else {
 					predicateNodes = append(predicateNodes, node)
 				}
 			}
-			for _, node := range predicateNodes {
+			workqueue.ParallelizeUntil(context.TODO(), 16, len(allNodes), checkNode)
+
+			scoreNode := func(index int) {
+				node := predicateNodes[index]
 				score, err := ssn.NodeOrderFn(task, node)
 				if err != nil {
 					glog.V(3).Infof("Error in Calculating Priority for the node:%v", err)
@@ -144,6 +156,8 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 					nodeScores[score] = append(nodeScores[score], node)
 				}
 			}
+			workqueue.ParallelizeUntil(context.TODO(), 16, len(predicateNodes), scoreNode)
+
 			selectedNodes := util.SelectBestNode(nodeScores)
 			for _, node := range selectedNodes {
 				// Allocate idle resource to the task.
