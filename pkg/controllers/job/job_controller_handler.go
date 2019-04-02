@@ -301,9 +301,14 @@ func (cc *Controller) recordJobEvent(namespace, name string, event vkbatchv1.Job
 }
 
 func (cc *Controller) handleCommands() {
+	for cc.processNextCommand() {
+	}
+}
+
+func (cc *Controller) processNextCommand() bool {
 	obj, shutdown := cc.commandQueue.Get()
 	if shutdown {
-		return
+		return false
 	}
 	cmd := obj.(*vkbusv1.Command)
 	defer cc.commandQueue.Done(cmd)
@@ -311,7 +316,7 @@ func (cc *Controller) handleCommands() {
 	if err := cc.vkClients.BusV1alpha1().Commands(cmd.Namespace).Delete(cmd.Name, nil); err != nil {
 		glog.Errorf("Failed to delete Command <%s/%s>.", cmd.Namespace, cmd.Name)
 		cc.commandQueue.AddRateLimited(cmd)
-		return
+		return true
 	}
 	cc.recordJobEvent(cmd.Namespace, cmd.TargetObject.Name,
 		vkbatchv1.CommandIssued,
@@ -326,6 +331,7 @@ func (cc *Controller) handleCommands() {
 
 	cc.queue.Add(req)
 
+	return true
 }
 
 func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
