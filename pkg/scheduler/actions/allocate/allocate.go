@@ -18,6 +18,7 @@ package allocate
 
 import (
 	"context"
+	"sync"
 
 	"github.com/golang/glog"
 	"k8s.io/client-go/util/workqueue"
@@ -132,6 +133,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 				job.NodesFitDelta = make(api.NodeResourceMap)
 			}
 
+			var workerLock sync.Mutex
 			checkNode := func(index int) {
 				node := allNodes[index]
 				glog.V(3).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
@@ -142,7 +144,9 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 					glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
 						task.Namespace, task.Name, node.Name, err)
 				} else {
+					workerLock.Lock()
 					predicateNodes = append(predicateNodes, node)
+					workerLock.Unlock()
 				}
 			}
 			workqueue.ParallelizeUntil(context.TODO(), 16, len(allNodes), checkNode)
@@ -153,7 +157,9 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 				if err != nil {
 					glog.V(3).Infof("Error in Calculating Priority for the node:%v", err)
 				} else {
+					workerLock.Lock()
 					nodeScores[score] = append(nodeScores[score], node)
+					workerLock.Unlock()
 				}
 			}
 			workqueue.ParallelizeUntil(context.TODO(), 16, len(predicateNodes), scoreNode)
