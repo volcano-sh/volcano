@@ -21,7 +21,6 @@ import (
 	"sync"
 
 	"github.com/golang/glog"
-
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"
@@ -268,17 +267,22 @@ func (jc jobCache) TaskCompleted(jobKey, taskName string) bool {
 	return completed >= taskReplicas
 }
 
-func (jc *jobCache) processCleanupJob() {
+func (jc *jobCache) worker() {
+	for jc.processCleanupJob() {
+	}
+}
+
+func (jc *jobCache) processCleanupJob() bool {
 	obj, shutdown := jc.deletedJobs.Get()
 	if shutdown {
-		return
+		return false
 	}
 	defer jc.deletedJobs.Done(obj)
 
 	job, ok := obj.(*apis.JobInfo)
 	if !ok {
 		glog.Errorf("failed to convert %v to *apis.JobInfo", obj)
-		return
+		return true
 	}
 
 	jc.Mutex.Lock()
@@ -293,6 +297,7 @@ func (jc *jobCache) processCleanupJob() {
 		// Retry
 		jc.deleteJob(job)
 	}
+	return true
 }
 
 func (jc *jobCache) deleteJob(job *apis.JobInfo) {
