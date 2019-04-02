@@ -278,14 +278,19 @@ func TestAllocate(t *testing.T) {
 			schedulerCache.AddQueue(q)
 		}
 
+		trueValue := true
 		ssn := framework.OpenSession(schedulerCache, []conf.Tier{
 			{
 				Plugins: []conf.PluginOption{
 					{
-						Name: "drf",
+						Name:               "drf",
+						EnabledPreemptable: &trueValue,
+						EnabledJobOrder:    &trueValue,
 					},
 					{
-						Name: "proportion",
+						Name:               "proportion",
+						EnabledQueueOrder:  &trueValue,
+						EnabledReclaimable: &trueValue,
 					},
 				},
 			},
