@@ -125,7 +125,7 @@ const (
 	// TerminateJobAction if this action is set, the whole job wil be terminated
 	// and can not be resumed: all Pod of Job will be evicted, and no Pod will be recreated.
 	TerminateJobAction Action = "TerminateJob"
-	//CompleteJobAction if this action is set, the unfinished pods will be killed, job completed.
+	// CompleteJobAction if this action is set, the unfinished pods will be killed, job completed.
 	CompleteJobAction Action = "CompleteJob"
 
 	// ResumeJobAction is the action to resume an aborted job.
