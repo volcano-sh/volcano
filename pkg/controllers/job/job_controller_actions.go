@@ -42,7 +42,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	defer glog.V(3).Infof("Finished Job <%s/%s> killing", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
 	job := jobInfo.Job
-	//Job version is bumped only when job is killed
+	// Job version is bumped only when job is killed
 	job.Status.Version = job.Status.Version + 1
 	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 	if job.DeletionTimestamp != nil {
@@ -88,7 +88,14 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 				}
 				terminating++
 			case v1.PodSucceeded:
-				succeeded++
+				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+				if err != nil {
+					succeeded++
+					glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
+						pod.Name, job.Name, err)
+					errs = append(errs, err)
+					continue
+				}
 			case v1.PodFailed:
 				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
 				if err != nil {
@@ -240,7 +247,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 						terminating++
 					} else {
 						running++
-					} /**/
+					}
 				case v1.PodSucceeded:
 					succeeded++
 				case v1.PodFailed:
@@ -382,11 +389,12 @@ func (cc *Controller) createServiceIfNotExist(job *vkv1.Job) error {
 			},
 		}
 
-		if _, e := cc.kubeClients.CoreV1().Services(job.Namespace).Create(svc); e != nil {
-			glog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v",
-				job.Namespace, job.Name, err)
-
-			return e
+		if _, err := cc.kubeClients.CoreV1().Services(job.Namespace).Create(svc); err != nil {
+			if !apierrors.IsAlreadyExists(err) {
+				glog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v",
+					job.Namespace, job.Name, err)
+				return err
+			}
 		}
 	}
 
@@ -419,10 +427,10 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) error {
 
 				glog.V(3).Infof("Try to create input PVC: %v", pvc)
 
-				if _, e := cc.kubeClients.CoreV1().PersistentVolumeClaims(job.Namespace).Create(pvc); e != nil {
+				if _, err := cc.kubeClients.CoreV1().PersistentVolumeClaims(job.Namespace).Create(pvc); err != nil {
 					glog.V(3).Infof("Failed to create input PVC for Job <%s/%s>: %v",
 						job.Namespace, job.Name, err)
-					return e
+					return err
 				}
 			}
 		}
@@ -433,7 +441,7 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) error {
 				if !apierrors.IsNotFound(err) {
 					glog.V(3).Infof("Failed to get output PVC for Job <%s/%s>: %v",
 						job.Namespace, job.Name, err)
-					//return err
+					return err
 				}
 
 				pvc := &v1.PersistentVolumeClaim{
@@ -449,10 +457,12 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) error {
 
 				glog.V(3).Infof("Try to create output PVC: %v", pvc)
 
-				if _, e := cc.kubeClients.CoreV1().PersistentVolumeClaims(job.Namespace).Create(pvc); e != nil {
-					glog.V(3).Infof("Failed to create input PVC for Job <%s/%s>: %v",
-						job.Namespace, job.Name, err)
-					return e
+				if _, err := cc.kubeClients.CoreV1().PersistentVolumeClaims(job.Namespace).Create(pvc); err != nil {
+					if !apierrors.IsAlreadyExists(err) {
+						glog.V(3).Infof("Failed to create input PVC for Job <%s/%s>: %v",
+							job.Namespace, job.Name, err)
+						return err
+					}
 				}
 			}
 		}
@@ -482,11 +492,13 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 			},
 		}
 
-		if _, e := cc.kbClients.SchedulingV1alpha1().PodGroups(job.Namespace).Create(pg); e != nil {
-			glog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
-				job.Namespace, job.Name, err)
+		if _, err := cc.kbClients.SchedulingV1alpha1().PodGroups(job.Namespace).Create(pg); err != nil {
+			if !apierrors.IsAlreadyExists(err) {
+				glog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
+					job.Namespace, job.Name, err)
 
-			return e
+				return err
+			}
 		}
 	}
 
