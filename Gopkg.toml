@@ -89,8 +89,12 @@ required = [
   version = "kubernetes-1.13.2"
 
 [[constraint]]
-  name = "golang.org/x/crypto"  
+  name = "golang.org/x/crypto"
   branch = "release-branch.go1.12"
+
+[[constraint]]
+  name = "github.com/robfig/cron"
+  version = "1.1.0"
 
 [prune]
   go-tests = true

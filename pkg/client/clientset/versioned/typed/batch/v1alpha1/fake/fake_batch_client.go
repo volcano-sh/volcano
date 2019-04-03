@@ -28,6 +28,10 @@ type FakeBatchV1alpha1 struct {
 	*testing.Fake
 }
 
+func (c *FakeBatchV1alpha1) CronJobs(namespace string) v1alpha1.CronJobInterface {
+	return &FakeCronJobs{c, namespace}
+}
+
 func (c *FakeBatchV1alpha1) Jobs(namespace string) v1alpha1.JobInterface {
 	return &FakeJobs{c, namespace}
 }
