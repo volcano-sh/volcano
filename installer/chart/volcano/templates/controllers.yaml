@@ -63,15 +63,17 @@ apiVersion: apps/v1
 metadata:
   name: {{ .Release.Name }}-controllers
   namespace: {{ .Release.Namespace }}
+  labels:
+    app: volcano-controller
 spec:
   replicas: 1
   selector:
     matchLabels:
-      vk-controllers: test
+      app: volcano-controller
   template:
     metadata:
       labels:
-        vk-controllers: test
+        app: volcano-controller
     spec:
       serviceAccount: {{ .Release.Name }}-controllers
       {{ if .Values.basic.image_pull_secret }}

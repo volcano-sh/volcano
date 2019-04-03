@@ -40,21 +40,18 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: admission
-    admission: "true"
+    app: volcano-admission
   name: {{ .Release.Name }}-admission
   namespace: {{ .Release.Namespace }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: admission
-      admission: "true"
+      app: volcano-admission
   template:
     metadata:
       labels:
-        app: admission
-        admission: "true"
+        app: volcano-admission
     spec:
       serviceAccount: {{ .Release.Name }}-admission
       {{ if .Values.basic.image_pull_secret }}
@@ -90,7 +87,7 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    test: admission
+    app: volcano-admission
   name: {{ .Release.Name }}-admission-service
   namespace: {{ .Release.Namespace }}
 spec:
@@ -99,5 +96,5 @@ spec:
       protocol: TCP
       targetPort: 443
   selector:
-    admission: "true"
+    app: volcano-admission
   sessionAffinity: None
