@@ -84,15 +84,17 @@ apiVersion: apps/v1
 metadata:
   name: {{ .Release.Name }}-scheduler
   namespace: {{ .Release.Namespace }}
+  labels:
+    app: volcano-scheduler
 spec:
   replicas: 1
   selector:
     matchLabels:
-      vk-scheduler: test
+      app: volcano-scheduler
   template:
     metadata:
       labels:
-        vk-scheduler: test
+        app: volcano-scheduler
     spec:
       serviceAccount: {{ .Release.Name }}-scheduler
       containers:

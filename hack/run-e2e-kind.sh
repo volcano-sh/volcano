@@ -74,6 +74,13 @@ function uninstall-volcano {
   helm delete integration --purge --kubeconfig ${KUBECONFIG}
 }
 
+function generate-log {
+    echo "Generating volcano log files"
+    kubectl logs -lapp=volcano-admission -n kube-system > volcano-admission.log
+    kubectl logs -lapp=volcano-controller -n kube-system > volcano-controller.log
+    kubectl logs -lapp=volcano-scheduler -n kube-system > volcano-scheduler.log
+}
+
 # clean up
 function cleanup {
   uninstall-volcano
@@ -118,3 +125,8 @@ install-volcano
 # Run e2e test
 cd ${VK_ROOT}
 KUBECONFIG=${KUBECONFIG} go test ./test/e2e -v -timeout 30m
+
+if [[ $? != 0 ]]; then
+  generate-log
+  exit 1
+fi
