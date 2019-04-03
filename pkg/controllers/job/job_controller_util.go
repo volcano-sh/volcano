@@ -166,13 +166,13 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 		return req.Action
 	}
 
-	//For all the requests triggered from discarded job resources will perform sync action instead
-	if req.JobVersion < job.Status.Version {
-		glog.Infof("Request %s is outdated, will perform sync instead.", req)
+	if req.Event == vkv1.OutOfSyncEvent {
 		return vkv1.SyncJobAction
 	}
 
-	if req.Event == vkv1.OutOfSyncEvent {
+	// For all the requests triggered from discarded job resources will perform sync action instead
+	if req.JobVersion < job.Status.Version {
+		glog.Infof("Request %s is outdated, will perform sync instead.", req)
 		return vkv1.SyncJobAction
 	}
 
@@ -186,6 +186,7 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 						return policy.Action
 					}
 				}
+				break
 			}
 		}
 	}
