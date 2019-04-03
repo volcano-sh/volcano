@@ -226,7 +226,7 @@ func (jc *jobCache) DeletePod(pod *v1.Pod) error {
 }
 
 func (jc *jobCache) Run(stopCh <-chan struct{}) {
-	wait.Until(jc.processCleanupJob, 0, stopCh)
+	wait.Until(jc.worker, 0, stopCh)
 }
 
 func (jc jobCache) TaskCompleted(jobKey, taskName string) bool {
