@@ -18,11 +18,10 @@ package nodeorder
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/golang/glog"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/priorities"
@@ -46,7 +45,7 @@ const (
 
 type nodeOrderPlugin struct {
 	// Arguments given for the plugin
-	pluginArguments map[string]string
+	pluginArguments framework.Arguments
 }
 
 func getInterPodAffinityScore(name string, interPodAffinityScore schedulerapi.HostPriorityList) int {
@@ -159,7 +158,7 @@ func (nl *nodeLister) List() ([]*v1.Node, error) {
 }
 
 //New function returns prioritizePlugin object
-func New(aruguments map[string]string) framework.Plugin {
+func New(aruguments framework.Arguments) framework.Plugin {
 	return &nodeOrderPlugin{pluginArguments: aruguments}
 }
 
@@ -174,7 +173,7 @@ type priorityWeight struct {
 	balancedRescourceWeight int
 }
 
-func calculateWeight(args map[string]string) priorityWeight {
+func calculateWeight(args framework.Arguments) priorityWeight {
 	/*
 	   User Should give priorityWeight in this format(nodeaffinity.weight, podaffinity.weight, leastrequested.weight, balancedresource.weight).
 	   Currently supported only for nodeaffinity, podaffinity, leastrequested, balancedresouce priorities.
@@ -206,44 +205,16 @@ func calculateWeight(args map[string]string) priorityWeight {
 	}
 
 	// Checks whether nodeaffinity.weight is provided or not, if given, modifies the value in weight struct.
-	if args[NodeAffinityWeight] != "" {
-		val, err := strconv.Atoi(args[NodeAffinityWeight])
-		if err != nil {
-			glog.Warningf("Not able to Parse Weight for %v because of error: %v", args[NodeAffinityWeight], err)
-		} else {
-			weight.nodeAffinityWeight = val
-		}
-	}
+	args.GetInt(&weight.nodeAffinityWeight, NodeAffinityWeight)
 
 	// Checks whether podaffinity.weight is provided or not, if given, modifies the value in weight struct.
-	if args[PodAffinityWeight] != "" {
-		val, err := strconv.Atoi(args[PodAffinityWeight])
-		if err != nil {
-			glog.Warningf("Not able to Parse Weight for %v because of error: %v", args[PodAffinityWeight], err)
-		} else {
-			weight.podAffinityWeight = val
-		}
-	}
+	args.GetInt(&weight.podAffinityWeight, PodAffinityWeight)
 
 	// Checks whether leastrequested.weight is provided or not, if given, modifies the value in weight struct.
-	if args[LeastRequestedWeight] != "" {
-		val, err := strconv.Atoi(args[LeastRequestedWeight])
-		if err != nil {
-			glog.Warningf("Not able to Parse Weight for %v because of error: %v", args[LeastRequestedWeight], err)
-		} else {
-			weight.leastReqWeight = val
-		}
-	}
+	args.GetInt(&weight.leastReqWeight, LeastRequestedWeight)
 
 	// Checks whether balancedresource.weight is provided or not, if given, modifies the value in weight struct.
-	if args[BalancedResourceWeight] != "" {
-		val, err := strconv.Atoi(args[BalancedResourceWeight])
-		if err != nil {
-			glog.Warningf("Not able to Parse Weight for %v because of error: %v", args[BalancedResourceWeight], err)
-		} else {
-			weight.balancedRescourceWeight = val
-		}
-	}
+	args.GetInt(&weight.balancedRescourceWeight, BalancedResourceWeight)
 
 	return weight
 }
