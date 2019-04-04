@@ -38,8 +38,9 @@ dozing-otter	1       	Thu Mar 29 18:52:15 2019	DEPLOYED	kube-batch-0.4.2   	 kub
 Please check following configurable fields and customize kube-batch based on your needs.
 
 ### kube-batch configuraions
+
 | configs | default value | Descriptions |
-| ----------- | ----------- | ------ | ----------- |
+| ----------- | ----------- | ------ |
 | master | "" | The address of the Kubernetes API server (overrides any value in kubeconfig) |
 | kubeconfig | "" | Path to kubeconfig file with authorization and master location information. If you run kube-batch outside cluster or for debug purpose, this is very useful |
 | scheduler-name | kube-batch | kube-batch will handle pods whose `.spec.SchedulerName` is same as scheduler-name |
@@ -47,7 +48,7 @@ Please check following configurable fields and customize kube-batch based on you
 | default-queue | default | The default queue name of the job |
 | schedule-period | Seconds | The period between each scheduling cycle |
 | leader-elect | false | Start a leader election client and gain leadership before executing the main loop. Enable this when running replicated kube-batch for high availability |
-| lock-object-namespace | Define the namespace of the lock object that is used for leader election |
+| lock-object-namespace | "" | Define the namespace of the lock object that is used for leader election |
 | listen-address | :8080 | The address to listen on for HTTP requests. Metrics will be exposed at this port |
 
 
