@@ -40,7 +40,7 @@ tiers:
 The `actions` is a list of actions that will be executed by `kube-batch` in order, separated
 by commas. Refer to [tutorial](https://github.com/kubernetes-sigs/kube-batch/issues/434) for
 the list of supported actions in `kube-batch`. Those actions will be executed in order, although
-the "order" maybe incurrect; the `kube-batch` do not enforce that.
+the "order" maybe incorrect; the `kube-batch` do not enforce that.
 
 The `tiers` is a list of plugins that will be used by related actions, e.g. `allocate`. It includes
 several tiers of plugin list by `plugins`; if it fit plugins in high priority tier, the action will not
@@ -48,7 +48,7 @@ go through the plugins in lower priority tiers. In each tier, it's considered pa
 fitted in `plugins.names`.
 
 The `options` defines the detail behaviour of each plugins, e.g. whether preemption is enabled. If not
-specific, `true` is default vaule. For now, `preemptable`, `jobOrder`, `taskOrder` are supported.
+specific, `true` is default value. For now, `preemptable`, `jobOrder`, `taskOrder` are supported.
 
 Takes following example as demonstration:
 
