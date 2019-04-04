@@ -21,7 +21,7 @@ import (
 
 	"github.com/golang/glog"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
@@ -33,10 +33,10 @@ import (
 
 type predicatesPlugin struct {
 	// Arguments given for the plugin
-	pluginArguments map[string]string
+	pluginArguments framework.Arguments
 }
 
-func New(arguments map[string]string) framework.Plugin {
+func New(arguments framework.Arguments) framework.Plugin {
 	return &predicatesPlugin{pluginArguments: arguments}
 }
 
