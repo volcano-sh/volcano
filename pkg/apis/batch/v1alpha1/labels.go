@@ -22,5 +22,4 @@ const (
 	JobNamespaceKey = "volcano.sh/job-namespace"
 	DefaultTaskSpec = "default"
 	JobVersion      = "volcano.sh/job-version"
-	CronJobNameKey  = "volcano.sh/cronjob-name"
 )

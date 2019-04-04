@@ -323,13 +323,8 @@ func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
 }
 
 func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
-	job := generateJobObject(context, jobSpec)
-
-	return context.vkclient.BatchV1alpha1().Jobs(job.Namespace).Create(job)
-}
-
-func generateJobObject(context *context, jobSpec *jobSpec) *vkv1.Job {
 	ns := getNS(context, jobSpec)
+
 	job := &vkv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobSpec.name,
@@ -390,7 +385,8 @@ func generateJobObject(context *context, jobSpec *jobSpec) *vkv1.Job {
 	} else {
 		job.Spec.MinAvailable = min
 	}
-	return job
+
+	return context.vkclient.BatchV1alpha1().Jobs(job.Namespace).Create(job)
 }
 
 func taskPhase(ctx *context, job *vkv1.Job, phase []v1.PodPhase, taskNum int) wait.ConditionFunc {
@@ -934,20 +930,4 @@ func readyNodeAmount(ctx *context) int {
 		}
 	}
 	return amount
-}
-
-func waitCronJobLastRunNameNotEmpty(ctx *context, namespace, name string) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
-		if getCronJobLastRunName(ctx, namespace, name) != "" {
-			return true, nil
-		} else {
-			return false, nil
-		}
-	})
-}
-
-func getCronJobLastRunName(ctx *context, namespace, name string) string {
-	cJob, err := ctx.vkclient.BatchV1alpha1().CronJobs(namespace).Get(name, metav1.GetOptions{})
-	Expect(err).NotTo(HaveOccurred())
-	return cJob.Status.LastRunName
 }

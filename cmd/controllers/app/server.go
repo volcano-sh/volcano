@@ -38,7 +38,6 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	"volcano.sh/volcano/cmd/controllers/app/options"
-	"volcano.sh/volcano/pkg/controllers/cronjob"
 	"volcano.sh/volcano/pkg/controllers/job"
 )
 
@@ -63,11 +62,8 @@ func Run(opt *options.ServerOption) error {
 
 	jobController := job.NewJobController(config)
 
-	cronJobController := cronjob.NewCronJobController(config)
-
 	run := func(ctx context.Context) {
 		jobController.Run(ctx.Done())
-		cronJobController.Run(ctx.Done())
 		<-ctx.Done()
 	}
 
