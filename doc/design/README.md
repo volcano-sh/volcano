@@ -1,1 +1,1 @@
-This directory includes all design doc of kube-batch.
+This directory includes all the design docs of kube-batch.
