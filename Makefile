@@ -1,6 +1,6 @@
 BIN_DIR=_output/bin
-IMAGE=volcano
-TAG = 0.1
+IMAGE=volcanosh/volcano
+TAG = latest
 
 .EXPORT_ALL_VARIABLES:
 
