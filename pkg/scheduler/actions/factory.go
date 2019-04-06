@@ -21,6 +21,7 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/actions/backfill"
+	"volcano.sh/volcano/pkg/scheduler/actions/enqueue"
 	"volcano.sh/volcano/pkg/scheduler/actions/preempt"
 	"volcano.sh/volcano/pkg/scheduler/actions/reclaim"
 )
@@ -30,4 +31,5 @@ func init() {
 	framework.RegisterAction(allocate.New())
 	framework.RegisterAction(backfill.New())
 	framework.RegisterAction(preempt.New())
+	framework.RegisterAction(enqueue.New())
 }
