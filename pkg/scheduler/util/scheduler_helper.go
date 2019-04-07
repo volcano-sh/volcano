@@ -27,8 +27,8 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
-// FindNodesThatFit returns nodes that fit task
-func FindNodesThatFit(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn) []*api.NodeInfo {
+// PredicateNodes returns nodes that fit task
+func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn) []*api.NodeInfo {
 	var predicateNodes []*api.NodeInfo
 
 	var workerLock sync.Mutex
@@ -41,11 +41,12 @@ func FindNodesThatFit(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.Predicat
 		if err := fn(task, node); err != nil {
 			glog.Errorf("Predicates failed for task <%s/%s> on node <%s>: %v",
 				task.Namespace, task.Name, node.Name, err)
-		} else {
-			workerLock.Lock()
-			predicateNodes = append(predicateNodes, node)
-			workerLock.Unlock()
+			return
 		}
+
+		workerLock.Lock()
+		predicateNodes = append(predicateNodes, node)
+		workerLock.Unlock()
 	}
 
 	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), checkNode)
@@ -62,11 +63,12 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.NodeOrder
 		score, err := fn(task, node)
 		if err != nil {
 			glog.Errorf("Error in Calculating Priority for the node:%v", err)
-		} else {
-			workerLock.Lock()
-			nodeScores[score] = append(nodeScores[score], node)
-			workerLock.Unlock()
+			return
 		}
+
+		workerLock.Lock()
+		nodeScores[score] = append(nodeScores[score], node)
+		workerLock.Unlock()
 	}
 	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), scoreNode)
 	return nodeScores
