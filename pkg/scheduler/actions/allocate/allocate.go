@@ -17,6 +17,8 @@ limitations under the License.
 package allocate
 
 import (
+	"fmt"
+
 	"github.com/golang/glog"
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
@@ -67,6 +69,17 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 	pendingTasks := map[api.JobID]*util.PriorityQueue{}
 
 	allNodes := util.GetNodeList(ssn.Nodes)
+
+	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
+		clonedNode := node.Idle.Clone()
+		// Check for Resource Predicate
+		if !task.InitResreq.LessEqual(clonedNode.Add(node.Releasing)) {
+			return fmt.Errorf("task <%s/%s> ResourceFit failed on node <%s>",
+				task.Namespace, task.Name, node.Name)
+		}
+
+		return ssn.PredicateFn(task, node)
+	}
 
 	for {
 		if queues.Empty() {
@@ -123,7 +136,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 				job.NodesFitDelta = make(api.NodeResourceMap)
 			}
 
-			predicateNodes := util.FindNodesThatFit(task, allNodes, ssn.PredicateFn)
+			predicateNodes := util.PredicateNodes(task, allNodes, predicateFn)
 
 			nodeScores := util.PrioritizeNodes(task, predicateNodes, ssn.NodeOrderFn)
 
