@@ -51,9 +51,8 @@ var _ = Describe("MPI E2E Test", func() {
 					workingDir: "/home",
 					//Need sometime waiting for worker node ready
 					command: `sleep 5;
-MPI_HOST=` + "`" + `cat /etc/volcano/mpiworker.host | tr "\n" ","` + "`" + `;
 mkdir -p /var/run/sshd; /usr/sbin/sshd;
-mpiexec --allow-run-as-root --host ${MPI_HOST} -np 2 mpi_hello_world > /home/re`,
+mpiexec --allow-run-as-root --hostfile /etc/volcano/mpiworker.host -np 2 mpi_hello_world > /home/re`,
 				},
 				{
 					name:       "mpiworker",
