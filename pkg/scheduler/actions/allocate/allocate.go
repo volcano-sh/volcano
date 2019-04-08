@@ -71,9 +71,14 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 	allNodes := util.GetNodeList(ssn.Nodes)
 
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
-		clonedNode := node.Idle.Clone()
 		// Check for Resource Predicate
-		if !task.InitResreq.LessEqual(clonedNode.Add(node.Releasing)) {
+		// TODO: We could not allocate resource to task from both node.Idle and node.Releasing now,
+		// after it is done, we could change the following compare to:
+		// clonedNode := node.Idle.Clone()
+		// if !task.InitResreq.LessEqual(clonedNode.Add(node.Releasing)) {
+		//    ...
+		// }
+		if !task.InitResreq.LessEqual(node.Idle) && !task.InitResreq.LessEqual(node.Releasing) {
 			return fmt.Errorf("task <%s/%s> ResourceFit failed on node <%s>",
 				task.Namespace, task.Name, node.Name)
 		}
@@ -123,7 +128,6 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 
 		for !tasks.Empty() {
 			task := tasks.Pop().(*api.TaskInfo)
-			assigned := false
 
 			glog.V(3).Infof("There are <%d> nodes for Job <%v/%v>",
 				len(ssn.Nodes), job.Namespace, job.Name)
@@ -137,29 +141,27 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 			}
 
 			predicateNodes := util.PredicateNodes(task, allNodes, predicateFn)
+			if len(predicateNodes) == 0 {
+				break
+			}
 
 			nodeScores := util.PrioritizeNodes(task, predicateNodes, ssn.NodeOrderFn)
 
-			selectedNodes := util.SelectBestNode(nodeScores)
-			for _, node := range selectedNodes {
-				// Allocate idle resource to the task.
-				if task.InitResreq.LessEqual(node.Idle) {
-					glog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
-						task.Namespace, task.Name, node.Name)
-					if err := ssn.Allocate(task, node.Name); err != nil {
-						glog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
-							task.UID, node.Name, ssn.UID, err)
-						continue
-					}
-					assigned = true
-					break
-				} else {
-					//store information about missing resources
-					job.NodesFitDelta[node.Name] = node.Idle.Clone()
-					job.NodesFitDelta[node.Name].FitDelta(task.Resreq)
-					glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s> with limited resources",
-						task.Namespace, task.Name, node.Name)
+			node := util.SelectBestNode(nodeScores)
+			// Allocate idle resource to the task.
+			if task.InitResreq.LessEqual(node.Idle) {
+				glog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
+					task.Namespace, task.Name, node.Name)
+				if err := ssn.Allocate(task, node.Name); err != nil {
+					glog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
+						task.UID, node.Name, ssn.UID, err)
 				}
+			} else {
+				//store information about missing resources
+				job.NodesFitDelta[node.Name] = node.Idle.Clone()
+				job.NodesFitDelta[node.Name].FitDelta(task.InitResreq)
+				glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s> with limited resources",
+					task.Namespace, task.Name, node.Name)
 
 				// Allocate releasing resource to the task if any.
 				if task.InitResreq.LessEqual(node.Releasing) {
@@ -168,16 +170,8 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 					if err := ssn.Pipeline(task, node.Name); err != nil {
 						glog.Errorf("Failed to pipeline Task %v on %v in Session %v",
 							task.UID, node.Name, ssn.UID)
-						continue
 					}
-
-					assigned = true
-					break
 				}
-			}
-
-			if !assigned {
-				break
 			}
 
 			if ssn.JobReady(job) {
