@@ -28,6 +28,9 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	if option.EnabledJobReady == nil {
 		option.EnabledJobReady = &t
 	}
+	if option.EnabledJobPipelined == nil {
+		option.EnabledJobPipelined = &t
+	}
 	if option.EnabledTaskOrder == nil {
 		option.EnabledTaskOrder = &t
 	}
