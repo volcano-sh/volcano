@@ -21,6 +21,7 @@ import (
 
 	"github.com/golang/glog"
 
+	"github.com/hashicorp/go-multierror"
 	"k8s.io/api/admission/v1beta1"
 	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -61,27 +62,49 @@ func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
 	}
 }
 
-func CheckPolicyDuplicate(policies []v1alpha1.LifecyclePolicy) (string, bool) {
-	policyEvents := map[v1alpha1.Event]v1alpha1.Event{}
-	hasDuplicate := false
-	var duplicateInfo string
+func ValidatePolicies(policies []v1alpha1.LifecyclePolicy) error {
+	var err error
+	policyEvents := map[v1alpha1.Event]struct{}{}
+	exitCodes := map[int32]struct{}{}
 
 	for _, policy := range policies {
-		if _, found := policyEvents[policy.Event]; found {
-			hasDuplicate = true
-			duplicateInfo = fmt.Sprintf("%v", policy.Event)
+		if policy.Event != "" && policy.ExitCode != nil {
+			err = multierror.Append(err, fmt.Errorf("must not specify event and exitCode simultaneously"))
 			break
+		}
+
+		if policy.Event == "" && policy.ExitCode == nil {
+			err = multierror.Append(err, fmt.Errorf("either event and exitCode should be specified"))
+			break
+		}
+
+		if policy.Event != "" {
+			// TODO: check event is in supported Event
+			if _, found := policyEvents[policy.Event]; found {
+				err = multierror.Append(err, fmt.Errorf("duplicate event %v", policy.Event))
+				break
+			} else {
+				policyEvents[policy.Event] = struct{}{}
+			}
 		} else {
-			policyEvents[policy.Event] = policy.Event
+			if *policy.ExitCode == 0 {
+				err = multierror.Append(err, fmt.Errorf("0 is not a valid error code"))
+				break
+			}
+			if _, found := exitCodes[*policy.ExitCode]; found {
+				err = multierror.Append(err, fmt.Errorf("duplicate exitCode %v", *policy.ExitCode))
+				break
+			} else {
+				exitCodes[*policy.ExitCode] = struct{}{}
+			}
 		}
 	}
 
 	if _, found := policyEvents[v1alpha1.AnyEvent]; found && len(policyEvents) > 1 {
-		hasDuplicate = true
-		duplicateInfo = "if there's * here, no other policy should be here"
+		err = multierror.Append(err, fmt.Errorf("if there's * here, no other policy should be here"))
 	}
 
-	return duplicateInfo, hasDuplicate
+	return err
 }
 
 func DecodeJob(object runtime.RawExtension, resource metav1.GroupVersionResource) (v1alpha1.Job, error) {
