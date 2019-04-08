@@ -349,3 +349,57 @@ func (ji *JobInfo) FitError() string {
 	reasonMsg := fmt.Sprintf("0/%v nodes are available, %v.", len(ji.NodesFitDelta), strings.Join(sortReasonsHistogram(), ", "))
 	return reasonMsg
 }
+
+// ReadyTaskNum returns the number of tasks that are ready.
+func (ji *JobInfo) ReadyTaskNum() int32 {
+	occupid := 0
+	for status, tasks := range ji.TaskStatusIndex {
+		if AllocatedStatus(status) ||
+			status == Succeeded {
+			occupid = occupid + len(tasks)
+		}
+	}
+
+	return int32(occupid)
+}
+
+// WaitingTaskNum returns the number of tasks that are pipelined.
+func (ji *JobInfo) WaitingTaskNum() int32 {
+	occupid := 0
+	for status, tasks := range ji.TaskStatusIndex {
+		if status == Pipelined {
+			occupid = occupid + len(tasks)
+		}
+	}
+
+	return int32(occupid)
+}
+
+// ValidTaskNum returns the number of tasks that are valid.
+func (ji *JobInfo) ValidTaskNum() int32 {
+	occupied := 0
+	for status, tasks := range ji.TaskStatusIndex {
+		if AllocatedStatus(status) ||
+			status == Succeeded ||
+			status == Pipelined ||
+			status == Pending {
+			occupied = occupied + len(tasks)
+		}
+	}
+
+	return int32(occupied)
+}
+
+// Ready returns whether job is ready for run
+func (ji *JobInfo) Ready() bool {
+	occupied := ji.ReadyTaskNum()
+
+	return occupied >= ji.MinAvailable
+}
+
+// Pipelined returns whether the number of ready and pipelined task is enough
+func (ji *JobInfo) Pipelined() bool {
+	occupied := ji.WaitingTaskNum() + ji.ReadyTaskNum()
+
+	return occupied >= ji.MinAvailable
+}

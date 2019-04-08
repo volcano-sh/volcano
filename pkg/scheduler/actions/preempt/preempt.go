@@ -114,15 +114,15 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 					assigned = true
 				}
 
-				// If job not ready, keep preempting
-				if ssn.JobReady(preemptorJob) {
+				// If job is not pipelined, keep preempting
+				if ssn.JobPipelined(preemptorJob) {
 					stmt.Commit()
 					break
 				}
 			}
 
-			// If job not ready after try all tasks, next job.
-			if !ssn.JobReady(preemptorJob) {
+			// If job is not pipelined after try all tasks, next job.
+			if !ssn.JobPipelined(preemptorJob) {
 				stmt.Discard()
 				continue
 			}
