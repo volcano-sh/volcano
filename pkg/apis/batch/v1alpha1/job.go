@@ -147,6 +147,12 @@ type LifecyclePolicy struct {
 	// +optional
 	Event Event `json:"event,omitempty" protobuf:"bytes,2,opt,name=event"`
 
+	// The exit code of the pod container, controller will take action
+	// according to this code.
+	// Note: only one of `Event` or `ExitCode` can be specified.
+	// +optional
+	ExitCode *int32
+
 	// Timeout is the grace period for controller to take actions.
 	// Default to nil (take action immediately).
 	// +optional
