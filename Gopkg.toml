@@ -24,6 +24,9 @@
 #   go-tests = true
 #   unused-packages = true
 
+required = [
+  "github.com/client9/misspell",
+]
 
 [[constraint]]
   branch = "master"
@@ -76,6 +79,9 @@
 [prune]
   go-tests = true
   unused-packages = true
+  [[prune.project]]
+    name = "github.com/client9/misspell"
+    unused-packages = false
 
 [[constraint]]
   name = "github.com/prometheus/client_golang"
