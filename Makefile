@@ -1,6 +1,6 @@
 BIN_DIR=_output/bin
 BIN_OSARCH=linux/amd64
-IMAGE=volcanosh/volcano
+IMAGE=volcanosh/vk
 TAG = latest
 
 .EXPORT_ALL_VARIABLES:
