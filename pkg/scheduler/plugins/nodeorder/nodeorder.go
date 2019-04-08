@@ -220,7 +220,7 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 }
 
 func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
-	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (int, error) {
+	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 
 		weight := calculateWeight(pp.pluginArguments)
 
@@ -244,7 +244,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		nodeInfo := cache.NewNodeInfo(node.Pods()...)
 		nodeInfo.SetNode(node.Node)
-		var score = 0
+		var score = 0.0
 
 		//TODO: Add ImageLocalityPriority Function once priorityMetadata is published
 		//Issue: #74132 in kubernetes ( https://github.com/kubernetes/kubernetes/issues/74132 )
@@ -255,7 +255,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			return 0, err
 		}
 		// If leastReqWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		score = score + (host.Score * weight.leastReqWeight)
+		score = score + float64(host.Score*weight.leastReqWeight)
 
 		host, err = priorities.BalancedResourceAllocationMap(task.Pod, nil, nodeInfo)
 		if err != nil {
@@ -263,7 +263,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			return 0, err
 		}
 		// If balancedRescourceWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		score = score + (host.Score * weight.balancedRescourceWeight)
+		score = score + float64(host.Score*weight.balancedRescourceWeight)
 
 		host, err = priorities.CalculateNodeAffinityPriorityMap(task.Pod, nil, nodeInfo)
 		if err != nil {
@@ -271,7 +271,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			return 0, err
 		}
 		// If nodeAffinityWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		score = score + (host.Score * weight.nodeAffinityWeight)
+		score = score + float64(host.Score*weight.nodeAffinityWeight)
 
 		mapFn := priorities.NewInterPodAffinityPriority(cn, nl, pl, v1.DefaultHardPodAffinitySymmetricWeight)
 		interPodAffinityScore, err = mapFn(task.Pod, nodeMap, nodeSlice)
@@ -281,7 +281,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 		hostScore := getInterPodAffinityScore(node.Name, interPodAffinityScore)
 		// If podAffinityWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		score = score + (hostScore * weight.podAffinityWeight)
+		score = score + float64(hostScore*weight.podAffinityWeight)
 
 		glog.V(4).Infof("Total Score for that node is: %d", score)
 		return score, nil
