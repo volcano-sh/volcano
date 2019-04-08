@@ -1,6 +1,6 @@
 BIN_DIR=_output/bin
 BIN_OSARCH=linux/amd64
-IMAGE=volcanosh/vk
+IMAGE_PREFIX=volcanosh/vk
 TAG = latest
 
 .EXPORT_ALL_VARIABLES:
@@ -23,7 +23,7 @@ image_bins:
 images: image_bins
 	for name in controllers scheduler admission; do\
 		cp ${BIN_DIR}/${BIN_OSARCH}/vk-$$name ./installer/dockerfile/$$name/; \
-		docker build --no-cache -t $(IMAGE)-$$name:$(TAG) ./installer/dockerfile/$$name; \
+		docker build --no-cache -t $(IMAGE_PREFIX)-$$name:$(TAG) ./installer/dockerfile/$$name; \
 		rm installer/dockerfile/$$name/vk-$$name; \
 	done
 
