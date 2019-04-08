@@ -48,12 +48,11 @@ func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(vkjobhelpers.TaskNameFmt, jobName, taskName, index)
 }
 
-func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
+func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, taskName string) *v1.Pod {
 	templateCopy := template.DeepCopy()
-
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      MakePodName(job.Name, template.Name, ix),
+			Name:      template.Name,
 			Namespace: job.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(job, helpers.JobKind),
@@ -127,25 +126,16 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 		}
 	}
 
-	if len(pod.Annotations) == 0 {
+	if pod.Annotations == nil {
 		pod.Annotations = make(map[string]string)
 	}
 
-	tsKey := templateCopy.Name
-	if len(tsKey) == 0 {
-		tsKey = vkv1.DefaultTaskSpec
-	}
-
-	if len(pod.Annotations) == 0 {
-		pod.Annotations = make(map[string]string)
-	}
-
-	pod.Annotations[vkv1.TaskSpecKey] = tsKey
+	pod.Annotations[vkv1.TaskSpecKey] = taskName
 	pod.Annotations[kbapi.GroupNameAnnotationKey] = job.Name
 	pod.Annotations[vkv1.JobNameKey] = job.Name
 	pod.Annotations[vkv1.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
 
-	if len(pod.Labels) == 0 {
+	if pod.Labels == nil {
 		pod.Labels = make(map[string]string)
 	}
 
@@ -154,7 +144,7 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 	pod.Labels[vkv1.JobNamespaceKey] = job.Namespace
 
 	// we fill the schedulerName in the pod definition with the one specified in the QJ template
-	if job.Spec.SchedulerName != "" && pod.Spec.SchedulerName == "" {
+	if pod.Spec.SchedulerName == "" {
 		pod.Spec.SchedulerName = job.Spec.SchedulerName
 	}
 
