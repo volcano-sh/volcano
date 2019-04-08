@@ -183,7 +183,7 @@ func preempt(
 
 	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.NodeOrderFn)
 
-	selectedNodes := util.SelectBestNode(nodeScores)
+	selectedNodes := util.SortNodes(nodeScores)
 	for _, node := range selectedNodes {
 		glog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
 			preemptor.Namespace, preemptor.Name, node.Name)

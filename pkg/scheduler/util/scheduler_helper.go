@@ -18,6 +18,7 @@ package util
 
 import (
 	"context"
+	"math/rand"
 	"sort"
 	"sync"
 
@@ -74,8 +75,8 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.NodeOrder
 	return nodeScores
 }
 
-// SelectBestNode returns nodes by order of score
-func SelectBestNode(nodeScores map[float64][]*api.NodeInfo) []*api.NodeInfo {
+// SortNodes returns nodes by order of score
+func SortNodes(nodeScores map[float64][]*api.NodeInfo) []*api.NodeInfo {
 	var nodesInorder []*api.NodeInfo
 	var keys []float64
 	for key := range nodeScores {
@@ -87,6 +88,20 @@ func SelectBestNode(nodeScores map[float64][]*api.NodeInfo) []*api.NodeInfo {
 		nodesInorder = append(nodesInorder, nodes...)
 	}
 	return nodesInorder
+}
+
+// SelectBestNode returns best node whose score is highest, pick one randomly if there are many nodes with same score.
+func SelectBestNode(nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
+	var bestNodes []*api.NodeInfo
+	maxScore := -1.0
+	for score, nodes := range nodeScores {
+		if score > maxScore {
+			maxScore = score
+			bestNodes = nodes
+		}
+	}
+
+	return bestNodes[rand.Intn(len(bestNodes))]
 }
 
 // GetNodeList returns values of the map 'nodes'
