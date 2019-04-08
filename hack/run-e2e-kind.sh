@@ -57,9 +57,9 @@ function install-volcano {
   docker pull ${MPI_EXAMPLE_IMAGE}
 
   echo "Loading docker images into kind cluster"
-  kind load docker-image ${IMAGE}-controllers:${TAG}  ${CLUSTER_CONTEXT}
-  kind load docker-image ${IMAGE}-scheduler:${TAG}  ${CLUSTER_CONTEXT}
-  kind load docker-image ${IMAGE}-admission:${TAG}  ${CLUSTER_CONTEXT}
+  kind load docker-image ${IMAGE_PREFIX}-controllers:${TAG}  ${CLUSTER_CONTEXT}
+  kind load docker-image ${IMAGE_PREFIX}-scheduler:${TAG}  ${CLUSTER_CONTEXT}
+  kind load docker-image ${IMAGE_PREFIX}-admission:${TAG}  ${CLUSTER_CONTEXT}
   kind load docker-image ${MPI_EXAMPLE_IMAGE}  ${CLUSTER_CONTEXT}
 
   echo "Install volcano plugin into cluster...."

@@ -26,7 +26,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	"volcano.sh/volcano/pkg/controllers/job/apis"
+	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
 type jobCache struct {

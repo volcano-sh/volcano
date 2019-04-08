@@ -29,7 +29,7 @@ import (
 	admissioncontroller "volcano.sh/volcano/pkg/admission"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
-	"volcano.sh/volcano/pkg/controllers/job/apis"
+	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
 func eventKey(obj interface{}) interface{} {

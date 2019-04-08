@@ -18,7 +18,7 @@ package state
 
 import (
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	"volcano.sh/volcano/pkg/controllers/job/apis"
+	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
 type abortingState struct {
