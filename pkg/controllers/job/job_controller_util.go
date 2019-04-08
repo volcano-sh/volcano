@@ -185,6 +185,11 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 					if policy.Event == req.Event || policy.Event == vkv1.AnyEvent {
 						return policy.Action
 					}
+
+					// 0 is not an error code, is prevented in validation admission controller
+					if policy.ExitCode != nil && *policy.ExitCode == req.ExitCode {
+						return policy.Action
+					}
 				}
 				break
 			}
@@ -194,6 +199,11 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 	// Parse Job level policies
 	for _, policy := range job.Spec.Policies {
 		if policy.Event == req.Event || policy.Event == vkv1.AnyEvent {
+			return policy.Action
+		}
+
+		// 0 is not an error code, is prevented in validation admission controller
+		if policy.ExitCode != nil && *policy.ExitCode == req.ExitCode {
 			return policy.Action
 		}
 	}

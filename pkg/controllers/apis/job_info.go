@@ -133,13 +133,14 @@ type Request struct {
 	TaskName  string
 
 	Event      v1alpha1.Event
+	ExitCode   int32
 	Action     v1alpha1.Action
 	JobVersion int32
 }
 
 func (r Request) String() string {
 	return fmt.Sprintf(
-		"Job: %s/%s, Task:%s, Event:%s, Action:%s, JobVersion: %d",
-		r.Namespace, r.JobName, r.TaskName, r.Event, r.Action, r.JobVersion)
+		"Job: %s/%s, Task:%s, Event:%s, ExitCode:%d, Action:%s, JobVersion: %d",
+		r.Namespace, r.JobName, r.TaskName, r.Event, r.ExitCode, r.Action, r.JobVersion)
 
 }
