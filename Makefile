@@ -16,6 +16,8 @@ verify: generate-code
 	hack/verify-gofmt.sh
 	hack/verify-golint.sh
 	hack/verify-gencode.sh
+	hack/verify-boilerplate.sh
+	hack/verify-spelling.sh
 
 init:
 	mkdir -p ${BIN_DIR}

@@ -29,6 +29,14 @@
   revision = "3a771d992973f24aa725d07868b467d1ddfceafb"
 
 [[projects]]
+  digest = "1:a12c26510933c0af9fc828cce90aabb7e531d6014e97633b3cd452ad4763f64e"
+  name = "github.com/client9/misspell"
+  packages = ["."]
+  pruneopts = "T"
+  revision = "b90dc15cfd220ecf8bbc9043ecb928cef381f011"
+  version = "v0.3.4"
+
+[[projects]]
   digest = "1:6b21090f60571b20b3ddc2c8e48547dffcf409498ed6002c2cada023725ed377"
   name = "github.com/davecgh/go-spew"
   packages = ["spew"]
@@ -1011,6 +1019,7 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "github.com/client9/misspell",
     "github.com/golang/glog",
     "github.com/onsi/ginkgo",
     "github.com/onsi/gomega",
@@ -1045,6 +1054,7 @@
     "k8s.io/client-go/informers",
     "k8s.io/client-go/informers/core/v1",
     "k8s.io/client-go/informers/policy/v1beta1",
+    "k8s.io/client-go/informers/scheduling/v1beta1",
     "k8s.io/client-go/informers/storage/v1",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/kubernetes/scheme",
@@ -1062,14 +1072,15 @@
     "k8s.io/gengo/args",
     "k8s.io/gengo/examples/deepcopy-gen/generators",
     "k8s.io/kubernetes/pkg/api/v1/pod",
+    "k8s.io/kubernetes/pkg/apis/scheduling",
     "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset",
+    "k8s.io/kubernetes/pkg/kubelet/apis",
     "k8s.io/kubernetes/pkg/scheduler/algorithm",
     "k8s.io/kubernetes/pkg/scheduler/algorithm/predicates",
     "k8s.io/kubernetes/pkg/scheduler/algorithm/priorities",
     "k8s.io/kubernetes/pkg/scheduler/api",
     "k8s.io/kubernetes/pkg/scheduler/cache",
     "k8s.io/kubernetes/pkg/scheduler/volumebinder",
-    "k8s.io/kubernetes/pkg/util/parsers",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1
