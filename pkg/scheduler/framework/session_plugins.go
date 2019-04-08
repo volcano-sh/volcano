@@ -303,8 +303,8 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 	return nil
 }
 
-func (ssn *Session) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo) (int, error) {
-	priorityScore := 0
+func (ssn *Session) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
+	priorityScore := 0.0
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledNodeOrder) {

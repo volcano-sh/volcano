@@ -54,8 +54,8 @@ func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateF
 }
 
 // PrioritizeNodes returns a map whose key is node's score and value are corresponding nodes
-func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.NodeOrderFn) map[int][]*api.NodeInfo {
-	nodeScores := map[int][]*api.NodeInfo{}
+func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.NodeOrderFn) map[float64][]*api.NodeInfo {
+	nodeScores := map[float64][]*api.NodeInfo{}
 
 	var workerLock sync.Mutex
 	scoreNode := func(index int) {
@@ -75,13 +75,13 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.NodeOrder
 }
 
 // SelectBestNode returns nodes by order of score
-func SelectBestNode(nodeScores map[int][]*api.NodeInfo) []*api.NodeInfo {
+func SelectBestNode(nodeScores map[float64][]*api.NodeInfo) []*api.NodeInfo {
 	var nodesInorder []*api.NodeInfo
-	var keys []int
+	var keys []float64
 	for key := range nodeScores {
 		keys = append(keys, key)
 	}
-	sort.Sort(sort.Reverse(sort.IntSlice(keys)))
+	sort.Sort(sort.Reverse(sort.Float64Slice(keys)))
 	for _, key := range keys {
 		nodes := nodeScores[key]
 		nodesInorder = append(nodesInorder, nodes...)

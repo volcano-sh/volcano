@@ -104,4 +104,4 @@ type PredicateFn func(*TaskInfo, *NodeInfo) error
 type EvictableFn func(*TaskInfo, []*TaskInfo) []*TaskInfo
 
 // NodeOrderFn is the func declaration used to get priority score for a node for a particular task.
-type NodeOrderFn func(*TaskInfo, *NodeInfo) (int, error)
+type NodeOrderFn func(*TaskInfo, *NodeInfo) (float64, error)
