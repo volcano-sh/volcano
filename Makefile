@@ -1,43 +1,34 @@
 BIN_DIR=_output/bin
+BIN_OSARCH=linux/amd64
 IMAGE=volcanosh/volcano
 TAG = latest
 
 .EXPORT_ALL_VARIABLES:
 
-all: controllers scheduler cli admission
+all: init verify cli images e2e-test-kind
 
 init:
 	mkdir -p ${BIN_DIR}
 
-controllers:
-	go build -o ${BIN_DIR}/vk-controllers ./cmd/controllers
-
-scheduler:
-	go build -o ${BIN_DIR}/vk-scheduler ./cmd/scheduler
-
 cli:
-	go build -o ${BIN_DIR}/vkctl ./cmd/cli
+	go get github.com/mitchellh/gox
+	CGO_ENABLED=0 gox -osarch=${BIN_OSARCH} -output ${BIN_DIR}/${BIN_OSARCH}/vkctl ./cmd/cli
 
-admission:
-	go build -o ${BIN_DIR}/vk-admission ./cmd/admission
-
-release:
-	CGO_ENABLED=0 go build -o ${BIN_DIR}/rel/vk-controllers ./cmd/controllers
-	CGO_ENABLED=0 go build -o ${BIN_DIR}/rel/vk-scheduler ./cmd/scheduler
-	CGO_ENABLED=0 go build -o  ${BIN_DIR}/rel/vk-admission ./cmd/admission
-
-docker: release
+image_bins:
+	go get github.com/mitchellh/gox
 	for name in controllers scheduler admission; do\
-		cp ${BIN_DIR}/rel/vk-$$name ./installer/dockerfile/$$name/; \
+		CGO_ENABLED=0 gox -osarch=${BIN_OSARCH} -output ${BIN_DIR}/${BIN_OSARCH}/vk-$$name ./cmd/$$name; \
+	done
+
+images: image_bins
+	for name in controllers scheduler admission; do\
+		cp ${BIN_DIR}/${BIN_OSARCH}/vk-$$name ./installer/dockerfile/$$name/; \
 		docker build --no-cache -t $(IMAGE)-$$name:$(TAG) ./installer/dockerfile/$$name; \
 		rm installer/dockerfile/$$name/vk-$$name; \
 	done
 
 generate-code:
 	./hack/update-gencode.sh
-
-e2e-test:
-	./hack/run-e2e.sh
 
 unit-test:
 	go list ./... | grep -v e2e | xargs go test -v
