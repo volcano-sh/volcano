@@ -45,4 +45,4 @@ The Allocation of the workloads to the node in Kube-batch happens in each sessio
 
 
 
-![Execution flow graph](../images/AllocateDesign.png)
+![Execution flow graph](../../images/AllocateDesign.png)
