@@ -2,6 +2,13 @@ BIN_DIR=_output/bin
 BIN_OSARCH=linux/amd64
 IMAGE_PREFIX=volcanosh/vk
 TAG = latest
+GitSHA=`git rev-parse HEAD`
+Date=`date "+%Y-%m-%d %H:%M:%S"`
+REPO_PATH=volcano.sh/volcano
+LD_FLAGS=" \
+    -X '${REPO_PATH}/pkg/version.GitSHA=${GitSHA}' \
+    -X '${REPO_PATH}/pkg/version.Built=${Date}'   \
+    -X '${REPO_PATH}/pkg/version.Version=${TAG}'"
 
 .EXPORT_ALL_VARIABLES:
 
@@ -17,7 +24,7 @@ cli:
 image_bins:
 	go get github.com/mitchellh/gox
 	for name in controllers scheduler admission; do\
-		CGO_ENABLED=0 gox -osarch=${BIN_OSARCH} -output ${BIN_DIR}/${BIN_OSARCH}/vk-$$name ./cmd/$$name; \
+		CGO_ENABLED=0 gox -osarch=${BIN_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${BIN_OSARCH}/vk-$$name ./cmd/$$name; \
 	done
 
 images: image_bins

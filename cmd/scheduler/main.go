@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"time"
+	"volcano.sh/volcano/pkg/version"
 
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
@@ -40,6 +41,12 @@ func main() {
 	s.AddFlags(pflag.CommandLine)
 
 	flag.InitFlags()
+
+	if s.PrintVersion {
+		version.PrintVersionAndExit()
+		os.Exit(0)
+	}
+
 	if err := s.CheckOptionOrDie(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)

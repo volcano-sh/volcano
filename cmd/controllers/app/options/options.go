@@ -28,6 +28,7 @@ type ServerOption struct {
 	Kubeconfig           string
 	EnableLeaderElection bool
 	LockObjectNamespace  string
+	PrintVersion         bool
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -43,6 +44,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableLeaderElection, "leader-elect", s.EnableLeaderElection, "Start a leader election client and gain leadership before "+
 		"executing the main loop. Enable this when running replicated kar-scheduler for high availability.")
 	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", s.LockObjectNamespace, "Define the namespace of the lock object.")
+	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
 }
 
 func (s *ServerOption) CheckOptionOrDie() error {
