@@ -28,7 +28,9 @@ type JobInfo struct {
 	Namespace string
 	Name      string
 
-	Job  *v1alpha1.Job
+	Job *v1alpha1.Job
+	// Note: do not modify the pod here, it is a pointer type,
+	// which point to k8s informer underlying cache.
 	Pods map[string]map[string]*v1.Pod
 }
 
