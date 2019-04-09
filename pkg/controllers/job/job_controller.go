@@ -118,8 +118,9 @@ func NewJobController(config *rest.Config) *Controller {
 
 	cc.jobInformer = vkinfoext.NewSharedInformerFactory(cc.vkClients, 0).Batch().V1alpha1().Jobs()
 	cc.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    cc.addJob,
-		UpdateFunc: cc.updateJob,
+		AddFunc: cc.addJob,
+		// TODO: enable this until we find an appropriate way.
+		// UpdateFunc: cc.updateJob,
 		DeleteFunc: cc.deleteJob,
 	})
 	cc.jobLister = cc.jobInformer.Lister()
