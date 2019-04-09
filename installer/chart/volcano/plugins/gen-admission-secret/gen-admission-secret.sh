@@ -116,7 +116,7 @@ for x in $(seq 15); do
     sleep 1
 done
 if [[ ${serverCert} == '' ]]; then
-    echo "ERROR: After approving csr ${csrName}, the signed certificate did not appear on the resource. Giving up after 10 attempts." >&2
+    echo "ERROR: After approving csr ${csrName}, the signed certificate did not appear on the resource. Giving up after 15 attempts." >&2
     exit 1
 fi
 echo ${serverCert} | openssl base64 -d -A -out ${tmpdir}/server-cert.pem
