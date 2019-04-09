@@ -44,6 +44,7 @@ import (
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/scheduler/volumebinder"
 
+	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
 	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/scheme"
@@ -304,7 +305,10 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.pvcInformer.Informer().Run(stopCh)
 	go sc.scInformer.Informer().Run(stopCh)
 	go sc.queueInformer.Informer().Run(stopCh)
-	go sc.pcInformer.Informer().Run(stopCh)
+
+	if options.ServerOpts.EnablePriorityClass {
+		go sc.pcInformer.Informer().Run(stopCh)
+	}
 
 	// Re-sync error tasks.
 	go wait.Until(sc.processResyncTask, 0, stopCh)
@@ -316,15 +320,22 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 
 	return cache.WaitForCacheSync(stopCh,
-		sc.pdbInformer.Informer().HasSynced,
-		sc.podInformer.Informer().HasSynced,
-		sc.podGroupInformer.Informer().HasSynced,
-		sc.nodeInformer.Informer().HasSynced,
-		sc.pvInformer.Informer().HasSynced,
-		sc.pvcInformer.Informer().HasSynced,
-		sc.scInformer.Informer().HasSynced,
-		sc.queueInformer.Informer().HasSynced,
-		sc.pcInformer.Informer().HasSynced,
+		func() []cache.InformerSynced {
+			informerSynced := []cache.InformerSynced{
+				sc.pdbInformer.Informer().HasSynced,
+				sc.podInformer.Informer().HasSynced,
+				sc.podGroupInformer.Informer().HasSynced,
+				sc.nodeInformer.Informer().HasSynced,
+				sc.pvInformer.Informer().HasSynced,
+				sc.pvcInformer.Informer().HasSynced,
+				sc.scInformer.Informer().HasSynced,
+				sc.queueInformer.Informer().HasSynced,
+			}
+			if options.ServerOpts.EnablePriorityClass {
+				informerSynced = append(informerSynced, sc.pcInformer.Informer().HasSynced)
+			}
+			return informerSynced
+		}()...,
 	)
 }
 
