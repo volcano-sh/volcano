@@ -24,7 +24,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	jobutil "volcano.sh/volcano/pkg/controllers/job"
+	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
 
 var _ = Describe("Job Error Handling", func() {
@@ -174,7 +174,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
-		podName := jobutil.MakePodName(job.Name, "delete", 0)
+		podName := jobhelpers.MakePodName(job.Name, "delete", 0)
 		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -218,7 +218,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
-		podName := jobutil.MakePodName(job.Name, "delete", 0)
+		podName := jobhelpers.MakePodName(job.Name, "delete", 0)
 		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -262,7 +262,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
-		podName := jobutil.MakePodName(job.Name, "delete", 0)
+		podName := jobhelpers.MakePodName(job.Name, "delete", 0)
 		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -306,7 +306,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
-		podName := jobutil.MakePodName(job.Name, "delete", 0)
+		podName := jobhelpers.MakePodName(job.Name, "delete", 0)
 		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -356,7 +356,7 @@ var _ = Describe("Job Error Handling", func() {
 		err = taintAllNodes(context, taints)
 		Expect(err).NotTo(HaveOccurred())
 
-		podName := jobutil.MakePodName(job.Name, "test", 0)
+		podName := jobhelpers.MakePodName(job.Name, "test", 0)
 		By("Kill one of the pod in order to trigger unschedulable status")
 		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
@@ -415,7 +415,7 @@ var _ = Describe("Job Error Handling", func() {
 		err = taintAllNodes(context, taints)
 		Expect(err).NotTo(HaveOccurred())
 
-		podName := jobutil.MakePodName(job.Name, "test", 0)
+		podName := jobhelpers.MakePodName(job.Name, "test", 0)
 		By("Kill one of the pod in order to trigger unschedulable status")
 		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())

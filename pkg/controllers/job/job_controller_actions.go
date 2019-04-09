@@ -25,8 +25,6 @@ import (
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
-
 	admissioncontroller "volcano.sh/volcano/pkg/admission"
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -143,15 +141,6 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		}
 	}
 
-	// Delete Service
-	if err := cc.kubeClients.CoreV1().Services(job.Namespace).Delete(job.Name, nil); err != nil {
-		if !apierrors.IsNotFound(err) {
-			glog.Errorf("Failed to delete Service of Job %v/%v: %v",
-				job.Namespace, job.Name, err)
-			return err
-		}
-	}
-
 	if err := cc.pluginOnJobDelete(job); err != nil {
 		return err
 	}
@@ -182,10 +171,6 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		return err
 	}
 
-	if err := cc.createServiceIfNotExist(job); err != nil {
-		return err
-	}
-
 	if err := cc.pluginOnJobAdd(job); err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(vkbatchv1.PluginError),
 			fmt.Sprintf("Execute plugin when job add failed, err: %v", err))
@@ -210,7 +195,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		}
 
 		for i := 0; i < int(ts.Replicas); i++ {
-			podName := fmt.Sprintf(vkjobhelpers.TaskNameFmt, job.Name, name, i)
+			podName := fmt.Sprintf(vkjobhelpers.PodNameFmt, job.Name, name, i)
 			if pod, found := pods[podName]; !found {
 				newPod := createJobPod(job, tc, i)
 				if err := cc.pluginOnPodCreate(job, newPod); err != nil {
@@ -343,51 +328,6 @@ func (cc *Controller) calculateVersion(current int32, bumpVersion bool) int32 {
 		current += 1
 	}
 	return current
-}
-
-func (cc *Controller) createServiceIfNotExist(job *vkv1.Job) error {
-	// If Service does not exist, create one for Job.
-	if _, err := cc.svcLister.Services(job.Namespace).Get(job.Name); err != nil {
-		if !apierrors.IsNotFound(err) {
-			glog.V(3).Infof("Failed to get Service for Job <%s/%s>: %v",
-				job.Namespace, job.Name, err)
-			return err
-		}
-
-		svc := &v1.Service{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: job.Namespace,
-				Name:      job.Name,
-				OwnerReferences: []metav1.OwnerReference{
-					*metav1.NewControllerRef(job, helpers.JobKind),
-				},
-			},
-			Spec: v1.ServiceSpec{
-				ClusterIP: "None",
-				Selector: map[string]string{
-					vkv1.JobNameKey:      job.Name,
-					vkv1.JobNamespaceKey: job.Namespace,
-				},
-				Ports: []v1.ServicePort{
-					{
-						Name:       "placeholder-volcano",
-						Port:       1,
-						Protocol:   v1.ProtocolTCP,
-						TargetPort: intstr.FromInt(1),
-					},
-				},
-			},
-		}
-
-		if _, e := cc.kubeClients.CoreV1().Services(job.Namespace).Create(svc); e != nil {
-			glog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v",
-				job.Namespace, job.Name, err)
-
-			return e
-		}
-	}
-
-	return nil
 }
 
 func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) error {
