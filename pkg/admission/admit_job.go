@@ -26,12 +26,14 @@ import (
 
 	"k8s.io/api/admission/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 
 	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
 // job admit.
 func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
+
 	glog.V(3).Infof("admitting jobs -- %s", ar.Request.Operation)
 
 	job, err := DecodeJob(ar.Request.Object, ar.Request.Resource)
@@ -82,6 +84,11 @@ func validateJobSpec(jobSpec v1alpha1.JobSpec, reviewResponse *v1beta1.Admission
 
 		// count replicas
 		totalReplicas = totalReplicas + task.Replicas
+
+		// validate task name
+		if errMsgs := validation.IsDNS1123Label(task.Name); len(errMsgs) > 0 {
+			msg = msg + fmt.Sprintf(" %v;", errMsgs)
+		}
 
 		// duplicate task name
 		if _, found := taskNames[task.Name]; found {

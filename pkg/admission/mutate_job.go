@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"time"
 
 	"github.com/golang/glog"
@@ -83,7 +84,7 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string) (patch []patchOperat
 		// add default task name
 		taskName := tasks[index].Name
 		if len(taskName) == 0 {
-			tasks[index].Name = v1alpha1.DefaultTaskSpec
+			tasks[index].Name = v1alpha1.DefaultTaskSpec + strconv.Itoa(index)
 		}
 	}
 	patch = append(patch, patchOperation{
