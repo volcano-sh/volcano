@@ -68,7 +68,7 @@ build them locally with the command:
 
 ```
 cd $GOPATH/src/volcano.sh/volcano
-make docker
+make images
 
 ## Verify your images
 # docker images
