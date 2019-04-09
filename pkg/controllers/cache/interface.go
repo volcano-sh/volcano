@@ -14,8 +14,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package job
+package cache
 
-const (
-	TaskNameFmt = "%s-%s-%d"
+import (
+	"k8s.io/api/core/v1"
+
+	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/controllers/apis"
 )
+
+type Cache interface {
+	Run(stopCh <-chan struct{})
+
+	Get(key string) (*apis.JobInfo, error)
+	GetStatus(key string) (*v1alpha1.JobStatus, error)
+	Add(obj *v1alpha1.Job) error
+	Update(obj *v1alpha1.Job) error
+	Delete(obj *v1alpha1.Job) error
+
+	AddPod(pod *v1.Pod) error
+	UpdatePod(pod *v1.Pod) error
+	DeletePod(pod *v1.Pod) error
+
+	TaskCompleted(jobKey, taskName string) bool
+}

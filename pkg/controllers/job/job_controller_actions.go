@@ -32,7 +32,7 @@ import (
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
-	"volcano.sh/volcano/pkg/controllers/job/apis"
+	"volcano.sh/volcano/pkg/controllers/apis"
 	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )

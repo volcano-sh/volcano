@@ -47,8 +47,8 @@ import (
 	vkcoreinfo "volcano.sh/volcano/pkg/client/informers/externalversions/bus/v1alpha1"
 	vkbatchlister "volcano.sh/volcano/pkg/client/listers/batch/v1alpha1"
 	vkcorelister "volcano.sh/volcano/pkg/client/listers/bus/v1alpha1"
-	"volcano.sh/volcano/pkg/controllers/job/apis"
-	jobcache "volcano.sh/volcano/pkg/controllers/job/cache"
+	"volcano.sh/volcano/pkg/controllers/apis"
+	jobcache "volcano.sh/volcano/pkg/controllers/cache"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
