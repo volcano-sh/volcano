@@ -24,13 +24,24 @@ import (
 )
 
 var _ = Describe("Job E2E Test", func() {
+	cleanupResources := CleanupResources{}
+	var context *context
+
+	BeforeEach(func() {
+		context = gContext
+	})
+
+	AfterEach(func() {
+		deleteResources(gContext, cleanupResources)
+	})
+
 	It("Schedule Job", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName := "qj-1"
+		cleanupResources.Jobs = []string{jobName}
 		rep := clusterSize(context, oneCPU)
 
 		job := createJob(context, &jobSpec{
-			name: "qj-1",
+			name: jobName,
 			tasks: []taskSpec{
 				{
 					img: defaultBusyBoxImage,
@@ -46,9 +57,10 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Schedule Multiple Jobs", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
-
+		jobName1 := "mqj-1"
+		jobName2 := "mqj-2"
+		jobName3 := "mqj-3"
+		cleanupResources.Jobs = []string{jobName1, jobName2, jobName3}
 		rep := clusterSize(context, oneCPU)
 
 		job := &jobSpec{
@@ -62,11 +74,11 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		job.name = "mqj-1"
+		job.name = jobName1
 		job1 := createJob(context, job)
-		job.name = "mqj-2"
+		job.name = jobName2
 		job2 := createJob(context, job)
-		job.name = "mqj-3"
+		job.name = jobName3
 		job3 := createJob(context, job)
 
 		err := waitJobReady(context, job1)
@@ -80,8 +92,9 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Gang scheduling", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName := "gang-qj"
+		cleanupResources.Jobs = []string{jobName}
+
 		rep := clusterSize(context, oneCPU)/2 + 1
 
 		replicaset := createReplicaSet(context, "rs-1", rep, defaultNginxImage, oneCPU)
@@ -116,12 +129,13 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Gang scheduling: Full Occupied", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName1 := "gang-fq-qj1"
+		jobName2 := "gang-fq-qj2"
+		cleanupResources.Jobs = []string{jobName1, jobName2}
+
 		rep := clusterSize(context, oneCPU)
 
 		job := &jobSpec{
-			namespace: "test",
 			tasks: []taskSpec{
 				{
 					img: defaultNginxImage,
@@ -132,12 +146,12 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		job.name = "gang-fq-qj1"
+		job.name = jobName1
 		job1 := createJob(context, job)
 		err := waitJobReady(context, job1)
 		Expect(err).NotTo(HaveOccurred())
 
-		job.name = "gang-fq-qj2"
+		job.name = jobName2
 		job2 := createJob(context, job)
 		err = waitJobPending(context, job2)
 		Expect(err).NotTo(HaveOccurred())
@@ -147,8 +161,9 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Preemption", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName1 := "preemptee-qj"
+		jobName2 := "preemptor-qj"
+		cleanupResources.Jobs = []string{jobName1, jobName2}
 
 		slot := oneCPU
 		rep := clusterSize(context, slot)
@@ -164,12 +179,12 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		job.name = "preemptee-qj"
+		job.name = jobName1
 		job1 := createJob(context, job)
 		err := waitTasksReady(context, job1, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
-		job.name = "preemptor-qj"
+		job.name = jobName2
 		job2 := createJob(context, job)
 		err = waitTasksReady(context, job1, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
@@ -179,8 +194,10 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Multiple Preemption", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName1 := "multipreemptee-qj"
+		jobName2 := "multipreemptor-qj1"
+		jobName3 := "multipreemptor-qj2"
+		cleanupResources.Jobs = []string{jobName1, jobName2, jobName3}
 
 		slot := oneCPU
 		rep := clusterSize(context, slot)
@@ -196,16 +213,16 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		job.name = "multipreemptee-qj"
+		job.name = jobName1
 		job1 := createJob(context, job)
 		err := waitTasksReady(context, job1, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
-		job.name = "multipreemptor-qj1"
+		job.name = jobName2
 		job2 := createJob(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		job.name = "multipreemptor-qj2"
+		job.name = jobName3
 		job3 := createJob(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -220,14 +237,14 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Schedule BestEffort Job", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName := "test-besteffort"
+		cleanupResources.Jobs = []string{jobName}
 
 		slot := oneCPU
 		rep := clusterSize(context, slot)
 
 		spec := &jobSpec{
-			name: "test",
+			name: jobName,
 			tasks: []taskSpec{
 				{
 					img: defaultNginxImage,
@@ -250,14 +267,14 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Statement", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName1 := "st-qj-1"
+		jobName2 := "st-qj-2"
+		cleanupResources.Jobs = []string{jobName1, jobName2}
 
 		slot := oneCPU
 		rep := clusterSize(context, slot)
 
 		spec := &jobSpec{
-			namespace: "test",
 			tasks: []taskSpec{
 				{
 					img: defaultNginxImage,
@@ -268,14 +285,14 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		spec.name = "st-qj-1"
+		spec.name = jobName1
 		job1 := createJob(context, spec)
 		err := waitJobReady(context, job1)
 		Expect(err).NotTo(HaveOccurred())
 
 		now := time.Now()
 
-		spec.name = "st-qj-2"
+		spec.name = jobName2
 		job2 := createJob(context, spec)
 		err = waitJobUnschedulable(context, job2)
 		Expect(err).NotTo(HaveOccurred())

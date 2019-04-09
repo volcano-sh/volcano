@@ -24,29 +24,36 @@ import (
 )
 
 var _ = Describe("Job E2E Test: Test Admission service", func() {
+	cleanupResources := CleanupResources{}
+	var context *context
+
+	BeforeEach(func() {
+		context = gContext
+	})
+
+	AfterEach(func() {
+		deleteResources(gContext, cleanupResources)
+	})
+
 	It("Duplicated Task Name", func() {
 		jobName := "job-duplicated"
-		namespace := "test"
-		context := initTestContext()
-		defer cleanupTestContext(context)
-		rep := clusterSize(context, oneCPU)
+		cleanupResources.Jobs = []string{jobName}
 
 		_, err := createJobInner(context, &jobSpec{
-			namespace: namespace,
-			name:      jobName,
+			name: jobName,
 			tasks: []taskSpec{
 				{
 					img:  defaultNginxImage,
 					req:  oneCPU,
-					min:  rep,
-					rep:  rep,
+					min:  1,
+					rep:  1,
 					name: "duplicated",
 				},
 				{
 					img:  defaultNginxImage,
 					req:  oneCPU,
-					min:  rep,
-					rep:  rep,
+					min:  1,
+					rep:  1,
 					name: "duplicated",
 				},
 			},
@@ -60,20 +67,16 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 
 	It("Duplicated Policy Event", func() {
 		jobName := "job-policy-duplicated"
-		namespace := "test"
-		context := initTestContext()
-		defer cleanupTestContext(context)
-		rep := clusterSize(context, oneCPU)
+		cleanupResources.Jobs = []string{jobName}
 
 		_, err := createJobInner(context, &jobSpec{
-			namespace: namespace,
-			name:      jobName,
+			name: jobName,
 			tasks: []taskSpec{
 				{
 					img:  defaultNginxImage,
 					req:  oneCPU,
-					min:  rep,
-					rep:  rep,
+					min:  1,
+					rep:  1,
 					name: "taskname",
 				},
 			},
@@ -97,21 +100,17 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 
 	It("Min Available illegal", func() {
 		jobName := "job-min-illegal"
-		namespace := "test"
-		context := initTestContext()
-		defer cleanupTestContext(context)
-		rep := clusterSize(context, oneCPU)
+		cleanupResources.Jobs = []string{jobName}
 
 		_, err := createJobInner(context, &jobSpec{
-			min:       rep * 2,
-			namespace: namespace,
-			name:      jobName,
+			min:  2,
+			name: jobName,
 			tasks: []taskSpec{
 				{
 					img:  defaultNginxImage,
 					req:  oneCPU,
-					min:  rep,
-					rep:  rep,
+					min:  1,
+					rep:  1,
 					name: "taskname",
 				},
 			},
@@ -125,14 +124,11 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 
 	It("Job Plugin illegal", func() {
 		jobName := "job-plugin-illegal"
-		namespace := "test"
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		cleanupResources.Jobs = []string{jobName}
 
 		_, err := createJobInner(context, &jobSpec{
-			min:       1,
-			namespace: namespace,
-			name:      jobName,
+			min:  1,
+			name: jobName,
 			plugins: map[string][]string{
 				"big_plugin": {},
 			},

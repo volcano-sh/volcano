@@ -62,6 +62,10 @@ const (
 	defaultMPIImage     = "volcanosh/example-mpi:0.0.1"
 )
 
+type CleanupResources struct {
+	Jobs []string
+}
+
 func cpuResource(request string) v1.ResourceList {
 	return v1.ResourceList{v1.ResourceCPU: resource.MustParse(request)}
 }
@@ -104,9 +108,9 @@ type context struct {
 	enableNamespaceAsQueue bool
 }
 
-func initTestContext() *context {
+func initTestContext(namespace string) *context {
 	cxt := &context{
-		namespace: "test",
+		namespace: namespace,
 		queues:    []string{"q1", "q2"},
 	}
 
@@ -272,6 +276,19 @@ func deleteQueues(cxt *context) {
 		}
 
 		Expect(err).NotTo(HaveOccurred())
+	}
+}
+
+func deleteResources(cxt *context, resources CleanupResources) {
+	foreground := metav1.DeletePropagationForeground
+	for _, name := range resources.Jobs {
+		_, error := cxt.vkclient.BatchV1alpha1().Jobs(cxt.namespace).Get(name, metav1.GetOptions{})
+		if !errors.IsNotFound(error) {
+			error = cxt.vkclient.BatchV1alpha1().Jobs(cxt.namespace).Delete(name, &metav1.DeleteOptions{
+				PropagationPolicy: &foreground,
+			})
+			Expect(error).NotTo(HaveOccurred())
+		}
 	}
 }
 

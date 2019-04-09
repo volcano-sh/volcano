@@ -24,12 +24,23 @@ import (
 )
 
 var _ = Describe("Queue E2E Test", func() {
-	It("Reclaim", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
+	cleanupResources := CleanupResources{}
+	var context *context
 
+	BeforeEach(func() {
+		context = gContext
+	})
+
+	AfterEach(func() {
+		deleteResources(gContext, cleanupResources)
+	})
+
+	It("Reclaim", func() {
 		slot := oneCPU
 		rep := clusterSize(context, slot)
+		jobName1 := "q1-qj-1"
+		jobName2 := "q2-qj-2"
+		cleanupResources.Jobs = []string{jobName1, jobName2}
 
 		spec := &jobSpec{
 			tasks: []taskSpec{
@@ -42,7 +53,7 @@ var _ = Describe("Queue E2E Test", func() {
 			},
 		}
 
-		spec.name = "q1-qj-1"
+		spec.name = jobName1
 		spec.queue = "q1"
 		job1 := createJob(context, spec)
 		err := waitJobReady(context, job1)
@@ -57,7 +68,7 @@ var _ = Describe("Queue E2E Test", func() {
 			Expect(err).NotTo(HaveOccurred())
 		}
 
-		spec.name = "q2-qj-2"
+		spec.name = jobName2
 		spec.queue = "q2"
 		job2 := createJob(context, spec)
 		err = waitTasksReady(context, job2, expected)

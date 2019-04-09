@@ -26,9 +26,20 @@ import (
 )
 
 var _ = Describe("Predicates E2E Test", func() {
+	cleanupResources := CleanupResources{}
+	var context *context
+
+	BeforeEach(func() {
+		context = gContext
+	})
+
+	AfterEach(func() {
+		deleteResources(gContext, cleanupResources)
+	})
+
 	It("NodeAffinity", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName := "na-spec"
+		cleanupResources.Jobs = []string{jobName}
 
 		slot := oneCPU
 		nodeName, rep := computeNode(context, oneCPU)
@@ -53,7 +64,7 @@ var _ = Describe("Predicates E2E Test", func() {
 		}
 
 		spec := &jobSpec{
-			name: "na-spec",
+			name: jobName,
 			tasks: []taskSpec{
 				{
 					img:      defaultNginxImage,
@@ -76,13 +87,13 @@ var _ = Describe("Predicates E2E Test", func() {
 	})
 
 	It("Hostport", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
 
+		jobName := "hp-spec"
+		cleanupResources.Jobs = []string{jobName}
 		nn := clusterNodeNumber(context)
 
 		spec := &jobSpec{
-			name: "hp-spec",
+			name: jobName,
 			tasks: []taskSpec{
 				{
 					img:      defaultNginxImage,
@@ -104,8 +115,8 @@ var _ = Describe("Predicates E2E Test", func() {
 	})
 
 	It("Pod Affinity", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName := "pa-spec"
+		cleanupResources.Jobs = []string{jobName}
 
 		slot := oneCPU
 		_, rep := computeNode(context, oneCPU)
@@ -127,7 +138,7 @@ var _ = Describe("Predicates E2E Test", func() {
 		}
 
 		spec := &jobSpec{
-			name: "pa-spec",
+			name: jobName,
 			tasks: []taskSpec{
 				{
 					img:      defaultNginxImage,
@@ -153,8 +164,8 @@ var _ = Describe("Predicates E2E Test", func() {
 	})
 
 	It("Taints/Tolerations", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName := "tt-spec"
+		cleanupResources.Jobs = []string{jobName}
 
 		taints := []v1.Taint{
 			{

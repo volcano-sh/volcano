@@ -31,23 +31,31 @@ import (
 )
 
 var _ = Describe("Job E2E Test: Test Job Command", func() {
+
+	cleanupResources := CleanupResources{}
+	var context *context
+
+	BeforeEach(func() {
+		context = gContext
+	})
+
+	AfterEach(func() {
+		deleteResources(gContext, cleanupResources)
+	})
+
 	It("List running jobs", func() {
 		var outBuffer bytes.Buffer
 		jobName := "test-job"
-		namespace := "test"
-		context := initTestContext()
-		defer cleanupTestContext(context)
-		rep := clusterSize(context, oneCPU)
+		cleanupResources.Jobs = []string{jobName}
 
 		job := createJob(context, &jobSpec{
-			namespace: namespace,
-			name:      jobName,
+			name: jobName,
 			tasks: []taskSpec{
 				{
 					img: defaultNginxImage,
 					req: oneCPU,
-					min: rep,
-					rep: rep,
+					min: 1,
+					rep: 1,
 				},
 			},
 		})
@@ -58,8 +66,8 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		err = waitJobStateReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 		//Command outputs are identical
-		outputs := ListJobs(namespace)
-		jobs, err := context.vkclient.BatchV1alpha1().Jobs(namespace).List(metav1.ListOptions{})
+		outputs := ListJobs(context.namespace)
+		jobs, err := context.vkclient.BatchV1alpha1().Jobs(context.namespace).List(metav1.ListOptions{})
 		ctlJob.PrintJobs(jobs, &outBuffer)
 		Expect(outputs).To(Equal(outBuffer.String()), "List command result should be:\n %s",
 			outBuffer.String())
@@ -68,13 +76,10 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 	It("Suspend running job&Resume aborted job", func() {
 		jobName := "test-suspend-running-job"
 		taskName := "long-live-task"
-		namespace := "test"
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		cleanupResources.Jobs = []string{jobName}
 
 		job := createJob(context, &jobSpec{
-			namespace: namespace,
-			name:      jobName,
+			name: jobName,
 			tasks: []taskSpec{
 				{
 					name: taskName,
@@ -91,18 +96,18 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		//Suspend job and wait status change
-		SuspendJob(jobName, namespace)
+		SuspendJob(jobName, context.namespace)
 		err = waitJobStateAborted(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		//Pod is gone
 		podName := jobUtil.MakePodName(jobName, taskName, 0)
-		_, err = context.kubeclient.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
+		_, err = context.kubeclient.CoreV1().Pods(context.namespace).Get(podName, metav1.GetOptions{})
 		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 			"Job related pod should be deleted when aborting job.")
 
 		//Resume job
-		ResumeJob(jobName, namespace)
+		ResumeJob(jobName, context.namespace)
 
 		//Job is running again
 		err = waitJobReady(context, job)
@@ -113,17 +118,14 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 	})
 
 	It("Suspend pending job", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU) * 2
 
 		jobName := "test-suspend-pending-job"
-		namespace := "test"
 		taskName := "long-live-task"
+		cleanupResources.Jobs = []string{jobName}
 
 		job := createJob(context, &jobSpec{
-			namespace: namespace,
-			name:      jobName,
+			name: jobName,
 			tasks: []taskSpec{
 				{
 					name: taskName,
@@ -142,13 +144,13 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		//Suspend job and wait status change
-		SuspendJob(jobName, namespace)
+		SuspendJob(jobName, context.namespace)
 		err = waitJobStateAborted(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		//Pod is gone
 		podName := jobUtil.MakePodName(jobName, taskName, 0)
-		_, err = context.kubeclient.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
+		_, err = context.kubeclient.CoreV1().Pods(context.namespace).Get(podName, metav1.GetOptions{})
 		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 			"Job related pod should be deleted when job aborted.")
 	})

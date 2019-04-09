@@ -133,6 +133,30 @@ NAME                                     TYPE        CLUSTER-IP     EXTERNAL-IP 
 
 ```
 
+## Developing
+
+### E2E Test
+Volcano also utilize [kind cluster](https://github.com/kubernetes-sigs/kind) to provide a simple way to
+cover E2E tests via script. Make sure you have kubectl and kind binary installed on your local environment
+before running tests.
+```
+make cli
+make images
+make e2e-test-kind
+```
+In case of debugging, you can keep the kind cluster environment when testing via:
+```
+CLEANUP_CLUSTER=-1 make e2e-test-kind
+```
+And if only parts of the tests are wanted, please execute:
+```
+TEST_FILE=<test-file-wanted> make e2e-test-kind
+# Command above will be translated into:
+# go test ./test/e2e -v -timeout 30m -args --ginkgo.regexScansFilePath=true --ginkgo.focus=<test-file-wanted>
+```
+
+
+
 
 ## Community, discussion, contribution, and support
 

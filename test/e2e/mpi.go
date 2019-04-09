@@ -23,14 +23,24 @@ import (
 )
 
 var _ = Describe("MPI E2E Test", func() {
+	cleanupResources := CleanupResources{}
+	var context *context
+
+	BeforeEach(func() {
+		context = gContext
+	})
+
+	AfterEach(func() {
+		deleteResources(gContext, cleanupResources)
+	})
 	It("will run and complete finally", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName := "mpi"
+		cleanupResources.Jobs = []string{jobName}
 
 		slot := oneCPU
 
 		spec := &jobSpec{
-			name: "mpi",
+			name: jobName,
 			policies: []vkv1.LifecyclePolicy{
 				{
 					Action: vkv1.CompleteJobAction,

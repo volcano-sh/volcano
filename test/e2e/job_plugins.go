@@ -25,17 +25,25 @@ import (
 )
 
 var _ = Describe("Job E2E Test: Test Job Plugins", func() {
+	cleanupResources := CleanupResources{}
+	var context *context
+
+	BeforeEach(func() {
+		context = gContext
+	})
+
+	AfterEach(func() {
+		deleteResources(gContext, cleanupResources)
+	})
+
 	It("Env Plugin", func() {
 		jobName := "job-with-env-plugin"
-		namespace := "test"
+		cleanupResources.Jobs = []string{jobName}
 		taskName := "task"
 		foundVolume := false
-		context := initTestContext()
-		defer cleanupTestContext(context)
 
 		job := createJob(context, &jobSpec{
-			namespace: namespace,
-			name:      jobName,
+			name: jobName,
 			plugins: map[string][]string{
 				"env": {},
 			},
@@ -54,11 +62,11 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		pluginName := fmt.Sprintf("%s-env", jobName)
-		_, err = context.kubeclient.CoreV1().ConfigMaps(namespace).Get(
+		_, err = context.kubeclient.CoreV1().ConfigMaps(context.namespace).Get(
 			pluginName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		pod, err := context.kubeclient.CoreV1().Pods(namespace).Get(
+		pod, err := context.kubeclient.CoreV1().Pods(context.namespace).Get(
 			fmt.Sprintf(helpers.TaskNameFmt, jobName, taskName, 0), v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		for _, volume := range pod.Spec.Volumes {
@@ -72,15 +80,12 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 
 	It("SSh Plugin", func() {
 		jobName := "job-with-ssh-plugin"
-		namespace := "test"
+		cleanupResources.Jobs = []string{jobName}
 		taskName := "task"
 		foundVolume := false
-		context := initTestContext()
-		defer cleanupTestContext(context)
 
 		job := createJob(context, &jobSpec{
-			namespace: namespace,
-			name:      jobName,
+			name: jobName,
 			plugins: map[string][]string{
 				"ssh": {"--no-root"},
 			},
@@ -99,11 +104,11 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		pluginName := fmt.Sprintf("%s-ssh", jobName)
-		_, err = context.kubeclient.CoreV1().ConfigMaps(namespace).Get(
+		_, err = context.kubeclient.CoreV1().ConfigMaps(context.namespace).Get(
 			pluginName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		pod, err := context.kubeclient.CoreV1().Pods(namespace).Get(
+		pod, err := context.kubeclient.CoreV1().Pods(context.namespace).Get(
 			fmt.Sprintf(helpers.TaskNameFmt, jobName, taskName, 0), v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		for _, volume := range pod.Spec.Volumes {

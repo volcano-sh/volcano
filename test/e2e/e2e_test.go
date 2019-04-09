@@ -23,7 +23,17 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+var gContext *context
+
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Volcano Scheduler Test Suite")
 }
+
+var _ = BeforeSuite(func() {
+	gContext = initTestContext("test")
+})
+
+var _ = AfterSuite(func() {
+	cleanupTestContext(gContext)
+})

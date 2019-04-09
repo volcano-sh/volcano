@@ -28,14 +28,24 @@ import (
 )
 
 var _ = Describe("Job Error Handling", func() {
+	cleanupResources := CleanupResources{}
+	var context *context
+
+	BeforeEach(func() {
+		context = gContext
+	})
+
+	AfterEach(func() {
+		deleteResources(gContext, cleanupResources)
+	})
+
 	It("job level LifecyclePolicy, Event: PodFailed; Action: RestartJob", func() {
 		By("init test context")
-		context := initTestContext()
-		defer cleanupTestContext(context)
-
+		jobName := "failed-restart-job"
+		cleanupResources.Jobs = []string{jobName}
 		By("create job")
 		job := createJob(context, &jobSpec{
-			name: "failed-restart-job",
+			name: jobName,
 			policies: []vkv1.LifecyclePolicy{
 				{
 					Action: vkv1.RestartJobAction,
@@ -67,12 +77,12 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: PodFailed; Action: TerminateJob", func() {
 		By("init test context")
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName := "failed-terminate-job"
+		cleanupResources.Jobs = []string{jobName}
 
 		By("create job")
 		job := createJob(context, &jobSpec{
-			name: "failed-terminate-job",
+			name: jobName,
 			policies: []vkv1.LifecyclePolicy{
 				{
 					Action: vkv1.TerminateJobAction,
@@ -104,12 +114,12 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: PodFailed; Action: AbortJob", func() {
 		By("init test context")
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName := "failed-abort-job"
+		cleanupResources.Jobs = []string{jobName}
 
 		By("create job")
 		job := createJob(context, &jobSpec{
-			name: "failed-abort-job",
+			name: jobName,
 			policies: []vkv1.LifecyclePolicy{
 				{
 					Action: vkv1.AbortJobAction,
@@ -141,12 +151,12 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: PodEvicted; Action: RestartJob", func() {
 		By("init test context")
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName := "evicted-restart-job"
+		cleanupResources.Jobs = []string{jobName}
 
 		By("create job")
 		job := createJob(context, &jobSpec{
-			name: "evicted-restart-job",
+			name: jobName,
 			policies: []vkv1.LifecyclePolicy{
 				{
 					Action: vkv1.RestartJobAction,
@@ -185,12 +195,12 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: PodEvicted; Action: TerminateJob", func() {
 		By("init test context")
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName := "evicted-terminate-job"
+		cleanupResources.Jobs = []string{jobName}
 
 		By("create job")
 		job := createJob(context, &jobSpec{
-			name: "evicted-terminate-job",
+			name: jobName,
 			policies: []vkv1.LifecyclePolicy{
 				{
 					Action: vkv1.TerminateJobAction,
@@ -229,12 +239,12 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: PodEvicted; Action: AbortJob", func() {
 		By("init test context")
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName := "evicted-abort-job"
+		cleanupResources.Jobs = []string{jobName}
 
 		By("create job")
 		job := createJob(context, &jobSpec{
-			name: "evicted-abort-job",
+			name: jobName,
 			policies: []vkv1.LifecyclePolicy{
 				{
 					Action: vkv1.AbortJobAction,
@@ -263,7 +273,7 @@ var _ = Describe("Job Error Handling", func() {
 
 		By("delete one pod of job")
 		podName := jobutil.MakePodName(job.Name, "delete", 0)
-		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		err = context.kubeclient.CoreV1().Pods(context.namespace).Delete(podName, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Aborting -> Aborted
@@ -273,12 +283,12 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: Any; Action: RestartJob", func() {
 		By("init test context")
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName := "any-restart-job"
+		cleanupResources.Jobs = []string{jobName}
 
 		By("create job")
 		job := createJob(context, &jobSpec{
-			name: "any-restart-job",
+			name: jobName,
 			policies: []vkv1.LifecyclePolicy{
 				{
 					Action: vkv1.RestartJobAction,
@@ -307,7 +317,7 @@ var _ = Describe("Job Error Handling", func() {
 
 		By("delete one pod of job")
 		podName := jobutil.MakePodName(job.Name, "delete", 0)
-		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		err = context.kubeclient.CoreV1().Pods(context.namespace).Delete(podName, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Restarting -> Running
@@ -317,13 +327,13 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("Job error handling: Restart job when job is unschedulable", func() {
 		By("init test context")
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName := "job-restart-when-unschedulable"
+		cleanupResources.Jobs = []string{jobName}
+
 		rep := clusterSize(context, oneCPU)
 
 		jobSpec := &jobSpec{
-			name:      "job-restart-when-unschedulable",
-			namespace: "test",
+			name: jobName,
 			policies: []vkv1.LifecyclePolicy{
 				{
 					Event:  vkv1.JobUnknownEvent,
@@ -358,7 +368,7 @@ var _ = Describe("Job Error Handling", func() {
 
 		podName := jobutil.MakePodName(job.Name, "test", 0)
 		By("Kill one of the pod in order to trigger unschedulable status")
-		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		err = context.kubeclient.CoreV1().Pods(context.namespace).Delete(podName, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Job is restarting")
@@ -376,13 +386,13 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("Job error handling: Abort job when job is unschedulable", func() {
 		By("init test context")
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName := "job-abort-when-unschedulable"
+		cleanupResources.Jobs = []string{jobName}
+
 		rep := clusterSize(context, oneCPU)
 
 		jobSpec := &jobSpec{
-			name:      "job-abort-when-unschedulable",
-			namespace: "test",
+			name: jobName,
 			policies: []vkv1.LifecyclePolicy{
 				{
 					Event:  vkv1.JobUnknownEvent,
@@ -417,7 +427,7 @@ var _ = Describe("Job Error Handling", func() {
 
 		podName := jobutil.MakePodName(job.Name, "test", 0)
 		By("Kill one of the pod in order to trigger unschedulable status")
-		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		err = context.kubeclient.CoreV1().Pods(context.namespace).Delete(podName, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Job is aborted")
@@ -431,12 +441,12 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: TaskCompleted; Action: CompletedJob", func() {
 		By("init test context")
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		jobName := "any-restart-job"
+		cleanupResources.Jobs = []string{jobName}
 
 		By("create job")
 		job := createJob(context, &jobSpec{
-			name: "any-restart-job",
+			name: jobName,
 			policies: []vkv1.LifecyclePolicy{
 				{
 					Action: vkv1.CompleteJobAction,
