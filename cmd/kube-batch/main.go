@@ -40,6 +40,7 @@ var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum
 func main() {
 	s := options.NewServerOption()
 	s.AddFlags(pflag.CommandLine)
+	s.RegisterOptions()
 
 	flag.InitFlags()
 	if err := s.CheckOptionOrDie(); err != nil {

@@ -31,6 +31,7 @@ func TestAddFlags(t *testing.T) {
 
 	args := []string{
 		"--schedule-period=5m",
+		"--priority-class=false",
 	}
 	fs.Parse(args)
 
