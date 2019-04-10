@@ -65,7 +65,7 @@ func (ps *pendingState) Execute(action vkv1.Action) error {
 		return SyncJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
 			phase := vkv1.Pending
 
-			if ps.job.Job.Spec.MinAvailable <= status.Running {
+			if ps.job.Job.Spec.MinAvailable <= status.Running + status.Succeeded + status.Failed {
 				phase = vkv1.Running
 			}
 			return vkv1.JobState{
