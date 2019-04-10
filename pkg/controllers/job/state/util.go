@@ -20,6 +20,9 @@ import (
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
+// The default number of retries.
+const DefaultMaxRetry int32 = 3
+
 func TotalTasks(job *vkv1.Job) int32 {
 	var rep int32
 

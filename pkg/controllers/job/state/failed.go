@@ -21,17 +21,10 @@ import (
 	"volcano.sh/volcano/pkg/controllers/job/apis"
 )
 
-type abortedState struct {
+type failedState struct {
 	job *apis.JobInfo
 }
 
-func (as *abortedState) Execute(action vkv1.Action) error {
-	switch action {
-	case vkv1.ResumeJobAction:
-		return SyncJob(as.job, func(status *vkv1.JobStatus) {
-			status.State.Phase = vkv1.Restarting
-		})
-	default:
-		return KillJob(as.job, nil)
-	}
+func (ps *failedState) Execute(action vkv1.Action) error {
+	return KillJob(ps.job, nil)
 }

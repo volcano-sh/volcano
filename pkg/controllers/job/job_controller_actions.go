@@ -36,7 +36,7 @@ import (
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
-func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn) error {
+func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
 	glog.V(3).Infof("Killing Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
 	defer glog.V(3).Infof("Finished Job <%s/%s> killing", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
@@ -117,10 +117,11 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		Terminating:  terminating,
 		Version:      job.Status.Version,
 		MinAvailable: int32(job.Spec.MinAvailable),
+		RetryCount:   job.Status.RetryCount,
 	}
 
-	if nextState != nil {
-		job.Status.State = nextState(job.Status)
+	if updateStatus != nil {
+		updateStatus(&job.Status)
 	}
 
 	// Update Job status
@@ -161,7 +162,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	return nil
 }
 
-func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn) error {
+func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
 	glog.V(3).Infof("Starting to sync up Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
 	defer glog.V(3).Infof("Finished Job <%s/%s> sync up", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
@@ -316,10 +317,11 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		Version:             job.Status.Version,
 		MinAvailable:        int32(job.Spec.MinAvailable),
 		ControlledResources: job.Status.ControlledResources,
+		RetryCount:          job.Status.RetryCount,
 	}
 
-	if nextState != nil {
-		job.Status.State = nextState(job.Status)
+	if updateStatus != nil {
+		updateStatus(&job.Status)
 	}
 
 	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
