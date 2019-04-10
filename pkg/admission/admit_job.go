@@ -69,6 +69,11 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 	taskNames := map[string]string{}
 	var totalReplicas int32
 
+	if job.Spec.MinAvailable < 0 {
+		reviewResponse.Allowed = false
+		return fmt.Sprintf("'minAvailable' cannot be less than zero.")
+	}
+
 	if len(job.Spec.Tasks) == 0 {
 		reviewResponse.Allowed = false
 		return fmt.Sprintf("No task specified in job spec")
