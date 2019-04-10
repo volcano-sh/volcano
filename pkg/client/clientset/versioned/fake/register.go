@@ -19,6 +19,8 @@ limitations under the License.
 package fake
 
 import (
+	batchv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
+	busv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/bus/v1alpha1"
 	schedulingv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
@@ -31,6 +33,8 @@ var scheme = runtime.NewScheme()
 var codecs = serializer.NewCodecFactory(scheme)
 var parameterCodec = runtime.NewParameterCodec(scheme)
 var localSchemeBuilder = runtime.SchemeBuilder{
+	batchv1alpha1.AddToScheme,
+	busv1alpha1.AddToScheme,
 	schedulingv1alpha1.AddToScheme,
 }
 
