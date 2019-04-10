@@ -90,3 +90,7 @@ required = [
 [[constraint]]
   name = "golang.org/x/crypto"
   branch = "release-branch.go1.12"
+
+[[constraint]]
+  name = "github.com/spf13/cobra"
+  version = "0.0.3"
