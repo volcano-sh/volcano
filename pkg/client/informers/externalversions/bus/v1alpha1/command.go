@@ -21,69 +21,69 @@ package v1alpha1
 import (
 	time "time"
 
-	schedulingv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	busv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/bus/v1alpha1"
 	versioned "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
+	v1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/bus/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
 	cache "k8s.io/client-go/tools/cache"
 )
 
-// PodGroupInformer provides access to a shared informer and lister for
-// PodGroups.
-type PodGroupInformer interface {
+// CommandInformer provides access to a shared informer and lister for
+// Commands.
+type CommandInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1alpha1.PodGroupLister
+	Lister() v1alpha1.CommandLister
 }
 
-type podGroupInformer struct {
+type commandInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
 	tweakListOptions internalinterfaces.TweakListOptionsFunc
 	namespace        string
 }
 
-// NewPodGroupInformer constructs a new informer for PodGroup type.
+// NewCommandInformer constructs a new informer for Command type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewPodGroupInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return NewFilteredPodGroupInformer(client, namespace, resyncPeriod, indexers, nil)
+func NewCommandInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+	return NewFilteredCommandInformer(client, namespace, resyncPeriod, indexers, nil)
 }
 
-// NewFilteredPodGroupInformer constructs a new informer for PodGroup type.
+// NewFilteredCommandInformer constructs a new informer for Command type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewFilteredPodGroupInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
+func NewFilteredCommandInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.SchedulingV1alpha1().PodGroups(namespace).List(options)
+				return client.BusV1alpha1().Commands(namespace).List(options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.SchedulingV1alpha1().PodGroups(namespace).Watch(options)
+				return client.BusV1alpha1().Commands(namespace).Watch(options)
 			},
 		},
-		&schedulingv1alpha1.PodGroup{},
+		&busv1alpha1.Command{},
 		resyncPeriod,
 		indexers,
 	)
 }
 
-func (f *podGroupInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewFilteredPodGroupInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
+func (f *commandInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	return NewFilteredCommandInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
 }
 
-func (f *podGroupInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&schedulingv1alpha1.PodGroup{}, f.defaultInformer)
+func (f *commandInformer) Informer() cache.SharedIndexInformer {
+	return f.factory.InformerFor(&busv1alpha1.Command{}, f.defaultInformer)
 }
 
-func (f *podGroupInformer) Lister() v1alpha1.PodGroupLister {
-	return v1alpha1.NewPodGroupLister(f.Informer().GetIndexer())
+func (f *commandInformer) Lister() v1alpha1.CommandLister {
+	return v1alpha1.NewCommandLister(f.Informer().GetIndexer())
 }
