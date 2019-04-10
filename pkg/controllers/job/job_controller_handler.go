@@ -27,8 +27,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/cache"
 
-	kbtype "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	vkbatchv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
+	kbtype "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/apis"
 	vkcache "github.com/kubernetes-sigs/kube-batch/pkg/controllers/cache"
 )
