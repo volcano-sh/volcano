@@ -1,5 +1,7 @@
 cmd/kube-batch/app
 cmd/kube-batch/app/options
+pkg/apis/batch/v1alpha1
+pkg/apis/bus/v1alpha1
 pkg/apis/scheduling/v1alpha1
 pkg/apis/utils
 pkg/scheduler
