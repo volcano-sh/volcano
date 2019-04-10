@@ -28,7 +28,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	kbtype "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	vkbatchv1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
+	vkbatchv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/apis"
 	vkcache "github.com/kubernetes-sigs/kube-batch/pkg/controllers/cache"
 )
