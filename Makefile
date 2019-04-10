@@ -25,6 +25,8 @@ init:
 generate-code: init
 	go build -o ${BIN_DIR}/deepcopy-gen ./cmd/deepcopy-gen/
 	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/scheduling/v1alpha1/ -O zz_generated.deepcopy
+	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/batch/v1alpha1/ -O zz_generated.deepcopy
+	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/bus/v1alpha1/ -O zz_generated.deepcopy
 
 rel_bins:
 	go get github.com/mitchellh/gox

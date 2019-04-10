@@ -20,6 +20,10 @@ package fake
 
 import (
 	clientset "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
+	batchv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/typed/batch/v1alpha1"
+	fakebatchv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/typed/batch/v1alpha1/fake"
+	busv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/typed/bus/v1alpha1"
+	fakebusv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/typed/bus/v1alpha1/fake"
 	schedulingv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/typed/scheduling/v1alpha1"
 	fakeschedulingv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/typed/scheduling/v1alpha1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -70,6 +74,26 @@ func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 }
 
 var _ clientset.Interface = &Clientset{}
+
+// BatchV1alpha1 retrieves the BatchV1alpha1Client
+func (c *Clientset) BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface {
+	return &fakebatchv1alpha1.FakeBatchV1alpha1{Fake: &c.Fake}
+}
+
+// Batch retrieves the BatchV1alpha1Client
+func (c *Clientset) Batch() batchv1alpha1.BatchV1alpha1Interface {
+	return &fakebatchv1alpha1.FakeBatchV1alpha1{Fake: &c.Fake}
+}
+
+// BusV1alpha1 retrieves the BusV1alpha1Client
+func (c *Clientset) BusV1alpha1() busv1alpha1.BusV1alpha1Interface {
+	return &fakebusv1alpha1.FakeBusV1alpha1{Fake: &c.Fake}
+}
+
+// Bus retrieves the BusV1alpha1Client
+func (c *Clientset) Bus() busv1alpha1.BusV1alpha1Interface {
+	return &fakebusv1alpha1.FakeBusV1alpha1{Fake: &c.Fake}
+}
 
 // SchedulingV1alpha1 retrieves the SchedulingV1alpha1Client
 func (c *Clientset) SchedulingV1alpha1() schedulingv1alpha1.SchedulingV1alpha1Interface {
