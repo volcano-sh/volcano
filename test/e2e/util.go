@@ -477,6 +477,20 @@ func jobEvicted(ctx *context, job *vkv1.Job, time time.Time) wait.ConditionFunc 
 	}
 }
 
+func clusterSize(ctx *context, req v1.ResourceList) int32 {
+	var result int32 = 0
+	_, err := clusterSizeInner(ctx, req, &result)
+	if err == nil {
+		return result
+	}
+	//Give cluster another chance to become ready.
+	err = wait.Poll(time.Second, time.Second*20, func() (done bool, err error) {
+		return clusterSizeInner(ctx, req, &result)
+	})
+	Expect(err).NotTo(HaveOccurred())
+	return result
+}
+
 func waitJobPhases(ctx *context, job *vkv1.Job, phases []vkv1.JobPhase) error {
 	for _, phase := range phases {
 		err := waitJobPhase(ctx, job, phase)
@@ -685,7 +699,7 @@ func waitReplicaSetReady(ctx *context, name string) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, replicaSetReady(ctx, name))
 }
 
-func clusterSize(ctx *context, req v1.ResourceList) int32 {
+func clusterSizeInner(ctx *context, req v1.ResourceList, result *int32) (bool, error) {
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
@@ -735,9 +749,11 @@ func clusterSize(ctx *context, req v1.ResourceList) int32 {
 			res++
 		}
 	}
-	Expect(res).Should(BeNumerically(">=", 1),
-		"Current cluster does not have enough resource for request")
-	return res
+	if res < 1 {
+		return false, fmt.Errorf("current cluster does not have enough resource for request")
+	}
+	*result = res
+	return true, nil
 }
 
 func clusterNodeNumber(ctx *context) int {

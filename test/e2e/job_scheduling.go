@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"math"
 	"time"
 
 	. "github.com/onsi/ginkgo"
@@ -46,7 +47,7 @@ var _ = Describe("Job E2E Test", func() {
 				{
 					img: defaultBusyBoxImage,
 					req: oneCPU,
-					min: 2,
+					min: int32(math.Min(2, float64(rep))),
 					rep: rep,
 				},
 			},
@@ -68,7 +69,7 @@ var _ = Describe("Job E2E Test", func() {
 				{
 					img: defaultBusyBoxImage,
 					req: oneCPU,
-					min: 2,
+					min: int32(math.Min(2, float64(rep))),
 					rep: rep,
 				},
 			},
@@ -249,12 +250,12 @@ var _ = Describe("Job E2E Test", func() {
 				{
 					img: defaultNginxImage,
 					req: slot,
-					min: 2,
+					min: int32(math.Min(2, float64(rep))),
 					rep: rep,
 				},
 				{
 					img: defaultNginxImage,
-					min: 2,
+					min: int32(math.Min(2, float64(rep/2))),
 					rep: rep / 2,
 				},
 			},
