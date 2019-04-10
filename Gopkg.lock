@@ -351,15 +351,21 @@
   version = "v1.0.3"
 
 [[projects]]
-  digest = "1:583f2f436bab7b59a7bd3e759f1375b06f460760ed1f9235604d143eaab83009"
+  branch = "release-branch.go1.12"
+  digest = "1:a1a1abedfdfaeac675547fbf03a213f558c111575785d5d57616b697fdb1caf3"
   name = "golang.org/x/crypto"
   packages = [
+    "curve25519",
     "ed25519",
     "ed25519/internal/edwards25519",
+    "internal/chacha20",
+    "internal/subtle",
+    "poly1305",
+    "ssh",
     "ssh/terminal",
   ]
   pruneopts = "UT"
-  revision = "de0752318171da717af4ce24d0a2e8626afaeb11"
+  revision = "e84da0312774c21d64ee2317962ef669b27ffb41"
 
 [[projects]]
   branch = "master"
@@ -1028,6 +1034,7 @@
     "github.com/prometheus/client_golang/prometheus/promauto",
     "github.com/prometheus/client_golang/prometheus/promhttp",
     "github.com/spf13/pflag",
+    "golang.org/x/crypto/ssh",
     "gopkg.in/yaml.v2",
     "k8s.io/api/admission/v1beta1",
     "k8s.io/api/admissionregistration/v1beta1",
@@ -1064,6 +1071,7 @@
     "k8s.io/client-go/kubernetes/scheme",
     "k8s.io/client-go/kubernetes/typed/admissionregistration/v1beta1",
     "k8s.io/client-go/kubernetes/typed/core/v1",
+    "k8s.io/client-go/listers/core/v1",
     "k8s.io/client-go/plugin/pkg/client/auth/gcp",
     "k8s.io/client-go/rest",
     "k8s.io/client-go/testing",
