@@ -1,5 +1,8 @@
+cmd/admission/app
+cmd/admission/app/options
 cmd/kube-batch/app
 cmd/kube-batch/app/options
+pkg/admission
 pkg/apis/batch/v1alpha1
 pkg/apis/bus/v1alpha1
 pkg/apis/scheduling/v1alpha1
