@@ -106,9 +106,19 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 }
 
 func (cc *Controller) deleteJob(obj interface{}) {
-	job, ok := obj.(*vkbatchv1.Job)
-	if !ok {
-		glog.Errorf("obj is not Job")
+	var job *vkbatchv1.Job
+	switch t := obj.(type) {
+	case *vkbatchv1.Job:
+		job = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		job, ok = t.Obj.(*vkbatchv1.Job)
+		if !ok {
+			glog.Errorf("Cannot convert to *vkbatchv1.Job in DeletedFinalState: %v", t.Obj)
+			return
+		}
+	default:
+		glog.Errorf("Cannot convert to *vkbatchv1.Job: %v", t)
 		return
 	}
 
