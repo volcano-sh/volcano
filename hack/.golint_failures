@@ -10,8 +10,6 @@ pkg/apis/bus/v1alpha1
 pkg/apis/helpers
 pkg/apis/scheduling/v1alpha1
 pkg/apis/utils
-pkg/controllers/apis
-pkg/controllers/cache
 pkg/controllers/job
 pkg/controllers/job/helpers
 pkg/controllers/job/plugins

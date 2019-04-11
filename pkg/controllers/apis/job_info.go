@@ -24,6 +24,7 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
 )
 
+// JobInfo has info about Job CRD
 type JobInfo struct {
 	Namespace string
 	Name      string
@@ -34,12 +35,14 @@ type JobInfo struct {
 	Pods map[string]map[string]*v1.Pod
 }
 
+// SetJob is used to set job
 func (ji *JobInfo) SetJob(job *v1alpha1.Job) {
 	ji.Name = job.Name
 	ji.Namespace = job.Namespace
 	ji.Job = job
 }
 
+// AddPod is used to add Pod to a Job
 func (ji *JobInfo) AddPod(pod *v1.Pod) error {
 	taskName, found := pod.Annotations[v1alpha1.TaskSpecKey]
 	if !found {
@@ -64,6 +67,7 @@ func (ji *JobInfo) AddPod(pod *v1.Pod) error {
 	return nil
 }
 
+// UpdatePod is used to update a pod in Job
 func (ji *JobInfo) UpdatePod(pod *v1.Pod) error {
 	taskName, found := pod.Annotations[v1alpha1.TaskSpecKey]
 	if !found {
@@ -88,6 +92,7 @@ func (ji *JobInfo) UpdatePod(pod *v1.Pod) error {
 	return nil
 }
 
+// DeletePod is used to delete a pod from the job
 func (ji *JobInfo) DeletePod(pod *v1.Pod) error {
 	taskName, found := pod.Annotations[v1alpha1.TaskSpecKey]
 	if !found {
@@ -110,6 +115,7 @@ func (ji *JobInfo) DeletePod(pod *v1.Pod) error {
 	return nil
 }
 
+// Request has info about JobName, TaskName and Event and Action
 type Request struct {
 	Namespace string
 	JobName   string
@@ -120,6 +126,7 @@ type Request struct {
 	JobVersion int32
 }
 
+// String is used to encode Request type in to a String
 func (r Request) String() string {
 	return fmt.Sprintf(
 		"Job: %s/%s, Task:%s, Event:%s, Action:%s, JobVersion: %d",
