@@ -19,12 +19,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
 
 	"github.com/spf13/cobra"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 )
 
