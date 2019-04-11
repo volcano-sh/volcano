@@ -21,7 +21,10 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/apis"
 )
 
+// NextStateFn returns jobState
 type NextStateFn func(status vkv1.JobStatus) vkv1.JobState
+
+// ActionFn is a function
 type ActionFn func(job *apis.JobInfo, fn NextStateFn) error
 
 var (
@@ -31,11 +34,13 @@ var (
 	KillJob ActionFn
 )
 
+// State is a interface
 type State interface {
 	// Execute executes the actions based on current state.
 	Execute(act vkv1.Action) error
 }
 
+// NewState returns state of the job
 func NewState(jobInfo *apis.JobInfo) State {
 	job := jobInfo.Job
 	switch job.Status.State.Phase {

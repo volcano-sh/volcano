@@ -44,6 +44,7 @@ func eventKey(obj interface{}) interface{} {
 	}
 }
 
+// MakePodName returns a string with pod name from job and task name
 func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(vkjobhelpers.TaskNameFmt, jobName, taskName, index)
 }

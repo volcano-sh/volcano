@@ -46,6 +46,7 @@ type sshPlugin struct {
 	noRoot bool
 }
 
+// New is used to create pluginInterface from pluginClientSet
 func New(client vkinterface.PluginClientset, arguments []string) vkinterface.PluginInterface {
 	sshPlugin := sshPlugin{pluginArguments: arguments, Clientset: client}
 
