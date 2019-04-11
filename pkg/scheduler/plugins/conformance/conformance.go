@@ -29,6 +29,7 @@ type conformancePlugin struct {
 	pluginArguments framework.Arguments
 }
 
+// New return conformance plugin
 func New(arguments framework.Arguments) framework.Plugin {
 	return &conformancePlugin{pluginArguments: arguments}
 }

@@ -33,6 +33,7 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/metrics"
 )
 
+// Session information for the current session
 type Session struct {
 	UID types.UID
 
@@ -182,12 +183,14 @@ func jobStatus(ssn *Session, jobInfo *api.JobInfo) v1alpha1.PodGroupStatus {
 	return status
 }
 
+// Statement returns new statement object
 func (ssn *Session) Statement() *Statement {
 	return &Statement{
 		ssn: ssn,
 	}
 }
 
+// Pipeline  the task to the node in the session
 func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	// Only update status in session
 	job, found := ssn.Jobs[task.Job]
@@ -230,6 +233,7 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	return nil
 }
 
+//Allocate the task to the node in the session
 func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
 	if err := ssn.cache.AllocateVolumes(task, hostname); err != nil {
 		return err
@@ -313,6 +317,7 @@ func (ssn *Session) dispatch(task *api.TaskInfo) error {
 	return nil
 }
 
+//Evict the task in the session
 func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 	if err := ssn.cache.Evict(reclaimee, reason); err != nil {
 		return err
@@ -352,7 +357,7 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 	return nil
 }
 
-// UpdateJobStatus update job condition accordingly.
+// UpdateJobCondition update job condition accordingly.
 func (ssn *Session) UpdateJobCondition(jobInfo *api.JobInfo, cond *v1alpha1.PodGroupCondition) error {
 	job, ok := ssn.Jobs[jobInfo.UID]
 	if !ok {
@@ -377,10 +382,12 @@ func (ssn *Session) UpdateJobCondition(jobInfo *api.JobInfo, cond *v1alpha1.PodG
 	return nil
 }
 
+// AddEventHandler add event handlers
 func (ssn *Session) AddEventHandler(eh *EventHandler) {
 	ssn.eventHandlers = append(ssn.eventHandlers, eh)
 }
 
+//String return nodes and jobs information in the session
 func (ssn Session) String() string {
 	msg := fmt.Sprintf("Session %v: \n", ssn.UID)
 

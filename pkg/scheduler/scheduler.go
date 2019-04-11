@@ -30,6 +30,8 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/metrics"
 )
 
+// Scheduler watches for new unscheduled pods for kubebatch. It attempts to find
+// nodes that they fit on and writes bindings back to the api server.
 type Scheduler struct {
 	cache          schedcache.Cache
 	config         *rest.Config
@@ -39,6 +41,7 @@ type Scheduler struct {
 	schedulePeriod time.Duration
 }
 
+// NewScheduler returns a scheduler
 func NewScheduler(
 	config *rest.Config,
 	schedulerName string,
@@ -56,6 +59,7 @@ func NewScheduler(
 	return scheduler, nil
 }
 
+// Run runs the Scheduler
 func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	var err error
 

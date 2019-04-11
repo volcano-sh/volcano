@@ -26,6 +26,7 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/metrics"
 )
 
+// OpenSession start the session
 func OpenSession(cache cache.Cache, tiers []conf.Tier) *Session {
 	ssn := openSession(cache)
 	ssn.Tiers = tiers
@@ -50,6 +51,7 @@ func OpenSession(cache cache.Cache, tiers []conf.Tier) *Session {
 	return ssn
 }
 
+// CloseSession close the session
 func CloseSession(ssn *Session) {
 	for _, plugin := range ssn.plugins {
 		onSessionCloseStart := time.Now()
