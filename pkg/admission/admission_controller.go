@@ -32,15 +32,22 @@ import (
 )
 
 const (
-	AdmitJobPath  = "/jobs"
+	// AdmitJobPath gives admit job API path
+	AdmitJobPath = "/jobs"
+	// MutateJobPath gives mutate job API path
 	MutateJobPath = "/mutating-jobs"
-	PVCInputName  = "volcano.sh/job-input"
+	// PVCInputName gives input persistent volume claim name
+	PVCInputName = "volcano.sh/job-input"
+	// PVCOutputName gives output persistent volume claim name
 	PVCOutputName = "volcano.sh/job-output"
 )
 
+// AdmitFunc is a function type which received admissionReview and returns admissionResponse
 type AdmitFunc func(v1beta1.AdmissionReview) *v1beta1.AdmissionResponse
 
 var scheme = runtime.NewScheme()
+
+// Codecs is a new codec factory for the scheme
 var Codecs = serializer.NewCodecFactory(scheme)
 
 func init() {
@@ -52,6 +59,7 @@ func addToScheme(scheme *runtime.Scheme) {
 	admissionregistrationv1beta1.AddToScheme(scheme)
 }
 
+// ToAdmissionResponse returns error in AdmissionResponse
 func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
 	glog.Error(err)
 	return &v1beta1.AdmissionResponse{
@@ -61,6 +69,7 @@ func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
 	}
 }
 
+// CheckPolicyDuplicate checks for duplicate policies
 func CheckPolicyDuplicate(policies []v1alpha1.LifecyclePolicy) (string, bool) {
 	policyEvents := map[v1alpha1.Event]v1alpha1.Event{}
 	hasDuplicate := false
@@ -84,6 +93,7 @@ func CheckPolicyDuplicate(policies []v1alpha1.LifecyclePolicy) (string, bool) {
 	return duplicateInfo, hasDuplicate
 }
 
+// DecodeJob deserialize the job object
 func DecodeJob(object runtime.RawExtension, resource metav1.GroupVersionResource) (v1alpha1.Job, error) {
 	jobResource := metav1.GroupVersionResource{Group: v1alpha1.SchemeGroupVersion.Group, Version: v1alpha1.SchemeGroupVersion.Version, Resource: "jobs"}
 	raw := object.Raw

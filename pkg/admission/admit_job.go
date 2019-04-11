@@ -30,7 +30,7 @@ import (
 	v1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
 )
 
-// job admit.
+// AdmitJobs function is used to admit jobs
 func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
 	glog.V(3).Infof("admitting jobs -- %s", ar.Request.Operation)

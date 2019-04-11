@@ -31,6 +31,7 @@ type suspendFlags struct {
 
 var suspendJobFlags = &suspendFlags{}
 
+// InitSuspendFlags is used to init all suspend flags
 func InitSuspendFlags(cmd *cobra.Command) {
 	initFlags(cmd, &suspendJobFlags.commonFlags)
 
@@ -38,6 +39,7 @@ func InitSuspendFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&suspendJobFlags.JobName, "name", "n", "", "the name of job")
 }
 
+// SuspendJob creates a job command to abort job
 func SuspendJob() error {
 	config, err := buildConfig(suspendJobFlags.Master, suspendJobFlags.Kubeconfig)
 	if err != nil {

@@ -40,6 +40,7 @@ type runFlags struct {
 
 var launchJobFlags = &runFlags{}
 
+// InitRunFlags is used to init all run flags
 func InitRunFlags(cmd *cobra.Command) {
 	initFlags(cmd, &launchJobFlags.commonFlags)
 
@@ -53,6 +54,7 @@ func InitRunFlags(cmd *cobra.Command) {
 
 var jobName = "job.volcano.sh"
 
+// RunJob creates jobs
 func RunJob() error {
 	config, err := buildConfig(launchJobFlags.Master, launchJobFlags.Kubeconfig)
 	if err != nil {

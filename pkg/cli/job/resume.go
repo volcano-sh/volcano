@@ -31,6 +31,7 @@ type resumeFlags struct {
 
 var resumeJobFlags = &resumeFlags{}
 
+// InitResumeFlags is used to init all resume flags
 func InitResumeFlags(cmd *cobra.Command) {
 	initFlags(cmd, &resumeJobFlags.commonFlags)
 
@@ -38,6 +39,7 @@ func InitResumeFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&resumeJobFlags.JobName, "name", "n", "", "the name of job")
 }
 
+// ResumeJob creates commands to resume job
 func ResumeJob() error {
 	config, err := buildConfig(resumeJobFlags.Master, resumeJobFlags.Kubeconfig)
 	if err != nil {
