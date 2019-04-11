@@ -29,7 +29,7 @@ import (
 	admissionregistrationv1beta1client "k8s.io/client-go/kubernetes/typed/admissionregistration/v1beta1"
 )
 
-// admission-controller server config.
+// Config contains the admission-controller server config.
 type Config struct {
 	Master                    string
 	Kubeconfig                string
@@ -43,11 +43,13 @@ type Config struct {
 	ValidateWebhookName       string
 }
 
+// NewConfig returns a Config struct
 func NewConfig() *Config {
 	c := Config{}
 	return &c
 }
 
+// AddFlags adds flags for admission
 func (c *Config) AddFlags() {
 	flag.StringVar(&c.Master, "master", c.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 	flag.StringVar(&c.Kubeconfig, "kubeconfig", c.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
@@ -67,6 +69,7 @@ func (c *Config) AddFlags() {
 		"Name of the webhook entry in the webhook config.")
 }
 
+// CheckPortOrDie check the valid port range
 func (c *Config) CheckPortOrDie() error {
 	if c.Port < 1 || c.Port > 65535 {
 		return fmt.Errorf("the port should be in the range of 1 and 65535")

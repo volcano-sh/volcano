@@ -45,6 +45,7 @@ type ServerOption struct {
 	EnablePriorityClass  bool
 }
 
+// ServerOpts server options
 var ServerOpts *ServerOption
 
 // NewServerOption creates a new CMServer with a default config.
@@ -72,6 +73,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 		"Enable PriorityClass to provide the capacity of preemption at pod group level; to disable it, set it false")
 }
 
+// CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled
 func (s *ServerOption) CheckOptionOrDie() error {
 	if s.EnableLeaderElection && s.LockObjectNamespace == "" {
 		return fmt.Errorf("lock-object-namespace must not be nil when LeaderElection is enabled")
@@ -80,6 +82,7 @@ func (s *ServerOption) CheckOptionOrDie() error {
 	return nil
 }
 
+// RegisterOptions registers options
 func (s *ServerOption) RegisterOptions() {
 	ServerOpts = s
 }

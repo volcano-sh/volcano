@@ -29,6 +29,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	// Register gcp auth
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/rest"
 	restclient "k8s.io/client-go/rest"
@@ -54,6 +55,7 @@ func buildConfig(master, kubeconfig string) (*rest.Config, error) {
 	return rest.InClusterConfig()
 }
 
+// Run runs the jobController
 func Run(opt *options.ServerOption) error {
 	config, err := buildConfig(opt.Master, opt.Kubeconfig)
 	if err != nil {
