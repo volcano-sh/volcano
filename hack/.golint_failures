@@ -36,3 +36,4 @@ pkg/scheduler/plugins/priority
 pkg/scheduler/plugins/proportion
 pkg/scheduler/util
 test/e2e
+test/e2e/volcano
