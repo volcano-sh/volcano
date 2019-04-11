@@ -35,6 +35,7 @@ type gangPlugin struct {
 	pluginArguments framework.Arguments
 }
 
+// New return gang plugin
 func New(arguments framework.Arguments) framework.Plugin {
 	return &gangPlugin{pluginArguments: arguments}
 }
@@ -137,7 +138,7 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
 				job.MinAvailable-job.ReadyTaskNum(), len(job.Tasks), job.FitError())
 
-			unScheduleJobCount += 1
+			unScheduleJobCount++
 			metrics.UpdateUnscheduleTaskCount(job.Name, int(unreadyTaskCount))
 			metrics.RegisterJobRetries(job.Name)
 

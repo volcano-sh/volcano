@@ -22,8 +22,10 @@ import (
 	"github.com/golang/glog"
 )
 
+// Arguments map
 type Arguments map[string]string
 
+//GetInt get the integer value from string
 func (a Arguments) GetInt(ptr *int, key string) {
 	if ptr == nil {
 		return
