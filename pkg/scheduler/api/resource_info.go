@@ -23,6 +23,7 @@ import (
 	"k8s.io/api/core/v1"
 )
 
+// Resource struct defines all the resource type
 type Resource struct {
 	MilliCPU float64
 	Memory   float64
@@ -33,14 +34,16 @@ type Resource struct {
 }
 
 const (
-	// need to follow https://github.com/NVIDIA/k8s-device-plugin/blob/66a35b71ac4b5cbfb04714678b548bd77e5ba719/server.go#L20
+	//GPUResourceName need to follow https://github.com/NVIDIA/k8s-device-plugin/blob/66a35b71ac4b5cbfb04714678b548bd77e5ba719/server.go#L20
 	GPUResourceName = "nvidia.com/gpu"
 )
 
+// EmptyResource creates a empty resource object and returns
 func EmptyResource() *Resource {
 	return &Resource{}
 }
 
+// Clone is used to clone a resource type
 func (r *Resource) Clone() *Resource {
 	clone := &Resource{
 		MilliCPU:   r.MilliCPU,
@@ -55,6 +58,7 @@ var minMilliCPU float64 = 10
 var minMilliGPU float64 = 10
 var minMemory float64 = 10 * 1024 * 1024
 
+// NewResource create a new resource object from resource list
 func NewResource(rl v1.ResourceList) *Resource {
 	r := EmptyResource()
 	for rName, rQuant := range rl {
@@ -72,10 +76,12 @@ func NewResource(rl v1.ResourceList) *Resource {
 	return r
 }
 
+// IsEmpty returns bool after checking any of resource is less than min possible value
 func (r *Resource) IsEmpty() bool {
 	return r.MilliCPU < minMilliCPU && r.Memory < minMemory && r.MilliGPU < minMilliGPU
 }
 
+// IsZero checks whether that resource is less than min possible value
 func (r *Resource) IsZero(rn v1.ResourceName) bool {
 	switch rn {
 	case v1.ResourceCPU:
@@ -89,6 +95,7 @@ func (r *Resource) IsZero(rn v1.ResourceName) bool {
 	}
 }
 
+// Add is used to add the two resources
 func (r *Resource) Add(rr *Resource) *Resource {
 	r.MilliCPU += rr.MilliCPU
 	r.Memory += rr.Memory
@@ -126,7 +133,7 @@ func (r *Resource) SetMaxResource(rr *Resource) {
 	}
 }
 
-//Computes the delta between a resource oject representing available
+// FitDelta Computes the delta between a resource oject representing available
 //resources an operand representing resources being requested.  Any
 //field that is less than 0 after the operation represents an
 //insufficient resource.
@@ -145,6 +152,7 @@ func (r *Resource) FitDelta(rr *Resource) *Resource {
 	return r
 }
 
+// Multi multiples the resource with ratio provided
 func (r *Resource) Multi(ratio float64) *Resource {
 	r.MilliCPU = r.MilliCPU * ratio
 	r.Memory = r.Memory * ratio
@@ -152,21 +160,25 @@ func (r *Resource) Multi(ratio float64) *Resource {
 	return r
 }
 
+// Less checks whether a resource is less than other
 func (r *Resource) Less(rr *Resource) bool {
 	return r.MilliCPU < rr.MilliCPU && r.Memory < rr.Memory && r.MilliGPU < rr.MilliGPU
 }
 
+// LessEqual checks whether a resource is less than other resource
 func (r *Resource) LessEqual(rr *Resource) bool {
 	return (r.MilliCPU < rr.MilliCPU || math.Abs(rr.MilliCPU-r.MilliCPU) < minMilliCPU) &&
 		(r.Memory < rr.Memory || math.Abs(rr.Memory-r.Memory) < minMemory) &&
 		(r.MilliGPU < rr.MilliGPU || math.Abs(rr.MilliGPU-r.MilliGPU) < minMilliGPU)
 }
 
+// String returns resource details in string format
 func (r *Resource) String() string {
 	return fmt.Sprintf("cpu %0.2f, memory %0.2f, GPU %0.2f",
 		r.MilliCPU, r.Memory, r.MilliGPU)
 }
 
+// Get returns the resource value for that particular resource type
 func (r *Resource) Get(rn v1.ResourceName) float64 {
 	switch rn {
 	case v1.ResourceCPU:
@@ -180,6 +192,7 @@ func (r *Resource) Get(rn v1.ResourceName) float64 {
 	}
 }
 
+// ResourceNames returns all resource types
 func ResourceNames() []v1.ResourceName {
 	return []v1.ResourceName{v1.ResourceCPU, v1.ResourceMemory, GPUResourceName}
 }
