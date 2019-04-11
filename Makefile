@@ -9,8 +9,19 @@ LD_FLAGS=" \
     -X '${REPO_PATH}/pkg/version.Built=${Date}'   \
     -X '${REPO_PATH}/pkg/version.Version=${RELEASE_VER}'"
 
+all: kube-batch vk-controllers vk-admission vkctl
+
 kube-batch: init
 	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/kube-batch ./cmd/kube-batch
+
+vk-controllers: init
+	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vk-controllers ./cmd/controllers
+
+vk-admission: init
+	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vk-admission ./cmd/admission
+
+vkctl: init
+	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vkctl ./cmd/cli
 
 verify: generate-code
 	hack/verify-gofmt.sh
