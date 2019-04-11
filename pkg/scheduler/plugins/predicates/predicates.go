@@ -36,6 +36,7 @@ type predicatesPlugin struct {
 	pluginArguments framework.Arguments
 }
 
+// New return predicate plugin
 func New(arguments framework.Arguments) framework.Plugin {
 	return &predicatesPlugin{pluginArguments: arguments}
 }
@@ -103,7 +104,7 @@ func (c *cachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
 	return node.Node, nil
 }
 
-// Check to see if node spec is set to Schedulable or not
+// CheckNodeUnschedulable Check to see if node spec is set to Schedulable or not
 func CheckNodeUnschedulable(pod *v1.Pod, nodeInfo *cache.NodeInfo) (bool, []algorithm.PredicateFailureReason, error) {
 	if nodeInfo.Node().Spec.Unschedulable {
 		return false, []algorithm.PredicateFailureReason{predicates.ErrNodeUnschedulable}, nil

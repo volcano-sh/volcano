@@ -27,6 +27,7 @@ type priorityPlugin struct {
 	pluginArguments framework.Arguments
 }
 
+// New return priority plugin
 func New(arguments framework.Arguments) framework.Plugin {
 	return &priorityPlugin{pluginArguments: arguments}
 }

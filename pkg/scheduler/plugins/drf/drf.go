@@ -44,6 +44,7 @@ type drfPlugin struct {
 	pluginArguments framework.Arguments
 }
 
+// New return drf plugin
 func New(arguments framework.Arguments) framework.Plugin {
 	return &drfPlugin{
 		totalResource:   api.EmptyResource(),

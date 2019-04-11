@@ -42,6 +42,7 @@ type queueAttr struct {
 	request   *api.Resource
 }
 
+// New return proportion action
 func New(arguments framework.Arguments) framework.Plugin {
 	return &proportionPlugin{
 		totalResource:   api.EmptyResource(),
