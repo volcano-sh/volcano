@@ -136,10 +136,10 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
-	} else {
-		if e := cc.cache.Update(job); e != nil {
-			return e
-		}
+	}
+
+	if e := cc.cache.Update(job); e != nil {
+		return e
 	}
 
 	// Delete PodGroup
@@ -336,10 +336,10 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
-	} else {
-		if e := cc.cache.Update(job); e != nil {
-			return e
-		}
+	}
+
+	if e := cc.cache.Update(job); e != nil {
+		return e
 	}
 
 	return nil
@@ -347,10 +347,10 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 
 func (cc *Controller) calculateVersion(current int32, bumpVersion bool) int32 {
 	if current == 0 {
-		current += 1
+		current++
 	}
 	if bumpVersion {
-		current += 1
+		current++
 	}
 	return current
 }

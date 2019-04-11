@@ -34,8 +34,10 @@ var pluginMutex sync.Mutex
 // Plugin management
 var pluginBuilders = map[string]PluginBuilder{}
 
+// PluginBuilder is a function type that receives clientset and returns interface
 type PluginBuilder func(_interface.PluginClientset, []string) _interface.PluginInterface
 
+// RegisterPluginBuilder is used to register a pluginBuilder
 func RegisterPluginBuilder(name string, pc func(_interface.PluginClientset, []string) _interface.PluginInterface) {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
@@ -43,6 +45,7 @@ func RegisterPluginBuilder(name string, pc func(_interface.PluginClientset, []st
 	pluginBuilders[name] = pc
 }
 
+// GetPluginBuilder is used to get pluginBuilder from it's name
 func GetPluginBuilder(name string) (PluginBuilder, bool) {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()

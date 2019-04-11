@@ -20,6 +20,7 @@ import (
 	vkv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
 )
 
+// TotalTasks returns total number of tasks in a job
 func TotalTasks(job *vkv1.Job) int32 {
 	var rep int32
 

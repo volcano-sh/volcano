@@ -23,9 +23,11 @@ import (
 )
 
 const (
+	// TaskNameFmt gives the format of task name
 	TaskNameFmt = "%s-%s-%d"
 )
 
+// GetTaskIndex returns tasks index
 func GetTaskIndex(pod *v1.Pod) string {
 	num := strings.Split(pod.Name, "-")
 	if len(num) >= 3 {
