@@ -35,11 +35,13 @@ import (
 )
 
 const (
-	CONTENTTYPE     = "Content-Type"
+	// CONTENTTYPE type of request content
+	CONTENTTYPE = "Content-Type"
+	// APPLICATIONJSON  json application content
 	APPLICATIONJSON = "application/json"
 )
 
-// Get a clientset with in-cluster config.
+// GetClient gets a clientset with in-cluster config.
 func GetClient(c *appConf.Config) *kubernetes.Clientset {
 	var config *rest.Config
 	var err error
@@ -59,6 +61,7 @@ func GetClient(c *appConf.Config) *kubernetes.Clientset {
 	return clientset
 }
 
+// ConfigTLS configure TLs certificates
 func ConfigTLS(config *appConf.Config, clientset *kubernetes.Clientset) *tls.Config {
 	sCert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
 	if err != nil {
@@ -69,6 +72,7 @@ func ConfigTLS(config *appConf.Config, clientset *kubernetes.Clientset) *tls.Con
 	}
 }
 
+// Serve the http Request for admission controller
 func Serve(w http.ResponseWriter, r *http.Request, admit admissioncontroller.AdmitFunc) {
 	var body []byte
 	if r.Body != nil {
