@@ -34,9 +34,9 @@ func nodeInfoEqual(l, r *NodeInfo) bool {
 
 func TestNodeInfo_AddPod(t *testing.T) {
 	// case1
-	case01_node := buildNode("n1", buildResourceList("8000m", "10G"))
-	case01_pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
-	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{}, make(map[string]string))
+	case01Node := buildNode("n1", buildResourceList("8000m", "10G"))
+	case01Pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+	case01Pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{}, make(map[string]string))
 
 	tests := []struct {
 		name     string
@@ -46,19 +46,19 @@ func TestNodeInfo_AddPod(t *testing.T) {
 	}{
 		{
 			name: "add 2 running non-owner pod",
-			node: case01_node,
-			pods: []*v1.Pod{case01_pod1, case01_pod2},
+			node: case01Node,
+			pods: []*v1.Pod{case01Pod1, case01Pod2},
 			expected: &NodeInfo{
 				Name:        "n1",
-				Node:        case01_node,
+				Node:        case01Node,
 				Idle:        buildResource("5000m", "7G"),
 				Used:        buildResource("3000m", "3G"),
 				Releasing:   EmptyResource(),
 				Allocatable: buildResource("8000m", "10G"),
 				Capability:  buildResource("8000m", "10G"),
 				Tasks: map[TaskID]*TaskInfo{
-					"c1/p1": NewTaskInfo(case01_pod1),
-					"c1/p2": NewTaskInfo(case01_pod2),
+					"c1/p1": NewTaskInfo(case01Pod1),
+					"c1/p2": NewTaskInfo(case01Pod2),
 				},
 			},
 		},
@@ -81,10 +81,10 @@ func TestNodeInfo_AddPod(t *testing.T) {
 
 func TestNodeInfo_RemovePod(t *testing.T) {
 	// case1
-	case01_node := buildNode("n1", buildResourceList("8000m", "10G"))
-	case01_pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
-	case01_pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{}, make(map[string]string))
-	case01_pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{}, make(map[string]string))
+	case01Node := buildNode("n1", buildResourceList("8000m", "10G"))
+	case01Pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+	case01Pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{}, make(map[string]string))
+	case01Pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{}, make(map[string]string))
 
 	tests := []struct {
 		name     string
@@ -95,20 +95,20 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 	}{
 		{
 			name:   "add 3 running non-owner pod, remove 1 running non-owner pod",
-			node:   case01_node,
-			pods:   []*v1.Pod{case01_pod1, case01_pod2, case01_pod3},
-			rmPods: []*v1.Pod{case01_pod2},
+			node:   case01Node,
+			pods:   []*v1.Pod{case01Pod1, case01Pod2, case01Pod3},
+			rmPods: []*v1.Pod{case01Pod2},
 			expected: &NodeInfo{
 				Name:        "n1",
-				Node:        case01_node,
+				Node:        case01Node,
 				Idle:        buildResource("4000m", "6G"),
 				Used:        buildResource("4000m", "4G"),
 				Releasing:   EmptyResource(),
 				Allocatable: buildResource("8000m", "10G"),
 				Capability:  buildResource("8000m", "10G"),
 				Tasks: map[TaskID]*TaskInfo{
-					"c1/p1": NewTaskInfo(case01_pod1),
-					"c1/p3": NewTaskInfo(case01_pod3),
+					"c1/p1": NewTaskInfo(case01Pod1),
+					"c1/p3": NewTaskInfo(case01Pod3),
 				},
 			},
 		},
