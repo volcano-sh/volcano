@@ -36,25 +36,36 @@ type listFlags struct {
 }
 
 const (
-	Name      string = "Name"
-	Creation  string = "Creation"
-	Phase     string = "Phase"
-	Replicas  string = "Replicas"
-	Min       string = "Min"
-	Pending   string = "Pending"
-	Running   string = "Running"
+	// Name const
+	Name string = "Name"
+	// Creation const
+	Creation string = "Creation"
+	// Phase const
+	Phase string = "Phase"
+	// Replicas const
+	Replicas string = "Replicas"
+	// Min const
+	Min string = "Min"
+	// Pending const
+	Pending string = "Pending"
+	// Running const
+	Running string = "Running"
+	// Succeeded const
 	Succeeded string = "Succeeded"
-	Failed    string = "Failed"
+	// Failed const
+	Failed string = "Failed"
 )
 
 var listJobFlags = &listFlags{}
 
+// InitListFlags inits all flags
 func InitListFlags(cmd *cobra.Command) {
 	initFlags(cmd, &listJobFlags.commonFlags)
 
 	cmd.Flags().StringVarP(&listJobFlags.Namespace, "namespace", "", "default", "the namespace of job")
 }
 
+// ListJobs lists all the jobs
 func ListJobs() error {
 	config, err := buildConfig(listJobFlags.Master, listJobFlags.Kubeconfig)
 	if err != nil {
@@ -76,6 +87,7 @@ func ListJobs() error {
 	return nil
 }
 
+// PrintJobs prints all the jobs
 func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 	_, err := fmt.Fprintf(writer, "%-25s%-25s%-12s%-12s%-6s%-10s%-10s%-12s%-10s\n",
 		Name, Creation, Phase, Replicas, Min, Pending, Running, Succeeded, Failed)

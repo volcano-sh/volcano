@@ -37,7 +37,7 @@ type patchOperation struct {
 	Value interface{} `json:"value,omitempty"`
 }
 
-// mutate job.
+// MutateJobs is used to mutate job.
 func MutateJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	glog.V(3).Infof("mutating jobs")
 

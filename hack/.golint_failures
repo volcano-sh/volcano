@@ -5,13 +5,11 @@ cmd/controllers/app
 cmd/controllers/app/options
 cmd/kube-batch/app
 cmd/kube-batch/app/options
-pkg/admission
 pkg/apis/batch/v1alpha1
 pkg/apis/bus/v1alpha1
 pkg/apis/helpers
 pkg/apis/scheduling/v1alpha1
 pkg/apis/utils
-pkg/cli/job
 pkg/controllers/apis
 pkg/controllers/cache
 pkg/controllers/job
