@@ -22,6 +22,7 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
+// Statement structure
 type Statement struct {
 	operations []operation
 	ssn        *Session
@@ -32,6 +33,7 @@ type operation struct {
 	args []interface{}
 }
 
+//Evict the pod
 func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 	// Update status in session
 	job, found := s.ssn.Jobs[reclaimee.Job]
@@ -107,6 +109,7 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo, reason string) error {
 	return nil
 }
 
+// Pipeline the task for the node
 func (s *Statement) Pipeline(task *api.TaskInfo, hostname string) error {
 	// Only update status in session
 	job, found := s.ssn.Jobs[task.Job]
@@ -191,6 +194,7 @@ func (s *Statement) unpipeline(task *api.TaskInfo) error {
 	return nil
 }
 
+// Discard operation for evict and pipeline
 func (s *Statement) Discard() {
 	glog.V(3).Info("Discarding operations ...")
 	for i := len(s.operations) - 1; i >= 0; i-- {
@@ -204,6 +208,7 @@ func (s *Statement) Discard() {
 	}
 }
 
+// Commit operation for evict and pipeline
 func (s *Statement) Commit() {
 	glog.V(3).Info("Committing operations ...")
 	for _, op := range s.operations {

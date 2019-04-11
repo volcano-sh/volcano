@@ -68,6 +68,7 @@ func New(config *rest.Config, schedulerName string, defaultQueue string) Cache {
 	return newSchedulerCache(config, schedulerName, defaultQueue)
 }
 
+//SchedulerCache cache for the kube batch
 type SchedulerCache struct {
 	sync.Mutex
 
@@ -111,6 +112,7 @@ type defaultBinder struct {
 	kubeclient *kubernetes.Clientset
 }
 
+//Bind will send bind request to api server
 func (db *defaultBinder) Bind(p *v1.Pod, hostname string) error {
 	if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(&v1.Binding{
 		ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: p.UID},
@@ -129,6 +131,7 @@ type defaultEvictor struct {
 	kubeclient *kubernetes.Clientset
 }
 
+//Evict will send delete pod request to api server
 func (de *defaultEvictor) Evict(p *v1.Pod) error {
 	glog.V(3).Infof("Evicting pod %v/%v", p.Namespace, p.Name)
 
@@ -145,7 +148,7 @@ type defaultStatusUpdater struct {
 	kbclient   *kbver.Clientset
 }
 
-// Update pod with podCondition
+// UpdatePodCondition will Update pod with podCondition
 func (su *defaultStatusUpdater) UpdatePodCondition(pod *v1.Pod, condition *v1.PodCondition) (*v1.Pod, error) {
 	glog.V(3).Infof("Updating pod condition for %s/%s to (%s==%s)", pod.Namespace, pod.Name, condition.Type, condition.Status)
 	if podutil.UpdatePodCondition(&pod.Status, condition) {
@@ -154,7 +157,7 @@ func (su *defaultStatusUpdater) UpdatePodCondition(pod *v1.Pod, condition *v1.Po
 	return pod, nil
 }
 
-// Update pod with podCondition
+// UpdatePodGroup will Update pod with podCondition
 func (su *defaultStatusUpdater) UpdatePodGroup(pg *v1alpha1.PodGroup) (*v1alpha1.PodGroup, error) {
 	return su.kbclient.SchedulingV1alpha1().PodGroups(pg.Namespace).Update(pg)
 }
@@ -163,7 +166,7 @@ type defaultVolumeBinder struct {
 	volumeBinder *volumebinder.VolumeBinder
 }
 
-// AllocateVolume allocates volume on the host to the task
+// AllocateVolumes allocates volume on the host to the task
 func (dvb *defaultVolumeBinder) AllocateVolumes(task *api.TaskInfo, hostname string) error {
 	allBound, err := dvb.volumeBinder.Binder.AssumePodVolumes(task.Pod, hostname)
 	task.VolumeReady = allBound
@@ -171,7 +174,7 @@ func (dvb *defaultVolumeBinder) AllocateVolumes(task *api.TaskInfo, hostname str
 	return err
 }
 
-// BindVolume binds volumes to the task
+// BindVolumes binds volumes to the task
 func (dvb *defaultVolumeBinder) BindVolumes(task *api.TaskInfo) error {
 	// If task's volumes are ready, did not bind them again.
 	if task.VolumeReady {
@@ -296,6 +299,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	return sc
 }
 
+// Run  starts the schedulerCache
 func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.pdbInformer.Informer().Run(stopCh)
 	go sc.podInformer.Informer().Run(stopCh)
@@ -317,6 +321,7 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go wait.Until(sc.processCleanupJob, 0, stopCh)
 }
 
+// WaitForCacheSync sync the cache with the api server
 func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 
 	return cache.WaitForCacheSync(stopCh,
@@ -339,6 +344,7 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 	)
 }
 
+// findJobAndTask returns job and the task info
 func (sc *SchedulerCache) findJobAndTask(taskInfo *kbapi.TaskInfo) (*kbapi.JobInfo, *kbapi.TaskInfo, error) {
 	job, found := sc.Jobs[taskInfo.Job]
 	if !found {
@@ -355,6 +361,7 @@ func (sc *SchedulerCache) findJobAndTask(taskInfo *kbapi.TaskInfo) (*kbapi.JobIn
 	return job, task, nil
 }
 
+// Evict will evict the pod
 func (sc *SchedulerCache) Evict(taskInfo *kbapi.TaskInfo, reason string) error {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
@@ -440,12 +447,12 @@ func (sc *SchedulerCache) Bind(taskInfo *kbapi.TaskInfo, hostname string) error 
 	return nil
 }
 
-// AllocateVolume allocates volume on the host to the task
+// AllocateVolumes allocates volume on the host to the task
 func (sc *SchedulerCache) AllocateVolumes(task *api.TaskInfo, hostname string) error {
 	return sc.VolumeBinder.AllocateVolumes(task, hostname)
 }
 
-// BindVolume binds volumes to the task
+// BindVolumes binds volumes to the task
 func (sc *SchedulerCache) BindVolumes(task *api.TaskInfo) error {
 	return sc.VolumeBinder.BindVolumes(task)
 }
@@ -521,6 +528,7 @@ func (sc *SchedulerCache) processResyncTask() {
 	}
 }
 
+// Snapshot returns the complete snapshot of the cluster from cache
 func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
@@ -575,6 +583,7 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 	return snapshot
 }
 
+// String returns information about the cache in a string format
 func (sc *SchedulerCache) String() string {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
