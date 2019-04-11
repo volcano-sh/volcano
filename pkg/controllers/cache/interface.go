@@ -23,6 +23,7 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/apis"
 )
 
+// Cache is an interface
 type Cache interface {
 	Run(stopCh <-chan struct{})
 

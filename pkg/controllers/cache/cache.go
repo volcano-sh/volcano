@@ -40,14 +40,17 @@ func keyFn(ns, name string) string {
 	return fmt.Sprintf("%s/%s", ns, name)
 }
 
+// JobKeyByName returns job name from name
 func JobKeyByName(namespace string, name string) string {
 	return keyFn(namespace, name)
 }
 
+// JobKeyByReq returns job name from Request object
 func JobKeyByReq(req *apis.Request) string {
 	return keyFn(req.Namespace, req.JobName)
 }
 
+// JobKey returns job name from Job object
 func JobKey(job *v1alpha1.Job) string {
 	return keyFn(job.Namespace, job.Name)
 }
@@ -66,6 +69,7 @@ func jobKeyOfPod(pod *v1.Pod) (string, error) {
 	return keyFn(pod.Namespace, jobName), nil
 }
 
+// New creates a new cache object
 func New() Cache {
 	return &jobCache{
 		jobs:        map[string]*apis.JobInfo{},
@@ -73,6 +77,7 @@ func New() Cache {
 	}
 }
 
+// Get is used to get jobInfo object from key
 func (jc *jobCache) Get(key string) (*apis.JobInfo, error) {
 	jc.Lock()
 	defer jc.Unlock()
@@ -89,6 +94,7 @@ func (jc *jobCache) Get(key string) (*apis.JobInfo, error) {
 	return job, nil
 }
 
+// GetStatus returns job status
 func (jc *jobCache) GetStatus(key string) (*v1alpha1.JobStatus, error) {
 	jc.Lock()
 	defer jc.Unlock()
@@ -103,6 +109,7 @@ func (jc *jobCache) GetStatus(key string) (*v1alpha1.JobStatus, error) {
 	return &status, nil
 }
 
+// Add is used to add job in cache
 func (jc *jobCache) Add(job *v1alpha1.Job) error {
 	jc.Lock()
 	defer jc.Unlock()
@@ -128,35 +135,40 @@ func (jc *jobCache) Add(job *v1alpha1.Job) error {
 	return nil
 }
 
+// Update is used to update a job in cache
 func (jc *jobCache) Update(obj *v1alpha1.Job) error {
 	jc.Lock()
 	defer jc.Unlock()
 
 	key := JobKey(obj)
-	if job, found := jc.jobs[key]; !found {
+	job, found := jc.jobs[key]
+	if !found {
 		return fmt.Errorf("failed to find job <%v>", key)
-	} else {
-		job.Job = obj
 	}
+
+	job.Job = obj
 
 	return nil
 }
 
+// Delete is used to delete job in cache
 func (jc *jobCache) Delete(obj *v1alpha1.Job) error {
 	jc.Lock()
 	defer jc.Unlock()
 
 	key := JobKey(obj)
-	if jobInfo, found := jc.jobs[key]; !found {
+	jobInfo, found := jc.jobs[key]
+	if !found {
 		return fmt.Errorf("failed to find job <%v>", key)
-	} else {
-		jobInfo.Job = nil
-		jc.deleteJob(jobInfo)
 	}
+
+	jobInfo.Job = nil
+	jc.deleteJob(jobInfo)
 
 	return nil
 }
 
+// AddPod is used to add a pod to a job in cache
 func (jc *jobCache) AddPod(pod *v1.Pod) error {
 	jc.Lock()
 	defer jc.Unlock()
@@ -177,6 +189,7 @@ func (jc *jobCache) AddPod(pod *v1.Pod) error {
 	return job.AddPod(pod)
 }
 
+// UpdatePod is used to update a pod in a job in cache
 func (jc *jobCache) UpdatePod(pod *v1.Pod) error {
 	jc.Lock()
 	defer jc.Unlock()
@@ -197,6 +210,7 @@ func (jc *jobCache) UpdatePod(pod *v1.Pod) error {
 	return job.UpdatePod(pod)
 }
 
+// DeletePod is used to delete a pod from a job in cache
 func (jc *jobCache) DeletePod(pod *v1.Pod) error {
 	jc.Lock()
 	defer jc.Unlock()
@@ -225,10 +239,12 @@ func (jc *jobCache) DeletePod(pod *v1.Pod) error {
 	return nil
 }
 
+// Run is used to run cleanup process
 func (jc *jobCache) Run(stopCh <-chan struct{}) {
 	wait.Until(jc.worker, 0, stopCh)
 }
 
+// TaskCompleted returns whether a job is completed or not
 func (jc jobCache) TaskCompleted(jobKey, taskName string) bool {
 	jc.Lock()
 	defer jc.Unlock()
@@ -261,7 +277,7 @@ func (jc jobCache) TaskCompleted(jobKey, taskName string) bool {
 
 	for _, pod := range taskPods {
 		if pod.Status.Phase == v1.PodSucceeded {
-			completed += 1
+			completed++
 		}
 	}
 	return completed >= taskReplicas
