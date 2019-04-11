@@ -22,8 +22,10 @@ import (
 	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 )
 
+// QueueID is UID type, serves as unique ID for each queue
 type QueueID types.UID
 
+// QueueInfo will have all details about queue
 type QueueInfo struct {
 	UID  QueueID
 	Name string
@@ -33,6 +35,7 @@ type QueueInfo struct {
 	Queue *arbcorev1.Queue
 }
 
+// NewQueueInfo creates new queueInfo object
 func NewQueueInfo(queue *arbcorev1.Queue) *QueueInfo {
 	return &QueueInfo{
 		UID:  QueueID(queue.Name),
@@ -44,6 +47,7 @@ func NewQueueInfo(queue *arbcorev1.Queue) *QueueInfo {
 	}
 }
 
+// Clone is used to clone queueInfo object
 func (q *QueueInfo) Clone() *QueueInfo {
 	return &QueueInfo{
 		UID:    q.UID,
