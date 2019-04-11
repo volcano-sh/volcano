@@ -48,6 +48,8 @@ import (
 //       Memory: 1G
 //
 // Result: CPU: 3, Memory: 3G
+
+// GetPodResourceRequest returns all the resource required for that pod
 func GetPodResourceRequest(pod *v1.Pod) *Resource {
 	result := GetPodResourceWithoutInitContainers(pod)
 

@@ -9,7 +9,5 @@ pkg/scheduler/actions/allocate
 pkg/scheduler/actions/backfill
 pkg/scheduler/actions/preempt
 pkg/scheduler/actions/reclaim
-pkg/scheduler/api
-pkg/scheduler/api/helpers
 test/e2e
 test/e2e/volcano

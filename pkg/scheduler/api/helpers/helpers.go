@@ -22,6 +22,7 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
+// Min is used to find the min of two resource types
 func Min(l, r *api.Resource) *api.Resource {
 	res := &api.Resource{}
 
@@ -32,6 +33,7 @@ func Min(l, r *api.Resource) *api.Resource {
 	return res
 }
 
+// Share is used to determine the share
 func Share(l, r float64) float64 {
 	var share float64
 	if r == 0 {

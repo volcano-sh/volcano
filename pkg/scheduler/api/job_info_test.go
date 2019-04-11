@@ -34,18 +34,18 @@ func jobInfoEqual(l, r *JobInfo) bool {
 
 func TestAddTaskInfo(t *testing.T) {
 	// case1
-	case01_uid := JobID("uid")
-	case01_ns := "c1"
-	case01_owner := buildOwnerReference("uid")
+	case01UID := JobID("uid")
+	case01Ns := "c1"
+	case01Owner := buildOwnerReference("uid")
 
-	case01_pod1 := buildPod(case01_ns, "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
-	case01_task1 := NewTaskInfo(case01_pod1)
-	case01_pod2 := buildPod(case01_ns, "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
-	case01_task2 := NewTaskInfo(case01_pod2)
-	case01_pod3 := buildPod(case01_ns, "p3", "n1", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
-	case01_task3 := NewTaskInfo(case01_pod3)
-	case01_pod4 := buildPod(case01_ns, "p4", "n1", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
-	case01_task4 := NewTaskInfo(case01_pod4)
+	case01Pod1 := buildPod(case01Ns, "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
+	case01Task1 := NewTaskInfo(case01Pod1)
+	case01Pod2 := buildPod(case01Ns, "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
+	case01Task2 := NewTaskInfo(case01Pod2)
+	case01Pod3 := buildPod(case01Ns, "p3", "n1", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
+	case01Task3 := NewTaskInfo(case01Pod3)
+	case01Pod4 := buildPod(case01Ns, "p4", "n1", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
+	case01Task4 := NewTaskInfo(case01Pod4)
 
 	tests := []struct {
 		name     string
@@ -55,28 +55,28 @@ func TestAddTaskInfo(t *testing.T) {
 	}{
 		{
 			name: "add 1 pending owner pod, 1 running owner pod",
-			uid:  case01_uid,
-			pods: []*v1.Pod{case01_pod1, case01_pod2, case01_pod3, case01_pod4},
+			uid:  case01UID,
+			pods: []*v1.Pod{case01Pod1, case01Pod2, case01Pod3, case01Pod4},
 			expected: &JobInfo{
-				UID:          case01_uid,
+				UID:          case01UID,
 				Allocated:    buildResource("4000m", "4G"),
 				TotalRequest: buildResource("5000m", "5G"),
 				Tasks: tasksMap{
-					case01_task1.UID: case01_task1,
-					case01_task2.UID: case01_task2,
-					case01_task3.UID: case01_task3,
-					case01_task4.UID: case01_task4,
+					case01Task1.UID: case01Task1,
+					case01Task2.UID: case01Task2,
+					case01Task3.UID: case01Task3,
+					case01Task4.UID: case01Task4,
 				},
 				TaskStatusIndex: map[TaskStatus]tasksMap{
 					Running: {
-						case01_task2.UID: case01_task2,
+						case01Task2.UID: case01Task2,
 					},
 					Pending: {
-						case01_task1.UID: case01_task1,
+						case01Task1.UID: case01Task1,
 					},
 					Bound: {
-						case01_task3.UID: case01_task3,
-						case01_task4.UID: case01_task4,
+						case01Task3.UID: case01Task3,
+						case01Task4.UID: case01Task4,
 					},
 				},
 				NodeSelector:  make(map[string]string),
@@ -102,24 +102,24 @@ func TestAddTaskInfo(t *testing.T) {
 
 func TestDeleteTaskInfo(t *testing.T) {
 	// case1
-	case01_uid := JobID("owner1")
-	case01_ns := "c1"
-	case01_owner := buildOwnerReference(string(case01_uid))
-	case01_pod1 := buildPod(case01_ns, "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
-	case01_task1 := NewTaskInfo(case01_pod1)
-	case01_pod2 := buildPod(case01_ns, "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
-	case01_pod3 := buildPod(case01_ns, "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{case01_owner}, make(map[string]string))
-	case01_task3 := NewTaskInfo(case01_pod3)
+	case01UID := JobID("owner1")
+	case01Ns := "c1"
+	case01Owner := buildOwnerReference(string(case01UID))
+	case01Pod1 := buildPod(case01Ns, "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
+	case01Task1 := NewTaskInfo(case01Pod1)
+	case01Pod2 := buildPod(case01Ns, "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
+	case01Pod3 := buildPod(case01Ns, "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
+	case01Task3 := NewTaskInfo(case01Pod3)
 
 	// case2
-	case02_uid := JobID("owner2")
-	case02_ns := "c2"
-	case02_owner := buildOwnerReference(string(case02_uid))
-	case02_pod1 := buildPod(case02_ns, "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
-	case02_task1 := NewTaskInfo(case02_pod1)
-	case02_pod2 := buildPod(case02_ns, "p2", "n1", v1.PodPending, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
-	case02_pod3 := buildPod(case02_ns, "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{case02_owner}, make(map[string]string))
-	case02_task3 := NewTaskInfo(case02_pod3)
+	case02UID := JobID("owner2")
+	case02Ns := "c2"
+	case02Owner := buildOwnerReference(string(case02UID))
+	case02Pod1 := buildPod(case02Ns, "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02Owner}, make(map[string]string))
+	case02Task1 := NewTaskInfo(case02Pod1)
+	case02Pod2 := buildPod(case02Ns, "p2", "n1", v1.PodPending, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case02Owner}, make(map[string]string))
+	case02Pod3 := buildPod(case02Ns, "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{case02Owner}, make(map[string]string))
+	case02Task3 := NewTaskInfo(case02Pod3)
 
 	tests := []struct {
 		name     string
@@ -130,20 +130,20 @@ func TestDeleteTaskInfo(t *testing.T) {
 	}{
 		{
 			name:   "add 1 pending owner pod, 2 running owner pod, remove 1 running owner pod",
-			uid:    case01_uid,
-			pods:   []*v1.Pod{case01_pod1, case01_pod2, case01_pod3},
-			rmPods: []*v1.Pod{case01_pod2},
+			uid:    case01UID,
+			pods:   []*v1.Pod{case01Pod1, case01Pod2, case01Pod3},
+			rmPods: []*v1.Pod{case01Pod2},
 			expected: &JobInfo{
-				UID:          case01_uid,
+				UID:          case01UID,
 				Allocated:    buildResource("3000m", "3G"),
 				TotalRequest: buildResource("4000m", "4G"),
 				Tasks: tasksMap{
-					case01_task1.UID: case01_task1,
-					case01_task3.UID: case01_task3,
+					case01Task1.UID: case01Task1,
+					case01Task3.UID: case01Task3,
 				},
 				TaskStatusIndex: map[TaskStatus]tasksMap{
-					Pending: {case01_task1.UID: case01_task1},
-					Running: {case01_task3.UID: case01_task3},
+					Pending: {case01Task1.UID: case01Task1},
+					Running: {case01Task3.UID: case01Task3},
 				},
 				NodeSelector:  make(map[string]string),
 				NodesFitDelta: make(NodeResourceMap),
@@ -151,23 +151,23 @@ func TestDeleteTaskInfo(t *testing.T) {
 		},
 		{
 			name:   "add 2 pending owner pod, 1 running owner pod, remove 1 pending owner pod",
-			uid:    case02_uid,
-			pods:   []*v1.Pod{case02_pod1, case02_pod2, case02_pod3},
-			rmPods: []*v1.Pod{case02_pod2},
+			uid:    case02UID,
+			pods:   []*v1.Pod{case02Pod1, case02Pod2, case02Pod3},
+			rmPods: []*v1.Pod{case02Pod2},
 			expected: &JobInfo{
-				UID:          case02_uid,
+				UID:          case02UID,
 				Allocated:    buildResource("3000m", "3G"),
 				TotalRequest: buildResource("4000m", "4G"),
 				Tasks: tasksMap{
-					case02_task1.UID: case02_task1,
-					case02_task3.UID: case02_task3,
+					case02Task1.UID: case02Task1,
+					case02Task3.UID: case02Task3,
 				},
 				TaskStatusIndex: map[TaskStatus]tasksMap{
 					Pending: {
-						case02_task1.UID: case02_task1,
+						case02Task1.UID: case02Task1,
 					},
 					Running: {
-						case02_task3.UID: case02_task3,
+						case02Task3.UID: case02Task3,
 					},
 				},
 				NodeSelector:  make(map[string]string),
