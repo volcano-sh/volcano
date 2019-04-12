@@ -45,16 +45,12 @@ func eventKey(obj interface{}) interface{} {
 	}
 }
 
-func MakePodName(jobName string, taskName string, index int) string {
-	return fmt.Sprintf(vkjobhelpers.TaskNameFmt, jobName, taskName, index)
-}
-
 func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 	templateCopy := template.DeepCopy()
 
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      MakePodName(job.Name, template.Name, ix),
+			Name:      vkjobhelpers.MakePodName(job.Name, template.Name, ix),
 			Namespace: job.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(job, helpers.JobKind),
