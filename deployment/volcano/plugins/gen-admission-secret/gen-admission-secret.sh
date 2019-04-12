@@ -108,7 +108,7 @@ done
 # approve and fetch the signed certificate
 kubectl certificate approve ${csrName}
 # verify certificate has been signed
-for x in $(seq 15); do
+for x in $(seq 20); do
     serverCert=$(kubectl get csr ${csrName} -o jsonpath='{.status.certificate}')
     if [[ ${serverCert} != '' ]]; then
         break
@@ -116,7 +116,7 @@ for x in $(seq 15); do
     sleep 1
 done
 if [[ ${serverCert} == '' ]]; then
-    echo "ERROR: After approving csr ${csrName}, the signed certificate did not appear on the resource. Giving up after 15 attempts." >&2
+    echo "ERROR: After approving csr ${csrName}, the signed certificate did not appear on the resource. Giving up after 20 attempts." >&2
     exit 1
 fi
 echo ${serverCert} | openssl base64 -d -A -out ${tmpdir}/server-cert.pem
