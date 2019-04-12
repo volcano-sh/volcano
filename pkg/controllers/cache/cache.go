@@ -91,7 +91,7 @@ func (jc *jobCache) Get(key string) (*apis.JobInfo, error) {
 		return nil, fmt.Errorf("job <%s> is not ready", key)
 	}
 
-	return job, nil
+	return job.Clone(), nil
 }
 
 // GetStatus returns job status
