@@ -14,28 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package helpers
-
-import (
-	"fmt"
-	"strings"
-
-	"k8s.io/api/core/v1"
-)
+package svc
 
 const (
-	PodNameFmt = "%s-%s-%d"
+	ConfigMapTaskHostFmt = "%s.host"
+
+	ConfigMapMountPath = "/etc/volcano"
 )
-
-func GetTaskIndex(pod *v1.Pod) string {
-	num := strings.Split(pod.Name, "-")
-	if len(num) >= 3 {
-		return num[len(num)-1]
-	}
-
-	return ""
-}
-
-func MakePodName(jobName string, taskName string, index int) string {
-	return fmt.Sprintf(PodNameFmt, jobName, taskName, index)
-}
