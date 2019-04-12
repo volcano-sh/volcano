@@ -10,8 +10,6 @@ spec:
   policies:
   - event: PodEvicted
     action: RestartJob
-  - event: PodFailed
-    action: RestartTask
   tasks:
   - replicas: 2
     name: ps
