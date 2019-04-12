@@ -35,6 +35,26 @@ type JobInfo struct {
 	Pods map[string]map[string]*v1.Pod
 }
 
+// Clone jobInfo object
+func (ji *JobInfo) Clone() *JobInfo {
+	job := &JobInfo{
+		Namespace: ji.Namespace,
+		Name:      ji.Name,
+		Job:       ji.Job,
+
+		Pods: make(map[string]map[string]*v1.Pod),
+	}
+
+	for key, pods := range ji.Pods {
+		job.Pods[key] = make(map[string]*v1.Pod)
+		for pn, pod := range pods {
+			job.Pods[key][pn] = pod
+		}
+	}
+
+	return job
+}
+
 // SetJob is used to set job
 func (ji *JobInfo) SetJob(job *v1alpha1.Job) {
 	ji.Name = job.Name
