@@ -19,7 +19,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/cli/job"
+	"github.com/kubernetes-sigs/volcano/pkg/cli/job"
 )
 
 func buildJobCmd() *cobra.Command {

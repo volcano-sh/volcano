@@ -21,9 +21,9 @@ package internalversion
 import (
 	time "time"
 
-	v1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	internalinterfaces "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/internalversion/internalinterfaces"
-	internalversion "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/v1alpha1/internalversion"
+	v1alpha1 "github.com/kubernetes-sigs/volcano/pkg/apis/scheduling/v1alpha1"
+	internalinterfaces "github.com/kubernetes-sigs/volcano/pkg/client/informers/internalversion/internalinterfaces"
+	internalversion "github.com/kubernetes-sigs/volcano/pkg/client/listers/v1alpha1/internalversion"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"

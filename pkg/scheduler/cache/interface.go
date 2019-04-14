@@ -19,8 +19,8 @@ package cache
 import (
 	"k8s.io/api/core/v1"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	"github.com/kubernetes-sigs/volcano/pkg/apis/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/volcano/pkg/scheduler/api"
 )
 
 // Cache collects pods/nodes/queues information

@@ -25,8 +25,8 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
-	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
+	"github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
+	"github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned"
 )
 
 type listFlags struct {

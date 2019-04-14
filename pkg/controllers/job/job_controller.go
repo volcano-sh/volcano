@@ -19,10 +19,10 @@ package job
 import (
 	"fmt"
 	"github.com/golang/glog"
-	"github.com/kubernetes-sigs/kube-batch/pkg/apis/helpers"
+	"github.com/kubernetes-sigs/volcano/pkg/apis/helpers"
 	"k8s.io/apimachinery/pkg/util/runtime"
 
-	v1corev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/bus/v1alpha1"
+	v1corev1 "github.com/kubernetes-sigs/volcano/pkg/apis/bus/v1alpha1"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -34,21 +34,21 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
-	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
-	kbinfoext "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
-	kbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
-	kblister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
+	kbver "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned"
+	kbinfoext "github.com/kubernetes-sigs/volcano/pkg/client/informers/externalversions"
+	kbinfo "github.com/kubernetes-sigs/volcano/pkg/client/informers/externalversions/scheduling/v1alpha1"
+	kblister "github.com/kubernetes-sigs/volcano/pkg/client/listers/scheduling/v1alpha1"
 
-	vkver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
-	vkscheme "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/scheme"
-	vkinfoext "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
-	vkbatchinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/batch/v1alpha1"
-	vkcoreinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/bus/v1alpha1"
-	vkbatchlister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/batch/v1alpha1"
-	vkcorelister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/bus/v1alpha1"
-	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/apis"
-	jobcache "github.com/kubernetes-sigs/kube-batch/pkg/controllers/cache"
-	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/job/state"
+	vkver "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned"
+	vkscheme "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned/scheme"
+	vkinfoext "github.com/kubernetes-sigs/volcano/pkg/client/informers/externalversions"
+	vkbatchinfo "github.com/kubernetes-sigs/volcano/pkg/client/informers/externalversions/batch/v1alpha1"
+	vkcoreinfo "github.com/kubernetes-sigs/volcano/pkg/client/informers/externalversions/bus/v1alpha1"
+	vkbatchlister "github.com/kubernetes-sigs/volcano/pkg/client/listers/batch/v1alpha1"
+	vkcorelister "github.com/kubernetes-sigs/volcano/pkg/client/listers/bus/v1alpha1"
+	"github.com/kubernetes-sigs/volcano/pkg/controllers/apis"
+	jobcache "github.com/kubernetes-sigs/volcano/pkg/controllers/cache"
+	"github.com/kubernetes-sigs/volcano/pkg/controllers/job/state"
 )
 
 // Controller the Job Controller type

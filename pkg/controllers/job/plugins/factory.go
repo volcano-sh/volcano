@@ -19,9 +19,9 @@ package plugins
 import (
 	"sync"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/job/plugins/env"
-	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/job/plugins/interface"
-	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/job/plugins/ssh"
+	"github.com/kubernetes-sigs/volcano/pkg/controllers/job/plugins/env"
+	"github.com/kubernetes-sigs/volcano/pkg/controllers/job/plugins/interface"
+	"github.com/kubernetes-sigs/volcano/pkg/controllers/job/plugins/ssh"
 )
 
 func init() {

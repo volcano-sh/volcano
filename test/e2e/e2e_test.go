@@ -25,5 +25,5 @@ import (
 
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "kube-batch Test Suite")
+	RunSpecs(t, "volcano Test Suite")
 }

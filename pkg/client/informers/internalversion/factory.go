@@ -23,8 +23,8 @@ import (
 	sync "sync"
 	time "time"
 
-	internalinterfaces "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/internalversion/internalinterfaces"
-	v1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/internalversion/v1alpha1"
+	internalinterfaces "github.com/kubernetes-sigs/volcano/pkg/client/informers/internalversion/internalinterfaces"
+	v1alpha1 "github.com/kubernetes-sigs/volcano/pkg/client/informers/internalversion/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"

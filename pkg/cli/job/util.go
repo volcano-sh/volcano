@@ -28,10 +28,10 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	vkbatchv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
-	vkbusv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/bus/v1alpha1"
-	"github.com/kubernetes-sigs/kube-batch/pkg/apis/helpers"
-	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
+	vkbatchv1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
+	vkbusv1 "github.com/kubernetes-sigs/volcano/pkg/apis/bus/v1alpha1"
+	"github.com/kubernetes-sigs/volcano/pkg/apis/helpers"
+	"github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned"
 )
 
 func homeDir() string {

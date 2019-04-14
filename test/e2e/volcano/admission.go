@@ -21,7 +21,7 @@ import (
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
+	"github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
 )
 
 var _ = Describe("Job E2E Test: Test Admission service", func() {

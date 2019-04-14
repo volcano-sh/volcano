@@ -26,11 +26,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/conf"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/metrics"
+	"github.com/kubernetes-sigs/volcano/pkg/apis/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/volcano/pkg/scheduler/api"
+	"github.com/kubernetes-sigs/volcano/pkg/scheduler/cache"
+	"github.com/kubernetes-sigs/volcano/pkg/scheduler/conf"
+	"github.com/kubernetes-sigs/volcano/pkg/scheduler/metrics"
 )
 
 // Session information for the current session

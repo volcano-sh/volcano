@@ -20,7 +20,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	vkv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
+	vkv1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
 )
 
 var _ = Describe("MPI E2E Test", func() {

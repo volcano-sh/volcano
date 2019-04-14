@@ -17,7 +17,7 @@ limitations under the License.
 package state
 
 import (
-	vkv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
+	vkv1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
 )
 
 // TotalTasks returns total number of tasks in a job

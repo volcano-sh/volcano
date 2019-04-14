@@ -21,7 +21,7 @@ KUBE_ROOT=$(dirname "${BASH_SOURCE}")/..
 source "${KUBE_ROOT}/hack/lib/init.sh"
 
 # Install tools we need, but only from vendor/...
-go install github.com/kubernetes-sigs/kube-batch/vendor/github.com/client9/misspell/cmd/misspell
+go install github.com/kubernetes-sigs/volcano/vendor/github.com/client9/misspell/cmd/misspell
 
 # Spell checking
 # All the skipping files are defined in hack/.spelling_failures

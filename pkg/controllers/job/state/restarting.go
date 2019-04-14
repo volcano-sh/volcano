@@ -17,8 +17,8 @@ limitations under the License.
 package state
 
 import (
-	vkv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
-	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/apis"
+	vkv1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
+	"github.com/kubernetes-sigs/volcano/pkg/controllers/apis"
 )
 
 type restartingState struct {

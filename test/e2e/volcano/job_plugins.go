@@ -24,7 +24,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/job/helpers"
+	"github.com/kubernetes-sigs/volcano/pkg/controllers/job/helpers"
 )
 
 var _ = Describe("Job E2E Test: Test Job Plugins", func() {

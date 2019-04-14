@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	// KubeBatchNamespace - namespace in prometheus used by kube-batch
-	KubeBatchNamespace = "kube_batch"
+	// VolcanoNamespace - namespace in prometheus used by volcano
+	VolcanoNamespace = "volcano"
 
 	// OnSessionOpen label
 	OnSessionOpen = "OnSessionOpen"
@@ -37,7 +37,7 @@ const (
 var (
 	e2eSchedulingLatency = promauto.NewHistogram(
 		prometheus.HistogramOpts{
-			Subsystem: KubeBatchNamespace,
+			Subsystem: VolcanoNamespace,
 			Name:      "e2e_scheduling_latency_milliseconds",
 			Help:      "E2e scheduling latency in milliseconds (scheduling algorithm + binding)",
 			Buckets:   prometheus.ExponentialBuckets(5, 2, 10),
@@ -46,7 +46,7 @@ var (
 
 	pluginSchedulingLatency = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Subsystem: KubeBatchNamespace,
+			Subsystem: VolcanoNamespace,
 			Name:      "plugin_scheduling_latency_microseconds",
 			Help:      "Plugin scheduling latency in microseconds",
 			Buckets:   prometheus.ExponentialBuckets(5, 2, 10),
@@ -55,7 +55,7 @@ var (
 
 	actionSchedulingLatency = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Subsystem: KubeBatchNamespace,
+			Subsystem: VolcanoNamespace,
 			Name:      "action_scheduling_latency_microseconds",
 			Help:      "Action scheduling latency in microseconds",
 			Buckets:   prometheus.ExponentialBuckets(5, 2, 10),
@@ -64,7 +64,7 @@ var (
 
 	taskSchedulingLatency = promauto.NewHistogram(
 		prometheus.HistogramOpts{
-			Subsystem: KubeBatchNamespace,
+			Subsystem: VolcanoNamespace,
 			Name:      "task_scheduling_latency_microseconds",
 			Help:      "Task scheduling latency in microseconds",
 			Buckets:   prometheus.ExponentialBuckets(5, 2, 10),
@@ -73,7 +73,7 @@ var (
 
 	scheduleAttempts = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Subsystem: KubeBatchNamespace,
+			Subsystem: VolcanoNamespace,
 			Name:      "schedule_attempts_total",
 			Help:      "Number of attempts to schedule pods, by the result. 'unschedulable' means a pod could not be scheduled, while 'error' means an internal scheduler problem.",
 		}, []string{"result"},
@@ -81,7 +81,7 @@ var (
 
 	preemptionVictims = promauto.NewGauge(
 		prometheus.GaugeOpts{
-			Subsystem: KubeBatchNamespace,
+			Subsystem: VolcanoNamespace,
 			Name:      "pod_preemption_victims",
 			Help:      "Number of selected preemption victims",
 		},
@@ -89,7 +89,7 @@ var (
 
 	preemptionAttempts = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Subsystem: KubeBatchNamespace,
+			Subsystem: VolcanoNamespace,
 			Name:      "total_preemption_attempts",
 			Help:      "Total preemption attempts in the cluster till now",
 		},
@@ -97,7 +97,7 @@ var (
 
 	unscheduleTaskCount = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: KubeBatchNamespace,
+			Subsystem: VolcanoNamespace,
 			Name:      "unschedule_task_count",
 			Help:      "Number of tasks could not be scheduled",
 		}, []string{"job_id"},
@@ -105,7 +105,7 @@ var (
 
 	unscheduleJobCount = promauto.NewGauge(
 		prometheus.GaugeOpts{
-			Subsystem: KubeBatchNamespace,
+			Subsystem: VolcanoNamespace,
 			Name:      "unschedule_job_count",
 			Help:      "Number of jobs could not be scheduled",
 		},
@@ -113,7 +113,7 @@ var (
 
 	jobRetryCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Subsystem: KubeBatchNamespace,
+			Subsystem: VolcanoNamespace,
 			Name:      "job_retry_counts",
 			Help:      "Number of retry counts for one job",
 		}, []string{"job_id"},
