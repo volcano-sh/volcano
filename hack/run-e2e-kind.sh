@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 export VK_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
 export VK_BIN=${VK_ROOT}/${BIN_DIR}
