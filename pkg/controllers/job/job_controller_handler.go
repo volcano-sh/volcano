@@ -57,9 +57,8 @@ func (cc *Controller) addJob(obj interface{}) {
 		Event: vkbatchv1.OutOfSyncEvent,
 	}
 
-	jobCopy := job.DeepCopy()
 	// TODO(k82cn): if failed to add job, the cache should be refresh
-	if err := cc.cache.Add(jobCopy); err != nil {
+	if err := cc.cache.Add(job); err != nil {
 		glog.Errorf("Failed to add job <%s/%s>: %v in cache",
 			job.Namespace, job.Name, err)
 	}
