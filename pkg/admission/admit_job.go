@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 
 	v1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/job/plugins"
 )
 
 // AdmitJobs function is used to admit jobs
@@ -112,7 +113,14 @@ func validateJobSpec(jobSpec v1alpha1.JobSpec, reviewResponse *v1beta1.Admission
 		msg = msg + fmt.Sprintf(" duplicated job event policies: %s;", duplicateInfo)
 	}
 
-	//TODO: Add job plugin validation when job plugin supported.
+	//invalid job plugins
+	if len(jobSpec.Plugins) != 0 {
+		for name := range jobSpec.Plugins {
+			if _, found := plugins.GetPluginBuilder(name); !found {
+				msg = msg + fmt.Sprintf(" unable to find job plugin: %s", name)
+			}
+		}
+	}
 
 	if msg != "" {
 		reviewResponse.Allowed = false

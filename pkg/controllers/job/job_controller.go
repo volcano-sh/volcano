@@ -17,8 +17,12 @@ limitations under the License.
 package job
 
 import (
+	"fmt"
 	"github.com/golang/glog"
+	"github.com/kubernetes-sigs/kube-batch/pkg/apis/helpers"
+	"k8s.io/apimachinery/pkg/util/runtime"
 
+	v1corev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/bus/v1alpha1"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -122,8 +126,25 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.jobSynced = cc.jobInformer.Informer().HasSynced
 
 	cc.cmdInformer = vkinfoext.NewSharedInformerFactory(cc.vkClients, 0).Bus().V1alpha1().Commands()
-	cc.cmdInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: cc.addCommand,
+	cc.cmdInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			switch t := obj.(type) {
+			case *v1corev1.Command:
+				return helpers.ControlledBy(t, helpers.JobKind)
+			case cache.DeletedFinalStateUnknown:
+				if cmd, ok := t.Obj.(*v1corev1.Command); ok {
+					return helpers.ControlledBy(cmd, helpers.JobKind)
+				}
+				runtime.HandleError(fmt.Errorf("unable to convert object %T to *v1.Command", obj))
+				return false
+			default:
+				runtime.HandleError(fmt.Errorf("unable to handle object %T", obj))
+				return false
+			}
+		},
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc: cc.addCommand,
+		},
 	})
 	cc.cmdLister = cc.cmdInformer.Lister()
 	cc.cmdSynced = cc.cmdInformer.Informer().HasSynced
@@ -131,10 +152,27 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.sharedInformers = informers.NewSharedInformerFactory(cc.kubeClients, 0)
 	podInformer := cc.sharedInformers.Core().V1().Pods()
 
-	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    cc.addPod,
-		UpdateFunc: cc.updatePod,
-		DeleteFunc: cc.deletePod,
+	podInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			switch t := obj.(type) {
+			case *v1.Pod:
+				return helpers.ControlledBy(t, helpers.JobKind)
+			case cache.DeletedFinalStateUnknown:
+				if pod, ok := t.Obj.(*v1.Pod); ok {
+					return helpers.ControlledBy(pod, helpers.JobKind)
+				}
+				runtime.HandleError(fmt.Errorf("unable to convert object %T to *v1.Pod", obj))
+				return false
+			default:
+				runtime.HandleError(fmt.Errorf("unable to handle object %T", obj))
+				return false
+			}
+		},
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    cc.addPod,
+			UpdateFunc: cc.updatePod,
+			DeleteFunc: cc.deletePod,
+		},
 	})
 
 	cc.podLister = podInformer.Lister()
