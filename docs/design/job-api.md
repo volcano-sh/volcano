@@ -441,6 +441,48 @@ spec:
           image: executor-img
 ```
 
+### Plugins for Job
+
+As many jobs of AI frame, e.g. TensorFlow, MPI, Mxnet, need set env, pods communicate, ssh sign in without password. 
+We provide Job api plugins to give users a better focus on core business.
+Now we have three plugins, every plugin has parameters, if not provided, we use default.
+
+* env: set VK_TASK_INDEX to each container, is a index for giving the identity to container.
+* svc: create Serivce and *.host to enable pods communicate.
+* ssh: sign in ssh without password, e.g. use command mpirun or mpiexec.
+
+```yaml
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: mpi-job
+spec:
+  minAvailable: 2
+  schedulerName: kube-batch
+  policies:
+  - event: PodEvicted
+    action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  tasks:
+  - replicas: 1
+    name: mpimaster
+    template:
+      spec:
+        containers:
+          image: mpi-image
+          name: mpimaster
+  - replicas: 2
+    name: mpiworker
+    template: 
+      spec:
+        containers:
+          image: mpi-image
+          name: mpiworker
+```
+
 ## Appendix
 
 ```go
@@ -584,12 +626,18 @@ const (
     Running JobPhase = "Running"
     // Restarting is the phase that the Job is restarted, waiting for pod releasing and recreating
     Restarting JobPhase = "Restarting"
+    // Completing is the phase that required tasks of job are completed, job starts to clean up
+    Completing JobPhase = "Completing"
     // Completed is the phase that all tasks of Job are completed successfully
     Completed JobPhase = "Completed"
     // Terminating is the phase that the Job is terminated, waiting for releasing pods
     Terminating JobPhase = "Terminating"
     // Terminated is the phase that the job is finished unexpected, e.g. events
     Terminated JobPhase = "Terminated"
+    // Failed is the phase that the job is restarted failed reached the maximum number of retries.
+    Failed JobPhase = "Failed"
+    // Inqueue is the phase that cluster have idle resource to schedule the job
+    Inqueue JobPhase = "Inqueue"
 )
 
 // JobState contains details for the current state of the job.
