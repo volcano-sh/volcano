@@ -212,9 +212,14 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 	}
 
 	event := vkbatchv1.OutOfSyncEvent
+	var exitCode int32
 	if oldPod.Status.Phase != v1.PodFailed &&
 		newPod.Status.Phase == v1.PodFailed {
 		event = vkbatchv1.PodFailedEvent
+		// TODO: currently only one container pod is supported by volcano
+		// Once multi containers pod is supported, update accordingly.
+		exitCode = newPod.Status.ContainerStatuses[0].State.Terminated.ExitCode
+
 	}
 
 	if oldPod.Status.Phase != v1.PodSucceeded &&
@@ -230,6 +235,7 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		TaskName:  taskName,
 
 		Event:      event,
+		ExitCode:   exitCode,
 		JobVersion: int32(dVersion),
 	}
 
