@@ -1,3 +1,6 @@
+![volcano-logo](doc/images/volcano-logo.png)
+
+
 # Volcano
 
 [![Build Status](https://travis-ci.org/kubernetes-sigs/volcano.svg?branch=master)](https://travis-ci.org/kubernetes-sigs/volcano)
