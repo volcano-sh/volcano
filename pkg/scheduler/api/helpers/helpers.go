@@ -19,7 +19,7 @@ package helpers
 import (
 	"math"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	"github.com/kubernetes-sigs/volcano/pkg/scheduler/api"
 )
 
 // Min is used to find the min of two resource types
