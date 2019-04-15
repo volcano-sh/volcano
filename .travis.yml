@@ -7,7 +7,7 @@ env:
   - HOME=/home/travis
 services:
   - docker
-go_import_path: github.com/kubernetes-sigs/kube-batch
+go_import_path: github.com/kubernetes-sigs/volcano
 jobs:
   include:
     - stage: Golint & Gofmt

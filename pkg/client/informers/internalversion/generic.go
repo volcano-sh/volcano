@@ -21,7 +21,7 @@ package internalversion
 import (
 	"fmt"
 
-	v1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	v1alpha1 "github.com/kubernetes-sigs/volcano/pkg/apis/scheduling/v1alpha1"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
 )

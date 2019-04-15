@@ -38,8 +38,8 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 
-	"github.com/kubernetes-sigs/kube-batch/cmd/controllers/app/options"
-	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/job"
+	"github.com/kubernetes-sigs/volcano/cmd/controllers/app/options"
+	"github.com/kubernetes-sigs/volcano/pkg/controllers/job"
 )
 
 const (

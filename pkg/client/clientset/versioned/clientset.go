@@ -19,9 +19,9 @@ limitations under the License.
 package versioned
 
 import (
-	batchv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/typed/batch/v1alpha1"
-	busv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/typed/bus/v1alpha1"
-	schedulingv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/typed/scheduling/v1alpha1"
+	batchv1alpha1 "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1"
+	busv1alpha1 "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned/typed/bus/v1alpha1"
+	schedulingv1alpha1 "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned/typed/scheduling/v1alpha1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"

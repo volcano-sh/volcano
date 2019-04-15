@@ -20,8 +20,8 @@ import (
 	"reflect"
 	"testing"
 
-	_ "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/conf"
+	_ "github.com/kubernetes-sigs/volcano/pkg/scheduler/actions"
+	"github.com/kubernetes-sigs/volcano/pkg/scheduler/conf"
 )
 
 func TestLoadSchedulerConf(t *testing.T) {

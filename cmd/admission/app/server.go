@@ -30,8 +30,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	appConf "github.com/kubernetes-sigs/kube-batch/cmd/admission/app/options"
-	admissioncontroller "github.com/kubernetes-sigs/kube-batch/pkg/admission"
+	appConf "github.com/kubernetes-sigs/volcano/cmd/admission/app/options"
+	admissioncontroller "github.com/kubernetes-sigs/volcano/pkg/admission"
 )
 
 const (

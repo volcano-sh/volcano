@@ -19,7 +19,7 @@ package job
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
+	"github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
 )
 
 type resumeFlags struct {

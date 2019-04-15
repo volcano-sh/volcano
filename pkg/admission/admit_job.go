@@ -27,8 +27,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 
-	v1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
-	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/job/plugins"
+	v1alpha1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
+	"github.com/kubernetes-sigs/volcano/pkg/controllers/job/plugins"
 )
 
 // AdmitJobs function is used to admit jobs

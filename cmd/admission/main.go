@@ -24,9 +24,9 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/kubernetes-sigs/kube-batch/cmd/admission/app"
-	appConf "github.com/kubernetes-sigs/kube-batch/cmd/admission/app/options"
-	admissioncontroller "github.com/kubernetes-sigs/kube-batch/pkg/admission"
+	"github.com/kubernetes-sigs/volcano/cmd/admission/app"
+	appConf "github.com/kubernetes-sigs/volcano/cmd/admission/app/options"
+	admissioncontroller "github.com/kubernetes-sigs/volcano/pkg/admission"
 )
 
 func serveJobs(w http.ResponseWriter, r *http.Request) {
