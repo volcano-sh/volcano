@@ -28,59 +28,49 @@ type runningState struct {
 func (ps *runningState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.RestartJobAction:
-		return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
+		return KillJob(ps.job, func(status *vkv1.JobStatus) {
 			phase := vkv1.Running
 			if status.Terminating != 0 {
 				phase = vkv1.Restarting
 			}
 
-			return vkv1.JobState{
-				Phase: phase,
-			}
+			status.State.Phase = phase
 		})
 	case vkv1.AbortJobAction:
-		return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
+		return KillJob(ps.job, func(status *vkv1.JobStatus) {
 			phase := vkv1.Running
 			if status.Terminating != 0 {
 				phase = vkv1.Aborting
 			}
 
-			return vkv1.JobState{
-				Phase: phase,
-			}
+			status.State.Phase = phase
 		})
 	case vkv1.TerminateJobAction:
-		return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
+		return KillJob(ps.job, func(status *vkv1.JobStatus) {
 			phase := vkv1.Running
 			if status.Terminating != 0 {
 				phase = vkv1.Terminating
 			}
 
-			return vkv1.JobState{
-				Phase: phase,
-			}
+			status.State.Phase = phase
 		})
 	case vkv1.CompleteJobAction:
-		return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
+		return KillJob(ps.job, func(status *vkv1.JobStatus) {
 			phase := vkv1.Completed
 			if status.Terminating != 0 {
 				phase = vkv1.Completing
 			}
 
-			return vkv1.JobState{
-				Phase: phase,
-			}
+			status.State.Phase = phase
 		})
 	default:
-		return SyncJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
+		return SyncJob(ps.job, func(status *vkv1.JobStatus) {
 			phase := vkv1.Running
 			if status.Succeeded+status.Failed == TotalTasks(ps.job.Job) {
 				phase = vkv1.Completed
 			}
 
-			return vkv1.JobState{
-				Phase: phase,
-			}
+			status.State.Phase = phase
 		})
 	}
 }
