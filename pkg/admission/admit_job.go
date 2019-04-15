@@ -98,22 +98,23 @@ func validateJobSpec(jobSpec v1alpha1.JobSpec, reviewResponse *v1beta1.Admission
 			taskNames[task.Name] = task.Name
 		}
 
-		//duplicate task event policies
-		if duplicateInfo, ok := CheckPolicyDuplicate(task.Policies); ok {
-			msg = msg + fmt.Sprintf(" duplicated task event policies: %s;", duplicateInfo)
+		// validate task event policies
+		if err := ValidatePolicies(task.Policies); err != nil {
+			msg = msg + err.Error()
 		}
+
 	}
 
 	if totalReplicas < jobSpec.MinAvailable {
 		msg = msg + " 'minAvailable' should not be greater than total replicas in tasks;"
 	}
 
-	//duplicate job event policies
-	if duplicateInfo, ok := CheckPolicyDuplicate(jobSpec.Policies); ok {
-		msg = msg + fmt.Sprintf(" duplicated job event policies: %s;", duplicateInfo)
+	// validate job event policies
+	if err := ValidatePolicies(jobSpec.Policies); err != nil {
+		msg = msg + err.Error()
 	}
 
-	//invalid job plugins
+	// invalid job plugins
 	if len(jobSpec.Plugins) != 0 {
 		for name := range jobSpec.Plugins {
 			if _, found := plugins.GetPluginBuilder(name); !found {
