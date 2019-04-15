@@ -9,7 +9,7 @@
 [![Release](https://img.shields.io/github/release/kubernetes-sigs/kube-batch.svg)](https://github.com/kubernetes-sigs/volcano/releases)
 [![LICENSE](https://img.shields.io/github/license/kubernetes-sigs/volcano.svg)](https://github.com/kubernetes-sigs/volcano/blob/master/LICENSE)
 
-Volcano is system for runnning high performance workloads on
+Volcano is system for running high performance workloads on
 Kubernetes.  It provides a suite of mechanisms currently missing from
 Kubernetes that are commonly required by many classes of high
 performance workload including:
