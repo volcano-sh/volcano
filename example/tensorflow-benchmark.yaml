@@ -7,6 +7,7 @@ spec:
   schedulerName: kube-batch
   plugins:
     env: []
+    svc: []
   policies:
   - event: PodEvicted
     action: RestartJob

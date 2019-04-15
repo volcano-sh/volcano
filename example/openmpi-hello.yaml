@@ -8,6 +8,7 @@ spec:
   plugins:
     ssh: []
     env: []
+    svc: []
   tasks:
   - replicas: 1
     name: mpimaster
