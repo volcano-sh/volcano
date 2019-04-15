@@ -469,4 +469,42 @@ var _ = Describe("Job Error Handling", func() {
 
 	})
 
+	It("job level LifecyclePolicy, error code: 3; Action: RestartJob", func() {
+		By("init test context")
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		By("create job")
+		var erroCode int32 = 3
+		job := createJob(context, &jobSpec{
+			name: "errorcode-restart-job",
+			policies: []vkv1.LifecyclePolicy{
+				{
+					Action:   vkv1.RestartJobAction,
+					ExitCode: &erroCode,
+				},
+			},
+			tasks: []taskSpec{
+				{
+					name: "success",
+					img:  defaultNginxImage,
+					min:  1,
+					rep:  1,
+				},
+				{
+					name:          "fail",
+					img:           defaultNginxImage,
+					min:           1,
+					rep:           1,
+					command:       "sleep 10s && exit 3",
+					restartPolicy: v1.RestartPolicyNever,
+				},
+			},
+		})
+
+		// job phase: pending -> running -> restarting
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Restarting})
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 })
