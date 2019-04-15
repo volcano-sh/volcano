@@ -206,6 +206,8 @@ const (
     OutOfSyncEvent Event = "OutOfSync"
     // CommandIssuedEvent is triggered if a command is raised by user
     CommandIssuedEvent Event = "CommandIssued"
+    // TaskCompletedEvent is triggered if the 'Replicas' amount of pods in one task are succeed
+    TaskCompletedEvent Event = "TaskCompleted"
 )
 
 // Action is the type of event handling 
@@ -217,12 +219,11 @@ const (
     AbortJobAction Action = "AbortJob"
     // RestartJobAction if this action is set, the whole job will be restarted
     RestartJobAction Action = "RestartJob"
-    // RestartTaskAction if this action is set, only the task will be restarted; default action.
-    // This action can not work together with job level events, e.g. JobUnschedulable
-    RestartTaskAction Action = "RestartTask"
     // TerminateJobAction if this action is set, the whole job wil be terminated
     // and can not be resumed: all Pod of Job will be evicted, and no Pod will be recreated.
     TerminateJobAction Action = "TerminateJob"
+    // CompleteJobAction if this action is set, the unfinished pods will be killed, job completed.
+    CompleteJobAction Action = "CompleteJob"
 
     // ResumeJobAction is the action to resume an aborted job.
     ResumeJobAction Action = "ResumeJob"
@@ -300,8 +301,8 @@ spec:
 ```
 
 Some BigData framework (e.g. Spark) may have different requirements. Take Spark as example, the whole job will be restarted
-if 'driver' tasks failed and only restart the task if 'executor' tasks failed. As `RestartTask` is the default action of 
-task events, `RestartJob` is set for driver `spec.tasks.policies` as follow.  
+if 'driver' tasks failed and only restart the task if 'executor' tasks failed. `OnFailure` restartPolicy is set for executor 
+and `RestartJob` is set for driver `spec.tasks.policies` as follow.  
 
 ```yaml
 apiVersion: batch.volcano.sh/v1alpha1
@@ -327,6 +328,7 @@ spec:
         containers:
         - name: executor
           image: executor-img
+        restartPolicy: OnFailure
 ```
 
 ## Features Interaction
@@ -508,6 +510,8 @@ const (
     OutOfSyncEvent Event = "OutOfSync"
     // CommandIssuedEvent is triggered if a command is raised by user
     CommandIssuedEvent Event = "CommandIssued"
+    // TaskCompletedEvent is triggered if the 'Replicas' amount of pods in one task are succeed
+    TaskCompletedEvent Event = "TaskCompleted"    
 )
 
 // Action is the action that Job controller will take according to the event.
@@ -519,12 +523,11 @@ const (
     AbortJobAction Action = "AbortJob"
     // RestartJobAction if this action is set, the whole job will be restarted
     RestartJobAction Action = "RestartJob"
-    // RestartTaskAction if this action is set, only the task will be restarted; default action.
-    // This action can not work together with job level events, e.g. JobUnschedulable
-    RestartTaskAction Action = "RestartTask"
     // TerminateJobAction if this action is set, the whole job wil be terminated
     // and can not be resumed: all Pod of Job will be evicted, and no Pod will be recreated.
     TerminateJobAction Action = "TerminateJob"
+    // CompleteJobAction if this action is set, the unfinished pods will be killed, job completed.
+    CompleteJobAction Action = "CompleteJob"    
 
     // ResumeJobAction is the action to resume an aborted job.
     ResumeJobAction Action = "ResumeJob"
