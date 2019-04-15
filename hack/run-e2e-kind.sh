@@ -13,6 +13,12 @@ else
   export CLUSTER_CONTEXT="--name integration"
 fi
 
+if [[ "${TEST_FILE}xxx" != "xxx" ]];then
+  export TEST_CONTEXT="--ginkgo.regexScansFilePath=true --ginkgo.focus=${TEST_FILE}"
+else
+  export TEST_CONTEXT=""
+fi
+
 export KIND_OPT=${KIND_OPT:=" --config ${VK_ROOT}/hack/e2e-kind-config.yaml"}
 
 # check if kind installed
@@ -126,7 +132,7 @@ install-volcano
 
 # Run e2e test
 cd ${VK_ROOT}
-KUBECONFIG=${KUBECONFIG} go test ./test/e2e/volcano -v -timeout 30m
+KUBECONFIG=${KUBECONFIG} go test ./test/e2e/volcano -v -timeout 30m ${TEST_CONTEXT}
 
 if [[ $? != 0 ]]; then
   generate-log
