@@ -25,6 +25,7 @@ import (
 
 	"k8s.io/api/admission/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 
 	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
@@ -99,6 +100,11 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 		if duplicateInfo, ok := CheckPolicyDuplicate(task.Policies); ok {
 			msg = msg + fmt.Sprintf(" duplicated task event policies: %s;", duplicateInfo)
 		}
+
+		if err := validatePolicies(task.Policies, field.NewPath("spec.tasks.policies")); err != nil {
+			msg = msg + err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v",
+				getValidEvents(), getValidActions())
+		}
 	}
 
 	if totalReplicas < job.Spec.MinAvailable {
@@ -108,6 +114,11 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 	//duplicate job event policies
 	if duplicateInfo, ok := CheckPolicyDuplicate(job.Spec.Policies); ok {
 		msg = msg + fmt.Sprintf(" duplicated job event policies: %s;", duplicateInfo)
+	}
+
+	if err := validatePolicies(job.Spec.Policies, field.NewPath("spec.policies")); err != nil {
+		msg = msg + err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v",
+			getValidEvents(), getValidActions())
 	}
 
 	if msg != "" {
