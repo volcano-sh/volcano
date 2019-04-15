@@ -296,7 +296,7 @@ func (cc *Controller) deletePod(obj interface{}) {
 	}
 
 	if err := cc.cache.DeletePod(pod); err != nil {
-		glog.Errorf("Failed to update Pod <%s/%s>: %v in cache",
+		glog.Errorf("Failed to delete Pod <%s/%s>: %v in cache",
 			pod.Namespace, pod.Name, err)
 	}
 
