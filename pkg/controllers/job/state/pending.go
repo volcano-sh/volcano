@@ -28,49 +28,42 @@ type pendingState struct {
 func (ps *pendingState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.RestartJobAction:
-		return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
+		return KillJob(ps.job, func(status *vkv1.JobStatus) {
 			phase := vkv1.Pending
 			if status.Terminating != 0 {
 				phase = vkv1.Restarting
 			}
 
-			return vkv1.JobState{
-				Phase: phase,
-			}
+			status.State.Phase = phase
 		})
 
 	case vkv1.AbortJobAction:
-		return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
+		return KillJob(ps.job, func(status *vkv1.JobStatus) {
 			phase := vkv1.Pending
 			if status.Terminating != 0 {
 				phase = vkv1.Aborting
 			}
 
-			return vkv1.JobState{
-				Phase: phase,
-			}
+			status.State.Phase = phase
 		})
 	case vkv1.CompleteJobAction:
-		return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
+		return KillJob(ps.job, func(status *vkv1.JobStatus) {
 			phase := vkv1.Completed
 			if status.Terminating != 0 {
 				phase = vkv1.Completing
 			}
 
-			return vkv1.JobState{
-				Phase: phase,
-			}
+			status.State.Phase = phase
 		})
 	default:
-		return SyncJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
+		return SyncJob(ps.job, func(status *vkv1.JobStatus) {
 			phase := vkv1.Pending
 
 			if ps.job.Job.Spec.MinAvailable <= status.Running + status.Succeeded + status.Failed {
 				phase = vkv1.Running
 			}
-			return vkv1.JobState{
-				Phase: phase,
-			}
+
+			status.State.Phase = phase
 		})
 	}
 }
