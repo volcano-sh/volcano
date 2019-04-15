@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright 2019 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("Queue E2E Test", func() {
@@ -27,16 +28,13 @@ var _ = Describe("Queue E2E Test", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
-		createQueues(context)
-		defer deleteQueues(context)
-
 		slot := oneCPU
 		rep := clusterSize(context, slot)
 
-		job := &jobSpec{
+		spec := &jobSpec{
 			tasks: []taskSpec{
 				{
-					img: "nginx",
+					img: defaultNginxImage,
 					req: slot,
 					min: 1,
 					rep: rep,
@@ -44,11 +42,11 @@ var _ = Describe("Queue E2E Test", func() {
 			},
 		}
 
-		job.name = "q1-qj-1"
-		job.queue = "q1"
-		_, pg1 := createJob(context, job)
-		err := waitPodGroupReady(context, pg1)
-		checkError(context, err)
+		spec.name = "q1-qj-1"
+		spec.queue = "q1"
+		job1 := createJob(context, spec)
+		err := waitJobReady(context, job1)
+		Expect(err).NotTo(HaveOccurred())
 
 		expected := int(rep) / 2
 		// Reduce one pod to tolerate decimal fraction.
@@ -56,17 +54,17 @@ var _ = Describe("Queue E2E Test", func() {
 			expected--
 		} else {
 			err := fmt.Errorf("expected replica <%d> is too small", expected)
-			checkError(context, err)
+			Expect(err).NotTo(HaveOccurred())
 		}
 
-		job.name = "q2-qj-2"
-		job.queue = "q2"
-		_, pg2 := createJob(context, job)
-		err = waitTasksReady(context, pg2, expected)
-		checkError(context, err)
+		spec.name = "q2-qj-2"
+		spec.queue = "q2"
+		job2 := createJob(context, spec)
+		err = waitTasksReady(context, job2, expected)
+		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReady(context, pg1, expected)
-		checkError(context, err)
+		err = waitTasksReady(context, job1, expected)
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 })
