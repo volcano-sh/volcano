@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package e2e
+package kube_batch
 
 import (
 	"testing"
@@ -25,5 +25,5 @@ import (
 
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Volcano Scheduler Test Suite")
+	RunSpecs(t, "volcano Test Suite")
 }

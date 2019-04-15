@@ -10,4 +10,4 @@ pkg/scheduler/actions/backfill
 pkg/scheduler/actions/preempt
 pkg/scheduler/actions/reclaim
 test/e2e
-test/e2e/volcano
+test/e2e/kube-batch
