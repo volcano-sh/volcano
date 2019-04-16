@@ -21,7 +21,7 @@ set -o pipefail
 KUBE_ROOT=$(dirname "${BASH_SOURCE}")/..
 
 boilerDir="${KUBE_ROOT}/hack/boilerplate"
-boiler="${boilerDir}/boilerplate.py"
+boiler="${boilerDir}/boilerplate.py -v"
 
 files_need_boilerplate=($(${boiler} "$@"))
 
