@@ -27,7 +27,7 @@ import (
 	kbapi "github.com/kubernetes-sigs/volcano/pkg/apis/scheduling/v1alpha1"
 
 	admissioncontroller "github.com/kubernetes-sigs/volcano/pkg/admission"
-	vkv1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
+	vkv1alpha1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
 	"github.com/kubernetes-sigs/volcano/pkg/apis/helpers"
 	"github.com/kubernetes-sigs/volcano/pkg/controllers/apis"
 )
@@ -49,7 +49,7 @@ func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(vkjobhelpers.TaskNameFmt, jobName, taskName, index)
 }
 
-func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
+func createJobPod(job *vkv1alpha1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 	templateCopy := template.DeepCopy()
 
 	pod := &v1.Pod{
@@ -134,25 +134,25 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 
 	tsKey := templateCopy.Name
 	if len(tsKey) == 0 {
-		tsKey = vkv1.DefaultTaskSpec
+		tsKey = vkv1alpha1.DefaultTaskSpec
 	}
 
 	if len(pod.Annotations) == 0 {
 		pod.Annotations = make(map[string]string)
 	}
 
-	pod.Annotations[vkv1.TaskSpecKey] = tsKey
+	pod.Annotations[vkv1alpha1.TaskSpecKey] = tsKey
 	pod.Annotations[kbapi.GroupNameAnnotationKey] = job.Name
-	pod.Annotations[vkv1.JobNameKey] = job.Name
-	pod.Annotations[vkv1.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
+	pod.Annotations[vkv1alpha1.JobNameKey] = job.Name
+	pod.Annotations[vkv1alpha1.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
 
 	if len(pod.Labels) == 0 {
 		pod.Labels = make(map[string]string)
 	}
 
 	// Set pod labels for Service.
-	pod.Labels[vkv1.JobNameKey] = job.Name
-	pod.Labels[vkv1.JobNamespaceKey] = job.Namespace
+	pod.Labels[vkv1alpha1.JobNameKey] = job.Name
+	pod.Labels[vkv1alpha1.JobNamespaceKey] = job.Namespace
 
 	// we fill the schedulerName in the pod definition with the one specified in the QJ template
 	if job.Spec.SchedulerName != "" && pod.Spec.SchedulerName == "" {
@@ -162,19 +162,19 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 	return pod
 }
 
-func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
+func applyPolicies(job *vkv1alpha1.Job, req *apis.Request) vkv1alpha1.Action {
 	if len(req.Action) != 0 {
 		return req.Action
 	}
 
-	if req.Event == vkv1.OutOfSyncEvent {
-		return vkv1.SyncJobAction
+	if req.Event == vkv1alpha1.OutOfSyncEvent {
+		return vkv1alpha1.SyncJobAction
 	}
 
 	// For all the requests triggered from discarded job resources will perform sync action instead
 	if req.JobVersion < job.Status.Version {
 		glog.Infof("Request %s is outdated, will perform sync instead.", req)
-		return vkv1.SyncJobAction
+		return vkv1alpha1.SyncJobAction
 	}
 
 	// Overwrite Job level policies
@@ -183,7 +183,7 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 		for _, task := range job.Spec.Tasks {
 			if task.Name == req.TaskName {
 				for _, policy := range task.Policies {
-					if policy.Event == req.Event || policy.Event == vkv1.AnyEvent {
+					if policy.Event == req.Event || policy.Event == vkv1alpha1.AnyEvent {
 						return policy.Action
 					}
 
@@ -200,7 +200,7 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 
 	// Parse Job level policies
 	for _, policy := range job.Spec.Policies {
-		if policy.Event == req.Event || policy.Event == vkv1.AnyEvent {
+		if policy.Event == req.Event || policy.Event == vkv1alpha1.AnyEvent {
 			return policy.Action
 		}
 
@@ -211,5 +211,5 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 
 	}
 
-	return vkv1.SyncJobAction
+	return vkv1alpha1.SyncJobAction
 }

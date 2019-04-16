@@ -23,12 +23,12 @@ import (
 
 	"k8s.io/api/core/v1"
 
-	vkv1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
+	vkv1alpha1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
 	vkplugin "github.com/kubernetes-sigs/volcano/pkg/controllers/job/plugins"
 	vkinterface "github.com/kubernetes-sigs/volcano/pkg/controllers/job/plugins/interface"
 )
 
-func (cc *Controller) pluginOnPodCreate(job *vkv1.Job, pod *v1.Pod) error {
+func (cc *Controller) pluginOnPodCreate(job *vkv1alpha1.Job, pod *v1.Pod) error {
 	client := vkinterface.PluginClientset{KubeClients: cc.kubeClients}
 	for name, args := range job.Spec.Plugins {
 		pb, found := vkplugin.GetPluginBuilder(name)
@@ -48,7 +48,7 @@ func (cc *Controller) pluginOnPodCreate(job *vkv1.Job, pod *v1.Pod) error {
 	return nil
 }
 
-func (cc *Controller) pluginOnJobAdd(job *vkv1.Job) error {
+func (cc *Controller) pluginOnJobAdd(job *vkv1alpha1.Job) error {
 	client := vkinterface.PluginClientset{KubeClients: cc.kubeClients}
 	if job.Status.ControlledResources == nil {
 		job.Status.ControlledResources = make(map[string]string)
@@ -72,7 +72,7 @@ func (cc *Controller) pluginOnJobAdd(job *vkv1.Job) error {
 	return nil
 }
 
-func (cc *Controller) pluginOnJobDelete(job *vkv1.Job) error {
+func (cc *Controller) pluginOnJobDelete(job *vkv1alpha1.Job) error {
 	client := vkinterface.PluginClientset{KubeClients: cc.kubeClients}
 	for name, args := range job.Spec.Plugins {
 		pb, found := vkplugin.GetPluginBuilder(name)

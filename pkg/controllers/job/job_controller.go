@@ -18,12 +18,11 @@ package job
 
 import (
 	"fmt"
-	"github.com/golang/glog"
-	"github.com/kubernetes-sigs/volcano/pkg/apis/helpers"
-	"k8s.io/apimachinery/pkg/util/runtime"
 
-	v1corev1 "github.com/kubernetes-sigs/volcano/pkg/apis/bus/v1alpha1"
+	"github.com/golang/glog"
+
 	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -34,18 +33,17 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
-	kbver "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned"
-	kbinfoext "github.com/kubernetes-sigs/volcano/pkg/client/informers/externalversions"
-	kbinfo "github.com/kubernetes-sigs/volcano/pkg/client/informers/externalversions/scheduling/v1alpha1"
-	kblister "github.com/kubernetes-sigs/volcano/pkg/client/listers/scheduling/v1alpha1"
-
-	vkver "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned"
+	v1corev1 "github.com/kubernetes-sigs/volcano/pkg/apis/bus/v1alpha1"
+	"github.com/kubernetes-sigs/volcano/pkg/apis/helpers"
+	vkclient "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned"
 	vkscheme "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned/scheme"
-	vkinfoext "github.com/kubernetes-sigs/volcano/pkg/client/informers/externalversions"
-	vkbatchinfo "github.com/kubernetes-sigs/volcano/pkg/client/informers/externalversions/batch/v1alpha1"
-	vkcoreinfo "github.com/kubernetes-sigs/volcano/pkg/client/informers/externalversions/bus/v1alpha1"
+	vkinformers "github.com/kubernetes-sigs/volcano/pkg/client/informers/externalversions"
+	vkbatchinformer "github.com/kubernetes-sigs/volcano/pkg/client/informers/externalversions/batch/v1alpha1"
+	vkbusinformer "github.com/kubernetes-sigs/volcano/pkg/client/informers/externalversions/bus/v1alpha1"
+	kbinfo "github.com/kubernetes-sigs/volcano/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	vkbatchlister "github.com/kubernetes-sigs/volcano/pkg/client/listers/batch/v1alpha1"
-	vkcorelister "github.com/kubernetes-sigs/volcano/pkg/client/listers/bus/v1alpha1"
+	vkbuslister "github.com/kubernetes-sigs/volcano/pkg/client/listers/bus/v1alpha1"
+	kblister "github.com/kubernetes-sigs/volcano/pkg/client/listers/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/volcano/pkg/controllers/apis"
 	jobcache "github.com/kubernetes-sigs/volcano/pkg/controllers/cache"
 	"github.com/kubernetes-sigs/volcano/pkg/controllers/job/state"
@@ -55,12 +53,11 @@ import (
 type Controller struct {
 	config      *rest.Config
 	kubeClients *kubernetes.Clientset
-	vkClients   *vkver.Clientset
-	kbClients   *kbver.Clientset
+	vkClients   *vkclient.Clientset
 
-	jobInformer     vkbatchinfo.JobInformer
+	jobInformer     vkbatchinformer.JobInformer
 	pgInformer      kbinfo.PodGroupInformer
-	cmdInformer     vkcoreinfo.CommandInformer
+	cmdInformer     vkbusinformer.CommandInformer
 	sharedInformers informers.SharedInformerFactory
 
 	// A store of jobs
@@ -82,14 +79,14 @@ type Controller struct {
 	svcLister corelisters.ServiceLister
 	svcSynced func() bool
 
-	cmdLister vkcorelister.CommandLister
+	cmdLister vkbuslister.CommandLister
 	cmdSynced func() bool
 
 	// queue that need to sync up
 	queue        workqueue.RateLimitingInterface
 	commandQueue workqueue.RateLimitingInterface
 	cache        jobcache.Cache
-	//Job Event recorder
+	// Job Event recorder
 	recorder record.EventRecorder
 }
 
@@ -98,7 +95,7 @@ func NewJobController(config *rest.Config) *Controller {
 
 	kubeClients := kubernetes.NewForConfigOrDie(config)
 
-	//Initialize event client
+	// Initialize event client
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
 	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClients.CoreV1().Events("")})
@@ -107,15 +104,14 @@ func NewJobController(config *rest.Config) *Controller {
 	cc := &Controller{
 		config:       config,
 		kubeClients:  kubeClients,
-		vkClients:    vkver.NewForConfigOrDie(config),
-		kbClients:    kbver.NewForConfigOrDie(config),
+		vkClients:    vkclient.NewForConfigOrDie(config),
 		queue:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		commandQueue: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		cache:        jobcache.New(),
 		recorder:     recorder,
 	}
 
-	cc.jobInformer = vkinfoext.NewSharedInformerFactory(cc.vkClients, 0).Batch().V1alpha1().Jobs()
+	cc.jobInformer = vkinformers.NewSharedInformerFactory(cc.vkClients, 0).Batch().V1alpha1().Jobs()
 	cc.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: cc.addJob,
 		// TODO: enable this until we find an appropriate way.
@@ -125,7 +121,7 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.jobLister = cc.jobInformer.Lister()
 	cc.jobSynced = cc.jobInformer.Informer().HasSynced
 
-	cc.cmdInformer = vkinfoext.NewSharedInformerFactory(cc.vkClients, 0).Bus().V1alpha1().Commands()
+	cc.cmdInformer = vkinformers.NewSharedInformerFactory(cc.vkClients, 0).Bus().V1alpha1().Commands()
 	cc.cmdInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
 			switch t := obj.(type) {
@@ -186,7 +182,7 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.svcLister = svcInformer.Lister()
 	cc.svcSynced = svcInformer.Informer().HasSynced
 
-	cc.pgInformer = kbinfoext.NewSharedInformerFactory(cc.kbClients, 0).Scheduling().V1alpha1().PodGroups()
+	cc.pgInformer = vkinformers.NewSharedInformerFactory(cc.vkClients, 0).Scheduling().V1alpha1().PodGroups()
 	cc.pgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: cc.updatePodGroup,
 	})

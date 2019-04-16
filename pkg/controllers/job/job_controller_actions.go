@@ -22,7 +22,6 @@ import (
 
 	"github.com/golang/glog"
 
-	kbv1 "github.com/kubernetes-sigs/volcano/pkg/apis/scheduling/v1alpha1"
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,8 +29,9 @@ import (
 
 	admissioncontroller "github.com/kubernetes-sigs/volcano/pkg/admission"
 	vkbatchv1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
-	vkv1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
+	vkv1alpha1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
 	"github.com/kubernetes-sigs/volcano/pkg/apis/helpers"
+	kbv1alpha1 "github.com/kubernetes-sigs/volcano/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/volcano/pkg/controllers/apis"
 	vkjobhelpers "github.com/kubernetes-sigs/volcano/pkg/controllers/job/helpers"
 	"github.com/kubernetes-sigs/volcano/pkg/controllers/job/state"
@@ -68,40 +68,32 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 
 			switch pod.Status.Phase {
 			case v1.PodRunning:
-				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+				err := cc.deleteJobPod(job.Name, pod)
 				if err != nil {
 					running++
-					glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
-						pod.Name, job.Name, err)
 					errs = append(errs, err)
 					continue
 				}
 				terminating++
 			case v1.PodPending:
-				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+				err := cc.deleteJobPod(job.Name, pod)
 				if err != nil {
 					pending++
-					glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
-						pod.Name, job.Name, err)
 					errs = append(errs, err)
 					continue
 				}
 				terminating++
 			case v1.PodSucceeded:
-				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+				err := cc.deleteJobPod(job.Name, pod)
 				if err != nil {
 					succeeded++
-					glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
-						pod.Name, job.Name, err)
 					errs = append(errs, err)
 					continue
 				}
 			case v1.PodFailed:
-				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+				err := cc.deleteJobPod(job.Name, pod)
 				if err != nil {
 					failed++
-					glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
-						pod.Name, job.Name, err)
 					errs = append(errs, err)
 					continue
 				}
@@ -115,7 +107,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		return fmt.Errorf("failed to kill %d pods of %d", len(errs), total)
 	}
 
-	job.Status = vkv1.JobStatus{
+	job.Status = vkv1alpha1.JobStatus{
 		State: job.Status.State,
 
 		Pending:      pending,
@@ -145,7 +137,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	}
 
 	// Delete PodGroup
-	if err := cc.kbClients.SchedulingV1alpha1().PodGroups(job.Namespace).Delete(job.Name, nil); err != nil {
+	if err := cc.vkClients.SchedulingV1alpha1().PodGroups(job.Namespace).Delete(job.Name, nil); err != nil {
 		if !apierrors.IsNotFound(err) {
 			glog.Errorf("Failed to delete PodGroup of Job %v/%v: %v",
 				job.Namespace, job.Name, err)
@@ -296,9 +288,9 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	for _, pod := range podToDelete {
 		go func(pod *v1.Pod) {
 			defer waitDeletionGroup.Done()
-			err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+			err := cc.deleteJobPod(job.Name, pod)
 			if err != nil {
-				// Failed to create Pod, waitCreationGroup a moment and then create it again
+				// Failed to delete Pod, waitCreationGroup a moment and then create it again
 				// This is to ensure all podsMap under the same Job created
 				// So gang-scheduling could schedule the Job successfully
 				glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
@@ -317,7 +309,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		return fmt.Errorf("failed to delete %d pods of %d", len(deletionErrs), len(podToDelete))
 	}
 
-	job.Status = vkv1.JobStatus{
+	job.Status = vkv1alpha1.JobStatus{
 		State: job.Status.State,
 
 		Pending:             pending,
@@ -359,7 +351,7 @@ func (cc *Controller) calculateVersion(current int32, bumpVersion bool) int32 {
 	return current
 }
 
-func (cc *Controller) createServiceIfNotExist(job *vkv1.Job) error {
+func (cc *Controller) createServiceIfNotExist(job *vkv1alpha1.Job) error {
 	// If Service does not exist, create one for Job.
 	if _, err := cc.svcLister.Services(job.Namespace).Get(job.Name); err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -379,8 +371,8 @@ func (cc *Controller) createServiceIfNotExist(job *vkv1.Job) error {
 			Spec: v1.ServiceSpec{
 				ClusterIP: "None",
 				Selector: map[string]string{
-					vkv1.JobNameKey:      job.Name,
-					vkv1.JobNamespaceKey: job.Namespace,
+					vkv1alpha1.JobNameKey:      job.Name,
+					vkv1alpha1.JobNamespaceKey: job.Namespace,
 				},
 				Ports: []v1.ServicePort{
 					{
@@ -405,7 +397,7 @@ func (cc *Controller) createServiceIfNotExist(job *vkv1.Job) error {
 	return nil
 }
 
-func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) error {
+func (cc *Controller) createJobIOIfNotExist(job *vkv1alpha1.Job) error {
 	// If input/output PVC does not exist, create them for Job.
 	inputPVC := job.Annotations[admissioncontroller.PVCInputName]
 	outputPVC := job.Annotations[admissioncontroller.PVCOutputName]
@@ -474,7 +466,7 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) error {
 	return nil
 }
 
-func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
+func (cc *Controller) createPodGroupIfNotExist(job *vkv1alpha1.Job) error {
 	// If PodGroup does not exist, create one for Job.
 	if _, err := cc.pgLister.PodGroups(job.Namespace).Get(job.Name); err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -482,7 +474,7 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 				job.Namespace, job.Name, err)
 			return err
 		}
-		pg := &kbv1.PodGroup{
+		pg := &kbv1alpha1.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: job.Namespace,
 				Name:      job.Name,
@@ -490,13 +482,13 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 					*metav1.NewControllerRef(job, helpers.JobKind),
 				},
 			},
-			Spec: kbv1.PodGroupSpec{
+			Spec: kbv1alpha1.PodGroupSpec{
 				MinMember: job.Spec.MinAvailable,
 				Queue:     job.Spec.Queue,
 			},
 		}
 
-		if _, err := cc.kbClients.SchedulingV1alpha1().PodGroups(job.Namespace).Create(pg); err != nil {
+		if _, err := cc.vkClients.SchedulingV1alpha1().PodGroups(job.Namespace).Create(pg); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				glog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
 					job.Namespace, job.Name, err)
@@ -504,6 +496,18 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 				return err
 			}
 		}
+	}
+
+	return nil
+}
+
+func (cc *Controller) deleteJobPod(jobName string, pod *v1.Pod) error {
+	err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+	if err != nil && !apierrors.IsNotFound(err) {
+		glog.Errorf("Failed to delete pod %s/%s for Job %s, err %#v",
+			pod.Namespace, pod.Name, jobName, err)
+
+		return err
 	}
 
 	return nil
