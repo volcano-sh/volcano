@@ -24,11 +24,13 @@ import (
 
 func buildJobCmd() *cobra.Command {
 	jobCmd := &cobra.Command{
-		Use: "job",
+		Use:   "job",
+		Short: "Operations related to the volcano job",
 	}
 
 	jobRunCmd := &cobra.Command{
-		Use: "run",
+		Use:   "run",
+		Short: "creates jobs",
 		Run: func(cmd *cobra.Command, args []string) {
 			checkError(cmd, job.RunJob())
 		},
@@ -37,7 +39,8 @@ func buildJobCmd() *cobra.Command {
 	jobCmd.AddCommand(jobRunCmd)
 
 	jobListCmd := &cobra.Command{
-		Use: "list",
+		Use:   "list",
+		Short: "lists all the jobs",
 		Run: func(cmd *cobra.Command, args []string) {
 			checkError(cmd, job.ListJobs())
 		},
@@ -46,7 +49,8 @@ func buildJobCmd() *cobra.Command {
 	jobCmd.AddCommand(jobListCmd)
 
 	jobSuspendCmd := &cobra.Command{
-		Use: "suspend",
+		Use:   "suspend",
+		Short: "creates a job command to abort job",
 		Run: func(cmd *cobra.Command, args []string) {
 			checkError(cmd, job.SuspendJob())
 		},
@@ -55,7 +59,8 @@ func buildJobCmd() *cobra.Command {
 	jobCmd.AddCommand(jobSuspendCmd)
 
 	jobResumeCmd := &cobra.Command{
-		Use: "resume",
+		Use:   "resume",
+		Short: "creates command to resume job",
 		Run: func(cmd *cobra.Command, args []string) {
 			checkError(cmd, job.ResumeJob())
 		},
