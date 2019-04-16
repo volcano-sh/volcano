@@ -17,12 +17,12 @@ limitations under the License.
 package actions
 
 import (
-	"github.com/kubernetes-sigs/volcano/pkg/scheduler/framework"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 
-	"github.com/kubernetes-sigs/volcano/pkg/scheduler/actions/allocate"
-	"github.com/kubernetes-sigs/volcano/pkg/scheduler/actions/backfill"
-	"github.com/kubernetes-sigs/volcano/pkg/scheduler/actions/preempt"
-	"github.com/kubernetes-sigs/volcano/pkg/scheduler/actions/reclaim"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/allocate"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/backfill"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/preempt"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/reclaim"
 )
 
 func init() {

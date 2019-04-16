@@ -29,9 +29,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 
-	kbv1 "github.com/kubernetes-sigs/volcano/pkg/apis/scheduling/v1alpha1"
-	"github.com/kubernetes-sigs/volcano/pkg/apis/utils"
-	kbapi "github.com/kubernetes-sigs/volcano/pkg/scheduler/api"
+	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/apis/utils"
+	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
 func isTerminated(status kbapi.TaskStatus) bool {
