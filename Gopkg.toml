@@ -26,6 +26,11 @@
 
 required = [
   "github.com/client9/misspell",
+  "k8s.io/code-generator/cmd/client-gen",
+  "k8s.io/code-generator/cmd/informer-gen",
+  "k8s.io/code-generator/cmd/lister-gen",
+  "k8s.io/code-generator/cmd/deepcopy-gen",
+  "k8s.io/code-generator/cmd/defaulter-gen",
 ]
 
 [[constraint]]
@@ -81,6 +86,9 @@ required = [
   unused-packages = true
   [[prune.project]]
     name = "github.com/client9/misspell"
+    unused-packages = false
+  [[prune.project]]
+    name = "k8s.io/code-generator"
     unused-packages = false
 
 [[constraint]]
