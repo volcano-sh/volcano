@@ -74,7 +74,7 @@ Official images are available on [DockerHub](https://hub.docker.com/u/kubesigs),
 build them locally with the command:
 
 ```
-cd $GOPATH/src/volcano.sh/volcano
+cd $GOPATH/src/github.com/kubernetes-sigs/volcano
 make images
 
 ## Verify your images
