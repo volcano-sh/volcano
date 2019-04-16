@@ -19,7 +19,7 @@ package api
 import (
 	"k8s.io/apimachinery/pkg/types"
 
-	arbcorev1 "github.com/kubernetes-sigs/volcano/pkg/apis/scheduling/v1alpha1"
+	arbcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 )
 
 // QueueID is UID type, serves as unique ID for each queue

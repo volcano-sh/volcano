@@ -19,8 +19,8 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1alpha1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
-	"github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned/scheme"
+	v1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/scheme"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer"
 	rest "k8s.io/client-go/rest"
 )

@@ -29,7 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 
-	v1alpha1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
+	v1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
 )
 
 const (

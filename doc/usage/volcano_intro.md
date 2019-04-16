@@ -3,11 +3,11 @@
 
 # Volcano
 
-[![Build Status](https://travis-ci.org/kubernetes-sigs/volcano.svg?branch=master)](https://travis-ci.org/kubernetes-sigs/volcano)
-[![Go Report Card](https://goreportcard.com/badge/github.com/kubernetes-sigs/volcano)](https://goreportcard.com/report/github.com/kubernetes-sigs/volcano)
-[![RepoSize](https://img.shields.io/github/repo-size/kubernetes-sigs/volcano.svg)](https://github.com/kubernetes-sigs/volcano)
-[![Release](https://img.shields.io/github/release/kubernetes-sigs/kube-batch.svg)](https://github.com/kubernetes-sigs/volcano/releases)
-[![LICENSE](https://img.shields.io/github/license/kubernetes-sigs/volcano.svg)](https://github.com/kubernetes-sigs/volcano/blob/master/LICENSE)
+[![Build Status](https://travis-ci.org/kubernetes-sigs/kube-batch.svg?branch=master)](https://travis-ci.org/kubernetes-sigs/kube-batch)
+[![Go Report Card](https://goreportcard.com/badge/github.com/kubernetes-sigs/kube-batch)](https://goreportcard.com/report/github.com/kubernetes-sigs/kube-batch)
+[![RepoSize](https://img.shields.io/github/repo-size/kubernetes-sigs/kube-batch.svg)](https://github.com/kubernetes-sigs/kube-batch)
+[![Release](https://img.shields.io/github/release/kubernetes-sigs/kube-batch.svg)](https://github.com/kubernetes-sigs/kube-batch/releases)
+[![LICENSE](https://img.shields.io/github/license/kubernetes-sigs/kube-batch.svg)](https://github.com/kubernetes-sigs/kube-batch/blob/master/LICENSE)
 
 Volcano is system for running high performance workloads on
 Kubernetes.  It provides a suite of mechanisms currently missing from
@@ -65,7 +65,7 @@ First of all, clone the repo to your local path:
 ```
 # mkdir -p $GOPATH/src/github.com/kubernetes-sigs
 # cd $GOPATH/src/github.com/kubernetes-sigs
-# git clone https://github.com/kubernetes-sigs/volcano
+# git clone https://github.com/kubernetes-sigs/kube-batch
 ```
 
 ### 1. Volcano Image
@@ -74,7 +74,7 @@ Official images are available on [DockerHub](https://hub.docker.com/u/kubesigs),
 build them locally with the command:
 
 ```
-cd $GOPATH/src/github.com/kubernetes-sigs/volcano
+cd $GOPATH/src/github.com/kubernetes-sigs/kube-batch
 make images
 
 ## Verify your images

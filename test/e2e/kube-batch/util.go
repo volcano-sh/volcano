@@ -41,9 +41,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	kbv1 "github.com/kubernetes-sigs/volcano/pkg/apis/scheduling/v1alpha1"
-	kbver "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned"
-	kbapi "github.com/kubernetes-sigs/volcano/pkg/scheduler/api"
+	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
+	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
 var oneMinute = 1 * time.Minute

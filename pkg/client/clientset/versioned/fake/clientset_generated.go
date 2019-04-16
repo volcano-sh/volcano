@@ -19,13 +19,13 @@ limitations under the License.
 package fake
 
 import (
-	clientset "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned"
-	batchv1alpha1 "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1"
-	fakebatchv1alpha1 "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1/fake"
-	busv1alpha1 "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned/typed/bus/v1alpha1"
-	fakebusv1alpha1 "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned/typed/bus/v1alpha1/fake"
-	schedulingv1alpha1 "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned/typed/scheduling/v1alpha1"
-	fakeschedulingv1alpha1 "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned/typed/scheduling/v1alpha1/fake"
+	clientset "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
+	batchv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/typed/batch/v1alpha1"
+	fakebatchv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/typed/batch/v1alpha1/fake"
+	busv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/typed/bus/v1alpha1"
+	fakebusv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/typed/bus/v1alpha1/fake"
+	schedulingv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/typed/scheduling/v1alpha1"
+	fakeschedulingv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/typed/scheduling/v1alpha1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"

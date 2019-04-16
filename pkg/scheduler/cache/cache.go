@@ -44,15 +44,15 @@ import (
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/scheduler/volumebinder"
 
-	"github.com/kubernetes-sigs/volcano/cmd/kube-batch/app/options"
-	"github.com/kubernetes-sigs/volcano/pkg/apis/scheduling/v1alpha1"
-	kbver "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned"
-	"github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned/scheme"
-	kbschema "github.com/kubernetes-sigs/volcano/pkg/client/clientset/versioned/scheme"
-	kbinfo "github.com/kubernetes-sigs/volcano/pkg/client/informers/externalversions"
-	kbinfov1 "github.com/kubernetes-sigs/volcano/pkg/client/informers/externalversions/scheduling/v1alpha1"
-	"github.com/kubernetes-sigs/volcano/pkg/scheduler/api"
-	kbapi "github.com/kubernetes-sigs/volcano/pkg/scheduler/api"
+	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
+	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
+	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/scheme"
+	kbschema "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/scheme"
+	kbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
+	kbinfov1 "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
 func init() {

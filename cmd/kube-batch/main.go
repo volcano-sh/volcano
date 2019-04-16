@@ -27,12 +27,12 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/util/flag"
 
-	"github.com/kubernetes-sigs/volcano/cmd/kube-batch/app"
-	"github.com/kubernetes-sigs/volcano/cmd/kube-batch/app/options"
+	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app"
+	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
 
 	// Import default actions/plugins.
-	_ "github.com/kubernetes-sigs/volcano/pkg/scheduler/actions"
-	_ "github.com/kubernetes-sigs/volcano/pkg/scheduler/plugins"
+	_ "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions"
+	_ "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins"
 )
 
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")

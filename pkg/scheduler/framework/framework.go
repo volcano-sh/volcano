@@ -21,9 +21,9 @@ import (
 
 	"github.com/golang/glog"
 
-	"github.com/kubernetes-sigs/volcano/pkg/scheduler/cache"
-	"github.com/kubernetes-sigs/volcano/pkg/scheduler/conf"
-	"github.com/kubernetes-sigs/volcano/pkg/scheduler/metrics"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/conf"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/metrics"
 )
 
 // OpenSession start the session

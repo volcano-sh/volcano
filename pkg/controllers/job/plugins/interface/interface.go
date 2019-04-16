@@ -20,7 +20,7 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 
-	vkv1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
+	vkv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
 )
 
 type PluginClientset struct {

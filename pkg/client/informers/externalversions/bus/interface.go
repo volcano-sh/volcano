@@ -19,8 +19,8 @@ limitations under the License.
 package bus
 
 import (
-	v1alpha1 "github.com/kubernetes-sigs/volcano/pkg/client/informers/externalversions/bus/v1alpha1"
-	internalinterfaces "github.com/kubernetes-sigs/volcano/pkg/client/informers/externalversions/internalinterfaces"
+	v1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/bus/v1alpha1"
+	internalinterfaces "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/internalinterfaces"
 )
 
 // Interface provides access to each of this group's versions.
