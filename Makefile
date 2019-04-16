@@ -26,7 +26,7 @@ vk-admission: init
 vkctl: init
 	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vkctl ./cmd/cli
 
-verify: generate-code
+verify: generate-deepcopy
 	hack/verify-gofmt.sh
 	hack/verify-golint.sh
 	hack/verify-gencode.sh
@@ -36,11 +36,11 @@ verify: generate-code
 init:
 	mkdir -p ${BIN_DIR}
 
-generate-code: init
+generate-deepcopy: init
 	go build -o ${BIN_DIR}/deepcopy-gen ./cmd/deepcopy-gen/
-	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/scheduling/v1alpha1/ -O zz_generated.deepcopy
-	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/batch/v1alpha1/ -O zz_generated.deepcopy
-	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/bus/v1alpha1/ -O zz_generated.deepcopy
+	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/scheduling/v1alpha1/ -O zz_generated.deepcopy --go-header-file hack/boilerplate/boilerplate.generatego.txt
+	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/batch/v1alpha1/ -O zz_generated.deepcopy --go-header-file hack/boilerplate/boilerplate.generatego.txt
+	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/bus/v1alpha1/ -O zz_generated.deepcopy --go-header-file hack/boilerplate/boilerplate.generatego.txt
 
 rel_bins:
 	go get github.com/mitchellh/gox
@@ -70,6 +70,9 @@ run-test:
 
 e2e: kube-batch
 	hack/run-e2e.sh
+
+generate-code:
+	./hack/update-gencode.sh
 
 e2e-kind: vkctl images
 	./hack/run-e2e-kind.sh
