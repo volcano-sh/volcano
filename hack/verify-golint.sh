@@ -23,11 +23,8 @@ source "${KUBE_ROOT}/hack/lib/init.sh"
 
 kube::golang::verify_go_version
 
-if ! which golint > /dev/null; then
-  echo 'Can not find golint, install with:'
-  echo 'go get -u github.com/golang/lint/golint'
-  exit 1
-fi
+# install golint
+go get -u github.com/golang/lint/golint
 
 cd "${KUBE_ROOT}"
 
