@@ -19,7 +19,7 @@ package preempt
 import (
 	"testing"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 )

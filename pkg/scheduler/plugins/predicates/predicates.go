@@ -21,21 +21,24 @@ import (
 
 	"github.com/golang/glog"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
 	"k8s.io/kubernetes/pkg/scheduler/cache"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
 type predicatesPlugin struct {
+	// Arguments given for the plugin
+	pluginArguments framework.Arguments
 }
 
-func New() framework.Plugin {
-	return &predicatesPlugin{}
+// New return predicate plugin
+func New(arguments framework.Arguments) framework.Plugin {
+	return &predicatesPlugin{pluginArguments: arguments}
 }
 
 func (pp *predicatesPlugin) Name() string {
@@ -101,7 +104,7 @@ func (c *cachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
 	return node.Node, nil
 }
 
-// Check to see if node spec is set to Schedulable or not
+// CheckNodeUnschedulable Check to see if node spec is set to Schedulable or not
 func CheckNodeUnschedulable(pod *v1.Pod, nodeInfo *cache.NodeInfo) (bool, []algorithm.PredicateFailureReason, error) {
 	if nodeInfo.Node().Spec.Unschedulable {
 		return false, []algorithm.PredicateFailureReason{predicates.ErrNodeUnschedulable}, nil
@@ -123,10 +126,10 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		nodeInfo.SetNode(node.Node)
 
 		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods()) {
-			return fmt.Errorf("Node <%s> can not allow more task running on it.", node.Name)
+			return fmt.Errorf("node <%s> can not allow more task running on it", node.Name)
 		}
 
-		// NodeSeletor Predicate
+		// NodeSelector Predicate
 		fit, _, err := predicates.PodMatchNodeSelector(task.Pod, nil, nodeInfo)
 		if err != nil {
 			return err

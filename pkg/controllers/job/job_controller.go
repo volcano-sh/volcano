@@ -34,10 +34,10 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
-	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
-	kbinfoext "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
-	kbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
-	kblister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
+	kbver "volcano.sh/volcano/pkg/client/clientset/versioned"
+	kbinfoext "volcano.sh/volcano/pkg/client/informers/externalversions"
+	kbinfo "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1alpha1"
+	kblister "volcano.sh/volcano/pkg/client/listers/scheduling/v1alpha1"
 
 	v1corev1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"

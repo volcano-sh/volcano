@@ -21,9 +21,9 @@ import (
 
 	"github.com/golang/glog"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api/helpers"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/api/helpers"
+	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
 var shareDelta = 0.000001
@@ -39,12 +39,17 @@ type drfPlugin struct {
 
 	// Key is Job ID
 	jobOpts map[api.JobID]*drfAttr
+
+	// Arguments given for the plugin
+	pluginArguments framework.Arguments
 }
 
-func New() framework.Plugin {
+// New return drf plugin
+func New(arguments framework.Arguments) framework.Plugin {
 	return &drfPlugin{
-		totalResource: api.EmptyResource(),
-		jobOpts:       map[api.JobID]*drfAttr{},
+		totalResource:   api.EmptyResource(),
+		jobOpts:         map[api.JobID]*drfAttr{},
+		pluginArguments: arguments,
 	}
 }
 
@@ -110,8 +115,8 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
 
-		glog.V(4).Infof("DRF JobOrderFn: <%v/%v> is ready: %d, <%v/%v> is ready: %d",
-			lv.Namespace, lv.Name, lv.Priority, rv.Namespace, rv.Name, rv.Priority)
+		glog.V(4).Infof("DRF JobOrderFn: <%v/%v> share state: %d, <%v/%v> share state: %d",
+			lv.Namespace, lv.Name, drf.jobOpts[lv.UID].share, rv.Namespace, rv.Name, drf.jobOpts[rv.UID].share)
 
 		if drf.jobOpts[lv.UID].share == drf.jobOpts[rv.UID].share {
 			return 0

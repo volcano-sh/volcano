@@ -31,6 +31,7 @@ import (
 	batch "volcano.sh/volcano/pkg/client/informers/externalversions/batch"
 	bus "volcano.sh/volcano/pkg/client/informers/externalversions/bus"
 	internalinterfaces "volcano.sh/volcano/pkg/client/informers/externalversions/internalinterfaces"
+	scheduling "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling"
 )
 
 // SharedInformerOption defines the functional option type for SharedInformerFactory.
@@ -175,6 +176,7 @@ type SharedInformerFactory interface {
 
 	Batch() batch.Interface
 	Bus() bus.Interface
+	Scheduling() scheduling.Interface
 }
 
 func (f *sharedInformerFactory) Batch() batch.Interface {
@@ -183,4 +185,8 @@ func (f *sharedInformerFactory) Batch() batch.Interface {
 
 func (f *sharedInformerFactory) Bus() bus.Interface {
 	return bus.New(f, f.namespace, f.tweakListOptions)
+}
+
+func (f *sharedInformerFactory) Scheduling() scheduling.Interface {
+	return scheduling.New(f, f.namespace, f.tweakListOptions)
 }

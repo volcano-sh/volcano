@@ -32,7 +32,7 @@ func (in *Job) DeepCopyInto(out *Job) {
 	out.TypeMeta = in.TypeMeta
 	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
 	in.Spec.DeepCopyInto(&out.Spec)
-	out.Status = in.Status
+	in.Status.DeepCopyInto(&out.Status)
 	return
 }
 
@@ -114,6 +114,21 @@ func (in *JobSpec) DeepCopyInto(out *JobSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.Plugins != nil {
+		in, out := &in.Plugins, &out.Plugins
+		*out = make(map[string][]string, len(*in))
+		for key, val := range *in {
+			var outVal []string
+			if val == nil {
+				(*out)[key] = nil
+			} else {
+				in, out := &val, &outVal
+				*out = make([]string, len(*in))
+				copy(*out, *in)
+			}
+			(*out)[key] = outVal
+		}
+	}
 	return
 }
 
@@ -147,6 +162,13 @@ func (in *JobState) DeepCopy() *JobState {
 func (in *JobStatus) DeepCopyInto(out *JobStatus) {
 	*out = *in
 	out.State = in.State
+	if in.ControlledResources != nil {
+		in, out := &in.ControlledResources, &out.ControlledResources
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
 	return
 }
 
