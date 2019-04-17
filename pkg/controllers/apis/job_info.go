@@ -21,7 +21,7 @@ import (
 
 	"k8s.io/api/core/v1"
 
-	"github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
 )
 
 // JobInfo has info about Job CRD

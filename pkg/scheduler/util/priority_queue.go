@@ -19,7 +19,7 @@ package util
 import (
 	"container/heap"
 
-	"github.com/kubernetes-sigs/volcano/pkg/scheduler/api"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
 //PriorityQueue implements a scheduling queue.

@@ -23,9 +23,9 @@ import (
 
 	"gopkg.in/yaml.v2"
 
-	"github.com/kubernetes-sigs/volcano/pkg/scheduler/conf"
-	"github.com/kubernetes-sigs/volcano/pkg/scheduler/framework"
-	"github.com/kubernetes-sigs/volcano/pkg/scheduler/plugins"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/conf"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins"
 )
 
 var defaultSchedulerConf = `

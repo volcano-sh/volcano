@@ -19,17 +19,17 @@ package job
 import (
 	"fmt"
 	"github.com/golang/glog"
-	vkjobhelpers "github.com/kubernetes-sigs/volcano/pkg/controllers/job/helpers"
+	vkjobhelpers "github.com/kubernetes-sigs/kube-batch/pkg/controllers/job/helpers"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kbapi "github.com/kubernetes-sigs/volcano/pkg/apis/scheduling/v1alpha1"
+	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 
-	admissioncontroller "github.com/kubernetes-sigs/volcano/pkg/admission"
-	vkv1alpha1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
-	"github.com/kubernetes-sigs/volcano/pkg/apis/helpers"
-	"github.com/kubernetes-sigs/volcano/pkg/controllers/apis"
+	admissioncontroller "github.com/kubernetes-sigs/kube-batch/pkg/admission"
+	vkv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/apis/helpers"
+	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/apis"
 )
 
 func eventKey(obj interface{}) interface{} {

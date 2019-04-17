@@ -26,8 +26,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	ctlJob "github.com/kubernetes-sigs/volcano/pkg/cli/job"
-	jobUtil "github.com/kubernetes-sigs/volcano/pkg/controllers/job"
+	ctlJob "github.com/kubernetes-sigs/kube-batch/pkg/cli/job"
+	jobUtil "github.com/kubernetes-sigs/kube-batch/pkg/controllers/job"
 )
 
 var _ = Describe("Job E2E Test: Test Job Command", func() {

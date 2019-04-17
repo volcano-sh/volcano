@@ -19,8 +19,8 @@ limitations under the License.
 package v1alpha1
 
 import (
-	internalinterfaces "github.com/kubernetes-sigs/volcano/pkg/client/informers/internalversion/internalinterfaces"
-	internalversion "github.com/kubernetes-sigs/volcano/pkg/client/informers/internalversion/v1alpha1/internalversion"
+	internalinterfaces "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/internalversion/internalinterfaces"
+	internalversion "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/internalversion/v1alpha1/internalversion"
 )
 
 // Interface provides access to each of this group's versions.

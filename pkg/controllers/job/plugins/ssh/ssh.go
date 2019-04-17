@@ -30,10 +30,10 @@ import (
 
 	"k8s.io/api/core/v1"
 
-	vkv1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
-	"github.com/kubernetes-sigs/volcano/pkg/apis/helpers"
-	"github.com/kubernetes-sigs/volcano/pkg/controllers/job/plugins/env"
-	vkinterface "github.com/kubernetes-sigs/volcano/pkg/controllers/job/plugins/interface"
+	vkv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
+	"github.com/kubernetes-sigs/kube-batch/pkg/apis/helpers"
+	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/job/plugins/env"
+	vkinterface "github.com/kubernetes-sigs/kube-batch/pkg/controllers/job/plugins/interface"
 )
 
 type sshPlugin struct {

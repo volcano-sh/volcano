@@ -17,7 +17,7 @@ limitations under the License.
 package util
 
 import (
-	"github.com/kubernetes-sigs/volcano/pkg/scheduler/api"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"reflect"
 	"testing"
 )

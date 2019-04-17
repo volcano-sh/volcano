@@ -19,9 +19,9 @@ limitations under the License.
 package scheme
 
 import (
-	batchv1alpha1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
-	busv1alpha1 "github.com/kubernetes-sigs/volcano/pkg/apis/bus/v1alpha1"
-	schedulingv1alpha1 "github.com/kubernetes-sigs/volcano/pkg/apis/scheduling/v1alpha1"
+	batchv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
+	busv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/bus/v1alpha1"
+	schedulingv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"

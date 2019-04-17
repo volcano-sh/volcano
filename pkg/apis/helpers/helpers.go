@@ -27,9 +27,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 
-	vkbatchv1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
-	vkv1 "github.com/kubernetes-sigs/volcano/pkg/apis/batch/v1alpha1"
-	vkcorev1 "github.com/kubernetes-sigs/volcano/pkg/apis/bus/v1alpha1"
+	vkbatchv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
+	vkv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
+	vkcorev1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/bus/v1alpha1"
 )
 
 var JobKind = vkbatchv1.SchemeGroupVersion.WithKind("Job")

@@ -21,9 +21,9 @@ import (
 
 	"github.com/golang/glog"
 
-	"github.com/kubernetes-sigs/volcano/pkg/scheduler/api"
-	"github.com/kubernetes-sigs/volcano/pkg/scheduler/framework"
-	"github.com/kubernetes-sigs/volcano/pkg/scheduler/util"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/util"
 )
 
 type allocateAction struct {
