@@ -36,12 +36,6 @@ verify: generate-code
 init:
 	mkdir -p ${BIN_DIR}
 
-generate-deepcopy: init
-	go build -o ${BIN_DIR}/deepcopy-gen ./cmd/deepcopy-gen/
-	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/scheduling/v1alpha1/ -O zz_generated.deepcopy --go-header-file hack/boilerplate/boilerplate.generatego.txt
-	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/batch/v1alpha1/ -O zz_generated.deepcopy --go-header-file hack/boilerplate/boilerplate.generatego.txt
-	${BIN_DIR}/deepcopy-gen -i ./pkg/apis/bus/v1alpha1/ -O zz_generated.deepcopy --go-header-file hack/boilerplate/boilerplate.generatego.txt
-
 rel_bins:
 	go get github.com/mitchellh/gox
 	#Build kube-batch binary
