@@ -26,7 +26,7 @@ vk-admission: init
 vkctl: init
 	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vkctl ./cmd/cli
 
-verify: generate-deepcopy
+verify: generate-code
 	hack/verify-gofmt.sh
 	hack/verify-golint.sh
 	hack/verify-gencode.sh
