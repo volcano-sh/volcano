@@ -25,7 +25,7 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/client-go/util/workqueue"
 
-	"github.com/kubernetes-sigs/volcano/pkg/scheduler/api"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
 // PredicateNodes returns nodes that fit task
