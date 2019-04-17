@@ -351,8 +351,11 @@ func (ji *JobInfo) FitError() string {
 		if v.Get(v1.ResourceMemory) < 0 {
 			reasons["memory"]++
 		}
-		if v.Get(GPUResourceName) < 0 {
-			reasons["GPU"]++
+
+		for rName, rQuant := range v.ScalarResources {
+			if rQuant < 0 {
+				reasons[string(rName)]++
+			}
 		}
 	}
 

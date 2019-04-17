@@ -160,7 +160,7 @@ func (drf *drfPlugin) updateShare(attr *drfAttr) {
 
 func (drf *drfPlugin) calculateShare(allocated, totalResource *api.Resource) float64 {
 	res := float64(0)
-	for _, rn := range api.ResourceNames() {
+	for _, rn := range totalResource.ResourceNames() {
 		share := helpers.Share(allocated.Get(rn), totalResource.Get(rn))
 		if share > res {
 			res = share
