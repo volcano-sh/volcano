@@ -96,6 +96,8 @@ certificate, volcano uses a helm plugin **gen-admission-secret** to
 generate certificate for admission service to communicate with
 kubernetes API server.
 
+Alternatively you can also follow the youtube tutorial over [here](https://www.youtube.com/watch?v=hsXXmWSUtyo) to checkout the installation step.
+
 ```
 #1. Install helm plugin
 helm plugin install installer/chart/volcano/plugins/gen-admission-secret
