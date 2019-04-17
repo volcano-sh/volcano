@@ -30,12 +30,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 
-	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/cache"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/conf"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
-
+	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
+	"volcano.sh/volcano/pkg/scheduler/conf"
+	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
 )
@@ -279,14 +278,19 @@ func TestAllocate(t *testing.T) {
 			schedulerCache.AddQueue(q)
 		}
 
+		trueValue := true
 		ssn := framework.OpenSession(schedulerCache, []conf.Tier{
 			{
 				Plugins: []conf.PluginOption{
 					{
-						Name: "drf",
+						Name:               "drf",
+						EnabledPreemptable: &trueValue,
+						EnabledJobOrder:    &trueValue,
 					},
 					{
-						Name: "proportion",
+						Name:               "proportion",
+						EnabledQueueOrder:  &trueValue,
+						EnabledReclaimable: &trueValue,
 					},
 				},
 			},

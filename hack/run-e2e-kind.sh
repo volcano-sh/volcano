@@ -16,8 +16,8 @@ export KIND_OPT=${KIND_OPT:="--image kindest/node:v1.13.2-huawei --config ${VK_R
 
 export KIND_IMAGE=$(echo ${KIND_OPT} |grep -E -o "image \w+\/[^ ]*" | sed "s/image //")
 
-export IMAGE=${IMAGE:-volcano}
-export TAG=${TAG:-0.1}
+export IMAGE_PREFIX=kubesigs/vk
+export TAG=${TAG:-v0.4.2}
 export TILLE_IMAGE=${TILLE_IMAGE:-"gcr.io/kubernetes-helm/tiller:v2.11.0"}
 export WEAVE_NET_IMAGE=${WEAVE_NET_IMAGE:-"weaveworks/weave-npc:2.5.1"}
 export WEAVE_KUBE_IMAGE=${WEAVE_KUBE_IMAGE:-"weaveworks/weave-kube:2.5.1"}
@@ -83,9 +83,9 @@ function check-all-image {
   check-image ${WEAVE_KUBE_IMAGE}
   # used for volcano install
   check-image ${TILLE_IMAGE}
-  check-image ${IMAGE}-controllers:${TAG}
-  check-image ${IMAGE}-scheduler:${TAG}
-  check-image ${IMAGE}-admission:${TAG}
+  check-image ${IMAGE_PREFIX}-controllers:${TAG}
+  check-image kubesigs/kube-batch:${TAG}
+  check-image ${IMAGE_PREFIX}-admission:${TAG}
   # used for volcano test
   check-image ${TEST_BUSYBOX_IMAGE}
   check-image ${TEST_NGINX_IMAGE}
@@ -117,17 +117,17 @@ function install-volcano {
   helm init --skip-refresh --service-account tiller --kubeconfig ${KUBECONFIG} --wait
 
   echo "Loading docker images into kind cluster"
-  kind load docker-image ${IMAGE}-controllers:${TAG}  ${CLUSTER_CONTEXT}
-  kind load docker-image ${IMAGE}-scheduler:${TAG}  ${CLUSTER_CONTEXT}
-  kind load docker-image ${IMAGE}-admission:${TAG}  ${CLUSTER_CONTEXT}
+  kind load docker-image ${IMAGE_PREFIX}-controllers:${TAG} ${CLUSTER_CONTEXT}
+  kind load docker-image kubesigs/kube-batch:${TAG}  ${CLUSTER_CONTEXT}
+  kind load docker-image ${IMAGE_PREFIX}-admission:${TAG} ${CLUSTER_CONTEXT}
 
   echo "Install volcano plugin into cluster...."
   helm plugin remove gen-admission-secret
-  helm plugin install --kubeconfig ${KUBECONFIG} installer/chart/volcano/plugins/gen-admission-secret
+  helm plugin install --kubeconfig ${KUBECONFIG} deployment/volcano/plugins/gen-admission-secret
   helm gen-admission-secret --service integration-admission-service --namespace kube-system
 
   echo "Install volcano chart"
-  helm install installer/chart/volcano --namespace kube-system --name integration --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG}
+  helm install deployment/volcano --namespace kube-system --name integration --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG}
 
   echo "Load required image"
   kind load docker-image ${TEST_BUSYBOX_IMAGE} ${CLUSTER_CONTEXT}

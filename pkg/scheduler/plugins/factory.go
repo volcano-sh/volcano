@@ -17,7 +17,7 @@ limitations under the License.
 package plugins
 
 import (
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
