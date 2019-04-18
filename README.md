@@ -16,18 +16,18 @@ frameworks like Tensorflow, Spark, PyTorch, MPI, etc, which Volcano integrates w
 
 Some examples of the mechanisms and features that Volcano adds to Kubernetes are:
 
-1. Job management extensions and improvements, e.g:
-    1. Multi-pod jobs
-    1. Improved error handling
-    1. Indexed jobs
-2. Scheduling extensions, e.g:
+1. Scheduling extensions, e.g:
     1. Co-scheduling
     2. Fair-share scheduling
     3. Queue scheduling
     4. Preemption and reclaims
     5. Reservartions and backfills
     6. Topology-based scheduling
-3. Others (in upstream)
+1. Job management extensions and improvements, e.g:
+    1. Multi-pod jobs
+    1. Improved error handling
+    1. Indexed jobs
+1. Others (in upstream)
     1. Optimizations for throughput, round-trip latency, etc.
 
 Volcano builds upon a decade and a half of experience running a wide
