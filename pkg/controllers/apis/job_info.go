@@ -18,6 +18,7 @@ package apis
 
 import (
 	"fmt"
+	"sync"
 
 	"k8s.io/api/core/v1"
 
@@ -28,11 +29,16 @@ type JobInfo struct {
 	Namespace string
 	Name      string
 
-	Job  *v1alpha1.Job
+	Job *v1alpha1.Job
+
+	sync.RWMutex
 	Pods map[string]map[string]*v1.Pod
 }
 
 func (ji *JobInfo) Clone() *JobInfo {
+	ji.RLock()
+	defer ji.RUnlock()
+
 	job := &JobInfo{
 		Namespace: ji.Namespace,
 		Name:      ji.Name,
@@ -70,6 +76,9 @@ func (ji *JobInfo) AddPod(pod *v1.Pod) error {
 			pod.Namespace, pod.Name)
 	}
 
+	ji.Lock()
+	defer ji.Unlock()
+
 	if _, found := ji.Pods[taskName]; !found {
 		ji.Pods[taskName] = make(map[string]*v1.Pod)
 	}
@@ -92,6 +101,9 @@ func (ji *JobInfo) UpdatePod(pod *v1.Pod) error {
 		return fmt.Errorf("failed to find jobVersion of Pod <%s/%s>",
 			pod.Namespace, pod.Name)
 	}
+
+	ji.Lock()
+	defer ji.Unlock()
 
 	if _, found := ji.Pods[taskName]; !found {
 		return fmt.Errorf("can not find task %s in cache", taskName)
@@ -116,6 +128,9 @@ func (ji *JobInfo) DeletePod(pod *v1.Pod) error {
 		return fmt.Errorf("failed to find jobVersion of Pod <%s/%s>",
 			pod.Namespace, pod.Name)
 	}
+
+	ji.Lock()
+	defer ji.Unlock()
 
 	if pods, found := ji.Pods[taskName]; found {
 		delete(pods, pod.Name)

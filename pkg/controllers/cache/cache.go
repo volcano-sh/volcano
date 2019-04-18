@@ -30,7 +30,7 @@ import (
 )
 
 type jobCache struct {
-	sync.Mutex
+	sync.RWMutex
 
 	jobs        map[string]*apis.JobInfo
 	deletedJobs workqueue.RateLimitingInterface
@@ -53,6 +53,8 @@ func JobKey(job *v1alpha1.Job) string {
 }
 
 func jobTerminated(job *apis.JobInfo) bool {
+	job.RLock()
+	defer job.RUnlock()
 	return job.Job == nil && len(job.Pods) == 0
 }
 
@@ -74,33 +76,19 @@ func New() Cache {
 }
 
 func (jc *jobCache) Get(key string) (*apis.JobInfo, error) {
-	jc.Lock()
-	defer jc.Unlock()
-
+	jc.RLock()
 	job, found := jc.jobs[key]
+	jc.RUnlock()
+
 	if !found {
 		return nil, fmt.Errorf("failed to find job <%s>", key)
 	}
 
 	if job.Job == nil {
-		return nil, fmt.Errorf("job <%s> is not ready", key)
+		return nil, fmt.Errorf("job <%s> is not ready or being deleted", key)
 	}
 
 	return job.Clone(), nil
-}
-
-func (jc *jobCache) GetStatus(key string) (*v1alpha1.JobStatus, error) {
-	jc.Lock()
-	defer jc.Unlock()
-
-	job, found := jc.jobs[key]
-	if !found {
-		return nil, fmt.Errorf("failed to find job <%s>", key)
-	}
-
-	status := job.Job.Status
-
-	return &status, nil
 }
 
 func (jc *jobCache) Add(job *v1alpha1.Job) error {
@@ -111,7 +99,6 @@ func (jc *jobCache) Add(job *v1alpha1.Job) error {
 	if jobInfo, found := jc.jobs[key]; found {
 		if jobInfo.Job == nil {
 			jobInfo.SetJob(job)
-
 			return nil
 		}
 		return fmt.Errorf("duplicated jobInfo <%v>", key)
@@ -129,8 +116,8 @@ func (jc *jobCache) Add(job *v1alpha1.Job) error {
 }
 
 func (jc *jobCache) Update(obj *v1alpha1.Job) error {
-	jc.Lock()
-	defer jc.Unlock()
+	jc.RLock()
+	defer jc.RUnlock()
 
 	key := JobKey(obj)
 	if job, found := jc.jobs[key]; !found {
@@ -143,8 +130,8 @@ func (jc *jobCache) Update(obj *v1alpha1.Job) error {
 }
 
 func (jc *jobCache) Delete(obj *v1alpha1.Job) error {
-	jc.Lock()
-	defer jc.Unlock()
+	jc.RLock()
+	defer jc.RUnlock()
 
 	key := JobKey(obj)
 	if jobInfo, found := jc.jobs[key]; !found {
@@ -158,68 +145,31 @@ func (jc *jobCache) Delete(obj *v1alpha1.Job) error {
 }
 
 func (jc *jobCache) AddPod(pod *v1.Pod) error {
-	jc.Lock()
-	defer jc.Unlock()
-
-	key, err := jobKeyOfPod(pod)
+	job, err := jc.getOrCreateJobInfo(pod)
 	if err != nil {
 		return err
-	}
-
-	job, found := jc.jobs[key]
-	if !found {
-		job = &apis.JobInfo{
-			Pods: make(map[string]map[string]*v1.Pod),
-		}
-		jc.jobs[key] = job
 	}
 
 	return job.AddPod(pod)
 }
 
 func (jc *jobCache) UpdatePod(pod *v1.Pod) error {
-	jc.Lock()
-	defer jc.Unlock()
-
-	key, err := jobKeyOfPod(pod)
+	job, err := jc.getOrCreateJobInfo(pod)
 	if err != nil {
 		return err
-	}
-
-	job, found := jc.jobs[key]
-	if !found {
-		job = &apis.JobInfo{
-			Pods: make(map[string]map[string]*v1.Pod),
-		}
-		jc.jobs[key] = job
 	}
 
 	return job.UpdatePod(pod)
 }
 
 func (jc *jobCache) DeletePod(pod *v1.Pod) error {
-	jc.Lock()
-	defer jc.Unlock()
-
-	key, err := jobKeyOfPod(pod)
+	job, err := jc.getOrCreateJobInfo(pod)
 	if err != nil {
 		return err
 	}
 
-	job, found := jc.jobs[key]
-	if !found {
-		job = &apis.JobInfo{
-			Pods: make(map[string]map[string]*v1.Pod),
-		}
-		jc.jobs[key] = job
-	}
-
 	if err := job.DeletePod(pod); err != nil {
 		return err
-	}
-
-	if jc.jobs[key].Job == nil {
-		jc.deleteJob(job)
 	}
 
 	return nil
@@ -230,18 +180,19 @@ func (jc *jobCache) Run(stopCh <-chan struct{}) {
 }
 
 func (jc jobCache) TaskCompleted(jobKey, taskName string) bool {
-	jc.Lock()
-	defer jc.Unlock()
-
 	var taskReplicas, completed int32
 
+	jc.RLock()
 	jobInfo, found := jc.jobs[jobKey]
+	jc.RUnlock()
 	if !found {
 		return false
 	}
 
-	taskPods, found := jobInfo.Pods[taskName]
+	jobInfo.RLock()
+	defer jobInfo.RUnlock()
 
+	taskPods, found := jobInfo.Pods[taskName]
 	if !found {
 		return false
 	}
@@ -285,13 +236,12 @@ func (jc *jobCache) processCleanupJob() bool {
 		return true
 	}
 
-	jc.Mutex.Lock()
-	defer jc.Mutex.Unlock()
-
 	if jobTerminated(job) {
 		jc.deletedJobs.Forget(obj)
 		key := keyFn(job.Namespace, job.Name)
+		jc.Lock()
 		delete(jc.jobs, key)
+		jc.Unlock()
 		glog.V(3).Infof("Job <%s> was deleted.", key)
 	} else {
 		// Retry
@@ -305,4 +255,22 @@ func (jc *jobCache) deleteJob(job *apis.JobInfo) {
 		job.Namespace, job.Name)
 
 	jc.deletedJobs.AddRateLimited(job)
+}
+
+func (jc *jobCache) getOrCreateJobInfo(pod *v1.Pod) (*apis.JobInfo, error) {
+	key, err := jobKeyOfPod(pod)
+	if err != nil {
+		return nil, err
+	}
+
+	jc.Lock()
+	defer jc.Unlock()
+	job, found := jc.jobs[key]
+	if !found {
+		job = &apis.JobInfo{
+			Pods: make(map[string]map[string]*v1.Pod),
+		}
+		jc.jobs[key] = job
+	}
+	return job, nil
 }
