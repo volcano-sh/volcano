@@ -18,17 +18,15 @@ Some examples of the mechanisms and features that Volcano adds to Kubernetes are
 
 1. Job management extensions and improvements, e.g:
     1. Multi-pod jobs
-	2. Lifecycle management extensions including suspend/resume and
-       restart.
-	3. Improved error handling
-	4. Indexed jobs
+    1. Improved error handling
+    1. Indexed jobs
 2. Scheduling extensions, e.g:
     1. Co-scheduling
-	2. Fair-share scheduling
-	3. Queue scheduling
-	4. Preemption and reclaims
-	5. Reservartions and backfills
-	6. Topology-based scheduling
+    2. Fair-share scheduling
+    3. Queue scheduling
+    4. Preemption and reclaims
+    5. Reservartions and backfills
+    6. Topology-based scheduling
 3. Others (in upstream)
     1. Optimizations for throughput, round-trip latency, etc.
 
