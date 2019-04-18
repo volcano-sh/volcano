@@ -17,7 +17,7 @@ limitations under the License.
 package actions
 
 import (
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/actions/backfill"
