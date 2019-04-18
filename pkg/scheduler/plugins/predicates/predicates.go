@@ -18,10 +18,11 @@ package predicates
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/golang/glog"
 
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
@@ -104,12 +105,13 @@ func (c *cachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
 	return node.Node, nil
 }
 
-// CheckNodeUnschedulable Check to see if node spec is set to Schedulable or not
-func CheckNodeUnschedulable(pod *v1.Pod, nodeInfo *cache.NodeInfo) (bool, []algorithm.PredicateFailureReason, error) {
-	if nodeInfo.Node().Spec.Unschedulable {
-		return false, []algorithm.PredicateFailureReason{predicates.ErrNodeUnschedulable}, nil
+func formatReason(reasons []algorithm.PredicateFailureReason) string {
+	reasonStrings := []string{}
+	for _, v := range reasons {
+		reasonStrings = append(reasonStrings, fmt.Sprintf("%v", v.GetReason()))
 	}
-	return true, nil, nil
+
+	return strings.Join(reasonStrings, ", ")
 }
 
 func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
@@ -129,8 +131,36 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return fmt.Errorf("node <%s> can not allow more task running on it", node.Name)
 		}
 
+		// CheckNodeCondition Predicate
+		fit, reasons, err := predicates.CheckNodeConditionPredicate(task.Pod, nil, nodeInfo)
+		if err != nil {
+			return err
+		}
+
+		glog.V(4).Infof("CheckNodeCondition predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+			task.Namespace, task.Name, node.Name, fit, err)
+
+		if !fit {
+			return fmt.Errorf("node <%s> are not available to schedule task <%s/%s>: %s",
+				node.Name, task.Namespace, task.Name, formatReason(reasons))
+		}
+
+		// CheckNodeUnschedulable Predicate
+		fit, _, err = predicates.CheckNodeUnschedulablePredicate(task.Pod, nil, nodeInfo)
+		if err != nil {
+			return err
+		}
+
+		glog.V(4).Infof("CheckNodeUnschedulable Predicate Task <%s/%s> on Node <%s>: fit %t, err %v",
+			task.Namespace, task.Name, node.Name, fit, err)
+
+		if !fit {
+			return fmt.Errorf("task <%s/%s> node <%s> set to unschedulable",
+				task.Namespace, task.Name, node.Name)
+		}
+
 		// NodeSelector Predicate
-		fit, _, err := predicates.PodMatchNodeSelector(task.Pod, nil, nodeInfo)
+		fit, _, err = predicates.PodMatchNodeSelector(task.Pod, nil, nodeInfo)
 		if err != nil {
 			return err
 		}
@@ -157,20 +187,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				node.Name, task.Namespace, task.Name)
 		}
 
-		// Check to see if node.Spec.Unschedulable is set
-		fit, _, err = CheckNodeUnschedulable(task.Pod, nodeInfo)
-		if err != nil {
-			return err
-		}
-
-		glog.V(4).Infof("Check Unschedulable Task <%s/%s> on Node <%s>: fit %t, err %v",
-			task.Namespace, task.Name, node.Name, fit, err)
-
-		if !fit {
-			return fmt.Errorf("task <%s/%s> node <%s> set to unschedulable",
-				task.Namespace, task.Name, node.Name)
-		}
-
 		// Toleration/Taint Predicate
 		fit, _, err = predicates.PodToleratesNodeTaints(task.Pod, nil, nodeInfo)
 		if err != nil {
@@ -183,6 +199,48 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		if !fit {
 			return fmt.Errorf("task <%s/%s> does not tolerate node <%s> taints",
 				task.Namespace, task.Name, node.Name)
+		}
+
+		// CheckNodeMemoryPressurePredicate
+		fit, _, err = predicates.CheckNodeMemoryPressurePredicate(task.Pod, nil, nodeInfo)
+		if err != nil {
+			return err
+		}
+
+		glog.V(4).Infof("CheckNodeMemoryPressure predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+			task.Namespace, task.Name, node.Name, fit, err)
+
+		if !fit {
+			return fmt.Errorf("node <%s> are not available to schedule task <%s/%s> due to Memory Pressure",
+				node.Name, task.Namespace, task.Name)
+		}
+
+		// CheckNodeDiskPressurePredicate
+		fit, _, err = predicates.CheckNodeDiskPressurePredicate(task.Pod, nil, nodeInfo)
+		if err != nil {
+			return err
+		}
+
+		glog.V(4).Infof("CheckNodeDiskPressure predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+			task.Namespace, task.Name, node.Name, fit, err)
+
+		if !fit {
+			return fmt.Errorf("node <%s> are not available to schedule task <%s/%s> due to Disk Pressure",
+				node.Name, task.Namespace, task.Name)
+		}
+
+		// CheckNodePIDPressurePredicate
+		fit, _, err = predicates.CheckNodePIDPressurePredicate(task.Pod, nil, nodeInfo)
+		if err != nil {
+			return err
+		}
+
+		glog.V(4).Infof("CheckNodePIDPressurePredicate predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+			task.Namespace, task.Name, node.Name, fit, err)
+
+		if !fit {
+			return fmt.Errorf("node <%s> are not available to schedule task <%s/%s> due to PID Pressure",
+				node.Name, task.Namespace, task.Name)
 		}
 
 		// Pod Affinity/Anti-Affinity Predicate
