@@ -24,6 +24,7 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/cache"
 
 	kbtype "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
@@ -103,8 +104,17 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 func (cc *Controller) deleteJob(obj interface{}) {
 	job, ok := obj.(*vkbatchv1.Job)
 	if !ok {
-		glog.Errorf("obj is not Job")
-		return
+		// If we reached here it means the Job was deleted but its final state is unrecorded.
+		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			glog.Errorf("Couldn't get object from tombstone %#v", obj)
+			return
+		}
+		job, ok = tombstone.Obj.(*vkbatchv1.Job)
+		if !ok {
+			glog.Errorf("Tombstone contained object that is not a volcano Job: %#v", obj)
+			return
+		}
 	}
 
 	if err := cc.cache.Delete(job); err != nil {
@@ -228,20 +238,19 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 }
 
 func (cc *Controller) deletePod(obj interface{}) {
-	var pod *v1.Pod
-	switch t := obj.(type) {
-	case *v1.Pod:
-		pod = t
-	case cache.DeletedFinalStateUnknown:
-		var ok bool
-		pod, ok = t.Obj.(*v1.Pod)
+	pod, ok := obj.(*v1.Pod)
+	if !ok {
+		// If we reached here it means the pod was deleted but its final state is unrecorded.
+		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
-			glog.Errorf("Cannot convert to *v1.Pod: %v", t.Obj)
+			glog.Errorf("Couldn't get object from tombstone %#v", obj)
 			return
 		}
-	default:
-		glog.Errorf("Cannot convert to *v1.Pod: %v", t)
-		return
+		pod, ok = tombstone.Obj.(*v1.Pod)
+		if !ok {
+			glog.Errorf("Tombstone contained object that is not a Pod: %#v", obj)
+			return
+		}
 	}
 
 	taskName, found := pod.Annotations[vkbatchv1.TaskSpecKey]
@@ -314,8 +323,10 @@ func (cc *Controller) processNextCommand() bool {
 	defer cc.commandQueue.Done(cmd)
 
 	if err := cc.vkClients.BusV1alpha1().Commands(cmd.Namespace).Delete(cmd.Name, nil); err != nil {
-		glog.Errorf("Failed to delete Command <%s/%s>.", cmd.Namespace, cmd.Name)
-		cc.commandQueue.AddRateLimited(cmd)
+		if !apierrors.IsNotFound(err) {
+			glog.Errorf("Failed to delete Command <%s/%s>.", cmd.Namespace, cmd.Name)
+			cc.commandQueue.AddRateLimited(cmd)
+		}
 		return true
 	}
 	cc.recordJobEvent(cmd.Namespace, cmd.TargetObject.Name,
