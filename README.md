@@ -30,13 +30,8 @@ Some examples of the mechanisms and features that Volcano adds to Kubernetes are
 	4. Preemption and reclaims
 	5. Reservartions and backfills
 	6. Topology-based scheduling
-3. Runtime extensions, e.g:
-    1. Support for specialized continer runtimes like Singularity,
-       with GPU accelerator extensions and enhanced security features.
-4. Other
-    1. Data locality awareness and intelligent scheduling
-	2. Optimizations for data throughput, round-trip latency, etc.
-	
+3. Others (in upstream)
+    1. Optimizations for throughput, round-trip latency, etc.
 
 Volcano builds upon a decade and a half of experience running a wide
 variety of high performance workloads at scale using several systems
