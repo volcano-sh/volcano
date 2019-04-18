@@ -66,38 +66,20 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 				continue
 			}
 
-			switch pod.Status.Phase {
-			case v1.PodRunning:
-				err := cc.deleteJobPod(job.Name, pod)
-				if err != nil {
+			if err := cc.deleteJobPod(job.Name, pod); err != nil {
+				terminating++
+			} else {
+				errs = append(errs, err)
+				switch pod.Status.Phase {
+				case v1.PodRunning:
 					running++
-					errs = append(errs, err)
-					continue
-				}
-				terminating++
-			case v1.PodPending:
-				err := cc.deleteJobPod(job.Name, pod)
-				if err != nil {
+				case v1.PodPending:
 					pending++
-					errs = append(errs, err)
-					continue
-				}
-				terminating++
-			case v1.PodSucceeded:
-				err := cc.deleteJobPod(job.Name, pod)
-				if err != nil {
+				case v1.PodSucceeded:
 					succeeded++
-					errs = append(errs, err)
-					continue
-				}
-			case v1.PodFailed:
-				err := cc.deleteJobPod(job.Name, pod)
-				if err != nil {
+				case v1.PodFailed:
 					failed++
-					errs = append(errs, err)
-					continue
 				}
-				terminating++
 			}
 		}
 	}
