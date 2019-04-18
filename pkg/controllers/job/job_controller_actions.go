@@ -68,40 +68,32 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 
 			switch pod.Status.Phase {
 			case v1.PodRunning:
-				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+				err := cc.deleteJobPod(job.Name, pod)
 				if err != nil {
 					running++
-					glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
-						pod.Name, job.Name, err)
 					errs = append(errs, err)
 					continue
 				}
 				terminating++
 			case v1.PodPending:
-				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+				err := cc.deleteJobPod(job.Name, pod)
 				if err != nil {
 					pending++
-					glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
-						pod.Name, job.Name, err)
 					errs = append(errs, err)
 					continue
 				}
 				terminating++
 			case v1.PodSucceeded:
-				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+				err := cc.deleteJobPod(job.Name, pod)
 				if err != nil {
 					succeeded++
-					glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
-						pod.Name, job.Name, err)
 					errs = append(errs, err)
 					continue
 				}
 			case v1.PodFailed:
-				err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+				err := cc.deleteJobPod(job.Name, pod)
 				if err != nil {
 					failed++
-					glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
-						pod.Name, job.Name, err)
 					errs = append(errs, err)
 					continue
 				}
@@ -294,9 +286,9 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	for _, pod := range podToDelete {
 		go func(pod *v1.Pod) {
 			defer waitDeletionGroup.Done()
-			err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+			err := cc.deleteJobPod(job.Name, pod)
 			if err != nil {
-				// Failed to create Pod, waitCreationGroup a moment and then create it again
+				// Failed to delete Pod, waitCreationGroup a moment and then create it again
 				// This is to ensure all podsMap under the same Job created
 				// So gang-scheduling could schedule the Job successfully
 				glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
@@ -500,6 +492,18 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 				return err
 			}
 		}
+	}
+
+	return nil
+}
+
+func (cc *Controller) deleteJobPod(jobName string, pod *v1.Pod) error {
+	err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
+	if err != nil && !apierrors.IsNotFound(err) {
+		glog.Errorf("Failed to delete pod %s/%s for Job %s, err %#v",
+			pod.Namespace, pod.Name, jobName, err)
+
+		return err
 	}
 
 	return nil
