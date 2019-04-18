@@ -22,7 +22,6 @@ Some examples of the mechanisms and features that Volcano adds to Kubernetes are
        restart.
 	3. Improved error handling
 	4. Indexed jobs
-	5. Task dependencies
 2. Scheduling extensions, e.g:
     1. Co-scheduling
 	2. Fair-share scheduling
