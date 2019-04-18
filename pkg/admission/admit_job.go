@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"volcano.sh/volcano/pkg/controllers/job/plugins"
 
 	"github.com/golang/glog"
 
@@ -29,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 
 	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/controllers/job/plugins"
 )
 
 // job admit.
@@ -98,9 +98,8 @@ func validateJobSpec(jobSpec v1alpha1.JobSpec, reviewResponse *v1beta1.Admission
 			taskNames[task.Name] = task.Name
 		}
 
-		//duplicate task event policies
-		if duplicateInfo, ok := CheckPolicyDuplicate(task.Policies); ok {
-			msg = msg + fmt.Sprintf(" duplicated task event policies: %s;", duplicateInfo)
+		if err := ValidatePolicies(task.Policies); err != nil {
+			msg = msg + err.Error()
 		}
 	}
 
@@ -108,12 +107,11 @@ func validateJobSpec(jobSpec v1alpha1.JobSpec, reviewResponse *v1beta1.Admission
 		msg = msg + " 'minAvailable' should not be greater than total replicas in tasks;"
 	}
 
-	//duplicate job event policies
-	if duplicateInfo, ok := CheckPolicyDuplicate(jobSpec.Policies); ok {
-		msg = msg + fmt.Sprintf(" duplicated job event policies: %s;", duplicateInfo)
+	if err := ValidatePolicies(jobSpec.Policies); err != nil {
+		msg = msg + err.Error()
 	}
 
-	//invalid job plugins
+	// invalid job plugins
 	if len(jobSpec.Plugins) != 0 {
 		for name := range jobSpec.Plugins {
 			if _, found := plugins.GetPluginBuilder(name); !found {

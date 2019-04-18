@@ -92,7 +92,7 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 		stError, ok := err.(*errors.StatusError)
 		Expect(ok).To(Equal(true))
 		Expect(stError.ErrStatus.Code).To(Equal(int32(500)))
-		Expect(stError.ErrStatus.Message).To(ContainSubstring("duplicated job event policies"))
+		Expect(stError.ErrStatus.Message).To(ContainSubstring("duplicate event PodFailed"))
 	})
 
 	It("Min Available illegal", func() {
