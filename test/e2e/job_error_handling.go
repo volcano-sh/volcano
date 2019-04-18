@@ -355,6 +355,7 @@ var _ = Describe("Job Error Handling", func() {
 		}
 		err = taintAllNodes(context, taints)
 		Expect(err).NotTo(HaveOccurred())
+		defer removeTaintsFromAllNodes(context, taints)
 
 		podName := jobhelpers.MakePodName(job.Name, "test", 0)
 		By("Kill one of the pod in order to trigger unschedulable status")

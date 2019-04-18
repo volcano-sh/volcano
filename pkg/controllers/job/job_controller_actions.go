@@ -21,7 +21,7 @@ import (
 	"sync"
 
 	"github.com/golang/glog"
-	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

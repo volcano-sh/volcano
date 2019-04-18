@@ -21,10 +21,9 @@ import (
 
 	"github.com/golang/glog"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/metrics"
-
+	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -115,15 +114,15 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 					assigned = true
 				}
 
-				// If job not ready, keep preempting
-				if ssn.JobReady(preemptorJob) {
+				// If job is not pipelined, keep preempting
+				if ssn.JobPipelined(preemptorJob) {
 					stmt.Commit()
 					break
 				}
 			}
 
-			// If job not ready after try all tasks, next job.
-			if !ssn.JobReady(preemptorJob) {
+			// If job is not pipelined after try all tasks, next job.
+			if !ssn.JobPipelined(preemptorJob) {
 				stmt.Discard()
 				continue
 			}
@@ -176,35 +175,22 @@ func preempt(
 	nodes map[string]*api.NodeInfo,
 	filter func(*api.TaskInfo) bool,
 ) (bool, error) {
-	predicateNodes := []*api.NodeInfo{}
-	nodeScores := map[int][]*api.NodeInfo{}
 	assigned := false
 
-	for _, node := range nodes {
-		if err := ssn.PredicateFn(preemptor, node); err != nil {
-			glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
-				preemptor.Namespace, preemptor.Name, node.Name, err)
-			continue
-		} else {
-			predicateNodes = append(predicateNodes, node)
-		}
-	}
-	for _, node := range predicateNodes {
-		score, err := ssn.NodeOrderFn(preemptor, node)
-		if err != nil {
-			glog.V(3).Infof("Error in Calculating Priority for the node:%v", err)
-		} else {
-			nodeScores[score] = append(nodeScores[score], node)
-		}
-	}
-	selectedNodes := util.SelectBestNode(nodeScores)
+	allNodes := util.GetNodeList(nodes)
+
+	predicateNodes := util.PredicateNodes(preemptor, allNodes, ssn.PredicateFn)
+
+	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.NodeOrderFn)
+
+	selectedNodes := util.SortNodes(nodeScores)
 	for _, node := range selectedNodes {
 		glog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
 			preemptor.Namespace, preemptor.Name, node.Name)
 
 		var preemptees []*api.TaskInfo
 		preempted := api.EmptyResource()
-		resreq := preemptor.Resreq.Clone()
+		resreq := preemptor.InitResreq.Clone()
 
 		for _, task := range node.Tasks {
 			if filter == nil {
@@ -221,8 +207,15 @@ func preempt(
 			continue
 		}
 
-		// Preempt victims for tasks.
-		for _, preemptee := range victims {
+		victimsQueue := util.NewPriorityQueue(func(l, r interface{}) bool {
+			return !ssn.TaskOrderFn(l, r)
+		})
+		for _, victim := range victims {
+			victimsQueue.Push(victim)
+		}
+		// Preempt victims for tasks, pick lowest priority task first.
+		for !victimsQueue.Empty() {
+			preemptee := victimsQueue.Pop().(*api.TaskInfo)
 			glog.Errorf("Try to preempt Task <%s/%s> for Tasks <%s/%s>",
 				preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name)
 			if err := stmt.Evict(preemptee, "preempt"); err != nil {
@@ -239,9 +232,9 @@ func preempt(
 
 		metrics.RegisterPreemptionAttempts()
 		glog.V(3).Infof("Preempted <%v> for task <%s/%s> requested <%v>.",
-			preempted, preemptor.Namespace, preemptor.Name, preemptor.Resreq)
+			preempted, preemptor.Namespace, preemptor.Name, preemptor.InitResreq)
 
-		if preemptor.Resreq.LessEqual(preempted) {
+		if preemptor.InitResreq.LessEqual(preempted) {
 			if err := stmt.Pipeline(preemptor, node.Name); err != nil {
 				glog.Errorf("Failed to pipline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)

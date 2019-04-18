@@ -17,18 +17,21 @@ limitations under the License.
 package conformance
 
 import (
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/apis/scheduling"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
 type conformancePlugin struct {
+	// Arguments given for the plugin
+	pluginArguments framework.Arguments
 }
 
-func New() framework.Plugin {
-	return &conformancePlugin{}
+// New return conformance plugin
+func New(arguments framework.Arguments) framework.Plugin {
+	return &conformancePlugin{pluginArguments: arguments}
 }
 
 func (pp *conformancePlugin) Name() string {
