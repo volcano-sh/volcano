@@ -66,7 +66,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 				continue
 			}
 
-			if err := cc.deleteJobPod(job.Name, pod); err != nil {
+			if err := cc.deleteJobPod(job.Name, pod); err == nil {
 				terminating++
 			} else {
 				errs = append(errs, err)
