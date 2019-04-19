@@ -18,6 +18,7 @@ package job
 
 import (
 	"github.com/golang/glog"
+	"sync"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -85,8 +86,13 @@ type Controller struct {
 	queue        workqueue.RateLimitingInterface
 	commandQueue workqueue.RateLimitingInterface
 	cache        jobcache.Cache
-	//Job Event recorder
+	// Job Event recorder
 	recorder record.EventRecorder
+
+	// To protect the jobs
+	jobsMutex sync.RWMutex
+	// The jobs that are being handled by the workers
+	jobs map[string]bool
 }
 
 // NewJobController create new Job Controller
@@ -109,6 +115,7 @@ func NewJobController(config *rest.Config) *Controller {
 		commandQueue: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		cache:        jobcache.New(),
 		recorder:     recorder,
+		jobs:         map[string]bool{},
 	}
 
 	cc.jobInformer = vkinfoext.NewSharedInformerFactory(cc.vkClients, 0).Batch().V1alpha1().Jobs()
@@ -197,9 +204,28 @@ func (cc *Controller) processNextReq() bool {
 	req := obj.(apis.Request)
 	defer cc.queue.Done(req)
 
+	key := jobcache.JobKeyByReq(&req)
+
+	// prevent multi threads processing the same job simultaneously.
+	cc.jobsMutex.Lock()
+	if cc.jobs[key] {
+		// re enqueue, because the job is being processed
+		cc.queue.AddRateLimited(req)
+		cc.jobsMutex.Unlock()
+		return true
+	} else {
+		cc.jobs[key] = true
+		cc.jobsMutex.Unlock()
+		defer func() {
+			cc.jobsMutex.Lock()
+			delete(cc.jobs, key)
+			cc.jobsMutex.Unlock()
+		}()
+	}
+
 	glog.V(3).Infof("Try to handle request <%v>", req)
 
-	jobInfo, err := cc.cache.Get(jobcache.JobKeyByReq(&req))
+	jobInfo, err := cc.cache.Get(key)
 	if err != nil {
 		// TODO(k82cn): ignore not-ready error.
 		glog.Errorf("Failed to get job by <%v> from cache: %v", req, err)
