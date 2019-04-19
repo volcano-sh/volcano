@@ -71,7 +71,7 @@ tiers:
 
 The `actions` is a list of actions that will be executed by kube-batch in order, although the "order" maybe incorrect; the kube-batch do not enforce that. In above example, `allocate, backfill` will be executed in order by kube-batch.
 
-The `plugins` is a list of plugins that will be used by related actions, e.g. allocate. It includes several tiers of plugin list by names; if it fix plugins in high priority tier, the action will not go through the plugins in lower priority tiers. In each tier, it's considered passed if all plugins are fitted in `plugins.names`.
+The `plugins` is a list of plugins that will be used by related actions, e.g. allocate. It includes several tiers of plugin list by names; if it fit plugins in high priority tier, the action will not go through the plugins in lower priority tiers. In each tier, it's considered passed if all plugins are fitted in `plugins.names`.
 
 multiple tiers for plugins is introduced into kube-batch, high priority jobs will take all resources it need; if priority equal, shares resource by DRF.
 
