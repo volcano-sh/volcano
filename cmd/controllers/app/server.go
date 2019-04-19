@@ -31,7 +31,6 @@ import (
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/rest"
-	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
@@ -72,7 +71,7 @@ func Run(opt *options.ServerOption) error {
 		return fmt.Errorf("finished without leader elect")
 	}
 
-	leaderElectionClient, err := clientset.NewForConfig(restclient.AddUserAgent(config, "leader-election"))
+	leaderElectionClient, err := clientset.NewForConfig(rest.AddUserAgent(config, "leader-election"))
 	if err != nil {
 		return err
 	}
