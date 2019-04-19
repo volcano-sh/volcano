@@ -22,17 +22,26 @@ import (
 	"github.com/spf13/pflag"
 )
 
+const defaultWorkers = 5
+
 // ServerOption is the main context object for the controller manager.
 type ServerOption struct {
 	Master               string
 	Kubeconfig           string
 	EnableLeaderElection bool
 	LockObjectNamespace  string
+	// WorkerThreads is the number of threads syncing operations
+	// that will be done concurrently. Larger number = faster job updating,
+	// but more CPU (and network) load.
+	WorkerThreads int32
 }
 
 // NewServerOption creates a new CMServer with a default config.
 func NewServerOption() *ServerOption {
-	s := ServerOption{}
+	s := ServerOption{
+		// default setting
+		WorkerThreads: defaultWorkers,
+	}
 	return &s
 }
 
@@ -43,11 +52,18 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableLeaderElection, "leader-elect", s.EnableLeaderElection, "Start a leader election client and gain leadership before "+
 		"executing the main loop. Enable this when running replicated kar-scheduler for high availability.")
 	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", s.LockObjectNamespace, "Define the namespace of the lock object.")
+	fs.Int32Var(&s.WorkerThreads, "worker-threads", s.WorkerThreads, "The number of job syncing operations that will be done concurrently. "+
+		"Larger number = faster job updating, but more CPU (and network) load")
 }
 
 func (s *ServerOption) CheckOptionOrDie() error {
 	if s.EnableLeaderElection && s.LockObjectNamespace == "" {
 		return fmt.Errorf("lock-object-namespace must not be nil when LeaderElection is enabled")
 	}
+
+	if s.WorkerThreads <= 0 {
+		return fmt.Errorf("worker-threads must be greater than 0")
+	}
+
 	return nil
 }

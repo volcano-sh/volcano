@@ -63,7 +63,7 @@ func Run(opt *options.ServerOption) error {
 	jobController := job.NewJobController(config)
 
 	run := func(ctx context.Context) {
-		jobController.Run(ctx.Done())
+		jobController.Run(int(opt.WorkerThreads), ctx.Done())
 		<-ctx.Done()
 	}
 

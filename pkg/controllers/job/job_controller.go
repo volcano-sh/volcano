@@ -162,7 +162,7 @@ func NewJobController(config *rest.Config) *Controller {
 }
 
 // Run start JobController
-func (cc *Controller) Run(stopCh <-chan struct{}) {
+func (cc *Controller) Run(workers int, stopCh <-chan struct{}) {
 	go cc.jobInformer.Informer().Run(stopCh)
 	go cc.pgInformer.Informer().Run(stopCh)
 	go cc.cmdInformer.Informer().Run(stopCh)
@@ -172,7 +172,10 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 		cc.svcSynced, cc.cmdSynced, cc.pvcSynced)
 
 	go wait.Until(cc.handleCommands, 0, stopCh)
-	go wait.Until(cc.worker, 0, stopCh)
+
+	for i := 0; i < workers; i++ {
+		go wait.Until(cc.worker, 0, stopCh)
+	}
 
 	go cc.cache.Run(stopCh)
 
