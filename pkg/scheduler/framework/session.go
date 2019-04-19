@@ -364,6 +364,10 @@ func (ssn *Session) UpdateJobCondition(jobInfo *api.JobInfo, cond *v1alpha1.PodG
 		return fmt.Errorf("failed to find job <%s/%s>", jobInfo.Namespace, jobInfo.Name)
 	}
 
+	if job.PodGroup == nil {
+		return nil
+	}
+
 	index := -1
 	for i, c := range job.PodGroup.Status.Conditions {
 		if c.Type == cond.Type {
