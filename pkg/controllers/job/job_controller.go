@@ -203,6 +203,15 @@ func (cc *Controller) processNextReq() bool {
 		return true
 	}
 
+	job, err := cc.jobLister.Jobs(req.Namespace).Get(req.JobName)
+	if err != nil {
+		glog.Errorf("Failed to get job by <%v>, maybe it is deleted", req.Namespace, req.JobName)
+		return true
+	}
+
+	// overwrite the job to prevent directly modify underlying cache.
+	jobInfo.Job = job.DeepCopy()
+
 	st := state.NewState(jobInfo)
 	if st == nil {
 		glog.Errorf("Invalid state <%s> of Job <%v/%v>",

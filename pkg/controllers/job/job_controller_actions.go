@@ -19,6 +19,7 @@ package job
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/golang/glog"
 
@@ -106,14 +107,10 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	}
 
 	// Update Job status
-	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
+	if err := cc.updateJobStatus(job); err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
-	} else {
-		if e := cc.cache.Update(job); e != nil {
-			return e
-		}
 	}
 
 	// Delete PodGroup
@@ -298,14 +295,10 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		job.Status.State = nextState(job.Status)
 	}
 
-	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
+	if err := cc.updateJobStatus(job); err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
-	} else {
-		if e := cc.cache.Update(job); e != nil {
-			return e
-		}
 	}
 
 	return nil
@@ -469,4 +462,28 @@ func (cc *Controller) deleteJobPod(jobName string, pod *v1.Pod) error {
 	}
 
 	return nil
+}
+
+func (cc *Controller) updateJobStatus(job *vkbatchv1.Job) error {
+	var err error
+	if _, err = cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err == nil {
+		return nil
+	}
+
+	for i := 0; i < 3; i++ {
+		var current *vkbatchv1.Job
+		current, err = cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
+		if err != nil {
+			continue
+		}
+
+		current.Status = job.Status
+		if _, err = cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
+			// TODO: a random backoff retry?
+			time.Sleep(100 * time.Millisecond)
+		}
+		break
+	}
+
+	return err
 }
