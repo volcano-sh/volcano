@@ -26,9 +26,9 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
 
-	kbtype "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkbusv1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	kbtype "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
 	vkcache "volcano.sh/volcano/pkg/controllers/job/cache"
 )
@@ -292,7 +292,7 @@ func (cc *Controller) deletePod(obj interface{}) {
 	}
 
 	if err := cc.cache.DeletePod(pod); err != nil {
-		glog.Errorf("Failed to update Pod <%s/%s>: %v in cache",
+		glog.Errorf("Failed to delete Pod <%s/%s>: %v in cache",
 			pod.Namespace, pod.Name, err)
 	}
 

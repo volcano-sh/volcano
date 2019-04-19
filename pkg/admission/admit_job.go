@@ -25,6 +25,7 @@ import (
 
 	"k8s.io/api/admission/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
 	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -87,6 +88,11 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 
 		// count replicas
 		totalReplicas = totalReplicas + task.Replicas
+
+		// validate task name
+		if errMsgs := validation.IsDNS1123Label(task.Name); len(errMsgs) > 0 {
+			msg = msg + fmt.Sprintf(" %v;", errMsgs)
+		}
 
 		// duplicate task name
 		if _, found := taskNames[task.Name]; found {
