@@ -10,7 +10,7 @@ webhooks:
         name: {{ .Release.Name }}-admission-service
         namespace: {{ .Release.Namespace }}
         path: /jobs
-    failurePolicy: Ignore
+    failurePolicy: Fail
     name: validatejob.volcano.sh
     namespaceSelector: {}
     rules:
@@ -36,7 +36,7 @@ webhooks:
         name: {{ .Release.Name }}-admission-service
         namespace: {{ .Release.Namespace }}
         path: /mutating-jobs
-    failurePolicy: Ignore
+    failurePolicy: Fail
     name: mutatejob.volcano.sh
     namespaceSelector: {}
     rules:
