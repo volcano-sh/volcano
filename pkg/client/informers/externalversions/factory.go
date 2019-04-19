@@ -24,8 +24,6 @@ import (
 	time "time"
 
 	versioned "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
-	batch "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/batch"
-	bus "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/bus"
 	internalinterfaces "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/internalinterfaces"
 	scheduling "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -174,17 +172,7 @@ type SharedInformerFactory interface {
 	ForResource(resource schema.GroupVersionResource) (GenericInformer, error)
 	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
 
-	Batch() batch.Interface
-	Bus() bus.Interface
 	Scheduling() scheduling.Interface
-}
-
-func (f *sharedInformerFactory) Batch() batch.Interface {
-	return batch.New(f, f.namespace, f.tweakListOptions)
-}
-
-func (f *sharedInformerFactory) Bus() bus.Interface {
-	return bus.New(f, f.namespace, f.tweakListOptions)
 }
 
 func (f *sharedInformerFactory) Scheduling() scheduling.Interface {
