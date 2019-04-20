@@ -179,6 +179,11 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		return
 	}
 
+	// If the pod phase does not change, ignore this update event.
+	if oldPod.Status.Phase == newPod.Status.Phase {
+		return
+	}
+
 	taskName, found := newPod.Annotations[vkbatchv1.TaskSpecKey]
 	if !found {
 		glog.Infof("Failed to find taskName of Pod <%s/%s>, skipping",
