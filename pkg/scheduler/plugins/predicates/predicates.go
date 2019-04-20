@@ -55,9 +55,7 @@ func formatReason(reasons []algorithm.PredicateFailureReason) string {
 }
 
 func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
-	pl := &util.PodLister{
-		Session: ssn,
-	}
+	pl := util.NewPodLister(ssn)
 
 	ni := &util.CachedNodeInfo{
 		Session: ssn,
