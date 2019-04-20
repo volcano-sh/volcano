@@ -163,7 +163,7 @@ func jobStatus(ssn *Session, jobInfo *api.JobInfo) v1alpha1.PodGroupStatus {
 	} else {
 		allocated := 0
 		for status, tasks := range jobInfo.TaskStatusIndex {
-			if api.AllocatedStatus(status) {
+			if api.AllocatedStatus(status) || status == api.Succeeded {
 				allocated += len(tasks)
 			}
 		}
