@@ -18,9 +18,11 @@ package job
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/golang/glog"
+
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,6 +35,7 @@ import (
 	"volcano.sh/volcano/pkg/controllers/job/apis"
 	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
+	kbapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 
 func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
@@ -152,18 +155,12 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	return nil
 }
 
-func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
-	glog.V(3).Infof("Starting to sync up Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
-	defer glog.V(3).Infof("Finished Job <%s/%s> sync up", jobInfo.Job.Namespace, jobInfo.Job.Name)
+func (cc *Controller) createJob(jobInfo *apis.JobInfo, nextState state.UpdateStatusFn) error {
+	glog.V(3).Infof("Starting to create Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
+	defer glog.V(3).Infof("Finished Job <%s/%s> create", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
 	job := jobInfo.Job
 	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
-
-	if job.DeletionTimestamp != nil {
-		glog.Infof("Job <%s/%s> is terminating, skip management process.",
-			job.Namespace, job.Name)
-		return nil
-	}
 
 	if err := cc.createPodGroupIfNotExist(job); err != nil {
 		return err
@@ -177,6 +174,22 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 		cc.recorder.Event(job, v1.EventTypeWarning, string(vkbatchv1.PluginError),
 			fmt.Sprintf("Execute plugin when job add failed, err: %v", err))
 		return err
+	}
+
+	return nil
+}
+
+func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
+	glog.V(3).Infof("Starting to sync up Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
+	defer glog.V(3).Infof("Finished Job <%s/%s> sync up", jobInfo.Job.Namespace, jobInfo.Job.Name)
+
+	job := jobInfo.Job
+	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
+
+	if job.DeletionTimestamp != nil {
+		glog.Infof("Job <%s/%s> is terminating, skip management process.",
+			job.Namespace, job.Name)
+		return nil
 	}
 
 	var running, pending, terminating, succeeded, failed int32
@@ -417,8 +430,9 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 				},
 			},
 			Spec: kbv1.PodGroupSpec{
-				MinMember: job.Spec.MinAvailable,
-				Queue:     job.Spec.Queue,
+				MinMember:    job.Spec.MinAvailable,
+				Queue:        job.Spec.Queue,
+				MinResources: cc.calcPGMinResources(job),
 			},
 		}
 
@@ -431,4 +445,51 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 	}
 
 	return nil
+}
+
+type TaskPriority struct {
+	priority int32
+
+	vkbatchv1.TaskSpec
+}
+
+type TasksPriority []TaskPriority
+
+func (p TasksPriority) Len() int { return len(p) }
+
+func (p TasksPriority) Less(i, j int) bool {
+	return p[i].priority > p[j].priority
+}
+
+func (p TasksPriority) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
+
+func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
+	// sort task by priorityClasses
+	var tasksPriority TasksPriority
+	for index, _ := range job.Spec.Tasks {
+		tp := TaskPriority{0, job.Spec.Tasks[index]}
+		pc := job.Spec.Tasks[index].Template.Spec.PriorityClassName
+		if len(cc.priorityClasses) != 0 && cc.priorityClasses[pc] != nil {
+			tp.priority = cc.priorityClasses[pc].Value
+		}
+		tasksPriority = append(tasksPriority, tp)
+	}
+
+	sort.Sort(tasksPriority)
+
+	minAvailableTasksRes := kbapi.EmptyResource()
+	podCnt := int32(0)
+	for _, task := range tasksPriority {
+		for i := int32(0); i < task.Replicas; i++ {
+			if podCnt >= job.Spec.MinAvailable {
+				break
+			}
+			podCnt++
+			for _, c := range task.Template.Spec.Containers {
+				minAvailableTasksRes.Add(kbapi.NewResource(c.Resources.Requests))
+			}
+		}
+	}
+
+	return minAvailableTasksRes.Convert2K8sResource()
 }

@@ -134,6 +134,8 @@ const (
 	ResumeJobAction Action = "ResumeJob"
 	// SyncJobAction is the action to sync Job/Pod status.
 	SyncJobAction Action = "SyncJob"
+	// EnqueueAction is the action to sync Job inqueue status.
+	EnqueueAction Action = "EnqueueJob"
 )
 
 // LifecyclePolicy specifies the lifecycle and error handling of task and job.
@@ -195,6 +197,8 @@ const (
 	Terminated JobPhase = "Terminated"
 	// Failed is the phase that the job is restarted failed reached the maximum number of retries.
 	Failed JobPhase = "Failed"
+	// Inqueue is the phase that cluster have idle resource to schedule the job
+	Inqueue JobPhase = "Inqueue"
 )
 
 // JobState contains details for the current state of the job.

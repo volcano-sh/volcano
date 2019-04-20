@@ -29,6 +29,8 @@ var (
 	SyncJob ActionFn
 	// KillJob kill all Pods of Job.
 	KillJob ActionFn
+	// CreateJob will prepare to create Job.
+	CreateJob ActionFn
 )
 
 type State interface {
@@ -57,6 +59,8 @@ func NewState(jobInfo *apis.JobInfo) State {
 		return &completingState{job: jobInfo}
 	case vkv1.Failed:
 		return &failedState{job: jobInfo}
+	case vkv1.Inqueue:
+		return &inqueueState{job: jobInfo}
 	}
 
 	// It's pending by default.

@@ -21,6 +21,7 @@ import (
 
 	"github.com/golang/glog"
 
+	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -52,6 +53,10 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 	queues := map[api.QueueID]*api.QueueInfo{}
 
 	for _, job := range ssn.Jobs {
+		if job.PodGroup.Status.Phase != v1alpha1.PodGroupInqueue {
+			continue
+		}
+
 		if queue, found := ssn.Queues[job.Queue]; !found {
 			continue
 		} else if _, existed := queues[queue.UID]; !existed {
