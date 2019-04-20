@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Volcano Authors.
+Copyright 2019 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,11 +21,11 @@ import (
 	"volcano.sh/volcano/pkg/controllers/job/apis"
 )
 
-type pendingState struct {
+type inqueueState struct {
 	job *apis.JobInfo
 }
 
-func (ps *pendingState) Execute(action vkv1.Action) error {
+func (ps *inqueueState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.RestartJobAction:
 		return KillJob(ps.job, func(status *vkv1.JobStatus) {
@@ -55,7 +55,7 @@ func (ps *pendingState) Execute(action vkv1.Action) error {
 
 			status.State.Phase = phase
 		})
-	case vkv1.EnqueueAction:
+	default:
 		return SyncJob(ps.job, func(status *vkv1.JobStatus) {
 			phase := vkv1.Inqueue
 
@@ -65,7 +65,6 @@ func (ps *pendingState) Execute(action vkv1.Action) error {
 
 			status.State.Phase = phase
 		})
-	default:
-		return CreateJob(ps.job, nil)
 	}
+	return nil
 }

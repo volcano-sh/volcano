@@ -21,6 +21,7 @@ import (
 	"math"
 
 	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 // Resource struct defines all the resource type
@@ -195,4 +196,12 @@ func (r *Resource) Get(rn v1.ResourceName) float64 {
 // ResourceNames returns all resource types
 func ResourceNames() []v1.ResourceName {
 	return []v1.ResourceName{v1.ResourceCPU, v1.ResourceMemory, GPUResourceName}
+}
+
+func (r *Resource) Convert2K8sResource() *v1.ResourceList {
+	return &v1.ResourceList{
+		v1.ResourceCPU:    *resource.NewMilliQuantity(int64(r.MilliCPU), resource.DecimalSI),
+		v1.ResourceMemory: *resource.NewQuantity(int64(r.Memory), resource.BinarySI),
+		GPUResourceName:   *resource.NewMilliQuantity(int64(r.MilliGPU), resource.DecimalSI),
+	}
 }
