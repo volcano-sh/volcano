@@ -1,0 +1,89 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: mxnet-job
+spec:
+  minAvailable: 5
+  schedulerName: kube-batch
+  policies:
+  - event: PodEvicted
+    action: RestartJob
+  - event: PodFailed
+    action: RestartJob
+  plugins:
+    svc: []
+  tasks:
+  - replicas: 2
+    name: worker
+    template:
+      spec:
+        imagePullSecrets:
+        - name: default-secret
+        containers:
+        - image: sivanzcw/mxnet-train-mnist:cpu
+          args:
+          - --kv-store=dist_sync
+          imagePullPolicy: IfNotPresent
+          name: mxnet
+          env:
+          - name: DMLC_PS_ROOT_PORT
+            value: "9000"
+          - name: DMLC_PS_ROOT_URI
+            value: mxnet-job-scheduler-0.mxnet-job
+          - name: DMLC_NUM_SERVER
+            value: "2"
+          - name: DMLC_NUM_WORKER
+            value: "2"
+          - name: DMLC_ROLE
+            value: "worker"
+          - name: DMLC_USE_KUBERNETES
+            value: "1"
+        restartPolicy: OnFailure
+  - replicas: 2
+    name: server
+    template:
+      spec:
+        imagePullSecrets:
+        - name: default-secret
+        containers:
+        - image: sivanzcw/mxnet-train-mnist:cpu
+          imagePullPolicy: IfNotPresent
+          name: mxnet
+          env:
+          - name: DMLC_PS_ROOT_PORT
+            value: "9000"
+          - name: DMLC_PS_ROOT_URI
+            value: mxnet-job-scheduler-0.mxnet-job
+          - name: DMLC_NUM_SERVER
+            value: "2"
+          - name: DMLC_NUM_WORKER
+            value: "2"
+          - name: DMLC_ROLE
+            value: "server"
+          - name: DMLC_USE_KUBERNETES
+            value: "1"
+        restartPolicy: OnFailure
+  - replicas: 1
+    name: scheduler
+    template:
+      spec:
+        imagePullSecrets:
+        - name: default-secret
+        containers:
+        - image: sivanzcw/mxnet-train-mnist:cpu
+          imagePullPolicy: IfNotPresent
+          name: mxnet
+          env:
+          - name: DMLC_PS_ROOT_PORT
+            value: "9000"
+          - name: DMLC_PS_ROOT_URI
+            value: mxnet-job-scheduler-0.mxnet-job
+          - name: DMLC_NUM_SERVER
+            value: "2"
+          - name: DMLC_NUM_WORKER
+            value: "2"
+          - name: DMLC_ROLE
+            value: "scheduler"
+          - name: DMLC_USE_KUBERNETES
+            value: "1"
+        restartPolicy: OnFailure
