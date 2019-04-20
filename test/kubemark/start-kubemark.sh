@@ -15,7 +15,7 @@ if [ ! -d "$KUBE_ROOT/_output" ]; then
   git clone https://github.com/kubernetes/kubernetes.git
   cd kubernetes
   make quick-release
-  mv _output/  $KUBE_ROOT 
+  mv _output/  $KUBE_ROOT
 fi
 
 

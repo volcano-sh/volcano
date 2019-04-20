@@ -49,9 +49,10 @@ const (
 )
 
 var _ = Describe("Job E2E Test", func() {
-	// This test case requires a kubemark cluster so by default added as pending
-	// To run the test case explicitly ask for it by  setting the Focus for the test case
-	PIt("Schedule Density Job", func() {
+	It("[Feature:Performance] Schedule Density Job", func() {
+		if getkubemarkConfigPath() == "" {
+			Skip("Performance test skipped since config file not found")
+		}
 		context := initKubemarkDensityTestContext()
 		defer cleanupDensityTestContext(context)
 
