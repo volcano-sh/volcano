@@ -20,14 +20,16 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"time"
 
 	"github.com/golang/glog"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"volcano.sh/volcano/cmd/kube-batch/app/options"
 	"volcano.sh/volcano/pkg/scheduler"
 	"volcano.sh/volcano/pkg/version"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -51,11 +53,24 @@ const (
 	apiVersion    = "v1alpha1"
 )
 
-func buildConfig(master, kubeconfig string) (*rest.Config, error) {
+func buildConfig(opt *options.ServerOption) (*rest.Config, error) {
+	var cfg *rest.Config
+	var err error
+
+	master := opt.Master
+	kubeconfig := opt.Kubeconfig
 	if master != "" || kubeconfig != "" {
-		return clientcmd.BuildConfigFromFlags(master, kubeconfig)
+		cfg, err = clientcmd.BuildConfigFromFlags(master, kubeconfig)
+	} else {
+		cfg, err = rest.InClusterConfig()
 	}
-	return rest.InClusterConfig()
+	if err != nil {
+		return nil, err
+	}
+	cfg.QPS = opt.KubeAPIQPS
+	cfg.Burst = opt.KubeAPIBurst
+
+	return cfg, nil
 }
 
 // Run the kubeBatch scheduler
@@ -64,7 +79,7 @@ func Run(opt *options.ServerOption) error {
 		version.PrintVersionAndExit(apiVersion)
 	}
 
-	config, err := buildConfig(opt.Master, opt.Kubeconfig)
+	config, err := buildConfig(opt)
 	if err != nil {
 		return err
 	}

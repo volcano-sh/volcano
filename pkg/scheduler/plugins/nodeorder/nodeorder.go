@@ -21,7 +21,7 @@ import (
 
 	"github.com/golang/glog"
 
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/priorities"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 	"k8s.io/kubernetes/pkg/scheduler/cache"
@@ -153,22 +153,19 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 }
 
 func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
+	weight := calculateWeight(pp.pluginArguments)
+
+	pl := util.NewPodLister(ssn)
+
+	nl := &util.NodeLister{
+		Session: ssn,
+	}
+
+	cn := &cachedNodeInfo{
+		session: ssn,
+	}
+
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-
-		weight := calculateWeight(pp.pluginArguments)
-
-		pl := &util.PodLister{
-			Session: ssn,
-		}
-
-		nl := &util.NodeLister{
-			Session: ssn,
-		}
-
-		cn := &cachedNodeInfo{
-			session: ssn,
-		}
-
 		var nodeMap map[string]*cache.NodeInfo
 		var nodeSlice []*v1.Node
 		var interPodAffinityScore schedulerapi.HostPriorityList
