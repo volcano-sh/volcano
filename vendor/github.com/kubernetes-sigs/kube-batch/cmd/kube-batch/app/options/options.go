@@ -42,7 +42,10 @@ type ServerOption struct {
 	DefaultQueue         string
 	PrintVersion         bool
 	ListenAddress        string
+	EnablePriorityClass  bool
 }
+
+var ServerOpts *ServerOption
 
 // NewServerOption creates a new CMServer with a default config.
 func NewServerOption() *ServerOption {
@@ -65,6 +68,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
 	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", s.LockObjectNamespace, "Define the namespace of the lock object")
 	fs.StringVar(&s.ListenAddress, "listen-address", defaultListenAddress, "The address to listen on for HTTP requests.")
+	fs.BoolVar(&s.EnablePriorityClass, "priority-class", true,
+		"Enable PriorityClass to provide the capacity of preemption at pod group level; to disable it, set it false")
 }
 
 func (s *ServerOption) CheckOptionOrDie() error {
@@ -73,4 +78,8 @@ func (s *ServerOption) CheckOptionOrDie() error {
 	}
 
 	return nil
+}
+
+func (s *ServerOption) RegisterOptions() {
+	ServerOpts = s
 }
