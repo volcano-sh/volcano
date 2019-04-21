@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"k8s.io/kubernetes/pkg/util/file"
 	"os"
 	"path/filepath"
 	"text/template"
@@ -44,13 +45,20 @@ import (
 	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+
+	. "github.com/onsi/ginkgo"
+	"sync"
 )
 
+const currentApiCallMetricsVersion = "v1"
+
 var oneMinute = 1 * time.Minute
+var tenMinute = 10 * time.Minute
 
 var halfCPU = v1.ResourceList{"cpu": resource.MustParse("500m")}
 var oneCPU = v1.ResourceList{"cpu": resource.MustParse("1000m")}
 var twoCPU = v1.ResourceList{"cpu": resource.MustParse("2000m")}
+var smallCPU = v1.ResourceList{"cpu": resource.MustParse("2m")}
 
 const (
 	workerPriority = "worker-pri"
@@ -815,4 +823,203 @@ func preparePatchBytesforNode(nodeName string, oldNode *v1.Node, newNode *v1.Nod
 	}
 
 	return patchBytes, nil
+}
+
+func getkubemarkConfigPath() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	configPath := filepath.Join(wd, "../kubemark/kubeconfig.kubemark")
+	exist, err := file.FileExists(configPath)
+	if err != nil || !exist {
+		return ""
+	}
+	return configPath
+}
+
+func initKubemarkDensityTestContext() *context {
+	cxt := &context{
+		namespace: "test",
+		queues:    []string{"q1", "q2"},
+	}
+
+	configPath := getkubemarkConfigPath()
+	Expect(configPath).NotTo(Equal(""))
+	config, err := clientcmd.BuildConfigFromFlags("", configPath)
+	checkError(cxt, err)
+
+	cxt.kbclient = kbver.NewForConfigOrDie(config)
+	cxt.kubeclient = kubernetes.NewForConfigOrDie(config)
+
+	_, err = cxt.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: cxt.namespace,
+		},
+	})
+	checkError(cxt, err)
+
+	_, err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Create(&schedv1.PriorityClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: masterPriority,
+		},
+		Value:         100,
+		GlobalDefault: false,
+	})
+	checkError(cxt, err)
+
+	_, err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Create(&schedv1.PriorityClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: workerPriority,
+		},
+		Value:         1,
+		GlobalDefault: false,
+	})
+	checkError(cxt, err)
+
+	return cxt
+}
+
+func cleanupDensityTestContext(cxt *context) {
+	foreground := metav1.DeletePropagationForeground
+
+	err := cxt.kubeclient.CoreV1().Namespaces().Delete(cxt.namespace, &metav1.DeleteOptions{
+		PropagationPolicy: &foreground,
+	})
+	checkError(cxt, err)
+
+	err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(masterPriority, &metav1.DeleteOptions{
+		PropagationPolicy: &foreground,
+	})
+	checkError(cxt, err)
+
+	err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(workerPriority, &metav1.DeleteOptions{
+		PropagationPolicy: &foreground,
+	})
+	checkError(cxt, err)
+
+	// Wait for namespace deleted.
+	err = wait.Poll(100*time.Millisecond, tenMinute, namespaceNotExist(cxt))
+	checkError(cxt, err)
+}
+
+func createDensityJob(context *context, job *jobSpec) ([]*batchv1.Job, *kbv1.PodGroup) {
+	var jobs []*batchv1.Job
+	var podgroup *kbv1.PodGroup
+	var min int32
+
+	ns := getNS(context, job)
+
+	pg := &kbv1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      job.name,
+			Namespace: ns,
+		},
+		Spec: kbv1.PodGroupSpec{
+			MinMember:         min,
+			Queue:             job.queue,
+			PriorityClassName: job.pri,
+		},
+	}
+
+	if job.minMember != nil {
+		pg.Spec.MinMember = *job.minMember
+	}
+
+	podgroup, err := context.kbclient.SchedulingV1alpha1().PodGroups(pg.Namespace).Create(pg)
+	checkError(context, err)
+
+	for i, task := range job.tasks {
+		job := &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("%s-%d", job.name, i),
+				Namespace: ns,
+			},
+			Spec: batchv1.JobSpec{
+				Parallelism: &task.rep,
+				Completions: &task.rep,
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels:      task.labels,
+						Annotations: map[string]string{kbv1.GroupNameAnnotationKey: job.name},
+					},
+					Spec: v1.PodSpec{
+						SchedulerName: "kube-batch",
+						RestartPolicy: v1.RestartPolicyOnFailure,
+						Containers:    createContainers(task.img, task.req, task.hostport),
+						Affinity:      task.affinity,
+					},
+				},
+			},
+		}
+
+		if len(task.pri) != 0 {
+			job.Spec.Template.Spec.PriorityClassName = task.pri
+		}
+
+		job, err := context.kubeclient.BatchV1().Jobs(job.Namespace).Create(job)
+		checkError(context, err)
+		jobs = append(jobs, job)
+
+		min = min + task.min
+	}
+
+	return jobs, podgroup
+}
+
+func waitDensityTasksReady(ctx *context, pg *kbv1.PodGroup, taskNum int) error {
+	return wait.Poll(100*time.Millisecond, tenMinute, taskPhase(ctx, pg,
+		[]v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum))
+}
+
+func createRunningPodFromRC(wg *sync.WaitGroup, context *context, name, image, podType string, cpuRequest, memRequest resource.Quantity) {
+	defer GinkgoRecover()
+	defer wg.Done()
+	labels := map[string]string{
+		"type": podType,
+		"name": name,
+	}
+	rc := &v1.ReplicationController{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   name,
+			Labels: labels,
+		},
+		Spec: v1.ReplicationControllerSpec{
+			Replicas: func(i int) *int32 { x := int32(i); return &x }(1),
+			Selector: labels,
+			Template: &v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:      labels,
+					Annotations: map[string]string{"scheduling.k8s.io/group-name": "qj-1"},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  name,
+							Image: "nginx",
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU:    cpuRequest,
+									v1.ResourceMemory: memRequest,
+								},
+							},
+						},
+					},
+					DNSPolicy:     v1.DNSDefault,
+					SchedulerName: "kube-batch",
+				},
+			},
+		},
+	}
+
+	_, err := context.kubeclient.CoreV1().ReplicationControllers(context.namespace).Create(rc)
+	checkError(context, err)
+
+}
+
+func deleteReplicationController(ctx *context, name string) error {
+	foreground := metav1.DeletePropagationForeground
+	return ctx.kubeclient.CoreV1().ReplicationControllers(ctx.namespace).Delete(name, &metav1.DeleteOptions{
+		PropagationPolicy: &foreground,
+	})
 }

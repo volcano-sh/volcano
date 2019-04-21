@@ -921,7 +921,7 @@
   revision = "ced9eb3070a5f1c548ef46e8dfe2a97c208d9f03"
 
 [[projects]]
-  digest = "1:9606efb9b925b1dc2ca37607033c62f13032d91031fd168bb34847a5aecb9c39"
+  digest = "1:3bb4371ddb40e33a14307f75e57bad6d5664b82421d89897ca97065f4780d48e"
   name = "k8s.io/kubernetes"
   packages = [
     "pkg/api/legacyscheme",
@@ -1060,6 +1060,8 @@
     "pkg/volume/util/recyclerclient",
     "pkg/volume/util/types",
     "pkg/volume/util/volumepathhandler",
+    "test/e2e/perftype",
+    "test/utils/image",
   ]
   pruneopts = "UT"
   revision = "cff46ab41ff0bb44d8584413b598ad8360ec1def"
@@ -1110,6 +1112,7 @@
     "k8s.io/apimachinery/pkg/api/meta",
     "k8s.io/apimachinery/pkg/api/resource",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
+    "k8s.io/apimachinery/pkg/fields",
     "k8s.io/apimachinery/pkg/labels",
     "k8s.io/apimachinery/pkg/runtime",
     "k8s.io/apimachinery/pkg/runtime/schema",
@@ -1155,12 +1158,15 @@
     "k8s.io/kubernetes/pkg/api/v1/pod",
     "k8s.io/kubernetes/pkg/apis/scheduling",
     "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset",
+    "k8s.io/kubernetes/pkg/kubelet/apis",
     "k8s.io/kubernetes/pkg/scheduler/algorithm",
     "k8s.io/kubernetes/pkg/scheduler/algorithm/predicates",
     "k8s.io/kubernetes/pkg/scheduler/algorithm/priorities",
     "k8s.io/kubernetes/pkg/scheduler/api",
     "k8s.io/kubernetes/pkg/scheduler/cache",
     "k8s.io/kubernetes/pkg/scheduler/volumebinder",
+    "k8s.io/kubernetes/test/e2e/perftype",
+    "k8s.io/kubernetes/test/utils/image",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1
