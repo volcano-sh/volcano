@@ -22,14 +22,13 @@ import (
 
 	"github.com/golang/glog"
 
-	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
 	"k8s.io/kubernetes/pkg/scheduler/cache"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
 type predicatesPlugin struct {
@@ -46,65 +45,6 @@ func (pp *predicatesPlugin) Name() string {
 	return "predicates"
 }
 
-type podLister struct {
-	session *framework.Session
-}
-
-func (pl *podLister) List(selector labels.Selector) ([]*v1.Pod, error) {
-	var pods []*v1.Pod
-	for _, job := range pl.session.Jobs {
-		for status, tasks := range job.TaskStatusIndex {
-			if !api.AllocatedStatus(status) {
-				continue
-			}
-
-			for _, task := range tasks {
-				if selector.Matches(labels.Set(task.Pod.Labels)) {
-					pod := task.Pod.DeepCopy()
-					pod.Spec.NodeName = task.NodeName
-					pods = append(pods, pod)
-				}
-			}
-		}
-	}
-
-	return pods, nil
-}
-
-func (pl *podLister) FilteredList(podFilter algorithm.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
-	var pods []*v1.Pod
-	for _, job := range pl.session.Jobs {
-		for status, tasks := range job.TaskStatusIndex {
-			if !api.AllocatedStatus(status) {
-				continue
-			}
-
-			for _, task := range tasks {
-				if podFilter(task.Pod) && selector.Matches(labels.Set(task.Pod.Labels)) {
-					pod := task.Pod.DeepCopy()
-					pod.Spec.NodeName = task.NodeName
-					pods = append(pods, pod)
-				}
-			}
-		}
-	}
-
-	return pods, nil
-}
-
-type cachedNodeInfo struct {
-	session *framework.Session
-}
-
-func (c *cachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
-	node, found := c.session.Nodes[name]
-	if !found {
-		return nil, fmt.Errorf("failed to find node <%s>", name)
-	}
-
-	return node.Node, nil
-}
-
 func formatReason(reasons []algorithm.PredicateFailureReason) string {
 	reasonStrings := []string{}
 	for _, v := range reasons {
@@ -115,12 +55,12 @@ func formatReason(reasons []algorithm.PredicateFailureReason) string {
 }
 
 func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
-	pl := &podLister{
-		session: ssn,
+	pl := &util.PodLister{
+		Session: ssn,
 	}
 
-	ni := &cachedNodeInfo{
-		session: ssn,
+	ni := &util.CachedNodeInfo{
+		Session: ssn,
 	}
 
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
