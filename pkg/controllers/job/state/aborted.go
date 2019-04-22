@@ -30,6 +30,7 @@ func (as *abortedState) Execute(action vkv1.Action) error {
 	case vkv1.ResumeJobAction:
 		return SyncJob(as.job, func(status *vkv1.JobStatus) {
 			status.State.Phase = vkv1.Restarting
+			status.RetryCount++
 		})
 	default:
 		return KillJob(as.job, nil)

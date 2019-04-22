@@ -32,6 +32,7 @@ func (ps *inqueueState) Execute(action vkv1.Action) error {
 			phase := vkv1.Pending
 			if status.Terminating != 0 {
 				phase = vkv1.Restarting
+				status.RetryCount++
 			}
 
 			status.State.Phase = phase

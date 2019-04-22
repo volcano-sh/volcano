@@ -32,6 +32,7 @@ func (ps *runningState) Execute(action vkv1.Action) error {
 			phase := vkv1.Running
 			if status.Terminating != 0 {
 				phase = vkv1.Restarting
+				status.RetryCount++
 			}
 
 			status.State.Phase = phase
