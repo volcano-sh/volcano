@@ -39,6 +39,7 @@ type QueuesGetter interface {
 type QueueInterface interface {
 	Create(*v1alpha1.Queue) (*v1alpha1.Queue, error)
 	Update(*v1alpha1.Queue) (*v1alpha1.Queue, error)
+	UpdateStatus(*v1alpha1.Queue) (*v1alpha1.Queue, error)
 	Delete(name string, options *v1.DeleteOptions) error
 	DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error
 	Get(name string, options v1.GetOptions) (*v1alpha1.Queue, error)
@@ -119,6 +120,21 @@ func (c *queues) Update(queue *v1alpha1.Queue) (result *v1alpha1.Queue, err erro
 	err = c.client.Put().
 		Resource("queues").
 		Name(queue.Name).
+		Body(queue).
+		Do().
+		Into(result)
+	return
+}
+
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+
+func (c *queues) UpdateStatus(queue *v1alpha1.Queue) (result *v1alpha1.Queue, err error) {
+	result = &v1alpha1.Queue{}
+	err = c.client.Put().
+		Resource("queues").
+		Name(queue.Name).
+		SubResource("status").
 		Body(queue).
 		Do().
 		Into(result)

@@ -173,10 +173,24 @@ type Queue struct {
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
-	// Specification of the desired behavior of the pod group.
+	// Specification of the desired behavior of the queue.
 	// More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status
 	// +optional
 	Spec QueueSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
+
+	// The status of queue.
+	// +optional
+	Status QueueStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
+}
+
+// QueueStatus represents the status of Queue.
+type QueueStatus struct {
+	// The number of 'Unknonw' PodGroup in this queue.
+	Unknown int32 `json:"unknown,omitempty" protobuf:"bytes,1,opt,name=unknown"`
+	// The number of 'Pending' PodGroup in this queue.
+	Pending int32 `json:"pending,omitempty" protobuf:"bytes,2,opt,name=pending"`
+	// The number of 'Running' PodGroup in this queue.
+	Running int32 `json:"running,omitempty" protobuf:"bytes,3,opt,name=running"`
 }
 
 // QueueSpec represents the template of Queue.
