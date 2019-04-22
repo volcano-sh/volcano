@@ -489,6 +489,8 @@ func (sc *SchedulerCache) processCleanupJob() {
 		return
 	}
 
+	defer sc.deletedJobs.Done(obj)
+
 	job, found := obj.(*kbapi.JobInfo)
 	if !found {
 		glog.Errorf("Failed to convert <%v> to *JobInfo", obj)
@@ -516,6 +518,9 @@ func (sc *SchedulerCache) processResyncTask() {
 	if shutdown {
 		return
 	}
+
+	defer sc.errTasks.Done(obj)
+
 	task, ok := obj.(*kbapi.TaskInfo)
 	if !ok {
 		glog.Errorf("failed to convert %v to *v1.Pod", obj)
