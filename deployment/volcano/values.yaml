@@ -5,3 +5,4 @@ basic:
   admission_image_name: "kubesigs/vk-admission"
   admission_secret_name: "volcano-admission-secret"
   image_pull_secret: ""
+  scheduler_conf_file: "/volcano.scheduler/kube-batch.conf"
