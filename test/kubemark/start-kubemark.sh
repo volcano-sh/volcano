@@ -1,11 +1,22 @@
 #!/usr/bin/env bash
 
-TMP_ROOT="$(dirname "${BASH_SOURCE}")/../../vendor/k8s.io/kubernetes"
+VK_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/../..
+TMP_ROOT="${VK_ROOT}/vendor/k8s.io/kubernetes"
 KUBE_ROOT=$(readlink -e "${TMP_ROOT}" 2> /dev/null || perl -MCwd -e 'print Cwd::abs_path shift' "${TMP_ROOT}")
 KUBEMARK_DIRECTORY="${KUBE_ROOT}/test/kubemark"
 RESOURCE_DIRECTORY="${KUBEMARK_DIRECTORY}/resources"
-CRD_DIRECTORY="${KUBE_ROOT}/../../../deployment/kube-batch/templates"
-QUEUE_DIR="${KUBE_ROOT}/../../../config/queue"
+CRD_DIRECTORY="${VK_ROOT}/deployment/kube-batch/templates"
+QUEUE_DIR="${VK_ROOT}/config/queue"
+
+#Release version for kube batch
+RELEASE_VER=v0.4.2
+
+#Ensure external cluster exists and kubectl binary works
+kubectl get nodes
+if [[ $? != 0 ]]; then
+  echo "External kubernetes cluster required for kubemark"
+  exit 1
+fi
 
 #Build kubernetes Binary and copy to _output folder
 if [ ! -d "$KUBE_ROOT/_output" ]; then
@@ -24,20 +35,25 @@ if [ ! -d "$KUBE_ROOT/_output" ]; then
   fi
 fi
 
-
+#Update kubemark script to install kube-batch when starting master
+echo "Modify kubemark master script"
+cp "${KUBEMARK_DIRECTORY}/resources/start-kubemark-master.sh" "${KUBEMARK_DIRECTORY}/resources/start-kubemark-master.sh.bak"
 #Appending lines to start kube-batch
 src="start-kubemaster-component \"kube-scheduler\""
-dest="start-kubemaster-component \"kube-scheduler\" \ncp \${KUBE_ROOT}/kubeconfig.kubemark /etc/srv/kubernetes \nstart-kubemaster-component \"kube-batch\""
+dest="start-kubemaster-component \"kube-scheduler\" \ncp \${KUBE_ROOT}/kubeconfig.kubemark /etc/srv/kubernetes \ncp \${KUBE_ROOT}/kube-batch.yaml /etc/kubernetes/manifests\n"
 sed -i "s@${src}@${dest}@g" "${KUBEMARK_DIRECTORY}/resources/start-kubemark-master.sh"
 
 #Appending lines to copy kube-batch.yaml
+cp "${KUBEMARK_DIRECTORY}/start-kubemark.sh" "${KUBEMARK_DIRECTORY}/start-kubemark.sh.bak"
 src1="\"\${SERVER_BINARY_TAR}\" \\\\"
 dest1="\"\${SERVER_BINARY_TAR}\" \\\\\n    \"\${RESOURCE_DIRECTORY}/kube-batch.yaml\" \\\\"
 sed -i "s@${src1}@${dest1}@g" "${KUBEMARK_DIRECTORY}/start-kubemark.sh"
 
+#Update kube-batch yaml and copy it to resource folder
+cp "${VK_ROOT}/test/kubemark/kube-batch.yaml"  ${RESOURCE_DIRECTORY}
+sed -i "s@{{RELEASE_VER}}@${RELEASE_VER}@g" "${RESOURCE_DIRECTORY}/kube-batch.yaml"
 
-cp kube-batch.yaml  ${RESOURCE_DIRECTORY}
-
+#Start the cluster
 bash -x ${KUBEMARK_DIRECTORY}/start-kubemark.sh
 
 #creating the CRD Queue and PodGroup
@@ -49,14 +65,5 @@ kubectl --kubeconfig="${RESOURCE_DIRECTORY}"/kubeconfig.kubemark apply -f  "${CR
 kubectl --kubeconfig="${RESOURCE_DIRECTORY}"/kubeconfig.kubemark apply -f  "${QUEUE_DIR}"/default.yaml
 
 #copy the kubemark config
-cp ${RESOURCE_DIRECTORY}/kubeconfig.kubemark  ./
+cp ${RESOURCE_DIRECTORY}/kubeconfig.kubemark  "${VK_ROOT}/test/kubemark"
 
-#Reverting the script changes in the vendor and tmp
-data="kube-batch.yaml"
-#sed -i "/${data}/d" "${KUBEMARK_DIRECTORY}/start-kubemark.sh"
-data1="kube-batch"
-data2="kubeconfig.kubemark"
-#sed -i "/${data1}/d" "${KUBEMARK_DIRECTORY}/resources/start-kubemark-master.sh"
-#sed -i "/${data2}/d" "${KUBEMARK_DIRECTORY}/resources/start-kubemark-master.sh"
-#rm -rf ${RESOURCE_DIRECTORY}/kube-batch.yaml
-rm -rf /tmp/src/
