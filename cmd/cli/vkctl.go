@@ -41,6 +41,7 @@ func main() {
 	}
 
 	rootCmd.AddCommand(buildJobCmd())
+	rootCmd.AddCommand(buildQueueCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Printf("Failed to execute command: %v", err)
