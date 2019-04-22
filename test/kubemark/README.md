@@ -5,7 +5,7 @@ There are several requirements before installing kubemark cluster for test.
 1. **Docker**: Building kubernetes releases with command``make quick-release`` require having a docker environment.
 2. **Google cloud SDKs**: Kubemark utilize GCE to create its master node in default, therefore you need ensure
    google cloud SDKs are installed on your environment. **NOTES**: ``gcloud beta`` is required in addition.
-3. **External Kubernetes cluster**: Kubemark utilize external kubernetes cluster to hold its ``Hollo Nodes``, before
+3. **External Kubernetes cluster**: Kubemark utilize external kubernetes cluster to hold its ``Hollow Nodes``, before
    creating kubemark cluster, please ensure your environment can successfully execute command: ``kubectl get nodes``
 4. **Python**: There are some commands which use python binaries to perform specific tasks, please ensure it's installed
    on your environment.
@@ -17,7 +17,7 @@ All GCE related configure options are located in file
 ``vendor/k8s.io/kubernetes/cluster/kubemark/gce/config-default.sh``, it's usually required to update some of them according
 to your own GCP environment before executing. For instance:
 ```$xslt
-ZONE=<specify your own GCP zones>
+ZONE=<specify your own GCP zone>
 NETWORK=<specify your own network resource name>
 ```
 then execute command in root folder:
