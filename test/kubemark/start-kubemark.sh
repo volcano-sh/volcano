@@ -2,7 +2,6 @@
 
 TMP_ROOT="$(dirname "${BASH_SOURCE}")/../../vendor/k8s.io/kubernetes"
 KUBE_ROOT=$(readlink -e "${TMP_ROOT}" 2> /dev/null || perl -MCwd -e 'print Cwd::abs_path shift' "${TMP_ROOT}")
-KUBECTL="${KUBE_ROOT}/cluster/kubectl.sh"
 KUBEMARK_DIRECTORY="${KUBE_ROOT}/test/kubemark"
 RESOURCE_DIRECTORY="${KUBEMARK_DIRECTORY}/resources"
 CRD_DIRECTORY="${KUBE_ROOT}/../../../deployment/kube-batch/templates"
@@ -10,12 +9,19 @@ QUEUE_DIR="${KUBE_ROOT}/../../../config/queue"
 
 #Build kubernetes Binary and copy to _output folder
 if [ ! -d "$KUBE_ROOT/_output" ]; then
-  mkdir -p /tmp/src/k8s.io
-  cd /tmp/src/k8s.io
-  git clone https://github.com/kubernetes/kubernetes.git
-  cd kubernetes
-  make quick-release
-  mv _output/  $KUBE_ROOT
+  #If source folder is specified, overwrite the _output folder
+  if [[ "${SOURCE_OUTPUT}xxx" != "xxx" ]]; then
+    echo "Copying release files into kubernetes output folder from ${SOURCE_OUTPUT}"
+    cp -r ${SOURCE_OUTPUT} $KUBE_ROOT
+  else
+    echo "Building kubernetes in temp folder /tmp/src/k8s.io and copying release files."
+    mkdir -p /tmp/src/k8s.io
+    cd /tmp/src/k8s.io
+    git clone https://github.com/kubernetes/kubernetes.git
+    cd kubernetes
+    make quick-release
+    mv _output/  $KUBE_ROOT
+  fi
 fi
 
 
@@ -30,26 +36,27 @@ dest1="\"\${SERVER_BINARY_TAR}\" \\\\\n    \"\${RESOURCE_DIRECTORY}/kube-batch.y
 sed -i "s@${src1}@${dest1}@g" "${KUBEMARK_DIRECTORY}/start-kubemark.sh"
 
 
-cp kube-batch.yaml  ${RESOURCE_DIRECTORY} 
+cp kube-batch.yaml  ${RESOURCE_DIRECTORY}
 
 bash -x ${KUBEMARK_DIRECTORY}/start-kubemark.sh
 
 #creating the CRD Queue and PodGroup
-podgroup=$("${KUBECTL}" --kubeconfig="${RESOURCE_DIRECTORY}"/kubeconfig.kubemark create -f  "${CRD_DIRECTORY}"/scheduling_v1alpha1_queue.yaml 2> /dev/null) || true
-queue=$("${KUBECTL}" --kubeconfig="${RESOURCE_DIRECTORY}"/kubeconfig.kubemark create -f  "${CRD_DIRECTORY}"/scheduling_v1alpha1_podgroup.yaml 2> /dev/null) || true
+echo "Creating kube batch resource in cluster via folder ${CRD_DIRECTORY}."
+kubectl --kubeconfig="${RESOURCE_DIRECTORY}"/kubeconfig.kubemark apply -f  "${CRD_DIRECTORY}"/scheduling_v1alpha1_queue.yaml
+kubectl --kubeconfig="${RESOURCE_DIRECTORY}"/kubeconfig.kubemark apply -f  "${CRD_DIRECTORY}"/scheduling_v1alpha1_podgroup.yaml
 
 #creating default queue
-defaultqueue=$("${KUBECTL}" --kubeconfig="${RESOURCE_DIRECTORY}"/kubeconfig.kubemark create -f  "${QUEUE_DIR}"/default.yaml 2> /dev/null) || true
+kubectl --kubeconfig="${RESOURCE_DIRECTORY}"/kubeconfig.kubemark apply -f  "${QUEUE_DIR}"/default.yaml
 
-#copy the kubemark config 
+#copy the kubemark config
 cp ${RESOURCE_DIRECTORY}/kubeconfig.kubemark  ./
 
 #Reverting the script changes in the vendor and tmp
 data="kube-batch.yaml"
-sed -i "/${data}/d" "${KUBEMARK_DIRECTORY}/start-kubemark.sh"
+#sed -i "/${data}/d" "${KUBEMARK_DIRECTORY}/start-kubemark.sh"
 data1="kube-batch"
 data2="kubeconfig.kubemark"
-sed -i "/${data1}/d" "${KUBEMARK_DIRECTORY}/resources/start-kubemark-master.sh"
-sed -i "/${data2}/d" "${KUBEMARK_DIRECTORY}/resources/start-kubemark-master.sh"
-rm -rf ${RESOURCE_DIRECTORY}/kube-batch.yaml
+#sed -i "/${data1}/d" "${KUBEMARK_DIRECTORY}/resources/start-kubemark-master.sh"
+#sed -i "/${data2}/d" "${KUBEMARK_DIRECTORY}/resources/start-kubemark-master.sh"
+#rm -rf ${RESOURCE_DIRECTORY}/kube-batch.yaml
 rm -rf /tmp/src/
