@@ -22,14 +22,13 @@ import (
 	"github.com/golang/glog"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/priorities"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 	"k8s.io/kubernetes/pkg/scheduler/cache"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
 const (
@@ -89,72 +88,6 @@ func (c *cachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
 	}
 
 	return node.Node, nil
-}
-
-type podLister struct {
-	session *framework.Session
-}
-
-func (pl *podLister) List(selector labels.Selector) ([]*v1.Pod, error) {
-	var pods []*v1.Pod
-	for _, job := range pl.session.Jobs {
-		for status, tasks := range job.TaskStatusIndex {
-			if !api.AllocatedStatus(status) {
-				continue
-			}
-
-			for _, task := range tasks {
-				if selector.Matches(labels.Set(task.Pod.Labels)) {
-					if task.NodeName != task.Pod.Spec.NodeName {
-						pod := task.Pod.DeepCopy()
-						pod.Spec.NodeName = task.NodeName
-						pods = append(pods, pod)
-					} else {
-						pods = append(pods, task.Pod)
-					}
-				}
-			}
-		}
-	}
-
-	return pods, nil
-}
-
-func (pl *podLister) FilteredList(podFilter algorithm.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
-	var pods []*v1.Pod
-	for _, job := range pl.session.Jobs {
-		for status, tasks := range job.TaskStatusIndex {
-			if !api.AllocatedStatus(status) {
-				continue
-			}
-
-			for _, task := range tasks {
-				if podFilter(task.Pod) && selector.Matches(labels.Set(task.Pod.Labels)) {
-					if task.NodeName != task.Pod.Spec.NodeName {
-						pod := task.Pod.DeepCopy()
-						pod.Spec.NodeName = task.NodeName
-						pods = append(pods, pod)
-					} else {
-						pods = append(pods, task.Pod)
-					}
-				}
-			}
-		}
-	}
-
-	return pods, nil
-}
-
-type nodeLister struct {
-	session *framework.Session
-}
-
-func (nl *nodeLister) List() ([]*v1.Node, error) {
-	var nodes []*v1.Node
-	for _, node := range nl.session.Nodes {
-		nodes = append(nodes, node.Node)
-	}
-	return nodes, nil
 }
 
 //New function returns prioritizePlugin object
@@ -224,12 +157,12 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		weight := calculateWeight(pp.pluginArguments)
 
-		pl := &podLister{
-			session: ssn,
+		pl := &util.PodLister{
+			Session: ssn,
 		}
 
-		nl := &nodeLister{
-			session: ssn,
+		nl := &util.NodeLister{
+			Session: ssn,
 		}
 
 		cn := &cachedNodeInfo{
