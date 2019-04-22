@@ -232,7 +232,7 @@ func (pp *proportionPlugin) updateShare(attr *queueAttr) {
 	res := float64(0)
 
 	// TODO(k82cn): how to handle fragment issues?
-	for _, rn := range api.ResourceNames() {
+	for _, rn := range attr.deserved.ResourceNames() {
 		share := helpers.Share(attr.allocated.Get(rn), attr.deserved.Get(rn))
 		if share > res {
 			res = share

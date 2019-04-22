@@ -22,20 +22,24 @@ import (
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 )
 
 // Resource struct defines all the resource type
 type Resource struct {
 	MilliCPU float64
 	Memory   float64
-	MilliGPU float64
+
+	// ScalarResources
+	ScalarResources map[v1.ResourceName]float64
+
 	// MaxTaskNum is only used by predicates; it should NOT
 	// be accounted in other operators, e.g. Add.
 	MaxTaskNum int
 }
 
 const (
-	//GPUResourceName need to follow https://github.com/NVIDIA/k8s-device-plugin/blob/66a35b71ac4b5cbfb04714678b548bd77e5ba719/server.go#L20
+	// GPUResourceName need to follow https://github.com/NVIDIA/k8s-device-plugin/blob/66a35b71ac4b5cbfb04714678b548bd77e5ba719/server.go#L20
 	GPUResourceName = "nvidia.com/gpu"
 )
 
@@ -49,14 +53,21 @@ func (r *Resource) Clone() *Resource {
 	clone := &Resource{
 		MilliCPU:   r.MilliCPU,
 		Memory:     r.Memory,
-		MilliGPU:   r.MilliGPU,
 		MaxTaskNum: r.MaxTaskNum,
 	}
+
+	if r.ScalarResources != nil {
+		clone.ScalarResources = make(map[v1.ResourceName]float64)
+		for k, v := range r.ScalarResources {
+			clone.ScalarResources[k] = v
+		}
+	}
+
 	return clone
 }
 
 var minMilliCPU float64 = 10
-var minMilliGPU float64 = 10
+var minMilliScalarResources float64 = 10
 var minMemory float64 = 10 * 1024 * 1024
 
 // NewResource create a new resource object from resource list
@@ -70,8 +81,10 @@ func NewResource(rl v1.ResourceList) *Resource {
 			r.Memory += float64(rQuant.Value())
 		case v1.ResourcePods:
 			r.MaxTaskNum += int(rQuant.Value())
-		case GPUResourceName:
-			r.MilliGPU += float64(rQuant.MilliValue())
+		default:
+			if v1helper.IsScalarResourceName(rName) {
+				r.AddScalar(rName, float64(rQuant.MilliValue()))
+			}
 		}
 	}
 	return r
@@ -79,7 +92,17 @@ func NewResource(rl v1.ResourceList) *Resource {
 
 // IsEmpty returns bool after checking any of resource is less than min possible value
 func (r *Resource) IsEmpty() bool {
-	return r.MilliCPU < minMilliCPU && r.Memory < minMemory && r.MilliGPU < minMilliGPU
+	if !(r.MilliCPU < minMilliCPU && r.Memory < minMemory) {
+		return false
+	}
+
+	for _, rQuant := range r.ScalarResources {
+		if rQuant >= minMilliScalarResources {
+			return false
+		}
+	}
+
+	return true
 }
 
 // IsZero checks whether that resource is less than min possible value
@@ -89,10 +112,16 @@ func (r *Resource) IsZero(rn v1.ResourceName) bool {
 		return r.MilliCPU < minMilliCPU
 	case v1.ResourceMemory:
 		return r.Memory < minMemory
-	case GPUResourceName:
-		return r.MilliGPU < minMilliGPU
 	default:
-		panic("unknown resource")
+		if r.ScalarResources == nil {
+			return true
+		}
+
+		if _, ok := r.ScalarResources[rn]; !ok {
+			panic("unknown resource")
+		}
+
+		return r.ScalarResources[rn] < minMilliScalarResources
 	}
 }
 
@@ -100,7 +129,14 @@ func (r *Resource) IsZero(rn v1.ResourceName) bool {
 func (r *Resource) Add(rr *Resource) *Resource {
 	r.MilliCPU += rr.MilliCPU
 	r.Memory += rr.Memory
-	r.MilliGPU += rr.MilliGPU
+
+	for rName, rQuant := range rr.ScalarResources {
+		if r.ScalarResources == nil {
+			r.ScalarResources = map[v1.ResourceName]float64{}
+		}
+		r.ScalarResources[rName] += rQuant
+	}
+
 	return r
 }
 
@@ -109,7 +145,14 @@ func (r *Resource) Sub(rr *Resource) *Resource {
 	if rr.LessEqual(r) {
 		r.MilliCPU -= rr.MilliCPU
 		r.Memory -= rr.Memory
-		r.MilliGPU -= rr.MilliGPU
+
+		for rrName, rrQuant := range rr.ScalarResources {
+			if r.ScalarResources == nil {
+				return r
+			}
+			r.ScalarResources[rrName] -= rrQuant
+		}
+
 		return r
 	}
 
@@ -129,12 +172,23 @@ func (r *Resource) SetMaxResource(rr *Resource) {
 	if rr.Memory > r.Memory {
 		r.Memory = rr.Memory
 	}
-	if rr.MilliGPU > r.MilliGPU {
-		r.MilliGPU = rr.MilliGPU
+
+	for rrName, rrQuant := range rr.ScalarResources {
+		if r.ScalarResources == nil {
+			r.ScalarResources = make(map[v1.ResourceName]float64)
+			for k, v := range rr.ScalarResources {
+				r.ScalarResources[k] = v
+			}
+			return
+		}
+
+		if rrQuant > r.ScalarResources[rrName] {
+			r.ScalarResources[rrName] = rrQuant
+		}
 	}
 }
 
-// FitDelta Computes the delta between a resource oject representing available
+//FitDelta Computes the delta between a resource oject representing available
 //resources an operand representing resources being requested.  Any
 //field that is less than 0 after the operation represents an
 //insufficient resource.
@@ -147,9 +201,16 @@ func (r *Resource) FitDelta(rr *Resource) *Resource {
 		r.Memory -= rr.Memory + minMemory
 	}
 
-	if rr.MilliGPU > 0 {
-		r.MilliGPU -= rr.MilliGPU + minMilliGPU
+	for rrName, rrQuant := range rr.ScalarResources {
+		if r.ScalarResources == nil {
+			r.ScalarResources = map[v1.ResourceName]float64{}
+		}
+
+		if rrQuant > 0 {
+			r.ScalarResources[rrName] -= rrQuant + minMilliScalarResources
+		}
 	}
+
 	return r
 }
 
@@ -157,26 +218,72 @@ func (r *Resource) FitDelta(rr *Resource) *Resource {
 func (r *Resource) Multi(ratio float64) *Resource {
 	r.MilliCPU = r.MilliCPU * ratio
 	r.Memory = r.Memory * ratio
-	r.MilliGPU = r.MilliGPU * ratio
+	for rName, rQuant := range r.ScalarResources {
+		r.ScalarResources[rName] = rQuant * ratio
+	}
 	return r
 }
 
 // Less checks whether a resource is less than other
 func (r *Resource) Less(rr *Resource) bool {
-	return r.MilliCPU < rr.MilliCPU && r.Memory < rr.Memory && r.MilliGPU < rr.MilliGPU
+	if !(r.MilliCPU < rr.MilliCPU && r.Memory < rr.Memory) {
+		return false
+	}
+
+	if r.ScalarResources == nil {
+		if rr.ScalarResources == nil {
+			return false
+		}
+		return true
+	}
+
+	for rName, rQuant := range r.ScalarResources {
+		if rr.ScalarResources == nil {
+			return false
+		}
+
+		rrQuant := rr.ScalarResources[rName]
+		if rQuant >= rrQuant {
+			return false
+		}
+	}
+
+	return true
 }
 
 // LessEqual checks whether a resource is less than other resource
 func (r *Resource) LessEqual(rr *Resource) bool {
-	return (r.MilliCPU < rr.MilliCPU || math.Abs(rr.MilliCPU-r.MilliCPU) < minMilliCPU) &&
-		(r.Memory < rr.Memory || math.Abs(rr.Memory-r.Memory) < minMemory) &&
-		(r.MilliGPU < rr.MilliGPU || math.Abs(rr.MilliGPU-r.MilliGPU) < minMilliGPU)
+	isLess := (r.MilliCPU < rr.MilliCPU || math.Abs(rr.MilliCPU-r.MilliCPU) < minMilliCPU) &&
+		(r.Memory < rr.Memory || math.Abs(rr.Memory-r.Memory) < minMemory)
+	if !isLess {
+		return false
+	}
+
+	if r.ScalarResources == nil {
+		return true
+	}
+
+	for rName, rQuant := range r.ScalarResources {
+		if rr.ScalarResources == nil {
+			return false
+		}
+
+		rrQuant := rr.ScalarResources[rName]
+		if !(rQuant < rrQuant || math.Abs(rrQuant-rQuant) < minMilliScalarResources) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // String returns resource details in string format
 func (r *Resource) String() string {
-	return fmt.Sprintf("cpu %0.2f, memory %0.2f, GPU %0.2f",
-		r.MilliCPU, r.Memory, r.MilliGPU)
+	str := fmt.Sprintf("cpu %0.2f, memory %0.2f", r.MilliCPU, r.Memory)
+	for rName, rQuant := range r.ScalarResources {
+		str = fmt.Sprintf("%s, %s %0.2f", str, rName, rQuant)
+	}
+	return str
 }
 
 // Get returns the resource value for that particular resource type
@@ -186,22 +293,46 @@ func (r *Resource) Get(rn v1.ResourceName) float64 {
 		return r.MilliCPU
 	case v1.ResourceMemory:
 		return r.Memory
-	case GPUResourceName:
-		return r.MilliGPU
 	default:
-		panic("not support resource.")
+		if r.ScalarResources == nil {
+			return 0
+		}
+		return r.ScalarResources[rn]
 	}
 }
 
 // ResourceNames returns all resource types
-func ResourceNames() []v1.ResourceName {
-	return []v1.ResourceName{v1.ResourceCPU, v1.ResourceMemory, GPUResourceName}
+func (r *Resource) ResourceNames() []v1.ResourceName {
+	resNames := []v1.ResourceName{v1.ResourceCPU, v1.ResourceMemory}
+
+	for rName := range r.ScalarResources {
+		resNames = append(resNames, rName)
+	}
+
+	return resNames
+}
+
+// AddScalar adds a resource by a scalar value of this resource.
+func (r *Resource) AddScalar(name v1.ResourceName, quantity float64) {
+	r.SetScalar(name, r.ScalarResources[name]+quantity)
+}
+
+// SetScalar sets a resource by a scalar value of this resource.
+func (r *Resource) SetScalar(name v1.ResourceName, quantity float64) {
+	// Lazily allocate scalar resource map.
+	if r.ScalarResources == nil {
+		r.ScalarResources = map[v1.ResourceName]float64{}
+	}
+	r.ScalarResources[name] = quantity
 }
 
 func (r *Resource) Convert2K8sResource() *v1.ResourceList {
-	return &v1.ResourceList{
+	list := v1.ResourceList{
 		v1.ResourceCPU:    *resource.NewMilliQuantity(int64(r.MilliCPU), resource.DecimalSI),
 		v1.ResourceMemory: *resource.NewQuantity(int64(r.Memory), resource.BinarySI),
-		GPUResourceName:   *resource.NewMilliQuantity(int64(r.MilliGPU), resource.DecimalSI),
 	}
+	for name, value := range r.ScalarResources {
+		list[name] = *resource.NewQuantity(int64(value), resource.BinarySI)
+	}
+	return &list
 }

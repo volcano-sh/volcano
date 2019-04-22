@@ -127,7 +127,7 @@ function install-volcano {
   helm gen-admission-secret --service integration-admission-service --namespace kube-system
 
   echo "Install volcano chart"
-  helm install deployment/volcano --namespace kube-system --name integration --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG}
+  helm install deployment/volcano --namespace kube-system --name integration --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG} --set basic.scheduler_conf_file=/volcano.scheduler/kube-batch-ci.conf
 
   echo "Load required image"
   kind load docker-image ${TEST_BUSYBOX_IMAGE} ${CLUSTER_CONTEXT}
