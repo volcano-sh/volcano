@@ -102,7 +102,7 @@ spec:
           image: {{.Values.basic.scheduler_image_name}}:{{.Values.basic.image_tag_version}}
           args:
             - --alsologtostderr
-            - --scheduler-conf=/volcano.scheduler/kube-batch.conf
+            - --scheduler-conf={{.Values.basic.scheduler_conf_file}}
             - -v=3
             - 2>&1
           imagePullPolicy: "IfNotPresent"

@@ -19,6 +19,8 @@ package helpers
 import (
 	"math"
 
+	"k8s.io/api/core/v1"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -27,8 +29,16 @@ func Min(l, r *api.Resource) *api.Resource {
 	res := &api.Resource{}
 
 	res.MilliCPU = math.Min(l.MilliCPU, r.MilliCPU)
-	res.MilliGPU = math.Min(l.MilliGPU, r.MilliGPU)
 	res.Memory = math.Min(l.Memory, r.Memory)
+
+	if l.ScalarResources == nil || r.ScalarResources == nil {
+		return res
+	}
+
+	res.ScalarResources = map[v1.ResourceName]float64{}
+	for lName, lQuant := range l.ScalarResources {
+		res.ScalarResources[lName] = math.Min(lQuant, r.ScalarResources[lName])
+	}
 
 	return res
 }
