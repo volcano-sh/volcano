@@ -59,6 +59,9 @@ func TestAllocate(t *testing.T) {
 					Spec: kbv1.PodGroupSpec{
 						Queue: "c1",
 					},
+					Status: kbv1.PodGroupStatus{
+						Phase: kbv1.PodGroupInqueue,
+					},
 				},
 			},
 			pods: []*v1.Pod{
@@ -94,6 +97,9 @@ func TestAllocate(t *testing.T) {
 					Spec: kbv1.PodGroupSpec{
 						Queue: "c1",
 					},
+					Status: kbv1.PodGroupStatus{
+						Phase: kbv1.PodGroupInqueue,
+					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -102,6 +108,9 @@ func TestAllocate(t *testing.T) {
 					},
 					Spec: kbv1.PodGroupSpec{
 						Queue: "c2",
+					},
+					Status: kbv1.PodGroupStatus{
+						Phase: kbv1.PodGroupInqueue,
 					},
 				},
 			},
