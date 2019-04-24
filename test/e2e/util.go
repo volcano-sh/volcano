@@ -168,7 +168,7 @@ func cleanupTestContext(cxt *context) {
 	checkError(cxt, err)
 
 	// Wait for namespace deleted.
-	err = wait.Poll(100*time.Millisecond, oneMinute, namespaceNotExist(cxt))
+	err = wait.Poll(100*time.Millisecond, tenMinute, namespaceNotExist(cxt))
 	checkError(cxt, err)
 }
 
@@ -448,6 +448,17 @@ func podGroupEvicted(ctx *context, pg *kbv1.PodGroup, time time.Time) wait.Condi
 
 		return false, nil
 	}
+}
+
+// waits the 'timeout' specified duration to check if the PodGroup is ready
+func waitTimeoutPodGroupReady(ctx *context, pg *kbv1.PodGroup, timeout time.Duration) error {
+	return waitTimeoutTasksReady(ctx, pg, int(pg.Spec.MinMember), timeout)
+}
+
+// waits the 'timeout' specified duration to check if the tasks are ready
+func waitTimeoutTasksReady(ctx *context, pg *kbv1.PodGroup, taskNum int, timeout time.Duration) error {
+	return wait.Poll(100*time.Millisecond, timeout, taskPhase(ctx, pg,
+		[]v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum))
 }
 
 func waitPodGroupReady(ctx *context, pg *kbv1.PodGroup) error {
@@ -794,18 +805,43 @@ func removeTaintsFromAllNodes(ctx *context, taints []v1.Taint) error {
 	return nil
 }
 
-func getAllWorkerNodes(ctx *context) []string {
-	nodeNames := make([]string, 0)
+// this method will return only worker nodes that are ready ignoring all other node including the master node
+func getAllWorkerNodes(ctx *context) []*v1.Node {
+	workernodes := make([]*v1.Node, 0)
 
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
 	checkError(ctx, err)
 
-	for _, node := range nodes.Items {
-		if len(node.Spec.Taints) != 0 {
+	for i, node := range nodes.Items {
+		nodeReady := false
+		for _, condition := range node.Status.Conditions {
+			if condition.Type == v1.NodeReady && condition.Status == v1.ConditionTrue {
+				nodeReady = true
+				break
+			}
+		}
+		if IsMasterNode(&node) {
 			continue
 		}
+		// Skip the unready node.
+		if !nodeReady {
+			continue
+		}
+		workernodes = append(workernodes, &nodes.Items[i])
+	}
+	return workernodes
+}
+
+// this method will return only worker nodes names that are ready ignoring all other node including the master node
+func getAllWorkerNodeNames(ctx *context) []string {
+
+	nodeNames := make([]string, 0)
+	nodes := getAllWorkerNodes(ctx)
+
+	for _, node := range nodes {
 		nodeNames = append(nodeNames, node.Name)
 	}
+
 	return nodeNames
 }
 
@@ -1026,4 +1062,64 @@ func deleteReplicationController(ctx *context, name string) error {
 	return ctx.kubeclient.CoreV1().ReplicationControllers(ctx.namespace).Delete(name, &metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
+}
+
+// IsMasterNode returns true if its a master node or false otherwise.
+func IsMasterNode(node *v1.Node) bool {
+
+	for _, taint := range node.Spec.Taints {
+		if taint.Key == "node-role.kubernetes.io/master" {
+			return true
+		}
+	}
+	return false
+}
+
+// getScheduledPodsOfNode will return a list of pods
+// which are in running condition
+// and ignore the pods which have completed/failed/succeeded
+// If a pod status shows scheduled but the node-name is not assigned wait for the
+// pod to get scheduled
+// we consider only running pods
+
+func getScheduledPodsOfNode(ctx *context, nodeName string) int {
+	allPods, err := ctx.kubeclient.CoreV1().Pods(metav1.NamespaceAll).List(metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+	// API server returns also Pods that succeeded. We need to filter them out.
+	currentPods := make([]v1.Pod, 0, len(allPods.Items))
+	for _, pod := range allPods.Items {
+		if pod.Status.Phase != v1.PodSucceeded && pod.Status.Phase != v1.PodFailed && pod.Spec.NodeName == nodeName {
+			currentPods = append(currentPods, pod)
+		}
+	}
+	allPods.Items = currentPods
+	scheduledPods := GetPodsScheduled(allPods, nodeName)
+
+	return len(scheduledPods)
+}
+
+// GetPodsScheduled returns a number of currently scheduled Pods.
+func GetPodsScheduled(pods *v1.PodList, nodeName string) (scheduledPods []v1.Pod) {
+	for _, pod := range pods.Items {
+		_, scheduledCondition := GetPodCondition(&pod.Status, v1.PodScheduled)
+		Expect(scheduledCondition != nil).To(Equal(true))
+		Expect(scheduledCondition.Status).To(Equal(v1.ConditionTrue))
+		scheduledPods = append(scheduledPods, pod)
+	}
+
+	return
+}
+
+// GetPodCondition extracts the provided condition from the given list of condition and
+// returns the index of the condition and the condition. Returns -1 and nil if the condition is not present.
+func GetPodCondition(status *v1.PodStatus, conditionType v1.PodConditionType) (int, *v1.PodCondition) {
+	if status == nil || status.Conditions == nil {
+		return -1, nil
+	}
+	for i := range status.Conditions {
+		if status.Conditions[i].Type == conditionType {
+			return i, &status.Conditions[i]
+		}
+	}
+	return -1, nil
 }
