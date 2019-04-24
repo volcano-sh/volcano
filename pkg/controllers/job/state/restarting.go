@@ -39,7 +39,6 @@ func (ps *restartingState) Execute(action vkv1.Action) error {
 			// Failed is the phase that the job is restarted failed reached the maximum number of retries.
 			phase = vkv1.Failed
 		} else {
-			status.RetryCount++
 			if status.Terminating == 0 {
 				if status.Running >= ps.job.Job.Spec.MinAvailable {
 					phase = vkv1.Running
