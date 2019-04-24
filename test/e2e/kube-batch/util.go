@@ -830,7 +830,8 @@ func getkubemarkConfigPath() string {
 	if err != nil {
 		return ""
 	}
-	configPath := filepath.Join(wd, "../kubemark/kubeconfig.kubemark")
+	//TODO: Please update this path as well once the whole tests are being moved into root test folder.
+	configPath := filepath.Join(wd, "../../kubemark/kubeconfig.kubemark")
 	exist, err := file.FileExists(configPath)
 	if err != nil || !exist {
 		return ""

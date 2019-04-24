@@ -74,12 +74,6 @@ e2e-kind: vkctl images
 coverage:
 	KUBE_COVER=y hack/make-rules/test.sh $(WHAT) $(TESTS)
 
-benchmark:
-	#NOTE: !Only GCE platform is supported now
-	test/kubemark/start-kubemark.sh
-	go test ./test/e2e/kube-batch -v -timeout 30m --ginkgo.focus="Feature:Performance"
-	test/kubemark/stop-kubemark.sh
-
 clean:
 	rm -rf _output/
 	rm -f kube-batch
