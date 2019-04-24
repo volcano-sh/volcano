@@ -1064,6 +1064,7 @@ func deleteReplicationController(ctx *context, name string) error {
 	})
 }
 
+
 // IsMasterNode returns true if its a master node or false otherwise.
 func IsMasterNode(node *v1.Node) bool {
 
@@ -1123,3 +1124,20 @@ func GetPodCondition(status *v1.PodStatus, conditionType v1.PodConditionType) (i
 	}
 	return -1, nil
 }
+
+func getRequestedCPU(pod v1.Pod) int64 {
+	var result int64
+	for _, container := range pod.Spec.Containers {
+		result += container.Resources.Requests.Cpu().MilliValue()
+	}
+	return result
+}
+
+func getRequestedMemory(pod v1.Pod) int64 {
+	var result int64
+	for _, container := range pod.Spec.Containers {
+		result += container.Resources.Requests.Memory().Value()
+	}
+	return result
+}
+
