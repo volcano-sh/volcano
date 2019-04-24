@@ -58,6 +58,9 @@ func TestReclaim(t *testing.T) {
 					Spec: kbv1.PodGroupSpec{
 						Queue: "q1",
 					},
+					Status: kbv1.PodGroupStatus{
+						Phase: kbv1.PodGroupInqueue,
+					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -66,6 +69,9 @@ func TestReclaim(t *testing.T) {
 					},
 					Spec: kbv1.PodGroupSpec{
 						Queue: "q2",
+					},
+					Status: kbv1.PodGroupStatus{
+						Phase: kbv1.PodGroupInqueue,
 					},
 				},
 			},
