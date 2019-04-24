@@ -18,6 +18,7 @@ package util
 
 import (
 	"fmt"
+	"sync"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -30,6 +31,35 @@ import (
 // PodLister is used in predicate and nodeorder plugin
 type PodLister struct {
 	Session *framework.Session
+
+	podLock    sync.RWMutex
+	UpdatedPod map[api.TaskID]*v1.Pod
+}
+
+func NewPodLister(ssn *framework.Session) *PodLister {
+	return &PodLister{
+		Session:    ssn,
+		UpdatedPod: make(map[api.TaskID]*v1.Pod),
+	}
+}
+
+func (pl *PodLister) updateTask(task *api.TaskInfo) *v1.Pod {
+	pl.podLock.RLock()
+	pod, found := pl.UpdatedPod[task.UID]
+	pl.podLock.RUnlock()
+
+	if !found {
+		pod = task.Pod.DeepCopy()
+		pod.Spec.NodeName = task.NodeName
+
+		pl.podLock.Lock()
+		pl.UpdatedPod[task.UID] = pod
+		pl.podLock.Unlock()
+	} else {
+		pod.Spec.NodeName = task.NodeName
+	}
+
+	return pod
 }
 
 // List method is used to list all the pods
@@ -44,8 +74,7 @@ func (pl *PodLister) List(selector labels.Selector) ([]*v1.Pod, error) {
 			for _, task := range tasks {
 				if selector.Matches(labels.Set(task.Pod.Labels)) {
 					if task.NodeName != task.Pod.Spec.NodeName {
-						pod := task.Pod.DeepCopy()
-						pod.Spec.NodeName = task.NodeName
+						pod := pl.updateTask(task)
 						pods = append(pods, pod)
 					} else {
 						pods = append(pods, task.Pod)
@@ -70,8 +99,7 @@ func (pl *PodLister) FilteredList(podFilter algorithm.PodFilter, selector labels
 			for _, task := range tasks {
 				if podFilter(task.Pod) && selector.Matches(labels.Set(task.Pod.Labels)) {
 					if task.NodeName != task.Pod.Spec.NodeName {
-						pod := task.Pod.DeepCopy()
-						pod.Spec.NodeName = task.NodeName
+						pod := pl.updateTask(task)
 						pods = append(pods, pod)
 					} else {
 						pods = append(pods, task.Pod)
