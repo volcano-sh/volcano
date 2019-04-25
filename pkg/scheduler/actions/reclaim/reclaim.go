@@ -54,7 +54,7 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 
 	var underRequest []*api.JobInfo
 	for _, job := range ssn.Jobs {
-		if job.PodGroup.Status.Phase != v1alpha1.PodGroupInqueue {
+		if job.PodGroup.Status.Phase == v1alpha1.PodGroupPending {
 			continue
 		}
 
