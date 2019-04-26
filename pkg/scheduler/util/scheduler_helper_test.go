@@ -17,9 +17,10 @@ limitations under the License.
 package util
 
 import (
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"reflect"
 	"testing"
+
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
 func TestSelectBestNode(t *testing.T) {
