@@ -9,10 +9,12 @@ import (
 func buildJobCmd() *cobra.Command {
 	jobCmd := &cobra.Command{
 		Use: "job",
+		Short: "vkctl command line operation job",
 	}
 
 	jobRunCmd := &cobra.Command{
 		Use: "run",
+		Short: "run job by parameters from the command line",
 		Run: func(cmd *cobra.Command, args []string) {
 			checkError(cmd, job.RunJob())
 		},
@@ -22,6 +24,7 @@ func buildJobCmd() *cobra.Command {
 
 	jobListCmd := &cobra.Command{
 		Use: "list",
+		Short: "list job information",
 		Run: func(cmd *cobra.Command, args []string) {
 			checkError(cmd, job.ListJobs())
 		},
@@ -31,6 +34,7 @@ func buildJobCmd() *cobra.Command {
 
 	jobSuspendCmd := &cobra.Command{
 		Use: "suspend",
+		Short: "abort a job",
 		Run: func(cmd *cobra.Command, args []string) {
 			checkError(cmd, job.SuspendJob())
 		},
@@ -40,6 +44,7 @@ func buildJobCmd() *cobra.Command {
 
 	jobResumeCmd := &cobra.Command{
 		Use: "resume",
+		Short: "resume a job",
 		Run: func(cmd *cobra.Command, args []string) {
 			checkError(cmd, job.ResumeJob())
 		},
