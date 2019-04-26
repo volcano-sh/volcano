@@ -49,7 +49,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 	jobsMap := map[api.QueueID]*util.PriorityQueue{}
 
 	for _, job := range ssn.Jobs {
-		if job.PodGroup.Status.Phase != v1alpha1.PodGroupInqueue {
+		if job.PodGroup.Status.Phase == v1alpha1.PodGroupPending {
 			continue
 		}
 

@@ -44,7 +44,7 @@ func (alloc *backfillAction) Execute(ssn *framework.Session) {
 
 	// TODO (k82cn): When backfill, it's also need to balance between Queues.
 	for _, job := range ssn.Jobs {
-		if job.PodGroup.Status.Phase != v1alpha1.PodGroupInqueue {
+		if job.PodGroup.Status.Phase == v1alpha1.PodGroupPending {
 			continue
 		}
 
