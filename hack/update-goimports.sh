@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2014 The Kubernetes Authors.
+# Copyright 2019 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,5 +27,11 @@ kube::golang::verify_go_version
 
 cd "${KUBE_ROOT}"
 
-GOFMT="gofmt -s -w"
-kube::util::find_files | xargs $GOFMT
+file=$(which goimports) || true
+if [[ ! -x "$file" ]]; then
+  # install it
+  go get golang.org/x/tools/cmd/goimports
+fi
+
+GOIMPORTS="goimports -d -w"
+kube::util::find_files | xargs $GOIMPORTS

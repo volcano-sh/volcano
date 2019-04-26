@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2014 The Kubernetes Authors.
+# Copyright 2019 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,9 +23,16 @@ set -o pipefail
 KUBE_ROOT=$(dirname "${BASH_SOURCE}")/..
 source "${KUBE_ROOT}/hack/lib/init.sh"
 
-kube::golang::verify_go_version
-
 cd "${KUBE_ROOT}"
 
-GOFMT="gofmt -s -w"
-kube::util::find_files | xargs $GOFMT
+file=$(which goimports) || true
+if [[ ! -x "$file" ]]; then
+  # install it
+  go get golang.org/x/tools/cmd/goimports
+fi
+
+diff=$(kube::util::find_files | xargs goimports -d 2>&1) || true
+if [[ -n "${diff}" ]]; then
+  echo "${diff}"
+  exit 1
+fi

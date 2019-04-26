@@ -20,17 +20,18 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"k8s.io/kubernetes/pkg/util/file"
 	"os"
 	"path/filepath"
 	"text/template"
 	"time"
 
+	"k8s.io/kubernetes/pkg/util/file"
+
 	. "github.com/onsi/gomega"
 
 	appv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	schedv1 "k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -46,8 +47,9 @@ import (
 	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 
-	. "github.com/onsi/ginkgo"
 	"sync"
+
+	. "github.com/onsi/ginkgo"
 )
 
 const currentApiCallMetricsVersion = "v1"

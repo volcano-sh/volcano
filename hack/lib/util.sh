@@ -753,6 +753,23 @@ function kube::util::ensure_dockerized {
   fi
 }
 
+# kube::util::find_files finds go files
+function kube::util::find_files() {
+  find . -not \( \
+      \( \
+        -wholename './output' \
+        -o -wholename './_output' \
+        -o -wholename './_gopath' \
+        -o -wholename './release' \
+        -o -wholename './target' \
+        -o -wholename '*/third_party/*' \
+        -o -wholename '*/vendor/*' \
+        -o -wholename '*/contrib/*' \
+        -o -wholename './staging/src/k8s.io/client-go/*vendor/*' \
+      \) -prune \
+    \) -name '*.go'
+}
+
 # Some useful colors.
 if [[ -z "${color_start-}" ]]; then
   declare -r color_start="\033["

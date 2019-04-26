@@ -18,10 +18,11 @@ package job
 
 import (
 	"fmt"
+
 	"github.com/golang/glog"
 	vkjobhelpers "github.com/kubernetes-sigs/kube-batch/pkg/controllers/job/helpers"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"

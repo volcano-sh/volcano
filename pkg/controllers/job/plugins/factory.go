@@ -20,7 +20,7 @@ import (
 	"sync"
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/job/plugins/env"
-	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/job/plugins/interface"
+	_interface "github.com/kubernetes-sigs/kube-batch/pkg/controllers/job/plugins/interface"
 	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/job/plugins/ssh"
 )
 
