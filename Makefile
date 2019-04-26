@@ -28,6 +28,7 @@ vkctl: init
 
 verify: generate-code
 	hack/verify-gofmt.sh
+	hack/verify-goimports.sh
 	hack/verify-golint.sh
 	hack/verify-gencode.sh
 	hack/verify-boilerplate.sh
