@@ -17,8 +17,9 @@ limitations under the License.
 package queue
 
 import (
-	"github.com/spf13/cobra"
 	"path/filepath"
+
+	"github.com/spf13/cobra"
 )
 
 type commonFlags struct {

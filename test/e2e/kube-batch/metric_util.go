@@ -20,9 +20,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"k8s.io/kubernetes/test/e2e/perftype"
 	"math"
 	"time"
+
+	"k8s.io/kubernetes/test/e2e/perftype"
 )
 
 ///// PodLatencyData encapsulates pod startup latency information.
