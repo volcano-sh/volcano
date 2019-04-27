@@ -13,6 +13,19 @@ Refer to [tutorial](doc/usage/tutorial.md) on how to use `kube-batch` to run bat
 
 ![kube-batch](doc/images/kube-batch.png)
 
+## Who uses kube-batch?
+
+As the kube-batch Community grows, we'd like to keep track of our users. Please send a PR with your organization name.
+
+Currently **officially** using kube-batch:
+
+1. [Kubeflow](https://www.kubeflow.org)
+1. [Volcano](https://volcano.sh/)
+1. [Baidu Inc](http://www.baidu.com)
+1. [Tusimple](https://www.tusimple.com)
+1. [MOGU Inc](https://www.mogujie.com)
+1. [Vivo](https://www.vivo.com)
+
 ## Community, discussion, contribution, and support
 
 Learn how to engage with the Kubernetes community on the [community page](http://kubernetes.io/community/).
