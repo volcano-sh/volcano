@@ -6,3 +6,4 @@
 | [Tusimple](https://www.tusimple.com)| [@suleisl2000](https://github.com/suleisl2000) | | The scheduler for MxNet offline training |
 | [FfDL](https://github.com/IBM/FfDL)| [@animeshsingh](https://github.com/animeshsingh)| |  |
 | [MOGU Inc](https://www.mogujie.com)| [@jiaxuanzhou](https://github.com/jiaxuanzhou)| Production |  The scheduler for Tiny+  offline training|
+| [Vivo](https://www.vivo.com)| [@zionwu](https://github.com/zionwu)| Production |  The scheduler for Vtraining offline training|
