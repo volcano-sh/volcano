@@ -32,52 +32,16 @@ import (
 
 type gangPlugin struct {
 	// Arguments given for the plugin
-	pluginArguments map[string]string
+	pluginArguments framework.Arguments
 }
 
-func New(arguments map[string]string) framework.Plugin {
+// New return gang plugin
+func New(arguments framework.Arguments) framework.Plugin {
 	return &gangPlugin{pluginArguments: arguments}
 }
 
 func (gp *gangPlugin) Name() string {
 	return "gang"
-}
-
-// readyTaskNum return the number of tasks that are ready to run.
-func readyTaskNum(job *api.JobInfo) int32 {
-	occupid := 0
-	for status, tasks := range job.TaskStatusIndex {
-		if api.AllocatedStatus(status) ||
-			status == api.Succeeded ||
-			status == api.Pipelined {
-			occupid = occupid + len(tasks)
-		}
-	}
-
-	return int32(occupid)
-}
-
-// validTaskNum return the number of tasks that are valid.
-func validTaskNum(job *api.JobInfo) int32 {
-	occupied := 0
-	for status, tasks := range job.TaskStatusIndex {
-		if api.AllocatedStatus(status) ||
-			status == api.Succeeded ||
-			status == api.Pipelined ||
-			status == api.Pending {
-			occupied = occupied + len(tasks)
-		}
-	}
-
-	return int32(occupied)
-}
-
-func jobReady(obj interface{}) bool {
-	job := obj.(*api.JobInfo)
-
-	occupied := readyTaskNum(job)
-
-	return occupied >= job.MinAvailable
 }
 
 func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
@@ -90,7 +54,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
-		vtn := validTaskNum(job)
+		vtn := job.ValidTaskNum()
 		if vtn < job.MinAvailable {
 			return &api.ValidateResult{
 				Pass:   false,
@@ -109,7 +73,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		for _, preemptee := range preemptees {
 			job := ssn.Jobs[preemptee.Job]
-			occupid := readyTaskNum(job)
+			occupid := job.ReadyTaskNum()
 			preemptable := job.MinAvailable <= occupid-1 || job.MinAvailable == 1
 
 			if !preemptable {
@@ -133,8 +97,8 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
 
-		lReady := jobReady(lv)
-		rReady := jobReady(rv)
+		lReady := lv.Ready()
+		rReady := rv.Ready()
 
 		glog.V(4).Infof("Gang JobOrderFn: <%v/%v> is ready: %t, <%v/%v> is ready: %t",
 			lv.Namespace, lv.Name, lReady, rv.Namespace, rv.Name, rReady)
@@ -155,19 +119,26 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	ssn.AddJobOrderFn(gp.Name(), jobOrderFn)
-	ssn.AddJobReadyFn(gp.Name(), jobReady)
+	ssn.AddJobReadyFn(gp.Name(), func(obj interface{}) bool {
+		ji := obj.(*api.JobInfo)
+		return ji.Ready()
+	})
+	ssn.AddJobPipelinedFn(gp.Name(), func(obj interface{}) bool {
+		ji := obj.(*api.JobInfo)
+		return ji.Pipelined()
+	})
 }
 
 func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 	var unreadyTaskCount int32
 	var unScheduleJobCount int
 	for _, job := range ssn.Jobs {
-		if !jobReady(job) {
-			unreadyTaskCount = job.MinAvailable - readyTaskNum(job)
+		if !job.Ready() {
+			unreadyTaskCount = job.MinAvailable - job.ReadyTaskNum()
 			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
-				job.MinAvailable-readyTaskNum(job), len(job.Tasks), job.FitError())
+				job.MinAvailable-job.ReadyTaskNum(), len(job.Tasks), job.FitError())
 
-			unScheduleJobCount += 1
+			unScheduleJobCount++
 			metrics.UpdateUnscheduleTaskCount(job.Name, int(unreadyTaskCount))
 			metrics.RegisterJobRetries(job.Name)
 

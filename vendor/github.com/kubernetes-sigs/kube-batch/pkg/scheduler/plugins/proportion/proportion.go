@@ -28,7 +28,7 @@ type proportionPlugin struct {
 	totalResource *api.Resource
 	queueOpts     map[api.QueueID]*queueAttr
 	// Arguments given for the plugin
-	pluginArguments map[string]string
+	pluginArguments framework.Arguments
 }
 
 type queueAttr struct {
@@ -42,7 +42,8 @@ type queueAttr struct {
 	request   *api.Resource
 }
 
-func New(arguments map[string]string) framework.Plugin {
+// New return proportion action
+func New(arguments framework.Arguments) framework.Plugin {
 	return &proportionPlugin{
 		totalResource:   api.EmptyResource(),
 		queueOpts:       map[api.QueueID]*queueAttr{},
@@ -231,7 +232,7 @@ func (pp *proportionPlugin) updateShare(attr *queueAttr) {
 	res := float64(0)
 
 	// TODO(k82cn): how to handle fragment issues?
-	for _, rn := range api.ResourceNames() {
+	for _, rn := range attr.deserved.ResourceNames() {
 		share := helpers.Share(attr.allocated.Get(rn), attr.deserved.Get(rn))
 		if share > res {
 			res = share
