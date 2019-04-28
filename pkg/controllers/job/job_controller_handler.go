@@ -27,9 +27,9 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/cache"
 
-	kbtype "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkbusv1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	kbtype "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	vkcache "volcano.sh/volcano/pkg/controllers/cache"
 )
