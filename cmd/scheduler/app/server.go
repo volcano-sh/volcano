@@ -24,10 +24,10 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler"
-	"github.com/kubernetes-sigs/kube-batch/pkg/version"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/scheduler"
+	"volcano.sh/volcano/pkg/version"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
