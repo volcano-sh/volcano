@@ -76,7 +76,7 @@ type SchedulerCache struct {
 	kbclient   *kbver.Clientset
 
 	defaultQueue string
-	// schedulerName is the name for volcano scheduler
+	// schedulerName is the name for kube batch scheduler
 	schedulerName string
 
 	podInformer      infov1.PodInformer
