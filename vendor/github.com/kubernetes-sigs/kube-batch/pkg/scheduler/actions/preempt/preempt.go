@@ -114,15 +114,15 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 					assigned = true
 				}
 
-				// If job not ready, keep preempting
-				if ssn.JobReady(preemptorJob) {
+				// If job is not pipelined, keep preempting
+				if ssn.JobPipelined(preemptorJob) {
 					stmt.Commit()
 					break
 				}
 			}
 
-			// If job not ready after try all tasks, next job.
-			if !ssn.JobReady(preemptorJob) {
+			// If job is not pipelined after try all tasks, next job.
+			if !ssn.JobPipelined(preemptorJob) {
 				stmt.Discard()
 				continue
 			}
@@ -175,28 +175,15 @@ func preempt(
 	nodes map[string]*api.NodeInfo,
 	filter func(*api.TaskInfo) bool,
 ) (bool, error) {
-	predicateNodes := []*api.NodeInfo{}
-	nodeScores := map[int][]*api.NodeInfo{}
 	assigned := false
 
-	for _, node := range nodes {
-		if err := ssn.PredicateFn(preemptor, node); err != nil {
-			glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
-				preemptor.Namespace, preemptor.Name, node.Name, err)
-			continue
-		} else {
-			predicateNodes = append(predicateNodes, node)
-		}
-	}
-	for _, node := range predicateNodes {
-		score, err := ssn.NodeOrderFn(preemptor, node)
-		if err != nil {
-			glog.V(3).Infof("Error in Calculating Priority for the node:%v", err)
-		} else {
-			nodeScores[score] = append(nodeScores[score], node)
-		}
-	}
-	selectedNodes := util.SelectBestNode(nodeScores)
+	allNodes := util.GetNodeList(nodes)
+
+	predicateNodes := util.PredicateNodes(preemptor, allNodes, ssn.PredicateFn)
+
+	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.NodeOrderFn)
+
+	selectedNodes := util.SortNodes(nodeScores)
 	for _, node := range selectedNodes {
 		glog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
 			preemptor.Namespace, preemptor.Name, node.Name)

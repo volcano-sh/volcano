@@ -41,10 +41,11 @@ type drfPlugin struct {
 	jobOpts map[api.JobID]*drfAttr
 
 	// Arguments given for the plugin
-	pluginArguments map[string]string
+	pluginArguments framework.Arguments
 }
 
-func New(arguments map[string]string) framework.Plugin {
+// New return drf plugin
+func New(arguments framework.Arguments) framework.Plugin {
 	return &drfPlugin{
 		totalResource:   api.EmptyResource(),
 		jobOpts:         map[api.JobID]*drfAttr{},
@@ -159,7 +160,7 @@ func (drf *drfPlugin) updateShare(attr *drfAttr) {
 
 func (drf *drfPlugin) calculateShare(allocated, totalResource *api.Resource) float64 {
 	res := float64(0)
-	for _, rn := range api.ResourceNames() {
+	for _, rn := range totalResource.ResourceNames() {
 		share := helpers.Share(allocated.Get(rn), totalResource.Get(rn))
 		if share > res {
 			res = share

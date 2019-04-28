@@ -23,9 +23,9 @@ import (
 )
 
 var (
-	// Version shows the version of kube-batch.
+	// Version shows the version of kube batch.
 	Version = "Not provided."
-	// GitSHA shoows the git commit id of kube-batch.
+	// GitSHA shoows the git commit id of kube batch.
 	GitSHA = "Not provided."
 	// Built shows the built time of the binary.
 	Built = "Not provided."

@@ -17,7 +17,7 @@ limitations under the License.
 package conformance
 
 import (
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/apis/scheduling"
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
@@ -26,10 +26,11 @@ import (
 
 type conformancePlugin struct {
 	// Arguments given for the plugin
-	pluginArguments map[string]string
+	pluginArguments framework.Arguments
 }
 
-func New(arguments map[string]string) framework.Plugin {
+// New return conformance plugin
+func New(arguments framework.Arguments) framework.Plugin {
 	return &conformancePlugin{pluginArguments: arguments}
 }
 

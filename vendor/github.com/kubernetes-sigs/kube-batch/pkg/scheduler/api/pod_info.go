@@ -17,7 +17,7 @@ limitations under the License.
 package api
 
 import (
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 )
 
 // Refer k8s.io/kubernetes/pkg/scheduler/algorithm/predicates/predicates.go#GetResourceRequest.
@@ -48,6 +48,8 @@ import (
 //       Memory: 1G
 //
 // Result: CPU: 3, Memory: 3G
+
+// GetPodResourceRequest returns all the resource required for that pod
 func GetPodResourceRequest(pod *v1.Pod) *Resource {
 	result := GetPodResourceWithoutInitContainers(pod)
 

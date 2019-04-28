@@ -22,6 +22,7 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
+//PriorityQueue implements a scheduling queue.
 type PriorityQueue struct {
 	queue priorityQueue
 }
@@ -31,6 +32,7 @@ type priorityQueue struct {
 	lessFn api.LessFn
 }
 
+// NewPriorityQueue returns a PriorityQueue
 func NewPriorityQueue(lessFn api.LessFn) *PriorityQueue {
 	return &PriorityQueue{
 		queue: priorityQueue{
@@ -40,10 +42,12 @@ func NewPriorityQueue(lessFn api.LessFn) *PriorityQueue {
 	}
 }
 
+// Push pushes element in the priority Queue
 func (q *PriorityQueue) Push(it interface{}) {
 	heap.Push(&q.queue, it)
 }
 
+// Pop pops element in the priority Queue
 func (q *PriorityQueue) Pop() interface{} {
 	if q.Len() == 0 {
 		return nil
@@ -52,10 +56,12 @@ func (q *PriorityQueue) Pop() interface{} {
 	return heap.Pop(&q.queue)
 }
 
+// Empty check if queue is empty
 func (q *PriorityQueue) Empty() bool {
 	return q.queue.Len() == 0
 }
 
+// Len returns Len of the priority queue
 func (q *PriorityQueue) Len() int {
 	return q.queue.Len()
 }

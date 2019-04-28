@@ -19,19 +19,31 @@ package helpers
 import (
 	"math"
 
+	v1 "k8s.io/api/core/v1"
+
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
+// Min is used to find the min of two resource types
 func Min(l, r *api.Resource) *api.Resource {
 	res := &api.Resource{}
 
 	res.MilliCPU = math.Min(l.MilliCPU, r.MilliCPU)
-	res.MilliGPU = math.Min(l.MilliGPU, r.MilliGPU)
 	res.Memory = math.Min(l.Memory, r.Memory)
+
+	if l.ScalarResources == nil || r.ScalarResources == nil {
+		return res
+	}
+
+	res.ScalarResources = map[v1.ResourceName]float64{}
+	for lName, lQuant := range l.ScalarResources {
+		res.ScalarResources[lName] = math.Min(lQuant, r.ScalarResources[lName])
+	}
 
 	return res
 }
 
+// Share is used to determine the share
 func Share(l, r float64) float64 {
 	var share float64
 	if r == 0 {

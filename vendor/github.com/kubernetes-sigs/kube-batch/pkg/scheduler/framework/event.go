@@ -20,10 +20,12 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
+// Event structure
 type Event struct {
 	Task *api.TaskInfo
 }
 
+// EventHandler structure
 type EventHandler struct {
 	AllocateFunc   func(event *Event)
 	DeallocateFunc func(event *Event)
