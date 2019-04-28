@@ -88,13 +88,14 @@ type CompareFn func(interface{}, interface{}) int
 // ValidateFn is the func declaration used to check object's status.
 type ValidateFn func(interface{}) bool
 
-//
+// ValidateResult is struct to which can used to determine the result
 type ValidateResult struct {
 	Pass    bool
 	Reason  string
 	Message string
 }
 
+// ValidateExFn is the func declaration used to validate the result
 type ValidateExFn func(interface{}) *ValidateResult
 
 // PredicateFn is the func declaration used to predicate node for task.
@@ -104,4 +105,4 @@ type PredicateFn func(*TaskInfo, *NodeInfo) error
 type EvictableFn func(*TaskInfo, []*TaskInfo) []*TaskInfo
 
 // NodeOrderFn is the func declaration used to get priority score for a node for a particular task.
-type NodeOrderFn func(*TaskInfo, *NodeInfo) (int, error)
+type NodeOrderFn func(*TaskInfo, *NodeInfo) (float64, error)

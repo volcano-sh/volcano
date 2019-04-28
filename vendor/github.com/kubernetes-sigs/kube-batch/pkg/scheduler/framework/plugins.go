@@ -20,18 +20,21 @@ import "sync"
 
 var pluginMutex sync.Mutex
 
-type PluginBuilder func(map[string]string) Plugin
+// PluginBuilder plugin management
+type PluginBuilder func(Arguments) Plugin
 
 // Plugin management
 var pluginBuilders = map[string]PluginBuilder{}
 
-func RegisterPluginBuilder(name string, pc func(map[string]string) Plugin) {
+// RegisterPluginBuilder register the plugin
+func RegisterPluginBuilder(name string, pc PluginBuilder) {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
 
 	pluginBuilders[name] = pc
 }
 
+// CleanupPluginBuilders cleans up all the plugin
 func CleanupPluginBuilders() {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
@@ -39,6 +42,7 @@ func CleanupPluginBuilders() {
 	pluginBuilders = map[string]PluginBuilder{}
 }
 
+// GetPluginBuilder get the pluginbuilder by name
 func GetPluginBuilder(name string) (PluginBuilder, bool) {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
@@ -50,6 +54,7 @@ func GetPluginBuilder(name string) (PluginBuilder, bool) {
 // Action management
 var actionMap = map[string]Action{}
 
+// RegisterAction register action
 func RegisterAction(act Action) {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
@@ -57,6 +62,7 @@ func RegisterAction(act Action) {
 	actionMap[act.Name()] = act
 }
 
+// GetAction get the action by name
 func GetAction(name string) (Action, bool) {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()

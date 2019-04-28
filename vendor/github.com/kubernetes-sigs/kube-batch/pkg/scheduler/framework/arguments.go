@@ -14,24 +14,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package util
+package framework
 
 import (
-	"sort"
+	"strconv"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	"github.com/golang/glog"
 )
 
-func SelectBestNode(nodeScores map[int][]*api.NodeInfo) []*api.NodeInfo {
-	var nodesInorder []*api.NodeInfo
-	var keys []int
-	for key := range nodeScores {
-		keys = append(keys, key)
+// Arguments map
+type Arguments map[string]string
+
+//GetInt get the integer value from string
+func (a Arguments) GetInt(ptr *int, key string) {
+	if ptr == nil {
+		return
 	}
-	sort.Sort(sort.Reverse(sort.IntSlice(keys)))
-	for _, key := range keys {
-		nodes := nodeScores[key]
-		nodesInorder = append(nodesInorder, nodes...)
+
+	argv, ok := a[key]
+	if !ok || argv == "" {
+		return
 	}
-	return nodesInorder
+
+	value, err := strconv.Atoi(argv)
+	if err != nil {
+		glog.Warningf("Could not parse argument: %s for key %s, with err %v", argv, key, err)
+		return
+	}
+
+	*ptr = value
 }

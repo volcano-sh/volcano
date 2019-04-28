@@ -19,7 +19,7 @@ package api
 import (
 	"fmt"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 )
 
 // NodeInfo is node level aggregated information.
@@ -41,6 +41,7 @@ type NodeInfo struct {
 	Tasks map[TaskID]*TaskInfo
 }
 
+// NewNodeInfo is used to create new nodeInfo object
 func NewNodeInfo(node *v1.Node) *NodeInfo {
 	if node == nil {
 		return &NodeInfo{
@@ -70,6 +71,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 	}
 }
 
+// Clone used to clone nodeInfo Object
 func (ni *NodeInfo) Clone() *NodeInfo {
 	res := NewNodeInfo(ni.Node)
 
@@ -80,6 +82,7 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 	return res
 }
 
+// SetNode sets kubernetes node object to nodeInfo object
 func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.Name = node.Name
 	ni.Node = node
@@ -98,6 +101,7 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 	}
 }
 
+// AddTask is used to add a task in nodeInfo object
 func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 	key := PodKey(task.Pod)
 	if _, found := ni.Tasks[key]; found {
@@ -128,6 +132,7 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 	return nil
 }
 
+// RemoveTask used to remove a task from nodeInfo object
 func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 	key := PodKey(ti.Pod)
 
@@ -156,6 +161,7 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 	return nil
 }
 
+// UpdateTask is used to update a task in nodeInfo object
 func (ni *NodeInfo) UpdateTask(ti *TaskInfo) error {
 	if err := ni.RemoveTask(ti); err != nil {
 		return err
@@ -164,6 +170,7 @@ func (ni *NodeInfo) UpdateTask(ti *TaskInfo) error {
 	return ni.AddTask(ti)
 }
 
+// String returns nodeInfo details in string format
 func (ni NodeInfo) String() string {
 	res := ""
 
@@ -178,6 +185,7 @@ func (ni NodeInfo) String() string {
 
 }
 
+// Pods returns all pods running in that node
 func (ni *NodeInfo) Pods() (pods []*v1.Pod) {
 	for _, t := range ni.Tasks {
 		pods = append(pods, t.Pod)

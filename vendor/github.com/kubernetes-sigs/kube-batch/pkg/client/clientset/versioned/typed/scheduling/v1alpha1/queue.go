@@ -19,6 +19,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"time"
+
 	v1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	scheme "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,6 +39,7 @@ type QueuesGetter interface {
 type QueueInterface interface {
 	Create(*v1alpha1.Queue) (*v1alpha1.Queue, error)
 	Update(*v1alpha1.Queue) (*v1alpha1.Queue, error)
+	UpdateStatus(*v1alpha1.Queue) (*v1alpha1.Queue, error)
 	Delete(name string, options *v1.DeleteOptions) error
 	DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error
 	Get(name string, options v1.GetOptions) (*v1alpha1.Queue, error)
@@ -72,10 +75,15 @@ func (c *queues) Get(name string, options v1.GetOptions) (result *v1alpha1.Queue
 
 // List takes label and field selectors, and returns the list of Queues that match those selectors.
 func (c *queues) List(opts v1.ListOptions) (result *v1alpha1.QueueList, err error) {
+	var timeout time.Duration
+	if opts.TimeoutSeconds != nil {
+		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
+	}
 	result = &v1alpha1.QueueList{}
 	err = c.client.Get().
 		Resource("queues").
 		VersionedParams(&opts, scheme.ParameterCodec).
+		Timeout(timeout).
 		Do().
 		Into(result)
 	return
@@ -83,10 +91,15 @@ func (c *queues) List(opts v1.ListOptions) (result *v1alpha1.QueueList, err erro
 
 // Watch returns a watch.Interface that watches the requested queues.
 func (c *queues) Watch(opts v1.ListOptions) (watch.Interface, error) {
+	var timeout time.Duration
+	if opts.TimeoutSeconds != nil {
+		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
+	}
 	opts.Watch = true
 	return c.client.Get().
 		Resource("queues").
 		VersionedParams(&opts, scheme.ParameterCodec).
+		Timeout(timeout).
 		Watch()
 }
 
@@ -113,6 +126,21 @@ func (c *queues) Update(queue *v1alpha1.Queue) (result *v1alpha1.Queue, err erro
 	return
 }
 
+// UpdateStatus was generated because the type contains a Status member.
+// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
+
+func (c *queues) UpdateStatus(queue *v1alpha1.Queue) (result *v1alpha1.Queue, err error) {
+	result = &v1alpha1.Queue{}
+	err = c.client.Put().
+		Resource("queues").
+		Name(queue.Name).
+		SubResource("status").
+		Body(queue).
+		Do().
+		Into(result)
+	return
+}
+
 // Delete takes name of the queue and deletes it. Returns an error if one occurs.
 func (c *queues) Delete(name string, options *v1.DeleteOptions) error {
 	return c.client.Delete().
@@ -125,9 +153,14 @@ func (c *queues) Delete(name string, options *v1.DeleteOptions) error {
 
 // DeleteCollection deletes a collection of objects.
 func (c *queues) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
+	var timeout time.Duration
+	if listOptions.TimeoutSeconds != nil {
+		timeout = time.Duration(*listOptions.TimeoutSeconds) * time.Second
+	}
 	return c.client.Delete().
 		Resource("queues").
 		VersionedParams(&listOptions, scheme.ParameterCodec).
+		Timeout(timeout).
 		Body(options).
 		Do().
 		Error()

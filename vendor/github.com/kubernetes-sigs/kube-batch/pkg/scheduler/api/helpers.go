@@ -19,17 +19,17 @@ package api
 import (
 	"fmt"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	clientcache "k8s.io/client-go/tools/cache"
 )
 
 // PodKey returns the string key of a pod.
 func PodKey(pod *v1.Pod) TaskID {
-	if key, err := clientcache.MetaNamespaceKeyFunc(pod); err != nil {
+	key, err := clientcache.MetaNamespaceKeyFunc(pod)
+	if err != nil {
 		return TaskID(fmt.Sprintf("%v/%v", pod.Namespace, pod.Name))
-	} else {
-		return TaskID(key)
 	}
+	return TaskID(key)
 }
 
 func getTaskStatus(pod *v1.Pod) TaskStatus {
@@ -60,6 +60,7 @@ func getTaskStatus(pod *v1.Pod) TaskStatus {
 	return Unknown
 }
 
+// AllocatedStatus checks whether the tasks has AllocatedStatus
 func AllocatedStatus(status TaskStatus) bool {
 	switch status {
 	case Bound, Binding, Running, Allocated:
@@ -69,6 +70,7 @@ func AllocatedStatus(status TaskStatus) bool {
 	}
 }
 
+// MergeErrors is used to merge multiple errors into single error
 func MergeErrors(errs ...error) error {
 	msg := "errors: "
 

@@ -18,19 +18,17 @@ package nodeorder
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/golang/glog"
 
-	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/kubernetes/pkg/scheduler/algorithm"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/priorities"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 	"k8s.io/kubernetes/pkg/scheduler/cache"
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins/util"
 )
 
 const (
@@ -46,7 +44,7 @@ const (
 
 type nodeOrderPlugin struct {
 	// Arguments given for the plugin
-	pluginArguments map[string]string
+	pluginArguments framework.Arguments
 }
 
 func getInterPodAffinityScore(name string, interPodAffinityScore schedulerapi.HostPriorityList) int {
@@ -92,74 +90,8 @@ func (c *cachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
 	return node.Node, nil
 }
 
-type podLister struct {
-	session *framework.Session
-}
-
-func (pl *podLister) List(selector labels.Selector) ([]*v1.Pod, error) {
-	var pods []*v1.Pod
-	for _, job := range pl.session.Jobs {
-		for status, tasks := range job.TaskStatusIndex {
-			if !api.AllocatedStatus(status) {
-				continue
-			}
-
-			for _, task := range tasks {
-				if selector.Matches(labels.Set(task.Pod.Labels)) {
-					if task.NodeName != task.Pod.Spec.NodeName {
-						pod := task.Pod.DeepCopy()
-						pod.Spec.NodeName = task.NodeName
-						pods = append(pods, pod)
-					} else {
-						pods = append(pods, task.Pod)
-					}
-				}
-			}
-		}
-	}
-
-	return pods, nil
-}
-
-func (pl *podLister) FilteredList(podFilter algorithm.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
-	var pods []*v1.Pod
-	for _, job := range pl.session.Jobs {
-		for status, tasks := range job.TaskStatusIndex {
-			if !api.AllocatedStatus(status) {
-				continue
-			}
-
-			for _, task := range tasks {
-				if podFilter(task.Pod) && selector.Matches(labels.Set(task.Pod.Labels)) {
-					if task.NodeName != task.Pod.Spec.NodeName {
-						pod := task.Pod.DeepCopy()
-						pod.Spec.NodeName = task.NodeName
-						pods = append(pods, pod)
-					} else {
-						pods = append(pods, task.Pod)
-					}
-				}
-			}
-		}
-	}
-
-	return pods, nil
-}
-
-type nodeLister struct {
-	session *framework.Session
-}
-
-func (nl *nodeLister) List() ([]*v1.Node, error) {
-	var nodes []*v1.Node
-	for _, node := range nl.session.Nodes {
-		nodes = append(nodes, node.Node)
-	}
-	return nodes, nil
-}
-
 //New function returns prioritizePlugin object
-func New(aruguments map[string]string) framework.Plugin {
+func New(aruguments framework.Arguments) framework.Plugin {
 	return &nodeOrderPlugin{pluginArguments: aruguments}
 }
 
@@ -174,7 +106,7 @@ type priorityWeight struct {
 	balancedRescourceWeight int
 }
 
-func calculateWeight(args map[string]string) priorityWeight {
+func calculateWeight(args framework.Arguments) priorityWeight {
 	/*
 	   User Should give priorityWeight in this format(nodeaffinity.weight, podaffinity.weight, leastrequested.weight, balancedresource.weight).
 	   Currently supported only for nodeaffinity, podaffinity, leastrequested, balancedresouce priorities.
@@ -206,59 +138,31 @@ func calculateWeight(args map[string]string) priorityWeight {
 	}
 
 	// Checks whether nodeaffinity.weight is provided or not, if given, modifies the value in weight struct.
-	if args[NodeAffinityWeight] != "" {
-		val, err := strconv.Atoi(args[NodeAffinityWeight])
-		if err != nil {
-			glog.Warningf("Not able to Parse Weight for %v because of error: %v", args[NodeAffinityWeight], err)
-		} else {
-			weight.nodeAffinityWeight = val
-		}
-	}
+	args.GetInt(&weight.nodeAffinityWeight, NodeAffinityWeight)
 
 	// Checks whether podaffinity.weight is provided or not, if given, modifies the value in weight struct.
-	if args[PodAffinityWeight] != "" {
-		val, err := strconv.Atoi(args[PodAffinityWeight])
-		if err != nil {
-			glog.Warningf("Not able to Parse Weight for %v because of error: %v", args[PodAffinityWeight], err)
-		} else {
-			weight.podAffinityWeight = val
-		}
-	}
+	args.GetInt(&weight.podAffinityWeight, PodAffinityWeight)
 
 	// Checks whether leastrequested.weight is provided or not, if given, modifies the value in weight struct.
-	if args[LeastRequestedWeight] != "" {
-		val, err := strconv.Atoi(args[LeastRequestedWeight])
-		if err != nil {
-			glog.Warningf("Not able to Parse Weight for %v because of error: %v", args[LeastRequestedWeight], err)
-		} else {
-			weight.leastReqWeight = val
-		}
-	}
+	args.GetInt(&weight.leastReqWeight, LeastRequestedWeight)
 
 	// Checks whether balancedresource.weight is provided or not, if given, modifies the value in weight struct.
-	if args[BalancedResourceWeight] != "" {
-		val, err := strconv.Atoi(args[BalancedResourceWeight])
-		if err != nil {
-			glog.Warningf("Not able to Parse Weight for %v because of error: %v", args[BalancedResourceWeight], err)
-		} else {
-			weight.balancedRescourceWeight = val
-		}
-	}
+	args.GetInt(&weight.balancedRescourceWeight, BalancedResourceWeight)
 
 	return weight
 }
 
 func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
-	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (int, error) {
+	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 
 		weight := calculateWeight(pp.pluginArguments)
 
-		pl := &podLister{
-			session: ssn,
+		pl := &util.PodLister{
+			Session: ssn,
 		}
 
-		nl := &nodeLister{
-			session: ssn,
+		nl := &util.NodeLister{
+			Session: ssn,
 		}
 
 		cn := &cachedNodeInfo{
@@ -273,7 +177,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		nodeInfo := cache.NewNodeInfo(node.Pods()...)
 		nodeInfo.SetNode(node.Node)
-		var score = 0
+		var score = 0.0
 
 		//TODO: Add ImageLocalityPriority Function once priorityMetadata is published
 		//Issue: #74132 in kubernetes ( https://github.com/kubernetes/kubernetes/issues/74132 )
@@ -284,7 +188,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			return 0, err
 		}
 		// If leastReqWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		score = score + (host.Score * weight.leastReqWeight)
+		score = score + float64(host.Score*weight.leastReqWeight)
 
 		host, err = priorities.BalancedResourceAllocationMap(task.Pod, nil, nodeInfo)
 		if err != nil {
@@ -292,7 +196,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			return 0, err
 		}
 		// If balancedRescourceWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		score = score + (host.Score * weight.balancedRescourceWeight)
+		score = score + float64(host.Score*weight.balancedRescourceWeight)
 
 		host, err = priorities.CalculateNodeAffinityPriorityMap(task.Pod, nil, nodeInfo)
 		if err != nil {
@@ -300,7 +204,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			return 0, err
 		}
 		// If nodeAffinityWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		score = score + (host.Score * weight.nodeAffinityWeight)
+		score = score + float64(host.Score*weight.nodeAffinityWeight)
 
 		mapFn := priorities.NewInterPodAffinityPriority(cn, nl, pl, v1.DefaultHardPodAffinitySymmetricWeight)
 		interPodAffinityScore, err = mapFn(task.Pod, nodeMap, nodeSlice)
@@ -310,7 +214,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 		hostScore := getInterPodAffinityScore(node.Name, interPodAffinityScore)
 		// If podAffinityWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		score = score + (hostScore * weight.podAffinityWeight)
+		score = score + float64(hostScore*weight.podAffinityWeight)
 
 		glog.V(4).Infof("Total Score for that node is: %d", score)
 		return score, nil

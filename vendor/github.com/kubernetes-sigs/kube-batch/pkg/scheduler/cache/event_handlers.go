@@ -22,7 +22,7 @@ import (
 
 	"github.com/golang/glog"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1beta1"
 	"k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -179,6 +179,7 @@ func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
 	return nil
 }
 
+// AddPod add pod to scheduler cache
 func (sc *SchedulerCache) AddPod(obj interface{}) {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
@@ -199,6 +200,7 @@ func (sc *SchedulerCache) AddPod(obj interface{}) {
 	return
 }
 
+// UpdatePod update pod to scheduler cache
 func (sc *SchedulerCache) UpdatePod(oldObj, newObj interface{}) {
 	oldPod, ok := oldObj.(*v1.Pod)
 	if !ok {
@@ -225,6 +227,7 @@ func (sc *SchedulerCache) UpdatePod(oldObj, newObj interface{}) {
 	return
 }
 
+// DeletePod delete pod from scheduler cache
 func (sc *SchedulerCache) DeletePod(obj interface{}) {
 	var pod *v1.Pod
 	switch t := obj.(type) {
@@ -294,6 +297,7 @@ func (sc *SchedulerCache) deleteNode(node *v1.Node) error {
 	return nil
 }
 
+// AddNode add node to scheduler cache
 func (sc *SchedulerCache) AddNode(obj interface{}) {
 	node, ok := obj.(*v1.Node)
 	if !ok {
@@ -312,6 +316,7 @@ func (sc *SchedulerCache) AddNode(obj interface{}) {
 	return
 }
 
+// UpdateNode update node to scheduler cache
 func (sc *SchedulerCache) UpdateNode(oldObj, newObj interface{}) {
 	oldNode, ok := oldObj.(*v1.Node)
 	if !ok {
@@ -335,6 +340,7 @@ func (sc *SchedulerCache) UpdateNode(oldObj, newObj interface{}) {
 	return
 }
 
+// DeleteNode delete node from scheduler cache
 func (sc *SchedulerCache) DeleteNode(obj interface{}) {
 	var node *v1.Node
 	switch t := obj.(type) {
@@ -411,6 +417,7 @@ func (sc *SchedulerCache) deletePodGroup(ss *kbv1.PodGroup) error {
 	return nil
 }
 
+// AddPodGroup add podgroup to scheduler cache
 func (sc *SchedulerCache) AddPodGroup(obj interface{}) {
 	ss, ok := obj.(*kbv1.PodGroup)
 	if !ok {
@@ -430,6 +437,7 @@ func (sc *SchedulerCache) AddPodGroup(obj interface{}) {
 	return
 }
 
+// UpdatePodGroup add podgroup to scheduler cache
 func (sc *SchedulerCache) UpdatePodGroup(oldObj, newObj interface{}) {
 	oldSS, ok := oldObj.(*kbv1.PodGroup)
 	if !ok {
@@ -453,6 +461,7 @@ func (sc *SchedulerCache) UpdatePodGroup(oldObj, newObj interface{}) {
 	return
 }
 
+// DeletePodGroup delete podgroup from scheduler cache
 func (sc *SchedulerCache) DeletePodGroup(obj interface{}) {
 	var ss *kbv1.PodGroup
 	switch t := obj.(type) {
@@ -522,6 +531,7 @@ func (sc *SchedulerCache) deletePDB(pdb *policyv1.PodDisruptionBudget) error {
 	return nil
 }
 
+// AddPDB add pdb to scheduler cache
 func (sc *SchedulerCache) AddPDB(obj interface{}) {
 	pdb, ok := obj.(*policyv1.PodDisruptionBudget)
 	if !ok {
@@ -540,6 +550,7 @@ func (sc *SchedulerCache) AddPDB(obj interface{}) {
 	return
 }
 
+//UpdatePDB update pdb to scheduler cache
 func (sc *SchedulerCache) UpdatePDB(oldObj, newObj interface{}) {
 	oldPDB, ok := oldObj.(*policyv1.PodDisruptionBudget)
 	if !ok {
@@ -563,6 +574,7 @@ func (sc *SchedulerCache) UpdatePDB(oldObj, newObj interface{}) {
 	return
 }
 
+//DeletePDB delete pdb from scheduler cache
 func (sc *SchedulerCache) DeletePDB(obj interface{}) {
 	var pdb *policyv1.PodDisruptionBudget
 	switch t := obj.(type) {
@@ -591,6 +603,7 @@ func (sc *SchedulerCache) DeletePDB(obj interface{}) {
 	return
 }
 
+//AddQueue add queue to scheduler cache
 func (sc *SchedulerCache) AddQueue(obj interface{}) {
 	ss, ok := obj.(*kbv1.Queue)
 	if !ok {
@@ -610,6 +623,7 @@ func (sc *SchedulerCache) AddQueue(obj interface{}) {
 	return
 }
 
+//UpdateQueue update queue to scheduler cache
 func (sc *SchedulerCache) UpdateQueue(oldObj, newObj interface{}) {
 	oldSS, ok := oldObj.(*kbv1.Queue)
 	if !ok {
@@ -633,6 +647,7 @@ func (sc *SchedulerCache) UpdateQueue(oldObj, newObj interface{}) {
 	return
 }
 
+//DeleteQueue delete queue from the scheduler cache
 func (sc *SchedulerCache) DeleteQueue(obj interface{}) {
 	var ss *kbv1.Queue
 	switch t := obj.(type) {
@@ -682,6 +697,7 @@ func (sc *SchedulerCache) deleteQueue(queue *kbv1.Queue) error {
 	return nil
 }
 
+//DeletePriorityClass delete priorityclass from the scheduler cache
 func (sc *SchedulerCache) DeletePriorityClass(obj interface{}) {
 	var ss *v1beta1.PriorityClass
 	switch t := obj.(type) {
@@ -705,6 +721,7 @@ func (sc *SchedulerCache) DeletePriorityClass(obj interface{}) {
 	sc.deletePriorityClass(ss)
 }
 
+//UpdatePriorityClass update priorityclass to scheduler cache
 func (sc *SchedulerCache) UpdatePriorityClass(oldObj, newObj interface{}) {
 	oldSS, ok := oldObj.(*v1beta1.PriorityClass)
 	if !ok {
@@ -729,6 +746,7 @@ func (sc *SchedulerCache) UpdatePriorityClass(oldObj, newObj interface{}) {
 	sc.addPriorityClass(newSS)
 }
 
+//AddPriorityClass add priorityclass to scheduler cache
 func (sc *SchedulerCache) AddPriorityClass(obj interface{}) {
 	var ss *v1beta1.PriorityClass
 	switch t := obj.(type) {

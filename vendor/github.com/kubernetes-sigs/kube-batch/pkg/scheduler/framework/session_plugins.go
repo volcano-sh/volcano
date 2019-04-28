@@ -20,53 +20,69 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 )
 
+// AddJobOrderFn add job order function
 func (ssn *Session) AddJobOrderFn(name string, cf api.CompareFn) {
 	ssn.jobOrderFns[name] = cf
 }
 
+// AddQueueOrderFn add queue order function
 func (ssn *Session) AddQueueOrderFn(name string, qf api.CompareFn) {
 	ssn.queueOrderFns[name] = qf
 }
 
+// AddTaskOrderFn add task order function
 func (ssn *Session) AddTaskOrderFn(name string, cf api.CompareFn) {
 	ssn.taskOrderFns[name] = cf
 }
 
+// AddPreemptableFn add preemptable function
 func (ssn *Session) AddPreemptableFn(name string, cf api.EvictableFn) {
 	ssn.preemptableFns[name] = cf
 }
 
+// AddReclaimableFn add Reclaimable function
 func (ssn *Session) AddReclaimableFn(name string, rf api.EvictableFn) {
 	ssn.reclaimableFns[name] = rf
 }
 
+// AddJobReadyFn add JobReady function
 func (ssn *Session) AddJobReadyFn(name string, vf api.ValidateFn) {
 	ssn.jobReadyFns[name] = vf
 }
 
+// AddJobPipelinedFn add pipelined function
+func (ssn *Session) AddJobPipelinedFn(name string, vf api.ValidateFn) {
+	ssn.jobPipelinedFns[name] = vf
+}
+
+// AddPredicateFn add Predicate function
 func (ssn *Session) AddPredicateFn(name string, pf api.PredicateFn) {
 	ssn.predicateFns[name] = pf
 }
 
+// AddNodeOrderFn add Node order function
 func (ssn *Session) AddNodeOrderFn(name string, pf api.NodeOrderFn) {
 	ssn.nodeOrderFns[name] = pf
 }
 
+// AddOverusedFn add overused function
 func (ssn *Session) AddOverusedFn(name string, fn api.ValidateFn) {
 	ssn.overusedFns[name] = fn
 }
 
+// AddJobValidFn add jobvalid function
 func (ssn *Session) AddJobValidFn(name string, fn api.ValidateExFn) {
 	ssn.jobValidFns[name] = fn
 }
 
+// Reclaimable invoke reclaimable function of the plugins
 func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
 	var init bool
 
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
-			if plugin.ReclaimableDisabled {
+			if !isEnabled(plugin.EnabledReclaimable) {
 				continue
 			}
 			rf, found := ssn.reclaimableFns[plugin.Name]
@@ -101,13 +117,14 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 	return victims
 }
 
+// Preemptable invoke preemptable function of the plugins
 func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
 	var init bool
 
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
-			if plugin.PreemptableDisabled {
+			if !isEnabled(plugin.EnabledPreemptable) {
 				continue
 			}
 
@@ -143,6 +160,7 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 	return victims
 }
 
+// Overused invoke overused function of the plugins
 func (ssn *Session) Overused(queue *api.QueueInfo) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
@@ -159,10 +177,11 @@ func (ssn *Session) Overused(queue *api.QueueInfo) bool {
 	return false
 }
 
+// JobReady invoke jobready function of the plugins
 func (ssn *Session) JobReady(obj interface{}) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
-			if plugin.JobReadyDisabled {
+			if !isEnabled(plugin.EnabledJobReady) {
 				continue
 			}
 			jrf, found := ssn.jobReadyFns[plugin.Name]
@@ -179,6 +198,28 @@ func (ssn *Session) JobReady(obj interface{}) bool {
 	return true
 }
 
+// JobPipelined invoke pipelined function of the plugins
+func (ssn *Session) JobPipelined(obj interface{}) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledJobPipelined) {
+				continue
+			}
+			jrf, found := ssn.jobPipelinedFns[plugin.Name]
+			if !found {
+				continue
+			}
+
+			if !jrf(obj) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+// JobValid invoke jobvalid function of the plugins
 func (ssn *Session) JobValid(obj interface{}) *api.ValidateResult {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
@@ -197,10 +238,11 @@ func (ssn *Session) JobValid(obj interface{}) *api.ValidateResult {
 	return nil
 }
 
+// JobOrderFn invoke joborder function of the plugins
 func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
-			if plugin.JobOrderDisabled {
+			if !isEnabled(plugin.EnabledJobOrder) {
 				continue
 			}
 			jof, found := ssn.jobOrderFns[plugin.Name]
@@ -218,15 +260,16 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 	rv := r.(*api.JobInfo)
 	if lv.CreationTimestamp.Equal(&rv.CreationTimestamp) {
 		return lv.UID < rv.UID
-	} else {
-		return lv.CreationTimestamp.Before(&rv.CreationTimestamp)
 	}
+	return lv.CreationTimestamp.Before(&rv.CreationTimestamp)
+
 }
 
+// QueueOrderFn invoke queueorder function of the plugins
 func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
-			if plugin.QueueOrderDisabled {
+			if !isEnabled(plugin.EnabledQueueOrder) {
 				continue
 			}
 			qof, found := ssn.queueOrderFns[plugin.Name]
@@ -245,15 +288,16 @@ func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
 	rv := r.(*api.QueueInfo)
 	if lv.Queue.CreationTimestamp.Equal(&rv.Queue.CreationTimestamp) {
 		return lv.UID < rv.UID
-	} else {
-		return lv.Queue.CreationTimestamp.Before(&rv.Queue.CreationTimestamp)
 	}
+	return lv.Queue.CreationTimestamp.Before(&rv.Queue.CreationTimestamp)
+
 }
 
+// TaskCompareFns invoke taskorder function of the plugins
 func (ssn *Session) TaskCompareFns(l, r interface{}) int {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
-			if plugin.TaskOrderDisabled {
+			if !isEnabled(plugin.EnabledTaskOrder) {
 				continue
 			}
 			tof, found := ssn.taskOrderFns[plugin.Name]
@@ -269,6 +313,7 @@ func (ssn *Session) TaskCompareFns(l, r interface{}) int {
 	return 0
 }
 
+// TaskOrderFn invoke taskorder function of the plugins
 func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 	if res := ssn.TaskCompareFns(l, r); res != 0 {
 		return res < 0
@@ -279,15 +324,16 @@ func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 	rv := r.(*api.TaskInfo)
 	if lv.Pod.CreationTimestamp.Equal(&rv.Pod.CreationTimestamp) {
 		return lv.UID < rv.UID
-	} else {
-		return lv.Pod.CreationTimestamp.Before(&rv.Pod.CreationTimestamp)
 	}
+	return lv.Pod.CreationTimestamp.Before(&rv.Pod.CreationTimestamp)
+
 }
 
+// PredicateFn invoke predicate function of the plugins
 func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
-			if plugin.PredicateDisabled {
+			if !isEnabled(plugin.EnabledPredicate) {
 				continue
 			}
 			pfn, found := ssn.predicateFns[plugin.Name]
@@ -303,11 +349,12 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 	return nil
 }
 
-func (ssn *Session) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo) (int, error) {
-	priorityScore := 0
+// NodeOrderFn invoke node order function of the plugins
+func (ssn *Session) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
+	priorityScore := 0.0
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
-			if plugin.NodeOrderDisabled {
+			if !isEnabled(plugin.EnabledNodeOrder) {
 				continue
 			}
 			pfn, found := ssn.nodeOrderFns[plugin.Name]
@@ -317,10 +364,14 @@ func (ssn *Session) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo) (int, er
 			score, err := pfn(task, node)
 			if err != nil {
 				return 0, err
-			} else {
-				priorityScore = priorityScore + score
 			}
+			priorityScore = priorityScore + score
+
 		}
 	}
 	return priorityScore, nil
+}
+
+func isEnabled(enabled *bool) bool {
+	return enabled != nil && *enabled
 }
