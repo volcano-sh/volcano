@@ -31,6 +31,7 @@ type Action interface {
 	UnInitialize()
 }
 
+// Plugin is the interface of scheduler plugin
 type Plugin interface {
 	// The unique name of Plugin.
 	Name() string

@@ -45,6 +45,7 @@ type ServerOption struct {
 	EnablePriorityClass  bool
 }
 
+// ServerOpts server options
 var ServerOpts *ServerOption
 
 // NewServerOption creates a new CMServer with a default config.
@@ -58,7 +59,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.Master, "master", s.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 	fs.StringVar(&s.Kubeconfig, "kubeconfig", s.Kubeconfig, "Path to kubeconfig file with authorization and master location information")
 	// kube-batch will ignore pods with scheduler names other than specified with the option
-	fs.StringVar(&s.SchedulerName, "scheduler-name", defaultSchedulerName, "kube-batch will handle pods with the scheduler-name")
+	fs.StringVar(&s.SchedulerName, "scheduler-name", defaultSchedulerName, "kube-batch will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.StringVar(&s.SchedulerConf, "scheduler-conf", "", "The absolute path of scheduler configuration file")
 	fs.DurationVar(&s.SchedulePeriod, "schedule-period", defaultSchedulerPeriod, "The period between each scheduling cycle")
 	fs.StringVar(&s.DefaultQueue, "default-queue", defaultQueue, "The default queue name of the job")
@@ -66,12 +67,13 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 		"Start a leader election client and gain leadership before "+
 			"executing the main loop. Enable this when running replicated kube-batch for high availability")
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
-	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", s.LockObjectNamespace, "Define the namespace of the lock object")
+	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", s.LockObjectNamespace, "Define the namespace of the lock object that is used for leader election")
 	fs.StringVar(&s.ListenAddress, "listen-address", defaultListenAddress, "The address to listen on for HTTP requests.")
 	fs.BoolVar(&s.EnablePriorityClass, "priority-class", true,
 		"Enable PriorityClass to provide the capacity of preemption at pod group level; to disable it, set it false")
 }
 
+// CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled
 func (s *ServerOption) CheckOptionOrDie() error {
 	if s.EnableLeaderElection && s.LockObjectNamespace == "" {
 		return fmt.Errorf("lock-object-namespace must not be nil when LeaderElection is enabled")
@@ -80,6 +82,7 @@ func (s *ServerOption) CheckOptionOrDie() error {
 	return nil
 }
 
+// RegisterOptions registers options
 func (s *ServerOption) RegisterOptions() {
 	ServerOpts = s
 }

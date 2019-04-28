@@ -34,6 +34,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+
+	// Register gcp auth
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/rest"
 	restclient "k8s.io/client-go/rest"
@@ -57,6 +59,7 @@ func buildConfig(master, kubeconfig string) (*rest.Config, error) {
 	return rest.InClusterConfig()
 }
 
+// Run the kubeBatch scheduler
 func Run(opt *options.ServerOption) error {
 	if opt.PrintVersion {
 		version.PrintVersionAndExit(apiVersion)

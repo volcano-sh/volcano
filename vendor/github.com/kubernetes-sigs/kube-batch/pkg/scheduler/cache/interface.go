@@ -17,10 +17,9 @@ limitations under the License.
 package cache
 
 import (
-	"k8s.io/api/core/v1"
-
 	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	v1 "k8s.io/api/core/v1"
 )
 
 // Cache collects pods/nodes/queues information
@@ -56,15 +55,18 @@ type Cache interface {
 	BindVolumes(task *api.TaskInfo) error
 }
 
+// VolumeBinder interface for allocate and bind volumes
 type VolumeBinder interface {
 	AllocateVolumes(task *api.TaskInfo, hostname string) error
 	BindVolumes(task *api.TaskInfo) error
 }
 
+//Binder interface for binding task and hostname
 type Binder interface {
 	Bind(task *v1.Pod, hostname string) error
 }
 
+// Evictor interface for evict pods
 type Evictor interface {
 	Evict(pod *v1.Pod) error
 }

@@ -33,22 +33,24 @@ type Tier struct {
 type PluginOption struct {
 	// The name of Plugin
 	Name string `yaml:"name"`
-	// JobOrderDisabled defines whether jobOrderFn is disabled
-	JobOrderDisabled bool `yaml:"disableJobOrder"`
-	// JobReadyDisabled defines whether jobReadyFn is disabled
-	JobReadyDisabled bool `yaml:"disableJobReady"`
-	// TaskOrderDisabled defines whether taskOrderFn is disabled
-	TaskOrderDisabled bool `yaml:"disableTaskOrder"`
-	// PreemptableDisabled defines whether preemptableFn is disabled
-	PreemptableDisabled bool `yaml:"disablePreemptable"`
-	// ReclaimableDisabled defines whether reclaimableFn is disabled
-	ReclaimableDisabled bool `yaml:"disableReclaimable"`
-	// QueueOrderDisabled defines whether queueOrderFn is disabled
-	QueueOrderDisabled bool `yaml:"disableQueueOrder"`
-	// PredicateDisabled defines whether predicateFn is disabled
-	PredicateDisabled bool `yaml:"disablePredicate"`
-	// NodeOrderDisabled defines whether NodeOrderFn is disabled
-	NodeOrderDisabled bool `yaml:"disableNodeOrder"`
+	// EnabledJobOrder defines whether jobOrderFn is enabled
+	EnabledJobOrder *bool `yaml:"enableJobOrder"`
+	// EnabledJobReady defines whether jobReadyFn is enabled
+	EnabledJobReady *bool `yaml:"enableJobReady"`
+	// EnabledJobPipelined defines whether jobPipelinedFn is enabled
+	EnabledJobPipelined *bool `yaml:"enableJobPipelined"`
+	// EnabledTaskOrder defines whether taskOrderFn is enabled
+	EnabledTaskOrder *bool `yaml:"enableTaskOrder"`
+	// EnabledPreemptable defines whether preemptableFn is enabled
+	EnabledPreemptable *bool `yaml:"enablePreemptable"`
+	// EnabledReclaimable defines whether reclaimableFn is enabled
+	EnabledReclaimable *bool `yaml:"enableReclaimable"`
+	// EnabledQueueOrder defines whether queueOrderFn is enabled
+	EnabledQueueOrder *bool `yaml:"enableQueueOrder"`
+	// EnabledPredicate defines whether predicateFn is enabled
+	EnabledPredicate *bool `yaml:"enablePredicate"`
+	// EnabledNodeOrder defines whether NodeOrderFn is enabled
+	EnabledNodeOrder *bool `yaml:"enableNodeOrder"`
 	// Arguments defines the different arguments that can be given to different plugins
 	Arguments map[string]string `yaml:"arguments"`
 }
