@@ -27,7 +27,7 @@ jobs:
         - sudo curl -o /usr/local/bin/kind -L https://github.com/kubernetes-sigs/kind/releases/download/0.2.0/kind-linux-amd64
         - sudo chmod +x /usr/local/bin/kind
       script:
-        - make cli
+        - make vkctl
         - make images
         - make e2e-test-kind
       after_failure:
