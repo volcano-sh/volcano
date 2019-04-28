@@ -114,7 +114,7 @@ func Run(opt *options.ServerOption) error {
 
 	rl, err := resourcelock.New(resourcelock.ConfigMapsResourceLock,
 		opt.LockObjectNamespace,
-		"volcano",
+		"kube-batch",
 		leaderElectionClient.CoreV1(),
 		resourcelock.ResourceLockConfig{
 			Identity:      id,
