@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Kubernetes Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,16 +17,20 @@ limitations under the License.
 package e2e
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
+	"text/template"
 	"time"
+
+	"k8s.io/kubernetes/pkg/util/file"
 
 	. "github.com/onsi/gomega"
 
 	appv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	schedv1 "k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -43,28 +47,25 @@ import (
 	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 
-	vkv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/batch/v1alpha1"
-	vkver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
-	"github.com/kubernetes-sigs/kube-batch/pkg/controllers/job/state"
+	"sync"
+
+	. "github.com/onsi/ginkgo"
 )
+
+const currentApiCallMetricsVersion = "v1"
 
 var oneMinute = 1 * time.Minute
+var tenMinute = 10 * time.Minute
 
-var twoMinute = 2 * time.Minute
-
+var halfCPU = v1.ResourceList{"cpu": resource.MustParse("500m")}
 var oneCPU = v1.ResourceList{"cpu": resource.MustParse("1000m")}
+var twoCPU = v1.ResourceList{"cpu": resource.MustParse("2000m")}
+var smallCPU = v1.ResourceList{"cpu": resource.MustParse("2m")}
 
 const (
-	workerPriority      = "worker-pri"
-	masterPriority      = "master-pri"
-	defaultNginxImage   = "nginx:1.14"
-	defaultBusyBoxImage = "busybox:1.24"
-	defaultMPIImage     = "volcanosh/example-mpi:0.0.1"
+	workerPriority = "worker-pri"
+	masterPriority = "master-pri"
 )
-
-func cpuResource(request string) v1.ResourceList {
-	return v1.ResourceList{v1.ResourceCPU: resource.MustParse(request)}
-}
 
 func homeDir() string {
 	if h := os.Getenv("HOME"); h != "" {
@@ -73,35 +74,12 @@ func homeDir() string {
 	return os.Getenv("USERPROFILE") // windows
 }
 
-func masterURL() string {
-	if m := os.Getenv("MASTER"); m != "" {
-		return m
-	}
-	return ""
-}
-
-func kubeconfigPath(home string) string {
-	if m := os.Getenv("KUBECONFIG"); m != "" {
-		return m
-	}
-	return filepath.Join(home, ".kube", "config") // default kubeconfig path is $HOME/.kube/config
-}
-
-func VolcanoCliBinary() string {
-	if bin := os.Getenv("VK_BIN"); bin != "" {
-		return filepath.Join(bin, "vkctl")
-	}
-	return ""
-}
-
 type context struct {
 	kubeclient *kubernetes.Clientset
 	kbclient   *kbver.Clientset
-	vkclient   *vkver.Clientset
 
-	namespace              string
-	queues                 []string
-	enableNamespaceAsQueue bool
+	namespace string
+	queues    []string
 }
 
 func initTestContext() *context {
@@ -112,35 +90,19 @@ func initTestContext() *context {
 
 	home := homeDir()
 	Expect(home).NotTo(Equal(""))
-	configPath := kubeconfigPath(home)
-	Expect(configPath).NotTo(Equal(""))
-	vkctl := VolcanoCliBinary()
-	Expect(fileExist(vkctl)).To(BeTrue(), fmt.Sprintf(
-		"vkctl binary: %s is required for E2E tests, please update VK_BIN environment", vkctl))
-	config, err := clientcmd.BuildConfigFromFlags(masterURL(), configPath)
-	Expect(err).NotTo(HaveOccurred())
+
+	config, err := clientcmd.BuildConfigFromFlags("", filepath.Join(home, ".kube", "config"))
+	checkError(cxt, err)
 
 	cxt.kbclient = kbver.NewForConfigOrDie(config)
 	cxt.kubeclient = kubernetes.NewForConfigOrDie(config)
-	cxt.vkclient = vkver.NewForConfigOrDie(config)
-
-	//Ensure at least one worker is ready
-	err = waitClusterReady(cxt)
-	Expect(err).NotTo(HaveOccurred(),
-		"k8s cluster is required to have one ready worker node at least.")
-
-	//NOTE(tommylikehu):NamespaceAsQueue feature was removed from kube-batch,
-	//we will eventually remove this logic in test as well.
-	cxt.enableNamespaceAsQueue = false
 
 	_, err = cxt.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: cxt.namespace,
 		},
 	})
-	Expect(err).NotTo(HaveOccurred())
-
-	createQueues(cxt)
+	checkError(cxt, err)
 
 	_, err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Create(&schedv1.PriorityClass{
 		ObjectMeta: metav1.ObjectMeta{
@@ -149,7 +111,7 @@ func initTestContext() *context {
 		Value:         100,
 		GlobalDefault: false,
 	})
-	Expect(err).NotTo(HaveOccurred())
+	checkError(cxt, err)
 
 	_, err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Create(&schedv1.PriorityClass{
 		ObjectMeta: metav1.ObjectMeta{
@@ -158,7 +120,7 @@ func initTestContext() *context {
 		Value:         1,
 		GlobalDefault: false,
 	})
-	Expect(err).NotTo(HaveOccurred())
+	checkError(cxt, err)
 
 	return cxt
 }
@@ -176,13 +138,7 @@ func namespaceNotExist(ctx *context) wait.ConditionFunc {
 func queueNotExist(ctx *context) wait.ConditionFunc {
 	return func() (bool, error) {
 		for _, q := range ctx.queues {
-			var err error
-			if ctx.enableNamespaceAsQueue {
-				_, err = ctx.kubeclient.CoreV1().Namespaces().Get(q, metav1.GetOptions{})
-			} else {
-				_, err = ctx.kbclient.SchedulingV1alpha1().Queues().Get(q, metav1.GetOptions{})
-			}
-
+			_, err := ctx.kbclient.SchedulingV1alpha1().Queues().Get(q, metav1.GetOptions{})
 			if !(err != nil && errors.IsNotFound(err)) {
 				return false, err
 			}
@@ -192,66 +148,99 @@ func queueNotExist(ctx *context) wait.ConditionFunc {
 	}
 }
 
-func fileExist(name string) bool {
-	if _, err := os.Stat(name); err != nil {
-		if os.IsNotExist(err) {
-			return false
-		}
-	}
-	return true
-}
-
 func cleanupTestContext(cxt *context) {
 	foreground := metav1.DeletePropagationForeground
 
 	err := cxt.kubeclient.CoreV1().Namespaces().Delete(cxt.namespace, &metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
-	Expect(err).NotTo(HaveOccurred())
-
-	deleteQueues(cxt)
+	checkError(cxt, err)
 
 	err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(masterPriority, &metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
-	Expect(err).NotTo(HaveOccurred())
+	checkError(cxt, err)
 
 	err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(workerPriority, &metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
-	Expect(err).NotTo(HaveOccurred())
+	checkError(cxt, err)
 
 	// Wait for namespace deleted.
-	err = wait.Poll(100*time.Millisecond, twoMinute, namespaceNotExist(cxt))
-	Expect(err).NotTo(HaveOccurred())
+	err = wait.Poll(100*time.Millisecond, oneMinute, namespaceNotExist(cxt))
+	checkError(cxt, err)
+}
 
-	// Wait for queues deleted
-	err = wait.Poll(100*time.Millisecond, twoMinute, queueNotExist(cxt))
-	Expect(err).NotTo(HaveOccurred())
+func clusterInfo(cxt *context) string {
+	// Nodes
+	nodes, err := cxt.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
+	if err != nil {
+		return fmt.Sprintf("Failed to list nodes: %v", err)
+	}
+
+	pods, err := cxt.kubeclient.CoreV1().Pods(metav1.NamespaceAll).List(metav1.ListOptions{})
+	if err != nil {
+		return fmt.Sprintf("Failed to list pods: %v", err)
+	}
+
+	clusterInfo := `
+Cluster Info:
+  Nodes:
+{{range .nodes}}
+    Name: {{ .Name }}
+    Allocatable:
+      Pods: {{ .Status.Allocatable.Pods }}
+      CPU: {{ .Status.Allocatable.Cpu }}
+      Memory: {{ .Status.Allocatable.Memory }}
+    Conditions: {{range .Status.Conditions }}
+      {{ .Type }}={{ .Status }}{{end}}
+    Taints: {{range .Spec.Taints }}
+      {{ .Key }} {{ .Value }} {{ .Effect }}{{end}}
+{{end}}
+
+  Pods:
+{{range .pods}}    {{printf "%-45v%-15v%-10v%-10v" .Name .Namespace .Status.Phase .Spec.NodeName}}
+{{end}}
+`
+
+	datas := map[string]interface{}{
+		"nodes": nodes.Items,
+		"pods":  pods.Items,
+	}
+
+	// Create a new template and parse the letter into it.
+	t := template.Must(template.New("clusterInfo").Parse(clusterInfo))
+
+	output := bytes.NewBuffer(nil)
+	err = t.Execute(output, datas)
+
+	if err != nil {
+		return fmt.Sprintf("Failed to exeucte template: %v", err)
+	}
+
+	return output.String()
+}
+
+func checkError(cxt *context, err error) {
+	if err != nil {
+		ExpectWithOffset(1, err).NotTo(HaveOccurred(), clusterInfo(cxt))
+	}
 }
 
 func createQueues(cxt *context) {
 	var err error
 
 	for _, q := range cxt.queues {
-		if cxt.enableNamespaceAsQueue {
-			_, err = cxt.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: q,
-				},
-			})
-		} else {
-			_, err = cxt.kbclient.SchedulingV1alpha1().Queues().Create(&kbv1.Queue{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: q,
-				},
-				Spec: kbv1.QueueSpec{
-					Weight: 1,
-				},
-			})
-		}
+		_, err = cxt.kbclient.SchedulingV1alpha1().Queues().Create(&kbv1.Queue{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: q,
+			},
+			Spec: kbv1.QueueSpec{
+				Weight: 1,
+			},
+		})
 
-		Expect(err).NotTo(HaveOccurred())
+		checkError(cxt, err)
 	}
 }
 
@@ -259,45 +248,35 @@ func deleteQueues(cxt *context) {
 	foreground := metav1.DeletePropagationForeground
 
 	for _, q := range cxt.queues {
-		var err error
+		err := cxt.kbclient.SchedulingV1alpha1().Queues().Delete(q, &metav1.DeleteOptions{
+			PropagationPolicy: &foreground,
+		})
 
-		if cxt.enableNamespaceAsQueue {
-			err = cxt.kubeclient.CoreV1().Namespaces().Delete(q, &metav1.DeleteOptions{
-				PropagationPolicy: &foreground,
-			})
-		} else {
-			err = cxt.kbclient.SchedulingV1alpha1().Queues().Delete(q, &metav1.DeleteOptions{
-				PropagationPolicy: &foreground,
-			})
-		}
-
-		Expect(err).NotTo(HaveOccurred())
+		checkError(cxt, err)
 	}
+
+	// Wait for queues deleted
+	err := wait.Poll(100*time.Millisecond, oneMinute, queueNotExist(cxt))
+	checkError(cxt, err)
 }
 
 type taskSpec struct {
-	name                  string
-	min, rep              int32
-	img                   string
-	command               string
-	workingDir            string
-	hostport              int32
-	req                   v1.ResourceList
-	affinity              *v1.Affinity
-	labels                map[string]string
-	policies              []vkv1.LifecyclePolicy
-	restartPolicy         v1.RestartPolicy
-	defaultGracefulPeriod *int64
+	min, rep int32
+	img      string
+	pri      string
+	hostport int32
+	req      v1.ResourceList
+	affinity *v1.Affinity
+	labels   map[string]string
 }
 
 type jobSpec struct {
 	name      string
 	namespace string
 	queue     string
+	pri       string
 	tasks     []taskSpec
-	policies  []vkv1.LifecyclePolicy
-	min       int32
-	plugins   map[string][]string
+	minMember *int32
 }
 
 func getNS(context *context, job *jobSpec) string {
@@ -305,98 +284,84 @@ func getNS(context *context, job *jobSpec) string {
 		return job.namespace
 	}
 
-	if context.enableNamespaceAsQueue {
-		if len(job.queue) != 0 {
-			return job.queue
-		}
-	}
-
 	return context.namespace
 }
 
-func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
-
-	job, err := createJobInner(context, jobSpec)
-	Expect(err).NotTo(HaveOccurred())
-
-	return job
-}
-
-func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
-	ns := getNS(context, jobSpec)
-
-	job := &vkv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      jobSpec.name,
-			Namespace: ns,
-		},
-		Spec: vkv1.JobSpec{
-			Policies: jobSpec.policies,
-			Queue:    jobSpec.queue,
-			Plugins:  jobSpec.plugins,
-		},
-	}
-
+func createJob(context *context, job *jobSpec) ([]*batchv1.Job, *kbv1.PodGroup) {
+	var jobs []*batchv1.Job
+	var podgroup *kbv1.PodGroup
 	var min int32
-	for i, task := range jobSpec.tasks {
-		name := task.name
-		if len(name) == 0 {
-			name = fmt.Sprintf("%s-task-%d", jobSpec.name, i)
-		}
 
-		restartPolicy := v1.RestartPolicyOnFailure
-		if len(task.restartPolicy) > 0 {
-			restartPolicy = task.restartPolicy
-		}
+	ns := getNS(context, job)
 
-		ts := vkv1.TaskSpec{
-			Name:     name,
-			Replicas: task.rep,
-			Policies: task.policies,
-			Template: v1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:   name,
-					Labels: task.labels,
-				},
-				Spec: v1.PodSpec{
-					SchedulerName: "kube-batch",
-					RestartPolicy: restartPolicy,
-					Containers:    createContainers(task.img, task.command, task.workingDir, task.req, task.hostport),
-					Affinity:      task.affinity,
+	for i, task := range job.tasks {
+		job := &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("%s-%d", job.name, i),
+				Namespace: ns,
+			},
+			Spec: batchv1.JobSpec{
+				Parallelism: &task.rep,
+				Completions: &task.rep,
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels:      task.labels,
+						Annotations: map[string]string{kbv1.GroupNameAnnotationKey: job.name},
+					},
+					Spec: v1.PodSpec{
+						SchedulerName: "kube-batch",
+						RestartPolicy: v1.RestartPolicyOnFailure,
+						Containers:    createContainers(task.img, task.req, task.hostport),
+						Affinity:      task.affinity,
+					},
 				},
 			},
 		}
 
-		if task.defaultGracefulPeriod != nil {
-			ts.Template.Spec.TerminationGracePeriodSeconds = task.defaultGracefulPeriod
-		} else {
-			//NOTE: TerminationGracePeriodSeconds is set to 3 in default in case of timeout when restarting tasks in test.
-			var defaultPeriod int64 = 3
-			ts.Template.Spec.TerminationGracePeriodSeconds = &defaultPeriod
+		if len(task.pri) != 0 {
+			job.Spec.Template.Spec.PriorityClassName = task.pri
 		}
 
-		job.Spec.Tasks = append(job.Spec.Tasks, ts)
+		job, err := context.kubeclient.BatchV1().Jobs(job.Namespace).Create(job)
+		checkError(context, err)
+		jobs = append(jobs, job)
 
-		min += task.min
+		min = min + task.min
 	}
 
-	if jobSpec.min > 0 {
-		job.Spec.MinAvailable = jobSpec.min
-	} else {
-		job.Spec.MinAvailable = min
+	pg := &kbv1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      job.name,
+			Namespace: ns,
+		},
+		Spec: kbv1.PodGroupSpec{
+			MinMember:         min,
+			Queue:             job.queue,
+			PriorityClassName: job.pri,
+		},
 	}
 
-	return context.vkclient.BatchV1alpha1().Jobs(job.Namespace).Create(job)
+	if job.minMember != nil {
+		pg.Spec.MinMember = *job.minMember
+	}
+
+	podgroup, err := context.kbclient.SchedulingV1alpha1().PodGroups(pg.Namespace).Create(pg)
+	checkError(context, err)
+
+	return jobs, podgroup
 }
 
-func taskPhase(ctx *context, job *vkv1.Job, phase []v1.PodPhase, taskNum int) wait.ConditionFunc {
+func taskPhase(ctx *context, pg *kbv1.PodGroup, phase []v1.PodPhase, taskNum int) wait.ConditionFunc {
 	return func() (bool, error) {
-		pods, err := ctx.kubeclient.CoreV1().Pods(job.Namespace).List(metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		pg, err := ctx.kbclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
+		checkError(ctx, err)
+
+		pods, err := ctx.kubeclient.CoreV1().Pods(pg.Namespace).List(metav1.ListOptions{})
+		checkError(ctx, err)
 
 		readyTaskNum := 0
 		for _, pod := range pods.Items {
-			if !metav1.IsControlledBy(&pod, job) {
+			if gn, found := pod.Annotations[kbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
 				continue
 			}
 
@@ -412,23 +377,48 @@ func taskPhase(ctx *context, job *vkv1.Job, phase []v1.PodPhase, taskNum int) wa
 	}
 }
 
-func jobUnschedulable(ctx *context, job *vkv1.Job, time time.Time) wait.ConditionFunc {
-	// TODO(k82cn): check Job's Condition instead of PodGroup's event.
+func taskPhaseEx(ctx *context, pg *kbv1.PodGroup, phase []v1.PodPhase, taskNum map[string]int) wait.ConditionFunc {
 	return func() (bool, error) {
-		pg, err := ctx.kbclient.SchedulingV1alpha1().PodGroups(job.Namespace).Get(job.Name, metav1.GetOptions{})
-		if err != nil {
-			return false, nil
+		pg, err := ctx.kbclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
+		checkError(ctx, err)
+
+		pods, err := ctx.kubeclient.CoreV1().Pods(pg.Namespace).List(metav1.ListOptions{})
+		checkError(ctx, err)
+
+		readyTaskNum := map[string]int{}
+		for _, pod := range pods.Items {
+			if gn, found := pod.Annotations[kbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
+				continue
+			}
+
+			for _, p := range phase {
+				if pod.Status.Phase == p {
+					readyTaskNum[pod.Spec.PriorityClassName]++
+					break
+				}
+			}
 		}
 
-		events, err := ctx.kubeclient.CoreV1().Events(pg.Namespace).List(metav1.ListOptions{})
-		if err != nil {
-			return false, nil
+		for k, v := range taskNum {
+			if v > readyTaskNum[k] {
+				return false, nil
+			}
 		}
+
+		return true, nil
+	}
+}
+
+func podGroupUnschedulable(ctx *context, pg *kbv1.PodGroup, time time.Time) wait.ConditionFunc {
+	return func() (bool, error) {
+		events, err := ctx.kubeclient.CoreV1().Events(pg.Namespace).List(metav1.ListOptions{})
+		checkError(ctx, err)
 
 		for _, event := range events.Items {
 			target := event.InvolvedObject
 			if target.Name == pg.Name && target.Namespace == pg.Namespace {
-				if event.Reason == string("Unschedulable") && event.LastTimestamp.After(time) {
+				if event.Reason == string(kbv1.PodGroupUnschedulableType) &&
+					event.LastTimestamp.After(time) {
 					return true, nil
 				}
 			}
@@ -438,19 +428,18 @@ func jobUnschedulable(ctx *context, job *vkv1.Job, time time.Time) wait.Conditio
 	}
 }
 
-func jobEvicted(ctx *context, job *vkv1.Job, time time.Time) wait.ConditionFunc {
-	// TODO(k82cn): check Job's conditions instead of PodGroup's event.
+func podGroupEvicted(ctx *context, pg *kbv1.PodGroup, time time.Time) wait.ConditionFunc {
 	return func() (bool, error) {
-		pg, err := ctx.kbclient.SchedulingV1alpha1().PodGroups(job.Namespace).Get(job.Name, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		pg, err := ctx.kbclient.SchedulingV1alpha1().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
+		checkError(ctx, err)
 
 		events, err := ctx.kubeclient.CoreV1().Events(pg.Namespace).List(metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		checkError(ctx, err)
 
 		for _, event := range events.Items {
 			target := event.InvolvedObject
 			if target.Name == pg.Name && target.Namespace == pg.Namespace {
-				if event.Reason == string("Evict") && event.LastTimestamp.After(time) {
+				if event.Reason == "Evict" && event.LastTimestamp.After(time) {
 					return true, nil
 				}
 			}
@@ -460,120 +449,42 @@ func jobEvicted(ctx *context, job *vkv1.Job, time time.Time) wait.ConditionFunc 
 	}
 }
 
-func waitJobPhases(ctx *context, job *vkv1.Job, phases []vkv1.JobPhase) error {
-	for _, phase := range phases {
-		err := waitJobPhase(ctx, job, phase)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+func waitPodGroupReady(ctx *context, pg *kbv1.PodGroup) error {
+	return waitTasksReady(ctx, pg, int(pg.Spec.MinMember))
 }
 
-func waitJobStates(ctx *context, job *vkv1.Job, phases []vkv1.JobPhase) error {
-	for _, phase := range phases {
-		err := wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, phase))
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+func waitPodGroupPending(ctx *context, pg *kbv1.PodGroup) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
+		[]v1.PodPhase{v1.PodPending}, int(pg.Spec.MinMember)))
 }
 
-func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
-	return wait.Poll(100*time.Millisecond, twoMinute, func() (bool, error) {
-		newJob, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
-
-		if newJob.Status.State.Phase != phase {
-			return false, nil
-		}
-
-		var flag = false
-		switch phase {
-		case vkv1.Pending:
-			flag = newJob.Status.Pending > 0
-		case vkv1.Terminating, vkv1.Aborting, vkv1.Restarting:
-			flag = newJob.Status.Terminating > 0
-		case vkv1.Terminated, vkv1.Aborted:
-			flag = newJob.Status.Pending == 0 &&
-				newJob.Status.Running == 0 &&
-				newJob.Status.Terminating == 0
-		case vkv1.Completed:
-			flag = newJob.Status.Succeeded == state.TotalTasks(newJob)
-		case vkv1.Running:
-			flag = newJob.Status.Running >= newJob.Spec.MinAvailable
-		default:
-			return false, fmt.Errorf("unknown phase %s", phase)
-		}
-
-		return flag, nil
-	})
-}
-
-func waitJobReady(ctx *context, job *vkv1.Job) error {
-	return waitTasksReady(ctx, job, int(job.Spec.MinAvailable))
-}
-
-func waitJobPending(ctx *context, job *vkv1.Job) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, job,
-		[]v1.PodPhase{v1.PodPending}, int(job.Spec.MinAvailable)))
-}
-
-func waitTasksReady(ctx *context, job *vkv1.Job, taskNum int) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, job,
+func waitTasksReady(ctx *context, pg *kbv1.PodGroup, taskNum int) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
 		[]v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum))
 }
 
-func waitTasksPending(ctx *context, job *vkv1.Job, taskNum int) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, job,
+func waitTasksReadyEx(ctx *context, pg *kbv1.PodGroup, taskNum map[string]int) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, taskPhaseEx(ctx, pg,
+		[]v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum))
+}
+
+func waitTasksPending(ctx *context, pg *kbv1.PodGroup, taskNum int) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, pg,
 		[]v1.PodPhase{v1.PodPending}, taskNum))
 }
 
-func waitJobStateReady(ctx *context, job *vkv1.Job) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, vkv1.Running))
+func waitPodGroupUnschedulable(ctx *context, pg *kbv1.PodGroup) error {
+	return wait.Poll(10*time.Second, oneMinute, podGroupUnschedulable(ctx, pg, time.Now()))
 }
 
-func waitJobStatePending(ctx *context, job *vkv1.Job) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, vkv1.Pending))
-}
-
-func waitJobStateAborted(ctx *context, job *vkv1.Job) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, vkv1.Aborted))
-}
-
-func jobPhaseExpect(ctx *context, job *vkv1.Job, state vkv1.JobPhase) wait.ConditionFunc {
-	return func() (bool, error) {
-		job, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
-		return job.Status.State.Phase == state, err
-	}
-}
-
-func waitJobUnschedulable(ctx *context, job *vkv1.Job) error {
-	now := time.Now()
-	return wait.Poll(10*time.Second, oneMinute, jobUnschedulable(ctx, job, now))
-}
-
-func createContainers(img, command, workingDir string, req v1.ResourceList, hostport int32) []v1.Container {
-	var imageRepo []string
+func createContainers(img string, req v1.ResourceList, hostport int32) []v1.Container {
 	container := v1.Container{
 		Image:           img,
+		Name:            img,
 		ImagePullPolicy: v1.PullIfNotPresent,
 		Resources: v1.ResourceRequirements{
 			Requests: req,
 		},
-	}
-	if strings.Index(img, ":") < 0 {
-		imageRepo = strings.Split(img, "/")
-	} else {
-		imageRepo = strings.Split(img[:strings.Index(img, ":")], "/")
-	}
-	container.Name = imageRepo[len(imageRepo)-1]
-
-	if len(command) > 0 {
-		container.Command = []string{"/bin/sh"}
-		container.Args = []string{"-c", command}
 	}
 
 	if hostport > 0 {
@@ -583,10 +494,6 @@ func createContainers(img, command, workingDir string, req v1.ResourceList, host
 				HostPort:      hostport,
 			},
 		}
-	}
-
-	if len(workingDir) > 0 {
-		container.WorkingDir = workingDir
 	}
 
 	return []v1.Container{container}
@@ -611,6 +518,7 @@ func createReplicaSet(context *context, name string, rep int32, img string, req 
 					Labels: map[string]string{deploymentName: name},
 				},
 				Spec: v1.PodSpec{
+					SchedulerName: "kube-batch",
 					RestartPolicy: v1.RestartPolicyAlways,
 					Containers: []v1.Container{
 						{
@@ -628,7 +536,7 @@ func createReplicaSet(context *context, name string, rep int32, img string, req 
 	}
 
 	deployment, err := context.kubeclient.AppsV1().ReplicaSets(context.namespace).Create(deployment)
-	Expect(err).NotTo(HaveOccurred())
+	checkError(context, err)
 
 	return deployment
 }
@@ -643,10 +551,10 @@ func deleteReplicaSet(ctx *context, name string) error {
 func replicaSetReady(ctx *context, name string) wait.ConditionFunc {
 	return func() (bool, error) {
 		deployment, err := ctx.kubeclient.ExtensionsV1beta1().ReplicaSets(ctx.namespace).Get(name, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		checkError(ctx, err)
 
 		pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		checkError(ctx, err)
 
 		labelSelector := labels.SelectorFromSet(deployment.Spec.Selector.MatchLabels)
 
@@ -670,10 +578,10 @@ func waitReplicaSetReady(ctx *context, name string) error {
 
 func clusterSize(ctx *context, req v1.ResourceList) int32 {
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	checkError(ctx, err)
 
 	pods, err := ctx.kubeclient.CoreV1().Pods(metav1.NamespaceAll).List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	checkError(ctx, err)
 
 	used := map[string]*kbapi.Resource{}
 
@@ -718,14 +626,13 @@ func clusterSize(ctx *context, req v1.ResourceList) int32 {
 			res++
 		}
 	}
-	Expect(res).Should(BeNumerically(">=", 1),
-		"Current cluster does not have enough resource for request")
+
 	return res
 }
 
 func clusterNodeNumber(ctx *context) int {
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	checkError(ctx, err)
 
 	nn := 0
 	for _, node := range nodes.Items {
@@ -740,10 +647,10 @@ func clusterNodeNumber(ctx *context) int {
 
 func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	checkError(ctx, err)
 
 	pods, err := ctx.kubeclient.CoreV1().Pods(metav1.NamespaceAll).List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	checkError(ctx, err)
 
 	used := map[string]*kbapi.Resource{}
 
@@ -795,25 +702,29 @@ func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
 	return "", 0
 }
 
-func getTasksOfJob(ctx *context, job *vkv1.Job) []*v1.Pod {
-	pods, err := ctx.kubeclient.CoreV1().Pods(job.Namespace).List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+func getPodOfPodGroup(ctx *context, pg *kbv1.PodGroup) []*v1.Pod {
+	pg, err := ctx.kbclient.Scheduling().PodGroups(pg.Namespace).Get(pg.Name, metav1.GetOptions{})
+	checkError(ctx, err)
 
-	var tasks []*v1.Pod
+	pods, err := ctx.kubeclient.CoreV1().Pods(pg.Namespace).List(metav1.ListOptions{})
+	checkError(ctx, err)
+
+	var qjpod []*v1.Pod
 
 	for _, pod := range pods.Items {
-		if !metav1.IsControlledBy(&pod, job) {
+		if gn, found := pod.Annotations[kbv1.GroupNameAnnotationKey]; !found || gn != pg.Name {
 			continue
 		}
-		tasks = append(tasks, &pod)
+		qjpod = append(qjpod, &pod)
+
 	}
 
-	return tasks
+	return qjpod
 }
 
 func taintAllNodes(ctx *context, taints []v1.Taint) error {
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	checkError(ctx, err)
 
 	for _, node := range nodes.Items {
 		newNode := node.DeepCopy()
@@ -836,10 +747,10 @@ func taintAllNodes(ctx *context, taints []v1.Taint) error {
 		newNode.Spec.Taints = newTaints
 
 		patchBytes, err := preparePatchBytesforNode(node.Name, &node, newNode)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(ctx, err)
 
 		_, err = ctx.kubeclient.CoreV1().Nodes().Patch(node.Name, types.StrategicMergePatchType, patchBytes)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(ctx, err)
 	}
 
 	return nil
@@ -847,7 +758,7 @@ func taintAllNodes(ctx *context, taints []v1.Taint) error {
 
 func removeTaintsFromAllNodes(ctx *context, taints []v1.Taint) error {
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	checkError(ctx, err)
 
 	for _, node := range nodes.Items {
 		if len(node.Spec.Taints) == 0 {
@@ -873,13 +784,28 @@ func removeTaintsFromAllNodes(ctx *context, taints []v1.Taint) error {
 		newNode.Spec.Taints = newTaints
 
 		patchBytes, err := preparePatchBytesforNode(node.Name, &node, newNode)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(ctx, err)
 
 		_, err = ctx.kubeclient.CoreV1().Nodes().Patch(node.Name, types.StrategicMergePatchType, patchBytes)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(ctx, err)
 	}
 
 	return nil
+}
+
+func getAllWorkerNodes(ctx *context) []string {
+	nodeNames := make([]string, 0)
+
+	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
+	checkError(ctx, err)
+
+	for _, node := range nodes.Items {
+		if len(node.Spec.Taints) != 0 {
+			continue
+		}
+		nodeNames = append(nodeNames, node.Name)
+	}
+	return nodeNames
 }
 
 func preparePatchBytesforNode(nodeName string, oldNode *v1.Node, newNode *v1.Node) ([]byte, error) {
@@ -901,33 +827,202 @@ func preparePatchBytesforNode(nodeName string, oldNode *v1.Node, newNode *v1.Nod
 	return patchBytes, nil
 }
 
-func IsNodeReady(node *v1.Node) bool {
-	for _, c := range node.Status.Conditions {
-		if c.Type == v1.NodeReady {
-			return c.Status == v1.ConditionTrue
-		}
+func getkubemarkConfigPath() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return ""
 	}
-	return false
+	//TODO: Please update this path as well once the whole tests are being moved into root test folder.
+	configPath := filepath.Join(wd, "../../kubemark/kubeconfig.kubemark")
+	exist, err := file.FileExists(configPath)
+	if err != nil || !exist {
+		return ""
+	}
+	return configPath
 }
 
-func waitClusterReady(ctx *context) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
-		if readyNodeAmount(ctx) >= 1 {
-			return true, nil
-		} else {
-			return false, nil
-		}
+func initKubemarkDensityTestContext() *context {
+	cxt := &context{
+		namespace: "test",
+		queues:    []string{"q1", "q2"},
+	}
+
+	configPath := getkubemarkConfigPath()
+	Expect(configPath).NotTo(Equal(""))
+	config, err := clientcmd.BuildConfigFromFlags("", configPath)
+	checkError(cxt, err)
+
+	cxt.kbclient = kbver.NewForConfigOrDie(config)
+	cxt.kubeclient = kubernetes.NewForConfigOrDie(config)
+
+	_, err = cxt.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: cxt.namespace,
+		},
 	})
+	checkError(cxt, err)
+
+	_, err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Create(&schedv1.PriorityClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: masterPriority,
+		},
+		Value:         100,
+		GlobalDefault: false,
+	})
+	checkError(cxt, err)
+
+	_, err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Create(&schedv1.PriorityClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: workerPriority,
+		},
+		Value:         1,
+		GlobalDefault: false,
+	})
+	checkError(cxt, err)
+
+	return cxt
 }
 
-func readyNodeAmount(ctx *context) int {
-	var amount int
-	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
-	for _, n := range nodes.Items {
-		if IsNodeReady(&n) && len(n.Spec.Taints) == 0 {
-			amount++
-		}
+func cleanupDensityTestContext(cxt *context) {
+	foreground := metav1.DeletePropagationForeground
+
+	err := cxt.kubeclient.CoreV1().Namespaces().Delete(cxt.namespace, &metav1.DeleteOptions{
+		PropagationPolicy: &foreground,
+	})
+	checkError(cxt, err)
+
+	err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(masterPriority, &metav1.DeleteOptions{
+		PropagationPolicy: &foreground,
+	})
+	checkError(cxt, err)
+
+	err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(workerPriority, &metav1.DeleteOptions{
+		PropagationPolicy: &foreground,
+	})
+	checkError(cxt, err)
+
+	// Wait for namespace deleted.
+	err = wait.Poll(100*time.Millisecond, tenMinute, namespaceNotExist(cxt))
+	checkError(cxt, err)
+}
+
+func createDensityJob(context *context, job *jobSpec) ([]*batchv1.Job, *kbv1.PodGroup) {
+	var jobs []*batchv1.Job
+	var podgroup *kbv1.PodGroup
+	var min int32
+
+	ns := getNS(context, job)
+
+	pg := &kbv1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      job.name,
+			Namespace: ns,
+		},
+		Spec: kbv1.PodGroupSpec{
+			MinMember:         min,
+			Queue:             job.queue,
+			PriorityClassName: job.pri,
+		},
 	}
-	return amount
+
+	if job.minMember != nil {
+		pg.Spec.MinMember = *job.minMember
+	}
+
+	podgroup, err := context.kbclient.SchedulingV1alpha1().PodGroups(pg.Namespace).Create(pg)
+	checkError(context, err)
+
+	for i, task := range job.tasks {
+		job := &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("%s-%d", job.name, i),
+				Namespace: ns,
+			},
+			Spec: batchv1.JobSpec{
+				Parallelism: &task.rep,
+				Completions: &task.rep,
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels:      task.labels,
+						Annotations: map[string]string{kbv1.GroupNameAnnotationKey: job.name},
+					},
+					Spec: v1.PodSpec{
+						SchedulerName: "kube-batch",
+						RestartPolicy: v1.RestartPolicyOnFailure,
+						Containers:    createContainers(task.img, task.req, task.hostport),
+						Affinity:      task.affinity,
+					},
+				},
+			},
+		}
+
+		if len(task.pri) != 0 {
+			job.Spec.Template.Spec.PriorityClassName = task.pri
+		}
+
+		job, err := context.kubeclient.BatchV1().Jobs(job.Namespace).Create(job)
+		checkError(context, err)
+		jobs = append(jobs, job)
+
+		min = min + task.min
+	}
+
+	return jobs, podgroup
+}
+
+func waitDensityTasksReady(ctx *context, pg *kbv1.PodGroup, taskNum int) error {
+	return wait.Poll(100*time.Millisecond, tenMinute, taskPhase(ctx, pg,
+		[]v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum))
+}
+
+func createRunningPodFromRC(wg *sync.WaitGroup, context *context, name, image, podType string, cpuRequest, memRequest resource.Quantity) {
+	defer GinkgoRecover()
+	defer wg.Done()
+	labels := map[string]string{
+		"type": podType,
+		"name": name,
+	}
+	rc := &v1.ReplicationController{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   name,
+			Labels: labels,
+		},
+		Spec: v1.ReplicationControllerSpec{
+			Replicas: func(i int) *int32 { x := int32(i); return &x }(1),
+			Selector: labels,
+			Template: &v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:      labels,
+					Annotations: map[string]string{"scheduling.k8s.io/group-name": "qj-1"},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  name,
+							Image: "nginx",
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU:    cpuRequest,
+									v1.ResourceMemory: memRequest,
+								},
+							},
+						},
+					},
+					DNSPolicy:     v1.DNSDefault,
+					SchedulerName: "kube-batch",
+				},
+			},
+		},
+	}
+
+	_, err := context.kubeclient.CoreV1().ReplicationControllers(context.namespace).Create(rc)
+	checkError(context, err)
+
+}
+
+func deleteReplicationController(ctx *context, name string) error {
+	foreground := metav1.DeletePropagationForeground
+	return ctx.kubeclient.CoreV1().ReplicationControllers(ctx.namespace).Delete(name, &metav1.DeleteOptions{
+		PropagationPolicy: &foreground,
+	})
 }

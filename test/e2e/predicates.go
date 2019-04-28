@@ -22,7 +22,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/kubernetes/pkg/scheduler/api"
+	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 )
 
 var _ = Describe("Predicates E2E Test", func() {
@@ -41,7 +41,7 @@ var _ = Describe("Predicates E2E Test", func() {
 						{
 							MatchFields: []v1.NodeSelectorRequirement{
 								{
-									Key:      api.NodeFieldSelectorKeyNodeName,
+									Key:      schedulerapi.NodeFieldSelectorKeyNodeName,
 									Operator: v1.NodeSelectorOpIn,
 									Values:   []string{nodeName},
 								},
@@ -52,11 +52,11 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		spec := &jobSpec{
-			name: "na-spec",
+		job := &jobSpec{
+			name: "na-job",
 			tasks: []taskSpec{
 				{
-					img:      defaultNginxImage,
+					img:      "nginx",
 					req:      slot,
 					min:      1,
 					rep:      1,
@@ -65,11 +65,11 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		job := createJob(context, spec)
-		err := waitJobReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		_, pg := createJob(context, job)
+		err := waitPodGroupReady(context, pg)
+		checkError(context, err)
 
-		pods := getTasksOfJob(context, job)
+		pods := getPodOfPodGroup(context, pg)
 		for _, pod := range pods {
 			Expect(pod.Spec.NodeName).To(Equal(nodeName))
 		}
@@ -81,11 +81,11 @@ var _ = Describe("Predicates E2E Test", func() {
 
 		nn := clusterNodeNumber(context)
 
-		spec := &jobSpec{
-			name: "hp-spec",
+		job := &jobSpec{
+			name: "hp-job",
 			tasks: []taskSpec{
 				{
-					img:      defaultNginxImage,
+					img:      "nginx",
 					min:      int32(nn),
 					req:      oneCPU,
 					rep:      int32(nn * 2),
@@ -94,13 +94,13 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		job := createJob(context, spec)
+		_, pg := createJob(context, job)
 
-		err := waitTasksReady(context, job, nn)
-		Expect(err).NotTo(HaveOccurred())
+		err := waitTasksReady(context, pg, nn)
+		checkError(context, err)
 
-		err = waitTasksPending(context, job, nn)
-		Expect(err).NotTo(HaveOccurred())
+		err = waitTasksPending(context, pg, nn)
+		checkError(context, err)
 	})
 
 	It("Pod Affinity", func() {
@@ -126,11 +126,11 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		spec := &jobSpec{
-			name: "pa-spec",
+		job := &jobSpec{
+			name: "pa-job",
 			tasks: []taskSpec{
 				{
-					img:      defaultNginxImage,
+					img:      "nginx",
 					req:      slot,
 					min:      rep,
 					rep:      rep,
@@ -140,11 +140,11 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		job := createJob(context, spec)
-		err := waitJobReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		_, pg := createJob(context, job)
+		err := waitPodGroupReady(context, pg)
+		checkError(context, err)
 
-		pods := getTasksOfJob(context, job)
+		pods := getPodOfPodGroup(context, pg)
 		// All pods should be scheduled to the same node.
 		nodeName := pods[0].Spec.NodeName
 		for _, pod := range pods {
@@ -165,13 +165,13 @@ var _ = Describe("Predicates E2E Test", func() {
 		}
 
 		err := taintAllNodes(context, taints)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
-		spec := &jobSpec{
-			name: "tt-spec",
+		job := &jobSpec{
+			name: "tt-job",
 			tasks: []taskSpec{
 				{
-					img: defaultNginxImage,
+					img: "nginx",
 					req: oneCPU,
 					min: 1,
 					rep: 1,
@@ -179,15 +179,15 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		job := createJob(context, spec)
-		err = waitJobPending(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		_, pg := createJob(context, job)
+		err = waitPodGroupPending(context, pg)
+		checkError(context, err)
 
 		err = removeTaintsFromAllNodes(context, taints)
-		Expect(err).NotTo(HaveOccurred())
+		checkError(context, err)
 
-		err = waitJobReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		err = waitPodGroupReady(context, pg)
+		checkError(context, err)
 	})
 
 })

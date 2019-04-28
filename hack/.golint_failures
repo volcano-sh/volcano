@@ -1,13 +1,9 @@
 
-pkg/apis/batch/v1alpha1
-pkg/apis/bus/v1alpha1
 pkg/apis/helpers
 pkg/apis/scheduling/v1alpha1
 pkg/apis/utils
-pkg/controllers/job/plugins/interface
 pkg/scheduler/actions/allocate
 pkg/scheduler/actions/backfill
 pkg/scheduler/actions/preempt
 pkg/scheduler/actions/reclaim
 test/e2e
-test/e2e/kube-batch
