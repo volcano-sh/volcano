@@ -125,3 +125,4 @@ kubernetes.tar.gz
 
 # e2e log files
 *.log
+get_helm.sh
