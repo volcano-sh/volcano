@@ -203,49 +203,6 @@
   version = "1.1.4"
 
 [[projects]]
-  branch = "release-0.4"
-  digest = "1:e9ad5f6b6e8e2b261432d0e8bdb7a7edef7526b7428ccdf5d5040b96e58bae66"
-  name = "github.com/kubernetes-sigs/kube-batch"
-  packages = [
-    "cmd/kube-batch/app",
-    "cmd/kube-batch/app/options",
-    "pkg/apis/scheduling/v1alpha1",
-    "pkg/apis/utils",
-    "pkg/client/clientset/versioned",
-    "pkg/client/clientset/versioned/scheme",
-    "pkg/client/clientset/versioned/typed/scheduling/v1alpha1",
-    "pkg/client/informers/externalversions",
-    "pkg/client/informers/externalversions/internalinterfaces",
-    "pkg/client/informers/externalversions/scheduling",
-    "pkg/client/informers/externalversions/scheduling/v1alpha1",
-    "pkg/client/listers/scheduling/v1alpha1",
-    "pkg/scheduler",
-    "pkg/scheduler/actions",
-    "pkg/scheduler/actions/allocate",
-    "pkg/scheduler/actions/backfill",
-    "pkg/scheduler/actions/preempt",
-    "pkg/scheduler/actions/reclaim",
-    "pkg/scheduler/api",
-    "pkg/scheduler/api/helpers",
-    "pkg/scheduler/cache",
-    "pkg/scheduler/conf",
-    "pkg/scheduler/framework",
-    "pkg/scheduler/metrics",
-    "pkg/scheduler/plugins",
-    "pkg/scheduler/plugins/conformance",
-    "pkg/scheduler/plugins/drf",
-    "pkg/scheduler/plugins/gang",
-    "pkg/scheduler/plugins/nodeorder",
-    "pkg/scheduler/plugins/predicates",
-    "pkg/scheduler/plugins/priority",
-    "pkg/scheduler/plugins/proportion",
-    "pkg/scheduler/util",
-    "pkg/version",
-  ]
-  pruneopts = "UT"
-  revision = "4ec1cce0e5f8a4309bed32f9feff0fc1dadffe9f"
-
-[[projects]]
   digest = "1:ff5ebae34cfbf047d505ee150de27e60570e8c394b3b8fdbb720ff6ac71985fc"
   name = "github.com/matttproud/golang_protobuf_extensions"
   packages = ["pbutil"]
@@ -1040,12 +997,6 @@
   input-imports = [
     "github.com/golang/glog",
     "github.com/hashicorp/go-multierror",
-    "github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app",
-    "github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options",
-    "github.com/kubernetes-sigs/kube-batch/pkg/scheduler",
-    "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions",
-    "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins",
-    "github.com/kubernetes-sigs/kube-batch/pkg/version",
     "github.com/onsi/ginkgo",
     "github.com/onsi/gomega",
     "github.com/prometheus/client_golang/prometheus",
