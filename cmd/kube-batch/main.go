@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Vulcan Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package main
 
 import (
@@ -26,11 +27,12 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/util/flag"
 
-	_ "volcano.sh/volcano/pkg/scheduler/actions"
-	_ "volcano.sh/volcano/pkg/scheduler/plugins"
+	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app"
+	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
 
-	"volcano.sh/volcano/cmd/kube-batch/app"
-	"volcano.sh/volcano/cmd/kube-batch/app/options"
+	// Import default actions/plugins.
+	_ "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions"
+	_ "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins"
 )
 
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
