@@ -26,8 +26,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/util/flag"
 
-	_ "volcano.sh/volcano/pkg/scheduler/actions"
-	_ "volcano.sh/volcano/pkg/scheduler/plugins"
+	_ "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions"
+	_ "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins"
 
 	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app"
 	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
@@ -38,6 +38,7 @@ var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum
 func main() {
 	s := options.NewServerOption()
 	s.AddFlags(pflag.CommandLine)
+	s.RegisterOptions()
 
 	flag.InitFlags()
 	if err := s.CheckOptionOrDie(); err != nil {
