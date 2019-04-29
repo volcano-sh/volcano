@@ -61,13 +61,18 @@ type JobSpec struct {
 	// +optional
 	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,6,opt,name=policies"`
 
-	//Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
-	Queue string `json:"queue,omitempty" protobuf:"bytes,7,opt,name=queue"`
-
 	// Specifies the plugin of job
 	// Key is plugin name, value is the arguments of the plugin
 	// +optional
 	Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,7,opt,name=plugins"`
+
+	//Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
+	Queue string `json:"queue,omitempty" protobuf:"bytes,7,opt,name=queue"`
+
+	// Specifies the maximum number of retries before marking this Job failed.
+	// Defaults to 3.
+	// +optional
+	MaxRetry int32 `json:"maxRetry,omitempty" protobuf:"bytes,8,opt,name=maxRetry"`
 }
 
 // VolumeSpec defines the specification of Volume, e.g. PVC
@@ -132,6 +137,8 @@ const (
 	ResumeJobAction Action = "ResumeJob"
 	// SyncJobAction is the action to sync Job/Pod status.
 	SyncJobAction Action = "SyncJob"
+	// EnqueueAction is the action to sync Job inqueue status.
+	EnqueueAction Action = "EnqueueJob"
 )
 
 // LifecyclePolicy specifies the lifecycle and error handling of task and job.
@@ -197,6 +204,10 @@ const (
 	Terminating JobPhase = "Terminating"
 	// Terminated is the phase that the job is finished unexpected, e.g. events
 	Terminated JobPhase = "Terminated"
+	// Failed is the phase that the job is restarted failed reached the maximum number of retries.
+	Failed JobPhase = "Failed"
+	// Inqueue is the phase that cluster have idle resource to schedule the job
+	Inqueue JobPhase = "Inqueue"
 )
 
 // JobState contains details for the current state of the job.
@@ -242,8 +253,14 @@ type JobStatus struct {
 	// The number of pods which reached phase Terminating.
 	// +optional
 	Terminating int32 `json:"terminating,omitempty" protobuf:"bytes,7,opt,name=terminating"`
+
 	//Current version of job
 	Version int32 `json:"version,omitempty" protobuf:"bytes,8,opt,name=version"`
+
+	// The number of Job retries.
+	// +optional
+	RetryCount int32 `json:"retryCount,omitempty" protobuf:"bytes,9,opt,name=retryCount"`
+
 	// The resources that controlled by this job, e.g. Service, ConfigMap
 	ControlledResources map[string]string `json:"controlledResources,omitempty" protobuf:"bytes,8,opt,name=controlledResources"`
 }

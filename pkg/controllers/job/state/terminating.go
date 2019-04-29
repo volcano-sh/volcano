@@ -26,16 +26,13 @@ type terminatingState struct {
 }
 
 func (ps *terminatingState) Execute(action vkv1.Action) error {
-	return KillJob(ps.job, func(status vkv1.JobStatus) vkv1.JobState {
+	return KillJob(ps.job, func(status *vkv1.JobStatus) {
 		// If any "alive" pods, still in Terminating phase
+		phase := vkv1.Terminated
 		if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {
-			return vkv1.JobState{
-				Phase: vkv1.Terminating,
-			}
+			phase = vkv1.Terminating
 		}
 
-		return vkv1.JobState{
-			Phase: vkv1.Terminated,
-		}
+		status.State.Phase = phase
 	})
 }
