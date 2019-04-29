@@ -19,6 +19,7 @@ package reclaim
 import (
 	"github.com/golang/glog"
 
+	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/util"
@@ -53,6 +54,10 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 
 	var underRequest []*api.JobInfo
 	for _, job := range ssn.Jobs {
+		if job.PodGroup.Status.Phase == v1alpha1.PodGroupPending {
+			continue
+		}
+
 		if queue, found := ssn.Queues[job.Queue]; !found {
 			glog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
 				job.Queue, job.Namespace, job.Name)
