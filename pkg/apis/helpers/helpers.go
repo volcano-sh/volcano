@@ -65,36 +65,27 @@ func ControlledBy(obj interface{}, gvk schema.GroupVersionKind) bool {
 
 func CreateConfigMapIfNotExist(job *vkv1.Job, kubeClients *kubernetes.Clientset, data map[string]string, cmName string) error {
 	// If ConfigMap does not exist, create one for Job.
-	cmOld, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{})
-	if err != nil {
+	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
 			glog.V(3).Infof("Failed to get Configmap for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
 			return err
 		}
-
-		cm := &v1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: job.Namespace,
-				Name:      cmName,
-				OwnerReferences: []metav1.OwnerReference{
-					*metav1.NewControllerRef(job, JobKind),
-				},
-			},
-			Data: data,
-		}
-
-		if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Create(cm); err != nil {
-			glog.V(3).Infof("Failed to create ConfigMap for Job <%s/%s>: %v",
-				job.Namespace, job.Name, err)
-			return err
-		}
-		return nil
 	}
 
-	cmOld.Data = data
-	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Update(cmOld); err != nil {
-		glog.V(3).Infof("Failed to update ConfigMap for Job <%s/%s>: %v",
+	cm := &v1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: job.Namespace,
+			Name:      cmName,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(job, JobKind),
+			},
+		},
+		Data: data,
+	}
+
+	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Create(cm); err != nil {
+		glog.V(3).Infof("Failed to create ConfigMap for Job <%s/%s>: %v",
 			job.Namespace, job.Name, err)
 		return err
 	}
@@ -103,16 +94,6 @@ func CreateConfigMapIfNotExist(job *vkv1.Job, kubeClients *kubernetes.Clientset,
 }
 
 func DeleteConfigmap(job *vkv1.Job, kubeClients *kubernetes.Clientset, cmName string) error {
-	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{}); err != nil {
-		if !apierrors.IsNotFound(err) {
-			glog.V(3).Infof("Failed to get Configmap for Job <%s/%s>: %v",
-				job.Namespace, job.Name, err)
-			return err
-		} else {
-			return nil
-		}
-	}
-
 	if err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Delete(cmName, nil); err != nil {
 		if !apierrors.IsNotFound(err) {
 			glog.Errorf("Failed to delete Configmap of Job %v/%v: %v",

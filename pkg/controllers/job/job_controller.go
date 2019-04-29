@@ -65,6 +65,7 @@ type Controller struct {
 	svcInformer coreinformers.ServiceInformer
 	cmdInformer vkcoreinfo.CommandInformer
 	pcInformer  schedv1.PriorityClassInformer
+	sharedInformers informers.SharedInformerFactory
 
 	// A store of jobs
 	jobLister vkbatchlister.JobLister
@@ -140,7 +141,8 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.cmdLister = cc.cmdInformer.Lister()
 	cc.cmdSynced = cc.cmdInformer.Informer().HasSynced
 
-	cc.podInformer = informers.NewSharedInformerFactory(cc.kubeClients, 0).Core().V1().Pods()
+	cc.sharedInformers = informers.NewSharedInformerFactory(cc.kubeClients, 0)
+	cc.podInformer = cc.sharedInformers.Core().V1().Pods()
 	cc.podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    cc.addPod,
 		UpdateFunc: cc.updatePod,
@@ -150,11 +152,11 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.podLister = cc.podInformer.Lister()
 	cc.podSynced = cc.podInformer.Informer().HasSynced
 
-	cc.pvcInformer = informers.NewSharedInformerFactory(cc.kubeClients, 0).Core().V1().PersistentVolumeClaims()
+	cc.pvcInformer = cc.sharedInformers.Core().V1().PersistentVolumeClaims()
 	cc.pvcLister = cc.pvcInformer.Lister()
 	cc.pvcSynced = cc.pvcInformer.Informer().HasSynced
 
-	cc.svcInformer = informers.NewSharedInformerFactory(cc.kubeClients, 0).Core().V1().Services()
+	cc.svcInformer = cc.sharedInformers.Core().V1().Services()
 	cc.svcLister = cc.svcInformer.Lister()
 	cc.svcSynced = cc.svcInformer.Informer().HasSynced
 
@@ -165,16 +167,13 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.pgLister = cc.pgInformer.Lister()
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
-	cc.pcInformer = informers.NewSharedInformerFactory(cc.kubeClients, 0).Scheduling().V1beta1().PriorityClasses()
+	cc.pcInformer = cc.sharedInformers.Scheduling().V1beta1().PriorityClasses()
 	cc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    cc.addPriorityClass,
 		DeleteFunc: cc.deletePriorityClass,
 	})
 	cc.pcLister = cc.pcInformer.Lister()
 	cc.pcSynced = cc.pcInformer.Informer().HasSynced
-
-	cc.pgLister = cc.pgInformer.Lister()
-	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
 	// Register actions
 	state.SyncJob = cc.syncJob
@@ -186,6 +185,7 @@ func NewJobController(config *rest.Config) *Controller {
 
 // Run start JobController
 func (cc *Controller) Run(stopCh <-chan struct{}) {
+	go cc.sharedInformers.Start(stopCh)
 	go cc.jobInformer.Informer().Run(stopCh)
 	go cc.podInformer.Informer().Run(stopCh)
 	go cc.pvcInformer.Informer().Run(stopCh)

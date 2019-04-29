@@ -67,12 +67,12 @@ type JobSpec struct {
 	Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,7,opt,name=plugins"`
 
 	//Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
-	Queue string `json:"queue,omitempty" protobuf:"bytes,7,opt,name=queue"`
+	Queue string `json:"queue,omitempty" protobuf:"bytes,8,opt,name=queue"`
 
 	// Specifies the maximum number of retries before marking this Job failed.
 	// Defaults to 3.
 	// +optional
-	MaxRetry int32 `json:"maxRetry,omitempty" protobuf:"bytes,8,opt,name=maxRetry"`
+	MaxRetry int32 `json:"maxRetry,omitempty" protobuf:"bytes,9,opt,name=maxRetry"`
 }
 
 // VolumeSpec defines the specification of Volume, e.g. PVC
