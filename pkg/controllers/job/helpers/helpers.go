@@ -18,9 +18,11 @@ package helpers
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
+	"time"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -38,4 +40,15 @@ func GetTaskIndex(pod *v1.Pod) string {
 
 func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(PodNameFmt, jobName, taskName, index)
+}
+
+func GenRandomStr(l int) string {
+	str := "0123456789abcdefghijklmnopqrstuvwxyz"
+	bytes := []byte(str)
+	result := []byte{}
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < l; i++ {
+		result = append(result, bytes[r.Intn(len(bytes))])
+	}
+	return string(result)
 }
