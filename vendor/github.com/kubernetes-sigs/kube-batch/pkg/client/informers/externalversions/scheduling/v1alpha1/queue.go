@@ -21,7 +21,7 @@ package v1alpha1
 import (
 	time "time"
 
-	scheduling_v1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	schedulingv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	versioned "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/internalinterfaces"
 	v1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
@@ -69,7 +69,7 @@ func NewFilteredQueueInformer(client versioned.Interface, resyncPeriod time.Dura
 				return client.SchedulingV1alpha1().Queues().Watch(options)
 			},
 		},
-		&scheduling_v1alpha1.Queue{},
+		&schedulingv1alpha1.Queue{},
 		resyncPeriod,
 		indexers,
 	)
@@ -80,7 +80,7 @@ func (f *queueInformer) defaultInformer(client versioned.Interface, resyncPeriod
 }
 
 func (f *queueInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&scheduling_v1alpha1.Queue{}, f.defaultInformer)
+	return f.factory.InformerFor(&schedulingv1alpha1.Queue{}, f.defaultInformer)
 }
 
 func (f *queueInformer) Lister() v1alpha1.QueueLister {

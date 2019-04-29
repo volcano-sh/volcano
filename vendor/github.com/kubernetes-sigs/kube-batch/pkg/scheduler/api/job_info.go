@@ -21,7 +21,7 @@ import (
 	"sort"
 	"strings"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -29,8 +29,10 @@ import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 )
 
+// TaskID is UID type for Task
 type TaskID types.UID
 
+// TaskInfo will have all infos about the task
 type TaskInfo struct {
 	UID TaskID
 	Job JobID
@@ -63,6 +65,7 @@ func getJobID(pod *v1.Pod) JobID {
 	return ""
 }
 
+// NewTaskInfo creates new taskInfo object for a Pod
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	req := GetPodResourceWithoutInitContainers(pod)
 	initResreq := GetPodResourceRequest(pod)
@@ -89,6 +92,7 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	return ti
 }
 
+// Clone is used for cloning a task
 func (ti *TaskInfo) Clone() *TaskInfo {
 	return &TaskInfo{
 		UID:         ti.UID,
@@ -105,6 +109,7 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 	}
 }
 
+// String returns the taskInfo details in a string
 func (ti TaskInfo) String() string {
 	return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v, resreq %v",
 		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority, ti.Resreq)
@@ -115,8 +120,10 @@ type JobID types.UID
 
 type tasksMap map[TaskID]*TaskInfo
 
+// NodeResourceMap stores resource in a node
 type NodeResourceMap map[string]*Resource
 
+// JobInfo will have all info of a Job
 type JobInfo struct {
 	UID JobID
 
@@ -146,6 +153,7 @@ type JobInfo struct {
 	PDB *policyv1.PodDisruptionBudget
 }
 
+// NewJobInfo creates a new jobInfo for set of tasks
 func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 	job := &JobInfo{
 		UID: uid,
@@ -167,10 +175,12 @@ func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 	return job
 }
 
+// UnsetPodGroup removes podGroup details from a job
 func (ji *JobInfo) UnsetPodGroup() {
 	ji.PodGroup = nil
 }
 
+// SetPodGroup sets podGroup details to a job
 func (ji *JobInfo) SetPodGroup(pg *v1alpha1.PodGroup) {
 	ji.Name = pg.Name
 	ji.Namespace = pg.Namespace
@@ -181,6 +191,7 @@ func (ji *JobInfo) SetPodGroup(pg *v1alpha1.PodGroup) {
 	ji.PodGroup = pg
 }
 
+// SetPDB sets PDB to a job
 func (ji *JobInfo) SetPDB(pdb *policyv1.PodDisruptionBudget) {
 	ji.Name = pdb.Name
 	ji.MinAvailable = pdb.Spec.MinAvailable.IntVal
@@ -190,10 +201,12 @@ func (ji *JobInfo) SetPDB(pdb *policyv1.PodDisruptionBudget) {
 	ji.PDB = pdb
 }
 
+// UnsetPDB removes PDB info of a job
 func (ji *JobInfo) UnsetPDB() {
 	ji.PDB = nil
 }
 
+// GetTasks gets all tasks with the taskStatus
 func (ji *JobInfo) GetTasks(statuses ...TaskStatus) []*TaskInfo {
 	var res []*TaskInfo
 
@@ -216,6 +229,7 @@ func (ji *JobInfo) addTaskIndex(ti *TaskInfo) {
 	ji.TaskStatusIndex[ti.Status][ti.UID] = ti
 }
 
+// AddTaskInfo is used to add a task to a job
 func (ji *JobInfo) AddTaskInfo(ti *TaskInfo) {
 	ji.Tasks[ti.UID] = ti
 	ji.addTaskIndex(ti)
@@ -227,6 +241,7 @@ func (ji *JobInfo) AddTaskInfo(ti *TaskInfo) {
 	}
 }
 
+// UpdateTaskStatus is used to update task's status in a job
 func (ji *JobInfo) UpdateTaskStatus(task *TaskInfo, status TaskStatus) error {
 	if err := validateStatusUpdate(task.Status, status); err != nil {
 		return err
@@ -252,6 +267,7 @@ func (ji *JobInfo) deleteTaskIndex(ti *TaskInfo) {
 	}
 }
 
+// DeleteTaskInfo is used to delete a task from a job
 func (ji *JobInfo) DeleteTaskInfo(ti *TaskInfo) error {
 	if task, found := ji.Tasks[ti.UID]; found {
 		ji.TotalRequest.Sub(task.Resreq)
@@ -270,6 +286,7 @@ func (ji *JobInfo) DeleteTaskInfo(ti *TaskInfo) error {
 		ti.Namespace, ti.Name, ji.Namespace, ji.Name)
 }
 
+// Clone is used to clone a jobInfo object
 func (ji *JobInfo) Clone() *JobInfo {
 	info := &JobInfo{
 		UID:       ji.UID,
@@ -304,6 +321,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 	return info
 }
 
+// String returns a jobInfo object in string format
 func (ji JobInfo) String() string {
 	res := ""
 
@@ -317,7 +335,7 @@ func (ji JobInfo) String() string {
 		ji.UID, ji.Namespace, ji.Queue, ji.Name, ji.MinAvailable, ji.PodGroup) + res
 }
 
-// Error returns detailed information on why a job's task failed to fit on
+// FitError returns detailed information on why a job's task failed to fit on
 // each available node
 func (ji *JobInfo) FitError() string {
 	if len(ji.NodesFitDelta) == 0 {
@@ -333,8 +351,11 @@ func (ji *JobInfo) FitError() string {
 		if v.Get(v1.ResourceMemory) < 0 {
 			reasons["memory"]++
 		}
-		if v.Get(GPUResourceName) < 0 {
-			reasons["GPU"]++
+
+		for rName, rQuant := range v.ScalarResources {
+			if rQuant < 0 {
+				reasons[string(rName)]++
+			}
 		}
 	}
 
@@ -348,4 +369,58 @@ func (ji *JobInfo) FitError() string {
 	}
 	reasonMsg := fmt.Sprintf("0/%v nodes are available, %v.", len(ji.NodesFitDelta), strings.Join(sortReasonsHistogram(), ", "))
 	return reasonMsg
+}
+
+// ReadyTaskNum returns the number of tasks that are ready.
+func (ji *JobInfo) ReadyTaskNum() int32 {
+	occupid := 0
+	for status, tasks := range ji.TaskStatusIndex {
+		if AllocatedStatus(status) ||
+			status == Succeeded {
+			occupid = occupid + len(tasks)
+		}
+	}
+
+	return int32(occupid)
+}
+
+// WaitingTaskNum returns the number of tasks that are pipelined.
+func (ji *JobInfo) WaitingTaskNum() int32 {
+	occupid := 0
+	for status, tasks := range ji.TaskStatusIndex {
+		if status == Pipelined {
+			occupid = occupid + len(tasks)
+		}
+	}
+
+	return int32(occupid)
+}
+
+// ValidTaskNum returns the number of tasks that are valid.
+func (ji *JobInfo) ValidTaskNum() int32 {
+	occupied := 0
+	for status, tasks := range ji.TaskStatusIndex {
+		if AllocatedStatus(status) ||
+			status == Succeeded ||
+			status == Pipelined ||
+			status == Pending {
+			occupied = occupied + len(tasks)
+		}
+	}
+
+	return int32(occupied)
+}
+
+// Ready returns whether job is ready for run
+func (ji *JobInfo) Ready() bool {
+	occupied := ji.ReadyTaskNum()
+
+	return occupied >= ji.MinAvailable
+}
+
+// Pipelined returns whether the number of ready and pipelined task is enough
+func (ji *JobInfo) Pipelined() bool {
+	occupied := ji.WaitingTaskNum() + ji.ReadyTaskNum()
+
+	return occupied >= ji.MinAvailable
 }

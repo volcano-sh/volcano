@@ -25,6 +25,7 @@ import (
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/conf"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins"
 )
 
 var defaultSchedulerConf = `
@@ -51,6 +52,14 @@ func loadSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, error) 
 	if err := yaml.Unmarshal(buf, schedulerConf); err != nil {
 		return nil, nil, err
 	}
+
+	// Set default settings for each plugin if not set
+	for i, tier := range schedulerConf.Tiers {
+		for j := range tier.Plugins {
+			plugins.ApplyPluginConfDefaults(&schedulerConf.Tiers[i].Plugins[j])
+		}
+	}
+
 	actionNames := strings.Split(schedulerConf.Actions, ",")
 	for _, actionName := range actionNames {
 		if action, found := framework.GetAction(strings.TrimSpace(actionName)); found {

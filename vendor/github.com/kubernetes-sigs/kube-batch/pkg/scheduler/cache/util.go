@@ -17,7 +17,7 @@ limitations under the License.
 package cache
 
 import (
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	shadowPodGroupKey = "kube-batch/shadow-pod-group"
+	shadowPodGroupKey = "volcano/shadow-pod-group"
 )
 
 func shadowPodGroup(pg *v1alpha1.PodGroup) bool {
