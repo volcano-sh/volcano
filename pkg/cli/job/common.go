@@ -28,12 +28,12 @@ type commonFlags struct {
 }
 
 func initFlags(cmd *cobra.Command, cf *commonFlags) {
-	cmd.Flags().StringVarP(&cf.SchedulerName, "scheduler", "", "vn-scheduler", "the scheduler for this job")
+	cmd.Flags().StringVarP(&cf.SchedulerName, "scheduler", "S", "vn-scheduler", "the scheduler for this job")
 	cmd.Flags().StringVarP(&cf.Master, "master", "s", "", "the address of apiserver")
 
 	if home := homeDir(); home != "" {
-		cmd.Flags().StringVarP(&cf.Kubeconfig, "kubeconfig", "", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+		cmd.Flags().StringVarP(&cf.Kubeconfig, "kubeconfig", "k", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
 	} else {
-		cmd.Flags().StringVarP(&cf.Kubeconfig, "kubeconfig", "", "", "(optional) absolute path to the kubeconfig file")
+		cmd.Flags().StringVarP(&cf.Kubeconfig, "kubeconfig", "k", "", "(optional) absolute path to the kubeconfig file")
 	}
 }

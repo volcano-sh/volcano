@@ -33,7 +33,7 @@ var resumeJobFlags = &resumeFlags{}
 func InitResumeFlags(cmd *cobra.Command) {
 	initFlags(cmd, &resumeJobFlags.commonFlags)
 
-	cmd.Flags().StringVarP(&resumeJobFlags.Namespace, "namespace", "", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&resumeJobFlags.Namespace, "namespace", "N", "default", "the namespace of job")
 	cmd.Flags().StringVarP(&resumeJobFlags.JobName, "name", "n", "", "the name of job")
 }
 
