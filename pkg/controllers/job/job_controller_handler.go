@@ -18,12 +18,11 @@ package job
 
 import (
 	"fmt"
-	"reflect"
 	"strconv"
 
 	"github.com/golang/glog"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
 	"k8s.io/client-go/tools/cache"
 
@@ -70,19 +69,6 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 	newJob, ok := newObj.(*vkbatchv1.Job)
 	if !ok {
 		glog.Errorf("newObj is not Job")
-		return
-	}
-
-	oldJob, ok := oldObj.(*vkbatchv1.Job)
-	if !ok {
-		glog.Errorf("oldJob is not Job")
-		return
-	}
-
-	//NOTE: Since we only reconcile job based on Spec, we will ignore other attributes
-	// For Job status, it's used internally and always been updated via our controller.
-	if reflect.DeepEqual(newJob.Spec, oldJob.Spec) {
-		glog.Infof("Job update event is ignored since no update in 'Spec'.")
 		return
 	}
 

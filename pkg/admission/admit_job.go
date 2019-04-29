@@ -52,11 +52,10 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		msg = validateJob(job, &reviewResponse)
 		break
 	case v1beta1.Update:
-		oldJob, err := DecodeJob(ar.Request.OldObject, ar.Request.Resource)
+		_, err := DecodeJob(ar.Request.OldObject, ar.Request.Resource)
 		if err != nil {
 			return ToAdmissionResponse(err)
 		}
-		msg = specDeepEqual(job, oldJob, &reviewResponse)
 		break
 	default:
 		err := fmt.Errorf("expect operation to be 'CREATE' or 'UPDATE'")
@@ -129,8 +128,12 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 	}
 
 	if err := validatePolicies(job.Spec.Policies, field.NewPath("spec.policies")); err != nil {
-		msg = msg + err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v",
+		msg = msg + err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v;",
 			getValidEvents(), getValidActions())
+	}
+
+	if validateInfo, ok := ValidateIO(job.Spec.Volumes); ok {
+		msg = msg + validateInfo
 	}
 
 	if msg != "" {
