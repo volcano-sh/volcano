@@ -378,9 +378,9 @@ func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
 		switch newPG.Status.Phase {
 		case kbtype.PodGroupUnknown:
 			req.Event = vkbatchv1.JobUnknownEvent
-		//TODO: Enable this when Enqueue feature supported in kube batch
-		//case kbtype.PodGroupInqueue:
-		//	req.Action = vkbatchv1.EnqueueAction
+			//TODO: Enable this when Enqueue feature supported in kube batch
+			//case kbtype.PodGroupInqueue:
+			//	req.Action = vkbatchv1.EnqueueAction
 		}
 		cc.queue.Add(req)
 	}

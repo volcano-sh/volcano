@@ -18,7 +18,6 @@ package job
 
 import (
 	"fmt"
-	"sort"
 	"sync"
 
 	"github.com/golang/glog"
@@ -27,12 +26,12 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	admissioncontroller "volcano.sh/volcano/pkg/admission"
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/apis"
-	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
@@ -190,7 +189,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 		}
 
 		for i := 0; i < int(ts.Replicas); i++ {
-			podName := fmt.Sprintf(vkjobhelpers.TaskNameFmt, job.Name, name, i)
+			podName := fmt.Sprintf(vkjobhelpers.PodNameFmt, job.Name, name, i)
 			if pod, found := pods[podName]; !found {
 				newPod := createJobPod(job, tc, i)
 				if err := cc.pluginOnPodCreate(job, newPod); err != nil {
@@ -402,9 +401,10 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 				},
 			},
 			Spec: kbv1.PodGroupSpec{
-				MinMember:    job.Spec.MinAvailable,
-				Queue:        job.Spec.Queue,
-				MinResources: cc.calcPGMinResources(job),
+				MinMember: job.Spec.MinAvailable,
+				Queue:     job.Spec.Queue,
+				//TODO: Enable this when supported in our kube batch code.
+				//MinResources: cc.calcPGMinResources(job),
 			},
 		}
 
@@ -431,49 +431,50 @@ func (cc *Controller) deleteJobPod(jobName string, pod *v1.Pod) error {
 	return nil
 }
 
-type TaskPriority struct {
-	priority int32
+//TODO: Enable this when supported in our kube batch code.
+//type TaskPriority struct {
+//	priority int32
+//
+//	vkbatchv1.TaskSpec
+//}
+//
+//type TasksPriority []TaskPriority
+//
+//func (p TasksPriority) Len() int { return len(p) }
+//
+//func (p TasksPriority) Less(i, j int) bool {
+//	return p[i].priority > p[j].priority
+//}
+//
+//func (p TasksPriority) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
 
-	vkbatchv1.TaskSpec
-}
-
-type TasksPriority []TaskPriority
-
-func (p TasksPriority) Len() int { return len(p) }
-
-func (p TasksPriority) Less(i, j int) bool {
-	return p[i].priority > p[j].priority
-}
-
-func (p TasksPriority) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
-
-func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
-	// sort task by priorityClasses
-	var tasksPriority TasksPriority
-	for index, _ := range job.Spec.Tasks {
-		tp := TaskPriority{0, job.Spec.Tasks[index]}
-		pc := job.Spec.Tasks[index].Template.Spec.PriorityClassName
-		if len(cc.priorityClasses) != 0 && cc.priorityClasses[pc] != nil {
-			tp.priority = cc.priorityClasses[pc].Value
-		}
-		tasksPriority = append(tasksPriority, tp)
-	}
-
-	sort.Sort(tasksPriority)
-
-	minAvailableTasksRes := kbapi.EmptyResource()
-	podCnt := int32(0)
-	for _, task := range tasksPriority {
-		for i := int32(0); i < task.Replicas; i++ {
-			if podCnt >= job.Spec.MinAvailable {
-				break
-			}
-			podCnt++
-			for _, c := range task.Template.Spec.Containers {
-				minAvailableTasksRes.Add(kbapi.NewResource(c.Resources.Requests))
-			}
-		}
-	}
-
-	return minAvailableTasksRes.Convert2K8sResource()
-}
+//func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
+//	// sort task by priorityClasses
+//	var tasksPriority TasksPriority
+//	for index, _ := range job.Spec.Tasks {
+//		tp := TaskPriority{0, job.Spec.Tasks[index]}
+//		pc := job.Spec.Tasks[index].Template.Spec.PriorityClassName
+//		if len(cc.priorityClasses) != 0 && cc.priorityClasses[pc] != nil {
+//			tp.priority = cc.priorityClasses[pc].Value
+//		}
+//		tasksPriority = append(tasksPriority, tp)
+//	}
+//
+//	sort.Sort(tasksPriority)
+//
+//	minAvailableTasksRes := kbapi.EmptyResource()
+//	podCnt := int32(0)
+//	for _, task := range tasksPriority {
+//		for i := int32(0); i < task.Replicas; i++ {
+//			if podCnt >= job.Spec.MinAvailable {
+//				break
+//			}
+//			podCnt++
+//			for _, c := range task.Template.Spec.Containers {
+//				minAvailableTasksRes.Add(kbapi.NewResource(c.Resources.Requests))
+//			}
+//		}
+//	}
+//
+//	return minAvailableTasksRes.Convert2K8sResource()
+//}

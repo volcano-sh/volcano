@@ -15,5 +15,6 @@ volcano.sh/volcano/pkg/controllers/job/plugins
 volcano.sh/volcano/pkg/controllers/job/plugins/env
 volcano.sh/volcano/pkg/controllers/job/plugins/interface
 volcano.sh/volcano/pkg/controllers/job/plugins/ssh
+volcano.sh/volcano/pkg/controllers/job/plugins/svc
 volcano.sh/volcano/pkg/controllers/job/state
 volcano.sh/volcano/test/e2e

@@ -17,13 +17,10 @@ limitations under the License.
 package job
 
 import (
-	"fmt"
-
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
-	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -42,8 +39,6 @@ import (
 	kbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	kblister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
 
-	v1corev1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/helpers"
 	vkver "volcano.sh/volcano/pkg/client/clientset/versioned"
 	vkscheme "volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 	vkinfoext "volcano.sh/volcano/pkg/client/informers/externalversions"
@@ -145,9 +140,8 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.cmdLister = cc.cmdInformer.Lister()
 	cc.cmdSynced = cc.cmdInformer.Informer().HasSynced
 
-	cc.sharedInformers = informers.NewSharedInformerFactory(cc.kubeClients, 0)
-	podInformer := cc.sharedInformers.Core().V1().Pods()
-	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	cc.podInformer = informers.NewSharedInformerFactory(cc.kubeClients, 0).Core().V1().Pods()
+	cc.podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    cc.addPod,
 		UpdateFunc: cc.updatePod,
 		DeleteFunc: cc.deletePod,
