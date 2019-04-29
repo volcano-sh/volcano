@@ -25,8 +25,8 @@ import (
 )
 
 var _ = Describe("Job E2E Test: Test Job Plugins", func() {
-	It("Env Plugin", func() {
-		jobName := "job-with-env-plugin"
+	It("SVC Plugin", func() {
+		jobName := "job-with-svc-plugin"
 		namespace := "test"
 		taskName := "task"
 		foundVolume := false
@@ -37,7 +37,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 			namespace: namespace,
 			name:      jobName,
 			plugins: map[string][]string{
-				"env": {},
+				"svc": {},
 			},
 			tasks: []taskSpec{
 				{
@@ -53,7 +53,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		err := waitJobReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pluginName := fmt.Sprintf("%s-env", jobName)
+		pluginName := fmt.Sprintf("%s-svc", jobName)
 		_, err = context.kubeclient.CoreV1().ConfigMaps(namespace).Get(
 			pluginName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
