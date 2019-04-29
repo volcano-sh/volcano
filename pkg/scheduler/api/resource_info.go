@@ -336,4 +336,3 @@ func (r *Resource) Convert2K8sResource() *v1.ResourceList {
 	}
 	return &list
 }
-
