@@ -24,9 +24,13 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/api/admission/v1beta1"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	k8score "k8s.io/kubernetes/pkg/apis/core"
+	k8scorev1 "k8s.io/kubernetes/pkg/apis/core/v1"
+	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
 
 	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
@@ -81,7 +85,7 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 		return fmt.Sprintf("No task specified in job spec")
 	}
 
-	for _, task := range job.Spec.Tasks {
+	for index, task := range job.Spec.Tasks {
 		if task.Replicas <= 0 {
 			msg = msg + fmt.Sprintf(" 'replicas' is not set positive in task: %s;", task.Name)
 		}
@@ -111,6 +115,8 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 			msg = msg + err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v",
 				getValidEvents(), getValidActions())
 		}
+
+		msg += validateTaskTemplate(task, job, index)
 	}
 
 	if totalReplicas < job.Spec.MinAvailable {
@@ -142,4 +148,31 @@ func specDeepEqual(newJob v1alpha1.Job, oldJob v1alpha1.Job, reviewResponse *v1b
 	}
 
 	return msg
+}
+
+func validateTaskTemplate(task v1alpha1.TaskSpec, job v1alpha1.Job, index int) string {
+	var v1PodTemplate v1.PodTemplate
+	v1PodTemplate.Template = *task.Template.DeepCopy()
+	k8scorev1.SetObjectDefaults_PodTemplate(&v1PodTemplate)
+
+	var coreTemplateSpec k8score.PodTemplateSpec
+	k8scorev1.Convert_v1_PodTemplateSpec_To_core_PodTemplateSpec(&v1PodTemplate.Template, &coreTemplateSpec, nil)
+
+	corePodTemplate := k8score.PodTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      task.Name,
+			Namespace: job.Namespace,
+		},
+		Template: coreTemplateSpec,
+	}
+
+	if allErrs := k8scorevalid.ValidatePodTemplate(&corePodTemplate); len(allErrs) > 0 {
+		msg := fmt.Sprintf("spec.task[%d].", index)
+		for index := range allErrs {
+			msg += allErrs[index].Error() + ". "
+		}
+		return msg
+	}
+
+	return ""
 }
