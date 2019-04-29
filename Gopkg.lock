@@ -203,8 +203,8 @@
   version = "1.1.4"
 
 [[projects]]
-  branch = "volcano-master"
-  digest = "1:52294fbd6648d468a03845d1d908a8d6e5a86d5cd9fe7f32236d8275721a92df"
+  branch = "master"
+  digest = "1:373e831b25d35980629d8042cf8941f1455cee70e846e2c91064ecb074ce3826"
   name = "github.com/kubernetes-sigs/kube-batch"
   packages = [
     "cmd/kube-batch/app",
@@ -223,6 +223,7 @@
     "pkg/scheduler/actions",
     "pkg/scheduler/actions/allocate",
     "pkg/scheduler/actions/backfill",
+    "pkg/scheduler/actions/enqueue",
     "pkg/scheduler/actions/preempt",
     "pkg/scheduler/actions/reclaim",
     "pkg/scheduler/api",
@@ -244,7 +245,7 @@
     "pkg/version",
   ]
   pruneopts = "UT"
-  revision = "5e9977d68a13938fbb6d7dda564da0dca1b1c98c"
+  revision = "2e229b9ef61ca616735b667beb77a01fac2bb5f1"
   source = "https://github.com/volcano-sh/kube-batch"
 
 [[projects]]
