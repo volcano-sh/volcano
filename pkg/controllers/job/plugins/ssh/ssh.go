@@ -32,6 +32,7 @@ import (
 
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
+	vkhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/env"
 	vkinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
@@ -69,7 +70,7 @@ func (sp *sshPlugin) OnJobAdd(job *vkv1.Job) error {
 		return nil
 	}
 
-	data, err := generateRsaKey()
+	data, err := generateRsaKey(job)
 	if err != nil {
 		return err
 	}
@@ -147,7 +148,7 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *vkv1.Job) {
 	return
 }
 
-func generateRsaKey() (map[string]string, error) {
+func generateRsaKey(job *vkv1.Job) (map[string]string, error) {
 	bitSize := 1024
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, bitSize)
@@ -174,7 +175,7 @@ func generateRsaKey() (map[string]string, error) {
 	data := make(map[string]string)
 	data[SSHPrivateKey] = string(privateKeyBytes)
 	data[SSHPublicKey] = string(publicKeyBytes)
-	data[SSHConfig] = "StrictHostKeyChecking no\nUserKnownHostsFile /dev/null"
+	data[SSHConfig] = generateSSHConfig(job)
 
 	return data, nil
 }
@@ -191,4 +192,29 @@ func (sp *sshPlugin) addFlags() {
 		glog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
 	}
 	return
+}
+
+func generateSSHConfig(job *vkv1.Job) string {
+	config := "StrictHostKeyChecking no\nUserKnownHostsFile /dev/null\n"
+
+	for _, ts := range job.Spec.Tasks {
+		for i := 0; i < int(ts.Replicas); i++ {
+			hostName := ts.Template.Spec.Hostname
+			subdomain := ts.Template.Spec.Subdomain
+			if len(hostName) == 0 {
+				hostName = vkhelpers.MakePodName(job.Name, ts.Name, i)
+			}
+			if len(subdomain) == 0 {
+				subdomain = job.Name
+			}
+
+			config += "Host " + hostName + "\n"
+			config += "  HostName " + hostName + "." + subdomain + "\n"
+			if len(ts.Template.Spec.Hostname) != 0 {
+				break
+			}
+		}
+	}
+
+	return config
 }

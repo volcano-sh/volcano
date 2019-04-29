@@ -14,25 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package state
+package svc
 
-import (
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	"volcano.sh/volcano/pkg/controllers/apis"
+const (
+	ConfigMapTaskHostFmt = "%s.host"
+
+	ConfigMapMountPath = "/etc/volcano"
 )
-
-type completingState struct {
-	job *apis.JobInfo
-}
-
-func (ps *completingState) Execute(action vkv1.Action) error {
-	return KillJob(ps.job, func(status *vkv1.JobStatus) {
-		// If any "alive" pods, still in Completing phase
-		phase := vkv1.Completed
-		if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {
-			phase = vkv1.Completing
-		}
-
-		status.State.Phase = phase
-	})
-}

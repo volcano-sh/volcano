@@ -206,6 +206,8 @@ const (
     OutOfSyncEvent Event = "OutOfSync"
     // CommandIssuedEvent is triggered if a command is raised by user
     CommandIssuedEvent Event = "CommandIssued"
+    // TaskCompletedEvent is triggered if the 'Replicas' amount of pods in one task are succeed
+    TaskCompletedEvent Event = "TaskCompleted"
 )
 
 // Action is the type of event handling 
@@ -223,6 +225,8 @@ const (
     // TerminateJobAction if this action is set, the whole job wil be terminated
     // and can not be resumed: all Pod of Job will be evicted, and no Pod will be recreated.
     TerminateJobAction Action = "TerminateJob"
+    // CompleteJobAction if this action is set, the unfinished pods will be killed, job completed.
+    CompleteJobAction Action = "CompleteJob"
 
     // ResumeJobAction is the action to resume an aborted job.
     ResumeJobAction Action = "ResumeJob"
@@ -327,6 +331,7 @@ spec:
         containers:
         - name: executor
           image: executor-img
+        restartPolicy: OnFailure
 ```
 
 ## Features Interaction
@@ -439,6 +444,48 @@ spec:
           image: executor-img
 ```
 
+### Plugins for Job
+
+As many jobs of AI frame, e.g. TensorFlow, MPI, Mxnet, need set env, pods communicate, ssh sign in without password. 
+We provide Job api plugins to give users a better focus on core business.
+Now we have three plugins, every plugin has parameters, if not provided, we use default.
+
+* env: set VK_TASK_INDEX to each container, is a index for giving the identity to container.
+* svc: create Serivce and *.host to enable pods communicate.
+* ssh: sign in ssh without password, e.g. use command mpirun or mpiexec.
+
+```yaml
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: mpi-job
+spec:
+  minAvailable: 2
+  schedulerName: kube-batch
+  policies:
+  - event: PodEvicted
+    action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  tasks:
+  - replicas: 1
+    name: mpimaster
+    template:
+      spec:
+        containers:
+          image: mpi-image
+          name: mpimaster
+  - replicas: 2
+    name: mpiworker
+    template: 
+      spec:
+        containers:
+          image: mpi-image
+          name: mpiworker
+```
+
 ## Appendix
 
 ```go
@@ -508,6 +555,8 @@ const (
     OutOfSyncEvent Event = "OutOfSync"
     // CommandIssuedEvent is triggered if a command is raised by user
     CommandIssuedEvent Event = "CommandIssued"
+    // TaskCompletedEvent is triggered if the 'Replicas' amount of pods in one task are succeed
+    TaskCompletedEvent Event = "TaskCompleted"    
 )
 
 // Action is the action that Job controller will take according to the event.
@@ -519,12 +568,11 @@ const (
     AbortJobAction Action = "AbortJob"
     // RestartJobAction if this action is set, the whole job will be restarted
     RestartJobAction Action = "RestartJob"
-    // RestartTaskAction if this action is set, only the task will be restarted; default action.
-    // This action can not work together with job level events, e.g. JobUnschedulable
-    RestartTaskAction Action = "RestartTask"
     // TerminateJobAction if this action is set, the whole job wil be terminated
     // and can not be resumed: all Pod of Job will be evicted, and no Pod will be recreated.
     TerminateJobAction Action = "TerminateJob"
+    // CompleteJobAction if this action is set, the unfinished pods will be killed, job completed.
+    CompleteJobAction Action = "CompleteJob"    
 
     // ResumeJobAction is the action to resume an aborted job.
     ResumeJobAction Action = "ResumeJob"
@@ -581,12 +629,18 @@ const (
     Running JobPhase = "Running"
     // Restarting is the phase that the Job is restarted, waiting for pod releasing and recreating
     Restarting JobPhase = "Restarting"
+    // Completing is the phase that required tasks of job are completed, job starts to clean up
+    Completing JobPhase = "Completing"
     // Completed is the phase that all tasks of Job are completed successfully
     Completed JobPhase = "Completed"
     // Terminating is the phase that the Job is terminated, waiting for releasing pods
     Terminating JobPhase = "Terminating"
     // Terminated is the phase that the job is finished unexpected, e.g. events
     Terminated JobPhase = "Terminated"
+    // Failed is the phase that the job is restarted failed reached the maximum number of retries.
+    Failed JobPhase = "Failed"
+    // Inqueue is the phase that cluster have idle resource to schedule the job
+    Inqueue JobPhase = "Inqueue"
 )
 
 // JobState contains details for the current state of the job.

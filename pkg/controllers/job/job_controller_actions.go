@@ -18,26 +18,26 @@ package job
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/golang/glog"
 
-	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 
 	admissioncontroller "volcano.sh/volcano/pkg/admission"
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/apis"
+	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
-func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn) error {
+func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
 	glog.V(3).Infof("Killing Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
 	defer glog.V(3).Infof("Finished Job <%s/%s> killing", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
@@ -99,10 +99,11 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		Terminating:  terminating,
 		Version:      job.Status.Version,
 		MinAvailable: int32(job.Spec.MinAvailable),
+		RetryCount:   job.Status.RetryCount,
 	}
 
-	if nextState != nil {
-		job.Status.State = nextState(job.Status)
+	if updateStatus != nil {
+		updateStatus(&job.Status)
 	}
 
 	// Update Job status
@@ -125,18 +126,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		}
 	}
 
-	// Delete Service
-	if err := cc.kubeClients.CoreV1().Services(job.Namespace).Delete(job.Name, nil); err != nil {
-		if !apierrors.IsNotFound(err) {
-			glog.Errorf("Failed to delete Service of Job %v/%v: %v",
-				job.Namespace, job.Name, err)
-			return err
-		}
-	}
-
 	if err := cc.pluginOnJobDelete(job); err != nil {
-		cc.recorder.Event(job, v1.EventTypeWarning, string(vkbatchv1.PluginError),
-			fmt.Sprintf("Plugin failed when been executed at job delete, err: %v", err))
 		return err
 	}
 
@@ -145,7 +135,31 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	return nil
 }
 
-func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn) error {
+func (cc *Controller) createJob(jobInfo *apis.JobInfo, nextState state.UpdateStatusFn) error {
+	glog.V(3).Infof("Starting to create Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
+	defer glog.V(3).Infof("Finished Job <%s/%s> create", jobInfo.Job.Namespace, jobInfo.Job.Name)
+
+	job := jobInfo.Job
+	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
+
+	if err := cc.createPodGroupIfNotExist(job); err != nil {
+		return err
+	}
+
+	if err := cc.createJobIOIfNotExist(job); err != nil {
+		return err
+	}
+
+	if err := cc.pluginOnJobAdd(job); err != nil {
+		cc.recorder.Event(job, v1.EventTypeWarning, string(vkbatchv1.PluginError),
+			fmt.Sprintf("Execute plugin when job add failed, err: %v", err))
+		return err
+	}
+
+	return nil
+}
+
+func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
 	glog.V(3).Infof("Starting to sync up Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
 	defer glog.V(3).Infof("Finished Job <%s/%s> sync up", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
@@ -156,24 +170,6 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		glog.Infof("Job <%s/%s> is terminating, skip management process.",
 			job.Namespace, job.Name)
 		return nil
-	}
-
-	if err := cc.createPodGroupIfNotExist(job); err != nil {
-		return err
-	}
-
-	if err := cc.createJobIOIfNotExist(job); err != nil {
-		return err
-	}
-
-	if err := cc.createServiceIfNotExist(job); err != nil {
-		return err
-	}
-
-	if err := cc.pluginOnJobAdd(job); err != nil {
-		cc.recorder.Event(job, v1.EventTypeWarning, string(vkbatchv1.PluginError),
-			fmt.Sprintf("Plugin failed when been executed at job add, err: %v", err))
-		return err
 	}
 
 	var running, pending, terminating, succeeded, failed int32
@@ -292,10 +288,11 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 		Version:             job.Status.Version,
 		MinAvailable:        int32(job.Spec.MinAvailable),
 		ControlledResources: job.Status.ControlledResources,
+		RetryCount:          job.Status.RetryCount,
 	}
 
-	if nextState != nil {
-		job.Status.State = nextState(job.Status)
+	if updateStatus != nil {
+		updateStatus(&job.Status)
 	}
 
 	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
@@ -311,116 +308,80 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, nextState state.NextStateFn
 	return nil
 }
 
-func (cc *Controller) createServiceIfNotExist(job *vkv1.Job) error {
-	// If Service does not exist, create one for Job.
-	if _, err := cc.svcLister.Services(job.Namespace).Get(job.Name); err != nil {
-		if !apierrors.IsNotFound(err) {
-			glog.V(3).Infof("Failed to get Service for Job <%s/%s>: %v",
-				job.Namespace, job.Name, err)
-			return err
-		}
-
-		svc := &v1.Service{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: job.Namespace,
-				Name:      job.Name,
-				OwnerReferences: []metav1.OwnerReference{
-					*metav1.NewControllerRef(job, helpers.JobKind),
-				},
-			},
-			Spec: v1.ServiceSpec{
-				ClusterIP: "None",
-				Selector: map[string]string{
-					vkv1.JobNameKey:      job.Name,
-					vkv1.JobNamespaceKey: job.Namespace,
-				},
-				Ports: []v1.ServicePort{
-					{
-						Name:       "placeholder-volcano",
-						Port:       1,
-						Protocol:   v1.ProtocolTCP,
-						TargetPort: intstr.FromInt(1),
-					},
-				},
-			},
-		}
-
-		if _, err := cc.kubeClients.CoreV1().Services(job.Namespace).Create(svc); err != nil {
-			if !apierrors.IsAlreadyExists(err) {
-				glog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v",
-					job.Namespace, job.Name, err)
-				return err
-			}
-		}
+func (cc *Controller) calculateVersion(current int32, bumpVersion bool) int32 {
+	if current == 0 {
+		current += 1
 	}
-
-	return nil
+	if bumpVersion {
+		current += 1
+	}
+	return current
 }
 
 func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) error {
 	// If input/output PVC does not exist, create them for Job.
 	inputPVC := job.Annotations[admissioncontroller.PVCInputName]
 	outputPVC := job.Annotations[admissioncontroller.PVCOutputName]
-	if job.Spec.Input != nil && job.Spec.Input.VolumeClaim != nil {
-		if _, err := cc.pvcLister.PersistentVolumeClaims(job.Namespace).Get(inputPVC); err != nil {
-			if !apierrors.IsNotFound(err) {
-				glog.V(3).Infof("Failed to get input PVC for Job <%s/%s>: %v",
-					job.Namespace, job.Name, err)
-				return err
-			}
-
-			pvc := &v1.PersistentVolumeClaim{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: job.Namespace,
-					Name:      inputPVC,
-					OwnerReferences: []metav1.OwnerReference{
-						*metav1.NewControllerRef(job, helpers.JobKind),
-					},
-				},
-				Spec: *job.Spec.Input.VolumeClaim,
-			}
-
-			glog.V(3).Infof("Try to create input PVC: %v", pvc)
-
-			if _, err := cc.kubeClients.CoreV1().PersistentVolumeClaims(job.Namespace).Create(pvc); err != nil {
-				glog.V(3).Infof("Failed to create input PVC for Job <%s/%s>: %v",
-					job.Namespace, job.Name, err)
-				return err
-			}
-		}
-	}
-
-	if job.Spec.Output != nil && job.Spec.Output.VolumeClaim != nil {
-		if _, err := cc.pvcLister.PersistentVolumeClaims(job.Namespace).Get(outputPVC); err != nil {
-			if !apierrors.IsNotFound(err) {
-				glog.V(3).Infof("Failed to get output PVC for Job <%s/%s>: %v",
-					job.Namespace, job.Name, err)
-				return err
-			}
-
-			pvc := &v1.PersistentVolumeClaim{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: job.Namespace,
-					Name:      outputPVC,
-					OwnerReferences: []metav1.OwnerReference{
-						*metav1.NewControllerRef(job, helpers.JobKind),
-					},
-				},
-				Spec: *job.Spec.Output.VolumeClaim,
-			}
-
-			glog.V(3).Infof("Try to create output PVC: %v", pvc)
-
-			if _, err := cc.kubeClients.CoreV1().PersistentVolumeClaims(job.Namespace).Create(pvc); err != nil {
-				if !apierrors.IsAlreadyExists(err) {
-					glog.V(3).Infof("Failed to create input PVC for Job <%s/%s>: %v",
+	if job.Spec.Input != nil {
+		if job.Spec.Input.VolumeClaim != nil {
+			if _, err := cc.pvcLister.PersistentVolumeClaims(job.Namespace).Get(inputPVC); err != nil {
+				if !apierrors.IsNotFound(err) {
+					glog.V(3).Infof("Failed to get input PVC for Job <%s/%s>: %v",
 						job.Namespace, job.Name, err)
 					return err
+				}
+
+				pvc := &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: job.Namespace,
+						Name:      inputPVC,
+						OwnerReferences: []metav1.OwnerReference{
+							*metav1.NewControllerRef(job, helpers.JobKind),
+						},
+					},
+					Spec: *job.Spec.Input.VolumeClaim,
+				}
+
+				glog.V(3).Infof("Try to create input PVC: %v", pvc)
+
+				if _, e := cc.kubeClients.CoreV1().PersistentVolumeClaims(job.Namespace).Create(pvc); e != nil {
+					glog.V(3).Infof("Failed to create input PVC for Job <%s/%s>: %v",
+						job.Namespace, job.Name, err)
+					return e
 				}
 			}
 		}
 	}
+	if job.Spec.Output != nil {
+		if job.Spec.Output.VolumeClaim != nil {
+			if _, err := cc.pvcLister.PersistentVolumeClaims(job.Namespace).Get(outputPVC); err != nil {
+				if !apierrors.IsNotFound(err) {
+					glog.V(3).Infof("Failed to get output PVC for Job <%s/%s>: %v",
+						job.Namespace, job.Name, err)
+					//return err
+				}
 
+				pvc := &v1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: job.Namespace,
+						Name:      outputPVC,
+						OwnerReferences: []metav1.OwnerReference{
+							*metav1.NewControllerRef(job, helpers.JobKind),
+						},
+					},
+					Spec: *job.Spec.Output.VolumeClaim,
+				}
+
+				glog.V(3).Infof("Try to create output PVC: %v", pvc)
+
+				if _, e := cc.kubeClients.CoreV1().PersistentVolumeClaims(job.Namespace).Create(pvc); e != nil {
+					glog.V(3).Infof("Failed to create input PVC for Job <%s/%s>: %v",
+						job.Namespace, job.Name, err)
+					return e
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -441,18 +402,17 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 				},
 			},
 			Spec: kbv1.PodGroupSpec{
-				MinMember: job.Spec.MinAvailable,
-				Queue:     job.Spec.Queue,
+				MinMember:    job.Spec.MinAvailable,
+				Queue:        job.Spec.Queue,
+				MinResources: cc.calcPGMinResources(job),
 			},
 		}
 
-		if _, err := cc.kbClients.SchedulingV1alpha1().PodGroups(job.Namespace).Create(pg); err != nil {
-			if !apierrors.IsAlreadyExists(err) {
-				glog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
-					job.Namespace, job.Name, err)
+		if _, e := cc.kbClients.SchedulingV1alpha1().PodGroups(job.Namespace).Create(pg); e != nil {
+			glog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
+				job.Namespace, job.Name, err)
 
-				return err
-			}
+			return e
 		}
 	}
 
@@ -469,4 +429,51 @@ func (cc *Controller) deleteJobPod(jobName string, pod *v1.Pod) error {
 	}
 
 	return nil
+}
+
+type TaskPriority struct {
+	priority int32
+
+	vkbatchv1.TaskSpec
+}
+
+type TasksPriority []TaskPriority
+
+func (p TasksPriority) Len() int { return len(p) }
+
+func (p TasksPriority) Less(i, j int) bool {
+	return p[i].priority > p[j].priority
+}
+
+func (p TasksPriority) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
+
+func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
+	// sort task by priorityClasses
+	var tasksPriority TasksPriority
+	for index, _ := range job.Spec.Tasks {
+		tp := TaskPriority{0, job.Spec.Tasks[index]}
+		pc := job.Spec.Tasks[index].Template.Spec.PriorityClassName
+		if len(cc.priorityClasses) != 0 && cc.priorityClasses[pc] != nil {
+			tp.priority = cc.priorityClasses[pc].Value
+		}
+		tasksPriority = append(tasksPriority, tp)
+	}
+
+	sort.Sort(tasksPriority)
+
+	minAvailableTasksRes := kbapi.EmptyResource()
+	podCnt := int32(0)
+	for _, task := range tasksPriority {
+		for i := int32(0); i < task.Replicas; i++ {
+			if podCnt >= job.Spec.MinAvailable {
+				break
+			}
+			podCnt++
+			for _, c := range task.Template.Spec.Containers {
+				minAvailableTasksRes.Add(kbapi.NewResource(c.Resources.Requests))
+			}
+		}
+	}
+
+	return minAvailableTasksRes.Convert2K8sResource()
 }

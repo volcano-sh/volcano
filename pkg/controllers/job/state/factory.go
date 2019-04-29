@@ -21,14 +21,16 @@ import (
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
-type NextStateFn func(status vkv1.JobStatus) vkv1.JobState
-type ActionFn func(job *apis.JobInfo, fn NextStateFn) error
+type UpdateStatusFn func(status *vkv1.JobStatus)
+type ActionFn func(job *apis.JobInfo, fn UpdateStatusFn) error
 
 var (
 	// SyncJob will create or delete Pods according to Job's spec.
 	SyncJob ActionFn
 	// KillJob kill all Pods of Job.
 	KillJob ActionFn
+	// CreateJob will prepare to create Job.
+	CreateJob ActionFn
 )
 
 type State interface {
@@ -55,6 +57,10 @@ func NewState(jobInfo *apis.JobInfo) State {
 		return &abortedState{job: jobInfo}
 	case vkv1.Completing:
 		return &completingState{job: jobInfo}
+	case vkv1.Failed:
+		return &failedState{job: jobInfo}
+	case vkv1.Inqueue:
+		return &inqueueState{job: jobInfo}
 	}
 
 	// It's pending by default.
