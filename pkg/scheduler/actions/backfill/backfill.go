@@ -19,6 +19,7 @@ package backfill
 import (
 	"github.com/golang/glog"
 
+	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 )
@@ -43,6 +44,10 @@ func (alloc *backfillAction) Execute(ssn *framework.Session) {
 
 	// TODO (k82cn): When backfill, it's also need to balance between Queues.
 	for _, job := range ssn.Jobs {
+		if job.PodGroup.Status.Phase == v1alpha1.PodGroupPending {
+			continue
+		}
+
 		for _, task := range job.TaskStatusIndex[api.Pending] {
 			if task.InitResreq.IsEmpty() {
 				// As task did not request resources, so it only need to meet predicates.
