@@ -4,6 +4,8 @@ pkg/apis/scheduling/v1alpha1
 pkg/apis/utils
 pkg/scheduler/actions/allocate
 pkg/scheduler/actions/backfill
+pkg/scheduler/actions/enqueue
 pkg/scheduler/actions/preempt
 pkg/scheduler/actions/reclaim
+pkg/scheduler/api
 test/e2e
