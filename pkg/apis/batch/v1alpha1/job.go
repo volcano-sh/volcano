@@ -17,7 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -47,24 +47,21 @@ type JobSpec struct {
 	// +optional
 	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
 
-	// The volume mount for input of Job
-	Input *VolumeSpec `json:"input,omitempty" protobuf:"bytes,3,opt,name=input"`
-
-	// The volume mount for output of Job
-	Output *VolumeSpec `json:"output,omitempty" protobuf:"bytes,4,opt,name=output"`
+	// The volumes mount on Job
+	Volumes []VolumeSpec `json:"volumes,omitempty" protobuf:"bytes,3,opt,name=volumes"`
 
 	// Tasks specifies the task specification of Job
 	// +optional
-	Tasks []TaskSpec `json:"tasks,omitempty" protobuf:"bytes,5,opt,name=tasks"`
+	Tasks []TaskSpec `json:"tasks,omitempty" protobuf:"bytes,4,opt,name=tasks"`
 
 	// Specifies the default lifecycle of tasks
 	// +optional
-	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,6,opt,name=policies"`
+	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,5,opt,name=policies"`
 
 	// Specifies the plugin of job
 	// Key is plugin name, value is the arguments of the plugin
 	// +optional
-	Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,7,opt,name=plugins"`
+	Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,6,opt,name=plugins"`
 
 	//Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
 	Queue string `json:"queue,omitempty" protobuf:"bytes,7,opt,name=queue"`
@@ -81,8 +78,11 @@ type VolumeSpec struct {
 	// not contain ':'.
 	MountPath string `json:"mountPath" protobuf:"bytes,1,opt,name=mountPath"`
 
+	// defined the PVC name
+	VolumeClaimName string `json:"volumeClaimName,omitempty" protobuf:"bytes,2,opt,name=volumeClaimName"`
+
 	// VolumeClaim defines the PVC used by the VolumeMount.
-	VolumeClaim *v1.PersistentVolumeClaimSpec `json:"volumeClaim,omitempty" protobuf:"bytes,1,opt,name=volumeClaim"`
+	VolumeClaim *v1.PersistentVolumeClaimSpec `json:"volumeClaim,omitempty" protobuf:"bytes,3,opt,name=volumeClaim"`
 }
 
 type JobEvent string

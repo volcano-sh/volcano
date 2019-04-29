@@ -35,8 +35,6 @@ import (
 const (
 	AdmitJobPath  = "/jobs"
 	MutateJobPath = "/mutating-jobs"
-	PVCInputName  = "volcano.sh/job-input"
-	PVCOutputName = "volcano.sh/job-output"
 )
 
 type AdmitFunc func(v1beta1.AdmissionReview) *v1beta1.AdmissionResponse
@@ -160,4 +158,19 @@ func getValidActions() []v1alpha1.Action {
 	}
 
 	return actions
+}
+
+// validate IO configuration
+func ValidateIO(volumes []v1alpha1.VolumeSpec) (string, bool) {
+	volumeMap := map[string]bool{}
+	for _, volume := range volumes {
+		if len(volume.MountPath) == 0 {
+			return " mountPath is required;", true
+		}
+		if _, found := volumeMap[volume.MountPath]; found {
+			return fmt.Sprintf(" duplicated mountPath: %s;", volume.MountPath), true
+		}
+		volumeMap[volume.MountPath] = true
+	}
+	return "", false
 }

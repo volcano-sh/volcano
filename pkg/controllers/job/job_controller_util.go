@@ -21,12 +21,11 @@ import (
 
 	"github.com/golang/glog"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kbapi "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 
-	admissioncontroller "volcano.sh/volcano/pkg/admission"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/apis"
@@ -66,61 +65,34 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 		pod.Spec.SchedulerName = job.Spec.SchedulerName
 	}
 
-	inputPVC := job.Annotations[admissioncontroller.PVCInputName]
-	outputPVC := job.Annotations[admissioncontroller.PVCOutputName]
-	if job.Spec.Output != nil {
-		if job.Spec.Output.VolumeClaim == nil {
-			volume := v1.Volume{
-				Name: outputPVC,
+	volumeMap := make(map[string]bool)
+	for _, volume := range job.Spec.Volumes {
+		vcName := volume.VolumeClaimName
+		if _, ok := volumeMap[vcName]; !ok {
+			if _, ok := job.Status.ControlledResources["volume-emptyDir-"+vcName]; ok && volume.VolumeClaim == nil {
+				volume := v1.Volume{
+					Name: vcName,
+				}
+				volume.EmptyDir = &v1.EmptyDirVolumeSource{}
+				pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
+			} else {
+				volume := v1.Volume{
+					Name: vcName,
+				}
+				volume.PersistentVolumeClaim = &v1.PersistentVolumeClaimVolumeSource{
+					ClaimName: vcName,
+				}
+				pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
 			}
-			volume.EmptyDir = &v1.EmptyDirVolumeSource{}
-			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
-		} else {
-			volume := v1.Volume{
-				Name: outputPVC,
-			}
-			volume.PersistentVolumeClaim = &v1.PersistentVolumeClaimVolumeSource{
-				ClaimName: outputPVC,
-			}
-
-			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
+			volumeMap[vcName] = true
 		}
 
 		for i, c := range pod.Spec.Containers {
 			vm := v1.VolumeMount{
-				MountPath: job.Spec.Output.MountPath,
-				Name:      outputPVC,
+				MountPath: volume.MountPath,
+				Name:      vcName,
 			}
 			pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
-		}
-	}
-
-	if job.Spec.Input != nil {
-		if job.Spec.Input.VolumeClaim == nil {
-			volume := v1.Volume{
-				Name: inputPVC,
-			}
-			volume.EmptyDir = &v1.EmptyDirVolumeSource{}
-			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
-		} else {
-			volume := v1.Volume{
-				Name: inputPVC,
-			}
-			volume.PersistentVolumeClaim = &v1.PersistentVolumeClaimVolumeSource{
-				ClaimName: inputPVC,
-			}
-
-			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
-		}
-
-		for i, c := range pod.Spec.Containers {
-			vm := v1.VolumeMount{
-				MountPath: job.Spec.Input.MountPath,
-				Name:      inputPVC,
-			}
-
-			pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
-
 		}
 	}
 

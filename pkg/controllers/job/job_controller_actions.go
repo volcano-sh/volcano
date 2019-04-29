@@ -23,11 +23,10 @@ import (
 
 	"github.com/golang/glog"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	admissioncontroller "volcano.sh/volcano/pkg/admission"
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
@@ -161,6 +160,19 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, nextState state.UpdateSta
 
 	job := jobInfo.Job
 	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
+
+	update, err := cc.checkUpdate(job)
+	if err != nil {
+		return err
+	}
+	if update {
+		if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).Update(job); err != nil {
+			glog.Errorf("Failed to update Job %v/%v: %v",
+				job.Namespace, job.Name, err)
+			return err
+		}
+		return nil
+	}
 
 	if err := cc.pluginOnJobAdd(job); err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(vkbatchv1.PluginError),
@@ -347,68 +359,86 @@ func (cc *Controller) calculateVersion(current int32, bumpVersion bool) int32 {
 }
 
 func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) error {
-	// If input/output PVC does not exist, create them for Job.
-	inputPVC := job.Annotations[admissioncontroller.PVCInputName]
-	outputPVC := job.Annotations[admissioncontroller.PVCOutputName]
-	if job.Spec.Input != nil {
-		if job.Spec.Input.VolumeClaim != nil {
-			if _, err := cc.pvcLister.PersistentVolumeClaims(job.Namespace).Get(inputPVC); err != nil {
-				if !apierrors.IsNotFound(err) {
-					glog.V(3).Infof("Failed to get input PVC for Job <%s/%s>: %v",
-						job.Namespace, job.Name, err)
+	// If PVC does not exist, create them for Job.
+	volumes := job.Spec.Volumes
+	for _, volume := range volumes {
+		vcName := volume.VolumeClaimName
+		exist, err := cc.checkPVCExist(job, vcName)
+		if err != nil {
+			return err
+		}
+		if !exist {
+			if job.Status.ControlledResources == nil {
+				job.Status.ControlledResources = make(map[string]string)
+			}
+			if volume.VolumeClaim != nil {
+				if err := cc.createPVC(job, vcName, volume.VolumeClaim); err != nil {
 					return err
 				}
+				job.Status.ControlledResources["volume-pvc-"+vcName] = vcName
+			} else {
+				job.Status.ControlledResources["volume-emptyDir-"+vcName] = vcName
+			}
+		}
+	}
+	return nil
+}
 
-				pvc := &v1.PersistentVolumeClaim{
-					ObjectMeta: metav1.ObjectMeta{
-						Namespace: job.Namespace,
-						Name:      inputPVC,
-						OwnerReferences: []metav1.OwnerReference{
-							*metav1.NewControllerRef(job, helpers.JobKind),
-						},
-					},
-					Spec: *job.Spec.Input.VolumeClaim,
+func (cc *Controller) checkUpdate(job *vkv1.Job) (bool, error) {
+	// If VolumeClaimName does not exist, generate them for Job.
+	volumes := job.Spec.Volumes
+	update := false
+	for index, volume := range volumes {
+		vcName := volume.VolumeClaimName
+		if len(vcName) == 0 {
+			for {
+				randomStr := vkjobhelpers.GenRandomStr(12)
+				vcName = fmt.Sprintf("%s-volume-%s", job.Name, randomStr)
+				exist, err := cc.checkPVCExist(job, vcName)
+				if err != nil {
+					return false, err
 				}
-
-				glog.V(3).Infof("Try to create input PVC: %v", pvc)
-
-				if _, e := cc.kubeClients.CoreV1().PersistentVolumeClaims(job.Namespace).Create(pvc); e != nil {
-					glog.V(3).Infof("Failed to create input PVC for Job <%s/%s>: %v",
-						job.Namespace, job.Name, err)
-					return e
+				if !exist {
+					volumes[index].VolumeClaimName = vcName
+					update = true
+					break
 				}
 			}
 		}
 	}
-	if job.Spec.Output != nil {
-		if job.Spec.Output.VolumeClaim != nil {
-			if _, err := cc.pvcLister.PersistentVolumeClaims(job.Namespace).Get(outputPVC); err != nil {
-				if !apierrors.IsNotFound(err) {
-					glog.V(3).Infof("Failed to get output PVC for Job <%s/%s>: %v",
-						job.Namespace, job.Name, err)
-					//return err
-				}
+	return update, nil
+}
 
-				pvc := &v1.PersistentVolumeClaim{
-					ObjectMeta: metav1.ObjectMeta{
-						Namespace: job.Namespace,
-						Name:      outputPVC,
-						OwnerReferences: []metav1.OwnerReference{
-							*metav1.NewControllerRef(job, helpers.JobKind),
-						},
-					},
-					Spec: *job.Spec.Output.VolumeClaim,
-				}
-
-				glog.V(3).Infof("Try to create output PVC: %v", pvc)
-
-				if _, e := cc.kubeClients.CoreV1().PersistentVolumeClaims(job.Namespace).Create(pvc); e != nil {
-					glog.V(3).Infof("Failed to create input PVC for Job <%s/%s>: %v",
-						job.Namespace, job.Name, err)
-					return e
-				}
-			}
+func (cc *Controller) checkPVCExist(job *vkv1.Job, vcName string) (bool, error) {
+	if _, err := cc.pvcLister.PersistentVolumeClaims(job.Namespace).Get(vcName); err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
 		}
+		glog.V(3).Infof("Failed to get PVC for job <%s/%s>: %v",
+			job.Namespace, job.Name, err)
+		return false, err
+	}
+	return true, nil
+}
+
+func (cc *Controller) createPVC(job *vkv1.Job, vcName string, volumeClaim *v1.PersistentVolumeClaimSpec) error {
+	pvc := &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: job.Namespace,
+			Name:      vcName,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(job, helpers.JobKind),
+			},
+		},
+		Spec: *volumeClaim,
+	}
+
+	glog.V(3).Infof("Try to create PVC: %v", pvc)
+
+	if _, e := cc.kubeClients.CoreV1().PersistentVolumeClaims(job.Namespace).Create(pvc); e != nil {
+		glog.V(3).Infof("Failed to create PVC for Job <%s/%s>: %v",
+			job.Namespace, job.Name, e)
+		return e
 	}
 	return nil
 }
