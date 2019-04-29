@@ -21,6 +21,7 @@ import (
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/allocate"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/backfill"
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/enqueue"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/preempt"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions/reclaim"
 )
@@ -30,4 +31,5 @@ func init() {
 	framework.RegisterAction(allocate.New())
 	framework.RegisterAction(backfill.New())
 	framework.RegisterAction(preempt.New())
+	framework.RegisterAction(enqueue.New())
 }
