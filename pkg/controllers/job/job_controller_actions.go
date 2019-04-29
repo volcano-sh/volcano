@@ -30,7 +30,6 @@ import (
 	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	admissioncontroller "volcano.sh/volcano/pkg/admission"
-	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/apis"
@@ -152,7 +151,7 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, nextState state.UpdateSta
 	}
 
 	if err := cc.pluginOnJobAdd(job); err != nil {
-		cc.recorder.Event(job, v1.EventTypeWarning, string(vkbatchv1.PluginError),
+		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.PluginError),
 			fmt.Sprintf("Execute plugin when job add failed, err: %v", err))
 		return err
 	}
@@ -403,8 +402,8 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 				},
 			},
 			Spec: kbv1.PodGroupSpec{
-				MinMember: job.Spec.MinAvailable,
-				Queue:     job.Spec.Queue,
+				MinMember:    job.Spec.MinAvailable,
+				Queue:        job.Spec.Queue,
 				MinResources: cc.calcPGMinResources(job),
 			},
 		}
@@ -431,22 +430,6 @@ func (cc *Controller) deleteJobPod(jobName string, pod *v1.Pod) error {
 
 	return nil
 }
-
-type TaskPriority struct {
-	priority int32
-
-	vkbatchv1.TaskSpec
-}
-
-type TasksPriority []TaskPriority
-
-func (p TasksPriority) Len() int { return len(p) }
-
-func (p TasksPriority) Less(i, j int) bool {
-	return p[i].priority > p[j].priority
-}
-
-func (p TasksPriority) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
 
 func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
 	// sort task by priorityClasses

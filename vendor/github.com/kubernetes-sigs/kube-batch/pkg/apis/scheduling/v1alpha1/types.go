@@ -36,6 +36,10 @@ const (
 	// PodGroupUnknown means part of `spec.minMember` pods are running but the other part can not
 	// be scheduled, e.g. not enough resource; scheduler will wait for related controller to recover it.
 	PodGroupUnknown PodGroupPhase = "Unknown"
+
+	// PodGroupInqueue means controllers can start to create pods,
+	// is a new state between PodGroupPending and PodGroupRunning
+	PodGroupInqueue PodGroupPhase = "Inqueue"
 )
 
 type PodGroupConditionType string
@@ -123,6 +127,11 @@ type PodGroupSpec struct {
 	// default.
 	// +optional
 	PriorityClassName string `json:"priorityClassName,omitempty" protobuf:"bytes,3,opt,name=priorityClassName"`
+
+	// MinResources defines the minimal resource of members/tasks to run the pod group;
+	// if there's not enough resources to start all tasks, the scheduler
+	// will not start anyone.
+	MinResources *v1.ResourceList `json:"minResources,omitempty" protobuf:"bytes,4,opt,name=minResources"`
 }
 
 // PodGroupStatus represents the current state of a pod group.
