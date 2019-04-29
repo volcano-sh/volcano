@@ -162,17 +162,17 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, nextState state.UpdateSta
 	job := jobInfo.Job
 	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 
+	if err := cc.pluginOnJobAdd(job); err != nil {
+		cc.recorder.Event(job, v1.EventTypeWarning, string(vkbatchv1.PluginError),
+			fmt.Sprintf("Execute plugin when job add failed, err: %v", err))
+		return err
+	}
+
 	if err := cc.createPodGroupIfNotExist(job); err != nil {
 		return err
 	}
 
 	if err := cc.createJobIOIfNotExist(job); err != nil {
-		return err
-	}
-
-	if err := cc.pluginOnJobAdd(job); err != nil {
-		cc.recorder.Event(job, v1.EventTypeWarning, string(vkbatchv1.PluginError),
-			fmt.Sprintf("Execute plugin when job add failed, err: %v", err))
 		return err
 	}
 
@@ -423,8 +423,9 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 		}
 		pg := &kbv1.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
-				Namespace: job.Namespace,
-				Name:      job.Name,
+				Namespace:   job.Namespace,
+				Name:        job.Name,
+				Annotations: job.Annotations,
 				OwnerReferences: []metav1.OwnerReference{
 					*metav1.NewControllerRef(job, helpers.JobKind),
 				},
