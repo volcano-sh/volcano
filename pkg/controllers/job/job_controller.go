@@ -58,13 +58,13 @@ type Controller struct {
 	vkClients   *vkver.Clientset
 	kbClients   *kbver.Clientset
 
-	jobInformer vkbatchinfo.JobInformer
-	podInformer coreinformers.PodInformer
-	pvcInformer coreinformers.PersistentVolumeClaimInformer
-	pgInformer  kbinfo.PodGroupInformer
-	svcInformer coreinformers.ServiceInformer
-	cmdInformer vkcoreinfo.CommandInformer
-	pcInformer  schedv1.PriorityClassInformer
+	jobInformer     vkbatchinfo.JobInformer
+	podInformer     coreinformers.PodInformer
+	pvcInformer     coreinformers.PersistentVolumeClaimInformer
+	pgInformer      kbinfo.PodGroupInformer
+	svcInformer     coreinformers.ServiceInformer
+	cmdInformer     vkcoreinfo.CommandInformer
+	pcInformer      schedv1.PriorityClassInformer
 	sharedInformers informers.SharedInformerFactory
 
 	// A store of jobs

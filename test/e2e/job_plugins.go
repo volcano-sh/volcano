@@ -59,7 +59,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		pod, err := context.kubeclient.CoreV1().Pods(namespace).Get(
-			fmt.Sprintf(helpers.TaskNameFmt, jobName, taskName, 0), v1.GetOptions{})
+			fmt.Sprintf(helpers.PodNameFmt, jobName, taskName, 0), v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		for _, volume := range pod.Spec.Volumes {
 			if volume.Name == pluginName {
@@ -104,7 +104,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		pod, err := context.kubeclient.CoreV1().Pods(namespace).Get(
-			fmt.Sprintf(helpers.TaskNameFmt, jobName, taskName, 0), v1.GetOptions{})
+			fmt.Sprintf(helpers.PodNameFmt, jobName, taskName, 0), v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		for _, volume := range pod.Spec.Volumes {
 			if volume.Name == pluginName {

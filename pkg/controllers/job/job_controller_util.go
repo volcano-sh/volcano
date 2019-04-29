@@ -211,3 +211,19 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 
 	return vkv1.SyncJobAction
 }
+
+type TaskPriority struct {
+	priority int32
+
+	vkv1.TaskSpec
+}
+
+type TasksPriority []TaskPriority
+
+func (p TasksPriority) Len() int { return len(p) }
+
+func (p TasksPriority) Less(i, j int) bool {
+	return p[i].priority > p[j].priority
+}
+
+func (p TasksPriority) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
