@@ -129,7 +129,7 @@ func initTestContext() *context {
 	Expect(err).NotTo(HaveOccurred(),
 		"k8s cluster is required to have one ready worker node at least.")
 
-	//NOTE(tommylikehu):NamespaceAsQueue feature was removed from kube-batch,
+	//NOTE(tommylikehu):NamespaceAsQueue feature was removed from scheduler,
 	//we will eventually remove this logic in test as well.
 	cxt.enableNamespaceAsQueue = false
 
@@ -359,7 +359,7 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 					Labels: task.labels,
 				},
 				Spec: v1.PodSpec{
-					SchedulerName: "kube-batch",
+					SchedulerName: "scheduler",
 					RestartPolicy: restartPolicy,
 					Containers:    createContainers(task.img, task.command, task.workingDir, task.req, task.hostport),
 					Affinity:      task.affinity,

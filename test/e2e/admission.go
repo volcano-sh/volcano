@@ -92,7 +92,7 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 		stError, ok := err.(*errors.StatusError)
 		Expect(ok).To(Equal(true))
 		Expect(stError.ErrStatus.Code).To(Equal(int32(500)))
-		Expect(stError.ErrStatus.Message).To(ContainSubstring("duplicated job event policies"))
+		Expect(stError.ErrStatus.Message).To(ContainSubstring("duplicate event PodFailed"))
 	})
 
 	It("Min Available illegal", func() {
@@ -121,5 +121,35 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 		Expect(ok).To(Equal(true))
 		Expect(stError.ErrStatus.Code).To(Equal(int32(500)))
 		Expect(stError.ErrStatus.Message).To(ContainSubstring("'minAvailable' should not be greater than total replicas in tasks"))
+	})
+
+	It("Job Plugin illegal", func() {
+		jobName := "job-plugin-illegal"
+		namespace := "test"
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		_, err := createJobInner(context, &jobSpec{
+			min:       1,
+			namespace: namespace,
+			name:      jobName,
+			plugins: map[string][]string{
+				"big_plugin": {},
+			},
+			tasks: []taskSpec{
+				{
+					img:  defaultNginxImage,
+					req:  oneCPU,
+					min:  1,
+					rep:  1,
+					name: "taskname",
+				},
+			},
+		})
+		Expect(err).To(HaveOccurred())
+		stError, ok := err.(*errors.StatusError)
+		Expect(ok).To(Equal(true))
+		Expect(stError.ErrStatus.Code).To(Equal(int32(500)))
+		Expect(stError.ErrStatus.Message).To(ContainSubstring("unable to find job plugin: big_plugin"))
 	})
 })

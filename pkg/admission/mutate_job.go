@@ -19,6 +19,9 @@ package admission
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
+	"strconv"
+	"time"
 
 	"github.com/golang/glog"
 
@@ -71,6 +74,7 @@ func MutateJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 func createPatch(job v1alpha1.Job) ([]byte, error) {
 	var patch []patchOperation
 	patch = append(patch, mutateSpec(job.Spec.Tasks, "/spec/tasks")...)
+	patch = append(patch, mutateMetadata(job.ObjectMeta, "/metadata")...)
 
 	return json.Marshal(patch)
 }
@@ -80,7 +84,7 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string) (patch []patchOperat
 		// add default task name
 		taskName := tasks[index].Name
 		if len(taskName) == 0 {
-			tasks[index].Name = v1alpha1.DefaultTaskSpec
+			tasks[index].Name = v1alpha1.DefaultTaskSpec + strconv.Itoa(index)
 		}
 	}
 	patch = append(patch, patchOperation{
@@ -90,4 +94,31 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string) (patch []patchOperat
 	})
 
 	return patch
+}
+
+func mutateMetadata(metadata metav1.ObjectMeta, basePath string) (patch []patchOperation) {
+	if len(metadata.Annotations) == 0 {
+		metadata.Annotations = make(map[string]string)
+	}
+	randomStr := genRandomStr(5)
+	metadata.Annotations[PVCInputName] = fmt.Sprintf("%s-input-%s", metadata.Name, randomStr)
+	metadata.Annotations[PVCOutputName] = fmt.Sprintf("%s-output-%s", metadata.Name, randomStr)
+	patch = append(patch, patchOperation{
+		Op:    "replace",
+		Path:  basePath,
+		Value: metadata,
+	})
+
+	return patch
+}
+
+func genRandomStr(l int) string {
+	str := "0123456789abcdefghijklmnopqrstuvwxyz"
+	bytes := []byte(str)
+	result := []byte{}
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 0; i < l; i++ {
+		result = append(result, bytes[r.Intn(len(bytes))])
+	}
+	return string(result)
 }

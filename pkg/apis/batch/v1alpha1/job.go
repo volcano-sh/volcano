@@ -17,7 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -47,29 +47,32 @@ type JobSpec struct {
 	// +optional
 	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
 
-	// The volumes mount on Job
-	Volumes []VolumeSpec `json:"volumes,omitempty" protobuf:"bytes,3,opt,name=volumes"`
+	// The volume mount for input of Job
+	Input *VolumeSpec `json:"input,omitempty" protobuf:"bytes,3,opt,name=input"`
+
+	// The volume mount for output of Job
+	Output *VolumeSpec `json:"output,omitempty" protobuf:"bytes,4,opt,name=output"`
 
 	// Tasks specifies the task specification of Job
 	// +optional
-	Tasks []TaskSpec `json:"tasks,omitempty" protobuf:"bytes,4,opt,name=tasks"`
+	Tasks []TaskSpec `json:"tasks,omitempty" protobuf:"bytes,5,opt,name=tasks"`
 
 	// Specifies the default lifecycle of tasks
 	// +optional
-	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,5,opt,name=policies"`
+	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,6,opt,name=policies"`
 
 	// Specifies the plugin of job
 	// Key is plugin name, value is the arguments of the plugin
 	// +optional
-	Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,6,opt,name=plugins"`
+	Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,7,opt,name=plugins"`
 
 	//Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
-	Queue string `json:"queue,omitempty" protobuf:"bytes,7,opt,name=queue"`
+	Queue string `json:"queue,omitempty" protobuf:"bytes,8,opt,name=queue"`
 
 	// Specifies the maximum number of retries before marking this Job failed.
 	// Defaults to 3.
 	// +optional
-	MaxRetry int32 `json:"maxRetry,omitempty" protobuf:"bytes,8,opt,name=maxRetry"`
+	MaxRetry int32 `json:"maxRetry,omitempty" protobuf:"bytes,9,opt,name=maxRetry"`
 }
 
 // VolumeSpec defines the specification of Volume, e.g. PVC
@@ -78,11 +81,8 @@ type VolumeSpec struct {
 	// not contain ':'.
 	MountPath string `json:"mountPath" protobuf:"bytes,1,opt,name=mountPath"`
 
-	// defined the PVC name
-	VolumeClaimName string `json:"volumeClaimName,omitempty" protobuf:"bytes,2,opt,name=volumeClaimName"`
-
 	// VolumeClaim defines the PVC used by the VolumeMount.
-	VolumeClaim *v1.PersistentVolumeClaimSpec `json:"volumeClaim,omitempty" protobuf:"bytes,3,opt,name=volumeClaim"`
+	VolumeClaim *v1.PersistentVolumeClaimSpec `json:"volumeClaim,omitempty" protobuf:"bytes,1,opt,name=volumeClaim"`
 }
 
 type JobEvent string
@@ -124,10 +124,13 @@ const (
 	AbortJobAction Action = "AbortJob"
 	// RestartJobAction if this action is set, the whole job will be restarted
 	RestartJobAction Action = "RestartJob"
+	// RestartTaskAction if this action is set, only the task will be restarted; default action.
+	// This action can not work together with job level events, e.g. JobUnschedulable
+	RestartTaskAction Action = "RestartTask"
 	// TerminateJobAction if this action is set, the whole job wil be terminated
 	// and can not be resumed: all Pod of Job will be evicted, and no Pod will be recreated.
 	TerminateJobAction Action = "TerminateJob"
-	//CompleteJobAction if this action is set, the unfinished pods will be killed, job completed.
+	// CompleteJobAction if this action is set, the unfinished pods will be killed, job completed.
 	CompleteJobAction Action = "CompleteJob"
 
 	// ResumeJobAction is the action to resume an aborted job.
@@ -150,6 +153,12 @@ type LifecyclePolicy struct {
 	// according to this Event.
 	// +optional
 	Event Event `json:"event,omitempty" protobuf:"bytes,2,opt,name=event"`
+
+	// The exit code of the pod container, controller will take action
+	// according to this code.
+	// Note: only one of `Event` or `ExitCode` can be specified.
+	// +optional
+	ExitCode *int32
 
 	// Timeout is the grace period for controller to take actions.
 	// Default to nil (take action immediately).
@@ -253,7 +262,7 @@ type JobStatus struct {
 	RetryCount int32 `json:"retryCount,omitempty" protobuf:"bytes,9,opt,name=retryCount"`
 
 	// The resources that controlled by this job, e.g. Service, ConfigMap
-	ControlledResources map[string]string `json:"controlledResources,omitempty" protobuf:"bytes,10,opt,name=controlledResources"`
+	ControlledResources map[string]string `json:"controlledResources,omitempty" protobuf:"bytes,8,opt,name=controlledResources"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

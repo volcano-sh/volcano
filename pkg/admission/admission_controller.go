@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/golang/glog"
+	"github.com/hashicorp/go-multierror"
 
 	"k8s.io/api/admission/v1beta1"
 	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
@@ -29,12 +30,14 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
-	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
 const (
 	AdmitJobPath  = "/jobs"
 	MutateJobPath = "/mutating-jobs"
+	PVCInputName  = "volcano.sh/job-input"
+	PVCOutputName = "volcano.sh/job-output"
 )
 
 type AdmitFunc func(v1beta1.AdmissionReview) *v1beta1.AdmissionResponse
@@ -124,18 +127,56 @@ func DecodeJob(object runtime.RawExtension, resource metav1.GroupVersionResource
 }
 
 func validatePolicies(policies []v1alpha1.LifecyclePolicy, fldPath *field.Path) error {
-	errs := field.ErrorList{}
-	for _, p := range policies {
-		if allow, ok := policyEventMap[p.Event]; !ok || !allow {
-			errs = append(errs, field.Invalid(fldPath, p.Event, fmt.Sprintf("invalid policy event")))
+	var err error
+	policyEvents := map[v1alpha1.Event]struct{}{}
+	exitCodes := map[int32]struct{}{}
+
+	for _, policy := range policies {
+		if policy.Event != "" && policy.ExitCode != nil {
+			err = multierror.Append(err, fmt.Errorf("must not specify event and exitCode simultaneously"))
+			break
 		}
 
-		if allow, ok := policyActionMap[p.Action]; !ok || !allow {
-			errs = append(errs, field.Invalid(fldPath, p.Action, fmt.Sprintf("invalid policy action")))
+		if policy.Event == "" && policy.ExitCode == nil {
+			err = multierror.Append(err, fmt.Errorf("either event and exitCode should be specified"))
+			break
+		}
+
+		if policy.Event != "" {
+			if allow, ok := policyEventMap[policy.Event]; !ok || !allow {
+				err = multierror.Append(err, field.Invalid(fldPath, policy.Event, fmt.Sprintf("invalid policy event")))
+				break
+			}
+
+			if allow, ok := policyActionMap[policy.Action]; !ok || !allow {
+				err = multierror.Append(err, field.Invalid(fldPath, policy.Action, fmt.Sprintf("invalid policy action")))
+				break
+			}
+			if _, found := policyEvents[policy.Event]; found {
+				err = multierror.Append(err, fmt.Errorf("duplicate event %v", policy.Event))
+				break
+			} else {
+				policyEvents[policy.Event] = struct{}{}
+			}
+		} else {
+			if *policy.ExitCode == 0 {
+				err = multierror.Append(err, fmt.Errorf("0 is not a valid error code"))
+				break
+			}
+			if _, found := exitCodes[*policy.ExitCode]; found {
+				err = multierror.Append(err, fmt.Errorf("duplicate exitCode %v", *policy.ExitCode))
+				break
+			} else {
+				exitCodes[*policy.ExitCode] = struct{}{}
+			}
 		}
 	}
 
-	return errs.ToAggregate()
+	if _, found := policyEvents[v1alpha1.AnyEvent]; found && len(policyEvents) > 1 {
+		err = multierror.Append(err, fmt.Errorf("if there's * here, no other policy should be here"))
+	}
+
+	return err
 }
 
 func getValidEvents() []v1alpha1.Event {

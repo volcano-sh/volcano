@@ -21,14 +21,15 @@ import (
 
 	"github.com/golang/glog"
 
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kbapi "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 
+	admissioncontroller "volcano.sh/volcano/pkg/admission"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
-	"volcano.sh/volcano/pkg/controllers/job/apis"
+	"volcano.sh/volcano/pkg/controllers/apis"
 	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
 
@@ -44,12 +45,16 @@ func eventKey(obj interface{}) interface{} {
 	}
 }
 
+func MakePodName(jobName string, taskName string, index int) string {
+	return fmt.Sprintf(vkjobhelpers.PodNameFmt, jobName, taskName, index)
+}
+
 func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 	templateCopy := template.DeepCopy()
 
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      vkjobhelpers.MakePodName(job.Name, template.Name, ix),
+			Name:      MakePodName(job.Name, template.Name, ix),
 			Namespace: job.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(job, helpers.JobKind),
@@ -65,34 +70,61 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 		pod.Spec.SchedulerName = job.Spec.SchedulerName
 	}
 
-	volumeMap := make(map[string]bool)
-	for _, volume := range job.Spec.Volumes {
-		vcName := volume.VolumeClaimName
-		if _, ok := volumeMap[vcName]; !ok {
-			if _, ok := job.Status.ControlledResources["volume-emptyDir-"+vcName]; ok && volume.VolumeClaim == nil {
-				volume := v1.Volume{
-					Name: vcName,
-				}
-				volume.EmptyDir = &v1.EmptyDirVolumeSource{}
-				pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
-			} else {
-				volume := v1.Volume{
-					Name: vcName,
-				}
-				volume.PersistentVolumeClaim = &v1.PersistentVolumeClaimVolumeSource{
-					ClaimName: vcName,
-				}
-				pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
+	inputPVC := job.Annotations[admissioncontroller.PVCInputName]
+	outputPVC := job.Annotations[admissioncontroller.PVCOutputName]
+	if job.Spec.Output != nil {
+		if job.Spec.Output.VolumeClaim == nil {
+			volume := v1.Volume{
+				Name: outputPVC,
 			}
-			volumeMap[vcName] = true
+			volume.EmptyDir = &v1.EmptyDirVolumeSource{}
+			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
+		} else {
+			volume := v1.Volume{
+				Name: outputPVC,
+			}
+			volume.PersistentVolumeClaim = &v1.PersistentVolumeClaimVolumeSource{
+				ClaimName: outputPVC,
+			}
+
+			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
 		}
 
 		for i, c := range pod.Spec.Containers {
 			vm := v1.VolumeMount{
-				MountPath: volume.MountPath,
-				Name:      vcName,
+				MountPath: job.Spec.Output.MountPath,
+				Name:      outputPVC,
 			}
 			pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
+		}
+	}
+
+	if job.Spec.Input != nil {
+		if job.Spec.Input.VolumeClaim == nil {
+			volume := v1.Volume{
+				Name: inputPVC,
+			}
+			volume.EmptyDir = &v1.EmptyDirVolumeSource{}
+			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
+		} else {
+			volume := v1.Volume{
+				Name: inputPVC,
+			}
+			volume.PersistentVolumeClaim = &v1.PersistentVolumeClaimVolumeSource{
+				ClaimName: inputPVC,
+			}
+
+			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
+		}
+
+		for i, c := range pod.Spec.Containers {
+			vm := v1.VolumeMount{
+				MountPath: job.Spec.Input.MountPath,
+				Name:      inputPVC,
+			}
+
+			pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
+
 		}
 	}
 
@@ -135,13 +167,13 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 		return req.Action
 	}
 
-	//For all the requests triggered from discarded job resources will perform sync action instead
-	if req.JobVersion < job.Status.Version {
-		glog.Infof("Request %s is outdated, will perform sync instead.", req)
+	if req.Event == vkv1.OutOfSyncEvent {
 		return vkv1.SyncJobAction
 	}
 
-	if req.Event == vkv1.OutOfSyncEvent {
+	// For all the requests triggered from discarded job resources will perform sync action instead
+	if req.JobVersion < job.Status.Version {
+		glog.Infof("Request %s is outdated, will perform sync instead.", req)
 		return vkv1.SyncJobAction
 	}
 
@@ -154,7 +186,13 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 					if policy.Event == req.Event || policy.Event == vkv1.AnyEvent {
 						return policy.Action
 					}
+
+					// 0 is not an error code, is prevented in validation admission controller
+					if policy.ExitCode != nil && *policy.ExitCode == req.ExitCode {
+						return policy.Action
+					}
 				}
+				break
 			}
 		}
 	}
@@ -164,7 +202,28 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 		if policy.Event == req.Event || policy.Event == vkv1.AnyEvent {
 			return policy.Action
 		}
+
+		// 0 is not an error code, is prevented in validation admission controller
+		if policy.ExitCode != nil && *policy.ExitCode == req.ExitCode {
+			return policy.Action
+		}
 	}
 
 	return vkv1.SyncJobAction
 }
+
+type TaskPriority struct {
+	priority int32
+
+	vkv1.TaskSpec
+}
+
+type TasksPriority []TaskPriority
+
+func (p TasksPriority) Len() int { return len(p) }
+
+func (p TasksPriority) Less(i, j int) bool {
+	return p[i].priority > p[j].priority
+}
+
+func (p TasksPriority) Swap(i, j int) { p[i], p[j] = p[j], p[i] }

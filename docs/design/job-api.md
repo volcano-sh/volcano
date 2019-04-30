@@ -457,7 +457,7 @@ metadata:
   name: mpi-job
 spec:
   minAvailable: 2
-  schedulerName: kube-batch
+  schedulerName: scheduler
   policies:
   - event: PodEvicted
     action: RestartJob

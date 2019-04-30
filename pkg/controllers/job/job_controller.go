@@ -17,13 +17,10 @@ limitations under the License.
 package job
 
 import (
-	"fmt"
-
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
-	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -37,13 +34,11 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
-	kbver "volcano.sh/volcano/pkg/client/clientset/versioned"
-	kbinfoext "volcano.sh/volcano/pkg/client/informers/externalversions"
-	kbinfo "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1alpha1"
-	kblister "volcano.sh/volcano/pkg/client/listers/scheduling/v1alpha1"
+	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
+	kbinfoext "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
+	kbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
+	kblister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
 
-	v1corev1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/helpers"
 	vkver "volcano.sh/volcano/pkg/client/clientset/versioned"
 	vkscheme "volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 	vkinfoext "volcano.sh/volcano/pkg/client/informers/externalversions"
@@ -51,8 +46,8 @@ import (
 	vkcoreinfo "volcano.sh/volcano/pkg/client/informers/externalversions/bus/v1alpha1"
 	vkbatchlister "volcano.sh/volcano/pkg/client/listers/batch/v1alpha1"
 	vkcorelister "volcano.sh/volcano/pkg/client/listers/bus/v1alpha1"
-	"volcano.sh/volcano/pkg/controllers/job/apis"
-	jobcache "volcano.sh/volcano/pkg/controllers/job/cache"
+	"volcano.sh/volcano/pkg/controllers/apis"
+	jobcache "volcano.sh/volcano/pkg/controllers/cache"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
@@ -63,13 +58,14 @@ type Controller struct {
 	vkClients   *vkver.Clientset
 	kbClients   *kbver.Clientset
 
-	jobInformer vkbatchinfo.JobInformer
-	podInformer coreinformers.PodInformer
-	pvcInformer coreinformers.PersistentVolumeClaimInformer
-	pgInformer  kbinfo.PodGroupInformer
-	svcInformer coreinformers.ServiceInformer
-	cmdInformer vkcoreinfo.CommandInformer
-	pcInformer  schedv1.PriorityClassInformer
+	jobInformer     vkbatchinfo.JobInformer
+	podInformer     coreinformers.PodInformer
+	pvcInformer     coreinformers.PersistentVolumeClaimInformer
+	pgInformer      kbinfo.PodGroupInformer
+	svcInformer     coreinformers.ServiceInformer
+	cmdInformer     vkcoreinfo.CommandInformer
+	pcInformer      schedv1.PriorityClassInformer
+	sharedInformers informers.SharedInformerFactory
 
 	// A store of jobs
 	jobLister vkbatchlister.JobLister
@@ -130,70 +126,37 @@ func NewJobController(config *rest.Config) *Controller {
 
 	cc.jobInformer = vkinfoext.NewSharedInformerFactory(cc.vkClients, 0).Batch().V1alpha1().Jobs()
 	cc.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    cc.addJob,
-		UpdateFunc: cc.updateJob,
+		AddFunc: cc.addJob,
+		// TODO: enable this until we find an appropriate way.
+		// UpdateFunc: cc.updateJob,
 		DeleteFunc: cc.deleteJob,
 	})
 	cc.jobLister = cc.jobInformer.Lister()
 	cc.jobSynced = cc.jobInformer.Informer().HasSynced
 
 	cc.cmdInformer = vkinfoext.NewSharedInformerFactory(cc.vkClients, 0).Bus().V1alpha1().Commands()
-	cc.cmdInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-		FilterFunc: func(obj interface{}) bool {
-			switch t := obj.(type) {
-			case *v1corev1.Command:
-				return helpers.ControlledBy(t, helpers.JobKind)
-			case cache.DeletedFinalStateUnknown:
-				if cmd, ok := t.Obj.(*v1corev1.Command); ok {
-					return helpers.ControlledBy(cmd, helpers.JobKind)
-				}
-				runtime.HandleError(fmt.Errorf("unable to convert object %T to *v1.Command", obj))
-				return false
-			default:
-				runtime.HandleError(fmt.Errorf("unable to handle object %T", obj))
-				return false
-			}
-		},
-		Handler: cache.ResourceEventHandlerFuncs{
-			AddFunc: cc.addCommand,
-		},
+	cc.cmdInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: cc.addCommand,
 	})
 	cc.cmdLister = cc.cmdInformer.Lister()
 	cc.cmdSynced = cc.cmdInformer.Informer().HasSynced
 
-	cc.podInformer = informers.NewSharedInformerFactory(cc.kubeClients, 0).Core().V1().Pods()
-
-	cc.podInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-		FilterFunc: func(obj interface{}) bool {
-			switch t := obj.(type) {
-			case *v1.Pod:
-				return helpers.ControlledBy(t, helpers.JobKind)
-			case cache.DeletedFinalStateUnknown:
-				if pod, ok := t.Obj.(*v1.Pod); ok {
-					return helpers.ControlledBy(pod, helpers.JobKind)
-				}
-				runtime.HandleError(fmt.Errorf("unable to convert object %T to *v1.Pod", obj))
-				return false
-			default:
-				runtime.HandleError(fmt.Errorf("unable to handle object %T", obj))
-				return false
-			}
-		},
-		Handler: cache.ResourceEventHandlerFuncs{
-			AddFunc:    cc.addPod,
-			UpdateFunc: cc.updatePod,
-			DeleteFunc: cc.deletePod,
-		},
+	cc.sharedInformers = informers.NewSharedInformerFactory(cc.kubeClients, 0)
+	cc.podInformer = cc.sharedInformers.Core().V1().Pods()
+	cc.podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    cc.addPod,
+		UpdateFunc: cc.updatePod,
+		DeleteFunc: cc.deletePod,
 	})
 
 	cc.podLister = cc.podInformer.Lister()
 	cc.podSynced = cc.podInformer.Informer().HasSynced
 
-	cc.pvcInformer = informers.NewSharedInformerFactory(cc.kubeClients, 0).Core().V1().PersistentVolumeClaims()
+	cc.pvcInformer = cc.sharedInformers.Core().V1().PersistentVolumeClaims()
 	cc.pvcLister = cc.pvcInformer.Lister()
 	cc.pvcSynced = cc.pvcInformer.Informer().HasSynced
 
-	cc.svcInformer = informers.NewSharedInformerFactory(cc.kubeClients, 0).Core().V1().Services()
+	cc.svcInformer = cc.sharedInformers.Core().V1().Services()
 	cc.svcLister = cc.svcInformer.Lister()
 	cc.svcSynced = cc.svcInformer.Informer().HasSynced
 
@@ -204,16 +167,13 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.pgLister = cc.pgInformer.Lister()
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
-	cc.pcInformer = informers.NewSharedInformerFactory(cc.kubeClients, 0).Scheduling().V1beta1().PriorityClasses()
+	cc.pcInformer = cc.sharedInformers.Scheduling().V1beta1().PriorityClasses()
 	cc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    cc.addPriorityClass,
 		DeleteFunc: cc.deletePriorityClass,
 	})
 	cc.pcLister = cc.pcInformer.Lister()
 	cc.pcSynced = cc.pcInformer.Informer().HasSynced
-
-	cc.pgLister = cc.pgInformer.Lister()
-	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
 	// Register actions
 	state.SyncJob = cc.syncJob
@@ -225,6 +185,7 @@ func NewJobController(config *rest.Config) *Controller {
 
 // Run start JobController
 func (cc *Controller) Run(stopCh <-chan struct{}) {
+	go cc.sharedInformers.Start(stopCh)
 	go cc.jobInformer.Informer().Run(stopCh)
 	go cc.podInformer.Informer().Run(stopCh)
 	go cc.pvcInformer.Informer().Run(stopCh)
@@ -245,10 +206,15 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 }
 
 func (cc *Controller) worker() {
+	for cc.processNextReq() {
+	}
+}
+
+func (cc *Controller) processNextReq() bool {
 	obj, shutdown := cc.queue.Get()
 	if shutdown {
 		glog.Errorf("Fail to pop item from queue")
-		return
+		return false
 	}
 
 	req := obj.(apis.Request)
@@ -260,14 +226,14 @@ func (cc *Controller) worker() {
 	if err != nil {
 		// TODO(k82cn): ignore not-ready error.
 		glog.Errorf("Failed to get job by <%v> from cache: %v", req, err)
-		return
+		return true
 	}
 
 	st := state.NewState(jobInfo)
 	if st == nil {
 		glog.Errorf("Invalid state <%s> of Job <%v/%v>",
 			jobInfo.Job.Status.State, jobInfo.Job.Namespace, jobInfo.Job.Name)
-		return
+		return true
 	}
 
 	action := applyPolicies(jobInfo.Job, &req)
@@ -279,9 +245,11 @@ func (cc *Controller) worker() {
 			jobInfo.Job.Namespace, jobInfo.Job.Name, err)
 		// If any error, requeue it.
 		cc.queue.AddRateLimited(req)
-		return
+		return true
 	}
 
 	// If no error, forget it.
 	cc.queue.Forget(req)
+
+	return true
 }

@@ -18,19 +18,21 @@ package job
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 
 	"github.com/golang/glog"
 
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/cache"
 
+	kbtype "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkbusv1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	kbtype "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
-	"volcano.sh/volcano/pkg/controllers/job/apis"
-	vkcache "volcano.sh/volcano/pkg/controllers/job/cache"
+	"volcano.sh/volcano/pkg/controllers/apis"
+	vkcache "volcano.sh/volcano/pkg/controllers/cache"
 )
 
 func (cc *Controller) addCommand(obj interface{}) {
@@ -72,9 +74,22 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 		return
 	}
 
+	oldJob, ok := oldObj.(*vkbatchv1.Job)
+	if !ok {
+		glog.Errorf("oldJob is not Job")
+		return
+	}
+
 	if err := cc.cache.Update(newJob); err != nil {
 		glog.Errorf("Failed to update job <%s/%s>: %v in cache",
 			newJob.Namespace, newJob.Name, err)
+	}
+
+	// NOTE: Since we only reconcile job based on Spec, we will ignore other attributes
+	// For Job status, it's used internally and always been updated via our controller.
+	if reflect.DeepEqual(newJob.Spec, oldJob.Spec) {
+		glog.Infof("Job update event is ignored since no update in 'Spec'.")
+		return
 	}
 
 	req := apis.Request{
@@ -88,20 +103,19 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 }
 
 func (cc *Controller) deleteJob(obj interface{}) {
-	var job *vkbatchv1.Job
-	switch t := obj.(type) {
-	case *vkbatchv1.Job:
-		job = t
-	case cache.DeletedFinalStateUnknown:
-		var ok bool
-		job, ok = t.Obj.(*vkbatchv1.Job)
+	job, ok := obj.(*vkbatchv1.Job)
+	if !ok {
+		// If we reached here it means the Job was deleted but its final state is unrecorded.
+		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
-			glog.Errorf("Cannot convert to *vkbatchv1.Job in DeletedFinalState: %v", t.Obj)
+			glog.Errorf("Couldn't get object from tombstone %#v", obj)
 			return
 		}
-	default:
-		glog.Errorf("Cannot convert to *vkbatchv1.Job: %v", t)
-		return
+		job, ok = tombstone.Obj.(*vkbatchv1.Job)
+		if !ok {
+			glog.Errorf("Tombstone contained object that is not a volcano Job: %#v", obj)
+			return
+		}
 	}
 
 	if err := cc.cache.Delete(job); err != nil {
@@ -200,9 +214,13 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 	}
 
 	event := vkbatchv1.OutOfSyncEvent
+	var exitCode int32
 	if oldPod.Status.Phase != v1.PodFailed &&
 		newPod.Status.Phase == v1.PodFailed {
 		event = vkbatchv1.PodFailedEvent
+		// TODO: currently only one container pod is supported by volcano
+		// Once multi containers pod is supported, update accordingly.
+		exitCode = newPod.Status.ContainerStatuses[0].State.Terminated.ExitCode
 	}
 
 	if oldPod.Status.Phase != v1.PodSucceeded &&
@@ -218,6 +236,7 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		TaskName:  taskName,
 
 		Event:      event,
+		ExitCode:   exitCode,
 		JobVersion: int32(dVersion),
 	}
 
@@ -225,20 +244,19 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 }
 
 func (cc *Controller) deletePod(obj interface{}) {
-	var pod *v1.Pod
-	switch t := obj.(type) {
-	case *v1.Pod:
-		pod = t
-	case cache.DeletedFinalStateUnknown:
-		var ok bool
-		pod, ok = t.Obj.(*v1.Pod)
+	pod, ok := obj.(*v1.Pod)
+	if !ok {
+		// If we reached here it means the pod was deleted but its final state is unrecorded.
+		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
-			glog.Errorf("Cannot convert to *v1.Pod: %v", t.Obj)
+			glog.Errorf("Couldn't get object from tombstone %#v", obj)
 			return
 		}
-	default:
-		glog.Errorf("Cannot convert to *v1.Pod: %v", t)
-		return
+		pod, ok = tombstone.Obj.(*v1.Pod)
+		if !ok {
+			glog.Errorf("Tombstone contained object that is not a Pod: %#v", obj)
+			return
+		}
 	}
 
 	taskName, found := pod.Annotations[vkbatchv1.TaskSpecKey]
@@ -298,17 +316,24 @@ func (cc *Controller) recordJobEvent(namespace, name string, event vkbatchv1.Job
 }
 
 func (cc *Controller) handleCommands() {
+	for cc.processNextCommand() {
+	}
+}
+
+func (cc *Controller) processNextCommand() bool {
 	obj, shutdown := cc.commandQueue.Get()
 	if shutdown {
-		return
+		return false
 	}
 	cmd := obj.(*vkbusv1.Command)
 	defer cc.commandQueue.Done(cmd)
 
 	if err := cc.vkClients.BusV1alpha1().Commands(cmd.Namespace).Delete(cmd.Name, nil); err != nil {
-		glog.Errorf("Failed to delete Command <%s/%s>.", cmd.Namespace, cmd.Name)
-		cc.commandQueue.AddRateLimited(cmd)
-		return
+		if !apierrors.IsNotFound(err) {
+			glog.Errorf("Failed to delete Command <%s/%s>.", cmd.Namespace, cmd.Name)
+			cc.commandQueue.AddRateLimited(cmd)
+		}
+		return true
 	}
 	cc.recordJobEvent(cmd.Namespace, cmd.TargetObject.Name,
 		vkbatchv1.CommandIssued,
@@ -323,6 +348,7 @@ func (cc *Controller) handleCommands() {
 
 	cc.queue.Add(req)
 
+	return true
 }
 
 func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
