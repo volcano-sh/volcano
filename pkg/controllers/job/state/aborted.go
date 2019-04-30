@@ -28,10 +28,9 @@ type abortedState struct {
 func (as *abortedState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.ResumeJobAction:
-		return SyncJob(as.job, func(status vkv1.JobStatus) vkv1.JobState {
-			return vkv1.JobState{
-				Phase: vkv1.Restarting,
-			}
+		return SyncJob(as.job, func(status *vkv1.JobStatus) {
+			status.State.Phase = vkv1.Restarting
+			status.RetryCount++
 		})
 	default:
 		return KillJob(as.job, nil)

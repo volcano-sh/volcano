@@ -37,8 +37,7 @@ spec:
   minAvailable: 2
   schedulerName: kube-batch
   plugins:
-    #TODO: Upgrade this into `svc` plugin once it's supported in volcano
-    env: []
+    svc: []
   policies:
     - event: PodEvicted
       action: RestartJob

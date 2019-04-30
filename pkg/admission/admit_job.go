@@ -24,8 +24,13 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/api/admission/v1beta1"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/apimachinery/pkg/util/validation/field"
+	k8score "k8s.io/kubernetes/pkg/apis/core"
+	k8scorev1 "k8s.io/kubernetes/pkg/apis/core/v1"
+	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
 
 	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
@@ -46,7 +51,7 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
 	switch ar.Request.Operation {
 	case v1beta1.Create:
-		msg = validateJobSpec(job.Spec, &reviewResponse)
+		msg = validateJob(job, &reviewResponse)
 		break
 	case v1beta1.Update:
 		oldJob, err := DecodeJob(ar.Request.OldObject, ar.Request.Resource)
@@ -66,20 +71,25 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	return &reviewResponse
 }
 
-func validateJobSpec(jobSpec v1alpha1.JobSpec, reviewResponse *v1beta1.AdmissionResponse) string {
+func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) string {
 
 	var msg string
 	taskNames := map[string]string{}
 	var totalReplicas int32
 
-	if len(jobSpec.Tasks) == 0 {
+	if job.Spec.MinAvailable < 0 {
+		reviewResponse.Allowed = false
+		return fmt.Sprintf("'minAvailable' cannot be less than zero.")
+	}
+
+	if len(job.Spec.Tasks) == 0 {
 		reviewResponse.Allowed = false
 		return fmt.Sprintf("No task specified in job spec")
 	}
 
-	for _, task := range jobSpec.Tasks {
-		if task.Replicas == 0 {
-			msg = msg + fmt.Sprintf(" 'replicas' is set '0' in task: %s;", task.Name)
+	for index, task := range job.Spec.Tasks {
+		if task.Replicas <= 0 {
+			msg = msg + fmt.Sprintf(" 'replicas' is not set positive in task: %s;", task.Name)
 		}
 
 		// count replicas
@@ -98,27 +108,46 @@ func validateJobSpec(jobSpec v1alpha1.JobSpec, reviewResponse *v1beta1.Admission
 			taskNames[task.Name] = task.Name
 		}
 
-		if err := ValidatePolicies(task.Policies); err != nil {
-			msg = msg + err.Error()
+		//duplicate task event policies
+		if duplicateInfo, ok := CheckPolicyDuplicate(task.Policies); ok {
+			msg = msg + fmt.Sprintf(" duplicated task event policies: %s;", duplicateInfo)
 		}
+
+		if err := validatePolicies(task.Policies, field.NewPath("spec.tasks.policies")); err != nil {
+			msg = msg + err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v",
+				getValidEvents(), getValidActions())
+		}
+
+		msg += validateTaskTemplate(task, job, index)
 	}
 
-	if totalReplicas < jobSpec.MinAvailable {
+	if totalReplicas < job.Spec.MinAvailable {
 		msg = msg + " 'minAvailable' should not be greater than total replicas in tasks;"
 	}
 
-	if err := ValidatePolicies(jobSpec.Policies); err != nil {
-		msg = msg + err.Error()
+	//duplicate job event policies
+	if duplicateInfo, ok := CheckPolicyDuplicate(job.Spec.Policies); ok {
+		msg = msg + fmt.Sprintf(" duplicated job event policies: %s;", duplicateInfo)
+	}
+
+	if err := validatePolicies(job.Spec.Policies, field.NewPath("spec.policies")); err != nil {
+		msg = msg + err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v;",
+			getValidEvents(), getValidActions())
 	}
 
 	// invalid job plugins
-	if len(jobSpec.Plugins) != 0 {
-		for name := range jobSpec.Plugins {
+	if len(job.Spec.Plugins) != 0 {
+		for name := range job.Spec.Plugins {
 			if _, found := plugins.GetPluginBuilder(name); !found {
 				msg = msg + fmt.Sprintf(" unable to find job plugin: %s", name)
 			}
 		}
 	}
+
+	//TODO: Fix me and enable it.
+	//if validateInfo, ok := ValidateIO(job.Spec.Volumes); ok {
+	//	msg = msg + validateInfo
+	//}
 
 	if msg != "" {
 		reviewResponse.Allowed = false
@@ -135,4 +164,31 @@ func specDeepEqual(newJob v1alpha1.Job, oldJob v1alpha1.Job, reviewResponse *v1b
 	}
 
 	return msg
+}
+
+func validateTaskTemplate(task v1alpha1.TaskSpec, job v1alpha1.Job, index int) string {
+	var v1PodTemplate v1.PodTemplate
+	v1PodTemplate.Template = *task.Template.DeepCopy()
+	k8scorev1.SetObjectDefaults_PodTemplate(&v1PodTemplate)
+
+	var coreTemplateSpec k8score.PodTemplateSpec
+	k8scorev1.Convert_v1_PodTemplateSpec_To_core_PodTemplateSpec(&v1PodTemplate.Template, &coreTemplateSpec, nil)
+
+	corePodTemplate := k8score.PodTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      task.Name,
+			Namespace: job.Namespace,
+		},
+		Template: coreTemplateSpec,
+	}
+
+	if allErrs := k8scorevalid.ValidatePodTemplate(&corePodTemplate); len(allErrs) > 0 {
+		msg := fmt.Sprintf("spec.task[%d].", index)
+		for index := range allErrs {
+			msg += allErrs[index].Error() + ". "
+		}
+		return msg
+	}
+
+	return ""
 }
