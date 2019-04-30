@@ -4,7 +4,7 @@ metadata:
   name: test-job
 spec:
   minAvailable: 3
-  schedulerName: scheduler
+  schedulerName: kube-batch
   policies:
   - event: PodEvicted
     action: RestartJob
@@ -20,6 +20,7 @@ spec:
           storage: 1Gi
   tasks:
   - replicas: 6
+    name: "default-nginx"
     template:
       metadata:
         name: web

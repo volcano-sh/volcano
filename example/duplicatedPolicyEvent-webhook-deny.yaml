@@ -3,7 +3,7 @@ kind: Job
 metadata:
   name: test-job-webhook-disallow
 spec:
-  schedulerName: scheduler
+  schedulerName: kube-batch
   minAvailable: 1
   tasks:
     - replicas: 2
