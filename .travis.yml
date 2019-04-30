@@ -14,7 +14,6 @@ jobs:
       before_script:
         - go get -u golang.org/x/lint/golint
       script:
-        - make
         - make verify
     - stage: E2E Tests
       before_script:
@@ -28,6 +27,11 @@ jobs:
         - sudo curl -o /usr/local/bin/kind -L https://github.com/kubernetes-sigs/kind/releases/download/0.2.0/kind-linux-amd64
         - sudo chmod +x /usr/local/bin/kind
       script:
-        - make cli
-        - make docker
+        - make vkctl
+        - make images
         - make e2e-test-kind
+      after_failure:
+        # Echo logs and upload
+        - test -f volcano-admission.log && echo "******<<admission logs>>******" && cat volcano-admission.log
+        - test -f volcano-controller.log && echo "******<<controller logs>>******" && cat volcano-controller.log
+        - test -f volcano-scheduler.log && echo "******<<scheduler logs>>******" && cat volcano-scheduler.log
