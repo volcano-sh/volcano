@@ -32,10 +32,11 @@ func (cc *Controller) pluginOnPodCreate(job *vkv1.Job, pod *v1.Pod) error {
 	client := vkinterface.PluginClientset{KubeClients: cc.kubeClients}
 	for name, args := range job.Spec.Plugins {
 		if pb, found := vkplugin.GetPluginBuilder(name); !found {
-			err := fmt.Errorf("Failed to get plugin %s.", name)
+			err := fmt.Errorf("failed to get plugin %s", name)
 			glog.Error(err)
 			return err
 		} else {
+			glog.Infof("Starting to execute plugin at <pluginOnPodCreate>: %s on job: <%s/%s>", name, job.Namespace, job.Name)
 			if err := pb(client, args).OnPodCreate(pod, job); err != nil {
 				glog.Errorf("Failed to process on pod create plugin %s, err %v.", name, err)
 				return err
@@ -52,10 +53,11 @@ func (cc *Controller) pluginOnJobAdd(job *vkv1.Job) error {
 	}
 	for name, args := range job.Spec.Plugins {
 		if pb, found := vkplugin.GetPluginBuilder(name); !found {
-			err := fmt.Errorf("Failed to get plugin %s.", name)
+			err := fmt.Errorf("failed to get plugin %s", name)
 			glog.Error(err)
 			return err
 		} else {
+			glog.Infof("Starting to execute plugin at <pluginOnJobAdd>: %s on job: <%s/%s>", name, job.Namespace, job.Name)
 			if err := pb(client, args).OnJobAdd(job); err != nil {
 				glog.Errorf("Failed to process on job add plugin %s, err %v.", name, err)
 				return err
@@ -70,12 +72,13 @@ func (cc *Controller) pluginOnJobDelete(job *vkv1.Job) error {
 	client := vkinterface.PluginClientset{KubeClients: cc.kubeClients}
 	for name, args := range job.Spec.Plugins {
 		if pb, found := vkplugin.GetPluginBuilder(name); !found {
-			err := fmt.Errorf("Failed to get plugin %s.", name)
+			err := fmt.Errorf("failed to get plugin %s", name)
 			glog.Error(err)
 			return err
 		} else {
+			glog.Infof("Starting to execute plugin at <pluginOnJobDelete>: %s on job: <%s/%s>", name, job.Namespace, job.Name)
 			if err := pb(client, args).OnJobDelete(job); err != nil {
-				glog.Errorf("Failed to process on job delete plugin %s, err %v.", name, err)
+				glog.Errorf("failed to process on job delete plugin %s, err %v.", name, err)
 				return err
 			}
 		}

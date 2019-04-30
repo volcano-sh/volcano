@@ -4,7 +4,7 @@ metadata:
   name: tensorflow-benchmark
 spec:
   minAvailable: 5
-  schedulerName: kube-batch
+  schedulerName: scheduler
   plugins:
     env: []
     svc: []

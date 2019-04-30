@@ -8,4 +8,4 @@ nodes:
   # the three workers
   - role: worker
     # replicas specifies the number of nodes to create with this configuration
-    replicas: 3
+    replicas: 4

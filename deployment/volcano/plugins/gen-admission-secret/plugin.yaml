@@ -1,7 +1,0 @@
-name: "gen-admission-secret"
-version: "1.0.0"
-usage: "Generate valid cert for admission server"
-description: This plugin provides signed cert to admission server.
-ignoreFlags: false
-useTunnel: false
-command: "bash $HELM_PLUGIN_DIR/gen-admission-secret.sh"

@@ -31,7 +31,7 @@ type PluginInterface interface {
 	// The unique name of Plugin.
 	Name() string
 
-	// for all po when createJobPod
+	// for all pod when createJobPod
 	OnPodCreate(pod *v1.Pod, job *vkv1.Job) error
 
 	// do once when syncJob

@@ -33,10 +33,12 @@ import (
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
 
 	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/controllers/job/plugins"
 )
 
 // job admit.
 func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
+
 	glog.V(3).Infof("admitting jobs -- %s", ar.Request.Operation)
 
 	job, err := DecodeJob(ar.Request.Object, ar.Request.Resource)
@@ -52,10 +54,11 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		msg = validateJob(job, &reviewResponse)
 		break
 	case v1beta1.Update:
-		_, err := DecodeJob(ar.Request.OldObject, ar.Request.Resource)
+		oldJob, err := DecodeJob(ar.Request.OldObject, ar.Request.Resource)
 		if err != nil {
 			return ToAdmissionResponse(err)
 		}
+		msg = specDeepEqual(job, oldJob, &reviewResponse)
 		break
 	default:
 		err := fmt.Errorf("expect operation to be 'CREATE' or 'UPDATE'")
@@ -132,6 +135,16 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 			getValidEvents(), getValidActions())
 	}
 
+	// invalid job plugins
+	if len(job.Spec.Plugins) != 0 {
+		for name := range job.Spec.Plugins {
+			if _, found := plugins.GetPluginBuilder(name); !found {
+				msg = msg + fmt.Sprintf(" unable to find job plugin: %s", name)
+			}
+		}
+	}
+
+
 	if validateInfo, ok := ValidateIO(job.Spec.Volumes); ok {
 		msg = msg + validateInfo
 	}
@@ -179,3 +192,4 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job v1alpha1.Job, index int) s
 
 	return ""
 }
+
