@@ -18,8 +18,8 @@ package job
 
 import (
 	"fmt"
+
 	"github.com/golang/glog"
-	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,6 +30,7 @@ import (
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/apis"
+	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
 
 func eventKey(obj interface{}) interface{} {
@@ -45,7 +46,7 @@ func eventKey(obj interface{}) interface{} {
 }
 
 func MakePodName(jobName string, taskName string, index int) string {
-	return fmt.Sprintf(vkjobhelpers.TaskNameFmt, jobName, taskName, index)
+	return fmt.Sprintf(vkjobhelpers.PodNameFmt, jobName, taskName, index)
 }
 
 func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
@@ -210,3 +211,19 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 
 	return vkv1.SyncJobAction
 }
+
+type TaskPriority struct {
+	priority int32
+
+	vkv1.TaskSpec
+}
+
+type TasksPriority []TaskPriority
+
+func (p TasksPriority) Len() int { return len(p) }
+
+func (p TasksPriority) Less(i, j int) bool {
+	return p[i].priority > p[j].priority
+}
+
+func (p TasksPriority) Swap(i, j int) { p[i], p[j] = p[j], p[i] }

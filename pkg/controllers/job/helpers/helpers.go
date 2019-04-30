@@ -17,13 +17,14 @@ limitations under the License.
 package helpers
 
 import (
+	"fmt"
 	"strings"
 
 	"k8s.io/api/core/v1"
 )
 
 const (
-	TaskNameFmt = "%s-%s-%d"
+	PodNameFmt = "%s-%s-%d"
 )
 
 func GetTaskIndex(pod *v1.Pod) string {
@@ -33,4 +34,8 @@ func GetTaskIndex(pod *v1.Pod) string {
 	}
 
 	return ""
+}
+
+func MakePodName(jobName string, taskName string, index int) string {
+	return fmt.Sprintf(PodNameFmt, jobName, taskName, index)
 }

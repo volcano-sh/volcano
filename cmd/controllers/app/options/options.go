@@ -22,12 +22,19 @@ import (
 	"github.com/spf13/pflag"
 )
 
+const (
+	defaultQPS   = 50.0
+	defaultBurst = 100
+)
+
 // ServerOption is the main context object for the controller manager.
 type ServerOption struct {
 	Master               string
 	Kubeconfig           string
 	EnableLeaderElection bool
 	LockObjectNamespace  string
+	KubeAPIBurst         int
+	KubeAPIQPS           float32
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -43,6 +50,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableLeaderElection, "leader-elect", s.EnableLeaderElection, "Start a leader election client and gain leadership before "+
 		"executing the main loop. Enable this when running replicated kar-scheduler for high availability.")
 	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", s.LockObjectNamespace, "Define the namespace of the lock object.")
+	fs.Float32Var(&s.KubeAPIQPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
+	fs.IntVar(&s.KubeAPIBurst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
 }
 
 func (s *ServerOption) CheckOptionOrDie() error {

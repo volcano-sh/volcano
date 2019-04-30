@@ -24,6 +24,7 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
+	"k8s.io/api/scheduling/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/cache"
 
@@ -296,7 +297,7 @@ func (cc *Controller) deletePod(obj interface{}) {
 	}
 
 	if err := cc.cache.DeletePod(pod); err != nil {
-		glog.Errorf("Failed to update Pod <%s/%s>: %v in cache",
+		glog.Errorf("Failed to delete Pod <%s/%s>: %v in cache",
 			pod.Namespace, pod.Name, err)
 	}
 
@@ -369,14 +370,59 @@ func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
 			"Failed to find job in cache by PodGroup, this may not be a PodGroup for volcano job.")
 	}
 
-	if newPG.Status.Phase == kbtype.PodGroupUnknown && newPG.Status.Phase != oldPG.Status.Phase {
+	if newPG.Status.Phase != oldPG.Status.Phase {
 		req := apis.Request{
 			Namespace: newPG.Namespace,
 			JobName:   newPG.Name,
-			Event:     vkbatchv1.JobUnknownEvent,
+		}
+		switch newPG.Status.Phase {
+		case kbtype.PodGroupUnknown:
+			req.Event = vkbatchv1.JobUnknownEvent
+		case kbtype.PodGroupInqueue:
+			req.Action = vkbatchv1.EnqueueAction
 		}
 		cc.queue.Add(req)
 	}
 }
 
 // TODO(k82cn): add handler for PodGroup unschedulable event.
+
+func (cc *Controller) addPriorityClass(obj interface{}) {
+	pc := convert2PriorityClass(obj)
+	if pc == nil {
+		return
+	}
+
+	cc.priorityClasses[pc.Name] = pc
+	return
+}
+
+func (cc *Controller) deletePriorityClass(obj interface{}) {
+	pc := convert2PriorityClass(obj)
+	if pc == nil {
+		return
+	}
+
+	delete(cc.priorityClasses, pc.Name)
+	return
+}
+
+func convert2PriorityClass(obj interface{}) *v1beta1.PriorityClass {
+	var pc *v1beta1.PriorityClass
+	switch t := obj.(type) {
+	case *v1beta1.PriorityClass:
+		pc = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		pc, ok = t.Obj.(*v1beta1.PriorityClass)
+		if !ok {
+			glog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t.Obj)
+			return nil
+		}
+	default:
+		glog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t)
+		return nil
+	}
+
+	return pc
+}

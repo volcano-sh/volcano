@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2017 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,18 +21,10 @@ import (
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
-type completingState struct {
+type failedState struct {
 	job *apis.JobInfo
 }
 
-func (ps *completingState) Execute(action vkv1.Action) error {
-	return KillJob(ps.job, func(status *vkv1.JobStatus) {
-		// If any "alive" pods, still in Completing phase
-		phase := vkv1.Completed
-		if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {
-			phase = vkv1.Completing
-		}
-
-		status.State.Phase = phase
-	})
+func (ps *failedState) Execute(action vkv1.Action) error {
+	return KillJob(ps.job, nil)
 }

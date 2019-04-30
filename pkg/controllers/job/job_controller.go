@@ -20,11 +20,15 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
+	"k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
+	coreinformers "k8s.io/client-go/informers/core/v1"
+	schedv1 "k8s.io/client-go/informers/scheduling/v1beta1"
 	"k8s.io/client-go/kubernetes"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	pclister "k8s.io/client-go/listers/scheduling/v1beta1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -55,8 +59,12 @@ type Controller struct {
 	kbClients   *kbver.Clientset
 
 	jobInformer     vkbatchinfo.JobInformer
+	podInformer     coreinformers.PodInformer
+	pvcInformer     coreinformers.PersistentVolumeClaimInformer
 	pgInformer      kbinfo.PodGroupInformer
+	svcInformer     coreinformers.ServiceInformer
 	cmdInformer     vkcoreinfo.CommandInformer
+	pcInformer      schedv1.PriorityClassInformer
 	sharedInformers informers.SharedInformerFactory
 
 	// A store of jobs
@@ -81,12 +89,16 @@ type Controller struct {
 	cmdLister vkcorelister.CommandLister
 	cmdSynced func() bool
 
+	pcLister pclister.PriorityClassLister
+	pcSynced func() bool
+
 	// queue that need to sync up
 	queue        workqueue.RateLimitingInterface
 	commandQueue workqueue.RateLimitingInterface
 	cache        jobcache.Cache
 	//Job Event recorder
-	recorder record.EventRecorder
+	recorder        record.EventRecorder
+	priorityClasses map[string]*v1beta1.PriorityClass
 }
 
 // NewJobController create new Job Controller
@@ -101,14 +113,15 @@ func NewJobController(config *rest.Config) *Controller {
 	recorder := eventBroadcaster.NewRecorder(vkscheme.Scheme, v1.EventSource{Component: "vk-controller"})
 
 	cc := &Controller{
-		config:       config,
-		kubeClients:  kubeClients,
-		vkClients:    vkver.NewForConfigOrDie(config),
-		kbClients:    kbver.NewForConfigOrDie(config),
-		queue:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		commandQueue: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		cache:        jobcache.New(),
-		recorder:     recorder,
+		config:          config,
+		kubeClients:     kubeClients,
+		vkClients:       vkver.NewForConfigOrDie(config),
+		kbClients:       kbver.NewForConfigOrDie(config),
+		queue:           workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		commandQueue:    workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		cache:           jobcache.New(),
+		recorder:        recorder,
+		priorityClasses: make(map[string]*v1beta1.PriorityClass),
 	}
 
 	cc.jobInformer = vkinfoext.NewSharedInformerFactory(cc.vkClients, 0).Batch().V1alpha1().Jobs()
@@ -129,23 +142,23 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.cmdSynced = cc.cmdInformer.Informer().HasSynced
 
 	cc.sharedInformers = informers.NewSharedInformerFactory(cc.kubeClients, 0)
-	podInformer := cc.sharedInformers.Core().V1().Pods()
-	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	cc.podInformer = cc.sharedInformers.Core().V1().Pods()
+	cc.podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    cc.addPod,
 		UpdateFunc: cc.updatePod,
 		DeleteFunc: cc.deletePod,
 	})
 
-	cc.podLister = podInformer.Lister()
-	cc.podSynced = podInformer.Informer().HasSynced
+	cc.podLister = cc.podInformer.Lister()
+	cc.podSynced = cc.podInformer.Informer().HasSynced
 
-	pvcInformer := cc.sharedInformers.Core().V1().PersistentVolumeClaims()
-	cc.pvcLister = pvcInformer.Lister()
-	cc.pvcSynced = pvcInformer.Informer().HasSynced
+	cc.pvcInformer = cc.sharedInformers.Core().V1().PersistentVolumeClaims()
+	cc.pvcLister = cc.pvcInformer.Lister()
+	cc.pvcSynced = cc.pvcInformer.Informer().HasSynced
 
-	svcInformer := cc.sharedInformers.Core().V1().Services()
-	cc.svcLister = svcInformer.Lister()
-	cc.svcSynced = svcInformer.Informer().HasSynced
+	cc.svcInformer = cc.sharedInformers.Core().V1().Services()
+	cc.svcLister = cc.svcInformer.Lister()
+	cc.svcSynced = cc.svcInformer.Informer().HasSynced
 
 	cc.pgInformer = kbinfoext.NewSharedInformerFactory(cc.kbClients, 0).Scheduling().V1alpha1().PodGroups()
 	cc.pgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -154,22 +167,35 @@ func NewJobController(config *rest.Config) *Controller {
 	cc.pgLister = cc.pgInformer.Lister()
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
+	cc.pcInformer = cc.sharedInformers.Scheduling().V1beta1().PriorityClasses()
+	cc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    cc.addPriorityClass,
+		DeleteFunc: cc.deletePriorityClass,
+	})
+	cc.pcLister = cc.pcInformer.Lister()
+	cc.pcSynced = cc.pcInformer.Informer().HasSynced
+
 	// Register actions
 	state.SyncJob = cc.syncJob
 	state.KillJob = cc.killJob
+	state.CreateJob = cc.createJob
 
 	return cc
 }
 
 // Run start JobController
 func (cc *Controller) Run(stopCh <-chan struct{}) {
-	go cc.jobInformer.Informer().Run(stopCh)
-	go cc.pgInformer.Informer().Run(stopCh)
-	go cc.cmdInformer.Informer().Run(stopCh)
 	go cc.sharedInformers.Start(stopCh)
+	go cc.jobInformer.Informer().Run(stopCh)
+	go cc.podInformer.Informer().Run(stopCh)
+	go cc.pvcInformer.Informer().Run(stopCh)
+	go cc.pgInformer.Informer().Run(stopCh)
+	go cc.svcInformer.Informer().Run(stopCh)
+	go cc.cmdInformer.Informer().Run(stopCh)
+	go cc.pcInformer.Informer().Run(stopCh)
 
 	cache.WaitForCacheSync(stopCh, cc.jobSynced, cc.podSynced, cc.pgSynced,
-		cc.svcSynced, cc.cmdSynced, cc.pvcSynced)
+		cc.svcSynced, cc.cmdSynced, cc.pvcSynced, cc.pcSynced)
 
 	go wait.Until(cc.handleCommands, 0, stopCh)
 	go wait.Until(cc.worker, 0, stopCh)

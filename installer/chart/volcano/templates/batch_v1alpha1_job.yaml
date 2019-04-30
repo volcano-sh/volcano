@@ -9,6 +9,9 @@ spec:
   names:
     kind: Job
     plural: jobs
+    shortNames:
+      - vkjob
+      - vj
   scope: Namespaced
   validation:
     openAPIV3Schema:
