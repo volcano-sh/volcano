@@ -144,7 +144,7 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 		}
 	}
 
-	//TODO: Fix me and enable it.
+	//TODO(tommylikehu): Fix me and enable it.
 	//if validateInfo, ok := ValidateIO(job.Spec.Volumes); ok {
 	//	msg = msg + validateInfo
 	//}
