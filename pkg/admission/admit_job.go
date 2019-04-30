@@ -144,10 +144,10 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 		}
 	}
 
-
-	if validateInfo, ok := ValidateIO(job.Spec.Volumes); ok {
-		msg = msg + validateInfo
-	}
+	//TODO: Fix me and enable it.
+	//if validateInfo, ok := ValidateIO(job.Spec.Volumes); ok {
+	//	msg = msg + validateInfo
+	//}
 
 	if msg != "" {
 		reviewResponse.Allowed = false
@@ -192,4 +192,3 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job v1alpha1.Job, index int) s
 
 	return ""
 }
-
