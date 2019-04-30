@@ -39,9 +39,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
-	kbver "volcano.sh/volcano/pkg/client/clientset/versioned"
-	kbapi "volcano.sh/volcano/pkg/scheduler/api"
+	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
+	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkver "volcano.sh/volcano/pkg/client/clientset/versioned"
@@ -59,7 +59,7 @@ const (
 	masterPriority      = "master-pri"
 	defaultNginxImage   = "nginx:1.14"
 	defaultBusyBoxImage = "busybox:1.24"
-	defaultMPIImage     = "openmpi-hello:3.28"
+	defaultMPIImage     = "volcanosh/example-mpi:0.0.1"
 )
 
 func cpuResource(request string) v1.ResourceList {
@@ -129,7 +129,7 @@ func initTestContext() *context {
 	Expect(err).NotTo(HaveOccurred(),
 		"k8s cluster is required to have one ready worker node at least.")
 
-	//NOTE(tommylikehu):NamespaceAsQueue feature was removed from scheduler,
+	//NOTE(tommylikehu):NamespaceAsQueue feature was removed from kube-batch,
 	//we will eventually remove this logic in test as well.
 	cxt.enableNamespaceAsQueue = false
 
@@ -359,7 +359,7 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 					Labels: task.labels,
 				},
 				Spec: v1.PodSpec{
-					SchedulerName: "scheduler",
+					SchedulerName: "kube-batch",
 					RestartPolicy: restartPolicy,
 					Containers:    createContainers(task.img, task.command, task.workingDir, task.req, task.hostport),
 					Affinity:      task.affinity,
@@ -556,19 +556,20 @@ func waitJobUnschedulable(ctx *context, job *vkv1.Job) error {
 }
 
 func createContainers(img, command, workingDir string, req v1.ResourceList, hostport int32) []v1.Container {
+	var imageRepo []string
 	container := v1.Container{
 		Image:           img,
-		Name:            img[:strings.Index(img, ":")],
 		ImagePullPolicy: v1.PullIfNotPresent,
 		Resources: v1.ResourceRequirements{
 			Requests: req,
 		},
 	}
 	if strings.Index(img, ":") < 0 {
-		container.Name = img
+		imageRepo = strings.Split(img, "/")
 	} else {
-		container.Name = img[:strings.Index(img, ":")]
+		imageRepo = strings.Split(img[:strings.Index(img, ":")], "/")
 	}
+	container.Name = imageRepo[len(imageRepo)-1]
 
 	if len(command) > 0 {
 		container.Command = []string{"/bin/sh"}
