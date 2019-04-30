@@ -21,6 +21,7 @@ import (
 
 	"github.com/golang/glog"
 
+	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/metrics"
@@ -52,6 +53,10 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 	queues := map[api.QueueID]*api.QueueInfo{}
 
 	for _, job := range ssn.Jobs {
+		if job.PodGroup.Status.Phase == v1alpha1.PodGroupPending {
+			continue
+		}
+
 		if queue, found := ssn.Queues[job.Queue]; !found {
 			continue
 		} else if _, existed := queues[queue.UID]; !existed {
