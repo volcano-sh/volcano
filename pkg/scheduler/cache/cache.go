@@ -465,7 +465,10 @@ func (sc *SchedulerCache) taskUnschedulable(task *api.TaskInfo, message string) 
 
 	pod := task.Pod.DeepCopy()
 
-	sc.Recorder.Eventf(pod, v1.EventTypeWarning, string(v1.PodReasonUnschedulable), message)
+	// The reason field in 'Events' should be "FailedScheduling", there is not constants defined for this in
+	// k8s core, so using the same string here.
+	// The reason field in PodCondition should be "Unschedulable"
+	sc.Recorder.Eventf(pod, v1.EventTypeWarning, "FailedScheduling", message)
 	if _, err := sc.StatusUpdater.UpdatePodCondition(pod, &v1.PodCondition{
 		Type:    v1.PodScheduled,
 		Status:  v1.ConditionFalse,
