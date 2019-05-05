@@ -29,7 +29,7 @@ func (ps *abortingState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.ResumeJobAction:
 		// Already in Restarting phase, just sync it
-		return SyncJob(ps.job, func(status *vkv1.JobStatus) {
+		return KillJob(ps.job, func(status *vkv1.JobStatus) {
 			status.State.Phase = vkv1.Restarting
 			status.RetryCount++
 		})
