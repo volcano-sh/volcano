@@ -20,6 +20,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
@@ -151,5 +152,32 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 		Expect(ok).To(Equal(true))
 		Expect(stError.ErrStatus.Code).To(Equal(int32(500)))
 		Expect(stError.ErrStatus.Message).To(ContainSubstring("unable to find job plugin: big_plugin"))
+	})
+
+	It("Default queue would be added", func() {
+		jobName := "job-default-queue"
+		namespace := "test"
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		_, err := createJobInner(context, &jobSpec{
+			min:       1,
+			namespace: namespace,
+			name:      jobName,
+			tasks: []taskSpec{
+				{
+					img:  defaultNginxImage,
+					req:  oneCPU,
+					min:  1,
+					rep:  1,
+					name: "taskname",
+				},
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		createdJob, err := context.vkclient.BatchV1alpha1().Jobs(namespace).Get(jobName, v1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(createdJob.Spec.Queue).Should(Equal("default"),
+			"Job queue attribute would default to 'default' ")
 	})
 })
