@@ -29,7 +29,6 @@ import (
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	pclister "k8s.io/client-go/listers/scheduling/v1beta1"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
@@ -53,7 +52,6 @@ import (
 
 // Controller the Job Controller type
 type Controller struct {
-	config      *rest.Config
 	kubeClients *kubernetes.Clientset
 	vkClients   *vkver.Clientset
 	kbClients   *kbver.Clientset
@@ -102,21 +100,22 @@ type Controller struct {
 }
 
 // NewJobController create new Job Controller
-func NewJobController(config *rest.Config) *Controller {
-
-	kubeClients := kubernetes.NewForConfigOrDie(config)
+func NewJobController(
+	kubeClient *kubernetes.Clientset,
+	kbClient *kbver.Clientset,
+	vkClient *vkver.Clientset,
+) *Controller {
 
 	//Initialize event client
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
-	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClients.CoreV1().Events("")})
+	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(vkscheme.Scheme, v1.EventSource{Component: "vk-controller"})
 
 	cc := &Controller{
-		config:          config,
-		kubeClients:     kubeClients,
-		vkClients:       vkver.NewForConfigOrDie(config),
-		kbClients:       kbver.NewForConfigOrDie(config),
+		kubeClients:     kubeClient,
+		vkClients:       vkClient,
+		kbClients:       kbClient,
 		queue:           workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		commandQueue:    workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		cache:           jobcache.New(),
