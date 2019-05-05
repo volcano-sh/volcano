@@ -28,6 +28,10 @@ import (
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
+const (
+	DefaultQueue = "default"
+)
+
 type patchOperation struct {
 	Op    string      `json:"op"`
 	Path  string      `json:"path"`
@@ -71,6 +75,10 @@ func MutateJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 func createPatch(job v1alpha1.Job) ([]byte, error) {
 	var patch []patchOperation
 	patch = append(patch, mutateSpec(job.Spec.Tasks, "/spec/tasks")...)
+	//Add default queue if not specified.
+	if job.Spec.Queue == "" {
+		patch = append(patch, patchOperation{Op: "add", Path: "/spec/queue", Value: DefaultQueue})
+	}
 
 	return json.Marshal(patch)
 }
