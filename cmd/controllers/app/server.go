@@ -36,8 +36,12 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 
+	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
+
 	"volcano.sh/volcano/cmd/controllers/app/options"
+	vkclient "volcano.sh/volcano/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/controllers/job"
+	"volcano.sh/volcano/pkg/controllers/queue"
 )
 
 const (
@@ -72,10 +76,17 @@ func Run(opt *options.ServerOption) error {
 		return err
 	}
 
-	jobController := job.NewJobController(config)
+	// TODO: add user agent for different controllers
+	kubeClient := clientset.NewForConfigOrDie(config)
+	kbClient := kbver.NewForConfigOrDie(config)
+	vkClient := vkclient.NewForConfigOrDie(config)
+
+	jobController := job.NewJobController(kubeClient, kbClient, vkClient)
+	queueController := queue.NewQueueController(kubeClient, kbClient)
 
 	run := func(ctx context.Context) {
-		jobController.Run(ctx.Done())
+		go jobController.Run(ctx.Done())
+		go queueController.Run(ctx.Done())
 		<-ctx.Done()
 	}
 
