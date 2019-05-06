@@ -3,6 +3,7 @@
 export VK_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
 export VK_BIN=${VK_ROOT}/${BIN_DIR}/${BIN_OSARCH}
 export LOG_LEVEL=3
+export MAX_LOGLINE=10000
 export SHOW_VOLCANO_LOGS=${SHOW_VOLCANO_LOGS:-1}
 export CLEANUP_CLUSTER=${CLEANUP_CLUSTER:-1}
 export MPI_EXAMPLE_IMAGE=${MPI_EXAMPLE_IMAGE:-"volcanosh/example-mpi:0.0.1"}
@@ -76,9 +77,9 @@ function uninstall-volcano {
 
 function generate-log {
     echo "Generating volcano log files"
-    kubectl logs -lapp=volcano-admission -n kube-system > volcano-admission.log
-    kubectl logs -lapp=volcano-controller -n kube-system > volcano-controller.log
-    kubectl logs -lapp=volcano-scheduler -n kube-system > volcano-scheduler.log
+    kubectl logs -lapp=volcano-admission -n kube-system --tail=${MAX_LOGLINE} > volcano-admission.log
+    kubectl logs -lapp=volcano-controller -n kube-system --tail=${MAX_LOGLINE} > volcano-controller.log
+    kubectl logs -lapp=volcano-scheduler -n kube-system --tail=${MAX_LOGLINE} > volcano-scheduler.log
 }
 
 # clean up
