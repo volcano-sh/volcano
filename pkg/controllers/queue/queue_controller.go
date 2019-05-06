@@ -29,6 +29,7 @@ import (
 	kbv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	kbclientset "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 	kbinformerfactory "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
+	kbinformer "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	kblister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
 )
 
@@ -36,6 +37,10 @@ import (
 type Controller struct {
 	kubeClient kubernetes.Interface
 	kbClient   kbclientset.Interface
+
+	// informer
+	queueInformer kbinformer.QueueInformer
+	pgInformer    kbinformer.PodGroupInformer
 
 	// queueLister
 	queueLister kblister.QueueLister
@@ -60,10 +65,12 @@ func NewQueueController(
 	factory := kbinformerfactory.NewSharedInformerFactory(kbClient, 0)
 	queueInformer := factory.Scheduling().V1alpha1().Queues()
 	pgInformer := factory.Scheduling().V1alpha1().PodGroups()
-
 	c := &Controller{
 		kubeClient: kubeClient,
 		kbClient:   kbClient,
+
+		queueInformer: queueInformer,
+		pgInformer:    pgInformer,
 
 		queueLister: queueInformer.Lister(),
 		queueSynced: queueInformer.Informer().HasSynced,
@@ -91,6 +98,9 @@ func NewQueueController(
 
 // Run starts QueueController
 func (c *Controller) Run(stopCh <-chan struct{}) {
+
+	go c.queueInformer.Informer().Run(stopCh)
+	go c.pgInformer.Informer().Run(stopCh)
 
 	if !cache.WaitForCacheSync(stopCh, c.queueSynced, c.pgSynced) {
 		glog.Errorf("unable to sync caches for queue controller")
