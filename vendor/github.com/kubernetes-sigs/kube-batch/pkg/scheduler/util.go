@@ -21,7 +21,7 @@ import (
 	"io/ioutil"
 	"strings"
 
-	"gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v2"
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/conf"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
