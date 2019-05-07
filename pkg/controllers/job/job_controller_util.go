@@ -154,8 +154,10 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 		for _, task := range job.Spec.Tasks {
 			if task.Name == req.TaskName {
 				for _, policy := range task.Policies {
-					if policy.Event == req.Event || policy.Event == vkv1.AnyEvent {
-						return policy.Action
+					if len(policy.Event) > 0 && len(req.Event) > 0 {
+						if policy.Event == req.Event || policy.Event == vkv1.AnyEvent {
+							return policy.Action
+						}
 					}
 
 					// 0 is not an error code, is prevented in validation admission controller
@@ -170,8 +172,10 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 
 	// Parse Job level policies
 	for _, policy := range job.Spec.Policies {
-		if policy.Event == req.Event || policy.Event == vkv1.AnyEvent {
-			return policy.Action
+		if len(policy.Event) > 0 && len(req.Event) > 0 {
+			if policy.Event == req.Event || policy.Event == vkv1.AnyEvent {
+				return policy.Action
+			}
 		}
 
 		// 0 is not an error code, is prevented in validation admission controller
