@@ -276,6 +276,7 @@ type jobSpec struct {
 	policies  []vkv1.LifecyclePolicy
 	min       int32
 	plugins   map[string][]string
+	volumes   []vkv1.VolumeSpec
 }
 
 func getNS(context *context, job *jobSpec) string {
@@ -357,6 +358,8 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 	} else {
 		job.Spec.MinAvailable = min
 	}
+
+	job.Spec.Volumes = jobSpec.volumes
 
 	return context.vkclient.BatchV1alpha1().Jobs(job.Namespace).Create(job)
 }
