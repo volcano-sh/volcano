@@ -47,7 +47,7 @@ func NewState(jobInfo *apis.JobInfo) State {
 		return &runningState{job: jobInfo}
 	case vkv1.Restarting:
 		return &restartingState{job: jobInfo}
-	case vkv1.Terminated, vkv1.Completed:
+	case vkv1.Terminated, vkv1.Completed, vkv1.Failed:
 		return &finishedState{job: jobInfo}
 	case vkv1.Terminating:
 		return &terminatingState{job: jobInfo}
@@ -57,8 +57,6 @@ func NewState(jobInfo *apis.JobInfo) State {
 		return &abortedState{job: jobInfo}
 	case vkv1.Completing:
 		return &completingState{job: jobInfo}
-	case vkv1.Failed:
-		return &failedState{job: jobInfo}
 	case vkv1.Inqueue:
 		return &inqueueState{job: jobInfo}
 	}

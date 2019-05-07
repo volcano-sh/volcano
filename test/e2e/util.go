@@ -427,7 +427,7 @@ func jobUnschedulable(ctx *context, job *vkv1.Job, time time.Time) wait.Conditio
 
 		for _, event := range events.Items {
 			target := event.InvolvedObject
-			if target.Name == pg.Name && target.Namespace == pg.Namespace {
+			if strings.HasPrefix(target.Name, pg.Name) && target.Namespace == pg.Namespace {
 				if event.Reason == string("Unschedulable") && event.LastTimestamp.After(time) {
 					return true, nil
 				}
@@ -481,6 +481,11 @@ func waitJobStates(ctx *context, job *vkv1.Job, phases []vkv1.JobPhase) error {
 }
 
 func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
+	total := int32(0)
+	for _, task := range job.Spec.Tasks {
+		total += task.Replicas
+	}
+
 	return wait.Poll(100*time.Millisecond, twoMinute, func() (bool, error) {
 		newJob, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
@@ -492,7 +497,9 @@ func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
 		var flag = false
 		switch phase {
 		case vkv1.Pending:
-			flag = newJob.Status.Pending > 0
+			flag = (newJob.Status.Pending+newJob.Status.Succeeded+
+				newJob.Status.Failed+newJob.Status.Running) == 0 ||
+				(total-newJob.Status.Terminating >= newJob.Status.MinAvailable)
 		case vkv1.Terminating, vkv1.Aborting, vkv1.Restarting:
 			flag = newJob.Status.Terminating > 0
 		case vkv1.Terminated, vkv1.Aborted:
@@ -503,6 +510,8 @@ func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
 			flag = newJob.Status.Succeeded == state.TotalTasks(newJob)
 		case vkv1.Running:
 			flag = newJob.Status.Running >= newJob.Spec.MinAvailable
+		case vkv1.Inqueue:
+			flag = newJob.Status.Pending > 0
 		default:
 			return false, fmt.Errorf("unknown phase %s", phase)
 		}
@@ -536,6 +545,10 @@ func waitJobStateReady(ctx *context, job *vkv1.Job) error {
 
 func waitJobStatePending(ctx *context, job *vkv1.Job) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, vkv1.Pending))
+}
+
+func waitJobStateInqueue(ctx *context, job *vkv1.Job) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, vkv1.Inqueue))
 }
 
 func waitJobStateAborted(ctx *context, job *vkv1.Job) error {

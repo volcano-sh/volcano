@@ -54,11 +54,10 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		msg = validateJob(job, &reviewResponse)
 		break
 	case v1beta1.Update:
-		oldJob, err := DecodeJob(ar.Request.OldObject, ar.Request.Resource)
+		_, err := DecodeJob(ar.Request.OldObject, ar.Request.Resource)
 		if err != nil {
 			return ToAdmissionResponse(err)
 		}
-		msg = specDeepEqual(job, oldJob, &reviewResponse)
 		break
 	default:
 		err := fmt.Errorf("expect operation to be 'CREATE' or 'UPDATE'")
@@ -80,6 +79,11 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 	if job.Spec.MinAvailable < 0 {
 		reviewResponse.Allowed = false
 		return fmt.Sprintf("'minAvailable' cannot be less than zero.")
+	}
+
+	if job.Spec.MaxRetry < 0 {
+		reviewResponse.Allowed = false
+		return fmt.Sprintf("'maxRetry' cannot be less than zero.")
 	}
 
 	if len(job.Spec.Tasks) == 0 {
