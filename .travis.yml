@@ -32,6 +32,6 @@ jobs:
         - make e2e-test-kind
       after_failure:
         # Echo logs and upload
-        - test -f volcano-admission.log && echo "************<<admission logs>>*****Max line limited*****" && cat volcano-admission.log
-        - test -f volcano-controller.log && echo "************<<controller logs>>*****Max line limited*****" && cat volcano-controller.log
-        - test -f volcano-scheduler.log && echo "************<<scheduler logs>>*****Max line limited*****" && cat volcano-scheduler.log
+        - test -f volcano-admission.log && echo "******<<admission logs>>******" && cat volcano-admission.log
+        - test -f volcano-controller.log && echo "******<<controller logs>>******" && cat volcano-controller.log
+        - test -f volcano-scheduler.log && echo "******<<scheduler logs>>******" && cat volcano-scheduler.log

@@ -3,16 +3,15 @@
 export VK_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
 export VK_BIN=${VK_ROOT}/${BIN_DIR}/${BIN_OSARCH}
 export LOG_LEVEL=3
-export MAX_LOGLINE=10000
 export SHOW_VOLCANO_LOGS=${SHOW_VOLCANO_LOGS:-1}
 export CLEANUP_CLUSTER=${CLEANUP_CLUSTER:-1}
 export MPI_EXAMPLE_IMAGE=${MPI_EXAMPLE_IMAGE:-"volcanosh/example-mpi:0.0.1"}
 
-if [[ "${CLUSTER_NAME}xxx" != "xxx" ]];then
-  export CLUSTER_CONTEXT="--name ${CLUSTER_NAME}"
-else
-  export CLUSTER_CONTEXT="--name integration"
+if [[ "${CLUSTER_NAME}xxx" == "xxx" ]];then
+    CLUSTER_NAME="integration"
 fi
+
+export CLUSTER_CONTEXT="--name ${CLUSTER_NAME}"
 
 export KIND_OPT=${KIND_OPT:=" --config ${VK_ROOT}/hack/e2e-kind-config.yaml"}
 
@@ -77,9 +76,9 @@ function uninstall-volcano {
 
 function generate-log {
     echo "Generating volcano log files"
-    kubectl logs -lapp=volcano-admission -n kube-system --tail=${MAX_LOGLINE} > volcano-admission.log
-    kubectl logs -lapp=volcano-controller -n kube-system --tail=${MAX_LOGLINE} > volcano-controller.log
-    kubectl logs -lapp=volcano-scheduler -n kube-system --tail=${MAX_LOGLINE} > volcano-scheduler.log
+    kubectl logs deployment/${CLUSTER_NAME}-admission -n kube-system > volcano-admission.log
+    kubectl logs deployment/${CLUSTER_NAME}-controllers -n kube-system > volcano-controller.log
+    kubectl logs deployment/${CLUSTER_NAME}-scheduler -n kube-system > volcano-scheduler.log
 }
 
 # clean up
