@@ -23,17 +23,17 @@ import (
 )
 
 var (
-	// Version shows the version of kube batch.
+	// Version shows the version of volcano.
 	Version = "Not provided."
-	// GitSHA shoows the git commit id of kube batch.
+	// GitSHA shoows the git commit id of volcano.
 	GitSHA = "Not provided."
 	// Built shows the built time of the binary.
-	Built = "Not provided."
+	Built      = "Not provided."
+	apiVersion = "v1alpha1"
 )
 
 // PrintVersionAndExit prints versions from the array returned by Info() and exit
 func PrintVersionAndExit() {
-	apiVersion := "v1alpha1"
 	for _, i := range Info(apiVersion) {
 		fmt.Printf("%v\n", i)
 	}

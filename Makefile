@@ -32,9 +32,9 @@ vkctl: init
 
 image_bins:
 	go get github.com/mitchellh/gox
-	CGO_ENABLED=0 gox -osarch=${REL_OSARCH} -output ${BIN_DIR}/${REL_OSARCH}/vkctl ./cmd/cli
+	CGO_ENABLED=0 gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vkctl ./cmd/cli
 	for name in controllers scheduler admission; do\
-		CGO_ENABLED=0 gox -osarch=${REL_OSARCH} -output ${BIN_DIR}/${REL_OSARCH}/vk-$$name ./cmd/$$name; \
+		CGO_ENABLED=0 gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vk-$$name ./cmd/$$name; \
 	done
 
 images: image_bins
