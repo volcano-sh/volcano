@@ -32,36 +32,27 @@ spec:
           description: Specification of the desired behavior of a cron job, including
             the minAvailable
           properties:
-            input:
-              description: The volume mount for input of Job
-              properties:
-                volumeClaim:
-                  description: VolumeClaim defines the PVC used by the VolumeMount.
-                  type: object
-                mountPath:
-                  description: Path within the container at which the volume should
-                    be mounted.  Must not contain ':'.
-                  type: string
-              required:
-              - mountPath
-              type: object
+            volumes:
+              description: The volumes for Job
+              items:
+                properties:
+                  volumeClaim:
+                    description: VolumeClaim defines the PVC used by the VolumeMount.
+                    type: object
+                  mountPath:
+                    description: Path within the container at which the volume should be mounted.
+                      Must not contain ':'.
+                    type: string
+                  volumeClaimName:
+                    description: The name of the volume claim.
+                type: object
+                required:
+                  - mountPath
+              type: array
             minAvailable:
               description: The minimal available pods to run for this Job
               format: int32
               type: integer
-            output:
-              description: The volume mount for output of Job
-              properties:
-                volumeClaim:
-                  description: VolumeClaim defines the PVC used by the VolumeMount.
-                  type: object
-                mountPath:
-                  description: Path within the container at which the volume should
-                    be mounted.  Must not contain ':'.
-                  type: string
-              required:
-              - mountPath
-              type: object
             policies:
               description: Specifies the default lifecycle of tasks
               items:
@@ -83,6 +74,11 @@ spec:
             schedulerName:
               description: SchedulerName is the default value of `tasks.template.spec.schedulerName`.
               type: string
+            plugins:
+              description: Enabled task plugins when creating job.
+              type: object
+              additionalProperties:
+                type: array
             tasks:
               description: Tasks specifies the task specification of Job
               items:
@@ -120,6 +116,13 @@ spec:
                     type: object
                 type: object
               type: array
+            queue:
+              description: The name of the queue on which job should been created
+              type: string
+            maxRetry:
+              description: The limit for retrying submiting job, default is 3
+              format: int32
+              type: integer
           type: object
         status:
           description: Current status of Job
@@ -148,6 +151,15 @@ spec:
               description: Job's current version
               format: int32
               type: integer
+            retryCount:
+              description: The number that volcano retried to submit the job.
+              format: int32
+              type: integer
+            ControlledResources:
+              description: All of the resources that are controlled by this job.
+              type: object
+              additionalProperties:
+                type: string
             state:
               description: Current state of Job.
               properties:
