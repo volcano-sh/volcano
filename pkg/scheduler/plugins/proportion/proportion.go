@@ -98,6 +98,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
+	for id, attr := range pp.queueOpts {
+		ssn.Queues[id].Allocated = attr.allocated
+	}
+
 	remaining := pp.totalResource.Clone()
 	meet := map[api.QueueID]struct{}{}
 	for {

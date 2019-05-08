@@ -100,14 +100,14 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 		job := jobs.Pop().(*api.JobInfo)
 
 		inqueue := false
-		if len(job.TaskStatusIndex[api.Pending]) != 0 {
+
+		if job.PodGroup.Spec.MinResources == nil {
 			inqueue = true
 		} else {
-			if job.PodGroup.Spec.MinResources == nil {
-				inqueue = true
-			} else {
-				pgResource := api.NewResource(*job.PodGroup.Spec.MinResources)
-
+			pgResource := api.NewResource(*job.PodGroup.Spec.MinResources)
+			// The queue resource quota limit has not reached
+			if pgResource.Clone().Add(ssn.Queues[queue.UID].Allocated).LessEqual(api.NewResource(queue.Queue.Spec.Capability)) {
+				// the pod group required minimal resources less than cluster idle
 				if pgResource.LessEqual(nodesIdleRes) {
 					nodesIdleRes.Sub(pgResource)
 					inqueue = true
