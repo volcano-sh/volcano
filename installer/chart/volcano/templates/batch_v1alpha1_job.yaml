@@ -74,6 +74,11 @@ spec:
             schedulerName:
               description: SchedulerName is the default value of `tasks.template.spec.schedulerName`.
               type: string
+            plugins:
+              description: Enabled task plugins when creating job.
+              type: object
+              additionalProperties:
+                type: array
             tasks:
               description: Tasks specifies the task specification of Job
               items:
@@ -111,6 +116,13 @@ spec:
                     type: object
                 type: object
               type: array
+            queue:
+              description: The name of the queue on which job should been created
+              type: string
+            maxRetry:
+              description: The limit for retrying submiting job, default is 3
+              format: int32
+              type: integer
           type: object
         status:
           description: Current status of Job
@@ -139,6 +151,15 @@ spec:
               description: Job's current version
               format: int32
               type: integer
+            retryCount:
+              description: The number that volcano retried to submit the job.
+              format: int32
+              type: integer
+            ControlledResources:
+              description: All of the resources that are controlled by this job.
+              type: object
+              additionalProperties:
+                type: string
             state:
               description: Current state of Job.
               properties:

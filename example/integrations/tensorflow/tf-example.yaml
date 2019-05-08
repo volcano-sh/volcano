@@ -37,6 +37,7 @@ spec:
   minAvailable: 2
   schedulerName: kube-batch
   plugins:
+    env: []
     svc: []
   policies:
     - event: PodEvicted
