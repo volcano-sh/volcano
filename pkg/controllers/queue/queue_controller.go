@@ -203,10 +203,6 @@ func (c *Controller) addQueue(obj interface{}) {
 	c.queue.Add(queue.Name)
 }
 
-func (c *Controller) updateQueue(old, new interface{}) {
-
-}
-
 func (c *Controller) deleteQueue(obj interface{}) {
 	queue, ok := obj.(*kbv1alpha1.Queue)
 	if !ok {
