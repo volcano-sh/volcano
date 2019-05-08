@@ -30,7 +30,8 @@ type QueueInfo struct {
 	UID  QueueID
 	Name string
 
-	Weight int32
+	Weight    int32
+	Allocated *Resource
 
 	Queue *arbcorev1.Queue
 }
