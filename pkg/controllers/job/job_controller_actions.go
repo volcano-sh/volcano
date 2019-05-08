@@ -336,21 +336,35 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 
 func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (error, *vkv1.Job) {
 	// If PVC does not exist, create them for Job.
-	var needUpdate bool
+	var needUpdate, nameExist bool
 	volumes := job.Spec.Volumes
 	for index, volume := range volumes {
+		nameExist = false
 		vcName := volume.VolumeClaimName
 		if len(vcName) == 0 {
-			//If volume claim name doesn't exist, generate a new one,ignore the case when duplicated names are generated.
-			vcName = vkjobhelpers.MakeVolumeClaimName(job.Name)
-			job.Spec.Volumes[index].VolumeClaimName = vcName
-			needUpdate = true
+			//NOTE(k82cn): Ensure never have duplicated generated names.
+			for {
+				vcName = vkjobhelpers.MakeVolumeClaimName(job.Name)
+				exist, err := cc.checkPVCExist(job, vcName)
+				if err != nil {
+					return err, nil
+				}
+				if exist {
+					continue
+				}
+				job.Spec.Volumes[index].VolumeClaimName = vcName
+				needUpdate = true
+				break
+			}
+		} else {
+			exist, err := cc.checkPVCExist(job, vcName)
+			if err != nil {
+				return err, nil
+			}
+			nameExist = exist
 		}
-		exist, err := cc.checkPVCExist(job, vcName)
-		if err != nil {
-			return err, nil
-		}
-		if !exist {
+
+		if !nameExist {
 			if job.Status.ControlledResources == nil {
 				job.Status.ControlledResources = make(map[string]string)
 			}
