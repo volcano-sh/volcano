@@ -18,15 +18,15 @@ package helpers
 
 import (
 	"fmt"
+	"k8s.io/api/core/v1"
 	"math/rand"
 	"strings"
 	"time"
-
-	v1 "k8s.io/api/core/v1"
 )
 
 const (
-	PodNameFmt = "%s-%s-%d"
+	PodNameFmt     = "%s-%s-%d"
+	VolumeClaimFmt = "%s-volume-%s"
 )
 
 func GetTaskIndex(pod *v1.Pod) string {
@@ -42,13 +42,17 @@ func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(PodNameFmt, jobName, taskName, index)
 }
 
-func GenRandomStr(l int) string {
+func genRandomStr(l int) string {
 	str := "0123456789abcdefghijklmnopqrstuvwxyz"
 	bytes := []byte(str)
-	result := []byte{}
+	var result []byte
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for i := 0; i < l; i++ {
 		result = append(result, bytes[r.Intn(len(bytes))])
 	}
 	return string(result)
+}
+
+func MakeVolumeClaimName(jobName string) string {
+	return fmt.Sprintf(VolumeClaimFmt, jobName, genRandomStr(12))
 }

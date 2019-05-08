@@ -67,6 +67,8 @@ func (ps *pendingState) Execute(action vkv1.Action) error {
 			status.State.Phase = phase
 		})
 	default:
-		return CreateJob(ps.job, nil)
+		return CreateJob(ps.job, func(status *vkv1.JobStatus) {
+			status.State.Phase = vkv1.Pending
+		})
 	}
 }
