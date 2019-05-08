@@ -48,11 +48,11 @@ import (
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
-var oneMinute = 1 * time.Minute
-
-var twoMinute = 2 * time.Minute
-
-var oneCPU = v1.ResourceList{"cpu": resource.MustParse("1000m")}
+var (
+	oneMinute = 1 * time.Minute
+	twoMinute = 2 * time.Minute
+	oneCPU    = v1.ResourceList{"cpu": resource.MustParse("1000m")}
+)
 
 const (
 	workerPriority      = "worker-pri"
@@ -60,6 +60,10 @@ const (
 	defaultNginxImage   = "nginx:1.14"
 	defaultBusyBoxImage = "busybox:1.24"
 	defaultMPIImage     = "volcanosh/example-mpi:0.0.1"
+
+	defaultNamespace = "test"
+	defaultQueue1    = "q1"
+	defaultQueue2    = "q2"
 )
 
 func cpuResource(request string) v1.ResourceList {
@@ -99,15 +103,14 @@ type context struct {
 	kbclient   *kbver.Clientset
 	vkclient   *vkver.Clientset
 
-	namespace              string
-	queues                 []string
-	enableNamespaceAsQueue bool
+	namespace string
+	queues    []string
 }
 
 func initTestContext() *context {
 	cxt := &context{
-		namespace: "test",
-		queues:    []string{"q1", "q2"},
+		namespace: defaultNamespace,
+		queues:    []string{defaultQueue1, defaultQueue2},
 	}
 
 	home := homeDir()
@@ -128,10 +131,6 @@ func initTestContext() *context {
 	err = waitClusterReady(cxt)
 	Expect(err).NotTo(HaveOccurred(),
 		"k8s cluster is required to have one ready worker node at least.")
-
-	//NOTE(tommylikehu):NamespaceAsQueue feature was removed from kube-batch,
-	//we will eventually remove this logic in test as well.
-	cxt.enableNamespaceAsQueue = false
 
 	_, err = cxt.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -177,12 +176,7 @@ func queueNotExist(ctx *context) wait.ConditionFunc {
 	return func() (bool, error) {
 		for _, q := range ctx.queues {
 			var err error
-			if ctx.enableNamespaceAsQueue {
-				_, err = ctx.kubeclient.CoreV1().Namespaces().Get(q, metav1.GetOptions{})
-			} else {
-				_, err = ctx.kbclient.SchedulingV1alpha1().Queues().Get(q, metav1.GetOptions{})
-			}
-
+			_, err = ctx.kbclient.SchedulingV1alpha1().Queues().Get(q, metav1.GetOptions{})
 			if !(err != nil && errors.IsNotFound(err)) {
 				return false, err
 			}
@@ -234,22 +228,14 @@ func createQueues(cxt *context) {
 	var err error
 
 	for _, q := range cxt.queues {
-		if cxt.enableNamespaceAsQueue {
-			_, err = cxt.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: q,
-				},
-			})
-		} else {
-			_, err = cxt.kbclient.SchedulingV1alpha1().Queues().Create(&kbv1.Queue{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: q,
-				},
-				Spec: kbv1.QueueSpec{
-					Weight: 1,
-				},
-			})
-		}
+		_, err = cxt.kbclient.SchedulingV1alpha1().Queues().Create(&kbv1.Queue{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: q,
+			},
+			Spec: kbv1.QueueSpec{
+				Weight: 1,
+			},
+		})
 
 		Expect(err).NotTo(HaveOccurred())
 	}
@@ -259,17 +245,9 @@ func deleteQueues(cxt *context) {
 	foreground := metav1.DeletePropagationForeground
 
 	for _, q := range cxt.queues {
-		var err error
-
-		if cxt.enableNamespaceAsQueue {
-			err = cxt.kubeclient.CoreV1().Namespaces().Delete(q, &metav1.DeleteOptions{
-				PropagationPolicy: &foreground,
-			})
-		} else {
-			err = cxt.kbclient.SchedulingV1alpha1().Queues().Delete(q, &metav1.DeleteOptions{
-				PropagationPolicy: &foreground,
-			})
-		}
+		err := cxt.kbclient.SchedulingV1alpha1().Queues().Delete(q, &metav1.DeleteOptions{
+			PropagationPolicy: &foreground,
+		})
 
 		Expect(err).NotTo(HaveOccurred())
 	}
@@ -298,17 +276,12 @@ type jobSpec struct {
 	policies  []vkv1.LifecyclePolicy
 	min       int32
 	plugins   map[string][]string
+	volumes   []vkv1.VolumeSpec
 }
 
 func getNS(context *context, job *jobSpec) string {
 	if len(job.namespace) != 0 {
 		return job.namespace
-	}
-
-	if context.enableNamespaceAsQueue {
-		if len(job.queue) != 0 {
-			return job.queue
-		}
 	}
 
 	return context.namespace
@@ -386,6 +359,8 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 		job.Spec.MinAvailable = min
 	}
 
+	job.Spec.Volumes = jobSpec.volumes
+
 	return context.vkclient.BatchV1alpha1().Jobs(job.Namespace).Create(job)
 }
 
@@ -427,7 +402,7 @@ func jobUnschedulable(ctx *context, job *vkv1.Job, time time.Time) wait.Conditio
 
 		for _, event := range events.Items {
 			target := event.InvolvedObject
-			if target.Name == pg.Name && target.Namespace == pg.Namespace {
+			if strings.HasPrefix(target.Name, pg.Name) && target.Namespace == pg.Namespace {
 				if event.Reason == string("Unschedulable") && event.LastTimestamp.After(time) {
 					return true, nil
 				}
@@ -481,6 +456,11 @@ func waitJobStates(ctx *context, job *vkv1.Job, phases []vkv1.JobPhase) error {
 }
 
 func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
+	total := int32(0)
+	for _, task := range job.Spec.Tasks {
+		total += task.Replicas
+	}
+
 	return wait.Poll(100*time.Millisecond, twoMinute, func() (bool, error) {
 		newJob, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
@@ -492,7 +472,9 @@ func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
 		var flag = false
 		switch phase {
 		case vkv1.Pending:
-			flag = newJob.Status.Pending > 0
+			flag = (newJob.Status.Pending+newJob.Status.Succeeded+
+				newJob.Status.Failed+newJob.Status.Running) == 0 ||
+				(total-newJob.Status.Terminating >= newJob.Status.MinAvailable)
 		case vkv1.Terminating, vkv1.Aborting, vkv1.Restarting:
 			flag = newJob.Status.Terminating > 0
 		case vkv1.Terminated, vkv1.Aborted:
@@ -503,6 +485,8 @@ func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
 			flag = newJob.Status.Succeeded == state.TotalTasks(newJob)
 		case vkv1.Running:
 			flag = newJob.Status.Running >= newJob.Spec.MinAvailable
+		case vkv1.Inqueue:
+			flag = newJob.Status.Pending > 0
 		default:
 			return false, fmt.Errorf("unknown phase %s", phase)
 		}
@@ -536,6 +520,10 @@ func waitJobStateReady(ctx *context, job *vkv1.Job) error {
 
 func waitJobStatePending(ctx *context, job *vkv1.Job) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, vkv1.Pending))
+}
+
+func waitJobStateInqueue(ctx *context, job *vkv1.Job) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, vkv1.Inqueue))
 }
 
 func waitJobStateAborted(ctx *context, job *vkv1.Job) error {

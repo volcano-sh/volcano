@@ -204,7 +204,8 @@ type QueueStatus struct {
 
 // QueueSpec represents the template of Queue.
 type QueueSpec struct {
-	Weight int32 `json:"weight,omitempty" protobuf:"bytes,1,opt,name=weight"`
+	Weight     int32           `json:"weight,omitempty" protobuf:"bytes,1,opt,name=weight"`
+	Capability v1.ResourceList `json:"capability,omitempty" protobuf:"bytes,2,opt,name=capability"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

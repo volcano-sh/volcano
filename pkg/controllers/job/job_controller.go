@@ -127,7 +127,7 @@ func NewJobController(
 	cc.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: cc.addJob,
 		// TODO: enable this until we find an appropriate way.
-		// UpdateFunc: cc.updateJob,
+		UpdateFunc: cc.updateJob,
 		DeleteFunc: cc.deleteJob,
 	})
 	cc.jobLister = cc.jobInformer.Lister()

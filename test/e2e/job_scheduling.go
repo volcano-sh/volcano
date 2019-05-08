@@ -93,16 +93,17 @@ var _ = Describe("Job E2E Test", func() {
 			namespace: "test",
 			tasks: []taskSpec{
 				{
-					img: defaultBusyBoxImage,
-					req: oneCPU,
-					min: rep,
-					rep: rep,
+					img:     defaultBusyBoxImage,
+					req:     oneCPU,
+					min:     rep,
+					rep:     rep,
+					command: "sleep 10s",
 				},
 			},
 		}
 
 		job := createJob(context, jobSpec)
-		err = waitJobPending(context, job)
+		err = waitJobStateInqueue(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitJobUnschedulable(context, job)
@@ -260,10 +261,11 @@ var _ = Describe("Job E2E Test", func() {
 			namespace: "test",
 			tasks: []taskSpec{
 				{
-					img: defaultNginxImage,
-					req: slot,
-					min: rep,
-					rep: rep,
+					img:     defaultNginxImage,
+					req:     slot,
+					min:     rep,
+					rep:     rep,
+					command: "sleep 10s",
 				},
 			},
 		}

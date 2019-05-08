@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Volcano Authors.
+Copyright 2019 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,17 +14,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package state
+package queue
 
 import (
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	"volcano.sh/volcano/pkg/controllers/apis"
+	"os"
+
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
-type failedState struct {
-	job *apis.JobInfo
+func homeDir() string {
+	if h := os.Getenv("HOME"); h != "" {
+		return h
+	}
+	return os.Getenv("USERPROFILE") // windows
 }
 
-func (ps *failedState) Execute(action vkv1.Action) error {
-	return KillJob(ps.job, nil)
+func buildConfig(master, kubeconfig string) (*rest.Config, error) {
+	return clientcmd.BuildConfigFromFlags(master, kubeconfig)
 }
