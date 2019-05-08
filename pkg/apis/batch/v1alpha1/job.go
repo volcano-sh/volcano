@@ -90,6 +90,8 @@ type JobEvent string
 const (
 	CommandIssued JobEvent = "CommandIssued"
 	PluginError   JobEvent = "PluginError"
+	PVCError      JobEvent = "PVCError"
+	PodGroupError JobEvent = "PodGroupError"
 )
 
 // Event represent the phase of Job, e.g. pod-failed.

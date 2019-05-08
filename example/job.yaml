@@ -8,10 +8,10 @@ spec:
   policies:
   - event: PodEvicted
     action: RestartJob
-  input:
-    mountPath: "/myinput"
-  output:
-    mountPath: "/myoutput"
+  volumes:
+  - mountPath: "/myinput"
+  - mountPath: "/myoutput"
+    volumeClaimName: "testvolumeclaimname"
     volumeClaim:
       accessModes: [ "ReadWriteOnce" ]
       storageClassName: "my-storage-class"
