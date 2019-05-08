@@ -26,6 +26,7 @@ import (
 	"volcano.sh/volcano/cmd/admission/app"
 	appConf "volcano.sh/volcano/cmd/admission/app/configure"
 	admissioncontroller "volcano.sh/volcano/pkg/admission"
+	"volcano.sh/volcano/pkg/version"
 )
 
 func serveJobs(w http.ResponseWriter, r *http.Request) {
@@ -40,6 +41,10 @@ func main() {
 	config := appConf.NewConfig()
 	config.AddFlags()
 	flag.Parse()
+
+	if config.PrintVersion {
+		version.PrintVersionAndExit()
+	}
 
 	http.HandleFunc(admissioncontroller.AdmitJobPath, serveJobs)
 	http.HandleFunc(admissioncontroller.MutateJobPath, serveMutateJobs)

@@ -28,6 +28,7 @@ import (
 
 	"volcano.sh/volcano/cmd/controllers/app"
 	"volcano.sh/volcano/cmd/controllers/app/options"
+	"volcano.sh/volcano/pkg/version"
 )
 
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
@@ -37,6 +38,10 @@ func main() {
 	s.AddFlags(pflag.CommandLine)
 
 	flag.InitFlags()
+
+	if s.PrintVersion {
+		version.PrintVersionAndExit()
+	}
 	if err := s.CheckOptionOrDie(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)

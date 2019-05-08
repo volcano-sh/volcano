@@ -35,6 +35,7 @@ type ServerOption struct {
 	LockObjectNamespace  string
 	KubeAPIBurst         int
 	KubeAPIQPS           float32
+	PrintVersion         bool
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -52,6 +53,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", s.LockObjectNamespace, "Define the namespace of the lock object.")
 	fs.Float32Var(&s.KubeAPIQPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
 	fs.IntVar(&s.KubeAPIBurst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
+	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
 }
 
 func (s *ServerOption) CheckOptionOrDie() error {
