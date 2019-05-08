@@ -40,6 +40,7 @@ type Config struct {
 	MutateWebhookName         string
 	ValidateWebhookConfigName string
 	ValidateWebhookName       string
+	PrintVersion              bool
 }
 
 func NewConfig() *Config {
@@ -64,6 +65,7 @@ func (c *Config) AddFlags() {
 		"Name of the mutatingwebhookconfiguration resource in Kubernetes.")
 	flag.StringVar(&c.ValidateWebhookName, "validate-webhook-name", "validatejob.volcano.sh",
 		"Name of the webhook entry in the webhook config.")
+	flag.BoolVar(&c.PrintVersion, "version", false, "Show version and quit")
 }
 
 func (c *Config) CheckPortOrDie() error {

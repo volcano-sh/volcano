@@ -3,6 +3,7 @@ REL_OSARCH=linux/amd64
 REPO_PATH=volcano.sh/volcano
 IMAGE_PREFIX=volcanosh/vk
 TAG=latest
+RELEASE_VER=v0.1
 GitSHA=`git rev-parse HEAD`
 Date=`date "+%Y-%m-%d %H:%M:%S"`
 LD_FLAGS=" \

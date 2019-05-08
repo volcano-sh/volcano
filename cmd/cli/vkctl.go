@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"k8s.io/apimachinery/pkg/util/wait"
+	"volcano.sh/volcano/pkg/version"
 )
 
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
@@ -41,6 +42,7 @@ func main() {
 
 	rootCmd.AddCommand(buildJobCmd())
 	rootCmd.AddCommand(buildQueueCmd())
+	rootCmd.AddCommand(versionCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Printf("Failed to execute command: %v", err)
@@ -58,4 +60,20 @@ func checkError(cmd *cobra.Command, err error) {
 
 		fmt.Printf("%s: %v\n", msg, err)
 	}
+}
+
+var versionExample = `vkctl version`
+
+func versionCommand() *cobra.Command {
+
+	var command = &cobra.Command{
+		Use:     "version",
+		Short:   "Print the version information",
+		Long:    "Print the version information",
+		Example: versionExample,
+		Run: func(cmd *cobra.Command, args []string) {
+			version.PrintVersionAndExit()
+		},
+	}
+	return command
 }
