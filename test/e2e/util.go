@@ -543,6 +543,10 @@ func waitJobUnschedulable(ctx *context, job *vkv1.Job) error {
 	return wait.Poll(10*time.Second, oneMinute, jobUnschedulable(ctx, job, now))
 }
 
+func waitQueueStatus(condition func() (bool, error)) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, condition)
+}
+
 func createContainers(img, command, workingDir string, req v1.ResourceList, hostport int32) []v1.Container {
 	var imageRepo []string
 	container := v1.Container{

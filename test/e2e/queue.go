@@ -19,6 +19,8 @@ package e2e
 import (
 	"fmt"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
@@ -64,6 +66,27 @@ var _ = Describe("Queue E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitTasksReady(context, job1, expected)
+		Expect(err).NotTo(HaveOccurred())
+
+		// Test Queue status
+		spec = &jobSpec{
+			name:  "",
+			queue: defaultQueue1,
+			tasks: []taskSpec{
+				{
+					img: defaultNginxImage,
+					req: slot,
+					min: rep * 2,
+					rep: rep * 2,
+				},
+			},
+		}
+
+		err = waitQueueStatus(func() (bool, error) {
+			queue, err := context.kbclient.SchedulingV1alpha1().Queues().Get(defaultQueue1, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			return queue.Status.Running == 1 && queue.Status.Pending == 1, nil
+		})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
