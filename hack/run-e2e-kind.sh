@@ -64,14 +64,20 @@ function install-volcano {
 
   echo "Install volcano plugin into cluster...."
   helm plugin install --kubeconfig ${KUBECONFIG} installer/chart/volcano/plugins/gen-admission-secret
-  helm gen-admission-secret --service integration-admission-service --namespace kube-system
+
+  #If failed to generate secret for admission service, return immediately
+  helm gen-admission-secret --service ${CLUSTER_NAME}-admission-service --namespace kube-system
+  if [[ $? != 0 ]]; then
+    echo "Failed to install secret for admission service, usually we need a retry."
+    exit 1
+  fi
 
   echo "Install volcano chart"
-  helm install installer/chart/volcano --namespace kube-system --name integration --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG}
+  helm install installer/chart/volcano --namespace kube-system --name ${CLUSTER_NAME} --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG} --wait
 }
 
 function uninstall-volcano {
-  helm delete integration --purge --kubeconfig ${KUBECONFIG}
+  helm delete ${CLUSTER_NAME} --purge --kubeconfig ${KUBECONFIG}
 }
 
 function generate-log {
