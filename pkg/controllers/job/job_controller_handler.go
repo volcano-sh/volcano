@@ -410,7 +410,7 @@ func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
 	}
 
 	_, err := cc.cache.Get(vkcache.JobKeyByName(newPG.Namespace, newPG.Name))
-	if err != nil {
+	if err != nil && newPG.Annotations != nil {
 		glog.Warningf(
 			"Failed to find job in cache by PodGroup, this may not be a PodGroup for volcano job.")
 	}
@@ -423,8 +423,6 @@ func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
 		switch newPG.Status.Phase {
 		case kbtype.PodGroupUnknown:
 			req.Event = vkbatchv1.JobUnknownEvent
-		case kbtype.PodGroupInqueue:
-			req.Action = vkbatchv1.EnqueueAction
 		}
 		key := vkjobhelpers.GetJobKeyByReq(&req)
 		queue := cc.getWorkerQueue(key)

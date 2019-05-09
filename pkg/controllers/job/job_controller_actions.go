@@ -142,58 +142,35 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 	return nil
 }
 
-func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
-	glog.V(3).Infof("Starting to create Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
-	defer glog.V(3).Infof("Finished Job <%s/%s> create", jobInfo.Job.Namespace, jobInfo.Job.Name)
-
-	job := jobInfo.Job.DeepCopy()
-	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
-
-	job, err := cc.initJobStatus(job)
-	if err != nil {
+func (cc *Controller) createJob(job *vkv1.Job) (bool, error) {
+	if update, err := cc.initJobStatus(job); err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.JobStatusError),
 			fmt.Sprintf("Failed to initialize job status, err: %v", err))
-		return err
+		return false, err
+	} else if update {
+		return true, nil
 	}
 
 	if err := cc.pluginOnJobAdd(job); err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.PluginError),
 			fmt.Sprintf("Execute plugin when job add failed, err: %v", err))
-		return err
+		return false, err
 	}
 
 	if err := cc.createPodGroupIfNotExist(job); err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.PodGroupError),
 			fmt.Sprintf("Failed to create PodGroup, err: %v", err))
-		return err
+		return false, err
 	}
 
-	newJob, err := cc.createJobIOIfNotExist(job)
+	job, err := cc.createJobIOIfNotExist(job)
 	if err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.PVCError),
 			fmt.Sprintf("Failed to create PVC, err: %v", err))
-		return err
+		return false, err
 	}
 
-	if updateStatus != nil {
-		if updateStatus(&newJob.Status) {
-			newJob.Status.State.LastTransitionTime = metav1.Now()
-		}
-	}
-
-	newJob2, err := cc.vkClients.BatchV1alpha1().Jobs(newJob.Namespace).UpdateStatus(newJob)
-	if err != nil {
-		glog.Errorf("Failed to update status of Job %v/%v: %v",
-			job.Namespace, job.Name, err)
-		return err
-	}
-	if err = cc.cache.Update(newJob2); err != nil {
-		glog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
-			newJob2.Namespace, newJob2.Name, err)
-		return err
-	}
-
-	return nil
+	return false, nil
 }
 
 func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
@@ -210,6 +187,12 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	}
 
 	var running, pending, terminating, succeeded, failed, unknown int32
+
+	if update, err := cc.createJob(job); err != nil {
+		return err
+	} else if update {
+		return nil
+	}
 
 	var podToCreate []*v1.Pod
 	var podToDelete []*v1.Pod
@@ -521,9 +504,9 @@ func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
 	return &minAvailableTasksRes
 }
 
-func (cc *Controller) initJobStatus(job *vkv1.Job) (*vkv1.Job, error) {
+func (cc *Controller) initJobStatus(job *vkv1.Job) (bool, error) {
 	if job.Status.State.Phase != "" {
-		return job, nil
+		return false, nil
 	}
 
 	job.Status.State.Phase = vkv1.Pending
@@ -532,15 +515,15 @@ func (cc *Controller) initJobStatus(job *vkv1.Job) (*vkv1.Job, error) {
 	if err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
-		return nil, err
+		return false, err
 	}
 	if err := cc.cache.Update(newJob); err != nil {
 		glog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
-			newJob.Namespace, newJob.Name, err)
-		return nil, err
+			job.Namespace, job.Name, err)
+		return false, err
 	}
 
-	return newJob, nil
+	return true, nil
 }
 
 func classifyAndAddUpPodBaseOnPhase(pod *v1.Pod, pending, running, succeeded, failed, unknown *int32) {

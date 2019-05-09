@@ -138,7 +138,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		//Job is pending
 		err := waitJobPending(context, job)
 		Expect(err).NotTo(HaveOccurred())
-		err = waitJobStateInqueue(context, job)
+		err = waitJobStatePending(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		//Suspend job and wait status change

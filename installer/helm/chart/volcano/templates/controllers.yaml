@@ -91,6 +91,7 @@ spec:
             image: {{.Values.basic.controller_image_name}}:{{.Values.basic.image_tag_version}}
             args:
               - --alsologtostderr
+              - --enable-podgroup-controller={{.Values.basic.enable_podgroup_controller}}
               - -v=4
               - 2>&1
             imagePullPolicy: "IfNotPresent"

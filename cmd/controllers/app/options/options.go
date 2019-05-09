@@ -23,9 +23,10 @@ import (
 )
 
 const (
-	defaultQPS     = 50.0
-	defaultBurst   = 100
-	defaultWorkers = 3
+	defaultQPS           = 50.0
+	defaultBurst         = 100
+	defaultWorkers       = 3
+	defaultSchedulerName = "volcano"
 )
 
 // ServerOption is the main context object for the controller manager.
@@ -39,7 +40,9 @@ type ServerOption struct {
 	PrintVersion         bool
 	// WorkerThreads is the number of threads syncing job operations
 	// concurrently. Larger number = faster job updating,but more CPU  load.
-	WorkerThreads uint32
+	WorkerThreads            uint32
+	EnablePodgroupController bool
+	SchedulerName            string
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -60,6 +63,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
 	fs.Uint32Var(&s.WorkerThreads, "worker-threads", defaultWorkers, "The number of threads syncing job operations concurrently. "+
 		"Larger number = faster job updating, but more CPU load")
+	fs.BoolVar(&s.EnablePodgroupController, "enable-podgroup-controller", false, "Normal job use volcano scheduler will enable pg controller")
+	fs.StringVar(&s.SchedulerName, "scheduler-name", defaultSchedulerName, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
 }
 
 // CheckOptionOrDie checks the LockObjectNamespace

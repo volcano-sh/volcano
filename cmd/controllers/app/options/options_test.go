@@ -40,6 +40,7 @@ func TestAddFlags(t *testing.T) {
 		KubeAPIBurst:  200,
 		PrintVersion:  false,
 		WorkerThreads: defaultWorkers,
+		SchedulerName: defaultSchedulerName,
 	}
 
 	if !reflect.DeepEqual(expected, s) {

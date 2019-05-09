@@ -160,116 +160,6 @@ func TestKillJobFunc(t *testing.T) {
 	}
 }
 
-func TestCreateJobFunc(t *testing.T) {
-	namespace := "test"
-
-	testcases := []struct {
-		Name         string
-		Job          *v1alpha1.Job
-		PodGroup     *kbv1aplha1.PodGroup
-		UpdateStatus state.UpdateStatusFn
-		JobInfo      *apis.JobInfo
-		Plugins      []string
-		ExpextVal    error
-	}{
-		{
-			Name: "CreateJob success Case",
-			Job: &v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job1",
-					Namespace: namespace,
-				},
-				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase: v1alpha1.Pending,
-					},
-				},
-			},
-			PodGroup: &kbv1aplha1.PodGroup{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job1",
-					Namespace: namespace,
-				},
-			},
-			UpdateStatus: nil,
-			JobInfo: &apis.JobInfo{
-				Namespace: namespace,
-				Name:      "jobinfo1",
-			},
-			Plugins:   []string{"svc", "ssh", "env"},
-			ExpextVal: nil,
-		},
-	}
-
-	for i, testcase := range testcases {
-
-		fakeController := newFakeController()
-		jobPlugins := make(map[string][]string)
-
-		for _, plugin := range testcase.Plugins {
-			jobPlugins[plugin] = make([]string, 0)
-		}
-		testcase.JobInfo.Job = testcase.Job
-		testcase.JobInfo.Job.Spec.Plugins = jobPlugins
-
-		_, err := fakeController.vkClients.BatchV1alpha1().Jobs(namespace).Create(testcase.Job)
-		if err != nil {
-			t.Errorf("Case %d (%s): expected: No Error, but got error %s", i, testcase.Name, err.Error())
-		}
-
-		err = fakeController.cache.Add(testcase.Job)
-		if err != nil {
-			t.Error("Error While Adding Job in cache")
-		}
-
-		err = fakeController.createJob(testcase.JobInfo, testcase.UpdateStatus)
-		if err != nil {
-			t.Errorf("Case %d (%s): expected: No Error, but got error %s", i, testcase.Name, err.Error())
-		}
-
-		job, err := fakeController.vkClients.BatchV1alpha1().Jobs(namespace).Get(testcase.Job.Name, metav1.GetOptions{})
-		if err != nil {
-			t.Errorf("Case %d (%s): expected: No Error, but got error %s", i, testcase.Name, err.Error())
-		}
-		for _, plugin := range testcase.Plugins {
-
-			if plugin == "svc" {
-				_, err = fakeController.kubeClients.CoreV1().Services(namespace).Get(testcase.Job.Name, metav1.GetOptions{})
-				if err != nil {
-					t.Errorf("Case %d (%s): expected: Service to be created, but not created because of error %s", i, testcase.Name, err.Error())
-				}
-
-				_, err = fakeController.kubeClients.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-svc"), metav1.GetOptions{})
-				if err != nil {
-					t.Errorf("Case %d (%s): expected: Service to be created, but not created because of error %s", i, testcase.Name, err.Error())
-				}
-
-				exist := job.Status.ControlledResources["plugin-svc"]
-				if exist == "" {
-					t.Errorf("Case %d (%s): expected: ControlledResources should be added, but not got added", i, testcase.Name)
-				}
-			}
-
-			if plugin == "ssh" {
-				_, err := fakeController.kubeClients.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-ssh"), metav1.GetOptions{})
-				if err != nil {
-					t.Errorf("Case %d (%s): expected: ConfigMap to be created, but not created because of error %s", i, testcase.Name, err.Error())
-				}
-				exist := job.Status.ControlledResources["plugin-ssh"]
-				if exist == "" {
-					t.Errorf("Case %d (%s): expected: ControlledResources should be added, but not got added", i, testcase.Name)
-				}
-			}
-			if plugin == "env" {
-				exist := job.Status.ControlledResources["plugin-env"]
-				if exist == "" {
-					t.Errorf("Case %d (%s): expected: ControlledResources should be added, but not got added", i, testcase.Name)
-				}
-			}
-		}
-	}
-}
-
 func TestSyncJobFunc(t *testing.T) {
 	namespace := "test"
 
@@ -311,6 +201,11 @@ func TestSyncJobFunc(t *testing.T) {
 								},
 							},
 						},
+					},
+				},
+				Status: v1alpha1.JobStatus{
+					State: v1alpha1.JobState{
+						Phase: v1alpha1.Pending,
 					},
 				},
 			},

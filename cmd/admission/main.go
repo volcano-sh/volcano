@@ -17,13 +17,14 @@ package main
 
 import (
 	"flag"
-	"github.com/golang/glog"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
+
+	"github.com/golang/glog"
 
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -34,11 +35,11 @@ import (
 )
 
 func serveJobs(w http.ResponseWriter, r *http.Request) {
-	app.Serve(w, r, admissioncontroller.AdmitJobs)
+	admissioncontroller.Serve(w, r, admissioncontroller.AdmitJobs)
 }
 
 func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
-	app.Serve(w, r, admissioncontroller.MutateJobs)
+	admissioncontroller.Serve(w, r, admissioncontroller.MutateJobs)
 }
 
 func main() {
@@ -64,6 +65,8 @@ func main() {
 	}
 
 	admissioncontroller.KubeBatchClientSet = app.GetKubeBatchClient(restConfig)
+
+	servePods(config)
 
 	caBundle, err := ioutil.ReadFile(config.CaCertFile)
 	if err != nil {
@@ -100,4 +103,14 @@ func main() {
 	case <-webhookServeError:
 		return
 	}
+}
+
+func servePods(config *appConf.Config) {
+	admController := &admissioncontroller.Controller{
+		KbClients:     admissioncontroller.KubeBatchClientSet,
+		SchedulerName: config.SchedulerName,
+	}
+	http.HandleFunc(admissioncontroller.AdmitPodPath, admController.ServerPods)
+
+	return
 }

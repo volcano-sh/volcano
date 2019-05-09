@@ -31,17 +31,30 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	kbver "volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
 const (
-	//AdmitJobPath is the pattern for the jobs admission
+	// AdmitJobPath is the pattern for the jobs admission
 	AdmitJobPath = "/jobs"
-	//MutateJobPath is the pattern for the mutating jobs
+	// MutateJobPath is the pattern for the mutating jobs
 	MutateJobPath = "/mutating-jobs"
+	// AdmitPodPath is the pattern for the pods admission
+	AdmitPodPath = "/pods"
+	// CONTENTTYPE http content-type
+	CONTENTTYPE = "Content-Type"
+	// APPLICATIONJSON json content
+	APPLICATIONJSON = "application/json"
 )
 
 //The AdmitFunc returns response
 type AdmitFunc func(v1beta1.AdmissionReview) *v1beta1.AdmissionResponse
+
+// Controller the Admission Controller type
+type Controller struct {
+	KbClients     kbver.Interface
+	SchedulerName string
+}
 
 var scheme = runtime.NewScheme()
 
