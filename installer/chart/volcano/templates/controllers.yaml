@@ -39,7 +39,7 @@ rules:
     resources: ["services", "configmaps"]
     verbs: ["get", "list", "watch", "create", "delete"]
   - apiGroups: ["scheduling.incubator.k8s.io"]
-    resources: ["podgroups"]
+    resources: ["podgroups", "queues"]
     verbs: ["get", "list", "watch", "create", "delete"]
   - apiGroups: ["scheduling.k8s.io"]
     resources: ["priorityclasses"]
