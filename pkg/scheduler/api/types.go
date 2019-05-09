@@ -16,6 +16,10 @@ limitations under the License.
 
 package api
 
+import (
+	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
+)
+
 // TaskStatus defines the status of a task/pod.
 type TaskStatus int
 
@@ -106,3 +110,15 @@ type EvictableFn func(*TaskInfo, []*TaskInfo) []*TaskInfo
 
 // NodeOrderFn is the func declaration used to get priority score for a node for a particular task.
 type NodeOrderFn func(*TaskInfo, *NodeInfo) (float64, error)
+
+// NodeMapFn is the func declaration used to get priority score for a node for a particular task.
+type NodeMapFn func(*TaskInfo, *NodeInfo) (float64, error)
+
+// NodeReduceFn is the func declaration used to reduce priority score for a node for a particular task.
+type NodeReduceFn func(*TaskInfo, schedulerapi.HostPriorityList) error
+
+// NodeOrderMapFn is the func declaration used to get priority score of all plugins for a node for a particular task.
+type NodeOrderMapFn func(*TaskInfo, *NodeInfo) (map[string]float64, float64, error)
+
+// NodeOrderReduceFn is the func declaration used to reduce priority score of all nodes for a plugiin for a particular task.
+type NodeOrderReduceFn func(*TaskInfo, map[string]schedulerapi.HostPriorityList) (map[string]float64, error)
