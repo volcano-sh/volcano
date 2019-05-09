@@ -98,10 +98,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
-	for id, attr := range pp.queueOpts {
-		ssn.Queues[id].Allocated = attr.allocated
-	}
-
 	remaining := pp.totalResource.Clone()
 	meet := map[api.QueueID]struct{}{}
 	for {
@@ -200,6 +196,19 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		return overused
+	})
+
+	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) bool {
+		job := obj.(*api.JobInfo)
+		queueID := job.Queue
+		attr := pp.queueOpts[queueID]
+		queue := ssn.Queues[queueID]
+		pgResource := api.NewResource(*job.PodGroup.Spec.MinResources)
+		// The queue resource quota limit has not reached
+		if pgResource.Clone().Add(attr.allocated).LessEqual(api.NewResource(queue.Queue.Spec.Capability)) {
+			return true
+		}
+		return false
 	})
 
 	// Register event handlers.
