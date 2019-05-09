@@ -18,10 +18,15 @@ package e2e
 
 import (
 	"encoding/json"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 )
 
 var _ = Describe("Job E2E Test: Test Admission service", func() {
@@ -152,4 +157,74 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 
 	})
 
+	It("Create default-scheduler pod", func() {
+		podName := "pod-default-scheduler"
+		namespace := "test"
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		pod := &corev1.Pod{
+			TypeMeta: v1.TypeMeta{
+				APIVersion: "v1",
+				Kind:       "Pod",
+			},
+			ObjectMeta: v1.ObjectMeta{
+				Namespace: namespace,
+				Name:      podName,
+			},
+			Spec: corev1.PodSpec{
+				Containers: createContainers(defaultNginxImage, "", "", oneCPU, oneCPU, 0),
+			},
+		}
+
+		_, err := context.kubeclient.CoreV1().Pods(namespace).Create(pod)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = waitPodPhase(context, pod, []corev1.PodPhase{corev1.PodRunning})
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("Can't create volcano pod when podgroup is Pending", func() {
+		podName := "pod-volcano"
+		pgName := "pending-pg"
+		namespace := "test"
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		pg := &schedulingv1alpha2.PodGroup{
+			ObjectMeta: v1.ObjectMeta{
+				Namespace: namespace,
+				Name:      pgName,
+			},
+			Spec: schedulingv1alpha2.PodGroupSpec{
+				MinMember:    1,
+				MinResources: &thirtyCPU,
+			},
+			Status: schedulingv1alpha2.PodGroupStatus{
+				Phase: schedulingv1alpha2.PodGroupPending,
+			},
+		}
+
+		pod := &corev1.Pod{
+			TypeMeta: v1.TypeMeta{
+				APIVersion: "v1",
+				Kind:       "Pod",
+			},
+			ObjectMeta: v1.ObjectMeta{
+				Namespace:   namespace,
+				Name:        podName,
+				Annotations: map[string]string{schedulingv1alpha2.GroupNameAnnotationKey: pgName},
+			},
+			Spec: corev1.PodSpec{
+				SchedulerName: "volcano",
+				Containers:    createContainers(defaultNginxImage, "", "", oneCPU, oneCPU, 0),
+			},
+		}
+
+		_, err := context.vcclient.SchedulingV1alpha2().PodGroups(namespace).Create(pg)
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = context.kubeclient.CoreV1().Pods(namespace).Create(pod)
+		Expect(err.Error()).Should(ContainSubstring(`Failed to create pod <test/pod-volcano>, because the podgroup phase is Pending`))
+	})
 })

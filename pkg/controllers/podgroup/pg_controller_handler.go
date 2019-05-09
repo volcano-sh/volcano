@@ -23,7 +23,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 )
@@ -71,7 +70,7 @@ func (cc *Controller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
 }
 
 func (cc *Controller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
-	pgName := generatePodgroupName(pod)
+	pgName := helpers.GeneratePodgroupName(pod)
 
 	if _, err := cc.pgLister.PodGroups(pod.Namespace).Get(pgName); err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -99,23 +98,6 @@ func (cc *Controller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 	}
 
 	return cc.updatePodAnnotations(pod, pgName)
-}
-
-func generatePodgroupName(pod *v1.Pod) string {
-	pgName := vkbatchv1.PodgroupNamePrefix
-
-	if len(pod.OwnerReferences) != 0 {
-		for _, ownerReference := range pod.OwnerReferences {
-			if ownerReference.Controller != nil && *ownerReference.Controller == true {
-				pgName += string(ownerReference.UID)
-				return pgName
-			}
-		}
-	}
-
-	pgName += string(pod.UID)
-
-	return pgName
 }
 
 func newPGOwnerReferences(pod *v1.Pod) []metav1.OwnerReference {

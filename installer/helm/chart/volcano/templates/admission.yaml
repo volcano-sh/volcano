@@ -32,6 +32,9 @@ rules:
   - apiGroups: [""]
     resources: ["services"]
     verbs: ["get"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.sigs.dev"]
+    resources: ["podgroups"]
+    verbs: ["get", "list", "watch"]
 
 ---
 kind: ClusterRoleBinding

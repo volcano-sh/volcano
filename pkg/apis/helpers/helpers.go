@@ -130,3 +130,21 @@ func DeleteConfigmap(job *vkv1.Job, kubeClients kubernetes.Interface, cmName str
 
 	return nil
 }
+
+// GeneratePodgroupName  generate podgroup name of normal pod
+func GeneratePodgroupName(pod *v1.Pod) string {
+	pgName := vkbatchv1.PodgroupNamePrefix
+
+	if len(pod.OwnerReferences) != 0 {
+		for _, ownerReference := range pod.OwnerReferences {
+			if ownerReference.Controller != nil && *ownerReference.Controller == true {
+				pgName += string(ownerReference.UID)
+				return pgName
+			}
+		}
+	}
+
+	pgName += string(pod.UID)
+
+	return pgName
+}

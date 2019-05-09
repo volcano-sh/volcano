@@ -52,6 +52,7 @@ var (
 	oneMinute = 1 * time.Minute
 	twoMinute = 2 * time.Minute
 	oneCPU    = v1.ResourceList{"cpu": resource.MustParse("1000m")}
+	thirtyCPU = v1.ResourceList{"cpu": resource.MustParse("30000m")}
 )
 
 const (

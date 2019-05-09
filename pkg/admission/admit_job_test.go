@@ -957,10 +957,10 @@ func TestValidateExecution(t *testing.T) {
 				},
 			}
 			// create fake volcano clientset
-			KubeBatchClientSet = fakeclient.NewSimpleClientset()
+			VolcanoClientSet = fakeclient.NewSimpleClientset()
 
 			//create default queue
-			_, err := KubeBatchClientSet.SchedulingV1alpha2().Queues().Create(&defaultqueue)
+			_, err := VolcanoClientSet.SchedulingV1alpha2().Queues().Create(&defaultqueue)
 			if err != nil {
 				t.Error("Queue Creation Failed")
 			}
