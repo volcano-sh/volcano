@@ -147,7 +147,7 @@ func (c *Controller) syncQueue(key string) error {
 		glog.V(2).Infoln("queue %s has not been seen or deleted", key)
 		return nil
 	}
-	podGroups := make([]string, len(c.podGroups[key]))
+	podGroups := make([]string, 0, len(c.podGroups[key]))
 	for pgKey := range c.podGroups[key] {
 		podGroups = append(podGroups, pgKey)
 	}

@@ -70,7 +70,7 @@ var _ = Describe("Queue E2E Test", func() {
 
 		// Test Queue status
 		spec = &jobSpec{
-			name:  "",
+			name:  "q1-qj-2",
 			queue: defaultQueue1,
 			tasks: []taskSpec{
 				{
@@ -81,7 +81,9 @@ var _ = Describe("Queue E2E Test", func() {
 				},
 			},
 		}
-
+		job3 := createJob(context, spec)
+		err = waitJobStatePending(context, job3)
+		Expect(err).NotTo(HaveOccurred())
 		err = waitQueueStatus(func() (bool, error) {
 			queue, err := context.kbclient.SchedulingV1alpha1().Queues().Get(defaultQueue1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
