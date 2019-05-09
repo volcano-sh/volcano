@@ -18,28 +18,15 @@ package app
 
 import (
 	"crypto/tls"
-	"encoding/json"
-	"io/ioutil"
-	"net/http"
 
 	"github.com/golang/glog"
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
 
-	"k8s.io/api/admission/v1beta1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 
 	appConf "volcano.sh/volcano/cmd/admission/app/configure"
-	admissioncontroller "volcano.sh/volcano/pkg/admission"
-)
-
-const (
-	//CONTENTTYPE http content-type
-	CONTENTTYPE = "Content-Type"
-
-	//APPLICATIONJSON json content
-	APPLICATIONJSON = "application/json"
+	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
 // GetClient Get a clientset with restConfig.
@@ -51,7 +38,7 @@ func GetClient(restConfig *restclient.Config) *kubernetes.Clientset {
 	return clientset
 }
 
-//GetKubeBatchClient get a clientset for kubebatch
+// GetKubeBatchClient get a clientset for kubebatch
 func GetKubeBatchClient(restConfig *restclient.Config) *versioned.Clientset {
 	clientset, err := versioned.NewForConfig(restConfig)
 	if err != nil {
@@ -90,51 +77,21 @@ func ConfigTLS(config *appConf.Config, restConfig *restclient.Config) *tls.Confi
 	return &tls.Config{}
 }
 
-//Serve the http request
-func Serve(w http.ResponseWriter, r *http.Request, admit admissioncontroller.AdmitFunc) {
-	var body []byte
-	if r.Body != nil {
-		if data, err := ioutil.ReadAll(r.Body); err == nil {
-			body = data
-		}
-	}
+// GetSchedulerClient get clientset for servePods
+func GetSchedulerClient(config *appConf.Config) (*versioned.Clientset, error) {
+	var cfg *restclient.Config
+	var err error
 
-	// verify the content type is accurate
-	contentType := r.Header.Get(CONTENTTYPE)
-	if contentType != APPLICATIONJSON {
-		glog.Errorf("contentType=%s, expect application/json", contentType)
-		return
-	}
-
-	var reviewResponse *v1beta1.AdmissionResponse
-	ar := v1beta1.AdmissionReview{}
-	deserializer := admissioncontroller.Codecs.UniversalDeserializer()
-	if _, _, err := deserializer.Decode(body, nil, &ar); err != nil {
-		reviewResponse = admissioncontroller.ToAdmissionResponse(err)
+	master := config.Master
+	kubeconfig := config.Kubeconfig
+	if master != "" || kubeconfig != "" {
+		cfg, err = clientcmd.BuildConfigFromFlags(master, kubeconfig)
 	} else {
-		reviewResponse = admit(ar)
+		cfg, err = restclient.InClusterConfig()
 	}
-	glog.V(3).Infof("sending response: %v", reviewResponse)
-
-	response := createResponse(reviewResponse, &ar)
-	resp, err := json.Marshal(response)
 	if err != nil {
-		glog.Error(err)
+		return nil, err
 	}
-	if _, err := w.Write(resp); err != nil {
-		glog.Error(err)
-	}
-}
 
-func createResponse(reviewResponse *v1beta1.AdmissionResponse, ar *v1beta1.AdmissionReview) v1beta1.AdmissionReview {
-	response := v1beta1.AdmissionReview{}
-	if reviewResponse != nil {
-		response.Response = reviewResponse
-		response.Response.UID = ar.Request.UID
-	}
-	// reset the Object and OldObject, they are not needed in a response.
-	ar.Request.Object = runtime.RawExtension{}
-	ar.Request.OldObject = runtime.RawExtension{}
-
-	return response
+	return versioned.NewForConfigOrDie(cfg), nil
 }

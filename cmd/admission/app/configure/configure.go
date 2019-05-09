@@ -31,17 +31,20 @@ import (
 
 // Config admission-controller server config.
 type Config struct {
-	Master                    string
-	Kubeconfig                string
-	CertFile                  string
-	KeyFile                   string
-	CaCertFile                string
-	Port                      int
-	MutateWebhookConfigName   string
-	MutateWebhookName         string
-	ValidateWebhookConfigName string
-	ValidateWebhookName       string
-	PrintVersion              bool
+	Master                       string
+	Kubeconfig                   string
+	CertFile                     string
+	KeyFile                      string
+	CaCertFile                   string
+	Port                         int
+	MutateWebhookConfigName      string
+	MutateWebhookName            string
+	ValidateWebhookConfigName    string
+	ValidateWebhookName          string
+	ValidateWebhookPodConfigName string
+	ValidateWebhookPodName       string
+	PrintVersion                 bool
+	SchedulerName                string
 }
 
 // NewConfig create new config
@@ -65,10 +68,15 @@ func (c *Config) AddFlags() {
 	flag.StringVar(&c.MutateWebhookName, "mutate-webhook-name", "mutatejob.volcano.sh",
 		"Name of the webhook entry in the webhook config.")
 	flag.StringVar(&c.ValidateWebhookConfigName, "validate-webhook-config-name", "volcano-validate-job",
-		"Name of the mutatingwebhookconfiguration resource in Kubernetes.")
+		"Name of the validatingwebhookconfiguration resource in Kubernetes.")
 	flag.StringVar(&c.ValidateWebhookName, "validate-webhook-name", "validatejob.volcano.sh",
 		"Name of the webhook entry in the webhook config.")
+	flag.StringVar(&c.ValidateWebhookPodConfigName, "validate-webhook-pod-config-name", "volcano-validate-pod",
+		"Name of the pod validatingwebhookconfiguration resource in Kubernetes.")
+	flag.StringVar(&c.ValidateWebhookPodName, "validate-webhook-pod-name", "validatepod.volcano.sh",
+		"Name of the pod webhook entry in the webhook config.")
 	flag.BoolVar(&c.PrintVersion, "version", false, "Show version and quit")
+	flag.StringVar(&c.SchedulerName, "scheduler-name", "volcano", "kube-batch will handle pods whose .spec.SchedulerName is same as scheduler-name")
 }
 
 // CheckPortOrDie check valid port range

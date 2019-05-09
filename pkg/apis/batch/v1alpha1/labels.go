@@ -29,4 +29,6 @@ const (
 	JobVersion = "volcano.sh/job-version"
 	// JobTypeKey job type key used in labels
 	JobTypeKey = "volcano.sh/job-type"
+	// PodgroupNamePrefix podgroup name prefix
+	PodgroupNamePrefix = "podgroup-"
 )

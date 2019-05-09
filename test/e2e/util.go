@@ -52,6 +52,7 @@ var (
 	oneMinute = 1 * time.Minute
 	twoMinute = 2 * time.Minute
 	oneCPU    = v1.ResourceList{"cpu": resource.MustParse("1000m")}
+	thirtyCPU = v1.ResourceList{"cpu": resource.MustParse("30000m")}
 )
 
 const (
@@ -512,8 +513,6 @@ func waitJobPhases(ctx *context, job *vkv1.Job, phases []vkv1.JobPhase) error {
 					newJob.Status.Terminating == 0
 			case vkv1.Running:
 				flag = newJob.Status.Running >= newJob.Spec.MinAvailable
-			case vkv1.Inqueue:
-				flag = newJob.Status.Pending > 0
 			default:
 				return fmt.Errorf("unknown phase %s", phase)
 			}
@@ -565,9 +564,7 @@ func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
 		var flag = false
 		switch phase {
 		case vkv1.Pending:
-			flag = (newJob.Status.Pending+newJob.Status.Succeeded+
-				newJob.Status.Failed+newJob.Status.Running) == 0 ||
-				(total-newJob.Status.Terminating >= newJob.Status.MinAvailable)
+			flag = newJob.Status.Pending > 0
 		case vkv1.Terminating, vkv1.Aborting, vkv1.Restarting:
 			flag = newJob.Status.Terminating > 0
 		case vkv1.Terminated, vkv1.Aborted:
@@ -578,8 +575,6 @@ func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
 			flag = newJob.Status.Succeeded == state.TotalTasks(newJob)
 		case vkv1.Running:
 			flag = newJob.Status.Running >= newJob.Spec.MinAvailable
-		case vkv1.Inqueue:
-			flag = newJob.Status.Pending > 0
 		default:
 			return false, fmt.Errorf("unknown phase %s", phase)
 		}
@@ -627,10 +622,6 @@ func waitJobStateReady(ctx *context, job *vkv1.Job) error {
 
 func waitJobStatePending(ctx *context, job *vkv1.Job) error {
 	return waitJobPhaseExpect(ctx, job, vkv1.Pending)
-}
-
-func waitJobStateInqueue(ctx *context, job *vkv1.Job) error {
-	return waitJobPhaseExpect(ctx, job, vkv1.Inqueue)
 }
 
 func waitJobStateAborted(ctx *context, job *vkv1.Job) error {
@@ -1086,4 +1077,45 @@ func waitPodGone(ctx *context, podName, namespace string) error {
 		return fmt.Errorf("[Wait time out]: %s", additionalError)
 	}
 	return err
+}
+
+func waitPodPhase(ctx *context, pod *v1.Pod, phase []v1.PodPhase) error {
+	var additionalError error
+	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+		pods, err := ctx.kubeclient.CoreV1().Pods(pod.Namespace).List(metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		for _, p := range phase {
+			for _, pod := range pods.Items {
+				if pod.Status.Phase == p {
+					return true, nil
+				}
+			}
+		}
+
+		additionalError = fmt.Errorf("expected pod '%s' to %v, actual got %s", pod.Name, phase, pod.Status.Phase)
+		return false, nil
+	})
+	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
+		return fmt.Errorf("[Wait time out]: %s", additionalError)
+	}
+	return err
+}
+
+func pgIsReady(ctx *context, namespace string) (bool, error) {
+	pgs, err := ctx.kbclient.SchedulingV1alpha1().PodGroups(namespace).List(metav1.ListOptions{})
+	if err != nil {
+		return false, err
+	}
+	if pgs != nil && len(pgs.Items) == 0 {
+		return false, fmt.Errorf("podgroup is not found")
+	}
+
+	for _, pg := range pgs.Items {
+		if pg.Status.Phase != kbv1.PodGroupPending {
+			return true, nil
+		}
+	}
+
+	return false, fmt.Errorf("podgroup phase is Pending")
 }

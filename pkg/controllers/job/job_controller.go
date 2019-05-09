@@ -185,7 +185,6 @@ func NewJobController(
 	// Register actions
 	state.SyncJob = cc.syncJob
 	state.KillJob = cc.killJob
-	state.CreateJob = cc.createJob
 
 	return cc
 }

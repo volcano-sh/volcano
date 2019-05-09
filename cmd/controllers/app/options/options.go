@@ -23,19 +23,23 @@ import (
 )
 
 const (
-	defaultQPS   = 50.0
-	defaultBurst = 100
+	defaultQPS           = 50.0
+	defaultBurst         = 100
+	defaultSchedulerName = "volcano"
 )
 
 // ServerOption is the main context object for the controller manager.
 type ServerOption struct {
-	Master               string
-	Kubeconfig           string
-	EnableLeaderElection bool
-	LockObjectNamespace  string
-	KubeAPIBurst         int
-	KubeAPIQPS           float32
-	PrintVersion         bool
+	Master                   string
+	Kubeconfig               string
+	EnableLeaderElection     bool
+	LockObjectNamespace      string
+	KubeAPIBurst             int
+	KubeAPIQPS               float32
+	PrintVersion             bool
+	NormalJobPGCtrl          bool
+	EnablePodgroupController bool
+	SchedulerName            string
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -54,6 +58,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.Float32Var(&s.KubeAPIQPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
 	fs.IntVar(&s.KubeAPIBurst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
+	fs.BoolVar(&s.EnablePodgroupController, "enable-podgroup-controller", false, "Normal job use kube-batch scheduler will enable pg controller")
+	fs.StringVar(&s.SchedulerName, "scheduler-name", defaultSchedulerName, "kube-batch will handle pods whose .spec.SchedulerName is same as scheduler-name")
 }
 
 // CheckOptionOrDie checks the LockObjectNamespace

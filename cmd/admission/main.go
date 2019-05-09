@@ -23,20 +23,21 @@ import (
 	"os"
 	"strconv"
 
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
+
 	"volcano.sh/volcano/cmd/admission/app"
 	appConf "volcano.sh/volcano/cmd/admission/app/configure"
 	admissioncontroller "volcano.sh/volcano/pkg/admission"
 	"volcano.sh/volcano/pkg/version"
-
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 func serveJobs(w http.ResponseWriter, r *http.Request) {
-	app.Serve(w, r, admissioncontroller.AdmitJobs)
+	admissioncontroller.Serve(w, r, admissioncontroller.AdmitJobs)
 }
 
 func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
-	app.Serve(w, r, admissioncontroller.MutateJobs)
+	admissioncontroller.Serve(w, r, admissioncontroller.MutateJobs)
 }
 
 func main() {
@@ -67,6 +68,11 @@ func main() {
 
 	admissioncontroller.KubeBatchClientSet = app.GetKubeBatchClient(restConfig)
 
+	if err := servePods(clientset, config); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+
 	caCertPem, err := ioutil.ReadFile(config.CaCertFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -80,6 +86,10 @@ func main() {
 			config.ValidateWebhookConfigName, config.ValidateWebhookName, caCertPem); err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 		}
+		if err = appConf.PatchValidateWebhookConfig(clientset.AdmissionregistrationV1beta1().ValidatingWebhookConfigurations(),
+			config.ValidateWebhookPodConfigName, config.ValidateWebhookPodName, caCertPem); err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+		}
 	}
 
 	server := &http.Server{
@@ -87,4 +97,20 @@ func main() {
 		TLSConfig: app.ConfigTLS(config, restConfig),
 	}
 	server.ListenAndServeTLS("", "")
+}
+
+func servePods(clientset *kubernetes.Clientset, config *appConf.Config) error {
+	kbClientset, err := app.GetSchedulerClient(config)
+	if err != nil {
+		return err
+	}
+
+	admController := &admissioncontroller.Controller{
+		KubeClients:   clientset,
+		KbClients:     kbClientset,
+		SchedulerName: config.SchedulerName,
+	}
+	http.HandleFunc(admissioncontroller.AdmitPodPath, admController.ServerPods)
+
+	return nil
 }
