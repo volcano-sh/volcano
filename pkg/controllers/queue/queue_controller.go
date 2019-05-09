@@ -142,11 +142,12 @@ func (c *Controller) syncQueue(key string) error {
 
 	var pending, running, unknown int32
 	c.pgMutex.RLock()
-	podGroups := make([]string, len(c.podGroups[key]))
 	if c.podGroups[key] == nil {
-		glog.V(2).Infoln("queue %s has not been seen or deleted")
+		c.pgMutex.RUnlock()
+		glog.V(2).Infoln("queue %s has not been seen or deleted", key)
 		return nil
 	}
+	podGroups := make([]string, len(c.podGroups[key]))
 	for pgKey := range c.podGroups[key] {
 		podGroups = append(podGroups, pgKey)
 	}
