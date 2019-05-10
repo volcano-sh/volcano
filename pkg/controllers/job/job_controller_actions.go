@@ -48,7 +48,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 		return nil
 	}
 
-	var pending, running, terminating, succeeded, failed int32
+	var terminating int32
 
 	var errs []error
 	var total int
@@ -58,7 +58,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 			total++
 
 			if pod.DeletionTimestamp != nil {
-				glog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
+				glog.V(4).Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
 				terminating++
 				continue
 			}
@@ -67,16 +67,6 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 				terminating++
 			} else {
 				errs = append(errs, err)
-				switch pod.Status.Phase {
-				case v1.PodRunning:
-					running++
-				case v1.PodPending:
-					pending++
-				case v1.PodSucceeded:
-					succeeded++
-				case v1.PodFailed:
-					failed++
-				}
 			}
 		}
 	}
@@ -91,12 +81,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	job.Status.Version = job.Status.Version + 1
 
 	job.Status = vkv1.JobStatus{
-		State: job.Status.State,
-
-		Pending:      pending,
-		Running:      running,
-		Succeeded:    succeeded,
-		Failed:       failed,
+		State:        job.Status.State,
 		Terminating:  terminating,
 		Version:      job.Status.Version,
 		MinAvailable: int32(job.Spec.MinAvailable),
