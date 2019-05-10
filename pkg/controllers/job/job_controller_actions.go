@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/golang/glog"
 
@@ -107,6 +108,8 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 		updateStatus(&job.Status)
 	}
 
+	UpdateJobTimetamp(&job.Status)
+
 	// Update Job status
 	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
@@ -136,6 +139,16 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	// NOTE(k82cn): DO NOT delete input/output until job is deleted.
 
 	return nil
+}
+
+func UpdateJobTimetamp(status *vkv1.JobStatus) {
+	now := metav1.Time{Time: time.Now()}
+	if status.State.Phase == vkv1.Running && status.StartTime == nil {
+		status.StartTime = &now
+	}
+	if status.State.Phase == vkv1.Completed && status.CompletionTime == nil {
+		status.CompletionTime = &now
+	}
 }
 
 func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
@@ -318,6 +331,8 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	if updateStatus != nil {
 		updateStatus(&job.Status)
 	}
+
+	UpdateJobTimetamp(&job.Status)
 
 	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
