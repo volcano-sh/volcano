@@ -227,6 +227,10 @@ type JobState struct {
 	// +optional
 	Phase JobPhase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
 
+	// Last time the condition transit from one phase to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,4,opt,name=lastTransitionTime"`
+
 	// Unique, one-word, CamelCase reason for the phase's last transition.
 	// +optional
 	Reason string `json:"reason,omitempty" protobuf:"bytes,2,opt,name=reason"`
