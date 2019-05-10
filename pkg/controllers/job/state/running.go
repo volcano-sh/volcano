@@ -57,7 +57,7 @@ func (ps *runningState) Execute(action vkv1.Action) error {
 		})
 	case vkv1.CompleteJobAction:
 		return KillJob(ps.job, func(status *vkv1.JobStatus) {
-			phase := vkv1.Completed
+			phase := vkv1.Running
 			if status.Terminating != 0 {
 				phase = vkv1.Completing
 			}
