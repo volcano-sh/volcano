@@ -269,7 +269,10 @@ func (c *Controller) deletePodGroup(obj interface{}) {
 	}
 
 	key, _ := cache.MetaNamespaceKeyFunc(obj)
+
+	c.pgMutex.Lock()
 	delete(c.podGroups[pg.Spec.Queue], key)
+	c.pgMutex.Unlock()
 
 	c.queue.Add(pg.Spec.Queue)
 }

@@ -50,6 +50,13 @@ var _ = Describe("Queue E2E Test", func() {
 		err := waitJobReady(context, job1)
 		Expect(err).NotTo(HaveOccurred())
 
+		err = waitQueueStatus(func() (bool, error) {
+			queue, err := context.kbclient.SchedulingV1alpha1().Queues().Get(defaultQueue1, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			return queue.Status.Running == 1, nil
+		})
+		Expect(err).NotTo(HaveOccurred())
+
 		expected := int(rep) / 2
 		// Reduce one pod to tolerate decimal fraction.
 		if expected > 1 {
@@ -87,7 +94,7 @@ var _ = Describe("Queue E2E Test", func() {
 		err = waitQueueStatus(func() (bool, error) {
 			queue, err := context.kbclient.SchedulingV1alpha1().Queues().Get(defaultQueue1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
-			return queue.Status.Running == 1 && queue.Status.Pending == 1, nil
+			return queue.Status.Pending == 1, nil
 		})
 		Expect(err).NotTo(HaveOccurred())
 	})
