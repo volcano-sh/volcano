@@ -138,13 +138,13 @@ func (c *Controller) processNextWorkItem() bool {
 }
 
 func (c *Controller) syncQueue(key string) error {
-	glog.V(5).Infoln("Begin sync queue")
+	glog.V(4).Infof("Begin sync queue %s", key)
 
 	var pending, running, unknown int32
 	c.pgMutex.RLock()
 	if c.podGroups[key] == nil {
 		c.pgMutex.RUnlock()
-		glog.V(2).Infoln("queue %s has not been seen or deleted", key)
+		glog.V(2).Infof("queue %s has not been seen or deleted", key)
 		return nil
 	}
 	podGroups := make([]string, 0, len(c.podGroups[key]))
@@ -181,6 +181,7 @@ func (c *Controller) syncQueue(key string) error {
 		return err
 	}
 
+	glog.V(4).Infof("queue %s jobs pending %d, running %d, unknown %d", key, pending, running, unknown)
 	// ignore update when status doesnot change
 	if pending == queue.Status.Pending && running == queue.Status.Running && unknown == queue.Status.Unknown {
 		return nil
