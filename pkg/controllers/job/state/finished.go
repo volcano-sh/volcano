@@ -26,6 +26,7 @@ type finishedState struct {
 }
 
 func (ps *finishedState) Execute(action vkv1.Action) error {
-	// In finished state, e.g. Completed, always kill the whole job.
-	return KillJob(ps.job, nil)
+	// In finished state, e.g. Completed,Terminated, Failed
+	// Do not cleanup Job. leaves the cleanup job to GC.
+	return nil
 }
