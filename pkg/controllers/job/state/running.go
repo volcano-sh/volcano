@@ -17,6 +17,8 @@ limitations under the License.
 package state
 
 import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
@@ -32,6 +34,7 @@ func (ps *runningState) Execute(action vkv1.Action) error {
 			phase := vkv1.Running
 			if status.Terminating != 0 {
 				phase = vkv1.Restarting
+				status.State.LastTransitionTime = metav1.Now()
 				status.RetryCount++
 			}
 
@@ -42,6 +45,7 @@ func (ps *runningState) Execute(action vkv1.Action) error {
 			phase := vkv1.Running
 			if status.Terminating != 0 {
 				phase = vkv1.Aborting
+				status.State.LastTransitionTime = metav1.Now()
 			}
 
 			status.State.Phase = phase
@@ -51,6 +55,7 @@ func (ps *runningState) Execute(action vkv1.Action) error {
 			phase := vkv1.Running
 			if status.Terminating != 0 {
 				phase = vkv1.Terminating
+				status.State.LastTransitionTime = metav1.Now()
 			}
 
 			status.State.Phase = phase
@@ -63,12 +68,14 @@ func (ps *runningState) Execute(action vkv1.Action) error {
 			}
 
 			status.State.Phase = phase
+			status.State.LastTransitionTime = metav1.Now()
 		})
 	default:
 		return SyncJob(ps.job, func(status *vkv1.JobStatus) {
 			phase := vkv1.Running
 			if status.Succeeded+status.Failed == TotalTasks(ps.job.Job) {
 				phase = vkv1.Completed
+				status.State.LastTransitionTime = metav1.Now()
 			}
 
 			status.State.Phase = phase

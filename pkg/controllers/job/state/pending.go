@@ -17,6 +17,8 @@ limitations under the License.
 package state
 
 import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
@@ -34,8 +36,8 @@ func (ps *pendingState) Execute(action vkv1.Action) error {
 				phase = vkv1.Restarting
 				status.RetryCount++
 			}
-
 			status.State.Phase = phase
+			status.State.LastTransitionTime = metav1.Now()
 		})
 
 	case vkv1.AbortJobAction:
@@ -44,8 +46,8 @@ func (ps *pendingState) Execute(action vkv1.Action) error {
 			if status.Terminating != 0 {
 				phase = vkv1.Aborting
 			}
-
 			status.State.Phase = phase
+			status.State.LastTransitionTime = metav1.Now()
 		})
 	case vkv1.CompleteJobAction:
 		return KillJob(ps.job, func(status *vkv1.JobStatus) {
@@ -53,8 +55,8 @@ func (ps *pendingState) Execute(action vkv1.Action) error {
 			if status.Terminating != 0 {
 				phase = vkv1.Completing
 			}
-
 			status.State.Phase = phase
+			status.State.LastTransitionTime = metav1.Now()
 		})
 	case vkv1.EnqueueAction:
 		return SyncJob(ps.job, func(status *vkv1.JobStatus) {
@@ -65,10 +67,12 @@ func (ps *pendingState) Execute(action vkv1.Action) error {
 			}
 
 			status.State.Phase = phase
+			status.State.LastTransitionTime = metav1.Now()
 		})
 	default:
 		return CreateJob(ps.job, func(status *vkv1.JobStatus) {
 			status.State.Phase = vkv1.Pending
+			status.State.LastTransitionTime = metav1.Now()
 		})
 	}
 }

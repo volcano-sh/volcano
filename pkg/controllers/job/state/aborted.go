@@ -17,6 +17,8 @@ limitations under the License.
 package state
 
 import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
@@ -30,6 +32,7 @@ func (as *abortedState) Execute(action vkv1.Action) error {
 	case vkv1.ResumeJobAction:
 		return KillJob(as.job, func(status *vkv1.JobStatus) {
 			status.State.Phase = vkv1.Restarting
+			status.State.LastTransitionTime = metav1.Now()
 			status.RetryCount++
 		})
 	default:

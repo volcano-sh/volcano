@@ -17,6 +17,8 @@ limitations under the License.
 package state
 
 import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
@@ -31,17 +33,18 @@ func (ps *abortingState) Execute(action vkv1.Action) error {
 		// Already in Restarting phase, just sync it
 		return KillJob(ps.job, func(status *vkv1.JobStatus) {
 			status.State.Phase = vkv1.Restarting
+			status.State.LastTransitionTime = metav1.Now()
 			status.RetryCount++
 		})
 	default:
 		return KillJob(ps.job, func(status *vkv1.JobStatus) {
 			// If any "alive" pods, still in Aborting phase
-			phase := vkv1.Aborted
 			if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {
-				phase = vkv1.Aborting
+				status.State.Phase = vkv1.Aborting
+			} else {
+				status.State.Phase = vkv1.Aborted
+				status.State.LastTransitionTime = metav1.Now()
 			}
-
-			status.State.Phase = phase
 		})
 	}
 }

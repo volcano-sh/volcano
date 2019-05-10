@@ -17,6 +17,8 @@ limitations under the License.
 package state
 
 import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
@@ -28,11 +30,11 @@ type terminatingState struct {
 func (ps *terminatingState) Execute(action vkv1.Action) error {
 	return KillJob(ps.job, func(status *vkv1.JobStatus) {
 		// If any "alive" pods, still in Terminating phase
-		phase := vkv1.Terminated
 		if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {
-			phase = vkv1.Terminating
+			status.State.Phase = vkv1.Terminating
+		} else {
+			status.State.Phase = vkv1.Terminated
+			status.State.LastTransitionTime = metav1.Now()
 		}
-
-		status.State.Phase = phase
 	})
 }

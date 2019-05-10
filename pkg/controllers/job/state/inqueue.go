@@ -17,6 +17,8 @@ limitations under the License.
 package state
 
 import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
@@ -34,7 +36,7 @@ func (ps *inqueueState) Execute(action vkv1.Action) error {
 				phase = vkv1.Restarting
 				status.RetryCount++
 			}
-
+			status.State.LastTransitionTime = metav1.Now()
 			status.State.Phase = phase
 		})
 
@@ -44,7 +46,7 @@ func (ps *inqueueState) Execute(action vkv1.Action) error {
 			if status.Terminating != 0 {
 				phase = vkv1.Aborting
 			}
-
+			status.State.LastTransitionTime = metav1.Now()
 			status.State.Phase = phase
 		})
 	case vkv1.CompleteJobAction:
@@ -53,7 +55,7 @@ func (ps *inqueueState) Execute(action vkv1.Action) error {
 			if status.Terminating != 0 {
 				phase = vkv1.Completing
 			}
-
+			status.State.LastTransitionTime = metav1.Now()
 			status.State.Phase = phase
 		})
 	default:
@@ -61,6 +63,7 @@ func (ps *inqueueState) Execute(action vkv1.Action) error {
 			phase := vkv1.Inqueue
 
 			if ps.job.Job.Spec.MinAvailable <= status.Running+status.Succeeded+status.Failed {
+				status.State.LastTransitionTime = metav1.Now()
 				phase = vkv1.Running
 			}
 
