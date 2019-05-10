@@ -166,6 +166,14 @@ func (in *JobStatus) DeepCopyInto(out *JobStatus) {
 			(*out)[key] = val
 		}
 	}
+	if in.StartTime != nil {
+		in, out := &in.StartTime, &out.StartTime
+		*out = (*in).DeepCopy()
+	}
+	if in.CompletionTime != nil {
+		in, out := &in.CompletionTime, &out.CompletionTime
+		*out = (*in).DeepCopy()
+	}
 	return
 }
 

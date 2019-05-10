@@ -92,23 +92,24 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	job.Status.Version = job.Status.Version + 1
 
 	job.Status = vkv1.JobStatus{
-		State: job.Status.State,
-
-		Pending:      pending,
-		Running:      running,
-		Succeeded:    succeeded,
-		Failed:       failed,
-		Terminating:  terminating,
-		Version:      job.Status.Version,
-		MinAvailable: int32(job.Spec.MinAvailable),
-		RetryCount:   job.Status.RetryCount,
+		State:          job.Status.State,
+		StartTime:      job.Status.StartTime,
+		CompletionTime: job.Status.CompletionTime,
+		Pending:        pending,
+		Running:        running,
+		Succeeded:      succeeded,
+		Failed:         failed,
+		Terminating:    terminating,
+		Version:        job.Status.Version,
+		MinAvailable:   int32(job.Spec.MinAvailable),
+		RetryCount:     job.Status.RetryCount,
 	}
 
 	if updateStatus != nil {
 		updateStatus(&job.Status)
 	}
 
-	UpdateJobTimetamp(&job.Status)
+	UpdateJobTimestamp(&job.Status)
 
 	// Update Job status
 	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
@@ -141,7 +142,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	return nil
 }
 
-func UpdateJobTimetamp(status *vkv1.JobStatus) {
+func UpdateJobTimestamp(status *vkv1.JobStatus) {
 	now := metav1.Time{Time: time.Now()}
 	if status.State.Phase == vkv1.Running && status.StartTime == nil {
 		status.StartTime = &now
@@ -315,8 +316,9 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	}
 
 	job.Status = vkv1.JobStatus{
-		State: job.Status.State,
-
+		State:               job.Status.State,
+		StartTime:           job.Status.StartTime,
+		CompletionTime:      job.Status.CompletionTime,
 		Pending:             pending,
 		Running:             running,
 		Succeeded:           succeeded,
@@ -332,7 +334,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 		updateStatus(&job.Status)
 	}
 
-	UpdateJobTimetamp(&job.Status)
+	UpdateJobTimestamp(&job.Status)
 
 	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
