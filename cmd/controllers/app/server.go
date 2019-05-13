@@ -40,6 +40,7 @@ import (
 
 	"volcano.sh/volcano/cmd/controllers/app/options"
 	vkclient "volcano.sh/volcano/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/controllers/garbagecollector"
 	"volcano.sh/volcano/pkg/controllers/job"
 	"volcano.sh/volcano/pkg/controllers/queue"
 )
@@ -83,10 +84,12 @@ func Run(opt *options.ServerOption) error {
 
 	jobController := job.NewJobController(kubeClient, kbClient, vkClient)
 	queueController := queue.NewQueueController(kubeClient, kbClient)
+	garbageCollector := garbagecollector.New(vkClient)
 
 	run := func(ctx context.Context) {
 		go jobController.Run(ctx.Done())
 		go queueController.Run(ctx.Done())
+		go garbageCollector.Run(ctx.Done())
 		<-ctx.Done()
 	}
 
