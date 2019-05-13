@@ -21,7 +21,7 @@ import (
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
-type UpdateStatusFn func(status *vkv1.JobStatus)
+type UpdateStatusFn func(status *vkv1.JobStatus) (jobPhaseChanged bool)
 type ActionFn func(job *apis.JobInfo, fn UpdateStatusFn) error
 
 var (

@@ -17,8 +17,6 @@ limitations under the License.
 package state
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
@@ -30,44 +28,41 @@ type inqueueState struct {
 func (ps *inqueueState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.RestartJobAction:
-		return KillJob(ps.job, func(status *vkv1.JobStatus) {
+		return KillJob(ps.job, func(status *vkv1.JobStatus) bool {
 			phase := vkv1.Pending
 			if status.Terminating != 0 {
 				phase = vkv1.Restarting
 				status.RetryCount++
 			}
-			status.State.LastTransitionTime = metav1.Now()
 			status.State.Phase = phase
+			return true
 		})
 
 	case vkv1.AbortJobAction:
-		return KillJob(ps.job, func(status *vkv1.JobStatus) {
+		return KillJob(ps.job, func(status *vkv1.JobStatus) bool {
 			phase := vkv1.Pending
 			if status.Terminating != 0 {
 				phase = vkv1.Aborting
 			}
-			status.State.LastTransitionTime = metav1.Now()
 			status.State.Phase = phase
+			return true
 		})
 	case vkv1.CompleteJobAction:
-		return KillJob(ps.job, func(status *vkv1.JobStatus) {
+		return KillJob(ps.job, func(status *vkv1.JobStatus) bool {
 			phase := vkv1.Completed
 			if status.Terminating != 0 {
 				phase = vkv1.Completing
 			}
-			status.State.LastTransitionTime = metav1.Now()
 			status.State.Phase = phase
+			return true
 		})
 	default:
-		return SyncJob(ps.job, func(status *vkv1.JobStatus) {
-			phase := vkv1.Inqueue
-
+		return SyncJob(ps.job, func(status *vkv1.JobStatus) bool {
 			if ps.job.Job.Spec.MinAvailable <= status.Running+status.Succeeded+status.Failed {
-				status.State.LastTransitionTime = metav1.Now()
-				phase = vkv1.Running
+				status.State.Phase = vkv1.Running
+				return true
 			}
-
-			status.State.Phase = phase
+			return false
 		})
 	}
 	return nil
