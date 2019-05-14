@@ -1,0 +1,85 @@
+###################################################
+#                                                 #
+#    Demo for running TF tasks on Volcano (GPU)   #
+#                                                 #
+###################################################
+#
+# This yaml used to demonstrate how to running a GPU based TF task via Volcano Job,
+# This is tested on Google Cloud Platforms, please follow this instruction
+# (https://cloud.google.com/kubernetes-engine/docs/how-to/gpus) for
+# setting up an GPU kubernetes environment before testing.
+# Our test is based on Cuda 10.0, Cudnn 7.x and tensorflow 1.14.x
+# NOTE: Since we always check master branch of benchmark, the depending packages would
+# change during process, please refer to these links to upgrade the dockerfile if needed.
+# 1. CUDA docker images: https://hub.docker.com/r/nvidia/cuda/tags
+# 2. Linux setup for TF: https://www.tensorflow.org/install/gpu#linux_setup
+
+
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: tensorflow-benchmark-gpu
+spec:
+  minAvailable: 4
+  schedulerName: kube-batch
+  plugins:
+    env: []
+    svc: []
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  tasks:
+    - replicas: 1
+      name: ps
+      template:
+        spec:
+          imagePullSecrets:
+            - name: default-secret
+          containers:
+            - command:
+                - sh
+                - -c
+                - |
+                  PS_HOST=`cat /etc/volcano/ps.host | sed 's/$/&:2222/g' | tr "\n" ","`;
+                  WORKER_HOST=`cat /etc/volcano/worker.host | sed 's/$/&:2222/g' | tr "\n" ","`;
+                  python tf_cnn_benchmarks.py --batch_size=32 --model=inception3 --variable_update=parameter_server --num_gpus=1 --job_name=ps --task_index=${VK_TASK_INDEX} --ps_hosts=${PS_HOST} --worker_hosts=${WORKER_HOST}
+              image: volcanosh/example-tf-gpu:0.0.1
+              name: tensorflow
+              ports:
+                - containerPort: 2222
+                  name: tfjob-port
+              resources:
+                requests:
+                  cpu: 1
+              workingDir: /opt/tf-benchmarks/scripts/tf_cnn_benchmarks
+          restartPolicy: OnFailure
+    - replicas: 3
+      name: worker
+      policies:
+        - event: TaskCompleted
+          action: CompleteJob
+      template:
+        spec:
+          imagePullSecrets:
+            - name: default-secret
+          containers:
+            - command:
+                - sh
+                - -c
+                - |
+                  PS_HOST=`cat /etc/volcano/ps.host | sed 's/$/&:2222/g' | tr "\n" ","`;
+                  WORKER_HOST=`cat /etc/volcano/worker.host | sed 's/$/&:2222/g' | tr "\n" ","`;
+                  python tf_cnn_benchmarks.py --batch_size=32 --model=inception3 --variable_update=parameter_server --num_gpus=1 --job_name=worker --task_index=${VK_TASK_INDEX} --ps_hosts=${PS_HOST} --worker_hosts=${WORKER_HOST}
+              image: volcanosh/example-tf-gpu:0.0.1
+              name: tensorflow
+              ports:
+                - containerPort: 2222
+                  name: tfjob-port
+              resources:
+                requests:
+                  cpu: 1
+                  nvidia.com/gpu: 1
+                limits:
+                  nvidia.com/gpu: 1
+              workingDir: /opt/tf-benchmarks/scripts/tf_cnn_benchmarks
+          restartPolicy: OnFailure

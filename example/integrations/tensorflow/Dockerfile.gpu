@@ -1,0 +1,12 @@
+# NOTE: the build process would change during developing.
+
+FROM nvidia/cuda:10.0-runtime-ubuntu16.04
+MAINTAINER volcano <maintainer@volcano.sh>
+RUN  apt-get update --fix-missing \
+&& apt-get install -y git python2.7 python-pip libcudnn7=7.4.1.5-1+cuda10.0 libcudnn7-dev=7.4.1.5-1+cuda10.0 \
+&& apt-get clean \
+&& rm -rf /var/lib/apt/lists/*
+RUN pip install tf-nightly-gpu \
+&& git clone https://github.com/tensorflow/benchmarks.git /opt/tf-benchmarks
+ENV LD_LIBRARY_PATH=/usr/local/cuda-10.0/lib64:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
