@@ -1,9 +1,6 @@
 # Change Log
 
 ## [v0.1](https://github.com/volcano-sh/volcano/tree/v0.1) (2019-05-11)
-**Implemented enhancements:**
-
-- Enable robot for Volcano [\#15](https://github.com/volcano-sh/volcano/issues/15)
 
 **Closed issues:**
 
