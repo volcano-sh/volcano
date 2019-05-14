@@ -262,6 +262,7 @@ type taskSpec struct {
 	workingDir            string
 	hostport              int32
 	req                   v1.ResourceList
+	limit                 v1.ResourceList
 	affinity              *v1.Affinity
 	labels                map[string]string
 	policies              []vkv1.LifecyclePolicy
@@ -335,7 +336,7 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 				Spec: v1.PodSpec{
 					SchedulerName: "kube-batch",
 					RestartPolicy: restartPolicy,
-					Containers:    createContainers(task.img, task.command, task.workingDir, task.req, task.hostport),
+					Containers:    createContainers(task.img, task.command, task.workingDir, task.req, task.limit, task.hostport),
 					Affinity:      task.affinity,
 				},
 			},
@@ -594,13 +595,14 @@ func waitQueueStatus(condition func() (bool, error)) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, condition)
 }
 
-func createContainers(img, command, workingDir string, req v1.ResourceList, hostport int32) []v1.Container {
+func createContainers(img, command, workingDir string, req, limit v1.ResourceList, hostport int32) []v1.Container {
 	var imageRepo []string
 	container := v1.Container{
 		Image:           img,
 		ImagePullPolicy: v1.PullIfNotPresent,
 		Resources: v1.ResourceRequirements{
 			Requests: req,
+			Limits:   limit,
 		},
 	}
 	if strings.Index(img, ":") < 0 {
