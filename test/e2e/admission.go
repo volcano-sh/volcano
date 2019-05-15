@@ -180,4 +180,34 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 		Expect(createdJob.Spec.Queue).Should(Equal("default"),
 			"Job queue attribute would default to 'default' ")
 	})
+
+	It("ttl illegal", func() {
+		jobName := "job-ttl-illegal"
+		namespace := "test"
+		var ttl int32
+		ttl = -1
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		_, err := createJobInner(context, &jobSpec{
+			min:       1,
+			namespace: namespace,
+			name:      jobName,
+			ttl:       &ttl,
+			tasks: []taskSpec{
+				{
+					img:  defaultNginxImage,
+					req:  oneCPU,
+					min:  1,
+					rep:  1,
+					name: "taskname",
+				},
+			},
+		})
+		Expect(err).To(HaveOccurred())
+		stError, ok := err.(*errors.StatusError)
+		Expect(ok).To(Equal(true))
+		Expect(stError.ErrStatus.Code).To(Equal(int32(500)))
+		Expect(stError.ErrStatus.Message).To(ContainSubstring("'ttlSecondsAfterFinished' cannot be less than zero."))
+	})
 })

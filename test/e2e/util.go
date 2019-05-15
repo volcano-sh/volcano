@@ -279,6 +279,8 @@ type jobSpec struct {
 	min       int32
 	plugins   map[string][]string
 	volumes   []vkv1.VolumeSpec
+	// ttl seconds after job finished
+	ttl *int32
 }
 
 func getNS(context *context, job *jobSpec) string {
@@ -306,9 +308,10 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 			Namespace: ns,
 		},
 		Spec: vkv1.JobSpec{
-			Policies: jobSpec.policies,
-			Queue:    jobSpec.queue,
-			Plugins:  jobSpec.plugins,
+			Policies:                jobSpec.policies,
+			Queue:                   jobSpec.queue,
+			Plugins:                 jobSpec.plugins,
+			TTLSecondsAfterFinished: jobSpec.ttl,
 		},
 	}
 
@@ -672,6 +675,35 @@ func createReplicaSet(context *context, name string, rep int32, img string, req 
 	Expect(err).NotTo(HaveOccurred())
 
 	return deployment
+}
+
+func waitJobCleanedUp(ctx *context, job *vkv1.Job) error {
+	var additionalError error
+	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+		job, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
+		if err != nil && !errors.IsNotFound(err) {
+			return false, nil
+		}
+		if job != nil {
+			additionalError = fmt.Errorf("job %s/%s still exist", job.Namespace, job.Name)
+			return false, nil
+		}
+
+		pg, err := ctx.kbclient.SchedulingV1alpha1().PodGroups(job.Namespace).Get(job.Name, metav1.GetOptions{})
+		if err != nil && !errors.IsNotFound(err) {
+			return false, nil
+		}
+		if pg != nil {
+			additionalError = fmt.Errorf("pdgroup %s/%s still exist", job.Namespace, job.Name)
+			return false, nil
+		}
+
+		return true, nil
+	})
+	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
+		return fmt.Errorf("[Wait time out]: %s", additionalError)
+	}
+	return err
 }
 
 func deleteReplicaSet(ctx *context, name string) error {
