@@ -175,7 +175,7 @@ func (c *Controller) syncQueue(key string) error {
 	queue, err := c.queueLister.Get(key)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			glog.V(2).Infof("queue %s has been deleted", queue)
+			glog.V(2).Infof("queue %s has been deleted", key)
 			return nil
 		}
 		return err
