@@ -20,8 +20,6 @@ import (
 	"fmt"
 	"math"
 
-	"k8s.io/apimachinery/pkg/api/resource"
-
 	v1 "k8s.io/api/core/v1"
 	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 )
@@ -83,6 +81,7 @@ func NewResource(rl v1.ResourceList) *Resource {
 		case v1.ResourcePods:
 			r.MaxTaskNum += int(rQuant.Value())
 		default:
+			//NOTE: When converting this back to k8s resource, we need record the format as well as / 1000
 			if v1helper.IsScalarResourceName(rName) {
 				r.AddScalar(rName, float64(rQuant.MilliValue()))
 			}
@@ -157,7 +156,7 @@ func (r *Resource) Sub(rr *Resource) *Resource {
 		return r
 	}
 
-	panic(fmt.Errorf("Resource is not sufficient to do operation: <%v> sub <%v>",
+	panic(fmt.Errorf("resource is not sufficient to do operation: <%v> sub <%v>",
 		r, rr))
 }
 
@@ -325,15 +324,4 @@ func (r *Resource) SetScalar(name v1.ResourceName, quantity float64) {
 		r.ScalarResources = map[v1.ResourceName]float64{}
 	}
 	r.ScalarResources[name] = quantity
-}
-
-func (r *Resource) Convert2K8sResource() *v1.ResourceList {
-	list := v1.ResourceList{
-		v1.ResourceCPU:    *resource.NewMilliQuantity(int64(r.MilliCPU), resource.DecimalSI),
-		v1.ResourceMemory: *resource.NewQuantity(int64(r.Memory), resource.BinarySI),
-	}
-	for name, value := range r.ScalarResources {
-		list[name] = *resource.NewQuantity(int64(value), resource.BinarySI)
-	}
-	return &list
 }
