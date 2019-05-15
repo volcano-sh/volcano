@@ -86,7 +86,7 @@ func (ssn *Session) AddJobValidFn(name string, fn api.ValidateExFn) {
 	ssn.jobValidFns[name] = fn
 }
 
-// AddJobValidFn add jobvalid function
+// AddJobEnqueueableFn add jobenqueueable function
 func (ssn *Session) AddJobEnqueueableFn(name string, fn api.ValidateFn) {
 	ssn.jobEnqueueableFns[name] = fn
 }
