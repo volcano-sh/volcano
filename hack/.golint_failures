@@ -7,5 +7,4 @@ pkg/scheduler/actions/backfill
 pkg/scheduler/actions/enqueue
 pkg/scheduler/actions/preempt
 pkg/scheduler/actions/reclaim
-pkg/scheduler/api
 test/e2e
