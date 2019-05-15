@@ -86,6 +86,11 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 		return fmt.Sprintf("'maxRetry' cannot be less than zero.")
 	}
 
+	if job.Spec.TTLSecondsAfterFinished != nil && *job.Spec.TTLSecondsAfterFinished < 0 {
+		reviewResponse.Allowed = false
+		return fmt.Sprintf("'ttlSecondsAfterFinished' cannot be less than zero.")
+	}
+
 	if len(job.Spec.Tasks) == 0 {
 		reviewResponse.Allowed = false
 		return fmt.Sprintf("No task specified in job spec")
