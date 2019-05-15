@@ -86,6 +86,11 @@ func (ssn *Session) AddJobValidFn(name string, fn api.ValidateExFn) {
 	ssn.jobValidFns[name] = fn
 }
 
+// AddJobEnqueueableFn add jobenqueueable function
+func (ssn *Session) AddJobEnqueueableFn(name string, fn api.ValidateFn) {
+	ssn.jobEnqueueableFns[name] = fn
+}
+
 // Reclaimable invoke reclaimable function of the plugins
 func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
@@ -247,6 +252,24 @@ func (ssn *Session) JobValid(obj interface{}) *api.ValidateResult {
 	}
 
 	return nil
+}
+
+// JobEnqueueable invoke jobEnqueueableFns function of the plugins
+func (ssn *Session) JobEnqueueable(obj interface{}) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			fn, found := ssn.jobEnqueueableFns[plugin.Name]
+			if !found {
+				continue
+			}
+
+			if res := fn(obj); !res {
+				return res
+			}
+		}
+	}
+
+	return true
 }
 
 // JobOrderFn invoke joborder function of the plugins
