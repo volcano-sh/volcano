@@ -28,7 +28,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/apis"
@@ -492,7 +491,7 @@ func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
 
 	sort.Sort(tasksPriority)
 
-	minAvailableTasksRes := kbapi.EmptyResource()
+	minAvailableTasksRes := v1.ResourceList{}
 	podCnt := int32(0)
 	for _, task := range tasksPriority {
 		for i := int32(0); i < task.Replicas; i++ {
@@ -501,10 +500,10 @@ func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
 			}
 			podCnt++
 			for _, c := range task.Template.Spec.Containers {
-				minAvailableTasksRes.Add(kbapi.NewResource(c.Resources.Requests))
+				addResourceList(minAvailableTasksRes, c.Resources.Requests)
 			}
 		}
 	}
 
-	return minAvailableTasksRes.Convert2K8sResource()
+	return &minAvailableTasksRes
 }
