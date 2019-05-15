@@ -89,7 +89,9 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	}
 
 	if updateStatus != nil {
-		updateStatus(&job.Status)
+		if updateStatus(&job.Status) {
+			job.Status.State.LastTransitionTime = metav1.Now()
+		}
 	}
 
 	// Update Job status
@@ -150,7 +152,9 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.Update
 	}
 
 	if updateStatus != nil {
-		updateStatus(&job.Status)
+		if updateStatus(&job.Status) {
+			job.Status.State.LastTransitionTime = metav1.Now()
+		}
 	}
 
 	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
@@ -301,7 +305,9 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	}
 
 	if updateStatus != nil {
-		updateStatus(&job.Status)
+		if updateStatus(&job.Status) {
+			job.Status.State.LastTransitionTime = metav1.Now()
+		}
 	}
 
 	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
