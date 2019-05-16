@@ -52,5 +52,15 @@ func buildJobCmd() *cobra.Command {
 	job.InitResumeFlags(jobResumeCmd)
 	jobCmd.AddCommand(jobResumeCmd)
 
+	jobDelCmd := &cobra.Command{
+		Use:   "delete",
+		Short: "delete a job ",
+		Run: func(cmd *cobra.Command, args []string) {
+			checkError(cmd, job.DeleteJob())
+		},
+	}
+	job.InitDeleteFlags(jobDelCmd)
+	jobCmd.AddCommand(jobDelCmd)
+
 	return jobCmd
 }

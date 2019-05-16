@@ -52,6 +52,16 @@ func ListJobs(namespace string) string {
 	return RunCliCommand(command)
 }
 
+func DeleteJob(name string, namespace string) string {
+	command := []string{"job", "delete"}
+	Expect(name).NotTo(Equal(""), "Job name should not be empty in delete job command")
+	command = append(command, "--name", name)
+	if namespace != "" {
+		command = append(command, "--namespace", namespace)
+	}
+	return RunCliCommand(command)
+}
+
 func RunCliCommand(command []string) string {
 	if masterURL() != "" {
 		command = append(command, "--master", masterURL())
