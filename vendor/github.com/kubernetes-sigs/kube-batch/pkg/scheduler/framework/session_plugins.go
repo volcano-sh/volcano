@@ -18,6 +18,7 @@ package framework
 
 import (
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 )
 
 // AddJobOrderFn add job order function
@@ -65,6 +66,16 @@ func (ssn *Session) AddNodeOrderFn(name string, pf api.NodeOrderFn) {
 	ssn.nodeOrderFns[name] = pf
 }
 
+// AddNodeMapFn add Node map function
+func (ssn *Session) AddNodeMapFn(name string, pf api.NodeMapFn) {
+	ssn.nodeMapFns[name] = pf
+}
+
+// AddNodeReduceFn add Node reduce function
+func (ssn *Session) AddNodeReduceFn(name string, pf api.NodeReduceFn) {
+	ssn.nodeReduceFns[name] = pf
+}
+
 // AddOverusedFn add overused function
 func (ssn *Session) AddOverusedFn(name string, fn api.ValidateFn) {
 	ssn.overusedFns[name] = fn
@@ -73,6 +84,11 @@ func (ssn *Session) AddOverusedFn(name string, fn api.ValidateFn) {
 // AddJobValidFn add jobvalid function
 func (ssn *Session) AddJobValidFn(name string, fn api.ValidateExFn) {
 	ssn.jobValidFns[name] = fn
+}
+
+// AddJobEnqueueableFn add jobenqueueable function
+func (ssn *Session) AddJobEnqueueableFn(name string, fn api.ValidateFn) {
+	ssn.jobEnqueueableFns[name] = fn
 }
 
 // Reclaimable invoke reclaimable function of the plugins
@@ -238,6 +254,24 @@ func (ssn *Session) JobValid(obj interface{}) *api.ValidateResult {
 	return nil
 }
 
+// JobEnqueueable invoke jobEnqueueableFns function of the plugins
+func (ssn *Session) JobEnqueueable(obj interface{}) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			fn, found := ssn.jobEnqueueableFns[plugin.Name]
+			if !found {
+				continue
+			}
+
+			if res := fn(obj); !res {
+				return res
+			}
+		}
+	}
+
+	return true
+}
+
 // JobOrderFn invoke joborder function of the plugins
 func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 	for _, tier := range ssn.Tiers {
@@ -374,4 +408,56 @@ func (ssn *Session) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo) (float64
 
 func isEnabled(enabled *bool) bool {
 	return enabled != nil && *enabled
+}
+
+// NodeOrderMapFn invoke node order function of the plugins
+func (ssn *Session) NodeOrderMapFn(task *api.TaskInfo, node *api.NodeInfo) (map[string]float64, float64, error) {
+	nodeScoreMap := map[string]float64{}
+	var priorityScore float64
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledNodeOrder) {
+				continue
+			}
+			if pfn, found := ssn.nodeOrderFns[plugin.Name]; found {
+				score, err := pfn(task, node)
+				if err != nil {
+					return nodeScoreMap, priorityScore, err
+				}
+				priorityScore = priorityScore + score
+			}
+			if pfn, found := ssn.nodeMapFns[plugin.Name]; found {
+				score, err := pfn(task, node)
+				if err != nil {
+					return nodeScoreMap, priorityScore, err
+				}
+				nodeScoreMap[plugin.Name] = score
+			}
+
+		}
+	}
+	return nodeScoreMap, priorityScore, nil
+}
+
+// NodeOrderReduceFn invoke node order function of the plugins
+func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map[string]schedulerapi.HostPriorityList) (map[string]float64, error) {
+	nodeScoreMap := map[string]float64{}
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledNodeOrder) {
+				continue
+			}
+			pfn, found := ssn.nodeReduceFns[plugin.Name]
+			if !found {
+				continue
+			}
+			if err := pfn(task, pluginNodeScoreMap[plugin.Name]); err != nil {
+				return nodeScoreMap, err
+			}
+			for _, hp := range pluginNodeScoreMap[plugin.Name] {
+				nodeScoreMap[hp.Host] = nodeScoreMap[hp.Host] + float64(hp.Score)
+			}
+		}
+	}
+	return nodeScoreMap, nil
 }

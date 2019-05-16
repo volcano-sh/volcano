@@ -204,7 +204,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:986c933d3d3c05ab20d42462475be937ee26238500e58f5b53b5ae77b60f49ad"
+  digest = "1:489d09123cfdfe06deb8f0719d53e6dd60e8aebac20d885271c1cbc79ca6c7a1"
   name = "github.com/kubernetes-sigs/kube-batch"
   packages = [
     "cmd/kube-batch/app",
@@ -245,7 +245,7 @@
     "pkg/version",
   ]
   pruneopts = "UT"
-  revision = "2a63a4754d8289bf6491b7320ab6d832c75767ce"
+  revision = "61ae40d8a90d025ea7b02e0426edda01a3006e87"
   source = "https://github.com/volcano-sh/kube-batch"
 
 [[projects]]
@@ -1112,6 +1112,7 @@
     "k8s.io/kubernetes/pkg/apis/core",
     "k8s.io/kubernetes/pkg/apis/core/v1",
     "k8s.io/kubernetes/pkg/apis/core/validation",
+    "k8s.io/kubernetes/pkg/controller",
     "k8s.io/kubernetes/pkg/scheduler/api",
   ]
   solver-name = "gps-cdcl"
