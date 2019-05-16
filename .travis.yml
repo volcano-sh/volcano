@@ -15,6 +15,9 @@ jobs:
         - go get -u golang.org/x/lint/golint
       script:
         - make verify
+    - stage: UT Tests
+      script:
+          - make unit-test
     - stage: E2E Tests
       before_script:
         # Download kubectl
