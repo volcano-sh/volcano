@@ -38,6 +38,15 @@ const (
 
 	// Name of queue
 	Name string = "Name"
+
+	// Pending status of the queue
+	Pending string = "Pending"
+
+	// Running status of the queue
+	Running string = "Running"
+
+	// Unknown status of the queue
+	Unknown string = "Unknown"
 )
 
 var listQueueFlags = &listFlags{}
@@ -71,14 +80,14 @@ func ListQueue() error {
 
 // PrintQueues prints queue information
 func PrintQueues(queues *v1alpha1.QueueList, writer io.Writer) {
-	_, err := fmt.Fprintf(writer, "%-25s%-8s\n",
-		Name, Weight)
+	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s\n",
+		Name, Weight, Pending, Running, Unknown)
 	if err != nil {
 		fmt.Printf("Failed to print queue command result: %s.\n", err)
 	}
 	for _, queue := range queues.Items {
-		_, err = fmt.Fprintf(writer, "%-25s%-8d\n",
-			queue.Name, queue.Spec.Weight)
+		_, err = fmt.Fprintf(writer, "%-25s%-8d%-8d%-8d%-8d\n",
+			queue.Name, queue.Spec.Weight, queue.Status.Pending, queue.Status.Running, queue.Status.Unknown)
 		if err != nil {
 			fmt.Printf("Failed to print queue command result: %s.\n", err)
 		}

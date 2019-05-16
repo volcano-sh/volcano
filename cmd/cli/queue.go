@@ -48,5 +48,15 @@ func buildQueueCmd() *cobra.Command {
 	queue.InitListFlags(queueListCmd)
 	jobCmd.AddCommand(queueListCmd)
 
+	queueGetCmd := &cobra.Command{
+		Use:   "get",
+		Short: "get a queue",
+		Run: func(cmd *cobra.Command, args []string) {
+			checkError(cmd, queue.GetQueue())
+		},
+	}
+	queue.InitGetFlags(queueGetCmd)
+	jobCmd.AddCommand(queueGetCmd)
+
 	return jobCmd
 }

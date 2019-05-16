@@ -35,7 +35,7 @@ import (
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
-func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
+func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseMap, updateStatus state.UpdateStatusFn) error {
 	glog.V(3).Infof("Killing Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
 	defer glog.V(3).Infof("Finished Job <%s/%s> killing", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
@@ -62,20 +62,27 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 				continue
 			}
 
-			if err := cc.deleteJobPod(job.Name, pod); err == nil {
-				terminating++
-			} else {
-				errs = append(errs, err)
-				switch pod.Status.Phase {
-				case v1.PodRunning:
-					running++
-				case v1.PodPending:
-					pending++
-				case v1.PodSucceeded:
-					succeeded++
-				case v1.PodFailed:
-					failed++
+			_, retain := podRetainPhase[pod.Status.Phase]
+
+			if !retain {
+				err := cc.deleteJobPod(job.Name, pod)
+				if err == nil {
+					terminating++
+					continue
 				}
+				// record the err, and then collect the pod info like retained pod
+				errs = append(errs, err)
+			}
+
+			switch pod.Status.Phase {
+			case v1.PodRunning:
+				running++
+			case v1.PodPending:
+				pending++
+			case v1.PodSucceeded:
+				succeeded++
+			case v1.PodFailed:
+				failed++
 			}
 		}
 	}
@@ -448,9 +455,10 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 				},
 			},
 			Spec: kbv1.PodGroupSpec{
-				MinMember:    job.Spec.MinAvailable,
-				Queue:        job.Spec.Queue,
-				MinResources: cc.calcPGMinResources(job),
+				MinMember:         job.Spec.MinAvailable,
+				Queue:             job.Spec.Queue,
+				MinResources:      cc.calcPGMinResources(job),
+				PriorityClassName: job.Spec.PriorityClassName,
 			},
 		}
 

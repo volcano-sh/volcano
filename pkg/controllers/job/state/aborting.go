@@ -31,12 +31,12 @@ func (ps *abortingState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.ResumeJobAction:
 		// Already in Restarting phase, just sync it
-		return KillJob(ps.job, func(status *vkv1.JobStatus) bool {
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
 			status.RetryCount++
 			return false
 		})
 	default:
-		return KillJob(ps.job, func(status *vkv1.JobStatus) bool {
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
 			// If any "alive" pods, still in Aborting phase
 			if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {
 				return false
