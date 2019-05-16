@@ -242,53 +242,73 @@ const (
 	Inqueue JobPhase = "Inqueue"
 )
 
-// JobState contains details for the current state of the job.
-type JobState struct {
-	// The phase of Job.
-	// +optional
-	Phase JobPhase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
+type JobConditionType string
 
-	// Unique, one-word, CamelCase reason for the phase's last transition.
-	// +optional
-	Reason string `json:"reason,omitempty" protobuf:"bytes,2,opt,name=reason"`
+const (
+	// JobCreated means the job has been accepted by the system, but it hasn't
+	// reached the phase of running, this includes creating the job resource,
+	// waiting for pod resource and scheduling.
+	JobCreated JobConditionType = "JobCreated"
+	// JobRunning means at least 'MinAvailable' pods of this job are running.
+	JobRunning JobConditionType = "JobRunning"
+	// JobSucceed means the job has been successfully executed.
+	JobSucceed JobConditionType = "JobSucceed"
+	// JobFailed means the system failed to executed the job after a max retry.
+	JobFailed JobConditionType = "JobFailed"
+	// JobTerminated means the job has been terminated
+	JobTerminated JobConditionType = "JobTerminated"
+	// JobTerminated means the job has been suspended
+	JobAborted JobConditionType = "JobAborted"
+)
 
-	// Human-readable message indicating details about last transition.
-	// +optional
-	Message string `json:"message,omitempty" protobuf:"bytes,3,opt,name=message"`
-
-	// Last time the condition transit from one phase to another.
-	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,4,opt,name=lastTransitionTime"`
+// +k8s:deepcopy-gen=true
+// JobCondition describes the state of the job at a certain point.
+type JobCondition struct {
+	// Type of job condition.
+	Type JobConditionType `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status v1.ConditionStatus `json:"status"`
+	// The reason for the condition's last transition.
+	Reason string `json:"reason,omitempty"`
+	// A human readable message indicating details about the transition.
+	Message string `json:"message,omitempty"`
+	// The last time this condition was updated.
+	LastUpdateTime metav1.Time `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
 }
 
 // JobStatus represents the current status of a Job
 type JobStatus struct {
 	// Current state of Job.
-	State JobState `json:"state,omitempty" protobuf:"bytes,1,opt,name=state"`
+	Phase JobPhase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
+
+	//Jon conditions
+	Conditions []JobCondition `json:"conditions,omitempty" protobuf:"bytes,2,opt,name=conditions"`
 
 	// The minimal available pods to run for this Job
 	// +optional
-	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
+	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,3,opt,name=minAvailable"`
 
 	// The number of pending pods.
 	// +optional
-	Pending int32 `json:"pending,omitempty" protobuf:"bytes,3,opt,name=pending"`
+	Pending int32 `json:"pending,omitempty" protobuf:"bytes,4,opt,name=pending"`
 
 	// The number of running pods.
 	// +optional
-	Running int32 `json:"running,omitempty" protobuf:"bytes,4,opt,name=running"`
+	Running int32 `json:"running,omitempty" protobuf:"bytes,5,opt,name=running"`
 
 	// The number of pods which reached phase Succeeded.
 	// +optional
-	Succeeded int32 `json:"succeeded,omitempty" protobuf:"bytes,5,opt,name=succeeded"`
+	Succeeded int32 `json:"succeeded,omitempty" protobuf:"bytes,6,opt,name=succeeded"`
 
 	// The number of pods which reached phase Failed.
 	// +optional
-	Failed int32 `json:"failed,omitempty" protobuf:"bytes,6,opt,name=failed"`
+	Failed int32 `json:"failed,omitempty" protobuf:"bytes,7,opt,name=failed"`
 
 	// The number of pods which reached phase Terminating.
 	// +optional
-	Terminating int32 `json:"terminating,omitempty" protobuf:"bytes,7,opt,name=terminating"`
+	Terminating int32 `json:"terminating,omitempty" protobuf:"bytes,8,opt,name=terminating"`
 
 	// The number of pods which reached phase Unknown.
 	// +optional
