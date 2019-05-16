@@ -79,6 +79,10 @@ type JobSpec struct {
 	// the Job becomes eligible to be deleted immediately after it finishes.
 	// +optional
 	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" protobuf:"varint,9,opt,name=ttlSecondsAfterFinished"`
+
+	// If specified, indicates the job's priority.
+	// +optional
+	PriorityClassName string `json:"priorityClassName,omitempty" protobuf:"bytes,10,opt,name=priorityClassName"`
 }
 
 // VolumeSpec defines the specification of Volume, e.g. PVC
