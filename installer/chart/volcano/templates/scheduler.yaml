@@ -1,20 +1,20 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Release.Name }}-scheduler-configmap
+  name: {{ .Release.Name }}-kube-batch-configmap
 data:
-  {{- (.Files.Glob "config/*").AsConfig | nindent 2 }}
+        {{- (.Files.Glob "config/*").AsConfig | nindent 2 }}
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ .Release.Name }}-scheduler
+  name: {{ .Release.Name }}-kube-batch
   namespace: {{ .Release.Namespace }}
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: {{ .Release.Name }}-scheduler
+  name: {{ .Release.Name }}-kube-batch
   namespace: {{ .Release.Namespace }}
 rules:
   - apiGroups: ["apiextensions.k8s.io"]
@@ -67,38 +67,38 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: {{ .Release.Name }}-scheduler-role
+  name: {{ .Release.Name }}-kube-batch-role
   namespace: {{ .Release.Namespace }}
 subjects:
   - kind: ServiceAccount
-    name: {{ .Release.Name }}-scheduler
+    name: {{ .Release.Name }}-kube-batch
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: {{ .Release.Name }}-scheduler
+  name: {{ .Release.Name }}-kube-batch
   apiGroup: rbac.authorization.k8s.io
 
 ---
 kind: Deployment
 apiVersion: apps/v1
 metadata:
-  name: {{ .Release.Name }}-scheduler
+  name: {{ .Release.Name }}-kube-batch
   namespace: {{ .Release.Namespace }}
   labels:
-    app: volcano-scheduler
+    app: volcano-kube-batch
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: volcano-scheduler
+      app: volcano-kube-batch
   template:
     metadata:
       labels:
-        app: volcano-scheduler
+        app: volcano-kube-batch
     spec:
-      serviceAccount: {{ .Release.Name }}-scheduler
+      serviceAccount: {{ .Release.Name }}-kube-batch
       containers:
-        - name: {{ .Release.Name }}-scheduler
+        - name: {{ .Release.Name }}-kube-batch
           image: {{.Values.basic.scheduler_image_name}}:{{.Values.basic.image_tag_version}}
           args:
             - --alsologtostderr
@@ -112,4 +112,4 @@ spec:
       volumes:
         - name: scheduler-config
           configMap:
-            name: {{ .Release.Name }}-scheduler-configmap
+            name: {{ .Release.Name }}-kube-batch-configmap
