@@ -152,4 +152,43 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 			"Job related pod should be deleted when job aborted.")
 	})
+
+	It("delete a job", func() {
+
+		jobName := "test-del-job"
+		namespace := "test"
+		context := initTestContext()
+		defer cleanupTestContext(context)
+		rep := clusterSize(context, oneCPU)
+
+		job := createJob(context, &jobSpec{
+			namespace: namespace,
+			name:      jobName,
+			tasks: []taskSpec{
+				{
+					img: defaultNginxImage,
+					req: oneCPU,
+					min: rep,
+					rep: rep,
+				},
+			},
+		})
+		// Pod is running
+		err := waitJobReady(context, job)
+		Expect(err).NotTo(HaveOccurred())
+		// Job Status is running
+		err = waitJobStateReady(context, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = context.vkclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		// Delete job
+		DeleteJob(jobName, namespace)
+
+		_, err = context.vkclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
+		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
+			"Job should be deleted on vkctl job delete.")
+
+	})
 })
