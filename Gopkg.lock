@@ -203,8 +203,8 @@
   version = "1.1.4"
 
 [[projects]]
-  branch = "master"
-  digest = "1:986c933d3d3c05ab20d42462475be937ee26238500e58f5b53b5ae77b60f49ad"
+  branch = "volcano-release-0.1"
+  digest = "1:f9a796a2b237c4eed245b3eac5bcc5263996a0f3ac5d6c3fd77873e6726c0077"
   name = "github.com/kubernetes-sigs/kube-batch"
   packages = [
     "cmd/kube-batch/app",
@@ -245,7 +245,7 @@
     "pkg/version",
   ]
   pruneopts = "UT"
-  revision = "2a63a4754d8289bf6491b7320ab6d832c75767ce"
+  revision = "0f36bc162ea2a351c675b816bc21da0b49723161"
   source = "https://github.com/volcano-sh/kube-batch"
 
 [[projects]]

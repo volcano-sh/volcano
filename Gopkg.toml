@@ -38,7 +38,7 @@ required = [
 
 [[constraint]]
   name = "github.com/kubernetes-sigs/kube-batch"
-  branch = "master"
+  branch = "volcano-release-0.1"
   source = "https://github.com/volcano-sh/kube-batch"
 
 [[constraint]]
