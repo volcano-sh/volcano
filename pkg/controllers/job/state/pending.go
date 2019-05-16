@@ -28,7 +28,7 @@ type pendingState struct {
 func (ps *pendingState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.RestartJobAction:
-		return KillJob(ps.job, func(status *vkv1.JobStatus) bool {
+		return KillJob(ps.job, PodRetainPhaseNone, func(status *vkv1.JobStatus) bool {
 			phase := vkv1.Pending
 			if status.Terminating != 0 {
 				phase = vkv1.Restarting
@@ -39,7 +39,7 @@ func (ps *pendingState) Execute(action vkv1.Action) error {
 		})
 
 	case vkv1.AbortJobAction:
-		return KillJob(ps.job, func(status *vkv1.JobStatus) bool {
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
 			phase := vkv1.Pending
 			if status.Terminating != 0 {
 				phase = vkv1.Aborting
@@ -48,7 +48,7 @@ func (ps *pendingState) Execute(action vkv1.Action) error {
 			return true
 		})
 	case vkv1.CompleteJobAction:
-		return KillJob(ps.job, func(status *vkv1.JobStatus) bool {
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
 			phase := vkv1.Completed
 			if status.Terminating != 0 {
 				phase = vkv1.Completing
