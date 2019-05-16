@@ -175,7 +175,7 @@ func jobStatus(ssn *Session, jobInfo *api.JobInfo) v1alpha1.PodGroupStatus {
 		}
 
 		// If there're enough allocated resource, it's running
-		if int32(allocated) >= jobInfo.PodGroup.Spec.MinMember {
+		if int32(allocated) > jobInfo.PodGroup.Spec.MinMember {
 			status.Phase = v1alpha1.PodGroupRunning
 		} else if jobInfo.PodGroup.Status.Phase != v1alpha1.PodGroupInqueue {
 			status.Phase = v1alpha1.PodGroupPending
