@@ -52,7 +52,6 @@ var (
 	CreateJob ActionFn
 	//UpdateStatus will used to update job status
 	UpdateJobPhase UpdateJobPhaseFn
-
 )
 
 //State interface

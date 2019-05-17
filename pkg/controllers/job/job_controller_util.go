@@ -265,7 +265,7 @@ func UpdateJobPhase(status *vkv1.JobStatus, newphase vkv1.JobPhase, message stri
 		SetCondition(status, NewStateCondition(vkv1.JobStopped, "Job stopped", message))
 		break
 	case vkv1.Restarting:
-		SetCondition(status, NewStateCondition(vkv1.JobStopped, "Job is restarting", message))
+		SetCondition(status, NewStateCondition(vkv1.JobRestarting, "Job is restarting", message))
 		break
 	}
 	status.Phase = newphase
@@ -356,6 +356,7 @@ func filterOutCondition(states *vkv1.JobStatus, currentCondition vkv1.JobConditi
 			currentCondition.Type != condition.Type {
 			condition.Status = v1.ConditionFalse
 			condition.LastUpdateTime = metav1.Now()
+			condition.Message = ""
 			condition.Reason = fmt.Sprintf("Job finished restarting.")
 		}
 		newConditions = append(newConditions, condition)
