@@ -44,3 +44,23 @@ func (a Arguments) GetInt(ptr *int, key string) {
 
 	*ptr = value
 }
+
+//GetBool get the bool value from string
+func (a Arguments) GetBool(ptr *bool, key string) {
+	if ptr == nil {
+		return
+	}
+
+	argv, ok := a[key]
+	if !ok || argv == "" {
+		return
+	}
+
+	value, err := strconv.ParseBool(argv)
+	if err != nil {
+		glog.Warningf("Could not parse argument: %s for key %s, with err %v", argv, key, err)
+		return
+	}
+
+	*ptr = value
+}
