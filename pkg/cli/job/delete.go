@@ -47,6 +47,11 @@ func DeleteJob() error {
 		return err
 	}
 
+	if deleteJobFlags.JobName == "" {
+		err := fmt.Errorf("job name is mandaorty to delete a particular job")
+		return err
+	}
+
 	jobClient := versioned.NewForConfigOrDie(config)
 	err = jobClient.BatchV1alpha1().Jobs(deleteJobFlags.Namespace).Delete(deleteJobFlags.JobName, &metav1.DeleteOptions{})
 	if err != nil {
