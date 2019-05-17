@@ -245,20 +245,22 @@ const (
 type JobConditionType string
 
 const (
-	// JobCreated means the job has been accepted by the system, but it hasn't
-	// reached the phase of running, this includes creating the job resource,
-	// waiting for pod resource and scheduling.
+	// JobCreated means the job has been accepted by the system.
 	JobCreated JobConditionType = "JobCreated"
-	// JobRunning means at least 'MinAvailable' pods of this job are running.
-	JobRunning JobConditionType = "JobRunning"
+	// JobScheduled means the job has been successfully scheduled and at least
+	// 'MinAvailable' pods are running.
+	JobScheduled JobConditionType = "JobScheduled"
 	// JobSucceed means the job has been successfully executed.
 	JobSucceed JobConditionType = "JobSucceed"
-	// JobFailed means the system failed to executed the job after a max retry.
-	JobFailed JobConditionType = "JobFailed"
-	// JobTerminated means the job has been terminated
-	JobTerminated JobConditionType = "JobTerminated"
-	// JobTerminated means the job has been suspended
-	JobAborted JobConditionType = "JobAborted"
+	// JobStopped means the job stopped without successfully execution.
+	// There could be several reasons for this condition
+	// 1. the system failed to executed the job after a max retry.
+	// 2. this job has been aborted or terminated.
+	JobStopped JobConditionType = "JobStopped"
+	// JobRestarting means the job is being restarting now. When in Restarting
+	// Condition the JobScheduled/JobSucceed/JobStopped conditions would be removed.
+	JobRestarting JobConditionType = "JobRestarting"
+
 )
 
 // +k8s:deepcopy-gen=true
@@ -284,45 +286,53 @@ type JobStatus struct {
 	Phase JobPhase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
 
 	//Jon conditions
-	Conditions []JobCondition `json:"conditions,omitempty" protobuf:"bytes,2,opt,name=conditions"`
+	Conditions []JobCondition `json:"conditions,omitempty" protobuf:"bytes,11,opt,name=conditions"`
 
 	// The minimal available pods to run for this Job
 	// +optional
-	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,3,opt,name=minAvailable"`
+	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
 
 	// The number of pending pods.
 	// +optional
-	Pending int32 `json:"pending,omitempty" protobuf:"bytes,4,opt,name=pending"`
+	Pending int32 `json:"pending,omitempty" protobuf:"bytes,3,opt,name=pending"`
 
 	// The number of running pods.
 	// +optional
-	Running int32 `json:"running,omitempty" protobuf:"bytes,5,opt,name=running"`
+	Running int32 `json:"running,omitempty" protobuf:"bytes,4,opt,name=running"`
 
 	// The number of pods which reached phase Succeeded.
 	// +optional
-	Succeeded int32 `json:"succeeded,omitempty" protobuf:"bytes,6,opt,name=succeeded"`
+	Succeeded int32 `json:"succeeded,omitempty" protobuf:"bytes,5,opt,name=succeeded"`
 
 	// The number of pods which reached phase Failed.
 	// +optional
-	Failed int32 `json:"failed,omitempty" protobuf:"bytes,7,opt,name=failed"`
+	Failed int32 `json:"failed,omitempty" protobuf:"bytes,6,opt,name=failed"`
 
 	// The number of pods which reached phase Terminating.
 	// +optional
-	Terminating int32 `json:"terminating,omitempty" protobuf:"bytes,8,opt,name=terminating"`
+	Terminating int32 `json:"terminating,omitempty" protobuf:"bytes,7,opt,name=terminating"`
 
 	// The number of pods which reached phase Unknown.
 	// +optional
 	Unknown int32 `json:"unknown,omitempty" protobuf:"bytes,8,opt,name=unknown"`
 
 	//Current version of job
-	Version int32 `json:"version,omitempty" protobuf:"bytes,9,opt,name=version"`
+	Version int32 `json:"version,omitempty" protobuf:"bytes,8,opt,name=version"`
 
 	// The number of Job retries.
 	// +optional
-	RetryCount int32 `json:"retryCount,omitempty" protobuf:"bytes,10,opt,name=retryCount"`
+	RetryCount int32 `json:"retryCount,omitempty" protobuf:"bytes,9,opt,name=retryCount"`
 
 	// The resources that controlled by this job, e.g. Service, ConfigMap
-	ControlledResources map[string]string `json:"controlledResources,omitempty" protobuf:"bytes,11,opt,name=controlledResources"`
+	ControlledResources map[string]string `json:"controlledResources,omitempty" protobuf:"bytes,10,opt,name=controlledResources"`
+
+	// The time when job has been accepted by our system.
+	// +optional
+	StartTime *metav1.Time `json:"startTime,omitempty" protobuf:"bytes,12,opt,name=startTime"`
+
+	// The time when job completes running.
+	// +optional
+	CompletionTime *metav1.Time `json:"completionTime,omitempty" protobuf:"bytes,13,opt,name=completionTime"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
