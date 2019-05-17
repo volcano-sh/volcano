@@ -25,15 +25,14 @@ import (
 
 //PhaseMap to store the pod phases.
 type PhaseMap map[v1.PodPhase]struct{}
-
-//UpdateStatusFn updates the job status.
-type UpdateStatusFn func(status *vkv1.JobStatus) (jobPhaseChanged bool)
-
+//ActionFn will create or delete Pods according to Job's spec.
+type UpdateStatusFn func(status *vkv1.JobStatus)
 //ActionFn will create or delete Pods according to Job's spec.
 type ActionFn func(job *apis.JobInfo, fn UpdateStatusFn) error
 
 //KillActionFn kill all Pods of Job with phase not in podRetainPhase.
 type KillActionFn func(job *apis.JobInfo, podRetainPhase PhaseMap, fn UpdateStatusFn) error
+type UpdateJobPhaseFn func(status *vkv1.JobStatus, newphase vkv1.JobPhase, message string)
 
 //PodRetainPhaseNone stores no phase
 var PodRetainPhaseNone = PhaseMap{}
@@ -51,6 +50,9 @@ var (
 	KillJob KillActionFn
 	// CreateJob will prepare to create Job.
 	CreateJob ActionFn
+	//UpdateStatus will used to update job status
+	UpdateJobPhase UpdateJobPhaseFn
+
 )
 
 //State interface
@@ -62,7 +64,7 @@ type State interface {
 //NewState gets the state from the volcano job Phase
 func NewState(jobInfo *apis.JobInfo) State {
 	job := jobInfo.Job
-	switch job.Status.State.Phase {
+	switch job.Status.Phase {
 	case vkv1.Pending:
 		return &pendingState{job: jobInfo}
 	case vkv1.Running:

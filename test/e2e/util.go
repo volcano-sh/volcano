@@ -562,10 +562,10 @@ func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
 		newJob, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		if newJob.Status.State.Phase != phase {
+		if newJob.Status.Phase != phase {
 			additionalError = fmt.Errorf(
 				"expected job '%s' to be in status %s, actual get %s",
-				job.Name, phase, newJob.Status.State.Phase)
+				job.Name, phase, newJob.Status.Phase)
 			return false, nil
 		}
 		var flag = false
@@ -607,7 +607,7 @@ func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
 func getJobStatusDetail(job *vkv1.Job) string {
 	return fmt.Sprintf("\nName: %s\n Phase: %s\nPending: %d"+
 		"\nRunning: %d\nSucceeded: %d\nTerminating: %d\nFailed: %d\n ",
-		job.Name, job.Status.State.Phase, job.Status.Pending, job.Status.Running,
+		job.Name, job.Status.Phase, job.Status.Pending, job.Status.Running,
 		job.Status.Succeeded, job.Status.Terminating, job.Status.Failed)
 }
 
@@ -648,10 +648,10 @@ func waitJobPhaseExpect(ctx *context, job *vkv1.Job, state vkv1.JobPhase) error 
 	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
 		job, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		expected := job.Status.State.Phase == state
+		expected := job.Status.Phase == state
 		if !expected {
 			additionalError = fmt.Errorf("expected job '%s' phase in %s, actual got %s", job.Name,
-				state, job.Status.State.Phase)
+				state, job.Status.Phase)
 		}
 		return expected, nil
 	})

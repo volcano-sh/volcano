@@ -92,23 +92,23 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 	job.Status.Version = job.Status.Version + 1
 
 	job.Status = vkv1.JobStatus{
-		State: job.Status.State,
-
-		Pending:      pending,
-		Running:      running,
-		Succeeded:    succeeded,
-		Failed:       failed,
-		Terminating:  terminating,
-		Unknown:      unknown,
-		Version:      job.Status.Version,
-		MinAvailable: int32(job.Spec.MinAvailable),
-		RetryCount:   job.Status.RetryCount,
+		Phase:          job.Status.Phase,
+		Conditions:     job.Status.Conditions,
+		Pending:        pending,
+		Running:        running,
+		Succeeded:      succeeded,
+		Failed:         failed,
+		Terminating:    terminating,
+		Unknown:        unknown,
+		Version:        job.Status.Version,
+		MinAvailable:   int32(job.Spec.MinAvailable),
+		RetryCount:     job.Status.RetryCount,
+		StartTime:      job.Status.StartTime,
+		CompletionTime: job.Status.CompletionTime,
 	}
 
 	if updateStatus != nil {
-		if updateStatus(&job.Status) {
-			job.Status.State.LastTransitionTime = metav1.Now()
-		}
+		updateStatus(&job.Status)
 	}
 
 	// Update Job status
@@ -176,9 +176,7 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.Update
 	}
 
 	if updateStatus != nil {
-		if updateStatus(&newJob.Status) {
-			newJob.Status.State.LastTransitionTime = metav1.Now()
-		}
+		updateStatus(&newJob.Status)
 	}
 
 	newJob2, err := cc.vkClients.BatchV1alpha1().Jobs(newJob.Namespace).UpdateStatus(newJob)
@@ -315,24 +313,23 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	}
 
 	job.Status = vkv1.JobStatus{
-		State: job.Status.State,
-
-		Pending:             pending,
-		Running:             running,
-		Succeeded:           succeeded,
-		Failed:              failed,
-		Terminating:         terminating,
-		Unknown:             unknown,
-		Version:             job.Status.Version,
-		MinAvailable:        int32(job.Spec.MinAvailable),
-		ControlledResources: job.Status.ControlledResources,
-		RetryCount:          job.Status.RetryCount,
+		Phase:          job.Status.Phase,
+		Conditions:     job.Status.Conditions,
+		Pending:        pending,
+		Running:        running,
+		Succeeded:      succeeded,
+		Failed:         failed,
+		Terminating:    terminating,
+		Unknown:        unknown,
+		Version:        job.Status.Version,
+		MinAvailable:   int32(job.Spec.MinAvailable),
+		RetryCount:     job.Status.RetryCount,
+		StartTime:      job.Status.StartTime,
+		CompletionTime: job.Status.CompletionTime,
 	}
 
 	if updateStatus != nil {
-		if updateStatus(&job.Status) {
-			job.Status.State.LastTransitionTime = metav1.Now()
-		}
+		updateStatus(&job.Status)
 	}
 	newJob, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
 	if err != nil {
@@ -398,9 +395,11 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (*vkv1.Job, error) {
 		if err != nil {
 			glog.Errorf("Failed to update Job %v/%v for volume claim name: %v ",
 				job.Namespace, job.Name, err)
+			newJob.Status = job.Status
 			return nil, err
+		} else {
+			return newJob, nil
 		}
-		return newJob, err
 	}
 	return job, nil
 }

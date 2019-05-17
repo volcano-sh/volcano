@@ -28,42 +28,36 @@ type pendingState struct {
 func (ps *pendingState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.RestartJobAction:
-		return KillJob(ps.job, PodRetainPhaseNone, func(status *vkv1.JobStatus) bool {
+		return KillJob(ps.job, PodRetainPhaseNone, func(status *vkv1.JobStatus) {
 			status.RetryCount++
-			status.State.Phase = vkv1.Restarting
-			return true
+			UpdateJobPhase(status, vkv1.Restarting, "")
 		})
 
 	case vkv1.AbortJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
-			status.State.Phase = vkv1.Aborting
-			return true
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) {
+			UpdateJobPhase(status, vkv1.Aborting, "")
 		})
 	case vkv1.CompleteJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
-			status.State.Phase = vkv1.Completing
-			return true
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) {
+			UpdateJobPhase(status, vkv1.Completing, "")
 		})
 	case vkv1.TerminateJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
-			status.State.Phase = vkv1.Terminating
-			return true
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) {
+			UpdateJobPhase(status, vkv1.Terminating, "")
 		})
 	case vkv1.EnqueueAction:
-		return SyncJob(ps.job, func(status *vkv1.JobStatus) bool {
+		return SyncJob(ps.job, func(status *vkv1.JobStatus) {
 			phase := vkv1.Inqueue
 
 			if ps.job.Job.Spec.MinAvailable <= status.Running+status.Succeeded+status.Failed {
 				phase = vkv1.Running
 			}
 
-			status.State.Phase = phase
-			return true
+			UpdateJobPhase(status, phase, "")
 		})
 	default:
-		return CreateJob(ps.job, func(status *vkv1.JobStatus) bool {
-			status.State.Phase = vkv1.Pending
-			return true
+		return CreateJob(ps.job, func(status *vkv1.JobStatus) {
+			UpdateJobPhase(status, vkv1.Pending, "")
 		})
 	}
 }

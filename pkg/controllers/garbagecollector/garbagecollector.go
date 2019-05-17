@@ -18,6 +18,7 @@ package garbagecollector
 
 import (
 	"fmt"
+	"k8s.io/api/core/v1"
 	"time"
 
 	"github.com/golang/glog"
@@ -242,17 +243,25 @@ func needsCleanup(j *v1alpha1.Job) bool {
 	return j.Spec.TTLSecondsAfterFinished != nil && isJobFinished(j)
 }
 
+func getCondition(status v1alpha1.JobStatus, condType v1alpha1.JobConditionType) *v1alpha1.JobCondition {
+	for _, condition := range status.Conditions {
+		if condition.Type == condType && condition.Status == v1.ConditionTrue {
+			return &condition
+		}
+	}
+	return nil
+}
+
 func isJobFinished(job *v1alpha1.Job) bool {
-	return job.Status.State.Phase == v1alpha1.Completed ||
-		job.Status.State.Phase == v1alpha1.Failed ||
-		job.Status.State.Phase == v1alpha1.Terminated
+	return getCondition(job.Status,
+		v1alpha1.JobSucceed) != nil || getCondition(job.Status, v1alpha1.JobStopped) != nil
 }
 
 func getFinishAndExpireTime(j *v1alpha1.Job) (*time.Time, *time.Time, error) {
 	if !needsCleanup(j) {
 		return nil, nil, fmt.Errorf("job %s/%s should not be cleaned up", j.Namespace, j.Name)
 	}
-	finishAt, err := jobFinishTime(j)
+	finishAt, err := getJobFinishTime(j)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -274,10 +283,15 @@ func timeLeft(j *v1alpha1.Job, since *time.Time) (*time.Duration, error) {
 	return &remaining, nil
 }
 
-// jobFinishTime takes an already finished Job and returns the time it finishes.
-func jobFinishTime(finishedJob *v1alpha1.Job) (metav1.Time, error) {
-	if finishedJob.Status.State.LastTransitionTime.IsZero() {
-		return metav1.Time{}, fmt.Errorf("unable to find the time when the Job %s/%s finished", finishedJob.Namespace, finishedJob.Name)
+func getJobFinishTime(job *v1alpha1.Job) (metav1.Time, error) {
+	endCondition := getCondition(job.Status, v1alpha1.JobSucceed)
+	if endCondition == nil {
+		endCondition = getCondition(job.Status, v1alpha1.JobStopped)
 	}
-	return finishedJob.Status.State.LastTransitionTime, nil
+
+	if endCondition == nil || endCondition.LastTransitionTime.IsZero() {
+		return metav1.Time{}, fmt.Errorf(
+			"unable to find the time when the Job %s/%s finished", job.Namespace, job.Name)
+	}
+	return endCondition.LastTransitionTime, nil
 }

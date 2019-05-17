@@ -260,7 +260,6 @@ const (
 	// JobRestarting means the job is being restarting now. When in Restarting
 	// Condition the JobScheduled/JobSucceed/JobStopped conditions would be removed.
 	JobRestarting JobConditionType = "JobRestarting"
-
 )
 
 // +k8s:deepcopy-gen=true

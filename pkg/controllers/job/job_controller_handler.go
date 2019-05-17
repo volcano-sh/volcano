@@ -87,7 +87,7 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 
 	// NOTE: Since we only reconcile job based on Spec, we will ignore other attributes
 	// For Job status, it's used internally and always been updated via our controller.
-	if reflect.DeepEqual(newJob.Spec, oldJob.Spec) && newJob.Status.State.Phase == oldJob.Status.State.Phase {
+	if reflect.DeepEqual(newJob.Spec, oldJob.Spec) && newJob.Status.Phase == oldJob.Status.Phase {
 		glog.Infof("Job update event is ignored since no update in 'Spec'.")
 		return
 	}

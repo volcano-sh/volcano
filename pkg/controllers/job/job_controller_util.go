@@ -18,6 +18,7 @@ package job
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/golang/glog"
 
@@ -247,4 +248,117 @@ func isControlledBy(obj metav1.Object, gvk schema.GroupVersionKind) bool {
 		return true
 	}
 	return false
+}
+
+func UpdateJobPhase(status *vkv1.JobStatus, newphase vkv1.JobPhase, message string) {
+	switch newphase {
+	case vkv1.Pending, vkv1.Inqueue:
+		SetCondition(status, NewStateCondition(vkv1.JobCreated, "Job created", message))
+		break
+	case vkv1.Running:
+		SetCondition(status, NewStateCondition(vkv1.JobScheduled, "Job successfully scheduled", message))
+		break
+	case vkv1.Completed:
+		SetCondition(status, NewStateCondition(vkv1.JobSucceed, "Job completed", message))
+		break
+	case vkv1.Failed, vkv1.Terminated, vkv1.Aborted:
+		SetCondition(status, NewStateCondition(vkv1.JobStopped, "Job stopped", message))
+		break
+	case vkv1.Restarting:
+		SetCondition(status, NewStateCondition(vkv1.JobStopped, "Job is restarting", message))
+		break
+	}
+	status.Phase = newphase
+	now := metav1.Time{Time: time.Now()}
+	//Remove Completion time
+	if !status.CompletionTime.IsZero() && HasCondition(*status, vkv1.JobRestarting) {
+		status.CompletionTime = nil
+	}
+	//Update the timestamp
+	if status.StartTime.IsZero() && HasCondition(*status, vkv1.JobCreated) {
+		status.StartTime = &now
+	}
+	if status.CompletionTime.IsZero() &&
+		(HasCondition(*status, vkv1.JobSucceed) || HasCondition(*status, vkv1.JobSucceed)) {
+		status.CompletionTime = &now
+	}
+}
+
+// NewStateCondition creates a new job condition.
+func NewStateCondition(conditionType vkv1.JobConditionType, reason, message string) vkv1.JobCondition {
+	return vkv1.JobCondition{
+		Type:               conditionType,
+		Status:             v1.ConditionTrue,
+		LastUpdateTime:     metav1.Now(),
+		LastTransitionTime: metav1.Now(),
+		Reason:             reason,
+		Message:            message,
+	}
+}
+
+func HasCondition(status vkv1.JobStatus, condType vkv1.JobConditionType) bool {
+	for _, condition := range status.Conditions {
+		if condition.Type == condType && condition.Status == v1.ConditionTrue {
+			return true
+		}
+	}
+	return false
+}
+
+func GetCondition(status vkv1.JobStatus, condType vkv1.JobConditionType) *vkv1.JobCondition {
+	for _, condition := range status.Conditions {
+		if condition.Type == condType {
+			return &condition
+		}
+	}
+	return nil
+}
+
+func SetCondition(status *vkv1.JobStatus, condition vkv1.JobCondition) {
+
+	currentCond := GetCondition(*status, condition.Type)
+
+	// Do nothing if condition doesn't change
+	if currentCond != nil && currentCond.Status == condition.Status && currentCond.Reason == condition.Reason {
+		return
+	}
+
+	// Do not update lastTransitionTime if the status of the condition doesn't change.
+	if currentCond != nil && currentCond.Status == condition.Status {
+		condition.LastTransitionTime = currentCond.LastTransitionTime
+	}
+
+	// Append the updated condition to the job status
+	newConditions := filterOutCondition(status, condition)
+	status.Conditions = append(newConditions, condition)
+}
+
+func filterOutCondition(states *vkv1.JobStatus, currentCondition vkv1.JobCondition) []vkv1.JobCondition {
+
+	var newConditions []vkv1.JobCondition
+	for _, condition := range states.Conditions {
+		//Filter out the same condition
+		if condition.Type == currentCondition.Type {
+			continue
+		}
+
+		//Remove scheduled/succeed/stopped if current condition is restarting
+		if (currentCondition.Type == vkv1.JobRestarting &&
+			currentCondition.Status == v1.ConditionTrue) && (condition.Type == vkv1.JobScheduled ||
+			condition.Type == vkv1.JobSucceed ||
+			condition.Type == vkv1.JobStopped) {
+			continue
+		}
+
+		//Update restarting condition if status transits into others
+		if condition.Type == vkv1.JobRestarting &&
+			condition.Status == v1.ConditionTrue &&
+			currentCondition.Type != condition.Type {
+			condition.Status = v1.ConditionFalse
+			condition.LastUpdateTime = metav1.Now()
+			condition.Reason = fmt.Sprintf("Job finished restarting.")
+		}
+		newConditions = append(newConditions, condition)
+	}
+	return newConditions
 }

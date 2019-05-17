@@ -196,6 +196,7 @@ func NewJobController(
 	state.SyncJob = cc.syncJob
 	state.KillJob = cc.killJob
 	state.CreateJob = cc.createJob
+	state.UpdateJobPhase = UpdateJobPhase
 
 	return cc
 }
@@ -304,13 +305,13 @@ func (cc *Controller) processNextReq(count uint32) bool {
 	st := state.NewState(jobInfo)
 	if st == nil {
 		glog.Errorf("Invalid state <%s> of Job <%v/%v>",
-			jobInfo.Job.Status.State, jobInfo.Job.Namespace, jobInfo.Job.Name)
+			jobInfo.Job.Status.Phase, jobInfo.Job.Namespace, jobInfo.Job.Name)
 		return true
 	}
 
 	action := applyPolicies(jobInfo.Job, &req)
 	glog.V(3).Infof("Execute <%v> on Job <%s/%s> in <%s> by <%T>.",
-		action, req.Namespace, req.JobName, jobInfo.Job.Status.State.Phase, st)
+		action, req.Namespace, req.JobName, jobInfo.Job.Status.Phase, st)
 
 	if action != vkbatchv1.SyncJobAction {
 		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, vkbatchv1.ExecuteAction, fmt.Sprintf(

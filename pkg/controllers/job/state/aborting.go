@@ -17,8 +17,6 @@ limitations under the License.
 package state
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
@@ -30,20 +28,17 @@ type abortingState struct {
 func (ps *abortingState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.ResumeJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
-			status.State.Phase = vkv1.Restarting
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) {
 			status.RetryCount++
-			return true
+			UpdateJobPhase(status, vkv1.Restarting, "")
 		})
 	default:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) {
 			// If any "alive" pods, still in Aborting phase
 			if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {
-				return false
+				return
 			}
-			status.State.Phase = vkv1.Aborted
-			status.State.LastTransitionTime = metav1.Now()
-			return true
+			UpdateJobPhase(status, vkv1.Aborted, "")
 
 		})
 	}
