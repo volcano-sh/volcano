@@ -16,6 +16,7 @@ limitations under the License.
 package job
 
 import (
+	"fmt"
 	"github.com/spf13/cobra"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -40,6 +41,11 @@ func InitSuspendFlags(cmd *cobra.Command) {
 func SuspendJob() error {
 	config, err := buildConfig(suspendJobFlags.Master, suspendJobFlags.Kubeconfig)
 	if err != nil {
+		return err
+	}
+
+	if suspendJobFlags.JobName == "" {
+		err := fmt.Errorf("job name is mandaorty to suspend a particular job")
 		return err
 	}
 
