@@ -32,10 +32,11 @@ type runFlags struct {
 	Namespace string
 	Image     string
 
-	MinAvailable int
-	Replicas     int
-	Requests     string
-	Limits       string
+	MinAvailable  int
+	Replicas      int
+	Requests      string
+	Limits        string
+	SchedulerName string
 }
 
 var launchJobFlags = &runFlags{}
@@ -50,6 +51,7 @@ func InitRunFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "r", 1, "the total tasks of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Requests, "requests", "R", "cpu=1000m,memory=100Mi", "the resource request of the task")
 	cmd.Flags().StringVarP(&launchJobFlags.Limits, "limits", "L", "cpu=1000m,memory=100Mi", "the resource limit of the task")
+	cmd.Flags().StringVarP(&listJobFlags.SchedulerName, "scheduler", "S", "kube-batch", "the scheduler for this job")
 }
 
 var jobName = "job.volcano.sh"
