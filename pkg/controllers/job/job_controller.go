@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"github.com/golang/glog"
+	"time"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
@@ -191,7 +192,7 @@ func NewJobController(
 }
 
 // Run start JobController
-func (cc *Controller) Run(stopCh <-chan struct{}) {
+func (cc *Controller) Run(workers int, stopCh <-chan struct{}) {
 	go cc.sharedInformers.Start(stopCh)
 	go cc.jobInformer.Informer().Run(stopCh)
 	go cc.podInformer.Informer().Run(stopCh)
@@ -205,7 +206,10 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 		cc.svcSynced, cc.cmdSynced, cc.pvcSynced, cc.pcSynced)
 
 	go wait.Until(cc.handleCommands, 0, stopCh)
-	go wait.Until(cc.worker, 0, stopCh)
+
+	for i := 0; i < workers; i++ {
+		go wait.Until(cc.worker, time.Second, stopCh)
+	}
 
 	go cc.cache.Run(stopCh)
 
