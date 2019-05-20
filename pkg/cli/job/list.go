@@ -31,7 +31,8 @@ import (
 type listFlags struct {
 	commonFlags
 
-	Namespace string
+	Namespace     string
+	SchedulerName string
 }
 
 const (
@@ -57,6 +58,7 @@ func InitListFlags(cmd *cobra.Command) {
 	initFlags(cmd, &listJobFlags.commonFlags)
 
 	cmd.Flags().StringVarP(&listJobFlags.Namespace, "namespace", "N", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&listJobFlags.SchedulerName, "scheduler", "S", "", "list job with specified scheduler name")
 }
 
 func ListJobs() error {
@@ -89,6 +91,9 @@ func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 	}
 
 	for _, job := range jobs.Items {
+		if listJobFlags.SchedulerName != "" && listJobFlags.SchedulerName != job.Spec.SchedulerName {
+			continue
+		}
 		replicas := int32(0)
 		for _, ts := range job.Spec.Tasks {
 			replicas += ts.Replicas
