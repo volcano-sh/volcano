@@ -16,6 +16,7 @@ limitations under the License.
 package job
 
 import (
+	"fmt"
 	"github.com/spf13/cobra"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -40,6 +41,10 @@ func InitResumeFlags(cmd *cobra.Command) {
 func ResumeJob() error {
 	config, err := buildConfig(resumeJobFlags.Master, resumeJobFlags.Kubeconfig)
 	if err != nil {
+		return err
+	}
+	if resumeJobFlags.JobName == "" {
+		err := fmt.Errorf("job name is mandaorty to resume a particular job")
 		return err
 	}
 
