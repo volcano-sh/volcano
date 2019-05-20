@@ -19,6 +19,16 @@ rules:
   - apiGroups: ["admissionregistration.k8s.io"]
     resources: ["validatingwebhookconfigurations"]
     verbs: ["get", "list", "watch", "patch"]
+  # Rules below is used generate admission service secret
+  - apiGroups: ["certificates.k8s.io"]
+    resources: ["certificatesigningrequests"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: ["certificates.k8s.io"]
+    resources: ["certificatesigningrequests/approval"]
+    verbs: ["create", "update"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "patch"]
 
 ---
 kind: ClusterRoleBinding
@@ -98,3 +108,24 @@ spec:
   selector:
     app: volcano-admission
   sessionAffinity: None
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-admission-init
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: volcano-admission-init
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: {{ .Release.Name }}-admission
+      restartPolicy: Never
+      containers:
+        - name: main
+          image: {{.Values.basic.admission_image_name}}:{{.Values.basic.image_tag_version}}
+          imagePullPolicy: IfNotPresent
+          command: ["./gen-admission-secret.sh", "--service", "{{ .Release.Name }}-admission-service", "--namespace",
+                    "{{ .Release.Namespace }}", "--secret", "{{.Values.basic.admission_secret_name}}"]

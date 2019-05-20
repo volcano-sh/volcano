@@ -62,16 +62,6 @@ function install-volcano {
   kind load docker-image ${IMAGE_PREFIX}-admission:${TAG}  ${CLUSTER_CONTEXT}
   kind load docker-image ${MPI_EXAMPLE_IMAGE}  ${CLUSTER_CONTEXT}
 
-  echo "Install volcano plugin into cluster...."
-  helm plugin install --kubeconfig ${KUBECONFIG} installer/chart/plugins/gen-admission-secret
-
-  #If failed to generate secret for admission service, return immediately
-  helm gen-admission-secret --service ${CLUSTER_NAME}-admission-service --namespace kube-system
-  if [[ $? != 0 ]]; then
-    echo "Failed to install secret for admission service, usually we need a retry."
-    exit 1
-  fi
-
   echo "Install volcano chart"
   helm install installer/chart --namespace kube-system --name ${CLUSTER_NAME} --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG} --wait
 }
