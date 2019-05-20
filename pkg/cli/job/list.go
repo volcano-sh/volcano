@@ -36,17 +36,20 @@ type listFlags struct {
 }
 
 const (
-	Name       string = "Name"
-	Creation   string = "Creation"
-	Phase      string = "Phase"
-	Replicas   string = "Replicas"
-	Min        string = "Min"
-	Pending    string = "Pending"
-	Running    string = "Running"
-	Succeeded  string = "Succeeded"
-	Failed     string = "Failed"
-	RetryCount string = "RetryCount"
-	JobType    string = "JobType"
+	Name        string = "Name"
+	Creation    string = "Creation"
+	Phase       string = "Phase"
+	Replicas    string = "Replicas"
+	Min         string = "Min"
+	Scheduler   string = "Scheduler"
+	Pending     string = "Pending"
+	Running     string = "Running"
+	Succeeded   string = "Succeeded"
+	Terminating string = "Terminating"
+	Version     string = "Version"
+	Failed      string = "Failed"
+	RetryCount  string = "RetryCount"
+	JobType     string = "JobType"
 )
 
 var listJobFlags = &listFlags{}
