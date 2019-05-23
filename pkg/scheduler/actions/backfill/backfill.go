@@ -47,6 +47,10 @@ func (alloc *backfillAction) Execute(ssn *framework.Session) {
 		if job.PodGroup.Status.Phase == v1alpha1.PodGroupPending {
 			continue
 		}
+		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
+			glog.V(4).Infof("Job <%s/%s> Queue <%s> skip backfill, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
+			continue
+		}
 
 		for _, task := range job.TaskStatusIndex[api.Pending] {
 			if task.InitResreq.IsEmpty() {

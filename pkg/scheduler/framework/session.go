@@ -39,6 +39,8 @@ type Session struct {
 
 	cache cache.Cache
 
+	podGroupStatus map[api.JobID]*v1alpha1.PodGroupStatus
+
 	Jobs    map[api.JobID]*api.JobInfo
 	Nodes   map[string]*api.NodeInfo
 	Queues  map[api.QueueID]*api.QueueInfo
@@ -68,6 +70,8 @@ func openSession(cache cache.Cache) *Session {
 		UID:   uuid.NewUUID(),
 		cache: cache,
 
+		podGroupStatus: map[api.JobID]*v1alpha1.PodGroupStatus{},
+
 		Jobs:   map[api.JobID]*api.JobInfo{},
 		Nodes:  map[string]*api.NodeInfo{},
 		Queues: map[api.QueueID]*api.QueueInfo{},
@@ -93,6 +97,11 @@ func openSession(cache cache.Cache) *Session {
 
 	ssn.Jobs = snapshot.Jobs
 	for _, job := range ssn.Jobs {
+		// only conditions will be updated periodically
+		if job.PodGroup != nil && job.PodGroup.Status.Conditions != nil {
+			ssn.podGroupStatus[job.UID] = job.PodGroup.Status.DeepCopy()
+		}
+
 		if vjr := ssn.JobValid(job); vjr != nil {
 			if !vjr.Pass {
 				jc := &v1alpha1.PodGroupCondition{
@@ -123,20 +132,8 @@ func openSession(cache cache.Cache) *Session {
 }
 
 func closeSession(ssn *Session) {
-	for _, job := range ssn.Jobs {
-		// If job is using PDB, ignore it.
-		// TODO(k82cn): remove it when removing PDB support
-		if job.PodGroup == nil {
-			ssn.cache.RecordJobStatusEvent(job)
-			continue
-		}
-
-		job.PodGroup.Status = jobStatus(ssn, job)
-		if _, err := ssn.cache.UpdateJobStatus(job); err != nil {
-			glog.Errorf("Failed to update job <%s/%s>: %v",
-				job.Namespace, job.Name, err)
-		}
-	}
+	ju := newJobUpdater(ssn)
+	ju.UpdateAll()
 
 	ssn.Jobs = nil
 	ssn.Nodes = nil

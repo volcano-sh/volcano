@@ -46,7 +46,7 @@ type Cache interface {
 	RecordJobStatusEvent(job *api.JobInfo)
 
 	// UpdateJobStatus puts job in backlog for a while.
-	UpdateJobStatus(job *api.JobInfo) (*api.JobInfo, error)
+	UpdateJobStatus(job *api.JobInfo, updatePG bool) (*api.JobInfo, error)
 
 	// AllocateVolumes allocates volume on the host to the task
 	AllocateVolumes(task *api.TaskInfo, hostname string) error
