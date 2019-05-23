@@ -56,19 +56,6 @@ func getInterPodAffinityScore(name string, interPodAffinityScore schedulerapi.Ho
 	return 0
 }
 
-func generateNodeMapAndSlice(nodes map[string]*api.NodeInfo) (map[string]*cache.NodeInfo, []*v1.Node) {
-	var nodeMap map[string]*cache.NodeInfo
-	var nodeSlice []*v1.Node
-	nodeMap = make(map[string]*cache.NodeInfo)
-	for _, node := range nodes {
-		nodeInfo := cache.NewNodeInfo(node.Pods()...)
-		nodeInfo.SetNode(node.Node)
-		nodeMap[node.Name] = nodeInfo
-		nodeSlice = append(nodeSlice, node.Node)
-	}
-	return nodeMap, nodeSlice
-}
-
 type cachedNodeInfo struct {
 	session *framework.Session
 }
@@ -153,30 +140,60 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 }
 
 func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
+	var nodeMap map[string]*cache.NodeInfo
+	var nodeSlice []*v1.Node
+
+	weight := calculateWeight(pp.pluginArguments)
+
+	pl := util.NewPodLister(ssn)
+
+	nl := &util.NodeLister{
+		Session: ssn,
+	}
+
+	cn := &cachedNodeInfo{
+		session: ssn,
+	}
+
+	nodeMap, nodeSlice = util.GenerateNodeMapAndSlice(ssn.Nodes)
+
+	// Register event handlers to update task info in PodLister & nodeMap
+	ssn.AddEventHandler(&framework.EventHandler{
+		AllocateFunc: func(event *framework.Event) {
+			pod := pl.UpdateTask(event.Task, event.Task.NodeName)
+
+			nodeName := event.Task.NodeName
+			node, found := nodeMap[nodeName]
+			if !found {
+				glog.Warningf("node order, update pod %s/%s allocate to NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+			} else {
+				node.AddPod(pod)
+				glog.V(4).Infof("node order, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
+			}
+		},
+		DeallocateFunc: func(event *framework.Event) {
+			pod := pl.UpdateTask(event.Task, "")
+
+			nodeName := event.Task.NodeName
+			node, found := nodeMap[nodeName]
+			if !found {
+				glog.Warningf("node order, update pod %s/%s allocate from NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+			} else {
+				node.RemovePod(pod)
+				glog.V(4).Infof("node order, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
+			}
+		},
+	})
+
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-
-		weight := calculateWeight(pp.pluginArguments)
-
-		pl := &util.PodLister{
-			Session: ssn,
-		}
-
-		nl := &util.NodeLister{
-			Session: ssn,
-		}
-
-		cn := &cachedNodeInfo{
-			session: ssn,
-		}
-
-		var nodeMap map[string]*cache.NodeInfo
-		var nodeSlice []*v1.Node
 		var interPodAffinityScore schedulerapi.HostPriorityList
 
-		nodeMap, nodeSlice = generateNodeMapAndSlice(ssn.Nodes)
-
-		nodeInfo := cache.NewNodeInfo(node.Pods()...)
-		nodeInfo.SetNode(node.Node)
+		nodeInfo, found := nodeMap[node.Name]
+		if !found {
+			nodeInfo = cache.NewNodeInfo(node.Pods()...)
+			nodeInfo.SetNode(node.Node)
+			glog.Warningf("node order, generate node info for %s at NodeOrderFn is unexpected", node.Name)
+		}
 		var score = 0.0
 
 		//TODO: Add ImageLocalityPriority Function once priorityMetadata is published

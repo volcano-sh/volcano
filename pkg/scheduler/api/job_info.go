@@ -302,7 +302,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		NodesFitDelta: make(NodeResourceMap),
 
 		PDB:      ji.PDB,
-		PodGroup: ji.PodGroup,
+		PodGroup: ji.PodGroup.DeepCopy(),
 
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},

@@ -460,9 +460,6 @@ func (sc *SchedulerCache) BindVolumes(task *api.TaskInfo) error {
 
 // taskUnschedulable updates pod status of pending task
 func (sc *SchedulerCache) taskUnschedulable(task *api.TaskInfo, message string) error {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
 	pod := task.Pod.DeepCopy()
 
 	// The reason field in 'Events' should be "FailedScheduling", there is not constants defined for this in
@@ -658,8 +655,8 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
 }
 
 // UpdateJobStatus update the status of job and its tasks.
-func (sc *SchedulerCache) UpdateJobStatus(job *kbapi.JobInfo) (*kbapi.JobInfo, error) {
-	if !shadowPodGroup(job.PodGroup) {
+func (sc *SchedulerCache) UpdateJobStatus(job *kbapi.JobInfo, updatePG bool) (*kbapi.JobInfo, error) {
+	if updatePG && !shadowPodGroup(job.PodGroup) {
 		pg, err := sc.StatusUpdater.UpdatePodGroup(job.PodGroup)
 		if err != nil {
 			return nil, err
