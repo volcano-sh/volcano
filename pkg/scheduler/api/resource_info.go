@@ -277,6 +277,41 @@ func (r *Resource) LessEqual(rr *Resource) bool {
 	return true
 }
 
+// Diff calculate the difference between two resource
+func (r *Resource) Diff(rr *Resource) (*Resource, *Resource) {
+	increasedVal := EmptyResource()
+	decreasedVal := EmptyResource()
+	if r.MilliCPU > rr.MilliCPU {
+		increasedVal.MilliCPU += r.MilliCPU - rr.MilliCPU
+	} else {
+		decreasedVal.MilliCPU += rr.MilliCPU - r.MilliCPU
+	}
+
+	if r.Memory > rr.Memory {
+		increasedVal.Memory += r.Memory - rr.Memory
+	} else {
+		decreasedVal.Memory += rr.Memory - r.Memory
+	}
+
+	for rName, rQuant := range r.ScalarResources {
+		rrQuant := rr.ScalarResources[rName]
+
+		if rQuant > rrQuant {
+			if increasedVal.ScalarResources == nil {
+				increasedVal.ScalarResources = map[v1.ResourceName]float64{}
+			}
+			increasedVal.ScalarResources[rName] += rQuant - rrQuant
+		} else {
+			if decreasedVal.ScalarResources == nil {
+				decreasedVal.ScalarResources = map[v1.ResourceName]float64{}
+			}
+			decreasedVal.ScalarResources[rName] += rrQuant - rQuant
+		}
+	}
+
+	return increasedVal, decreasedVal
+}
+
 // String returns resource details in string format
 func (r *Resource) String() string {
 	str := fmt.Sprintf("cpu %0.2f, memory %0.2f", r.MilliCPU, r.Memory)

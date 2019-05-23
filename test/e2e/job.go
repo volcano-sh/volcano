@@ -416,4 +416,68 @@ var _ = Describe("Job E2E Test", func() {
 		err = waitPodGroupReady(context, pg2)
 		checkError(context, err)
 	})
+
+	It("Proportion", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		createQueues(context)
+		defer deleteQueues(context)
+
+		cpuSlot := halfCPU
+		cpuRep := clusterSize(context, cpuSlot)
+
+		memSlot := oneGigaByteMem
+		memRep := clusterSize(context, memSlot)
+
+		spec2 := &jobSpec{
+			namespace: "test",
+			tasks: []taskSpec{
+				{
+					img: "nginx",
+					req: cpuSlot,
+					min: 1,
+					rep: 1,
+				},
+			},
+		}
+
+		spec2.name = "q2-job-1"
+		spec2.queue = "q2"
+		_, pg2 := createJob(context, spec2)
+		err := waitPodGroupReady(context, pg2)
+		checkError(context, err)
+
+		spec := &jobSpec{
+			namespace: "test",
+			tasks: []taskSpec{
+				{
+					img: "nginx",
+					req: cpuSlot,
+					min: cpuRep - 2,
+					rep: cpuRep - 2,
+				},
+				{
+					img: "nginx",
+					req: memSlot,
+					min: memRep/2 - 1,
+					rep: memRep/2 - 1,
+				},
+			},
+		}
+
+		spec.name = "q1-job-1"
+		spec.queue = "q1"
+		_, pg1 := createJob(context, spec)
+		err = waitPodGroupReady(context, pg1)
+		checkError(context, err)
+
+		spec2.name = "q1-job-2"
+		spec2.queue = "q1"
+		_, pg3 := createJob(context, spec2)
+		err = waitPodGroupReady(context, pg3)
+		checkError(context, err)
+
+	})
+
 })
