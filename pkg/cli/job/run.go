@@ -53,7 +53,7 @@ func InitRunFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "r", 1, "the total tasks of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Requests, "requests", "R", "cpu=1000m,memory=100Mi", "the resource request of the task")
 	cmd.Flags().StringVarP(&launchJobFlags.Limits, "limits", "L", "cpu=1000m,memory=100Mi", "the resource limit of the task")
-	cmd.Flags().StringVarP(&listJobFlags.SchedulerName, "scheduler", "S", "kube-batch", "the scheduler for this job")
+	cmd.Flags().StringVarP(&launchJobFlags.SchedulerName, "scheduler", "S", "kube-batch", "the scheduler for this job")
 }
 
 var jobName = "job.volcano.sh"
@@ -82,6 +82,7 @@ func RunJob() error {
 		},
 		Spec: vkapi.JobSpec{
 			MinAvailable: int32(launchJobFlags.MinAvailable),
+			SchedulerName: launchJobFlags.SchedulerName,
 			Tasks: []vkapi.TaskSpec{
 				{
 					Replicas: int32(launchJobFlags.Replicas),
@@ -92,7 +93,6 @@ func RunJob() error {
 							Labels: map[string]string{jobName: launchJobFlags.Name},
 						},
 						Spec: v1.PodSpec{
-							SchedulerName: launchJobFlags.SchedulerName,
 							RestartPolicy: v1.RestartPolicyNever,
 							Containers: []v1.Container{
 								{
