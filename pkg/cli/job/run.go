@@ -47,8 +47,8 @@ func InitRunFlags(cmd *cobra.Command) {
 	initFlags(cmd, &launchJobFlags.commonFlags)
 
 	cmd.Flags().StringVarP(&launchJobFlags.Image, "image", "i", "busybox", "the container image of job")
-	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "N", "default", "the namespace of job")
-	cmd.Flags().StringVarP(&launchJobFlags.Name, "name", "n", "test", "the name of job")
+	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&launchJobFlags.Name, "name", "N", "test", "the name of job")
 	cmd.Flags().IntVarP(&launchJobFlags.MinAvailable, "min", "m", 1, "the minimal available tasks of job")
 	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "r", 1, "the total tasks of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Requests, "requests", "R", "cpu=1000m,memory=100Mi", "the resource request of the task")

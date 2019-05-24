@@ -43,8 +43,8 @@ var viewJobFlags = &viewFlags{}
 func InitViewFlags(cmd *cobra.Command) {
 	initFlags(cmd, &viewJobFlags.commonFlags)
 
-	cmd.Flags().StringVarP(&viewJobFlags.Namespace, "namespace", "N", "default", "the namespace of job")
-	cmd.Flags().StringVarP(&viewJobFlags.JobName, "name", "n", "", "the name of job")
+	cmd.Flags().StringVarP(&viewJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&viewJobFlags.JobName, "name", "N", "", "the name of job")
 }
 
 // ViewJob gives full details of the  job

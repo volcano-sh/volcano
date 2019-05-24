@@ -74,7 +74,7 @@ var listJobFlags = &listFlags{}
 func InitListFlags(cmd *cobra.Command) {
 	initFlags(cmd, &listJobFlags.commonFlags)
 
-	cmd.Flags().StringVarP(&listJobFlags.Namespace, "namespace", "N", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&listJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
 	cmd.Flags().StringVarP(&listJobFlags.SchedulerName, "scheduler", "S", "", "list job with specified scheduler name")
 }
 
