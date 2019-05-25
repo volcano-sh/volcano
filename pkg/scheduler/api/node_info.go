@@ -93,6 +93,7 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.Allocatable = NewResource(node.Status.Allocatable)
 	ni.Capability = NewResource(node.Status.Capacity)
 	ni.Idle = NewResource(node.Status.Allocatable)
+	ni.Used = EmptyResource()
 
 	for _, task := range ni.Tasks {
 		if task.Status == Releasing {
