@@ -63,7 +63,7 @@ function install-volcano {
   kind load docker-image ${MPI_EXAMPLE_IMAGE}  ${CLUSTER_CONTEXT}
 
   echo "Install volcano plugin into cluster...."
-  helm plugin install --kubeconfig ${KUBECONFIG} installer/chart/volcano/plugins/gen-admission-secret
+  helm plugin install --kubeconfig ${KUBECONFIG} installer/chart/plugins/gen-admission-secret
 
   #If failed to generate secret for admission service, return immediately
   helm gen-admission-secret --service ${CLUSTER_NAME}-admission-service --namespace kube-system
@@ -73,7 +73,7 @@ function install-volcano {
   fi
 
   echo "Install volcano chart"
-  helm install installer/chart/volcano --namespace kube-system --name ${CLUSTER_NAME} --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG} --wait
+  helm install installer/chart --namespace kube-system --name ${CLUSTER_NAME} --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG} --wait
 }
 
 function uninstall-volcano {
