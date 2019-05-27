@@ -74,28 +74,41 @@ func MutateJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
 func createPatch(job v1alpha1.Job) ([]byte, error) {
 	var patch []patchOperation
-	patch = append(patch, mutateSpec(job.Spec.Tasks, "/spec/tasks")...)
-	//Add default queue if not specified.
-	if job.Spec.Queue == "" {
-		patch = append(patch, patchOperation{Op: "add", Path: "/spec/queue", Value: DefaultQueue})
+	pathQueue := patchDefaultQueue(job)
+	if pathQueue != nil {
+		patch = append(patch, *pathQueue)
 	}
-
+	pathSpec := mutateSpec(job.Spec.Tasks, "/spec/tasks")
+	if pathSpec != nil {
+		patch = append(patch, *pathSpec)
+	}
 	return json.Marshal(patch)
 }
 
-func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string) (patch []patchOperation) {
+func patchDefaultQueue(job v1alpha1.Job) *patchOperation {
+	//Add default queue if not specified.
+	if job.Spec.Queue == "" {
+		return &patchOperation{Op: "add", Path: "/spec/queue", Value: DefaultQueue}
+	}
+	return nil
+}
+
+func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string) *patchOperation {
+	patched := false
 	for index := range tasks {
 		// add default task name
 		taskName := tasks[index].Name
 		if len(taskName) == 0 {
+			patched = true
 			tasks[index].Name = v1alpha1.DefaultTaskSpec + strconv.Itoa(index)
 		}
 	}
-	patch = append(patch, patchOperation{
+	if !patched {
+		return nil
+	}
+	return &patchOperation{
 		Op:    "replace",
 		Path:  basePath,
 		Value: tasks,
-	})
-
-	return patch
+	}
 }

@@ -17,18 +17,28 @@ limitations under the License.
 package state
 
 import (
+	"k8s.io/api/core/v1"
+
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
-type UpdateStatusFn func(status *vkv1.JobStatus)
+type PhaseMap map[v1.PodPhase]struct{}
+type UpdateStatusFn func(status *vkv1.JobStatus) (jobPhaseChanged bool)
 type ActionFn func(job *apis.JobInfo, fn UpdateStatusFn) error
+type KillActionFn func(job *apis.JobInfo, podRetainPhase PhaseMap, fn UpdateStatusFn) error
+
+var PodRetainPhaseNone = PhaseMap{}
+var PodRetainPhaseSoft = PhaseMap{
+	v1.PodSucceeded: {},
+	v1.PodFailed:    {},
+}
 
 var (
 	// SyncJob will create or delete Pods according to Job's spec.
 	SyncJob ActionFn
-	// KillJob kill all Pods of Job.
-	KillJob ActionFn
+	// KillJob kill all Pods of Job with phase not in podRetainPhase.
+	KillJob KillActionFn
 	// CreateJob will prepare to create Job.
 	CreateJob ActionFn
 )

@@ -31,21 +31,25 @@ import (
 type listFlags struct {
 	commonFlags
 
-	Namespace string
+	Namespace     string
+	SchedulerName string
 }
 
 const (
-	Name       string = "Name"
-	Creation   string = "Creation"
-	Phase      string = "Phase"
-	Replicas   string = "Replicas"
-	Min        string = "Min"
-	Pending    string = "Pending"
-	Running    string = "Running"
-	Succeeded  string = "Succeeded"
-	Failed     string = "Failed"
-	RetryCount string = "RetryCount"
-	JobType    string = "JobType"
+	Name        string = "Name"
+	Creation    string = "Creation"
+	Phase       string = "Phase"
+	Replicas    string = "Replicas"
+	Min         string = "Min"
+	Scheduler   string = "Scheduler"
+	Pending     string = "Pending"
+	Running     string = "Running"
+	Succeeded   string = "Succeeded"
+	Terminating string = "Terminating"
+	Version     string = "Version"
+	Failed      string = "Failed"
+	RetryCount  string = "RetryCount"
+	JobType     string = "JobType"
 )
 
 var listJobFlags = &listFlags{}
@@ -54,6 +58,7 @@ func InitListFlags(cmd *cobra.Command) {
 	initFlags(cmd, &listJobFlags.commonFlags)
 
 	cmd.Flags().StringVarP(&listJobFlags.Namespace, "namespace", "N", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&listJobFlags.SchedulerName, "scheduler", "S", "", "list job with specified scheduler name")
 }
 
 func ListJobs() error {
@@ -86,6 +91,9 @@ func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 	}
 
 	for _, job := range jobs.Items {
+		if listJobFlags.SchedulerName != "" && listJobFlags.SchedulerName != job.Spec.SchedulerName {
+			continue
+		}
 		replicas := int32(0)
 		for _, ts := range job.Spec.Tasks {
 			replicas += ts.Replicas

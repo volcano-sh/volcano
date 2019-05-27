@@ -28,36 +28,36 @@ type pendingState struct {
 func (ps *pendingState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.RestartJobAction:
-		return KillJob(ps.job, func(status *vkv1.JobStatus) {
+		return KillJob(ps.job, PodRetainPhaseNone, func(status *vkv1.JobStatus) bool {
 			phase := vkv1.Pending
 			if status.Terminating != 0 {
 				phase = vkv1.Restarting
 				status.RetryCount++
 			}
-
 			status.State.Phase = phase
+			return true
 		})
 
 	case vkv1.AbortJobAction:
-		return KillJob(ps.job, func(status *vkv1.JobStatus) {
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
 			phase := vkv1.Pending
 			if status.Terminating != 0 {
 				phase = vkv1.Aborting
 			}
-
 			status.State.Phase = phase
+			return true
 		})
 	case vkv1.CompleteJobAction:
-		return KillJob(ps.job, func(status *vkv1.JobStatus) {
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
 			phase := vkv1.Completed
 			if status.Terminating != 0 {
 				phase = vkv1.Completing
 			}
-
 			status.State.Phase = phase
+			return true
 		})
 	case vkv1.EnqueueAction:
-		return SyncJob(ps.job, func(status *vkv1.JobStatus) {
+		return SyncJob(ps.job, func(status *vkv1.JobStatus) bool {
 			phase := vkv1.Inqueue
 
 			if ps.job.Job.Spec.MinAvailable <= status.Running+status.Succeeded+status.Failed {
@@ -65,10 +65,12 @@ func (ps *pendingState) Execute(action vkv1.Action) error {
 			}
 
 			status.State.Phase = phase
+			return true
 		})
 	default:
-		return CreateJob(ps.job, func(status *vkv1.JobStatus) {
+		return CreateJob(ps.job, func(status *vkv1.JobStatus) bool {
 			status.State.Phase = vkv1.Pending
+			return true
 		})
 	}
 }

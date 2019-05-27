@@ -262,6 +262,7 @@ type taskSpec struct {
 	workingDir            string
 	hostport              int32
 	req                   v1.ResourceList
+	limit                 v1.ResourceList
 	affinity              *v1.Affinity
 	labels                map[string]string
 	policies              []vkv1.LifecyclePolicy
@@ -278,6 +279,8 @@ type jobSpec struct {
 	min       int32
 	plugins   map[string][]string
 	volumes   []vkv1.VolumeSpec
+	// ttl seconds after job finished
+	ttl *int32
 }
 
 func getNS(context *context, job *jobSpec) string {
@@ -305,9 +308,10 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 			Namespace: ns,
 		},
 		Spec: vkv1.JobSpec{
-			Policies: jobSpec.policies,
-			Queue:    jobSpec.queue,
-			Plugins:  jobSpec.plugins,
+			Policies:                jobSpec.policies,
+			Queue:                   jobSpec.queue,
+			Plugins:                 jobSpec.plugins,
+			TTLSecondsAfterFinished: jobSpec.ttl,
 		},
 	}
 
@@ -335,7 +339,7 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 				Spec: v1.PodSpec{
 					SchedulerName: "kube-batch",
 					RestartPolicy: restartPolicy,
-					Containers:    createContainers(task.img, task.command, task.workingDir, task.req, task.hostport),
+					Containers:    createContainers(task.img, task.command, task.workingDir, task.req, task.limit, task.hostport),
 					Affinity:      task.affinity,
 				},
 			},
@@ -594,13 +598,14 @@ func waitQueueStatus(condition func() (bool, error)) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, condition)
 }
 
-func createContainers(img, command, workingDir string, req v1.ResourceList, hostport int32) []v1.Container {
+func createContainers(img, command, workingDir string, req, limit v1.ResourceList, hostport int32) []v1.Container {
 	var imageRepo []string
 	container := v1.Container{
 		Image:           img,
 		ImagePullPolicy: v1.PullIfNotPresent,
 		Resources: v1.ResourceRequirements{
 			Requests: req,
+			Limits:   limit,
 		},
 	}
 	if strings.Index(img, ":") < 0 {
@@ -670,6 +675,35 @@ func createReplicaSet(context *context, name string, rep int32, img string, req 
 	Expect(err).NotTo(HaveOccurred())
 
 	return deployment
+}
+
+func waitJobCleanedUp(ctx *context, job *vkv1.Job) error {
+	var additionalError error
+	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+		job, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
+		if err != nil && !errors.IsNotFound(err) {
+			return false, nil
+		}
+		if job != nil {
+			additionalError = fmt.Errorf("job %s/%s still exist", job.Namespace, job.Name)
+			return false, nil
+		}
+
+		pg, err := ctx.kbclient.SchedulingV1alpha1().PodGroups(job.Namespace).Get(job.Name, metav1.GetOptions{})
+		if err != nil && !errors.IsNotFound(err) {
+			return false, nil
+		}
+		if pg != nil {
+			additionalError = fmt.Errorf("pdgroup %s/%s still exist", job.Namespace, job.Name)
+			return false, nil
+		}
+
+		return true, nil
+	})
+	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
+		return fmt.Errorf("[Wait time out]: %s", additionalError)
+	}
+	return err
 }
 
 func deleteReplicaSet(ctx *context, name string) error {

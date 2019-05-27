@@ -19,6 +19,7 @@ package e2e
 import (
 	"bytes"
 	"fmt"
+	v1 "k8s.io/api/core/v1"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -151,5 +152,62 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		_, err = context.kubeclient.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
 		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 			"Job related pod should be deleted when job aborted.")
+	})
+
+	It("delete a job with all nodes taints", func() {
+
+		jobName := "test-del-job"
+		namespace := "test"
+		context := initTestContext()
+		defer cleanupTestContext(context)
+		rep := clusterSize(context, oneCPU)
+
+		taints := []v1.Taint{
+			{
+				Key:    "test-taint-key",
+				Value:  "test-taint-val",
+				Effect: v1.TaintEffectNoSchedule,
+			},
+		}
+
+		err := taintAllNodes(context, taints)
+		Expect(err).NotTo(HaveOccurred())
+
+		job := createJob(context, &jobSpec{
+			namespace: namespace,
+			name:      jobName,
+			tasks: []taskSpec{
+				{
+					img: defaultNginxImage,
+					req: oneCPU,
+					min: rep,
+					rep: rep,
+				},
+			},
+		})
+
+		err = waitJobPending(context, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = removeTaintsFromAllNodes(context, taints)
+		Expect(err).NotTo(HaveOccurred())
+
+		// Pod is running
+		err = waitJobReady(context, job)
+		Expect(err).NotTo(HaveOccurred())
+		// Job Status is running
+		err = waitJobStateReady(context, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = context.vkclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		// Delete job
+		DeleteJob(jobName, namespace)
+
+		_, err = context.vkclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
+		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
+			"Job should be deleted on vkctl job delete.")
+
 	})
 })

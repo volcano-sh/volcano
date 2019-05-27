@@ -32,6 +32,16 @@ func buildJobCmd() *cobra.Command {
 	job.InitListFlags(jobListCmd)
 	jobCmd.AddCommand(jobListCmd)
 
+	jobViewCmd := &cobra.Command{
+		Use:   "view",
+		Short: "show job information",
+		Run: func(cmd *cobra.Command, args []string) {
+			checkError(cmd, job.ViewJob())
+		},
+	}
+	job.InitViewFlags(jobViewCmd)
+	jobCmd.AddCommand(jobViewCmd)
+
 	jobSuspendCmd := &cobra.Command{
 		Use:   "suspend",
 		Short: "abort a job",
@@ -51,6 +61,16 @@ func buildJobCmd() *cobra.Command {
 	}
 	job.InitResumeFlags(jobResumeCmd)
 	jobCmd.AddCommand(jobResumeCmd)
+
+	jobDelCmd := &cobra.Command{
+		Use:   "delete",
+		Short: "delete a job ",
+		Run: func(cmd *cobra.Command, args []string) {
+			checkError(cmd, job.DeleteJob())
+		},
+	}
+	job.InitDeleteFlags(jobDelCmd)
+	jobCmd.AddCommand(jobDelCmd)
 
 	return jobCmd
 }

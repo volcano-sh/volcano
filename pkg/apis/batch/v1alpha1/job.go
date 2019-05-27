@@ -70,6 +70,19 @@ type JobSpec struct {
 	// Defaults to 3.
 	// +optional
 	MaxRetry int32 `json:"maxRetry,omitempty" protobuf:"bytes,8,opt,name=maxRetry"`
+
+	// ttlSecondsAfterFinished limits the lifetime of a Job that has finished
+	// execution (either Completed or Failed). If this field is set,
+	// ttlSecondsAfterFinished after the Job finishes, it is eligible to be
+	// automatically deleted. If this field is unset,
+	// the Job won't be automatically deleted. If this field is set to zero,
+	// the Job becomes eligible to be deleted immediately after it finishes.
+	// +optional
+	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" protobuf:"varint,9,opt,name=ttlSecondsAfterFinished"`
+
+	// If specified, indicates the job's priority.
+	// +optional
+	PriorityClassName string `json:"priorityClassName,omitempty" protobuf:"bytes,10,opt,name=priorityClassName"`
 }
 
 // VolumeSpec defines the specification of Volume, e.g. PVC
@@ -225,6 +238,10 @@ type JobState struct {
 	// Human-readable message indicating details about last transition.
 	// +optional
 	Message string `json:"message,omitempty" protobuf:"bytes,3,opt,name=message"`
+
+	// Last time the condition transit from one phase to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,4,opt,name=lastTransitionTime"`
 }
 
 // JobStatus represents the current status of a Job
