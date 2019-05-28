@@ -66,6 +66,11 @@ func (ssn *Session) AddNodeOrderFn(name string, pf api.NodeOrderFn) {
 	ssn.nodeOrderFns[name] = pf
 }
 
+// AddBatchNodeOrderFn add Batch Node order function
+func (ssn *Session) AddBatchNodeOrderFn(name string, pf api.BatchNodeOrderFn) {
+	ssn.batchNodeOrderFns[name] = pf
+}
+
 // AddNodeMapFn add Node map function
 func (ssn *Session) AddNodeMapFn(name string, pf api.NodeMapFn) {
 	ssn.nodeMapFns[name] = pf
@@ -401,6 +406,30 @@ func (ssn *Session) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo) (float64
 			}
 			priorityScore = priorityScore + score
 
+		}
+	}
+	return priorityScore, nil
+}
+
+// BatchNodeOrderFn invoke node order function of the plugins
+func (ssn *Session) BatchNodeOrderFn(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
+	priorityScore := make(map[string]float64, len(nodes))
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledNodeOrder) {
+				continue
+			}
+			pfn, found := ssn.batchNodeOrderFns[plugin.Name]
+			if !found {
+				continue
+			}
+			score, err := pfn(task, nodes)
+			if err != nil {
+				return nil, err
+			}
+			for nodeName, score := range score {
+				priorityScore[nodeName] += score
+			}
 		}
 	}
 	return priorityScore, nil
