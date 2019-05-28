@@ -147,6 +147,31 @@ type defaultStatusUpdater struct {
 	kbclient   *kbver.Clientset
 }
 
+// following the same logic as podutil.UpdatePodCondition
+func podConditionHaveUpdate(status *v1.PodStatus, condition *v1.PodCondition) bool {
+	lastTransitionTime := metav1.Now()
+	// Try to find this pod condition.
+	_, oldCondition := podutil.GetPodCondition(status, condition.Type)
+
+	if oldCondition == nil {
+		// We are adding new pod condition.
+		return true
+	}
+	// We are updating an existing condition, so we need to check if it has changed.
+	if condition.Status == oldCondition.Status {
+		lastTransitionTime = oldCondition.LastTransitionTime
+	}
+
+	isEqual := condition.Status == oldCondition.Status &&
+		condition.Reason == oldCondition.Reason &&
+		condition.Message == oldCondition.Message &&
+		condition.LastProbeTime.Equal(&oldCondition.LastProbeTime) &&
+		lastTransitionTime.Equal(&oldCondition.LastTransitionTime)
+
+	// Return true if one of the fields have changed.
+	return !isEqual
+}
+
 // UpdatePodCondition will Update pod with podCondition
 func (su *defaultStatusUpdater) UpdatePodCondition(pod *v1.Pod, condition *v1.PodCondition) (*v1.Pod, error) {
 	glog.V(3).Infof("Updating pod condition for %s/%s to (%s==%s)", pod.Namespace, pod.Name, condition.Type, condition.Status)
@@ -460,19 +485,27 @@ func (sc *SchedulerCache) BindVolumes(task *api.TaskInfo) error {
 
 // taskUnschedulable updates pod status of pending task
 func (sc *SchedulerCache) taskUnschedulable(task *api.TaskInfo, message string) error {
-	pod := task.Pod.DeepCopy()
+	pod := task.Pod
 
-	// The reason field in 'Events' should be "FailedScheduling", there is not constants defined for this in
-	// k8s core, so using the same string here.
-	// The reason field in PodCondition should be "Unschedulable"
-	sc.Recorder.Eventf(pod, v1.EventTypeWarning, "FailedScheduling", message)
-	if _, err := sc.StatusUpdater.UpdatePodCondition(pod, &v1.PodCondition{
+	condition := &v1.PodCondition{
 		Type:    v1.PodScheduled,
 		Status:  v1.ConditionFalse,
 		Reason:  v1.PodReasonUnschedulable,
 		Message: message,
-	}); err != nil {
-		return err
+	}
+
+	if podConditionHaveUpdate(&pod.Status, condition) {
+		pod = pod.DeepCopy()
+
+		// The reason field in 'Events' should be "FailedScheduling", there is not constants defined for this in
+		// k8s core, so using the same string here.
+		// The reason field in PodCondition should be "Unschedulable"
+		sc.Recorder.Eventf(pod, v1.EventTypeWarning, "FailedScheduling", message)
+		if _, err := sc.StatusUpdater.UpdatePodCondition(pod, condition); err != nil {
+			return err
+		}
+	} else {
+		glog.V(4).Infof("task unscheduleable %s/%s, message: %s, skip by no condition update", pod.Namespace, pod.Name, message)
 	}
 
 	return nil
@@ -557,6 +590,30 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 		snapshot.Queues[value.UID] = value.Clone()
 	}
 
+	var cloneJobLock sync.Mutex
+	var wg sync.WaitGroup
+
+	cloneJob := func(value *api.JobInfo) {
+		if value.PodGroup != nil {
+			value.Priority = sc.defaultPriority
+
+			priName := value.PodGroup.Spec.PriorityClassName
+			if priorityClass, found := sc.PriorityClasses[priName]; found {
+				value.Priority = priorityClass.Value
+			}
+
+			glog.V(4).Infof("The priority of job <%s/%s> is <%s/%d>",
+				value.Namespace, value.Name, priName, value.Priority)
+		}
+
+		clonedJob := value.Clone()
+
+		cloneJobLock.Lock()
+		snapshot.Jobs[value.UID] = clonedJob
+		cloneJobLock.Unlock()
+		wg.Done()
+	}
+
 	for _, value := range sc.Jobs {
 		// If no scheduling spec, does not handle it.
 		if value.PodGroup == nil && value.PDB == nil {
@@ -572,20 +629,10 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 			continue
 		}
 
-		if value.PodGroup != nil {
-			value.Priority = sc.defaultPriority
-
-			priName := value.PodGroup.Spec.PriorityClassName
-			if priorityClass, found := sc.PriorityClasses[priName]; found {
-				value.Priority = priorityClass.Value
-			}
-
-			glog.V(4).Infof("The priority of job <%s/%s> is <%s/%d>",
-				value.Namespace, value.Name, priName, value.Priority)
-		}
-
-		snapshot.Jobs[value.UID] = value.Clone()
+		wg.Add(1)
+		go cloneJob(value)
 	}
+	wg.Wait()
 
 	glog.V(3).Infof("There are <%d> Jobs, <%d> Queues and <%d> Nodes in total for scheduling.",
 		len(snapshot.Jobs), len(snapshot.Queues), len(snapshot.Nodes))

@@ -186,8 +186,6 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-		var interPodAffinityScore schedulerapi.HostPriorityList
-
 		nodeInfo, found := nodeMap[node.Name]
 		if !found {
 			nodeInfo = cache.NewNodeInfo(node.Pods()...)
@@ -223,20 +221,30 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		// If nodeAffinityWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
 		score = score + float64(host.Score*weight.nodeAffinityWeight)
 
-		mapFn := priorities.NewInterPodAffinityPriority(cn, nl, pl, v1.DefaultHardPodAffinitySymmetricWeight)
-		interPodAffinityScore, err = mapFn(task.Pod, nodeMap, nodeSlice)
-		if err != nil {
-			glog.Warningf("Calculate Inter Pod Affinity Priority Failed because of Error: %v", err)
-			return 0, err
-		}
-		hostScore := getInterPodAffinityScore(node.Name, interPodAffinityScore)
-		// If podAffinityWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		score = score + float64(hostScore*weight.podAffinityWeight)
-
-		glog.V(4).Infof("Total Score for that node is: %d", score)
+		glog.V(4).Infof("Total Score for task %s/%s on node %s is: %f", task.Namespace, task.Name, node.Name, score)
 		return score, nil
 	}
 	ssn.AddNodeOrderFn(pp.Name(), nodeOrderFn)
+
+	batchNodeOrderFn := func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
+		var interPodAffinityScore schedulerapi.HostPriorityList
+
+		mapFn := priorities.NewInterPodAffinityPriority(cn, nl, pl, v1.DefaultHardPodAffinitySymmetricWeight)
+		interPodAffinityScore, err := mapFn(task.Pod, nodeMap, nodeSlice)
+		if err != nil {
+			glog.Warningf("Calculate Inter Pod Affinity Priority Failed because of Error: %v", err)
+			return nil, err
+		}
+
+		score := make(map[string]float64, len(interPodAffinityScore))
+		for _, host := range interPodAffinityScore {
+			score[host.Host] = float64(host.Score) * float64(weight.podAffinityWeight)
+		}
+
+		glog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, score)
+		return score, nil
+	}
+	ssn.AddBatchNodeOrderFn(pp.Name(), batchNodeOrderFn)
 }
 
 func (pp *nodeOrderPlugin) OnSessionClose(ssn *framework.Session) {

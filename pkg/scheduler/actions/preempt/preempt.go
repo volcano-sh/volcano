@@ -190,7 +190,7 @@ func preempt(
 
 	predicateNodes := util.PredicateNodes(preemptor, allNodes, ssn.PredicateFn)
 
-	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
+	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 
 	selectedNodes := util.SortNodes(nodeScores)
 	for _, node := range selectedNodes {
