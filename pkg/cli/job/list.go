@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-
+	"strings"
 	"github.com/spf13/cobra"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,6 +34,8 @@ type listFlags struct {
 
 	Namespace     string
 	SchedulerName string
+	allNamespace bool
+	selector string
 }
 
 const (
@@ -76,6 +78,8 @@ func InitListFlags(cmd *cobra.Command) {
 
 	cmd.Flags().StringVarP(&listJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
 	cmd.Flags().StringVarP(&listJobFlags.SchedulerName, "scheduler", "S", "", "list job with specified scheduler name")
+	cmd.Flags().BoolVarP(&listJobFlags.allNamespace, "all-namespaces", "", false, "list jobs in all namespaces")
+	cmd.Flags().StringVarP(&listJobFlags.selector, "selector", "", "", "fuzzy matching jobName")
 }
 
 // ListJobs  lists all jobs details
@@ -84,7 +88,9 @@ func ListJobs() error {
 	if err != nil {
 		return err
 	}
-
+	if listJobFlags.allNamespace {
+		listJobFlags.Namespace = ""
+	}
 	jobClient := versioned.NewForConfigOrDie(config)
 	jobs, err := jobClient.BatchV1alpha1().Jobs(listJobFlags.Namespace).List(metav1.ListOptions{})
 	if err != nil {
@@ -111,6 +117,9 @@ func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 
 	for _, job := range jobs.Items {
 		if listJobFlags.SchedulerName != "" && listJobFlags.SchedulerName != job.Spec.SchedulerName {
+			continue
+		}
+		if !strings.Contains(job.Name, listJobFlags.selector) {
 			continue
 		}
 		replicas := int32(0)
