@@ -99,17 +99,9 @@ kubernetes API server.
 #1. Install helm plugin
 helm plugin install installer/chart/plugins/gen-admission-secret
 
-#2. Generate secret within service name
-helm gen-admission-secret --service <specified-name>-admission-service --namespace <namespace>
-
-## For eg: 
-kubectl create namespace volcano-trial
-
-helm gen-admission-secret --service volcano-trial-admission-service --namespace volcano-trial
-
 ```
 
-Finally, install helm chart.
+Secondly, install helm chart.
 
 ```
 helm install installer/chart --namespace <namespace> --name <specified-name>
@@ -118,9 +110,6 @@ For eg :
 helm install installer/chart --namespace volcano-trial --name volcano-trial
 
 ```
-
-**NOTE**:The ```<specified-name>``` used in the two commands above should be identical.
-
 
 To Verify your installation run the following commands:
 
