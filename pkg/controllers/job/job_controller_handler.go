@@ -153,6 +153,11 @@ func (cc *Controller) addPod(obj interface{}) {
 		return
 	}
 
+	if pod.DeletionTimestamp != nil {
+		cc.deletePod(pod)
+		return
+	}
+
 	req := apis.Request{
 		Namespace: pod.Namespace,
 		JobName:   jobName,
@@ -206,6 +211,15 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 	if err != nil {
 		glog.Infof("Failed to convert jobVersion of Pod into number <%s/%s>, skipping",
 			newPod.Namespace, newPod.Name)
+		return
+	}
+
+	if newPod.ResourceVersion == oldPod.ResourceVersion {
+		return
+	}
+
+	if newPod.DeletionTimestamp != nil {
+		cc.deletePod(newObj)
 		return
 	}
 
