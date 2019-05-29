@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 #TODO: this file is used for release, should not place it here
 set -e
 
@@ -41,16 +41,19 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-if [ -z ${service} ]; then
+if [[ -z ${service} ]]; then
     echo "'--service' must be specified"
     exit 1
 fi
 
+if [[ -z ${secret} ]]; then
+    echo "'--secret' must be specified"
+    exit 1
+fi
 
-[ -z ${secret} ] && secret=volcano-admission-secret
-[ -z ${namespace} ] && namespace=default
+[[ -z ${namespace} ]] && namespace=default
 
-if [ ! -x "$(command -v openssl)" ]; then
+if [[ ! -x "$(command -v openssl)" ]]; then
     echo "openssl not found"
     exit 1
 fi
