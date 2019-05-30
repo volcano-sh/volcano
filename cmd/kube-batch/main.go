@@ -36,6 +36,9 @@ import (
 	// Import default actions/plugins.
 	_ "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions"
 	_ "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins"
+
+	// init assert
+	_ "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/util/assert"
 )
 
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
