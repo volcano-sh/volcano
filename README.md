@@ -9,10 +9,8 @@
 [![LICENSE](https://img.shields.io/github/license/volcano-sh/volcano.svg)](https://github.com/volcano-sh/volcano/blob/master/LICENSE)
 
 
-Volcano is system for runnning high performance workloads on
-Kubernetes.  It provides a suite of mechanisms currently missing from
-Kubernetes that are commonly required by many classes of high
-performance workload including:
+Volcano is a batch system built on Kubernetes. It provides a suite of mechanisms currently missing from
+Kubernetes that are commonly required by many classes of batch & elastic workload including:
 
 1. machine learning/deep learning,
 2. bioinformatics/genomics, and 
