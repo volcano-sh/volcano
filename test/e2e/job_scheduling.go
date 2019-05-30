@@ -146,80 +146,80 @@ var _ = Describe("Job E2E Test", func() {
 		err = waitJobReady(context, job1)
 		Expect(err).NotTo(HaveOccurred())
 	})
+	/*
+		It("Preemption", func() {
+			context := initTestContext()
+			defer cleanupTestContext(context)
 
-	It("Preemption", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
+			slot := oneCPU
+			rep := clusterSize(context, slot)
 
-		slot := oneCPU
-		rep := clusterSize(context, slot)
-
-		job := &jobSpec{
-			tasks: []taskSpec{
-				{
-					img: defaultNginxImage,
-					req: slot,
-					min: 1,
-					rep: rep,
+			job := &jobSpec{
+				tasks: []taskSpec{
+					{
+						img: defaultNginxImage,
+						req: slot,
+						min: 1,
+						rep: rep,
+					},
 				},
-			},
-		}
+			}
 
-		job.name = "preemptee-qj"
-		job1 := createJob(context, job)
-		err := waitTasksReady(context, job1, int(rep))
-		Expect(err).NotTo(HaveOccurred())
+			job.name = "preemptee-qj"
+			job1 := createJob(context, job)
+			err := waitTasksReady(context, job1, int(rep))
+			Expect(err).NotTo(HaveOccurred())
 
-		job.name = "preemptor-qj"
-		job2 := createJob(context, job)
-		err = waitTasksReady(context, job1, int(rep)/2)
-		Expect(err).NotTo(HaveOccurred())
+			job.name = "preemptor-qj"
+			job2 := createJob(context, job)
+			err = waitTasksReady(context, job1, int(rep)/2)
+			Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReady(context, job2, int(rep)/2)
-		Expect(err).NotTo(HaveOccurred())
-	})
+			err = waitTasksReady(context, job2, int(rep)/2)
+			Expect(err).NotTo(HaveOccurred())
+		})
 
-	It("Multiple Preemption", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		It("Multiple Preemption", func() {
+			context := initTestContext()
+			defer cleanupTestContext(context)
 
-		slot := oneCPU
-		rep := clusterSize(context, slot)
+			slot := oneCPU
+			rep := clusterSize(context, slot)
 
-		job := &jobSpec{
-			tasks: []taskSpec{
-				{
-					img: defaultNginxImage,
-					req: slot,
-					min: 1,
-					rep: rep,
+			job := &jobSpec{
+				tasks: []taskSpec{
+					{
+						img: defaultNginxImage,
+						req: slot,
+						min: 1,
+						rep: rep,
+					},
 				},
-			},
-		}
+			}
 
-		job.name = "multipreemptee-qj"
-		job1 := createJob(context, job)
-		err := waitTasksReady(context, job1, int(rep))
-		Expect(err).NotTo(HaveOccurred())
+			job.name = "multipreemptee-qj"
+			job1 := createJob(context, job)
+			err := waitTasksReady(context, job1, int(rep))
+			Expect(err).NotTo(HaveOccurred())
 
-		job.name = "multipreemptor-qj1"
-		job2 := createJob(context, job)
-		Expect(err).NotTo(HaveOccurred())
+			job.name = "multipreemptor-qj1"
+			job2 := createJob(context, job)
+			Expect(err).NotTo(HaveOccurred())
 
-		job.name = "multipreemptor-qj2"
-		job3 := createJob(context, job)
-		Expect(err).NotTo(HaveOccurred())
+			job.name = "multipreemptor-qj2"
+			job3 := createJob(context, job)
+			Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReady(context, job1, int(rep)/3)
-		Expect(err).NotTo(HaveOccurred())
+			err = waitTasksReady(context, job1, int(rep)/3)
+			Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReady(context, job2, int(rep)/3)
-		Expect(err).NotTo(HaveOccurred())
+			err = waitTasksReady(context, job2, int(rep)/3)
+			Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReady(context, job3, int(rep)/3)
-		Expect(err).NotTo(HaveOccurred())
-	})
-
+			err = waitTasksReady(context, job3, int(rep)/3)
+			Expect(err).NotTo(HaveOccurred())
+		})
+	*/
 	It("Schedule BestEffort Job", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
