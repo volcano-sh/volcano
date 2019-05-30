@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
+	"k8s.io/kubernetes/pkg/apis/core/validation"
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vcver "volcano.sh/volcano/pkg/client/clientset/versioned"
 )
@@ -240,6 +241,14 @@ func ValidateIO(volumes []v1alpha1.VolumeSpec) (string, bool) {
 		}
 		if _, found := volumeMap[volume.MountPath]; found {
 			return fmt.Sprintf(" duplicated mountPath: %s;", volume.MountPath), true
+		}
+		if len(volume.VolumeClaimName) != 0 {
+			if volume.VolumeClaim != nil {
+				return fmt.Sprintf("Confilct: If you want to use an existing PVC, just specify VolumeClaimName. If you want to create a new PVC, you do not need to specify VolumeClaimName."), true
+			}
+			if errMsgs := validation.ValidatePersistentVolumeName(volume.VolumeClaimName, false); len(errMsgs) > 0 {
+				return fmt.Sprintf("Illegal VolumeClaimName %s : %v", volume.VolumeClaimName, errMsgs), true
+			}
 		}
 		volumeMap[volume.MountPath] = true
 	}

@@ -59,32 +59,35 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 		pod.Spec.SchedulerName = job.Spec.SchedulerName
 	}
 
-	volumeMap := make(map[string]bool)
+	volumeMap := make(map[string]string)
 	for _, volume := range job.Spec.Volumes {
 		vcName := volume.VolumeClaimName
+		name := fmt.Sprintf("%s-%s", job.Name, vkjobhelpers.GenRandomStr(12))
 		if _, ok := volumeMap[vcName]; !ok {
-			if _, ok := job.Status.ControlledResources["volume-emptyDir-"+vcName]; ok && volume.VolumeClaim == nil {
+			if _, ok := job.Status.ControlledResources["volume-emptyDir-"+vcName]; ok {
 				volume := v1.Volume{
-					Name: vcName,
+					Name: name,
 				}
 				volume.EmptyDir = &v1.EmptyDirVolumeSource{}
 				pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
 			} else {
 				volume := v1.Volume{
-					Name: vcName,
+					Name: name,
 				}
 				volume.PersistentVolumeClaim = &v1.PersistentVolumeClaimVolumeSource{
 					ClaimName: vcName,
 				}
 				pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
 			}
-			volumeMap[vcName] = true
+			volumeMap[vcName] = name
+		} else {
+			name = volumeMap[vcName]
 		}
 
 		for i, c := range pod.Spec.Containers {
 			vm := v1.VolumeMount{
 				MountPath: volume.MountPath,
-				Name:      vcName,
+				Name:      name,
 			}
 			pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
 		}
