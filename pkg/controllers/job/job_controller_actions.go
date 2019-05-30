@@ -72,6 +72,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 				}
 				// record the err, and then collect the pod info like retained pod
 				errs = append(errs, err)
+				cc.resyncTask(pod)
 			}
 
 			switch pod.Status.Phase {
@@ -271,6 +272,11 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 					pod.Name, job.Name, err)
 				creationErrs = append(creationErrs, err)
 			} else {
+				if err != nil && apierrors.IsAlreadyExists(err) {
+					cc.resyncTask(pod)
+				}
+
+				// TODO: maybe not pending status, maybe unknown.
 				pending++
 				glog.V(3).Infof("Created Task <%s> of Job <%s/%s>",
 					pod.Name, job.Namespace, job.Name)
@@ -298,6 +304,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 				glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
 					pod.Name, job.Name, err)
 				deletionErrs = append(deletionErrs, err)
+				cc.resyncTask(pod)
 			} else {
 				glog.V(3).Infof("Deleted Task <%s> of Job <%s/%s>",
 					pod.Name, job.Namespace, job.Name)
