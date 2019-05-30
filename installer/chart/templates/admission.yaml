@@ -29,6 +29,9 @@ rules:
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["create", "get", "patch"]
+  - apiGroups: ["scheduling.incubator.k8s.io"]
+    resources: ["queues"]
+    verbs: ["get", "list"]
 
 ---
 kind: ClusterRoleBinding

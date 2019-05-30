@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
+	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 
 	"k8s.io/api/admission/v1beta1"
 	"k8s.io/api/core/v1"
@@ -34,6 +35,9 @@ import (
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
 )
+
+//KubeBatchClientSet is kube-batch clientset
+var KubeBatchClientSet versioned.Interface
 
 // job admit.
 func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
@@ -144,6 +148,11 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 
 	if validateInfo, ok := ValidateIO(job.Spec.Volumes); ok {
 		msg = msg + validateInfo
+	}
+
+	// Check whether Queue already present or not
+	if _, err := KubeBatchClientSet.SchedulingV1alpha1().Queues().Get(job.Spec.Queue, metav1.GetOptions{}); err != nil {
+		msg = msg + fmt.Sprintf("Job not created with error: %v", err)
 	}
 
 	if msg != "" {
