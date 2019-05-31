@@ -65,6 +65,8 @@ func main() {
 
 	clientset := app.GetClient(restConfig)
 
+	admissioncontroller.KubeBatchClientSet = app.GetKubeBatchClient(restConfig)
+
 	caCertPem, err := ioutil.ReadFile(config.CaCertFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)

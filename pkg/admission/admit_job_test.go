@@ -20,10 +20,13 @@ import (
 	"strings"
 	"testing"
 
+	kubebatchclient "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/fake"
+
 	"k8s.io/api/admission/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	kbv1aplha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
@@ -48,6 +51,7 @@ func TestValidateExecution(t *testing.T) {
 				},
 				Spec: v1alpha1.JobSpec{
 					MinAvailable: 1,
+					Queue:        "default",
 					Tasks: []v1alpha1.TaskSpec{
 						{
 							Name:     "task-1",
@@ -83,6 +87,7 @@ func TestValidateExecution(t *testing.T) {
 				},
 				Spec: v1alpha1.JobSpec{
 					MinAvailable: 1,
+					Queue:        "default",
 					Tasks: []v1alpha1.TaskSpec{
 						{
 							Name:     "duplicated-task-1",
@@ -135,6 +140,7 @@ func TestValidateExecution(t *testing.T) {
 				},
 				Spec: v1alpha1.JobSpec{
 					MinAvailable: 1,
+					Queue:        "default",
 					Tasks: []v1alpha1.TaskSpec{
 						{
 							Name:     "task-1",
@@ -180,6 +186,7 @@ func TestValidateExecution(t *testing.T) {
 				},
 				Spec: v1alpha1.JobSpec{
 					MinAvailable: 2,
+					Queue:        "default",
 					Tasks: []v1alpha1.TaskSpec{
 						{
 							Name:     "task-1",
@@ -215,6 +222,7 @@ func TestValidateExecution(t *testing.T) {
 				},
 				Spec: v1alpha1.JobSpec{
 					MinAvailable: 1,
+					Queue:        "default",
 					Tasks: []v1alpha1.TaskSpec{
 						{
 							Name:     "task-1",
@@ -253,6 +261,7 @@ func TestValidateExecution(t *testing.T) {
 				},
 				Spec: v1alpha1.JobSpec{
 					MinAvailable: 1,
+					Queue:        "default",
 					Tasks: []v1alpha1.TaskSpec{
 						{
 							Name:     "task-1",
@@ -282,6 +291,23 @@ func TestValidateExecution(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
+
+		defaultqueue := kbv1aplha1.Queue{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "default",
+			},
+			Spec: kbv1aplha1.QueueSpec{
+				Weight: 1,
+			},
+		}
+		// create fake kube-batch clientset
+		KubeBatchClientSet = kubebatchclient.NewSimpleClientset()
+
+		//create default queue
+		_, err := KubeBatchClientSet.SchedulingV1alpha1().Queues().Create(&defaultqueue)
+		if err != nil {
+			t.Error("Queue Creation Failed")
+		}
 
 		ret := validateJob(testCase.Job, &testCase.reviewResponse)
 		//fmt.Printf("test-case name:%s, ret:%v  testCase.reviewResponse:%v \n", testCase.Name, ret,testCase.reviewResponse)
