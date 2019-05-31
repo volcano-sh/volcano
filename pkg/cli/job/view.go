@@ -230,7 +230,7 @@ func GetEvents(config *rest.Config, job *v1alpha1.Job) []coreV1.Event {
 	events, _ := kubernetes.CoreV1().Events(viewJobFlags.Namespace).List(metav1.ListOptions{})
 	var jobEvents  []coreV1.Event
 	for _, v := range events.Items {
-		if strings.HasPrefix(v.ObjectMeta.Name,job.Name) {
+		if strings.HasPrefix(v.ObjectMeta.Name, job.Name + ".") {
 			jobEvents = append(jobEvents, v)
 		}
 	}
