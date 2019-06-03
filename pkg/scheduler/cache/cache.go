@@ -209,6 +209,19 @@ func (dvb *defaultVolumeBinder) BindVolumes(task *api.TaskInfo) error {
 }
 
 func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue string) *SchedulerCache {
+	kubeClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
+	}
+	kbClient, err := kbver.NewForConfig(config)
+	if err != nil {
+		panic(fmt.Sprintf("failed init kbClient, with err: %v", err))
+	}
+	eventClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(fmt.Sprintf("failed init eventClient, with err: %v", err))
+	}
+
 	sc := &SchedulerCache{
 		Jobs:            make(map[kbapi.JobID]*kbapi.JobInfo),
 		Nodes:           make(map[string]*kbapi.NodeInfo),
@@ -216,15 +229,15 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		PriorityClasses: make(map[string]*v1beta1.PriorityClass),
 		errTasks:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		deletedJobs:     workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		kubeclient:      kubernetes.NewForConfigOrDie(config),
-		kbclient:        kbver.NewForConfigOrDie(config),
+		kubeclient:      kubeClient,
+		kbclient:        kbClient,
 		defaultQueue:    defaultQueue,
 		schedulerName:   schedulerName,
 	}
 
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
-	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: sc.kubeclient.CoreV1().Events("")})
+	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: eventClient.CoreV1().Events("")})
 	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: schedulerName})
 
 	sc.Binder = &defaultBinder{
