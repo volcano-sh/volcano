@@ -18,7 +18,6 @@ package cache
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -250,10 +249,12 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 				switch obj.(type) {
 				case *v1.Pod:
 					pod := obj.(*v1.Pod)
-					if strings.Compare(pod.Spec.SchedulerName, schedulerName) == 0 && pod.Status.Phase == v1.PodPending {
-						return true
+					if !responsibleForPod(pod, schedulerName) {
+						if len(pod.Spec.NodeName) == 0 {
+							return false
+						}
 					}
-					return pod.Status.Phase != v1.PodPending
+					return true
 				default:
 					return false
 				}
