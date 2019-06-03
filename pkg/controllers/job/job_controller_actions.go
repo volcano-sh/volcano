@@ -26,6 +26,7 @@ import (
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8scontroller "k8s.io/kubernetes/pkg/controller"
 
 	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -90,6 +91,8 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 
 	if len(errs) != 0 {
 		glog.Errorf("failed to kill pods for job %s/%s, with err %+v", job.Namespace, job.Name, errs)
+		cc.recorder.Event(job, v1.EventTypeWarning, k8scontroller.FailedDeletePodReason,
+			fmt.Sprintf("Error deleting pods: %+v", errs))
 		return fmt.Errorf("failed to kill %d pods of %d", len(errs), total)
 	}
 
@@ -276,7 +279,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 				// So gang-scheduling could schedule the Job successfully
 				glog.Errorf("Failed to create pod %s for Job %s, err %#v",
 					pod.Name, job.Name, err)
-				creationErrs = append(creationErrs, err)
+				creationErrs = append(creationErrs, fmt.Errorf("failed to create pod %s, err: %#v", pod.Name, err))
 			} else {
 				if err != nil && apierrors.IsAlreadyExists(err) {
 					cc.resyncTask(pod)
@@ -292,6 +295,8 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	waitCreationGroup.Wait()
 
 	if len(creationErrs) != 0 {
+		cc.recorder.Event(job, v1.EventTypeWarning, k8scontroller.FailedCreatePodReason,
+			fmt.Sprintf("Error creating pods: %+v", creationErrs))
 		return fmt.Errorf("failed to create %d pods of %d", len(creationErrs), len(podToCreate))
 	}
 
@@ -321,6 +326,8 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	waitDeletionGroup.Wait()
 
 	if len(deletionErrs) != 0 {
+		cc.recorder.Event(job, v1.EventTypeWarning, k8scontroller.FailedDeletePodReason,
+			fmt.Sprintf("Error deleting pods: %+v", deletionErrs))
 		return fmt.Errorf("failed to delete %d pods of %d", len(deletionErrs), len(podToDelete))
 	}
 
@@ -490,7 +497,7 @@ func (cc *Controller) deleteJobPod(jobName string, pod *v1.Pod) error {
 		glog.Errorf("Failed to delete pod %s/%s for Job %s, err %#v",
 			pod.Namespace, pod.Name, jobName, err)
 
-		return err
+		return fmt.Errorf("failed to delete pod %s, err %#v", pod.Name, err)
 	}
 
 	return nil
