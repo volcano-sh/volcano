@@ -79,9 +79,9 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 	taskNames := map[string]string{}
 	var totalReplicas int32
 
-	if job.Spec.MinAvailable < 0 {
+	if job.Spec.MinAvailable <= 0 {
 		reviewResponse.Allowed = false
-		return fmt.Sprintf("'minAvailable' cannot be less than zero.")
+		return fmt.Sprintf("'minAvailable' must be greater than zero.")
 	}
 
 	if job.Spec.MaxRetry < 0 {
