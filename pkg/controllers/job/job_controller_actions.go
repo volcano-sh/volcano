@@ -491,6 +491,9 @@ func (cc *Controller) deleteJobPod(jobName string, pod *v1.Pod) error {
 }
 
 func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
+	cc.Mutex.Lock()
+	defer cc.Mutex.Unlock()
+
 	// sort task by priorityClasses
 	var tasksPriority TasksPriority
 	for index := range job.Spec.Tasks {
