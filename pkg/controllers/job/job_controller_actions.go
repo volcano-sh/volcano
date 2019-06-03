@@ -154,6 +154,12 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.Update
 	job := jobInfo.Job.DeepCopy()
 	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 
+	if err := cc.initJobStatus(job); err != nil {
+		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.JobStatusError),
+			fmt.Sprintf("Failed to initialize job status, err: %v", err))
+		return err
+	}
+
 	if err := cc.pluginOnJobAdd(job); err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.PluginError),
 			fmt.Sprintf("Execute plugin when job add failed, err: %v", err))
@@ -522,4 +528,25 @@ func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
 	}
 
 	return &minAvailableTasksRes
+}
+
+func (cc *Controller) initJobStatus(job *vkv1.Job) error {
+	if job.Status.State.Phase != "" {
+		return nil
+	}
+
+	job.Status.State.Phase = vkv1.Pending
+	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
+		glog.Errorf("Failed to update status of Job %v/%v: %v",
+			job.Namespace, job.Name, err)
+		return err
+	} else {
+		if err := cc.cache.Update(job); err != nil {
+			glog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
+				job.Namespace, job.Name, err)
+			return err
+		}
+	}
+
+	return nil
 }
