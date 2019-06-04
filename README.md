@@ -9,10 +9,8 @@
 [![LICENSE](https://img.shields.io/github/license/volcano-sh/volcano.svg)](https://github.com/volcano-sh/volcano/blob/master/LICENSE)
 
 
-Volcano is system for runnning high performance workloads on
-Kubernetes.  It provides a suite of mechanisms currently missing from
-Kubernetes that are commonly required by many classes of high
-performance workload including:
+Volcano is a batch system built on Kubernetes. It provides a suite of mechanisms currently missing from
+Kubernetes that are commonly required by many classes of batch & elastic workload including:
 
 1. machine learning/deep learning,
 2. bioinformatics/genomics, and 
@@ -99,17 +97,9 @@ kubernetes API server.
 #1. Install helm plugin
 helm plugin install installer/chart/plugins/gen-admission-secret
 
-#2. Generate secret within service name
-helm gen-admission-secret --service <specified-name>-admission-service --namespace <namespace>
-
-## For eg: 
-kubectl create namespace volcano-trial
-
-helm gen-admission-secret --service volcano-trial-admission-service --namespace volcano-trial
-
 ```
 
-Finally, install helm chart.
+Secondly, install helm chart.
 
 ```
 helm install installer/chart --namespace <namespace> --name <specified-name>
@@ -118,9 +108,6 @@ For eg :
 helm install installer/chart --namespace volcano-trial --name volcano-trial
 
 ```
-
-**NOTE**:The ```<specified-name>``` used in the two commands above should be identical.
-
 
 To Verify your installation run the following commands:
 

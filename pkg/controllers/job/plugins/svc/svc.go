@@ -79,6 +79,8 @@ func (sp *servicePlugin) OnJobAdd(job *vkv1.Job) error {
 		return err
 	}
 
+	job.Status.ControlledResources["plugin-"+sp.Name()] = sp.Name()
+
 	return nil
 }
 
