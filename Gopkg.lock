@@ -204,7 +204,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:407852f4bc58f1ffb25131dbdce512b3c5a2dd0d880567d3189c60a3eb069f45"
+  digest = "1:4281fb8a5ed4671cd7e80c85599e00912f796819716abaefd697797ec9eb4491"
   name = "github.com/kubernetes-sigs/kube-batch"
   packages = [
     "cmd/kube-batch/app",
@@ -247,8 +247,8 @@
     "pkg/version",
   ]
   pruneopts = "UT"
-  revision = "2a63a4754d8289bf6491b7320ab6d832c75767ce"
-  source = "https://github.com/volcano-sh/kube-batch"
+  revision = "700381278a3e7da396507055d371dd93c1724322"
+  source = "https://github.com/volcano-sh/scheduler"
 
 [[projects]]
   digest = "1:ff5ebae34cfbf047d505ee150de27e60570e8c394b3b8fdbb720ff6ac71985fc"

@@ -58,3 +58,8 @@ func createShadowPodGroup(pod *v1.Pod) *v1alpha1.PodGroup {
 		},
 	}
 }
+
+// responsibleForPod returns true if the pod has asked to be scheduled by the given scheduler.
+func responsibleForPod(pod *v1.Pod, schedulerName string) bool {
+	return schedulerName == pod.Spec.SchedulerName
+}

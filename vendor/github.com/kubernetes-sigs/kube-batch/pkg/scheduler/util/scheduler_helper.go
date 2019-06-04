@@ -18,6 +18,7 @@ package util
 
 import (
 	"context"
+	"math"
 	"math/rand"
 	"sort"
 	"sync"
@@ -26,6 +27,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 )
 
 // PredicateNodes returns nodes that fit task
@@ -55,23 +57,54 @@ func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateF
 }
 
 // PrioritizeNodes returns a map whose key is node's score and value are corresponding nodes
-func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.NodeOrderFn) map[float64][]*api.NodeInfo {
+func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, mapFn api.NodeOrderMapFn, reduceFn api.NodeOrderReduceFn) map[float64][]*api.NodeInfo {
+	pluginNodeScoreMap := map[string]schedulerapi.HostPriorityList{}
+	nodeOrderScoreMap := map[string]float64{}
 	nodeScores := map[float64][]*api.NodeInfo{}
-
 	var workerLock sync.Mutex
 	scoreNode := func(index int) {
 		node := nodes[index]
-		score, err := fn(task, node)
+		mapScores, orderScore, err := mapFn(task, node)
 		if err != nil {
 			glog.Errorf("Error in Calculating Priority for the node:%v", err)
 			return
 		}
 
 		workerLock.Lock()
-		nodeScores[score] = append(nodeScores[score], node)
+		for plugin, score := range mapScores {
+			nodeScoreMap, ok := pluginNodeScoreMap[plugin]
+			if !ok {
+				nodeScoreMap = schedulerapi.HostPriorityList{}
+			}
+			hp := schedulerapi.HostPriority{}
+			hp.Host = node.Name
+			hp.Score = int(math.Floor(score))
+			pluginNodeScoreMap[plugin] = append(nodeScoreMap, hp)
+		}
+		nodeOrderScoreMap[node.Name] = orderScore
 		workerLock.Unlock()
 	}
 	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), scoreNode)
+	reduceScores, err := reduceFn(task, pluginNodeScoreMap)
+	if err != nil {
+		glog.Errorf("Error in Calculating Priority for the node:%v", err)
+		return nodeScores
+	}
+	for _, node := range nodes {
+		if score, found := reduceScores[node.Name]; found {
+			if orderScore, ok := nodeOrderScoreMap[node.Name]; ok {
+				score = score + orderScore
+			}
+			nodeScores[score] = append(nodeScores[score], node)
+		} else {
+			// If no plugin is applied to this node, the default is 0.0
+			score = 0.0
+			if orderScore, ok := nodeOrderScoreMap[node.Name]; ok {
+				score = score + orderScore
+			}
+			nodeScores[score] = append(nodeScores[score], node)
+		}
+	}
 	return nodeScores
 }
 
