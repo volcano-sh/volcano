@@ -181,7 +181,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			allocated := allocations[job.Queue]
 			if allocated.Less(reclaimee.Resreq) {
-				glog.Errorf("Failed to allocate resource for Task <%s/%s> in Queue <%s>， not enough resource.",
+				glog.V(3).Infof("Failed to allocate resource for Task <%s/%s> in Queue <%s>, not enough resource.",
 					reclaimee.Namespace, reclaimee.Name, job.Queue)
 				continue
 			}
@@ -213,6 +213,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		queueID := job.Queue
 		attr := pp.queueOpts[queueID]
 		queue := ssn.Queues[queueID]
+
+		// If no capability is set, always enqueue the job.
+		if len(queue.Queue.Spec.Capability) == 0 {
+			return true
+		}
+
 		pgResource := api.NewResource(*job.PodGroup.Spec.MinResources)
 		// The queue resource quota limit has not reached
 		if pgResource.Clone().Add(attr.allocated).LessEqual(api.NewResource(queue.Queue.Spec.Capability)) {
