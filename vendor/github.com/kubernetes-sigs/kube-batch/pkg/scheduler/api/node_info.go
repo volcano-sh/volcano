@@ -39,6 +39,9 @@ type NodeInfo struct {
 	Capability  *Resource
 
 	Tasks map[TaskID]*TaskInfo
+
+	// Used to store custom information
+	Other interface{}
 }
 
 // NewNodeInfo is used to create new nodeInfo object
@@ -78,7 +81,7 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 	for _, p := range ni.Tasks {
 		res.AddTask(p)
 	}
-
+	res.Other = ni.Other
 	return res
 }
 
@@ -90,6 +93,7 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.Allocatable = NewResource(node.Status.Allocatable)
 	ni.Capability = NewResource(node.Status.Capacity)
 	ni.Idle = NewResource(node.Status.Allocatable)
+	ni.Used = EmptyResource()
 
 	for _, task := range ni.Tasks {
 		if task.Status == Releasing {
