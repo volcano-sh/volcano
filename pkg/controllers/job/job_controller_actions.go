@@ -536,6 +536,7 @@ func (cc *Controller) initJobStatus(job *vkv1.Job) error {
 	}
 
 	job.Status.State.Phase = vkv1.Pending
+	job.Status.MinAvailable = int32(job.Spec.MinAvailable)
 	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
