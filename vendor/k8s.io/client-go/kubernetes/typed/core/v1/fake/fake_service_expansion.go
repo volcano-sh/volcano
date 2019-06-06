@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,29 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package _interface
+package fake
 
 import (
-	"k8s.io/api/core/v1"
-	"k8s.io/client-go/kubernetes"
-
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	restclient "k8s.io/client-go/rest"
+	core "k8s.io/client-go/testing"
 )
 
-type PluginClientset struct {
-	KubeClients kubernetes.Interface
-}
-
-type PluginInterface interface {
-	// The unique name of Plugin.
-	Name() string
-
-	// for all pod when createJobPod
-	OnPodCreate(pod *v1.Pod, job *vkv1.Job) error
-
-	// do once when syncJob
-	OnJobAdd(job *vkv1.Job) error
-
-	// do once when killJob
-	OnJobDelete(job *vkv1.Job) error
+func (c *FakeServices) ProxyGet(scheme, name, port, path string, params map[string]string) restclient.ResponseWrapper {
+	return c.Fake.InvokesProxy(core.NewProxyGetAction(servicesResource, c.ns, scheme, name, port, path, params))
 }
