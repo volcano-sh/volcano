@@ -52,9 +52,9 @@ import (
 
 // Controller the Job Controller type
 type Controller struct {
-	kubeClients *kubernetes.Clientset
-	vkClients   *vkver.Clientset
-	kbClients   *kbver.Clientset
+	kubeClients kubernetes.Interface
+	vkClients   vkver.Interface
+	kbClients   kbver.Interface
 
 	jobInformer     vkbatchinfo.JobInformer
 	podInformer     coreinformers.PodInformer
@@ -101,9 +101,9 @@ type Controller struct {
 
 // NewJobController create new Job Controller
 func NewJobController(
-	kubeClient *kubernetes.Clientset,
-	kbClient *kbver.Clientset,
-	vkClient *vkver.Clientset,
+	kubeClient kubernetes.Interface,
+	kbClient kbver.Interface,
+	vkClient vkver.Interface,
 ) *Controller {
 
 	//Initialize event client

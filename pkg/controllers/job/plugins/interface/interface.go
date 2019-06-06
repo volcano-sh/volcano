@@ -24,7 +24,7 @@ import (
 )
 
 type PluginClientset struct {
-	KubeClients *kubernetes.Clientset
+	KubeClients kubernetes.Interface
 }
 
 type PluginInterface interface {

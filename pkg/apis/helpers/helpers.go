@@ -63,7 +63,7 @@ func ControlledBy(obj interface{}, gvk schema.GroupVersionKind) bool {
 	return false
 }
 
-func CreateConfigMapIfNotExist(job *vkv1.Job, kubeClients *kubernetes.Clientset, data map[string]string, cmName string) error {
+func CreateConfigMapIfNotExist(job *vkv1.Job, kubeClients kubernetes.Interface, data map[string]string, cmName string) error {
 	// If ConfigMap does not exist, create one for Job.
 	cmOld, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{})
 	if err != nil {
@@ -102,7 +102,7 @@ func CreateConfigMapIfNotExist(job *vkv1.Job, kubeClients *kubernetes.Clientset,
 	return nil
 }
 
-func DeleteConfigmap(job *vkv1.Job, kubeClients *kubernetes.Clientset, cmName string) error {
+func DeleteConfigmap(job *vkv1.Job, kubeClients kubernetes.Interface, cmName string) error {
 	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
 			glog.V(3).Infof("Failed to get Configmap for Job <%s/%s>: %v",
