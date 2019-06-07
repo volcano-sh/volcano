@@ -200,7 +200,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: sc.kubeclient.CoreV1().Events("")})
-	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "kube-batch"})
+	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: schedulerName})
 
 	sc.Binder = &defaultBinder{
 		kubeclient: sc.kubeclient,
