@@ -78,6 +78,27 @@ func (ts TaskStatus) String() string {
 	}
 }
 
+// NodePhase defines the phase of node
+type NodePhase int
+
+const (
+	// Ready means the node is ready for scheduling
+	Ready NodePhase = 1 << iota
+	// NotReady means the node is not ready for scheduling
+	NotReady
+)
+
+func (np NodePhase) String() string {
+	switch np {
+	case Ready:
+		return "Ready"
+	case NotReady:
+		return "NotReady"
+	}
+
+	return "Unknown"
+}
+
 // validateStatusUpdate validates whether the status transfer is valid.
 func validateStatusUpdate(oldStatus, newStatus TaskStatus) error {
 	return nil

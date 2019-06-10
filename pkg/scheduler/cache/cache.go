@@ -549,6 +549,10 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 	}
 
 	for _, value := range sc.Nodes {
+		if !value.Ready() {
+			continue
+		}
+
 		snapshot.Nodes[value.Name] = value.Clone()
 	}
 
