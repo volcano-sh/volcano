@@ -1005,3 +1005,20 @@ func readyNodeAmount(ctx *context) int {
 	}
 	return amount
 }
+
+func waitPodGone(ctx *context, podName, namespace string) error {
+	var additionalError error
+	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+		_, err := ctx.kubeclient.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
+		expected := errors.IsNotFound(err)
+		if !expected {
+			additionalError = fmt.Errorf("Job related pod should be deleted when aborting job.")
+		}
+
+		return expected, nil
+	})
+	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
+		return fmt.Errorf("[Wait time out]: %s", additionalError)
+	}
+	return err
+}

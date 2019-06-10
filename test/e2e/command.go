@@ -19,11 +19,11 @@ package e2e
 import (
 	"bytes"
 	"fmt"
-	v1 "k8s.io/api/core/v1"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -98,9 +98,8 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 
 		//Pod is gone
 		podName := jobUtil.MakePodName(jobName, taskName, 0)
-		_, err = context.kubeclient.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
-		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
-			"Job related pod should be deleted when aborting job.")
+		err = waitPodGone(context, podName, job.Namespace)
+		Expect(err).NotTo(HaveOccurred())
 
 		//Resume job
 		ResumeJob(jobName, namespace)
@@ -116,7 +115,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 	It("Suspend pending job", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
-		rep := clusterSize(context, oneCPU) * 2
+		rep := clusterSize(context, oneCPU)
 
 		jobName := "test-suspend-pending-job"
 		namespace := "test"

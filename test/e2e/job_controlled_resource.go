@@ -48,10 +48,6 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 			},
 			volumes: []v1alpha1.VolumeSpec{
 				{
-					MountPath:       "/mountone",
-					VolumeClaimName: pvcName,
-				},
-				{
 					MountPath: "/mounttwo",
 				},
 			},
@@ -63,7 +59,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		job, err = context.vkclient.BatchV1alpha1().Jobs(namespace).Get(jobName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(len(job.Spec.Volumes)).To(Equal(2),
+		Expect(len(job.Spec.Volumes)).To(Equal(1),
 			"Two volumes should be created")
 		for _, volume := range job.Spec.Volumes {
 			Expect(volume.VolumeClaimName).Should(Or(ContainSubstring(jobName), Equal(pvcName)),
