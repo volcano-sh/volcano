@@ -1,7 +1,3 @@
-volcano.sh/volcano/cmd/admission/app
-volcano.sh/volcano/cmd/admission/app/configure
-volcano.sh/volcano/cmd/controllers/app
-volcano.sh/volcano/cmd/controllers/app/options
 volcano.sh/volcano/pkg/admission
 volcano.sh/volcano/pkg/apis/batch/v1alpha1
 volcano.sh/volcano/pkg/apis/bus/v1alpha1
