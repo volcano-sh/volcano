@@ -17,9 +17,12 @@ limitations under the License.
 package env
 
 const (
+	// ConfigMapTaskHostFmt host format in config map
 	ConfigMapTaskHostFmt = "%s.host"
 
+	// ConfigMapMountPath mount path
 	ConfigMapMountPath = "/etc/volcano"
 
+	// TaskVkIndex index
 	TaskVkIndex = "VK_TASK_INDEX"
 )

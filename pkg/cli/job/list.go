@@ -13,6 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package job
 
 import (
@@ -36,24 +37,39 @@ type listFlags struct {
 }
 
 const (
-	Name        string = "Name"
-	Creation    string = "Creation"
-	Phase       string = "Phase"
-	Replicas    string = "Replicas"
-	Min         string = "Min"
-	Scheduler   string = "Scheduler"
-	Pending     string = "Pending"
-	Running     string = "Running"
-	Succeeded   string = "Succeeded"
+	// Name  name
+	Name string = "Name"
+	// Creation create
+	Creation string = "Creation"
+	// Phase phase
+	Phase string = "Phase"
+	// Replicas  replicas
+	Replicas string = "Replicas"
+	// Min  minimum
+	Min string = "Min"
+	// Scheduler scheduler
+	Scheduler string = "Scheduler"
+	// Pending  pending
+	Pending string = "Pending"
+	// Running running
+	Running string = "Running"
+	// Succeeded success
+	Succeeded string = "Succeeded"
+	// Terminating terminating
 	Terminating string = "Terminating"
-	Version     string = "Version"
-	Failed      string = "Failed"
-	RetryCount  string = "RetryCount"
-	JobType     string = "JobType"
+	// Version version
+	Version string = "Version"
+	// Failed  failed
+	Failed string = "Failed"
+	// RetryCount retry count
+	RetryCount string = "RetryCount"
+	// JobType  job type
+	JobType string = "JobType"
 )
 
 var listJobFlags = &listFlags{}
 
+// InitListFlags init list command flags
 func InitListFlags(cmd *cobra.Command) {
 	initFlags(cmd, &listJobFlags.commonFlags)
 
@@ -61,6 +77,7 @@ func InitListFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&listJobFlags.SchedulerName, "scheduler", "S", "", "list job with specified scheduler name")
 }
 
+// ListJobs  list all jobs
 func ListJobs() error {
 	config, err := buildConfig(listJobFlags.Master, listJobFlags.Kubeconfig)
 	if err != nil {
@@ -82,6 +99,7 @@ func ListJobs() error {
 	return nil
 }
 
+// PrintJobs print all jobs
 func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 	maxNameLen := getMaxNameLen(jobs)
 	_, err := fmt.Fprintf(writer, fmt.Sprintf("%%-%ds%%-25s%%-12s%%-12s%%-12s%%-6s%%-10s%%-10s%%-12s%%-10s%%-12s\n", maxNameLen),

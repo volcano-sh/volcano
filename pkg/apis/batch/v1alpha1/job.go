@@ -23,6 +23,8 @@ import (
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// Job volcano job struct
 type Job struct {
 	metav1.TypeMeta `json:",inline"`
 
@@ -98,12 +100,17 @@ type VolumeSpec struct {
 	VolumeClaim *v1.PersistentVolumeClaimSpec `json:"volumeClaim,omitempty" protobuf:"bytes,3,opt,name=volumeClaim"`
 }
 
+// JobEvent job event
 type JobEvent string
 
 const (
+	// CommandIssued command issued
 	CommandIssued JobEvent = "CommandIssued"
-	PluginError   JobEvent = "PluginError"
-	PVCError      JobEvent = "PVCError"
+	// PluginError  plugin error
+	PluginError JobEvent = "PluginError"
+	// PVCError pvc error
+	PVCError JobEvent = "PVCError"
+	// PodGroupError  pod grp error
 	PodGroupError JobEvent = "PodGroupError"
 )
 
@@ -111,13 +118,13 @@ const (
 type Event string
 
 const (
-	// AllEvent means all event
+	// AnyEvent means all event
 	AnyEvent Event = "*"
 	// PodFailedEvent is triggered if Pod was failed
 	PodFailedEvent Event = "PodFailed"
 	// PodEvictedEvent is triggered if Pod was deleted
 	PodEvictedEvent Event = "PodEvicted"
-	// These below are several events can lead to job 'Unknown'
+	// JobUnknownEvent These below are several events can lead to job 'Unknown'
 	// 1. Task Unschedulable, this is triggered when part of
 	//    pods can't be scheduled while some are already running in gang-scheduling case.
 	JobUnknownEvent Event = "Unknown"
@@ -198,6 +205,7 @@ type TaskSpec struct {
 	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,4,opt,name=policies"`
 }
 
+// JobPhase phase of the job
 type JobPhase string
 
 const (
@@ -285,6 +293,8 @@ type JobStatus struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// JobList list of jobs
 type JobList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`

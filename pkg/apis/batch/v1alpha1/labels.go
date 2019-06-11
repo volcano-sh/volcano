@@ -17,10 +17,16 @@ limitations under the License.
 package v1alpha1
 
 const (
-	TaskSpecKey     = "volcano.sh/task-spec"
-	JobNameKey      = "volcano.sh/job-name"
+	// TaskSpecKey task spec key
+	TaskSpecKey = "volcano.sh/task-spec"
+	// JobNameKey job name key
+	JobNameKey = "volcano.sh/job-name"
+	// JobNamespaceKey job namespace key
 	JobNamespaceKey = "volcano.sh/job-namespace"
+	// DefaultTaskSpec dfeault task spec
 	DefaultTaskSpec = "default"
-	JobVersion      = "volcano.sh/job-version"
-	JobTypeKey      = "volcano.sh/job-type"
+	// JobVersion job version key
+	JobVersion = "volcano.sh/job-version"
+	// JobTypeKey job type key
+	JobTypeKey = "volcano.sh/job-type"
 )

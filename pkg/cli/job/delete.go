@@ -34,6 +34,7 @@ type deleteFlags struct {
 
 var deleteJobFlags = &deleteFlags{}
 
+// InitDeleteFlags  init the delete command flags
 func InitDeleteFlags(cmd *cobra.Command) {
 	initFlags(cmd, &deleteJobFlags.commonFlags)
 
@@ -41,6 +42,7 @@ func InitDeleteFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&deleteJobFlags.JobName, "name", "n", "", "the name of job")
 }
 
+// DeleteJob  delete the job
 func DeleteJob() error {
 	config, err := buildConfig(deleteJobFlags.Master, deleteJobFlags.Kubeconfig)
 	if err != nil {
