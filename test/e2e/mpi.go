@@ -70,7 +70,7 @@ mpiexec --allow-run-as-root --hostfile /etc/volcano/mpiworker.host -np 2 mpi_hel
 
 		job := createJob(context, spec)
 
-		err := waitJobStates(context, job, []vkv1.JobPhase{
+		err := waitJobPhases(context, job, []vkv1.JobPhase{
 			vkv1.Pending, vkv1.Running, vkv1.Completing, vkv1.Completed})
 		Expect(err).NotTo(HaveOccurred())
 	})

@@ -462,12 +462,76 @@ func jobEvicted(ctx *context, job *vkv1.Job, time time.Time) wait.ConditionFunc 
 }
 
 func waitJobPhases(ctx *context, job *vkv1.Job, phases []vkv1.JobPhase) error {
-	for _, phase := range phases {
-		err := waitJobPhase(ctx, job, phase)
-		if err != nil {
-			return err
+	w, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Watch(metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	defer w.Stop()
+
+	var additionalError error
+	total := int32(0)
+	for _, task := range job.Spec.Tasks {
+		total += task.Replicas
+	}
+
+	ch := w.ResultChan()
+	index := 0
+	timeout := time.After(oneMinute)
+
+	for index < len(phases) {
+		select {
+		case event, open := <-ch:
+			if !open {
+				return fmt.Errorf("watch channel should be always open")
+			}
+
+			newJob := event.Object.(*vkv1.Job)
+			phase := phases[index]
+			if newJob.Name != job.Name || newJob.Namespace != job.Namespace {
+				continue
+			}
+
+			if newJob.Status.State.Phase != phase {
+				additionalError = fmt.Errorf(
+					"expected job '%s' to be in status %s, actual get %s",
+					job.Name, phase, newJob.Status.State.Phase)
+				continue
+			}
+			var flag = false
+			switch phase {
+			case vkv1.Pending:
+				flag = (newJob.Status.Pending+newJob.Status.Succeeded+
+					newJob.Status.Failed+newJob.Status.Running) == 0 ||
+					(total-newJob.Status.Terminating >= newJob.Status.MinAvailable)
+			case vkv1.Terminating, vkv1.Aborting, vkv1.Restarting, vkv1.Completing:
+				flag = newJob.Status.Terminating > 0
+			case vkv1.Terminated, vkv1.Aborted, vkv1.Completed:
+				flag = newJob.Status.Pending == 0 &&
+					newJob.Status.Running == 0 &&
+					newJob.Status.Terminating == 0
+			case vkv1.Running:
+				flag = newJob.Status.Running >= newJob.Spec.MinAvailable
+			case vkv1.Inqueue:
+				flag = newJob.Status.Pending > 0
+			default:
+				return fmt.Errorf("unknown phase %s", phase)
+			}
+
+			if !flag {
+				additionalError = fmt.Errorf(
+					"expected job '%s' to be in status %s, actual detail status %s",
+					job.Name, phase, getJobStatusDetail(newJob))
+				continue
+			}
+
+			index++
+			timeout = time.After(oneMinute)
+
+		case <-timeout:
+			return fmt.Errorf("[Wait time out]: %s", additionalError)
 		}
 	}
+
 	return nil
 }
 
