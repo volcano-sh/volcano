@@ -29,6 +29,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+
+	// Initialize client auth plugin.
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -71,6 +73,7 @@ func buildConfig(opt *options.ServerOption) (*rest.Config, error) {
 	return cfg, nil
 }
 
+//Run the controller
 func Run(opt *options.ServerOption) error {
 	config, err := buildConfig(opt)
 	if err != nil {

@@ -13,6 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package app
 
 import (
@@ -34,11 +35,14 @@ import (
 )
 
 const (
-	CONTENTTYPE     = "Content-Type"
+	//CONTENTTYPE http content-type
+	CONTENTTYPE = "Content-Type"
+
+	//APPLICATIONJSON json content
 	APPLICATIONJSON = "application/json"
 )
 
-// Get a clientset with restConfig.
+// GetClient Get a clientset with restConfig.
 func GetClient(restConfig *restclient.Config) *kubernetes.Clientset {
 	clientset, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
@@ -47,6 +51,7 @@ func GetClient(restConfig *restclient.Config) *kubernetes.Clientset {
 	return clientset
 }
 
+//GetKubeBatchClient get a clientset for kubebatch
 func GetKubeBatchClient(restConfig *restclient.Config) *versioned.Clientset {
 	clientset, err := versioned.NewForConfig(restConfig)
 	if err != nil {
@@ -85,6 +90,7 @@ func ConfigTLS(config *appConf.Config, restConfig *restclient.Config) *tls.Confi
 	return &tls.Config{}
 }
 
+//Serve the http request
 func Serve(w http.ResponseWriter, r *http.Request, admit admissioncontroller.AdmitFunc) {
 	var body []byte
 	if r.Body != nil {
