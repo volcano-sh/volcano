@@ -19,6 +19,8 @@ package api
 import (
 	"fmt"
 
+	"github.com/golang/glog"
+
 	v1 "k8s.io/api/core/v1"
 )
 
@@ -26,6 +28,9 @@ import (
 type NodeInfo struct {
 	Name string
 	Node *v1.Node
+
+	// The state of node
+	State NodeState
 
 	// The releasing resource on that node
 	Releasing *Resource
@@ -44,10 +49,18 @@ type NodeInfo struct {
 	Other interface{}
 }
 
+// NodeState defines the current state of node.
+type NodeState struct {
+	Phase  NodePhase
+	Reason string
+}
+
 // NewNodeInfo is used to create new nodeInfo object
 func NewNodeInfo(node *v1.Node) *NodeInfo {
+	var ni *NodeInfo
+
 	if node == nil {
-		return &NodeInfo{
+		ni = &NodeInfo{
 			Releasing: EmptyResource(),
 			Idle:      EmptyResource(),
 			Used:      EmptyResource(),
@@ -57,21 +70,25 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 
 			Tasks: make(map[TaskID]*TaskInfo),
 		}
+	} else {
+		ni = &NodeInfo{
+			Name: node.Name,
+			Node: node,
+
+			Releasing: EmptyResource(),
+			Idle:      NewResource(node.Status.Allocatable),
+			Used:      EmptyResource(),
+
+			Allocatable: NewResource(node.Status.Allocatable),
+			Capability:  NewResource(node.Status.Capacity),
+
+			Tasks: make(map[TaskID]*TaskInfo),
+		}
 	}
 
-	return &NodeInfo{
-		Name: node.Name,
-		Node: node,
+	ni.setNodeState(node)
 
-		Releasing: EmptyResource(),
-		Idle:      NewResource(node.Status.Allocatable),
-		Used:      EmptyResource(),
-
-		Allocatable: NewResource(node.Status.Allocatable),
-		Capability:  NewResource(node.Status.Capacity),
-
-		Tasks: make(map[TaskID]*TaskInfo),
-	}
+	return ni
 }
 
 // Clone used to clone nodeInfo Object
@@ -85,8 +102,47 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 	return res
 }
 
+// Ready returns whether node is ready for scheduling
+func (ni *NodeInfo) Ready() bool {
+	return ni.State.Phase == Ready
+}
+
+func (ni *NodeInfo) setNodeState(node *v1.Node) {
+	// If node is nil, the node is un-initialized in cache
+	if node == nil {
+		ni.State = NodeState{
+			Phase:  NotReady,
+			Reason: "UnInitialized",
+		}
+		return
+	}
+
+	// set NodeState according to resources
+	if !ni.Used.LessEqual(NewResource(node.Status.Allocatable)) {
+		ni.State = NodeState{
+			Phase:  NotReady,
+			Reason: "OutOfSync",
+		}
+		return
+	}
+
+	// Node is ready (ignore node conditions because of taint/toleration)
+	ni.State = NodeState{
+		Phase:  Ready,
+		Reason: "",
+	}
+}
+
 // SetNode sets kubernetes node object to nodeInfo object
 func (ni *NodeInfo) SetNode(node *v1.Node) {
+	ni.setNodeState(node)
+
+	if !ni.Ready() {
+		glog.Warningf("Failed to set node info, phase: %s, reason: %s",
+			ni.State.Phase, ni.State.Reason)
+		return
+	}
+
 	ni.Name = node.Name
 	ni.Node = node
 
@@ -176,16 +232,16 @@ func (ni *NodeInfo) UpdateTask(ti *TaskInfo) error {
 
 // String returns nodeInfo details in string format
 func (ni NodeInfo) String() string {
-	res := ""
+	tasks := ""
 
 	i := 0
 	for _, task := range ni.Tasks {
-		res = res + fmt.Sprintf("\n\t %d: %v", i, task)
+		tasks = tasks + fmt.Sprintf("\n\t %d: %v", i, task)
 		i++
 	}
 
-	return fmt.Sprintf("Node (%s): idle <%v>, used <%v>, releasing <%v>, taints <%v>%s",
-		ni.Name, ni.Idle, ni.Used, ni.Releasing, ni.Node.Spec.Taints, res)
+	return fmt.Sprintf("Node (%s): idle <%v>, used <%v>, releasing <%v>, state <phase %s, reaseon %s>, taints <%v>%s",
+		ni.Name, ni.Idle, ni.Used, ni.Releasing, ni.State.Phase, ni.State.Reason, ni.Node.Spec.Taints, tasks)
 
 }
 
