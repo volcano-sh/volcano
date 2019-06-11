@@ -200,7 +200,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: sc.kubeclient.CoreV1().Events("")})
-	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "kube-batch"})
+	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: schedulerName})
 
 	sc.Binder = &defaultBinder{
 		kubeclient: sc.kubeclient,
@@ -465,7 +465,10 @@ func (sc *SchedulerCache) taskUnschedulable(task *api.TaskInfo, message string) 
 
 	pod := task.Pod.DeepCopy()
 
-	sc.Recorder.Eventf(pod, v1.EventTypeWarning, string(v1.PodReasonUnschedulable), message)
+	// The reason field in 'Events' should be "FailedScheduling", there is not constants defined for this in
+	// k8s core, so using the same string here.
+	// The reason field in PodCondition should be "Unschedulable"
+	sc.Recorder.Eventf(pod, v1.EventTypeWarning, "FailedScheduling", message)
 	if _, err := sc.StatusUpdater.UpdatePodCondition(pod, &v1.PodCondition{
 		Type:    v1.PodScheduled,
 		Status:  v1.ConditionFalse,
@@ -546,6 +549,10 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 	}
 
 	for _, value := range sc.Nodes {
+		if !value.Ready() {
+			continue
+		}
+
 		snapshot.Nodes[value.Name] = value.Clone()
 	}
 
