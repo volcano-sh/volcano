@@ -58,7 +58,7 @@ func InitRunFlags(cmd *cobra.Command) {
 
 var jobName = "job.volcano.sh"
 
-// RunJob  run the job command
+// RunJob  creates the job
 func RunJob() error {
 	config, err := buildConfig(launchJobFlags.Master, launchJobFlags.Kubeconfig)
 	if err != nil {

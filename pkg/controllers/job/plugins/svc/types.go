@@ -17,7 +17,7 @@ limitations under the License.
 package svc
 
 const (
-	// ConfigMapTaskHostFmt host format in config map
+	// ConfigMapTaskHostFmt key in config map
 	ConfigMapTaskHostFmt = "%s.host"
 
 	// ConfigMapMountPath mount path

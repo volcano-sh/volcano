@@ -47,7 +47,7 @@ type sshPlugin struct {
 	noRoot bool
 }
 
-// New construct plugin
+// New creates ssh plugin
 func New(client vkinterface.PluginClientset, arguments []string) vkinterface.PluginInterface {
 	sshPlugin := sshPlugin{pluginArguments: arguments, Clientset: client}
 

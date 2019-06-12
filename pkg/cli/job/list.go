@@ -37,7 +37,8 @@ type listFlags struct {
 }
 
 const (
-	// Name  name
+
+	// Name  name etc below key words are used in job print format
 	Name string = "Name"
 	// Creation create
 	Creation string = "Creation"
@@ -77,7 +78,7 @@ func InitListFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&listJobFlags.SchedulerName, "scheduler", "S", "", "list job with specified scheduler name")
 }
 
-// ListJobs  list all jobs
+// ListJobs  lists all jobs details
 func ListJobs() error {
 	config, err := buildConfig(listJobFlags.Master, listJobFlags.Kubeconfig)
 	if err != nil {
@@ -99,7 +100,7 @@ func ListJobs() error {
 	return nil
 }
 
-// PrintJobs print all jobs
+// PrintJobs prints all jobs details
 func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 	maxNameLen := getMaxNameLen(jobs)
 	_, err := fmt.Fprintf(writer, fmt.Sprintf("%%-%ds%%-25s%%-12s%%-12s%%-12s%%-6s%%-10s%%-10s%%-12s%%-10s%%-12s\n", maxNameLen),

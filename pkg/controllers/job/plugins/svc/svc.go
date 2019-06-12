@@ -40,7 +40,7 @@ type servicePlugin struct {
 	Clientset vkinterface.PluginClientset
 }
 
-// New construct plugin
+// New creates service plugin
 func New(client vkinterface.PluginClientset, arguments []string) vkinterface.PluginInterface {
 	servicePlugin := servicePlugin{pluginArguments: arguments, Clientset: client}
 

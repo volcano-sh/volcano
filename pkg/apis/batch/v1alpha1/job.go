@@ -24,7 +24,7 @@ import (
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// Job volcano job struct
+// Job defines the volcano job
 type Job struct {
 	metav1.TypeMeta `json:",inline"`
 
@@ -104,13 +104,13 @@ type VolumeSpec struct {
 type JobEvent string
 
 const (
-	// CommandIssued command issued
+	// CommandIssued command issued event is generated if a command is raised by user
 	CommandIssued JobEvent = "CommandIssued"
-	// PluginError  plugin error
+	// PluginError  plugin error event is generated if error happens
 	PluginError JobEvent = "PluginError"
-	// PVCError pvc error
+	// PVCError pvc error event is generated if error happens during IO creation
 	PVCError JobEvent = "PVCError"
-	// PodGroupError  pod grp error
+	// PodGroupError  pod grp error event is generated if error happens during pod grp creation
 	PodGroupError JobEvent = "PodGroupError"
 )
 
@@ -205,7 +205,7 @@ type TaskSpec struct {
 	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,4,opt,name=policies"`
 }
 
-// JobPhase phase of the job
+// JobPhase defines the phase of the job
 type JobPhase string
 
 const (
@@ -294,7 +294,7 @@ type JobStatus struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// JobList list of jobs
+// JobList defines the list of jobs
 type JobList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`

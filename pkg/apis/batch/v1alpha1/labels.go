@@ -17,16 +17,16 @@ limitations under the License.
 package v1alpha1
 
 const (
-	// TaskSpecKey task spec key
+	// TaskSpecKey task spec key used in pod annotation
 	TaskSpecKey = "volcano.sh/task-spec"
-	// JobNameKey job name key
+	// JobNameKey job name key used in pod annotation / labels
 	JobNameKey = "volcano.sh/job-name"
 	// JobNamespaceKey job namespace key
 	JobNamespaceKey = "volcano.sh/job-namespace"
-	// DefaultTaskSpec dfeault task spec
+	// DefaultTaskSpec default task spec value
 	DefaultTaskSpec = "default"
-	// JobVersion job version key
+	// JobVersion job version key used in pod annotation
 	JobVersion = "volcano.sh/job-version"
-	// JobTypeKey job type key
+	// JobTypeKey job type key used in labels
 	JobTypeKey = "volcano.sh/job-type"
 )

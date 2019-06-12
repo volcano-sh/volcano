@@ -32,13 +32,13 @@ import (
 	vkcorev1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 )
 
-// JobKind  job keind
+// JobKind  creates job GroupVersionKind
 var JobKind = vkbatchv1.SchemeGroupVersion.WithKind("Job")
 
-// CommandKind  command kid
+// CommandKind  creates command GroupVersionKind
 var CommandKind = vkcorev1.SchemeGroupVersion.WithKind("Command")
 
-// GetController  get the controller uid
+// GetController  returns the controller uid
 func GetController(obj interface{}) types.UID {
 	accessor, err := meta.Accessor(obj)
 	if err != nil {
@@ -68,7 +68,7 @@ func ControlledBy(obj interface{}, gvk schema.GroupVersionKind) bool {
 	return false
 }
 
-// CreateConfigMapIfNotExist  create config map if not there
+// CreateConfigMapIfNotExist  creates config map resource if not present
 func CreateConfigMapIfNotExist(job *vkv1.Job, kubeClients kubernetes.Interface, data map[string]string, cmName string) error {
 	// If ConfigMap does not exist, create one for Job.
 	cmOld, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{})
@@ -108,7 +108,7 @@ func CreateConfigMapIfNotExist(job *vkv1.Job, kubeClients kubernetes.Interface, 
 	return nil
 }
 
-// DeleteConfigmap  delete the config map
+// DeleteConfigmap  deletes the config map resource
 func DeleteConfigmap(job *vkv1.Job, kubeClients kubernetes.Interface, cmName string) error {
 	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {

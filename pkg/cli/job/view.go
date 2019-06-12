@@ -47,7 +47,7 @@ func InitViewFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&viewJobFlags.JobName, "name", "n", "", "the name of job")
 }
 
-// ViewJob view the job
+// ViewJob gives full details of the  job
 func ViewJob() error {
 	config, err := buildConfig(viewJobFlags.Master, viewJobFlags.Kubeconfig)
 	if err != nil {
@@ -72,7 +72,7 @@ func ViewJob() error {
 	return nil
 }
 
-// PrintJob  print the job
+// PrintJob  prints the job details
 func PrintJob(job *v1alpha1.Job, writer io.Writer) {
 	replicas := int32(0)
 	for _, ts := range job.Spec.Tasks {
