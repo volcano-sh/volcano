@@ -44,6 +44,12 @@ func (cc *Controller) processResyncTask() {
 		return
 	}
 
+	// one task only resync 10 times
+	if cc.errTasks.NumRequeues(obj) > 10 {
+		cc.errTasks.Forget(obj)
+		return
+	}
+
 	defer cc.errTasks.Done(obj)
 
 	task, ok := obj.(*v1.Pod)
@@ -53,7 +59,7 @@ func (cc *Controller) processResyncTask() {
 	}
 
 	if err := cc.syncTask(task); err != nil {
-		glog.Errorf("Failed to sync pod <%v/%v>, retry it.", task.Namespace, task.Name)
+		glog.Errorf("Failed to sync pod <%v/%v>, retry it, err %v", task.Namespace, task.Name, err)
 		cc.resyncTask(task)
 	}
 }
