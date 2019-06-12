@@ -175,5 +175,5 @@ All these plugin would choose some victims respective, and the intersection of t
     | queue | namespace | requested | queue assigned | namespace assigned |
     | ----- | --------- | --------- | -------------- | ------------------ |
     | q1 w1 | ns1 w2    |           | 4 cpu          |                    |
-    | q2 w3 | na1 w2    | 5 cpu     | 12 cpu         | 3 cpu              |
+    | q2 w3 | ns1 w2    | 5 cpu     | 12 cpu         | 3 cpu              |
     |       | ns2 w6    | 20 cpu    |                | 9 cpu              |
