@@ -418,7 +418,7 @@ func podGroupUnschedulable(ctx *context, pg *kbv1.PodGroup, time time.Time) wait
 		for _, event := range events.Items {
 			target := event.InvolvedObject
 			if target.Name == pg.Name && target.Namespace == pg.Namespace {
-				if event.Reason == string(kbv1.PodGroupUnschedulableType) &&
+				if event.Reason == string(kbv1.PodGroupUnschedulableType) || event.Reason == string("FailedScheduling") &&
 					event.LastTimestamp.After(time) {
 					return true, nil
 				}
