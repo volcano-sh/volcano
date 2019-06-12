@@ -80,7 +80,6 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Gang scheduling", func() {
-		Skip("TODO: Testcase skipped due to failing should be fixed and enabled.")
 		context := initTestContext()
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)/2 + 1
@@ -251,7 +250,6 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Statement", func() {
-		Skip("TODO: Testcase skipped due to failing should be fixed and enabled.")
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
