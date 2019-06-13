@@ -99,7 +99,6 @@ func createJobCommand(config *rest.Config, ns, name string, action vkbatchv1.Act
 	return nil
 }
 
-
 func translateTimestampSince(timestamp metav1.Time) string {
 	if timestamp.IsZero() {
 		return "<unknown>"

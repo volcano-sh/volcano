@@ -21,6 +21,7 @@ import (
 	"io"
 	"os"
 	"strings"
+
 	"github.com/spf13/cobra"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,8 +35,8 @@ type listFlags struct {
 
 	Namespace     string
 	SchedulerName string
-	allNamespace bool
-	selector string
+	allNamespace  bool
+	selector      string
 }
 
 const (

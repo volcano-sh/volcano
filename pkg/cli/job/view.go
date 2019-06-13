@@ -17,18 +17,18 @@ limitations under the License.
 package job
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"strings"
-	"encoding/json"
 
 	"github.com/spf13/cobra"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/kubernetes"
 	coreV1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
@@ -64,7 +64,7 @@ func ViewJob() error {
 		return err
 	}
 	if viewJobFlags.JobName == "" {
-		err := fmt.Errorf("job name (specified by --name or -n) is mandatory to view a particular job")
+		err := fmt.Errorf("job name (specified by --name or -N) is mandaorty to view a particular job")
 		return err
 	}
 
@@ -115,45 +115,45 @@ func PrintJobInfo(job *v1alpha1.Job, writer io.Writer) {
 	WriteLine(writer, LEVEL_2, "Ssh:\t%v\n", job.Spec.Plugins["ssh"])
 	WriteLine(writer, LEVEL_1, "Scheduler Name:    \t%s\n", job.Spec.SchedulerName)
 	WriteLine(writer, LEVEL_1, "Tasks:\n")
-	for i := 0; i<len(job.Spec.Tasks); i++ {
+	for i := 0; i < len(job.Spec.Tasks); i++ {
 		WriteLine(writer, LEVEL_2, "Name:\t%s\n", job.Spec.Tasks[i].Name)
 		WriteLine(writer, LEVEL_2, "Replicas:\t%d\n", job.Spec.Tasks[i].Replicas)
 		WriteLine(writer, LEVEL_2, "Template:\n")
-		WriteLine(writer, LEVEL_2 + 1, "Metadata:\n")
-		WriteLine(writer, LEVEL_2 + 2, "Annotations:\n")
-		WriteLine(writer, LEVEL_2 + 3, "Cri . Cci . Io / Container - Type:          \t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.Annotations["cri.cci.io/container-type"])
-		WriteLine(writer, LEVEL_2 + 3, "Kubernetes . Io / Availablezone:            \t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.Annotations["kubernetes.io/availablezone"])
-		WriteLine(writer, LEVEL_2 + 3, "Network . Alpha . Kubernetes . Io / Network:\t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.Annotations["network.alpha.kubernetes.io/network"])
-		WriteLine(writer, LEVEL_2 + 2, "Creation Timestamp:\t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.CreationTimestamp)
+		WriteLine(writer, LEVEL_2+1, "Metadata:\n")
+		WriteLine(writer, LEVEL_2+2, "Annotations:\n")
+		WriteLine(writer, LEVEL_2+3, "Cri . Cci . Io / Container - Type:          \t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.Annotations["cri.cci.io/container-type"])
+		WriteLine(writer, LEVEL_2+3, "Kubernetes . Io / Availablezone:            \t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.Annotations["kubernetes.io/availablezone"])
+		WriteLine(writer, LEVEL_2+3, "Network . Alpha . Kubernetes . Io / Network:\t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.Annotations["network.alpha.kubernetes.io/network"])
+		WriteLine(writer, LEVEL_2+2, "Creation Timestamp:\t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.CreationTimestamp)
 
-		WriteLine(writer, LEVEL_2 + 1, "Spec:\n")
-		WriteLine(writer, LEVEL_2 + 2, "Containers:\n")
-		for j := 0; j < len( job.Spec.Tasks[i].Template.Spec.Containers); j++ {
-			WriteLine(writer, LEVEL_2 + 3, "Command:\n")
+		WriteLine(writer, LEVEL_2+1, "Spec:\n")
+		WriteLine(writer, LEVEL_2+2, "Containers:\n")
+		for j := 0; j < len(job.Spec.Tasks[i].Template.Spec.Containers); j++ {
+			WriteLine(writer, LEVEL_2+3, "Command:\n")
 			for k := 0; k < len(job.Spec.Tasks[i].Template.Spec.Containers[j].Command); k++ {
-				WriteLine(writer, LEVEL_2 + 4, "%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Command[k])
+				WriteLine(writer, LEVEL_2+4, "%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Command[k])
 			}
-			WriteLine(writer, LEVEL_2 + 3, "Image:\t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Image)
-			WriteLine(writer, LEVEL_2 + 3, "Name: \t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Name)
-			WriteLine(writer, LEVEL_2 + 3, "Ports:\n")
+			WriteLine(writer, LEVEL_2+3, "Image:\t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Image)
+			WriteLine(writer, LEVEL_2+3, "Name: \t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Name)
+			WriteLine(writer, LEVEL_2+3, "Ports:\n")
 			for k := 0; k < len(job.Spec.Tasks[i].Template.Spec.Containers[j].Ports); k++ {
-				WriteLine(writer, LEVEL_2 + 4, "Container Port:\t%d\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Ports[k].ContainerPort)
-				WriteLine(writer, LEVEL_2 + 4, "Name:          \t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Ports[k].Name)
+				WriteLine(writer, LEVEL_2+4, "Container Port:\t%d\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Ports[k].ContainerPort)
+				WriteLine(writer, LEVEL_2+4, "Name:          \t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Ports[k].Name)
 			}
-			WriteLine(writer, LEVEL_2 + 3, "Resources:\n")
-			WriteLine(writer, LEVEL_2 + 4, "Limits:\n")
-			WriteLine(writer, LEVEL_2 + 5, "Cpu:   \t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Resources.Limits.Cpu())
-			WriteLine(writer, LEVEL_2 + 5, "Memory:\t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Resources.Limits.Memory())
-			WriteLine(writer, LEVEL_2 + 4, "Requests:\n")
-			WriteLine(writer, LEVEL_2 + 5, "Cpu:   \t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Resources.Requests.Cpu())
-			WriteLine(writer, LEVEL_2 + 5, "Memory:\t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Resources.Requests.Memory())
-			WriteLine(writer, LEVEL_2 + 4, "Working Dir:\t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].WorkingDir)
+			WriteLine(writer, LEVEL_2+3, "Resources:\n")
+			WriteLine(writer, LEVEL_2+4, "Limits:\n")
+			WriteLine(writer, LEVEL_2+5, "Cpu:   \t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Resources.Limits.Cpu())
+			WriteLine(writer, LEVEL_2+5, "Memory:\t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Resources.Limits.Memory())
+			WriteLine(writer, LEVEL_2+4, "Requests:\n")
+			WriteLine(writer, LEVEL_2+5, "Cpu:   \t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Resources.Requests.Cpu())
+			WriteLine(writer, LEVEL_2+5, "Memory:\t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Resources.Requests.Memory())
+			WriteLine(writer, LEVEL_2+4, "Working Dir:\t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].WorkingDir)
 		}
-		WriteLine(writer, LEVEL_2 + 2, "Image Pull Secrets:\n")
+		WriteLine(writer, LEVEL_2+2, "Image Pull Secrets:\n")
 		for j := 0; j < len(job.Spec.Tasks[i].Template.Spec.ImagePullSecrets); j++ {
-			WriteLine(writer, LEVEL_2 + 3, "Name:     \t%s\n", job.Spec.Tasks[i].Template.Spec.ImagePullSecrets[j].Name)
+			WriteLine(writer, LEVEL_2+3, "Name:     \t%s\n", job.Spec.Tasks[i].Template.Spec.ImagePullSecrets[j].Name)
 		}
-		WriteLine(writer, LEVEL_2 + 2, "Restart Policy:   \t%s\n", job.Spec.Tasks[i].Template.Spec.RestartPolicy)
+		WriteLine(writer, LEVEL_2+2, "Restart Policy:   \t%s\n", job.Spec.Tasks[i].Template.Spec.RestartPolicy)
 	}
 
 	WriteLine(writer, LEVEL_0, "Status:\n")
@@ -186,7 +186,7 @@ func PrintJobInfo(job *v1alpha1.Job, writer io.Writer) {
 	WriteLine(writer, LEVEL_2, "Phase:\t%s\n", job.Status.State.Phase)
 	if len(job.Status.ControlledResources) > 0 {
 		WriteLine(writer, LEVEL_1, "Controlled Resources:\n")
-		for key, value := range  job.Status.ControlledResources {
+		for key, value := range job.Status.ControlledResources {
 			WriteLine(writer, LEVEL_2, "%s: \t%s\n", key, value)
 		}
 	}
@@ -207,7 +207,7 @@ func PrintEvents(events []coreV1.Event, writer io.Writer) {
 			if len(e.Source.Host) > 0 {
 				EventSourceString = append(EventSourceString, e.Source.Host)
 			}
-			WriteLine(writer,LEVEL_0, "%-15v\t%-40v\t%-30s\t%-40s\t%v\n",
+			WriteLine(writer, LEVEL_0, "%-15v\t%-40v\t%-30s\t%-40s\t%v\n",
 				e.Type,
 				e.Reason,
 				interval,
@@ -224,13 +224,13 @@ func PrintEvents(events []coreV1.Event, writer io.Writer) {
 func GetEvents(config *rest.Config, job *v1alpha1.Job) []coreV1.Event {
 	kubernetes, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		fmt.Printf("%v\n",err)
+		fmt.Printf("%v\n", err)
 		return nil
 	}
 	events, _ := kubernetes.CoreV1().Events(viewJobFlags.Namespace).List(metav1.ListOptions{})
-	var jobEvents  []coreV1.Event
+	var jobEvents []coreV1.Event
 	for _, v := range events.Items {
-		if strings.HasPrefix(v.ObjectMeta.Name, job.Name + ".") {
+		if strings.HasPrefix(v.ObjectMeta.Name, job.Name+".") {
 			jobEvents = append(jobEvents, v)
 		}
 	}
@@ -242,6 +242,5 @@ func WriteLine(writer io.Writer, spaces int, content string, params ...interface
 	for i := 0; i < spaces; i++ {
 		prefix += "  "
 	}
-	fmt.Fprintf(writer, prefix + content, params...)
+	fmt.Fprintf(writer, prefix+content, params...)
 }
-
