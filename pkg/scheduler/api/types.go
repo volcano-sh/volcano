@@ -61,6 +61,10 @@ func (ts TaskStatus) String() string {
 	switch ts {
 	case Pending:
 		return "Pending"
+	case Allocated:
+		return "Allocated"
+	case Pipelined:
+		return "Pipelined"
 	case Binding:
 		return "Binding"
 	case Bound:
