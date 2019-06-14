@@ -21,6 +21,8 @@ import (
 	"sync"
 
 	"github.com/golang/glog"
+	"hash"
+	"hash/fnv"
 	"sync"
 	"time"
 
@@ -97,15 +99,21 @@ type Controller struct {
 	pcSynced func() bool
 
 	// queue that need to sync up
-	queue        workqueue.RateLimitingInterface
+	queueList    []workqueue.RateLimitingInterface
 	commandQueue workqueue.RateLimitingInterface
 	cache        jobcache.Cache
 	//Job Event recorder
 	recorder        record.EventRecorder
 	priorityClasses map[string]*v1beta1.PriorityClass
 
+
 	sync.Mutex
 	errTasks workqueue.RateLimitingInterface
+
+
+
+
+	workers uint32
 
 }
 
@@ -114,6 +122,8 @@ func NewJobController(
 	kubeClient kubernetes.Interface,
 	kbClient kbver.Interface,
 	vkClient vkver.Interface,
+	workers uint32,
+
 ) *Controller {
 
 	//Initialize event client
@@ -126,13 +136,17 @@ func NewJobController(
 		kubeClients:     kubeClient,
 		vkClients:       vkClient,
 		kbClients:       kbClient,
-		queue:           workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		queueList:       make([]workqueue.RateLimitingInterface, workers, workers),
 		commandQueue:    workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		cache:           jobcache.New(),
 		errTasks:        newRateLimitingQueue(),
 		recorder:        recorder,
 		priorityClasses: make(map[string]*v1beta1.PriorityClass),
-		
+		workers:         workers,
+	}
+	var i uint32
+	for i = 0; i < workers; i++ {
+		cc.queueList[i] = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 	}
 
 	cc.jobInformer = vkinfoext.NewSharedInformerFactory(cc.vkClients, 0).Batch().V1alpha1().Jobs()
@@ -195,7 +209,8 @@ func NewJobController(
 }
 
 // Run start JobController
-func (cc *Controller) Run(workers int, stopCh <-chan struct{}) {
+func (cc *Controller) Run(workers uint32, stopCh <-chan struct{}) {
+
 	go cc.sharedInformers.Start(stopCh)
 	go cc.jobInformer.Informer().Run(stopCh)
 	go cc.podInformer.Informer().Run(stopCh)
@@ -209,9 +224,17 @@ func (cc *Controller) Run(workers int, stopCh <-chan struct{}) {
 		cc.svcSynced, cc.cmdSynced, cc.pvcSynced, cc.pcSynced)
 
 	go wait.Until(cc.handleCommands, 0, stopCh)
+	var i uint32
+	for i = 0; i < workers; i++ {
+		go func(num uint32) {
+			wait.Until(
+				func() {
+					cc.worker(num)
+				},
+				time.Second,
+				stopCh)
+		}(i)
 
-	for i := 0; i < workers; i++ {
-		go wait.Until(cc.worker, time.Second, stopCh)
 	}
 
 	go cc.cache.Run(stopCh)
@@ -222,28 +245,67 @@ func (cc *Controller) Run(workers int, stopCh <-chan struct{}) {
 	glog.Infof("JobController is running ...... ")
 }
 
-func (cc *Controller) worker() {
-	for cc.processNextReq() {
+func (cc *Controller) worker(i uint32) {
+
+	glog.Infof("worker %d start ...... ", i)
+
+	for cc.processNextReq(i) {
 	}
 }
 
-func (cc *Controller) processNextReq() bool {
-	obj, shutdown := cc.queue.Get()
+// TODO we may need to make this sharding more proper if required
+func (cc *Controller) belongsToThisRoutine(key string, count uint32) bool {
+	var hashVal hash.Hash32
+	var val uint32
+
+	hashVal = fnv.New32()
+	hashVal.Write([]byte(key))
+
+	val = hashVal.Sum32()
+
+	if val%cc.workers == count {
+		return true
+	}
+
+	return false
+}
+
+// TODO we may need to make this sharding more proper if required
+func (cc *Controller) getWorkerID(key string) uint32 {
+	var hashVal hash.Hash32
+	var val uint32
+
+	hashVal = fnv.New32()
+	hashVal.Write([]byte(key))
+
+	val = hashVal.Sum32()
+
+	return val % cc.workers
+}
+
+func (cc *Controller) processNextReq(count uint32) bool {
+	obj, shutdown := cc.queueList[count].Get()
 	if shutdown {
 		glog.Errorf("Fail to pop item from queue")
 		return false
 	}
 
 	req := obj.(apis.Request)
-	defer cc.queue.Done(req)
+	defer cc.queueList[count].Done(req)
 
 	key := jobcache.JobKeyByReq(&req)
+	// Later we can remove this code if we want
+	if !cc.belongsToThisRoutine(key, count) {
+		glog.Errorf("should not occur The job does not belongs to this routine key:%s, worker:%d...... ", key, count)
+		cc.queueList[count].AddRateLimited(req)
+		return true
+	}
 
 	// prevent multi threads processing the same job simultaneously.
 	cc.jobsLock.Lock()
 	if cc.jobsMap[key] {
 		// the job is being processed by some other thread
-		cc.queue.AddRateLimited(req)
+		cc.queueList[count].AddRateLimited(req)
 		cc.jobsLock.Unlock()
 		return true
 	} else {
@@ -285,12 +347,12 @@ func (cc *Controller) processNextReq() bool {
 		glog.Errorf("Failed to handle Job <%s/%s>: %v",
 			jobInfo.Job.Namespace, jobInfo.Job.Name, err)
 		// If any error, requeue it.
-		cc.queue.AddRateLimited(req)
+		cc.queueList[count].AddRateLimited(req)
 		return true
 	}
 
 	// If no error, forget it.
-	cc.queue.Forget(req)
+	cc.queueList[count].Forget(req)
 
 	return true
 }

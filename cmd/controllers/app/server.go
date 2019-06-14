@@ -85,12 +85,12 @@ func Run(opt *options.ServerOption) error {
 	kbClient := kbver.NewForConfigOrDie(config)
 	vkClient := vkclient.NewForConfigOrDie(config)
 
-	jobController := job.NewJobController(kubeClient, kbClient, vkClient)
+	jobController := job.NewJobController(kubeClient, kbClient, vkClient, opt.WorkerThreads)
 	queueController := queue.NewQueueController(kubeClient, kbClient)
 	garbageCollector := garbagecollector.New(vkClient)
 
 	run := func(ctx context.Context) {
-		go jobController.Run((int)(opt.WorkerThreads), ctx.Done())
+		go jobController.Run(opt.WorkerThreads, ctx.Done())
 		go queueController.Run(ctx.Done())
 		go garbageCollector.Run(ctx.Done())
 		<-ctx.Done()

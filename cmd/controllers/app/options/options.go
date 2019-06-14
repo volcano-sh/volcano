@@ -39,7 +39,7 @@ type ServerOption struct {
 	PrintVersion         bool
 	// WorkerThreads is the number of threads syncing job operations
 	// concurrently. Larger number = faster job updating,but more CPU  load.
-	WorkerThreads int32
+	WorkerThreads uint32
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -58,7 +58,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.Float32Var(&s.KubeAPIQPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
 	fs.IntVar(&s.KubeAPIBurst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
-	fs.Int32Var(&s.WorkerThreads, "worker-threads", defaultWorkers, "The number of threads syncing job operations concurrently. "+
+	fs.Uint32Var(&s.WorkerThreads, "worker-threads", defaultWorkers, "The number of threads syncing job operations concurrently. "+
 		"Larger number = faster job updating, but more CPU load")
 }
 

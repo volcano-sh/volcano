@@ -65,7 +65,9 @@ func (cc *Controller) addJob(obj interface{}) {
 		glog.Errorf("Failed to add job <%s/%s>: %v in cache",
 			job.Namespace, job.Name, err)
 	}
-	cc.queue.Add(req)
+	key := vkcache.JobKeyByReq(&req)
+	i := cc.getWorkerID(key)
+	cc.queueList[i].Add(req)
 }
 
 func (cc *Controller) updateJob(oldObj, newObj interface{}) {
@@ -100,7 +102,9 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 		Event: vkbatchv1.OutOfSyncEvent,
 	}
 
-	cc.queue.Add(req)
+	key := vkcache.JobKeyByReq(&req)
+	i := cc.getWorkerID(key)
+	cc.queueList[i].Add(req)
 }
 
 func (cc *Controller) deleteJob(obj interface{}) {
@@ -165,7 +169,9 @@ func (cc *Controller) addPod(obj interface{}) {
 		glog.Errorf("Failed to add Pod <%s/%s>: %v to cache",
 			pod.Namespace, pod.Name, err)
 	}
-	cc.queue.Add(req)
+	key := vkcache.JobKeyByReq(&req)
+	i := cc.getWorkerID(key)
+	cc.queueList[i].Add(req)
 }
 
 func (cc *Controller) updatePod(oldObj, newObj interface{}) {
@@ -241,7 +247,9 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		JobVersion: int32(dVersion),
 	}
 
-	cc.queue.Add(req)
+	key := vkcache.JobKeyByReq(&req)
+	i := cc.getWorkerID(key)
+	cc.queueList[i].Add(req)
 }
 
 func (cc *Controller) deletePod(obj interface{}) {
@@ -302,7 +310,9 @@ func (cc *Controller) deletePod(obj interface{}) {
 			pod.Namespace, pod.Name, err)
 	}
 
-	cc.queue.Add(req)
+	key := vkcache.JobKeyByReq(&req)
+	i := cc.getWorkerID(key)
+	cc.queueList[i].Add(req)
 }
 
 func (cc *Controller) recordJobEvent(namespace, name string, event vkbatchv1.JobEvent, message string) {
@@ -347,7 +357,9 @@ func (cc *Controller) processNextCommand() bool {
 		Action:    vkbatchv1.Action(cmd.Action),
 	}
 
-	cc.queue.Add(req)
+	key := vkcache.JobKeyByReq(&req)
+	i := cc.getWorkerID(key)
+	cc.queueList[i].Add(req)
 
 	return true
 }
@@ -382,7 +394,9 @@ func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
 		case kbtype.PodGroupInqueue:
 			req.Action = vkbatchv1.EnqueueAction
 		}
-		cc.queue.Add(req)
+		key := vkcache.JobKeyByReq(&req)
+		i := cc.getWorkerID(key)
+		cc.queueList[i].Add(req)
 	}
 }
 
