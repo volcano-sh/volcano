@@ -686,7 +686,10 @@ func (sc *SchedulerCache) String() string {
 
 // RecordJobStatusEvent records related events according to job status.
 func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
-	jobErrMsg := job.FitError()
+	baseErrorMessage := job.JobFitErrors
+	if baseErrorMessage == "" {
+		baseErrorMessage = kbapi.AllNodeUnavailableMsg
+	}
 
 	if !shadowPodGroup(job.PodGroup) {
 		pgUnschedulable := job.PodGroup != nil &&
@@ -696,17 +699,20 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
 
 		// If pending or unschedulable, record unschedulable event.
 		if pgUnschedulable || pdbUnschedulabe {
-			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
-				len(job.TaskStatusIndex[api.Pending]), len(job.Tasks), job.FitError())
 			sc.Recorder.Eventf(job.PodGroup, v1.EventTypeWarning,
-				string(v1alpha1.PodGroupUnschedulableType), msg)
+				string(v1alpha1.PodGroupUnschedulableType), baseErrorMessage)
 		}
 	}
 
 	// Update podCondition for tasks Allocated and Pending before job discarded
 	for _, status := range []api.TaskStatus{api.Allocated, api.Pending} {
 		for _, taskInfo := range job.TaskStatusIndex[status] {
-			if err := sc.taskUnschedulable(taskInfo, jobErrMsg); err != nil {
+			msg := baseErrorMessage
+			fitError := job.NodesFitErrors[taskInfo.UID]
+			if fitError != nil {
+				msg = fitError.Error()
+			}
+			if err := sc.taskUnschedulable(taskInfo, msg); err != nil {
 				glog.Errorf("Failed to update unschedulable task status <%s/%s>: %v",
 					taskInfo.Namespace, taskInfo.Name, err)
 			}

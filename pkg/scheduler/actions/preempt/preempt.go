@@ -188,7 +188,7 @@ func preempt(
 
 	allNodes := util.GetNodeList(nodes)
 
-	predicateNodes := util.PredicateNodes(preemptor, allNodes, ssn.PredicateFn)
+	predicateNodes, _ := util.PredicateNodes(preemptor, allNodes, ssn.PredicateFn)
 
 	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 

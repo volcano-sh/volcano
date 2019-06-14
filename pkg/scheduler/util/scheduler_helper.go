@@ -31,10 +31,14 @@ import (
 )
 
 // PredicateNodes returns nodes that fit task
-func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn) []*api.NodeInfo {
+func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn) ([]*api.NodeInfo, *api.FitErrors) {
 	var predicateNodes []*api.NodeInfo
 
 	var workerLock sync.Mutex
+
+	var errorLock sync.Mutex
+	fe := api.NewFitErrors()
+
 	checkNode := func(index int) {
 		node := nodes[index]
 		glog.V(3).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
@@ -44,6 +48,9 @@ func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateF
 		if err := fn(task, node); err != nil {
 			glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
 				task.Namespace, task.Name, node.Name, err)
+			errorLock.Lock()
+			fe.SetNodeError(node.Name, err)
+			errorLock.Unlock()
 			return
 		}
 
@@ -53,7 +60,7 @@ func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateF
 	}
 
 	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), checkNode)
-	return predicateNodes
+	return predicateNodes, fe
 }
 
 // PrioritizeNodes returns a map whose key is node's score and value are corresponding nodes

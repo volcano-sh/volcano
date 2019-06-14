@@ -81,6 +81,8 @@ func TestAddTaskInfo(t *testing.T) {
 				},
 				NodeSelector:  make(map[string]string),
 				NodesFitDelta: make(NodeResourceMap),
+
+				NodesFitErrors: make(map[TaskID]*FitErrors),
 			},
 		},
 	}
@@ -147,6 +149,8 @@ func TestDeleteTaskInfo(t *testing.T) {
 				},
 				NodeSelector:  make(map[string]string),
 				NodesFitDelta: make(NodeResourceMap),
+
+				NodesFitErrors: make(map[TaskID]*FitErrors),
 			},
 		},
 		{
@@ -172,6 +176,8 @@ func TestDeleteTaskInfo(t *testing.T) {
 				},
 				NodeSelector:  make(map[string]string),
 				NodesFitDelta: make(NodeResourceMap),
+
+				NodesFitErrors: make(map[TaskID]*FitErrors),
 			},
 		},
 	}
