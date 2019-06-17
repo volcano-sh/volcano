@@ -17,11 +17,21 @@ limitations under the License.
 package ssh
 
 const (
-	SSHPrivateKey     = "id_rsa"
-	SSHPublicKey      = "id_rsa.pub"
-	SSHAuthorizedKeys = "authorized_keys"
-	SSHConfig         = "config"
+	// SSHPrivateKey private key
+	SSHPrivateKey = "id_rsa"
 
+	// SSHPublicKey public key
+	SSHPublicKey = "id_rsa.pub"
+
+	// SSHAuthorizedKeys authkey
+	SSHAuthorizedKeys = "authorized_keys"
+
+	// SSHConfig  ssh conf
+	SSHConfig = "config"
+
+	// SSHAbsolutePath ssh abs path
 	SSHAbsolutePath = "/root/.ssh"
+
+	// SSHRelativePath ssh rel path
 	SSHRelativePath = ".ssh"
 )

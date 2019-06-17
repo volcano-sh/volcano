@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package _interface
+package pluginsinterface
 
 import (
 	"k8s.io/api/core/v1"
@@ -23,10 +23,12 @@ import (
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
+// PluginClientset clientset
 type PluginClientset struct {
 	KubeClients kubernetes.Interface
 }
 
+// PluginInterface interface
 type PluginInterface interface {
 	// The unique name of Plugin.
 	Name() string

@@ -13,6 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package job
 
 import (
@@ -32,6 +33,7 @@ type resumeFlags struct {
 
 var resumeJobFlags = &resumeFlags{}
 
+// InitResumeFlags   init resume command flags
 func InitResumeFlags(cmd *cobra.Command) {
 	initFlags(cmd, &resumeJobFlags.commonFlags)
 
@@ -39,6 +41,7 @@ func InitResumeFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&resumeJobFlags.JobName, "name", "n", "", "the name of job")
 }
 
+// ResumeJob  resumes the job
 func ResumeJob() error {
 	config, err := buildConfig(resumeJobFlags.Master, resumeJobFlags.Kubeconfig)
 	if err != nil {
