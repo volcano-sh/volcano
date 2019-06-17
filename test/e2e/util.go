@@ -805,8 +805,23 @@ func removeTaintsFromAllNodes(ctx *context, taints []v1.Taint) error {
 	return nil
 }
 
+func getAllWorkerNodes(ctx *context) []string {
+	nodeNames := make([]string, 0)
+
+	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
+	checkError(ctx, err)
+
+	for _, node := range nodes.Items {
+		if len(node.Spec.Taints) != 0 {
+			continue
+		}
+		nodeNames = append(nodeNames, node.Name)
+	}
+	return nodeNames
+}
+
 // this method will return only worker nodes that are ready ignoring all other node including the master node
-func getAllWorkerNodes(ctx *context) []*v1.Node {
+func getAllWorkerNodesObject(ctx *context) []*v1.Node {
 	workernodes := make([]*v1.Node, 0)
 
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
@@ -836,7 +851,7 @@ func getAllWorkerNodes(ctx *context) []*v1.Node {
 func getAllWorkerNodeNames(ctx *context) []string {
 
 	nodeNames := make([]string, 0)
-	nodes := getAllWorkerNodes(ctx)
+	nodes := getAllWorkerNodesObject(ctx)
 
 	for _, node := range nodes {
 		nodeNames = append(nodeNames, node.Name)
@@ -1064,7 +1079,6 @@ func deleteReplicationController(ctx *context, name string) error {
 	})
 }
 
-
 // IsMasterNode returns true if its a master node or false otherwise.
 func IsMasterNode(node *v1.Node) bool {
 
@@ -1140,4 +1154,3 @@ func getRequestedMemory(pod v1.Pod) int64 {
 	}
 	return result
 }
-
