@@ -1,0 +1,12 @@
+apiVersion: v1
+entries:
+  volcano:
+  - apiVersion: v1
+    created: 2019-06-17T12:48:12.84917993+05:30
+    description: volcano
+    digest: 7a72604ef337569dfcf219d04c42f8ac13152261f47b3a147e389777f0d4637b
+    name: volcano
+    urls:
+    - volcano-0.0.1.tgz
+    version: 0.0.1
+generated: 2019-06-17T12:48:12.848709052+05:30
