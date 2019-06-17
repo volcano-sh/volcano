@@ -33,7 +33,7 @@ Some examples of the mechanisms and features that Volcano adds to Kubernetes are
     2. Fair-share scheduling
     3. Queue scheduling
     4. Preemption and reclaims
-    5. Reservartions and backfills
+    5. Reservations and backfills
     6. Topology-based scheduling
 3. Runtime extensions, e.g:
     1. Support for specialized continer runtimes like Singularity,

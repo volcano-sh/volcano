@@ -423,7 +423,7 @@ func jobUnschedulable(ctx *context, job *vkv1.Job, now time.Time) error {
 		for _, event := range events.Items {
 			target := event.InvolvedObject
 			if strings.HasPrefix(target.Name, pg.Name) && target.Namespace == pg.Namespace {
-				if event.Reason == string("Unschedulable") && event.LastTimestamp.After(now) {
+				if event.Reason == string("Unschedulable") || event.Reason == string("FailedScheduling") && event.LastTimestamp.After(now) {
 					return true, nil
 				}
 			}

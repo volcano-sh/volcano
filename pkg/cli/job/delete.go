@@ -18,6 +18,7 @@ package job
 
 import (
 	"fmt"
+
 	"github.com/spf13/cobra"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -50,7 +51,7 @@ func DeleteJob() error {
 	}
 
 	if deleteJobFlags.JobName == "" {
-		err := fmt.Errorf("job name is mandaorty to delete a particular job")
+		err := fmt.Errorf("job name is mandatory to delete a particular job")
 		return err
 	}
 

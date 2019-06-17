@@ -48,7 +48,7 @@ func SuspendJob() error {
 	}
 
 	if suspendJobFlags.JobName == "" {
-		err := fmt.Errorf("job name is mandaorty to suspend a particular job")
+		err := fmt.Errorf("job name is mandatory to suspend a particular job")
 		return err
 	}
 

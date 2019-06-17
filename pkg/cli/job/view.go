@@ -54,7 +54,7 @@ func ViewJob() error {
 		return err
 	}
 	if viewJobFlags.JobName == "" {
-		err := fmt.Errorf("job name (specified by --name or -n) is mandaorty to view a particular job")
+		err := fmt.Errorf("job name (specified by --name or -n) is mandatory to view a particular job")
 		return err
 	}
 

@@ -52,7 +52,7 @@ func GetQueue() error {
 	}
 
 	if getQueueFlags.Name == "" {
-		err := fmt.Errorf("name is mandaorty to get the particular queue details")
+		err := fmt.Errorf("name is mandatory to get the particular queue details")
 		return err
 	}
 
