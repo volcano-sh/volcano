@@ -188,7 +188,7 @@ func PrintJobInfo(job *v1alpha1.Job, writer io.Writer) {
 	}
 
 	WriteLine(writer, Level1, "State:\n")
-	WriteLine(writer, Level2, "Phase:\t%s\n", job.Status.State.Phase)
+	WriteLine(writer, Level2, "Phase:\t%s\n", job.Status.Phase)
 	if len(job.Status.ControlledResources) > 0 {
 		WriteLine(writer, Level1, "Controlled Resources:\n")
 		for key, value := range job.Status.ControlledResources {

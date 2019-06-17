@@ -25,8 +25,10 @@ import (
 
 //PhaseMap to store the pod phases.
 type PhaseMap map[v1.PodPhase]struct{}
+
 //ActionFn will create or delete Pods according to Job's spec.
 type UpdateStatusFn func(status *vkv1.JobStatus)
+
 //ActionFn will create or delete Pods according to Job's spec.
 type ActionFn func(job *apis.JobInfo, fn UpdateStatusFn) error
 
