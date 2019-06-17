@@ -19,12 +19,12 @@ package e2e
 import (
 	"time"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 )
 
-var _ = Describe("Job E2E Test", func() {
-	It("Schedule Job", func() {
+var _ = ginkgo.Describe("Job E2E Test", func() {
+	ginkgo.It("Schedule Job", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
@@ -42,10 +42,10 @@ var _ = Describe("Job E2E Test", func() {
 		})
 
 		err := waitJobReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	It("Schedule Multiple Jobs", func() {
+	ginkgo.It("Schedule Multiple Jobs", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
@@ -70,23 +70,23 @@ var _ = Describe("Job E2E Test", func() {
 		job3 := createJob(context, job)
 
 		err := waitJobReady(context, job1)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		err = waitJobReady(context, job2)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		err = waitJobReady(context, job3)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	It("Gang scheduling", func() {
+	ginkgo.It("Gang scheduling", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)/2 + 1
 
 		replicaset := createReplicaSet(context, "rs-1", rep, defaultNginxImage, oneCPU)
 		err := waitReplicaSetReady(context, replicaset.Name)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		jobSpec := &jobSpec{
 			name:      "gang-qj",
@@ -104,19 +104,19 @@ var _ = Describe("Job E2E Test", func() {
 
 		job := createJob(context, jobSpec)
 		err = waitJobStateInqueue(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		err = waitJobUnschedulable(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		err = deleteReplicaSet(context, replicaset.Name)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		err = waitJobReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	It("Gang scheduling: Full Occupied", func() {
+	ginkgo.It("Gang scheduling: Full Occupied", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
@@ -136,18 +136,18 @@ var _ = Describe("Job E2E Test", func() {
 		job.name = "gang-fq-qj1"
 		job1 := createJob(context, job)
 		err := waitJobReady(context, job1)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		job.name = "gang-fq-qj2"
 		job2 := createJob(context, job)
 		err = waitJobPending(context, job2)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		err = waitJobReady(context, job1)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	It("Preemption", func() {
+	ginkgo.It("Preemption", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
@@ -168,18 +168,18 @@ var _ = Describe("Job E2E Test", func() {
 		job.name = "preemptee-qj"
 		job1 := createJob(context, job)
 		err := waitTasksReady(context, job1, int(rep))
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		job.name = "preemptor-qj"
 		job2 := createJob(context, job)
 		err = waitTasksReady(context, job1, int(rep)/2)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		err = waitTasksReady(context, job2, int(rep)/2)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	It("Multiple Preemption", func() {
+	ginkgo.It("Multiple Preemption", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
@@ -200,27 +200,27 @@ var _ = Describe("Job E2E Test", func() {
 		job.name = "multipreemptee-qj"
 		job1 := createJob(context, job)
 		err := waitTasksReady(context, job1, int(rep))
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		job.name = "multipreemptor-qj1"
 		job2 := createJob(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		job.name = "multipreemptor-qj2"
 		job3 := createJob(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		err = waitTasksReady(context, job1, int(rep)/3)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		err = waitTasksReady(context, job2, int(rep)/3)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		err = waitTasksReady(context, job3, int(rep)/3)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	It("Schedule BestEffort Job", func() {
+	ginkgo.It("Schedule BestEffort Job", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
@@ -247,10 +247,10 @@ var _ = Describe("Job E2E Test", func() {
 		job := createJob(context, spec)
 
 		err := waitJobReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	It("Statement", func() {
+	ginkgo.It("Statement", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
@@ -273,18 +273,18 @@ var _ = Describe("Job E2E Test", func() {
 		spec.name = "st-qj-1"
 		job1 := createJob(context, spec)
 		err := waitJobReady(context, job1)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		now := time.Now()
 
 		spec.name = "st-qj-2"
 		job2 := createJob(context, spec)
 		err = waitJobUnschedulable(context, job2)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		// No preemption event
 		evicted, err := jobEvicted(context, job1, now)()
-		Expect(err).NotTo(HaveOccurred())
-		Expect(evicted).NotTo(BeTrue())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		gomega.Expect(evicted).NotTo(gomega.BeTrue())
 	})
 })

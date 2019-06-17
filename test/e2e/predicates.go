@@ -17,13 +17,13 @@ limitations under the License.
 package e2e
 
 import (
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 )
 
-var _ = Describe("Predicates E2E Test", func() {
+var _ = ginkgo.Describe("Predicates E2E Test", func() {
 
-	It("Hostport", func() {
+	ginkgo.It("Hostport", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
@@ -45,10 +45,10 @@ var _ = Describe("Predicates E2E Test", func() {
 		job := createJob(context, spec)
 
 		err := waitTasksReady(context, job, nn)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		err = waitTasksPending(context, job, nn)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
 })

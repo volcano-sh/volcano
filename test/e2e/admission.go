@@ -17,14 +17,14 @@ limitations under the License.
 package e2e
 
 import (
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var _ = Describe("Job E2E Test: Test Admission service", func() {
+var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 
-	It("Default queue would be added", func() {
+	ginkgo.It("Default queue would be added", func() {
 		jobName := "job-default-queue"
 		namespace := "test"
 		context := initTestContext()
@@ -44,10 +44,10 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 				},
 			},
 		})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		createdJob, err := context.vkclient.BatchV1alpha1().Jobs(namespace).Get(jobName, v1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(createdJob.Spec.Queue).Should(Equal("default"),
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		gomega.Expect(createdJob.Spec.Queue).Should(gomega.Equal("default"),
 			"Job queue attribute would default to 'default' ")
 	})
 

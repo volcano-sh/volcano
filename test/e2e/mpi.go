@@ -13,17 +13,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package e2e
 
 import (
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
-var _ = Describe("MPI E2E Test", func() {
-	It("will run and complete finally", func() {
+var _ = ginkgo.Describe("MPI E2E Test", func() {
+	ginkgo.It("will run and complete finally", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
@@ -71,7 +72,7 @@ mpiexec --allow-run-as-root --hostfile /etc/volcano/mpiworker.host -np 2 mpi_hel
 
 		err := waitJobStates(context, job, []vkv1.JobPhase{
 			vkv1.Pending, vkv1.Running, vkv1.Completing, vkv1.Completed})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
 })

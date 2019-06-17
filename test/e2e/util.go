@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega"
 
 	appv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/core/v1"
@@ -92,6 +92,7 @@ func kubeconfigPath(home string) string {
 	return filepath.Join(home, ".kube", "config") // default kubeconfig path is $HOME/.kube/config
 }
 
+//VolcanoCliBinary function gets the volcano cli binary
 func VolcanoCliBinary() string {
 	if bin := os.Getenv("VK_BIN"); bin != "" {
 		return filepath.Join(bin, "vkctl")
@@ -115,14 +116,14 @@ func initTestContext() *context {
 	}
 
 	home := homeDir()
-	Expect(home).NotTo(Equal(""))
+	gomega.Expect(home).NotTo(gomega.Equal(""))
 	configPath := kubeconfigPath(home)
-	Expect(configPath).NotTo(Equal(""))
+	gomega.Expect(configPath).NotTo(gomega.Equal(""))
 	vkctl := VolcanoCliBinary()
-	Expect(fileExist(vkctl)).To(BeTrue(), fmt.Sprintf(
+	gomega.Expect(fileExist(vkctl)).To(gomega.BeTrue(), fmt.Sprintf(
 		"vkctl binary: %s is required for E2E tests, please update VK_BIN environment", vkctl))
 	config, err := clientcmd.BuildConfigFromFlags(masterURL(), configPath)
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	cxt.kbclient = kbver.NewForConfigOrDie(config)
 	cxt.kubeclient = kubernetes.NewForConfigOrDie(config)
@@ -130,7 +131,7 @@ func initTestContext() *context {
 
 	//Ensure at least one worker is ready
 	err = waitClusterReady(cxt)
-	Expect(err).NotTo(HaveOccurred(),
+	gomega.Expect(err).NotTo(gomega.HaveOccurred(),
 		"k8s cluster is required to have one ready worker node at least.")
 
 	_, err = cxt.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
@@ -138,7 +139,7 @@ func initTestContext() *context {
 			Name: cxt.namespace,
 		},
 	})
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	createQueues(cxt)
 
@@ -149,7 +150,7 @@ func initTestContext() *context {
 		Value:         100,
 		GlobalDefault: false,
 	})
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	_, err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Create(&schedv1.PriorityClass{
 		ObjectMeta: metav1.ObjectMeta{
@@ -158,7 +159,7 @@ func initTestContext() *context {
 		Value:         1,
 		GlobalDefault: false,
 	})
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	return cxt
 }
@@ -202,27 +203,27 @@ func cleanupTestContext(cxt *context) {
 	err := cxt.kubeclient.CoreV1().Namespaces().Delete(cxt.namespace, &metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	deleteQueues(cxt)
 
 	err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(masterPriority, &metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(workerPriority, &metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	// Wait for namespace deleted.
 	err = wait.Poll(100*time.Millisecond, twoMinute, namespaceNotExist(cxt))
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	// Wait for queues deleted
 	err = wait.Poll(100*time.Millisecond, twoMinute, queueNotExist(cxt))
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 }
 
 func createQueues(cxt *context) {
@@ -238,7 +239,7 @@ func createQueues(cxt *context) {
 			},
 		})
 
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 }
 
@@ -250,7 +251,7 @@ func deleteQueues(cxt *context) {
 			PropagationPolicy: &foreground,
 		})
 
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 }
 
@@ -294,7 +295,7 @@ func getNS(context *context, job *jobSpec) string {
 func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
 
 	job, err := createJobInner(context, jobSpec)
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	return job
 }
@@ -373,7 +374,7 @@ func waitTaskPhase(ctx *context, job *vkv1.Job, phase []v1.PodPhase, taskNum int
 	var additionalError error
 	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
 		pods, err := ctx.kubeclient.CoreV1().Pods(job.Namespace).List(metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		readyTaskNum := 0
 		for _, pod := range pods.Items {
@@ -442,10 +443,10 @@ func jobEvicted(ctx *context, job *vkv1.Job, time time.Time) wait.ConditionFunc 
 	// TODO(k82cn): check Job's conditions instead of PodGroup's event.
 	return func() (bool, error) {
 		pg, err := ctx.kbclient.SchedulingV1alpha1().PodGroups(job.Namespace).Get(job.Name, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		events, err := ctx.kubeclient.CoreV1().Events(pg.Namespace).List(metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		for _, event := range events.Items {
 			target := event.InvolvedObject
@@ -488,7 +489,7 @@ func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
 	}
 	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
 		newJob, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		if newJob.Status.State.Phase != phase {
 			additionalError = fmt.Errorf(
@@ -575,7 +576,7 @@ func waitJobPhaseExpect(ctx *context, job *vkv1.Job, state vkv1.JobPhase) error 
 	var additionalError error
 	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
 		job, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		expected := job.Status.State.Phase == state
 		if !expected {
 			additionalError = fmt.Errorf("expected job '%s' phase in %s, actual got %s", job.Name,
@@ -672,7 +673,7 @@ func createReplicaSet(context *context, name string, rep int32, img string, req 
 	}
 
 	deployment, err := context.kubeclient.AppsV1().ReplicaSets(context.namespace).Create(deployment)
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	return deployment
 }
@@ -716,10 +717,10 @@ func deleteReplicaSet(ctx *context, name string) error {
 func replicaSetReady(ctx *context, name string) wait.ConditionFunc {
 	return func() (bool, error) {
 		deployment, err := ctx.kubeclient.ExtensionsV1beta1().ReplicaSets(ctx.namespace).Get(name, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		labelSelector := labels.SelectorFromSet(deployment.Spec.Selector.MatchLabels)
 
@@ -743,10 +744,10 @@ func waitReplicaSetReady(ctx *context, name string) error {
 
 func clusterSize(ctx *context, req v1.ResourceList) int32 {
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	pods, err := ctx.kubeclient.CoreV1().Pods(metav1.NamespaceAll).List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	used := map[string]*kbapi.Resource{}
 
@@ -791,14 +792,14 @@ func clusterSize(ctx *context, req v1.ResourceList) int32 {
 			res++
 		}
 	}
-	Expect(res).Should(BeNumerically(">=", 1),
+	gomega.Expect(res).Should(gomega.BeNumerically(">=", 1),
 		"Current cluster does not have enough resource for request")
 	return res
 }
 
 func clusterNodeNumber(ctx *context) int {
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	nn := 0
 	for _, node := range nodes.Items {
@@ -813,10 +814,10 @@ func clusterNodeNumber(ctx *context) int {
 
 func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	pods, err := ctx.kubeclient.CoreV1().Pods(metav1.NamespaceAll).List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	used := map[string]*kbapi.Resource{}
 
@@ -870,7 +871,7 @@ func computeNode(ctx *context, req v1.ResourceList) (string, int32) {
 
 func getTasksOfJob(ctx *context, job *vkv1.Job) []*v1.Pod {
 	pods, err := ctx.kubeclient.CoreV1().Pods(job.Namespace).List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	var tasks []*v1.Pod
 
@@ -886,7 +887,7 @@ func getTasksOfJob(ctx *context, job *vkv1.Job) []*v1.Pod {
 
 func taintAllNodes(ctx *context, taints []v1.Taint) error {
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	for _, node := range nodes.Items {
 		newNode := node.DeepCopy()
@@ -909,10 +910,10 @@ func taintAllNodes(ctx *context, taints []v1.Taint) error {
 		newNode.Spec.Taints = newTaints
 
 		patchBytes, err := preparePatchBytesforNode(node.Name, &node, newNode)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		_, err = ctx.kubeclient.CoreV1().Nodes().Patch(node.Name, types.StrategicMergePatchType, patchBytes)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 
 	return nil
@@ -920,7 +921,7 @@ func taintAllNodes(ctx *context, taints []v1.Taint) error {
 
 func removeTaintsFromAllNodes(ctx *context, taints []v1.Taint) error {
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	for _, node := range nodes.Items {
 		if len(node.Spec.Taints) == 0 {
@@ -946,10 +947,10 @@ func removeTaintsFromAllNodes(ctx *context, taints []v1.Taint) error {
 		newNode.Spec.Taints = newTaints
 
 		patchBytes, err := preparePatchBytesforNode(node.Name, &node, newNode)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		_, err = ctx.kubeclient.CoreV1().Nodes().Patch(node.Name, types.StrategicMergePatchType, patchBytes)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 
 	return nil
@@ -974,6 +975,7 @@ func preparePatchBytesforNode(nodeName string, oldNode *v1.Node, newNode *v1.Nod
 	return patchBytes, nil
 }
 
+// IsNodeReady function returns the node ready status
 func IsNodeReady(node *v1.Node) bool {
 	for _, c := range node.Status.Conditions {
 		if c.Type == v1.NodeReady {
@@ -987,16 +989,16 @@ func waitClusterReady(ctx *context) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
 		if readyNodeAmount(ctx) >= 1 {
 			return true, nil
-		} else {
-			return false, nil
 		}
+		return false, nil
+
 	})
 }
 
 func readyNodeAmount(ctx *context) int {
 	var amount int
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	for _, n := range nodes.Items {
 		if IsNodeReady(&n) && len(n.Spec.Taints) == 0 {
 			amount++

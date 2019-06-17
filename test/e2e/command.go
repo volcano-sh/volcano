@@ -21,8 +21,8 @@ import (
 	"fmt"
 	v1 "k8s.io/api/core/v1"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,8 +31,8 @@ import (
 	jobUtil "volcano.sh/volcano/pkg/controllers/job"
 )
 
-var _ = Describe("Job E2E Test: Test Job Command", func() {
-	It("List running jobs", func() {
+var _ = ginkgo.Describe("Job E2E Test: Test Job Command", func() {
+	ginkgo.It("List running jobs", func() {
 		var outBuffer bytes.Buffer
 		jobName := "test-job"
 		namespace := "test"
@@ -54,19 +54,19 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		})
 		//Pod is running
 		err := waitJobReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		//Job Status is running
 		err = waitJobStateReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		//Command outputs are identical
 		outputs := ListJobs(namespace)
 		jobs, err := context.vkclient.BatchV1alpha1().Jobs(namespace).List(metav1.ListOptions{})
 		ctlJob.PrintJobs(jobs, &outBuffer)
-		Expect(outputs).To(Equal(outBuffer.String()), "List command result should be:\n %s",
+		gomega.Expect(outputs).To(gomega.Equal(outBuffer.String()), "List command result should be:\n %s",
 			outBuffer.String())
 	})
 
-	It("Suspend running job&Resume aborted job", func() {
+	ginkgo.It("Suspend running job&Resume aborted job", func() {
 		jobName := "test-suspend-running-job"
 		taskName := "long-live-task"
 		namespace := "test"
@@ -87,19 +87,19 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		})
 		//Job is running
 		err := waitJobReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		err = waitJobStateReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		//Suspend job and wait status change
 		SuspendJob(jobName, namespace)
 		err = waitJobStateAborted(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		//Pod is gone
 		podName := jobUtil.MakePodName(jobName, taskName, 0)
 		_, err = context.kubeclient.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
-		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
+		gomega.Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 			"Job related pod should be deleted when aborting job.")
 
 		//Resume job
@@ -107,13 +107,13 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 
 		//Job is running again
 		err = waitJobReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		err = waitJobStateReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	})
 
-	It("Suspend pending job", func() {
+	ginkgo.It("Suspend pending job", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU) * 2
@@ -138,23 +138,23 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 
 		//Job is pending
 		err := waitJobPending(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		err = waitJobStateInqueue(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		//Suspend job and wait status change
 		SuspendJob(jobName, namespace)
 		err = waitJobStateAborted(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		//Pod is gone
 		podName := jobUtil.MakePodName(jobName, taskName, 0)
 		_, err = context.kubeclient.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
-		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
+		gomega.Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 			"Job related pod should be deleted when job aborted.")
 	})
 
-	It("delete a job with all nodes taints", func() {
+	ginkgo.It("delete a job with all nodes taints", func() {
 
 		jobName := "test-del-job"
 		namespace := "test"
@@ -171,7 +171,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		}
 
 		err := taintAllNodes(context, taints)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		job := createJob(context, &jobSpec{
 			namespace: namespace,
@@ -187,26 +187,26 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		})
 
 		err = waitJobPending(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		err = removeTaintsFromAllNodes(context, taints)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		// Pod is running
 		err = waitJobReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		// Job Status is running
 		err = waitJobStateReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		_, err = context.vkclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		// Delete job
 		DeleteJob(jobName, namespace)
 
 		_, err = context.vkclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
-		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
+		gomega.Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 			"Job should be deleted on vkctl job delete.")
 
 	})

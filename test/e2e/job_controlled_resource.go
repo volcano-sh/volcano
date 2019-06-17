@@ -17,16 +17,16 @@ limitations under the License.
 package e2e
 
 import (
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 	v12 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
-var _ = Describe("Job E2E Test: Test Job PVCs", func() {
-	It("Generate PVC name if not specified", func() {
+var _ = ginkgo.Describe("Job E2E Test: Test Job PVCs", func() {
+	ginkgo.It("Generate PVC name if not specified", func() {
 		jobName := "job-pvc-name-empty"
 		namespace := "test"
 		taskName := "task"
@@ -58,20 +58,20 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		})
 
 		err := waitJobReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		job, err = context.vkclient.BatchV1alpha1().Jobs(namespace).Get(jobName, v1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		Expect(len(job.Spec.Volumes)).To(Equal(2),
+		gomega.Expect(len(job.Spec.Volumes)).To(gomega.Equal(2),
 			"Two volumes should be created")
 		for _, volume := range job.Spec.Volumes {
-			Expect(volume.VolumeClaimName).Should(Or(ContainSubstring(jobName), Equal(pvcName)),
+			gomega.Expect(volume.VolumeClaimName).Should(Or(ContainSubstring(jobName), gomega.Equal(pvcName)),
 				"PVC name should be generated for manually specified.")
 		}
 	})
 
-	It("Generate PodGroup and valid minResource when creating job", func() {
+	ginkgo.It("Generate PodGroup and valid minResource when creating job", func() {
 		jobName := "job-name-podgroup"
 		namespace := "test"
 		context := initTestContext()
@@ -113,15 +113,15 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		}
 
 		err := waitJobStatePending(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		pGroup, err := context.kbclient.SchedulingV1alpha1().PodGroups(namespace).Get(jobName, v1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		for name, q := range *pGroup.Spec.MinResources {
 			value, ok := expected[string(name)]
-			Expect(ok).To(Equal(true), "Resource %s should exists in PodGroup", name)
-			Expect(q.Value()).To(Equal(value), "Resource %s 's value should equal to %d", name, value)
+			gomega.Expect(ok).To(gomega.Equal(true), "Resource %s should exists in PodGroup", name)
+			gomega.Expect(q.Value()).To(gomega.Equal(value), "Resource %s 's value should equal to %d", name, value)
 		}
 
 	})

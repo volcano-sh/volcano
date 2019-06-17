@@ -18,16 +18,16 @@ package e2e
 
 import (
 	"fmt"
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 	cv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 )
 
-var _ = Describe("Job E2E Test: Test Job Plugins", func() {
-	It("SVC Plugin with Node Affinity", func() {
+var _ = ginkgo.Describe("Job E2E Test: Test Job Plugins", func() {
+	ginkgo.It("SVC Plugin with Node Affinity", func() {
 		jobName := "job-with-svc-plugin"
 		namespace := "test"
 		taskName := "task"
@@ -36,7 +36,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		defer cleanupTestContext(context)
 
 		nodeName, rep := computeNode(context, oneCPU)
-		Expect(rep).NotTo(Equal(0))
+		gomega.Expect(rep).NotTo(gomega.Equal(0))
 
 		affinity := &cv1.Affinity{
 			NodeAffinity: &cv1.NodeAffinity{
@@ -75,31 +75,31 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		})
 
 		err := waitJobReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		pluginName := fmt.Sprintf("%s-svc", jobName)
 		_, err = context.kubeclient.CoreV1().ConfigMaps(namespace).Get(
 			pluginName, v1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		pod, err := context.kubeclient.CoreV1().Pods(namespace).Get(
 			fmt.Sprintf(helpers.PodNameFmt, jobName, taskName, 0), v1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		for _, volume := range pod.Spec.Volumes {
 			if volume.Name == pluginName {
 				foundVolume = true
 				break
 			}
 		}
-		Expect(foundVolume).To(BeTrue())
+		gomega.Expect(foundVolume).To(gomega.BeTrue())
 
 		pods := getTasksOfJob(context, job)
 		for _, pod := range pods {
-			Expect(pod.Spec.NodeName).To(Equal(nodeName))
+			gomega.Expect(pod.Spec.NodeName).To(gomega.Equal(nodeName))
 		}
 	})
 
-	It("SSh Plugin with Pod Affinity", func() {
+	ginkgo.It("SSh Plugin with Pod Affinity", func() {
 		jobName := "job-with-ssh-plugin"
 		namespace := "test"
 		taskName := "task"
@@ -108,7 +108,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		defer cleanupTestContext(context)
 
 		_, rep := computeNode(context, oneCPU)
-		Expect(rep).NotTo(Equal(0))
+		gomega.Expect(rep).NotTo(gomega.Equal(0))
 
 		labels := map[string]string{"foo": "bar"}
 
@@ -145,29 +145,29 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		})
 
 		err := waitJobReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		pluginName := fmt.Sprintf("%s-ssh", jobName)
 		_, err = context.kubeclient.CoreV1().ConfigMaps(namespace).Get(
 			pluginName, v1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		pod, err := context.kubeclient.CoreV1().Pods(namespace).Get(
 			fmt.Sprintf(helpers.PodNameFmt, jobName, taskName, 0), v1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		for _, volume := range pod.Spec.Volumes {
 			if volume.Name == pluginName {
 				foundVolume = true
 				break
 			}
 		}
-		Expect(foundVolume).To(BeTrue())
+		gomega.Expect(foundVolume).To(gomega.BeTrue())
 
 		pods := getTasksOfJob(context, job)
 		// All pods should be scheduled to the same node.
 		nodeName := pods[0].Spec.NodeName
 		for _, pod := range pods {
-			Expect(pod.Spec.NodeName).To(Equal(nodeName))
+			gomega.Expect(pod.Spec.NodeName).To(gomega.Equal(nodeName))
 		}
 	})
 })

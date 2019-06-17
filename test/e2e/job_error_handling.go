@@ -17,8 +17,8 @@ limitations under the License.
 package e2e
 
 import (
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 
 	"k8s.io/api/core/v1"
 
@@ -27,13 +27,13 @@ import (
 	jobutil "volcano.sh/volcano/pkg/controllers/job"
 )
 
-var _ = Describe("Job Error Handling", func() {
-	It("job level LifecyclePolicy, Event: PodFailed; Action: RestartJob", func() {
-		By("init test context")
+var _ = ginkgo.Describe("Job Error Handling", func() {
+	ginkgo.It("job level LifecyclePolicy, Event: PodFailed; Action: RestartJob", func() {
+		ginkgo.By("init test context")
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
-		By("create job")
+		ginkgo.By("create job")
 		job := createJob(context, &jobSpec{
 			name: "failed-restart-job",
 			policies: []vkv1.LifecyclePolicy{
@@ -62,15 +62,15 @@ var _ = Describe("Job Error Handling", func() {
 
 		// job phase: pending -> running -> restarting
 		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Restarting})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	It("job level LifecyclePolicy, Event: PodFailed; Action: TerminateJob", func() {
-		By("init test context")
+	ginkgo.It("job level LifecyclePolicy, Event: PodFailed; Action: TerminateJob", func() {
+		ginkgo.By("init test context")
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
-		By("create job")
+		ginkgo.By("create job")
 		job := createJob(context, &jobSpec{
 			name: "failed-terminate-job",
 			policies: []vkv1.LifecyclePolicy{
@@ -99,15 +99,15 @@ var _ = Describe("Job Error Handling", func() {
 
 		// job phase: pending -> running -> Terminating -> Terminated
 		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Terminating, vkv1.Terminated})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	It("job level LifecyclePolicy, Event: PodFailed; Action: AbortJob", func() {
-		By("init test context")
+	ginkgo.It("job level LifecyclePolicy, Event: PodFailed; Action: AbortJob", func() {
+		ginkgo.By("init test context")
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
-		By("create job")
+		ginkgo.By("create job")
 		job := createJob(context, &jobSpec{
 			name: "failed-abort-job",
 			policies: []vkv1.LifecyclePolicy{
@@ -136,15 +136,15 @@ var _ = Describe("Job Error Handling", func() {
 
 		// job phase: pending -> running -> Aborting -> Aborted
 		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Aborting, vkv1.Aborted})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	It("job level LifecyclePolicy, Event: PodEvicted; Action: RestartJob", func() {
-		By("init test context")
+	ginkgo.It("job level LifecyclePolicy, Event: PodEvicted; Action: RestartJob", func() {
+		ginkgo.By("init test context")
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
-		By("create job")
+		ginkgo.By("create job")
 		job := createJob(context, &jobSpec{
 			name: "evicted-restart-job",
 			policies: []vkv1.LifecyclePolicy{
@@ -171,24 +171,24 @@ var _ = Describe("Job Error Handling", func() {
 
 		// job phase: pending -> running
 		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		By("delete one pod of job")
+		ginkgo.By("delete one pod of job")
 		podName := jobutil.MakePodName(job.Name, "delete", 0)
 		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		// job phase: Restarting -> Running
 		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Restarting, vkv1.Pending, vkv1.Inqueue, vkv1.Running})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	It("job level LifecyclePolicy, Event: PodEvicted; Action: TerminateJob", func() {
-		By("init test context")
+	ginkgo.It("job level LifecyclePolicy, Event: PodEvicted; Action: TerminateJob", func() {
+		ginkgo.By("init test context")
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
-		By("create job")
+		ginkgo.By("create job")
 		job := createJob(context, &jobSpec{
 			name: "evicted-terminate-job",
 			policies: []vkv1.LifecyclePolicy{
@@ -215,24 +215,24 @@ var _ = Describe("Job Error Handling", func() {
 
 		// job phase: pending -> running
 		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		By("delete one pod of job")
+		ginkgo.By("delete one pod of job")
 		podName := jobutil.MakePodName(job.Name, "delete", 0)
 		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		// job phase: Terminating -> Terminated
 		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Terminating, vkv1.Terminated})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	It("job level LifecyclePolicy, Event: PodEvicted; Action: AbortJob", func() {
-		By("init test context")
+	ginkgo.It("job level LifecyclePolicy, Event: PodEvicted; Action: AbortJob", func() {
+		ginkgo.By("init test context")
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
-		By("create job")
+		ginkgo.By("create job")
 		job := createJob(context, &jobSpec{
 			name: "evicted-abort-job",
 			policies: []vkv1.LifecyclePolicy{
@@ -259,24 +259,24 @@ var _ = Describe("Job Error Handling", func() {
 
 		// job phase: pending -> running
 		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		By("delete one pod of job")
+		ginkgo.By("delete one pod of job")
 		podName := jobutil.MakePodName(job.Name, "delete", 0)
 		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		// job phase: Aborting -> Aborted
 		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Aborting, vkv1.Aborted})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	It("job level LifecyclePolicy, Event: Any; Action: RestartJob", func() {
-		By("init test context")
+	ginkgo.It("job level LifecyclePolicy, Event: Any; Action: RestartJob", func() {
+		ginkgo.By("init test context")
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
-		By("create job")
+		ginkgo.By("create job")
 		job := createJob(context, &jobSpec{
 			name: "any-restart-job",
 			policies: []vkv1.LifecyclePolicy{
@@ -303,20 +303,20 @@ var _ = Describe("Job Error Handling", func() {
 
 		// job phase: pending -> running
 		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		By("delete one pod of job")
+		ginkgo.By("delete one pod of job")
 		podName := jobutil.MakePodName(job.Name, "delete", 0)
 		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		// job phase: Restarting -> Running
 		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Restarting, vkv1.Pending, vkv1.Inqueue, vkv1.Running})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	It("Job error handling: Restart job when job is unschedulable", func() {
-		By("init test context")
+	ginkgo.It("Job error handling: Restart job when job is unschedulable", func() {
+		ginkgo.By("init test context")
 		context := initTestContext()
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
@@ -340,12 +340,12 @@ var _ = Describe("Job Error Handling", func() {
 				},
 			},
 		}
-		By("Create the Job")
+		ginkgo.By("Create the Job")
 		job := createJob(context, jobSpec)
 		err := waitJobReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		By("Taint all nodes")
+		ginkgo.By("Taint all nodes")
 		taints := []v1.Taint{
 			{
 				Key:    "unschedulable-taint-key",
@@ -354,28 +354,28 @@ var _ = Describe("Job Error Handling", func() {
 			},
 		}
 		err = taintAllNodes(context, taints)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		podName := jobutil.MakePodName(job.Name, "test", 0)
-		By("Kill one of the pod in order to trigger unschedulable status")
+		ginkgo.By("Kill one of the pod in order to trigger unschedulable status")
 		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		By("Job is restarting")
+		ginkgo.By("Job is restarting")
 		err = waitJobPhases(context, job, []vkv1.JobPhase{
 			vkv1.Restarting, vkv1.Pending})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		By("Untaint all nodes")
+		ginkgo.By("Untaint all nodes")
 		err = removeTaintsFromAllNodes(context, taints)
-		Expect(err).NotTo(HaveOccurred())
-		By("Job is running again")
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		ginkgo.By("Job is running again")
 		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Running})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	It("Job error handling: Abort job when job is unschedulable", func() {
-		By("init test context")
+	ginkgo.It("Job error handling: Abort job when job is unschedulable", func() {
+		ginkgo.By("init test context")
 		context := initTestContext()
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
@@ -399,12 +399,12 @@ var _ = Describe("Job Error Handling", func() {
 				},
 			},
 		}
-		By("Create the Job")
+		ginkgo.By("Create the Job")
 		job := createJob(context, jobSpec)
 		err := waitJobReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		By("Taint all nodes")
+		ginkgo.By("Taint all nodes")
 		taints := []v1.Taint{
 			{
 				Key:    "unschedulable-taint-key",
@@ -413,28 +413,28 @@ var _ = Describe("Job Error Handling", func() {
 			},
 		}
 		err = taintAllNodes(context, taints)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		podName := jobutil.MakePodName(job.Name, "test", 0)
-		By("Kill one of the pod in order to trigger unschedulable status")
+		ginkgo.By("Kill one of the pod in order to trigger unschedulable status")
 		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		By("Job is aborted")
+		ginkgo.By("Job is aborted")
 		err = waitJobPhases(context, job, []vkv1.JobPhase{
 			vkv1.Aborting, vkv1.Aborted})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		err = removeTaintsFromAllNodes(context, taints)
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	It("job level LifecyclePolicy, Event: TaskCompleted; Action: CompletedJob", func() {
-		By("init test context")
+	ginkgo.It("job level LifecyclePolicy, Event: TaskCompleted; Action: CompletedJob", func() {
+		ginkgo.By("init test context")
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
-		By("create job")
+		ginkgo.By("create job")
 		job := createJob(context, &jobSpec{
 			name: "any-restart-job",
 			policies: []vkv1.LifecyclePolicy{
@@ -461,20 +461,20 @@ var _ = Describe("Job Error Handling", func() {
 			},
 		})
 
-		By("job scheduled, then task 'completed_task' finished and job finally complete")
+		ginkgo.By("job scheduled, then task 'completed_task' finished and job finally complete")
 		// job phase: pending -> running -> completing -> completed
 		err := waitJobStates(context, job, []vkv1.JobPhase{
 			vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Completing, vkv1.Completed})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 	})
 
-	It("job level LifecyclePolicy, error code: 3; Action: RestartJob", func() {
-		By("init test context")
+	ginkgo.It("job level LifecyclePolicy, error code: 3; Action: RestartJob", func() {
+		ginkgo.By("init test context")
 		context := initTestContext()
 		defer cleanupTestContext(context)
 
-		By("create job")
+		ginkgo.By("create job")
 		var erroCode int32 = 3
 		job := createJob(context, &jobSpec{
 			name: "errorcode-restart-job",
@@ -504,7 +504,7 @@ var _ = Describe("Job Error Handling", func() {
 
 		// job phase: pending -> running -> restarting
 		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Restarting})
-		Expect(err).NotTo(HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
 })
