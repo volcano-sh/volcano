@@ -53,8 +53,25 @@ the open source community.
 
 ## Quick Start Guide
 
-The easiest way to deploy Volcano is to use the Helm chart.
+The easiest way to deploy Volcano is to use the Helm chart.  Volcano can be installed by cloning new code and also without cloning code.
 
+## Without Cloning Code
+### Helm Charts
+
+Add Helm repo using following command,
+
+```
+helm repo add volcano https://raw.githubusercontent.com/volcano-sh/volcano/master/installer/helm_package
+```
+
+Install helm using following command,
+
+```
+helm install volcano/volcano -namespace <namespace> --name <specified-name>
+For eg :
+helm install volcano/volcano --namespace volcano-trial --name volcano-trial
+```
+## Cloning Code
 ### Pre-requisites
 
 First of all, clone the repo to your local path:
@@ -92,10 +109,10 @@ try command ```kind load docker-image <image-name>:<tag> ``` for each of the ima
 Secondly, install helm chart.
 
 ```
-helm install installer/chart --namespace <namespace> --name <specified-name>
+helm install installer/chart/volcano --namespace <namespace> --name <specified-name>
 
 For eg :
-helm install installer/chart --namespace volcano-trial --name volcano-trial
+helm install installer/chart/volcano --namespace volcano-trial --name volcano-trial
 
 ```
 
@@ -116,6 +133,7 @@ NAME                                     TYPE        CLUSTER-IP     EXTERNAL-IP 
 <specified-name>-admission-service       ClusterIP   10.105.78.53   <none>        443/TCP   91s
 
 ```
+
 
 
 ## Community, discussion, contribution, and support
