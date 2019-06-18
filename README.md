@@ -53,8 +53,26 @@ the open source community.
 
 ## Quick Start Guide
 
-The easiest way to deploy Volcano is to use the Helm chart.
+The easiest way to deploy Volcano is to use the Helm chart.  Volcano can be deployed by cloning code and also by adding helm repo.
 
+## Using Volcano Helm Repo
+
+Add helm repo using following command,
+
+```
+helm repo add volcano https://volcano-sh.github.io/charts
+```
+
+Install Volcano using following command,
+
+```
+helm install volcano/volcano --namespace <namespace> --name <specified-name>
+
+For eg :
+helm install volcano/volcano --namespace volcano-trial --name volcano-trial
+```
+ 
+## Cloning Code
 ### Pre-requisites
 
 First of all, clone the repo to your local path:
