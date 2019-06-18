@@ -66,8 +66,8 @@ func (cc *Controller) addJob(obj interface{}) {
 			job.Namespace, job.Name, err)
 	}
 	key := vkcache.JobKeyByReq(&req)
-	i := cc.getWorkerID(key)
-	cc.queueList[i].Add(req)
+	queue := cc.getWorkerID(key)
+	queue.Add(req)
 }
 
 func (cc *Controller) updateJob(oldObj, newObj interface{}) {
@@ -103,8 +103,8 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 	}
 
 	key := vkcache.JobKeyByReq(&req)
-	i := cc.getWorkerID(key)
-	cc.queueList[i].Add(req)
+	queue := cc.getWorkerID(key)
+	queue.Add(req)
 }
 
 func (cc *Controller) deleteJob(obj interface{}) {
@@ -170,8 +170,8 @@ func (cc *Controller) addPod(obj interface{}) {
 			pod.Namespace, pod.Name, err)
 	}
 	key := vkcache.JobKeyByReq(&req)
-	i := cc.getWorkerID(key)
-	cc.queueList[i].Add(req)
+	queue := cc.getWorkerID(key)
+	queue.Add(req)
 }
 
 func (cc *Controller) updatePod(oldObj, newObj interface{}) {
@@ -248,8 +248,8 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 	}
 
 	key := vkcache.JobKeyByReq(&req)
-	i := cc.getWorkerID(key)
-	cc.queueList[i].Add(req)
+	queue := cc.getWorkerID(key)
+	queue.Add(req)
 }
 
 func (cc *Controller) deletePod(obj interface{}) {
@@ -311,8 +311,8 @@ func (cc *Controller) deletePod(obj interface{}) {
 	}
 
 	key := vkcache.JobKeyByReq(&req)
-	i := cc.getWorkerID(key)
-	cc.queueList[i].Add(req)
+	queue := cc.getWorkerID(key)
+	queue.Add(req)
 }
 
 func (cc *Controller) recordJobEvent(namespace, name string, event vkbatchv1.JobEvent, message string) {
@@ -358,8 +358,8 @@ func (cc *Controller) processNextCommand() bool {
 	}
 
 	key := vkcache.JobKeyByReq(&req)
-	i := cc.getWorkerID(key)
-	cc.queueList[i].Add(req)
+	queue := cc.getWorkerID(key)
+	queue.Add(req)
 
 	return true
 }
@@ -395,8 +395,8 @@ func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
 			req.Action = vkbatchv1.EnqueueAction
 		}
 		key := vkcache.JobKeyByReq(&req)
-		i := cc.getWorkerID(key)
-		cc.queueList[i].Add(req)
+		queue := cc.getWorkerID(key)
+		queue.Add(req)
 	}
 }
 
