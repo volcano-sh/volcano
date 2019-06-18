@@ -44,7 +44,7 @@ func TestKillJobFunc(t *testing.T) {
 		ExpextVal      error
 	}{
 		{
-			Name: "KillJob Sucess Case",
+			Name: "KillJob success Case",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
@@ -173,7 +173,7 @@ func TestCreateJobFunc(t *testing.T) {
 		ExpextVal    error
 	}{
 		{
-			Name: "CreateJob Sucess Case",
+			Name: "CreateJob success Case",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
@@ -281,7 +281,7 @@ func TestSyncJobFunc(t *testing.T) {
 		ExpextVal      error
 	}{
 		{
-			Name: "SyncJob Sucess Case",
+			Name: "SyncJob success Case",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
@@ -388,7 +388,7 @@ func TestCreateJobIOIfNotExistFunc(t *testing.T) {
 		ExpextVal error
 	}{
 		{
-			Name: "Create Job IO sucess case",
+			Name: "Create Job IO success case",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
@@ -430,7 +430,7 @@ func TestCreatePVCFunc(t *testing.T) {
 		ExpextVal   error
 	}{
 		{
-			Name: "CreatePVC Sucess Case",
+			Name: "CreatePVC success Case",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
@@ -467,7 +467,7 @@ func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 		ExpextVal error
 	}{
 		{
-			Name: "CreatePodGroup Sucess Case",
+			Name: "CreatePodGroup success Case",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: namespace,
@@ -504,7 +504,7 @@ func TestDeleteJobPod(t *testing.T) {
 		ExpextVal error
 	}{
 		{
-			Name: "DeleteJobPod sucess case",
+			Name: "DeleteJobPod success case",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
