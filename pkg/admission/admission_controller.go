@@ -34,15 +34,23 @@ import (
 )
 
 const (
-	AdmitJobPath  = "/jobs"
+	//AdmitJobPath is the pattern for the jobs admission
+	AdmitJobPath = "/jobs"
+	//MutateJobPath is the pattern for the mutating jobs
 	MutateJobPath = "/mutating-jobs"
-	PVCInputName  = "volcano.sh/job-input"
+	//PVCInputName stores the input name of PVC
+	PVCInputName = "volcano.sh/job-input"
+	//PVCOutputName stores the output name of PVC
 	PVCOutputName = "volcano.sh/job-output"
 )
 
+//The AdmitFunc returns response
 type AdmitFunc func(v1beta1.AdmissionReview) *v1beta1.AdmissionResponse
 
 var scheme = runtime.NewScheme()
+
+//Codecs is for retrieving serializers for the supported wire formats
+//and conversion wrappers to define preferred internal and external versions.
 var Codecs = serializer.NewCodecFactory(scheme)
 
 // policyEventMap defines all policy events and whether to allow external use
@@ -75,6 +83,7 @@ func addToScheme(scheme *runtime.Scheme) {
 	admissionregistrationv1beta1.AddToScheme(scheme)
 }
 
+//ToAdmissionResponse updates the admission response with the input error
 func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
 	glog.Error(err)
 	return &v1beta1.AdmissionResponse{
@@ -84,6 +93,7 @@ func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
 	}
 }
 
+//DecodeJob decodes the job using deserializer from the raw object
 func DecodeJob(object runtime.RawExtension, resource metav1.GroupVersionResource) (v1alpha1.Job, error) {
 	jobResource := metav1.GroupVersionResource{Group: v1alpha1.SchemeGroupVersion.Group, Version: v1alpha1.SchemeGroupVersion.Version, Resource: "jobs"}
 	raw := object.Raw
@@ -178,7 +188,7 @@ func getValidActions() []v1alpha1.Action {
 	return actions
 }
 
-// validate IO configuration
+// ValidateIO validate IO configuration
 func ValidateIO(volumes []v1alpha1.VolumeSpec) (string, bool) {
 	volumeMap := map[string]bool{}
 	for _, volume := range volumes {

@@ -29,6 +29,7 @@ import (
 )
 
 const (
+	//DefaultQueue constant stores the name of the queue as "default"
 	DefaultQueue = "default"
 )
 
@@ -38,7 +39,7 @@ type patchOperation struct {
 	Value interface{} `json:"value,omitempty"`
 }
 
-// mutate job.
+// MutateJobs mutate jobs
 func MutateJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	glog.V(3).Infof("mutating jobs")
 

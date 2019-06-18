@@ -33,7 +33,7 @@ import (
 func TestValidateExecution(t *testing.T) {
 
 	namespace := "test"
-	var invTtl int32 = -1
+	var invTTL int32 = -1
 
 	testCases := []struct {
 		Name           string
@@ -281,7 +281,7 @@ func TestValidateExecution(t *testing.T) {
 							},
 						},
 					},
-					TTLSecondsAfterFinished: &invTtl,
+					TTLSecondsAfterFinished: &invTTL,
 				},
 			},
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
