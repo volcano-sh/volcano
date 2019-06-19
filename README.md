@@ -62,7 +62,7 @@ First of all, clone the repo to your local path:
 ```
 # mkdir -p $GOPATH/src/volcano.sh/
 # cd $GOPATH/src/volcano.sh/
-# git clone https://github.com/volcano-sh/volcano.git
+# git clone --recursive https://github.com/volcano-sh/volcano.git
 ```
 
 ### 1. Volcano Image
@@ -92,10 +92,10 @@ try command ```kind load docker-image <image-name>:<tag> ``` for each of the ima
 Secondly, install helm chart.
 
 ```
-helm install installer/chart --namespace <namespace> --name <specified-name>
+helm install installer/helm/chart/volcano --namespace <namespace> --name <specified-name>
 
 For eg :
-helm install installer/chart --namespace volcano-trial --name volcano-trial
+helm install installer/helm/chart/volcano --namespace volcano-trial --name volcano-trial
 
 ```
 
