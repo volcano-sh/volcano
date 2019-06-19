@@ -36,8 +36,6 @@ import (
 const (
 	AdmitJobPath  = "/jobs"
 	MutateJobPath = "/mutating-jobs"
-	PVCInputName  = "volcano.sh/job-input"
-	PVCOutputName = "volcano.sh/job-output"
 )
 
 type AdmitFunc func(v1beta1.AdmissionReview) *v1beta1.AdmissionResponse
