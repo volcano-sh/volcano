@@ -187,6 +187,17 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 	return vkv1.SyncJobAction
 }
 
+func addResourceList(list, new v1.ResourceList) {
+	for name, quantity := range new {
+		if value, ok := list[name]; !ok {
+			list[name] = *quantity.Copy()
+		} else {
+			value.Add(quantity)
+			list[name] = value
+		}
+	}
+}
+
 type TaskPriority struct {
 	priority int32
 

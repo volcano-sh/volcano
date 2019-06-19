@@ -150,7 +150,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 				break
 			}
 
-			nodeScores := util.PrioritizeNodes(task, predicateNodes, ssn.NodeOrderFn)
+			nodeScores := util.PrioritizeNodes(task, predicateNodes, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 
 			node := util.SelectBestNode(nodeScores)
 			// Allocate idle resource to the task.

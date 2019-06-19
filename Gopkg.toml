@@ -39,7 +39,7 @@ required = [
 [[constraint]]
   name = "github.com/kubernetes-sigs/kube-batch"
   branch = "master"
-  source = "https://github.com/volcano-sh/kube-batch"
+  source = "https://github.com/volcano-sh/scheduler"
 
 [[constraint]]
   name = "github.com/onsi/ginkgo"

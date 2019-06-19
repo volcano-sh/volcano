@@ -13,9 +13,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package job
 
 import (
+	"fmt"
 	"github.com/spf13/cobra"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -30,6 +32,7 @@ type suspendFlags struct {
 
 var suspendJobFlags = &suspendFlags{}
 
+// InitSuspendFlags  init suspend related flags
 func InitSuspendFlags(cmd *cobra.Command) {
 	initFlags(cmd, &suspendJobFlags.commonFlags)
 
@@ -37,9 +40,15 @@ func InitSuspendFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&suspendJobFlags.JobName, "name", "n", "", "the name of job")
 }
 
+// SuspendJob  suspends the job
 func SuspendJob() error {
 	config, err := buildConfig(suspendJobFlags.Master, suspendJobFlags.Kubeconfig)
 	if err != nil {
+		return err
+	}
+
+	if suspendJobFlags.JobName == "" {
+		err := fmt.Errorf("job name is mandatory to suspend a particular job")
 		return err
 	}
 

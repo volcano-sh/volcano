@@ -229,7 +229,7 @@ func (jc *jobCache) Run(stopCh <-chan struct{}) {
 	wait.Until(jc.worker, 0, stopCh)
 }
 
-func (jc jobCache) TaskCompleted(jobKey, taskName string) bool {
+func (jc *jobCache) TaskCompleted(jobKey, taskName string) bool {
 	jc.Lock()
 	defer jc.Unlock()
 

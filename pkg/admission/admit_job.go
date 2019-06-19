@@ -18,10 +18,10 @@ package admission
 
 import (
 	"fmt"
-	"reflect"
 	"strings"
 
 	"github.com/golang/glog"
+	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 
 	"k8s.io/api/admission/v1beta1"
 	"k8s.io/api/core/v1"
@@ -32,9 +32,12 @@ import (
 	k8scorev1 "k8s.io/kubernetes/pkg/apis/core/v1"
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
 
-	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
 )
+
+//KubeBatchClientSet is kube-batch clientset
+var KubeBatchClientSet versioned.Interface
 
 // job admit.
 func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
@@ -86,6 +89,11 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 		return fmt.Sprintf("'maxRetry' cannot be less than zero.")
 	}
 
+	if job.Spec.TTLSecondsAfterFinished != nil && *job.Spec.TTLSecondsAfterFinished < 0 {
+		reviewResponse.Allowed = false
+		return fmt.Sprintf("'ttlSecondsAfterFinished' cannot be less than zero.")
+	}
+
 	if len(job.Spec.Tasks) == 0 {
 		reviewResponse.Allowed = false
 		return fmt.Sprintf("No task specified in job spec")
@@ -112,11 +120,6 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 			taskNames[task.Name] = task.Name
 		}
 
-		//duplicate task event policies
-		if duplicateInfo, ok := CheckPolicyDuplicate(task.Policies); ok {
-			msg = msg + fmt.Sprintf(" duplicated task event policies: %s;", duplicateInfo)
-		}
-
 		if err := validatePolicies(task.Policies, field.NewPath("spec.tasks.policies")); err != nil {
 			msg = msg + err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v",
 				getValidEvents(), getValidActions())
@@ -127,11 +130,6 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 
 	if totalReplicas < job.Spec.MinAvailable {
 		msg = msg + " 'minAvailable' should not be greater than total replicas in tasks;"
-	}
-
-	//duplicate job event policies
-	if duplicateInfo, ok := CheckPolicyDuplicate(job.Spec.Policies); ok {
-		msg = msg + fmt.Sprintf(" duplicated job event policies: %s;", duplicateInfo)
 	}
 
 	if err := validatePolicies(job.Spec.Policies, field.NewPath("spec.policies")); err != nil {
@@ -152,18 +150,13 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 		msg = msg + validateInfo
 	}
 
-	if msg != "" {
-		reviewResponse.Allowed = false
+	// Check whether Queue already present or not
+	if _, err := KubeBatchClientSet.SchedulingV1alpha1().Queues().Get(job.Spec.Queue, metav1.GetOptions{}); err != nil {
+		msg = msg + fmt.Sprintf("Job not created with error: %v", err)
 	}
 
-	return msg
-}
-
-func specDeepEqual(newJob v1alpha1.Job, oldJob v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) string {
-	var msg string
-	if !reflect.DeepEqual(newJob.Spec, oldJob.Spec) {
+	if msg != "" {
 		reviewResponse.Allowed = false
-		msg = "job.spec is not allowed to modify when update jobs;"
 	}
 
 	return msg

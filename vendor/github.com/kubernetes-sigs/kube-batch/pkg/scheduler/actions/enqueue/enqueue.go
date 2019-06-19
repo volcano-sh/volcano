@@ -100,18 +100,14 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 		job := jobs.Pop().(*api.JobInfo)
 
 		inqueue := false
-		if len(job.TaskStatusIndex[api.Pending]) != 0 {
+
+		if job.PodGroup.Spec.MinResources == nil {
 			inqueue = true
 		} else {
-			if job.PodGroup.Spec.MinResources == nil {
+			pgResource := api.NewResource(*job.PodGroup.Spec.MinResources)
+			if ssn.JobEnqueueable(job) && pgResource.LessEqual(nodesIdleRes) {
+				nodesIdleRes.Sub(pgResource)
 				inqueue = true
-			} else {
-				pgResource := api.NewResource(*job.PodGroup.Spec.MinResources)
-
-				if pgResource.LessEqual(nodesIdleRes) {
-					nodesIdleRes.Sub(pgResource)
-					inqueue = true
-				}
 			}
 		}
 

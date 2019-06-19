@@ -13,6 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package app
 
 import (
@@ -22,52 +23,74 @@ import (
 	"net/http"
 
 	"github.com/golang/glog"
+	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 
 	"k8s.io/api/admission/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
+	restclient "k8s.io/client-go/rest"
 
 	appConf "volcano.sh/volcano/cmd/admission/app/configure"
 	admissioncontroller "volcano.sh/volcano/pkg/admission"
 )
 
 const (
-	CONTENTTYPE     = "Content-Type"
+	//CONTENTTYPE http content-type
+	CONTENTTYPE = "Content-Type"
+
+	//APPLICATIONJSON json content
 	APPLICATIONJSON = "application/json"
 )
 
-// Get a clientset with in-cluster config.
-func GetClient(c *appConf.Config) *kubernetes.Clientset {
-	var config *rest.Config
-	var err error
-	if c.Master != "" || c.Kubeconfig != "" {
-		config, err = clientcmd.BuildConfigFromFlags(c.Master, c.Kubeconfig)
-	} else {
-		config, err = rest.InClusterConfig()
-	}
-
-	if err != nil {
-		glog.Fatal(err)
-	}
-	clientset, err := kubernetes.NewForConfig(config)
+// GetClient Get a clientset with restConfig.
+func GetClient(restConfig *restclient.Config) *kubernetes.Clientset {
+	clientset, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		glog.Fatal(err)
 	}
 	return clientset
 }
 
-func ConfigTLS(config *appConf.Config, clientset *kubernetes.Clientset) *tls.Config {
-	sCert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
+//GetKubeBatchClient get a clientset for kubebatch
+func GetKubeBatchClient(restConfig *restclient.Config) *versioned.Clientset {
+	clientset, err := versioned.NewForConfig(restConfig)
 	if err != nil {
 		glog.Fatal(err)
 	}
-	return &tls.Config{
-		Certificates: []tls.Certificate{sCert},
-	}
+	return clientset
 }
 
+// ConfigTLS is a helper function that generate tls certificates from directly defined tls config or kubeconfig
+// These are passed in as command line for cluster certification. If tls config is passed in, we use the directly
+// defined tls config, else use that defined in kubeconfig
+func ConfigTLS(config *appConf.Config, restConfig *restclient.Config) *tls.Config {
+	if len(config.CertFile) != 0 && len(config.KeyFile) != 0 {
+		sCert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
+		if err != nil {
+			glog.Fatal(err)
+		}
+
+		return &tls.Config{
+			Certificates: []tls.Certificate{sCert},
+		}
+	}
+
+	if len(restConfig.CertData) != 0 && len(restConfig.KeyData) != 0 {
+		sCert, err := tls.X509KeyPair(restConfig.CertData, restConfig.KeyData)
+		if err != nil {
+			glog.Fatal(err)
+		}
+
+		return &tls.Config{
+			Certificates: []tls.Certificate{sCert},
+		}
+	}
+
+	glog.Fatal("tls: failed to find any tls config data")
+	return &tls.Config{}
+}
+
+//Serve the http request
 func Serve(w http.ResponseWriter, r *http.Request, admit admissioncontroller.AdmitFunc) {
 	var body []byte
 	if r.Body != nil {

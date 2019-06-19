@@ -58,22 +58,12 @@ function install-volcano {
 
   echo "Loading docker images into kind cluster"
   kind load docker-image ${IMAGE_PREFIX}-controllers:${TAG}  ${CLUSTER_CONTEXT}
-  kind load docker-image ${IMAGE_PREFIX}-scheduler:${TAG}  ${CLUSTER_CONTEXT}
+  kind load docker-image ${IMAGE_PREFIX}-kube-batch:${TAG}  ${CLUSTER_CONTEXT}
   kind load docker-image ${IMAGE_PREFIX}-admission:${TAG}  ${CLUSTER_CONTEXT}
   kind load docker-image ${MPI_EXAMPLE_IMAGE}  ${CLUSTER_CONTEXT}
 
-  echo "Install volcano plugin into cluster...."
-  helm plugin install --kubeconfig ${KUBECONFIG} installer/chart/volcano/plugins/gen-admission-secret
-
-  #If failed to generate secret for admission service, return immediately
-  helm gen-admission-secret --service ${CLUSTER_NAME}-admission-service --namespace kube-system
-  if [[ $? != 0 ]]; then
-    echo "Failed to install secret for admission service, usually we need a retry."
-    exit 1
-  fi
-
   echo "Install volcano chart"
-  helm install installer/chart/volcano --namespace kube-system --name ${CLUSTER_NAME} --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG} --wait
+  helm install installer/chart --namespace kube-system --name ${CLUSTER_NAME} --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG} --set basic.scheduler_config_file=kube-batch-ci.conf --wait
 }
 
 function uninstall-volcano {
@@ -84,7 +74,7 @@ function generate-log {
     echo "Generating volcano log files"
     kubectl logs deployment/${CLUSTER_NAME}-admission -n kube-system > volcano-admission.log
     kubectl logs deployment/${CLUSTER_NAME}-controllers -n kube-system > volcano-controller.log
-    kubectl logs deployment/${CLUSTER_NAME}-scheduler -n kube-system > volcano-scheduler.log
+    kubectl logs deployment/${CLUSTER_NAME}-kube-batch -n kube-system > volcano-kube-batch.log
 }
 
 # clean up

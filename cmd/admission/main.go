@@ -27,6 +27,8 @@ import (
 	appConf "volcano.sh/volcano/cmd/admission/app/configure"
 	admissioncontroller "volcano.sh/volcano/pkg/admission"
 	"volcano.sh/volcano/pkg/version"
+
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 func serveJobs(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +57,15 @@ func main() {
 	}
 	addr := ":" + strconv.Itoa(config.Port)
 
-	clientset := app.GetClient(config)
+	restConfig, err := clientcmd.BuildConfigFromFlags(config.Master, config.Kubeconfig)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+
+	clientset := app.GetClient(restConfig)
+
+	admissioncontroller.KubeBatchClientSet = app.GetKubeBatchClient(restConfig)
 
 	caCertPem, err := ioutil.ReadFile(config.CaCertFile)
 	if err != nil {
@@ -71,9 +81,10 @@ func main() {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 		}
 	}
+
 	server := &http.Server{
 		Addr:      addr,
-		TLSConfig: app.ConfigTLS(config, clientset),
+		TLSConfig: app.ConfigTLS(config, restConfig),
 	}
 	server.ListenAndServeTLS("", "")
 }

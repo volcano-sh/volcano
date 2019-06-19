@@ -1,0 +1,8 @@
+basic:
+  image_tag_version: "latest"
+  controller_image_name: "volcanosh/vk-controllers"
+  scheduler_image_name: "volcanosh/vk-kube-batch"
+  admission_image_name: "volcanosh/vk-admission"
+  admission_secret_name: "volcano-admission-secret"
+  scheduler_config_file: "kube-batch.conf"
+  image_pull_secret: ""

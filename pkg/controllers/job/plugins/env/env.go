@@ -31,6 +31,7 @@ type envPlugin struct {
 	Clientset vkinterface.PluginClientset
 }
 
+// New creates env plugin
 func New(client vkinterface.PluginClientset, arguments []string) vkinterface.PluginInterface {
 	envPlugin := envPlugin{pluginArguments: arguments, Clientset: client}
 

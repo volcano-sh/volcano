@@ -204,7 +204,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:986c933d3d3c05ab20d42462475be937ee26238500e58f5b53b5ae77b60f49ad"
+  digest = "1:ea789d69109979142a6fbd569095f7678ea62b633b9b5a284f2fd1ff673da48f"
   name = "github.com/kubernetes-sigs/kube-batch"
   packages = [
     "cmd/kube-batch/app",
@@ -212,8 +212,10 @@
     "pkg/apis/scheduling/v1alpha1",
     "pkg/apis/utils",
     "pkg/client/clientset/versioned",
+    "pkg/client/clientset/versioned/fake",
     "pkg/client/clientset/versioned/scheme",
     "pkg/client/clientset/versioned/typed/scheduling/v1alpha1",
+    "pkg/client/clientset/versioned/typed/scheduling/v1alpha1/fake",
     "pkg/client/informers/externalversions",
     "pkg/client/informers/externalversions/internalinterfaces",
     "pkg/client/informers/externalversions/scheduling",
@@ -245,8 +247,8 @@
     "pkg/version",
   ]
   pruneopts = "UT"
-  revision = "2a63a4754d8289bf6491b7320ab6d832c75767ce"
-  source = "https://github.com/volcano-sh/kube-batch"
+  revision = "4b391ab34b53779e47243217006d8772cb86d8d8"
+  source = "https://github.com/volcano-sh/scheduler"
 
 [[projects]]
   digest = "1:ff5ebae34cfbf047d505ee150de27e60570e8c394b3b8fdbb720ff6ac71985fc"
@@ -724,7 +726,7 @@
   version = "kubernetes-1.13.2"
 
 [[projects]]
-  digest = "1:f2da632d588dfece5f2699e26a55c3873b04d07ed562170033686cb0e33bdb1d"
+  digest = "1:c542cfd25f35d41d6d7818d5710684c83c5112a2fd9ca0123693d5eff2c0b62d"
   name = "k8s.io/client-go"
   packages = [
     "discovery",
@@ -776,39 +778,72 @@
     "informers/storage/v1alpha1",
     "informers/storage/v1beta1",
     "kubernetes",
+    "kubernetes/fake",
     "kubernetes/scheme",
     "kubernetes/typed/admissionregistration/v1alpha1",
+    "kubernetes/typed/admissionregistration/v1alpha1/fake",
     "kubernetes/typed/admissionregistration/v1beta1",
+    "kubernetes/typed/admissionregistration/v1beta1/fake",
     "kubernetes/typed/apps/v1",
+    "kubernetes/typed/apps/v1/fake",
     "kubernetes/typed/apps/v1beta1",
+    "kubernetes/typed/apps/v1beta1/fake",
     "kubernetes/typed/apps/v1beta2",
+    "kubernetes/typed/apps/v1beta2/fake",
     "kubernetes/typed/auditregistration/v1alpha1",
+    "kubernetes/typed/auditregistration/v1alpha1/fake",
     "kubernetes/typed/authentication/v1",
+    "kubernetes/typed/authentication/v1/fake",
     "kubernetes/typed/authentication/v1beta1",
+    "kubernetes/typed/authentication/v1beta1/fake",
     "kubernetes/typed/authorization/v1",
+    "kubernetes/typed/authorization/v1/fake",
     "kubernetes/typed/authorization/v1beta1",
+    "kubernetes/typed/authorization/v1beta1/fake",
     "kubernetes/typed/autoscaling/v1",
+    "kubernetes/typed/autoscaling/v1/fake",
     "kubernetes/typed/autoscaling/v2beta1",
+    "kubernetes/typed/autoscaling/v2beta1/fake",
     "kubernetes/typed/autoscaling/v2beta2",
+    "kubernetes/typed/autoscaling/v2beta2/fake",
     "kubernetes/typed/batch/v1",
+    "kubernetes/typed/batch/v1/fake",
     "kubernetes/typed/batch/v1beta1",
+    "kubernetes/typed/batch/v1beta1/fake",
     "kubernetes/typed/batch/v2alpha1",
+    "kubernetes/typed/batch/v2alpha1/fake",
     "kubernetes/typed/certificates/v1beta1",
+    "kubernetes/typed/certificates/v1beta1/fake",
     "kubernetes/typed/coordination/v1beta1",
+    "kubernetes/typed/coordination/v1beta1/fake",
     "kubernetes/typed/core/v1",
+    "kubernetes/typed/core/v1/fake",
     "kubernetes/typed/events/v1beta1",
+    "kubernetes/typed/events/v1beta1/fake",
     "kubernetes/typed/extensions/v1beta1",
+    "kubernetes/typed/extensions/v1beta1/fake",
     "kubernetes/typed/networking/v1",
+    "kubernetes/typed/networking/v1/fake",
     "kubernetes/typed/policy/v1beta1",
+    "kubernetes/typed/policy/v1beta1/fake",
     "kubernetes/typed/rbac/v1",
+    "kubernetes/typed/rbac/v1/fake",
     "kubernetes/typed/rbac/v1alpha1",
+    "kubernetes/typed/rbac/v1alpha1/fake",
     "kubernetes/typed/rbac/v1beta1",
+    "kubernetes/typed/rbac/v1beta1/fake",
     "kubernetes/typed/scheduling/v1alpha1",
+    "kubernetes/typed/scheduling/v1alpha1/fake",
     "kubernetes/typed/scheduling/v1beta1",
+    "kubernetes/typed/scheduling/v1beta1/fake",
     "kubernetes/typed/settings/v1alpha1",
+    "kubernetes/typed/settings/v1alpha1/fake",
     "kubernetes/typed/storage/v1",
+    "kubernetes/typed/storage/v1/fake",
     "kubernetes/typed/storage/v1alpha1",
+    "kubernetes/typed/storage/v1alpha1/fake",
     "kubernetes/typed/storage/v1beta1",
+    "kubernetes/typed/storage/v1beta1/fake",
     "listers/admissionregistration/v1alpha1",
     "listers/admissionregistration/v1beta1",
     "listers/apps/v1",
@@ -1047,6 +1082,7 @@
     "github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options",
     "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1",
     "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned",
+    "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/fake",
     "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions",
     "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1",
     "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1",
@@ -1087,6 +1123,7 @@
     "k8s.io/client-go/informers/core/v1",
     "k8s.io/client-go/informers/scheduling/v1beta1",
     "k8s.io/client-go/kubernetes",
+    "k8s.io/client-go/kubernetes/fake",
     "k8s.io/client-go/kubernetes/scheme",
     "k8s.io/client-go/kubernetes/typed/admissionregistration/v1beta1",
     "k8s.io/client-go/kubernetes/typed/core/v1",
@@ -1112,6 +1149,7 @@
     "k8s.io/kubernetes/pkg/apis/core",
     "k8s.io/kubernetes/pkg/apis/core/v1",
     "k8s.io/kubernetes/pkg/apis/core/validation",
+    "k8s.io/kubernetes/pkg/controller",
     "k8s.io/kubernetes/pkg/scheduler/api",
   ]
   solver-name = "gps-cdcl"

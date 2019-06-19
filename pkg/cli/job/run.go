@@ -13,6 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package job
 
 import (
@@ -32,13 +33,16 @@ type runFlags struct {
 	Namespace string
 	Image     string
 
-	MinAvailable int
-	Replicas     int
-	Requests     string
+	MinAvailable  int
+	Replicas      int
+	Requests      string
+	Limits        string
+	SchedulerName string
 }
 
 var launchJobFlags = &runFlags{}
 
+// InitRunFlags  init the run flags
 func InitRunFlags(cmd *cobra.Command) {
 	initFlags(cmd, &launchJobFlags.commonFlags)
 
@@ -48,10 +52,13 @@ func InitRunFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVarP(&launchJobFlags.MinAvailable, "min", "m", 1, "the minimal available tasks of job")
 	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "r", 1, "the total tasks of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Requests, "requests", "R", "cpu=1000m,memory=100Mi", "the resource request of the task")
+	cmd.Flags().StringVarP(&launchJobFlags.Limits, "limits", "L", "cpu=1000m,memory=100Mi", "the resource limit of the task")
+	cmd.Flags().StringVarP(&listJobFlags.SchedulerName, "scheduler", "S", "kube-batch", "the scheduler for this job")
 }
 
 var jobName = "job.volcano.sh"
 
+// RunJob  creates the job
 func RunJob() error {
 	config, err := buildConfig(launchJobFlags.Master, launchJobFlags.Kubeconfig)
 	if err != nil {
@@ -59,6 +66,11 @@ func RunJob() error {
 	}
 
 	req, err := populateResourceListV1(launchJobFlags.Requests)
+	if err != nil {
+		return err
+	}
+
+	limit, err := populateResourceListV1(launchJobFlags.Limits)
 	if err != nil {
 		return err
 	}
@@ -88,6 +100,7 @@ func RunJob() error {
 									Name:            launchJobFlags.Name,
 									ImagePullPolicy: v1.PullIfNotPresent,
 									Resources: v1.ResourceRequirements{
+										Limits:   limit,
 										Requests: req,
 									},
 								},

@@ -23,6 +23,8 @@ import (
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// Job defines the volcano job
 type Job struct {
 	metav1.TypeMeta `json:",inline"`
 
@@ -70,6 +72,19 @@ type JobSpec struct {
 	// Defaults to 3.
 	// +optional
 	MaxRetry int32 `json:"maxRetry,omitempty" protobuf:"bytes,8,opt,name=maxRetry"`
+
+	// ttlSecondsAfterFinished limits the lifetime of a Job that has finished
+	// execution (either Completed or Failed). If this field is set,
+	// ttlSecondsAfterFinished after the Job finishes, it is eligible to be
+	// automatically deleted. If this field is unset,
+	// the Job won't be automatically deleted. If this field is set to zero,
+	// the Job becomes eligible to be deleted immediately after it finishes.
+	// +optional
+	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" protobuf:"varint,9,opt,name=ttlSecondsAfterFinished"`
+
+	// If specified, indicates the job's priority.
+	// +optional
+	PriorityClassName string `json:"priorityClassName,omitempty" protobuf:"bytes,10,opt,name=priorityClassName"`
 }
 
 // VolumeSpec defines the specification of Volume, e.g. PVC
@@ -85,12 +100,17 @@ type VolumeSpec struct {
 	VolumeClaim *v1.PersistentVolumeClaimSpec `json:"volumeClaim,omitempty" protobuf:"bytes,3,opt,name=volumeClaim"`
 }
 
+// JobEvent job event
 type JobEvent string
 
 const (
+	// CommandIssued command issued event is generated if a command is raised by user
 	CommandIssued JobEvent = "CommandIssued"
-	PluginError   JobEvent = "PluginError"
-	PVCError      JobEvent = "PVCError"
+	// PluginError  plugin error event is generated if error happens
+	PluginError JobEvent = "PluginError"
+	// PVCError pvc error event is generated if error happens during IO creation
+	PVCError JobEvent = "PVCError"
+	// PodGroupError  pod grp error event is generated if error happens during pod grp creation
 	PodGroupError JobEvent = "PodGroupError"
 )
 
@@ -98,13 +118,13 @@ const (
 type Event string
 
 const (
-	// AllEvent means all event
+	// AnyEvent means all event
 	AnyEvent Event = "*"
 	// PodFailedEvent is triggered if Pod was failed
 	PodFailedEvent Event = "PodFailed"
 	// PodEvictedEvent is triggered if Pod was deleted
 	PodEvictedEvent Event = "PodEvicted"
-	// These below are several events can lead to job 'Unknown'
+	// JobUnknownEvent These below are several events can lead to job 'Unknown'
 	// 1. Task Unschedulable, this is triggered when part of
 	//    pods can't be scheduled while some are already running in gang-scheduling case.
 	JobUnknownEvent Event = "Unknown"
@@ -185,6 +205,7 @@ type TaskSpec struct {
 	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,4,opt,name=policies"`
 }
 
+// JobPhase defines the phase of the job
 type JobPhase string
 
 const (
@@ -225,6 +246,10 @@ type JobState struct {
 	// Human-readable message indicating details about last transition.
 	// +optional
 	Message string `json:"message,omitempty" protobuf:"bytes,3,opt,name=message"`
+
+	// Last time the condition transit from one phase to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,4,opt,name=lastTransitionTime"`
 }
 
 // JobStatus represents the current status of a Job
@@ -268,6 +293,8 @@ type JobStatus struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// JobList defines the list of jobs
 type JobList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`

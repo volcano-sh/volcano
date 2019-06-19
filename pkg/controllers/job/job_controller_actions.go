@@ -28,7 +28,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/apis"
@@ -36,7 +35,7 @@ import (
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
-func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
+func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseMap, updateStatus state.UpdateStatusFn) error {
 	glog.V(3).Infof("Killing Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
 	defer glog.V(3).Infof("Finished Job <%s/%s> killing", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
@@ -63,20 +62,27 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 				continue
 			}
 
-			if err := cc.deleteJobPod(job.Name, pod); err == nil {
-				terminating++
-			} else {
-				errs = append(errs, err)
-				switch pod.Status.Phase {
-				case v1.PodRunning:
-					running++
-				case v1.PodPending:
-					pending++
-				case v1.PodSucceeded:
-					succeeded++
-				case v1.PodFailed:
-					failed++
+			_, retain := podRetainPhase[pod.Status.Phase]
+
+			if !retain {
+				err := cc.deleteJobPod(job.Name, pod)
+				if err == nil {
+					terminating++
+					continue
 				}
+				// record the err, and then collect the pod info like retained pod
+				errs = append(errs, err)
+			}
+
+			switch pod.Status.Phase {
+			case v1.PodRunning:
+				running++
+			case v1.PodPending:
+				pending++
+			case v1.PodSucceeded:
+				succeeded++
+			case v1.PodFailed:
+				failed++
 			}
 		}
 	}
@@ -104,7 +110,9 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	}
 
 	if updateStatus != nil {
-		updateStatus(&job.Status)
+		if updateStatus(&job.Status) {
+			job.Status.State.LastTransitionTime = metav1.Now()
+		}
 	}
 
 	// Update Job status
@@ -165,7 +173,9 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.Update
 	}
 
 	if updateStatus != nil {
-		updateStatus(&job.Status)
+		if updateStatus(&job.Status) {
+			job.Status.State.LastTransitionTime = metav1.Now()
+		}
 	}
 
 	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
@@ -316,7 +326,9 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	}
 
 	if updateStatus != nil {
-		updateStatus(&job.Status)
+		if updateStatus(&job.Status) {
+			job.Status.State.LastTransitionTime = metav1.Now()
+		}
 	}
 
 	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
@@ -443,9 +455,10 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 				},
 			},
 			Spec: kbv1.PodGroupSpec{
-				MinMember:    job.Spec.MinAvailable,
-				Queue:        job.Spec.Queue,
-				MinResources: cc.calcPGMinResources(job),
+				MinMember:         job.Spec.MinAvailable,
+				Queue:             job.Spec.Queue,
+				MinResources:      cc.calcPGMinResources(job),
+				PriorityClassName: job.Spec.PriorityClassName,
 			},
 		}
 
@@ -486,7 +499,7 @@ func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
 
 	sort.Sort(tasksPriority)
 
-	minAvailableTasksRes := kbapi.EmptyResource()
+	minAvailableTasksRes := v1.ResourceList{}
 	podCnt := int32(0)
 	for _, task := range tasksPriority {
 		for i := int32(0); i < task.Replicas; i++ {
@@ -495,10 +508,10 @@ func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
 			}
 			podCnt++
 			for _, c := range task.Template.Spec.Containers {
-				minAvailableTasksRes.Add(kbapi.NewResource(c.Resources.Requests))
+				addResourceList(minAvailableTasksRes, c.Resources.Requests)
 			}
 		}
 	}
 
-	return minAvailableTasksRes.Convert2K8sResource()
+	return &minAvailableTasksRes
 }
