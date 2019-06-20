@@ -65,5 +65,4 @@ func (ps *inqueueState) Execute(action vkv1.Action) error {
 			return false
 		})
 	}
-	return nil
 }
