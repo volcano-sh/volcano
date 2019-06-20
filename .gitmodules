@@ -1,0 +1,3 @@
+[submodule "installer/helm"]
+	path = installer/helm
+	url = https://github.com/volcano-sh/charts.git
