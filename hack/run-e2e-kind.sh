@@ -63,7 +63,7 @@ function install-volcano {
   kind load docker-image ${MPI_EXAMPLE_IMAGE}  ${CLUSTER_CONTEXT}
 
   echo "Install volcano chart"
-  helm install installer/chart --namespace kube-system --name ${CLUSTER_NAME} --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG} --set basic.scheduler_config_file=kube-batch-ci.conf --wait
+  helm install installer/helm/chart/volcano --namespace kube-system --name ${CLUSTER_NAME} --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG} --set basic.scheduler_config_file=kube-batch-ci.conf --wait
 }
 
 function uninstall-volcano {
