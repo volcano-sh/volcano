@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	defaultSchedulerName   = "kube-batch"
+	defaultSchedulerName   = "volcano"
 	defaultSchedulerPeriod = time.Second
 	defaultQueue           = "default"
 	defaultListenAddress   = ":8080"
