@@ -23,12 +23,22 @@ import (
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
+//PhaseMap to store the pod phases.
 type PhaseMap map[v1.PodPhase]struct{}
+
+//UpdateStatusFn updates the job status.
 type UpdateStatusFn func(status *vkv1.JobStatus) (jobPhaseChanged bool)
+
+//ActionFn will create or delete Pods according to Job's spec.
 type ActionFn func(job *apis.JobInfo, fn UpdateStatusFn) error
+
+//KillActionFn kill all Pods of Job with phase not in podRetainPhase.
 type KillActionFn func(job *apis.JobInfo, podRetainPhase PhaseMap, fn UpdateStatusFn) error
 
+//PodRetainPhaseNone stores no phase
 var PodRetainPhaseNone = PhaseMap{}
+
+//PodRetainPhaseSoft stores PodSucceeded and PodFailed Phase
 var PodRetainPhaseSoft = PhaseMap{
 	v1.PodSucceeded: {},
 	v1.PodFailed:    {},
@@ -43,11 +53,13 @@ var (
 	CreateJob ActionFn
 )
 
+//State interface
 type State interface {
 	// Execute executes the actions based on current state.
 	Execute(act vkv1.Action) error
 }
 
+//NewState gets the state from the volcano job Phase
 func NewState(jobInfo *apis.JobInfo) State {
 	job := jobInfo.Job
 	switch job.Status.State.Phase {

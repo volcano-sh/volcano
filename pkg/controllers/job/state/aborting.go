@@ -40,11 +40,11 @@ func (ps *abortingState) Execute(action vkv1.Action) error {
 			// If any "alive" pods, still in Aborting phase
 			if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {
 				return false
-			} else {
-				status.State.Phase = vkv1.Aborted
-				status.State.LastTransitionTime = metav1.Now()
-				return true
 			}
+			status.State.Phase = vkv1.Aborted
+			status.State.LastTransitionTime = metav1.Now()
+			return true
+
 		})
 	}
 }
