@@ -38,10 +38,6 @@ const (
 	AdmitJobPath = "/jobs"
 	//MutateJobPath is the pattern for the mutating jobs
 	MutateJobPath = "/mutating-jobs"
-	//PVCInputName stores the input name of PVC
-	PVCInputName = "volcano.sh/job-input"
-	//PVCOutputName stores the output name of PVC
-	PVCOutputName = "volcano.sh/job-output"
 )
 
 //The AdmitFunc returns response
