@@ -261,11 +261,10 @@ var _ = Describe("Job E2E Test", func() {
 			namespace: "test",
 			tasks: []taskSpec{
 				{
-					img:     defaultNginxImage,
-					req:     slot,
-					min:     rep,
-					rep:     rep,
-					command: "sleep 10s",
+					img: defaultNginxImage,
+					req: slot,
+					min: rep,
+					rep: rep,
 				},
 			},
 		}
