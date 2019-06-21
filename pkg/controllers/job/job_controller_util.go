@@ -31,18 +31,6 @@ import (
 	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
 
-func eventKey(obj interface{}) interface{} {
-	req, ok := obj.(apis.Request)
-	if !ok {
-		return obj
-	}
-
-	return apis.Request{
-		Namespace: req.Namespace,
-		JobName:   req.JobName,
-	}
-}
-
 func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(vkjobhelpers.PodNameFmt, jobName, taskName, index)
 }
