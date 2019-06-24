@@ -17,6 +17,8 @@ limitations under the License.
 package job
 
 import (
+	"fmt"
+
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
@@ -38,6 +40,7 @@ import (
 	kbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
 	kblister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
 
+	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkver "volcano.sh/volcano/pkg/client/clientset/versioned"
 	vkscheme "volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 	vkinfoext "volcano.sh/volcano/pkg/client/informers/externalversions"
@@ -238,6 +241,11 @@ func (cc *Controller) processNextReq() bool {
 	action := applyPolicies(jobInfo.Job, &req)
 	glog.V(3).Infof("Execute <%v> on Job <%s/%s> in <%s> by <%T>.",
 		action, req.Namespace, req.JobName, jobInfo.Job.Status.State.Phase, st)
+
+	if action != vkbatchv1.SyncJobAction {
+		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, vkbatchv1.ExecuteAction, fmt.Sprintf(
+			"Start to execute action %s ", action))
+	}
 
 	if err := st.Execute(action); err != nil {
 		glog.Errorf("Failed to handle Job <%s/%s>: %v",
