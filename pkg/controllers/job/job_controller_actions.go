@@ -116,16 +116,16 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 	}
 
 	// Update Job status
-	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
+	job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
+	if err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
-	} else {
-		if e := cc.cache.Update(job); e != nil {
-			glog.Errorf("KillJob - Failed to update Job %v/%v in cache:  %v",
-				job.Namespace, job.Name, e)
-			return e
-		}
+	}
+	if e := cc.cache.Update(job); e != nil {
+		glog.Errorf("KillJob - Failed to update Job %v/%v in cache:  %v",
+			job.Namespace, job.Name, e)
+		return e
 	}
 
 	// Delete PodGroup
@@ -165,7 +165,7 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.Update
 		return err
 	}
 
-	err, job := cc.createJobIOIfNotExist(job)
+	job, err := cc.createJobIOIfNotExist(job)
 	if err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.PVCError),
 			fmt.Sprintf("Failed to create PVC, err: %v", err))
@@ -178,16 +178,16 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.Update
 		}
 	}
 
-	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
+	job, err = cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
+	if err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
-	} else {
-		if err := cc.cache.Update(job); err != nil {
-			glog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
-				job.Namespace, job.Name, err)
-			return err
-		}
+	}
+	if err = cc.cache.Update(job); err != nil {
+		glog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
+			job.Namespace, job.Name, err)
+		return err
 	}
 
 	return nil
@@ -330,23 +330,22 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 			job.Status.State.LastTransitionTime = metav1.Now()
 		}
 	}
-
-	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
+	job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
+	if err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
-	} else {
-		if e := cc.cache.Update(job); e != nil {
-			glog.Errorf("SyncJob - Failed to update Job %v/%v in cache:  %v",
-				job.Namespace, job.Name, e)
-			return e
-		}
+	}
+	if e := cc.cache.Update(job); e != nil {
+		glog.Errorf("SyncJob - Failed to update Job %v/%v in cache:  %v",
+			job.Namespace, job.Name, e)
+		return e
 	}
 
 	return nil
 }
 
-func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (error, *vkv1.Job) {
+func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (*vkv1.Job, error) {
 	// If PVC does not exist, create them for Job.
 	var needUpdate, nameExist bool
 	volumes := job.Spec.Volumes
@@ -359,7 +358,7 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (error, *vkv1.Job) {
 				vcName = vkjobhelpers.MakeVolumeClaimName(job.Name)
 				exist, err := cc.checkPVCExist(job, vcName)
 				if err != nil {
-					return err, nil
+					return nil, err
 				}
 				if exist {
 					continue
@@ -371,7 +370,7 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (error, *vkv1.Job) {
 		} else {
 			exist, err := cc.checkPVCExist(job, vcName)
 			if err != nil {
-				return err, nil
+				return nil, err
 			}
 			nameExist = exist
 		}
@@ -382,7 +381,7 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (error, *vkv1.Job) {
 			}
 			if volume.VolumeClaim != nil {
 				if err := cc.createPVC(job, vcName, volume.VolumeClaim); err != nil {
-					return err, nil
+					return nil, err
 				}
 				job.Status.ControlledResources["volume-pvc-"+vcName] = vcName
 			} else {
@@ -395,12 +394,11 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (error, *vkv1.Job) {
 		if err != nil {
 			glog.Errorf("Failed to update Job %v/%v for volume claim name: %v ",
 				job.Namespace, job.Name, err)
-			return err, nil
-		} else {
-			return nil, newJob
+			return nil, err
 		}
+		return newJob, err
 	}
-	return nil, job
+	return job, nil
 }
 
 func (cc *Controller) checkPVCExist(job *vkv1.Job, vcName string) (bool, error) {

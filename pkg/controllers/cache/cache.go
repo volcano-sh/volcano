@@ -40,14 +40,17 @@ func keyFn(ns, name string) string {
 	return fmt.Sprintf("%s/%s", ns, name)
 }
 
+//JobKeyByName gets the key for the job name
 func JobKeyByName(namespace string, name string) string {
 	return keyFn(namespace, name)
 }
 
+//JobKeyByReq gets the key for the job request
 func JobKeyByReq(req *apis.Request) string {
 	return keyFn(req.Namespace, req.JobName)
 }
 
+//JobKey gets the "ns"/"name" format of the given job
 func JobKey(job *v1alpha1.Job) string {
 	return keyFn(job.Namespace, job.Name)
 }
@@ -66,6 +69,7 @@ func jobKeyOfPod(pod *v1.Pod) (string, error) {
 	return keyFn(pod.Namespace, jobName), nil
 }
 
+//New gets the job Cache
 func New() Cache {
 	return &jobCache{
 		jobs:        map[string]*apis.JobInfo{},
@@ -133,11 +137,11 @@ func (jc *jobCache) Update(obj *v1alpha1.Job) error {
 	defer jc.Unlock()
 
 	key := JobKey(obj)
-	if job, found := jc.jobs[key]; !found {
+	job, found := jc.jobs[key]
+	if !found {
 		return fmt.Errorf("failed to find job <%v>", key)
-	} else {
-		job.Job = obj
 	}
+	job.Job = obj
 
 	return nil
 }
@@ -147,12 +151,12 @@ func (jc *jobCache) Delete(obj *v1alpha1.Job) error {
 	defer jc.Unlock()
 
 	key := JobKey(obj)
-	if jobInfo, found := jc.jobs[key]; !found {
+	jobInfo, found := jc.jobs[key]
+	if !found {
 		return fmt.Errorf("failed to find job <%v>", key)
-	} else {
-		jobInfo.Job = nil
-		jc.deleteJob(jobInfo)
 	}
+	jobInfo.Job = nil
+	jc.deleteJob(jobInfo)
 
 	return nil
 }
@@ -261,7 +265,7 @@ func (jc *jobCache) TaskCompleted(jobKey, taskName string) bool {
 
 	for _, pod := range taskPods {
 		if pod.Status.Phase == v1.PodSucceeded {
-			completed += 1
+			completed++
 		}
 	}
 	return completed >= taskReplicas

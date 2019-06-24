@@ -30,9 +30,9 @@ func (ps *terminatingState) Execute(action vkv1.Action) error {
 		// If any "alive" pods, still in Terminating phase
 		if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {
 			return false
-		} else {
-			status.State.Phase = vkv1.Terminated
-			return true
 		}
+		status.State.Phase = vkv1.Terminated
+		return true
+
 	})
 }
