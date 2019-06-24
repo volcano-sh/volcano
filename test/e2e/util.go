@@ -310,7 +310,7 @@ func createJob(context *context, job *jobSpec) ([]*batchv1.Job, *kbv1.PodGroup) 
 						Annotations: map[string]string{kbv1.GroupNameAnnotationKey: job.name},
 					},
 					Spec: v1.PodSpec{
-						SchedulerName: "kube-batch",
+						SchedulerName: "volcano",
 						RestartPolicy: v1.RestartPolicyOnFailure,
 						Containers:    createContainers(task.img, task.req, task.hostport),
 						Affinity:      task.affinity,
@@ -530,7 +530,7 @@ func createReplicaSet(context *context, name string, rep int32, img string, req 
 					Labels: map[string]string{deploymentName: name},
 				},
 				Spec: v1.PodSpec{
-					SchedulerName: "kube-batch",
+					SchedulerName: "volcano",
 					RestartPolicy: v1.RestartPolicyAlways,
 					Containers: []v1.Container{
 						{
@@ -999,7 +999,7 @@ func createDensityJob(context *context, job *jobSpec) ([]*batchv1.Job, *kbv1.Pod
 						Annotations: map[string]string{kbv1.GroupNameAnnotationKey: job.name},
 					},
 					Spec: v1.PodSpec{
-						SchedulerName: "kube-batch",
+						SchedulerName: "volcano",
 						RestartPolicy: v1.RestartPolicyOnFailure,
 						Containers:    createContainers(task.img, task.req, task.hostport),
 						Affinity:      task.affinity,
@@ -1061,7 +1061,7 @@ func createRunningPodFromRC(wg *sync.WaitGroup, context *context, name, image, p
 						},
 					},
 					DNSPolicy:     v1.DNSDefault,
-					SchedulerName: "kube-batch",
+					SchedulerName: "volcano",
 				},
 			},
 		},

@@ -29,7 +29,7 @@ type commonFlags struct {
 }
 
 func initFlags(cmd *cobra.Command, cf *commonFlags) {
-	cmd.Flags().StringVarP(&cf.SchedulerName, "scheduler", "", "kube-batch", "the scheduler for this job")
+	cmd.Flags().StringVarP(&cf.SchedulerName, "scheduler", "", "volcano", "the scheduler for this job")
 	cmd.Flags().StringVarP(&cf.Master, "master", "s", "", "the address of apiserver")
 
 	if home := homeDir(); home != "" {
