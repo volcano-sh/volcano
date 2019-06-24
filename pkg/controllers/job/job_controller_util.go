@@ -31,6 +31,7 @@ import (
 	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
 
+//MakePodName append podname,jobname,taskName and index and returns the string
 func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(vkjobhelpers.PodNameFmt, jobName, taskName, index)
 }
@@ -186,12 +187,14 @@ func addResourceList(list, new v1.ResourceList) {
 	}
 }
 
+//TaskPriority structure
 type TaskPriority struct {
 	priority int32
 
 	vkv1.TaskSpec
 }
 
+//TasksPriority is a slice of TaskPriority
 type TasksPriority []TaskPriority
 
 func (p TasksPriority) Len() int { return len(p) }

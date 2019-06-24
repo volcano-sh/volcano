@@ -23,6 +23,7 @@ import (
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
+//Cache Interface
 type Cache interface {
 	Run(stopCh <-chan struct{})
 

@@ -409,7 +409,7 @@ func TestCreateJobIOIfNotExistFunc(t *testing.T) {
 	for i, testcase := range testcases {
 		fakeController := newFakeController()
 
-		err, job := fakeController.createJobIOIfNotExist(testcase.Job)
+		job, err := fakeController.createJobIOIfNotExist(testcase.Job)
 		if err != testcase.ExpextVal {
 			t.Errorf("Expected Return value to be : %s, but got: %s in testcase %d", testcase.ExpextVal, err, i)
 		}
