@@ -16,8 +16,10 @@ jobs:
       script:
         - make verify
     - stage: UT Tests
+      before_script:
+        - go get github.com/mattn/goveralls
       script:
-          - make unit-test
+        - make unit-test && $HOME/gopath/bin/goveralls -coverprofile=coverage.txt -service=travis-ci
     - stage: E2E Tests
       before_script:
         # Download kubectl
