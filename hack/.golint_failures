@@ -1,6 +1,2 @@
 volcano.sh/volcano/pkg/admission
-volcano.sh/volcano/pkg/controllers/apis
-volcano.sh/volcano/pkg/controllers/cache
-volcano.sh/volcano/pkg/controllers/job
-volcano.sh/volcano/pkg/controllers/job/state
 volcano.sh/volcano/test/e2e

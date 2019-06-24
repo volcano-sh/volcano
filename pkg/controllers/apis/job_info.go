@@ -24,6 +24,7 @@ import (
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
+//JobInfo struct
 type JobInfo struct {
 	Namespace string
 	Name      string
@@ -32,6 +33,7 @@ type JobInfo struct {
 	Pods map[string]map[string]*v1.Pod
 }
 
+//Clone function clones the k8s pod values to the JobInfo struct
 func (ji *JobInfo) Clone() *JobInfo {
 	job := &JobInfo{
 		Namespace: ji.Namespace,
@@ -51,12 +53,15 @@ func (ji *JobInfo) Clone() *JobInfo {
 	return job
 }
 
+//SetJob sets the volcano jobs values to the JobInfo struct
 func (ji *JobInfo) SetJob(job *v1alpha1.Job) {
 	ji.Name = job.Name
 	ji.Namespace = job.Namespace
 	ji.Job = job
 }
 
+//AddPod adds the k8s pod object values to the Pods field
+//of JobStruct if it doesn't exist. Otherwise it throws error
 func (ji *JobInfo) AddPod(pod *v1.Pod) error {
 	taskName, found := pod.Annotations[v1alpha1.TaskSpecKey]
 	if !found {
@@ -81,6 +86,7 @@ func (ji *JobInfo) AddPod(pod *v1.Pod) error {
 	return nil
 }
 
+//UpdatePod updates the k8s pod object values to the existing pod
 func (ji *JobInfo) UpdatePod(pod *v1.Pod) error {
 	taskName, found := pod.Annotations[v1alpha1.TaskSpecKey]
 	if !found {
@@ -105,6 +111,7 @@ func (ji *JobInfo) UpdatePod(pod *v1.Pod) error {
 	return nil
 }
 
+//DeletePod deletes the given k8s pod from the JobInfo struct
 func (ji *JobInfo) DeletePod(pod *v1.Pod) error {
 	taskName, found := pod.Annotations[v1alpha1.TaskSpecKey]
 	if !found {
@@ -127,6 +134,7 @@ func (ji *JobInfo) DeletePod(pod *v1.Pod) error {
 	return nil
 }
 
+//Request struct
 type Request struct {
 	Namespace string
 	JobName   string
@@ -138,6 +146,7 @@ type Request struct {
 	JobVersion int32
 }
 
+//String function returns the request in string format
 func (r Request) String() string {
 	return fmt.Sprintf(
 		"Job: %s/%s, Task:%s, Event:%s, ExitCode:%d, Action:%s, JobVersion: %d",
