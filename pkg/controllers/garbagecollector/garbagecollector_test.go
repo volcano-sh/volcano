@@ -160,7 +160,7 @@ func TestGarbageCollector_IsJobFinished(t *testing.T) {
 		ExpectedVal bool
 	}{
 		{
-			Name: "Success Case",
+			Name: "True Case",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
@@ -175,7 +175,7 @@ func TestGarbageCollector_IsJobFinished(t *testing.T) {
 			ExpectedVal: true,
 		},
 		{
-			Name: "Success Case",
+			Name: "False Case",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
