@@ -269,7 +269,7 @@ func TestGetOrCreateJob(t *testing.T) {
 
 	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"),
 		[]metav1.OwnerReference{owner2}, make(map[string]string))
-	pod2.Spec.SchedulerName = "kube-batch"
+	pod2.Spec.SchedulerName = "volcano"
 	pi2 := api.NewTaskInfo(pod2)
 
 	pod3 := buildPod("c3", "p3", "n1", v1.PodRunning, buildResourceList("1000m", "1G"),
@@ -279,7 +279,7 @@ func TestGetOrCreateJob(t *testing.T) {
 	cache := &SchedulerCache{
 		Nodes:         make(map[string]*api.NodeInfo),
 		Jobs:          make(map[api.JobID]*api.JobInfo),
-		schedulerName: "kube-batch",
+		schedulerName: "volcano",
 	}
 
 	tests := []struct {
