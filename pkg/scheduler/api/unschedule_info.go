@@ -9,27 +9,34 @@ import (
 )
 
 const (
+	// NodePodNumberExceeded means pods in node exceed the allocatable pod number
 	NodePodNumberExceeded = "node(s) pod number exceeded"
+	// NodeResourceFitFailed means node could not fit the request of pod
 	NodeResourceFitFailed = "node(s) resource fit failed"
 
+	// AllNodeUnavailableMsg is the default error message
 	AllNodeUnavailableMsg = "all nodes are unavailable"
 )
 
+// FitErrors is set of FitError on many nodes
 type FitErrors struct {
 	nodes map[string]*FitError
 	err   string
 }
 
+// NewFitErrors returns an FitErrors
 func NewFitErrors() *FitErrors {
 	f := new(FitErrors)
 	f.nodes = make(map[string]*FitError)
 	return f
 }
 
+// SetError set the common error message in FitErrors
 func (f *FitErrors) SetError(err string) {
 	f.err = err
 }
 
+// SetNodeError set the node error in FitErrors
 func (f *FitErrors) SetNodeError(nodeName string, err error) {
 	var fe *FitError
 	switch obj := err.(type) {
@@ -46,6 +53,7 @@ func (f *FitErrors) SetNodeError(nodeName string, err error) {
 	f.nodes[nodeName] = fe
 }
 
+// Error returns the final error message
 func (f *FitErrors) Error() string {
 	reasons := make(map[string]int)
 
@@ -70,6 +78,7 @@ func (f *FitErrors) Error() string {
 	return reasonMsg
 }
 
+// FitError describe the reason why task could not fit that node
 type FitError struct {
 	taskNamespace string
 	taskName      string
@@ -77,6 +86,7 @@ type FitError struct {
 	Reasons       []string
 }
 
+// NewFitError return FitError by message
 func NewFitError(task *TaskInfo, node *NodeInfo, message ...string) *FitError {
 	fe := &FitError{
 		taskName:      task.Name,
@@ -87,6 +97,7 @@ func NewFitError(task *TaskInfo, node *NodeInfo, message ...string) *FitError {
 	return fe
 }
 
+// NewFitErrorByReasons return FitError by reasons
 func NewFitErrorByReasons(task *TaskInfo, node *NodeInfo, reasons ...algorithm.PredicateFailureReason) *FitError {
 	message := make([]string, 0, len(reasons))
 	for _, reason := range reasons {
@@ -95,6 +106,7 @@ func NewFitErrorByReasons(task *TaskInfo, node *NodeInfo, reasons ...algorithm.P
 	return NewFitError(task, node, message...)
 }
 
+// Error returns the final error message
 func (f *FitError) Error() string {
 	return fmt.Sprintf("task %s/%s on node %s fit failed: %s", f.taskNamespace, f.taskName, f.NodeName, strings.Join(f.Reasons, ", "))
 }
