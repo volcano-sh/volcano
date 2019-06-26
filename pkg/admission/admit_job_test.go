@@ -34,6 +34,7 @@ func TestValidateExecution(t *testing.T) {
 
 	namespace := "test"
 	var invTTL int32 = -1
+	var policyExitCode int32 = -1
 
 	testCases := []struct {
 		Name           string
@@ -286,6 +287,656 @@ func TestValidateExecution(t *testing.T) {
 			},
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
 			ret:            "'ttlSecondsAfterFinished' cannot be less than zero",
+			ExpectErr:      true,
+		},
+		// min-MinAvailable less than zero
+		{
+			Name: "minAvailable-lessThanZero",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "minAvailable-lessThanZero",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: -1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
+			ret:            "'minAvailable' cannot be less than zero.",
+			ExpectErr:      true,
+		},
+		// maxretry less than zero
+		{
+			Name: "maxretry-lessThanZero",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "maxretry-lessThanZero",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					MaxRetry:     -1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
+			ret:            "'maxRetry' cannot be less than zero.",
+			ExpectErr:      true,
+		},
+		// no task specified in the job
+		{
+			Name: "no-task",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "no-task",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks:        []v1alpha1.TaskSpec{},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
+			ret:            "No task specified in job spec",
+			ExpectErr:      true,
+		},
+		// replica set less than zero
+		{
+			Name: "replica-lessThanZero",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "replica-lessThanZero",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: -1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
+			ret:            "'replicas' is not set positive in task: task-1;",
+			ExpectErr:      true,
+		},
+		// task name error
+		{
+			Name: "nonDNS-task",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "replica-lessThanZero",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "Task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
+			ret: "[a DNS-1123 label must consist of lower case alphanumeric characters or '-', and " +
+				"must start and end with an alphanumeric character (e.g. 'my-name',  " +
+				"or '123-abc', regex used for validation is '[a-z0-9]([-a-z0-9]*[a-z0-9])?')];",
+			ExpectErr: true,
+		},
+		// Policy Event with exit code
+		{
+			Name: "job-policy-withExitCode",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job-policy-withExitCode",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+					Policies: []v1alpha1.LifecyclePolicy{
+						{
+							Event:    v1alpha1.PodFailedEvent,
+							Action:   v1alpha1.AbortJobAction,
+							ExitCode: &policyExitCode,
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			ret:            "must not specify event and exitCode simultaneously",
+			ExpectErr:      true,
+		},
+		// Both policy event and exit code are nil
+		{
+			Name: "policy-noEvent-noExCode",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "policy-noEvent-noExCode",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+					Policies: []v1alpha1.LifecyclePolicy{
+						{
+							Action: v1alpha1.AbortJobAction,
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			ret:            "either event and exitCode should be specified",
+			ExpectErr:      true,
+		},
+		// invalid policy event
+		{
+			Name: "invalid-policy-event",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "invalid-policy-event",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+					Policies: []v1alpha1.LifecyclePolicy{
+						{
+							Event:  v1alpha1.Event("someFakeEvent"),
+							Action: v1alpha1.AbortJobAction,
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			ret:            "invalid policy event",
+			ExpectErr:      true,
+		},
+		// invalid policy action
+		{
+			Name: "invalid-policy-action",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "invalid-policy-action",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+					Policies: []v1alpha1.LifecyclePolicy{
+						{
+							Event:  v1alpha1.PodEvictedEvent,
+							Action: v1alpha1.Action("someFakeAction"),
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			ret:            "invalid policy action",
+			ExpectErr:      true,
+		},
+		// policy exit-code zero
+		{
+			Name: "policy-extcode-zero",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "policy-extcode-zero",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+					Policies: []v1alpha1.LifecyclePolicy{
+						{
+							Action: v1alpha1.AbortJobAction,
+							ExitCode: func(i int32) *int32 {
+								return &i
+							}(int32(0)),
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			ret:            "0 is not a valid error code",
+			ExpectErr:      true,
+		},
+		// duplicate policy exit-code
+		{
+			Name: "duplicate-exitcode",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "duplicate-exitcode",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+					Policies: []v1alpha1.LifecyclePolicy{
+						{
+							ExitCode: func(i int32) *int32 {
+								return &i
+							}(int32(1)),
+						},
+						{
+							ExitCode: func(i int32) *int32 {
+								return &i
+							}(int32(1)),
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			ret:            "duplicate exitCode 1",
+			ExpectErr:      true,
+		},
+		// Policy with any event and other events
+		{
+			Name: "job-policy-withExitCode",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job-policy-withExitCode",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+					Policies: []v1alpha1.LifecyclePolicy{
+						{
+							Event:  v1alpha1.AnyEvent,
+							Action: v1alpha1.AbortJobAction,
+						},
+						{
+							Event:  v1alpha1.PodFailedEvent,
+							Action: v1alpha1.RestartJobAction,
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			ret:            "if there's * here, no other policy should be here",
+			ExpectErr:      true,
+		},
+		// invalid mount volume
+		{
+			Name: "invalid-mount-volume",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "invalid-mount-volume",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+					Policies: []v1alpha1.LifecyclePolicy{
+						{
+							Event:  v1alpha1.AnyEvent,
+							Action: v1alpha1.AbortJobAction,
+						},
+					},
+					Volumes: []v1alpha1.VolumeSpec{
+						{
+							MountPath: "",
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			ret:            " mountPath is required;",
+			ExpectErr:      true,
+		},
+		// duplicate mount volume
+		{
+			Name: "duplicate-mount-volume",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "duplicate-mount-volume",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+					Policies: []v1alpha1.LifecyclePolicy{
+						{
+							Event:  v1alpha1.AnyEvent,
+							Action: v1alpha1.AbortJobAction,
+						},
+					},
+					Volumes: []v1alpha1.VolumeSpec{
+						{
+							MountPath: "/var",
+						},
+						{
+							MountPath: "/var",
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			ret:            " duplicated mountPath: /var;",
+			ExpectErr:      true,
+		},
+		// task Policy with any event and other events
+		{
+			Name: "taskpolicy-withAnyandOthrEvent",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "taskpolicy-withAnyandOthrEvent",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+							Policies: []v1alpha1.LifecyclePolicy{
+								{
+									Event:  v1alpha1.AnyEvent,
+									Action: v1alpha1.AbortJobAction,
+								},
+								{
+									Event:  v1alpha1.PodFailedEvent,
+									Action: v1alpha1.RestartJobAction,
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			ret:            "if there's * here, no other policy should be here",
+			ExpectErr:      true,
+		},
+		// job with no queue created
+		{
+			Name: "job-with-noQueue",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job-with-noQueue",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "jobQueue",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			ret:            "Job not created with error: ",
 			ExpectErr:      true,
 		},
 	}
