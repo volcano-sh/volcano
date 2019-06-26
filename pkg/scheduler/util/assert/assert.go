@@ -9,6 +9,7 @@ import (
 )
 
 const (
+	// EnvPanicOnError is the env name to determine panic on assertion failed or not
 	EnvPanicOnError = "PANIC_ON_ERROR"
 )
 
@@ -23,6 +24,7 @@ func init() {
 	}
 }
 
+// Assert check condition, if condition is false, print message by log or panic
 func Assert(condition bool, message string) {
 	if condition {
 		return
@@ -33,6 +35,7 @@ func Assert(condition bool, message string) {
 	glog.Errorf("%s, %s", message, debug.Stack())
 }
 
+// Assertf check condition, if condition is false, print message using Assert
 func Assertf(condition bool, format string, args ...interface{}) {
 	if condition {
 		return
