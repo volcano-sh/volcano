@@ -18,6 +18,7 @@ package job
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/golang/glog"
 
@@ -100,6 +101,9 @@ type Controller struct {
 	//Job Event recorder
 	recorder        record.EventRecorder
 	priorityClasses map[string]*v1beta1.PriorityClass
+
+	sync.Mutex
+	errTasks workqueue.RateLimitingInterface
 }
 
 // NewJobController create new Job Controller
@@ -122,6 +126,7 @@ func NewJobController(
 		queue:           workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		commandQueue:    workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		cache:           jobcache.New(),
+		errTasks:        newRateLimitingQueue(),
 		recorder:        recorder,
 		priorityClasses: make(map[string]*v1beta1.PriorityClass),
 	}
@@ -203,6 +208,9 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(cc.worker, 0, stopCh)
 
 	go cc.cache.Run(stopCh)
+
+	// Re-sync error tasks.
+	go wait.Until(cc.processResyncTask, 0, stopCh)
 
 	glog.Infof("JobController is running ...... ")
 }
