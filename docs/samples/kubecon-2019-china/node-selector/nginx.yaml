@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: nginx
+  labels:
+    app: nginx
+spec:
+  replicas: 8
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      schedulerName: volcano
+      # Volcano Scheduler already pass conformance test!!!
+      nodeSelector:
+        "kubernetes.io/hostname": "192.168.23.24"
+      containers:
+      - name: nginx
+        image: nginx
+        resources:
+          requests:
+            cpu: "1000m"
+          limits:
+            cpu: "1000m"
