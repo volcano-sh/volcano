@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: nginx-2
+  labels:
+    app: nginx-2
+spec:
+  # modify replicas according to your case
+  replicas: 8
+  selector:
+    matchLabels:
+      app: nginx-2
+  template:
+    metadata:
+      labels:
+        app: nginx-2
+    spec:
+      schedulerName: volcano
+      containers:
+      - name: nginx-2
+        image: nginx
+        resources:
+          requests:
+            cpu: "1000m"
+          limits:
+            cpu: "1000m"

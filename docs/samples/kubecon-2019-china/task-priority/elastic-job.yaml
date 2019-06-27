@@ -1,0 +1,38 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: elastic-job
+  labels:
+    # 根据业务需要设置作业类型
+    "volcano.sh/job-type": "ElasticJob"
+spec:
+  minAvailable: 3
+  schedulerName: volcano
+  tasks:
+    - replicas: 9
+      name: worker
+      template:
+        spec:
+          priorityClass: normal-pri
+          containers:
+            - image: nginx
+              name: workers
+              resources:
+                requests:
+                  cpu: "1000m"
+                limits:
+                  cpu: "1000m"
+    - replicas: 1
+      name: master
+      template:
+        spec:
+          priorityClass: high-pri
+          containers:
+            - image: nginx
+              name: master
+              resources:
+                requests:
+                  cpu: "1000m"
+                limits:
+                  cpu: "1000m"
+
