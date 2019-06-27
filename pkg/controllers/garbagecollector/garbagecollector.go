@@ -250,7 +250,7 @@ func isJobFinished(job *v1alpha1.Job) bool {
 
 func getFinishAndExpireTime(j *v1alpha1.Job) (*time.Time, *time.Time, error) {
 	if !needsCleanup(j) {
-		return nil, nil, fmt.Errorf("Job %s/%s should not be cleaned up", j.Namespace, j.Name)
+		return nil, nil, fmt.Errorf("job %s/%s should not be cleaned up", j.Namespace, j.Name)
 	}
 	finishAt, err := jobFinishTime(j)
 	if err != nil {

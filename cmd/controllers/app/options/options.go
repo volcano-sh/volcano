@@ -56,6 +56,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
 }
 
+// CheckOptionOrDie checks the LockObjectNamespace
 func (s *ServerOption) CheckOptionOrDie() error {
 	if s.EnableLeaderElection && s.LockObjectNamespace == "" {
 		return fmt.Errorf("lock-object-namespace must not be nil when LeaderElection is enabled")

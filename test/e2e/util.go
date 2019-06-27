@@ -92,6 +92,7 @@ func kubeconfigPath(home string) string {
 	return filepath.Join(home, ".kube", "config") // default kubeconfig path is $HOME/.kube/config
 }
 
+//VolcanoCliBinary function gets the volcano cli binary
 func VolcanoCliBinary() string {
 	if bin := os.Getenv("VK_BIN"); bin != "" {
 		return filepath.Join(bin, "vkctl")
@@ -423,7 +424,7 @@ func jobUnschedulable(ctx *context, job *vkv1.Job, now time.Time) error {
 		for _, event := range events.Items {
 			target := event.InvolvedObject
 			if strings.HasPrefix(target.Name, pg.Name) && target.Namespace == pg.Namespace {
-				if event.Reason == string("Unschedulable") && event.LastTimestamp.After(now) {
+				if event.Reason == string("Unschedulable") || event.Reason == string("FailedScheduling") && event.LastTimestamp.After(now) {
 					return true, nil
 				}
 			}
@@ -974,6 +975,7 @@ func preparePatchBytesforNode(nodeName string, oldNode *v1.Node, newNode *v1.Nod
 	return patchBytes, nil
 }
 
+// IsNodeReady function returns the node ready status
 func IsNodeReady(node *v1.Node) bool {
 	for _, c := range node.Status.Conditions {
 		if c.Type == v1.NodeReady {
@@ -987,9 +989,8 @@ func waitClusterReady(ctx *context) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
 		if readyNodeAmount(ctx) >= 1 {
 			return true, nil
-		} else {
-			return false, nil
 		}
+		return false, nil
 	})
 }
 

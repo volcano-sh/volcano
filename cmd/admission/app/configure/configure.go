@@ -13,6 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package configure
 
 import (
@@ -28,7 +29,7 @@ import (
 	admissionregistrationv1beta1client "k8s.io/client-go/kubernetes/typed/admissionregistration/v1beta1"
 )
 
-// admission-controller server config.
+// Config admission-controller server config.
 type Config struct {
 	Master                    string
 	Kubeconfig                string
@@ -43,11 +44,13 @@ type Config struct {
 	PrintVersion              bool
 }
 
+// NewConfig create new config
 func NewConfig() *Config {
 	c := Config{}
 	return &c
 }
 
+// AddFlags add flags
 func (c *Config) AddFlags() {
 	flag.StringVar(&c.Master, "master", c.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 	flag.StringVar(&c.Kubeconfig, "kubeconfig", c.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
@@ -68,6 +71,7 @@ func (c *Config) AddFlags() {
 	flag.BoolVar(&c.PrintVersion, "version", false, "Show version and quit")
 }
 
+// CheckPortOrDie check valid port range
 func (c *Config) CheckPortOrDie() error {
 	if c.Port < 1 || c.Port > 65535 {
 		return fmt.Errorf("the port should be in the range of 1 and 65535")

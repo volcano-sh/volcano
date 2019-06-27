@@ -1,3 +1,19 @@
+/*
+Copyright 2019 The Volcano Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package job
 
 import (
@@ -23,6 +39,7 @@ type viewFlags struct {
 
 var viewJobFlags = &viewFlags{}
 
+// InitViewFlags  init the view command flags
 func InitViewFlags(cmd *cobra.Command) {
 	initFlags(cmd, &viewJobFlags.commonFlags)
 
@@ -30,13 +47,14 @@ func InitViewFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&viewJobFlags.JobName, "name", "n", "", "the name of job")
 }
 
+// ViewJob gives full details of the  job
 func ViewJob() error {
 	config, err := buildConfig(viewJobFlags.Master, viewJobFlags.Kubeconfig)
 	if err != nil {
 		return err
 	}
 	if viewJobFlags.JobName == "" {
-		err := fmt.Errorf("job name (specified by --name or -n) is mandaorty to view a particular job")
+		err := fmt.Errorf("job name (specified by --name or -n) is mandatory to view a particular job")
 		return err
 	}
 
@@ -54,6 +72,7 @@ func ViewJob() error {
 	return nil
 }
 
+// PrintJob  prints the job details
 func PrintJob(job *v1alpha1.Job, writer io.Writer) {
 	replicas := int32(0)
 	for _, ts := range job.Spec.Tasks {

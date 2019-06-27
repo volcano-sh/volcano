@@ -25,10 +25,13 @@ import (
 )
 
 const (
-	PodNameFmt     = "%s-%s-%d"
+	// PodNameFmt pod name format
+	PodNameFmt = "%s-%s-%d"
+	// VolumeClaimFmt  volume claim name format
 	VolumeClaimFmt = "%s-volume-%s"
 )
 
+// GetTaskIndex   returns task Index
 func GetTaskIndex(pod *v1.Pod) string {
 	num := strings.Split(pod.Name, "-")
 	if len(num) >= 3 {
@@ -38,6 +41,7 @@ func GetTaskIndex(pod *v1.Pod) string {
 	return ""
 }
 
+// MakePodName creates pod name
 func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(PodNameFmt, jobName, taskName, index)
 }
@@ -53,6 +57,7 @@ func genRandomStr(l int) string {
 	return string(result)
 }
 
+// MakeVolumeClaimName creates volume claim name
 func MakeVolumeClaimName(jobName string) string {
 	return fmt.Sprintf(VolumeClaimFmt, jobName, genRandomStr(12))
 }
