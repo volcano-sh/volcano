@@ -51,6 +51,10 @@ the open source community.
 
 ![volcano](docs/images/volcano-intro.png)
 
+## Talks
+
+You can watch industry experts talking about Volcano in different International Conferences over [here.](https://volcano.sh/talk/)
+
 ## Quick Start Guide
 
 The easiest way to deploy Volcano is to use the Helm chart.  Volcano can be deployed by cloning code and also by adding helm repo.
