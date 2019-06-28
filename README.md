@@ -13,7 +13,7 @@ Volcano is a batch system built on Kubernetes. It provides a suite of mechanisms
 Kubernetes that are commonly required by many classes of batch & elastic workload including:
 
 1. machine learning/deep learning,
-2. bioinformatics/genomics, and 
+2. bioinformatics/genomics 
 3. other "big data" applications.
 
 These types of applications typically run on generalized domain
@@ -68,7 +68,7 @@ Install Volcano using following command,
 ```
 helm install volcano/volcano --namespace <namespace> --name <specified-name>
 
-For eg :
+e.g :
 helm install volcano/volcano --namespace volcano-trial --name volcano-trial
 ```
  
@@ -112,12 +112,12 @@ Secondly, install helm chart.
 ```
 helm install installer/helm/chart/volcano --namespace <namespace> --name <specified-name>
 
-For eg :
+e.g :
 helm install installer/helm/chart/volcano --namespace volcano-trial --name volcano-trial
 
 ```
 
-To Verify your installation run the following commands:
+To verify your installation run the following commands:
 
 ```
 #1. Verify the Running Pods
