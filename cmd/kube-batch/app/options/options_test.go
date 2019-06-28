@@ -41,6 +41,8 @@ func TestAddFlags(t *testing.T) {
 		SchedulePeriod: 5 * time.Minute,
 		DefaultQueue:   defaultQueue,
 		ListenAddress:  defaultListenAddress,
+		KubeAPIBurst:   defaultBurst,
+		KubeAPIQPS:     defaultQPS,
 	}
 
 	if !reflect.DeepEqual(expected, s) {

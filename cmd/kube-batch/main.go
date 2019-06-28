@@ -21,6 +21,9 @@ import (
 	"runtime"
 	"time"
 
+	// init pprof server
+	_ "net/http/pprof"
+
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
 
