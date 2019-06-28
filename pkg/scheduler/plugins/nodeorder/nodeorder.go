@@ -56,19 +56,6 @@ func getInterPodAffinityScore(name string, interPodAffinityScore schedulerapi.Ho
 	return 0
 }
 
-func generateNodeMapAndSlice(nodes map[string]*api.NodeInfo) (map[string]*cache.NodeInfo, []*v1.Node) {
-	var nodeMap map[string]*cache.NodeInfo
-	var nodeSlice []*v1.Node
-	nodeMap = make(map[string]*cache.NodeInfo)
-	for _, node := range nodes {
-		nodeInfo := cache.NewNodeInfo(node.Pods()...)
-		nodeInfo.SetNode(node.Node)
-		nodeMap[node.Name] = nodeInfo
-		nodeSlice = append(nodeSlice, node.Node)
-	}
-	return nodeMap, nodeSlice
-}
-
 type cachedNodeInfo struct {
 	session *framework.Session
 }
@@ -153,30 +140,58 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 }
 
 func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
+	var nodeMap map[string]*cache.NodeInfo
+	var nodeSlice []*v1.Node
+
+	weight := calculateWeight(pp.pluginArguments)
+
+	pl := util.NewPodLister(ssn)
+
+	nl := &util.NodeLister{
+		Session: ssn,
+	}
+
+	cn := &cachedNodeInfo{
+		session: ssn,
+	}
+
+	nodeMap, nodeSlice = util.GenerateNodeMapAndSlice(ssn.Nodes)
+
+	// Register event handlers to update task info in PodLister & nodeMap
+	ssn.AddEventHandler(&framework.EventHandler{
+		AllocateFunc: func(event *framework.Event) {
+			pod := pl.UpdateTask(event.Task, event.Task.NodeName)
+
+			nodeName := event.Task.NodeName
+			node, found := nodeMap[nodeName]
+			if !found {
+				glog.Warningf("node order, update pod %s/%s allocate to NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+			} else {
+				node.AddPod(pod)
+				glog.V(4).Infof("node order, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
+			}
+		},
+		DeallocateFunc: func(event *framework.Event) {
+			pod := pl.UpdateTask(event.Task, "")
+
+			nodeName := event.Task.NodeName
+			node, found := nodeMap[nodeName]
+			if !found {
+				glog.Warningf("node order, update pod %s/%s allocate from NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+			} else {
+				node.RemovePod(pod)
+				glog.V(4).Infof("node order, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
+			}
+		},
+	})
+
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-
-		weight := calculateWeight(pp.pluginArguments)
-
-		pl := &util.PodLister{
-			Session: ssn,
+		nodeInfo, found := nodeMap[node.Name]
+		if !found {
+			nodeInfo = cache.NewNodeInfo(node.Pods()...)
+			nodeInfo.SetNode(node.Node)
+			glog.Warningf("node order, generate node info for %s at NodeOrderFn is unexpected", node.Name)
 		}
-
-		nl := &util.NodeLister{
-			Session: ssn,
-		}
-
-		cn := &cachedNodeInfo{
-			session: ssn,
-		}
-
-		var nodeMap map[string]*cache.NodeInfo
-		var nodeSlice []*v1.Node
-		var interPodAffinityScore schedulerapi.HostPriorityList
-
-		nodeMap, nodeSlice = generateNodeMapAndSlice(ssn.Nodes)
-
-		nodeInfo := cache.NewNodeInfo(node.Pods()...)
-		nodeInfo.SetNode(node.Node)
 		var score = 0.0
 
 		//TODO: Add ImageLocalityPriority Function once priorityMetadata is published
@@ -206,20 +221,30 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		// If nodeAffinityWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
 		score = score + float64(host.Score*weight.nodeAffinityWeight)
 
-		mapFn := priorities.NewInterPodAffinityPriority(cn, nl, pl, v1.DefaultHardPodAffinitySymmetricWeight)
-		interPodAffinityScore, err = mapFn(task.Pod, nodeMap, nodeSlice)
-		if err != nil {
-			glog.Warningf("Calculate Inter Pod Affinity Priority Failed because of Error: %v", err)
-			return 0, err
-		}
-		hostScore := getInterPodAffinityScore(node.Name, interPodAffinityScore)
-		// If podAffinityWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		score = score + float64(hostScore*weight.podAffinityWeight)
-
-		glog.V(4).Infof("Total Score for that node is: %d", score)
+		glog.V(4).Infof("Total Score for task %s/%s on node %s is: %f", task.Namespace, task.Name, node.Name, score)
 		return score, nil
 	}
 	ssn.AddNodeOrderFn(pp.Name(), nodeOrderFn)
+
+	batchNodeOrderFn := func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
+		var interPodAffinityScore schedulerapi.HostPriorityList
+
+		mapFn := priorities.NewInterPodAffinityPriority(cn, nl, pl, v1.DefaultHardPodAffinitySymmetricWeight)
+		interPodAffinityScore, err := mapFn(task.Pod, nodeMap, nodeSlice)
+		if err != nil {
+			glog.Warningf("Calculate Inter Pod Affinity Priority Failed because of Error: %v", err)
+			return nil, err
+		}
+
+		score := make(map[string]float64, len(interPodAffinityScore))
+		for _, host := range interPodAffinityScore {
+			score[host.Host] = float64(host.Score) * float64(weight.podAffinityWeight)
+		}
+
+		glog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, score)
+		return score, nil
+	}
+	ssn.AddBatchNodeOrderFn(pp.Name(), batchNodeOrderFn)
 }
 
 func (pp *nodeOrderPlugin) OnSessionClose(ssn *framework.Session) {

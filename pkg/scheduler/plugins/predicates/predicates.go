@@ -111,9 +111,39 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 }
 
 func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
-	pl := &util.PodLister{
-		Session: ssn,
-	}
+	var nodeMap map[string]*cache.NodeInfo
+
+	pl := util.NewPodLister(ssn)
+
+	nodeMap, _ = util.GenerateNodeMapAndSlice(ssn.Nodes)
+
+	// Register event handlers to update task info in PodLister & nodeMap
+	ssn.AddEventHandler(&framework.EventHandler{
+		AllocateFunc: func(event *framework.Event) {
+			pod := pl.UpdateTask(event.Task, event.Task.NodeName)
+
+			nodeName := event.Task.NodeName
+			node, found := nodeMap[nodeName]
+			if !found {
+				glog.Warningf("predicates, update pod %s/%s allocate to NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+			} else {
+				node.AddPod(pod)
+				glog.V(4).Infof("predicates, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
+			}
+		},
+		DeallocateFunc: func(event *framework.Event) {
+			pod := pl.UpdateTask(event.Task, "")
+
+			nodeName := event.Task.NodeName
+			node, found := nodeMap[nodeName]
+			if !found {
+				glog.Warningf("predicates, update pod %s/%s allocate from NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+			} else {
+				node.RemovePod(pod)
+				glog.V(4).Infof("predicates, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
+			}
+		},
+	})
 
 	ni := &util.CachedNodeInfo{
 		Session: ssn,
@@ -122,8 +152,12 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	predicate := enablePredicate(pp.pluginArguments)
 
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
-		nodeInfo := cache.NewNodeInfo(node.Pods()...)
-		nodeInfo.SetNode(node.Node)
+		nodeInfo, found := nodeMap[node.Name]
+		if !found {
+			nodeInfo = cache.NewNodeInfo(node.Pods()...)
+			nodeInfo.SetNode(node.Node)
+			glog.Warningf("predicates, generate node info for %s at PredicateFn is unexpected", node.Name)
+		}
 
 		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods()) {
 			return fmt.Errorf("node <%s> can not allow more task running on it", node.Name)
@@ -247,8 +281,14 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
+		var lister algorithm.PodLister
+		lister = pl
+		if !util.HaveAffinity(task.Pod) {
+			// pod without affinity will be only affected by pod with affinity
+			lister = pl.AffinityLister()
+		}
 		// Pod Affinity/Anti-Affinity Predicate
-		podAffinityPredicate := predicates.NewPodAffinityPredicate(ni, pl)
+		podAffinityPredicate := predicates.NewPodAffinityPredicate(ni, lister)
 		fit, _, err = podAffinityPredicate(task.Pod, nil, nodeInfo)
 		if err != nil {
 			return err

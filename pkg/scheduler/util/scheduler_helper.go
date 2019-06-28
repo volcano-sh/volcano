@@ -42,7 +42,7 @@ func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateF
 
 		// TODO (k82cn): Enable eCache for performance improvement.
 		if err := fn(task, node); err != nil {
-			glog.Errorf("Predicates failed for task <%s/%s> on node <%s>: %v",
+			glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
 				task.Namespace, task.Name, node.Name, err)
 			return
 		}
@@ -57,7 +57,7 @@ func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateF
 }
 
 // PrioritizeNodes returns a map whose key is node's score and value are corresponding nodes
-func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, mapFn api.NodeOrderMapFn, reduceFn api.NodeOrderReduceFn) map[float64][]*api.NodeInfo {
+func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.BatchNodeOrderFn, mapFn api.NodeOrderMapFn, reduceFn api.NodeOrderReduceFn) map[float64][]*api.NodeInfo {
 	pluginNodeScoreMap := map[string]schedulerapi.HostPriorityList{}
 	nodeOrderScoreMap := map[string]float64{}
 	nodeScores := map[float64][]*api.NodeInfo{}
@@ -90,10 +90,20 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, mapFn api.NodeOr
 		glog.Errorf("Error in Calculating Priority for the node:%v", err)
 		return nodeScores
 	}
+
+	batchNodeScore, err := batchFn(task, nodes)
+	if err != nil {
+		glog.Errorf("Error in Calculating batch Priority for the node, err %v", err)
+		return nodeScores
+	}
+
 	for _, node := range nodes {
 		if score, found := reduceScores[node.Name]; found {
 			if orderScore, ok := nodeOrderScoreMap[node.Name]; ok {
 				score = score + orderScore
+			}
+			if batchScore, ok := batchNodeScore[node.Name]; ok {
+				score = score + batchScore
 			}
 			nodeScores[score] = append(nodeScores[score], node)
 		} else {
@@ -101,6 +111,9 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, mapFn api.NodeOr
 			score = 0.0
 			if orderScore, ok := nodeOrderScoreMap[node.Name]; ok {
 				score = score + orderScore
+			}
+			if batchScore, ok := batchNodeScore[node.Name]; ok {
+				score = score + batchScore
 			}
 			nodeScores[score] = append(nodeScores[score], node)
 		}
