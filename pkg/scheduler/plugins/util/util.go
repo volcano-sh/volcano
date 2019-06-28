@@ -39,10 +39,12 @@ type PodLister struct {
 	TaskWithAffinity map[api.TaskID]*api.TaskInfo
 }
 
+// PodAffinityLister is used to list pod with affinity
 type PodAffinityLister struct {
 	pl *PodLister
 }
 
+// HaveAffinity checks pod have affinity or not
 func HaveAffinity(pod *v1.Pod) bool {
 	affinity := pod.Spec.Affinity
 	return affinity != nil &&
@@ -51,6 +53,7 @@ func HaveAffinity(pod *v1.Pod) bool {
 			affinity.PodAntiAffinity != nil)
 }
 
+// NewPodLister returns a PodLister generate from ssn
 func NewPodLister(ssn *framework.Session) *PodLister {
 	pl := &PodLister{
 		Session: ssn,
@@ -161,6 +164,7 @@ func (pl *PodLister) AffinityFilteredList(podFilter algorithm.PodFilter, selecto
 	return pl.filteredListWithTaskSet(pl.TaskWithAffinity, podFilter, selector)
 }
 
+// AffinityLister generate a PodAffinityLister following current PodLister
 func (pl *PodLister) AffinityLister() *PodAffinityLister {
 	pal := &PodAffinityLister{
 		pl: pl,
@@ -178,6 +182,7 @@ func (pal *PodAffinityLister) FilteredList(podFilter algorithm.PodFilter, select
 	return pal.pl.AffinityFilteredList(podFilter, selector)
 }
 
+// GenerateNodeMapAndSlice returns the nodeMap and nodeSlice generated from ssn
 func GenerateNodeMapAndSlice(nodes map[string]*api.NodeInfo) (map[string]*cache.NodeInfo, []*v1.Node) {
 	var nodeMap map[string]*cache.NodeInfo
 	var nodeSlice []*v1.Node
