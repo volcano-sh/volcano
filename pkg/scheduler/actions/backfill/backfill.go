@@ -54,6 +54,9 @@ func (alloc *backfillAction) Execute(ssn *framework.Session) {
 
 		for _, task := range job.TaskStatusIndex[api.Pending] {
 			if task.InitResreq.IsEmpty() {
+				allocated := false
+				fe := api.NewFitErrors()
+
 				// As task did not request resources, so it only need to meet predicates.
 				// TODO (k82cn): need to prioritize nodes to avoid pod hole.
 				for _, node := range ssn.Nodes {
@@ -62,15 +65,23 @@ func (alloc *backfillAction) Execute(ssn *framework.Session) {
 					if err := ssn.PredicateFn(task, node); err != nil {
 						glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
 							task.Namespace, task.Name, node.Name, err)
+						fe.SetNodeError(node.Name, err)
 						continue
 					}
 
 					glog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
 					if err := ssn.Allocate(task, node.Name); err != nil {
 						glog.Errorf("Failed to bind Task %v on %v in Session %v", task.UID, node.Name, ssn.UID)
+						fe.SetNodeError(node.Name, err)
 						continue
 					}
+
+					allocated = true
 					break
+				}
+
+				if !allocated {
+					job.NodesFitErrors[task.UID] = fe
 				}
 			} else {
 				// TODO (k82cn): backfill for other case.

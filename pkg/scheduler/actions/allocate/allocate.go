@@ -17,8 +17,6 @@ limitations under the License.
 package allocate
 
 import (
-	"fmt"
-
 	"github.com/golang/glog"
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
@@ -88,8 +86,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 		//    ...
 		// }
 		if !task.InitResreq.LessEqual(node.Idle) && !task.InitResreq.LessEqual(node.Releasing) {
-			return fmt.Errorf("task <%s/%s> ResourceFit failed on node <%s>",
-				task.Namespace, task.Name, node.Name)
+			return api.NewFitError(task, node, api.NodeResourceFitFailed)
 		}
 
 		return ssn.PredicateFn(task, node)
@@ -149,8 +146,9 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 				job.NodesFitDelta = make(api.NodeResourceMap)
 			}
 
-			predicateNodes := util.PredicateNodes(task, allNodes, predicateFn)
+			predicateNodes, fitErrors := util.PredicateNodes(task, allNodes, predicateFn)
 			if len(predicateNodes) == 0 {
+				job.NodesFitErrors[task.UID] = fitErrors
 				break
 			}
 

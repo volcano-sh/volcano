@@ -137,6 +137,7 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			unreadyTaskCount = job.MinAvailable - job.ReadyTaskNum()
 			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
 				job.MinAvailable-job.ReadyTaskNum(), len(job.Tasks), job.FitError())
+			job.JobFitErrors = msg
 
 			unScheduleJobCount++
 			metrics.UpdateUnscheduleTaskCount(job.Name, int(unreadyTaskCount))
@@ -154,6 +155,18 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			if err := ssn.UpdateJobCondition(job, jc); err != nil {
 				glog.Errorf("Failed to update job <%s/%s> condition: %v",
 					job.Namespace, job.Name, err)
+			}
+
+			// allocated task should follow the job fit error
+			for _, taskInfo := range job.TaskStatusIndex[api.Allocated] {
+				fitError := job.NodesFitErrors[taskInfo.UID]
+				if fitError != nil {
+					continue
+				}
+
+				fitError = api.NewFitErrors()
+				job.NodesFitErrors[taskInfo.UID] = fitError
+				fitError.SetError(msg)
 			}
 		}
 	}
