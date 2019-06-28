@@ -39,7 +39,7 @@ import (
 //KubeBatchClientSet is kube-batch clientset
 var KubeBatchClientSet versioned.Interface
 
-// job admit.
+// AdmitJobs is to admit jobs and return response
 func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
 	glog.V(3).Infof("admitting jobs -- %s", ar.Request.Operation)

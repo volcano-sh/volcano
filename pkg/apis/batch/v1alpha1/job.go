@@ -112,6 +112,10 @@ const (
 	PVCError JobEvent = "PVCError"
 	// PodGroupError  pod grp error event is generated if error happens during pod grp creation
 	PodGroupError JobEvent = "PodGroupError"
+	//ExecuteAction action issued event for each action
+	ExecuteAction JobEvent = "ExecuteAction"
+	//JobStatusError is generated if update job status failed
+	JobStatusError JobEvent = "JobStatusError"
 )
 
 // Event represent the phase of Job, e.g. pod-failed.

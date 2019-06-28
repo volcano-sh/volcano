@@ -13,7 +13,7 @@ Volcano is a batch system built on Kubernetes. It provides a suite of mechanisms
 Kubernetes that are commonly required by many classes of batch & elastic workload including:
 
 1. machine learning/deep learning,
-2. bioinformatics/genomics, and 
+2. bioinformatics/genomics 
 3. other "big data" applications.
 
 These types of applications typically run on generalized domain
@@ -53,8 +53,26 @@ the open source community.
 
 ## Quick Start Guide
 
-The easiest way to deploy Volcano is to use the Helm chart.
+The easiest way to deploy Volcano is to use the Helm chart.  Volcano can be deployed by cloning code and also by adding helm repo.
 
+## Using Volcano Helm Repo
+
+Add helm repo using following command,
+
+```
+helm repo add volcano https://volcano-sh.github.io/charts
+```
+
+Install Volcano using following command,
+
+```
+helm install volcano/volcano --namespace <namespace> --name <specified-name>
+
+e.g :
+helm install volcano/volcano --namespace volcano-trial --name volcano-trial
+```
+ 
+## Cloning Code
 ### Pre-requisites
 
 First of all, clone the repo to your local path:
@@ -62,7 +80,7 @@ First of all, clone the repo to your local path:
 ```
 # mkdir -p $GOPATH/src/volcano.sh/
 # cd $GOPATH/src/volcano.sh/
-# git clone https://github.com/volcano-sh/volcano.git
+# git clone --recursive https://github.com/volcano-sh/volcano.git
 ```
 
 ### 1. Volcano Image
@@ -92,14 +110,14 @@ try command ```kind load docker-image <image-name>:<tag> ``` for each of the ima
 Secondly, install helm chart.
 
 ```
-helm install installer/chart --namespace <namespace> --name <specified-name>
+helm install installer/helm/chart/volcano --namespace <namespace> --name <specified-name>
 
-For eg :
-helm install installer/chart --namespace volcano-trial --name volcano-trial
+e.g :
+helm install installer/helm/chart/volcano --namespace volcano-trial --name volcano-trial
 
 ```
 
-To Verify your installation run the following commands:
+To verify your installation run the following commands:
 
 ```
 #1. Verify the Running Pods

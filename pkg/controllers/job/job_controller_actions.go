@@ -72,6 +72,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 				}
 				// record the err, and then collect the pod info like retained pod
 				errs = append(errs, err)
+				cc.resyncTask(pod)
 			}
 
 			switch pod.Status.Phase {
@@ -116,16 +117,16 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 	}
 
 	// Update Job status
-	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
+	job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
+	if err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
-	} else {
-		if e := cc.cache.Update(job); e != nil {
-			glog.Errorf("KillJob - Failed to update Job %v/%v in cache:  %v",
-				job.Namespace, job.Name, e)
-			return e
-		}
+	}
+	if e := cc.cache.Update(job); e != nil {
+		glog.Errorf("KillJob - Failed to update Job %v/%v in cache:  %v",
+			job.Namespace, job.Name, e)
+		return e
 	}
 
 	// Delete PodGroup
@@ -153,6 +154,12 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.Update
 	job := jobInfo.Job.DeepCopy()
 	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 
+	if err := cc.initJobStatus(job); err != nil {
+		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.JobStatusError),
+			fmt.Sprintf("Failed to initialize job status, err: %v", err))
+		return err
+	}
+
 	if err := cc.pluginOnJobAdd(job); err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.PluginError),
 			fmt.Sprintf("Execute plugin when job add failed, err: %v", err))
@@ -165,7 +172,7 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.Update
 		return err
 	}
 
-	err, job := cc.createJobIOIfNotExist(job)
+	job, err := cc.createJobIOIfNotExist(job)
 	if err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.PVCError),
 			fmt.Sprintf("Failed to create PVC, err: %v", err))
@@ -178,16 +185,16 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.Update
 		}
 	}
 
-	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
+	job, err = cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
+	if err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
-	} else {
-		if err := cc.cache.Update(job); err != nil {
-			glog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
-				job.Namespace, job.Name, err)
-			return err
-		}
+	}
+	if err = cc.cache.Update(job); err != nil {
+		glog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
+			job.Namespace, job.Name, err)
+		return err
 	}
 
 	return nil
@@ -271,6 +278,11 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 					pod.Name, job.Name, err)
 				creationErrs = append(creationErrs, err)
 			} else {
+				if err != nil && apierrors.IsAlreadyExists(err) {
+					cc.resyncTask(pod)
+				}
+
+				// TODO: maybe not pending status, maybe unknown.
 				pending++
 				glog.V(3).Infof("Created Task <%s> of Job <%s/%s>",
 					pod.Name, job.Namespace, job.Name)
@@ -298,6 +310,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 				glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
 					pod.Name, job.Name, err)
 				deletionErrs = append(deletionErrs, err)
+				cc.resyncTask(pod)
 			} else {
 				glog.V(3).Infof("Deleted Task <%s> of Job <%s/%s>",
 					pod.Name, job.Namespace, job.Name)
@@ -330,23 +343,22 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 			job.Status.State.LastTransitionTime = metav1.Now()
 		}
 	}
-
-	if job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job); err != nil {
+	job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
+	if err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
-	} else {
-		if e := cc.cache.Update(job); e != nil {
-			glog.Errorf("SyncJob - Failed to update Job %v/%v in cache:  %v",
-				job.Namespace, job.Name, e)
-			return e
-		}
+	}
+	if e := cc.cache.Update(job); e != nil {
+		glog.Errorf("SyncJob - Failed to update Job %v/%v in cache:  %v",
+			job.Namespace, job.Name, e)
+		return e
 	}
 
 	return nil
 }
 
-func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (error, *vkv1.Job) {
+func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (*vkv1.Job, error) {
 	// If PVC does not exist, create them for Job.
 	var needUpdate, nameExist bool
 	volumes := job.Spec.Volumes
@@ -359,7 +371,7 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (error, *vkv1.Job) {
 				vcName = vkjobhelpers.MakeVolumeClaimName(job.Name)
 				exist, err := cc.checkPVCExist(job, vcName)
 				if err != nil {
-					return err, nil
+					return nil, err
 				}
 				if exist {
 					continue
@@ -371,7 +383,7 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (error, *vkv1.Job) {
 		} else {
 			exist, err := cc.checkPVCExist(job, vcName)
 			if err != nil {
-				return err, nil
+				return nil, err
 			}
 			nameExist = exist
 		}
@@ -382,7 +394,7 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (error, *vkv1.Job) {
 			}
 			if volume.VolumeClaim != nil {
 				if err := cc.createPVC(job, vcName, volume.VolumeClaim); err != nil {
-					return err, nil
+					return nil, err
 				}
 				job.Status.ControlledResources["volume-pvc-"+vcName] = vcName
 			} else {
@@ -395,12 +407,11 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (error, *vkv1.Job) {
 		if err != nil {
 			glog.Errorf("Failed to update Job %v/%v for volume claim name: %v ",
 				job.Namespace, job.Name, err)
-			return err, nil
-		} else {
-			return nil, newJob
+			return nil, err
 		}
+		return newJob, err
 	}
-	return nil, job
+	return job, nil
 }
 
 func (cc *Controller) checkPVCExist(job *vkv1.Job, vcName string) (bool, error) {
@@ -486,6 +497,9 @@ func (cc *Controller) deleteJobPod(jobName string, pod *v1.Pod) error {
 }
 
 func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
+	cc.Mutex.Lock()
+	defer cc.Mutex.Unlock()
+
 	// sort task by priorityClasses
 	var tasksPriority TasksPriority
 	for index := range job.Spec.Tasks {
@@ -514,4 +528,26 @@ func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
 	}
 
 	return &minAvailableTasksRes
+}
+
+func (cc *Controller) initJobStatus(job *vkv1.Job) error {
+	if job.Status.State.Phase != "" {
+		return nil
+	}
+
+	job.Status.State.Phase = vkv1.Pending
+	job.Status.MinAvailable = int32(job.Spec.MinAvailable)
+	job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
+	if err != nil {
+		glog.Errorf("Failed to update status of Job %v/%v: %v",
+			job.Namespace, job.Name, err)
+		return err
+	}
+	if err := cc.cache.Update(job); err != nil {
+		glog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
+			job.Namespace, job.Name, err)
+		return err
+	}
+
+	return nil
 }
