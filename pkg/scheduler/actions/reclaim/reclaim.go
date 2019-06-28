@@ -57,6 +57,10 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 		if job.PodGroup.Status.Phase == v1alpha1.PodGroupPending {
 			continue
 		}
+		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
+			glog.V(4).Infof("Job <%s/%s> Queue <%s> skip reclaim, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
+			continue
+		}
 
 		if queue, found := ssn.Queues[job.Queue]; !found {
 			glog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",

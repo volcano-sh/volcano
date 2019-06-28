@@ -19,9 +19,12 @@ package util
 import (
 	"fmt"
 
+	"github.com/golang/glog"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
+	"k8s.io/kubernetes/pkg/scheduler/cache"
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
 	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/framework"
@@ -30,11 +33,36 @@ import (
 // PodLister is used in predicate and nodeorder plugin
 type PodLister struct {
 	Session *framework.Session
+
+	CachedPods       map[api.TaskID]*v1.Pod
+	Tasks            map[api.TaskID]*api.TaskInfo
+	TaskWithAffinity map[api.TaskID]*api.TaskInfo
 }
 
-// List method is used to list all the pods
-func (pl *PodLister) List(selector labels.Selector) ([]*v1.Pod, error) {
-	var pods []*v1.Pod
+// PodAffinityLister is used to list pod with affinity
+type PodAffinityLister struct {
+	pl *PodLister
+}
+
+// HaveAffinity checks pod have affinity or not
+func HaveAffinity(pod *v1.Pod) bool {
+	affinity := pod.Spec.Affinity
+	return affinity != nil &&
+		(affinity.NodeAffinity != nil ||
+			affinity.PodAffinity != nil ||
+			affinity.PodAntiAffinity != nil)
+}
+
+// NewPodLister returns a PodLister generate from ssn
+func NewPodLister(ssn *framework.Session) *PodLister {
+	pl := &PodLister{
+		Session: ssn,
+
+		CachedPods:       make(map[api.TaskID]*v1.Pod),
+		Tasks:            make(map[api.TaskID]*api.TaskInfo),
+		TaskWithAffinity: make(map[api.TaskID]*api.TaskInfo),
+	}
+
 	for _, job := range pl.Session.Jobs {
 		for status, tasks := range job.TaskStatusIndex {
 			if !api.AllocatedStatus(status) {
@@ -42,16 +70,84 @@ func (pl *PodLister) List(selector labels.Selector) ([]*v1.Pod, error) {
 			}
 
 			for _, task := range tasks {
-				if selector.Matches(labels.Set(task.Pod.Labels)) {
-					if task.NodeName != task.Pod.Spec.NodeName {
-						pod := task.Pod.DeepCopy()
-						pod.Spec.NodeName = task.NodeName
-						pods = append(pods, pod)
-					} else {
-						pods = append(pods, task.Pod)
-					}
+				pl.Tasks[task.UID] = task
+				if HaveAffinity(task.Pod) {
+					pl.TaskWithAffinity[task.UID] = task
 				}
 			}
+		}
+	}
+
+	return pl
+}
+
+func (pl *PodLister) copyTaskPod(task *api.TaskInfo) *v1.Pod {
+	pod := task.Pod.DeepCopy()
+	pod.Spec.NodeName = task.NodeName
+	return pod
+}
+
+// GetPod will get pod with proper nodeName, from cache or DeepCopy
+// keeping this function read only to avoid concurrent panic of map
+func (pl *PodLister) GetPod(task *api.TaskInfo) *v1.Pod {
+	if task.NodeName == task.Pod.Spec.NodeName {
+		return task.Pod
+	}
+
+	pod, found := pl.CachedPods[task.UID]
+	if !found {
+		// we could not write the copied pod back into cache for read only
+		pod = pl.copyTaskPod(task)
+		glog.Warningf("DeepCopy for pod %s/%s at PodLister.GetPod is unexpected", pod.Namespace, pod.Name)
+	}
+	return pod
+}
+
+// UpdateTask will update the pod nodeName in cache using nodeName
+// NOT thread safe, please ensure UpdateTask is the only called function of PodLister at the same time.
+func (pl *PodLister) UpdateTask(task *api.TaskInfo, nodeName string) *v1.Pod {
+	pod, found := pl.CachedPods[task.UID]
+	if !found {
+		pod = pl.copyTaskPod(task)
+		pl.CachedPods[task.UID] = pod
+	}
+	pod.Spec.NodeName = nodeName
+
+	if !api.AllocatedStatus(task.Status) {
+		delete(pl.Tasks, task.UID)
+		if HaveAffinity(task.Pod) {
+			delete(pl.TaskWithAffinity, task.UID)
+		}
+	} else {
+		pl.Tasks[task.UID] = task
+		if HaveAffinity(task.Pod) {
+			pl.TaskWithAffinity[task.UID] = task
+		}
+	}
+
+	return pod
+}
+
+// List method is used to list all the pods
+func (pl *PodLister) List(selector labels.Selector) ([]*v1.Pod, error) {
+	var pods []*v1.Pod
+	for _, task := range pl.Tasks {
+		pod := pl.GetPod(task)
+		if selector.Matches(labels.Set(pod.Labels)) {
+			pods = append(pods, pod)
+		}
+	}
+
+	return pods, nil
+}
+
+// FilteredList is used to list all the pods under filter condition
+func (pl *PodLister) filteredListWithTaskSet(taskSet map[api.TaskID]*api.TaskInfo, podFilter algorithm.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
+	var pods []*v1.Pod
+	for _, task := range taskSet {
+		pod := pl.GetPod(task)
+		if podFilter(pod) && selector.Matches(labels.Set(pod.Labels)) {
+			pods = append(pods, pod)
 		}
 	}
 
@@ -60,28 +156,44 @@ func (pl *PodLister) List(selector labels.Selector) ([]*v1.Pod, error) {
 
 // FilteredList is used to list all the pods under filter condition
 func (pl *PodLister) FilteredList(podFilter algorithm.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
-	var pods []*v1.Pod
-	for _, job := range pl.Session.Jobs {
-		for status, tasks := range job.TaskStatusIndex {
-			if !api.AllocatedStatus(status) {
-				continue
-			}
+	return pl.filteredListWithTaskSet(pl.Tasks, podFilter, selector)
+}
 
-			for _, task := range tasks {
-				if podFilter(task.Pod) && selector.Matches(labels.Set(task.Pod.Labels)) {
-					if task.NodeName != task.Pod.Spec.NodeName {
-						pod := task.Pod.DeepCopy()
-						pod.Spec.NodeName = task.NodeName
-						pods = append(pods, pod)
-					} else {
-						pods = append(pods, task.Pod)
-					}
-				}
-			}
-		}
+// AffinityFilteredList is used to list all the pods with affinity under filter condition
+func (pl *PodLister) AffinityFilteredList(podFilter algorithm.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
+	return pl.filteredListWithTaskSet(pl.TaskWithAffinity, podFilter, selector)
+}
+
+// AffinityLister generate a PodAffinityLister following current PodLister
+func (pl *PodLister) AffinityLister() *PodAffinityLister {
+	pal := &PodAffinityLister{
+		pl: pl,
 	}
+	return pal
+}
 
-	return pods, nil
+// List method is used to list all the pods
+func (pal *PodAffinityLister) List(selector labels.Selector) ([]*v1.Pod, error) {
+	return pal.pl.List(selector)
+}
+
+// FilteredList is used to list all the pods with affinity under filter condition
+func (pal *PodAffinityLister) FilteredList(podFilter algorithm.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
+	return pal.pl.AffinityFilteredList(podFilter, selector)
+}
+
+// GenerateNodeMapAndSlice returns the nodeMap and nodeSlice generated from ssn
+func GenerateNodeMapAndSlice(nodes map[string]*api.NodeInfo) (map[string]*cache.NodeInfo, []*v1.Node) {
+	var nodeMap map[string]*cache.NodeInfo
+	var nodeSlice []*v1.Node
+	nodeMap = make(map[string]*cache.NodeInfo)
+	for _, node := range nodes {
+		nodeInfo := cache.NewNodeInfo(node.Pods()...)
+		nodeInfo.SetNode(node.Node)
+		nodeMap[node.Name] = nodeInfo
+		nodeSlice = append(nodeSlice, node.Node)
+	}
+	return nodeMap, nodeSlice
 }
 
 // CachedNodeInfo is used in nodeorder and predicate plugin

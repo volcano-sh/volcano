@@ -18,7 +18,11 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"time"
+
+	// init pprof server
+	_ "net/http/pprof"
 
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
@@ -37,6 +41,8 @@ import (
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
 
 func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+
 	s := options.NewServerOption()
 	s.AddFlags(pflag.CommandLine)
 	s.RegisterOptions()
