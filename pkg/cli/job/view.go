@@ -41,10 +41,11 @@ type viewFlags struct {
 	JobName   string
 }
 
+// level of print indent
 const (
-	LEVEL_0 = iota
-	LEVEL_1
-	LEVEL_2
+	Level0 = iota
+	Level1
+	Level2
 )
 
 var viewJobFlags = &viewFlags{}
@@ -82,120 +83,122 @@ func ViewJob() error {
 	return nil
 }
 
+// PrintJobInfo print the job detailed info into writer
 func PrintJobInfo(job *v1alpha1.Job, writer io.Writer) {
-	WriteLine(writer, LEVEL_0, "Name:       \t%s\n", job.Name)
-	WriteLine(writer, LEVEL_0, "Namespace:  \t%s\n", job.Namespace)
+	WriteLine(writer, Level0, "Name:       \t%s\n", job.Name)
+	WriteLine(writer, Level0, "Namespace:  \t%s\n", job.Namespace)
 	if len(job.Labels) > 0 {
 		label, _ := json.Marshal(job.Labels)
-		WriteLine(writer, LEVEL_0, "Labels:     \t%s\n", string(label))
+		WriteLine(writer, Level0, "Labels:     \t%s\n", string(label))
 	} else {
-		WriteLine(writer, LEVEL_0, "Labels:     \t<none>\n")
+		WriteLine(writer, Level0, "Labels:     \t<none>\n")
 	}
 	if len(job.Annotations) > 0 {
 		annotation, _ := json.Marshal(job.Annotations)
-		WriteLine(writer, LEVEL_0, "Annotations:\t%s\n", string(annotation))
+		WriteLine(writer, Level0, "Annotations:\t%s\n", string(annotation))
 	} else {
-		WriteLine(writer, LEVEL_0, "Annotations:\t<none>\n")
+		WriteLine(writer, Level0, "Annotations:\t<none>\n")
 	}
-	WriteLine(writer, LEVEL_0, "API Version:\t%s\n", job.APIVersion)
-	WriteLine(writer, LEVEL_0, "Kind:       \t%s\n", job.Kind)
+	WriteLine(writer, Level0, "API Version:\t%s\n", job.APIVersion)
+	WriteLine(writer, Level0, "Kind:       \t%s\n", job.Kind)
 
-	WriteLine(writer, LEVEL_0, "Metadata:\n")
-	WriteLine(writer, LEVEL_1, "Creation Timestamp:\t%s\n", job.CreationTimestamp)
-	WriteLine(writer, LEVEL_1, "Generate Name:     \t%s\n", job.GenerateName)
-	WriteLine(writer, LEVEL_1, "Generation:        \t%d\n", job.Generation)
-	WriteLine(writer, LEVEL_1, "Resource Version:  \t%s\n", job.ResourceVersion)
-	WriteLine(writer, LEVEL_1, "Self Link:         \t%s\n", job.SelfLink)
-	WriteLine(writer, LEVEL_1, "UID:               \t%s\n", job.UID)
+	WriteLine(writer, Level0, "Metadata:\n")
+	WriteLine(writer, Level1, "Creation Timestamp:\t%s\n", job.CreationTimestamp)
+	WriteLine(writer, Level1, "Generate Name:     \t%s\n", job.GenerateName)
+	WriteLine(writer, Level1, "Generation:        \t%d\n", job.Generation)
+	WriteLine(writer, Level1, "Resource Version:  \t%s\n", job.ResourceVersion)
+	WriteLine(writer, Level1, "Self Link:         \t%s\n", job.SelfLink)
+	WriteLine(writer, Level1, "UID:               \t%s\n", job.UID)
 
-	WriteLine(writer, LEVEL_0, "Spec:\n")
-	WriteLine(writer, LEVEL_1, "Min Available:     \t%d\n", job.Spec.MinAvailable)
-	WriteLine(writer, LEVEL_1, "Plugins:\n")
-	WriteLine(writer, LEVEL_2, "Env:\t%v\n", job.Spec.Plugins["env"])
-	WriteLine(writer, LEVEL_2, "Ssh:\t%v\n", job.Spec.Plugins["ssh"])
-	WriteLine(writer, LEVEL_1, "Scheduler Name:    \t%s\n", job.Spec.SchedulerName)
-	WriteLine(writer, LEVEL_1, "Tasks:\n")
+	WriteLine(writer, Level0, "Spec:\n")
+	WriteLine(writer, Level1, "Min Available:     \t%d\n", job.Spec.MinAvailable)
+	WriteLine(writer, Level1, "Plugins:\n")
+	WriteLine(writer, Level2, "Env:\t%v\n", job.Spec.Plugins["env"])
+	WriteLine(writer, Level2, "Ssh:\t%v\n", job.Spec.Plugins["ssh"])
+	WriteLine(writer, Level1, "Scheduler Name:    \t%s\n", job.Spec.SchedulerName)
+	WriteLine(writer, Level1, "Tasks:\n")
 	for i := 0; i < len(job.Spec.Tasks); i++ {
-		WriteLine(writer, LEVEL_2, "Name:\t%s\n", job.Spec.Tasks[i].Name)
-		WriteLine(writer, LEVEL_2, "Replicas:\t%d\n", job.Spec.Tasks[i].Replicas)
-		WriteLine(writer, LEVEL_2, "Template:\n")
-		WriteLine(writer, LEVEL_2+1, "Metadata:\n")
-		WriteLine(writer, LEVEL_2+2, "Annotations:\n")
-		WriteLine(writer, LEVEL_2+3, "Cri . Cci . Io / Container - Type:          \t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.Annotations["cri.cci.io/container-type"])
-		WriteLine(writer, LEVEL_2+3, "Kubernetes . Io / Availablezone:            \t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.Annotations["kubernetes.io/availablezone"])
-		WriteLine(writer, LEVEL_2+3, "Network . Alpha . Kubernetes . Io / Network:\t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.Annotations["network.alpha.kubernetes.io/network"])
-		WriteLine(writer, LEVEL_2+2, "Creation Timestamp:\t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.CreationTimestamp)
+		WriteLine(writer, Level2, "Name:\t%s\n", job.Spec.Tasks[i].Name)
+		WriteLine(writer, Level2, "Replicas:\t%d\n", job.Spec.Tasks[i].Replicas)
+		WriteLine(writer, Level2, "Template:\n")
+		WriteLine(writer, Level2+1, "Metadata:\n")
+		WriteLine(writer, Level2+2, "Annotations:\n")
+		WriteLine(writer, Level2+3, "Cri . Cci . Io / Container - Type:          \t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.Annotations["cri.cci.io/container-type"])
+		WriteLine(writer, Level2+3, "Kubernetes . Io / Availablezone:            \t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.Annotations["kubernetes.io/availablezone"])
+		WriteLine(writer, Level2+3, "Network . Alpha . Kubernetes . Io / Network:\t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.Annotations["network.alpha.kubernetes.io/network"])
+		WriteLine(writer, Level2+2, "Creation Timestamp:\t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.CreationTimestamp)
 
-		WriteLine(writer, LEVEL_2+1, "Spec:\n")
-		WriteLine(writer, LEVEL_2+2, "Containers:\n")
+		WriteLine(writer, Level2+1, "Spec:\n")
+		WriteLine(writer, Level2+2, "Containers:\n")
 		for j := 0; j < len(job.Spec.Tasks[i].Template.Spec.Containers); j++ {
-			WriteLine(writer, LEVEL_2+3, "Command:\n")
+			WriteLine(writer, Level2+3, "Command:\n")
 			for k := 0; k < len(job.Spec.Tasks[i].Template.Spec.Containers[j].Command); k++ {
-				WriteLine(writer, LEVEL_2+4, "%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Command[k])
+				WriteLine(writer, Level2+4, "%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Command[k])
 			}
-			WriteLine(writer, LEVEL_2+3, "Image:\t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Image)
-			WriteLine(writer, LEVEL_2+3, "Name: \t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Name)
-			WriteLine(writer, LEVEL_2+3, "Ports:\n")
+			WriteLine(writer, Level2+3, "Image:\t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Image)
+			WriteLine(writer, Level2+3, "Name: \t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Name)
+			WriteLine(writer, Level2+3, "Ports:\n")
 			for k := 0; k < len(job.Spec.Tasks[i].Template.Spec.Containers[j].Ports); k++ {
-				WriteLine(writer, LEVEL_2+4, "Container Port:\t%d\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Ports[k].ContainerPort)
-				WriteLine(writer, LEVEL_2+4, "Name:          \t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Ports[k].Name)
+				WriteLine(writer, Level2+4, "Container Port:\t%d\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Ports[k].ContainerPort)
+				WriteLine(writer, Level2+4, "Name:          \t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Ports[k].Name)
 			}
-			WriteLine(writer, LEVEL_2+3, "Resources:\n")
-			WriteLine(writer, LEVEL_2+4, "Limits:\n")
-			WriteLine(writer, LEVEL_2+5, "Cpu:   \t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Resources.Limits.Cpu())
-			WriteLine(writer, LEVEL_2+5, "Memory:\t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Resources.Limits.Memory())
-			WriteLine(writer, LEVEL_2+4, "Requests:\n")
-			WriteLine(writer, LEVEL_2+5, "Cpu:   \t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Resources.Requests.Cpu())
-			WriteLine(writer, LEVEL_2+5, "Memory:\t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Resources.Requests.Memory())
-			WriteLine(writer, LEVEL_2+4, "Working Dir:\t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].WorkingDir)
+			WriteLine(writer, Level2+3, "Resources:\n")
+			WriteLine(writer, Level2+4, "Limits:\n")
+			WriteLine(writer, Level2+5, "Cpu:   \t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Resources.Limits.Cpu())
+			WriteLine(writer, Level2+5, "Memory:\t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Resources.Limits.Memory())
+			WriteLine(writer, Level2+4, "Requests:\n")
+			WriteLine(writer, Level2+5, "Cpu:   \t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Resources.Requests.Cpu())
+			WriteLine(writer, Level2+5, "Memory:\t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].Resources.Requests.Memory())
+			WriteLine(writer, Level2+4, "Working Dir:\t%s\n", job.Spec.Tasks[i].Template.Spec.Containers[j].WorkingDir)
 		}
-		WriteLine(writer, LEVEL_2+2, "Image Pull Secrets:\n")
+		WriteLine(writer, Level2+2, "Image Pull Secrets:\n")
 		for j := 0; j < len(job.Spec.Tasks[i].Template.Spec.ImagePullSecrets); j++ {
-			WriteLine(writer, LEVEL_2+3, "Name:     \t%s\n", job.Spec.Tasks[i].Template.Spec.ImagePullSecrets[j].Name)
+			WriteLine(writer, Level2+3, "Name:     \t%s\n", job.Spec.Tasks[i].Template.Spec.ImagePullSecrets[j].Name)
 		}
-		WriteLine(writer, LEVEL_2+2, "Restart Policy:   \t%s\n", job.Spec.Tasks[i].Template.Spec.RestartPolicy)
+		WriteLine(writer, Level2+2, "Restart Policy:   \t%s\n", job.Spec.Tasks[i].Template.Spec.RestartPolicy)
 	}
 
-	WriteLine(writer, LEVEL_0, "Status:\n")
+	WriteLine(writer, Level0, "Status:\n")
 	if job.Status.Succeeded > 0 {
-		WriteLine(writer, LEVEL_1, "Succeeded:    \t%d\n", job.Status.Succeeded)
+		WriteLine(writer, Level1, "Succeeded:    \t%d\n", job.Status.Succeeded)
 	}
 	if job.Status.Pending > 0 {
-		WriteLine(writer, LEVEL_1, "Pending:      \t%d\n", job.Status.Pending)
+		WriteLine(writer, Level1, "Pending:      \t%d\n", job.Status.Pending)
 	}
 	if job.Status.Running > 0 {
-		WriteLine(writer, LEVEL_1, "Running:      \t%d\n", job.Status.Running)
+		WriteLine(writer, Level1, "Running:      \t%d\n", job.Status.Running)
 	}
 	if job.Status.Failed > 0 {
-		WriteLine(writer, LEVEL_1, "Failed:       \t%d\n", job.Status.Failed)
+		WriteLine(writer, Level1, "Failed:       \t%d\n", job.Status.Failed)
 	}
 	if job.Status.Terminating > 0 {
-		WriteLine(writer, LEVEL_1, "Terminating:  \t%d\n", job.Status.Terminating)
+		WriteLine(writer, Level1, "Terminating:  \t%d\n", job.Status.Terminating)
 	}
 	if job.Status.RetryCount > 0 {
-		WriteLine(writer, LEVEL_1, "RetryCount:   \t%d\n", job.Status.RetryCount)
+		WriteLine(writer, Level1, "RetryCount:   \t%d\n", job.Status.RetryCount)
 	}
 	if job.Status.MinAvailable > 0 {
-		WriteLine(writer, LEVEL_1, "Min Available:\t%d\n", job.Status.MinAvailable)
+		WriteLine(writer, Level1, "Min Available:\t%d\n", job.Status.MinAvailable)
 	}
 	if job.Status.Version > 0 {
-		WriteLine(writer, LEVEL_1, "Version:      \t%d\n", job.Status.Version)
+		WriteLine(writer, Level1, "Version:      \t%d\n", job.Status.Version)
 	}
 
-	WriteLine(writer, LEVEL_1, "State:\n")
-	WriteLine(writer, LEVEL_2, "Phase:\t%s\n", job.Status.State.Phase)
+	WriteLine(writer, Level1, "State:\n")
+	WriteLine(writer, Level2, "Phase:\t%s\n", job.Status.State.Phase)
 	if len(job.Status.ControlledResources) > 0 {
-		WriteLine(writer, LEVEL_1, "Controlled Resources:\n")
+		WriteLine(writer, Level1, "Controlled Resources:\n")
 		for key, value := range job.Status.ControlledResources {
-			WriteLine(writer, LEVEL_2, "%s: \t%s\n", key, value)
+			WriteLine(writer, Level2, "%s: \t%s\n", key, value)
 		}
 	}
 }
 
+// PrintEvents print event info to writer
 func PrintEvents(events []coreV1.Event, writer io.Writer) {
 	if len(events) > 0 {
-		WriteLine(writer, LEVEL_0, "%s:\n%-15s\t%-40s\t%-30s\t%-40s\t%s\n", "Events", "Type", "Reason", "Age", "Form", "Message")
-		WriteLine(writer, LEVEL_0, "%-15s\t%-40s\t%-30s\t%-40s\t%s\n", "-------", "-------", "-------", "-------", "-------")
+		WriteLine(writer, Level0, "%s:\n%-15s\t%-40s\t%-30s\t%-40s\t%s\n", "Events", "Type", "Reason", "Age", "Form", "Message")
+		WriteLine(writer, Level0, "%-15s\t%-40s\t%-30s\t%-40s\t%s\n", "-------", "-------", "-------", "-------", "-------")
 		for _, e := range events {
 			var interval string
 			if e.Count > 1 {
@@ -207,7 +210,7 @@ func PrintEvents(events []coreV1.Event, writer io.Writer) {
 			if len(e.Source.Host) > 0 {
 				EventSourceString = append(EventSourceString, e.Source.Host)
 			}
-			WriteLine(writer, LEVEL_0, "%-15v\t%-40v\t%-30s\t%-40s\t%v\n",
+			WriteLine(writer, Level0, "%-15v\t%-40v\t%-30s\t%-40s\t%v\n",
 				e.Type,
 				e.Reason,
 				interval,
@@ -216,11 +219,12 @@ func PrintEvents(events []coreV1.Event, writer io.Writer) {
 			)
 		}
 	} else {
-		WriteLine(writer, LEVEL_0, "Events: \t<none>\n")
+		WriteLine(writer, Level0, "Events: \t<none>\n")
 	}
 
 }
 
+// GetEvents get the job event by config
 func GetEvents(config *rest.Config, job *v1alpha1.Job) []coreV1.Event {
 	kubernetes, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -237,6 +241,7 @@ func GetEvents(config *rest.Config, job *v1alpha1.Job) []coreV1.Event {
 	return jobEvents
 }
 
+// WriteLine write lines with specified indent
 func WriteLine(writer io.Writer, spaces int, content string, params ...interface{}) {
 	prefix := ""
 	for i := 0; i < spaces; i++ {

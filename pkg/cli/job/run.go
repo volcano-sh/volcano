@@ -108,12 +108,12 @@ func readFile(filename string) (*vkapi.Job, error) {
 	}
 
 	if !strings.Contains(filename, ".yaml") && !strings.Contains(filename, ".yml") {
-		return nil, fmt.Errorf("Only support yaml file.")
+		return nil, fmt.Errorf("only support yaml file")
 	}
 
 	file, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to read file, err: %v", err)
+		return nil, fmt.Errorf("failed to read file, err: %v", err)
 	}
 
 	var job vkapi.Job

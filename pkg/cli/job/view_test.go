@@ -18,24 +18,108 @@ package job
 
 import (
 	"encoding/json"
-	"github.com/spf13/cobra"
+	"math"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
+	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
 func TestViewJob(t *testing.T) {
-	response := v1alpha1.Job{}
-	response.Name = "testJob"
+	response := v1alpha1.Job{
+		TypeMeta: metav1.TypeMeta{},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "testJobWithLongLongLongName",
+			Labels: map[string]string{
+				"LabelWithLongLongLongLongName": "LongLongLongLongLabelValue",
+			},
+			Annotations: map[string]string{
+				"AnnotationWithLongLongLongLongName": "LongLongLongLongAnnotationValue",
+			},
+		},
+		Spec: v1alpha1.JobSpec{
+			Tasks: []v1alpha1.TaskSpec{
+				{
+					Name:     "taskWithLongLongLongLongName",
+					Replicas: math.MaxInt32,
+					Template: v1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{},
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{
+									Command: []string{"echo", "123"},
+									Ports: []v1.ContainerPort{
+										{
+											Name: "placeholder",
+										},
+									},
+								},
+							},
+							ImagePullSecrets: []v1.LocalObjectReference{
+								{
+									Name: "imagepull-secret",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Status: v1alpha1.JobStatus{
+			Succeeded:    1,
+			Pending:      3,
+			Running:      1,
+			Failed:       2,
+			Terminating:  4,
+			RetryCount:   5,
+			MinAvailable: 6,
+			Version:      7,
+			ControlledResources: map[string]string{
+				"svc": "",
+			},
+		},
+	}
+
+	eventList := v1.EventList{
+		Items: []v1.Event{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: response.Name + ".123",
+				},
+				Count: 1,
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: response.Name + ".456",
+				},
+				Count:          2,
+				FirstTimestamp: metav1.Now(),
+			},
+		},
+	}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		val, err := json.Marshal(response)
+
+		if strings.Contains(r.URL.String(), "job") {
+			val, err := json.Marshal(response)
+			if err == nil {
+				w.Write(val)
+			}
+			return
+		}
+
+		val, err := json.Marshal(eventList)
 		if err == nil {
 			w.Write(val)
 		}
+		return
 
 	})
 
