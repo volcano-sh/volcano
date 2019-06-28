@@ -26,6 +26,7 @@ import (
 	kubebatchclient "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	kubeclientset "k8s.io/client-go/kubernetes"
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -67,10 +68,11 @@ func newController() *Controller {
 func buildPod(namespace, name string, p v1.PodPhase, labels map[string]string) *v1.Pod {
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			UID:       types.UID(fmt.Sprintf("%v-%v", namespace, name)),
-			Name:      name,
-			Namespace: namespace,
-			Labels:    labels,
+			UID:             types.UID(fmt.Sprintf("%v-%v", namespace, name)),
+			Name:            name,
+			Namespace:       namespace,
+			Labels:          labels,
+			ResourceVersion: string(uuid.NewUUID()),
 		},
 		Status: v1.PodStatus{
 			Phase: p,
