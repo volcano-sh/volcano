@@ -183,7 +183,7 @@ func TestUpdateJobFunc(t *testing.T) {
 					Namespace: namespace,
 				},
 				Spec: vkbatchv1.JobSpec{
-					SchedulerName: "kube-batch",
+					SchedulerName: "volcano",
 					MinAvailable:  5,
 				},
 				Status: vkbatchv1.JobStatus{
@@ -198,7 +198,7 @@ func TestUpdateJobFunc(t *testing.T) {
 					Namespace: namespace,
 				},
 				Spec: vkbatchv1.JobSpec{
-					SchedulerName: "kube-batch",
+					SchedulerName: "volcano",
 					MinAvailable:  5,
 				},
 				Status: vkbatchv1.JobStatus{
@@ -216,7 +216,7 @@ func TestUpdateJobFunc(t *testing.T) {
 					Namespace: namespace,
 				},
 				Spec: vkbatchv1.JobSpec{
-					SchedulerName: "kube-batch",
+					SchedulerName: "volcano",
 					MinAvailable:  5,
 				},
 				Status: vkbatchv1.JobStatus{
@@ -231,7 +231,7 @@ func TestUpdateJobFunc(t *testing.T) {
 					Namespace: namespace,
 				},
 				Spec: vkbatchv1.JobSpec{
-					SchedulerName: "kube-batch",
+					SchedulerName: "volcano",
 					MinAvailable:  5,
 				},
 				Status: vkbatchv1.JobStatus{
