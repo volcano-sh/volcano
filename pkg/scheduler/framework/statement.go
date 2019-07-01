@@ -109,6 +109,36 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo, reason string) error {
 	return nil
 }
 
+// unallocate the pod for task
+func (s *Statement) unallocate(task *api.TaskInfo, reason string) error {
+	// Update status in session
+	job, found := s.ssn.Jobs[task.Job]
+	if found {
+		if err := job.UpdateTaskStatus(task, api.Pending); err != nil {
+			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
+				task.Namespace, task.Name, api.Pending, s.ssn.UID, err)
+		}
+	} else {
+		glog.Errorf("Failed to find Job <%s> in Session <%s> index when unallocating.",
+			task.Job, s.ssn.UID)
+	}
+
+	if node, found := s.ssn.Nodes[task.NodeName]; found {
+		glog.V(3).Info("Remove Task <%v> on node <%v>", task.Name, task.NodeName)
+		node.RemoveTask(task)
+	}
+
+	for _, eh := range s.ssn.eventHandlers {
+		if eh.DeallocateFunc != nil {
+			eh.DeallocateFunc(&Event{
+				Task: task,
+			})
+		}
+	}
+
+	return nil
+}
+
 // Pipeline the task for the node
 func (s *Statement) Pipeline(task *api.TaskInfo, hostname string) error {
 	// Only update status in session
@@ -194,7 +224,19 @@ func (s *Statement) unpipeline(task *api.TaskInfo) error {
 	return nil
 }
 
-// Discard operation for evict and pipeline
+// Save the allocate operation on task
+func (s *Statement) Allocate(task *api.TaskInfo, reason string) error {
+	// Update status in session
+	glog.V(3).Info("Allocating operations ...")
+	s.operations = append(s.operations, operation{
+		name: "allocate",
+		args: []interface{}{task, reason},
+	})
+
+	return nil
+}
+
+// Discard operation for evict, pipeline and allocate
 func (s *Statement) Discard() {
 	glog.V(3).Info("Discarding operations ...")
 	for i := len(s.operations) - 1; i >= 0; i-- {
@@ -204,6 +246,8 @@ func (s *Statement) Discard() {
 			s.unevict(op.args[0].(*api.TaskInfo), op.args[1].(string))
 		case "pipeline":
 			s.unpipeline(op.args[0].(*api.TaskInfo))
+		case "allocate":
+			s.unallocate(op.args[0].(*api.TaskInfo), op.args[1].(string))
 		}
 	}
 }
