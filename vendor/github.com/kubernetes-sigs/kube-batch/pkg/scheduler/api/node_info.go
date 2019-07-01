@@ -46,7 +46,7 @@ type NodeInfo struct {
 	Tasks map[TaskID]*TaskInfo
 
 	// Used to store custom information
-	Other interface{}
+	Others map[string]interface{}
 }
 
 // NodeState defines the current state of node.
@@ -98,7 +98,7 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 	for _, p := range ni.Tasks {
 		res.AddTask(p)
 	}
-	res.Other = ni.Other
+	res.Others = ni.Others
 	return res
 }
 

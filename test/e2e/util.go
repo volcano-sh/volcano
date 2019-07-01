@@ -338,7 +338,7 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 					Labels: task.labels,
 				},
 				Spec: v1.PodSpec{
-					SchedulerName: "kube-batch",
+					SchedulerName: "volcano",
 					RestartPolicy: restartPolicy,
 					Containers:    createContainers(task.img, task.command, task.workingDir, task.req, task.limit, task.hostport),
 					Affinity:      task.affinity,
