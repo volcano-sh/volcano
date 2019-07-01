@@ -17,6 +17,7 @@ limitations under the License.
 package queue
 
 import (
+	"fmt"
 	"testing"
 
 	kbv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
@@ -276,4 +277,26 @@ func TestSyncQueue(t *testing.T) {
 		}
 	}
 
+}
+
+func TestProcessNextWorkItem(t *testing.T) {
+	testCases := []struct {
+		Name        string
+		ExpectValue int32
+	}{
+		{
+			Name:        "processNextWorkItem",
+			ExpectValue: 0,
+		},
+	}
+
+	for i, testcase := range testCases {
+		c := newFakeController()
+		c.queue.Add("test")
+		bVal := c.processNextWorkItem()
+		fmt.Println("The value of boolean is ", bVal)
+		if c.queue.Len() != 0 {
+			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, c.queue.Len())
+		}
+	}
 }
