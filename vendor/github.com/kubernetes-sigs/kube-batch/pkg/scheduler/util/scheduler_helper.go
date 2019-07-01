@@ -31,10 +31,14 @@ import (
 )
 
 // PredicateNodes returns nodes that fit task
-func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn) []*api.NodeInfo {
+func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn) ([]*api.NodeInfo, *api.FitErrors) {
 	var predicateNodes []*api.NodeInfo
 
 	var workerLock sync.Mutex
+
+	var errorLock sync.Mutex
+	fe := api.NewFitErrors()
+
 	checkNode := func(index int) {
 		node := nodes[index]
 		glog.V(3).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
@@ -42,8 +46,11 @@ func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateF
 
 		// TODO (k82cn): Enable eCache for performance improvement.
 		if err := fn(task, node); err != nil {
-			glog.Errorf("Predicates failed for task <%s/%s> on node <%s>: %v",
+			glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
 				task.Namespace, task.Name, node.Name, err)
+			errorLock.Lock()
+			fe.SetNodeError(node.Name, err)
+			errorLock.Unlock()
 			return
 		}
 
@@ -53,11 +60,11 @@ func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateF
 	}
 
 	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), checkNode)
-	return predicateNodes
+	return predicateNodes, fe
 }
 
 // PrioritizeNodes returns a map whose key is node's score and value are corresponding nodes
-func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, mapFn api.NodeOrderMapFn, reduceFn api.NodeOrderReduceFn) map[float64][]*api.NodeInfo {
+func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.BatchNodeOrderFn, mapFn api.NodeOrderMapFn, reduceFn api.NodeOrderReduceFn) map[float64][]*api.NodeInfo {
 	pluginNodeScoreMap := map[string]schedulerapi.HostPriorityList{}
 	nodeOrderScoreMap := map[string]float64{}
 	nodeScores := map[float64][]*api.NodeInfo{}
@@ -90,10 +97,20 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, mapFn api.NodeOr
 		glog.Errorf("Error in Calculating Priority for the node:%v", err)
 		return nodeScores
 	}
+
+	batchNodeScore, err := batchFn(task, nodes)
+	if err != nil {
+		glog.Errorf("Error in Calculating batch Priority for the node, err %v", err)
+		return nodeScores
+	}
+
 	for _, node := range nodes {
 		if score, found := reduceScores[node.Name]; found {
 			if orderScore, ok := nodeOrderScoreMap[node.Name]; ok {
 				score = score + orderScore
+			}
+			if batchScore, ok := batchNodeScore[node.Name]; ok {
+				score = score + batchScore
 			}
 			nodeScores[score] = append(nodeScores[score], node)
 		} else {
@@ -101,6 +118,9 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, mapFn api.NodeOr
 			score = 0.0
 			if orderScore, ok := nodeOrderScoreMap[node.Name]; ok {
 				score = score + orderScore
+			}
+			if batchScore, ok := batchNodeScore[node.Name]; ok {
+				score = score + batchScore
 			}
 			nodeScores[score] = append(nodeScores[score], node)
 		}

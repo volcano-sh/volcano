@@ -111,9 +111,39 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 }
 
 func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
-	pl := &util.PodLister{
-		Session: ssn,
-	}
+	var nodeMap map[string]*cache.NodeInfo
+
+	pl := util.NewPodLister(ssn)
+
+	nodeMap, _ = util.GenerateNodeMapAndSlice(ssn.Nodes)
+
+	// Register event handlers to update task info in PodLister & nodeMap
+	ssn.AddEventHandler(&framework.EventHandler{
+		AllocateFunc: func(event *framework.Event) {
+			pod := pl.UpdateTask(event.Task, event.Task.NodeName)
+
+			nodeName := event.Task.NodeName
+			node, found := nodeMap[nodeName]
+			if !found {
+				glog.Warningf("predicates, update pod %s/%s allocate to NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+			} else {
+				node.AddPod(pod)
+				glog.V(4).Infof("predicates, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
+			}
+		},
+		DeallocateFunc: func(event *framework.Event) {
+			pod := pl.UpdateTask(event.Task, "")
+
+			nodeName := event.Task.NodeName
+			node, found := nodeMap[nodeName]
+			if !found {
+				glog.Warningf("predicates, update pod %s/%s allocate from NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+			} else {
+				node.RemovePod(pod)
+				glog.V(4).Infof("predicates, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
+			}
+		},
+	})
 
 	ni := &util.CachedNodeInfo{
 		Session: ssn,
@@ -122,11 +152,17 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	predicate := enablePredicate(pp.pluginArguments)
 
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
-		nodeInfo := cache.NewNodeInfo(node.Pods()...)
-		nodeInfo.SetNode(node.Node)
+		nodeInfo, found := nodeMap[node.Name]
+		if !found {
+			nodeInfo = cache.NewNodeInfo(node.Pods()...)
+			nodeInfo.SetNode(node.Node)
+			glog.Warningf("predicates, generate node info for %s at PredicateFn is unexpected", node.Name)
+		}
 
 		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods()) {
-			return fmt.Errorf("node <%s> can not allow more task running on it", node.Name)
+			glog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed",
+				task.Namespace, task.Name, node.Name)
+			return api.NewFitError(task, node, api.NodePodNumberExceeded)
 		}
 
 		// CheckNodeCondition Predicate
@@ -139,12 +175,11 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			task.Namespace, task.Name, node.Name, fit, err)
 
 		if !fit {
-			return fmt.Errorf("node <%s> are not available to schedule task <%s/%s>: %s",
-				node.Name, task.Namespace, task.Name, formatReason(reasons))
+			return api.NewFitErrorByReasons(task, node, reasons...)
 		}
 
 		// CheckNodeUnschedulable Predicate
-		fit, _, err = predicates.CheckNodeUnschedulablePredicate(task.Pod, nil, nodeInfo)
+		fit, reasons, err = predicates.CheckNodeUnschedulablePredicate(task.Pod, nil, nodeInfo)
 		if err != nil {
 			return err
 		}
@@ -153,12 +188,11 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			task.Namespace, task.Name, node.Name, fit, err)
 
 		if !fit {
-			return fmt.Errorf("task <%s/%s> node <%s> set to unschedulable",
-				task.Namespace, task.Name, node.Name)
+			return api.NewFitErrorByReasons(task, node, reasons...)
 		}
 
 		// NodeSelector Predicate
-		fit, _, err = predicates.PodMatchNodeSelector(task.Pod, nil, nodeInfo)
+		fit, reasons, err = predicates.PodMatchNodeSelector(task.Pod, nil, nodeInfo)
 		if err != nil {
 			return err
 		}
@@ -167,12 +201,11 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			task.Namespace, task.Name, node.Name, fit, err)
 
 		if !fit {
-			return fmt.Errorf("node <%s> didn't match task <%s/%s> node selector",
-				node.Name, task.Namespace, task.Name)
+			return api.NewFitErrorByReasons(task, node, reasons...)
 		}
 
 		// HostPorts Predicate
-		fit, _, err = predicates.PodFitsHostPorts(task.Pod, nil, nodeInfo)
+		fit, reasons, err = predicates.PodFitsHostPorts(task.Pod, nil, nodeInfo)
 		if err != nil {
 			return err
 		}
@@ -181,12 +214,11 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			task.Namespace, task.Name, node.Name, fit, err)
 
 		if !fit {
-			return fmt.Errorf("node <%s> didn't have available host ports for task <%s/%s>",
-				node.Name, task.Namespace, task.Name)
+			return api.NewFitErrorByReasons(task, node, reasons...)
 		}
 
 		// Toleration/Taint Predicate
-		fit, _, err = predicates.PodToleratesNodeTaints(task.Pod, nil, nodeInfo)
+		fit, reasons, err = predicates.PodToleratesNodeTaints(task.Pod, nil, nodeInfo)
 		if err != nil {
 			return err
 		}
@@ -195,13 +227,12 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			task.Namespace, task.Name, node.Name, fit, err)
 
 		if !fit {
-			return fmt.Errorf("task <%s/%s> does not tolerate node <%s> taints",
-				task.Namespace, task.Name, node.Name)
+			return api.NewFitErrorByReasons(task, node, reasons...)
 		}
 
 		if predicate.memoryPressureEnable {
 			// CheckNodeMemoryPressurePredicate
-			fit, _, err = predicates.CheckNodeMemoryPressurePredicate(task.Pod, nil, nodeInfo)
+			fit, reasons, err = predicates.CheckNodeMemoryPressurePredicate(task.Pod, nil, nodeInfo)
 			if err != nil {
 				return err
 			}
@@ -210,14 +241,13 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				task.Namespace, task.Name, node.Name, fit, err)
 
 			if !fit {
-				return fmt.Errorf("node <%s> are not available to schedule task <%s/%s> due to Memory Pressure",
-					node.Name, task.Namespace, task.Name)
+				return api.NewFitErrorByReasons(task, node, reasons...)
 			}
 		}
 
 		if predicate.diskPressureEnable {
 			// CheckNodeDiskPressurePredicate
-			fit, _, err = predicates.CheckNodeDiskPressurePredicate(task.Pod, nil, nodeInfo)
+			fit, reasons, err = predicates.CheckNodeDiskPressurePredicate(task.Pod, nil, nodeInfo)
 			if err != nil {
 				return err
 			}
@@ -226,14 +256,13 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				task.Namespace, task.Name, node.Name, fit, err)
 
 			if !fit {
-				return fmt.Errorf("node <%s> are not available to schedule task <%s/%s> due to Disk Pressure",
-					node.Name, task.Namespace, task.Name)
+				return api.NewFitErrorByReasons(task, node, reasons...)
 			}
 		}
 
 		if predicate.pidPressureEnable {
 			// CheckNodePIDPressurePredicate
-			fit, _, err = predicates.CheckNodePIDPressurePredicate(task.Pod, nil, nodeInfo)
+			fit, reasons, err = predicates.CheckNodePIDPressurePredicate(task.Pod, nil, nodeInfo)
 			if err != nil {
 				return err
 			}
@@ -242,14 +271,19 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				task.Namespace, task.Name, node.Name, fit, err)
 
 			if !fit {
-				return fmt.Errorf("node <%s> are not available to schedule task <%s/%s> due to PID Pressure",
-					node.Name, task.Namespace, task.Name)
+				return api.NewFitErrorByReasons(task, node, reasons...)
 			}
 		}
 
+		var lister algorithm.PodLister
+		lister = pl
+		if !util.HaveAffinity(task.Pod) {
+			// pod without affinity will be only affected by pod with affinity
+			lister = pl.AffinityLister()
+		}
 		// Pod Affinity/Anti-Affinity Predicate
-		podAffinityPredicate := predicates.NewPodAffinityPredicate(ni, pl)
-		fit, _, err = podAffinityPredicate(task.Pod, nil, nodeInfo)
+		podAffinityPredicate := predicates.NewPodAffinityPredicate(ni, lister)
+		fit, reasons, err = podAffinityPredicate(task.Pod, nil, nodeInfo)
 		if err != nil {
 			return err
 		}
@@ -258,8 +292,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			task.Namespace, task.Name, node.Name, fit, err)
 
 		if !fit {
-			return fmt.Errorf("task <%s/%s> affinity/anti-affinity failed on node <%s>",
-				node.Name, task.Namespace, task.Name)
+			return api.NewFitErrorByReasons(task, node, reasons...)
 		}
 
 		return nil

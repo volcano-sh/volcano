@@ -61,6 +61,10 @@ func (ts TaskStatus) String() string {
 	switch ts {
 	case Pending:
 		return "Pending"
+	case Allocated:
+		return "Allocated"
+	case Pipelined:
+		return "Pipelined"
 	case Binding:
 		return "Binding"
 	case Bound:
@@ -131,6 +135,9 @@ type EvictableFn func(*TaskInfo, []*TaskInfo) []*TaskInfo
 
 // NodeOrderFn is the func declaration used to get priority score for a node for a particular task.
 type NodeOrderFn func(*TaskInfo, *NodeInfo) (float64, error)
+
+// BatchNodeOrderFn is the func declaration used to get priority score for ALL nodes for a particular task.
+type BatchNodeOrderFn func(*TaskInfo, []*NodeInfo) (map[string]float64, error)
 
 // NodeMapFn is the func declaration used to get priority score for a node for a particular task.
 type NodeMapFn func(*TaskInfo, *NodeInfo) (float64, error)
