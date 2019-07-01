@@ -3,6 +3,7 @@
 -------
 
 [![Build Status](https://travis-ci.org/volcano-sh/volcano.svg?branch=master)](https://travis-ci.org/volcano-sh/volcano)
+[![Coverage Status](https://coveralls.io/repos/github/volcano-sh/volcano/badge.svg?branch=master)](https://coveralls.io/github/volcano-sh/volcano?branch=master)
 [![Go Report Card](https://goreportcard.com/badge/github.com/volcano-sh/volcano)](https://goreportcard.com/report/github.com/volcano-sh/volcano)
 [![RepoSize](https://img.shields.io/github/repo-size/volcano-sh/volcano.svg)](https://github.com/volcano-sh/volcano)
 [![Release](https://img.shields.io/github/release/volcano-sh/volcano.svg)](https://github.com/volcano-sh/volcano/releases)
