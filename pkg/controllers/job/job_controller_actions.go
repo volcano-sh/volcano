@@ -117,15 +117,15 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 	}
 
 	// Update Job status
-	job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
+	newJob, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
 	if err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
 	}
-	if e := cc.cache.Update(job); e != nil {
+	if e := cc.cache.Update(newJob); e != nil {
 		glog.Errorf("KillJob - Failed to update Job %v/%v in cache:  %v",
-			job.Namespace, job.Name, e)
+			newJob.Namespace, newJob.Name, e)
 		return e
 	}
 
@@ -154,7 +154,7 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.Update
 	job := jobInfo.Job.DeepCopy()
 	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 
-	if err := cc.initJobStatus(job); err != nil {
+	if job, err := cc.initJobStatus(job); err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.JobStatusError),
 			fmt.Sprintf("Failed to initialize job status, err: %v", err))
 		return err
@@ -172,7 +172,7 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.Update
 		return err
 	}
 
-	job, err := cc.createJobIOIfNotExist(job)
+	newJob, err := cc.createJobIOIfNotExist(job)
 	if err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.PVCError),
 			fmt.Sprintf("Failed to create PVC, err: %v", err))
@@ -180,20 +180,20 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.Update
 	}
 
 	if updateStatus != nil {
-		if updateStatus(&job.Status) {
-			job.Status.State.LastTransitionTime = metav1.Now()
+		if updateStatus(&newJob.Status) {
+			newJob.Status.State.LastTransitionTime = metav1.Now()
 		}
 	}
 
-	job, err = cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
+	newJob2, err := cc.vkClients.BatchV1alpha1().Jobs(newJob.Namespace).UpdateStatus(newJob)
 	if err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
 	}
-	if err = cc.cache.Update(job); err != nil {
+	if err = cc.cache.Update(newJob2); err != nil {
 		glog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
-			job.Namespace, job.Name, err)
+			newJob2.Namespace, newJob2.Name, err)
 		return err
 	}
 
@@ -343,15 +343,15 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 			job.Status.State.LastTransitionTime = metav1.Now()
 		}
 	}
-	job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
+	newJob, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
 	if err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
 	}
-	if e := cc.cache.Update(job); e != nil {
+	if e := cc.cache.Update(newJob); e != nil {
 		glog.Errorf("SyncJob - Failed to update Job %v/%v in cache:  %v",
-			job.Namespace, job.Name, e)
+			newJob.Namespace, newJob.Name, e)
 		return e
 	}
 
@@ -530,24 +530,24 @@ func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
 	return &minAvailableTasksRes
 }
 
-func (cc *Controller) initJobStatus(job *vkv1.Job) error {
+func (cc *Controller) initJobStatus(job *vkv1.Job) (*vkv1.Job, error) {
 	if job.Status.State.Phase != "" {
-		return nil
+		return job, nil
 	}
 
 	job.Status.State.Phase = vkv1.Pending
 	job.Status.MinAvailable = int32(job.Spec.MinAvailable)
-	job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
+	newJob, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
 	if err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
-		return err
+		return nil, err
 	}
-	if err := cc.cache.Update(job); err != nil {
+	if err := cc.cache.Update(newJob); err != nil {
 		glog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
-			job.Namespace, job.Name, err)
-		return err
+			newJob.Namespace, newJob.Name, err)
+		return nil, err
 	}
 
-	return nil
+	return newJob, nil
 }
