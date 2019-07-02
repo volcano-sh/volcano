@@ -150,7 +150,7 @@ var _ = Describe("Job E2E Test", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
-		rep2 = rep*2;
+		rep2 := rep*2;
 
 		job1 := &jobSpec{
 			name:      "gang-qj-1",
