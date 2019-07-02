@@ -150,7 +150,7 @@ var _ = Describe("Job E2E Test", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
-		rep2 := rep*2;
+		rep2 := rep * 2
 
 		job1 := &jobSpec{
 			name:      "gang-qj-1",
@@ -178,7 +178,7 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 		_, pg1 := createJob(context, job1)
-		err = waitPodGroupPending(context, pg1)
+		err := waitPodGroupPending(context, pg1)
 		checkError(context, err)
 
 		_, pg2 := createJob(context, job2)

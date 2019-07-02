@@ -292,7 +292,7 @@ func (s *Statement) unallocate(task *api.TaskInfo, reason string) error {
 	}
 
 	if node, found := s.ssn.Nodes[task.NodeName]; found {
-		glog.V(3).Info("Remove Task <%v> on node <%v>", task.Name, task.NodeName)
+		glog.V(3).Infof("Remove Task <%v> on node <%v>", task.Name, task.NodeName)
 		node.RemoveTask(task)
 	}
 
