@@ -18,11 +18,12 @@ package job
 
 import (
 	"encoding/json"
+	"github.com/spf13/cobra"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
 func TestDeleteJobJob(t *testing.T) {
@@ -60,6 +61,19 @@ func TestDeleteJobJob(t *testing.T) {
 		if err != nil {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, err)
 		}
+	}
+
+}
+
+func TestInitDeleteFlags(t *testing.T) {
+	var cmd cobra.Command
+	InitDeleteFlags(&cmd)
+
+	if cmd.Flag("namespace") == nil {
+		t.Errorf("Could not find the flag namespace")
+	}
+	if cmd.Flag("name") == nil {
+		t.Errorf("Could not find the flag name")
 	}
 
 }

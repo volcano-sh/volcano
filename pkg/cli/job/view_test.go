@@ -18,6 +18,7 @@ package job
 
 import (
 	"encoding/json"
+	"github.com/spf13/cobra"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -60,6 +61,19 @@ func TestViewJob(t *testing.T) {
 		if err != nil {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, err)
 		}
+	}
+
+}
+
+func TestInitViewFlags(t *testing.T) {
+	var cmd cobra.Command
+	InitViewFlags(&cmd)
+
+	if cmd.Flag("namespace") == nil {
+		t.Errorf("Could not find the flag namespace")
+	}
+	if cmd.Flag("name") == nil {
+		t.Errorf("Could not find the flag name")
 	}
 
 }

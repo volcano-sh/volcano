@@ -18,6 +18,7 @@ package job
 
 import (
 	"encoding/json"
+	"github.com/spf13/cobra"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -42,6 +43,7 @@ func TestCreateJob(t *testing.T) {
 
 	launchJobFlags.Master = server.URL
 	launchJobFlags.Namespace = "test"
+	launchJobFlags.Requests = "cpu=1000m,memory=100Mi"
 
 	testCases := []struct {
 		Name        string
@@ -58,6 +60,37 @@ func TestCreateJob(t *testing.T) {
 		if err != nil {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, err)
 		}
+	}
+
+}
+
+func TestInitRunFlags(t *testing.T) {
+	var cmd cobra.Command
+	InitRunFlags(&cmd)
+
+	if cmd.Flag("namespace") == nil {
+		t.Errorf("Could not find the flag namespace")
+	}
+	if cmd.Flag("scheduler") == nil {
+		t.Errorf("Could not find the flag scheduler")
+	}
+	if cmd.Flag("image") == nil {
+		t.Errorf("Could not find the flag image")
+	}
+	if cmd.Flag("replicas") == nil {
+		t.Errorf("Could not find the flag replicas")
+	}
+	if cmd.Flag("name") == nil {
+		t.Errorf("Could not find the flag name")
+	}
+	if cmd.Flag("min") == nil {
+		t.Errorf("Could not find the flag min")
+	}
+	if cmd.Flag("requests") == nil {
+		t.Errorf("Could not find the flag requests")
+	}
+	if cmd.Flag("limits") == nil {
+		t.Errorf("Could not find the flag limits")
 	}
 
 }
