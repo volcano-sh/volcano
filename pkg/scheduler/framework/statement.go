@@ -114,7 +114,6 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo, reason string) error {
 
 // Pipeline the task for the node
 func (s *Statement) Pipeline(task *api.TaskInfo, hostname string) error {
-	// Only update status in session
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
 		if err := job.UpdateTaskStatus(task, api.Pipelined); err != nil {
@@ -160,7 +159,6 @@ func (s *Statement) pipeline(task *api.TaskInfo) {
 }
 
 func (s *Statement) unpipeline(task *api.TaskInfo) error {
-	// Only update status in session
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
 		if err := job.UpdateTaskStatus(task, api.Pending); err != nil {
@@ -197,7 +195,7 @@ func (s *Statement) unpipeline(task *api.TaskInfo) error {
 	return nil
 }
 
-// Save the allocate operation on task
+// Allocate the task to node
 func (s *Statement) Allocate(task *api.TaskInfo, hostname string) error {
 	if err := s.ssn.cache.AllocateVolumes(task, hostname); err != nil {
 		return err
