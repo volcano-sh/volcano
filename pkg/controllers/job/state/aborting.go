@@ -30,10 +30,10 @@ type abortingState struct {
 func (ps *abortingState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.ResumeJobAction:
-		// Already in Restarting phase, just sync it
 		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
+			status.State.Phase = vkv1.Restarting
 			status.RetryCount++
-			return false
+			return true
 		})
 	default:
 		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {

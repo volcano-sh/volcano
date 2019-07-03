@@ -322,7 +322,7 @@ func TestValidateExecution(t *testing.T) {
 				},
 			},
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
-			ret:            "'minAvailable' cannot be less than zero.",
+			ret:            "'minAvailable' must be greater than zero.",
 			ExpectErr:      true,
 		},
 		// maxretry less than zero

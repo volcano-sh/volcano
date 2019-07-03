@@ -436,7 +436,7 @@ var _ = Describe("Job Error Handling", func() {
 
 		By("create job")
 		job := createJob(context, &jobSpec{
-			name: "any-restart-job",
+			name: "any-complete-job",
 			policies: []vkv1.LifecyclePolicy{
 				{
 					Action: vkv1.CompleteJobAction,
@@ -463,7 +463,7 @@ var _ = Describe("Job Error Handling", func() {
 
 		By("job scheduled, then task 'completed_task' finished and job finally complete")
 		// job phase: pending -> running -> completing -> completed
-		err := waitJobStates(context, job, []vkv1.JobPhase{
+		err := waitJobPhases(context, job, []vkv1.JobPhase{
 			vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Completing, vkv1.Completed})
 		Expect(err).NotTo(HaveOccurred())
 

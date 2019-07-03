@@ -26,6 +26,7 @@ import (
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8scontroller "k8s.io/kubernetes/pkg/controller"
 
 	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -90,6 +91,8 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 
 	if len(errs) != 0 {
 		glog.Errorf("failed to kill pods for job %s/%s, with err %+v", job.Namespace, job.Name, errs)
+		cc.recorder.Event(job, v1.EventTypeWarning, k8scontroller.FailedDeletePodReason,
+			fmt.Sprintf("Error deleting pods: %+v", errs))
 		return fmt.Errorf("failed to kill %d pods of %d", len(errs), total)
 	}
 
@@ -154,10 +157,12 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.Update
 	job := jobInfo.Job.DeepCopy()
 	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 
-	if job, err := cc.initJobStatus(job); err != nil {
+	if update, job, err := cc.initJobStatus(job); err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.JobStatusError),
 			fmt.Sprintf("Failed to initialize job status, err: %v", err))
 		return err
+	} else if update {
+		return nil
 	}
 
 	if err := cc.pluginOnJobAdd(job); err != nil {
@@ -276,7 +281,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 				// So gang-scheduling could schedule the Job successfully
 				glog.Errorf("Failed to create pod %s for Job %s, err %#v",
 					pod.Name, job.Name, err)
-				creationErrs = append(creationErrs, err)
+				creationErrs = append(creationErrs, fmt.Errorf("failed to create pod %s, err: %#v", pod.Name, err))
 			} else {
 				if err != nil && apierrors.IsAlreadyExists(err) {
 					cc.resyncTask(pod)
@@ -292,6 +297,8 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	waitCreationGroup.Wait()
 
 	if len(creationErrs) != 0 {
+		cc.recorder.Event(job, v1.EventTypeWarning, k8scontroller.FailedCreatePodReason,
+			fmt.Sprintf("Error creating pods: %+v", creationErrs))
 		return fmt.Errorf("failed to create %d pods of %d", len(creationErrs), len(podToCreate))
 	}
 
@@ -321,6 +328,8 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	waitDeletionGroup.Wait()
 
 	if len(deletionErrs) != 0 {
+		cc.recorder.Event(job, v1.EventTypeWarning, k8scontroller.FailedDeletePodReason,
+			fmt.Sprintf("Error deleting pods: %+v", deletionErrs))
 		return fmt.Errorf("failed to delete %d pods of %d", len(deletionErrs), len(podToDelete))
 	}
 
@@ -490,7 +499,7 @@ func (cc *Controller) deleteJobPod(jobName string, pod *v1.Pod) error {
 		glog.Errorf("Failed to delete pod %s/%s for Job %s, err %#v",
 			pod.Namespace, pod.Name, jobName, err)
 
-		return err
+		return fmt.Errorf("failed to delete pod %s, err %#v", pod.Name, err)
 	}
 
 	return nil
@@ -530,9 +539,9 @@ func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
 	return &minAvailableTasksRes
 }
 
-func (cc *Controller) initJobStatus(job *vkv1.Job) (*vkv1.Job, error) {
+func (cc *Controller) initJobStatus(job *vkv1.Job) (bool, *vkv1.Job, error) {
 	if job.Status.State.Phase != "" {
-		return job, nil
+		return false, job, nil
 	}
 
 	job.Status.State.Phase = vkv1.Pending
@@ -541,13 +550,13 @@ func (cc *Controller) initJobStatus(job *vkv1.Job) (*vkv1.Job, error) {
 	if err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
-		return nil, err
+		return false, nil, err
 	}
 	if err := cc.cache.Update(newJob); err != nil {
 		glog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
 			newJob.Namespace, newJob.Name, err)
-		return nil, err
+		return false, nil, err
 	}
 
-	return newJob, nil
+	return true, newJob, nil
 }
