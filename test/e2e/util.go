@@ -497,6 +497,7 @@ func waitJobPhases(ctx *context, job *vkv1.Job, phases []vkv1.JobPhase) error {
 					job.Name, phase, newJob.Status.State.Phase)
 				continue
 			}
+
 			var flag = false
 			switch phase {
 			case vkv1.Pending:
