@@ -44,6 +44,9 @@ images: image_bins
 		rm installer/dockerfile/$$name/vk-$$name; \
 	done
 
+admission-base-image:
+	docker build --no-cache -t $(IMAGE_PREFIX)-admission-base:$(TAG) ./installer/dockerfile/admission/ -f ./installer/dockerfile/admission/Dockerfile.base;
+
 generate-code:
 	./hack/update-gencode.sh
 
