@@ -157,12 +157,11 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.Update
 	job := jobInfo.Job.DeepCopy()
 	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 
-	if update, job, err := cc.initJobStatus(job); err != nil {
+	job, err := cc.initJobStatus(job)
+	if err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.JobStatusError),
 			fmt.Sprintf("Failed to initialize job status, err: %v", err))
 		return err
-	} else if update {
-		return nil
 	}
 
 	if err := cc.pluginOnJobAdd(job); err != nil {
@@ -539,9 +538,9 @@ func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
 	return &minAvailableTasksRes
 }
 
-func (cc *Controller) initJobStatus(job *vkv1.Job) (bool, *vkv1.Job, error) {
+func (cc *Controller) initJobStatus(job *vkv1.Job) (*vkv1.Job, error) {
 	if job.Status.State.Phase != "" {
-		return false, job, nil
+		return job, nil
 	}
 
 	job.Status.State.Phase = vkv1.Pending
@@ -550,13 +549,13 @@ func (cc *Controller) initJobStatus(job *vkv1.Job) (bool, *vkv1.Job, error) {
 	if err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
-		return false, nil, err
+		return nil, err
 	}
 	if err := cc.cache.Update(newJob); err != nil {
 		glog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
 			newJob.Namespace, newJob.Name, err)
-		return false, nil, err
+		return nil, err
 	}
 
-	return true, newJob, nil
+	return newJob, nil
 }
