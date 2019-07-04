@@ -65,6 +65,8 @@ const (
 	Version string = "Version"
 	// Failed  failed
 	Failed string = "Failed"
+	// Unknown pod
+	Unknown string = "Unknown"
 	// RetryCount retry count
 	RetryCount string = "RetryCount"
 	// JobType  job type
@@ -110,8 +112,8 @@ func ListJobs() error {
 // PrintJobs prints all jobs details
 func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 	maxNameLen := getMaxNameLen(jobs)
-	_, err := fmt.Fprintf(writer, fmt.Sprintf("%%-%ds%%-25s%%-12s%%-12s%%-12s%%-6s%%-10s%%-10s%%-12s%%-10s%%-12s\n", maxNameLen),
-		Name, Creation, Phase, JobType, Replicas, Min, Pending, Running, Succeeded, Failed, RetryCount)
+	_, err := fmt.Fprintf(writer, fmt.Sprintf("%%-%ds%%-25s%%-12s%%-12s%%-12s%%-6s%%-10s%%-10s%%-12s%%-10s%%-12s%%-10s\n", maxNameLen),
+		Name, Creation, Phase, JobType, Replicas, Min, Pending, Running, Succeeded, Failed, Unknown, RetryCount)
 	if err != nil {
 		fmt.Printf("Failed to print list command result: %s.\n", err)
 	}
@@ -131,9 +133,9 @@ func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 		if jobType == "" {
 			jobType = "Batch"
 		}
-		_, err = fmt.Fprintf(writer, fmt.Sprintf("%%-%ds%%-25s%%-12s%%-12s%%-12d%%-6d%%-10d%%-10d%%-12d%%-10d%%-12d\n", maxNameLen),
+		_, err = fmt.Fprintf(writer, fmt.Sprintf("%%-%ds%%-25s%%-12s%%-12s%%-12d%%-6d%%-10d%%-10d%%-12d%%-10d%%-12d%%-10d\n", maxNameLen),
 			job.Name, job.CreationTimestamp.Format("2006-01-02 15:04:05"), job.Status.State.Phase, jobType, replicas,
-			job.Status.MinAvailable, job.Status.Pending, job.Status.Running, job.Status.Succeeded, job.Status.Failed, job.Status.RetryCount)
+			job.Status.MinAvailable, job.Status.Pending, job.Status.Running, job.Status.Succeeded, job.Status.Failed, job.Status.Unknown, job.Status.RetryCount)
 		if err != nil {
 			fmt.Printf("Failed to print list command result: %s.\n", err)
 		}

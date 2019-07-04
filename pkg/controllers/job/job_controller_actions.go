@@ -48,7 +48,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 		return nil
 	}
 
-	var pending, running, terminating, succeeded, failed int32
+	var pending, running, terminating, succeeded, failed, unknown int32
 
 	var errs []error
 	var total int
@@ -76,16 +76,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 				cc.resyncTask(pod)
 			}
 
-			switch pod.Status.Phase {
-			case v1.PodRunning:
-				running++
-			case v1.PodPending:
-				pending++
-			case v1.PodSucceeded:
-				succeeded++
-			case v1.PodFailed:
-				failed++
-			}
+			classifyAndAddUpPodBaseOnPhase(pod, &pending, &running, &succeeded, &failed, &unknown)
 		}
 	}
 
@@ -108,6 +99,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 		Succeeded:    succeeded,
 		Failed:       failed,
 		Terminating:  terminating,
+		Unknown:      unknown,
 		Version:      job.Status.Version,
 		MinAvailable: int32(job.Spec.MinAvailable),
 		RetryCount:   job.Status.RetryCount,
@@ -217,7 +209,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 		return nil
 	}
 
-	var running, pending, terminating, succeeded, failed int32
+	var running, pending, terminating, succeeded, failed, unknown int32
 
 	var podToCreate []*v1.Pod
 	var podToDelete []*v1.Pod
@@ -250,16 +242,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 					continue
 				}
 
-				switch pod.Status.Phase {
-				case v1.PodPending:
-					pending++
-				case v1.PodRunning:
-					running++
-				case v1.PodSucceeded:
-					succeeded++
-				case v1.PodFailed:
-					failed++
-				}
+				classifyAndAddUpPodBaseOnPhase(pod, &pending, &running, &succeeded, &failed, &unknown)
 			}
 		}
 
@@ -273,7 +256,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	for _, pod := range podToCreate {
 		go func(pod *v1.Pod) {
 			defer waitCreationGroup.Done()
-			_, err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Create(pod)
+			newPod, err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Create(pod)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				// Failed to create Pod, waitCreationGroup a moment and then create it again
 				// This is to ensure all podsMap under the same Job created
@@ -286,8 +269,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 					cc.resyncTask(pod)
 				}
 
-				// TODO: maybe not pending status, maybe unknown.
-				pending++
+				classifyAndAddUpPodBaseOnPhase(newPod, &pending, &running, &succeeded, &failed, &unknown)
 				glog.V(3).Infof("Created Task <%s> of Job <%s/%s>",
 					pod.Name, job.Namespace, job.Name)
 			}
@@ -340,6 +322,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 		Succeeded:           succeeded,
 		Failed:              failed,
 		Terminating:         terminating,
+		Unknown:             unknown,
 		Version:             job.Status.Version,
 		MinAvailable:        int32(job.Spec.MinAvailable),
 		ControlledResources: job.Status.ControlledResources,
@@ -558,4 +541,20 @@ func (cc *Controller) initJobStatus(job *vkv1.Job) (*vkv1.Job, error) {
 	}
 
 	return newJob, nil
+}
+
+func classifyAndAddUpPodBaseOnPhase(pod *v1.Pod, pending, running, succeeded, failed, unknown *int32) {
+	switch pod.Status.Phase {
+	case v1.PodPending:
+		*pending++
+	case v1.PodRunning:
+		*running++
+	case v1.PodSucceeded:
+		*succeeded++
+	case v1.PodFailed:
+		*failed++
+	default:
+		*unknown++
+	}
+	return
 }

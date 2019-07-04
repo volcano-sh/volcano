@@ -76,6 +76,7 @@ func TestViewJob(t *testing.T) {
 			Pending:      3,
 			Running:      1,
 			Failed:       2,
+			Unknown:      10,
 			Terminating:  4,
 			RetryCount:   5,
 			MinAvailable: 6,
