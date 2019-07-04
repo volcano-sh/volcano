@@ -115,7 +115,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
 
-		glog.V(4).Infof("DRF JobOrderFn: <%v/%v> share state: %d, <%v/%v> share state: %d",
+		glog.V(4).Infof("DRF JobOrderFn: <%v/%v> share state: %v, <%v/%v> share state: %v",
 			lv.Namespace, lv.Name, drf.jobOpts[lv.UID].share, rv.Namespace, rv.Name, drf.jobOpts[rv.UID].share)
 
 		if drf.jobOpts[lv.UID].share == drf.jobOpts[rv.UID].share {

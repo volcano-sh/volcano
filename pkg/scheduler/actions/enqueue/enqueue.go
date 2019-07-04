@@ -86,7 +86,7 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 		}
 
 		if nodesIdleRes.Less(emptyRes) {
-			glog.V(3).Infof("Node idle resource <%s> is overused, ignore it.")
+			glog.V(3).Infof("Node idle resource is overused, ignore it.")
 			break
 		}
 
