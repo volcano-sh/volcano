@@ -17,7 +17,7 @@ limitations under the License.
 package framework
 
 import (
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 // Event structure

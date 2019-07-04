@@ -20,9 +20,9 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	"github.com/kubernetes-sigs/kube-batch/pkg/apis/utils"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/utils"
+	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 const (

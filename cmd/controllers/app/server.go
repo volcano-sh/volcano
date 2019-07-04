@@ -38,7 +38,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 
-	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
+	kbver "volcano.sh/volcano/pkg/client/clientset/versioned"
 
 	"volcano.sh/volcano/cmd/controllers/app/options"
 	vkclient "volcano.sh/volcano/pkg/client/clientset/versioned"

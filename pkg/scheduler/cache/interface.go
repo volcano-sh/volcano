@@ -17,8 +17,8 @@ limitations under the License.
 package cache
 
 import (
-	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	"volcano.sh/volcano/pkg/scheduler/api"
 	v1 "k8s.io/api/core/v1"
 )
 

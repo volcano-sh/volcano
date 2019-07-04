@@ -24,9 +24,9 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler"
-	"github.com/kubernetes-sigs/kube-batch/pkg/version"
+	"volcano.sh/volcano/cmd/kube-batch/app/options"
+	"volcano.sh/volcano/pkg/scheduler"
+	"volcano.sh/volcano/pkg/version"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	v1 "k8s.io/api/core/v1"
@@ -75,7 +75,7 @@ func buildConfig(opt *options.ServerOption) (*rest.Config, error) {
 // Run the kubeBatch scheduler
 func Run(opt *options.ServerOption) error {
 	if opt.PrintVersion {
-		version.PrintVersionAndExit(apiVersion)
+		version.PrintVersionAndExit()
 	}
 
 	config, err := buildConfig(opt)

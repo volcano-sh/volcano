@@ -20,13 +20,13 @@ import (
 	"strings"
 	"testing"
 
-	kubebatchclient "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/fake"
+	kubebatchclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
 
 	"k8s.io/api/admission/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kbv1aplha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
+	kbv1aplha1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 

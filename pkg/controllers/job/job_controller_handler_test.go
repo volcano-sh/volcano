@@ -22,8 +22,8 @@ import (
 	"k8s.io/client-go/rest"
 	"testing"
 
-	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	kubebatchclient "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
+	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	kubebatchclient "volcano.sh/volcano/pkg/client/clientset/versioned"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"

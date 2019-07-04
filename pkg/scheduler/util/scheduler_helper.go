@@ -26,7 +26,7 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/client-go/util/workqueue"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 )
 

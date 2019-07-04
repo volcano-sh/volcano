@@ -23,7 +23,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 
-	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/util/assert"
+	"volcano.sh/volcano/pkg/scheduler/util/assert"
 )
 
 // Resource struct defines all the resource type

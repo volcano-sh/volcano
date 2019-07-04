@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"testing"
 
-	kbv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	kubebatchclient "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/fake"
+	kbv1alpha1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	kubebatchclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
