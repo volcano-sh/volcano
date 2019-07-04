@@ -242,6 +242,7 @@ const (
 	Inqueue JobPhase = "Inqueue"
 )
 
+// JobConditionType describes the type of state of job condition
 type JobConditionType string
 
 const (
@@ -263,6 +264,7 @@ const (
 )
 
 // +k8s:deepcopy-gen=true
+
 // JobCondition describes the state of the job at a certain point.
 type JobCondition struct {
 	// Type of job condition.

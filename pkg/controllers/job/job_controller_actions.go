@@ -397,9 +397,8 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (*vkv1.Job, error) {
 				job.Namespace, job.Name, err)
 			newJob.Status = job.Status
 			return nil, err
-		} else {
-			return newJob, nil
 		}
+		return newJob, nil
 	}
 	return job, nil
 }
@@ -521,11 +520,11 @@ func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
 }
 
 func (cc *Controller) initJobStatus(job *vkv1.Job) (*vkv1.Job, error) {
-	if job.Status.State.Phase != "" {
+	if job.Status.Phase != "" {
 		return job, nil
 	}
 
-	job.Status.State.Phase = vkv1.Pending
+	job.Status.Phase = vkv1.Pending
 	job.Status.MinAvailable = int32(job.Spec.MinAvailable)
 	newJob, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
 	if err != nil {

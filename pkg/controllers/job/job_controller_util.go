@@ -250,6 +250,7 @@ func isControlledBy(obj metav1.Object, gvk schema.GroupVersionKind) bool {
 	return false
 }
 
+// UpdateJobPhase updates the job status according to provided information
 func UpdateJobPhase(status *vkv1.JobStatus, newphase vkv1.JobPhase, message string) {
 	switch newphase {
 	case vkv1.Pending, vkv1.Inqueue:
@@ -296,6 +297,7 @@ func NewStateCondition(conditionType vkv1.JobConditionType, reason, message stri
 	}
 }
 
+// HasCondition checks whether the job has the specified condition
 func HasCondition(status vkv1.JobStatus, condType vkv1.JobConditionType) bool {
 	for _, condition := range status.Conditions {
 		if condition.Type == condType && condition.Status == v1.ConditionTrue {
@@ -305,6 +307,7 @@ func HasCondition(status vkv1.JobStatus, condType vkv1.JobConditionType) bool {
 	return false
 }
 
+// GetCondition gets the condition with specified condition type
 func GetCondition(status vkv1.JobStatus, condType vkv1.JobConditionType) *vkv1.JobCondition {
 	for _, condition := range status.Conditions {
 		if condition.Type == condType {
@@ -314,6 +317,7 @@ func GetCondition(status vkv1.JobStatus, condType vkv1.JobConditionType) *vkv1.J
 	return nil
 }
 
+// SetCondition updates the job status with provided job condition
 func SetCondition(status *vkv1.JobStatus, condition vkv1.JobCondition) {
 
 	currentCond := GetCondition(*status, condition.Type)

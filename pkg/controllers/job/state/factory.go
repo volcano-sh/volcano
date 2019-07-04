@@ -26,7 +26,7 @@ import (
 //PhaseMap to store the pod phases.
 type PhaseMap map[v1.PodPhase]struct{}
 
-//ActionFn will create or delete Pods according to Job's spec.
+//UpdateStatusFn will update job status.
 type UpdateStatusFn func(status *vkv1.JobStatus)
 
 //ActionFn will create or delete Pods according to Job's spec.
@@ -34,6 +34,8 @@ type ActionFn func(job *apis.JobInfo, fn UpdateStatusFn) error
 
 //KillActionFn kill all Pods of Job with phase not in podRetainPhase.
 type KillActionFn func(job *apis.JobInfo, podRetainPhase PhaseMap, fn UpdateStatusFn) error
+
+//UpdateJobPhaseFn updates the job status with provided phase and message.
 type UpdateJobPhaseFn func(status *vkv1.JobStatus, newphase vkv1.JobPhase, message string)
 
 //PodRetainPhaseNone stores no phase
@@ -52,7 +54,7 @@ var (
 	KillJob KillActionFn
 	// CreateJob will prepare to create Job.
 	CreateJob ActionFn
-	//UpdateStatus will used to update job status
+	//UpdateJobPhase will used to update job status
 	UpdateJobPhase UpdateJobPhaseFn
 )
 

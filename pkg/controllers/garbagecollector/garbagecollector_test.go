@@ -18,6 +18,7 @@ package garbagecollector
 
 import (
 	"fmt"
+	"k8s.io/api/core/v1"
 	"testing"
 	"time"
 
@@ -52,10 +53,9 @@ func TestGarbageCollector_ProcessTTL(t *testing.T) {
 					TTLSecondsAfterFinished: &ttlSecond,
 				},
 				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						LastTransitionTime: metav1.NewTime(time.Now()),
-						Phase:              v1alpha1.Completed,
-					},
+					Phase: v1alpha1.Completed,
+					Conditions: []v1alpha1.JobCondition{
+						{Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue, LastTransitionTime: metav1.NewTime(time.Now())}},
 				},
 			},
 			ExpectedVal: false,
@@ -72,10 +72,9 @@ func TestGarbageCollector_ProcessTTL(t *testing.T) {
 					TTLSecondsAfterFinished: &ttlSecondZero,
 				},
 				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						LastTransitionTime: metav1.NewTime(time.Now()),
-						Phase:              v1alpha1.Completed,
-					},
+					Phase: v1alpha1.Completed,
+					Conditions: []v1alpha1.JobCondition{
+						{Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue, LastTransitionTime: metav1.NewTime(time.Now())}},
 				},
 			},
 			ExpectedVal: true,
@@ -116,9 +115,10 @@ func TestGarbageCollector_NeedsCleanup(t *testing.T) {
 					TTLSecondsAfterFinished: &ttlSecond,
 				},
 				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase: v1alpha1.Completed,
-					},
+					Phase: v1alpha1.Completed,
+					Conditions: []v1alpha1.JobCondition{
+						{Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue,
+							LastTransitionTime: metav1.NewTime(time.Now())}},
 				},
 			},
 			ExpectedVal: true,
@@ -134,9 +134,7 @@ func TestGarbageCollector_NeedsCleanup(t *testing.T) {
 					TTLSecondsAfterFinished: &ttlSecond,
 				},
 				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase: v1alpha1.Running,
-					},
+					Phase: v1alpha1.Running,
 				},
 			},
 			ExpectedVal: false,
@@ -167,9 +165,9 @@ func TestGarbageCollector_IsJobFinished(t *testing.T) {
 					Namespace: namespace,
 				},
 				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase: v1alpha1.Completed,
-					},
+					Phase: v1alpha1.Completed,
+					Conditions: []v1alpha1.JobCondition{
+						{Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue, LastTransitionTime: metav1.NewTime(time.Now())}},
 				},
 			},
 			ExpectedVal: true,
@@ -182,9 +180,7 @@ func TestGarbageCollector_IsJobFinished(t *testing.T) {
 					Namespace: namespace,
 				},
 				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase: v1alpha1.Running,
-					},
+					Phase: v1alpha1.Running,
 				},
 			},
 			ExpectedVal: false,
@@ -223,10 +219,9 @@ func TestGarbageCollector_GetFinishAndExpireTime(t *testing.T) {
 					TTLSecondsAfterFinished: &ttlSecond,
 				},
 				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase:              v1alpha1.Completed,
-						LastTransitionTime: metav1.NewTime(testTime),
-					},
+					Phase: v1alpha1.Completed,
+					Conditions: []v1alpha1.JobCondition{
+						{Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue, LastTransitionTime: metav1.NewTime(testTime)}},
 				},
 			},
 			ExpectedErr: nil,
@@ -242,10 +237,9 @@ func TestGarbageCollector_GetFinishAndExpireTime(t *testing.T) {
 					TTLSecondsAfterFinished: &ttlSecondFail,
 				},
 				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase:              v1alpha1.Completed,
-						LastTransitionTime: metav1.NewTime(testTime),
-					},
+					Phase: v1alpha1.Completed,
+					Conditions: []v1alpha1.JobCondition{
+						{Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue, LastTransitionTime: metav1.NewTime(testTime)}},
 				},
 			},
 			ExpectedErr: nil,
@@ -258,12 +252,13 @@ func TestGarbageCollector_GetFinishAndExpireTime(t *testing.T) {
 			t.Errorf("Expected Error to be: %s but got: %s in case %d", testcase.ExpectedErr, err, i)
 		}
 
-		if finishTime != nil && metav1.NewTime(*finishTime) != testcase.Job.Status.State.LastTransitionTime {
-			t.Errorf("Expected value to be: %v, but got: %v in case %d", testcase.Job.Status.State.LastTransitionTime, metav1.NewTime(*finishTime), i)
+		successCondition := getCondition(testcase.Job.Status, v1alpha1.JobSucceed)
+		if finishTime != nil && metav1.NewTime(*finishTime) != successCondition.LastTransitionTime {
+			t.Errorf("Expected value to be: %v, but got: %v in case %d", successCondition.LastTransitionTime, metav1.NewTime(*finishTime), i)
 		}
 
-		if expireTime != nil && metav1.NewTime(*expireTime) != metav1.NewTime(testcase.Job.Status.State.LastTransitionTime.Add(time.Duration(*testcase.Job.Spec.TTLSecondsAfterFinished)*time.Second)) {
-			t.Errorf("Expected value to be: %v, but got: %v in case %d", testcase.Job.Status.State.LastTransitionTime.Add(time.Duration(*testcase.Job.Spec.TTLSecondsAfterFinished)*time.Second), metav1.NewTime(*expireTime), i)
+		if expireTime != nil && metav1.NewTime(*expireTime) != metav1.NewTime(successCondition.LastTransitionTime.Add(time.Duration(*testcase.Job.Spec.TTLSecondsAfterFinished)*time.Second)) {
+			t.Errorf("Expected value to be: %v, but got: %v in case %d", successCondition.LastTransitionTime.Add(time.Duration(*testcase.Job.Spec.TTLSecondsAfterFinished)*time.Second), metav1.NewTime(*expireTime), i)
 		}
 	}
 }
@@ -293,10 +288,9 @@ func TestGarbageCollector_TimeLeft(t *testing.T) {
 					TTLSecondsAfterFinished: &ttlSecond,
 				},
 				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase:              v1alpha1.Completed,
-						LastTransitionTime: metav1.NewTime(testTime),
-					},
+					Phase: v1alpha1.Completed,
+					Conditions: []v1alpha1.JobCondition{
+						{Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue, LastTransitionTime: metav1.NewTime(testTime)}},
 				},
 			},
 			Time:        &testTime,
@@ -314,9 +308,8 @@ func TestGarbageCollector_TimeLeft(t *testing.T) {
 					TTLSecondsAfterFinished: &ttlSecond,
 				},
 				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						LastTransitionTime: metav1.NewTime(testTime),
-					},
+					Conditions: []v1alpha1.JobCondition{
+						{Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue, LastTransitionTime: metav1.NewTime(testTime)}},
 				},
 			},
 			Time:        &testTime,
@@ -353,9 +346,8 @@ func TestGarbageCollector_JobFinishTime(t *testing.T) {
 					Namespace: namespace,
 				},
 				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						LastTransitionTime: metav1.NewTime(time.Now()),
-					},
+					Conditions: []v1alpha1.JobCondition{
+						{Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue, LastTransitionTime: metav1.NewTime(time.Now())}},
 				},
 			},
 			ExpectedVal: nil,
@@ -373,7 +365,7 @@ func TestGarbageCollector_JobFinishTime(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-		_, err := jobFinishTime(testcase.Job)
+		_, err := getJobFinishTime(testcase.Job)
 		if err != nil && err.Error() != testcase.ExpectedVal.Error() {
 			t.Errorf("Expected Error to be: %s but got: %s in case %d", testcase.ExpectedVal, err, i)
 		}

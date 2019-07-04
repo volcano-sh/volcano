@@ -180,9 +180,7 @@ func TestCreateJobFunc(t *testing.T) {
 					Namespace: namespace,
 				},
 				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase: v1alpha1.Pending,
-					},
+					Phase: v1alpha1.Pending,
 				},
 			},
 			PodGroup: &kbv1aplha1.PodGroup{

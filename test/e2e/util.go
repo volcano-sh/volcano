@@ -497,10 +497,10 @@ func waitJobPhases(ctx *context, job *vkv1.Job, phases []vkv1.JobPhase) error {
 				continue
 			}
 
-			if newJob.Status.State.Phase != phase {
+			if newJob.Status.Phase != phase {
 				additionalError = fmt.Errorf(
 					"expected job '%s' to be in status %s, actual get %s",
-					job.Name, phase, newJob.Status.State.Phase)
+					job.Name, phase, newJob.Status.Phase)
 				continue
 			}
 
