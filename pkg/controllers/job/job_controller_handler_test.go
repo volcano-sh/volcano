@@ -22,8 +22,6 @@ import (
 	"k8s.io/client-go/rest"
 	"testing"
 
-	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
-	kubebatchclient "volcano.sh/volcano/pkg/client/clientset/versioned"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -31,6 +29,8 @@ import (
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkbusv1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	kubebatchclient "volcano.sh/volcano/pkg/client/clientset/versioned"
 	vkclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 	//"volcano.sh/volcano/pkg/controllers/job"
 )

@@ -17,8 +17,8 @@ limitations under the License.
 package framework
 
 import (
-	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 // AddJobOrderFn add job order function

@@ -26,8 +26,8 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/client-go/util/workqueue"
 
-	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 // PredicateNodes returns nodes that fit task

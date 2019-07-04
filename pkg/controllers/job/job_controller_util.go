@@ -21,9 +21,9 @@ import (
 
 	"github.com/golang/glog"
 
-	kbapi "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kbapi "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"

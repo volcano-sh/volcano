@@ -17,9 +17,9 @@ limitations under the License.
 package cache
 
 import (
+	v1 "k8s.io/api/core/v1"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
-	v1 "k8s.io/api/core/v1"
 )
 
 // Cache collects pods/nodes/queues information
