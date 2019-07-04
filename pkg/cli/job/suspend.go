@@ -36,8 +36,8 @@ var suspendJobFlags = &suspendFlags{}
 func InitSuspendFlags(cmd *cobra.Command) {
 	initFlags(cmd, &suspendJobFlags.commonFlags)
 
-	cmd.Flags().StringVarP(&suspendJobFlags.Namespace, "namespace", "N", "default", "the namespace of job")
-	cmd.Flags().StringVarP(&suspendJobFlags.JobName, "name", "n", "", "the name of job")
+	cmd.Flags().StringVarP(&suspendJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&suspendJobFlags.JobName, "name", "N", "", "the name of job")
 }
 
 // SuspendJob  suspends the job

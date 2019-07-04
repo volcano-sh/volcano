@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"k8s.io/apimachinery/pkg/util/wait"
+
 	"volcano.sh/volcano/pkg/version"
 )
 
@@ -45,7 +46,7 @@ func main() {
 	rootCmd.AddCommand(versionCommand())
 
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Printf("Failed to execute command: %v", err)
+		fmt.Printf("Failed to execute command: %v\n", err)
 	}
 }
 

@@ -19,9 +19,12 @@ package job
 import (
 	"encoding/json"
 	"github.com/spf13/cobra"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
+	"time"
 
 	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
@@ -41,21 +44,42 @@ func TestCreateJob(t *testing.T) {
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
-	launchJobFlags.Master = server.URL
-	launchJobFlags.Namespace = "test"
-	launchJobFlags.Requests = "cpu=1000m,memory=100Mi"
+	fileName := time.Now().String() + "testCreateJob.yaml"
+	val, err := json.Marshal(response)
+	if err != nil {
+		panic(err)
+	}
+	err = ioutil.WriteFile(fileName, val, os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
+	defer os.Remove(fileName)
 
 	testCases := []struct {
 		Name        string
 		ExpectValue error
+		FileName    string
 	}{
 		{
 			Name:        "CreateJob",
 			ExpectValue: nil,
 		},
+		{
+			Name:        "CreateJobWithFile",
+			FileName:    fileName,
+			ExpectValue: nil,
+		},
 	}
 
 	for i, testcase := range testCases {
+		launchJobFlags = &runFlags{
+			commonFlags: commonFlags{
+				Master: server.URL,
+			},
+			Namespace: "test",
+			Requests:  "cpu=1000m,memory=100Mi",
+		}
+
 		err := RunJob()
 		if err != nil {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, err)

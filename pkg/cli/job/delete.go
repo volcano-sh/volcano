@@ -39,8 +39,8 @@ var deleteJobFlags = &deleteFlags{}
 func InitDeleteFlags(cmd *cobra.Command) {
 	initFlags(cmd, &deleteJobFlags.commonFlags)
 
-	cmd.Flags().StringVarP(&deleteJobFlags.Namespace, "namespace", "N", "default", "the namespace of job")
-	cmd.Flags().StringVarP(&deleteJobFlags.JobName, "name", "n", "", "the name of job")
+	cmd.Flags().StringVarP(&deleteJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&deleteJobFlags.JobName, "name", "N", "", "the name of job")
 }
 
 // DeleteJob  delete the job
