@@ -106,9 +106,12 @@ volcanosh/vk-controllers   latest              7b11606ebfb8        10 seconds ag
 
 ``` 
 
-**NOTE**: You need ensure the images are correctly loaded in your kubernetes cluster, for
+**NOTE**:
+1. You need ensure the images are correctly loaded in your kubernetes cluster, for
 example, if you are using [kind cluster](https://github.com/kubernetes-sigs/kind), 
 try command ```kind load docker-image <image-name>:<tag> ``` for each of the images.
+2. When reinstall the volcano charts, since tiller server will not manage CRD resource,
+you need to delete them manually eg: `kubectl delete crds xxxx` before reinstalling or try command with `--no-crd-hook` option.
 
 ### 2. Helm charts
 

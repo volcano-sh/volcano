@@ -48,9 +48,10 @@ function install-volcano {
   kubectl create clusterrolebinding tiller-cluster-rule --clusterrole=cluster-admin --serviceaccount=kube-system:tiller
 
   echo "Install helm via script and waiting tiller becomes ready"
-  curl https://raw.githubusercontent.com/helm/helm/master/scripts/get > get_helm.sh
+  HELM_TEMP_DIR=`mktemp -d`
+  curl https://raw.githubusercontent.com/helm/helm/master/scripts/get > ${HELM_TEMP_DIR}/get_helm.sh
   #TODO: There are some issue with helm's latest version, remove '--version' when it get fixed.
-  chmod 700 get_helm.sh && ./get_helm.sh   --version v2.13.0
+  chmod 700 ${HELM_TEMP_DIR}/get_helm.sh && ${HELM_TEMP_DIR}/get_helm.sh   --version v2.13.0
   helm init --service-account tiller --kubeconfig ${KUBECONFIG} --wait
 
   echo "Pulling required docker images"
