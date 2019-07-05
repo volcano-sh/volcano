@@ -174,6 +174,9 @@ func PrintJobInfo(job *v1alpha1.Job, writer io.Writer) {
 	if job.Status.Terminating > 0 {
 		WriteLine(writer, Level1, "Terminating:  \t%d\n", job.Status.Terminating)
 	}
+	if job.Status.Unknown > 0 {
+		WriteLine(writer, Level1, "Unknown:      \t%d\n", job.Status.Unknown)
+	}
 	if job.Status.RetryCount > 0 {
 		WriteLine(writer, Level1, "RetryCount:   \t%d\n", job.Status.RetryCount)
 	}
