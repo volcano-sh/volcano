@@ -36,7 +36,7 @@ spec:
                   MPI_HOST=`cat /etc/volcano/mpiworker.host | tr "\n" ","`;
                   mkdir -p /var/run/sshd; /usr/sbin/sshd;
                   mpiexec --allow-run-as-root --host ${MPI_HOST} -np 2 mpi_hello_world;
-              image: swr.cn-north-1.myhuaweicloud.com/hwstaff_z00383385/example-mpi:0.0.1
+              image: volcanosh/example-mpi:0.0.1
               name: mpimaster
               ports:
                 - containerPort: 22
@@ -62,7 +62,7 @@ spec:
                 - -c
                 - |
                   mkdir -p /var/run/sshd; /usr/sbin/sshd -D;
-              image: swr.cn-north-1.myhuaweicloud.com/hwstaff_z00383385/example-mpi:0.0.1
+              image: volcanosh/example-mpi:0.0.1
               name: mpiworker
               ports:
                 - containerPort: 22
