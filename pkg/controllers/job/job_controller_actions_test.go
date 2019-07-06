@@ -18,11 +18,11 @@ package job
 
 import (
 	"fmt"
-	kbv1aplha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"testing"
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	kbv1aplha1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )

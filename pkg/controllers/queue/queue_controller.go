@@ -26,11 +26,11 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 
-	kbv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	kbclientset "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
-	kbinformerfactory "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
-	kbinformer "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
-	kblister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
+	kbv1alpha1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	kbclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
+	kbinformerfactory "volcano.sh/volcano/pkg/client/informers/externalversions"
+	kbinformer "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1alpha1"
+	kblister "volcano.sh/volcano/pkg/client/listers/scheduling/v1alpha1"
 )
 
 // Controller manages queue status.

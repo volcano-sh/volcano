@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
-	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/client/clientset/versioned"
 
 	"k8s.io/api/admission/v1beta1"
 	"k8s.io/api/core/v1"

@@ -27,7 +27,7 @@ import (
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	volcanoclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
 
-	kubebatchclient "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/fake"
+	kubebatchclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
 )
 
 func newFakeController() *Controller {
