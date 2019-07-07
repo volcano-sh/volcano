@@ -48,6 +48,9 @@ variety of high performance workloads at scale using several systems
 and platforms, combined with best-of-breed ideas and practices from
 the open source community.
 
+**NOTE**: the scheduler is built based on [kube-batch](https://github.com/kubernetes-sigs/kube-batch);
+refer to [#241](https://github.com/volcano-sh/volcano/issues/241) and [#288](https://github.com/volcano-sh/volcano/pull/288) for more detail.
+
 ## Overall Architecture
 
 ![volcano](docs/images/volcano-intro.png)
@@ -152,5 +155,3 @@ Slack: [#volcano-sh](http://t.cn/Efa7LKx)
 
 Mailing List: https://groups.google.com/forum/#!forum/volcano-sh
 
-
-**NOTE**: the scheduler is built based on [kube-batch](https://github.com/kubernetes-sigs/kube-batch); refer to [#241](https://github.com/volcano-sh/volcano/issues/241) and [#288](https://github.com/volcano-sh/volcano/pull/288) for more detail.
