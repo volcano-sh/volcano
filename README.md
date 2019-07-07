@@ -151,3 +151,6 @@ You can reach the maintainers of this project at:
 Slack: [#volcano-sh](http://t.cn/Efa7LKx)
 
 Mailing List: https://groups.google.com/forum/#!forum/volcano-sh
+
+
+**NOTE**: the scheduler is built based on [kube-batch](https://github.com/kubernetes-sigs/kube-batch); refer to [#241](https://github.com/volcano-sh/volcano/issues/241) and [#288](https://github.com/volcano-sh/volcano/pull/288) for more detail.
