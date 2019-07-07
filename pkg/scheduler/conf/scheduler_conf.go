@@ -16,12 +16,27 @@ limitations under the License.
 
 package conf
 
+const (
+	// ReservedNodePercent is configurable percent of reserved nodes
+	ReservedNodePercent = "reservedNodePercent"
+	// StarvingJobTimeThreshold is configurable time threshold of starving job
+	StarvingJobTimeThreshold = "starvingJobTimeThreshold"
+)
+
 // SchedulerConfiguration defines the configuration of scheduler.
 type SchedulerConfiguration struct {
 	// Actions defines the actions list of scheduler in order
-	Actions string `yaml:"actions"`
+	Actions []Action `yaml:"actions"`
 	// Tiers defines plugins in different tiers
 	Tiers []Tier `yaml:"tiers"`
+}
+
+// Action describes a struct of an action resource
+type Action struct {
+	// Identifier of the action
+	Name string `yaml:"name"`
+	// Argument holds the parameters to configure the given action
+	Arguments map[string]string `yaml:"arguments"`
 }
 
 // Tier defines plugin tier
@@ -37,6 +52,8 @@ type PluginOption struct {
 	EnabledJobOrder *bool `yaml:"enableJobOrder"`
 	// EnabledJobReady defines whether jobReadyFn is enabled
 	EnabledJobReady *bool `yaml:"enableJobReady"`
+	// EnabledJobConditionReady defines whether jobConditionReadyFn is enabled
+	EnabledJobConditionReady *bool `yaml:"enableJobConditionReady"`
 	// EnabledJobPipelined defines whether jobPipelinedFn is enabled
 	EnabledJobPipelined *bool `yaml:"enableJobPipelined"`
 	// EnabledTaskOrder defines whether taskOrderFn is enabled

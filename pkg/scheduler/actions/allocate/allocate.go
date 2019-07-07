@@ -26,10 +26,14 @@ import (
 
 type allocateAction struct {
 	ssn *framework.Session
+
+	arguments framework.Arguments
 }
 
-func New() *allocateAction {
-	return &allocateAction{}
+func New(args framework.Arguments) framework.Action {
+	return &allocateAction{
+		arguments: args,
+	}
 }
 
 func (alloc *allocateAction) Name() string {

@@ -26,10 +26,14 @@ import (
 
 type enqueueAction struct {
 	ssn *framework.Session
+
+	arguments framework.Arguments
 }
 
-func New() *enqueueAction {
-	return &enqueueAction{}
+func New(args framework.Arguments) framework.Action {
+	return &enqueueAction{
+		arguments: args,
+	}
 }
 
 func (enqueue *enqueueAction) Name() string {

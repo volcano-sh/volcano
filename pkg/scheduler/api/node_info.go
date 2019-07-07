@@ -43,6 +43,9 @@ type NodeInfo struct {
 	Allocatable *Resource
 	Capability  *Resource
 
+	// Reserved is reserved resources for starving task
+	Reserved *Resource
+
 	Tasks map[TaskID]*TaskInfo
 
 	// Used to store custom information
@@ -64,6 +67,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 			Releasing: EmptyResource(),
 			Idle:      EmptyResource(),
 			Used:      EmptyResource(),
+			Reserved:  EmptyResource(),
 
 			Allocatable: EmptyResource(),
 			Capability:  EmptyResource(),
@@ -78,6 +82,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 			Releasing: EmptyResource(),
 			Idle:      NewResource(node.Status.Allocatable),
 			Used:      EmptyResource(),
+			Reserved:  EmptyResource(),
 
 			Allocatable: NewResource(node.Status.Allocatable),
 			Capability:  NewResource(node.Status.Capacity),
@@ -194,6 +199,9 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 			ni.Releasing.Add(ti.Resreq)
 		case Pipelined:
 			ni.Releasing.Sub(ti.Resreq)
+		case ForceAllocated:
+			ni.Reserved.Add(ti.Resreq)
+			ni.Idle.Sub(ti.Resreq)
 		default:
 			if err := ni.allocateIdleResource(ti); err != nil {
 				return err
@@ -201,6 +209,42 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 		}
 
 		ni.Used.Add(ti.Resreq)
+	}
+
+	ni.Tasks[key] = ti
+
+	return nil
+}
+
+// FakeAddTask add task to node, but not allocate resource for it
+func (ni *NodeInfo) FakeAddTask(task *TaskInfo) error {
+	key := PodKey(task.Pod)
+	if _, found := ni.Tasks[key]; found {
+		return fmt.Errorf("task <%s:%s> already on node <%s>", task.Namespace, task.Name, ni.Name)
+	}
+
+	if task.InitResreq.LessEqual(ni.Idle.Clone()) {
+		return fmt.Errorf("only task whose request resource is larger than the idle resourcescan " +
+			"can be fake added to node")
+	}
+
+	ti := task.Clone()
+
+	if ni.Node != nil {
+		switch ti.Status {
+		case FakeAllocated:
+			ni.Reserved.Add(ti.Resreq)
+		default:
+			return fmt.Errorf("only %v status can be fake added to node", FakeAllocated)
+		}
+
+		if !ni.Reserved.LessEqual(ni.Allocatable.Clone()) {
+			ni.Reserved.Sub(ti.Resreq)
+			return fmt.Errorf("error to fake add task <%s:%s> to node %s, for reserved resources is larger "+
+				"than the allocatable resources", task.Namespace, task.Name, ni.Name)
+		}
+
+		ni.Idle.UnsecuredSub(ti.Resreq)
 	}
 
 	ni.Tasks[key] = ti
@@ -230,6 +274,33 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 		}
 
 		ni.Used.Sub(task.Resreq)
+	}
+
+	delete(ni.Tasks, key)
+
+	return nil
+}
+
+// RemoveFakeTask remove task who was not really allocated to the node
+func (ni *NodeInfo) RemoveFakeTask(task *TaskInfo) error {
+	key := PodKey(task.Pod)
+
+	task, found := ni.Tasks[key]
+	if !found {
+		return fmt.Errorf("failed to find task <%s/%s> on host <%s>",
+			task.Namespace, task.Name, ni.Name)
+	}
+
+	if ni.Node != nil {
+		switch task.Status {
+		case Pending:
+			ni.Reserved.Sub(task.InitResreq)
+		default:
+			return fmt.Errorf("only %s status can be remove from node", Pending)
+		}
+
+		ni.Idle.Add(task.InitResreq)
+
 	}
 
 	delete(ni.Tasks, key)

@@ -26,10 +26,14 @@ import (
 
 type reclaimAction struct {
 	ssn *framework.Session
+
+	arguments framework.Arguments
 }
 
-func New() *reclaimAction {
-	return &reclaimAction{}
+func New(args framework.Arguments) framework.Action {
+	return &reclaimAction{
+		arguments: args,
+	}
 }
 
 func (alloc *reclaimAction) Name() string {

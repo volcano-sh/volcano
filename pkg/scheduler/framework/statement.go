@@ -305,6 +305,137 @@ func (s *Statement) unallocate(task *api.TaskInfo, reason string) error {
 	return nil
 }
 
+// Reserve reserve resources for task
+func (s *Statement) Reserve(task *api.TaskInfo, hostName string) error {
+	job, found := s.ssn.Jobs[task.Job]
+	if !found {
+		return fmt.Errorf("failed to find job <%s> in session <%s> index when try to reserve resource "+
+			"for task <%s:%s>.", task.Job, s.ssn.UID, task.Namespace, task.Name)
+	}
+
+	node, foundNode := s.ssn.Nodes[hostName]
+	if !foundNode {
+		return fmt.Errorf("failed to find node <%s> in session <%s> index when try to reserve resource"+
+			" for task <%s:%s>.", hostName, s.ssn.UID, task.Namespace, task.Name)
+	}
+
+	var taskStatus api.TaskStatus
+	// If node has been reserve some resources for some task
+	// later task can only be fake allocated on this node
+	// If the node does not reserve resources for any task
+	// the subsequent task can allocate on this node or fake
+	// allocated on this node, this depends on the size of the
+	// resources requested by the task and the idle resource
+	// of the node
+	if node.Reserved.IsEmpty() {
+		if task.InitResreq.LessEqual(node.Idle) {
+			taskStatus = api.ForceAllocated
+		} else {
+			taskStatus = api.FakeAllocated
+		}
+	} else {
+		taskStatus = api.FakeAllocated
+	}
+
+	if err := job.UpdateTaskStatus(task, taskStatus); err != nil {
+		return fmt.Errorf("failed to update task <%s:%s> status to %s in session <%s> for: %v",
+			task.Namespace, task.Name, taskStatus, s.ssn.UID, err)
+	}
+
+	task.NodeName = hostName
+
+	if taskStatus == api.ForceAllocated {
+		if err := node.AddTask(task); err != nil {
+			return fmt.Errorf("Add task <%s:%s> to node <%s> failed for: %v", task.Namespace, task.Name, node.Name, err)
+		}
+	} else {
+		if err := node.FakeAddTask(task); err != nil {
+			return fmt.Errorf("Add task <%s:%s> to node <%s> failed for: %v", task.Namespace, task.Name, node.Name, err)
+		}
+	}
+
+	s.operations = append(s.operations, operation{
+		name: "reserve",
+		args: []interface{}{task, hostName},
+	})
+
+	return nil
+}
+
+func (s *Statement) reserve(task *api.TaskInfo, hostName string) error {
+	if task.Status != api.ForceAllocated {
+		return nil
+	}
+
+	job, found := s.ssn.Jobs[task.Job]
+	if !found {
+		glog.Errorf("Failed to found Job <%s> in session <%s> index when allocating task <%s:%s>",
+			task.Job, s.ssn.UID, task.Namespace, task.Name)
+		return nil
+	}
+
+	if err := s.ssn.cache.AllocateVolumes(task, hostName); err != nil {
+		glog.Errorf("Failed to allocate volumes for task <%s:%s> when allocating task to node <%s> for: %v",
+			task.Namespace, task.Name, hostName, err)
+		return err
+	}
+
+	for _, eh := range s.ssn.eventHandlers {
+		if eh.AllocateFunc != nil {
+			eh.AllocateFunc(&Event{
+				Task: task,
+			})
+		}
+	}
+
+	if s.ssn.JobReady(job) {
+		for taskStatus, taskMap := range job.TaskStatusIndex {
+			if taskStatus == api.Allocated || taskStatus == api.ForceAllocated {
+				for _, task := range taskMap {
+					if err := s.ssn.dispatch(task); err != nil {
+						glog.Errorf("Failed to dispatch task <%s/%s> to node <%s> for: %v",
+							task.Namespace, task.Name, hostName, err)
+						return err
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func (s *Statement) deReserve(task *api.TaskInfo, hostName string) error {
+	if task.Status == api.ForceAllocated {
+		return s.unallocate(task, hostName)
+	}
+
+	job, found := s.ssn.Jobs[task.Job]
+	if !found {
+		return fmt.Errorf("Failed to find job <%s> in session <%s> index when reserve",
+			task.Job, s.ssn.UID)
+	}
+
+	if err := job.UpdateTaskStatus(task, api.Pending); err != nil {
+		return fmt.Errorf("Failed to update task <%s:%s> status to %s in Session <%v> for : %v",
+			task.Namespace, task.Name, api.Pending, s.ssn.UID, err)
+	}
+
+	node, foundNode := s.ssn.Nodes[hostName]
+	if !foundNode {
+		return fmt.Errorf("Failed to find node <%s> in session <%s> index when reserve",
+			hostName, s.ssn.UID)
+	}
+
+	task.NodeName = ""
+
+	if err := node.RemoveFakeTask(task); err != nil {
+		return fmt.Errorf("Add task <%s:%s> to node <%s> failed for: %v", task.Namespace, task.Name, node.Name, err)
+	}
+
+	return nil
+}
+
 // Discard operation for evict, pipeline and allocate
 func (s *Statement) Discard() {
 	glog.V(3).Info("Discarding operations ...")
@@ -317,6 +448,8 @@ func (s *Statement) Discard() {
 			s.unpipeline(op.args[0].(*api.TaskInfo))
 		case "allocate":
 			s.unallocate(op.args[0].(*api.TaskInfo), op.args[1].(string))
+		case "reserve":
+			s.deReserve(op.args[0].(*api.TaskInfo), op.args[1].(string))
 		}
 	}
 }
@@ -332,6 +465,8 @@ func (s *Statement) Commit() {
 			s.pipeline(op.args[0].(*api.TaskInfo))
 		case "allocate":
 			s.allocate(op.args[0].(*api.TaskInfo), op.args[1].(string))
+		case "reserve":
+			s.reserve(op.args[0].(*api.TaskInfo), op.args[1].(string))
 		}
 	}
 }

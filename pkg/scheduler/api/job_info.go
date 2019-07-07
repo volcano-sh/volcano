@@ -376,6 +376,18 @@ func (ji *JobInfo) ReadyTaskNum() int32 {
 	return int32(occupid)
 }
 
+// FakeAllocatedNum returns the number of tasks that are fake allocated
+func (ji *JobInfo) FakeAllocatedNum() int32 {
+	occupied := 0
+	for status, tasks := range ji.TaskStatusIndex {
+		if status == FakeAllocated {
+			occupied += len(tasks)
+		}
+	}
+
+	return int32(occupied)
+}
+
 // WaitingTaskNum returns the number of tasks that are pipelined.
 func (ji *JobInfo) WaitingTaskNum() int32 {
 	occupid := 0
@@ -408,6 +420,11 @@ func (ji *JobInfo) Ready() bool {
 	occupied := ji.ReadyTaskNum()
 
 	return occupied >= ji.MinAvailable
+}
+
+// ConditionReady returns whether job is ready considering fake allocated task
+func (ji *JobInfo) ConditionReady() bool {
+	return ji.ReadyTaskNum()+ji.FakeAllocatedNum() >= ji.MinAvailable
 }
 
 // Pipelined returns whether the number of ready and pipelined task is enough

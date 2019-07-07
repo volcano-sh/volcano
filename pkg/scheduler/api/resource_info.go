@@ -158,6 +158,22 @@ func (r *Resource) Sub(rr *Resource) *Resource {
 	return r
 }
 
+//UnsecuredSub subtracts two Resource objects, but not guarantee the correct result.
+func (r *Resource) UnsecuredSub(rr *Resource) *Resource {
+	r.MilliCPU -= rr.MilliCPU
+	r.Memory -= rr.Memory
+
+	if r.ScalarResources == nil {
+		return r
+	}
+
+	for rrName, rrQuant := range rr.ScalarResources {
+		r.ScalarResources[rrName] -= rrQuant
+	}
+
+	return r
+}
+
 // SetMaxResource compares with ResourceList and takes max value for each Resource.
 func (r *Resource) SetMaxResource(rr *Resource) {
 	if r == nil || rr == nil {

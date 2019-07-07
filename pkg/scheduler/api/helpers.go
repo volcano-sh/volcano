@@ -63,7 +63,7 @@ func getTaskStatus(pod *v1.Pod) TaskStatus {
 // AllocatedStatus checks whether the tasks has AllocatedStatus
 func AllocatedStatus(status TaskStatus) bool {
 	switch status {
-	case Bound, Binding, Running, Allocated:
+	case Bound, Binding, Running, Allocated, ForceAllocated:
 		return true
 	default:
 		return false

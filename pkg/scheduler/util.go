@@ -29,8 +29,10 @@ import (
 )
 
 var defaultSchedulerConf = `
-actions: "allocate, backfill"
+actions:
 tiers:
+- name: allocate
+- name: backfill
 - plugins:
   - name: priority
   - name: gang
@@ -60,12 +62,15 @@ func loadSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, error) 
 		}
 	}
 
-	actionNames := strings.Split(schedulerConf.Actions, ",")
-	for _, actionName := range actionNames {
-		if action, found := framework.GetAction(strings.TrimSpace(actionName)); found {
-			actions = append(actions, action)
+	for _, action := range schedulerConf.Actions {
+		if actionBuilder, found := framework.GetAction(strings.TrimSpace(action.Name)); found {
+			if action.Arguments == nil {
+				action.Arguments = map[string]string{}
+			}
+
+			actions = append(actions, actionBuilder(action.Arguments))
 		} else {
-			return nil, nil, fmt.Errorf("failed to found Action %s, ignore it", actionName)
+			return nil, nil, fmt.Errorf("failed to found Action <%s>, ignore it", action.Name)
 		}
 	}
 

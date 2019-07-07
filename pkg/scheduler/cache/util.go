@@ -46,8 +46,9 @@ func createShadowPodGroup(pod *v1.Pod) *api.PodGroup {
 
 	return &api.PodGroup{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: pod.Namespace,
-			Name:      string(jobID),
+			Namespace:         pod.Namespace,
+			Name:              string(jobID),
+			CreationTimestamp: pod.CreationTimestamp,
 			Annotations: map[string]string{
 				shadowPodGroupKey: string(jobID),
 			},

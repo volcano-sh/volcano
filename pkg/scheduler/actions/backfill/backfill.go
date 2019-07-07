@@ -25,10 +25,14 @@ import (
 
 type backfillAction struct {
 	ssn *framework.Session
+
+	arguments framework.Arguments
 }
 
-func New() *backfillAction {
-	return &backfillAction{}
+func New(args framework.Arguments) framework.Action {
+	return &backfillAction{
+		arguments: args,
+	}
 }
 
 func (alloc *backfillAction) Name() string {

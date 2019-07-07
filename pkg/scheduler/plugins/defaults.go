@@ -49,4 +49,7 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	if option.EnabledNodeOrder == nil {
 		option.EnabledNodeOrder = &t
 	}
+	if option.EnabledJobConditionReady == nil {
+		option.EnabledJobConditionReady = &t
+	}
 }

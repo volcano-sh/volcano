@@ -30,6 +30,13 @@ const (
 	// Allocated means the scheduler assigns a host to it.
 	Allocated
 
+	// FakeAllocated means a task/pod is fake allocated to the node
+	// this is the task is added to the node, but not allocated resources for it
+	FakeAllocated
+
+	// ForceAllocated means a task/pod is allocated to the node
+	ForceAllocated
+
 	// Pipelined means the scheduler assigns a host to wait for releasing resource.
 	Pipelined
 

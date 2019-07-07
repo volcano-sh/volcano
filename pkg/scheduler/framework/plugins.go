@@ -23,6 +23,9 @@ var pluginMutex sync.Mutex
 // PluginBuilder plugin management
 type PluginBuilder func(Arguments) Plugin
 
+// ActionBuilder action management
+type ActionBuilder func(Arguments) Action
+
 // Plugin management
 var pluginBuilders = map[string]PluginBuilder{}
 
@@ -52,18 +55,18 @@ func GetPluginBuilder(name string) (PluginBuilder, bool) {
 }
 
 // Action management
-var actionMap = map[string]Action{}
+var actionMap = map[string]ActionBuilder{}
 
 // RegisterAction register action
-func RegisterAction(act Action) {
+func RegisterAction(name string, act ActionBuilder) {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
 
-	actionMap[act.Name()] = act
+	actionMap[name] = act
 }
 
 // GetAction get the action by name
-func GetAction(name string) (Action, bool) {
+func GetAction(name string) (ActionBuilder, bool) {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
 

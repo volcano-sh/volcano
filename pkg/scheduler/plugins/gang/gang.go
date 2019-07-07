@@ -130,6 +130,12 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		ji := obj.(*api.JobInfo)
 		return ji.Pipelined()
 	})
+
+	ssn.AddJobConditionReadyFn(gp.Name(), func(obj interface{}) bool {
+		ji := obj.(*api.JobInfo)
+
+		return ji.ConditionReady()
+	})
 }
 
 func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
