@@ -4,7 +4,7 @@ metadata:
   name: mxnet-job
 spec:
   minAvailable: 5
-  schedulerName: scheduler
+  schedulerName: volcano
   policies:
   - event: PodEvicted
     action: RestartJob

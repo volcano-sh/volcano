@@ -36,7 +36,7 @@ metadata:
   name: tensorflow-benchmark
 spec:
   minAvailable: 3
-  schedulerName: kube-batch
+  schedulerName: volcano
   plugins:
     env: []
     svc: []
