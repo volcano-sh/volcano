@@ -72,10 +72,13 @@ function uninstall-volcano {
 }
 
 function generate-log {
+    echo "Generating tiller log files"
+    kubectl logs deployment/tiller-deploy -n kube-system > helm-tiller.log
     echo "Generating volcano log files"
     kubectl logs deployment/${CLUSTER_NAME}-admission -n kube-system > volcano-admission.log
     kubectl logs deployment/${CLUSTER_NAME}-controllers -n kube-system > volcano-controller.log
     kubectl logs deployment/${CLUSTER_NAME}-kube-batch -n kube-system > volcano-kube-batch.log
+
 }
 
 # clean up
