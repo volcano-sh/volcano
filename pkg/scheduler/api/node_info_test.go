@@ -79,7 +79,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				Allocatable: buildResource("2000m", "1G"),
 				Capability:  buildResource("2000m", "1G"),
 				State:       NodeState{Phase: NotReady, Reason: "OutOfSync"},
-				Tasks: map[TaskID]*TaskInfo{},
+				Tasks:       map[TaskID]*TaskInfo{},
 			},
 		},
 	}
