@@ -37,6 +37,9 @@ func TestNodeInfo_AddPod(t *testing.T) {
 	case01Node := buildNode("n1", buildResourceList("8000m", "10G"))
 	case01Pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	case01Pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{}, make(map[string]string))
+	// case2
+	case02Node := buildNode("n2", buildResourceList("2000m", "1G"))
+	case02Pod1 := buildPod("c2", "p1", "n2", v1.PodUnknown, buildResourceList("1000m", "2G"), []metav1.OwnerReference{}, make(map[string]string))
 
 	tests := []struct {
 		name     string
@@ -61,6 +64,22 @@ func TestNodeInfo_AddPod(t *testing.T) {
 					"c1/p1": NewTaskInfo(case01Pod1),
 					"c1/p2": NewTaskInfo(case01Pod2),
 				},
+			},
+		},
+		{
+			name: "add 1 unknown pod",
+			node: case02Node,
+			pods: []*v1.Pod{case02Pod1},
+			expected: &NodeInfo{
+				Name:        "n2",
+				Node:        case02Node,
+				Idle:        buildResource("2000m", "1G"),
+				Used:        EmptyResource(),
+				Releasing:   EmptyResource(),
+				Allocatable: buildResource("2000m", "1G"),
+				Capability:  buildResource("2000m", "1G"),
+				State:       NodeState{Phase: NotReady, Reason: "OutOfSync"},
+				Tasks: map[TaskID]*TaskInfo{},
 			},
 		},
 	}
