@@ -56,6 +56,10 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 		if job.PodGroup.Status.Phase == v1alpha1.PodGroupPending {
 			continue
 		}
+		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
+			glog.V(4).Infof("Job <%s/%s> Queue <%s> skip preemption, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
+			continue
+		}
 
 		if queue, found := ssn.Queues[job.Queue]; !found {
 			continue
@@ -184,9 +188,9 @@ func preempt(
 
 	allNodes := util.GetNodeList(nodes)
 
-	predicateNodes := util.PredicateNodes(preemptor, allNodes, ssn.PredicateFn)
+	predicateNodes, _ := util.PredicateNodes(preemptor, allNodes, ssn.PredicateFn)
 
-	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
+	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 
 	selectedNodes := util.SortNodes(nodeScores)
 	for _, node := range selectedNodes {

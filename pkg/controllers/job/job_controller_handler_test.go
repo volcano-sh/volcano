@@ -22,14 +22,15 @@ import (
 	"k8s.io/client-go/rest"
 	"testing"
 
-	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	kubebatchclient "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	kubeclientset "k8s.io/client-go/kubernetes"
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkbusv1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	kubebatchclient "volcano.sh/volcano/pkg/client/clientset/versioned"
 	vkclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 	//"volcano.sh/volcano/pkg/controllers/job"
 )
@@ -67,10 +68,11 @@ func newController() *Controller {
 func buildPod(namespace, name string, p v1.PodPhase, labels map[string]string) *v1.Pod {
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			UID:       types.UID(fmt.Sprintf("%v-%v", namespace, name)),
-			Name:      name,
-			Namespace: namespace,
-			Labels:    labels,
+			UID:             types.UID(fmt.Sprintf("%v-%v", namespace, name)),
+			Name:            name,
+			Namespace:       namespace,
+			Labels:          labels,
+			ResourceVersion: string(uuid.NewUUID()),
 		},
 		Status: v1.PodStatus{
 			Phase: p,
@@ -183,7 +185,7 @@ func TestUpdateJobFunc(t *testing.T) {
 					Namespace: namespace,
 				},
 				Spec: vkbatchv1.JobSpec{
-					SchedulerName: "kube-batch",
+					SchedulerName: "volcano",
 					MinAvailable:  5,
 				},
 				Status: vkbatchv1.JobStatus{
@@ -198,7 +200,7 @@ func TestUpdateJobFunc(t *testing.T) {
 					Namespace: namespace,
 				},
 				Spec: vkbatchv1.JobSpec{
-					SchedulerName: "kube-batch",
+					SchedulerName: "volcano",
 					MinAvailable:  5,
 				},
 				Status: vkbatchv1.JobStatus{
@@ -216,7 +218,7 @@ func TestUpdateJobFunc(t *testing.T) {
 					Namespace: namespace,
 				},
 				Spec: vkbatchv1.JobSpec{
-					SchedulerName: "kube-batch",
+					SchedulerName: "volcano",
 					MinAvailable:  5,
 				},
 				Status: vkbatchv1.JobStatus{
@@ -231,7 +233,7 @@ func TestUpdateJobFunc(t *testing.T) {
 					Namespace: namespace,
 				},
 				Spec: vkbatchv1.JobSpec{
-					SchedulerName: "kube-batch",
+					SchedulerName: "volcano",
 					MinAvailable:  5,
 				},
 				Status: vkbatchv1.JobStatus{

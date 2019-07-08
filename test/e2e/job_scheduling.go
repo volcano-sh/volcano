@@ -140,7 +140,7 @@ var _ = Describe("Job E2E Test", func() {
 
 		job.name = "gang-fq-qj2"
 		job2 := createJob(context, job)
-		err = waitJobPending(context, job2)
+		err = waitJobStatePending(context, job2)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitJobReady(context, job1)

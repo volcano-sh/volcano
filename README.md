@@ -3,6 +3,7 @@
 -------
 
 [![Build Status](https://travis-ci.org/volcano-sh/volcano.svg?branch=master)](https://travis-ci.org/volcano-sh/volcano)
+[![Coverage Status](https://coveralls.io/repos/github/volcano-sh/volcano/badge.svg?branch=master)](https://coveralls.io/github/volcano-sh/volcano?branch=master)
 [![Go Report Card](https://goreportcard.com/badge/github.com/volcano-sh/volcano)](https://goreportcard.com/report/github.com/volcano-sh/volcano)
 [![RepoSize](https://img.shields.io/github/repo-size/volcano-sh/volcano.svg)](https://github.com/volcano-sh/volcano)
 [![Release](https://img.shields.io/github/release/volcano-sh/volcano.svg)](https://github.com/volcano-sh/volcano/releases)
@@ -47,9 +48,16 @@ variety of high performance workloads at scale using several systems
 and platforms, combined with best-of-breed ideas and practices from
 the open source community.
 
+**NOTE**: the scheduler is built based on [kube-batch](https://github.com/kubernetes-sigs/kube-batch);
+refer to [#241](https://github.com/volcano-sh/volcano/issues/241) and [#288](https://github.com/volcano-sh/volcano/pull/288) for more detail.
+
 ## Overall Architecture
 
 ![volcano](docs/images/volcano-intro.png)
+
+## Talks
+
+You can watch industry experts talking about Volcano in different International Conferences over [here.](https://volcano.sh/talk/)
 
 ## Quick Start Guide
 
@@ -101,9 +109,12 @@ volcanosh/vk-controllers   latest              7b11606ebfb8        10 seconds ag
 
 ``` 
 
-**NOTE**: You need ensure the images are correctly loaded in your kubernetes cluster, for
+**NOTE**:
+1. You need ensure the images are correctly loaded in your kubernetes cluster, for
 example, if you are using [kind cluster](https://github.com/kubernetes-sigs/kind), 
 try command ```kind load docker-image <image-name>:<tag> ``` for each of the images.
+2. When reinstall the volcano charts, since tiller server will not manage CRD resource,
+you need to delete them manually eg: `kubectl delete crds xxxx` before reinstalling or try command with `--no-crd-hook` option.
 
 ### 2. Helm charts
 
@@ -143,3 +154,4 @@ You can reach the maintainers of this project at:
 Slack: [#volcano-sh](http://t.cn/Efa7LKx)
 
 Mailing List: https://groups.google.com/forum/#!forum/volcano-sh
+

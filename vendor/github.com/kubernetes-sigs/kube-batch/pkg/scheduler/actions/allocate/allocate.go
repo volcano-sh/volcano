@@ -17,8 +17,6 @@ limitations under the License.
 package allocate
 
 import (
-	"fmt"
-
 	"github.com/golang/glog"
 
 	"github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
@@ -50,6 +48,10 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 
 	for _, job := range ssn.Jobs {
 		if job.PodGroup.Status.Phase == v1alpha1.PodGroupPending {
+			continue
+		}
+		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
+			glog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
 			continue
 		}
 
@@ -84,8 +86,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 		//    ...
 		// }
 		if !task.InitResreq.LessEqual(node.Idle) && !task.InitResreq.LessEqual(node.Releasing) {
-			return fmt.Errorf("task <%s/%s> ResourceFit failed on node <%s>",
-				task.Namespace, task.Name, node.Name)
+			return api.NewFitError(task, node, api.NodeResourceFitFailed)
 		}
 
 		return ssn.PredicateFn(task, node)
@@ -145,12 +146,13 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 				job.NodesFitDelta = make(api.NodeResourceMap)
 			}
 
-			predicateNodes := util.PredicateNodes(task, allNodes, predicateFn)
+			predicateNodes, fitErrors := util.PredicateNodes(task, allNodes, predicateFn)
 			if len(predicateNodes) == 0 {
+				job.NodesFitErrors[task.UID] = fitErrors
 				break
 			}
 
-			nodeScores := util.PrioritizeNodes(task, predicateNodes, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
+			nodeScores := util.PrioritizeNodes(task, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 
 			node := util.SelectBestNode(nodeScores)
 			// Allocate idle resource to the task.

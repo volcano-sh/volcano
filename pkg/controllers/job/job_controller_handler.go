@@ -28,9 +28,9 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/cache"
 
-	kbtype "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkbusv1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	kbtype "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 
 	"volcano.sh/volcano/pkg/controllers/apis"
 	vkcache "volcano.sh/volcano/pkg/controllers/cache"
@@ -153,6 +153,11 @@ func (cc *Controller) addPod(obj interface{}) {
 		return
 	}
 
+	if pod.DeletionTimestamp != nil {
+		cc.deletePod(pod)
+		return
+	}
+
 	req := apis.Request{
 		Namespace: pod.Namespace,
 		JobName:   jobName,
@@ -206,6 +211,15 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 	if err != nil {
 		glog.Infof("Failed to convert jobVersion of Pod into number <%s/%s>, skipping",
 			newPod.Namespace, newPod.Name)
+		return
+	}
+
+	if newPod.ResourceVersion == oldPod.ResourceVersion {
+		return
+	}
+
+	if newPod.DeletionTimestamp != nil {
+		cc.deletePod(newObj)
 		return
 	}
 

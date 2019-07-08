@@ -29,39 +29,23 @@ func (ps *runningState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.RestartJobAction:
 		return KillJob(ps.job, PodRetainPhaseNone, func(status *vkv1.JobStatus) bool {
-			if status.Terminating != 0 {
-				status.State.Phase = vkv1.Restarting
-				status.RetryCount++
-				return true
-			}
-			return false
+			status.State.Phase = vkv1.Restarting
+			status.RetryCount++
+			return true
 		})
 	case vkv1.AbortJobAction:
 		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
-			if status.Terminating != 0 {
-				status.State.Phase = vkv1.Aborting
-				return true
-			}
-
-			return false
+			status.State.Phase = vkv1.Aborting
+			return true
 		})
 	case vkv1.TerminateJobAction:
 		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
-			if status.Terminating != 0 {
-				status.State.Phase = vkv1.Terminating
-				return true
-			}
-
-			return false
+			status.State.Phase = vkv1.Terminating
+			return true
 		})
 	case vkv1.CompleteJobAction:
 		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
-			phase := vkv1.Completed
-			if status.Terminating != 0 {
-				phase = vkv1.Completing
-			}
-
-			status.State.Phase = phase
+			status.State.Phase = vkv1.Completing
 			return true
 		})
 	default:

@@ -18,6 +18,7 @@ package job
 
 import (
 	"encoding/json"
+	"github.com/spf13/cobra"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -41,24 +42,56 @@ func TestListJob(t *testing.T) {
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
-	listJobFlags.Master = server.URL
-	listJobFlags.Namespace = "test"
-
 	testCases := []struct {
-		Name        string
-		ExpectValue error
+		Name         string
+		ExpectValue  error
+		AllNamespace bool
+		Selector     string
 	}{
 		{
 			Name:        "ListJob",
 			ExpectValue: nil,
 		},
+		{
+			Name:         "ListAllNamespaceJob",
+			ExpectValue:  nil,
+			AllNamespace: true,
+		},
 	}
 
 	for i, testcase := range testCases {
+		listJobFlags = &listFlags{
+			commonFlags: commonFlags{
+				Master: server.URL,
+			},
+			Namespace:    "test",
+			allNamespace: testcase.AllNamespace,
+			selector:     testcase.Selector,
+		}
+
 		err := ListJobs()
 		if err != nil {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, err)
 		}
+	}
+
+}
+
+func TestInitListFlags(t *testing.T) {
+	var cmd cobra.Command
+	InitListFlags(&cmd)
+
+	if cmd.Flag("namespace") == nil {
+		t.Errorf("Could not find the flag namespace")
+	}
+	if cmd.Flag("scheduler") == nil {
+		t.Errorf("Could not find the flag scheduler")
+	}
+	if cmd.Flag("all-namespaces") == nil {
+		t.Errorf("Could not find the flag all-namespaces")
+	}
+	if cmd.Flag("selector") == nil {
+		t.Errorf("Could not find the flag selector")
 	}
 
 }

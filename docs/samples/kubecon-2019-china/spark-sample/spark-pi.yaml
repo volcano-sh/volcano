@@ -21,7 +21,7 @@ metadata:
 spec:
   type: Scala
   mode: cluster
-  image: "swr.cn-north-1.myhuaweicloud.com/hwstaff_z00383385/spark:v2.4.0"
+  image: "volcanosh/spark:v2.4.0"
   imagePullPolicy: Always
   mainClass: org.apache.spark.examples.SparkPi
   mainApplicationFile: "local:///opt/spark/examples/jars/spark-examples_2.11-2.4.0.jar"

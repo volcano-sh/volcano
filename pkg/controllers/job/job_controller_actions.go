@@ -26,10 +26,11 @@ import (
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8scontroller "k8s.io/kubernetes/pkg/controller"
 
-	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
+	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
@@ -47,7 +48,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 		return nil
 	}
 
-	var pending, running, terminating, succeeded, failed int32
+	var pending, running, terminating, succeeded, failed, unknown int32
 
 	var errs []error
 	var total int
@@ -75,21 +76,14 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 				cc.resyncTask(pod)
 			}
 
-			switch pod.Status.Phase {
-			case v1.PodRunning:
-				running++
-			case v1.PodPending:
-				pending++
-			case v1.PodSucceeded:
-				succeeded++
-			case v1.PodFailed:
-				failed++
-			}
+			classifyAndAddUpPodBaseOnPhase(pod, &pending, &running, &succeeded, &failed, &unknown)
 		}
 	}
 
 	if len(errs) != 0 {
 		glog.Errorf("failed to kill pods for job %s/%s, with err %+v", job.Namespace, job.Name, errs)
+		cc.recorder.Event(job, v1.EventTypeWarning, k8scontroller.FailedDeletePodReason,
+			fmt.Sprintf("Error deleting pods: %+v", errs))
 		return fmt.Errorf("failed to kill %d pods of %d", len(errs), total)
 	}
 
@@ -105,6 +99,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 		Succeeded:    succeeded,
 		Failed:       failed,
 		Terminating:  terminating,
+		Unknown:      unknown,
 		Version:      job.Status.Version,
 		MinAvailable: int32(job.Spec.MinAvailable),
 		RetryCount:   job.Status.RetryCount,
@@ -117,15 +112,15 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 	}
 
 	// Update Job status
-	job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
+	newJob, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
 	if err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
 	}
-	if e := cc.cache.Update(job); e != nil {
+	if e := cc.cache.Update(newJob); e != nil {
 		glog.Errorf("KillJob - Failed to update Job %v/%v in cache:  %v",
-			job.Namespace, job.Name, e)
+			newJob.Namespace, newJob.Name, e)
 		return e
 	}
 
@@ -154,7 +149,8 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.Update
 	job := jobInfo.Job.DeepCopy()
 	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 
-	if err := cc.initJobStatus(job); err != nil {
+	job, err := cc.initJobStatus(job)
+	if err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.JobStatusError),
 			fmt.Sprintf("Failed to initialize job status, err: %v", err))
 		return err
@@ -172,7 +168,7 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.Update
 		return err
 	}
 
-	job, err := cc.createJobIOIfNotExist(job)
+	newJob, err := cc.createJobIOIfNotExist(job)
 	if err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.PVCError),
 			fmt.Sprintf("Failed to create PVC, err: %v", err))
@@ -180,20 +176,20 @@ func (cc *Controller) createJob(jobInfo *apis.JobInfo, updateStatus state.Update
 	}
 
 	if updateStatus != nil {
-		if updateStatus(&job.Status) {
-			job.Status.State.LastTransitionTime = metav1.Now()
+		if updateStatus(&newJob.Status) {
+			newJob.Status.State.LastTransitionTime = metav1.Now()
 		}
 	}
 
-	job, err = cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
+	newJob2, err := cc.vkClients.BatchV1alpha1().Jobs(newJob.Namespace).UpdateStatus(newJob)
 	if err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
 	}
-	if err = cc.cache.Update(job); err != nil {
+	if err = cc.cache.Update(newJob2); err != nil {
 		glog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
-			job.Namespace, job.Name, err)
+			newJob2.Namespace, newJob2.Name, err)
 		return err
 	}
 
@@ -213,7 +209,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 		return nil
 	}
 
-	var running, pending, terminating, succeeded, failed int32
+	var running, pending, terminating, succeeded, failed, unknown int32
 
 	var podToCreate []*v1.Pod
 	var podToDelete []*v1.Pod
@@ -246,16 +242,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 					continue
 				}
 
-				switch pod.Status.Phase {
-				case v1.PodPending:
-					pending++
-				case v1.PodRunning:
-					running++
-				case v1.PodSucceeded:
-					succeeded++
-				case v1.PodFailed:
-					failed++
-				}
+				classifyAndAddUpPodBaseOnPhase(pod, &pending, &running, &succeeded, &failed, &unknown)
 			}
 		}
 
@@ -269,21 +256,20 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	for _, pod := range podToCreate {
 		go func(pod *v1.Pod) {
 			defer waitCreationGroup.Done()
-			_, err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Create(pod)
+			newPod, err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Create(pod)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				// Failed to create Pod, waitCreationGroup a moment and then create it again
 				// This is to ensure all podsMap under the same Job created
 				// So gang-scheduling could schedule the Job successfully
 				glog.Errorf("Failed to create pod %s for Job %s, err %#v",
 					pod.Name, job.Name, err)
-				creationErrs = append(creationErrs, err)
+				creationErrs = append(creationErrs, fmt.Errorf("failed to create pod %s, err: %#v", pod.Name, err))
 			} else {
 				if err != nil && apierrors.IsAlreadyExists(err) {
 					cc.resyncTask(pod)
 				}
 
-				// TODO: maybe not pending status, maybe unknown.
-				pending++
+				classifyAndAddUpPodBaseOnPhase(newPod, &pending, &running, &succeeded, &failed, &unknown)
 				glog.V(3).Infof("Created Task <%s> of Job <%s/%s>",
 					pod.Name, job.Namespace, job.Name)
 			}
@@ -292,6 +278,8 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	waitCreationGroup.Wait()
 
 	if len(creationErrs) != 0 {
+		cc.recorder.Event(job, v1.EventTypeWarning, k8scontroller.FailedCreatePodReason,
+			fmt.Sprintf("Error creating pods: %+v", creationErrs))
 		return fmt.Errorf("failed to create %d pods of %d", len(creationErrs), len(podToCreate))
 	}
 
@@ -321,6 +309,8 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	waitDeletionGroup.Wait()
 
 	if len(deletionErrs) != 0 {
+		cc.recorder.Event(job, v1.EventTypeWarning, k8scontroller.FailedDeletePodReason,
+			fmt.Sprintf("Error deleting pods: %+v", deletionErrs))
 		return fmt.Errorf("failed to delete %d pods of %d", len(deletionErrs), len(podToDelete))
 	}
 
@@ -332,6 +322,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 		Succeeded:           succeeded,
 		Failed:              failed,
 		Terminating:         terminating,
+		Unknown:             unknown,
 		Version:             job.Status.Version,
 		MinAvailable:        int32(job.Spec.MinAvailable),
 		ControlledResources: job.Status.ControlledResources,
@@ -343,15 +334,15 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 			job.Status.State.LastTransitionTime = metav1.Now()
 		}
 	}
-	job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
+	newJob, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
 	if err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
 	}
-	if e := cc.cache.Update(job); e != nil {
+	if e := cc.cache.Update(newJob); e != nil {
 		glog.Errorf("SyncJob - Failed to update Job %v/%v in cache:  %v",
-			job.Namespace, job.Name, e)
+			newJob.Namespace, newJob.Name, e)
 		return e
 	}
 
@@ -490,7 +481,7 @@ func (cc *Controller) deleteJobPod(jobName string, pod *v1.Pod) error {
 		glog.Errorf("Failed to delete pod %s/%s for Job %s, err %#v",
 			pod.Namespace, pod.Name, jobName, err)
 
-		return err
+		return fmt.Errorf("failed to delete pod %s, err %#v", pod.Name, err)
 	}
 
 	return nil
@@ -530,24 +521,40 @@ func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
 	return &minAvailableTasksRes
 }
 
-func (cc *Controller) initJobStatus(job *vkv1.Job) error {
+func (cc *Controller) initJobStatus(job *vkv1.Job) (*vkv1.Job, error) {
 	if job.Status.State.Phase != "" {
-		return nil
+		return job, nil
 	}
 
 	job.Status.State.Phase = vkv1.Pending
 	job.Status.MinAvailable = int32(job.Spec.MinAvailable)
-	job, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
+	newJob, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
 	if err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
-		return err
+		return nil, err
 	}
-	if err := cc.cache.Update(job); err != nil {
+	if err := cc.cache.Update(newJob); err != nil {
 		glog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
-			job.Namespace, job.Name, err)
-		return err
+			newJob.Namespace, newJob.Name, err)
+		return nil, err
 	}
 
-	return nil
+	return newJob, nil
+}
+
+func classifyAndAddUpPodBaseOnPhase(pod *v1.Pod, pending, running, succeeded, failed, unknown *int32) {
+	switch pod.Status.Phase {
+	case v1.PodPending:
+		*pending++
+	case v1.PodRunning:
+		*running++
+	case v1.PodSucceeded:
+		*succeeded++
+	case v1.PodFailed:
+		*failed++
+	default:
+		*unknown++
+	}
+	return
 }

@@ -17,13 +17,14 @@ limitations under the License.
 package queue
 
 import (
+	"fmt"
 	"testing"
 
-	kbv1alpha1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	kubebatchclient "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
+	kbv1alpha1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	kubebatchclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
 )
 
 func newFakeController() *Controller {
@@ -276,4 +277,26 @@ func TestSyncQueue(t *testing.T) {
 		}
 	}
 
+}
+
+func TestProcessNextWorkItem(t *testing.T) {
+	testCases := []struct {
+		Name        string
+		ExpectValue int32
+	}{
+		{
+			Name:        "processNextWorkItem",
+			ExpectValue: 0,
+		},
+	}
+
+	for i, testcase := range testCases {
+		c := newFakeController()
+		c.queue.Add("test")
+		bVal := c.processNextWorkItem()
+		fmt.Println("The value of boolean is ", bVal)
+		if c.queue.Len() != 0 {
+			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, c.queue.Len())
+		}
+	}
 }

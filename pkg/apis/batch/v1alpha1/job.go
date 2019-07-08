@@ -275,7 +275,7 @@ type JobStatus struct {
 
 	// The number of pods which reached phase Succeeded.
 	// +optional
-	Succeeded int32 `json:"Succeeded,omitempty" protobuf:"bytes,5,opt,name=succeeded"`
+	Succeeded int32 `json:"succeeded,omitempty" protobuf:"bytes,5,opt,name=succeeded"`
 
 	// The number of pods which reached phase Failed.
 	// +optional
@@ -285,15 +285,19 @@ type JobStatus struct {
 	// +optional
 	Terminating int32 `json:"terminating,omitempty" protobuf:"bytes,7,opt,name=terminating"`
 
+	// The number of pods which reached phase Unknown.
+	// +optional
+	Unknown int32 `json:"unknown,omitempty" protobuf:"bytes,8,opt,name=unknown"`
+
 	//Current version of job
-	Version int32 `json:"version,omitempty" protobuf:"bytes,8,opt,name=version"`
+	Version int32 `json:"version,omitempty" protobuf:"bytes,9,opt,name=version"`
 
 	// The number of Job retries.
 	// +optional
-	RetryCount int32 `json:"retryCount,omitempty" protobuf:"bytes,9,opt,name=retryCount"`
+	RetryCount int32 `json:"retryCount,omitempty" protobuf:"bytes,10,opt,name=retryCount"`
 
 	// The resources that controlled by this job, e.g. Service, ConfigMap
-	ControlledResources map[string]string `json:"controlledResources,omitempty" protobuf:"bytes,8,opt,name=controlledResources"`
+	ControlledResources map[string]string `json:"controlledResources,omitempty" protobuf:"bytes,11,opt,name=controlledResources"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

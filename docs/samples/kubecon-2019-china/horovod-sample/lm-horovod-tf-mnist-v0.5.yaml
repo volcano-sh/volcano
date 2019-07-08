@@ -30,7 +30,7 @@ spec:
                   WORKER_HOST=`cat /etc/volcano/worker.host | tr "\n" ","`;
                   mkdir -p /var/run/sshd; /usr/sbin/sshd;
                   mpiexec --allow-run-as-root --host ${WORKER_HOST} -np 3 python tensorflow_mnist_lm.py;
-              image: swr.cn-north-1.myhuaweicloud.com/hwstaff_z00383385/horovod-tf-mnist:0.5
+              image: volcanosh/horovod-tf-mnist:0.5
               name: master
               ports:
                 - containerPort: 22
@@ -55,7 +55,7 @@ spec:
                 - -c
                 - |
                   mkdir -p /var/run/sshd; /usr/sbin/sshd -D;
-              image: swr.cn-north-1.myhuaweicloud.com/hwstaff_z00383385/horovod-tf-mnist:0.5
+              image: volcanosh/horovod-tf-mnist:0.5
               name: worker
               ports:
                 - containerPort: 22

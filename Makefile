@@ -44,11 +44,14 @@ images: image_bins
 		rm installer/dockerfile/$$name/vk-$$name; \
 	done
 
+admission-base-image:
+	docker build --no-cache -t $(IMAGE_PREFIX)-admission-base:$(TAG) ./installer/dockerfile/admission/ -f ./installer/dockerfile/admission/Dockerfile.base;
+
 generate-code:
 	./hack/update-gencode.sh
 
 unit-test:
-	go list ./... | grep -v e2e | xargs go test -v
+	go list ./... | grep -v e2e | xargs go test -v -cover -covermode atomic -coverprofile coverage.txt
 
 e2e-test-kind:
 	./hack/run-e2e-kind.sh

@@ -23,6 +23,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
@@ -223,4 +224,93 @@ func TestUpdatePod(t *testing.T) {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, val.Status.Phase)
 		}
 	}
+}
+
+func TestClone(t *testing.T) {
+
+	testCases := []struct {
+		Name    string
+		jobinfo JobInfo
+
+		ExpectValue v1.PodPhase
+	}{
+		{
+			Name: "Clone",
+			jobinfo: JobInfo{
+				Name: "testjobInfo",
+				Pods: make(map[string]map[string]*v1.Pod),
+			},
+		},
+	}
+
+	for i, testcase := range testCases {
+		newjobinfo := testcase.jobinfo.Clone()
+
+		if newjobinfo.Name != testcase.jobinfo.Name {
+			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.jobinfo.Name, newjobinfo.Name)
+		}
+	}
+}
+
+func TestSetJob(t *testing.T) {
+
+	testCases := []struct {
+		Name    string
+		job     v1alpha1.Job
+		jobinfo JobInfo
+
+		ExpectValue v1.PodPhase
+	}{
+		{
+			Name: "Clone",
+			jobinfo: JobInfo{
+				Name: "testjobInfo",
+				Pods: make(map[string]map[string]*v1.Pod),
+			},
+			job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "testjob",
+				},
+			},
+		},
+	}
+
+	for i, testcase := range testCases {
+		testcase.jobinfo.SetJob(&testcase.job)
+
+		if testcase.jobinfo.Job.Name != testcase.jobinfo.Name {
+			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.job.Name, testcase.jobinfo.Job.Name)
+		}
+	}
+}
+
+func TestRequest_String(t *testing.T) {
+	testCases := []struct {
+		Name          string
+		req           Request
+		ExpectedValue string
+	}{
+		{
+			Name: "RequestToString",
+			req: Request{
+				Namespace:  "testnamespace",
+				JobName:    "testjobname",
+				TaskName:   "testtaskname",
+				Event:      v1alpha1.AnyEvent,
+				ExitCode:   0,
+				Action:     v1alpha1.SyncJobAction,
+				JobVersion: 0,
+			},
+			ExpectedValue: "Job: testnamespace/testjobname, Task:testtaskname, Event:*, ExitCode:0, Action:SyncJob, JobVersion: 0",
+		},
+	}
+
+	for i, testcase := range testCases {
+		reqString := testcase.req.String()
+
+		if reqString != testcase.ExpectedValue {
+			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectedValue, reqString)
+		}
+	}
+
 }

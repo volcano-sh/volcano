@@ -16,8 +16,10 @@ jobs:
       script:
         - make verify
     - stage: UT Tests
+      before_script:
+        - go get github.com/mattn/goveralls
       script:
-          - make unit-test
+        - make unit-test && $HOME/gopath/bin/goveralls -coverprofile=coverage.txt -service=travis-ci
     - stage: E2E Tests
       before_script:
         # Download kubectl
@@ -27,7 +29,7 @@ jobs:
         - sudo apt-get update
         - sudo apt-get install -y kubectl
         # Download kind binary (0.2.0)
-        - sudo curl -o /usr/local/bin/kind -L https://github.com/kubernetes-sigs/kind/releases/download/0.2.0/kind-linux-amd64
+        - sudo curl -o /usr/local/bin/kind -L https://github.com/kubernetes-sigs/kind/releases/download/v0.4.0/kind-linux-amd64
         - sudo chmod +x /usr/local/bin/kind
       script:
         - make vkctl
@@ -35,6 +37,10 @@ jobs:
         - make e2e-test-kind
       after_failure:
         # Echo logs and upload
+        - test -f helm-tiller.log &&  "******<<helm tiller service logs>>******" && cat helm-tiller.log
         - test -f volcano-admission.log && echo "******<<admission logs>>******" && cat volcano-admission.log
         - test -f volcano-controller.log && echo "******<<controller logs>>******" && cat volcano-controller.log
         - test -f volcano-scheduler.log && echo "******<<scheduler logs>>******" && cat volcano-scheduler.log
+notifications:
+  webhooks: https://www.travisbuddy.com/
+  on_success: never

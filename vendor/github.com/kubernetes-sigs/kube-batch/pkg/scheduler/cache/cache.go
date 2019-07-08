@@ -114,7 +114,7 @@ type defaultBinder struct {
 //Bind will send bind request to api server
 func (db *defaultBinder) Bind(p *v1.Pod, hostname string) error {
 	if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(&v1.Binding{
-		ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: p.UID},
+		ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: p.UID, Annotations: p.Annotations},
 		Target: v1.ObjectReference{
 			Kind: "Node",
 			Name: hostname,
@@ -145,6 +145,31 @@ func (de *defaultEvictor) Evict(p *v1.Pod) error {
 type defaultStatusUpdater struct {
 	kubeclient *kubernetes.Clientset
 	kbclient   *kbver.Clientset
+}
+
+// following the same logic as podutil.UpdatePodCondition
+func podConditionHaveUpdate(status *v1.PodStatus, condition *v1.PodCondition) bool {
+	lastTransitionTime := metav1.Now()
+	// Try to find this pod condition.
+	_, oldCondition := podutil.GetPodCondition(status, condition.Type)
+
+	if oldCondition == nil {
+		// We are adding new pod condition.
+		return true
+	}
+	// We are updating an existing condition, so we need to check if it has changed.
+	if condition.Status == oldCondition.Status {
+		lastTransitionTime = oldCondition.LastTransitionTime
+	}
+
+	isEqual := condition.Status == oldCondition.Status &&
+		condition.Reason == oldCondition.Reason &&
+		condition.Message == oldCondition.Message &&
+		condition.LastProbeTime.Equal(&oldCondition.LastProbeTime) &&
+		lastTransitionTime.Equal(&oldCondition.LastTransitionTime)
+
+	// Return true if one of the fields have changed.
+	return !isEqual
 }
 
 // UpdatePodCondition will Update pod with podCondition
@@ -184,6 +209,19 @@ func (dvb *defaultVolumeBinder) BindVolumes(task *api.TaskInfo) error {
 }
 
 func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue string) *SchedulerCache {
+	kubeClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
+	}
+	kbClient, err := kbver.NewForConfig(config)
+	if err != nil {
+		panic(fmt.Sprintf("failed init kbClient, with err: %v", err))
+	}
+	eventClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(fmt.Sprintf("failed init eventClient, with err: %v", err))
+	}
+
 	sc := &SchedulerCache{
 		Jobs:            make(map[kbapi.JobID]*kbapi.JobInfo),
 		Nodes:           make(map[string]*kbapi.NodeInfo),
@@ -191,15 +229,15 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		PriorityClasses: make(map[string]*v1beta1.PriorityClass),
 		errTasks:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		deletedJobs:     workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		kubeclient:      kubernetes.NewForConfigOrDie(config),
-		kbclient:        kbver.NewForConfigOrDie(config),
+		kubeclient:      kubeClient,
+		kbclient:        kbClient,
 		defaultQueue:    defaultQueue,
 		schedulerName:   schedulerName,
 	}
 
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
-	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: sc.kubeclient.CoreV1().Events("")})
+	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: eventClient.CoreV1().Events("")})
 	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: schedulerName})
 
 	sc.Binder = &defaultBinder{
@@ -460,22 +498,27 @@ func (sc *SchedulerCache) BindVolumes(task *api.TaskInfo) error {
 
 // taskUnschedulable updates pod status of pending task
 func (sc *SchedulerCache) taskUnschedulable(task *api.TaskInfo, message string) error {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	pod := task.Pod
 
-	pod := task.Pod.DeepCopy()
-
-	// The reason field in 'Events' should be "FailedScheduling", there is not constants defined for this in
-	// k8s core, so using the same string here.
-	// The reason field in PodCondition should be "Unschedulable"
-	sc.Recorder.Eventf(pod, v1.EventTypeWarning, "FailedScheduling", message)
-	if _, err := sc.StatusUpdater.UpdatePodCondition(pod, &v1.PodCondition{
+	condition := &v1.PodCondition{
 		Type:    v1.PodScheduled,
 		Status:  v1.ConditionFalse,
 		Reason:  v1.PodReasonUnschedulable,
 		Message: message,
-	}); err != nil {
-		return err
+	}
+
+	if podConditionHaveUpdate(&pod.Status, condition) {
+		pod = pod.DeepCopy()
+
+		// The reason field in 'Events' should be "FailedScheduling", there is not constants defined for this in
+		// k8s core, so using the same string here.
+		// The reason field in PodCondition should be "Unschedulable"
+		sc.Recorder.Eventf(pod, v1.EventTypeWarning, "FailedScheduling", message)
+		if _, err := sc.StatusUpdater.UpdatePodCondition(pod, condition); err != nil {
+			return err
+		}
+	} else {
+		glog.V(4).Infof("task unscheduleable %s/%s, message: %s, skip by no condition update", pod.Namespace, pod.Name, message)
 	}
 
 	return nil
@@ -560,6 +603,30 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 		snapshot.Queues[value.UID] = value.Clone()
 	}
 
+	var cloneJobLock sync.Mutex
+	var wg sync.WaitGroup
+
+	cloneJob := func(value *api.JobInfo) {
+		if value.PodGroup != nil {
+			value.Priority = sc.defaultPriority
+
+			priName := value.PodGroup.Spec.PriorityClassName
+			if priorityClass, found := sc.PriorityClasses[priName]; found {
+				value.Priority = priorityClass.Value
+			}
+
+			glog.V(4).Infof("The priority of job <%s/%s> is <%s/%d>",
+				value.Namespace, value.Name, priName, value.Priority)
+		}
+
+		clonedJob := value.Clone()
+
+		cloneJobLock.Lock()
+		snapshot.Jobs[value.UID] = clonedJob
+		cloneJobLock.Unlock()
+		wg.Done()
+	}
+
 	for _, value := range sc.Jobs {
 		// If no scheduling spec, does not handle it.
 		if value.PodGroup == nil && value.PDB == nil {
@@ -575,20 +642,10 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 			continue
 		}
 
-		if value.PodGroup != nil {
-			value.Priority = sc.defaultPriority
-
-			priName := value.PodGroup.Spec.PriorityClassName
-			if priorityClass, found := sc.PriorityClasses[priName]; found {
-				value.Priority = priorityClass.Value
-			}
-
-			glog.V(4).Infof("The priority of job <%s/%s> is <%s/%d>",
-				value.Namespace, value.Name, priName, value.Priority)
-		}
-
-		snapshot.Jobs[value.UID] = value.Clone()
+		wg.Add(1)
+		go cloneJob(value)
 	}
+	wg.Wait()
 
 	glog.V(3).Infof("There are <%d> Jobs, <%d> Queues and <%d> Nodes in total for scheduling.",
 		len(snapshot.Jobs), len(snapshot.Queues), len(snapshot.Nodes))
@@ -629,7 +686,10 @@ func (sc *SchedulerCache) String() string {
 
 // RecordJobStatusEvent records related events according to job status.
 func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
-	jobErrMsg := job.FitError()
+	baseErrorMessage := job.JobFitErrors
+	if baseErrorMessage == "" {
+		baseErrorMessage = kbapi.AllNodeUnavailableMsg
+	}
 
 	if !shadowPodGroup(job.PodGroup) {
 		pgUnschedulable := job.PodGroup != nil &&
@@ -639,17 +699,20 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
 
 		// If pending or unschedulable, record unschedulable event.
 		if pgUnschedulable || pdbUnschedulabe {
-			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
-				len(job.TaskStatusIndex[api.Pending]), len(job.Tasks), job.FitError())
 			sc.Recorder.Eventf(job.PodGroup, v1.EventTypeWarning,
-				string(v1alpha1.PodGroupUnschedulableType), msg)
+				string(v1alpha1.PodGroupUnschedulableType), baseErrorMessage)
 		}
 	}
 
 	// Update podCondition for tasks Allocated and Pending before job discarded
 	for _, status := range []api.TaskStatus{api.Allocated, api.Pending} {
 		for _, taskInfo := range job.TaskStatusIndex[status] {
-			if err := sc.taskUnschedulable(taskInfo, jobErrMsg); err != nil {
+			msg := baseErrorMessage
+			fitError := job.NodesFitErrors[taskInfo.UID]
+			if fitError != nil {
+				msg = fitError.Error()
+			}
+			if err := sc.taskUnschedulable(taskInfo, msg); err != nil {
 				glog.Errorf("Failed to update unschedulable task status <%s/%s>: %v",
 					taskInfo.Namespace, taskInfo.Name, err)
 			}
@@ -658,8 +721,8 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
 }
 
 // UpdateJobStatus update the status of job and its tasks.
-func (sc *SchedulerCache) UpdateJobStatus(job *kbapi.JobInfo) (*kbapi.JobInfo, error) {
-	if !shadowPodGroup(job.PodGroup) {
+func (sc *SchedulerCache) UpdateJobStatus(job *kbapi.JobInfo, updatePG bool) (*kbapi.JobInfo, error) {
+	if updatePG && !shadowPodGroup(job.PodGroup) {
 		pg, err := sc.StatusUpdater.UpdatePodGroup(job.PodGroup)
 		if err != nil {
 			return nil, err

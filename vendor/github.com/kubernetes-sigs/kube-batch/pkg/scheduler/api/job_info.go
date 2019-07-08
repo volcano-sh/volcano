@@ -139,6 +139,9 @@ type JobInfo struct {
 
 	NodesFitDelta NodeResourceMap
 
+	JobFitErrors   string
+	NodesFitErrors map[TaskID]*FitErrors
+
 	// All tasks of the Job.
 	TaskStatusIndex map[TaskStatus]tasksMap
 	Tasks           tasksMap
@@ -163,6 +166,8 @@ func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 		NodesFitDelta: make(NodeResourceMap),
 		Allocated:     EmptyResource(),
 		TotalRequest:  EmptyResource(),
+
+		NodesFitErrors: make(map[TaskID]*FitErrors),
 
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},
@@ -301,8 +306,10 @@ func (ji *JobInfo) Clone() *JobInfo {
 		TotalRequest:  EmptyResource(),
 		NodesFitDelta: make(NodeResourceMap),
 
+		NodesFitErrors: make(map[TaskID]*FitErrors),
+
 		PDB:      ji.PDB,
-		PodGroup: ji.PodGroup,
+		PodGroup: ji.PodGroup.DeepCopy(),
 
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},
@@ -338,36 +345,21 @@ func (ji JobInfo) String() string {
 // FitError returns detailed information on why a job's task failed to fit on
 // each available node
 func (ji *JobInfo) FitError() string {
-	if len(ji.NodesFitDelta) == 0 {
-		reasonMsg := fmt.Sprintf("0 nodes are available")
-		return reasonMsg
-	}
-
 	reasons := make(map[string]int)
-	for _, v := range ji.NodesFitDelta {
-		if v.Get(v1.ResourceCPU) < 0 {
-			reasons["cpu"]++
-		}
-		if v.Get(v1.ResourceMemory) < 0 {
-			reasons["memory"]++
-		}
-
-		for rName, rQuant := range v.ScalarResources {
-			if rQuant < 0 {
-				reasons[string(rName)]++
-			}
-		}
+	for status, taskMap := range ji.TaskStatusIndex {
+		reasons[fmt.Sprintf("%s", status)] += len(taskMap)
 	}
+	reasons["minAvailable"] = int(ji.MinAvailable)
 
 	sortReasonsHistogram := func() []string {
 		reasonStrings := []string{}
 		for k, v := range reasons {
-			reasonStrings = append(reasonStrings, fmt.Sprintf("%v insufficient %v", v, k))
+			reasonStrings = append(reasonStrings, fmt.Sprintf("%v %v", v, k))
 		}
 		sort.Strings(reasonStrings)
 		return reasonStrings
 	}
-	reasonMsg := fmt.Sprintf("0/%v nodes are available, %v.", len(ji.NodesFitDelta), strings.Join(sortReasonsHistogram(), ", "))
+	reasonMsg := fmt.Sprintf("job is not ready, %v.", strings.Join(sortReasonsHistogram(), ", "))
 	return reasonMsg
 }
 

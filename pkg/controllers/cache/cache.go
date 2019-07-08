@@ -19,8 +19,12 @@ package cache
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/golang/glog"
+
+	"golang.org/x/time/rate"
+
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"
@@ -71,9 +75,15 @@ func jobKeyOfPod(pod *v1.Pod) (string, error) {
 
 //New gets the job Cache
 func New() Cache {
+	queue := workqueue.NewMaxOfRateLimiter(
+		workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 180*time.Second),
+		// 10 qps, 100 bucket size.  This is only for retry speed and its only the overall factor (not per item)
+		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+	)
+
 	return &jobCache{
 		jobs:        map[string]*apis.JobInfo{},
-		deletedJobs: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		deletedJobs: workqueue.NewRateLimitingQueue(queue),
 	}
 }
 

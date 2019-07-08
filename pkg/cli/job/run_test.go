@@ -18,9 +18,13 @@ package job
 
 import (
 	"encoding/json"
+	"github.com/spf13/cobra"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
+	"time"
 
 	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
@@ -40,24 +44,77 @@ func TestCreateJob(t *testing.T) {
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
-	launchJobFlags.Master = server.URL
-	launchJobFlags.Namespace = "test"
+	fileName := time.Now().String() + "testCreateJob.yaml"
+	val, err := json.Marshal(response)
+	if err != nil {
+		panic(err)
+	}
+	err = ioutil.WriteFile(fileName, val, os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
+	defer os.Remove(fileName)
 
 	testCases := []struct {
 		Name        string
 		ExpectValue error
+		FileName    string
 	}{
 		{
 			Name:        "CreateJob",
 			ExpectValue: nil,
 		},
+		{
+			Name:        "CreateJobWithFile",
+			FileName:    fileName,
+			ExpectValue: nil,
+		},
 	}
 
 	for i, testcase := range testCases {
+		launchJobFlags = &runFlags{
+			commonFlags: commonFlags{
+				Master: server.URL,
+			},
+			Namespace: "test",
+			Requests:  "cpu=1000m,memory=100Mi",
+		}
+
 		err := RunJob()
 		if err != nil {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, err)
 		}
+	}
+
+}
+
+func TestInitRunFlags(t *testing.T) {
+	var cmd cobra.Command
+	InitRunFlags(&cmd)
+
+	if cmd.Flag("namespace") == nil {
+		t.Errorf("Could not find the flag namespace")
+	}
+	if cmd.Flag("scheduler") == nil {
+		t.Errorf("Could not find the flag scheduler")
+	}
+	if cmd.Flag("image") == nil {
+		t.Errorf("Could not find the flag image")
+	}
+	if cmd.Flag("replicas") == nil {
+		t.Errorf("Could not find the flag replicas")
+	}
+	if cmd.Flag("name") == nil {
+		t.Errorf("Could not find the flag name")
+	}
+	if cmd.Flag("min") == nil {
+		t.Errorf("Could not find the flag min")
+	}
+	if cmd.Flag("requests") == nil {
+		t.Errorf("Could not find the flag requests")
+	}
+	if cmd.Flag("limits") == nil {
+		t.Errorf("Could not find the flag limits")
 	}
 
 }

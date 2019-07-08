@@ -21,8 +21,8 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	vkapi "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	"github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
+	vkapi "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
 type createFlags struct {

@@ -18,6 +18,7 @@ package job
 
 import (
 	"encoding/json"
+	"github.com/spf13/cobra"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -71,6 +72,19 @@ func TestResumeJob(t *testing.T) {
 		if err != nil {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, err)
 		}
+	}
+
+}
+
+func TestInitResumeFlags(t *testing.T) {
+	var cmd cobra.Command
+	InitResumeFlags(&cmd)
+
+	if cmd.Flag("namespace") == nil {
+		t.Errorf("Could not find the flag namespace")
+	}
+	if cmd.Flag("name") == nil {
+		t.Errorf("Could not find the flag scheduler")
 	}
 
 }
