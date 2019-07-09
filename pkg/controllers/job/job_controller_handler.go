@@ -134,15 +134,11 @@ func (cc *Controller) addPod(obj interface{}) {
 
 	jobName, found := pod.Annotations[vkbatchv1.JobNameKey]
 	if !found {
-		glog.Infof("Failed to find jobName of Pod <%s/%s>, skipping",
-			pod.Namespace, pod.Name)
 		return
 	}
 
 	version, found := pod.Annotations[vkbatchv1.JobVersion]
 	if !found {
-		glog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
-			pod.Namespace, pod.Name)
 		return
 	}
 
@@ -188,8 +184,6 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 
 	taskName, found := newPod.Annotations[vkbatchv1.TaskSpecKey]
 	if !found {
-		glog.Infof("Failed to find taskName of Pod <%s/%s>, skipping",
-			newPod.Namespace, newPod.Name)
 		return
 	}
 
@@ -202,8 +196,6 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 
 	version, found := newPod.Annotations[vkbatchv1.JobVersion]
 	if !found {
-		glog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
-			newPod.Namespace, newPod.Name)
 		return
 	}
 
@@ -283,15 +275,11 @@ func (cc *Controller) deletePod(obj interface{}) {
 
 	jobName, found := pod.Annotations[vkbatchv1.JobNameKey]
 	if !found {
-		glog.Infof("Failed to find jobName of Pod <%s/%s>, skipping",
-			pod.Namespace, pod.Name)
 		return
 	}
 
 	version, found := pod.Annotations[vkbatchv1.JobVersion]
 	if !found {
-		glog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
-			pod.Namespace, pod.Name)
 		return
 	}
 
