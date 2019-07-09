@@ -115,32 +115,43 @@ func validatePolicies(policies []v1alpha1.LifecyclePolicy, fldPath *field.Path) 
 	exitCodes := map[int32]struct{}{}
 
 	for _, policy := range policies {
-		if policy.Event != "" && policy.ExitCode != nil {
+		if (policy.Event != "" || len(policy.Events) != 0) && policy.ExitCode != nil {
 			err = multierror.Append(err, fmt.Errorf("must not specify event and exitCode simultaneously"))
 			break
 		}
 
-		if policy.Event == "" && policy.ExitCode == nil {
+		if policy.Event == "" && len(policy.Events) == 0 && policy.ExitCode == nil {
 			err = multierror.Append(err, fmt.Errorf("either event and exitCode should be specified"))
 			break
 		}
 
-		if policy.Event != "" {
-			if allow, ok := policyEventMap[policy.Event]; !ok || !allow {
-				err = multierror.Append(err, field.Invalid(fldPath, policy.Event, fmt.Sprintf("invalid policy event")))
+		if len(policy.Event) != 0 || len(policy.Events) != 0 {
+			bFlag := false
+			policyEventsList := getEventlist(policy)
+			for _, event := range policyEventsList {
+				if allow, ok := policyEventMap[event]; !ok || !allow {
+					err = multierror.Append(err, field.Invalid(fldPath, event, fmt.Sprintf("invalid policy event")))
+					bFlag = true
+					break
+				}
+
+				if allow, ok := policyActionMap[policy.Action]; !ok || !allow {
+					err = multierror.Append(err, field.Invalid(fldPath, policy.Action, fmt.Sprintf("invalid policy action")))
+					bFlag = true
+					break
+				}
+				if _, found := policyEvents[event]; found {
+					err = multierror.Append(err, fmt.Errorf("duplicate event %v  across different policy", event))
+					bFlag = true
+					break
+				} else {
+					policyEvents[event] = struct{}{}
+				}
+			}
+			if bFlag == true {
 				break
 			}
 
-			if allow, ok := policyActionMap[policy.Action]; !ok || !allow {
-				err = multierror.Append(err, field.Invalid(fldPath, policy.Action, fmt.Sprintf("invalid policy action")))
-				break
-			}
-			if _, found := policyEvents[policy.Event]; found {
-				err = multierror.Append(err, fmt.Errorf("duplicate event %v", policy.Event))
-				break
-			} else {
-				policyEvents[policy.Event] = struct{}{}
-			}
 		} else {
 			if *policy.ExitCode == 0 {
 				err = multierror.Append(err, fmt.Errorf("0 is not a valid error code"))
@@ -160,6 +171,27 @@ func validatePolicies(policies []v1alpha1.LifecyclePolicy, fldPath *field.Path) 
 	}
 
 	return err
+}
+
+func getEventlist(policy v1alpha1.LifecyclePolicy) []v1alpha1.Event {
+	policyEventsList := policy.Events
+	if len(policy.Event) > 0 {
+		policyEventsList = append(policyEventsList, policy.Event)
+	}
+	uniquePolicyEventlist := removeDuplicates(policyEventsList)
+	return uniquePolicyEventlist
+}
+
+func removeDuplicates(EventList []v1alpha1.Event) []v1alpha1.Event {
+	keys := make(map[v1alpha1.Event]bool)
+	list := []v1alpha1.Event{}
+	for _, val := range EventList {
+		if _, value := keys[val]; !value {
+			keys[val] = true
+			list = append(list, val)
+		}
+	}
+	return list
 }
 
 func getValidEvents() []v1alpha1.Event {

@@ -180,6 +180,11 @@ type LifecyclePolicy struct {
 	// +optional
 	Event Event `json:"event,omitempty" protobuf:"bytes,2,opt,name=event"`
 
+	// The Events recorded by scheduler; the controller takes actions
+	// according to this Events.
+	// +optional
+	Events []Event `json:"events,omitempty" protobuf:"bytes,3,opt,name=events"`
+
 	// The exit code of the pod container, controller will take action
 	// according to this code.
 	// Note: only one of `Event` or `ExitCode` can be specified.
@@ -189,7 +194,7 @@ type LifecyclePolicy struct {
 	// Timeout is the grace period for controller to take actions.
 	// Default to nil (take action immediately).
 	// +optional
-	Timeout *metav1.Duration `json:"timeout,omitempty" protobuf:"bytes,3,opt,name=timeout"`
+	Timeout *metav1.Duration `json:"timeout,omitempty" protobuf:"bytes,4,opt,name=timeout"`
 }
 
 // TaskSpec specifies the task specification of Job
