@@ -85,7 +85,8 @@ type SchedulerCache struct {
 	nsInformer               infov1.NamespaceInformer
 	podGroupInformerv1alpha1 kbinfov1.PodGroupInformer
 	podGroupInformerv1alpha2 kbinfov2.PodGroupInformer
-	queueInformer            kbinfov1.QueueInformer
+	queueInformerv1alpha1    kbinfov1.QueueInformer
+	queueInformerv1alpha2    kbinfov2.QueueInformer
 	pvInformer               infov1.PersistentVolumeInformer
 	pvcInformer              infov1.PersistentVolumeClaimInformer
 	scInformer               storagev1.StorageClassInformer
@@ -370,12 +371,20 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		DeleteFunc: sc.DeletePodGroupAlpha2,
 	})
 
-	// create informer for Queue information
-	sc.queueInformer = kbinformer.Scheduling().V1alpha1().Queues()
-	sc.queueInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddQueue,
-		UpdateFunc: sc.UpdateQueue,
-		DeleteFunc: sc.DeleteQueue,
+	// create informer(v1alpha1) for Queue information
+	sc.queueInformerv1alpha1 = kbinformer.Scheduling().V1alpha1().Queues()
+	sc.queueInformerv1alpha1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddQueuev1alpha1,
+		UpdateFunc: sc.UpdateQueuev1alpha1,
+		DeleteFunc: sc.DeleteQueuev1alpha1,
+	})
+
+	// create informer(v1alpha2) for Queue information
+	sc.queueInformerv1alpha2 = kbinformer.Scheduling().V1alpha2().Queues()
+	sc.queueInformerv1alpha2.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddQueuev1alpha2,
+		UpdateFunc: sc.UpdateQueuev1alpha2,
+		DeleteFunc: sc.DeleteQueuev1alpha2,
 	})
 
 	return sc
@@ -391,7 +400,8 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.pvInformer.Informer().Run(stopCh)
 	go sc.pvcInformer.Informer().Run(stopCh)
 	go sc.scInformer.Informer().Run(stopCh)
-	go sc.queueInformer.Informer().Run(stopCh)
+	go sc.queueInformerv1alpha1.Informer().Run(stopCh)
+	go sc.queueInformerv1alpha2.Informer().Run(stopCh)
 
 	if options.ServerOpts.EnablePriorityClass {
 		go sc.pcInformer.Informer().Run(stopCh)
@@ -418,7 +428,8 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 				sc.pvInformer.Informer().HasSynced,
 				sc.pvcInformer.Informer().HasSynced,
 				sc.scInformer.Informer().HasSynced,
-				sc.queueInformer.Informer().HasSynced,
+				sc.queueInformerv1alpha1.Informer().HasSynced,
+				sc.queueInformerv1alpha2.Informer().HasSynced,
 			}
 			if options.ServerOpts.EnablePriorityClass {
 				informerSynced = append(informerSynced, sc.pcInformer.Informer().HasSynced)

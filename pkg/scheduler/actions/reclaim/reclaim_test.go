@@ -134,7 +134,7 @@ func TestReclaim(t *testing.T) {
 		}
 
 		for _, q := range test.queues {
-			schedulerCache.AddQueue(q)
+			schedulerCache.AddQueuev1alpha1(q)
 		}
 
 		trueValue := true

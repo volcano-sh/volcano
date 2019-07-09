@@ -769,19 +769,31 @@ func (sc *SchedulerCache) DeletePDB(obj interface{}) {
 	return
 }
 
-//AddQueue add queue to scheduler cache
-func (sc *SchedulerCache) AddQueue(obj interface{}) {
+//AddQueuev1alpha1 add queue to scheduler cache
+func (sc *SchedulerCache) AddQueuev1alpha1(obj interface{}) {
 	ss, ok := obj.(*kbv1.Queue)
 	if !ok {
 		glog.Errorf("Cannot convert to *kbv1.Queue: %v", obj)
 		return
 	}
 
+	marshalled, err := json.Marshal(*ss)
+	if err != nil {
+		glog.Errorf("Failed to Marshal Queue %s with error: %v", ss.Name, err)
+	}
+
+	queue := &kbapi.Queue{}
+	err = json.Unmarshal(marshalled, queue)
+	if err != nil {
+		glog.Errorf("Failed to Unmarshal Data into api.Queue type with error: %v", err)
+	}
+	queue.Version = kbapi.QueueVersionV1Alpha1
+
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
 	glog.V(4).Infof("Add Queue(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
-	err := sc.addQueue(ss)
+	err = sc.addQueue(queue)
 	if err != nil {
 		glog.Errorf("Failed to add Queue %s into cache: %v", ss.Name, err)
 		return
@@ -789,8 +801,40 @@ func (sc *SchedulerCache) AddQueue(obj interface{}) {
 	return
 }
 
-//UpdateQueue update queue to scheduler cache
-func (sc *SchedulerCache) UpdateQueue(oldObj, newObj interface{}) {
+//AddQueuev1alpha2 add queue to scheduler cache
+func (sc *SchedulerCache) AddQueuev1alpha2(obj interface{}) {
+	ss, ok := obj.(*kbv2.Queue)
+	if !ok {
+		glog.Errorf("Cannot convert to *kbv2.Queue: %v", obj)
+		return
+	}
+
+	marshalled, err := json.Marshal(*ss)
+	if err != nil {
+		glog.Errorf("Failed to Marshal Queue %s with error: %v", ss.Name, err)
+	}
+
+	queue := &kbapi.Queue{}
+	err = json.Unmarshal(marshalled, queue)
+	if err != nil {
+		glog.Errorf("Failed to Unmarshal Data into api.Queue type with error: %v", err)
+	}
+	queue.Version = kbapi.QueueVersionV1Alpha2
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	glog.V(4).Infof("Add Queue(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
+	err = sc.addQueue(queue)
+	if err != nil {
+		glog.Errorf("Failed to add Queue %s into cache: %v", ss.Name, err)
+		return
+	}
+	return
+}
+
+//UpdateQueuev1alpha1 update queue to scheduler cache
+func (sc *SchedulerCache) UpdateQueuev1alpha1(oldObj, newObj interface{}) {
 	oldSS, ok := oldObj.(*kbv1.Queue)
 	if !ok {
 		glog.Errorf("Cannot convert oldObj to *kbv1.Queue: %v", oldObj)
@@ -802,10 +846,34 @@ func (sc *SchedulerCache) UpdateQueue(oldObj, newObj interface{}) {
 		return
 	}
 
+	oldMarshalled, err := json.Marshal(*oldSS)
+	if err != nil {
+		glog.Errorf("Failed to Marshal Queue %s with error: %v", oldSS.Name, err)
+	}
+
+	oldQueue := &kbapi.Queue{}
+	err = json.Unmarshal(oldMarshalled, oldQueue)
+	if err != nil {
+		glog.Errorf("Failed to Unmarshal Data into api.Queue type with error: %v", err)
+	}
+	oldQueue.Version = kbapi.QueueVersionV1Alpha1
+
+	newMarshalled, err := json.Marshal(*newSS)
+	if err != nil {
+		glog.Errorf("Failed to Marshal Queue %s with error: %v", newSS.Name, err)
+	}
+
+	newQueue := &kbapi.Queue{}
+	err = json.Unmarshal(newMarshalled, newQueue)
+	if err != nil {
+		glog.Errorf("Failed to Unmarshal Data into api.Queue type with error: %v", err)
+	}
+	newQueue.Version = kbapi.QueueVersionV1Alpha1
+
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err := sc.updateQueue(oldSS, newSS)
+	err = sc.updateQueue(oldQueue, newQueue)
 	if err != nil {
 		glog.Errorf("Failed to update Queue %s into cache: %v", oldSS.Name, err)
 		return
@@ -813,8 +881,56 @@ func (sc *SchedulerCache) UpdateQueue(oldObj, newObj interface{}) {
 	return
 }
 
-//DeleteQueue delete queue from the scheduler cache
-func (sc *SchedulerCache) DeleteQueue(obj interface{}) {
+//UpdateQueuev1alpha2 update queue to scheduler cache
+func (sc *SchedulerCache) UpdateQueuev1alpha2(oldObj, newObj interface{}) {
+	oldSS, ok := oldObj.(*kbv2.Queue)
+	if !ok {
+		glog.Errorf("Cannot convert oldObj to *kbv2.Queue: %v", oldObj)
+		return
+	}
+	newSS, ok := newObj.(*kbv2.Queue)
+	if !ok {
+		glog.Errorf("Cannot convert newObj to *kbv2.Queue: %v", newObj)
+		return
+	}
+
+	oldMarshalled, err := json.Marshal(*oldSS)
+	if err != nil {
+		glog.Errorf("Failed to Marshal Queue %s with error: %v", oldSS.Name, err)
+	}
+
+	oldQueue := &kbapi.Queue{}
+	err = json.Unmarshal(oldMarshalled, oldQueue)
+	if err != nil {
+		glog.Errorf("Failed to Unmarshal Data into api.Queue type with error: %v", err)
+	}
+	oldQueue.Version = kbapi.QueueVersionV1Alpha2
+
+	newMarshalled, err := json.Marshal(*newSS)
+	if err != nil {
+		glog.Errorf("Failed to Marshal Queue %s with error: %v", newSS.Name, err)
+	}
+
+	newQueue := &kbapi.Queue{}
+	err = json.Unmarshal(newMarshalled, newQueue)
+	if err != nil {
+		glog.Errorf("Failed to Unmarshal Data into api.Queue type with error: %v", err)
+	}
+	newQueue.Version = kbapi.QueueVersionV1Alpha2
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	err = sc.updateQueue(oldQueue, newQueue)
+	if err != nil {
+		glog.Errorf("Failed to update Queue %s into cache: %v", oldSS.Name, err)
+		return
+	}
+	return
+}
+
+//DeleteQueuev1alpha1 delete queue from the scheduler cache
+func (sc *SchedulerCache) DeleteQueuev1alpha1(obj interface{}) {
 	var ss *kbv1.Queue
 	switch t := obj.(type) {
 	case *kbv1.Queue:
@@ -831,10 +947,22 @@ func (sc *SchedulerCache) DeleteQueue(obj interface{}) {
 		return
 	}
 
+	marshalled, err := json.Marshal(*ss)
+	if err != nil {
+		glog.Errorf("Failed to Marshal Queue %s with error: %v", ss.Name, err)
+	}
+
+	queue := &kbapi.Queue{}
+	err = json.Unmarshal(marshalled, queue)
+	if err != nil {
+		glog.Errorf("Failed to Unmarshal Data into api.Queue type with error: %v", err)
+	}
+	queue.Version = kbapi.QueueVersionV1Alpha1
+
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err := sc.deleteQueue(ss)
+	err = sc.deleteQueue(queue)
 	if err != nil {
 		glog.Errorf("Failed to delete Queue %s from cache: %v", ss.Name, err)
 		return
@@ -842,21 +970,62 @@ func (sc *SchedulerCache) DeleteQueue(obj interface{}) {
 	return
 }
 
-func (sc *SchedulerCache) addQueue(queue *kbv1.Queue) error {
+//DeleteQueuev1alpha2 delete queue from the scheduler cache
+func (sc *SchedulerCache) DeleteQueuev1alpha2(obj interface{}) {
+	var ss *kbv2.Queue
+	switch t := obj.(type) {
+	case *kbv2.Queue:
+		ss = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		ss, ok = t.Obj.(*kbv2.Queue)
+		if !ok {
+			glog.Errorf("Cannot convert to *kbv2.Queue: %v", t.Obj)
+			return
+		}
+	default:
+		glog.Errorf("Cannot convert to *kbv1.Queue: %v", t)
+		return
+	}
+
+	marshalled, err := json.Marshal(*ss)
+	if err != nil {
+		glog.Errorf("Failed to Marshal Queue %s with error: %v", ss.Name, err)
+	}
+
+	queue := &kbapi.Queue{}
+	err = json.Unmarshal(marshalled, queue)
+	if err != nil {
+		glog.Errorf("Failed to Unmarshal Data into api.Queue type with error: %v", err)
+	}
+	queue.Version = kbapi.QueueVersionV1Alpha2
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	err = sc.deleteQueue(queue)
+	if err != nil {
+		glog.Errorf("Failed to delete Queue %s from cache: %v", ss.Name, err)
+		return
+	}
+	return
+}
+
+func (sc *SchedulerCache) addQueue(queue *kbapi.Queue) error {
 	qi := kbapi.NewQueueInfo(queue)
 	sc.Queues[qi.UID] = qi
 
 	return nil
 }
 
-func (sc *SchedulerCache) updateQueue(oldObj, newObj *kbv1.Queue) error {
+func (sc *SchedulerCache) updateQueue(oldObj, newObj *kbapi.Queue) error {
 	sc.deleteQueue(oldObj)
 	sc.addQueue(newObj)
 
 	return nil
 }
 
-func (sc *SchedulerCache) deleteQueue(queue *kbv1.Queue) error {
+func (sc *SchedulerCache) deleteQueue(queue *kbapi.Queue) error {
 	qi := kbapi.NewQueueInfo(queue)
 	delete(sc.Queues, qi.UID)
 

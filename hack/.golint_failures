@@ -1,4 +1,5 @@
 volcano.sh/volcano/pkg/apis/scheduling/v1alpha1
+volcano.sh/volcano/pkg/apis/scheduling/v1alpha2
 volcano.sh/volcano/pkg/apis/utils
 volcano.sh/volcano/pkg/scheduler/actions/allocate
 volcano.sh/volcano/pkg/scheduler/actions/backfill
