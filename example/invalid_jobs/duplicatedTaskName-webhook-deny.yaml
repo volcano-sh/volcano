@@ -3,7 +3,7 @@ kind: Job
 metadata:
   name: test-job-webhook-disallow
 spec:
-  schedulerName: kube-batch
+  schedulerName: volcano
   minAvailable: 4
   tasks:
     - replicas: 2

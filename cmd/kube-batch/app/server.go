@@ -49,7 +49,6 @@ const (
 	leaseDuration = 15 * time.Second
 	renewDeadline = 10 * time.Second
 	retryPeriod   = 5 * time.Second
-	apiVersion    = "v1alpha1"
 )
 
 func buildConfig(opt *options.ServerOption) (*rest.Config, error) {
@@ -72,7 +71,7 @@ func buildConfig(opt *options.ServerOption) (*rest.Config, error) {
 	return cfg, nil
 }
 
-// Run the kubeBatch scheduler
+// Run the kube-batch scheduler
 func Run(opt *options.ServerOption) error {
 	if opt.PrintVersion {
 		version.PrintVersionAndExit()
@@ -83,7 +82,6 @@ func Run(opt *options.ServerOption) error {
 		return err
 	}
 
-	// Start policy controller to allocate resources.
 	sched, err := scheduler.NewScheduler(config,
 		opt.SchedulerName,
 		opt.SchedulerConf,
@@ -127,7 +125,7 @@ func Run(opt *options.ServerOption) error {
 
 	rl, err := resourcelock.New(resourcelock.ConfigMapsResourceLock,
 		opt.LockObjectNamespace,
-		"kube-batch",
+		opt.SchedulerName,
 		leaderElectionClient.CoreV1(),
 		resourcelock.ResourceLockConfig{
 			Identity:      id,

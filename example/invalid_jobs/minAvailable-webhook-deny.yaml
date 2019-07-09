@@ -3,7 +3,7 @@ kind: Job
 metadata:
   name: test-job-webhook-disallow
 spec:
-  schedulerName: kube-batch
+  schedulerName: volcano
   minAvailable: 5 ## this job will be rejected because minAvailable is greater than total replicas in tasks
   tasks:
     - replicas: 2

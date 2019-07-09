@@ -4,7 +4,7 @@ metadata:
   name: lm-mpi-job
 spec:
   minAvailable: 3
-  schedulerName: kube-batch
+  schedulerName: volcano
   plugins:
     ssh: []
     svc: []

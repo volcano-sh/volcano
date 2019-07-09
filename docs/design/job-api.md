@@ -457,7 +457,7 @@ metadata:
   name: mpi-job
 spec:
   minAvailable: 2
-  schedulerName: scheduler
+  schedulerName: volcano
   policies:
   - event: PodEvicted
     action: RestartJob

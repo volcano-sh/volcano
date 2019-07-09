@@ -30,7 +30,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
-// Scheduler watches for new unscheduled pods for kubebatch. It attempts to find
+// Scheduler watches for new unscheduled pods for volcano. It attempts to find
 // nodes that they fit on and writes bindings back to the api server.
 type Scheduler struct {
 	cache          schedcache.Cache
