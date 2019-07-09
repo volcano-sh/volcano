@@ -130,7 +130,7 @@ func TestReclaim(t *testing.T) {
 		}
 
 		for _, ss := range test.podGroups {
-			schedulerCache.AddPodGroup(ss)
+			schedulerCache.AddPodGroupAlpha1(ss)
 		}
 
 		for _, q := range test.queues {

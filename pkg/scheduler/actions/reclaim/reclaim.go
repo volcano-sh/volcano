@@ -19,7 +19,6 @@ package reclaim
 import (
 	"github.com/golang/glog"
 
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -54,7 +53,7 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 
 	var underRequest []*api.JobInfo
 	for _, job := range ssn.Jobs {
-		if job.PodGroup.Status.Phase == v1alpha1.PodGroupPending {
+		if job.PodGroup.Status.Phase == api.PodGroupPending {
 			continue
 		}
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {

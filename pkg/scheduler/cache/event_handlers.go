@@ -17,6 +17,7 @@ limitations under the License.
 package cache
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/golang/glog"
@@ -29,6 +30,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	kbv2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/apis/utils"
 	kbapi "volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -359,12 +361,12 @@ func (sc *SchedulerCache) DeleteNode(obj interface{}) {
 	return
 }
 
-func getJobID(pg *kbv1.PodGroup) kbapi.JobID {
+func getJobID(pg *kbapi.PodGroup) kbapi.JobID {
 	return kbapi.JobID(fmt.Sprintf("%s/%s", pg.Namespace, pg.Name))
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) setPodGroup(ss *kbv1.PodGroup) error {
+func (sc *SchedulerCache) setPodGroup(ss *kbapi.PodGroup) error {
 	job := getJobID(ss)
 
 	if len(job) == 0 {
@@ -386,12 +388,12 @@ func (sc *SchedulerCache) setPodGroup(ss *kbv1.PodGroup) error {
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) updatePodGroup(oldQueue, newQueue *kbv1.PodGroup) error {
+func (sc *SchedulerCache) updatePodGroup(oldQueue, newQueue *kbapi.PodGroup) error {
 	return sc.setPodGroup(newQueue)
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) deletePodGroup(ss *kbv1.PodGroup) error {
+func (sc *SchedulerCache) deletePodGroup(ss *kbapi.PodGroup) error {
 	jobID := getJobID(ss)
 
 	job, found := sc.Jobs[jobID]
@@ -407,19 +409,32 @@ func (sc *SchedulerCache) deletePodGroup(ss *kbv1.PodGroup) error {
 	return nil
 }
 
-// AddPodGroup add podgroup to scheduler cache
-func (sc *SchedulerCache) AddPodGroup(obj interface{}) {
+// AddPodGroupAlpha1 add podgroup to scheduler cache
+func (sc *SchedulerCache) AddPodGroupAlpha1(obj interface{}) {
 	ss, ok := obj.(*kbv1.PodGroup)
 	if !ok {
 		glog.Errorf("Cannot convert to *kbv1.PodGroup: %v", obj)
 		return
 	}
 
+	marshalled, err := json.Marshal(*ss)
+	if err != nil {
+		glog.Errorf("Failed to Marshal podgroup %s with error: %v", ss.Name, err)
+	}
+
+	pg := &kbapi.PodGroup{}
+	err = json.Unmarshal(marshalled, pg)
+	if err != nil {
+		glog.Errorf("Failed to Unmarshal Data into api.PodGroup type with error: %v", err)
+	}
+	pg.Version = kbapi.PodGroupVersionV1Alpha1
+
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
 	glog.V(4).Infof("Add PodGroup(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
-	err := sc.setPodGroup(ss)
+
+	err = sc.setPodGroup(pg)
 	if err != nil {
 		glog.Errorf("Failed to add PodGroup %s into cache: %v", ss.Name, err)
 		return
@@ -427,8 +442,41 @@ func (sc *SchedulerCache) AddPodGroup(obj interface{}) {
 	return
 }
 
-// UpdatePodGroup add podgroup to scheduler cache
-func (sc *SchedulerCache) UpdatePodGroup(oldObj, newObj interface{}) {
+// AddPodGroupAlpha2 add podgroup to scheduler cache
+func (sc *SchedulerCache) AddPodGroupAlpha2(obj interface{}) {
+	ss, ok := obj.(*kbv2.PodGroup)
+	if !ok {
+		glog.Errorf("Cannot convert to *kbv2.PodGroup: %v", obj)
+		return
+	}
+
+	marshalled, err := json.Marshal(*ss)
+	if err != nil {
+		glog.Errorf("Failed to Marshal podgroup %s with error: %v", ss.Name, err)
+	}
+
+	pg := &kbapi.PodGroup{}
+	err = json.Unmarshal(marshalled, pg)
+	if err != nil {
+		glog.Errorf("Failed to Unmarshal Data into api.PodGroup type with error: %v", err)
+	}
+	pg.Version = kbapi.PodGroupVersionV1Alpha2
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	glog.V(4).Infof("Add PodGroup(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
+
+	err = sc.setPodGroup(pg)
+	if err != nil {
+		glog.Errorf("Failed to add PodGroup %s into cache: %v", ss.Name, err)
+		return
+	}
+	return
+}
+
+// UpdatePodGroupAlpha1 add podgroup to scheduler cache
+func (sc *SchedulerCache) UpdatePodGroupAlpha1(oldObj, newObj interface{}) {
 	oldSS, ok := oldObj.(*kbv1.PodGroup)
 	if !ok {
 		glog.Errorf("Cannot convert oldObj to *kbv1.SchedulingSpec: %v", oldObj)
@@ -440,10 +488,35 @@ func (sc *SchedulerCache) UpdatePodGroup(oldObj, newObj interface{}) {
 		return
 	}
 
+	oldMarshalled, err := json.Marshal(*oldSS)
+	if err != nil {
+		glog.Errorf("Failed to Marshal podgroup %s with error: %v", oldSS.Name, err)
+	}
+
+	oldPg := &kbapi.PodGroup{}
+	oldPg.Version = kbapi.PodGroupVersionV1Alpha1
+
+	err = json.Unmarshal(oldMarshalled, oldPg)
+	if err != nil {
+		glog.Errorf("Failed to Unmarshal Data into api.PodGroup type with error: %v", err)
+	}
+
+	newMarshalled, err := json.Marshal(*newSS)
+	if err != nil {
+		glog.Errorf("Failed to Marshal podgroup %s with error: %v", newSS.Name, err)
+	}
+
+	newPg := &kbapi.PodGroup{}
+	newPg.Version = kbapi.PodGroupVersionV1Alpha1
+
+	err = json.Unmarshal(newMarshalled, newPg)
+	if err != nil {
+		glog.Errorf("Failed to Unmarshal Data into api.PodGroup type with error: %v", err)
+	}
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err := sc.updatePodGroup(oldSS, newSS)
+	err = sc.updatePodGroup(oldPg, newPg)
 	if err != nil {
 		glog.Errorf("Failed to update SchedulingSpec %s into cache: %v", oldSS.Name, err)
 		return
@@ -451,8 +524,58 @@ func (sc *SchedulerCache) UpdatePodGroup(oldObj, newObj interface{}) {
 	return
 }
 
-// DeletePodGroup delete podgroup from scheduler cache
-func (sc *SchedulerCache) DeletePodGroup(obj interface{}) {
+// UpdatePodGroupAlpha2 add podgroup to scheduler cache
+func (sc *SchedulerCache) UpdatePodGroupAlpha2(oldObj, newObj interface{}) {
+	oldSS, ok := oldObj.(*kbv2.PodGroup)
+	if !ok {
+		glog.Errorf("Cannot convert oldObj to *kbv2.SchedulingSpec: %v", oldObj)
+		return
+	}
+	newSS, ok := newObj.(*kbv2.PodGroup)
+	if !ok {
+		glog.Errorf("Cannot convert newObj to *kbv2.SchedulingSpec: %v", newObj)
+		return
+	}
+
+	oldMarshalled, err := json.Marshal(*oldSS)
+	if err != nil {
+		glog.Errorf("Failed to Marshal podgroup %s with error: %v", oldSS.Name, err)
+	}
+
+	oldPg := &kbapi.PodGroup{}
+	oldPg.Version = kbapi.PodGroupVersionV1Alpha2
+
+	err = json.Unmarshal(oldMarshalled, oldPg)
+	if err != nil {
+		glog.Errorf("Failed to Unmarshal Data into api.PodGroup type with error: %v", err)
+	}
+
+	newMarshalled, err := json.Marshal(*newSS)
+	if err != nil {
+		glog.Errorf("Failed to Marshal podgroup %s with error: %v", newSS.Name, err)
+	}
+
+	newPg := &kbapi.PodGroup{}
+	newPg.Version = kbapi.PodGroupVersionV1Alpha2
+
+	err = json.Unmarshal(newMarshalled, newPg)
+	if err != nil {
+		glog.Errorf("Failed to Unmarshal Data into api.PodGroup type with error: %v", err)
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	err = sc.updatePodGroup(oldPg, newPg)
+	if err != nil {
+		glog.Errorf("Failed to update SchedulingSpec %s into cache: %v", oldSS.Name, err)
+		return
+	}
+	return
+}
+
+// DeletePodGroupAlpha1 delete podgroup from scheduler cache
+func (sc *SchedulerCache) DeletePodGroupAlpha1(obj interface{}) {
 	var ss *kbv1.PodGroup
 	switch t := obj.(type) {
 	case *kbv1.PodGroup:
@@ -469,10 +592,63 @@ func (sc *SchedulerCache) DeletePodGroup(obj interface{}) {
 		return
 	}
 
+	marshalled, err := json.Marshal(*ss)
+	if err != nil {
+		glog.Errorf("Failed to Marshal podgroup %s with error: %v", ss.Name, err)
+	}
+
+	pg := &kbapi.PodGroup{}
+	pg.Version = kbapi.PodGroupVersionV1Alpha1
+	err = json.Unmarshal(marshalled, pg)
+	if err != nil {
+		glog.Errorf("Failed to Unmarshal Data into api.PodGroup type with error: %v", err)
+	}
+
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err := sc.deletePodGroup(ss)
+	err = sc.deletePodGroup(pg)
+	if err != nil {
+		glog.Errorf("Failed to delete SchedulingSpec %s from cache: %v", ss.Name, err)
+		return
+	}
+	return
+}
+
+// DeletePodGroupAlpha2 delete podgroup from scheduler cache
+func (sc *SchedulerCache) DeletePodGroupAlpha2(obj interface{}) {
+	var ss *kbv2.PodGroup
+	switch t := obj.(type) {
+	case *kbv2.PodGroup:
+		ss = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		ss, ok = t.Obj.(*kbv2.PodGroup)
+		if !ok {
+			glog.Errorf("Cannot convert to *kbv2.SchedulingSpec: %v", t.Obj)
+			return
+		}
+	default:
+		glog.Errorf("Cannot convert to *kbv2.SchedulingSpec: %v", t)
+		return
+	}
+
+	marshalled, err := json.Marshal(*ss)
+	if err != nil {
+		glog.Errorf("Failed to Marshal podgroup %s with error: %v", ss.Name, err)
+	}
+
+	pg := &kbapi.PodGroup{}
+	pg.Version = kbapi.PodGroupVersionV1Alpha2
+	err = json.Unmarshal(marshalled, pg)
+	if err != nil {
+		glog.Errorf("Failed to Unmarshal Data into api.PodGroup type with error: %v", err)
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	err = sc.deletePodGroup(pg)
 	if err != nil {
 		glog.Errorf("Failed to delete SchedulingSpec %s from cache: %v", ss.Name, err)
 		return
