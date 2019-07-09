@@ -30,8 +30,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/util/flag"
 
-	"volcano.sh/volcano/cmd/kube-batch/app"
-	"volcano.sh/volcano/cmd/kube-batch/app/options"
+	"volcano.sh/volcano/cmd/scheduler/app"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 
 	// Import default actions/plugins.
 	_ "volcano.sh/volcano/pkg/scheduler/actions"
