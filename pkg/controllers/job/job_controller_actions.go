@@ -513,7 +513,7 @@ func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
 			}
 			podCnt++
 			for _, c := range task.Template.Spec.Containers {
-				addResourceList(minAvailableTasksRes, c.Resources.Requests)
+				addResourceList(minAvailableTasksRes, c.Resources.Requests, c.Resources.Limits)
 			}
 		}
 	}

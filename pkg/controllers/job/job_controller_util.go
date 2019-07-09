@@ -176,13 +176,21 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 	return vkv1.SyncJobAction
 }
 
-func addResourceList(list, new v1.ResourceList) {
-	for name, quantity := range new {
+func addResourceList(list, req, limit v1.ResourceList) {
+	for name, quantity := range req {
 		if value, ok := list[name]; !ok {
 			list[name] = *quantity.Copy()
 		} else {
 			value.Add(quantity)
 			list[name] = value
+		}
+	}
+
+	// If Requests is omitted for a container,
+	// it defaults to Limits if that is explicitly specified.
+	for name, quantity := range limit {
+		if _, ok := list[name]; !ok {
+			list[name] = *quantity.Copy()
 		}
 	}
 }

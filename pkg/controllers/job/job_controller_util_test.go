@@ -642,7 +642,7 @@ func TestAddResourceList(t *testing.T) {
 	}
 
 	for _, testcase := range testcases {
-		addResourceList(testcase.List, testcase.New)
+		addResourceList(testcase.List, testcase.New, nil)
 	}
 }
 
