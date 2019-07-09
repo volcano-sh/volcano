@@ -15,5 +15,5 @@
 
 FROM alpine:latest
 
-ADD vk-controllers /vk-controllers
-ENTRYPOINT ["/vk-controllers"]
+ADD vc-controllers /vc-controllers
+ENTRYPOINT ["/vc-controllers"]

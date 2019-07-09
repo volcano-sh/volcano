@@ -13,19 +13,19 @@ LD_FLAGS=" \
 
 .EXPORT_ALL_VARIABLES:
 
-all: kube-batch vk-controllers vk-admission vkctl
+all: kube-batch vc-controllers vc-admission vkctl
 
 init:
 	mkdir -p ${BIN_DIR}
 
 kube-batch: init
-	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vk-kube-batch ./cmd/kube-batch
+	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vc-kube-batch ./cmd/kube-batch
 
-vk-controllers: init
-	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vk-controllers ./cmd/controllers
+vc-controllers: init
+	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vc-controllers ./cmd/controllers
 
-vk-admission: init
-	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vk-admission ./cmd/admission
+vc-admission: init
+	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vc-admission ./cmd/admission
 
 vkctl: init
 	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vkctl ./cmd/cli
@@ -34,14 +34,14 @@ image_bins:
 	go get github.com/mitchellh/gox
 	CGO_ENABLED=0 gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vkctl ./cmd/cli
 	for name in controllers kube-batch admission; do\
-		CGO_ENABLED=0 gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vk-$$name ./cmd/$$name; \
+		CGO_ENABLED=0 gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-$$name ./cmd/$$name; \
 	done
 
 images: image_bins
 	for name in controllers kube-batch admission; do\
-		cp ${BIN_DIR}/${REL_OSARCH}/vk-$$name ./installer/dockerfile/$$name/; \
+		cp ${BIN_DIR}/${REL_OSARCH}/vc-$$name ./installer/dockerfile/$$name/; \
 		docker build --no-cache -t $(IMAGE_PREFIX)-$$name:$(TAG) ./installer/dockerfile/$$name; \
-		rm installer/dockerfile/$$name/vk-$$name; \
+		rm installer/dockerfile/$$name/vc-$$name; \
 	done
 
 admission-base-image:
