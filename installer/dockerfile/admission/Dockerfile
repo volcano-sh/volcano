@@ -17,6 +17,6 @@
 # since the required packages change very rarely.
 FROM volcanosh/vk-admission-base:latest
 
-ADD vk-admission /vk-admission
+ADD vc-admission /vc-admission
 ADD gen-admission-secret.sh /gen-admission-secret.sh
-ENTRYPOINT ["/vk-admission"]
+ENTRYPOINT ["/vc-admission"]

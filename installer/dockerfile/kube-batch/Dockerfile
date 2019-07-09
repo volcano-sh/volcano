@@ -15,5 +15,5 @@
 
 FROM alpine:latest
 
-ADD vk-kube-batch /vk-kube-batch
-ENTRYPOINT ["/vk-kube-batch"]
+ADD vc-kube-batch /vc-kube-batch
+ENTRYPOINT ["/vc-kube-batch"]

@@ -103,9 +103,9 @@ make images
 ## Verify your images
 # docker images
 REPOSITORY                      TAG                 IMAGE ID            CREATED             SIZE
-volcanosh/vk-admission     latest              a83338506638        8 seconds ago       41.4MB
-volcanosh/vk-kube-batch    latest              faa3c2a25ac3        9 seconds ago       49.6MB
-volcanosh/vk-controllers   latest              7b11606ebfb8        10 seconds ago      44.2MB
+volcanosh/vc-admission     latest              a83338506638        8 seconds ago       41.4MB
+volcanosh/vc-kube-batch    latest              faa3c2a25ac3        9 seconds ago       49.6MB
+volcanosh/vc-controllers   latest              7b11606ebfb8        10 seconds ago      44.2MB
 
 ``` 
 
