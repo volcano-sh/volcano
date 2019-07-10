@@ -13,7 +13,7 @@ LD_FLAGS=" \
 
 .EXPORT_ALL_VARIABLES:
 
-all: scheduler vc-controllers vc-admission vkctl
+all: vc-scheduler vc-controllers vc-admission vkctl
 
 init:
 	mkdir -p ${BIN_DIR}
