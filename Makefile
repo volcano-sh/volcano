@@ -1,7 +1,7 @@
 BIN_DIR=_output/bin
 REL_OSARCH=linux/amd64
 REPO_PATH=volcano.sh/volcano
-IMAGE_PREFIX=volcanosh/vk
+IMAGE_PREFIX=volcanosh/vc
 TAG=latest
 RELEASE_VER=v0.1
 GitSHA=`git rev-parse HEAD`
