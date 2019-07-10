@@ -26,6 +26,9 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
+// PluginName indicates name of volcano scheduler plugin.
+const PluginName = "drf"
+
 var shareDelta = 0.000001
 
 type drfAttr struct {
@@ -54,7 +57,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 }
 
 func (drf *drfPlugin) Name() string {
-	return "drf"
+	return PluginName
 }
 
 func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {

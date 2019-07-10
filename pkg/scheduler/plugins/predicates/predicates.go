@@ -32,6 +32,9 @@ import (
 )
 
 const (
+	// PluginName indicates name of volcano scheduler plugin.
+	PluginName = "predicates"
+
 	// MemoryPressurePredicate is the key for enabling Memory Pressure Predicate in YAML
 	MemoryPressurePredicate = "predicate.MemoryPressureEnable"
 	// DiskPressurePredicate is the key for enabling Disk Pressure Predicate in YAML
@@ -51,7 +54,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 }
 
 func (pp *predicatesPlugin) Name() string {
-	return "predicates"
+	return PluginName
 }
 
 func formatReason(reasons []algorithm.PredicateFailureReason) string {

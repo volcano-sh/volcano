@@ -32,6 +32,9 @@ import (
 )
 
 const (
+	// PluginName indicates name of volcano scheduler plugin.
+	PluginName = "nodeorder"
+
 	// NodeAffinityWeight is the key for providing Node Affinity Priority Weight in YAML
 	NodeAffinityWeight = "nodeaffinity.weight"
 	// PodAffinityWeight is the key for providing Pod Affinity Priority Weight in YAML
@@ -47,43 +50,13 @@ type nodeOrderPlugin struct {
 	pluginArguments framework.Arguments
 }
 
-func getInterPodAffinityScore(name string, interPodAffinityScore schedulerapi.HostPriorityList) int {
-	for _, hostPriority := range interPodAffinityScore {
-		if hostPriority.Host == name {
-			return hostPriority.Score
-		}
-	}
-	return 0
-}
-
-type cachedNodeInfo struct {
-	session *framework.Session
-}
-
-func (c *cachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
-	node, found := c.session.Nodes[name]
-	if !found {
-		for _, cacheNode := range c.session.Nodes {
-			pods := cacheNode.Pods()
-			for _, pod := range pods {
-				if pod.Spec.NodeName == "" {
-					return cacheNode.Node, nil
-				}
-			}
-		}
-		return nil, fmt.Errorf("failed to find node <%s>", name)
-	}
-
-	return node.Node, nil
-}
-
 //New function returns prioritizePlugin object
 func New(aruguments framework.Arguments) framework.Plugin {
 	return &nodeOrderPlugin{pluginArguments: aruguments}
 }
 
 func (pp *nodeOrderPlugin) Name() string {
-	return "nodeorder"
+	return PluginName
 }
 
 type priorityWeight struct {
@@ -248,4 +221,25 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 }
 
 func (pp *nodeOrderPlugin) OnSessionClose(ssn *framework.Session) {
+}
+
+type cachedNodeInfo struct {
+	session *framework.Session
+}
+
+func (c *cachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
+	node, found := c.session.Nodes[name]
+	if !found {
+		for _, cacheNode := range c.session.Nodes {
+			pods := cacheNode.Pods()
+			for _, pod := range pods {
+				if pod.Spec.NodeName == "" {
+					return cacheNode.Node, nil
+				}
+			}
+		}
+		return nil, fmt.Errorf("failed to find node <%s>", name)
+	}
+
+	return node.Node, nil
 }

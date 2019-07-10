@@ -24,6 +24,9 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
+// PluginName indicates name of volcano scheduler plugin.
+const PluginName = "proportion"
+
 type proportionPlugin struct {
 	totalResource *api.Resource
 	queueOpts     map[api.QueueID]*queueAttr
@@ -52,7 +55,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 }
 
 func (pp *proportionPlugin) Name() string {
-	return "proportion"
+	return PluginName
 }
 
 func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {

@@ -22,6 +22,9 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
+// PluginName indicates name of volcano scheduler plugin.
+const PluginName = "priority"
+
 type priorityPlugin struct {
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
@@ -33,7 +36,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 }
 
 func (pp *priorityPlugin) Name() string {
-	return "priority"
+	return PluginName
 }
 
 func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
