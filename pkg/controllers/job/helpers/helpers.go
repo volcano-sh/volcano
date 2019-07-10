@@ -22,6 +22,7 @@ import (
 	"math/rand"
 	"strings"
 	"time"
+	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
 const (
@@ -60,4 +61,9 @@ func genRandomStr(l int) string {
 // MakeVolumeClaimName creates volume claim name
 func MakeVolumeClaimName(jobName string) string {
 	return fmt.Sprintf(VolumeClaimFmt, jobName, genRandomStr(12))
+}
+
+// GetJobKeyByReq gets the key for the job request
+func GetJobKeyByReq(req *apis.Request) string {
+	return fmt.Sprintf("%s/%s", req.Namespace, req.JobName)
 }

@@ -18,12 +18,12 @@ package job
 
 import (
 	"fmt"
-	"sync"
-
-	"github.com/golang/glog"
 	"hash"
 	"hash/fnv"
+	"sync"
 	"time"
+
+	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
@@ -107,10 +107,7 @@ type Controller struct {
 
 	sync.Mutex
 	errTasks workqueue.RateLimitingInterface
-
-	// To protect the queue list by processing multiple workers
-	lock    sync.RWMutex
-	workers uint32
+	workers  uint32
 }
 
 // NewJobController create new Job Controller
@@ -119,7 +116,6 @@ func NewJobController(
 	kbClient kbver.Interface,
 	vkClient vkver.Interface,
 	workers uint32,
-
 ) *Controller {
 
 	//Initialize event client
@@ -205,7 +201,7 @@ func NewJobController(
 }
 
 // Run start JobController
-func (cc *Controller) Run(workers uint32, stopCh <-chan struct{}) {
+func (cc *Controller) Run(stopCh <-chan struct{}) {
 
 	go cc.sharedInformers.Start(stopCh)
 	go cc.jobInformer.Informer().Run(stopCh)
@@ -221,7 +217,7 @@ func (cc *Controller) Run(workers uint32, stopCh <-chan struct{}) {
 
 	go wait.Until(cc.handleCommands, 0, stopCh)
 	var i uint32
-	for i = 0; i < workers; i++ {
+	for i = 0; i < cc.workers; i++ {
 		go func(num uint32) {
 			wait.Until(
 				func() {
@@ -230,7 +226,6 @@ func (cc *Controller) Run(workers uint32, stopCh <-chan struct{}) {
 				time.Second,
 				stopCh)
 		}(i)
-
 	}
 
 	go cc.cache.Run(stopCh)
@@ -242,14 +237,12 @@ func (cc *Controller) Run(workers uint32, stopCh <-chan struct{}) {
 }
 
 func (cc *Controller) worker(i uint32) {
-
 	glog.Infof("worker %d start ...... ", i)
 
 	for cc.processNextReq(i) {
 	}
 }
 
-// TODO we may need to make this sharding more proper if required
 func (cc *Controller) belongsToThisRoutine(key string, count uint32) bool {
 	var hashVal hash.Hash32
 	var val uint32
@@ -266,8 +259,7 @@ func (cc *Controller) belongsToThisRoutine(key string, count uint32) bool {
 	return false
 }
 
-// TODO we may need to make this sharding more proper if required
-func (cc *Controller) getWorkerID(key string) workqueue.RateLimitingInterface {
+func (cc *Controller) getWorkerQueue(key string) workqueue.RateLimitingInterface {
 	var hashVal hash.Hash32
 	var val uint32
 
@@ -276,17 +268,13 @@ func (cc *Controller) getWorkerID(key string) workqueue.RateLimitingInterface {
 
 	val = hashVal.Sum32()
 
-	cc.lock.Lock()
 	queue := cc.queueList[val%cc.workers]
-	cc.lock.Unlock()
 
 	return queue
 }
 
 func (cc *Controller) processNextReq(count uint32) bool {
-	cc.lock.Lock()
 	queue := cc.queueList[count]
-	cc.lock.Unlock()
 	obj, shutdown := queue.Get()
 	if shutdown {
 		glog.Errorf("Fail to pop item from queue")
@@ -297,10 +285,9 @@ func (cc *Controller) processNextReq(count uint32) bool {
 	defer queue.Done(req)
 
 	key := jobcache.JobKeyByReq(&req)
-	// Later we can remove this code if we want
 	if !cc.belongsToThisRoutine(key, count) {
 		glog.Errorf("should not occur The job does not belongs to this routine key:%s, worker:%d...... ", key, count)
-		queueLocal := cc.getWorkerID(key)
+		queueLocal := cc.getWorkerQueue(key)
 		queueLocal.Add(req)
 		return true
 	}

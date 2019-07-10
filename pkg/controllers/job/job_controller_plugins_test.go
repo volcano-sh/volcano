@@ -35,7 +35,7 @@ func newFakeController() *Controller {
 	VolcanoClientSet := volcanoclient.NewSimpleClientset()
 	KubeClientSet := kubeclient.NewSimpleClientset()
 
-	controller := NewJobController(KubeClientSet, KubeBatchClientSet, VolcanoClientSet, 1)
+	controller := NewJobController(KubeClientSet, KubeBatchClientSet, VolcanoClientSet, 3)
 	return controller
 }
 

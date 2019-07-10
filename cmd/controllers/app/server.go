@@ -90,7 +90,7 @@ func Run(opt *options.ServerOption) error {
 	garbageCollector := garbagecollector.New(vkClient)
 
 	run := func(ctx context.Context) {
-		go jobController.Run(opt.WorkerThreads, ctx.Done())
+		go jobController.Run(ctx.Done())
 		go queueController.Run(ctx.Done())
 		go garbageCollector.Run(ctx.Done())
 		<-ctx.Done()

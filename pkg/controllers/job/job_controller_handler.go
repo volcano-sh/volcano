@@ -34,6 +34,7 @@ import (
 
 	"volcano.sh/volcano/pkg/controllers/apis"
 	vkcache "volcano.sh/volcano/pkg/controllers/cache"
+	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
 
 func (cc *Controller) addCommand(obj interface{}) {
@@ -65,8 +66,8 @@ func (cc *Controller) addJob(obj interface{}) {
 		glog.Errorf("Failed to add job <%s/%s>: %v in cache",
 			job.Namespace, job.Name, err)
 	}
-	key := vkcache.JobKeyByReq(&req)
-	queue := cc.getWorkerID(key)
+	key := vkjobhelpers.GetJobKeyByReq(&req)
+	queue := cc.getWorkerQueue(key)
 	queue.Add(req)
 }
 
@@ -102,8 +103,8 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 		Event: vkbatchv1.OutOfSyncEvent,
 	}
 
-	key := vkcache.JobKeyByReq(&req)
-	queue := cc.getWorkerID(key)
+	key := vkjobhelpers.GetJobKeyByReq(&req)
+	queue := cc.getWorkerQueue(key)
 	queue.Add(req)
 }
 
@@ -169,8 +170,8 @@ func (cc *Controller) addPod(obj interface{}) {
 		glog.Errorf("Failed to add Pod <%s/%s>: %v to cache",
 			pod.Namespace, pod.Name, err)
 	}
-	key := vkcache.JobKeyByReq(&req)
-	queue := cc.getWorkerID(key)
+	key := vkjobhelpers.GetJobKeyByReq(&req)
+	queue := cc.getWorkerQueue(key)
 	queue.Add(req)
 }
 
@@ -247,8 +248,8 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		JobVersion: int32(dVersion),
 	}
 
-	key := vkcache.JobKeyByReq(&req)
-	queue := cc.getWorkerID(key)
+	key := vkjobhelpers.GetJobKeyByReq(&req)
+	queue := cc.getWorkerQueue(key)
 	queue.Add(req)
 }
 
@@ -310,8 +311,8 @@ func (cc *Controller) deletePod(obj interface{}) {
 			pod.Namespace, pod.Name, err)
 	}
 
-	key := vkcache.JobKeyByReq(&req)
-	queue := cc.getWorkerID(key)
+	key := vkjobhelpers.GetJobKeyByReq(&req)
+	queue := cc.getWorkerQueue(key)
 	queue.Add(req)
 }
 
@@ -357,8 +358,8 @@ func (cc *Controller) processNextCommand() bool {
 		Action:    vkbatchv1.Action(cmd.Action),
 	}
 
-	key := vkcache.JobKeyByReq(&req)
-	queue := cc.getWorkerID(key)
+	key := vkjobhelpers.GetJobKeyByReq(&req)
+	queue := cc.getWorkerQueue(key)
 	queue.Add(req)
 
 	return true
@@ -394,8 +395,8 @@ func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
 		case kbtype.PodGroupInqueue:
 			req.Action = vkbatchv1.EnqueueAction
 		}
-		key := vkcache.JobKeyByReq(&req)
-		queue := cc.getWorkerID(key)
+		key := vkjobhelpers.GetJobKeyByReq(&req)
+		queue := cc.getWorkerQueue(key)
 		queue.Add(req)
 	}
 }

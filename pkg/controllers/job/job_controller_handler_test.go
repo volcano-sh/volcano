@@ -59,8 +59,7 @@ func newController() *Controller {
 	}
 
 	vkclient := vkclientset.NewForConfigOrDie(config)
-	controller := NewJobController(kubeClientSet, kubeBatchClientSet, vkclient, 1)
-	controller.workers = 1
+	controller := NewJobController(kubeClientSet, kubeBatchClientSet, vkclient, 3)
 
 	return controller
 }
@@ -161,7 +160,8 @@ func TestJobAddFunc(t *testing.T) {
 		if job == nil || err != nil {
 			t.Errorf("Error while Adding Job in case %d with error %s", i, err)
 		}
-		len := controller.queueList[0].Len()
+		queue := controller.getWorkerQueue(key)
+		len := queue.Len()
 		if testcase.ExpectValue != len {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, len)
 		}
@@ -512,7 +512,9 @@ func TestUpdatePodGroupFunc(t *testing.T) {
 	for i, testcase := range testCases {
 		controller := newController()
 		controller.updatePodGroup(testcase.oldPodGroup, testcase.newPodGroup)
-		len := controller.queueList[0].Len()
+		key := fmt.Sprintf("%s/%s", testcase.oldPodGroup.Namespace, testcase.oldPodGroup.Name)
+		queue := controller.getWorkerQueue(key)
+		len := queue.Len()
 		if testcase.ExpectValue != len {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, len)
 		}
