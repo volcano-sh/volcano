@@ -29,7 +29,7 @@ CODEGEN_PKG=${CODEGEN_PKG:-$(cd ${SCRIPT_ROOT}; ls -d -1 ./vendor/k8s.io/code-ge
 #                  instead of the $GOPATH directly. For normal projects this can be dropped.
 ${CODEGEN_PKG}/generate-groups.sh "deepcopy,client,informer,lister" \
   volcano.sh/volcano/pkg/client volcano.sh/volcano/pkg/apis \
-  "batch:v1alpha1 bus:v1alpha1 scheduling:v1alpha1 scheduling:v1alpha2" \
+  "batch:v1alpha1 bus:v1alpha1 scheduling:v1alpha1,v1alpha2" \
   --go-header-file ${SCRIPT_ROOT}/hack/boilerplate/boilerplate.go.txt
 
 # To use your own boilerplate text use:
