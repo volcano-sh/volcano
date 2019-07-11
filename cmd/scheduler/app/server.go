@@ -25,7 +25,7 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"volcano.sh/volcano/cmd/kube-batch/app/options"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler"
 	"volcano.sh/volcano/pkg/version"
 

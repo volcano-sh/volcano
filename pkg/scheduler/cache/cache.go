@@ -43,7 +43,7 @@ import (
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/scheduler/volumebinder"
 
-	"volcano.sh/volcano/cmd/kube-batch/app/options"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	kbver "volcano.sh/volcano/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/client/clientset/versioned/scheme"

@@ -15,5 +15,5 @@
 
 FROM alpine:latest
 
-ADD vc-kube-batch /vc-kube-batch
-ENTRYPOINT ["/vc-kube-batch"]
+ADD vc-scheduler /vc-scheduler
+ENTRYPOINT ["/vc-scheduler"]
