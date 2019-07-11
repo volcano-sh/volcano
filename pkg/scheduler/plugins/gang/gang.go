@@ -30,6 +30,9 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
+// PluginName indicates name of volcano scheduler plugin.
+const PluginName = "gang"
+
 type gangPlugin struct {
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
@@ -41,7 +44,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 }
 
 func (gp *gangPlugin) Name() string {
-	return "gang"
+	return PluginName
 }
 
 func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {

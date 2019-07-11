@@ -24,6 +24,9 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
+// PluginName indicates name of volcano scheduler plugin.
+const PluginName = "conformance"
+
 type conformancePlugin struct {
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
@@ -35,7 +38,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 }
 
 func (pp *conformancePlugin) Name() string {
-	return "conformance"
+	return PluginName
 }
 
 func (pp *conformancePlugin) OnSessionOpen(ssn *framework.Session) {
