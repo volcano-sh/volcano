@@ -32,6 +32,7 @@ import (
 	vkbusv1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	kbtype "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 
+	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	vkcache "volcano.sh/volcano/pkg/controllers/cache"
 )
@@ -131,14 +132,22 @@ func (cc *Controller) addPod(obj interface{}) {
 		glog.Errorf("Failed to convert %v to v1.Pod", obj)
 		return
 	}
+	// Filter out pods that are not created from volcano job
+	if !isControlledBy(pod, helpers.JobKind) {
+		return
+	}
 
 	jobName, found := pod.Annotations[vkbatchv1.JobNameKey]
 	if !found {
+		glog.Infof("Failed to find jobName of Pod <%s/%s>, skipping",
+			pod.Namespace, pod.Name)
 		return
 	}
 
 	version, found := pod.Annotations[vkbatchv1.JobVersion]
 	if !found {
+		glog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
+			pod.Namespace, pod.Name)
 		return
 	}
 
@@ -182,8 +191,24 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		return
 	}
 
+	// Filter out pods that are not created from volcano job
+	if !isControlledBy(newPod, helpers.JobKind) {
+		return
+	}
+
+	if newPod.ResourceVersion == oldPod.ResourceVersion {
+		return
+	}
+
+	if newPod.DeletionTimestamp != nil {
+		cc.deletePod(newObj)
+		return
+	}
+
 	taskName, found := newPod.Annotations[vkbatchv1.TaskSpecKey]
 	if !found {
+		glog.Infof("Failed to find taskName of Pod <%s/%s>, skipping",
+			newPod.Namespace, newPod.Name)
 		return
 	}
 
@@ -196,6 +221,8 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 
 	version, found := newPod.Annotations[vkbatchv1.JobVersion]
 	if !found {
+		glog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
+			newPod.Namespace, newPod.Name)
 		return
 	}
 
@@ -203,15 +230,6 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 	if err != nil {
 		glog.Infof("Failed to convert jobVersion of Pod into number <%s/%s>, skipping",
 			newPod.Namespace, newPod.Name)
-		return
-	}
-
-	if newPod.ResourceVersion == oldPod.ResourceVersion {
-		return
-	}
-
-	if newPod.DeletionTimestamp != nil {
-		cc.deletePod(newObj)
 		return
 	}
 
@@ -266,6 +284,11 @@ func (cc *Controller) deletePod(obj interface{}) {
 		}
 	}
 
+	// Filter out pods that are not created from volcano job
+	if !isControlledBy(pod, helpers.JobKind) {
+		return
+	}
+
 	taskName, found := pod.Annotations[vkbatchv1.TaskSpecKey]
 	if !found {
 		glog.Infof("Failed to find taskName of Pod <%s/%s>, skipping",
@@ -275,11 +298,15 @@ func (cc *Controller) deletePod(obj interface{}) {
 
 	jobName, found := pod.Annotations[vkbatchv1.JobNameKey]
 	if !found {
+		glog.Infof("Failed to find jobName of Pod <%s/%s>, skipping",
+			pod.Namespace, pod.Name)
 		return
 	}
 
 	version, found := pod.Annotations[vkbatchv1.JobVersion]
 	if !found {
+		glog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
+			pod.Namespace, pod.Name)
 		return
 	}
 
