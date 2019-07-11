@@ -18,7 +18,7 @@ all: vc-scheduler vc-controllers vc-admission vkctl
 init:
 	mkdir -p ${BIN_DIR}
 
-scheduler: init
+vc-scheduler: init
 	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vc-scheduler ./cmd/scheduler
 
 vc-controllers: init
