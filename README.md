@@ -63,7 +63,33 @@ You can watch industry experts talking about Volcano in different International 
 
 The easiest way to deploy Volcano is to use the Helm chart.  Volcano can be deployed by cloning code and also by adding helm repo.
 
-## Using Volcano Helm Repo
+## Install Helm
+
+### Download Helm
+
+Install helm by following official guide - https://github.com/helm/helm/blob/master/docs/install.md
+
+### Setup Helm
+
+Since Tiller needs cluster-admin RBAC access, create `ServiceAccount` and  `ClusterRoleBinding` by following the offical guide - https://github.com/helm/helm/blob/master/docs/rbac.md
+
+
+Create `ServiceAccount` and `ClusterRoleBinding` for tiller
+```bash
+  kubectl create serviceaccount --namespace kube-system tiller
+  kubectl create clusterrolebinding tiller-cluster-rule --clusterrole=cluster-admin --serviceaccount=kube-system:tiller
+``` 
+
+Then `helm init` using created `ServiceAccount`
+
+```bash
+  helm init --service-account <ServiceAccountName> --kubeconfig ${KUBECONFIG} --wait
+  
+  e.g :
+  helm init --service-account tiller --kubeconfig ${KUBECONFIG} --wait
+```
+
+## 1. Using Volcano Helm Repo
 
 Add helm repo using following command,
 
@@ -80,7 +106,7 @@ e.g :
 helm install volcano/volcano --namespace volcano-trial --name volcano-trial
 ```
 
-## Cloning Code
+## 2. Cloning Code
 ### Pre-requisites
 
 First of all, clone the repo to your local path:
@@ -88,7 +114,7 @@ First of all, clone the repo to your local path:
 ```
 # mkdir -p $GOPATH/src/volcano.sh/
 # cd $GOPATH/src/volcano.sh/
-# git clone --recursive https://github.com/volcano-sh/volcano.git
+# git clone https://github.com/volcano-sh/volcano.git
 ```
 
 ### 1. Volcano Image
