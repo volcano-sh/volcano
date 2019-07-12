@@ -35,10 +35,11 @@ func TestAddFlags(t *testing.T) {
 
 	// This is a snapshot of expected options parsed by args.
 	expected := &ServerOption{
-		Master:       "127.0.0.1",
-		KubeAPIQPS:   defaultQPS,
-		KubeAPIBurst: 200,
-		PrintVersion: false,
+		Master:        "127.0.0.1",
+		KubeAPIQPS:    defaultQPS,
+		KubeAPIBurst:  200,
+		PrintVersion:  false,
+		WorkerThreads: defaultWorkers,
 	}
 
 	if !reflect.DeepEqual(expected, s) {

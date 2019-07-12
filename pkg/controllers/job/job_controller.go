@@ -18,7 +18,10 @@ package job
 
 import (
 	"fmt"
+	"hash"
+	"hash/fnv"
 	"sync"
+	"time"
 
 	"github.com/golang/glog"
 
@@ -95,7 +98,7 @@ type Controller struct {
 	pcSynced func() bool
 
 	// queue that need to sync up
-	queue        workqueue.RateLimitingInterface
+	queueList    []workqueue.RateLimitingInterface
 	commandQueue workqueue.RateLimitingInterface
 	cache        jobcache.Cache
 	//Job Event recorder
@@ -104,6 +107,7 @@ type Controller struct {
 
 	sync.Mutex
 	errTasks workqueue.RateLimitingInterface
+	workers  uint32
 }
 
 // NewJobController create new Job Controller
@@ -111,6 +115,7 @@ func NewJobController(
 	kubeClient kubernetes.Interface,
 	kbClient kbver.Interface,
 	vkClient vkver.Interface,
+	workers uint32,
 ) *Controller {
 
 	//Initialize event client
@@ -123,12 +128,17 @@ func NewJobController(
 		kubeClients:     kubeClient,
 		vkClients:       vkClient,
 		kbClients:       kbClient,
-		queue:           workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		queueList:       make([]workqueue.RateLimitingInterface, workers, workers),
 		commandQueue:    workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		cache:           jobcache.New(),
 		errTasks:        newRateLimitingQueue(),
 		recorder:        recorder,
 		priorityClasses: make(map[string]*v1beta1.PriorityClass),
+		workers:         workers,
+	}
+	var i uint32
+	for i = 0; i < workers; i++ {
+		cc.queueList[i] = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 	}
 
 	cc.jobInformer = vkinfoext.NewSharedInformerFactory(cc.vkClients, 0).Batch().V1alpha1().Jobs()
@@ -192,6 +202,7 @@ func NewJobController(
 
 // Run start JobController
 func (cc *Controller) Run(stopCh <-chan struct{}) {
+
 	go cc.sharedInformers.Start(stopCh)
 	go cc.jobInformer.Informer().Run(stopCh)
 	go cc.podInformer.Informer().Run(stopCh)
@@ -205,7 +216,17 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 		cc.svcSynced, cc.cmdSynced, cc.pvcSynced, cc.pcSynced)
 
 	go wait.Until(cc.handleCommands, 0, stopCh)
-	go wait.Until(cc.worker, 0, stopCh)
+	var i uint32
+	for i = 0; i < cc.workers; i++ {
+		go func(num uint32) {
+			wait.Until(
+				func() {
+					cc.worker(num)
+				},
+				time.Second,
+				stopCh)
+		}(i)
+	}
 
 	go cc.cache.Run(stopCh)
 
@@ -215,20 +236,61 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 	glog.Infof("JobController is running ...... ")
 }
 
-func (cc *Controller) worker() {
-	for cc.processNextReq() {
+func (cc *Controller) worker(i uint32) {
+	glog.Infof("worker %d start ...... ", i)
+
+	for cc.processNextReq(i) {
 	}
 }
 
-func (cc *Controller) processNextReq() bool {
-	obj, shutdown := cc.queue.Get()
+func (cc *Controller) belongsToThisRoutine(key string, count uint32) bool {
+	var hashVal hash.Hash32
+	var val uint32
+
+	hashVal = fnv.New32()
+	hashVal.Write([]byte(key))
+
+	val = hashVal.Sum32()
+
+	if val%cc.workers == count {
+		return true
+	}
+
+	return false
+}
+
+func (cc *Controller) getWorkerQueue(key string) workqueue.RateLimitingInterface {
+	var hashVal hash.Hash32
+	var val uint32
+
+	hashVal = fnv.New32()
+	hashVal.Write([]byte(key))
+
+	val = hashVal.Sum32()
+
+	queue := cc.queueList[val%cc.workers]
+
+	return queue
+}
+
+func (cc *Controller) processNextReq(count uint32) bool {
+	queue := cc.queueList[count]
+	obj, shutdown := queue.Get()
 	if shutdown {
 		glog.Errorf("Fail to pop item from queue")
 		return false
 	}
 
 	req := obj.(apis.Request)
-	defer cc.queue.Done(req)
+	defer queue.Done(req)
+
+	key := jobcache.JobKeyByReq(&req)
+	if !cc.belongsToThisRoutine(key, count) {
+		glog.Errorf("should not occur The job does not belongs to this routine key:%s, worker:%d...... ", key, count)
+		queueLocal := cc.getWorkerQueue(key)
+		queueLocal.Add(req)
+		return true
+	}
 
 	glog.V(3).Infof("Try to handle request <%v>", req)
 
@@ -259,12 +321,12 @@ func (cc *Controller) processNextReq() bool {
 		glog.Errorf("Failed to handle Job <%s/%s>: %v",
 			jobInfo.Job.Namespace, jobInfo.Job.Name, err)
 		// If any error, requeue it.
-		cc.queue.AddRateLimited(req)
+		queue.AddRateLimited(req)
 		return true
 	}
 
 	// If no error, forget it.
-	cc.queue.Forget(req)
+	queue.Forget(req)
 
 	return true
 }
