@@ -154,8 +154,8 @@ type PodGroupStatus struct {
 	Failed int32 `json:"failed,omitempty" protobuf:"bytes,5,opt,name=failed"`
 }
 
-// ConvertPodGroupInfoToV1Alpha1 converts api.PodGroup type to v1alpha1.PodGroup
-func ConvertPodGroupInfoToV1Alpha1(pg *PodGroup) (*v1alpha1.PodGroup, error) {
+// ConvertPodGroupInfoToV1alpha1 converts api.PodGroup type to v1alpha1.PodGroup
+func ConvertPodGroupInfoToV1alpha1(pg *PodGroup) (*v1alpha1.PodGroup, error) {
 	marshalled, err := json.Marshal(*pg)
 	if err != nil {
 		glog.Errorf("Failed to Marshal podgroup %s with error: %v", pg.Name, err)
@@ -170,8 +170,8 @@ func ConvertPodGroupInfoToV1Alpha1(pg *PodGroup) (*v1alpha1.PodGroup, error) {
 	return convertedPg, nil
 }
 
-// ConvertV1Alpha1ToPodGroupInfo converts v1alpha1.PodGroup to api.PodGroup type
-func ConvertV1Alpha1ToPodGroupInfo(pg *v1alpha1.PodGroup) (*PodGroup, error) {
+// ConvertV1alpha1ToPodGroupInfo converts v1alpha1.PodGroup to api.PodGroup type
+func ConvertV1alpha1ToPodGroupInfo(pg *v1alpha1.PodGroup) (*PodGroup, error) {
 	marshalled, err := json.Marshal(*pg)
 	if err != nil {
 		glog.Errorf("Failed to Marshal podgroup %s with error: %v", pg.Name, err)
@@ -187,8 +187,8 @@ func ConvertV1Alpha1ToPodGroupInfo(pg *v1alpha1.PodGroup) (*PodGroup, error) {
 	return convertedPg, nil
 }
 
-// ConvertPodGroupInfoToV1Alpha2 converts api.PodGroup type to v1alpha2.PodGroup
-func ConvertPodGroupInfoToV1Alpha2(pg *PodGroup) (*v1alpha2.PodGroup, error) {
+// ConvertPodGroupInfoToV1alpha2 converts api.PodGroup type to v1alpha2.PodGroup
+func ConvertPodGroupInfoToV1alpha2(pg *PodGroup) (*v1alpha2.PodGroup, error) {
 	marshalled, err := json.Marshal(*pg)
 	if err != nil {
 		glog.Errorf("Failed to Marshal podgroup %s with error: %v", pg.Name, err)
@@ -203,8 +203,8 @@ func ConvertPodGroupInfoToV1Alpha2(pg *PodGroup) (*v1alpha2.PodGroup, error) {
 	return convertedPg, nil
 }
 
-// ConvertV1Alpha2ToPodGroupInfo converts v1alpha2.PodGroup to api.PodGroup type
-func ConvertV1Alpha2ToPodGroupInfo(pg *v1alpha2.PodGroup) (*PodGroup, error) {
+// ConvertV1alpha2ToPodGroupInfo converts v1alpha2.PodGroup to api.PodGroup type
+func ConvertV1alpha2ToPodGroupInfo(pg *v1alpha2.PodGroup) (*PodGroup, error) {
 	marshalled, err := json.Marshal(*pg)
 	if err != nil {
 		glog.Errorf("Failed to Marshal podgroup %s with error: %v", pg.Name, err)

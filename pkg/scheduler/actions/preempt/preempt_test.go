@@ -161,11 +161,11 @@ func TestPreempt(t *testing.T) {
 		}
 
 		for _, ss := range test.podGroups {
-			schedulerCache.AddPodGroupAlpha1(ss)
+			schedulerCache.AddPodGroupV1alpha1(ss)
 		}
 
 		for _, q := range test.queues {
-			schedulerCache.AddQueuev1alpha1(q)
+			schedulerCache.AddQueueV1alpha1(q)
 		}
 
 		trueValue := true

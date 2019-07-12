@@ -187,7 +187,7 @@ func (su *defaultStatusUpdater) UpdatePodCondition(pod *v1.Pod, condition *v1.Po
 // UpdatePodGroup will Update pod with podCondition
 func (su *defaultStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup, error) {
 	if pg.Version == api.PodGroupVersionV1Alpha1 {
-		podGroup, err := api.ConvertPodGroupInfoToV1Alpha1(pg)
+		podGroup, err := api.ConvertPodGroupInfoToV1alpha1(pg)
 		if err != nil {
 			glog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
 		}
@@ -195,7 +195,7 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup,
 		if err != nil {
 			glog.Errorf("Error while updating podgroup with error: %v", err)
 		}
-		podGroupInfo, err := api.ConvertV1Alpha1ToPodGroupInfo(updated)
+		podGroupInfo, err := api.ConvertV1alpha1ToPodGroupInfo(updated)
 		if err != nil {
 			glog.Errorf("Error While converting v1alpha.Podgroup to api.PodGroup with error: %v", err)
 			return nil, err
@@ -204,7 +204,7 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup,
 	}
 
 	if pg.Version == api.PodGroupVersionV1Alpha2 {
-		podGroup, err := api.ConvertPodGroupInfoToV1Alpha2(pg)
+		podGroup, err := api.ConvertPodGroupInfoToV1alpha2(pg)
 		if err != nil {
 			glog.Errorf("Error while converting PodGroup to v1alpha2.PodGroup with error: %v", err)
 		}
@@ -212,7 +212,7 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup,
 		if err != nil {
 			glog.Errorf("Error while updating podgroup with error: %v", err)
 		}
-		podGroupInfo, err := api.ConvertV1Alpha2ToPodGroupInfo(updated)
+		podGroupInfo, err := api.ConvertV1alpha2ToPodGroupInfo(updated)
 		if err != nil {
 			glog.Errorf("Error While converting v2alpha.Podgroup to api.PodGroup with error: %v", err)
 			return nil, err
@@ -358,33 +358,33 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	// create informer for PodGroup(v1alpha1) information
 	sc.podGroupInformerV1alpha1 = kbinformer.Scheduling().V1alpha1().PodGroups()
 	sc.podGroupInformerV1alpha1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddPodGroupAlpha1,
-		UpdateFunc: sc.UpdatePodGroupAlpha1,
-		DeleteFunc: sc.DeletePodGroupAlpha1,
+		AddFunc:    sc.AddPodGroupV1alpha1,
+		UpdateFunc: sc.UpdatePodGroupV1alpha1,
+		DeleteFunc: sc.DeletePodGroupV1alpha1,
 	})
 
 	// create informer for PodGroup(v1alpha2) information
 	sc.podGroupInformerV1alpha2 = kbinformer.Scheduling().V1alpha2().PodGroups()
 	sc.podGroupInformerV1alpha2.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddPodGroupAlpha2,
-		UpdateFunc: sc.UpdatePodGroupAlpha2,
-		DeleteFunc: sc.DeletePodGroupAlpha2,
+		AddFunc:    sc.AddPodGroupV1alpha2,
+		UpdateFunc: sc.UpdatePodGroupV1alpha2,
+		DeleteFunc: sc.DeletePodGroupV1alpha2,
 	})
 
 	// create informer(v1alpha1) for Queue information
 	sc.queueInformerV1alpha1 = kbinformer.Scheduling().V1alpha1().Queues()
 	sc.queueInformerV1alpha1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddQueuev1alpha1,
-		UpdateFunc: sc.UpdateQueuev1alpha1,
-		DeleteFunc: sc.DeleteQueuev1alpha1,
+		AddFunc:    sc.AddQueueV1alpha1,
+		UpdateFunc: sc.UpdateQueueV1alpha1,
+		DeleteFunc: sc.DeleteQueueV1alpha1,
 	})
 
 	// create informer(v1alpha2) for Queue information
 	sc.queueInformerV1alpha2 = kbinformer.Scheduling().V1alpha2().Queues()
 	sc.queueInformerV1alpha2.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddQueuev1alpha2,
-		UpdateFunc: sc.UpdateQueuev1alpha2,
-		DeleteFunc: sc.DeleteQueuev1alpha2,
+		AddFunc:    sc.AddQueueV1alpha2,
+		UpdateFunc: sc.UpdateQueueV1alpha2,
+		DeleteFunc: sc.DeleteQueueV1alpha2,
 	})
 
 	return sc
@@ -494,14 +494,14 @@ func (sc *SchedulerCache) Evict(taskInfo *kbapi.TaskInfo, reason string) error {
 
 	if !shadowPodGroup(job.PodGroup) {
 		if job.PodGroup.Version == api.PodGroupVersionV1Alpha1 {
-			pg, err := api.ConvertPodGroupInfoToV1Alpha1(job.PodGroup)
+			pg, err := api.ConvertPodGroupInfoToV1alpha1(job.PodGroup)
 			if err != nil {
 				glog.Errorf("Error While converting api.PodGroup to v1alpha.PodGroup with error: %v", err)
 				return err
 			}
 			sc.Recorder.Eventf(pg, v1.EventTypeNormal, "Evict", reason)
 		} else if job.PodGroup.Version == api.PodGroupVersionV1Alpha2 {
-			pg, err := api.ConvertPodGroupInfoToV1Alpha2(job.PodGroup)
+			pg, err := api.ConvertPodGroupInfoToV1alpha2(job.PodGroup)
 			if err != nil {
 				glog.Errorf("Error While converting api.PodGroup to v2alpha.PodGroup with error: %v", err)
 				return err
@@ -773,7 +773,7 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
 		if pgUnschedulable || pdbUnschedulabe {
 			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v", len(job.TaskStatusIndex[api.Pending]), len(job.Tasks), job.FitError())
 			if job.PodGroup.Version == api.PodGroupVersionV1Alpha1 {
-				podGroup, err := api.ConvertPodGroupInfoToV1Alpha1(job.PodGroup)
+				podGroup, err := api.ConvertPodGroupInfoToV1alpha1(job.PodGroup)
 				if err != nil {
 					glog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
 				}
@@ -782,7 +782,7 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
 			}
 
 			if job.PodGroup.Version == api.PodGroupVersionV1Alpha2 {
-				podGroup, err := api.ConvertPodGroupInfoToV1Alpha2(job.PodGroup)
+				podGroup, err := api.ConvertPodGroupInfoToV1alpha2(job.PodGroup)
 				if err != nil {
 					glog.Errorf("Error while converting PodGroup to v1alpha2.PodGroup with error: %v", err)
 				}

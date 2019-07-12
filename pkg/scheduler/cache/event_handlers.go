@@ -369,7 +369,8 @@ func getJobID(pg *kbapi.PodGroup) kbapi.JobID {
 func (sc *SchedulerCache) setPodGroup(ss *kbapi.PodGroup) error {
 	job := getJobID(ss)
 
-	if len(job) == 0 {
+	// Even if name and namespace are nil, we will get "/" as jobID, checking whether len(jobID)==1, because checking it for 0 will return false always.
+	if len(job) == 1 {
 		return fmt.Errorf("the identity of PodGroup is empty")
 	}
 
@@ -409,8 +410,8 @@ func (sc *SchedulerCache) deletePodGroup(ss *kbapi.PodGroup) error {
 	return nil
 }
 
-// AddPodGroupAlpha1 add podgroup to scheduler cache
-func (sc *SchedulerCache) AddPodGroupAlpha1(obj interface{}) {
+// AddPodGroupV1alpha1 add podgroup to scheduler cache
+func (sc *SchedulerCache) AddPodGroupV1alpha1(obj interface{}) {
 	ss, ok := obj.(*kbv1.PodGroup)
 	if !ok {
 		glog.Errorf("Cannot convert to *kbv1.PodGroup: %v", obj)
@@ -442,8 +443,8 @@ func (sc *SchedulerCache) AddPodGroupAlpha1(obj interface{}) {
 	return
 }
 
-// AddPodGroupAlpha2 add podgroup to scheduler cache
-func (sc *SchedulerCache) AddPodGroupAlpha2(obj interface{}) {
+// AddPodGroupV1alpha2 add podgroup to scheduler cache
+func (sc *SchedulerCache) AddPodGroupV1alpha2(obj interface{}) {
 	ss, ok := obj.(*kbv2.PodGroup)
 	if !ok {
 		glog.Errorf("Cannot convert to *kbv2.PodGroup: %v", obj)
@@ -475,8 +476,8 @@ func (sc *SchedulerCache) AddPodGroupAlpha2(obj interface{}) {
 	return
 }
 
-// UpdatePodGroupAlpha1 add podgroup to scheduler cache
-func (sc *SchedulerCache) UpdatePodGroupAlpha1(oldObj, newObj interface{}) {
+// UpdatePodGroupV1alpha1 add podgroup to scheduler cache
+func (sc *SchedulerCache) UpdatePodGroupV1alpha1(oldObj, newObj interface{}) {
 	oldSS, ok := oldObj.(*kbv1.PodGroup)
 	if !ok {
 		glog.Errorf("Cannot convert oldObj to *kbv1.SchedulingSpec: %v", oldObj)
@@ -524,8 +525,8 @@ func (sc *SchedulerCache) UpdatePodGroupAlpha1(oldObj, newObj interface{}) {
 	return
 }
 
-// UpdatePodGroupAlpha2 add podgroup to scheduler cache
-func (sc *SchedulerCache) UpdatePodGroupAlpha2(oldObj, newObj interface{}) {
+// UpdatePodGroupV1alpha2 add podgroup to scheduler cache
+func (sc *SchedulerCache) UpdatePodGroupV1alpha2(oldObj, newObj interface{}) {
 	oldSS, ok := oldObj.(*kbv2.PodGroup)
 	if !ok {
 		glog.Errorf("Cannot convert oldObj to *kbv2.SchedulingSpec: %v", oldObj)
@@ -574,8 +575,8 @@ func (sc *SchedulerCache) UpdatePodGroupAlpha2(oldObj, newObj interface{}) {
 	return
 }
 
-// DeletePodGroupAlpha1 delete podgroup from scheduler cache
-func (sc *SchedulerCache) DeletePodGroupAlpha1(obj interface{}) {
+// DeletePodGroupV1alpha1 delete podgroup from scheduler cache
+func (sc *SchedulerCache) DeletePodGroupV1alpha1(obj interface{}) {
 	var ss *kbv1.PodGroup
 	switch t := obj.(type) {
 	case *kbv1.PodGroup:
@@ -615,8 +616,8 @@ func (sc *SchedulerCache) DeletePodGroupAlpha1(obj interface{}) {
 	return
 }
 
-// DeletePodGroupAlpha2 delete podgroup from scheduler cache
-func (sc *SchedulerCache) DeletePodGroupAlpha2(obj interface{}) {
+// DeletePodGroupV1alpha2 delete podgroup from scheduler cache
+func (sc *SchedulerCache) DeletePodGroupV1alpha2(obj interface{}) {
 	var ss *kbv2.PodGroup
 	switch t := obj.(type) {
 	case *kbv2.PodGroup:
@@ -769,8 +770,8 @@ func (sc *SchedulerCache) DeletePDB(obj interface{}) {
 	return
 }
 
-//AddQueuev1alpha1 add queue to scheduler cache
-func (sc *SchedulerCache) AddQueuev1alpha1(obj interface{}) {
+// AddQueueV1alpha1 add queue to scheduler cache
+func (sc *SchedulerCache) AddQueueV1alpha1(obj interface{}) {
 	ss, ok := obj.(*kbv1.Queue)
 	if !ok {
 		glog.Errorf("Cannot convert to *kbv1.Queue: %v", obj)
@@ -801,8 +802,8 @@ func (sc *SchedulerCache) AddQueuev1alpha1(obj interface{}) {
 	return
 }
 
-//AddQueuev1alpha2 add queue to scheduler cache
-func (sc *SchedulerCache) AddQueuev1alpha2(obj interface{}) {
+// AddQueueV1alpha2 add queue to scheduler cache
+func (sc *SchedulerCache) AddQueueV1alpha2(obj interface{}) {
 	ss, ok := obj.(*kbv2.Queue)
 	if !ok {
 		glog.Errorf("Cannot convert to *kbv2.Queue: %v", obj)
@@ -833,8 +834,8 @@ func (sc *SchedulerCache) AddQueuev1alpha2(obj interface{}) {
 	return
 }
 
-//UpdateQueuev1alpha1 update queue to scheduler cache
-func (sc *SchedulerCache) UpdateQueuev1alpha1(oldObj, newObj interface{}) {
+// UpdateQueueV1alpha1 update queue to scheduler cache
+func (sc *SchedulerCache) UpdateQueueV1alpha1(oldObj, newObj interface{}) {
 	oldSS, ok := oldObj.(*kbv1.Queue)
 	if !ok {
 		glog.Errorf("Cannot convert oldObj to *kbv1.Queue: %v", oldObj)
@@ -881,8 +882,8 @@ func (sc *SchedulerCache) UpdateQueuev1alpha1(oldObj, newObj interface{}) {
 	return
 }
 
-//UpdateQueuev1alpha2 update queue to scheduler cache
-func (sc *SchedulerCache) UpdateQueuev1alpha2(oldObj, newObj interface{}) {
+// UpdateQueueV1alpha2 update queue to scheduler cache
+func (sc *SchedulerCache) UpdateQueueV1alpha2(oldObj, newObj interface{}) {
 	oldSS, ok := oldObj.(*kbv2.Queue)
 	if !ok {
 		glog.Errorf("Cannot convert oldObj to *kbv2.Queue: %v", oldObj)
@@ -929,8 +930,8 @@ func (sc *SchedulerCache) UpdateQueuev1alpha2(oldObj, newObj interface{}) {
 	return
 }
 
-//DeleteQueuev1alpha1 delete queue from the scheduler cache
-func (sc *SchedulerCache) DeleteQueuev1alpha1(obj interface{}) {
+// DeleteQueueV1alpha1 delete queue from the scheduler cache
+func (sc *SchedulerCache) DeleteQueueV1alpha1(obj interface{}) {
 	var ss *kbv1.Queue
 	switch t := obj.(type) {
 	case *kbv1.Queue:
@@ -970,8 +971,8 @@ func (sc *SchedulerCache) DeleteQueuev1alpha1(obj interface{}) {
 	return
 }
 
-//DeleteQueuev1alpha2 delete queue from the scheduler cache
-func (sc *SchedulerCache) DeleteQueuev1alpha2(obj interface{}) {
+// DeleteQueueV1alpha2 delete queue from the scheduler cache
+func (sc *SchedulerCache) DeleteQueueV1alpha2(obj interface{}) {
 	var ss *kbv2.Queue
 	switch t := obj.(type) {
 	case *kbv2.Queue:
