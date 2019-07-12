@@ -14,11 +14,8 @@ rules:
     resources: ["configmaps"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["admissionregistration.k8s.io"]
-    resources: ["mutatingwebhookconfigurations"]
-    verbs: ["get", "list", "watch", "patch"]
-  - apiGroups: ["admissionregistration.k8s.io"]
-    resources: ["validatingwebhookconfigurations"]
-    verbs: ["get", "list", "watch", "patch"]
+    resources: ["mutatingwebhookconfigurations", "validatingwebhookconfigurations"]
+    verbs: ["get", "list", "watch", "create", "update"]
   # Rules below is used generate admission service secret
   - apiGroups: ["certificates.k8s.io"]
     resources: ["certificatesigningrequests"]
@@ -32,6 +29,9 @@ rules:
   - apiGroups: ["scheduling.incubator.k8s.io"]
     resources: ["queues"]
     verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get"]
 
 ---
 kind: ClusterRoleBinding
@@ -76,8 +76,8 @@ spec:
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
             - --tls-private-key-file=/admission.local.config/certificates/tls.key
             - --ca-cert-file=/admission.local.config/certificates/ca.crt
-            - --mutate-webhook-config-name={{ .Release.Name }}-mutate-job
-            - --validate-webhook-config-name={{ .Release.Name }}-validate-job
+            - --webhook-namespace={{ .Release.Namespace }}
+            - --webhook-service-name={{ .Release.Name }}-admission-service
             - --alsologtostderr
             - --port=443
             - -v=4
