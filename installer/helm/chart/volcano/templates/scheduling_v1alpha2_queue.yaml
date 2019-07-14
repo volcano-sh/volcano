@@ -1,0 +1,39 @@
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: queues.scheduling.sigs.dev
+spec:
+  group: scheduling.sigs.dev
+  names:
+    kind: Queue
+    plural: queues
+  scope: Cluster
+  validation:
+    openAPIV3Schema:
+      properties:
+        apiVersion:
+          type: string
+        kind:
+          type: string
+        metadata:
+          type: object
+        spec:
+          properties:
+            weight:
+              format: int32
+              type: integer
+          type: object
+        status:
+          properties:
+            unknown:
+              format: int32
+              type: integer
+            pending:
+              format: int32
+              type: integer
+            running:
+              format: int32
+              type: integer
+          type: object
+      type: object
+  version: v1alpha2
