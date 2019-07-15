@@ -31,8 +31,6 @@ jobs:
         # Download kind binary (0.2.0)
         - sudo curl -o /usr/local/bin/kind -L https://github.com/kubernetes-sigs/kind/releases/download/v0.4.0/kind-linux-amd64
         - sudo chmod +x /usr/local/bin/kind
-        # Update git submodules
-        - git submodule foreach git pull origin master
       script:
         - make vkctl
         - make images
