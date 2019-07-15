@@ -38,7 +38,7 @@ func main() {
 	defer glog.Flush()
 
 	rootCmd := cobra.Command{
-		Use: "vkctl",
+		Use: "vcctl",
 	}
 
 	rootCmd.AddCommand(buildJobCmd())
@@ -63,7 +63,7 @@ func checkError(cmd *cobra.Command, err error) {
 	}
 }
 
-var versionExample = `vkctl version`
+var versionExample = `vcctl version`
 
 func versionCommand() *cobra.Command {
 

@@ -206,7 +206,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 
 		_, err = context.vkclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
 		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
-			"Job should be deleted on vkctl job delete.")
+			"Job should be deleted on vcctl job delete.")
 
 	})
 })
