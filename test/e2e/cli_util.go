@@ -77,3 +77,15 @@ func RunCliCommand(command []string) string {
 		fmt.Sprintf("Command %s failed to execute: %s", strings.Join(command, ""), err))
 	return string(output)
 }
+
+// RunCliCommandWithoutKubeConfig runs the volcano command
+func RunCliCommandWithoutKubeConfig(command []string) string {
+	if masterURL() != "" {
+		command = append(command, "--master", masterURL())
+	}
+
+	output, err := exec.Command(VolcanoCliBinary(), command...).Output()
+	Expect(err).NotTo(HaveOccurred(),
+		fmt.Sprintf("Command %s failed to execute: %s", strings.Join(command, ""), err))
+	return string(output)
+}
