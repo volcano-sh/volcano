@@ -20,7 +20,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/utils"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -29,7 +28,7 @@ const (
 	shadowPodGroupKey = "volcano/shadow-pod-group"
 )
 
-func shadowPodGroup(pg *v1alpha1.PodGroup) bool {
+func shadowPodGroup(pg *api.PodGroup) bool {
 	if pg == nil {
 		return true
 	}
@@ -39,13 +38,13 @@ func shadowPodGroup(pg *v1alpha1.PodGroup) bool {
 	return found
 }
 
-func createShadowPodGroup(pod *v1.Pod) *v1alpha1.PodGroup {
+func createShadowPodGroup(pod *v1.Pod) *api.PodGroup {
 	jobID := api.JobID(utils.GetController(pod))
 	if len(jobID) == 0 {
 		jobID = api.JobID(pod.UID)
 	}
 
-	return &v1alpha1.PodGroup{
+	return &api.PodGroup{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: pod.Namespace,
 			Name:      string(jobID),
@@ -53,7 +52,7 @@ func createShadowPodGroup(pod *v1.Pod) *v1alpha1.PodGroup {
 				shadowPodGroupKey: string(jobID),
 			},
 		},
-		Spec: v1alpha1.PodGroupSpec{
+		Spec: api.PodGroupSpec{
 			MinMember: 1,
 		},
 	}

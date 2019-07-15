@@ -19,7 +19,6 @@ package enqueue
 import (
 	"github.com/golang/glog"
 
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -63,7 +62,7 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 			}
 		}
 
-		if job.PodGroup.Status.Phase == v1alpha1.PodGroupPending {
+		if job.PodGroup.Status.Phase == api.PodGroupPending {
 			if _, found := jobsMap[job.Queue]; !found {
 				jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 			}
@@ -112,7 +111,7 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 		}
 
 		if inqueue {
-			job.PodGroup.Status.Phase = v1alpha1.PodGroupInqueue
+			job.PodGroup.Status.Phase = api.PodGroupInqueue
 			ssn.Jobs[job.UID] = job
 		}
 

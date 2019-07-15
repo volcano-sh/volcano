@@ -18,7 +18,6 @@ package cache
 
 import (
 	v1 "k8s.io/api/core/v1"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -74,5 +73,5 @@ type Evictor interface {
 // StatusUpdater updates pod with given PodCondition
 type StatusUpdater interface {
 	UpdatePodCondition(pod *v1.Pod, podCondition *v1.PodCondition) (*v1.Pod, error)
-	UpdatePodGroup(pg *v1alpha1.PodGroup) (*v1alpha1.PodGroup, error)
+	UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup, error)
 }

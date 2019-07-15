@@ -25,6 +25,7 @@ import (
 	batchv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/bus/v1alpha1"
 	schedulingv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/scheduling/v1alpha1"
+	schedulingv1alpha2 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/scheduling/v1alpha2"
 )
 
 type Interface interface {
@@ -38,6 +39,7 @@ type Interface interface {
 	SchedulingV1alpha1() schedulingv1alpha1.SchedulingV1alpha1Interface
 	// Deprecated: please explicitly pick a version if possible.
 	Scheduling() schedulingv1alpha1.SchedulingV1alpha1Interface
+	SchedulingV1alpha2() schedulingv1alpha2.SchedulingV1alpha2Interface
 }
 
 // Clientset contains the clients for groups. Each group has exactly one
@@ -47,6 +49,7 @@ type Clientset struct {
 	batchV1alpha1      *batchv1alpha1.BatchV1alpha1Client
 	busV1alpha1        *busv1alpha1.BusV1alpha1Client
 	schedulingV1alpha1 *schedulingv1alpha1.SchedulingV1alpha1Client
+	schedulingV1alpha2 *schedulingv1alpha2.SchedulingV1alpha2Client
 }
 
 // BatchV1alpha1 retrieves the BatchV1alpha1Client
@@ -82,6 +85,11 @@ func (c *Clientset) Scheduling() schedulingv1alpha1.SchedulingV1alpha1Interface 
 	return c.schedulingV1alpha1
 }
 
+// SchedulingV1alpha2 retrieves the SchedulingV1alpha2Client
+func (c *Clientset) SchedulingV1alpha2() schedulingv1alpha2.SchedulingV1alpha2Interface {
+	return c.schedulingV1alpha2
+}
+
 // Discovery retrieves the DiscoveryClient
 func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 	if c == nil {
@@ -110,6 +118,10 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 	if err != nil {
 		return nil, err
 	}
+	cs.schedulingV1alpha2, err = schedulingv1alpha2.NewForConfig(&configShallowCopy)
+	if err != nil {
+		return nil, err
+	}
 
 	cs.DiscoveryClient, err = discovery.NewDiscoveryClientForConfig(&configShallowCopy)
 	if err != nil {
@@ -125,6 +137,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 	cs.batchV1alpha1 = batchv1alpha1.NewForConfigOrDie(c)
 	cs.busV1alpha1 = busv1alpha1.NewForConfigOrDie(c)
 	cs.schedulingV1alpha1 = schedulingv1alpha1.NewForConfigOrDie(c)
+	cs.schedulingV1alpha2 = schedulingv1alpha2.NewForConfigOrDie(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClientForConfigOrDie(c)
 	return &cs
@@ -136,6 +149,7 @@ func New(c rest.Interface) *Clientset {
 	cs.batchV1alpha1 = batchv1alpha1.New(c)
 	cs.busV1alpha1 = busv1alpha1.New(c)
 	cs.schedulingV1alpha1 = schedulingv1alpha1.New(c)
+	cs.schedulingV1alpha2 = schedulingv1alpha2.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs

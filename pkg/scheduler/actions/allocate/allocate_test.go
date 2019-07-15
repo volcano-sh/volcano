@@ -169,11 +169,11 @@ func TestAllocate(t *testing.T) {
 		}
 
 		for _, ss := range test.podGroups {
-			schedulerCache.AddPodGroup(ss)
+			schedulerCache.AddPodGroupV1alpha1(ss)
 		}
 
 		for _, q := range test.queues {
-			schedulerCache.AddQueue(q)
+			schedulerCache.AddQueueV1alpha1(q)
 		}
 
 		trueValue := true

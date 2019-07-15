@@ -143,7 +143,7 @@ func (ftsu *FakeStatusUpdater) UpdatePodCondition(pod *v1.Pod, podCondition *v1.
 }
 
 // UpdatePodGroup is a empty function
-func (ftsu *FakeStatusUpdater) UpdatePodGroup(pg *kbv1.PodGroup) (*kbv1.PodGroup, error) {
+func (ftsu *FakeStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup, error) {
 	// do nothing here
 	return nil, nil
 }

@@ -146,8 +146,8 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			metrics.UpdateUnscheduleTaskCount(job.Name, int(unreadyTaskCount))
 			metrics.RegisterJobRetries(job.Name)
 
-			jc := &v1alpha1.PodGroupCondition{
-				Type:               v1alpha1.PodGroupUnschedulableType,
+			jc := &api.PodGroupCondition{
+				Type:               api.PodGroupUnschedulableType,
 				Status:             v1.ConditionTrue,
 				LastTransitionTime: metav1.Now(),
 				TransitionID:       string(ssn.UID),
