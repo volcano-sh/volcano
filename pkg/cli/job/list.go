@@ -71,6 +71,8 @@ const (
 	RetryCount string = "RetryCount"
 	// JobType  job type
 	JobType string = "JobType"
+	// Namespace job namespace
+	Namespace string = "Namespace"
 )
 
 var listJobFlags = &listFlags{}
@@ -111,9 +113,19 @@ func ListJobs() error {
 
 // PrintJobs prints all jobs details
 func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
-	maxNameLen := getMaxNameLen(jobs)
-	_, err := fmt.Fprintf(writer, fmt.Sprintf("%%-%ds%%-25s%%-12s%%-12s%%-12s%%-6s%%-10s%%-10s%%-12s%%-10s%%-12s%%-10s\n", maxNameLen),
-		Name, Creation, Phase, JobType, Replicas, Min, Pending, Running, Succeeded, Failed, Unknown, RetryCount)
+	maxLenInfo := getMaxLen(jobs)
+
+	titleFormat := "%%-%ds%%-25s%%-12s%%-12s%%-12s%%-6s%%-10s%%-10s%%-12s%%-10s%%-12s%%-10s\n"
+	contentFormat := "%%-%ds%%-25s%%-12s%%-12s%%-12d%%-6d%%-10d%%-10d%%-12d%%-10d%%-12d%%-10d\n"
+
+	var err error
+	if listJobFlags.allNamespace {
+		_, err = fmt.Fprintf(writer, fmt.Sprintf("%%-%ds"+titleFormat, maxLenInfo[1], maxLenInfo[0]),
+			Namespace, Name, Creation, Phase, JobType, Replicas, Min, Pending, Running, Succeeded, Failed, Unknown, RetryCount)
+	} else {
+		_, err = fmt.Fprintf(writer, fmt.Sprintf(titleFormat, maxLenInfo[0]),
+			Name, Creation, Phase, JobType, Replicas, Min, Pending, Running, Succeeded, Failed, Unknown, RetryCount)
+	}
 	if err != nil {
 		fmt.Printf("Failed to print list command result: %s.\n", err)
 	}
@@ -133,22 +145,33 @@ func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 		if jobType == "" {
 			jobType = "Batch"
 		}
-		_, err = fmt.Fprintf(writer, fmt.Sprintf("%%-%ds%%-25s%%-12s%%-12s%%-12d%%-6d%%-10d%%-10d%%-12d%%-10d%%-12d%%-10d\n", maxNameLen),
-			job.Name, job.CreationTimestamp.Format("2006-01-02 15:04:05"), job.Status.State.Phase, jobType, replicas,
-			job.Status.MinAvailable, job.Status.Pending, job.Status.Running, job.Status.Succeeded, job.Status.Failed, job.Status.Unknown, job.Status.RetryCount)
+
+		if listJobFlags.allNamespace {
+			_, err = fmt.Fprintf(writer, fmt.Sprintf("%%-%ds"+contentFormat, maxLenInfo[1], maxLenInfo[0]),
+				job.Namespace, job.Name, job.CreationTimestamp.Format("2006-01-02 15:04:05"), job.Status.State.Phase, jobType, replicas,
+				job.Status.MinAvailable, job.Status.Pending, job.Status.Running, job.Status.Succeeded, job.Status.Failed, job.Status.Unknown, job.Status.RetryCount)
+		} else {
+			_, err = fmt.Fprintf(writer, fmt.Sprintf(contentFormat, maxLenInfo[0]),
+				job.Name, job.CreationTimestamp.Format("2006-01-02 15:04:05"), job.Status.State.Phase, jobType, replicas,
+				job.Status.MinAvailable, job.Status.Pending, job.Status.Running, job.Status.Succeeded, job.Status.Failed, job.Status.Unknown, job.Status.RetryCount)
+		}
 		if err != nil {
 			fmt.Printf("Failed to print list command result: %s.\n", err)
 		}
 	}
 }
 
-func getMaxNameLen(jobs *v1alpha1.JobList) int {
-	maxLen := len(Name)
+func getMaxLen(jobs *v1alpha1.JobList) []int {
+	maxNameLen := len(Name)
+	maxNamespaceLen := len(Namespace)
 	for _, job := range jobs.Items {
-		if len(job.Name) > maxLen {
-			maxLen = len(job.Name)
+		if len(job.Name) > maxNameLen {
+			maxNameLen = len(job.Name)
+		}
+		if len(job.Namespace) > maxNamespaceLen {
+			maxNamespaceLen = len(job.Namespace)
 		}
 	}
 
-	return maxLen + 3
+	return []int{maxNameLen + 3, maxNamespaceLen + 3}
 }
