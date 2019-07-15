@@ -77,7 +77,7 @@ __create__:
 `create` command is used to create a queue with weight; for example, the following command will create a queue named `myqueue` with weight 10.
 
 ```shell
-$ vkctl queue create --name myqueue --weight 10
+$ vcctl queue create --name myqueue --weight 10
 ```
 
 __view__:
@@ -85,7 +85,7 @@ __view__:
 `view` command is used to show the detail of a queue, e.g. creation time; the following command will show the detail of queue `myqueue`
 
 ```shell
-$ vkctl queue view myqueue
+$ vcctl queue view myqueue
 ```
 
 __list__:
@@ -93,7 +93,7 @@ __list__:
 `list` command is used to show all available queues to current user
 
 ```shell
-$ vkctl queue list
+$ vcctl queue list
 Name      Weight  Total  Pending  Running ...
 myqueue   10      10     5        5
 ```

@@ -95,7 +95,7 @@ func kubeconfigPath(home string) string {
 //VolcanoCliBinary function gets the volcano cli binary
 func VolcanoCliBinary() string {
 	if bin := os.Getenv("VK_BIN"); bin != "" {
-		return filepath.Join(bin, "vkctl")
+		return filepath.Join(bin, "vcctl")
 	}
 	return ""
 }
@@ -119,9 +119,9 @@ func initTestContext() *context {
 	Expect(home).NotTo(Equal(""))
 	configPath := kubeconfigPath(home)
 	Expect(configPath).NotTo(Equal(""))
-	vkctl := VolcanoCliBinary()
-	Expect(fileExist(vkctl)).To(BeTrue(), fmt.Sprintf(
-		"vkctl binary: %s is required for E2E tests, please update VK_BIN environment", vkctl))
+	vcctl := VolcanoCliBinary()
+	Expect(fileExist(vcctl)).To(BeTrue(), fmt.Sprintf(
+		"vcctl binary: %s is required for E2E tests, please update VK_BIN environment", vcctl))
 	config, err := clientcmd.BuildConfigFromFlags(masterURL(), configPath)
 	Expect(err).NotTo(HaveOccurred())
 

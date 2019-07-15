@@ -9,7 +9,7 @@ import (
 func buildJobCmd() *cobra.Command {
 	jobCmd := &cobra.Command{
 		Use:   "job",
-		Short: "vkctl command line operation job",
+		Short: "vcctl command line operation job",
 	}
 
 	jobRunCmd := &cobra.Command{

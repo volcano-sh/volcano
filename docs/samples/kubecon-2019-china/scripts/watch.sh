@@ -16,7 +16,7 @@ watch_cluster() {
 
     echo "Volcano Jobs:"
     echo "-------------------------------"
-    vkctl job list
+    vcctl job list
 }
 
 if [ $# == 0 ]; then

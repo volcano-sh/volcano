@@ -13,7 +13,7 @@ LD_FLAGS=" \
 
 .EXPORT_ALL_VARIABLES:
 
-all: vc-scheduler vc-controllers vc-admission vkctl
+all: vc-scheduler vc-controllers vc-admission vcctl
 
 init:
 	mkdir -p ${BIN_DIR}
@@ -27,12 +27,12 @@ vc-controllers: init
 vc-admission: init
 	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vc-admission ./cmd/admission
 
-vkctl: init
-	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vkctl ./cmd/cli
+vcctl: init
+	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vcctl ./cmd/cli
 
 image_bins:
 	go get github.com/mitchellh/gox
-	CGO_ENABLED=0 gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vkctl ./cmd/cli
+	CGO_ENABLED=0 gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vcctl ./cmd/cli
 	for name in controllers scheduler admission; do\
 		CGO_ENABLED=0 gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-$$name ./cmd/$$name; \
 	done
