@@ -23,6 +23,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	kbapi "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -236,3 +237,14 @@ func (p TasksPriority) Less(i, j int) bool {
 }
 
 func (p TasksPriority) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
+
+func isControlledBy(obj metav1.Object, gvk schema.GroupVersionKind) bool {
+	controlerRef := metav1.GetControllerOf(obj)
+	if controlerRef == nil {
+		return false
+	}
+	if controlerRef.APIVersion == gvk.GroupVersion().String() && controlerRef.Kind == gvk.Kind {
+		return true
+	}
+	return false
+}
