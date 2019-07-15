@@ -21,6 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	"testing"
+	"volcano.sh/volcano/pkg/apis/helpers"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -66,6 +67,7 @@ func newController() *Controller {
 }
 
 func buildPod(namespace, name string, p v1.PodPhase, labels map[string]string) *v1.Pod {
+	boolValue := true
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			UID:             types.UID(fmt.Sprintf("%v-%v", namespace, name)),
@@ -73,6 +75,13 @@ func buildPod(namespace, name string, p v1.PodPhase, labels map[string]string) *
 			Namespace:       namespace,
 			Labels:          labels,
 			ResourceVersion: string(uuid.NewUUID()),
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: helpers.JobKind.GroupVersion().String(),
+					Kind:       helpers.JobKind.Kind,
+					Controller: &boolValue,
+				},
+			},
 		},
 		Status: v1.PodStatus{
 			Phase: p,
