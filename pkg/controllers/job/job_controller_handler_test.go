@@ -365,6 +365,23 @@ func TestUpdatePodFunc(t *testing.T) {
 			},
 			ExpectedValue: v1.PodRunning,
 		},
+		{
+			Name: "UpdatePod Failed case",
+			Job: &vkbatchv1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1",
+					Namespace: namespace,
+				},
+			},
+			oldPod: buildPod(namespace, "pod1", v1.PodPending, nil),
+			newPod: buildPod(namespace, "pod1", v1.PodFailed, nil),
+			Annotation: map[string]string{
+				vkbatchv1.JobNameKey:  "job1",
+				vkbatchv1.JobVersion:  "0",
+				vkbatchv1.TaskSpecKey: "task1",
+			},
+			ExpectedValue: v1.PodFailed,
+		},
 	}
 
 	for i, testcase := range testcases {

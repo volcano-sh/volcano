@@ -234,7 +234,9 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 		event = vkbatchv1.PodFailedEvent
 		// TODO: currently only one container pod is supported by volcano
 		// Once multi containers pod is supported, update accordingly.
-		exitCode = newPod.Status.ContainerStatuses[0].State.Terminated.ExitCode
+		if len(newPod.Status.ContainerStatuses) > 0 && newPod.Status.ContainerStatuses[0].State.Terminated != nil {
+			exitCode = newPod.Status.ContainerStatuses[0].State.Terminated.ExitCode
+		}
 	}
 
 	if oldPod.Status.Phase != v1.PodSucceeded &&
