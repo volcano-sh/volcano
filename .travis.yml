@@ -10,7 +10,38 @@ services:
 go_import_path: volcano.sh/volcano
 jobs:
   include:
-    - stage: publish release
+    - stage: Golint & Gofmt
+      before_script:
+        - go get -u golang.org/x/lint/golint
+      script:
+        - make verify
+    - stage: UT Tests
+      before_script:
+        - go get github.com/mattn/goveralls
+      script:
+        - make unit-test && $HOME/gopath/bin/goveralls -coverprofile=coverage.txt -service=travis-ci
+    - stage: E2E Tests
+      before_script:
+        # Download kubectl
+        - sudo apt-get update && sudo apt-get install -y apt-transport-https
+        - curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+        - echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
+        - sudo apt-get update
+        - sudo apt-get install -y kubectl
+        # Download kind binary (0.2.0)
+        - sudo curl -o /usr/local/bin/kind -L https://github.com/kubernetes-sigs/kind/releases/download/v0.4.0/kind-linux-amd64
+        - sudo chmod +x /usr/local/bin/kind
+      script:
+        - make vcctl
+        - make images
+        - make e2e-test-kind
+      after_failure:
+        # Echo logs and upload
+        - test -f helm-tiller.log &&  "echo ******<<helm tiller service logs>>******" && cat helm-tiller.log
+        - test -f volcano-admission.log && echo "******<<admission logs>>******" && cat volcano-admission.log
+        - test -f volcano-controller.log && echo "******<<controller logs>>******" && cat volcano-controller.log
+        - test -f volcano-scheduler.log && echo "******<<scheduler logs>>******" && cat volcano-scheduler.log
+    - stage: Publish release
       before_deploy:
         - export TRAVIS_TAG=$(git describe --tags)
       script:
@@ -20,7 +51,6 @@ jobs:
           script: make TAG=${TRAVIS_TAG} RELEASE_VER=${TRAVIS_TAG} release
           on:
             tags: true
-            branch: master
         - provider: releases
           api_key: $GITHUB_TOKEN
           file_glob: true
@@ -28,7 +58,6 @@ jobs:
           skip_cleanup: true
           on:
             tags: true
-            branch: master
 notifications:
   webhooks: https://www.travisbuddy.com/
   on_success: never

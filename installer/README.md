@@ -9,13 +9,13 @@ Kubernetes that are commonly required by many classes of batch & elastic workloa
 
 ## Prerequisites
 
-- Kubernetes 1.13+ with CRD support
+- Kubernetes 1.12+ with CRD support
 
 ## Installing volcano via yaml file
 
 All-in-one yaml has been generated for quick deployment. Try command:
 ```$xslt
-kubectl apply -f volcano-xxx.yaml
+kubectl apply -f volcano-v0.0.x.yaml
 ```
 Check the status in namespace `volcano-system`
 ```$xslt
@@ -51,10 +51,10 @@ kubectl apply -f default-queue.yaml
 To install the volcano with chart:
 
 ```bash
-helm install helm/chart --namespace <namespace> --name <specified-name>
+helm install helm/chart/volcano --namespace <namespace> --name <specified-name>
 
 e.g :
-helm install helm/chart --namespace volcano-trial --name volcano-trial
+helm install helm/chart/volcano --namespace volcano-trial --name volcano-trial
 ```
 
 This command deploys volcano in kubernetes cluster with default configuration.  The [configuration](#configuration) section lists the parameters that can be configured during installation.
