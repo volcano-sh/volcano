@@ -23,6 +23,8 @@ import (
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// Job defines the volcano job
 type Job struct {
 	metav1.TypeMeta `json:",inline"`
 
@@ -70,6 +72,19 @@ type JobSpec struct {
 	// Defaults to 3.
 	// +optional
 	MaxRetry int32 `json:"maxRetry,omitempty" protobuf:"bytes,8,opt,name=maxRetry"`
+
+	// ttlSecondsAfterFinished limits the lifetime of a Job that has finished
+	// execution (either Completed or Failed). If this field is set,
+	// ttlSecondsAfterFinished after the Job finishes, it is eligible to be
+	// automatically deleted. If this field is unset,
+	// the Job won't be automatically deleted. If this field is set to zero,
+	// the Job becomes eligible to be deleted immediately after it finishes.
+	// +optional
+	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" protobuf:"varint,9,opt,name=ttlSecondsAfterFinished"`
+
+	// If specified, indicates the job's priority.
+	// +optional
+	PriorityClassName string `json:"priorityClassName,omitempty" protobuf:"bytes,10,opt,name=priorityClassName"`
 }
 
 // VolumeSpec defines the specification of Volume, e.g. PVC
@@ -85,24 +100,35 @@ type VolumeSpec struct {
 	VolumeClaim *v1.PersistentVolumeClaimSpec `json:"volumeClaim,omitempty" protobuf:"bytes,3,opt,name=volumeClaim"`
 }
 
+// JobEvent job event
 type JobEvent string
 
 const (
+	// CommandIssued command issued event is generated if a command is raised by user
 	CommandIssued JobEvent = "CommandIssued"
-	PluginError   JobEvent = "PluginError"
+	// PluginError  plugin error event is generated if error happens
+	PluginError JobEvent = "PluginError"
+	// PVCError pvc error event is generated if error happens during IO creation
+	PVCError JobEvent = "PVCError"
+	// PodGroupError  pod grp error event is generated if error happens during pod grp creation
+	PodGroupError JobEvent = "PodGroupError"
+	//ExecuteAction action issued event for each action
+	ExecuteAction JobEvent = "ExecuteAction"
+	//JobStatusError is generated if update job status failed
+	JobStatusError JobEvent = "JobStatusError"
 )
 
 // Event represent the phase of Job, e.g. pod-failed.
 type Event string
 
 const (
-	// AllEvent means all event
+	// AnyEvent means all event
 	AnyEvent Event = "*"
 	// PodFailedEvent is triggered if Pod was failed
 	PodFailedEvent Event = "PodFailed"
 	// PodEvictedEvent is triggered if Pod was deleted
 	PodEvictedEvent Event = "PodEvicted"
-	// These below are several events can lead to job 'Unknown'
+	// JobUnknownEvent These below are several events can lead to job 'Unknown'
 	// 1. Task Unschedulable, this is triggered when part of
 	//    pods can't be scheduled while some are already running in gang-scheduling case.
 	JobUnknownEvent Event = "Unknown"
@@ -154,6 +180,11 @@ type LifecyclePolicy struct {
 	// +optional
 	Event Event `json:"event,omitempty" protobuf:"bytes,2,opt,name=event"`
 
+	// The Events recorded by scheduler; the controller takes actions
+	// according to this Events.
+	// +optional
+	Events []Event `json:"events,omitempty" protobuf:"bytes,3,opt,name=events"`
+
 	// The exit code of the pod container, controller will take action
 	// according to this code.
 	// Note: only one of `Event` or `ExitCode` can be specified.
@@ -163,7 +194,7 @@ type LifecyclePolicy struct {
 	// Timeout is the grace period for controller to take actions.
 	// Default to nil (take action immediately).
 	// +optional
-	Timeout *metav1.Duration `json:"timeout,omitempty" protobuf:"bytes,3,opt,name=timeout"`
+	Timeout *metav1.Duration `json:"timeout,omitempty" protobuf:"bytes,4,opt,name=timeout"`
 }
 
 // TaskSpec specifies the task specification of Job
@@ -183,6 +214,7 @@ type TaskSpec struct {
 	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,4,opt,name=policies"`
 }
 
+// JobPhase defines the phase of the job
 type JobPhase string
 
 const (
@@ -223,6 +255,10 @@ type JobState struct {
 	// Human-readable message indicating details about last transition.
 	// +optional
 	Message string `json:"message,omitempty" protobuf:"bytes,3,opt,name=message"`
+
+	// Last time the condition transit from one phase to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,4,opt,name=lastTransitionTime"`
 }
 
 // JobStatus represents the current status of a Job
@@ -244,7 +280,7 @@ type JobStatus struct {
 
 	// The number of pods which reached phase Succeeded.
 	// +optional
-	Succeeded int32 `json:"Succeeded,omitempty" protobuf:"bytes,5,opt,name=succeeded"`
+	Succeeded int32 `json:"succeeded,omitempty" protobuf:"bytes,5,opt,name=succeeded"`
 
 	// The number of pods which reached phase Failed.
 	// +optional
@@ -254,18 +290,24 @@ type JobStatus struct {
 	// +optional
 	Terminating int32 `json:"terminating,omitempty" protobuf:"bytes,7,opt,name=terminating"`
 
+	// The number of pods which reached phase Unknown.
+	// +optional
+	Unknown int32 `json:"unknown,omitempty" protobuf:"bytes,8,opt,name=unknown"`
+
 	//Current version of job
-	Version int32 `json:"version,omitempty" protobuf:"bytes,8,opt,name=version"`
+	Version int32 `json:"version,omitempty" protobuf:"bytes,9,opt,name=version"`
 
 	// The number of Job retries.
 	// +optional
-	RetryCount int32 `json:"retryCount,omitempty" protobuf:"bytes,9,opt,name=retryCount"`
+	RetryCount int32 `json:"retryCount,omitempty" protobuf:"bytes,10,opt,name=retryCount"`
 
 	// The resources that controlled by this job, e.g. Service, ConfigMap
-	ControlledResources map[string]string `json:"controlledResources,omitempty" protobuf:"bytes,8,opt,name=controlledResources"`
+	ControlledResources map[string]string `json:"controlledResources,omitempty" protobuf:"bytes,11,opt,name=controlledResources"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// JobList defines the list of jobs
 type JobList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`

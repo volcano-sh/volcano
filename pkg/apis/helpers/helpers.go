@@ -32,9 +32,13 @@ import (
 	vkcorev1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 )
 
+// JobKind  creates job GroupVersionKind
 var JobKind = vkbatchv1.SchemeGroupVersion.WithKind("Job")
+
+// CommandKind  creates command GroupVersionKind
 var CommandKind = vkcorev1.SchemeGroupVersion.WithKind("Command")
 
+// GetController  returns the controller uid
 func GetController(obj interface{}) types.UID {
 	accessor, err := meta.Accessor(obj)
 	if err != nil {
@@ -49,6 +53,7 @@ func GetController(obj interface{}) types.UID {
 	return ""
 }
 
+// ControlledBy  controlled by
 func ControlledBy(obj interface{}, gvk schema.GroupVersionKind) bool {
 	accessor, err := meta.Accessor(obj)
 	if err != nil {
@@ -63,7 +68,8 @@ func ControlledBy(obj interface{}, gvk schema.GroupVersionKind) bool {
 	return false
 }
 
-func CreateConfigMapIfNotExist(job *vkv1.Job, kubeClients *kubernetes.Clientset, data map[string]string, cmName string) error {
+// CreateConfigMapIfNotExist  creates config map resource if not present
+func CreateConfigMapIfNotExist(job *vkv1.Job, kubeClients kubernetes.Interface, data map[string]string, cmName string) error {
 	// If ConfigMap does not exist, create one for Job.
 	cmOld, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{})
 	if err != nil {
@@ -102,15 +108,16 @@ func CreateConfigMapIfNotExist(job *vkv1.Job, kubeClients *kubernetes.Clientset,
 	return nil
 }
 
-func DeleteConfigmap(job *vkv1.Job, kubeClients *kubernetes.Clientset, cmName string) error {
+// DeleteConfigmap  deletes the config map resource
+func DeleteConfigmap(job *vkv1.Job, kubeClients kubernetes.Interface, cmName string) error {
 	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
 			glog.V(3).Infof("Failed to get Configmap for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
 			return err
-		} else {
-			return nil
 		}
+		return nil
+
 	}
 
 	if err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Delete(cmName, nil); err != nil {

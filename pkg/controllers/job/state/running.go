@@ -28,50 +28,34 @@ type runningState struct {
 func (ps *runningState) Execute(action vkv1.Action) error {
 	switch action {
 	case vkv1.RestartJobAction:
-		return KillJob(ps.job, func(status *vkv1.JobStatus) {
-			phase := vkv1.Running
-			if status.Terminating != 0 {
-				phase = vkv1.Restarting
-				status.RetryCount++
-			}
-
-			status.State.Phase = phase
+		return KillJob(ps.job, PodRetainPhaseNone, func(status *vkv1.JobStatus) bool {
+			status.State.Phase = vkv1.Restarting
+			status.RetryCount++
+			return true
 		})
 	case vkv1.AbortJobAction:
-		return KillJob(ps.job, func(status *vkv1.JobStatus) {
-			phase := vkv1.Running
-			if status.Terminating != 0 {
-				phase = vkv1.Aborting
-			}
-
-			status.State.Phase = phase
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
+			status.State.Phase = vkv1.Aborting
+			return true
 		})
 	case vkv1.TerminateJobAction:
-		return KillJob(ps.job, func(status *vkv1.JobStatus) {
-			phase := vkv1.Running
-			if status.Terminating != 0 {
-				phase = vkv1.Terminating
-			}
-
-			status.State.Phase = phase
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
+			status.State.Phase = vkv1.Terminating
+			return true
 		})
 	case vkv1.CompleteJobAction:
-		return KillJob(ps.job, func(status *vkv1.JobStatus) {
-			phase := vkv1.Completed
-			if status.Terminating != 0 {
-				phase = vkv1.Completing
-			}
-
-			status.State.Phase = phase
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
+			status.State.Phase = vkv1.Completing
+			return true
 		})
 	default:
-		return SyncJob(ps.job, func(status *vkv1.JobStatus) {
-			phase := vkv1.Running
+		return SyncJob(ps.job, func(status *vkv1.JobStatus) bool {
 			if status.Succeeded+status.Failed == TotalTasks(ps.job.Job) {
-				phase = vkv1.Completed
+				status.State.Phase = vkv1.Completed
+				return true
 			}
 
-			status.State.Phase = phase
+			return false
 		})
 	}
 }

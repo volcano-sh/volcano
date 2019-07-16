@@ -13,22 +13,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package configure
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/golang/glog"
 
 	"k8s.io/api/admissionregistration/v1beta1"
+	"k8s.io/client-go/kubernetes"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	admissionregistrationv1beta1client "k8s.io/client-go/kubernetes/typed/admissionregistration/v1beta1"
 )
 
-// admission-controller server config.
+// Config admission-controller server config.
 type Config struct {
 	Master                    string
 	Kubeconfig                string
@@ -40,13 +41,18 @@ type Config struct {
 	MutateWebhookName         string
 	ValidateWebhookConfigName string
 	ValidateWebhookName       string
+	PrintVersion              bool
+	AdmissionServiceName      string
+	AdmissionServiceNamespace string
 }
 
+// NewConfig create new config
 func NewConfig() *Config {
 	c := Config{}
 	return &c
 }
 
+// AddFlags add flags
 func (c *Config) AddFlags() {
 	flag.StringVar(&c.Master, "master", c.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 	flag.StringVar(&c.Kubeconfig, "kubeconfig", c.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
@@ -56,16 +62,31 @@ func (c *Config) AddFlags() {
 	flag.StringVar(&c.KeyFile, "tls-private-key-file", c.KeyFile, "File containing the default x509 private key matching --tls-cert-file.")
 	flag.StringVar(&c.CaCertFile, "ca-cert-file", c.CaCertFile, "File containing the x509 Certificate for HTTPS.")
 	flag.IntVar(&c.Port, "port", 443, "the port used by admission-controller-server.")
-	flag.StringVar(&c.MutateWebhookConfigName, "mutate-webhook-config-name", "volcano-mutate-job",
-		"Name of the mutatingwebhookconfiguration resource in Kubernetes.")
-	flag.StringVar(&c.MutateWebhookName, "mutate-webhook-name", "mutatejob.volcano.sh",
-		"Name of the webhook entry in the webhook config.")
-	flag.StringVar(&c.ValidateWebhookConfigName, "validate-webhook-config-name", "volcano-validate-job",
-		"Name of the mutatingwebhookconfiguration resource in Kubernetes.")
-	flag.StringVar(&c.ValidateWebhookName, "validate-webhook-name", "validatejob.volcano.sh",
-		"Name of the webhook entry in the webhook config.")
+	flag.StringVar(&c.MutateWebhookConfigName, "mutate-webhook-config-name", "",
+		"Name of the mutatingwebhookconfiguration resource in Kubernetes [Deprecated]: it will be generated when not specified.")
+	flag.StringVar(&c.MutateWebhookName, "mutate-webhook-name", "",
+		"Name of the webhook entry in the webhook config. [Deprecated]: it will be generated when not specified")
+	flag.StringVar(&c.ValidateWebhookConfigName, "validate-webhook-config-name", "",
+		"Name of the mutatingwebhookconfiguration resource in Kubernetes. [Deprecated]: it will be generated when not specified")
+	flag.StringVar(&c.ValidateWebhookName, "validate-webhook-name", "",
+		"Name of the webhook entry in the webhook config. [Deprecated]: it will be generated when not specified")
+	flag.BoolVar(&c.PrintVersion, "version", false, "Show version and quit")
+	flag.StringVar(&c.AdmissionServiceNamespace, "webhook-namespace", "default", "The namespace of this webhook")
+	flag.StringVar(&c.AdmissionServiceName, "webhook-service-name", "admission-service", "The name of this admission service")
 }
 
+const (
+	// ValidateConfigName ValidatingWebhookConfiguration name format
+	ValidateConfigName = "%s-validate-job"
+	// MutateConfigName MutatingWebhookConfiguration name format
+	MutateConfigName = "%s-mutate-job"
+	// ValidateHookName Default name for webhooks in ValidatingWebhookConfiguration
+	ValidateHookName = "validatejob.volcano.sh"
+	// MutateHookName Default name for webhooks in MutatingWebhookConfiguration
+	MutateHookName = "mutatejob.volcano.sh"
+)
+
+// CheckPortOrDie check valid port range
 func (c *Config) CheckPortOrDie() error {
 	if c.Port < 1 || c.Port > 65535 {
 		return fmt.Errorf("the port should be in the range of 1 and 65535")
@@ -73,78 +94,135 @@ func (c *Config) CheckPortOrDie() error {
 	return nil
 }
 
-// PatchMutateWebhookConfig patches a CA bundle into the specified webhook config.
-func PatchMutateWebhookConfig(client admissionregistrationv1beta1client.MutatingWebhookConfigurationInterface,
-	webhookConfigName, webhookName string, caBundle []byte) error {
-	config, err := client.Get(webhookConfigName, metav1.GetOptions{})
-	if err != nil {
-		return err
+func useGeneratedNameIfRequired(configured, generated string) string {
+	if configured != "" {
+		return configured
 	}
-	prev, err := json.Marshal(config)
-	if err != nil {
-		return err
-	}
-	found := false
-	for i, w := range config.Webhooks {
-		if w.Name == webhookName {
-			config.Webhooks[i].ClientConfig.CABundle = caBundle[:]
-			found = true
-			break
-		}
-	}
-	if !found {
-		return apierrors.NewInternalError(fmt.Errorf(
-			"webhook entry %q not found in config %q", webhookName, webhookConfigName))
-	}
-	curr, err := json.Marshal(config)
-	if err != nil {
-		return err
-	}
-	patch, err := strategicpatch.CreateTwoWayMergePatch(prev, curr, v1beta1.MutatingWebhookConfiguration{})
-	if err != nil {
-		return err
-	}
-
-	if string(patch) != "{}" {
-		_, err = client.Patch(webhookConfigName, types.StrategicMergePatchType, patch)
-	}
-	return err
+	return generated
 }
 
-// PatchValidateWebhookConfig patches a CA bundle into the specified webhook config.
-func PatchValidateWebhookConfig(client admissionregistrationv1beta1client.ValidatingWebhookConfigurationInterface,
-	webhookConfigName, webhookName string, caBundle []byte) error {
-	config, err := client.Get(webhookConfigName, metav1.GetOptions{})
-	if err != nil {
-		return err
+// RegisterWebhooks register webhooks for admission service
+func RegisterWebhooks(c *Config, clienset *kubernetes.Clientset, cabundle []byte) error {
+	ignorePolicy := v1beta1.Ignore
+
+	//Prepare validate webhooks
+	path := "/jobs"
+	JobValidateHooks := v1beta1.ValidatingWebhookConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: useGeneratedNameIfRequired(c.ValidateWebhookConfigName,
+				fmt.Sprintf(ValidateConfigName, c.AdmissionServiceName)),
+		},
+		Webhooks: []v1beta1.Webhook{{
+			Name: useGeneratedNameIfRequired(c.ValidateWebhookName, ValidateHookName),
+			Rules: []v1beta1.RuleWithOperations{
+				{
+					Operations: []v1beta1.OperationType{v1beta1.Create, v1beta1.Update},
+					Rule: v1beta1.Rule{
+						APIGroups:   []string{"batch.volcano.sh"},
+						APIVersions: []string{"v1alpha1"},
+						Resources:   []string{"jobs"},
+					},
+				},
+			},
+			ClientConfig: v1beta1.WebhookClientConfig{
+				Service: &v1beta1.ServiceReference{
+					Name:      c.AdmissionServiceName,
+					Namespace: c.AdmissionServiceNamespace,
+					Path:      &path,
+				},
+				CABundle: cabundle,
+			},
+			FailurePolicy: &ignorePolicy,
+		}},
 	}
-	prev, err := json.Marshal(config)
-	if err != nil {
-		return err
-	}
-	found := false
-	for i, w := range config.Webhooks {
-		if w.Name == webhookName {
-			config.Webhooks[i].ClientConfig.CABundle = caBundle[:]
-			found = true
-			break
-		}
-	}
-	if !found {
-		return apierrors.NewInternalError(fmt.Errorf(
-			"webhook entry %q not found in config %q", webhookName, webhookConfigName))
-	}
-	curr, err := json.Marshal(config)
-	if err != nil {
-		return err
-	}
-	patch, err := strategicpatch.CreateTwoWayMergePatch(prev, curr, v1beta1.ValidatingWebhookConfiguration{})
-	if err != nil {
+
+	if err := registerValidateWebhook(clienset.AdmissionregistrationV1beta1().ValidatingWebhookConfigurations(),
+		[]v1beta1.ValidatingWebhookConfiguration{JobValidateHooks}); err != nil {
 		return err
 	}
 
-	if string(patch) != "{}" {
-		_, err = client.Patch(webhookConfigName, types.StrategicMergePatchType, patch)
+	//Prepare mutate jobs
+	path = "/mutating-jobs"
+	JobMutateHooks := v1beta1.MutatingWebhookConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: useGeneratedNameIfRequired(c.MutateWebhookConfigName,
+				fmt.Sprintf(MutateConfigName, c.AdmissionServiceName)),
+		},
+		Webhooks: []v1beta1.Webhook{{
+			Name: useGeneratedNameIfRequired(c.MutateWebhookName, MutateHookName),
+			Rules: []v1beta1.RuleWithOperations{
+				{
+					Operations: []v1beta1.OperationType{v1beta1.Create},
+					Rule: v1beta1.Rule{
+						APIGroups:   []string{"batch.volcano.sh"},
+						APIVersions: []string{"v1alpha1"},
+						Resources:   []string{"jobs"},
+					},
+				},
+			},
+			ClientConfig: v1beta1.WebhookClientConfig{
+				Service: &v1beta1.ServiceReference{
+					Name:      c.AdmissionServiceName,
+					Namespace: c.AdmissionServiceNamespace,
+					Path:      &path,
+				},
+				CABundle: cabundle,
+			},
+			FailurePolicy: &ignorePolicy,
+		}},
 	}
-	return err
+
+	if err := registerMutateWebhook(clienset.AdmissionregistrationV1beta1().MutatingWebhookConfigurations(),
+		[]v1beta1.MutatingWebhookConfiguration{JobMutateHooks}); err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
+func registerMutateWebhook(client admissionregistrationv1beta1client.MutatingWebhookConfigurationInterface,
+	webhooks []v1beta1.MutatingWebhookConfiguration) error {
+	for _, hook := range webhooks {
+		existing, err := client.Get(hook.Name, metav1.GetOptions{})
+		if err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+		if err == nil && existing != nil {
+			glog.Infof("Updating MutatingWebhookConfiguration %v", hook)
+			existing.Webhooks = hook.Webhooks
+			if _, err := client.Update(existing); err != nil {
+				return err
+			}
+		} else {
+			glog.Infof("Creating MutatingWebhookConfiguration %v", hook)
+			if _, err := client.Create(&hook); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func registerValidateWebhook(client admissionregistrationv1beta1client.ValidatingWebhookConfigurationInterface,
+	webhooks []v1beta1.ValidatingWebhookConfiguration) error {
+	for _, hook := range webhooks {
+		existing, err := client.Get(hook.Name, metav1.GetOptions{})
+		if err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+		if err == nil && existing != nil {
+			existing.Webhooks = hook.Webhooks
+			glog.Infof("Updating ValidatingWebhookConfiguration %v", hook)
+			if _, err := client.Update(existing); err != nil {
+				return err
+			}
+		} else {
+			glog.Infof("Creating ValidatingWebhookConfiguration %v", hook)
+			if _, err := client.Create(&hook); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

@@ -24,6 +24,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+//ResumeJob resumes the job in the given namespace
 func ResumeJob(name string, namespace string) string {
 	command := []string{"job", "resume"}
 	Expect(name).NotTo(Equal(""), "Job name should not be empty in Resume job command")
@@ -34,6 +35,7 @@ func ResumeJob(name string, namespace string) string {
 	return RunCliCommand(command)
 }
 
+//SuspendJob suspends the job in the given namepsace
 func SuspendJob(name string, namespace string) string {
 	command := []string{"job", "suspend"}
 	Expect(name).NotTo(Equal(""), "Job name should not be empty in Suspend job command")
@@ -44,6 +46,7 @@ func SuspendJob(name string, namespace string) string {
 	return RunCliCommand(command)
 }
 
+//ListJobs list all the jobs in the given namespace
 func ListJobs(namespace string) string {
 	command := []string{"job", "list"}
 	if namespace != "" {
@@ -52,11 +55,35 @@ func ListJobs(namespace string) string {
 	return RunCliCommand(command)
 }
 
+//DeleteJob delete the job in the given namespace
+func DeleteJob(name string, namespace string) string {
+	command := []string{"job", "delete"}
+	Expect(name).NotTo(Equal(""), "Job name should not be empty in delete job command")
+	command = append(command, "--name", name)
+	if namespace != "" {
+		command = append(command, "--namespace", namespace)
+	}
+	return RunCliCommand(command)
+}
+
+//RunCliCommand runs the volcano command
 func RunCliCommand(command []string) string {
 	if masterURL() != "" {
 		command = append(command, "--master", masterURL())
 	}
 	command = append(command, "--kubeconfig", kubeconfigPath(homeDir()))
+	output, err := exec.Command(VolcanoCliBinary(), command...).Output()
+	Expect(err).NotTo(HaveOccurred(),
+		fmt.Sprintf("Command %s failed to execute: %s", strings.Join(command, ""), err))
+	return string(output)
+}
+
+// RunCliCommandWithoutKubeConfig runs the volcano command
+func RunCliCommandWithoutKubeConfig(command []string) string {
+	if masterURL() != "" {
+		command = append(command, "--master", masterURL())
+	}
+
 	output, err := exec.Command(VolcanoCliBinary(), command...).Output()
 	Expect(err).NotTo(HaveOccurred(),
 		fmt.Sprintf("Command %s failed to execute: %s", strings.Join(command, ""), err))

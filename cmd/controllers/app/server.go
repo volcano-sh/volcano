@@ -29,6 +29,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+
+	// Initialize client auth plugin.
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -36,8 +38,13 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 
+	kbver "volcano.sh/volcano/pkg/client/clientset/versioned"
+
 	"volcano.sh/volcano/cmd/controllers/app/options"
+	vkclient "volcano.sh/volcano/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/controllers/garbagecollector"
 	"volcano.sh/volcano/pkg/controllers/job"
+	"volcano.sh/volcano/pkg/controllers/queue"
 )
 
 const (
@@ -66,16 +73,26 @@ func buildConfig(opt *options.ServerOption) (*rest.Config, error) {
 	return cfg, nil
 }
 
+//Run the controller
 func Run(opt *options.ServerOption) error {
 	config, err := buildConfig(opt)
 	if err != nil {
 		return err
 	}
 
-	jobController := job.NewJobController(config)
+	// TODO: add user agent for different controllers
+	kubeClient := clientset.NewForConfigOrDie(config)
+	kbClient := kbver.NewForConfigOrDie(config)
+	vkClient := vkclient.NewForConfigOrDie(config)
+
+	jobController := job.NewJobController(kubeClient, kbClient, vkClient, opt.WorkerThreads)
+	queueController := queue.NewQueueController(kubeClient, kbClient)
+	garbageCollector := garbagecollector.New(vkClient)
 
 	run := func(ctx context.Context) {
-		jobController.Run(ctx.Done())
+		go jobController.Run(ctx.Done())
+		go queueController.Run(ctx.Done())
+		go garbageCollector.Run(ctx.Done())
 		<-ctx.Done()
 	}
 
@@ -92,7 +109,7 @@ func Run(opt *options.ServerOption) error {
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: leaderElectionClient.CoreV1().Events(opt.LockObjectNamespace)})
-	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "vk-controllers"})
+	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "vc-controllers"})
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -103,7 +120,7 @@ func Run(opt *options.ServerOption) error {
 
 	rl, err := resourcelock.New(resourcelock.ConfigMapsResourceLock,
 		opt.LockObjectNamespace,
-		"vk-controllers",
+		"vc-controllers",
 		leaderElectionClient.CoreV1(),
 		resourcelock.ResourceLockConfig{
 			Identity:      id,

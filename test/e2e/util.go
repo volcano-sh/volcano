@@ -39,27 +39,32 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	kbv1 "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
-	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
-	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api"
+	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	kbver "volcano.sh/volcano/pkg/client/clientset/versioned"
+	kbapi "volcano.sh/volcano/pkg/scheduler/api"
 
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkver "volcano.sh/volcano/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
-var oneMinute = 1 * time.Minute
-
-var twoMinute = 2 * time.Minute
-
-var oneCPU = v1.ResourceList{"cpu": resource.MustParse("1000m")}
+var (
+	oneMinute = 1 * time.Minute
+	twoMinute = 2 * time.Minute
+	oneCPU    = v1.ResourceList{"cpu": resource.MustParse("1000m")}
+)
 
 const (
+	timeOutMessage      = "timed out waiting for the condition"
 	workerPriority      = "worker-pri"
 	masterPriority      = "master-pri"
 	defaultNginxImage   = "nginx:1.14"
 	defaultBusyBoxImage = "busybox:1.24"
 	defaultMPIImage     = "volcanosh/example-mpi:0.0.1"
+
+	defaultNamespace = "test"
+	defaultQueue1    = "q1"
+	defaultQueue2    = "q2"
 )
 
 func cpuResource(request string) v1.ResourceList {
@@ -87,9 +92,10 @@ func kubeconfigPath(home string) string {
 	return filepath.Join(home, ".kube", "config") // default kubeconfig path is $HOME/.kube/config
 }
 
+//VolcanoCliBinary function gets the volcano cli binary
 func VolcanoCliBinary() string {
 	if bin := os.Getenv("VK_BIN"); bin != "" {
-		return filepath.Join(bin, "vkctl")
+		return filepath.Join(bin, "vcctl")
 	}
 	return ""
 }
@@ -99,24 +105,23 @@ type context struct {
 	kbclient   *kbver.Clientset
 	vkclient   *vkver.Clientset
 
-	namespace              string
-	queues                 []string
-	enableNamespaceAsQueue bool
+	namespace string
+	queues    []string
 }
 
 func initTestContext() *context {
 	cxt := &context{
-		namespace: "test",
-		queues:    []string{"q1", "q2"},
+		namespace: defaultNamespace,
+		queues:    []string{defaultQueue1, defaultQueue2},
 	}
 
 	home := homeDir()
 	Expect(home).NotTo(Equal(""))
 	configPath := kubeconfigPath(home)
 	Expect(configPath).NotTo(Equal(""))
-	vkctl := VolcanoCliBinary()
-	Expect(fileExist(vkctl)).To(BeTrue(), fmt.Sprintf(
-		"vkctl binary: %s is required for E2E tests, please update VK_BIN environment", vkctl))
+	vcctl := VolcanoCliBinary()
+	Expect(fileExist(vcctl)).To(BeTrue(), fmt.Sprintf(
+		"vcctl binary: %s is required for E2E tests, please update VK_BIN environment", vcctl))
 	config, err := clientcmd.BuildConfigFromFlags(masterURL(), configPath)
 	Expect(err).NotTo(HaveOccurred())
 
@@ -128,10 +133,6 @@ func initTestContext() *context {
 	err = waitClusterReady(cxt)
 	Expect(err).NotTo(HaveOccurred(),
 		"k8s cluster is required to have one ready worker node at least.")
-
-	//NOTE(tommylikehu):NamespaceAsQueue feature was removed from kube-batch,
-	//we will eventually remove this logic in test as well.
-	cxt.enableNamespaceAsQueue = false
 
 	_, err = cxt.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -177,12 +178,7 @@ func queueNotExist(ctx *context) wait.ConditionFunc {
 	return func() (bool, error) {
 		for _, q := range ctx.queues {
 			var err error
-			if ctx.enableNamespaceAsQueue {
-				_, err = ctx.kubeclient.CoreV1().Namespaces().Get(q, metav1.GetOptions{})
-			} else {
-				_, err = ctx.kbclient.SchedulingV1alpha1().Queues().Get(q, metav1.GetOptions{})
-			}
-
+			_, err = ctx.kbclient.SchedulingV1alpha1().Queues().Get(q, metav1.GetOptions{})
 			if !(err != nil && errors.IsNotFound(err)) {
 				return false, err
 			}
@@ -234,22 +230,14 @@ func createQueues(cxt *context) {
 	var err error
 
 	for _, q := range cxt.queues {
-		if cxt.enableNamespaceAsQueue {
-			_, err = cxt.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: q,
-				},
-			})
-		} else {
-			_, err = cxt.kbclient.SchedulingV1alpha1().Queues().Create(&kbv1.Queue{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: q,
-				},
-				Spec: kbv1.QueueSpec{
-					Weight: 1,
-				},
-			})
-		}
+		_, err = cxt.kbclient.SchedulingV1alpha1().Queues().Create(&kbv1.Queue{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: q,
+			},
+			Spec: kbv1.QueueSpec{
+				Weight: 1,
+			},
+		})
 
 		Expect(err).NotTo(HaveOccurred())
 	}
@@ -259,17 +247,9 @@ func deleteQueues(cxt *context) {
 	foreground := metav1.DeletePropagationForeground
 
 	for _, q := range cxt.queues {
-		var err error
-
-		if cxt.enableNamespaceAsQueue {
-			err = cxt.kubeclient.CoreV1().Namespaces().Delete(q, &metav1.DeleteOptions{
-				PropagationPolicy: &foreground,
-			})
-		} else {
-			err = cxt.kbclient.SchedulingV1alpha1().Queues().Delete(q, &metav1.DeleteOptions{
-				PropagationPolicy: &foreground,
-			})
-		}
+		err := cxt.kbclient.SchedulingV1alpha1().Queues().Delete(q, &metav1.DeleteOptions{
+			PropagationPolicy: &foreground,
+		})
 
 		Expect(err).NotTo(HaveOccurred())
 	}
@@ -283,6 +263,7 @@ type taskSpec struct {
 	workingDir            string
 	hostport              int32
 	req                   v1.ResourceList
+	limit                 v1.ResourceList
 	affinity              *v1.Affinity
 	labels                map[string]string
 	policies              []vkv1.LifecyclePolicy
@@ -298,17 +279,14 @@ type jobSpec struct {
 	policies  []vkv1.LifecyclePolicy
 	min       int32
 	plugins   map[string][]string
+	volumes   []vkv1.VolumeSpec
+	// ttl seconds after job finished
+	ttl *int32
 }
 
 func getNS(context *context, job *jobSpec) string {
 	if len(job.namespace) != 0 {
 		return job.namespace
-	}
-
-	if context.enableNamespaceAsQueue {
-		if len(job.queue) != 0 {
-			return job.queue
-		}
 	}
 
 	return context.namespace
@@ -331,9 +309,10 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 			Namespace: ns,
 		},
 		Spec: vkv1.JobSpec{
-			Policies: jobSpec.policies,
-			Queue:    jobSpec.queue,
-			Plugins:  jobSpec.plugins,
+			Policies:                jobSpec.policies,
+			Queue:                   jobSpec.queue,
+			Plugins:                 jobSpec.plugins,
+			TTLSecondsAfterFinished: jobSpec.ttl,
 		},
 	}
 
@@ -359,9 +338,9 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 					Labels: task.labels,
 				},
 				Spec: v1.PodSpec{
-					SchedulerName: "kube-batch",
+					SchedulerName: "volcano",
 					RestartPolicy: restartPolicy,
-					Containers:    createContainers(task.img, task.command, task.workingDir, task.req, task.hostport),
+					Containers:    createContainers(task.img, task.command, task.workingDir, task.req, task.limit, task.hostport),
 					Affinity:      task.affinity,
 				},
 			},
@@ -386,11 +365,14 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 		job.Spec.MinAvailable = min
 	}
 
+	job.Spec.Volumes = jobSpec.volumes
+
 	return context.vkclient.BatchV1alpha1().Jobs(job.Namespace).Create(job)
 }
 
-func taskPhase(ctx *context, job *vkv1.Job, phase []v1.PodPhase, taskNum int) wait.ConditionFunc {
-	return func() (bool, error) {
+func waitTaskPhase(ctx *context, job *vkv1.Job, phase []v1.PodPhase, taskNum int) error {
+	var additionalError error
+	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
 		pods, err := ctx.kubeclient.CoreV1().Pods(job.Namespace).List(metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -408,34 +390,53 @@ func taskPhase(ctx *context, job *vkv1.Job, phase []v1.PodPhase, taskNum int) wa
 			}
 		}
 
-		return taskNum <= readyTaskNum, nil
+		ready := taskNum <= readyTaskNum
+		if !ready {
+			additionalError = fmt.Errorf("expected job '%s' to have %d ready pods, actual got %d", job.Name,
+				taskNum,
+				readyTaskNum)
+		}
+		return ready, nil
+	})
+	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
+		return fmt.Errorf("[Wait time out]: %s", additionalError)
 	}
+	return err
 }
 
-func jobUnschedulable(ctx *context, job *vkv1.Job, time time.Time) wait.ConditionFunc {
+func jobUnschedulable(ctx *context, job *vkv1.Job, now time.Time) error {
+	var additionalError error
 	// TODO(k82cn): check Job's Condition instead of PodGroup's event.
-	return func() (bool, error) {
+	err := wait.Poll(10*time.Second, oneMinute, func() (bool, error) {
 		pg, err := ctx.kbclient.SchedulingV1alpha1().PodGroups(job.Namespace).Get(job.Name, metav1.GetOptions{})
 		if err != nil {
+			additionalError = fmt.Errorf("expected to have job's podgroup %s created, actual got error %s",
+				job.Name, err.Error())
 			return false, nil
 		}
 
 		events, err := ctx.kubeclient.CoreV1().Events(pg.Namespace).List(metav1.ListOptions{})
 		if err != nil {
+			additionalError = fmt.Errorf("expected to have events for job %s, actual got error %s",
+				job.Name, err.Error())
 			return false, nil
 		}
-
 		for _, event := range events.Items {
 			target := event.InvolvedObject
-			if target.Name == pg.Name && target.Namespace == pg.Namespace {
-				if event.Reason == string("Unschedulable") && event.LastTimestamp.After(time) {
+			if strings.HasPrefix(target.Name, pg.Name) && target.Namespace == pg.Namespace {
+				if event.Reason == string("Unschedulable") || event.Reason == string("FailedScheduling") && event.LastTimestamp.After(now) {
 					return true, nil
 				}
 			}
 		}
-
+		additionalError = fmt.Errorf(
+			"expected to have 'Unschedulable' events for podgroup %s, actual got nothing", job.Name)
 		return false, nil
+	})
+	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
+		return fmt.Errorf("[Wait time out]: %s", additionalError)
 	}
+	return err
 }
 
 func jobEvicted(ctx *context, job *vkv1.Job, time time.Time) wait.ConditionFunc {
@@ -461,18 +462,83 @@ func jobEvicted(ctx *context, job *vkv1.Job, time time.Time) wait.ConditionFunc 
 }
 
 func waitJobPhases(ctx *context, job *vkv1.Job, phases []vkv1.JobPhase) error {
-	for _, phase := range phases {
-		err := waitJobPhase(ctx, job, phase)
-		if err != nil {
-			return err
+	w, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Watch(metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	defer w.Stop()
+
+	var additionalError error
+	total := int32(0)
+	for _, task := range job.Spec.Tasks {
+		total += task.Replicas
+	}
+
+	ch := w.ResultChan()
+	index := 0
+	timeout := time.After(oneMinute)
+
+	for index < len(phases) {
+		select {
+		case event, open := <-ch:
+			if !open {
+				return fmt.Errorf("watch channel should be always open")
+			}
+
+			newJob := event.Object.(*vkv1.Job)
+			phase := phases[index]
+			if newJob.Name != job.Name || newJob.Namespace != job.Namespace {
+				continue
+			}
+
+			if newJob.Status.State.Phase != phase {
+				additionalError = fmt.Errorf(
+					"expected job '%s' to be in status %s, actual get %s",
+					job.Name, phase, newJob.Status.State.Phase)
+				continue
+			}
+
+			var flag = false
+			switch phase {
+			case vkv1.Pending:
+				flag = (newJob.Status.Pending+newJob.Status.Succeeded+
+					newJob.Status.Failed+newJob.Status.Running) == 0 ||
+					(total-newJob.Status.Terminating >= newJob.Status.MinAvailable)
+			case vkv1.Terminating, vkv1.Aborting, vkv1.Restarting, vkv1.Completing:
+				flag = newJob.Status.Terminating > 0
+			case vkv1.Terminated, vkv1.Aborted, vkv1.Completed:
+				flag = newJob.Status.Pending == 0 &&
+					newJob.Status.Running == 0 &&
+					newJob.Status.Terminating == 0
+			case vkv1.Running:
+				flag = newJob.Status.Running >= newJob.Spec.MinAvailable
+			case vkv1.Inqueue:
+				flag = newJob.Status.Pending > 0
+			default:
+				return fmt.Errorf("unknown phase %s", phase)
+			}
+
+			if !flag {
+				additionalError = fmt.Errorf(
+					"expected job '%s' to be in status %s, actual detail status %s",
+					job.Name, phase, getJobStatusDetail(newJob))
+				continue
+			}
+
+			index++
+			timeout = time.After(oneMinute)
+
+		case <-timeout:
+			return fmt.Errorf("[Wait time out]: %s", additionalError)
 		}
 	}
+
 	return nil
 }
 
 func waitJobStates(ctx *context, job *vkv1.Job, phases []vkv1.JobPhase) error {
 	for _, phase := range phases {
-		err := wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, phase))
+		err := waitJobPhaseExpect(ctx, job, phase)
 		if err != nil {
 			return err
 		}
@@ -481,18 +547,27 @@ func waitJobStates(ctx *context, job *vkv1.Job, phases []vkv1.JobPhase) error {
 }
 
 func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
-	return wait.Poll(100*time.Millisecond, twoMinute, func() (bool, error) {
+	var additionalError error
+	total := int32(0)
+	for _, task := range job.Spec.Tasks {
+		total += task.Replicas
+	}
+	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
 		newJob, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		if newJob.Status.State.Phase != phase {
+			additionalError = fmt.Errorf(
+				"expected job '%s' to be in status %s, actual get %s",
+				job.Name, phase, newJob.Status.State.Phase)
 			return false, nil
 		}
-
 		var flag = false
 		switch phase {
 		case vkv1.Pending:
-			flag = newJob.Status.Pending > 0
+			flag = (newJob.Status.Pending+newJob.Status.Succeeded+
+				newJob.Status.Failed+newJob.Status.Running) == 0 ||
+				(total-newJob.Status.Terminating >= newJob.Status.MinAvailable)
 		case vkv1.Terminating, vkv1.Aborting, vkv1.Restarting:
 			flag = newJob.Status.Terminating > 0
 		case vkv1.Terminated, vkv1.Aborted:
@@ -503,12 +578,31 @@ func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
 			flag = newJob.Status.Succeeded == state.TotalTasks(newJob)
 		case vkv1.Running:
 			flag = newJob.Status.Running >= newJob.Spec.MinAvailable
+		case vkv1.Inqueue:
+			flag = newJob.Status.Pending > 0
 		default:
 			return false, fmt.Errorf("unknown phase %s", phase)
 		}
 
+		if !flag {
+			additionalError = fmt.Errorf(
+				"expected job '%s' to be in status %s, actual detail status %s",
+				job.Name, phase, getJobStatusDetail(job))
+		}
+
 		return flag, nil
 	})
+	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
+		return fmt.Errorf("[Wait time out]: %s", additionalError)
+	}
+	return err
+}
+
+func getJobStatusDetail(job *vkv1.Job) string {
+	return fmt.Sprintf("\nName: %s\n Phase: %s\nPending: %d"+
+		"\nRunning: %d\nSucceeded: %d\nTerminating: %d\nFailed: %d\n ",
+		job.Name, job.Status.State.Phase, job.Status.Pending, job.Status.Running,
+		job.Status.Succeeded, job.Status.Terminating, job.Status.Failed)
 }
 
 func waitJobReady(ctx *context, job *vkv1.Job) error {
@@ -516,52 +610,68 @@ func waitJobReady(ctx *context, job *vkv1.Job) error {
 }
 
 func waitJobPending(ctx *context, job *vkv1.Job) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, job,
-		[]v1.PodPhase{v1.PodPending}, int(job.Spec.MinAvailable)))
+	return waitTaskPhase(ctx, job, []v1.PodPhase{v1.PodPending}, int(job.Spec.MinAvailable))
 }
 
 func waitTasksReady(ctx *context, job *vkv1.Job, taskNum int) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, job,
-		[]v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum))
+	return waitTaskPhase(ctx, job, []v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum)
 }
 
 func waitTasksPending(ctx *context, job *vkv1.Job, taskNum int) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, taskPhase(ctx, job,
-		[]v1.PodPhase{v1.PodPending}, taskNum))
+	return waitTaskPhase(ctx, job, []v1.PodPhase{v1.PodPending}, taskNum)
 }
 
 func waitJobStateReady(ctx *context, job *vkv1.Job) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, vkv1.Running))
+	return waitJobPhaseExpect(ctx, job, vkv1.Running)
 }
 
 func waitJobStatePending(ctx *context, job *vkv1.Job) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, vkv1.Pending))
+	return waitJobPhaseExpect(ctx, job, vkv1.Pending)
+}
+
+func waitJobStateInqueue(ctx *context, job *vkv1.Job) error {
+	return waitJobPhaseExpect(ctx, job, vkv1.Inqueue)
 }
 
 func waitJobStateAborted(ctx *context, job *vkv1.Job) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, jobPhaseExpect(ctx, job, vkv1.Aborted))
+	return waitJobPhaseExpect(ctx, job, vkv1.Aborted)
 }
 
-func jobPhaseExpect(ctx *context, job *vkv1.Job, state vkv1.JobPhase) wait.ConditionFunc {
-	return func() (bool, error) {
+func waitJobPhaseExpect(ctx *context, job *vkv1.Job, state vkv1.JobPhase) error {
+	var additionalError error
+	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
 		job, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		return job.Status.State.Phase == state, err
+		expected := job.Status.State.Phase == state
+		if !expected {
+			additionalError = fmt.Errorf("expected job '%s' phase in %s, actual got %s", job.Name,
+				state, job.Status.State.Phase)
+		}
+		return expected, nil
+	})
+	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
+		return fmt.Errorf("[Wait time out]: %s", additionalError)
 	}
+	return err
 }
 
 func waitJobUnschedulable(ctx *context, job *vkv1.Job) error {
 	now := time.Now()
-	return wait.Poll(10*time.Second, oneMinute, jobUnschedulable(ctx, job, now))
+	return jobUnschedulable(ctx, job, now)
 }
 
-func createContainers(img, command, workingDir string, req v1.ResourceList, hostport int32) []v1.Container {
+func waitQueueStatus(condition func() (bool, error)) error {
+	return wait.Poll(100*time.Millisecond, oneMinute, condition)
+}
+
+func createContainers(img, command, workingDir string, req, limit v1.ResourceList, hostport int32) []v1.Container {
 	var imageRepo []string
 	container := v1.Container{
 		Image:           img,
 		ImagePullPolicy: v1.PullIfNotPresent,
 		Resources: v1.ResourceRequirements{
 			Requests: req,
+			Limits:   limit,
 		},
 	}
 	if strings.Index(img, ":") < 0 {
@@ -631,6 +741,35 @@ func createReplicaSet(context *context, name string, rep int32, img string, req 
 	Expect(err).NotTo(HaveOccurred())
 
 	return deployment
+}
+
+func waitJobCleanedUp(ctx *context, job *vkv1.Job) error {
+	var additionalError error
+	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+		job, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
+		if err != nil && !errors.IsNotFound(err) {
+			return false, nil
+		}
+		if job != nil {
+			additionalError = fmt.Errorf("job %s/%s still exist", job.Namespace, job.Name)
+			return false, nil
+		}
+
+		pg, err := ctx.kbclient.SchedulingV1alpha1().PodGroups(job.Namespace).Get(job.Name, metav1.GetOptions{})
+		if err != nil && !errors.IsNotFound(err) {
+			return false, nil
+		}
+		if pg != nil {
+			additionalError = fmt.Errorf("pdgroup %s/%s still exist", job.Namespace, job.Name)
+			return false, nil
+		}
+
+		return true, nil
+	})
+	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
+		return fmt.Errorf("[Wait time out]: %s", additionalError)
+	}
+	return err
 }
 
 func deleteReplicaSet(ctx *context, name string) error {
@@ -901,6 +1040,7 @@ func preparePatchBytesforNode(nodeName string, oldNode *v1.Node, newNode *v1.Nod
 	return patchBytes, nil
 }
 
+// IsNodeReady function returns the node ready status
 func IsNodeReady(node *v1.Node) bool {
 	for _, c := range node.Status.Conditions {
 		if c.Type == v1.NodeReady {
@@ -914,9 +1054,8 @@ func waitClusterReady(ctx *context) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
 		if readyNodeAmount(ctx) >= 1 {
 			return true, nil
-		} else {
-			return false, nil
 		}
+		return false, nil
 	})
 }
 
@@ -930,4 +1069,21 @@ func readyNodeAmount(ctx *context) int {
 		}
 	}
 	return amount
+}
+
+func waitPodGone(ctx *context, podName, namespace string) error {
+	var additionalError error
+	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+		_, err := ctx.kubeclient.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
+		expected := errors.IsNotFound(err)
+		if !expected {
+			additionalError = fmt.Errorf("Job related pod should be deleted when aborting job.")
+		}
+
+		return expected, nil
+	})
+	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
+		return fmt.Errorf("[Wait time out]: %s", additionalError)
+	}
+	return err
 }

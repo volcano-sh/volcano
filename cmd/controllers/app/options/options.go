@@ -23,8 +23,9 @@ import (
 )
 
 const (
-	defaultQPS   = 50.0
-	defaultBurst = 100
+	defaultQPS     = 50.0
+	defaultBurst   = 100
+	defaultWorkers = 3
 )
 
 // ServerOption is the main context object for the controller manager.
@@ -35,6 +36,10 @@ type ServerOption struct {
 	LockObjectNamespace  string
 	KubeAPIBurst         int
 	KubeAPIQPS           float32
+	PrintVersion         bool
+	// WorkerThreads is the number of threads syncing job operations
+	// concurrently. Larger number = faster job updating,but more CPU  load.
+	WorkerThreads uint32
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -52,8 +57,12 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", s.LockObjectNamespace, "Define the namespace of the lock object.")
 	fs.Float32Var(&s.KubeAPIQPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
 	fs.IntVar(&s.KubeAPIBurst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
+	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
+	fs.Uint32Var(&s.WorkerThreads, "worker-threads", defaultWorkers, "The number of threads syncing job operations concurrently. "+
+		"Larger number = faster job updating, but more CPU load")
 }
 
+// CheckOptionOrDie checks the LockObjectNamespace
 func (s *ServerOption) CheckOptionOrDie() error {
 	if s.EnableLeaderElection && s.LockObjectNamespace == "" {
 		return fmt.Errorf("lock-object-namespace must not be nil when LeaderElection is enabled")

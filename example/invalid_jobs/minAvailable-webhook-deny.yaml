@@ -1,0 +1,36 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: test-job-webhook-disallow
+spec:
+  schedulerName: volcano
+  minAvailable: 5 ## this job will be rejected because minAvailable is greater than total replicas in tasks
+  tasks:
+    - replicas: 2
+      name: task-1
+      template:
+        metadata:
+          name: web-1
+        spec:
+          containers:
+            - image: nginx
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "1"
+          restartPolicy: OnFailure
+    - replicas: 2
+      name: task-2
+      template:
+        metadata:
+          name: web-2
+        spec:
+          containers:
+            - image: nginx
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "1"
+          restartPolicy: OnFailure

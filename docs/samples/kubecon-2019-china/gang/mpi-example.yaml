@@ -1,0 +1,77 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: lm-mpi-job
+  labels:
+    # 根据业务需要设置作业类型
+    "volcano.sh/job-type": "MPI"
+spec:
+  # 设置最小需要的服务 (小于总replicas数)
+  minAvailable: 4
+  schedulerName: volcano
+  plugins:
+    # 提供 ssh 免密认证
+    ssh: []
+    # 提供运行作业所需要的网络信息，hosts文件，headless service等
+    svc: []
+  # 如果有pod被 杀死，重启整个作业
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  tasks:
+    - replicas: 1
+      name: mpimaster
+      # 当 mpiexec 结束，认识整个mpi作业结束
+      policies:
+        - event: TaskCompleted
+          action: CompleteJob
+      template:
+        spec:
+          # Volcano 的信息会统一放到 /etc/volcano 目录下
+          containers:
+            - command:
+                - /bin/sh
+                - -c
+                - |
+                  MPI_HOST=`cat /etc/volcano/mpiworker.host | tr "\n" ","`;
+                  mkdir -p /var/run/sshd; /usr/sbin/sshd;
+                  mpiexec --allow-run-as-root --host ${MPI_HOST} -np 3 mpi_hello_world;
+              image: volcanosh/example-mpi:0.0.1
+              name: mpimaster
+              ports:
+                - containerPort: 22
+                  name: mpijob-port
+              workingDir: /home
+              resources:
+                requests:
+                  cpu: "500m"
+                limits:
+                  cpu: "500m"
+          restartPolicy: OnFailure
+          imagePullSecrets:
+            - name: default-secret
+    - replicas: 3
+      name: mpiworker
+      template:
+        spec:
+          containers:
+            - command:
+                - /bin/sh
+                - -c
+                - |
+                  mkdir -p /var/run/sshd; /usr/sbin/sshd -D;
+              image: volcanosh/example-mpi:0.0.1
+              name: mpiworker
+              ports:
+                - containerPort: 22
+                  name: mpijob-port
+              workingDir: /home
+              resources:
+                requests:
+                  cpu: "1000m"
+                limits:
+                  cpu: "1000m"
+          restartPolicy: OnFailure
+          imagePullSecrets:
+            - name: default-secret
+

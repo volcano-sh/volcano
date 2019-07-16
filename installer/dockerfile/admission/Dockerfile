@@ -13,7 +13,10 @@
 # limitations under the License.
 
 
-FROM alpine:latest
+# The base image is created via `Dockerfile.base`, the base image is cached
+# since the required packages change very rarely.
+FROM volcanosh/vk-admission-base:latest
 
-ADD vk-admission /vk-admission
-ENTRYPOINT ["/vk-admission"]
+ADD vc-admission /vc-admission
+ADD gen-admission-secret.sh /gen-admission-secret.sh
+ENTRYPOINT ["/vc-admission"]

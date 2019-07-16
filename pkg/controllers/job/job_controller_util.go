@@ -21,28 +21,19 @@ import (
 
 	"github.com/golang/glog"
 
-	kbapi "github.com/kubernetes-sigs/kube-batch/pkg/apis/scheduling/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	kbapi "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 
+	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
 
-func eventKey(obj interface{}) interface{} {
-	req, ok := obj.(apis.Request)
-	if !ok {
-		return obj
-	}
-
-	return apis.Request{
-		Namespace: req.Namespace,
-		JobName:   req.JobName,
-	}
-}
-
+//MakePodName append podname,jobname,taskName and index and returns the string
 func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(vkjobhelpers.PodNameFmt, jobName, taskName, index)
 }
@@ -154,8 +145,12 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 		for _, task := range job.Spec.Tasks {
 			if task.Name == req.TaskName {
 				for _, policy := range task.Policies {
-					if policy.Event == req.Event || policy.Event == vkv1.AnyEvent {
-						return policy.Action
+					policyEvents := getEventlist(policy)
+
+					if len(policyEvents) > 0 && len(req.Event) > 0 {
+						if checkEventExist(policyEvents, req.Event) || checkEventExist(policyEvents, vkv1.AnyEvent) {
+							return policy.Action
+						}
 					}
 
 					// 0 is not an error code, is prevented in validation admission controller
@@ -170,8 +165,12 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 
 	// Parse Job level policies
 	for _, policy := range job.Spec.Policies {
-		if policy.Event == req.Event || policy.Event == vkv1.AnyEvent {
-			return policy.Action
+		policyEvents := getEventlist(policy)
+
+		if len(policyEvents) > 0 && len(req.Event) > 0 {
+			if checkEventExist(policyEvents, req.Event) || checkEventExist(policyEvents, vkv1.AnyEvent) {
+				return policy.Action
+			}
 		}
 
 		// 0 is not an error code, is prevented in validation admission controller
@@ -183,12 +182,52 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 	return vkv1.SyncJobAction
 }
 
+func getEventlist(policy v1alpha1.LifecyclePolicy) []v1alpha1.Event {
+	policyEventsList := policy.Events
+	if len(policy.Event) > 0 {
+		policyEventsList = append(policyEventsList, policy.Event)
+	}
+	return policyEventsList
+}
+
+func checkEventExist(policyEvents []v1alpha1.Event, reqEvent v1alpha1.Event) bool {
+	for _, event := range policyEvents {
+		if event == reqEvent {
+			return true
+		}
+	}
+	return false
+
+}
+
+func addResourceList(list, req, limit v1.ResourceList) {
+	for name, quantity := range req {
+
+		if value, ok := list[name]; !ok {
+			list[name] = *quantity.Copy()
+		} else {
+			value.Add(quantity)
+			list[name] = value
+		}
+	}
+
+	// If Requests is omitted for a container,
+	// it defaults to Limits if that is explicitly specified.
+	for name, quantity := range limit {
+		if _, ok := list[name]; !ok {
+			list[name] = *quantity.Copy()
+		}
+	}
+}
+
+//TaskPriority structure
 type TaskPriority struct {
 	priority int32
 
 	vkv1.TaskSpec
 }
 
+//TasksPriority is a slice of TaskPriority
 type TasksPriority []TaskPriority
 
 func (p TasksPriority) Len() int { return len(p) }
@@ -198,3 +237,14 @@ func (p TasksPriority) Less(i, j int) bool {
 }
 
 func (p TasksPriority) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
+
+func isControlledBy(obj metav1.Object, gvk schema.GroupVersionKind) bool {
+	controlerRef := metav1.GetControllerOf(obj)
+	if controlerRef == nil {
+		return false
+	}
+	if controlerRef.APIVersion == gvk.GroupVersion().String() && controlerRef.Kind == gvk.Kind {
+		return true
+	}
+	return false
+}

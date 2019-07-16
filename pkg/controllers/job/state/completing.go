@@ -26,13 +26,13 @@ type completingState struct {
 }
 
 func (ps *completingState) Execute(action vkv1.Action) error {
-	return KillJob(ps.job, func(status *vkv1.JobStatus) {
+	return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
 		// If any "alive" pods, still in Completing phase
-		phase := vkv1.Completed
 		if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {
-			phase = vkv1.Completing
+			return false
 		}
+		status.State.Phase = vkv1.Completed
+		return true
 
-		status.State.Phase = phase
 	})
 }

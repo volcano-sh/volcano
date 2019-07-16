@@ -17,6 +17,12 @@ limitations under the License.
 package job
 
 import (
+	"fmt"
+	"hash"
+	"hash/fnv"
+	"sync"
+	"time"
+
 	"github.com/golang/glog"
 
 	"k8s.io/api/core/v1"
@@ -29,16 +35,16 @@ import (
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	pclister "k8s.io/client-go/listers/scheduling/v1beta1"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
-	kbver "github.com/kubernetes-sigs/kube-batch/pkg/client/clientset/versioned"
-	kbinfoext "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions"
-	kbinfo "github.com/kubernetes-sigs/kube-batch/pkg/client/informers/externalversions/scheduling/v1alpha1"
-	kblister "github.com/kubernetes-sigs/kube-batch/pkg/client/listers/scheduling/v1alpha1"
+	kbver "volcano.sh/volcano/pkg/client/clientset/versioned"
+	kbinfoext "volcano.sh/volcano/pkg/client/informers/externalversions"
+	kbinfo "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1alpha1"
+	kblister "volcano.sh/volcano/pkg/client/listers/scheduling/v1alpha1"
 
+	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkver "volcano.sh/volcano/pkg/client/clientset/versioned"
 	vkscheme "volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 	vkinfoext "volcano.sh/volcano/pkg/client/informers/externalversions"
@@ -53,10 +59,9 @@ import (
 
 // Controller the Job Controller type
 type Controller struct {
-	config      *rest.Config
-	kubeClients *kubernetes.Clientset
-	vkClients   *vkver.Clientset
-	kbClients   *kbver.Clientset
+	kubeClients kubernetes.Interface
+	vkClients   vkver.Interface
+	kbClients   kbver.Interface
 
 	jobInformer     vkbatchinfo.JobInformer
 	podInformer     coreinformers.PodInformer
@@ -93,42 +98,54 @@ type Controller struct {
 	pcSynced func() bool
 
 	// queue that need to sync up
-	queue        workqueue.RateLimitingInterface
+	queueList    []workqueue.RateLimitingInterface
 	commandQueue workqueue.RateLimitingInterface
 	cache        jobcache.Cache
 	//Job Event recorder
 	recorder        record.EventRecorder
 	priorityClasses map[string]*v1beta1.PriorityClass
+
+	sync.Mutex
+	errTasks workqueue.RateLimitingInterface
+	workers  uint32
 }
 
 // NewJobController create new Job Controller
-func NewJobController(config *rest.Config) *Controller {
-
-	kubeClients := kubernetes.NewForConfigOrDie(config)
+func NewJobController(
+	kubeClient kubernetes.Interface,
+	kbClient kbver.Interface,
+	vkClient vkver.Interface,
+	workers uint32,
+) *Controller {
 
 	//Initialize event client
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
-	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClients.CoreV1().Events("")})
-	recorder := eventBroadcaster.NewRecorder(vkscheme.Scheme, v1.EventSource{Component: "vk-controller"})
+	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
+	recorder := eventBroadcaster.NewRecorder(vkscheme.Scheme, v1.EventSource{Component: "vc-controller"})
 
 	cc := &Controller{
-		config:          config,
-		kubeClients:     kubeClients,
-		vkClients:       vkver.NewForConfigOrDie(config),
-		kbClients:       kbver.NewForConfigOrDie(config),
-		queue:           workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		kubeClients:     kubeClient,
+		vkClients:       vkClient,
+		kbClients:       kbClient,
+		queueList:       make([]workqueue.RateLimitingInterface, workers, workers),
 		commandQueue:    workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		cache:           jobcache.New(),
+		errTasks:        newRateLimitingQueue(),
 		recorder:        recorder,
 		priorityClasses: make(map[string]*v1beta1.PriorityClass),
+		workers:         workers,
+	}
+	var i uint32
+	for i = 0; i < workers; i++ {
+		cc.queueList[i] = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 	}
 
 	cc.jobInformer = vkinfoext.NewSharedInformerFactory(cc.vkClients, 0).Batch().V1alpha1().Jobs()
 	cc.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: cc.addJob,
 		// TODO: enable this until we find an appropriate way.
-		// UpdateFunc: cc.updateJob,
+		UpdateFunc: cc.updateJob,
 		DeleteFunc: cc.deleteJob,
 	})
 	cc.jobLister = cc.jobInformer.Lister()
@@ -185,6 +202,7 @@ func NewJobController(config *rest.Config) *Controller {
 
 // Run start JobController
 func (cc *Controller) Run(stopCh <-chan struct{}) {
+
 	go cc.sharedInformers.Start(stopCh)
 	go cc.jobInformer.Informer().Run(stopCh)
 	go cc.podInformer.Informer().Run(stopCh)
@@ -198,27 +216,81 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 		cc.svcSynced, cc.cmdSynced, cc.pvcSynced, cc.pcSynced)
 
 	go wait.Until(cc.handleCommands, 0, stopCh)
-	go wait.Until(cc.worker, 0, stopCh)
+	var i uint32
+	for i = 0; i < cc.workers; i++ {
+		go func(num uint32) {
+			wait.Until(
+				func() {
+					cc.worker(num)
+				},
+				time.Second,
+				stopCh)
+		}(i)
+	}
 
 	go cc.cache.Run(stopCh)
+
+	// Re-sync error tasks.
+	go wait.Until(cc.processResyncTask, 0, stopCh)
 
 	glog.Infof("JobController is running ...... ")
 }
 
-func (cc *Controller) worker() {
-	for cc.processNextReq() {
+func (cc *Controller) worker(i uint32) {
+	glog.Infof("worker %d start ...... ", i)
+
+	for cc.processNextReq(i) {
 	}
 }
 
-func (cc *Controller) processNextReq() bool {
-	obj, shutdown := cc.queue.Get()
+func (cc *Controller) belongsToThisRoutine(key string, count uint32) bool {
+	var hashVal hash.Hash32
+	var val uint32
+
+	hashVal = fnv.New32()
+	hashVal.Write([]byte(key))
+
+	val = hashVal.Sum32()
+
+	if val%cc.workers == count {
+		return true
+	}
+
+	return false
+}
+
+func (cc *Controller) getWorkerQueue(key string) workqueue.RateLimitingInterface {
+	var hashVal hash.Hash32
+	var val uint32
+
+	hashVal = fnv.New32()
+	hashVal.Write([]byte(key))
+
+	val = hashVal.Sum32()
+
+	queue := cc.queueList[val%cc.workers]
+
+	return queue
+}
+
+func (cc *Controller) processNextReq(count uint32) bool {
+	queue := cc.queueList[count]
+	obj, shutdown := queue.Get()
 	if shutdown {
 		glog.Errorf("Fail to pop item from queue")
 		return false
 	}
 
 	req := obj.(apis.Request)
-	defer cc.queue.Done(req)
+	defer queue.Done(req)
+
+	key := jobcache.JobKeyByReq(&req)
+	if !cc.belongsToThisRoutine(key, count) {
+		glog.Errorf("should not occur The job does not belongs to this routine key:%s, worker:%d...... ", key, count)
+		queueLocal := cc.getWorkerQueue(key)
+		queueLocal.Add(req)
+		return true
+	}
 
 	glog.V(3).Infof("Try to handle request <%v>", req)
 
@@ -240,16 +312,21 @@ func (cc *Controller) processNextReq() bool {
 	glog.V(3).Infof("Execute <%v> on Job <%s/%s> in <%s> by <%T>.",
 		action, req.Namespace, req.JobName, jobInfo.Job.Status.State.Phase, st)
 
+	if action != vkbatchv1.SyncJobAction {
+		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, vkbatchv1.ExecuteAction, fmt.Sprintf(
+			"Start to execute action %s ", action))
+	}
+
 	if err := st.Execute(action); err != nil {
 		glog.Errorf("Failed to handle Job <%s/%s>: %v",
 			jobInfo.Job.Namespace, jobInfo.Job.Name, err)
 		// If any error, requeue it.
-		cc.queue.AddRateLimited(req)
+		queue.AddRateLimited(req)
 		return true
 	}
 
 	// If no error, forget it.
-	cc.queue.Forget(req)
+	queue.Forget(req)
 
 	return true
 }

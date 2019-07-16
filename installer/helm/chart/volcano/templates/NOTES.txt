@@ -1,0 +1,6 @@
+Thank you for installing {{ .Chart.Name }}.
+
+Your release is named {{ .Release.Name }}.
+
+For more information on volcano, visit:
+https://volcano.sh/

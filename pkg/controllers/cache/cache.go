@@ -19,8 +19,12 @@ package cache
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/golang/glog"
+
+	"golang.org/x/time/rate"
+
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"
@@ -40,14 +44,17 @@ func keyFn(ns, name string) string {
 	return fmt.Sprintf("%s/%s", ns, name)
 }
 
+//JobKeyByName gets the key for the job name
 func JobKeyByName(namespace string, name string) string {
 	return keyFn(namespace, name)
 }
 
+//JobKeyByReq gets the key for the job request
 func JobKeyByReq(req *apis.Request) string {
 	return keyFn(req.Namespace, req.JobName)
 }
 
+//JobKey gets the "ns"/"name" format of the given job
 func JobKey(job *v1alpha1.Job) string {
 	return keyFn(job.Namespace, job.Name)
 }
@@ -66,10 +73,17 @@ func jobKeyOfPod(pod *v1.Pod) (string, error) {
 	return keyFn(pod.Namespace, jobName), nil
 }
 
+//New gets the job Cache
 func New() Cache {
+	queue := workqueue.NewMaxOfRateLimiter(
+		workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 180*time.Second),
+		// 10 qps, 100 bucket size.  This is only for retry speed and its only the overall factor (not per item)
+		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+	)
+
 	return &jobCache{
 		jobs:        map[string]*apis.JobInfo{},
-		deletedJobs: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		deletedJobs: workqueue.NewRateLimitingQueue(queue),
 	}
 }
 
@@ -133,11 +147,11 @@ func (jc *jobCache) Update(obj *v1alpha1.Job) error {
 	defer jc.Unlock()
 
 	key := JobKey(obj)
-	if job, found := jc.jobs[key]; !found {
+	job, found := jc.jobs[key]
+	if !found {
 		return fmt.Errorf("failed to find job <%v>", key)
-	} else {
-		job.Job = obj
 	}
+	job.Job = obj
 
 	return nil
 }
@@ -147,12 +161,12 @@ func (jc *jobCache) Delete(obj *v1alpha1.Job) error {
 	defer jc.Unlock()
 
 	key := JobKey(obj)
-	if jobInfo, found := jc.jobs[key]; !found {
+	jobInfo, found := jc.jobs[key]
+	if !found {
 		return fmt.Errorf("failed to find job <%v>", key)
-	} else {
-		jobInfo.Job = nil
-		jc.deleteJob(jobInfo)
 	}
+	jobInfo.Job = nil
+	jc.deleteJob(jobInfo)
 
 	return nil
 }
@@ -229,7 +243,7 @@ func (jc *jobCache) Run(stopCh <-chan struct{}) {
 	wait.Until(jc.worker, 0, stopCh)
 }
 
-func (jc jobCache) TaskCompleted(jobKey, taskName string) bool {
+func (jc *jobCache) TaskCompleted(jobKey, taskName string) bool {
 	jc.Lock()
 	defer jc.Unlock()
 
@@ -261,7 +275,7 @@ func (jc jobCache) TaskCompleted(jobKey, taskName string) bool {
 
 	for _, pod := range taskPods {
 		if pod.Status.Phase == v1.PodSucceeded {
-			completed += 1
+			completed++
 		}
 	}
 	return completed >= taskReplicas

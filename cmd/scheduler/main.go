@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Vulcan Authors.
+Copyright 2017 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,11 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"time"
+
+	// init pprof server
+	_ "net/http/pprof"
 
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
@@ -26,16 +30,22 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/util/flag"
 
-	_ "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/actions"
-	_ "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/plugins"
+	"volcano.sh/volcano/cmd/scheduler/app"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 
-	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app"
-	"github.com/kubernetes-sigs/kube-batch/cmd/kube-batch/app/options"
+	// Import default actions/plugins.
+	_ "volcano.sh/volcano/pkg/scheduler/actions"
+	_ "volcano.sh/volcano/pkg/scheduler/plugins"
+
+	// init assert
+	_ "volcano.sh/volcano/pkg/scheduler/util/assert"
 )
 
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
 
 func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+
 	s := options.NewServerOption()
 	s.AddFlags(pflag.CommandLine)
 	s.RegisterOptions()
@@ -46,7 +56,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// The default glog flush interval is 30 seconds, which is frighteningly long.
 	go wait.Until(glog.Flush, *logFlushFreq, wait.NeverStop)
 	defer glog.Flush()
 

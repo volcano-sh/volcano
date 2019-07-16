@@ -26,9 +26,7 @@ type restartingState struct {
 }
 
 func (ps *restartingState) Execute(action vkv1.Action) error {
-	return SyncJob(ps.job, func(status *vkv1.JobStatus) {
-		phase := vkv1.Restarting
-
+	return KillJob(ps.job, PodRetainPhaseNone, func(status *vkv1.JobStatus) bool {
 		// Get the maximum number of retries.
 		maxRetry := DefaultMaxRetry
 		if ps.job.Job.Spec.MaxRetry != 0 {
@@ -37,18 +35,20 @@ func (ps *restartingState) Execute(action vkv1.Action) error {
 
 		if status.RetryCount >= maxRetry {
 			// Failed is the phase that the job is restarted failed reached the maximum number of retries.
-			phase = vkv1.Failed
-		} else {
-			if status.Terminating == 0 {
-				if status.Running >= ps.job.Job.Spec.MinAvailable {
-					phase = vkv1.Running
-				} else {
-					phase = vkv1.Pending
-				}
-			}
+			status.State.Phase = vkv1.Failed
+			return true
+		}
+		total := int32(0)
+		for _, task := range ps.job.Job.Spec.Tasks {
+			total += task.Replicas
 		}
 
-		status.State.Phase = phase
+		if total-status.Terminating >= status.MinAvailable {
+			status.State.Phase = vkv1.Pending
+			return true
+		}
+
+		return false
 	})
 
 }

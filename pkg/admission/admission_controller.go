@@ -34,15 +34,19 @@ import (
 )
 
 const (
-	AdmitJobPath  = "/jobs"
+	//AdmitJobPath is the pattern for the jobs admission
+	AdmitJobPath = "/jobs"
+	//MutateJobPath is the pattern for the mutating jobs
 	MutateJobPath = "/mutating-jobs"
-	PVCInputName  = "volcano.sh/job-input"
-	PVCOutputName = "volcano.sh/job-output"
 )
 
+//The AdmitFunc returns response
 type AdmitFunc func(v1beta1.AdmissionReview) *v1beta1.AdmissionResponse
 
 var scheme = runtime.NewScheme()
+
+//Codecs is for retrieving serializers for the supported wire formats
+//and conversion wrappers to define preferred internal and external versions.
 var Codecs = serializer.NewCodecFactory(scheme)
 
 // policyEventMap defines all policy events and whether to allow external use
@@ -75,6 +79,7 @@ func addToScheme(scheme *runtime.Scheme) {
 	admissionregistrationv1beta1.AddToScheme(scheme)
 }
 
+//ToAdmissionResponse updates the admission response with the input error
 func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
 	glog.Error(err)
 	return &v1beta1.AdmissionResponse{
@@ -84,74 +89,7 @@ func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
 	}
 }
 
-func CheckPolicyDuplicate(policies []v1alpha1.LifecyclePolicy) (string, bool) {
-	policyEvents := map[v1alpha1.Event]v1alpha1.Event{}
-	hasDuplicate := false
-	var duplicateInfo string
-
-	for _, policy := range policies {
-		if _, found := policyEvents[policy.Event]; found {
-			hasDuplicate = true
-			duplicateInfo = fmt.Sprintf("%v", policy.Event)
-			break
-		} else {
-			policyEvents[policy.Event] = policy.Event
-		}
-	}
-
-	if _, found := policyEvents[v1alpha1.AnyEvent]; found && len(policyEvents) > 1 {
-		hasDuplicate = true
-		duplicateInfo = "if there's * here, no other policy should be here"
-	}
-
-	return duplicateInfo, hasDuplicate
-}
-
-func ValidatePolicies(policies []v1alpha1.LifecyclePolicy) error {
-	var err error
-	policyEvents := map[v1alpha1.Event]struct{}{}
-	exitCodes := map[int32]struct{}{}
-
-	for _, policy := range policies {
-		if policy.Event != "" && policy.ExitCode != nil {
-			err = multierror.Append(err, fmt.Errorf("must not specify event and exitCode simultaneously"))
-			break
-		}
-
-		if policy.Event == "" && policy.ExitCode == nil {
-			err = multierror.Append(err, fmt.Errorf("either event and exitCode should be specified"))
-			break
-		}
-
-		if policy.Event != "" {
-			// TODO: check event is in supported Event
-			if _, found := policyEvents[policy.Event]; found {
-				err = multierror.Append(err, fmt.Errorf("duplicate event %v", policy.Event))
-				break
-			} else {
-				policyEvents[policy.Event] = struct{}{}
-			}
-		} else {
-			if *policy.ExitCode == 0 {
-				err = multierror.Append(err, fmt.Errorf("0 is not a valid error code"))
-				break
-			}
-			if _, found := exitCodes[*policy.ExitCode]; found {
-				err = multierror.Append(err, fmt.Errorf("duplicate exitCode %v", *policy.ExitCode))
-				break
-			} else {
-				exitCodes[*policy.ExitCode] = struct{}{}
-			}
-		}
-	}
-
-	if _, found := policyEvents[v1alpha1.AnyEvent]; found && len(policyEvents) > 1 {
-		err = multierror.Append(err, fmt.Errorf("if there's * here, no other policy should be here"))
-	}
-
-	return err
-}
-
+//DecodeJob decodes the job using deserializer from the raw object
 func DecodeJob(object runtime.RawExtension, resource metav1.GroupVersionResource) (v1alpha1.Job, error) {
 	jobResource := metav1.GroupVersionResource{Group: v1alpha1.SchemeGroupVersion.Group, Version: v1alpha1.SchemeGroupVersion.Version, Resource: "jobs"}
 	raw := object.Raw
@@ -177,32 +115,43 @@ func validatePolicies(policies []v1alpha1.LifecyclePolicy, fldPath *field.Path) 
 	exitCodes := map[int32]struct{}{}
 
 	for _, policy := range policies {
-		if policy.Event != "" && policy.ExitCode != nil {
+		if (policy.Event != "" || len(policy.Events) != 0) && policy.ExitCode != nil {
 			err = multierror.Append(err, fmt.Errorf("must not specify event and exitCode simultaneously"))
 			break
 		}
 
-		if policy.Event == "" && policy.ExitCode == nil {
+		if policy.Event == "" && len(policy.Events) == 0 && policy.ExitCode == nil {
 			err = multierror.Append(err, fmt.Errorf("either event and exitCode should be specified"))
 			break
 		}
 
-		if policy.Event != "" {
-			if allow, ok := policyEventMap[policy.Event]; !ok || !allow {
-				err = multierror.Append(err, field.Invalid(fldPath, policy.Event, fmt.Sprintf("invalid policy event")))
+		if len(policy.Event) != 0 || len(policy.Events) != 0 {
+			bFlag := false
+			policyEventsList := getEventlist(policy)
+			for _, event := range policyEventsList {
+				if allow, ok := policyEventMap[event]; !ok || !allow {
+					err = multierror.Append(err, field.Invalid(fldPath, event, fmt.Sprintf("invalid policy event")))
+					bFlag = true
+					break
+				}
+
+				if allow, ok := policyActionMap[policy.Action]; !ok || !allow {
+					err = multierror.Append(err, field.Invalid(fldPath, policy.Action, fmt.Sprintf("invalid policy action")))
+					bFlag = true
+					break
+				}
+				if _, found := policyEvents[event]; found {
+					err = multierror.Append(err, fmt.Errorf("duplicate event %v  across different policy", event))
+					bFlag = true
+					break
+				} else {
+					policyEvents[event] = struct{}{}
+				}
+			}
+			if bFlag == true {
 				break
 			}
 
-			if allow, ok := policyActionMap[policy.Action]; !ok || !allow {
-				err = multierror.Append(err, field.Invalid(fldPath, policy.Action, fmt.Sprintf("invalid policy action")))
-				break
-			}
-			if _, found := policyEvents[policy.Event]; found {
-				err = multierror.Append(err, fmt.Errorf("duplicate event %v", policy.Event))
-				break
-			} else {
-				policyEvents[policy.Event] = struct{}{}
-			}
 		} else {
 			if *policy.ExitCode == 0 {
 				err = multierror.Append(err, fmt.Errorf("0 is not a valid error code"))
@@ -222,6 +171,27 @@ func validatePolicies(policies []v1alpha1.LifecyclePolicy, fldPath *field.Path) 
 	}
 
 	return err
+}
+
+func getEventlist(policy v1alpha1.LifecyclePolicy) []v1alpha1.Event {
+	policyEventsList := policy.Events
+	if len(policy.Event) > 0 {
+		policyEventsList = append(policyEventsList, policy.Event)
+	}
+	uniquePolicyEventlist := removeDuplicates(policyEventsList)
+	return uniquePolicyEventlist
+}
+
+func removeDuplicates(EventList []v1alpha1.Event) []v1alpha1.Event {
+	keys := make(map[v1alpha1.Event]bool)
+	list := []v1alpha1.Event{}
+	for _, val := range EventList {
+		if _, value := keys[val]; !value {
+			keys[val] = true
+			list = append(list, val)
+		}
+	}
+	return list
 }
 
 func getValidEvents() []v1alpha1.Event {
@@ -246,7 +216,7 @@ func getValidActions() []v1alpha1.Action {
 	return actions
 }
 
-// validate IO configuration
+// ValidateIO validate IO configuration
 func ValidateIO(volumes []v1alpha1.VolumeSpec) (string, bool) {
 	volumeMap := map[string]bool{}
 	for _, volume := range volumes {

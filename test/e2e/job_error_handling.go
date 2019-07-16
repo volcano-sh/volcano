@@ -61,7 +61,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> restarting
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Restarting})
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Restarting})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -98,7 +98,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> Terminating -> Terminated
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Terminating, vkv1.Terminated})
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Terminating, vkv1.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -135,7 +135,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> Aborting -> Aborted
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Aborting, vkv1.Aborted})
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Aborting, vkv1.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -170,7 +170,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running})
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
@@ -179,7 +179,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Restarting -> Running
-		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Restarting, vkv1.Running})
+		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Restarting, vkv1.Pending, vkv1.Inqueue, vkv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -214,7 +214,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running})
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
@@ -258,7 +258,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running})
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
@@ -302,7 +302,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running})
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
@@ -311,7 +311,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Restarting -> Running
-		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Restarting, vkv1.Running})
+		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Restarting, vkv1.Pending, vkv1.Inqueue, vkv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -436,7 +436,7 @@ var _ = Describe("Job Error Handling", func() {
 
 		By("create job")
 		job := createJob(context, &jobSpec{
-			name: "any-restart-job",
+			name: "any-complete-job",
 			policies: []vkv1.LifecyclePolicy{
 				{
 					Action: vkv1.CompleteJobAction,
@@ -463,8 +463,8 @@ var _ = Describe("Job Error Handling", func() {
 
 		By("job scheduled, then task 'completed_task' finished and job finally complete")
 		// job phase: pending -> running -> completing -> completed
-		err := waitJobStates(context, job, []vkv1.JobPhase{
-			vkv1.Pending, vkv1.Running, vkv1.Completing, vkv1.Completed})
+		err := waitJobPhases(context, job, []vkv1.JobPhase{
+			vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Completing, vkv1.Completed})
 		Expect(err).NotTo(HaveOccurred())
 
 	})
@@ -503,7 +503,54 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> restarting
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Restarting})
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Restarting})
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("job level LifecyclePolicy, Event[]: PodEvicted, PodFailed; Action: TerminateJob", func() {
+		By("init test context")
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		By("create job")
+		job := createJob(context, &jobSpec{
+			name: "evicted-terminate-job",
+			policies: []vkv1.LifecyclePolicy{
+				{
+					Action: vkv1.TerminateJobAction,
+					Events: []vkv1.Event{vkv1.PodEvictedEvent,
+						vkv1.PodFailedEvent,
+						vkv1.PodEvictedEvent,
+					},
+				},
+			},
+			tasks: []taskSpec{
+				{
+					name: "success",
+					img:  defaultNginxImage,
+					min:  2,
+					rep:  2,
+				},
+				{
+					name: "delete",
+					img:  defaultNginxImage,
+					min:  2,
+					rep:  2,
+				},
+			},
+		})
+
+		// job phase: pending -> running
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("delete one pod of job")
+		podName := jobutil.MakePodName(job.Name, "delete", 0)
+		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		// job phase: Terminating -> Terminated
+		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Terminating, vkv1.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 	})
 

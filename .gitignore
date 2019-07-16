@@ -125,3 +125,6 @@ kubernetes.tar.gz
 
 # e2e log files
 *.log
+
+# test coverage file
+coverage.txt

@@ -23,6 +23,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -97,9 +98,8 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 
 		//Pod is gone
 		podName := jobUtil.MakePodName(jobName, taskName, 0)
-		_, err = context.kubeclient.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
-		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
-			"Job related pod should be deleted when aborting job.")
+		err = waitPodGone(context, podName, job.Namespace)
+		Expect(err).NotTo(HaveOccurred())
 
 		//Resume job
 		ResumeJob(jobName, namespace)
@@ -115,7 +115,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 	It("Suspend pending job", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
-		rep := clusterSize(context, oneCPU) * 2
+		rep := clusterSize(context, oneCPU)
 
 		jobName := "test-suspend-pending-job"
 		namespace := "test"
@@ -138,7 +138,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		//Job is pending
 		err := waitJobPending(context, job)
 		Expect(err).NotTo(HaveOccurred())
-		err = waitJobStatePending(context, job)
+		err = waitJobStateInqueue(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		//Suspend job and wait status change
@@ -151,5 +151,62 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		_, err = context.kubeclient.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
 		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 			"Job related pod should be deleted when job aborted.")
+	})
+
+	It("delete a job with all nodes taints", func() {
+
+		jobName := "test-del-job"
+		namespace := "test"
+		context := initTestContext()
+		defer cleanupTestContext(context)
+		rep := clusterSize(context, oneCPU)
+
+		taints := []v1.Taint{
+			{
+				Key:    "test-taint-key",
+				Value:  "test-taint-val",
+				Effect: v1.TaintEffectNoSchedule,
+			},
+		}
+
+		err := taintAllNodes(context, taints)
+		Expect(err).NotTo(HaveOccurred())
+
+		job := createJob(context, &jobSpec{
+			namespace: namespace,
+			name:      jobName,
+			tasks: []taskSpec{
+				{
+					img: defaultNginxImage,
+					req: oneCPU,
+					min: rep,
+					rep: rep,
+				},
+			},
+		})
+
+		err = waitJobPending(context, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = removeTaintsFromAllNodes(context, taints)
+		Expect(err).NotTo(HaveOccurred())
+
+		// Pod is running
+		err = waitJobReady(context, job)
+		Expect(err).NotTo(HaveOccurred())
+		// Job Status is running
+		err = waitJobStateReady(context, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = context.vkclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		// Delete job
+		DeleteJob(jobName, namespace)
+
+		_, err = context.vkclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
+		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
+			"Job should be deleted on vcctl job delete.")
+
 	})
 })

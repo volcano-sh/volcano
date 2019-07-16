@@ -93,16 +93,17 @@ var _ = Describe("Job E2E Test", func() {
 			namespace: "test",
 			tasks: []taskSpec{
 				{
-					img: defaultBusyBoxImage,
-					req: oneCPU,
-					min: rep,
-					rep: rep,
+					img:     defaultBusyBoxImage,
+					req:     oneCPU,
+					min:     rep,
+					rep:     rep,
+					command: "sleep 10s",
 				},
 			},
 		}
 
 		job := createJob(context, jobSpec)
-		err = waitJobPending(context, job)
+		err = waitJobStateInqueue(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitJobUnschedulable(context, job)
@@ -139,7 +140,7 @@ var _ = Describe("Job E2E Test", func() {
 
 		job.name = "gang-fq-qj2"
 		job2 := createJob(context, job)
-		err = waitJobPending(context, job2)
+		err = waitJobStatePending(context, job2)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitJobReady(context, job1)

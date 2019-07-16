@@ -15,5 +15,5 @@
 
 FROM alpine:latest
 
-ADD vk-scheduler /vk-scheduler
-ENTRYPOINT ["/vk-scheduler"]
+ADD vc-scheduler /vc-scheduler
+ENTRYPOINT ["/vc-scheduler"]

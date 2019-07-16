@@ -17,27 +17,49 @@ limitations under the License.
 package state
 
 import (
+	"k8s.io/api/core/v1"
+
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
-type UpdateStatusFn func(status *vkv1.JobStatus)
+//PhaseMap to store the pod phases.
+type PhaseMap map[v1.PodPhase]struct{}
+
+//UpdateStatusFn updates the job status.
+type UpdateStatusFn func(status *vkv1.JobStatus) (jobPhaseChanged bool)
+
+//ActionFn will create or delete Pods according to Job's spec.
 type ActionFn func(job *apis.JobInfo, fn UpdateStatusFn) error
+
+//KillActionFn kill all Pods of Job with phase not in podRetainPhase.
+type KillActionFn func(job *apis.JobInfo, podRetainPhase PhaseMap, fn UpdateStatusFn) error
+
+//PodRetainPhaseNone stores no phase
+var PodRetainPhaseNone = PhaseMap{}
+
+//PodRetainPhaseSoft stores PodSucceeded and PodFailed Phase
+var PodRetainPhaseSoft = PhaseMap{
+	v1.PodSucceeded: {},
+	v1.PodFailed:    {},
+}
 
 var (
 	// SyncJob will create or delete Pods according to Job's spec.
 	SyncJob ActionFn
-	// KillJob kill all Pods of Job.
-	KillJob ActionFn
+	// KillJob kill all Pods of Job with phase not in podRetainPhase.
+	KillJob KillActionFn
 	// CreateJob will prepare to create Job.
 	CreateJob ActionFn
 )
 
+//State interface
 type State interface {
 	// Execute executes the actions based on current state.
 	Execute(act vkv1.Action) error
 }
 
+//NewState gets the state from the volcano job Phase
 func NewState(jobInfo *apis.JobInfo) State {
 	job := jobInfo.Job
 	switch job.Status.State.Phase {
@@ -47,7 +69,7 @@ func NewState(jobInfo *apis.JobInfo) State {
 		return &runningState{job: jobInfo}
 	case vkv1.Restarting:
 		return &restartingState{job: jobInfo}
-	case vkv1.Terminated, vkv1.Completed:
+	case vkv1.Terminated, vkv1.Completed, vkv1.Failed:
 		return &finishedState{job: jobInfo}
 	case vkv1.Terminating:
 		return &terminatingState{job: jobInfo}
@@ -57,8 +79,6 @@ func NewState(jobInfo *apis.JobInfo) State {
 		return &abortedState{job: jobInfo}
 	case vkv1.Completing:
 		return &completingState{job: jobInfo}
-	case vkv1.Failed:
-		return &failedState{job: jobInfo}
 	case vkv1.Inqueue:
 		return &inqueueState{job: jobInfo}
 	}

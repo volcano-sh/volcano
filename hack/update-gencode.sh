@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2019 The Volcano Authors.
+# Copyright 2014 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ CODEGEN_PKG=${CODEGEN_PKG:-$(cd ${SCRIPT_ROOT}; ls -d -1 ./vendor/k8s.io/code-ge
 #                  instead of the $GOPATH directly. For normal projects this can be dropped.
 ${CODEGEN_PKG}/generate-groups.sh "deepcopy,client,informer,lister" \
   volcano.sh/volcano/pkg/client volcano.sh/volcano/pkg/apis \
-  "batch:v1alpha1 bus:v1alpha1" \
+  "batch:v1alpha1 bus:v1alpha1 scheduling:v1alpha1,v1alpha2" \
   --go-header-file ${SCRIPT_ROOT}/hack/boilerplate/boilerplate.go.txt
 
 # To use your own boilerplate text use:

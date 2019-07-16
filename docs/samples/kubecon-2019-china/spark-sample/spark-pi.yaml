@@ -1,0 +1,69 @@
+#
+# Copyright 2017 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: "sparkoperator.k8s.io/v1beta1"
+kind: SparkApplication
+metadata:
+  name: spark-pi
+  namespace: default
+spec:
+  type: Scala
+  mode: cluster
+  image: "volcanosh/spark:v2.4.0"
+  imagePullPolicy: Always
+  mainClass: org.apache.spark.examples.SparkPi
+  mainApplicationFile: "local:///opt/spark/examples/jars/spark-examples_2.11-2.4.0.jar"
+  sparkVersion: "2.4.0"
+  imagePullSecrets:
+    - default-secret
+  restartPolicy:
+    type: Never
+  volumes:
+    - name: "test-volume"
+      hostPath:
+        path: "/tmp"
+        type: Directory
+  driver:
+    schedulerName: volcano
+    cores: 0.1
+    coreLimit: "200m"
+    memory: "512m"
+    labels:
+      version: 2.4.0
+    serviceAccount: spark-operator-sparkoperator
+    volumeMounts:
+      - name: "test-volume"
+        mountPath: "/tmp"
+  executor:
+    annotations:
+      scheduling.k8s.io/group-name: spark-pi-group
+    schedulerName: volcano
+    cores: 1
+    instances: 15
+    memory: "512m"
+    labels:
+      version: 2.4.0
+    volumeMounts:
+      - name: "test-volume"
+        mountPath: "/tmp"
+---
+apiVersion: scheduling.incubator.k8s.io/v1alpha1
+kind: PodGroup
+metadata:
+  name: spark-pi-group
+spec:
+  minMember: 3
+
+

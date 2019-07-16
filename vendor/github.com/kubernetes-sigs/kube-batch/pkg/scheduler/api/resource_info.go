@@ -20,10 +20,10 @@ import (
 	"fmt"
 	"math"
 
-	"k8s.io/apimachinery/pkg/api/resource"
-
 	v1 "k8s.io/api/core/v1"
 	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
+
+	"github.com/kubernetes-sigs/kube-batch/pkg/scheduler/util/assert"
 )
 
 // Resource struct defines all the resource type
@@ -83,6 +83,7 @@ func NewResource(rl v1.ResourceList) *Resource {
 		case v1.ResourcePods:
 			r.MaxTaskNum += int(rQuant.Value())
 		default:
+			//NOTE: When converting this back to k8s resource, we need record the format as well as / 1000
 			if v1helper.IsScalarResourceName(rName) {
 				r.AddScalar(rName, float64(rQuant.MilliValue()))
 			}
@@ -118,9 +119,8 @@ func (r *Resource) IsZero(rn v1.ResourceName) bool {
 			return true
 		}
 
-		if _, ok := r.ScalarResources[rn]; !ok {
-			panic("unknown resource")
-		}
+		_, found := r.ScalarResources[rn]
+		assert.Assertf(found, "unknown resource %s", rn)
 
 		return r.ScalarResources[rn] < minMilliScalarResources
 	}
@@ -143,22 +143,19 @@ func (r *Resource) Add(rr *Resource) *Resource {
 
 //Sub subtracts two Resource objects.
 func (r *Resource) Sub(rr *Resource) *Resource {
-	if rr.LessEqual(r) {
-		r.MilliCPU -= rr.MilliCPU
-		r.Memory -= rr.Memory
+	assert.Assertf(rr.LessEqual(r), "resource is not sufficient to do operation: <%v> sub <%v>", r, rr)
 
-		for rrName, rrQuant := range rr.ScalarResources {
-			if r.ScalarResources == nil {
-				return r
-			}
-			r.ScalarResources[rrName] -= rrQuant
+	r.MilliCPU -= rr.MilliCPU
+	r.Memory -= rr.Memory
+
+	for rrName, rrQuant := range rr.ScalarResources {
+		if r.ScalarResources == nil {
+			return r
 		}
-
-		return r
+		r.ScalarResources[rrName] -= rrQuant
 	}
 
-	panic(fmt.Errorf("Resource is not sufficient to do operation: <%v> sub <%v>",
-		r, rr))
+	return r
 }
 
 // SetMaxResource compares with ResourceList and takes max value for each Resource.
@@ -278,6 +275,41 @@ func (r *Resource) LessEqual(rr *Resource) bool {
 	return true
 }
 
+// Diff calculate the difference between two resource
+func (r *Resource) Diff(rr *Resource) (*Resource, *Resource) {
+	increasedVal := EmptyResource()
+	decreasedVal := EmptyResource()
+	if r.MilliCPU > rr.MilliCPU {
+		increasedVal.MilliCPU += r.MilliCPU - rr.MilliCPU
+	} else {
+		decreasedVal.MilliCPU += rr.MilliCPU - r.MilliCPU
+	}
+
+	if r.Memory > rr.Memory {
+		increasedVal.Memory += r.Memory - rr.Memory
+	} else {
+		decreasedVal.Memory += rr.Memory - r.Memory
+	}
+
+	for rName, rQuant := range r.ScalarResources {
+		rrQuant := rr.ScalarResources[rName]
+
+		if rQuant > rrQuant {
+			if increasedVal.ScalarResources == nil {
+				increasedVal.ScalarResources = map[v1.ResourceName]float64{}
+			}
+			increasedVal.ScalarResources[rName] += rQuant - rrQuant
+		} else {
+			if decreasedVal.ScalarResources == nil {
+				decreasedVal.ScalarResources = map[v1.ResourceName]float64{}
+			}
+			decreasedVal.ScalarResources[rName] += rrQuant - rQuant
+		}
+	}
+
+	return increasedVal, decreasedVal
+}
+
 // String returns resource details in string format
 func (r *Resource) String() string {
 	str := fmt.Sprintf("cpu %0.2f, memory %0.2f", r.MilliCPU, r.Memory)
@@ -325,15 +357,4 @@ func (r *Resource) SetScalar(name v1.ResourceName, quantity float64) {
 		r.ScalarResources = map[v1.ResourceName]float64{}
 	}
 	r.ScalarResources[name] = quantity
-}
-
-func (r *Resource) Convert2K8sResource() *v1.ResourceList {
-	list := v1.ResourceList{
-		v1.ResourceCPU:    *resource.NewMilliQuantity(int64(r.MilliCPU), resource.DecimalSI),
-		v1.ResourceMemory: *resource.NewQuantity(int64(r.Memory), resource.BinarySI),
-	}
-	for name, value := range r.ScalarResources {
-		list[name] = *resource.NewQuantity(int64(value), resource.BinarySI)
-	}
-	return &list
 }

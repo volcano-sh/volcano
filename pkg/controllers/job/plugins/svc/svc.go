@@ -40,6 +40,7 @@ type servicePlugin struct {
 	Clientset vkinterface.PluginClientset
 }
 
+// New creates service plugin
 func New(client vkinterface.PluginClientset, arguments []string) vkinterface.PluginInterface {
 	servicePlugin := servicePlugin{pluginArguments: arguments, Clientset: client}
 
@@ -78,6 +79,8 @@ func (sp *servicePlugin) OnJobAdd(job *vkv1.Job) error {
 	if err := sp.createServiceIfNotExist(job); err != nil {
 		return err
 	}
+
+	job.Status.ControlledResources["plugin-"+sp.Name()] = sp.Name()
 
 	return nil
 }
@@ -154,11 +157,11 @@ func (sp *servicePlugin) createServiceIfNotExist(job *vkv1.Job) error {
 		}
 
 		if _, e := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Create(svc); e != nil {
-			glog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v", job.Namespace, job.Name, err)
+			glog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v", job.Namespace, job.Name, e)
 			return e
-		} else {
-			job.Status.ControlledResources["plugin-"+sp.Name()] = sp.Name()
 		}
+		job.Status.ControlledResources["plugin-"+sp.Name()] = sp.Name()
+
 	}
 
 	return nil
