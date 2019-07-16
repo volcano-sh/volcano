@@ -20,11 +20,11 @@ set -o pipefail
 
 VK_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
 export HELM_BIN_DIR=${VK_ROOT}/${BIN_DIR}
-export RELEASE_FOLDER=${HELM_BIN_DIR}/${RELEASE_DIR}
+export RELEASE_FOLDER=${VK_ROOT}/${RELEASE_DIR}
 
 export HELM_VER=${HELM_VER:-v2.13.0}
-export YAML_FILENAME=${YAML_FILENAME:-"volcano-deployment.yaml"}
-export VOLCANO_IMAGE_TAG=${VOLCANO_IMAGE_TAG:-"latest"}
+export VOLCANO_IMAGE_TAG=${TAG:-"latest"}
+export YAML_FILENAME=volcano-${VOLCANO_IMAGE_TAG}.yaml
 
 LOCAL_OS=${OSTYPE}
 case $LOCAL_OS in
@@ -57,10 +57,24 @@ fi
 if [[ ! -d ${RELEASE_FOLDER} ]];then
     mkdir ${RELEASE_FOLDER}
 fi
-echo "Generating volcano yaml file into ${DEPLOYMENT_FILE}}"
+
 DEPLOYMENT_FILE=${RELEASE_FOLDER}/${YAML_FILENAME}
+echo "Generating volcano yaml file into ${DEPLOYMENT_FILE}}"
+
 if [[ -f ${DEPLOYMENT_FILE} ]];then
     rm ${DEPLOYMENT_FILE}
 fi
 cat ${VK_ROOT}/installer/namespace.yaml > ${DEPLOYMENT_FILE}
-${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system --name volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set basic.scheduler_config_file=kube-batch-ci.conf >> ${DEPLOYMENT_FILE}
+${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
+      --name volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} \
+      --set basic.scheduler_config_file=kube-batch-ci.conf \
+      -x templates/admission.yaml \
+      -x templates/batch_v1alpha1_job.yaml \
+      -x templates/bus_v1alpha1_command.yaml \
+      -x templates/controllers.yaml \
+      -x templates/scheduler.yaml \
+      -x templates/scheduling_v1alpha1_podgroup.yaml \
+      -x templates/scheduling_v1alpha1_queue.yaml \
+      -x templates/scheduling_v1alpha2_podgroup.yaml \
+      -x templates/scheduling_v1alpha2_queue.yaml \
+      --notes >> ${DEPLOYMENT_FILE}
