@@ -1,4 +1,5 @@
 BIN_DIR=_output/bin
+RELEASE_DIR=_output/release
 REL_OSARCH=linux/amd64
 REPO_PATH=volcano.sh/volcano
 IMAGE_PREFIX=volcanosh/vc
@@ -17,6 +18,7 @@ all: vc-scheduler vc-controllers vc-admission vcctl
 
 init:
 	mkdir -p ${BIN_DIR}
+	mkdir -p ${RELEASE_DIR}
 
 vc-scheduler: init
 	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vc-scheduler ./cmd/scheduler
@@ -30,7 +32,7 @@ vc-admission: init
 vcctl: init
 	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vcctl ./cmd/cli
 
-image_bins:
+image_bins: init
 	go get github.com/mitchellh/gox
 	CGO_ENABLED=0 gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vcctl ./cmd/cli
 	for name in controllers scheduler admission; do\
@@ -55,6 +57,13 @@ unit-test:
 
 e2e-test-kind:
 	./hack/run-e2e-kind.sh
+
+generate-yaml: init
+	./hack/generate-yaml.sh
+
+
+release: images generate-yaml
+	./hack/publish.sh
 
 clean:
 	rm -rf _output/
