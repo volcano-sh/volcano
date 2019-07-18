@@ -25,34 +25,14 @@ RELEASE_DIR=_output/release
 RELEASE_FOLDER=${VK_ROOT}/${RELEASE_DIR}
 YAML_FILENAME=volcano-${TAG}.yaml
 
-
-# check if kind installed
-function check-prerequisites {
-  echo "checking prerequisites"
-  which kubectl >/dev/null 2>&1
-  if [[ $? -ne 0 ]]; then
-    echo "kubectl not installed, exiting."
-    exit 1
-  else
-    echo -n "found kubectl, " && kubectl version --short --client
-  fi
-}
-
-# check if kind installed
-function check-kind {
-  echo "checking kind"
-  which kind >/dev/null 2>&1
-  if [[ $? -ne 0 ]]; then
-    echo "kind not installed, exiting."
-    exit 1
-  else
-    echo -n "found kind, version: " && kind version
-  fi
-}
+set -o errexit
+set -o nounset
+set -o pipefail
 
 # prepare deploy yaml and docker images
 function prepare {
   echo "Preparing..."
+  install-helm
   echo "Generating valcano deploy yaml"
   make generate-yaml
 
@@ -60,18 +40,6 @@ function prepare {
   make images
 }
 
-# spin up cluster with kind command
-function kind-up-cluster {
-  check-kind
-  echo "Running kind: [kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}]"
-  kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}
-
-  echo "Loading docker images into kind cluster"
-  kind load docker-image ${IMAGE_PREFIX}-controllers:${TAG}  ${CLUSTER_CONTEXT}
-  echo kind load docker-image ${IMAGE_PREFIX}-controllers:${TAG}  ${CLUSTER_CONTEXT}
-  kind load docker-image ${IMAGE_PREFIX}-scheduler:${TAG}  ${CLUSTER_CONTEXT}
-  kind load docker-image ${IMAGE_PREFIX}-admission:${TAG}  ${CLUSTER_CONTEXT}
-}
 
 function install-volcano {
   # TODO: add a graceful way waiting for all crd ready
@@ -120,6 +88,8 @@ if [[ $? -eq 0 ]]; then
   cleanup
   exit 0
 fi
+
+source "${VK_ROOT}/hack/lib/install.sh"
 
 check-prerequisites
 
