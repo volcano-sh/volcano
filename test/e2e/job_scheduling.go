@@ -199,7 +199,7 @@ var _ = Describe("Job E2E Test", func() {
 				{
 					img: defaultNginxImage,
 					req: slot,
-					min: int(req)/2,
+					min: rep / 2,
 					rep: rep,
 				},
 			},
