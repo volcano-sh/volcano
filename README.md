@@ -114,9 +114,7 @@ job.batch/volcano-admission-init   1/1           48s        96s
 
 You can reach the maintainers of this project at:
 
-[Slack Channel](https://volcano-sh.slack.com)
+Slack Channel : https://volcano-sh.slack.com. (Signup [here](https://join.slack.com/t/volcano-sh/shared_invite/enQtNTU5NTU3NDU0MTc4LTgzZTQ2MzViNTFmNDg1ZGUyMzcwNjgxZGQ1ZDdhOGE3Mzg1Y2NkZjk1MDJlZTZhZWU5MDg2MWJhMzI3Mjg3ZTk))
 
-[Slack Signup](https://join.slack.com/t/volcano-sh/shared_invite/enQtNTU5NTU3NDU0MTc4LTgzZTQ2MzViNTFmNDg1ZGUyMzcwNjgxZGQ1ZDdhOGE3Mzg1Y2NkZjk1MDJlZTZhZWU5MDg2MWJhMzI3Mjg3ZTk)
-
-[Mailing List](https://groups.google.com/forum/#!forum/volcano-sh)
+Mailing List  : https://groups.google.com/forum/#!forum/volcano-sh
 
