@@ -145,7 +145,7 @@ func (sc *SchedulerCache) deleteTask(pi *kbapi.TaskInfo) error {
 
 	if len(pi.NodeName) != 0 {
 		node := sc.Nodes[pi.NodeName]
-		if node != nil {
+		if node != nil && !isTerminated(pi.Status) {
 			nodeErr = node.RemoveTask(pi)
 		}
 	}

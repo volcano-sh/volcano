@@ -187,6 +187,38 @@ var _ = Describe("Job E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
+	It("Preemption between jobs with min larger than one)", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		slot := oneCPU
+		rep := clusterSize(context, slot)
+
+		job := &jobSpec{
+			tasks: []taskSpec{
+				{
+					img: defaultNginxImage,
+					req: slot,
+					min: int(req)/2,
+					rep: rep,
+				},
+			},
+		}
+
+		job.name = "preemptee-qj"
+		job1 := createJob(context, job)
+		err := waitTasksReady(context, job1, int(rep))
+		Expect(err).NotTo(HaveOccurred())
+
+		job.name = "preemptor-qj"
+		job2 := createJob(context, job)
+		err = waitTasksReady(context, job1, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = waitTasksReady(context, job2, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 	It("Multiple Preemption", func() {
 		context := initTestContext()
 		defer cleanupTestContext(context)
