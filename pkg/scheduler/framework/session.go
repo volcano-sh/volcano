@@ -41,9 +41,11 @@ type Session struct {
 
 	podGroupStatus map[api.JobID]*scheduling.PodGroupStatus
 
-	Jobs    map[api.JobID]*api.JobInfo
-	Nodes   map[string]*api.NodeInfo
-	Queues  map[api.QueueID]*api.QueueInfo
+	Jobs          map[api.JobID]*api.JobInfo
+	Nodes         map[string]*api.NodeInfo
+	Queues        map[api.QueueID]*api.QueueInfo
+	NamespaceInfo map[api.NamespaceName]*api.NamespaceInfo
+
 	Backlog []*api.JobInfo
 	Tiers   []conf.Tier
 
@@ -52,6 +54,7 @@ type Session struct {
 	jobOrderFns       map[string]api.CompareFn
 	queueOrderFns     map[string]api.CompareFn
 	taskOrderFns      map[string]api.CompareFn
+	namespaceOrderFns map[string]api.CompareFn
 	predicateFns      map[string]api.PredicateFn
 	nodeOrderFns      map[string]api.NodeOrderFn
 	batchNodeOrderFns map[string]api.BatchNodeOrderFn
@@ -81,6 +84,7 @@ func openSession(cache cache.Cache) *Session {
 		jobOrderFns:       map[string]api.CompareFn{},
 		queueOrderFns:     map[string]api.CompareFn{},
 		taskOrderFns:      map[string]api.CompareFn{},
+		namespaceOrderFns: map[string]api.CompareFn{},
 		predicateFns:      map[string]api.PredicateFn{},
 		nodeOrderFns:      map[string]api.NodeOrderFn{},
 		batchNodeOrderFns: map[string]api.BatchNodeOrderFn{},
@@ -126,6 +130,7 @@ func openSession(cache cache.Cache) *Session {
 
 	ssn.Nodes = snapshot.Nodes
 	ssn.Queues = snapshot.Queues
+	ssn.NamespaceInfo = snapshot.NamespaceInfo
 
 	glog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues",
 		ssn.UID, len(ssn.Jobs), len(ssn.Queues))
@@ -143,6 +148,7 @@ func closeSession(ssn *Session) {
 	ssn.plugins = nil
 	ssn.eventHandlers = nil
 	ssn.jobOrderFns = nil
+	ssn.namespaceOrderFns = nil
 	ssn.queueOrderFns = nil
 
 	glog.V(3).Infof("Close Session %v", ssn.UID)

@@ -35,6 +35,8 @@ type PluginOption struct {
 	Name string `yaml:"name"`
 	// EnabledJobOrder defines whether jobOrderFn is enabled
 	EnabledJobOrder *bool `yaml:"enableJobOrder"`
+	// EnabledNamespaceOrder defines whether namespaceOrderFn is enabled
+	EnabledNamespaceOrder *bool `yaml:"enableNamespaceOrder"`
 	// EnabledJobReady defines whether jobReadyFn is enabled
 	EnabledJobReady *bool `yaml:"enableJobReady"`
 	// EnabledJobPipelined defines whether jobPipelinedFn is enabled

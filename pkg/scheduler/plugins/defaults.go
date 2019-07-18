@@ -25,6 +25,9 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	if option.EnabledJobOrder == nil {
 		option.EnabledJobOrder = &t
 	}
+	if option.EnabledNamespaceOrder == nil {
+		option.EnabledNamespaceOrder = &t
+	}
 	if option.EnabledJobReady == nil {
 		option.EnabledJobReady = &t
 	}
