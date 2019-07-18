@@ -32,11 +32,15 @@ To leverage that you will need:
 
 ## Setting up Kubernetes
 
-We require Kubernetes version 1.12 or higher.  
+We require Kubernetes version 1.12 or higher with CRD support.
 
-// TODO: add some install ways, like minikube, kind, kubeadm, etc.
-// Better links to some install guides
+If you aren't sure which Kubernetes platform is right for you, see [Picking the Right Solution](https://kubernetes.io/docs/setup/).
 
+* [Installing Kubernetes with Minikube](https://kubernetes.io/docs/setup/learning-environment/minikube/)
+
+* [Installing Kubernetes with kops](https://kubernetes.io/docs/setup/production-environment/tools/kops/)
+
+* [Installing Kubernetes with kubeadm-dind-cluster](https://github.com/kubernetes-sigs/kubeadm-dind-cluster)
 
 ### Setting up a personal access token
 
