@@ -51,7 +51,7 @@ function check-kind {
   fi
 }
 
-// install helm if not installed
+# install helm if not installed
 function install-helm {
   echo "checking helm"
   which helm >/dev/null 2>&1
