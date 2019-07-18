@@ -61,88 +61,50 @@ You can watch industry experts talking about Volcano in different International 
 
 ## Quick Start Guide
 
-The easiest way to deploy Volcano is to use the Helm chart.  Volcano can be deployed by cloning code and also by adding helm repo.
+### Prerequisites
 
-## Using Volcano Helm Repo
+- Kubernetes 1.12+ with CRD support
 
-Add helm repo using following command,
+### Install with YAML files
 
-```
-helm repo add volcano https://volcano-sh.github.io/charts
-```
-
-Install Volcano using following command,
+Install volcano k8s resources
 
 ```
-helm install volcano/volcano --namespace <namespace> --name <specified-name>
-
-e.g :
-helm install volcano/volcano --namespace volcano-trial --name volcano-trial
+kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/master/installer/volcano-development.yaml
 ```
 
-## Cloning Code
-### Pre-requisites
-
-First of all, clone the repo to your local path:
+Install `default-queue` for volcano scheduler, note that the crd resources should be ready before this.
 
 ```
-# mkdir -p $GOPATH/src/volcano.sh/
-# cd $GOPATH/src/volcano.sh/
-# git clone --recursive https://github.com/volcano-sh/volcano.git
-```
-
-### 1. Volcano Image
-
-Official images are available on [DockerHub](https://hub.docker.com/u/volcanosh), however you can
-build them locally with the command:
-
-```
-cd $GOPATH/src/volcano.sh/volcano
-make images
-
-## Verify your images
-# docker images
-REPOSITORY                      TAG                 IMAGE ID            CREATED             SIZE
-volcanosh/vc-admission          latest              a83338506638        8 seconds ago       41.4MB
-volcanosh/vc-scheduler          latest              faa3c2a25ac3        9 seconds ago       49.6MB
-volcanosh/vc-controllers        latest              7b11606ebfb8        10 seconds ago      44.2MB
+kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/master/installer/helm/chart/volcano/templates/default-queue.yaml
 
 ```
 
-**NOTE**:
-1. You need ensure the images are correctly loaded in your kubernetes cluster, for
-example, if you are using [kind cluster](https://github.com/kubernetes-sigs/kind),
-try command ```kind load docker-image <image-name>:<tag> ``` for each of the images.
-2. When reinstall the volcano charts, since tiller server will not manage CRD resource,
-you need to delete them manually eg: `kubectl delete crds xxxx` before reinstalling or try command with `--no-crd-hook` option.
+Enjoy! Volcano will create the following resources in `volcano-system` namespace.
 
-### 2. Helm charts
-
-Secondly, install helm chart.
 
 ```
-helm install installer/helm/chart/volcano --namespace <namespace> --name <specified-name>
+NAME                                       READY   STATUS      RESTARTS   AGE
+pod/volcano-admission-5bd5756f79-dnr4l     1/1     Running     0          96s
+pod/volcano-admission-init-4hjpx           0/1     Completed   0          96s
+pod/volcano-controllers-687948d9c8-nw4b4   1/1     Running     0          96s
+pod/volcano-scheduler-94998fc64-4z8kh      1/1     Running     0          96s
 
-e.g :
-helm install installer/helm/chart/volcano --namespace volcano-trial --name volcano-trial
+NAME                                TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
+service/volcano-admission-service   ClusterIP   10.98.152.108   <none>        443/TCP   96s
 
-```
+NAME                                  READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/volcano-admission     1/1     1            1           96s
+deployment.apps/volcano-controllers   1/1     1            1           96s
+deployment.apps/volcano-scheduler     1/1     1            1           96s
 
-To verify your installation run the following commands:
+NAME                                             DESIRED   CURRENT   READY   AGE
+replicaset.apps/volcano-admission-5bd5756f79     1         1         1       96s
+replicaset.apps/volcano-controllers-687948d9c8   1         1         1       96s
+replicaset.apps/volcano-scheduler-94998fc64      1         1         1       96s
 
-```
-#1. Verify the Running Pods
-# kubectl get pods --namespace <namespace>
-NAME                                                 READY   STATUS    RESTARTS   AGE
-<specified-name>-admission-84fd9b9dd8-9trxn          1/1     Running   0          43s
-<specified-name>-controllers-75dcc8ff89-42v6r        1/1     Running   0          43s
-<specified-name>-scheduler-b94cdb867-89pm2           1/1     Running   0          43s
-<specified-name>--admission-init-qbtmb               0/1     Completed 0          43s
-
-#2. Verify the Services
-# kubectl get services --namespace <namespace>
-NAME                                     TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
-<specified-name>-admission-service       ClusterIP   10.105.78.53   <none>        443/TCP   91s
+NAME                               COMPLETIONS   DURATION   AGE
+job.batch/volcano-admission-init   1/1           48s        96s
 
 ```
 
