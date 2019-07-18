@@ -25,9 +25,6 @@ RELEASE_DIR=_output/release
 RELEASE_FOLDER=${VK_ROOT}/${RELEASE_DIR}
 YAML_FILENAME=volcano-${TAG}.yaml
 
-set -o errexit
-set -o nounset
-set -o pipefail
 
 # prepare deploy yaml and docker images
 function prepare {
@@ -43,12 +40,12 @@ function prepare {
 
 function install-volcano {
   # TODO: add a graceful way waiting for all crd ready
-  kubectl apply -f ${RELEASE_FOLDER}/${YAML_FILENAME} --kubeconfig ${KUBECONFIG}
+  kubectl apply -f ${RELEASE_FOLDER}/${YAML_FILENAME}
 }
 
 function uninstall-volcano {
-  kubectl delete -f ${VK_ROOT}/installer/helm/chart/volcano/templates/default-queue.yaml --kubeconfig ${KUBECONFIG}
-  kubectl delete -f ${RELEASE_FOLDER}/${YAML_FILENAME} --kubeconfig ${KUBECONFIG}
+  kubectl delete -f ${VK_ROOT}/installer/helm/chart/volcano/templates/default-queue.yaml
+  kubectl delete -f ${RELEASE_FOLDER}/${YAML_FILENAME}
 }
 
 # clean up
