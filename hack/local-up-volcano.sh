@@ -76,8 +76,6 @@ function kind-up-cluster {
 function install-volcano {
   # TODO: add a graceful way waiting for all crd ready
   kubectl apply -f ${RELEASE_FOLDER}/${YAML_FILENAME} --kubeconfig ${KUBECONFIG}
-  sleep 5
-  kubectl apply -f ${VK_ROOT}/installer/helm/chart/volcano/templates/default-queue.yaml --kubeconfig ${KUBECONFIG}
 }
 
 function uninstall-volcano {
