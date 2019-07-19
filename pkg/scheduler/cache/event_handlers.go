@@ -40,7 +40,7 @@ func isTerminated(status kbapi.TaskStatus) bool {
 }
 
 // getOrCreateJob will return corresponding Job for pi if it exists, or it will create a Job and return it if
-// pi.Pod.Spec.SchedulerName is same as kube-batch scheduler's name, otherwise it will return nil.
+// pi.Pod.Spec.SchedulerName is same as volcano scheduler's name, otherwise it will return nil.
 func (sc *SchedulerCache) getOrCreateJob(pi *kbapi.TaskInfo) *kbapi.JobInfo {
 	if len(pi.Job) == 0 {
 		if pi.Pod.Spec.SchedulerName != sc.schedulerName {

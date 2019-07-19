@@ -951,7 +951,7 @@ func TestValidateExecution(t *testing.T) {
 				Weight: 1,
 			},
 		}
-		// create fake kube-batch clientset
+		// create fake volcano clientset
 		KubeBatchClientSet = kubebatchclient.NewSimpleClientset()
 
 		//create default queue

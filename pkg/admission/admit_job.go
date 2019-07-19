@@ -36,7 +36,7 @@ import (
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
 )
 
-//KubeBatchClientSet is kube-batch clientset
+// KubeBatchClientSet is volcano clientset
 var KubeBatchClientSet versioned.Interface
 
 // AdmitJobs is to admit jobs and return response
