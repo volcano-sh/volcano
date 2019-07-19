@@ -743,23 +743,23 @@ func createReplicaSet(context *context, name string, rep int32, img string, req 
 	return deployment
 }
 
-func waitJobCleanedUp(ctx *context, job *vkv1.Job) error {
+func waitJobCleanedUp(ctx *context, cleanupjob *vkv1.Job) error {
 	var additionalError error
 	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
-		job, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
+		job, err := ctx.vkclient.BatchV1alpha1().Jobs(cleanupjob.Namespace).Get(cleanupjob.Name, metav1.GetOptions{})
 		if err != nil && !errors.IsNotFound(err) {
 			return false, nil
 		}
-		if job != nil {
+		if len(job.Name) != 0 {
 			additionalError = fmt.Errorf("job %s/%s still exist", job.Namespace, job.Name)
 			return false, nil
 		}
 
-		pg, err := ctx.kbclient.SchedulingV1alpha1().PodGroups(job.Namespace).Get(job.Name, metav1.GetOptions{})
+		pg, err := ctx.kbclient.SchedulingV1alpha1().PodGroups(cleanupjob.Namespace).Get(cleanupjob.Name, metav1.GetOptions{})
 		if err != nil && !errors.IsNotFound(err) {
 			return false, nil
 		}
-		if pg != nil {
+		if len(pg.Name) != 0 {
 			additionalError = fmt.Errorf("pdgroup %s/%s still exist", job.Namespace, job.Name)
 			return false, nil
 		}
