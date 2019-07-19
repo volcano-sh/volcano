@@ -27,7 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	kbv1aplha1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	schedulingv1aplha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 )
 
 func TestValidateExecution(t *testing.T) {
@@ -949,11 +949,11 @@ func TestValidateExecution(t *testing.T) {
 
 	for _, testCase := range testCases {
 
-		defaultqueue := kbv1aplha1.Queue{
+		defaultqueue := schedulingv1aplha2.Queue{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "default",
 			},
-			Spec: kbv1aplha1.QueueSpec{
+			Spec: schedulingv1aplha2.QueueSpec{
 				Weight: 1,
 			},
 		}
@@ -961,7 +961,7 @@ func TestValidateExecution(t *testing.T) {
 		KubeBatchClientSet = kubebatchclient.NewSimpleClientset()
 
 		//create default queue
-		_, err := KubeBatchClientSet.SchedulingV1alpha1().Queues().Create(&defaultqueue)
+		_, err := KubeBatchClientSet.SchedulingV1alpha2().Queues().Create(&defaultqueue)
 		if err != nil {
 			t.Error("Queue Creation Failed")
 		}

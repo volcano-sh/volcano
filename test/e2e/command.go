@@ -60,7 +60,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		Expect(err).NotTo(HaveOccurred())
 		//Command outputs are identical
 		outputs := ListJobs(namespace)
-		jobs, err := context.vkclient.BatchV1alpha1().Jobs(namespace).List(metav1.ListOptions{})
+		jobs, err := context.vcclient.BatchV1alpha1().Jobs(namespace).List(metav1.ListOptions{})
 		ctlJob.PrintJobs(jobs, &outBuffer)
 		Expect(outputs).To(Equal(outBuffer.String()), "List command result should be:\n %s",
 			outBuffer.String())
@@ -198,13 +198,13 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		err = waitJobStateReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		_, err = context.vkclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
+		_, err = context.vcclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// Delete job
 		DeleteJob(jobName, namespace)
 
-		_, err = context.vkclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
+		_, err = context.vcclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
 		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 			"Job should be deleted on vcctl job delete.")
 

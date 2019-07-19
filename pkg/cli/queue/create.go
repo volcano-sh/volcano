@@ -21,7 +21,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	vkapi "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	schedulingV1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
@@ -50,17 +50,17 @@ func CreateQueue() error {
 		return err
 	}
 
-	queue := &vkapi.Queue{
+	queue := &schedulingV1alpha2.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: createQueueFlags.Name,
 		},
-		Spec: vkapi.QueueSpec{
+		Spec: schedulingV1alpha2.QueueSpec{
 			Weight: int32(createQueueFlags.Weight),
 		},
 	}
 
 	queueClient := versioned.NewForConfigOrDie(config)
-	if _, err := queueClient.SchedulingV1alpha1().Queues().Create(queue); err != nil {
+	if _, err := queueClient.SchedulingV1alpha2().Queues().Create(queue); err != nil {
 		return err
 	}
 

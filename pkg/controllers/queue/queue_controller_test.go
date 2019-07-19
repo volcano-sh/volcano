@@ -23,12 +23,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
-	kbv1alpha1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
-	kubebatchclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
+	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
 )
 
 func newFakeController() *Controller {
-	KubeBatchClientSet := kubebatchclient.NewSimpleClientset()
+	KubeBatchClientSet := vcclient.NewSimpleClientset()
 	KubeClientSet := kubeclient.NewSimpleClientset()
 
 	controller := NewQueueController(KubeClientSet, KubeBatchClientSet)
@@ -38,16 +38,16 @@ func newFakeController() *Controller {
 func TestAddQueue(t *testing.T) {
 	testCases := []struct {
 		Name        string
-		queue       *kbv1alpha1.Queue
+		queue       *schedulingv1alpha2.Queue
 		ExpectValue int
 	}{
 		{
 			Name: "AddQueue",
-			queue: &kbv1alpha1.Queue{
+			queue: &schedulingv1alpha2.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "c1",
 				},
-				Spec: kbv1alpha1.QueueSpec{
+				Spec: schedulingv1alpha2.QueueSpec{
 					Weight: 1,
 				},
 			},
@@ -69,16 +69,16 @@ func TestAddQueue(t *testing.T) {
 func TestDeleteQueue(t *testing.T) {
 	testCases := []struct {
 		Name        string
-		queue       *kbv1alpha1.Queue
+		queue       *schedulingv1alpha2.Queue
 		ExpectValue bool
 	}{
 		{
 			Name: "DeleteQueue",
-			queue: &kbv1alpha1.Queue{
+			queue: &schedulingv1alpha2.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "c1",
 				},
-				Spec: kbv1alpha1.QueueSpec{
+				Spec: schedulingv1alpha2.QueueSpec{
 					Weight: 1,
 				},
 			},
@@ -104,17 +104,17 @@ func TestAddPodGroup(t *testing.T) {
 
 	testCases := []struct {
 		Name        string
-		podGroup    *kbv1alpha1.PodGroup
+		podGroup    *schedulingv1alpha2.PodGroup
 		ExpectValue int
 	}{
 		{
 			Name: "addpodgroup",
-			podGroup: &kbv1alpha1.PodGroup{
+			podGroup: &schedulingv1alpha2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "pg1",
 					Namespace: namespace,
 				},
-				Spec: kbv1alpha1.PodGroupSpec{
+				Spec: schedulingv1alpha2.PodGroupSpec{
 					Queue: "c1",
 				},
 			},
@@ -142,17 +142,17 @@ func TestDeletePodGroup(t *testing.T) {
 
 	testCases := []struct {
 		Name        string
-		podGroup    *kbv1alpha1.PodGroup
+		podGroup    *schedulingv1alpha2.PodGroup
 		ExpectValue bool
 	}{
 		{
 			Name: "deletepodgroup",
-			podGroup: &kbv1alpha1.PodGroup{
+			podGroup: &schedulingv1alpha2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "pg1",
 					Namespace: namespace,
 				},
-				Spec: kbv1alpha1.PodGroupSpec{
+				Spec: schedulingv1alpha2.PodGroupSpec{
 					Queue: "c1",
 				},
 			},
@@ -179,34 +179,34 @@ func TestUpdatePodGroup(t *testing.T) {
 
 	testCases := []struct {
 		Name        string
-		podGroupold *kbv1alpha1.PodGroup
-		podGroupnew *kbv1alpha1.PodGroup
+		podGroupold *schedulingv1alpha2.PodGroup
+		podGroupnew *schedulingv1alpha2.PodGroup
 		ExpectValue int
 	}{
 		{
 			Name: "updatepodgroup",
-			podGroupold: &kbv1alpha1.PodGroup{
+			podGroupold: &schedulingv1alpha2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "pg1",
 					Namespace: namespace,
 				},
-				Spec: kbv1alpha1.PodGroupSpec{
+				Spec: schedulingv1alpha2.PodGroupSpec{
 					Queue: "c1",
 				},
-				Status: kbv1alpha1.PodGroupStatus{
-					Phase: kbv1alpha1.PodGroupPending,
+				Status: schedulingv1alpha2.PodGroupStatus{
+					Phase: schedulingv1alpha2.PodGroupPending,
 				},
 			},
-			podGroupnew: &kbv1alpha1.PodGroup{
+			podGroupnew: &schedulingv1alpha2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "pg1",
 					Namespace: namespace,
 				},
-				Spec: kbv1alpha1.PodGroupSpec{
+				Spec: schedulingv1alpha2.PodGroupSpec{
 					Queue: "c1",
 				},
-				Status: kbv1alpha1.PodGroupStatus{
-					Phase: kbv1alpha1.PodGroupRunning,
+				Status: schedulingv1alpha2.PodGroupStatus{
+					Phase: schedulingv1alpha2.PodGroupRunning,
 				},
 			},
 			ExpectValue: 1,
@@ -229,29 +229,29 @@ func TestSyncQueue(t *testing.T) {
 
 	testCases := []struct {
 		Name        string
-		podGroup    *kbv1alpha1.PodGroup
-		queue       *kbv1alpha1.Queue
+		podGroup    *schedulingv1alpha2.PodGroup
+		queue       *schedulingv1alpha2.Queue
 		ExpectValue int32
 	}{
 		{
 			Name: "syncQueue",
-			podGroup: &kbv1alpha1.PodGroup{
+			podGroup: &schedulingv1alpha2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "pg1",
 					Namespace: namespace,
 				},
-				Spec: kbv1alpha1.PodGroupSpec{
+				Spec: schedulingv1alpha2.PodGroupSpec{
 					Queue: "c1",
 				},
-				Status: kbv1alpha1.PodGroupStatus{
-					Phase: kbv1alpha1.PodGroupPending,
+				Status: schedulingv1alpha2.PodGroupStatus{
+					Phase: schedulingv1alpha2.PodGroupPending,
 				},
 			},
-			queue: &kbv1alpha1.Queue{
+			queue: &schedulingv1alpha2.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "c1",
 				},
-				Spec: kbv1alpha1.QueueSpec{
+				Spec: schedulingv1alpha2.QueueSpec{
 					Weight: 1,
 				},
 			},
@@ -268,10 +268,10 @@ func TestSyncQueue(t *testing.T) {
 
 		c.pgInformer.Informer().GetIndexer().Add(testcase.podGroup)
 		c.queueInformer.Informer().GetIndexer().Add(testcase.queue)
-		c.kbClient.SchedulingV1alpha1().Queues().Create(testcase.queue)
+		c.kbClient.SchedulingV1alpha2().Queues().Create(testcase.queue)
 
 		err := c.syncQueue(testcase.queue.Name)
-		item, _ := c.kbClient.SchedulingV1alpha1().Queues().Get(testcase.queue.Name, metav1.GetOptions{})
+		item, _ := c.kbClient.SchedulingV1alpha2().Queues().Get(testcase.queue.Name, metav1.GetOptions{})
 		if err != nil && testcase.ExpectValue != item.Status.Pending {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, c.queue.Len())
 		}

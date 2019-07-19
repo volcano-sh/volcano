@@ -47,7 +47,7 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())
-		createdJob, err := context.vkclient.BatchV1alpha1().Jobs(namespace).Get(jobName, v1.GetOptions{})
+		createdJob, err := context.vcclient.BatchV1alpha1().Jobs(namespace).Get(jobName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(createdJob.Spec.Queue).Should(Equal("default"),
 			"Job queue attribute would default to 'default' ")
