@@ -27,6 +27,13 @@ the source root and run:
 ```bash
 make image_bins
 ```
+the binaries will be generated at .../src/volcano.sh/volcano/_output/bin/linux/amd64/
+but if we just make as below
+
+```bash
+make
+```
+then the binaries would be generated at .../src/volcano.sh/volcano/_output/bin/
 
 To build a specific component for your host architecture, go to
 the source root and run `make <component name>`:
@@ -111,6 +118,7 @@ make e2e-test-kind
 If you want to run e2e test in a existing cluster with volcano deployed, run the following:
 
 ```bash
+export VK_BIN= need to set vcctl binary path (eg:.../src/volcano.sh/volcano/_output/bin/)
 KUBECONFIG=${KUBECONFIG} go test ./test/e2e
 ```
 
