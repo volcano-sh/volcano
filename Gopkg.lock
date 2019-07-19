@@ -203,19 +203,6 @@
   version = "1.1.4"
 
 [[projects]]
-  branch = "master"
-  digest = "1:5f1796b1d2e26fb75d5098ed02311aa21be3aead552123740d31c536c4e3f097"
-  name = "github.com/kubernetes-sigs/kube-batch"
-  packages = [
-    "pkg/apis/scheduling/v1alpha1",
-    "pkg/scheduler/api",
-    "pkg/scheduler/util/assert",
-  ]
-  pruneopts = "UT"
-  revision = "0302d83f20a6bb9cff8a27f9d95fd69d0d84ab28"
-  source = "https://github.com/volcano-sh/scheduler"
-
-[[projects]]
   digest = "1:ff5ebae34cfbf047d505ee150de27e60570e8c394b3b8fdbb720ff6ac71985fc"
   name = "github.com/matttproud/golang_protobuf_extensions"
   packages = ["pbutil"]
@@ -1043,7 +1030,6 @@
   input-imports = [
     "github.com/golang/glog",
     "github.com/hashicorp/go-multierror",
-    "github.com/kubernetes-sigs/kube-batch/pkg/scheduler/api",
     "github.com/onsi/ginkgo",
     "github.com/onsi/gomega",
     "github.com/prometheus/client_golang/prometheus",
@@ -1107,8 +1093,6 @@
     "k8s.io/code-generator/cmd/defaulter-gen",
     "k8s.io/code-generator/cmd/informer-gen",
     "k8s.io/code-generator/cmd/lister-gen",
-    "k8s.io/gengo/args",
-    "k8s.io/gengo/examples/deepcopy-gen/generators",
     "k8s.io/kubernetes/pkg/api/v1/pod",
     "k8s.io/kubernetes/pkg/apis/core",
     "k8s.io/kubernetes/pkg/apis/core/v1",
