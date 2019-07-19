@@ -491,7 +491,7 @@ func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 			t.Errorf("Expected return value to be equal to expected: %s, but got: %s", testcase.ExpextVal, err)
 		}
 
-		_, err = fakeController.kbClients.SchedulingV1alpha1().PodGroups(namespace).Get(testcase.Job.Name, metav1.GetOptions{})
+		_, err = fakeController.kbClients.SchedulingV1alpha2().PodGroups(namespace).Get(testcase.Job.Name, metav1.GetOptions{})
 		if err != nil {
 			t.Error("Expected PodGroup to get created, but not created")
 		}

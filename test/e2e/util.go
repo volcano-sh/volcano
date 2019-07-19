@@ -447,7 +447,7 @@ func jobUnschedulable(ctx *context, job *batchv1alpha1.Job, now time.Time) error
 	var additionalError error
 	// TODO(k82cn): check Job's Condition instead of PodGroup's event.
 	err := wait.Poll(10*time.Second, oneMinute, func() (bool, error) {
-		pg, err := ctx.vcclient.SchedulingV1alpha1().PodGroups(job.Namespace).Get(job.Name, metav1.GetOptions{})
+		pg, err := ctx.vcclient.SchedulingV1alpha2().PodGroups(job.Namespace).Get(job.Name, metav1.GetOptions{})
 		if err != nil {
 			additionalError = fmt.Errorf("expected to have job's podgroup %s created, actual got error %s",
 				job.Name, err.Error())
@@ -481,7 +481,7 @@ func jobUnschedulable(ctx *context, job *batchv1alpha1.Job, now time.Time) error
 func jobEvicted(ctx *context, job *batchv1alpha1.Job, time time.Time) wait.ConditionFunc {
 	// TODO(k82cn): check Job's conditions instead of PodGroup's event.
 	return func() (bool, error) {
-		pg, err := ctx.vcclient.SchedulingV1alpha1().PodGroups(job.Namespace).Get(job.Name, metav1.GetOptions{})
+		pg, err := ctx.vcclient.SchedulingV1alpha2().PodGroups(job.Namespace).Get(job.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		events, err := ctx.kubeclient.CoreV1().Events(pg.Namespace).List(metav1.ListOptions{})
@@ -818,7 +818,7 @@ func waitJobCleanedUp(ctx *context, cleanupjob *batchv1alpha1.Job) error {
 			return false, nil
 		}
 
-		pg, err := ctx.vcclient.SchedulingV1alpha1().PodGroups(cleanupjob.Namespace).Get(cleanupjob.Name, metav1.GetOptions{})
+		pg, err := ctx.vcclient.SchedulingV1alpha2().PodGroups(cleanupjob.Namespace).Get(cleanupjob.Name, metav1.GetOptions{})
 		if err != nil && !errors.IsNotFound(err) {
 			return false, nil
 		}
