@@ -66,19 +66,16 @@ You can watch industry experts talking about Volcano in different International 
 
 - Kubernetes 1.12+ with CRD support
 
+
+You can try volcano by one the following two ways.
+
+
 ### Install with YAML files
 
-Install volcano k8s resources
+Install volcano on a existing Kubernetes cluster.
 
 ```
 kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/master/installer/volcano-development.yaml
-```
-
-Install `default-queue` for volcano scheduler, note that the crd resources should be ready before this.
-
-```
-kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/master/installer/helm/chart/volcano/templates/default-queue.yaml
-
 ```
 
 Enjoy! Volcano will create the following resources in `volcano-system` namespace.
@@ -107,6 +104,14 @@ replicaset.apps/volcano-scheduler-94998fc64      1         1         1       96s
 NAME                               COMPLETIONS   DURATION   AGE
 job.batch/volcano-admission-init   1/1           48s        96s
 
+```
+
+### Install from code
+
+If you have no kubernetes cluster, try one click install from code base:
+
+```bash
+./hack/local-up-volcano.sh
 ```
 
 

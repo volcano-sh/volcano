@@ -23,8 +23,9 @@ import (
 
 	"github.com/golang/glog"
 
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -45,6 +46,7 @@ import (
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	kbver "volcano.sh/volcano/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 	kbschema "volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
@@ -256,6 +258,19 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	eventClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init eventClient, with err: %v", err))
+	}
+
+	// create default queue
+	defaultQue := v1alpha2.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: defaultQueue,
+		},
+		Spec: v1alpha2.QueueSpec{
+			Weight: 1,
+		},
+	}
+	if _, err := kbClient.SchedulingV1alpha2().Queues().Create(&defaultQue); err != nil && !apierrors.IsAlreadyExists(err) {
+		panic(fmt.Sprintf("failed init default queue, with err: %v", err))
 	}
 
 	sc := &SchedulerCache{
