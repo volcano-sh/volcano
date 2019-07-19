@@ -33,7 +33,6 @@ VK_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
 BINARY_FOLDER=${VK_ROOT}/${BIN_DIR}/${REL_OSARCH}
 RELEASE_FOLDER=${VK_ROOT}/${RELEASE_DIR}
 RELEASE_BINARY=${RELEASE_FOLDER}/bin
-QUEUE_FILE=${VK_ROOT}/installer/helm/chart/volcano/templates/default-queue.yaml
 README_FILE=${VK_ROOT}/installer/README.md
 HELM_FOLDER=${VK_ROOT}/installer/helm
 VOLCANO_IMAGE_TAG=${TAG:-"latest"}
@@ -48,8 +47,6 @@ fi
 cp -r ${BINARY_FOLDER} ${RELEASE_BINARY}
 
 cp ${README_FILE} ${RELEASE_FOLDER}
-
-cp ${QUEUE_FILE} ${RELEASE_FOLDER}
 
 cp -r ${HELM_FOLDER} ${RELEASE_FOLDER}
 
