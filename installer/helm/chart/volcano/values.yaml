@@ -4,5 +4,5 @@ basic:
   scheduler_image_name: "volcanosh/vc-scheduler"
   admission_image_name: "volcanosh/vc-admission"
   admission_secret_name: "volcano-admission-secret"
-  scheduler_config_file: "kube-batch.conf"
+  scheduler_config_file: "volcano-scheduler.conf"
   image_pull_secret: ""

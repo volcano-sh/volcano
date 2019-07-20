@@ -37,11 +37,6 @@ required = [
   name = "github.com/golang/glog"
 
 [[constraint]]
-  name = "github.com/kubernetes-sigs/kube-batch"
-  branch = "master"
-  source = "https://github.com/volcano-sh/scheduler"
-
-[[constraint]]
   name = "github.com/onsi/ginkgo"
   version = "1.7.0"
 
@@ -60,10 +55,6 @@ required = [
 [[constraint]]
   name = "k8s.io/client-go"
   version = "10.0.0"
-
-[[constraint]]
-  branch = "master"
-  name = "k8s.io/gengo"
 
 [[constraint]]
   name = "k8s.io/kubernetes"

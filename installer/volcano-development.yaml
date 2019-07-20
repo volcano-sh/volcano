@@ -10,7 +10,7 @@ metadata:
   name: volcano-scheduler-configmap
   namespace: volcano-system
 data:
-  kube-batch-ci.conf: |
+  volcano-scheduler-ci.conf: |
     actions: "enqueue, reclaim, allocate, backfill, preempt"
     tiers:
     - plugins:
@@ -22,7 +22,7 @@ data:
       - name: predicates
       - name: proportion
       - name: nodeorder
-  kube-batch.conf: |
+  volcano-scheduler.conf: |
     actions: "enqueue, allocate, backfill"
     tiers:
     - plugins:
@@ -140,7 +140,7 @@ spec:
           image: volcanosh/vc-scheduler:latest
           args:
             - --alsologtostderr
-            - --scheduler-conf=/volcano.scheduler/kube-batch-ci.conf
+            - --scheduler-conf=/volcano.scheduler/volcano-scheduler-ci.conf
             - -v=3
             - 2>&1
           imagePullPolicy: "IfNotPresent"

@@ -38,7 +38,7 @@ function install-volcano {
   kind load docker-image ${MPI_EXAMPLE_IMAGE}  ${CLUSTER_CONTEXT}
 
   echo "Install volcano chart"
-  helm install installer/helm/chart/volcano --namespace kube-system --name ${CLUSTER_NAME} --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG} --set basic.scheduler_config_file=kube-batch-ci.conf --wait
+  helm install installer/helm/chart/volcano --namespace kube-system --name ${CLUSTER_NAME} --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG} --set basic.scheduler_config_file=volcano-scheduler-ci.conf --wait
 }
 
 function uninstall-volcano {
@@ -51,7 +51,7 @@ function generate-log {
     echo "Generating volcano log files"
     kubectl logs deployment/${CLUSTER_NAME}-admission -n kube-system > volcano-admission.log
     kubectl logs deployment/${CLUSTER_NAME}-controllers -n kube-system > volcano-controller.log
-    kubectl logs deployment/${CLUSTER_NAME}-scheduler -n kube-system > volcano-kube-batch.log
+    kubectl logs deployment/${CLUSTER_NAME}-scheduler -n kube-system > volcano-scheduler.log
 
 }
 
