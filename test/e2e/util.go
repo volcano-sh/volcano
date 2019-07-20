@@ -38,6 +38,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	api "k8s.io/kubernetes/pkg/apis/core"
 
 	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	kbver "volcano.sh/volcano/pkg/client/clientset/versioned"
@@ -55,12 +56,13 @@ var (
 )
 
 const (
-	timeOutMessage      = "timed out waiting for the condition"
-	workerPriority      = "worker-pri"
-	masterPriority      = "master-pri"
-	defaultNginxImage   = "nginx:1.14"
-	defaultBusyBoxImage = "busybox:1.24"
-	defaultMPIImage     = "volcanosh/example-mpi:0.0.1"
+	timeOutMessage               = "timed out waiting for the condition"
+	workerPriority               = "worker-pri"
+	masterPriority               = "master-pri"
+	defaultNginxImage            = "nginx:1.14"
+	nodeFieldSelectorKeyNodeName = api.ObjectNameField
+	defaultBusyBoxImage          = "busybox:1.24"
+	defaultMPIImage              = "volcanosh/example-mpi:0.0.1"
 
 	defaultNamespace = "test"
 	defaultQueue1    = "q1"
@@ -268,6 +270,7 @@ type taskSpec struct {
 	labels                map[string]string
 	policies              []vkv1.LifecyclePolicy
 	restartPolicy         v1.RestartPolicy
+	tolerations           []v1.Toleration
 	defaultGracefulPeriod *int64
 }
 
@@ -342,6 +345,7 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 					RestartPolicy: restartPolicy,
 					Containers:    createContainers(task.img, task.command, task.workingDir, task.req, task.limit, task.hostport),
 					Affinity:      task.affinity,
+					Tolerations:   task.tolerations,
 				},
 			},
 		}
@@ -944,7 +948,9 @@ func getTasksOfJob(ctx *context, job *vkv1.Job) []*v1.Pod {
 		if !metav1.IsControlledBy(&pod, job) {
 			continue
 		}
-		tasks = append(tasks, &pod)
+		var duplicatePod *v1.Pod
+		duplicatePod = pod.DeepCopy()
+		tasks = append(tasks, duplicatePod)
 	}
 
 	return tasks
