@@ -22,7 +22,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"testing"
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	kbv1aplha1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
@@ -33,7 +33,7 @@ func TestKillJobFunc(t *testing.T) {
 	testcases := []struct {
 		Name           string
 		Job            *v1alpha1.Job
-		PodGroup       *kbv1aplha1.PodGroup
+		PodGroup       *schedulingv1alpha2.PodGroup
 		PodRetainPhase state.PhaseMap
 		UpdateStatus   state.UpdateStatusFn
 		JobInfo        *apis.JobInfo
@@ -51,7 +51,7 @@ func TestKillJobFunc(t *testing.T) {
 					Namespace: namespace,
 				},
 			},
-			PodGroup: &kbv1aplha1.PodGroup{
+			PodGroup: &schedulingv1alpha2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
@@ -166,7 +166,7 @@ func TestCreateJobFunc(t *testing.T) {
 	testcases := []struct {
 		Name         string
 		Job          *v1alpha1.Job
-		PodGroup     *kbv1aplha1.PodGroup
+		PodGroup     *schedulingv1alpha2.PodGroup
 		UpdateStatus state.UpdateStatusFn
 		JobInfo      *apis.JobInfo
 		Plugins      []string
@@ -185,7 +185,7 @@ func TestCreateJobFunc(t *testing.T) {
 					},
 				},
 			},
-			PodGroup: &kbv1aplha1.PodGroup{
+			PodGroup: &schedulingv1alpha2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
@@ -276,7 +276,7 @@ func TestSyncJobFunc(t *testing.T) {
 	testcases := []struct {
 		Name           string
 		Job            *v1alpha1.Job
-		PodGroup       *kbv1aplha1.PodGroup
+		PodGroup       *schedulingv1alpha2.PodGroup
 		PodRetainPhase state.PhaseMap
 		UpdateStatus   state.UpdateStatusFn
 		JobInfo        *apis.JobInfo
@@ -314,7 +314,7 @@ func TestSyncJobFunc(t *testing.T) {
 					},
 				},
 			},
-			PodGroup: &kbv1aplha1.PodGroup{
+			PodGroup: &schedulingv1alpha2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,

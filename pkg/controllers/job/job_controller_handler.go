@@ -30,7 +30,7 @@ import (
 
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkbusv1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	kbtype "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	kbtype "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/apis"
