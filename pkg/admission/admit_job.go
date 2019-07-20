@@ -154,7 +154,7 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 	// TODO: deprecate v1alpha1
 	if _, err := KubeBatchClientSet.SchedulingV1alpha1().Queues().Get(job.Spec.Queue, metav1.GetOptions{}); err != nil {
 		if _, err := KubeBatchClientSet.SchedulingV1alpha2().Queues().Get(job.Spec.Queue, metav1.GetOptions{}); err != nil {
-			msg = msg + fmt.Sprintf("Job queue not exist with error: %v", err)
+			msg = msg + fmt.Sprintf(" unable to find job queue: %v", err)
 		}
 	}
 

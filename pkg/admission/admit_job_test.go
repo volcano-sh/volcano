@@ -20,14 +20,13 @@ import (
 	"strings"
 	"testing"
 
-	kubebatchclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
-
 	"k8s.io/api/admission/v1beta1"
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	schedulingv1aplha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	fakeclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
 )
 
 func TestValidateExecution(t *testing.T) {
@@ -942,49 +941,48 @@ func TestValidateExecution(t *testing.T) {
 				},
 			},
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
-			ret:            "Job not created with error: ",
+			ret:            "unable to find job queue",
 			ExpectErr:      true,
 		},
 	}
 
 	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			defaultqueue := schedulingv1aplha2.Queue{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "default",
+				},
+				Spec: schedulingv1aplha2.QueueSpec{
+					Weight: 1,
+				},
+			}
+			// create fake volcano clientset
+			KubeBatchClientSet = fakeclient.NewSimpleClientset()
 
-		defaultqueue := schedulingv1aplha2.Queue{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "default",
-			},
-			Spec: schedulingv1aplha2.QueueSpec{
-				Weight: 1,
-			},
-		}
-		// create fake volcano clientset
-		KubeBatchClientSet = kubebatchclient.NewSimpleClientset()
+			//create default queue
+			_, err := KubeBatchClientSet.SchedulingV1alpha2().Queues().Create(&defaultqueue)
+			if err != nil {
+				t.Error("Queue Creation Failed")
+			}
 
-		//create default queue
-		_, err := KubeBatchClientSet.SchedulingV1alpha2().Queues().Create(&defaultqueue)
-		if err != nil {
-			t.Error("Queue Creation Failed")
-		}
+			ret := validateJob(testCase.Job, &testCase.reviewResponse)
+			//fmt.Printf("test-case name:%s, ret:%v  testCase.reviewResponse:%v \n", testCase.Name, ret,testCase.reviewResponse)
+			if testCase.ExpectErr == true && ret == "" {
+				t.Errorf("Expect error msg :%s, but got nil.", testCase.ret)
+			}
+			if testCase.ExpectErr == true && testCase.reviewResponse.Allowed != false {
+				t.Errorf("Expect Allowed as false but got true.")
+			}
+			if testCase.ExpectErr == true && !strings.Contains(ret, testCase.ret) {
+				t.Errorf("Expect error msg :%s, but got diff error %v", testCase.ret, ret)
+			}
 
-		ret := validateJob(testCase.Job, &testCase.reviewResponse)
-		//fmt.Printf("test-case name:%s, ret:%v  testCase.reviewResponse:%v \n", testCase.Name, ret,testCase.reviewResponse)
-		if testCase.ExpectErr == true && ret == "" {
-			t.Errorf("%s: test case Expect error msg :%s, but got nil.", testCase.Name, testCase.ret)
-		}
-		if testCase.ExpectErr == true && testCase.reviewResponse.Allowed != false {
-			t.Errorf("%s: test case Expect Allowed as false but got true.", testCase.Name)
-		}
-		if testCase.ExpectErr == true && !strings.Contains(ret, testCase.ret) {
-			t.Errorf("%s: test case Expect error msg :%s, but got diff error %v", testCase.Name, testCase.ret, ret)
-		}
-
-		if testCase.ExpectErr == false && ret != "" {
-			t.Errorf("%s: test case Expect no error, but got error %v", testCase.Name, ret)
-		}
-		if testCase.ExpectErr == false && testCase.reviewResponse.Allowed != true {
-			t.Errorf("%s: test case Expect Allowed as true but got false. %v", testCase.Name, testCase.reviewResponse)
-		}
-
+			if testCase.ExpectErr == false && ret != "" {
+				t.Errorf("Expect no error, but got error %v", ret)
+			}
+			if testCase.ExpectErr == false && testCase.reviewResponse.Allowed != true {
+				t.Errorf("Expect Allowed as true but got false. %v", testCase.reviewResponse)
+			}
+		})
 	}
-
 }
