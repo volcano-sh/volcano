@@ -7,6 +7,9 @@ spec:
   names:
     kind: Queue
     plural: queues
+    shortNames:
+      - q
+      - queue-v1alpha2
   scope: Cluster
   validation:
     openAPIV3Schema:

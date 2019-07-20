@@ -7,6 +7,9 @@ spec:
   names:
     kind: PodGroup
     plural: podgroups
+    shortNames:
+      - pg
+      - podgroup-v1alpha2
   scope: Namespaced
   validation:
     openAPIV3Schema:
