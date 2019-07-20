@@ -87,16 +87,13 @@ rules:
   - apiGroups: ["policy"]
     resources: ["poddisruptionbudgets"]
     verbs: ["list", "watch"]
-  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.sigs.dev"]
-    resources: ["queues"]
-    verbs: ["get", "list", "watch", "create", "delete"]
   - apiGroups: ["scheduling.k8s.io"]
     resources: ["priorityclasses"]
     verbs: ["get", "list", "watch"]
-  - apiGroups: ["scheduling.sigs.dev"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.sigs.dev"]
     resources: ["queues"]
     verbs: ["get", "list", "watch", "create", "delete"]
-  - apiGroups: ["scheduling.sigs.dev"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.sigs.dev"]
     resources: ["podgroups"]
     verbs: ["list", "watch", "update"]
 
@@ -724,6 +721,9 @@ spec:
   names:
     kind: PodGroup
     plural: podgroups
+    shortNames:
+      - pg
+      - podgroup-v1alpha2
   scope: Namespaced
   validation:
     openAPIV3Schema:
@@ -770,6 +770,9 @@ spec:
   names:
     kind: Queue
     plural: queues
+    shortNames:
+      - q
+      - queue-v1alpha2
   scope: Cluster
   validation:
     openAPIV3Schema:
