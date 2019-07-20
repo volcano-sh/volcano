@@ -26,7 +26,7 @@ rules:
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["create", "get", "patch"]
-  - apiGroups: ["scheduling.incubator.k8s.io"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.sigs.dev"]
     resources: ["queues"]
     verbs: ["get", "list"]
   - apiGroups: [""]
