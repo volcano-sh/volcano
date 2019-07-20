@@ -464,11 +464,12 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 			},
 		}
 
-		if _, e := cc.kbClients.SchedulingV1alpha2().PodGroups(job.Namespace).Create(pg); e != nil {
-			glog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
-				job.Namespace, job.Name, err)
-
-			return e
+		if _, err = cc.kbClients.SchedulingV1alpha2().PodGroups(job.Namespace).Create(pg); err != nil {
+			if !apierrors.IsAlreadyExists(err) {
+				glog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
+					job.Namespace, job.Name, err)
+				return err
+			}
 		}
 	}
 
