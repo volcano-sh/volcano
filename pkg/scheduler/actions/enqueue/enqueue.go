@@ -19,6 +19,7 @@ package enqueue
 import (
 	"github.com/golang/glog"
 
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -76,7 +77,7 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 	emptyRes := api.EmptyResource()
 	nodesIdleRes := api.EmptyResource()
 	for _, node := range ssn.Nodes {
-		nodesIdleRes.Add(node.Allocatable.Clone().Multi(1.2).Sub(node.Used))
+		nodesIdleRes.Add(node.Allocatable.Clone().Multi(options.ServerOpts.EnqueueThreshold).Sub(node.Used))
 	}
 
 	for {

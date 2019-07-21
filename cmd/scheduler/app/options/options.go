@@ -29,8 +29,9 @@ const (
 	defaultQueue           = "default"
 	defaultListenAddress   = ":8080"
 
-	defaultQPS   = 50.0
-	defaultBurst = 100
+	defaultQPS              = 50.0
+	defaultBurst            = 100
+	defaultEnqueueThreshold = 1.2
 )
 
 // ServerOption is the main context object for the controller manager.
@@ -48,6 +49,7 @@ type ServerOption struct {
 	EnablePriorityClass  bool
 	KubeAPIBurst         int
 	KubeAPIQPS           float32
+	EnqueueThreshold     float64
 }
 
 // ServerOpts server options
@@ -78,6 +80,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 		"Enable PriorityClass to provide the capacity of preemption at pod group level; to disable it, set it false")
 	fs.Float32Var(&s.KubeAPIQPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
 	fs.IntVar(&s.KubeAPIBurst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
+	fs.Float64Var(&s.EnqueueThreshold, "enqueue-threshold", defaultEnqueueThreshold, "Enqueue action threshold")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled
