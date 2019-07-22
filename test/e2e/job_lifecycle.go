@@ -249,4 +249,44 @@ var _ = Describe("Job Life Cycle", func() {
 
 	})
 
+	It("Create and Delete job with CPU requirement", func() {
+		By("init test context")
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		By("create job")
+		job := createJob(context, &jobSpec{
+			name: "terminate-delete-job",
+			policies: []vkv1.LifecyclePolicy{
+				{
+					Action: vkv1.TerminateJobAction,
+					Event:  vkv1.PodFailedEvent,
+				},
+			},
+			tasks: []taskSpec{
+				{
+					name:          "complete",
+					img:           defaultNginxImage,
+					min:           1,
+					rep:           1,
+					command:       "sleep 10s",
+					restartPolicy: v1.RestartPolicyNever,
+					req:           cpuResource("1"),
+				},
+			},
+		})
+
+		// job phase: pending -> running -> completed
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Completed})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("delete job")
+		err = context.kbclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		err = waitJobCleanedUp(context, job)
+		Expect(err).NotTo(HaveOccurred())
+
+	})
+
 })
