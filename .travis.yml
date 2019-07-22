@@ -58,6 +58,14 @@ jobs:
           skip_cleanup: true
           on:
             tags: true
+    - stage: Publish latest Docker Image on Daily Build
+      script:
+        - echo "Publish latest Docker Images to DockerHub"
+      deploy:
+        - provider: script
+          script: make TAG=latest RELEASE_VER=latest release
+          on:
+            condition: $TRAVIS_EVENT_TYPE = cron
 notifications:
   webhooks: https://www.travisbuddy.com/
   on_success: never
