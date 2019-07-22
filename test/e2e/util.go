@@ -300,7 +300,7 @@ func getNS(context *context, job *jobSpec) string {
 func createJob(context *context, jobSpec *jobSpec) *vkv1.Job {
 
 	job, err := createJobInner(context, jobSpec)
-	Expect(err).NotTo(HaveOccurred())
+	Expect(err).NotTo(HaveOccurred(), "create job")
 
 	return job
 }
