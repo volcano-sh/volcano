@@ -803,4 +803,6 @@ spec:
           type: object
       type: object
   version: v1alpha2
+  subresources:
+    status: {}
 
