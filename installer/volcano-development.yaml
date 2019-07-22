@@ -34,7 +34,7 @@ data:
       - name: predicates
       - name: proportion
       - name: nodeorder
-
+  
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -134,13 +134,13 @@ spec:
         app: volcano-scheduler
     spec:
       serviceAccount: volcano-scheduler
-
+      
       containers:
         - name: volcano-scheduler
           image: volcanosh/vc-scheduler:latest
           args:
             - --alsologtostderr
-            - --scheduler-conf=/volcano.scheduler/volcano-scheduler-ci.conf
+            - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
             - -v=3
             - 2>&1
           imagePullPolicy: "IfNotPresent"
@@ -223,7 +223,7 @@ spec:
         app: volcano-admission
     spec:
       serviceAccount: volcano-admission
-
+      
       containers:
         - args:
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
@@ -372,15 +372,15 @@ spec:
         app: volcano-controller
     spec:
       serviceAccount: volcano-controllers
-
+      
       containers:
-        - name: volcano-controllers
-          image: volcanosh/vc-controllers:latest
-          args:
-            - --alsologtostderr
-            - -v=4
-            - 2>&1
-          imagePullPolicy: "IfNotPresent"
+          - name: volcano-controllers
+            image: volcanosh/vc-controllers:latest
+            args:
+              - --alsologtostderr
+              - -v=4
+              - 2>&1
+            imagePullPolicy: "IfNotPresent"
 
 ---
 # Source: volcano/templates/batch_v1alpha1_job.yaml
@@ -800,3 +800,4 @@ spec:
           type: object
       type: object
   version: v1alpha2
+
