@@ -21,6 +21,10 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	batchv1 "k8s.io/api/batch/v1"
+	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("Job E2E Test", func() {
@@ -285,5 +289,102 @@ var _ = Describe("Job E2E Test", func() {
 		evicted, err := jobEvicted(context, job1, now)()
 		Expect(err).NotTo(HaveOccurred())
 		Expect(evicted).NotTo(BeTrue())
+	})
+
+	It("Schedule v1.Job type using Volcano scheduler", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+		namespace := "test"
+		parallel := int32(2)
+
+		job := &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "job1",
+				Namespace: namespace,
+			},
+			Spec: batchv1.JobSpec{
+				Parallelism: &parallel,
+				Template: v1.PodTemplateSpec{
+					Spec: v1.PodSpec{
+						RestartPolicy: v1.RestartPolicyNever,
+						SchedulerName: schedulerName,
+						Containers: []v1.Container{
+							{
+								Name:  "test-container",
+								Image: "nginx",
+							},
+						},
+					},
+				},
+			},
+		}
+
+		//create job
+		job, err := context.kubeclient.BatchV1().Jobs(namespace).Create(job)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = waitJobPhaseReady(context, job)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("Schedule v1.Job type using Volcano scheduler with error case", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+		namespace := "test"
+		parallel := int32(2)
+
+		errorJob := &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "job1",
+				Namespace: namespace,
+			},
+			Spec: batchv1.JobSpec{
+				Parallelism: &parallel,
+				Template: v1.PodTemplateSpec{
+					Spec: v1.PodSpec{
+						SchedulerName: schedulerName,
+						Containers: []v1.Container{
+							{
+								Name:  "test-container",
+								Image: "nginx",
+							},
+						},
+					},
+				},
+			},
+		}
+
+		job := &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "job1",
+				Namespace: namespace,
+			},
+			Spec: batchv1.JobSpec{
+				Parallelism: &parallel,
+				Template: v1.PodTemplateSpec{
+					Spec: v1.PodSpec{
+						RestartPolicy: v1.RestartPolicyNever,
+						SchedulerName: schedulerName,
+						Containers: []v1.Container{
+							{
+								Name:  "test-container",
+								Image: "nginx",
+							},
+						},
+					},
+				},
+			},
+		}
+
+		//create error job
+		errorJob, err := context.kubeclient.BatchV1().Jobs(namespace).Create(errorJob)
+		Expect(err).To(HaveOccurred())
+
+		//create job
+		job, err = context.kubeclient.BatchV1().Jobs(namespace).Create(job)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = waitJobPhaseReady(context, job)
+		Expect(err).NotTo(HaveOccurred())
 	})
 })
