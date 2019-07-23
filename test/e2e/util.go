@@ -274,6 +274,7 @@ type taskSpec struct {
 	restartPolicy         v1.RestartPolicy
 	tolerations           []v1.Toleration
 	defaultGracefulPeriod *int64
+	taskpriority          string
 }
 
 type jobSpec struct {
@@ -343,11 +344,12 @@ func createJobInner(context *context, jobSpec *jobSpec) (*vkv1.Job, error) {
 					Labels: task.labels,
 				},
 				Spec: v1.PodSpec{
-					SchedulerName: "volcano",
-					RestartPolicy: restartPolicy,
-					Containers:    createContainers(task.img, task.command, task.workingDir, task.req, task.limit, task.hostport),
-					Affinity:      task.affinity,
-					Tolerations:   task.tolerations,
+					SchedulerName:     "volcano",
+					RestartPolicy:     restartPolicy,
+					Containers:        createContainers(task.img, task.command, task.workingDir, task.req, task.limit, task.hostport),
+					Affinity:          task.affinity,
+					Tolerations:       task.tolerations,
+					PriorityClassName: task.taskpriority,
 				},
 			},
 		}
@@ -408,6 +410,41 @@ func waitTaskPhase(ctx *context, job *vkv1.Job, phase []v1.PodPhase, taskNum int
 		return fmt.Errorf("[Wait time out]: %s", additionalError)
 	}
 	return err
+}
+
+func taskPhaseEx(ctx *context, job *vkv1.Job, phase []v1.PodPhase, taskNum map[string]int) error {
+	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+
+		pods, err := ctx.kubeclient.CoreV1().Pods(job.Namespace).List(metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		readyTaskNum := map[string]int{}
+		for _, pod := range pods.Items {
+			if !metav1.IsControlledBy(&pod, job) {
+				continue
+			}
+
+			for _, p := range phase {
+				if pod.Status.Phase == p {
+					readyTaskNum[pod.Spec.PriorityClassName]++
+					break
+				}
+			}
+		}
+
+		for k, v := range taskNum {
+			if v > readyTaskNum[k] {
+				return false, nil
+			}
+		}
+
+		return true, nil
+	})
+	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
+		return fmt.Errorf("[Wait time out]")
+	}
+	return err
+
 }
 
 func jobUnschedulable(ctx *context, job *vkv1.Job, now time.Time) error {
@@ -621,6 +658,10 @@ func waitJobPending(ctx *context, job *vkv1.Job) error {
 
 func waitTasksReady(ctx *context, job *vkv1.Job, taskNum int) error {
 	return waitTaskPhase(ctx, job, []v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum)
+}
+
+func waitTasksReadyEx(ctx *context, job *vkv1.Job, taskNum map[string]int) error {
+	return taskPhaseEx(ctx, job, []v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum)
 }
 
 func waitTasksPending(ctx *context, job *vkv1.Job, taskNum int) error {

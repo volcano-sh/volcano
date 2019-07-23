@@ -19,6 +19,7 @@ package e2e
 import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"strconv"
 
 	"k8s.io/api/core/v1"
 
@@ -594,6 +595,47 @@ var _ = Describe("Job Error Handling", func() {
 
 		// job phase: pending -> running -> Restarting
 		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Restarting})
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("Task Priority", func() {
+		By("init test context")
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		rep := clusterSize(context, oneCPU)
+		nodecount := clusterNodeNumber(context)
+		By("create job")
+		job := createJob(context, &jobSpec{
+			name: "task-priority-job",
+			min:  int32(nodecount),
+			tasks: []taskSpec{
+				{
+					name:         "higherprioritytask",
+					img:          defaultNginxImage,
+					rep:          int32(nodecount),
+					req:          cpuResource(strconv.Itoa(int(rep)/nodecount - 1)),
+					taskpriority: masterPriority,
+				},
+				{
+					name:         "lowerprioritytask",
+					img:          defaultNginxImage,
+					rep:          int32(nodecount),
+					req:          cpuResource(strconv.Itoa(int(rep)/nodecount - 1)),
+					taskpriority: workerPriority,
+				},
+			},
+		})
+
+		// job phase: pending -> running
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running})
+		Expect(err).NotTo(HaveOccurred())
+		expteced := map[string]int{
+			masterPriority: int(nodecount),
+			workerPriority: 0,
+		}
+
+		err = waitTasksReadyEx(context, job, expteced)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
