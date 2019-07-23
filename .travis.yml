@@ -15,6 +15,11 @@ jobs:
         - go get -u golang.org/x/lint/golint
       script:
         - make verify
+    - stage: Verify Deployment Yaml
+      script:
+        - echo "Verifying contents of installer/development.yaml with generated yaml"
+        - make TAG=latest generate-yaml
+        - make verify-generated-yaml
     - stage: UT Tests
       before_script:
         - go get github.com/mattn/goveralls
