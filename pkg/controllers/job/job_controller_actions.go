@@ -92,7 +92,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 	job.Status.Version = job.Status.Version + 1
 
 	job.Status = vkv1.JobStatus{
-		Phase:          job.Status.Phase,
+		State:          job.Status.State,
 		Conditions:     job.Status.Conditions,
 		Pending:        pending,
 		Running:        running,
@@ -313,7 +313,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	}
 
 	job.Status = vkv1.JobStatus{
-		Phase:          job.Status.Phase,
+		State:          job.Status.State,
 		Conditions:     job.Status.Conditions,
 		Pending:        pending,
 		Running:        running,
@@ -520,12 +520,12 @@ func (cc *Controller) calcPGMinResources(job *vkv1.Job) *v1.ResourceList {
 }
 
 func (cc *Controller) initJobStatus(job *vkv1.Job) (*vkv1.Job, error) {
-	if job.Status.Phase != "" {
+	if job.Status.State.Phase != "" {
 		return job, nil
 	}
 
-	job.Status.Phase = vkv1.Pending
 	job.Status.MinAvailable = int32(job.Spec.MinAvailable)
+	UpdateJobPhase(&job.Status, vkv1.Pending, "")
 	newJob, err := cc.vkClients.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
 	if err != nil {
 		glog.Errorf("Failed to update status of Job %v/%v: %v",

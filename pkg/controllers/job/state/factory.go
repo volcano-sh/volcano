@@ -67,7 +67,7 @@ type State interface {
 //NewState gets the state from the volcano job Phase
 func NewState(jobInfo *apis.JobInfo) State {
 	job := jobInfo.Job
-	switch job.Status.Phase {
+	switch job.Status.State.Phase {
 	case vkv1.Pending:
 		return &pendingState{job: jobInfo}
 	case vkv1.Running:

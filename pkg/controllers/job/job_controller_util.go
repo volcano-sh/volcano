@@ -269,7 +269,7 @@ func UpdateJobPhase(status *vkv1.JobStatus, newphase vkv1.JobPhase, message stri
 		SetCondition(status, NewStateCondition(vkv1.JobRestarting, "Job is restarting", message))
 		break
 	}
-	status.Phase = newphase
+	status.State.Phase = newphase
 	now := metav1.Time{Time: time.Now()}
 	//Remove Completion time
 	if !status.CompletionTime.IsZero() && HasCondition(*status, vkv1.JobRestarting) {
@@ -282,6 +282,8 @@ func UpdateJobPhase(status *vkv1.JobStatus, newphase vkv1.JobPhase, message stri
 	if status.CompletionTime.IsZero() &&
 		(HasCondition(*status, vkv1.JobSucceed) || HasCondition(*status, vkv1.JobSucceed)) {
 		status.CompletionTime = &now
+		// Update state transition time for compatibility
+		status.State.LastTransitionTime = now
 	}
 }
 

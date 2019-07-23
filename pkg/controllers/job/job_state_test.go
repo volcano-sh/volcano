@@ -48,7 +48,9 @@ func TestAbortedState_Execute(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Aborted,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Aborted,
+						},
 					},
 				},
 			},
@@ -66,7 +68,9 @@ func TestAbortedState_Execute(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Aborted,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Aborted,
+						},
 					},
 				},
 			},
@@ -101,7 +105,7 @@ func TestAbortedState_Execute(t *testing.T) {
 				t.Error("Error while retrieving value from Cache")
 			}
 
-			if jobInfo.Job.Status.Phase != v1alpha1.Restarting {
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Restarting {
 				t.Error("Expected Phase to be equal to restarting phase")
 			}
 		}
@@ -128,7 +132,9 @@ func TestAbortingState_Execute(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Aborting,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Aborting,
+						},
 					},
 				},
 			},
@@ -146,7 +152,9 @@ func TestAbortingState_Execute(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Aborting,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Aborting,
+						},
 					},
 				},
 			},
@@ -165,7 +173,9 @@ func TestAbortingState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						Pending: 1,
-						Phase:   v1alpha1.Aborting,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Aborting,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -217,11 +227,11 @@ func TestAbortingState_Execute(t *testing.T) {
 			}
 
 			if testcase.JobInfo.Job.Status.Pending == 0 && testcase.JobInfo.Job.Status.Running == 0 && testcase.JobInfo.Job.Status.Terminating == 0 {
-				if jobInfo.Job.Status.Phase != v1alpha1.Aborted {
+				if jobInfo.Job.Status.State.Phase != v1alpha1.Aborted {
 					t.Error("Phase Should be aborted")
 				}
 			} else {
-				if jobInfo.Job.Status.Phase != v1alpha1.Aborting {
+				if jobInfo.Job.Status.State.Phase != v1alpha1.Aborting {
 					t.Error("Phase Should be aborted")
 				}
 			}
@@ -251,7 +261,9 @@ func TestCompletingState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						Running: 2,
-						Phase:   v1alpha1.Completing,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Completing,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -275,7 +287,9 @@ func TestCompletingState_Execute(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Completing,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Completing,
+						},
 					},
 				},
 			},
@@ -311,12 +325,12 @@ func TestCompletingState_Execute(t *testing.T) {
 		}
 
 		if testcase.JobInfo.Job.Status.Running == 0 && testcase.JobInfo.Job.Status.Pending == 0 && testcase.JobInfo.Job.Status.Terminating == 0 {
-			if jobInfo.Job.Status.Phase != v1alpha1.Completed {
-				fmt.Println(jobInfo.Job.Status.Phase)
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Completed {
+				fmt.Println(jobInfo.Job.Status.State.Phase)
 				t.Errorf("Expected Phase to be Completed State in test case: %d", i)
 			}
 		} else {
-			if jobInfo.Job.Status.Phase != v1alpha1.Completing {
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Completing {
 				t.Errorf("Expected Phase to be completing state in test case: %d", i)
 			}
 		}
@@ -343,7 +357,9 @@ func TestFinishedState_Execute(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Completed,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Completed,
+						},
 					},
 				},
 			},
@@ -395,7 +411,9 @@ func TestInqueueState_Execute(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Inqueue,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Inqueue,
+						},
 					},
 				},
 			},
@@ -414,7 +432,9 @@ func TestInqueueState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						Terminating: 2,
-						Phase:       v1alpha1.Inqueue,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Inqueue,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -438,7 +458,9 @@ func TestInqueueState_Execute(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Inqueue,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Inqueue,
+						},
 					},
 				},
 			},
@@ -457,7 +479,9 @@ func TestInqueueState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						Terminating: 2,
-						Phase:       v1alpha1.Inqueue,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Inqueue,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -482,7 +506,9 @@ func TestInqueueState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						Terminating: 2,
-						Phase:       v1alpha1.Inqueue,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Inqueue,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -506,7 +532,9 @@ func TestInqueueState_Execute(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Inqueue,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Inqueue,
+						},
 					},
 				},
 			},
@@ -525,7 +553,9 @@ func TestInqueueState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						Terminating: 2,
-						Phase:       v1alpha1.Inqueue,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Inqueue,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -553,7 +583,9 @@ func TestInqueueState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						Running: 3,
-						Phase:   v1alpha1.Inqueue,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Inqueue,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -582,7 +614,9 @@ func TestInqueueState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						Running: 2,
-						Phase:   v1alpha1.Inqueue,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Inqueue,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -625,32 +659,32 @@ func TestInqueueState_Execute(t *testing.T) {
 
 		if testcase.Action == v1alpha1.RestartJobAction {
 			// always jump to restarting firstly
-			if jobInfo.Job.Status.Phase != v1alpha1.Restarting {
-				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Restarting, jobInfo.Job.Status.Phase, i)
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Restarting {
+				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Restarting, jobInfo.Job.Status.State.Phase, i)
 			}
 		} else if testcase.Action == v1alpha1.AbortJobAction {
 			// always jump to aborting firstly
-			if jobInfo.Job.Status.Phase != v1alpha1.Aborting {
-				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Aborting, jobInfo.Job.Status.Phase, i)
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Aborting {
+				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Aborting, jobInfo.Job.Status.State.Phase, i)
 			}
 		} else if testcase.Action == v1alpha1.TerminateJobAction {
 			// always jump to terminating firstly
-			if jobInfo.Job.Status.Phase != v1alpha1.Terminating {
-				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Terminating, jobInfo.Job.Status.Phase, i)
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Terminating {
+				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Terminating, jobInfo.Job.Status.State.Phase, i)
 			}
 		} else if testcase.Action == v1alpha1.CompleteJobAction {
 			// always jump to completing firstly
-			if jobInfo.Job.Status.Phase != v1alpha1.Completing {
-				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Completing, jobInfo.Job.Status.Phase, i)
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Completing {
+				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Completing, jobInfo.Job.Status.State.Phase, i)
 			}
 		} else {
 			if jobInfo.Job.Spec.MinAvailable <= jobInfo.Job.Status.Running+jobInfo.Job.Status.Succeeded+jobInfo.Job.Status.Failed {
-				if jobInfo.Job.Status.Phase != v1alpha1.Running {
-					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Running, jobInfo.Job.Status.Phase, i)
+				if jobInfo.Job.Status.State.Phase != v1alpha1.Running {
+					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Running, jobInfo.Job.Status.State.Phase, i)
 				}
 			} else {
-				if jobInfo.Job.Status.Phase != testcase.JobInfo.Job.Status.Phase {
-					t.Errorf("Expected Job phase to %s, but got %s in case %d", testcase.JobInfo.Job.Status.Phase, jobInfo.Job.Status.Phase, i)
+				if jobInfo.Job.Status.State.Phase != testcase.JobInfo.Job.Status.State.Phase {
+					t.Errorf("Expected Job phase to %s, but got %s in case %d", testcase.JobInfo.Job.Status.State.Phase, jobInfo.Job.Status.State.Phase, i)
 				}
 			}
 		}
@@ -677,7 +711,9 @@ func TestPendingState_Execute(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Pending,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Pending,
+						},
 					},
 				},
 			},
@@ -696,7 +732,9 @@ func TestPendingState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						Terminating: 2,
-						Phase:       v1alpha1.Pending,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Pending,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -720,7 +758,9 @@ func TestPendingState_Execute(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Pending,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Pending,
+						},
 					},
 				},
 			},
@@ -739,7 +779,9 @@ func TestPendingState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						Terminating: 2,
-						Phase:       v1alpha1.Pending,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Pending,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -764,7 +806,9 @@ func TestPendingState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						Terminating: 2,
-						Phase:       v1alpha1.Pending,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Pending,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -788,7 +832,9 @@ func TestPendingState_Execute(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Pending,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Pending,
+						},
 					},
 				},
 			},
@@ -807,7 +853,9 @@ func TestPendingState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						Terminating: 2,
-						Phase:       v1alpha1.Pending,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Pending,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -835,7 +883,9 @@ func TestPendingState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						Running: 3,
-						Phase:   v1alpha1.Pending,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Pending,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -864,7 +914,9 @@ func TestPendingState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						Running: 2,
-						Phase:   v1alpha1.Pending,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Pending,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -892,7 +944,9 @@ func TestPendingState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						Running: 2,
-						Phase:   v1alpha1.Pending,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Pending,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -935,37 +989,37 @@ func TestPendingState_Execute(t *testing.T) {
 
 		if testcase.Action == v1alpha1.RestartJobAction {
 			// always jump to restarting firstly
-			if jobInfo.Job.Status.Phase != v1alpha1.Restarting {
-				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Restarting, jobInfo.Job.Status.Phase, i)
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Restarting {
+				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Restarting, jobInfo.Job.Status.State.Phase, i)
 			}
 		} else if testcase.Action == v1alpha1.AbortJobAction {
 			// always jump to aborting firstly
-			if jobInfo.Job.Status.Phase != v1alpha1.Aborting {
-				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Aborting, jobInfo.Job.Status.Phase, i)
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Aborting {
+				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Aborting, jobInfo.Job.Status.State.Phase, i)
 			}
 		} else if testcase.Action == v1alpha1.TerminateJobAction {
 			// always jump to completing firstly
-			if jobInfo.Job.Status.Phase != v1alpha1.Terminating {
-				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Terminating, jobInfo.Job.Status.Phase, i)
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Terminating {
+				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Terminating, jobInfo.Job.Status.State.Phase, i)
 			}
 		} else if testcase.Action == v1alpha1.CompleteJobAction {
 			// always jump to completing firstly
-			if jobInfo.Job.Status.Phase != v1alpha1.Completing {
-				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Completing, jobInfo.Job.Status.Phase, i)
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Completing {
+				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Completing, jobInfo.Job.Status.State.Phase, i)
 			}
 		} else if testcase.Action == v1alpha1.EnqueueAction {
 			if jobInfo.Job.Spec.MinAvailable <= jobInfo.Job.Status.Running+jobInfo.Job.Status.Succeeded+jobInfo.Job.Status.Failed {
-				if jobInfo.Job.Status.Phase != v1alpha1.Running {
-					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Running, jobInfo.Job.Status.Phase, i)
+				if jobInfo.Job.Status.State.Phase != v1alpha1.Running {
+					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Running, jobInfo.Job.Status.State.Phase, i)
 				}
 			} else {
-				if jobInfo.Job.Status.Phase != v1alpha1.Inqueue {
-					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Inqueue, jobInfo.Job.Status.Phase, i)
+				if jobInfo.Job.Status.State.Phase != v1alpha1.Inqueue {
+					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Inqueue, jobInfo.Job.Status.State.Phase, i)
 				}
 			}
 		} else {
-			if jobInfo.Job.Status.Phase != v1alpha1.Pending {
-				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Pending, jobInfo.Job.Status.Phase, i)
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Pending {
+				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Pending, jobInfo.Job.Status.State.Phase, i)
 			}
 		}
 	}
@@ -995,7 +1049,9 @@ func TestRestartingState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						RetryCount: 3,
-						Phase:      v1alpha1.Restarting,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Restarting,
+						},
 					},
 				},
 			},
@@ -1027,7 +1083,9 @@ func TestRestartingState_Execute(t *testing.T) {
 						RetryCount:   1,
 						MinAvailable: 1,
 						Terminating:  0,
-						Phase:        v1alpha1.Restarting,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Restarting,
+						},
 					},
 				},
 			},
@@ -1063,12 +1121,12 @@ func TestRestartingState_Execute(t *testing.T) {
 		}
 
 		if testcase.JobInfo.Job.Spec.MaxRetry <= testcase.JobInfo.Job.Status.RetryCount {
-			if jobInfo.Job.Status.Phase != v1alpha1.Failed {
-				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Failed, jobInfo.Job.Status.Phase, i)
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Failed {
+				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Failed, jobInfo.Job.Status.State.Phase, i)
 			}
 		} else {
-			if jobInfo.Job.Status.Phase != v1alpha1.Pending {
-				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Pending, jobInfo.Job.Status.Phase, i)
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Pending {
+				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Pending, jobInfo.Job.Status.State.Phase, i)
 			}
 		}
 	}
@@ -1096,7 +1154,9 @@ func TestRunningState_Execute(t *testing.T) {
 					Spec: v1alpha1.JobSpec{},
 					Status: v1alpha1.JobStatus{
 						Terminating: 2,
-						Phase:       v1alpha1.Running,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -1122,7 +1182,9 @@ func TestRunningState_Execute(t *testing.T) {
 					Spec: v1alpha1.JobSpec{},
 					Status: v1alpha1.JobStatus{
 						Terminating: 0,
-						Phase:       v1alpha1.Running,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
 					},
 				},
 			},
@@ -1142,7 +1204,9 @@ func TestRunningState_Execute(t *testing.T) {
 					Spec: v1alpha1.JobSpec{},
 					Status: v1alpha1.JobStatus{
 						Terminating: 0,
-						Phase:       v1alpha1.Running,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
 					},
 				},
 			},
@@ -1162,7 +1226,9 @@ func TestRunningState_Execute(t *testing.T) {
 					Spec: v1alpha1.JobSpec{},
 					Status: v1alpha1.JobStatus{
 						Terminating: 2,
-						Phase:       v1alpha1.Running,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -1188,7 +1254,9 @@ func TestRunningState_Execute(t *testing.T) {
 					Spec: v1alpha1.JobSpec{},
 					Status: v1alpha1.JobStatus{
 						Terminating: 0,
-						Phase:       v1alpha1.Running,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
 					},
 				},
 			},
@@ -1208,7 +1276,9 @@ func TestRunningState_Execute(t *testing.T) {
 					Spec: v1alpha1.JobSpec{},
 					Status: v1alpha1.JobStatus{
 						Terminating: 2,
-						Phase:       v1alpha1.Running,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -1234,7 +1304,9 @@ func TestRunningState_Execute(t *testing.T) {
 					Spec: v1alpha1.JobSpec{},
 					Status: v1alpha1.JobStatus{
 						Terminating: 0,
-						Phase:       v1alpha1.Running,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
 					},
 				},
 			},
@@ -1254,7 +1326,9 @@ func TestRunningState_Execute(t *testing.T) {
 					Spec: v1alpha1.JobSpec{},
 					Status: v1alpha1.JobStatus{
 						Terminating: 2,
-						Phase:       v1alpha1.Running,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -1292,7 +1366,9 @@ func TestRunningState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						Succeeded: 2,
-						Phase:     v1alpha1.Running,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -1330,7 +1406,9 @@ func TestRunningState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						Succeeded: 1,
-						Phase:     v1alpha1.Running,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -1372,33 +1450,33 @@ func TestRunningState_Execute(t *testing.T) {
 
 		if testcase.Action == v1alpha1.RestartJobAction {
 			// always jump to restarting firstly
-			if jobInfo.Job.Status.Phase != v1alpha1.Restarting {
-				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Restarting, jobInfo.Job.Status.Phase, i)
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Restarting {
+				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Restarting, jobInfo.Job.Status.State.Phase, i)
 			}
 		} else if testcase.Action == v1alpha1.AbortJobAction {
 			// always jump to aborting firstly
-			if jobInfo.Job.Status.Phase != v1alpha1.Aborting {
-				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Restarting, jobInfo.Job.Status.Phase, i)
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Aborting {
+				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Restarting, jobInfo.Job.Status.State.Phase, i)
 			}
 		} else if testcase.Action == v1alpha1.TerminateJobAction {
 			// always jump to terminating firstly
-			if jobInfo.Job.Status.Phase != v1alpha1.Terminating {
-				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Terminating, jobInfo.Job.Status.Phase, i)
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Terminating {
+				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Terminating, jobInfo.Job.Status.State.Phase, i)
 			}
 		} else if testcase.Action == v1alpha1.CompleteJobAction {
 			// always jump to completing firstly
-			if jobInfo.Job.Status.Phase != v1alpha1.Completing {
-				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Restarting, jobInfo.Job.Status.Phase, i)
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Completing {
+				t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Restarting, jobInfo.Job.Status.State.Phase, i)
 			}
 		} else {
 			total := state.TotalTasks(testcase.JobInfo.Job)
 			if total == testcase.JobInfo.Job.Status.Succeeded+testcase.JobInfo.Job.Status.Failed {
-				if jobInfo.Job.Status.Phase != v1alpha1.Completed {
-					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Completed, jobInfo.Job.Status.Phase, i)
+				if jobInfo.Job.Status.State.Phase != v1alpha1.Completed {
+					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Completed, jobInfo.Job.Status.State.Phase, i)
 				}
 			} else {
-				if jobInfo.Job.Status.Phase != v1alpha1.Running {
-					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Running, jobInfo.Job.Status.Phase, i)
+				if jobInfo.Job.Status.State.Phase != v1alpha1.Running {
+					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Running, jobInfo.Job.Status.State.Phase, i)
 				}
 			}
 		}
@@ -1426,7 +1504,9 @@ func TestTerminatingState_Execute(t *testing.T) {
 					},
 					Status: v1alpha1.JobStatus{
 						Running: 2,
-						Phase:   v1alpha1.Terminating,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Terminating,
+						},
 					},
 				},
 				Pods: map[string]map[string]*v1.Pod{
@@ -1450,7 +1530,9 @@ func TestTerminatingState_Execute(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Terminating,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Terminating,
+						},
 					},
 				},
 			},
@@ -1487,12 +1569,12 @@ func TestTerminatingState_Execute(t *testing.T) {
 
 		if testcase.JobInfo.Job.Status.Running == 0 && testcase.JobInfo.Job.Status.Pending == 0 && testcase.JobInfo.Job.Status.Terminating == 0 {
 
-			if jobInfo.Job.Status.Phase != v1alpha1.Terminated {
-				fmt.Println(jobInfo.Job.Status.Phase)
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Terminated {
+				fmt.Println(jobInfo.Job.Status.State.Phase)
 				t.Errorf("Expected Phase to be Terminated State in test case: %d", i)
 			}
 		} else {
-			if jobInfo.Job.Status.Phase != v1alpha1.Terminating {
+			if jobInfo.Job.Status.State.Phase != v1alpha1.Terminating {
 				t.Errorf("Expected Phase to be Terminating state in test case: %d", i)
 			}
 		}

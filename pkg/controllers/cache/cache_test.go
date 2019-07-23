@@ -91,7 +91,7 @@ func TestJobCache_GetStatus(t *testing.T) {
 		Name        string
 		Job         *v1alpha1.Job
 		JobsInCache map[string]*v1alpha1.Job
-		ExpectedVal v1alpha1.JobPhase
+		ExpectedVal v1alpha1.JobState
 		ExpectedErr error
 	}{
 		{
@@ -109,11 +109,15 @@ func TestJobCache_GetStatus(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Completed,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Completed,
+						},
 					},
 				},
 			},
-			ExpectedVal: v1alpha1.Completed,
+			ExpectedVal: v1alpha1.JobState{
+				Phase: v1alpha1.Completed,
+			},
 			ExpectedErr: nil,
 		},
 		{
@@ -125,7 +129,9 @@ func TestJobCache_GetStatus(t *testing.T) {
 				},
 			},
 			JobsInCache: nil,
-			ExpectedVal: v1alpha1.Completed,
+			ExpectedVal: v1alpha1.JobState{
+				Phase: v1alpha1.Completed,
+			},
 			ExpectedErr: fmt.Errorf("failed to find job <%s/%s>", namespace, "job1"),
 		},
 	}
@@ -144,8 +150,8 @@ func TestJobCache_GetStatus(t *testing.T) {
 		if err != nil && testcase.ExpectedErr != nil && err.Error() != testcase.ExpectedErr.Error() {
 			t.Errorf("Expected to get: %s, but got: %s in case %d", testcase.ExpectedErr, err, i)
 		}
-		if status != nil && status.Phase != testcase.ExpectedVal {
-			t.Errorf("Expected Return Value to be: %s, but got: %s in case %d", testcase.ExpectedVal, status.Phase, i)
+		if status != nil && status.State.Phase != testcase.ExpectedVal.Phase {
+			t.Errorf("Expected Return Value to be: %s, but got: %s in case %d", testcase.ExpectedVal, status.State.Phase, i)
 		}
 	}
 }
@@ -170,7 +176,9 @@ func TestJobCache_Get(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Completed,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Completed,
+						},
 					},
 				},
 			},
@@ -183,7 +191,9 @@ func TestJobCache_Get(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Completed,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Completed,
+						},
 					},
 				},
 			},
@@ -237,7 +247,9 @@ func TestJobCache_Update(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Running,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
 					},
 				},
 			},
@@ -247,7 +259,9 @@ func TestJobCache_Update(t *testing.T) {
 					Namespace: namespace,
 				},
 				Status: v1alpha1.JobStatus{
-					Phase: v1alpha1.Completed,
+					State: v1alpha1.JobState{
+						Phase: v1alpha1.Completed,
+					},
 				},
 			},
 			ExpectedErr: nil,
@@ -261,7 +275,9 @@ func TestJobCache_Update(t *testing.T) {
 					Namespace: namespace,
 				},
 				Status: v1alpha1.JobStatus{
-					Phase: v1alpha1.Completed,
+					State: v1alpha1.JobState{
+						Phase: v1alpha1.Completed,
+					},
 				},
 			},
 			ExpectedErr: fmt.Errorf("failed to find job <%s/%s>", namespace, "job1"),
@@ -287,8 +303,8 @@ func TestJobCache_Update(t *testing.T) {
 			if err != nil {
 				t.Errorf("Expected Error not to have occured in case %d", i)
 			}
-			if job.Job.Status.Phase != testcase.UpdatedJob.Status.Phase {
-				t.Errorf("Error in updating Job, Expected: %s, but got: %s in case %d", testcase.UpdatedJob.Status.Phase, job.Job.Status.Phase, i)
+			if job.Job.Status.State.Phase != testcase.UpdatedJob.Status.State.Phase {
+				t.Errorf("Error in updating Job, Expected: %s, but got: %s in case %d", testcase.UpdatedJob.Status.State.Phase, job.Job.Status.State.Phase, i)
 			}
 		}
 	}
@@ -312,7 +328,9 @@ func TestJobCache_Delete(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Running,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
 					},
 				},
 			},
@@ -322,7 +340,9 @@ func TestJobCache_Delete(t *testing.T) {
 					Namespace: namespace,
 				},
 				Status: v1alpha1.JobStatus{
-					Phase: v1alpha1.Completed,
+					State: v1alpha1.JobState{
+						Phase: v1alpha1.Completed,
+					},
 				},
 			},
 			ExpectedErr: nil,
@@ -336,7 +356,9 @@ func TestJobCache_Delete(t *testing.T) {
 					Namespace: namespace,
 				},
 				Status: v1alpha1.JobStatus{
-					Phase: v1alpha1.Completed,
+					State: v1alpha1.JobState{
+						Phase: v1alpha1.Completed,
+					},
 				},
 			},
 			ExpectedErr: fmt.Errorf("failed to find job <%s/%s>", namespace, "job1"),
@@ -387,7 +409,9 @@ func TestJobCache_AddPod(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Running,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
 					},
 				},
 			},
@@ -475,7 +499,9 @@ func TestJobCache_DeletePod(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Running,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
 					},
 				},
 			},
@@ -580,7 +606,9 @@ func TestJobCache_UpdatePod(t *testing.T) {
 						Namespace: namespace,
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Running,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
 					},
 				},
 			},
@@ -698,7 +726,9 @@ func TestJobCache_TaskCompleted(t *testing.T) {
 						},
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Running,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
 					},
 				},
 			},
@@ -751,7 +781,9 @@ func TestJobCache_TaskCompleted(t *testing.T) {
 						},
 					},
 					Status: v1alpha1.JobStatus{
-						Phase: v1alpha1.Running,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
 					},
 				},
 			},

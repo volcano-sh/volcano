@@ -19,12 +19,11 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
+	. "github.com/onsi/gomega"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	. "github.com/onsi/gomega"
 
 	appv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -41,13 +40,13 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	api "k8s.io/kubernetes/pkg/apis/core"
 
+	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	kbver "volcano.sh/volcano/pkg/client/clientset/versioned"
-	kbapi "volcano.sh/volcano/pkg/scheduler/api"
-
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkver "volcano.sh/volcano/pkg/client/clientset/versioned"
+	jobcontrl "volcano.sh/volcano/pkg/controllers/job"
 	"volcano.sh/volcano/pkg/controllers/job/state"
+	kbapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 
 var (
@@ -497,10 +496,10 @@ func waitJobPhases(ctx *context, job *vkv1.Job, phases []vkv1.JobPhase) error {
 				continue
 			}
 
-			if newJob.Status.Phase != phase {
+			if newJob.Status.State.Phase != phase {
 				additionalError = fmt.Errorf(
 					"expected job '%s' to be in status %s, actual get %s",
-					job.Name, phase, newJob.Status.Phase)
+					job.Name, phase, newJob.Status.State.Phase)
 				continue
 			}
 
@@ -562,10 +561,10 @@ func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
 		newJob, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		if newJob.Status.Phase != phase {
+		if newJob.Status.State.Phase != phase {
 			additionalError = fmt.Errorf(
 				"expected job '%s' to be in status %s, actual get %s",
-				job.Name, phase, newJob.Status.Phase)
+				job.Name, phase, newJob.Status.State.Phase)
 			return false, nil
 		}
 		var flag = false
@@ -607,7 +606,7 @@ func waitJobPhase(ctx *context, job *vkv1.Job, phase vkv1.JobPhase) error {
 func getJobStatusDetail(job *vkv1.Job) string {
 	return fmt.Sprintf("\nName: %s\n Phase: %s\nPending: %d"+
 		"\nRunning: %d\nSucceeded: %d\nTerminating: %d\nFailed: %d\n ",
-		job.Name, job.Status.Phase, job.Status.Pending, job.Status.Running,
+		job.Name, job.Status.State.Phase, job.Status.Pending, job.Status.Running,
 		job.Status.Succeeded, job.Status.Terminating, job.Status.Failed)
 }
 
@@ -645,19 +644,42 @@ func waitJobStateAborted(ctx *context, job *vkv1.Job) error {
 
 func waitJobPhaseExpect(ctx *context, job *vkv1.Job, state vkv1.JobPhase) error {
 	var additionalError error
+	var jobStatus vkv1.JobStatus
 	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
 		job, err := ctx.vkclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		expected := job.Status.Phase == state
+		expected := job.Status.State.Phase == state
 		if !expected {
 			additionalError = fmt.Errorf("expected job '%s' phase in %s, actual got %s", job.Name,
-				state, job.Status.Phase)
+				state, job.Status.State.Phase)
 		}
+		jobStatus = job.Status
 		return expected, nil
 	})
+
 	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
 		return fmt.Errorf("[Wait time out]: %s", additionalError)
 	}
+
+	if state == vkv1.Completed && !jobcontrl.HasCondition(jobStatus, vkv1.JobSucceed) {
+		return fmt.Errorf("[Job Condition Error]: Expected jobcondition %v to have succeed conditon",
+			jobStatus.Conditions)
+	}
+	if state == vkv1.Aborted && !jobcontrl.HasCondition(jobStatus, vkv1.JobStopped) {
+		return fmt.Errorf("[Job Condition Error]: Expected jobcondition %v to have stoppped conditon",
+			jobStatus.Conditions)
+	}
+
+	if state == vkv1.Running && !jobcontrl.HasCondition(jobStatus, vkv1.JobScheduled) {
+		return fmt.Errorf("[Job Condition Error]: Expected jobcondition %v to have scheduled conditon",
+			jobStatus.Conditions)
+	}
+
+	if (state == vkv1.Pending || state == vkv1.Inqueue) && !jobcontrl.HasCondition(jobStatus, vkv1.JobCreated) {
+		return fmt.Errorf("[Job Condition Error]: Expected jobcondition %v to have created conditon",
+			jobStatus.Conditions)
+	}
+
 	return err
 }
 

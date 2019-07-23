@@ -53,9 +53,14 @@ func TestGarbageCollector_ProcessTTL(t *testing.T) {
 					TTLSecondsAfterFinished: &ttlSecond,
 				},
 				Status: v1alpha1.JobStatus{
-					Phase: v1alpha1.Completed,
+					State: v1alpha1.JobState{
+						Phase: v1alpha1.Completed,
+					},
 					Conditions: []v1alpha1.JobCondition{
-						{Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue, LastTransitionTime: metav1.NewTime(time.Now())}},
+						{
+							Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue,
+							LastTransitionTime: metav1.NewTime(time.Now()),
+						}},
 				},
 			},
 			ExpectedVal: false,
@@ -72,9 +77,14 @@ func TestGarbageCollector_ProcessTTL(t *testing.T) {
 					TTLSecondsAfterFinished: &ttlSecondZero,
 				},
 				Status: v1alpha1.JobStatus{
-					Phase: v1alpha1.Completed,
+					State: v1alpha1.JobState{
+						Phase: v1alpha1.Completed,
+					},
 					Conditions: []v1alpha1.JobCondition{
-						{Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue, LastTransitionTime: metav1.NewTime(time.Now())}},
+						{
+							Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue,
+							LastTransitionTime: metav1.NewTime(time.Now()),
+						}},
 				},
 			},
 			ExpectedVal: true,
@@ -115,10 +125,14 @@ func TestGarbageCollector_NeedsCleanup(t *testing.T) {
 					TTLSecondsAfterFinished: &ttlSecond,
 				},
 				Status: v1alpha1.JobStatus{
-					Phase: v1alpha1.Completed,
+					State: v1alpha1.JobState{
+						Phase: v1alpha1.Completed,
+					},
 					Conditions: []v1alpha1.JobCondition{
-						{Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue,
-							LastTransitionTime: metav1.NewTime(time.Now())}},
+						{
+							Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue,
+							LastTransitionTime: metav1.NewTime(time.Now()),
+						}},
 				},
 			},
 			ExpectedVal: true,
@@ -134,7 +148,9 @@ func TestGarbageCollector_NeedsCleanup(t *testing.T) {
 					TTLSecondsAfterFinished: &ttlSecond,
 				},
 				Status: v1alpha1.JobStatus{
-					Phase: v1alpha1.Running,
+					State: v1alpha1.JobState{
+						Phase: v1alpha1.Running,
+					},
 				},
 			},
 			ExpectedVal: false,
@@ -165,9 +181,14 @@ func TestGarbageCollector_IsJobFinished(t *testing.T) {
 					Namespace: namespace,
 				},
 				Status: v1alpha1.JobStatus{
-					Phase: v1alpha1.Completed,
+					State: v1alpha1.JobState{
+						Phase: v1alpha1.Completed,
+					},
 					Conditions: []v1alpha1.JobCondition{
-						{Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue, LastTransitionTime: metav1.NewTime(time.Now())}},
+						{
+							Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue,
+							LastTransitionTime: metav1.NewTime(time.Now()),
+						}},
 				},
 			},
 			ExpectedVal: true,
@@ -180,7 +201,9 @@ func TestGarbageCollector_IsJobFinished(t *testing.T) {
 					Namespace: namespace,
 				},
 				Status: v1alpha1.JobStatus{
-					Phase: v1alpha1.Running,
+					State: v1alpha1.JobState{
+						Phase: v1alpha1.Running,
+					},
 				},
 			},
 			ExpectedVal: false,
@@ -219,7 +242,9 @@ func TestGarbageCollector_GetFinishAndExpireTime(t *testing.T) {
 					TTLSecondsAfterFinished: &ttlSecond,
 				},
 				Status: v1alpha1.JobStatus{
-					Phase: v1alpha1.Completed,
+					State: v1alpha1.JobState{
+						Phase: v1alpha1.Completed,
+					},
 					Conditions: []v1alpha1.JobCondition{
 						{Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue, LastTransitionTime: metav1.NewTime(testTime)}},
 				},
@@ -237,7 +262,9 @@ func TestGarbageCollector_GetFinishAndExpireTime(t *testing.T) {
 					TTLSecondsAfterFinished: &ttlSecondFail,
 				},
 				Status: v1alpha1.JobStatus{
-					Phase: v1alpha1.Completed,
+					State: v1alpha1.JobState{
+						Phase: v1alpha1.Completed,
+					},
 					Conditions: []v1alpha1.JobCondition{
 						{Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue, LastTransitionTime: metav1.NewTime(testTime)}},
 				},
@@ -288,9 +315,14 @@ func TestGarbageCollector_TimeLeft(t *testing.T) {
 					TTLSecondsAfterFinished: &ttlSecond,
 				},
 				Status: v1alpha1.JobStatus{
-					Phase: v1alpha1.Completed,
+					State: v1alpha1.JobState{
+						Phase: v1alpha1.Completed,
+					},
 					Conditions: []v1alpha1.JobCondition{
-						{Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue, LastTransitionTime: metav1.NewTime(testTime)}},
+						{
+							Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue,
+							LastTransitionTime: metav1.NewTime(testTime),
+						}},
 				},
 			},
 			Time:        &testTime,
@@ -308,8 +340,14 @@ func TestGarbageCollector_TimeLeft(t *testing.T) {
 					TTLSecondsAfterFinished: &ttlSecond,
 				},
 				Status: v1alpha1.JobStatus{
+					State: v1alpha1.JobState{
+						LastTransitionTime: metav1.NewTime(testTime),
+					},
 					Conditions: []v1alpha1.JobCondition{
-						{Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue, LastTransitionTime: metav1.NewTime(testTime)}},
+						{
+							Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue,
+							LastTransitionTime: metav1.NewTime(testTime),
+						}},
 				},
 			},
 			Time:        &testTime,
@@ -346,8 +384,14 @@ func TestGarbageCollector_JobFinishTime(t *testing.T) {
 					Namespace: namespace,
 				},
 				Status: v1alpha1.JobStatus{
+					State: v1alpha1.JobState{
+						LastTransitionTime: metav1.NewTime(time.Now()),
+					},
 					Conditions: []v1alpha1.JobCondition{
-						{Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue, LastTransitionTime: metav1.NewTime(time.Now())}},
+						{
+							Type: v1alpha1.JobSucceed, Status: v1.ConditionTrue,
+							LastTransitionTime: metav1.NewTime(time.Now()),
+						}},
 				},
 			},
 			ExpectedVal: nil,

@@ -199,7 +199,9 @@ func TestUpdateJobFunc(t *testing.T) {
 					MinAvailable:  5,
 				},
 				Status: vkbatchv1.JobStatus{
-					Phase: vkbatchv1.Pending,
+					State: vkbatchv1.JobState{
+						Phase: vkbatchv1.Pending,
+					},
 				},
 			},
 			newJob: &vkbatchv1.Job{
@@ -212,7 +214,9 @@ func TestUpdateJobFunc(t *testing.T) {
 					MinAvailable:  5,
 				},
 				Status: vkbatchv1.JobStatus{
-					Phase: vkbatchv1.Running,
+					State: vkbatchv1.JobState{
+						Phase: vkbatchv1.Running,
+					},
 				},
 			},
 		},
@@ -228,7 +232,9 @@ func TestUpdateJobFunc(t *testing.T) {
 					MinAvailable:  5,
 				},
 				Status: vkbatchv1.JobStatus{
-					Phase: vkbatchv1.Pending,
+					State: vkbatchv1.JobState{
+						Phase: vkbatchv1.Pending,
+					},
 				},
 			},
 			newJob: &vkbatchv1.Job{
@@ -241,7 +247,9 @@ func TestUpdateJobFunc(t *testing.T) {
 					MinAvailable:  5,
 				},
 				Status: vkbatchv1.JobStatus{
-					Phase: vkbatchv1.Pending,
+					State: vkbatchv1.JobState{
+						Phase: vkbatchv1.Pending,
+					},
 				},
 			},
 		},
@@ -258,7 +266,7 @@ func TestUpdateJobFunc(t *testing.T) {
 			t.Errorf("Error while Updating Job in case %d with error %s", i, err)
 		}
 
-		if job.Job.Status.Phase != testcase.newJob.Status.Phase {
+		if job.Job.Status.State.Phase != testcase.newJob.Status.State.Phase {
 			t.Errorf("Error while Updating Job in case %d with error %s", i, err)
 		}
 	}

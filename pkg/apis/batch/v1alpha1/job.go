@@ -242,6 +242,25 @@ const (
 	Inqueue JobPhase = "Inqueue"
 )
 
+// JobState contains details for the current state of the job.
+type JobState struct {
+	// The phase of Job.
+	// +optional
+	Phase JobPhase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
+
+	// Unique, one-word, CamelCase reason for the phase's last transition.
+	// +optional
+	Reason string `json:"reason,omitempty" protobuf:"bytes,2,opt,name=reason"`
+
+	// Human-readable message indicating details about last transition.
+	// +optional
+	Message string `json:"message,omitempty" protobuf:"bytes,3,opt,name=message"`
+
+	// Last time the condition transit from one phase to another.
+	// +optional
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,4,opt,name=lastTransitionTime"`
+}
+
 // JobConditionType describes the type of state of job condition
 type JobConditionType string
 
@@ -284,7 +303,7 @@ type JobCondition struct {
 // JobStatus represents the current status of a Job
 type JobStatus struct {
 	// Current state of Job.
-	Phase JobPhase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
+	State JobState `json:"state,omitempty" protobuf:"bytes,1,opt,name=state"`
 
 	//Jon conditions
 	Conditions []JobCondition `json:"conditions,omitempty" protobuf:"bytes,11,opt,name=conditions"`

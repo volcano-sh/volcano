@@ -62,9 +62,8 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		outputs := ListJobs(namespace)
 		jobs, err := context.vkclient.BatchV1alpha1().Jobs(namespace).List(metav1.ListOptions{})
 		ctlJob.PrintJobs(jobs, &outBuffer)
-		Expect(outputs).To(Equal(outBuffer.String()),
-			"List command result expected to be:\n %s\n actually got:\n %s",
-			outBuffer.String(), outputs)
+		Expect(outputs).To(Equal(outBuffer.String()), "List command result should be:\n %s",
+			outBuffer.String())
 	})
 
 	It("Suspend running job&Resume aborted job", func() {
