@@ -6,6 +6,7 @@ export LOG_LEVEL=3
 export SHOW_VOLCANO_LOGS=${SHOW_VOLCANO_LOGS:-1}
 export CLEANUP_CLUSTER=${CLEANUP_CLUSTER:-1}
 export MPI_EXAMPLE_IMAGE=${MPI_EXAMPLE_IMAGE:-"volcanosh/example-mpi:0.0.1"}
+export TF_EXAMPLE_IMAGE=${TF_EXAMPLE_IMAGE:-"volcanosh/dist-mnist-tf-example:0.0.1"}
 
 if [[ "${CLUSTER_NAME}xxx" == "xxx" ]];then
     CLUSTER_NAME="integration"
@@ -33,9 +34,11 @@ function install-volcano {
 
   echo "Pulling required docker images"
   docker pull ${MPI_EXAMPLE_IMAGE}
+  docker pull ${TF_EXAMPLE_IMAGE}
 
   echo "Loading docker images into kind cluster"
   kind load docker-image ${MPI_EXAMPLE_IMAGE}  ${CLUSTER_CONTEXT}
+  kind load docker-image ${TF_EXAMPLE_IMAGE} ${CLUSTER_CONTEXT}
 
   echo "Install volcano chart"
   helm install installer/helm/chart/volcano --namespace kube-system --name ${CLUSTER_NAME} --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG} --set basic.scheduler_config_file=volcano-scheduler-ci.conf --wait
