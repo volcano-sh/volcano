@@ -27,6 +27,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	appv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/api/core/v1"
 	schedv1 "k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -63,6 +64,7 @@ const (
 	nodeFieldSelectorKeyNodeName = api.ObjectNameField
 	defaultBusyBoxImage          = "busybox:1.24"
 	defaultMPIImage              = "volcanosh/example-mpi:0.0.1"
+	schedulerName                = "volcano"
 
 	defaultNamespace = "test"
 	defaultQueue1    = "q1"
@@ -656,6 +658,26 @@ func waitJobPhaseExpect(ctx *context, job *vkv1.Job, state vkv1.JobPhase) error 
 	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
 		return fmt.Errorf("[Wait time out]: %s", additionalError)
 	}
+	return err
+}
+
+func waitJobPhaseReady(ctx *context, job *batchv1.Job) error {
+	var additionalError error
+
+	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+		job, err := ctx.kubeclient.BatchV1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		expected := job.Status.Active > 0
+		if !expected {
+			additionalError = fmt.Errorf("expected job '%s' active pod to be greater than 0, actual got %d", job.Name, job.Status.Active)
+		}
+		return expected, nil
+	})
+
+	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
+		return fmt.Errorf("[Wait time out]: %s", additionalError)
+	}
+
 	return err
 }
 
