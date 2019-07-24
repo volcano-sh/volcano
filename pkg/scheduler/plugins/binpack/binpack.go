@@ -156,10 +156,10 @@ func (bp *binpackPlugin) Name() string {
 }
 
 func (bp *binpackPlugin) OnSessionOpen(ssn *framework.Session) {
-	glog.V(3).Infof("Enter binpack plugin ...")
-	if glog.V(3) {
+	glog.V(4).Infof("Enter binpack plugin ...")
+	if glog.V(4) {
 		defer func() {
-			glog.V(3).Infof("Leaving binpack plugin. %s ...", bp.weight.String())
+			glog.V(4).Infof("Leaving binpack plugin. %s ...", bp.weight.String())
 		}()
 	}
 
