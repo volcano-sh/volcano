@@ -132,13 +132,14 @@ const (
 	// 1. Task Unschedulable, this is triggered when part of
 	//    pods can't be scheduled while some are already running in gang-scheduling case.
 	JobUnknownEvent Event = "Unknown"
+	// TaskCompletedEvent is triggered if the 'Replicas' amount of pods in one task are succeed
+	TaskCompletedEvent Event = "TaskCompleted"
 
+	// Note: events below are used internally, should not be used by users.
 	// OutOfSyncEvent is triggered if Pod/Job were updated
 	OutOfSyncEvent Event = "OutOfSync"
 	// CommandIssuedEvent is triggered if a command is raised by user
 	CommandIssuedEvent Event = "CommandIssued"
-	// TaskCompletedEvent is triggered if the 'Replicas' amount of pods in one task are succeed
-	TaskCompletedEvent Event = "TaskCompleted"
 )
 
 // Action is the action that Job controller will take according to the event.
@@ -161,6 +162,8 @@ const (
 
 	// ResumeJobAction is the action to resume an aborted job.
 	ResumeJobAction Action = "ResumeJob"
+
+	// Note: actions below are only used internally, should not be used by users.
 	// SyncJobAction is the action to sync Job/Pod status.
 	SyncJobAction Action = "SyncJob"
 	// EnqueueAction is the action to sync Job inqueue status.

@@ -64,10 +64,12 @@ var policyEventMap = map[v1alpha1.Event]bool{
 var policyActionMap = map[v1alpha1.Action]bool{
 	v1alpha1.AbortJobAction:     true,
 	v1alpha1.RestartJobAction:   true,
+	v1alpha1.RestartTaskAction:  true,
 	v1alpha1.TerminateJobAction: true,
 	v1alpha1.CompleteJobAction:  true,
 	v1alpha1.ResumeJobAction:    true,
 	v1alpha1.SyncJobAction:      false,
+	v1alpha1.EnqueueAction:      false,
 }
 
 func init() {
