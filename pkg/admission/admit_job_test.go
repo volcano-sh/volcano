@@ -72,6 +72,12 @@ func TestValidateExecution(t *testing.T) {
 							},
 						},
 					},
+					Policies: []v1alpha1.LifecyclePolicy{
+						{
+							Event:  v1alpha1.PodEvictedEvent,
+							Action: v1alpha1.RestartTaskAction,
+						},
+					},
 				},
 			},
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
