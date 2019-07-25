@@ -17,12 +17,19 @@ limitations under the License.
 package enqueue
 
 import (
+	"fmt"
+	"strconv"
+
 	"github.com/golang/glog"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
+
+const DEFAULT_ENQUEUE_ACT_KEY = "enqueue-action-idleres-mul"
+
+const DEFAULT_ENQUEUE_ACT_VAL = 1.0
 
 type enqueueAction struct {
 	ssn *framework.Session
@@ -41,6 +48,13 @@ func (enqueue *enqueueAction) Initialize() {}
 func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 	glog.V(3).Infof("Enter Enqueue ...")
 	defer glog.V(3).Infof("Leaving Enqueue ...")
+	multiplier := DEFAULT_ENQUEUE_ACT_VAL
+	if ssn.ActionArgs != nil {
+		ret, err := getEnqueueActMultiplier(ssn.ActionArgs)
+		if err == nil {
+			multiplier = ret
+		}
+	}
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 	queueMap := map[api.QueueID]*api.QueueInfo{}
@@ -76,7 +90,7 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 	emptyRes := api.EmptyResource()
 	nodesIdleRes := api.EmptyResource()
 	for _, node := range ssn.Nodes {
-		nodesIdleRes.Add(node.Allocatable.Clone().Multi(1.2).Sub(node.Used))
+		nodesIdleRes.Add(node.Allocatable.Clone().Multi(multiplier).Sub(node.Used))
 	}
 
 	for {
@@ -121,3 +135,17 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 }
 
 func (enqueue *enqueueAction) UnInitialize() {}
+
+func getEnqueueActMultiplier(data map[string]string) (float64, error) {
+	val, ok := data[DEFAULT_ENQUEUE_ACT_KEY]
+	if ok {
+		value, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			glog.Warningf("Could not parse argument: %s for key %s, with err %v", val, DEFAULT_ENQUEUE_ACT_KEY, err)
+			return 0, err
+		}
+		return value, nil
+	}
+	return 0, fmt.Errorf("The required key %s is not there in config", DEFAULT_ENQUEUE_ACT_KEY)
+
+}

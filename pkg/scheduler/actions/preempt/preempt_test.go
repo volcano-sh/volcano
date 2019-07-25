@@ -182,7 +182,7 @@ func TestPreempt(t *testing.T) {
 					},
 				},
 			},
-		})
+		}, nil)
 		defer framework.CloseSession(ssn)
 
 		allocate.Execute(ssn)

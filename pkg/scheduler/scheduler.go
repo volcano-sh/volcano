@@ -39,6 +39,8 @@ type Scheduler struct {
 	plugins        []conf.Tier
 	schedulerConf  string
 	schedulePeriod time.Duration
+	// Arguments defines the different arguments that can be given to different actions
+	arguments map[string]string
 }
 
 // NewScheduler returns a scheduler
@@ -77,7 +79,7 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 		}
 	}
 
-	pc.actions, pc.plugins, err = loadSchedulerConf(schedConf)
+	pc.actions, pc.plugins, pc.arguments, err = loadSchedulerConf(schedConf)
 	if err != nil {
 		panic(err)
 	}
@@ -91,7 +93,7 @@ func (pc *Scheduler) runOnce() {
 	defer glog.V(4).Infof("End scheduling ...")
 	defer metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
 
-	ssn := framework.OpenSession(pc.cache, pc.plugins)
+	ssn := framework.OpenSession(pc.cache, pc.plugins, pc.arguments)
 	defer framework.CloseSession(ssn)
 
 	for _, action := range pc.actions {

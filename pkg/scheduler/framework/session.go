@@ -45,6 +45,8 @@ type Session struct {
 	Queues  map[api.QueueID]*api.QueueInfo
 	Backlog []*api.JobInfo
 	Tiers   []conf.Tier
+	// Arguments defines the different arguments that can be given to different actions
+	ActionArgs map[string]string
 
 	plugins           map[string]Plugin
 	eventHandlers     []*EventHandler

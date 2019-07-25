@@ -22,6 +22,8 @@ type SchedulerConfiguration struct {
 	Actions string `yaml:"actions"`
 	// Tiers defines plugins in different tiers
 	Tiers []Tier `yaml:"tiers"`
+	// Arguments defines the different arguments that can be given to different actions
+	Arguments map[string]string `yaml:"action-arguments"`
 }
 
 // Tier defines plugin tier

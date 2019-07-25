@@ -37,6 +37,8 @@ tiers:
   - name: predicates
   - name: proportion
   - name: nodeorder
+action-arguments:
+   enqueue-action-idleres-mul: 1.2
 `
 
 	trueValue := true
@@ -135,12 +137,21 @@ tiers:
 		},
 	}
 
-	_, tiers, err := loadSchedulerConf(configuration)
+	expectedArgs := map[string]string{
+		"enqueue-action-idleres-mul": "1.2",
+	}
+
+	_, tiers, args, err := loadSchedulerConf(configuration)
 	if err != nil {
 		t.Errorf("Failed to load scheduler configuration: %v", err)
 	}
 	if !reflect.DeepEqual(tiers, expectedTiers) {
 		t.Errorf("Failed to set default settings for plugins, expected: %+v, got %+v",
 			expectedTiers, tiers)
+	}
+	//validate args
+	if !reflect.DeepEqual(args, expectedArgs) {
+		t.Errorf("Failed to set default settings for action args, expected: %+v, got %+v",
+			expectedArgs, args)
 	}
 }

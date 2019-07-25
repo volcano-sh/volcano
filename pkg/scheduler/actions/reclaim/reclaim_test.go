@@ -151,7 +151,7 @@ func TestReclaim(t *testing.T) {
 					},
 				},
 			},
-		})
+		}, nil)
 		defer framework.CloseSession(ssn)
 
 		reclaim.Execute(ssn)
