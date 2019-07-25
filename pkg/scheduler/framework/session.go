@@ -46,8 +46,8 @@ type Session struct {
 	Queues        map[api.QueueID]*api.QueueInfo
 	NamespaceInfo map[api.NamespaceName]*api.NamespaceInfo
 
-	Backlog []*api.JobInfo
-	Tiers   []conf.Tier
+	Backlog     []*api.JobInfo
+	SchedStConf conf.SchedulerConf
 
 	plugins           map[string]Plugin
 	eventHandlers     []*EventHandler
@@ -69,11 +69,11 @@ type Session struct {
 	jobEnqueueableFns map[string]api.ValidateFn
 }
 
-func openSession(cache cache.Cache) *Session {
+func openSession(cache cache.Cache, schedStConf conf.SchedulerConf) *Session {
 	ssn := &Session{
-		UID:   uuid.NewUUID(),
-		cache: cache,
-
+		UID:            uuid.NewUUID(),
+		cache:          cache,
+		SchedStConf:    schedStConf,
 		podGroupStatus: map[api.JobID]*scheduling.PodGroupStatus{},
 
 		Jobs:   map[api.JobID]*api.JobInfo{},

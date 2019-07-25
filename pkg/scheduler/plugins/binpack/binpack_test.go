@@ -259,17 +259,21 @@ func TestNode(t *testing.T) {
 		}
 
 		trueValue := true
-		ssn := framework.OpenSession(schedulerCache, []conf.Tier{
-			{
-				Plugins: []conf.PluginOption{
+		ssn := framework.OpenSession(schedulerCache, conf.SchedulerConf{Version: framework.SchedulerConfigVersion1,
+			V2Conf: nil,
+			V1Conf: &conf.SchedulerConfiguration{
+				Actions: "",
+				Tiers: []conf.Tier{
 					{
-						Name:             PluginName,
-						EnabledNodeOrder: &trueValue,
-						Arguments:        test.arguments,
+						Plugins: []conf.PluginOption{
+							{
+								Name:             PluginName,
+								EnabledNodeOrder: &trueValue,
+								Arguments:        test.arguments,
+							},
+						},
 					},
-				},
-			},
-		})
+				}}})
 		defer framework.CloseSession(ssn)
 
 		for _, job := range ssn.Jobs {

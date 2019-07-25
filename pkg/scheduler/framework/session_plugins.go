@@ -20,6 +20,7 @@ import (
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 )
 
 // AddJobOrderFn add job order function
@@ -106,8 +107,8 @@ func (ssn *Session) AddJobEnqueueableFn(name string, fn api.ValidateFn) {
 func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
 	var init bool
-
-	for _, tier := range ssn.Tiers {
+	tiers := getTiersFromConfig(ssn.SchedStConf)
+	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledReclaimable) {
 				continue
@@ -148,8 +149,8 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
 	var init bool
-
-	for _, tier := range ssn.Tiers {
+	tiers := getTiersFromConfig(ssn.SchedStConf)
+	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledPreemptable) {
 				continue
@@ -189,7 +190,8 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 
 // Overused invoke overused function of the plugins
 func (ssn *Session) Overused(queue *api.QueueInfo) bool {
-	for _, tier := range ssn.Tiers {
+	tiers := getTiersFromConfig(ssn.SchedStConf)
+	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
 			of, found := ssn.overusedFns[plugin.Name]
 			if !found {
@@ -206,7 +208,8 @@ func (ssn *Session) Overused(queue *api.QueueInfo) bool {
 
 // JobReady invoke jobready function of the plugins
 func (ssn *Session) JobReady(obj interface{}) bool {
-	for _, tier := range ssn.Tiers {
+	tiers := getTiersFromConfig(ssn.SchedStConf)
+	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledJobReady) {
 				continue
@@ -227,7 +230,8 @@ func (ssn *Session) JobReady(obj interface{}) bool {
 
 // JobPipelined invoke pipelined function of the plugins
 func (ssn *Session) JobPipelined(obj interface{}) bool {
-	for _, tier := range ssn.Tiers {
+	tiers := getTiersFromConfig(ssn.SchedStConf)
+	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledJobPipelined) {
 				continue
@@ -248,7 +252,8 @@ func (ssn *Session) JobPipelined(obj interface{}) bool {
 
 // JobValid invoke jobvalid function of the plugins
 func (ssn *Session) JobValid(obj interface{}) *api.ValidateResult {
-	for _, tier := range ssn.Tiers {
+	tiers := getTiersFromConfig(ssn.SchedStConf)
+	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
 			jrf, found := ssn.jobValidFns[plugin.Name]
 			if !found {
@@ -267,7 +272,8 @@ func (ssn *Session) JobValid(obj interface{}) *api.ValidateResult {
 
 // JobEnqueueable invoke jobEnqueueableFns function of the plugins
 func (ssn *Session) JobEnqueueable(obj interface{}) bool {
-	for _, tier := range ssn.Tiers {
+	tiers := getTiersFromConfig(ssn.SchedStConf)
+	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
 			fn, found := ssn.jobEnqueueableFns[plugin.Name]
 			if !found {
@@ -285,7 +291,8 @@ func (ssn *Session) JobEnqueueable(obj interface{}) bool {
 
 // JobOrderFn invoke joborder function of the plugins
 func (ssn *Session) JobOrderFn(l, r interface{}) bool {
-	for _, tier := range ssn.Tiers {
+	tiers := getTiersFromConfig(ssn.SchedStConf)
+	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledJobOrder) {
 				continue
@@ -337,7 +344,8 @@ func (ssn *Session) NamespaceOrderFn(l, r interface{}) bool {
 
 // QueueOrderFn invoke queueorder function of the plugins
 func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
-	for _, tier := range ssn.Tiers {
+	tiers := getTiersFromConfig(ssn.SchedStConf)
+	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledQueueOrder) {
 				continue
@@ -365,7 +373,8 @@ func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
 
 // TaskCompareFns invoke taskorder function of the plugins
 func (ssn *Session) TaskCompareFns(l, r interface{}) int {
-	for _, tier := range ssn.Tiers {
+	tiers := getTiersFromConfig(ssn.SchedStConf)
+	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledTaskOrder) {
 				continue
@@ -401,7 +410,8 @@ func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 
 // PredicateFn invoke predicate function of the plugins
 func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
-	for _, tier := range ssn.Tiers {
+	tiers := getTiersFromConfig(ssn.SchedStConf)
+	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledPredicate) {
 				continue
@@ -422,7 +432,8 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 // NodeOrderFn invoke node order function of the plugins
 func (ssn *Session) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 	priorityScore := 0.0
-	for _, tier := range ssn.Tiers {
+	tiers := getTiersFromConfig(ssn.SchedStConf)
+	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledNodeOrder) {
 				continue
@@ -445,7 +456,8 @@ func (ssn *Session) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo) (float64
 // BatchNodeOrderFn invoke node order function of the plugins
 func (ssn *Session) BatchNodeOrderFn(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
 	priorityScore := make(map[string]float64, len(nodes))
-	for _, tier := range ssn.Tiers {
+	tiers := getTiersFromConfig(ssn.SchedStConf)
+	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledNodeOrder) {
 				continue
@@ -474,7 +486,8 @@ func isEnabled(enabled *bool) bool {
 func (ssn *Session) NodeOrderMapFn(task *api.TaskInfo, node *api.NodeInfo) (map[string]float64, float64, error) {
 	nodeScoreMap := map[string]float64{}
 	var priorityScore float64
-	for _, tier := range ssn.Tiers {
+	tiers := getTiersFromConfig(ssn.SchedStConf)
+	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledNodeOrder) {
 				continue
@@ -502,7 +515,8 @@ func (ssn *Session) NodeOrderMapFn(task *api.TaskInfo, node *api.NodeInfo) (map[
 // NodeOrderReduceFn invoke node order function of the plugins
 func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map[string]schedulerapi.HostPriorityList) (map[string]float64, error) {
 	nodeScoreMap := map[string]float64{}
-	for _, tier := range ssn.Tiers {
+	tiers := getTiersFromConfig(ssn.SchedStConf)
+	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledNodeOrder) {
 				continue
@@ -520,4 +534,16 @@ func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map
 		}
 	}
 	return nodeScoreMap, nil
+}
+
+func getTiersFromConfig(schedStConf conf.SchedulerConf) []conf.Tier {
+
+	tiers := []conf.Tier{}
+
+	if schedStConf.Version == SchedulerConfigVersion1 {
+		tiers = schedStConf.V1Conf.Tiers
+	} else if schedStConf.Version == SchedulerConfigVersion2 {
+		tiers = schedStConf.V2Conf.Tiers
+	}
+	return tiers
 }

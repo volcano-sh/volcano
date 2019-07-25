@@ -18,15 +18,39 @@ package scheduler
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	_ "volcano.sh/volcano/pkg/scheduler/actions"
 	"volcano.sh/volcano/pkg/scheduler/conf"
+	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
 func TestLoadSchedulerConf(t *testing.T) {
 	configuration := `
-actions: "allocate, backfill"
+actions: "allocate, backfill,reclaim"
+tiers:
+- plugins:
+  - name: priority
+  - name: gang
+  - name: conformance
+- plugins:
+  - name: drf
+  - name: predicates
+  - name: proportion
+  - name: nodeorder
+`
+
+	configuration2 := `
+version: v2
+actions:
+- name: enqueue
+  arguments:
+      overcommitment-mem-factor: 1.3
+- name: allocate
+- name: backfill
+- name: reclaim
+- name: preempt
 tiers:
 - plugins:
   - name: priority
@@ -142,12 +166,56 @@ tiers:
 		},
 	}
 
-	_, tiers, err := loadSchedulerConf(configuration)
-	if err != nil {
-		t.Errorf("Failed to load scheduler configuration: %v", err)
+	expectedActs := "allocate, backfill,reclaim"
+
+	expectedActOpts2 := []conf.ActionOption{
+		{
+			Name:      "enqueue",
+			Arguments: map[string]string{"overcommitment-mem-factor": "1.3"},
+		},
+		{
+			Name: "allocate",
+		},
+		{
+			Name: "backfill",
+		},
+		{
+			Name: "reclaim",
+		},
+		{
+			Name: "preempt",
+		},
 	}
-	if !reflect.DeepEqual(tiers, expectedTiers) {
-		t.Errorf("Failed to set default settings for plugins, expected: %+v, got %+v",
-			expectedTiers, tiers)
+
+	cases := []string{
+		configuration, configuration2}
+
+	for i := range cases {
+
+		schedStConf, err := loadSchedulerConf(cases[i])
+		if err != nil {
+			t.Errorf("Failed to load scheduler configuration: %v", err)
+		}
+		if schedStConf.Version == framework.SchedulerConfigVersion1 {
+			if !reflect.DeepEqual(schedStConf.V1Conf.Tiers, expectedTiers) {
+				t.Errorf("Failed to set default settings for plugins, expected: %+v, got %+v",
+					expectedTiers, schedStConf.V1Conf.Tiers)
+			}
+			//validate actions
+			if strings.Compare(schedStConf.V1Conf.Actions, expectedActs) != 0 {
+				t.Errorf("Failed to set default settings for action args, expected: %+v, got %+v",
+					expectedActs, schedStConf.V1Conf.Actions)
+			}
+		} else {
+			if !reflect.DeepEqual(schedStConf.V2Conf.Tiers, expectedTiers) {
+				t.Errorf("Failed to set default settings for plugins, expected: %+v, got %+v",
+					expectedTiers, schedStConf.V2Conf.Tiers)
+			}
+			//validate actions
+			if !reflect.DeepEqual(schedStConf.V2Conf.Actions, expectedActOpts2) {
+				t.Errorf("Failed to set default settings for action args, expected: %+v, got %+v",
+					expectedActOpts2, schedStConf.V2Conf.Actions)
+			}
+		}
 	}
 }

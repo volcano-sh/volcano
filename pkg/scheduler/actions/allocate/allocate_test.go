@@ -186,19 +186,25 @@ func TestAllocate(t *testing.T) {
 			}
 
 			trueValue := true
-			ssn := framework.OpenSession(schedulerCache, []conf.Tier{
-				{
-					Plugins: []conf.PluginOption{
+			ssn := framework.OpenSession(schedulerCache, conf.SchedulerConf{Version: framework.SchedulerConfigVersion1,
+				V2Conf: nil,
+				V1Conf: &conf.SchedulerConfiguration{
+					Actions: "allocate",
+					Tiers: []conf.Tier{
 						{
-							Name:                  "drf",
-							EnabledPreemptable:    &trueValue,
-							EnabledJobOrder:       &trueValue,
-							EnabledNamespaceOrder: &trueValue,
-						},
-						{
-							Name:               "proportion",
-							EnabledQueueOrder:  &trueValue,
-							EnabledReclaimable: &trueValue,
+							Plugins: []conf.PluginOption{
+								{
+									Name:                  "drf",
+									EnabledPreemptable:    &trueValue,
+									EnabledJobOrder:       &trueValue,
+									EnabledNamespaceOrder: &trueValue,
+								},
+								{
+									Name:               "proportion",
+									EnabledQueueOrder:  &trueValue,
+									EnabledReclaimable: &trueValue,
+								},
+							},
 						},
 					},
 				},

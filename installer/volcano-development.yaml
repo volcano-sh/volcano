@@ -10,8 +10,35 @@ metadata:
   name: volcano-scheduler-configmap
   namespace: volcano-system
 data:
-  volcano-scheduler.conf: |
-    actions: "enqueue, allocate, backfill"
+  volcano-scheduler-ci.conf: |
+    version: v2
+    actions:
+    - name: enqueue
+      arguments:
+        overcommitment-mem-factor: 1.2
+    - name: allocate
+    - name: backfill
+    - name: reclaim
+    - name: preempt
+    tiers:
+    - plugins:
+      - name: priority
+      - name: gang
+      - name: conformance
+    - plugins:
+      - name: drf
+      - name: predicates
+      - name: proportion
+      - name: nodeorder
+      - name: binpack
+  volcano-scheduler.conf: |-
+    version: v2
+    actions:
+    - name: enqueue
+      arguments:
+        overcommitment-mem-factor: 1.2
+    - name: allocate
+    - name: backfill
     tiers:
     - plugins:
       - name: priority

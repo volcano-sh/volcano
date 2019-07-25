@@ -24,6 +24,24 @@ type SchedulerConfiguration struct {
 	Tiers []Tier `yaml:"tiers"`
 }
 
+// SchedulerConfigurationV2 defines the configuration of scheduler.
+type SchedulerConfigurationV2 struct {
+	// Version
+	Version string `yaml:"version"`
+	// Actions defines the actionOptions list of scheduler in order
+	Actions []ActionOption `yaml:"actions"`
+
+	// Tiers defines plugins in different tiers
+	Tiers []Tier `yaml:"tiers"`
+}
+
+// SchedulerConf defines the configuration of scheduler.
+type SchedulerConf struct {
+	Version int
+	V2Conf  *SchedulerConfigurationV2
+	V1Conf  *SchedulerConfiguration
+}
+
 // Tier defines plugin tier
 type Tier struct {
 	Plugins []PluginOption `yaml:"plugins"`
@@ -54,5 +72,13 @@ type PluginOption struct {
 	// EnabledNodeOrder defines whether NodeOrderFn is enabled
 	EnabledNodeOrder *bool `yaml:"enableNodeOrder"`
 	// Arguments defines the different arguments that can be given to different plugins
+	Arguments map[string]string `yaml:"arguments"`
+}
+
+// ActionOption defines the options of action
+type ActionOption struct {
+	// The name of Action
+	Name string `yaml:"name"`
+	// Arguments defines the different arguments that can be given to action
 	Arguments map[string]string `yaml:"arguments"`
 }
