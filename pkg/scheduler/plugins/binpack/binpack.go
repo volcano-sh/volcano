@@ -161,6 +161,21 @@ func (bp *binpackPlugin) OnSessionOpen(ssn *framework.Session) {
 		defer func() {
 			glog.V(4).Infof("Leaving binpack plugin. %s ...", bp.weight.String())
 		}()
+
+		notFoundResource := []string{}
+		for resource := range bp.weight.BinPackingResources {
+			found := false
+			for _, nodeInfo := range ssn.Nodes {
+				if nodeInfo.Allocatable.Get(resource) > 0 {
+					found = true
+					break
+				}
+			}
+			if !found {
+				notFoundResource = append(notFoundResource, string(resource))
+			}
+		}
+		glog.V(4).Infof("resources [%s] record in weight but not found on any node", strings.Join(notFoundResource, ", "))
 	}
 
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
@@ -190,19 +205,35 @@ func BinPackingScore(task *api.TaskInfo, node *api.NodeInfo, weight priorityWeig
 	allocatable := node.Allocatable
 	used := node.Used
 
-	score += ResourceBinPackingScore(requested.MilliCPU, allocatable.MilliCPU, used.MilliCPU, weight.BinPackingCPU)
-	weightSum += weight.BinPackingCPU
-	score += ResourceBinPackingScore(requested.Memory, allocatable.Memory, used.Memory, weight.BinPackingMemory)
-	weightSum += weight.BinPackingMemory
+	for _, resource := range requested.ResourceNames() {
+		request := requested.Get(resource)
+		if request == 0 {
+			continue
+		}
+		allocate := allocatable.Get(resource)
+		nodeUsed := used.Get(resource)
 
-	// All resource with weight should be calculated, because the weightSum need it,
-	// even the node have no this resource.
-	for name, weight := range weight.BinPackingResources {
-		weightSum += weight
-		score += ResourceBinPackingScore(
-			requested.ScalarResources[name], allocatable.ScalarResources[name],
-			used.ScalarResources[name], weight,
-		)
+		resourceWeight := 0
+		found := false
+		switch resource {
+		case v1.ResourceCPU:
+			resourceWeight = weight.BinPackingCPU
+			found = true
+		case v1.ResourceMemory:
+			resourceWeight = weight.BinPackingMemory
+			found = true
+		default:
+			resourceWeight, found = weight.BinPackingResources[resource]
+		}
+		if !found {
+			continue
+		}
+
+		resourceScore := ResourceBinPackingScore(request, allocate, nodeUsed, resourceWeight)
+		glog.V(5).Infof("task %s/%s on node %s resource %s, need %f, used %f, allocatable %f, weight %d, score %f", task.Namespace, task.Name, node.Name, resource, request, nodeUsed, allocate, resourceWeight, resourceScore)
+
+		score += resourceScore
+		weightSum += resourceWeight
 	}
 
 	// mapping the result from [0, weightSum] to [0, 10(MaxPriority)]
