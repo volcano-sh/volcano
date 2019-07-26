@@ -38,7 +38,7 @@ type KillActionFn func(job *apis.JobInfo, podRetainPhase PhaseMap, fn UpdateStat
 //PodRetainPhaseNone stores no phase
 var PodRetainPhaseNone = PhaseMap{}
 
-//PodRetainPhaseSoft stores PodSucceeded and PodFailed Phase
+// PodRetainPhaseSoft stores PodSucceeded and PodFailed Phase
 var PodRetainPhaseSoft = PhaseMap{
 	v1.PodSucceeded: {},
 	v1.PodFailed:    {},
