@@ -24,7 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
-	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -130,11 +130,11 @@ func TestReclaim(t *testing.T) {
 		}
 
 		for _, ss := range test.podGroups {
-			schedulerCache.AddPodGroupV1alpha1(ss)
+			schedulerCache.AddPodGroupV1alpha2(ss)
 		}
 
 		for _, q := range test.queues {
-			schedulerCache.AddQueueV1alpha1(q)
+			schedulerCache.AddQueueV1alpha2(q)
 		}
 
 		trueValue := true

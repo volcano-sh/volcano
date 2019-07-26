@@ -18,13 +18,14 @@ package gang
 
 import (
 	"fmt"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 
 	"github.com/golang/glog"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -151,7 +152,7 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 				Status:             v1.ConditionTrue,
 				LastTransitionTime: metav1.Now(),
 				TransitionID:       string(ssn.UID),
-				Reason:             v1alpha1.NotEnoughResourcesReason,
+				Reason:             v1alpha2.NotEnoughResourcesReason,
 				Message:            msg,
 			}
 

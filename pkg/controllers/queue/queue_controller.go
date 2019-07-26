@@ -26,11 +26,11 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 
-	kbv1alpha1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	kbclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 	kbinformerfactory "volcano.sh/volcano/pkg/client/informers/externalversions"
-	kbinformer "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1alpha1"
-	kblister "volcano.sh/volcano/pkg/client/listers/scheduling/v1alpha1"
+	kbinformer "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1alpha2"
+	kblister "volcano.sh/volcano/pkg/client/listers/scheduling/v1alpha2"
 )
 
 // Controller manages queue status.
@@ -63,8 +63,8 @@ func NewQueueController(
 	kbClient kbclientset.Interface,
 ) *Controller {
 	factory := kbinformerfactory.NewSharedInformerFactory(kbClient, 0)
-	queueInformer := factory.Scheduling().V1alpha1().Queues()
-	pgInformer := factory.Scheduling().V1alpha1().PodGroups()
+	queueInformer := factory.Scheduling().V1alpha2().Queues()
+	pgInformer := factory.Scheduling().V1alpha2().PodGroups()
 	c := &Controller{
 		kubeClient: kubeClient,
 		kbClient:   kbClient,
@@ -163,11 +163,11 @@ func (c *Controller) syncQueue(key string) error {
 		}
 
 		switch pg.Status.Phase {
-		case kbv1alpha1.PodGroupPending:
+		case schedulingv1alpha2.PodGroupPending:
 			pending++
-		case kbv1alpha1.PodGroupRunning:
+		case schedulingv1alpha2.PodGroupRunning:
 			running++
-		case kbv1alpha1.PodGroupUnknown:
+		case schedulingv1alpha2.PodGroupUnknown:
 			unknown++
 		}
 	}
@@ -192,7 +192,7 @@ func (c *Controller) syncQueue(key string) error {
 	newQueue.Status.Running = running
 	newQueue.Status.Unknown = unknown
 
-	if _, err := c.kbClient.SchedulingV1alpha1().Queues().UpdateStatus(newQueue); err != nil {
+	if _, err := c.kbClient.SchedulingV1alpha2().Queues().UpdateStatus(newQueue); err != nil {
 		glog.Errorf("Failed to update status of Queue %s: %v", newQueue.Name, err)
 		return err
 	}
@@ -201,19 +201,19 @@ func (c *Controller) syncQueue(key string) error {
 }
 
 func (c *Controller) addQueue(obj interface{}) {
-	queue := obj.(*kbv1alpha1.Queue)
+	queue := obj.(*schedulingv1alpha2.Queue)
 	c.queue.Add(queue.Name)
 }
 
 func (c *Controller) deleteQueue(obj interface{}) {
-	queue, ok := obj.(*kbv1alpha1.Queue)
+	queue, ok := obj.(*schedulingv1alpha2.Queue)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			glog.Errorf("Couldn't get object from tombstone %#v", obj)
 			return
 		}
-		queue, ok = tombstone.Obj.(*kbv1alpha1.Queue)
+		queue, ok = tombstone.Obj.(*schedulingv1alpha2.Queue)
 		if !ok {
 			glog.Errorf("Tombstone contained object that is not a Queue: %#v", obj)
 			return
@@ -226,7 +226,7 @@ func (c *Controller) deleteQueue(obj interface{}) {
 }
 
 func (c *Controller) addPodGroup(obj interface{}) {
-	pg := obj.(*kbv1alpha1.PodGroup)
+	pg := obj.(*schedulingv1alpha2.PodGroup)
 	key, _ := cache.MetaNamespaceKeyFunc(obj)
 
 	c.pgMutex.Lock()
@@ -241,8 +241,8 @@ func (c *Controller) addPodGroup(obj interface{}) {
 }
 
 func (c *Controller) updatePodGroup(old, new interface{}) {
-	oldPG := old.(*kbv1alpha1.PodGroup)
-	newPG := new.(*kbv1alpha1.PodGroup)
+	oldPG := old.(*schedulingv1alpha2.PodGroup)
+	newPG := new.(*schedulingv1alpha2.PodGroup)
 
 	// Note: we have no use case update PodGroup.Spec.Queue
 	// So do not consider it here.
@@ -254,14 +254,14 @@ func (c *Controller) updatePodGroup(old, new interface{}) {
 }
 
 func (c *Controller) deletePodGroup(obj interface{}) {
-	pg, ok := obj.(*kbv1alpha1.PodGroup)
+	pg, ok := obj.(*schedulingv1alpha2.PodGroup)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			glog.Errorf("Couldn't get object from tombstone %#v", obj)
 			return
 		}
-		pg, ok = tombstone.Obj.(*kbv1alpha1.PodGroup)
+		pg, ok = tombstone.Obj.(*schedulingv1alpha2.PodGroup)
 		if !ok {
 			glog.Errorf("Tombstone contained object that is not a PodGroup: %#v", obj)
 			return

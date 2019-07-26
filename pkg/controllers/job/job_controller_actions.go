@@ -30,7 +30,7 @@ import (
 
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
-	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
@@ -125,7 +125,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 	}
 
 	// Delete PodGroup
-	if err := cc.kbClients.SchedulingV1alpha1().PodGroups(job.Namespace).Delete(job.Name, nil); err != nil {
+	if err := cc.kbClients.SchedulingV1alpha2().PodGroups(job.Namespace).Delete(job.Name, nil); err != nil {
 		if !apierrors.IsNotFound(err) {
 			glog.Errorf("Failed to delete PodGroup of Job %v/%v: %v",
 				job.Namespace, job.Name, err)
@@ -447,7 +447,7 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 				job.Namespace, job.Name, err)
 			return err
 		}
-		pg := &kbv1.PodGroup{
+		pg := &scheduling.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace:   job.Namespace,
 				Name:        job.Name,
@@ -456,7 +456,7 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 					*metav1.NewControllerRef(job, helpers.JobKind),
 				},
 			},
-			Spec: kbv1.PodGroupSpec{
+			Spec: scheduling.PodGroupSpec{
 				MinMember:         job.Spec.MinAvailable,
 				Queue:             job.Spec.Queue,
 				MinResources:      cc.calcPGMinResources(job),
@@ -464,11 +464,12 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 			},
 		}
 
-		if _, e := cc.kbClients.SchedulingV1alpha1().PodGroups(job.Namespace).Create(pg); e != nil {
-			glog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
-				job.Namespace, job.Name, err)
-
-			return e
+		if _, err = cc.kbClients.SchedulingV1alpha2().PodGroups(job.Namespace).Create(pg); err != nil {
+			if !apierrors.IsAlreadyExists(err) {
+				glog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
+					job.Namespace, job.Name, err)
+				return err
+			}
 		}
 	}
 

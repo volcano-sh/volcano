@@ -18,15 +18,14 @@ package api
 
 import (
 	"fmt"
-	"sort"
-	"strings"
-
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sort"
+	"strings"
 
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 )
 
 // TaskID is UID type for Task
@@ -55,7 +54,7 @@ type TaskInfo struct {
 
 func getJobID(pod *v1.Pod) JobID {
 	if len(pod.Annotations) != 0 {
-		if gn, found := pod.Annotations[v1alpha1.GroupNameAnnotationKey]; found && len(gn) != 0 {
+		if gn, found := pod.Annotations[v1alpha2.GroupNameAnnotationKey]; found && len(gn) != 0 {
 			// Make sure Pod and PodGroup belong to the same namespace.
 			jobID := fmt.Sprintf("%s/%s", pod.Namespace, gn)
 			return JobID(jobID)

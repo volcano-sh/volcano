@@ -41,7 +41,7 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "list", "watch", "create", "delete", "update"]
-  - apiGroups: ["scheduling.incubator.k8s.io"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.sigs.dev"]
     resources: ["podgroups", "queues", "queues/status"]
     verbs: ["get", "list", "watch", "create", "delete", "update"]
   - apiGroups: ["scheduling.k8s.io"]

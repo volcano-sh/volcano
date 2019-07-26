@@ -30,7 +30,7 @@ import (
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkbusv1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	kubebatchclient "volcano.sh/volcano/pkg/client/clientset/versioned"
 	vkclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 	//"volcano.sh/volcano/pkg/controllers/job"

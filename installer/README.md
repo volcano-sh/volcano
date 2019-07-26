@@ -41,10 +41,6 @@ replicaset.apps/volcano-admission-56f5465597     1         1         1       36s
 replicaset.apps/volcano-controllers-687948d9c8   1         1         1       36s
 replicaset.apps/volcano-scheduler-94998fc64      1         1         1       36s
 ```
-Volcano scheduler utilize `queues.scheduling.incubator.k8s.io` to share resource, therefore default queue is required before usage.
-```$xslt
-kubectl apply -f default-queue.yaml
-```
 
 ## Installing volcano via helm charts
 

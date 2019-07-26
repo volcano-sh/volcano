@@ -24,7 +24,7 @@ import (
 	"github.com/spf13/cobra"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
@@ -57,7 +57,7 @@ func GetQueue() error {
 	}
 
 	queueClient := versioned.NewForConfigOrDie(config)
-	queue, err := queueClient.SchedulingV1alpha1().Queues().Get(getQueueFlags.Name, metav1.GetOptions{})
+	queue, err := queueClient.SchedulingV1alpha2().Queues().Get(getQueueFlags.Name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -68,7 +68,7 @@ func GetQueue() error {
 }
 
 // PrintQueue prints queue information
-func PrintQueue(queue *v1alpha1.Queue, writer io.Writer) {
+func PrintQueue(queue *v1alpha2.Queue, writer io.Writer) {
 	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s\n",
 		Name, Weight, Pending, Running, Unknown)
 	if err != nil {

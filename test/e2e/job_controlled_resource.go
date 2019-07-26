@@ -56,7 +56,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		err := waitJobReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		job, err = context.vkclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
+		job, err = context.vcclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(len(job.Spec.Volumes)).To(Equal(1),
@@ -149,7 +149,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		err = waitJobReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		job, err = context.vkclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
+		job, err = context.vcclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(len(job.Spec.Volumes)).To(Equal(1),
@@ -204,7 +204,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		err := waitJobStatePending(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pGroup, err := context.kbclient.SchedulingV1alpha1().PodGroups(namespace).Get(jobName, metav1.GetOptions{})
+		pGroup, err := context.vcclient.SchedulingV1alpha2().PodGroups(namespace).Get(jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		for name, q := range *pGroup.Spec.MinResources {

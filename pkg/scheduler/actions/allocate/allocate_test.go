@@ -25,7 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
-	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -146,67 +146,69 @@ func TestAllocate(t *testing.T) {
 
 	allocate := New()
 
-	for i, test := range tests {
-		binder := &util.FakeBinder{
-			Binds:   map[string]string{},
-			Channel: make(chan string),
-		}
-		schedulerCache := &cache.SchedulerCache{
-			Nodes:         make(map[string]*api.NodeInfo),
-			Jobs:          make(map[api.JobID]*api.JobInfo),
-			Queues:        make(map[api.QueueID]*api.QueueInfo),
-			Binder:        binder,
-			StatusUpdater: &util.FakeStatusUpdater{},
-			VolumeBinder:  &util.FakeVolumeBinder{},
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			binder := &util.FakeBinder{
+				Binds:   map[string]string{},
+				Channel: make(chan string),
+			}
+			schedulerCache := &cache.SchedulerCache{
+				Nodes:         make(map[string]*api.NodeInfo),
+				Jobs:          make(map[api.JobID]*api.JobInfo),
+				Queues:        make(map[api.QueueID]*api.QueueInfo),
+				Binder:        binder,
+				StatusUpdater: &util.FakeStatusUpdater{},
+				VolumeBinder:  &util.FakeVolumeBinder{},
 
-			Recorder: record.NewFakeRecorder(100),
-		}
-		for _, node := range test.nodes {
-			schedulerCache.AddNode(node)
-		}
-		for _, pod := range test.pods {
-			schedulerCache.AddPod(pod)
-		}
+				Recorder: record.NewFakeRecorder(100),
+			}
+			for _, node := range test.nodes {
+				schedulerCache.AddNode(node)
+			}
+			for _, pod := range test.pods {
+				schedulerCache.AddPod(pod)
+			}
 
-		for _, ss := range test.podGroups {
-			schedulerCache.AddPodGroupV1alpha1(ss)
-		}
+			for _, ss := range test.podGroups {
+				schedulerCache.AddPodGroupV1alpha2(ss)
+			}
 
-		for _, q := range test.queues {
-			schedulerCache.AddQueueV1alpha1(q)
-		}
+			for _, q := range test.queues {
+				schedulerCache.AddQueueV1alpha2(q)
+			}
 
-		trueValue := true
-		ssn := framework.OpenSession(schedulerCache, []conf.Tier{
-			{
-				Plugins: []conf.PluginOption{
-					{
-						Name:               "drf",
-						EnabledPreemptable: &trueValue,
-						EnabledJobOrder:    &trueValue,
-					},
-					{
-						Name:               "proportion",
-						EnabledQueueOrder:  &trueValue,
-						EnabledReclaimable: &trueValue,
+			trueValue := true
+			ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+				{
+					Plugins: []conf.PluginOption{
+						{
+							Name:               "drf",
+							EnabledPreemptable: &trueValue,
+							EnabledJobOrder:    &trueValue,
+						},
+						{
+							Name:               "proportion",
+							EnabledQueueOrder:  &trueValue,
+							EnabledReclaimable: &trueValue,
+						},
 					},
 				},
-			},
-		})
-		defer framework.CloseSession(ssn)
+			})
+			defer framework.CloseSession(ssn)
 
-		allocate.Execute(ssn)
+			allocate.Execute(ssn)
 
-		for i := 0; i < len(test.expected); i++ {
-			select {
-			case <-binder.Channel:
-			case <-time.After(3 * time.Second):
-				t.Errorf("Failed to get binding request.")
+			for i := 0; i < len(test.expected); i++ {
+				select {
+				case <-binder.Channel:
+				case <-time.After(3 * time.Second):
+					t.Errorf("Failed to get binding request.")
+				}
 			}
-		}
 
-		if !reflect.DeepEqual(test.expected, binder.Binds) {
-			t.Errorf("case %d (%s): expected: %v, got %v ", i, test.name, test.expected, binder.Binds)
-		}
+			if !reflect.DeepEqual(test.expected, binder.Binds) {
+				t.Errorf("expected: %v, got %v ", test.expected, binder.Binds)
+			}
+		})
 	}
 }

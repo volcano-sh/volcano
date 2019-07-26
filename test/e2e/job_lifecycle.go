@@ -51,7 +51,7 @@ var _ = Describe("Job Life Cycle", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = context.kbclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
+		err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitJobCleanedUp(context, job)
@@ -99,7 +99,7 @@ var _ = Describe("Job Life Cycle", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = context.kbclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
+		err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitJobCleanedUp(context, job)
@@ -130,7 +130,7 @@ var _ = Describe("Job Life Cycle", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = context.kbclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
+		err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitJobCleanedUp(context, job)
@@ -163,7 +163,7 @@ var _ = Describe("Job Life Cycle", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = context.kbclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
+		err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitJobCleanedUp(context, job)
@@ -202,7 +202,7 @@ var _ = Describe("Job Life Cycle", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = context.kbclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
+		err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitJobCleanedUp(context, job)
@@ -241,7 +241,7 @@ var _ = Describe("Job Life Cycle", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = context.kbclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
+		err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitJobCleanedUp(context, job)
@@ -281,7 +281,7 @@ var _ = Describe("Job Life Cycle", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = context.kbclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
+		err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitJobCleanedUp(context, job)
