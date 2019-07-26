@@ -40,14 +40,11 @@ type Session struct {
 
 	podGroupStatus map[api.JobID]*api.PodGroupStatus
 
-	Jobs    map[api.JobID]*api.JobInfo
-	Nodes   map[string]*api.NodeInfo
-	Queues  map[api.QueueID]*api.QueueInfo
-	Backlog []*api.JobInfo
-	Tiers   []conf.Tier
-	// Arguments defines the different arguments that can be given to different actions
-	ActionArgs map[string]string
-
+	Jobs              map[api.JobID]*api.JobInfo
+	Nodes             map[string]*api.NodeInfo
+	Queues            map[api.QueueID]*api.QueueInfo
+	Backlog           []*api.JobInfo
+	SchedStConf       conf.SchedulerConf
 	plugins           map[string]Plugin
 	eventHandlers     []*EventHandler
 	jobOrderFns       map[string]api.CompareFn
@@ -67,11 +64,11 @@ type Session struct {
 	jobEnqueueableFns map[string]api.ValidateFn
 }
 
-func openSession(cache cache.Cache) *Session {
+func openSession(cache cache.Cache, schedStConf conf.SchedulerConf) *Session {
 	ssn := &Session{
-		UID:   uuid.NewUUID(),
-		cache: cache,
-
+		UID:            uuid.NewUUID(),
+		cache:          cache,
+		SchedStConf:    schedStConf,
 		podGroupStatus: map[api.JobID]*api.PodGroupStatus{},
 
 		Jobs:   map[api.JobID]*api.JobInfo{},

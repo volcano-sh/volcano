@@ -17,6 +17,7 @@ limitations under the License.
 package scheduler
 
 import (
+	"strings"
 	"time"
 
 	"github.com/golang/glog"
@@ -35,12 +36,9 @@ import (
 type Scheduler struct {
 	cache          schedcache.Cache
 	config         *rest.Config
-	actions        []framework.Action
-	plugins        []conf.Tier
+	schedStConf    conf.SchedulerConf
 	schedulerConf  string
 	schedulePeriod time.Duration
-	// Arguments defines the different arguments that can be given to different actions
-	arguments map[string]string
 }
 
 // NewScheduler returns a scheduler
@@ -64,6 +62,7 @@ func NewScheduler(
 // Run runs the Scheduler
 func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	var err error
+	var schedStConfig *conf.SchedulerConf
 
 	// Start cache for policy.
 	go pc.cache.Run(stopCh)
@@ -79,10 +78,11 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 		}
 	}
 
-	pc.actions, pc.plugins, pc.arguments, err = loadSchedulerConf(schedConf)
+	schedStConfig, err = loadSchedulerConf(schedConf)
 	if err != nil {
 		panic(err)
 	}
+	pc.schedStConf = *schedStConfig
 
 	go wait.Until(pc.runOnce, pc.schedulePeriod, stopCh)
 }
@@ -93,12 +93,27 @@ func (pc *Scheduler) runOnce() {
 	defer glog.V(4).Infof("End scheduling ...")
 	defer metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
 
-	ssn := framework.OpenSession(pc.cache, pc.plugins, pc.arguments)
+	ssn := framework.OpenSession(pc.cache, pc.schedStConf)
 	defer framework.CloseSession(ssn)
 
-	for _, action := range pc.actions {
-		actionStartTime := time.Now()
-		action.Execute(ssn)
-		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
+	if pc.schedStConf.Version == framework.SchedulerConfigVersion1 {
+		actionNames := strings.Split(pc.schedStConf.V1Conf.Actions, ",")
+		for _, actionName := range actionNames {
+			if action, found := framework.GetAction(strings.TrimSpace(actionName)); found {
+				actionStartTime := time.Now()
+				action.Execute(ssn)
+				metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
+			}
+		}
+	} else if pc.schedStConf.Version == framework.SchedulerConfigVersion2 {
+
+		for _, actionOpt := range pc.schedStConf.V2Conf.Actions {
+
+			if action, found := framework.GetAction(strings.TrimSpace(actionOpt.Name)); found {
+				actionStartTime := time.Now()
+				action.Execute(ssn)
+				metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
+			}
+		}
 	}
 }

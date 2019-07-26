@@ -138,20 +138,24 @@ func TestReclaim(t *testing.T) {
 		}
 
 		trueValue := true
-		ssn := framework.OpenSession(schedulerCache, []conf.Tier{
-			{
-				Plugins: []conf.PluginOption{
+		ssn := framework.OpenSession(schedulerCache, conf.SchedulerConf{Version: framework.SchedulerConfigVersion1,
+			V2Conf: nil,
+			V1Conf: &conf.SchedulerConfiguration{
+				Actions: "reclaim",
+				Tiers: []conf.Tier{
 					{
-						Name:               "conformance",
-						EnabledReclaimable: &trueValue,
+						Plugins: []conf.PluginOption{
+							{
+								Name:               "conformance",
+								EnabledReclaimable: &trueValue,
+							},
+							{
+								Name:               "gang",
+								EnabledReclaimable: &trueValue,
+							},
+						},
 					},
-					{
-						Name:               "gang",
-						EnabledReclaimable: &trueValue,
-					},
-				},
-			},
-		}, nil)
+				}}})
 		defer framework.CloseSession(ssn)
 
 		reclaim.Execute(ssn)

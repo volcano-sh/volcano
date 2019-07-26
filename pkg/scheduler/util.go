@@ -17,11 +17,8 @@ limitations under the License.
 package scheduler
 
 import (
-	"fmt"
-	"io/ioutil"
-	"strings"
-
 	yaml "gopkg.in/yaml.v2"
+	"io/ioutil"
 
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -29,7 +26,12 @@ import (
 )
 
 var defaultSchedulerConf = `
-actions: "allocate, backfill"
+actions:
+- name: enqueue
+  arguments:
+    enqueue-action-idleres-mul: 1.2
+- name: allocate
+- name: backfill
 tiers:
 - plugins:
   - name: priority
@@ -39,38 +41,37 @@ tiers:
   - name: predicates
   - name: proportion
   - name: nodeorder
-action-arguments:
-	enqueue-action-idleres-mul: 1.2
 `
 
-func loadSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, map[string]string, error) {
-	var actions []framework.Action
+func loadSchedulerConf(confStr string) (*conf.SchedulerConf, error) {
 
-	schedulerConf := &conf.SchedulerConfiguration{}
-
+	schedulerConf := conf.SchedulerConfiguration{}
+	schedulerConfv2 := conf.SchedulerConfigurationV2{}
+	config := conf.SchedulerConf{}
+	Tiers := []conf.Tier{}
 	buf := make([]byte, len(confStr))
 	copy(buf, confStr)
 
-	if err := yaml.Unmarshal(buf, schedulerConf); err != nil {
-		return nil, nil, nil, err
+	if err := yaml.Unmarshal(buf, &schedulerConfv2); err != nil {
+		if err := yaml.Unmarshal(buf, &schedulerConf); err != nil {
+			return nil, err
+		}
+		config.Version = framework.SchedulerConfigVersion1
+		config.V1Conf = &schedulerConf
+		Tiers = schedulerConf.Tiers
+	} else {
+		config.Version = framework.SchedulerConfigVersion2
+		config.V2Conf = &schedulerConfv2
+		Tiers = schedulerConfv2.Tiers
 	}
 	// Set default settings for each plugin if not set
-	for i, tier := range schedulerConf.Tiers {
+	for i, tier := range Tiers {
 		for j := range tier.Plugins {
-			plugins.ApplyPluginConfDefaults(&schedulerConf.Tiers[i].Plugins[j])
+			plugins.ApplyPluginConfDefaults(&Tiers[i].Plugins[j])
 		}
 	}
 
-	actionNames := strings.Split(schedulerConf.Actions, ",")
-	for _, actionName := range actionNames {
-		if action, found := framework.GetAction(strings.TrimSpace(actionName)); found {
-			actions = append(actions, action)
-		} else {
-			return nil, nil, nil, fmt.Errorf("failed to found Action %s, ignore it", actionName)
-		}
-	}
-
-	return actions, schedulerConf.Tiers, schedulerConf.Arguments, nil
+	return &config, nil
 }
 
 func readSchedulerConf(confPath string) (string, error) {

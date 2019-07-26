@@ -18,12 +18,13 @@ package api
 
 import (
 	"fmt"
+	"sort"
+	"strings"
+
 	"k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sort"
-	"strings"
 
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 )

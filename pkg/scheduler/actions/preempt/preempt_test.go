@@ -169,20 +169,24 @@ func TestPreempt(t *testing.T) {
 		}
 
 		trueValue := true
-		ssn := framework.OpenSession(schedulerCache, []conf.Tier{
-			{
-				Plugins: []conf.PluginOption{
+		ssn := framework.OpenSession(schedulerCache, conf.SchedulerConf{Version: framework.SchedulerConfigVersion1,
+			V2Conf: nil,
+			V1Conf: &conf.SchedulerConfiguration{
+				Actions: "preempt",
+				Tiers: []conf.Tier{
 					{
-						Name:               "conformance",
-						EnabledPreemptable: &trueValue,
+						Plugins: []conf.PluginOption{
+							{
+								Name:               "conformance",
+								EnabledPreemptable: &trueValue,
+							},
+							{
+								Name:               "gang",
+								EnabledPreemptable: &trueValue,
+							},
+						},
 					},
-					{
-						Name:               "gang",
-						EnabledPreemptable: &trueValue,
-					},
-				},
-			},
-		}, nil)
+				}}})
 		defer framework.CloseSession(ssn)
 
 		allocate.Execute(ssn)

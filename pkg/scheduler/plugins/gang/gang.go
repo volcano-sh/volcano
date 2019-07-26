@@ -18,13 +18,13 @@ package gang
 
 import (
 	"fmt"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 
 	"github.com/golang/glog"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"

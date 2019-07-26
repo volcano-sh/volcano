@@ -26,11 +26,23 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
+// SchedulerConfigVersion1 Scheduler Version
+const SchedulerConfigVersion1 = 1
+
+// SchedulerConfigVersion2 Scheduler version
+const SchedulerConfigVersion2 = 2
+
 // OpenSession start the session
-func OpenSession(cache cache.Cache, tiers []conf.Tier, args map[string]string) *Session {
-	ssn := openSession(cache)
-	ssn.Tiers = tiers
-	ssn.ActionArgs = args
+func OpenSession(cache cache.Cache, schedStConf conf.SchedulerConf) *Session {
+	ssn := openSession(cache, schedStConf)
+
+	tiers := []conf.Tier{}
+
+	if schedStConf.Version == SchedulerConfigVersion1 {
+		tiers = schedStConf.V1Conf.Tiers
+	} else if schedStConf.Version == SchedulerConfigVersion2 {
+		tiers = schedStConf.V2Conf.Tiers
+	}
 
 	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
