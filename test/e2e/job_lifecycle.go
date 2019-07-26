@@ -22,7 +22,9 @@ import (
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubeletapi "k8s.io/kubernetes/pkg/kubelet/apis"
 	"k8s.io/kubernetes/pkg/scheduler/api"
+
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
@@ -287,6 +289,83 @@ var _ = Describe("Job Life Cycle", func() {
 		err = waitJobCleanedUp(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
+	})
+
+	It("Checking Event Generation for job", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		job := createJob(context, &jobSpec{
+			name: "terminate-job",
+			policies: []vkv1.LifecyclePolicy{
+				{
+					Action: vkv1.TerminateJobAction,
+					Event:  vkv1.PodFailedEvent,
+				},
+			},
+			tasks: []taskSpec{
+				{
+					name:          "complete",
+					img:           defaultNginxImage,
+					min:           1,
+					rep:           1,
+					command:       "sleep 10s && xyz",
+					restartPolicy: v1.RestartPolicyNever,
+				},
+			},
+		})
+
+		err := waitJobTerminateAction(context, job)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("Checking Unschedulable Event Generation for job", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		nodeName, rep := computeNode(context, oneCPU)
+
+		nodeAffinity := &v1.NodeAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
+				NodeSelectorTerms: []v1.NodeSelectorTerm{
+					{
+						MatchExpressions: []v1.NodeSelectorRequirement{
+							{
+								Key:      kubeletapi.LabelHostname,
+								Operator: v1.NodeSelectorOpIn,
+								Values:   []string{nodeName},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		job := createJob(context, &jobSpec{
+			name: "unschedulable-job",
+			policies: []vkv1.LifecyclePolicy{
+				{
+					Action: vkv1.TerminateJobAction,
+					Event:  vkv1.PodFailedEvent,
+				},
+			},
+			tasks: []taskSpec{
+				{
+					name:          "complete",
+					img:           defaultNginxImage,
+					min:           rep + 1,
+					rep:           rep + 1,
+					command:       "sleep 10s",
+					restartPolicy: v1.RestartPolicyNever,
+					req:           cpuResource("1"),
+					limit:         cpuResource("1"),
+					affinity:      &v1.Affinity{NodeAffinity: nodeAffinity},
+				},
+			},
+		})
+
+		err := waitJobUnschedulable(context, job)
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 })
