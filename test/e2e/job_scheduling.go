@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo"
@@ -24,7 +25,10 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	kbapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 
 var _ = Describe("Job E2E Test", func() {
@@ -289,6 +293,89 @@ var _ = Describe("Job E2E Test", func() {
 		evicted, err := jobEvicted(context, job1, now)()
 		Expect(err).NotTo(HaveOccurred())
 		Expect(evicted).NotTo(BeTrue())
+	})
+
+	It("support binpack policy", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		slot := oneCPU
+
+		By("create base job")
+		spec := &jobSpec{
+			name:      "binpack-base-1",
+			namespace: "test",
+			tasks: []taskSpec{
+				{
+					img: defaultNginxImage,
+					req: slot,
+					min: 1,
+					rep: 1,
+				},
+			},
+		}
+
+		baseJob := createJob(context, spec)
+		err := waitJobReady(context, baseJob)
+		Expect(err).NotTo(HaveOccurred())
+
+		basePods := getTasksOfJob(context, baseJob)
+		basePod := basePods[0]
+		baseNodeName := basePod.Spec.NodeName
+
+		node, err := context.kubeclient.CoreV1().Nodes().Get(baseNodeName, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		clusterPods, err := context.kubeclient.CoreV1().Pods(v1.NamespaceAll).List(metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		alloc := kbapi.NewResource(node.Status.Allocatable)
+		for _, pod := range clusterPods.Items {
+			nodeName := pod.Spec.NodeName
+			if nodeName != baseNodeName || len(nodeName) == 0 || pod.DeletionTimestamp != nil {
+				continue
+			}
+
+			if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
+				continue
+			}
+
+			for _, c := range pod.Spec.Containers {
+				req := kbapi.NewResource(c.Resources.Requests)
+				alloc.Sub(req)
+			}
+		}
+
+		need := kbapi.NewResource(v1.ResourceList{"cpu": resource.MustParse("500m")})
+		var count int32
+		for need.LessEqual(alloc) {
+			count++
+			alloc.Sub(need)
+		}
+
+		By(fmt.Sprintf("create test job with %d pods", count))
+		spec = &jobSpec{
+			name:      "binpack-test-1",
+			namespace: "test",
+			tasks: []taskSpec{
+				{
+					img: defaultNginxImage,
+					req: slot,
+					min: count,
+					rep: count,
+				},
+			},
+		}
+		job := createJob(context, spec)
+		err = waitJobReady(context, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		pods := getTasksOfJob(context, baseJob)
+		for _, pod := range pods {
+			nodeName := pod.Spec.NodeName
+			Expect(nodeName).Should(Equal(baseNodeName),
+				fmt.Sprintf("Pod %s/%s should assign to node %s, but not %s", pod.Namespace, pod.Name, baseNodeName, nodeName))
+		}
 	})
 
 	It("Schedule v1.Job type using Volcano scheduler", func() {
