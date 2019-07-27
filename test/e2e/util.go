@@ -63,6 +63,7 @@ const (
 	defaultBusyBoxImage          = "busybox:1.24"
 	defaultMPIImage              = "volcanosh/example-mpi:0.0.1"
 	schedulerName                = "volcano"
+	executeAction                = "ExecuteAction"
 
 	defaultNamespace = "test"
 	defaultQueue1    = "q1"
@@ -1151,4 +1152,26 @@ func waitPodGone(ctx *context, podName, namespace string) error {
 		return fmt.Errorf("[Wait time out]: %s", additionalError)
 	}
 	return err
+}
+
+func waitJobTerminateAction(ctx *context, pg *batchv1alpha1.Job) error {
+	return wait.Poll(10*time.Second, oneMinute, jobTerminateAction(ctx, pg, time.Now()))
+}
+
+func jobTerminateAction(ctx *context, pg *batchv1alpha1.Job, time time.Time) wait.ConditionFunc {
+	return func() (bool, error) {
+		events, err := ctx.kubeclient.CoreV1().Events(pg.Namespace).List(metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		for _, event := range events.Items {
+			target := event.InvolvedObject
+			if strings.HasPrefix(target.Name, pg.Name) && target.Namespace == pg.Namespace {
+				if event.Reason == string(executeAction) && strings.Contains(event.Message, "TerminateJob") && event.LastTimestamp.After(time) {
+					return true, nil
+				}
+			}
+		}
+
+		return false, nil
+	}
 }
