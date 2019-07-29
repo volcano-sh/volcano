@@ -26,6 +26,8 @@ type SchedulerConfiguration struct {
 
 // SchedulerConfigurationV2 defines the configuration of scheduler.
 type SchedulerConfigurationV2 struct {
+	// Version
+	Version string `yaml:"version"`
 	// Actions defines the actionOptions list of scheduler in order
 	Actions []ActionOption `yaml:"actions"`
 

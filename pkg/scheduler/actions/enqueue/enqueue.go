@@ -29,11 +29,11 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-// DefaultEnqueueActionKey
-const DefaultEnqueueActionKey = "enqueue-action-idleres-mul"
+// IdleResMultiplierKey
+const IdleResMultiplierKey = "idleres-mul"
 
-// DefaultEnqueueActionValue
-const DefaultEnqueueActionValue = 1.2
+// IdleResMultiplierValue
+const IdleResMultiplierValue = 1.2
 
 // EnqueueActionName
 const EnqueueActionName = "enqueue"
@@ -55,7 +55,7 @@ func (enqueue *enqueueAction) Initialize() {}
 func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 	glog.V(3).Infof("Enter Enqueue ...")
 	defer glog.V(3).Infof("Leaving Enqueue ...")
-	multiplier := DefaultEnqueueActionValue
+	multiplier := IdleResMultiplierValue
 	if ssn.SchedStConf.Version == framework.SchedulerConfigVersion2 {
 		ret, err := getEnqueueActMultiplier(ssn.SchedStConf.V2Conf.Actions)
 		if err == nil {
@@ -152,17 +152,17 @@ func getEnqueueActMultiplier(actOpt []conf.ActionOption) (float64, error) {
 	}
 
 	if actionOpt.Arguments != nil {
-		val, ok := actionOpt.Arguments[DefaultEnqueueActionKey]
+		val, ok := actionOpt.Arguments[IdleResMultiplierKey]
 		if ok {
 			value, err := strconv.ParseFloat(val, 64)
 			if err != nil {
-				glog.Warningf("Could not parse argument: %s for key %s, with err %v", val, DefaultEnqueueActionKey, err)
+				glog.Warningf("Could not parse argument: %s for key %s, with err %v", val, IdleResMultiplierKey, err)
 				return 0, err
 			}
 			return value, nil
 		}
 	}
-	return 0, fmt.Errorf("The required key %s is not there in config", DefaultEnqueueActionKey)
+	return 0, fmt.Errorf("The required key %s is not there in config", IdleResMultiplierKey)
 
 }
 

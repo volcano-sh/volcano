@@ -26,10 +26,11 @@ import (
 )
 
 var defaultSchedulerConf = `
+version: v2
 actions:
 - name: enqueue
   arguments:
-    enqueue-action-idleres-mul: 1.2
+    idleres-mul: 1.2
 - name: allocate
 - name: backfill
 tiers:

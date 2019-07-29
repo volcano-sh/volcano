@@ -42,10 +42,11 @@ tiers:
 `
 
 	configuration2 := `
+version: v2
 actions:
 - name: enqueue
   arguments:
-      enqueue-action-idleres-mul: 1.2
+      idleres-mul: 1.2
 - name: allocate
 - name: backfill
 - name: reclaim
@@ -163,7 +164,7 @@ tiers:
 	expectedActOpts2 := []conf.ActionOption{
 		{
 			Name:      "enqueue",
-			Arguments: map[string]string{"enqueue-action-idleres-mul": "1.2"},
+			Arguments: map[string]string{"idleres-mul": "1.2"},
 		},
 		{
 			Name: "allocate",

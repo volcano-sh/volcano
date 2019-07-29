@@ -11,10 +11,11 @@ metadata:
   namespace: volcano-system
 data:
   volcano-scheduler-ci.conf: |
+    version: v2
     actions:
     - name: enqueue
       arguments:
-        enqueue-action-idleres-mul: 1.2
+        idleres-mul: 1.2
     - name: allocate
     - name: backfill
     - name: reclaim
@@ -31,10 +32,11 @@ data:
       - name: nodeorder
       - name: binpack
   volcano-scheduler.conf: |
+    version: v2
     actions:
     - name: enqueue
       arguments:
-        enqueue-action-idleres-mul: 1.2
+        idleres-mul: 1.2
     - name: allocate
     - name: backfill
     tiers:
