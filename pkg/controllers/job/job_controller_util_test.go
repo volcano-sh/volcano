@@ -45,11 +45,15 @@ func TestMakePodName(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-		podName := MakePodName(testcase.JobName, testcase.TaskName, testcase.Index)
 
-		if podName != testcase.ReturnVal {
-			t.Errorf("Expected Return value to be: %s, but got: %s in case %d", testcase.ReturnVal, podName, i)
-		}
+		t.Run(testcase.Name, func(t *testing.T) {
+			podName := MakePodName(testcase.JobName, testcase.TaskName, testcase.Index)
+
+			if podName != testcase.ReturnVal {
+				t.Errorf("Expected Return value to be: %s, but got: %s in case %d", testcase.ReturnVal, podName, i)
+			}
+		})
+
 	}
 }
 
@@ -238,11 +242,14 @@ func TestCreateJobPod(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-		pod := createJobPod(testcase.Job, testcase.PodTemplate, testcase.Index)
 
-		if testcase.ReturnVal != nil && pod != nil && pod.Name != testcase.ReturnVal.Name && pod.Namespace != testcase.ReturnVal.Namespace {
-			t.Errorf("Expected Return Value to be %v but got %v in case %d", testcase.ReturnVal, pod, i)
-		}
+		t.Run(testcase.Name, func(t *testing.T) {
+			pod := createJobPod(testcase.Job, testcase.PodTemplate, testcase.Index)
+
+			if testcase.ReturnVal != nil && pod != nil && pod.Name != testcase.ReturnVal.Name && pod.Namespace != testcase.ReturnVal.Namespace {
+				t.Errorf("Expected Return Value to be %v but got %v in case %d", testcase.ReturnVal, pod, i)
+			}
+		})
 	}
 }
 
@@ -607,11 +614,13 @@ func TestApplyPolicies(t *testing.T) {
 
 	for i, testcase := range testcases {
 
-		action := applyPolicies(testcase.Job, testcase.Request)
+		t.Run(testcase.Name, func(t *testing.T) {
+			action := applyPolicies(testcase.Job, testcase.Request)
 
-		if testcase.ReturnVal != "" && action != "" && testcase.ReturnVal != action {
-			t.Errorf("Expected return value to be %s but got %s in case %d", testcase.ReturnVal, action, i)
-		}
+			if testcase.ReturnVal != "" && action != "" && testcase.ReturnVal != action {
+				t.Errorf("Expected return value to be %s but got %s in case %d", testcase.ReturnVal, action, i)
+			}
+		})
 	}
 }
 
@@ -642,7 +651,9 @@ func TestAddResourceList(t *testing.T) {
 	}
 
 	for _, testcase := range testcases {
-		addResourceList(testcase.List, testcase.New, nil)
+		t.Run(testcase.Name, func(t *testing.T) {
+			addResourceList(testcase.List, testcase.New, nil)
+		})
 	}
 }
 
@@ -691,11 +702,14 @@ func TestTasksPriority_Less(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-		less := testcase.TasksPriority.Less(testcase.Task1Index, testcase.Task2Index)
 
-		if less != testcase.ReturnVal {
-			t.Errorf("Expected Return Value to be %t, but got %t in case %d", testcase.ReturnVal, less, i)
-		}
+		t.Run(testcase.Name, func(t *testing.T) {
+			less := testcase.TasksPriority.Less(testcase.Task1Index, testcase.Task2Index)
+
+			if less != testcase.ReturnVal {
+				t.Errorf("Expected Return Value to be %t, but got %t in case %d", testcase.ReturnVal, less, i)
+			}
+		})
 	}
 }
 
@@ -742,6 +756,8 @@ func TestTasksPriority_Swap(t *testing.T) {
 	}
 
 	for _, testcase := range testcases {
-		testcase.TasksPriority.Swap(testcase.Task1Index, testcase.Task2Index)
+		t.Run(testcase.Name, func(t *testing.T) {
+			testcase.TasksPriority.Swap(testcase.Task1Index, testcase.Task2Index)
+		})
 	}
 }

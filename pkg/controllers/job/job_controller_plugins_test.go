@@ -76,63 +76,65 @@ func TestPluginOnPodCreate(t *testing.T) {
 
 	for i, testcase := range testcases {
 
-		fakeController := newFakeController()
-		jobPlugins := make(map[string][]string)
+		t.Run(testcase.Name, func(t *testing.T) {
+			fakeController := newFakeController()
+			jobPlugins := make(map[string][]string)
 
-		for _, plugin := range testcase.Plugins {
-			jobPlugins[plugin] = make([]string, 0)
-		}
-
-		testcase.Job.Spec.Plugins = jobPlugins
-
-		err := fakeController.pluginOnPodCreate(testcase.Job, testcase.Pod)
-		if testcase.RetVal != nil && err.Error() != testcase.RetVal.Error() {
-			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.RetVal, err)
-		}
-
-		for _, plugin := range testcase.Plugins {
-			if plugin == "env" {
-				for _, container := range testcase.Pod.Spec.Containers {
-					if len(container.Env) == 0 {
-						t.Errorf("case %d (%s): expected: Env Length not to be zero", i, testcase.Name)
-					}
-				}
+			for _, plugin := range testcase.Plugins {
+				jobPlugins[plugin] = make([]string, 0)
 			}
 
-			if plugin == "svc" {
-				for _, container := range testcase.Pod.Spec.Containers {
-					if len(container.VolumeMounts) == 0 {
-						t.Errorf("case %d (%s): expected: VolumeMount Length not to be zero", i, testcase.Name)
-					}
-					exist := false
-					for _, volume := range container.VolumeMounts {
-						if volume.Name == fmt.Sprint(testcase.Job.Name, "-svc") {
-							exist = true
+			testcase.Job.Spec.Plugins = jobPlugins
+
+			err := fakeController.pluginOnPodCreate(testcase.Job, testcase.Pod)
+			if testcase.RetVal != nil && err.Error() != testcase.RetVal.Error() {
+				t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.RetVal, err)
+			}
+
+			for _, plugin := range testcase.Plugins {
+				if plugin == "env" {
+					for _, container := range testcase.Pod.Spec.Containers {
+						if len(container.Env) == 0 {
+							t.Errorf("case %d (%s): expected: Env Length not to be zero", i, testcase.Name)
 						}
 					}
-					if !exist {
-						t.Errorf("case %d (%s): expected: VolumeMount not created", i, testcase.Name)
-					}
 				}
-			}
 
-			if plugin == "ssh" {
-				for _, container := range testcase.Pod.Spec.Containers {
-					if len(container.VolumeMounts) == 0 {
-						t.Errorf("case %d (%s): expected: VolumeMount Length not to be zero", i, testcase.Name)
-					}
-					exist := false
-					for _, volume := range container.VolumeMounts {
-						if volume.Name == fmt.Sprint(testcase.Job.Name, "-ssh") {
-							exist = true
+				if plugin == "svc" {
+					for _, container := range testcase.Pod.Spec.Containers {
+						if len(container.VolumeMounts) == 0 {
+							t.Errorf("case %d (%s): expected: VolumeMount Length not to be zero", i, testcase.Name)
+						}
+						exist := false
+						for _, volume := range container.VolumeMounts {
+							if volume.Name == fmt.Sprint(testcase.Job.Name, "-svc") {
+								exist = true
+							}
+						}
+						if !exist {
+							t.Errorf("case %d (%s): expected: VolumeMount not created", i, testcase.Name)
 						}
 					}
-					if !exist {
-						t.Errorf("case %d (%s): expected: VolumeMount not created", i, testcase.Name)
+				}
+
+				if plugin == "ssh" {
+					for _, container := range testcase.Pod.Spec.Containers {
+						if len(container.VolumeMounts) == 0 {
+							t.Errorf("case %d (%s): expected: VolumeMount Length not to be zero", i, testcase.Name)
+						}
+						exist := false
+						for _, volume := range container.VolumeMounts {
+							if volume.Name == fmt.Sprint(testcase.Job.Name, "-ssh") {
+								exist = true
+							}
+						}
+						if !exist {
+							t.Errorf("case %d (%s): expected: VolumeMount not created", i, testcase.Name)
+						}
 					}
 				}
 			}
-		}
+		})
 	}
 }
 
@@ -170,47 +172,49 @@ func TestPluginOnJobAdd(t *testing.T) {
 
 	for i, testcase := range testcases {
 
-		fakeController := newFakeController()
-		jobPlugins := make(map[string][]string)
+		t.Run(testcase.Name, func(t *testing.T) {
+			fakeController := newFakeController()
+			jobPlugins := make(map[string][]string)
 
-		for _, plugin := range testcase.Plugins {
-			jobPlugins[plugin] = make([]string, 0)
-		}
-
-		testcase.Job.Spec.Plugins = jobPlugins
-
-		err := fakeController.pluginOnJobAdd(testcase.Job)
-		if testcase.RetVal != nil && err.Error() != testcase.RetVal.Error() {
-			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.RetVal, err)
-		}
-
-		for _, plugin := range testcase.Plugins {
-
-			if plugin == "svc" {
-				_, err := fakeController.kubeClients.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-svc"), metav1.GetOptions{})
-				if err != nil {
-					t.Errorf("Case %d (%s): expected: ConfigMap to be created, but not created because of error %s", i, testcase.Name, err.Error())
-				}
-
-				_, err = fakeController.kubeClients.CoreV1().Services(namespace).Get(testcase.Job.Name, metav1.GetOptions{})
-				if err != nil {
-					t.Errorf("Case %d (%s): expected: Service to be created, but not created because of error %s", i, testcase.Name, err.Error())
-				}
+			for _, plugin := range testcase.Plugins {
+				jobPlugins[plugin] = make([]string, 0)
 			}
 
-			if plugin == "ssh" {
-				_, err := fakeController.kubeClients.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-ssh"), metav1.GetOptions{})
-				if err != nil {
-					t.Errorf("Case %d (%s): expected: ConfigMap to be created, but not created because of error %s", i, testcase.Name, err.Error())
-				}
+			testcase.Job.Spec.Plugins = jobPlugins
+
+			err := fakeController.pluginOnJobAdd(testcase.Job)
+			if testcase.RetVal != nil && err.Error() != testcase.RetVal.Error() {
+				t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.RetVal, err)
 			}
 
-			if plugin == "env" {
-				if testcase.Job.Status.ControlledResources["plugin-env"] == "" {
-					t.Errorf("Case %d (%s): expected: to find controlled resource, but not found because of error %s", i, testcase.Name, err.Error())
+			for _, plugin := range testcase.Plugins {
+
+				if plugin == "svc" {
+					_, err := fakeController.kubeClients.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-svc"), metav1.GetOptions{})
+					if err != nil {
+						t.Errorf("Case %d (%s): expected: ConfigMap to be created, but not created because of error %s", i, testcase.Name, err.Error())
+					}
+
+					_, err = fakeController.kubeClients.CoreV1().Services(namespace).Get(testcase.Job.Name, metav1.GetOptions{})
+					if err != nil {
+						t.Errorf("Case %d (%s): expected: Service to be created, but not created because of error %s", i, testcase.Name, err.Error())
+					}
+				}
+
+				if plugin == "ssh" {
+					_, err := fakeController.kubeClients.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-ssh"), metav1.GetOptions{})
+					if err != nil {
+						t.Errorf("Case %d (%s): expected: ConfigMap to be created, but not created because of error %s", i, testcase.Name, err.Error())
+					}
+				}
+
+				if plugin == "env" {
+					if testcase.Job.Status.ControlledResources["plugin-env"] == "" {
+						t.Errorf("Case %d (%s): expected: to find controlled resource, but not found because of error %s", i, testcase.Name, err.Error())
+					}
 				}
 			}
-		}
+		})
 	}
 }
 
@@ -248,40 +252,43 @@ func TestPluginOnJobDelete(t *testing.T) {
 
 	for i, testcase := range testcases {
 
-		fakeController := newFakeController()
-		jobPlugins := make(map[string][]string)
+		t.Run(testcase.Name, func(t *testing.T) {
+			fakeController := newFakeController()
+			jobPlugins := make(map[string][]string)
 
-		for _, plugin := range testcase.Plugins {
-			jobPlugins[plugin] = make([]string, 0)
-		}
-
-		testcase.Job.Spec.Plugins = jobPlugins
-
-		err := fakeController.pluginOnJobDelete(testcase.Job)
-		if testcase.RetVal != nil && err.Error() != testcase.RetVal.Error() {
-			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.RetVal, err)
-		}
-
-		for _, plugin := range testcase.Plugins {
-
-			if plugin == "svc" {
-				_, err := fakeController.kubeClients.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-svc"), metav1.GetOptions{})
-				if err == nil {
-					t.Errorf("Case %d (%s): expected: ConfigMap to be deleted, but not deleted because of error %s", i, testcase.Name, err.Error())
-				}
-
-				_, err = fakeController.kubeClients.CoreV1().Services(namespace).Get(testcase.Job.Name, metav1.GetOptions{})
-				if err == nil {
-					t.Errorf("Case %d (%s): expected: Service to be deleted, but not deleted because of error %s", i, testcase.Name, err.Error())
-				}
+			for _, plugin := range testcase.Plugins {
+				jobPlugins[plugin] = make([]string, 0)
 			}
 
-			if plugin == "ssh" {
-				_, err := fakeController.kubeClients.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-ssh"), metav1.GetOptions{})
-				if err == nil {
-					t.Errorf("Case %d (%s): expected: ConfigMap to be deleted, but not deleted because of error %s", i, testcase.Name, err.Error())
+			testcase.Job.Spec.Plugins = jobPlugins
+
+			err := fakeController.pluginOnJobDelete(testcase.Job)
+			if testcase.RetVal != nil && err.Error() != testcase.RetVal.Error() {
+				t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.RetVal, err)
+			}
+
+			for _, plugin := range testcase.Plugins {
+
+				if plugin == "svc" {
+					_, err := fakeController.kubeClients.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-svc"), metav1.GetOptions{})
+					if err == nil {
+						t.Errorf("Case %d (%s): expected: ConfigMap to be deleted, but not deleted because of error %s", i, testcase.Name, err.Error())
+					}
+
+					_, err = fakeController.kubeClients.CoreV1().Services(namespace).Get(testcase.Job.Name, metav1.GetOptions{})
+					if err == nil {
+						t.Errorf("Case %d (%s): expected: Service to be deleted, but not deleted because of error %s", i, testcase.Name, err.Error())
+					}
+				}
+
+				if plugin == "ssh" {
+					_, err := fakeController.kubeClients.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-ssh"), metav1.GetOptions{})
+					if err == nil {
+						t.Errorf("Case %d (%s): expected: ConfigMap to be deleted, but not deleted because of error %s", i, testcase.Name, err.Error())
+					}
 				}
 			}
-		}
+		})
+
 	}
 }

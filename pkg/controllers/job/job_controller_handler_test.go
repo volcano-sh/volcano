@@ -135,12 +135,14 @@ func TestAddCommandFunc(t *testing.T) {
 	}
 
 	for i, testcase := range testCases {
-		controller := newController()
-		controller.addCommand(testcase.command)
-		len := controller.commandQueue.Len()
-		if testcase.ExpectValue != len {
-			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, len)
-		}
+		t.Run(testcase.Name, func(t *testing.T) {
+			controller := newController()
+			controller.addCommand(testcase.command)
+			len := controller.commandQueue.Len()
+			if testcase.ExpectValue != len {
+				t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, len)
+			}
+		})
 	}
 }
 
@@ -164,18 +166,20 @@ func TestJobAddFunc(t *testing.T) {
 		},
 	}
 	for i, testcase := range testCases {
-		controller := newController()
-		controller.addJob(testcase.job)
-		key := fmt.Sprintf("%s/%s", testcase.job.Namespace, testcase.job.Name)
-		job, err := controller.cache.Get(key)
-		if job == nil || err != nil {
-			t.Errorf("Error while Adding Job in case %d with error %s", i, err)
-		}
-		queue := controller.getWorkerQueue(key)
-		len := queue.Len()
-		if testcase.ExpectValue != len {
-			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, len)
-		}
+		t.Run(testcase.Name, func(t *testing.T) {
+			controller := newController()
+			controller.addJob(testcase.job)
+			key := fmt.Sprintf("%s/%s", testcase.job.Namespace, testcase.job.Name)
+			job, err := controller.cache.Get(key)
+			if job == nil || err != nil {
+				t.Errorf("Error while Adding Job in case %d with error %s", i, err)
+			}
+			queue := controller.getWorkerQueue(key)
+			len := queue.Len()
+			if testcase.ExpectValue != len {
+				t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, len)
+			}
+		})
 	}
 }
 
@@ -256,19 +260,21 @@ func TestUpdateJobFunc(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-		controller := newController()
-		controller.addJob(testcase.oldJob)
-		controller.updateJob(testcase.oldJob, testcase.newJob)
-		key := fmt.Sprintf("%s/%s", testcase.newJob.Namespace, testcase.newJob.Name)
-		job, err := controller.cache.Get(key)
+		t.Run(testcase.Name, func(t *testing.T) {
+			controller := newController()
+			controller.addJob(testcase.oldJob)
+			controller.updateJob(testcase.oldJob, testcase.newJob)
+			key := fmt.Sprintf("%s/%s", testcase.newJob.Namespace, testcase.newJob.Name)
+			job, err := controller.cache.Get(key)
 
-		if job == nil || err != nil {
-			t.Errorf("Error while Updating Job in case %d with error %s", i, err)
-		}
+			if job == nil || err != nil {
+				t.Errorf("Error while Updating Job in case %d with error %s", i, err)
+			}
 
-		if job.Job.Status.State.Phase != testcase.newJob.Status.State.Phase {
-			t.Errorf("Error while Updating Job in case %d with error %s", i, err)
-		}
+			if job.Job.Status.State.Phase != testcase.newJob.Status.State.Phase {
+				t.Errorf("Error while Updating Job in case %d with error %s", i, err)
+			}
+		})
 	}
 }
 
@@ -322,27 +328,30 @@ func TestAddPodFunc(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-		controller := newController()
-		controller.addJob(testcase.Job)
-		for _, pod := range testcase.pods {
-			addPodAnnotation(pod, testcase.Annotation)
-			controller.addPod(pod)
-		}
 
-		key := fmt.Sprintf("%s/%s", testcase.Job.Namespace, testcase.Job.Name)
-		job, err := controller.cache.Get(key)
+		t.Run(testcase.Name, func(t *testing.T) {
+			controller := newController()
+			controller.addJob(testcase.Job)
+			for _, pod := range testcase.pods {
+				addPodAnnotation(pod, testcase.Annotation)
+				controller.addPod(pod)
+			}
 
-		if job == nil || err != nil {
-			t.Errorf("Error while Getting Job in case %d with error %s", i, err)
-		}
+			key := fmt.Sprintf("%s/%s", testcase.Job.Namespace, testcase.Job.Name)
+			job, err := controller.cache.Get(key)
 
-		var totalPods int
-		for _, task := range job.Pods {
-			totalPods = len(task)
-		}
-		if totalPods != testcase.ExpectedValue {
-			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectedValue, totalPods)
-		}
+			if job == nil || err != nil {
+				t.Errorf("Error while Getting Job in case %d with error %s", i, err)
+			}
+
+			var totalPods int
+			for _, task := range job.Pods {
+				totalPods = len(task)
+			}
+			if totalPods != testcase.ExpectedValue {
+				t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectedValue, totalPods)
+			}
+		})
 	}
 }
 
@@ -394,25 +403,27 @@ func TestUpdatePodFunc(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-		controller := newController()
-		controller.addJob(testcase.Job)
-		addPodAnnotation(testcase.oldPod, testcase.Annotation)
-		addPodAnnotation(testcase.newPod, testcase.Annotation)
-		controller.addPod(testcase.oldPod)
-		controller.updatePod(testcase.oldPod, testcase.newPod)
+		t.Run(testcase.Name, func(t *testing.T) {
+			controller := newController()
+			controller.addJob(testcase.Job)
+			addPodAnnotation(testcase.oldPod, testcase.Annotation)
+			addPodAnnotation(testcase.newPod, testcase.Annotation)
+			controller.addPod(testcase.oldPod)
+			controller.updatePod(testcase.oldPod, testcase.newPod)
 
-		key := fmt.Sprintf("%s/%s", testcase.Job.Namespace, testcase.Job.Name)
-		job, err := controller.cache.Get(key)
+			key := fmt.Sprintf("%s/%s", testcase.Job.Namespace, testcase.Job.Name)
+			job, err := controller.cache.Get(key)
 
-		if job == nil || err != nil {
-			t.Errorf("Error while Getting Job in case %d with error %s", i, err)
-		}
+			if job == nil || err != nil {
+				t.Errorf("Error while Getting Job in case %d with error %s", i, err)
+			}
 
-		pod := job.Pods[testcase.Annotation[vkbatchv1.TaskSpecKey]][testcase.oldPod.Name]
+			pod := job.Pods[testcase.Annotation[vkbatchv1.TaskSpecKey]][testcase.oldPod.Name]
 
-		if pod.Status.Phase != testcase.ExpectedValue {
-			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectedValue, pod.Status.Phase)
-		}
+			if pod.Status.Phase != testcase.ExpectedValue {
+				t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectedValue, pod.Status.Phase)
+			}
+		})
 	}
 }
 
@@ -470,30 +481,32 @@ func TestDeletePodFunc(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-		controller := newController()
-		controller.addJob(testcase.Job)
-		for _, pod := range testcase.availablePods {
-			addPodAnnotation(pod, testcase.Annotation)
-			controller.addPod(pod)
-		}
+		t.Run(testcase.Name, func(t *testing.T) {
+			controller := newController()
+			controller.addJob(testcase.Job)
+			for _, pod := range testcase.availablePods {
+				addPodAnnotation(pod, testcase.Annotation)
+				controller.addPod(pod)
+			}
 
-		addPodAnnotation(testcase.deletePod, testcase.Annotation)
-		controller.deletePod(testcase.deletePod)
-		key := fmt.Sprintf("%s/%s", testcase.Job.Namespace, testcase.Job.Name)
-		job, err := controller.cache.Get(key)
+			addPodAnnotation(testcase.deletePod, testcase.Annotation)
+			controller.deletePod(testcase.deletePod)
+			key := fmt.Sprintf("%s/%s", testcase.Job.Namespace, testcase.Job.Name)
+			job, err := controller.cache.Get(key)
 
-		if job == nil || err != nil {
-			t.Errorf("Error while Getting Job in case %d with error %s", i, err)
-		}
+			if job == nil || err != nil {
+				t.Errorf("Error while Getting Job in case %d with error %s", i, err)
+			}
 
-		var totalPods int
-		for _, task := range job.Pods {
-			totalPods = len(task)
-		}
+			var totalPods int
+			for _, task := range job.Pods {
+				totalPods = len(task)
+			}
 
-		if totalPods != testcase.ExpectedValue {
-			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectedValue, totalPods)
-		}
+			if totalPods != testcase.ExpectedValue {
+				t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectedValue, totalPods)
+			}
+		})
 	}
 }
 
@@ -538,13 +551,16 @@ func TestUpdatePodGroupFunc(t *testing.T) {
 	}
 
 	for i, testcase := range testCases {
-		controller := newController()
-		controller.updatePodGroup(testcase.oldPodGroup, testcase.newPodGroup)
-		key := fmt.Sprintf("%s/%s", testcase.oldPodGroup.Namespace, testcase.oldPodGroup.Name)
-		queue := controller.getWorkerQueue(key)
-		len := queue.Len()
-		if testcase.ExpectValue != len {
-			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, len)
-		}
+
+		t.Run(testcase.Name, func(t *testing.T) {
+			controller := newController()
+			controller.updatePodGroup(testcase.oldPodGroup, testcase.newPodGroup)
+			key := fmt.Sprintf("%s/%s", testcase.oldPodGroup.Namespace, testcase.oldPodGroup.Name)
+			queue := controller.getWorkerQueue(key)
+			len := queue.Len()
+			if testcase.ExpectValue != len {
+				t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, len)
+			}
+		})
 	}
 }
