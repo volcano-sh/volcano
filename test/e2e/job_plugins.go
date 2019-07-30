@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
+	"volcano.sh/volcano/pkg/controllers/job/plugins/env"
 )
 
 var _ = Describe("Job E2E Test: Test Job Plugins", func() {
@@ -169,5 +170,71 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		for _, pod := range pods {
 			Expect(pod.Spec.NodeName).To(Equal(nodeName))
 		}
+	})
+
+	It("Check Functionality of all plugins", func() {
+		jobName := "job-with-all-plugin"
+		namespace := "test"
+		taskName := "task"
+		foundVolume := false
+		foundEnv := false
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		_, rep := computeNode(context, oneCPU)
+		Expect(rep).NotTo(Equal(0))
+
+		job := createJob(context, &jobSpec{
+			namespace: namespace,
+			name:      jobName,
+			plugins: map[string][]string{
+				"ssh": {"--no-root"},
+				"env": {},
+				"svc": {},
+			},
+			tasks: []taskSpec{
+				{
+					img:  defaultNginxImage,
+					req:  oneCPU,
+					min:  1,
+					rep:  rep,
+					name: taskName,
+				},
+			},
+		})
+
+		err := waitJobReady(context, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		pluginName := fmt.Sprintf("%s-ssh", jobName)
+		_, err = context.kubeclient.CoreV1().ConfigMaps(namespace).Get(
+			pluginName, v1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		pod, err := context.kubeclient.CoreV1().Pods(namespace).Get(
+			fmt.Sprintf(helpers.PodNameFmt, jobName, taskName, 0), v1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		for _, volume := range pod.Spec.Volumes {
+			if volume.Name == pluginName {
+				foundVolume = true
+				break
+			}
+		}
+		Expect(foundVolume).To(BeTrue())
+
+		// Check whether env exists in the pod
+		for _, container := range pod.Spec.Containers {
+			for _, envi := range container.Env {
+				if envi.Name == env.TaskVkIndex {
+					foundEnv = true
+					break
+				}
+			}
+		}
+		Expect(foundEnv).To(BeTrue())
+
+		// Check whether service is created with job name
+		_, err = context.kubeclient.CoreV1().Services(job.Namespace).Get(job.Name, v1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
 	})
 })
