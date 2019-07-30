@@ -69,20 +69,16 @@ func (cc *Controller) syncTask(oldTask *v1.Pod) error {
 	defer cc.Mutex.Unlock()
 
 	newPod, err := cc.kubeClients.CoreV1().Pods(oldTask.Namespace).Get(oldTask.Name, metav1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			if err := cc.cache.DeletePod(oldTask); err != nil {
-				glog.Errorf("failed to delete cache pod <%v/%v>, err %v.", oldTask.Namespace, oldTask.Name, err)
-				return err
-			}
-			glog.V(3).Infof("Pod <%v/%v> was deleted, removed from cache.", oldTask.Namespace, oldTask.Name)
 
-			return nil
-		}
-		return fmt.Errorf("failed to get Pod <%v/%v>: err %v", oldTask.Namespace, oldTask.Name, err)
+	//Delete from cache when pod does not exist or `DeletionTimestamp` not nil
+	if (err == nil && newPod.DeletionTimestamp != nil) || (err != nil && errors.IsNotFound(err)) {
+		glog.V(3).Infof("Pod <%v/%v> will be removed from cache.", oldTask.Namespace, oldTask.Name)
+		return cc.cache.DeletePod(oldTask)
+	} else if err == nil {
+		glog.V(3).Infof("Pod <%v/%v> will be updated into cache.", oldTask.Namespace, oldTask.Name)
+		return cc.cache.UpdatePod(newPod)
 	}
-
-	return cc.cache.UpdatePod(newPod)
+	return fmt.Errorf("failed to get Pod <%v/%v>: err %v", oldTask.Namespace, oldTask.Name, err)
 }
 
 func (cc *Controller) resyncTask(task *v1.Pod) {
