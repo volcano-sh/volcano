@@ -17,9 +17,10 @@ limitations under the License.
 package options
 
 import (
-	"github.com/spf13/pflag"
 	"reflect"
 	"testing"
+
+	"github.com/spf13/pflag"
 )
 
 func TestAddFlags(t *testing.T) {
@@ -40,6 +41,7 @@ func TestAddFlags(t *testing.T) {
 		KubeAPIBurst:  200,
 		PrintVersion:  false,
 		WorkerThreads: defaultWorkers,
+		SchedulerName: defaultSchedulerName,
 	}
 
 	if !reflect.DeepEqual(expected, s) {

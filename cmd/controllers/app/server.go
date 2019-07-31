@@ -44,6 +44,7 @@ import (
 	vkclient "volcano.sh/volcano/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/controllers/garbagecollector"
 	"volcano.sh/volcano/pkg/controllers/job"
+	"volcano.sh/volcano/pkg/controllers/podgroup"
 	"volcano.sh/volcano/pkg/controllers/queue"
 )
 
@@ -88,11 +89,13 @@ func Run(opt *options.ServerOption) error {
 	jobController := job.NewJobController(kubeClient, kbClient, vkClient, opt.WorkerThreads)
 	queueController := queue.NewQueueController(kubeClient, kbClient)
 	garbageCollector := garbagecollector.New(vkClient)
+	pgController := podgroup.NewPodgroupController(kubeClient, kbClient, opt.SchedulerName)
 
 	run := func(ctx context.Context) {
 		go jobController.Run(ctx.Done())
 		go queueController.Run(ctx.Done())
 		go garbageCollector.Run(ctx.Done())
+		go pgController.Run(ctx.Done())
 		<-ctx.Done()
 	}
 
