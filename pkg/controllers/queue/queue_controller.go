@@ -140,7 +140,7 @@ func (c *Controller) processNextWorkItem() bool {
 func (c *Controller) syncQueue(key string) error {
 	glog.V(4).Infof("Begin sync queue %s", key)
 
-	var pending, running, unknown int32
+	var pending, running, unknown, inqueue int32
 	c.pgMutex.RLock()
 	if c.podGroups[key] == nil {
 		c.pgMutex.RUnlock()
@@ -169,6 +169,8 @@ func (c *Controller) syncQueue(key string) error {
 			running++
 		case schedulingv1alpha2.PodGroupUnknown:
 			unknown++
+		case schedulingv1alpha2.PodGroupInqueue:
+			inqueue++
 		}
 	}
 
@@ -183,7 +185,8 @@ func (c *Controller) syncQueue(key string) error {
 
 	glog.V(4).Infof("queue %s jobs pending %d, running %d, unknown %d", key, pending, running, unknown)
 	// ignore update when status doesnot change
-	if pending == queue.Status.Pending && running == queue.Status.Running && unknown == queue.Status.Unknown {
+	if pending == queue.Status.Pending && running == queue.Status.Running &&
+		unknown == queue.Status.Unknown && inqueue == queue.Status.Inqueue {
 		return nil
 	}
 
@@ -191,6 +194,7 @@ func (c *Controller) syncQueue(key string) error {
 	newQueue.Status.Pending = pending
 	newQueue.Status.Running = running
 	newQueue.Status.Unknown = unknown
+	newQueue.Status.Inqueue = inqueue
 
 	if _, err := c.kbClient.SchedulingV1alpha2().Queues().UpdateStatus(newQueue); err != nil {
 		glog.Errorf("Failed to update status of Queue %s: %v", newQueue.Name, err)
