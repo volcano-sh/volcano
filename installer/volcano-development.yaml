@@ -31,7 +31,7 @@ data:
       - name: proportion
       - name: nodeorder
       - name: binpack
-  volcano-scheduler.conf: |
+  volcano-scheduler.conf: |-
     version: v2
     actions:
     - name: enqueue
