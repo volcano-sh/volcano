@@ -554,6 +554,168 @@ var _ = Describe("Job Error Handling", func() {
 		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Terminating, vkv1.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 	})
+	It("Task level LifecyclePolicy, Event: PodFailed; Action: RestartJob", func() {
+		By("init test context")
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		By("create job")
+		job := createJob(context, &jobSpec{
+			name: "failed-restart-job",
+			tasks: []taskSpec{
+				{
+					name: "success",
+					img:  defaultNginxImage,
+					min:  2,
+					rep:  2,
+				},
+				{
+					name:          "fail",
+					img:           defaultNginxImage,
+					min:           2,
+					rep:           2,
+					command:       "sleep 10s && xxx",
+					restartPolicy: v1.RestartPolicyNever,
+					policies: []vkv1.LifecyclePolicy{
+						{
+							Action: vkv1.RestartJobAction,
+							Event:  vkv1.PodFailedEvent,
+						},
+					},
+				},
+			},
+		})
+
+		// job phase: pending -> running -> restarting
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Restarting})
+		Expect(err).NotTo(HaveOccurred())
+	})
+	It("Task level LifecyclePolicy, Event: PodEvicted; Action: RestartJob", func() {
+		By("init test context")
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		By("create job")
+		job := createJob(context, &jobSpec{
+			name: "evicted-restart-job",
+
+			tasks: []taskSpec{
+				{
+					name: "success",
+					img:  defaultNginxImage,
+					min:  2,
+					rep:  2,
+				},
+				{
+					name: "delete",
+					img:  defaultNginxImage,
+					min:  2,
+					rep:  2,
+					policies: []vkv1.LifecyclePolicy{
+						{
+							Action: vkv1.RestartJobAction,
+							Event:  vkv1.PodEvictedEvent,
+						},
+					},
+				},
+			},
+		})
+
+		// job phase: pending -> running
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("delete one pod of job")
+		podName := jobutil.MakePodName(job.Name, "delete", 0)
+		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		// job phase: Restarting -> Running
+		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Restarting, vkv1.Pending, vkv1.Inqueue, vkv1.Running})
+		Expect(err).NotTo(HaveOccurred())
+	})
+	It("Task level LifecyclePolicy, Event: PodEvicted; Action: TerminateJob", func() {
+		By("init test context")
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		By("create job")
+		job := createJob(context, &jobSpec{
+			name: "evicted-terminate-job",
+			tasks: []taskSpec{
+				{
+					name: "success",
+					img:  defaultNginxImage,
+					min:  2,
+					rep:  2,
+				},
+				{
+					name: "delete",
+					img:  defaultNginxImage,
+					min:  2,
+					rep:  2,
+					policies: []vkv1.LifecyclePolicy{
+						{
+							Action: vkv1.TerminateJobAction,
+							Event:  vkv1.PodEvictedEvent,
+						},
+					},
+				},
+			},
+		})
+
+		// job phase: pending -> running
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("delete one pod of job")
+		podName := jobutil.MakePodName(job.Name, "delete", 0)
+		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		// job phase: Terminating -> Terminated
+		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Terminating, vkv1.Terminated})
+		Expect(err).NotTo(HaveOccurred())
+	})
+	It("Task level LifecyclePolicy, Event: TaskCompleted; Action: CompletedJob", func() {
+		By("init test context")
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		By("create job")
+		job := createJob(context, &jobSpec{
+			name: "any-complete-job",
+			tasks: []taskSpec{
+				{
+					name: "completed-task",
+					img:  defaultBusyBoxImage,
+					min:  2,
+					rep:  2,
+					//Sleep 5 seconds ensure job in running state
+					command: "sleep 5",
+					policies: []vkv1.LifecyclePolicy{
+						{
+							Action: vkv1.CompleteJobAction,
+							Event:  vkv1.TaskCompletedEvent,
+						},
+					},
+				},
+				{
+					name: "terminating-task",
+					img:  defaultNginxImage,
+					min:  2,
+					rep:  2,
+				},
+			},
+		})
+
+		By("job scheduled, then task 'completed_task' finished and job finally complete")
+		// job phase: pending -> running -> completing -> completed
+		err := waitJobPhases(context, job, []vkv1.JobPhase{
+			vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Completing, vkv1.Completed})
+		Expect(err).NotTo(HaveOccurred())
+
+	})
 
 	It("job level LifecyclePolicy, Event: PodFailed; Action: AbortJob and Task level lifecyclePolicy, Event : PodFailed; Action: RestartJob", func() {
 		By("init test context")
