@@ -53,12 +53,14 @@ type Queue struct {
 
 // QueueStatus represents the status of Queue.
 type QueueStatus struct {
-	// The number of 'Unknonw' PodGroup in this queue.
+	// The number of 'Unknown' PodGroup in this queue.
 	Unknown int32 `json:"unknown,omitempty" protobuf:"bytes,1,opt,name=unknown"`
 	// The number of 'Pending' PodGroup in this queue.
 	Pending int32 `json:"pending,omitempty" protobuf:"bytes,2,opt,name=pending"`
 	// The number of 'Running' PodGroup in this queue.
 	Running int32 `json:"running,omitempty" protobuf:"bytes,3,opt,name=running"`
+	// The number of `Inqueue` PodGroup in this queue.
+	Inqueue int32 `json:"inqueue,omitempty" protobuf:"bytes,4,opt,name=inqueue"`
 }
 
 // QueueSpec represents the template of Queue.
