@@ -32,6 +32,13 @@ ${CODEGEN_PKG}/generate-groups.sh "deepcopy,client,informer,lister" \
   "batch:v1alpha1 bus:v1alpha1 scheduling:v1alpha1,v1alpha2" \
   --go-header-file ${SCRIPT_ROOT}/hack/boilerplate/boilerplate.go.txt
 
+"${CODEGEN_PKG}/generate-internal-groups.sh" "deepcopy,conversion" \
+  volcano.sh/volcano/pkg/apis/ volcano.sh/volcano/pkg/apis volcano.sh/volcano/pkg/apis\
+  "scheduling:v1alpha1,v1alpha2"   \
+  --output-base "$(dirname "${BASH_SOURCE[0]}")/../../.." \
+  --go-header-file ${SCRIPT_ROOT}/hack/boilerplate/boilerplate.go.txt
+
 # To use your own boilerplate text use:
 #   --go-header-file ${SCRIPT_ROOT}/hack/custom-boilerplate.go.txt
+
 
