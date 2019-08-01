@@ -1175,3 +1175,44 @@ func jobTerminateAction(ctx *context, pg *batchv1alpha1.Job, time time.Time) wai
 		return false, nil
 	}
 }
+
+func waitPodPhase(ctx *context, pod *v1.Pod, phase []v1.PodPhase) error {
+	var additionalError error
+	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+		pods, err := ctx.kubeclient.CoreV1().Pods(pod.Namespace).List(metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		for _, p := range phase {
+			for _, pod := range pods.Items {
+				if pod.Status.Phase == p {
+					return true, nil
+				}
+			}
+		}
+
+		additionalError = fmt.Errorf("expected pod '%s' to %v, actual got %s", pod.Name, phase, pod.Status.Phase)
+		return false, nil
+	})
+	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
+		return fmt.Errorf("[Wait time out]: %s", additionalError)
+	}
+	return err
+}
+
+func pgIsReady(ctx *context, namespace string) (bool, error) {
+	pgs, err := ctx.vcclient.SchedulingV1alpha2().PodGroups(namespace).List(metav1.ListOptions{})
+	if err != nil {
+		return false, err
+	}
+	if pgs != nil && len(pgs.Items) == 0 {
+		return false, fmt.Errorf("podgroup is not found")
+	}
+
+	for _, pg := range pgs.Items {
+		if pg.Status.Phase != schedulingv1alpha2.PodGroupPending {
+			return true, nil
+		}
+	}
+
+	return false, fmt.Errorf("podgroup phase is Pending")
+}
