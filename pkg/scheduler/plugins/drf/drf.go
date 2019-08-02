@@ -95,6 +95,15 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		allocations := map[api.JobID]*api.Resource{}
 
 		for _, preemptee := range preemptees {
+
+			// Min part tasks in job should not be preempted
+			preempteeJob := ssn.Jobs[preemptee.Job]
+			readyNum := preempteeJob.ReadyTaskNum()
+			preemptable := preempteeJob.MinAvailable <= readyNum-1 || preempteeJob.MinAvailable == 1
+			if !preemptable {
+				continue
+			}
+
 			if _, found := allocations[preemptee.Job]; !found {
 				ratt := drf.jobAttrs[preemptee.Job]
 				allocations[preemptee.Job] = ratt.allocated.Clone()
@@ -107,7 +116,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
-		glog.V(4).Infof("Victims from DRF plugins are %+v", victims)
+		glog.V(3).Infof("Victims from DRF plugins are %+v", victims)
 
 		return victims
 	}

@@ -144,6 +144,7 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 	var init bool
 
 	for _, tier := range ssn.Tiers {
+		init = false
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledPreemptable) {
 				continue
@@ -154,6 +155,9 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 				continue
 			}
 			candidates := pf(preemptor, preemptees)
+			if candidates == nil {
+				break
+			}
 			if !init {
 				victims = candidates
 				init = true
