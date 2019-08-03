@@ -126,7 +126,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 	}
 
 	// Delete PodGroup
-	if err := cc.kbClients.SchedulingV1alpha2().PodGroups(job.Namespace).Delete(job.Name, nil); err != nil {
+	if err := cc.vkClients.SchedulingV1alpha2().PodGroups(job.Namespace).Delete(job.Name, nil); err != nil {
 		if !apierrors.IsNotFound(err) {
 			glog.Errorf("Failed to delete PodGroup of Job %v/%v: %v",
 				job.Namespace, job.Name, err)
@@ -468,7 +468,7 @@ func (cc *Controller) createPodGroupIfNotExist(job *vkv1.Job) error {
 			},
 		}
 
-		if _, err = cc.kbClients.SchedulingV1alpha2().PodGroups(job.Namespace).Create(pg); err != nil {
+		if _, err = cc.vkClients.SchedulingV1alpha2().PodGroups(job.Namespace).Create(pg); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				glog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
 					job.Namespace, job.Name, err)

@@ -83,7 +83,7 @@ func TestGarbageCollector_ProcessTTL(t *testing.T) {
 		},
 	}
 	for i, testcase := range testcases {
-		gc := New(volcanoclient.NewSimpleClientset())
+		gc := NewGarbageCollector(volcanoclient.NewSimpleClientset())
 
 		expired, err := gc.processTTL(testcase.Job)
 		if err != nil {
