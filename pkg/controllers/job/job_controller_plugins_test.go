@@ -22,20 +22,20 @@ import (
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	volcanoclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
-
-	kubebatchclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
 )
 
 func newFakeController() *Controller {
-	KubeBatchClientSet := kubebatchclient.NewSimpleClientset()
 	VolcanoClientSet := volcanoclient.NewSimpleClientset()
 	KubeClientSet := kubeclient.NewSimpleClientset()
 
-	controller := NewJobController(KubeClientSet, KubeBatchClientSet, VolcanoClientSet, 3)
+	sharedInformers := informers.NewSharedInformerFactory(KubeClientSet, 0)
+
+	controller := NewJobController(KubeClientSet, VolcanoClientSet, sharedInformers, 3)
 	return controller
 }
 

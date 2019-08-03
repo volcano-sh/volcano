@@ -39,7 +39,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
-	kbver "volcano.sh/volcano/pkg/client/clientset/versioned"
 	kbinfoext "volcano.sh/volcano/pkg/client/informers/externalversions"
 	kbinfo "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1alpha2"
 	kblister "volcano.sh/volcano/pkg/client/listers/scheduling/v1alpha2"
@@ -61,16 +60,14 @@ import (
 type Controller struct {
 	kubeClients kubernetes.Interface
 	vkClients   vkver.Interface
-	kbClients   kbver.Interface
 
-	jobInformer     vkbatchinfo.JobInformer
-	podInformer     coreinformers.PodInformer
-	pvcInformer     coreinformers.PersistentVolumeClaimInformer
-	pgInformer      kbinfo.PodGroupInformer
-	svcInformer     coreinformers.ServiceInformer
-	cmdInformer     vkcoreinfo.CommandInformer
-	pcInformer      schedv1.PriorityClassInformer
-	sharedInformers informers.SharedInformerFactory
+	jobInformer vkbatchinfo.JobInformer
+	podInformer coreinformers.PodInformer
+	pvcInformer coreinformers.PersistentVolumeClaimInformer
+	pgInformer  kbinfo.PodGroupInformer
+	svcInformer coreinformers.ServiceInformer
+	cmdInformer vkcoreinfo.CommandInformer
+	pcInformer  schedv1.PriorityClassInformer
 
 	// A store of jobs
 	jobLister vkbatchlister.JobLister
@@ -113,8 +110,8 @@ type Controller struct {
 // NewJobController create new Job Controller
 func NewJobController(
 	kubeClient kubernetes.Interface,
-	kbClient kbver.Interface,
 	vkClient vkver.Interface,
+	sharedInformers informers.SharedInformerFactory,
 	workers uint32,
 ) *Controller {
 
@@ -127,7 +124,6 @@ func NewJobController(
 	cc := &Controller{
 		kubeClients:     kubeClient,
 		vkClients:       vkClient,
-		kbClients:       kbClient,
 		queueList:       make([]workqueue.RateLimitingInterface, workers, workers),
 		commandQueue:    workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		cache:           jobcache.New(),
@@ -158,8 +154,7 @@ func NewJobController(
 	cc.cmdLister = cc.cmdInformer.Lister()
 	cc.cmdSynced = cc.cmdInformer.Informer().HasSynced
 
-	cc.sharedInformers = informers.NewSharedInformerFactory(cc.kubeClients, 0)
-	cc.podInformer = cc.sharedInformers.Core().V1().Pods()
+	cc.podInformer = sharedInformers.Core().V1().Pods()
 	cc.podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    cc.addPod,
 		UpdateFunc: cc.updatePod,
@@ -169,22 +164,22 @@ func NewJobController(
 	cc.podLister = cc.podInformer.Lister()
 	cc.podSynced = cc.podInformer.Informer().HasSynced
 
-	cc.pvcInformer = cc.sharedInformers.Core().V1().PersistentVolumeClaims()
+	cc.pvcInformer = sharedInformers.Core().V1().PersistentVolumeClaims()
 	cc.pvcLister = cc.pvcInformer.Lister()
 	cc.pvcSynced = cc.pvcInformer.Informer().HasSynced
 
-	cc.svcInformer = cc.sharedInformers.Core().V1().Services()
+	cc.svcInformer = sharedInformers.Core().V1().Services()
 	cc.svcLister = cc.svcInformer.Lister()
 	cc.svcSynced = cc.svcInformer.Informer().HasSynced
 
-	cc.pgInformer = kbinfoext.NewSharedInformerFactory(cc.kbClients, 0).Scheduling().V1alpha2().PodGroups()
+	cc.pgInformer = kbinfoext.NewSharedInformerFactory(cc.vkClients, 0).Scheduling().V1alpha2().PodGroups()
 	cc.pgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: cc.updatePodGroup,
 	})
 	cc.pgLister = cc.pgInformer.Lister()
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
-	cc.pcInformer = cc.sharedInformers.Scheduling().V1beta1().PriorityClasses()
+	cc.pcInformer = sharedInformers.Scheduling().V1beta1().PriorityClasses()
 	cc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    cc.addPriorityClass,
 		DeleteFunc: cc.deletePriorityClass,
@@ -203,7 +198,6 @@ func NewJobController(
 // Run start JobController
 func (cc *Controller) Run(stopCh <-chan struct{}) {
 
-	go cc.sharedInformers.Start(stopCh)
 	go cc.jobInformer.Informer().Run(stopCh)
 	go cc.podInformer.Informer().Run(stopCh)
 	go cc.pvcInformer.Informer().Run(stopCh)

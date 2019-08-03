@@ -58,6 +58,7 @@ type Controller struct {
 func NewPodgroupController(
 	kubeClient kubernetes.Interface,
 	kbClient kbver.Interface,
+	sharedInformers informers.SharedInformerFactory,
 	schedulerName string,
 ) *Controller {
 	cc := &Controller{
@@ -67,8 +68,7 @@ func NewPodgroupController(
 		queue: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 	}
 
-	factory := informers.NewSharedInformerFactory(cc.kubeClients, 0)
-	cc.podInformer = factory.Core().V1().Pods()
+	cc.podInformer = sharedInformers.Core().V1().Pods()
 	cc.podLister = cc.podInformer.Lister()
 	cc.podSynced = cc.podInformer.Informer().HasSynced
 	cc.podInformer.Informer().AddEventHandler(

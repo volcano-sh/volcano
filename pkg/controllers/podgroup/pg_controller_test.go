@@ -22,6 +22,7 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/informers"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 
 	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
@@ -31,8 +32,9 @@ import (
 func newFakeController() *Controller {
 	KubeClientSet := kubeclient.NewSimpleClientset()
 	KubeBatchClientSet := kubebatchclient.NewSimpleClientset()
+	sharedInformers := informers.NewSharedInformerFactory(KubeClientSet, 0)
 
-	controller := NewPodgroupController(KubeClientSet, KubeBatchClientSet, "volcano")
+	controller := NewPodgroupController(KubeClientSet, KubeBatchClientSet, sharedInformers, "volcano")
 	return controller
 }
 

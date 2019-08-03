@@ -18,22 +18,22 @@ package job
 
 import (
 	"fmt"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/rest"
 	"testing"
-	"volcano.sh/volcano/pkg/apis/helpers"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/client-go/informers"
 	kubeclientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+
 	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vkbusv1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/helpers"
 	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
-	kubebatchclient "volcano.sh/volcano/pkg/client/clientset/versioned"
 	vkclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
-	//"volcano.sh/volcano/pkg/controllers/job"
 )
 
 func newController() *Controller {
@@ -45,23 +45,16 @@ func newController() *Controller {
 	},
 	)
 
-	kubeBatchClientSet := kubebatchclient.NewForConfigOrDie(&rest.Config{
-		Host: "",
-		ContentConfig: rest.ContentConfig{
-			GroupVersion: &kbv1.SchemeGroupVersion,
-		},
-	},
-	)
-
-	config := &rest.Config{
+	vkclient := vkclientset.NewForConfigOrDie(&rest.Config{
 		Host: "",
 		ContentConfig: rest.ContentConfig{
 			GroupVersion: &vkv1.SchemeGroupVersion,
 		},
-	}
+	})
 
-	vkclient := vkclientset.NewForConfigOrDie(config)
-	controller := NewJobController(kubeClientSet, kubeBatchClientSet, vkclient, 3)
+	sharedInformers := informers.NewSharedInformerFactory(kubeClientSet, 0)
+
+	controller := NewJobController(kubeClientSet, vkclient, sharedInformers, 3)
 
 	return controller
 }

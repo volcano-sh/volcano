@@ -58,8 +58,8 @@ type GarbageCollector struct {
 	queue workqueue.RateLimitingInterface
 }
 
-// New creates an instance of GarbageCollector
-func New(vkClient vkver.Interface) *GarbageCollector {
+// NewGarbageCollector creates an instance of GarbageCollector
+func NewGarbageCollector(vkClient vkver.Interface) *GarbageCollector {
 	jobInformer := vkinfoext.NewSharedInformerFactory(vkClient, 0).Batch().V1alpha1().Jobs()
 
 	gb := &GarbageCollector{
