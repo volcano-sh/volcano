@@ -84,7 +84,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			name: "na-job",
 			tasks: []taskSpec{
 				{
-					img:      "nginx",
+					img:      defaultNginxImage,
 					req:      slot,
 					min:      1,
 					rep:      rep,
@@ -130,7 +130,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			name: "pa-job",
 			tasks: []taskSpec{
 				{
-					img:      "nginx",
+					img:      defaultNginxImage,
 					req:      slot,
 					min:      rep,
 					rep:      rep,
@@ -177,7 +177,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			name: "pa-job",
 			tasks: []taskSpec{
 				{
-					img:      "nginx",
+					img:      defaultNginxImage,
 					req:      slot,
 					min:      2,
 					rep:      2,
@@ -222,7 +222,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			name: "tt-job",
 			tasks: []taskSpec{
 				{
-					img: "nginx",
+					img: defaultNginxImage,
 					req: oneCPU,
 					min: 1,
 					rep: 1,
@@ -270,7 +270,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			name: "tt-job",
 			tasks: []taskSpec{
 				{
-					img:         "nginx",
+					img:         defaultNginxImage,
 					req:         oneCPU,
 					min:         1,
 					rep:         1,
@@ -283,7 +283,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			name: "tt-job-no-toleration",
 			tasks: []taskSpec{
 				{
-					img: "nginx",
+					img: defaultNginxImage,
 					req: oneCPU,
 					min: 1,
 					rep: 1,

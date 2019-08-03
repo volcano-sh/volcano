@@ -44,11 +44,11 @@ const (
 
 	//PodGroupVersionV1Alpha2 represents PodGroupVersion of V1Alpha2
 	PodGroupVersionV1Alpha2 string = "v1alpha2"
-	// PodPending means the pod group has been accepted by the system, but scheduler can not allocate
+	// PodGroupPending means the pod group has been accepted by the system, but scheduler can not allocate
 	// enough resources to it.
 	PodGroupPending PodGroupPhase = "Pending"
 
-	// PodRunning means `spec.minMember` pods of PodGroups has been in running phase.
+	// PodGroupRunning means `spec.minMember` pods of PodGroups has been in running phase.
 	PodGroupRunning PodGroupPhase = "Running"
 
 	// PodGroupUnknown means part of `spec.minMember` pods are running but the other part can not
