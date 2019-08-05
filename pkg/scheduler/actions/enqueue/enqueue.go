@@ -29,14 +29,14 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-// IdleResMultiplierKey
-const IdleResMultiplierKey = "idleres-mul"
+// idleResMultiplierKey
+const idleResMultiplierKey = "overcommitment-mem-factor"
 
-// IdleResMultiplierValue
-const IdleResMultiplierValue = 1.2
+// idleResMultiplierValue
+const idleResMultiplierValue = 1.2
 
-// EnqueueActionName
-const EnqueueActionName = "enqueue"
+// enqueueActionName
+const enqueueActionName = "enqueue"
 
 type enqueueAction struct {
 	ssn *framework.Session
@@ -47,7 +47,7 @@ func New() *enqueueAction {
 }
 
 func (enqueue *enqueueAction) Name() string {
-	return EnqueueActionName
+	return enqueueActionName
 }
 
 func (enqueue *enqueueAction) Initialize() {}
@@ -55,7 +55,7 @@ func (enqueue *enqueueAction) Initialize() {}
 func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 	glog.V(3).Infof("Enter Enqueue ...")
 	defer glog.V(3).Infof("Leaving Enqueue ...")
-	multiplier := IdleResMultiplierValue
+	multiplier := idleResMultiplierValue
 	if ssn.SchedStConf.Version == framework.SchedulerConfigVersion2 {
 		ret, err := getEnqueueActMultiplier(ssn.SchedStConf.V2Conf.Actions)
 		if err == nil {
@@ -152,26 +152,26 @@ func getEnqueueActMultiplier(actOpt []conf.ActionOption) (float64, error) {
 	}
 
 	if actionOpt.Arguments != nil {
-		val, ok := actionOpt.Arguments[IdleResMultiplierKey]
+		val, ok := actionOpt.Arguments[idleResMultiplierKey]
 		if ok {
 			value, err := strconv.ParseFloat(val, 64)
 			if err != nil {
-				glog.Warningf("Could not parse argument: %s for key %s, with err %v", val, IdleResMultiplierKey, err)
+				glog.Warningf("Could not parse argument: %s for key %s, with err %v", val, idleResMultiplierKey, err)
 				return 0, err
 			}
 			return value, nil
 		}
 	}
-	return 0, fmt.Errorf("The required key %s is not there in config", IdleResMultiplierKey)
+	return 0, fmt.Errorf("The required key %s is not there in config", idleResMultiplierKey)
 
 }
 
 func getEnqueueActionOption(actOpts []conf.ActionOption) (conf.ActionOption, error) {
 	var actionOpt conf.ActionOption
 	for _, actionOpt = range actOpts {
-		if strings.Compare(EnqueueActionName, strings.TrimSpace(actionOpt.Name)) == 0 {
+		if strings.Compare(enqueueActionName, strings.TrimSpace(actionOpt.Name)) == 0 {
 			return actionOpt, nil
 		}
 	}
-	return actionOpt, fmt.Errorf("The required action %s is not there in config", EnqueueActionName)
+	return actionOpt, fmt.Errorf("The required action %s is not there in config", enqueueActionName)
 }

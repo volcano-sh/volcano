@@ -30,7 +30,7 @@ version: v2
 actions:
 - name: enqueue
   arguments:
-    idleres-mul: 1.2
+    overcommitment-mem-factor: 1.2
 - name: allocate
 - name: backfill
 tiers:
