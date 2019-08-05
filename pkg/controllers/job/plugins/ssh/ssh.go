@@ -33,7 +33,6 @@ import (
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	vkhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
-	"volcano.sh/volcano/pkg/controllers/job/plugins/env"
 	vkinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
@@ -41,7 +40,7 @@ type sshPlugin struct {
 	Clientset vkinterface.PluginClientset
 
 	// flag parse args
-	noRoot bool
+
 	// user allows users to specify any user name existing in the docker image
 	user string
 }
@@ -96,10 +95,6 @@ func (sp *sshPlugin) OnJobDelete(job *vkv1.Job) error {
 
 func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *vkv1.Job) {
 	sshPath := SSHAbsolutePath
-	if sp.noRoot {
-		sshPath = path.Join(env.ConfigMapMountPath, SSHRelativePath)
-	}
-
 	if sp.user != defaultUser {
 		sshPath = path.Join("/home", sp.user, SSHRelativePath)
 	}
@@ -132,11 +127,6 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *vkv1.Job) {
 			},
 		},
 		DefaultMode: &mode,
-	}
-
-	if sshPath != SSHAbsolutePath {
-		var noRootMode int32 = 0755
-		sshVolume.ConfigMap.DefaultMode = &noRootMode
 	}
 
 	pod.Spec.Volumes = append(pod.Spec.Volumes, sshVolume)
@@ -192,8 +182,7 @@ func (sp *sshPlugin) cmName(job *vkv1.Job) string {
 
 func (sp *sshPlugin) addFlags(args []string) {
 	flagSet := pflag.NewFlagSet(sp.Name(), pflag.ContinueOnError)
-	flagSet.BoolVar(&sp.noRoot, "no-root", sp.noRoot, "The ssh user, --no-root is common user")
-	flagSet.StringVar(&sp.user, "user", sp.user, "The ssh user, --no-root is common user")
+	flagSet.StringVar(&sp.user, "user", sp.user, "The ssh user, for example --user=volcano specifies running as `volcano`.")
 
 	if err := flagSet.Parse(args); err != nil {
 		glog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)

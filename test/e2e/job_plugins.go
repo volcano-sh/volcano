@@ -130,7 +130,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 			namespace: namespace,
 			name:      jobName,
 			plugins: map[string][]string{
-				"ssh": {"--no-root"},
+				"ssh": {"--user=volcano"},
 			},
 			tasks: []taskSpec{
 				{
@@ -188,7 +188,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 			namespace: namespace,
 			name:      jobName,
 			plugins: map[string][]string{
-				"ssh": {"--no-root"},
+				"ssh": {"--user=volcano"},
 				"env": {},
 				"svc": {},
 			},
