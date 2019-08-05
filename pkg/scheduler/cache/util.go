@@ -17,46 +17,8 @@ limitations under the License.
 package cache
 
 import (
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"volcano.sh/volcano/pkg/apis/utils"
-	"volcano.sh/volcano/pkg/scheduler/api"
+	"k8s.io/api/core/v1"
 )
-
-const (
-	shadowPodGroupKey = "volcano/shadow-pod-group"
-)
-
-func shadowPodGroup(pg *api.PodGroup) bool {
-	if pg == nil {
-		return true
-	}
-
-	_, found := pg.Annotations[shadowPodGroupKey]
-
-	return found
-}
-
-func createShadowPodGroup(pod *v1.Pod) *api.PodGroup {
-	jobID := api.JobID(utils.GetController(pod))
-	if len(jobID) == 0 {
-		jobID = api.JobID(pod.UID)
-	}
-
-	return &api.PodGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: pod.Namespace,
-			Name:      string(jobID),
-			Annotations: map[string]string{
-				shadowPodGroupKey: string(jobID),
-			},
-		},
-		Spec: api.PodGroupSpec{
-			MinMember: 1,
-		},
-	}
-}
 
 // responsibleForPod returns true if the pod has asked to be scheduled by the given scheduler.
 func responsibleForPod(pod *v1.Pod, schedulerName string) bool {

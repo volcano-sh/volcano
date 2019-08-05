@@ -45,7 +45,6 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/volumebinder"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	kbver "volcano.sh/volcano/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
@@ -507,24 +506,9 @@ func (sc *SchedulerCache) Evict(taskInfo *kbapi.TaskInfo, reason string) error {
 		}
 	}()
 
-	if !shadowPodGroup(job.PodGroup) {
-		if job.PodGroup.Version == api.PodGroupVersionV1Alpha1 {
-			pg, err := api.ConvertPodGroupInfoToV1alpha1(job.PodGroup)
-			if err != nil {
-				glog.Errorf("Error While converting api.PodGroup to v1alpha.PodGroup with error: %v", err)
-				return err
-			}
-			sc.Recorder.Eventf(pg, v1.EventTypeNormal, "Evict", reason)
-		} else if job.PodGroup.Version == api.PodGroupVersionV1Alpha2 {
-			pg, err := api.ConvertPodGroupInfoToV1alpha2(job.PodGroup)
-			if err != nil {
-				glog.Errorf("Error While converting api.PodGroup to v2alpha.PodGroup with error: %v", err)
-				return err
-			}
-			sc.Recorder.Eventf(pg, v1.EventTypeNormal, "Evict", reason)
-		} else {
-			return fmt.Errorf("Invalid PodGroup Version: %s", job.PodGroup.Version)
-		}
+	if err := sc.convertPodGroupInfo(job); err != nil {
+		glog.Errorf("Error While converting api.PodGroup %v", err)
+		return err
 	}
 
 	return nil
@@ -778,32 +762,15 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
 		baseErrorMessage = kbapi.AllNodeUnavailableMsg
 	}
 
-	if !shadowPodGroup(job.PodGroup) {
-		pgUnschedulable := job.PodGroup != nil &&
-			(job.PodGroup.Status.Phase == api.PodGroupUnknown ||
-				job.PodGroup.Status.Phase == api.PodGroupPending)
-		pdbUnschedulabe := job.PDB != nil && len(job.TaskStatusIndex[api.Pending]) != 0
+	pgUnschedulable := job.PodGroup != nil &&
+		(job.PodGroup.Status.Phase == api.PodGroupUnknown ||
+			job.PodGroup.Status.Phase == api.PodGroupPending)
+	pdbUnschedulabe := job.PDB != nil && len(job.TaskStatusIndex[api.Pending]) != 0
 
-		// If pending or unschedulable, record unschedulable event.
-		if pgUnschedulable || pdbUnschedulabe {
-			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v", len(job.TaskStatusIndex[api.Pending]), len(job.Tasks), job.FitError())
-			if job.PodGroup.Version == api.PodGroupVersionV1Alpha1 {
-				podGroup, err := api.ConvertPodGroupInfoToV1alpha1(job.PodGroup)
-				if err != nil {
-					glog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
-				}
-				sc.Recorder.Eventf(podGroup, v1.EventTypeWarning,
-					string(v1alpha1.PodGroupUnschedulableType), msg)
-			}
-
-			if job.PodGroup.Version == api.PodGroupVersionV1Alpha2 {
-				podGroup, err := api.ConvertPodGroupInfoToV1alpha2(job.PodGroup)
-				if err != nil {
-					glog.Errorf("Error while converting PodGroup to v1alpha2.PodGroup with error: %v", err)
-				}
-				sc.Recorder.Eventf(podGroup, v1.EventTypeWarning,
-					string(v1alpha1.PodGroupUnschedulableType), msg)
-			}
+	// If pending or unschedulable, record unschedulable event.
+	if pgUnschedulable || pdbUnschedulabe {
+		if err := sc.convertPodGroupInfo(job); err != nil {
+			glog.Errorf("Error While converting api.PodGroup %v", err)
 		}
 	}
 
@@ -825,7 +792,7 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
 
 // UpdateJobStatus update the status of job and its tasks.
 func (sc *SchedulerCache) UpdateJobStatus(job *kbapi.JobInfo, updatePG bool) (*kbapi.JobInfo, error) {
-	if updatePG && !shadowPodGroup(job.PodGroup) {
+	if updatePG {
 		pg, err := sc.StatusUpdater.UpdatePodGroup(job.PodGroup)
 		if err != nil {
 			return nil, err
@@ -836,4 +803,22 @@ func (sc *SchedulerCache) UpdateJobStatus(job *kbapi.JobInfo, updatePG bool) (*k
 	sc.RecordJobStatusEvent(job)
 
 	return job, nil
+}
+
+func (sc *SchedulerCache) convertPodGroupInfo(job *kbapi.JobInfo) error {
+	if job.PodGroup.Version == api.PodGroupVersionV1Alpha1 {
+		_, err := api.ConvertPodGroupInfoToV1alpha1(job.PodGroup)
+		if err != nil {
+			return fmt.Errorf("to v1alpha.PodGroup with error: %v", err)
+		}
+	} else if job.PodGroup.Version == api.PodGroupVersionV1Alpha2 {
+		_, err := api.ConvertPodGroupInfoToV1alpha2(job.PodGroup)
+		if err != nil {
+			return fmt.Errorf("to v2alpha.PodGroup with error: %v", err)
+		}
+	} else {
+		return fmt.Errorf("invalid PodGroup Version: %s", job.PodGroup.Version)
+	}
+
+	return nil
 }
