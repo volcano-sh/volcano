@@ -21,12 +21,12 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"flag"
 	"fmt"
-
-	"golang.org/x/crypto/ssh"
+	"path"
 
 	"github.com/golang/glog"
+	"github.com/spf13/pflag"
+	"golang.org/x/crypto/ssh"
 
 	"k8s.io/api/core/v1"
 
@@ -38,20 +38,21 @@ import (
 )
 
 type sshPlugin struct {
-	// Arguments given for the plugin
-	pluginArguments []string
-
 	Clientset vkinterface.PluginClientset
 
 	// flag parse args
 	noRoot bool
+	// user allows users to specify any user name existing in the docker image
+	user string
 }
+
+const defaultUser = "root"
 
 // New creates ssh plugin
 func New(client vkinterface.PluginClientset, arguments []string) vkinterface.PluginInterface {
-	sshPlugin := sshPlugin{pluginArguments: arguments, Clientset: client}
+	sshPlugin := sshPlugin{Clientset: client, user: defaultUser}
 
-	sshPlugin.addFlags()
+	sshPlugin.addFlags(arguments)
 
 	return &sshPlugin
 }
@@ -96,7 +97,11 @@ func (sp *sshPlugin) OnJobDelete(job *vkv1.Job) error {
 func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *vkv1.Job) {
 	sshPath := SSHAbsolutePath
 	if sp.noRoot {
-		sshPath = env.ConfigMapMountPath + "/" + SSHRelativePath
+		sshPath = path.Join(env.ConfigMapMountPath, SSHRelativePath)
+	}
+
+	if sp.user != defaultUser {
+		sshPath = path.Join("/home", sp.user, SSHRelativePath)
 	}
 
 	cmName := sp.cmName(job)
@@ -185,11 +190,12 @@ func (sp *sshPlugin) cmName(job *vkv1.Job) string {
 	return fmt.Sprintf("%s-%s", job.Name, sp.Name())
 }
 
-func (sp *sshPlugin) addFlags() {
-	flagSet := flag.NewFlagSet(sp.Name(), flag.ContinueOnError)
+func (sp *sshPlugin) addFlags(args []string) {
+	flagSet := pflag.NewFlagSet(sp.Name(), pflag.ContinueOnError)
 	flagSet.BoolVar(&sp.noRoot, "no-root", sp.noRoot, "The ssh user, --no-root is common user")
+	flagSet.StringVar(&sp.user, "user", sp.user, "The ssh user, --no-root is common user")
 
-	if err := flagSet.Parse(sp.pluginArguments); err != nil {
+	if err := flagSet.Parse(args); err != nil {
 		glog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
 	}
 	return
