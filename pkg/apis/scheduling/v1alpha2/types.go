@@ -116,7 +116,8 @@ type PodGroupSpec struct {
 	MinMember int32 `json:"minMember,omitempty" protobuf:"bytes,1,opt,name=minMember"`
 
 	// Queue defines the queue to allocate resource for PodGroup; if queue does not exist,
-	// the PodGroup will not be scheduled.
+	// the PodGroup will not be scheduled. Defaults to `default` Queue with the lowest weight.
+	// +optional
 	Queue string `json:"queue,omitempty" protobuf:"bytes,2,opt,name=queue"`
 
 	// If specified, indicates the PodGroup's priority. "system-node-critical" and
