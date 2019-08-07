@@ -171,7 +171,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return 1
 	})
 
-	ssn.AddReclaimableFn(pp.Name(), func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
+	ssn.AddReclaimableFn(pp.Name(), func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) ([]*api.TaskInfo, []*api.TaskInfo) {
 		var victims []*api.TaskInfo
 		allocations := map[api.QueueID]*api.Resource{}
 
@@ -195,7 +195,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
-		return victims
+		return victims, nil
 	})
 
 	ssn.AddOverusedFn(pp.Name(), func(obj interface{}) bool {

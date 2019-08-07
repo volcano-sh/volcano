@@ -131,7 +131,7 @@ type ValidateExFn func(interface{}) *ValidateResult
 type PredicateFn func(*TaskInfo, *NodeInfo) error
 
 // EvictableFn is the func declaration used to evict tasks.
-type EvictableFn func(*TaskInfo, []*TaskInfo) []*TaskInfo
+type EvictableFn func(*TaskInfo, []*TaskInfo) ([]*TaskInfo, []*TaskInfo)
 
 // NodeOrderFn is the func declaration used to get priority score for a node for a particular task.
 type NodeOrderFn func(*TaskInfo, *NodeInfo) (float64, error)

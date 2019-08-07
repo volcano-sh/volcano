@@ -42,7 +42,7 @@ func (pp *conformancePlugin) Name() string {
 }
 
 func (pp *conformancePlugin) OnSessionOpen(ssn *framework.Session) {
-	evictableFn := func(evictor *api.TaskInfo, evictees []*api.TaskInfo) []*api.TaskInfo {
+	evictableFn := func(evictor *api.TaskInfo, evictees []*api.TaskInfo) ([]*api.TaskInfo, []*api.TaskInfo) {
 		var victims []*api.TaskInfo
 
 		for _, evictee := range evictees {
@@ -58,7 +58,7 @@ func (pp *conformancePlugin) OnSessionOpen(ssn *framework.Session) {
 			victims = append(victims, evictee)
 		}
 
-		return victims
+		return victims, nil
 	}
 
 	ssn.AddPreemptableFn(pp.Name(), evictableFn)

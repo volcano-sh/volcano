@@ -96,12 +96,27 @@ func (ssn *Session) AddJobEnqueueableFn(name string, fn api.ValidateFn) {
 	ssn.jobEnqueueableFns[name] = fn
 }
 
+// Exclude part of tasks from a task list
+func excludeList(tasks []*api.TaskInfo, excludedTasks []*api.TaskInfo) []*api.TaskInfo {
+	for _, x := range excludedTasks {
+		for i, t := range tasks {
+			if x.UID == t.UID {
+				tasks = append(tasks[:i], tasks[i+1:]...)
+			}
+		}
+	}
+
+	return tasks
+}
+
 // Reclaimable invoke reclaimable function of the plugins
 func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
+	var blacklist []*api.TaskInfo
 	var init bool
 
 	for _, tier := range ssn.Tiers {
+		init = false
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledReclaimable) {
 				continue
@@ -110,9 +125,10 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 			if !found {
 				continue
 			}
-			candidates := rf(reclaimer, reclaimees)
+			candidates, unreclaimableList := rf(reclaimer, reclaimees)
 			if !init {
 				victims = candidates
+				blacklist = unreclaimableList
 				init = true
 			} else {
 				var intersection []*api.TaskInfo
@@ -127,11 +143,22 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 
 				// Update victims to intersection
 				victims = intersection
+
+				// Update the blacklist
+				blacklist = append(blacklist, unreclaimableList...)
 			}
 		}
 		// Plugins in this tier made decision if victims is not nil
 		if victims != nil {
+			if blacklist != nil {
+				victims = excludeList(victims, blacklist)
+			}
 			return victims
+		}
+		// Plugin in this Tier can not make decision, it detects a set of unreclaimable
+		// tasks for later plugin's reference.
+		if blacklist != nil {
+			reclaimees = excludeList(reclaimees, blacklist)
 		}
 	}
 
@@ -141,6 +168,7 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 // Preemptable invoke preemptable function of the plugins
 func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
+	var blacklist []*api.TaskInfo
 	var init bool
 
 	for _, tier := range ssn.Tiers {
@@ -154,12 +182,10 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 			if !found {
 				continue
 			}
-			candidates := pf(preemptor, preemptees)
-			if candidates == nil {
-				break
-			}
+			candidates, unpreemptableList := pf(preemptor, preemptees)
 			if !init {
 				victims = candidates
+				blacklist = unpreemptableList
 				init = true
 			} else {
 				var intersection []*api.TaskInfo
@@ -174,11 +200,22 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 
 				// Update victims to intersection
 				victims = intersection
+
+				// Update the blacklist
+				blacklist = append(blacklist, unpreemptableList...)
 			}
 		}
-		// Plugins in this tier made decision if victims is not nil
+		// Plugins in this Tier made decision if victims is not nil
 		if victims != nil {
+			if blacklist != nil {
+				victims = excludeList(victims, blacklist)
+			}
 			return victims
+		}
+		// Plugin in this Tier can not make decision, it detects a set of unpreemptable
+		// tasks for later plugin's reference.
+		if blacklist != nil {
+			preemptees = excludeList(preemptees, blacklist)
 		}
 	}
 

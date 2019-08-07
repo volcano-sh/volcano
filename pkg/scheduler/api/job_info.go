@@ -415,3 +415,9 @@ func (ji *JobInfo) Pipelined() bool {
 
 	return occupied >= ji.MinAvailable
 }
+
+func (ji *JobInfo) Preemptable() bool {
+	occupied := ji.ReadyTaskNum()
+
+	return ji.MinAvailable <= (occupied - 1)
+}

@@ -85,7 +85,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		drf.jobAttrs[job.UID] = attr
 	}
 
-	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
+	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) ([]*api.TaskInfo, []*api.TaskInfo) {
 		var victims []*api.TaskInfo
 
 		latt := drf.jobAttrs[preemptor.Job]
@@ -95,14 +95,6 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		allocations := map[api.JobID]*api.Resource{}
 
 		for _, preemptee := range preemptees {
-
-			// Min part tasks in job should not be preempted
-			preempteeJob := ssn.Jobs[preemptee.Job]
-			readyNum := preempteeJob.ReadyTaskNum()
-			preemptable := preempteeJob.MinAvailable <= readyNum-1 || preempteeJob.MinAvailable == 1
-			if !preemptable {
-				continue
-			}
 
 			if _, found := allocations[preemptee.Job]; !found {
 				ratt := drf.jobAttrs[preemptee.Job]
@@ -118,7 +110,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		glog.V(3).Infof("Victims from DRF plugins are %+v", victims)
 
-		return victims
+		return victims, nil
 	}
 
 	ssn.AddPreemptableFn(drf.Name(), preemptableFn)

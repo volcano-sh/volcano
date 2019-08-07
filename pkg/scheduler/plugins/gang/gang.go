@@ -72,23 +72,28 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddJobValidFn(gp.Name(), validJobFn)
 
-	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
+	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) ([]*api.TaskInfo, []*api.TaskInfo) {
 		var victims []*api.TaskInfo
+		var unpreemptableList []*api.TaskInfo
 
-		// If job is already ready, no need to preempt others in Gang plgin
+		// If job has been pipelined, no need to preempt others in Gang plgin
 		preemptorJob := ssn.Jobs[preemptor.Job]
-		readyNum := preemptorJob.ReadyTaskNum()
-		ready := readyNum >= preemptorJob.MinAvailable || preemptorJob.MinAvailable == 1
-		if ready {
-			return nil
+		if preemptorJob.Pipelined() {
+			// Detect a set of unpreemptable tasks.
+			for _, preemptee := range preemptees {
+				job := ssn.Jobs[preemptee.Job]
+				if !job.Preemptable() {
+					unpreemptableList = append(unpreemptableList, preemptee)
+				}
+			}
+			glog.V(4).Infof("victims and unpreemptableList from Gang plugins are %+v, %+v", victims, unpreemptableList)
+			return victims, unpreemptableList
 		}
 
 		for _, preemptee := range preemptees {
 			job := ssn.Jobs[preemptee.Job]
-			occupid := job.ReadyTaskNum()
-			preemptable := job.MinAvailable <= occupid-1
-
-			if !preemptable {
+			if !job.Preemptable() {
+				unpreemptableList = append(unpreemptableList, preemptee)
 				glog.V(3).Infof("Can not preempt task <%v/%v> because of gang-scheduling",
 					preemptee.Namespace, preemptee.Name)
 			} else {
@@ -96,9 +101,9 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
-		glog.V(3).Infof("Victims from Gang plugins are %+v", victims)
+		glog.V(3).Infof("Victims and unpreemptableList from Gang plugins are %+v,%+v", victims, unpreemptableList)
 
-		return victims
+		return victims, unpreemptableList
 	}
 
 	// TODO(k82cn): Support preempt/reclaim batch job.
