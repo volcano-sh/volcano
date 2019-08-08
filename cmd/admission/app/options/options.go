@@ -14,11 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package configure
+package options
 
 import (
 	"flag"
 	"fmt"
+
 	"github.com/golang/glog"
 
 	"k8s.io/api/admissionregistration/v1beta1"
@@ -27,6 +28,10 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	admissionregistrationv1beta1client "k8s.io/client-go/kubernetes/typed/admissionregistration/v1beta1"
+)
+
+const (
+	defaultSchedulerName = "volcano"
 )
 
 // Config admission-controller server config.
@@ -44,6 +49,7 @@ type Config struct {
 	PrintVersion              bool
 	AdmissionServiceName      string
 	AdmissionServiceNamespace string
+	SchedulerName             string
 }
 
 // NewConfig create new config
@@ -73,6 +79,7 @@ func (c *Config) AddFlags() {
 	flag.BoolVar(&c.PrintVersion, "version", false, "Show version and quit")
 	flag.StringVar(&c.AdmissionServiceNamespace, "webhook-namespace", "default", "The namespace of this webhook")
 	flag.StringVar(&c.AdmissionServiceName, "webhook-service-name", "admission-service", "The name of this admission service")
+	flag.StringVar(&c.SchedulerName, "scheduler-name", defaultSchedulerName, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
 }
 
 const (
@@ -84,6 +91,10 @@ const (
 	ValidateHookName = "validatejob.volcano.sh"
 	// MutateHookName Default name for webhooks in MutatingWebhookConfiguration
 	MutateHookName = "mutatejob.volcano.sh"
+	// ValidatePodConfigName ValidatingWebhookPodConfiguration name format
+	ValidatePodConfigName = "%s-validate-pod"
+	// ValidatePodHookName Default name for webhooks in ValidatingWebhookPodConfiguration
+	ValidatePodHookName = "validatepod.volcano.sh"
 )
 
 // CheckPortOrDie check valid port range
@@ -174,6 +185,42 @@ func RegisterWebhooks(c *Config, clienset *kubernetes.Clientset, cabundle []byte
 
 	if err := registerMutateWebhook(clienset.AdmissionregistrationV1beta1().MutatingWebhookConfigurations(),
 		[]v1beta1.MutatingWebhookConfiguration{JobMutateHooks}); err != nil {
+		return err
+	}
+
+	// Prepare validate pods
+	path = "/pods"
+	PodValidateHooks := v1beta1.ValidatingWebhookConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: useGeneratedNameIfRequired("",
+				fmt.Sprintf(ValidatePodConfigName, c.AdmissionServiceName)),
+		},
+		Webhooks: []v1beta1.Webhook{{
+			Name: useGeneratedNameIfRequired("", ValidatePodHookName),
+			Rules: []v1beta1.RuleWithOperations{
+				{
+					Operations: []v1beta1.OperationType{v1beta1.Create},
+					Rule: v1beta1.Rule{
+						APIGroups:   []string{""},
+						APIVersions: []string{"v1"},
+						Resources:   []string{"pods"},
+					},
+				},
+			},
+			ClientConfig: v1beta1.WebhookClientConfig{
+				Service: &v1beta1.ServiceReference{
+					Name:      c.AdmissionServiceName,
+					Namespace: c.AdmissionServiceNamespace,
+					Path:      &path,
+				},
+				CABundle: cabundle,
+			},
+			FailurePolicy: &ignorePolicy,
+		}},
+	}
+
+	if err := registerValidateWebhook(clienset.AdmissionregistrationV1beta1().ValidatingWebhookConfigurations(),
+		[]v1beta1.ValidatingWebhookConfiguration{PodValidateHooks}); err != nil {
 		return err
 	}
 

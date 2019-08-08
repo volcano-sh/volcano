@@ -21,7 +21,6 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
 
 	"k8s.io/api/admission/v1beta1"
 	"k8s.io/api/core/v1"
@@ -33,11 +32,12 @@ import (
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
 )
 
-// KubeBatchClientSet is volcano clientset
-var KubeBatchClientSet versioned.Interface
+// VolcanoClientSet is volcano clientset
+var VolcanoClientSet versioned.Interface
 
 // AdmitJobs is to admit jobs and return response
 func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
@@ -151,9 +151,9 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 	}
 
 	// Check whether Queue already present or not
-	if _, err := KubeBatchClientSet.SchedulingV1alpha2().Queues().Get(job.Spec.Queue, metav1.GetOptions{}); err != nil {
+	if _, err := VolcanoClientSet.SchedulingV1alpha2().Queues().Get(job.Spec.Queue, metav1.GetOptions{}); err != nil {
 		// TODO: deprecate v1alpha1
-		if _, err := KubeBatchClientSet.SchedulingV1alpha1().Queues().Get(job.Spec.Queue, metav1.GetOptions{}); err != nil {
+		if _, err := VolcanoClientSet.SchedulingV1alpha1().Queues().Get(job.Spec.Queue, metav1.GetOptions{}); err != nil {
 			msg = msg + fmt.Sprintf(" unable to find job queue: %v", err)
 		}
 	}

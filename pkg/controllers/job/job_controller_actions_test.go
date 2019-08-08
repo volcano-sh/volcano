@@ -18,9 +18,11 @@ package job
 
 import (
 	"fmt"
+	"testing"
+
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"testing"
+
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/controllers/apis"

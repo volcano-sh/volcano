@@ -17,7 +17,6 @@ package main
 
 import (
 	"flag"
-	"github.com/golang/glog"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -25,20 +24,22 @@ import (
 	"strconv"
 	"syscall"
 
+	"github.com/golang/glog"
+
 	"k8s.io/client-go/tools/clientcmd"
 
 	"volcano.sh/volcano/cmd/admission/app"
-	appConf "volcano.sh/volcano/cmd/admission/app/configure"
+	appConf "volcano.sh/volcano/cmd/admission/app/options"
 	admissioncontroller "volcano.sh/volcano/pkg/admission"
 	"volcano.sh/volcano/pkg/version"
 )
 
 func serveJobs(w http.ResponseWriter, r *http.Request) {
-	app.Serve(w, r, admissioncontroller.AdmitJobs)
+	admissioncontroller.Serve(w, r, admissioncontroller.AdmitJobs)
 }
 
 func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
-	app.Serve(w, r, admissioncontroller.MutateJobs)
+	admissioncontroller.Serve(w, r, admissioncontroller.MutateJobs)
 }
 
 func main() {
@@ -63,7 +64,9 @@ func main() {
 		glog.Fatalf("Unable to build k8s config: %v\n", err)
 	}
 
-	admissioncontroller.KubeBatchClientSet = app.GetKubeBatchClient(restConfig)
+	admissioncontroller.VolcanoClientSet = app.GetVolcanoClient(restConfig)
+
+	servePods(config)
 
 	caBundle, err := ioutil.ReadFile(config.CaCertFile)
 	if err != nil {
@@ -100,4 +103,14 @@ func main() {
 	case <-webhookServeError:
 		return
 	}
+}
+
+func servePods(config *appConf.Config) {
+	admController := &admissioncontroller.Controller{
+		VcClients:     admissioncontroller.VolcanoClientSet,
+		SchedulerName: config.SchedulerName,
+	}
+	http.HandleFunc(admissioncontroller.AdmitPodPath, admController.ServerPods)
+
+	return
 }

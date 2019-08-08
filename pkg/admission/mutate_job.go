@@ -19,8 +19,9 @@ package admission
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/golang/glog"
 	"strconv"
+
+	"github.com/golang/glog"
 
 	"k8s.io/api/admission/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
