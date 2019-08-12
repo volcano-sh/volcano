@@ -30,10 +30,10 @@ import (
 )
 
 func TestValidateExecution(t *testing.T) {
-
-	namespace := "test"
 	var invTTL int32 = -1
 	var policyExitCode int32 = -1
+	namespace := "test"
+	priviledged := true
 
 	testCases := []struct {
 		Name           string
@@ -943,6 +943,44 @@ func TestValidateExecution(t *testing.T) {
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
 			ret:            "unable to find job queue",
 			ExpectErr:      true,
+		},
+		{
+			Name: "job with priviledged container",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "valid-Job",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+											SecurityContext: &v1.SecurityContext{
+												Privileged: &priviledged,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
 		},
 	}
 
