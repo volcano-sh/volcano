@@ -21,10 +21,8 @@ jobs:
         - make TAG=latest generate-yaml
         - make verify-generated-yaml
     - stage: UT Tests
-      before_script:
-        - go get github.com/mattn/goveralls
       script:
-        - make unit-test && $HOME/gopath/bin/goveralls -coverprofile=coverage.txt -service=travis-ci
+        - make unit-test
     - stage: E2E Tests
       before_script:
         # Download kubectl

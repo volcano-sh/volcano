@@ -68,7 +68,7 @@ generate-code:
 	./hack/update-gencode.sh
 
 unit-test:
-	go list ./... | grep -v e2e | xargs go test -v -cover -covermode atomic -coverprofile coverage.txt -race
+	go list ./... | grep -v e2e | xargs go test -v -race
 
 e2e-test-kind:
 	./hack/run-e2e-kind.sh
