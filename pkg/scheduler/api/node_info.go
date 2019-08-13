@@ -94,10 +94,14 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 // Clone used to clone nodeInfo Object
 func (ni *NodeInfo) Clone() *NodeInfo {
 	res := NewNodeInfo(ni.Node)
-
+	otherRes := EmptyResource()
 	for _, p := range ni.Tasks {
 		res.AddTask(p)
+		if p.pod.Spec.SchedulerName != 'volcano' {
+			otherRes.Add(p.Resreq)
+		}
 	}
+	res.Allocatable = res.Allocatable.Sub(otherRes)
 	res.Others = ni.Others
 	return res
 }
