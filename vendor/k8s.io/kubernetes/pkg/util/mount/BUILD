@@ -9,7 +9,9 @@ go_library(
         "exec_mount_unsupported.go",
         "fake.go",
         "mount.go",
-        "mount_helper.go",
+        "mount_helper_common.go",
+        "mount_helper_unix.go",
+        "mount_helper_windows.go",
         "mount_linux.go",
         "mount_unsupported.go",
         "mount_windows.go",
@@ -58,6 +60,7 @@ go_library(
         ],
         "@io_bazel_rules_go//go/platform:windows": [
             "//pkg/util/file:go_default_library",
+            "//pkg/util/keymutex:go_default_library",
             "//pkg/util/nsenter:go_default_library",
         ],
         "//conditions:default": [],
