@@ -111,7 +111,7 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		job := createJob(context, jobSpec)
-		err = waitJobStateInqueue(context, job)
+		err = waitJobStatePending(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitJobUnschedulable(context, job)

@@ -44,7 +44,6 @@ import (
 	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned"
-	"volcano.sh/volcano/pkg/controllers/job/state"
 	schedulerapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -554,8 +553,6 @@ func waitJobPhases(ctx *context, job *batchv1alpha1.Job, phases []batchv1alpha1.
 					newJob.Status.Terminating == 0
 			case batchv1alpha1.Running:
 				flag = newJob.Status.Running >= newJob.Spec.MinAvailable
-			case batchv1alpha1.Inqueue:
-				flag = newJob.Status.Pending > 0
 			default:
 				return fmt.Errorf("unknown phase %s", phase)
 			}
@@ -586,58 +583,6 @@ func waitJobStates(ctx *context, job *batchv1alpha1.Job, phases []batchv1alpha1.
 		}
 	}
 	return nil
-}
-
-func waitJobPhase(ctx *context, job *batchv1alpha1.Job, phase batchv1alpha1.JobPhase) error {
-	var additionalError error
-	total := int32(0)
-	for _, task := range job.Spec.Tasks {
-		total += task.Replicas
-	}
-	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
-		newJob, err := ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
-
-		if newJob.Status.State.Phase != phase {
-			additionalError = fmt.Errorf(
-				"expected job '%s' to be in status %s, actual get %s",
-				job.Name, phase, newJob.Status.State.Phase)
-			return false, nil
-		}
-		var flag = false
-		switch phase {
-		case batchv1alpha1.Pending:
-			flag = (newJob.Status.Pending+newJob.Status.Succeeded+
-				newJob.Status.Failed+newJob.Status.Running) == 0 ||
-				(total-newJob.Status.Terminating >= newJob.Status.MinAvailable)
-		case batchv1alpha1.Terminating, batchv1alpha1.Aborting, batchv1alpha1.Restarting:
-			flag = newJob.Status.Terminating > 0
-		case batchv1alpha1.Terminated, batchv1alpha1.Aborted:
-			flag = newJob.Status.Pending == 0 &&
-				newJob.Status.Running == 0 &&
-				newJob.Status.Terminating == 0
-		case batchv1alpha1.Completed:
-			flag = newJob.Status.Succeeded == state.TotalTasks(newJob)
-		case batchv1alpha1.Running:
-			flag = newJob.Status.Running >= newJob.Spec.MinAvailable
-		case batchv1alpha1.Inqueue:
-			flag = newJob.Status.Pending > 0
-		default:
-			return false, fmt.Errorf("unknown phase %s", phase)
-		}
-
-		if !flag {
-			additionalError = fmt.Errorf(
-				"expected job '%s' to be in status %s, actual detail status %s",
-				job.Name, phase, getJobStatusDetail(job))
-		}
-
-		return flag, nil
-	})
-	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
-		return fmt.Errorf("[Wait time out]: %s", additionalError)
-	}
-	return err
 }
 
 func getJobStatusDetail(job *batchv1alpha1.Job) string {
@@ -673,10 +618,6 @@ func waitJobStateReady(ctx *context, job *batchv1alpha1.Job) error {
 
 func waitJobStatePending(ctx *context, job *batchv1alpha1.Job) error {
 	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Pending, oneMinute)
-}
-
-func waitJobStateInqueue(ctx *context, job *batchv1alpha1.Job) error {
-	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Inqueue, oneMinute)
 }
 
 func waitJobStateAborted(ctx *context, job *batchv1alpha1.Job) error {

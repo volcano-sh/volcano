@@ -23,8 +23,6 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeletapi "k8s.io/kubernetes/pkg/kubelet/apis"
-	"k8s.io/kubernetes/pkg/scheduler/api"
-
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
@@ -61,54 +59,6 @@ var _ = Describe("Job Life Cycle", func() {
 
 	})
 
-	It("Delete job that is Inqueue state", func() {
-		By("init test context")
-		context := initTestContext()
-		defer cleanupTestContext(context)
-
-		By("create job")
-		job := createJob(context, &jobSpec{
-			name: "inqueue-delete-job",
-			tasks: []taskSpec{
-				{
-					name: "success",
-					img:  defaultNginxImage,
-					min:  2,
-					rep:  2,
-					affinity: &v1.Affinity{
-						NodeAffinity: &v1.NodeAffinity{
-							RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
-								NodeSelectorTerms: []v1.NodeSelectorTerm{
-									{
-										MatchFields: []v1.NodeSelectorRequirement{
-											{
-												Key:      api.NodeFieldSelectorKeyNodeName,
-												Operator: v1.NodeSelectorOpIn,
-												Values:   []string{"test"},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		})
-
-		// job phase: pending -> inqueue
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue})
-		Expect(err).NotTo(HaveOccurred())
-
-		By("delete job")
-		err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
-		Expect(err).NotTo(HaveOccurred())
-
-		err = waitJobCleanedUp(context, job)
-		Expect(err).NotTo(HaveOccurred())
-
-	})
-
 	It("Delete job that is Running state", func() {
 		By("init test context")
 		context := initTestContext()
@@ -127,8 +77,8 @@ var _ = Describe("Job Life Cycle", func() {
 			},
 		})
 
-		// job phase: pending -> Inqueue -> running
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running})
+		// job phase: pending -> running
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
@@ -161,7 +111,7 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running -> Completed
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Completed})
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Completed})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
@@ -200,7 +150,7 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running -> Aborted
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Aborted})
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
@@ -239,7 +189,7 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running -> Terminated
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Terminated})
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
@@ -279,7 +229,7 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running -> completed
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Completed})
+		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Completed})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
