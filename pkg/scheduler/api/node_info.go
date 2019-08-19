@@ -215,7 +215,7 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 	task, found := ni.Tasks[key]
 	if !found {
 		if ti.Pod.Status.Phase == v1.PodSucceeded {
-			glog.V(5).Infof("Task <%v/%v> status[Succeeded] not on Node <%v> cancel RemoveTask", ti.Namespace, ti.Name, ni.Name)
+			glog.V(5).Infof("Task <%v/%v> status [Succeeded] not on Node <%v> cancel RemoveTask", ti.Namespace, ti.Name, ni.Name)
 			return nil
 		}
 		return fmt.Errorf("failed to find task <%v/%v> on host <%v>",
