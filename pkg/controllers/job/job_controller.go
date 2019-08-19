@@ -328,8 +328,9 @@ func (cc *Controller) processNextReq(count uint32) bool {
 			queue.AddRateLimited(req)
 			return true
 		}
-
-		glog.V(2).Infof("Dropping job<%s/%s> out of the queue: %v", jobInfo.Job.Namespace, jobInfo.Job.Name, err)
+		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, vkbatchv1.ExecuteAction, fmt.Sprintf(
+			"Job failed on action %s for retry limit reached", action))
+		glog.Warningf("Dropping job<%s/%s> out of the queue: %v because max retries has reached", jobInfo.Job.Namespace, jobInfo.Job.Name, err)
 	}
 
 	// If no error, forget it.
