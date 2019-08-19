@@ -194,11 +194,11 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup,
 		}
 		updated, err := su.kbclient.SchedulingV1alpha1().PodGroups(podGroup.Namespace).Update(podGroup)
 		if err != nil {
-			glog.Errorf("Error while updating podgroup with error: %v", err)
+			glog.Errorf("Error while updating PodGroup with error: %v", err)
 		}
 		podGroupInfo, err := api.ConvertV1alpha1ToPodGroupInfo(updated)
 		if err != nil {
-			glog.Errorf("Error While converting v1alpha.Podgroup to api.PodGroup with error: %v", err)
+			glog.Errorf("Error while converting v1alpha.PodGroup to api.PodGroup with error: %v", err)
 			return nil, err
 		}
 		return podGroupInfo, nil
@@ -211,16 +211,17 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup,
 		}
 		updated, err := su.kbclient.SchedulingV1alpha2().PodGroups(podGroup.Namespace).Update(podGroup)
 		if err != nil {
-			glog.Errorf("Error while updating podgroup with error: %v", err)
+			glog.Errorf("Error while updating PodGroup with error: %v", err)
 		}
 		podGroupInfo, err := api.ConvertV1alpha2ToPodGroupInfo(updated)
 		if err != nil {
-			glog.Errorf("Error While converting v2alpha.Podgroup to api.PodGroup with error: %v", err)
+			glog.Errorf("Error While converting v2alpha.PodGroup to api.PodGroup with error: %v", err)
 			return nil, err
 		}
 		return podGroupInfo, nil
 	}
-	return nil, fmt.Errorf("Provide Proper version of PodGroup, Invalid PodGroup version: %s", pg.Version)
+
+	return nil, fmt.Errorf("invalid PodGroup version: %s", pg.Version)
 }
 
 type defaultVolumeBinder struct {
