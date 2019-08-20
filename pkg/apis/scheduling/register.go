@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2019 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,10 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package scheduling
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -28,21 +27,11 @@ var (
 	AddToScheme        = SchemeBuilder.AddToScheme
 )
 
-const (
-	// GroupName is the group name used in this package.
-	GroupName = "scheduling.incubator.k8s.io"
-
-	// GroupVersion is the version of scheduling group
-	GroupVersion = "v1alpha1"
-)
+// GroupName is the group name used in this package.
+const GroupName = "scheduling.sigs.dev"
 
 // SchemeGroupVersion is the group version used to register these objects.
-var SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: GroupVersion}
-
-// Resource takes an unqualified resource and returns a Group-qualified GroupResource.
-func Resource(resource string) schema.GroupResource {
-	return SchemeGroupVersion.WithResource(resource).GroupResource()
-}
+var SchemeGroupVersion = schema.GroupVersion{Group: GroupName, Version: runtime.APIVersionInternal}
 
 // addKnownTypes adds the set of types defined in this package to the supplied scheme.
 func addKnownTypes(scheme *runtime.Scheme) error {
@@ -53,6 +42,5 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&QueueList{},
 	)
 
-	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil
 }

@@ -19,6 +19,7 @@ package backfill
 import (
 	"github.com/golang/glog"
 
+	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
@@ -43,7 +44,7 @@ func (alloc *backfillAction) Execute(ssn *framework.Session) {
 
 	// TODO (k82cn): When backfill, it's also need to balance between Queues.
 	for _, job := range ssn.Jobs {
-		if job.PodGroup.Status.Phase == api.PodGroupPending {
+		if job.PodGroup.Status.Phase == scheduling.PodGroupPending {
 			continue
 		}
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {

@@ -15,4 +15,6 @@ limitations under the License.
 */
 
 // +k8s:deepcopy-gen=package
+// +k8s:conversion-gen=volcano.sh/volcano/pkg/apis/scheduling
+
 package v1alpha2
