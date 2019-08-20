@@ -97,7 +97,7 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 	otherRes := EmptyResource()
 	for _, p := range ni.Tasks {
 		res.AddTask(p)
-		if p.pod.Spec.SchedulerName != 'volcano' {
+		if p.pod.Spec.SchedulerName != "volcano" {
 			otherRes.Add(p.Resreq)
 		}
 	}
