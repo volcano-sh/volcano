@@ -65,6 +65,7 @@ const (
 	defaultMPIImage              = "volcanosh/example-mpi:0.0.1"
 	schedulerName                = "volcano"
 	executeAction                = "ExecuteAction"
+	defaultTFImage               = "volcanosh/dist-mnist-tf-example:0.0.1"
 
 	defaultNamespace = "test"
 	defaultQueue1    = "q1"
@@ -577,9 +578,9 @@ func waitJobPhases(ctx *context, job *batchv1alpha1.Job, phases []batchv1alpha1.
 	return nil
 }
 
-func waitJobStates(ctx *context, job *batchv1alpha1.Job, phases []batchv1alpha1.JobPhase) error {
+func waitJobStates(ctx *context, job *batchv1alpha1.Job, phases []batchv1alpha1.JobPhase, waitTime time.Duration) error {
 	for _, phase := range phases {
-		err := waitJobPhaseExpect(ctx, job, phase)
+		err := waitJobPhaseExpect(ctx, job, phase, waitTime)
 		if err != nil {
 			return err
 		}
@@ -667,22 +668,22 @@ func waitTasksPending(ctx *context, job *batchv1alpha1.Job, taskNum int) error {
 }
 
 func waitJobStateReady(ctx *context, job *batchv1alpha1.Job) error {
-	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Running)
+	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Running, oneMinute)
 }
 
 func waitJobStatePending(ctx *context, job *batchv1alpha1.Job) error {
-	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Pending)
+	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Pending, oneMinute)
 }
 
 func waitJobStateInqueue(ctx *context, job *batchv1alpha1.Job) error {
-	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Inqueue)
+	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Inqueue, oneMinute)
 }
 
 func waitJobStateAborted(ctx *context, job *batchv1alpha1.Job) error {
-	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Aborted)
+	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Aborted, oneMinute)
 }
 
-func waitJobPhaseExpect(ctx *context, job *batchv1alpha1.Job, state batchv1alpha1.JobPhase) error {
+func waitJobPhaseExpect(ctx *context, job *batchv1alpha1.Job, state batchv1alpha1.JobPhase, waitTime time.Duration) error {
 	var additionalError error
 	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
 		job, err := ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Get(job.Name, metav1.GetOptions{})
