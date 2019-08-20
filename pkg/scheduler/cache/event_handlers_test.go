@@ -25,6 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
 
+	"volcano.sh/volcano/pkg/apis/scheduling"
 	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	kbv2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -166,9 +167,11 @@ func TestSchedulerCache_AddPodGroupV1alpha1(t *testing.T) {
 				},
 			},
 			Expected: &api.PodGroup{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "j1",
-					Namespace: namespace,
+				PodGroup: scheduling.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "j1",
+						Namespace: namespace,
+					},
 				},
 			},
 		},
@@ -251,9 +254,11 @@ func TestSchedulerCache_AddPodGroupAlpha2(t *testing.T) {
 				},
 			},
 			Expected: &api.PodGroup{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "j1",
-					Namespace: namespace,
+				PodGroup: scheduling.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "j1",
+						Namespace: namespace,
+					},
 				},
 			},
 		},
@@ -343,9 +348,11 @@ func TestSchedulerCache_UpdatePodGroupV1alpha1(t *testing.T) {
 				},
 			},
 			Expected: &api.PodGroup{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "j1-updated",
-					Namespace: namespace,
+				PodGroup: scheduling.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "j1-updated",
+						Namespace: namespace,
+					},
 				},
 			},
 		},
@@ -467,9 +474,11 @@ func TestSchedulerCache_UpdatePodGroupAlpha2(t *testing.T) {
 				},
 			},
 			Expected: &api.PodGroup{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "j1-updated",
-					Namespace: namespace,
+				PodGroup: scheduling.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "j1-updated",
+						Namespace: namespace,
+					},
 				},
 			},
 		},
@@ -598,9 +607,11 @@ func TestSchedulerCache_DeletePodGroupAlpha1(t *testing.T) {
 				},
 			},
 			Expected: &api.PodGroup{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "j1",
-					Namespace: namespace,
+				PodGroup: scheduling.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "j1",
+						Namespace: namespace,
+					},
 				},
 			},
 		},
@@ -616,8 +627,10 @@ func TestSchedulerCache_DeletePodGroupAlpha1(t *testing.T) {
 				},
 			},
 			Expected: &api.PodGroup{
-				Status: api.PodGroupStatus{
-					Running: int32(1),
+				PodGroup: scheduling.PodGroup{
+					Status: scheduling.PodGroupStatus{
+						Running: int32(1),
+					},
 				},
 			},
 		},
@@ -690,9 +703,11 @@ func TestSchedulerCache_DeletePodGroupAlpha2(t *testing.T) {
 				},
 			},
 			Expected: &api.PodGroup{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "j1",
-					Namespace: namespace,
+				PodGroup: scheduling.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "j1",
+						Namespace: namespace,
+					},
 				},
 			},
 		},
@@ -708,8 +723,10 @@ func TestSchedulerCache_DeletePodGroupAlpha2(t *testing.T) {
 				},
 			},
 			Expected: &api.PodGroup{
-				Status: api.PodGroupStatus{
-					Running: int32(1),
+				PodGroup: scheduling.PodGroup{
+					Status: scheduling.PodGroupStatus{
+						Running: int32(1),
+					},
 				},
 			},
 		},
@@ -750,7 +767,7 @@ func TestSchedulerCache_AddQueueV1alpha1(t *testing.T) {
 	tests := []struct {
 		Name     string
 		Queue    interface{}
-		Expected *api.Queue
+		Expected *scheduling.Queue
 	}{
 		{
 			Name: "Success Case",
@@ -760,7 +777,7 @@ func TestSchedulerCache_AddQueueV1alpha1(t *testing.T) {
 					Namespace: namespace,
 				},
 			},
-			Expected: &api.Queue{
+			Expected: &scheduling.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1",
 					Namespace: namespace,
@@ -783,8 +800,7 @@ func TestSchedulerCache_AddQueueV1alpha1(t *testing.T) {
 		cache := &SchedulerCache{
 			Jobs:   make(map[api.JobID]*api.JobInfo),
 			Nodes:  make(map[string]*api.NodeInfo),
-			Queues: make(map[api.QueueID]*api.QueueInfo),
-		}
+			Queues: make(map[api.QueueID]*api.QueueInfo)}
 
 		cache.AddQueueV1alpha1(test.Queue)
 
@@ -802,7 +818,7 @@ func TestSchedulerCache_AddQueueV1alpha2(t *testing.T) {
 	tests := []struct {
 		Name     string
 		Queue    interface{}
-		Expected *api.Queue
+		Expected *scheduling.Queue
 	}{
 		{
 			Name: "Success Case",
@@ -812,7 +828,7 @@ func TestSchedulerCache_AddQueueV1alpha2(t *testing.T) {
 					Namespace: namespace,
 				},
 			},
-			Expected: &api.Queue{
+			Expected: &scheduling.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1",
 					Namespace: namespace,
@@ -855,7 +871,7 @@ func TestSchedulerCache_UpdateQueueV1alpha1(t *testing.T) {
 		Name     string
 		OldQueue interface{}
 		NewQueue interface{}
-		Expected *api.Queue
+		Expected *scheduling.Queue
 	}{
 		{
 			Name: "Success Case",
@@ -871,7 +887,7 @@ func TestSchedulerCache_UpdateQueueV1alpha1(t *testing.T) {
 					Namespace: namespace,
 				},
 			},
-			Expected: &api.Queue{
+			Expected: &scheduling.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1-updated",
 					Namespace: namespace,
@@ -936,7 +952,7 @@ func TestSchedulerCache_UpdateQueueV1alpha2(t *testing.T) {
 		Name     string
 		OldQueue interface{}
 		NewQueue interface{}
-		Expected *api.Queue
+		Expected *scheduling.Queue
 	}{
 		{
 			Name: "Success Case",
@@ -952,7 +968,7 @@ func TestSchedulerCache_UpdateQueueV1alpha2(t *testing.T) {
 					Namespace: namespace,
 				},
 			},
-			Expected: &api.Queue{
+			Expected: &scheduling.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1-updated",
 					Namespace: namespace,
@@ -1016,7 +1032,7 @@ func TestSchedulerCache_DeleteQueueV1alpha1(t *testing.T) {
 	tests := []struct {
 		Name     string
 		Queue    interface{}
-		Expected *api.Queue
+		Expected *scheduling.Queue
 	}{
 		{
 			Name: "Success Case",
@@ -1026,7 +1042,7 @@ func TestSchedulerCache_DeleteQueueV1alpha1(t *testing.T) {
 					Namespace: namespace,
 				},
 			},
-			Expected: &api.Queue{
+			Expected: &scheduling.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1",
 					Namespace: namespace,
@@ -1073,7 +1089,7 @@ func TestSchedulerCache_DeleteQueueV1alpha2(t *testing.T) {
 	tests := []struct {
 		Name     string
 		Queue    interface{}
-		Expected *api.Queue
+		Expected *scheduling.Queue
 	}{
 		{
 			Name: "Success Case",
@@ -1083,7 +1099,7 @@ func TestSchedulerCache_DeleteQueueV1alpha2(t *testing.T) {
 					Namespace: namespace,
 				},
 			},
-			Expected: &api.Queue{
+			Expected: &scheduling.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1",
 					Namespace: namespace,
