@@ -17,18 +17,18 @@ limitations under the License.
 package cache
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/golang/glog"
 
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1beta1"
 	"k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 
+	"volcano.sh/volcano/pkg/apis/scheduling"
 	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	kbv2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/apis/utils"
@@ -85,9 +85,6 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 }
 
 func (sc *SchedulerCache) syncTask(oldTask *kbapi.TaskInfo) error {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
 	newPod, err := sc.kubeclient.CoreV1().Pods(oldTask.Namespace).Get(oldTask.Name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -101,6 +98,8 @@ func (sc *SchedulerCache) syncTask(oldTask *kbapi.TaskInfo) error {
 
 	newTask := kbapi.NewTaskInfo(newPod)
 
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
 	return sc.updateTask(oldTask, newTask)
 }
 
@@ -357,12 +356,6 @@ func getJobID(pg *kbapi.PodGroup) kbapi.JobID {
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) setPodGroup(ss *kbapi.PodGroup) error {
 	job := getJobID(ss)
-
-	// Even if name and namespace are nil, we will get "/" as jobID, checking whether len(jobID)==1, because checking it for 0 will return false always.
-	if len(job) == 1 {
-		return fmt.Errorf("the identity of PodGroup is empty")
-	}
-
 	if _, found := sc.Jobs[job]; !found {
 		sc.Jobs[job] = kbapi.NewJobInfo(job)
 	}
@@ -378,17 +371,15 @@ func (sc *SchedulerCache) setPodGroup(ss *kbapi.PodGroup) error {
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) updatePodGroup(oldQueue, newQueue *kbapi.PodGroup) error {
+func (sc *SchedulerCache) updatePodGroup(newQueue *kbapi.PodGroup) error {
 	return sc.setPodGroup(newQueue)
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) deletePodGroup(ss *kbapi.PodGroup) error {
-	jobID := getJobID(ss)
-
-	job, found := sc.Jobs[jobID]
+func (sc *SchedulerCache) deletePodGroup(id kbapi.JobID) error {
+	job, found := sc.Jobs[id]
 	if !found {
-		return fmt.Errorf("can not found job %v:%v/%v", jobID, ss.Namespace, ss.Name)
+		return fmt.Errorf("can not found job %v", id)
 	}
 
 	// Unset SchedulingSpec
@@ -407,28 +398,23 @@ func (sc *SchedulerCache) AddPodGroupV1alpha1(obj interface{}) {
 		return
 	}
 
-	marshalled, err := json.Marshal(*ss)
-	if err != nil {
-		glog.Errorf("Failed to Marshal podgroup %s with error: %v", ss.Name, err)
+	podgroup := scheduling.PodGroup{}
+	if err := scheduling.Scheme.Convert(ss, &podgroup, nil); err != nil {
+		glog.Errorf("Failed to convert podgroup from %T to %T", ss, podgroup)
+		return
 	}
 
-	pg := &kbapi.PodGroup{}
-	err = json.Unmarshal(marshalled, pg)
-	if err != nil {
-		glog.Errorf("Failed to Unmarshal Data into api.PodGroup type with error: %v", err)
-	}
-	pg.Version = kbapi.PodGroupVersionV1Alpha1
+	pg := &kbapi.PodGroup{podgroup, kbapi.PodGroupVersionV1Alpha1}
+	glog.V(4).Infof("Add PodGroup(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Add PodGroup(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
-
-	err = sc.setPodGroup(pg)
-	if err != nil {
+	if err := sc.setPodGroup(pg); err != nil {
 		glog.Errorf("Failed to add PodGroup %s into cache: %v", ss.Name, err)
 		return
 	}
+
 	return
 }
 
@@ -440,25 +426,19 @@ func (sc *SchedulerCache) AddPodGroupV1alpha2(obj interface{}) {
 		return
 	}
 
-	marshalled, err := json.Marshal(*ss)
-	if err != nil {
-		glog.Errorf("Failed to Marshal podgroup %s with error: %v", ss.Name, err)
+	podgroup := scheduling.PodGroup{}
+	if err := scheduling.Scheme.Convert(ss, &podgroup, nil); err != nil {
+		glog.Errorf("Failed to convert podgroup from %T to %T", ss, podgroup)
+		return
 	}
 
-	pg := &kbapi.PodGroup{}
-	err = json.Unmarshal(marshalled, pg)
-	if err != nil {
-		glog.Errorf("Failed to Unmarshal Data into api.PodGroup type with error: %v", err)
-	}
-	pg.Version = kbapi.PodGroupVersionV1Alpha2
+	pg := &kbapi.PodGroup{podgroup, kbapi.PodGroupVersionV1Alpha2}
+	glog.V(4).Infof("Add PodGroup(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	glog.V(4).Infof("Add PodGroup(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
-
-	err = sc.setPodGroup(pg)
-	if err != nil {
+	if err := sc.setPodGroup(pg); err != nil {
 		glog.Errorf("Failed to add PodGroup %s into cache: %v", ss.Name, err)
 		return
 	}
@@ -478,37 +458,23 @@ func (sc *SchedulerCache) UpdatePodGroupV1alpha1(oldObj, newObj interface{}) {
 		return
 	}
 
-	oldMarshalled, err := json.Marshal(*oldSS)
-	if err != nil {
-		glog.Errorf("Failed to Marshal podgroup %s with error: %v", oldSS.Name, err)
+	if oldSS.ResourceVersion == newSS.ResourceVersion {
+		return
 	}
 
-	oldPg := &kbapi.PodGroup{}
-	oldPg.Version = kbapi.PodGroupVersionV1Alpha1
-
-	err = json.Unmarshal(oldMarshalled, oldPg)
-	if err != nil {
-		glog.Errorf("Failed to Unmarshal Data into api.PodGroup type with error: %v", err)
+	podgroup := scheduling.PodGroup{}
+	if err := scheduling.Scheme.Convert(newSS, &podgroup, nil); err != nil {
+		glog.Errorf("Failed to convert podgroup from %T to %T", newSS, podgroup)
+		return
 	}
 
-	newMarshalled, err := json.Marshal(*newSS)
-	if err != nil {
-		glog.Errorf("Failed to Marshal podgroup %s with error: %v", newSS.Name, err)
-	}
+	pg := &kbapi.PodGroup{podgroup, kbapi.PodGroupVersionV1Alpha1}
 
-	newPg := &kbapi.PodGroup{}
-	newPg.Version = kbapi.PodGroupVersionV1Alpha1
-
-	err = json.Unmarshal(newMarshalled, newPg)
-	if err != nil {
-		glog.Errorf("Failed to Unmarshal Data into api.PodGroup type with error: %v", err)
-	}
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err = sc.updatePodGroup(oldPg, newPg)
-	if err != nil {
-		glog.Errorf("Failed to update SchedulingSpec %s into cache: %v", oldSS.Name, err)
+	if err := sc.updatePodGroup(pg); err != nil {
+		glog.Errorf("Failed to update SchedulingSpec %s into cache: %v", pg.Name, err)
 		return
 	}
 	return
@@ -527,41 +493,25 @@ func (sc *SchedulerCache) UpdatePodGroupV1alpha2(oldObj, newObj interface{}) {
 		return
 	}
 
-	oldMarshalled, err := json.Marshal(*oldSS)
-	if err != nil {
-		glog.Errorf("Failed to Marshal podgroup %s with error: %v", oldSS.Name, err)
+	if oldSS.ResourceVersion == newSS.ResourceVersion {
+		return
 	}
 
-	oldPg := &kbapi.PodGroup{}
-	oldPg.Version = kbapi.PodGroupVersionV1Alpha2
-
-	err = json.Unmarshal(oldMarshalled, oldPg)
-	if err != nil {
-		glog.Errorf("Failed to Unmarshal Data into api.PodGroup type with error: %v", err)
+	podgroup := scheduling.PodGroup{}
+	if err := scheduling.Scheme.Convert(newSS, &podgroup, nil); err != nil {
+		glog.Errorf("Failed to convert podgroup from %T to %T", newSS, podgroup)
+		return
 	}
 
-	newMarshalled, err := json.Marshal(*newSS)
-	if err != nil {
-		glog.Errorf("Failed to Marshal podgroup %s with error: %v", newSS.Name, err)
-	}
-
-	newPg := &kbapi.PodGroup{}
-	newPg.Version = kbapi.PodGroupVersionV1Alpha2
-
-	err = json.Unmarshal(newMarshalled, newPg)
-	if err != nil {
-		glog.Errorf("Failed to Unmarshal Data into api.PodGroup type with error: %v", err)
-	}
+	pg := &kbapi.PodGroup{podgroup, kbapi.PodGroupVersionV1Alpha2}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err = sc.updatePodGroup(oldPg, newPg)
-	if err != nil {
-		glog.Errorf("Failed to update SchedulingSpec %s into cache: %v", oldSS.Name, err)
+	if err := sc.updatePodGroup(pg); err != nil {
+		glog.Errorf("Failed to update podgroup %s into cache: %v", pg.Name, err)
 		return
 	}
-	return
 }
 
 // DeletePodGroupV1alpha1 delete podgroup from scheduler cache
@@ -574,32 +524,21 @@ func (sc *SchedulerCache) DeletePodGroupV1alpha1(obj interface{}) {
 		var ok bool
 		ss, ok = t.Obj.(*kbv1.PodGroup)
 		if !ok {
-			glog.Errorf("Cannot convert to *kbv1.SchedulingSpec: %v", t.Obj)
+			glog.Errorf("Cannot convert to podgroup: %v", t.Obj)
 			return
 		}
 	default:
-		glog.Errorf("Cannot convert to *kbv1.SchedulingSpec: %v", t)
+		glog.Errorf("Cannot convert to podgroup: %v", t)
 		return
 	}
 
-	marshalled, err := json.Marshal(*ss)
-	if err != nil {
-		glog.Errorf("Failed to Marshal podgroup %s with error: %v", ss.Name, err)
-	}
-
-	pg := &kbapi.PodGroup{}
-	pg.Version = kbapi.PodGroupVersionV1Alpha1
-	err = json.Unmarshal(marshalled, pg)
-	if err != nil {
-		glog.Errorf("Failed to Unmarshal Data into api.PodGroup type with error: %v", err)
-	}
+	jobId := kbapi.JobID(fmt.Sprintf("%s/%s", ss.Namespace, ss.Name))
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err = sc.deletePodGroup(pg)
-	if err != nil {
-		glog.Errorf("Failed to delete SchedulingSpec %s from cache: %v", ss.Name, err)
+	if err := sc.deletePodGroup(jobId); err != nil {
+		glog.Errorf("Failed to delete podgroup %s from cache: %v", ss.Name, err)
 		return
 	}
 	return
@@ -615,34 +554,24 @@ func (sc *SchedulerCache) DeletePodGroupV1alpha2(obj interface{}) {
 		var ok bool
 		ss, ok = t.Obj.(*kbv2.PodGroup)
 		if !ok {
-			glog.Errorf("Cannot convert to *kbv2.SchedulingSpec: %v", t.Obj)
+			glog.Errorf("Cannot convert to *kbv2.PodGroup: %v", t.Obj)
 			return
 		}
 	default:
-		glog.Errorf("Cannot convert to *kbv2.SchedulingSpec: %v", t)
+		glog.Errorf("Cannot convert to *kbv2.PodGroup: %v", t)
 		return
 	}
 
-	marshalled, err := json.Marshal(*ss)
-	if err != nil {
-		glog.Errorf("Failed to Marshal podgroup %s with error: %v", ss.Name, err)
-	}
-
-	pg := &kbapi.PodGroup{}
-	pg.Version = kbapi.PodGroupVersionV1Alpha2
-	err = json.Unmarshal(marshalled, pg)
-	if err != nil {
-		glog.Errorf("Failed to Unmarshal Data into api.PodGroup type with error: %v", err)
-	}
+	jobId := kbapi.JobID(fmt.Sprintf("%s/%s", ss.Namespace, ss.Name))
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err = sc.deletePodGroup(pg)
-	if err != nil {
-		glog.Errorf("Failed to delete SchedulingSpec %s from cache: %v", ss.Name, err)
+	if err := sc.deletePodGroup(jobId); err != nil {
+		glog.Errorf("Failed to delete podgroup %s from cache: %v", ss.Name, err)
 		return
 	}
+
 	return
 }
 
@@ -767,27 +696,18 @@ func (sc *SchedulerCache) AddQueueV1alpha1(obj interface{}) {
 		return
 	}
 
-	marshalled, err := json.Marshal(*ss)
-	if err != nil {
-		glog.Errorf("Failed to Marshal Queue %s with error: %v", ss.Name, err)
+	queue := &scheduling.Queue{}
+	if err := scheduling.Scheme.Convert(ss, queue, nil); err != nil {
+		glog.Errorf("Failed to convert queue from %T to %T", ss, queue)
+		return
 	}
-
-	queue := &kbapi.Queue{}
-	err = json.Unmarshal(marshalled, queue)
-	if err != nil {
-		glog.Errorf("Failed to Unmarshal Data into api.Queue type with error: %v", err)
-	}
-	queue.Version = kbapi.QueueVersionV1Alpha1
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
 	glog.V(4).Infof("Add Queue(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
-	err = sc.addQueue(queue)
-	if err != nil {
-		glog.Errorf("Failed to add Queue %s into cache: %v", ss.Name, err)
-		return
-	}
+	sc.addQueue(queue)
+
 	return
 }
 
@@ -799,27 +719,18 @@ func (sc *SchedulerCache) AddQueueV1alpha2(obj interface{}) {
 		return
 	}
 
-	marshalled, err := json.Marshal(*ss)
-	if err != nil {
-		glog.Errorf("Failed to Marshal Queue %s with error: %v", ss.Name, err)
+	queue := &scheduling.Queue{}
+	if err := scheduling.Scheme.Convert(ss, queue, nil); err != nil {
+		glog.Errorf("Failed to convert queue from %T to %T", ss, queue)
+		return
 	}
 
-	queue := &kbapi.Queue{}
-	err = json.Unmarshal(marshalled, queue)
-	if err != nil {
-		glog.Errorf("Failed to Unmarshal Data into api.Queue type with error: %v", err)
-	}
-	queue.Version = kbapi.QueueVersionV1Alpha2
+	glog.V(4).Infof("Add Queue(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
+	sc.addQueue(queue)
 
-	glog.V(4).Infof("Add Queue(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
-	err = sc.addQueue(queue)
-	if err != nil {
-		glog.Errorf("Failed to add Queue %s into cache: %v", ss.Name, err)
-		return
-	}
 	return
 }
 
@@ -836,38 +747,20 @@ func (sc *SchedulerCache) UpdateQueueV1alpha1(oldObj, newObj interface{}) {
 		return
 	}
 
-	oldMarshalled, err := json.Marshal(*oldSS)
-	if err != nil {
-		glog.Errorf("Failed to Marshal Queue %s with error: %v", oldSS.Name, err)
+	if oldSS.ResourceVersion == newSS.ResourceVersion {
+		return
 	}
 
-	oldQueue := &kbapi.Queue{}
-	err = json.Unmarshal(oldMarshalled, oldQueue)
-	if err != nil {
-		glog.Errorf("Failed to Unmarshal Data into api.Queue type with error: %v", err)
+	newQueue := &scheduling.Queue{}
+	if err := scheduling.Scheme.Convert(newSS, newQueue, nil); err != nil {
+		glog.Errorf("Failed to convert queue from %T to %T", newSS, newQueue)
+		return
 	}
-	oldQueue.Version = kbapi.QueueVersionV1Alpha1
-
-	newMarshalled, err := json.Marshal(*newSS)
-	if err != nil {
-		glog.Errorf("Failed to Marshal Queue %s with error: %v", newSS.Name, err)
-	}
-
-	newQueue := &kbapi.Queue{}
-	err = json.Unmarshal(newMarshalled, newQueue)
-	if err != nil {
-		glog.Errorf("Failed to Unmarshal Data into api.Queue type with error: %v", err)
-	}
-	newQueue.Version = kbapi.QueueVersionV1Alpha1
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
+	sc.updateQueue(newQueue)
 
-	err = sc.updateQueue(oldQueue, newQueue)
-	if err != nil {
-		glog.Errorf("Failed to update Queue %s into cache: %v", oldSS.Name, err)
-		return
-	}
 	return
 }
 
@@ -884,38 +777,20 @@ func (sc *SchedulerCache) UpdateQueueV1alpha2(oldObj, newObj interface{}) {
 		return
 	}
 
-	oldMarshalled, err := json.Marshal(*oldSS)
-	if err != nil {
-		glog.Errorf("Failed to Marshal Queue %s with error: %v", oldSS.Name, err)
+	if oldSS.ResourceVersion == newSS.ResourceVersion {
+		return
 	}
 
-	oldQueue := &kbapi.Queue{}
-	err = json.Unmarshal(oldMarshalled, oldQueue)
-	if err != nil {
-		glog.Errorf("Failed to Unmarshal Data into api.Queue type with error: %v", err)
+	newQueue := &scheduling.Queue{}
+	if err := scheduling.Scheme.Convert(newSS, newQueue, nil); err != nil {
+		glog.Errorf("Failed to convert queue from %T to %T", newSS, newQueue)
+		return
 	}
-	oldQueue.Version = kbapi.QueueVersionV1Alpha2
-
-	newMarshalled, err := json.Marshal(*newSS)
-	if err != nil {
-		glog.Errorf("Failed to Marshal Queue %s with error: %v", newSS.Name, err)
-	}
-
-	newQueue := &kbapi.Queue{}
-	err = json.Unmarshal(newMarshalled, newQueue)
-	if err != nil {
-		glog.Errorf("Failed to Unmarshal Data into api.Queue type with error: %v", err)
-	}
-	newQueue.Version = kbapi.QueueVersionV1Alpha2
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
+	sc.updateQueue(newQueue)
 
-	err = sc.updateQueue(oldQueue, newQueue)
-	if err != nil {
-		glog.Errorf("Failed to update Queue %s into cache: %v", oldSS.Name, err)
-		return
-	}
 	return
 }
 
@@ -937,26 +812,10 @@ func (sc *SchedulerCache) DeleteQueueV1alpha1(obj interface{}) {
 		return
 	}
 
-	marshalled, err := json.Marshal(*ss)
-	if err != nil {
-		glog.Errorf("Failed to Marshal Queue %s with error: %v", ss.Name, err)
-	}
-
-	queue := &kbapi.Queue{}
-	err = json.Unmarshal(marshalled, queue)
-	if err != nil {
-		glog.Errorf("Failed to Unmarshal Data into api.Queue type with error: %v", err)
-	}
-	queue.Version = kbapi.QueueVersionV1Alpha1
-
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
+	sc.deleteQueue(kbapi.QueueID(ss.Name))
 
-	err = sc.deleteQueue(queue)
-	if err != nil {
-		glog.Errorf("Failed to delete Queue %s from cache: %v", ss.Name, err)
-		return
-	}
 	return
 }
 
@@ -978,48 +837,24 @@ func (sc *SchedulerCache) DeleteQueueV1alpha2(obj interface{}) {
 		return
 	}
 
-	marshalled, err := json.Marshal(*ss)
-	if err != nil {
-		glog.Errorf("Failed to Marshal Queue %s with error: %v", ss.Name, err)
-	}
-
-	queue := &kbapi.Queue{}
-	err = json.Unmarshal(marshalled, queue)
-	if err != nil {
-		glog.Errorf("Failed to Unmarshal Data into api.Queue type with error: %v", err)
-	}
-	queue.Version = kbapi.QueueVersionV1Alpha2
-
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
+	sc.deleteQueue(kbapi.QueueID(ss.Name))
 
-	err = sc.deleteQueue(queue)
-	if err != nil {
-		glog.Errorf("Failed to delete Queue %s from cache: %v", ss.Name, err)
-		return
-	}
 	return
 }
 
-func (sc *SchedulerCache) addQueue(queue *kbapi.Queue) error {
+func (sc *SchedulerCache) addQueue(queue *scheduling.Queue) {
 	qi := kbapi.NewQueueInfo(queue)
 	sc.Queues[qi.UID] = qi
-
-	return nil
 }
 
-func (sc *SchedulerCache) updateQueue(oldObj, newObj *kbapi.Queue) error {
-	sc.deleteQueue(oldObj)
-	sc.addQueue(newObj)
-
-	return nil
+func (sc *SchedulerCache) updateQueue(queue *scheduling.Queue) {
+	sc.addQueue(queue)
 }
 
-func (sc *SchedulerCache) deleteQueue(queue *kbapi.Queue) error {
-	qi := kbapi.NewQueueInfo(queue)
-	delete(sc.Queues, qi.UID)
-
-	return nil
+func (sc *SchedulerCache) deleteQueue(id kbapi.QueueID) {
+	delete(sc.Queues, id)
 }
 
 //DeletePriorityClass delete priorityclass from the scheduler cache

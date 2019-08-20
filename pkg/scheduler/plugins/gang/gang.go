@@ -18,13 +18,14 @@ package gang
 
 import (
 	"fmt"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 
 	"github.com/golang/glog"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"volcano.sh/volcano/pkg/apis/scheduling"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -147,8 +148,8 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			metrics.UpdateUnscheduleTaskCount(job.Name, int(unreadyTaskCount))
 			metrics.RegisterJobRetries(job.Name)
 
-			jc := &api.PodGroupCondition{
-				Type:               api.PodGroupUnschedulableType,
+			jc := &scheduling.PodGroupCondition{
+				Type:               scheduling.PodGroupUnschedulableType,
 				Status:             v1.ConditionTrue,
 				LastTransitionTime: metav1.Now(),
 				TransitionID:       string(ssn.UID),

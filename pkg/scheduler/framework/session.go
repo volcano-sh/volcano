@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
 
+	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -38,7 +39,7 @@ type Session struct {
 
 	cache cache.Cache
 
-	podGroupStatus map[api.JobID]*api.PodGroupStatus
+	podGroupStatus map[api.JobID]*scheduling.PodGroupStatus
 
 	Jobs    map[api.JobID]*api.JobInfo
 	Nodes   map[string]*api.NodeInfo
@@ -70,7 +71,7 @@ func openSession(cache cache.Cache) *Session {
 		UID:   uuid.NewUUID(),
 		cache: cache,
 
-		podGroupStatus: map[api.JobID]*api.PodGroupStatus{},
+		podGroupStatus: map[api.JobID]*scheduling.PodGroupStatus{},
 
 		Jobs:   map[api.JobID]*api.JobInfo{},
 		Nodes:  map[string]*api.NodeInfo{},
@@ -105,8 +106,8 @@ func openSession(cache cache.Cache) *Session {
 
 		if vjr := ssn.JobValid(job); vjr != nil {
 			if !vjr.Pass {
-				jc := &api.PodGroupCondition{
-					Type:               api.PodGroupUnschedulableType,
+				jc := &scheduling.PodGroupCondition{
+					Type:               scheduling.PodGroupUnschedulableType,
 					Status:             v1.ConditionTrue,
 					LastTransitionTime: metav1.Now(),
 					TransitionID:       string(ssn.UID),
@@ -147,12 +148,12 @@ func closeSession(ssn *Session) {
 	glog.V(3).Infof("Close Session %v", ssn.UID)
 }
 
-func jobStatus(ssn *Session, jobInfo *api.JobInfo) api.PodGroupStatus {
+func jobStatus(ssn *Session, jobInfo *api.JobInfo) scheduling.PodGroupStatus {
 	status := jobInfo.PodGroup.Status
 
 	unschedulable := false
 	for _, c := range status.Conditions {
-		if c.Type == api.PodGroupUnschedulableType &&
+		if c.Type == scheduling.PodGroupUnschedulableType &&
 			c.Status == v1.ConditionTrue &&
 			c.TransitionID == string(ssn.UID) {
 
@@ -163,7 +164,7 @@ func jobStatus(ssn *Session, jobInfo *api.JobInfo) api.PodGroupStatus {
 
 	// If running tasks && unschedulable, unknown phase
 	if len(jobInfo.TaskStatusIndex[api.Running]) != 0 && unschedulable {
-		status.Phase = api.PodGroupUnknown
+		status.Phase = scheduling.PodGroupUnknown
 	} else {
 		allocated := 0
 		for status, tasks := range jobInfo.TaskStatusIndex {
@@ -174,9 +175,9 @@ func jobStatus(ssn *Session, jobInfo *api.JobInfo) api.PodGroupStatus {
 
 		// If there're enough allocated resource, it's running
 		if int32(allocated) >= jobInfo.PodGroup.Spec.MinMember {
-			status.Phase = api.PodGroupRunning
-		} else if jobInfo.PodGroup.Status.Phase != api.PodGroupInqueue {
-			status.Phase = api.PodGroupPending
+			status.Phase = scheduling.PodGroupRunning
+		} else if jobInfo.PodGroup.Status.Phase != scheduling.PodGroupInqueue {
+			status.Phase = scheduling.PodGroupPending
 		}
 	}
 
@@ -362,7 +363,7 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 }
 
 // UpdateJobCondition update job condition accordingly.
-func (ssn *Session) UpdateJobCondition(jobInfo *api.JobInfo, cond *api.PodGroupCondition) error {
+func (ssn *Session) UpdateJobCondition(jobInfo *api.JobInfo, cond *scheduling.PodGroupCondition) error {
 	job, ok := ssn.Jobs[jobInfo.UID]
 	if !ok {
 		return fmt.Errorf("failed to find job <%s/%s>", jobInfo.Namespace, jobInfo.Name)
