@@ -533,12 +533,12 @@ func (sc *SchedulerCache) DeletePodGroupV1alpha1(obj interface{}) {
 		return
 	}
 
-	jobId := kbapi.JobID(fmt.Sprintf("%s/%s", ss.Namespace, ss.Name))
+	jobID := kbapi.JobID(fmt.Sprintf("%s/%s", ss.Namespace, ss.Name))
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	if err := sc.deletePodGroup(jobId); err != nil {
+	if err := sc.deletePodGroup(jobID); err != nil {
 		glog.Errorf("Failed to delete podgroup %s from cache: %v", ss.Name, err)
 		return
 	}
@@ -563,12 +563,12 @@ func (sc *SchedulerCache) DeletePodGroupV1alpha2(obj interface{}) {
 		return
 	}
 
-	jobId := kbapi.JobID(fmt.Sprintf("%s/%s", ss.Namespace, ss.Name))
+	jobID := kbapi.JobID(fmt.Sprintf("%s/%s", ss.Namespace, ss.Name))
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	if err := sc.deletePodGroup(jobId); err != nil {
+	if err := sc.deletePodGroup(jobID); err != nil {
 		glog.Errorf("Failed to delete podgroup %s from cache: %v", ss.Name, err)
 		return
 	}
