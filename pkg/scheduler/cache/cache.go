@@ -46,6 +46,7 @@ import (
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/apis/scheduling"
+	schedulingscheme "volcano.sh/volcano/pkg/apis/scheduling/scheme"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	kbver "volcano.sh/volcano/pkg/client/clientset/versioned"
@@ -191,7 +192,7 @@ func (su *defaultStatusUpdater) UpdatePodCondition(pod *v1.Pod, condition *v1.Po
 func (su *defaultStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup, error) {
 	if pg.Version == api.PodGroupVersionV1Alpha1 {
 		podgroup := &v1alpha1.PodGroup{}
-		if err := scheduling.Scheme.Convert(&pg.PodGroup, podgroup, nil); err != nil {
+		if err := schedulingscheme.Scheme.Convert(&pg.PodGroup, podgroup, nil); err != nil {
 			glog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
 			return nil, err
 		}
@@ -203,7 +204,7 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup,
 		}
 
 		podGroupInfo := &api.PodGroup{Version: api.PodGroupVersionV1Alpha1}
-		if err := scheduling.Scheme.Convert(updated, &podGroupInfo.PodGroup, nil); err != nil {
+		if err := schedulingscheme.Scheme.Convert(updated, &podGroupInfo.PodGroup, nil); err != nil {
 			glog.Errorf("Error while converting v1alpha.PodGroup to api.PodGroup with error: %v", err)
 			return nil, err
 		}
@@ -213,7 +214,7 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup,
 
 	if pg.Version == api.PodGroupVersionV1Alpha2 {
 		podgroup := &v1alpha2.PodGroup{}
-		if err := scheduling.Scheme.Convert(&pg.PodGroup, podgroup, nil); err != nil {
+		if err := schedulingscheme.Scheme.Convert(&pg.PodGroup, podgroup, nil); err != nil {
 			glog.Errorf("Error while converting PodGroup to v1alpha2.PodGroup with error: %v", err)
 			return nil, err
 		}
@@ -224,7 +225,7 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup,
 		}
 
 		podGroupInfo := &api.PodGroup{Version: api.PodGroupVersionV1Alpha2}
-		if err := scheduling.Scheme.Convert(updated, &podGroupInfo.PodGroup, nil); err != nil {
+		if err := schedulingscheme.Scheme.Convert(updated, &podGroupInfo.PodGroup, nil); err != nil {
 			glog.Errorf("Error While converting v2alpha.PodGroup to api.PodGroup with error: %v", err)
 			return nil, err
 		}
@@ -520,7 +521,7 @@ func (sc *SchedulerCache) Evict(taskInfo *kbapi.TaskInfo, reason string) error {
 
 	if job.PodGroup.Version == api.PodGroupVersionV1Alpha1 {
 		podgroup := &v1alpha1.PodGroup{}
-		if err := scheduling.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil); err != nil {
+		if err := schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil); err != nil {
 			glog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
 			return err
 		}
@@ -530,7 +531,7 @@ func (sc *SchedulerCache) Evict(taskInfo *kbapi.TaskInfo, reason string) error {
 
 	if job.PodGroup.Version == api.PodGroupVersionV1Alpha2 {
 		podgroup := &v1alpha2.PodGroup{}
-		if err := scheduling.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil); err != nil {
+		if err := schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil); err != nil {
 			glog.Errorf("Error while converting PodGroup to v1alpha2.PodGroup with error: %v", err)
 			return err
 		}
@@ -799,7 +800,7 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
 		msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v", len(job.TaskStatusIndex[api.Pending]), len(job.Tasks), job.FitError())
 		if job.PodGroup.Version == api.PodGroupVersionV1Alpha1 {
 			podgroup := &v1alpha1.PodGroup{}
-			if err := scheduling.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil); err != nil {
+			if err := schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil); err != nil {
 				glog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
 				return
 			}
@@ -809,7 +810,7 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
 
 		if job.PodGroup.Version == api.PodGroupVersionV1Alpha2 {
 			podgroup := &v1alpha2.PodGroup{}
-			if err := scheduling.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil); err != nil {
+			if err := schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil); err != nil {
 				glog.Errorf("Error while converting PodGroup to v1alpha2.PodGroup with error: %v", err)
 				return
 			}

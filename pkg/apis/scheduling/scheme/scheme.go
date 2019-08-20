@@ -14,11 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package scheduling
+package scheme
 
 import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 )
@@ -39,4 +40,5 @@ func init() {
 func Install(scheme *runtime.Scheme) {
 	v1alpha1.AddToScheme(scheme)
 	v1alpha2.AddToScheme(scheme)
+	scheduling.AddToScheme(scheme)
 }

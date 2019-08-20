@@ -29,6 +29,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
+	"volcano.sh/volcano/pkg/apis/scheduling/scheme"
 	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	kbv2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/apis/utils"
@@ -399,7 +400,7 @@ func (sc *SchedulerCache) AddPodGroupV1alpha1(obj interface{}) {
 	}
 
 	podgroup := scheduling.PodGroup{}
-	if err := scheduling.Scheme.Convert(ss, &podgroup, nil); err != nil {
+	if err := scheme.Scheme.Convert(ss, &podgroup, nil); err != nil {
 		glog.Errorf("Failed to convert podgroup from %T to %T", ss, podgroup)
 		return
 	}
@@ -427,7 +428,7 @@ func (sc *SchedulerCache) AddPodGroupV1alpha2(obj interface{}) {
 	}
 
 	podgroup := scheduling.PodGroup{}
-	if err := scheduling.Scheme.Convert(ss, &podgroup, nil); err != nil {
+	if err := scheme.Scheme.Convert(ss, &podgroup, nil); err != nil {
 		glog.Errorf("Failed to convert podgroup from %T to %T", ss, podgroup)
 		return
 	}
@@ -463,7 +464,7 @@ func (sc *SchedulerCache) UpdatePodGroupV1alpha1(oldObj, newObj interface{}) {
 	}
 
 	podgroup := scheduling.PodGroup{}
-	if err := scheduling.Scheme.Convert(newSS, &podgroup, nil); err != nil {
+	if err := scheme.Scheme.Convert(newSS, &podgroup, nil); err != nil {
 		glog.Errorf("Failed to convert podgroup from %T to %T", newSS, podgroup)
 		return
 	}
@@ -498,7 +499,7 @@ func (sc *SchedulerCache) UpdatePodGroupV1alpha2(oldObj, newObj interface{}) {
 	}
 
 	podgroup := scheduling.PodGroup{}
-	if err := scheduling.Scheme.Convert(newSS, &podgroup, nil); err != nil {
+	if err := scheme.Scheme.Convert(newSS, &podgroup, nil); err != nil {
 		glog.Errorf("Failed to convert podgroup from %T to %T", newSS, podgroup)
 		return
 	}
@@ -697,7 +698,7 @@ func (sc *SchedulerCache) AddQueueV1alpha1(obj interface{}) {
 	}
 
 	queue := &scheduling.Queue{}
-	if err := scheduling.Scheme.Convert(ss, queue, nil); err != nil {
+	if err := scheme.Scheme.Convert(ss, queue, nil); err != nil {
 		glog.Errorf("Failed to convert queue from %T to %T", ss, queue)
 		return
 	}
@@ -720,7 +721,7 @@ func (sc *SchedulerCache) AddQueueV1alpha2(obj interface{}) {
 	}
 
 	queue := &scheduling.Queue{}
-	if err := scheduling.Scheme.Convert(ss, queue, nil); err != nil {
+	if err := scheme.Scheme.Convert(ss, queue, nil); err != nil {
 		glog.Errorf("Failed to convert queue from %T to %T", ss, queue)
 		return
 	}
@@ -752,7 +753,7 @@ func (sc *SchedulerCache) UpdateQueueV1alpha1(oldObj, newObj interface{}) {
 	}
 
 	newQueue := &scheduling.Queue{}
-	if err := scheduling.Scheme.Convert(newSS, newQueue, nil); err != nil {
+	if err := scheme.Scheme.Convert(newSS, newQueue, nil); err != nil {
 		glog.Errorf("Failed to convert queue from %T to %T", newSS, newQueue)
 		return
 	}
@@ -782,7 +783,7 @@ func (sc *SchedulerCache) UpdateQueueV1alpha2(oldObj, newObj interface{}) {
 	}
 
 	newQueue := &scheduling.Queue{}
-	if err := scheduling.Scheme.Convert(newSS, newQueue, nil); err != nil {
+	if err := scheme.Scheme.Convert(newSS, newQueue, nil); err != nil {
 		glog.Errorf("Failed to convert queue from %T to %T", newSS, newQueue)
 		return
 	}
