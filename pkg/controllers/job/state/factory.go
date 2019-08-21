@@ -49,8 +49,6 @@ var (
 	SyncJob ActionFn
 	// KillJob kill all Pods of Job with phase not in podRetainPhase.
 	KillJob KillActionFn
-	// CreateJob will prepare to create Job.
-	CreateJob ActionFn
 )
 
 //State interface
@@ -79,8 +77,6 @@ func NewState(jobInfo *apis.JobInfo) State {
 		return &abortedState{job: jobInfo}
 	case vkv1.Completing:
 		return &completingState{job: jobInfo}
-	case vkv1.Inqueue:
-		return &inqueueState{job: jobInfo}
 	}
 
 	// It's pending by default.

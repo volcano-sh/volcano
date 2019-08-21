@@ -49,20 +49,15 @@ func (ps *pendingState) Execute(action vkv1.Action) error {
 			status.State.Phase = vkv1.Terminating
 			return true
 		})
-	case vkv1.EnqueueAction:
+	default:
 		return SyncJob(ps.job, func(status *vkv1.JobStatus) bool {
-			phase := vkv1.Inqueue
+			phase := vkv1.Pending
 
 			if ps.job.Job.Spec.MinAvailable <= status.Running+status.Succeeded+status.Failed {
 				phase = vkv1.Running
 			}
 
 			status.State.Phase = phase
-			return true
-		})
-	default:
-		return CreateJob(ps.job, func(status *vkv1.JobStatus) bool {
-			status.State.Phase = vkv1.Pending
 			return true
 		})
 	}

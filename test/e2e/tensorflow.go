@@ -116,7 +116,7 @@ var _ = Describe("TensorFlow E2E Test", func() {
 		created, err := context.vcclient.BatchV1alpha1().Jobs("test").Create(job)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobStates(context, created, []vkv1.JobPhase{vkv1.Pending, vkv1.Inqueue, vkv1.Running, vkv1.Completed}, twoMinute)
+		err = waitJobStates(context, created, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Completed}, twoMinute)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
