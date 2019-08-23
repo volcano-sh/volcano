@@ -126,6 +126,11 @@ func RegisterConversions(s *runtime.Scheme) error {
 	}); err != nil {
 		return err
 	}
+	if err := s.AddConversionFunc((*scheduling.QueueStatus)(nil), (*QueueStatus)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_scheduling_QueueStatus_To_v1alpha1_QueueStatus(a.(*scheduling.QueueStatus), b.(*QueueStatus), scope)
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 

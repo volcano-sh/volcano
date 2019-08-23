@@ -309,12 +309,6 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 
 }
 
-// NamespaceOrderEnabled returns the NamespaceOrder is enabled in this session or not
-// judging by length of namespaceOrderFns
-func (ssn *Session) NamespaceOrderEnabled() bool {
-	return len(ssn.namespaceOrderFns) > 0
-}
-
 // NamespaceOrderFn invoke namespaceorder function of the plugins
 func (ssn *Session) NamespaceOrderFn(l, r interface{}) bool {
 	for _, tier := range ssn.Tiers {

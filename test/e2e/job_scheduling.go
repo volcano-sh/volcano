@@ -30,9 +30,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 
-	kbapi "volcano.sh/volcano/pkg/scheduler/api"
 	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-
+	kbapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 
 var _ = Describe("Job E2E Test", func() {
