@@ -52,6 +52,7 @@ var (
 	twoMinute = 2 * time.Minute
 	oneCPU    = v1.ResourceList{"cpu": resource.MustParse("1000m")}
 	thirtyCPU = v1.ResourceList{"cpu": resource.MustParse("30000m")}
+	halfCPU   = v1.ResourceList{"cpu": resource.MustParse("500m")}
 )
 
 const (
@@ -167,8 +168,12 @@ func initTestContext() *context {
 }
 
 func namespaceNotExist(ctx *context) wait.ConditionFunc {
+	return namespaceNotExistWithName(ctx, ctx.namespace)
+}
+
+func namespaceNotExistWithName(ctx *context, name string) wait.ConditionFunc {
 	return func() (bool, error) {
-		_, err := ctx.kubeclient.CoreV1().Namespaces().Get(ctx.namespace, metav1.GetOptions{})
+		_, err := ctx.kubeclient.CoreV1().Namespaces().Get(name, metav1.GetOptions{})
 		if !(err != nil && errors.IsNotFound(err)) {
 			return false, err
 		}
@@ -752,6 +757,9 @@ func createReplicaSet(context *context, name string, rep int32, img string, req 
 
 func waitJobCleanedUp(ctx *context, cleanupjob *batchv1alpha1.Job) error {
 	var additionalError error
+
+	pods := getTasksOfJob(ctx, cleanupjob)
+
 	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
 		job, err := ctx.vcclient.BatchV1alpha1().Jobs(cleanupjob.Namespace).Get(cleanupjob.Name, metav1.GetOptions{})
 		if err != nil && !errors.IsNotFound(err) {
@@ -776,6 +784,14 @@ func waitJobCleanedUp(ctx *context, cleanupjob *batchv1alpha1.Job) error {
 	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
 		return fmt.Errorf("[Wait time out]: %s", additionalError)
 	}
+
+	for _, pod := range pods {
+		err := waitPodGone(ctx, pod.Name, pod.Namespace)
+		if err != nil {
+			return err
+		}
+	}
+
 	return err
 }
 
@@ -1158,4 +1174,13 @@ func pgIsReady(ctx *context, namespace string) (bool, error) {
 	}
 
 	return false, fmt.Errorf("podgroup phase is Pending")
+}
+
+func isPodScheduled(pod *v1.Pod) bool {
+	for _, cond := range pod.Status.Conditions {
+		if cond.Type == v1.PodScheduled && cond.Status == v1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }

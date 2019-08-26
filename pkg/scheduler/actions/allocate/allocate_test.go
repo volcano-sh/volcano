@@ -182,9 +182,10 @@ func TestAllocate(t *testing.T) {
 				{
 					Plugins: []conf.PluginOption{
 						{
-							Name:               "drf",
-							EnabledPreemptable: &trueValue,
-							EnabledJobOrder:    &trueValue,
+							Name:                  "drf",
+							EnabledPreemptable:    &trueValue,
+							EnabledJobOrder:       &trueValue,
+							EnabledNamespaceOrder: &trueValue,
 						},
 						{
 							Name:               "proportion",

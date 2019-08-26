@@ -18,6 +18,7 @@ package e2e
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo"
@@ -27,7 +28,9 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 
+	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	kbapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -474,4 +477,196 @@ var _ = Describe("Job E2E Test", func() {
 		err = waitJobPhaseReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 	})
+
+	It("Namespace Fair Share", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		const fairShareNamespace = "fairshare"
+
+		_, err := context.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: fairShareNamespace,
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		defer func() {
+			deleteForeground := metav1.DeletePropagationForeground
+			err := context.kubeclient.CoreV1().Namespaces().Delete(fairShareNamespace, &metav1.DeleteOptions{
+				PropagationPolicy: &deleteForeground,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			err = wait.Poll(100*time.Millisecond, twoMinute, namespaceNotExistWithName(context, fairShareNamespace))
+			Expect(err).NotTo(HaveOccurred())
+		}()
+
+		slot := halfCPU
+		rep := clusterSize(context, slot)
+
+		createJobToNamespace := func(namespace string, index int, replica int32) *vkv1.Job {
+			spec := &jobSpec{
+				name:      fmt.Sprintf("namespace-fair-share-%s-%d", namespace, index),
+				namespace: namespace,
+				tasks: []taskSpec{
+					{
+						img:     defaultNginxImage,
+						command: "sleep 10000",
+						req:     slot,
+						min:     2,
+						rep:     replica,
+					},
+				},
+			}
+			job := createJob(context, spec)
+			return job
+		}
+
+		By("occupy all cluster resources")
+		occupiedJob := createJobToNamespace("default", 123, rep*2)
+		err = waitJobReady(context, occupiedJob)
+		Expect(err).NotTo(HaveOccurred())
+
+		for i := 0; i < int(rep); i++ {
+			createJobToNamespace("test", i, 2)
+			createJobToNamespace(fairShareNamespace, i, 2)
+		}
+
+		By("release occupied cluster resources")
+		deleteBackground := metav1.DeletePropagationBackground
+		err = context.vcclient.BatchV1alpha1().Jobs(occupiedJob.Namespace).Delete(occupiedJob.Name,
+			&metav1.DeleteOptions{
+				PropagationPolicy: &deleteBackground,
+			})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("wait occupied cluster resources releasing")
+		err = waitJobCleanedUp(context, occupiedJob)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("wait pod in fs/test namespace scheduled")
+		fsScheduledPod := 0
+		testScheduledPod := 0
+		expectPod := int(rep)
+		err = wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+			fsScheduledPod = 0
+			testScheduledPod = 0
+
+			pods, err := context.kubeclient.CoreV1().Pods(fairShareNamespace).List(metav1.ListOptions{})
+			if err != nil {
+				return false, err
+			}
+			for _, pod := range pods.Items {
+				if isPodScheduled(&pod) {
+					fsScheduledPod++
+				}
+			}
+
+			pods, err = context.kubeclient.CoreV1().Pods("test").List(metav1.ListOptions{})
+			if err != nil {
+				return false, err
+			}
+			for _, pod := range pods.Items {
+				if isPodScheduled(&pod) {
+					testScheduledPod++
+				}
+			}
+
+			if testScheduledPod+fsScheduledPod == expectPod {
+				return true, nil
+			}
+
+			return false, nil
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(testScheduledPod).Should(Or(Equal(expectPod/2), Equal((expectPod+1)/2)),
+			fmt.Sprintf("expectPod %d, fsScheduledPod %d, testScheduledPod %d", expectPod, fsScheduledPod, testScheduledPod))
+	})
+
+	It("Queue Fair Share", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		slot := halfCPU
+		rep := clusterSize(context, slot)
+
+		createJobToQueue := func(queue string, index int, replica int32) *vkv1.Job {
+			spec := &jobSpec{
+				name:      fmt.Sprintf("queue-fair-share-%s-%d", queue, index),
+				namespace: "test",
+				queue:     queue,
+				tasks: []taskSpec{
+					{
+						img:     defaultNginxImage,
+						command: "sleep 10000",
+						req:     slot,
+						min:     2,
+						rep:     replica,
+					},
+				},
+			}
+			job := createJob(context, spec)
+			return job
+		}
+
+		By("occupy all cluster resources")
+		occupiedJob := createJobToQueue("default", 123, rep*2)
+		err := waitJobReady(context, occupiedJob)
+		Expect(err).NotTo(HaveOccurred())
+
+		for i := 0; i < int(rep); i++ {
+			createJobToQueue(defaultQueue1, i, 2)
+			createJobToQueue(defaultQueue2, i, 2)
+		}
+
+		By(fmt.Sprintf("release occupied cluster resources, %s/%s", occupiedJob.Namespace, occupiedJob.Name))
+		deleteForeground := metav1.DeletePropagationBackground
+		err = context.vcclient.BatchV1alpha1().Jobs(occupiedJob.Namespace).Delete(occupiedJob.Name,
+			&metav1.DeleteOptions{
+				PropagationPolicy: &deleteForeground,
+			})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("wait occupied cluster resources releasing")
+		err = waitJobCleanedUp(context, occupiedJob)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("wait pod in queue q1/q2 scheduled")
+		q1ScheduledPod := 0
+		q2ScheduledPod := 0
+		expectPod := int(rep)
+		err = wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+			q1ScheduledPod = 0
+			q2ScheduledPod = 0
+
+			pods, err := context.kubeclient.CoreV1().Pods("test").List(metav1.ListOptions{})
+			if err != nil {
+				return false, err
+			}
+			for _, pod := range pods.Items {
+				if !isPodScheduled(&pod) {
+					continue
+				}
+				jobName := pod.Annotations[vkv1.JobNameKey]
+				if strings.Contains(jobName, "queue-fair-share-"+defaultQueue1) {
+					q1ScheduledPod++
+				}
+				if strings.Contains(jobName, "queue-fair-share-"+defaultQueue2) {
+					q2ScheduledPod++
+				}
+			}
+
+			if q2ScheduledPod+q1ScheduledPod == expectPod {
+				return true, nil
+			}
+
+			return false, nil
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(q2ScheduledPod).Should(Or(Equal(expectPod/2), Equal((expectPod+1)/2)),
+			fmt.Sprintf("expectPod %d, q1ScheduledPod %d, q2ScheduledPod %d", expectPod, q1ScheduledPod, q2ScheduledPod))
+	})
+
 })
