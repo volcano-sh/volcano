@@ -35,7 +35,6 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: volcano-scheduler
-  namespace: volcano-system
 rules:
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
@@ -94,7 +93,6 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: volcano-scheduler-role
-  namespace: volcano-system
 subjects:
   - kind: ServiceAccount
     name: volcano-scheduler
@@ -153,7 +151,6 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: volcano-admission
-  namespace: volcano-system
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
@@ -186,7 +183,6 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: volcano-admission-role
-  namespace: volcano-system
 subjects:
   - kind: ServiceAccount
     name: volcano-admission
@@ -291,7 +287,6 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: volcano-controllers
-  namespace: volcano-system
 rules:
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
@@ -335,7 +330,6 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: volcano-controllers-role
-  namespace: volcano-system
 subjects:
   - kind: ServiceAccount
     name: volcano-controllers
