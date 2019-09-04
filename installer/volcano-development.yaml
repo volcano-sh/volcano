@@ -387,6 +387,7 @@ spec:
   scope: Namespaced
   validation:
     openAPIV3Schema:
+      type: object
       properties:
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation
@@ -417,6 +418,7 @@ spec:
                     type: string
                   volumeClaimName:
                     description: The name of the volume claim.
+                    type: string
                 type: object
                 required:
                   - mountPath
@@ -441,6 +443,8 @@ spec:
                     description: The Events recorded by scheduler; the controller takes
                       actions according to this Events.
                     type: array
+                    items:
+                      type: string
                   timeout:
                     description: Timeout is the grace period for controller to take
                       actions. Default to nil (take action immediately).
@@ -453,8 +457,6 @@ spec:
             plugins:
               description: Enabled task plugins when creating job.
               type: object
-              additionalProperties:
-                type: array
             tasks:
               description: Tasks specifies the task specification of Job
               items:
@@ -479,6 +481,8 @@ spec:
                           description: The Events recorded by scheduler; the controller takes
                             actions according to this Events.
                           type: array
+                          items:
+                            type: string
                         timeout:
                           description: Timeout is the grace period for controller
                             to take actions. Default to nil (take action immediately).
@@ -582,6 +586,7 @@ spec:
   scope: Namespaced
   validation:
     openAPIV3Schema:
+      type: object
       properties:
         action:
           description: Action defines the action that will be took to the target object.
@@ -631,6 +636,7 @@ spec:
   scope: Namespaced
   validation:
     openAPIV3Schema:
+      type: object
       properties:
         apiVersion:
           type: string
@@ -656,7 +662,6 @@ spec:
               format: int32
               type: integer
           type: object
-      type: object
   version: v1alpha1
 
 ---
