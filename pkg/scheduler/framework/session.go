@@ -25,6 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	schedulercache "k8s.io/kubernetes/pkg/scheduler/cache"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -129,6 +130,26 @@ func openSession(cache cache.Cache) *Session {
 	}
 
 	ssn.Nodes = snapshot.Nodes
+
+	//remove the nodes that cannot be used to run workload
+	for key, n := range ssn.Nodes {
+		nodeInfo := schedulercache.NewNodeInfo(n.Pods()...)
+		nodeInfo.SetNode(n.Node)
+		taints, _ := nodeInfo.Taints()
+		ignore := false
+		for i := range taints {
+			t := taints[i]
+			if t.Effect == v1.TaintEffectNoSchedule || t.Effect == v1.TaintEffectNoExecute {
+				ignore = true
+				glog.V(3).Infof("Ingore host <%v>,  %v.", n.Name, t)
+				break
+			}
+		}
+		if ignore {
+			delete(ssn.Nodes, key)
+		}
+	}
+
 	ssn.Queues = snapshot.Queues
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
 
