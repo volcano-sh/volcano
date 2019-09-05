@@ -56,6 +56,15 @@ import (
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
+const (
+	// maxRetries is the number of times a volcano job will be retried before it is dropped out of the queue.
+	// With the current rate-limiter in use (5ms*2^(maxRetries-1)) the following numbers represent the times
+	// a volcano job is going to be requeued:
+	//
+	// 5ms, 10ms, 20ms, 40ms, 80ms, 160ms, 320ms, 640ms, 1.3s, 2.6s, 5.1s, 10.2s, 20.4s, 41s, 82s
+	maxRetries = 15
+)
+
 // Controller the Job Controller type
 type Controller struct {
 	kubeClients kubernetes.Interface
@@ -311,11 +320,16 @@ func (cc *Controller) processNextReq(count uint32) bool {
 	}
 
 	if err := st.Execute(action); err != nil {
-		glog.Errorf("Failed to handle Job <%s/%s>: %v",
-			jobInfo.Job.Namespace, jobInfo.Job.Name, err)
-		// If any error, requeue it.
-		queue.AddRateLimited(req)
-		return true
+		if queue.NumRequeues(req) < maxRetries {
+			glog.V(2).Infof("Failed to handle Job <%s/%s>: %v",
+				jobInfo.Job.Namespace, jobInfo.Job.Name, err)
+			// If any error, requeue it.
+			queue.AddRateLimited(req)
+			return true
+		}
+		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, vkbatchv1.ExecuteAction, fmt.Sprintf(
+			"Job failed on action %s for retry limit reached", action))
+		glog.Warningf("Dropping job<%s/%s> out of the queue: %v because max retries has reached", jobInfo.Job.Namespace, jobInfo.Job.Name, err)
 	}
 
 	// If no error, forget it.
