@@ -20,7 +20,7 @@ spec:
         imagePullSecrets:
         - name: default-secret
         containers:
-        - image: sivanzcw/mxnet-train-mnist:cpu
+        - image: volcanosh/mxnet-train-mnist-cpu:v1
           args:
           - --kv-store=dist_sync
           imagePullPolicy: IfNotPresent
@@ -46,7 +46,7 @@ spec:
         imagePullSecrets:
         - name: default-secret
         containers:
-        - image: sivanzcw/mxnet-train-mnist:cpu
+        - image: volcanosh/mxnet-train-mnist-cpu:v1
           imagePullPolicy: IfNotPresent
           name: mxnet
           env:
@@ -70,7 +70,7 @@ spec:
         imagePullSecrets:
         - name: default-secret
         containers:
-        - image: sivanzcw/mxnet-train-mnist:cpu
+        - image: volcanosh/mxnet-train-mnist-cpu:v1
           imagePullPolicy: IfNotPresent
           name: mxnet
           env:
