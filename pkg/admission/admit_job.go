@@ -173,6 +173,14 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job v1alpha1.Job, index int) s
 	var coreTemplateSpec k8score.PodTemplateSpec
 	k8scorev1.Convert_v1_PodTemplateSpec_To_core_PodTemplateSpec(&v1PodTemplate.Template, &coreTemplateSpec, nil)
 
+	// Skip verify container SecurityContex.Privileged as it depends on
+	// the kube-apiserver `allow-privileged` flag.
+	for i, container := range coreTemplateSpec.Spec.Containers {
+		if container.SecurityContext != nil && container.SecurityContext.Privileged != nil {
+			coreTemplateSpec.Spec.Containers[i].SecurityContext.Privileged = nil
+		}
+	}
+
 	corePodTemplate := k8score.PodTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      task.Name,
