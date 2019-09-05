@@ -12,6 +12,7 @@ spec:
   scope: Namespaced
   validation:
     openAPIV3Schema:
+      type: object
       properties:
         action:
           description: Action defines the action that will be took to the target object.

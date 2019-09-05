@@ -15,6 +15,7 @@ spec:
   scope: Namespaced
   validation:
     openAPIV3Schema:
+      type: object
       properties:
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation
@@ -45,6 +46,7 @@ spec:
                     type: string
                   volumeClaimName:
                     description: The name of the volume claim.
+                    type: string
                 type: object
                 required:
                   - mountPath
@@ -69,6 +71,8 @@ spec:
                     description: The Events recorded by scheduler; the controller takes
                       actions according to this Events.
                     type: array
+                    items:
+                      type: string
                   timeout:
                     description: Timeout is the grace period for controller to take
                       actions. Default to nil (take action immediately).
@@ -81,8 +85,6 @@ spec:
             plugins:
               description: Enabled task plugins when creating job.
               type: object
-              additionalProperties:
-                type: array
             tasks:
               description: Tasks specifies the task specification of Job
               items:
@@ -107,6 +109,8 @@ spec:
                           description: The Events recorded by scheduler; the controller takes
                             actions according to this Events.
                           type: array
+                          items:
+                            type: string
                         timeout:
                           description: Timeout is the grace period for controller
                             to take actions. Default to nil (take action immediately).
