@@ -10,38 +10,10 @@
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fvolcano-sh%2Fvolcano.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fvolcano-sh%2Fvolcano?ref=badge_shield)   [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/3012/badge)](https://bestpractices.coreinfrastructure.org/projects/3012)
 
 
-Volcano is a batch system built on Kubernetes. It provides a suite of mechanisms currently missing from
-Kubernetes that are commonly required by many classes of batch & elastic workload including:
-
-1. machine learning/deep learning,
-2. bioinformatics/genomics
-3. other "big data" applications.
-
-These types of applications typically run on generalized domain
-frameworks like TensorFlow, Spark, PyTorch, MPI, etc, which Volcano integrates with.
-
-Some examples of the mechanisms and features that Volcano adds to Kubernetes are:
-
-1. Job management extensions and improvements, e.g:
-    1. Multi-pod jobs
-    2. Lifecycle management extensions including suspend/resume and
-       restart.
-    3. Improved error handling
-    4. Indexed jobs
-    5. Task dependencies
-2. Scheduling extensions, e.g:
-    1. Co-scheduling
-    2. Fair-share scheduling
-    3. Queue scheduling
-    4. Preemption and reclaims
-    5. Reservations and backfills
-    6. Topology-based scheduling
-3. Runtime extensions, e.g:
-    1. Support for specialized container runtimes like Singularity,
-       with GPU accelerator extensions and enhanced security features.
-4. Other
-    1. Data locality awareness and intelligent scheduling
-    2. Optimizations for data throughput, round-trip latency, etc.
+Volcano is a batch system built on Kubernetes. It provides a suite of mechanisms that are commonly required by
+many classes of batch & elastic workload including: machine learning/deep learning, bioinformatics/genomics and
+other "big data" applications. These types of applications typically run on generalized domain frameworks like
+TensorFlow, Spark, PyTorch, MPI, etc, which Volcano integrates with.
 
 Volcano builds upon a decade and a half of experience running a wide
 variety of high performance workloads at scale using several systems
