@@ -193,7 +193,7 @@ type LifecyclePolicy struct {
 	// according to this code.
 	// Note: only one of `Event` or `ExitCode` can be specified.
 	// +optional
-	ExitCode *int32
+	ExitCode *int32 `json:"exitCode,omitempty" protobuf:"bytes,5,opt,name=exitCode"`
 
 	// Timeout is the grace period for controller to take actions.
 	// Default to nil (take action immediately).
