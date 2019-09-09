@@ -25,7 +25,9 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/scheduler"
 	"volcano.sh/volcano/pkg/version"
 
@@ -95,6 +97,10 @@ func Run(opt *options.ServerOption) error {
 		http.Handle("/metrics", promhttp.Handler())
 		glog.Fatalf("Prometheus Http Server failed %s", http.ListenAndServe(opt.ListenAddress, nil))
 	}()
+
+	if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-scheduler"); err != nil {
+		return err
+	}
 
 	run := func(ctx context.Context) {
 		sched.Run(ctx.Done())

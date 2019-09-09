@@ -29,6 +29,8 @@ const (
 	defaultQueue           = "default"
 	defaultListenAddress   = ":8080"
 
+	defaultHealthzBindAddress = "127.0.0.1:11251"
+
 	defaultQPS   = 50.0
 	defaultBurst = 100
 )
@@ -48,6 +50,9 @@ type ServerOption struct {
 	EnablePriorityClass  bool
 	KubeAPIBurst         int
 	KubeAPIQPS           float32
+	// HealthzBindAddress is the IP address and port for the health check server to serve on,
+	// defaulting to 127.0.0.1:11251
+	HealthzBindAddress string
 }
 
 // ServerOpts server options
@@ -78,6 +83,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 		"Enable PriorityClass to provide the capacity of preemption at pod group level; to disable it, set it false")
 	fs.Float32Var(&s.KubeAPIQPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
 	fs.IntVar(&s.KubeAPIBurst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
+	fs.StringVar(&s.HealthzBindAddress, "healthz-bind-address", defaultHealthzBindAddress, "The address to listen on for /healthz HTTP requests.")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled

@@ -40,6 +40,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	"volcano.sh/volcano/cmd/controllers/app/options"
+	"volcano.sh/volcano/pkg/apis/helpers"
 	vkclient "volcano.sh/volcano/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/controllers/garbagecollector"
 	"volcano.sh/volcano/pkg/controllers/job"
@@ -77,6 +78,10 @@ func buildConfig(opt *options.ServerOption) (*rest.Config, error) {
 func Run(opt *options.ServerOption) error {
 	config, err := buildConfig(opt)
 	if err != nil {
+		return err
+	}
+
+	if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-controller"); err != nil {
 		return err
 	}
 
