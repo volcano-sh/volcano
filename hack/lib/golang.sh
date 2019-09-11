@@ -328,7 +328,7 @@ EOF
   local go_version
   go_version=($(go version))
   local minimum_go_version
-  minimum_go_version=go1.8.3
+  minimum_go_version=go1.12.1
   if [[ "kube::golang::version_gt "${go_version[2]}" "${minimum_go_version}"" == 1 && "${go_version[2]}" != "devel" ]]; then
     kube::log::usage_from_stdin <<EOF
 Detected go version: ${go_version[*]}.
