@@ -663,13 +663,15 @@
   version = "kubernetes-1.13.5"
 
 [[projects]]
-  digest = "1:0028163a4c5fa7a710b24c537514ac27b9dcd37c1ec440cdfa82ec859be98223"
+  digest = "1:5e49d3702125aa421bbd705a620fa7f5117589d06642ed29243f830154be1e60"
   name = "k8s.io/apiserver"
   packages = [
     "pkg/authentication/authenticator",
     "pkg/authentication/serviceaccount",
     "pkg/authentication/user",
     "pkg/features",
+    "pkg/server/healthz",
+    "pkg/server/mux",
     "pkg/util/feature",
     "pkg/util/flag",
   ]
@@ -1052,6 +1054,7 @@
     "k8s.io/apimachinery/pkg/api/meta",
     "k8s.io/apimachinery/pkg/api/resource",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
+    "k8s.io/apimachinery/pkg/conversion",
     "k8s.io/apimachinery/pkg/labels",
     "k8s.io/apimachinery/pkg/runtime",
     "k8s.io/apimachinery/pkg/runtime/schema",
@@ -1065,6 +1068,8 @@
     "k8s.io/apimachinery/pkg/util/validation/field",
     "k8s.io/apimachinery/pkg/util/wait",
     "k8s.io/apimachinery/pkg/watch",
+    "k8s.io/apiserver/pkg/server/healthz",
+    "k8s.io/apiserver/pkg/server/mux",
     "k8s.io/apiserver/pkg/util/flag",
     "k8s.io/client-go/discovery",
     "k8s.io/client-go/discovery/fake",

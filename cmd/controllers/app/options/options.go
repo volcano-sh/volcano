@@ -27,6 +27,8 @@ const (
 	defaultBurst         = 100
 	defaultWorkers       = 3
 	defaultSchedulerName = "volcano"
+
+	defaultHealthzBindAddress = "127.0.0.1:11252"
 )
 
 // ServerOption is the main context object for the controller manager.
@@ -42,6 +44,9 @@ type ServerOption struct {
 	// concurrently. Larger number = faster job updating, but more CPU load.
 	WorkerThreads uint32
 	SchedulerName string
+	// HealthzBindAddress is the IP address and port for the health check server to serve on,
+	// defaulting to 127.0.0.1:11252
+	HealthzBindAddress string
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -63,6 +68,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.Uint32Var(&s.WorkerThreads, "worker-threads", defaultWorkers, "The number of threads syncing job operations concurrently. "+
 		"Larger number = faster job updating, but more CPU load")
 	fs.StringVar(&s.SchedulerName, "scheduler-name", defaultSchedulerName, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
+	fs.StringVar(&s.HealthzBindAddress, "healthz-bind-address", defaultHealthzBindAddress, "The address to listen on for /healthz HTTP requests.")
 }
 
 // CheckOptionOrDie checks the LockObjectNamespace
