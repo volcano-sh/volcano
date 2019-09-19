@@ -138,7 +138,9 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 	var unreadyTaskCount int32
 	var unScheduleJobCount int
 	for _, job := range ssn.Jobs {
-		if !job.Ready() {
+		// only update status when job not ready
+		// and the ready tasks number diff from valid tasks number, which means there are still some tasks in `Pending` or `Pipelined` status.
+		if !job.Ready() && !(job.ReadyTaskNum() == job.ValidTaskNum()) {
 			unreadyTaskCount = job.MinAvailable - job.ReadyTaskNum()
 			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
 				job.MinAvailable-job.ReadyTaskNum(), len(job.Tasks), job.FitError())
