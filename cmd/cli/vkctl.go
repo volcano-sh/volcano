@@ -17,6 +17,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/golang/glog"
@@ -47,6 +48,7 @@ func main() {
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Printf("Failed to execute command: %v\n", err)
+		os.Exit(2)
 	}
 }
 
@@ -60,6 +62,7 @@ func checkError(cmd *cobra.Command, err error) {
 		}
 
 		fmt.Printf("%s: %v\n", msg, err)
+		os.Exit(2)
 	}
 }
 

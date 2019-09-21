@@ -72,23 +72,14 @@ func RunJob() error {
 		return err
 	}
 
-	req, err := populateResourceListV1(launchJobFlags.Requests)
-	if err != nil {
-		return err
-	}
-
-	limit, err := populateResourceListV1(launchJobFlags.Limits)
-	if err != nil {
-		return err
-	}
-
 	job, err := readFile(launchJobFlags.FileName)
 	if err != nil {
 		return err
 	}
 
 	if job == nil {
-		job = constructLaunchJobFlagsJob(launchJobFlags, req, limit)
+		fmt.Printf("Error: job script (specified by --filename or -f) is mandatory to run a particular job")
+		return nil
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
