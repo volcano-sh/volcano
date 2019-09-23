@@ -169,6 +169,8 @@ const (
 	SyncJobAction Action = "SyncJob"
 	// EnqueueAction is the action to sync Job inqueue status.
 	EnqueueAction Action = "EnqueueJob"
+	// FailJobAction marks the job failed and all the pods of the job will be evicted.
+	FailJobAction Action = "FailJob"
 )
 
 // LifecyclePolicy specifies the lifecycle and error handling of task and job.

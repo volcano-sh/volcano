@@ -48,6 +48,11 @@ func (ps *runningState) Execute(action vkv1.Action) error {
 			status.State.Phase = vkv1.Completing
 			return true
 		})
+	case vkv1.FailJobAction:
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
+			status.State.Phase = vkv1.Failed
+			return true
+		})
 	default:
 		return SyncJob(ps.job, func(status *vkv1.JobStatus) bool {
 			if status.Succeeded+status.Failed == TotalTasks(ps.job.Job) {

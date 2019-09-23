@@ -246,6 +246,18 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 	}
 
 	event := vkbatchv1.OutOfSyncEvent
+	var action vkbatchv1.Action
+
+	// If the pod in CrashLoopBackOff, it is in Running, but we should fail its job
+	// when its restartCount exceeds the maxRestartCount.
+	if newPod.Status.Phase == v1.PodRunning {
+		if len(newPod.Status.ContainerStatuses) > 0 && newPod.Status.ContainerStatuses[0].Ready == false &&
+			// TODO: make it configurable in Job API.
+			newPod.Status.ContainerStatuses[0].RestartCount > 5 {
+			action = vkbatchv1.FailJobAction
+		}
+	}
+
 	var exitCode int32
 	if oldPod.Status.Phase != v1.PodFailed &&
 		newPod.Status.Phase == v1.PodFailed {
@@ -271,6 +283,7 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 
 		Event:      event,
 		ExitCode:   exitCode,
+		Action:     action,
 		JobVersion: int32(dVersion),
 	}
 
