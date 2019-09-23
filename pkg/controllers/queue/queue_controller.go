@@ -17,7 +17,6 @@ limitations under the License.
 package queue
 
 import (
-	"fmt"
 	"reflect"
 	"sync"
 
@@ -34,6 +33,9 @@ import (
 	kbinformer "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1alpha2"
 	kblister "volcano.sh/volcano/pkg/client/listers/scheduling/v1alpha2"
 )
+
+// The default queue when not specified in podgroup
+const defaultQueue = "default"
 
 // Controller manages queue status.
 type Controller struct {
@@ -139,28 +141,26 @@ func (c *Controller) processNextWorkItem() bool {
 	return true
 }
 
-func (c *Controller) getPodGroups(key string) ([]string, error) {
+func (c *Controller) getPodGroups(key string) []string {
 	c.pgMutex.RLock()
 	defer c.pgMutex.RUnlock()
 
 	if c.podGroups[key] == nil {
-		return nil, fmt.Errorf("queue %s has not been seen or deleted", key)
+		glog.Infof("podgroups of queue %s has not been seen or deleted", key)
+		return nil
 	}
 	podGroups := make([]string, 0, len(c.podGroups[key]))
 	for pgKey := range c.podGroups[key] {
 		podGroups = append(podGroups, pgKey)
 	}
 
-	return podGroups, nil
+	return podGroups
 }
 
 func (c *Controller) syncQueue(key string) error {
 	glog.V(4).Infof("Begin sync queue %s", key)
 
-	podGroups, err := c.getPodGroups(key)
-	if err != nil {
-		return err
-	}
+	podGroups := c.getPodGroups(key)
 
 	queueStatus := schedulingv1alpha2.QueueStatus{}
 
@@ -240,14 +240,15 @@ func (c *Controller) deleteQueue(obj interface{}) {
 func (c *Controller) addPodGroup(obj interface{}) {
 	pg := obj.(*schedulingv1alpha2.PodGroup)
 	key, _ := cache.MetaNamespaceKeyFunc(obj)
+	queue := getPogGroupQueue(pg)
 
 	c.pgMutex.Lock()
 	defer c.pgMutex.Unlock()
 
-	if c.podGroups[pg.Spec.Queue] == nil {
-		c.podGroups[pg.Spec.Queue] = make(map[string]struct{})
+	if c.podGroups[queue] == nil {
+		c.podGroups[queue] = make(map[string]struct{})
 	}
-	c.podGroups[pg.Spec.Queue][key] = struct{}{}
+	c.podGroups[queue][key] = struct{}{}
 
 	// enqueue
 	c.queue.Add(pg.Spec.Queue)
@@ -279,12 +280,21 @@ func (c *Controller) deletePodGroup(obj interface{}) {
 		}
 	}
 
-	key, _ := cache.MetaNamespaceKeyFunc(obj)
+	key, _ := cache.MetaNamespaceKeyFunc(pg)
+	queue := getPogGroupQueue(pg)
 
 	c.pgMutex.Lock()
 	defer c.pgMutex.Unlock()
 
-	delete(c.podGroups[pg.Spec.Queue], key)
+	delete(c.podGroups[queue], key)
 
-	c.queue.Add(pg.Spec.Queue)
+	c.queue.Add(queue)
+}
+
+func getPogGroupQueue(pg *schedulingv1alpha2.PodGroup) string {
+	if pg.Spec.Queue == "" {
+		return defaultQueue
+	}
+
+	return pg.Spec.Queue
 }
