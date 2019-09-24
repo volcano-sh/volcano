@@ -48,6 +48,9 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 
 	jobsMap := map[api.QueueID]*util.PriorityQueue{}
 
+	pgUsedRes := api.EmptyResource()
+	nodeUsedRes := api.EmptyResource()
+
 	for _, job := range ssn.Jobs {
 		if queue, found := ssn.Queues[job.Queue]; !found {
 			glog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
@@ -61,6 +64,15 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 				queueMap[queue.UID] = queue
 				queues.Push(queue)
 			}
+		}
+
+		//Reserve pg min resource in advance.
+		if (job.PodGroup.Status.Phase == scheduling.PodGroupInqueue ||
+			job.PodGroup.Status.Phase == scheduling.PodGroupRunning) &&
+			job.PodGroup.Status.Succeeded != job.PodGroup.Spec.MinMember &&
+			job.PodGroup.Spec.MinResources != nil {
+			pgResource := api.NewResource(*job.PodGroup.Spec.MinResources)
+			pgUsedRes.Add(pgResource)
 		}
 
 		if job.PodGroup.Status.Phase == scheduling.PodGroupPending {
@@ -77,7 +89,21 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 	emptyRes := api.EmptyResource()
 	nodesIdleRes := api.EmptyResource()
 	for _, node := range ssn.Nodes {
-		nodesIdleRes.Add(node.Allocatable.Clone().Multi(1.2).Sub(node.Used))
+		nodesIdleRes.Add(node.Allocatable.Clone().Multi(1.2))
+		nodeUsedRes.Add(node.Used)
+	}
+
+	//deltaRes will equal to the bigger resource consumption
+	deltaRes := api.EmptyResource()
+	if pgUsedRes.Less(nodeUsedRes) {
+		deltaRes = nodeUsedRes
+	} else {
+		deltaRes = pgUsedRes
+	}
+	if deltaRes.Less(nodesIdleRes) {
+		nodesIdleRes.Sub(deltaRes)
+	} else {
+		nodesIdleRes = api.EmptyResource()
 	}
 
 	for {
@@ -85,7 +111,7 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 			break
 		}
 
-		if nodesIdleRes.Less(emptyRes) {
+		if nodesIdleRes.LessEqual(emptyRes) {
 			glog.V(3).Infof("Node idle resource is overused, ignore it.")
 			break
 		}
@@ -112,8 +138,11 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 		}
 
 		if inqueue {
+			glog.V(3).Infof("Job <%s/%s> inqueued.", job.Namespace, job.Name)
 			job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
 			ssn.Jobs[job.UID] = job
+		} else {
+			glog.V(3).Infof("Job <%s/%s> stays pending, not enough resource.", job.Namespace, job.Name)
 		}
 
 		// Added Queue back until no job in Queue.
