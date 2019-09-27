@@ -50,6 +50,7 @@ type Config struct {
 	AdmissionServiceName      string
 	AdmissionServiceNamespace string
 	SchedulerName             string
+	ValidatePod               bool
 }
 
 // NewConfig create new config
@@ -80,6 +81,7 @@ func (c *Config) AddFlags() {
 	flag.StringVar(&c.AdmissionServiceNamespace, "webhook-namespace", "default", "The namespace of this webhook")
 	flag.StringVar(&c.AdmissionServiceName, "webhook-service-name", "admission-service", "The name of this admission service")
 	flag.StringVar(&c.SchedulerName, "scheduler-name", defaultSchedulerName, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
+	flag.BoolVar(&c.ValidatePod, "validate-pod", true, "Whether enable pod validating, if enabled, pod's annotation and it's podgroup status will be validated.")
 }
 
 const (
@@ -188,40 +190,42 @@ func RegisterWebhooks(c *Config, clienset *kubernetes.Clientset, cabundle []byte
 		return err
 	}
 
-	// Prepare validate pods
-	path = "/pods"
-	PodValidateHooks := v1beta1.ValidatingWebhookConfiguration{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: useGeneratedNameIfRequired("",
-				fmt.Sprintf(ValidatePodConfigName, c.AdmissionServiceName)),
-		},
-		Webhooks: []v1beta1.Webhook{{
-			Name: useGeneratedNameIfRequired("", ValidatePodHookName),
-			Rules: []v1beta1.RuleWithOperations{
-				{
-					Operations: []v1beta1.OperationType{v1beta1.Create},
-					Rule: v1beta1.Rule{
-						APIGroups:   []string{""},
-						APIVersions: []string{"v1"},
-						Resources:   []string{"pods"},
+	if c.ValidatePod {
+		// Prepare validate pods
+		path = "/pods"
+		PodValidateHooks := v1beta1.ValidatingWebhookConfiguration{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: useGeneratedNameIfRequired("",
+					fmt.Sprintf(ValidatePodConfigName, c.AdmissionServiceName)),
+			},
+			Webhooks: []v1beta1.Webhook{{
+				Name: useGeneratedNameIfRequired("", ValidatePodHookName),
+				Rules: []v1beta1.RuleWithOperations{
+					{
+						Operations: []v1beta1.OperationType{v1beta1.Create},
+						Rule: v1beta1.Rule{
+							APIGroups:   []string{""},
+							APIVersions: []string{"v1"},
+							Resources:   []string{"pods"},
+						},
 					},
 				},
-			},
-			ClientConfig: v1beta1.WebhookClientConfig{
-				Service: &v1beta1.ServiceReference{
-					Name:      c.AdmissionServiceName,
-					Namespace: c.AdmissionServiceNamespace,
-					Path:      &path,
+				ClientConfig: v1beta1.WebhookClientConfig{
+					Service: &v1beta1.ServiceReference{
+						Name:      c.AdmissionServiceName,
+						Namespace: c.AdmissionServiceNamespace,
+						Path:      &path,
+					},
+					CABundle: cabundle,
 				},
-				CABundle: cabundle,
-			},
-			FailurePolicy: &ignorePolicy,
-		}},
-	}
+				FailurePolicy: &ignorePolicy,
+			}},
+		}
 
-	if err := registerValidateWebhook(clienset.AdmissionregistrationV1beta1().ValidatingWebhookConfigurations(),
-		[]v1beta1.ValidatingWebhookConfiguration{PodValidateHooks}); err != nil {
-		return err
+		if err := registerValidateWebhook(clienset.AdmissionregistrationV1beta1().ValidatingWebhookConfigurations(),
+			[]v1beta1.ValidatingWebhookConfiguration{PodValidateHooks}); err != nil {
+			return err
+		}
 	}
 
 	return nil

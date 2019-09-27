@@ -66,7 +66,9 @@ func main() {
 
 	admissioncontroller.VolcanoClientSet = app.GetVolcanoClient(restConfig)
 
-	servePods(config)
+	if config.ValidatePod {
+		servePods(config)
+	}
 
 	caBundle, err := ioutil.ReadFile(config.CaCertFile)
 	if err != nil {
