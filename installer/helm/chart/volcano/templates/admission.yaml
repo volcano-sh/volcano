@@ -1,3 +1,4 @@
+{{- if .Values.basic.enable_admission }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -133,3 +134,4 @@ spec:
           imagePullPolicy: IfNotPresent
           command: ["./gen-admission-secret.sh", "--service", "{{ .Release.Name }}-admission-service", "--namespace",
                     "{{ .Release.Namespace }}", "--secret", "{{.Values.basic.admission_secret_name}}"]
+{{- end }}

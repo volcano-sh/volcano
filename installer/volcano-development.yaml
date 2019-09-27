@@ -141,6 +141,7 @@ spec:
 
 ---
 # Source: volcano/templates/admission.yaml
+
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -276,6 +277,7 @@ spec:
 
 ---
 # Source: volcano/templates/controllers.yaml
+
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -370,6 +372,7 @@ spec:
 
 ---
 # Source: volcano/templates/batch_v1alpha1_job.yaml
+
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
@@ -572,6 +575,7 @@ status:
 
 ---
 # Source: volcano/templates/bus_v1alpha1_command.yaml
+
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
