@@ -29,7 +29,21 @@ refer to [#241](https://github.com/volcano-sh/volcano/issues/241) and [#288](htt
 
 ## Talks
 
-You can watch industry experts talking about Volcano in different International Conferences over [here.](https://volcano.sh/talk/)
+- [Intro: Kubernetes Batch Scheduling @ KubeCon 2019 EU](https://sched.co/MPi7)
+- [Volcano 在 Kubernetes 中运行高性能作业实践 @ ArchSummit 2019](https://archsummit.infoq.cn/2019/shenzhen/presentation/1817)
+- [Volcano：基于云原生的高密计算解决方案 @ Huawei Connection 2019](https://agenda.events.huawei.com/2019/cn/minisite/agenda.html#dayTab=day7&tagName=%7B%22language%22%3A%22Cn%22%7D&seminarId=1743)
+- [Improving Performance of Deep Learning Workloads With Volcano @ KubeCon 2019 NA](https://sched.co/UaZi)
+- [Session Batch Capability of Kubernetes Intro @ KubeCon 2019 NA](https://sched.co/Uajv)
+
+## Ecosystem
+
+- [MPI](https://github.com/volcano-sh/volcano/tree/master/example/integrations/mpi)
+- [Horovod](https://github.com/volcano-sh/volcano/tree/master/example/integrations/mpi)
+- [kubeflow/tf-operator](https://www.kubeflow.org/docs/use-cases/job-scheduling/)
+- [kubeflow/arena](https://github.com/kubeflow/arena/blob/master/docs/userguide/12-volcanojob.md)
+- [paddlepaddle](https://github.com/volcano-sh/volcano/tree/master/example/integrations/paddlepaddle)
+- [spark-operator](https://github.com/GoogleCloudPlatform/spark-on-k8s-operator/blob/master/docs/volcano-integration.md)
+- [cromwell](https://github.com/broadinstitute/cromwell/blob/develop/docs/backends/Volcano.md)
 
 ## Quick Start Guide
 
