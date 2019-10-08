@@ -11,4 +11,6 @@ please feel free to add yourself into the following list by a pull request.
 | [Baidu](https://baidu.com/) |[@tizhou86](https://github.com/tizhou86)| Testing | Scheduler for Deep Learning Platform to Optimize Performance |
 | [GrandOmics](https://www.grandomics.com/) |[@alartin](https://github.com/alartin)| Evaluation | Infrastructure of Hanwell (Huawei Cloud backend of Cromwell which is a Broad Institute implementation of WDL) |
 | [Huawei Cloud](https://huaweicloud.com/) |[@tsjsdbd](https://github.com/tsjsdbd)| **Production** | Scheduler & Job Management of AI Container Service and CCI  |
+| [JD Retail Infrastructure Department](https://jd.com/) |[@yuanchen8911](https://github.com/yuanchen8911)| Evaluation | Spark on K8S  |
+| [kt NexR](https://www.ktnexr.com) |[@minyk](https://github.com/minyk), [@dieselnexr](https://github.com/dieselnexr)| Evaluation | spark scheduler of our next cloud native product. |
 
