@@ -37,8 +37,7 @@ refer to [#241](https://github.com/volcano-sh/volcano/issues/241) and [#288](htt
 
 ## Ecosystem
 
-- [MPI](https://github.com/volcano-sh/volcano/tree/master/example/integrations/mpi)
-- [Horovod](https://github.com/volcano-sh/volcano/tree/master/example/integrations/mpi)
+- [Horovod/MPI](https://github.com/volcano-sh/volcano/tree/master/example/integrations/mpi)
 - [kubeflow/tf-operator](https://www.kubeflow.org/docs/use-cases/job-scheduling/)
 - [kubeflow/arena](https://github.com/kubeflow/arena/blob/master/docs/userguide/12-volcanojob.md)
 - [paddlepaddle](https://github.com/volcano-sh/volcano/tree/master/example/integrations/paddlepaddle)
