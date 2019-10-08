@@ -66,7 +66,7 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 			}
 		}
 
-		//Reserve pg min resource in advance.
+		//Reserve pg min resource in advance, only consider the job which still has pods to be scheduled.
 		if (job.PodGroup.Status.Phase == scheduling.PodGroupInqueue ||
 			job.PodGroup.Status.Phase == scheduling.PodGroupRunning) &&
 			job.PodGroup.Status.Succeeded != job.PodGroup.Spec.MinMember &&
@@ -86,11 +86,13 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 
 	glog.V(3).Infof("Try to enqueue PodGroup to %d Queues", len(jobsMap))
 
-	emptyRes := api.EmptyResource()
 	nodesIdleRes := api.EmptyResource()
 	for _, node := range ssn.Nodes {
-		nodesIdleRes.Add(node.Allocatable.Clone().Multi(1.2))
+		nodesIdleRes.Add(node.Allocatable)
 		nodeUsedRes.Add(node.Used)
+	}
+	if !nodesIdleRes.IsEmpty() {
+		nodesIdleRes.Multi(1.2)
 	}
 
 	//deltaRes will equal to the bigger resource consumption
@@ -111,7 +113,7 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 			break
 		}
 
-		if nodesIdleRes.LessEqual(emptyRes) {
+		if nodesIdleRes.IsEmpty() {
 			glog.V(3).Infof("Node idle resource is overused, ignore it.")
 			break
 		}
