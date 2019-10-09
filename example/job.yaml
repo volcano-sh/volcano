@@ -14,16 +14,17 @@ spec:
     svc: []
   maxRetry: 5
   queue: default
-  volumes:
-    - mountPath: "/myinput"
-    - mountPath: "/myoutput"
-      volumeClaimName: "testvolumeclaimname"
-      volumeClaim:
-        accessModes: [ "ReadWriteOnce" ]
-        storageClassName: "my-storage-class"
-        resources:
-          requests:
-            storage: 1Gi
+  # Comment out the following section to enable volumes for job input/output.
+  #volumes:
+  #  - mountPath: "/myinput"
+  #  - mountPath: "/myoutput"
+  #    volumeClaimName: "testvolumeclaimname"
+  #    volumeClaim:
+  #      accessModes: [ "ReadWriteOnce" ]
+  #      storageClassName: "my-storage-class"
+  #      resources:
+  #        requests:
+  #          storage: 1Gi
   tasks:
     - replicas: 6
       name: "default-nginx"
