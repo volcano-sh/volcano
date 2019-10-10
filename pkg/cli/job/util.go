@@ -35,6 +35,20 @@ import (
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
+func checkFileExist(filePath string) bool {
+	if file, err := os.Stat(filePath); err == nil && !file.IsDir() {
+		return true;
+	}
+	return false;
+}
+
+func kubeConfig() string {
+	if config := os.Getenv("KUBECONFIG"); config != "" {
+		return config
+	}
+	return ""
+}
+
 func homeDir() string {
 	if h := os.Getenv("HOME"); h != "" {
 		return h
