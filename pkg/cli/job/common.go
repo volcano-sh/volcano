@@ -30,9 +30,13 @@ type commonFlags struct {
 func initFlags(cmd *cobra.Command, cf *commonFlags) {
 	cmd.Flags().StringVarP(&cf.Master, "master", "s", "", "the address of apiserver")
 
-	if home := homeDir(); home != "" {
-		cmd.Flags().StringVarP(&cf.Kubeconfig, "kubeconfig", "k", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+	if defaultKubeConfigFile := filepath.Join(homeDir(), ".kube", "config"); checkFileExist(defaultKubeConfigFile) {
+		cmd.Flags().StringVarP(&cf.Kubeconfig, "kubeconfig", "k", defaultKubeConfigFile, "(optional) absolute path to the kubeconfig file")
+	} else if kubeConfig := kubeConfig(); kubeConfig != "" {
+		//Default kubeconfig file is located in $HOME/.kube/config . In case this file does not exist, it will look for $KUBECONFIG instead.
+		cmd.Flags().StringVarP(&cf.Kubeconfig, "kubeconfig", "k", kubeConfig, "(optional) absolute path to the kubeconfig file")
 	} else {
 		cmd.Flags().StringVarP(&cf.Kubeconfig, "kubeconfig", "k", "", "(optional) absolute path to the kubeconfig file")
 	}
+
 }
