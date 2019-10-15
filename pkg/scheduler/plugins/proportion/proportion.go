@@ -202,7 +202,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		queue := obj.(*api.QueueInfo)
 		attr := pp.queueOpts[queue.UID]
 
-		overused := attr.deserved.LessEqual(attr.allocated)
+		overused := !attr.allocated.LessEqual(attr.deserved)
 		if overused {
 			glog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
 				queue.Name, attr.deserved, attr.allocated, attr.share)
