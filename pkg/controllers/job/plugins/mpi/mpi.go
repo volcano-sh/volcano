@@ -85,12 +85,13 @@ func (p *mpi) OnPodCreate(pod *v1.Pod, job *vkv1.Job) error {
 		mpiHosts := strings.ReplaceAll(data[key], "\n", ",")
 		for i, c := range pod.Spec.Containers {
 			vm := v1.VolumeMount{
-				MountPath: HOST_FILE_PATH,
+				MountPath: HostFilePath,
 				Name:      cmName,
 			}
 
 			pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
-			pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{Name: MPI_HOST, Value: mpiHosts})
+			pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{Name: MPIHost, Value: mpiHosts})
+			pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{Name: MPIHostFile, Value: HostFilePath + "/" + HostFile})
 		}
 
 	} else {
@@ -108,10 +109,10 @@ func (p *mpi) OnPodCreate(pod *v1.Pod, job *vkv1.Job) error {
 func (p *mpi) OnJobAdd(job *vkv1.Job) error {
 	p.ssh.OnJobAdd(job)
 
-	// Generate MPI_HOST
 	if len(job.Spec.Tasks) <= p.worker {
 		return fmt.Errorf("invalid MPI job, should contains at least launcher and worker")
 	}
+	// Generate MPIHost
 	data := svc.GenerateHost(job)
 	key := fmt.Sprintf(svc.ConfigMapTaskHostFmt, job.Spec.Tasks[p.worker].Name)
 
@@ -121,7 +122,7 @@ func (p *mpi) OnJobAdd(job *vkv1.Job) error {
 		hosts[i] = fmt.Sprintf("%s slots=%d", host, p.slotsPerWorker)
 	}
 
-	mpiHostFileData := map[string]string{HOST_FILE: strings.Join(hosts, "\n")}
+	mpiHostFileData := map[string]string{HostFile: strings.Join(hosts, "\n")}
 	if err := helpers.CreateConfigMapIfNotExist(job, p.clientset.KubeClients, mpiHostFileData, p.cmName(job)); err != nil {
 		return err
 	}
@@ -129,6 +130,8 @@ func (p *mpi) OnJobAdd(job *vkv1.Job) error {
 	if err := svc.CreateServiceIfNotExist(p.clientset.KubeClients, job); err != nil {
 		return err
 	}
+
+	job.Status.ControlledResources["plugin-"+p.Name()] = p.Name()
 
 	return nil
 }

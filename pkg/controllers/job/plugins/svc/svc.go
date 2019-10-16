@@ -123,6 +123,7 @@ func (sp *servicePlugin) mountConfigmap(pod *v1.Pod, job *batch.Job) {
 	}
 }
 
+// CreateServiceIfNotExist creates a placeholder service for the job.
 func CreateServiceIfNotExist(kubeClient kubernetes.Interface, job *batch.Job) error {
 	// If Service does not exist, create one for Job.
 	if _, err := kubeClient.CoreV1().Services(job.Namespace).Get(job.Name, metav1.GetOptions{}); err != nil {
@@ -171,6 +172,7 @@ func (sp *servicePlugin) cmName(job *batch.Job) string {
 	return fmt.Sprintf("%s-%s", job.Name, sp.Name())
 }
 
+// GenerateHost generates the hosts for all tasks.
 func GenerateHost(job *batch.Job) map[string]string {
 	data := make(map[string]string, len(job.Spec.Tasks))
 

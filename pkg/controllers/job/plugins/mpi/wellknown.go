@@ -17,13 +17,16 @@ limitations under the License.
 package mpi
 
 const (
-	// MPI_HOST env var
-	MPI_HOST = "MPI_HOST"
+	// HostFilePath and HostFile when used
+	// HostFilePath represents mpi hostfile mount path
+	HostFilePath = "/etc/volcano/mpi"
 
-	// HOST_FILE_PATH and HOST_FILE when used
-	// HOST_FILE_PATH represents mpi hostfile mount path
-	HOST_FILE_PATH = "/etc/volcano/mpi"
+	// HostFile represents MPI hostfile name
+	HostFile = "hostfile"
 
-	// MPI hostfile name
-	HOST_FILE = "hostfile"
+	// MPIHost env var
+	MPIHost = "MPI_HOST"
+
+	// MPIHostFile env var
+	MPIHostFile = "MPI_HOST_FILE"
 )

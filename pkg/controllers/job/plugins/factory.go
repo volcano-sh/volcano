@@ -17,10 +17,9 @@ limitations under the License.
 package plugins
 
 import (
-	"volcano.sh/volcano/pkg/controllers/job/plugins/mpi"
-
 	"volcano.sh/volcano/pkg/controllers/job/plugins/env"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/interface"
+	"volcano.sh/volcano/pkg/controllers/job/plugins/mpi"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/ssh"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/svc"
 )

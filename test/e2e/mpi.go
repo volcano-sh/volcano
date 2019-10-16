@@ -83,7 +83,7 @@ mpiexec --allow-run-as-root --hostfile /etc/volcano/mpiworker.host -np 2 mpi_hel
 		slot := oneCPU
 
 		spec := &jobSpec{
-			name: "mpi",
+			name: "mpi-plugin",
 			policies: []vkv1.LifecyclePolicy{
 				{
 					Action: vkv1.CompleteJobAction,
@@ -104,7 +104,7 @@ mpiexec --allow-run-as-root --hostfile /etc/volcano/mpiworker.host -np 2 mpi_hel
 					//Need sometime waiting for worker node ready
 					command: `sleep 5;
 mkdir -p /var/run/sshd; /usr/sbin/sshd;
-mpiexec --allow-run-as-root --hostfile /etc/volcano/mpiworker.host -np 2 mpi_hello_world > /home/re`,
+mpiexec --allow-run-as-root --hostfile ${MPI_HOST_FILE} -np 2 mpi_hello_world > /home/re`,
 				},
 				{
 					name:       "mpiworker",
