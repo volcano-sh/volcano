@@ -22,7 +22,7 @@ const (
 
 	// HOST_FILE_PATH and HOST_FILE when used
 	// HOST_FILE_PATH represents mpi hostfile mount path
-	HOST_FILE_PATH = "/etc/mpi"
+	HOST_FILE_PATH = "/etc/volcano/mpi"
 
 	// MPI hostfile name
 	HOST_FILE = "hostfile"

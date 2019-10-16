@@ -75,4 +75,54 @@ mpiexec --allow-run-as-root --hostfile /etc/volcano/mpiworker.host -np 2 mpi_hel
 		Expect(err).NotTo(HaveOccurred())
 	})
 
+	// TODO: should test more details like mpi hostfile and env
+	It("run mpi using mpi plugin", func() {
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		slot := oneCPU
+
+		spec := &jobSpec{
+			name: "mpi",
+			policies: []vkv1.LifecyclePolicy{
+				{
+					Action: vkv1.CompleteJobAction,
+					Event:  vkv1.TaskCompletedEvent,
+				},
+			},
+			plugins: map[string][]string{
+				"mpi": {"--slots-per-worker", "2"},
+			},
+			tasks: []taskSpec{
+				{
+					name:       "mpimaster",
+					img:        defaultMPIImage,
+					req:        slot,
+					min:        1,
+					rep:        1,
+					workingDir: "/home",
+					//Need sometime waiting for worker node ready
+					command: `sleep 5;
+mkdir -p /var/run/sshd; /usr/sbin/sshd;
+mpiexec --allow-run-as-root --hostfile /etc/volcano/mpiworker.host -np 2 mpi_hello_world > /home/re`,
+				},
+				{
+					name:       "mpiworker",
+					img:        defaultMPIImage,
+					req:        slot,
+					min:        2,
+					rep:        2,
+					workingDir: "/home",
+					command:    "mkdir -p /var/run/sshd; /usr/sbin/sshd -D;",
+				},
+			},
+		}
+
+		job := createJob(context, spec)
+
+		err := waitJobPhases(context, job, []vkv1.JobPhase{
+			vkv1.Pending, vkv1.Running, vkv1.Completing, vkv1.Completed})
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 })

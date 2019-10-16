@@ -54,7 +54,7 @@ type mpi struct {
 // New creates ssh plugin
 func New(client plugininterface.PluginClientset, arguments []string) plugininterface.PluginInterface {
 	mpi := mpi{pluginArguments: arguments, clientset: client}
-	mpi.ssh = ssh.New(client, arguments)
+	mpi.ssh = ssh.New(client, nil)
 	mpi.addFlags()
 
 	return &mpi
