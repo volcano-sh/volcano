@@ -26,6 +26,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/kubernetes"
 
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
@@ -70,13 +71,13 @@ func (sp *servicePlugin) OnJobAdd(job *batch.Job) error {
 		return nil
 	}
 
-	data := generateHost(job)
+	data := GenerateHost(job)
 
 	if err := helpers.CreateConfigMapIfNotExist(job, sp.Clientset.KubeClients, data, sp.cmName(job)); err != nil {
 		return err
 	}
 
-	if err := sp.createServiceIfNotExist(job); err != nil {
+	if err := CreateServiceIfNotExist(sp.Clientset.KubeClients, job); err != nil {
 		return err
 	}
 
@@ -122,9 +123,9 @@ func (sp *servicePlugin) mountConfigmap(pod *v1.Pod, job *batch.Job) {
 	}
 }
 
-func (sp *servicePlugin) createServiceIfNotExist(job *batch.Job) error {
+func CreateServiceIfNotExist(kubeClient kubernetes.Interface, job *batch.Job) error {
 	// If Service does not exist, create one for Job.
-	if _, err := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Get(job.Name, metav1.GetOptions{}); err != nil {
+	if _, err := kubeClient.CoreV1().Services(job.Namespace).Get(job.Name, metav1.GetOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
 			glog.V(3).Infof("Failed to get Service for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
@@ -156,11 +157,10 @@ func (sp *servicePlugin) createServiceIfNotExist(job *batch.Job) error {
 			},
 		}
 
-		if _, e := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Create(svc); e != nil {
+		if _, e := kubeClient.CoreV1().Services(job.Namespace).Create(svc); e != nil {
 			glog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v", job.Namespace, job.Name, e)
 			return e
 		}
-		job.Status.ControlledResources["plugin-"+sp.Name()] = sp.Name()
 
 	}
 
@@ -171,7 +171,7 @@ func (sp *servicePlugin) cmName(job *batch.Job) string {
 	return fmt.Sprintf("%s-%s", job.Name, sp.Name())
 }
 
-func generateHost(job *batch.Job) map[string]string {
+func GenerateHost(job *batch.Job) map[string]string {
 	data := make(map[string]string, len(job.Spec.Tasks))
 
 	for _, ts := range job.Spec.Tasks {

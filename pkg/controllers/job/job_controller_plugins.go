@@ -31,8 +31,8 @@ import (
 func (cc *Controller) pluginOnPodCreate(job *batch.Job, pod *v1.Pod) error {
 	client := pluginsinterface.PluginClientset{KubeClients: cc.kubeClient}
 	for name, args := range job.Spec.Plugins {
-		pb, found := plugins.GetPluginBuilder(name)
-		if !found {
+		pb := plugins.GetPluginBuilder(name)
+		if pb == nil {
 			err := fmt.Errorf("failed to get plugin %s", name)
 			glog.Error(err)
 			return err
@@ -53,8 +53,8 @@ func (cc *Controller) pluginOnJobAdd(job *batch.Job) error {
 		job.Status.ControlledResources = make(map[string]string)
 	}
 	for name, args := range job.Spec.Plugins {
-		pb, found := plugins.GetPluginBuilder(name)
-		if !found {
+		pb := plugins.GetPluginBuilder(name)
+		if pb == nil {
 			err := fmt.Errorf("failed to get plugin %s", name)
 			glog.Error(err)
 			return err
@@ -73,8 +73,8 @@ func (cc *Controller) pluginOnJobAdd(job *batch.Job) error {
 func (cc *Controller) pluginOnJobDelete(job *batch.Job) error {
 	client := pluginsinterface.PluginClientset{KubeClients: cc.kubeClient}
 	for name, args := range job.Spec.Plugins {
-		pb, found := plugins.GetPluginBuilder(name)
-		if !found {
+		pb := plugins.GetPluginBuilder(name)
+		if pb == nil {
 			err := fmt.Errorf("failed to get plugin %s", name)
 			glog.Error(err)
 			return err

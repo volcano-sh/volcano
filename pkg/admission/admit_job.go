@@ -141,8 +141,14 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 	// invalid job plugins
 	if len(job.Spec.Plugins) != 0 {
 		for name := range job.Spec.Plugins {
-			if _, found := plugins.GetPluginBuilder(name); !found {
+			if P := plugins.GetPluginBuilder(name); P == nil {
 				msg = msg + fmt.Sprintf(" unable to find job plugin: %s", name)
+			}
+		}
+
+		if _, found := job.Spec.Plugins["mpi"]; found {
+			if len(job.Spec.Plugins) > 1 {
+				msg = msg + " can not specify other plugins when `mpi` existed"
 			}
 		}
 	}

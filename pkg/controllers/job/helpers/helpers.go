@@ -34,11 +34,11 @@ const (
 	VolumeClaimFmt = "%s-volume-%s"
 )
 
-// GetTaskIndex   returns task Index
+// GetTaskIndex returns task Index
 func GetTaskIndex(pod *v1.Pod) string {
-	num := strings.Split(pod.Name, "-")
-	if len(num) >= 3 {
-		return num[len(num)-1]
+	parts := strings.Split(pod.Name, "-")
+	if len(parts) == 3 {
+		return parts[2]
 	}
 
 	return ""
