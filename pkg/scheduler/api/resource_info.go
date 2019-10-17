@@ -224,24 +224,38 @@ func (r *Resource) Multi(ratio float64) *Resource {
 
 // Less checks whether a resource is less than other
 func (r *Resource) Less(rr *Resource) bool {
-	if !(r.MilliCPU < rr.MilliCPU && r.Memory < rr.Memory) {
+	lessFunc := func(l, r float64) bool {
+		if l < r {
+			return true
+		}
+		return false
+	}
+
+	if !lessFunc(r.MilliCPU, rr.MilliCPU) {
+		return false
+	}
+	if !lessFunc(r.Memory, rr.Memory) {
 		return false
 	}
 
 	if r.ScalarResources == nil {
-		if rr.ScalarResources == nil {
-			return false
+		if rr.ScalarResources != nil {
+			for _, rrQuant := range rr.ScalarResources {
+				if rrQuant <= minMilliScalarResources {
+					return false
+				}
+			}
 		}
 		return true
 	}
 
-	for rName, rQuant := range r.ScalarResources {
-		if rr.ScalarResources == nil {
-			return false
-		}
+	if rr.ScalarResources == nil {
+		return false
+	}
 
+	for rName, rQuant := range r.ScalarResources {
 		rrQuant := rr.ScalarResources[rName]
-		if rQuant >= rrQuant {
+		if !lessFunc(rQuant, rrQuant) {
 			return false
 		}
 	}
@@ -251,9 +265,17 @@ func (r *Resource) Less(rr *Resource) bool {
 
 // LessEqual checks whether a resource is less than other resource
 func (r *Resource) LessEqual(rr *Resource) bool {
-	isLess := (r.MilliCPU < rr.MilliCPU || math.Abs(rr.MilliCPU-r.MilliCPU) < minMilliCPU) &&
-		(r.Memory < rr.Memory || math.Abs(rr.Memory-r.Memory) < minMemory)
-	if !isLess {
+	lessEqualFunc := func(l, r, diff float64) bool {
+		if l < r || math.Abs(l-r) < diff {
+			return true
+		}
+		return false
+	}
+
+	if !lessEqualFunc(r.MilliCPU, rr.MilliCPU, minMilliCPU) {
+		return false
+	}
+	if !lessEqualFunc(r.Memory, rr.Memory, minMemory) {
 		return false
 	}
 
@@ -262,12 +284,15 @@ func (r *Resource) LessEqual(rr *Resource) bool {
 	}
 
 	for rName, rQuant := range r.ScalarResources {
+		if rQuant <= minMilliScalarResources {
+			continue
+		}
 		if rr.ScalarResources == nil {
 			return false
 		}
 
 		rrQuant := rr.ScalarResources[rName]
-		if !(rQuant < rrQuant || math.Abs(rrQuant-rQuant) < minMilliScalarResources) {
+		if !lessEqualFunc(rQuant, rrQuant, minMilliScalarResources) {
 			return false
 		}
 	}
