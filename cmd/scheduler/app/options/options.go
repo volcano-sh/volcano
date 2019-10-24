@@ -56,9 +56,6 @@ type ServerOption struct {
 	// HealthzBindAddress is the IP address and port for the health check server to serve on,
 	// defaulting to 127.0.0.1:11251
 	HealthzBindAddress string
- //       PercentageOfNodesToScore int32 //percentage of nodes to score
-//	MinFeasibleNodesToFind  int32 //minimum number of nodes to score 
-//	MinFeasibleNodesPercentageToFind int32//minium percentage of nodes to score (used for adaptive percentage)
 }
 
 // ServerOpts server options
@@ -90,9 +87,6 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.Float32Var(&s.KubeAPIQPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
 	fs.IntVar(&s.KubeAPIBurst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
 	fs.StringVar(&s.HealthzBindAddress, "healthz-bind-address", defaultHealthzBindAddress, "The address to listen on for /healthz HTTP requests.")
-//	fs.Int32Varr(&s.PercentageOfNodesToScore, "percentage-of-nodes", 0, "The percentage of nodes to score")
-//        fs.Int32Var(&s.MinFeasibleNodesToFind,"minimum-feasible-nodes", defaultMinNodes, "The minimum number of feasible nodes to find")
-//        fs.Int32Var(&s.MinFeasibleNodesPercentageToFind,"minimum-percentage-nodes", defaultMinPercentage, "The minimum percentage of nodes to find and score")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled
