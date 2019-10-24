@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"volcano.sh/volcano/pkg/apis/helpers"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 )
 
@@ -123,10 +124,16 @@ func (c *Controller) validatePod(pod v1.Pod, reviewResponse *v1beta1.AdmissionRe
 func (c *Controller) checkPGPhase(pod v1.Pod, pgName string, isVCJob bool) error {
 	pg, err := c.VcClients.SchedulingV1alpha2().PodGroups(pod.Namespace).Get(pgName, metav1.GetOptions{})
 	if err != nil {
-		if isVCJob || (!isVCJob && !apierrors.IsNotFound(err)) {
-			return fmt.Errorf("Failed to get PodGroup for pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
+		pg, err := c.VcClients.SchedulingV1alpha1().PodGroups(pod.Namespace).Get(pgName, metav1.GetOptions{})
+		if err != nil {
+			if isVCJob || (!isVCJob && !apierrors.IsNotFound(err)) {
+				return fmt.Errorf("Failed to get PodGroup for pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
+			}
+			return nil
 		}
-		return nil
+		if pg.Status.Phase != v1alpha1.PodGroupPending {
+			return nil
+		}
 	}
 	if pg.Status.Phase != v1alpha2.PodGroupPending {
 		return nil
