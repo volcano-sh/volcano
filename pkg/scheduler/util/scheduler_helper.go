@@ -22,25 +22,84 @@ import (
 	"math/rand"
 	"sort"
 	"sync"
-
+	"sync/atomic"
+	"github.com/spf13/pflag"
 	"github.com/golang/glog"
-	"k8s.io/client-go/util/workqueue"
-
+        "k8s.io/client-go/util/workqueue"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
-// PredicateNodes returns nodes that fit task
-func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn) ([]*api.NodeInfo, *api.FitErrors) {
-	var predicateNodes []*api.NodeInfo
 
-	var workerLock sync.Mutex
+// parameters to control how many nodes to find and score
+const (
+
+   defaultMinPercentageNodes=5
+   defaultMinNodes=100
+   defaultPercentageOfNodesToScore=50
+)
+
+var (
+         lastProcessedNodeIndex int
+	// NumFeasibleNodesToFind is the minimum number of nodes that would be scored
+	 MinFeasibleNodesToFind  = pflag.Int32("minimum-feasible-nodes", defaultMinNodes, "The minimum number of feasible nodes to find")
+
+         //Mminimum percentage of nodes to find
+         MinFeasibleNodesPercentageToFind = pflag.Int32("minimum-percentage-nodes", defaultMinPercentageNodes, "The minimum percentage of nodes to find and score")
+
+	// PercentageOfNodesToScore is the default  percentage of nodes that 
+        // would be scored in each scheduling cycle. This is a semi-arbitrary value
+	// to specify  that a certain number of nodes are checked for feasibility.
+	 PercentageOfNodesToScore   = pflag.Int32("percentage-nodes-to-score", 0,"The percentage of nodes to find and score")
+)
+
+
+// CalaculateNumFeasibleNodesToFind returns the number of feasible nodes that once found, the scheduler stops
+// its search for more feasible nodes.
+func CalculateNumFeasibleNodesToFind(numAllNodes int32) (numNodes int32) {
+	if numAllNodes < *MinFeasibleNodesToFind || *PercentageOfNodesToScore >= 100 {
+		return numAllNodes
+	}
+
+	adaptivePercentage := *PercentageOfNodesToScore
+	if adaptivePercentage <= 0 {
+		adaptivePercentage = defaultPercentageOfNodesToScore - numAllNodes/125
+		if adaptivePercentage < *MinFeasibleNodesPercentageToFind {
+			adaptivePercentage = *MinFeasibleNodesPercentageToFind
+		}
+	}
+
+	numNodes = numAllNodes * adaptivePercentage / 100
+	if numNodes < *MinFeasibleNodesToFind {
+		return *MinFeasibleNodesToFind
+	}
+
+	return numNodes
+}
+
+// PredicateNodes returns the specified number of nodes that fit task
+func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn) ([]*api.NodeInfo, *api.FitErrors) {
+	//var workerLock sync.Mutex
 
 	var errorLock sync.Mutex
 	fe := api.NewFitErrors()
 
+        allNodes := len(nodes)
+        numNodesToFind := CalculateNumFeasibleNodesToFind(int32(allNodes))
+        //allocate enough space to avoid growing it
+        predicateNodes := make([]*api.NodeInfo, numNodesToFind)
+
+	numFoundNodes:=int32(0)
+        processedNodes := int32(0)
+
+	//create a context with cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+
 	checkNode := func(index int) {
-		node := nodes[index]
+           // We check the nodes starting from where we left off in the previous scheduling cycle,
+     	   // this is to make sure all nodes have the same chance of being examined across pods.
+		node := nodes[(lastProcessedNodeIndex+index) % allNodes]
+                atomic.AddInt32(&processedNodes,1)
 		glog.V(3).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
 			task.Namespace, task.Name, node.Name, task.Resreq, node.Idle)
 
@@ -54,12 +113,23 @@ func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateF
 			return
 		}
 
-		workerLock.Lock()
-		predicateNodes = append(predicateNodes, node)
-		workerLock.Unlock()
-	}
+		//check if the number of found nodes is more than the numNodesTofind
+		length := atomic.AddInt32(&numFoundNodes, 1)
+		if length > numNodesToFind {
+			cancel()
+			atomic.AddInt32(&numFoundNodes, -1)
+		} else {
+			predicateNodes[length-1] = node
+		}
+        }        
 
-	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), checkNode)
+	//workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), checkNode)
+        workqueue.ParallelizeUntil(ctx, 16, allNodes, checkNode)
+
+        //processedNodes := int(numFoundNodes) + len(filteredNodesStatuses) + len(failedPredicateMap)
+	lastProcessedNodeIndex = (lastProcessedNodeIndex + int(processedNodes)) % allNodes
+
+	predicateNodes = predicateNodes[:numFoundNodes]
 	return predicateNodes, fe
 }
 
