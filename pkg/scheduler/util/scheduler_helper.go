@@ -33,37 +33,37 @@ import (
 
 // parameters to control how many nodes to find and score
 const (
-
    defaultMinPercentageNodes=5
    defaultMinNodes=100
-   defaultPercentageOfNodesToScore=50
+   defaultPercentageNodes=100
+   baselinePercentageNodes=50
+
 )
 
 var (
-         lastProcessedNodeIndex int
-	// NumFeasibleNodesToFind is the minimum number of nodes that would be scored
-	 MinFeasibleNodesToFind  = pflag.Int32("minimum-feasible-nodes", defaultMinNodes, "The minimum number of feasible nodes to find")
+    lastProcessedNodeIndex int
+    // NumFeasibleNodesToFind is the minimum number of nodes that would be scored
+    MinFeasibleNodesToFind  = pflag.Int32("minimum-feasible-nodes", defaultMinNodes, "The minimum number of feasible nodes to find") 
+    //Mminimum percentage of nodes to find
+    MinFeasibleNodesPercentageToFind = pflag.Int32("minimum-percentage-nodes", defaultMinPercentageNodes, "The minimum percentage of nodes to find and score")
 
-         //Mminimum percentage of nodes to find
-         MinFeasibleNodesPercentageToFind = pflag.Int32("minimum-percentage-nodes", defaultMinPercentageNodes, "The minimum percentage of nodes to find and score")
-
-	// PercentageOfNodesToScore is the default  percentage of nodes that 
-        // would be scored in each scheduling cycle. This is a semi-arbitrary value
-	// to specify  that a certain number of nodes are checked for feasibility.
-	 PercentageOfNodesToScore   = pflag.Int32("percentage-nodes-to-score", 0,"The percentage of nodes to find and score")
+    // PercentageOfNodesToScore is the default  percentage of nodes that 
+    // would be scored in each scheduling cycle. This is a semi-arbitrary value
+    // to specify  that a certain number of nodes are checked for feasibility.
+     PercentageOfNodesToScore   = pflag.Int32("percentage-nodes-to-score", defaultPercentageNodes,"The percentage of nodes to find and score")
 )
 
 
 // CalaculateNumFeasibleNodesToFind returns the number of feasible nodes that once found, the scheduler stops
 // its search for more feasible nodes.
-func CalculateNumFeasibleNodesToFind(numAllNodes int32) (numNodes int32) {
+func CalculateNumOfFeasibleNodesToFind(numAllNodes int32) (numNodes int32) {
 	if numAllNodes < *MinFeasibleNodesToFind || *PercentageOfNodesToScore >= 100 {
 		return numAllNodes
 	}
 
 	adaptivePercentage := *PercentageOfNodesToScore
 	if adaptivePercentage <= 0 {
-		adaptivePercentage = defaultPercentageOfNodesToScore - numAllNodes/125
+		adaptivePercentage = baselinePercentageNodes - numAllNodes/125
 		if adaptivePercentage < *MinFeasibleNodesPercentageToFind {
 			adaptivePercentage = *MinFeasibleNodesPercentageToFind
 		}
@@ -85,7 +85,7 @@ func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateF
 	fe := api.NewFitErrors()
 
         allNodes := len(nodes)
-        numNodesToFind := CalculateNumFeasibleNodesToFind(int32(allNodes))
+        numNodesToFind := CalculateNumOfFeasibleNodesToFind(int32(allNodes))
         //allocate enough space to avoid growing it
         predicateNodes := make([]*api.NodeInfo, numNodesToFind)
 
