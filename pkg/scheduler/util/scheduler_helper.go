@@ -23,59 +23,38 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
-	"github.com/spf13/pflag"
 	"github.com/golang/glog"
         "k8s.io/client-go/util/workqueue"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 )
 
 
-// parameters to control how many nodes to find and score
-const (
-   defaultMinPercentageOfNodesToFind=5
-   defaultMinNodesToFind=100
-   defaultPercentageOfNodesToFind=100
-   baselinePercentageOfNodesToFind=50
-)
-
-var (
-    //the node index of last processing 
-    lastProcessedNodeIndex int
-
-    // NumFeasibleNodesToFind is the minimum number of nodes that would be scored
-    MinNodesToFind  = pflag.Int32("minimum-feasible-nodes", defaultMinNodesToFind, "The minimum number of feasible nodes to find and score") 
-
-    //Mminimum percentage of nodes to find
-    MinPercentageOfNodesToFind = pflag.Int32("minimum-percentage-nodes-to-find", defaultMinPercentageOfNodesToFind, "The minimum percentage of nodes to find and score")
-
-    // PercentageOfNodesToScore is the percentage of nodes that
-    // would be scored in each scheduling cycle. This is a semi-arbitrary value
-    // to specify  that a certain number of nodes are checked for feasibility.
-    PercentageOfNodesToFind  = pflag.Int32("percentage-nodes-to-find", defaultPercentageOfNodesToFind,"The percentage of nodes to find and score")
-)
+const baselinePercentageOfNodesToFind=50
+var   lastProcessedNodeIndex int
 
 
 // CalaculateNumFeasibleNodesToFind returns the number of feasible nodes that once found, the scheduler stops
 // its search for more feasible nodes.
 func CalculateNumOfFeasibleNodesToFind(numAllNodes int32) (numNodes int32) {
-	if numAllNodes < *MinNodesToFind || *PercentageOfNodesToFind >= 100 {
+        opts := options.ServerOpts
+	if numAllNodes < opts.MinNodesToFind || opts.PercentageOfNodesToFind >= 100 {
 		return numAllNodes
 	}
 
-	adaptivePercentage := *PercentageOfNodesToFind
+	adaptivePercentage := opts.PercentageOfNodesToFind
 	if adaptivePercentage <= 0 {
            adaptivePercentage = baselinePercentageOfNodesToFind - numAllNodes/125
+	   if adaptivePercentage < opts.MinPercentageOfNodesToFind {
+		adaptivePercentage = opts.MinPercentageOfNodesToFind
+	   }
         }
-	if adaptivePercentage < *MinPercentageOfNodesToFind {
-		adaptivePercentage = *MinPercentageOfNodesToFind
-	}
 
 	numNodes = numAllNodes * adaptivePercentage / 100
-	if numNodes < *MinNodesToFind {
-		return *MinNodesToFind
+	if numNodes < opts.MinNodesToFind {
+		numNodes = opts.MinNodesToFind
 	}
-
 	return numNodes
 }
 

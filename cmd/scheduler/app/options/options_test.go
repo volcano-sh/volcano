@@ -44,6 +44,9 @@ func TestAddFlags(t *testing.T) {
 		KubeAPIBurst:       defaultBurst,
 		KubeAPIQPS:         defaultQPS,
 		HealthzBindAddress: "127.0.0.1:11251",
+                MinNodesToFind       defaultMinNodesToFind
+                MinPercentageOfNodesToFind defaultMinPercentageOfNodesToFind
+                PercentageOfNodesToFind  defaultPercentageOfNodesToFind
 	}
 
 	if !reflect.DeepEqual(expected, s) {
