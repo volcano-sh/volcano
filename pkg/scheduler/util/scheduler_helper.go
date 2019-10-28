@@ -44,11 +44,11 @@ func CalculateNumOfFeasibleNodesToFind(numAllNodes int32) (numNodes int32) {
 
 	adaptivePercentage := opts.PercentageOfNodesToFind
 	if adaptivePercentage <= 0 {
-       adaptivePercentage = baselinePercentageOfNodesToFind - numAllNodes/125
+           adaptivePercentage = baselinePercentageOfNodesToFind - numAllNodes/125
 	   if adaptivePercentage < opts.MinPercentageOfNodesToFind {
 		  adaptivePercentage = opts.MinPercentageOfNodesToFind
 	   }
-    }
+        }
 
 	numNodes = numAllNodes * adaptivePercentage / 100
 	if numNodes < opts.MinNodesToFind {
@@ -64,14 +64,14 @@ func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateF
 	var errorLock sync.Mutex
 	fe := api.NewFitErrors()
 
-    allNodes := len(nodes)
-    numNodesToFind := CalculateNumOfFeasibleNodesToFind(int32(allNodes))
+        allNodes := len(nodes)
+        numNodesToFind := CalculateNumOfFeasibleNodesToFind(int32(allNodes))
 
-    //allocate enough space to avoid growing it
-    predicateNodes := make([]*api.NodeInfo, numNodesToFind)
+        //allocate enough space to avoid growing it
+        predicateNodes := make([]*api.NodeInfo, numNodesToFind)
 
 	numFoundNodes := int32(0)
-    processedNodes := int32(0)
+        processedNodes := int32(0)
 
 	//create a context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
@@ -79,7 +79,7 @@ func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateF
 	checkNode := func(index int) {
         // Check the nodes starting from where is left off in the previous scheduling cycle,
      	// to make sure all nodes have the same chance of being examined across pods.
-		node := nodes[(lastProcessedNodeIndex+index) % allNodes]
+	node := nodes[(lastProcessedNodeIndex+index) % allNodes]
         atomic.AddInt32(&processedNodes,1)
 		glog.V(3).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
 		                task.Namespace, task.Name, node.Name, task.Resreq, node.Idle)
@@ -102,12 +102,12 @@ func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateF
 		} else {
 			predicateNodes[length-1] = node
 		}
-    }
+        }
 
 	//workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), checkNode)
-    workqueue.ParallelizeUntil(ctx, 16, allNodes, checkNode)
+        workqueue.ParallelizeUntil(ctx, 16, allNodes, checkNode)
 
-    //processedNodes := int(numFoundNodes) + len(filteredNodesStatuses) + len(failedPredicateMap)
+        //processedNodes := int(numFoundNodes) + len(filteredNodesStatuses) + len(failedPredicateMap)
 	lastProcessedNodeIndex = (lastProcessedNodeIndex + int(processedNodes)) % allNodes
 	predicateNodes = predicateNodes[:numFoundNodes]
 	return predicateNodes, fe
