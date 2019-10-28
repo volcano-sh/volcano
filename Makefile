@@ -19,7 +19,7 @@ REPO_PATH=volcano.sh/volcano
 IMAGE_PREFIX=volcanosh/vc
 # If tag not explicitly set in users default to the git sha.
 TAG ?= $(shell git rev-parse --verify HEAD)
-RELEASE_VER=v0.1
+RELEASE_VER=v0.2
 GitSHA=`git rev-parse HEAD`
 Date=`date "+%Y-%m-%d %H:%M:%S"`
 LD_FLAGS=" \

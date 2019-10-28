@@ -33,7 +33,7 @@ refer to [#241](https://github.com/volcano-sh/volcano/issues/241) and [#288](htt
 - [Volcano 在 Kubernetes 中运行高性能作业实践 @ ArchSummit 2019](https://archsummit.infoq.cn/2019/shenzhen/presentation/1817)
 - [Volcano：基于云原生的高密计算解决方案 @ Huawei Connection 2019](https://agenda.events.huawei.com/2019/cn/minisite/agenda.html#dayTab=day7&tagName=%7B%22language%22%3A%22Cn%22%7D&seminarId=1743)
 - [Improving Performance of Deep Learning Workloads With Volcano @ KubeCon 2019 NA](https://sched.co/UaZi)
-- [Session Batch Capability of Kubernetes Intro @ KubeCon 2019 NA](https://sched.co/Uajv)
+- [Batch Capability of Kubernetes Intro @ KubeCon 2019 NA](https://sched.co/Uajv)
 
 ## Ecosystem
 
