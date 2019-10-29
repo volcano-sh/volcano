@@ -34,10 +34,10 @@ const (
 	defaultQPS   = 50.0
 	defaultBurst = 100
 
-    // Default arameters to control the number of feasible nodes to find and score
-    defaultMinPercentageOfNodesToFind=5
-    defaultMinNodesToFind=100
-    defaultPercentageOfNodesToFind=100
+	// Default parameters to control the number of feasible nodes to find and score
+	defaultMinPercentageOfNodesToFind = 5
+	defaultMinNodesToFind             = 100
+	defaultPercentageOfNodesToFind    = 100
 )
 
 // ServerOption is the main context object for the controller manager.
@@ -59,10 +59,10 @@ type ServerOption struct {
 	// defaulting to 127.0.0.1:11251
 	HealthzBindAddress string
 
-        // Parameters for scheduling tuning: the number of feasible nodes to find and score
-        MinNodesToFind  int32
-        MinPercentageOfNodesToFind int32
-        PercentageOfNodesToFind int32
+	// Parameters for scheduling tuning: the number of feasible nodes to find and score
+	MinNodesToFind             int32
+	MinPercentageOfNodesToFind int32
+	PercentageOfNodesToFind    int32
 }
 
 // ServerOpts server options
@@ -95,14 +95,14 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.IntVar(&s.KubeAPIBurst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
 	fs.StringVar(&s.HealthzBindAddress, "healthz-bind-address", defaultHealthzBindAddress, "The address to listen on for /healthz HTTP requests.")
 
-        // Minimum number of feasible nodes to find and score
-        fs.Int32Var(&s.MinNodesToFind,"minimum-feasible-nodes", defaultMinNodesToFind, "The minimum number of feasible nodes to find and score")
+	// Minimum number of feasible nodes to find and score
+	fs.Int32Var(&s.MinNodesToFind, "minimum-feasible-nodes", defaultMinNodesToFind, "The minimum number of feasible nodes to find and score")
 
 	// Minimum percentage of nodes to find and score
-        fs.Int32Var(&s.MinPercentageOfNodesToFind,"minimum-percentage-nodes-to-find", defaultMinPercentageOfNodesToFind, "The minimum percentage of nodes to find and score")
+	fs.Int32Var(&s.MinPercentageOfNodesToFind, "minimum-percentage-nodes-to-find", defaultMinPercentageOfNodesToFind, "The minimum percentage of nodes to find and score")
 
-        // The percentage of nodes that would be scored in each scheduling cycle; if <= 0, an adpative percentage will be calcuated
-        fs.Int32Var(&s.PercentageOfNodesToFind,"percentage-nodes-to-find", defaultPercentageOfNodesToFind,"The percentage of nodes to find and score, if <=0 will be calcuated based on the cluster size")
+	// The percentage of nodes that would be scored in each scheduling cycle; if <= 0, an adpative percentage will be calcuated
+	fs.Int32Var(&s.PercentageOfNodesToFind, "percentage-nodes-to-find", defaultPercentageOfNodesToFind, "The percentage of nodes to find and score, if <=0 will be calcuated based on the cluster size")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled
