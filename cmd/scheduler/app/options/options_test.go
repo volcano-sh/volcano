@@ -37,13 +37,16 @@ func TestAddFlags(t *testing.T) {
 
 	// This is a snapshot of expected options parsed by args.
 	expected := &ServerOption{
-		SchedulerName:      defaultSchedulerName,
-		SchedulePeriod:     5 * time.Minute,
-		DefaultQueue:       defaultQueue,
-		ListenAddress:      defaultListenAddress,
-		KubeAPIBurst:       defaultBurst,
-		KubeAPIQPS:         defaultQPS,
-		HealthzBindAddress: "127.0.0.1:11251",
+		SchedulerName:              defaultSchedulerName,
+		SchedulePeriod:             5 * time.Minute,
+		DefaultQueue:               defaultQueue,
+		ListenAddress:              defaultListenAddress,
+		KubeAPIBurst:               defaultBurst,
+		KubeAPIQPS:                 defaultQPS,
+		HealthzBindAddress:         "127.0.0.1:11251",
+		MinNodesToFind:             defaultMinNodesToFind,
+		MinPercentageOfNodesToFind: defaultMinPercentageOfNodesToFind,
+		PercentageOfNodesToFind:    defaultPercentageOfNodesToFind,
 	}
 
 	if !reflect.DeepEqual(expected, s) {

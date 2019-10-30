@@ -18,29 +18,69 @@ package util
 
 import (
 	"context"
+	"github.com/golang/glog"
+	"k8s.io/client-go/util/workqueue"
+	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 	"math"
 	"math/rand"
 	"sort"
 	"sync"
-
-	"github.com/golang/glog"
-	"k8s.io/client-go/util/workqueue"
-
-	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
+	"sync/atomic"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
-// PredicateNodes returns nodes that fit task
-func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn) ([]*api.NodeInfo, *api.FitErrors) {
-	var predicateNodes []*api.NodeInfo
+const baselinePercentageOfNodesToFind = 50
 
-	var workerLock sync.Mutex
+var lastProcessedNodeIndex int
+
+// CalculateNumOfFeasibleNodesToFind returns the number of feasible nodes that once found,
+// the scheduler stops its search for more feasible nodes.
+func CalculateNumOfFeasibleNodesToFind(numAllNodes int32) (numNodes int32) {
+	opts := options.ServerOpts
+	if numAllNodes <= opts.MinNodesToFind || opts.PercentageOfNodesToFind >= 100 {
+		return numAllNodes
+	}
+
+	adaptivePercentage := opts.PercentageOfNodesToFind
+	if adaptivePercentage <= 0 {
+		adaptivePercentage = baselinePercentageOfNodesToFind - numAllNodes/125
+		if adaptivePercentage < opts.MinPercentageOfNodesToFind {
+			adaptivePercentage = opts.MinPercentageOfNodesToFind
+		}
+	}
+
+	numNodes = numAllNodes * adaptivePercentage / 100
+	if numNodes < opts.MinNodesToFind {
+		numNodes = opts.MinNodesToFind
+	}
+	return numNodes
+}
+
+// PredicateNodes returns the specified number of nodes that fit a task
+func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn) ([]*api.NodeInfo, *api.FitErrors) {
+	//var workerLock sync.Mutex
 
 	var errorLock sync.Mutex
 	fe := api.NewFitErrors()
 
+	allNodes := len(nodes)
+	numNodesToFind := CalculateNumOfFeasibleNodesToFind(int32(allNodes))
+
+	//allocate enough space to avoid growing it
+	predicateNodes := make([]*api.NodeInfo, numNodesToFind)
+
+	numFoundNodes := int32(0)
+	processedNodes := int32(0)
+
+	//create a context with cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+
 	checkNode := func(index int) {
-		node := nodes[index]
+		// Check the nodes starting from where is left off in the previous scheduling cycle,
+		// to make sure all nodes have the same chance of being examined across pods.
+		node := nodes[(lastProcessedNodeIndex+index)%allNodes]
+		atomic.AddInt32(&processedNodes, 1)
 		glog.V(3).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
 			task.Namespace, task.Name, node.Name, task.Resreq, node.Idle)
 
@@ -54,12 +94,22 @@ func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateF
 			return
 		}
 
-		workerLock.Lock()
-		predicateNodes = append(predicateNodes, node)
-		workerLock.Unlock()
+		//check if the number of found nodes is more than the numNodesTofind
+		length := atomic.AddInt32(&numFoundNodes, 1)
+		if length > numNodesToFind {
+			cancel()
+			atomic.AddInt32(&numFoundNodes, -1)
+		} else {
+			predicateNodes[length-1] = node
+		}
 	}
 
-	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), checkNode)
+	//workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), checkNode)
+	workqueue.ParallelizeUntil(ctx, 16, allNodes, checkNode)
+
+	//processedNodes := int(numFoundNodes) + len(filteredNodesStatuses) + len(failedPredicateMap)
+	lastProcessedNodeIndex = (lastProcessedNodeIndex + int(processedNodes)) % allNodes
+	predicateNodes = predicateNodes[:numFoundNodes]
 	return predicateNodes, fe
 }
 
