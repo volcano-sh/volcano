@@ -142,7 +142,7 @@ func validatePolicies(policies []v1alpha1.LifecyclePolicy, fldPath *field.Path) 
 
 		if len(policy.Event) != 0 || len(policy.Events) != 0 {
 			bFlag := false
-			policyEventsList := getEventlist(policy)
+			policyEventsList := getEventList(policy)
 			for _, event := range policyEventsList {
 				if allow, ok := policyEventMap[event]; !ok || !allow {
 					err = multierror.Append(err, field.Invalid(fldPath, event, fmt.Sprintf("invalid policy event")))
@@ -188,7 +188,7 @@ func validatePolicies(policies []v1alpha1.LifecyclePolicy, fldPath *field.Path) 
 	return err
 }
 
-func getEventlist(policy v1alpha1.LifecyclePolicy) []v1alpha1.Event {
+func getEventList(policy v1alpha1.LifecyclePolicy) []v1alpha1.Event {
 	policyEventsList := policy.Events
 	if len(policy.Event) > 0 {
 		policyEventsList = append(policyEventsList, policy.Event)
