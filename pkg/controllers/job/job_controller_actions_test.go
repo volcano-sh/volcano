@@ -17,6 +17,7 @@ limitations under the License.
 package job
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -295,7 +296,7 @@ func TestCreateJobIOIfNotExistFunc(t *testing.T) {
 		ExpextVal error
 	}{
 		{
-			Name: "Create Job IO success case",
+			Name: "Create Job IO case",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
@@ -309,7 +310,7 @@ func TestCreateJobIOIfNotExistFunc(t *testing.T) {
 					},
 				},
 			},
-			ExpextVal: nil,
+			ExpextVal: errors.New("pvc pvc1 is not found, the job will be in the Pending state until the PVC is created"),
 		},
 	}
 
@@ -319,8 +320,14 @@ func TestCreateJobIOIfNotExistFunc(t *testing.T) {
 			fakeController := newFakeController()
 
 			job, err := fakeController.createJobIOIfNotExist(testcase.Job)
-			if err != testcase.ExpextVal {
-				t.Errorf("Expected Return value to be : %s, but got: %s in testcase %d", testcase.ExpextVal, err, i)
+			if testcase.ExpextVal == nil {
+				if err != nil {
+					t.Errorf("Expected Return value to be : %v, but got: %v in testcase %d", testcase.ExpextVal, err, i)
+				}
+			} else {
+				if err == nil || err.Error() != testcase.ExpextVal.Error() {
+					t.Errorf("Expected Return value to be : %v, but got: %v in testcase %d", testcase.ExpextVal.Error(), err.Error(), i)
+				}
 			}
 
 			if len(job.Spec.Volumes) == 0 {

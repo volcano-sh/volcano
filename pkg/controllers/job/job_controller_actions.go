@@ -339,6 +339,9 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (*vkv1.Job, error) {
 	// If PVC does not exist, create them for Job.
 	var needUpdate bool
 	volumes := job.Spec.Volumes
+	if job.Status.ControlledResources == nil {
+		job.Status.ControlledResources = make(map[string]string)
+	}
 	for index, volume := range volumes {
 		vcName := volume.VolumeClaimName
 		if len(vcName) == 0 {
@@ -375,7 +378,7 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (*vkv1.Job, error) {
 			if exist {
 				job.Status.ControlledResources["volume-pvc-"+vcName] = vcName
 			} else {
-				msg := fmt.Sprintf("PVC %s is not found, the job will be in the Pending state until the PVC is created.", vcName)
+				msg := fmt.Sprintf("pvc %s is not found, the job will be in the Pending state until the PVC is created", vcName)
 				glog.Error(msg)
 				return job, errors.New(msg)
 			}
@@ -387,12 +390,9 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (*vkv1.Job, error) {
 			glog.Errorf("Failed to update Job %v/%v for volume claim name: %v ",
 				job.Namespace, job.Name, err)
 			return job, err
-		} else {
-			newJob.Status = job.Status
-			return newJob, err
 		}
-		newJob.Status = job.Status
 
+		newJob.Status = job.Status
 		return newJob, err
 	}
 	return job, nil
