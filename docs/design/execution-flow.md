@@ -45,4 +45,4 @@ The Allocation of the workloads to the node in scheduler happens in each session
 
 
 
-![Execution flow graph](../../images/AllocateDesign.png)
+![Execution flow graph](./images/AllocateDesign.png)
