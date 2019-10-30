@@ -86,7 +86,8 @@ func (cc *Controller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 				OwnerReferences: newPGOwnerReferences(pod),
 			},
 			Spec: scheduling.PodGroupSpec{
-				MinMember: 1,
+				MinMember:         1,
+				PriorityClassName: pod.Spec.PriorityClassName,
 			},
 		}
 
