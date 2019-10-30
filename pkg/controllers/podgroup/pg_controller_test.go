@@ -17,6 +17,7 @@ limitations under the License.
 package podgroup
 
 import (
+	"reflect"
 	"testing"
 
 	"k8s.io/api/core/v1"
@@ -38,17 +39,17 @@ func newFakeController() *Controller {
 	return controller
 }
 
-func TestAddPodgroup(t *testing.T) {
+func TestAddPodGroup(t *testing.T) {
 	namespace := "test"
 	isController := true
 
 	testCases := []struct {
-		Name        string
-		pod         *v1.Pod
-		ExpectValue string
+		name             string
+		pod              *v1.Pod
+		expectedPodGroup *scheduling.PodGroup
 	}{
 		{
-			Name: "AddPodgroup- pod has ownerReferences",
+			name: "AddPodGroup: pod has ownerReferences and priorityClassName",
 			pod: &v1.Pod{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "v1",
@@ -58,14 +59,45 @@ func TestAddPodgroup(t *testing.T) {
 					Name:      "pod1",
 					Namespace: namespace,
 					OwnerReferences: []metav1.OwnerReference{
-						{UID: "p1", Controller: &isController},
+						{
+							APIVersion: "app/v1",
+							Kind:       "ReplicaSet",
+							Name:       "rs1",
+							UID:        "7a09885b-b753-4924-9fba-77c0836bac20",
+							Controller: &isController,
+						},
 					},
 				},
+				Spec: v1.PodSpec{
+					PriorityClassName: "test-pc",
+				},
 			},
-			ExpectValue: "podgroup-p1",
+			expectedPodGroup: &scheduling.PodGroup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "scheduling.sigs.dev/v1alpha2",
+					Kind:       "PodGroup",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "podgroup-7a09885b-b753-4924-9fba-77c0836bac20",
+					Namespace: namespace,
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "app/v1",
+							Kind:       "ReplicaSet",
+							Name:       "rs1",
+							UID:        "7a09885b-b753-4924-9fba-77c0836bac20",
+							Controller: &isController,
+						},
+					},
+				},
+				Spec: scheduling.PodGroupSpec{
+					MinMember:         1,
+					PriorityClassName: "test-pc",
+				},
+			},
 		},
 		{
-			Name: "AddPodgroup- pod has no ownerReferences",
+			name: "AddPodGroup: pod has no ownerReferences or priorityClassName",
 			pod: &v1.Pod{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "v1",
@@ -74,24 +106,66 @@ func TestAddPodgroup(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "pod1",
 					Namespace: namespace,
-					UID:       types.UID("p1-uid"),
+					UID:       types.UID("7a09885b-b753-4924-9fba-77c0836bac20"),
 				},
 			},
-			ExpectValue: "podgroup-p1-uid",
+			expectedPodGroup: &scheduling.PodGroup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "scheduling.sigs.dev/v1alpha2",
+					Kind:       "PodGroup",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "podgroup-7a09885b-b753-4924-9fba-77c0836bac20",
+					Namespace: namespace,
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "v1",
+							Kind:       "Pod",
+							Name:       "pod1",
+							UID:        "7a09885b-b753-4924-9fba-77c0836bac20",
+							Controller: &isController,
+						},
+					},
+				},
+				Spec: scheduling.PodGroupSpec{
+					MinMember: 1,
+				},
+			},
 		},
 	}
 
-	for i, testcase := range testCases {
+	for _, testCase := range testCases {
 		c := newFakeController()
 
-		pod, _ := c.kubeClients.CoreV1().Pods(testcase.pod.Namespace).Create(testcase.pod)
+		pod, err := c.kubeClients.CoreV1().Pods(testCase.pod.Namespace).Create(testCase.pod)
+		if err != nil {
+			t.Errorf("Case %s failed when creating pod for %v", testCase.name, err)
+		}
 
 		c.addPod(pod)
 		c.createNormalPodPGIfNotExist(pod)
 
-		podAnno := pod.Annotations[scheduling.GroupNameAnnotationKey]
-		if testcase.ExpectValue != podAnno {
-			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, podAnno)
+		pg, err := c.kbClients.SchedulingV1alpha2().PodGroups(pod.Namespace).Get(
+			testCase.expectedPodGroup.Name,
+			metav1.GetOptions{},
+		)
+		if err != nil {
+			t.Errorf("Case %s failed when getting podGroup for %v", testCase.name, err)
+		}
+
+		if false == reflect.DeepEqual(pg.OwnerReferences, testCase.expectedPodGroup.OwnerReferences) {
+			t.Errorf("Case %s failed, expect %v, got %v", testCase.name, testCase.expectedPodGroup, pg)
+		}
+
+		podAnnotation := pod.Annotations[scheduling.GroupNameAnnotationKey]
+		if testCase.expectedPodGroup.Name != podAnnotation {
+			t.Errorf("Case %s failed, expect %v, got %v", testCase.name,
+				testCase.expectedPodGroup.Name, podAnnotation)
+		}
+
+		if testCase.expectedPodGroup.Spec.PriorityClassName != pod.Spec.PriorityClassName {
+			t.Errorf("Case %s failed, expect %v, got %v", testCase.name,
+				testCase.expectedPodGroup.Spec.PriorityClassName, pod.Spec.PriorityClassName)
 		}
 	}
 }
