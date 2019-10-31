@@ -112,8 +112,10 @@ func newPGOwnerReferences(pod *v1.Pod) []metav1.OwnerReference {
 
 	isController := true
 	return []metav1.OwnerReference{{
-		APIVersion: helpers.JobKind.GroupVersion().String(),
+		APIVersion: v1.SchemeGroupVersion.Version,
+		Kind:       "Pod",
 		Controller: &isController,
+		Name:       pod.Name,
 		UID:        pod.UID,
 	}}
 }
