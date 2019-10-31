@@ -360,6 +360,7 @@ func Convert_v1alpha1_QueueSpec_To_scheduling_QueueSpec(in *QueueSpec, out *sche
 func autoConvert_scheduling_QueueSpec_To_v1alpha1_QueueSpec(in *scheduling.QueueSpec, out *QueueSpec, s conversion.Scope) error {
 	out.Weight = in.Weight
 	out.Capability = *(*v1.ResourceList)(unsafe.Pointer(&in.Capability))
+	// WARNING: in.State requires manual conversion: does not exist in peer-type
 	return nil
 }
 
@@ -385,5 +386,6 @@ func autoConvert_scheduling_QueueStatus_To_v1alpha1_QueueStatus(in *scheduling.Q
 	out.Pending = in.Pending
 	out.Running = in.Running
 	// WARNING: in.Inqueue requires manual conversion: does not exist in peer-type
+	// WARNING: in.State requires manual conversion: does not exist in peer-type
 	return nil
 }

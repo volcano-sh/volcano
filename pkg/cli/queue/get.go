@@ -69,13 +69,14 @@ func GetQueue() error {
 
 // PrintQueue prints queue information
 func PrintQueue(queue *v1alpha2.Queue, writer io.Writer) {
-	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s\n",
-		Name, Weight, Pending, Running, Unknown)
+	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s\n",
+		Name, Weight, State, Inqueue, Pending, Running, Unknown)
 	if err != nil {
 		fmt.Printf("Failed to print queue command result: %s.\n", err)
 	}
-	_, err = fmt.Fprintf(writer, "%-25s%-8d%-8d%-8d%-8d\n",
-		queue.Name, queue.Spec.Weight, queue.Status.Pending, queue.Status.Running, queue.Status.Unknown)
+	_, err = fmt.Fprintf(writer, "%-25s%-8d%-8s%-8d%-8d%-8d%-8d\n",
+		queue.Name, queue.Spec.Weight, queue.Status.State, queue.Status.Inqueue,
+		queue.Status.Pending, queue.Status.Running, queue.Status.Unknown)
 	if err != nil {
 		fmt.Printf("Failed to print queue command result: %s.\n", err)
 	}

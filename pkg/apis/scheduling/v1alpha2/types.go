@@ -24,6 +24,9 @@ import (
 // PodGroupPhase is the phase of a pod group at the current time.
 type PodGroupPhase string
 
+// QueueState is state type of queue
+type QueueState string
+
 // These are the valid phase of podGroups.
 const (
 	// PodPending means the pod group has been accepted by the system, but scheduler can not allocate
@@ -43,6 +46,15 @@ const (
 )
 
 type PodGroupConditionType string
+
+const (
+	// QueueStateOpen indicate `Open` state of queue
+	QueueStateOpen QueueState = "Open"
+	// QueueStateClosed indicate `Closed` state of queue
+	QueueStateClosed QueueState = "Closed"
+	// QueueStateClosing indicate `Closing` state of queue
+	QueueStateClosing QueueState = "Closing"
+)
 
 const (
 	PodGroupUnschedulableType PodGroupConditionType = "Unschedulable"
@@ -203,12 +215,16 @@ type QueueStatus struct {
 	Running int32 `json:"running,omitempty" protobuf:"bytes,3,opt,name=running"`
 	// The number of `Inqueue` PodGroup in this queue.
 	Inqueue int32 `json:"inqueue,omitempty" protobuf:"bytes,4,opt,name=inqueue"`
+	// State is state of queue
+	State QueueState `json:"state,omitempty" protobuf:"bytes,5,opt,name=state"`
 }
 
 // QueueSpec represents the template of Queue.
 type QueueSpec struct {
 	Weight     int32           `json:"weight,omitempty" protobuf:"bytes,1,opt,name=weight"`
 	Capability v1.ResourceList `json:"capability,omitempty" protobuf:"bytes,2,opt,name=capability"`
+	// State controller the status of queue
+	State QueueState `json:"state,omitempty" protobuf:"bytes,3,opt,name=state"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

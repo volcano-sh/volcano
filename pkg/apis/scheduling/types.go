@@ -202,12 +202,16 @@ type QueueStatus struct {
 	Running int32
 	// The number of `Inqueue` PodGroup in this queue.
 	Inqueue int32
+	// State is status of queue
+	State string
 }
 
 // QueueSpec represents the template of Queue.
 type QueueSpec struct {
 	Weight     int32
 	Capability v1.ResourceList
+	// State controller the status of queue
+	State string
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

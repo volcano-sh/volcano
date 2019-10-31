@@ -993,6 +993,9 @@ func TestValidateExecution(t *testing.T) {
 				Spec: schedulingv1aplha2.QueueSpec{
 					Weight: 1,
 				},
+				Status: schedulingv1aplha2.QueueStatus{
+					State: schedulingv1aplha2.QueueStateOpen,
+				},
 			}
 			// create fake volcano clientset
 			VolcanoClientSet = fakeclient.NewSimpleClientset()

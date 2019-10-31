@@ -66,6 +66,54 @@ func TestAddQueue(t *testing.T) {
 	}
 }
 
+func TestUpdateQueue(t *testing.T) {
+	testCases := []struct {
+		Name        string
+		oldQueue    *schedulingv1alpha2.Queue
+		newQueue    *schedulingv1alpha2.Queue
+		ExpectValue string
+	}{
+		{
+			Name: "UpdateQueue",
+			oldQueue: &schedulingv1alpha2.Queue{
+				ObjectMeta: metav1.ObjectMeta{
+					ResourceVersion: "v1",
+					Name:            "update-queue",
+				},
+				Spec: schedulingv1alpha2.QueueSpec{
+					Weight: 1,
+					State:  schedulingv1alpha2.QueueStateOpen,
+				},
+			},
+			newQueue: &schedulingv1alpha2.Queue{
+				ObjectMeta: metav1.ObjectMeta{
+					ResourceVersion: "v2",
+					Name:            "update-queue",
+				},
+				Spec: schedulingv1alpha2.QueueSpec{
+					Weight: 1,
+					State:  schedulingv1alpha2.QueueStateClosed,
+				},
+			},
+			ExpectValue: "update-queue",
+		},
+	}
+
+	for _, testCase := range testCases {
+		c := newFakeController()
+
+		c.updateQueue(testCase.oldQueue, testCase.newQueue)
+		item, shutdown := c.queue.Get()
+		if true == shutdown {
+			t.Errorf("Case %s failed for queue shutdown", testCase.Name)
+		}
+
+		if item != testCase.ExpectValue {
+			t.Errorf("Case %s failed, expect %v, got %v", testCase.Name, testCase.ExpectValue, item)
+		}
+	}
+}
+
 func TestDeleteQueue(t *testing.T) {
 	testCases := []struct {
 		Name        string

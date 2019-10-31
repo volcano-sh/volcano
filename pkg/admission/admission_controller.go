@@ -29,9 +29,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-
 	"k8s.io/kubernetes/pkg/apis/core/validation"
+
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	vcver "volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
@@ -46,6 +47,10 @@ const (
 	CONTENTTYPE = "Content-Type"
 	// APPLICATIONJSON json content
 	APPLICATIONJSON = "application/json"
+	// AdmitQueuePath is the pattern for queue validation
+	AdmitQueuePath = "/queues"
+	// MutateQueuePath is the pattern for queue mustating
+	MutateQueuePath = "/mutating-queues"
 )
 
 //The AdmitFunc returns response
@@ -123,6 +128,26 @@ func DecodeJob(object runtime.RawExtension, resource metav1.GroupVersionResource
 	glog.V(3).Infof("the job struct is %+v", job)
 
 	return job, nil
+}
+
+// DecodeQueue decodes the queue using deserializer from the raw object
+func DecodeQueue(object runtime.RawExtension, resource metav1.GroupVersionResource) (*v1alpha2.Queue, error) {
+	queueResource := metav1.GroupVersionResource{
+		Group:    v1alpha2.SchemeGroupVersion.Group,
+		Version:  v1alpha2.SchemeGroupVersion.Version,
+		Resource: "queues",
+	}
+
+	if resource != queueResource {
+		return nil, fmt.Errorf("expect resource to be %s", queueResource)
+	}
+
+	queue := v1alpha2.Queue{}
+	if _, _, err := Codecs.UniversalDeserializer().Decode(object.Raw, nil, &queue); err != nil {
+		return nil, err
+	}
+
+	return &queue, nil
 }
 
 func validatePolicies(policies []v1alpha1.LifecyclePolicy, fldPath *field.Path) error {

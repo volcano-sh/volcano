@@ -20,6 +20,8 @@ import (
 	"flag"
 	"fmt"
 
+	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+
 	"github.com/golang/glog"
 
 	"k8s.io/api/admissionregistration/v1beta1"
@@ -95,6 +97,14 @@ const (
 	ValidatePodConfigName = "%s-validate-pod"
 	// ValidatePodHookName Default name for webhooks in ValidatingWebhookPodConfiguration
 	ValidatePodHookName = "validatepod.volcano.sh"
+	// ValidateQueueConfigName is name format for `ValidatingWebhookConfiguration` of queue
+	ValidateQueueConfigName = "%s-validate-queue"
+	// ValidateQueueHookName is webhook name for `ValidatingWebhookConfiguration` of queue
+	ValidateQueueHookName = "validatequeue.volcano.sh"
+	// MutateQueueConfigName is name format for `Mutatingwebhookconfiguration` of queue
+	MutateQueueConfigName = "%s-mutate-queue"
+	// MutateQueueHookName is webhook name for `Mutatingwebhookconfiguration` of queue
+	MutateQueueHookName = "mutatequeue.volcano.sh"
 )
 
 // CheckPortOrDie check valid port range
@@ -221,6 +231,84 @@ func RegisterWebhooks(c *Config, clienset *kubernetes.Clientset, cabundle []byte
 
 	if err := registerValidateWebhook(clienset.AdmissionregistrationV1beta1().ValidatingWebhookConfigurations(),
 		[]v1beta1.ValidatingWebhookConfiguration{PodValidateHooks}); err != nil {
+		return err
+	}
+
+	queueValidatePath := "/queues"
+	queueValidateHook := v1beta1.ValidatingWebhookConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: useGeneratedNameIfRequired("",
+				fmt.Sprintf(ValidateQueueConfigName, c.AdmissionServiceName)),
+		},
+		Webhooks: []v1beta1.Webhook{
+			{
+				Name: useGeneratedNameIfRequired("", ValidateQueueHookName),
+				Rules: []v1beta1.RuleWithOperations{
+					{
+						Operations: []v1beta1.OperationType{
+							v1beta1.Create,
+							v1beta1.Update,
+							v1beta1.Delete,
+						},
+						Rule: v1beta1.Rule{
+							APIGroups:   []string{v1alpha2.SchemeGroupVersion.Group},
+							APIVersions: []string{v1alpha2.SchemeGroupVersion.Version},
+							Resources:   []string{"queues"},
+						},
+					},
+				},
+				ClientConfig: v1beta1.WebhookClientConfig{
+					Service: &v1beta1.ServiceReference{
+						Name:      c.AdmissionServiceName,
+						Namespace: c.AdmissionServiceNamespace,
+						Path:      &queueValidatePath,
+					},
+					CABundle: cabundle,
+				},
+				FailurePolicy: &ignorePolicy,
+			},
+		},
+	}
+
+	if err := registerValidateWebhook(clienset.AdmissionregistrationV1beta1().ValidatingWebhookConfigurations(),
+		[]v1beta1.ValidatingWebhookConfiguration{queueValidateHook}); err != nil {
+		return err
+	}
+
+	queueMutatingPath := "/mutating-queues"
+	queueMutateHook := v1beta1.MutatingWebhookConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: useGeneratedNameIfRequired("",
+				fmt.Sprintf(MutateQueueConfigName, c.AdmissionServiceName)),
+		},
+		Webhooks: []v1beta1.Webhook{
+			{
+				Name: useGeneratedNameIfRequired("", MutateQueueHookName),
+				Rules: []v1beta1.RuleWithOperations{
+					{
+						Operations: []v1beta1.OperationType{v1beta1.Create},
+						Rule: v1beta1.Rule{
+							APIGroups:   []string{v1alpha2.SchemeGroupVersion.Group},
+							APIVersions: []string{v1alpha2.SchemeGroupVersion.Version},
+							Resources:   []string{"queues"},
+						},
+					},
+				},
+				ClientConfig: v1beta1.WebhookClientConfig{
+					Service: &v1beta1.ServiceReference{
+						Name:      c.AdmissionServiceName,
+						Namespace: c.AdmissionServiceNamespace,
+						Path:      &queueMutatingPath,
+					},
+					CABundle: cabundle,
+				},
+				FailurePolicy: &ignorePolicy,
+			},
+		},
+	}
+
+	if err := registerMutateWebhook(clienset.AdmissionregistrationV1beta1().MutatingWebhookConfigurations(),
+		[]v1beta1.MutatingWebhookConfiguration{queueMutateHook}); err != nil {
 		return err
 	}
 

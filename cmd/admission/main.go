@@ -42,6 +42,14 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 	admissioncontroller.Serve(w, r, admissioncontroller.MutateJobs)
 }
 
+func serveQueues(w http.ResponseWriter, r *http.Request) {
+	admissioncontroller.Serve(w, r, admissioncontroller.AdmitQueues)
+}
+
+func serveMutateQueues(w http.ResponseWriter, r *http.Request) {
+	admissioncontroller.Serve(w, r, admissioncontroller.MutateQueues)
+}
+
 func main() {
 	config := appConf.NewConfig()
 	config.AddFlags()
@@ -53,6 +61,8 @@ func main() {
 
 	http.HandleFunc(admissioncontroller.AdmitJobPath, serveJobs)
 	http.HandleFunc(admissioncontroller.MutateJobPath, serveMutateJobs)
+	http.HandleFunc(admissioncontroller.AdmitQueuePath, serveQueues)
+	http.HandleFunc(admissioncontroller.MutateQueuePath, serveMutateQueues)
 
 	if err := config.CheckPortOrDie(); err != nil {
 		glog.Fatalf("Configured port is invalid: %v\n", err)

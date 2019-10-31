@@ -78,7 +78,7 @@ func getCommonFlags(master string) commonFlags {
 }
 
 func TestCreateQueue(t *testing.T) {
-	InitRunFlags(&cobra.Command{})
+	InitCreateFlags(&cobra.Command{})
 	server := getTestQueueHTTPServer(t)
 	defer server.Close()
 

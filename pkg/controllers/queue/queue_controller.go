@@ -17,7 +17,6 @@ limitations under the License.
 package queue
 
 import (
-	"fmt"
 	"reflect"
 	"sync"
 
@@ -86,6 +85,7 @@ func NewQueueController(
 
 	queueInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.addQueue,
+		UpdateFunc: c.updateQueue,
 		DeleteFunc: c.deleteQueue,
 	})
 
@@ -139,31 +139,26 @@ func (c *Controller) processNextWorkItem() bool {
 	return true
 }
 
-func (c *Controller) getPodGroups(key string) ([]string, error) {
+func (c *Controller) getPodGroups(key string) []string {
 	c.pgMutex.RLock()
 	defer c.pgMutex.RUnlock()
 
 	if c.podGroups[key] == nil {
-		return nil, fmt.Errorf("queue %s has not been seen or deleted", key)
+		return nil
 	}
 	podGroups := make([]string, 0, len(c.podGroups[key]))
 	for pgKey := range c.podGroups[key] {
 		podGroups = append(podGroups, pgKey)
 	}
 
-	return podGroups, nil
+	return podGroups
 }
 
 func (c *Controller) syncQueue(key string) error {
 	glog.V(4).Infof("Begin sync queue %s", key)
 
-	podGroups, err := c.getPodGroups(key)
-	if err != nil {
-		return err
-	}
-
 	queueStatus := schedulingv1alpha2.QueueStatus{}
-
+	podGroups := c.getPodGroups(key)
 	for _, pgKey := range podGroups {
 		// Ignore error here, tt can not occur.
 		ns, name, _ := cache.SplitMetaNamespaceKey(pgKey)
@@ -196,6 +191,23 @@ func (c *Controller) syncQueue(key string) error {
 		return err
 	}
 
+	// If the `state` value is empty, the status of queue will be set as `Open`
+	// If the `state` value is `Open`, then the status of queue will also be `Open`
+	// If the `state` value is `Closed`, then we need to further consider whether there
+	// is a podgroup under the queue. if there is a podgroup under the queue, the status
+	// of the queue will be set as `Closing`, while if there is no podgroup under the queue,
+	// the status of queue will be set as `Stopped`.
+	queueStatus.State = queue.Spec.State
+	if len(queueStatus.State) == 0 {
+		queueStatus.State = schedulingv1alpha2.QueueStateOpen
+	}
+
+	if queueStatus.State == schedulingv1alpha2.QueueStateClosed {
+		if len(podGroups) != 0 {
+			queueStatus.State = schedulingv1alpha2.QueueStateClosing
+		}
+	}
+
 	// ignore update when status does not change
 	if reflect.DeepEqual(queueStatus, queue.Status) {
 		return nil
@@ -215,6 +227,28 @@ func (c *Controller) syncQueue(key string) error {
 func (c *Controller) addQueue(obj interface{}) {
 	queue := obj.(*schedulingv1alpha2.Queue)
 	c.queue.Add(queue.Name)
+}
+
+func (c *Controller) updateQueue(old, new interface{}) {
+	oldQueue, ok := old.(*schedulingv1alpha2.Queue)
+	if !ok {
+		glog.Errorf("Can not covert old object %v to queues.scheduling.sigs.dev", old)
+		return
+	}
+
+	newQueue, ok := new.(*schedulingv1alpha2.Queue)
+	if !ok {
+		glog.Errorf("Can not covert new object %v to queues.scheduling.sigs.dev", old)
+		return
+	}
+
+	if oldQueue.ResourceVersion == newQueue.ResourceVersion {
+		return
+	}
+
+	c.addQueue(newQueue)
+
+	return
 }
 
 func (c *Controller) deleteQueue(obj interface{}) {
