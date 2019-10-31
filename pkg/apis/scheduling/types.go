@@ -24,6 +24,18 @@ import (
 // PodGroupPhase is the phase of a pod group at the current time.
 type PodGroupPhase string
 
+// QueueState is state type of queue
+type QueueState string
+
+const (
+	// QueueStateOpen indicate `Open` state of queue
+	QueueStateOpen QueueState = "Open"
+	// QueueStateClosed indicate `Closed` state of queue
+	QueueStateClosed QueueState = "Closed"
+	// QueueStateClosing indicate `Closing` state of queue
+	QueueStateClosing QueueState = "Closing"
+)
+
 // These are the valid phase of podGroups.
 const (
 	// PodPending means the pod group has been accepted by the system, but scheduler can not allocate
@@ -202,12 +214,16 @@ type QueueStatus struct {
 	Running int32
 	// The number of `Inqueue` PodGroup in this queue.
 	Inqueue int32
+	// State is status of queue
+	State QueueState
 }
 
 // QueueSpec represents the template of Queue.
 type QueueSpec struct {
 	Weight     int32
 	Capability v1.ResourceList
+	// State controller the status of queue
+	State QueueState
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
