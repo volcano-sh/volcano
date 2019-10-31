@@ -125,6 +125,17 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 
 		_, err1 := context.kubeclient.CoreV1().PersistentVolumeClaims(namespace).Create(&pvc)
 		Expect(err1).NotTo(HaveOccurred(), "pvc creation")
+
+		pvSpec := &v12.PersistentVolumeClaimSpec{
+			Resources: v12.ResourceRequirements{
+				Requests: v12.ResourceList{
+					v12.ResourceName(v12.ResourceStorage): resource.MustParse("1Gi"),
+				},
+			},
+			AccessModes: []v12.PersistentVolumeAccessMode{
+				v12.ReadWriteOnce,
+			},
+		}
 		job := createJob(context, &jobSpec{
 			namespace: namespace,
 			name:      jobName,
@@ -139,9 +150,12 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 			},
 			volumes: []v1alpha1.VolumeSpec{
 				{
-					MountPath:       "/mounttwo",
+					MountPath:       "/mountone",
 					VolumeClaimName: pvcName,
-					VolumeClaim:     &pvc.Spec,
+				},
+				{
+					MountPath:   "/mounttwo",
+					VolumeClaim: pvSpec,
 				},
 			},
 		})
@@ -152,12 +166,12 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		job, err = context.vcclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(len(job.Spec.Volumes)).To(Equal(1),
+		Expect(len(job.Spec.Volumes)).To(Equal(2),
 			" volume should be created")
-		for _, volume := range job.Spec.Volumes {
-			Expect(volume.VolumeClaimName).Should((Equal(pvcName)),
-				"PVC name should not be generated .")
-		}
+		Expect(job.Spec.Volumes[0].VolumeClaimName).Should(Equal(pvcName),
+			"volume 1 PVC name should not be generated .")
+		Expect(job.Spec.Volumes[1].VolumeClaimName).Should(Not(Equal("")),
+			"volume 0 PVC name should be generated.")
 	})
 
 	It("Generate PodGroup and valid minResource when creating job", func() {

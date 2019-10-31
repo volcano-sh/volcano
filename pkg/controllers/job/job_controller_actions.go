@@ -17,6 +17,7 @@ limitations under the License.
 package job
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -157,16 +158,16 @@ func (cc *Controller) createJob(job *vkv1.Job) (*vkv1.Job, error) {
 		return nil, err
 	}
 
-	if err := cc.createPodGroupIfNotExist(job); err != nil {
-		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.PodGroupError),
-			fmt.Sprintf("Failed to create PodGroup, err: %v", err))
-		return nil, err
-	}
-
 	newJob, err := cc.createJobIOIfNotExist(job)
 	if err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.PVCError),
 			fmt.Sprintf("Failed to create PVC, err: %v", err))
+		return nil, err
+	}
+
+	if err := cc.createPodGroupIfNotExist(newJob); err != nil {
+		cc.recorder.Event(job, v1.EventTypeWarning, string(vkv1.PodGroupError),
+			fmt.Sprintf("Failed to create PodGroup, err: %v", err))
 		return nil, err
 	}
 
@@ -336,10 +337,12 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 
 func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (*vkv1.Job, error) {
 	// If PVC does not exist, create them for Job.
-	var needUpdate, nameExist bool
+	var needUpdate bool
 	volumes := job.Spec.Volumes
+	if job.Status.ControlledResources == nil {
+		job.Status.ControlledResources = make(map[string]string)
+	}
 	for index, volume := range volumes {
-		nameExist = false
 		vcName := volume.VolumeClaimName
 		if len(vcName) == 0 {
 			//NOTE(k82cn): Ensure never have duplicated generated names.
@@ -347,7 +350,7 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (*vkv1.Job, error) {
 				vcName = vkjobhelpers.MakeVolumeClaimName(job.Name)
 				exist, err := cc.checkPVCExist(job, vcName)
 				if err != nil {
-					return nil, err
+					return job, err
 				}
 				if exist {
 					continue
@@ -356,25 +359,28 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (*vkv1.Job, error) {
 				needUpdate = true
 				break
 			}
-		} else {
-			exist, err := cc.checkPVCExist(job, vcName)
-			if err != nil {
-				return nil, err
-			}
-			nameExist = exist
-		}
-
-		if !nameExist {
-			if job.Status.ControlledResources == nil {
-				job.Status.ControlledResources = make(map[string]string)
-			}
 			if volume.VolumeClaim != nil {
 				if err := cc.createPVC(job, vcName, volume.VolumeClaim); err != nil {
-					return nil, err
+					return job, err
 				}
 				job.Status.ControlledResources["volume-pvc-"+vcName] = vcName
 			} else {
 				job.Status.ControlledResources["volume-emptyDir-"+vcName] = vcName
+			}
+		} else {
+			if job.Status.ControlledResources["volume-emptyDir-"+vcName] == vcName || job.Status.ControlledResources["volume-pvc-"+vcName] == vcName {
+				continue
+			}
+			exist, err := cc.checkPVCExist(job, vcName)
+			if err != nil {
+				return job, err
+			}
+			if exist {
+				job.Status.ControlledResources["volume-pvc-"+vcName] = vcName
+			} else {
+				msg := fmt.Sprintf("pvc %s is not found, the job will be in the Pending state until the PVC is created", vcName)
+				glog.Error(msg)
+				return job, errors.New(msg)
 			}
 		}
 	}
@@ -383,10 +389,10 @@ func (cc *Controller) createJobIOIfNotExist(job *vkv1.Job) (*vkv1.Job, error) {
 		if err != nil {
 			glog.Errorf("Failed to update Job %v/%v for volume claim name: %v ",
 				job.Namespace, job.Name, err)
-			return nil, err
+			return job, err
 		}
-		newJob.Status = job.Status
 
+		newJob.Status = job.Status
 		return newJob, err
 	}
 	return job, nil
