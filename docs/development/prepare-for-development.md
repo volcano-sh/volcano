@@ -40,7 +40,7 @@ If you aren't sure which Kubernetes platform is right for you, see [Picking the 
 
 * [Installing Kubernetes with kops](https://kubernetes.io/docs/setup/production-environment/tools/kops/)
 
-* [Installing Kubernetes with kubeadm-dind-cluster](https://github.com/kubernetes-sigs/kubeadm-dind-cluster)
+* [Installing Kubernetes with kind](https://kind.sigs.k8s.io/)
 
 ### Setting up a personal access token
 
