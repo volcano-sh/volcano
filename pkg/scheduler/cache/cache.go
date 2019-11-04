@@ -851,7 +851,7 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
 	}
 
 	// Update podCondition for tasks Allocated and Pending before job discarded
-	for _, status := range []api.TaskStatus{api.Allocated, api.Pending} {
+	for _, status := range []api.TaskStatus{api.Allocated, api.Pending, api.Pipelined} {
 		for _, taskInfo := range job.TaskStatusIndex[status] {
 			msg := baseErrorMessage
 			fitError := job.NodesFitErrors[taskInfo.UID]
