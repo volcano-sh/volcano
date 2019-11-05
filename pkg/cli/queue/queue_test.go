@@ -22,11 +22,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 
 	"github.com/spf13/cobra"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 )
 
 func getTestQueueHTTPServer(t *testing.T) *httptest.Server {

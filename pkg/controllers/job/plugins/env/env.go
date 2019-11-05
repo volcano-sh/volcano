@@ -45,11 +45,11 @@ func (ep *envPlugin) Name() string {
 func (ep *envPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	// add VK_TASK_INDEX env to each container
 	for i, c := range pod.Spec.Containers {
-		vkIndex := v1.EnvVar{
+		vcIndex := v1.EnvVar{
 			Name:  TaskVkIndex,
 			Value: jobhelpers.GetTaskIndex(pod),
 		}
-		pod.Spec.Containers[i].Env = append(c.Env, vkIndex)
+		pod.Spec.Containers[i].Env = append(c.Env, vcIndex)
 	}
 
 	return nil

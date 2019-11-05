@@ -30,8 +30,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	kbapi "volcano.sh/volcano/pkg/scheduler/api"
+	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 
 var _ = Describe("Job E2E Test", func() {
@@ -332,7 +332,7 @@ var _ = Describe("Job E2E Test", func() {
 		clusterPods, err := context.kubeclient.CoreV1().Pods(v1.NamespaceAll).List(metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		alloc := kbapi.NewResource(node.Status.Allocatable)
+		alloc := schedulingapi.NewResource(node.Status.Allocatable)
 		for _, pod := range clusterPods.Items {
 			nodeName := pod.Spec.NodeName
 			if nodeName != baseNodeName || len(nodeName) == 0 || pod.DeletionTimestamp != nil {
@@ -344,12 +344,12 @@ var _ = Describe("Job E2E Test", func() {
 			}
 
 			for _, c := range pod.Spec.Containers {
-				req := kbapi.NewResource(c.Resources.Requests)
+				req := schedulingapi.NewResource(c.Resources.Requests)
 				alloc.Sub(req)
 			}
 		}
 
-		need := kbapi.NewResource(v1.ResourceList{"cpu": resource.MustParse("500m")})
+		need := schedulingapi.NewResource(v1.ResourceList{"cpu": resource.MustParse("500m")})
 		var count int32
 		for need.LessEqual(alloc) {
 			count++
@@ -504,7 +504,7 @@ var _ = Describe("Job E2E Test", func() {
 		slot := halfCPU
 		rep := clusterSize(context, slot)
 
-		createJobToNamespace := func(namespace string, index int, replica int32) *vkv1.Job {
+		createJobToNamespace := func(namespace string, index int, replica int32) *vcbatch.Job {
 			spec := &jobSpec{
 				name:      fmt.Sprintf("namespace-fair-share-%s-%d", namespace, index),
 				namespace: namespace,
@@ -591,7 +591,7 @@ var _ = Describe("Job E2E Test", func() {
 		slot := halfCPU
 		rep := clusterSize(context, slot)
 
-		createJobToQueue := func(queue string, index int, replica int32) *vkv1.Job {
+		createJobToQueue := func(queue string, index int, replica int32) *vcbatch.Job {
 			spec := &jobSpec{
 				name:      fmt.Sprintf("queue-fair-share-%s-%d", queue, index),
 				namespace: "test",
@@ -648,7 +648,7 @@ var _ = Describe("Job E2E Test", func() {
 				if !isPodScheduled(&pod) {
 					continue
 				}
-				jobName := pod.Annotations[vkv1.JobNameKey]
+				jobName := pod.Annotations[vcbatch.JobNameKey]
 				if strings.Contains(jobName, "queue-fair-share-"+defaultQueue1) {
 					q1ScheduledPod++
 				}

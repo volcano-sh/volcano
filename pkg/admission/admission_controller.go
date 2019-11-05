@@ -29,8 +29,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-
 	"k8s.io/kubernetes/pkg/apis/core/validation"
+
 	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 )

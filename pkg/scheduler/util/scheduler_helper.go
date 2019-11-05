@@ -18,14 +18,17 @@ package util
 
 import (
 	"context"
-	"github.com/golang/glog"
-	"k8s.io/client-go/util/workqueue"
-	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 	"math"
 	"math/rand"
 	"sort"
 	"sync"
 	"sync/atomic"
+
+	"github.com/golang/glog"
+
+	"k8s.io/client-go/util/workqueue"
+	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
+
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )

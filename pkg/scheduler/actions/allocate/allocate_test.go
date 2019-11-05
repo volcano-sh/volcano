@@ -26,7 +26,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
-	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	schedulingv2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -50,21 +50,21 @@ func TestAllocate(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		podGroups []*kbv1.PodGroup
+		podGroups []*schedulingv2.PodGroup
 		pods      []*v1.Pod
 		nodes     []*v1.Node
-		queues    []*kbv1.Queue
+		queues    []*schedulingv2.Queue
 		expected  map[string]string
 	}{
 		{
 			name: "one Job with two Pods on one node",
-			podGroups: []*kbv1.PodGroup{
+			podGroups: []*schedulingv2.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 					},
-					Spec: kbv1.PodGroupSpec{
+					Spec: schedulingv2.PodGroupSpec{
 						Queue: "c1",
 					},
 				},
@@ -76,12 +76,12 @@ func TestAllocate(t *testing.T) {
 			nodes: []*v1.Node{
 				util.BuildNode("n1", util.BuildResourceList("2", "4Gi"), make(map[string]string)),
 			},
-			queues: []*kbv1.Queue{
+			queues: []*schedulingv2.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "c1",
 					},
-					Spec: kbv1.QueueSpec{
+					Spec: schedulingv2.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -93,13 +93,13 @@ func TestAllocate(t *testing.T) {
 		},
 		{
 			name: "two Jobs on one node",
-			podGroups: []*kbv1.PodGroup{
+			podGroups: []*schedulingv2.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 					},
-					Spec: kbv1.PodGroupSpec{
+					Spec: schedulingv2.PodGroupSpec{
 						Queue: "c1",
 					},
 				},
@@ -108,7 +108,7 @@ func TestAllocate(t *testing.T) {
 						Name:      "pg2",
 						Namespace: "c2",
 					},
-					Spec: kbv1.PodGroupSpec{
+					Spec: schedulingv2.PodGroupSpec{
 						Queue: "c2",
 					},
 				},
@@ -127,12 +127,12 @@ func TestAllocate(t *testing.T) {
 			nodes: []*v1.Node{
 				util.BuildNode("n1", util.BuildResourceList("2", "4G"), make(map[string]string)),
 			},
-			queues: []*kbv1.Queue{
+			queues: []*schedulingv2.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "c1",
 					},
-					Spec: kbv1.QueueSpec{
+					Spec: schedulingv2.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -140,7 +140,7 @@ func TestAllocate(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "c2",
 					},
-					Spec: kbv1.QueueSpec{
+					Spec: schedulingv2.QueueSpec{
 						Weight: 1,
 					},
 				},

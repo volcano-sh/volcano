@@ -24,10 +24,10 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	kubescheduling "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
+	schedulingv2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
@@ -106,7 +106,7 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 	}
 
 	pod.Annotations[batch.TaskSpecKey] = tsKey
-	pod.Annotations[kubescheduling.GroupNameAnnotationKey] = job.Name
+	pod.Annotations[schedulingv2.GroupNameAnnotationKey] = job.Name
 	pod.Annotations[batch.JobNameKey] = job.Name
 	pod.Annotations[batch.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
 

@@ -23,7 +23,8 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeletapi "k8s.io/kubernetes/pkg/kubelet/apis"
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+
+	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
 var _ = Describe("Job Life Cycle", func() {
@@ -47,7 +48,7 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
@@ -78,7 +79,7 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
@@ -111,7 +112,7 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running -> Completed
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Completed})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Completed})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
@@ -131,10 +132,10 @@ var _ = Describe("Job Life Cycle", func() {
 		By("create job")
 		job := createJob(context, &jobSpec{
 			name: "failed-delete-job",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vkv1.AbortJobAction,
-					Event:  vkv1.PodFailedEvent,
+					Action: vcbatch.AbortJobAction,
+					Event:  vcbatch.PodFailedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -150,7 +151,7 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running -> Aborted
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Aborted})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
@@ -170,10 +171,10 @@ var _ = Describe("Job Life Cycle", func() {
 		By("create job")
 		job := createJob(context, &jobSpec{
 			name: "terminate-delete-job",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vkv1.TerminateJobAction,
-					Event:  vkv1.PodFailedEvent,
+					Action: vcbatch.TerminateJobAction,
+					Event:  vcbatch.PodFailedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -189,7 +190,7 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running -> Terminated
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Terminated})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
@@ -209,10 +210,10 @@ var _ = Describe("Job Life Cycle", func() {
 		By("create job")
 		job := createJob(context, &jobSpec{
 			name: "terminate-delete-job",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vkv1.TerminateJobAction,
-					Event:  vkv1.PodFailedEvent,
+					Action: vcbatch.TerminateJobAction,
+					Event:  vcbatch.PodFailedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -229,7 +230,7 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running -> completed
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Completed})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Completed})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
@@ -247,10 +248,10 @@ var _ = Describe("Job Life Cycle", func() {
 
 		job := createJob(context, &jobSpec{
 			name: "terminate-job",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vkv1.TerminateJobAction,
-					Event:  vkv1.PodFailedEvent,
+					Action: vcbatch.TerminateJobAction,
+					Event:  vcbatch.PodFailedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -293,10 +294,10 @@ var _ = Describe("Job Life Cycle", func() {
 
 		job := createJob(context, &jobSpec{
 			name: "unschedulable-job",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vkv1.TerminateJobAction,
-					Event:  vkv1.PodFailedEvent,
+					Action: vcbatch.TerminateJobAction,
+					Event:  vcbatch.PodFailedEvent,
 				},
 			},
 			tasks: []taskSpec{

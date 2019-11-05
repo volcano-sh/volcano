@@ -117,7 +117,7 @@ type Controller struct {
 // NewJobController create new Job Controller
 func NewJobController(
 	kubeClient kubernetes.Interface,
-	vkClient vcclientset.Interface,
+	vcClient vcclientset.Interface,
 	sharedInformers informers.SharedInformerFactory,
 	workers uint32,
 ) *Controller {
@@ -130,7 +130,7 @@ func NewJobController(
 
 	cc := &Controller{
 		kubeClient:      kubeClient,
-		vcClient:        vkClient,
+		vcClient:        vcClient,
 		queueList:       make([]workqueue.RateLimitingInterface, workers, workers),
 		commandQueue:    workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		cache:           jobcache.New(),

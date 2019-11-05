@@ -44,7 +44,7 @@ func newController() *Controller {
 	},
 	)
 
-	vkclient := vcclientset.NewForConfigOrDie(&rest.Config{
+	vcclient := vcclientset.NewForConfigOrDie(&rest.Config{
 		Host: "",
 		ContentConfig: rest.ContentConfig{
 			GroupVersion: &batch.SchemeGroupVersion,
@@ -53,7 +53,7 @@ func newController() *Controller {
 
 	sharedInformers := informers.NewSharedInformerFactory(kubeClientSet, 0)
 
-	controller := NewJobController(kubeClientSet, vkclient, sharedInformers, 3)
+	controller := NewJobController(kubeClientSet, vcclient, sharedInformers, 3)
 
 	return controller
 }

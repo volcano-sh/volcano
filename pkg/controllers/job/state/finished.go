@@ -17,7 +17,7 @@ limitations under the License.
 package state
 
 import (
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -25,7 +25,7 @@ type finishedState struct {
 	job *apis.JobInfo
 }
 
-func (ps *finishedState) Execute(action vkv1.Action) error {
+func (ps *finishedState) Execute(action vcbatch.Action) error {
 	// In finished state, e.g. Completed, always kill the whole job.
 	return KillJob(ps.job, PodRetainPhaseSoft, nil)
 }

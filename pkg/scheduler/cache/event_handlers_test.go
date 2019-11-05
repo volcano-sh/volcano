@@ -26,8 +26,8 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
-	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
-	kbv2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	schedulingv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	schedulingv2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -160,7 +160,7 @@ func TestSchedulerCache_AddPodGroupV1alpha1(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			PodGroup: &kbv1.PodGroup{
+			PodGroup: &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1",
 					Namespace: namespace,
@@ -181,7 +181,7 @@ func TestSchedulerCache_AddPodGroupV1alpha1(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			PodGroup: &kbv2.PodGroup{
+			PodGroup: &schedulingv2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1",
 					Namespace: namespace,
@@ -195,8 +195,8 @@ func TestSchedulerCache_AddPodGroupV1alpha1(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			PodGroup: &kbv1.PodGroup{
-				Status: kbv1.PodGroupStatus{
+			PodGroup: &schedulingv1.PodGroup{
+				Status: schedulingv1.PodGroupStatus{
 					Running: int32(1),
 				},
 			},
@@ -247,7 +247,7 @@ func TestSchedulerCache_AddPodGroupAlpha2(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			PodGroup: &kbv2.PodGroup{
+			PodGroup: &schedulingv2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1",
 					Namespace: namespace,
@@ -268,7 +268,7 @@ func TestSchedulerCache_AddPodGroupAlpha2(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			PodGroup: &kbv1.PodGroup{
+			PodGroup: &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1",
 					Namespace: namespace,
@@ -282,8 +282,8 @@ func TestSchedulerCache_AddPodGroupAlpha2(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			PodGroup: &kbv2.PodGroup{
-				Status: kbv2.PodGroupStatus{
+			PodGroup: &schedulingv2.PodGroup{
+				Status: schedulingv2.PodGroupStatus{
 					Running: int32(1),
 				},
 			},
@@ -335,13 +335,13 @@ func TestSchedulerCache_UpdatePodGroupV1alpha1(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			OldPodGroup: &kbv1.PodGroup{
+			OldPodGroup: &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1",
 					Namespace: namespace,
 				},
 			},
-			NewPodGroup: &kbv1.PodGroup{
+			NewPodGroup: &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1-updated",
 					Namespace: namespace,
@@ -362,13 +362,13 @@ func TestSchedulerCache_UpdatePodGroupV1alpha1(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			OldPodGroup: &kbv2.PodGroup{
+			OldPodGroup: &schedulingv2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1",
 					Namespace: namespace,
 				},
 			},
-			NewPodGroup: &kbv1.PodGroup{
+			NewPodGroup: &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1-updated",
 					Namespace: namespace,
@@ -382,12 +382,12 @@ func TestSchedulerCache_UpdatePodGroupV1alpha1(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			NewPodGroup: &kbv1.PodGroup{
-				Status: kbv1.PodGroupStatus{
+			NewPodGroup: &schedulingv1.PodGroup{
+				Status: schedulingv1.PodGroupStatus{
 					Running: int32(1),
 				},
 			},
-			OldPodGroup: &kbv1.PodGroup{
+			OldPodGroup: &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1-updated",
 					Namespace: namespace,
@@ -401,13 +401,13 @@ func TestSchedulerCache_UpdatePodGroupV1alpha1(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			OldPodGroup: &kbv1.PodGroup{
+			OldPodGroup: &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1",
 					Namespace: namespace,
 				},
 			},
-			NewPodGroup: &kbv2.PodGroup{
+			NewPodGroup: &schedulingv2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1-updated",
 					Namespace: namespace,
@@ -461,13 +461,13 @@ func TestSchedulerCache_UpdatePodGroupAlpha2(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			OldPodGroup: &kbv2.PodGroup{
+			OldPodGroup: &schedulingv2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1",
 					Namespace: namespace,
 				},
 			},
-			NewPodGroup: &kbv2.PodGroup{
+			NewPodGroup: &schedulingv2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1-updated",
 					Namespace: namespace,
@@ -488,13 +488,13 @@ func TestSchedulerCache_UpdatePodGroupAlpha2(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			OldPodGroup: &kbv1.PodGroup{
+			OldPodGroup: &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1",
 					Namespace: namespace,
 				},
 			},
-			NewPodGroup: &kbv2.PodGroup{
+			NewPodGroup: &schedulingv2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1-updated",
 					Namespace: namespace,
@@ -508,12 +508,12 @@ func TestSchedulerCache_UpdatePodGroupAlpha2(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			NewPodGroup: &kbv2.PodGroup{
-				Status: kbv2.PodGroupStatus{
+			NewPodGroup: &schedulingv2.PodGroup{
+				Status: schedulingv2.PodGroupStatus{
 					Running: int32(1),
 				},
 			},
-			OldPodGroup: &kbv2.PodGroup{
+			OldPodGroup: &schedulingv2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1-updated",
 					Namespace: namespace,
@@ -527,13 +527,13 @@ func TestSchedulerCache_UpdatePodGroupAlpha2(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			OldPodGroup: &kbv2.PodGroup{
+			OldPodGroup: &schedulingv2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1",
 					Namespace: namespace,
 				},
 			},
-			NewPodGroup: &kbv1.PodGroup{
+			NewPodGroup: &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1-updated",
 					Namespace: namespace,
@@ -586,7 +586,7 @@ func TestSchedulerCache_DeletePodGroupAlpha1(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			PodGroup: &kbv1.PodGroup{
+			PodGroup: &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1",
 					Namespace: namespace,
@@ -600,7 +600,7 @@ func TestSchedulerCache_DeletePodGroupAlpha1(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			PodGroup: &kbv2.PodGroup{
+			PodGroup: &schedulingv2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1",
 					Namespace: namespace,
@@ -621,8 +621,8 @@ func TestSchedulerCache_DeletePodGroupAlpha1(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			PodGroup: &kbv1.PodGroup{
-				Status: kbv1.PodGroupStatus{
+			PodGroup: &schedulingv1.PodGroup{
+				Status: schedulingv1.PodGroupStatus{
 					Running: int32(1),
 				},
 			},
@@ -682,7 +682,7 @@ func TestSchedulerCache_DeletePodGroupAlpha2(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			PodGroup: &kbv2.PodGroup{
+			PodGroup: &schedulingv2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1",
 					Namespace: namespace,
@@ -696,7 +696,7 @@ func TestSchedulerCache_DeletePodGroupAlpha2(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			PodGroup: &kbv1.PodGroup{
+			PodGroup: &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "j1",
 					Namespace: namespace,
@@ -717,8 +717,8 @@ func TestSchedulerCache_DeletePodGroupAlpha2(t *testing.T) {
 			Nodes: []*v1.Node{
 				buildNode("n1", buildResourceList("2000m", "10G")),
 			},
-			PodGroup: &kbv2.PodGroup{
-				Status: kbv2.PodGroupStatus{
+			PodGroup: &schedulingv2.PodGroup{
+				Status: schedulingv2.PodGroupStatus{
 					Running: int32(1),
 				},
 			},
@@ -771,7 +771,7 @@ func TestSchedulerCache_AddQueueV1alpha1(t *testing.T) {
 	}{
 		{
 			Name: "Success Case",
-			Queue: &kbv1.Queue{
+			Queue: &schedulingv1.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1",
 					Namespace: namespace,
@@ -786,7 +786,7 @@ func TestSchedulerCache_AddQueueV1alpha1(t *testing.T) {
 		},
 		{
 			Name: "Error Case: 1 - Wrong Type",
-			Queue: &kbv2.Queue{
+			Queue: &schedulingv2.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1",
 					Namespace: namespace,
@@ -822,7 +822,7 @@ func TestSchedulerCache_AddQueueV1alpha2(t *testing.T) {
 	}{
 		{
 			Name: "Success Case",
-			Queue: &kbv2.Queue{
+			Queue: &schedulingv2.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1",
 					Namespace: namespace,
@@ -837,7 +837,7 @@ func TestSchedulerCache_AddQueueV1alpha2(t *testing.T) {
 		},
 		{
 			Name: "Error Case: 1 - Wrong Type",
-			Queue: &kbv1.Queue{
+			Queue: &schedulingv1.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1",
 					Namespace: namespace,
@@ -875,13 +875,13 @@ func TestSchedulerCache_UpdateQueueV1alpha1(t *testing.T) {
 	}{
 		{
 			Name: "Success Case",
-			OldQueue: &kbv1.Queue{
+			OldQueue: &schedulingv1.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1",
 					Namespace: namespace,
 				},
 			},
-			NewQueue: &kbv1.Queue{
+			NewQueue: &schedulingv1.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1-updated",
 					Namespace: namespace,
@@ -896,13 +896,13 @@ func TestSchedulerCache_UpdateQueueV1alpha1(t *testing.T) {
 		},
 		{
 			Name: "Error Case: 1 - Wrong Type(OldQueue)",
-			OldQueue: &kbv2.Queue{
+			OldQueue: &schedulingv2.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1",
 					Namespace: namespace,
 				},
 			},
-			NewQueue: &kbv1.Queue{
+			NewQueue: &schedulingv1.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1-updated",
 					Namespace: namespace,
@@ -912,13 +912,13 @@ func TestSchedulerCache_UpdateQueueV1alpha1(t *testing.T) {
 		},
 		{
 			Name: "Error Case: 2 - Wrong Type(NewQueue)",
-			OldQueue: &kbv1.Queue{
+			OldQueue: &schedulingv1.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1",
 					Namespace: namespace,
 				},
 			},
-			NewQueue: &kbv2.Queue{
+			NewQueue: &schedulingv2.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1-updated",
 					Namespace: namespace,
@@ -956,13 +956,13 @@ func TestSchedulerCache_UpdateQueueV1alpha2(t *testing.T) {
 	}{
 		{
 			Name: "Success Case",
-			OldQueue: &kbv2.Queue{
+			OldQueue: &schedulingv2.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1",
 					Namespace: namespace,
 				},
 			},
-			NewQueue: &kbv2.Queue{
+			NewQueue: &schedulingv2.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1-updated",
 					Namespace: namespace,
@@ -977,13 +977,13 @@ func TestSchedulerCache_UpdateQueueV1alpha2(t *testing.T) {
 		},
 		{
 			Name: "Error Case: 1 - Wrong Type(OldQueue)",
-			OldQueue: &kbv1.Queue{
+			OldQueue: &schedulingv1.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1",
 					Namespace: namespace,
 				},
 			},
-			NewQueue: &kbv2.Queue{
+			NewQueue: &schedulingv2.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1-updated",
 					Namespace: namespace,
@@ -993,13 +993,13 @@ func TestSchedulerCache_UpdateQueueV1alpha2(t *testing.T) {
 		},
 		{
 			Name: "Error Case: 2 - Wrong Type(NewQueue)",
-			OldQueue: &kbv2.Queue{
+			OldQueue: &schedulingv2.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1",
 					Namespace: namespace,
 				},
 			},
-			NewQueue: &kbv1.Queue{
+			NewQueue: &schedulingv1.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1-updated",
 					Namespace: namespace,
@@ -1036,7 +1036,7 @@ func TestSchedulerCache_DeleteQueueV1alpha1(t *testing.T) {
 	}{
 		{
 			Name: "Success Case",
-			Queue: &kbv1.Queue{
+			Queue: &schedulingv1.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1",
 					Namespace: namespace,
@@ -1051,7 +1051,7 @@ func TestSchedulerCache_DeleteQueueV1alpha1(t *testing.T) {
 		},
 		{
 			Name: "Error Case: 1 - Wrong Type",
-			Queue: &kbv2.Queue{
+			Queue: &schedulingv2.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1",
 					Namespace: namespace,
@@ -1093,7 +1093,7 @@ func TestSchedulerCache_DeleteQueueV1alpha2(t *testing.T) {
 	}{
 		{
 			Name: "Success Case",
-			Queue: &kbv2.Queue{
+			Queue: &schedulingv2.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1",
 					Namespace: namespace,
@@ -1108,7 +1108,7 @@ func TestSchedulerCache_DeleteQueueV1alpha2(t *testing.T) {
 		},
 		{
 			Name: "Error Case: 1 - Wrong Type",
-			Queue: &kbv1.Queue{
+			Queue: &schedulingv1.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "q1",
 					Namespace: namespace,

@@ -18,12 +18,13 @@ package api
 
 import (
 	"fmt"
+	"sort"
+	"strings"
+
 	"k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sort"
-	"strings"
 
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 )
@@ -53,12 +54,10 @@ type TaskInfo struct {
 }
 
 func getJobID(pod *v1.Pod) JobID {
-	if len(pod.Annotations) != 0 {
-		if gn, found := pod.Annotations[v1alpha2.GroupNameAnnotationKey]; found && len(gn) != 0 {
-			// Make sure Pod and PodGroup belong to the same namespace.
-			jobID := fmt.Sprintf("%s/%s", pod.Namespace, gn)
-			return JobID(jobID)
-		}
+	if gn, found := pod.Annotations[v1alpha2.GroupNameAnnotationKey]; found && len(gn) != 0 {
+		// Make sure Pod and PodGroup belong to the same namespace.
+		jobID := fmt.Sprintf("%s/%s", pod.Namespace, gn)
+		return JobID(jobID)
 	}
 
 	return ""
@@ -133,7 +132,6 @@ type JobInfo struct {
 
 	Priority int32
 
-	NodeSelector map[string]string
 	MinAvailable int32
 
 	NodesFitDelta NodeResourceMap
@@ -161,7 +159,6 @@ func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 		UID: uid,
 
 		MinAvailable:  0,
-		NodeSelector:  make(map[string]string),
 		NodesFitDelta: make(NodeResourceMap),
 		Allocated:     EmptyResource(),
 		TotalRequest:  EmptyResource(),
@@ -208,21 +205,6 @@ func (ji *JobInfo) SetPDB(pdb *policyv1.PodDisruptionBudget) {
 // UnsetPDB removes PDB info of a job
 func (ji *JobInfo) UnsetPDB() {
 	ji.PDB = nil
-}
-
-// GetTasks gets all tasks with the taskStatus
-func (ji *JobInfo) GetTasks(statuses ...TaskStatus) []*TaskInfo {
-	var res []*TaskInfo
-
-	for _, status := range statuses {
-		if tasks, found := ji.TaskStatusIndex[status]; found {
-			for _, task := range tasks {
-				res = append(res, task.Clone())
-			}
-		}
-	}
-
-	return res
 }
 
 func (ji *JobInfo) addTaskIndex(ti *TaskInfo) {
@@ -300,7 +282,6 @@ func (ji *JobInfo) Clone() *JobInfo {
 		Priority:  ji.Priority,
 
 		MinAvailable:  ji.MinAvailable,
-		NodeSelector:  map[string]string{},
 		Allocated:     EmptyResource(),
 		TotalRequest:  EmptyResource(),
 		NodesFitDelta: make(NodeResourceMap),
@@ -315,10 +296,6 @@ func (ji *JobInfo) Clone() *JobInfo {
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
-
-	for k, v := range ji.NodeSelector {
-		info.NodeSelector[k] = v
-	}
 
 	for _, task := range ji.Tasks {
 		info.AddTaskInfo(task.Clone())

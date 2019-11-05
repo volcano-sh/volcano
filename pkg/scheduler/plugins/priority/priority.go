@@ -18,6 +18,7 @@ package priority
 
 import (
 	"github.com/golang/glog"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )

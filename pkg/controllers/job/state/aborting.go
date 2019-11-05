@@ -19,7 +19,7 @@ package state
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -27,21 +27,21 @@ type abortingState struct {
 	job *apis.JobInfo
 }
 
-func (ps *abortingState) Execute(action vkv1.Action) error {
+func (ps *abortingState) Execute(action vcbatch.Action) error {
 	switch action {
-	case vkv1.ResumeJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
-			status.State.Phase = vkv1.Restarting
+	case vcbatch.ResumeJobAction:
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
+			status.State.Phase = vcbatch.Restarting
 			status.RetryCount++
 			return true
 		})
 	default:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
 			// If any "alive" pods, still in Aborting phase
 			if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {
 				return false
 			}
-			status.State.Phase = vkv1.Aborted
+			status.State.Phase = vcbatch.Aborted
 			status.State.LastTransitionTime = metav1.Now()
 			return true
 

@@ -17,7 +17,7 @@ limitations under the License.
 package state
 
 import (
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -25,33 +25,33 @@ type runningState struct {
 	job *apis.JobInfo
 }
 
-func (ps *runningState) Execute(action vkv1.Action) error {
+func (ps *runningState) Execute(action vcbatch.Action) error {
 	switch action {
-	case vkv1.RestartJobAction:
-		return KillJob(ps.job, PodRetainPhaseNone, func(status *vkv1.JobStatus) bool {
-			status.State.Phase = vkv1.Restarting
+	case vcbatch.RestartJobAction:
+		return KillJob(ps.job, PodRetainPhaseNone, func(status *vcbatch.JobStatus) bool {
+			status.State.Phase = vcbatch.Restarting
 			status.RetryCount++
 			return true
 		})
-	case vkv1.AbortJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
-			status.State.Phase = vkv1.Aborting
+	case vcbatch.AbortJobAction:
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
+			status.State.Phase = vcbatch.Aborting
 			return true
 		})
-	case vkv1.TerminateJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
-			status.State.Phase = vkv1.Terminating
+	case vcbatch.TerminateJobAction:
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
+			status.State.Phase = vcbatch.Terminating
 			return true
 		})
-	case vkv1.CompleteJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
-			status.State.Phase = vkv1.Completing
+	case vcbatch.CompleteJobAction:
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
+			status.State.Phase = vcbatch.Completing
 			return true
 		})
 	default:
-		return SyncJob(ps.job, func(status *vkv1.JobStatus) bool {
+		return SyncJob(ps.job, func(status *vcbatch.JobStatus) bool {
 			if status.Succeeded+status.Failed == TotalTasks(ps.job.Job) {
-				status.State.Phase = vkv1.Completed
+				status.State.Phase = vcbatch.Completed
 				return true
 			}
 

@@ -27,7 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	vkapi "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
@@ -93,7 +93,7 @@ func RunJob() error {
 	return nil
 }
 
-func readFile(filename string) (*vkapi.Job, error) {
+func readFile(filename string) (*vcbatch.Job, error) {
 	if filename == "" {
 		return nil, nil
 	}
@@ -107,7 +107,7 @@ func readFile(filename string) (*vkapi.Job, error) {
 		return nil, fmt.Errorf("failed to read file, err: %v", err)
 	}
 
-	var job vkapi.Job
+	var job vcbatch.Job
 	if err := yaml.Unmarshal(file, &job); err != nil {
 		return nil, fmt.Errorf("Failed to unmarshal file, err:  %v", err)
 	}
@@ -115,16 +115,16 @@ func readFile(filename string) (*vkapi.Job, error) {
 	return &job, nil
 }
 
-func constructLaunchJobFlagsJob(launchJobFlags *runFlags, req, limit v1.ResourceList) *vkapi.Job {
-	return &vkapi.Job{
+func constructLaunchJobFlagsJob(launchJobFlags *runFlags, req, limit v1.ResourceList) *vcbatch.Job {
+	return &vcbatch.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      launchJobFlags.Name,
 			Namespace: launchJobFlags.Namespace,
 		},
-		Spec: vkapi.JobSpec{
+		Spec: vcbatch.JobSpec{
 			MinAvailable:  int32(launchJobFlags.MinAvailable),
 			SchedulerName: launchJobFlags.SchedulerName,
-			Tasks: []vkapi.TaskSpec{
+			Tasks: []vcbatch.TaskSpec{
 				{
 					Replicas: int32(launchJobFlags.Replicas),
 
