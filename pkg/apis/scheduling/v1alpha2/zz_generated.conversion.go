@@ -324,6 +324,7 @@ func Convert_scheduling_QueueList_To_v1alpha2_QueueList(in *scheduling.QueueList
 func autoConvert_v1alpha2_QueueSpec_To_scheduling_QueueSpec(in *QueueSpec, out *scheduling.QueueSpec, s conversion.Scope) error {
 	out.Weight = in.Weight
 	out.Capability = *(*v1.ResourceList)(unsafe.Pointer(&in.Capability))
+	out.State = scheduling.QueueState(in.State)
 	return nil
 }
 
@@ -335,6 +336,7 @@ func Convert_v1alpha2_QueueSpec_To_scheduling_QueueSpec(in *QueueSpec, out *sche
 func autoConvert_scheduling_QueueSpec_To_v1alpha2_QueueSpec(in *scheduling.QueueSpec, out *QueueSpec, s conversion.Scope) error {
 	out.Weight = in.Weight
 	out.Capability = *(*v1.ResourceList)(unsafe.Pointer(&in.Capability))
+	out.State = QueueState(in.State)
 	return nil
 }
 
@@ -348,6 +350,7 @@ func autoConvert_v1alpha2_QueueStatus_To_scheduling_QueueStatus(in *QueueStatus,
 	out.Pending = in.Pending
 	out.Running = in.Running
 	out.Inqueue = in.Inqueue
+	out.State = scheduling.QueueState(in.State)
 	return nil
 }
 
@@ -361,6 +364,7 @@ func autoConvert_scheduling_QueueStatus_To_v1alpha2_QueueStatus(in *scheduling.Q
 	out.Pending = in.Pending
 	out.Running = in.Running
 	out.Inqueue = in.Inqueue
+	out.State = QueueState(in.State)
 	return nil
 }
 
