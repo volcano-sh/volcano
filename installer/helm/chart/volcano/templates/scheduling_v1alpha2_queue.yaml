@@ -25,9 +25,13 @@ spec:
             weight:
               format: int32
               type: integer
+            state:
+              type: string
           type: object
         status:
           properties:
+            state:
+              type: string
             unknown:
               format: int32
               type: integer
@@ -35,6 +39,9 @@ spec:
               format: int32
               type: integer
             running:
+              format: int32
+              type: integer
+            inqueue:
               format: int32
               type: integer
           type: object
