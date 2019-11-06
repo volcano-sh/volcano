@@ -20,9 +20,8 @@ import (
 	"fmt"
 	"time"
 
-	"golang.org/x/time/rate"
-
 	"github.com/golang/glog"
+	"golang.org/x/time/rate"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -68,7 +67,7 @@ func (cc *Controller) syncTask(oldTask *v1.Pod) error {
 	cc.Mutex.Lock()
 	defer cc.Mutex.Unlock()
 
-	newPod, err := cc.kubeClients.CoreV1().Pods(oldTask.Namespace).Get(oldTask.Name, metav1.GetOptions{})
+	newPod, err := cc.kubeClient.CoreV1().Pods(oldTask.Namespace).Get(oldTask.Name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			if err := cc.cache.DeletePod(oldTask); err != nil {

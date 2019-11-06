@@ -23,15 +23,15 @@ import (
 
 	"k8s.io/api/core/v1"
 
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	vkplugin "volcano.sh/volcano/pkg/controllers/job/plugins"
-	vkinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
+	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/controllers/job/plugins"
+	"volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
-func (cc *Controller) pluginOnPodCreate(job *vkv1.Job, pod *v1.Pod) error {
-	client := vkinterface.PluginClientset{KubeClients: cc.kubeClients}
+func (cc *Controller) pluginOnPodCreate(job *batch.Job, pod *v1.Pod) error {
+	client := pluginsinterface.PluginClientset{KubeClients: cc.kubeClient}
 	for name, args := range job.Spec.Plugins {
-		pb, found := vkplugin.GetPluginBuilder(name)
+		pb, found := plugins.GetPluginBuilder(name)
 		if !found {
 			err := fmt.Errorf("failed to get plugin %s", name)
 			glog.Error(err)
@@ -47,13 +47,13 @@ func (cc *Controller) pluginOnPodCreate(job *vkv1.Job, pod *v1.Pod) error {
 	return nil
 }
 
-func (cc *Controller) pluginOnJobAdd(job *vkv1.Job) error {
-	client := vkinterface.PluginClientset{KubeClients: cc.kubeClients}
+func (cc *Controller) pluginOnJobAdd(job *batch.Job) error {
+	client := pluginsinterface.PluginClientset{KubeClients: cc.kubeClient}
 	if job.Status.ControlledResources == nil {
 		job.Status.ControlledResources = make(map[string]string)
 	}
 	for name, args := range job.Spec.Plugins {
-		pb, found := vkplugin.GetPluginBuilder(name)
+		pb, found := plugins.GetPluginBuilder(name)
 		if !found {
 			err := fmt.Errorf("failed to get plugin %s", name)
 			glog.Error(err)
@@ -70,10 +70,10 @@ func (cc *Controller) pluginOnJobAdd(job *vkv1.Job) error {
 	return nil
 }
 
-func (cc *Controller) pluginOnJobDelete(job *vkv1.Job) error {
-	client := vkinterface.PluginClientset{KubeClients: cc.kubeClients}
+func (cc *Controller) pluginOnJobDelete(job *batch.Job) error {
+	client := pluginsinterface.PluginClientset{KubeClients: cc.kubeClient}
 	for name, args := range job.Spec.Plugins {
-		pb, found := vkplugin.GetPluginBuilder(name)
+		pb, found := plugins.GetPluginBuilder(name)
 		if !found {
 			err := fmt.Errorf("failed to get plugin %s", name)
 			glog.Error(err)

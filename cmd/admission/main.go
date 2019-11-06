@@ -29,21 +29,21 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"volcano.sh/volcano/cmd/admission/app"
-	appConf "volcano.sh/volcano/cmd/admission/app/options"
-	admissioncontroller "volcano.sh/volcano/pkg/admission"
+	"volcano.sh/volcano/cmd/admission/app/options"
+	"volcano.sh/volcano/pkg/admission"
 	"volcano.sh/volcano/pkg/version"
 )
 
 func serveJobs(w http.ResponseWriter, r *http.Request) {
-	admissioncontroller.Serve(w, r, admissioncontroller.AdmitJobs)
+	admission.Serve(w, r, admission.AdmitJobs)
 }
 
 func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
-	admissioncontroller.Serve(w, r, admissioncontroller.MutateJobs)
+	admission.Serve(w, r, admission.MutateJobs)
 }
 
 func main() {
-	config := appConf.NewConfig()
+	config := options.NewConfig()
 	config.AddFlags()
 	flag.Parse()
 
@@ -51,31 +51,31 @@ func main() {
 		version.PrintVersionAndExit()
 	}
 
-	http.HandleFunc(admissioncontroller.AdmitJobPath, serveJobs)
-	http.HandleFunc(admissioncontroller.MutateJobPath, serveMutateJobs)
+	http.HandleFunc(admission.AdmitJobPath, serveJobs)
+	http.HandleFunc(admission.MutateJobPath, serveMutateJobs)
 
 	if err := config.CheckPortOrDie(); err != nil {
-		glog.Fatalf("Configured port is invalid: %v\n", err)
+		glog.Fatalf("Configured port is invalid: %v", err)
 	}
 	addr := ":" + strconv.Itoa(config.Port)
 
 	restConfig, err := clientcmd.BuildConfigFromFlags(config.Master, config.Kubeconfig)
 	if err != nil {
-		glog.Fatalf("Unable to build k8s config: %v\n", err)
+		glog.Fatalf("Unable to build k8s config: %v", err)
 	}
 
-	admissioncontroller.VolcanoClientSet = app.GetVolcanoClient(restConfig)
+	admission.VolcanoClientSet = app.GetVolcanoClient(restConfig)
 
 	servePods(config)
 
 	caBundle, err := ioutil.ReadFile(config.CaCertFile)
 	if err != nil {
-		glog.Fatalf("Unable to read cacert file: %v\n", err)
+		glog.Fatalf("Unable to read cacert file: %v", err)
 	}
 
-	err = appConf.RegisterWebhooks(config, app.GetClient(restConfig), caBundle)
+	err = options.RegisterWebhooks(config, app.GetClient(restConfig), caBundle)
 	if err != nil {
-		glog.Fatalf("Unable to register webhook configs: %v\n", err)
+		glog.Fatalf("Unable to register webhook configs: %v", err)
 	}
 
 	stopChannel := make(chan os.Signal)
@@ -89,7 +89,7 @@ func main() {
 	go func() {
 		err = server.ListenAndServeTLS("", "")
 		if err != nil && err != http.ErrServerClosed {
-			glog.Fatalf("ListenAndServeTLS for admission webhook failed: %v\n", err)
+			glog.Fatalf("ListenAndServeTLS for admission webhook failed: %v", err)
 			close(webhookServeError)
 		}
 	}()
@@ -97,7 +97,7 @@ func main() {
 	select {
 	case <-stopChannel:
 		if err := server.Close(); err != nil {
-			glog.Fatalf("Close admission server failed: %v\n", err)
+			glog.Fatalf("Close admission server failed: %v", err)
 		}
 		return
 	case <-webhookServeError:
@@ -105,12 +105,12 @@ func main() {
 	}
 }
 
-func servePods(config *appConf.Config) {
-	admController := &admissioncontroller.Controller{
-		VcClients:     admissioncontroller.VolcanoClientSet,
+func servePods(config *options.Config) {
+	admController := &admission.Controller{
+		VcClients:     admission.VolcanoClientSet,
 		SchedulerName: config.SchedulerName,
 	}
-	http.HandleFunc(admissioncontroller.AdmitPodPath, admController.ServerPods)
+	http.HandleFunc(admission.AdmitPodPath, admController.ServerPods)
 
 	return
 }

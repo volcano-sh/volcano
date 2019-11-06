@@ -27,7 +27,7 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/informers"
-	clientset "k8s.io/client-go/kubernetes"
+	kubeclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 
@@ -41,7 +41,7 @@ import (
 
 	"volcano.sh/volcano/cmd/controllers/app/options"
 	"volcano.sh/volcano/pkg/apis/helpers"
-	vkclient "volcano.sh/volcano/pkg/client/clientset/versioned"
+	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/controllers/garbagecollector"
 	"volcano.sh/volcano/pkg/controllers/job"
 	"volcano.sh/volcano/pkg/controllers/podgroup"
@@ -92,7 +92,7 @@ func Run(opt *options.ServerOption) error {
 		return fmt.Errorf("finished without leader elect")
 	}
 
-	leaderElectionClient, err := clientset.NewForConfig(rest.AddUserAgent(config, "leader-election"))
+	leaderElectionClient, err := kubeclientset.NewForConfig(rest.AddUserAgent(config, "leader-election"))
 	if err != nil {
 		return err
 	}
@@ -138,15 +138,15 @@ func Run(opt *options.ServerOption) error {
 
 func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx context.Context) {
 	// TODO: add user agent for different controllers
-	kubeClient := clientset.NewForConfigOrDie(config)
-	vkClient := vkclient.NewForConfigOrDie(config)
+	kubeClient := kubeclientset.NewForConfigOrDie(config)
+	vcClient := vcclientset.NewForConfigOrDie(config)
 
 	sharedInformers := informers.NewSharedInformerFactory(kubeClient, 0)
 
-	jobController := job.NewJobController(kubeClient, vkClient, sharedInformers, opt.WorkerThreads)
-	queueController := queue.NewQueueController(kubeClient, vkClient)
-	garbageCollector := garbagecollector.NewGarbageCollector(vkClient)
-	pgController := podgroup.NewPodgroupController(kubeClient, vkClient, sharedInformers, opt.SchedulerName)
+	jobController := job.NewJobController(kubeClient, vcClient, sharedInformers, opt.WorkerThreads)
+	queueController := queue.NewQueueController(kubeClient, vcClient)
+	garbageCollector := garbagecollector.NewGarbageCollector(vcClient)
+	pgController := podgroup.NewPodgroupController(kubeClient, vcClient, sharedInformers, opt.SchedulerName)
 
 	return func(ctx context.Context) {
 		go jobController.Run(ctx.Done())

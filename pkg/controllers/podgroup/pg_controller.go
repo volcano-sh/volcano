@@ -29,26 +29,26 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
-	kbver "volcano.sh/volcano/pkg/client/clientset/versioned"
-	kbinfoext "volcano.sh/volcano/pkg/client/informers/externalversions"
-	kbinfo "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1alpha2"
-	kblister "volcano.sh/volcano/pkg/client/listers/scheduling/v1alpha2"
+	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
+	informerfactory "volcano.sh/volcano/pkg/client/informers/externalversions"
+	schedulinginformer "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1alpha2"
+	schedulinglister "volcano.sh/volcano/pkg/client/listers/scheduling/v1alpha2"
 )
 
 // Controller the Podgroup Controller type
 type Controller struct {
-	kubeClients kubernetes.Interface
-	kbClients   kbver.Interface
+	kubeClient kubernetes.Interface
+	vcClient   vcclientset.Interface
 
 	podInformer coreinformers.PodInformer
-	pgInformer  kbinfo.PodGroupInformer
+	pgInformer  schedulinginformer.PodGroupInformer
 
 	// A store of pods
 	podLister corelisters.PodLister
 	podSynced func() bool
 
 	// A store of podgroups
-	pgLister kblister.PodGroupLister
+	pgLister schedulinglister.PodGroupLister
 	pgSynced func() bool
 
 	queue workqueue.RateLimitingInterface
@@ -57,13 +57,13 @@ type Controller struct {
 // NewPodgroupController create new Podgroup Controller
 func NewPodgroupController(
 	kubeClient kubernetes.Interface,
-	kbClient kbver.Interface,
+	vcClient vcclientset.Interface,
 	sharedInformers informers.SharedInformerFactory,
 	schedulerName string,
 ) *Controller {
 	cc := &Controller{
-		kubeClients: kubeClient,
-		kbClients:   kbClient,
+		kubeClient: kubeClient,
+		vcClient:   vcClient,
 
 		queue: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 	}
@@ -91,7 +91,7 @@ func NewPodgroupController(
 			},
 		})
 
-	cc.pgInformer = kbinfoext.NewSharedInformerFactory(cc.kbClients, 0).Scheduling().V1alpha2().PodGroups()
+	cc.pgInformer = informerfactory.NewSharedInformerFactory(cc.vcClient, 0).Scheduling().V1alpha2().PodGroups()
 	cc.pgLister = cc.pgInformer.Lister()
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 

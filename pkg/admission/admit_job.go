@@ -32,12 +32,13 @@ import (
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
+	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
 )
 
 // VolcanoClientSet is volcano clientset
-var VolcanoClientSet versioned.Interface
+// TODO: make it as package local var.
+var VolcanoClientSet vcclientset.Interface
 
 // AdmitJobs is to admit jobs and return response
 func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {

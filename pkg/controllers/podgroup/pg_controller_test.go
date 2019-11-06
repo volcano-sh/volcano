@@ -27,15 +27,15 @@ import (
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 
 	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
-	kubebatchclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
+	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
 )
 
 func newFakeController() *Controller {
-	KubeClientSet := kubeclient.NewSimpleClientset()
-	KubeBatchClientSet := kubebatchclient.NewSimpleClientset()
-	sharedInformers := informers.NewSharedInformerFactory(KubeClientSet, 0)
+	kubeClient := kubeclient.NewSimpleClientset()
+	vcClient := vcclient.NewSimpleClientset()
+	sharedInformers := informers.NewSharedInformerFactory(kubeClient, 0)
 
-	controller := NewPodgroupController(KubeClientSet, KubeBatchClientSet, sharedInformers, "volcano")
+	controller := NewPodgroupController(kubeClient, vcClient, sharedInformers, "volcano")
 	return controller
 }
 
@@ -137,7 +137,7 @@ func TestAddPodGroup(t *testing.T) {
 	for _, testCase := range testCases {
 		c := newFakeController()
 
-		pod, err := c.kubeClients.CoreV1().Pods(testCase.pod.Namespace).Create(testCase.pod)
+		pod, err := c.kubeClient.CoreV1().Pods(testCase.pod.Namespace).Create(testCase.pod)
 		if err != nil {
 			t.Errorf("Case %s failed when creating pod for %v", testCase.name, err)
 		}
@@ -145,7 +145,7 @@ func TestAddPodGroup(t *testing.T) {
 		c.addPod(pod)
 		c.createNormalPodPGIfNotExist(pod)
 
-		pg, err := c.kbClients.SchedulingV1alpha2().PodGroups(pod.Namespace).Get(
+		pg, err := c.vcClient.SchedulingV1alpha2().PodGroups(pod.Namespace).Get(
 			testCase.expectedPodGroup.Name,
 			metav1.GetOptions{},
 		)

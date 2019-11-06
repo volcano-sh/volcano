@@ -25,17 +25,17 @@ import (
 	"k8s.io/client-go/informers"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	volcanoclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
 )
 
 func newFakeController() *Controller {
-	VolcanoClientSet := volcanoclient.NewSimpleClientset()
-	KubeClientSet := kubeclient.NewSimpleClientset()
+	volcanoClientSet := volcanoclient.NewSimpleClientset()
+	kubeClientSet := kubeclient.NewSimpleClientset()
 
-	sharedInformers := informers.NewSharedInformerFactory(KubeClientSet, 0)
+	sharedInformers := informers.NewSharedInformerFactory(kubeClientSet, 0)
 
-	controller := NewJobController(KubeClientSet, VolcanoClientSet, sharedInformers, 3)
+	controller := NewJobController(kubeClientSet, volcanoClientSet, sharedInformers, 3)
 	return controller
 }
 
@@ -44,14 +44,14 @@ func TestPluginOnPodCreate(t *testing.T) {
 
 	testcases := []struct {
 		Name    string
-		Job     *vkv1.Job
+		Job     *batch.Job
 		Pod     *v1.Pod
 		Plugins []string
 		RetVal  error
 	}{
 		{
 			Name: "All Plugin",
-			Job: &vkv1.Job{
+			Job: &batch.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "Job1",
 					Namespace: namespace,
@@ -63,7 +63,7 @@ func TestPluginOnPodCreate(t *testing.T) {
 		},
 		{
 			Name: "Wrong Plugin",
-			Job: &vkv1.Job{
+			Job: &batch.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "Job1",
 				},
@@ -143,13 +143,13 @@ func TestPluginOnJobAdd(t *testing.T) {
 
 	testcases := []struct {
 		Name    string
-		Job     *vkv1.Job
+		Job     *batch.Job
 		Plugins []string
 		RetVal  error
 	}{
 		{
 			Name: "Plugins",
-			Job: &vkv1.Job{
+			Job: &batch.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
@@ -160,7 +160,7 @@ func TestPluginOnJobAdd(t *testing.T) {
 		},
 		{
 			Name: "Wrong Plugin",
-			Job: &vkv1.Job{
+			Job: &batch.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "Job1",
 				},
@@ -190,19 +190,19 @@ func TestPluginOnJobAdd(t *testing.T) {
 			for _, plugin := range testcase.Plugins {
 
 				if plugin == "svc" {
-					_, err := fakeController.kubeClients.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-svc"), metav1.GetOptions{})
+					_, err := fakeController.kubeClient.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-svc"), metav1.GetOptions{})
 					if err != nil {
 						t.Errorf("Case %d (%s): expected: ConfigMap to be created, but not created because of error %s", i, testcase.Name, err.Error())
 					}
 
-					_, err = fakeController.kubeClients.CoreV1().Services(namespace).Get(testcase.Job.Name, metav1.GetOptions{})
+					_, err = fakeController.kubeClient.CoreV1().Services(namespace).Get(testcase.Job.Name, metav1.GetOptions{})
 					if err != nil {
 						t.Errorf("Case %d (%s): expected: Service to be created, but not created because of error %s", i, testcase.Name, err.Error())
 					}
 				}
 
 				if plugin == "ssh" {
-					_, err := fakeController.kubeClients.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-ssh"), metav1.GetOptions{})
+					_, err := fakeController.kubeClient.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-ssh"), metav1.GetOptions{})
 					if err != nil {
 						t.Errorf("Case %d (%s): expected: ConfigMap to be created, but not created because of error %s", i, testcase.Name, err.Error())
 					}
@@ -223,13 +223,13 @@ func TestPluginOnJobDelete(t *testing.T) {
 
 	testcases := []struct {
 		Name    string
-		Job     *vkv1.Job
+		Job     *batch.Job
 		Plugins []string
 		RetVal  error
 	}{
 		{
 			Name: "Plugins",
-			Job: &vkv1.Job{
+			Job: &batch.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
@@ -240,7 +240,7 @@ func TestPluginOnJobDelete(t *testing.T) {
 		},
 		{
 			Name: "Wrong Plugin",
-			Job: &vkv1.Job{
+			Job: &batch.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "Job1",
 				},
@@ -270,19 +270,19 @@ func TestPluginOnJobDelete(t *testing.T) {
 			for _, plugin := range testcase.Plugins {
 
 				if plugin == "svc" {
-					_, err := fakeController.kubeClients.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-svc"), metav1.GetOptions{})
+					_, err := fakeController.kubeClient.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-svc"), metav1.GetOptions{})
 					if err == nil {
 						t.Errorf("Case %d (%s): expected: ConfigMap to be deleted, but not deleted because of error %s", i, testcase.Name, err.Error())
 					}
 
-					_, err = fakeController.kubeClients.CoreV1().Services(namespace).Get(testcase.Job.Name, metav1.GetOptions{})
+					_, err = fakeController.kubeClient.CoreV1().Services(namespace).Get(testcase.Job.Name, metav1.GetOptions{})
 					if err == nil {
 						t.Errorf("Case %d (%s): expected: Service to be deleted, but not deleted because of error %s", i, testcase.Name, err.Error())
 					}
 				}
 
 				if plugin == "ssh" {
-					_, err := fakeController.kubeClients.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-ssh"), metav1.GetOptions{})
+					_, err := fakeController.kubeClient.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-ssh"), metav1.GetOptions{})
 					if err == nil {
 						t.Errorf("Case %d (%s): expected: ConfigMap to be deleted, but not deleted because of error %s", i, testcase.Name, err.Error())
 					}

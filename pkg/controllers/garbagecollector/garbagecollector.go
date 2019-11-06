@@ -30,10 +30,10 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	vkver "volcano.sh/volcano/pkg/client/clientset/versioned"
-	vkinfoext "volcano.sh/volcano/pkg/client/informers/externalversions"
-	vkbatchinfo "volcano.sh/volcano/pkg/client/informers/externalversions/batch/v1alpha1"
-	vkbatchlister "volcano.sh/volcano/pkg/client/listers/batch/v1alpha1"
+	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
+	informerfactory "volcano.sh/volcano/pkg/client/informers/externalversions"
+	batchinformers "volcano.sh/volcano/pkg/client/informers/externalversions/batch/v1alpha1"
+	batchlisters "volcano.sh/volcano/pkg/client/listers/batch/v1alpha1"
 )
 
 // GarbageCollector runs reflectors to watch for changes of managed API
@@ -46,12 +46,12 @@ import (
 // This is implemented outside of Job controller for separation of concerns, and
 // because it will be extended to handle other finishable resource types.
 type GarbageCollector struct {
-	vkClient vkver.Interface
+	vcClient vcclientset.Interface
 
-	jobInformer vkbatchinfo.JobInformer
+	jobInformer batchinformers.JobInformer
 
 	// A store of jobs
-	jobLister vkbatchlister.JobLister
+	jobLister batchlisters.JobLister
 	jobSynced func() bool
 
 	// queues that need to be updated.
@@ -59,11 +59,11 @@ type GarbageCollector struct {
 }
 
 // NewGarbageCollector creates an instance of GarbageCollector
-func NewGarbageCollector(vkClient vkver.Interface) *GarbageCollector {
-	jobInformer := vkinfoext.NewSharedInformerFactory(vkClient, 0).Batch().V1alpha1().Jobs()
+func NewGarbageCollector(vkClient vcclientset.Interface) *GarbageCollector {
+	jobInformer := informerfactory.NewSharedInformerFactory(vkClient, 0).Batch().V1alpha1().Jobs()
 
 	gb := &GarbageCollector{
-		vkClient:    vkClient,
+		vcClient:    vkClient,
 		jobInformer: jobInformer,
 		jobLister:   jobInformer.Lister(),
 		jobSynced:   jobInformer.Informer().HasSynced,
@@ -191,7 +191,7 @@ func (gb *GarbageCollector) processJob(key string) error {
 	// Before deleting the Job, do a final sanity check.
 	// If TTL is modified before we do this check, we cannot be sure if the TTL truly expires.
 	// The latest Job may have a different UID, but it's fine because the checks will be run again.
-	fresh, err := gb.vkClient.BatchV1alpha1().Jobs(namespace).Get(name, metav1.GetOptions{})
+	fresh, err := gb.vcClient.BatchV1alpha1().Jobs(namespace).Get(name, metav1.GetOptions{})
 	if errors.IsNotFound(err) {
 		return nil
 	}
@@ -211,7 +211,7 @@ func (gb *GarbageCollector) processJob(key string) error {
 		Preconditions:     &metav1.Preconditions{UID: &fresh.UID},
 	}
 	glog.V(4).Infof("Cleaning up Job %s/%s", namespace, name)
-	return gb.vkClient.BatchV1alpha1().Jobs(fresh.Namespace).Delete(fresh.Name, options)
+	return gb.vcClient.BatchV1alpha1().Jobs(fresh.Namespace).Delete(fresh.Name, options)
 }
 
 // processTTL checks whether a given Job's TTL has expired, and add it to the queue after the TTL is expected to expire
