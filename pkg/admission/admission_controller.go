@@ -31,8 +31,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
 	"k8s.io/kubernetes/pkg/apis/core/validation"
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	vcver "volcano.sh/volcano/pkg/client/clientset/versioned"
+	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
 const (
@@ -53,7 +53,7 @@ type AdmitFunc func(v1beta1.AdmissionReview) *v1beta1.AdmissionResponse
 
 // Controller the Admission Controller type
 type Controller struct {
-	VcClients     vcver.Interface
+	VcClients     vcclientset.Interface
 	SchedulerName string
 }
 
@@ -64,26 +64,26 @@ var scheme = runtime.NewScheme()
 var Codecs = serializer.NewCodecFactory(scheme)
 
 // policyEventMap defines all policy events and whether to allow external use
-var policyEventMap = map[v1alpha1.Event]bool{
-	v1alpha1.AnyEvent:           true,
-	v1alpha1.PodFailedEvent:     true,
-	v1alpha1.PodEvictedEvent:    true,
-	v1alpha1.JobUnknownEvent:    true,
-	v1alpha1.TaskCompletedEvent: true,
-	v1alpha1.OutOfSyncEvent:     false,
-	v1alpha1.CommandIssuedEvent: false,
+var policyEventMap = map[batchv1alpha1.Event]bool{
+	batchv1alpha1.AnyEvent:           true,
+	batchv1alpha1.PodFailedEvent:     true,
+	batchv1alpha1.PodEvictedEvent:    true,
+	batchv1alpha1.JobUnknownEvent:    true,
+	batchv1alpha1.TaskCompletedEvent: true,
+	batchv1alpha1.OutOfSyncEvent:     false,
+	batchv1alpha1.CommandIssuedEvent: false,
 }
 
 // policyActionMap defines all policy actions and whether to allow external use
-var policyActionMap = map[v1alpha1.Action]bool{
-	v1alpha1.AbortJobAction:     true,
-	v1alpha1.RestartJobAction:   true,
-	v1alpha1.RestartTaskAction:  true,
-	v1alpha1.TerminateJobAction: true,
-	v1alpha1.CompleteJobAction:  true,
-	v1alpha1.ResumeJobAction:    true,
-	v1alpha1.SyncJobAction:      false,
-	v1alpha1.EnqueueAction:      false,
+var policyActionMap = map[batchv1alpha1.Action]bool{
+	batchv1alpha1.AbortJobAction:     true,
+	batchv1alpha1.RestartJobAction:   true,
+	batchv1alpha1.RestartTaskAction:  true,
+	batchv1alpha1.TerminateJobAction: true,
+	batchv1alpha1.CompleteJobAction:  true,
+	batchv1alpha1.ResumeJobAction:    true,
+	batchv1alpha1.SyncJobAction:      false,
+	batchv1alpha1.EnqueueAction:      false,
 }
 
 func init() {
@@ -106,10 +106,10 @@ func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
 }
 
 //DecodeJob decodes the job using deserializer from the raw object
-func DecodeJob(object runtime.RawExtension, resource metav1.GroupVersionResource) (v1alpha1.Job, error) {
-	jobResource := metav1.GroupVersionResource{Group: v1alpha1.SchemeGroupVersion.Group, Version: v1alpha1.SchemeGroupVersion.Version, Resource: "jobs"}
+func DecodeJob(object runtime.RawExtension, resource metav1.GroupVersionResource) (batchv1alpha1.Job, error) {
+	jobResource := metav1.GroupVersionResource{Group: batchv1alpha1.SchemeGroupVersion.Group, Version: batchv1alpha1.SchemeGroupVersion.Version, Resource: "jobs"}
 	raw := object.Raw
-	job := v1alpha1.Job{}
+	job := batchv1alpha1.Job{}
 
 	if resource != jobResource {
 		err := fmt.Errorf("expect resource to be %s", jobResource)
@@ -125,9 +125,9 @@ func DecodeJob(object runtime.RawExtension, resource metav1.GroupVersionResource
 	return job, nil
 }
 
-func validatePolicies(policies []v1alpha1.LifecyclePolicy, fldPath *field.Path) error {
+func validatePolicies(policies []batchv1alpha1.LifecyclePolicy, fldPath *field.Path) error {
 	var err error
-	policyEvents := map[v1alpha1.Event]struct{}{}
+	policyEvents := map[batchv1alpha1.Event]struct{}{}
 	exitCodes := map[int32]struct{}{}
 
 	for _, policy := range policies {
@@ -182,14 +182,14 @@ func validatePolicies(policies []v1alpha1.LifecyclePolicy, fldPath *field.Path) 
 		}
 	}
 
-	if _, found := policyEvents[v1alpha1.AnyEvent]; found && len(policyEvents) > 1 {
+	if _, found := policyEvents[batchv1alpha1.AnyEvent]; found && len(policyEvents) > 1 {
 		err = multierror.Append(err, fmt.Errorf("if there's * here, no other policy should be here"))
 	}
 
 	return err
 }
 
-func getEventList(policy v1alpha1.LifecyclePolicy) []v1alpha1.Event {
+func getEventList(policy batchv1alpha1.LifecyclePolicy) []batchv1alpha1.Event {
 	policyEventsList := policy.Events
 	if len(policy.Event) > 0 {
 		policyEventsList = append(policyEventsList, policy.Event)
@@ -198,9 +198,9 @@ func getEventList(policy v1alpha1.LifecyclePolicy) []v1alpha1.Event {
 	return uniquePolicyEventlist
 }
 
-func removeDuplicates(EventList []v1alpha1.Event) []v1alpha1.Event {
-	keys := make(map[v1alpha1.Event]bool)
-	list := []v1alpha1.Event{}
+func removeDuplicates(EventList []batchv1alpha1.Event) []batchv1alpha1.Event {
+	keys := make(map[batchv1alpha1.Event]bool)
+	list := []batchv1alpha1.Event{}
 	for _, val := range EventList {
 		if _, value := keys[val]; !value {
 			keys[val] = true
@@ -210,8 +210,8 @@ func removeDuplicates(EventList []v1alpha1.Event) []v1alpha1.Event {
 	return list
 }
 
-func getValidEvents() []v1alpha1.Event {
-	var events []v1alpha1.Event
+func getValidEvents() []batchv1alpha1.Event {
+	var events []batchv1alpha1.Event
 	for e, allow := range policyEventMap {
 		if allow {
 			events = append(events, e)
@@ -221,8 +221,8 @@ func getValidEvents() []v1alpha1.Event {
 	return events
 }
 
-func getValidActions() []v1alpha1.Action {
-	var actions []v1alpha1.Action
+func getValidActions() []batchv1alpha1.Action {
+	var actions []batchv1alpha1.Action
 	for a, allow := range policyActionMap {
 		if allow {
 			actions = append(actions, a)
@@ -233,7 +233,7 @@ func getValidActions() []v1alpha1.Action {
 }
 
 // ValidateIO validate IO configuration
-func ValidateIO(volumes []v1alpha1.VolumeSpec) (string, bool) {
+func ValidateIO(volumes []batchv1alpha1.VolumeSpec) (string, bool) {
 	volumeMap := map[string]bool{}
 	for _, volume := range volumes {
 		if len(volume.MountPath) == 0 {

@@ -23,11 +23,10 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/api/admissionregistration/v1beta1"
-	"k8s.io/client-go/kubernetes"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	admissionregistrationv1beta1client "k8s.io/client-go/kubernetes/typed/admissionregistration/v1beta1"
+	"k8s.io/client-go/kubernetes"
+	admissionregistrationv1beta1 "k8s.io/client-go/kubernetes/typed/admissionregistration/v1beta1"
 )
 
 const (
@@ -228,7 +227,7 @@ func RegisterWebhooks(c *Config, clienset *kubernetes.Clientset, cabundle []byte
 
 }
 
-func registerMutateWebhook(client admissionregistrationv1beta1client.MutatingWebhookConfigurationInterface,
+func registerMutateWebhook(client admissionregistrationv1beta1.MutatingWebhookConfigurationInterface,
 	webhooks []v1beta1.MutatingWebhookConfiguration) error {
 	for _, hook := range webhooks {
 		existing, err := client.Get(hook.Name, metav1.GetOptions{})
@@ -251,7 +250,7 @@ func registerMutateWebhook(client admissionregistrationv1beta1client.MutatingWeb
 	return nil
 }
 
-func registerValidateWebhook(client admissionregistrationv1beta1client.ValidatingWebhookConfigurationInterface,
+func registerValidateWebhook(client admissionregistrationv1beta1.ValidatingWebhookConfigurationInterface,
 	webhooks []v1beta1.ValidatingWebhookConfiguration) error {
 	for _, hook := range webhooks {
 		existing, err := client.Get(hook.Name, metav1.GetOptions{})

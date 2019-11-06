@@ -22,13 +22,13 @@ import (
 	"github.com/golang/glog"
 
 	"k8s.io/client-go/kubernetes"
-	restclient "k8s.io/client-go/rest"
-	appConf "volcano.sh/volcano/cmd/admission/app/options"
+	"k8s.io/client-go/rest"
+	"volcano.sh/volcano/cmd/admission/app/options"
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
 // GetClient Get a clientset with restConfig.
-func GetClient(restConfig *restclient.Config) *kubernetes.Clientset {
+func GetClient(restConfig *rest.Config) *kubernetes.Clientset {
 	clientset, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		glog.Fatal(err)
@@ -37,7 +37,7 @@ func GetClient(restConfig *restclient.Config) *kubernetes.Clientset {
 }
 
 // GetVolcanoClient get a clientset for volcano
-func GetVolcanoClient(restConfig *restclient.Config) *versioned.Clientset {
+func GetVolcanoClient(restConfig *rest.Config) *versioned.Clientset {
 	clientset, err := versioned.NewForConfig(restConfig)
 	if err != nil {
 		glog.Fatal(err)
@@ -48,7 +48,7 @@ func GetVolcanoClient(restConfig *restclient.Config) *versioned.Clientset {
 // ConfigTLS is a helper function that generate tls certificates from directly defined tls config or kubeconfig
 // These are passed in as command line for cluster certification. If tls config is passed in, we use the directly
 // defined tls config, else use that defined in kubeconfig
-func ConfigTLS(config *appConf.Config, restConfig *restclient.Config) *tls.Config {
+func ConfigTLS(config *options.Config, restConfig *rest.Config) *tls.Config {
 	if len(config.CertFile) != 0 && len(config.KeyFile) != 0 {
 		sCert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
 		if err != nil {

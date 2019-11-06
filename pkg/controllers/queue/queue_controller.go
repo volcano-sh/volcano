@@ -29,47 +29,48 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
-	kbclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
-	kbinformerfactory "volcano.sh/volcano/pkg/client/informers/externalversions"
-	kbinformer "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1alpha2"
-	kblister "volcano.sh/volcano/pkg/client/listers/scheduling/v1alpha2"
+	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
+	informerfactory "volcano.sh/volcano/pkg/client/informers/externalversions"
+	schedulinginformer "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1alpha2"
+	schedulinglister "volcano.sh/volcano/pkg/client/listers/scheduling/v1alpha2"
 )
 
 // Controller manages queue status.
 type Controller struct {
 	kubeClient kubernetes.Interface
-	kbClient   kbclientset.Interface
+	vcClient   vcclientset.Interface
 
 	// informer
-	queueInformer kbinformer.QueueInformer
-	pgInformer    kbinformer.PodGroupInformer
+	queueInformer schedulinginformer.QueueInformer
+	pgInformer    schedulinginformer.PodGroupInformer
 
 	// queueLister
-	queueLister kblister.QueueLister
+	queueLister schedulinglister.QueueLister
 	queueSynced cache.InformerSynced
 
 	// podGroup lister
-	pgLister kblister.PodGroupLister
+	pgLister schedulinglister.PodGroupLister
 	pgSynced cache.InformerSynced
 
 	// queues that need to be updated.
 	queue workqueue.RateLimitingInterface
 
-	pgMutex   sync.RWMutex
+	pgMutex sync.RWMutex
+	// queue name -> podgroup namespace/name
 	podGroups map[string]map[string]struct{}
 }
 
 // NewQueueController creates a QueueController
 func NewQueueController(
 	kubeClient kubernetes.Interface,
-	kbClient kbclientset.Interface,
+	kbClient vcclientset.Interface,
 ) *Controller {
-	factory := kbinformerfactory.NewSharedInformerFactory(kbClient, 0)
+	factory := informerfactory.NewSharedInformerFactory(kbClient, 0)
 	queueInformer := factory.Scheduling().V1alpha2().Queues()
 	pgInformer := factory.Scheduling().V1alpha2().PodGroups()
 	c := &Controller{
 		kubeClient: kubeClient,
-		kbClient:   kbClient,
+		vcClient:   kbClient,
 
 		queueInformer: queueInformer,
 		pgInformer:    pgInformer,
@@ -204,7 +205,7 @@ func (c *Controller) syncQueue(key string) error {
 	newQueue := queue.DeepCopy()
 	newQueue.Status = queueStatus
 
-	if _, err := c.kbClient.SchedulingV1alpha2().Queues().UpdateStatus(newQueue); err != nil {
+	if _, err := c.vcClient.SchedulingV1alpha2().Queues().UpdateStatus(newQueue); err != nil {
 		glog.Errorf("Failed to update status of Queue %s: %v", newQueue.Name, err)
 		return err
 	}

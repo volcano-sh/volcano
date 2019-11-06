@@ -61,7 +61,7 @@ func (cc *Controller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
 		return nil
 	}
 
-	if _, err := cc.kubeClients.CoreV1().Pods(pod.Namespace).Update(pod); err != nil {
+	if _, err := cc.kubeClient.CoreV1().Pods(pod.Namespace).Update(pod); err != nil {
 		glog.Errorf("Failed to update pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
 		return err
 	}
@@ -91,7 +91,7 @@ func (cc *Controller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 			},
 		}
 
-		if _, err := cc.kbClients.SchedulingV1alpha2().PodGroups(pod.Namespace).Create(pg); err != nil {
+		if _, err := cc.vcClient.SchedulingV1alpha2().PodGroups(pod.Namespace).Create(pg); err != nil {
 			glog.Errorf("Failed to create normal PodGroup for Pod <%s/%s>: %v",
 				pod.Namespace, pod.Name, err)
 			return err

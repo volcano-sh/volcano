@@ -24,26 +24,25 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	kbapi "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	kubescheduling "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/controllers/apis"
-	vkjobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
+	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
 
 //MakePodName append podname,jobname,taskName and index and returns the string
 func MakePodName(jobName string, taskName string, index int) string {
-	return fmt.Sprintf(vkjobhelpers.PodNameFmt, jobName, taskName, index)
+	return fmt.Sprintf(jobhelpers.PodNameFmt, jobName, taskName, index)
 }
 
-func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
+func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 	templateCopy := template.DeepCopy()
 
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      vkjobhelpers.MakePodName(job.Name, template.Name, ix),
+			Name:      jobhelpers.MakePodName(job.Name, template.Name, ix),
 			Namespace: job.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(job, helpers.JobKind),
@@ -62,7 +61,7 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 	volumeMap := make(map[string]string)
 	for _, volume := range job.Spec.Volumes {
 		vcName := volume.VolumeClaimName
-		name := fmt.Sprintf("%s-%s", job.Name, vkjobhelpers.GenRandomStr(12))
+		name := fmt.Sprintf("%s-%s", job.Name, jobhelpers.GenRandomStr(12))
 		if _, ok := volumeMap[vcName]; !ok {
 			if _, ok := job.Status.ControlledResources["volume-emptyDir-"+vcName]; ok {
 				volume := v1.Volume{
@@ -99,25 +98,25 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 
 	tsKey := templateCopy.Name
 	if len(tsKey) == 0 {
-		tsKey = vkv1.DefaultTaskSpec
+		tsKey = batch.DefaultTaskSpec
 	}
 
 	if len(pod.Annotations) == 0 {
 		pod.Annotations = make(map[string]string)
 	}
 
-	pod.Annotations[vkv1.TaskSpecKey] = tsKey
-	pod.Annotations[kbapi.GroupNameAnnotationKey] = job.Name
-	pod.Annotations[vkv1.JobNameKey] = job.Name
-	pod.Annotations[vkv1.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
+	pod.Annotations[batch.TaskSpecKey] = tsKey
+	pod.Annotations[kubescheduling.GroupNameAnnotationKey] = job.Name
+	pod.Annotations[batch.JobNameKey] = job.Name
+	pod.Annotations[batch.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
 
 	if len(pod.Labels) == 0 {
 		pod.Labels = make(map[string]string)
 	}
 
 	// Set pod labels for Service.
-	pod.Labels[vkv1.JobNameKey] = job.Name
-	pod.Labels[vkv1.JobNamespaceKey] = job.Namespace
+	pod.Labels[batch.JobNameKey] = job.Name
+	pod.Labels[batch.JobNamespaceKey] = job.Namespace
 
 	// we fill the schedulerName in the pod definition with the one specified in the QJ template
 	if job.Spec.SchedulerName != "" && pod.Spec.SchedulerName == "" {
@@ -127,19 +126,19 @@ func createJobPod(job *vkv1.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 	return pod
 }
 
-func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
+func applyPolicies(job *batch.Job, req *apis.Request) batch.Action {
 	if len(req.Action) != 0 {
 		return req.Action
 	}
 
-	if req.Event == vkv1.OutOfSyncEvent {
-		return vkv1.SyncJobAction
+	if req.Event == batch.OutOfSyncEvent {
+		return batch.SyncJobAction
 	}
 
 	// For all the requests triggered from discarded job resources will perform sync action instead
 	if req.JobVersion < job.Status.Version {
 		glog.Infof("Request %s is outdated, will perform sync instead.", req)
-		return vkv1.SyncJobAction
+		return batch.SyncJobAction
 	}
 
 	// Overwrite Job level policies
@@ -151,7 +150,7 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 					policyEvents := getEventlist(policy)
 
 					if len(policyEvents) > 0 && len(req.Event) > 0 {
-						if checkEventExist(policyEvents, req.Event) || checkEventExist(policyEvents, vkv1.AnyEvent) {
+						if checkEventExist(policyEvents, req.Event) || checkEventExist(policyEvents, batch.AnyEvent) {
 							return policy.Action
 						}
 					}
@@ -171,7 +170,7 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 		policyEvents := getEventlist(policy)
 
 		if len(policyEvents) > 0 && len(req.Event) > 0 {
-			if checkEventExist(policyEvents, req.Event) || checkEventExist(policyEvents, vkv1.AnyEvent) {
+			if checkEventExist(policyEvents, req.Event) || checkEventExist(policyEvents, batch.AnyEvent) {
 				return policy.Action
 			}
 		}
@@ -182,10 +181,10 @@ func applyPolicies(job *vkv1.Job, req *apis.Request) vkv1.Action {
 		}
 	}
 
-	return vkv1.SyncJobAction
+	return batch.SyncJobAction
 }
 
-func getEventlist(policy v1alpha1.LifecyclePolicy) []v1alpha1.Event {
+func getEventlist(policy batch.LifecyclePolicy) []batch.Event {
 	policyEventsList := policy.Events
 	if len(policy.Event) > 0 {
 		policyEventsList = append(policyEventsList, policy.Event)
@@ -193,7 +192,7 @@ func getEventlist(policy v1alpha1.LifecyclePolicy) []v1alpha1.Event {
 	return policyEventsList
 }
 
-func checkEventExist(policyEvents []v1alpha1.Event, reqEvent v1alpha1.Event) bool {
+func checkEventExist(policyEvents []batch.Event, reqEvent batch.Event) bool {
 	for _, event := range policyEvents {
 		if event == reqEvent {
 			return true
@@ -227,7 +226,7 @@ func addResourceList(list, req, limit v1.ResourceList) {
 type TaskPriority struct {
 	priority int32
 
-	vkv1.TaskSpec
+	batch.TaskSpec
 }
 
 //TasksPriority is a slice of TaskPriority

@@ -19,20 +19,20 @@ package env
 import (
 	"k8s.io/api/core/v1"
 
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	vkhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
-	vkinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
+	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
+	"volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
 type envPlugin struct {
 	// Arguments given for the plugin
 	pluginArguments []string
 
-	Clientset vkinterface.PluginClientset
+	Clientset pluginsinterface.PluginClientset
 }
 
 // New creates env plugin
-func New(client vkinterface.PluginClientset, arguments []string) vkinterface.PluginInterface {
+func New(client pluginsinterface.PluginClientset, arguments []string) pluginsinterface.PluginInterface {
 	envPlugin := envPlugin{pluginArguments: arguments, Clientset: client}
 
 	return &envPlugin
@@ -42,12 +42,12 @@ func (ep *envPlugin) Name() string {
 	return "env"
 }
 
-func (ep *envPlugin) OnPodCreate(pod *v1.Pod, job *vkv1.Job) error {
+func (ep *envPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	// add VK_TASK_INDEX env to each container
 	for i, c := range pod.Spec.Containers {
 		vkIndex := v1.EnvVar{
 			Name:  TaskVkIndex,
-			Value: vkhelpers.GetTaskIndex(pod),
+			Value: jobhelpers.GetTaskIndex(pod),
 		}
 		pod.Spec.Containers[i].Env = append(c.Env, vkIndex)
 	}
@@ -55,7 +55,7 @@ func (ep *envPlugin) OnPodCreate(pod *v1.Pod, job *vkv1.Job) error {
 	return nil
 }
 
-func (ep *envPlugin) OnJobAdd(job *vkv1.Job) error {
+func (ep *envPlugin) OnJobAdd(job *batch.Job) error {
 	if job.Status.ControlledResources["plugin-"+ep.Name()] == ep.Name() {
 		return nil
 	}
@@ -65,6 +65,6 @@ func (ep *envPlugin) OnJobAdd(job *vkv1.Job) error {
 	return nil
 }
 
-func (ep *envPlugin) OnJobDelete(job *vkv1.Job) error {
+func (ep *envPlugin) OnJobDelete(job *batch.Job) error {
 	return nil
 }

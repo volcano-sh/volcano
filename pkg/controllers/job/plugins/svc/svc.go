@@ -27,21 +27,21 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
-	vkhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
-	vkinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
+	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
+	"volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
 type servicePlugin struct {
 	// Arguments given for the plugin
 	pluginArguments []string
 
-	Clientset vkinterface.PluginClientset
+	Clientset pluginsinterface.PluginClientset
 }
 
 // New creates service plugin
-func New(client vkinterface.PluginClientset, arguments []string) vkinterface.PluginInterface {
+func New(client pluginsinterface.PluginClientset, arguments []string) pluginsinterface.PluginInterface {
 	servicePlugin := servicePlugin{pluginArguments: arguments, Clientset: client}
 
 	return &servicePlugin
@@ -51,7 +51,7 @@ func (sp *servicePlugin) Name() string {
 	return "svc"
 }
 
-func (sp *servicePlugin) OnPodCreate(pod *v1.Pod, job *vkv1.Job) error {
+func (sp *servicePlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	// use podName.serviceName as default pod DNS domain
 	if len(pod.Spec.Hostname) == 0 {
 		pod.Spec.Hostname = pod.Name
@@ -65,7 +65,7 @@ func (sp *servicePlugin) OnPodCreate(pod *v1.Pod, job *vkv1.Job) error {
 	return nil
 }
 
-func (sp *servicePlugin) OnJobAdd(job *vkv1.Job) error {
+func (sp *servicePlugin) OnJobAdd(job *batch.Job) error {
 	if job.Status.ControlledResources["plugin-"+sp.Name()] == sp.Name() {
 		return nil
 	}
@@ -85,7 +85,7 @@ func (sp *servicePlugin) OnJobAdd(job *vkv1.Job) error {
 	return nil
 }
 
-func (sp *servicePlugin) OnJobDelete(job *vkv1.Job) error {
+func (sp *servicePlugin) OnJobDelete(job *batch.Job) error {
 	if err := helpers.DeleteConfigmap(job, sp.Clientset.KubeClients, sp.cmName(job)); err != nil {
 		return err
 	}
@@ -100,7 +100,7 @@ func (sp *servicePlugin) OnJobDelete(job *vkv1.Job) error {
 	return nil
 }
 
-func (sp *servicePlugin) mountConfigmap(pod *v1.Pod, job *vkv1.Job) {
+func (sp *servicePlugin) mountConfigmap(pod *v1.Pod, job *batch.Job) {
 	cmName := sp.cmName(job)
 	cmVolume := v1.Volume{
 		Name: cmName,
@@ -122,7 +122,7 @@ func (sp *servicePlugin) mountConfigmap(pod *v1.Pod, job *vkv1.Job) {
 	}
 }
 
-func (sp *servicePlugin) createServiceIfNotExist(job *vkv1.Job) error {
+func (sp *servicePlugin) createServiceIfNotExist(job *batch.Job) error {
 	// If Service does not exist, create one for Job.
 	if _, err := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Get(job.Name, metav1.GetOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -142,8 +142,8 @@ func (sp *servicePlugin) createServiceIfNotExist(job *vkv1.Job) error {
 			Spec: v1.ServiceSpec{
 				ClusterIP: "None",
 				Selector: map[string]string{
-					vkv1.JobNameKey:      job.Name,
-					vkv1.JobNamespaceKey: job.Namespace,
+					batch.JobNameKey:      job.Name,
+					batch.JobNamespaceKey: job.Namespace,
 				},
 				Ports: []v1.ServicePort{
 					{
@@ -167,11 +167,11 @@ func (sp *servicePlugin) createServiceIfNotExist(job *vkv1.Job) error {
 	return nil
 }
 
-func (sp *servicePlugin) cmName(job *vkv1.Job) string {
+func (sp *servicePlugin) cmName(job *batch.Job) string {
 	return fmt.Sprintf("%s-%s", job.Name, sp.Name())
 }
 
-func generateHost(job *vkv1.Job) map[string]string {
+func generateHost(job *batch.Job) map[string]string {
 	data := make(map[string]string, len(job.Spec.Tasks))
 
 	for _, ts := range job.Spec.Tasks {
@@ -181,7 +181,7 @@ func generateHost(job *vkv1.Job) map[string]string {
 			hostName := ts.Template.Spec.Hostname
 			subdomain := ts.Template.Spec.Subdomain
 			if len(hostName) == 0 {
-				hostName = vkhelpers.MakePodName(job.Name, ts.Name, i)
+				hostName = jobhelpers.MakePodName(job.Name, ts.Name, i)
 			}
 			if len(subdomain) == 0 {
 				subdomain = job.Name

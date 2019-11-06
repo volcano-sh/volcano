@@ -30,25 +30,25 @@ import (
 
 	"k8s.io/api/core/v1"
 
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
-	vkhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
+	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/env"
-	vkinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
+	"volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
 type sshPlugin struct {
 	// Arguments given for the plugin
 	pluginArguments []string
 
-	Clientset vkinterface.PluginClientset
+	Clientset pluginsinterface.PluginClientset
 
 	// flag parse args
 	noRoot bool
 }
 
 // New creates ssh plugin
-func New(client vkinterface.PluginClientset, arguments []string) vkinterface.PluginInterface {
+func New(client pluginsinterface.PluginClientset, arguments []string) pluginsinterface.PluginInterface {
 	sshPlugin := sshPlugin{pluginArguments: arguments, Clientset: client}
 
 	sshPlugin.addFlags()
@@ -60,13 +60,13 @@ func (sp *sshPlugin) Name() string {
 	return "ssh"
 }
 
-func (sp *sshPlugin) OnPodCreate(pod *v1.Pod, job *vkv1.Job) error {
+func (sp *sshPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	sp.mountRsaKey(pod, job)
 
 	return nil
 }
 
-func (sp *sshPlugin) OnJobAdd(job *vkv1.Job) error {
+func (sp *sshPlugin) OnJobAdd(job *batch.Job) error {
 	if job.Status.ControlledResources["plugin-"+sp.Name()] == sp.Name() {
 		return nil
 	}
@@ -85,7 +85,7 @@ func (sp *sshPlugin) OnJobAdd(job *vkv1.Job) error {
 	return nil
 }
 
-func (sp *sshPlugin) OnJobDelete(job *vkv1.Job) error {
+func (sp *sshPlugin) OnJobDelete(job *batch.Job) error {
 	if err := helpers.DeleteConfigmap(job, sp.Clientset.KubeClients, sp.cmName(job)); err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func (sp *sshPlugin) OnJobDelete(job *vkv1.Job) error {
 	return nil
 }
 
-func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *vkv1.Job) {
+func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 	sshPath := SSHAbsolutePath
 	if sp.noRoot {
 		sshPath = env.ConfigMapMountPath + "/" + SSHRelativePath
@@ -149,7 +149,7 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *vkv1.Job) {
 	return
 }
 
-func generateRsaKey(job *vkv1.Job) (map[string]string, error) {
+func generateRsaKey(job *batch.Job) (map[string]string, error) {
 	bitSize := 1024
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, bitSize)
@@ -181,7 +181,7 @@ func generateRsaKey(job *vkv1.Job) (map[string]string, error) {
 	return data, nil
 }
 
-func (sp *sshPlugin) cmName(job *vkv1.Job) string {
+func (sp *sshPlugin) cmName(job *batch.Job) string {
 	return fmt.Sprintf("%s-%s", job.Name, sp.Name())
 }
 
@@ -195,7 +195,7 @@ func (sp *sshPlugin) addFlags() {
 	return
 }
 
-func generateSSHConfig(job *vkv1.Job) string {
+func generateSSHConfig(job *batch.Job) string {
 	config := "StrictHostKeyChecking no\nUserKnownHostsFile /dev/null\n"
 
 	for _, ts := range job.Spec.Tasks {
@@ -203,7 +203,7 @@ func generateSSHConfig(job *vkv1.Job) string {
 			hostName := ts.Template.Spec.Hostname
 			subdomain := ts.Template.Spec.Subdomain
 			if len(hostName) == 0 {
-				hostName = vkhelpers.MakePodName(job.Name, ts.Name, i)
+				hostName = jobhelpers.MakePodName(job.Name, ts.Name, i)
 			}
 			if len(subdomain) == 0 {
 				subdomain = job.Name
