@@ -18,11 +18,12 @@ package job
 
 import (
 	"encoding/json"
-	"github.com/spf13/cobra"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 
 	v1alpha1batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	v1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"

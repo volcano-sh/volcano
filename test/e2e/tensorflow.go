@@ -23,7 +23,7 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
 var _ = Describe("TensorFlow E2E Test", func() {
@@ -33,24 +33,24 @@ var _ = Describe("TensorFlow E2E Test", func() {
 
 		jobName := "tensorflow-dist-mnist"
 
-		job := &vkv1.Job{
+		job := &vcbatch.Job{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: jobName,
 			},
-			Spec: vkv1.JobSpec{
+			Spec: vcbatch.JobSpec{
 				MinAvailable:  int32(3),
 				SchedulerName: schedulerName,
 				Plugins: map[string][]string{
 					"svc": {},
 					"env": {},
 				},
-				Policies: []vkv1.LifecyclePolicy{
+				Policies: []vcbatch.LifecyclePolicy{
 					{
-						Event:  vkv1.PodEvictedEvent,
-						Action: vkv1.RestartJobAction,
+						Event:  vcbatch.PodEvictedEvent,
+						Action: vcbatch.RestartJobAction,
 					},
 				},
-				Tasks: []vkv1.TaskSpec{
+				Tasks: []vcbatch.TaskSpec{
 					{
 						Replicas: int32(1),
 						Name:     "ps",
@@ -80,10 +80,10 @@ var _ = Describe("TensorFlow E2E Test", func() {
 					{
 						Replicas: int32(2),
 						Name:     "worker",
-						Policies: []vkv1.LifecyclePolicy{
+						Policies: []vcbatch.LifecyclePolicy{
 							{
-								Event:  vkv1.TaskCompletedEvent,
-								Action: vkv1.CompleteJobAction,
+								Event:  vcbatch.TaskCompletedEvent,
+								Action: vcbatch.CompleteJobAction,
 							},
 						},
 						Template: v1.PodTemplateSpec{
@@ -116,7 +116,7 @@ var _ = Describe("TensorFlow E2E Test", func() {
 		created, err := context.vcclient.BatchV1alpha1().Jobs("test").Create(job)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobStates(context, created, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Completed}, twoMinute)
+		err = waitJobStates(context, created, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Completed}, twoMinute)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

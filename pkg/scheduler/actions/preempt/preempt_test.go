@@ -25,7 +25,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
-	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	schedulingv2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -47,21 +47,21 @@ func TestPreempt(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		podGroups []*kbv1.PodGroup
+		podGroups []*schedulingv2.PodGroup
 		pods      []*v1.Pod
 		nodes     []*v1.Node
-		queues    []*kbv1.Queue
+		queues    []*schedulingv2.Queue
 		expected  int
 	}{
 		{
 			name: "one Job with two Pods on one node",
-			podGroups: []*kbv1.PodGroup{
+			podGroups: []*schedulingv2.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 					},
-					Spec: kbv1.PodGroupSpec{
+					Spec: schedulingv2.PodGroupSpec{
 						Queue: "q1",
 					},
 				},
@@ -75,12 +75,12 @@ func TestPreempt(t *testing.T) {
 			nodes: []*v1.Node{
 				util.BuildNode("n1", util.BuildResourceList("3", "3Gi"), make(map[string]string)),
 			},
-			queues: []*kbv1.Queue{
+			queues: []*schedulingv2.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "q1",
 					},
-					Spec: kbv1.QueueSpec{
+					Spec: schedulingv2.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -89,13 +89,13 @@ func TestPreempt(t *testing.T) {
 		},
 		{
 			name: "two Jobs on one node",
-			podGroups: []*kbv1.PodGroup{
+			podGroups: []*schedulingv2.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 					},
-					Spec: kbv1.PodGroupSpec{
+					Spec: schedulingv2.PodGroupSpec{
 						Queue: "q1",
 					},
 				},
@@ -104,7 +104,7 @@ func TestPreempt(t *testing.T) {
 						Name:      "pg2",
 						Namespace: "c1",
 					},
-					Spec: kbv1.PodGroupSpec{
+					Spec: schedulingv2.PodGroupSpec{
 						Queue: "q1",
 					},
 				},
@@ -123,12 +123,12 @@ func TestPreempt(t *testing.T) {
 			nodes: []*v1.Node{
 				util.BuildNode("n1", util.BuildResourceList("2", "2G"), make(map[string]string)),
 			},
-			queues: []*kbv1.Queue{
+			queues: []*schedulingv2.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "q1",
 					},
-					Spec: kbv1.QueueSpec{
+					Spec: schedulingv2.QueueSpec{
 						Weight: 1,
 					},
 				},

@@ -24,7 +24,7 @@ import (
 	"k8s.io/api/core/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	jobutil "volcano.sh/volcano/pkg/controllers/job"
 )
 
@@ -37,10 +37,10 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := createJob(context, &jobSpec{
 			name: "failed-restart-job",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vkv1.RestartJobAction,
-					Event:  vkv1.PodFailedEvent,
+					Action: vcbatch.RestartJobAction,
+					Event:  vcbatch.PodFailedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -62,7 +62,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> restarting
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Restarting})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -74,10 +74,10 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := createJob(context, &jobSpec{
 			name: "failed-terminate-job",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vkv1.TerminateJobAction,
-					Event:  vkv1.PodFailedEvent,
+					Action: vcbatch.TerminateJobAction,
+					Event:  vcbatch.PodFailedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -99,7 +99,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> Terminating -> Terminated
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Terminating, vkv1.Terminated})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Terminating, vcbatch.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -111,10 +111,10 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := createJob(context, &jobSpec{
 			name: "failed-abort-job",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vkv1.AbortJobAction,
-					Event:  vkv1.PodFailedEvent,
+					Action: vcbatch.AbortJobAction,
+					Event:  vcbatch.PodFailedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -136,7 +136,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> Aborting -> Aborted
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Aborting, vkv1.Aborted})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Aborting, vcbatch.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -148,10 +148,10 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := createJob(context, &jobSpec{
 			name: "evicted-restart-job",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vkv1.RestartJobAction,
-					Event:  vkv1.PodEvictedEvent,
+					Action: vcbatch.RestartJobAction,
+					Event:  vcbatch.PodEvictedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -171,7 +171,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
@@ -180,7 +180,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Restarting -> Running
-		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Restarting, vkv1.Pending, vkv1.Running})
+		err = waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -192,10 +192,10 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := createJob(context, &jobSpec{
 			name: "evicted-terminate-job",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vkv1.TerminateJobAction,
-					Event:  vkv1.PodEvictedEvent,
+					Action: vcbatch.TerminateJobAction,
+					Event:  vcbatch.PodEvictedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -215,7 +215,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
@@ -224,7 +224,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Terminating -> Terminated
-		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Terminating, vkv1.Terminated})
+		err = waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -236,10 +236,10 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := createJob(context, &jobSpec{
 			name: "evicted-abort-job",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vkv1.AbortJobAction,
-					Event:  vkv1.PodEvictedEvent,
+					Action: vcbatch.AbortJobAction,
+					Event:  vcbatch.PodEvictedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -259,7 +259,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
@@ -268,7 +268,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Aborting -> Aborted
-		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Aborting, vkv1.Aborted})
+		err = waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Aborting, vcbatch.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -280,10 +280,10 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := createJob(context, &jobSpec{
 			name: "any-restart-job",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vkv1.RestartJobAction,
-					Event:  vkv1.AnyEvent,
+					Action: vcbatch.RestartJobAction,
+					Event:  vcbatch.AnyEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -303,7 +303,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
@@ -312,7 +312,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Restarting -> Running
-		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Restarting, vkv1.Pending, vkv1.Running})
+		err = waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -325,10 +325,10 @@ var _ = Describe("Job Error Handling", func() {
 		jobSpec := &jobSpec{
 			name:      "job-restart-when-unschedulable",
 			namespace: "test",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Event:  vkv1.JobUnknownEvent,
-					Action: vkv1.RestartJobAction,
+					Event:  vcbatch.JobUnknownEvent,
+					Action: vcbatch.RestartJobAction,
 				},
 			},
 			tasks: []taskSpec{
@@ -363,15 +363,15 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Job is restarting")
-		err = waitJobPhases(context, job, []vkv1.JobPhase{
-			vkv1.Restarting, vkv1.Pending})
+		err = waitJobPhases(context, job, []vcbatch.JobPhase{
+			vcbatch.Restarting, vcbatch.Pending})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Untaint all nodes")
 		err = removeTaintsFromAllNodes(context, taints)
 		Expect(err).NotTo(HaveOccurred())
 		By("Job is running again")
-		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Running})
+		err = waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -384,10 +384,10 @@ var _ = Describe("Job Error Handling", func() {
 		jobSpec := &jobSpec{
 			name:      "job-abort-when-unschedulable",
 			namespace: "test",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Event:  vkv1.JobUnknownEvent,
-					Action: vkv1.AbortJobAction,
+					Event:  vcbatch.JobUnknownEvent,
+					Action: vcbatch.AbortJobAction,
 				},
 			},
 			tasks: []taskSpec{
@@ -422,8 +422,8 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Job is aborted")
-		err = waitJobPhases(context, job, []vkv1.JobPhase{
-			vkv1.Aborting, vkv1.Aborted})
+		err = waitJobPhases(context, job, []vcbatch.JobPhase{
+			vcbatch.Aborting, vcbatch.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = removeTaintsFromAllNodes(context, taints)
@@ -438,10 +438,10 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := createJob(context, &jobSpec{
 			name: "any-complete-job",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vkv1.CompleteJobAction,
-					Event:  vkv1.TaskCompletedEvent,
+					Action: vcbatch.CompleteJobAction,
+					Event:  vcbatch.TaskCompletedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -464,8 +464,8 @@ var _ = Describe("Job Error Handling", func() {
 
 		By("job scheduled, then task 'completed_task' finished and job finally complete")
 		// job phase: pending -> running -> completing -> completed
-		err := waitJobPhases(context, job, []vkv1.JobPhase{
-			vkv1.Pending, vkv1.Running, vkv1.Completing, vkv1.Completed})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{
+			vcbatch.Pending, vcbatch.Running, vcbatch.Completing, vcbatch.Completed})
 		Expect(err).NotTo(HaveOccurred())
 
 	})
@@ -479,9 +479,9 @@ var _ = Describe("Job Error Handling", func() {
 		var erroCode int32 = 3
 		job := createJob(context, &jobSpec{
 			name: "errorcode-restart-job",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action:   vkv1.RestartJobAction,
+					Action:   vcbatch.RestartJobAction,
 					ExitCode: &erroCode,
 				},
 			},
@@ -504,7 +504,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> restarting
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Restarting})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -516,12 +516,12 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := createJob(context, &jobSpec{
 			name: "evicted-terminate-job",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vkv1.TerminateJobAction,
-					Events: []vkv1.Event{vkv1.PodEvictedEvent,
-						vkv1.PodFailedEvent,
-						vkv1.PodEvictedEvent,
+					Action: vcbatch.TerminateJobAction,
+					Events: []vcbatch.Event{vcbatch.PodEvictedEvent,
+						vcbatch.PodFailedEvent,
+						vcbatch.PodEvictedEvent,
 					},
 				},
 			},
@@ -542,7 +542,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
@@ -551,7 +551,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Terminating -> Terminated
-		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Terminating, vkv1.Terminated})
+		err = waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: PodFailed; Action: RestartJob", func() {
@@ -576,10 +576,10 @@ var _ = Describe("Job Error Handling", func() {
 					rep:           2,
 					command:       "sleep 10s && xxx",
 					restartPolicy: v1.RestartPolicyNever,
-					policies: []vkv1.LifecyclePolicy{
+					policies: []vcbatch.LifecyclePolicy{
 						{
-							Action: vkv1.RestartJobAction,
-							Event:  vkv1.PodFailedEvent,
+							Action: vcbatch.RestartJobAction,
+							Event:  vcbatch.PodFailedEvent,
 						},
 					},
 				},
@@ -587,7 +587,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> restarting
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Restarting})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: PodEvicted; Action: RestartJob", func() {
@@ -611,10 +611,10 @@ var _ = Describe("Job Error Handling", func() {
 					img:  defaultNginxImage,
 					min:  2,
 					rep:  2,
-					policies: []vkv1.LifecyclePolicy{
+					policies: []vcbatch.LifecyclePolicy{
 						{
-							Action: vkv1.RestartJobAction,
-							Event:  vkv1.PodEvictedEvent,
+							Action: vcbatch.RestartJobAction,
+							Event:  vcbatch.PodEvictedEvent,
 						},
 					},
 				},
@@ -622,7 +622,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
@@ -631,7 +631,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Restarting -> Running
-		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Restarting, vkv1.Pending, vkv1.Running})
+		err = waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: PodEvicted; Action: TerminateJob", func() {
@@ -654,10 +654,10 @@ var _ = Describe("Job Error Handling", func() {
 					img:  defaultNginxImage,
 					min:  2,
 					rep:  2,
-					policies: []vkv1.LifecyclePolicy{
+					policies: []vcbatch.LifecyclePolicy{
 						{
-							Action: vkv1.TerminateJobAction,
-							Event:  vkv1.PodEvictedEvent,
+							Action: vcbatch.TerminateJobAction,
+							Event:  vcbatch.PodEvictedEvent,
 						},
 					},
 				},
@@ -665,7 +665,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
@@ -674,7 +674,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Terminating -> Terminated
-		err = waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Terminating, vkv1.Terminated})
+		err = waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: TaskCompleted; Action: CompletedJob", func() {
@@ -693,10 +693,10 @@ var _ = Describe("Job Error Handling", func() {
 					rep:  2,
 					//Sleep 5 seconds ensure job in running state
 					command: "sleep 5",
-					policies: []vkv1.LifecyclePolicy{
+					policies: []vcbatch.LifecyclePolicy{
 						{
-							Action: vkv1.CompleteJobAction,
-							Event:  vkv1.TaskCompletedEvent,
+							Action: vcbatch.CompleteJobAction,
+							Event:  vcbatch.TaskCompletedEvent,
 						},
 					},
 				},
@@ -711,8 +711,8 @@ var _ = Describe("Job Error Handling", func() {
 
 		By("job scheduled, then task 'completed_task' finished and job finally complete")
 		// job phase: pending -> running -> completing -> completed
-		err := waitJobPhases(context, job, []vkv1.JobPhase{
-			vkv1.Pending, vkv1.Running, vkv1.Completing, vkv1.Completed})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{
+			vcbatch.Pending, vcbatch.Running, vcbatch.Completing, vcbatch.Completed})
 		Expect(err).NotTo(HaveOccurred())
 
 	})
@@ -725,10 +725,10 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := createJob(context, &jobSpec{
 			name: "failed-restart-job",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vkv1.AbortJobAction,
-					Event:  vkv1.PodFailedEvent,
+					Action: vcbatch.AbortJobAction,
+					Event:  vcbatch.PodFailedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -745,10 +745,10 @@ var _ = Describe("Job Error Handling", func() {
 					rep:           2,
 					command:       "sleep 10s && xxx",
 					restartPolicy: v1.RestartPolicyNever,
-					policies: []vkv1.LifecyclePolicy{
+					policies: []vcbatch.LifecyclePolicy{
 						{
-							Action: vkv1.RestartJobAction,
-							Event:  vkv1.PodFailedEvent,
+							Action: vcbatch.RestartJobAction,
+							Event:  vcbatch.PodFailedEvent,
 						},
 					},
 				},
@@ -756,7 +756,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> Restarting
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running, vkv1.Restarting})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -790,7 +790,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vkv1.JobPhase{vkv1.Pending, vkv1.Running})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 		expteced := map[string]int{
 			masterPriority: int(nodecount),

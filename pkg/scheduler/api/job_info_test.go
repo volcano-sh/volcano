@@ -79,7 +79,6 @@ func TestAddTaskInfo(t *testing.T) {
 						case01Task4.UID: case01Task4,
 					},
 				},
-				NodeSelector:  make(map[string]string),
 				NodesFitDelta: make(NodeResourceMap),
 
 				NodesFitErrors: make(map[TaskID]*FitErrors),
@@ -147,7 +146,6 @@ func TestDeleteTaskInfo(t *testing.T) {
 					Pending: {case01Task1.UID: case01Task1},
 					Running: {case01Task3.UID: case01Task3},
 				},
-				NodeSelector:  make(map[string]string),
 				NodesFitDelta: make(NodeResourceMap),
 
 				NodesFitErrors: make(map[TaskID]*FitErrors),
@@ -174,7 +172,6 @@ func TestDeleteTaskInfo(t *testing.T) {
 						case02Task3.UID: case02Task3,
 					},
 				},
-				NodeSelector:  make(map[string]string),
 				NodesFitDelta: make(NodeResourceMap),
 
 				NodesFitErrors: make(map[TaskID]*FitErrors),

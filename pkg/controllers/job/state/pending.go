@@ -17,7 +17,7 @@ limitations under the License.
 package state
 
 import (
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -25,36 +25,36 @@ type pendingState struct {
 	job *apis.JobInfo
 }
 
-func (ps *pendingState) Execute(action vkv1.Action) error {
+func (ps *pendingState) Execute(action vcbatch.Action) error {
 	switch action {
-	case vkv1.RestartJobAction:
-		return KillJob(ps.job, PodRetainPhaseNone, func(status *vkv1.JobStatus) bool {
+	case vcbatch.RestartJobAction:
+		return KillJob(ps.job, PodRetainPhaseNone, func(status *vcbatch.JobStatus) bool {
 			status.RetryCount++
-			status.State.Phase = vkv1.Restarting
+			status.State.Phase = vcbatch.Restarting
 			return true
 		})
 
-	case vkv1.AbortJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
-			status.State.Phase = vkv1.Aborting
+	case vcbatch.AbortJobAction:
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
+			status.State.Phase = vcbatch.Aborting
 			return true
 		})
-	case vkv1.CompleteJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
-			status.State.Phase = vkv1.Completing
+	case vcbatch.CompleteJobAction:
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
+			status.State.Phase = vcbatch.Completing
 			return true
 		})
-	case vkv1.TerminateJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
-			status.State.Phase = vkv1.Terminating
+	case vcbatch.TerminateJobAction:
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
+			status.State.Phase = vcbatch.Terminating
 			return true
 		})
 	default:
-		return SyncJob(ps.job, func(status *vkv1.JobStatus) bool {
-			phase := vkv1.Pending
+		return SyncJob(ps.job, func(status *vcbatch.JobStatus) bool {
+			phase := vcbatch.Pending
 
 			if ps.job.Job.Spec.MinAvailable <= status.Running+status.Succeeded+status.Failed {
-				phase = vkv1.Running
+				phase = vcbatch.Running
 			}
 
 			status.State.Phase = phase

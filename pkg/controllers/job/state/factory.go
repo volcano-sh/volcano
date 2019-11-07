@@ -19,7 +19,7 @@ package state
 import (
 	"k8s.io/api/core/v1"
 
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -27,7 +27,7 @@ import (
 type PhaseMap map[v1.PodPhase]struct{}
 
 //UpdateStatusFn updates the job status.
-type UpdateStatusFn func(status *vkv1.JobStatus) (jobPhaseChanged bool)
+type UpdateStatusFn func(status *vcbatch.JobStatus) (jobPhaseChanged bool)
 
 //ActionFn will create or delete Pods according to Job's spec.
 type ActionFn func(job *apis.JobInfo, fn UpdateStatusFn) error
@@ -54,28 +54,28 @@ var (
 //State interface
 type State interface {
 	// Execute executes the actions based on current state.
-	Execute(act vkv1.Action) error
+	Execute(act vcbatch.Action) error
 }
 
 //NewState gets the state from the volcano job Phase
 func NewState(jobInfo *apis.JobInfo) State {
 	job := jobInfo.Job
 	switch job.Status.State.Phase {
-	case vkv1.Pending:
+	case vcbatch.Pending:
 		return &pendingState{job: jobInfo}
-	case vkv1.Running:
+	case vcbatch.Running:
 		return &runningState{job: jobInfo}
-	case vkv1.Restarting:
+	case vcbatch.Restarting:
 		return &restartingState{job: jobInfo}
-	case vkv1.Terminated, vkv1.Completed, vkv1.Failed:
+	case vcbatch.Terminated, vcbatch.Completed, vcbatch.Failed:
 		return &finishedState{job: jobInfo}
-	case vkv1.Terminating:
+	case vcbatch.Terminating:
 		return &terminatingState{job: jobInfo}
-	case vkv1.Aborting:
+	case vcbatch.Aborting:
 		return &abortingState{job: jobInfo}
-	case vkv1.Aborted:
+	case vcbatch.Aborted:
 		return &abortedState{job: jobInfo}
-	case vkv1.Completing:
+	case vcbatch.Completing:
 		return &completingState{job: jobInfo}
 	}
 

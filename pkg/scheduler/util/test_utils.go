@@ -26,7 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	schedulingv2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -71,7 +71,7 @@ func BuildPod(namespace, name, nodename string, p v1.PodPhase, req v1.ResourceLi
 			Namespace: namespace,
 			Labels:    labels,
 			Annotations: map[string]string{
-				kbv1.GroupNameAnnotationKey: groupName,
+				schedulingv2.GroupNameAnnotationKey: groupName,
 			},
 		},
 		Status: v1.PodStatus{

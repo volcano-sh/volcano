@@ -23,7 +23,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+
+	vcbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
 func TestAddPod(t *testing.T) {
@@ -45,9 +46,9 @@ func TestAddPod(t *testing.T) {
 					Name:      name,
 					Namespace: namespace,
 					Labels:    nil,
-					Annotations: map[string]string{batch.JobNameKey: "job1",
-						batch.JobVersion:  "0",
-						batch.TaskSpecKey: "task1"},
+					Annotations: map[string]string{vcbatchv1.JobNameKey: "job1",
+						vcbatchv1.JobVersion:  "0",
+						vcbatchv1.TaskSpecKey: "task1"},
 				},
 				Status: v1.PodStatus{
 					Phase: v1.PodRunning,
@@ -106,9 +107,9 @@ func TestDeletePod(t *testing.T) {
 					Name:      name,
 					Namespace: namespace,
 					Labels:    nil,
-					Annotations: map[string]string{batch.JobNameKey: "job1",
-						batch.JobVersion:  "0",
-						batch.TaskSpecKey: "task1"},
+					Annotations: map[string]string{vcbatchv1.JobNameKey: "job1",
+						vcbatchv1.JobVersion:  "0",
+						vcbatchv1.TaskSpecKey: "task1"},
 				},
 				Status: v1.PodStatus{
 					Phase: v1.PodRunning,
@@ -163,9 +164,9 @@ func TestUpdatePod(t *testing.T) {
 					Name:      name,
 					Namespace: namespace,
 					Labels:    nil,
-					Annotations: map[string]string{batch.JobNameKey: "job1",
-						batch.JobVersion:  "0",
-						batch.TaskSpecKey: "task1"},
+					Annotations: map[string]string{vcbatchv1.JobNameKey: "job1",
+						vcbatchv1.JobVersion:  "0",
+						vcbatchv1.TaskSpecKey: "task1"},
 				},
 				Status: v1.PodStatus{
 					Phase: v1.PodRunning,
@@ -185,9 +186,9 @@ func TestUpdatePod(t *testing.T) {
 					Name:      name,
 					Namespace: namespace,
 					Labels:    nil,
-					Annotations: map[string]string{batch.JobNameKey: "job1",
-						batch.JobVersion:  "0",
-						batch.TaskSpecKey: "task1"},
+					Annotations: map[string]string{vcbatchv1.JobNameKey: "job1",
+						vcbatchv1.JobVersion:  "0",
+						vcbatchv1.TaskSpecKey: "task1"},
 				},
 				Status: v1.PodStatus{
 					Phase: v1.PodSucceeded,
@@ -255,7 +256,7 @@ func TestSetJob(t *testing.T) {
 
 	testCases := []struct {
 		Name    string
-		job     batch.Job
+		job     vcbatchv1.Job
 		jobinfo JobInfo
 
 		ExpectValue v1.PodPhase
@@ -266,7 +267,7 @@ func TestSetJob(t *testing.T) {
 				Name: "testjobInfo",
 				Pods: make(map[string]map[string]*v1.Pod),
 			},
-			job: batch.Job{
+			job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "testjob",
 				},
@@ -295,9 +296,9 @@ func TestRequest_String(t *testing.T) {
 				Namespace:  "testnamespace",
 				JobName:    "testjobname",
 				TaskName:   "testtaskname",
-				Event:      batch.AnyEvent,
+				Event:      vcbatchv1.AnyEvent,
 				ExitCode:   0,
-				Action:     batch.SyncJobAction,
+				Action:     vcbatchv1.SyncJobAction,
 				JobVersion: 0,
 			},
 			ExpectedValue: "Job: testnamespace/testjobname, Task:testtaskname, Event:*, ExitCode:0, Action:SyncJob, JobVersion: 0",

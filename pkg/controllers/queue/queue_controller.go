@@ -63,14 +63,14 @@ type Controller struct {
 // NewQueueController creates a QueueController
 func NewQueueController(
 	kubeClient kubernetes.Interface,
-	kbClient vcclientset.Interface,
+	vcClient vcclientset.Interface,
 ) *Controller {
-	factory := informerfactory.NewSharedInformerFactory(kbClient, 0)
+	factory := informerfactory.NewSharedInformerFactory(vcClient, 0)
 	queueInformer := factory.Scheduling().V1alpha2().Queues()
 	pgInformer := factory.Scheduling().V1alpha2().PodGroups()
 	c := &Controller{
 		kubeClient: kubeClient,
-		vcClient:   kbClient,
+		vcClient:   vcClient,
 
 		queueInformer: queueInformer,
 		pgInformer:    pgInformer,

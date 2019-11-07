@@ -39,16 +39,15 @@ import (
 	"k8s.io/apiserver/pkg/server/mux"
 	"k8s.io/client-go/kubernetes"
 
-	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	vkcorev1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 )
 
 // JobKind  creates job GroupVersionKind
-var JobKind = vkbatchv1.SchemeGroupVersion.WithKind("Job")
+var JobKind = vcbatch.SchemeGroupVersion.WithKind("Job")
 
 // CommandKind  creates command GroupVersionKind
-var CommandKind = vkcorev1.SchemeGroupVersion.WithKind("Command")
+var CommandKind = vcbus.SchemeGroupVersion.WithKind("Command")
 
 // GetController  returns the controller uid
 func GetController(obj interface{}) types.UID {
@@ -81,7 +80,7 @@ func ControlledBy(obj interface{}, gvk schema.GroupVersionKind) bool {
 }
 
 // CreateConfigMapIfNotExist  creates config map resource if not present
-func CreateConfigMapIfNotExist(job *vkv1.Job, kubeClients kubernetes.Interface, data map[string]string, cmName string) error {
+func CreateConfigMapIfNotExist(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[string]string, cmName string) error {
 	// If ConfigMap does not exist, create one for Job.
 	cmOld, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{})
 	if err != nil {
@@ -121,7 +120,7 @@ func CreateConfigMapIfNotExist(job *vkv1.Job, kubeClients kubernetes.Interface, 
 }
 
 // DeleteConfigmap  deletes the config map resource
-func DeleteConfigmap(job *vkv1.Job, kubeClients kubernetes.Interface, cmName string) error {
+func DeleteConfigmap(job *vcbatch.Job, kubeClients kubernetes.Interface, cmName string) error {
 	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
 			glog.V(3).Infof("Failed to get Configmap for Job <%s/%s>: %v",
@@ -145,7 +144,7 @@ func DeleteConfigmap(job *vkv1.Job, kubeClients kubernetes.Interface, cmName str
 
 // GeneratePodgroupName  generate podgroup name of normal pod
 func GeneratePodgroupName(pod *v1.Pod) string {
-	pgName := vkbatchv1.PodgroupNamePrefix
+	pgName := vcbatch.PodgroupNamePrefix
 
 	if len(pod.OwnerReferences) != 0 {
 		for _, ownerReference := range pod.OwnerReferences {

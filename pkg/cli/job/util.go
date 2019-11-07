@@ -29,8 +29,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	vkbusv1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
@@ -71,7 +71,7 @@ func populateResourceListV1(spec string) (v1.ResourceList, error) {
 	return result, nil
 }
 
-func createJobCommand(config *rest.Config, ns, name string, action vkbatchv1.Action) error {
+func createJobCommand(config *rest.Config, ns, name string, action vcbatch.Action) error {
 	jobClient := versioned.NewForConfigOrDie(config)
 	job, err := jobClient.BatchV1alpha1().Jobs(ns).Get(name, metav1.GetOptions{})
 	if err != nil {
@@ -79,7 +79,7 @@ func createJobCommand(config *rest.Config, ns, name string, action vkbatchv1.Act
 	}
 
 	ctrlRef := metav1.NewControllerRef(job, helpers.JobKind)
-	cmd := &vkbusv1.Command{
+	cmd := &vcbus.Command{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: fmt.Sprintf("%s-%s-",
 				job.Name, strings.ToLower(string(action))),

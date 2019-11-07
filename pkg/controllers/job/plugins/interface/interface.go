@@ -20,7 +20,7 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
 // PluginClientset clientset
@@ -34,11 +34,11 @@ type PluginInterface interface {
 	Name() string
 
 	// for all pod when createJobPod
-	OnPodCreate(pod *v1.Pod, job *vkv1.Job) error
+	OnPodCreate(pod *v1.Pod, job *vcbatch.Job) error
 
 	// do once when syncJob
-	OnJobAdd(job *vkv1.Job) error
+	OnJobAdd(job *vcbatch.Job) error
 
 	// do once when killJob
-	OnJobDelete(job *vkv1.Job) error
+	OnJobDelete(job *vcbatch.Job) error
 }
