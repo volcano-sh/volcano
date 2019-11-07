@@ -40,6 +40,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 	vcscheme "volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 	informerfactory "volcano.sh/volcano/pkg/client/informers/externalversions"
@@ -126,7 +127,7 @@ func NewJobController(
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
 	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
-	recorder := eventBroadcaster.NewRecorder(vcscheme.Scheme, v1.EventSource{Component: "vc-controller"})
+	recorder := eventBroadcaster.NewRecorder(vcscheme.Scheme, v1.EventSource{Component: "vc-controllers"})
 
 	cc := &Controller{
 		kubeClient:      kubeClient,
@@ -155,9 +156,28 @@ func NewJobController(
 	cc.jobSynced = cc.jobInformer.Informer().HasSynced
 
 	cc.cmdInformer = informerfactory.NewSharedInformerFactory(cc.vcClient, 0).Bus().V1alpha1().Commands()
-	cc.cmdInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: cc.addCommand,
-	})
+	cc.cmdInformer.Informer().AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				switch obj.(type) {
+				case *busv1alpha1.Command:
+					cmd := obj.(*busv1alpha1.Command)
+					if cmd.TargetObject != nil &&
+						cmd.TargetObject.APIVersion == batchv1alpha1.SchemeGroupVersion.String() &&
+						cmd.TargetObject.Kind == "Job" {
+						return true
+					}
+
+					return false
+				default:
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc: cc.addCommand,
+			},
+		},
+	)
 	cc.cmdLister = cc.cmdInformer.Lister()
 	cc.cmdSynced = cc.cmdInformer.Informer().HasSynced
 
