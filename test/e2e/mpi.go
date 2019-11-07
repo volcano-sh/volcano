@@ -84,10 +84,10 @@ mpiexec --allow-run-as-root --hostfile /etc/volcano/mpiworker.host -np 2 mpi_hel
 
 		spec := &jobSpec{
 			name: "mpi-plugin",
-			policies: []vkv1.LifecyclePolicy{
+			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vkv1.CompleteJobAction,
-					Event:  vkv1.TaskCompletedEvent,
+					Action: vcbatch.CompleteJobAction,
+					Event:  vcbatch.TaskCompletedEvent,
 				},
 			},
 			plugins: map[string][]string{
@@ -120,8 +120,8 @@ mpiexec --allow-run-as-root --hostfile ${MPI_HOST_FILE} -np 2 mpi_hello_world > 
 
 		job := createJob(context, spec)
 
-		err := waitJobPhases(context, job, []vkv1.JobPhase{
-			vkv1.Pending, vkv1.Running, vkv1.Completing, vkv1.Completed})
+		err := waitJobPhases(context, job, []vcbatch.JobPhase{
+			vcbatch.Pending, vcbatch.Running, vcbatch.Completing, vcbatch.Completed})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
