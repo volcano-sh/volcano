@@ -586,11 +586,29 @@ func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string
 
 	p := task.Pod
 
+	var pgCopy schedulingapi.PodGroup
+	if job.PodGroup != nil {
+		pgCopy = schedulingapi.PodGroup{
+			Version:  job.PodGroup.Version,
+			PodGroup: *job.PodGroup.PodGroup.DeepCopy(),
+		}
+	}
+
 	go func() {
 		if err := sc.Binder.Bind(p, hostname); err != nil {
 			sc.resyncTask(task)
 		} else {
 			sc.Recorder.Eventf(p, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", p.Namespace, p.Name, hostname)
+
+			if job.PodGroup != nil {
+				msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v, %v minAvailable, %v Pending",
+					len(job.TaskStatusIndex[schedulingapi.Pending]),
+					len(job.Tasks),
+					scheduling.PodGroupReady,
+					job.MinAvailable,
+					len(job.TaskStatusIndex[schedulingapi.Pending]))
+				sc.recordPodGroupEvent(&pgCopy, v1.EventTypeNormal, string(scheduling.PodGroupScheduled), msg)
+			}
 		}
 	}()
 
@@ -821,31 +839,17 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo) {
 
 	pgUnschedulable := job.PodGroup != nil &&
 		(job.PodGroup.Status.Phase == scheduling.PodGroupUnknown ||
-			job.PodGroup.Status.Phase == scheduling.PodGroupPending)
+			job.PodGroup.Status.Phase == scheduling.PodGroupPending ||
+			job.PodGroup.Status.Phase == scheduling.PodGroupInqueue)
 	pdbUnschedulabe := job.PDB != nil && len(job.TaskStatusIndex[schedulingapi.Pending]) != 0
 
 	// If pending or unschedulable, record unschedulable event.
 	if pgUnschedulable || pdbUnschedulabe {
-		msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v", len(job.TaskStatusIndex[schedulingapi.Pending]), len(job.Tasks), job.FitError())
-		if job.PodGroup.Version == schedulingapi.PodGroupVersionV1Alpha1 {
-			podgroup := &v1alpha1.PodGroup{}
-			if err := schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil); err != nil {
-				glog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
-				return
-			}
-			sc.Recorder.Eventf(podgroup, v1.EventTypeWarning,
-				string(v1alpha1.PodGroupUnschedulableType), msg)
-		}
-
-		if job.PodGroup.Version == schedulingapi.PodGroupVersionV1Alpha2 {
-			podgroup := &v1alpha2.PodGroup{}
-			if err := schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil); err != nil {
-				glog.Errorf("Error while converting PodGroup to v1alpha2.PodGroup with error: %v", err)
-				return
-			}
-			sc.Recorder.Eventf(podgroup, v1.EventTypeWarning,
-				string(v1alpha2.PodGroupUnschedulableType), msg)
-		}
+		msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
+			len(job.TaskStatusIndex[schedulingapi.Pending]),
+			len(job.Tasks),
+			job.FitError())
+		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeWarning, string(scheduling.PodGroupUnschedulableType), msg)
 	}
 
 	// Update podCondition for tasks Allocated and Pending before job discarded
@@ -877,4 +881,32 @@ func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePG b
 	sc.RecordJobStatusEvent(job)
 
 	return job, nil
+}
+
+func (sc *SchedulerCache) recordPodGroupEvent(podGroup *schedulingapi.PodGroup, eventType, reason, msg string) {
+	if podGroup == nil {
+		return
+	}
+
+	if podGroup.Version == schedulingapi.PodGroupVersionV1Alpha1 {
+		pg := &v1alpha1.PodGroup{}
+		if err := schedulingscheme.Scheme.Convert(&podGroup.PodGroup, pg, nil); err != nil {
+			glog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
+			return
+		}
+
+		sc.Recorder.Eventf(pg, eventType, reason, msg)
+	}
+
+	if podGroup.Version == schedulingapi.PodGroupVersionV1Alpha2 {
+		pg := &v1alpha2.PodGroup{}
+		if err := schedulingscheme.Scheme.Convert(&podGroup.PodGroup, pg, nil); err != nil {
+			glog.Errorf("Error while converting PodGroup to v1alpha2.PodGroup with error: %v", err)
+			return
+		}
+
+		sc.Recorder.Eventf(pg, eventType, reason, msg)
+	}
+
+	return
 }
