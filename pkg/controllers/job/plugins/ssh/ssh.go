@@ -23,10 +23,10 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-
-	"golang.org/x/crypto/ssh"
+	"strings"
 
 	"github.com/golang/glog"
+	"golang.org/x/crypto/ssh"
 
 	"k8s.io/api/core/v1"
 
@@ -44,14 +44,23 @@ type sshPlugin struct {
 	Clientset pluginsinterface.PluginClientset
 
 	// flag parse args
-	noRoot bool
+	noRoot         bool
+	sshKeyFilePath string
 }
 
 // New creates ssh plugin
 func New(client pluginsinterface.PluginClientset, arguments []string) pluginsinterface.PluginInterface {
-	sshPlugin := sshPlugin{pluginArguments: arguments, Clientset: client}
+	sshPlugin := sshPlugin{
+		pluginArguments: arguments,
+		Clientset:       client,
+		sshKeyFilePath:  SSHAbsolutePath,
+	}
 
 	sshPlugin.addFlags()
+	// if not set ssh key files path, use the default.
+	if sshPlugin.noRoot && sshPlugin.sshKeyFilePath == SSHAbsolutePath {
+		sshPlugin.sshKeyFilePath = env.ConfigMapMountPath + "/" + SSHRelativePath
+	}
 
 	return &sshPlugin
 }
@@ -94,10 +103,6 @@ func (sp *sshPlugin) OnJobDelete(job *batch.Job) error {
 }
 
 func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
-	sshPath := SSHAbsolutePath
-	if sp.noRoot {
-		sshPath = env.ConfigMapMountPath + "/" + SSHRelativePath
-	}
 
 	cmName := sp.cmName(job)
 	sshVolume := v1.Volume{
@@ -129,7 +134,7 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 		DefaultMode: &mode,
 	}
 
-	if sshPath != SSHAbsolutePath {
+	if sp.sshKeyFilePath != SSHAbsolutePath {
 		var noRootMode int32 = 0755
 		sshVolume.ConfigMap.DefaultMode = &noRootMode
 	}
@@ -138,7 +143,7 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 
 	for i, c := range pod.Spec.Containers {
 		vm := v1.VolumeMount{
-			MountPath: sshPath,
+			MountPath: strings.TrimSuffix(sp.sshKeyFilePath, "/"+SSHRelativePath),
 			SubPath:   SSHRelativePath,
 			Name:      cmName,
 		}
@@ -187,7 +192,10 @@ func (sp *sshPlugin) cmName(job *batch.Job) string {
 
 func (sp *sshPlugin) addFlags() {
 	flagSet := flag.NewFlagSet(sp.Name(), flag.ContinueOnError)
+	// TODO: deprecate no-root
 	flagSet.BoolVar(&sp.noRoot, "no-root", sp.noRoot, "The ssh user, --no-root is common user")
+	flagSet.StringVar(&sp.sshKeyFilePath, "ssh-key-file-path", sp.sshKeyFilePath, "The path used to store "+
+		"ssh private and public keys, it is `/root/.ssh` by default.")
 
 	if err := flagSet.Parse(sp.pluginArguments); err != nil {
 		glog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
