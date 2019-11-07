@@ -126,6 +126,17 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 		return
 	}
 
+	// If node not ready, e.g. power off
+	for _, cond := range node.Status.Conditions {
+		if cond.Type == v1.NodeReady && cond.Status != v1.ConditionTrue {
+			ni.State = NodeState{
+				Phase:  NotReady,
+				Reason: "NotReady",
+			}
+			return
+		}
+	}
+
 	// Node is ready (ignore node conditions because of taint/toleration)
 	ni.State = NodeState{
 		Phase:  Ready,
