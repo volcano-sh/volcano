@@ -107,3 +107,4 @@ Slack Channel : https://volcano-sh.slack.com. (Signup [here](https://join.slack.
 
 Mailing List  : https://groups.google.com/forum/#!forum/volcano-sh
 
+Gitter: https://gitter.im/volcano-dev/
