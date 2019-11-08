@@ -21,6 +21,7 @@ import (
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -37,7 +38,7 @@ func (alloc *reclaimAction) Name() string {
 	return "reclaim"
 }
 
-func (alloc *reclaimAction) Initialize() {}
+func (alloc *reclaimAction) Initialize(_ *conf.SchedulerConf) {}
 
 func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 	glog.V(3).Infof("Enter Reclaim ...")

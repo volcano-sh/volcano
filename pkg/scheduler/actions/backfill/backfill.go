@@ -21,6 +21,7 @@ import (
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
@@ -36,7 +37,7 @@ func (alloc *backfillAction) Name() string {
 	return "backfill"
 }
 
-func (alloc *backfillAction) Initialize() {}
+func (alloc *backfillAction) Initialize(_ *conf.SchedulerConf) {}
 
 func (alloc *backfillAction) Execute(ssn *framework.Session) {
 	glog.V(3).Infof("Enter Backfill ...")

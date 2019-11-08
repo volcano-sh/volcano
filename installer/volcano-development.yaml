@@ -15,7 +15,7 @@ data:
     actions:
     - name: enqueue
       arguments:
-        overcommitment-mem-factor: 1.2
+        overcommit-factor: 1.2
     - name: allocate
     - name: backfill
     - name: reclaim
@@ -36,7 +36,7 @@ data:
     actions:
     - name: enqueue
       arguments:
-        overcommitment-mem-factor: 1.2
+        overcommit-factor: 1.2
     - name: allocate
     - name: backfill
     tiers:

@@ -31,38 +31,38 @@ import (
 )
 
 // idleResMultiplierKey
-const idleResMultiplierKey = "overcommitment-mem-factor"
+const idleResMultiplierKey = "overcommit-factor"
 
-// idleResMultiplierValue
-const idleResMultiplierValue = 1.2
+// default idle resource multiplier value
+const defaultIdleResMultiplierValue = 1.2
 
 // enqueueActionName
 const enqueueActionName = "enqueue"
 
 type enqueueAction struct {
-	ssn *framework.Session
+	multiplier float64
 }
 
 func New() *enqueueAction {
-	return &enqueueAction{}
+	return &enqueueAction{multiplier: defaultIdleResMultiplierValue}
 }
 
 func (enqueue *enqueueAction) Name() string {
 	return enqueueActionName
 }
 
-func (enqueue *enqueueAction) Initialize() {}
+func (enqueue *enqueueAction) Initialize(config *conf.SchedulerConf) {
+	if config.Version == framework.SchedulerConfigVersion2 {
+		ret, err := getEnqueueActMultiplier(config.V2Conf.Actions)
+		if err == nil {
+			enqueue.multiplier = ret
+		}
+	}
+}
 
 func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 	glog.V(3).Infof("Enter Enqueue ...")
 	defer glog.V(3).Infof("Leaving Enqueue ...")
-	multiplier := idleResMultiplierValue
-	if ssn.SchedStConf.Version == framework.SchedulerConfigVersion2 {
-		ret, err := getEnqueueActMultiplier(ssn.SchedStConf.V2Conf.Actions)
-		if err == nil {
-			multiplier = ret
-		}
-	}
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 	queueMap := map[api.QueueID]*api.QueueInfo{}
@@ -98,8 +98,9 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 	emptyRes := api.EmptyResource()
 	nodesIdleRes := api.EmptyResource()
 	for _, node := range ssn.Nodes {
-		nodesIdleRes.Add(node.Allocatable.Clone().Multi(multiplier).Sub(node.Used))
+		nodesIdleRes.Add(node.Allocatable.Clone().Sub(node.Used))
 	}
+	nodesIdleRes.Multi(enqueue.multiplier)
 
 	for {
 		if queues.Empty() {

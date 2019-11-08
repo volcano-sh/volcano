@@ -77,10 +77,14 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 		}
 	}
 
+	// load configuration
 	pc.schedConfiguration, err = loadSchedulerConf(schedConf)
 	if err != nil {
 		panic(err)
 	}
+
+	// init all actions
+	pc.initActions()
 
 	go wait.Until(pc.runOnce, pc.schedulePeriod, stopCh)
 }
@@ -111,6 +115,23 @@ func (pc *Scheduler) runOnce() {
 				actionStartTime := time.Now()
 				action.Execute(ssn)
 				metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
+			}
+		}
+	}
+}
+
+func (pc *Scheduler) initActions() {
+	if pc.schedConfiguration.Version == framework.SchedulerConfigVersion1 {
+		actionNames := strings.Split(pc.schedConfiguration.V1Conf.Actions, ",")
+		for _, actionName := range actionNames {
+			if action, found := framework.GetAction(strings.TrimSpace(actionName)); found {
+				action.Initialize(pc.schedConfiguration)
+			}
+		}
+	} else if pc.schedConfiguration.Version == framework.SchedulerConfigVersion2 {
+		for _, actionOpt := range pc.schedConfiguration.V2Conf.Actions {
+			if action, found := framework.GetAction(strings.TrimSpace(actionOpt.Name)); found {
+				action.Initialize(pc.schedConfiguration)
 			}
 		}
 	}

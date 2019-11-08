@@ -46,7 +46,7 @@ version: v2
 actions:
 - name: enqueue
   arguments:
-      overcommitment-mem-factor: 1.3
+      overcommit-factor: 1.3
 - name: allocate
 - name: backfill
 - name: reclaim
@@ -171,7 +171,7 @@ tiers:
 	expectedActOpts2 := []conf.ActionOption{
 		{
 			Name:      "enqueue",
-			Arguments: map[string]string{"overcommitment-mem-factor": "1.3"},
+			Arguments: map[string]string{"overcommit-factor": "1.3"},
 		},
 		{
 			Name: "allocate",

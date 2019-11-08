@@ -26,17 +26,13 @@ import (
 )
 
 var defaultSchedulerConf = `
-<<<<<<< HEAD
-actions: "enqueue, allocate, backfill"
-=======
 version: v2
 actions:
 - name: enqueue
   arguments:
-    overcommitment-mem-factor: 1.2
+    overcommit-factor: 1.2
 - name: allocate
 - name: backfill
->>>>>>> enqueue action configuration by action parameters
 tiers:
 - plugins:
   - name: priority

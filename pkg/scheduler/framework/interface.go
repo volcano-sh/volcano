@@ -16,13 +16,15 @@ limitations under the License.
 
 package framework
 
+import "volcano.sh/volcano/pkg/scheduler/conf"
+
 // Action is the interface of scheduler action.
 type Action interface {
 	// The unique name of Action.
 	Name() string
 
 	// Initialize initializes the allocator plugins.
-	Initialize()
+	Initialize(_ *conf.SchedulerConf)
 
 	// Execute allocates the cluster's resources into each queue.
 	Execute(ssn *Session)

@@ -23,6 +23,7 @@ import (
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -40,7 +41,7 @@ func (alloc *preemptAction) Name() string {
 	return "preempt"
 }
 
-func (alloc *preemptAction) Initialize() {}
+func (alloc *preemptAction) Initialize(_ *conf.SchedulerConf) {}
 
 func (alloc *preemptAction) Execute(ssn *framework.Session) {
 	glog.V(3).Infof("Enter Preempt ...")
