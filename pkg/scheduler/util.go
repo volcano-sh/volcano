@@ -45,7 +45,6 @@ tiers:
 `
 
 func loadSchedulerConf(confStr string) (*conf.SchedulerConf, error) {
-
 	schedulerConf := conf.SchedulerConfiguration{}
 	schedulerConfv2 := conf.SchedulerConfigurationV2{}
 	config := conf.SchedulerConf{}

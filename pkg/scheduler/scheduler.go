@@ -67,6 +67,7 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	go pc.cache.Run(stopCh)
 	pc.cache.WaitForCacheSync(stopCh)
 
+	// TODO: merge with loadSchedulerConf
 	// Load configuration of scheduler
 	schedConf := defaultSchedulerConf
 	if len(pc.configFile) != 0 {
