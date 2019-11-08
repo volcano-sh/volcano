@@ -43,6 +43,7 @@ func OpenSession(cache cache.Cache, schedStConf conf.SchedulerConf) *Session {
 	} else if schedStConf.Version == SchedulerConfigVersion2 {
 		tiers = schedStConf.V2Conf.Tiers
 	}
+	ssn.Tiers = tiers
 
 	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {

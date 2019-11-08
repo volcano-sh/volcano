@@ -46,8 +46,9 @@ type Session struct {
 	Queues        map[api.QueueID]*api.QueueInfo
 	NamespaceInfo map[api.NamespaceName]*api.NamespaceInfo
 
-	Backlog     []*api.JobInfo
-	SchedStConf conf.SchedulerConf
+	Backlog            []*api.JobInfo
+	Tiers              []conf.Tier
+	SchedConfiguration conf.SchedulerConf
 
 	plugins           map[string]Plugin
 	eventHandlers     []*EventHandler
@@ -71,10 +72,10 @@ type Session struct {
 
 func openSession(cache cache.Cache, schedStConf conf.SchedulerConf) *Session {
 	ssn := &Session{
-		UID:            uuid.NewUUID(),
-		cache:          cache,
-		SchedStConf:    schedStConf,
-		podGroupStatus: map[api.JobID]*scheduling.PodGroupStatus{},
+		UID:                uuid.NewUUID(),
+		cache:              cache,
+		SchedConfiguration: schedStConf,
+		podGroupStatus:     map[api.JobID]*scheduling.PodGroupStatus{},
 
 		Jobs:   map[api.JobID]*api.JobInfo{},
 		Nodes:  map[string]*api.NodeInfo{},
