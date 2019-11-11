@@ -23,8 +23,6 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"strings"
-
 	"github.com/golang/glog"
 	"golang.org/x/crypto/ssh"
 
@@ -143,7 +141,7 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 
 	for i, c := range pod.Spec.Containers {
 		vm := v1.VolumeMount{
-			MountPath: strings.TrimSuffix(sp.sshKeyFilePath, "/"+SSHRelativePath),
+			MountPath: sp.sshKeyFilePath,
 			SubPath:   SSHRelativePath,
 			Name:      cmName,
 		}
