@@ -45,7 +45,20 @@ const (
 type PodGroupConditionType string
 
 const (
+	// PodGroupUnschedulableType is Unschedulable event type
 	PodGroupUnschedulableType PodGroupConditionType = "Unschedulable"
+
+	// PodGroupScheduled is scheduled event type
+	PodGroupScheduled PodGroupConditionType = "Scheduled"
+)
+
+type PodGroupConditionDetail string
+
+const (
+	// PodGroupReady is that PodGroup has reached scheduling restriction
+	PodGroupReady PodGroupConditionDetail = "pod group is ready"
+	// PodGroupNotReady is that PodGroup has not yet reached the scheduling restriction
+	PodGroupNotReady PodGroupConditionDetail = "pod group is not ready"
 )
 
 // PodGroupCondition contains details for the current state of this pod group.
