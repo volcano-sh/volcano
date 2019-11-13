@@ -213,8 +213,8 @@ func TestJobInfo_SetPDB(t *testing.T) {
 	//intOrString := &intstr.IntOrString{}
 	//spec := policyv1.PodDisruptionBudgetSpec{MinAvailable:intOrString}
 	// case4
-	intOrString := &intstr.IntOrString{Type:intstr.String, StrVal:"1"}
-	spec := policyv1.PodDisruptionBudgetSpec{MinAvailable:intOrString}
+	intOrString := &intstr.IntOrString{Type: intstr.String, StrVal: "1"}
+	spec := policyv1.PodDisruptionBudgetSpec{MinAvailable: intOrString}
 
 	pdb := &policyv1.PodDisruptionBudget{
 		Spec: spec,
