@@ -18,6 +18,7 @@ package api
 
 import (
 	"fmt"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"sort"
 	"strings"
 
@@ -196,7 +197,9 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 // SetPDB sets PDB to a job
 func (ji *JobInfo) SetPDB(pdb *policyv1.PodDisruptionBudget) {
 	ji.Name = pdb.Name
-	ji.MinAvailable = pdb.Spec.MinAvailable.IntVal
+	defaultMinAvailable := intstr.IntOrString{Type: intstr.Int, IntVal: int32(0)}
+	minAvailable := pdb.Spec.MinAvailable
+	ji.MinAvailable = int32(intstr.ValueOrDefault(minAvailable, defaultMinAvailable).IntValue())
 	ji.Namespace = pdb.Namespace
 
 	ji.CreationTimestamp = pdb.GetCreationTimestamp()
