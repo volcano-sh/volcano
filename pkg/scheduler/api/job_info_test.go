@@ -17,13 +17,13 @@ limitations under the License.
 package api
 
 import (
-	policyv1 "k8s.io/api/policy/v1beta1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"reflect"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 func jobInfoEqual(l, r *JobInfo) bool {
