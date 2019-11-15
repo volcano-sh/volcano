@@ -18,7 +18,6 @@ package api
 
 import (
 	"fmt"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"sort"
 	"strings"
 
@@ -26,6 +25,7 @@ import (
 	policyv1 "k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
