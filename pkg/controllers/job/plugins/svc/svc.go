@@ -112,13 +112,16 @@ func (sp *servicePlugin) mountConfigmap(pod *v1.Pod, job *batch.Job) {
 	}
 	pod.Spec.Volumes = append(pod.Spec.Volumes, cmVolume)
 
-	for i, c := range pod.Spec.Containers {
-		vm := v1.VolumeMount{
-			MountPath: ConfigMapMountPath,
-			Name:      cmName,
-		}
+	vm := v1.VolumeMount{
+		MountPath: ConfigMapMountPath,
+		Name:      cmName,
+	}
 
+	for i, c := range pod.Spec.Containers {
 		pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
+	}
+	for i, c := range pod.Spec.InitContainers {
+		pod.Spec.InitContainers[i].VolumeMounts = append(c.VolumeMounts, vm)
 	}
 }
 
