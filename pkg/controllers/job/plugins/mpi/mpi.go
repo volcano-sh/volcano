@@ -68,41 +68,39 @@ func (p *mpi) OnPodCreate(pod *v1.Pod, job *vkv1.Job) error {
 	p.ssh.OnPodCreate(pod, job)
 
 	// only set `MPI_HOST` env and mount hostfile to launcher pod
-	if p.isLauncher(pod, job) {
-		cmName := p.cmName(job)
-		cmVolume := v1.Volume{
-			Name: cmName,
-		}
-		cmVolume.ConfigMap = &v1.ConfigMapVolumeSource{
-			LocalObjectReference: v1.LocalObjectReference{
-				Name: cmName,
-			},
-		}
-		pod.Spec.Volumes = append(pod.Spec.Volumes, cmVolume)
-
-		data := svc.GenerateHost(job)
-		key := fmt.Sprintf(svc.ConfigMapTaskHostFmt, job.Spec.Tasks[p.worker].Name)
-		mpiHosts := strings.ReplaceAll(data[key], "\n", ",")
-		for i, c := range pod.Spec.Containers {
-			vm := v1.VolumeMount{
-				MountPath: HostFilePath,
-				Name:      cmName,
-			}
-
-			pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
-			pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{Name: MPIHost, Value: mpiHosts})
-			pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{Name: MPIHostFile, Value: HostFilePath + "/" + HostFile})
-		}
-
-	} else {
-		// use podName.serviceName as default pod DNS domain
-		if len(pod.Spec.Hostname) == 0 {
-			pod.Spec.Hostname = pod.Name
-		}
-		if len(pod.Spec.Subdomain) == 0 {
-			pod.Spec.Subdomain = job.Name
-		}
+	cmName := p.cmName(job)
+	cmVolume := v1.Volume{
+		Name: cmName,
 	}
+	cmVolume.ConfigMap = &v1.ConfigMapVolumeSource{
+		LocalObjectReference: v1.LocalObjectReference{
+			Name: cmName,
+		},
+	}
+	pod.Spec.Volumes = append(pod.Spec.Volumes, cmVolume)
+
+	data := svc.GenerateHost(job)
+	key := fmt.Sprintf(svc.ConfigMapTaskHostFmt, job.Spec.Tasks[p.worker].Name)
+	mpiHosts := strings.ReplaceAll(data[key], "\n", ",")
+	for i, c := range pod.Spec.Containers {
+		vm := v1.VolumeMount{
+			MountPath: HostFilePath,
+			Name:      cmName,
+		}
+
+		pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
+		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{Name: MPIHost, Value: mpiHosts})
+		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{Name: MPIHostFile, Value: HostFilePath + "/" + HostFile})
+	}
+
+	// use podName.serviceName as default pod DNS domain
+	if pod.Spec.Hostname == "" {
+		pod.Spec.Hostname = pod.Name
+	}
+	if pod.Spec.Subdomain == "" {
+		pod.Spec.Subdomain = job.Name
+	}
+
 	return nil
 }
 
@@ -157,21 +155,6 @@ func (p *mpi) addFlags() {
 		glog.Errorf("plugin %s flagset parse failed, err: %v", p.Name(), err)
 	}
 	return
-}
-
-func (p *mpi) isLauncher(pod *v1.Pod, job *vkv1.Job) bool {
-	taskIndex := -1
-	for i := range job.Spec.Tasks {
-		if job.Spec.Tasks[i].Name == pod.Annotations[vkv1.TaskSpecKey] {
-			taskIndex = i
-		}
-	}
-
-	if taskIndex == p.launcher {
-		return true
-	}
-
-	return false
 }
 
 func (p *mpi) cmName(job *vkv1.Job) string {

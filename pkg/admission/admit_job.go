@@ -146,6 +146,7 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 			}
 		}
 
+		// TODO: find a way not to hardcode plugin name here
 		if _, found := job.Spec.Plugins["mpi"]; found {
 			if len(job.Spec.Plugins) > 1 {
 				msg = msg + " can not specify other plugins when `mpi` existed"

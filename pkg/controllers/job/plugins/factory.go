@@ -17,6 +17,8 @@ limitations under the License.
 package plugins
 
 import (
+	"sync"
+
 	"volcano.sh/volcano/pkg/controllers/job/plugins/env"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/mpi"
@@ -31,6 +33,8 @@ func init() {
 	RegisterPluginBuilder("mpi", mpi.New)
 }
 
+var pluginMutex sync.Mutex
+
 // Plugin management
 var pluginBuilders = map[string]PluginBuilder{}
 
@@ -39,10 +43,15 @@ type PluginBuilder func(pluginsinterface.PluginClientset, []string) pluginsinter
 
 // RegisterPluginBuilder register plugin builders
 func RegisterPluginBuilder(name string, pc func(pluginsinterface.PluginClientset, []string) pluginsinterface.PluginInterface) {
+	pluginMutex.Lock()
+	defer pluginMutex.Unlock()
 	pluginBuilders[name] = pc
 }
 
 // GetPluginBuilder returns plugin builder for a given plugin name
 func GetPluginBuilder(name string) PluginBuilder {
+	pluginMutex.Lock()
+	defer pluginMutex.Unlock()
+
 	return pluginBuilders[name]
 }
