@@ -17,6 +17,7 @@ limitations under the License.
 package svc
 
 import (
+	"flag"
 	"fmt"
 	"strings"
 
@@ -38,17 +39,33 @@ type servicePlugin struct {
 	pluginArguments []string
 
 	Clientset pluginsinterface.PluginClientset
+
+	// flag parse args
+	publishNotReadyAddresses bool
 }
 
 // New creates service plugin
 func New(client pluginsinterface.PluginClientset, arguments []string) pluginsinterface.PluginInterface {
 	servicePlugin := servicePlugin{pluginArguments: arguments, Clientset: client}
 
+	servicePlugin.addFlags()
+
 	return &servicePlugin
 }
 
 func (sp *servicePlugin) Name() string {
 	return "svc"
+}
+
+func (sp *servicePlugin) addFlags() {
+	flagSet := flag.NewFlagSet(sp.Name(), flag.ContinueOnError)
+	flagSet.BoolVar(&sp.publishNotReadyAddresses, "publish-not-ready-addresses", sp.publishNotReadyAddresses,
+		"set publishNotReadyAddresses of svc to true")
+
+	if err := flagSet.Parse(sp.pluginArguments); err != nil {
+		glog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
+	}
+	return
 }
 
 func (sp *servicePlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
@@ -148,6 +165,7 @@ func (sp *servicePlugin) createServiceIfNotExist(job *batch.Job) error {
 					batch.JobNameKey:      job.Name,
 					batch.JobNamespaceKey: job.Namespace,
 				},
+				PublishNotReadyAddresses: sp.publishNotReadyAddresses,
 				Ports: []v1.ServicePort{
 					{
 						Name:       "placeholder-volcano",
