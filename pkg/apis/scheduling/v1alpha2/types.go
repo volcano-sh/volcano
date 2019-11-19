@@ -34,6 +34,8 @@ const (
 	QueueStateClosed QueueState = "Closed"
 	// QueueStateClosing indicate `Closing` state of queue
 	QueueStateClosing QueueState = "Closing"
+	// QueueStateUnknown indicate `Unknown` state of queue
+	QueueStateUnknown QueueState = "Unknown"
 )
 
 // These are the valid phase of podGroups.
@@ -109,6 +111,28 @@ const (
 
 	// NotEnoughPodsReason is probed if there're not enough tasks compared to `spec.minMember`
 	NotEnoughPodsReason string = "NotEnoughTasks"
+)
+
+// QueueEvent represent the phase of queue
+type QueueEvent string
+
+const (
+	// QueueOutOfSyncEvent is triggered if PodGroup/Queue were updated
+	QueueOutOfSyncEvent QueueEvent = "OutOfSync"
+	// QueueCommandIssuedEvent is triggered if a command is raised by user
+	QueueCommandIssuedEvent QueueEvent = "CommandIssued"
+)
+
+// QueueAction is the action that queue controller will take according to the event.
+type QueueAction string
+
+const (
+	// SyncQueueAction is the action to sync queue status.
+	SyncQueueAction QueueAction = "SyncQueue"
+	// OpenQueueAction is the action to open queue
+	OpenQueueAction QueueAction = "OpenQueue"
+	// CloseQueueAction is the action to close queue
+	CloseQueueAction QueueAction = "CloseQueue"
 )
 
 // +genclient
@@ -252,4 +276,15 @@ type QueueList struct {
 
 	// items is the list of PodGroup
 	Items []Queue `json:"items" protobuf:"bytes,2,rep,name=items"`
+}
+
+// QueueRequest struct
+type QueueRequest struct {
+	// Name is queue name
+	Name string
+
+	// Event is event of queue
+	Event QueueEvent
+	// Action is action to be performed
+	Action QueueAction
 }
