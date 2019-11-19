@@ -13,4 +13,5 @@ please feel free to add yourself into the following list by a pull request.
 | [Huawei Cloud](https://huaweicloud.com/) |[@tsjsdbd](https://github.com/tsjsdbd)| **Production** | Scheduler & Job Management of AI Container Service and CCI  |
 | [JD Retail Infrastructure Department](https://jd.com/) |[@yuanchen8911](https://github.com/yuanchen8911)| Evaluation | Spark on K8S  |
 | [kt NexR](https://www.ktnexr.com) |[@minyk](https://github.com/minyk), [@dieselnexr](https://github.com/dieselnexr)| Evaluation | spark scheduler of our next cloud native product. |
+| [QTT Bigdata Infra](https://ir.qutoutiao.net/) |[@yuzhaojing](https://github.com/yuzhaojing) | Evaluation | Spark and AI on K8S. |
 
