@@ -213,11 +213,6 @@ func TestCreateJobPod(t *testing.T) {
 						},
 					},
 				},
-				Status: v1alpha1.JobStatus{
-					ControlledResources: map[string]string{
-						"volume-emptyDir-vc1": "vc1",
-					},
-				},
 			},
 			PodTemplate: &v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -292,11 +287,6 @@ func TestApplyPolicies(t *testing.T) {
 						},
 					},
 				},
-				Status: v1alpha1.JobStatus{
-					ControlledResources: map[string]string{
-						"volume-emptyDir-vc1": "vc1",
-					},
-				},
 			},
 			Request: &apis.Request{
 				Action: v1alpha1.EnqueueAction,
@@ -332,11 +322,6 @@ func TestApplyPolicies(t *testing.T) {
 						},
 					},
 				},
-				Status: v1alpha1.JobStatus{
-					ControlledResources: map[string]string{
-						"volume-emptyDir-vc1": "vc1",
-					},
-				},
 			},
 			Request: &apis.Request{
 				Event: v1alpha1.OutOfSyncEvent,
@@ -370,12 +355,6 @@ func TestApplyPolicies(t *testing.T) {
 								},
 							},
 						},
-					},
-				},
-				Status: v1alpha1.JobStatus{
-					Version: 2,
-					ControlledResources: map[string]string{
-						"volume-emptyDir-vc1": "vc1",
 					},
 				},
 			},
@@ -420,11 +399,6 @@ func TestApplyPolicies(t *testing.T) {
 						},
 					},
 				},
-				Status: v1alpha1.JobStatus{
-					ControlledResources: map[string]string{
-						"volume-emptyDir-vc1": "vc1",
-					},
-				},
 			},
 			Request: &apis.Request{
 				TaskName: "task1",
@@ -466,11 +440,6 @@ func TestApplyPolicies(t *testing.T) {
 						},
 					},
 				},
-				Status: v1alpha1.JobStatus{
-					ControlledResources: map[string]string{
-						"volume-emptyDir-vc1": "vc1",
-					},
-				},
 			},
 			Request: &apis.Request{
 				TaskName: "task1",
@@ -505,11 +474,6 @@ func TestApplyPolicies(t *testing.T) {
 								},
 							},
 						},
-					},
-				},
-				Status: v1alpha1.JobStatus{
-					ControlledResources: map[string]string{
-						"volume-emptyDir-vc1": "vc1",
 					},
 				},
 			},
@@ -554,11 +518,6 @@ func TestApplyPolicies(t *testing.T) {
 						},
 					},
 				},
-				Status: v1alpha1.JobStatus{
-					ControlledResources: map[string]string{
-						"volume-emptyDir-vc1": "vc1",
-					},
-				},
 			},
 			Request: &apis.Request{
 				Event: v1alpha1.CommandIssuedEvent,
@@ -599,11 +558,6 @@ func TestApplyPolicies(t *testing.T) {
 							Event:    v1alpha1.CommandIssuedEvent,
 							ExitCode: &errorCode0,
 						},
-					},
-				},
-				Status: v1alpha1.JobStatus{
-					ControlledResources: map[string]string{
-						"volume-emptyDir-vc1": "vc1",
 					},
 				},
 			},
