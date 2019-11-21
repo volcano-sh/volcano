@@ -30,8 +30,8 @@ import (
 const (
 	// PodNameFmt pod name format
 	PodNameFmt = "%s-%s-%d"
-	// VolumeClaimFmt  volume claim name format
-	VolumeClaimFmt = "%s-volume-%s"
+	// persistentVolumeClaimFmt represents persistent volume claim name format
+	persistentVolumeClaimFmt = "%s-pvc-%s"
 )
 
 // GetTaskIndex   returns task Index
@@ -61,9 +61,9 @@ func GenRandomStr(l int) string {
 	return string(result)
 }
 
-// MakeVolumeClaimName creates volume claim name
-func MakeVolumeClaimName(jobName string) string {
-	return fmt.Sprintf(VolumeClaimFmt, jobName, GenRandomStr(12))
+// GenPVCName generates pvc name with job name
+func GenPVCName(jobName string) string {
+	return fmt.Sprintf(persistentVolumeClaimFmt, jobName, GenRandomStr(12))
 }
 
 // GetJobKeyByReq gets the key for the job request

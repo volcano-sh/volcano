@@ -63,24 +63,19 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 		vcName := volume.VolumeClaimName
 		name := fmt.Sprintf("%s-%s", job.Name, jobhelpers.GenRandomStr(12))
 		if _, ok := volumeMap[vcName]; !ok {
-			if _, ok := job.Status.ControlledResources["volume-emptyDir-"+vcName]; ok {
-				volume := v1.Volume{
-					Name: name,
-				}
-				volume.EmptyDir = &v1.EmptyDirVolumeSource{}
-				pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
-			} else {
-				volume := v1.Volume{
-					Name: name,
-				}
-				volume.PersistentVolumeClaim = &v1.PersistentVolumeClaimVolumeSource{
-					ClaimName: vcName,
-				}
-				pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
+			volume := v1.Volume{
+				Name: name,
+				VolumeSource: v1.VolumeSource{
+					PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+						ClaimName: vcName,
+					},
+				},
 			}
+			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
 			volumeMap[vcName] = name
 		} else {
-			name = volumeMap[vcName]
+			// duplicate volumes, should be prevented
+			continue
 		}
 
 		for i, c := range pod.Spec.Containers {

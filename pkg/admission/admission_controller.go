@@ -232,25 +232,30 @@ func getValidActions() []batchv1alpha1.Action {
 	return actions
 }
 
-// ValidateIO validate IO configuration
-func ValidateIO(volumes []batchv1alpha1.VolumeSpec) (string, bool) {
+// validateIO validates IO configuration
+func validateIO(volumes []batchv1alpha1.VolumeSpec) error {
 	volumeMap := map[string]bool{}
 	for _, volume := range volumes {
 		if len(volume.MountPath) == 0 {
-			return " mountPath is required;", true
+			return fmt.Errorf(" mountPath is required;")
 		}
 		if _, found := volumeMap[volume.MountPath]; found {
-			return fmt.Sprintf(" duplicated mountPath: %s;", volume.MountPath), true
+			return fmt.Errorf(" duplicated mountPath: %s;", volume.MountPath)
+		}
+		if volume.VolumeClaim == nil && volume.VolumeClaimName == "" {
+			return fmt.Errorf(" either VolumeClaim or VolumeClaimName must be specified;")
 		}
 		if len(volume.VolumeClaimName) != 0 {
 			if volume.VolumeClaim != nil {
-				return fmt.Sprintf("Confilct: If you want to use an existing PVC, just specify VolumeClaimName. If you want to create a new PVC, you do not need to specify VolumeClaimName."), true
+				return fmt.Errorf("confilct: If you want to use an existing PVC, just specify VolumeClaimName." +
+					"If you want to create a new PVC, you do not need to specify VolumeClaimName")
 			}
 			if errMsgs := validation.ValidatePersistentVolumeName(volume.VolumeClaimName, false); len(errMsgs) > 0 {
-				return fmt.Sprintf("Illegal VolumeClaimName %s : %v", volume.VolumeClaimName, errMsgs), true
+				return fmt.Errorf("invalid VolumeClaimName %s : %v", volume.VolumeClaimName, errMsgs)
 			}
 		}
+
 		volumeMap[volume.MountPath] = true
 	}
-	return "", false
+	return nil
 }

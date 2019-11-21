@@ -147,8 +147,8 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 		}
 	}
 
-	if validateInfo, ok := ValidateIO(job.Spec.Volumes); ok {
-		msg = msg + validateInfo
+	if err := validateIO(job.Spec.Volumes); err != nil {
+		msg = msg + err.Error()
 	}
 
 	// Check whether Queue already present or not

@@ -17,7 +17,6 @@ limitations under the License.
 package job
 
 import (
-	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -338,16 +337,15 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 func (cc *Controller) createJobIOIfNotExist(job *batch.Job) (*batch.Job, error) {
 	// If PVC does not exist, create them for Job.
 	var needUpdate bool
-	volumes := job.Spec.Volumes
 	if job.Status.ControlledResources == nil {
 		job.Status.ControlledResources = make(map[string]string)
 	}
-	for index, volume := range volumes {
+	for index, volume := range job.Spec.Volumes {
 		vcName := volume.VolumeClaimName
 		if len(vcName) == 0 {
-			//NOTE(k82cn): Ensure never have duplicated generated names.
+			// NOTE(k82cn): Ensure never have duplicated generated names.
 			for {
-				vcName = jobhelpers.MakeVolumeClaimName(job.Name)
+				vcName = jobhelpers.GenPVCName(job.Name)
 				exist, err := cc.checkPVCExist(job, vcName)
 				if err != nil {
 					return job, err
@@ -363,26 +361,17 @@ func (cc *Controller) createJobIOIfNotExist(job *batch.Job) (*batch.Job, error) 
 				if err := cc.createPVC(job, vcName, volume.VolumeClaim); err != nil {
 					return job, err
 				}
-				job.Status.ControlledResources["volume-pvc-"+vcName] = vcName
-			} else {
-				job.Status.ControlledResources["volume-emptyDir-"+vcName] = vcName
 			}
 		} else {
-			if job.Status.ControlledResources["volume-emptyDir-"+vcName] == vcName || job.Status.ControlledResources["volume-pvc-"+vcName] == vcName {
-				continue
-			}
 			exist, err := cc.checkPVCExist(job, vcName)
 			if err != nil {
 				return job, err
 			}
-			if exist {
-				job.Status.ControlledResources["volume-pvc-"+vcName] = vcName
-			} else {
-				msg := fmt.Sprintf("pvc %s is not found, the job will be in the Pending state until the PVC is created", vcName)
-				glog.Error(msg)
-				return job, errors.New(msg)
+			if !exist {
+				return job, fmt.Errorf("pvc %s is not found, the job will be in the Pending state until the PVC is created", vcName)
 			}
 		}
+		job.Status.ControlledResources["volume-pvc-"+vcName] = vcName
 	}
 	if needUpdate {
 		newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).Update(job)
@@ -398,13 +387,13 @@ func (cc *Controller) createJobIOIfNotExist(job *batch.Job) (*batch.Job, error) 
 	return job, nil
 }
 
-func (cc *Controller) checkPVCExist(job *batch.Job, vcName string) (bool, error) {
-	if _, err := cc.pvcLister.PersistentVolumeClaims(job.Namespace).Get(vcName); err != nil {
+func (cc *Controller) checkPVCExist(job *batch.Job, pvc string) (bool, error) {
+	if _, err := cc.pvcLister.PersistentVolumeClaims(job.Namespace).Get(pvc); err != nil {
 		if apierrors.IsNotFound(err) {
 			return false, nil
 		}
-		glog.V(3).Infof("Failed to get PVC for job <%s/%s>: %v",
-			job.Namespace, job.Name, err)
+		glog.V(3).Infof("Failed to get PVC %s for job <%s/%s>: %v",
+			pvc, job.Namespace, job.Name, err)
 		return false, err
 	}
 	return true, nil
