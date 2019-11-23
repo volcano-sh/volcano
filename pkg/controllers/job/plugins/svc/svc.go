@@ -69,7 +69,17 @@ func (sp *servicePlugin) addFlags() {
 }
 
 func (sp *servicePlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
-	// use podName.serviceName as default pod DNS domain
+	// Add `hostname` and `subdomain` for pod, mount service config for pod.
+	// A pod with `hostname` and `subdomain` will have the fully qualified domain name(FQDN)
+	// `hostname.subdomain.namespace.svc.cluster-domain.example`.
+	// If there exists a headless service in the same namespace as the pod and with the
+	// same name as the `subdomain`, the cluster's KubeDNS Server will returns an A record for
+	// the Pods's fully qualified hostname, pointing to the Pod’s IP.
+	// `hostname.subdomain` will be used as address of the pod.
+	// By default, a client Pod’s DNS search list will include the Pod’s own namespace and
+	// the cluster’s default domain, so the pod can be accessed by pods in the same namespace
+	// through the address of pod.
+	// More info: https://kubernetes.io/docs/concepts/services-networking/dns-pod-service
 	if len(pod.Spec.Hostname) == 0 {
 		pod.Spec.Hostname = pod.Name
 	}
