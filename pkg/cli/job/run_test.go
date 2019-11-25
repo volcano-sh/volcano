@@ -77,6 +77,7 @@ func TestCreateJob(t *testing.T) {
 			commonFlags: commonFlags{
 				Master: server.URL,
 			},
+			Name:      "test",
 			Namespace: "test",
 			Requests:  "cpu=1000m,memory=100Mi",
 		}
@@ -104,9 +105,6 @@ func TestInitRunFlags(t *testing.T) {
 	}
 	if cmd.Flag("replicas") == nil {
 		t.Errorf("Could not find the flag replicas")
-	}
-	if cmd.Flag("name") == nil {
-		t.Errorf("Could not find the flag name")
 	}
 	if cmd.Flag("min") == nil {
 		t.Errorf("Could not find the flag min")

@@ -172,7 +172,7 @@ Flags:
   -L, --limits string       the resource limit of the task (default "cpu=1000m,memory=100Mi")
   -s, --master string       the address of apiserver
   -m, --min int             the minimal available tasks of job (default 1)
-  -N, --name string         the name of job (default "test")
+  -N, --name string         the name of job
   -n, --namespace string    the namespace of job (default "default")
   -r, --replicas int        the total tasks of job (default 1)
   -R, --requests string     the resource request of the task (default "cpu=1000m,memory=100Mi")
