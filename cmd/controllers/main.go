@@ -18,6 +18,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -34,11 +35,13 @@ import (
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
 
 func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	klog.InitFlags(nil)
+
 	s := options.NewServerOption()
 	s.AddFlags(pflag.CommandLine)
 
 	flag.InitFlags()
-	klog.InitFlags(nil)
 
 	if s.PrintVersion {
 		version.PrintVersionAndExit()
