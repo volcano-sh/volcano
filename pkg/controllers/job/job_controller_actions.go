@@ -22,11 +22,10 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/golang/glog"
-
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog"
 	k8scontroller "k8s.io/kubernetes/pkg/controller"
 
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -38,13 +37,13 @@ import (
 )
 
 func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseMap, updateStatus state.UpdateStatusFn) error {
-	glog.V(3).Infof("Killing Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
-	defer glog.V(3).Infof("Finished Job <%s/%s> killing", jobInfo.Job.Namespace, jobInfo.Job.Name)
+	klog.V(3).Infof("Killing Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
+	defer klog.V(3).Infof("Finished Job <%s/%s> killing", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
 	job := jobInfo.Job
-	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
+	klog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 	if job.DeletionTimestamp != nil {
-		glog.Infof("Job <%s/%s> is terminating, skip management process.",
+		klog.Infof("Job <%s/%s> is terminating, skip management process.",
 			job.Namespace, job.Name)
 		return nil
 	}
@@ -59,7 +58,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 			total++
 
 			if pod.DeletionTimestamp != nil {
-				glog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
+				klog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
 				terminating++
 				continue
 			}
@@ -82,7 +81,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 	}
 
 	if len(errs) != 0 {
-		glog.Errorf("failed to kill pods for job %s/%s, with err %+v", job.Namespace, job.Name, errs)
+		klog.Errorf("failed to kill pods for job %s/%s, with err %+v", job.Namespace, job.Name, errs)
 		cc.recorder.Event(job, v1.EventTypeWarning, k8scontroller.FailedDeletePodReason,
 			fmt.Sprintf("Error deleting pods: %+v", errs))
 		return fmt.Errorf("failed to kill %d pods of %d", len(errs), total)
@@ -115,12 +114,12 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 	// Update Job status
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
 	if err != nil {
-		glog.Errorf("Failed to update status of Job %v/%v: %v",
+		klog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
 	}
 	if e := cc.cache.Update(newJob); e != nil {
-		glog.Errorf("KillJob - Failed to update Job %v/%v in cache:  %v",
+		klog.Errorf("KillJob - Failed to update Job %v/%v in cache:  %v",
 			newJob.Namespace, newJob.Name, e)
 		return e
 	}
@@ -128,7 +127,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 	// Delete PodGroup
 	if err := cc.vcClient.SchedulingV1alpha2().PodGroups(job.Namespace).Delete(job.Name, nil); err != nil {
 		if !apierrors.IsNotFound(err) {
-			glog.Errorf("Failed to delete PodGroup of Job %v/%v: %v",
+			klog.Errorf("Failed to delete PodGroup of Job %v/%v: %v",
 				job.Namespace, job.Name, err)
 			return err
 		}
@@ -174,14 +173,14 @@ func (cc *Controller) createJob(job *batch.Job) (*batch.Job, error) {
 }
 
 func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
-	glog.V(3).Infof("Starting to sync up Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
-	defer glog.V(3).Infof("Finished Job <%s/%s> sync up", jobInfo.Job.Namespace, jobInfo.Job.Name)
+	klog.V(3).Infof("Starting to sync up Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
+	defer klog.V(3).Infof("Finished Job <%s/%s> sync up", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
 	job := jobInfo.Job.DeepCopy()
-	glog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
+	klog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 
 	if job.DeletionTimestamp != nil {
-		glog.Infof("Job <%s/%s> is terminating, skip management process.",
+		klog.Infof("Job <%s/%s> is terminating, skip management process.",
 			job.Namespace, job.Name)
 		return nil
 	}
@@ -226,7 +225,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 			} else {
 				delete(pods, podName)
 				if pod.DeletionTimestamp != nil {
-					glog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
+					klog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
 					atomic.AddInt32(&terminating, 1)
 					continue
 				}
@@ -250,12 +249,12 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 				// Failed to create Pod, waitCreationGroup a moment and then create it again
 				// This is to ensure all podsMap under the same Job created
 				// So gang-scheduling could schedule the Job successfully
-				glog.Errorf("Failed to create pod %s for Job %s, err %#v",
+				klog.Errorf("Failed to create pod %s for Job %s, err %#v",
 					pod.Name, job.Name, err)
 				appendError(&creationErrs, fmt.Errorf("failed to create pod %s, err: %#v", pod.Name, err))
 			} else {
 				classifyAndAddUpPodBaseOnPhase(newPod, &pending, &running, &succeeded, &failed, &unknown)
-				glog.V(3).Infof("Created Task <%s> of Job <%s/%s>",
+				klog.V(3).Infof("Created Task <%s> of Job <%s/%s>",
 					pod.Name, job.Namespace, job.Name)
 			}
 		}(pod)
@@ -280,12 +279,12 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 				// Failed to delete Pod, waitCreationGroup a moment and then create it again
 				// This is to ensure all podsMap under the same Job created
 				// So gang-scheduling could schedule the Job successfully
-				glog.Errorf("Failed to delete pod %s for Job %s, err %#v",
+				klog.Errorf("Failed to delete pod %s for Job %s, err %#v",
 					pod.Name, job.Name, err)
 				appendError(&deletionErrs, err)
 				cc.resyncTask(pod)
 			} else {
-				glog.V(3).Infof("Deleted Task <%s> of Job <%s/%s>",
+				klog.V(3).Infof("Deleted Task <%s> of Job <%s/%s>",
 					pod.Name, job.Namespace, job.Name)
 				atomic.AddInt32(&terminating, 1)
 			}
@@ -321,12 +320,12 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	}
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
 	if err != nil {
-		glog.Errorf("Failed to update status of Job %v/%v: %v",
+		klog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return err
 	}
 	if e := cc.cache.Update(newJob); e != nil {
-		glog.Errorf("SyncJob - Failed to update Job %v/%v in cache:  %v",
+		klog.Errorf("SyncJob - Failed to update Job %v/%v in cache:  %v",
 			newJob.Namespace, newJob.Name, e)
 		return e
 	}
@@ -376,7 +375,7 @@ func (cc *Controller) createJobIOIfNotExist(job *batch.Job) (*batch.Job, error) 
 	if needUpdate {
 		newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).Update(job)
 		if err != nil {
-			glog.Errorf("Failed to update Job %v/%v for volume claim name: %v ",
+			klog.Errorf("Failed to update Job %v/%v for volume claim name: %v ",
 				job.Namespace, job.Name, err)
 			return job, err
 		}
@@ -392,7 +391,7 @@ func (cc *Controller) checkPVCExist(job *batch.Job, pvc string) (bool, error) {
 		if apierrors.IsNotFound(err) {
 			return false, nil
 		}
-		glog.V(3).Infof("Failed to get PVC %s for job <%s/%s>: %v",
+		klog.V(3).Infof("Failed to get PVC %s for job <%s/%s>: %v",
 			pvc, job.Namespace, job.Name, err)
 		return false, err
 	}
@@ -411,10 +410,10 @@ func (cc *Controller) createPVC(job *batch.Job, vcName string, volumeClaim *v1.P
 		Spec: *volumeClaim,
 	}
 
-	glog.V(3).Infof("Try to create PVC: %v", pvc)
+	klog.V(3).Infof("Try to create PVC: %v", pvc)
 
 	if _, e := cc.kubeClient.CoreV1().PersistentVolumeClaims(job.Namespace).Create(pvc); e != nil {
-		glog.V(3).Infof("Failed to create PVC for Job <%s/%s>: %v",
+		klog.V(3).Infof("Failed to create PVC for Job <%s/%s>: %v",
 			job.Namespace, job.Name, e)
 		return e
 	}
@@ -425,7 +424,7 @@ func (cc *Controller) createPodGroupIfNotExist(job *batch.Job) error {
 	// If PodGroup does not exist, create one for Job.
 	if _, err := cc.pgLister.PodGroups(job.Namespace).Get(job.Name); err != nil {
 		if !apierrors.IsNotFound(err) {
-			glog.V(3).Infof("Failed to get PodGroup for Job <%s/%s>: %v",
+			klog.V(3).Infof("Failed to get PodGroup for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
 			return err
 		}
@@ -448,7 +447,7 @@ func (cc *Controller) createPodGroupIfNotExist(job *batch.Job) error {
 
 		if _, err = cc.vcClient.SchedulingV1alpha2().PodGroups(job.Namespace).Create(pg); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
-				glog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
+				klog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
 					job.Namespace, job.Name, err)
 				return err
 			}
@@ -461,7 +460,7 @@ func (cc *Controller) createPodGroupIfNotExist(job *batch.Job) error {
 func (cc *Controller) deleteJobPod(jobName string, pod *v1.Pod) error {
 	err := cc.kubeClient.CoreV1().Pods(pod.Namespace).Delete(pod.Name, nil)
 	if err != nil && !apierrors.IsNotFound(err) {
-		glog.Errorf("Failed to delete pod %s/%s for Job %s, err %#v",
+		klog.Errorf("Failed to delete pod %s/%s for Job %s, err %#v",
 			pod.Namespace, pod.Name, jobName, err)
 
 		return fmt.Errorf("failed to delete pod %s, err %#v", pod.Name, err)
@@ -513,12 +512,12 @@ func (cc *Controller) initJobStatus(job *batch.Job) (*batch.Job, error) {
 	job.Status.MinAvailable = int32(job.Spec.MinAvailable)
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
 	if err != nil {
-		glog.Errorf("Failed to update status of Job %v/%v: %v",
+		klog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
 		return nil, err
 	}
 	if err := cc.cache.Update(newJob); err != nil {
-		glog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
+		klog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
 			newJob.Namespace, newJob.Name, err)
 		return nil, err
 	}

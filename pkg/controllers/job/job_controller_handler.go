@@ -21,12 +21,11 @@ import (
 	"reflect"
 	"strconv"
 
-	"github.com/golang/glog"
-
 	"k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/klog"
 
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	bus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
@@ -40,7 +39,7 @@ import (
 func (cc *Controller) addCommand(obj interface{}) {
 	cmd, ok := obj.(*bus.Command)
 	if !ok {
-		glog.Errorf("obj is not Command")
+		klog.Errorf("obj is not Command")
 		return
 	}
 
@@ -50,7 +49,7 @@ func (cc *Controller) addCommand(obj interface{}) {
 func (cc *Controller) addJob(obj interface{}) {
 	job, ok := obj.(*batch.Job)
 	if !ok {
-		glog.Errorf("obj is not Job")
+		klog.Errorf("obj is not Job")
 		return
 	}
 
@@ -63,7 +62,7 @@ func (cc *Controller) addJob(obj interface{}) {
 
 	// TODO(k82cn): if failed to add job, the cache should be refresh
 	if err := cc.cache.Add(job); err != nil {
-		glog.Errorf("Failed to add job <%s/%s>: %v in cache",
+		klog.Errorf("Failed to add job <%s/%s>: %v in cache",
 			job.Namespace, job.Name, err)
 	}
 	key := jobhelpers.GetJobKeyByReq(&req)
@@ -74,25 +73,25 @@ func (cc *Controller) addJob(obj interface{}) {
 func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 	newJob, ok := newObj.(*batch.Job)
 	if !ok {
-		glog.Errorf("newObj is not Job")
+		klog.Errorf("newObj is not Job")
 		return
 	}
 
 	oldJob, ok := oldObj.(*batch.Job)
 	if !ok {
-		glog.Errorf("oldJob is not Job")
+		klog.Errorf("oldJob is not Job")
 		return
 	}
 
 	// NOTE: Since we only reconcile job based on Spec, we will ignore other attributes
 	// For Job status, it's used internally and always been updated via our controller.
 	if reflect.DeepEqual(newJob.Spec, oldJob.Spec) && newJob.Status.State.Phase == oldJob.Status.State.Phase {
-		glog.Infof("Job update event is ignored since no update in 'Spec'.")
+		klog.Infof("Job update event is ignored since no update in 'Spec'.")
 		return
 	}
 
 	if err := cc.cache.Update(newJob); err != nil {
-		glog.Errorf("UpdateJob - Failed to update job <%s/%s>: %v in cache",
+		klog.Errorf("UpdateJob - Failed to update job <%s/%s>: %v in cache",
 			newJob.Namespace, newJob.Name, err)
 	}
 
@@ -114,18 +113,18 @@ func (cc *Controller) deleteJob(obj interface{}) {
 		// If we reached here it means the Job was deleted but its final state is unrecorded.
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
-			glog.Errorf("Couldn't get object from tombstone %#v", obj)
+			klog.Errorf("Couldn't get object from tombstone %#v", obj)
 			return
 		}
 		job, ok = tombstone.Obj.(*batch.Job)
 		if !ok {
-			glog.Errorf("Tombstone contained object that is not a volcano Job: %#v", obj)
+			klog.Errorf("Tombstone contained object that is not a volcano Job: %#v", obj)
 			return
 		}
 	}
 
 	if err := cc.cache.Delete(job); err != nil {
-		glog.Errorf("Failed to delete job <%s/%s>: %v in cache",
+		klog.Errorf("Failed to delete job <%s/%s>: %v in cache",
 			job.Namespace, job.Name, err)
 	}
 }
@@ -133,7 +132,7 @@ func (cc *Controller) deleteJob(obj interface{}) {
 func (cc *Controller) addPod(obj interface{}) {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
-		glog.Errorf("Failed to convert %v to v1.Pod", obj)
+		klog.Errorf("Failed to convert %v to v1.Pod", obj)
 		return
 	}
 	// Filter out pods that are not created from volcano job
@@ -143,21 +142,21 @@ func (cc *Controller) addPod(obj interface{}) {
 
 	jobName, found := pod.Annotations[batch.JobNameKey]
 	if !found {
-		glog.Infof("Failed to find jobName of Pod <%s/%s>, skipping",
+		klog.Infof("Failed to find jobName of Pod <%s/%s>, skipping",
 			pod.Namespace, pod.Name)
 		return
 	}
 
 	version, found := pod.Annotations[batch.JobVersion]
 	if !found {
-		glog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
+		klog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
 			pod.Namespace, pod.Name)
 		return
 	}
 
 	dVersion, err := strconv.Atoi(version)
 	if err != nil {
-		glog.Infof("Failed to convert jobVersion of Pod <%s/%s> into number, skipping",
+		klog.Infof("Failed to convert jobVersion of Pod <%s/%s> into number, skipping",
 			pod.Namespace, pod.Name)
 		return
 	}
@@ -176,7 +175,7 @@ func (cc *Controller) addPod(obj interface{}) {
 	}
 
 	if err := cc.cache.AddPod(pod); err != nil {
-		glog.Errorf("Failed to add Pod <%s/%s>: %v to cache",
+		klog.Errorf("Failed to add Pod <%s/%s>: %v to cache",
 			pod.Namespace, pod.Name, err)
 	}
 	key := jobhelpers.GetJobKeyByReq(&req)
@@ -187,13 +186,13 @@ func (cc *Controller) addPod(obj interface{}) {
 func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 	oldPod, ok := oldObj.(*v1.Pod)
 	if !ok {
-		glog.Errorf("Failed to convert %v to v1.Pod", oldObj)
+		klog.Errorf("Failed to convert %v to v1.Pod", oldObj)
 		return
 	}
 
 	newPod, ok := newObj.(*v1.Pod)
 	if !ok {
-		glog.Errorf("Failed to convert %v to v1.Pod", newObj)
+		klog.Errorf("Failed to convert %v to v1.Pod", newObj)
 		return
 	}
 
@@ -213,34 +212,34 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 
 	taskName, found := newPod.Annotations[batch.TaskSpecKey]
 	if !found {
-		glog.Infof("Failed to find taskName of Pod <%s/%s>, skipping",
+		klog.Infof("Failed to find taskName of Pod <%s/%s>, skipping",
 			newPod.Namespace, newPod.Name)
 		return
 	}
 
 	jobName, found := newPod.Annotations[batch.JobNameKey]
 	if !found {
-		glog.Infof("Failed to find jobName of Pod <%s/%s>, skipping",
+		klog.Infof("Failed to find jobName of Pod <%s/%s>, skipping",
 			newPod.Namespace, newPod.Name)
 		return
 	}
 
 	version, found := newPod.Annotations[batch.JobVersion]
 	if !found {
-		glog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
+		klog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
 			newPod.Namespace, newPod.Name)
 		return
 	}
 
 	dVersion, err := strconv.Atoi(version)
 	if err != nil {
-		glog.Infof("Failed to convert jobVersion of Pod into number <%s/%s>, skipping",
+		klog.Infof("Failed to convert jobVersion of Pod into number <%s/%s>, skipping",
 			newPod.Namespace, newPod.Name)
 		return
 	}
 
 	if err := cc.cache.UpdatePod(newPod); err != nil {
-		glog.Errorf("Failed to update Pod <%s/%s>: %v in cache",
+		klog.Errorf("Failed to update Pod <%s/%s>: %v in cache",
 			newPod.Namespace, newPod.Name, err)
 	}
 
@@ -284,12 +283,12 @@ func (cc *Controller) deletePod(obj interface{}) {
 		// If we reached here it means the pod was deleted but its final state is unrecorded.
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
-			glog.Errorf("Couldn't get object from tombstone %#v", obj)
+			klog.Errorf("Couldn't get object from tombstone %#v", obj)
 			return
 		}
 		pod, ok = tombstone.Obj.(*v1.Pod)
 		if !ok {
-			glog.Errorf("Tombstone contained object that is not a Pod: %#v", obj)
+			klog.Errorf("Tombstone contained object that is not a Pod: %#v", obj)
 			return
 		}
 	}
@@ -301,28 +300,28 @@ func (cc *Controller) deletePod(obj interface{}) {
 
 	taskName, found := pod.Annotations[batch.TaskSpecKey]
 	if !found {
-		glog.Infof("Failed to find taskName of Pod <%s/%s>, skipping",
+		klog.Infof("Failed to find taskName of Pod <%s/%s>, skipping",
 			pod.Namespace, pod.Name)
 		return
 	}
 
 	jobName, found := pod.Annotations[batch.JobNameKey]
 	if !found {
-		glog.Infof("Failed to find jobName of Pod <%s/%s>, skipping",
+		klog.Infof("Failed to find jobName of Pod <%s/%s>, skipping",
 			pod.Namespace, pod.Name)
 		return
 	}
 
 	version, found := pod.Annotations[batch.JobVersion]
 	if !found {
-		glog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
+		klog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
 			pod.Namespace, pod.Name)
 		return
 	}
 
 	dVersion, err := strconv.Atoi(version)
 	if err != nil {
-		glog.Infof("Failed to convert jobVersion of Pod <%s/%s> into number, skipping",
+		klog.Infof("Failed to convert jobVersion of Pod <%s/%s> into number, skipping",
 			pod.Namespace, pod.Name)
 		return
 	}
@@ -337,7 +336,7 @@ func (cc *Controller) deletePod(obj interface{}) {
 	}
 
 	if err := cc.cache.DeletePod(pod); err != nil {
-		glog.Errorf("Failed to delete Pod <%s/%s>: %v in cache",
+		klog.Errorf("Failed to delete Pod <%s/%s>: %v in cache",
 			pod.Namespace, pod.Name, err)
 	}
 
@@ -349,7 +348,7 @@ func (cc *Controller) deletePod(obj interface{}) {
 func (cc *Controller) recordJobEvent(namespace, name string, event batch.JobEvent, message string) {
 	job, err := cc.cache.Get(jobcache.JobKeyByName(namespace, name))
 	if err != nil {
-		glog.Warningf("Failed to find job in cache when reporting job event <%s/%s>: %v",
+		klog.Warningf("Failed to find job in cache when reporting job event <%s/%s>: %v",
 			namespace, name, err)
 		return
 	}
@@ -372,7 +371,7 @@ func (cc *Controller) processNextCommand() bool {
 
 	if err := cc.vcClient.BusV1alpha1().Commands(cmd.Namespace).Delete(cmd.Name, nil); err != nil {
 		if !apierrors.IsNotFound(err) {
-			glog.Errorf("Failed to delete Command <%s/%s>.", cmd.Namespace, cmd.Name)
+			klog.Errorf("Failed to delete Command <%s/%s>.", cmd.Namespace, cmd.Name)
 			cc.commandQueue.AddRateLimited(cmd)
 		}
 		return true
@@ -398,19 +397,19 @@ func (cc *Controller) processNextCommand() bool {
 func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
 	oldPG, ok := oldObj.(*scheduling.PodGroup)
 	if !ok {
-		glog.Errorf("Failed to convert %v to PodGroup", newObj)
+		klog.Errorf("Failed to convert %v to PodGroup", newObj)
 		return
 	}
 
 	newPG, ok := newObj.(*scheduling.PodGroup)
 	if !ok {
-		glog.Errorf("Failed to convert %v to PodGroup", newObj)
+		klog.Errorf("Failed to convert %v to PodGroup", newObj)
 		return
 	}
 
 	_, err := cc.cache.Get(jobcache.JobKeyByName(newPG.Namespace, newPG.Name))
 	if err != nil && newPG.Annotations != nil {
-		glog.Warningf(
+		klog.Warningf(
 			"Failed to find job in cache by PodGroup, this may not be a PodGroup for volcano job.")
 	}
 
@@ -466,11 +465,11 @@ func convert2PriorityClass(obj interface{}) *v1beta1.PriorityClass {
 		var ok bool
 		pc, ok = t.Obj.(*v1beta1.PriorityClass)
 		if !ok {
-			glog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t.Obj)
+			klog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t.Obj)
 			return nil
 		}
 	default:
-		glog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t)
+		klog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t)
 		return nil
 	}
 

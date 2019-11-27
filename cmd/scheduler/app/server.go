@@ -23,7 +23,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
@@ -36,6 +35,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/klog"
 
 	// Register gcp auth
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -95,7 +95,7 @@ func Run(opt *options.ServerOption) error {
 
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
-		glog.Fatalf("Prometheus Http Server failed %s", http.ListenAndServe(opt.ListenAddress, nil))
+		klog.Fatalf("Prometheus Http Server failed %s", http.ListenAndServe(opt.ListenAddress, nil))
 	}()
 
 	if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-scheduler"); err != nil {
@@ -149,7 +149,7 @@ func Run(opt *options.ServerOption) error {
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: run,
 			OnStoppedLeading: func() {
-				glog.Fatalf("leaderelection lost")
+				klog.Fatalf("leaderelection lost")
 			},
 		},
 	})

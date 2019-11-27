@@ -20,13 +20,12 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/golang/glog"
-
 	"k8s.io/api/admissionregistration/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	admissionregistrationv1beta1 "k8s.io/client-go/kubernetes/typed/admissionregistration/v1beta1"
+	"k8s.io/klog"
 )
 
 const (
@@ -235,13 +234,13 @@ func registerMutateWebhook(client admissionregistrationv1beta1.MutatingWebhookCo
 			return err
 		}
 		if err == nil && existing != nil {
-			glog.Infof("Updating MutatingWebhookConfiguration %v", hook)
+			klog.Infof("Updating MutatingWebhookConfiguration %v", hook)
 			existing.Webhooks = hook.Webhooks
 			if _, err := client.Update(existing); err != nil {
 				return err
 			}
 		} else {
-			glog.Infof("Creating MutatingWebhookConfiguration %v", hook)
+			klog.Infof("Creating MutatingWebhookConfiguration %v", hook)
 			if _, err := client.Create(&hook); err != nil {
 				return err
 			}
@@ -259,12 +258,12 @@ func registerValidateWebhook(client admissionregistrationv1beta1.ValidatingWebho
 		}
 		if err == nil && existing != nil {
 			existing.Webhooks = hook.Webhooks
-			glog.Infof("Updating ValidatingWebhookConfiguration %v", hook)
+			klog.Infof("Updating ValidatingWebhookConfiguration %v", hook)
 			if _, err := client.Update(existing); err != nil {
 				return err
 			}
 		} else {
-			glog.Infof("Creating ValidatingWebhookConfiguration %v", hook)
+			klog.Infof("Creating ValidatingWebhookConfiguration %v", hook)
 			if _, err := client.Create(&hook); err != nil {
 				return err
 			}

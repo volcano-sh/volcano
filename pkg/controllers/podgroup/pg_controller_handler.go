@@ -17,11 +17,10 @@ limitations under the License.
 package podgroup
 
 import (
-	"github.com/golang/glog"
-
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/helpers"
 	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
@@ -35,7 +34,7 @@ type podRequest struct {
 func (cc *Controller) addPod(obj interface{}) {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
-		glog.Errorf("Failed to convert %v to v1.Pod", obj)
+		klog.Errorf("Failed to convert %v to v1.Pod", obj)
 		return
 	}
 
@@ -55,14 +54,14 @@ func (cc *Controller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
 		pod.Annotations[scheduling.GroupNameAnnotationKey] = pgName
 	} else {
 		if pod.Annotations[scheduling.GroupNameAnnotationKey] != pgName {
-			glog.Errorf("normal pod %s/%s annotations %s value is not %s, but %s", pod.Namespace, pod.Name,
+			klog.Errorf("normal pod %s/%s annotations %s value is not %s, but %s", pod.Namespace, pod.Name,
 				scheduling.GroupNameAnnotationKey, pgName, pod.Annotations[scheduling.GroupNameAnnotationKey])
 		}
 		return nil
 	}
 
 	if _, err := cc.kubeClient.CoreV1().Pods(pod.Namespace).Update(pod); err != nil {
-		glog.Errorf("Failed to update pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
+		klog.Errorf("Failed to update pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
 		return err
 	}
 
@@ -74,7 +73,7 @@ func (cc *Controller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 
 	if _, err := cc.pgLister.PodGroups(pod.Namespace).Get(pgName); err != nil {
 		if !apierrors.IsNotFound(err) {
-			glog.Errorf("Failed to get normal PodGroup for Pod <%s/%s>: %v",
+			klog.Errorf("Failed to get normal PodGroup for Pod <%s/%s>: %v",
 				pod.Namespace, pod.Name, err)
 			return err
 		}
@@ -92,7 +91,7 @@ func (cc *Controller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 		}
 
 		if _, err := cc.vcClient.SchedulingV1alpha2().PodGroups(pod.Namespace).Create(pg); err != nil {
-			glog.Errorf("Failed to create normal PodGroup for Pod <%s/%s>: %v",
+			klog.Errorf("Failed to create normal PodGroup for Pod <%s/%s>: %v",
 				pod.Namespace, pod.Name, err)
 			return err
 		}

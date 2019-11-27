@@ -21,10 +21,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/golang/glog"
-
 	"k8s.io/api/admission/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
@@ -42,7 +41,7 @@ type patchOperation struct {
 
 // MutateJobs mutate jobs
 func MutateJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
-	glog.V(3).Infof("mutating jobs")
+	klog.V(3).Infof("mutating jobs")
 
 	job, err := DecodeJob(ar.Request.Object, ar.Request.Resource)
 	if err != nil {
@@ -66,7 +65,7 @@ func MutateJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		reviewResponse.Result = &metav1.Status{Message: err.Error()}
 		return &reviewResponse
 	}
-	glog.V(3).Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
+	klog.V(3).Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
 	reviewResponse.Patch = patchBytes
 	pt := v1beta1.PatchTypeJSONPatch
 	reviewResponse.PatchType = &pt

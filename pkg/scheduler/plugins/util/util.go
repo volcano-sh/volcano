@@ -19,10 +19,9 @@ package util
 import (
 	"fmt"
 
-	"github.com/golang/glog"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	"k8s.io/kubernetes/pkg/scheduler/cache"
 
@@ -98,7 +97,7 @@ func (pl *PodLister) GetPod(task *api.TaskInfo) *v1.Pod {
 	if !found {
 		// we could not write the copied pod back into cache for read only
 		pod = pl.copyTaskPod(task)
-		glog.Warningf("DeepCopy for pod %s/%s at PodLister.GetPod is unexpected", pod.Namespace, pod.Name)
+		klog.Warningf("DeepCopy for pod %s/%s at PodLister.GetPod is unexpected", pod.Namespace, pod.Name)
 	}
 	return pod
 }

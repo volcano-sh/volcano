@@ -19,10 +19,9 @@ package gang
 import (
 	"fmt"
 
-	"github.com/golang/glog"
-
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
@@ -82,14 +81,14 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 			preemptable := job.MinAvailable <= occupid-1 || job.MinAvailable == 1
 
 			if !preemptable {
-				glog.V(3).Infof("Can not preempt task <%v/%v> because of gang-scheduling",
+				klog.V(3).Infof("Can not preempt task <%v/%v> because of gang-scheduling",
 					preemptee.Namespace, preemptee.Name)
 			} else {
 				victims = append(victims, preemptee)
 			}
 		}
 
-		glog.V(3).Infof("Victims from Gang plugins are %+v", victims)
+		klog.V(3).Infof("Victims from Gang plugins are %+v", victims)
 
 		return victims
 	}
@@ -105,7 +104,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		lReady := lv.Ready()
 		rReady := rv.Ready()
 
-		glog.V(4).Infof("Gang JobOrderFn: <%v/%v> is ready: %t, <%v/%v> is ready: %t",
+		klog.V(4).Infof("Gang JobOrderFn: <%v/%v> is ready: %t, <%v/%v> is ready: %t",
 			lv.Namespace, lv.Name, lReady, rv.Namespace, rv.Name, rReady)
 
 		if lReady && rReady {
@@ -158,7 +157,7 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			}
 
 			if err := ssn.UpdateJobCondition(job, jc); err != nil {
-				glog.Errorf("Failed to update job <%s/%s> condition: %v",
+				klog.Errorf("Failed to update job <%s/%s> condition: %v",
 					job.Namespace, job.Name, err)
 			}
 

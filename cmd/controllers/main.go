@@ -20,11 +20,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/golang/glog"
 	"github.com/spf13/pflag"
 
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/util/flag"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/cmd/controllers/app"
 	"volcano.sh/volcano/cmd/controllers/app/options"
@@ -38,6 +38,7 @@ func main() {
 	s.AddFlags(pflag.CommandLine)
 
 	flag.InitFlags()
+	klog.InitFlags(nil)
 
 	if s.PrintVersion {
 		version.PrintVersionAndExit()
@@ -46,9 +47,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
-	// The default glog flush interval is 30 seconds, which is frighteningly long.
-	go wait.Until(glog.Flush, *logFlushFreq, wait.NeverStop)
-	defer glog.Flush()
+	// The default klog flush interval is 30 seconds, which is frighteningly long.
+	go wait.Until(klog.Flush, *logFlushFreq, wait.NeverStop)
+	defer klog.Flush()
 
 	if err := app.Run(s); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)

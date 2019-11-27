@@ -19,7 +19,6 @@ package admission
 import (
 	"fmt"
 
-	"github.com/golang/glog"
 	"github.com/hashicorp/go-multierror"
 
 	"k8s.io/api/admission/v1beta1"
@@ -29,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/apis/core/validation"
 
 	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -97,7 +97,7 @@ func addToScheme(scheme *runtime.Scheme) {
 
 //ToAdmissionResponse updates the admission response with the input error
 func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
-	glog.Error(err)
+	klog.Error(err)
 	return &v1beta1.AdmissionResponse{
 		Result: &metav1.Status{
 			Message: err.Error(),
@@ -120,7 +120,7 @@ func DecodeJob(object runtime.RawExtension, resource metav1.GroupVersionResource
 	if _, _, err := deserializer.Decode(raw, nil, &job); err != nil {
 		return job, err
 	}
-	glog.V(3).Infof("the job struct is %+v", job)
+	klog.V(3).Infof("the job struct is %+v", job)
 
 	return job, nil
 }

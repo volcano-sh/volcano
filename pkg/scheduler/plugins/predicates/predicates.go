@@ -20,8 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/golang/glog"
-
+	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
 	"k8s.io/kubernetes/pkg/scheduler/cache"
@@ -128,10 +127,10 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			nodeName := event.Task.NodeName
 			node, found := nodeMap[nodeName]
 			if !found {
-				glog.Warningf("predicates, update pod %s/%s allocate to NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+				klog.Warningf("predicates, update pod %s/%s allocate to NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
 			} else {
 				node.AddPod(pod)
-				glog.V(4).Infof("predicates, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
+				klog.V(4).Infof("predicates, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
 			}
 		},
 		DeallocateFunc: func(event *framework.Event) {
@@ -140,10 +139,10 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			nodeName := event.Task.NodeName
 			node, found := nodeMap[nodeName]
 			if !found {
-				glog.Warningf("predicates, update pod %s/%s allocate from NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+				klog.Warningf("predicates, update pod %s/%s allocate from NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
 			} else {
 				node.RemovePod(pod)
-				glog.V(4).Infof("predicates, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
+				klog.V(4).Infof("predicates, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
 			}
 		},
 	})
@@ -159,11 +158,11 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		if !found {
 			nodeInfo = cache.NewNodeInfo(node.Pods()...)
 			nodeInfo.SetNode(node.Node)
-			glog.Warningf("predicates, generate node info for %s at PredicateFn is unexpected", node.Name)
+			klog.Warningf("predicates, generate node info for %s at PredicateFn is unexpected", node.Name)
 		}
 
 		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods()) {
-			glog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed",
+			klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed",
 				task.Namespace, task.Name, node.Name)
 			return api.NewFitError(task, node, api.NodePodNumberExceeded)
 		}
@@ -174,7 +173,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return err
 		}
 
-		glog.V(4).Infof("CheckNodeCondition predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+		klog.V(4).Infof("CheckNodeCondition predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
 			task.Namespace, task.Name, node.Name, fit, err)
 
 		if !fit {
@@ -187,7 +186,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return err
 		}
 
-		glog.V(4).Infof("CheckNodeUnschedulable Predicate Task <%s/%s> on Node <%s>: fit %t, err %v",
+		klog.V(4).Infof("CheckNodeUnschedulable Predicate Task <%s/%s> on Node <%s>: fit %t, err %v",
 			task.Namespace, task.Name, node.Name, fit, err)
 
 		if !fit {
@@ -200,7 +199,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return err
 		}
 
-		glog.V(4).Infof("NodeSelect predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+		klog.V(4).Infof("NodeSelect predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
 			task.Namespace, task.Name, node.Name, fit, err)
 
 		if !fit {
@@ -213,7 +212,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return err
 		}
 
-		glog.V(4).Infof("HostPorts predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+		klog.V(4).Infof("HostPorts predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
 			task.Namespace, task.Name, node.Name, fit, err)
 
 		if !fit {
@@ -226,7 +225,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return err
 		}
 
-		glog.V(4).Infof("Toleration/Taint predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+		klog.V(4).Infof("Toleration/Taint predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
 			task.Namespace, task.Name, node.Name, fit, err)
 
 		if !fit {
@@ -240,7 +239,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				return err
 			}
 
-			glog.V(4).Infof("CheckNodeMemoryPressure predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+			klog.V(4).Infof("CheckNodeMemoryPressure predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
 				task.Namespace, task.Name, node.Name, fit, err)
 
 			if !fit {
@@ -255,7 +254,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				return err
 			}
 
-			glog.V(4).Infof("CheckNodeDiskPressure predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+			klog.V(4).Infof("CheckNodeDiskPressure predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
 				task.Namespace, task.Name, node.Name, fit, err)
 
 			if !fit {
@@ -270,7 +269,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				return err
 			}
 
-			glog.V(4).Infof("CheckNodePIDPressurePredicate predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+			klog.V(4).Infof("CheckNodePIDPressurePredicate predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
 				task.Namespace, task.Name, node.Name, fit, err)
 
 			if !fit {
@@ -291,7 +290,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return err
 		}
 
-		glog.V(4).Infof("Pod Affinity/Anti-Affinity predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+		klog.V(4).Infof("Pod Affinity/Anti-Affinity predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
 			task.Namespace, task.Name, node.Name, fit, err)
 
 		if !fit {

@@ -21,8 +21,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/glog"
-
 	"k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -41,6 +39,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/scheduler/volumebinder"
 
@@ -128,7 +127,7 @@ func (db *defaultBinder) Bind(p *v1.Pod, hostname string) error {
 			Name: hostname,
 		},
 	}); err != nil {
-		glog.Errorf("Failed to bind pod <%v/%v>: %#v", p.Namespace, p.Name, err)
+		klog.Errorf("Failed to bind pod <%v/%v>: %#v", p.Namespace, p.Name, err)
 		return err
 	}
 	return nil
@@ -140,10 +139,10 @@ type defaultEvictor struct {
 
 //Evict will send delete pod request to api server
 func (de *defaultEvictor) Evict(p *v1.Pod) error {
-	glog.V(3).Infof("Evicting pod %v/%v", p.Namespace, p.Name)
+	klog.V(3).Infof("Evicting pod %v/%v", p.Namespace, p.Name)
 
 	if err := de.kubeclient.CoreV1().Pods(p.Namespace).Delete(p.Name, nil); err != nil {
-		glog.Errorf("Failed to evict pod <%v/%v>: %#v", p.Namespace, p.Name, err)
+		klog.Errorf("Failed to evict pod <%v/%v>: %#v", p.Namespace, p.Name, err)
 		return err
 	}
 	return nil
@@ -182,7 +181,7 @@ func podConditionHaveUpdate(status *v1.PodStatus, condition *v1.PodCondition) bo
 
 // UpdatePodCondition will Update pod with podCondition
 func (su *defaultStatusUpdater) UpdatePodCondition(pod *v1.Pod, condition *v1.PodCondition) (*v1.Pod, error) {
-	glog.V(3).Infof("Updating pod condition for %s/%s to (%s==%s)", pod.Namespace, pod.Name, condition.Type, condition.Status)
+	klog.V(3).Infof("Updating pod condition for %s/%s to (%s==%s)", pod.Namespace, pod.Name, condition.Type, condition.Status)
 	if podutil.UpdatePodCondition(&pod.Status, condition) {
 		return su.kubeclient.CoreV1().Pods(pod.Namespace).UpdateStatus(pod)
 	}
@@ -194,19 +193,19 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*sch
 	if pg.Version == schedulingapi.PodGroupVersionV1Alpha1 {
 		podgroup := &v1alpha1.PodGroup{}
 		if err := schedulingscheme.Scheme.Convert(&pg.PodGroup, podgroup, nil); err != nil {
-			glog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
+			klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
 			return nil, err
 		}
 
 		updated, err := su.vcclient.SchedulingV1alpha1().PodGroups(podgroup.Namespace).Update(podgroup)
 		if err != nil {
-			glog.Errorf("Error while updating PodGroup with error: %v", err)
+			klog.Errorf("Error while updating PodGroup with error: %v", err)
 			return nil, err
 		}
 
 		podGroupInfo := &schedulingapi.PodGroup{Version: schedulingapi.PodGroupVersionV1Alpha1}
 		if err := schedulingscheme.Scheme.Convert(updated, &podGroupInfo.PodGroup, nil); err != nil {
-			glog.Errorf("Error while converting v1alpha.PodGroup to api.PodGroup with error: %v", err)
+			klog.Errorf("Error while converting v1alpha.PodGroup to api.PodGroup with error: %v", err)
 			return nil, err
 		}
 
@@ -216,18 +215,18 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*sch
 	if pg.Version == schedulingapi.PodGroupVersionV1Alpha2 {
 		podgroup := &v1alpha2.PodGroup{}
 		if err := schedulingscheme.Scheme.Convert(&pg.PodGroup, podgroup, nil); err != nil {
-			glog.Errorf("Error while converting PodGroup to v1alpha2.PodGroup with error: %v", err)
+			klog.Errorf("Error while converting PodGroup to v1alpha2.PodGroup with error: %v", err)
 			return nil, err
 		}
 
 		updated, err := su.vcclient.SchedulingV1alpha2().PodGroups(podgroup.Namespace).Update(podgroup)
 		if err != nil {
-			glog.Errorf("Error while updating PodGroup with error: %v", err)
+			klog.Errorf("Error while updating PodGroup with error: %v", err)
 		}
 
 		podGroupInfo := &schedulingapi.PodGroup{Version: schedulingapi.PodGroupVersionV1Alpha2}
 		if err := schedulingscheme.Scheme.Convert(updated, &podGroupInfo.PodGroup, nil); err != nil {
-			glog.Errorf("Error While converting v2alpha.PodGroup to api.PodGroup with error: %v", err)
+			klog.Errorf("Error While converting v2alpha.PodGroup to api.PodGroup with error: %v", err)
 			return nil, err
 		}
 
@@ -534,7 +533,7 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 	if job.PodGroup.Version == schedulingapi.PodGroupVersionV1Alpha1 {
 		podgroup := &v1alpha1.PodGroup{}
 		if err := schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil); err != nil {
-			glog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
+			klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
 			return err
 		}
 		sc.Recorder.Eventf(podgroup, v1.EventTypeNormal, "Evict", reason)
@@ -544,7 +543,7 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 	if job.PodGroup.Version == schedulingapi.PodGroupVersionV1Alpha2 {
 		podgroup := &v1alpha2.PodGroup{}
 		if err := schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil); err != nil {
-			glog.Errorf("Error while converting PodGroup to v1alpha2.PodGroup with error: %v", err)
+			klog.Errorf("Error while converting PodGroup to v1alpha2.PodGroup with error: %v", err)
 			return err
 		}
 		sc.Recorder.Eventf(podgroup, v1.EventTypeNormal, "Evict", reason)
@@ -647,14 +646,14 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, messag
 			return err
 		}
 	} else {
-		glog.V(4).Infof("task unscheduleable %s/%s, message: %s, skip by no condition update", pod.Namespace, pod.Name, message)
+		klog.V(4).Infof("task unscheduleable %s/%s, message: %s, skip by no condition update", pod.Namespace, pod.Name, message)
 	}
 
 	return nil
 }
 
 func (sc *SchedulerCache) deleteJob(job *schedulingapi.JobInfo) {
-	glog.V(3).Infof("Try to delete Job <%v:%v/%v>", job.UID, job.Namespace, job.Name)
+	klog.V(3).Infof("Try to delete Job <%v:%v/%v>", job.UID, job.Namespace, job.Name)
 
 	sc.deletedJobs.AddRateLimited(job)
 }
@@ -669,7 +668,7 @@ func (sc *SchedulerCache) processCleanupJob() {
 
 	job, found := obj.(*schedulingapi.JobInfo)
 	if !found {
-		glog.Errorf("Failed to convert <%v> to *JobInfo", obj)
+		klog.Errorf("Failed to convert <%v> to *JobInfo", obj)
 		return
 	}
 
@@ -678,7 +677,7 @@ func (sc *SchedulerCache) processCleanupJob() {
 
 	if schedulingapi.JobTerminated(job) {
 		delete(sc.Jobs, job.UID)
-		glog.V(3).Infof("Job <%v:%v/%v> was deleted.", job.UID, job.Namespace, job.Name)
+		klog.V(3).Infof("Job <%v:%v/%v> was deleted.", job.UID, job.Namespace, job.Name)
 	} else {
 		// Retry
 		sc.deleteJob(job)
@@ -699,12 +698,12 @@ func (sc *SchedulerCache) processResyncTask() {
 
 	task, ok := obj.(*schedulingapi.TaskInfo)
 	if !ok {
-		glog.Errorf("failed to convert %v to *v1.Pod", obj)
+		klog.Errorf("failed to convert %v to *v1.Pod", obj)
 		return
 	}
 
 	if err := sc.syncTask(task); err != nil {
-		glog.Errorf("Failed to sync pod <%v/%v>, retry it.", task.Namespace, task.Name)
+		klog.Errorf("Failed to sync pod <%v/%v>, retry it.", task.Namespace, task.Name)
 		sc.resyncTask(task)
 	}
 }
@@ -745,7 +744,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 				value.Priority = priorityClass.Value
 			}
 
-			glog.V(4).Infof("The priority of job <%s/%s> is <%s/%d>",
+			klog.V(4).Infof("The priority of job <%s/%s> is <%s/%d>",
 				value.Namespace, value.Name, priName, value.Priority)
 		}
 
@@ -760,21 +759,21 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	for _, value := range sc.NamespaceCollection {
 		info := value.Snapshot()
 		snapshot.NamespaceInfo[info.Name] = info
-		glog.V(4).Infof("Namespace %s has weight %v",
+		klog.V(4).Infof("Namespace %s has weight %v",
 			value.Name, info.GetWeight())
 	}
 
 	for _, value := range sc.Jobs {
 		// If no scheduling spec, does not handle it.
 		if value.PodGroup == nil && value.PDB == nil {
-			glog.V(4).Infof("The scheduling spec of Job <%v:%s/%s> is nil, ignore it.",
+			klog.V(4).Infof("The scheduling spec of Job <%v:%s/%s> is nil, ignore it.",
 				value.UID, value.Namespace, value.Name)
 
 			continue
 		}
 
 		if _, found := snapshot.Queues[value.Queue]; !found {
-			glog.V(3).Infof("The Queue <%v> of Job <%v/%v> does not exist, ignore it.",
+			klog.V(3).Infof("The Queue <%v> of Job <%v/%v> does not exist, ignore it.",
 				value.Queue, value.Namespace, value.Name)
 			continue
 		}
@@ -784,7 +783,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	}
 	wg.Wait()
 
-	glog.V(3).Infof("There are <%d> Jobs, <%d> Queues and <%d> Nodes in total for scheduling.",
+	klog.V(3).Infof("There are <%d> Jobs, <%d> Queues and <%d> Nodes in total for scheduling.",
 		len(snapshot.Jobs), len(snapshot.Queues), len(snapshot.Nodes))
 
 	return snapshot
@@ -861,7 +860,7 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo) {
 				msg = fitError.Error()
 			}
 			if err := sc.taskUnschedulable(taskInfo, msg); err != nil {
-				glog.Errorf("Failed to update unschedulable task status <%s/%s>: %v",
+				klog.Errorf("Failed to update unschedulable task status <%s/%s>: %v",
 					taskInfo.Namespace, taskInfo.Name, err)
 			}
 		}
@@ -891,7 +890,7 @@ func (sc *SchedulerCache) recordPodGroupEvent(podGroup *schedulingapi.PodGroup, 
 	if podGroup.Version == schedulingapi.PodGroupVersionV1Alpha1 {
 		pg := &v1alpha1.PodGroup{}
 		if err := schedulingscheme.Scheme.Convert(&podGroup.PodGroup, pg, nil); err != nil {
-			glog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
+			klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
 			return
 		}
 
@@ -901,7 +900,7 @@ func (sc *SchedulerCache) recordPodGroupEvent(podGroup *schedulingapi.PodGroup, 
 	if podGroup.Version == schedulingapi.PodGroupVersionV1Alpha2 {
 		pg := &v1alpha2.PodGroup{}
 		if err := schedulingscheme.Scheme.Convert(&podGroup.PodGroup, pg, nil); err != nil {
-			glog.Errorf("Error while converting PodGroup to v1alpha2.PodGroup with error: %v", err)
+			klog.Errorf("Error while converting PodGroup to v1alpha2.PodGroup with error: %v", err)
 			return
 		}
 

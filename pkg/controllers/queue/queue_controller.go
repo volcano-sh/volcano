@@ -21,12 +21,12 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/golang/glog"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog"
 
 	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
@@ -106,12 +106,12 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go c.pgInformer.Informer().Run(stopCh)
 
 	if !cache.WaitForCacheSync(stopCh, c.queueSynced, c.pgSynced) {
-		glog.Errorf("unable to sync caches for queue controller")
+		klog.Errorf("unable to sync caches for queue controller")
 		return
 	}
 
 	go wait.Until(c.worker, 0, stopCh)
-	glog.Infof("QueueController is running ...... ")
+	klog.Infof("QueueController is running ...... ")
 }
 
 // worker runs a worker thread that just dequeues items, processes them, and
@@ -131,7 +131,7 @@ func (c *Controller) processNextWorkItem() bool {
 	defer c.queue.Done(eKey)
 
 	if err := c.syncQueue(eKey.(string)); err != nil {
-		glog.V(2).Infof("Error syncing queues %q, retrying. Error: %v", eKey, err)
+		klog.V(2).Infof("Error syncing queues %q, retrying. Error: %v", eKey, err)
 		c.queue.AddRateLimited(eKey)
 		return true
 	}
@@ -156,7 +156,7 @@ func (c *Controller) getPodGroups(key string) ([]string, error) {
 }
 
 func (c *Controller) syncQueue(key string) error {
-	glog.V(4).Infof("Begin sync queue %s", key)
+	klog.V(4).Infof("Begin sync queue %s", key)
 
 	podGroups, err := c.getPodGroups(key)
 	if err != nil {
@@ -190,7 +190,7 @@ func (c *Controller) syncQueue(key string) error {
 	queue, err := c.queueLister.Get(key)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			glog.V(2).Infof("queue %s has been deleted", key)
+			klog.V(2).Infof("queue %s has been deleted", key)
 			return nil
 		}
 		// TODO: do not retry to syncQueue for this error
@@ -206,7 +206,7 @@ func (c *Controller) syncQueue(key string) error {
 	newQueue.Status = queueStatus
 
 	if _, err := c.vcClient.SchedulingV1alpha2().Queues().UpdateStatus(newQueue); err != nil {
-		glog.Errorf("Failed to update status of Queue %s: %v", newQueue.Name, err)
+		klog.Errorf("Failed to update status of Queue %s: %v", newQueue.Name, err)
 		return err
 	}
 
@@ -223,12 +223,12 @@ func (c *Controller) deleteQueue(obj interface{}) {
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
-			glog.Errorf("Couldn't get object from tombstone %#v", obj)
+			klog.Errorf("Couldn't get object from tombstone %#v", obj)
 			return
 		}
 		queue, ok = tombstone.Obj.(*schedulingv1alpha2.Queue)
 		if !ok {
-			glog.Errorf("Tombstone contained object that is not a Queue: %#v", obj)
+			klog.Errorf("Tombstone contained object that is not a Queue: %#v", obj)
 			return
 		}
 	}
@@ -270,12 +270,12 @@ func (c *Controller) deletePodGroup(obj interface{}) {
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
-			glog.Errorf("Couldn't get object from tombstone %#v", obj)
+			klog.Errorf("Couldn't get object from tombstone %#v", obj)
 			return
 		}
 		pg, ok = tombstone.Obj.(*schedulingv1alpha2.PodGroup)
 		if !ok {
-			glog.Errorf("Tombstone contained object that is not a PodGroup: %#v", obj)
+			klog.Errorf("Tombstone contained object that is not a PodGroup: %#v", obj)
 			return
 		}
 	}

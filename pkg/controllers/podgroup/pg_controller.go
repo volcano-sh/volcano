@@ -17,8 +17,6 @@ limitations under the License.
 package podgroup
 
 import (
-	"github.com/golang/glog"
-
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -27,6 +25,7 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog"
 
 	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
@@ -107,7 +106,7 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 
 	go wait.Until(cc.worker, 0, stopCh)
 
-	glog.Infof("PodgroupController is running ...... ")
+	klog.Infof("PodgroupController is running ...... ")
 }
 
 func (cc *Controller) worker() {
@@ -118,7 +117,7 @@ func (cc *Controller) worker() {
 func (cc *Controller) processNextReq() bool {
 	obj, shutdown := cc.queue.Get()
 	if shutdown {
-		glog.Errorf("Fail to pop item from queue")
+		klog.Errorf("Fail to pop item from queue")
 		return false
 	}
 
@@ -127,13 +126,13 @@ func (cc *Controller) processNextReq() bool {
 
 	pod, err := cc.podLister.Pods(req.podNamespace).Get(req.podName)
 	if err != nil {
-		glog.Errorf("Failed to get pod by <%v> from cache: %v", req, err)
+		klog.Errorf("Failed to get pod by <%v> from cache: %v", req, err)
 		return true
 	}
 
 	// normal pod use volcano
 	if err := cc.createNormalPodPGIfNotExist(pod); err != nil {
-		glog.Errorf("Failed to handle Pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
+		klog.Errorf("Failed to handle Pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
 		cc.queue.AddRateLimited(req)
 		return true
 	}

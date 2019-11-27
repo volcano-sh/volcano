@@ -17,7 +17,7 @@ limitations under the License.
 package backfill
 
 import (
-	"github.com/golang/glog"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -39,8 +39,8 @@ func (alloc *backfillAction) Name() string {
 func (alloc *backfillAction) Initialize() {}
 
 func (alloc *backfillAction) Execute(ssn *framework.Session) {
-	glog.V(3).Infof("Enter Backfill ...")
-	defer glog.V(3).Infof("Leaving Backfill ...")
+	klog.V(3).Infof("Enter Backfill ...")
+	defer klog.V(3).Infof("Leaving Backfill ...")
 
 	// TODO (k82cn): When backfill, it's also need to balance between Queues.
 	for _, job := range ssn.Jobs {
@@ -48,7 +48,7 @@ func (alloc *backfillAction) Execute(ssn *framework.Session) {
 			continue
 		}
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
-			glog.V(4).Infof("Job <%s/%s> Queue <%s> skip backfill, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
+			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip backfill, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
 			continue
 		}
 
@@ -63,15 +63,15 @@ func (alloc *backfillAction) Execute(ssn *framework.Session) {
 					// TODO (k82cn): predicates did not consider pod number for now, there'll
 					// be ping-pong case here.
 					if err := ssn.PredicateFn(task, node); err != nil {
-						glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
+						klog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
 							task.Namespace, task.Name, node.Name, err)
 						fe.SetNodeError(node.Name, err)
 						continue
 					}
 
-					glog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
+					klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
 					if err := ssn.Allocate(task, node.Name); err != nil {
-						glog.Errorf("Failed to bind Task %v on %v in Session %v", task.UID, node.Name, ssn.UID)
+						klog.Errorf("Failed to bind Task %v on %v in Session %v", task.UID, node.Name, ssn.UID)
 						fe.SetNodeError(node.Name, err)
 						continue
 					}

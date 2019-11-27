@@ -6,9 +6,8 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/golang/glog"
-
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -116,7 +115,7 @@ func (ju *jobUpdater) updateJob(index int) {
 	updatePG := !found || isPodGroupStatusUpdated(&job.PodGroup.Status, oldStatus)
 
 	if _, err := ssn.cache.UpdateJobStatus(job, updatePG); err != nil {
-		glog.Errorf("Failed to update job <%s/%s>: %v",
+		klog.Errorf("Failed to update job <%s/%s>: %v",
 			job.Namespace, job.Name, err)
 	}
 }

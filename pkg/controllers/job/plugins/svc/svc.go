@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -63,7 +63,7 @@ func (sp *servicePlugin) addFlags() {
 		"set publishNotReadyAddresses of svc to true")
 
 	if err := flagSet.Parse(sp.pluginArguments); err != nil {
-		glog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
+		klog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
 	}
 	return
 }
@@ -119,7 +119,7 @@ func (sp *servicePlugin) OnJobDelete(job *batch.Job) error {
 
 	if err := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Delete(job.Name, nil); err != nil {
 		if !apierrors.IsNotFound(err) {
-			glog.Errorf("Failed to delete Service of Job %v/%v: %v", job.Namespace, job.Name, err)
+			klog.Errorf("Failed to delete Service of Job %v/%v: %v", job.Namespace, job.Name, err)
 			return err
 		}
 	}
@@ -156,7 +156,7 @@ func (sp *servicePlugin) createServiceIfNotExist(job *batch.Job) error {
 	// If Service does not exist, create one for Job.
 	if _, err := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Get(job.Name, metav1.GetOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
-			glog.V(3).Infof("Failed to get Service for Job <%s/%s>: %v",
+			klog.V(3).Infof("Failed to get Service for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
 			return err
 		}
@@ -188,7 +188,7 @@ func (sp *servicePlugin) createServiceIfNotExist(job *batch.Job) error {
 		}
 
 		if _, e := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Create(svc); e != nil {
-			glog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v", job.Namespace, job.Name, e)
+			klog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v", job.Namespace, job.Name, e)
 			return e
 		}
 		job.Status.ControlledResources["plugin-"+sp.Name()] = sp.Name()

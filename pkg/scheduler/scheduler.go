@@ -19,10 +19,9 @@ package scheduler
 import (
 	"time"
 
-	"github.com/golang/glog"
-
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
+	"k8s.io/klog"
 
 	schedcache "volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -69,9 +68,9 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 }
 
 func (pc *Scheduler) runOnce() {
-	glog.V(4).Infof("Start scheduling ...")
+	klog.V(4).Infof("Start scheduling ...")
 	scheduleStartTime := time.Now()
-	defer glog.V(4).Infof("End scheduling ...")
+	defer klog.V(4).Infof("End scheduling ...")
 	defer metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
 
 	pc.loadSchedulerConf()
@@ -93,7 +92,7 @@ func (pc *Scheduler) loadSchedulerConf() {
 	schedConf := defaultSchedulerConf
 	if len(pc.schedulerConf) != 0 {
 		if schedConf, err = readSchedulerConf(pc.schedulerConf); err != nil {
-			glog.Errorf("Failed to read scheduler configuration '%s', using default configuration: %v",
+			klog.Errorf("Failed to read scheduler configuration '%s', using default configuration: %v",
 				pc.schedulerConf, err)
 			schedConf = defaultSchedulerConf
 		}

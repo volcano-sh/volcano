@@ -19,12 +19,11 @@ package framework
 import (
 	"fmt"
 
-	"github.com/golang/glog"
-
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -120,7 +119,7 @@ func openSession(cache cache.Cache) *Session {
 				}
 
 				if err := ssn.UpdateJobCondition(job, jc); err != nil {
-					glog.Errorf("Failed to update job condition: %v", err)
+					klog.Errorf("Failed to update job condition: %v", err)
 				}
 			}
 
@@ -132,7 +131,7 @@ func openSession(cache cache.Cache) *Session {
 	ssn.Queues = snapshot.Queues
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
 
-	glog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues",
+	klog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues",
 		ssn.UID, len(ssn.Jobs), len(ssn.Queues))
 
 	return ssn
@@ -151,7 +150,7 @@ func closeSession(ssn *Session) {
 	ssn.namespaceOrderFns = nil
 	ssn.queueOrderFns = nil
 
-	glog.V(3).Infof("Close Session %v", ssn.UID)
+	klog.V(3).Infof("Close Session %v", ssn.UID)
 }
 
 func jobStatus(ssn *Session, jobInfo *api.JobInfo) scheduling.PodGroupStatus {
@@ -207,12 +206,12 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	job, found := ssn.Jobs[task.Job]
 	if found {
 		if err := job.UpdateTaskStatus(task, api.Pipelined); err != nil {
-			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
+			klog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
 				task.Namespace, task.Name, api.Pipelined, ssn.UID, err)
 			return err
 		}
 	} else {
-		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
+		klog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
 			task.Job, ssn.UID)
 		return fmt.Errorf("failed to find job %s when binding", task.Job)
 	}
@@ -221,14 +220,14 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 
 	if node, found := ssn.Nodes[hostname]; found {
 		if err := node.AddTask(task); err != nil {
-			glog.Errorf("Failed to add task <%v/%v> to node <%v> in Session <%v>: %v",
+			klog.Errorf("Failed to add task <%v/%v> to node <%v> in Session <%v>: %v",
 				task.Namespace, task.Name, hostname, ssn.UID, err)
 			return err
 		}
-		glog.V(3).Infof("After added Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
+		klog.V(3).Infof("After added Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
 			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
 	} else {
-		glog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
+		klog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
 			hostname, ssn.UID)
 		return fmt.Errorf("failed to find node %s", hostname)
 	}
@@ -254,12 +253,12 @@ func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
 	job, found := ssn.Jobs[task.Job]
 	if found {
 		if err := job.UpdateTaskStatus(task, api.Allocated); err != nil {
-			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
+			klog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
 				task.Namespace, task.Name, api.Allocated, ssn.UID, err)
 			return err
 		}
 	} else {
-		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
+		klog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
 			task.Job, ssn.UID)
 		return fmt.Errorf("failed to find job %s", task.Job)
 	}
@@ -268,14 +267,14 @@ func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
 
 	if node, found := ssn.Nodes[hostname]; found {
 		if err := node.AddTask(task); err != nil {
-			glog.Errorf("Failed to add task <%v/%v> to node <%v> in Session <%v>: %v",
+			klog.Errorf("Failed to add task <%v/%v> to node <%v> in Session <%v>: %v",
 				task.Namespace, task.Name, hostname, ssn.UID, err)
 			return err
 		}
-		glog.V(3).Infof("After allocated Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
+		klog.V(3).Infof("After allocated Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
 			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
 	} else {
-		glog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
+		klog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
 			hostname, ssn.UID)
 		return fmt.Errorf("failed to find node %s", hostname)
 	}
@@ -292,7 +291,7 @@ func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
 	if ssn.JobReady(job) {
 		for _, task := range job.TaskStatusIndex[api.Allocated] {
 			if err := ssn.dispatch(task); err != nil {
-				glog.Errorf("Failed to dispatch task <%v/%v>: %v",
+				klog.Errorf("Failed to dispatch task <%v/%v>: %v",
 					task.Namespace, task.Name, err)
 				return err
 			}
@@ -314,12 +313,12 @@ func (ssn *Session) dispatch(task *api.TaskInfo) error {
 	// Update status in session
 	if job, found := ssn.Jobs[task.Job]; found {
 		if err := job.UpdateTaskStatus(task, api.Binding); err != nil {
-			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
+			klog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
 				task.Namespace, task.Name, api.Binding, ssn.UID, err)
 			return err
 		}
 	} else {
-		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
+		klog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
 			task.Job, ssn.UID)
 		return fmt.Errorf("failed to find job %s", task.Job)
 	}
@@ -338,12 +337,12 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 	job, found := ssn.Jobs[reclaimee.Job]
 	if found {
 		if err := job.UpdateTaskStatus(reclaimee, api.Releasing); err != nil {
-			glog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
+			klog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
 				reclaimee.Namespace, reclaimee.Name, api.Releasing, ssn.UID, err)
 			return err
 		}
 	} else {
-		glog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
+		klog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
 			reclaimee.Job, ssn.UID)
 		return fmt.Errorf("failed to find job %s", reclaimee.Job)
 	}
@@ -351,7 +350,7 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 	// Update task in node.
 	if node, found := ssn.Nodes[reclaimee.NodeName]; found {
 		if err := node.UpdateTask(reclaimee); err != nil {
-			glog.Errorf("Failed to update task <%v/%v> in Session <%v>: %v",
+			klog.Errorf("Failed to update task <%v/%v> in Session <%v>: %v",
 				reclaimee.Namespace, reclaimee.Name, ssn.UID, err)
 			return err
 		}

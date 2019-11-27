@@ -23,10 +23,11 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"github.com/golang/glog"
+
 	"golang.org/x/crypto/ssh"
 
 	"k8s.io/api/core/v1"
+	"k8s.io/klog"
 
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
@@ -157,7 +158,7 @@ func generateRsaKey(job *batch.Job) (map[string]string, error) {
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, bitSize)
 	if err != nil {
-		glog.Errorf("rsa generateKey err: %v", err)
+		klog.Errorf("rsa generateKey err: %v", err)
 		return nil, err
 	}
 
@@ -171,7 +172,7 @@ func generateRsaKey(job *batch.Job) (map[string]string, error) {
 	// id_rsa.pub
 	publicRsaKey, err := ssh.NewPublicKey(&privateKey.PublicKey)
 	if err != nil {
-		glog.Errorf("ssh newPublicKey err: %v", err)
+		klog.Errorf("ssh newPublicKey err: %v", err)
 		return nil, err
 	}
 	publicKeyBytes := ssh.MarshalAuthorizedKey(publicRsaKey)
@@ -196,7 +197,7 @@ func (sp *sshPlugin) addFlags() {
 		"ssh private and public keys, it is `/root/.ssh` by default.")
 
 	if err := flagSet.Parse(sp.pluginArguments); err != nil {
-		glog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
+		klog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
 	}
 	return
 }

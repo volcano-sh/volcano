@@ -20,13 +20,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/glog"
-
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/controller"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -80,8 +79,8 @@ func NewGarbageCollector(vkClient vcclientset.Interface) *GarbageCollector {
 func (gb *GarbageCollector) Run(stopCh <-chan struct{}) {
 	defer gb.queue.ShutDown()
 
-	glog.Infof("Starting garbage collector")
-	defer glog.Infof("Shutting down garbage collector")
+	klog.Infof("Starting garbage collector")
+	defer klog.Infof("Shutting down garbage collector")
 
 	go gb.jobInformer.Informer().Run(stopCh)
 	if !controller.WaitForCacheSync("garbage collector", stopCh, gb.jobSynced) {
@@ -95,7 +94,7 @@ func (gb *GarbageCollector) Run(stopCh <-chan struct{}) {
 
 func (gb *GarbageCollector) addJob(obj interface{}) {
 	job := obj.(*v1alpha1.Job)
-	glog.V(4).Infof("Adding job %s/%s", job.Namespace, job.Name)
+	klog.V(4).Infof("Adding job %s/%s", job.Namespace, job.Name)
 
 	if job.DeletionTimestamp == nil && needsCleanup(job) {
 		gb.enqueue(job)
@@ -104,7 +103,7 @@ func (gb *GarbageCollector) addJob(obj interface{}) {
 
 func (gb *GarbageCollector) updateJob(old, cur interface{}) {
 	job := cur.(*v1alpha1.Job)
-	glog.V(4).Infof("Updating job %s/%s", job.Namespace, job.Name)
+	klog.V(4).Infof("Updating job %s/%s", job.Namespace, job.Name)
 
 	if job.DeletionTimestamp == nil && needsCleanup(job) {
 		gb.enqueue(job)
@@ -112,10 +111,10 @@ func (gb *GarbageCollector) updateJob(old, cur interface{}) {
 }
 
 func (gb *GarbageCollector) enqueue(job *v1alpha1.Job) {
-	glog.V(4).Infof("Add job %s/%s to cleanup", job.Namespace, job.Name)
+	klog.V(4).Infof("Add job %s/%s to cleanup", job.Namespace, job.Name)
 	key, err := controller.KeyFunc(job)
 	if err != nil {
-		glog.Errorf("couldn't get key for object %#v: %v", job, err)
+		klog.Errorf("couldn't get key for object %#v: %v", job, err)
 		return
 	}
 
@@ -125,7 +124,7 @@ func (gb *GarbageCollector) enqueue(job *v1alpha1.Job) {
 func (gb *GarbageCollector) enqueueAfter(job *v1alpha1.Job, after time.Duration) {
 	key, err := controller.KeyFunc(job)
 	if err != nil {
-		glog.Errorf("couldn't get key for object %#v: %v", job, err)
+		klog.Errorf("couldn't get key for object %#v: %v", job, err)
 		return
 	}
 
@@ -156,7 +155,7 @@ func (gb *GarbageCollector) handleErr(err error, key interface{}) {
 		return
 	}
 
-	glog.Errorf("error cleaning up Job %v, will retry: %v", key, err)
+	klog.Errorf("error cleaning up Job %v, will retry: %v", key, err)
 	gb.queue.AddRateLimited(key)
 }
 
@@ -171,7 +170,7 @@ func (gb *GarbageCollector) processJob(key string) error {
 		return err
 	}
 
-	glog.V(4).Infof("Checking if Job %s/%s is ready for cleanup", namespace, name)
+	klog.V(4).Infof("Checking if Job %s/%s is ready for cleanup", namespace, name)
 	// Ignore the Jobs that are already deleted or being deleted, or the ones that don't need clean up.
 	job, err := gb.jobLister.Jobs(namespace).Get(name)
 	if errors.IsNotFound(err) {
@@ -210,7 +209,7 @@ func (gb *GarbageCollector) processJob(key string) error {
 		PropagationPolicy: &policy,
 		Preconditions:     &metav1.Preconditions{UID: &fresh.UID},
 	}
-	glog.V(4).Infof("Cleaning up Job %s/%s", namespace, name)
+	klog.V(4).Infof("Cleaning up Job %s/%s", namespace, name)
 	return gb.vcClient.BatchV1alpha1().Jobs(fresh.Namespace).Delete(fresh.Name, options)
 }
 
@@ -267,10 +266,10 @@ func timeLeft(j *v1alpha1.Job, since *time.Time) (*time.Duration, error) {
 		return nil, err
 	}
 	if finishAt.UTC().After(since.UTC()) {
-		glog.Warningf("Warning: Found Job %s/%s finished in the future. This is likely due to time skew in the cluster. Job cleanup will be deferred.", j.Namespace, j.Name)
+		klog.Warningf("Warning: Found Job %s/%s finished in the future. This is likely due to time skew in the cluster. Job cleanup will be deferred.", j.Namespace, j.Name)
 	}
 	remaining := expireAt.UTC().Sub(since.UTC())
-	glog.V(4).Infof("Found Job %s/%s finished at %v, remaining TTL %v since %v, TTL will expire at %v", j.Namespace, j.Name, finishAt.UTC(), remaining, since.UTC(), expireAt.UTC())
+	klog.V(4).Infof("Found Job %s/%s finished at %v, remaining TTL %v since %v, TTL will expire at %v", j.Namespace, j.Name, finishAt.UTC(), remaining, since.UTC(), expireAt.UTC())
 	return &remaining, nil
 }
 
