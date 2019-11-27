@@ -54,7 +54,7 @@ func InitRunFlags(cmd *cobra.Command) {
 
 	cmd.Flags().StringVarP(&launchJobFlags.Image, "image", "i", "busybox", "the container image of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
-	cmd.Flags().StringVarP(&launchJobFlags.Name, "name", "N", "test", "the name of job")
+	cmd.Flags().StringVarP(&launchJobFlags.Name, "name", "N", "", "the name of job")
 	cmd.Flags().IntVarP(&launchJobFlags.MinAvailable, "min", "m", 1, "the minimal available tasks of job")
 	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "r", 1, "the total tasks of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Requests, "requests", "R", "cpu=1000m,memory=100Mi", "the resource request of the task")
@@ -72,14 +72,28 @@ func RunJob() error {
 		return err
 	}
 
+	if launchJobFlags.Name == "" {
+		err = fmt.Errorf("job name cannot be left blank")
+		return err
+	}
+
+	req, err := populateResourceListV1(launchJobFlags.Requests)
+	if err != nil {
+		return err
+	}
+
+	limit, err := populateResourceListV1(launchJobFlags.Limits)
+	if err != nil {
+		return err
+	}
+
 	job, err := readFile(launchJobFlags.FileName)
 	if err != nil {
 		return err
 	}
 
 	if job == nil {
-		fmt.Printf("Error: job script (specified by --filename or -f) is mandatory to run a particular job")
-		return nil
+		job = constructLaunchJobFlagsJob(launchJobFlags, req, limit)
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
