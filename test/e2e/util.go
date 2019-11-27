@@ -58,7 +58,9 @@ var (
 const (
 	timeOutMessage               = "timed out waiting for the condition"
 	workerPriority               = "worker-pri"
+	workerPriorityValue          = -50
 	masterPriority               = "master-pri"
+	masterPriorityValue          = 100
 	defaultNginxImage            = "nginx:1.14"
 	nodeFieldSelectorKeyNodeName = api.ObjectNameField
 	defaultBusyBoxImage          = "busybox:1.24"
@@ -111,13 +113,13 @@ type context struct {
 
 	namespace       string
 	queues          []string
-	priorityClasses []string
+	priorityClasses map[string]int32
 }
 
 type options struct {
 	namespace       string
 	queues          []string
-	priorityClasses []string
+	priorityClasses map[string]int32
 }
 
 func initTestContext(o options) *context {
@@ -221,12 +223,12 @@ func deleteQueues(cxt *context) {
 }
 
 func createPriorityClasses(cxt *context) {
-	for _, pc := range cxt.priorityClasses {
+	for name, value := range cxt.priorityClasses {
 		_, err := cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Create(&schedv1.PriorityClass{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: pc,
+				Name: name,
 			},
-			Value:         100,
+			Value:         value,
 			GlobalDefault: false,
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -234,8 +236,8 @@ func createPriorityClasses(cxt *context) {
 }
 
 func deletePriorityClasses(cxt *context) {
-	for _, pc := range cxt.priorityClasses {
-		err := cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(pc, &metav1.DeleteOptions{})
+	for name := range cxt.priorityClasses {
+		err := cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(name, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 	}
 }
@@ -265,6 +267,7 @@ type jobSpec struct {
 	tasks     []taskSpec
 	policies  []batchv1alpha1.LifecyclePolicy
 	min       int32
+	pri       string
 	plugins   map[string][]string
 	volumes   []batchv1alpha1.VolumeSpec
 	// ttl seconds after job finished
@@ -352,6 +355,10 @@ func createJobInner(context *context, jobSpec *jobSpec) (*batchv1alpha1.Job, err
 		job.Spec.MinAvailable = jobSpec.min
 	} else {
 		job.Spec.MinAvailable = min
+	}
+
+	if jobSpec.pri != "" {
+		job.Spec.PriorityClassName = jobSpec.pri
 	}
 
 	job.Spec.Volumes = jobSpec.volumes
