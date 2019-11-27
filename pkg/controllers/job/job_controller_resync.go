@@ -20,13 +20,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/glog"
 	"golang.org/x/time/rate"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog"
 )
 
 func newRateLimitingQueue() workqueue.RateLimitingInterface {
@@ -53,12 +53,12 @@ func (cc *Controller) processResyncTask() {
 
 	task, ok := obj.(*v1.Pod)
 	if !ok {
-		glog.Errorf("failed to convert %v to *v1.Pod", obj)
+		klog.Errorf("failed to convert %v to *v1.Pod", obj)
 		return
 	}
 
 	if err := cc.syncTask(task); err != nil {
-		glog.Errorf("Failed to sync pod <%v/%v>, retry it, err %v", task.Namespace, task.Name, err)
+		klog.Errorf("Failed to sync pod <%v/%v>, retry it, err %v", task.Namespace, task.Name, err)
 		cc.resyncTask(task)
 	}
 }
@@ -71,10 +71,10 @@ func (cc *Controller) syncTask(oldTask *v1.Pod) error {
 	if err != nil {
 		if errors.IsNotFound(err) {
 			if err := cc.cache.DeletePod(oldTask); err != nil {
-				glog.Errorf("failed to delete cache pod <%v/%v>, err %v.", oldTask.Namespace, oldTask.Name, err)
+				klog.Errorf("failed to delete cache pod <%v/%v>, err %v.", oldTask.Namespace, oldTask.Name, err)
 				return err
 			}
-			glog.V(3).Infof("Pod <%v/%v> was deleted, removed from cache.", oldTask.Namespace, oldTask.Name)
+			klog.V(3).Infof("Pod <%v/%v> was deleted, removed from cache.", oldTask.Namespace, oldTask.Name)
 
 			return nil
 		}

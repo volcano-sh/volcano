@@ -17,7 +17,7 @@ limitations under the License.
 package proportion
 
 import (
-	"github.com/golang/glog"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
@@ -64,11 +64,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		pp.totalResource.Add(n.Allocatable)
 	}
 
-	glog.V(4).Infof("The total resource is <%v>", pp.totalResource)
+	klog.V(4).Infof("The total resource is <%v>", pp.totalResource)
 
 	// Build attributes for Queues.
 	for _, job := range ssn.Jobs {
-		glog.V(4).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
+		klog.V(4).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
 
 		if _, found := pp.queueOpts[job.Queue]; !found {
 			queue := ssn.Queues[job.Queue]
@@ -82,7 +82,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				request:   api.EmptyResource(),
 			}
 			pp.queueOpts[job.Queue] = attr
-			glog.V(4).Infof("Added Queue <%s> attributes.", job.Queue)
+			klog.V(4).Infof("Added Queue <%s> attributes.", job.Queue)
 		}
 
 		for status, tasks := range job.TaskStatusIndex {
@@ -114,7 +114,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// If no queues, break
 		if totalWeight == 0 {
-			glog.V(4).Infof("Exiting when total weight is 0")
+			klog.V(4).Infof("Exiting when total weight is 0")
 			break
 		}
 
@@ -124,7 +124,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		increasedDeserved := api.EmptyResource()
 		decreasedDeserved := api.EmptyResource()
 		for _, attr := range pp.queueOpts {
-			glog.V(4).Infof("Considering Queue <%s>: weight <%d>, total weight <%d>.",
+			klog.V(4).Infof("Considering Queue <%s>: weight <%d>, total weight <%d>.",
 				attr.name, attr.weight, totalWeight)
 			if _, found := meet[attr.queueID]; found {
 				continue
@@ -136,12 +136,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			if attr.request.Less(attr.deserved) {
 				attr.deserved = helpers.Min(attr.deserved, attr.request)
 				meet[attr.queueID] = struct{}{}
-				glog.V(4).Infof("queue <%s> is meet", attr.name)
+				klog.V(4).Infof("queue <%s> is meet", attr.name)
 
 			}
 			pp.updateShare(attr)
 
-			glog.V(4).Infof("The attributes of queue <%s> in proportion: deserved <%v>, allocate <%v>, request <%v>, share <%0.2f>",
+			klog.V(4).Infof("The attributes of queue <%s> in proportion: deserved <%v>, allocate <%v>, request <%v>, share <%0.2f>",
 				attr.name, attr.deserved, attr.allocated, attr.request, attr.share)
 
 			increased, decreased := attr.deserved.Diff(oldDeserved)
@@ -151,7 +151,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		remaining.Sub(increasedDeserved).Add(decreasedDeserved)
 		if remaining.IsEmpty() {
-			glog.V(4).Infof("Exiting when remaining is empty:  <%v>", remaining)
+			klog.V(4).Infof("Exiting when remaining is empty:  <%v>", remaining)
 			break
 		}
 	}
@@ -184,7 +184,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			allocated := allocations[job.Queue]
 			if allocated.Less(reclaimee.Resreq) {
-				glog.V(3).Infof("Failed to allocate resource for Task <%s/%s> in Queue <%s>, not enough resource.",
+				klog.V(3).Infof("Failed to allocate resource for Task <%s/%s> in Queue <%s>, not enough resource.",
 					reclaimee.Namespace, reclaimee.Name, job.Queue)
 				continue
 			}
@@ -204,7 +204,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		overused := !attr.allocated.LessEqual(attr.deserved)
 		if overused {
-			glog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
+			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
 				queue.Name, attr.deserved, attr.allocated, attr.share)
 		}
 
@@ -224,7 +224,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		pgResource := api.NewResource(*job.PodGroup.Spec.MinResources)
 		if len(queue.Queue.Spec.Capability) == 0 {
-			glog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Inqueue.",
+			klog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Inqueue.",
 				queue.Name, job.Namespace, job.Name)
 			return true
 		}
@@ -244,7 +244,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			pp.updateShare(attr)
 
-			glog.V(4).Infof("Proportion AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>",
+			klog.V(4).Infof("Proportion AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 		DeallocateFunc: func(event *framework.Event) {
@@ -254,7 +254,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			pp.updateShare(attr)
 
-			glog.V(4).Infof("Proportion EvictFunc: task <%v/%v>, resreq <%v>,  share <%v>",
+			klog.V(4).Infof("Proportion EvictFunc: task <%v/%v>, resreq <%v>,  share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 	})

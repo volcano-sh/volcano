@@ -19,7 +19,7 @@ package framework
 import (
 	"strconv"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 )
 
 // Arguments map
@@ -38,7 +38,7 @@ func (a Arguments) GetInt(ptr *int, key string) {
 
 	value, err := strconv.Atoi(argv)
 	if err != nil {
-		glog.Warningf("Could not parse argument: %s for key %s, with err %v", argv, key, err)
+		klog.Warningf("Could not parse argument: %s for key %s, with err %v", argv, key, err)
 		return
 	}
 
@@ -58,7 +58,7 @@ func (a Arguments) GetBool(ptr *bool, key string) {
 
 	value, err := strconv.ParseBool(argv)
 	if err != nil {
-		glog.Warningf("Could not parse argument: %s for key %s, with err %v", argv, key, err)
+		klog.Warningf("Could not parse argument: %s for key %s, with err %v", argv, key, err)
 		return
 	}
 

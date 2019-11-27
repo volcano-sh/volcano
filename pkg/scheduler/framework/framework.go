@@ -19,7 +19,7 @@ package framework
 import (
 	"time"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -34,7 +34,7 @@ func OpenSession(cache cache.Cache, tiers []conf.Tier) *Session {
 	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
 			if pb, found := GetPluginBuilder(plugin.Name); !found {
-				glog.Errorf("Failed to get plugin %s.", plugin.Name)
+				klog.Errorf("Failed to get plugin %s.", plugin.Name)
 			} else {
 				plugin := pb(plugin.Arguments)
 				ssn.plugins[plugin.Name()] = plugin

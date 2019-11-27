@@ -5,7 +5,7 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 )
 
 const (
@@ -32,7 +32,7 @@ func Assert(condition bool, message string) {
 	if panicOnError {
 		panic(message)
 	}
-	glog.Errorf("%s, %s", message, debug.Stack())
+	klog.Errorf("%s, %s", message, debug.Stack())
 }
 
 // Assertf check condition, if condition is false, print message using Assert

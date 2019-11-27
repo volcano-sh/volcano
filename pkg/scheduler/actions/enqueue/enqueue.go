@@ -17,7 +17,7 @@ limitations under the License.
 package enqueue
 
 import (
-	"github.com/golang/glog"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -40,8 +40,8 @@ func (enqueue *enqueueAction) Name() string {
 func (enqueue *enqueueAction) Initialize() {}
 
 func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
-	glog.V(3).Infof("Enter Enqueue ...")
-	defer glog.V(3).Infof("Leaving Enqueue ...")
+	klog.V(3).Infof("Enter Enqueue ...")
+	defer klog.V(3).Infof("Leaving Enqueue ...")
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 	queueMap := map[api.QueueID]*api.QueueInfo{}
@@ -50,12 +50,12 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 
 	for _, job := range ssn.Jobs {
 		if queue, found := ssn.Queues[job.Queue]; !found {
-			glog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
+			klog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
 				job.Queue, job.Namespace, job.Name)
 			continue
 		} else {
 			if _, existed := queueMap[queue.UID]; !existed {
-				glog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
+				klog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
 					queue.Name, job.Namespace, job.Name)
 
 				queueMap[queue.UID] = queue
@@ -67,12 +67,12 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 			if _, found := jobsMap[job.Queue]; !found {
 				jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 			}
-			glog.V(3).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
+			klog.V(3).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
 			jobsMap[job.Queue].Push(job)
 		}
 	}
 
-	glog.V(3).Infof("Try to enqueue PodGroup to %d Queues", len(jobsMap))
+	klog.V(3).Infof("Try to enqueue PodGroup to %d Queues", len(jobsMap))
 
 	emptyRes := api.EmptyResource()
 	nodesIdleRes := api.EmptyResource()
@@ -86,7 +86,7 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 		}
 
 		if nodesIdleRes.Less(emptyRes) {
-			glog.V(3).Infof("Node idle resource is overused, ignore it.")
+			klog.V(3).Infof("Node idle resource is overused, ignore it.")
 			break
 		}
 

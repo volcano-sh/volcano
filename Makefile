@@ -68,6 +68,7 @@ generate-code:
 	./hack/update-gencode.sh
 
 unit-test:
+	go clean -testcache
 	go list ./... | grep -v e2e | xargs go test -v -race
 
 e2e-test-kind:

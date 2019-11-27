@@ -19,7 +19,7 @@ package preempt
 import (
 	"fmt"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -43,8 +43,8 @@ func (alloc *preemptAction) Name() string {
 func (alloc *preemptAction) Initialize() {}
 
 func (alloc *preemptAction) Execute(ssn *framework.Session) {
-	glog.V(3).Infof("Enter Preempt ...")
-	defer glog.V(3).Infof("Leaving Preempt ...")
+	klog.V(3).Infof("Enter Preempt ...")
+	defer klog.V(3).Infof("Leaving Preempt ...")
 
 	preemptorsMap := map[api.QueueID]*util.PriorityQueue{}
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}
@@ -57,14 +57,14 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 			continue
 		}
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
-			glog.V(4).Infof("Job <%s/%s> Queue <%s> skip preemption, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
+			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip preemption, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
 			continue
 		}
 
 		if queue, found := ssn.Queues[job.Queue]; !found {
 			continue
 		} else if _, existed := queues[queue.UID]; !existed {
-			glog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
+			klog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
 				queue.Name, job.Namespace, job.Name)
 			queues[queue.UID] = queue
 		}
@@ -89,7 +89,7 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 
 			// If no preemptors, no preemption.
 			if preemptors == nil || preemptors.Empty() {
-				glog.V(4).Infof("No preemptors in Queue <%s>, break.", queue.Name)
+				klog.V(4).Infof("No preemptors in Queue <%s>, break.", queue.Name)
 				break
 			}
 
@@ -100,7 +100,7 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 			for {
 				// If not preemptor tasks, next job.
 				if preemptorTasks[preemptorJob.UID].Empty() {
-					glog.V(3).Infof("No preemptor task in job <%s/%s>.",
+					klog.V(3).Infof("No preemptor task in job <%s/%s>.",
 						preemptorJob.Namespace, preemptorJob.Name)
 					break
 				}
@@ -194,7 +194,7 @@ func preempt(
 
 	selectedNodes := util.SortNodes(nodeScores)
 	for _, node := range selectedNodes {
-		glog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
+		klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
 			preemptor.Namespace, preemptor.Name, node.Name)
 
 		var preemptees []*api.TaskInfo
@@ -212,7 +212,7 @@ func preempt(
 		metrics.UpdatePreemptionVictimsCount(len(victims))
 
 		if err := validateVictims(victims, resreq); err != nil {
-			glog.V(3).Infof("No validated victims on Node <%s>: %v", node.Name, err)
+			klog.V(3).Infof("No validated victims on Node <%s>: %v", node.Name, err)
 			continue
 		}
 
@@ -225,10 +225,10 @@ func preempt(
 		// Preempt victims for tasks, pick lowest priority task first.
 		for !victimsQueue.Empty() {
 			preemptee := victimsQueue.Pop().(*api.TaskInfo)
-			glog.Errorf("Try to preempt Task <%s/%s> for Tasks <%s/%s>",
+			klog.Errorf("Try to preempt Task <%s/%s> for Tasks <%s/%s>",
 				preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name)
 			if err := stmt.Evict(preemptee, "preempt"); err != nil {
-				glog.Errorf("Failed to preempt Task <%s/%s> for Tasks <%s/%s>: %v",
+				klog.Errorf("Failed to preempt Task <%s/%s> for Tasks <%s/%s>: %v",
 					preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name, err)
 				continue
 			}
@@ -240,12 +240,12 @@ func preempt(
 		}
 
 		metrics.RegisterPreemptionAttempts()
-		glog.V(3).Infof("Preempted <%v> for task <%s/%s> requested <%v>.",
+		klog.V(3).Infof("Preempted <%v> for task <%s/%s> requested <%v>.",
 			preempted, preemptor.Namespace, preemptor.Name, preemptor.InitResreq)
 
 		if preemptor.InitResreq.LessEqual(preempted) {
 			if err := stmt.Pipeline(preemptor, node.Name); err != nil {
-				glog.Errorf("Failed to pipline Task <%s/%s> on Node <%s>",
+				klog.Errorf("Failed to pipline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
 			}
 

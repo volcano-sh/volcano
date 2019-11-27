@@ -19,7 +19,7 @@ package drf
 import (
 	"math"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
@@ -193,7 +193,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
-		glog.V(4).Infof("Victims from DRF plugins are %+v", victims)
+		klog.V(4).Infof("Victims from DRF plugins are %+v", victims)
 
 		return victims
 	}
@@ -204,7 +204,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
 
-		glog.V(4).Infof("DRF JobOrderFn: <%v/%v> share state: %v, <%v/%v> share state: %v",
+		klog.V(4).Infof("DRF JobOrderFn: <%v/%v> share state: %v, <%v/%v> share state: %v",
 			lv.Namespace, lv.Name, drf.jobAttrs[lv.UID].share, rv.Namespace, rv.Name, drf.jobAttrs[rv.UID].share)
 
 		if drf.jobAttrs[lv.UID].share == drf.jobAttrs[rv.UID].share {
@@ -230,7 +230,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		lWeight := ssn.NamespaceInfo[lv].GetWeight()
 		rWeight := ssn.NamespaceInfo[rv].GetWeight()
 
-		glog.V(4).Infof("DRF NamespaceOrderFn: <%v> share state: %f, weight %v, <%v> share state: %f, weight %v",
+		klog.V(4).Infof("DRF NamespaceOrderFn: <%v> share state: %f, weight %v, <%v> share state: %f, weight %v",
 			lv, lOpt.share, lWeight, rv, rOpt.share, rWeight)
 
 		lWeightedShare := lOpt.share / float64(lWeight)
@@ -268,7 +268,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 				nsShare = nsOpt.share
 			}
 
-			glog.V(4).Infof("DRF AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>, namespace share <%v>",
+			klog.V(4).Infof("DRF AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>, namespace share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share, nsShare)
 		},
 		DeallocateFunc: func(event *framework.Event) {
@@ -286,7 +286,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 				nsShare = nsOpt.share
 			}
 
-			glog.V(4).Infof("DRF EvictFunc: task <%v/%v>, resreq <%v>,  share <%v>, namespace share <%v>",
+			klog.V(4).Infof("DRF EvictFunc: task <%v/%v>, resreq <%v>,  share <%v>, namespace share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share, nsShare)
 		},
 	})

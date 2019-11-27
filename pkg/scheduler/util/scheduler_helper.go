@@ -24,7 +24,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 
 	"k8s.io/client-go/util/workqueue"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
@@ -84,12 +84,12 @@ func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateF
 		// to make sure all nodes have the same chance of being examined across pods.
 		node := nodes[(lastProcessedNodeIndex+index)%allNodes]
 		atomic.AddInt32(&processedNodes, 1)
-		glog.V(3).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
+		klog.V(3).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
 			task.Namespace, task.Name, node.Name, task.Resreq, node.Idle)
 
 		// TODO (k82cn): Enable eCache for performance improvement.
 		if err := fn(task, node); err != nil {
-			glog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
+			klog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
 				task.Namespace, task.Name, node.Name, err)
 			errorLock.Lock()
 			fe.SetNodeError(node.Name, err)
@@ -126,7 +126,7 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 		node := nodes[index]
 		mapScores, orderScore, err := mapFn(task, node)
 		if err != nil {
-			glog.Errorf("Error in Calculating Priority for the node:%v", err)
+			klog.Errorf("Error in Calculating Priority for the node:%v", err)
 			return
 		}
 
@@ -147,13 +147,13 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), scoreNode)
 	reduceScores, err := reduceFn(task, pluginNodeScoreMap)
 	if err != nil {
-		glog.Errorf("Error in Calculating Priority for the node:%v", err)
+		klog.Errorf("Error in Calculating Priority for the node:%v", err)
 		return nodeScores
 	}
 
 	batchNodeScore, err := batchFn(task, nodes)
 	if err != nil {
-		glog.Errorf("Error in Calculating batch Priority for the node, err %v", err)
+		klog.Errorf("Error in Calculating batch Priority for the node, err %v", err)
 		return nodeScores
 	}
 

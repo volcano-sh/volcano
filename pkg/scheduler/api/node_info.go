@@ -19,9 +19,8 @@ package api
 import (
 	"fmt"
 
-	"github.com/golang/glog"
-
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/klog"
 )
 
 // NodeInfo is node level aggregated information.
@@ -149,7 +148,7 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.setNodeState(node)
 
 	if !ni.Ready() {
-		glog.Warningf("Failed to set node info, phase: %s, reason: %s",
+		klog.Warningf("Failed to set node info, phase: %s, reason: %s",
 			ni.State.Phase, ni.State.Reason)
 		return
 	}

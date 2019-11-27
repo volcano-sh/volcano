@@ -21,13 +21,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/golang/glog"
-
 	"k8s.io/api/admission/v1beta1"
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
@@ -42,7 +41,7 @@ func (c *Controller) ServerPods(w http.ResponseWriter, r *http.Request) {
 // AdmitPods is to admit pods and return response
 func (c *Controller) AdmitPods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
-	glog.V(3).Infof("admitting pods -- %s", ar.Request.Operation)
+	klog.V(3).Infof("admitting pods -- %s", ar.Request.Operation)
 
 	pod, err := decodePod(ar.Request.Object, ar.Request.Resource)
 	if err != nil {
@@ -82,7 +81,7 @@ func decodePod(object runtime.RawExtension, resource metav1.GroupVersionResource
 	if _, _, err := deserializer.Decode(raw, nil, &pod); err != nil {
 		return pod, err
 	}
-	glog.V(3).Infof("the pod struct is %+v", pod)
+	klog.V(3).Infof("the pod struct is %+v", pod)
 
 	return pod, nil
 }

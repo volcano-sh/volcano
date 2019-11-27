@@ -23,8 +23,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/glog"
-
 	"k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -38,6 +36,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog"
 
 	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
@@ -125,7 +124,7 @@ func NewJobController(
 
 	//Initialize event client
 	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartLogging(glog.Infof)
+	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(vcscheme.Scheme, v1.EventSource{Component: "vc-controllers"})
 
@@ -253,11 +252,11 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 	// Re-sync error tasks.
 	go wait.Until(cc.processResyncTask, 0, stopCh)
 
-	glog.Infof("JobController is running ...... ")
+	klog.Infof("JobController is running ...... ")
 }
 
 func (cc *Controller) worker(i uint32) {
-	glog.Infof("worker %d start ...... ", i)
+	klog.Infof("worker %d start ...... ", i)
 
 	for cc.processNextReq(i) {
 	}
@@ -297,7 +296,7 @@ func (cc *Controller) processNextReq(count uint32) bool {
 	queue := cc.queueList[count]
 	obj, shutdown := queue.Get()
 	if shutdown {
-		glog.Errorf("Fail to pop item from queue")
+		klog.Errorf("Fail to pop item from queue")
 		return false
 	}
 
@@ -306,30 +305,30 @@ func (cc *Controller) processNextReq(count uint32) bool {
 
 	key := jobcache.JobKeyByReq(&req)
 	if !cc.belongsToThisRoutine(key, count) {
-		glog.Errorf("should not occur The job does not belongs to this routine key:%s, worker:%d...... ", key, count)
+		klog.Errorf("should not occur The job does not belongs to this routine key:%s, worker:%d...... ", key, count)
 		queueLocal := cc.getWorkerQueue(key)
 		queueLocal.Add(req)
 		return true
 	}
 
-	glog.V(3).Infof("Try to handle request <%v>", req)
+	klog.V(3).Infof("Try to handle request <%v>", req)
 
 	jobInfo, err := cc.cache.Get(jobcache.JobKeyByReq(&req))
 	if err != nil {
 		// TODO(k82cn): ignore not-ready error.
-		glog.Errorf("Failed to get job by <%v> from cache: %v", req, err)
+		klog.Errorf("Failed to get job by <%v> from cache: %v", req, err)
 		return true
 	}
 
 	st := state.NewState(jobInfo)
 	if st == nil {
-		glog.Errorf("Invalid state <%s> of Job <%v/%v>",
+		klog.Errorf("Invalid state <%s> of Job <%v/%v>",
 			jobInfo.Job.Status.State, jobInfo.Job.Namespace, jobInfo.Job.Name)
 		return true
 	}
 
 	action := applyPolicies(jobInfo.Job, &req)
-	glog.V(3).Infof("Execute <%v> on Job <%s/%s> in <%s> by <%T>.",
+	klog.V(3).Infof("Execute <%v> on Job <%s/%s> in <%s> by <%T>.",
 		action, req.Namespace, req.JobName, jobInfo.Job.Status.State.Phase, st)
 
 	if action != batchv1alpha1.SyncJobAction {
@@ -339,7 +338,7 @@ func (cc *Controller) processNextReq(count uint32) bool {
 
 	if err := st.Execute(action); err != nil {
 		if queue.NumRequeues(req) < maxRetries {
-			glog.V(2).Infof("Failed to handle Job <%s/%s>: %v",
+			klog.V(2).Infof("Failed to handle Job <%s/%s>: %v",
 				jobInfo.Job.Namespace, jobInfo.Job.Name, err)
 			// If any error, requeue it.
 			queue.AddRateLimited(req)
@@ -347,7 +346,7 @@ func (cc *Controller) processNextReq(count uint32) bool {
 		}
 		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, batchv1alpha1.ExecuteAction, fmt.Sprintf(
 			"Job failed on action %s for retry limit reached", action))
-		glog.Warningf("Dropping job<%s/%s> out of the queue: %v because max retries has reached", jobInfo.Job.Namespace, jobInfo.Job.Name, err)
+		klog.Warningf("Dropping job<%s/%s> out of the queue: %v because max retries has reached", jobInfo.Job.Namespace, jobInfo.Job.Name, err)
 	}
 
 	// If no error, forget it.

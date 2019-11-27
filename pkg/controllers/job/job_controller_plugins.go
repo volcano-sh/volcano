@@ -19,9 +19,8 @@ package job
 import (
 	"fmt"
 
-	"github.com/golang/glog"
-
 	"k8s.io/api/core/v1"
+	"k8s.io/klog"
 
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
@@ -34,12 +33,12 @@ func (cc *Controller) pluginOnPodCreate(job *batch.Job, pod *v1.Pod) error {
 		pb, found := plugins.GetPluginBuilder(name)
 		if !found {
 			err := fmt.Errorf("failed to get plugin %s", name)
-			glog.Error(err)
+			klog.Error(err)
 			return err
 		}
-		glog.Infof("Starting to execute plugin at <pluginOnPodCreate>: %s on job: <%s/%s>", name, job.Namespace, job.Name)
+		klog.Infof("Starting to execute plugin at <pluginOnPodCreate>: %s on job: <%s/%s>", name, job.Namespace, job.Name)
 		if err := pb(client, args).OnPodCreate(pod, job); err != nil {
-			glog.Errorf("Failed to process on pod create plugin %s, err %v.", name, err)
+			klog.Errorf("Failed to process on pod create plugin %s, err %v.", name, err)
 			return err
 		}
 
@@ -56,12 +55,12 @@ func (cc *Controller) pluginOnJobAdd(job *batch.Job) error {
 		pb, found := plugins.GetPluginBuilder(name)
 		if !found {
 			err := fmt.Errorf("failed to get plugin %s", name)
-			glog.Error(err)
+			klog.Error(err)
 			return err
 		}
-		glog.Infof("Starting to execute plugin at <pluginOnJobAdd>: %s on job: <%s/%s>", name, job.Namespace, job.Name)
+		klog.Infof("Starting to execute plugin at <pluginOnJobAdd>: %s on job: <%s/%s>", name, job.Namespace, job.Name)
 		if err := pb(client, args).OnJobAdd(job); err != nil {
-			glog.Errorf("Failed to process on job add plugin %s, err %v.", name, err)
+			klog.Errorf("Failed to process on job add plugin %s, err %v.", name, err)
 			return err
 		}
 
@@ -76,12 +75,12 @@ func (cc *Controller) pluginOnJobDelete(job *batch.Job) error {
 		pb, found := plugins.GetPluginBuilder(name)
 		if !found {
 			err := fmt.Errorf("failed to get plugin %s", name)
-			glog.Error(err)
+			klog.Error(err)
 			return err
 		}
-		glog.Infof("Starting to execute plugin at <pluginOnJobDelete>: %s on job: <%s/%s>", name, job.Namespace, job.Name)
+		klog.Infof("Starting to execute plugin at <pluginOnJobDelete>: %s on job: <%s/%s>", name, job.Namespace, job.Name)
 		if err := pb(client, args).OnJobDelete(job); err != nil {
-			glog.Errorf("failed to process on job delete plugin %s, err %v.", name, err)
+			klog.Errorf("failed to process on job delete plugin %s, err %v.", name, err)
 			return err
 		}
 

@@ -21,10 +21,9 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/golang/glog"
-
 	"k8s.io/api/admission/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog"
 )
 
 // Serve the http request
@@ -39,7 +38,7 @@ func Serve(w http.ResponseWriter, r *http.Request, admit AdmitFunc) {
 	// verify the content type is accurate
 	contentType := r.Header.Get(CONTENTTYPE)
 	if contentType != APPLICATIONJSON {
-		glog.Errorf("contentType=%s, expect application/json", contentType)
+		klog.Errorf("contentType=%s, expect application/json", contentType)
 		return
 	}
 
@@ -51,15 +50,15 @@ func Serve(w http.ResponseWriter, r *http.Request, admit AdmitFunc) {
 	} else {
 		reviewResponse = admit(ar)
 	}
-	glog.V(3).Infof("sending response: %v", reviewResponse)
+	klog.V(3).Infof("sending response: %v", reviewResponse)
 
 	response := createResponse(reviewResponse, &ar)
 	resp, err := json.Marshal(response)
 	if err != nil {
-		glog.Error(err)
+		klog.Error(err)
 	}
 	if _, err := w.Write(resp); err != nil {
-		glog.Error(err)
+		klog.Error(err)
 	}
 }
 

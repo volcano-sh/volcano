@@ -20,13 +20,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/golang/glog"
-
 	"k8s.io/api/admission/v1beta1"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/klog"
 	k8score "k8s.io/kubernetes/pkg/apis/core"
 	k8scorev1 "k8s.io/kubernetes/pkg/apis/core/v1"
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
@@ -43,7 +42,7 @@ var VolcanoClientSet vcclientset.Interface
 // AdmitJobs is to admit jobs and return response
 func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
-	glog.V(3).Infof("admitting jobs -- %s", ar.Request.Operation)
+	klog.V(3).Infof("admitting jobs -- %s", ar.Request.Operation)
 
 	job, err := DecodeJob(ar.Request.Object, ar.Request.Resource)
 	if err != nil {
