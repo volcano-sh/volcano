@@ -209,7 +209,7 @@ func (sp *servicePlugin) createNetworkPolicyIfNotExist(job *batch.Job) error {
 	// If network policy does not exist, create one for Job.
 	if _, err := sp.Clientset.KubeClients.NetworkingV1().NetworkPolicies(job.Namespace).Get(job.Name, metav1.GetOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
-			glog.V(3).Infof("Failed to get NetworkPolicy for Job <%s/%s>: %v",
+			klog.V(3).Infof("Failed to get NetworkPolicy for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
 			return err
 		}
@@ -244,7 +244,7 @@ func (sp *servicePlugin) createNetworkPolicyIfNotExist(job *batch.Job) error {
 		}
 
 		if _, e := sp.Clientset.KubeClients.NetworkingV1().NetworkPolicies(job.Namespace).Create(networkpolicy); e != nil {
-			glog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v", job.Namespace, job.Name, e)
+			klog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v", job.Namespace, job.Name, e)
 			return e
 		}
 		job.Status.ControlledResources["plugin-"+sp.Name()] = sp.Name()
