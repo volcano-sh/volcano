@@ -269,7 +269,7 @@ func validateVictims(victims []*api.TaskInfo, resreq *api.Resource) error {
 	for _, v := range victims {
 		allRes.Add(v.Resreq)
 	}
-	if allRes.Less(resreq) {
+	if !resreq.LessEqual(allRes) {
 		return fmt.Errorf("not enough resources")
 	}
 
