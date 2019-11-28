@@ -16,14 +16,19 @@ limitations under the License.
 package main
 
 import (
-	"flag"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"syscall"
+	"time"
 
+	"github.com/spf13/pflag"
+
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apiserver/pkg/util/flag"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 
@@ -41,14 +46,23 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 	admission.Serve(w, r, admission.MutateJobs)
 }
 
+var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
+
 func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	klog.InitFlags(nil)
+
 	config := options.NewConfig()
-	config.AddFlags()
-	flag.Parse()
+	config.AddFlags(pflag.CommandLine)
+
+	flag.InitFlags()
 
 	if config.PrintVersion {
 		version.PrintVersionAndExit()
 	}
+
+	go wait.Until(klog.Flush, *logFlushFreq, wait.NeverStop)
+	defer klog.Flush()
 
 	http.HandleFunc(admission.AdmitJobPath, serveJobs)
 	http.HandleFunc(admission.MutateJobPath, serveMutateJobs)
