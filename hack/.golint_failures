@@ -1,3 +1,6 @@
+volcano.sh/volcano/pkg/admission/jobs/mutate
+volcano.sh/volcano/pkg/admission/router
+volcano.sh/volcano/pkg/admission/schema
 volcano.sh/volcano/pkg/apis/scheduling
 volcano.sh/volcano/pkg/apis/scheduling/v1alpha1
 volcano.sh/volcano/pkg/apis/scheduling/v1alpha2

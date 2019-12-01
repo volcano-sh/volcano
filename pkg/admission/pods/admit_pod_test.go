@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package admission
+package pods
 
 import (
 	"strings"
@@ -84,7 +84,7 @@ func TestValidatePod(t *testing.T) {
 			},
 
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
-			ret:            "Failed to create pod <test/normal-pod-2>, because the podgroup phase is Pending",
+			ret:            "failed to create pod <test/normal-pod-2> as the podgroup phase is Pending",
 			ExpectErr:      true,
 		},
 		// validate volcano pod with volcano scheduler
@@ -106,7 +106,7 @@ func TestValidatePod(t *testing.T) {
 			},
 
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
-			ret:            "Failed to create pod <test/volcano-pod-1>, because the podgroup phase is Pending",
+			ret:            "failed to create pod <test/volcano-pod-1> as the podgroup phase is Pending",
 			ExpectErr:      true,
 		},
 		// validate volcano pod with volcano scheduler when get pg failed
@@ -128,7 +128,7 @@ func TestValidatePod(t *testing.T) {
 			},
 
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
-			ret:            `Failed to get PodGroup for pod <test/volcano-pod-2>: podgroups.scheduling "podgroup-p1" not found`,
+			ret:            `failed to get PodGroup for pod <test/volcano-pod-2>: podgroups.scheduling "podgroup-p1" not found`,
 			ExpectErr:      true,
 			disabledPG:     true,
 		},
@@ -150,21 +150,17 @@ func TestValidatePod(t *testing.T) {
 		}
 
 		// create fake volcano clientset
-		VolcanoClientSet = vcclient.NewSimpleClientset()
+		config.VolcanoClient = vcclient.NewSimpleClientset()
+		config.SchedulerName = "volcano"
 
 		if !testCase.disabledPG {
-			_, err := VolcanoClientSet.SchedulingV1alpha2().PodGroups(namespace).Create(pg)
+			_, err := config.VolcanoClient.SchedulingV1alpha2().PodGroups(namespace).Create(pg)
 			if err != nil {
 				t.Error("PG Creation Failed")
 			}
 		}
 
-		c := Controller{
-			VcClients:     VolcanoClientSet,
-			SchedulerName: "volcano",
-		}
-
-		ret := c.validatePod(testCase.Pod, &testCase.reviewResponse)
+		ret := validatePod(&testCase.Pod, &testCase.reviewResponse)
 
 		if testCase.ExpectErr == true && ret == "" {
 			t.Errorf("%s: test case Expect error msg :%s, but got nil.", testCase.Name, testCase.ret)

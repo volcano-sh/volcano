@@ -225,6 +225,6 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		_, err = context.kubeclient.CoreV1().Pods(namespace).Create(pod)
-		Expect(err.Error()).Should(ContainSubstring(`Failed to create pod <test/pod-volcano>, because the podgroup phase is Pending`))
+		Expect(err.Error()).Should(ContainSubstring(`failed to create pod <test/pod-volcano> as the podgroup phase is Pending`))
 	})
 })

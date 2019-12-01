@@ -16,35 +16,24 @@ limitations under the License.
 package main
 
 import (
-	"io/ioutil"
-	"net/http"
+	"fmt"
 	"os"
-	"os/signal"
 	"runtime"
-	"strconv"
-	"syscall"
 	"time"
 
 	"github.com/spf13/pflag"
 
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/util/flag"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/cmd/admission/app"
 	"volcano.sh/volcano/cmd/admission/app/options"
-	"volcano.sh/volcano/pkg/admission"
-	"volcano.sh/volcano/pkg/version"
+
+	_ "volcano.sh/volcano/pkg/admission/jobs/mutate"
+	_ "volcano.sh/volcano/pkg/admission/jobs/validate"
+	_ "volcano.sh/volcano/pkg/admission/pods"
 )
-
-func serveJobs(w http.ResponseWriter, r *http.Request) {
-	admission.Serve(w, r, admission.AdmitJobs)
-}
-
-func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
-	admission.Serve(w, r, admission.MutateJobs)
-}
 
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
 
@@ -57,73 +46,15 @@ func main() {
 
 	flag.InitFlags()
 
-	if config.PrintVersion {
-		version.PrintVersionAndExit()
-	}
-
 	go wait.Until(klog.Flush, *logFlushFreq, wait.NeverStop)
 	defer klog.Flush()
-
-	http.HandleFunc(admission.AdmitJobPath, serveJobs)
-	http.HandleFunc(admission.MutateJobPath, serveMutateJobs)
 
 	if err := config.CheckPortOrDie(); err != nil {
 		klog.Fatalf("Configured port is invalid: %v", err)
 	}
-	addr := ":" + strconv.Itoa(config.Port)
 
-	restConfig, err := clientcmd.BuildConfigFromFlags(config.Master, config.Kubeconfig)
-	if err != nil {
-		klog.Fatalf("Unable to build k8s config: %v", err)
+	if err := app.Run(config); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
 	}
-
-	admission.VolcanoClientSet = app.GetVolcanoClient(restConfig)
-
-	servePods(config)
-
-	caBundle, err := ioutil.ReadFile(config.CaCertFile)
-	if err != nil {
-		klog.Fatalf("Unable to read cacert file: %v", err)
-	}
-
-	err = options.RegisterWebhooks(config, app.GetClient(restConfig), caBundle)
-	if err != nil {
-		klog.Fatalf("Unable to register webhook configs: %v", err)
-	}
-
-	stopChannel := make(chan os.Signal)
-	signal.Notify(stopChannel, syscall.SIGTERM, syscall.SIGINT)
-
-	server := &http.Server{
-		Addr:      addr,
-		TLSConfig: app.ConfigTLS(config, restConfig),
-	}
-	webhookServeError := make(chan struct{})
-	go func() {
-		err = server.ListenAndServeTLS("", "")
-		if err != nil && err != http.ErrServerClosed {
-			klog.Fatalf("ListenAndServeTLS for admission webhook failed: %v", err)
-			close(webhookServeError)
-		}
-	}()
-
-	select {
-	case <-stopChannel:
-		if err := server.Close(); err != nil {
-			klog.Fatalf("Close admission server failed: %v", err)
-		}
-		return
-	case <-webhookServeError:
-		return
-	}
-}
-
-func servePods(config *options.Config) {
-	admController := &admission.Controller{
-		VcClients:     admission.VolcanoClientSet,
-		SchedulerName: config.SchedulerName,
-	}
-	http.HandleFunc(admission.AdmitPodPath, admController.ServerPods)
-
-	return
 }
