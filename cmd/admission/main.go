@@ -16,7 +16,6 @@ limitations under the License.
 package main
 
 import (
-	"io/ioutil"
 	"net/http"
 	"os"
 	"os/signal"
@@ -34,17 +33,13 @@ import (
 
 	"volcano.sh/volcano/cmd/admission/app"
 	"volcano.sh/volcano/cmd/admission/app/options"
-	"volcano.sh/volcano/pkg/admission"
+	"volcano.sh/volcano/pkg/admission/router"
 	"volcano.sh/volcano/pkg/version"
+
+	_ "volcano.sh/volcano/pkg/admission/jobs/mutate"
+	_ "volcano.sh/volcano/pkg/admission/jobs/validate"
+	_ "volcano.sh/volcano/pkg/admission/pods"
 )
-
-func serveJobs(w http.ResponseWriter, r *http.Request) {
-	admission.Serve(w, r, admission.AdmitJobs)
-}
-
-func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
-	admission.Serve(w, r, admission.MutateJobs)
-}
 
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
 
@@ -64,41 +59,43 @@ func main() {
 	go wait.Until(klog.Flush, *logFlushFreq, wait.NeverStop)
 	defer klog.Flush()
 
-	http.HandleFunc(admission.AdmitJobPath, serveJobs)
-	http.HandleFunc(admission.MutateJobPath, serveMutateJobs)
-
 	if err := config.CheckPortOrDie(); err != nil {
 		klog.Fatalf("Configured port is invalid: %v", err)
 	}
-	addr := ":" + strconv.Itoa(config.Port)
 
 	restConfig, err := clientcmd.BuildConfigFromFlags(config.Master, config.Kubeconfig)
 	if err != nil {
 		klog.Fatalf("Unable to build k8s config: %v", err)
 	}
 
-	admission.VolcanoClientSet = app.GetVolcanoClient(restConfig)
+	vClient := app.GetVolcanoClient(restConfig)
+	router.ForEachAdmission(func(service *router.AdmissionService) {
+		if service.Config != nil {
+			service.Config.VolcanoClient = vClient
+			service.Config.SchedulerName = config.SchedulerName
+		}
+		http.HandleFunc(service.Path, service.Handler)
+	})
 
-	servePods(config)
+	//
+	//caBundle, err := ioutil.ReadFile(config.CaCertFile)
+	//if err != nil {
+	//	klog.Fatalf("Unable to read cacert file: %v", err)
+	//}
+	////
+	////err = options.RegisterWebhooks(config, app.GetClient(restConfig), caBundle)
+	////if err != nil {
+	////	klog.Fatalf("Unable to register webhook configs: %v", err)
+	////}
 
-	caBundle, err := ioutil.ReadFile(config.CaCertFile)
-	if err != nil {
-		klog.Fatalf("Unable to read cacert file: %v", err)
-	}
-
-	err = options.RegisterWebhooks(config, app.GetClient(restConfig), caBundle)
-	if err != nil {
-		klog.Fatalf("Unable to register webhook configs: %v", err)
-	}
-
+	webhookServeError := make(chan struct{})
 	stopChannel := make(chan os.Signal)
 	signal.Notify(stopChannel, syscall.SIGTERM, syscall.SIGINT)
 
 	server := &http.Server{
-		Addr:      addr,
+		Addr:      ":" + strconv.Itoa(config.Port),
 		TLSConfig: app.ConfigTLS(config, restConfig),
 	}
-	webhookServeError := make(chan struct{})
 	go func() {
 		err = server.ListenAndServeTLS("", "")
 		if err != nil && err != http.ErrServerClosed {
@@ -116,14 +113,4 @@ func main() {
 	case <-webhookServeError:
 		return
 	}
-}
-
-func servePods(config *options.Config) {
-	admController := &admission.Controller{
-		VcClients:     admission.VolcanoClientSet,
-		SchedulerName: config.SchedulerName,
-	}
-	http.HandleFunc(admission.AdmitPodPath, admController.ServerPods)
-
-	return
 }

@@ -14,54 +14,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package admission
+package validate
 
 import (
 	"fmt"
 
 	"github.com/hashicorp/go-multierror"
 
-	"k8s.io/api/admission/v1beta1"
-	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/apis/core/validation"
 
 	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 )
-
-const (
-	// AdmitJobPath is the pattern for the jobs admission
-	AdmitJobPath = "/jobs"
-	// MutateJobPath is the pattern for the mutating jobs
-	MutateJobPath = "/mutating-jobs"
-	// AdmitPodPath is the pattern for the pods admission
-	AdmitPodPath = "/pods"
-	// CONTENTTYPE http content-type
-	CONTENTTYPE = "Content-Type"
-	// APPLICATIONJSON json content
-	APPLICATIONJSON = "application/json"
-)
-
-//The AdmitFunc returns response
-type AdmitFunc func(v1beta1.AdmissionReview) *v1beta1.AdmissionResponse
-
-// Controller the Admission Controller type
-type Controller struct {
-	VcClients     vcclientset.Interface
-	SchedulerName string
-}
-
-var scheme = runtime.NewScheme()
-
-//Codecs is for retrieving serializers for the supported wire formats
-//and conversion wrappers to define preferred internal and external versions.
-var Codecs = serializer.NewCodecFactory(scheme)
 
 // policyEventMap defines all policy events and whether to allow external use
 var policyEventMap = map[batchv1alpha1.Event]bool{
@@ -84,45 +48,6 @@ var policyActionMap = map[batchv1alpha1.Action]bool{
 	batchv1alpha1.ResumeJobAction:    true,
 	batchv1alpha1.SyncJobAction:      false,
 	batchv1alpha1.EnqueueAction:      false,
-}
-
-func init() {
-	addToScheme(scheme)
-}
-
-func addToScheme(scheme *runtime.Scheme) {
-	corev1.AddToScheme(scheme)
-	admissionregistrationv1beta1.AddToScheme(scheme)
-}
-
-//ToAdmissionResponse updates the admission response with the input error
-func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
-	klog.Error(err)
-	return &v1beta1.AdmissionResponse{
-		Result: &metav1.Status{
-			Message: err.Error(),
-		},
-	}
-}
-
-//DecodeJob decodes the job using deserializer from the raw object
-func DecodeJob(object runtime.RawExtension, resource metav1.GroupVersionResource) (batchv1alpha1.Job, error) {
-	jobResource := metav1.GroupVersionResource{Group: batchv1alpha1.SchemeGroupVersion.Group, Version: batchv1alpha1.SchemeGroupVersion.Version, Resource: "jobs"}
-	raw := object.Raw
-	job := batchv1alpha1.Job{}
-
-	if resource != jobResource {
-		err := fmt.Errorf("expect resource to be %s", jobResource)
-		return job, err
-	}
-
-	deserializer := Codecs.UniversalDeserializer()
-	if _, _, err := deserializer.Decode(raw, nil, &job); err != nil {
-		return job, err
-	}
-	klog.V(3).Infof("the job struct is %+v", job)
-
-	return job, nil
 }
 
 func validatePolicies(policies []batchv1alpha1.LifecyclePolicy, fldPath *field.Path) error {

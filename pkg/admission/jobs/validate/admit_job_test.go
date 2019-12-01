@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package admission
+package validate
 
 import (
 	"strings"
@@ -1046,15 +1046,15 @@ func TestValidateExecution(t *testing.T) {
 				},
 			}
 			// create fake volcano clientset
-			VolcanoClientSet = fakeclient.NewSimpleClientset()
+			config.VolcanoClient = fakeclient.NewSimpleClientset()
 
 			//create default queue
-			_, err := VolcanoClientSet.SchedulingV1alpha2().Queues().Create(&defaultqueue)
+			_, err := config.VolcanoClient.SchedulingV1alpha2().Queues().Create(&defaultqueue)
 			if err != nil {
 				t.Error("Queue Creation Failed")
 			}
 
-			ret := validateJob(testCase.Job, &testCase.reviewResponse)
+			ret := validateJob(&testCase.Job, &testCase.reviewResponse)
 			//fmt.Printf("test-case name:%s, ret:%v  testCase.reviewResponse:%v \n", testCase.Name, ret,testCase.reviewResponse)
 			if testCase.ExpectErr == true && ret == "" {
 				t.Errorf("Expect error msg :%s, but got nil.", testCase.ret)

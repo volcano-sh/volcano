@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package admission
+package validate
 
 import (
 	"fmt"
@@ -30,23 +30,33 @@ import (
 	k8scorev1 "k8s.io/kubernetes/pkg/apis/core/v1"
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
 
+	"volcano.sh/volcano/pkg/admission/router"
+	"volcano.sh/volcano/pkg/admission/schema"
+	"volcano.sh/volcano/pkg/admission/util"
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
 )
 
-// VolcanoClientSet is volcano clientset
-// TODO: make it as package local var.
-var VolcanoClientSet vcclientset.Interface
+func init() {
+	router.RegisterAdmission(service)
+}
+
+var service = &router.AdmissionService{
+	Path: "/jobs",
+	Func: AdmitJobs,
+
+	Config: config,
+}
+
+var config = &router.AdmissionServiceConfig{}
 
 // AdmitJobs is to admit jobs and return response
 func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
-
 	klog.V(3).Infof("admitting jobs -- %s", ar.Request.Operation)
 
-	job, err := DecodeJob(ar.Request.Object, ar.Request.Resource)
+	job, err := schema.DecodeJob(ar.Request.Object, ar.Request.Resource)
 	if err != nil {
-		return ToAdmissionResponse(err)
+		return util.ToAdmissionResponse(err)
 	}
 	var msg string
 	reviewResponse := v1beta1.AdmissionResponse{}
@@ -57,14 +67,14 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		msg = validateJob(job, &reviewResponse)
 		break
 	case v1beta1.Update:
-		_, err := DecodeJob(ar.Request.OldObject, ar.Request.Resource)
+		_, err := schema.DecodeJob(ar.Request.OldObject, ar.Request.Resource)
 		if err != nil {
-			return ToAdmissionResponse(err)
+			return util.ToAdmissionResponse(err)
 		}
 		break
 	default:
 		err := fmt.Errorf("expect operation to be 'CREATE' or 'UPDATE'")
-		return ToAdmissionResponse(err)
+		return util.ToAdmissionResponse(err)
 	}
 
 	if !reviewResponse.Allowed {
@@ -73,8 +83,7 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	return &reviewResponse
 }
 
-func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) string {
-
+func validateJob(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) string {
 	var msg string
 	taskNames := map[string]string{}
 	var totalReplicas int32
@@ -151,9 +160,9 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 	}
 
 	// Check whether Queue already present or not
-	if _, err := VolcanoClientSet.SchedulingV1alpha2().Queues().Get(job.Spec.Queue, metav1.GetOptions{}); err != nil {
+	if _, err := config.VolcanoClient.SchedulingV1alpha2().Queues().Get(job.Spec.Queue, metav1.GetOptions{}); err != nil {
 		// TODO: deprecate v1alpha1
-		if _, err := VolcanoClientSet.SchedulingV1alpha1().Queues().Get(job.Spec.Queue, metav1.GetOptions{}); err != nil {
+		if _, err := config.VolcanoClient.SchedulingV1alpha1().Queues().Get(job.Spec.Queue, metav1.GetOptions{}); err != nil {
 			msg = msg + fmt.Sprintf(" unable to find job queue: %v", err)
 		}
 	}
@@ -165,7 +174,7 @@ func validateJob(job v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) st
 	return msg
 }
 
-func validateTaskTemplate(task v1alpha1.TaskSpec, job v1alpha1.Job, index int) string {
+func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) string {
 	var v1PodTemplate v1.PodTemplate
 	v1PodTemplate.Template = *task.Template.DeepCopy()
 	k8scorev1.SetObjectDefaults_PodTemplate(&v1PodTemplate)
