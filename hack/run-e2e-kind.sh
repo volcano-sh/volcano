@@ -90,6 +90,9 @@ export KUBECONFIG="$(kind get kubeconfig-path ${CLUSTER_CONTEXT})"
 
 install-volcano
 
+# install calico to support networkpolicy
+kubectl apply -f https://docs.projectcalico.org/v3.10/manifests/calico.yaml
+
 # Run e2e test
 cd ${VK_ROOT}
 KUBECONFIG=${KUBECONFIG} go test ./test/e2e -v -timeout 30m
