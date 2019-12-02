@@ -85,7 +85,7 @@ clean:
 	rm -rf _output/
 	rm -f *.log
 
-verify: generate-code
+verify:
 	hack/verify-gofmt.sh
 	hack/verify-golint.sh
 	hack/verify-gencode.sh
