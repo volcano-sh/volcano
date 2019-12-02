@@ -98,7 +98,7 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo, reason string) error {
 
 	// Update task in node.
 	if node, found := s.ssn.Nodes[reclaimee.NodeName]; found {
-		node.AddTask(reclaimee)
+		node.UpdateTask(reclaimee)
 	}
 
 	for _, eh := range s.ssn.eventHandlers {
