@@ -286,6 +286,6 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		// Test reachability from test to nginx <job name>-<task name>-0.<jobname>
 		code, err := ExecCommandInContainer(context, pod.Namespace, pod.Name, pod.Spec.Containers[0].Name, cmd)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(code).Should(Equal("200"))
+		Expect(code).ShouldNot(Equal("200"))
 	})
 })
