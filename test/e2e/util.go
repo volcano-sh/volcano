@@ -17,8 +17,11 @@ limitations under the License.
 package e2e
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,7 +41,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/remotecommand"
 	api "k8s.io/kubernetes/pkg/apis/core"
 
 	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -60,6 +66,7 @@ const (
 	workerPriority               = "worker-pri"
 	masterPriority               = "master-pri"
 	defaultNginxImage            = "nginx:1.14"
+	curlImage                    = "governmentpaas/curl-ssl"
 	nodeFieldSelectorKeyNodeName = api.ObjectNameField
 	defaultBusyBoxImage          = "busybox:1.24"
 	defaultMPIImage              = "volcanosh/example-mpi:0.0.1"
@@ -106,6 +113,8 @@ func VolcanoCliBinary() string {
 }
 
 type context struct {
+	restConfig *restclient.Config
+
 	kubeclient *kubernetes.Clientset
 	vcclient   *vcclient.Clientset
 
@@ -150,7 +159,6 @@ func initTestContext(o options) *context {
 
 	createQueues(ctx)
 	createPriorityClasses(ctx)
-
 	return ctx
 }
 
@@ -1113,6 +1121,24 @@ func jobTerminateAction(ctx *context, pg *batchv1alpha1.Job, time time.Time) wai
 	}
 }
 
+func waitPodReady(ctx *context, name, namespace string) error {
+	var additionalError error
+	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+		pod, err := ctx.kubeclient.CoreV1().Pods(namespace).Get(name, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		if pod.Status.Phase == v1.PodRunning {
+			return true, nil
+		}
+		additionalError = fmt.Errorf("pod '%s/%s' phase is %s not 'Running'", namespace, name, pod.Status.Phase)
+		return false, nil
+	})
+	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
+		return fmt.Errorf("[Wait time out]: %s", additionalError)
+	}
+	return err
+}
+
 func waitPodPhase(ctx *context, pod *v1.Pod, phase []v1.PodPhase) error {
 	var additionalError error
 	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
@@ -1161,4 +1187,81 @@ func isPodScheduled(pod *v1.Pod) bool {
 		}
 	}
 	return false
+}
+
+// ExecOptions passed to execWithOptions
+type ExecOptions struct {
+	Command       []string
+	Namespace     string
+	PodName       string
+	ContainerName string
+	Stdin         io.Reader
+	CaptureStdout bool
+	CaptureStderr bool
+	// If false, whitespace in std{err,out} will be removed.
+	PreserveWhitespace bool
+}
+
+// execWithOptions executes a command in the specified container,
+// returning stdout, stderr and error. `options` allowed for
+// additional parameters to be passed.
+func execWithOptions(ctx *context, options ExecOptions) (string, string, error) {
+	const tty = false
+
+	req := ctx.kubeclient.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Name(options.PodName).
+		Namespace(options.Namespace).
+		SubResource("exec").
+		Param("container", options.ContainerName)
+	req.VersionedParams(&v1.PodExecOptions{
+		Container: options.ContainerName,
+		Command:   options.Command,
+		Stdin:     options.Stdin != nil,
+		Stdout:    options.CaptureStdout,
+		Stderr:    options.CaptureStderr,
+		TTY:       tty,
+	}, scheme.ParameterCodec)
+
+	var stdout, stderr bytes.Buffer
+	err := execute("POST", req.URL(), ctx.restConfig, options.Stdin, &stdout, &stderr, tty)
+
+	if options.PreserveWhitespace {
+		return stdout.String(), stderr.String(), err
+	}
+	return strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), err
+}
+
+func execute(method string, url *url.URL, config *restclient.Config, stdin io.Reader, stdout, stderr io.Writer, tty bool) error {
+	exec, err := remotecommand.NewSPDYExecutor(config, method, url)
+	if err != nil {
+		return err
+	}
+	return exec.Stream(remotecommand.StreamOptions{
+		Stdin:  stdin,
+		Stdout: stdout,
+		Stderr: stderr,
+		Tty:    tty,
+	})
+}
+
+// ExecCommandInContainer executes a command in the specified container.
+func ExecCommandInContainer(ctx *context, namespace, podName, containerName string, cmd ...string) (string, error) {
+	stdout, stderr, err := execWithOptions(ctx, ExecOptions{
+		Command:            cmd,
+		Namespace:          namespace,
+		PodName:            podName,
+		ContainerName:      containerName,
+		Stdin:              nil,
+		CaptureStdout:      true,
+		CaptureStderr:      true,
+		PreserveWhitespace: false,
+	})
+
+	fmt.Printf("exec command %s in pod %s/%s:%s error: %s", cmd, namespace, podName, containerName, stderr)
+	if err != nil {
+		return "", fmt.Errorf("failed to execute command in pod %v, container %v: %v", podName, containerName, err)
+	}
+
+	return stdout, nil
 }

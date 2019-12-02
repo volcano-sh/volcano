@@ -20,7 +20,7 @@ import (
 	"fmt"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	cv1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
@@ -39,15 +39,15 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		nodeName, rep := computeNode(context, oneCPU)
 		Expect(rep).NotTo(Equal(0))
 
-		affinity := &cv1.Affinity{
-			NodeAffinity: &cv1.NodeAffinity{
-				RequiredDuringSchedulingIgnoredDuringExecution: &cv1.NodeSelector{
-					NodeSelectorTerms: []cv1.NodeSelectorTerm{
+		affinity := &corev1.Affinity{
+			NodeAffinity: &corev1.NodeAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+					NodeSelectorTerms: []corev1.NodeSelectorTerm{
 						{
-							MatchFields: []cv1.NodeSelectorRequirement{
+							MatchFields: []corev1.NodeSelectorRequirement{
 								{
 									Key:      api.NodeFieldSelectorKeyNodeName,
-									Operator: cv1.NodeSelectorOpIn,
+									Operator: corev1.NodeSelectorOpIn,
 									Values:   []string{nodeName},
 								},
 							},
@@ -113,9 +113,9 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 
 		labels := map[string]string{"foo": "bar"}
 
-		affinity := &cv1.Affinity{
-			PodAffinity: &cv1.PodAffinity{
-				RequiredDuringSchedulingIgnoredDuringExecution: []cv1.PodAffinityTerm{
+		affinity := &corev1.Affinity{
+			PodAffinity: &corev1.PodAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
 					{
 						LabelSelector: &v1.LabelSelector{
 							MatchLabels: labels,
@@ -236,5 +236,56 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		// Check whether service is created with job name
 		_, err = context.kubeclient.CoreV1().Services(job.Namespace).Get(job.Name, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("Check network access while set networkpolicy", func() {
+		jobName := "np-test"
+		namespace := "test"
+		taskName := "task"
+		context := initTestContext()
+		defer cleanupTestContext(context)
+
+		job := createJob(context, &jobSpec{
+			namespace: namespace,
+			name:      jobName,
+			plugins: map[string][]string{
+				"svc": {},
+			},
+			tasks: []taskSpec{
+				{
+					img:  defaultNginxImage, // serves on 80
+					req:  oneCPU,
+					min:  1,
+					rep:  1,
+					name: taskName,
+				},
+			},
+		})
+
+		pod := &corev1.Pod{
+			ObjectMeta: v1.ObjectMeta{
+				Namespace: namespace,
+				Name:      "test",
+			},
+			Spec: corev1.PodSpec{
+				Containers: createContainers(curlImage, "/bin/sleep 3650d", "", nil, nil, 0),
+			},
+		}
+
+		pod, err := context.kubeclient.CoreV1().Pods(namespacetest/e2e/util.go).Create(pod)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = waitJobReady(context, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		waitPodReady(context, pod.Name, pod.Namespace)
+		Expect(err).NotTo(HaveOccurred())
+
+		url := fmt.Sprintf("%s-%s-0.%s", jobName, taskName, jobName)
+		cmd := fmt.Sprintf("curl http://%s:80 -o /dev/null -s  -w '%%{http_code}'", url)
+		// Test reachability from test to nginx <job name>-<task name>-0.<jobname>
+		code, err := ExecCommandInContainer(context, pod.Namespace, pod.Name, pod.Spec.Containers[0].Name, cmd)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(code).Should(Equal("200"))
 	})
 })
