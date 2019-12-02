@@ -56,6 +56,17 @@
   revision = "a9fbbdc8dd8794b20af358382ab780559bca589d"
 
 [[projects]]
+  branch = "master"
+  digest = "1:ecdc8e0fe3bc7d549af1c9c36acf3820523b707d6c071b6d0c3860882c6f7b42"
+  name = "github.com/docker/spdystream"
+  packages = [
+    ".",
+    "spdy",
+  ]
+  pruneopts = "UT"
+  revision = "6480d4af844c189cf5dd913db24ddd339d3a4f85"
+
+[[projects]]
   digest = "1:e28563a1502222b269250bf79e7807da0574ab03f238f880275fdc1a02baeb39"
   name = "github.com/evanphx/json-patch"
   packages = ["."]
@@ -599,7 +610,7 @@
   version = "kubernetes-1.13.5"
 
 [[projects]]
-  digest = "1:8a798c137fb25ecaa13068dc278ec564cc27a072a508bb7655e2e675c72e13dc"
+  digest = "1:a07f709d70b2dfe9c3e11fd368e2f74872ab8e0b09083864300c62277b886492"
   name = "k8s.io/apimachinery"
   packages = [
     "pkg/api/equality",
@@ -631,12 +642,15 @@
     "pkg/util/diff",
     "pkg/util/errors",
     "pkg/util/framer",
+    "pkg/util/httpstream",
+    "pkg/util/httpstream/spdy",
     "pkg/util/intstr",
     "pkg/util/json",
     "pkg/util/mergepatch",
     "pkg/util/naming",
     "pkg/util/net",
     "pkg/util/rand",
+    "pkg/util/remotecommand",
     "pkg/util/runtime",
     "pkg/util/sets",
     "pkg/util/strategicpatch",
@@ -648,6 +662,7 @@
     "pkg/version",
     "pkg/watch",
     "third_party/forked/golang/json",
+    "third_party/forked/golang/netutil",
     "third_party/forked/golang/reflect",
   ]
   pruneopts = "UT"
@@ -672,7 +687,7 @@
   version = "kubernetes-1.13.5"
 
 [[projects]]
-  digest = "1:2c3b5168030932e356c194fad2e9a74ca52041af4a435afde257878464bad3a7"
+  digest = "1:8e6c9d85edc592c0d174012b1e283896b36f280674a367894f87afe15f740f88"
   name = "k8s.io/client-go"
   packages = [
     "discovery",
@@ -840,11 +855,14 @@
     "tools/pager",
     "tools/record",
     "tools/reference",
+    "tools/remotecommand",
     "tools/watch",
     "transport",
+    "transport/spdy",
     "util/buffer",
     "util/cert",
     "util/connrotation",
+    "util/exec",
     "util/flowcontrol",
     "util/homedir",
     "util/integer",
@@ -1085,6 +1103,7 @@
     "k8s.io/client-go/tools/leaderelection",
     "k8s.io/client-go/tools/leaderelection/resourcelock",
     "k8s.io/client-go/tools/record",
+    "k8s.io/client-go/tools/remotecommand",
     "k8s.io/client-go/util/flowcontrol",
     "k8s.io/client-go/util/workqueue",
     "k8s.io/code-generator/cmd/client-gen",
