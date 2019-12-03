@@ -59,7 +59,7 @@ if [[ ! -d ${RELEASE_FOLDER} ]];then
 fi
 
 DEPLOYMENT_FILE=${RELEASE_FOLDER}/${YAML_FILENAME}
-echo "Generating volcano yaml file into ${DEPLOYMENT_FILE}}"
+echo "Generating volcano yaml file into ${DEPLOYMENT_FILE}"
 
 if [[ -f ${DEPLOYMENT_FILE} ]];then
     rm ${DEPLOYMENT_FILE}
