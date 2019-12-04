@@ -17,7 +17,7 @@ limitations under the License.
 package nodeorder
 
 import (
-	"fmt"
+	"k8s.io/apimachinery/pkg/api/errors"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
@@ -237,7 +237,7 @@ func (c *cachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
 				}
 			}
 		}
-		return nil, fmt.Errorf("failed to find node <%s>", name)
+		return nil, errors.NewNotFound(v1.Resource("node"), name)
 	}
 
 	return node.Node, nil

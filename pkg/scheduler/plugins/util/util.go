@@ -17,7 +17,7 @@ limitations under the License.
 package util
 
 import (
-	"fmt"
+	"k8s.io/apimachinery/pkg/api/errors"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -204,7 +204,8 @@ type CachedNodeInfo struct {
 func (c *CachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
 	node, found := c.Session.Nodes[name]
 	if !found {
-		return nil, fmt.Errorf("failed to find node <%s>", name)
+
+		return nil, errors.NewNotFound(v1.Resource("node"), name)
 	}
 
 	return node.Node, nil
