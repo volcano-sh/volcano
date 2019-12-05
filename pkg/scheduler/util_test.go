@@ -26,7 +26,11 @@ import (
 
 func TestLoadSchedulerConf(t *testing.T) {
 	configuration := `
-actions: "allocate, backfill"
+actions: "enqueue, allocate, backfill"
+configurations:
+- name: enqueue
+  arguments:
+    "overcommit-factor": 1.5
 tiers:
 - plugins:
   - name: priority
@@ -142,12 +146,25 @@ tiers:
 		},
 	}
 
-	_, tiers, err := loadSchedulerConf(configuration)
+	expectedConfigurations := []conf.Configuration{
+		{
+			Name: "enqueue",
+			Arguments: map[string]string{
+				"overcommit-factor": "1.5",
+			},
+		},
+	}
+
+	_, tiers, configurations, err := loadSchedulerConf(configuration)
 	if err != nil {
 		t.Errorf("Failed to load scheduler configuration: %v", err)
 	}
 	if !reflect.DeepEqual(tiers, expectedTiers) {
 		t.Errorf("Failed to set default settings for plugins, expected: %+v, got %+v",
 			expectedTiers, tiers)
+	}
+	if !reflect.DeepEqual(configurations, expectedConfigurations) {
+		t.Errorf("Wrong configuration, expected: %+v, got %+v",
+			expectedConfigurations, configurations)
 	}
 }

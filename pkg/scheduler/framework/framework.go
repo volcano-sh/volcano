@@ -27,9 +27,10 @@ import (
 )
 
 // OpenSession start the session
-func OpenSession(cache cache.Cache, tiers []conf.Tier) *Session {
+func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Configuration) *Session {
 	ssn := openSession(cache)
 	ssn.Tiers = tiers
+	ssn.Configurations = configurations
 
 	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {

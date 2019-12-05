@@ -269,7 +269,7 @@ func TestNode(t *testing.T) {
 					},
 				},
 			},
-		})
+		}, nil)
 		defer framework.CloseSession(ssn)
 
 		for _, job := range ssn.Jobs {
