@@ -27,7 +27,7 @@ import (
 var _ = Describe("Predicates E2E Test", func() {
 
 	It("Hostport", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		nn := clusterNodeNumber(context)
@@ -55,7 +55,7 @@ var _ = Describe("Predicates E2E Test", func() {
 	})
 
 	It("NodeAffinity", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		slot := oneCPU
@@ -104,7 +104,7 @@ var _ = Describe("Predicates E2E Test", func() {
 	})
 
 	It("Pod Affinity", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		slot := oneCPU
@@ -153,7 +153,7 @@ var _ = Describe("Predicates E2E Test", func() {
 	})
 
 	It("Pod Anti-Affinity", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		slot := oneCPU
@@ -203,7 +203,7 @@ var _ = Describe("Predicates E2E Test", func() {
 	})
 
 	It("Taints", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		taints := []v1.Taint{
@@ -242,7 +242,7 @@ var _ = Describe("Predicates E2E Test", func() {
 	})
 
 	It("Taints and Tolerations", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		taints := []v1.Taint{

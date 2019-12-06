@@ -72,7 +72,10 @@ func RunCliCommand(command []string) string {
 		command = append(command, "--master", masterURL())
 	}
 	command = append(command, "--kubeconfig", kubeconfigPath(homeDir()))
-	output, err := exec.Command(VolcanoCliBinary(), command...).Output()
+	vcctl := VolcanoCliBinary()
+	Expect(fileExist(vcctl)).To(BeTrue(), fmt.Sprintf(
+		"vcctl binary: %s is required for E2E tests, please update VC_BIN environment", vcctl))
+	output, err := exec.Command(vcctl, command...).Output()
 	Expect(err).NotTo(HaveOccurred(),
 		fmt.Sprintf("Command %s failed to execute: %s", strings.Join(command, ""), err))
 	return string(output)
@@ -83,8 +86,10 @@ func RunCliCommandWithoutKubeConfig(command []string) string {
 	if masterURL() != "" {
 		command = append(command, "--master", masterURL())
 	}
-
-	output, err := exec.Command(VolcanoCliBinary(), command...).Output()
+	vcctl := VolcanoCliBinary()
+	Expect(fileExist(vcctl)).To(BeTrue(), fmt.Sprintf(
+		"vcctl binary: %s is required for E2E tests, please update VC_BIN environment", vcctl))
+	output, err := exec.Command(vcctl, command...).Output()
 	Expect(err).NotTo(HaveOccurred(),
 		fmt.Sprintf("Command %s failed to execute: %s", strings.Join(command, ""), err))
 	return string(output)

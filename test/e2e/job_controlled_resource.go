@@ -32,7 +32,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		taskName := "pvctask"
 		pvName := "job-pv-name"
 		pvcName := "job-pvc-name-exist"
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		var tt v12.HostPathType
@@ -136,7 +136,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 	It("Generate PodGroup and valid minResource when creating job", func() {
 		jobName := "job-name-podgroup"
 		namespace := "test"
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		resource := v12.ResourceList{

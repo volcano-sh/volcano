@@ -118,7 +118,7 @@ make e2e-test-kind
 If you want to run e2e test in a existing cluster with volcano deployed, run the following:
 
 ```bash
-export VK_BIN= need to set vcctl binary path (eg:.../src/volcano.sh/volcano/_output/bin/)
+export VC_BIN= need to set vcctl binary path (eg:.../src/volcano.sh/volcano/_output/bin/)
 KUBECONFIG=${KUBECONFIG} go test ./test/e2e
 ```
 

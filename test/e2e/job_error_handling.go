@@ -17,9 +17,10 @@ limitations under the License.
 package e2e
 
 import (
+	"strconv"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"strconv"
 
 	"k8s.io/api/core/v1"
 
@@ -31,7 +32,7 @@ import (
 var _ = Describe("Job Error Handling", func() {
 	It("job level LifecyclePolicy, Event: PodFailed; Action: RestartJob", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -68,7 +69,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: PodFailed; Action: TerminateJob", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -105,7 +106,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: PodFailed; Action: AbortJob", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -142,7 +143,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: PodEvicted; Action: RestartJob", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -186,7 +187,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: PodEvicted; Action: TerminateJob", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -230,7 +231,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: PodEvicted; Action: AbortJob", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -274,7 +275,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: Any; Action: RestartJob", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -318,7 +319,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("Job error handling: Restart job when job is unschedulable", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
 
@@ -377,7 +378,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("Job error handling: Abort job when job is unschedulable", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
 
@@ -432,7 +433,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: TaskCompleted; Action: CompletedJob", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -472,7 +473,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, error code: 3; Action: RestartJob", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -510,7 +511,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event[]: PodEvicted, PodFailed; Action: TerminateJob", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -556,7 +557,7 @@ var _ = Describe("Job Error Handling", func() {
 	})
 	It("Task level LifecyclePolicy, Event: PodFailed; Action: RestartJob", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -592,7 +593,7 @@ var _ = Describe("Job Error Handling", func() {
 	})
 	It("Task level LifecyclePolicy, Event: PodEvicted; Action: RestartJob", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -636,7 +637,7 @@ var _ = Describe("Job Error Handling", func() {
 	})
 	It("Task level LifecyclePolicy, Event: PodEvicted; Action: TerminateJob", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -679,7 +680,7 @@ var _ = Describe("Job Error Handling", func() {
 	})
 	It("Task level LifecyclePolicy, Event: TaskCompleted; Action: CompletedJob", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -719,7 +720,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: PodFailed; Action: AbortJob and Task level lifecyclePolicy, Event : PodFailed; Action: RestartJob", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -762,7 +763,9 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("Task Priority", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{
+			priorityClasses: []string{masterPriority, workerPriority},
+		})
 		defer cleanupTestContext(context)
 
 		rep := clusterSize(context, oneCPU)

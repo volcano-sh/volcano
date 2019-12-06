@@ -106,7 +106,7 @@ Global Flags:
 		Expect(exist).Should(Equal(true))
 	})
 
-	It("Command: vkctl job suspend -n {$JobName} --help", func() {
+	It("Command: vcctl job suspend -n {$JobName} --help", func() {
 		kubeConfig := os.Getenv("KUBECONFIG")
 		var output = `
 abort a job
@@ -131,7 +131,7 @@ Global Flags:
 		Expect(exist).Should(Equal(true))
 	})
 
-	It("vkctl job resume -n {$JobName} --help", func() {
+	It("vcctl job resume -n {$JobName} --help", func() {
 		kubeConfig := os.Getenv("KUBECONFIG")
 		var output = `
 resume a job
@@ -156,7 +156,7 @@ Global Flags:
 		Expect(exist).Should(Equal(true))
 	})
 
-	It("vkctl job run --help", func() {
+	It("vcctl job run --help", func() {
 		kubeConfig := os.Getenv("KUBECONFIG")
 		var output = `
 run job by parameters from the command line

@@ -36,7 +36,7 @@ import (
 
 var _ = Describe("Job E2E Test", func() {
 	It("Schedule Job", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
 
@@ -57,7 +57,7 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Schedule Multiple Jobs", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		rep := clusterSize(context, oneCPU)
@@ -91,7 +91,7 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Gang scheduling", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)/2 + 1
 
@@ -128,7 +128,7 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Gang scheduling: Full Occupied", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
 
@@ -159,7 +159,7 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Preemption", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		slot := oneCPU
@@ -191,7 +191,7 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Multiple Preemption", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		slot := oneCPU
@@ -232,7 +232,7 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Schedule BestEffort Job", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		slot := oneCPU
@@ -262,7 +262,7 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Statement", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		slot := oneCPU
@@ -299,7 +299,7 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("support binpack policy", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		slot := oneCPU
@@ -382,7 +382,7 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Schedule v1.Job type using Volcano scheduler", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 		namespace := "test"
 		parallel := int32(2)
@@ -418,7 +418,7 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Schedule v1.Job type using Volcano scheduler with error case", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 		namespace := "test"
 		parallel := int32(2)
@@ -479,7 +479,7 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Namespace Fair Share", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		const fairShareNamespace = "fairshare"
@@ -585,7 +585,9 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Queue Fair Share", func() {
-		context := initTestContext()
+		context := initTestContext(options{
+			queues: []string{defaultQueue1, defaultQueue2},
+		})
 		defer cleanupTestContext(context)
 
 		slot := halfCPU
