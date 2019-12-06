@@ -23,20 +23,40 @@ import (
 )
 
 func buildQueueCmd() *cobra.Command {
-	jobCmd := &cobra.Command{
+	queueCmd := &cobra.Command{
 		Use:   "queue",
 		Short: "Queue Operations",
 	}
 
-	jobRunCmd := &cobra.Command{
+	queueCreateCmd := &cobra.Command{
 		Use:   "create",
 		Short: "creates queue",
 		Run: func(cmd *cobra.Command, args []string) {
 			checkError(cmd, queue.CreateQueue())
 		},
 	}
-	queue.InitRunFlags(jobRunCmd)
-	jobCmd.AddCommand(jobRunCmd)
+	queue.InitCreateFlags(queueCreateCmd)
+	queueCmd.AddCommand(queueCreateCmd)
+
+	queueDeleteCmd := &cobra.Command{
+		Use:   "delete",
+		Short: "delete queue",
+		Run: func(cmd *cobra.Command, args []string) {
+			checkError(cmd, queue.DeleteQueue())
+		},
+	}
+	queue.InitDeleteFlags(queueDeleteCmd)
+	queueCmd.AddCommand(queueDeleteCmd)
+
+	queueOperateCmd := &cobra.Command{
+		Use:   "operate queue",
+		Short: "operate queue",
+		Run: func(cmd *cobra.Command, args []string) {
+			checkError(cmd, queue.OperateQueue())
+		},
+	}
+	queue.InitOperateFlags(queueOperateCmd)
+	queueCmd.AddCommand(queueOperateCmd)
 
 	queueListCmd := &cobra.Command{
 		Use:   "list",
@@ -46,7 +66,7 @@ func buildQueueCmd() *cobra.Command {
 		},
 	}
 	queue.InitListFlags(queueListCmd)
-	jobCmd.AddCommand(queueListCmd)
+	queueCmd.AddCommand(queueListCmd)
 
 	queueGetCmd := &cobra.Command{
 		Use:   "get",
@@ -56,7 +76,7 @@ func buildQueueCmd() *cobra.Command {
 		},
 	}
 	queue.InitGetFlags(queueGetCmd)
-	jobCmd.AddCommand(queueGetCmd)
+	queueCmd.AddCommand(queueGetCmd)
 
-	return jobCmd
+	return queueCmd
 }
