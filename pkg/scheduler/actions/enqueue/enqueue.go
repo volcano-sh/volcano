@@ -25,6 +25,18 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
+const (
+	// overCommitFactor is resource overCommit factor for enqueue action
+	// It determines the number of `pending` pods that the scheduler will tolerate
+	// when the resources of the cluster is insufficient
+	overCommitFactor = "overcommit-factor"
+)
+
+var (
+	// defaultOverCommitFactor defines the default overCommit resource factor for enqueue action
+	defaultOverCommitFactor = 1.2
+)
+
 type enqueueAction struct {
 	ssn *framework.Session
 }
@@ -77,7 +89,7 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 	emptyRes := api.EmptyResource()
 	nodesIdleRes := api.EmptyResource()
 	for _, node := range ssn.Nodes {
-		nodesIdleRes.Add(node.Allocatable.Clone().Multi(1.2).Sub(node.Used))
+		nodesIdleRes.Add(node.Allocatable.Clone().Multi(enqueue.getOverCommitFactor(ssn)).Sub(node.Used))
 	}
 
 	for {
@@ -122,3 +134,13 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 }
 
 func (enqueue *enqueueAction) UnInitialize() {}
+
+func (enqueue *enqueueAction) getOverCommitFactor(ssn *framework.Session) float64 {
+	factor := defaultOverCommitFactor
+	arg := framework.GetArgOfActionFromConf(ssn.Configurations, enqueue.Name())
+	if arg != nil {
+		arg.GetFloat64(&factor, overCommitFactor)
+	}
+
+	return factor
+}

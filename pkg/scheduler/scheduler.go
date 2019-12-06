@@ -36,6 +36,7 @@ type Scheduler struct {
 	config         *rest.Config
 	actions        []framework.Action
 	plugins        []conf.Tier
+	configurations []conf.Configuration
 	schedulerConf  string
 	schedulePeriod time.Duration
 }
@@ -75,7 +76,7 @@ func (pc *Scheduler) runOnce() {
 
 	pc.loadSchedulerConf()
 
-	ssn := framework.OpenSession(pc.cache, pc.plugins)
+	ssn := framework.OpenSession(pc.cache, pc.plugins, pc.configurations)
 	defer framework.CloseSession(ssn)
 
 	for _, action := range pc.actions {
@@ -98,7 +99,7 @@ func (pc *Scheduler) loadSchedulerConf() {
 		}
 	}
 
-	pc.actions, pc.plugins, err = loadSchedulerConf(schedConf)
+	pc.actions, pc.plugins, pc.configurations, err = loadSchedulerConf(schedConf)
 	if err != nil {
 		panic(err)
 	}

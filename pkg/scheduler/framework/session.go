@@ -45,8 +45,9 @@ type Session struct {
 	Queues        map[api.QueueID]*api.QueueInfo
 	NamespaceInfo map[api.NamespaceName]*api.NamespaceInfo
 
-	Backlog []*api.JobInfo
-	Tiers   []conf.Tier
+	Backlog        []*api.JobInfo
+	Tiers          []conf.Tier
+	Configurations []conf.Configuration
 
 	plugins           map[string]Plugin
 	eventHandlers     []*EventHandler
