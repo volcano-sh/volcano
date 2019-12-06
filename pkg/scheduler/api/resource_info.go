@@ -263,6 +263,31 @@ func (r *Resource) Less(rr *Resource) bool {
 	return true
 }
 
+// LessEqualStrict checks whether a resource is less or equal than other
+func (r *Resource) LessEqualStrict(rr *Resource) bool {
+	lessFunc := func(l, r float64) bool {
+		if l <= r {
+			return true
+		}
+		return false
+	}
+
+	if !lessFunc(r.MilliCPU, rr.MilliCPU) {
+		return false
+	}
+	if !lessFunc(r.Memory, rr.Memory) {
+		return false
+	}
+
+	for rName, rQuant := range r.ScalarResources {
+		if !lessFunc(rQuant, rr.ScalarResources[rName]) {
+			return false
+		}
+	}
+
+	return true
+}
+
 // LessEqual checks whether a resource is less than other resource
 func (r *Resource) LessEqual(rr *Resource) bool {
 	lessEqualFunc := func(l, r, diff float64) bool {

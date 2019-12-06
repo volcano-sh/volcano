@@ -417,3 +417,158 @@ func TestLess(t *testing.T) {
 		}
 	}
 }
+
+func TestLessEqualStrict(t *testing.T) {
+	tests := []struct {
+		name     string
+		former   *Resource
+		latter   *Resource
+		expected bool
+	}{
+		{
+			name: "same resource",
+			former: &Resource{
+				MilliCPU: 1000,
+				Memory:   1 * 1024 * 1024,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu-tesla-p100-16GB": 8000,
+				},
+			},
+			latter: &Resource{
+				MilliCPU: 1000,
+				Memory:   1 * 1024 * 1024,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu-tesla-p100-16GB": 8000,
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "cpu less",
+			former: &Resource{
+				MilliCPU: 1000 - 1,
+				Memory:   1 * 1024 * 1024,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu-tesla-p100-16GB": 8000,
+				},
+			},
+			latter: &Resource{
+				MilliCPU: 1000,
+				Memory:   1 * 1024 * 1024,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu-tesla-p100-16GB": 8000,
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "memory less",
+			former: &Resource{
+				MilliCPU: 1000,
+				Memory:   1*1024*1024 - 1,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu-tesla-p100-16GB": 8000,
+				},
+			},
+			latter: &Resource{
+				MilliCPU: 1000,
+				Memory:   1 * 1024 * 1024,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu-tesla-p100-16GB": 8000,
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "scalar resource less",
+			former: &Resource{
+				MilliCPU: 1000,
+				Memory:   1 * 1024 * 1024,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu-tesla-p100-16GB": 8000 - 1,
+				},
+			},
+			latter: &Resource{
+				MilliCPU: 1000,
+				Memory:   1 * 1024 * 1024,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu-tesla-p100-16GB": 8000,
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "memory larger",
+			former: &Resource{
+				MilliCPU: 1000,
+				Memory:   1*1024*1024 + 1,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu-tesla-p100-16GB": 8000,
+				},
+			},
+			latter: &Resource{
+				MilliCPU: 1000,
+				Memory:   1 * 1024 * 1024,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu-tesla-p100-16GB": 8000,
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "scalar larger",
+			former: &Resource{
+				MilliCPU: 1000,
+				Memory:   1 * 1024 * 1024,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu-tesla-p100-16GB": 8000 + 1,
+				},
+			},
+			latter: &Resource{
+				MilliCPU: 1000,
+				Memory:   1 * 1024 * 1024,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu-tesla-p100-16GB": 8000,
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "former does not have scalar resource",
+			former: &Resource{
+				MilliCPU: 1000,
+				Memory:   1 * 1024 * 1024,
+			},
+			latter: &Resource{
+				MilliCPU: 1000,
+				Memory:   1 * 1024 * 1024,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu-tesla-p100-16GB": 8000,
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "latter does not have scalar resource",
+			former: &Resource{
+				MilliCPU: 1000,
+				Memory:   1 * 1024 * 1024,
+				ScalarResources: map[v1.ResourceName]float64{
+					"nvidia.com/gpu-tesla-p100-16GB": 8000,
+				},
+			},
+			latter: &Resource{
+				MilliCPU: 1000,
+				Memory:   1 * 1024 * 1024,
+			},
+			expected: false,
+		},
+	}
+
+	for _, test := range tests {
+		result := test.former.LessEqualStrict(test.latter)
+		if !reflect.DeepEqual(test.expected, result) {
+			t.Errorf("case %s, expected: %#v, got: %#v", test.name, test.expected, result)
+		}
+	}
+}
