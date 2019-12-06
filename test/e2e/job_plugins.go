@@ -282,10 +282,10 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		url := fmt.Sprintf("%s-%s-0.%s", jobName, taskName, jobName)
-		cmd := fmt.Sprintf("curl http://%s:80 -o /dev/null -s  -w '%s'", url, "%{http_code}")
+		cmd := []string{"/bin/sh", "-c", fmt.Sprintf("curl http://%s:80 -o /dev/null -s  -w '%s'", url, "%{http_code}")}
 
 		// Test reachability from test to nginx <job name>-<task name>-0.<jobname>
-		code, err := ExecCommandInContainer(context, pod.Namespace, pod.Name, pod.Spec.Containers[0].Name, cmd)
+		code, err := ExecCommandInContainer(context, pod.Namespace, pod.Name, pod.Spec.Containers[0].Name, cmd...)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(code).ShouldNot(Equal("200"))
 	})
