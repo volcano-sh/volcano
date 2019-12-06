@@ -99,13 +99,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		// Check for Resource Predicate
-		// TODO: We could not allocate resource to task from both node.Idle and node.Releasing now,
-		// after it is done, we could change the following compare to:
-		// clonedNode := node.Idle.Clone()
-		// if !task.InitResreq.LessEqual(clonedNode.Add(node.Releasing)) {
-		//    ...
-		// }
-		if !task.InitResreq.LessEqual(node.Idle) && !task.InitResreq.LessEqual(node.Releasing) {
+		if !task.InitResreq.LessEqual(node.FutureIdle()) {
 			return api.NewFitError(task, node, api.NodeResourceFitFailed)
 		}
 
@@ -219,7 +213,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 					task.Namespace, task.Name, node.Name)
 
 				// Allocate releasing resource to the task if any.
-				if task.InitResreq.LessEqual(node.Releasing) {
+				if task.InitResreq.LessEqual(node.FutureIdle()) {
 					klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
 						task.Namespace, task.Name, node.Name, task.InitResreq, node.Releasing)
 					if err := stmt.Pipeline(task, node.Name); err != nil {
