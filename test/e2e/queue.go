@@ -27,7 +27,9 @@ import (
 
 var _ = Describe("Queue E2E Test", func() {
 	It("Reclaim", func() {
-		context := initTestContext("", []string{defaultQueue1, defaultQueue2}, nil)
+		context := initTestContext(options{
+			queues: []string{defaultQueue1, defaultQueue2},
+		})
 		defer cleanupTestContext(context)
 
 		slot := oneCPU
