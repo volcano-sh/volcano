@@ -25,32 +25,21 @@ function kind-up-cluster {
 }
 
 function install-volcano {
-  echo "Preparing helm tiller service account"
-  kubectl create serviceaccount --namespace kube-system tiller
-  kubectl create clusterrolebinding tiller-cluster-rule --clusterrole=cluster-admin --serviceaccount=kube-system:tiller
-
   install-helm
-  helm init --service-account tiller --kubeconfig ${KUBECONFIG} --wait
 
   echo "Pulling required docker images"
   docker pull ${MPI_EXAMPLE_IMAGE}
   docker pull ${TF_EXAMPLE_IMAGE}
 
-  echo "Loading docker images into kind cluster"
-  kind load docker-image ${MPI_EXAMPLE_IMAGE}  ${CLUSTER_CONTEXT}
-  kind load docker-image ${TF_EXAMPLE_IMAGE} ${CLUSTER_CONTEXT}
-
   echo "Install volcano chart"
-  helm install volcano installer/helm/chart/volcano --namespace kube-system --name ${CLUSTER_NAME} --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG} --set basic.scheduler_config_file=config/volcano-scheduler-ci.conf --wait
+  helm install ${CLUSTER_NAME} installer/helm/chart/volcano --namespace kube-system  --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG} --set basic.scheduler_config_file=config/volcano-scheduler-ci.conf --wait
 }
 
 function uninstall-volcano {
-  helm delete ${CLUSTER_NAME} --purge --kubeconfig ${KUBECONFIG}
+  helm uninstall ${CLUSTER_NAME} -n kube-system
 }
 
 function generate-log {
-    echo "Generating tiller log files"
-    kubectl logs deployment/tiller-deploy -n kube-system > helm-tiller.log
     echo "Generating volcano log files"
     kubectl logs deployment/${CLUSTER_NAME}-admission -n kube-system > volcano-admission.log
     kubectl logs deployment/${CLUSTER_NAME}-controllers -n kube-system > volcano-controller.log
