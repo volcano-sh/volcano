@@ -5,8 +5,6 @@ export VC_BIN=${VK_ROOT}/${BIN_DIR}/${BIN_OSARCH}
 export LOG_LEVEL=3
 export SHOW_VOLCANO_LOGS=${SHOW_VOLCANO_LOGS:-1}
 export CLEANUP_CLUSTER=${CLEANUP_CLUSTER:-1}
-export MPI_EXAMPLE_IMAGE=${MPI_EXAMPLE_IMAGE:-"volcanosh/example-mpi:0.0.1"}
-export TF_EXAMPLE_IMAGE=${TF_EXAMPLE_IMAGE:-"volcanosh/dist-mnist-tf-example:0.0.1"}
 
 if [[ "${CLUSTER_NAME}xxx" == "xxx" ]];then
     CLUSTER_NAME="integration"
@@ -26,10 +24,6 @@ function kind-up-cluster {
 
 function install-volcano {
   install-helm
-
-  echo "Pulling required docker images"
-  docker pull ${MPI_EXAMPLE_IMAGE}
-  docker pull ${TF_EXAMPLE_IMAGE}
 
   echo "Install volcano chart"
   helm install ${CLUSTER_NAME} installer/helm/chart/volcano --namespace kube-system  --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG} --set basic.scheduler_config_file=config/volcano-scheduler-ci.conf --wait
@@ -88,10 +82,10 @@ kind-up-cluster
 
 export KUBECONFIG="$(kind get kubeconfig-path ${CLUSTER_CONTEXT})"
 
-install-volcano
-
 # install calico to support networkpolicy
 kubectl apply -f https://docs.projectcalico.org/v3.10/manifests/calico.yaml
+
+install-volcano
 
 # Run e2e test
 cd ${VK_ROOT}
