@@ -1247,7 +1247,7 @@ func execute(method string, url *url.URL, config *restclient.Config, stdin io.Re
 
 // ExecCommandInContainer executes a command in the specified container.
 func ExecCommandInContainer(ctx *context, namespace, podName, containerName string, cmd ...string) (string, error) {
-	stdout, stderr, err := execWithOptions(ctx, ExecOptions{
+	stdout, _, err := execWithOptions(ctx, ExecOptions{
 		Command:            cmd,
 		Namespace:          namespace,
 		PodName:            podName,
@@ -1258,7 +1258,7 @@ func ExecCommandInContainer(ctx *context, namespace, podName, containerName stri
 		PreserveWhitespace: false,
 	})
 
-	fmt.Printf("exec command %s in pod %s/%s:%s error: %s", cmd, namespace, podName, containerName, stderr)
+	fmt.Printf("exec command %s in pod %s/%s:%s", cmd, namespace, podName, containerName)
 	if err != nil {
 		return "", fmt.Errorf("failed to execute command in pod %v, container %v: %v", podName, containerName, err)
 	}
