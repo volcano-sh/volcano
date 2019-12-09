@@ -34,7 +34,7 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 	It("Default queue would be added", func() {
 		jobName := "job-default-queue"
 		namespace := "test"
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		_, err := createJobInner(context, &jobSpec{
@@ -60,7 +60,7 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 
 	It("Invalid CPU unit", func() {
 
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 		namespace := "test"
 
@@ -109,7 +109,7 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 
 	It("Invalid memory unit", func() {
 
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 		namespace := "test"
 
@@ -160,7 +160,7 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 	It("Create default-scheduler pod", func() {
 		podName := "pod-default-scheduler"
 		namespace := "test"
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		pod := &corev1.Pod{
@@ -188,7 +188,7 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 		podName := "pod-volcano"
 		pgName := "pending-pg"
 		namespace := "test"
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		pg := &schedulingv1alpha2.PodGroup{

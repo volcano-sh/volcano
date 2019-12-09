@@ -33,7 +33,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		namespace := "test"
 		taskName := "task"
 		foundVolume := false
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		nodeName, rep := computeNode(context, oneCPU)
@@ -105,7 +105,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		namespace := "test"
 		taskName := "task"
 		foundVolume := false
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		_, rep := computeNode(context, oneCPU)
@@ -178,7 +178,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		taskName := "task"
 		foundVolume := false
 		foundEnv := false
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		_, rep := computeNode(context, oneCPU)

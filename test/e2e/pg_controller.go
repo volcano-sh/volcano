@@ -30,7 +30,7 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 		podName := "pod-volcano"
 		namespace := "test"
 		label := map[string]string{"schedulerName": "volcano"}
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		rc := &corev1.ReplicationController{
@@ -85,7 +85,7 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 		podName := "pod-default-scheduler"
 		namespace := "test"
 		label := map[string]string{"a": "b"}
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		rc := &corev1.ReplicationController{

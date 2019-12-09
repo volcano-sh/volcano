@@ -30,7 +30,7 @@ import (
 var _ = Describe("Job Life Cycle", func() {
 	It("Delete job that is pending state", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -62,7 +62,7 @@ var _ = Describe("Job Life Cycle", func() {
 
 	It("Delete job that is Running state", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -93,7 +93,7 @@ var _ = Describe("Job Life Cycle", func() {
 
 	It("Delete job that is Completed state", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -126,7 +126,7 @@ var _ = Describe("Job Life Cycle", func() {
 
 	It("Delete job that is Failed job", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -165,7 +165,7 @@ var _ = Describe("Job Life Cycle", func() {
 
 	It("Delete job that is terminated job", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -204,7 +204,7 @@ var _ = Describe("Job Life Cycle", func() {
 
 	It("Create and Delete job with CPU requirement", func() {
 		By("init test context")
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		By("create job")
@@ -243,7 +243,7 @@ var _ = Describe("Job Life Cycle", func() {
 	})
 
 	It("Checking Event Generation for job", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		job := createJob(context, &jobSpec{
@@ -271,7 +271,7 @@ var _ = Describe("Job Life Cycle", func() {
 	})
 
 	It("Checking Unschedulable Event Generation for job", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		nodeName, rep := computeNode(context, oneCPU)
