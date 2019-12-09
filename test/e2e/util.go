@@ -147,6 +147,7 @@ func initTestContext(o options) *context {
 	config, err := clientcmd.BuildConfigFromFlags(masterURL(), configPath)
 	Expect(err).NotTo(HaveOccurred())
 
+	ctx.restConfig = config
 	ctx.vcclient = vcclient.NewForConfigOrDie(config)
 	ctx.kubeclient = kubernetes.NewForConfigOrDie(config)
 
