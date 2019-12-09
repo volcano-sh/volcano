@@ -72,7 +72,7 @@ func RunJob() error {
 		return err
 	}
 
-	if launchJobFlags.Name == "" {
+	if launchJobFlags.Name == "" && launchJobFlags.FileName == "" {
 		err = fmt.Errorf("job name cannot be left blank")
 		return err
 	}
@@ -100,6 +100,10 @@ func RunJob() error {
 	newJob, err := jobClient.BatchV1alpha1().Jobs(launchJobFlags.Namespace).Create(job)
 	if err != nil {
 		return err
+	}
+
+	if newJob.Spec.Queue == "" {
+		newJob.Spec.Queue = "default"
 	}
 
 	fmt.Printf("run job %v successfully\n", newJob.Name)
