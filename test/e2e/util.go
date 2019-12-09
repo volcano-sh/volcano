@@ -187,6 +187,10 @@ func cleanupTestContext(ctx *context) {
 	deleteQueues(ctx)
 
 	deletePriorityClasses(ctx)
+
+	// Wait for namespace deleted.
+	err = wait.Poll(100*time.Millisecond, twoMinute, namespaceNotExist(ctx))
+	Expect(err).NotTo(HaveOccurred())
 }
 
 func createQueues(cxt *context) {
