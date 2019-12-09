@@ -242,7 +242,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		jobName := "np-test"
 		namespace := "test"
 		taskName := "task"
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		job := createJob(context, &jobSpec{
@@ -272,7 +272,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 			},
 		}
 
-		pod, err := context.kubeclient.CoreV1().Pods(namespacetest/e2e/util.go).Create(pod)
+		pod, err := context.kubeclient.CoreV1().Pods(pod.Namespace).Create(pod)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitJobReady(context, job)
