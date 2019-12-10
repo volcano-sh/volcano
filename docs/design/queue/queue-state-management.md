@@ -122,8 +122,6 @@ apiVersion: admissionregistration.k8s.io/v1beta1
 kind: ValidatingWebhookConfiguration
 metadata:
   name: {{ .Release.Name }}-validate-queue
-  annotations:
-    "helm.sh/hook": pre-install,pre-upgrade,post-delete
 webhooks:
   - clientConfig:
       caBundle: ""
@@ -171,8 +169,6 @@ apiVersion: admissionregistration.k8s.io/v1beta1
 kind: MutatingWebhookConfiguration
 metadata:
   name: {{ .Release.Name }}-mutate-queue
-  annotations:
-    "helm.sh/hook": pre-install,pre-upgrade,post-delete
 webhooks:
   - clientConfig:
       caBundle: ""

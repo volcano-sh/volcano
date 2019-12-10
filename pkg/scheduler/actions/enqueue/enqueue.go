@@ -17,12 +17,24 @@ limitations under the License.
 package enqueue
 
 import (
-	"github.com/golang/glog"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
+)
+
+const (
+	// overCommitFactor is resource overCommit factor for enqueue action
+	// It determines the number of `pending` pods that the scheduler will tolerate
+	// when the resources of the cluster is insufficient
+	overCommitFactor = "overcommit-factor"
+)
+
+var (
+	// defaultOverCommitFactor defines the default overCommit resource factor for enqueue action
+	defaultOverCommitFactor = 1.2
 )
 
 type enqueueAction struct {
@@ -40,8 +52,8 @@ func (enqueue *enqueueAction) Name() string {
 func (enqueue *enqueueAction) Initialize() {}
 
 func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
-	glog.V(3).Infof("Enter Enqueue ...")
-	defer glog.V(3).Infof("Leaving Enqueue ...")
+	klog.V(3).Infof("Enter Enqueue ...")
+	defer klog.V(3).Infof("Leaving Enqueue ...")
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 	queueMap := map[api.QueueID]*api.QueueInfo{}
@@ -50,12 +62,12 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 
 	for _, job := range ssn.Jobs {
 		if queue, found := ssn.Queues[job.Queue]; !found {
-			glog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
+			klog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
 				job.Queue, job.Namespace, job.Name)
 			continue
 		} else {
 			if _, existed := queueMap[queue.UID]; !existed {
-				glog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
+				klog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
 					queue.Name, job.Namespace, job.Name)
 
 				queueMap[queue.UID] = queue
@@ -67,17 +79,17 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 			if _, found := jobsMap[job.Queue]; !found {
 				jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 			}
-			glog.V(3).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
+			klog.V(3).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
 			jobsMap[job.Queue].Push(job)
 		}
 	}
 
-	glog.V(3).Infof("Try to enqueue PodGroup to %d Queues", len(jobsMap))
+	klog.V(3).Infof("Try to enqueue PodGroup to %d Queues", len(jobsMap))
 
 	emptyRes := api.EmptyResource()
 	nodesIdleRes := api.EmptyResource()
 	for _, node := range ssn.Nodes {
-		nodesIdleRes.Add(node.Allocatable.Clone().Multi(1.2).Sub(node.Used))
+		nodesIdleRes.Add(node.Allocatable.Clone().Multi(enqueue.getOverCommitFactor(ssn)).Sub(node.Used))
 	}
 
 	for {
@@ -86,7 +98,7 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 		}
 
 		if nodesIdleRes.Less(emptyRes) {
-			glog.V(3).Infof("Node idle resource is overused, ignore it.")
+			klog.V(3).Infof("Node idle resource is overused, ignore it.")
 			break
 		}
 
@@ -122,3 +134,13 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 }
 
 func (enqueue *enqueueAction) UnInitialize() {}
+
+func (enqueue *enqueueAction) getOverCommitFactor(ssn *framework.Session) float64 {
+	factor := defaultOverCommitFactor
+	arg := framework.GetArgOfActionFromConf(ssn.Configurations, enqueue.Name())
+	if arg != nil {
+		arg.GetFloat64(&factor, overCommitFactor)
+	}
+
+	return factor
+}

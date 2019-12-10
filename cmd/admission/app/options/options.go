@@ -17,16 +17,16 @@ limitations under the License.
 package options
 
 import (
-	"flag"
 	"fmt"
 
-	"github.com/golang/glog"
+	"github.com/spf13/pflag"
 
 	"k8s.io/api/admissionregistration/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	admissionregistrationv1beta1 "k8s.io/client-go/kubernetes/typed/admissionregistration/v1beta1"
+	"k8s.io/klog"
 )
 
 const (
@@ -58,27 +58,27 @@ func NewConfig() *Config {
 }
 
 // AddFlags add flags
-func (c *Config) AddFlags() {
-	flag.StringVar(&c.Master, "master", c.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
-	flag.StringVar(&c.Kubeconfig, "kubeconfig", c.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
-	flag.StringVar(&c.CertFile, "tls-cert-file", c.CertFile, ""+
+func (c *Config) AddFlags(fs *pflag.FlagSet) {
+	fs.StringVar(&c.Master, "master", c.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
+	fs.StringVar(&c.Kubeconfig, "kubeconfig", c.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
+	fs.StringVar(&c.CertFile, "tls-cert-file", c.CertFile, ""+
 		"File containing the default x509 Certificate for HTTPS. (CA cert, if any, concatenated "+
 		"after server cert).")
-	flag.StringVar(&c.KeyFile, "tls-private-key-file", c.KeyFile, "File containing the default x509 private key matching --tls-cert-file.")
-	flag.StringVar(&c.CaCertFile, "ca-cert-file", c.CaCertFile, "File containing the x509 Certificate for HTTPS.")
-	flag.IntVar(&c.Port, "port", 443, "the port used by admission-controller-server.")
-	flag.StringVar(&c.MutateWebhookConfigName, "mutate-webhook-config-name", "",
+	fs.StringVar(&c.KeyFile, "tls-private-key-file", c.KeyFile, "File containing the default x509 private key matching --tls-cert-file.")
+	fs.StringVar(&c.CaCertFile, "ca-cert-file", c.CaCertFile, "File containing the x509 Certificate for HTTPS.")
+	fs.IntVar(&c.Port, "port", 443, "the port used by admission-controller-server.")
+	fs.StringVar(&c.MutateWebhookConfigName, "mutate-webhook-config-name", "",
 		"Name of the mutatingwebhookconfiguration resource in Kubernetes [Deprecated]: it will be generated when not specified.")
-	flag.StringVar(&c.MutateWebhookName, "mutate-webhook-name", "",
+	fs.StringVar(&c.MutateWebhookName, "mutate-webhook-name", "",
 		"Name of the webhook entry in the webhook config. [Deprecated]: it will be generated when not specified")
-	flag.StringVar(&c.ValidateWebhookConfigName, "validate-webhook-config-name", "",
+	fs.StringVar(&c.ValidateWebhookConfigName, "validate-webhook-config-name", "",
 		"Name of the mutatingwebhookconfiguration resource in Kubernetes. [Deprecated]: it will be generated when not specified")
-	flag.StringVar(&c.ValidateWebhookName, "validate-webhook-name", "",
+	fs.StringVar(&c.ValidateWebhookName, "validate-webhook-name", "",
 		"Name of the webhook entry in the webhook config. [Deprecated]: it will be generated when not specified")
-	flag.BoolVar(&c.PrintVersion, "version", false, "Show version and quit")
-	flag.StringVar(&c.AdmissionServiceNamespace, "webhook-namespace", "default", "The namespace of this webhook")
-	flag.StringVar(&c.AdmissionServiceName, "webhook-service-name", "admission-service", "The name of this admission service")
-	flag.StringVar(&c.SchedulerName, "scheduler-name", defaultSchedulerName, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
+	fs.BoolVar(&c.PrintVersion, "version", false, "Show version and quit")
+	fs.StringVar(&c.AdmissionServiceNamespace, "webhook-namespace", "default", "The namespace of this webhook")
+	fs.StringVar(&c.AdmissionServiceName, "webhook-service-name", "admission-service", "The name of this admission service")
+	fs.StringVar(&c.SchedulerName, "scheduler-name", defaultSchedulerName, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
 }
 
 const (
@@ -235,13 +235,13 @@ func registerMutateWebhook(client admissionregistrationv1beta1.MutatingWebhookCo
 			return err
 		}
 		if err == nil && existing != nil {
-			glog.Infof("Updating MutatingWebhookConfiguration %v", hook)
+			klog.Infof("Updating MutatingWebhookConfiguration %v", hook)
 			existing.Webhooks = hook.Webhooks
 			if _, err := client.Update(existing); err != nil {
 				return err
 			}
 		} else {
-			glog.Infof("Creating MutatingWebhookConfiguration %v", hook)
+			klog.Infof("Creating MutatingWebhookConfiguration %v", hook)
 			if _, err := client.Create(&hook); err != nil {
 				return err
 			}
@@ -259,12 +259,12 @@ func registerValidateWebhook(client admissionregistrationv1beta1.ValidatingWebho
 		}
 		if err == nil && existing != nil {
 			existing.Webhooks = hook.Webhooks
-			glog.Infof("Updating ValidatingWebhookConfiguration %v", hook)
+			klog.Infof("Updating ValidatingWebhookConfiguration %v", hook)
 			if _, err := client.Update(existing); err != nil {
 				return err
 			}
 		} else {
-			glog.Infof("Creating ValidatingWebhookConfiguration %v", hook)
+			klog.Infof("Creating ValidatingWebhookConfiguration %v", hook)
 			if _, err := client.Create(&hook); err != nil {
 				return err
 			}

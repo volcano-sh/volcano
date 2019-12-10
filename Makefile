@@ -68,6 +68,7 @@ generate-code:
 	./hack/update-gencode.sh
 
 unit-test:
+	go clean -testcache
 	go list ./... | grep -v e2e | xargs go test -v -race
 
 e2e-test-kind:
@@ -84,7 +85,7 @@ clean:
 	rm -rf _output/
 	rm -f *.log
 
-verify: generate-code
+verify:
 	hack/verify-gofmt.sh
 	hack/verify-golint.sh
 	hack/verify-gencode.sh

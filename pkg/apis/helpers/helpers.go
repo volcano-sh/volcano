@@ -26,8 +26,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/golang/glog"
-
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -38,9 +36,11 @@ import (
 	"k8s.io/apiserver/pkg/server/healthz"
 	"k8s.io/apiserver/pkg/server/mux"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog"
 
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	schedulerv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 )
 
 // JobKind  creates job GroupVersionKind
@@ -48,6 +48,9 @@ var JobKind = vcbatch.SchemeGroupVersion.WithKind("Job")
 
 // CommandKind  creates command GroupVersionKind
 var CommandKind = vcbus.SchemeGroupVersion.WithKind("Command")
+
+// V1alpha2QueueKind is queue kind with v1alpha2 version
+var V1alpha2QueueKind = schedulerv1alpha2.SchemeGroupVersion.WithKind("Queue")
 
 // GetController  returns the controller uid
 func GetController(obj interface{}) types.UID {
@@ -85,7 +88,7 @@ func CreateConfigMapIfNotExist(job *vcbatch.Job, kubeClients kubernetes.Interfac
 	cmOld, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
-			glog.V(3).Infof("Failed to get Configmap for Job <%s/%s>: %v",
+			klog.V(3).Infof("Failed to get Configmap for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
 			return err
 		}
@@ -102,7 +105,7 @@ func CreateConfigMapIfNotExist(job *vcbatch.Job, kubeClients kubernetes.Interfac
 		}
 
 		if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Create(cm); err != nil {
-			glog.V(3).Infof("Failed to create ConfigMap for Job <%s/%s>: %v",
+			klog.V(3).Infof("Failed to create ConfigMap for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
 			return err
 		}
@@ -111,7 +114,7 @@ func CreateConfigMapIfNotExist(job *vcbatch.Job, kubeClients kubernetes.Interfac
 
 	cmOld.Data = data
 	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Update(cmOld); err != nil {
-		glog.V(3).Infof("Failed to update ConfigMap for Job <%s/%s>: %v",
+		klog.V(3).Infof("Failed to update ConfigMap for Job <%s/%s>: %v",
 			job.Namespace, job.Name, err)
 		return err
 	}
@@ -123,7 +126,7 @@ func CreateConfigMapIfNotExist(job *vcbatch.Job, kubeClients kubernetes.Interfac
 func DeleteConfigmap(job *vcbatch.Job, kubeClients kubernetes.Interface, cmName string) error {
 	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
-			glog.V(3).Infof("Failed to get Configmap for Job <%s/%s>: %v",
+			klog.V(3).Infof("Failed to get Configmap for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
 			return err
 		}
@@ -133,7 +136,7 @@ func DeleteConfigmap(job *vcbatch.Job, kubeClients kubernetes.Interface, cmName 
 
 	if err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Delete(cmName, nil); err != nil {
 		if !apierrors.IsNotFound(err) {
-			glog.Errorf("Failed to delete Configmap of Job %v/%v: %v",
+			klog.Errorf("Failed to delete Configmap of Job %v/%v: %v",
 				job.Namespace, job.Name, err)
 			return err
 		}
@@ -204,9 +207,9 @@ func runServer(server *http.Server, ln net.Listener) error {
 		msg := fmt.Sprintf("Stopped listening on %s", listener.Addr().String())
 		select {
 		case <-stopCh:
-			glog.Info(msg)
+			klog.Info(msg)
 		default:
-			glog.Fatalf("%s due to error: %v", msg, err)
+			klog.Fatalf("%s due to error: %v", msg, err)
 		}
 	}()
 

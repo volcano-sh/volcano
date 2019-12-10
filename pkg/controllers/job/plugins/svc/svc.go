@@ -21,9 +21,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 
 	"k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -63,13 +64,23 @@ func (sp *servicePlugin) addFlags() {
 		"set publishNotReadyAddresses of svc to true")
 
 	if err := flagSet.Parse(sp.pluginArguments); err != nil {
-		glog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
+		klog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
 	}
 	return
 }
 
 func (sp *servicePlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
-	// use podName.serviceName as default pod DNS domain
+	// Add `hostname` and `subdomain` for pod, mount service config for pod.
+	// A pod with `hostname` and `subdomain` will have the fully qualified domain name(FQDN)
+	// `hostname.subdomain.namespace.svc.cluster-domain.example`.
+	// If there exists a headless service in the same namespace as the pod and with the
+	// same name as the `subdomain`, the cluster's KubeDNS Server will returns an A record for
+	// the Pods's fully qualified hostname, pointing to the Pod’s IP.
+	// `hostname.subdomain` will be used as address of the pod.
+	// By default, a client Pod’s DNS search list will include the Pod’s own namespace and
+	// the cluster’s default domain, so the pod can be accessed by pods in the same namespace
+	// through the address of pod.
+	// More info: https://kubernetes.io/docs/concepts/services-networking/dns-pod-service
 	if len(pod.Spec.Hostname) == 0 {
 		pod.Spec.Hostname = pod.Name
 	}
@@ -97,6 +108,11 @@ func (sp *servicePlugin) OnJobAdd(job *batch.Job) error {
 		return err
 	}
 
+	// TODO: maybe add a flag
+	if err := sp.createNetworkPolicyIfNotExist(job); err != nil {
+		return err
+	}
+
 	job.Status.ControlledResources["plugin-"+sp.Name()] = sp.Name()
 
 	return nil
@@ -109,7 +125,7 @@ func (sp *servicePlugin) OnJobDelete(job *batch.Job) error {
 
 	if err := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Delete(job.Name, nil); err != nil {
 		if !apierrors.IsNotFound(err) {
-			glog.Errorf("Failed to delete Service of Job %v/%v: %v", job.Namespace, job.Name, err)
+			klog.Errorf("Failed to delete Service of Job %v/%v: %v", job.Namespace, job.Name, err)
 			return err
 		}
 	}
@@ -146,7 +162,7 @@ func (sp *servicePlugin) createServiceIfNotExist(job *batch.Job) error {
 	// If Service does not exist, create one for Job.
 	if _, err := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Get(job.Name, metav1.GetOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
-			glog.V(3).Infof("Failed to get Service for Job <%s/%s>: %v",
+			klog.V(3).Infof("Failed to get Service for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
 			return err
 		}
@@ -178,7 +194,57 @@ func (sp *servicePlugin) createServiceIfNotExist(job *batch.Job) error {
 		}
 
 		if _, e := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Create(svc); e != nil {
-			glog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v", job.Namespace, job.Name, e)
+			klog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v", job.Namespace, job.Name, e)
+			return e
+		}
+		job.Status.ControlledResources["plugin-"+sp.Name()] = sp.Name()
+
+	}
+
+	return nil
+}
+
+// Limit pods can be accessible only by pods belong to the job.
+func (sp *servicePlugin) createNetworkPolicyIfNotExist(job *batch.Job) error {
+	// If network policy does not exist, create one for Job.
+	if _, err := sp.Clientset.KubeClients.NetworkingV1().NetworkPolicies(job.Namespace).Get(job.Name, metav1.GetOptions{}); err != nil {
+		if !apierrors.IsNotFound(err) {
+			klog.V(3).Infof("Failed to get NetworkPolicy for Job <%s/%s>: %v",
+				job.Namespace, job.Name, err)
+			return err
+		}
+
+		networkpolicy := &networkingv1.NetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: job.Namespace,
+				Name:      job.Name,
+				OwnerReferences: []metav1.OwnerReference{
+					*metav1.NewControllerRef(job, helpers.JobKind),
+				},
+			},
+			Spec: networkingv1.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						batch.JobNameKey:      job.Name,
+						batch.JobNamespaceKey: job.Namespace,
+					},
+				},
+				Ingress: []networkingv1.NetworkPolicyIngressRule{{
+					From: []networkingv1.NetworkPolicyPeer{{
+						PodSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								batch.JobNameKey:      job.Name,
+								batch.JobNamespaceKey: job.Namespace,
+							},
+						},
+					}},
+				}},
+				PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+			},
+		}
+
+		if _, e := sp.Clientset.KubeClients.NetworkingV1().NetworkPolicies(job.Namespace).Create(networkpolicy); e != nil {
+			klog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v", job.Namespace, job.Name, e)
 			return e
 		}
 		job.Status.ControlledResources["plugin-"+sp.Name()] = sp.Name()

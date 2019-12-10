@@ -17,7 +17,7 @@ limitations under the License.
 package reclaim
 
 import (
-	"github.com/golang/glog"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -40,8 +40,8 @@ func (alloc *reclaimAction) Name() string {
 func (alloc *reclaimAction) Initialize() {}
 
 func (alloc *reclaimAction) Execute(ssn *framework.Session) {
-	glog.V(3).Infof("Enter Reclaim ...")
-	defer glog.V(3).Infof("Leaving Reclaim ...")
+	klog.V(3).Infof("Enter Reclaim ...")
+	defer klog.V(3).Infof("Leaving Reclaim ...")
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 	queueMap := map[api.QueueID]*api.QueueInfo{}
@@ -49,7 +49,7 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 	preemptorsMap := map[api.QueueID]*util.PriorityQueue{}
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}
 
-	glog.V(3).Infof("There are <%d> Jobs and <%d> Queues in total for scheduling.",
+	klog.V(3).Infof("There are <%d> Jobs and <%d> Queues in total for scheduling.",
 		len(ssn.Jobs), len(ssn.Queues))
 
 	var underRequest []*api.JobInfo
@@ -58,17 +58,17 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 			continue
 		}
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
-			glog.V(4).Infof("Job <%s/%s> Queue <%s> skip reclaim, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
+			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip reclaim, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
 			continue
 		}
 
 		if queue, found := ssn.Queues[job.Queue]; !found {
-			glog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
+			klog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
 				job.Queue, job.Namespace, job.Name)
 			continue
 		} else {
 			if _, existed := queueMap[queue.UID]; !existed {
-				glog.V(4).Infof("Added Queue <%s> for Job <%s/%s>",
+				klog.V(4).Infof("Added Queue <%s> for Job <%s/%s>",
 					queue.Name, job.Namespace, job.Name)
 
 				queueMap[queue.UID] = queue
@@ -100,7 +100,7 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 
 		queue := queues.Pop().(*api.QueueInfo)
 		if ssn.Overused(queue) {
-			glog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
+			klog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
 			continue
 		}
 
@@ -128,7 +128,7 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 			resreq := task.InitResreq.Clone()
 			reclaimed := api.EmptyResource()
 
-			glog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
+			klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
 				task.Namespace, task.Name, n.Name)
 
 			var reclaimees []*api.TaskInfo
@@ -148,7 +148,7 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 			victims := ssn.Reclaimable(task, reclaimees)
 
 			if len(victims) == 0 {
-				glog.V(3).Infof("No victims on Node <%s>.", n.Name)
+				klog.V(3).Infof("No victims on Node <%s>.", n.Name)
 				continue
 			}
 
@@ -157,17 +157,17 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 			for _, v := range victims {
 				allRes.Add(v.Resreq)
 			}
-			if allRes.Less(resreq) {
-				glog.V(3).Infof("Not enough resource from victims on Node <%s>.", n.Name)
+			if !resreq.LessEqual(allRes) {
+				klog.V(3).Infof("Not enough resource from victims on Node <%s>.", n.Name)
 				continue
 			}
 
 			// Reclaim victims for tasks.
 			for _, reclaimee := range victims {
-				glog.Errorf("Try to reclaim Task <%s/%s> for Tasks <%s/%s>",
+				klog.Errorf("Try to reclaim Task <%s/%s> for Tasks <%s/%s>",
 					reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name)
 				if err := ssn.Evict(reclaimee, "reclaim"); err != nil {
-					glog.Errorf("Failed to reclaim Task <%s/%s> for Tasks <%s/%s>: %v",
+					klog.Errorf("Failed to reclaim Task <%s/%s> for Tasks <%s/%s>: %v",
 						reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name, err)
 					continue
 				}
@@ -178,12 +178,12 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 				}
 			}
 
-			glog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>.",
+			klog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>.",
 				reclaimed, task.Namespace, task.Name, task.InitResreq)
 
 			if task.InitResreq.LessEqual(reclaimed) {
 				if err := ssn.Pipeline(task, n.Name); err != nil {
-					glog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
+					klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 						task.Namespace, task.Name, n.Name)
 				}
 

@@ -19,11 +19,10 @@ package job
 import (
 	"fmt"
 
-	"github.com/golang/glog"
-
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/klog"
 
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
@@ -63,24 +62,19 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 		vcName := volume.VolumeClaimName
 		name := fmt.Sprintf("%s-%s", job.Name, jobhelpers.GenRandomStr(12))
 		if _, ok := volumeMap[vcName]; !ok {
-			if _, ok := job.Status.ControlledResources["volume-emptyDir-"+vcName]; ok {
-				volume := v1.Volume{
-					Name: name,
-				}
-				volume.EmptyDir = &v1.EmptyDirVolumeSource{}
-				pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
-			} else {
-				volume := v1.Volume{
-					Name: name,
-				}
-				volume.PersistentVolumeClaim = &v1.PersistentVolumeClaimVolumeSource{
-					ClaimName: vcName,
-				}
-				pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
+			volume := v1.Volume{
+				Name: name,
+				VolumeSource: v1.VolumeSource{
+					PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+						ClaimName: vcName,
+					},
+				},
 			}
+			pod.Spec.Volumes = append(pod.Spec.Volumes, volume)
 			volumeMap[vcName] = name
 		} else {
-			name = volumeMap[vcName]
+			// duplicate volumes, should be prevented
+			continue
 		}
 
 		for i, c := range pod.Spec.Containers {
@@ -137,7 +131,7 @@ func applyPolicies(job *batch.Job, req *apis.Request) batch.Action {
 
 	// For all the requests triggered from discarded job resources will perform sync action instead
 	if req.JobVersion < job.Status.Version {
-		glog.Infof("Request %s is outdated, will perform sync instead.", req)
+		klog.Infof("Request %s is outdated, will perform sync instead.", req)
 		return batch.SyncJobAction
 	}
 

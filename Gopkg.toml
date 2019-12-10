@@ -33,10 +33,6 @@ required = [
 ]
 
 [[constraint]]
-  branch = "master"
-  name = "github.com/golang/glog"
-
-[[constraint]]
   name = "github.com/onsi/ginkgo"
   version = "1.7.0"
 

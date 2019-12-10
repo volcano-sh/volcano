@@ -28,7 +28,7 @@ import (
 
 var _ = Describe("TensorFlow E2E Test", func() {
 	It("Will Start in pending state and goes through other phases to get complete phase", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		jobName := "tensorflow-dist-mnist"

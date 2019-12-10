@@ -41,7 +41,7 @@ tiers:
   - name: nodeorder
 `
 
-func loadSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, error) {
+func loadSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []conf.Configuration, error) {
 	var actions []framework.Action
 
 	schedulerConf := &conf.SchedulerConfiguration{}
@@ -50,7 +50,7 @@ func loadSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, error) 
 	copy(buf, confStr)
 
 	if err := yaml.Unmarshal(buf, schedulerConf); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// Set default settings for each plugin if not set
@@ -65,11 +65,11 @@ func loadSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, error) 
 		if action, found := framework.GetAction(strings.TrimSpace(actionName)); found {
 			actions = append(actions, action)
 		} else {
-			return nil, nil, fmt.Errorf("failed to found Action %s, ignore it", actionName)
+			return nil, nil, nil, fmt.Errorf("failed to found Action %s, ignore it", actionName)
 		}
 	}
 
-	return actions, schedulerConf.Tiers, nil
+	return actions, schedulerConf.Tiers, schedulerConf.Configurations, nil
 }
 
 func readSchedulerConf(confPath string) (string, error) {

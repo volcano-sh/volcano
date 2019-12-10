@@ -850,6 +850,57 @@ func TestValidateExecution(t *testing.T) {
 					},
 					Volumes: []v1alpha1.VolumeSpec{
 						{
+							MountPath:       "/var",
+							VolumeClaimName: "pvc1",
+						},
+						{
+							MountPath:       "/var",
+							VolumeClaimName: "pvc2",
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			ret:            " duplicated mountPath: /var;",
+			ExpectErr:      true,
+		},
+		{
+			Name: "volume without VolumeClaimName and VolumeClaim",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "invalid-volume",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+					Policies: []v1alpha1.LifecyclePolicy{
+						{
+							Event:  v1alpha1.AnyEvent,
+							Action: v1alpha1.AbortJobAction,
+						},
+					},
+					Volumes: []v1alpha1.VolumeSpec{
+						{
 							MountPath: "/var",
 						},
 						{
@@ -859,7 +910,7 @@ func TestValidateExecution(t *testing.T) {
 				},
 			},
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
-			ret:            " duplicated mountPath: /var;",
+			ret:            " either VolumeClaim or VolumeClaimName must be specified;",
 			ExpectErr:      true,
 		},
 		// task Policy with any event and other events

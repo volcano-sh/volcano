@@ -36,7 +36,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		var outBuffer bytes.Buffer
 		jobName := "test-job"
 		namespace := "test"
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
 
@@ -70,7 +70,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		jobName := "test-suspend-running-job"
 		taskName := "long-live-task"
 		namespace := "test"
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		job := createJob(context, &jobSpec{
@@ -113,7 +113,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 	})
 
 	It("Suspend pending job", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
 
@@ -157,7 +157,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 
 		jobName := "test-del-job"
 		namespace := "test"
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 		rep := clusterSize(context, oneCPU)
 

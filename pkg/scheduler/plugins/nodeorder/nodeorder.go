@@ -17,11 +17,10 @@ limitations under the License.
 package nodeorder
 
 import (
-	"fmt"
-
-	"github.com/golang/glog"
+	"k8s.io/apimachinery/pkg/api/errors"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/priorities"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 	"k8s.io/kubernetes/pkg/scheduler/cache"
@@ -138,10 +137,10 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			nodeName := event.Task.NodeName
 			node, found := nodeMap[nodeName]
 			if !found {
-				glog.Warningf("node order, update pod %s/%s allocate to NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+				klog.Warningf("node order, update pod %s/%s allocate to NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
 			} else {
 				node.AddPod(pod)
-				glog.V(4).Infof("node order, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
+				klog.V(4).Infof("node order, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
 			}
 		},
 		DeallocateFunc: func(event *framework.Event) {
@@ -150,10 +149,10 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			nodeName := event.Task.NodeName
 			node, found := nodeMap[nodeName]
 			if !found {
-				glog.Warningf("node order, update pod %s/%s allocate from NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+				klog.Warningf("node order, update pod %s/%s allocate from NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
 			} else {
 				node.RemovePod(pod)
-				glog.V(4).Infof("node order, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
+				klog.V(4).Infof("node order, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
 			}
 		},
 	})
@@ -163,7 +162,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		if !found {
 			nodeInfo = cache.NewNodeInfo(node.Pods()...)
 			nodeInfo.SetNode(node.Node)
-			glog.Warningf("node order, generate node info for %s at NodeOrderFn is unexpected", node.Name)
+			klog.Warningf("node order, generate node info for %s at NodeOrderFn is unexpected", node.Name)
 		}
 		var score = 0.0
 
@@ -172,7 +171,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		host, err := priorities.LeastRequestedPriorityMap(task.Pod, nil, nodeInfo)
 		if err != nil {
-			glog.Warningf("Least Requested Priority Failed because of Error: %v", err)
+			klog.Warningf("Least Requested Priority Failed because of Error: %v", err)
 			return 0, err
 		}
 		// If leastReqWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
@@ -180,7 +179,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		host, err = priorities.BalancedResourceAllocationMap(task.Pod, nil, nodeInfo)
 		if err != nil {
-			glog.Warningf("Balanced Resource Allocation Priority Failed because of Error: %v", err)
+			klog.Warningf("Balanced Resource Allocation Priority Failed because of Error: %v", err)
 			return 0, err
 		}
 		// If balancedRescourceWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
@@ -188,13 +187,13 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		host, err = priorities.CalculateNodeAffinityPriorityMap(task.Pod, nil, nodeInfo)
 		if err != nil {
-			glog.Warningf("Calculate Node Affinity Priority Failed because of Error: %v", err)
+			klog.Warningf("Calculate Node Affinity Priority Failed because of Error: %v", err)
 			return 0, err
 		}
 		// If nodeAffinityWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
 		score = score + float64(host.Score*weight.nodeAffinityWeight)
 
-		glog.V(4).Infof("Total Score for task %s/%s on node %s is: %f", task.Namespace, task.Name, node.Name, score)
+		klog.V(4).Infof("Total Score for task %s/%s on node %s is: %f", task.Namespace, task.Name, node.Name, score)
 		return score, nil
 	}
 	ssn.AddNodeOrderFn(pp.Name(), nodeOrderFn)
@@ -205,7 +204,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		mapFn := priorities.NewInterPodAffinityPriority(cn, nl, pl, v1.DefaultHardPodAffinitySymmetricWeight)
 		interPodAffinityScore, err := mapFn(task.Pod, nodeMap, nodeSlice)
 		if err != nil {
-			glog.Warningf("Calculate Inter Pod Affinity Priority Failed because of Error: %v", err)
+			klog.Warningf("Calculate Inter Pod Affinity Priority Failed because of Error: %v", err)
 			return nil, err
 		}
 
@@ -214,7 +213,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			score[host.Host] = float64(host.Score) * float64(weight.podAffinityWeight)
 		}
 
-		glog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, score)
+		klog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, score)
 		return score, nil
 	}
 	ssn.AddBatchNodeOrderFn(pp.Name(), batchNodeOrderFn)
@@ -238,7 +237,7 @@ func (c *cachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
 				}
 			}
 		}
-		return nil, fmt.Errorf("failed to find node <%s>", name)
+		return nil, errors.NewNotFound(v1.Resource("node"), name)
 	}
 
 	return node.Node, nil

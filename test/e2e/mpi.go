@@ -25,7 +25,7 @@ import (
 
 var _ = Describe("MPI E2E Test", func() {
 	It("will run and complete finally", func() {
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		slot := oneCPU

@@ -114,8 +114,15 @@ func (fb *FakeBinder) Bind(p *v1.Pod, hostname string) error {
 // FakeEvictor is used as fake evictor
 type FakeEvictor struct {
 	sync.Mutex
-	Evicts  []string
+	evicts  []string
 	Channel chan string
+}
+
+// Evicts returns copy of evicted pods.
+func (fe *FakeEvictor) Evicts() []string {
+	fe.Lock()
+	defer fe.Unlock()
+	return append([]string{}, fe.evicts...)
 }
 
 // Evict is used by fake evictor to evict pods
@@ -125,7 +132,7 @@ func (fe *FakeEvictor) Evict(p *v1.Pod) error {
 
 	fmt.Println("PodName: ", p.Name)
 	key := fmt.Sprintf("%v/%v", p.Namespace, p.Name)
-	fe.Evicts = append(fe.Evicts, key)
+	fe.evicts = append(fe.evicts, key)
 
 	fe.Channel <- key
 

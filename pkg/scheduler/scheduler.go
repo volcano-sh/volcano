@@ -19,10 +19,9 @@ package scheduler
 import (
 	"time"
 
-	"github.com/golang/glog"
-
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
+	"k8s.io/klog"
 
 	schedcache "volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -37,6 +36,7 @@ type Scheduler struct {
 	config         *rest.Config
 	actions        []framework.Action
 	plugins        []conf.Tier
+	configurations []conf.Configuration
 	schedulerConf  string
 	schedulePeriod time.Duration
 }
@@ -69,14 +69,14 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 }
 
 func (pc *Scheduler) runOnce() {
-	glog.V(4).Infof("Start scheduling ...")
+	klog.V(4).Infof("Start scheduling ...")
 	scheduleStartTime := time.Now()
-	defer glog.V(4).Infof("End scheduling ...")
+	defer klog.V(4).Infof("End scheduling ...")
 	defer metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
 
 	pc.loadSchedulerConf()
 
-	ssn := framework.OpenSession(pc.cache, pc.plugins)
+	ssn := framework.OpenSession(pc.cache, pc.plugins, pc.configurations)
 	defer framework.CloseSession(ssn)
 
 	for _, action := range pc.actions {
@@ -93,13 +93,13 @@ func (pc *Scheduler) loadSchedulerConf() {
 	schedConf := defaultSchedulerConf
 	if len(pc.schedulerConf) != 0 {
 		if schedConf, err = readSchedulerConf(pc.schedulerConf); err != nil {
-			glog.Errorf("Failed to read scheduler configuration '%s', using default configuration: %v",
+			klog.Errorf("Failed to read scheduler configuration '%s', using default configuration: %v",
 				pc.schedulerConf, err)
 			schedConf = defaultSchedulerConf
 		}
 	}
 
-	pc.actions, pc.plugins, err = loadSchedulerConf(schedConf)
+	pc.actions, pc.plugins, pc.configurations, err = loadSchedulerConf(schedConf)
 	if err != nil {
 		panic(err)
 	}

@@ -26,54 +26,13 @@ import (
 )
 
 var _ = Describe("Job E2E Test: Test Job PVCs", func() {
-	It("Generate PVC name if not specified", func() {
-		jobName := "job-pvc-name-empty"
-		namespace := "test"
-		taskName := "task"
-		pvcName := "specifiedpvcname"
-		context := initTestContext()
-		defer cleanupTestContext(context)
-
-		job := createJob(context, &jobSpec{
-			namespace: namespace,
-			name:      jobName,
-			tasks: []taskSpec{
-				{
-					img:  defaultNginxImage,
-					req:  oneCPU,
-					min:  1,
-					rep:  1,
-					name: taskName,
-				},
-			},
-			volumes: []v1alpha1.VolumeSpec{
-				{
-					MountPath: "/mounttwo",
-				},
-			},
-		})
-
-		err := waitJobReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
-
-		job, err = context.vcclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
-
-		Expect(len(job.Spec.Volumes)).To(Equal(1),
-			"Two volumes should be created")
-		for _, volume := range job.Spec.Volumes {
-			Expect(volume.VolumeClaimName).Should(Or(ContainSubstring(jobName), Equal(pvcName)),
-				"PVC name should be generated for manually specified.")
-		}
-	})
-
 	It("use exisisting PVC  in job", func() {
 		jobName := "job-pvc-name-exist"
 		namespace := "test"
 		taskName := "pvctask"
 		pvName := "job-pv-name"
 		pvcName := "job-pvc-name-exist"
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		var tt v12.HostPathType
@@ -177,7 +136,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 	It("Generate PodGroup and valid minResource when creating job", func() {
 		jobName := "job-name-podgroup"
 		namespace := "test"
-		context := initTestContext()
+		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
 		resource := v12.ResourceList{

@@ -21,13 +21,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/glog"
-
 	"golang.org/x/time/rate"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
@@ -295,7 +294,7 @@ func (jc *jobCache) processCleanupJob() bool {
 
 	job, ok := obj.(*apis.JobInfo)
 	if !ok {
-		glog.Errorf("failed to convert %v to *apis.JobInfo", obj)
+		klog.Errorf("failed to convert %v to *apis.JobInfo", obj)
 		return true
 	}
 
@@ -306,7 +305,7 @@ func (jc *jobCache) processCleanupJob() bool {
 		jc.deletedJobs.Forget(obj)
 		key := keyFn(job.Namespace, job.Name)
 		delete(jc.jobs, key)
-		glog.V(3).Infof("Job <%s> was deleted.", key)
+		klog.V(3).Infof("Job <%s> was deleted.", key)
 	} else {
 		// Retry
 		jc.deleteJob(job)
@@ -315,7 +314,7 @@ func (jc *jobCache) processCleanupJob() bool {
 }
 
 func (jc *jobCache) deleteJob(job *apis.JobInfo) {
-	glog.V(3).Infof("Try to delete Job <%v/%v>",
+	klog.V(3).Infof("Try to delete Job <%v/%v>",
 		job.Namespace, job.Name)
 
 	jc.deletedJobs.AddRateLimited(job)

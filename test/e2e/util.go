@@ -97,9 +97,9 @@ func kubeconfigPath(home string) string {
 	return filepath.Join(home, ".kube", "config") // default kubeconfig path is $HOME/.kube/config
 }
 
-//VolcanoCliBinary function gets the volcano cli binary
+// VolcanoCliBinary function gets the volcano cli binary
 func VolcanoCliBinary() string {
-	if bin := os.Getenv("VK_BIN"); bin != "" {
+	if bin := os.Getenv("VC_BIN"); bin != "" {
 		return filepath.Join(bin, "vcctl")
 	}
 	return ""
@@ -109,62 +109,49 @@ type context struct {
 	kubeclient *kubernetes.Clientset
 	vcclient   *vcclient.Clientset
 
-	namespace string
-	queues    []string
+	namespace       string
+	queues          []string
+	priorityClasses []string
 }
 
-func initTestContext() *context {
-	cxt := &context{
-		namespace: defaultNamespace,
-		queues:    []string{defaultQueue1, defaultQueue2},
+type options struct {
+	namespace       string
+	queues          []string
+	priorityClasses []string
+}
+
+func initTestContext(o options) *context {
+	if o.namespace == "" {
+		o.namespace = defaultNamespace
+	}
+	ctx := &context{
+		namespace:       o.namespace,
+		queues:          o.queues,
+		priorityClasses: o.priorityClasses,
 	}
 
 	home := homeDir()
 	Expect(home).NotTo(Equal(""))
 	configPath := kubeconfigPath(home)
 	Expect(configPath).NotTo(Equal(""))
-	vcctl := VolcanoCliBinary()
-	Expect(fileExist(vcctl)).To(BeTrue(), fmt.Sprintf(
-		"vcctl binary: %s is required for E2E tests, please update VK_BIN environment", vcctl))
+
 	config, err := clientcmd.BuildConfigFromFlags(masterURL(), configPath)
 	Expect(err).NotTo(HaveOccurred())
 
-	cxt.vcclient = vcclient.NewForConfigOrDie(config)
-	cxt.kubeclient = kubernetes.NewForConfigOrDie(config)
+	ctx.vcclient = vcclient.NewForConfigOrDie(config)
+	ctx.kubeclient = kubernetes.NewForConfigOrDie(config)
 
-	//Ensure at least one worker is ready
-	err = waitClusterReady(cxt)
-	Expect(err).NotTo(HaveOccurred(),
-		"k8s cluster is required to have one ready worker node at least.")
-
-	_, err = cxt.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
+	_, err = ctx.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: cxt.namespace,
+			Name: ctx.namespace,
 		},
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	createQueues(cxt)
+	createQueues(ctx)
+	createPriorityClasses(ctx)
 
-	_, err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Create(&schedv1.PriorityClass{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: masterPriority,
-		},
-		Value:         100,
-		GlobalDefault: false,
-	})
-	Expect(err).NotTo(HaveOccurred())
-
-	_, err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Create(&schedv1.PriorityClass{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: workerPriority,
-		},
-		Value:         1,
-		GlobalDefault: false,
-	})
-	Expect(err).NotTo(HaveOccurred())
-
-	return cxt
+	return ctx
 }
 
 func namespaceNotExist(ctx *context) wait.ConditionFunc {
@@ -181,20 +168,6 @@ func namespaceNotExistWithName(ctx *context, name string) wait.ConditionFunc {
 	}
 }
 
-func queueNotExist(ctx *context) wait.ConditionFunc {
-	return func() (bool, error) {
-		for _, q := range ctx.queues {
-			var err error
-			_, err = ctx.vcclient.SchedulingV1alpha2().Queues().Get(q, metav1.GetOptions{})
-			if !(err != nil && errors.IsNotFound(err)) {
-				return false, err
-			}
-		}
-
-		return true, nil
-	}
-}
-
 func fileExist(name string) bool {
 	if _, err := os.Stat(name); err != nil {
 		if os.IsNotExist(err) {
@@ -204,40 +177,25 @@ func fileExist(name string) bool {
 	return true
 }
 
-func cleanupTestContext(cxt *context) {
+func cleanupTestContext(ctx *context) {
 	foreground := metav1.DeletePropagationForeground
-
-	err := cxt.kubeclient.CoreV1().Namespaces().Delete(cxt.namespace, &metav1.DeleteOptions{
+	err := ctx.kubeclient.CoreV1().Namespaces().Delete(ctx.namespace, &metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	deleteQueues(cxt)
+	deleteQueues(ctx)
 
-	err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(masterPriority, &metav1.DeleteOptions{
-		PropagationPolicy: &foreground,
-	})
-	Expect(err).NotTo(HaveOccurred())
-
-	err = cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(workerPriority, &metav1.DeleteOptions{
-		PropagationPolicy: &foreground,
-	})
-	Expect(err).NotTo(HaveOccurred())
+	deletePriorityClasses(ctx)
 
 	// Wait for namespace deleted.
-	err = wait.Poll(100*time.Millisecond, twoMinute, namespaceNotExist(cxt))
-	Expect(err).NotTo(HaveOccurred())
-
-	// Wait for queues deleted
-	err = wait.Poll(100*time.Millisecond, twoMinute, queueNotExist(cxt))
+	err = wait.Poll(100*time.Millisecond, twoMinute, namespaceNotExist(ctx))
 	Expect(err).NotTo(HaveOccurred())
 }
 
 func createQueues(cxt *context) {
-	var err error
-
 	for _, q := range cxt.queues {
-		_, err = cxt.vcclient.SchedulingV1alpha2().Queues().Create(&schedulingv1alpha2.Queue{
+		_, err := cxt.vcclient.SchedulingV1alpha2().Queues().Create(&schedulingv1alpha2.Queue{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: q,
 			},
@@ -258,6 +216,26 @@ func deleteQueues(cxt *context) {
 			PropagationPolicy: &foreground,
 		})
 
+		Expect(err).NotTo(HaveOccurred())
+	}
+}
+
+func createPriorityClasses(cxt *context) {
+	for _, pc := range cxt.priorityClasses {
+		_, err := cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Create(&schedv1.PriorityClass{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: pc,
+			},
+			Value:         100,
+			GlobalDefault: false,
+		})
+		Expect(err).NotTo(HaveOccurred())
+	}
+}
+
+func deletePriorityClasses(cxt *context) {
+	for _, pc := range cxt.priorityClasses {
+		err := cxt.kubeclient.SchedulingV1beta1().PriorityClasses().Delete(pc, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 	}
 }

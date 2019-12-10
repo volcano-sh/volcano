@@ -17,12 +17,11 @@ limitations under the License.
 package util
 
 import (
-	"fmt"
-
-	"github.com/golang/glog"
+	"k8s.io/apimachinery/pkg/api/errors"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	"k8s.io/kubernetes/pkg/scheduler/cache"
 
@@ -98,7 +97,7 @@ func (pl *PodLister) GetPod(task *api.TaskInfo) *v1.Pod {
 	if !found {
 		// we could not write the copied pod back into cache for read only
 		pod = pl.copyTaskPod(task)
-		glog.Warningf("DeepCopy for pod %s/%s at PodLister.GetPod is unexpected", pod.Namespace, pod.Name)
+		klog.Warningf("DeepCopy for pod %s/%s at PodLister.GetPod is unexpected", pod.Namespace, pod.Name)
 	}
 	return pod
 }
@@ -205,7 +204,8 @@ type CachedNodeInfo struct {
 func (c *CachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
 	node, found := c.Session.Nodes[name]
 	if !found {
-		return nil, fmt.Errorf("failed to find node <%s>", name)
+
+		return nil, errors.NewNotFound(v1.Resource("node"), name)
 	}
 
 	return node.Node, nil

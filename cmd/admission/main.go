@@ -16,17 +16,21 @@ limitations under the License.
 package main
 
 import (
-	"flag"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"syscall"
+	"time"
 
-	"github.com/golang/glog"
+	"github.com/spf13/pflag"
 
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apiserver/pkg/util/flag"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/cmd/admission/app"
 	"volcano.sh/volcano/cmd/admission/app/options"
@@ -42,26 +46,35 @@ func serveMutateJobs(w http.ResponseWriter, r *http.Request) {
 	admission.Serve(w, r, admission.MutateJobs)
 }
 
+var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
+
 func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	klog.InitFlags(nil)
+
 	config := options.NewConfig()
-	config.AddFlags()
-	flag.Parse()
+	config.AddFlags(pflag.CommandLine)
+
+	flag.InitFlags()
 
 	if config.PrintVersion {
 		version.PrintVersionAndExit()
 	}
 
+	go wait.Until(klog.Flush, *logFlushFreq, wait.NeverStop)
+	defer klog.Flush()
+
 	http.HandleFunc(admission.AdmitJobPath, serveJobs)
 	http.HandleFunc(admission.MutateJobPath, serveMutateJobs)
 
 	if err := config.CheckPortOrDie(); err != nil {
-		glog.Fatalf("Configured port is invalid: %v", err)
+		klog.Fatalf("Configured port is invalid: %v", err)
 	}
 	addr := ":" + strconv.Itoa(config.Port)
 
 	restConfig, err := clientcmd.BuildConfigFromFlags(config.Master, config.Kubeconfig)
 	if err != nil {
-		glog.Fatalf("Unable to build k8s config: %v", err)
+		klog.Fatalf("Unable to build k8s config: %v", err)
 	}
 
 	admission.VolcanoClientSet = app.GetVolcanoClient(restConfig)
@@ -70,12 +83,12 @@ func main() {
 
 	caBundle, err := ioutil.ReadFile(config.CaCertFile)
 	if err != nil {
-		glog.Fatalf("Unable to read cacert file: %v", err)
+		klog.Fatalf("Unable to read cacert file: %v", err)
 	}
 
 	err = options.RegisterWebhooks(config, app.GetClient(restConfig), caBundle)
 	if err != nil {
-		glog.Fatalf("Unable to register webhook configs: %v", err)
+		klog.Fatalf("Unable to register webhook configs: %v", err)
 	}
 
 	stopChannel := make(chan os.Signal)
@@ -89,7 +102,7 @@ func main() {
 	go func() {
 		err = server.ListenAndServeTLS("", "")
 		if err != nil && err != http.ErrServerClosed {
-			glog.Fatalf("ListenAndServeTLS for admission webhook failed: %v", err)
+			klog.Fatalf("ListenAndServeTLS for admission webhook failed: %v", err)
 			close(webhookServeError)
 		}
 	}()
@@ -97,7 +110,7 @@ func main() {
 	select {
 	case <-stopChannel:
 		if err := server.Close(); err != nil {
-			glog.Fatalf("Close admission server failed: %v", err)
+			klog.Fatalf("Close admission server failed: %v", err)
 		}
 		return
 	case <-webhookServeError:

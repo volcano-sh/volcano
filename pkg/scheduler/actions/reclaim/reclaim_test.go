@@ -108,7 +108,6 @@ func TestReclaim(t *testing.T) {
 			Channel: make(chan string),
 		}
 		evictor := &util.FakeEvictor{
-			Evicts:  make([]string, 0),
 			Channel: make(chan string),
 		}
 		schedulerCache := &cache.SchedulerCache{
@@ -151,7 +150,7 @@ func TestReclaim(t *testing.T) {
 					},
 				},
 			},
-		})
+		}, nil)
 		defer framework.CloseSession(ssn)
 
 		reclaim.Execute(ssn)
@@ -164,8 +163,8 @@ func TestReclaim(t *testing.T) {
 			}
 		}
 
-		if test.expected != len(evictor.Evicts) {
-			t.Errorf("case %d (%s): expected: %v, got %v ", i, test.name, test.expected, len(evictor.Evicts))
+		if test.expected != len(evictor.Evicts()) {
+			t.Errorf("case %d (%s): expected: %v, got %v ", i, test.name, test.expected, len(evictor.Evicts()))
 		}
 	}
 }

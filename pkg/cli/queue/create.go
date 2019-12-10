@@ -30,20 +30,23 @@ type createFlags struct {
 
 	Name   string
 	Weight int32
+	// State is state of Queue
+	State string
 }
 
 var createQueueFlags = &createFlags{}
 
-// InitRunFlags is used to init all run flags
-func InitRunFlags(cmd *cobra.Command) {
+// InitCreateFlags is used to init all flags during queue creating
+func InitCreateFlags(cmd *cobra.Command) {
 	initFlags(cmd, &createQueueFlags.commonFlags)
 
 	cmd.Flags().StringVarP(&createQueueFlags.Name, "name", "n", "test", "the name of queue")
 	cmd.Flags().Int32VarP(&createQueueFlags.Weight, "weight", "w", 1, "the weight of the queue")
 
+	cmd.Flags().StringVarP(&createQueueFlags.State, "state", "S", "Open", "the state of queue")
 }
 
-// CreateQueue creates queue
+// CreateQueue create queue
 func CreateQueue() error {
 	config, err := buildConfig(createQueueFlags.Master, createQueueFlags.Kubeconfig)
 	if err != nil {
@@ -56,6 +59,7 @@ func CreateQueue() error {
 		},
 		Spec: schedulingV1alpha2.QueueSpec{
 			Weight: int32(createQueueFlags.Weight),
+			State:  schedulingV1alpha2.QueueState(createQueueFlags.State),
 		},
 	}
 

@@ -19,10 +19,9 @@ package api
 import (
 	"fmt"
 
-	"github.com/golang/glog"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/klog"
 )
 
 // NamespaceName is name of namespace
@@ -132,7 +131,7 @@ func (n *NamespaceCollection) Snapshot() *NamespaceInfo {
 
 	obj, err := n.quotaWeight.Pop()
 	if err != nil {
-		glog.Warningf("namespace %s, quota weight meets error %v when pop", n.Name, err)
+		klog.Warningf("namespace %s, quota weight meets error %v when pop", n.Name, err)
 	} else {
 		item := obj.(*quotaItem)
 		weight = item.weight

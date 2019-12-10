@@ -17,7 +17,10 @@ limitations under the License.
 package framework
 
 import (
+	"reflect"
 	"testing"
+
+	"volcano.sh/volcano/pkg/scheduler/conf"
 )
 
 type GetIntTestCases struct {
@@ -71,6 +74,114 @@ func TestArgumentsGetInt(t *testing.T) {
 		c.arg.GetInt(&baseValue, c.key)
 		if baseValue != c.expectValue {
 			t.Errorf("index %d, value should be %v, but not %v", index, c.expectValue, baseValue)
+		}
+	}
+}
+
+func TestArgumentsGetFloat64(t *testing.T) {
+	key1 := "float64key"
+
+	cases := []struct {
+		name        string
+		arg         Arguments
+		key         string
+		baseValue   float64
+		expectValue float64
+	}{
+		{
+			name: "key not exist",
+			arg: Arguments{
+				"anotherKey": "12",
+			},
+			key:         key1,
+			baseValue:   1.2,
+			expectValue: 1.2,
+		},
+		{
+			name: "key exist",
+			arg: Arguments{
+				key1: "1.5",
+			},
+			key:         key1,
+			baseValue:   1.2,
+			expectValue: 1.5,
+		},
+		{
+			name: "value of key invalid",
+			arg: Arguments{
+				key1: "errorValue",
+			},
+			key:         key1,
+			baseValue:   1.2,
+			expectValue: 1.2,
+		},
+		{
+			name: "value of key null",
+			arg: Arguments{
+				key1: "",
+			},
+			key:         key1,
+			baseValue:   1.2,
+			expectValue: 1.2,
+		},
+	}
+
+	for index, c := range cases {
+		baseValue := c.baseValue
+		c.arg.GetFloat64(&baseValue, c.key)
+		if baseValue != c.expectValue {
+			t.Errorf("index %d, case %s, value should be %v, but not %v", index, c.name, c.expectValue, baseValue)
+		}
+	}
+}
+
+func TestGetArgOfActionFromConf(t *testing.T) {
+	cases := []struct {
+		name              string
+		configurations    []conf.Configuration
+		action            string
+		expectedArguments Arguments
+	}{
+		{
+			name: "action exist in configurations",
+			configurations: []conf.Configuration{
+				{
+					Name: "enqueue",
+					Arguments: map[string]string{
+						"overCommitFactor": "1.5",
+					},
+				},
+				{
+					Name: "allocate",
+					Arguments: map[string]string{
+						"placeholde": "placeholde",
+					},
+				},
+			},
+			action: "enqueue",
+			expectedArguments: map[string]string{
+				"overCommitFactor": "1.5",
+			},
+		},
+		{
+			name: "action not exist in configurations",
+			configurations: []conf.Configuration{
+				{
+					Name: "enqueue",
+					Arguments: map[string]string{
+						"overCommitFactor": "1.5",
+					},
+				},
+			},
+			action:            "allocate",
+			expectedArguments: nil,
+		},
+	}
+
+	for index, c := range cases {
+		arg := GetArgOfActionFromConf(c.configurations, c.action)
+		if false == reflect.DeepEqual(arg, c.expectedArguments) {
+			t.Errorf("index %d, case %s,expected %v, but got %v", index, c.name, c.expectedArguments, arg)
 		}
 	}
 }

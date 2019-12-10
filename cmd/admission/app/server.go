@@ -19,10 +19,10 @@ package app
 import (
 	"crypto/tls"
 
-	"github.com/golang/glog"
-
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/klog"
+
 	"volcano.sh/volcano/cmd/admission/app/options"
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
@@ -31,7 +31,7 @@ import (
 func GetClient(restConfig *rest.Config) *kubernetes.Clientset {
 	clientset, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
-		glog.Fatal(err)
+		klog.Fatal(err)
 	}
 	return clientset
 }
@@ -40,7 +40,7 @@ func GetClient(restConfig *rest.Config) *kubernetes.Clientset {
 func GetVolcanoClient(restConfig *rest.Config) *versioned.Clientset {
 	clientset, err := versioned.NewForConfig(restConfig)
 	if err != nil {
-		glog.Fatal(err)
+		klog.Fatal(err)
 	}
 	return clientset
 }
@@ -52,7 +52,7 @@ func ConfigTLS(config *options.Config, restConfig *rest.Config) *tls.Config {
 	if len(config.CertFile) != 0 && len(config.KeyFile) != 0 {
 		sCert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
 		if err != nil {
-			glog.Fatal(err)
+			klog.Fatal(err)
 		}
 
 		return &tls.Config{
@@ -63,7 +63,7 @@ func ConfigTLS(config *options.Config, restConfig *rest.Config) *tls.Config {
 	if len(restConfig.CertData) != 0 && len(restConfig.KeyData) != 0 {
 		sCert, err := tls.X509KeyPair(restConfig.CertData, restConfig.KeyData)
 		if err != nil {
-			glog.Fatal(err)
+			klog.Fatal(err)
 		}
 
 		return &tls.Config{
@@ -71,6 +71,6 @@ func ConfigTLS(config *options.Config, restConfig *rest.Config) *tls.Config {
 		}
 	}
 
-	glog.Fatal("tls: failed to find any tls config data")
+	klog.Fatal("tls: failed to find any tls config data")
 	return &tls.Config{}
 }
