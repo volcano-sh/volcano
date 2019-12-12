@@ -148,8 +148,8 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		err := waitJobReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pluginName := fmt.Sprintf("%s-ssh", jobName)
-		_, err = context.kubeclient.CoreV1().ConfigMaps(namespace).Get(
+		pluginName := fmt.Sprintf("%s-%s-ssh", jobName, job.UID)
+		_, err = context.kubeclient.CoreV1().Secrets(namespace).Get(
 			pluginName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -206,8 +206,8 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		err := waitJobReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pluginName := fmt.Sprintf("%s-ssh", jobName)
-		_, err = context.kubeclient.CoreV1().ConfigMaps(namespace).Get(
+		pluginName := fmt.Sprintf("%s-%s-ssh", jobName, job.UID)
+		_, err = context.kubeclient.CoreV1().Secrets(namespace).Get(
 			pluginName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 

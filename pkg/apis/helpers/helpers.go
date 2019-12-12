@@ -122,6 +122,24 @@ func CreateConfigMapIfNotExist(job *vcbatch.Job, kubeClients kubernetes.Interfac
 	return nil
 }
 
+// CreateSecret create secret
+func CreateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[string][]byte, secretName string) error {
+	secret := &v1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: job.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(job, JobKind),
+			},
+		},
+		Data: data,
+	}
+
+	_, err := kubeClients.CoreV1().Secrets(job.Namespace).Create(secret)
+
+	return err
+}
+
 // DeleteConfigmap  deletes the config map resource
 func DeleteConfigmap(job *vcbatch.Job, kubeClients kubernetes.Interface, cmName string) error {
 	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{}); err != nil {
@@ -143,6 +161,16 @@ func DeleteConfigmap(job *vcbatch.Job, kubeClients kubernetes.Interface, cmName 
 	}
 
 	return nil
+}
+
+// DeleteSecret delete secret
+func DeleteSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, secretName string) error {
+	err := kubeClients.CoreV1().Secrets(job.Namespace).Delete(secretName, nil)
+	if err != nil && true == apierrors.IsNotFound(err) {
+		return nil
+	}
+
+	return err
 }
 
 // GeneratePodgroupName  generate podgroup name of normal pod
