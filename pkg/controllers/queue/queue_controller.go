@@ -120,7 +120,7 @@ func NewQueueController(
 
 		podGroups: make(map[string]map[string]struct{}),
 
-		recorder: eventBroadcaster.NewRecorder(versionedscheme.Scheme, v1.EventSource{Component: "vc-controllers"}),
+		recorder: eventBroadcaster.NewRecorder(versionedscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"}),
 	}
 
 	queueInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{

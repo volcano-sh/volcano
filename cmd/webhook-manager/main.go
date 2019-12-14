@@ -27,8 +27,8 @@ import (
 	"k8s.io/apiserver/pkg/util/flag"
 	"k8s.io/klog"
 
-	"volcano.sh/volcano/cmd/admission/app"
-	"volcano.sh/volcano/cmd/admission/app/options"
+	"volcano.sh/volcano/cmd/webhook-manager/app"
+	"volcano.sh/volcano/cmd/webhook-manager/app/options"
 
 	_ "volcano.sh/volcano/pkg/admission/jobs/mutate"
 	_ "volcano.sh/volcano/pkg/admission/jobs/validate"

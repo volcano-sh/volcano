@@ -220,7 +220,7 @@ spec:
             - --port=443
             - -v=4
             - 2>&1
-          image: volcanosh/vc-admission:latest
+          image: volcanosh/vc-webhook-manager:latest
           imagePullPolicy: IfNotPresent
           name: admission
           volumeMounts:
@@ -266,7 +266,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: main
-          image: volcanosh/vc-admission:latest
+          image: volcanosh/vc-webhook-manager:latest
           imagePullPolicy: IfNotPresent
           command: ["./gen-admission-secret.sh", "--service", "volcano-admission-service", "--namespace",
                     "volcano-system", "--secret", "volcano-admission-secret"]
@@ -364,7 +364,7 @@ spec:
       
       containers:
           - name: volcano-controllers
-            image: volcanosh/vc-controllers:latest
+            image: volcanosh/vc-controller-manager:latest
             args:
               - --alsologtostderr
               - -v=4

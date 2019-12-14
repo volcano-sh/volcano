@@ -27,8 +27,8 @@ import (
 	"k8s.io/apiserver/pkg/util/flag"
 	"k8s.io/klog"
 
-	"volcano.sh/volcano/cmd/controllers/app"
-	"volcano.sh/volcano/cmd/controllers/app/options"
+	"volcano.sh/volcano/cmd/controller-manager/app"
+	"volcano.sh/volcano/cmd/controller-manager/app/options"
 	"volcano.sh/volcano/pkg/version"
 )
 

@@ -127,10 +127,10 @@ function start_apiserver {
 }
 
 function start_controller_manager {
-    nohup ${VC_HOME}/_output/bin/vc-controllers \
+    nohup ${VC_HOME}/_output/bin/vc-controller-manager \
         --v=3 \
         --logtostderr=false \
-        --log-file=${VC_HOME}/volcano/logs/vc-controllers.log \
+        --log-file=${VC_HOME}/volcano/logs/vc-controller-manager.log \
         --scheduler-name=default-scheduler \
         --kubeconfig=${VC_HOME}/volcano/config/controller-manager.config &
 
@@ -190,10 +190,10 @@ function start_volcano_scheduler {
 }
 
 function start_volcano_admission {
-	nohup ${VC_HOME}/_output/bin/vc-admission \
+	nohup ${VC_HOME}/_output/bin/vc-webhook-manager \
 		-v 3 \
         --logtostderr=false \
-        --log-file=${VC_HOME}/volcano/logs/vc-admission.log \
+        --log-file=${VC_HOME}/volcano/logs/vc-webhook-manager.log \
 		--ca-cert-file ${CERT_DIR}/root.pem \
         --scheduler-name=default-scheduler \
 		--kubeconfig ${VC_HOME}/volcano/config/admin.config \
@@ -203,7 +203,7 @@ function start_volcano_admission {
 }
 
 function cleanup_cluster {
-    killall -9 etcd kube-apiserver kube-controller-manager kubelet vc-controllers vc-scheduler vc-admission
+    killall -9 etcd kube-apiserver kube-controller-manager kubelet vc-controller-manager vc-scheduler vc-webhook-manager
     rm -rf ${VC_HOME}/volcano
 
     # Waiting for TIME_WAIT
