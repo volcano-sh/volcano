@@ -43,7 +43,7 @@ func init() {
 }
 
 var service = &router.AdmissionService{
-	Path: "/jobs",
+	Path: "/jobs/validate",
 	Func: AdmitJobs,
 
 	Config: config,

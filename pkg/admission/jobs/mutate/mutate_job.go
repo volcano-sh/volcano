@@ -42,7 +42,7 @@ func init() {
 }
 
 var service = &router.AdmissionService{
-	Path: "/mutating-jobs",
+	Path: "/jobs/mutate",
 	Func: MutateJobs,
 
 	MutatingConfig: &whv1beta1.MutatingWebhookConfiguration{
