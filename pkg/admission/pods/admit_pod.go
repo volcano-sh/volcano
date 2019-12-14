@@ -40,7 +40,7 @@ func init() {
 }
 
 var service = &router.AdmissionService{
-	Path: "/pods",
+	Path: "/pods/validate",
 	Func: AdmitPods,
 
 	Config: config,
