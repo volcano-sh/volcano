@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package admission
+package router
 
 import (
 	"encoding/json"
@@ -24,7 +24,16 @@ import (
 	"k8s.io/api/admission/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog"
+
+	"volcano.sh/volcano/pkg/admission/schema"
+	"volcano.sh/volcano/pkg/admission/util"
 )
+
+// CONTENTTYPE http content-type
+var CONTENTTYPE = "Content-Type"
+
+// APPLICATIONJSON json content
+var APPLICATIONJSON = "application/json"
 
 // Serve the http request
 func Serve(w http.ResponseWriter, r *http.Request, admit AdmitFunc) {
@@ -44,9 +53,9 @@ func Serve(w http.ResponseWriter, r *http.Request, admit AdmitFunc) {
 
 	var reviewResponse *v1beta1.AdmissionResponse
 	ar := v1beta1.AdmissionReview{}
-	deserializer := Codecs.UniversalDeserializer()
+	deserializer := schema.Codecs.UniversalDeserializer()
 	if _, _, err := deserializer.Decode(body, nil, &ar); err != nil {
-		reviewResponse = ToAdmissionResponse(err)
+		reviewResponse = util.ToAdmissionResponse(err)
 	} else {
 		reviewResponse = admit(ar)
 	}

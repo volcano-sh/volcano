@@ -17,60 +17,83 @@ limitations under the License.
 package app
 
 import (
-	"crypto/tls"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"os/signal"
+	"strconv"
+	"syscall"
 
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/cmd/admission/app/options"
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/admission/router"
+	"volcano.sh/volcano/pkg/version"
 )
 
-// GetClient Get a clientset with restConfig.
-func GetClient(restConfig *rest.Config) *kubernetes.Clientset {
-	clientset, err := kubernetes.NewForConfig(restConfig)
+// Run start the service of admission controller.
+func Run(config *options.Config) error {
+	if config.PrintVersion {
+		version.PrintVersionAndExit()
+		return nil
+	}
+
+	if config.WebhookURL == "" && config.WebhookNamespace == "" && config.WebhookName == "" {
+		return fmt.Errorf("failed to start webhooks as both 'url' and 'namespace/name' of webhook are empty")
+	}
+
+	restConfig, err := clientcmd.BuildConfigFromFlags(config.Master, config.Kubeconfig)
 	if err != nil {
-		klog.Fatal(err)
+		return fmt.Errorf("unable to build k8s config: %v", err)
 	}
-	return clientset
-}
 
-// GetVolcanoClient get a clientset for volcano
-func GetVolcanoClient(restConfig *rest.Config) *versioned.Clientset {
-	clientset, err := versioned.NewForConfig(restConfig)
+	caBundle, err := ioutil.ReadFile(config.CaCertFile)
 	if err != nil {
-		klog.Fatal(err)
-	}
-	return clientset
-}
-
-// ConfigTLS is a helper function that generate tls certificates from directly defined tls config or kubeconfig
-// These are passed in as command line for cluster certification. If tls config is passed in, we use the directly
-// defined tls config, else use that defined in kubeconfig
-func ConfigTLS(config *options.Config, restConfig *rest.Config) *tls.Config {
-	if len(config.CertFile) != 0 && len(config.KeyFile) != 0 {
-		sCert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
-		if err != nil {
-			klog.Fatal(err)
-		}
-
-		return &tls.Config{
-			Certificates: []tls.Certificate{sCert},
-		}
+		return fmt.Errorf("unable to read cacert file (%s): %v", config.CaCertFile, err)
 	}
 
-	if len(restConfig.CertData) != 0 && len(restConfig.KeyData) != 0 {
-		sCert, err := tls.X509KeyPair(restConfig.CertData, restConfig.KeyData)
-		if err != nil {
-			klog.Fatal(err)
+	vClient := getVolcanoClient(restConfig)
+	kubeClient := getKubeClient(restConfig)
+	router.ForEachAdmission(func(service *router.AdmissionService) {
+		if service.Config != nil {
+			service.Config.VolcanoClient = vClient
+			service.Config.SchedulerName = config.SchedulerName
 		}
 
-		return &tls.Config{
-			Certificates: []tls.Certificate{sCert},
-		}
+		klog.V(3).Infof("Registered '%s' as webhook.", service.Path)
+		http.HandleFunc(service.Path, service.Handler)
+
+		klog.V(3).Infof("Registered configuration for webhook <%s>", service.Path)
+		registerWebhookConfig(kubeClient, config, service, caBundle)
+	})
+
+	webhookServeError := make(chan struct{})
+	stopChannel := make(chan os.Signal)
+	signal.Notify(stopChannel, syscall.SIGTERM, syscall.SIGINT)
+
+	server := &http.Server{
+		Addr:      ":" + strconv.Itoa(config.Port),
+		TLSConfig: configTLS(config, restConfig),
 	}
+	go func() {
+		err = server.ListenAndServeTLS("", "")
+		if err != nil && err != http.ErrServerClosed {
+			klog.Fatalf("ListenAndServeTLS for admission webhook failed: %v", err)
+			close(webhookServeError)
+		}
 
-	klog.Fatal("tls: failed to find any tls config data")
-	return &tls.Config{}
+		klog.Info("Volcano Webhook manager started.")
+	}()
+
+	select {
+	case <-stopChannel:
+		if err := server.Close(); err != nil {
+			return fmt.Errorf("close admission server failed: %v", err)
+		}
+		return nil
+	case <-webhookServeError:
+		return fmt.Errorf("unknown webhook server error")
+	}
 }

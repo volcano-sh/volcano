@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package admission
+package mutate
 
 import (
 	"encoding/json"
@@ -22,9 +22,13 @@ import (
 	"strconv"
 
 	"k8s.io/api/admission/v1beta1"
+	whv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 
+	"volcano.sh/volcano/pkg/admission/router"
+	"volcano.sh/volcano/pkg/admission/schema"
+	"volcano.sh/volcano/pkg/admission/util"
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
@@ -32,6 +36,31 @@ const (
 	//DefaultQueue constant stores the name of the queue as "default"
 	DefaultQueue = "default"
 )
+
+func init() {
+	router.RegisterAdmission(service)
+}
+
+var service = &router.AdmissionService{
+	Path: "/mutating-jobs",
+	Func: MutateJobs,
+
+	MutatingConfig: &whv1beta1.MutatingWebhookConfiguration{
+		Webhooks: []whv1beta1.Webhook{{
+			Name: "mutatejob.volcano.sh",
+			Rules: []whv1beta1.RuleWithOperations{
+				{
+					Operations: []whv1beta1.OperationType{whv1beta1.Create},
+					Rule: whv1beta1.Rule{
+						APIGroups:   []string{"batch.volcano.sh"},
+						APIVersions: []string{"v1alpha1"},
+						Resources:   []string{"jobs"},
+					},
+				},
+			},
+		}},
+	},
+}
 
 type patchOperation struct {
 	Op    string      `json:"op"`
@@ -43,9 +72,9 @@ type patchOperation struct {
 func MutateJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	klog.V(3).Infof("mutating jobs")
 
-	job, err := DecodeJob(ar.Request.Object, ar.Request.Resource)
+	job, err := schema.DecodeJob(ar.Request.Object, ar.Request.Resource)
 	if err != nil {
-		return ToAdmissionResponse(err)
+		return util.ToAdmissionResponse(err)
 	}
 
 	reviewResponse := v1beta1.AdmissionResponse{}
@@ -58,7 +87,7 @@ func MutateJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		break
 	default:
 		err = fmt.Errorf("expect operation to be 'CREATE' ")
-		return ToAdmissionResponse(err)
+		return util.ToAdmissionResponse(err)
 	}
 
 	if err != nil {
@@ -73,7 +102,7 @@ func MutateJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	return &reviewResponse
 }
 
-func createPatch(job v1alpha1.Job) ([]byte, error) {
+func createPatch(job *v1alpha1.Job) ([]byte, error) {
 	var patch []patchOperation
 	pathQueue := patchDefaultQueue(job)
 	if pathQueue != nil {
@@ -86,7 +115,7 @@ func createPatch(job v1alpha1.Job) ([]byte, error) {
 	return json.Marshal(patch)
 }
 
-func patchDefaultQueue(job v1alpha1.Job) *patchOperation {
+func patchDefaultQueue(job *v1alpha1.Job) *patchOperation {
 	//Add default queue if not specified.
 	if job.Spec.Queue == "" {
 		return &patchOperation{Op: "add", Path: "/spec/queue", Value: DefaultQueue}
