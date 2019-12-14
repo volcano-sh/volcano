@@ -55,6 +55,7 @@ func TestPluginOnPodCreate(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "Job1",
 					Namespace: namespace,
+					UID:       "e7f18111-1cec-11ea-b688-fa163ec79500",
 				},
 			},
 			Pod:     buildPod(namespace, "pod1", v1.PodPending, nil),
@@ -66,6 +67,7 @@ func TestPluginOnPodCreate(t *testing.T) {
 			Job: &batch.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "Job1",
+					UID:  "e7f18111-1cec-11ea-b688-fa163ec79500",
 				},
 			},
 			Pod:     buildPod(namespace, "pod1", v1.PodPending, nil),
@@ -124,7 +126,7 @@ func TestPluginOnPodCreate(t *testing.T) {
 						}
 						exist := false
 						for _, volume := range container.VolumeMounts {
-							if volume.Name == fmt.Sprint(testcase.Job.Name, "-ssh") {
+							if volume.Name == fmt.Sprintf("%s-%s-%s", testcase.Job.Name, testcase.Job.UID, "ssh") {
 								exist = true
 							}
 						}
@@ -153,6 +155,7 @@ func TestPluginOnJobAdd(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
+					UID:       "e7f18111-1cec-11ea-b688-fa163ec79500",
 				},
 			},
 			Plugins: []string{"svc", "ssh", "env"},
@@ -163,6 +166,7 @@ func TestPluginOnJobAdd(t *testing.T) {
 			Job: &batch.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "Job1",
+					UID:  "e7f18111-1cec-11ea-b688-fa163ec79500",
 				},
 			},
 			Plugins: []string{"new"},
@@ -202,9 +206,10 @@ func TestPluginOnJobAdd(t *testing.T) {
 				}
 
 				if plugin == "ssh" {
-					_, err := fakeController.kubeClient.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-ssh"), metav1.GetOptions{})
+					_, err := fakeController.kubeClient.CoreV1().Secrets(namespace).Get(
+						fmt.Sprintf("%s-%s-%s", testcase.Job.Name, testcase.Job.UID, "ssh"), metav1.GetOptions{})
 					if err != nil {
-						t.Errorf("Case %d (%s): expected: ConfigMap to be created, but not created because of error %s", i, testcase.Name, err.Error())
+						t.Errorf("Case %d (%s): expected: Secret to be created, but not created because of error %s", i, testcase.Name, err.Error())
 					}
 				}
 
@@ -233,6 +238,7 @@ func TestPluginOnJobDelete(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
+					UID:       "e7f18111-1cec-11ea-b688-fa163ec79500",
 				},
 			},
 			Plugins: []string{"svc", "ssh", "env"},
@@ -243,6 +249,7 @@ func TestPluginOnJobDelete(t *testing.T) {
 			Job: &batch.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "Job1",
+					UID:  "e7f18111-1cec-11ea-b688-fa163ec79500",
 				},
 			},
 			Plugins: []string{"new"},
@@ -272,23 +279,23 @@ func TestPluginOnJobDelete(t *testing.T) {
 				if plugin == "svc" {
 					_, err := fakeController.kubeClient.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-svc"), metav1.GetOptions{})
 					if err == nil {
-						t.Errorf("Case %d (%s): expected: ConfigMap to be deleted, but not deleted because of error %s", i, testcase.Name, err.Error())
+						t.Errorf("Case %d (%s): expected: ConfigMap to be deleted, but not deleted.", i, testcase.Name)
 					}
 
 					_, err = fakeController.kubeClient.CoreV1().Services(namespace).Get(testcase.Job.Name, metav1.GetOptions{})
 					if err == nil {
-						t.Errorf("Case %d (%s): expected: Service to be deleted, but not deleted because of error %s", i, testcase.Name, err.Error())
+						t.Errorf("Case %d (%s): expected: Service to be deleted, but not deleted.", i, testcase.Name)
 					}
 				}
 
 				if plugin == "ssh" {
-					_, err := fakeController.kubeClient.CoreV1().ConfigMaps(namespace).Get(fmt.Sprint(testcase.Job.Name, "-ssh"), metav1.GetOptions{})
+					_, err := fakeController.kubeClient.CoreV1().Secrets(namespace).Get(
+						fmt.Sprintf("%s-%s-%s", testcase.Job.Name, testcase.Job.UID, "ssh"), metav1.GetOptions{})
 					if err == nil {
-						t.Errorf("Case %d (%s): expected: ConfigMap to be deleted, but not deleted because of error %s", i, testcase.Name, err.Error())
+						t.Errorf("Case %d (%s): expected: secret to be deleted, but not deleted.", i, testcase.Name)
 					}
 				}
 			}
 		})
-
 	}
 }

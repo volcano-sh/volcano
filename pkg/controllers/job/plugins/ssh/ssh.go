@@ -84,8 +84,9 @@ func (sp *sshPlugin) OnJobAdd(job *batch.Job) error {
 		return err
 	}
 
-	if err := helpers.CreateConfigMapIfNotExist(job, sp.Clientset.KubeClients, data, sp.cmName(job)); err != nil {
-		return err
+	if err := helpers.CreateSecret(job, sp.Clientset.KubeClients, data, sp.secretName(job)); err != nil {
+		return fmt.Errorf("create secret for job <%s/%s> with ssh plugin failed for %v",
+			job.Namespace, job.Name, err)
 	}
 
 	job.Status.ControlledResources["plugin-"+sp.Name()] = sp.Name()
@@ -94,24 +95,19 @@ func (sp *sshPlugin) OnJobAdd(job *batch.Job) error {
 }
 
 func (sp *sshPlugin) OnJobDelete(job *batch.Job) error {
-	if err := helpers.DeleteConfigmap(job, sp.Clientset.KubeClients, sp.cmName(job)); err != nil {
-		return err
-	}
-
-	return nil
+	return helpers.DeleteSecret(job, sp.Clientset.KubeClients, sp.secretName(job))
 }
 
 func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
+	secretName := sp.secretName(job)
 
-	cmName := sp.cmName(job)
 	sshVolume := v1.Volume{
-		Name: cmName,
+		Name: secretName,
 	}
+
 	var mode int32 = 0600
-	sshVolume.ConfigMap = &v1.ConfigMapVolumeSource{
-		LocalObjectReference: v1.LocalObjectReference{
-			Name: cmName,
-		},
+	sshVolume.Secret = &v1.SecretVolumeSource{
+		SecretName: secretName,
 		Items: []v1.KeyToPath{
 			{
 				Key:  SSHPrivateKey,
@@ -135,7 +131,7 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 
 	if sp.sshKeyFilePath != SSHAbsolutePath {
 		var noRootMode int32 = 0755
-		sshVolume.ConfigMap.DefaultMode = &noRootMode
+		sshVolume.Secret.DefaultMode = &noRootMode
 	}
 
 	pod.Spec.Volumes = append(pod.Spec.Volumes, sshVolume)
@@ -144,7 +140,7 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 		vm := v1.VolumeMount{
 			MountPath: sp.sshKeyFilePath,
 			SubPath:   SSHRelativePath,
-			Name:      cmName,
+			Name:      secretName,
 		}
 
 		pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
@@ -153,7 +149,7 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 	return
 }
 
-func generateRsaKey(job *batch.Job) (map[string]string, error) {
+func generateRsaKey(job *batch.Job) (map[string][]byte, error) {
 	bitSize := 1024
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, bitSize)
@@ -177,16 +173,16 @@ func generateRsaKey(job *batch.Job) (map[string]string, error) {
 	}
 	publicKeyBytes := ssh.MarshalAuthorizedKey(publicRsaKey)
 
-	data := make(map[string]string)
-	data[SSHPrivateKey] = string(privateKeyBytes)
-	data[SSHPublicKey] = string(publicKeyBytes)
-	data[SSHConfig] = generateSSHConfig(job)
+	data := make(map[string][]byte)
+	data[SSHPrivateKey] = privateKeyBytes
+	data[SSHPublicKey] = publicKeyBytes
+	data[SSHConfig] = []byte(generateSSHConfig(job))
 
 	return data, nil
 }
 
-func (sp *sshPlugin) cmName(job *batch.Job) string {
-	return fmt.Sprintf("%s-%s", job.Name, sp.Name())
+func (sp *sshPlugin) secretName(job *batch.Job) string {
+	return fmt.Sprintf("%s-%s-%s", job.Name, job.UID, sp.Name())
 }
 
 func (sp *sshPlugin) addFlags() {
