@@ -76,12 +76,12 @@ function generate_cert_files {
     create_certkey "kubelet" "system:node:127.0.0.1" "system:nodes"
     create_certkey "controller-manager" "system:kube-controller-manager" "volcano"
     create_certkey "scheduler" "system:scheduler" "volcano"
-	create_certkey "webhook-manager" "volcano-webhook-manager" "volcano" "localhost" "127.0.0.1"
+    create_certkey "webhook-manager" "volcano-webhook-manager" "volcano" "localhost" "127.0.0.1"
 
-	write_kube_config "controller-manager"
-	write_kube_config "scheduler"
-	write_kube_config "kubelet"
-	write_kube_config "admin"
+    write_kube_config "controller-manager"
+    write_kube_config "scheduler"
+    write_kube_config "kubelet"
+    write_kube_config "admin"
 }
 
 function write_kube_config {
@@ -131,7 +131,7 @@ function start_controller_manager {
         --v=3 \
         --logtostderr=false \
         --log-file=${VC_HOME}/volcano/logs/vc-controllers.log \
-        --scheduler-name=default \
+        --scheduler-name=default-scheduler \
         --kubeconfig=${VC_HOME}/volcano/config/controller-manager.config &
 
     nohup ${K8S_HOME}/_output/bin/kube-controller-manager \
@@ -185,7 +185,7 @@ function start_volcano_scheduler {
         --logtostderr=false \
         --listen-address=":8090" \
         --log-file=${VC_HOME}/volcano/logs/vc-scheduler.log \
-        --scheduler-name=default \
+        --scheduler-name=default-scheduler \
         --kubeconfig=${VC_HOME}/volcano/config/scheduler.config &
 }
 
@@ -195,7 +195,8 @@ function start_volcano_admission {
         --logtostderr=false \
         --log-file=${VC_HOME}/volcano/logs/vc-admission.log \
 		--ca-cert-file ${CERT_DIR}/root.pem \
-		--kuconfig ${VC_HOME}/volcano/config/admin.config \
+        --scheduler-name=default-scheduler \
+		--kubeconfig ${VC_HOME}/volcano/config/admin.config \
 		--tls-cert-file ${CERT_DIR}/webhook-manager.pem \
 		--tls-private-key-file ${CERT_DIR}/webhook-manager-key.pem \
 		--webhook-url https://127.0.0.1:443 &
@@ -210,7 +211,7 @@ function cleanup_cluster {
 }
 
 function apply_volcano_crds {
-	kubectl get ns --kubeconfig ${VC_HOME}/volcano/config/admin.config
+    kubectl get ns --kubeconfig ${VC_HOME}/volcano/config/admin.config
 
     for crd in scheduling_v1alpha2_podgroup.yaml batch_v1alpha1_job.yaml scheduling_v1alpha1_podgroup.yaml scheduling_v1alpha2_queue.yaml bus_v1alpha1_command.yaml scheduling_v1alpha1_queue.yaml
     do
