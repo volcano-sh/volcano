@@ -51,7 +51,9 @@ jobs:
         - echo "publish release to github & dockerhub"
       deploy:
         - provider: script
-          script: make TAG=${TRAVIS_TAG} RELEASE_VER=${TRAVIS_TAG} release
+          script:
+            - make TAG=${TRAVIS_TAG} RELEASE_VER=${TRAVIS_TAG} release-env
+            - make TAG=${TRAVIS_TAG} RELEASE_VER=${TRAVIS_TAG} release
           on:
             tags: true
         - provider: releases

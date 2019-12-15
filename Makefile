@@ -17,15 +17,9 @@ RELEASE_DIR=_output/release
 REL_OSARCH=linux/amd64
 REPO_PATH=volcano.sh/volcano
 IMAGE_PREFIX=volcanosh/vc
-# If tag not explicitly set in users default to the git sha.
-TAG ?= $(shell git rev-parse --verify HEAD)
 RELEASE_VER=v0.2
-GitSHA=`git rev-parse HEAD`
-Date=`date "+%Y-%m-%d %H:%M:%S"`
-LD_FLAGS=" \
-    -X '${REPO_PATH}/pkg/version.GitSHA=${GitSHA}' \
-    -X '${REPO_PATH}/pkg/version.Built=${Date}'   \
-    -X '${REPO_PATH}/pkg/version.Version=${RELEASE_VER}'"
+
+include Makefile.def
 
 .EXPORT_ALL_VARIABLES:
 
@@ -77,6 +71,11 @@ e2e-test-kind:
 generate-yaml: init
 	./hack/generate-yaml.sh
 
+release-env:
+	./hack/build-env.sh release
+
+dev-env:
+	./hack/build-env.sh dev
 
 release: images generate-yaml
 	./hack/publish.sh
