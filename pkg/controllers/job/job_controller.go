@@ -20,11 +20,9 @@ import (
 	"fmt"
 	"hash"
 	"hash/fnv"
-	"sync"
 	"time"
 
 	"k8s.io/api/core/v1"
-	"k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -105,11 +103,9 @@ type Controller struct {
 	queueList    []workqueue.RateLimitingInterface
 	commandQueue workqueue.RateLimitingInterface
 	cache        jobcache.Cache
-	//Job Event recorder
-	recorder        record.EventRecorder
-	priorityClasses map[string]*v1beta1.PriorityClass
+	// Job Event recorder
+	recorder record.EventRecorder
 
-	sync.Mutex
 	errTasks workqueue.RateLimitingInterface
 	workers  uint32
 }
@@ -129,15 +125,14 @@ func NewJobController(
 	recorder := eventBroadcaster.NewRecorder(vcscheme.Scheme, v1.EventSource{Component: "vc-controllers"})
 
 	cc := &Controller{
-		kubeClient:      kubeClient,
-		vcClient:        vcClient,
-		queueList:       make([]workqueue.RateLimitingInterface, workers, workers),
-		commandQueue:    workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		cache:           jobcache.New(),
-		errTasks:        newRateLimitingQueue(),
-		recorder:        recorder,
-		priorityClasses: make(map[string]*v1beta1.PriorityClass),
-		workers:         workers,
+		kubeClient:   kubeClient,
+		vcClient:     vcClient,
+		queueList:    make([]workqueue.RateLimitingInterface, workers, workers),
+		commandQueue: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		cache:        jobcache.New(),
+		errTasks:     newRateLimitingQueue(),
+		recorder:     recorder,
+		workers:      workers,
 	}
 	var i uint32
 	for i = 0; i < workers; i++ {
@@ -206,10 +201,6 @@ func NewJobController(
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
 	cc.pcInformer = sharedInformers.Scheduling().V1beta1().PriorityClasses()
-	cc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    cc.addPriorityClass,
-		DeleteFunc: cc.deletePriorityClass,
-	})
 	cc.pcLister = cc.pcInformer.Lister()
 	cc.pcSynced = cc.pcInformer.Informer().HasSynced
 

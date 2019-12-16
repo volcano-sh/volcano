@@ -22,7 +22,6 @@ import (
 	"strconv"
 
 	"k8s.io/api/core/v1"
-	"k8s.io/api/scheduling/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
@@ -429,49 +428,3 @@ func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
 }
 
 // TODO(k82cn): add handler for PodGroup unschedulable event.
-
-func (cc *Controller) addPriorityClass(obj interface{}) {
-	pc := convert2PriorityClass(obj)
-	if pc == nil {
-		return
-	}
-
-	cc.Mutex.Lock()
-	defer cc.Mutex.Unlock()
-
-	cc.priorityClasses[pc.Name] = pc
-	return
-}
-
-func (cc *Controller) deletePriorityClass(obj interface{}) {
-	pc := convert2PriorityClass(obj)
-	if pc == nil {
-		return
-	}
-
-	cc.Mutex.Lock()
-	defer cc.Mutex.Unlock()
-
-	delete(cc.priorityClasses, pc.Name)
-	return
-}
-
-func convert2PriorityClass(obj interface{}) *v1beta1.PriorityClass {
-	var pc *v1beta1.PriorityClass
-	switch t := obj.(type) {
-	case *v1beta1.PriorityClass:
-		pc = t
-	case cache.DeletedFinalStateUnknown:
-		var ok bool
-		pc, ok = t.Obj.(*v1beta1.PriorityClass)
-		if !ok {
-			klog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t.Obj)
-			return nil
-		}
-	default:
-		klog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t)
-		return nil
-	}
-
-	return pc
-}

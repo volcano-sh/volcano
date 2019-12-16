@@ -64,9 +64,6 @@ func (cc *Controller) processResyncTask() {
 }
 
 func (cc *Controller) syncTask(oldTask *v1.Pod) error {
-	cc.Mutex.Lock()
-	defer cc.Mutex.Unlock()
-
 	newPod, err := cc.kubeClient.CoreV1().Pods(oldTask.Namespace).Get(oldTask.Name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {

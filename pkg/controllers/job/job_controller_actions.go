@@ -470,16 +470,19 @@ func (cc *Controller) deleteJobPod(jobName string, pod *v1.Pod) error {
 }
 
 func (cc *Controller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
-	cc.Mutex.Lock()
-	defer cc.Mutex.Unlock()
-
 	// sort task by priorityClasses
 	var tasksPriority TasksPriority
 	for index := range job.Spec.Tasks {
-		tp := TaskPriority{0, job.Spec.Tasks[index]}
-		pc := job.Spec.Tasks[index].Template.Spec.PriorityClassName
-		if len(cc.priorityClasses) != 0 && cc.priorityClasses[pc] != nil {
-			tp.priority = cc.priorityClasses[pc].Value
+		tp := TaskPriority{0, &job.Spec.Tasks[index]}
+		name := job.Spec.Tasks[index].Template.Spec.PriorityClassName
+		if name != "" {
+			priorityClass, err := cc.pcLister.Get(name)
+			if err != nil {
+				// TODO: handle this error, though this can happen rarely as the eventual consistent model k8s uses
+				klog.Errorf("priorityClass %s has not been watched")
+			} else {
+				tp.priority = priorityClass.Value
+			}
 		}
 		tasksPriority = append(tasksPriority, tp)
 	}
@@ -490,16 +493,17 @@ func (cc *Controller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 	podCnt := int32(0)
 	for _, task := range tasksPriority {
 		for i := int32(0); i < task.Replicas; i++ {
-			if podCnt >= job.Spec.MinAvailable {
-				break
-			}
-			podCnt++
 			for _, c := range task.Template.Spec.Containers {
 				addResourceList(minAvailableTasksRes, c.Resources.Requests, c.Resources.Limits)
+			}
+			podCnt++
+			if podCnt >= job.Spec.MinAvailable {
+				return &minAvailableTasksRes
 			}
 		}
 	}
 
+	// This can not happen as job's MinAvailable can not be greater than all replicas
 	return &minAvailableTasksRes
 }
 
