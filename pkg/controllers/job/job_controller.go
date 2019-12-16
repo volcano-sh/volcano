@@ -305,7 +305,7 @@ func (cc *Controller) processNextReq(count uint32) bool {
 	job := jobInfo.Job
 
 	action := applyPolicies(job, &req)
-	klog.V(3).Infof("Execute <%v> on Job <%s/%s> in <%s> by <%T>.",
+	klog.V(3).Infof("Execute <%v> on Job <%s/%s> in phase <%s>.",
 		action, req.Namespace, req.JobName, job.Status.State.Phase)
 
 	if action != batchv1alpha1.SyncJobAction {

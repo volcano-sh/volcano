@@ -479,7 +479,7 @@ func (cc *Controller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 			priorityClass, err := cc.pcLister.Get(name)
 			if err != nil {
 				// TODO: handle this error, though this can happen rarely as the eventual consistent model k8s uses
-				klog.Errorf("priorityClass %s has not been watched")
+				klog.Errorf("priorityClass %s is not found: %v", name, err)
 			} else {
 				tp.priority = priorityClass.Value
 			}
