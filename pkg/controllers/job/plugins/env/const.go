@@ -22,4 +22,7 @@ const (
 
 	// TaskVkIndex  used as key in container env
 	TaskVkIndex = "VK_TASK_INDEX"
+
+	// TaskIndex is used as key in container env
+	TaskIndex = "VC_TASK_INDEX"
 )
