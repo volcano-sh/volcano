@@ -26,6 +26,6 @@ type finishedState struct {
 }
 
 func (ps *finishedState) Execute(action vcbatch.Action) error {
-	// In finished state, e.g. Completed, always kill the whole job.
-	return KillJob(ps.job, PodRetainPhaseSoft, nil)
+	// In finished state, e.g. Completed, keep the job resources.
+	return nil
 }

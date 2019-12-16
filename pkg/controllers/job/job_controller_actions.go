@@ -36,7 +36,7 @@ import (
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
-func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseMap, updateStatus state.UpdateStatusFn) error {
+func (cc *Controller) killJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
 	klog.V(3).Infof("Killing Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
 	defer klog.V(3).Infof("Finished Job <%s/%s> killing", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
@@ -63,18 +63,14 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 				continue
 			}
 
-			_, retain := podRetainPhase[pod.Status.Phase]
-
-			if !retain {
-				err := cc.deleteJobPod(job.Name, pod)
-				if err == nil {
-					terminating++
-					continue
-				}
-				// record the err, and then collect the pod info like retained pod
-				errs = append(errs, err)
-				cc.resyncTask(pod)
+			err := cc.deleteJobPod(job.Name, pod)
+			if err == nil {
+				terminating++
+				continue
 			}
+			// record the err, and then collect the pod info like retained pod
+			errs = append(errs, err)
+			cc.resyncTask(pod)
 
 			classifyAndAddUpPodBaseOnPhase(pod, &pending, &running, &succeeded, &failed, &unknown)
 		}

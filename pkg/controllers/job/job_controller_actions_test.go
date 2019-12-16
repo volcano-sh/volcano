@@ -34,18 +34,17 @@ func TestKillJobFunc(t *testing.T) {
 	namespace := "test"
 
 	testcases := []struct {
-		Name           string
-		Job            *v1alpha1.Job
-		PodGroup       *schedulingv1alpha2.PodGroup
-		PodRetainPhase state.PhaseMap
-		UpdateStatus   state.UpdateStatusFn
-		JobInfo        *apis.JobInfo
-		Services       []v1.Service
-		ConfigMaps     []v1.ConfigMap
-		Secrets        []v1.Secret
-		Pods           map[string]*v1.Pod
-		Plugins        []string
-		ExpextVal      error
+		Name         string
+		Job          *v1alpha1.Job
+		PodGroup     *schedulingv1alpha2.PodGroup
+		UpdateStatus state.UpdateStatusFn
+		JobInfo      *apis.JobInfo
+		Services     []v1.Service
+		ConfigMaps   []v1.ConfigMap
+		Secrets      []v1.Secret
+		Pods         map[string]*v1.Pod
+		Plugins      []string
+		ExpextVal    error
 	}{
 		{
 			Name: "KillJob success Case",
@@ -62,8 +61,7 @@ func TestKillJobFunc(t *testing.T) {
 					Namespace: namespace,
 				},
 			},
-			PodRetainPhase: state.PodRetainPhaseNone,
-			UpdateStatus:   nil,
+			UpdateStatus: nil,
 			JobInfo: &apis.JobInfo{
 				Namespace: namespace,
 				Name:      "jobinfo1",
@@ -142,7 +140,7 @@ func TestKillJobFunc(t *testing.T) {
 			testcase.JobInfo.Job = testcase.Job
 			testcase.JobInfo.Job.Spec.Plugins = jobPlugins
 
-			err = fakeController.killJob(testcase.JobInfo, testcase.PodRetainPhase, testcase.UpdateStatus)
+			err = fakeController.killJob(testcase.JobInfo, testcase.UpdateStatus)
 			if err != nil {
 				t.Errorf("Case %d (%s): expected: No Error, but got error %v.", i, testcase.Name, err)
 			}
@@ -172,16 +170,15 @@ func TestSyncJobFunc(t *testing.T) {
 	namespace := "test"
 
 	testcases := []struct {
-		Name           string
-		Job            *v1alpha1.Job
-		PodGroup       *schedulingv1alpha2.PodGroup
-		PodRetainPhase state.PhaseMap
-		UpdateStatus   state.UpdateStatusFn
-		JobInfo        *apis.JobInfo
-		Pods           map[string]*v1.Pod
-		Plugins        []string
-		TotalNumPods   int
-		ExpextVal      error
+		Name         string
+		Job          *v1alpha1.Job
+		PodGroup     *schedulingv1alpha2.PodGroup
+		UpdateStatus state.UpdateStatusFn
+		JobInfo      *apis.JobInfo
+		Pods         map[string]*v1.Pod
+		Plugins      []string
+		TotalNumPods int
+		ExpextVal    error
 	}{
 		{
 			Name: "SyncJob success Case",
@@ -223,8 +220,7 @@ func TestSyncJobFunc(t *testing.T) {
 					Namespace: namespace,
 				},
 			},
-			PodRetainPhase: state.PodRetainPhaseNone,
-			UpdateStatus:   nil,
+			UpdateStatus: nil,
 			JobInfo: &apis.JobInfo{
 				Namespace: namespace,
 				Name:      "jobinfo1",

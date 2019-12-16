@@ -26,7 +26,7 @@ type completingState struct {
 }
 
 func (ps *completingState) Execute(action vcbatch.Action) error {
-	return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
+	return KillJob(ps.job, func(status *vcbatch.JobStatus) bool {
 		// If any "alive" pods, still in Completing phase
 		if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {
 			return false

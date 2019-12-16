@@ -26,7 +26,7 @@ type restartingState struct {
 }
 
 func (ps *restartingState) Execute(action vcbatch.Action) error {
-	return KillJob(ps.job, PodRetainPhaseNone, func(status *vcbatch.JobStatus) bool {
+	return KillJob(ps.job, func(status *vcbatch.JobStatus) bool {
 		// Get the maximum number of retries.
 		maxRetry := DefaultMaxRetry
 		if ps.job.Job.Spec.MaxRetry != 0 {

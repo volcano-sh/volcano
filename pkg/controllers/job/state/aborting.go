@@ -30,13 +30,13 @@ type abortingState struct {
 func (ps *abortingState) Execute(action vcbatch.Action) error {
 	switch action {
 	case vcbatch.ResumeJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
+		return KillJob(ps.job, func(status *vcbatch.JobStatus) bool {
 			status.State.Phase = vcbatch.Restarting
 			status.RetryCount++
 			return true
 		})
 	default:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
+		return KillJob(ps.job, func(status *vcbatch.JobStatus) bool {
 			// If any "alive" pods, still in Aborting phase
 			if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {
 				return false

@@ -28,24 +28,24 @@ type pendingState struct {
 func (ps *pendingState) Execute(action vcbatch.Action) error {
 	switch action {
 	case vcbatch.RestartJobAction:
-		return KillJob(ps.job, PodRetainPhaseNone, func(status *vcbatch.JobStatus) bool {
+		return KillJob(ps.job, func(status *vcbatch.JobStatus) bool {
 			status.RetryCount++
 			status.State.Phase = vcbatch.Restarting
 			return true
 		})
 
 	case vcbatch.AbortJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
+		return KillJob(ps.job, func(status *vcbatch.JobStatus) bool {
 			status.State.Phase = vcbatch.Aborting
 			return true
 		})
 	case vcbatch.CompleteJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
+		return KillJob(ps.job, func(status *vcbatch.JobStatus) bool {
 			status.State.Phase = vcbatch.Completing
 			return true
 		})
 	case vcbatch.TerminateJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
+		return KillJob(ps.job, func(status *vcbatch.JobStatus) bool {
 			status.State.Phase = vcbatch.Terminating
 			return true
 		})

@@ -28,12 +28,12 @@ type abortedState struct {
 func (as *abortedState) Execute(action vcbatch.Action) error {
 	switch action {
 	case vcbatch.ResumeJobAction:
-		return KillJob(as.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
+		return KillJob(as.job, func(status *vcbatch.JobStatus) bool {
 			status.State.Phase = vcbatch.Restarting
 			status.RetryCount++
 			return true
 		})
 	default:
-		return KillJob(as.job, PodRetainPhaseSoft, nil)
+		return nil
 	}
 }

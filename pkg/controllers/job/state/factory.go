@@ -23,31 +23,22 @@ import (
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
-//PhaseMap to store the pod phases.
+// PhaseMap to store the pod phases.
 type PhaseMap map[v1.PodPhase]struct{}
 
-//UpdateStatusFn updates the job status.
+// UpdateStatusFn updates the job status.
 type UpdateStatusFn func(status *vcbatch.JobStatus) (jobPhaseChanged bool)
 
-//ActionFn will create or delete Pods according to Job's spec.
+// ActionFn will create or delete Pods according to Job's spec.
 type ActionFn func(job *apis.JobInfo, fn UpdateStatusFn) error
 
-//KillActionFn kill all Pods of Job with phase not in podRetainPhase.
-type KillActionFn func(job *apis.JobInfo, podRetainPhase PhaseMap, fn UpdateStatusFn) error
-
-//PodRetainPhaseNone stores no phase
-var PodRetainPhaseNone = PhaseMap{}
-
-// PodRetainPhaseSoft stores PodSucceeded and PodFailed Phase
-var PodRetainPhaseSoft = PhaseMap{
-	v1.PodSucceeded: {},
-	v1.PodFailed:    {},
-}
+// KillActionFn kill delete all the pods .
+type KillActionFn func(job *apis.JobInfo, fn UpdateStatusFn) error
 
 var (
 	// SyncJob will create or delete Pods according to Job's spec.
 	SyncJob ActionFn
-	// KillJob kill all Pods of Job with phase not in podRetainPhase.
+	// KillJob will delete all Pods of Job.
 	KillJob KillActionFn
 )
 
@@ -57,7 +48,7 @@ type State interface {
 	Execute(act vcbatch.Action) error
 }
 
-//NewState gets the state from the volcano job Phase
+// NewState gets the state from the volcano job Phase
 func NewState(jobInfo *apis.JobInfo) State {
 	job := jobInfo.Job
 	switch job.Status.State.Phase {
@@ -67,10 +58,12 @@ func NewState(jobInfo *apis.JobInfo) State {
 		return &runningState{job: jobInfo}
 	case vcbatch.Restarting:
 		return &restartingState{job: jobInfo}
-	case vcbatch.Terminated, vcbatch.Completed, vcbatch.Failed:
+	case vcbatch.Completed, vcbatch.Failed:
 		return &finishedState{job: jobInfo}
 	case vcbatch.Terminating:
 		return &terminatingState{job: jobInfo}
+	case vcbatch.Terminated:
+		return &terminatedState{job: jobInfo}
 	case vcbatch.Aborting:
 		return &abortingState{job: jobInfo}
 	case vcbatch.Aborted:
