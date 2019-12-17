@@ -34,6 +34,7 @@ const (
 
 	// Env vars
 
+	// LegacyTaskIndex indicates the index of a group of replicas of a task.
 	// Deprecated, remove it in release 0.4, use the TaskIndex instead.
 	LegacyTaskIndex = "VK_TASK_INDEX"
 	// TaskIndex indicates the index of a group of replicas of a task.
