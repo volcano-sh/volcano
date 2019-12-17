@@ -34,4 +34,7 @@ const (
 
 	// SSHRelativePath ssh rel path
 	SSHRelativePath = ".ssh"
+
+	// ConfigMapMountPath mount path
+	ConfigMapMountPath = "/etc/volcano"
 )

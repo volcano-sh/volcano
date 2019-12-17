@@ -18,6 +18,7 @@ package job
 
 import (
 	"fmt"
+	"strconv"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,12 +37,12 @@ func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(jobhelpers.PodNameFmt, jobName, taskName, index)
 }
 
-func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
+func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, taskIndex int) *v1.Pod {
 	templateCopy := template.DeepCopy()
 
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      jobhelpers.MakePodName(job.Name, template.Name, ix),
+			Name:      jobhelpers.MakePodName(job.Name, template.Name, taskIndex),
 			Namespace: job.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(job, helpers.JobKind),
@@ -84,6 +85,17 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 			}
 			pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
 		}
+	}
+
+	legacyTaskIndexEnv := v1.EnvVar{Name: batch.LegacyTaskIndex, Value: strconv.Itoa(taskIndex)}
+	taskIndexEnv := v1.EnvVar{Name: batch.TaskIndex, Value: strconv.Itoa(taskIndex)}
+
+	for i := range pod.Spec.InitContainers {
+		pod.Spec.InitContainers[i].Env = append(pod.Spec.InitContainers[i].Env, legacyTaskIndexEnv, taskIndexEnv)
+	}
+
+	for i := range pod.Spec.Containers {
+		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, legacyTaskIndexEnv, taskIndexEnv)
 	}
 
 	if len(pod.Annotations) == 0 {

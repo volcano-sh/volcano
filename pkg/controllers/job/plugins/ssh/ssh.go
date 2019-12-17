@@ -32,7 +32,6 @@ import (
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
-	"volcano.sh/volcano/pkg/controllers/job/plugins/env"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
@@ -58,7 +57,7 @@ func New(client pluginsinterface.PluginClientset, arguments []string) pluginsint
 	sshPlugin.addFlags()
 	// if not set ssh key files path, use the default.
 	if sshPlugin.noRoot && sshPlugin.sshKeyFilePath == SSHAbsolutePath {
-		sshPlugin.sshKeyFilePath = env.ConfigMapMountPath + "/" + SSHRelativePath
+		sshPlugin.sshKeyFilePath = ConfigMapMountPath + "/" + SSHRelativePath
 	}
 
 	return &sshPlugin

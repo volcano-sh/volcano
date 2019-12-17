@@ -6,7 +6,6 @@ spec:
   minAvailable: 3
   schedulerName: volcano
   plugins:
-    env: []
     svc: []
   policies:
     - event: PodEvicted
@@ -23,7 +22,7 @@ spec:
                 - |
                   PS_HOST=`cat /etc/volcano/ps.host | sed 's/$/&:2222/g' | sed 's/^/"/;s/$/"/' | tr "\n" ","`;
                   WORKER_HOST=`cat /etc/volcano/worker.host | sed 's/$/&:2222/g' | sed 's/^/"/;s/$/"/' | tr "\n" ","`;
-                  export TF_CONFIG={\"cluster\":{\"ps\":[${PS_HOST}],\"worker\":[${WORKER_HOST}]},\"task\":{\"type\":\"ps\",\"index\":${VK_TASK_INDEX}},\"environment\":\"cloud\"};
+                  export TF_CONFIG={\"cluster\":{\"ps\":[${PS_HOST}],\"worker\":[${WORKER_HOST}]},\"task\":{\"type\":\"ps\",\"index\":${VOLCANO_TASK_INDEX}},\"environment\":\"cloud\"};
                   python /var/tf_dist_mnist/dist_mnist.py
               image: volcanosh/dist-mnist-tf-example:0.0.1
               name: tensorflow
@@ -46,7 +45,7 @@ spec:
                 - |
                   PS_HOST=`cat /etc/volcano/ps.host | sed 's/$/&:2222/g' | sed 's/^/"/;s/$/"/' | tr "\n" ","`;
                   WORKER_HOST=`cat /etc/volcano/worker.host | sed 's/$/&:2222/g' | sed 's/^/"/;s/$/"/' | tr "\n" ","`;
-                  export TF_CONFIG={\"cluster\":{\"ps\":[${PS_HOST}],\"worker\":[${WORKER_HOST}]},\"task\":{\"type\":\"worker\",\"index\":${VK_TASK_INDEX}},\"environment\":\"cloud\"};
+                  export TF_CONFIG={\"cluster\":{\"ps\":[${PS_HOST}],\"worker\":[${WORKER_HOST}]},\"task\":{\"type\":\"worker\",\"index\":${VOLCANO_TASK_INDEX}},\"environment\":\"cloud\"};
                   python /var/tf_dist_mnist/dist_mnist.py
               image: volcanosh/dist-mnist-tf-example:0.0.1
               name: tensorflow

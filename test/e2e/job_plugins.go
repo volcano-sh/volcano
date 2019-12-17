@@ -18,13 +18,15 @@ package e2e
 
 import (
 	"fmt"
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+
 	cv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/scheduler/api"
+	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
-	"volcano.sh/volcano/pkg/controllers/job/plugins/env"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("Job E2E Test: Test Job Plugins", func() {
@@ -189,7 +191,6 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 			name:      jobName,
 			plugins: map[string][]string{
 				"ssh": {"--no-root"},
-				"env": {},
 				"svc": {},
 			},
 			tasks: []taskSpec{
@@ -225,7 +226,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		// Check whether env exists in the pod
 		for _, container := range pod.Spec.Containers {
 			for _, envi := range container.Env {
-				if envi.Name == env.TaskVkIndex {
+				if envi.Name == batchv1alpha1.TaskIndex {
 					foundEnv = true
 					break
 				}
