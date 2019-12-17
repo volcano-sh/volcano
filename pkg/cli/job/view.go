@@ -113,7 +113,6 @@ func PrintJobInfo(job *v1alpha1.Job, writer io.Writer) {
 	WriteLine(writer, Level0, "Spec:\n")
 	WriteLine(writer, Level1, "Min Available:     \t%d\n", job.Spec.MinAvailable)
 	WriteLine(writer, Level1, "Plugins:\n")
-	WriteLine(writer, Level2, "Env:\t%v\n", job.Spec.Plugins["env"])
 	WriteLine(writer, Level2, "Ssh:\t%v\n", job.Spec.Plugins["ssh"])
 	WriteLine(writer, Level1, "Scheduler Name:    \t%s\n", job.Spec.SchedulerName)
 	WriteLine(writer, Level1, "Tasks:\n")

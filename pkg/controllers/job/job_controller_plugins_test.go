@@ -59,7 +59,7 @@ func TestPluginOnPodCreate(t *testing.T) {
 				},
 			},
 			Pod:     buildPod(namespace, "pod1", v1.PodPending, nil),
-			Plugins: []string{"env", "svc", "ssh"},
+			Plugins: []string{"svc", "ssh"},
 			RetVal:  nil,
 		},
 		{
@@ -94,14 +94,6 @@ func TestPluginOnPodCreate(t *testing.T) {
 			}
 
 			for _, plugin := range testcase.Plugins {
-				if plugin == "env" {
-					for _, container := range testcase.Pod.Spec.Containers {
-						if len(container.Env) == 0 {
-							t.Errorf("case %d (%s): expected: Env Length not to be zero", i, testcase.Name)
-						}
-					}
-				}
-
 				if plugin == "svc" {
 					for _, container := range testcase.Pod.Spec.Containers {
 						if len(container.VolumeMounts) == 0 {
@@ -158,7 +150,7 @@ func TestPluginOnJobAdd(t *testing.T) {
 					UID:       "e7f18111-1cec-11ea-b688-fa163ec79500",
 				},
 			},
-			Plugins: []string{"svc", "ssh", "env"},
+			Plugins: []string{"svc", "ssh"},
 			RetVal:  nil,
 		},
 		{
@@ -213,11 +205,6 @@ func TestPluginOnJobAdd(t *testing.T) {
 					}
 				}
 
-				if plugin == "env" {
-					if testcase.Job.Status.ControlledResources["plugin-env"] == "" {
-						t.Errorf("Case %d (%s): expected: to find controlled resource, but not found because of error %s", i, testcase.Name, err.Error())
-					}
-				}
 			}
 		})
 	}
@@ -241,7 +228,7 @@ func TestPluginOnJobDelete(t *testing.T) {
 					UID:       "e7f18111-1cec-11ea-b688-fa163ec79500",
 				},
 			},
-			Plugins: []string{"svc", "ssh", "env"},
+			Plugins: []string{"svc", "ssh"},
 			RetVal:  nil,
 		},
 		{

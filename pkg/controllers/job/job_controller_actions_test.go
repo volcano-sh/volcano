@@ -94,7 +94,7 @@ func TestKillJobFunc(t *testing.T) {
 				"pod1": buildPod(namespace, "pod1", v1.PodRunning, nil),
 				"pod2": buildPod(namespace, "pod2", v1.PodRunning, nil),
 			},
-			Plugins:   []string{"svc", "ssh", "env"},
+			Plugins:   []string{"svc", "ssh"},
 			ExpextVal: nil,
 		},
 	}
@@ -240,7 +240,7 @@ func TestSyncJobFunc(t *testing.T) {
 				"job1-task1-1": buildPod(namespace, "job1-task1-1", v1.PodRunning, nil),
 			},
 			TotalNumPods: 6,
-			Plugins:      []string{"svc", "ssh", "env"},
+			Plugins:      []string{"svc", "ssh"},
 			ExpextVal:    nil,
 		},
 	}

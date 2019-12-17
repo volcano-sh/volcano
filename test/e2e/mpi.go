@@ -40,7 +40,6 @@ var _ = Describe("MPI E2E Test", func() {
 			},
 			plugins: map[string][]string{
 				"ssh": {},
-				"env": {},
 				"svc": {},
 			},
 			tasks: []taskSpec{
