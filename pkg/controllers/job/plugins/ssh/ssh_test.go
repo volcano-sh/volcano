@@ -19,7 +19,6 @@ package ssh
 import (
 	"testing"
 
-	"volcano.sh/volcano/pkg/controllers/job/plugins/env"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
@@ -40,7 +39,7 @@ func TestSSHPlugin(t *testing.T) {
 			name:           "--no-root=true, ssh-key-file-path empty",
 			params:         []string{"--no-root=true"},
 			noRoot:         true,
-			sshKeyFilePath: env.ConfigMapMountPath + "/" + SSHRelativePath,
+			sshKeyFilePath: ConfigMapMountPath + "/" + SSHRelativePath,
 		},
 		{
 			name:           "--no-root=true, --ssh-key-file-path=/a/b",
