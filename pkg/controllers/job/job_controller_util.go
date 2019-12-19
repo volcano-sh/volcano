@@ -86,10 +86,6 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 		}
 	}
 
-	if len(pod.Annotations) == 0 {
-		pod.Annotations = make(map[string]string)
-	}
-
 	tsKey := templateCopy.Name
 	if len(tsKey) == 0 {
 		tsKey = batch.DefaultTaskSpec
