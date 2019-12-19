@@ -108,11 +108,6 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 	pod.Labels[batch.JobNameKey] = job.Name
 	pod.Labels[batch.JobNamespaceKey] = job.Namespace
 
-	// we fill the schedulerName in the pod definition with the one specified in the QJ template
-	if job.Spec.SchedulerName != "" && pod.Spec.SchedulerName == "" {
-		pod.Spec.SchedulerName = job.Spec.SchedulerName
-	}
-
 	return pod
 }
 
