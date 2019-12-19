@@ -189,6 +189,7 @@ var _ = Describe("Job E2E Test", func() {
 
 		job.name = "preemptor-qj"
 		job.pri = masterPriority
+		job.min = rep / 2
 		job2 := createJob(context, job)
 		err = waitTasksReady(context, job1, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
@@ -229,6 +230,7 @@ var _ = Describe("Job E2E Test", func() {
 
 		job.name = "multipreemptor-qj1"
 		job.pri = masterPriority
+		job.min = rep / 3
 		job2 := createJob(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
