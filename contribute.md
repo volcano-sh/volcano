@@ -31,8 +31,8 @@ The goal of the community is to develop a volcano system which is useful for run
 
 # Getting started
 
-- Read the [get started](docs/development/perepare-for-development.md) for developing code for Volcano
-- Read the [setup](docs/development/development.md) for build/deploy instructions.
+- Read the [get started](https://github.com/volcano-sh/volcano/blob/master/docs/development/prepare-for-development.md) for developing code for Volcano
+- Read the [setup](https://github.com/volcano-sh/volcano/blob/master/docs/development/development.md) for build/deploy instructions.
 
 
 # Your First Contribution
