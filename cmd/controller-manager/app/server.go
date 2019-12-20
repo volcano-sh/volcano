@@ -39,7 +39,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 
-	"volcano.sh/volcano/cmd/controllers/app/options"
+	"volcano.sh/volcano/cmd/controller-manager/app/options"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/controllers/garbagecollector"
@@ -100,7 +100,7 @@ func Run(opt *options.ServerOption) error {
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: leaderElectionClient.CoreV1().Events(opt.LockObjectNamespace)})
-	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "vc-controllers"})
+	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -111,7 +111,7 @@ func Run(opt *options.ServerOption) error {
 
 	rl, err := resourcelock.New(resourcelock.ConfigMapsResourceLock,
 		opt.LockObjectNamespace,
-		"vc-controllers",
+		"vc-controller-manager",
 		leaderElectionClient.CoreV1(),
 		resourcelock.ResourceLockConfig{
 			Identity:      id,

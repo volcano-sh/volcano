@@ -13,7 +13,10 @@
 # limitations under the License.
 
 
-FROM alpine:latest
+# The base image is created via `Dockerfile.base`, the base image is cached
+# since the required packages change very rarely.
+FROM volcanosh/vc-webhook-manager-base:1.3.1
 
-ADD vc-controllers /vc-controllers
-ENTRYPOINT ["/vc-controllers"]
+ADD vc-webhook-manager /vc-webhook-manager
+ADD gen-admission-secret.sh /gen-admission-secret.sh
+ENTRYPOINT ["/vc-webhook-manager"]

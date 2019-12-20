@@ -23,7 +23,7 @@ include Makefile.def
 
 .EXPORT_ALL_VARIABLES:
 
-all: vc-scheduler vc-controllers vc-admission vcctl
+all: vc-scheduler vc-controller-manager vc-webhook-manager vcctl
 
 init:
 	mkdir -p ${BIN_DIR}
@@ -32,11 +32,11 @@ init:
 vc-scheduler: init
 	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vc-scheduler ./cmd/scheduler
 
-vc-controllers: init
-	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vc-controllers ./cmd/controllers
+vc-controller-manager: init
+	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vc-controller-manager ./cmd/controller-manager
 
-vc-admission: init
-	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vc-admission ./cmd/admission
+vc-webhook-manager: init
+	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vc-webhook-manager ./cmd/webhook-manager
 
 vcctl: init
 	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vcctl ./cmd/cli
@@ -44,19 +44,19 @@ vcctl: init
 image_bins: init
 	go get github.com/mitchellh/gox
 	CGO_ENABLED=0 gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vcctl ./cmd/cli
-	for name in controllers scheduler admission; do\
+	for name in controller-manager scheduler webhook-manager; do\
 		CGO_ENABLED=0 gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-$$name ./cmd/$$name; \
 	done
 
 images: image_bins
-	for name in controllers scheduler admission; do\
+	for name in controller-manager scheduler webhook-manager; do\
 		cp ${BIN_DIR}/${REL_OSARCH}/vc-$$name ./installer/dockerfile/$$name/; \
 		docker build --no-cache -t $(IMAGE_PREFIX)-$$name:$(TAG) ./installer/dockerfile/$$name; \
 		rm installer/dockerfile/$$name/vc-$$name; \
 	done
 
-admission-base-image:
-	docker build --no-cache -t $(IMAGE_PREFIX)-admission-base:$(TAG) ./installer/dockerfile/admission/ -f ./installer/dockerfile/admission/Dockerfile.base;
+webhook-manager-base-image:
+	docker build --no-cache -t $(IMAGE_PREFIX)-webhook-manager-base:$(TAG) ./installer/dockerfile/webhook-manager/ -f ./installer/dockerfile/webhook-manager/Dockerfile.base;
 
 generate-code:
 	./hack/update-gencode.sh
