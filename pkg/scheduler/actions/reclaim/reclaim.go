@@ -105,7 +105,8 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 		}
 
 		// Found "high" priority job
-		if jobs, found := preemptorsMap[queue.UID]; !found || jobs.Empty() {
+		jobs, found := preemptorsMap[queue.UID]
+		if !found || jobs.Empty() {
 			continue
 		} else {
 			job = jobs.Pop().(*api.JobInfo)
@@ -195,8 +196,9 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 		}
 
 		if assigned {
-			queues.Push(queue)
+			jobs.Push(job)
 		}
+		queues.Push(queue)
 	}
 
 }
