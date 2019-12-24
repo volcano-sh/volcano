@@ -190,7 +190,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	}
 
 	// Skip job initiation if job is already accepted
-	if job.Status.State.Phase == "" {
+	if job.Status.State.Phase == "" || job.Status.State.Phase == batch.Pending || job.Status.State.Phase == batch.Restarting {
 		var err error
 		if job, err = cc.initiateJob(job); err != nil {
 			return err
