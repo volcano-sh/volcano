@@ -73,7 +73,7 @@ func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 
 func (s *Statement) evict(reclaimee *api.TaskInfo, reason string) error {
 	if err := s.ssn.cache.Evict(reclaimee, reason); err != nil {
-		if e := s.unevict(reclaimee, reason); err != nil {
+		if e := s.unevict(reclaimee, reason); e != nil {
 			klog.Errorf("Faled to unevict task <%v/%v>: %v.",
 				reclaimee.Namespace, reclaimee.Name, e)
 		}
