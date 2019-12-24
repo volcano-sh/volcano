@@ -19,6 +19,7 @@ package svc
 import (
 	"flag"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"k8s.io/klog"
@@ -88,6 +89,34 @@ func (sp *servicePlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 		pod.Spec.Subdomain = job.Name
 	}
 
+	var hostEnv []v1.EnvVar
+	var envNames []string
+
+	for _, ts := range job.Spec.Tasks {
+		// TODO(k82cn): The splitter and the prefix of env should be configurable.
+		envNames = append(envNames, fmt.Sprintf(EnvTaskHostFmt, strings.ToUpper(ts.Name)))
+		envNames = append(envNames, fmt.Sprintf(EnvHostNumFmt, strings.ToUpper(ts.Name)))
+	}
+
+	for _, name := range envNames {
+		hostEnv = append(hostEnv, v1.EnvVar{
+			Name: name,
+			ValueFrom: &v1.EnvVarSource{
+				ConfigMapKeyRef: &v1.ConfigMapKeySelector{
+					LocalObjectReference: v1.LocalObjectReference{Name: sp.cmName(job)},
+					Key:                  name,
+				}}},
+		)
+	}
+
+	for i := range pod.Spec.Containers {
+		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, hostEnv...)
+	}
+
+	for i := range pod.Spec.InitContainers {
+		pod.Spec.InitContainers[i].Env = append(pod.Spec.InitContainers[i].Env, hostEnv...)
+	}
+
 	sp.mountConfigmap(pod, job)
 
 	return nil
@@ -98,9 +127,10 @@ func (sp *servicePlugin) OnJobAdd(job *batch.Job) error {
 		return nil
 	}
 
-	data := generateHost(job)
+	hostFile := generateHosts(job)
 
-	if err := helpers.CreateConfigMapIfNotExist(job, sp.Clientset.KubeClients, data, sp.cmName(job)); err != nil {
+	// Create ConfigMap of hosts for Pods to mount.
+	if err := helpers.CreateConfigMapIfNotExist(job, sp.Clientset.KubeClients, hostFile, sp.cmName(job)); err != nil {
 		return err
 	}
 
@@ -258,8 +288,8 @@ func (sp *servicePlugin) cmName(job *batch.Job) string {
 	return fmt.Sprintf("%s-%s", job.Name, sp.Name())
 }
 
-func generateHost(job *batch.Job) map[string]string {
-	data := make(map[string]string, len(job.Spec.Tasks))
+func generateHosts(job *batch.Job) map[string]string {
+	hostFile := make(map[string]string, len(job.Spec.Tasks))
 
 	for _, ts := range job.Spec.Tasks {
 		hosts := make([]string, 0, ts.Replicas)
@@ -280,8 +310,16 @@ func generateHost(job *batch.Job) map[string]string {
 		}
 
 		key := fmt.Sprintf(ConfigMapTaskHostFmt, ts.Name)
-		data[key] = strings.Join(hosts, "\n")
+		hostFile[key] = strings.Join(hosts, "\n")
+
+		// TODO(k82cn): The splitter and the prefix of env should be configurable.
+		// export hosts as environment
+		key = fmt.Sprintf(EnvTaskHostFmt, strings.ToUpper(ts.Name))
+		hostFile[key] = strings.Join(hosts, ",")
+		// export host number as environment.
+		key = fmt.Sprintf(EnvHostNumFmt, strings.ToUpper(ts.Name))
+		hostFile[key] = strconv.Itoa(len(hosts))
 	}
 
-	return data
+	return hostFile
 }

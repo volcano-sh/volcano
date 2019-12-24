@@ -18,13 +18,18 @@ package e2e
 
 import (
 	"fmt"
+	"strings"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
 	cv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/scheduler/api"
+
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/env"
+	"volcano.sh/volcano/pkg/controllers/job/plugins/svc"
 )
 
 var _ = Describe("Job E2E Test: Test Job Plugins", func() {
@@ -148,8 +153,8 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		err := waitJobReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pluginName := fmt.Sprintf("%s-ssh", jobName)
-		_, err = context.kubeclient.CoreV1().ConfigMaps(namespace).Get(
+		pluginName := fmt.Sprintf("%s-%s-ssh", jobName, job.UID)
+		_, err = context.kubeclient.CoreV1().Secrets(namespace).Get(
 			pluginName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -206,8 +211,8 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		err := waitJobReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pluginName := fmt.Sprintf("%s-ssh", jobName)
-		_, err = context.kubeclient.CoreV1().ConfigMaps(namespace).Get(
+		pluginName := fmt.Sprintf("%s-%s-ssh", jobName, job.UID)
+		_, err = context.kubeclient.CoreV1().Secrets(namespace).Get(
 			pluginName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -222,16 +227,30 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		}
 		Expect(foundVolume).To(BeTrue())
 
-		// Check whether env exists in the pod
-		for _, container := range pod.Spec.Containers {
-			for _, envi := range container.Env {
-				if envi.Name == env.TaskVkIndex {
-					foundEnv = true
-					break
+		// Check whether env exists in the containers and initContainers
+		containers := pod.Spec.Containers
+		containers = append(containers, pod.Spec.InitContainers...)
+		envNames := []string{
+			env.TaskVkIndex,
+			env.TaskIndex,
+			fmt.Sprintf(svc.EnvTaskHostFmt, strings.ToUpper(taskName)),
+			fmt.Sprintf(svc.EnvHostNumFmt, strings.ToUpper(taskName)),
+		}
+
+		for _, container := range containers {
+			for _, name := range envNames {
+				foundEnv = false
+				for _, envi := range container.Env {
+					if envi.Name == name {
+						foundEnv = true
+						break
+					}
 				}
+
+				Expect(foundEnv).To(BeTrue(),
+					fmt.Sprintf("container: %s, env name: %s", container.Name, name))
 			}
 		}
-		Expect(foundEnv).To(BeTrue())
 
 		// Check whether service is created with job name
 		_, err = context.kubeclient.CoreV1().Services(job.Namespace).Get(job.Name, v1.GetOptions{})

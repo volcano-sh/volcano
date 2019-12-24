@@ -21,9 +21,9 @@ function kind-up-cluster {
   kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}
 
   echo "Loading docker images into kind cluster"
-  kind load docker-image ${IMAGE_PREFIX}-controllers:${TAG}  ${CLUSTER_CONTEXT}
+  kind load docker-image ${IMAGE_PREFIX}-controller-manager:${TAG}  ${CLUSTER_CONTEXT}
   kind load docker-image ${IMAGE_PREFIX}-scheduler:${TAG}  ${CLUSTER_CONTEXT}
-  kind load docker-image ${IMAGE_PREFIX}-admission:${TAG}  ${CLUSTER_CONTEXT}
+  kind load docker-image ${IMAGE_PREFIX}-webhook-manager:${TAG}  ${CLUSTER_CONTEXT}
 }
 
 

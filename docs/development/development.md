@@ -53,7 +53,7 @@ make images
 
 ## Building a specific docker image
 
-If you want to make a local change and test some component, say `vc-controllers`, you
+If you want to make a local change and test some component, say `vc-controller-manager`, you
 could do:
 
 Under volcano.sh/volcano repo
@@ -73,10 +73,10 @@ export HUB=docker.io/yourrepo
 export TAG=citadel
 ```
 
-Make some local change of the code, then build `vc-controllers`
+Make some local change of the code, then build `vc-controller-manager`
 
 ```bash
-make image.vc-controllers
+make image.vc-controller-manager
 ```
 
 ## Building the Volcano manifests

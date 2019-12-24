@@ -116,6 +116,10 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 	if err := sc.deletePod(oldPod); err != nil {
 		return err
 	}
+	//when delete pod, the ownerreference of pod will be set nil,just as orphan pod
+	if len(utils.GetController(newPod)) == 0 {
+		newPod.OwnerReferences = oldPod.OwnerReferences
+	}
 	return sc.addPod(newPod)
 }
 

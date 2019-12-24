@@ -159,7 +159,12 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Preemption", func() {
-		context := initTestContext(options{})
+		context := initTestContext(options{
+			priorityClasses: map[string]int32{
+				masterPriority: masterPriorityValue,
+				workerPriority: workerPriorityValue,
+			},
+		})
 		defer cleanupTestContext(context)
 
 		slot := oneCPU
@@ -177,11 +182,14 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		job.name = "preemptee-qj"
+		job.pri = workerPriority
 		job1 := createJob(context, job)
 		err := waitTasksReady(context, job1, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
 		job.name = "preemptor-qj"
+		job.pri = masterPriority
+		job.min = rep / 2
 		job2 := createJob(context, job)
 		err = waitTasksReady(context, job1, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
@@ -191,7 +199,12 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Multiple Preemption", func() {
-		context := initTestContext(options{})
+		context := initTestContext(options{
+			priorityClasses: map[string]int32{
+				masterPriority: masterPriorityValue,
+				workerPriority: workerPriorityValue,
+			},
+		})
 		defer cleanupTestContext(context)
 
 		slot := oneCPU
@@ -209,15 +222,20 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		job.name = "multipreemptee-qj"
+		job.pri = workerPriority
 		job1 := createJob(context, job)
+
 		err := waitTasksReady(context, job1, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
 		job.name = "multipreemptor-qj1"
+		job.pri = masterPriority
+		job.min = rep / 3
 		job2 := createJob(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		job.name = "multipreemptor-qj2"
+		job.pri = masterPriority
 		job3 := createJob(context, job)
 		Expect(err).NotTo(HaveOccurred())
 

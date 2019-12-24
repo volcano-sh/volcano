@@ -101,7 +101,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 		Terminating:  terminating,
 		Unknown:      unknown,
 		Version:      job.Status.Version,
-		MinAvailable: int32(job.Spec.MinAvailable),
+		MinAvailable: job.Spec.MinAvailable,
 		RetryCount:   job.Status.RetryCount,
 	}
 
@@ -308,7 +308,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 		Terminating:         terminating,
 		Unknown:             unknown,
 		Version:             job.Status.Version,
-		MinAvailable:        int32(job.Spec.MinAvailable),
+		MinAvailable:        job.Spec.MinAvailable,
 		ControlledResources: job.Status.ControlledResources,
 		RetryCount:          job.Status.RetryCount,
 	}
@@ -509,7 +509,7 @@ func (cc *Controller) initJobStatus(job *batch.Job) (*batch.Job, error) {
 	}
 
 	job.Status.State.Phase = batch.Pending
-	job.Status.MinAvailable = int32(job.Spec.MinAvailable)
+	job.Status.MinAvailable = job.Spec.MinAvailable
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
 	if err != nil {
 		klog.Errorf("Failed to update status of Job %v/%v: %v",

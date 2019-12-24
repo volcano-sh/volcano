@@ -73,7 +73,7 @@ func buildConfig(opt *options.ServerOption) (*rest.Config, error) {
 	return cfg, nil
 }
 
-// Run the kube-batch scheduler
+// Run the volcano scheduler
 func Run(opt *options.ServerOption) error {
 	if opt.PrintVersion {
 		version.PrintVersionAndExit()

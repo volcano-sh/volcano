@@ -764,7 +764,10 @@ var _ = Describe("Job Error Handling", func() {
 	It("Task Priority", func() {
 		By("init test context")
 		context := initTestContext(options{
-			priorityClasses: []string{masterPriority, workerPriority},
+			priorityClasses: map[string]int32{
+				masterPriority: masterPriorityValue,
+				workerPriority: workerPriorityValue,
+			},
 		})
 		defer cleanupTestContext(context)
 
