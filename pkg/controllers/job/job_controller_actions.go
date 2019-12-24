@@ -196,7 +196,6 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 			return err
 		}
 	}
-
 	var syncTask bool
 	if pg, _ := cc.pgLister.PodGroups(job.Namespace).Get(job.Name); pg != nil {
 		if pg.Status.Phase != "" && pg.Status.Phase != scheduling.PodGroupPending {
@@ -221,13 +220,6 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 				newJob.Namespace, newJob.Name, e)
 			return e
 		}
-		return nil
-	}
-
-	// Skip job task sync if it is pending
-	if job.Status.State.Phase == batch.Pending {
-		klog.Infof("Job <%s/%s> is pending, skip pod sync.",
-			job.Namespace, job.Name)
 		return nil
 	}
 
