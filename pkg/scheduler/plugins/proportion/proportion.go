@@ -219,15 +219,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// If no capability is set, always enqueue the job.
 		if len(queue.Queue.Spec.Capability) == 0 {
-			return true
-		}
-
-		pgResource := api.NewResource(*job.PodGroup.Spec.MinResources)
-		if len(queue.Queue.Spec.Capability) == 0 {
 			klog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Inqueue.",
 				queue.Name, job.Namespace, job.Name)
 			return true
 		}
+
+		pgResource := api.NewResource(*job.PodGroup.Spec.MinResources)
 		// The queue resource quota limit has not reached
 		if pgResource.Clone().Add(attr.allocated).LessEqual(api.NewResource(queue.Queue.Spec.Capability)) {
 			return true
