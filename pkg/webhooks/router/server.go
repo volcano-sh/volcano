@@ -25,8 +25,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog"
 
-	"volcano.sh/volcano/pkg/admission/schema"
-	"volcano.sh/volcano/pkg/admission/util"
+	"volcano.sh/volcano/pkg/webhooks/schema"
+	"volcano.sh/volcano/pkg/webhooks/util"
 )
 
 // CONTENTTYPE http content-type
