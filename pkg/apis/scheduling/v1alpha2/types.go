@@ -262,6 +262,8 @@ type QueueSpec struct {
 	Capability v1.ResourceList `json:"capability,omitempty" protobuf:"bytes,2,opt,name=capability"`
 	// State controller the status of queue
 	State QueueState `json:"state,omitempty" protobuf:"bytes,3,opt,name=state"`
+	// Reclaimable indicate whether the queue can be reclaimed by other queue
+	Reclaimable *bool `json:"reclaimable,omitempty" protobuf:"bytes,4,opt,name=reclaimable"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
