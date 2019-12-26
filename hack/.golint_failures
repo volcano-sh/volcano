@@ -1,6 +1,3 @@
-volcano.sh/volcano/pkg/admission/jobs/mutate
-volcano.sh/volcano/pkg/admission/router
-volcano.sh/volcano/pkg/admission/schema
 volcano.sh/volcano/pkg/apis/scheduling
 volcano.sh/volcano/pkg/apis/scheduling/v1alpha1
 volcano.sh/volcano/pkg/apis/scheduling/v1alpha2
@@ -10,4 +7,7 @@ volcano.sh/volcano/pkg/scheduler/actions/backfill
 volcano.sh/volcano/pkg/scheduler/actions/enqueue
 volcano.sh/volcano/pkg/scheduler/actions/preempt
 volcano.sh/volcano/pkg/scheduler/actions/reclaim
+volcano.sh/volcano/pkg/webhooks/admission/jobs/mutate
+volcano.sh/volcano/pkg/webhooks/router
+volcano.sh/volcano/pkg/webhooks/schema
 volcano.sh/volcano/test/e2e
