@@ -18,43 +18,12 @@ package api
 
 import (
 	"fmt"
-	"reflect"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/api/policy/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 )
-
-func nodesEqual(l, r map[string]*NodeInfo) bool {
-	if len(l) != len(r) {
-		return false
-	}
-
-	for k, n := range l {
-		if !reflect.DeepEqual(n, r[k]) {
-			return false
-		}
-	}
-
-	return true
-}
-
-func podsEqual(l, r map[string]*TaskInfo) bool {
-	if len(l) != len(r) {
-		return false
-	}
-
-	for k, p := range l {
-		if !reflect.DeepEqual(p, r[k]) {
-			return false
-		}
-	}
-
-	return true
-}
 
 func buildNode(name string, alloc v1.ResourceList) *v1.Node {
 	return &v1.Node{
@@ -89,22 +58,6 @@ func buildPod(ns, n, nn string, p v1.PodPhase, req v1.ResourceList, owner []meta
 					},
 				},
 			},
-		},
-	}
-}
-
-func buildPdb(n string, min int, selectorMap map[string]string) *v1beta1.PodDisruptionBudget {
-	selector := &metav1.LabelSelector{
-		MatchLabels: selectorMap,
-	}
-	minAvailable := intstr.FromInt(min)
-	return &v1beta1.PodDisruptionBudget{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: n,
-		},
-		Spec: v1beta1.PodDisruptionBudgetSpec{
-			Selector:     selector,
-			MinAvailable: &minAvailable,
 		},
 	}
 }
