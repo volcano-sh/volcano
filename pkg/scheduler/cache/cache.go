@@ -30,7 +30,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	infov1 "k8s.io/client-go/informers/core/v1"
-	policyv1 "k8s.io/client-go/informers/policy/v1beta1"
 	schedv1 "k8s.io/client-go/informers/scheduling/v1beta1"
 	storagev1 "k8s.io/client-go/informers/storage/v1"
 	"k8s.io/client-go/kubernetes"
@@ -82,7 +81,6 @@ type SchedulerCache struct {
 
 	podInformer              infov1.PodInformer
 	nodeInformer             infov1.NodeInformer
-	pdbInformer              policyv1.PodDisruptionBudgetInformer
 	nsInformer               infov1.NamespaceInformer
 	podGroupInformerV1alpha1 vcinformerv1.PodGroupInformer
 	podGroupInformerV1alpha2 vcinformerv2.PodGroupInformer
@@ -369,13 +367,6 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 			},
 		})
 
-	sc.pdbInformer = informerFactory.Policy().V1beta1().PodDisruptionBudgets()
-	sc.pdbInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddPDB,
-		UpdateFunc: sc.UpdatePDB,
-		DeleteFunc: sc.DeletePDB,
-	})
-
 	sc.pcInformer = informerFactory.Scheduling().V1beta1().PriorityClasses()
 	sc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.AddPriorityClass,
@@ -428,7 +419,6 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 
 // Run  starts the schedulerCache
 func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
-	go sc.pdbInformer.Informer().Run(stopCh)
 	go sc.podInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
 	go sc.podGroupInformerV1alpha1.Informer().Run(stopCh)
@@ -457,7 +447,6 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 	return cache.WaitForCacheSync(stopCh,
 		func() []cache.InformerSynced {
 			informerSynced := []cache.InformerSynced{
-				sc.pdbInformer.Informer().HasSynced,
 				sc.podInformer.Informer().HasSynced,
 				sc.podGroupInformerV1alpha1.Informer().HasSynced,
 				sc.podGroupInformerV1alpha2.Informer().HasSynced,
@@ -736,6 +725,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	var wg sync.WaitGroup
 
 	cloneJob := func(value *schedulingapi.JobInfo) {
+		defer wg.Done()
 		if value.PodGroup != nil {
 			value.Priority = sc.defaultPriority
 
@@ -753,7 +743,6 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		cloneJobLock.Lock()
 		snapshot.Jobs[value.UID] = clonedJob
 		cloneJobLock.Unlock()
-		wg.Done()
 	}
 
 	for _, value := range sc.NamespaceCollection {
@@ -765,7 +754,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 
 	for _, value := range sc.Jobs {
 		// If no scheduling spec, does not handle it.
-		if value.PodGroup == nil && value.PDB == nil {
+		if value.PodGroup == nil {
 			klog.V(4).Infof("The scheduling spec of Job <%v:%s/%s> is nil, ignore it.",
 				value.UID, value.Namespace, value.Name)
 
@@ -840,10 +829,9 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo) {
 		(job.PodGroup.Status.Phase == scheduling.PodGroupUnknown ||
 			job.PodGroup.Status.Phase == scheduling.PodGroupPending ||
 			job.PodGroup.Status.Phase == scheduling.PodGroupInqueue)
-	pdbUnschedulabe := job.PDB != nil && len(job.TaskStatusIndex[schedulingapi.Pending]) != 0
 
 	// If pending or unschedulable, record unschedulable event.
-	if pgUnschedulable || pdbUnschedulabe {
+	if pgUnschedulable {
 		msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
 			len(job.TaskStatusIndex[schedulingapi.Pending]),
 			len(job.Tasks),

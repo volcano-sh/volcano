@@ -22,10 +22,8 @@ import (
 	"strings"
 
 	"k8s.io/api/core/v1"
-	policyv1 "k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
@@ -150,9 +148,6 @@ type JobInfo struct {
 
 	CreationTimestamp metav1.Time
 	PodGroup          *PodGroup
-
-	// TODO(k82cn): keep backward compatibility, removed it when v1alpha1 finalized.
-	PDB *policyv1.PodDisruptionBudget
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks
@@ -192,23 +187,6 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.CreationTimestamp = pg.GetCreationTimestamp()
 
 	ji.PodGroup = pg
-}
-
-// SetPDB sets PDB to a job
-func (ji *JobInfo) SetPDB(pdb *policyv1.PodDisruptionBudget) {
-	ji.Name = pdb.Name
-	defaultMinAvailable := intstr.IntOrString{Type: intstr.Int, IntVal: int32(0)}
-	minAvailable := pdb.Spec.MinAvailable
-	ji.MinAvailable = int32(intstr.ValueOrDefault(minAvailable, defaultMinAvailable).IntValue())
-	ji.Namespace = pdb.Namespace
-
-	ji.CreationTimestamp = pdb.GetCreationTimestamp()
-	ji.PDB = pdb
-}
-
-// UnsetPDB removes PDB info of a job
-func (ji *JobInfo) UnsetPDB() {
-	ji.PDB = nil
 }
 
 func (ji *JobInfo) addTaskIndex(ti *TaskInfo) {
@@ -292,7 +270,6 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 		NodesFitErrors: make(map[TaskID]*FitErrors),
 
-		PDB:      ji.PDB,
 		PodGroup: ji.PodGroup,
 
 		TaskStatusIndex: map[TaskStatus]tasksMap{},

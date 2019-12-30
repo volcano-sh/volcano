@@ -21,9 +21,7 @@ import (
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
-	policyv1 "k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 func jobInfoEqual(l, r *JobInfo) bool {
@@ -199,25 +197,4 @@ func TestDeleteTaskInfo(t *testing.T) {
 				i, test.expected, ps)
 		}
 	}
-}
-
-func TestJobInfo_SetPDB(t *testing.T) {
-
-	info := &JobInfo{}
-	// case1
-	//intOrString := &intstr.IntOrString{Type:intstr.Int, IntVal:1}
-	//spec := policyv1.PodDisruptionBudgetSpec{MinAvailable:intOrString}
-	// case2
-	//spec := policyv1.PodDisruptionBudgetSpec{}
-	// case3
-	//intOrString := &intstr.IntOrString{}
-	//spec := policyv1.PodDisruptionBudgetSpec{MinAvailable:intOrString}
-	// case4
-	intOrString := &intstr.IntOrString{Type: intstr.String, StrVal: "1"}
-	spec := policyv1.PodDisruptionBudgetSpec{MinAvailable: intOrString}
-
-	pdb := &policyv1.PodDisruptionBudget{
-		Spec: spec,
-	}
-	info.SetPDB(pdb)
 }
