@@ -320,17 +320,26 @@ func (ji *JobInfo) FitError() string {
 	return reasonMsg
 }
 
-// ReadyTaskNum returns the number of tasks that are ready.
+// ReadyTaskNum returns the number of tasks that are ready or that is best-effort.
 func (ji *JobInfo) ReadyTaskNum() int32 {
-	occupid := 0
+	var occupied int32
 	for status, tasks := range ji.TaskStatusIndex {
 		if AllocatedStatus(status) ||
 			status == Succeeded {
-			occupid = occupid + len(tasks)
+			occupied += int32(len(tasks))
+			continue
+		}
+
+		if status == Pending {
+			for _, task := range tasks {
+				if task.InitResreq.IsEmpty() {
+					occupied++
+				}
+			}
 		}
 	}
 
-	return int32(occupid)
+	return occupied
 }
 
 // WaitingTaskNum returns the number of tasks that are pipelined.
