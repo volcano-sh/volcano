@@ -359,6 +359,7 @@ func autoConvert_v1alpha2_QueueSpec_To_scheduling_QueueSpec(in *QueueSpec, out *
 	out.Weight = in.Weight
 	out.Capability = *(*v1.ResourceList)(unsafe.Pointer(&in.Capability))
 	out.State = scheduling.QueueState(in.State)
+	out.Reclaimable = (*bool)(unsafe.Pointer(in.Reclaimable))
 	return nil
 }
 
@@ -371,6 +372,7 @@ func autoConvert_scheduling_QueueSpec_To_v1alpha2_QueueSpec(in *scheduling.Queue
 	out.Weight = in.Weight
 	out.Capability = *(*v1.ResourceList)(unsafe.Pointer(&in.Capability))
 	out.State = QueueState(in.State)
+	out.Reclaimable = (*bool)(unsafe.Pointer(in.Reclaimable))
 	return nil
 }
 

@@ -241,6 +241,11 @@ func (in *QueueSpec) DeepCopyInto(out *QueueSpec) {
 			(*out)[key] = val.DeepCopy()
 		}
 	}
+	if in.Reclaimable != nil {
+		in, out := &in.Reclaimable, &out.Reclaimable
+		*out = new(bool)
+		**out = **in
+	}
 	return
 }
 
