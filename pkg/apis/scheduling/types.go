@@ -261,6 +261,8 @@ type QueueSpec struct {
 	Capability v1.ResourceList
 	// State controller the status of queue
 	State QueueState
+	// Reclaimable indicate whether the queue can be reclaimed by other queue
+	Reclaimable *bool
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

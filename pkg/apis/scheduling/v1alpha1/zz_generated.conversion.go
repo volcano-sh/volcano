@@ -366,6 +366,7 @@ func autoConvert_scheduling_QueueSpec_To_v1alpha1_QueueSpec(in *scheduling.Queue
 	out.Weight = in.Weight
 	out.Capability = *(*v1.ResourceList)(unsafe.Pointer(&in.Capability))
 	// WARNING: in.State requires manual conversion: does not exist in peer-type
+	// WARNING: in.Reclaimable requires manual conversion: does not exist in peer-type
 	return nil
 }
 

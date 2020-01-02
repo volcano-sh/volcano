@@ -142,6 +142,10 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 				if j, found := ssn.Jobs[task.Job]; !found {
 					continue
 				} else if j.Queue != job.Queue {
+					q := ssn.Queues[j.Queue]
+					if !q.Reclaimable() {
+						continue
+					}
 					// Clone task to avoid modify Task's status on node.
 					reclaimees = append(reclaimees, task.Clone())
 				}

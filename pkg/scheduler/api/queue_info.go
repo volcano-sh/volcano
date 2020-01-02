@@ -56,3 +56,20 @@ func (q *QueueInfo) Clone() *QueueInfo {
 		Queue:  q.Queue,
 	}
 }
+
+// Reclaimable return whether queue is reclaimable
+func (q *QueueInfo) Reclaimable() bool {
+	if q == nil {
+		return false
+	}
+
+	if q.Queue == nil {
+		return false
+	}
+
+	if q.Queue.Spec.Reclaimable == nil {
+		return true
+	}
+
+	return *q.Queue.Spec.Reclaimable
+}
