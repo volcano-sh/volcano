@@ -189,13 +189,14 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 		return nil
 	}
 
-	// Skip job initiation if job is already accepted
-	if job.Status.State.Phase == "" || job.Status.State.Phase == batch.Pending || job.Status.State.Phase == batch.Restarting {
+	// Skip job initiation if job is already initiated
+	if !isInitiated(job) {
 		var err error
 		if job, err = cc.initiateJob(job); err != nil {
 			return err
 		}
 	}
+
 	var syncTask bool
 	if pg, _ := cc.pgLister.PodGroups(job.Namespace).Get(job.Name); pg != nil {
 		if pg.Status.Phase != "" && pg.Status.Phase != scheduling.PodGroupPending {
@@ -571,4 +572,12 @@ func classifyAndAddUpPodBaseOnPhase(pod *v1.Pod, pending, running, succeeded, fa
 		atomic.AddInt32(unknown, 1)
 	}
 	return
+}
+
+func isInitiated(job *batch.Job) bool {
+	if job.Status.State.Phase == "" || job.Status.State.Phase == batch.Pending || job.Status.State.Phase == batch.Restarting {
+		return false
+	}
+
+	return true
 }
