@@ -14,18 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package util
+// +k8s:deepcopy-gen=package
+// +k8s:conversion-gen=volcano.sh/volcano/pkg/apis/scheduling
 
-import "k8s.io/api/admission/v1beta1"
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-import "k8s.io/klog"
-
-//ToAdmissionResponse updates the admission response with the input error
-func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
-	klog.Error(err)
-	return &v1beta1.AdmissionResponse{
-		Result: &metav1.Status{
-			Message: err.Error(),
-		},
-	}
-}
+package v1beta1

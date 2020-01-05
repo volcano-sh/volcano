@@ -383,10 +383,10 @@ func Convert_v1alpha1_QueueStatus_To_scheduling_QueueStatus(in *QueueStatus, out
 }
 
 func autoConvert_scheduling_QueueStatus_To_v1alpha1_QueueStatus(in *scheduling.QueueStatus, out *QueueStatus, s conversion.Scope) error {
+	// WARNING: in.State requires manual conversion: does not exist in peer-type
 	out.Unknown = in.Unknown
 	out.Pending = in.Pending
 	out.Running = in.Running
 	// WARNING: in.Inqueue requires manual conversion: does not exist in peer-type
-	// WARNING: in.State requires manual conversion: does not exist in peer-type
 	return nil
 }

@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2020 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,18 +14,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package util
+package v1beta1
 
-import "k8s.io/api/admission/v1beta1"
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-import "k8s.io/klog"
+import (
+	unsafe "unsafe"
 
-//ToAdmissionResponse updates the admission response with the input error
-func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
-	klog.Error(err)
-	return &v1beta1.AdmissionResponse{
-		Result: &metav1.Status{
-			Message: err.Error(),
-		},
-	}
+	v1 "k8s.io/api/core/v1"
+	conversion "k8s.io/apimachinery/pkg/conversion"
+	scheduling "volcano.sh/volcano/pkg/apis/scheduling"
+)
+
+func Convert_scheduling_QueueSpec_To_v1beta1_QueueSpec(in *scheduling.QueueSpec, out *QueueSpec, s conversion.Scope) error {
+	out.Weight = in.Weight
+	out.Capability = *(*v1.ResourceList)(unsafe.Pointer(&in.Capability))
+	out.Reclaimable = (*bool)(unsafe.Pointer(in.Reclaimable))
+
+	return nil
 }
