@@ -170,6 +170,21 @@ func namespaceNotExistWithName(ctx *context, name string) wait.ConditionFunc {
 	}
 }
 
+func queueClosed(ctx *context, name string) wait.ConditionFunc {
+	return func() (bool, error) {
+		queue, err := ctx.vcclient.SchedulingV1alpha2().Queues().Get(name, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+
+		if queue.Status.State != schedulingv1alpha2.QueueStateClosed {
+			return false, nil
+		}
+
+		return true, nil
+	}
+}
+
 func fileExist(name string) bool {
 	if _, err := os.Stat(name); err != nil {
 		if os.IsNotExist(err) {
@@ -214,7 +229,17 @@ func deleteQueues(cxt *context) {
 	foreground := metav1.DeletePropagationForeground
 
 	for _, q := range cxt.queues {
-		err := cxt.vcclient.SchedulingV1alpha2().Queues().Delete(q, &metav1.DeleteOptions{
+		queue, err := cxt.vcclient.SchedulingV1alpha2().Queues().Get(q, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		queue.Spec.State = schedulingv1alpha2.QueueStateClosed
+		_, err = cxt.vcclient.SchedulingV1alpha2().Queues().Update(queue)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = wait.Poll(100*time.Millisecond, oneMinute, queueClosed(cxt, queue.Name))
+		Expect(err).NotTo(HaveOccurred())
+
+		err = cxt.vcclient.SchedulingV1alpha2().Queues().Delete(q, &metav1.DeleteOptions{
 			PropagationPolicy: &foreground,
 		})
 
