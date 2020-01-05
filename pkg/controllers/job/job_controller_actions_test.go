@@ -222,6 +222,9 @@ func TestSyncJobFunc(t *testing.T) {
 					Name:      "job1",
 					Namespace: namespace,
 				},
+				Status: schedulingv1alpha2.PodGroupStatus{
+					Phase: schedulingv1alpha2.PodGroupInqueue,
+				},
 			},
 			PodRetainPhase: state.PodRetainPhaseNone,
 			UpdateStatus:   nil,
@@ -248,6 +251,7 @@ func TestSyncJobFunc(t *testing.T) {
 
 		t.Run(testcase.Name, func(t *testing.T) {
 			fakeController := newFakeController()
+
 			jobPlugins := make(map[string][]string)
 
 			for _, plugin := range testcase.Plugins {
@@ -255,6 +259,8 @@ func TestSyncJobFunc(t *testing.T) {
 			}
 			testcase.JobInfo.Job = testcase.Job
 			testcase.JobInfo.Job.Spec.Plugins = jobPlugins
+
+			fakeController.pgInformer.Informer().GetIndexer().Add(testcase.PodGroup)
 
 			for _, pod := range testcase.Pods {
 				_, err := fakeController.kubeClient.CoreV1().Pods(namespace).Create(pod)
