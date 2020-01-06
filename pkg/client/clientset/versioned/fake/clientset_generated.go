@@ -33,6 +33,8 @@ import (
 	fakeschedulingv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/scheduling/v1alpha1/fake"
 	schedulingv1alpha2 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/scheduling/v1alpha2"
 	fakeschedulingv1alpha2 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/scheduling/v1alpha2/fake"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/scheduling/v1beta1"
+	fakeschedulingv1beta1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/scheduling/v1beta1/fake"
 )
 
 // NewSimpleClientset returns a clientset that will respond with the provided objects.
@@ -102,12 +104,17 @@ func (c *Clientset) SchedulingV1alpha1() schedulingv1alpha1.SchedulingV1alpha1In
 	return &fakeschedulingv1alpha1.FakeSchedulingV1alpha1{Fake: &c.Fake}
 }
 
-// Scheduling retrieves the SchedulingV1alpha1Client
-func (c *Clientset) Scheduling() schedulingv1alpha1.SchedulingV1alpha1Interface {
-	return &fakeschedulingv1alpha1.FakeSchedulingV1alpha1{Fake: &c.Fake}
-}
-
 // SchedulingV1alpha2 retrieves the SchedulingV1alpha2Client
 func (c *Clientset) SchedulingV1alpha2() schedulingv1alpha2.SchedulingV1alpha2Interface {
 	return &fakeschedulingv1alpha2.FakeSchedulingV1alpha2{Fake: &c.Fake}
+}
+
+// SchedulingV1beta1 retrieves the SchedulingV1beta1Client
+func (c *Clientset) SchedulingV1beta1() schedulingv1beta1.SchedulingV1beta1Interface {
+	return &fakeschedulingv1beta1.FakeSchedulingV1beta1{Fake: &c.Fake}
+}
+
+// Scheduling retrieves the SchedulingV1beta1Client
+func (c *Clientset) Scheduling() schedulingv1beta1.SchedulingV1beta1Interface {
+	return &fakeschedulingv1beta1.FakeSchedulingV1beta1{Fake: &c.Fake}
 }

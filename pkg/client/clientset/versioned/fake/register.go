@@ -28,6 +28,7 @@ import (
 	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	schedulingv1alpha1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
 	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
 var scheme = runtime.NewScheme()
@@ -38,6 +39,7 @@ var localSchemeBuilder = runtime.SchemeBuilder{
 	busv1alpha1.AddToScheme,
 	schedulingv1alpha1.AddToScheme,
 	schedulingv1alpha2.AddToScheme,
+	schedulingv1beta1.AddToScheme,
 }
 
 // AddToScheme adds all types of this clientset into the given scheme. This allows composition

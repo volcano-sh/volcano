@@ -14,18 +14,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package util
+package apis
 
-import "k8s.io/api/admission/v1beta1"
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-import "k8s.io/klog"
+import (
+	"fmt"
 
-//ToAdmissionResponse updates the admission response with the input error
-func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
-	klog.Error(err)
-	return &v1beta1.AdmissionResponse{
-		Result: &metav1.Status{
-			Message: err.Error(),
-		},
-	}
+	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+)
+
+//Request struct
+type Request struct {
+	Namespace string
+	JobName   string
+	TaskName  string
+	QueueName string
+
+	Event      batch.Event
+	ExitCode   int32
+	Action     batch.Action
+	JobVersion int32
+}
+
+//String function returns the request in string format
+func (r Request) String() string {
+	return fmt.Sprintf(
+		"Job: %s/%s, Task:%s, Event:%s, ExitCode:%d, Action:%s, JobVersion: %d",
+		r.Namespace, r.JobName, r.TaskName, r.Event, r.ExitCode, r.Action, r.JobVersion)
 }

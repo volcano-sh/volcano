@@ -14,18 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package util
+package v1beta1
 
-import "k8s.io/api/admission/v1beta1"
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-import "k8s.io/klog"
+// KubeGroupNameAnnotationKey is the annotation key of Pod to identify
+// which PodGroup it belongs to.
+const KubeGroupNameAnnotationKey = "scheduling.k8s.io/group-name"
 
-//ToAdmissionResponse updates the admission response with the input error
-func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
-	klog.Error(err)
-	return &v1beta1.AdmissionResponse{
-		Result: &metav1.Status{
-			Message: err.Error(),
-		},
-	}
-}
+// VolcanoGroupNameAnnotationKey is the annotation key of Pod to identify
+// which PodGroup it belongs to.
+const VolcanoGroupNameAnnotationKey = "scheduling.volcano.sh/group-name"

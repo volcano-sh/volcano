@@ -133,23 +133,3 @@ func (ji *JobInfo) DeletePod(pod *v1.Pod) error {
 
 	return nil
 }
-
-//Request struct
-type Request struct {
-	Namespace string
-	JobName   string
-	TaskName  string
-
-	Event      batch.Event
-	ExitCode   int32
-	Action     batch.Action
-	JobVersion int32
-}
-
-//String function returns the request in string format
-func (r Request) String() string {
-	return fmt.Sprintf(
-		"Job: %s/%s, Task:%s, Event:%s, ExitCode:%d, Action:%s, JobVersion: %d",
-		r.Namespace, r.JobName, r.TaskName, r.Event, r.ExitCode, r.Action, r.JobVersion)
-
-}
