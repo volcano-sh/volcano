@@ -23,7 +23,7 @@ include Makefile.def
 
 .EXPORT_ALL_VARIABLES:
 
-all: vc-scheduler vc-controller-manager vc-webhook-manager vcctl
+all: vc-scheduler vc-controller-manager vc-webhook-manager vcctl command-lines
 
 init:
 	mkdir -p ${BIN_DIR}
