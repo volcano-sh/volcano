@@ -21,6 +21,7 @@ import "volcano.sh/volcano/pkg/scheduler/conf"
 // ApplyPluginConfDefaults sets option's filed to its default value if not set
 func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	t := true
+	f := false
 
 	if option.EnabledJobOrder == nil {
 		option.EnabledJobOrder = &t
@@ -51,5 +52,9 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	}
 	if option.EnabledNodeOrder == nil {
 		option.EnabledNodeOrder = &t
+	}
+
+	if option.DecisiveInReclaim == nil {
+		option.DecisiveInReclaim = &f
 	}
 }

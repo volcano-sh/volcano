@@ -895,6 +895,25 @@ func clusterSize(ctx *context, req v1.ResourceList) int32 {
 	return res
 }
 
+func getPodNumQuota(ctx *context, req v1.ResourceList) int {
+	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	res := 0
+	for _, node := range nodes.Items {
+		alloc := schedulerapi.NewResource(node.Status.Allocatable)
+		slot := schedulerapi.NewResource(req)
+
+		for slot.LessEqual(alloc) {
+			alloc.Sub(slot)
+			res++
+		}
+	}
+	Expect(res).Should(BeNumerically(">=", 1),
+		"Current cluster does not have enough resource for request")
+	return res
+}
+
 func clusterNodeNumber(ctx *context) int {
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())

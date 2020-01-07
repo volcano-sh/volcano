@@ -44,6 +44,7 @@ tiers:
 `
 
 	trueValue := true
+	falseValue := false
 	expectedTiers := []conf.Tier{
 		{
 			Plugins: []conf.PluginOption{
@@ -59,6 +60,8 @@ tiers:
 					EnabledQueueOrder:     &trueValue,
 					EnabledPredicate:      &trueValue,
 					EnabledNodeOrder:      &trueValue,
+
+					DecisiveInReclaim: &falseValue,
 				},
 				{
 					Name:                  "gang",
@@ -72,6 +75,8 @@ tiers:
 					EnabledQueueOrder:     &trueValue,
 					EnabledPredicate:      &trueValue,
 					EnabledNodeOrder:      &trueValue,
+
+					DecisiveInReclaim: &falseValue,
 				},
 				{
 					Name:                  "conformance",
@@ -85,6 +90,8 @@ tiers:
 					EnabledQueueOrder:     &trueValue,
 					EnabledPredicate:      &trueValue,
 					EnabledNodeOrder:      &trueValue,
+
+					DecisiveInReclaim: &falseValue,
 				},
 			},
 		},
@@ -102,6 +109,8 @@ tiers:
 					EnabledQueueOrder:     &trueValue,
 					EnabledPredicate:      &trueValue,
 					EnabledNodeOrder:      &trueValue,
+
+					DecisiveInReclaim: &falseValue,
 				},
 				{
 					Name:                  "predicates",
@@ -115,6 +124,8 @@ tiers:
 					EnabledQueueOrder:     &trueValue,
 					EnabledPredicate:      &trueValue,
 					EnabledNodeOrder:      &trueValue,
+
+					DecisiveInReclaim: &falseValue,
 				},
 				{
 					Name:                  "proportion",
@@ -128,6 +139,8 @@ tiers:
 					EnabledQueueOrder:     &trueValue,
 					EnabledPredicate:      &trueValue,
 					EnabledNodeOrder:      &trueValue,
+
+					DecisiveInReclaim: &falseValue,
 				},
 				{
 					Name:                  "nodeorder",
@@ -141,6 +154,8 @@ tiers:
 					EnabledQueueOrder:     &trueValue,
 					EnabledPredicate:      &trueValue,
 					EnabledNodeOrder:      &trueValue,
+
+					DecisiveInReclaim: &falseValue,
 				},
 			},
 		},

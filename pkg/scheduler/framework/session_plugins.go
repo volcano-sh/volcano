@@ -108,6 +108,7 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 	var init bool
 
 	for _, tier := range ssn.Tiers {
+		decisive := false
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledReclaimable) {
 				continue
@@ -116,6 +117,11 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 			if !found {
 				continue
 			}
+
+			if plugin.DecisiveInReclaim != nil {
+				decisive = decisive || *plugin.DecisiveInReclaim
+			}
+
 			candidates := rf(reclaimer, reclaimees)
 			if !init {
 				victims = candidates
@@ -136,7 +142,7 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 			}
 		}
 		// Plugins in this tier made decision if victims is not nil
-		if victims != nil {
+		if victims != nil && decisive {
 			return victims
 		}
 	}

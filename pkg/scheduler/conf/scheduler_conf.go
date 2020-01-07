@@ -65,4 +65,7 @@ type PluginOption struct {
 	EnabledNodeOrder *bool `yaml:"enableNodeOrder"`
 	// Arguments defines the different arguments that can be given to different plugins
 	Arguments map[string]string `yaml:"arguments"`
+
+	// DecisiveInReclaim defines whether plugin is decisive in reclaimable judgement
+	DecisiveInReclaim *bool `yaml:"decisiveInReclaim"`
 }
