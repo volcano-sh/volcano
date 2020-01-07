@@ -229,14 +229,10 @@ func deleteQueues(cxt *context) {
 	foreground := metav1.DeletePropagationForeground
 
 	for _, q := range cxt.queues {
-		queue, err := cxt.vcclient.SchedulingV1alpha2().Queues().Get(q, metav1.GetOptions{})
+		patchBytes := []byte(fmt.Sprintf(`{"spec":{"state":"%s"}}`, schedulingv1alpha2.QueueStateClosed))
+		_, err := cxt.vcclient.SchedulingV1alpha2().Queues().Patch(q, types.MergePatchType, patchBytes)
 		Expect(err).NotTo(HaveOccurred())
-
-		queue.Spec.State = schedulingv1alpha2.QueueStateClosed
-		_, err = cxt.vcclient.SchedulingV1alpha2().Queues().Update(queue)
-		Expect(err).NotTo(HaveOccurred())
-
-		err = wait.Poll(100*time.Millisecond, oneMinute, queueClosed(cxt, queue.Name))
+		err = wait.Poll(100*time.Millisecond, oneMinute, queueClosed(cxt, q))
 		Expect(err).NotTo(HaveOccurred())
 
 		err = cxt.vcclient.SchedulingV1alpha2().Queues().Delete(q, &metav1.DeleteOptions{
