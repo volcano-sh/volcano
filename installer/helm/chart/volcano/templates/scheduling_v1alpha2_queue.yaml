@@ -25,6 +25,8 @@ spec:
             weight:
               format: int32
               type: integer
+            capability:
+              type: object
             state:
               type: string
           type: object
