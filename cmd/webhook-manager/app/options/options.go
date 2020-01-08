@@ -24,6 +24,8 @@ import (
 
 const (
 	defaultSchedulerName = "volcano"
+	defaultQPS           = 50.0
+	defaultBurst         = 100
 )
 
 // Config admission-controller server config.
@@ -39,6 +41,8 @@ type Config struct {
 	WebhookNamespace string
 	SchedulerName    string
 	WebhookURL       string
+	KubeAPIBurst     int
+	KubeAPIQPS       float32
 }
 
 // NewConfig create new config
@@ -57,6 +61,8 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.KeyFile, "tls-private-key-file", c.KeyFile, "File containing the default x509 private key matching --tls-cert-file.")
 	fs.IntVar(&c.Port, "port", 443, "the port used by admission-controller-server.")
 	fs.BoolVar(&c.PrintVersion, "version", false, "Show version and quit")
+	fs.Float32Var(&c.KubeAPIQPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
+	fs.IntVar(&c.KubeAPIBurst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
 
 	fs.StringVar(&c.CaCertFile, "ca-cert-file", c.CaCertFile, "File containing the x509 Certificate for HTTPS.")
 	fs.StringVar(&c.WebhookNamespace, "webhook-namespace", "", "The namespace of this webhook")
