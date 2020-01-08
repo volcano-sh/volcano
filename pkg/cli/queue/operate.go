@@ -24,7 +24,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 const (
@@ -84,14 +84,8 @@ func OperateQueue() error {
 		}
 
 		queueClient := versioned.NewForConfigOrDie(config)
-		queue, err := queueClient.SchedulingV1alpha2().Queues().Get(operateQueueFlags.Name, metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-
-		queue.Spec.Weight = int32(operateQueueFlags.Weight)
-
-		_, err = queueClient.SchedulingV1alpha2().Queues().Update(queue)
+		patchBytes := []byte(fmt.Sprintf(`{"spec":{"weight":%d}}`, operateQueueFlags.Weight))
+		_, err := queueClient.SchedulingV1alpha2().Queues().Patch(operateQueueFlags.Name, types.MergePatchType, patchBytes)
 
 		return err
 	case "":
