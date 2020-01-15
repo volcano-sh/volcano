@@ -620,6 +620,86 @@ status:
   storedVersions: []
 
 ---
+# Source: volcano/templates/scheduling_v1alpha1_podgroup.yaml
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: podgroups.scheduling.incubator.k8s.io
+spec:
+  group: scheduling.incubator.k8s.io
+  names:
+    kind: PodGroup
+    plural: podgroups
+  scope: Namespaced
+  validation:
+    openAPIV3Schema:
+      type: object
+      properties:
+        apiVersion:
+          type: string
+        kind:
+          type: string
+        metadata:
+          type: object
+        spec:
+          properties:
+            minMember:
+              format: int32
+              type: integer
+          type: object
+        status:
+          properties:
+            succeeded:
+              format: int32
+              type: integer
+            failed:
+              format: int32
+              type: integer
+            running:
+              format: int32
+              type: integer
+          type: object
+  version: v1alpha1
+
+---
+# Source: volcano/templates/scheduling_v1alpha1_queue.yaml
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: queues.scheduling.incubator.k8s.io
+spec:
+  group: scheduling.incubator.k8s.io
+  names:
+    kind: Queue
+    plural: queues
+  scope: Cluster
+  validation:
+    openAPIV3Schema:
+      properties:
+        apiVersion:
+          type: string
+        kind:
+          type: string
+        metadata:
+          type: object
+        spec:
+          properties:
+            weight:
+              format: int32
+              type: integer
+          type: object
+      type: object
+  version: v1alpha1
+  subresources:
+    status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
+
+---
 # Source: volcano/templates/scheduling_v1alpha2_podgroup.yaml
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition

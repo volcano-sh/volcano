@@ -72,6 +72,8 @@ ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespac
       -x templates/bus_v1alpha1_command.yaml \
       -x templates/controllers.yaml \
       -x templates/scheduler.yaml \
+      -x templates/scheduling_v1alpha1_podgroup.yaml \
+      -x templates/scheduling_v1alpha1_queue.yaml \
       -x templates/scheduling_v1alpha2_podgroup.yaml \
       -x templates/scheduling_v1alpha2_queue.yaml \
       --notes >> ${DEPLOYMENT_FILE}
