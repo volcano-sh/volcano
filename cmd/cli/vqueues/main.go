@@ -27,7 +27,7 @@ import (
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/cmd/cli/util"
-	"volcano.sh/volcano/pkg/cli/vresume"
+	"volcano.sh/volcano/pkg/cli/vqueues"
 )
 
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
@@ -41,18 +41,18 @@ func main() {
 	defer klog.Flush()
 
 	rootCmd := cobra.Command{
-		Use:   "vresume",
-		Short: "resume a job",
-		Long:  `resume an aborted job with specified name in default or specified namespace`,
+		Use:   "vqueues",
+		Short: "view queue information",
+		Long:  `view information of a queue with specified name or queues from the same namespace`,
 		Run: func(cmd *cobra.Command, args []string) {
-			util.CheckError(cmd, vresume.ResumeJob())
+			util.CheckError(cmd, vqueues.GetQueue())
 		},
 	}
 
-	jobResumeCmd := &rootCmd
-	vresume.InitResumeFlags(jobResumeCmd)
+	jobGetCmd := &rootCmd
+	vqueues.InitGetFlags(jobGetCmd)
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Printf("Failed to execute vresume: %v\n", err)
+		fmt.Printf("Failed to execute vqueues: %v\n", err)
 		os.Exit(-2)
 	}
 }

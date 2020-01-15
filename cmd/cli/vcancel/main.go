@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Volcano Authors.
+Copyright 2019 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import (
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/cmd/cli/util"
-	"volcano.sh/volcano/pkg/cli/job"
+	"volcano.sh/volcano/pkg/cli/vcancel"
 )
 
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
@@ -45,14 +45,14 @@ func main() {
 		Short: "cancel a job",
 		Long:  `cancel a running, pending, or aborted job with specified name in default or specified namespace`,
 		Run: func(cmd *cobra.Command, args []string) {
-			util.CheckError(cmd, job.DeleteJob())
+			util.CheckError(cmd, vcancel.CancelJob())
 		},
 	}
 
 	jobCancelCmd := &rootCmd
-	job.InitDeleteFlags(jobCancelCmd)
+	vcancel.InitCancelFlags(jobCancelCmd)
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Printf("Failed to execute command: %v\n", err)
+		fmt.Printf("Failed to execute vcancel: %v\n", err)
 		os.Exit(-2)
 	}
 }
