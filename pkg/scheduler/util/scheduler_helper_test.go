@@ -19,9 +19,97 @@ package util
 import (
 	"reflect"
 	"testing"
-
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
+
+func TestHasEnoughResourceForJob(t *testing.T) {
+	cases := []struct {
+		job *api.JobInfo
+		nodes []*api.NodeInfo
+		expectedResult bool
+	}{
+		{
+			job: &api.JobInfo{
+				Name: "job1",
+				Tasks: map[api.TaskID]*api.TaskInfo{
+					"task1": buildTaskInfoObj("task1", 2000, 4000),
+					"task2": buildTaskInfoObj("task2", 2000, 4000),
+				},
+			},
+			nodes: []*api.NodeInfo{
+				buildNodeInfoObj("node1", 2000, 4000),
+				buildNodeInfoObj("node2", 2000, 4000),
+			},
+			expectedResult: true,
+		},
+		{
+			job: &api.JobInfo{
+				Name: "job1",
+				Tasks: map[api.TaskID]*api.TaskInfo{
+					"task1": buildTaskInfoObj("task1", 4000, 4000),
+					"task2": buildTaskInfoObj("task2", 4000, 4000),
+				},
+			},
+			nodes: []*api.NodeInfo{
+				buildNodeInfoObj("node1", 2000, 4000),
+				buildNodeInfoObj("node2", 2000, 4000),
+				buildNodeInfoObj("node3", 2000, 4000),
+				buildNodeInfoObj("node4", 2000, 4000),
+				buildNodeInfoObj("node5", 2000, 4000),
+			},
+			expectedResult: false,
+		},
+		{
+			job: &api.JobInfo{
+				Name: "job1",
+				Tasks: map[api.TaskID]*api.TaskInfo{
+					"task1": buildTaskInfoObj("task1", 1500, 2000),
+					"task2": buildTaskInfoObj("task1", 1000, 2000),
+					"task3": buildTaskInfoObj("task1", 1000, 2000),
+				},
+			},
+			nodes: []*api.NodeInfo{
+				buildNodeInfoObj("node1", 2000, 4000),
+				buildNodeInfoObj("node2", 1800, 4000),
+			},
+			expectedResult: true,
+		},
+	}
+
+	for i, test := range cases {
+		result := HasEnoughResourceForJob(test.job, test.nodes)
+		if result != test.expectedResult {
+			t.Errorf("Failed test case #%d, expected: %#v, got %#v", i, test.expectedResult, result)
+		}
+	}
+}
+
+// buildApiResource builds task resource object
+func buildTaskInfoObj(name string, cpu, memory float64) *api.TaskInfo {
+	resource := buildApiResource(cpu, memory)
+	return &api.TaskInfo{
+		Name:        name,
+		Resreq:      resource,
+		InitResreq:  resource,
+	}
+}
+
+func buildNodeInfoObj(name string, cpu, memory float64) *api.NodeInfo {
+	resource := buildApiResource(cpu, memory)
+	return &api.NodeInfo{
+		Name:        name,
+		Idle:      resource,
+		Used:  api.EmptyResource(),
+	}
+}
+
+func buildApiResource(cpu, memory float64) *api.Resource {
+	return &api.Resource{
+		MilliCPU:     cpu,
+		Memory:   memory,
+		MaxTaskNum: 1,
+	}
+}
 
 func TestSelectBestNode(t *testing.T) {
 	cases := []struct {

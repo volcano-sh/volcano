@@ -218,3 +218,37 @@ func GetNodeList(nodes map[string]*api.NodeInfo) []*api.NodeInfo {
 	}
 	return result
 }
+
+// HasEnoughResourceForJob check if all tasks can be schedule with existing idle resources
+func HasEnoughResourceForJob(job *api.JobInfo, nodes []*api.NodeInfo) bool {
+	var tasks []*api.TaskInfo
+
+	for _, task := range job.Tasks {
+		tasks = append(tasks, task.Clone())
+	}
+
+	return isJobSchedulable(0, tasks, nodes)
+}
+
+func isJobSchedulable(index int, tasks []*api.TaskInfo, nodes []*api.NodeInfo) bool {
+	// All tasks can be scheduled.
+	if index == len(tasks) {
+		return true
+	}
+
+	task := tasks[index]
+	for _, node := range nodes {
+		if task.InitResreq.LessEqual(node.Idle) {
+			node.Idle.Sub(task.InitResreq)
+			node.Used.Add(task.InitResreq)
+			if isJobSchedulable(index + 1, tasks, nodes) {
+				return true
+			}
+			// backtrack and try to schedule the task on next node.
+			node.Idle.Add(task.InitResreq)
+			node.Used.Sub(task.InitResreq)
+		}
+	}
+
+	return  false
+}

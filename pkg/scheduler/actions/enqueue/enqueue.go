@@ -88,8 +88,10 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 
 	emptyRes := api.EmptyResource()
 	nodesIdleRes := api.EmptyResource()
+	var nodes []*api.NodeInfo
 	for _, node := range ssn.Nodes {
 		nodesIdleRes.Add(node.Allocatable.Clone().Multi(enqueue.getOverCommitFactor(ssn)).Sub(node.Used))
+		nodes = append(nodes, node.Clone())
 	}
 
 	for {
@@ -117,7 +119,9 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 			inqueue = true
 		} else {
 			pgResource := api.NewResource(*job.PodGroup.Spec.MinResources)
-			if ssn.JobEnqueueable(job) && pgResource.LessEqual(nodesIdleRes) {
+			// TODO: this is not accurate, we need to only check resource of minimum number of the tasks.
+			// For different types of jobs, MinResources is calculated from different tasks, It would be hard to know tasks for simulation.
+			if ssn.JobEnqueueable(job) && pgResource.LessEqual(nodesIdleRes) && util.HasEnoughResourceForJob(job, nodes) {
 				nodesIdleRes.Sub(pgResource)
 				inqueue = true
 			}
