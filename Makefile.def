@@ -1,7 +1,7 @@
 
 # If tag not explicitly set in users default to the git sha.
-TAG ?= $(shell git rev-parse --verify HEAD)
-GitSHA=`git rev-parse HEAD`
+TAG=v0.3
+GitSHA=f37d7f984ca9c188017afa52045adaeba04b0707
 Date=`date "+%Y-%m-%d %H:%M:%S"`
 LD_FLAGS=" \
     -X '${REPO_PATH}/pkg/version.GitSHA=${GitSHA}' \
