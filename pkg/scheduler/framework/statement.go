@@ -171,6 +171,7 @@ func (s *Statement) unpipeline(task *api.TaskInfo) error {
 	}
 
 	hostname := task.NodeName
+	task.NodeName = ""
 
 	if node, found := s.ssn.Nodes[hostname]; found {
 		if err := node.RemoveTask(task); err != nil {
@@ -295,6 +296,7 @@ func (s *Statement) unallocate(task *api.TaskInfo, reason string) error {
 		node.RemoveTask(task)
 	}
 
+	task.NodeName = ""
 	for _, eh := range s.ssn.eventHandlers {
 		if eh.DeallocateFunc != nil {
 			eh.DeallocateFunc(&Event{
