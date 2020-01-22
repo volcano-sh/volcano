@@ -165,9 +165,6 @@ func PrintJobInfo(job *v1alpha1.Job, writer io.Writer) {
 		WriteLine(writer, Level2, "Template:\n")
 		WriteLine(writer, Level2+1, "Metadata:\n")
 		WriteLine(writer, Level2+2, "Annotations:\n")
-		WriteLine(writer, Level2+3, "Cri . Cci . Io / Container - Type:          \t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.Annotations["cri.cci.io/container-type"])
-		WriteLine(writer, Level2+3, "Kubernetes . Io / Availablezone:            \t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.Annotations["kubernetes.io/availablezone"])
-		WriteLine(writer, Level2+3, "Network . Alpha . Kubernetes . Io / Network:\t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.Annotations["network.alpha.kubernetes.io/network"])
 		WriteLine(writer, Level2+2, "Creation Timestamp:\t%s\n", job.Spec.Tasks[i].Template.ObjectMeta.CreationTimestamp)
 
 		WriteLine(writer, Level2+1, "Spec:\n")
