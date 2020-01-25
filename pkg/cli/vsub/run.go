@@ -54,8 +54,8 @@ func InitRunFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "N", "default", "the namespace of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Name, "name", "n", "", "the name of job")
 	cmd.Flags().IntVarP(&launchJobFlags.MinAvailable, "min", "m", 1, "the minimal available tasks of job")
-	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "R", 1, "the total tasks of job")
-	cmd.Flags().StringVarP(&launchJobFlags.Requests, "requests", "r", "cpu=1000m,memory=100Mi", "the resource request of the task")
+	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "r", 1, "the total tasks of job")
+	cmd.Flags().StringVarP(&launchJobFlags.Requests, "requests", "R", "cpu=1000m,memory=100Mi", "the resource request of the task")
 	cmd.Flags().StringVarP(&launchJobFlags.Limits, "limits", "L", "cpu=1000m,memory=100Mi", "the resource limit of the task")
 	cmd.Flags().StringVarP(&launchJobFlags.SchedulerName, "scheduler", "S", "volcano", "the scheduler for this job")
 }
