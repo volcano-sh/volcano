@@ -25,6 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	schedulingv1aplha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	fakeclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
 )
@@ -73,8 +74,8 @@ func TestValidateExecution(t *testing.T) {
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
 						{
-							Event:  v1alpha1.PodEvictedEvent,
-							Action: v1alpha1.RestartTaskAction,
+							Event:  busv1alpha1.PodEvictedEvent,
+							Action: busv1alpha1.RestartTaskAction,
 						},
 					},
 				},
@@ -168,12 +169,12 @@ func TestValidateExecution(t *testing.T) {
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
 						{
-							Event:  v1alpha1.PodFailedEvent,
-							Action: v1alpha1.AbortJobAction,
+							Event:  busv1alpha1.PodFailedEvent,
+							Action: busv1alpha1.AbortJobAction,
 						},
 						{
-							Event:  v1alpha1.PodFailedEvent,
-							Action: v1alpha1.RestartJobAction,
+							Event:  busv1alpha1.PodFailedEvent,
+							Action: busv1alpha1.RestartJobAction,
 						},
 					},
 				},
@@ -491,8 +492,8 @@ func TestValidateExecution(t *testing.T) {
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
 						{
-							Event:    v1alpha1.PodFailedEvent,
-							Action:   v1alpha1.AbortJobAction,
+							Event:    busv1alpha1.PodFailedEvent,
+							Action:   busv1alpha1.AbortJobAction,
 							ExitCode: &policyExitCode,
 						},
 					},
@@ -534,7 +535,7 @@ func TestValidateExecution(t *testing.T) {
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
 						{
-							Action: v1alpha1.AbortJobAction,
+							Action: busv1alpha1.AbortJobAction,
 						},
 					},
 				},
@@ -575,8 +576,8 @@ func TestValidateExecution(t *testing.T) {
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
 						{
-							Event:  v1alpha1.Event("someFakeEvent"),
-							Action: v1alpha1.AbortJobAction,
+							Event:  busv1alpha1.Event("someFakeEvent"),
+							Action: busv1alpha1.AbortJobAction,
 						},
 					},
 				},
@@ -617,8 +618,8 @@ func TestValidateExecution(t *testing.T) {
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
 						{
-							Event:  v1alpha1.PodEvictedEvent,
-							Action: v1alpha1.Action("someFakeAction"),
+							Event:  busv1alpha1.PodEvictedEvent,
+							Action: busv1alpha1.Action("someFakeAction"),
 						},
 					},
 				},
@@ -659,7 +660,7 @@ func TestValidateExecution(t *testing.T) {
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
 						{
-							Action: v1alpha1.AbortJobAction,
+							Action: busv1alpha1.AbortJobAction,
 							ExitCode: func(i int32) *int32 {
 								return &i
 							}(int32(0)),
@@ -751,12 +752,12 @@ func TestValidateExecution(t *testing.T) {
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
 						{
-							Event:  v1alpha1.AnyEvent,
-							Action: v1alpha1.AbortJobAction,
+							Event:  busv1alpha1.AnyEvent,
+							Action: busv1alpha1.AbortJobAction,
 						},
 						{
-							Event:  v1alpha1.PodFailedEvent,
-							Action: v1alpha1.RestartJobAction,
+							Event:  busv1alpha1.PodFailedEvent,
+							Action: busv1alpha1.RestartJobAction,
 						},
 					},
 				},
@@ -797,8 +798,8 @@ func TestValidateExecution(t *testing.T) {
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
 						{
-							Event:  v1alpha1.AnyEvent,
-							Action: v1alpha1.AbortJobAction,
+							Event:  busv1alpha1.AnyEvent,
+							Action: busv1alpha1.AbortJobAction,
 						},
 					},
 					Volumes: []v1alpha1.VolumeSpec{
@@ -844,8 +845,8 @@ func TestValidateExecution(t *testing.T) {
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
 						{
-							Event:  v1alpha1.AnyEvent,
-							Action: v1alpha1.AbortJobAction,
+							Event:  busv1alpha1.AnyEvent,
+							Action: busv1alpha1.AbortJobAction,
 						},
 					},
 					Volumes: []v1alpha1.VolumeSpec{
@@ -895,8 +896,8 @@ func TestValidateExecution(t *testing.T) {
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
 						{
-							Event:  v1alpha1.AnyEvent,
-							Action: v1alpha1.AbortJobAction,
+							Event:  busv1alpha1.AnyEvent,
+							Action: busv1alpha1.AbortJobAction,
 						},
 					},
 					Volumes: []v1alpha1.VolumeSpec{
@@ -943,12 +944,12 @@ func TestValidateExecution(t *testing.T) {
 							},
 							Policies: []v1alpha1.LifecyclePolicy{
 								{
-									Event:  v1alpha1.AnyEvent,
-									Action: v1alpha1.AbortJobAction,
+									Event:  busv1alpha1.AnyEvent,
+									Action: busv1alpha1.AbortJobAction,
 								},
 								{
-									Event:  v1alpha1.PodFailedEvent,
-									Action: v1alpha1.RestartJobAction,
+									Event:  busv1alpha1.PodFailedEvent,
+									Action: busv1alpha1.RestartJobAction,
 								},
 							},
 						},

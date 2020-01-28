@@ -26,6 +26,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	jobutil "volcano.sh/volcano/pkg/controllers/job"
 )
 
@@ -40,8 +41,8 @@ var _ = Describe("Job Error Handling", func() {
 			name: "failed-restart-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vcbatch.RestartJobAction,
-					Event:  vcbatch.PodFailedEvent,
+					Action: vcbus.RestartJobAction,
+					Event:  vcbus.PodFailedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -77,8 +78,8 @@ var _ = Describe("Job Error Handling", func() {
 			name: "failed-terminate-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vcbatch.TerminateJobAction,
-					Event:  vcbatch.PodFailedEvent,
+					Action: vcbus.TerminateJobAction,
+					Event:  vcbus.PodFailedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -114,8 +115,8 @@ var _ = Describe("Job Error Handling", func() {
 			name: "failed-abort-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vcbatch.AbortJobAction,
-					Event:  vcbatch.PodFailedEvent,
+					Action: vcbus.AbortJobAction,
+					Event:  vcbus.PodFailedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -151,8 +152,8 @@ var _ = Describe("Job Error Handling", func() {
 			name: "evicted-restart-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vcbatch.RestartJobAction,
-					Event:  vcbatch.PodEvictedEvent,
+					Action: vcbus.RestartJobAction,
+					Event:  vcbus.PodEvictedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -195,8 +196,8 @@ var _ = Describe("Job Error Handling", func() {
 			name: "evicted-terminate-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vcbatch.TerminateJobAction,
-					Event:  vcbatch.PodEvictedEvent,
+					Action: vcbus.TerminateJobAction,
+					Event:  vcbus.PodEvictedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -239,8 +240,8 @@ var _ = Describe("Job Error Handling", func() {
 			name: "evicted-abort-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vcbatch.AbortJobAction,
-					Event:  vcbatch.PodEvictedEvent,
+					Action: vcbus.AbortJobAction,
+					Event:  vcbus.PodEvictedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -283,8 +284,8 @@ var _ = Describe("Job Error Handling", func() {
 			name: "any-restart-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vcbatch.RestartJobAction,
-					Event:  vcbatch.AnyEvent,
+					Action: vcbus.RestartJobAction,
+					Event:  vcbus.AnyEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -328,8 +329,8 @@ var _ = Describe("Job Error Handling", func() {
 			namespace: "test",
 			policies: []vcbatch.LifecyclePolicy{
 				{
-					Event:  vcbatch.JobUnknownEvent,
-					Action: vcbatch.RestartJobAction,
+					Event:  vcbus.JobUnknownEvent,
+					Action: vcbus.RestartJobAction,
 				},
 			},
 			tasks: []taskSpec{
@@ -387,8 +388,8 @@ var _ = Describe("Job Error Handling", func() {
 			namespace: "test",
 			policies: []vcbatch.LifecyclePolicy{
 				{
-					Event:  vcbatch.JobUnknownEvent,
-					Action: vcbatch.AbortJobAction,
+					Event:  vcbus.JobUnknownEvent,
+					Action: vcbus.AbortJobAction,
 				},
 			},
 			tasks: []taskSpec{
@@ -441,8 +442,8 @@ var _ = Describe("Job Error Handling", func() {
 			name: "any-complete-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vcbatch.CompleteJobAction,
-					Event:  vcbatch.TaskCompletedEvent,
+					Action: vcbus.CompleteJobAction,
+					Event:  vcbus.TaskCompletedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -482,7 +483,7 @@ var _ = Describe("Job Error Handling", func() {
 			name: "errorcode-restart-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action:   vcbatch.RestartJobAction,
+					Action:   vcbus.RestartJobAction,
 					ExitCode: &erroCode,
 				},
 			},
@@ -519,10 +520,10 @@ var _ = Describe("Job Error Handling", func() {
 			name: "evicted-terminate-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vcbatch.TerminateJobAction,
-					Events: []vcbatch.Event{vcbatch.PodEvictedEvent,
-						vcbatch.PodFailedEvent,
-						vcbatch.PodEvictedEvent,
+					Action: vcbus.TerminateJobAction,
+					Events: []vcbus.Event{vcbus.PodEvictedEvent,
+						vcbus.PodFailedEvent,
+						vcbus.PodEvictedEvent,
 					},
 				},
 			},
@@ -579,8 +580,8 @@ var _ = Describe("Job Error Handling", func() {
 					restartPolicy: v1.RestartPolicyNever,
 					policies: []vcbatch.LifecyclePolicy{
 						{
-							Action: vcbatch.RestartJobAction,
-							Event:  vcbatch.PodFailedEvent,
+							Action: vcbus.RestartJobAction,
+							Event:  vcbus.PodFailedEvent,
 						},
 					},
 				},
@@ -614,8 +615,8 @@ var _ = Describe("Job Error Handling", func() {
 					rep:  2,
 					policies: []vcbatch.LifecyclePolicy{
 						{
-							Action: vcbatch.RestartJobAction,
-							Event:  vcbatch.PodEvictedEvent,
+							Action: vcbus.RestartJobAction,
+							Event:  vcbus.PodEvictedEvent,
 						},
 					},
 				},
@@ -657,8 +658,8 @@ var _ = Describe("Job Error Handling", func() {
 					rep:  2,
 					policies: []vcbatch.LifecyclePolicy{
 						{
-							Action: vcbatch.TerminateJobAction,
-							Event:  vcbatch.PodEvictedEvent,
+							Action: vcbus.TerminateJobAction,
+							Event:  vcbus.PodEvictedEvent,
 						},
 					},
 				},
@@ -696,8 +697,8 @@ var _ = Describe("Job Error Handling", func() {
 					command: "sleep 5",
 					policies: []vcbatch.LifecyclePolicy{
 						{
-							Action: vcbatch.CompleteJobAction,
-							Event:  vcbatch.TaskCompletedEvent,
+							Action: vcbus.CompleteJobAction,
+							Event:  vcbus.TaskCompletedEvent,
 						},
 					},
 				},
@@ -728,8 +729,8 @@ var _ = Describe("Job Error Handling", func() {
 			name: "failed-restart-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vcbatch.AbortJobAction,
-					Event:  vcbatch.PodFailedEvent,
+					Action: vcbus.AbortJobAction,
+					Event:  vcbus.PodFailedEvent,
 				},
 			},
 			tasks: []taskSpec{
@@ -748,8 +749,8 @@ var _ = Describe("Job Error Handling", func() {
 					restartPolicy: v1.RestartPolicyNever,
 					policies: []vcbatch.LifecyclePolicy{
 						{
-							Action: vcbatch.RestartJobAction,
-							Event:  vcbatch.PodFailedEvent,
+							Action: vcbus.RestartJobAction,
+							Event:  vcbus.PodFailedEvent,
 						},
 					},
 				},

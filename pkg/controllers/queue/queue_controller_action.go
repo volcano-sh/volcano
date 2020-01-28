@@ -19,7 +19,7 @@ package queue
 import (
 	"fmt"
 	"reflect"
-
+	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/controllers/queue/state"
 
@@ -87,12 +87,12 @@ func (c *Controller) openQueue(queue *schedulingv1alpha2.Queue, updateStateFn st
 
 	if queue.Spec.State != newQueue.Spec.State {
 		if _, err := c.vcClient.SchedulingV1alpha2().Queues().Update(newQueue); err != nil {
-			c.recorder.Event(newQueue, v1.EventTypeWarning, string(schedulingv1alpha2.OpenQueueAction),
+			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.OpenQueueAction),
 				fmt.Sprintf("Open queue failed for %v", err))
 			return err
 		}
 
-		c.recorder.Event(newQueue, v1.EventTypeNormal, string(schedulingv1alpha2.OpenQueueAction),
+		c.recorder.Event(newQueue, v1.EventTypeNormal, string(v1alpha1.OpenQueueAction),
 			fmt.Sprintf("Open queue succeed"))
 	} else {
 		return nil
@@ -112,7 +112,7 @@ func (c *Controller) openQueue(queue *schedulingv1alpha2.Queue, updateStateFn st
 
 	if queue.Status.State != newQueue.Status.State {
 		if _, err := c.vcClient.SchedulingV1alpha2().Queues().UpdateStatus(newQueue); err != nil {
-			c.recorder.Event(newQueue, v1.EventTypeWarning, string(schedulingv1alpha2.OpenQueueAction),
+			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.OpenQueueAction),
 				fmt.Sprintf("Update queue status from %s to %s failed for %v",
 					queue.Status.State, newQueue.Status.State, err))
 			return err
@@ -130,12 +130,12 @@ func (c *Controller) closeQueue(queue *schedulingv1alpha2.Queue, updateStateFn s
 
 	if queue.Spec.State != newQueue.Spec.State {
 		if _, err := c.vcClient.SchedulingV1alpha2().Queues().Update(newQueue); err != nil {
-			c.recorder.Event(newQueue, v1.EventTypeWarning, string(schedulingv1alpha2.CloseQueueAction),
+			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.CloseQueueAction),
 				fmt.Sprintf("Close queue failed for %v", err))
 			return err
 		}
 
-		c.recorder.Event(newQueue, v1.EventTypeNormal, string(schedulingv1alpha2.CloseQueueAction),
+		c.recorder.Event(newQueue, v1.EventTypeNormal, string(v1alpha1.CloseQueueAction),
 			fmt.Sprintf("Close queue succeed"))
 	} else {
 		return nil
@@ -156,7 +156,7 @@ func (c *Controller) closeQueue(queue *schedulingv1alpha2.Queue, updateStateFn s
 
 	if queue.Status.State != newQueue.Status.State {
 		if _, err := c.vcClient.SchedulingV1alpha2().Queues().UpdateStatus(newQueue); err != nil {
-			c.recorder.Event(newQueue, v1.EventTypeWarning, string(schedulingv1alpha2.CloseQueueAction),
+			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.CloseQueueAction),
 				fmt.Sprintf("Update queue status from %s to %s failed for %v",
 					queue.Status.State, newQueue.Status.State, err))
 			return err

@@ -18,6 +18,7 @@ package state
 
 import (
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -25,7 +26,7 @@ type completingState struct {
 	job *apis.JobInfo
 }
 
-func (ps *completingState) Execute(action vcbatch.Action) error {
+func (ps *completingState) Execute(action v1alpha1.Action) error {
 	return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
 		// If any "alive" pods, still in Completing phase
 		if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {

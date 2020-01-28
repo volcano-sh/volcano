@@ -17,13 +17,14 @@ limitations under the License.
 package state
 
 import (
+	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 )
 
 // State interface
 type State interface {
 	// Execute executes the actions based on current state.
-	Execute(action v1alpha2.QueueAction) error
+	Execute(action v1alpha1.Action) error
 }
 
 // UpdateQueueStatusFn updates the queue status

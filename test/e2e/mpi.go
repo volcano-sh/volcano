@@ -21,6 +21,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 )
 
 var _ = Describe("MPI E2E Test", func() {
@@ -34,8 +35,8 @@ var _ = Describe("MPI E2E Test", func() {
 			name: "mpi",
 			policies: []vcbatch.LifecyclePolicy{
 				{
-					Action: vcbatch.CompleteJobAction,
-					Event:  vcbatch.TaskCompletedEvent,
+					Action: vcbus.CompleteJobAction,
+					Event:  vcbus.TaskCompletedEvent,
 				},
 			},
 			plugins: map[string][]string{

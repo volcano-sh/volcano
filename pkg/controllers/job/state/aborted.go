@@ -18,6 +18,7 @@ package state
 
 import (
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -25,9 +26,9 @@ type abortedState struct {
 	job *apis.JobInfo
 }
 
-func (as *abortedState) Execute(action vcbatch.Action) error {
+func (as *abortedState) Execute(action v1alpha1.Action) error {
 	switch action {
-	case vcbatch.ResumeJobAction:
+	case v1alpha1.ResumeJobAction:
 		return KillJob(as.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
 			status.State.Phase = vcbatch.Restarting
 			status.RetryCount++

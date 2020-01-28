@@ -17,26 +17,26 @@ limitations under the License.
 package queue
 
 import (
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/klog"
+
 	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
-
-	"k8s.io/client-go/tools/cache"
-
-	"k8s.io/klog"
+	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
-func (c *Controller) enqueue(req *schedulingv1alpha2.QueueRequest) {
+func (c *Controller) enqueue(req *apis.Request) {
 	c.queue.Add(req)
 }
 
 func (c *Controller) addQueue(obj interface{}) {
 	queue := obj.(*schedulingv1alpha2.Queue)
 
-	req := &schedulingv1alpha2.QueueRequest{
-		Name: queue.Name,
+	req := &apis.Request{
+		QueueName: queue.Name,
 
-		Event:  schedulingv1alpha2.QueueOutOfSyncEvent,
-		Action: schedulingv1alpha2.SyncQueueAction,
+		Event:  busv1alpha1.OutOfSyncEvent,
+		Action: busv1alpha1.SyncQueueAction,
 	}
 
 	c.enqueue(req)
@@ -96,11 +96,11 @@ func (c *Controller) addPodGroup(obj interface{}) {
 	}
 	c.podGroups[pg.Spec.Queue][key] = struct{}{}
 
-	req := &schedulingv1alpha2.QueueRequest{
-		Name: pg.Spec.Queue,
+	req := &apis.Request{
+		QueueName: pg.Spec.Queue,
 
-		Event:  schedulingv1alpha2.QueueOutOfSyncEvent,
-		Action: schedulingv1alpha2.SyncQueueAction,
+		Event:  busv1alpha1.OutOfSyncEvent,
+		Action: busv1alpha1.SyncQueueAction,
 	}
 
 	c.enqueue(req)
@@ -139,11 +139,11 @@ func (c *Controller) deletePodGroup(obj interface{}) {
 
 	delete(c.podGroups[pg.Spec.Queue], key)
 
-	req := &schedulingv1alpha2.QueueRequest{
-		Name: pg.Spec.Queue,
+	req := &apis.Request{
+		QueueName: pg.Spec.Queue,
 
-		Event:  schedulingv1alpha2.QueueOutOfSyncEvent,
-		Action: schedulingv1alpha2.SyncQueueAction,
+		Event:  busv1alpha1.OutOfSyncEvent,
+		Action: busv1alpha1.SyncQueueAction,
 	}
 
 	c.enqueue(req)
