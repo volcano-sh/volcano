@@ -25,34 +25,35 @@ import (
 	"k8s.io/kubernetes/pkg/apis/core/validation"
 
 	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 )
 
 // policyEventMap defines all policy events and whether to allow external use
-var policyEventMap = map[batchv1alpha1.Event]bool{
-	batchv1alpha1.AnyEvent:           true,
-	batchv1alpha1.PodFailedEvent:     true,
-	batchv1alpha1.PodEvictedEvent:    true,
-	batchv1alpha1.JobUnknownEvent:    true,
-	batchv1alpha1.TaskCompletedEvent: true,
-	batchv1alpha1.OutOfSyncEvent:     false,
-	batchv1alpha1.CommandIssuedEvent: false,
+var policyEventMap = map[busv1alpha1.Event]bool{
+	busv1alpha1.AnyEvent:           true,
+	busv1alpha1.PodFailedEvent:     true,
+	busv1alpha1.PodEvictedEvent:    true,
+	busv1alpha1.JobUnknownEvent:    true,
+	busv1alpha1.TaskCompletedEvent: true,
+	busv1alpha1.OutOfSyncEvent:     false,
+	busv1alpha1.CommandIssuedEvent: false,
 }
 
 // policyActionMap defines all policy actions and whether to allow external use
-var policyActionMap = map[batchv1alpha1.Action]bool{
-	batchv1alpha1.AbortJobAction:     true,
-	batchv1alpha1.RestartJobAction:   true,
-	batchv1alpha1.RestartTaskAction:  true,
-	batchv1alpha1.TerminateJobAction: true,
-	batchv1alpha1.CompleteJobAction:  true,
-	batchv1alpha1.ResumeJobAction:    true,
-	batchv1alpha1.SyncJobAction:      false,
-	batchv1alpha1.EnqueueAction:      false,
+var policyActionMap = map[busv1alpha1.Action]bool{
+	busv1alpha1.AbortJobAction:     true,
+	busv1alpha1.RestartJobAction:   true,
+	busv1alpha1.RestartTaskAction:  true,
+	busv1alpha1.TerminateJobAction: true,
+	busv1alpha1.CompleteJobAction:  true,
+	busv1alpha1.ResumeJobAction:    true,
+	busv1alpha1.SyncJobAction:      false,
+	busv1alpha1.EnqueueAction:      false,
 }
 
 func validatePolicies(policies []batchv1alpha1.LifecyclePolicy, fldPath *field.Path) error {
 	var err error
-	policyEvents := map[batchv1alpha1.Event]struct{}{}
+	policyEvents := map[busv1alpha1.Event]struct{}{}
 	exitCodes := map[int32]struct{}{}
 
 	for _, policy := range policies {
@@ -107,14 +108,14 @@ func validatePolicies(policies []batchv1alpha1.LifecyclePolicy, fldPath *field.P
 		}
 	}
 
-	if _, found := policyEvents[batchv1alpha1.AnyEvent]; found && len(policyEvents) > 1 {
+	if _, found := policyEvents[busv1alpha1.AnyEvent]; found && len(policyEvents) > 1 {
 		err = multierror.Append(err, fmt.Errorf("if there's * here, no other policy should be here"))
 	}
 
 	return err
 }
 
-func getEventList(policy batchv1alpha1.LifecyclePolicy) []batchv1alpha1.Event {
+func getEventList(policy batchv1alpha1.LifecyclePolicy) []busv1alpha1.Event {
 	policyEventsList := policy.Events
 	if len(policy.Event) > 0 {
 		policyEventsList = append(policyEventsList, policy.Event)
@@ -123,9 +124,9 @@ func getEventList(policy batchv1alpha1.LifecyclePolicy) []batchv1alpha1.Event {
 	return uniquePolicyEventlist
 }
 
-func removeDuplicates(EventList []batchv1alpha1.Event) []batchv1alpha1.Event {
-	keys := make(map[batchv1alpha1.Event]bool)
-	list := []batchv1alpha1.Event{}
+func removeDuplicates(EventList []busv1alpha1.Event) []busv1alpha1.Event {
+	keys := make(map[busv1alpha1.Event]bool)
+	list := []busv1alpha1.Event{}
 	for _, val := range EventList {
 		if _, value := keys[val]; !value {
 			keys[val] = true
@@ -135,8 +136,8 @@ func removeDuplicates(EventList []batchv1alpha1.Event) []batchv1alpha1.Event {
 	return list
 }
 
-func getValidEvents() []batchv1alpha1.Event {
-	var events []batchv1alpha1.Event
+func getValidEvents() []busv1alpha1.Event {
+	var events []busv1alpha1.Event
 	for e, allow := range policyEventMap {
 		if allow {
 			events = append(events, e)
@@ -146,8 +147,8 @@ func getValidEvents() []batchv1alpha1.Event {
 	return events
 }
 
-func getValidActions() []batchv1alpha1.Action {
-	var actions []batchv1alpha1.Action
+func getValidActions() []busv1alpha1.Action {
+	var actions []busv1alpha1.Action
 	for a, allow := range policyActionMap {
 		if allow {
 			actions = append(actions, a)

@@ -18,8 +18,7 @@ package apis
 
 import (
 	"fmt"
-
-	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 )
 
 //Request struct
@@ -29,15 +28,15 @@ type Request struct {
 	TaskName  string
 	QueueName string
 
-	Event      batch.Event
+	Event      v1alpha1.Event
 	ExitCode   int32
-	Action     batch.Action
+	Action     v1alpha1.Action
 	JobVersion int32
 }
 
 //String function returns the request in string format
 func (r Request) String() string {
 	return fmt.Sprintf(
-		"Job: %s/%s, Task:%s, Event:%s, ExitCode:%d, Action:%s, JobVersion: %d",
-		r.Namespace, r.JobName, r.TaskName, r.Event, r.ExitCode, r.Action, r.JobVersion)
+		"Queue: %s, Job: %s/%s, Task:%s, Event:%s, ExitCode:%d, Action:%s, JobVersion: %d",
+		r.QueueName, r.Namespace, r.JobName, r.TaskName, r.Event, r.ExitCode, r.Action, r.JobVersion)
 }

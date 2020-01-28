@@ -19,6 +19,7 @@ package v1alpha1
 import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 )
 
 // +genclient
@@ -118,76 +119,23 @@ const (
 	JobStatusError JobEvent = "JobStatusError"
 )
 
-// Event represent the phase of Job, e.g. pod-failed.
-type Event string
-
-const (
-	// AnyEvent means all event
-	AnyEvent Event = "*"
-	// PodFailedEvent is triggered if Pod was failed
-	PodFailedEvent Event = "PodFailed"
-	// PodEvictedEvent is triggered if Pod was deleted
-	PodEvictedEvent Event = "PodEvicted"
-	// JobUnknownEvent These below are several events can lead to job 'Unknown'
-	// 1. Task Unschedulable, this is triggered when part of
-	//    pods can't be scheduled while some are already running in gang-scheduling case.
-	JobUnknownEvent Event = "Unknown"
-	// TaskCompletedEvent is triggered if the 'Replicas' amount of pods in one task are succeed
-	TaskCompletedEvent Event = "TaskCompleted"
-
-	// Note: events below are used internally, should not be used by users.
-
-	// OutOfSyncEvent is triggered if Pod/Job were updated
-	OutOfSyncEvent Event = "OutOfSync"
-	// CommandIssuedEvent is triggered if a command is raised by user
-	CommandIssuedEvent Event = "CommandIssued"
-)
-
-// Action is the action that Job controller will take according to the event.
-type Action string
-
-const (
-	// AbortJobAction if this action is set, the whole job will be aborted:
-	// all Pod of Job will be evicted, and no Pod will be recreated
-	AbortJobAction Action = "AbortJob"
-	// RestartJobAction if this action is set, the whole job will be restarted
-	RestartJobAction Action = "RestartJob"
-	// RestartTaskAction if this action is set, only the task will be restarted; default action.
-	// This action can not work together with job level events, e.g. JobUnschedulable
-	RestartTaskAction Action = "RestartTask"
-	// TerminateJobAction if this action is set, the whole job wil be terminated
-	// and can not be resumed: all Pod of Job will be evicted, and no Pod will be recreated.
-	TerminateJobAction Action = "TerminateJob"
-	// CompleteJobAction if this action is set, the unfinished pods will be killed, job completed.
-	CompleteJobAction Action = "CompleteJob"
-	// ResumeJobAction is the action to resume an aborted job.
-	ResumeJobAction Action = "ResumeJob"
-
-	// Note: actions below are only used internally, should not be used by users.
-
-	// SyncJobAction is the action to sync Job/Pod status.
-	SyncJobAction Action = "SyncJob"
-	// EnqueueAction is the action to sync Job inqueue status.
-	EnqueueAction Action = "EnqueueJob"
-)
-
 // LifecyclePolicy specifies the lifecycle and error handling of task and job.
 type LifecyclePolicy struct {
 	// The action that will be taken to the PodGroup according to Event.
 	// One of "Restart", "None".
 	// Default to None.
 	// +optional
-	Action Action `json:"action,omitempty" protobuf:"bytes,1,opt,name=action"`
+	Action v1alpha1.Action `json:"action,omitempty" protobuf:"bytes,1,opt,name=action"`
 
 	// The Event recorded by scheduler; the controller takes actions
 	// according to this Event.
 	// +optional
-	Event Event `json:"event,omitempty" protobuf:"bytes,2,opt,name=event"`
+	Event v1alpha1.Event `json:"event,omitempty" protobuf:"bytes,2,opt,name=event"`
 
 	// The Events recorded by scheduler; the controller takes actions
 	// according to this Events.
 	// +optional
-	Events []Event `json:"events,omitempty" protobuf:"bytes,3,opt,name=events"`
+	Events []v1alpha1.Event `json:"events,omitempty" protobuf:"bytes,3,opt,name=events"`
 
 	// The exit code of the pod container, controller will take action
 	// according to this code.

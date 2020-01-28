@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 )
 
 var _ = Describe("TensorFlow E2E Test", func() {
@@ -46,8 +47,8 @@ var _ = Describe("TensorFlow E2E Test", func() {
 				},
 				Policies: []vcbatch.LifecyclePolicy{
 					{
-						Event:  vcbatch.PodEvictedEvent,
-						Action: vcbatch.RestartJobAction,
+						Event:  vcbus.PodEvictedEvent,
+						Action: vcbus.RestartJobAction,
 					},
 				},
 				Tasks: []vcbatch.TaskSpec{
@@ -82,8 +83,8 @@ var _ = Describe("TensorFlow E2E Test", func() {
 						Name:     "worker",
 						Policies: []vcbatch.LifecyclePolicy{
 							{
-								Event:  vcbatch.TaskCompletedEvent,
-								Action: vcbatch.CompleteJobAction,
+								Event:  vcbus.TaskCompletedEvent,
+								Action: vcbus.CompleteJobAction,
 							},
 						},
 						Template: v1.PodTemplateSpec{

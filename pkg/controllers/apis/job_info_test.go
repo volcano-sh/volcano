@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	vcbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 )
 
 func TestAddPod(t *testing.T) {
@@ -295,13 +296,14 @@ func TestRequest_String(t *testing.T) {
 			req: Request{
 				Namespace:  "testnamespace",
 				JobName:    "testjobname",
+				QueueName:  "testqueuename",
 				TaskName:   "testtaskname",
-				Event:      vcbatchv1.AnyEvent,
+				Event:      vcbus.AnyEvent,
 				ExitCode:   0,
-				Action:     vcbatchv1.SyncJobAction,
+				Action:     vcbus.SyncJobAction,
 				JobVersion: 0,
 			},
-			ExpectedValue: "Job: testnamespace/testjobname, Task:testtaskname, Event:*, ExitCode:0, Action:SyncJob, JobVersion: 0",
+			ExpectedValue: "Queue: testqueuename, Job: testnamespace/testjobname, Task:testtaskname, Event:*, ExitCode:0, Action:SyncJob, JobVersion: 0",
 		},
 	}
 

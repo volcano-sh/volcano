@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -256,7 +257,7 @@ func TestApplyPolicies(t *testing.T) {
 		Name      string
 		Job       *v1alpha1.Job
 		Request   *apis.Request
-		ReturnVal v1alpha1.Action
+		ReturnVal busv1alpha1.Action
 	}{
 		{
 			Name: "Test Apply policies where Action is not empty",
@@ -289,9 +290,9 @@ func TestApplyPolicies(t *testing.T) {
 				},
 			},
 			Request: &apis.Request{
-				Action: v1alpha1.EnqueueAction,
+				Action: busv1alpha1.EnqueueAction,
 			},
-			ReturnVal: v1alpha1.EnqueueAction,
+			ReturnVal: busv1alpha1.EnqueueAction,
 		},
 		{
 			Name: "Test Apply policies where event is OutOfSync",
@@ -324,9 +325,9 @@ func TestApplyPolicies(t *testing.T) {
 				},
 			},
 			Request: &apis.Request{
-				Event: v1alpha1.OutOfSyncEvent,
+				Event: busv1alpha1.OutOfSyncEvent,
 			},
-			ReturnVal: v1alpha1.SyncJobAction,
+			ReturnVal: busv1alpha1.SyncJobAction,
 		},
 		{
 			Name: "Test Apply policies where version is outdated",
@@ -361,7 +362,7 @@ func TestApplyPolicies(t *testing.T) {
 			Request: &apis.Request{
 				JobVersion: 1,
 			},
-			ReturnVal: v1alpha1.SyncJobAction,
+			ReturnVal: busv1alpha1.SyncJobAction,
 		},
 		{
 			Name: "Test Apply policies where overriding job level policies and with exitcode",
@@ -391,8 +392,8 @@ func TestApplyPolicies(t *testing.T) {
 							},
 							Policies: []v1alpha1.LifecyclePolicy{
 								{
-									Action:   v1alpha1.SyncJobAction,
-									Event:    v1alpha1.CommandIssuedEvent,
+									Action:   busv1alpha1.SyncJobAction,
+									Event:    busv1alpha1.CommandIssuedEvent,
 									ExitCode: &errorCode0,
 								},
 							},
@@ -403,7 +404,7 @@ func TestApplyPolicies(t *testing.T) {
 			Request: &apis.Request{
 				TaskName: "task1",
 			},
-			ReturnVal: v1alpha1.SyncJobAction,
+			ReturnVal: busv1alpha1.SyncJobAction,
 		},
 		{
 			Name: "Test Apply policies where overriding job level policies and without exitcode",
@@ -433,8 +434,8 @@ func TestApplyPolicies(t *testing.T) {
 							},
 							Policies: []v1alpha1.LifecyclePolicy{
 								{
-									Action: v1alpha1.SyncJobAction,
-									Event:  v1alpha1.CommandIssuedEvent,
+									Action: busv1alpha1.SyncJobAction,
+									Event:  busv1alpha1.CommandIssuedEvent,
 								},
 							},
 						},
@@ -443,9 +444,9 @@ func TestApplyPolicies(t *testing.T) {
 			},
 			Request: &apis.Request{
 				TaskName: "task1",
-				Event:    v1alpha1.CommandIssuedEvent,
+				Event:    busv1alpha1.CommandIssuedEvent,
 			},
-			ReturnVal: v1alpha1.SyncJobAction,
+			ReturnVal: busv1alpha1.SyncJobAction,
 		},
 		{
 			Name: "Test Apply policies with job level policies",
@@ -479,9 +480,9 @@ func TestApplyPolicies(t *testing.T) {
 			},
 			Request: &apis.Request{
 				TaskName: "task1",
-				Event:    v1alpha1.CommandIssuedEvent,
+				Event:    busv1alpha1.CommandIssuedEvent,
 			},
-			ReturnVal: v1alpha1.SyncJobAction,
+			ReturnVal: busv1alpha1.SyncJobAction,
 		},
 		{
 			Name: "Test Apply policies with job level policies",
@@ -513,16 +514,16 @@ func TestApplyPolicies(t *testing.T) {
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
 						{
-							Action: v1alpha1.SyncJobAction,
-							Event:  v1alpha1.CommandIssuedEvent,
+							Action: busv1alpha1.SyncJobAction,
+							Event:  busv1alpha1.CommandIssuedEvent,
 						},
 					},
 				},
 			},
 			Request: &apis.Request{
-				Event: v1alpha1.CommandIssuedEvent,
+				Event: busv1alpha1.CommandIssuedEvent,
 			},
-			ReturnVal: v1alpha1.SyncJobAction,
+			ReturnVal: busv1alpha1.SyncJobAction,
 		},
 		{
 			Name: "Test Apply policies with job level policies with exitcode",
@@ -554,15 +555,15 @@ func TestApplyPolicies(t *testing.T) {
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
 						{
-							Action:   v1alpha1.SyncJobAction,
-							Event:    v1alpha1.CommandIssuedEvent,
+							Action:   busv1alpha1.SyncJobAction,
+							Event:    busv1alpha1.CommandIssuedEvent,
 							ExitCode: &errorCode0,
 						},
 					},
 				},
 			},
 			Request:   &apis.Request{},
-			ReturnVal: v1alpha1.SyncJobAction,
+			ReturnVal: busv1alpha1.SyncJobAction,
 		},
 	}
 

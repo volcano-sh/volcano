@@ -18,8 +18,8 @@ package state
 
 import (
 	"k8s.io/api/core/v1"
-
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -54,7 +54,7 @@ var (
 //State interface
 type State interface {
 	// Execute executes the actions based on current state.
-	Execute(act vcbatch.Action) error
+	Execute(act v1alpha1.Action) error
 }
 
 //NewState gets the state from the volcano job Phase

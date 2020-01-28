@@ -18,14 +18,13 @@ package job
 
 import (
 	"fmt"
-	"reflect"
-	"strconv"
-
 	"k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
+	"reflect"
+	"strconv"
 
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	bus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
@@ -57,7 +56,7 @@ func (cc *Controller) addJob(obj interface{}) {
 		Namespace: job.Namespace,
 		JobName:   job.Name,
 
-		Event: batch.OutOfSyncEvent,
+		Event: bus.OutOfSyncEvent,
 	}
 
 	// TODO(k82cn): if failed to add job, the cache should be refresh
@@ -99,7 +98,7 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 		Namespace: newJob.Namespace,
 		JobName:   newJob.Name,
 
-		Event: batch.OutOfSyncEvent,
+		Event: bus.OutOfSyncEvent,
 	}
 
 	key := jobhelpers.GetJobKeyByReq(&req)
@@ -170,7 +169,7 @@ func (cc *Controller) addPod(obj interface{}) {
 		Namespace: pod.Namespace,
 		JobName:   jobName,
 
-		Event:      batch.OutOfSyncEvent,
+		Event:      bus.OutOfSyncEvent,
 		JobVersion: int32(dVersion),
 	}
 
@@ -243,11 +242,11 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 			newPod.Namespace, newPod.Name, err)
 	}
 
-	event := batch.OutOfSyncEvent
+	event := bus.OutOfSyncEvent
 	var exitCode int32
 	if oldPod.Status.Phase != v1.PodFailed &&
 		newPod.Status.Phase == v1.PodFailed {
-		event = batch.PodFailedEvent
+		event = bus.PodFailedEvent
 		// TODO: currently only one container pod is supported by volcano
 		// Once multi containers pod is supported, update accordingly.
 		if len(newPod.Status.ContainerStatuses) > 0 && newPod.Status.ContainerStatuses[0].State.Terminated != nil {
@@ -258,7 +257,7 @@ func (cc *Controller) updatePod(oldObj, newObj interface{}) {
 	if oldPod.Status.Phase != v1.PodSucceeded &&
 		newPod.Status.Phase == v1.PodSucceeded {
 		if cc.cache.TaskCompleted(jobcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
-			event = batch.TaskCompletedEvent
+			event = bus.TaskCompletedEvent
 		}
 	}
 
@@ -331,7 +330,7 @@ func (cc *Controller) deletePod(obj interface{}) {
 		JobName:   jobName,
 		TaskName:  taskName,
 
-		Event:      batch.PodEvictedEvent,
+		Event:      bus.PodEvictedEvent,
 		JobVersion: int32(dVersion),
 	}
 
@@ -383,8 +382,8 @@ func (cc *Controller) processNextCommand() bool {
 	req := apis.Request{
 		Namespace: cmd.Namespace,
 		JobName:   cmd.TargetObject.Name,
-		Event:     batch.CommandIssuedEvent,
-		Action:    batch.Action(cmd.Action),
+		Event:     bus.CommandIssuedEvent,
+		Action:    bus.Action(cmd.Action),
 	}
 
 	key := jobhelpers.GetJobKeyByReq(&req)
@@ -420,7 +419,7 @@ func (cc *Controller) updatePodGroup(oldObj, newObj interface{}) {
 		}
 		switch newPG.Status.Phase {
 		case scheduling.PodGroupUnknown:
-			req.Event = batch.JobUnknownEvent
+			req.Event = bus.JobUnknownEvent
 		}
 		key := jobhelpers.GetJobKeyByReq(&req)
 		queue := cc.getWorkerQueue(key)

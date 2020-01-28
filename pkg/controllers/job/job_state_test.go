@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
@@ -34,7 +35,7 @@ func TestAbortedState_Execute(t *testing.T) {
 	testcases := []struct {
 		Name        string
 		JobInfo     *apis.JobInfo
-		Action      v1alpha1.Action
+		Action      busv1alpha1.Action
 		ExpectedVal error
 	}{
 		{
@@ -54,7 +55,7 @@ func TestAbortedState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.ResumeJobAction,
+			Action:      busv1alpha1.ResumeJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -74,7 +75,7 @@ func TestAbortedState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.RestartJobAction,
+			Action:      busv1alpha1.RestartJobAction,
 			ExpectedVal: nil,
 		},
 	}
@@ -100,7 +101,7 @@ func TestAbortedState_Execute(t *testing.T) {
 			if err != nil {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
-			if testcase.Action == v1alpha1.ResumeJobAction {
+			if testcase.Action == busv1alpha1.ResumeJobAction {
 				jobInfo, err := fakecontroller.cache.Get(fmt.Sprintf("%s/%s", testcase.JobInfo.Job.Namespace, testcase.JobInfo.Job.Name))
 				if err != nil {
 					t.Error("Error while retrieving value from Cache")
@@ -120,7 +121,7 @@ func TestAbortingState_Execute(t *testing.T) {
 	testcases := []struct {
 		Name        string
 		JobInfo     *apis.JobInfo
-		Action      v1alpha1.Action
+		Action      busv1alpha1.Action
 		ExpectedVal error
 	}{
 		{
@@ -140,7 +141,7 @@ func TestAbortingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.ResumeJobAction,
+			Action:      busv1alpha1.ResumeJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -160,7 +161,7 @@ func TestAbortingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.RestartJobAction,
+			Action:      busv1alpha1.RestartJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -186,7 +187,7 @@ func TestAbortingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.RestartJobAction,
+			Action:      busv1alpha1.RestartJobAction,
 			ExpectedVal: nil,
 		},
 	}
@@ -212,7 +213,7 @@ func TestAbortingState_Execute(t *testing.T) {
 			if err != nil {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
-			if testcase.Action == v1alpha1.ResumeJobAction {
+			if testcase.Action == busv1alpha1.ResumeJobAction {
 				jobInfo, err := fakecontroller.cache.Get(fmt.Sprintf("%s/%s", testcase.JobInfo.Job.Namespace, testcase.JobInfo.Job.Name))
 				if err != nil {
 					t.Error("Error while retrieving value from Cache")
@@ -223,7 +224,7 @@ func TestAbortingState_Execute(t *testing.T) {
 				}
 			}
 
-			if testcase.Action != v1alpha1.ResumeJobAction {
+			if testcase.Action != busv1alpha1.ResumeJobAction {
 				jobInfo, err := fakecontroller.cache.Get(fmt.Sprintf("%s/%s", testcase.JobInfo.Job.Namespace, testcase.JobInfo.Job.Name))
 				if err != nil {
 					t.Error("Error while retrieving value from Cache")
@@ -250,7 +251,7 @@ func TestCompletingState_Execute(t *testing.T) {
 	testcases := []struct {
 		Name        string
 		JobInfo     *apis.JobInfo
-		Action      v1alpha1.Action
+		Action      busv1alpha1.Action
 		ExpectedVal error
 	}{
 		{
@@ -277,7 +278,7 @@ func TestCompletingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.ResumeJobAction,
+			Action:      busv1alpha1.ResumeJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -297,7 +298,7 @@ func TestCompletingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.ResumeJobAction,
+			Action:      busv1alpha1.ResumeJobAction,
 			ExpectedVal: nil,
 		},
 	}
@@ -349,7 +350,7 @@ func TestFinishedState_Execute(t *testing.T) {
 	testcases := []struct {
 		Name        string
 		JobInfo     *apis.JobInfo
-		Action      v1alpha1.Action
+		Action      busv1alpha1.Action
 		ExpectedVal error
 	}{
 		{
@@ -369,7 +370,7 @@ func TestFinishedState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.ResumeJobAction,
+			Action:      busv1alpha1.ResumeJobAction,
 			ExpectedVal: nil,
 		},
 	}
@@ -405,7 +406,7 @@ func TestPendingState_Execute(t *testing.T) {
 	testcases := []struct {
 		Name        string
 		JobInfo     *apis.JobInfo
-		Action      v1alpha1.Action
+		Action      busv1alpha1.Action
 		ExpectedVal error
 	}{
 		{
@@ -425,7 +426,7 @@ func TestPendingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.RestartJobAction,
+			Action:      busv1alpha1.RestartJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -452,7 +453,7 @@ func TestPendingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.RestartJobAction,
+			Action:      busv1alpha1.RestartJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -472,7 +473,7 @@ func TestPendingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.AbortJobAction,
+			Action:      busv1alpha1.AbortJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -499,7 +500,7 @@ func TestPendingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.AbortJobAction,
+			Action:      busv1alpha1.AbortJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -526,7 +527,7 @@ func TestPendingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.TerminateJobAction,
+			Action:      busv1alpha1.TerminateJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -546,7 +547,7 @@ func TestPendingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.CompleteJobAction,
+			Action:      busv1alpha1.CompleteJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -573,7 +574,7 @@ func TestPendingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.CompleteJobAction,
+			Action:      busv1alpha1.CompleteJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -604,7 +605,7 @@ func TestPendingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.EnqueueAction,
+			Action:      busv1alpha1.EnqueueAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -634,7 +635,7 @@ func TestPendingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.EnqueueAction,
+			Action:      busv1alpha1.EnqueueAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -664,7 +665,7 @@ func TestPendingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.SyncJobAction,
+			Action:      busv1alpha1.SyncJobAction,
 			ExpectedVal: nil,
 		},
 	}
@@ -696,27 +697,27 @@ func TestPendingState_Execute(t *testing.T) {
 				t.Error("Error while retrieving value from Cache")
 			}
 
-			if testcase.Action == v1alpha1.RestartJobAction {
+			if testcase.Action == busv1alpha1.RestartJobAction {
 				// always jump to restarting firstly
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Restarting {
 					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Restarting, jobInfo.Job.Status.State.Phase, i)
 				}
-			} else if testcase.Action == v1alpha1.AbortJobAction {
+			} else if testcase.Action == busv1alpha1.AbortJobAction {
 				// always jump to aborting firstly
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Aborting {
 					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Aborting, jobInfo.Job.Status.State.Phase, i)
 				}
-			} else if testcase.Action == v1alpha1.TerminateJobAction {
+			} else if testcase.Action == busv1alpha1.TerminateJobAction {
 				// always jump to completing firstly
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Terminating {
 					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Terminating, jobInfo.Job.Status.State.Phase, i)
 				}
-			} else if testcase.Action == v1alpha1.CompleteJobAction {
+			} else if testcase.Action == busv1alpha1.CompleteJobAction {
 				// always jump to completing firstly
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Completing {
 					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Completing, jobInfo.Job.Status.State.Phase, i)
 				}
-			} else if testcase.Action == v1alpha1.EnqueueAction {
+			} else if testcase.Action == busv1alpha1.EnqueueAction {
 				if jobInfo.Job.Spec.MinAvailable <= jobInfo.Job.Status.Running+jobInfo.Job.Status.Succeeded+jobInfo.Job.Status.Failed {
 					if jobInfo.Job.Status.State.Phase != v1alpha1.Running {
 						t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Running, jobInfo.Job.Status.State.Phase, i)
@@ -737,7 +738,7 @@ func TestRestartingState_Execute(t *testing.T) {
 	testcases := []struct {
 		Name        string
 		JobInfo     *apis.JobInfo
-		Action      v1alpha1.Action
+		Action      busv1alpha1.Action
 		ExpectedVal error
 	}{
 		{
@@ -761,7 +762,7 @@ func TestRestartingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.RestartJobAction,
+			Action:      busv1alpha1.RestartJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -795,7 +796,7 @@ func TestRestartingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.RestartJobAction,
+			Action:      busv1alpha1.RestartJobAction,
 			ExpectedVal: nil,
 		},
 	}
@@ -846,7 +847,7 @@ func TestRunningState_Execute(t *testing.T) {
 	testcases := []struct {
 		Name        string
 		JobInfo     *apis.JobInfo
-		Action      v1alpha1.Action
+		Action      busv1alpha1.Action
 		ExpectedVal error
 	}{
 		{
@@ -874,7 +875,7 @@ func TestRunningState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.RestartJobAction,
+			Action:      busv1alpha1.RestartJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -896,7 +897,7 @@ func TestRunningState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.RestartJobAction,
+			Action:      busv1alpha1.RestartJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -918,7 +919,7 @@ func TestRunningState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.AbortJobAction,
+			Action:      busv1alpha1.AbortJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -946,7 +947,7 @@ func TestRunningState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.AbortJobAction,
+			Action:      busv1alpha1.AbortJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -968,7 +969,7 @@ func TestRunningState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.TerminateJobAction,
+			Action:      busv1alpha1.TerminateJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -996,7 +997,7 @@ func TestRunningState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.TerminateJobAction,
+			Action:      busv1alpha1.TerminateJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -1018,7 +1019,7 @@ func TestRunningState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.CompleteJobAction,
+			Action:      busv1alpha1.CompleteJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -1046,7 +1047,7 @@ func TestRunningState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.CompleteJobAction,
+			Action:      busv1alpha1.CompleteJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -1086,7 +1087,7 @@ func TestRunningState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.SyncJobAction,
+			Action:      busv1alpha1.SyncJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -1125,7 +1126,7 @@ func TestRunningState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.SyncJobAction,
+			Action:      busv1alpha1.SyncJobAction,
 			ExpectedVal: nil,
 		},
 	}
@@ -1157,22 +1158,22 @@ func TestRunningState_Execute(t *testing.T) {
 				t.Error("Error while retrieving value from Cache")
 			}
 
-			if testcase.Action == v1alpha1.RestartJobAction {
+			if testcase.Action == busv1alpha1.RestartJobAction {
 				// always jump to restarting firstly
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Restarting {
 					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Restarting, jobInfo.Job.Status.State.Phase, i)
 				}
-			} else if testcase.Action == v1alpha1.AbortJobAction {
+			} else if testcase.Action == busv1alpha1.AbortJobAction {
 				// always jump to aborting firstly
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Aborting {
 					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Restarting, jobInfo.Job.Status.State.Phase, i)
 				}
-			} else if testcase.Action == v1alpha1.TerminateJobAction {
+			} else if testcase.Action == busv1alpha1.TerminateJobAction {
 				// always jump to terminating firstly
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Terminating {
 					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Terminating, jobInfo.Job.Status.State.Phase, i)
 				}
-			} else if testcase.Action == v1alpha1.CompleteJobAction {
+			} else if testcase.Action == busv1alpha1.CompleteJobAction {
 				// always jump to completing firstly
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Completing {
 					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Restarting, jobInfo.Job.Status.State.Phase, i)
@@ -1199,7 +1200,7 @@ func TestTerminatingState_Execute(t *testing.T) {
 	testcases := []struct {
 		Name        string
 		JobInfo     *apis.JobInfo
-		Action      v1alpha1.Action
+		Action      busv1alpha1.Action
 		ExpectedVal error
 	}{
 		{
@@ -1226,7 +1227,7 @@ func TestTerminatingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.TerminateJobAction,
+			Action:      busv1alpha1.TerminateJobAction,
 			ExpectedVal: nil,
 		},
 		{
@@ -1246,7 +1247,7 @@ func TestTerminatingState_Execute(t *testing.T) {
 					},
 				},
 			},
-			Action:      v1alpha1.TerminateJobAction,
+			Action:      busv1alpha1.TerminateJobAction,
 			ExpectedVal: nil,
 		},
 	}

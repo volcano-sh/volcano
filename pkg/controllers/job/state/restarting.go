@@ -18,6 +18,7 @@ package state
 
 import (
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -25,7 +26,7 @@ type restartingState struct {
 	job *apis.JobInfo
 }
 
-func (ps *restartingState) Execute(action vcbatch.Action) error {
+func (ps *restartingState) Execute(action v1alpha1.Action) error {
 	return KillJob(ps.job, PodRetainPhaseNone, func(status *vcbatch.JobStatus) bool {
 		// Get the maximum number of retries.
 		maxRetry := DefaultMaxRetry

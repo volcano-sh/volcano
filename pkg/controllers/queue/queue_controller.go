@@ -33,7 +33,6 @@ import (
 	"k8s.io/klog"
 
 	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 	versionedscheme "volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 	informerfactory "volcano.sh/volcano/pkg/client/informers/externalversions"
@@ -41,6 +40,7 @@ import (
 	schedulinginformer "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1alpha2"
 	busv1alpha1lister "volcano.sh/volcano/pkg/client/listers/bus/v1alpha1"
 	schedulinglister "volcano.sh/volcano/pkg/client/listers/scheduling/v1alpha2"
+	"volcano.sh/volcano/pkg/controllers/apis"
 	queuestate "volcano.sh/volcano/pkg/controllers/queue/state"
 )
 
@@ -81,10 +81,10 @@ type Controller struct {
 	// queue name -> podgroup namespace/name
 	podGroups map[string]map[string]struct{}
 
-	syncHandler        func(req *schedulingv1alpha2.QueueRequest) error
+	syncHandler        func(req *apis.Request) error
 	syncCommandHandler func(cmd *busv1alpha1.Command) error
 
-	enqueueQueue func(req *schedulingv1alpha2.QueueRequest)
+	enqueueQueue func(req *apis.Request)
 
 	recorder record.EventRecorder
 }
@@ -205,7 +205,7 @@ func (c *Controller) processNextWorkItem() bool {
 	}
 	defer c.queue.Done(obj)
 
-	req, ok := obj.(*schedulingv1alpha2.QueueRequest)
+	req, ok := obj.(*apis.Request)
 	if !ok {
 		klog.Errorf("%v is not a valid queue request struct.", obj)
 		return true
@@ -217,20 +217,20 @@ func (c *Controller) processNextWorkItem() bool {
 	return true
 }
 
-func (c *Controller) handleQueue(req *schedulingv1alpha2.QueueRequest) error {
+func (c *Controller) handleQueue(req *apis.Request) error {
 	startTime := time.Now()
 	defer func() {
-		klog.V(4).Infof("Finished syncing queue %s (%v).", req.Name, time.Since(startTime))
+		klog.V(4).Infof("Finished syncing queue %s (%v).", req.QueueName, time.Since(startTime))
 	}()
 
-	queue, err := c.queueLister.Get(req.Name)
+	queue, err := c.queueLister.Get(req.QueueName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			klog.V(4).Infof("Queue %s has been deleted.", req.Name)
+			klog.V(4).Infof("Queue %s has been deleted.", req.QueueName)
 			return nil
 		}
 
-		return fmt.Errorf("get queue %s failed for %v", req.Name, err)
+		return fmt.Errorf("get queue %s failed for %v", req.QueueName, err)
 	}
 
 	queueState := queuestate.NewState(queue)
@@ -240,7 +240,7 @@ func (c *Controller) handleQueue(req *schedulingv1alpha2.QueueRequest) error {
 
 	if err := queueState.Execute(req.Action); err != nil {
 		return fmt.Errorf("sync queue %s failed for %v, event is %v, action is %s",
-			req.Name, err, req.Event, req.Action)
+			req.QueueName, err, req.Event, req.Action)
 	}
 
 	return nil
@@ -258,8 +258,8 @@ func (c *Controller) handleQueueErr(err error, obj interface{}) {
 		return
 	}
 
-	req, _ := obj.(*schedulingv1alpha2.QueueRequest)
-	c.recordEventsForQueue(req.Name, v1.EventTypeWarning, string(req.Action),
+	req, _ := obj.(*apis.Request)
+	c.recordEventsForQueue(req.QueueName, v1.EventTypeWarning, string(req.Action),
 		fmt.Sprintf("%v queue failed for %v", req.Action, err))
 	klog.V(2).Infof("Dropping queue request %v out of the queue for %v.", obj, err)
 	c.queue.Forget(obj)
@@ -304,10 +304,10 @@ func (c *Controller) handleCommand(cmd *busv1alpha1.Command) error {
 		return fmt.Errorf("failed to delete command <%s/%s> for %v", cmd.Namespace, cmd.Name, err)
 	}
 
-	req := &schedulingv1alpha2.QueueRequest{
-		Name:   cmd.TargetObject.Name,
-		Event:  schedulingv1alpha2.QueueCommandIssuedEvent,
-		Action: schedulingv1alpha2.QueueAction(cmd.Action),
+	req := &apis.Request{
+		QueueName: cmd.TargetObject.Name,
+		Event:     busv1alpha1.CommandIssuedEvent,
+		Action:    busv1alpha1.Action(cmd.Action),
 	}
 
 	c.enqueueQueue(req)

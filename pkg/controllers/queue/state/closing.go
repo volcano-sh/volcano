@@ -17,6 +17,7 @@ limitations under the License.
 package state
 
 import (
+	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 )
 
@@ -24,14 +25,14 @@ type closingState struct {
 	queue *v1alpha2.Queue
 }
 
-func (cs *closingState) Execute(action v1alpha2.QueueAction) error {
+func (cs *closingState) Execute(action v1alpha1.Action) error {
 	switch action {
-	case v1alpha2.OpenQueueAction:
+	case v1alpha1.OpenQueueAction:
 		return OpenQueue(cs.queue, func(status *v1alpha2.QueueStatus, podGroupList []string) {
 			status.State = v1alpha2.QueueStateOpen
 			return
 		})
-	case v1alpha2.CloseQueueAction:
+	case v1alpha1.CloseQueueAction:
 		return SyncQueue(cs.queue, func(status *v1alpha2.QueueStatus, podGroupList []string) {
 			if len(podGroupList) == 0 {
 				status.State = v1alpha2.QueueStateClosed
