@@ -81,6 +81,11 @@ func TestMutateQueues(t *testing.T) {
 	}
 
 	var openStatePatch []patchOperation
+	openStatePatch = append(openStatePatch, patchOperation{
+		Op:    "add",
+		Path:  "/spec/state",
+		Value: schedulingv1alpha2.QueueStateOpen,
+	})
 	openStatePatchJSON, err := json.Marshal(openStatePatch)
 	if err != nil {
 		t.Errorf("Marshal null patch failed for %v.", err)
@@ -187,7 +192,7 @@ func TestMutateQueues(t *testing.T) {
 		t.Run(testCase.Name, func(t *testing.T) {
 			reviewResponse := MutateQueues(testCase.AR)
 			if !reflect.DeepEqual(reviewResponse, testCase.reviewResponse) {
-				t.Errorf("Test case %s failed, expect %v, got %v", testCase.Name,
+				t.Errorf("Test case '%s' failed, expect: %v, got: %v", testCase.Name,
 					reviewResponse, testCase.reviewResponse)
 			}
 		})
