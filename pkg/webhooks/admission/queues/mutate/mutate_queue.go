@@ -100,13 +100,11 @@ func MutateQueues(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 func createQueuePatch(queue *schedulingv1alpha2.Queue) ([]byte, error) {
 	var patch []patchOperation
 
-	if len(queue.Spec.State) == 0 {
-		patch = append(patch, patchOperation{
-			Op:    "add",
-			Path:  "/spec/state",
-			Value: schedulingv1alpha2.QueueStateOpen,
-		})
-	}
+	patch = append(patch, patchOperation{
+		Op:    "add",
+		Path:  "/spec/state",
+		Value: schedulingv1alpha2.QueueStateOpen,
+	})
 
 	trueValue := true
 	if queue.Spec.Reclaimable == nil {
