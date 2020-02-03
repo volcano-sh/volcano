@@ -40,7 +40,7 @@ var service = &router.AdmissionService{
 	Func: MutateQueues,
 
 	MutatingConfig: &whv1beta1.MutatingWebhookConfiguration{
-		Webhooks: []whv1beta1.Webhook{{
+		Webhooks: []whv1beta1.MutatingWebhook{{
 			Name: "mutatequeue.volcano.sh",
 			Rules: []whv1beta1.RuleWithOperations{
 				{

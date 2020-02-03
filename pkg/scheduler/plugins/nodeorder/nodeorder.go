@@ -23,7 +23,7 @@ import (
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/priorities"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
-	"k8s.io/kubernetes/pkg/scheduler/cache"
+	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -112,16 +112,12 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 }
 
 func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
-	var nodeMap map[string]*cache.NodeInfo
+	var nodeMap map[string]*schedulernodeinfo.NodeInfo
 	var nodeSlice []*v1.Node
 
 	weight := calculateWeight(pp.pluginArguments)
 
 	pl := util.NewPodLister(ssn)
-
-	nl := &util.NodeLister{
-		Session: ssn,
-	}
 
 	cn := &cachedNodeInfo{
 		session: ssn,
@@ -160,7 +156,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 		nodeInfo, found := nodeMap[node.Name]
 		if !found {
-			nodeInfo = cache.NewNodeInfo(node.Pods()...)
+			nodeInfo = schedulernodeinfo.NewNodeInfo(node.Pods()...)
 			nodeInfo.SetNode(node.Node)
 			klog.Warningf("node order, generate node info for %s at NodeOrderFn is unexpected", node.Name)
 		}
@@ -201,7 +197,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	batchNodeOrderFn := func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
 		var interPodAffinityScore schedulerapi.HostPriorityList
 
-		mapFn := priorities.NewInterPodAffinityPriority(cn, nl, pl, v1.DefaultHardPodAffinitySymmetricWeight)
+		mapFn := priorities.NewInterPodAffinityPriority(cn, v1.DefaultHardPodAffinitySymmetricWeight)
 		interPodAffinityScore, err := mapFn(task.Pod, nodeMap, nodeSlice)
 		if err != nil {
 			klog.Warningf("Calculate Inter Pod Affinity Priority Failed because of Error: %v", err)

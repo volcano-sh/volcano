@@ -133,6 +133,7 @@ func Run(opt *options.ServerOption) error {
 		opt.LockObjectNamespace,
 		opt.SchedulerName,
 		leaderElectionClient.CoreV1(),
+		leaderElectionClient.CoordinationV1(),
 		resourcelock.ResourceLockConfig{
 			Identity:      id,
 			EventRecorder: eventRecorder,

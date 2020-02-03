@@ -46,7 +46,7 @@ var service = &router.AdmissionService{
 	Config: config,
 
 	ValidatingConfig: &whv1beta1.ValidatingWebhookConfiguration{
-		Webhooks: []whv1beta1.Webhook{{
+		Webhooks: []whv1beta1.ValidatingWebhook{{
 			Name: "validatepod.volcano.sh",
 			Rules: []whv1beta1.RuleWithOperations{
 				{

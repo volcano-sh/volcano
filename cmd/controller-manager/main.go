@@ -24,7 +24,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apiserver/pkg/util/flag"
+	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/cmd/controller-manager/app"
@@ -41,7 +41,7 @@ func main() {
 	s := options.NewServerOption()
 	s.AddFlags(pflag.CommandLine)
 
-	flag.InitFlags()
+	cliflag.InitFlags()
 
 	if s.PrintVersion {
 		version.PrintVersionAndExit()

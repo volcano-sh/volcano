@@ -83,7 +83,7 @@ func (gb *GarbageCollector) Run(stopCh <-chan struct{}) {
 	defer klog.Infof("Shutting down garbage collector")
 
 	go gb.jobInformer.Informer().Run(stopCh)
-	if !controller.WaitForCacheSync("garbage collector", stopCh, gb.jobSynced) {
+	if !cache.WaitForCacheSync(stopCh, gb.jobSynced) {
 		return
 	}
 

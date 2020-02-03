@@ -324,6 +324,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	sc.VolumeBinder = &defaultVolumeBinder{
 		volumeBinder: volumebinder.NewVolumeBinder(
 			sc.kubeclient,
+			sc.nodeInformer,
 			sc.pvcInformer,
 			sc.pvInformer,
 			sc.scInformer,

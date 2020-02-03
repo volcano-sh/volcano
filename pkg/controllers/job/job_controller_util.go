@@ -192,7 +192,7 @@ func addResourceList(list, req, limit v1.ResourceList) {
 	for name, quantity := range req {
 
 		if value, ok := list[name]; !ok {
-			list[name] = *quantity.Copy()
+			list[name] = quantity.DeepCopy()
 		} else {
 			value.Add(quantity)
 			list[name] = value
@@ -203,7 +203,7 @@ func addResourceList(list, req, limit v1.ResourceList) {
 	// it defaults to Limits if that is explicitly specified.
 	for name, quantity := range limit {
 		if _, ok := list[name]; !ok {
-			list[name] = *quantity.Copy()
+			list[name] = quantity.DeepCopy()
 		}
 	}
 }

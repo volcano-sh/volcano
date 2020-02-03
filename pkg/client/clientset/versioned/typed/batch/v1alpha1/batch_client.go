@@ -19,10 +19,9 @@ limitations under the License.
 package v1alpha1
 
 import (
-	serializer "k8s.io/apimachinery/pkg/runtime/serializer"
 	rest "k8s.io/client-go/rest"
+	"k8s.io/code-generator/_examples/crd/clientset/versioned/scheme"
 	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	"volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 )
 
 type BatchV1alpha1Interface interface {
@@ -71,7 +70,7 @@ func setConfigDefaults(config *rest.Config) error {
 	gv := v1alpha1.SchemeGroupVersion
 	config.GroupVersion = &gv
 	config.APIPath = "/apis"
-	config.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: scheme.Codecs}
+	config.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
 
 	if config.UserAgent == "" {
 		config.UserAgent = rest.DefaultKubernetesUserAgent()
