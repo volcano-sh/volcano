@@ -22,9 +22,13 @@ limitations under the License.
 //
 // If an ".import-restrictions" file is found, then all imports of the package
 // are checked against each "rule" in the file. A rule consists of three parts:
-// * A SelectorRegexp, to select the import paths that the rule applies to.
-// * A list of AllowedPrefixes
-// * A list of ForbiddenPrefixes
+//
+// - A SelectorRegexp, to select the import paths that the rule applies to.
+//
+// - A list of AllowedPrefixes
+//
+// - A list of ForbiddenPrefixes
+//
 // An import is allowed if it matches at least one allowed prefix and does not
 // match any forbidden prefix. An example file looks like this:
 //
@@ -59,6 +63,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/spf13/pflag"
 	"k8s.io/code-generator/pkg/util"
 	"k8s.io/gengo/args"
 	"k8s.io/gengo/examples/import-boss/generators"
@@ -77,6 +82,7 @@ func main() {
 		"k8s.io/kubernetes/cmd/...",
 		"k8s.io/kubernetes/plugin/...",
 	}
+	pflag.CommandLine.BoolVar(&arguments.IncludeTestFiles, "include-test-files", false, "If true, include *_test.go files.")
 
 	if err := arguments.Execute(
 		generators.NameSystems(),
