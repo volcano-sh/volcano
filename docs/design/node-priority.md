@@ -3,7 +3,7 @@
 This feature allows `kube-batch` to schedule workloads based on the priority of the Nodes, Workloads will be scheduled on Nodes with higher priority and these priorities will be calculated based on different parameters like `ImageLocality`, `Most/Least Requested Nodes`...etc. 
 A basic flow for the Node priority functions is depicted below.
 
-![Node Priority Flow](../images/Node-Priority.png) 
+![Node Priority Flow](./images/Node-Priority.png) 
 
 Currently in kube-batch `Session` is opened every 1 sec and the workloads which are there in Queue goes through `Predicate` to find a suitable set of Nodes where workloads can be scheduled and after that it goes through `Allocate` function to assign the Pods to the Nodes and then goes to `Preempt` if applicable.
 

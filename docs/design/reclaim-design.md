@@ -24,7 +24,7 @@ Reclaim runs in each session and the workflow of the session is explained below 
 7. If resouce requirement of preemptor task is satisfied, then evict tasks from victim tasks one by one until preemptor task can be pipelined
 8. Run this until **queues** object is empty
 
-![Execution flow graph for Reclaim](../../images/ReclaimDesign.png)
+![Execution flow graph for Reclaim](./images/ReclaimDesign.png)
  
     
     
