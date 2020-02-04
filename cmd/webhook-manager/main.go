@@ -24,7 +24,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apiserver/pkg/util/flag"
+	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/cmd/webhook-manager/app"
@@ -46,7 +46,7 @@ func main() {
 	config := options.NewConfig()
 	config.AddFlags(pflag.CommandLine)
 
-	flag.InitFlags()
+	cliflag.InitFlags()
 
 	go wait.Until(klog.Flush, *logFlushFreq, wait.NeverStop)
 	defer klog.Flush()

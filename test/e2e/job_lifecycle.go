@@ -22,7 +22,6 @@ import (
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	kubeletapi "k8s.io/kubernetes/pkg/kubelet/apis"
 
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
@@ -283,7 +282,7 @@ var _ = Describe("Job Life Cycle", func() {
 					{
 						MatchExpressions: []v1.NodeSelectorRequirement{
 							{
-								Key:      kubeletapi.LabelHostname,
+								Key:      v1.LabelHostname,
 								Operator: v1.NodeSelectorOpIn,
 								Values:   []string{nodeName},
 							},

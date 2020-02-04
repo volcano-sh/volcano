@@ -23,7 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
-	"k8s.io/kubernetes/pkg/scheduler/cache"
+	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -182,12 +182,12 @@ func (pal *PodAffinityLister) FilteredList(podFilter algorithm.PodFilter, select
 }
 
 // GenerateNodeMapAndSlice returns the nodeMap and nodeSlice generated from ssn
-func GenerateNodeMapAndSlice(nodes map[string]*api.NodeInfo) (map[string]*cache.NodeInfo, []*v1.Node) {
-	var nodeMap map[string]*cache.NodeInfo
+func GenerateNodeMapAndSlice(nodes map[string]*api.NodeInfo) (map[string]*schedulernodeinfo.NodeInfo, []*v1.Node) {
+	var nodeMap map[string]*schedulernodeinfo.NodeInfo
 	var nodeSlice []*v1.Node
-	nodeMap = make(map[string]*cache.NodeInfo)
+	nodeMap = make(map[string]*schedulernodeinfo.NodeInfo)
 	for _, node := range nodes {
-		nodeInfo := cache.NewNodeInfo(node.Pods()...)
+		nodeInfo := schedulernodeinfo.NewNodeInfo(node.Pods()...)
 		nodeInfo.SetNode(node.Node)
 		nodeMap[node.Name] = nodeInfo
 		nodeSlice = append(nodeSlice, node.Node)

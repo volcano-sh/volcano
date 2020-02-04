@@ -19,10 +19,9 @@ package api
 import (
 	"time"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	restclient "k8s.io/client-go/rest"
 )
 
 const (
@@ -148,10 +147,11 @@ type LabelPreference struct {
 	Presence bool
 }
 
-// RequestedToCapacityRatioArguments holds arguments specific to RequestedToCapacityRatio priority function
+// RequestedToCapacityRatioArguments holds arguments specific to RequestedToCapacityRatio priority function.
 type RequestedToCapacityRatioArguments struct {
 	// Array of point defining priority function shape
 	UtilizationShape []UtilizationShapePoint
+	Resources        []ResourceSpec
 }
 
 // UtilizationShapePoint represents single point of priority function shape
@@ -162,6 +162,14 @@ type UtilizationShapePoint struct {
 	Score int
 }
 
+// ResourceSpec represents single resource for bin packing of priority RequestedToCapacityRatioArguments.
+type ResourceSpec struct {
+	// Name of the resource to be managed by RequestedToCapacityRatio function.
+	Name v1.ResourceName
+	// Weight of the resource.
+	Weight int
+}
+
 // ExtenderManagedResource describes the arguments of extended resources
 // managed by an extender.
 type ExtenderManagedResource struct {
@@ -170,6 +178,33 @@ type ExtenderManagedResource struct {
 	// IgnoredByScheduler indicates whether kube-scheduler should ignore this
 	// resource when applying predicates.
 	IgnoredByScheduler bool
+}
+
+// ExtenderTLSConfig contains settings to enable TLS with extender
+type ExtenderTLSConfig struct {
+	// Server should be accessed without verifying the TLS certificate. For testing only.
+	Insecure bool
+	// ServerName is passed to the server for SNI and is used in the client to check server
+	// certificates against. If ServerName is empty, the hostname used to contact the
+	// server is used.
+	ServerName string
+
+	// Server requires TLS client certificate authentication
+	CertFile string
+	// Server requires TLS client certificate authentication
+	KeyFile string
+	// Trusted root certificates for server
+	CAFile string
+
+	// CertData holds PEM-encoded bytes (typically read from a client certificate file).
+	// CertData takes precedence over CertFile
+	CertData []byte
+	// KeyData holds PEM-encoded bytes (typically read from a client certificate key file).
+	// KeyData takes precedence over KeyFile
+	KeyData []byte
+	// CAData holds PEM-encoded bytes (typically read from a root certificates bundle).
+	// CAData takes precedence over CAFile
+	CAData []byte
 }
 
 // ExtenderConfig holds the parameters used to communicate with the extender. If a verb is unspecified/empty,
@@ -193,7 +228,7 @@ type ExtenderConfig struct {
 	// EnableHTTPS specifies whether https should be used to communicate with the extender
 	EnableHTTPS bool
 	// TLSConfig specifies the transport layer security config
-	TLSConfig *restclient.TLSClientConfig
+	TLSConfig *ExtenderTLSConfig
 	// HTTPTimeout specifies the timeout duration for a call to the extender. Filter timeout fails the scheduling of the pod. Prioritize
 	// timeout is ignored, k8s/other extenders priorities are used to select the node.
 	HTTPTimeout time.Duration

@@ -104,10 +104,18 @@ func (eo *EncrypterOptions) WithType(typ ContentType) *EncrypterOptions {
 }
 
 // Recipient represents an algorithm/key to encrypt messages to.
+//
+// PBES2Count and PBES2Salt correspond with the  "p2c" and "p2s" headers used
+// on the password-based encryption algorithms PBES2-HS256+A128KW,
+// PBES2-HS384+A192KW, and PBES2-HS512+A256KW. If they are not provided a safe
+// default of 100000 will be used for the count and a 128-bit random salt will
+// be generated.
 type Recipient struct {
-	Algorithm KeyAlgorithm
-	Key       interface{}
-	KeyID     string
+	Algorithm  KeyAlgorithm
+	Key        interface{}
+	KeyID      string
+	PBES2Count int
+	PBES2Salt  []byte
 }
 
 // NewEncrypter creates an appropriate encrypter based on the key type
@@ -133,6 +141,8 @@ func NewEncrypter(enc ContentEncryption, rcpt Recipient, opts *EncrypterOptions)
 		keyID, rawKey = encryptionKey.KeyID, encryptionKey.Key
 	case *JSONWebKey:
 		keyID, rawKey = encryptionKey.KeyID, encryptionKey.Key
+	case OpaqueKeyEncrypter:
+		keyID, rawKey = encryptionKey.KeyID(), encryptionKey
 	default:
 		rawKey = encryptionKey
 	}
@@ -142,6 +152,9 @@ func NewEncrypter(enc ContentEncryption, rcpt Recipient, opts *EncrypterOptions)
 		// Direct encryption mode must be treated differently
 		if reflect.TypeOf(rawKey) != reflect.TypeOf([]byte{}) {
 			return nil, ErrUnsupportedKeyType
+		}
+		if encrypter.cipher.keySize() != len(rawKey.([]byte)) {
+			return nil, ErrInvalidKeySize
 		}
 		encrypter.keyGenerator = staticKeyGenerator{
 			key: rawKey.([]byte),
@@ -228,6 +241,14 @@ func (ctx *genericEncrypter) addRecipient(recipient Recipient) (err error) {
 		recipientInfo.keyID = recipient.KeyID
 	}
 
+	switch recipient.Algorithm {
+	case PBES2_HS256_A128KW, PBES2_HS384_A192KW, PBES2_HS512_A256KW:
+		if sr, ok := recipientInfo.keyEncrypter.(*symmetricKeyCipher); ok {
+			sr.p2c = recipient.PBES2Count
+			sr.p2s = recipient.PBES2Salt
+		}
+	}
+
 	if err == nil {
 		ctx.recipients = append(ctx.recipients, recipientInfo)
 	}
@@ -242,13 +263,17 @@ func makeJWERecipient(alg KeyAlgorithm, encryptionKey interface{}) (recipientKey
 		return newECDHRecipient(alg, encryptionKey)
 	case []byte:
 		return newSymmetricRecipient(alg, encryptionKey)
+	case string:
+		return newSymmetricRecipient(alg, []byte(encryptionKey))
 	case *JSONWebKey:
 		recipient, err := makeJWERecipient(alg, encryptionKey.Key)
 		recipient.keyID = encryptionKey.KeyID
 		return recipient, err
-	default:
-		return recipientKeyInfo{}, ErrUnsupportedKeyType
 	}
+	if encrypter, ok := encryptionKey.(OpaqueKeyEncrypter); ok {
+		return newOpaqueKeyEncrypter(alg, encrypter)
+	}
+	return recipientKeyInfo{}, ErrUnsupportedKeyType
 }
 
 // newDecrypter creates an appropriate decrypter based on the key type
@@ -266,13 +291,19 @@ func newDecrypter(decryptionKey interface{}) (keyDecrypter, error) {
 		return &symmetricKeyCipher{
 			key: decryptionKey,
 		}, nil
+	case string:
+		return &symmetricKeyCipher{
+			key: []byte(decryptionKey),
+		}, nil
 	case JSONWebKey:
 		return newDecrypter(decryptionKey.Key)
 	case *JSONWebKey:
 		return newDecrypter(decryptionKey.Key)
-	default:
-		return nil, ErrUnsupportedKeyType
 	}
+	if okd, ok := decryptionKey.(OpaqueKeyDecrypter); ok {
+		return &opaqueKeyDecrypter{decrypter: okd}, nil
+	}
+	return nil, ErrUnsupportedKeyType
 }
 
 // Implementation of encrypt method producing a JWE object.

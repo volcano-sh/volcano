@@ -49,7 +49,7 @@ func NewSimpleClientset(objects ...runtime.Object) *Clientset {
 		}
 	}
 
-	cs := &Clientset{}
+	cs := &Clientset{tracker: o}
 	cs.discovery = &fakediscovery.FakeDiscovery{Fake: &cs.Fake}
 	cs.AddReactor("*", "*", testing.ObjectReaction(o))
 	cs.AddWatchReactor("*", func(action testing.Action) (handled bool, ret watch.Interface, err error) {
@@ -71,10 +71,15 @@ func NewSimpleClientset(objects ...runtime.Object) *Clientset {
 type Clientset struct {
 	testing.Fake
 	discovery *fakediscovery.FakeDiscovery
+	tracker   testing.ObjectTracker
 }
 
 func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 	return c.discovery
+}
+
+func (c *Clientset) Tracker() testing.ObjectTracker {
+	return c.tracker
 }
 
 var _ clientset.Interface = &Clientset{}
@@ -84,18 +89,8 @@ func (c *Clientset) BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface {
 	return &fakebatchv1alpha1.FakeBatchV1alpha1{Fake: &c.Fake}
 }
 
-// Batch retrieves the BatchV1alpha1Client
-func (c *Clientset) Batch() batchv1alpha1.BatchV1alpha1Interface {
-	return &fakebatchv1alpha1.FakeBatchV1alpha1{Fake: &c.Fake}
-}
-
 // BusV1alpha1 retrieves the BusV1alpha1Client
 func (c *Clientset) BusV1alpha1() busv1alpha1.BusV1alpha1Interface {
-	return &fakebusv1alpha1.FakeBusV1alpha1{Fake: &c.Fake}
-}
-
-// Bus retrieves the BusV1alpha1Client
-func (c *Clientset) Bus() busv1alpha1.BusV1alpha1Interface {
 	return &fakebusv1alpha1.FakeBusV1alpha1{Fake: &c.Fake}
 }
 
@@ -111,10 +106,5 @@ func (c *Clientset) SchedulingV1alpha2() schedulingv1alpha2.SchedulingV1alpha2In
 
 // SchedulingV1beta1 retrieves the SchedulingV1beta1Client
 func (c *Clientset) SchedulingV1beta1() schedulingv1beta1.SchedulingV1beta1Interface {
-	return &fakeschedulingv1beta1.FakeSchedulingV1beta1{Fake: &c.Fake}
-}
-
-// Scheduling retrieves the SchedulingV1beta1Client
-func (c *Clientset) Scheduling() schedulingv1beta1.SchedulingV1beta1Interface {
 	return &fakeschedulingv1beta1.FakeSchedulingV1beta1{Fake: &c.Fake}
 }

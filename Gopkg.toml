@@ -30,6 +30,7 @@ required = [
   "k8s.io/code-generator/cmd/lister-gen",
   "k8s.io/code-generator/cmd/deepcopy-gen",
   "k8s.io/code-generator/cmd/defaulter-gen",
+  "k8s.io/code-generator/cmd/openapi-gen",
 ]
 
 [[constraint]]
@@ -50,35 +51,51 @@ required = [
 
 [[constraint]]
   name = "k8s.io/client-go"
-  version = "kubernetes-1.13.5"
+  version = "kubernetes-1.16.6"
 
 [[constraint]]
   name = "k8s.io/kubernetes"
-  version = "1.13.5"
+  version = "=v1.16.6"
 
 [[constraint]]
   name = "k8s.io/apimachinery"
-  version = "kubernetes-1.13.5"
+  version = "kubernetes-1.16.6"
 
 [[constraint]]
   name = "k8s.io/api"
-  version = "kubernetes-1.13.5"
+  version = "kubernetes-1.16.6"
 
 [[constraint]]
   name = "k8s.io/apiserver"
-  version = "kubernetes-1.13.5"
+  version = "kubernetes-1.16.6"
 
 [[override]]
   name = "k8s.io/apiextensions-apiserver"
-  version = "kubernetes-1.13.5"
+  version = "kubernetes-1.16.6"
+
+[[override]]
+  name = "k8s.io/csi-translation-lib"
+  version = "kubernetes-1.16.6"
 
 [[constraint]]
   name = "k8s.io/code-generator"
-  version = "kubernetes-1.13.5"
+  version = "kubernetes-1.16.6"
+
+[[override]]
+  name = "github.com/coreos/etcd"
+  version = "=v3.3.18"
+
+[[override]]
+  name = "google.golang.org/grpc"
+  version = "=v1.26.0"
 
 [[constraint]]
   name = "golang.org/x/crypto"
-  branch = "release-branch.go1.12"
+  branch = "release-branch.go1.13"
+
+[[override]]
+  name = "gopkg.in/fsnotify.v1"
+  source = "https://github.com/fsnotify/fsnotify.git"
 
 [prune]
   go-tests = true

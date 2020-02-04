@@ -23,7 +23,7 @@ import (
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
-	"k8s.io/kubernetes/pkg/scheduler/cache"
+	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -56,7 +56,7 @@ func (pp *predicatesPlugin) Name() string {
 	return PluginName
 }
 
-func formatReason(reasons []algorithm.PredicateFailureReason) string {
+func formatReason(reasons []predicates.PredicateFailureReason) string {
 	reasonStrings := []string{}
 	for _, v := range reasons {
 		reasonStrings = append(reasonStrings, fmt.Sprintf("%v", v.GetReason()))
@@ -113,7 +113,7 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 }
 
 func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
-	var nodeMap map[string]*cache.NodeInfo
+	var nodeMap map[string]*schedulernodeinfo.NodeInfo
 
 	pl := util.NewPodLister(ssn)
 
@@ -156,7 +156,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
 		nodeInfo, found := nodeMap[node.Name]
 		if !found {
-			nodeInfo = cache.NewNodeInfo(node.Pods()...)
+			nodeInfo = schedulernodeinfo.NewNodeInfo(node.Pods()...)
 			nodeInfo.SetNode(node.Node)
 			klog.Warningf("predicates, generate node info for %s at PredicateFn is unexpected", node.Name)
 		}
