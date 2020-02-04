@@ -75,7 +75,7 @@ func (in *PodGroupCondition) DeepCopy() *PodGroupCondition {
 func (in *PodGroupList) DeepCopyInto(out *PodGroupList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	out.ListMeta = in.ListMeta
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]PodGroup, len(*in))
@@ -186,7 +186,7 @@ func (in *Queue) DeepCopyObject() runtime.Object {
 func (in *QueueList) DeepCopyInto(out *QueueList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	out.ListMeta = in.ListMeta
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]Queue, len(*in))

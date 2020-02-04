@@ -20,8 +20,8 @@ package v1alpha1
 
 import (
 	rest "k8s.io/client-go/rest"
-	"k8s.io/code-generator/_examples/crd/clientset/versioned/scheme"
 	v1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	"volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 )
 
 type BusV1alpha1Interface interface {

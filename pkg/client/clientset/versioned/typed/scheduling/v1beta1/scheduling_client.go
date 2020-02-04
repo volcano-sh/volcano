@@ -20,8 +20,8 @@ package v1beta1
 
 import (
 	rest "k8s.io/client-go/rest"
-	"k8s.io/code-generator/_examples/crd/clientset/versioned/scheme"
 	v1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 )
 
 type SchedulingV1beta1Interface interface {
