@@ -14,7 +14,7 @@ Task priority in kube-batch is done by using either of following data
 2. Task's Creation time
 3. Task's UID
 
-![taskordering](../../doc/images/task_order.png)
+![taskordering](./images/task_order.png)
 
 If priority plugin in kube-batch is loaded, then priority is decided using
 task's priority that will be provided in TaskSpec.
