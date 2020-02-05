@@ -77,17 +77,25 @@ required = [
   name = "k8s.io/csi-translation-lib"
   version = "kubernetes-1.16.6"
 
+[[override]]
+  name = "k8s.io/cloud-provider"
+  version = "kubernetes-1.16.6"
+
+[[constraint]]
+  name = "k8s.io/component-base"
+  version = "kubernetes-1.16.6"
+
 [[constraint]]
   name = "k8s.io/code-generator"
   version = "kubernetes-1.16.6"
 
 [[override]]
   name = "github.com/coreos/etcd"
-  version = "=v3.3.18"
+  version = "=v3.3.17"
 
 [[override]]
   name = "google.golang.org/grpc"
-  version = "=v1.26.0"
+  version = "=v1.23.0"
 
 [[constraint]]
   name = "golang.org/x/crypto"
@@ -97,6 +105,10 @@ required = [
   name = "gopkg.in/fsnotify.v1"
   source = "https://github.com/fsnotify/fsnotify.git"
 
+[[override]]
+  name = "github.com/prometheus/client_golang"
+  version = "=v0.9.2"
+
 [prune]
   go-tests = true
   unused-packages = true
@@ -104,7 +116,6 @@ required = [
   [[prune.project]]
     name = "k8s.io/code-generator"
     unused-packages = false
-
 
 [[constraint]]
   name = "github.com/hashicorp/go-multierror"
