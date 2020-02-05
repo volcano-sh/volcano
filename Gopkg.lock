@@ -50,7 +50,7 @@
   version = "v3.6.1"
 
 [[projects]]
-  digest = "1:7f7968fd2103ccde5a92fc21594efdde65658927e80a5ccab4aed95b604ec015"
+  digest = "1:8146e98059fa57608d9df07739e83fdca598ac5760f46b54a2f46c3bfc09a572"
   name = "github.com/coreos/etcd"
   packages = [
     "auth/authpb",
@@ -70,8 +70,8 @@
     "raft/raftpb",
   ]
   pruneopts = "UT"
-  revision = "3c8740a7932f5838051590315d027fc1306ae8ea"
-  version = "v3.3.18"
+  revision = "6d8052314b9e01447d1bb2030bd762e0baf2d433"
+  version = "v3.3.17"
 
 [[projects]]
   digest = "1:bcf36df8d43860bfde913d008301aef27c6e9a303582118a837c4a34c0d18167"
@@ -403,7 +403,7 @@
   version = "v0.9.1"
 
 [[projects]]
-  digest = "1:eb8832cdc904ff89b70c524ab305bf3384c6411f9df6b9f2a41fddc2220e6613"
+  digest = "1:ef03fb1dae4d010196652653f00a8002e94c19bcabdc8ca5100a804ffef63a47"
   name = "github.com/prometheus/client_golang"
   packages = [
     "prometheus",
@@ -412,8 +412,8 @@
     "prometheus/promhttp",
   ]
   pruneopts = "UT"
-  revision = "170205fb58decfd011f1550d4cfb737230d7ae4f"
-  version = "v1.1.0"
+  revision = "505eaef017263e299324067d40ca2c48f6a2cf50"
+  version = "v0.9.2"
 
 [[projects]]
   digest = "1:0db23933b8052702d980a3f029149b3f175f7c0eea0cff85b175017d0f2722c0"
@@ -692,12 +692,10 @@
   revision = "58ce757ed39bbbe3bf3960b90ded218031b35389"
 
 [[projects]]
-  digest = "1:7bc116a2ccc363ff2d7df0d4fc3211254366dc4792d14685b0b4980becbed2f5"
+  digest = "1:3b97661db2e5d4c87f7345e875ea28f911e54c715ba0a74be08e1649d67e05cd"
   name = "google.golang.org/grpc"
   packages = [
     ".",
-    "attributes",
-    "backoff",
     "balancer",
     "balancer/base",
     "balancer/roundrobin",
@@ -713,13 +711,10 @@
     "internal/backoff",
     "internal/balancerload",
     "internal/binarylog",
-    "internal/buffer",
     "internal/channelz",
     "internal/envconfig",
     "internal/grpcrand",
     "internal/grpcsync",
-    "internal/resolver/dns",
-    "internal/resolver/passthrough",
     "internal/syscall",
     "internal/transport",
     "keepalive",
@@ -735,8 +730,8 @@
     "tap",
   ]
   pruneopts = "UT"
-  revision = "f5b0812e6fe574d90da76b205e9eb51f6ddb1919"
-  version = "v1.26.0"
+  revision = "6eaf6f47437a6b4e2153a190160ef39a92c7eceb"
+  version = "v1.23.0"
 
 [[projects]]
   digest = "1:abeb38ade3f32a92943e5be54f55ed6d6e3b6602761d74b4aab4c9dd45c18abd"
@@ -1167,7 +1162,7 @@
   version = "kubernetes-1.16.6"
 
 [[projects]]
-  digest = "1:88d94c17bf6bcd7dc00ae33ba0337c96182961bda4607e2b094866a0885e5672"
+  digest = "1:9f3e5b2f67b5a63e1ff13390387d5aebcfc43c4e9d349a0b01e35caf3b9c8b4c"
   name = "k8s.io/cloud-provider"
   packages = [
     ".",
@@ -1175,16 +1170,13 @@
     "volume/helpers",
   ]
   pruneopts = "UT"
-  revision = "580c13bb6ed994e37388dd3bdd941d7b0a368dce"
-  version = "v0.17.2"
+  revision = "6aeee3f701b521de5d9a47382c409782a6b79934"
+  version = "kubernetes-1.16.6"
 
 [[projects]]
   digest = "1:310cbea51cbc816d0db8901b99ca78c11002c095d2167be11c97b1f4d91eac75"
   name = "k8s.io/code-generator"
   packages = [
-    "_examples/crd/apis/example/v1",
-    "_examples/crd/apis/example2/v1",
-    "_examples/crd/clientset/versioned/scheme",
     "cmd/client-gen",
     "cmd/client-gen/args",
     "cmd/client-gen/generators",
@@ -1212,7 +1204,7 @@
   version = "kubernetes-1.16.6"
 
 [[projects]]
-  digest = "1:1e60d65e15977eeeb697ba16b1145757def30c63300a1a73c4c5aed74f34cddf"
+  digest = "1:8a0b6b801c7043577e75e3634f16ebee1789bce39e1b260ba6bc6fd4991e2d7c"
   name = "k8s.io/component-base"
   packages = [
     "cli/flag",
@@ -1222,8 +1214,8 @@
     "version",
   ]
   pruneopts = "UT"
-  revision = "47d744dd27ec8a51b725b948828652b8676896f1"
-  version = "v0.17.2"
+  revision = "d1cda8062bf7d86822b18082fc50182a317f0809"
+  version = "kubernetes-1.16.6"
 
 [[projects]]
   digest = "1:c064c7d94e2da3025e9c23a9e274e4c1b50065d1ad4e2b94c34b7d2db5969ef3"
@@ -1277,7 +1269,7 @@
   revision = "cdac1c71ff9fcb581b648dfea9ae0eb5c80afa25"
 
 [[projects]]
-  digest = "1:ef390ce7f615b483e01eb81a916449548307c9ac72305bdb85921917319e1a77"
+  digest = "1:d31299913ddb747890e7fe0dfbf51c9cde2b5de83d26b9f99b8693b754700130"
   name = "k8s.io/kubernetes"
   packages = [
     "pkg/api/legacyscheme",
@@ -1300,7 +1292,6 @@
     "pkg/controller/volume/scheduling",
     "pkg/features",
     "pkg/fieldpath",
-    "pkg/kubelet/apis",
     "pkg/kubelet/types",
     "pkg/master/ports",
     "pkg/scheduler/algorithm",
@@ -1427,7 +1418,6 @@
     "k8s.io/client-go/tools/record",
     "k8s.io/client-go/util/flowcontrol",
     "k8s.io/client-go/util/workqueue",
-    "k8s.io/code-generator/_examples/crd/clientset/versioned/scheme",
     "k8s.io/code-generator/cmd/client-gen",
     "k8s.io/code-generator/cmd/deepcopy-gen",
     "k8s.io/code-generator/cmd/defaulter-gen",
@@ -1443,7 +1433,6 @@
     "k8s.io/kubernetes/pkg/apis/core/validation",
     "k8s.io/kubernetes/pkg/apis/scheduling",
     "k8s.io/kubernetes/pkg/controller",
-    "k8s.io/kubernetes/pkg/kubelet/apis",
     "k8s.io/kubernetes/pkg/scheduler/algorithm",
     "k8s.io/kubernetes/pkg/scheduler/algorithm/predicates",
     "k8s.io/kubernetes/pkg/scheduler/algorithm/priorities",
