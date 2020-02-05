@@ -37,8 +37,10 @@ type Summary struct {
 //
 // DEPRECATED: as per the metrics overhaul KEP
 func NewSummary(opts *SummaryOpts) *Summary {
-	opts.StabilityLevel.setDefaults()
-
+	// todo: handle defaulting better
+	if opts.StabilityLevel == "" {
+		opts.StabilityLevel = ALPHA
+	}
 	s := &Summary{
 		SummaryOpts: opts,
 		lazyMetric:  lazyMetric{},
@@ -91,8 +93,10 @@ type SummaryVec struct {
 //
 // DEPRECATED: as per the metrics overhaul KEP
 func NewSummaryVec(opts *SummaryOpts, labels []string) *SummaryVec {
-	opts.StabilityLevel.setDefaults()
-
+	// todo: handle defaulting better
+	if opts.StabilityLevel == "" {
+		opts.StabilityLevel = ALPHA
+	}
 	v := &SummaryVec{
 		SummaryOpts:    opts,
 		originalLabels: labels,
@@ -140,7 +144,7 @@ func (v *SummaryVec) WithLabelValues(lvs ...string) ObserverMetric {
 // must match those of the VariableLabels in Desc). If that label map is
 // accessed for the first time, a new ObserverMetric is created IFF the summaryVec has
 // been registered to a metrics registry.
-func (v *SummaryVec) With(labels map[string]string) ObserverMetric {
+func (v *SummaryVec) With(labels prometheus.Labels) ObserverMetric {
 	if !v.IsCreated() {
 		return noop
 	}
@@ -154,18 +158,9 @@ func (v *SummaryVec) With(labels map[string]string) ObserverMetric {
 // with those of the VariableLabels in Desc. However, such inconsistent Labels
 // can never match an actual metric, so the method will always return false in
 // that case.
-func (v *SummaryVec) Delete(labels map[string]string) bool {
+func (v *SummaryVec) Delete(labels prometheus.Labels) bool {
 	if !v.IsCreated() {
 		return false // since we haven't created the metric, we haven't deleted a metric with the passed in values
 	}
 	return v.SummaryVec.Delete(labels)
-}
-
-// Reset deletes all metrics in this vector.
-func (v *SummaryVec) Reset() {
-	if !v.IsCreated() {
-		return
-	}
-
-	v.SummaryVec.Reset()
 }
