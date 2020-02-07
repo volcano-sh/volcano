@@ -31,7 +31,7 @@ import (
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	bus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
-	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 

@@ -22,21 +22,21 @@ import (
 	"reflect"
 	"testing"
 
-	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
-	"volcano.sh/volcano/pkg/webhooks/util"
-
 	"k8s.io/api/admission/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/webhooks/util"
 )
 
 func TestMutateQueues(t *testing.T) {
 	trueValue := true
-	stateNotSetReclaimableNotSet := schedulingv1alpha2.Queue{
+	stateNotSetReclaimableNotSet := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "normal-case-refresh-default-state",
 		},
-		Spec: schedulingv1alpha2.QueueSpec{
+		Spec: schedulingv1beta1.QueueSpec{
 			Weight: 1,
 		},
 	}
@@ -46,13 +46,13 @@ func TestMutateQueues(t *testing.T) {
 		t.Errorf("Marshal queue without state set failed for %v.", err)
 	}
 
-	openStateReclaimableSet := schedulingv1alpha2.Queue{
+	openStateReclaimableSet := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "normal-case-set-open",
 		},
-		Spec: schedulingv1alpha2.QueueSpec{
+		Spec: schedulingv1beta1.QueueSpec{
 			Weight:      1,
-			State:       schedulingv1alpha2.QueueStateOpen,
+			State:       schedulingv1beta1.QueueStateOpen,
 			Reclaimable: &trueValue,
 		},
 	}
@@ -68,7 +68,7 @@ func TestMutateQueues(t *testing.T) {
 	refreshPatch = append(refreshPatch, patchOperation{
 		Op:    "add",
 		Path:  "/spec/state",
-		Value: schedulingv1alpha2.QueueStateOpen,
+		Value: schedulingv1beta1.QueueStateOpen,
 	}, patchOperation{
 		Op:    "add",
 		Path:  "/spec/reclaimable",
@@ -84,7 +84,7 @@ func TestMutateQueues(t *testing.T) {
 	openStatePatch = append(openStatePatch, patchOperation{
 		Op:    "add",
 		Path:  "/spec/state",
-		Value: schedulingv1alpha2.QueueStateOpen,
+		Value: schedulingv1beta1.QueueStateOpen,
 	})
 	openStatePatchJSON, err := json.Marshal(openStatePatch)
 	if err != nil {
@@ -105,13 +105,13 @@ func TestMutateQueues(t *testing.T) {
 				},
 				Request: &v1beta1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
-						Group:   "scheduling.sigs.dev",
-						Version: "v1alpha2",
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
-						Group:    "scheduling.sigs.dev",
-						Version:  "v1alpha2",
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
 						Resource: "queues",
 					},
 					Name:      "normal-case-refresh-default-state",
@@ -136,13 +136,13 @@ func TestMutateQueues(t *testing.T) {
 				},
 				Request: &v1beta1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
-						Group:   "scheduling.sigs.dev",
-						Version: "v1alpha2",
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
-						Group:    "scheduling.sigs.dev",
-						Version:  "v1alpha2",
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
 						Resource: "queues",
 					},
 					Name:      "normal-case-set-open",
@@ -167,13 +167,13 @@ func TestMutateQueues(t *testing.T) {
 				},
 				Request: &v1beta1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
-						Group:   "scheduling.sigs.dev",
-						Version: "v1alpha2",
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
-						Group:    "scheduling.sigs.dev",
-						Version:  "v1alpha2",
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
 						Resource: "queues",
 					},
 					Name:      "normal-case-set-open",

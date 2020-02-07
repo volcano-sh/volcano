@@ -24,7 +24,7 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	vcschedulingv1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
 )
 
@@ -98,7 +98,7 @@ func TestValidatePod(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace:   namespace,
 					Name:        "volcano-pod-1",
-					Annotations: map[string]string{v1alpha2.GroupNameAnnotationKey: pgName},
+					Annotations: map[string]string{vcschedulingv1.KubeGroupNameAnnotationKey: pgName},
 				},
 				Spec: v1.PodSpec{
 					SchedulerName: "volcano",
@@ -120,7 +120,7 @@ func TestValidatePod(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace:   namespace,
 					Name:        "volcano-pod-2",
-					Annotations: map[string]string{v1alpha2.GroupNameAnnotationKey: pgName},
+					Annotations: map[string]string{vcschedulingv1.KubeGroupNameAnnotationKey: pgName},
 				},
 				Spec: v1.PodSpec{
 					SchedulerName: "volcano",
@@ -136,16 +136,16 @@ func TestValidatePod(t *testing.T) {
 
 	for _, testCase := range testCases {
 
-		pg := &v1alpha2.PodGroup{
+		pg := &vcschedulingv1.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: namespace,
 				Name:      "podgroup-p1",
 			},
-			Spec: v1alpha2.PodGroupSpec{
+			Spec: vcschedulingv1.PodGroupSpec{
 				MinMember: 1,
 			},
-			Status: v1alpha2.PodGroupStatus{
-				Phase: v1alpha2.PodGroupPending,
+			Status: vcschedulingv1.PodGroupStatus{
+				Phase: vcschedulingv1.PodGroupPending,
 			},
 		}
 
@@ -154,7 +154,7 @@ func TestValidatePod(t *testing.T) {
 		config.SchedulerName = "volcano"
 
 		if !testCase.disabledPG {
-			_, err := config.VolcanoClient.SchedulingV1alpha2().PodGroups(namespace).Create(pg)
+			_, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(namespace).Create(pg)
 			if err != nil {
 				t.Error("PG Creation Failed")
 			}

@@ -24,7 +24,7 @@ import (
 	"reflect"
 	"testing"
 
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 
 	"github.com/spf13/cobra"
 
@@ -32,7 +32,7 @@ import (
 )
 
 func TestDeleteQueue(t *testing.T) {
-	response := v1alpha2.Queue{
+	response := v1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "test-queue",
 		},

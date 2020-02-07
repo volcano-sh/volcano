@@ -26,7 +26,7 @@ import (
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	schedulingv1aplha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	schedulingv1beta2 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	fakeclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
 )
 
@@ -1038,22 +1038,22 @@ func TestValidateExecution(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			defaultqueue := schedulingv1aplha2.Queue{
+			defaultqueue := schedulingv1beta2.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "default",
 				},
-				Spec: schedulingv1aplha2.QueueSpec{
+				Spec: schedulingv1beta2.QueueSpec{
 					Weight: 1,
 				},
-				Status: schedulingv1aplha2.QueueStatus{
-					State: schedulingv1aplha2.QueueStateOpen,
+				Status: schedulingv1beta2.QueueStatus{
+					State: schedulingv1beta2.QueueStateOpen,
 				},
 			}
 			// create fake volcano clientset
 			config.VolcanoClient = fakeclient.NewSimpleClientset()
 
 			//create default queue
-			_, err := config.VolcanoClient.SchedulingV1alpha2().Queues().Create(&defaultqueue)
+			_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Create(&defaultqueue)
 			if err != nil {
 				t.Error("Queue Creation Failed")
 			}

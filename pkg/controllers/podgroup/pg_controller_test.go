@@ -26,7 +26,7 @@ import (
 	"k8s.io/client-go/informers"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 
-	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
 )
 
@@ -145,7 +145,7 @@ func TestAddPodGroup(t *testing.T) {
 		c.addPod(pod)
 		c.createNormalPodPGIfNotExist(pod)
 
-		pg, err := c.vcClient.SchedulingV1alpha2().PodGroups(pod.Namespace).Get(
+		pg, err := c.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(
 			testCase.expectedPodGroup.Name,
 			metav1.GetOptions{},
 		)
@@ -157,7 +157,7 @@ func TestAddPodGroup(t *testing.T) {
 			t.Errorf("Case %s failed, expect %v, got %v", testCase.name, testCase.expectedPodGroup, pg)
 		}
 
-		podAnnotation := pod.Annotations[scheduling.GroupNameAnnotationKey]
+		podAnnotation := pod.Annotations[scheduling.KubeGroupNameAnnotationKey]
 		if testCase.expectedPodGroup.Name != podAnnotation {
 			t.Errorf("Case %s failed, expect %v, got %v", testCase.name,
 				testCase.expectedPodGroup.Name, podAnnotation)
