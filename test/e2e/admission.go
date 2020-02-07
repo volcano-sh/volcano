@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
 var _ = Describe("Job E2E Test: Test Admission service", func() {
@@ -191,17 +191,17 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 		context := initTestContext(options{})
 		defer cleanupTestContext(context)
 
-		pg := &schedulingv1alpha2.PodGroup{
+		pg := &schedulingv1beta1.PodGroup{
 			ObjectMeta: v1.ObjectMeta{
 				Namespace: namespace,
 				Name:      pgName,
 			},
-			Spec: schedulingv1alpha2.PodGroupSpec{
+			Spec: schedulingv1beta1.PodGroupSpec{
 				MinMember:    1,
 				MinResources: &thirtyCPU,
 			},
-			Status: schedulingv1alpha2.PodGroupStatus{
-				Phase: schedulingv1alpha2.PodGroupPending,
+			Status: schedulingv1beta1.PodGroupStatus{
+				Phase: schedulingv1beta1.PodGroupPending,
 			},
 		}
 
@@ -213,7 +213,7 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 			ObjectMeta: v1.ObjectMeta{
 				Namespace:   namespace,
 				Name:        podName,
-				Annotations: map[string]string{schedulingv1alpha2.GroupNameAnnotationKey: pgName},
+				Annotations: map[string]string{schedulingv1beta1.KubeGroupNameAnnotationKey: pgName},
 			},
 			Spec: corev1.PodSpec{
 				SchedulerName: "volcano",
@@ -221,7 +221,7 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 			},
 		}
 
-		_, err := context.vcclient.SchedulingV1alpha2().PodGroups(namespace).Create(pg)
+		_, err := context.vcclient.SchedulingV1beta1().PodGroups(namespace).Create(pg)
 		Expect(err).NotTo(HaveOccurred())
 
 		_, err = context.kubeclient.CoreV1().Pods(namespace).Create(pod)
