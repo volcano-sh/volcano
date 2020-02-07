@@ -632,7 +632,7 @@ spec:
     plural: podgroups
     shortNames:
       - pg
-      - podgroup-v1beta1
+      - podgroup-v1alpha2
   scope: Namespaced
   validation:
     openAPIV3Schema:
@@ -681,7 +681,7 @@ spec:
     plural: queues
     shortNames:
       - q
-      - queue-v1beta1
+      - queue-v1alpha2
   scope: Cluster
   validation:
     openAPIV3Schema:

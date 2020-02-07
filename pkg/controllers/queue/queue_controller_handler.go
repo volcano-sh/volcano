@@ -65,13 +65,13 @@ func (c *Controller) deleteQueue(obj interface{}) {
 func (c *Controller) updateQueue(old, new interface{}) {
 	oldQueue, ok := old.(*schedulingv1beta1.Queue)
 	if !ok {
-		klog.Errorf("Can not covert old object %v to queues.scheduling.sigs.dev.", old)
+		klog.Errorf("Can not covert old object %v to queues.scheduling.volcano.sh.", old)
 		return
 	}
 
 	newQueue, ok := new.(*schedulingv1beta1.Queue)
 	if !ok {
-		klog.Errorf("Can not covert new object %v to queues.scheduling.sigs.dev.", old)
+		klog.Errorf("Can not covert new object %v to queues.scheduling.volcano.sh.", old)
 		return
 	}
 

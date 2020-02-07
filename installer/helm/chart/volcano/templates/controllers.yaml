@@ -43,7 +43,7 @@ rules:
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "list", "watch", "create", "delete", "update"]
-  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.sigs.dev"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups", "queues", "queues/status"]
     verbs: ["get", "list", "watch", "create", "delete", "update"]
   - apiGroups: ["scheduling.k8s.io"]
