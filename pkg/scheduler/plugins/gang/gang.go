@@ -24,8 +24,7 @@ import (
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -62,7 +61,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		if vtn < job.MinAvailable {
 			return &api.ValidateResult{
 				Pass:   false,
-				Reason: v1alpha1.NotEnoughPodsReason,
+				Reason: v1beta1.NotEnoughPodsReason,
 				Message: fmt.Sprintf("Not enough valid tasks for gang-scheduling, valid: %d, min: %d",
 					vtn, job.MinAvailable),
 			}
@@ -152,7 +151,7 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 				Status:             v1.ConditionTrue,
 				LastTransitionTime: metav1.Now(),
 				TransitionID:       string(ssn.UID),
-				Reason:             v1alpha2.NotEnoughResourcesReason,
+				Reason:             v1beta1.NotEnoughResourcesReason,
 				Message:            msg,
 			}
 

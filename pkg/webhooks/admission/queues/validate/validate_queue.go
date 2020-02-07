@@ -25,7 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/klog"
 
-	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -48,8 +48,8 @@ var service = &router.AdmissionService{
 				{
 					Operations: []whv1beta1.OperationType{whv1beta1.Create, whv1beta1.Update, whv1beta1.Delete},
 					Rule: whv1beta1.Rule{
-						APIGroups:   []string{schedulingv1alpha2.SchemeGroupVersion.Group},
-						APIVersions: []string{schedulingv1alpha2.SchemeGroupVersion.Version},
+						APIGroups:   []string{schedulingv1beta1.SchemeGroupVersion.Group},
+						APIVersions: []string{schedulingv1beta1.SchemeGroupVersion.Version},
 						Resources:   []string{"queues"},
 					},
 				},
@@ -95,7 +95,7 @@ func AdmitQueues(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	}
 }
 
-func validateQueue(queue *schedulingv1alpha2.Queue) error {
+func validateQueue(queue *schedulingv1beta1.Queue) error {
 	errs := field.ErrorList{}
 	resourcePath := field.NewPath("requestBody")
 
@@ -108,16 +108,16 @@ func validateQueue(queue *schedulingv1alpha2.Queue) error {
 	return nil
 }
 
-func validateStateOfQueue(value schedulingv1alpha2.QueueState, fldPath *field.Path) field.ErrorList {
+func validateStateOfQueue(value schedulingv1beta1.QueueState, fldPath *field.Path) field.ErrorList {
 	errs := field.ErrorList{}
 
 	if len(value) == 0 {
 		return errs
 	}
 
-	validQueueStates := []schedulingv1alpha2.QueueState{
-		schedulingv1alpha2.QueueStateOpen,
-		schedulingv1alpha2.QueueStateClosed,
+	validQueueStates := []schedulingv1beta1.QueueState{
+		schedulingv1beta1.QueueStateOpen,
+		schedulingv1beta1.QueueStateClosed,
 	}
 
 	for _, validQueue := range validQueueStates {
@@ -134,14 +134,14 @@ func validateQueueDeleting(queue string) error {
 		return fmt.Errorf("`%s` queue can not be deleted", "default")
 	}
 
-	q, err := config.VolcanoClient.SchedulingV1alpha2().Queues().Get(queue, metav1.GetOptions{})
+	q, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(queue, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 
-	if q.Status.State != schedulingv1alpha2.QueueStateClosed {
+	if q.Status.State != schedulingv1beta1.QueueStateClosed {
 		return fmt.Errorf("only queue with state `%s` can be deleted, queue `%s` state is `%s`",
-			schedulingv1alpha2.QueueStateClosed, q.Name, q.Status.State)
+			schedulingv1beta1.QueueStateClosed, q.Name, q.Status.State)
 	}
 
 	return nil

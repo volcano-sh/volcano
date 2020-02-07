@@ -23,7 +23,7 @@ import (
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/helpers"
-	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
 type podRequest struct {
@@ -50,12 +50,12 @@ func (cc *Controller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
 	if pod.Annotations == nil {
 		pod.Annotations = make(map[string]string)
 	}
-	if pod.Annotations[scheduling.GroupNameAnnotationKey] == "" {
-		pod.Annotations[scheduling.GroupNameAnnotationKey] = pgName
+	if pod.Annotations[scheduling.KubeGroupNameAnnotationKey] == "" {
+		pod.Annotations[scheduling.KubeGroupNameAnnotationKey] = pgName
 	} else {
-		if pod.Annotations[scheduling.GroupNameAnnotationKey] != pgName {
+		if pod.Annotations[scheduling.KubeGroupNameAnnotationKey] != pgName {
 			klog.Errorf("normal pod %s/%s annotations %s value is not %s, but %s", pod.Namespace, pod.Name,
-				scheduling.GroupNameAnnotationKey, pgName, pod.Annotations[scheduling.GroupNameAnnotationKey])
+				scheduling.KubeGroupNameAnnotationKey, pgName, pod.Annotations[scheduling.KubeGroupNameAnnotationKey])
 		}
 		return nil
 	}
@@ -90,7 +90,7 @@ func (cc *Controller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 			},
 		}
 
-		if _, err := cc.vcClient.SchedulingV1alpha2().PodGroups(pod.Namespace).Create(pg); err != nil {
+		if _, err := cc.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Create(pg); err != nil {
 			klog.Errorf("Failed to create normal PodGroup for Pod <%s/%s>: %v",
 				pod.Namespace, pod.Name, err)
 			return err

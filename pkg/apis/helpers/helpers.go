@@ -40,7 +40,7 @@ import (
 
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	schedulerv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	schedulerv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
 // JobKind  creates job GroupVersionKind
@@ -49,8 +49,8 @@ var JobKind = vcbatch.SchemeGroupVersion.WithKind("Job")
 // CommandKind  creates command GroupVersionKind
 var CommandKind = vcbus.SchemeGroupVersion.WithKind("Command")
 
-// V1alpha2QueueKind is queue kind with v1alpha2 version
-var V1alpha2QueueKind = schedulerv1alpha2.SchemeGroupVersion.WithKind("Queue")
+// V1beta1QueueKind is queue kind with v1alpha2 version
+var V1beta1QueueKind = schedulerv1beta1.SchemeGroupVersion.WithKind("Queue")
 
 // GetController  returns the controller uid
 func GetController(obj interface{}) types.UID {

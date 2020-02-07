@@ -18,49 +18,49 @@ package state
 
 import (
 	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
 type openState struct {
-	queue *v1alpha2.Queue
+	queue *v1beta1.Queue
 }
 
 func (os *openState) Execute(action v1alpha1.Action) error {
 	switch action {
 	case v1alpha1.OpenQueueAction:
-		return SyncQueue(os.queue, func(status *v1alpha2.QueueStatus, podGroupList []string) {
-			status.State = v1alpha2.QueueStateOpen
+		return SyncQueue(os.queue, func(status *v1beta1.QueueStatus, podGroupList []string) {
+			status.State = v1beta1.QueueStateOpen
 			return
 		})
 	case v1alpha1.CloseQueueAction:
-		return CloseQueue(os.queue, func(status *v1alpha2.QueueStatus, podGroupList []string) {
+		return CloseQueue(os.queue, func(status *v1beta1.QueueStatus, podGroupList []string) {
 			if len(podGroupList) == 0 {
-				status.State = v1alpha2.QueueStateClosed
+				status.State = v1beta1.QueueStateClosed
 				return
 			}
-			status.State = v1alpha2.QueueStateClosing
+			status.State = v1beta1.QueueStateClosing
 
 			return
 		})
 	default:
-		return SyncQueue(os.queue, func(status *v1alpha2.QueueStatus, podGroupList []string) {
+		return SyncQueue(os.queue, func(status *v1beta1.QueueStatus, podGroupList []string) {
 			specState := os.queue.Spec.State
-			if len(specState) == 0 || specState == v1alpha2.QueueStateOpen {
-				status.State = v1alpha2.QueueStateOpen
+			if len(specState) == 0 || specState == v1beta1.QueueStateOpen {
+				status.State = v1beta1.QueueStateOpen
 				return
 			}
 
-			if specState == v1alpha2.QueueStateClosed {
+			if specState == v1beta1.QueueStateClosed {
 				if len(podGroupList) == 0 {
-					status.State = v1alpha2.QueueStateClosed
+					status.State = v1beta1.QueueStateClosed
 					return
 				}
-				status.State = v1alpha2.QueueStateClosing
+				status.State = v1beta1.QueueStateClosing
 
 				return
 			}
 
-			status.State = v1alpha2.QueueStateUnknown
+			status.State = v1beta1.QueueStateUnknown
 			return
 		})
 	}

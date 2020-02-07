@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"reflect"
 	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/queue/state"
 
 	"k8s.io/api/core/v1"
@@ -30,11 +30,11 @@ import (
 	"k8s.io/klog"
 )
 
-func (c *Controller) syncQueue(queue *schedulingv1alpha2.Queue, updateStateFn state.UpdateQueueStatusFn) error {
+func (c *Controller) syncQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
 	klog.V(4).Infof("Begin to sync queue %s.", queue.Name)
 
 	podGroups := c.getPodGroups(queue.Name)
-	queueStatus := schedulingv1alpha2.QueueStatus{}
+	queueStatus := schedulingv1beta1.QueueStatus{}
 
 	for _, pgKey := range podGroups {
 		// Ignore error here, tt can not occur.
@@ -47,13 +47,13 @@ func (c *Controller) syncQueue(queue *schedulingv1alpha2.Queue, updateStateFn st
 		}
 
 		switch pg.Status.Phase {
-		case schedulingv1alpha2.PodGroupPending:
+		case schedulingv1beta1.PodGroupPending:
 			queueStatus.Pending++
-		case schedulingv1alpha2.PodGroupRunning:
+		case schedulingv1beta1.PodGroupRunning:
 			queueStatus.Running++
-		case schedulingv1alpha2.PodGroupUnknown:
+		case schedulingv1beta1.PodGroupUnknown:
 			queueStatus.Unknown++
-		case schedulingv1alpha2.PodGroupInqueue:
+		case schedulingv1beta1.PodGroupInqueue:
 			queueStatus.Inqueue++
 		}
 	}
@@ -71,7 +71,7 @@ func (c *Controller) syncQueue(queue *schedulingv1alpha2.Queue, updateStateFn st
 
 	newQueue := queue.DeepCopy()
 	newQueue.Status = queueStatus
-	if _, err := c.vcClient.SchedulingV1alpha2().Queues().UpdateStatus(newQueue); err != nil {
+	if _, err := c.vcClient.SchedulingV1beta1().Queues().UpdateStatus(newQueue); err != nil {
 		klog.Errorf("Failed to update status of Queue %s: %v.", newQueue.Name, err)
 		return err
 	}
@@ -79,14 +79,14 @@ func (c *Controller) syncQueue(queue *schedulingv1alpha2.Queue, updateStateFn st
 	return nil
 }
 
-func (c *Controller) openQueue(queue *schedulingv1alpha2.Queue, updateStateFn state.UpdateQueueStatusFn) error {
+func (c *Controller) openQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
 	klog.V(4).Infof("Begin to open queue %s.", queue.Name)
 
 	newQueue := queue.DeepCopy()
-	newQueue.Spec.State = schedulingv1alpha2.QueueStateOpen
+	newQueue.Spec.State = schedulingv1beta1.QueueStateOpen
 
 	if queue.Spec.State != newQueue.Spec.State {
-		if _, err := c.vcClient.SchedulingV1alpha2().Queues().Update(newQueue); err != nil {
+		if _, err := c.vcClient.SchedulingV1beta1().Queues().Update(newQueue); err != nil {
 			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.OpenQueueAction),
 				fmt.Sprintf("Open queue failed for %v", err))
 			return err
@@ -98,7 +98,7 @@ func (c *Controller) openQueue(queue *schedulingv1alpha2.Queue, updateStateFn st
 		return nil
 	}
 
-	q, err := c.vcClient.SchedulingV1alpha2().Queues().Get(newQueue.Name, metav1.GetOptions{})
+	q, err := c.vcClient.SchedulingV1beta1().Queues().Get(newQueue.Name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -111,7 +111,7 @@ func (c *Controller) openQueue(queue *schedulingv1alpha2.Queue, updateStateFn st
 	}
 
 	if queue.Status.State != newQueue.Status.State {
-		if _, err := c.vcClient.SchedulingV1alpha2().Queues().UpdateStatus(newQueue); err != nil {
+		if _, err := c.vcClient.SchedulingV1beta1().Queues().UpdateStatus(newQueue); err != nil {
 			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.OpenQueueAction),
 				fmt.Sprintf("Update queue status from %s to %s failed for %v",
 					queue.Status.State, newQueue.Status.State, err))
@@ -122,14 +122,14 @@ func (c *Controller) openQueue(queue *schedulingv1alpha2.Queue, updateStateFn st
 	return nil
 }
 
-func (c *Controller) closeQueue(queue *schedulingv1alpha2.Queue, updateStateFn state.UpdateQueueStatusFn) error {
+func (c *Controller) closeQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
 	klog.V(4).Infof("Begin to close queue %s.", queue.Name)
 
 	newQueue := queue.DeepCopy()
-	newQueue.Spec.State = schedulingv1alpha2.QueueStateClosed
+	newQueue.Spec.State = schedulingv1beta1.QueueStateClosed
 
 	if queue.Spec.State != newQueue.Spec.State {
-		if _, err := c.vcClient.SchedulingV1alpha2().Queues().Update(newQueue); err != nil {
+		if _, err := c.vcClient.SchedulingV1beta1().Queues().Update(newQueue); err != nil {
 			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.CloseQueueAction),
 				fmt.Sprintf("Close queue failed for %v", err))
 			return err
@@ -141,7 +141,7 @@ func (c *Controller) closeQueue(queue *schedulingv1alpha2.Queue, updateStateFn s
 		return nil
 	}
 
-	q, err := c.vcClient.SchedulingV1alpha2().Queues().Get(newQueue.Name, metav1.GetOptions{})
+	q, err := c.vcClient.SchedulingV1beta1().Queues().Get(newQueue.Name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -155,7 +155,7 @@ func (c *Controller) closeQueue(queue *schedulingv1alpha2.Queue, updateStateFn s
 	}
 
 	if queue.Status.State != newQueue.Status.State {
-		if _, err := c.vcClient.SchedulingV1alpha2().Queues().UpdateStatus(newQueue); err != nil {
+		if _, err := c.vcClient.SchedulingV1beta1().Queues().UpdateStatus(newQueue); err != nil {
 			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.CloseQueueAction),
 				fmt.Sprintf("Update queue status from %s to %s failed for %v",
 					queue.Status.State, newQueue.Status.State, err))

@@ -28,8 +28,7 @@ import (
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/helpers"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	vcv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -107,7 +106,7 @@ func validatePod(pod *v1.Pod, reviewResponse *v1beta1.AdmissionResponse) string 
 
 	// vc-job, SN == volcano
 	if pod.Annotations != nil {
-		pgName = pod.Annotations[v1alpha2.GroupNameAnnotationKey]
+		pgName = pod.Annotations[vcv1beta1.KubeGroupNameAnnotationKey]
 	}
 	if pgName != "" {
 		if err := checkPGPhase(pod, pgName, true); err != nil {
@@ -128,20 +127,20 @@ func validatePod(pod *v1.Pod, reviewResponse *v1beta1.AdmissionResponse) string 
 }
 
 func checkPGPhase(pod *v1.Pod, pgName string, isVCJob bool) error {
-	pg, err := config.VolcanoClient.SchedulingV1alpha2().PodGroups(pod.Namespace).Get(pgName, metav1.GetOptions{})
+	pg, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(pgName, metav1.GetOptions{})
 	if err != nil {
-		pg, err := config.VolcanoClient.SchedulingV1alpha1().PodGroups(pod.Namespace).Get(pgName, metav1.GetOptions{})
+		pg, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(pgName, metav1.GetOptions{})
 		if err != nil {
 			if isVCJob || (!isVCJob && !apierrors.IsNotFound(err)) {
 				return fmt.Errorf("failed to get PodGroup for pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
 			}
 			return nil
 		}
-		if pg.Status.Phase != v1alpha1.PodGroupPending {
+		if pg.Status.Phase != vcv1beta1.PodGroupPending {
 			return nil
 		}
 	}
-	if pg.Status.Phase != v1alpha2.PodGroupPending {
+	if pg.Status.Phase != vcv1beta1.PodGroupPending {
 		return nil
 	}
 	return fmt.Errorf("failed to create pod <%s/%s> as the podgroup phase is Pending",
