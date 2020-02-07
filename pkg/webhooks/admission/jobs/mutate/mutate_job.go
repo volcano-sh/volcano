@@ -27,7 +27,7 @@ import (
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	"volcano.sh/volcano/pkg/webhooks/router"
+	"volcano.sh/volcano/pkg/webhooks/admission/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
 )

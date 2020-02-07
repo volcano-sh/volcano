@@ -28,6 +28,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -334,6 +335,12 @@ func (b *Builder) addDir(dir string, userRequested bool) error {
 	return nil
 }
 
+var regexErrPackageNotFound = regexp.MustCompile(`^unable to import ".*?": cannot find package ".*?" in any of:`)
+
+func isErrPackageNotFound(err error) bool {
+	return regexErrPackageNotFound.MatchString(err.Error())
+}
+
 // importPackage is a function that will be called by the type check package when it
 // needs to import a go package. 'path' is the import path.
 func (b *Builder) importPackage(dir string, userRequested bool) (*tc.Package, error) {
@@ -356,6 +363,11 @@ func (b *Builder) importPackage(dir string, userRequested bool) (*tc.Package, er
 
 		// Add it.
 		if err := b.addDir(dir, userRequested); err != nil {
+			if isErrPackageNotFound(err) {
+				klog.V(6).Info(err)
+				return nil, nil
+			}
+
 			return nil, err
 		}
 

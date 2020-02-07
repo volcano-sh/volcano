@@ -109,15 +109,15 @@
   version = "v2.7.1"
 
 [[projects]]
-  digest = "1:e15b0065da1011473634ffa0dda17731ea1d5f6fb8bb87905216d95fa29eaec0"
+  digest = "1:e228f9aa7d73dc1d1119461183bd9798464a04080f5c963123c7fd8d2ce5d9a2"
   name = "github.com/emicklei/go-restful"
   packages = [
     ".",
     "log",
   ]
   pruneopts = "UT"
-  revision = "99f05a26a0a1c71e664ebe6a76d29b2c80333056"
-  version = "v2.11.1"
+  revision = "a2fa14558f9a828f859fcad1d5c824437d7d4388"
+  version = "v2.11.2"
 
 [[projects]]
   digest = "1:2b5f431fa18891a2ac0e02353c83fb3bf458fced6ccecd664b429054e0c4ce3b"
@@ -337,6 +337,14 @@
   pruneopts = "UT"
   revision = "4b7aa43c6742a2c18fdef89dd197aaae7dac7ccd"
   version = "1.0.1"
+
+[[projects]]
+  branch = "master"
+  digest = "1:033cb6b684cdfcff6434b31b3ef858d0789db6e42d09008bb82a17177b05e0a8"
+  name = "github.com/munnerz/goautoneg"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "a7dc8b61c822528f973a5e4e7b272055c6fdb43e"
 
 [[projects]]
   digest = "1:3a7da5fe2be70407dd32d2e79e04ff15c2d592cd0336b71ea480688c9fc572db"
@@ -625,7 +633,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:64f63414fc96f180a260e1d5270ed0142b9c9f192415861d98e67d1a6bf6a030"
+  digest = "1:9573baf520728f0cd3e41f754afd46589098954918755cf951c29bd15bb39068"
   name = "golang.org/x/tools"
   packages = [
     "go/analysis",
@@ -648,7 +656,7 @@
     "internal/semver",
   ]
   pruneopts = "UT"
-  revision = "6f24f261dadb3cc373b24852d8145682f77d0056"
+  revision = "6fdc5776f4bb9cfbe937e5e3080e09eee6c9023a"
 
 [[projects]]
   branch = "master"
@@ -689,7 +697,7 @@
     "googleapis/rpc/status",
   ]
   pruneopts = "UT"
-  revision = "58ce757ed39bbbe3bf3960b90ded218031b35389"
+  revision = "a86caf926a677e543dd621436dc3ebf2ef9877d4"
 
 [[projects]]
   digest = "1:3b97661db2e5d4c87f7345e875ea28f911e54c715ba0a74be08e1649d67e05cd"
@@ -862,9 +870,23 @@
   version = "kubernetes-1.16.6"
 
 [[projects]]
-  digest = "1:226ba15b4916a2fe2d0623bcf191b7dbd208519c60d61b6777077d344671d524"
+  digest = "1:c6011c1b530dd03432402ba73165c7894ce25f42a48a5e9779d8275b7cc7a1c4"
   name = "k8s.io/apiextensions-apiserver"
-  packages = ["pkg/features"]
+  packages = [
+    "pkg/apis/apiextensions",
+    "pkg/apis/apiextensions/install",
+    "pkg/apis/apiextensions/v1",
+    "pkg/apis/apiextensions/v1beta1",
+    "pkg/client/clientset/internalclientset",
+    "pkg/client/clientset/internalclientset/scheme",
+    "pkg/client/clientset/internalclientset/typed/apiextensions/internalversion",
+    "pkg/client/informers/internalversion",
+    "pkg/client/informers/internalversion/apiextensions",
+    "pkg/client/informers/internalversion/apiextensions/internalversion",
+    "pkg/client/informers/internalversion/internalinterfaces",
+    "pkg/client/listers/apiextensions/internalversion",
+    "pkg/features",
+  ]
   pruneopts = "UT"
   revision = "c075403093bac186b99cba4b662d415cfb4f1f0a"
   version = "kubernetes-1.16.6"
@@ -1230,7 +1252,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:e7a6e8c0832fef710fcbc7a3f891168786b179cf7b0d8c37ce8fdc91ef6c0e2c"
+  digest = "1:23f13ef61af8242699a71ecb4aa2aca9a4873347beae7d2d51e14f370eecbdd5"
   name = "k8s.io/gengo"
   packages = [
     "args",
@@ -1243,7 +1265,7 @@
     "types",
   ]
   pruneopts = "UT"
-  revision = "1e9b17e831be2da1e1781acc7a0d8588aaf622b3"
+  revision = "e0e292d8aa122d458174e1bef5f142b4d0a67a05"
 
 [[projects]]
   digest = "1:93e82f25d75aba18436ad1ac042cb49493f096011f2541075721ed6f9e05c044"
@@ -1255,7 +1277,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:5579ffd7be14a73e8a6e235b068dbc6be92f68fe6201f59b168d0bbd14d28136"
+  digest = "1:55891b50795443c42afde45ad55f2aeda93b797b61bf6d49367d26e645c8c2f9"
   name = "k8s.io/kube-openapi"
   packages = [
     "cmd/openapi-gen/args",
@@ -1266,7 +1288,7 @@
     "pkg/util/sets",
   ]
   pruneopts = "UT"
-  revision = "cdac1c71ff9fcb581b648dfea9ae0eb5c80afa25"
+  revision = "addea2498afe5a6d58f8bdcd9ae51363d12f12ef"
 
 [[projects]]
   digest = "1:d31299913ddb747890e7fe0dfbf51c9cde2b5de83d26b9f99b8693b754700130"
@@ -1347,18 +1369,19 @@
   revision = "861946025e3491219eaccb1bf693e23df70c2fa8"
 
 [[projects]]
-  digest = "1:7719608fe0b52a4ece56c2dde37bedd95b938677d1ab0f84b8a7852e4c59f849"
+  digest = "1:36d2b2cb1fa6e4a731e38c3582c203213cdbc52c5f202af07db6dc6eeaec88dc"
   name = "sigs.k8s.io/yaml"
   packages = ["."]
   pruneopts = "UT"
-  revision = "fd68e9863619f6ec2fdd8625fe1f02e7c877e480"
-  version = "v1.1.0"
+  revision = "9fc95527decd95bb9d28cc2eab08179b2d0f6971"
+  version = "v1.2.0"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
     "github.com/hashicorp/go-multierror",
+    "github.com/munnerz/goautoneg",
     "github.com/onsi/ginkgo",
     "github.com/onsi/gomega",
     "github.com/prometheus/client_golang/prometheus",
@@ -1376,15 +1399,22 @@
     "k8s.io/api/core/v1",
     "k8s.io/api/networking/v1",
     "k8s.io/api/scheduling/v1beta1",
+    "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions",
+    "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1",
+    "k8s.io/apiextensions-apiserver/pkg/client/clientset/internalclientset",
+    "k8s.io/apiextensions-apiserver/pkg/client/informers/internalversion",
+    "k8s.io/apiextensions-apiserver/pkg/client/informers/internalversion/apiextensions/internalversion",
     "k8s.io/apimachinery/pkg/api/errors",
     "k8s.io/apimachinery/pkg/api/meta",
     "k8s.io/apimachinery/pkg/api/resource",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
+    "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured",
     "k8s.io/apimachinery/pkg/conversion",
     "k8s.io/apimachinery/pkg/labels",
     "k8s.io/apimachinery/pkg/runtime",
     "k8s.io/apimachinery/pkg/runtime/schema",
     "k8s.io/apimachinery/pkg/runtime/serializer",
+    "k8s.io/apimachinery/pkg/runtime/serializer/json",
     "k8s.io/apimachinery/pkg/types",
     "k8s.io/apimachinery/pkg/util/intstr",
     "k8s.io/apimachinery/pkg/util/runtime",

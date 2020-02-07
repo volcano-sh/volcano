@@ -22,9 +22,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/webhooks/util"
 )
 
-//The AdmitFunc returns response
+// AdmitFunc returns response
 type AdmitFunc func(v1beta1.AdmissionReview) *v1beta1.AdmissionResponse
 
 type AdmissionServiceConfig struct {
@@ -36,7 +37,7 @@ type AdmissionServiceConfig struct {
 type AdmissionService struct {
 	Path    string
 	Func    AdmitFunc
-	Handler AdmissionHandler
+	Handler util.Handler
 
 	ValidatingConfig *whv1beta1.ValidatingWebhookConfiguration
 	MutatingConfig   *whv1beta1.MutatingWebhookConfiguration

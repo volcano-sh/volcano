@@ -19,40 +19,21 @@ package app
 import (
 	"fmt"
 	"io/ioutil"
-	"k8s.io/client-go/rest"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
 
-	"k8s.io/client-go/tools/clientcmd"
+	clientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/internalclientset"
+	apiextensionsinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/internalversion"
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
 	"volcano.sh/volcano/pkg/version"
-	"volcano.sh/volcano/pkg/webhooks/router"
+	admrouter "volcano.sh/volcano/pkg/webhooks/admission/router"
+	convrouter "volcano.sh/volcano/pkg/webhooks/conversion/router"
 )
-
-func buildConfig(config *options.Config) (*rest.Config, error) {
-	var restConfig *rest.Config
-	var err error
-
-	master := config.Master
-	kubeconfig := config.Kubeconfig
-	if master != "" || kubeconfig != "" {
-		restConfig, err = clientcmd.BuildConfigFromFlags(master, kubeconfig)
-	} else {
-		restConfig, err = rest.InClusterConfig()
-	}
-	if err != nil {
-		return nil, err
-	}
-	restConfig.QPS = config.KubeAPIQPS
-	restConfig.Burst = config.KubeAPIBurst
-
-	return restConfig, nil
-}
 
 // Run start the service of admission controller.
 func Run(config *options.Config) error {
@@ -77,7 +58,7 @@ func Run(config *options.Config) error {
 
 	vClient := getVolcanoClient(restConfig)
 	kubeClient := getKubeClient(restConfig)
-	router.ForEachAdmission(func(service *router.AdmissionService) {
+	admrouter.ForEachAdmission(func(service *admrouter.AdmissionService) {
 		if service.Config != nil {
 			service.Config.VolcanoClient = vClient
 			service.Config.SchedulerName = config.SchedulerName
@@ -87,8 +68,32 @@ func Run(config *options.Config) error {
 		http.HandleFunc(service.Path, service.Handler)
 
 		klog.V(3).Infof("Registered configuration for webhook <%s>", service.Path)
-		registerWebhookConfig(kubeClient, config, service, caBundle)
+		registerAdmissionConfig(kubeClient, config, service, caBundle)
 	})
+
+	apiExtClient, _ := clientset.NewForConfig(restConfig)
+	informerFactory := apiextensionsinformers.NewSharedInformerFactory(apiExtClient, 0)
+	crdInformer := informerFactory.Apiextensions().InternalVersion().CustomResourceDefinitions()
+	convctrl := convrouter.NewController(crdInformer, apiExtClient)
+
+	convrouter.ForEachConversion(func(service *convrouter.ConversionService) {
+		if service.Config != nil {
+			service.Config.VolcanoClient = vClient
+			service.Config.SchedulerName = config.SchedulerName
+		}
+
+		klog.V(3).Infof("Registered '%s' as webhook.", service.Path)
+		http.HandleFunc(service.Path, service.Handler)
+
+		klog.V(3).Infof("Registered configuration for webhook <%s>", service.Path)
+		clientConfig := buildConversionWebhookConfig(config, service, caBundle)
+		for _, name := range service.Names {
+			convctrl.RegisterWebhookConfig(name, clientConfig)
+		}
+	})
+
+	go informerFactory.Start(nil)
+	go convctrl.Run(nil)
 
 	webhookServeError := make(chan struct{})
 	stopChannel := make(chan os.Signal)

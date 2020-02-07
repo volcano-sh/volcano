@@ -18,6 +18,7 @@ package schema
 
 import (
 	"fmt"
+	crdv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 
 	"k8s.io/api/admission/v1beta1"
 	v1 "k8s.io/api/core/v1"
@@ -103,4 +104,24 @@ func DecodeQueue(object runtime.RawExtension, resource metav1.GroupVersionResour
 	}
 
 	return &queue, nil
+}
+
+// DecodeCRD decodes the CRD using deserializer from the raw object
+func DecodeCRD(object runtime.RawExtension, resource metav1.GroupVersionResource) (*crdv1beta1.CustomResourceDefinition, error) {
+	crdResource := metav1.GroupVersionResource{
+		Group:    crdv1beta1.SchemeGroupVersion.Group,
+		Version:  crdv1beta1.SchemeGroupVersion.Version,
+		Resource: "crds",
+	}
+
+	if resource != crdResource {
+		return nil, fmt.Errorf("expect resource to be %s", crdResource)
+	}
+
+	crd := crdv1beta1.CustomResourceDefinition{}
+	if _, _, err := Codecs.UniversalDeserializer().Decode(object.Raw, nil, &crd); err != nil {
+		return nil, err
+	}
+
+	return &crd, nil
 }

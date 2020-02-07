@@ -34,7 +34,7 @@ import (
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
-	"volcano.sh/volcano/pkg/webhooks/router"
+	"volcano.sh/volcano/pkg/webhooks/admission/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
 )

@@ -16,9 +16,16 @@ limitations under the License.
 
 package util
 
-import "k8s.io/api/admission/v1beta1"
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-import "k8s.io/klog"
+import (
+	"net/http"
+
+	"k8s.io/api/admission/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog"
+)
+
+// Handler is the admission handler for the path
+type Handler func(w http.ResponseWriter, r *http.Request)
 
 //ToAdmissionResponse updates the admission response with the input error
 func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {

@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2020 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,31 +22,30 @@ import (
 	"sync"
 )
 
-type AdmissionHandler func(w http.ResponseWriter, r *http.Request)
+var conversionMap = make(map[string]*ConversionService)
+var conversionMapLock sync.Mutex
 
-var admissionMap = make(map[string]*AdmissionService)
-var admissionMutex sync.Mutex
+func RegisterConversion(service *ConversionService) error {
+	conversionMapLock.Lock()
+	defer conversionMapLock.Unlock()
 
-func RegisterAdmission(service *AdmissionService) error {
-	admissionMutex.Lock()
-	defer admissionMutex.Unlock()
-
-	if _, found := admissionMap[service.Path]; found {
+	if _, found := conversionMap[service.Path]; found {
 		return fmt.Errorf("duplicated admission service for %s", service.Path)
 	}
 
 	// Also register handler to the service.
 	service.Handler = func(w http.ResponseWriter, r *http.Request) {
-		Serve(w, r, service.Func)
+		serve(w, r, service.Func)
 	}
 
-	admissionMap[service.Path] = service
+	conversionMap[service.Path] = service
 
 	return nil
 }
 
-func ForEachAdmission(handler func(*AdmissionService)) {
-	for _, f := range admissionMap {
+// ForEachConversion handles all conversions.
+func ForEachConversion(handler func(*ConversionService)) {
+	for _, f := range conversionMap {
 		handler(f)
 	}
 }

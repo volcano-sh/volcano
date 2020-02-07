@@ -18,6 +18,28 @@ REST asks developers to use HTTP methods explicitly and in a way that's consiste
 - PATCH = Update partial content of a resource
 - OPTIONS = Get information about the communication options for the request URI
     
+### Usage
+
+#### Without Go Modules
+
+All versions up to `v2.*.*` (on the master) are not supporting Go modules.
+
+```
+import (
+	restful "github.com/emicklei/go-restful"
+)
+```
+
+#### Using Go Modules
+
+As of version `v3.0.0` (on the v3 branch), this package supports Go modules.
+
+```
+import (
+	restful "github.com/emicklei/go-restful/v3"
+)
+```
+
 ### Example
 
 ```Go
@@ -85,4 +107,4 @@ TODO: write examples of these.
 
 Type ```git shortlog -s``` for a full list of contributors.
 
-© 2012 - 2018, http://ernestmicklei.com. MIT License. Contributions are welcome.
+© 2012 - 2020, http://ernestmicklei.com. MIT License. Contributions are welcome.

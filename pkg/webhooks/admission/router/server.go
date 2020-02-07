@@ -35,8 +35,8 @@ var CONTENTTYPE = "Content-Type"
 // APPLICATIONJSON json content
 var APPLICATIONJSON = "application/json"
 
-// Serve the http request
-func Serve(w http.ResponseWriter, r *http.Request, admit AdmitFunc) {
+// serve the http request
+func serve(w http.ResponseWriter, r *http.Request, admit AdmitFunc) {
 	var body []byte
 	if r.Body != nil {
 		if data, err := ioutil.ReadAll(r.Body); err == nil {
