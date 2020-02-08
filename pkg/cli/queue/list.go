@@ -25,7 +25,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
@@ -71,7 +71,7 @@ func ListQueue() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	queues, err := jobClient.SchedulingV1alpha2().Queues().List(metav1.ListOptions{})
+	queues, err := jobClient.SchedulingV1beta1().Queues().List(metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func ListQueue() error {
 }
 
 // PrintQueues prints queue information
-func PrintQueues(queues *v1alpha2.QueueList, writer io.Writer) {
+func PrintQueues(queues *v1beta1.QueueList, writer io.Writer) {
 	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s\n",
 		Name, Weight, State, Inqueue, Pending, Running, Unknown)
 	if err != nil {

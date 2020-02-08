@@ -37,9 +37,9 @@ import (
 	versionedscheme "volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 	informerfactory "volcano.sh/volcano/pkg/client/informers/externalversions"
 	busv1alpha1informer "volcano.sh/volcano/pkg/client/informers/externalversions/bus/v1alpha1"
-	schedulinginformer "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1alpha2"
+	schedulinginformer "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1beta1"
 	busv1alpha1lister "volcano.sh/volcano/pkg/client/listers/bus/v1alpha1"
-	schedulinglister "volcano.sh/volcano/pkg/client/listers/scheduling/v1alpha2"
+	schedulinglister "volcano.sh/volcano/pkg/client/listers/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	queuestate "volcano.sh/volcano/pkg/controllers/queue/state"
 )
@@ -95,8 +95,8 @@ func NewQueueController(
 	vcClient vcclientset.Interface,
 ) *Controller {
 	factory := informerfactory.NewSharedInformerFactory(vcClient, 0)
-	queueInformer := factory.Scheduling().V1alpha2().Queues()
-	pgInformer := factory.Scheduling().V1alpha2().PodGroups()
+	queueInformer := factory.Scheduling().V1beta1().Queues()
+	pgInformer := factory.Scheduling().V1beta1().PodGroups()
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)

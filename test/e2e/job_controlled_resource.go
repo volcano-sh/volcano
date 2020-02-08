@@ -177,7 +177,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		err := waitJobStatePending(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pGroup, err := context.vcclient.SchedulingV1alpha2().PodGroups(namespace).Get(jobName, metav1.GetOptions{})
+		pGroup, err := context.vcclient.SchedulingV1beta1().PodGroups(namespace).Get(jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		for name, q := range *pGroup.Spec.MinResources {

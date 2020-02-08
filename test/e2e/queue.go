@@ -53,7 +53,7 @@ var _ = Describe("Queue E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitQueueStatus(func() (bool, error) {
-			queue, err := context.vcclient.SchedulingV1alpha2().Queues().Get(defaultQueue1, metav1.GetOptions{})
+			queue, err := context.vcclient.SchedulingV1beta1().Queues().Get(defaultQueue1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			return queue.Status.Running == 1, nil
 		})
@@ -94,7 +94,7 @@ var _ = Describe("Queue E2E Test", func() {
 		err = waitJobStatePending(context, job3)
 		Expect(err).NotTo(HaveOccurred())
 		err = waitQueueStatus(func() (bool, error) {
-			queue, err := context.vcclient.SchedulingV1alpha2().Queues().Get(defaultQueue1, metav1.GetOptions{})
+			queue, err := context.vcclient.SchedulingV1beta1().Queues().Get(defaultQueue1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			return queue.Status.Pending == 1, nil
 		})

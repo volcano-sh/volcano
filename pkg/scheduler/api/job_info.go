@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
 // TaskID is UID type for Task
@@ -54,7 +54,7 @@ type TaskInfo struct {
 }
 
 func getJobID(pod *v1.Pod) JobID {
-	if gn, found := pod.Annotations[v1alpha2.GroupNameAnnotationKey]; found && len(gn) != 0 {
+	if gn, found := pod.Annotations[v1beta1.KubeGroupNameAnnotationKey]; found && len(gn) != 0 {
 		// Make sure Pod and PodGroup belong to the same namespace.
 		jobID := fmt.Sprintf("%s/%s", pod.Namespace, gn)
 		return JobID(jobID)

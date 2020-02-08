@@ -25,7 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
@@ -414,7 +414,7 @@ func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 				t.Errorf("Expected return value to be equal to expected: %s, but got: %s", testcase.ExpextVal, err)
 			}
 
-			_, err = fakeController.vcClient.SchedulingV1alpha2().PodGroups(namespace).Get(testcase.Job.Name, metav1.GetOptions{})
+			_, err = fakeController.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(testcase.Job.Name, metav1.GetOptions{})
 			if err != nil {
 				t.Error("Expected PodGroup to get created, but not created")
 			}

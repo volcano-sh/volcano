@@ -29,12 +29,12 @@ CODEGEN_PKG=${CODEGEN_PKG:-$(cd ${SCRIPT_ROOT}; ls -d -1 ./vendor/k8s.io/code-ge
 #                  instead of the $GOPATH directly. For normal projects this can be dropped.
 ${CODEGEN_PKG}/generate-groups.sh "deepcopy,client,informer,lister" \
   volcano.sh/volcano/pkg/client volcano.sh/volcano/pkg/apis \
-  "batch:v1alpha1 bus:v1alpha1 scheduling:v1alpha1,v1alpha2,v1beta1" \
+  "batch:v1alpha1 bus:v1alpha1 scheduling:v1beta1" \
   --go-header-file ${SCRIPT_ROOT}/hack/boilerplate/boilerplate.go.txt
 
 "${CODEGEN_PKG}/generate-internal-groups.sh" "deepcopy,conversion" \
   volcano.sh/volcano/pkg/apis/ volcano.sh/volcano/pkg/apis volcano.sh/volcano/pkg/apis\
-  "scheduling:v1alpha1,v1alpha2,v1beta1"   \
+  "scheduling:v1beta1"   \
   --output-base "$(dirname "${BASH_SOURCE[0]}")/../../.." \
   --go-header-file ${SCRIPT_ROOT}/hack/boilerplate/boilerplate.go.txt
 

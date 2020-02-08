@@ -26,8 +26,6 @@ import (
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
 	batchv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/bus/v1alpha1"
-	schedulingv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/scheduling/v1alpha1"
-	schedulingv1alpha2 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/scheduling/v1alpha2"
 	schedulingv1beta1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/scheduling/v1beta1"
 )
 
@@ -35,8 +33,6 @@ type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface
 	BusV1alpha1() busv1alpha1.BusV1alpha1Interface
-	SchedulingV1alpha1() schedulingv1alpha1.SchedulingV1alpha1Interface
-	SchedulingV1alpha2() schedulingv1alpha2.SchedulingV1alpha2Interface
 	SchedulingV1beta1() schedulingv1beta1.SchedulingV1beta1Interface
 }
 
@@ -44,11 +40,9 @@ type Interface interface {
 // version included in a Clientset.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	batchV1alpha1      *batchv1alpha1.BatchV1alpha1Client
-	busV1alpha1        *busv1alpha1.BusV1alpha1Client
-	schedulingV1alpha1 *schedulingv1alpha1.SchedulingV1alpha1Client
-	schedulingV1alpha2 *schedulingv1alpha2.SchedulingV1alpha2Client
-	schedulingV1beta1  *schedulingv1beta1.SchedulingV1beta1Client
+	batchV1alpha1     *batchv1alpha1.BatchV1alpha1Client
+	busV1alpha1       *busv1alpha1.BusV1alpha1Client
+	schedulingV1beta1 *schedulingv1beta1.SchedulingV1beta1Client
 }
 
 // BatchV1alpha1 retrieves the BatchV1alpha1Client
@@ -59,16 +53,6 @@ func (c *Clientset) BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface {
 // BusV1alpha1 retrieves the BusV1alpha1Client
 func (c *Clientset) BusV1alpha1() busv1alpha1.BusV1alpha1Interface {
 	return c.busV1alpha1
-}
-
-// SchedulingV1alpha1 retrieves the SchedulingV1alpha1Client
-func (c *Clientset) SchedulingV1alpha1() schedulingv1alpha1.SchedulingV1alpha1Interface {
-	return c.schedulingV1alpha1
-}
-
-// SchedulingV1alpha2 retrieves the SchedulingV1alpha2Client
-func (c *Clientset) SchedulingV1alpha2() schedulingv1alpha2.SchedulingV1alpha2Interface {
-	return c.schedulingV1alpha2
 }
 
 // SchedulingV1beta1 retrieves the SchedulingV1beta1Client
@@ -105,14 +89,6 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 	if err != nil {
 		return nil, err
 	}
-	cs.schedulingV1alpha1, err = schedulingv1alpha1.NewForConfig(&configShallowCopy)
-	if err != nil {
-		return nil, err
-	}
-	cs.schedulingV1alpha2, err = schedulingv1alpha2.NewForConfig(&configShallowCopy)
-	if err != nil {
-		return nil, err
-	}
 	cs.schedulingV1beta1, err = schedulingv1beta1.NewForConfig(&configShallowCopy)
 	if err != nil {
 		return nil, err
@@ -131,8 +107,6 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 	var cs Clientset
 	cs.batchV1alpha1 = batchv1alpha1.NewForConfigOrDie(c)
 	cs.busV1alpha1 = busv1alpha1.NewForConfigOrDie(c)
-	cs.schedulingV1alpha1 = schedulingv1alpha1.NewForConfigOrDie(c)
-	cs.schedulingV1alpha2 = schedulingv1alpha2.NewForConfigOrDie(c)
 	cs.schedulingV1beta1 = schedulingv1beta1.NewForConfigOrDie(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClientForConfigOrDie(c)
@@ -144,8 +118,6 @@ func New(c rest.Interface) *Clientset {
 	var cs Clientset
 	cs.batchV1alpha1 = batchv1alpha1.New(c)
 	cs.busV1alpha1 = busv1alpha1.New(c)
-	cs.schedulingV1alpha1 = schedulingv1alpha1.New(c)
-	cs.schedulingV1alpha2 = schedulingv1alpha2.New(c)
 	cs.schedulingV1beta1 = schedulingv1beta1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)

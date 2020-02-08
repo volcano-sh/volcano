@@ -44,10 +44,10 @@ import (
 	informerfactory "volcano.sh/volcano/pkg/client/informers/externalversions"
 	batchinformer "volcano.sh/volcano/pkg/client/informers/externalversions/batch/v1alpha1"
 	businformer "volcano.sh/volcano/pkg/client/informers/externalversions/bus/v1alpha1"
-	schedulinginformers "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1alpha2"
+	schedulinginformers "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1beta1"
 	batchlister "volcano.sh/volcano/pkg/client/listers/batch/v1alpha1"
 	buslister "volcano.sh/volcano/pkg/client/listers/bus/v1alpha1"
-	schedulinglisters "volcano.sh/volcano/pkg/client/listers/scheduling/v1alpha2"
+	schedulinglisters "volcano.sh/volcano/pkg/client/listers/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobcache "volcano.sh/volcano/pkg/controllers/cache"
 	"volcano.sh/volcano/pkg/controllers/job/state"
@@ -197,7 +197,7 @@ func NewJobController(
 	cc.svcLister = cc.svcInformer.Lister()
 	cc.svcSynced = cc.svcInformer.Informer().HasSynced
 
-	cc.pgInformer = informerfactory.NewSharedInformerFactory(cc.vcClient, 0).Scheduling().V1alpha2().PodGroups()
+	cc.pgInformer = informerfactory.NewSharedInformerFactory(cc.vcClient, 0).Scheduling().V1beta1().PodGroups()
 	cc.pgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: cc.updatePodGroup,
 	})

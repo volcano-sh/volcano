@@ -30,7 +30,7 @@ import (
 
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
-	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
@@ -125,7 +125,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 	}
 
 	// Delete PodGroup
-	if err := cc.vcClient.SchedulingV1alpha2().PodGroups(job.Namespace).Delete(job.Name, nil); err != nil {
+	if err := cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Delete(job.Name, nil); err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to delete PodGroup of Job %v/%v: %v",
 				job.Namespace, job.Name, err)
@@ -478,7 +478,7 @@ func (cc *Controller) createPodGroupIfNotExist(job *batch.Job) error {
 			},
 		}
 
-		if _, err = cc.vcClient.SchedulingV1alpha2().PodGroups(job.Namespace).Create(pg); err != nil {
+		if _, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Create(pg); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				klog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
 					job.Namespace, job.Name, err)

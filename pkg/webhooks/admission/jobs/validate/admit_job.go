@@ -32,7 +32,7 @@ import (
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
@@ -178,14 +178,14 @@ func validateJob(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) s
 	}
 
 	// Check whether Queue already present or not
-	queue, err := config.VolcanoClient.SchedulingV1alpha2().Queues().Get(job.Spec.Queue, metav1.GetOptions{})
+	queue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(job.Spec.Queue, metav1.GetOptions{})
 	if err != nil {
 		// TODO: deprecate v1alpha1
-		if _, err := config.VolcanoClient.SchedulingV1alpha1().Queues().Get(job.Spec.Queue, metav1.GetOptions{}); err != nil {
+		if _, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(job.Spec.Queue, metav1.GetOptions{}); err != nil {
 			msg = msg + fmt.Sprintf(" unable to find job queue: %v", err)
 		}
 	} else {
-		if queue.Status.State != schedulingv1alpha2.QueueStateOpen {
+		if queue.Status.State != schedulingv1beta1.QueueStateOpen {
 			msg = msg + fmt.Sprintf("can only submit job to queue with state `Open`, "+
 				"queue `%s` status is `%s`", queue.Name, queue.Spec.State)
 		}

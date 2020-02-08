@@ -59,10 +59,10 @@ rules:
   - apiGroups: ["scheduling.k8s.io"]
     resources: ["priorityclasses"]
     verbs: ["get", "list", "watch"]
-  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.sigs.dev"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues"]
     verbs: ["get", "list", "watch", "create", "delete"]
-  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.sigs.dev"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
     verbs: ["list", "watch", "update"]
 

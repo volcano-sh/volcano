@@ -17,7 +17,7 @@ limitations under the License.
 package queue
 
 import (
-	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -28,7 +28,7 @@ func IsQueueReference(ref *metav1.OwnerReference) bool {
 		return false
 	}
 
-	if ref.APIVersion != schedulingv1alpha2.SchemeGroupVersion.String() {
+	if ref.APIVersion != schedulingv1beta1.SchemeGroupVersion.String() {
 		return false
 	}
 

@@ -85,7 +85,7 @@ func OperateQueue() error {
 
 		queueClient := versioned.NewForConfigOrDie(config)
 		patchBytes := []byte(fmt.Sprintf(`{"spec":{"weight":%d}}`, operateQueueFlags.Weight))
-		_, err := queueClient.SchedulingV1alpha2().Queues().Patch(operateQueueFlags.Name, types.MergePatchType, patchBytes)
+		_, err := queueClient.SchedulingV1beta1().Queues().Patch(operateQueueFlags.Name, types.MergePatchType, patchBytes)
 
 		return err
 	case "":

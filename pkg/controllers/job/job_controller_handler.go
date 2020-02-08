@@ -29,7 +29,7 @@ import (
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	bus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
-	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobcache "volcano.sh/volcano/pkg/controllers/cache"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"

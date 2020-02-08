@@ -20,8 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"volcano.sh/volcano/pkg/apis/scheduling"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
 var (
@@ -38,7 +37,6 @@ func init() {
 
 // Install registers the API group and adds types to a scheme
 func Install(scheme *runtime.Scheme) {
-	v1alpha1.AddToScheme(scheme)
-	v1alpha2.AddToScheme(scheme)
+	v1beta1.AddToScheme(scheme)
 	scheduling.AddToScheme(scheme)
 }

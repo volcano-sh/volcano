@@ -27,11 +27,11 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
-	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 	informerfactory "volcano.sh/volcano/pkg/client/informers/externalversions"
-	schedulinginformer "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1alpha2"
-	schedulinglister "volcano.sh/volcano/pkg/client/listers/scheduling/v1alpha2"
+	schedulinginformer "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1beta1"
+	schedulinglister "volcano.sh/volcano/pkg/client/listers/scheduling/v1beta1"
 )
 
 // Controller the Podgroup Controller type
@@ -77,7 +77,7 @@ func NewPodgroupController(
 				case *v1.Pod:
 					pod := obj.(*v1.Pod)
 					if pod.Spec.SchedulerName == schedulerName &&
-						(pod.Annotations == nil || pod.Annotations[scheduling.GroupNameAnnotationKey] == "") {
+						(pod.Annotations == nil || pod.Annotations[scheduling.KubeGroupNameAnnotationKey] == "") {
 						return true
 					}
 					return false
@@ -90,7 +90,7 @@ func NewPodgroupController(
 			},
 		})
 
-	cc.pgInformer = informerfactory.NewSharedInformerFactory(cc.vcClient, 0).Scheduling().V1alpha2().PodGroups()
+	cc.pgInformer = informerfactory.NewSharedInformerFactory(cc.vcClient, 0).Scheduling().V1beta1().PodGroups()
 	cc.pgLister = cc.pgInformer.Lister()
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 

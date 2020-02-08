@@ -25,7 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 
-	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -46,8 +46,8 @@ var service = &router.AdmissionService{
 				{
 					Operations: []whv1beta1.OperationType{whv1beta1.Create},
 					Rule: whv1beta1.Rule{
-						APIGroups:   []string{schedulingv1alpha2.SchemeGroupVersion.Group},
-						APIVersions: []string{schedulingv1alpha2.SchemeGroupVersion.Version},
+						APIGroups:   []string{schedulingv1beta1.SchemeGroupVersion.Group},
+						APIVersions: []string{schedulingv1beta1.SchemeGroupVersion.Version},
 						Resources:   []string{"queues"},
 					},
 				},
@@ -97,13 +97,13 @@ func MutateQueues(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	}
 }
 
-func createQueuePatch(queue *schedulingv1alpha2.Queue) ([]byte, error) {
+func createQueuePatch(queue *schedulingv1beta1.Queue) ([]byte, error) {
 	var patch []patchOperation
 
 	patch = append(patch, patchOperation{
 		Op:    "add",
 		Path:  "/spec/state",
-		Value: schedulingv1alpha2.QueueStateOpen,
+		Value: schedulingv1beta1.QueueStateOpen,
 	})
 
 	trueValue := true
