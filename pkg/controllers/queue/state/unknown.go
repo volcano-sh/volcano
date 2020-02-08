@@ -44,7 +44,7 @@ func (us *unknownState) Execute(action v1alpha1.Action) error {
 		})
 	default:
 		return SyncQueue(us.queue, func(status *v1beta1.QueueStatus, podGroupList []string) {
-			specState := us.queue.Spec.State
+			specState := us.queue.Status.State
 			if specState == v1beta1.QueueStateOpen {
 				status.State = v1beta1.QueueStateOpen
 				return

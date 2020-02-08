@@ -27,8 +27,6 @@ spec:
               type: integer
             capability:
               type: object
-            state:
-              type: string
           type: object
         status:
           properties:

@@ -349,7 +349,6 @@ func Convert_scheduling_QueueList_To_v1beta1_QueueList(in *scheduling.QueueList,
 func autoConvert_v1beta1_QueueSpec_To_scheduling_QueueSpec(in *QueueSpec, out *scheduling.QueueSpec, s conversion.Scope) error {
 	out.Weight = in.Weight
 	out.Capability = *(*v1.ResourceList)(unsafe.Pointer(&in.Capability))
-	out.State = scheduling.QueueState(in.State)
 	out.Reclaimable = (*bool)(unsafe.Pointer(in.Reclaimable))
 	return nil
 }
@@ -362,7 +361,7 @@ func Convert_v1beta1_QueueSpec_To_scheduling_QueueSpec(in *QueueSpec, out *sched
 func autoConvert_scheduling_QueueSpec_To_v1beta1_QueueSpec(in *scheduling.QueueSpec, out *QueueSpec, s conversion.Scope) error {
 	out.Weight = in.Weight
 	out.Capability = *(*v1.ResourceList)(unsafe.Pointer(&in.Capability))
-	out.State = QueueState(in.State)
+	// WARNING: in.State requires manual conversion: does not exist in peer-type
 	out.Reclaimable = (*bool)(unsafe.Pointer(in.Reclaimable))
 	return nil
 }

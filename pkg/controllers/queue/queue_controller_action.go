@@ -83,9 +83,9 @@ func (c *Controller) openQueue(queue *schedulingv1beta1.Queue, updateStateFn sta
 	klog.V(4).Infof("Begin to open queue %s.", queue.Name)
 
 	newQueue := queue.DeepCopy()
-	newQueue.Spec.State = schedulingv1beta1.QueueStateOpen
+	newQueue.Status.State = schedulingv1beta1.QueueStateOpen
 
-	if queue.Spec.State != newQueue.Spec.State {
+	if queue.Status.State != newQueue.Status.State {
 		if _, err := c.vcClient.SchedulingV1beta1().Queues().Update(newQueue); err != nil {
 			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.OpenQueueAction),
 				fmt.Sprintf("Open queue failed for %v", err))
@@ -126,9 +126,9 @@ func (c *Controller) closeQueue(queue *schedulingv1beta1.Queue, updateStateFn st
 	klog.V(4).Infof("Begin to close queue %s.", queue.Name)
 
 	newQueue := queue.DeepCopy()
-	newQueue.Spec.State = schedulingv1beta1.QueueStateClosed
+	newQueue.Status.State = schedulingv1beta1.QueueStateClosed
 
-	if queue.Spec.State != newQueue.Spec.State {
+	if queue.Status.State != newQueue.Status.State {
 		if _, err := c.vcClient.SchedulingV1beta1().Queues().Update(newQueue); err != nil {
 			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.CloseQueueAction),
 				fmt.Sprintf("Close queue failed for %v", err))
