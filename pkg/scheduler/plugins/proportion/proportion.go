@@ -224,12 +224,9 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			return true
 		}
 
-		pgResource := api.NewResource(*job.PodGroup.Spec.MinResources)
+		minReq := api.NewResource(*job.PodGroup.Spec.MinResources)
 		// The queue resource quota limit has not reached
-		if pgResource.Clone().Add(attr.allocated).LessEqual(api.NewResource(queue.Queue.Spec.Capability)) {
-			return true
-		}
-		return false
+		return minReq.Add(attr.allocated).LessEqual(api.NewResource(queue.Queue.Spec.Capability))
 	})
 
 	// Register event handlers.
