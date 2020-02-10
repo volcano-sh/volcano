@@ -17,7 +17,7 @@ RELEASE_DIR=_output/release
 REL_OSARCH=linux/amd64
 REPO_PATH=volcano.sh/volcano
 IMAGE_PREFIX=volcanosh/vc
-RELEASE_VER=v0.3
+RELEASE_VER=v0.4
 
 include Makefile.def
 
