@@ -213,7 +213,7 @@ function cleanup_cluster {
 function apply_volcano_crds {
     kubectl get ns --kubeconfig ${VC_HOME}/volcano/config/admin.config
 
-    for crd in scheduling_v1alpha2_podgroup.yaml batch_v1alpha1_job.yaml scheduling_v1alpha1_podgroup.yaml scheduling_v1alpha2_queue.yaml bus_v1alpha1_command.yaml scheduling_v1alpha1_queue.yaml
+    for crd in scheduling_v1beta1_podgroup.yaml scheduling_v1beta1_queue.yaml bus_v1alpha1_command.yaml batch_v1alpha1_job.yaml
     do
         kubectl apply -f ${VC_HOME}/installer/helm/chart/volcano/templates/$crd --kubeconfig ${VC_HOME}/volcano/config/admin.config
     done
