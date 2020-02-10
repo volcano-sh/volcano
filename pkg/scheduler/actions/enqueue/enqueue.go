@@ -86,18 +86,20 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 
 	klog.V(3).Infof("Try to enqueue PodGroup to %d Queues", len(jobsMap))
 
-	emptyRes := api.EmptyResource()
-	nodesIdleRes := api.EmptyResource()
+	total := api.EmptyResource()
+	used := api.EmptyResource()
 	for _, node := range ssn.Nodes {
-		nodesIdleRes.Add(node.Allocatable.Clone().Multi(enqueue.getOverCommitFactor(ssn)).Sub(node.Used))
+		total.Add(node.Allocatable)
+		used.Add(node.Used)
 	}
+	idle := total.Clone().Multi(enqueue.getOverCommitFactor(ssn)).Sub(used)
 
 	for {
 		if queues.Empty() {
 			break
 		}
 
-		if nodesIdleRes.Less(emptyRes) {
+		if idle.IsEmpty() {
 			klog.V(3).Infof("Node idle resource is overused, ignore it.")
 			break
 		}
@@ -116,9 +118,9 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 		if job.PodGroup.Spec.MinResources == nil {
 			inqueue = true
 		} else {
-			pgResource := api.NewResource(*job.PodGroup.Spec.MinResources)
-			if ssn.JobEnqueueable(job) && pgResource.LessEqual(nodesIdleRes) {
-				nodesIdleRes.Sub(pgResource)
+			minReq := api.NewResource(*job.PodGroup.Spec.MinResources)
+			if ssn.JobEnqueueable(job) && minReq.LessEqual(idle) {
+				idle.Sub(minReq)
 				inqueue = true
 			}
 		}
