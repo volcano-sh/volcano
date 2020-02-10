@@ -52,8 +52,10 @@ func TestMutateQueues(t *testing.T) {
 		},
 		Spec: schedulingv1beta1.QueueSpec{
 			Weight:      1,
-			State:       schedulingv1beta1.QueueStateOpen,
 			Reclaimable: &trueValue,
+		},
+		Status: schedulingv1beta1.QueueStatus{
+			State: schedulingv1beta1.QueueStateOpen,
 		},
 	}
 

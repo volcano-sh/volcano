@@ -187,7 +187,7 @@ func validateJob(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) s
 	} else {
 		if queue.Status.State != schedulingv1beta1.QueueStateOpen {
 			msg = msg + fmt.Sprintf("can only submit job to queue with state `Open`, "+
-				"queue `%s` status is `%s`", queue.Name, queue.Spec.State)
+				"queue `%s` status is `%s`", queue.Name, queue.Status.State)
 		}
 	}
 

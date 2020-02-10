@@ -59,7 +59,9 @@ func CreateQueue() error {
 		},
 		Spec: schedulingv1beta1.QueueSpec{
 			Weight: int32(createQueueFlags.Weight),
-			State:  schedulingv1beta1.QueueState(createQueueFlags.State),
+		},
+		Status: schedulingv1beta1.QueueStatus{
+			State: schedulingv1beta1.QueueState(createQueueFlags.State),
 		},
 	}
 

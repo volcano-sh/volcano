@@ -54,7 +54,9 @@ func TestAdmitQueues(t *testing.T) {
 		},
 		Spec: schedulingv1beta1.QueueSpec{
 			Weight: 1,
-			State:  schedulingv1beta1.QueueStateOpen,
+		},
+		Status: schedulingv1beta1.QueueStatus{
+			State: schedulingv1beta1.QueueStateOpen,
 		},
 	}
 
@@ -69,7 +71,9 @@ func TestAdmitQueues(t *testing.T) {
 		},
 		Spec: schedulingv1beta1.QueueSpec{
 			Weight: 1,
-			State:  schedulingv1beta1.QueueStateClosed,
+		},
+		Status: schedulingv1beta1.QueueStatus{
+			State: schedulingv1beta1.QueueStateClosed,
 		},
 	}
 
@@ -84,7 +88,9 @@ func TestAdmitQueues(t *testing.T) {
 		},
 		Spec: schedulingv1beta1.QueueSpec{
 			Weight: 1,
-			State:  "wrong",
+		},
+		Status: schedulingv1beta1.QueueStatus{
+			State: "wrong",
 		},
 	}
 
@@ -99,7 +105,6 @@ func TestAdmitQueues(t *testing.T) {
 		},
 		Spec: schedulingv1beta1.QueueSpec{
 			Weight: 1,
-			State:  schedulingv1beta1.QueueStateOpen,
 		},
 		Status: schedulingv1beta1.QueueStatus{
 			State: schedulingv1beta1.QueueStateOpen,
@@ -117,7 +122,6 @@ func TestAdmitQueues(t *testing.T) {
 		},
 		Spec: schedulingv1beta1.QueueSpec{
 			Weight: 1,
-			State:  schedulingv1beta1.QueueStateClosed,
 		},
 		Status: schedulingv1beta1.QueueStatus{
 			State: schedulingv1beta1.QueueStateClosed,

@@ -99,7 +99,7 @@ func validateQueue(queue *schedulingv1beta1.Queue) error {
 	errs := field.ErrorList{}
 	resourcePath := field.NewPath("requestBody")
 
-	errs = append(errs, validateStateOfQueue(queue.Spec.State, resourcePath.Child("spec").Child("state"))...)
+	errs = append(errs, validateStateOfQueue(queue.Status.State, resourcePath.Child("spec").Child("state"))...)
 
 	if len(errs) > 0 {
 		return errs.ToAggregate()
