@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 func nodesEqual(l, r map[string]*api.NodeInfo) bool {
@@ -172,5 +173,84 @@ func TestGetOrCreateJob(t *testing.T) {
 			t.Errorf("case %d: \n expected %t, \n got %t \n",
 				i, test.gotJob, result)
 		}
+	}
+}
+
+func TestSchedulerCache_Bind_NodeWithSufficientResources(t *testing.T) {
+	owner := buildOwnerReference("j1")
+
+	cache := &SchedulerCache{
+		Jobs:  make(map[api.JobID]*api.JobInfo),
+		Nodes: make(map[string]*api.NodeInfo),
+		Binder: &util.FakeBinder{
+			Binds:   map[string]string{},
+			Channel: make(chan string),
+		},
+	}
+
+	pod := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"),
+		[]metav1.OwnerReference{owner}, make(map[string]string))
+	cache.AddPod(pod)
+
+	node := buildNode("n1", buildResourceList("2000m", "10G"))
+	cache.AddNode(node)
+
+	task := api.NewTaskInfo(pod)
+	task.Job = "j1"
+	if err := cache.addTask(task); err != nil {
+		t.Errorf("failed to add task %v", err)
+	}
+
+	err := cache.Bind(task, "n1")
+	if err != nil {
+		t.Errorf("failed to bind pod to node: %v", err)
+	}
+}
+
+func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
+	owner := buildOwnerReference("j1")
+
+	cache := &SchedulerCache{
+		Jobs:  make(map[api.JobID]*api.JobInfo),
+		Nodes: make(map[string]*api.NodeInfo),
+		Binder: &util.FakeBinder{
+			Binds:   map[string]string{},
+			Channel: make(chan string),
+		},
+	}
+
+	pod := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("5000m", "50G"),
+		[]metav1.OwnerReference{owner}, make(map[string]string))
+	cache.AddPod(pod)
+
+	node := buildNode("n1", buildResourceList("2000m", "10G"))
+	cache.AddNode(node)
+
+	task := api.NewTaskInfo(pod)
+	task.Job = "j1"
+
+	if err := cache.addTask(task); err != nil {
+		t.Errorf("failed to add task %v", err)
+	}
+
+	taskBeforeBind := task.Clone()
+	nodeBeforeBind := cache.Nodes["n1"].Clone()
+
+	err := cache.Bind(task, "n1")
+	if err == nil {
+		t.Errorf("expected bind to fail for node with insufficient resources")
+	}
+
+	_, taskAfterBind, err := cache.findJobAndTask(task)
+	if err != nil {
+		t.Errorf("expected to find task after failed bind")
+	}
+	if !reflect.DeepEqual(taskBeforeBind, taskAfterBind) {
+		t.Errorf("expected task to remain the same after failed bind: \n %#v\n %#v", taskBeforeBind, taskAfterBind)
+	}
+
+	nodeAfterBind := cache.Nodes["n1"]
+	if !reflect.DeepEqual(nodeBeforeBind, nodeAfterBind) {
+		t.Errorf("expected node to remain the same after failed bind")
 	}
 }
