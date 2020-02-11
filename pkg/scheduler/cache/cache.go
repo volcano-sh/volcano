@@ -437,7 +437,9 @@ func (sc *SchedulerCache) findJobAndTask(taskInfo *schedulingapi.TaskInfo) (*sch
 	return job, task, nil
 }
 
-// Evict will evict the pod
+// Evict will evict the pod.
+//
+// If error occurs both task and job are guaranteed to be in the original state.
 func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string) error {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
@@ -454,13 +456,21 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 			task.UID, task.NodeName)
 	}
 
-	err = job.UpdateTaskStatus(task, schedulingapi.Releasing)
-	if err != nil {
+	originalStatus := task.Status
+	if err := job.UpdateTaskStatus(task, schedulingapi.Releasing); err != nil {
 		return err
 	}
 
 	// Add new task to node.
 	if err := node.UpdateTask(task); err != nil {
+		// After failing to update task to a node we need to revert task status from Releasing,
+		// otherwise task might be stuck in the Releasing state indefinitely.
+		if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
+			klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
+				"from %s to %s after failing to update Task on Node <%s>: %v",
+				task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
+			sc.resyncTask(task)
+		}
 		return err
 	}
 
@@ -501,16 +511,21 @@ func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string
 			task.UID, hostname)
 	}
 
-	err = job.UpdateTaskStatus(task, schedulingapi.Binding)
-	if err != nil {
+	originalStatus := task.Status
+	if err := job.UpdateTaskStatus(task, schedulingapi.Binding); err != nil {
 		return err
 	}
 
-	// Set `.nodeName` to the hostname
-	task.NodeName = hostname
-
 	// Add task to the node.
 	if err := node.AddTask(task); err != nil {
+		// After failing to update task to a node we need to revert task status from Releasing,
+		// otherwise task might be stuck in the Releasing state indefinitely.
+		if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
+			klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
+				"from %s to %s after failing to update Task on Node <%s>: %v",
+				task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
+			sc.resyncTask(task)
+		}
 		return err
 	}
 

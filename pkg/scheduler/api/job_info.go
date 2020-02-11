@@ -209,16 +209,21 @@ func (ji *JobInfo) AddTaskInfo(ti *TaskInfo) {
 	}
 }
 
-// UpdateTaskStatus is used to update task's status in a job
+// UpdateTaskStatus is used to update task's status in a job.
+// If error occurs both task and job are guaranteed to be in the original state.
 func (ji *JobInfo) UpdateTaskStatus(task *TaskInfo, status TaskStatus) error {
 	if err := validateStatusUpdate(task.Status, status); err != nil {
 		return err
 	}
 
-	// Remove the task from the task list firstly
-	ji.DeleteTaskInfo(task)
+	// First remove the task (if exist) from the task list.
+	if _, found := ji.Tasks[task.UID]; found {
+		if err := ji.DeleteTaskInfo(task); err != nil {
+			return err
+		}
+	}
 
-	// Update task's status to the target status
+	// Update task's status to the target status once task addition is guaranteed to succeed.
 	task.Status = status
 	ji.AddTaskInfo(task)
 
