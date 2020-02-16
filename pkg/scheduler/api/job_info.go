@@ -21,7 +21,7 @@ import (
 	"sort"
 	"strings"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -132,6 +132,7 @@ type JobInfo struct {
 
 	Queue QueueID
 
+	JobGroup JobGroupID
 	Priority int32
 
 	MinAvailable int32
@@ -190,8 +191,9 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.MinAvailable = pg.Spec.MinMember
 	ji.Queue = QueueID(pg.Spec.Queue)
 	ji.CreationTimestamp = pg.GetCreationTimestamp()
-
 	ji.PodGroup = pg
+	ji.JobGroup = getJobGroupID(pg)
+
 }
 
 // SetPDB sets PDB to a job
