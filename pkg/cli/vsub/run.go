@@ -18,6 +18,7 @@ package vsub
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -57,7 +58,21 @@ func InitRunFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "r", 1, "the total tasks of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Requests, "requests", "R", "cpu=1000m,memory=100Mi", "the resource request of the task")
 	cmd.Flags().StringVarP(&launchJobFlags.Limits, "limits", "L", "cpu=1000m,memory=100Mi", "the resource limit of the task")
-	cmd.Flags().StringVarP(&launchJobFlags.SchedulerName, "scheduler", "S", "volcano", "the scheduler for this job")
+	cmd.Flags().StringVarP(&launchJobFlags.SchedulerName, "scheduler", "S", "", "the scheduler for this job, overwrite the value of 'VOLCANO_SCHEDULER_NAME' (default \"volcano\")")
+
+	setDefaultArgs()
+}
+
+func setDefaultArgs() {
+	if launchJobFlags.SchedulerName == "" {
+		schedulerName := os.Getenv("VOLCANO_SCHEDULER_NAME")
+
+		if schedulerName != "" {
+			launchJobFlags.SchedulerName = schedulerName
+		} else {
+			launchJobFlags.SchedulerName = "volcano"
+		}
+	}
 }
 
 var jobName = "job.volcano.sh"
