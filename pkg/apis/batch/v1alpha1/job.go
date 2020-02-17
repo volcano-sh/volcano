@@ -97,6 +97,11 @@ type VolumeSpec struct {
 	// defined the PVC name
 	VolumeClaimName string `json:"volumeClaimName,omitempty" protobuf:"bytes,2,opt,name=volumeClaimName"`
 
+	// Note: GenerateName can be set for task scoped volume.
+	// If `VolumeClaimName` is empty, then the job controller will
+	// generate a name with `{task_index}` suffixed for each pod of the task.
+	GenerateName string `json:"generateName,omitempty" protobuf:"bytes,4,opt,name=generateName"`
+
 	// VolumeClaim defines the PVC used by the VolumeMount.
 	VolumeClaim *v1.PersistentVolumeClaimSpec `json:"volumeClaim,omitempty" protobuf:"bytes,3,opt,name=volumeClaim"`
 }
@@ -164,6 +169,12 @@ type TaskSpec struct {
 	// Specifies the lifecycle of task
 	// +optional
 	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,4,opt,name=policies"`
+
+	// The volumes mount on pods of the Task
+	// Depends on the `VolumeSpec.GenerateName`, they can be dedicated or shared.
+	// If `VolumeSpec.GenerateName` is specified and `VolumeSpec.VolumeClaimName` is empty,
+	// the Job controller will generate a dedicated PVC for each pod.
+	Volumes []VolumeSpec `json:"volumes,omitempty" protobuf:"bytes,5,opt,name=volumes"`
 }
 
 // JobPhase defines the phase of the job
