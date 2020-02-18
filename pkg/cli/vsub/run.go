@@ -47,30 +47,55 @@ type runFlags struct {
 
 var launchJobFlags = &runFlags{}
 
+const (
+	// SchedulerNameEnv is the env name of default scheduler name.
+	SchedulerNameEnv = "VOLCANO_SCHEDULER_NAME"
+
+	// DefaultImageEnv is the env name of default image.
+	DefaultImageEnv = "VOLCANO_DEFAULT_IMAGE"
+
+	defaultImage         = "busybox"
+	defaultSchedulerName = "volcano"
+)
+
 // InitRunFlags  init the run flags
 func InitRunFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &launchJobFlags.CommonFlags)
 
-	cmd.Flags().StringVarP(&launchJobFlags.Image, "image", "i", "busybox", "the container image of job")
+	cmd.Flags().StringVarP(&launchJobFlags.Image, "image", "i", "",
+		fmt.Sprintf("the container image of job, overwrite the value of '%s' (default \"%s\")",
+			DefaultImageEnv, defaultImage))
 	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "N", "default", "the namespace of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Name, "name", "n", "", "the name of job")
 	cmd.Flags().IntVarP(&launchJobFlags.MinAvailable, "min", "m", 1, "the minimal available tasks of job")
 	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "r", 1, "the total tasks of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Requests, "requests", "R", "cpu=1000m,memory=100Mi", "the resource request of the task")
 	cmd.Flags().StringVarP(&launchJobFlags.Limits, "limits", "L", "cpu=1000m,memory=100Mi", "the resource limit of the task")
-	cmd.Flags().StringVarP(&launchJobFlags.SchedulerName, "scheduler", "S", "", "the scheduler for this job, overwrite the value of 'VOLCANO_SCHEDULER_NAME' (default \"volcano\")")
+	cmd.Flags().StringVarP(&launchJobFlags.SchedulerName, "scheduler", "S", "",
+		fmt.Sprintf("the scheduler for this job, overwrite the value of '%s' (default \"%s\")",
+			SchedulerNameEnv, defaultSchedulerName))
 
 	setDefaultArgs()
 }
 
 func setDefaultArgs() {
 	if launchJobFlags.SchedulerName == "" {
-		schedulerName := os.Getenv("VOLCANO_SCHEDULER_NAME")
+		schedulerName := os.Getenv(SchedulerNameEnv)
 
 		if schedulerName != "" {
 			launchJobFlags.SchedulerName = schedulerName
 		} else {
-			launchJobFlags.SchedulerName = "volcano"
+			launchJobFlags.SchedulerName = defaultSchedulerName
+		}
+	}
+
+	if launchJobFlags.Image == "" {
+		image := os.Getenv(DefaultImageEnv)
+
+		if image != "" {
+			launchJobFlags.Image = image
+		} else {
+			launchJobFlags.Image = defaultImage
 		}
 	}
 }
