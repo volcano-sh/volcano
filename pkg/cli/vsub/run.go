@@ -19,6 +19,7 @@ package vsub
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -43,6 +44,7 @@ type runFlags struct {
 	Limits        string
 	SchedulerName string
 	FileName      string
+	Command       string
 }
 
 var launchJobFlags = &runFlags{}
@@ -74,6 +76,7 @@ func InitRunFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&launchJobFlags.SchedulerName, "scheduler", "S", "",
 		fmt.Sprintf("the scheduler for this job, overwrite the value of '%s' (default \"%s\")",
 			SchedulerNameEnv, defaultSchedulerName))
+	cmd.Flags().StringVarP(&launchJobFlags.Command, "command", "c", "", "the command of of job")
 
 	setDefaultArgs()
 }
@@ -166,6 +169,8 @@ func constructLaunchJobFlagsJob(launchJobFlags *runFlags, req, limit v1.Resource
 									Image:           launchJobFlags.Image,
 									Name:            launchJobFlags.Name,
 									ImagePullPolicy: v1.PullIfNotPresent,
+									// TODO (k82cn): split the command line as arguments.
+									Command: strings.Split(launchJobFlags.Command, " "),
 									Resources: v1.ResourceRequirements{
 										Limits:   limit,
 										Requests: req,
