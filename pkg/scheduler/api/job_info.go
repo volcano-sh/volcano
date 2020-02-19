@@ -58,7 +58,7 @@ type TaskInfo struct {
 func getJobID(pod *v1.Pod) JobID {
 	if gn, found := pod.Annotations[v1alpha2.GroupNameAnnotationKey]; found && len(gn) != 0 {
 		// Make sure Pod and PodGroup belong to the same namespace.
-		return genJobID(pod.Name, gn)
+		return genJobID(pod.Namespace, gn)
 	}
 	return ""
 }
@@ -196,7 +196,7 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.Queue = QueueID(pg.Spec.Queue)
 	ji.CreationTimestamp = pg.GetCreationTimestamp()
 	ji.PodGroup = pg
-	ji.SubGroup = pg.Spec.SubGroup
+	ji.SubGroup = pg.PodGroup.Spec.SubGroup
 
 }
 
@@ -300,6 +300,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 		PDB:      ji.PDB,
 		PodGroup: ji.PodGroup,
+		SubGroup: ji.SubGroup,
 
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},

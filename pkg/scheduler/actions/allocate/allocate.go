@@ -43,9 +43,28 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("Enter Allocate ...")
 	defer klog.V(3).Infof("Leaving Allocate ...")
 
-	jobGroups := buildJobGroups(ssn.Jobs)
+	jobGroups := buildJobGroups(ssn)
 	namespaces := util.NewPriorityQueue(ssn.NamespaceOrderFn)
 	jobGroupMap := map[api.NamespaceName]map[api.QueueID]*util.PriorityQueue{}
+
+	// JobGroupOrderFn
+	jobGroupOrderFn := func(l, r interface{}) bool {
+
+		lv := l.(*api.JobGroupInfo)
+		rv := r.(*api.JobGroupInfo)
+		if lv.TopJob == nil && rv.TopJob == nil {
+			return true
+		}
+		if lv.TopJob == nil {
+			return false
+		}
+		if rv.TopJob == nil {
+			return false
+		}
+		return ssn.JobOrderFn(lv.TopJob, rv.TopJob)
+
+	}
+
 	// the allocation for pod may have many stages
 	// 1. pick a namespace named N (using ssn.NamespaceOrderFn)
 	// 2. pick a queue named Q from N (using ssn.QueueOrderFn)
@@ -88,7 +107,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 
 		groups, found := queueMap[jobGroup.Queue]
 		if !found {
-			groups = util.NewPriorityQueue(ssn.JobOrderFn)
+			groups = util.NewPriorityQueue(jobGroupOrderFn)
 			queueMap[jobGroup.Queue] = groups
 		}
 		klog.V(4).Infof("Added JobGroup %s", jobGroup.UID)
@@ -171,7 +190,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 				pendingTasks[job.UID] = tasks
 			}
 			tasks := pendingTasks[job.UID]
-
+			taskAllAllocated = taskAllAllocated && tasks.Empty()
 			klog.V(3).Infof("Try to allocate resource to %d tasks of Job <%v/%v>",
 				tasks.Len(), job.Namespace, job.Name)
 
@@ -192,6 +211,7 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 				predicateNodes, fitErrors := util.PredicateNodes(task, allNodes, predicateFn)
 				if len(predicateNodes) == 0 {
 					job.NodesFitErrors[task.UID] = fitErrors
+
 					break
 				}
 
@@ -222,7 +242,6 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 					}
 				}
 				if ssn.JobReady(job) {
-					taskAllAllocated = false
 					break
 				}
 			}
@@ -256,25 +275,26 @@ func (alloc *allocateAction) UnInitialize() {}
 
 // buildJobGroups builds list of JobGroupInfo based on the `SubGroup` of JobInfo
 // if JobInfo.SubGroup is empty, itself makes a JobGroupInfo
-func buildJobGroups(jobs map[api.JobID]*api.JobInfo) []*api.JobGroupInfo {
+func buildJobGroups(ssn *framework.Session) []*api.JobGroupInfo {
+	jobs := ssn.Jobs
 	jobGroups := make(map[string]*api.JobGroupInfo)
 	remainingGroups := make(map[string]*api.JobGroupInfo)
 	for _, job := range jobs {
 		if len(job.SubGroup) > 0 {
 			if _, found := jobGroups[job.SubGroup]; !found {
-				jobGroups[job.SubGroup] = api.NewJobGroupInfo(job)
+				jobGroups[job.SubGroup] = api.NewJobGroupInfo(job, ssn.JobOrderFn)
 			}
 			group := jobGroups[job.SubGroup]
 			if group.Namespace != job.Namespace || group.Queue != job.Queue {
 				klog.Warningf("Job <%s> within a Group must be in the same namespace and queue. Ignore its SubGroup Spec", job.UID)
 				job.SubGroup = ""
-				remainingGroups[string(job.UID)] = api.NewJobGroupInfo(job)
+				remainingGroups[string(job.UID)] = api.NewJobGroupInfo(job, ssn.JobOrderFn)
 				remainingGroups[string(job.UID)].AddJob(job)
 				continue
 			}
 			group.AddJob(job)
 		} else {
-			remainingGroups[string(job.UID)] = api.NewJobGroupInfo(job)
+			remainingGroups[string(job.UID)] = api.NewJobGroupInfo(job, ssn.JobOrderFn)
 			remainingGroups[string(job.UID)].AddJob(job)
 		}
 	}

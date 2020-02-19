@@ -24,16 +24,22 @@ type JobGroupInfo struct {
 	Namespace string
 	Queue     QueueID
 	Jobs      map[JobID]*JobInfo
-	Priority  int32
+	TopJob    *JobInfo
+	orderFn   LessFn
 }
 
 // NewJobGroupInfo creates a new JobGroupInfo by the UID
-func NewJobGroupInfo(job *JobInfo) *JobGroupInfo {
-	var group *JobGroupInfo
+func NewJobGroupInfo(job *JobInfo, lessFn LessFn) *JobGroupInfo {
+	group := &JobGroupInfo{
+		Jobs:      make(map[JobID]*JobInfo),
+		Namespace: job.Namespace,
+		Queue:     job.Queue,
+		orderFn:   lessFn,
+	}
 	if job.SubGroup == "" {
-		group = &JobGroupInfo{UID: JobGroupID(job.UID), Jobs: make(map[JobID]*JobInfo)}
+		group.UID = JobGroupID(job.UID)
 	} else {
-		group = &JobGroupInfo{UID: JobGroupID(job.SubGroup)}
+		group.UID = JobGroupID(job.SubGroup)
 	}
 	group.Namespace = job.Namespace
 	group.Queue = job.Queue
@@ -57,10 +63,9 @@ func (jgi *JobGroupInfo) AddJob(jb *JobInfo) {
 		return
 	}
 	jgi.Jobs[jb.UID] = jb
-	if jb.Priority > jgi.Priority {
-		jgi.Priority = jb.Priority
+	if jgi.TopJob == nil || jgi.orderFn(jb, jgi.TopJob) {
+		jgi.TopJob = jb
 	}
-	return
 }
 
 // String returns a jobInfo object in string format
