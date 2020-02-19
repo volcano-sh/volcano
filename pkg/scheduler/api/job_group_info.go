@@ -16,47 +16,61 @@ limitations under the License.
 
 package api
 
-import (
-	"k8s.io/apimachinery/pkg/types"
-)
-
-// JobGroupID is UID type, serves as unique ID for each JobGroup
-type JobGroupID types.UID
-
-func getJobGroupID(pg *PodGroup) {
-	//TODO:roylee
-	return ""
-}
+type JobGroupID string
 
 // JobGroupInfo has all the jobs within one group
 type JobGroupInfo struct {
-	UID JobGroupID
-	jobs maps[string]*JobInfo
+	UID       JobGroupID
+	Namespace string
+	Queue     QueueID
+	Jobs      map[JobID]*JobInfo
+	Priority  int32
+}
+
+// NewJobGroupInfo creates a new JobGroupInfo by the UID
+func NewJobGroupInfo(job *JobInfo) *JobGroupInfo {
+	var group *JobGroupInfo
+	if job.SubGroup == "" {
+		group = &JobGroupInfo{UID: JobGroupID(job.UID), Jobs: make(map[JobID]*JobInfo)}
+	} else {
+		group = &JobGroupInfo{UID: JobGroupID(job.SubGroup)}
+	}
+	group.Namespace = job.Namespace
+	group.Queue = job.Queue
+
+	return group
+
 }
 
 // Clone is used to clone a jobInfo object
+// TODO:roylee
 func (jpi *JobGroupInfo) Clone() *JobGroupInfo {
-
+	return &JobGroupInfo{}
 }
 
-func (jpi *JobGroupInfo) AddJob(jb *JobInfo) {
-	if job, found := jpi.jobs[jb.UID], found {
-		return nil
+// AddJob adds a JobInfo into JobGroupInfo
+func (jgi *JobGroupInfo) AddJob(jb *JobInfo) {
+	if _, found := jgi.Jobs[jb.UID]; found {
+		return
 	}
-	jpi.jobs[jb.UID] = jb
-	return nil
+	if jb.Namespace != jgi.Namespace || jb.Queue != jgi.Queue {
+		return
+	}
+	jgi.Jobs[jb.UID] = jb
+	if jb.Priority > jgi.Priority {
+		jgi.Priority = jb.Priority
+	}
+	return
 }
-
-
 
 // String returns a jobInfo object in string format
-func (jpi *JobGroupInfo) String() string {
+func (jgi *JobGroupInfo) String() string {
 	return ""
 }
 
-// Ready returns whether job is ready for run
-func (jpi *JobGroupInfo) Ready() bool {
-	for _, job := range jpi.jobs {
+// Ready returns whether all jobs are ready for run
+func (jgi *JobGroupInfo) Ready() bool {
+	for _, job := range jgi.Jobs {
 		if !job.Ready() {
 			return false
 		}
@@ -65,9 +79,9 @@ func (jpi *JobGroupInfo) Ready() bool {
 	return true
 }
 
-// Pipelined returns whether the number of ready and pipelined task is enough
-func (jpi *JobGroupInfo) Pipelined() bool {
-	for _, job := range jpi.jobs {
+// Pipelined returns whether all jobs are in pipelined state
+func (jgi *JobGroupInfo) Pipelined() bool {
+	for _, job := range jgi.Jobs {
 		if !job.Pipelined() {
 			return false
 		}

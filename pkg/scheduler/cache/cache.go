@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -112,6 +112,8 @@ type SchedulerCache struct {
 
 	errTasks    workqueue.RateLimitingInterface
 	deletedJobs workqueue.RateLimitingInterface
+	// JobGroupInfo
+	JobGroups map[schedulingapi.JobID]*schedulingapi.JobGroupInfo
 }
 
 type defaultBinder struct {

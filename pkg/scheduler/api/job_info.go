@@ -58,11 +58,13 @@ type TaskInfo struct {
 func getJobID(pod *v1.Pod) JobID {
 	if gn, found := pod.Annotations[v1alpha2.GroupNameAnnotationKey]; found && len(gn) != 0 {
 		// Make sure Pod and PodGroup belong to the same namespace.
-		jobID := fmt.Sprintf("%s/%s", pod.Namespace, gn)
-		return JobID(jobID)
+		return genJobID(pod.Name, gn)
 	}
-
 	return ""
+}
+
+func genJobID(namespace string, name string) JobID {
+	return JobID(fmt.Sprintf("%s/%s", namespace, name))
 }
 
 // NewTaskInfo creates new taskInfo object for a Pod
@@ -132,7 +134,6 @@ type JobInfo struct {
 
 	Queue QueueID
 
-	JobGroup JobGroupID
 	Priority int32
 
 	MinAvailable int32
@@ -154,6 +155,8 @@ type JobInfo struct {
 
 	// TODO(k82cn): keep backward compatibility, removed it when v1alpha1 finalized.
 	PDB *policyv1.PodDisruptionBudget
+
+	SubGroup string
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks
@@ -182,6 +185,7 @@ func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 // UnsetPodGroup removes podGroup details from a job
 func (ji *JobInfo) UnsetPodGroup() {
 	ji.PodGroup = nil
+	ji.SubGroup = ""
 }
 
 // SetPodGroup sets podGroup details to a job
@@ -192,7 +196,7 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.Queue = QueueID(pg.Spec.Queue)
 	ji.CreationTimestamp = pg.GetCreationTimestamp()
 	ji.PodGroup = pg
-	ji.JobGroup = getJobGroupID(pg)
+	ji.SubGroup = pg.Spec.SubGroup
 
 }
 
