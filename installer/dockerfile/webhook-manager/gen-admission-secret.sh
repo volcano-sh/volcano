@@ -23,15 +23,15 @@ EOF
 while [[ $# -gt 0 ]]; do
     case ${1} in
         --service)
-            service="$2"
+            SERVICE="$2"
             shift
             ;;
         --secret)
-            secret="$2"
+            SECRET="$2"
             shift
             ;;
         --namespace)
-            namespace="$2"
+            NAMESPACE="$2"
             shift
             ;;
         *)
@@ -41,28 +41,29 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-if [[ -z ${service} ]]; then
+if [[ -z ${SERVICE} ]]; then
     echo "'--service' must be specified"
     exit 1
 fi
 
-if [[ -z ${secret} ]]; then
+if [[ -z ${SECRET} ]]; then
     echo "'--secret' must be specified"
     exit 1
 fi
 
-[[ -z ${namespace} ]] && namespace=default
+[[ -z ${NAMESPACE} ]] && NAMESPACE=default
 
 if [[ ! -x "$(command -v openssl)" ]]; then
     echo "openssl not found"
     exit 1
 fi
 
-csrName=${service}.${namespace}
-tmpdir=$(mktemp -d)
-echo "creating certs in tmpdir ${tmpdir} "
+CERTDIR=/tmp
 
-cat <<EOF >> ${tmpdir}/csr.conf
+function createCerts() {
+  echo "creating certs in dir ${CERTDIR} "
+
+  cat <<EOF > ${CERTDIR}/csr.conf
 [req]
 req_extensions = v3_req
 distinguished_name = req_distinguished_name
@@ -73,64 +74,31 @@ keyUsage = nonRepudiation, digitalSignature, keyEncipherment
 extendedKeyUsage = serverAuth
 subjectAltName = @alt_names
 [alt_names]
-DNS.1 = ${service}
-DNS.2 = ${service}.${namespace}
-DNS.3 = ${service}.${namespace}.svc
+DNS.1 = ${SERVICE}
+DNS.2 = ${SERVICE}.${NAMESPACE}
+DNS.3 = ${SERVICE}.${NAMESPACE}.svc
 EOF
 
-openssl genrsa -out ${tmpdir}/server-key.pem 2048
-openssl req -new -key ${tmpdir}/server-key.pem -subj "/CN=${service}.${namespace}.svc" -out ${tmpdir}/server.csr -config ${tmpdir}/csr.conf
+  openssl genrsa -out ${CERTDIR}/ca.key 2048
+  openssl req -x509 -new -nodes -key ${CERTDIR}/ca.key -subj "/CN=${SERVICE}.${NAMESPACE}.svc" -out ${CERTDIR}/ca.crt
 
-# clean-up any previously created CSR for our service. Ignore errors if not present.
-kubectl delete csr ${csrName} 2>/dev/null || true
+  openssl genrsa -out ${CERTDIR}/server.key 2048
+  openssl req -new -key ${CERTDIR}/server.key -subj "/CN=${SERVICE}.${NAMESPACE}.svc" -out ${CERTDIR}/server.csr -config ${CERTDIR}/csr.conf
 
-# create  server cert/key CSR and  send to k8s API
-cat <<EOF | kubectl create -f -
-apiVersion: certificates.k8s.io/v1beta1
-kind: CertificateSigningRequest
-metadata:
-  name: ${csrName}
-spec:
-  groups:
-  - system:authenticated
-  request: $(cat ${tmpdir}/server.csr | base64 | tr -d '\n')
-  usages:
-  - digital signature
-  - key encipherment
-  - server auth
-EOF
+  openssl x509 -req -in  ${CERTDIR}/server.csr -CA  ${CERTDIR}/ca.crt -CAkey  ${CERTDIR}/ca.key \
+  -CAcreateserial -out  ${CERTDIR}/server.crt \
+  -extensions v3_req -extfile  ${CERTDIR}/csr.conf
+}
 
-# verify CSR has been created
-while true; do
-    kubectl get csr ${csrName}
-    if [ "$?" -eq 0 ]; then
-        break
-    fi
-done
+function createSecret() {
+  # create the secret with CA cert and server cert/key
+  kubectl create secret generic ${SECRET} \
+      --from-file=tls.key=${CERTDIR}/server.key \
+      --from-file=tls.crt=${CERTDIR}/server.crt \
+      --from-file=ca.crt=${CERTDIR}/ca.crt \
+      -n ${NAMESPACE}
+}
 
-# approve and fetch the signed certificate
-kubectl certificate approve ${csrName}
-# verify certificate has been signed
-for x in $(seq 20); do
-    serverCert=$(kubectl get csr ${csrName} -o jsonpath='{.status.certificate}')
-    if [[ ${serverCert} != '' ]]; then
-        break
-    fi
-    sleep 1
-done
-if [[ ${serverCert} == '' ]]; then
-    echo "ERROR: After approving csr ${csrName}, the signed certificate did not appear on the resource. Giving up after 20 attempts." >&2
-    exit 1
-fi
-echo ${serverCert} | openssl base64 -d -A -out ${tmpdir}/server-cert.pem
+createCerts
 
-# ca cert
-kubectl get configmap -n kube-system extension-apiserver-authentication -o=jsonpath='{.data.client-ca-file}' >> ${tmpdir}/ca-cert.pem
-
-# create the secret with CA cert and server cert/key
-kubectl create secret generic ${secret} \
-        --from-file=tls.key=${tmpdir}/server-key.pem \
-        --from-file=tls.crt=${tmpdir}/server-cert.pem \
-        --from-file=ca.crt=${tmpdir}/ca-cert.pem \
-        --dry-run -o yaml |
-    kubectl -n ${namespace} apply -f -
+createSecret
