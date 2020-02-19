@@ -19,8 +19,8 @@ package vsub
 import (
 	"fmt"
 	"os"
-	"strings"
 
+	"github.com/google/shlex"
 	"github.com/spf13/cobra"
 
 	"k8s.io/api/core/v1"
@@ -127,7 +127,10 @@ func RunJob() error {
 		return err
 	}
 
-	job := constructLaunchJobFlagsJob(launchJobFlags, req, limit)
+	job, err := constructLaunchJobFlagsJob(launchJobFlags, req, limit)
+	if err != nil {
+		return err
+	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
 	newJob, err := jobClient.BatchV1alpha1().Jobs(launchJobFlags.Namespace).Create(job)
@@ -144,7 +147,17 @@ func RunJob() error {
 	return nil
 }
 
-func constructLaunchJobFlagsJob(launchJobFlags *runFlags, req, limit v1.ResourceList) *vcbatch.Job {
+func constructLaunchJobFlagsJob(launchJobFlags *runFlags, req, limit v1.ResourceList) (*vcbatch.Job, error) {
+
+	var commands []string
+
+	if launchJobFlags.Command != "" {
+		var err error
+		if commands, err = shlex.Split(launchJobFlags.Command); err != nil {
+			return nil, err
+		}
+	}
+
 	return &vcbatch.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      launchJobFlags.Name,
@@ -169,8 +182,7 @@ func constructLaunchJobFlagsJob(launchJobFlags *runFlags, req, limit v1.Resource
 									Image:           launchJobFlags.Image,
 									Name:            launchJobFlags.Name,
 									ImagePullPolicy: v1.PullIfNotPresent,
-									// TODO (k82cn): split the command line as arguments.
-									Command: strings.Split(launchJobFlags.Command, " "),
+									Command:         commands,
 									Resources: v1.ResourceRequirements{
 										Limits:   limit,
 										Requests: req,
@@ -182,5 +194,5 @@ func constructLaunchJobFlagsJob(launchJobFlags *runFlags, req, limit v1.Resource
 				},
 			},
 		},
-	}
+	}, nil
 }
