@@ -62,11 +62,10 @@ func TestCreateJobPod(t *testing.T) {
 	namespace := "test"
 
 	testcases := []struct {
-		Name        string
-		Job         *v1alpha1.Job
-		PodTemplate *v1.PodTemplateSpec
-		Index       int
-		ReturnVal   *v1.Pod
+		Name      string
+		Job       *v1alpha1.Job
+		Index     int
+		ReturnVal *v1.Pod
 	}{
 		{
 			Name: "Test Create Job Pod",
@@ -93,18 +92,6 @@ func TestCreateJobPod(t *testing.T) {
 									},
 								},
 							},
-						},
-					},
-				},
-			},
-			PodTemplate: &v1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: namespace,
-				},
-				Spec: v1.PodSpec{
-					Containers: []v1.Container{
-						{
-							Name: "Containers",
 						},
 					},
 				},
@@ -150,18 +137,6 @@ func TestCreateJobPod(t *testing.T) {
 									},
 								},
 							},
-						},
-					},
-				},
-			},
-			PodTemplate: &v1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: namespace,
-				},
-				Spec: v1.PodSpec{
-					Containers: []v1.Container{
-						{
-							Name: "Containers",
 						},
 					},
 				},
@@ -215,18 +190,6 @@ func TestCreateJobPod(t *testing.T) {
 					},
 				},
 			},
-			PodTemplate: &v1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: namespace,
-				},
-				Spec: v1.PodSpec{
-					Containers: []v1.Container{
-						{
-							Name: "Containers",
-						},
-					},
-				},
-			},
 			Index: 0,
 			ReturnVal: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
@@ -238,9 +201,8 @@ func TestCreateJobPod(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-
 		t.Run(testcase.Name, func(t *testing.T) {
-			pod := createJobPod(testcase.Job, testcase.PodTemplate, testcase.Index)
+			pod := createJobPod(testcase.Job, testcase.Job.Spec.Tasks[0], testcase.Index)
 
 			if testcase.ReturnVal != nil && pod != nil && pod.Name != testcase.ReturnVal.Name && pod.Namespace != testcase.ReturnVal.Namespace {
 				t.Errorf("Expected Return Value to be %v but got %v in case %d", testcase.ReturnVal, pod, i)

@@ -19,6 +19,7 @@ package helpers
 import (
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,6 +65,11 @@ func GenRandomStr(l int) string {
 // GenPVCName generates pvc name with job name
 func GenPVCName(jobName string) string {
 	return fmt.Sprintf(persistentVolumeClaimFmt, jobName, GenRandomStr(12))
+}
+
+// GenDedicatedPVCName generates pvc name with the generateName and task index.
+func GenDedicatedPVCName(generateName string, index int) string {
+	return generateName + strconv.Itoa(index)
 }
 
 // GetJobKeyByReq gets the key for the job request

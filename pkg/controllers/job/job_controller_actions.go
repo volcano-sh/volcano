@@ -240,7 +240,6 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 
 	for _, ts := range job.Spec.Tasks {
 		ts.Template.Name = ts.Name
-		tc := ts.Template.DeepCopy()
 		name := ts.Template.Name
 
 		pods, found := jobInfo.Pods[name]
@@ -251,7 +250,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 		for i := 0; i < int(ts.Replicas); i++ {
 			podName := fmt.Sprintf(jobhelpers.PodNameFmt, job.Name, name, i)
 			if pod, found := pods[podName]; !found {
-				newPod := createJobPod(job, tc, i)
+				newPod := createJobPod(job, ts, i)
 				if err := cc.pluginOnPodCreate(job, newPod); err != nil {
 					return err
 				}
@@ -405,6 +404,58 @@ func (cc *Controller) createJobIOIfNotExist(job *batch.Job) (*batch.Job, error) 
 		}
 		job.Status.ControlledResources["volume-pvc-"+vcName] = vcName
 	}
+
+	// handle task volumes, be careful when processing dedicated volume
+	for _, task := range job.Spec.Tasks {
+		for index, volume := range task.Volumes {
+			vcName := volume.VolumeClaimName
+			if vcName == "" && volume.GenerateName == "" {
+				vcName = jobhelpers.GenPVCName(job.Name)
+				exist, err := cc.checkPVCExist(job, vcName)
+				if err != nil {
+					return job, err
+				}
+				if !exist {
+					job.Spec.Volumes[index].VolumeClaimName = vcName
+					if volume.VolumeClaim != nil {
+						if err := cc.createPVC(job, vcName, volume.VolumeClaim); err != nil {
+							return job, err
+						}
+					}
+					needUpdate = true
+				}
+				job.Status.ControlledResources["volume-pvc-"+vcName] = vcName
+			} else if vcName != "" {
+				exist, err := cc.checkPVCExist(job, vcName)
+				if err != nil {
+					return job, err
+				}
+				if !exist {
+					return job, fmt.Errorf("pvc %s is not found, the job will be in the Pending state until the PVC is created", vcName)
+				}
+				job.Status.ControlledResources["volume-pvc-"+vcName] = vcName
+			} else {
+				// dedicated volume per task replica
+				for i := 0; i < int(task.Replicas); i++ {
+					vcName = jobhelpers.GenDedicatedPVCName(job.Name, i)
+					exist, err := cc.checkPVCExist(job, vcName)
+					if err != nil {
+						return job, err
+					}
+					if !exist {
+						if volume.VolumeClaim != nil {
+							if err := cc.createPVC(job, vcName, volume.VolumeClaim); err != nil {
+								return job, err
+							}
+						}
+						needUpdate = true
+					}
+					job.Status.ControlledResources["volume-pvc-"+vcName] = vcName
+				}
+			}
+		}
+	}
+
 	if needUpdate {
 		newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).Update(job)
 		if err != nil {

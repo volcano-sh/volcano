@@ -32,25 +32,25 @@ import (
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
 
-//MakePodName append podname,jobname,taskName and index and returns the string
+// MakePodName append jobName,taskName and index and returns the string
 func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(jobhelpers.PodNameFmt, jobName, taskName, index)
 }
 
-func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
-	templateCopy := template.DeepCopy()
+func createJobPod(job *batch.Job, task batch.TaskSpec, taskIndex int) *v1.Pod {
+	template := task.Template.DeepCopy()
 
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      jobhelpers.MakePodName(job.Name, template.Name, ix),
+			Name:      jobhelpers.MakePodName(job.Name, template.Name, taskIndex),
 			Namespace: job.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(job, helpers.JobKind),
 			},
-			Labels:      templateCopy.Labels,
-			Annotations: templateCopy.Annotations,
+			Labels:      template.Labels,
+			Annotations: template.Annotations,
 		},
-		Spec: templateCopy.Spec,
+		Spec: template.Spec,
 	}
 
 	// If no scheduler name in Pod, use scheduler name from Job.
@@ -58,6 +58,14 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 		pod.Spec.SchedulerName = job.Spec.SchedulerName
 	}
 
+	volumes := make([]batch.VolumeSpec, 0, len(job.Spec.Volumes)+len(task.Volumes))
+	volumes = append(job.Spec.Volumes)
+	for _, volume := range task.Volumes {
+		if volume.VolumeClaimName == "" && volume.GenerateName != "" {
+			volume.VolumeClaimName = jobhelpers.GenDedicatedPVCName(volume.GenerateName, taskIndex)
+		}
+		volumes = append(volumes, volume)
+	}
 	volumeMap := make(map[string]string)
 	for _, volume := range job.Spec.Volumes {
 		vcName := volume.VolumeClaimName
@@ -87,7 +95,7 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 		}
 	}
 
-	tsKey := templateCopy.Name
+	tsKey := template.Name
 	if len(tsKey) == 0 {
 		tsKey = batch.DefaultTaskSpec
 	}
