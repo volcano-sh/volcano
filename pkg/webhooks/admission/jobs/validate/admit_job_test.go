@@ -22,6 +22,7 @@ import (
 
 	"k8s.io/api/admission/v1beta1"
 	"k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -1052,14 +1053,13 @@ func TestValidateExecution(t *testing.T) {
 			// create fake volcano clientset
 			config.VolcanoClient = fakeclient.NewSimpleClientset()
 
-			//create default queue
+			// create default queue
 			_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Create(&defaultqueue)
 			if err != nil {
 				t.Error("Queue Creation Failed")
 			}
 
 			ret := validateJob(&testCase.Job, &testCase.reviewResponse)
-			//fmt.Printf("test-case name:%s, ret:%v  testCase.reviewResponse:%v \n", testCase.Name, ret,testCase.reviewResponse)
 			if testCase.ExpectErr == true && ret == "" {
 				t.Errorf("Expect error msg :%s, but got nil.", testCase.ret)
 			}
@@ -1075,6 +1075,136 @@ func TestValidateExecution(t *testing.T) {
 			}
 			if testCase.ExpectErr == false && testCase.reviewResponse.Allowed != true {
 				t.Errorf("Expect Allowed as true but got false. %v", testCase.reviewResponse)
+			}
+		})
+	}
+}
+
+func TestValidateTaskVolume(t *testing.T) {
+	testCases := []struct {
+		name    string
+		volumes []v1alpha1.VolumeSpec
+		valid   bool
+	}{
+		{
+			name: "empty mountPath",
+			volumes: []v1alpha1.VolumeSpec{
+				{
+					MountPath:       "",
+					VolumeClaimName: "pvc1",
+				},
+			},
+			valid: false,
+		},
+		{
+			name: "valid with existing pvc",
+			volumes: []v1alpha1.VolumeSpec{
+				{
+					MountPath:       "/var",
+					VolumeClaimName: "pvc1",
+				},
+				{
+					MountPath:       "/data",
+					VolumeClaimName: "pvc2",
+				},
+			},
+			valid: true,
+		},
+		{
+			name: "no volumeClaim specified when volumeClaimName not specified",
+			volumes: []v1alpha1.VolumeSpec{
+				{
+					MountPath: "/var",
+				},
+				{
+					MountPath: "/data",
+				},
+			},
+			valid: false,
+		},
+		{
+			name: "shared pvc",
+			volumes: []v1alpha1.VolumeSpec{
+				{
+					MountPath: "/var",
+					VolumeClaim: &v1.PersistentVolumeClaimSpec{
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						Resources:   v1.ResourceRequirements{Requests: v1.ResourceList{v1.ResourceName(v1.ResourceStorage): resource.MustParse("1G")}},
+					},
+				},
+			},
+			valid: true,
+		},
+		{
+			name: "no volumeClaim specified when generateName specified",
+			volumes: []v1alpha1.VolumeSpec{
+				{
+					MountPath:    "/var",
+					GenerateName: "test-",
+				},
+			},
+			valid: false,
+		},
+		{
+			name: "dedicated pvc",
+			volumes: []v1alpha1.VolumeSpec{
+				{
+					MountPath:    "/var",
+					GenerateName: "test-",
+					VolumeClaim: &v1.PersistentVolumeClaimSpec{
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						Resources:   v1.ResourceRequirements{Requests: v1.ResourceList{v1.ResourceName(v1.ResourceStorage): resource.MustParse("1G")}},
+					},
+				},
+			},
+			valid: true,
+		},
+		{
+			name: "dedicated generateName",
+			volumes: []v1alpha1.VolumeSpec{
+				{
+					MountPath:    "/var",
+					GenerateName: "test-",
+					VolumeClaim: &v1.PersistentVolumeClaimSpec{
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						Resources:   v1.ResourceRequirements{Requests: v1.ResourceList{v1.ResourceName(v1.ResourceStorage): resource.MustParse("1G")}},
+					},
+				},
+				{
+					MountPath:    "/data",
+					GenerateName: "test-",
+					VolumeClaim: &v1.PersistentVolumeClaimSpec{
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						Resources:   v1.ResourceRequirements{Requests: v1.ResourceList{v1.ResourceName(v1.ResourceStorage): resource.MustParse("1G")}},
+					},
+				},
+			},
+			valid: false,
+		},
+		{
+			name: "volumeClaim and volumeClaimName simultaneously specified",
+			volumes: []v1alpha1.VolumeSpec{
+				{
+					MountPath:       "/var",
+					VolumeClaimName: "pvc1",
+					VolumeClaim: &v1.PersistentVolumeClaimSpec{
+						AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+						Resources:   v1.ResourceRequirements{Requests: v1.ResourceList{v1.ResourceName(v1.ResourceStorage): resource.MustParse("1G")}},
+					},
+				},
+			},
+			valid: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateTaskVolume(tc.volumes)
+			if err == nil && !tc.valid {
+				t.Errorf("expect invalid task volumes")
+			}
+			if err != nil && tc.valid {
+				t.Errorf("expect valid task volumes")
 			}
 		})
 	}
