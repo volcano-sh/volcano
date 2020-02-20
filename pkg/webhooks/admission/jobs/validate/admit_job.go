@@ -32,6 +32,7 @@ import (
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
 	"volcano.sh/volcano/pkg/webhooks/router"
@@ -230,5 +231,36 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 		return msg
 	}
 
+	if err := validateTaskVolume(task.Volumes); err != nil {
+		return err.Error()
+	}
+
 	return ""
+}
+
+func validateTaskVolume(volumes []batchv1alpha1.VolumeSpec) error {
+	// validate when generateName specified, the volumeClaim must be set.
+	volumeMap := map[string]bool{}
+
+	for _, volume := range volumes {
+		if volume.GenerateName != "" {
+			if _, found := volumeMap[volume.GenerateName]; found {
+				return fmt.Errorf(" duplicated generateName: %s;", volume.GenerateName)
+			}
+			if volume.VolumeClaimName != "" {
+				return fmt.Errorf("confilct: If you want to use an existing PVC, just specify VolumeClaimName." +
+					"If you want to create a new PVC, you do not need to specify VolumeClaimName")
+			}
+
+			if volume.VolumeClaim == nil {
+				return fmt.Errorf("volumeClaim must be specified if you want to create a new pvc per task replica")
+			}
+			volumeMap[volume.GenerateName] = true
+		}
+	}
+
+	if err := validateIO(volumes); err != nil {
+		return err
+	}
+	return nil
 }
