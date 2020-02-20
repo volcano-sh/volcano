@@ -56,7 +56,7 @@ You can try volcano by one the following two ways.
 
 ### Install with YAML files
 
-Install volcano on a existing Kubernetes cluster.
+Install volcano on an existing Kubernetes cluster.
 
 ```
 kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/master/installer/volcano-development.yaml
@@ -92,7 +92,7 @@ job.batch/volcano-admission-init   1/1           48s        96s
 
 ### Install from code
 
-If you have no kubernetes cluster, try one click install from code base:
+If you don't have a kubernetes cluster, try one-click install from code base:
 
 ```bash
 ./hack/local-up-volcano.sh
