@@ -24,8 +24,10 @@ type JobGroupInfo struct {
 	Namespace string
 	Queue     QueueID
 	Jobs      map[JobID]*JobInfo
-	TopJob    *JobInfo
-	orderFn   LessFn
+	// TopJob is the job with the highest order
+	TopJob *JobInfo
+	// orderFn specify how to compare the job order
+	orderFn LessFn
 }
 
 // NewJobGroupInfo creates a new JobGroupInfo by the UID
@@ -43,15 +45,9 @@ func NewJobGroupInfo(job *JobInfo, lessFn LessFn) *JobGroupInfo {
 	}
 	group.Namespace = job.Namespace
 	group.Queue = job.Queue
-
+	group.AddJob(job)
 	return group
 
-}
-
-// Clone is used to clone a jobInfo object
-// TODO:roylee
-func (jpi *JobGroupInfo) Clone() *JobGroupInfo {
-	return &JobGroupInfo{}
 }
 
 // AddJob adds a JobInfo into JobGroupInfo
@@ -66,11 +62,6 @@ func (jgi *JobGroupInfo) AddJob(jb *JobInfo) {
 	if jgi.TopJob == nil || jgi.orderFn(jb, jgi.TopJob) {
 		jgi.TopJob = jb
 	}
-}
-
-// String returns a jobInfo object in string format
-func (jgi *JobGroupInfo) String() string {
-	return ""
 }
 
 // Ready returns whether all jobs are ready for run
