@@ -21,7 +21,7 @@ import (
 	"sort"
 	"strings"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -58,11 +58,13 @@ type TaskInfo struct {
 func getJobID(pod *v1.Pod) JobID {
 	if gn, found := pod.Annotations[v1alpha2.GroupNameAnnotationKey]; found && len(gn) != 0 {
 		// Make sure Pod and PodGroup belong to the same namespace.
-		jobID := fmt.Sprintf("%s/%s", pod.Namespace, gn)
-		return JobID(jobID)
+		return genJobID(pod.Namespace, gn)
 	}
-
 	return ""
+}
+
+func genJobID(namespace string, name string) JobID {
+	return JobID(fmt.Sprintf("%s/%s", namespace, name))
 }
 
 // NewTaskInfo creates new taskInfo object for a Pod
@@ -153,6 +155,8 @@ type JobInfo struct {
 
 	// TODO(k82cn): keep backward compatibility, removed it when v1alpha1 finalized.
 	PDB *policyv1.PodDisruptionBudget
+
+	SubGroup string
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks
@@ -181,6 +185,7 @@ func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 // UnsetPodGroup removes podGroup details from a job
 func (ji *JobInfo) UnsetPodGroup() {
 	ji.PodGroup = nil
+	ji.SubGroup = ""
 }
 
 // SetPodGroup sets podGroup details to a job
@@ -190,8 +195,9 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.MinAvailable = pg.Spec.MinMember
 	ji.Queue = QueueID(pg.Spec.Queue)
 	ji.CreationTimestamp = pg.GetCreationTimestamp()
-
 	ji.PodGroup = pg
+	ji.SubGroup = pg.PodGroup.Spec.SubGroup
+
 }
 
 // SetPDB sets PDB to a job
@@ -294,6 +300,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 		PDB:      ji.PDB,
 		PodGroup: ji.PodGroup,
+		SubGroup: ji.SubGroup,
 
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},

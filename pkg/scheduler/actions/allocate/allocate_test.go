@@ -32,6 +32,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
+	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -39,6 +40,7 @@ import (
 func TestAllocate(t *testing.T) {
 	framework.RegisterPluginBuilder("drf", drf.New)
 	framework.RegisterPluginBuilder("proportion", proportion.New)
+	framework.RegisterPluginBuilder("gang", gang.New)
 
 	options.ServerOpts = &options.ServerOption{
 		MinNodesToFind:             100,
@@ -150,6 +152,155 @@ func TestAllocate(t *testing.T) {
 				"c1/p1": "n1",
 			},
 		},
+
+		// SubGroup Test 1
+		// Three jobs. job1 and job2 belongs to the same subgroup,
+		// (job1 || job2) && job3 can be allocated, but job1 && job2 && job3 cannot be allocated,
+		// expected: job3 get allocated
+		{
+			name: "Three jobs, only one job get allocated",
+			podGroups: []*schedulingv2.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+					},
+					Spec: schedulingv2.PodGroupSpec{
+						Queue:     "c1",
+						SubGroup:  "sub1",
+						MinMember: 3,
+					},
+				},
+
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c1",
+					},
+					Spec: schedulingv2.PodGroupSpec{
+						Queue:     "c1",
+						SubGroup:  "sub1",
+						MinMember: 2,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg3",
+						Namespace: "c1",
+					},
+					Spec: schedulingv2.PodGroupSpec{
+						Queue:     "c1",
+						SubGroup:  "",
+						MinMember: 2,
+					},
+				},
+			},
+			pods: []*v1.Pod{
+				// p1, p2, p3 in pg1(minMember=3)
+				util.BuildPod("c1", "p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "p3", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				// p4, p5 in pg2(minMember=2)
+				util.BuildPod("c1", "p4", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "p5", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				// p6, p7, p8 in pg3(minMember=2)
+				util.BuildPod("c1", "p6", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg3", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "p7", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg3", make(map[string]string), make(map[string]string)),
+			},
+
+			nodes: []*v1.Node{
+				util.BuildNode("n1", util.BuildResourceList("4", "4Gi"), make(map[string]string)),
+			},
+			queues: []*schedulingv2.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c1",
+					},
+					Spec: schedulingv2.QueueSpec{
+						Weight: 1,
+					},
+				},
+			},
+			expected: map[string]string{
+				"c1/p6": "n1",
+				"c1/p7": "n1",
+			},
+		},
+
+		// SubGroup Test 2
+		// Three jobs. job1 and job2 belongs to the same subgroup,
+		// (job1 && job2) || job3 can be allocated, but job1 && job2 && job3 cannot be allocated,
+		// expected: job3 get allocated
+		{
+			name: "SubGroup Test 2",
+			podGroups: []*schedulingv2.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+					},
+					Spec: schedulingv2.PodGroupSpec{
+						Queue:     "c1",
+						SubGroup:  "sub1",
+						MinMember: 2,
+					},
+				},
+
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c1",
+					},
+					Spec: schedulingv2.PodGroupSpec{
+						Queue:     "c1",
+						SubGroup:  "sub1",
+						MinMember: 2,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg3",
+						Namespace: "c1",
+					},
+					Spec: schedulingv2.PodGroupSpec{
+						Queue:     "c1",
+						SubGroup:  "",
+						MinMember: 2,
+					},
+				},
+			},
+			pods: []*v1.Pod{
+				// p1, p2, p3 in pg1(minMember=3)
+				util.BuildPod("c1", "p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				// p4, p5 in pg2(minMember=2)
+				util.BuildPod("c1", "p4", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "p5", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				// p6, p7, p8 in pg3(minMember=2)
+				util.BuildPod("c1", "p6", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg3", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "p7", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg3", make(map[string]string), make(map[string]string)),
+			},
+
+			nodes: []*v1.Node{
+				util.BuildNode("n1", util.BuildResourceList("5", "4Gi"), make(map[string]string)),
+			},
+			queues: []*schedulingv2.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c1",
+					},
+					Spec: schedulingv2.QueueSpec{
+						Weight: 1,
+					},
+				},
+			},
+			expected: map[string]string{
+				"c1/p1": "n1",
+				"c1/p2": "n1",
+				"c1/p4": "n1",
+				"c1/p5": "n1",
+			},
+		},
 	}
 
 	allocate := New()
@@ -199,6 +350,10 @@ func TestAllocate(t *testing.T) {
 							Name:               "proportion",
 							EnabledQueueOrder:  &trueValue,
 							EnabledReclaimable: &trueValue,
+						},
+						{
+							Name:            "gang",
+							EnabledJobReady: &trueValue,
 						},
 					},
 				},

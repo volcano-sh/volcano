@@ -146,6 +146,8 @@ type PodGroupSpec struct {
 	// if there's not enough resources to start all tasks, the scheduler
 	// will not start anyone.
 	MinResources *v1.ResourceList `json:"minResources,omitempty" protobuf:"bytes,4,opt,name=minResources"`
+
+	SubGroup string `json:"subGroup,omitempty" protobuf:"bytes,5,opt,name=subGroup"`
 }
 
 // PodGroupStatus represents the current state of a pod group.
