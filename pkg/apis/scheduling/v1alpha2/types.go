@@ -185,7 +185,7 @@ type PodGroupSpec struct {
 
 	// SubGroups defines the groups of PodGroup.
 	// When PodGroups grouped together, they are scheduled as a whole.
-	SubGroup string `json:"subGroup,omitempty" protobuf:"bytes,0,opt,name=subGroup"`
+	SubGroup string `json:"subGroup,omitempty" protobuf:"bytes,4,opt,name=subGroup"`
 }
 
 // PodGroupStatus represents the current state of a pod group.

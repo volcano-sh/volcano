@@ -70,9 +70,9 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 	// 2. pick a queue named Q from N (using ssn.QueueOrderFn)
 	// 3. pick a jobGroup named G from Q (using ssn.JobOrderFn)
 	// 4. pick a job named J from G (using ssn.JobOrderFn)
-	// 4. pick a task T from J (using ssn.TaskOrderFn)
-	// 5. use predicateFn to filter out node that T can not be allocated on.
-	// 6. use ssn.NodeOrderFn to judge the best node and assign it to T
+	// 5. pick a task T from J (using ssn.TaskOrderFn)
+	// 6. use predicateFn to filter out node that T can not be allocated on.
+	// 7. use ssn.NodeOrderFn to judge the best node and assign it to T
 
 	for _, jobGroup := range jobGroups {
 		ignore := false
