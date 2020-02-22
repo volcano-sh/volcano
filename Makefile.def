@@ -1,7 +1,7 @@
 
 # If tag not explicitly set in users default to the git sha.
 TAG=v0.3
-GitSHA=e55204262d00487274aaf9fadb1c0665b28ddbf7
+GitSHA=a2a6ee8904f69f2bfc4aa5992f84a59c26b4158f
 Date=`date "+%Y-%m-%d %H:%M:%S"`
 LD_FLAGS=" \
     -X '${REPO_PATH}/pkg/version.GitSHA=${GitSHA}' \
