@@ -69,7 +69,7 @@ e2e-test-kind:
 	./hack/run-e2e-kind.sh
 
 generate-yaml: init
-	./hack/generate-yaml.sh
+	./hack/generate-yaml.sh TAG=${RELEASE_VER}
 
 release-env:
 	./hack/build-env.sh release
