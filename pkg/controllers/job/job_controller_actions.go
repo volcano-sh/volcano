@@ -406,6 +406,7 @@ func (cc *Controller) createJobIOIfNotExist(job *batch.Job) (*batch.Job, error) 
 	}
 
 	// handle task volumes, be careful when processing dedicated volume
+	// TODO: deduplicate with job specific volumes
 	for _, task := range job.Spec.Tasks {
 		for index, volume := range task.Volumes {
 			vcName := volume.VolumeClaimName

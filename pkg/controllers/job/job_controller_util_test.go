@@ -197,122 +197,194 @@ func TestCreateJobPod(t *testing.T) {
 				},
 			},
 		},
-		// {
-		// 	name: "Test Create Job Pod with volumes added to controlled resources",
-		// 	job: &v1alpha1.Job{
-		// 		ObjectMeta: metav1.ObjectMeta{
-		// 			Name:      "job1",
-		// 			Namespace: namespace,
-		// 		},
-		// 		Spec: v1alpha1.JobSpec{
-		// 			SchedulerName: "volcano",
-		// 			Volumes: []v1alpha1.VolumeSpec{
-		// 				{
-		// 					VolumeClaimName: "vc1",
-		// 					VolumeClaim: &v1.PersistentVolumeClaimSpec{
-		// 						VolumeName: "v1",
-		// 					},
-		// 				},
-		// 				{
-		// 					VolumeClaimName: "vc2",
-		// 				},
-		// 			},
-		// 			Tasks: []v1alpha1.TaskSpec{
-		// 				{
-		// 					Name:     "task1",
-		// 					Replicas: 6,
-		// 					Template: v1.PodTemplateSpec{
-		// 						ObjectMeta: metav1.ObjectMeta{
-		// 							Name:      "pods",
-		// 							Namespace: namespace,
-		// 						},
-		// 						Spec: v1.PodSpec{
-		// 							Containers: []v1.Container{
-		// 								{
-		// 									Name: "Containers",
-		// 								},
-		// 							},
-		// 						},
-		// 					},
-		// 				},
-		// 			},
-		// 		},
-		// 	},
-		// 	taskIndex: 0,
-		// 	expectPod: &v1.Pod{
-		// 		ObjectMeta: metav1.ObjectMeta{
-		// 			Name:      "job1-task1-0",
-		// 			Namespace: namespace,
-		// 		},
-		// 		Spec: v1.PodSpec{
-		// 			Volumes: []v1.Volume{},
-		// 			Containers: []v1.Container{
-		// 				{
-		// 					Name:         "Containers",
-		// 					VolumeMounts: []v1.VolumeMount{},
-		// 				},
-		// 			},
-		// 		},
-		// 	},
-		// },
-		// {
-		// 	name: "task specific shared volumes added to controlled resources",
-		// 	job: &v1alpha1.Job{
-		// 		ObjectMeta: metav1.ObjectMeta{
-		// 			Name:      "job1",
-		// 			Namespace: namespace,
-		// 		},
-		// 		Spec: v1alpha1.JobSpec{
-		// 			SchedulerName: "volcano",
-		// 			Volumes: []v1alpha1.VolumeSpec{
-		// 				{
-		// 					VolumeClaimName: "vc1",
-		// 					VolumeClaim: &v1.PersistentVolumeClaimSpec{
-		// 						VolumeName: "v1",
-		// 					},
-		// 				},
-		// 				{
-		// 					VolumeClaimName: "vc2",
-		// 				},
-		// 			},
-		// 			Tasks: []v1alpha1.TaskSpec{
-		// 				{
-		// 					Name:     "task1",
-		// 					Replicas: 6,
-		// 					Template: v1.PodTemplateSpec{
-		// 						ObjectMeta: metav1.ObjectMeta{
-		// 							Name:      "pods",
-		// 							Namespace: namespace,
-		// 						},
-		// 						Spec: v1.PodSpec{
-		// 							Containers: []v1.Container{
-		// 								{
-		// 									Name: "Containers",
-		// 								},
-		// 							},
-		// 						},
-		// 					},
-		// 				},
-		// 			},
-		// 		},
-		// 	},
-		// 	taskIndex: 0,
-		// 	expectPod: &v1.Pod{
-		// 		ObjectMeta: metav1.ObjectMeta{
-		// 			Name:      "job1-task1-0",
-		// 			Namespace: namespace,
-		// 		},
-		// 		Spec: v1.PodSpec{
-		// 			Volumes: []v1.Volume{},
-		// 			Containers: []v1.Container{
-		// 				{
-		// 					Name:         "Containers",
-		// 					VolumeMounts: []v1.VolumeMount{},
-		// 				},
-		// 			},
-		// 		},
-		// 	},
-		// },
+		{
+			name: "Test Create Job Pod with volumes added to controlled resources",
+			job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					SchedulerName: "volcano",
+					Volumes: []v1alpha1.VolumeSpec{
+						{
+							MountPath:       "/a",
+							VolumeClaimName: "vc1",
+						},
+						{
+							MountPath:       "/b",
+							VolumeClaimName: "vc2",
+						},
+					},
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 6,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			taskIndex: 0,
+			expectPod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1-task1-0",
+					Namespace: namespace,
+				},
+				Spec: v1.PodSpec{
+					Volumes: []v1.Volume{
+						{
+							Name: "xxx",
+							VolumeSource: v1.VolumeSource{
+								PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+									ClaimName: "vc1",
+									ReadOnly:  false,
+								},
+							},
+						},
+						{
+							Name: "xxx",
+							VolumeSource: v1.VolumeSource{
+								PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+									ClaimName: "vc2",
+									ReadOnly:  false,
+								},
+							},
+						},
+					},
+					Containers: []v1.Container{
+						{
+							Name: "Containers",
+							VolumeMounts: []v1.VolumeMount{
+								{
+									MountPath: "/a",
+									Name:      "xxx",
+								},
+								{
+									MountPath: "/b",
+									Name:      "xxx",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "task specific volumes added to controlled resources",
+			job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					SchedulerName: "volcano",
+					Volumes: []v1alpha1.VolumeSpec{
+						{
+							MountPath:       "/a",
+							VolumeClaimName: "vc1",
+						},
+					},
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 6,
+							Volumes: []v1alpha1.VolumeSpec{
+								{
+									MountPath:       "/b",
+									VolumeClaimName: "vc2",
+								},
+								{
+									MountPath:    "/c",
+									GenerateName: "gen-pvc-",
+								},
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			taskIndex: 0,
+			expectPod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1-task1-0",
+					Namespace: namespace,
+				},
+				Spec: v1.PodSpec{
+					Volumes: []v1.Volume{
+						{
+							Name: "xxx",
+							VolumeSource: v1.VolumeSource{
+								PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+									ClaimName: "vc1",
+									ReadOnly:  false,
+								},
+							},
+						},
+						{
+							Name: "xxx",
+							VolumeSource: v1.VolumeSource{
+								PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+									ClaimName: "vc2",
+									ReadOnly:  false,
+								},
+							},
+						},
+						{
+							Name: "xxx",
+							VolumeSource: v1.VolumeSource{
+								PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+									ClaimName: "gen-pvc-0",
+									ReadOnly:  false,
+								},
+							},
+						},
+					},
+					Containers: []v1.Container{
+						{
+							Name: "Containers",
+							VolumeMounts: []v1.VolumeMount{
+								{
+									MountPath: "/a",
+									Name:      "xxx",
+								},
+								{
+									MountPath: "/b",
+									Name:      "xxx",
+								},
+								{
+									MountPath: "/c",
+									Name:      "xxx",
+								},
+							}},
+					},
+				},
+			},
+		},
 	}
 
 	for _, testcase := range testcases {
@@ -323,18 +395,22 @@ func TestCreateJobPod(t *testing.T) {
 			}
 
 			// strip volume name
-
+			for i := range pod.Spec.Volumes {
+				pod.Spec.Volumes[i].Name = "xxx"
+			}
 			if !reflect.DeepEqual(pod.Spec.Volumes, testcase.expectPod.Spec.Volumes) {
 				t.Errorf("Expected volumes %v but got %v", testcase.expectPod.Spec.Volumes, pod.Spec.Volumes)
 				t.Logf("%s", cmp.Diff(testcase.expectPod.Spec.Volumes, pod.Spec.Volumes))
 			}
 
+			// strip name
+			for i := range pod.Spec.Containers[0].VolumeMounts {
+				pod.Spec.Containers[0].VolumeMounts[i].Name = "xxx"
+			}
 			if !reflect.DeepEqual(pod.Spec.Containers[0].VolumeMounts, testcase.expectPod.Spec.Containers[0].VolumeMounts) {
 				t.Errorf("Expected volumeMounts %v but got %v", testcase.expectPod.Spec.Containers[0].VolumeMounts, pod.Spec.Containers[0].VolumeMounts)
 				t.Logf("%s", cmp.Diff(testcase.expectPod.Spec.Containers[0].VolumeMounts, pod.Spec.Containers[0].VolumeMounts))
 			}
-
-			// compare the volume name
 		})
 	}
 }

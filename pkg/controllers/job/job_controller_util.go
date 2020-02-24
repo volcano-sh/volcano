@@ -67,7 +67,7 @@ func createJobPod(job *batch.Job, task batch.TaskSpec, taskIndex int) *v1.Pod {
 		volumes = append(volumes, volume)
 	}
 	volumeMap := make(map[string]string)
-	for _, volume := range job.Spec.Volumes {
+	for _, volume := range volumes {
 		vcName := volume.VolumeClaimName
 		name := fmt.Sprintf("%s-%s", job.Name, jobhelpers.GenRandomStr(12))
 		if _, ok := volumeMap[vcName]; !ok {
