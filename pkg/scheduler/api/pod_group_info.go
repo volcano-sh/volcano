@@ -25,7 +25,7 @@ type PodGroupPhase string
 
 // These are the valid phase of podGroups.
 const (
-	//PodGroupVersionV1Alpha1 represents PodGroupVersion of V1Alpha1
+	// PodGroupVersionV1Beta1 represents PodGroupVersion of v1beta1
 	PodGroupVersionV1Beta1 string = "v1beta1"
 )
 
@@ -33,6 +33,6 @@ const (
 type PodGroup struct {
 	scheduling.PodGroup
 
-	//Version represents the version of PodGroup
+	// Version represents the version of PodGroup
 	Version string
 }

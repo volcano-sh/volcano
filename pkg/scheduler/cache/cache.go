@@ -202,8 +202,6 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*sch
 	}
 
 	return podGroupInfo, nil
-
-	return nil, fmt.Errorf("invalid PodGroup version: %s", pg.Version)
 }
 
 type defaultVolumeBinder struct {
@@ -490,8 +488,6 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 	}
 	sc.Recorder.Eventf(podgroup, v1.EventTypeNormal, "Evict", reason)
 	return nil
-
-	return fmt.Errorf("Invalid PodGroup Version: %s", job.PodGroup.Version)
 }
 
 // Bind binds task to the target host.
