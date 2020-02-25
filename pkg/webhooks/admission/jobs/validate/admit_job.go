@@ -177,13 +177,9 @@ func validateJob(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) s
 		msg = msg + err.Error()
 	}
 
-	// Check whether Queue already present or not
 	queue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(job.Spec.Queue, metav1.GetOptions{})
 	if err != nil {
-		// TODO: deprecate v1alpha1
-		if _, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(job.Spec.Queue, metav1.GetOptions{}); err != nil {
-			msg = msg + fmt.Sprintf(" unable to find job queue: %v", err)
-		}
+		msg = msg + fmt.Sprintf(" unable to find job queue: %v", err)
 	} else {
 		if queue.Status.State != schedulingv1beta1.QueueStateOpen {
 			msg = msg + fmt.Sprintf("can only submit job to queue with state `Open`, "+

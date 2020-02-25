@@ -129,16 +129,10 @@ func validatePod(pod *v1.Pod, reviewResponse *v1beta1.AdmissionResponse) string 
 func checkPGPhase(pod *v1.Pod, pgName string, isVCJob bool) error {
 	pg, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(pgName, metav1.GetOptions{})
 	if err != nil {
-		pg, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(pgName, metav1.GetOptions{})
-		if err != nil {
-			if isVCJob || (!isVCJob && !apierrors.IsNotFound(err)) {
-				return fmt.Errorf("failed to get PodGroup for pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
-			}
-			return nil
+		if isVCJob || (!isVCJob && !apierrors.IsNotFound(err)) {
+			return fmt.Errorf("failed to get PodGroup for pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
 		}
-		if pg.Status.Phase != vcv1beta1.PodGroupPending {
-			return nil
-		}
+		return nil
 	}
 	if pg.Status.Phase != vcv1beta1.PodGroupPending {
 		return nil
