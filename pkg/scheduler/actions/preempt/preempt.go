@@ -17,8 +17,6 @@ limitations under the License.
 package preempt
 
 import (
-	"fmt"
-
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
@@ -208,7 +206,7 @@ func preempt(
 		victims := ssn.Preemptable(preemptor, preemptees)
 		metrics.UpdatePreemptionVictimsCount(len(victims))
 
-		if err := validateVictims(preemptor, node, victims); err != nil {
+		if err := util.ValidateVictims(preemptor, node, victims); err != nil {
 			klog.V(3).Infof("No validated victims on Node <%s>: %v", node.Name, err)
 			continue
 		}
@@ -256,21 +254,4 @@ func preempt(
 	}
 
 	return assigned, nil
-}
-
-func validateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api.TaskInfo) error {
-	if len(victims) == 0 {
-		return fmt.Errorf("no victims")
-	}
-	futureIdle := node.FutureIdle()
-	for _, victim := range victims {
-		futureIdle.Add(victim.Resreq)
-	}
-	// Every resource of the preemptor needs to be less or equal than corresponding
-	// idle resource after preemption.
-	if !preemptor.InitResreq.LessEqual(futureIdle) {
-		return fmt.Errorf("not enough resources: requested <%v>, but future idle <%v>",
-			preemptor.InitResreq, futureIdle)
-	}
-	return nil
 }
