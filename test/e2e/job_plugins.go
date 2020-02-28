@@ -33,7 +33,7 @@ import (
 )
 
 var _ = Describe("Job E2E Test: Test Job Plugins", func() {
-	It("SVC Plugin with Node Affinity", func() {
+	It("Test SVC Plugin with Node Affinity", func() {
 		jobName := "job-with-svc-plugin"
 		namespace := "test"
 		taskName := "task"
@@ -105,7 +105,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		}
 	})
 
-	It("SSh Plugin with Pod Affinity", func() {
+	It("Test SSh Plugin with Pod Affinity", func() {
 		jobName := "job-with-ssh-plugin"
 		namespace := "test"
 		taskName := "task"
@@ -175,6 +175,43 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		for _, pod := range pods {
 			Expect(pod.Spec.NodeName).To(Equal(nodeName))
 		}
+	})
+
+	It("Test SVC Plugin with disableNetworkPolicy", func() {
+		jobName := "svc-with-disable-network-policy"
+		namespace := "test"
+		taskName := "task"
+		context := initTestContext(options{})
+		defer cleanupTestContext(context)
+
+		_, rep := computeNode(context, oneCPU)
+		Expect(rep).NotTo(Equal(0))
+
+		job := createJob(context, &jobSpec{
+			namespace: namespace,
+			name:      jobName,
+			plugins: map[string][]string{
+				"svc": {"--disable-network-policy=true"},
+			},
+			tasks: []taskSpec{
+				{
+					img:  defaultNginxImage,
+					req:  oneCPU,
+					min:  1,
+					rep:  rep,
+					name: taskName,
+				},
+			},
+		})
+
+		err := waitJobReady(context, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		// Check whether network policy is created with job name
+		networkPolicyName := fmt.Sprintf("%s", jobName)
+		_, err = context.kubeclient.NetworkingV1().NetworkPolicies(namespace).Get(networkPolicyName, v1.GetOptions{})
+		// Error will occur because there is no policy should be created
+		Expect(err).To(HaveOccurred())
 	})
 
 	It("Check Functionality of all plugins", func() {

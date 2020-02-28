@@ -44,6 +44,7 @@ type servicePlugin struct {
 
 	// flag parse args
 	publishNotReadyAddresses bool
+	disableNetworkPolicy     bool
 }
 
 // New creates service plugin
@@ -63,6 +64,8 @@ func (sp *servicePlugin) addFlags() {
 	flagSet := flag.NewFlagSet(sp.Name(), flag.ContinueOnError)
 	flagSet.BoolVar(&sp.publishNotReadyAddresses, "publish-not-ready-addresses", sp.publishNotReadyAddresses,
 		"set publishNotReadyAddresses of svc to true")
+	flagSet.BoolVar(&sp.disableNetworkPolicy, "disable-network-policy", sp.disableNetworkPolicy,
+		"set disableNetworkPolicy of svc to true")
 
 	if err := flagSet.Parse(sp.pluginArguments); err != nil {
 		klog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
@@ -138,9 +141,10 @@ func (sp *servicePlugin) OnJobAdd(job *batch.Job) error {
 		return err
 	}
 
-	// TODO: maybe add a flag
-	if err := sp.createNetworkPolicyIfNotExist(job); err != nil {
-		return err
+	if !sp.disableNetworkPolicy {
+		if err := sp.createNetworkPolicyIfNotExist(job); err != nil {
+			return err
+		}
 	}
 
 	job.Status.ControlledResources["plugin-"+sp.Name()] = sp.Name()
