@@ -18,6 +18,7 @@ package util
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"math/rand"
 	"sort"
@@ -217,4 +218,22 @@ func GetNodeList(nodes map[string]*api.NodeInfo) []*api.NodeInfo {
 		result = append(result, v)
 	}
 	return result
+}
+
+// ValidateVictims returns an error if the resources of the victims can't satisfy the preemptor
+func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api.TaskInfo) error {
+	if len(victims) == 0 {
+		return fmt.Errorf("no victims")
+	}
+	futureIdle := node.FutureIdle()
+	for _, victim := range victims {
+		futureIdle.Add(victim.Resreq)
+	}
+	// Every resource of the preemptor needs to be less or equal than corresponding
+	// idle resource after preemption.
+	if !preemptor.InitResreq.LessEqual(futureIdle) {
+		return fmt.Errorf("not enough resources: requested <%v>, but future idle <%v>",
+			preemptor.InitResreq, futureIdle)
+	}
+	return nil
 }

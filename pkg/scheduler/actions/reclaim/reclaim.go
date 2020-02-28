@@ -152,18 +152,8 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 			}
 			victims := ssn.Reclaimable(task, reclaimees)
 
-			if len(victims) == 0 {
-				klog.V(3).Infof("No victims on Node <%s>.", n.Name)
-				continue
-			}
-
-			// If not enough resource, continue
-			allRes := api.EmptyResource()
-			for _, v := range victims {
-				allRes.Add(v.Resreq)
-			}
-			if !resreq.LessEqual(allRes) {
-				klog.V(3).Infof("Not enough resource from victims on Node <%s>.", n.Name)
+			if err := util.ValidateVictims(task, n, victims); err != nil {
+				klog.V(3).Infof("No validated victims on Node <%s>: %v", n.Name, err)
 				continue
 			}
 
