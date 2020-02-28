@@ -148,5 +148,5 @@ type NodeReduceFn func(*TaskInfo, schedulerapi.HostPriorityList) error
 // NodeOrderMapFn is the func declaration used to get priority score of all plugins for a node for a particular task.
 type NodeOrderMapFn func(*TaskInfo, *NodeInfo) (map[string]float64, float64, error)
 
-// NodeOrderReduceFn is the func declaration used to reduce priority score of all nodes for a plugiin for a particular task.
+// NodeOrderReduceFn is the func declaration used to reduce priority score of all nodes for a plugin for a particular task.
 type NodeOrderReduceFn func(*TaskInfo, map[string]schedulerapi.HostPriorityList) (map[string]float64, error)
