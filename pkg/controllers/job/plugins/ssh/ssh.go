@@ -26,21 +26,21 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/env"
-	"volcano.sh/volcano/pkg/controllers/job/plugins/interface"
+	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
 type sshPlugin struct {
 	// Arguments given for the plugin
 	pluginArguments []string
 
-	Clientset pluginsinterface.PluginClientset
+	client pluginsinterface.PluginClientset
 
 	// flag parse args
 	noRoot         bool
@@ -51,7 +51,7 @@ type sshPlugin struct {
 func New(client pluginsinterface.PluginClientset, arguments []string) pluginsinterface.PluginInterface {
 	sshPlugin := sshPlugin{
 		pluginArguments: arguments,
-		Clientset:       client,
+		client:          client,
 		sshKeyFilePath:  SSHAbsolutePath,
 	}
 
@@ -84,7 +84,7 @@ func (sp *sshPlugin) OnJobAdd(job *batch.Job) error {
 		return err
 	}
 
-	if err := helpers.CreateSecret(job, sp.Clientset.KubeClients, data, sp.secretName(job)); err != nil {
+	if err := helpers.CreateSecret(job, sp.client.KubeClients, data, sp.secretName(job)); err != nil {
 		return fmt.Errorf("create secret for job <%s/%s> with ssh plugin failed for %v",
 			job.Namespace, job.Name, err)
 	}
@@ -95,7 +95,7 @@ func (sp *sshPlugin) OnJobAdd(job *batch.Job) error {
 }
 
 func (sp *sshPlugin) OnJobDelete(job *batch.Job) error {
-	return helpers.DeleteSecret(job, sp.Clientset.KubeClients, sp.secretName(job))
+	return helpers.DeleteSecret(job, sp.client.KubeClients, sp.secretName(job))
 }
 
 func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
@@ -182,7 +182,7 @@ func generateRsaKey(job *batch.Job) (map[string][]byte, error) {
 }
 
 func (sp *sshPlugin) secretName(job *batch.Job) string {
-	return fmt.Sprintf("%s-%s-%s", job.Name, job.UID, sp.Name())
+	return fmt.Sprintf("%s-%s", job.Name, sp.Name())
 }
 
 func (sp *sshPlugin) addFlags() {

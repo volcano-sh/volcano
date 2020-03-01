@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"testing"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
@@ -126,7 +126,7 @@ func TestPluginOnPodCreate(t *testing.T) {
 						}
 						exist := false
 						for _, volume := range container.VolumeMounts {
-							if volume.Name == fmt.Sprintf("%s-%s-%s", testcase.Job.Name, testcase.Job.UID, "ssh") {
+							if volume.Name == fmt.Sprintf("%s-%s", testcase.Job.Name, "ssh") {
 								exist = true
 							}
 						}
@@ -207,7 +207,7 @@ func TestPluginOnJobAdd(t *testing.T) {
 
 				if plugin == "ssh" {
 					_, err := fakeController.kubeClient.CoreV1().Secrets(namespace).Get(
-						fmt.Sprintf("%s-%s-%s", testcase.Job.Name, testcase.Job.UID, "ssh"), metav1.GetOptions{})
+						fmt.Sprintf("%s-%s", testcase.Job.Name, "ssh"), metav1.GetOptions{})
 					if err != nil {
 						t.Errorf("Case %d (%s): expected: Secret to be created, but not created because of error %s", i, testcase.Name, err.Error())
 					}

@@ -24,9 +24,10 @@ import (
 	. "github.com/onsi/gomega"
 
 	cv1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/scheduler/api"
 
+	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/env"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/svc"
@@ -153,16 +154,16 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		err := waitJobReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pluginName := fmt.Sprintf("%s-%s-ssh", jobName, job.UID)
+		secretName := genSSHSecretName(job)
 		_, err = context.kubeclient.CoreV1().Secrets(namespace).Get(
-			pluginName, v1.GetOptions{})
+			secretName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		pod, err := context.kubeclient.CoreV1().Pods(namespace).Get(
 			fmt.Sprintf(helpers.PodNameFmt, jobName, taskName, 0), v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		for _, volume := range pod.Spec.Volumes {
-			if volume.Name == pluginName {
+			if volume.Name == secretName {
 				foundVolume = true
 				break
 			}
@@ -248,16 +249,16 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		err := waitJobReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pluginName := fmt.Sprintf("%s-%s-ssh", jobName, job.UID)
+		secretName := genSSHSecretName(job)
 		_, err = context.kubeclient.CoreV1().Secrets(namespace).Get(
-			pluginName, v1.GetOptions{})
+			secretName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		pod, err := context.kubeclient.CoreV1().Pods(namespace).Get(
 			fmt.Sprintf(helpers.PodNameFmt, jobName, taskName, 0), v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		for _, volume := range pod.Spec.Volumes {
-			if volume.Name == pluginName {
+			if volume.Name == secretName {
 				foundVolume = true
 				break
 			}
@@ -294,3 +295,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 })
+
+func genSSHSecretName(job *batch.Job) string {
+	return job.Name + "-ssh"
+}
