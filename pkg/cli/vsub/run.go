@@ -56,8 +56,12 @@ const (
 	// DefaultImageEnv is the env name of default image.
 	DefaultImageEnv = "VOLCANO_DEFAULT_IMAGE"
 
+	// DefaultJobNamespaceEnv is the env name of default namespace of the job
+	DefaultJobNamespaceEnv = "VOLCANO_DEFAULT_JOB_NAMESPACE"
+
 	defaultImage         = "busybox"
 	defaultSchedulerName = "volcano"
+	defaultJobNamespace  = "default"
 )
 
 // InitRunFlags  init the run flags
@@ -67,7 +71,8 @@ func InitRunFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&launchJobFlags.Image, "image", "i", "",
 		fmt.Sprintf("the container image of job, overwrite the value of '%s' (default \"%s\")",
 			DefaultImageEnv, defaultImage))
-	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "N", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "N", "",
+		fmt.Sprintf("the namespace of job, overwrite the value of '%s' (default \"%s\")", DefaultJobNamespaceEnv, defaultJobNamespace))
 	cmd.Flags().StringVarP(&launchJobFlags.Name, "name", "n", "", "the name of job")
 	cmd.Flags().IntVarP(&launchJobFlags.MinAvailable, "min", "m", 1, "the minimal available tasks of job")
 	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "r", 1, "the total tasks of job")
@@ -101,6 +106,17 @@ func setDefaultArgs() {
 			launchJobFlags.Image = defaultImage
 		}
 	}
+
+	if launchJobFlags.Namespace == "" {
+		namespace := os.Getenv(DefaultJobNamespaceEnv)
+
+		if namespace != "" {
+			launchJobFlags.Namespace = namespace
+		} else {
+			launchJobFlags.Namespace = defaultJobNamespace
+		}
+	}
+
 }
 
 var jobName = "job.volcano.sh"
