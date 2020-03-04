@@ -18,6 +18,7 @@ package vsuspend
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -34,12 +35,36 @@ type suspendFlags struct {
 
 var suspendJobFlags = &suspendFlags{}
 
+const (
+	// DefaultJobNamespaceEnv is the env name of default namespace of the job
+	DefaultJobNamespaceEnv = "VOLCANO_DEFAULT_JOB_NAMESPACE"
+
+	defaultJobNamespace = "default"
+)
+
 // InitSuspendFlags  init suspend related flags
 func InitSuspendFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &suspendJobFlags.CommonFlags)
 
-	cmd.Flags().StringVarP(&suspendJobFlags.Namespace, "namespace", "N", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&suspendJobFlags.Namespace, "namespace", "N", "",
+		fmt.Sprintf("the namespace of job, overwrite the value of '%s' (default \"%s\")", DefaultJobNamespaceEnv, defaultJobNamespace))
 	cmd.Flags().StringVarP(&suspendJobFlags.JobName, "name", "n", "", "the name of job")
+
+	setDefaultArgs()
+}
+
+func setDefaultArgs() {
+
+	if suspendJobFlags.Namespace == "" {
+		namespace := os.Getenv(DefaultJobNamespaceEnv)
+
+		if namespace != "" {
+			suspendJobFlags.Namespace = namespace
+		} else {
+			suspendJobFlags.Namespace = defaultJobNamespace
+		}
+	}
+
 }
 
 // SuspendJob  suspends the job

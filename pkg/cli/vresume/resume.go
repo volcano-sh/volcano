@@ -18,6 +18,7 @@ package vresume
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -34,12 +35,36 @@ type resumeFlags struct {
 
 var resumeJobFlags = &resumeFlags{}
 
+const (
+	// DefaultJobNamespaceEnv is the env name of default namespace of the job
+	DefaultJobNamespaceEnv = "VOLCANO_DEFAULT_JOB_NAMESPACE"
+
+	defaultJobNamespace = "default"
+)
+
 // InitResumeFlags   init resume command flags
 func InitResumeFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &resumeJobFlags.CommonFlags)
 
-	cmd.Flags().StringVarP(&resumeJobFlags.Namespace, "namespace", "N", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&resumeJobFlags.Namespace, "namespace", "N", "",
+		fmt.Sprintf("the namespace of job, overwrite the value of '%s' (default \"%s\")", DefaultJobNamespaceEnv, defaultJobNamespace))
 	cmd.Flags().StringVarP(&resumeJobFlags.JobName, "name", "n", "", "the name of job")
+
+	setDefaultArgs()
+}
+
+func setDefaultArgs() {
+
+	if resumeJobFlags.Namespace == "" {
+		namespace := os.Getenv(DefaultJobNamespaceEnv)
+
+		if namespace != "" {
+			resumeJobFlags.Namespace = namespace
+		} else {
+			resumeJobFlags.Namespace = defaultJobNamespace
+		}
+	}
+
 }
 
 // ResumeJob  resumes the job

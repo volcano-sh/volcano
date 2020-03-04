@@ -89,15 +89,39 @@ const (
 
 var viewJobFlags = &viewFlags{}
 
+const (
+	// DefaultJobNamespaceEnv is the env name of default namespace of the job
+	DefaultJobNamespaceEnv = "VOLCANO_DEFAULT_JOB_NAMESPACE"
+
+	defaultJobNamespace = "default"
+)
+
 // InitViewFlags  init the view command flags
 func InitViewFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &viewJobFlags.CommonFlags)
 
-	cmd.Flags().StringVarP(&viewJobFlags.Namespace, "namespace", "N", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&viewJobFlags.Namespace, "namespace", "N", "",
+		fmt.Sprintf("the namespace of job, overwrite the value of '%s' (default \"%s\")", DefaultJobNamespaceEnv, defaultJobNamespace))
 	cmd.Flags().StringVarP(&viewJobFlags.JobName, "name", "n", "", "the name of job")
 	cmd.Flags().StringVarP(&viewJobFlags.SchedulerName, "scheduler", "S", "", "list job with specified scheduler name")
 	cmd.Flags().BoolVarP(&viewJobFlags.allNamespace, "all-namespaces", "", false, "list jobs in all namespaces")
 	cmd.Flags().StringVarP(&viewJobFlags.selector, "selector", "", "", "fuzzy matching jobName")
+
+	setDefaultArgs()
+}
+
+func setDefaultArgs() {
+
+	if viewJobFlags.Namespace == "" {
+		namespace := os.Getenv(DefaultJobNamespaceEnv)
+
+		if namespace != "" {
+			viewJobFlags.Namespace = namespace
+		} else {
+			viewJobFlags.Namespace = defaultJobNamespace
+		}
+	}
+
 }
 
 // ViewJob gives full details of the  job

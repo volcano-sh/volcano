@@ -18,6 +18,7 @@ package vcancel
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -36,12 +37,36 @@ type cancelFlags struct {
 
 var cancelJobFlags = &cancelFlags{}
 
+const (
+	// DefaultJobNamespaceEnv is the env name of default namespace of the job
+	DefaultJobNamespaceEnv = "VOLCANO_DEFAULT_JOB_NAMESPACE"
+
+	defaultJobNamespace = "default"
+)
+
 // InitCancelFlags  init the cancel command flags
 func InitCancelFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &cancelJobFlags.CommonFlags)
 
-	cmd.Flags().StringVarP(&cancelJobFlags.Namespace, "namespace", "N", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&cancelJobFlags.Namespace, "namespace", "N", "",
+		fmt.Sprintf("the namespace of job, overwrite the value of '%s' (default \"%s\")", DefaultJobNamespaceEnv, defaultJobNamespace))
 	cmd.Flags().StringVarP(&cancelJobFlags.JobName, "name", "n", "", "the name of job")
+
+	setDefaultArgs()
+}
+
+func setDefaultArgs() {
+
+	if cancelJobFlags.Namespace == "" {
+		namespace := os.Getenv(DefaultJobNamespaceEnv)
+
+		if namespace != "" {
+			cancelJobFlags.Namespace = namespace
+		} else {
+			cancelJobFlags.Namespace = defaultJobNamespace
+		}
+	}
+
 }
 
 // CancelJob  cancel the job
