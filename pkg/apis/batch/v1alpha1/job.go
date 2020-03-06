@@ -29,13 +29,15 @@ import (
 type Job struct {
 	metav1.TypeMeta `json:",inline"`
 
+	// metadata of the volcano job
+	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
-	// Specification of the desired behavior of a cron job, including the minAvailable
+	// Specification of the desired behavior of the volcano job, including the minAvailable
 	// +optional
 	Spec JobSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
 
-	// Current status of Job
+	// Current status of the volcano Job
 	// +optional
 	Status JobStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
 }
@@ -51,6 +53,7 @@ type JobSpec struct {
 	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
 
 	// The volumes mount on Job
+	// +optional
 	Volumes []VolumeSpec `json:"volumes,omitempty" protobuf:"bytes,3,opt,name=volumes"`
 
 	// Tasks specifies the task specification of Job
@@ -67,6 +70,7 @@ type JobSpec struct {
 	Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,6,opt,name=plugins"`
 
 	//Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
+	// +optional
 	Queue string `json:"queue,omitempty" protobuf:"bytes,7,opt,name=queue"`
 
 	// Specifies the maximum number of retries before marking this Job failed.
@@ -95,9 +99,11 @@ type VolumeSpec struct {
 	MountPath string `json:"mountPath" protobuf:"bytes,1,opt,name=mountPath"`
 
 	// defined the PVC name
+	// +optional
 	VolumeClaimName string `json:"volumeClaimName,omitempty" protobuf:"bytes,2,opt,name=volumeClaimName"`
 
 	// VolumeClaim defines the PVC used by the VolumeMount.
+	// +optional
 	VolumeClaim *v1.PersistentVolumeClaimSpec `json:"volumeClaim,omitempty" protobuf:"bytes,3,opt,name=volumeClaim"`
 }
 
@@ -152,13 +158,16 @@ type LifecyclePolicy struct {
 // TaskSpec specifies the task specification of Job
 type TaskSpec struct {
 	// Name specifies the name of tasks
+	// +optional
 	Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
 
 	// Replicas specifies the replicas of this TaskSpec in Job
+	// +optional
 	Replicas int32 `json:"replicas,omitempty" protobuf:"bytes,2,opt,name=replicas"`
 
 	// Specifies the pod that will be created for this TaskSpec
 	// when executing a Job
+	// +optional
 	Template v1.PodTemplateSpec `json:"template,omitempty" protobuf:"bytes,3,opt,name=template"`
 
 	// Specifies the lifecycle of task
@@ -214,6 +223,7 @@ type JobState struct {
 // JobStatus represents the current status of a Job
 type JobStatus struct {
 	// Current state of Job.
+	// +optional
 	State JobState `json:"state,omitempty" protobuf:"bytes,1,opt,name=state"`
 
 	// The minimal available pods to run for this Job
@@ -245,6 +255,7 @@ type JobStatus struct {
 	Unknown int32 `json:"unknown,omitempty" protobuf:"bytes,8,opt,name=unknown"`
 
 	//Current version of job
+	// +optional
 	Version int32 `json:"version,omitempty" protobuf:"bytes,9,opt,name=version"`
 
 	// The number of Job retries.
@@ -252,6 +263,7 @@ type JobStatus struct {
 	RetryCount int32 `json:"retryCount,omitempty" protobuf:"bytes,10,opt,name=retryCount"`
 
 	// The resources that controlled by this job, e.g. Service, ConfigMap
+	// +optional
 	ControlledResources map[string]string `json:"controlledResources,omitempty" protobuf:"bytes,11,opt,name=controlledResources"`
 }
 
