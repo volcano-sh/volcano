@@ -167,6 +167,10 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return api.NewFitError(task, node, api.NodePodNumberExceeded)
 		}
 
+		if !task.InitResreq.LessEqual(node.FutureIdle()) && !task.InitResreq.LessEqual(node.Idle) {
+			return api.NewFitError(task, node, api.NodeResourceFitFailed)
+		}
+
 		// CheckNodeCondition Predicate
 		fit, reasons, err := predicates.CheckNodeConditionPredicate(task.Pod, nil, nodeInfo)
 		if err != nil {
