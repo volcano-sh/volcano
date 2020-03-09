@@ -194,7 +194,14 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 				break
 			}
 
-			nodeScores := util.PrioritizeNodes(task, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
+			var candidateNodes []*api.NodeInfo
+			for _, n := range predicateNodes {
+				if task.InitResreq.LessEqual(n.Idle) || task.InitResreq.LessEqual(n.FutureIdle()) {
+					candidateNodes = append(candidateNodes, n)
+				}
+			}
+
+			nodeScores := util.PrioritizeNodes(task, candidateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 
 			node := util.SelectBestNode(nodeScores)
 			// Allocate idle resource to the task.
