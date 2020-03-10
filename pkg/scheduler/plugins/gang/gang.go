@@ -73,16 +73,21 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
 		var victims []*api.TaskInfo
+		jobOccupidMap := map[api.JobID]int32{}
 
 		for _, preemptee := range preemptees {
 			job := ssn.Jobs[preemptee.Job]
-			occupid := job.ReadyTaskNum()
+			if _, found := jobOccupidMap[job.UID]; !found {
+				jobOccupidMap[job.UID] = job.ReadyTaskNum()
+			}
+			occupid := jobOccupidMap[job.UID]
 			preemptable := job.MinAvailable <= occupid-1 || job.MinAvailable == 1
 
 			if !preemptable {
 				klog.V(4).Infof("Can not preempt task <%v/%v> because of gang-scheduling",
 					preemptee.Namespace, preemptee.Name)
 			} else {
+				jobOccupidMap[job.UID] = occupid - 1
 				victims = append(victims, preemptee)
 			}
 		}
