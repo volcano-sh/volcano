@@ -1,7 +1,12 @@
 # Adopters of Volcano
 
 Below are the adopters of project Volcano. If you are using Volcano to improve scheduling or job management in AI/ML, big-data, etc,
-please feel free to add yourself into the following list by a pull request.
+please feel free to add yourself into the following list by a pull request. There're several phases as follow:
+
+* **Evaluation:** Known Volcano, that's interesting; evaluating the features/scopes of Volcano
+* **Testing:** Take Volcano as one of candidates, testing Kubernetes cluster with Volcano
+* **Staging:** Decide to use Volcano, testing it in pre-product environment
+* **Production:** Already put Volcano into product environment
 
 | Organization | Contact | Environment | Description of Use |
 | ------------ | ------- | ----------- | ------------------ |
