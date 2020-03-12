@@ -22,3 +22,4 @@ please feel free to add yourself into the following list by a pull request. Ther
 | [Vivo](https://www.vivo.com/) | [@zionwu](https://github.com/zionwu)                         | Evaluation | Scheduler for Vtraining (deep learning training platform) |
 | [Xiaohongshu](https://www.xiaohongshu.com/) | [@xiaogaozi](https://github.com/xiaogaozi), [@Cplo](https://github.com/Cplo)                         | **Production** | Batch system for internal machine learning platform |
 | [Shareit](https://www.ushareit.com/) | [@yujiantao](https://github.com/yujiantao)                         | Evaluation | Spark on K8s |
+| [iqiyi](https://www.iqiyi.com/) | [@lihao](https://github.com/silenceli)                     | Staging    | Scheduler & Job Management for Deep Learning platform on K8s |
