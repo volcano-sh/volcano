@@ -43,7 +43,7 @@ func TestAddFlags(t *testing.T) {
 		ListenAddress:              defaultListenAddress,
 		KubeAPIBurst:               defaultBurst,
 		KubeAPIQPS:                 defaultQPS,
-		HealthzBindAddress:         "127.0.0.1:11251",
+		HealthzBindAddress:         ":11251",
 		MinNodesToFind:             defaultMinNodesToFind,
 		MinPercentageOfNodesToFind: defaultMinPercentageOfNodesToFind,
 		PercentageOfNodesToFind:    defaultPercentageOfNodesToFind,

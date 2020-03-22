@@ -29,8 +29,6 @@ const (
 	defaultQueue           = "default"
 	defaultListenAddress   = ":8080"
 
-	defaultHealthzBindAddress = "127.0.0.1:11251"
-
 	defaultQPS   = 50.0
 	defaultBurst = 100
 
@@ -56,7 +54,7 @@ type ServerOption struct {
 	KubeAPIBurst         int
 	KubeAPIQPS           float32
 	// HealthzBindAddress is the IP address and port for the health check server to serve on
-	// defaulting to 127.0.0.1:11251
+	// defaulting to :11251
 	HealthzBindAddress string
 
 	// Parameters for scheduling tuning: the number of feasible nodes to find and score
@@ -70,7 +68,9 @@ var ServerOpts *ServerOption
 
 // NewServerOption creates a new CMServer with a default config.
 func NewServerOption() *ServerOption {
-	s := ServerOption{}
+	s := ServerOption{
+		HealthzBindAddress: ":11251",
+	}
 	return &s
 }
 
@@ -93,7 +93,6 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 		"Enable PriorityClass to provide the capacity of preemption at pod group level; to disable it, set it false")
 	fs.Float32Var(&s.KubeAPIQPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
 	fs.IntVar(&s.KubeAPIBurst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
-	fs.StringVar(&s.HealthzBindAddress, "healthz-bind-address", defaultHealthzBindAddress, "The address to listen on for /healthz HTTP requests.")
 
 	// Minimum number of feasible nodes to find and score
 	fs.Int32Var(&s.MinNodesToFind, "minimum-feasible-nodes", defaultMinNodesToFind, "The minimum number of feasible nodes to find and score")
