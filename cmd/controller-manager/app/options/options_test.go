@@ -42,7 +42,7 @@ func TestAddFlags(t *testing.T) {
 		PrintVersion:       false,
 		WorkerThreads:      defaultWorkers,
 		SchedulerName:      defaultSchedulerName,
-		HealthzBindAddress: "127.0.0.1:11252",
+		HealthzBindAddress: ":11252",
 	}
 
 	if !reflect.DeepEqual(expected, s) {
