@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Vulcan Authors.
+Copyright 2018 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/cli/util"
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
@@ -89,7 +90,7 @@ func InitListFlags(cmd *cobra.Command) {
 
 // ListJobs  lists all jobs details
 func ListJobs() error {
-	config, err := buildConfig(listJobFlags.Master, listJobFlags.Kubeconfig)
+	config, err := util.BuildConfig(listJobFlags.Master, listJobFlags.Kubeconfig)
 	if err != nil {
 		return err
 	}

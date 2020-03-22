@@ -27,6 +27,7 @@ import (
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/apis/helpers"
+	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler"
 	"volcano.sh/volcano/pkg/version"
 
@@ -39,9 +40,7 @@ import (
 
 	// Register gcp auth
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
-	"k8s.io/client-go/rest"
 	restclient "k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
@@ -53,33 +52,13 @@ const (
 	retryPeriod   = 5 * time.Second
 )
 
-func buildConfig(opt *options.ServerOption) (*rest.Config, error) {
-	var cfg *rest.Config
-	var err error
-
-	master := opt.Master
-	kubeconfig := opt.Kubeconfig
-	if master != "" || kubeconfig != "" {
-		cfg, err = clientcmd.BuildConfigFromFlags(master, kubeconfig)
-	} else {
-		cfg, err = rest.InClusterConfig()
-	}
-	if err != nil {
-		return nil, err
-	}
-	cfg.QPS = opt.KubeAPIQPS
-	cfg.Burst = opt.KubeAPIBurst
-
-	return cfg, nil
-}
-
 // Run the volcano scheduler
 func Run(opt *options.ServerOption) error {
 	if opt.PrintVersion {
 		version.PrintVersionAndExit()
 	}
 
-	config, err := buildConfig(opt)
+	config, err := kube.BuildConfig(opt.KubeClientOptions)
 	if err != nil {
 		return err
 	}

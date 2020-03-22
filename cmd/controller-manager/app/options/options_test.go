@@ -21,6 +21,8 @@ import (
 	"testing"
 
 	"github.com/spf13/pflag"
+
+	"volcano.sh/volcano/pkg/kube"
 )
 
 func TestAddFlags(t *testing.T) {
@@ -36,9 +38,12 @@ func TestAddFlags(t *testing.T) {
 
 	// This is a snapshot of expected options parsed by args.
 	expected := &ServerOption{
-		Master:             "127.0.0.1",
-		KubeAPIQPS:         defaultQPS,
-		KubeAPIBurst:       200,
+		KubeClientOptions: kube.ClientOptions{
+			Master:     "127.0.0.1",
+			KubeConfig: "",
+			QPS:        defaultQPS,
+			Burst:      200,
+		},
 		PrintVersion:       false,
 		WorkerThreads:      defaultWorkers,
 		SchedulerName:      defaultSchedulerName,

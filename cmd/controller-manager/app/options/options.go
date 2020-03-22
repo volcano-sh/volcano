@@ -20,6 +20,8 @@ import (
 	"fmt"
 
 	"github.com/spf13/pflag"
+
+	"volcano.sh/volcano/pkg/kube"
 )
 
 const (
@@ -31,12 +33,9 @@ const (
 
 // ServerOption is the main context object for the controller manager.
 type ServerOption struct {
-	Master               string
-	Kubeconfig           string
+	KubeClientOptions    kube.ClientOptions
 	EnableLeaderElection bool
 	LockObjectNamespace  string
-	KubeAPIBurst         int
-	KubeAPIQPS           float32
 	PrintVersion         bool
 	// WorkerThreads is the number of threads syncing job operations
 	// concurrently. Larger number = faster job updating, but more CPU load.
@@ -57,13 +56,13 @@ func NewServerOption() *ServerOption {
 
 // AddFlags adds flags for a specific CMServer to the specified FlagSet
 func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
-	fs.StringVar(&s.Master, "master", s.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
-	fs.StringVar(&s.Kubeconfig, "kubeconfig", s.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
+	fs.StringVar(&s.KubeClientOptions.Master, "master", s.KubeClientOptions.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
+	fs.StringVar(&s.KubeClientOptions.KubeConfig, "kubeconfig", s.KubeClientOptions.KubeConfig, "Path to kubeconfig file with authorization and master location information.")
 	fs.BoolVar(&s.EnableLeaderElection, "leader-elect", s.EnableLeaderElection, "Start a leader election client and gain leadership before "+
 		"executing the main loop. Enable this when running replicated vc-controller-manager for high availability.")
 	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", s.LockObjectNamespace, "Define the namespace of the lock object.")
-	fs.Float32Var(&s.KubeAPIQPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
-	fs.IntVar(&s.KubeAPIBurst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
+	fs.Float32Var(&s.KubeClientOptions.QPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
+	fs.IntVar(&s.KubeClientOptions.Burst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
 	fs.Uint32Var(&s.WorkerThreads, "worker-threads", defaultWorkers, "The number of threads syncing job operations concurrently. "+
 		"Larger number = faster job updating, but more CPU load")

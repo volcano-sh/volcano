@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Vulcan Authors.
+Copyright 2019 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"volcano.sh/volcano/pkg/cli/util"
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
@@ -45,7 +46,7 @@ func InitDeleteFlags(cmd *cobra.Command) {
 
 // DeleteJob  delete the job
 func DeleteJob() error {
-	config, err := buildConfig(deleteJobFlags.Master, deleteJobFlags.Kubeconfig)
+	config, err := util.BuildConfig(deleteJobFlags.Master, deleteJobFlags.Kubeconfig)
 	if err != nil {
 		return err
 	}

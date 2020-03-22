@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Vulcan Authors.
+Copyright 2018 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	"volcano.sh/volcano/pkg/cli/util"
 )
 
 type resumeFlags struct {
@@ -43,7 +44,7 @@ func InitResumeFlags(cmd *cobra.Command) {
 
 // ResumeJob  resumes the job
 func ResumeJob() error {
-	config, err := buildConfig(resumeJobFlags.Master, resumeJobFlags.Kubeconfig)
+	config, err := util.BuildConfig(resumeJobFlags.Master, resumeJobFlags.Kubeconfig)
 	if err != nil {
 		return err
 	}
