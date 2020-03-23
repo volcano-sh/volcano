@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Vulcan Authors.
+Copyright 2017 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,22 +22,17 @@ import (
 	"os"
 	"time"
 
-	"k8s.io/klog"
-
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/informers"
 	kubeclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-
-	// Initialize client auth plugin.
-	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/cmd/controller-manager/app/options"
 	"volcano.sh/volcano/pkg/apis/helpers"
@@ -46,6 +41,7 @@ import (
 	"volcano.sh/volcano/pkg/controllers/job"
 	"volcano.sh/volcano/pkg/controllers/podgroup"
 	"volcano.sh/volcano/pkg/controllers/queue"
+	"volcano.sh/volcano/pkg/kube"
 )
 
 const (
@@ -54,29 +50,9 @@ const (
 	retryPeriod   = 5 * time.Second
 )
 
-func buildConfig(opt *options.ServerOption) (*rest.Config, error) {
-	var cfg *rest.Config
-	var err error
-
-	master := opt.Master
-	kubeconfig := opt.Kubeconfig
-	if master != "" || kubeconfig != "" {
-		cfg, err = clientcmd.BuildConfigFromFlags(master, kubeconfig)
-	} else {
-		cfg, err = rest.InClusterConfig()
-	}
-	if err != nil {
-		return nil, err
-	}
-	cfg.QPS = opt.KubeAPIQPS
-	cfg.Burst = opt.KubeAPIBurst
-
-	return cfg, nil
-}
-
-//Run the controller
+// Run the controller
 func Run(opt *options.ServerOption) error {
-	config, err := buildConfig(opt)
+	config, err := kube.BuildConfig(opt.KubeClientOptions)
 	if err != nil {
 		return err
 	}

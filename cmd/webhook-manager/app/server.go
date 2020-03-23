@@ -19,40 +19,19 @@ package app
 import (
 	"fmt"
 	"io/ioutil"
-	"k8s.io/client-go/rest"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
 
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
+	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/version"
 	"volcano.sh/volcano/pkg/webhooks/router"
 )
-
-func buildConfig(config *options.Config) (*rest.Config, error) {
-	var restConfig *rest.Config
-	var err error
-
-	master := config.Master
-	kubeconfig := config.Kubeconfig
-	if master != "" || kubeconfig != "" {
-		restConfig, err = clientcmd.BuildConfigFromFlags(master, kubeconfig)
-	} else {
-		restConfig, err = rest.InClusterConfig()
-	}
-	if err != nil {
-		return nil, err
-	}
-	restConfig.QPS = config.KubeAPIQPS
-	restConfig.Burst = config.KubeAPIBurst
-
-	return restConfig, nil
-}
 
 // Run start the service of admission controller.
 func Run(config *options.Config) error {
@@ -65,7 +44,7 @@ func Run(config *options.Config) error {
 		return fmt.Errorf("failed to start webhooks as both 'url' and 'namespace/name' of webhook are empty")
 	}
 
-	restConfig, err := buildConfig(config)
+	restConfig, err := kube.BuildConfig(config.KubeClientOptions)
 	if err != nil {
 		return fmt.Errorf("unable to build k8s config: %v", err)
 	}

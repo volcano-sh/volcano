@@ -20,6 +20,8 @@ import (
 	"fmt"
 
 	"github.com/spf13/pflag"
+
+	"volcano.sh/volcano/pkg/kube"
 )
 
 const (
@@ -30,19 +32,16 @@ const (
 
 // Config admission-controller server config.
 type Config struct {
-	Master           string
-	Kubeconfig       string
-	CertFile         string
-	KeyFile          string
-	CaCertFile       string
-	Port             int
-	PrintVersion     bool
-	WebhookName      string
-	WebhookNamespace string
-	SchedulerName    string
-	WebhookURL       string
-	KubeAPIBurst     int
-	KubeAPIQPS       float32
+	KubeClientOptions kube.ClientOptions
+	CertFile          string
+	KeyFile           string
+	CaCertFile        string
+	Port              int
+	PrintVersion      bool
+	WebhookName       string
+	WebhookNamespace  string
+	SchedulerName     string
+	WebhookURL        string
 }
 
 // NewConfig create new config
@@ -53,16 +52,16 @@ func NewConfig() *Config {
 
 // AddFlags add flags
 func (c *Config) AddFlags(fs *pflag.FlagSet) {
-	fs.StringVar(&c.Master, "master", c.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
-	fs.StringVar(&c.Kubeconfig, "kubeconfig", c.Kubeconfig, "Path to kubeconfig file with authorization and master location information.")
+	fs.StringVar(&c.KubeClientOptions.Master, "master", c.KubeClientOptions.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
+	fs.StringVar(&c.KubeClientOptions.KubeConfig, "kubeconfig", c.KubeClientOptions.KubeConfig, "Path to kubeconfig file with authorization and master location information.")
 	fs.StringVar(&c.CertFile, "tls-cert-file", c.CertFile, ""+
 		"File containing the default x509 Certificate for HTTPS. (CA cert, if any, concatenated "+
 		"after server cert).")
 	fs.StringVar(&c.KeyFile, "tls-private-key-file", c.KeyFile, "File containing the default x509 private key matching --tls-cert-file.")
 	fs.IntVar(&c.Port, "port", 443, "the port used by admission-controller-server.")
 	fs.BoolVar(&c.PrintVersion, "version", false, "Show version and quit")
-	fs.Float32Var(&c.KubeAPIQPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
-	fs.IntVar(&c.KubeAPIBurst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
+	fs.Float32Var(&c.KubeClientOptions.QPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
+	fs.IntVar(&c.KubeClientOptions.Burst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
 
 	fs.StringVar(&c.CaCertFile, "ca-cert-file", c.CaCertFile, "File containing the x509 Certificate for HTTPS.")
 	fs.StringVar(&c.WebhookNamespace, "webhook-namespace", "", "The namespace of this webhook")
