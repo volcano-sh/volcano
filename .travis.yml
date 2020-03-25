@@ -11,8 +11,6 @@ go_import_path: volcano.sh/volcano
 jobs:
   include:
     - stage: Golint & Gofmt
-      before_script:
-        - go get -u golang.org/x/lint/golint
       script:
         - make verify
     - stage: Verify Deployment Yaml
