@@ -52,10 +52,13 @@ func (ps *runningState) Execute(action v1alpha1.Action) error {
 	default:
 		return SyncJob(ps.job, func(status *vcbatch.JobStatus) bool {
 			if status.Succeeded+status.Failed == TotalTasks(ps.job.Job) {
-				status.State.Phase = vcbatch.Completed
+				if status.Succeeded >= ps.job.Job.Spec.MinAvailable {
+					status.State.Phase = vcbatch.Completed
+				} else {
+					status.State.Phase = vcbatch.Failed
+				}
 				return true
 			}
-
 			return false
 		})
 	}
