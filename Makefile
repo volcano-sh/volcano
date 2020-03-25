@@ -87,6 +87,7 @@ verify:
 	hack/verify-gofmt.sh
 	hack/verify-golint.sh
 	hack/verify-gencode.sh
+	hack/verify-vendor.sh
 
 verify-generated-yaml:
 	./hack/check-generated-yaml.sh
