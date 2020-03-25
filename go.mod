@@ -32,7 +32,6 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.0.0-20200228050048-9291aec797aa
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.0.0-20200228051820-6fc9c909879b
 	k8s.io/sample-controller => k8s.io/sample-controller v0.0.0-20200228050512-c37f031c4cf9
-//k8s.io/utils => k8s.io/utils v0.0.0-20190801114015-581e00157fb1
 )
 
 require (
