@@ -18,27 +18,22 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+echo $(dirname "${BASH_SOURCE[0]}")
+
 SCRIPT_ROOT=$(unset CDPATH && cd $(dirname "${BASH_SOURCE[0]}")/.. && pwd)
-#cd $ROOT
-#SCRIPT_ROOT=$(dirname ${BASH_SOURCE})/..
-CODEGEN_PKG=${CODEGEN_PKG:-$(cd ${SCRIPT_ROOT}; ls -d -1 ./vendor/k8s.io/code-generator 2>/dev/null || echo ../code-generator)}
 
 # generate the code with:
 # --output-base    because this script should also be able to run inside the vendor dir of
 #                  k8s.io/kubernetes. The output-base is needed for the generators to output into the vendor dir
 #                  instead of the $GOPATH directly. For normal projects this can be dropped.
-${CODEGEN_PKG}/generate-groups.sh "deepcopy,client,informer,lister" \
+${SCRIPT_ROOT}/hack/generate-groups.sh "deepcopy,client,informer,lister" \
   volcano.sh/volcano/pkg/client volcano.sh/volcano/pkg/apis \
   "batch:v1alpha1 bus:v1alpha1 scheduling:v1beta1" \
   --go-header-file ${SCRIPT_ROOT}/hack/boilerplate/boilerplate.go.txt
 
-"${CODEGEN_PKG}/generate-internal-groups.sh" "deepcopy,conversion" \
+${SCRIPT_ROOT}/hack/generate-internal-groups.sh "deepcopy,conversion" \
   volcano.sh/volcano/pkg/apis/ volcano.sh/volcano/pkg/apis volcano.sh/volcano/pkg/apis\
   "scheduling:v1beta1"   \
   --output-base "$(dirname "${BASH_SOURCE[0]}")/../../.." \
   --go-header-file ${SCRIPT_ROOT}/hack/boilerplate/boilerplate.go.txt
-
-# To use your own boilerplate text use:
-#   --go-header-file ${SCRIPT_ROOT}/hack/custom-boilerplate.go.txt
-
 
