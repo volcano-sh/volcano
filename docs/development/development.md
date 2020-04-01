@@ -141,12 +141,17 @@ make verify
 
 ## Adding dependencies
 
-Volcano uses [dep](https://github.com/golang/dep) to manage its dependencies. 
+Volcano uses [Go Modules](https://blog.golang.org/migrating-to-go-modules) to manage its dependencies.
 If you want to add or update a dependency, running:
 
 ```bash
-dep ensure -add dependency-name@version
+go get dependency-name@version
+go mod tidy
+go mod vendor
 ```
+
+Note: Go's module system, introduced in Go 1.11, provides an official dependency management solution built into the go command.
+      Make sure `GO111MODULE` env is not `off` before using it.
 
 ## About testing
 
