@@ -89,6 +89,9 @@ func (cc *Controller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 				PriorityClassName: pod.Spec.PriorityClassName,
 			},
 		}
+		if queueName, ok := pod.Annotations[scheduling.QueueNameAnnotationKey]; ok {
+			pg.Spec.Queue = queueName
+		}
 
 		if _, err := cc.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Create(pg); err != nil {
 			klog.Errorf("Failed to create normal PodGroup for Pod <%s/%s>: %v",

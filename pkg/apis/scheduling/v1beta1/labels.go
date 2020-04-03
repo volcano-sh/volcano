@@ -22,4 +22,8 @@ const KubeGroupNameAnnotationKey = "scheduling.k8s.io/group-name"
 
 // VolcanoGroupNameAnnotationKey is the annotation key of Pod to identify
 // which PodGroup it belongs to.
-const VolcanoGroupNameAnnotationKey = "scheduling.volcano.sh/group-name"
+const VolcanoGroupNameAnnotationKey = GroupName + "/group-name"
+
+// QueueNameAnnotationKey is the annotation key of Pod to identify
+// which queue it belongs to.
+const QueueNameAnnotationKey = GroupName + "/queue-name"
