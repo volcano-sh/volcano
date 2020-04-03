@@ -107,7 +107,7 @@ spec:
         - name: {{ .Release.Name }}-scheduler
           image: {{.Values.basic.scheduler_image_name}}:{{.Values.basic.image_tag_version}}
           args:
-            - --alsologtostderr
+            - --logtostderr
             - --scheduler-conf=/volcano.scheduler/{{base .Values.basic.scheduler_config_file}}
             - -v=3
             - 2>&1

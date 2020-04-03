@@ -94,7 +94,7 @@ spec:
           - name: {{ .Release.Name }}-controllers
             image: {{.Values.basic.controller_image_name}}:{{.Values.basic.image_tag_version}}
             args:
-              - --alsologtostderr
+              - --logtostderr
               - -v=4
               - 2>&1
             imagePullPolicy: "IfNotPresent"

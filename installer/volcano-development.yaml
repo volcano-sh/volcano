@@ -23,7 +23,7 @@ data:
       - name: proportion
       - name: nodeorder
       - name: binpack
-  
+
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -118,12 +118,12 @@ spec:
         app: volcano-scheduler
     spec:
       serviceAccount: volcano-scheduler
-      
+
       containers:
         - name: volcano-scheduler
           image: volcanosh/vc-scheduler:latest
           args:
-            - --alsologtostderr
+            - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
             - -v=3
             - 2>&1
@@ -208,7 +208,7 @@ spec:
         app: volcano-admission
     spec:
       serviceAccount: volcano-admission
-      
+
       containers:
         - args:
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
@@ -216,7 +216,7 @@ spec:
             - --ca-cert-file=/admission.local.config/certificates/ca.crt
             - --webhook-namespace=volcano-system
             - --webhook-service-name=volcano-admission-service
-            - --alsologtostderr
+            - --logtostderr
             - --port=443
             - -v=4
             - 2>&1
@@ -361,12 +361,12 @@ spec:
         app: volcano-controller
     spec:
       serviceAccount: volcano-controllers
-      
+
       containers:
           - name: volcano-controllers
             image: volcanosh/vc-controller-manager:latest
             args:
-              - --alsologtostderr
+              - --logtostderr
               - -v=4
               - 2>&1
             imagePullPolicy: "IfNotPresent"
@@ -721,4 +721,3 @@ spec:
   version: v1beta1
   subresources:
     status: {}
-

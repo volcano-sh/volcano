@@ -79,7 +79,7 @@ spec:
             - --ca-cert-file=/admission.local.config/certificates/ca.crt
             - --webhook-namespace={{ .Release.Namespace }}
             - --webhook-service-name={{ .Release.Name }}-admission-service
-            - --alsologtostderr
+            - --logtostderr
             - --port=443
             - -v=4
             - 2>&1
