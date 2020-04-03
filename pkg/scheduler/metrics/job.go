@@ -24,8 +24,8 @@ var (
 )
 
 // UpdateJobShare records share for one job
-func UpdateJobShare(jobNs, jobId string, share float64) {
-	jobShare.WithLabelValues(jobNs, jobId).Set(share)
+func UpdateJobShare(jobNs, jobID string, share float64) {
+	jobShare.WithLabelValues(jobNs, jobID).Set(share)
 }
 
 // RegisterJobRetries total number of job retries.
