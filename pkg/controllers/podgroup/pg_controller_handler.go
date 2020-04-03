@@ -20,6 +20,7 @@ import (
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/helpers"
@@ -109,12 +110,11 @@ func newPGOwnerReferences(pod *v1.Pod) []metav1.OwnerReference {
 		}
 	}
 
-	isController := true
-	return []metav1.OwnerReference{{
-		APIVersion: v1.SchemeGroupVersion.Version,
-		Kind:       "Pod",
-		Controller: &isController,
-		Name:       pod.Name,
-		UID:        pod.UID,
-	}}
+	gvk := schema.GroupVersionKind{
+		Group:   v1.SchemeGroupVersion.Group,
+		Version: v1.SchemeGroupVersion.Version,
+		Kind:    "Pod",
+	}
+	ref := metav1.NewControllerRef(pod, gvk)
+	return []metav1.OwnerReference{*ref}
 }

@@ -42,6 +42,7 @@ func newFakeController() *Controller {
 func TestAddPodGroup(t *testing.T) {
 	namespace := "test"
 	isController := true
+	blockOwnerDeletion := true
 
 	testCases := []struct {
 		name             string
@@ -119,11 +120,12 @@ func TestAddPodGroup(t *testing.T) {
 					Namespace: namespace,
 					OwnerReferences: []metav1.OwnerReference{
 						{
-							APIVersion: "v1",
-							Kind:       "Pod",
-							Name:       "pod1",
-							UID:        "7a09885b-b753-4924-9fba-77c0836bac20",
-							Controller: &isController,
+							APIVersion:         "v1",
+							Kind:               "Pod",
+							Name:               "pod1",
+							UID:                "7a09885b-b753-4924-9fba-77c0836bac20",
+							Controller:         &isController,
+							BlockOwnerDeletion: &blockOwnerDeletion,
 						},
 					},
 				},
