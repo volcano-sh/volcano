@@ -110,14 +110,6 @@ var (
 			Help:      "Number of jobs could not be scheduled",
 		},
 	)
-
-	jobRetryCount = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Subsystem: VolcanoNamespace,
-			Name:      "job_retry_counts",
-			Help:      "Number of retry counts for one job",
-		}, []string{"job_id"},
-	)
 )
 
 // UpdatePluginDuration updates latency for every plugin
@@ -163,11 +155,6 @@ func UpdateUnscheduleTaskCount(jobID string, taskCount int) {
 // UpdateUnscheduleJobCount records total number of unscheduleable jobs
 func UpdateUnscheduleJobCount(jobCount int) {
 	unscheduleJobCount.Set(float64(jobCount))
-}
-
-// RegisterJobRetries total number of job retries.
-func RegisterJobRetries(jobID string) {
-	jobRetryCount.WithLabelValues(jobID).Inc()
 }
 
 // DurationInMicroseconds gets the time in microseconds.

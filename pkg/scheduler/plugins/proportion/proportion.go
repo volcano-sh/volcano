@@ -22,6 +22,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
 // PluginName indicates name of volcano scheduler plugin.
@@ -101,6 +102,18 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
+	// Record metrics
+	for _, attr := range pp.queueOpts {
+		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
+		metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory)
+		metrics.UpdateQueueWeight(attr.name, attr.weight)
+		queue := ssn.Queues[attr.queueID]
+		metrics.UpdateQueuePodGroupInqueueCount(attr.name, queue.Queue.Status.Inqueue)
+		metrics.UpdateQueuePodGroupPendingCount(attr.name, queue.Queue.Status.Pending)
+		metrics.UpdateQueuePodGroupRunningCount(attr.name, queue.Queue.Status.Running)
+		metrics.UpdateQueuePodGroupUnknownCount(attr.name, queue.Queue.Status.Unknown)
+	}
+
 	remaining := pp.totalResource.Clone()
 	meet := map[api.QueueID]struct{}{}
 	for {
@@ -147,6 +160,9 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			increased, decreased := attr.deserved.Diff(oldDeserved)
 			increasedDeserved.Add(increased)
 			decreasedDeserved.Add(decreased)
+
+			// Record metrics
+			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory)
 		}
 
 		remaining.Sub(increasedDeserved).Add(decreasedDeserved)
@@ -203,6 +219,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		attr := pp.queueOpts[queue.UID]
 
 		overused := !attr.allocated.LessEqual(attr.deserved)
+		metrics.UpdateQueueOverused(attr.name, overused)
 		if overused {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
 				queue.Name, attr.deserved, attr.allocated, attr.share)
@@ -235,6 +252,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Add(event.Task.Resreq)
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
 
 			pp.updateShare(attr)
 
@@ -245,6 +263,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Sub(event.Task.Resreq)
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
 
 			pp.updateShare(attr)
 
@@ -271,4 +290,5 @@ func (pp *proportionPlugin) updateShare(attr *queueAttr) {
 	}
 
 	attr.share = res
+	metrics.UpdateQueueShare(attr.name, attr.share)
 }

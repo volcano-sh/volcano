@@ -24,6 +24,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
 // PluginName indicates name of volcano scheduler plugin.
@@ -99,7 +100,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		// Calculate the init share of Job
-		drf.updateShare(attr)
+		drf.updateJobShare(job.Namespace, job.Name, attr)
 
 		drf.jobAttrs[job.UID] = attr
 
@@ -113,7 +114,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			// all task in job should have the same namespace with job
 			nsOpts.allocated.Add(attr.allocated)
-			drf.updateShare(nsOpts)
+			drf.updateNsShare(job.Namespace, nsOpts)
 		}
 	}
 
@@ -236,6 +237,11 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		lWeightedShare := lOpt.share / float64(lWeight)
 		rWeightedShare := rOpt.share / float64(rWeight)
 
+		metrics.UpdateNamespaceWeight(string(lv), lWeight)
+		metrics.UpdateNamespaceWeight(string(rv), rWeight)
+		metrics.UpdateNamespaceWeightedShare(string(lv), lWeightedShare)
+		metrics.UpdateNamespaceWeightedShare(string(rv), rWeightedShare)
+
 		if lWeightedShare == rWeightedShare {
 			return 0
 		}
@@ -257,14 +263,15 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr := drf.jobAttrs[event.Task.Job]
 			attr.allocated.Add(event.Task.Resreq)
 
-			drf.updateShare(attr)
+			job := ssn.Jobs[event.Task.Job]
+			drf.updateJobShare(job.Namespace, job.Name, attr)
 
 			nsShare := -1.0
 			if namespaceOrderEnabled {
 				nsOpt := drf.namespaceOpts[event.Task.Namespace]
 				nsOpt.allocated.Add(event.Task.Resreq)
 
-				drf.updateShare(nsOpt)
+				drf.updateNsShare(event.Task.Namespace, nsOpt)
 				nsShare = nsOpt.share
 			}
 
@@ -275,14 +282,15 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr := drf.jobAttrs[event.Task.Job]
 			attr.allocated.Sub(event.Task.Resreq)
 
-			drf.updateShare(attr)
+			job := ssn.Jobs[event.Task.Job]
+			drf.updateJobShare(job.Namespace, job.Name, attr)
 
 			nsShare := -1.0
 			if namespaceOrderEnabled {
 				nsOpt := drf.namespaceOpts[event.Task.Namespace]
 				nsOpt.allocated.Sub(event.Task.Resreq)
 
-				drf.updateShare(nsOpt)
+				drf.updateNsShare(event.Task.Namespace, nsOpt)
 				nsShare = nsOpt.share
 			}
 
@@ -290,6 +298,16 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share, nsShare)
 		},
 	})
+}
+
+func (drf *drfPlugin) updateNsShare(nsName string, attr *drfAttr) {
+	drf.updateShare(attr)
+	metrics.UpdateNamespaceShare(nsName, attr.share)
+}
+
+func (drf *drfPlugin) updateJobShare(jobNs, jobName string, attr *drfAttr) {
+	drf.updateShare(attr)
+	metrics.UpdateJobShare(jobNs, jobName, attr.share)
 }
 
 func (drf *drfPlugin) updateShare(attr *drfAttr) {
