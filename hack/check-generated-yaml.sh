@@ -27,7 +27,7 @@ if ! diff ${VK_ROOT}/installer/volcano-development.yaml ${RELEASE_FOLDER}/volcan
 		echo
 		echo "The Generated yaml is different from the one in installer/volcano-development.yaml"
 		echo "please run 'make generate-yaml TAG=latest RELEASE_DIR=installer \
-		&& mv ${RELEASE_FOLDER}/volcano-latest.yaml ${VK_ROOT}/installer/volcano-development.yaml' to update"
+		&& mv ${VK_ROOT}/installer/volcano-latest.yaml ${VK_ROOT}/installer/volcano-development.yaml' to update"
 		echo
 	} >&2
 	false
