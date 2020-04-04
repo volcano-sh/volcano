@@ -123,7 +123,7 @@ spec:
         - name: volcano-scheduler
           image: volcanosh/vc-scheduler:latest
           args:
-            - --alsologtostderr
+            - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
             - -v=3
             - 2>&1
@@ -216,7 +216,7 @@ spec:
             - --ca-cert-file=/admission.local.config/certificates/ca.crt
             - --webhook-namespace=volcano-system
             - --webhook-service-name=volcano-admission-service
-            - --alsologtostderr
+            - --logtostderr
             - --port=443
             - -v=4
             - 2>&1
@@ -366,7 +366,7 @@ spec:
           - name: volcano-controllers
             image: volcanosh/vc-controller-manager:latest
             args:
-              - --alsologtostderr
+              - --logtostderr
               - -v=4
               - 2>&1
             imagePullPolicy: "IfNotPresent"
