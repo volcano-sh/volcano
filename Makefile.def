@@ -1,7 +1,7 @@
 
 # If tag not explicitly set in users default to the git sha.
 TAG=v0.4
-GitSHA=c07bad062f551ad543155c50242ce818cff60895
+GitSHA=a531a6944adfe3aaa45b0466f601b338cf0237b2
 Date=`date "+%Y-%m-%d %H:%M:%S"`
 RELEASE_VER=v0.4
 LD_FLAGS=" \
