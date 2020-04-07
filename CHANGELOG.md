@@ -1,5 +1,19 @@
 # Change Log
 
+## [v0.4](https://github.com/volcano-sh/volcano/tree/v0.4) (2020-04-07)
+
+- [#756](https://github.com/volcano-sh/volcano/pull/756) [controller] Set `BlockOwnerDeletion` to true when create PodGroup (@xiaogaozi)
+- [#754](https://github.com/volcano-sh/volcano/pull/754) [controller] Set `Queue` field when pod has queue name annotation  (@xiaogaozi)
+- [#746](https://github.com/volcano-sh/volcano/pull/746) Fix volcano job phase setting  (@hzxuzhonghu)
+- [#745](https://github.com/volcano-sh/volcano/pull/745) Use go mod to manage dependencies  (@tizhou86)
+- [#733](https://github.com/volcano-sh/volcano/pull/733) Added resources predicate in allocate action  (@k82cn)
+- [#722](https://github.com/volcano-sh/volcano/pull/722) Added a flag `disable-network-policy` to disable Network Policy (@EDGsheryl)
+- [#709](https://github.com/volcano-sh/volcano/pull/709) Use openssl to sign certificate instead of using k8s  (@hzxuzhonghu)
+- [#702](https://github.com/volcano-sh/volcano/pull/702) Added env var for scheduler name  (@k82cn)
+- [#693](https://github.com/volcano-sh/volcano/pull/693) Remove scheduling.v1alpha1 and scheduling.v1alpha2 API  (@thandayuthapani)
+- [#681](https://github.com/volcano-sh/volcano/pull/681) Refactor events/action  (@k82cn)
+
+
 ## [v0.3](https://github.com/volcano-sh/volcano/tree/v0.3) (2020-01-20)
 
 - [#670](https://github.com/volcano-sh/volcano/pull/670) Added Shareit as one of adopter (@k82cn)
