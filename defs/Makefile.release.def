@@ -1,6 +1,6 @@
 
 # If tag not explicitly set in users default to the git sha.
-TAG=__release_ver__
+TAG=v0.4
 GitSHA=__git_sha__
 Date=`date "+%Y-%m-%d %H:%M:%S"`
 RELEASE_VER=v0.4
