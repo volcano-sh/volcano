@@ -22,11 +22,10 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
-	k8scontroller "k8s.io/kubernetes/pkg/controller"
 
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
@@ -82,7 +81,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 
 	if len(errs) != 0 {
 		klog.Errorf("failed to kill pods for job %s/%s, with err %+v", job.Namespace, job.Name, errs)
-		cc.recorder.Event(job, v1.EventTypeWarning, k8scontroller.FailedDeletePodReason,
+		cc.recorder.Event(job, v1.EventTypeWarning, FailedDeletePodReason,
 			fmt.Sprintf("Error deleting pods: %+v", errs))
 		return fmt.Errorf("failed to kill %d pods of %d", len(errs), total)
 	}
@@ -296,7 +295,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	waitCreationGroup.Wait()
 
 	if len(creationErrs) != 0 {
-		cc.recorder.Event(job, v1.EventTypeWarning, k8scontroller.FailedCreatePodReason,
+		cc.recorder.Event(job, v1.EventTypeWarning, FailedCreatePodReason,
 			fmt.Sprintf("Error creating pods: %+v", creationErrs))
 		return fmt.Errorf("failed to create %d pods of %d", len(creationErrs), len(podToCreate))
 	}
@@ -327,7 +326,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	waitDeletionGroup.Wait()
 
 	if len(deletionErrs) != 0 {
-		cc.recorder.Event(job, v1.EventTypeWarning, k8scontroller.FailedDeletePodReason,
+		cc.recorder.Event(job, v1.EventTypeWarning, FailedDeletePodReason,
 			fmt.Sprintf("Error deleting pods: %+v", deletionErrs))
 		return fmt.Errorf("failed to delete %d pods of %d", len(deletionErrs), len(podToDelete))
 	}
