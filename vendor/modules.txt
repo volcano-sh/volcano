@@ -158,7 +158,6 @@ golang.org/x/crypto/curve25519
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/ed25519/internal/edwards25519
 golang.org/x/crypto/internal/subtle
-golang.org/x/crypto/pbkdf2
 golang.org/x/crypto/poly1305
 golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
@@ -260,11 +259,6 @@ google.golang.org/grpc/tap
 gopkg.in/fsnotify.v1
 # gopkg.in/inf.v0 v0.9.1
 gopkg.in/inf.v0
-# gopkg.in/square/go-jose.v2 v2.2.2
-gopkg.in/square/go-jose.v2
-gopkg.in/square/go-jose.v2/cipher
-gopkg.in/square/go-jose.v2/json
-gopkg.in/square/go-jose.v2/jwt
 # gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
 gopkg.in/tomb.v1
 # gopkg.in/yaml.v2 v2.2.8
@@ -361,9 +355,6 @@ k8s.io/apimachinery/pkg/watch
 k8s.io/apimachinery/third_party/forked/golang/json
 k8s.io/apimachinery/third_party/forked/golang/reflect
 # k8s.io/apiserver v0.0.0 => k8s.io/apiserver v0.0.0-20200317213526-62c18ca8f66b
-k8s.io/apiserver/pkg/authentication/authenticator
-k8s.io/apiserver/pkg/authentication/serviceaccount
-k8s.io/apiserver/pkg/authentication/user
 k8s.io/apiserver/pkg/features
 k8s.io/apiserver/pkg/server/healthz
 k8s.io/apiserver/pkg/server/httplog
@@ -543,9 +534,6 @@ k8s.io/client-go/listers/settings/v1alpha1
 k8s.io/client-go/listers/storage/v1
 k8s.io/client-go/listers/storage/v1alpha1
 k8s.io/client-go/listers/storage/v1beta1
-k8s.io/client-go/metadata
-k8s.io/client-go/metadata/metadatainformer
-k8s.io/client-go/metadata/metadatalister
 k8s.io/client-go/pkg/apis/clientauthentication
 k8s.io/client-go/pkg/apis/clientauthentication/v1alpha1
 k8s.io/client-go/pkg/apis/clientauthentication/v1beta1
@@ -569,7 +557,6 @@ k8s.io/client-go/tools/pager
 k8s.io/client-go/tools/record
 k8s.io/client-go/tools/record/util
 k8s.io/client-go/tools/reference
-k8s.io/client-go/tools/watch
 k8s.io/client-go/transport
 k8s.io/client-go/util/cert
 k8s.io/client-go/util/connrotation
@@ -604,7 +591,6 @@ k8s.io/kubernetes/pkg/apis/apps
 k8s.io/kubernetes/pkg/apis/autoscaling
 k8s.io/kubernetes/pkg/apis/core
 k8s.io/kubernetes/pkg/apis/core/helper
-k8s.io/kubernetes/pkg/apis/core/install
 k8s.io/kubernetes/pkg/apis/core/pods
 k8s.io/kubernetes/pkg/apis/core/v1
 k8s.io/kubernetes/pkg/apis/core/v1/helper
@@ -612,7 +598,6 @@ k8s.io/kubernetes/pkg/apis/core/v1/helper/qos
 k8s.io/kubernetes/pkg/apis/core/validation
 k8s.io/kubernetes/pkg/apis/scheduling
 k8s.io/kubernetes/pkg/capabilities
-k8s.io/kubernetes/pkg/controller
 k8s.io/kubernetes/pkg/controller/volume/persistentvolume/util
 k8s.io/kubernetes/pkg/controller/volume/scheduling
 k8s.io/kubernetes/pkg/features
@@ -629,13 +614,10 @@ k8s.io/kubernetes/pkg/scheduler/nodeinfo
 k8s.io/kubernetes/pkg/scheduler/util
 k8s.io/kubernetes/pkg/scheduler/volumebinder
 k8s.io/kubernetes/pkg/security/apparmor
-k8s.io/kubernetes/pkg/serviceaccount
-k8s.io/kubernetes/pkg/util/hash
 k8s.io/kubernetes/pkg/util/mount
 k8s.io/kubernetes/pkg/util/node
 k8s.io/kubernetes/pkg/util/parsers
 k8s.io/kubernetes/pkg/util/resizefs
-k8s.io/kubernetes/pkg/util/taints
 k8s.io/kubernetes/pkg/volume
 k8s.io/kubernetes/pkg/volume/util
 k8s.io/kubernetes/pkg/volume/util/fs

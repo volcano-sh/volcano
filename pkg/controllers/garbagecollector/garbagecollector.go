@@ -26,7 +26,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/controller"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
@@ -112,7 +111,7 @@ func (gb *GarbageCollector) updateJob(old, cur interface{}) {
 
 func (gb *GarbageCollector) enqueue(job *v1alpha1.Job) {
 	klog.V(4).Infof("Add job %s/%s to cleanup", job.Namespace, job.Name)
-	key, err := controller.KeyFunc(job)
+	key, err := cache.MetaNamespaceKeyFunc(job)
 	if err != nil {
 		klog.Errorf("couldn't get key for object %#v: %v", job, err)
 		return
@@ -122,7 +121,7 @@ func (gb *GarbageCollector) enqueue(job *v1alpha1.Job) {
 }
 
 func (gb *GarbageCollector) enqueueAfter(job *v1alpha1.Job, after time.Duration) {
-	key, err := controller.KeyFunc(job)
+	key, err := cache.MetaNamespaceKeyFunc(job)
 	if err != nil {
 		klog.Errorf("couldn't get key for object %#v: %v", job, err)
 		return
