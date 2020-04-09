@@ -25,7 +25,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	batchv1 "k8s.io/api/batch/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -530,30 +530,12 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Namespace Fair Share", func() {
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
-
 		const fairShareNamespace = "fairshare"
-
-		_, err := context.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: fairShareNamespace,
-			},
-		})
-		Expect(err).NotTo(HaveOccurred())
-		defer func() {
-			deleteForeground := metav1.DeletePropagationForeground
-			err := context.kubeclient.CoreV1().Namespaces().Delete(fairShareNamespace, &metav1.DeleteOptions{
-				PropagationPolicy: &deleteForeground,
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			err = wait.Poll(100*time.Millisecond, twoMinute, namespaceNotExistWithName(context, fairShareNamespace))
-			Expect(err).NotTo(HaveOccurred())
-		}()
+		ctx := initTestContext(options{namespace: fairShareNamespace})
+		defer cleanupTestContext(ctx)
 
 		slot := halfCPU
-		rep := clusterSize(context, slot)
+		rep := clusterSize(ctx, slot)
 
 		createJobToNamespace := func(namespace string, index int, replica int32) *vcbatch.Job {
 			spec := &jobSpec{
@@ -569,13 +551,13 @@ var _ = Describe("Job E2E Test", func() {
 					},
 				},
 			}
-			job := createJob(context, spec)
+			job := createJob(ctx, spec)
 			return job
 		}
 
 		By("occupy all cluster resources")
 		occupiedJob := createJobToNamespace("default", 123, rep*2)
-		err = waitJobReady(context, occupiedJob)
+		err := waitJobReady(ctx, occupiedJob)
 		Expect(err).NotTo(HaveOccurred())
 
 		for i := 0; i < int(rep); i++ {
@@ -585,14 +567,14 @@ var _ = Describe("Job E2E Test", func() {
 
 		By("release occupied cluster resources")
 		deleteBackground := metav1.DeletePropagationBackground
-		err = context.vcclient.BatchV1alpha1().Jobs(occupiedJob.Namespace).Delete(occupiedJob.Name,
+		err = ctx.vcclient.BatchV1alpha1().Jobs(occupiedJob.Namespace).Delete(occupiedJob.Name,
 			&metav1.DeleteOptions{
 				PropagationPolicy: &deleteBackground,
 			})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("wait occupied cluster resources releasing")
-		err = waitJobCleanedUp(context, occupiedJob)
+		err = waitJobCleanedUp(ctx, occupiedJob)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("wait pod in fs/test namespace scheduled")
@@ -603,7 +585,7 @@ var _ = Describe("Job E2E Test", func() {
 			fsScheduledPod = 0
 			testScheduledPod = 0
 
-			pods, err := context.kubeclient.CoreV1().Pods(fairShareNamespace).List(metav1.ListOptions{})
+			pods, err := ctx.kubeclient.CoreV1().Pods(fairShareNamespace).List(metav1.ListOptions{})
 			if err != nil {
 				return false, err
 			}
@@ -613,7 +595,7 @@ var _ = Describe("Job E2E Test", func() {
 				}
 			}
 
-			pods, err = context.kubeclient.CoreV1().Pods("test").List(metav1.ListOptions{})
+			pods, err = ctx.kubeclient.CoreV1().Pods("test").List(metav1.ListOptions{})
 			if err != nil {
 				return false, err
 			}

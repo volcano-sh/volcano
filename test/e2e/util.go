@@ -28,7 +28,7 @@ import (
 
 	appv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	schedv1 "k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -163,10 +163,10 @@ func namespaceNotExist(ctx *context) wait.ConditionFunc {
 func namespaceNotExistWithName(ctx *context, name string) wait.ConditionFunc {
 	return func() (bool, error) {
 		_, err := ctx.kubeclient.CoreV1().Namespaces().Get(name, metav1.GetOptions{})
-		if !(err != nil && errors.IsNotFound(err)) {
-			return false, err
+		if err != nil && errors.IsNotFound(err) {
+			return true, nil
 		}
-		return true, nil
+		return false, nil
 	}
 }
 
@@ -226,7 +226,7 @@ func createQueues(cxt *context) {
 }
 
 func deleteQueues(cxt *context) {
-	foreground := metav1.DeletePropagationForeground
+	foreground := metav1.DeletePropagationBackground
 
 	for _, q := range cxt.queues {
 		queue, err := cxt.vcclient.SchedulingV1beta1().Queues().Get(q, metav1.GetOptions{})
