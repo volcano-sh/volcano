@@ -7,7 +7,7 @@
 [![RepoSize](https://img.shields.io/github/repo-size/volcano-sh/volcano.svg)](https://github.com/volcano-sh/volcano)
 [![Release](https://img.shields.io/github/release/volcano-sh/volcano.svg)](https://github.com/volcano-sh/volcano/releases)
 [![LICENSE](https://img.shields.io/github/license/volcano-sh/volcano.svg)](https://github.com/volcano-sh/volcano/blob/master/LICENSE)
-[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fvolcano-sh%2Fvolcano.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fvolcano-sh%2Fvolcano?ref=badge_shield)   [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/3012/badge)](https://bestpractices.coreinfrastructure.org/projects/3012)
+[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/3012/badge)](https://bestpractices.coreinfrastructure.org/projects/3012)
 
 
 Volcano is a batch system built on Kubernetes. It provides a suite of mechanisms that are commonly required by
