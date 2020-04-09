@@ -22,6 +22,7 @@ import (
 	v12 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
@@ -42,8 +43,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 
 		pv := v12.PersistentVolume{
 			ObjectMeta: metav1.ObjectMeta{
-				Namespace: namespace,
-				Name:      pvName,
+				Name: pvName,
 			},
 			Spec: v12.PersistentVolumeSpec{
 				StorageClassName: storageClsName,
@@ -62,7 +62,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		}
 		_, err := context.kubeclient.CoreV1().PersistentVolumes().Create(&pv)
 		Expect(err).NotTo(HaveOccurred(), "pv creation ")
-		//create pvc
+		// create pvc
 		pvc := v12.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: namespace,

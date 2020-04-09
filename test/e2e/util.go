@@ -37,7 +37,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
 	api "k8s.io/kubernetes/pkg/apis/core"
 
 	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -118,6 +117,9 @@ type options struct {
 	priorityClasses map[string]int32
 }
 
+var vcClient *vcclient.Clientset
+var kubeClient *kubernetes.Clientset
+
 func initTestContext(o options) *context {
 	if o.namespace == "" {
 		o.namespace = helpers.GenRandomStr(8)
@@ -126,20 +128,11 @@ func initTestContext(o options) *context {
 		namespace:       o.namespace,
 		queues:          o.queues,
 		priorityClasses: o.priorityClasses,
+		vcclient:        vcClient,
+		kubeclient:      kubeClient,
 	}
 
-	home := homeDir()
-	Expect(home).NotTo(Equal(""))
-	configPath := kubeconfigPath(home)
-	Expect(configPath).NotTo(Equal(""))
-
-	config, err := clientcmd.BuildConfigFromFlags(masterURL(), configPath)
-	Expect(err).NotTo(HaveOccurred())
-
-	ctx.vcclient = vcclient.NewForConfigOrDie(config)
-	ctx.kubeclient = kubernetes.NewForConfigOrDie(config)
-
-	_, err = ctx.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
+	_, err := ctx.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: ctx.namespace,
 		},
