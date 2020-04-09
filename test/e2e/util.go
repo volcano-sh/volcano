@@ -25,7 +25,6 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
-
 	appv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
@@ -44,6 +43,7 @@ import (
 	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	schedulerapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -68,10 +68,6 @@ const (
 	schedulerName                = "volcano"
 	executeAction                = "ExecuteAction"
 	defaultTFImage               = "volcanosh/dist-mnist-tf-example:0.0.1"
-
-	defaultNamespace = "test"
-	defaultQueue1    = "q1"
-	defaultQueue2    = "q2"
 )
 
 func cpuResource(request string) v1.ResourceList {
@@ -124,7 +120,7 @@ type options struct {
 
 func initTestContext(o options) *context {
 	if o.namespace == "" {
-		o.namespace = defaultNamespace
+		o.namespace = helpers.GenRandomStr(8)
 	}
 	ctx := &context{
 		namespace:       o.namespace,
@@ -199,7 +195,7 @@ func cleanupTestContext(ctx *context) {
 	err := ctx.kubeclient.CoreV1().Namespaces().Delete(ctx.namespace, &metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
-	Expect(err).NotTo(HaveOccurred())
+	Expect(err).NotTo(HaveOccurred(), "delete namespace failed")
 
 	deleteQueues(ctx)
 
@@ -226,7 +222,7 @@ func createQueues(cxt *context) {
 }
 
 func deleteQueues(cxt *context) {
-	foreground := metav1.DeletePropagationBackground
+	foreground := metav1.DeletePropagationForeground
 
 	for _, q := range cxt.queues {
 		queue, err := cxt.vcclient.SchedulingV1beta1().Queues().Get(q, metav1.GetOptions{})

@@ -27,8 +27,9 @@ import (
 
 var _ = Describe("Queue E2E Test", func() {
 	It("Reclaim", func() {
+		q1, q2 := "reclaim-q1", "reclaim-q2"
 		ctx := initTestContext(options{
-			queues: []string{defaultQueue1, defaultQueue2},
+			queues: []string{q1, q2},
 		})
 		defer cleanupTestContext(ctx)
 
@@ -47,13 +48,13 @@ var _ = Describe("Queue E2E Test", func() {
 		}
 
 		spec.name = "q1-qj-1"
-		spec.queue = defaultQueue1
+		spec.queue = q1
 		job1 := createJob(ctx, spec)
 		err := waitJobReady(ctx, job1)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitQueueStatus(func() (bool, error) {
-			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(defaultQueue1, metav1.GetOptions{})
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			return queue.Status.Running == 1, nil
 		})
@@ -69,7 +70,7 @@ var _ = Describe("Queue E2E Test", func() {
 		}
 
 		spec.name = "q2-qj-2"
-		spec.queue = defaultQueue2
+		spec.queue = q2
 		job2 := createJob(ctx, spec)
 		err = waitTasksReady(ctx, job2, expected)
 		Expect(err).NotTo(HaveOccurred())
@@ -80,7 +81,7 @@ var _ = Describe("Queue E2E Test", func() {
 		// Test Queue status
 		spec = &jobSpec{
 			name:  "q1-qj-2",
-			queue: defaultQueue1,
+			queue: q1,
 			tasks: []taskSpec{
 				{
 					img: defaultNginxImage,
@@ -94,11 +95,10 @@ var _ = Describe("Queue E2E Test", func() {
 		err = waitJobStatePending(ctx, job3)
 		Expect(err).NotTo(HaveOccurred())
 		err = waitQueueStatus(func() (bool, error) {
-			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(defaultQueue1, metav1.GetOptions{})
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			return queue.Status.Pending == 1, nil
 		})
 		Expect(err).NotTo(HaveOccurred())
 	})
-
 })

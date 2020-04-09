@@ -618,8 +618,9 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Queue Fair Share", func() {
+		q1, q2 := "q1", "q2"
 		context := initTestContext(options{
-			queues: []string{defaultQueue1, defaultQueue2},
+			queues: []string{q1, q2},
 		})
 		defer cleanupTestContext(context)
 
@@ -651,8 +652,8 @@ var _ = Describe("Job E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		for i := 0; i < int(rep); i++ {
-			createJobToQueue(defaultQueue1, i, 2)
-			createJobToQueue(defaultQueue2, i, 2)
+			createJobToQueue(q1, i, 2)
+			createJobToQueue(q2, i, 2)
 		}
 
 		By(fmt.Sprintf("release occupied cluster resources, %s/%s", occupiedJob.Namespace, occupiedJob.Name))
@@ -684,10 +685,10 @@ var _ = Describe("Job E2E Test", func() {
 					continue
 				}
 				jobName := pod.Annotations[vcbatch.JobNameKey]
-				if strings.Contains(jobName, "queue-fair-share-"+defaultQueue1) {
+				if strings.Contains(jobName, "queue-fair-share-"+q1) {
 					q1ScheduledPod++
 				}
-				if strings.Contains(jobName, "queue-fair-share-"+defaultQueue2) {
+				if strings.Contains(jobName, "queue-fair-share-"+q2) {
 					q2ScheduledPod++
 				}
 			}
