@@ -103,7 +103,7 @@ func (sc *SchedulerCache) syncTask(oldTask *schedulingapi.TaskInfo) error {
 
 func (sc *SchedulerCache) updateTask(oldTask, newTask *schedulingapi.TaskInfo) error {
 	if err := sc.deleteTask(oldTask); err != nil {
-		return err
+		klog.Warningf("Failed to delete task: %v", err)
 	}
 
 	return sc.addTask(newTask)
@@ -159,7 +159,7 @@ func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
 		}
 	}
 	if err := sc.deleteTask(task); err != nil {
-		return err
+		klog.Warningf("Failed to delete task: %v", err)
 	}
 
 	// If job was terminated, delete it.
