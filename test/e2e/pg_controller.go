@@ -21,17 +21,16 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("PG E2E Test: Test PG controller", func() {
 	It("Create volcano rc, pg controller process", func() {
 		rcName := "rc-volcano"
 		podName := "pod-volcano"
-		namespace := "test"
 		label := map[string]string{"schedulerName": "volcano"}
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		rc := &corev1.ReplicationController{
 			TypeMeta: v1.TypeMeta{
@@ -40,7 +39,7 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 			},
 			ObjectMeta: v1.ObjectMeta{
 				Name:      rcName,
-				Namespace: namespace,
+				Namespace: ctx.namespace,
 			},
 			Spec: corev1.ReplicationControllerSpec{
 				Selector: label,
@@ -65,17 +64,17 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 
 		pod := &corev1.Pod{
 			ObjectMeta: v1.ObjectMeta{
-				Namespace: namespace,
+				Namespace: ctx.namespace,
 			},
 		}
 
-		_, err := context.kubeclient.CoreV1().ReplicationControllers(namespace).Create(rc)
+		_, err := ctx.kubeclient.CoreV1().ReplicationControllers(ctx.namespace).Create(rc)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitPodPhase(context, pod, []corev1.PodPhase{corev1.PodRunning})
+		err = waitPodPhase(ctx, pod, []corev1.PodPhase{corev1.PodRunning})
 		Expect(err).NotTo(HaveOccurred())
 
-		ready, err := pgIsReady(context, namespace)
+		ready, err := pgIsReady(ctx, ctx.namespace)
 		Expect(ready).Should(Equal(true))
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -83,10 +82,9 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 	It("Create default-scheduler rc, pg controller don't process", func() {
 		rcName := "rc-default-scheduler"
 		podName := "pod-default-scheduler"
-		namespace := "test"
 		label := map[string]string{"a": "b"}
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		rc := &corev1.ReplicationController{
 			TypeMeta: v1.TypeMeta{
@@ -95,7 +93,7 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 			},
 			ObjectMeta: v1.ObjectMeta{
 				Name:      rcName,
-				Namespace: namespace,
+				Namespace: ctx.namespace,
 			},
 			Spec: corev1.ReplicationControllerSpec{
 				Selector: label,
@@ -119,17 +117,17 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 
 		pod := &corev1.Pod{
 			ObjectMeta: v1.ObjectMeta{
-				Namespace: namespace,
+				Namespace: ctx.namespace,
 			},
 		}
 
-		_, err := context.kubeclient.CoreV1().ReplicationControllers(namespace).Create(rc)
+		_, err := ctx.kubeclient.CoreV1().ReplicationControllers(ctx.namespace).Create(rc)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitPodPhase(context, pod, []corev1.PodPhase{corev1.PodRunning})
+		err = waitPodPhase(ctx, pod, []corev1.PodPhase{corev1.PodRunning})
 		Expect(err).NotTo(HaveOccurred())
 
-		ready, err := pgIsReady(context, namespace)
+		ready, err := pgIsReady(ctx, ctx.namespace)
 		Expect(ready).Should(Equal(false))
 		Expect(err.Error()).Should(Equal("podgroup is not found"))
 	})

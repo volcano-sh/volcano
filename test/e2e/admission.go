@@ -23,7 +23,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
@@ -33,13 +33,12 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 
 	It("Default queue would be added", func() {
 		jobName := "job-default-queue"
-		namespace := "test"
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
-		_, err := createJobInner(context, &jobSpec{
+		_, err := createJobInner(ctx, &jobSpec{
 			min:       1,
-			namespace: namespace,
+			namespace: ctx.namespace,
 			name:      jobName,
 			tasks: []taskSpec{
 				{
@@ -52,17 +51,15 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())
-		createdJob, err := context.vcclient.BatchV1alpha1().Jobs(namespace).Get(jobName, v1.GetOptions{})
+		createdJob, err := ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Get(jobName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(createdJob.Spec.Queue).Should(Equal("default"),
 			"Job queue attribute would default to 'default' ")
 	})
 
 	It("Invalid CPU unit", func() {
-
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
-		namespace := "test"
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		var job v1alpha1.Job
 		jsonData := []byte(`{
@@ -102,16 +99,14 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 }`)
 		err := json.Unmarshal(jsonData, &job)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = context.vcclient.BatchV1alpha1().Jobs(namespace).Create(&job)
+		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(&job)
 		Expect(err).To(HaveOccurred())
 
 	})
 
 	It("Invalid memory unit", func() {
-
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
-		namespace := "test"
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		var job v1alpha1.Job
 		jsonData := []byte(`{
@@ -152,16 +147,15 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 
 		err := json.Unmarshal(jsonData, &job)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = context.vcclient.BatchV1alpha1().Jobs(namespace).Create(&job)
+		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(&job)
 		Expect(err).To(HaveOccurred())
 
 	})
 
 	It("Create default-scheduler pod", func() {
 		podName := "pod-default-scheduler"
-		namespace := "test"
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		pod := &corev1.Pod{
 			TypeMeta: v1.TypeMeta{
@@ -169,7 +163,7 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 				Kind:       "Pod",
 			},
 			ObjectMeta: v1.ObjectMeta{
-				Namespace: namespace,
+				Namespace: ctx.namespace,
 				Name:      podName,
 			},
 			Spec: corev1.PodSpec{
@@ -177,23 +171,22 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 			},
 		}
 
-		_, err := context.kubeclient.CoreV1().Pods(namespace).Create(pod)
+		_, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).Create(pod)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitPodPhase(context, pod, []corev1.PodPhase{corev1.PodRunning})
+		err = waitPodPhase(ctx, pod, []corev1.PodPhase{corev1.PodRunning})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("Can't create volcano pod when podgroup is Pending", func() {
 		podName := "pod-volcano"
 		pgName := "pending-pg"
-		namespace := "test"
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		pg := &schedulingv1beta1.PodGroup{
 			ObjectMeta: v1.ObjectMeta{
-				Namespace: namespace,
+				Namespace: ctx.namespace,
 				Name:      pgName,
 			},
 			Spec: schedulingv1beta1.PodGroupSpec{
@@ -211,7 +204,7 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 				Kind:       "Pod",
 			},
 			ObjectMeta: v1.ObjectMeta{
-				Namespace:   namespace,
+				Namespace:   ctx.namespace,
 				Name:        podName,
 				Annotations: map[string]string{schedulingv1beta1.KubeGroupNameAnnotationKey: pgName},
 			},
@@ -221,10 +214,10 @@ var _ = Describe("Job E2E Test: Test Admission service", func() {
 			},
 		}
 
-		_, err := context.vcclient.SchedulingV1beta1().PodGroups(namespace).Create(pg)
+		_, err := ctx.vcclient.SchedulingV1beta1().PodGroups(ctx.namespace).Create(pg)
 		Expect(err).NotTo(HaveOccurred())
 
-		_, err = context.kubeclient.CoreV1().Pods(namespace).Create(pod)
+		_, err = ctx.kubeclient.CoreV1().Pods(ctx.namespace).Create(pod)
 		Expect(err.Error()).Should(ContainSubstring(`failed to create pod <test/pod-volcano> as the podgroup phase is Pending`))
 	})
 })

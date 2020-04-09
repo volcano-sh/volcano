@@ -35,13 +35,12 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 	It("List running jobs", func() {
 		var outBuffer bytes.Buffer
 		jobName := "test-job"
-		namespace := "test"
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
-		rep := clusterSize(context, oneCPU)
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+		rep := clusterSize(ctx, oneCPU)
 
-		job := createJob(context, &jobSpec{
-			namespace: namespace,
+		job := createJob(ctx, &jobSpec{
+			namespace: ctx.namespace,
 			name:      jobName,
 			tasks: []taskSpec{
 				{
@@ -53,14 +52,14 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 			},
 		})
 		//Pod is running
-		err := waitJobReady(context, job)
+		err := waitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 		//Job Status is running
-		err = waitJobStateReady(context, job)
+		err = waitJobStateReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 		//Command outputs are identical
-		outputs := ListJobs(namespace)
-		jobs, err := context.vcclient.BatchV1alpha1().Jobs(namespace).List(metav1.ListOptions{})
+		outputs := ListJobs(ctx.namespace)
+		jobs, err := ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).List(metav1.ListOptions{})
 		ctlJob.PrintJobs(jobs, &outBuffer)
 		Expect(outputs).To(Equal(outBuffer.String()), "List command result should be:\n %s",
 			outBuffer.String())
@@ -69,12 +68,11 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 	It("Suspend running job&Resume aborted job", func() {
 		jobName := "test-suspend-running-job"
 		taskName := "long-live-task"
-		namespace := "test"
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
-		job := createJob(context, &jobSpec{
-			namespace: namespace,
+		job := createJob(ctx, &jobSpec{
+			namespace: ctx.namespace,
 			name:      jobName,
 			tasks: []taskSpec{
 				{
@@ -86,43 +84,42 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 			},
 		})
 		//Job is running
-		err := waitJobReady(context, job)
+		err := waitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
-		err = waitJobStateReady(context, job)
+		err = waitJobStateReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		//Suspend job and wait status change
-		SuspendJob(jobName, namespace)
-		err = waitJobStateAborted(context, job)
+		SuspendJob(jobName, ctx.namespace)
+		err = waitJobStateAborted(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		//Pod is gone
 		podName := jobUtil.MakePodName(jobName, taskName, 0)
-		err = waitPodGone(context, podName, job.Namespace)
+		err = waitPodGone(ctx, podName, job.Namespace)
 		Expect(err).NotTo(HaveOccurred())
 
 		//Resume job
-		ResumeJob(jobName, namespace)
+		ResumeJob(jobName, ctx.namespace)
 
 		//Job is running again
-		err = waitJobReady(context, job)
+		err = waitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
-		err = waitJobStateReady(context, job)
+		err = waitJobStateReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 	})
 
 	It("Suspend pending job", func() {
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
-		rep := clusterSize(context, oneCPU)
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+		rep := clusterSize(ctx, oneCPU)
 
 		jobName := "test-suspend-pending-job"
-		namespace := "test"
 		taskName := "long-live-task"
 
-		job := createJob(context, &jobSpec{
-			namespace: namespace,
+		job := createJob(ctx, &jobSpec{
+			namespace: ctx.namespace,
 			name:      jobName,
 			tasks: []taskSpec{
 				{
@@ -136,19 +133,19 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		})
 
 		//Job is pending
-		err := waitJobPending(context, job)
+		err := waitJobPending(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
-		err = waitJobStatePending(context, job)
+		err = waitJobStatePending(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		//Suspend job and wait status change
-		SuspendJob(jobName, namespace)
-		err = waitJobStateAborted(context, job)
+		SuspendJob(jobName, ctx.namespace)
+		err = waitJobStateAborted(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		//Pod is gone
 		podName := jobUtil.MakePodName(jobName, taskName, 0)
-		_, err = context.kubeclient.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
+		_, err = ctx.kubeclient.CoreV1().Pods(ctx.namespace).Get(podName, metav1.GetOptions{})
 		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 			"Job related pod should be deleted when job aborted.")
 	})
@@ -156,10 +153,9 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 	It("delete a job with all nodes taints", func() {
 
 		jobName := "test-del-job"
-		namespace := "test"
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
-		rep := clusterSize(context, oneCPU)
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+		rep := clusterSize(ctx, oneCPU)
 
 		taints := []v1.Taint{
 			{
@@ -169,11 +165,11 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 			},
 		}
 
-		err := taintAllNodes(context, taints)
+		err := taintAllNodes(ctx, taints)
 		Expect(err).NotTo(HaveOccurred())
 
-		job := createJob(context, &jobSpec{
-			namespace: namespace,
+		job := createJob(ctx, &jobSpec{
+			namespace: ctx.namespace,
 			name:      jobName,
 			tasks: []taskSpec{
 				{
@@ -185,28 +181,27 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 			},
 		})
 
-		err = waitJobPending(context, job)
+		err = waitJobPending(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = removeTaintsFromAllNodes(context, taints)
+		err = removeTaintsFromAllNodes(ctx, taints)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Pod is running
-		err = waitJobReady(context, job)
+		err = waitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 		// Job Status is running
-		err = waitJobStateReady(context, job)
+		err = waitJobStateReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		_, err = context.vcclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
+		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Get(jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// Delete job
-		DeleteJob(jobName, namespace)
+		DeleteJob(jobName, ctx.namespace)
 
-		_, err = context.vcclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
+		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Get(jobName, metav1.GetOptions{})
 		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 			"Job should be deleted on vcctl job delete.")
-
 	})
 })
