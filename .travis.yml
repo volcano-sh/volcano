@@ -36,12 +36,6 @@ jobs:
         - make vcctl
         - make images
         - make e2e-test-kind
-      after_failure:
-        # Echo logs and upload
-        - test -f helm-tiller.log &&  "echo ******<<helm tiller service logs>>******" && cat helm-tiller.log
-        - test -f volcano-admission.log && echo "******<<admission logs>>******" && cat volcano-admission.log
-        - test -f volcano-controller.log && echo "******<<controller logs>>******" && cat volcano-controller.log
-        - test -f volcano-scheduler.log && echo "******<<scheduler logs>>******" && cat volcano-scheduler.log
     - stage: Publish release
       before_deploy:
         - export TRAVIS_TAG=$(git describe --tags)
