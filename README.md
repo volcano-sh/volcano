@@ -103,8 +103,8 @@ If you don't have a kubernetes cluster, try one-click install from code base:
 
 You can reach the maintainers of this project at:
 
-Slack Channel : https://volcano-sh.slack.com. (Signup [here](https://join.slack.com/t/volcano-sh/shared_invite/enQtNTU5NTU3NDU0MTc4LTgzZTQ2MzViNTFmNDg1ZGUyMzcwNjgxZGQ1ZDdhOGE3Mzg1Y2NkZjk1MDJlZTZhZWU5MDg2MWJhMzI3Mjg3ZTk))
+CNCF Slack Channel: https://cloud-native.slack.com/messages/volcano
 
-Mailing List  : https://groups.google.com/forum/#!forum/volcano-sh
+Mailing List: https://groups.google.com/forum/#!forum/volcano-sh
 
 Gitter: https://gitter.im/volcano-dev/
