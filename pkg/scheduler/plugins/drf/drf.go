@@ -114,7 +114,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			// all task in job should have the same namespace with job
 			nsOpts.allocated.Add(attr.allocated)
-			drf.updateNsShare(job.Namespace, nsOpts)
+			drf.updateNamespaceShare(job.Namespace, nsOpts)
 		}
 	}
 
@@ -271,7 +271,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 				nsOpt := drf.namespaceOpts[event.Task.Namespace]
 				nsOpt.allocated.Add(event.Task.Resreq)
 
-				drf.updateNsShare(event.Task.Namespace, nsOpt)
+				drf.updateNamespaceShare(event.Task.Namespace, nsOpt)
 				nsShare = nsOpt.share
 			}
 
@@ -290,7 +290,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 				nsOpt := drf.namespaceOpts[event.Task.Namespace]
 				nsOpt.allocated.Sub(event.Task.Resreq)
 
-				drf.updateNsShare(event.Task.Namespace, nsOpt)
+				drf.updateNamespaceShare(event.Task.Namespace, nsOpt)
 				nsShare = nsOpt.share
 			}
 
@@ -300,9 +300,9 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 }
 
-func (drf *drfPlugin) updateNsShare(nsName string, attr *drfAttr) {
+func (drf *drfPlugin) updateNamespaceShare(namespaceName string, attr *drfAttr) {
 	drf.updateShare(attr)
-	metrics.UpdateNamespaceShare(nsName, attr.share)
+	metrics.UpdateNamespaceShare(namespaceName, attr.share)
 }
 
 func (drf *drfPlugin) updateJobShare(jobNs, jobName string, attr *drfAttr) {
