@@ -20,7 +20,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -29,8 +29,8 @@ import (
 
 var _ = Describe("TensorFlow E2E Test", func() {
 	It("Will Start in pending state and goes through other phases to get complete phase", func() {
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		jobName := "tensorflow-dist-mnist"
 
@@ -114,10 +114,10 @@ var _ = Describe("TensorFlow E2E Test", func() {
 			},
 		}
 
-		created, err := context.vcclient.BatchV1alpha1().Jobs("test").Create(job)
+		created, err := ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(job)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobStates(context, created, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Completed}, twoMinute)
+		err = waitJobStates(ctx, created, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Completed}, twoMinute)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

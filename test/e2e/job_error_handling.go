@@ -22,9 +22,9 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	"k8s.io/api/core/v1"
-
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	jobutil "volcano.sh/volcano/pkg/controllers/job"
@@ -320,13 +320,13 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("Job error handling: Restart job when job is unschedulable", func() {
 		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
-		rep := clusterSize(context, oneCPU)
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+		rep := clusterSize(ctx, oneCPU)
 
 		jobSpec := &jobSpec{
 			name:      "job-restart-when-unschedulable",
-			namespace: "test",
+			namespace: ctx.namespace,
 			policies: []vcbatch.LifecyclePolicy{
 				{
 					Event:  vcbus.JobUnknownEvent,
@@ -344,8 +344,8 @@ var _ = Describe("Job Error Handling", func() {
 			},
 		}
 		By("Create the Job")
-		job := createJob(context, jobSpec)
-		err := waitJobReady(context, job)
+		job := createJob(ctx, jobSpec)
+		err := waitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Taint all nodes")
@@ -356,36 +356,36 @@ var _ = Describe("Job Error Handling", func() {
 				Effect: v1.TaintEffectNoSchedule,
 			},
 		}
-		err = taintAllNodes(context, taints)
+		err = taintAllNodes(ctx, taints)
 		Expect(err).NotTo(HaveOccurred())
 
 		podName := jobutil.MakePodName(job.Name, "test", 0)
 		By("Kill one of the pod in order to trigger unschedulable status")
-		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		err = ctx.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Job is restarting")
-		err = waitJobPhases(context, job, []vcbatch.JobPhase{
+		err = waitJobPhases(ctx, job, []vcbatch.JobPhase{
 			vcbatch.Restarting, vcbatch.Pending})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Untaint all nodes")
-		err = removeTaintsFromAllNodes(context, taints)
+		err = removeTaintsFromAllNodes(ctx, taints)
 		Expect(err).NotTo(HaveOccurred())
 		By("Job is running again")
-		err = waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Running})
+		err = waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("Job error handling: Abort job when job is unschedulable", func() {
-		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
-		rep := clusterSize(context, oneCPU)
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+		rep := clusterSize(ctx, oneCPU)
 
 		jobSpec := &jobSpec{
 			name:      "job-abort-when-unschedulable",
-			namespace: "test",
+			namespace: ctx.namespace,
 			policies: []vcbatch.LifecyclePolicy{
 				{
 					Event:  vcbus.JobUnknownEvent,
@@ -403,8 +403,8 @@ var _ = Describe("Job Error Handling", func() {
 			},
 		}
 		By("Create the Job")
-		job := createJob(context, jobSpec)
-		err := waitJobReady(context, job)
+		job := createJob(ctx, jobSpec)
+		err := waitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Taint all nodes")
@@ -415,31 +415,32 @@ var _ = Describe("Job Error Handling", func() {
 				Effect: v1.TaintEffectNoSchedule,
 			},
 		}
-		err = taintAllNodes(context, taints)
+		err = taintAllNodes(ctx, taints)
 		Expect(err).NotTo(HaveOccurred())
 
 		podName := jobutil.MakePodName(job.Name, "test", 0)
 		By("Kill one of the pod in order to trigger unschedulable status")
-		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		err = ctx.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Job is aborted")
-		err = waitJobPhases(context, job, []vcbatch.JobPhase{
+		err = waitJobPhases(ctx, job, []vcbatch.JobPhase{
 			vcbatch.Aborting, vcbatch.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = removeTaintsFromAllNodes(context, taints)
+		err = removeTaintsFromAllNodes(ctx, taints)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("job level LifecyclePolicy, Event: TaskCompleted; Action: CompletedJob", func() {
 		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
-			name: "any-complete-job",
+		job := createJob(ctx, &jobSpec{
+			name:      "any-complete-job",
+			namespace: ctx.namespace,
 			policies: []vcbatch.LifecyclePolicy{
 				{
 					Action: vcbus.CompleteJobAction,
@@ -466,7 +467,7 @@ var _ = Describe("Job Error Handling", func() {
 
 		By("job scheduled, then task 'completed_task' finished and job finally complete")
 		// job phase: pending -> running -> completing -> completed
-		err := waitJobPhases(context, job, []vcbatch.JobPhase{
+		err := waitJobPhases(ctx, job, []vcbatch.JobPhase{
 			vcbatch.Pending, vcbatch.Running, vcbatch.Completing, vcbatch.Completed})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -474,13 +475,14 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, error code: 3; Action: RestartJob", func() {
 		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		By("create job")
 		var erroCode int32 = 3
-		job := createJob(context, &jobSpec{
-			name: "errorcode-restart-job",
+		job := createJob(ctx, &jobSpec{
+			name:      "errorcode-restart-job",
+			namespace: ctx.namespace,
 			policies: []vcbatch.LifecyclePolicy{
 				{
 					Action:   vcbus.RestartJobAction,
@@ -506,7 +508,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> restarting
-		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
+		err := waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
 		Expect(err).NotTo(HaveOccurred())
 	})
 

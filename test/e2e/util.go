@@ -25,10 +25,9 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
-
 	appv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	schedv1 "k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -38,12 +37,12 @@ import (
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
 	api "k8s.io/kubernetes/pkg/apis/core"
 
 	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	schedulerapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -68,10 +67,6 @@ const (
 	schedulerName                = "volcano"
 	executeAction                = "ExecuteAction"
 	defaultTFImage               = "volcanosh/dist-mnist-tf-example:0.0.1"
-
-	defaultNamespace = "test"
-	defaultQueue1    = "q1"
-	defaultQueue2    = "q2"
 )
 
 func cpuResource(request string) v1.ResourceList {
@@ -122,28 +117,22 @@ type options struct {
 	priorityClasses map[string]int32
 }
 
+var vcClient *vcclient.Clientset
+var kubeClient *kubernetes.Clientset
+
 func initTestContext(o options) *context {
 	if o.namespace == "" {
-		o.namespace = defaultNamespace
+		o.namespace = helpers.GenRandomStr(8)
 	}
 	ctx := &context{
 		namespace:       o.namespace,
 		queues:          o.queues,
 		priorityClasses: o.priorityClasses,
+		vcclient:        vcClient,
+		kubeclient:      kubeClient,
 	}
 
-	home := homeDir()
-	Expect(home).NotTo(Equal(""))
-	configPath := kubeconfigPath(home)
-	Expect(configPath).NotTo(Equal(""))
-
-	config, err := clientcmd.BuildConfigFromFlags(masterURL(), configPath)
-	Expect(err).NotTo(HaveOccurred())
-
-	ctx.vcclient = vcclient.NewForConfigOrDie(config)
-	ctx.kubeclient = kubernetes.NewForConfigOrDie(config)
-
-	_, err = ctx.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
+	_, err := ctx.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: ctx.namespace,
 		},
@@ -163,10 +152,10 @@ func namespaceNotExist(ctx *context) wait.ConditionFunc {
 func namespaceNotExistWithName(ctx *context, name string) wait.ConditionFunc {
 	return func() (bool, error) {
 		_, err := ctx.kubeclient.CoreV1().Namespaces().Get(name, metav1.GetOptions{})
-		if !(err != nil && errors.IsNotFound(err)) {
-			return false, err
+		if err != nil && errors.IsNotFound(err) {
+			return true, nil
 		}
-		return true, nil
+		return false, nil
 	}
 }
 
@@ -199,7 +188,7 @@ func cleanupTestContext(ctx *context) {
 	err := ctx.kubeclient.CoreV1().Namespaces().Delete(ctx.namespace, &metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
-	Expect(err).NotTo(HaveOccurred())
+	Expect(err).NotTo(HaveOccurred(), "delete namespace failed")
 
 	deleteQueues(ctx)
 
