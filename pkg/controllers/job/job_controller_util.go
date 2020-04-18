@@ -18,7 +18,6 @@ package job
 
 import (
 	"fmt"
-	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,6 +25,7 @@ import (
 	"k8s.io/klog"
 
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	schedulingv2 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
@@ -56,6 +56,10 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 	// If no scheduler name in Pod, use scheduler name from Job.
 	if len(pod.Spec.SchedulerName) == 0 {
 		pod.Spec.SchedulerName = job.Spec.SchedulerName
+	}
+	// If dns policy not set when hostNetwork=true, set it to `ClusterFirstWithHostNet`
+	if pod.Spec.HostNetwork == true && pod.Spec.DNSPolicy == "" {
+		pod.Spec.DNSPolicy = v1.DNSClusterFirstWithHostNet
 	}
 
 	volumeMap := make(map[string]string)
