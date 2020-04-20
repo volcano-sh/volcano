@@ -53,15 +53,6 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 		Spec: templateCopy.Spec,
 	}
 
-	// If no scheduler name in Pod, use scheduler name from Job.
-	if len(pod.Spec.SchedulerName) == 0 {
-		pod.Spec.SchedulerName = job.Spec.SchedulerName
-	}
-	// If dns policy not set when hostNetwork=true, set it to `ClusterFirstWithHostNet`
-	if pod.Spec.HostNetwork == true && pod.Spec.DNSPolicy == "" {
-		pod.Spec.DNSPolicy = v1.DNSClusterFirstWithHostNet
-	}
-
 	volumeMap := make(map[string]string)
 	for _, volume := range job.Spec.Volumes {
 		vcName := volume.VolumeClaimName
