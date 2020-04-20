@@ -20,7 +20,10 @@ import (
 	"fmt"
 	"hash"
 	"hash/fnv"
-	"k8s.io/api/core/v1"
+	"sync"
+	"time"
+
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -34,8 +37,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
-	"sync"
-	"time"
 
 	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
@@ -145,8 +146,7 @@ func NewJobController(
 
 	cc.jobInformer = informerfactory.NewSharedInformerFactory(cc.vcClient, 0).Batch().V1alpha1().Jobs()
 	cc.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: cc.addJob,
-		// TODO: enable this until we find an appropriate way.
+		AddFunc:    cc.addJob,
 		UpdateFunc: cc.updateJob,
 		DeleteFunc: cc.deleteJob,
 	})

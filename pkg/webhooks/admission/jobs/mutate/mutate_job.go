@@ -23,7 +23,7 @@ import (
 
 	"k8s.io/api/admission/v1beta1"
 	whv1beta1 "k8s.io/api/admissionregistration/v1beta1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -33,8 +33,10 @@ import (
 )
 
 const (
-	//DefaultQueue constant stores the name of the queue as "default"
+	// DefaultQueue constant stores the name of the queue as "default"
 	DefaultQueue = "default"
+
+	defaultSchedulerName = "volcano"
 )
 
 func init() {
@@ -77,9 +79,6 @@ func MutateJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		return util.ToAdmissionResponse(err)
 	}
 
-	reviewResponse := v1beta1.AdmissionResponse{}
-	reviewResponse.Allowed = true
-
 	var patchBytes []byte
 	switch ar.Request.Operation {
 	case v1beta1.Create:
@@ -90,12 +89,11 @@ func MutateJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		return util.ToAdmissionResponse(err)
 	}
 
-	if err != nil {
-		reviewResponse.Result = &metav1.Status{Message: err.Error()}
-		return &reviewResponse
+	klog.V(3).Infof("AdmissionResponse: patch=%v", string(patchBytes))
+	reviewResponse := v1beta1.AdmissionResponse{
+		Allowed: true,
+		Patch:   patchBytes,
 	}
-	klog.V(3).Infof("AdmissionResponse: patch=%v\n", string(patchBytes))
-	reviewResponse.Patch = patchBytes
 	pt := v1beta1.PatchTypeJSONPatch
 	reviewResponse.PatchType = &pt
 
@@ -107,6 +105,10 @@ func createPatch(job *v1alpha1.Job) ([]byte, error) {
 	pathQueue := patchDefaultQueue(job)
 	if pathQueue != nil {
 		patch = append(patch, *pathQueue)
+	}
+	pathScheduler := patchDefaultScheduler(job)
+	if pathScheduler != nil {
+		patch = append(patch, *pathScheduler)
 	}
 	pathSpec := mutateSpec(job.Spec.Tasks, "/spec/tasks")
 	if pathSpec != nil {
@@ -123,6 +125,14 @@ func patchDefaultQueue(job *v1alpha1.Job) *patchOperation {
 	return nil
 }
 
+func patchDefaultScheduler(job *v1alpha1.Job) *patchOperation {
+	// Add default scheduler name if not specified.
+	if job.Spec.SchedulerName == "" {
+		return &patchOperation{Op: "add", Path: "/spec/schedulerName", Value: defaultSchedulerName}
+	}
+	return nil
+}
+
 func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string) *patchOperation {
 	patched := false
 	for index := range tasks {
@@ -132,6 +142,11 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string) *patchOperation {
 			patched = true
 			tasks[index].Name = v1alpha1.DefaultTaskSpec + strconv.Itoa(index)
 		}
+
+		if tasks[index].Template.Spec.HostNetwork && tasks[index].Template.Spec.DNSPolicy == "" {
+			tasks[index].Template.Spec.DNSPolicy = v1.DNSClusterFirstWithHostNet
+		}
+
 	}
 	if !patched {
 		return nil
