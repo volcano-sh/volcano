@@ -5,8 +5,10 @@
 ## Motivation
 
 Currently, Volcano does not support Job update. It is not allowed to update the `Job.Spec` on the fly.
-However, users like ModelArts want to dynamically adjust Job's replicas according to the cluster idle resources 
+However, many users show appeal to run ML training jobs in a elastic manner. For example ModelArts want to dynamically adjust Job's replicas according to the cluster idle capacity 
 in order to achieve most high efficiency on GPU card.
+
+I propose to support volcano job dynamical scale up/down before more intelligent elasticity in the first step.
 
 ## Design
 
@@ -46,17 +48,35 @@ The way I propose is to add a new event `JobUpdatedEvent` to indicate that the j
 And accordingly add a new action `UpdateJobAction` to run `UpdateJob` function. And the overall workflow is:
 ![workflow](images/Job-scale-up-down.PNG)
 
+To scale up/down on the fly, Volcano should be responsible to notify the original pods the current status, including the hosts of all the pods.
+This is done by plugins, so to distinguish from the initialization phase, a new `OnJobUpdate` is introduced. 
+It is to reconcile all the associated configs of the job. Currently, the `svc` plugin should update the configmap of all the hosts.
+
+**NOTE**: Users should watch the `/etc/volcano` to get the up-to-date hosts files if they want to be aware of the training workers.
+
+```
+type PluginInterface interface {
+	// The unique name of Plugin.
+	Name() string
+
+	// for all pod when createJobPod
+	OnPodCreate(pod *v1.Pod, job *vcbatch.Job) error
+
+	// do once when syncJob
+	OnJobAdd(job *vcbatch.Job) error
+
+	// do once when killJob
+	OnJobDelete(job *vcbatch.Job) error
+
+	OnJobUpdate(job *vcbatch.Job) error
+}
+```
+
 
 ### Admission webhook
 
 Should prevent invalid mutating Job Spec on the fly. In this proposal, we only allow replicas update. Any other spec changes will be prohibited.
-
-
- 
-
-
-
-
+It is also not allowed if the number of total replicas is less than the `minAvailable`.
 
 
 
