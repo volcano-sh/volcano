@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"k8s.io/api/admission/v1beta1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -30,7 +30,7 @@ import (
 	fakeclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
 )
 
-func TestValidateExecution(t *testing.T) {
+func TestValidateJobCreate(t *testing.T) {
 	var invTTL int32 = -1
 	var policyExitCode int32 = -1
 	namespace := "test"
@@ -328,7 +328,7 @@ func TestValidateExecution(t *testing.T) {
 				},
 			},
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
-			ret:            "'minAvailable' must be greater than zero.",
+			ret:            "'minAvailable' must be >= 0",
 			ExpectErr:      true,
 		},
 		// maxretry less than zero
@@ -419,7 +419,7 @@ func TestValidateExecution(t *testing.T) {
 				},
 			},
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
-			ret:            "'replicas' is not set positive in task: task-1;",
+			ret:            "'replicas' < 0 in task: task-1;",
 			ExpectErr:      true,
 		},
 		// task name error
@@ -1058,7 +1058,7 @@ func TestValidateExecution(t *testing.T) {
 				t.Error("Queue Creation Failed")
 			}
 
-			ret := validateJob(&testCase.Job, &testCase.reviewResponse)
+			ret := validateJobCreate(&testCase.Job, &testCase.reviewResponse)
 			//fmt.Printf("test-case name:%s, ret:%v  testCase.reviewResponse:%v \n", testCase.Name, ret,testCase.reviewResponse)
 			if testCase.ExpectErr == true && ret == "" {
 				t.Errorf("Expect error msg :%s, but got nil.", testCase.ret)
@@ -1077,5 +1077,157 @@ func TestValidateExecution(t *testing.T) {
 				t.Errorf("Expect Allowed as true but got false. %v", testCase.reviewResponse)
 			}
 		})
+	}
+}
+
+func TestValidateJobUpdate(t *testing.T) {
+	testCases := []struct {
+		name           string
+		replicas       int32
+		minAvailable   int32
+		addTask        bool
+		mutateTaskName bool
+		mutateSpec     bool
+		expectErr      bool
+	}{
+		{
+			name:           "scale up",
+			replicas:       6,
+			minAvailable:   5,
+			addTask:        false,
+			mutateTaskName: false,
+			mutateSpec:     false,
+			expectErr:      false,
+		},
+		{
+			name:           "invalid scale down with replicas less than minAvailable",
+			replicas:       4,
+			minAvailable:   5,
+			addTask:        false,
+			mutateTaskName: false,
+			mutateSpec:     false,
+			expectErr:      true,
+		},
+		{
+			name:           "scale down",
+			replicas:       4,
+			minAvailable:   3,
+			addTask:        false,
+			mutateTaskName: false,
+			mutateSpec:     false,
+			expectErr:      false,
+		},
+		{
+			name:           "invalid add task",
+			replicas:       4,
+			minAvailable:   5,
+			addTask:        true,
+			mutateTaskName: false,
+			mutateSpec:     false,
+			expectErr:      true,
+		},
+		{
+			name:           "invalid mutate task's fields other than replicas",
+			replicas:       5,
+			minAvailable:   5,
+			addTask:        false,
+			mutateTaskName: true,
+			mutateSpec:     false,
+			expectErr:      true,
+		},
+		{
+			name:           "invalid mutate job's spec other than minAvailable",
+			replicas:       5,
+			minAvailable:   5,
+			addTask:        false,
+			mutateTaskName: false,
+			mutateSpec:     true,
+			expectErr:      true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			old := newJob()
+			new := newJob()
+			new.ResourceVersion = "502593"
+			new.Status.Succeeded = 2
+
+			new.Spec.MinAvailable = tc.minAvailable
+			new.Spec.Tasks[0].Replicas = tc.replicas
+
+			if tc.addTask {
+				new.Spec.Tasks = append(new.Spec.Tasks, v1alpha1.TaskSpec{
+					Name:     "task-2",
+					Replicas: 5,
+					Template: v1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{"name": "test"},
+						},
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{
+									Name:  "fake-name",
+									Image: "busybox:1.24",
+								},
+							},
+						},
+					},
+				})
+			}
+			if tc.mutateTaskName {
+				new.Spec.Tasks[0].Name = "mutated-name"
+			}
+			if tc.mutateSpec {
+				new.Spec.Queue = "mutated-queue"
+			}
+
+			err := validateJobUpdate(old, new)
+			if err != nil && !tc.expectErr {
+				t.Errorf("Expected no error, but got: %v", err)
+			}
+			if err == nil && tc.expectErr {
+				t.Errorf("Expected error, but got none")
+			}
+		})
+	}
+
+}
+
+func newJob() *v1alpha1.Job {
+	return &v1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "valid-Job",
+			Namespace: "default",
+		},
+		Spec: v1alpha1.JobSpec{
+			MinAvailable: 5,
+			Queue:        "default",
+			Tasks: []v1alpha1.TaskSpec{
+				{
+					Name:     "task-1",
+					Replicas: 5,
+					Template: v1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{"name": "test"},
+						},
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{
+									Name:  "fake-name",
+									Image: "busybox:1.24",
+								},
+							},
+						},
+					},
+				},
+			},
+			Policies: []v1alpha1.LifecyclePolicy{
+				{
+					Event:  busv1alpha1.PodEvictedEvent,
+					Action: busv1alpha1.RestartTaskAction,
+				},
+			},
+		},
 	}
 }

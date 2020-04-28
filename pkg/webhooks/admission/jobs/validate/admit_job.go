@@ -22,7 +22,8 @@ import (
 
 	"k8s.io/api/admission/v1beta1"
 	whv1beta1 "k8s.io/api/admissionregistration/v1beta1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -82,10 +83,14 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
 	switch ar.Request.Operation {
 	case v1beta1.Create:
-		msg = validateJob(job, &reviewResponse)
+		msg = validateJobCreate(job, &reviewResponse)
 		break
 	case v1beta1.Update:
-		_, err := schema.DecodeJob(ar.Request.OldObject, ar.Request.Resource)
+		oldJob, err := schema.DecodeJob(ar.Request.OldObject, ar.Request.Resource)
+		if err != nil {
+			return util.ToAdmissionResponse(err)
+		}
+		err = validateJobUpdate(oldJob, job)
 		if err != nil {
 			return util.ToAdmissionResponse(err)
 		}
@@ -101,14 +106,14 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	return &reviewResponse
 }
 
-func validateJob(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) string {
+func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) string {
 	var msg string
 	taskNames := map[string]string{}
 	var totalReplicas int32
 
-	if job.Spec.MinAvailable <= 0 {
+	if job.Spec.MinAvailable < 0 {
 		reviewResponse.Allowed = false
-		return fmt.Sprintf("'minAvailable' must be greater than zero.")
+		return fmt.Sprintf("'minAvailable' must be >= 0.")
 	}
 
 	if job.Spec.MaxRetry < 0 {
@@ -127,8 +132,8 @@ func validateJob(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) s
 	}
 
 	for index, task := range job.Spec.Tasks {
-		if task.Replicas <= 0 {
-			msg = msg + fmt.Sprintf(" 'replicas' is not set positive in task: %s;", task.Name)
+		if task.Replicas < 0 {
+			msg = msg + fmt.Sprintf(" 'replicas' < 0 in task: %s;", task.Name)
 		}
 
 		// count replicas
@@ -192,6 +197,38 @@ func validateJob(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) s
 	}
 
 	return msg
+}
+
+func validateJobUpdate(old, new *v1alpha1.Job) error {
+	var totalReplicas int32
+	for _, task := range new.Spec.Tasks {
+		if task.Replicas < 0 {
+			return fmt.Errorf("'replicas' must be >= 0 in task: %s", task.Name)
+		}
+		// count replicas
+		totalReplicas = totalReplicas + task.Replicas
+	}
+	if new.Spec.MinAvailable > totalReplicas {
+		return fmt.Errorf("'minAvailable' must not be greater than total replicas")
+	}
+	if new.Spec.MinAvailable < 0 {
+		return fmt.Errorf("'minAvailable' must be >= 0")
+	}
+
+	if len(old.Spec.Tasks) != len(new.Spec.Tasks) {
+		return fmt.Errorf("job updates may not add or remove tasks")
+	}
+	// other fields under spec are not allowed to mutate
+	new.Spec.MinAvailable = old.Spec.MinAvailable
+	for i := range new.Spec.Tasks {
+		new.Spec.Tasks[i].Replicas = old.Spec.Tasks[i].Replicas
+	}
+
+	if !apiequality.Semantic.DeepEqual(new.Spec, old.Spec) {
+		return fmt.Errorf("job updates may not change fields other than `minAvailable`, `tasks[*].replicas under spec`")
+	}
+
+	return nil
 }
 
 func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) string {
