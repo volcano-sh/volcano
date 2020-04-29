@@ -26,7 +26,7 @@ import (
 )
 
 var _ = Describe("Job E2E Test: Test Job PVCs", func() {
-	It("use exisisting PVC  in job", func() {
+	It("use exisisting PVC in job", func() {
 		jobName := "job-pvc-name-exist"
 		namespace := "test"
 		taskName := "pvctask"

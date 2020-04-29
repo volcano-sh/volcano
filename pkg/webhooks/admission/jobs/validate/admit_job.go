@@ -224,6 +224,18 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 		new.Spec.Tasks[i].Replicas = old.Spec.Tasks[i].Replicas
 	}
 
+	// jon controller will update the pvc name if not provided
+	for i := range new.Spec.Volumes {
+		if new.Spec.Volumes[i].VolumeClaim != nil {
+			new.Spec.Volumes[i].VolumeClaimName = ""
+		}
+	}
+	for i := range old.Spec.Volumes {
+		if old.Spec.Volumes[i].VolumeClaim != nil {
+			old.Spec.Volumes[i].VolumeClaimName = ""
+		}
+	}
+
 	if !apiequality.Semantic.DeepEqual(new.Spec, old.Spec) {
 		return fmt.Errorf("job updates may not change fields other than `minAvailable`, `tasks[*].replicas under spec`")
 	}
