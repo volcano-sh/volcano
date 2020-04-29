@@ -18,13 +18,15 @@ Before this design, let's recall the current Job's initialization
 
 When a Volcano job is created, the job controller does the following to run/manage all of its tasks.
 
-1. all the plugins execute OnJobAdd callbacks
+1. all the plugins execute OnJobAdd callbacks to create service and hosts configmap, etc
 
 2. create pvc for the job
 
 3. create PodGroup for the job
 
-4. create pods equals the replicas of the job
+4. execute plugins' OnPodAdd callbacks to set pod related env, mount hostfile, etc
+
+5. call the kube-apiserver to create pods equals the replicas of the job
 
 All above steps are run in `syncJob`, which is called when external events happen, for this it happens when Job is newly created.
 
@@ -72,11 +74,29 @@ type PluginInterface interface {
 }
 ```
 
+`UpdateJob` is much like the current `SyncJob`, and it's workflow is:
+
+1. all the plugins execute OnJobUpdate callbacks, which is to update all the envs, service and hosts configmap.
+
+2. create pvc for the job if necessary
+
+3. update PodGroup for the job if necessary
+
+4. execute plugins' OnPodAdd callbacks to set pod related env, mount hostfile, etc
+
+5. call the kube-apiserver to create/delete pods equals the replicas of the job
+
+
+**Note**: when scale down, the pod delete order is from the larger indexed to the lower indexed. But this is not guaranteed as Kubernetes is a eventual consistent system.
+
+
 
 ### Admission webhook
 
-Should prevent invalid mutating Job Spec on the fly. In this proposal, we only allow replicas update. Any other spec changes will be prohibited.
+Should prevent invalid mutating Job Spec on the fly. In this proposal, we only allow `replicas` and `minAvailable` update. Any other spec changes will be prohibited.
 It is also not allowed if the number of total replicas is less than the `minAvailable`.
+
+`minAvailable` must be greater than zero, we depend on it to maintain the job status.
 
 
 
