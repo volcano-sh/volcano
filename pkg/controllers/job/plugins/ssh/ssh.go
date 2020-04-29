@@ -98,6 +98,10 @@ func (sp *sshPlugin) OnJobDelete(job *batch.Job) error {
 	return helpers.DeleteSecret(job, sp.client.KubeClients, sp.secretName(job))
 }
 
+func (ep *sshPlugin) OnJobUpdate(job *batch.Job) error {
+	return nil
+}
+
 func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 	secretName := sp.secretName(job)
 

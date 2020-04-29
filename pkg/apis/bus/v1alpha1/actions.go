@@ -47,6 +47,9 @@ const (
 	// SyncJobAction is the action to sync Job/Pod status.
 	SyncJobAction Action = "SyncJob"
 
+	// UpdateJobAction is the action to handle Job scale up/down
+	UpdateJobAction Action = "UpdateJob"
+
 	// EnqueueAction is the action to sync Job inqueue status.
 	EnqueueAction Action = "EnqueueJob"
 
