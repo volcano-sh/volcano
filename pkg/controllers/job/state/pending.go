@@ -50,6 +50,13 @@ func (ps *pendingState) Execute(action v1alpha1.Action) error {
 			status.State.Phase = vcbatch.Terminating
 			return true
 		})
+	case v1alpha1.UpdateJobAction:
+		return UpdateJob(ps.job, func(status *vcbatch.JobStatus) bool {
+			if ps.job.Job.Spec.MinAvailable <= status.Running+status.Succeeded+status.Failed {
+				status.State.Phase = vcbatch.Running
+			}
+			return true
+		})
 	default:
 		return SyncJob(ps.job, func(status *vcbatch.JobStatus) bool {
 			if ps.job.Job.Spec.MinAvailable <= status.Running+status.Succeeded+status.Failed {

@@ -19,12 +19,12 @@ package job
 import (
 	"fmt"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
-	"volcano.sh/volcano/pkg/controllers/job/plugins/interface"
+	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
 func (cc *Controller) pluginOnPodCreate(job *batch.Job, pod *v1.Pod) error {
@@ -81,6 +81,29 @@ func (cc *Controller) pluginOnJobDelete(job *batch.Job) error {
 		klog.Infof("Starting to execute plugin at <pluginOnJobDelete>: %s on job: <%s/%s>", name, job.Namespace, job.Name)
 		if err := pb(client, args).OnJobDelete(job); err != nil {
 			klog.Errorf("failed to process on job delete plugin %s, err %v.", name, err)
+			return err
+		}
+
+	}
+
+	return nil
+}
+
+func (cc *Controller) pluginOnJobUpdate(job *batch.Job) error {
+	client := pluginsinterface.PluginClientset{KubeClients: cc.kubeClient}
+	if job.Status.ControlledResources == nil {
+		job.Status.ControlledResources = make(map[string]string)
+	}
+	for name, args := range job.Spec.Plugins {
+		pb, found := plugins.GetPluginBuilder(name)
+		if !found {
+			err := fmt.Errorf("failed to get plugin %s", name)
+			klog.Error(err)
+			return err
+		}
+		klog.Infof("Starting to execute plugin at <pluginOnJobUpdate>: %s on job: <%s/%s>", name, job.Namespace, job.Name)
+		if err := pb(client, args).OnJobUpdate(job); err != nil {
+			klog.Errorf("Failed to process on job update plugin %s, err %v.", name, err)
 			return err
 		}
 

@@ -17,7 +17,8 @@ limitations under the License.
 package state
 
 import (
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
+
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
@@ -49,6 +50,8 @@ var (
 	SyncJob ActionFn
 	// KillJob kill all Pods of Job with phase not in podRetainPhase.
 	KillJob KillActionFn
+	// UpdateJob will create or delete Pods according to Job's spec when job scale up/down
+	UpdateJob ActionFn
 )
 
 //State interface
@@ -57,7 +60,7 @@ type State interface {
 	Execute(act v1alpha1.Action) error
 }
 
-//NewState gets the state from the volcano job Phase
+// NewState gets the state from the volcano job Phase
 func NewState(jobInfo *apis.JobInfo) State {
 	job := jobInfo.Job
 	switch job.Status.State.Phase {

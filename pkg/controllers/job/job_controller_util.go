@@ -116,6 +116,10 @@ func applyPolicies(job *batch.Job, req *apis.Request) v1alpha1.Action {
 		return v1alpha1.SyncJobAction
 	}
 
+	if req.Event == v1alpha1.JobUpdatedEvent {
+		return v1alpha1.UpdateJobAction
+	}
+
 	// For all the requests triggered from discarded job resources will perform sync action instead
 	if req.JobVersion < job.Status.Version {
 		klog.Infof("Request %s is outdated, will perform sync instead.", req)
