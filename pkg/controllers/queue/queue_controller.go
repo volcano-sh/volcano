@@ -238,6 +238,7 @@ func (c *Controller) handleQueue(req *apis.Request) error {
 		return fmt.Errorf("queue %s state %s is invalid", queue.Name, queue.Status.State)
 	}
 
+	klog.V(4).Infof("Begin execute %s action for queue %s, current status %s", req.Action, req.QueueName, queue.Status.State)
 	if err := queueState.Execute(req.Action); err != nil {
 		return fmt.Errorf("sync queue %s failed for %v, event is %v, action is %s",
 			req.QueueName, err, req.Event, req.Action)
