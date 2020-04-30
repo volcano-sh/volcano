@@ -513,8 +513,9 @@ func (cc *Controller) updateJobFn(jobInfo *apis.JobInfo, updateStatus state.Upda
 	// Delete pods when scale down.
 	// sort pods to be deleted from higher order to lower
 	sort.Slice(podToDelete, func(i, j int) bool {
-		return podToCreate[i].Name > podToCreate[j].Name
+		return podToDelete[i].Name > podToDelete[j].Name
 	})
+
 	waitDeletionGroup := sync.WaitGroup{}
 	waitDeletionGroup.Add(len(podToDelete))
 	for _, pod := range podToDelete {
@@ -763,6 +764,11 @@ func (cc *Controller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 }
 
 func (cc *Controller) initJobStatus(job *batch.Job) (*batch.Job, error) {
+	if job.Status.State.Phase != "" {
+		return job, nil
+	}
+
+	job.Status.State.LastTransitionTime = metav1.Now()
 	job.Status.State.Phase = batch.Pending
 	job.Status.MinAvailable = job.Spec.MinAvailable
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
