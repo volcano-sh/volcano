@@ -184,6 +184,10 @@ spec:
                   description: Unique, one-word, CamelCase reason for the condition's
                     last transition.
                   type: string
+                lastTransitionTime:
+                  description: The time of last state transition.
+                  format: date-time
+                  type: string
               type: object
           type: object
   version: v1alpha1
