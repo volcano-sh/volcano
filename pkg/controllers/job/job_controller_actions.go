@@ -388,6 +388,7 @@ func (cc *Controller) createJobIOIfNotExist(job *batch.Job) (*batch.Job, error) 
 				needUpdate = true
 				break
 			}
+			// TODO: check VolumeClaim must be set if VolumeClaimName is empty
 			if volume.VolumeClaim != nil {
 				if err := cc.createPVC(job, vcName, volume.VolumeClaim); err != nil {
 					return job, err
