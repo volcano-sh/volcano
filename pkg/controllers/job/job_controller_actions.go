@@ -146,6 +146,13 @@ func (cc *Controller) initiateJob(job *batch.Job) (*batch.Job, error) {
 	defer klog.V(3).Infof("Finished Job <%s/%s> initiate", job.Namespace, job.Name)
 
 	klog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
+	job, err := cc.initJobStatus(job)
+	if err != nil {
+		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.JobStatusError),
+			fmt.Sprintf("Failed to initialize job status, err: %v", err))
+		return nil, err
+	}
+
 	if err := cc.pluginOnJobAdd(job); err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.PluginError),
 			fmt.Sprintf("Execute plugin when job add failed, err: %v", err))
@@ -162,14 +169,6 @@ func (cc *Controller) initiateJob(job *batch.Job) (*batch.Job, error) {
 	if err := cc.createOrUpdatePodGroup(newJob); err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.PodGroupError),
 			fmt.Sprintf("Failed to create PodGroup, err: %v", err))
-		return nil, err
-	}
-
-	// update status at last
-	newJob, err = cc.initJobStatus(newJob)
-	if err != nil {
-		cc.recorder.Event(newJob, v1.EventTypeWarning, string(batch.JobStatusError),
-			fmt.Sprintf("Failed to initialize job status, err: %v", err))
 		return nil, err
 	}
 
