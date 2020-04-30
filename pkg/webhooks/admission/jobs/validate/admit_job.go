@@ -111,9 +111,9 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 	taskNames := map[string]string{}
 	var totalReplicas int32
 
-	if job.Spec.MinAvailable < 0 {
+	if job.Spec.MinAvailable <= 0 {
 		reviewResponse.Allowed = false
-		return fmt.Sprintf("'minAvailable' must be >= 0.")
+		return fmt.Sprintf("'minAvailable' must be > 0.")
 	}
 
 	if job.Spec.MaxRetry < 0 {
@@ -211,8 +211,8 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	if new.Spec.MinAvailable > totalReplicas {
 		return fmt.Errorf("'minAvailable' must not be greater than total replicas")
 	}
-	if new.Spec.MinAvailable < 0 {
-		return fmt.Errorf("'minAvailable' must be >= 0")
+	if new.Spec.MinAvailable <= 0 {
+		return fmt.Errorf("'minAvailable' must be > 0")
 	}
 
 	if len(old.Spec.Tasks) != len(new.Spec.Tasks) {
