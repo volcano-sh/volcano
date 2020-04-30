@@ -138,6 +138,9 @@ func CreateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[s
 	}
 
 	_, err := kubeClients.CoreV1().Secrets(job.Namespace).Create(secret)
+	if apierrors.IsAlreadyExists(err) {
+		return nil
+	}
 
 	return err
 }

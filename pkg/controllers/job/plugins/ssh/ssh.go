@@ -25,7 +25,6 @@ import (
 	"fmt"
 
 	"golang.org/x/crypto/ssh"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
