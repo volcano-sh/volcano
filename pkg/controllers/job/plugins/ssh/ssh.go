@@ -97,7 +97,7 @@ func (sp *sshPlugin) OnJobDelete(job *batch.Job) error {
 	return helpers.DeleteSecret(job, sp.client.KubeClients, sp.secretName(job))
 }
 
-func (ep *sshPlugin) OnJobUpdate(job *batch.Job) error {
+func (sp *sshPlugin) OnJobUpdate(_ *batch.Job) error {
 	return nil
 }
 
