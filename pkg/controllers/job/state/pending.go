@@ -54,8 +54,9 @@ func (ps *pendingState) Execute(action v1alpha1.Action) error {
 		return SyncJob(ps.job, func(status *vcbatch.JobStatus) bool {
 			if ps.job.Job.Spec.MinAvailable <= status.Running+status.Succeeded+status.Failed {
 				status.State.Phase = vcbatch.Running
+				return true
 			}
-			return true
+			return false
 		})
 	}
 }
