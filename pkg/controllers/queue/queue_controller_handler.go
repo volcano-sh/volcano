@@ -62,25 +62,8 @@ func (c *Controller) deleteQueue(obj interface{}) {
 	delete(c.podGroups, queue.Name)
 }
 
-func (c *Controller) updateQueue(old, new interface{}) {
-	oldQueue, ok := old.(*schedulingv1beta1.Queue)
-	if !ok {
-		klog.Errorf("Can not covert old object %v to queues.scheduling.volcano.sh.", old)
-		return
-	}
-
-	newQueue, ok := new.(*schedulingv1beta1.Queue)
-	if !ok {
-		klog.Errorf("Can not covert new object %v to queues.scheduling.volcano.sh.", old)
-		return
-	}
-
-	if oldQueue.ResourceVersion == newQueue.ResourceVersion {
-		return
-	}
-
-	c.addQueue(newQueue)
-
+func (c *Controller) updateQueue(_, _ interface{}) {
+	// currently do not care about queue update
 	return
 }
 
