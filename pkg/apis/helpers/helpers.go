@@ -82,7 +82,7 @@ func ControlledBy(obj interface{}, gvk schema.GroupVersionKind) bool {
 	return false
 }
 
-// CreateOrUpdateConfigMap:
+// CreateOrUpdateConfigMap :
 // 1. creates config map resource if not present
 // 2. updates configmap is present
 func CreateOrUpdateConfigMap(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[string]string, cmName string) error {
