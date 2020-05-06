@@ -49,18 +49,6 @@ func (ps *runningState) Execute(action v1alpha1.Action) error {
 			status.State.Phase = vcbatch.Completing
 			return true
 		})
-	case v1alpha1.UpdateJobAction:
-		return UpdateJob(ps.job, func(status *vcbatch.JobStatus) bool {
-			if status.Succeeded+status.Failed == TotalTasks(ps.job.Job) {
-				if status.Succeeded >= ps.job.Job.Spec.MinAvailable {
-					status.State.Phase = vcbatch.Completed
-				} else {
-					status.State.Phase = vcbatch.Failed
-				}
-				return true
-			}
-			return false
-		})
 	default:
 		return SyncJob(ps.job, func(status *vcbatch.JobStatus) bool {
 			if status.Succeeded+status.Failed == TotalTasks(ps.job.Job) {

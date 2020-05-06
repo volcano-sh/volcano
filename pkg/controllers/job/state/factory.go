@@ -50,8 +50,6 @@ var (
 	SyncJob ActionFn
 	// KillJob kill all Pods of Job with phase not in podRetainPhase.
 	KillJob KillActionFn
-	// UpdateJob will create or delete Pods according to Job's spec when job scale up/down
-	UpdateJob ActionFn
 )
 
 //State interface

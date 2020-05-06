@@ -100,10 +100,6 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 		JobName:   newJob.Name,
 		Event:     bus.OutOfSyncEvent,
 	}
-	if isScaleUpOrDown(oldJob, newJob) {
-		req.Event = bus.JobUpdatedEvent
-	}
-
 	key := jobhelpers.GetJobKeyByReq(&req)
 	queue := cc.getWorkerQueue(key)
 	queue.Add(req)
@@ -476,16 +472,4 @@ func convert2PriorityClass(obj interface{}) *v1beta1.PriorityClass {
 	}
 
 	return pc
-}
-
-func isScaleUpOrDown(old, new *batch.Job) bool {
-	if old.Spec.MinAvailable != new.Spec.MinAvailable {
-		return true
-	}
-	for i, task := range old.Spec.Tasks {
-		if task.Replicas != new.Spec.Tasks[i].Replicas {
-			return true
-		}
-	}
-	return false
 }
