@@ -23,15 +23,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"reflect"
 	"syscall"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apiserver/pkg/server/healthz"
 	"k8s.io/apiserver/pkg/server/mux"
@@ -52,39 +50,9 @@ var CommandKind = vcbus.SchemeGroupVersion.WithKind("Command")
 // V1beta1QueueKind is queue kind with v1alpha2 version
 var V1beta1QueueKind = schedulerv1beta1.SchemeGroupVersion.WithKind("Queue")
 
-// GetController  returns the controller uid
-func GetController(obj interface{}) types.UID {
-	accessor, err := meta.Accessor(obj)
-	if err != nil {
-		return ""
-	}
-
-	controllerRef := metav1.GetControllerOf(accessor)
-	if controllerRef != nil {
-		return controllerRef.UID
-	}
-
-	return ""
-}
-
-// ControlledBy  controlled by
-func ControlledBy(obj interface{}, gvk schema.GroupVersionKind) bool {
-	accessor, err := meta.Accessor(obj)
-	if err != nil {
-		return false
-	}
-
-	controllerRef := metav1.GetControllerOf(accessor)
-	if controllerRef != nil {
-		return controllerRef.Kind == gvk.Kind
-	}
-
-	return false
-}
-
 // CreateOrUpdateConfigMap :
 // 1. creates config map resource if not present
-// 2. updates configmap is present
+// 2. updates config map is necessary
 func CreateOrUpdateConfigMap(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[string]string, cmName string) error {
 	// If ConfigMap does not exist, create one for Job.
 	cmOld, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{})
@@ -111,6 +79,11 @@ func CreateOrUpdateConfigMap(job *vcbatch.Job, kubeClients kubernetes.Interface,
 				job.Namespace, job.Name, err)
 			return err
 		}
+		return nil
+	}
+
+	// no changes
+	if reflect.DeepEqual(cmOld.Data, data) {
 		return nil
 	}
 
