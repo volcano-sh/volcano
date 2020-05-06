@@ -67,6 +67,11 @@ func (ssn *Session) AddPredicateFn(name string, pf api.PredicateFn) {
 	ssn.predicateFns[name] = pf
 }
 
+// AddBestNodeFn add BestNode function
+func (ssn *Session) AddBestNodeFn(name string, pf api.BestNodeFn) {
+	ssn.bestNodeFns[name] = pf
+}
+
 // AddNodeOrderFn add Node order function
 func (ssn *Session) AddNodeOrderFn(name string, pf api.NodeOrderFn) {
 	ssn.nodeOrderFns[name] = pf
@@ -413,6 +418,26 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 			err := pfn(task, node)
 			if err != nil {
 				return err
+			}
+		}
+	}
+	return nil
+}
+
+// BestNodeFn invoke bestNode function of the plugins
+func (ssn *Session) BestNodeFn(task *api.TaskInfo, nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledBestNode) {
+				continue
+			}
+			pfn, found := ssn.bestNodeFns[plugin.Name]
+			if !found {
+				continue
+			}
+			// Only the first plugin that enables and realizes bestNodeFn is allowed to choose best node for task
+			if bestNode := pfn(task, nodeScores); bestNode != nil {
+				return bestNode
 			}
 		}
 	}
