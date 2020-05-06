@@ -303,6 +303,7 @@ func (sp *servicePlugin) cmName(job *batch.Job) string {
 	return fmt.Sprintf("%s-%s", job.Name, sp.Name())
 }
 
+// GenerateHosts generates hostnames per task
 func GenerateHosts(job *batch.Job) map[string]string {
 	hostFile := make(map[string]string, len(job.Spec.Tasks))
 
