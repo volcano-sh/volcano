@@ -130,7 +130,7 @@ func (sp *servicePlugin) OnJobAdd(job *batch.Job) error {
 		return nil
 	}
 
-	hostFile := generateHosts(job)
+	hostFile := GenerateHosts(job)
 
 	// Create ConfigMap of hosts for Pods to mount.
 	if err := helpers.CreateOrUpdateConfigMap(job, sp.Clientset.KubeClients, hostFile, sp.cmName(job)); err != nil {
@@ -168,7 +168,7 @@ func (sp *servicePlugin) OnJobDelete(job *batch.Job) error {
 }
 
 func (sp *servicePlugin) OnJobUpdate(job *batch.Job) error {
-	hostFile := generateHosts(job)
+	hostFile := GenerateHosts(job)
 
 	// updates ConfigMap of hosts for Pods to mount.
 	if err := helpers.CreateOrUpdateConfigMap(job, sp.Clientset.KubeClients, hostFile, sp.cmName(job)); err != nil {
@@ -303,7 +303,7 @@ func (sp *servicePlugin) cmName(job *batch.Job) string {
 	return fmt.Sprintf("%s-%s", job.Name, sp.Name())
 }
 
-func generateHosts(job *batch.Job) map[string]string {
+func GenerateHosts(job *batch.Job) map[string]string {
 	hostFile := make(map[string]string, len(job.Spec.Tasks))
 
 	for _, ts := range job.Spec.Tasks {
