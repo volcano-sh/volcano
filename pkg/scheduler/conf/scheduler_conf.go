@@ -61,6 +61,8 @@ type PluginOption struct {
 	EnabledQueueOrder *bool `yaml:"enableQueueOrder"`
 	// EnabledPredicate defines whether predicateFn is enabled
 	EnabledPredicate *bool `yaml:"enablePredicate"`
+	// EnabledBestNode defines whether bestNodeFn is enabled
+	EnabledBestNode *bool `yaml:"enableBestNode"`
 	// EnabledNodeOrder defines whether NodeOrderFn is enabled
 	EnabledNodeOrder *bool `yaml:"enableNodeOrder"`
 	// Arguments defines the different arguments that can be given to different plugins
