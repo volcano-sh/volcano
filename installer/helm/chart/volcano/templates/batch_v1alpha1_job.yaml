@@ -165,7 +165,7 @@ spec:
               description: The number that volcano retried to submit the job.
               format: int32
               type: integer
-            ControlledResources:
+            controlledResources:
               description: All of the resources that are controlled by this job.
               type: object
               additionalProperties:
