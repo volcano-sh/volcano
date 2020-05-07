@@ -202,7 +202,11 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 
 			nodeScores := util.PrioritizeNodes(task, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 
-			node := util.SelectBestNode(nodeScores)
+			node := ssn.BestNodeFn(task, nodeScores)
+			if node == nil {
+				node = util.SelectBestNode(nodeScores)
+			}
+
 			// Allocate idle resource to the task.
 			if task.InitResreq.LessEqual(node.Idle) {
 				glog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
