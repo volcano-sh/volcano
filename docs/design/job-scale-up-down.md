@@ -54,7 +54,11 @@ To scale up/down on the fly, Volcano should be responsible to notify the origina
 This is done by plugins, so to distinguish from the initialization phase, a new `OnJobUpdate` is introduced. 
 It is to reconcile all the associated configs of the job. Currently, the `svc` plugin should update the configmap of all the hosts.
 
-**NOTE**: Users should watch the `/etc/volcano` to get the up-to-date hosts files if they want to be aware of the training workers.
+**NOTE**:
+
+1. Users should watch the `/etc/volcano` to get the up-to-date hosts files if they want to be aware of the training workers.
+
+2. The env `VC_{task name}_HOSTS` `VC_{task name}_NUM` of the existing pods can not be mutated on the fly, so be careful not to use it. 
 
 ```
 type PluginInterface interface {
@@ -97,7 +101,3 @@ Should prevent invalid mutating Job Spec on the fly. In this proposal, we only a
 It is also not allowed if the number of total replicas is less than the `minAvailable`.
 
 `minAvailable` must be greater than zero, we depend on it to maintain the job status.
-
-
-
-
