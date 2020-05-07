@@ -19,6 +19,8 @@ package job
 import (
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -330,7 +332,11 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	// Delete pods when scale down.
 	// sort pods to be deleted from higher order to lower
 	sort.Slice(podToDelete, func(i, j int) bool {
-		return podToDelete[i].Name > podToDelete[j].Name
+		iName := strings.Split(podToDelete[i].Name, "-")
+		jName := strings.Split(podToDelete[j].Name, "-")
+		iIndex, _ := strconv.Atoi(iName[len(iName)-1])
+		jIndex, _ := strconv.Atoi(jName[len(jName)-1])
+		return iIndex > jIndex
 	})
 	// Delete unnecessary pods.
 	waitDeletionGroup := sync.WaitGroup{}
