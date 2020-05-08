@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"testing"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -409,7 +409,7 @@ func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 		t.Run(testcase.Name, func(t *testing.T) {
 			fakeController := newFakeController()
 
-			err := fakeController.createPodGroupIfNotExist(testcase.Job)
+			err := fakeController.createOrUpdatePodGroup(testcase.Job)
 			if err != testcase.ExpextVal {
 				t.Errorf("Expected return value to be equal to expected: %s, but got: %s", testcase.ExpextVal, err)
 			}
