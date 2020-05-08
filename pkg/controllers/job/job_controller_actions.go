@@ -543,6 +543,7 @@ func (cc *Controller) initJobStatus(job *batch.Job) (*batch.Job, error) {
 	}
 
 	job.Status.State.Phase = batch.Pending
+	job.Status.State.LastTransitionTime = metav1.Now()
 	job.Status.MinAvailable = job.Spec.MinAvailable
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
 	if err != nil {
