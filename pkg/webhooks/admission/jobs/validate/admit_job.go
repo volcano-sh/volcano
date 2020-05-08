@@ -224,7 +224,7 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 		new.Spec.Tasks[i].Replicas = old.Spec.Tasks[i].Replicas
 	}
 
-	// jon controller will update the pvc name if not provided
+	// job controller will update the pvc name if not provided
 	for i := range new.Spec.Volumes {
 		if new.Spec.Volumes[i].VolumeClaim != nil {
 			new.Spec.Volumes[i].VolumeClaimName = ""

@@ -17,11 +17,11 @@ limitations under the License.
 package env
 
 import (
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
-	"volcano.sh/volcano/pkg/controllers/job/plugins/interface"
+	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
 type envPlugin struct {
@@ -71,5 +71,9 @@ func (ep *envPlugin) OnJobAdd(job *batch.Job) error {
 }
 
 func (ep *envPlugin) OnJobDelete(job *batch.Job) error {
+	return nil
+}
+
+func (ep *envPlugin) OnJobUpdate(job *batch.Job) error {
 	return nil
 }

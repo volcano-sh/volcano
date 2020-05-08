@@ -19,11 +19,12 @@ package queue
 import (
 	"fmt"
 	"reflect"
+
 	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/queue/state"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 
@@ -32,6 +33,7 @@ import (
 
 func (c *Controller) syncQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
 	klog.V(4).Infof("Begin to sync queue %s.", queue.Name)
+	defer klog.V(4).Infof("End sync queue %s.", queue.Name)
 
 	podGroups := c.getPodGroups(queue.Name)
 	queueStatus := schedulingv1beta1.QueueStatus{}
