@@ -17,7 +17,7 @@ limitations under the License.
 package pluginsinterface
 
 import (
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -41,4 +41,7 @@ type PluginInterface interface {
 
 	// do once when killJob
 	OnJobDelete(job *vcbatch.Job) error
+
+	// do once when updateJob
+	OnJobUpdate(job *vcbatch.Job) error
 }

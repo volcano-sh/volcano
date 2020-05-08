@@ -18,13 +18,14 @@ package job
 
 import (
 	"fmt"
-	"k8s.io/api/core/v1"
+	"reflect"
+	"strconv"
+
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
-	"reflect"
-	"strconv"
 
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	bus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
@@ -85,7 +86,7 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 	// NOTE: Since we only reconcile job based on Spec, we will ignore other attributes
 	// For Job status, it's used internally and always been updated via our controller.
 	if reflect.DeepEqual(newJob.Spec, oldJob.Spec) && newJob.Status.State.Phase == oldJob.Status.State.Phase {
-		klog.Infof("Job update event is ignored since no update in 'Spec'.")
+		klog.V(6).Infof("Job update event is ignored since no update in 'Spec'.")
 		return
 	}
 
@@ -97,10 +98,8 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 	req := apis.Request{
 		Namespace: newJob.Namespace,
 		JobName:   newJob.Name,
-
-		Event: bus.OutOfSyncEvent,
+		Event:     bus.OutOfSyncEvent,
 	}
-
 	key := jobhelpers.GetJobKeyByReq(&req)
 	queue := cc.getWorkerQueue(key)
 	queue.Add(req)
