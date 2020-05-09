@@ -518,6 +518,7 @@ func (cc *Controller) createOrUpdatePodGroup(job *batch.Job) error {
 
 	if pg.Spec.MinMember != job.Spec.MinAvailable {
 		pg.Spec.MinMember = job.Spec.MinAvailable
+		pg.Spec.MinResources = cc.calcPGMinResources(job)
 		if _, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Update(pg); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				klog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
