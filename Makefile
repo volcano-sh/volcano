@@ -89,6 +89,10 @@ verify:
 	hack/verify-gencode.sh
 	hack/verify-vendor.sh
 
+lint: ## Lint the files
+	golangci-lint version
+	golangci-lint run pkg/kube pkg/version pkg/apis/...
+
 verify-generated-yaml:
 	./hack/check-generated-yaml.sh
 
