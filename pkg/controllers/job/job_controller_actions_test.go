@@ -24,7 +24,6 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	schedulingv1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
@@ -462,7 +461,7 @@ func TestDeleteJobPod(t *testing.T) {
 				}
 			}
 
-			err := fakeController.deleteJobPod(testcase.Job.Name, testcase.DeletePod)
+			_, err := fakeController.deleteJobPod(testcase.Job.Name, testcase.DeletePod)
 			if err != testcase.ExpextVal {
 				t.Errorf("Expected return value to be equal to expected: %s, but got: %s", testcase.ExpextVal, err)
 			}

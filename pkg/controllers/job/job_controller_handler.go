@@ -332,18 +332,21 @@ func (cc *Controller) deletePod(obj interface{}) {
 		return
 	}
 
-	req := apis.Request{
-		Namespace: pod.Namespace,
-		JobName:   jobName,
-		TaskName:  taskName,
-
-		Event:      bus.PodEvictedEvent,
-		JobVersion: int32(dVersion),
+	if pod.Status.Phase == v1.PodSucceeded {
+		return
 	}
 
 	if err := cc.cache.DeletePod(pod); err != nil {
 		klog.Errorf("Failed to delete Pod <%s/%s>: %v in cache",
 			pod.Namespace, pod.Name, err)
+	}
+
+	req := apis.Request{
+		Namespace:  pod.Namespace,
+		JobName:    jobName,
+		TaskName:   taskName,
+		Event:      bus.PodEvictedEvent,
+		JobVersion: int32(dVersion),
 	}
 
 	key := jobhelpers.GetJobKeyByReq(&req)
