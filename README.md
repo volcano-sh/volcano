@@ -98,13 +98,21 @@ If you don't have a kubernetes cluster, try one-click install from code base:
 ./hack/local-up-volcano.sh
 ```
 
+## Meeting
 
-## Community, discussion, contribution, and support
+Regular Community Meeting:
 
-You can reach the maintainers of this project at:
+The Volcano team meets once per week on Friday, alternating between 10am Beijing Time ([Convert to your timezone.](https://www.thetimezoneconverter.com/?t=10%3A00&tz=GMT%2B8&)) and 3pm Beijing Time ([Convert to your timezone.](https://www.thetimezoneconverter.com/?t=15%3A00&tz=GMT%2B8&))
 
-CNCF Slack Channel: https://cloud-native.slack.com/messages/volcano
+Resources:
+- [Meeting notes and agenda](https://docs.google.com/document/d/1YLbF8zjZBiR9PbXQPB22iuc_L0Oui5A1lddVfRnZrqs/edit)
+- [Meeting link](https://zoom.us/j/193601252)
+- [Meeting Calendar](https://calendar.google.com/calendar/b/1/embed?src=volcano.sh.bot@gmail.com) | [Subscribe](https://calendar.google.com/calendar/b/1?cid=dm9sY2Fuby5zaC5ib3RAZ21haWwuY29t)
 
-Mailing List: https://groups.google.com/forum/#!forum/volcano-sh
+## Contact
 
-Gitter: https://gitter.im/volcano-dev/
+If you have any question, feel free to reach out to us in the following ways:
+
+[CNCF Slack Channel](https://cloud-native.slack.com/messages/volcano)
+
+[Mailing List](https://groups.google.com/forum/#!forum/volcano-sh)
