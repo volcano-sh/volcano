@@ -24,12 +24,9 @@ jobs:
     - stage: E2E Tests
       before_script:
         # Download kubectl
-        - sudo apt-get update && sudo apt-get install -y apt-transport-https
-        - curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
-        - echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
-        - sudo apt-get update
-        - sudo apt-get install -y kubectl
-        # Download kind binary (0.5.0)
+        - sudo curl -o /usr/local/bin/kubectl -L https://storage.googleapis.com/kubernetes-release/release/v1.16.6/bin/linux/amd64/kubectl
+        - sudo chmod +x /usr/local/bin/kubectl
+        # Download kind binary (0.6.1)
         - sudo curl -o /usr/local/bin/kind -L https://github.com/kubernetes-sigs/kind/releases/download/v0.6.1/kind-linux-amd64
         - sudo chmod +x /usr/local/bin/kind
       script:
