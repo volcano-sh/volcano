@@ -811,7 +811,7 @@ func deleteReplicaSet(ctx *context, name string) error {
 
 func replicaSetReady(ctx *context, name string) wait.ConditionFunc {
 	return func() (bool, error) {
-		deployment, err := ctx.kubeclient.ExtensionsV1beta1().ReplicaSets(ctx.namespace).Get(name, metav1.GetOptions{})
+		deployment, err := ctx.kubeclient.AppsV1().ReplicaSets(ctx.namespace).Get(name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(metav1.ListOptions{})
