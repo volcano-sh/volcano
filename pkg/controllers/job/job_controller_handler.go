@@ -83,16 +83,22 @@ func (cc *Controller) updateJob(oldObj, newObj interface{}) {
 		return
 	}
 
-	// NOTE: Since we only reconcile job based on Spec, we will ignore other attributes
-	// For Job status, it's used internally and always been updated via our controller.
-	if reflect.DeepEqual(newJob.Spec, oldJob.Spec) && newJob.Status.State.Phase == oldJob.Status.State.Phase {
-		klog.V(6).Infof("Job update event is ignored since no update in 'Spec'.")
+	// No need to update if ResourceVersion is not changed
+	if newJob.ResourceVersion == oldJob.ResourceVersion {
+		klog.V(6).Infof("No need to update because job is not modified.")
 		return
 	}
 
 	if err := cc.cache.Update(newJob); err != nil {
 		klog.Errorf("UpdateJob - Failed to update job <%s/%s>: %v in cache",
 			newJob.Namespace, newJob.Name, err)
+	}
+
+	// NOTE: Since we only reconcile job based on Spec, we will ignore other attributes
+	// For Job status, it's used internally and always been updated via our controller.
+	if reflect.DeepEqual(newJob.Spec, oldJob.Spec) && newJob.Status.State.Phase == oldJob.Status.State.Phase {
+		klog.V(6).Infof("Job update event is ignored since no update in 'Spec'.")
+		return
 	}
 
 	req := apis.Request{
