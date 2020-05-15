@@ -509,7 +509,7 @@ spec:
         status:
           description: Current status of Job
           properties:
-            Succeeded:
+            succeeded:
               description: The number of pods which reached phase Succeeded.
               format: int32
               type: integer
