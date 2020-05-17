@@ -17,7 +17,7 @@ FROM alpine:latest
 
 # Install requirements for admission service
 # Install requirements
-ARG KUBE_VERSION="1.13.1"
+ARG KUBE_VERSION="1.16.6"
 RUN apk add --update ca-certificates && \
     apk add --update openssl && \
     apk add --update -t deps curl && \
