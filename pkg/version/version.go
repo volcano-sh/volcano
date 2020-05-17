@@ -25,7 +25,7 @@ import (
 var (
 	// Version shows the version of volcano.
 	Version = "Not provided."
-	// GitSHA shoows the git commit id of volcano.
+	// GitSHA shows the git commit id of volcano.
 	GitSHA = "Not provided."
 	// Built shows the built time of the binary.
 	Built      = "Not provided."
