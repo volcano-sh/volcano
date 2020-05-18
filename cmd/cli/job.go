@@ -64,7 +64,7 @@ func buildJobCmd() *cobra.Command {
 
 	jobDelCmd := &cobra.Command{
 		Use:   "delete",
-		Short: "delete a job ",
+		Short: "delete a job",
 		Run: func(cmd *cobra.Command, args []string) {
 			checkError(cmd, job.DeleteJob())
 		},

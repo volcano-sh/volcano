@@ -12,7 +12,7 @@
 
 * Define the API of Job
 * Define the behaviour of Job
-* Clarify the interaction with other features 
+* Clarify the interaction with other features
 
 ### Out of Scope
 
@@ -22,14 +22,14 @@
 ## Function Detail
 
 The definition of `Job` follow Kuberentes's style, e.g. Status, Spec; the follow sections will only describe
-the major functions of `Job`, refer to [Appendix](#appendix) section for the whole definition of `Job`. 
+the major functions of `Job`, refer to [Appendix](#appendix) section for the whole definition of `Job`.
 
 ### Multiple Pod Template
 
 As most jobs of high performance workload include different type of tasks, e.g. TensorFlow (ps/worker), Spark (driver/executor);
 `Job` introduces `taskSpecs` to support multiple pod template, defined as follow.  The `Policies` will describe in
  [Error Handling](#error-handling) section.
- 
+
  ```go
 // JobSpec describes how the job execution will look like and when it will actually run
 type JobSpec struct {
@@ -59,8 +59,8 @@ type TaskSpec struct {
 ```
 
 `JobController` will create Pods based on the templates and replicas in `spec.tasks`;
-the controlled `OwnerReference` of Pod will be set to the `Job`. The following is 
-an example YAML with multiple pod template.  
+the controlled `OwnerReference` of Pod will be set to the `Job`. The following is
+an example YAML with multiple pod template.
 
 ```yaml
 apiVersion: batch.volcano.sh/v1alpha1
@@ -79,7 +79,7 @@ spec:
   - name: "worker"
     replicas: 5
     template:
-      spec: 
+      spec:
         containers:
         - name: worker
           image: worker-img
@@ -117,7 +117,7 @@ The `Volumes` of Job can be `nil` which means user will manage data themselves. 
 ### Conditions and Phases
 
 The following phases are introduced to give a simple, high-level summary of where the Job is in its lifecycle; and the conditions array,
-the reason and message field contain more detail about the job's status. 
+the reason and message field contain more detail about the job's status.
 
 ```go
 type JobPhase string
@@ -166,7 +166,7 @@ type JobStatus struct {
 ```
 
 The following table shows available transactions between different phases. The phase can not transfer to the target
-phase if the cell is empty. 
+phase if the cell is empty.
 
 | From \ To     | Pending | Aborted | Running | Completed | Terminated |
 | ------------- | ------- | ------- | ------- | --------- | ---------- |
@@ -174,9 +174,9 @@ phase if the cell is empty.
 | Aborted       | *       | *       |         |           |            |
 | Running       |         | *       | *       | *         | *          |
 | Completed     |         |         |         | *         |            |
-| Terminated    |         |         |         |           | *          | 
+| Terminated    |         |         |         |           | *          |
 
-`Restarting`, `Aborting` and `Terminating` are temporary states to avoid race condition, e.g. there'll be several 
+`Restarting`, `Aborting` and `Terminating` are temporary states to avoid race condition, e.g. there'll be several
 `PodeEvictedEvent`s because of `TerminateJobAction` which should not be handled again.
 
 ### Error Handling
@@ -209,7 +209,7 @@ const (
     TaskCompletedEvent Event = "TaskCompleted"
 )
 
-// Action is the type of event handling 
+// Action is the type of event handling
 type Action string
 
 const (
@@ -238,13 +238,13 @@ type LifecyclePolicy struct {
 }
 ```
 
-Both `JobSpec` and `TaskSpec` include lifecycle policy: the policies in `JobSpec` are the default policy if no policies 
-in `TaskSpec`; the policies in `TaskSpec` will overwrite defaults. 
+Both `JobSpec` and `TaskSpec` include lifecycle policy: the policies in `JobSpec` are the default policy if no policies
+in `TaskSpec`; the policies in `TaskSpec` will overwrite defaults.
 
 ```go
 // JobSpec describes how the job execution will look like and when it will actually run
 type JobSpec struct {
-    ... 
+    ...
 
     // Specifies the default lifecycle of tasks
     // +optional
@@ -268,7 +268,7 @@ type TaskSpec struct {
 The following examples demonstrate the usage of `LifecyclePolicy` for job and task.
 
 For the training job of machine learning framework, the whole job should be restarted if any task was failed or evicted.
-To simplify the configuration, a job level `LifecyclePolicy` is set as follows.  As no `LifecyclePolicy` is set for any 
+To simplify the configuration, a job level `LifecyclePolicy` is set as follows.  As no `LifecyclePolicy` is set for any
 task, all tasks will use the policies in `spec.policies`.
 
 ```yaml
@@ -291,8 +291,8 @@ spec:
           image: ps-img
   - name: "worker"
     replicas: 5
-    template:  
-      spec: 
+    template:
+      spec:
         containers:
         - name: worker
           image: worker-img
@@ -300,8 +300,8 @@ spec:
 ```
 
 Some BigData framework (e.g. Spark) may have different requirements. Take Spark as example, the whole job will be restarted
-if 'driver' tasks failed and only restart the task if 'executor' tasks failed. `OnFailure` restartPolicy is set for executor 
-and `RestartJob` is set for driver `spec.tasks.policies` as follow.  
+if 'driver' tasks failed and only restart the task if 'executor' tasks failed. `OnFailure` restartPolicy is set for executor
+and `RestartJob` is set for driver `spec.tasks.policies` as follow.
 
 ```yaml
 apiVersion: batch.volcano.sh/v1alpha1
@@ -322,8 +322,8 @@ spec:
           image: driver-img
   - name: "executor"
     replicas: 5
-    template:  
-      spec: 
+    template:
+      spec:
         containers:
         - name: executor
           image: executor-img
@@ -334,19 +334,19 @@ spec:
 
 ### Admission Controller
 
-The following validations must be included to make sure expected behaviours:   
+The following validations must be included to make sure expected behaviours:
 
 * `spec.minAvailable` <= sum(`spec.taskSpecs.replicas`)
 * no duplicated name in `spec.taskSpecs` array
 * no duplicated event handler in `LifecyclePolicy` array, both job policies and task policies
- 
+
 ### CoScheduling
 
 CoScheduling (or Gang-scheduling) is required by most of high performance workload, e.g. TF training job, MPI job.
 The `spec.minAvailable` is used to identify how many pods will be scheduled together. The default value of `spec.minAvailable`
 is summary of `spec.tasks.replicas`. The admission controller web hook will check `spec.minAvailable` against
 the summary of `spec.tasks.replicas`; the job creation will be rejected if `spec.minAvailable` > sum(`spec.tasks.replicas`).
-If `spec.minAvailable` < sum(`spec.tasks.replicas`), the pod of `spec.tasks` will be created randomly; 
+If `spec.minAvailable` < sum(`spec.tasks.replicas`), the pod of `spec.tasks` will be created randomly;
 refer to [Task Priority with Job](#task-priority-within-job) section on how to create tasks in order.
 
 ```yaml
@@ -368,7 +368,7 @@ spec:
   - name: "worker"
     replicas: 5
     template:
-      spec: 
+      spec:
         containers:
         - name: "worker"
           image: "worker-img"
@@ -379,7 +379,7 @@ spec:
 In addition to multiple pod template, the priority of each task maybe different. `PriorityClass` of `PodTemplate` is reused
 to define the priority of task within a job. This's an example to run spark job: 1 driver with 5 executors, the driver's
 priority is `master-pri` which is higher than normal pods; as `spec.minAvailable` is 3, the scheduler will make sure one driver
-with 2 executors will be scheduled if not enough resources. 
+with 2 executors will be scheduled if not enough resources.
 
 ```yaml
 apiVersion: batch.volcano.sh/v1alpha1
@@ -400,7 +400,7 @@ spec:
   - name: "executor"
     replicas: 5
     template:
-      spec: 
+      spec:
         containers:
         - name: executor
           image: executor-img
@@ -434,7 +434,7 @@ spec:
   - name: "executor"
     replicas: 5
     template:
-      spec: 
+      spec:
         containers:
         - name: executor
           image: executor-img
@@ -442,7 +442,7 @@ spec:
 
 ### Plugins for Job
 
-As many jobs of AI frame, e.g. TensorFlow, MPI, Mxnet, need set env, pods communicate, ssh sign in without password. 
+As many jobs of AI frame, e.g. TensorFlow, MPI, Mxnet, need set env, pods communicate, ssh sign in without password.
 We provide Job api plugins to give users a better focus on core business.
 Now we have three plugins, every plugin has parameters, if not provided, we use default.
 
@@ -475,7 +475,7 @@ spec:
           name: mpimaster
   - replicas: 2
     name: mpiworker
-    template: 
+    template:
       spec:
         containers:
           image: mpi-image
@@ -524,10 +524,10 @@ type JobSpec struct {
     // Key is plugin name, value is the arguments of the plugin
     // +optional
     Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,6,opt,name=plugins"`
-    
+
     //Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
     Queue string `json:"queue,omitempty" protobuf:"bytes,7,opt,name=queue"`
-    
+
     // Specifies the maximum number of retries before marking this Job failed.
     // Defaults to 3.
     // +optional
@@ -540,7 +540,7 @@ type VolumeSpec struct {
 
     // defined the PVC name
     VolumeClaimName string `json:"volumeClaimName,omitempty" protobuf:"bytes,2,opt,name=volumeClaimName"`
-    
+
     // VolumeClaim defines the PVC used by the VolumeMount.
     VolumeClaim *v1.PersistentVolumeClaimSpec `json:"volumeClaim,omitempty" protobuf:"bytes,3,opt,name=volumeClaim"`
 }
@@ -565,7 +565,7 @@ const (
     // CommandIssuedEvent is triggered if a command is raised by user
     CommandIssuedEvent Event = "CommandIssued"
     // TaskCompletedEvent is triggered if the 'Replicas' amount of pods in one task are succeed
-    TaskCompletedEvent Event = "TaskCompleted"    
+    TaskCompletedEvent Event = "TaskCompleted"
 )
 
 // Action is the action that Job controller will take according to the event.
@@ -581,7 +581,7 @@ const (
     // and can not be resumed: all Pod of Job will be evicted, and no Pod will be recreated.
     TerminateJobAction Action = "TerminateJob"
     // CompleteJobAction if this action is set, the unfinished pods will be killed, job completed.
-    CompleteJobAction Action = "CompleteJob"    
+    CompleteJobAction Action = "CompleteJob"
 
     // ResumeJobAction is the action to resume an aborted job.
     ResumeJobAction Action = "ResumeJob"
@@ -689,7 +689,7 @@ type JobStatus struct {
     // The minimal available pods to run for this Job
     // +optional
     MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,6,opt,name=minAvailable"`
-    
+
     // The number of pods which reached phase Terminating.
     // +optional
     Terminating int32 `json:"terminating,omitempty" protobuf:"bytes,7,opt,name=terminating"`

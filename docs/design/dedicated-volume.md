@@ -26,8 +26,8 @@ Volume mount was supported from begin. But there are few limitations:
 
 2. We specify volumes by setting `TaskSpec.PodTemplateSpec.Volumes`, but similarly they are shared by pods within a task.
 
-But in real world, scenarios like DL/BigData, etc requires high performance. Shared storage has some performance issue, 
-like io limit, read/write conflicts. 
+But in real world, scenarios like DL/BigData, etc requires high performance. Shared storage has some performance issue,
+like io limit, read/write conflicts.
 
 Also some cloud vendors do not support volumes mounting to multiple nodes, it is to prevent data inconsistent.
 
@@ -68,8 +68,8 @@ type VolumeSpec struct {
 	// defined the PVC name
 	VolumeClaimName string `json:"volumeClaimName,omitempty" protobuf:"bytes,2,opt,name=volumeClaimName"`
 
-    // If `VolumeClaimName` is empty, then the job controller will generate a name with `{task_index}` suffixed for each task instance. 
-    // Note: it can be set for task scoped only. 
+    // If `VolumeClaimName` is empty, then the job controller will generate a name with `{task_index}` suffixed for each task instance.
+    // Note: it can be set for task scoped only.
 	GenerateName string `json:"generateName,omitempty" protobuf:"bytes,4,opt,name=generateName"`
 
 	// VolumeClaim defines the PVC used by the VolumeMount.
@@ -79,9 +79,9 @@ type VolumeSpec struct {
 
 - By default, this is empty. The task instance will use volumes defined in `JobSpec.Volumes` and `TaskSpec.Template`.
 
-- If `Volumes` are specified, these pvcs are referenced by all the pods of the task. 
-  If the the VolumeSpec specifies the `GenerateName` while the `VolumeClaimName` left empty,  the pvc name is generated with task index suffixed by job controller. 
-  Otherwise, the explicitly declared pvc will be shared by all pods of a task. 
+- If `Volumes` are specified, these pvcs are referenced by all the pods of the task.
+  If the the VolumeSpec specifies the `GenerateName` while the `VolumeClaimName` left empty,  the pvc name is generated with task index suffixed by job controller.
+  Otherwise, the explicitly declared pvc will be shared by all pods of a task.
 
 - If the pvcs does not exist, job controller will create them.
 
