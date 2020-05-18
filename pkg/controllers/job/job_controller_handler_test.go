@@ -110,7 +110,7 @@ func TestAddCommandFunc(t *testing.T) {
 		ExpectValue int
 	}{
 		{
-			Name: "AddCommand Sucess Case",
+			Name: "AddCommand Success Case",
 			command: &bus.Command{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "Valid Command",
@@ -517,7 +517,7 @@ func TestUpdatePodGroupFunc(t *testing.T) {
 		ExpectValue int
 	}{
 		{
-			Name: "AddCommand Sucess Case",
+			Name: "AddCommand Success Case",
 			oldPodGroup: &scheduling.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "pg1",
