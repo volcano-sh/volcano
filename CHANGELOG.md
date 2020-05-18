@@ -74,7 +74,7 @@
 - [#586](https://github.com/volcano-sh/volcano/pull/586) dep ensure (@sivanzcw)
 - [#584](https://github.com/volcano-sh/volcano/pull/584) change node not found errors (@invalid-email-address)
 - [#581](https://github.com/volcano-sh/volcano/pull/581) Change Statement unevict method to call UpdateTask (@yodarshafrir1)
-- [#578](https://github.com/volcano-sh/volcano/pull/578) Add explict info about what todo to update generated yaml (@hzxuzhonghu)
+- [#578](https://github.com/volcano-sh/volcano/pull/578) Add explicit info about what todo to update generated yaml (@hzxuzhonghu)
 - [#577](https://github.com/volcano-sh/volcano/pull/577) Enable CI verify (@hzxuzhonghu)
 - [#576](https://github.com/volcano-sh/volcano/pull/576) Enable networkpolicy create/get permission (@hzxuzhonghu)
 - [#572](https://github.com/volcano-sh/volcano/pull/572) fix validate victims check for preempt action (@zionwu)
