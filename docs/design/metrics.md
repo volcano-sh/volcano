@@ -6,9 +6,9 @@ Currently users can leverage controller logs and job events to monitor scheduler
 This document describes metrics we want to add into kube-batch to better monitor performance.
 
 ## Metrics
-In order to support metrics, kube-batch needs to expose a metrics endpoint which can provide golang process metrics like number of goroutines, gc duration, cpu and memory usage, etc as well as kube-batch custom metrics related to time taken by plugins or actions. 
+In order to support metrics, kube-batch needs to expose a metrics endpoint which can provide golang process metrics like number of goroutines, gc duration, cpu and memory usage, etc as well as kube-batch custom metrics related to time taken by plugins or actions.
 
-All the metrics are prefixed with `kube_batch_`. 
+All the metrics are prefixed with `kube_batch_`.
 
 ### kube-batch execution
 This metrics track execution of plugins and actions of kube-batch loop.

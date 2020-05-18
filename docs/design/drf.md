@@ -15,7 +15,7 @@ This share value is used for job ordering and task premption.
 
 #### 1. Job Ordering:
   The job having the lowest share will have higher priority.
-  In the example below all the tasks task1, task2 of job1 and task3 and task4 of job2 is already allocated to the cluster.  	  	
+  In the example below all the tasks task1, task2 of job1 and task3 and task4 of job2 is already allocated to the cluster.
   ![drfjobordering](./images/drfjobordering.png)
 
 
@@ -23,9 +23,9 @@ This share value is used for job ordering and task premption.
    Gang scheduling sorts the job based on whether the job has atleast **minAvailable** task already (allocated + successfully completed + pipelined) or not.
    Jobs which has not met the minAvailable criteria has higher priority than jobs which has met
    the minAvailable criteria.
-     
+
    For the jobs which has met the minAvailable criteria will be sorted according to DRF.
-   
+
    ![gangwithdrf](./images/gangwithdrf.png)
 
 #### 2. Task Preemption:

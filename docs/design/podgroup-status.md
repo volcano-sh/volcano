@@ -109,7 +109,7 @@ type PodGroupStatus struct {
 ```
 
 According to the PodGroup's lifecycle, the following phase/state transactions are reasonable. And related
-reasons will be appended to `Reason` field.  
+reasons will be appended to `Reason` field.
 
 | From    | To            | Reason  |
 |---------|---------------|---------|

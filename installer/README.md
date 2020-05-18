@@ -4,7 +4,7 @@ Volcano is a batch system built on Kubernetes. It provides a suite of mechanisms
 Kubernetes that are commonly required by many classes of batch & elastic workload including:
 
 1. machine learning/deep learning,
-2. bioinformatics/genomics, and 
+2. bioinformatics/genomics, and
 3. other "big data" applications.
 
 ## Prerequisites

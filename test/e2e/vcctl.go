@@ -57,7 +57,7 @@ Usage:
   vcctl job [command]
 
 Available Commands:
-  delete      delete a job 
+  delete      delete a job
   list        list job information
   resume      resume a job
   run         run job by parameters from the command line

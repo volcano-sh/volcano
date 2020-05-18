@@ -136,7 +136,7 @@ There are multiple types of tests.
 The location of the test code varies with type, as do the specifics of the environment needed to successfully run the test:
 
 * Unit: These confirm that a particular function behaves as intended. Unit test source code can be found adjacent to the corresponding source code within a given package. These are easily run locally by any developer.
-* Integration: These tests cover interactions of package components or interactions between Volcano components and Kubernetes control plane components like API server. 
+* Integration: These tests cover interactions of package components or interactions between Volcano components and Kubernetes control plane components like API server.
 * End-to-end ("e2e"): These are broad tests of overall system behavior and coherence. The e2e tests are in [Volcano e2e](https://github.com/volcano-sh/volcano/tree/master/test/e2e).
 
 Continuous integration will run these tests on PRs.

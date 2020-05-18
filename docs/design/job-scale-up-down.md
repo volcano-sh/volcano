@@ -5,7 +5,7 @@
 ## Motivation
 
 Currently, Volcano does not support Job update. It is not allowed to update the `Job.Spec` on the fly.
-However, many users show appeal to run ML training jobs in a elastic manner. For example ModelArts want to dynamically adjust Job's replicas according to the cluster idle capacity 
+However, many users show appeal to run ML training jobs in a elastic manner. For example ModelArts want to dynamically adjust Job's replicas according to the cluster idle capacity
 in order to achieve most high efficiency on GPU card.
 
 I propose to support volcano job dynamical scale up/down before more intelligent elasticity in the first step.
@@ -43,7 +43,7 @@ The differences are:
 
 3. delete pods when scale down
 
-However, only when the job is not started, the initialization is run. 
+However, only when the job is not started, the initialization is run.
 So we need a way to know whether it is a scale up/down event that triggered this round of sync.
 
 The way I propose is to add a new event `JobUpdatedEvent` to indicate that the job is updated(here only cares about the scale up/down).
@@ -51,14 +51,14 @@ And accordingly add a new action `UpdateJobAction` to run `UpdateJob` function. 
 ![workflow](images/Job-scale-up-down.PNG)
 
 To scale up/down on the fly, Volcano should be responsible to notify the original pods the current status, including the hosts of all the pods.
-This is done by plugins, so to distinguish from the initialization phase, a new `OnJobUpdate` is introduced. 
+This is done by plugins, so to distinguish from the initialization phase, a new `OnJobUpdate` is introduced.
 It is to reconcile all the associated configs of the job. Currently, the `svc` plugin should update the configmap of all the hosts.
 
 **NOTE**:
 
 1. Users should watch the `/etc/volcano` to get the up-to-date hosts files if they want to be aware of the training workers.
 
-2. The env `VC_{task name}_HOSTS` `VC_{task name}_NUM` of the existing pods can not be mutated on the fly, so be careful not to use it. 
+2. The env `VC_{task name}_HOSTS` `VC_{task name}_NUM` of the existing pods can not be mutated on the fly, so be careful not to use it.
 
 ```
 type PluginInterface interface {

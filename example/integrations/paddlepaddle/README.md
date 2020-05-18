@@ -1,6 +1,6 @@
 # Click-Through-Rate Distributed Training with PaddlePaddle on Volcano
 
-This is an example of running Click-Through-Rate(ctr) distributed training with PaddlePaddle on Volcano. The source code 
+This is an example of running Click-Through-Rate(ctr) distributed training with PaddlePaddle on Volcano. The source code
 is taken from PaddlePaddle EDL team's example [here](https://github.com/PaddlePaddle/edl/tree/develop/example/ctr).
 
 The directory contains the following files:

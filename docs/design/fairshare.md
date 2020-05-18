@@ -78,7 +78,7 @@ type ClusterInfo struct {
 
 The behavior of `allocate` action is scheduling job in `Queue` one by one.
 
-At the beginning of scheduling loop, it will take a job with highest priority from `Queue`. And try to schedule tasks that belong to it until job is ready (matches the minMember) then go to next round. 
+At the beginning of scheduling loop, it will take a job with highest priority from `Queue`. And try to schedule tasks that belong to it until job is ready (matches the minMember) then go to next round.
 
 The priority of job mentioned above is defined by `JobOrder` functions registered by plugins. Such as job ready order of Gang plugin, priority order of Priority plugin, and also the share order of DRF plugin.
 
@@ -89,7 +89,7 @@ Namespace weight `should not` implement with JobOrder func. Because the scheduli
 > e.g.
 >
 > ns1 has job1, job2, ns2 has job3, job4. The original order is job1-job2-job3-job4.
-> 
+>
 > After the scheduling of job1, right order should be job3-job4-job2. But in priority queue, we have no chance to fix the priority for job2
 
 #### Namespace Order
