@@ -173,7 +173,7 @@ func validateIO(volumes []batchv1alpha1.VolumeSpec) error {
 		}
 		if len(volume.VolumeClaimName) != 0 {
 			if volume.VolumeClaim != nil {
-				return fmt.Errorf("confilct: If you want to use an existing PVC, just specify VolumeClaimName." +
+				return fmt.Errorf("conflict: If you want to use an existing PVC, just specify VolumeClaimName." +
 					"If you want to create a new PVC, you do not need to specify VolumeClaimName")
 			}
 			if errMsgs := validation.ValidatePersistentVolumeName(volume.VolumeClaimName, false); len(errMsgs) > 0 {
