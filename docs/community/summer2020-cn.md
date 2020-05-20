@@ -20,10 +20,10 @@ Volcano是基于Kubernetes构建的一个云原生批量计算系统，它弥补
 
 ## 项目列表
 
-### 1. [Arm架构支持]()
-### 2. [官方文档]()
-### 3. [Volcano DAG引擎开发]()
-### 4. [Volcano工作流可视化UI开发]()
+### 1. [Arm架构支持](https://github.com/volcano-sh/volcano/issues/816)
+### 2. [官方文档](https://github.com/volcano-sh/volcano/issues/817)
+### 3. [Volcano DAG引擎开发](https://github.com/volcano-sh/volcano/issues/818)
+### 4. [Volcano工作流可视化UI开发](https://github.com/volcano-sh/volcano/issues/819)
 
 
 ## 候选人要求
