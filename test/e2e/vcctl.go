@@ -57,7 +57,7 @@ Usage:
   vcctl job [command]
 
 Available Commands:
-  delete      delete a job 
+  delete      delete a job
   list        list job information
   resume      resume a job
   run         run job by parameters from the command line
@@ -80,7 +80,7 @@ Use "vcctl job [command] --help" for more information about a command.
 	})
 
 	It("Command: vcctl job list --help", func() {
-		home := os.Getenv("HOME")
+		kubeConfig := os.Getenv("KUBECONFIG")
 		var output = `
 list job information
 
@@ -90,7 +90,7 @@ Usage:
 Flags:
       --all-namespaces      list jobs in all namespaces
   -h, --help                help for list
-  -k, --kubeconfig string   (optional) absolute path to the kubeconfig file (default "` + home + `/.kube/config")
+  -k, --kubeconfig string   (optional) absolute path to the kubeconfig file (default "` + kubeConfig + `")
   -s, --master string       the address of apiserver
   -n, --namespace string    the namespace of job (default "default")
   -S, --scheduler string    list job with specified scheduler name
@@ -106,8 +106,8 @@ Global Flags:
 		Expect(exist).Should(Equal(true))
 	})
 
-	It("Command: vkctl job suspend -n {$JobName} --help", func() {
-		home := os.Getenv("HOME")
+	It("Command: vcctl job suspend -n {$JobName} --help", func() {
+		kubeConfig := os.Getenv("KUBECONFIG")
 		var output = `
 abort a job
 
@@ -116,7 +116,7 @@ Usage:
 
 Flags:
   -h, --help                help for suspend
-  -k, --kubeconfig string   (optional) absolute path to the kubeconfig file (default "` + home + `/.kube/config")
+  -k, --kubeconfig string   (optional) absolute path to the kubeconfig file (default "` + kubeConfig + `")
   -s, --master string       the address of apiserver
   -N, --name string         the name of job
   -n, --namespace string    the namespace of job (default "default")
@@ -131,8 +131,8 @@ Global Flags:
 		Expect(exist).Should(Equal(true))
 	})
 
-	It("vkctl job resume -n {$JobName} --help", func() {
-		home := os.Getenv("HOME")
+	It("vcctl job resume -n {$JobName} --help", func() {
+		kubeConfig := os.Getenv("KUBECONFIG")
 		var output = `
 resume a job
 
@@ -141,7 +141,7 @@ Usage:
 
 Flags:
   -h, --help                help for resume
-  -k, --kubeconfig string   (optional) absolute path to the kubeconfig file (default "` + home + `/.kube/config")
+  -k, --kubeconfig string   (optional) absolute path to the kubeconfig file (default "` + kubeConfig + `")
   -s, --master string       the address of apiserver
   -N, --name string         the name of job
   -n, --namespace string    the namespace of job (default "default")
@@ -156,8 +156,8 @@ Global Flags:
 		Expect(exist).Should(Equal(true))
 	})
 
-	It("vkctl job run --help", func() {
-		home := os.Getenv("HOME")
+	It("vcctl job run --help", func() {
+		kubeConfig := os.Getenv("KUBECONFIG")
 		var output = `
 run job by parameters from the command line
 
@@ -168,11 +168,11 @@ Flags:
   -f, --filename string     the yaml file of job
   -h, --help                help for run
   -i, --image string        the container image of job (default "busybox")
-  -k, --kubeconfig string   (optional) absolute path to the kubeconfig file (default "` + home + `/.kube/config")
+  -k, --kubeconfig string   (optional) absolute path to the kubeconfig file (default "` + kubeConfig + `")
   -L, --limits string       the resource limit of the task (default "cpu=1000m,memory=100Mi")
   -s, --master string       the address of apiserver
   -m, --min int             the minimal available tasks of job (default 1)
-  -N, --name string         the name of job (default "test")
+  -N, --name string         the name of job
   -n, --namespace string    the namespace of job (default "default")
   -r, --replicas int        the total tasks of job (default 1)
   -R, --requests string     the resource request of the task (default "cpu=1000m,memory=100Mi")

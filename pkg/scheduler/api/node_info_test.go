@@ -42,10 +42,11 @@ func TestNodeInfo_AddPod(t *testing.T) {
 	case02Pod1 := buildPod("c2", "p1", "n2", v1.PodUnknown, buildResourceList("1000m", "2G"), []metav1.OwnerReference{}, make(map[string]string))
 
 	tests := []struct {
-		name     string
-		node     *v1.Node
-		pods     []*v1.Pod
-		expected *NodeInfo
+		name            string
+		node            *v1.Node
+		pods            []*v1.Pod
+		expected        *NodeInfo
+		expectedFailure bool
 	}{
 		{
 			name: "add 2 running non-owner pod",
@@ -57,6 +58,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				Idle:        buildResource("5000m", "7G"),
 				Used:        buildResource("3000m", "3G"),
 				Releasing:   EmptyResource(),
+				Pipelined:   EmptyResource(),
 				Allocatable: buildResource("8000m", "10G"),
 				Capability:  buildResource("8000m", "10G"),
 				State:       NodeState{Phase: Ready},
@@ -76,11 +78,13 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				Idle:        buildResource("2000m", "1G"),
 				Used:        EmptyResource(),
 				Releasing:   EmptyResource(),
+				Pipelined:   EmptyResource(),
 				Allocatable: buildResource("2000m", "1G"),
 				Capability:  buildResource("2000m", "1G"),
-				State:       NodeState{Phase: NotReady, Reason: "OutOfSync"},
+				State:       NodeState{Phase: Ready},
 				Tasks:       map[TaskID]*TaskInfo{},
 			},
+			expectedFailure: true,
 		},
 	}
 
@@ -89,7 +93,13 @@ func TestNodeInfo_AddPod(t *testing.T) {
 
 		for _, pod := range test.pods {
 			pi := NewTaskInfo(pod)
-			ni.AddTask(pi)
+			err := ni.AddTask(pi)
+			if err != nil && !test.expectedFailure {
+				t.Errorf("node info %d: \n expected success, \n but got err %v \n", i, err)
+			}
+			if err == nil && test.expectedFailure {
+				t.Errorf("node info %d: \n expected failure, \n but got success \n", i)
+			}
 		}
 
 		if !nodeInfoEqual(ni, test.expected) {
@@ -124,6 +134,7 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 				Idle:        buildResource("4000m", "6G"),
 				Used:        buildResource("4000m", "4G"),
 				Releasing:   EmptyResource(),
+				Pipelined:   EmptyResource(),
 				Allocatable: buildResource("8000m", "10G"),
 				Capability:  buildResource("8000m", "10G"),
 				State:       NodeState{Phase: Ready},

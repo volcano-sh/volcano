@@ -4,7 +4,7 @@ metadata:
   name: {{ .Release.Name }}-scheduler-configmap
   namespace: {{ .Release.Namespace }}
 data:
-  {{- (.Files.Glob "config/*").AsConfig | nindent 2 }}
+  {{- (.Files.Glob .Values.basic.scheduler_config_file).AsConfig | nindent 2 }}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -16,7 +16,6 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Release.Name }}-scheduler
-  namespace: {{ .Release.Namespace }}
 rules:
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
@@ -42,11 +41,11 @@ rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
     verbs: ["list", "watch"]
-  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.sigs.dev"]
-    resources: ["podgroups"]
-    verbs: ["list", "watch", "update"]
   - apiGroups: [""]
     resources: ["namespaces"]
+    verbs: ["list", "watch"]
+  - apiGroups: [""]
+    resources: ["resourcequotas"]
     verbs: ["list", "watch"]
   - apiGroups: ["storage.k8s.io"]
     resources: ["storageclasses"]
@@ -60,10 +59,10 @@ rules:
   - apiGroups: ["scheduling.k8s.io"]
     resources: ["priorityclasses"]
     verbs: ["get", "list", "watch"]
-  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.sigs.dev"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues"]
     verbs: ["get", "list", "watch", "create", "delete"]
-  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.sigs.dev"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
     verbs: ["list", "watch", "update"]
 
@@ -72,7 +71,6 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Release.Name }}-scheduler-role
-  namespace: {{ .Release.Namespace }}
 subjects:
   - kind: ServiceAccount
     name: {{ .Release.Name }}-scheduler
@@ -109,8 +107,8 @@ spec:
         - name: {{ .Release.Name }}-scheduler
           image: {{.Values.basic.scheduler_image_name}}:{{.Values.basic.image_tag_version}}
           args:
-            - --alsologtostderr
-            - --scheduler-conf=/volcano.scheduler/{{.Values.basic.scheduler_config_file}}
+            - --logtostderr
+            - --scheduler-conf=/volcano.scheduler/{{base .Values.basic.scheduler_config_file}}
             - -v=3
             - 2>&1
           imagePullPolicy: "IfNotPresent"

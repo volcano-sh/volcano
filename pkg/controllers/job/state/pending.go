@@ -17,7 +17,8 @@ limitations under the License.
 package state
 
 import (
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -25,45 +26,37 @@ type pendingState struct {
 	job *apis.JobInfo
 }
 
-func (ps *pendingState) Execute(action vkv1.Action) error {
+func (ps *pendingState) Execute(action v1alpha1.Action) error {
 	switch action {
-	case vkv1.RestartJobAction:
-		return KillJob(ps.job, PodRetainPhaseNone, func(status *vkv1.JobStatus) bool {
+	case v1alpha1.RestartJobAction:
+		return KillJob(ps.job, PodRetainPhaseNone, func(status *vcbatch.JobStatus) bool {
 			status.RetryCount++
-			status.State.Phase = vkv1.Restarting
+			status.State.Phase = vcbatch.Restarting
 			return true
 		})
 
-	case vkv1.AbortJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
-			status.State.Phase = vkv1.Aborting
+	case v1alpha1.AbortJobAction:
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
+			status.State.Phase = vcbatch.Aborting
 			return true
 		})
-	case vkv1.CompleteJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
-			status.State.Phase = vkv1.Completing
+	case v1alpha1.CompleteJobAction:
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
+			status.State.Phase = vcbatch.Completing
 			return true
 		})
-	case vkv1.TerminateJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vkv1.JobStatus) bool {
-			status.State.Phase = vkv1.Terminating
-			return true
-		})
-	case vkv1.EnqueueAction:
-		return SyncJob(ps.job, func(status *vkv1.JobStatus) bool {
-			phase := vkv1.Inqueue
-
-			if ps.job.Job.Spec.MinAvailable <= status.Running+status.Succeeded+status.Failed {
-				phase = vkv1.Running
-			}
-
-			status.State.Phase = phase
+	case v1alpha1.TerminateJobAction:
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
+			status.State.Phase = vcbatch.Terminating
 			return true
 		})
 	default:
-		return CreateJob(ps.job, func(status *vkv1.JobStatus) bool {
-			status.State.Phase = vkv1.Pending
-			return true
+		return SyncJob(ps.job, func(status *vcbatch.JobStatus) bool {
+			if ps.job.Job.Spec.MinAvailable <= status.Running+status.Succeeded+status.Failed {
+				status.State.Phase = vcbatch.Running
+				return true
+			}
+			return false
 		})
 	}
 }

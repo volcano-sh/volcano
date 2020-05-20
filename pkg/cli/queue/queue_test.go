@@ -22,16 +22,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
 
 	"github.com/spf13/cobra"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
 func getTestQueueHTTPServer(t *testing.T) *httptest.Server {
 
-	response := v1alpha2.Queue{}
+	response := v1beta1.Queue{}
 
 	response.Name = "testQueue"
 	response.Spec.Weight = int32(2)
@@ -48,14 +49,14 @@ func getTestQueueHTTPServer(t *testing.T) *httptest.Server {
 
 func getTestQueueListHTTPServer(t *testing.T) *httptest.Server {
 
-	response := v1alpha1.QueueList{}
+	response := v1beta1.QueueList{}
 
-	response.Items = []v1alpha1.Queue{
+	response.Items = []v1beta1.Queue{
 		{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testQueue",
 			},
-			Spec: v1alpha1.QueueSpec{
+			Spec: v1beta1.QueueSpec{
 				Weight: int32(2),
 			},
 		},
@@ -78,7 +79,7 @@ func getCommonFlags(master string) commonFlags {
 }
 
 func TestCreateQueue(t *testing.T) {
-	InitRunFlags(&cobra.Command{})
+	InitCreateFlags(&cobra.Command{})
 	server := getTestQueueHTTPServer(t)
 	defer server.Close()
 

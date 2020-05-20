@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Vulcan Authors.
+Copyright 2018 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,9 +18,11 @@ package job
 
 import (
 	"fmt"
+
 	"github.com/spf13/cobra"
 
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	"volcano.sh/volcano/pkg/cli/util"
 )
 
 type suspendFlags struct {
@@ -42,7 +44,7 @@ func InitSuspendFlags(cmd *cobra.Command) {
 
 // SuspendJob  suspends the job
 func SuspendJob() error {
-	config, err := buildConfig(suspendJobFlags.Master, suspendJobFlags.Kubeconfig)
+	config, err := util.BuildConfig(suspendJobFlags.Master, suspendJobFlags.Kubeconfig)
 	if err != nil {
 		return err
 	}

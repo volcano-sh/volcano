@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Vulcan Authors.
+Copyright 2018 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,11 +23,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	vkapi "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/cli/util"
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
@@ -54,7 +55,7 @@ func InitRunFlags(cmd *cobra.Command) {
 
 	cmd.Flags().StringVarP(&launchJobFlags.Image, "image", "i", "busybox", "the container image of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
-	cmd.Flags().StringVarP(&launchJobFlags.Name, "name", "N", "test", "the name of job")
+	cmd.Flags().StringVarP(&launchJobFlags.Name, "name", "N", "", "the name of job")
 	cmd.Flags().IntVarP(&launchJobFlags.MinAvailable, "min", "m", 1, "the minimal available tasks of job")
 	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "r", 1, "the total tasks of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Requests, "requests", "R", "cpu=1000m,memory=100Mi", "the resource request of the task")
@@ -67,8 +68,13 @@ var jobName = "job.volcano.sh"
 
 // RunJob  creates the job
 func RunJob() error {
-	config, err := buildConfig(launchJobFlags.Master, launchJobFlags.Kubeconfig)
+	config, err := util.BuildConfig(launchJobFlags.Master, launchJobFlags.Kubeconfig)
 	if err != nil {
+		return err
+	}
+
+	if launchJobFlags.Name == "" && launchJobFlags.FileName == "" {
+		err = fmt.Errorf("job name cannot be left blank")
 		return err
 	}
 
@@ -97,12 +103,16 @@ func RunJob() error {
 		return err
 	}
 
+	if newJob.Spec.Queue == "" {
+		newJob.Spec.Queue = "default"
+	}
+
 	fmt.Printf("run job %v successfully\n", newJob.Name)
 
 	return nil
 }
 
-func readFile(filename string) (*vkapi.Job, error) {
+func readFile(filename string) (*vcbatch.Job, error) {
 	if filename == "" {
 		return nil, nil
 	}
@@ -116,7 +126,7 @@ func readFile(filename string) (*vkapi.Job, error) {
 		return nil, fmt.Errorf("failed to read file, err: %v", err)
 	}
 
-	var job vkapi.Job
+	var job vcbatch.Job
 	if err := yaml.Unmarshal(file, &job); err != nil {
 		return nil, fmt.Errorf("Failed to unmarshal file, err:  %v", err)
 	}
@@ -124,16 +134,16 @@ func readFile(filename string) (*vkapi.Job, error) {
 	return &job, nil
 }
 
-func constructLaunchJobFlagsJob(launchJobFlags *runFlags, req, limit v1.ResourceList) *vkapi.Job {
-	return &vkapi.Job{
+func constructLaunchJobFlagsJob(launchJobFlags *runFlags, req, limit v1.ResourceList) *vcbatch.Job {
+	return &vcbatch.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      launchJobFlags.Name,
 			Namespace: launchJobFlags.Namespace,
 		},
-		Spec: vkapi.JobSpec{
+		Spec: vcbatch.JobSpec{
 			MinAvailable:  int32(launchJobFlags.MinAvailable),
 			SchedulerName: launchJobFlags.SchedulerName,
-			Tasks: []vkapi.TaskSpec{
+			Tasks: []vcbatch.TaskSpec{
 				{
 					Replicas: int32(launchJobFlags.Replicas),
 

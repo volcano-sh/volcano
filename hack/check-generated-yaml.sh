@@ -21,12 +21,14 @@ set -o pipefail
 VK_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
 export RELEASE_FOLDER=${VK_ROOT}/${RELEASE_DIR}
 
+sed -i 's/[ \t]*$//' ${RELEASE_FOLDER}/volcano-latest.yaml
 
 if ! diff ${VK_ROOT}/installer/volcano-development.yaml ${RELEASE_FOLDER}/volcano-latest.yaml ; then
 	{
 		echo
 		echo "The Generated yaml is different from the one in installer/volcano-development.yaml"
-		echo "Suggest to sync both the files"
+		echo "please run 'make generate-yaml TAG=latest RELEASE_DIR=installer \
+		&& mv ${VK_ROOT}/installer/volcano-latest.yaml ${VK_ROOT}/installer/volcano-development.yaml' to update"
 		echo
 	} >&2
 	false

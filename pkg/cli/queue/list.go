@@ -24,7 +24,8 @@ import (
 	"github.com/spf13/cobra"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+
+	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
@@ -47,6 +48,12 @@ const (
 
 	// Unknown status of the queue
 	Unknown string = "Unknown"
+
+	// Inqueue status of queue
+	Inqueue string = "Inqueue"
+
+	// State is state of queue
+	State string = "State"
 )
 
 var listQueueFlags = &listFlags{}
@@ -64,7 +71,7 @@ func ListQueue() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	queues, err := jobClient.SchedulingV1alpha2().Queues().List(metav1.ListOptions{})
+	queues, err := jobClient.SchedulingV1beta1().Queues().List(metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -79,15 +86,16 @@ func ListQueue() error {
 }
 
 // PrintQueues prints queue information
-func PrintQueues(queues *v1alpha2.QueueList, writer io.Writer) {
-	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s\n",
-		Name, Weight, Pending, Running, Unknown)
+func PrintQueues(queues *v1beta1.QueueList, writer io.Writer) {
+	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s\n",
+		Name, Weight, State, Inqueue, Pending, Running, Unknown)
 	if err != nil {
 		fmt.Printf("Failed to print queue command result: %s.\n", err)
 	}
 	for _, queue := range queues.Items {
-		_, err = fmt.Fprintf(writer, "%-25s%-8d%-8d%-8d%-8d\n",
-			queue.Name, queue.Spec.Weight, queue.Status.Pending, queue.Status.Running, queue.Status.Unknown)
+		_, err = fmt.Fprintf(writer, "%-25s%-8d%-8s%-8d%-8d%-8d%-8d\n",
+			queue.Name, queue.Spec.Weight, queue.Status.State, queue.Status.Inqueue,
+			queue.Status.Pending, queue.Status.Running, queue.Status.Unknown)
 		if err != nil {
 			fmt.Printf("Failed to print queue command result: %s.\n", err)
 		}

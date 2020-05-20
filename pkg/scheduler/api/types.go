@@ -124,11 +124,14 @@ type ValidateResult struct {
 	Message string
 }
 
-// ValidateExFn is the func declaration used to validate the result
+// ValidateExFn is the func declaration used to validate the result.
 type ValidateExFn func(interface{}) *ValidateResult
 
 // PredicateFn is the func declaration used to predicate node for task.
 type PredicateFn func(*TaskInfo, *NodeInfo) error
+
+// BestNodeFn is the func declaration used to return the nodeScores to plugins.
+type BestNodeFn func(*TaskInfo, map[float64][]*NodeInfo) *NodeInfo
 
 // EvictableFn is the func declaration used to evict tasks.
 type EvictableFn func(*TaskInfo, []*TaskInfo) []*TaskInfo
@@ -148,5 +151,5 @@ type NodeReduceFn func(*TaskInfo, schedulerapi.HostPriorityList) error
 // NodeOrderMapFn is the func declaration used to get priority score of all plugins for a node for a particular task.
 type NodeOrderMapFn func(*TaskInfo, *NodeInfo) (map[string]float64, float64, error)
 
-// NodeOrderReduceFn is the func declaration used to reduce priority score of all nodes for a plugiin for a particular task.
+// NodeOrderReduceFn is the func declaration used to reduce priority score of all nodes for a plugin for a particular task.
 type NodeOrderReduceFn func(*TaskInfo, map[string]schedulerapi.HostPriorityList) (map[string]float64, error)

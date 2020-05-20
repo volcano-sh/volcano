@@ -1,0 +1,107 @@
+################################################
+#                                              #
+#    Demo for running TF tasks on Volcano      #
+#                                              #
+################################################
+#
+# This yaml used to demonstrate how to running a TF task via Volcano Job,
+# the running sample program is from TF benchmark
+# (https://github.com/tensorflow/benchmarks/tree/master/scripts/tf_cnn_benchmarks)
+# The equivalent command when running locally:
+#
+#   python tf_cnn_benchmarks.py --num_gpus=1 --batch_size=32 --model=resnet50 --variable_update=parameter_server
+#   --local_parameter_device=cpu --device=cpu --data_format=NHWC
+#
+# The output from ps or worker pod can be used to identify whether the TF cluster
+# has been correctly configured:
+#
+#    (log from worker pod....)
+#    2019-04-23 11:10:25.554248: I tensorflow/core/distributed_runtime/rpc/grpc_channel.cc:215]
+#    Initialize GrpcChannelCache for job ps -> {0 -> tensorflow-benchmark-ps-0.tensorflow-benchmark:2222}
+#    2019-04-23 11:10:25.554308: I tensorflow/core/distributed_runtime/rpc/grpc_channel.cc:215]
+#    Initialize GrpcChannelCache for job worker -> {0 -> localhost:2222}
+#
+#    (log from ps pod....)
+#    2019-04-23 11:10:25.552827: I tensorflow/core/distributed_runtime/rpc/grpc_channel.cc:215]
+#    Initialize GrpcChannelCache for job ps -> {0 -> localhost:2222}
+#    2019-04-23 11:10:25.552861: I tensorflow/core/distributed_runtime/rpc/grpc_channel.cc:215]
+#    Initialize GrpcChannelCache for job worker -> {0 -> tensorflow-benchmark-worker-0.tensorflow-benchmark:2222}
+#
+# **NOTES**: This example may take about an hour to finish. When running multiple jobs, please ensure enough resource
+# is guaranteed for each of the worker pods.
+
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: tensorflow-benchmark
+  labels:
+    "volcano.sh/job-type": "Tensorflow"
+spec:
+  minAvailable: 3
+  schedulerName: volcano
+  plugins:
+    env: []
+    svc: []
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  tasks:
+    - replicas: 1
+      name: ps
+      template:
+        spec:
+          imagePullSecrets:
+            - name: default-secret
+          containers:
+            - command:
+                - sh
+                - -c
+                - |
+                  PS_HOST=`cat /etc/volcano/ps.host | sed 's/$/&:2222/g' | tr "\n" ","`;
+                  WORKER_HOST=`cat /etc/volcano/worker.host | sed 's/$/&:2222/g' | tr "\n" ","`;
+                  python tf_cnn_benchmarks.py --batch_size=32 --model=resnet50 --variable_update=parameter_server --flush_stdout=true --num_gpus=1 --local_parameter_device=cpu --device=cpu --data_format=NHWC --job_name=ps --task_index=${VK_TASK_INDEX} --ps_hosts=${PS_HOST} --worker_hosts=${WORKER_HOST}
+              image: volcanosh/example-tf:0.0.1
+              name: tensorflow
+              ports:
+                - containerPort: 2222
+                  name: tfjob-port
+              resources:
+                requests:
+                  cpu: "1000m"
+                  memory: "2048Mi"
+                limits:
+                  cpu: "1000m"
+                  memory: "2048Mi"
+              workingDir: /opt/tf-benchmarks/scripts/tf_cnn_benchmarks
+          restartPolicy: OnFailure
+    - replicas: 2
+      name: worker
+      policies:
+        - event: TaskCompleted
+          action: CompleteJob
+      template:
+        spec:
+          imagePullSecrets:
+            - name: default-secret
+          containers:
+            - command:
+                - sh
+                - -c
+                - |
+                  PS_HOST=`cat /etc/volcano/ps.host | sed 's/$/&:2222/g' | tr "\n" ","`;
+                  WORKER_HOST=`cat /etc/volcano/worker.host | sed 's/$/&:2222/g' | tr "\n" ","`;
+                  python tf_cnn_benchmarks.py --batch_size=32 --model=resnet50 --variable_update=parameter_server --flush_stdout=true --num_gpus=1 --local_parameter_device=cpu --device=cpu --data_format=NHWC --job_name=worker --task_index=${VK_TASK_INDEX} --ps_hosts=${PS_HOST} --worker_hosts=${WORKER_HOST}
+              image: volcanosh/example-tf:0.0.1
+              name: tensorflow
+              ports:
+                - containerPort: 2222
+                  name: tfjob-port
+              resources:
+                requests:
+                  cpu: "2000m"
+                  memory: "2048Mi"
+                limits:
+                  cpu: "2000m"
+                  memory: "4096Mi"
+              workingDir: /opt/tf-benchmarks/scripts/tf_cnn_benchmarks
+          restartPolicy: OnFailure

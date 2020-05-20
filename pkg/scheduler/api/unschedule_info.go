@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"k8s.io/kubernetes/pkg/scheduler/algorithm"
+	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
 )
 
 const (
@@ -98,7 +98,7 @@ func NewFitError(task *TaskInfo, node *NodeInfo, message ...string) *FitError {
 }
 
 // NewFitErrorByReasons return FitError by reasons
-func NewFitErrorByReasons(task *TaskInfo, node *NodeInfo, reasons ...algorithm.PredicateFailureReason) *FitError {
+func NewFitErrorByReasons(task *TaskInfo, node *NodeInfo, reasons ...predicates.PredicateFailureReason) *FitError {
 	message := make([]string, 0, len(reasons))
 	for _, reason := range reasons {
 		message = append(message, reason.GetReason())

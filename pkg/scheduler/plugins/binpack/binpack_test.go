@@ -26,7 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
-	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
+	schedulingv1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -112,39 +112,39 @@ func TestNode(t *testing.T) {
 	n3 := util.BuildNode("n3", util.BuildResourceList("2", "4Gi"), make(map[string]string))
 	addResource(n3.Status.Allocatable, FOO, "16")
 
-	pg1 := &kbv1.PodGroup{
+	pg1 := &schedulingv1.PodGroup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "pg1",
 			Namespace: "c1",
 		},
-		Spec: kbv1.PodGroupSpec{
+		Spec: schedulingv1.PodGroupSpec{
 			Queue: "c1",
 		},
 	}
-	queue1 := &kbv1.Queue{
+	queue1 := &schedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "c1",
 		},
-		Spec: kbv1.QueueSpec{
+		Spec: schedulingv1.QueueSpec{
 			Weight: 1,
 		},
 	}
 
 	tests := []struct {
 		name      string
-		podGroups []*kbv1.PodGroup
+		podGroups []*schedulingv1.PodGroup
 		pods      []*v1.Pod
 		nodes     []*v1.Node
-		queues    []*kbv1.Queue
+		queues    []*schedulingv1.Queue
 		arguments framework.Arguments
 		expected  map[string]map[string]float64
 	}{
 		{
 			name: "single job",
-			podGroups: []*kbv1.PodGroup{
+			podGroups: []*schedulingv1.PodGroup{
 				pg1,
 			},
-			queues: []*kbv1.Queue{
+			queues: []*schedulingv1.Queue{
 				queue1,
 			},
 			pods: []*v1.Pod{
@@ -186,10 +186,10 @@ func TestNode(t *testing.T) {
 		},
 		{
 			name: "single job",
-			podGroups: []*kbv1.PodGroup{
+			podGroups: []*schedulingv1.PodGroup{
 				pg1,
 			},
-			queues: []*kbv1.Queue{
+			queues: []*schedulingv1.Queue{
 				queue1,
 			},
 			pods: []*v1.Pod{
@@ -252,10 +252,10 @@ func TestNode(t *testing.T) {
 			schedulerCache.AddPod(pod)
 		}
 		for _, ss := range test.podGroups {
-			schedulerCache.AddPodGroupV1alpha1(ss)
+			schedulerCache.AddPodGroupV1beta1(ss)
 		}
 		for _, q := range test.queues {
-			schedulerCache.AddQueueV1alpha1(q)
+			schedulerCache.AddQueueV1beta1(q)
 		}
 
 		trueValue := true
@@ -269,7 +269,7 @@ func TestNode(t *testing.T) {
 					},
 				},
 			},
-		})
+		}, nil)
 		defer framework.CloseSession(ssn)
 
 		for _, job := range ssn.Jobs {

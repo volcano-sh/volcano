@@ -17,7 +17,8 @@ limitations under the License.
 package state
 
 import (
-	vkv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -25,8 +26,8 @@ type restartingState struct {
 	job *apis.JobInfo
 }
 
-func (ps *restartingState) Execute(action vkv1.Action) error {
-	return KillJob(ps.job, PodRetainPhaseNone, func(status *vkv1.JobStatus) bool {
+func (ps *restartingState) Execute(action v1alpha1.Action) error {
+	return KillJob(ps.job, PodRetainPhaseNone, func(status *vcbatch.JobStatus) bool {
 		// Get the maximum number of retries.
 		maxRetry := DefaultMaxRetry
 		if ps.job.Job.Spec.MaxRetry != 0 {
@@ -35,7 +36,7 @@ func (ps *restartingState) Execute(action vkv1.Action) error {
 
 		if status.RetryCount >= maxRetry {
 			// Failed is the phase that the job is restarted failed reached the maximum number of retries.
-			status.State.Phase = vkv1.Failed
+			status.State.Phase = vcbatch.Failed
 			return true
 		}
 		total := int32(0)
@@ -44,7 +45,7 @@ func (ps *restartingState) Execute(action vkv1.Action) error {
 		}
 
 		if total-status.Terminating >= status.MinAvailable {
-			status.State.Phase = vkv1.Pending
+			status.State.Phase = vcbatch.Pending
 			return true
 		}
 

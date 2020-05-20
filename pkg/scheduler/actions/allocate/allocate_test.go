@@ -25,7 +25,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
-	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
+	schedulingv1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -38,25 +39,32 @@ import (
 func TestAllocate(t *testing.T) {
 	framework.RegisterPluginBuilder("drf", drf.New)
 	framework.RegisterPluginBuilder("proportion", proportion.New)
+
+	options.ServerOpts = &options.ServerOption{
+		MinNodesToFind:             100,
+		MinPercentageOfNodesToFind: 5,
+		PercentageOfNodesToFind:    100,
+	}
+
 	defer framework.CleanupPluginBuilders()
 
 	tests := []struct {
 		name      string
-		podGroups []*kbv1.PodGroup
+		podGroups []*schedulingv1.PodGroup
 		pods      []*v1.Pod
 		nodes     []*v1.Node
-		queues    []*kbv1.Queue
+		queues    []*schedulingv1.Queue
 		expected  map[string]string
 	}{
 		{
 			name: "one Job with two Pods on one node",
-			podGroups: []*kbv1.PodGroup{
+			podGroups: []*schedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 					},
-					Spec: kbv1.PodGroupSpec{
+					Spec: schedulingv1.PodGroupSpec{
 						Queue: "c1",
 					},
 				},
@@ -68,12 +76,12 @@ func TestAllocate(t *testing.T) {
 			nodes: []*v1.Node{
 				util.BuildNode("n1", util.BuildResourceList("2", "4Gi"), make(map[string]string)),
 			},
-			queues: []*kbv1.Queue{
+			queues: []*schedulingv1.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "c1",
 					},
-					Spec: kbv1.QueueSpec{
+					Spec: schedulingv1.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -85,13 +93,13 @@ func TestAllocate(t *testing.T) {
 		},
 		{
 			name: "two Jobs on one node",
-			podGroups: []*kbv1.PodGroup{
+			podGroups: []*schedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 					},
-					Spec: kbv1.PodGroupSpec{
+					Spec: schedulingv1.PodGroupSpec{
 						Queue: "c1",
 					},
 				},
@@ -100,7 +108,7 @@ func TestAllocate(t *testing.T) {
 						Name:      "pg2",
 						Namespace: "c2",
 					},
-					Spec: kbv1.PodGroupSpec{
+					Spec: schedulingv1.PodGroupSpec{
 						Queue: "c2",
 					},
 				},
@@ -119,12 +127,12 @@ func TestAllocate(t *testing.T) {
 			nodes: []*v1.Node{
 				util.BuildNode("n1", util.BuildResourceList("2", "4G"), make(map[string]string)),
 			},
-			queues: []*kbv1.Queue{
+			queues: []*schedulingv1.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "c1",
 					},
-					Spec: kbv1.QueueSpec{
+					Spec: schedulingv1.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -132,7 +140,7 @@ func TestAllocate(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "c2",
 					},
-					Spec: kbv1.QueueSpec{
+					Spec: schedulingv1.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -170,11 +178,11 @@ func TestAllocate(t *testing.T) {
 			}
 
 			for _, ss := range test.podGroups {
-				schedulerCache.AddPodGroupV1alpha2(ss)
+				schedulerCache.AddPodGroupV1beta1(ss)
 			}
 
 			for _, q := range test.queues {
-				schedulerCache.AddQueueV1alpha2(q)
+				schedulerCache.AddQueueV1beta1(q)
 			}
 
 			trueValue := true
@@ -182,9 +190,10 @@ func TestAllocate(t *testing.T) {
 				{
 					Plugins: []conf.PluginOption{
 						{
-							Name:               "drf",
-							EnabledPreemptable: &trueValue,
-							EnabledJobOrder:    &trueValue,
+							Name:                  "drf",
+							EnabledPreemptable:    &trueValue,
+							EnabledJobOrder:       &trueValue,
+							EnabledNamespaceOrder: &trueValue,
 						},
 						{
 							Name:               "proportion",
@@ -193,7 +202,7 @@ func TestAllocate(t *testing.T) {
 						},
 					},
 				},
-			})
+			}, nil)
 			defer framework.CloseSession(ssn)
 
 			allocate.Execute(ssn)

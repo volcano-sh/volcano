@@ -26,7 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	schedulingv2 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -71,7 +71,7 @@ func BuildPod(namespace, name, nodename string, p v1.PodPhase, req v1.ResourceLi
 			Namespace: namespace,
 			Labels:    labels,
 			Annotations: map[string]string{
-				kbv1.GroupNameAnnotationKey: groupName,
+				schedulingv2.KubeGroupNameAnnotationKey: groupName,
 			},
 		},
 		Status: v1.PodStatus{
@@ -114,8 +114,15 @@ func (fb *FakeBinder) Bind(p *v1.Pod, hostname string) error {
 // FakeEvictor is used as fake evictor
 type FakeEvictor struct {
 	sync.Mutex
-	Evicts  []string
+	evicts  []string
 	Channel chan string
+}
+
+// Evicts returns copy of evicted pods.
+func (fe *FakeEvictor) Evicts() []string {
+	fe.Lock()
+	defer fe.Unlock()
+	return append([]string{}, fe.evicts...)
 }
 
 // Evict is used by fake evictor to evict pods
@@ -125,7 +132,7 @@ func (fe *FakeEvictor) Evict(p *v1.Pod) error {
 
 	fmt.Println("PodName: ", p.Name)
 	key := fmt.Sprintf("%v/%v", p.Namespace, p.Name)
-	fe.Evicts = append(fe.Evicts, key)
+	fe.evicts = append(fe.evicts, key)
 
 	fe.Channel <- key
 

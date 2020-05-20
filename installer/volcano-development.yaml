@@ -10,19 +10,6 @@ metadata:
   name: volcano-scheduler-configmap
   namespace: volcano-system
 data:
-  volcano-scheduler-ci.conf: |
-    actions: "enqueue, reclaim, allocate, backfill, preempt"
-    tiers:
-    - plugins:
-      - name: priority
-      - name: gang
-      - name: conformance
-    - plugins:
-      - name: drf
-      - name: predicates
-      - name: proportion
-      - name: nodeorder
-      - name: binpack
   volcano-scheduler.conf: |
     actions: "enqueue, allocate, backfill"
     tiers:
@@ -36,7 +23,7 @@ data:
       - name: proportion
       - name: nodeorder
       - name: binpack
-  
+
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -48,7 +35,6 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: volcano-scheduler
-  namespace: volcano-system
 rules:
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
@@ -74,11 +60,11 @@ rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
     verbs: ["list", "watch"]
-  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.sigs.dev"]
-    resources: ["podgroups"]
-    verbs: ["list", "watch", "update"]
   - apiGroups: [""]
     resources: ["namespaces"]
+    verbs: ["list", "watch"]
+  - apiGroups: [""]
+    resources: ["resourcequotas"]
     verbs: ["list", "watch"]
   - apiGroups: ["storage.k8s.io"]
     resources: ["storageclasses"]
@@ -92,10 +78,10 @@ rules:
   - apiGroups: ["scheduling.k8s.io"]
     resources: ["priorityclasses"]
     verbs: ["get", "list", "watch"]
-  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.sigs.dev"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues"]
     verbs: ["get", "list", "watch", "create", "delete"]
-  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.sigs.dev"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
     verbs: ["list", "watch", "update"]
 
@@ -104,7 +90,6 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: volcano-scheduler-role
-  namespace: volcano-system
 subjects:
   - kind: ServiceAccount
     name: volcano-scheduler
@@ -133,12 +118,12 @@ spec:
         app: volcano-scheduler
     spec:
       serviceAccount: volcano-scheduler
-      
+
       containers:
         - name: volcano-scheduler
           image: volcanosh/vc-scheduler:latest
           args:
-            - --alsologtostderr
+            - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
             - -v=3
             - 2>&1
@@ -163,7 +148,6 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: volcano-admission
-  namespace: volcano-system
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
@@ -181,19 +165,21 @@ rules:
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["create", "get", "patch"]
-  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.sigs.dev"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues"]
     verbs: ["get", "list"]
   - apiGroups: [""]
     resources: ["services"]
     verbs: ["get"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
+    resources: ["podgroups"]
+    verbs: ["get", "list", "watch"]
 
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: volcano-admission-role
-  namespace: volcano-system
 subjects:
   - kind: ServiceAccount
     name: volcano-admission
@@ -222,7 +208,7 @@ spec:
         app: volcano-admission
     spec:
       serviceAccount: volcano-admission
-      
+
       containers:
         - args:
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
@@ -230,11 +216,11 @@ spec:
             - --ca-cert-file=/admission.local.config/certificates/ca.crt
             - --webhook-namespace=volcano-system
             - --webhook-service-name=volcano-admission-service
-            - --alsologtostderr
+            - --logtostderr
             - --port=443
             - -v=4
             - 2>&1
-          image: volcanosh/vc-admission:latest
+          image: volcanosh/vc-webhook-manager:latest
           imagePullPolicy: IfNotPresent
           name: admission
           volumeMounts:
@@ -280,7 +266,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: main
-          image: volcanosh/vc-admission:latest
+          image: volcanosh/vc-webhook-manager:latest
           imagePullPolicy: IfNotPresent
           command: ["./gen-admission-secret.sh", "--service", "volcano-admission-service", "--namespace",
                     "volcano-system", "--secret", "volcano-admission-secret"]
@@ -298,19 +284,15 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: volcano-controllers
-  namespace: volcano-system
 rules:
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
     verbs: ["create", "get", "list", "watch", "delete"]
-  - apiGroups: ["batch"]
-    resources: ["jobs"]
-    verbs: ["create", "get", "list", "watch", "delete", "update"]
   - apiGroups: ["batch.volcano.sh"]
     resources: ["jobs"]
     verbs: ["get", "list", "watch", "update", "delete"]
   - apiGroups: ["batch.volcano.sh"]
-    resources: ["jobs/status"]
+    resources: ["jobs/status", "jobs/finalizers"]
     verbs: ["update", "patch"]
   - apiGroups: ["bus.volcano.sh"]
     resources: ["commands"]
@@ -330,19 +312,24 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "list", "watch", "create", "delete", "update"]
-  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.sigs.dev"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "delete", "update"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups", "queues", "queues/status"]
     verbs: ["get", "list", "watch", "create", "delete", "update"]
   - apiGroups: ["scheduling.k8s.io"]
     resources: ["priorityclasses"]
     verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "create"]
 
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: volcano-controllers-role
-  namespace: volcano-system
 subjects:
   - kind: ServiceAccount
     name: volcano-controllers
@@ -371,12 +358,12 @@ spec:
         app: volcano-controller
     spec:
       serviceAccount: volcano-controllers
-      
+
       containers:
           - name: volcano-controllers
-            image: volcanosh/vc-controllers:latest
+            image: volcanosh/vc-controller-manager:latest
             args:
-              - --alsologtostderr
+              - --logtostderr
               - -v=4
               - 2>&1
             imagePullPolicy: "IfNotPresent"
@@ -387,8 +374,6 @@ apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
   name: jobs.batch.volcano.sh
-  annotations:
-    "helm.sh/hook": crd-install
 spec:
   group: batch.volcano.sh
   names:
@@ -400,6 +385,7 @@ spec:
   scope: Namespaced
   validation:
     openAPIV3Schema:
+      type: object
       properties:
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation
@@ -430,6 +416,7 @@ spec:
                     type: string
                   volumeClaimName:
                     description: The name of the volume claim.
+                    type: string
                 type: object
                 required:
                   - mountPath
@@ -454,6 +441,8 @@ spec:
                     description: The Events recorded by scheduler; the controller takes
                       actions according to this Events.
                     type: array
+                    items:
+                      type: string
                   timeout:
                     description: Timeout is the grace period for controller to take
                       actions. Default to nil (take action immediately).
@@ -466,8 +455,6 @@ spec:
             plugins:
               description: Enabled task plugins when creating job.
               type: object
-              additionalProperties:
-                type: array
             tasks:
               description: Tasks specifies the task specification of Job
               items:
@@ -492,6 +479,8 @@ spec:
                           description: The Events recorded by scheduler; the controller takes
                             actions according to this Events.
                           type: array
+                          items:
+                            type: string
                         timeout:
                           description: Timeout is the grace period for controller
                             to take actions. Default to nil (take action immediately).
@@ -520,7 +509,7 @@ spec:
         status:
           description: Current status of Job
           properties:
-            Succeeded:
+            succeeded:
               description: The number of pods which reached phase Succeeded.
               format: int32
               type: integer
@@ -548,7 +537,7 @@ spec:
               description: The number that volcano retried to submit the job.
               format: int32
               type: integer
-            ControlledResources:
+            controlledResources:
               description: All of the resources that are controlled by this job.
               type: object
               additionalProperties:
@@ -566,6 +555,10 @@ spec:
                 reason:
                   description: Unique, one-word, CamelCase reason for the condition's
                     last transition.
+                  type: string
+                lastTransitionTime:
+                  description: The time of last state transition.
+                  format: date-time
                   type: string
               type: object
           type: object
@@ -585,8 +578,6 @@ apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
   name: commands.bus.volcano.sh
-  annotations:
-    "helm.sh/hook": crd-install
 spec:
   group: bus.volcano.sh
   names:
@@ -595,6 +586,7 @@ spec:
   scope: Namespaced
   validation:
     openAPIV3Schema:
+      type: object
       properties:
         action:
           description: Action defines the action that will be took to the target object.
@@ -629,103 +621,19 @@ status:
   storedVersions: []
 
 ---
-# Source: volcano/templates/scheduling_v1alpha1_podgroup.yaml
+# Source: volcano/templates/scheduling_v1beta1_podgroup.yaml
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
-  name: podgroups.scheduling.incubator.k8s.io
-  annotations:
-    "helm.sh/hook": crd-install
+  name: podgroups.scheduling.volcano.sh
 spec:
-  group: scheduling.incubator.k8s.io
-  names:
-    kind: PodGroup
-    plural: podgroups
-  scope: Namespaced
-  validation:
-    openAPIV3Schema:
-      properties:
-        apiVersion:
-          type: string
-        kind:
-          type: string
-        metadata:
-          type: object
-        spec:
-          properties:
-            minMember:
-              format: int32
-              type: integer
-          type: object
-        status:
-          properties:
-            succeeded:
-              format: int32
-              type: integer
-            failed:
-              format: int32
-              type: integer
-            running:
-              format: int32
-              type: integer
-          type: object
-      type: object
-  version: v1alpha1
-
----
-# Source: volcano/templates/scheduling_v1alpha1_queue.yaml
-apiVersion: apiextensions.k8s.io/v1beta1
-kind: CustomResourceDefinition
-metadata:
-  name: queues.scheduling.incubator.k8s.io
-  annotations:
-    "helm.sh/hook": crd-install
-spec:
-  group: scheduling.incubator.k8s.io
-  names:
-    kind: Queue
-    plural: queues
-  scope: Cluster
-  validation:
-    openAPIV3Schema:
-      properties:
-        apiVersion:
-          type: string
-        kind:
-          type: string
-        metadata:
-          type: object
-        spec:
-          properties:
-            weight:
-              format: int32
-              type: integer
-          type: object
-      type: object
-  version: v1alpha1
-  subresources:
-    status: {}
-status:
-  acceptedNames:
-    kind: ""
-    plural: ""
-  conditions: []
-  storedVersions: []
-
----
-# Source: volcano/templates/scheduling_v1alpha2_podgroup.yaml
-apiVersion: apiextensions.k8s.io/v1beta1
-kind: CustomResourceDefinition
-metadata:
-  name: podgroups.scheduling.sigs.dev
-spec:
-  group: scheduling.sigs.dev
+  group: scheduling.volcano.sh
   names:
     kind: PodGroup
     plural: podgroups
     shortNames:
       - pg
-      - podgroup-v1alpha2
+      - podgroup-v1beta1
   scope: Namespaced
   validation:
     openAPIV3Schema:
@@ -759,22 +667,22 @@ spec:
               type: integer
           type: object
       type: object
-  version: v1alpha2
+  version: v1beta1
 
 ---
-# Source: volcano/templates/scheduling_v1alpha2_queue.yaml
+# Source: volcano/templates/scheduling_v1beta1_queue.yaml
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
-  name: queues.scheduling.sigs.dev
+  name: queues.scheduling.volcano.sh
 spec:
-  group: scheduling.sigs.dev
+  group: scheduling.volcano.sh
   names:
     kind: Queue
     plural: queues
     shortNames:
       - q
-      - queue-v1alpha2
+      - queue-v1beta1
   scope: Cluster
   validation:
     openAPIV3Schema:
@@ -790,9 +698,13 @@ spec:
             weight:
               format: int32
               type: integer
+            capability:
+              type: object
           type: object
         status:
           properties:
+            state:
+              type: string
             unknown:
               format: int32
               type: integer
@@ -802,9 +714,12 @@ spec:
             running:
               format: int32
               type: integer
+            inqueue:
+              format: int32
+              type: integer
           type: object
       type: object
-  version: v1alpha2
+  version: v1beta1
   subresources:
     status: {}
 

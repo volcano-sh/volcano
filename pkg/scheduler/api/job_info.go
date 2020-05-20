@@ -18,14 +18,15 @@ package api
 
 import (
 	"fmt"
-	"k8s.io/api/core/v1"
-	policyv1 "k8s.io/api/policy/v1beta1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"sort"
 	"strings"
 
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+
+	"volcano.sh/volcano/pkg/apis/scheduling"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
 // TaskID is UID type for Task
@@ -53,12 +54,10 @@ type TaskInfo struct {
 }
 
 func getJobID(pod *v1.Pod) JobID {
-	if len(pod.Annotations) != 0 {
-		if gn, found := pod.Annotations[v1alpha2.GroupNameAnnotationKey]; found && len(gn) != 0 {
-			// Make sure Pod and PodGroup belong to the same namespace.
-			jobID := fmt.Sprintf("%s/%s", pod.Namespace, gn)
-			return JobID(jobID)
-		}
+	if gn, found := pod.Annotations[v1beta1.KubeGroupNameAnnotationKey]; found && len(gn) != 0 {
+		// Make sure Pod and PodGroup belong to the same namespace.
+		jobID := fmt.Sprintf("%s/%s", pod.Namespace, gn)
+		return JobID(jobID)
 	}
 
 	return ""
@@ -133,7 +132,6 @@ type JobInfo struct {
 
 	Priority int32
 
-	NodeSelector map[string]string
 	MinAvailable int32
 
 	NodesFitDelta NodeResourceMap
@@ -150,9 +148,6 @@ type JobInfo struct {
 
 	CreationTimestamp metav1.Time
 	PodGroup          *PodGroup
-
-	// TODO(k82cn): keep backward compatibility, removed it when v1alpha1 finalized.
-	PDB *policyv1.PodDisruptionBudget
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks
@@ -161,7 +156,6 @@ func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 		UID: uid,
 
 		MinAvailable:  0,
-		NodeSelector:  make(map[string]string),
 		NodesFitDelta: make(NodeResourceMap),
 		Allocated:     EmptyResource(),
 		TotalRequest:  EmptyResource(),
@@ -195,36 +189,6 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.PodGroup = pg
 }
 
-// SetPDB sets PDB to a job
-func (ji *JobInfo) SetPDB(pdb *policyv1.PodDisruptionBudget) {
-	ji.Name = pdb.Name
-	ji.MinAvailable = pdb.Spec.MinAvailable.IntVal
-	ji.Namespace = pdb.Namespace
-
-	ji.CreationTimestamp = pdb.GetCreationTimestamp()
-	ji.PDB = pdb
-}
-
-// UnsetPDB removes PDB info of a job
-func (ji *JobInfo) UnsetPDB() {
-	ji.PDB = nil
-}
-
-// GetTasks gets all tasks with the taskStatus
-func (ji *JobInfo) GetTasks(statuses ...TaskStatus) []*TaskInfo {
-	var res []*TaskInfo
-
-	for _, status := range statuses {
-		if tasks, found := ji.TaskStatusIndex[status]; found {
-			for _, task := range tasks {
-				res = append(res, task.Clone())
-			}
-		}
-	}
-
-	return res
-}
-
 func (ji *JobInfo) addTaskIndex(ti *TaskInfo) {
 	if _, found := ji.TaskStatusIndex[ti.Status]; !found {
 		ji.TaskStatusIndex[ti.Status] = tasksMap{}
@@ -245,16 +209,21 @@ func (ji *JobInfo) AddTaskInfo(ti *TaskInfo) {
 	}
 }
 
-// UpdateTaskStatus is used to update task's status in a job
+// UpdateTaskStatus is used to update task's status in a job.
+// If error occurs both task and job are guaranteed to be in the original state.
 func (ji *JobInfo) UpdateTaskStatus(task *TaskInfo, status TaskStatus) error {
 	if err := validateStatusUpdate(task.Status, status); err != nil {
 		return err
 	}
 
-	// Remove the task from the task list firstly
-	ji.DeleteTaskInfo(task)
+	// First remove the task (if exist) from the task list.
+	if _, found := ji.Tasks[task.UID]; found {
+		if err := ji.DeleteTaskInfo(task); err != nil {
+			return err
+		}
+	}
 
-	// Update task's status to the target status
+	// Update task's status to the target status once task addition is guaranteed to succeed.
 	task.Status = status
 	ji.AddTaskInfo(task)
 
@@ -300,14 +269,12 @@ func (ji *JobInfo) Clone() *JobInfo {
 		Priority:  ji.Priority,
 
 		MinAvailable:  ji.MinAvailable,
-		NodeSelector:  map[string]string{},
 		Allocated:     EmptyResource(),
 		TotalRequest:  EmptyResource(),
 		NodesFitDelta: make(NodeResourceMap),
 
 		NodesFitErrors: make(map[TaskID]*FitErrors),
 
-		PDB:      ji.PDB,
 		PodGroup: ji.PodGroup,
 
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
@@ -315,10 +282,6 @@ func (ji *JobInfo) Clone() *JobInfo {
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
-
-	for k, v := range ji.NodeSelector {
-		info.NodeSelector[k] = v
-	}
 
 	for _, task := range ji.Tasks {
 		info.AddTaskInfo(task.Clone())
@@ -358,21 +321,30 @@ func (ji *JobInfo) FitError() string {
 		sort.Strings(reasonStrings)
 		return reasonStrings
 	}
-	reasonMsg := fmt.Sprintf("job is not ready, %v.", strings.Join(sortReasonsHistogram(), ", "))
+	reasonMsg := fmt.Sprintf("%v, %v.", scheduling.PodGroupNotReady, strings.Join(sortReasonsHistogram(), ", "))
 	return reasonMsg
 }
 
-// ReadyTaskNum returns the number of tasks that are ready.
+// ReadyTaskNum returns the number of tasks that are ready or that is best-effort.
 func (ji *JobInfo) ReadyTaskNum() int32 {
-	occupid := 0
+	var occupied int32
 	for status, tasks := range ji.TaskStatusIndex {
 		if AllocatedStatus(status) ||
 			status == Succeeded {
-			occupid = occupid + len(tasks)
+			occupied += int32(len(tasks))
+			continue
+		}
+
+		if status == Pending {
+			for _, task := range tasks {
+				if task.InitResreq.IsEmpty() {
+					occupied++
+				}
+			}
 		}
 	}
 
-	return int32(occupid)
+	return occupied
 }
 
 // WaitingTaskNum returns the number of tasks that are pipelined.

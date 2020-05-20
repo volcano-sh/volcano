@@ -23,9 +23,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/apis/helpers"
+	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler"
 	"volcano.sh/volcano/pkg/version"
 
@@ -34,12 +36,11 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/klog"
 
 	// Register gcp auth
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
-	"k8s.io/client-go/rest"
 	restclient "k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
@@ -51,33 +52,13 @@ const (
 	retryPeriod   = 5 * time.Second
 )
 
-func buildConfig(opt *options.ServerOption) (*rest.Config, error) {
-	var cfg *rest.Config
-	var err error
-
-	master := opt.Master
-	kubeconfig := opt.Kubeconfig
-	if master != "" || kubeconfig != "" {
-		cfg, err = clientcmd.BuildConfigFromFlags(master, kubeconfig)
-	} else {
-		cfg, err = rest.InClusterConfig()
-	}
-	if err != nil {
-		return nil, err
-	}
-	cfg.QPS = opt.KubeAPIQPS
-	cfg.Burst = opt.KubeAPIBurst
-
-	return cfg, nil
-}
-
-// Run the kube-batch scheduler
+// Run the volcano scheduler
 func Run(opt *options.ServerOption) error {
 	if opt.PrintVersion {
 		version.PrintVersionAndExit()
 	}
 
-	config, err := buildConfig(opt)
+	config, err := kube.BuildConfig(opt.KubeClientOptions)
 	if err != nil {
 		return err
 	}
@@ -93,8 +74,12 @@ func Run(opt *options.ServerOption) error {
 
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
-		glog.Fatalf("Prometheus Http Server failed %s", http.ListenAndServe(opt.ListenAddress, nil))
+		klog.Fatalf("Prometheus Http Server failed %s", http.ListenAndServe(opt.ListenAddress, nil))
 	}()
+
+	if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-scheduler"); err != nil {
+		return err
+	}
 
 	run := func(ctx context.Context) {
 		sched.Run(ctx.Done())
@@ -127,6 +112,7 @@ func Run(opt *options.ServerOption) error {
 		opt.LockObjectNamespace,
 		opt.SchedulerName,
 		leaderElectionClient.CoreV1(),
+		leaderElectionClient.CoordinationV1(),
 		resourcelock.ResourceLockConfig{
 			Identity:      id,
 			EventRecorder: eventRecorder,
@@ -143,7 +129,7 @@ func Run(opt *options.ServerOption) error {
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: run,
 			OnStoppedLeading: func() {
-				glog.Fatalf("leaderelection lost")
+				klog.Fatalf("leaderelection lost")
 			},
 		},
 	})

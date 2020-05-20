@@ -19,6 +19,7 @@ package v1alpha1
 import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 )
 
 // +genclient
@@ -28,13 +29,15 @@ import (
 type Job struct {
 	metav1.TypeMeta `json:",inline"`
 
+	// metadata of the volcano job
+	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
-	// Specification of the desired behavior of a cron job, including the minAvailable
+	// Specification of the desired behavior of the volcano job, including the minAvailable
 	// +optional
 	Spec JobSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
 
-	// Current status of Job
+	// Current status of the volcano Job
 	// +optional
 	Status JobStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
 }
@@ -50,6 +53,7 @@ type JobSpec struct {
 	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
 
 	// The volumes mount on Job
+	// +optional
 	Volumes []VolumeSpec `json:"volumes,omitempty" protobuf:"bytes,3,opt,name=volumes"`
 
 	// Tasks specifies the task specification of Job
@@ -66,6 +70,7 @@ type JobSpec struct {
 	Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,6,opt,name=plugins"`
 
 	//Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
+	// +optional
 	Queue string `json:"queue,omitempty" protobuf:"bytes,7,opt,name=queue"`
 
 	// Specifies the maximum number of retries before marking this Job failed.
@@ -94,9 +99,11 @@ type VolumeSpec struct {
 	MountPath string `json:"mountPath" protobuf:"bytes,1,opt,name=mountPath"`
 
 	// defined the PVC name
+	// +optional
 	VolumeClaimName string `json:"volumeClaimName,omitempty" protobuf:"bytes,2,opt,name=volumeClaimName"`
 
 	// VolumeClaim defines the PVC used by the VolumeMount.
+	// +optional
 	VolumeClaim *v1.PersistentVolumeClaimSpec `json:"volumeClaim,omitempty" protobuf:"bytes,3,opt,name=volumeClaim"`
 }
 
@@ -118,82 +125,29 @@ const (
 	JobStatusError JobEvent = "JobStatusError"
 )
 
-// Event represent the phase of Job, e.g. pod-failed.
-type Event string
-
-const (
-	// AnyEvent means all event
-	AnyEvent Event = "*"
-	// PodFailedEvent is triggered if Pod was failed
-	PodFailedEvent Event = "PodFailed"
-	// PodEvictedEvent is triggered if Pod was deleted
-	PodEvictedEvent Event = "PodEvicted"
-	// JobUnknownEvent These below are several events can lead to job 'Unknown'
-	// 1. Task Unschedulable, this is triggered when part of
-	//    pods can't be scheduled while some are already running in gang-scheduling case.
-	JobUnknownEvent Event = "Unknown"
-	// TaskCompletedEvent is triggered if the 'Replicas' amount of pods in one task are succeed
-	TaskCompletedEvent Event = "TaskCompleted"
-
-	// Note: events below are used internally, should not be used by users.
-
-	// OutOfSyncEvent is triggered if Pod/Job were updated
-	OutOfSyncEvent Event = "OutOfSync"
-	// CommandIssuedEvent is triggered if a command is raised by user
-	CommandIssuedEvent Event = "CommandIssued"
-)
-
-// Action is the action that Job controller will take according to the event.
-type Action string
-
-const (
-	// AbortJobAction if this action is set, the whole job will be aborted:
-	// all Pod of Job will be evicted, and no Pod will be recreated
-	AbortJobAction Action = "AbortJob"
-	// RestartJobAction if this action is set, the whole job will be restarted
-	RestartJobAction Action = "RestartJob"
-	// RestartTaskAction if this action is set, only the task will be restarted; default action.
-	// This action can not work together with job level events, e.g. JobUnschedulable
-	RestartTaskAction Action = "RestartTask"
-	// TerminateJobAction if this action is set, the whole job wil be terminated
-	// and can not be resumed: all Pod of Job will be evicted, and no Pod will be recreated.
-	TerminateJobAction Action = "TerminateJob"
-	// CompleteJobAction if this action is set, the unfinished pods will be killed, job completed.
-	CompleteJobAction Action = "CompleteJob"
-	// ResumeJobAction is the action to resume an aborted job.
-	ResumeJobAction Action = "ResumeJob"
-
-	// Note: actions below are only used internally, should not be used by users.
-
-	// SyncJobAction is the action to sync Job/Pod status.
-	SyncJobAction Action = "SyncJob"
-	// EnqueueAction is the action to sync Job inqueue status.
-	EnqueueAction Action = "EnqueueJob"
-)
-
 // LifecyclePolicy specifies the lifecycle and error handling of task and job.
 type LifecyclePolicy struct {
 	// The action that will be taken to the PodGroup according to Event.
 	// One of "Restart", "None".
 	// Default to None.
 	// +optional
-	Action Action `json:"action,omitempty" protobuf:"bytes,1,opt,name=action"`
+	Action v1alpha1.Action `json:"action,omitempty" protobuf:"bytes,1,opt,name=action"`
 
 	// The Event recorded by scheduler; the controller takes actions
 	// according to this Event.
 	// +optional
-	Event Event `json:"event,omitempty" protobuf:"bytes,2,opt,name=event"`
+	Event v1alpha1.Event `json:"event,omitempty" protobuf:"bytes,2,opt,name=event"`
 
 	// The Events recorded by scheduler; the controller takes actions
 	// according to this Events.
 	// +optional
-	Events []Event `json:"events,omitempty" protobuf:"bytes,3,opt,name=events"`
+	Events []v1alpha1.Event `json:"events,omitempty" protobuf:"bytes,3,opt,name=events"`
 
 	// The exit code of the pod container, controller will take action
 	// according to this code.
 	// Note: only one of `Event` or `ExitCode` can be specified.
 	// +optional
-	ExitCode *int32
+	ExitCode *int32 `json:"exitCode,omitempty" protobuf:"bytes,5,opt,name=exitCode"`
 
 	// Timeout is the grace period for controller to take actions.
 	// Default to nil (take action immediately).
@@ -204,13 +158,16 @@ type LifecyclePolicy struct {
 // TaskSpec specifies the task specification of Job
 type TaskSpec struct {
 	// Name specifies the name of tasks
+	// +optional
 	Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
 
 	// Replicas specifies the replicas of this TaskSpec in Job
+	// +optional
 	Replicas int32 `json:"replicas,omitempty" protobuf:"bytes,2,opt,name=replicas"`
 
 	// Specifies the pod that will be created for this TaskSpec
 	// when executing a Job
+	// +optional
 	Template v1.PodTemplateSpec `json:"template,omitempty" protobuf:"bytes,3,opt,name=template"`
 
 	// Specifies the lifecycle of task
@@ -242,8 +199,6 @@ const (
 	Terminated JobPhase = "Terminated"
 	// Failed is the phase that the job is restarted failed reached the maximum number of retries.
 	Failed JobPhase = "Failed"
-	// Inqueue is the phase that cluster have idle resource to schedule the job
-	Inqueue JobPhase = "Inqueue"
 )
 
 // JobState contains details for the current state of the job.
@@ -268,6 +223,7 @@ type JobState struct {
 // JobStatus represents the current status of a Job
 type JobStatus struct {
 	// Current state of Job.
+	// +optional
 	State JobState `json:"state,omitempty" protobuf:"bytes,1,opt,name=state"`
 
 	// The minimal available pods to run for this Job
@@ -299,6 +255,7 @@ type JobStatus struct {
 	Unknown int32 `json:"unknown,omitempty" protobuf:"bytes,8,opt,name=unknown"`
 
 	//Current version of job
+	// +optional
 	Version int32 `json:"version,omitempty" protobuf:"bytes,9,opt,name=version"`
 
 	// The number of Job retries.
@@ -306,6 +263,7 @@ type JobStatus struct {
 	RetryCount int32 `json:"retryCount,omitempty" protobuf:"bytes,10,opt,name=retryCount"`
 
 	// The resources that controlled by this job, e.g. Service, ConfigMap
+	// +optional
 	ControlledResources map[string]string `json:"controlledResources,omitempty" protobuf:"bytes,11,opt,name=controlledResources"`
 }
 

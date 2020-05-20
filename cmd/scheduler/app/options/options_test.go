@@ -22,6 +22,8 @@ import (
 	"time"
 
 	"github.com/spf13/pflag"
+
+	"volcano.sh/volcano/pkg/kube"
 )
 
 func TestAddFlags(t *testing.T) {
@@ -41,8 +43,16 @@ func TestAddFlags(t *testing.T) {
 		SchedulePeriod: 5 * time.Minute,
 		DefaultQueue:   defaultQueue,
 		ListenAddress:  defaultListenAddress,
-		KubeAPIBurst:   defaultBurst,
-		KubeAPIQPS:     defaultQPS,
+		KubeClientOptions: kube.ClientOptions{
+			Master:     "",
+			KubeConfig: "",
+			QPS:        defaultQPS,
+			Burst:      defaultBurst,
+		},
+		HealthzBindAddress:         ":11251",
+		MinNodesToFind:             defaultMinNodesToFind,
+		MinPercentageOfNodesToFind: defaultMinPercentageOfNodesToFind,
+		PercentageOfNodesToFind:    defaultPercentageOfNodesToFind,
 	}
 
 	if !reflect.DeepEqual(expected, s) {

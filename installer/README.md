@@ -4,7 +4,7 @@ Volcano is a batch system built on Kubernetes. It provides a suite of mechanisms
 Kubernetes that are commonly required by many classes of batch & elastic workload including:
 
 1. machine learning/deep learning,
-2. bioinformatics/genomics, and 
+2. bioinformatics/genomics, and
 3. other "big data" applications.
 
 ## Prerequisites
@@ -69,11 +69,11 @@ The following are the list configurable parameters of Volcano Chart and their de
 | Parameter|Description|Default Value|
 |----------------|-----------------|----------------------|
 |`basic.image_tag_version`| Docker image version Tag | `latest`|
-|`basic.controller_image_name`|Controller Docker Image Name|`volcanosh/vc-controllers`|
+|`basic.controller_image_name`|Controller Docker Image Name|`volcanosh/vc-controller-manager`|
 |`basic.scheduler_image_name`|Scheduler Docker Image Name|`volcanosh/vc-scheduler`|
-|`basic.admission_image_name`|Admission Controller Image Name|`volcanosh/vc-admission`|
+|`basic.admission_image_name`|Admission Controller Image Name|`volcanosh/vc-webhook-manager`|
 |`basic.admission_secret_name`|Volcano Admission Secret Name|`volcano-admission-secret`|
-|`basic.scheduler_config_file`|Configuration File name for Scheduler|`volcano-scheduler.conf`|
+|`basic.scheduler_config_file`|Configuration File name for Scheduler|`config/volcano-scheduler.conf`|
 |`basic.image_pull_secret`|Image Pull Secret|`""`|
 |`basic.image_pull_policy`|Image Pull Policy|`IfNotPresent`|
 |`basic.admission_app_name`|Admission Controller App Name|`volcano-admission`|

@@ -22,59 +22,18 @@ import (
 	v12 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
 var _ = Describe("Job E2E Test: Test Job PVCs", func() {
-	It("Generate PVC name if not specified", func() {
-		jobName := "job-pvc-name-empty"
-		namespace := "test"
-		taskName := "task"
-		pvcName := "specifiedpvcname"
-		context := initTestContext()
-		defer cleanupTestContext(context)
-
-		job := createJob(context, &jobSpec{
-			namespace: namespace,
-			name:      jobName,
-			tasks: []taskSpec{
-				{
-					img:  defaultNginxImage,
-					req:  oneCPU,
-					min:  1,
-					rep:  1,
-					name: taskName,
-				},
-			},
-			volumes: []v1alpha1.VolumeSpec{
-				{
-					MountPath: "/mounttwo",
-				},
-			},
-		})
-
-		err := waitJobReady(context, job)
-		Expect(err).NotTo(HaveOccurred())
-
-		job, err = context.vcclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
-
-		Expect(len(job.Spec.Volumes)).To(Equal(1),
-			"Two volumes should be created")
-		for _, volume := range job.Spec.Volumes {
-			Expect(volume.VolumeClaimName).Should(Or(ContainSubstring(jobName), Equal(pvcName)),
-				"PVC name should be generated for manually specified.")
-		}
-	})
-
-	It("use exisisting PVC  in job", func() {
+	It("use exisisting PVC in job", func() {
 		jobName := "job-pvc-name-exist"
-		namespace := "test"
 		taskName := "pvctask"
 		pvName := "job-pv-name"
 		pvcName := "job-pvc-name-exist"
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		var tt v12.HostPathType
 		tt = "DirectoryOrCreate"
@@ -83,8 +42,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 
 		pv := v12.PersistentVolume{
 			ObjectMeta: metav1.ObjectMeta{
-				Namespace: namespace,
-				Name:      pvName,
+				Name: pvName,
 			},
 			Spec: v12.PersistentVolumeSpec{
 				StorageClassName: storageClsName,
@@ -101,12 +59,12 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 				},
 			},
 		}
-		_, err := context.kubeclient.CoreV1().PersistentVolumes().Create(&pv)
+		_, err := ctx.kubeclient.CoreV1().PersistentVolumes().Create(&pv)
 		Expect(err).NotTo(HaveOccurred(), "pv creation ")
-		//create pvc
+		// create pvc
 		pvc := v12.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{
-				Namespace: namespace,
+				Namespace: ctx.namespace,
 				Name:      pvcName,
 			},
 			Spec: v12.PersistentVolumeClaimSpec{
@@ -123,10 +81,21 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 			},
 		}
 
-		_, err1 := context.kubeclient.CoreV1().PersistentVolumeClaims(namespace).Create(&pvc)
+		_, err1 := ctx.kubeclient.CoreV1().PersistentVolumeClaims(ctx.namespace).Create(&pvc)
 		Expect(err1).NotTo(HaveOccurred(), "pvc creation")
-		job := createJob(context, &jobSpec{
-			namespace: namespace,
+
+		pvSpec := &v12.PersistentVolumeClaimSpec{
+			Resources: v12.ResourceRequirements{
+				Requests: v12.ResourceList{
+					v12.ResourceName(v12.ResourceStorage): resource.MustParse("1Gi"),
+				},
+			},
+			AccessModes: []v12.PersistentVolumeAccessMode{
+				v12.ReadWriteOnce,
+			},
+		}
+		job := createJob(ctx, &jobSpec{
+			namespace: ctx.namespace,
 			name:      jobName,
 			tasks: []taskSpec{
 				{
@@ -139,32 +108,34 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 			},
 			volumes: []v1alpha1.VolumeSpec{
 				{
-					MountPath:       "/mounttwo",
+					MountPath:       "/mountone",
 					VolumeClaimName: pvcName,
-					VolumeClaim:     &pvc.Spec,
+				},
+				{
+					MountPath:   "/mounttwo",
+					VolumeClaim: pvSpec,
 				},
 			},
 		})
 
-		err = waitJobReady(context, job)
+		err = waitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		job, err = context.vcclient.BatchV1alpha1().Jobs(namespace).Get(jobName, metav1.GetOptions{})
+		job, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Get(jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(len(job.Spec.Volumes)).To(Equal(1),
+		Expect(len(job.Spec.Volumes)).To(Equal(2),
 			" volume should be created")
-		for _, volume := range job.Spec.Volumes {
-			Expect(volume.VolumeClaimName).Should((Equal(pvcName)),
-				"PVC name should not be generated .")
-		}
+		Expect(job.Spec.Volumes[0].VolumeClaimName).Should(Equal(pvcName),
+			"volume 1 PVC name should not be generated .")
+		Expect(job.Spec.Volumes[1].VolumeClaimName).Should(Not(Equal("")),
+			"volume 0 PVC name should be generated.")
 	})
 
 	It("Generate PodGroup and valid minResource when creating job", func() {
 		jobName := "job-name-podgroup"
-		namespace := "test"
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		resource := v12.ResourceList{
 			"cpu":            resource.MustParse("1000m"),
@@ -172,8 +143,8 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 			"nvidia.com/gpu": resource.MustParse("1"),
 		}
 
-		job := createJob(context, &jobSpec{
-			namespace: namespace,
+		job := createJob(ctx, &jobSpec{
+			namespace: ctx.namespace,
 			name:      jobName,
 			tasks: []taskSpec{
 				{
@@ -201,10 +172,10 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 			"nvidia.com/gpu": 2,
 		}
 
-		err := waitJobStatePending(context, job)
+		err := waitJobStatePending(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pGroup, err := context.vcclient.SchedulingV1alpha2().PodGroups(namespace).Get(jobName, metav1.GetOptions{})
+		pGroup, err := ctx.vcclient.SchedulingV1beta1().PodGroups(ctx.namespace).Get(jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		for name, q := range *pGroup.Spec.MinResources {

@@ -18,18 +18,20 @@ package helpers
 
 import (
 	"fmt"
-	"k8s.io/api/core/v1"
 	"math/rand"
 	"strings"
 	"time"
+
+	"k8s.io/api/core/v1"
+
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
 const (
 	// PodNameFmt pod name format
 	PodNameFmt = "%s-%s-%d"
-	// VolumeClaimFmt  volume claim name format
-	VolumeClaimFmt = "%s-volume-%s"
+	// persistentVolumeClaimFmt represents persistent volume claim name format
+	persistentVolumeClaimFmt = "%s-pvc-%s"
 )
 
 // GetTaskIndex   returns task Index
@@ -47,7 +49,8 @@ func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(PodNameFmt, jobName, taskName, index)
 }
 
-func genRandomStr(l int) string {
+// GenRandomStr generate random str with specified length l
+func GenRandomStr(l int) string {
 	str := "0123456789abcdefghijklmnopqrstuvwxyz"
 	bytes := []byte(str)
 	var result []byte
@@ -58,9 +61,9 @@ func genRandomStr(l int) string {
 	return string(result)
 }
 
-// MakeVolumeClaimName creates volume claim name
-func MakeVolumeClaimName(jobName string) string {
-	return fmt.Sprintf(VolumeClaimFmt, jobName, genRandomStr(12))
+// GenPVCName generates pvc name with job name
+func GenPVCName(jobName string) string {
+	return fmt.Sprintf(persistentVolumeClaimFmt, jobName, GenRandomStr(12))
 }
 
 // GetJobKeyByReq gets the key for the job request

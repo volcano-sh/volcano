@@ -18,11 +18,6 @@ package cache
 
 import (
 	"fmt"
-	"sync"
-	"time"
-
-	"github.com/golang/glog"
-
 	"k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -32,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	infov1 "k8s.io/client-go/informers/core/v1"
-	policyv1 "k8s.io/client-go/informers/policy/v1beta1"
 	schedv1 "k8s.io/client-go/informers/scheduling/v1beta1"
 	storagev1 "k8s.io/client-go/informers/storage/v1"
 	"k8s.io/client-go/kubernetes"
@@ -41,20 +35,21 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/scheduler/volumebinder"
+	"sync"
+	"time"
+	vcv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
-	kbver "volcano.sh/volcano/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/apis/scheduling"
+	schedulingscheme "volcano.sh/volcano/pkg/apis/scheduling/scheme"
+	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
-	kbschema "volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
-	kbinfo "volcano.sh/volcano/pkg/client/informers/externalversions"
-	kbinfov1 "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1alpha1"
-	kbinfov2 "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1alpha2"
-	"volcano.sh/volcano/pkg/scheduler/api"
-	kbapi "volcano.sh/volcano/pkg/scheduler/api"
+	vcinformer "volcano.sh/volcano/pkg/client/informers/externalversions"
+	vcinformerv1 "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1beta1"
+	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 
 func init() {
@@ -62,7 +57,7 @@ func init() {
 		v1.AddToScheme,
 	}
 
-	utilruntime.Must(schemeBuilder.AddToScheme(kbschema.Scheme))
+	utilruntime.Must(schemeBuilder.AddToScheme(scheme.Scheme))
 }
 
 // New returns a Cache implementation.
@@ -75,24 +70,22 @@ type SchedulerCache struct {
 	sync.Mutex
 
 	kubeclient *kubernetes.Clientset
-	kbclient   *kbver.Clientset
+	vcclient   *vcclient.Clientset
 
 	defaultQueue string
 	// schedulerName is the name for kube batch scheduler
 	schedulerName string
 
-	podInformer              infov1.PodInformer
-	nodeInformer             infov1.NodeInformer
-	pdbInformer              policyv1.PodDisruptionBudgetInformer
-	nsInformer               infov1.NamespaceInformer
-	podGroupInformerV1alpha1 kbinfov1.PodGroupInformer
-	podGroupInformerV1alpha2 kbinfov2.PodGroupInformer
-	queueInformerV1alpha1    kbinfov1.QueueInformer
-	queueInformerV1alpha2    kbinfov2.QueueInformer
-	pvInformer               infov1.PersistentVolumeInformer
-	pvcInformer              infov1.PersistentVolumeClaimInformer
-	scInformer               storagev1.StorageClassInformer
-	pcInformer               schedv1.PriorityClassInformer
+	podInformer             infov1.PodInformer
+	nodeInformer            infov1.NodeInformer
+	nsInformer              infov1.NamespaceInformer
+	podGroupInformerV1beta1 vcinformerv1.PodGroupInformer
+	queueInformerV1beta1    vcinformerv1.QueueInformer
+	pvInformer              infov1.PersistentVolumeInformer
+	pvcInformer             infov1.PersistentVolumeClaimInformer
+	scInformer              storagev1.StorageClassInformer
+	pcInformer              schedv1.PriorityClassInformer
+	quotaInformer           infov1.ResourceQuotaInformer
 
 	Binder        Binder
 	Evictor       Evictor
@@ -101,12 +94,14 @@ type SchedulerCache struct {
 
 	Recorder record.EventRecorder
 
-	Jobs                 map[kbapi.JobID]*kbapi.JobInfo
-	Nodes                map[string]*kbapi.NodeInfo
-	Queues               map[kbapi.QueueID]*kbapi.QueueInfo
+	Jobs                 map[schedulingapi.JobID]*schedulingapi.JobInfo
+	Nodes                map[string]*schedulingapi.NodeInfo
+	Queues               map[schedulingapi.QueueID]*schedulingapi.QueueInfo
 	PriorityClasses      map[string]*v1beta1.PriorityClass
 	defaultPriorityClass *v1beta1.PriorityClass
 	defaultPriority      int32
+
+	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
 	errTasks    workqueue.RateLimitingInterface
 	deletedJobs workqueue.RateLimitingInterface
@@ -125,7 +120,7 @@ func (db *defaultBinder) Bind(p *v1.Pod, hostname string) error {
 			Name: hostname,
 		},
 	}); err != nil {
-		glog.Errorf("Failed to bind pod <%v/%v>: %#v", p.Namespace, p.Name, err)
+		klog.Errorf("Failed to bind pod <%v/%v>: %#v", p.Namespace, p.Name, err)
 		return err
 	}
 	return nil
@@ -137,10 +132,10 @@ type defaultEvictor struct {
 
 //Evict will send delete pod request to api server
 func (de *defaultEvictor) Evict(p *v1.Pod) error {
-	glog.V(3).Infof("Evicting pod %v/%v", p.Namespace, p.Name)
+	klog.V(3).Infof("Evicting pod %v/%v", p.Namespace, p.Name)
 
 	if err := de.kubeclient.CoreV1().Pods(p.Namespace).Delete(p.Name, nil); err != nil {
-		glog.Errorf("Failed to evict pod <%v/%v>: %#v", p.Namespace, p.Name, err)
+		klog.Errorf("Failed to evict pod <%v/%v>: %#v", p.Namespace, p.Name, err)
 		return err
 	}
 	return nil
@@ -149,7 +144,7 @@ func (de *defaultEvictor) Evict(p *v1.Pod) error {
 // defaultStatusUpdater is the default implementation of the StatusUpdater interface
 type defaultStatusUpdater struct {
 	kubeclient *kubernetes.Clientset
-	kbclient   *kbver.Clientset
+	vcclient   *vcclient.Clientset
 }
 
 // following the same logic as podutil.UpdatePodCondition
@@ -179,7 +174,7 @@ func podConditionHaveUpdate(status *v1.PodStatus, condition *v1.PodCondition) bo
 
 // UpdatePodCondition will Update pod with podCondition
 func (su *defaultStatusUpdater) UpdatePodCondition(pod *v1.Pod, condition *v1.PodCondition) (*v1.Pod, error) {
-	glog.V(3).Infof("Updating pod condition for %s/%s to (%s==%s)", pod.Namespace, pod.Name, condition.Type, condition.Status)
+	klog.V(3).Infof("Updating pod condition for %s/%s to (%s==%s)", pod.Namespace, pod.Name, condition.Type, condition.Status)
 	if podutil.UpdatePodCondition(&pod.Status, condition) {
 		return su.kubeclient.CoreV1().Pods(pod.Namespace).UpdateStatus(pod)
 	}
@@ -187,41 +182,26 @@ func (su *defaultStatusUpdater) UpdatePodCondition(pod *v1.Pod, condition *v1.Po
 }
 
 // UpdatePodGroup will Update pod with podCondition
-func (su *defaultStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup, error) {
-	if pg.Version == api.PodGroupVersionV1Alpha1 {
-		podGroup, err := api.ConvertPodGroupInfoToV1alpha1(pg)
-		if err != nil {
-			glog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
-		}
-		updated, err := su.kbclient.SchedulingV1alpha1().PodGroups(podGroup.Namespace).Update(podGroup)
-		if err != nil {
-			glog.Errorf("Error while updating podgroup with error: %v", err)
-		}
-		podGroupInfo, err := api.ConvertV1alpha1ToPodGroupInfo(updated)
-		if err != nil {
-			glog.Errorf("Error While converting v1alpha.Podgroup to api.PodGroup with error: %v", err)
-			return nil, err
-		}
-		return podGroupInfo, nil
+func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*schedulingapi.PodGroup, error) {
+	podgroup := &vcv1beta1.PodGroup{}
+	if err := schedulingscheme.Scheme.Convert(&pg.PodGroup, podgroup, nil); err != nil {
+		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
+		return nil, err
 	}
 
-	if pg.Version == api.PodGroupVersionV1Alpha2 {
-		podGroup, err := api.ConvertPodGroupInfoToV1alpha2(pg)
-		if err != nil {
-			glog.Errorf("Error while converting PodGroup to v1alpha2.PodGroup with error: %v", err)
-		}
-		updated, err := su.kbclient.SchedulingV1alpha2().PodGroups(podGroup.Namespace).Update(podGroup)
-		if err != nil {
-			glog.Errorf("Error while updating podgroup with error: %v", err)
-		}
-		podGroupInfo, err := api.ConvertV1alpha2ToPodGroupInfo(updated)
-		if err != nil {
-			glog.Errorf("Error While converting v2alpha.Podgroup to api.PodGroup with error: %v", err)
-			return nil, err
-		}
-		return podGroupInfo, nil
+	updated, err := su.vcclient.SchedulingV1beta1().PodGroups(podgroup.Namespace).Update(podgroup)
+	if err != nil {
+		klog.Errorf("Error while updating PodGroup with error: %v", err)
+		return nil, err
 	}
-	return nil, fmt.Errorf("Provide Proper version of PodGroup, Invalid PodGroup version: %s", pg.Version)
+
+	podGroupInfo := &schedulingapi.PodGroup{Version: schedulingapi.PodGroupVersionV1Beta1}
+	if err := schedulingscheme.Scheme.Convert(updated, &podGroupInfo.PodGroup, nil); err != nil {
+		klog.Errorf("Error while converting v1alpha.PodGroup to api.PodGroup with error: %v", err)
+		return nil, err
+	}
+
+	return podGroupInfo, nil
 }
 
 type defaultVolumeBinder struct {
@@ -229,7 +209,7 @@ type defaultVolumeBinder struct {
 }
 
 // AllocateVolumes allocates volume on the host to the task
-func (dvb *defaultVolumeBinder) AllocateVolumes(task *api.TaskInfo, hostname string) error {
+func (dvb *defaultVolumeBinder) AllocateVolumes(task *schedulingapi.TaskInfo, hostname string) error {
 	allBound, err := dvb.volumeBinder.Binder.AssumePodVolumes(task.Pod, hostname)
 	task.VolumeReady = allBound
 
@@ -237,7 +217,7 @@ func (dvb *defaultVolumeBinder) AllocateVolumes(task *api.TaskInfo, hostname str
 }
 
 // BindVolumes binds volumes to the task
-func (dvb *defaultVolumeBinder) BindVolumes(task *api.TaskInfo) error {
+func (dvb *defaultVolumeBinder) BindVolumes(task *schedulingapi.TaskInfo) error {
 	// If task's volumes are ready, did not bind them again.
 	if task.VolumeReady {
 		return nil
@@ -251,9 +231,9 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
 	}
-	kbClient, err := kbver.NewForConfig(config)
+	vcClient, err := vcclient.NewForConfig(config)
 	if err != nil {
-		panic(fmt.Sprintf("failed init kbClient, with err: %v", err))
+		panic(fmt.Sprintf("failed init vcClient, with err: %v", err))
 	}
 	eventClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -261,29 +241,31 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	}
 
 	// create default queue
-	defaultQue := v1alpha2.Queue{
+	defaultQue := vcv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: defaultQueue,
 		},
-		Spec: v1alpha2.QueueSpec{
+		Spec: vcv1beta1.QueueSpec{
 			Weight: 1,
 		},
 	}
-	if _, err := kbClient.SchedulingV1alpha2().Queues().Create(&defaultQue); err != nil && !apierrors.IsAlreadyExists(err) {
+	if _, err := vcClient.SchedulingV1beta1().Queues().Create(&defaultQue); err != nil && !apierrors.IsAlreadyExists(err) {
 		panic(fmt.Sprintf("failed init default queue, with err: %v", err))
 	}
 
 	sc := &SchedulerCache{
-		Jobs:            make(map[kbapi.JobID]*kbapi.JobInfo),
-		Nodes:           make(map[string]*kbapi.NodeInfo),
-		Queues:          make(map[kbapi.QueueID]*kbapi.QueueInfo),
+		Jobs:            make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Nodes:           make(map[string]*schedulingapi.NodeInfo),
+		Queues:          make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
 		PriorityClasses: make(map[string]*v1beta1.PriorityClass),
 		errTasks:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		deletedJobs:     workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		kubeclient:      kubeClient,
-		kbclient:        kbClient,
+		vcclient:        vcClient,
 		defaultQueue:    defaultQueue,
 		schedulerName:   schedulerName,
+
+		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
 	}
 
 	// Prepare event clients.
@@ -301,7 +283,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 
 	sc.StatusUpdater = &defaultStatusUpdater{
 		kubeclient: sc.kubeclient,
-		kbclient:   sc.kbclient,
+		vcclient:   sc.vcclient,
 	}
 
 	informerFactory := informers.NewSharedInformerFactory(sc.kubeclient, 0)
@@ -312,6 +294,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	sc.VolumeBinder = &defaultVolumeBinder{
 		volumeBinder: volumebinder.NewVolumeBinder(
 			sc.kubeclient,
+			sc.nodeInformer,
 			sc.pvcInformer,
 			sc.pvInformer,
 			sc.scInformer,
@@ -355,13 +338,6 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 			},
 		})
 
-	sc.pdbInformer = informerFactory.Policy().V1beta1().PodDisruptionBudgets()
-	sc.pdbInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddPDB,
-		UpdateFunc: sc.UpdatePDB,
-		DeleteFunc: sc.DeletePDB,
-	})
-
 	sc.pcInformer = informerFactory.Scheduling().V1beta1().PriorityClasses()
 	sc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.AddPriorityClass,
@@ -369,37 +345,29 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		DeleteFunc: sc.DeletePriorityClass,
 	})
 
-	kbinformer := kbinfo.NewSharedInformerFactory(sc.kbclient, 0)
-	// create informer for PodGroup(v1alpha1) information
-	sc.podGroupInformerV1alpha1 = kbinformer.Scheduling().V1alpha1().PodGroups()
-	sc.podGroupInformerV1alpha1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddPodGroupV1alpha1,
-		UpdateFunc: sc.UpdatePodGroupV1alpha1,
-		DeleteFunc: sc.DeletePodGroupV1alpha1,
+	sc.quotaInformer = informerFactory.Core().V1().ResourceQuotas()
+	sc.quotaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddResourceQuota,
+		UpdateFunc: sc.UpdateResourceQuota,
+		DeleteFunc: sc.DeleteResourceQuota,
 	})
 
-	// create informer for PodGroup(v1alpha2) information
-	sc.podGroupInformerV1alpha2 = kbinformer.Scheduling().V1alpha2().PodGroups()
-	sc.podGroupInformerV1alpha2.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddPodGroupV1alpha2,
-		UpdateFunc: sc.UpdatePodGroupV1alpha2,
-		DeleteFunc: sc.DeletePodGroupV1alpha2,
+	vcinformers := vcinformer.NewSharedInformerFactory(sc.vcclient, 0)
+
+	// create informer for PodGroup(v1beta1) information
+	sc.podGroupInformerV1beta1 = vcinformers.Scheduling().V1beta1().PodGroups()
+	sc.podGroupInformerV1beta1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddPodGroupV1beta1,
+		UpdateFunc: sc.UpdatePodGroupV1beta1,
+		DeleteFunc: sc.DeletePodGroupV1beta1,
 	})
 
-	// create informer(v1alpha1) for Queue information
-	sc.queueInformerV1alpha1 = kbinformer.Scheduling().V1alpha1().Queues()
-	sc.queueInformerV1alpha1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddQueueV1alpha1,
-		UpdateFunc: sc.UpdateQueueV1alpha1,
-		DeleteFunc: sc.DeleteQueueV1alpha1,
-	})
-
-	// create informer(v1alpha2) for Queue information
-	sc.queueInformerV1alpha2 = kbinformer.Scheduling().V1alpha2().Queues()
-	sc.queueInformerV1alpha2.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddQueueV1alpha2,
-		UpdateFunc: sc.UpdateQueueV1alpha2,
-		DeleteFunc: sc.DeleteQueueV1alpha2,
+	// create informer(v1beta1) for Queue information
+	sc.queueInformerV1beta1 = vcinformers.Scheduling().V1beta1().Queues()
+	sc.queueInformerV1beta1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddQueueV1beta1,
+		UpdateFunc: sc.UpdateQueueV1beta1,
+		DeleteFunc: sc.DeleteQueueV1beta1,
 	})
 
 	return sc
@@ -407,16 +375,14 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 
 // Run  starts the schedulerCache
 func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
-	go sc.pdbInformer.Informer().Run(stopCh)
 	go sc.podInformer.Informer().Run(stopCh)
 	go sc.nodeInformer.Informer().Run(stopCh)
-	go sc.podGroupInformerV1alpha1.Informer().Run(stopCh)
-	go sc.podGroupInformerV1alpha2.Informer().Run(stopCh)
+	go sc.podGroupInformerV1beta1.Informer().Run(stopCh)
 	go sc.pvInformer.Informer().Run(stopCh)
 	go sc.pvcInformer.Informer().Run(stopCh)
 	go sc.scInformer.Informer().Run(stopCh)
-	go sc.queueInformerV1alpha1.Informer().Run(stopCh)
-	go sc.queueInformerV1alpha2.Informer().Run(stopCh)
+	go sc.queueInformerV1beta1.Informer().Run(stopCh)
+	go sc.quotaInformer.Informer().Run(stopCh)
 
 	if options.ServerOpts.EnablePriorityClass {
 		go sc.pcInformer.Informer().Run(stopCh)
@@ -435,16 +401,14 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 	return cache.WaitForCacheSync(stopCh,
 		func() []cache.InformerSynced {
 			informerSynced := []cache.InformerSynced{
-				sc.pdbInformer.Informer().HasSynced,
 				sc.podInformer.Informer().HasSynced,
-				sc.podGroupInformerV1alpha1.Informer().HasSynced,
-				sc.podGroupInformerV1alpha2.Informer().HasSynced,
+				sc.podGroupInformerV1beta1.Informer().HasSynced,
 				sc.nodeInformer.Informer().HasSynced,
 				sc.pvInformer.Informer().HasSynced,
 				sc.pvcInformer.Informer().HasSynced,
 				sc.scInformer.Informer().HasSynced,
-				sc.queueInformerV1alpha1.Informer().HasSynced,
-				sc.queueInformerV1alpha2.Informer().HasSynced,
+				sc.queueInformerV1beta1.Informer().HasSynced,
+				sc.quotaInformer.Informer().HasSynced,
 			}
 			if options.ServerOpts.EnablePriorityClass {
 				informerSynced = append(informerSynced, sc.pcInformer.Informer().HasSynced)
@@ -455,7 +419,7 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 }
 
 // findJobAndTask returns job and the task info
-func (sc *SchedulerCache) findJobAndTask(taskInfo *kbapi.TaskInfo) (*kbapi.JobInfo, *kbapi.TaskInfo, error) {
+func (sc *SchedulerCache) findJobAndTask(taskInfo *schedulingapi.TaskInfo) (*schedulingapi.JobInfo, *schedulingapi.TaskInfo, error) {
 	job, found := sc.Jobs[taskInfo.Job]
 	if !found {
 		return nil, nil, fmt.Errorf("failed to find Job %v for Task %v",
@@ -471,8 +435,10 @@ func (sc *SchedulerCache) findJobAndTask(taskInfo *kbapi.TaskInfo) (*kbapi.JobIn
 	return job, task, nil
 }
 
-// Evict will evict the pod
-func (sc *SchedulerCache) Evict(taskInfo *kbapi.TaskInfo, reason string) error {
+// Evict will evict the pod.
+//
+// If error occurs both task and job are guaranteed to be in the original state.
+func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string) error {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
@@ -488,13 +454,21 @@ func (sc *SchedulerCache) Evict(taskInfo *kbapi.TaskInfo, reason string) error {
 			task.UID, task.NodeName)
 	}
 
-	err = job.UpdateTaskStatus(task, kbapi.Releasing)
-	if err != nil {
+	originalStatus := task.Status
+	if err := job.UpdateTaskStatus(task, schedulingapi.Releasing); err != nil {
 		return err
 	}
 
 	// Add new task to node.
 	if err := node.UpdateTask(task); err != nil {
+		// After failing to update task to a node we need to revert task status from Releasing,
+		// otherwise task might be stuck in the Releasing state indefinitely.
+		if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
+			klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
+				"from %s to %s after failing to update Task on Node <%s>: %v",
+				task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
+			sc.resyncTask(task)
+		}
 		return err
 	}
 
@@ -507,31 +481,17 @@ func (sc *SchedulerCache) Evict(taskInfo *kbapi.TaskInfo, reason string) error {
 		}
 	}()
 
-	if !shadowPodGroup(job.PodGroup) {
-		if job.PodGroup.Version == api.PodGroupVersionV1Alpha1 {
-			pg, err := api.ConvertPodGroupInfoToV1alpha1(job.PodGroup)
-			if err != nil {
-				glog.Errorf("Error While converting api.PodGroup to v1alpha.PodGroup with error: %v", err)
-				return err
-			}
-			sc.Recorder.Eventf(pg, v1.EventTypeNormal, "Evict", reason)
-		} else if job.PodGroup.Version == api.PodGroupVersionV1Alpha2 {
-			pg, err := api.ConvertPodGroupInfoToV1alpha2(job.PodGroup)
-			if err != nil {
-				glog.Errorf("Error While converting api.PodGroup to v2alpha.PodGroup with error: %v", err)
-				return err
-			}
-			sc.Recorder.Eventf(pg, v1.EventTypeNormal, "Evict", reason)
-		} else {
-			return fmt.Errorf("Invalid PodGroup Version: %s", job.PodGroup.Version)
-		}
+	podgroup := &vcv1beta1.PodGroup{}
+	if err := schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil); err != nil {
+		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
+		return err
 	}
-
+	sc.Recorder.Eventf(podgroup, v1.EventTypeNormal, "Evict", reason)
 	return nil
 }
 
 // Bind binds task to the target host.
-func (sc *SchedulerCache) Bind(taskInfo *kbapi.TaskInfo, hostname string) error {
+func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string) error {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
@@ -547,26 +507,49 @@ func (sc *SchedulerCache) Bind(taskInfo *kbapi.TaskInfo, hostname string) error 
 			task.UID, hostname)
 	}
 
-	err = job.UpdateTaskStatus(task, kbapi.Binding)
-	if err != nil {
+	originalStatus := task.Status
+	if err := job.UpdateTaskStatus(task, schedulingapi.Binding); err != nil {
 		return err
 	}
 
-	// Set `.nodeName` to the hostname
-	task.NodeName = hostname
-
 	// Add task to the node.
 	if err := node.AddTask(task); err != nil {
+		// After failing to update task to a node we need to revert task status from Releasing,
+		// otherwise task might be stuck in the Releasing state indefinitely.
+		if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
+			klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
+				"from %s to %s after failing to update Task on Node <%s>: %v",
+				task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
+			sc.resyncTask(task)
+		}
 		return err
 	}
 
 	p := task.Pod
+
+	var pgCopy schedulingapi.PodGroup
+	if job.PodGroup != nil {
+		pgCopy = schedulingapi.PodGroup{
+			Version:  job.PodGroup.Version,
+			PodGroup: *job.PodGroup.PodGroup.DeepCopy(),
+		}
+	}
 
 	go func() {
 		if err := sc.Binder.Bind(p, hostname); err != nil {
 			sc.resyncTask(task)
 		} else {
 			sc.Recorder.Eventf(p, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", p.Namespace, p.Name, hostname)
+
+			if job.PodGroup != nil {
+				msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v, %v minAvailable, %v Pending",
+					len(job.TaskStatusIndex[schedulingapi.Pending]),
+					len(job.Tasks),
+					scheduling.PodGroupReady,
+					job.MinAvailable,
+					len(job.TaskStatusIndex[schedulingapi.Pending]))
+				sc.recordPodGroupEvent(&pgCopy, v1.EventTypeNormal, string(scheduling.PodGroupScheduled), msg)
+			}
 		}
 	}()
 
@@ -574,17 +557,17 @@ func (sc *SchedulerCache) Bind(taskInfo *kbapi.TaskInfo, hostname string) error 
 }
 
 // AllocateVolumes allocates volume on the host to the task
-func (sc *SchedulerCache) AllocateVolumes(task *api.TaskInfo, hostname string) error {
+func (sc *SchedulerCache) AllocateVolumes(task *schedulingapi.TaskInfo, hostname string) error {
 	return sc.VolumeBinder.AllocateVolumes(task, hostname)
 }
 
 // BindVolumes binds volumes to the task
-func (sc *SchedulerCache) BindVolumes(task *api.TaskInfo) error {
+func (sc *SchedulerCache) BindVolumes(task *schedulingapi.TaskInfo) error {
 	return sc.VolumeBinder.BindVolumes(task)
 }
 
 // taskUnschedulable updates pod status of pending task
-func (sc *SchedulerCache) taskUnschedulable(task *api.TaskInfo, message string) error {
+func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, message string) error {
 	pod := task.Pod
 
 	condition := &v1.PodCondition{
@@ -605,14 +588,14 @@ func (sc *SchedulerCache) taskUnschedulable(task *api.TaskInfo, message string) 
 			return err
 		}
 	} else {
-		glog.V(4).Infof("task unscheduleable %s/%s, message: %s, skip by no condition update", pod.Namespace, pod.Name, message)
+		klog.V(4).Infof("task unscheduleable %s/%s, message: %s, skip by no condition update", pod.Namespace, pod.Name, message)
 	}
 
 	return nil
 }
 
-func (sc *SchedulerCache) deleteJob(job *kbapi.JobInfo) {
-	glog.V(3).Infof("Try to delete Job <%v:%v/%v>", job.UID, job.Namespace, job.Name)
+func (sc *SchedulerCache) deleteJob(job *schedulingapi.JobInfo) {
+	klog.V(3).Infof("Try to delete Job <%v:%v/%v>", job.UID, job.Namespace, job.Name)
 
 	sc.deletedJobs.AddRateLimited(job)
 }
@@ -625,25 +608,25 @@ func (sc *SchedulerCache) processCleanupJob() {
 
 	defer sc.deletedJobs.Done(obj)
 
-	job, found := obj.(*kbapi.JobInfo)
+	job, found := obj.(*schedulingapi.JobInfo)
 	if !found {
-		glog.Errorf("Failed to convert <%v> to *JobInfo", obj)
+		klog.Errorf("Failed to convert <%v> to *JobInfo", obj)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	if kbapi.JobTerminated(job) {
+	if schedulingapi.JobTerminated(job) {
 		delete(sc.Jobs, job.UID)
-		glog.V(3).Infof("Job <%v:%v/%v> was deleted.", job.UID, job.Namespace, job.Name)
+		klog.V(3).Infof("Job <%v:%v/%v> was deleted.", job.UID, job.Namespace, job.Name)
 	} else {
 		// Retry
 		sc.deleteJob(job)
 	}
 }
 
-func (sc *SchedulerCache) resyncTask(task *kbapi.TaskInfo) {
+func (sc *SchedulerCache) resyncTask(task *schedulingapi.TaskInfo) {
 	sc.errTasks.AddRateLimited(task)
 }
 
@@ -655,27 +638,28 @@ func (sc *SchedulerCache) processResyncTask() {
 
 	defer sc.errTasks.Done(obj)
 
-	task, ok := obj.(*kbapi.TaskInfo)
+	task, ok := obj.(*schedulingapi.TaskInfo)
 	if !ok {
-		glog.Errorf("failed to convert %v to *v1.Pod", obj)
+		klog.Errorf("failed to convert %v to *v1.Pod", obj)
 		return
 	}
 
 	if err := sc.syncTask(task); err != nil {
-		glog.Errorf("Failed to sync pod <%v/%v>, retry it.", task.Namespace, task.Name)
+		klog.Errorf("Failed to sync pod <%v/%v>, retry it.", task.Namespace, task.Name)
 		sc.resyncTask(task)
 	}
 }
 
 // Snapshot returns the complete snapshot of the cluster from cache
-func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
+func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	snapshot := &kbapi.ClusterInfo{
-		Nodes:  make(map[string]*kbapi.NodeInfo),
-		Jobs:   make(map[kbapi.JobID]*kbapi.JobInfo),
-		Queues: make(map[kbapi.QueueID]*kbapi.QueueInfo),
+	snapshot := &schedulingapi.ClusterInfo{
+		Nodes:         make(map[string]*schedulingapi.NodeInfo),
+		Jobs:          make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Queues:        make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+		NamespaceInfo: make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
 	}
 
 	for _, value := range sc.Nodes {
@@ -693,7 +677,8 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 	var cloneJobLock sync.Mutex
 	var wg sync.WaitGroup
 
-	cloneJob := func(value *api.JobInfo) {
+	cloneJob := func(value *schedulingapi.JobInfo) {
+		defer wg.Done()
 		if value.PodGroup != nil {
 			value.Priority = sc.defaultPriority
 
@@ -702,7 +687,7 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 				value.Priority = priorityClass.Value
 			}
 
-			glog.V(4).Infof("The priority of job <%s/%s> is <%s/%d>",
+			klog.V(4).Infof("The priority of job <%s/%s> is <%s/%d>",
 				value.Namespace, value.Name, priName, value.Priority)
 		}
 
@@ -711,20 +696,26 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 		cloneJobLock.Lock()
 		snapshot.Jobs[value.UID] = clonedJob
 		cloneJobLock.Unlock()
-		wg.Done()
+	}
+
+	for _, value := range sc.NamespaceCollection {
+		info := value.Snapshot()
+		snapshot.NamespaceInfo[info.Name] = info
+		klog.V(4).Infof("Namespace %s has weight %v",
+			value.Name, info.GetWeight())
 	}
 
 	for _, value := range sc.Jobs {
 		// If no scheduling spec, does not handle it.
-		if value.PodGroup == nil && value.PDB == nil {
-			glog.V(4).Infof("The scheduling spec of Job <%v:%s/%s> is nil, ignore it.",
+		if value.PodGroup == nil {
+			klog.V(4).Infof("The scheduling spec of Job <%v:%s/%s> is nil, ignore it.",
 				value.UID, value.Namespace, value.Name)
 
 			continue
 		}
 
 		if _, found := snapshot.Queues[value.Queue]; !found {
-			glog.V(3).Infof("The Queue <%v> of Job <%v/%v> does not exist, ignore it.",
+			klog.V(3).Infof("The Queue <%v> of Job <%v/%v> does not exist, ignore it.",
 				value.Queue, value.Namespace, value.Name)
 			continue
 		}
@@ -734,7 +725,7 @@ func (sc *SchedulerCache) Snapshot() *kbapi.ClusterInfo {
 	}
 	wg.Wait()
 
-	glog.V(3).Infof("There are <%d> Jobs, <%d> Queues and <%d> Nodes in total for scheduling.",
+	klog.V(3).Infof("There are <%d> Jobs, <%d> Queues and <%d> Nodes in total for scheduling.",
 		len(snapshot.Jobs), len(snapshot.Queues), len(snapshot.Nodes))
 
 	return snapshot
@@ -768,47 +759,41 @@ func (sc *SchedulerCache) String() string {
 		}
 	}
 
+	if len(sc.NamespaceCollection) != 0 {
+		str = str + "Namespaces:\n"
+		for _, ns := range sc.NamespaceCollection {
+			info := ns.Snapshot()
+			str = str + fmt.Sprintf("\t Namespace(%s) Weight(%v)\n",
+				info.Name, info.Weight)
+		}
+	}
+
 	return str
 }
 
 // RecordJobStatusEvent records related events according to job status.
-func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
+func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo) {
 	baseErrorMessage := job.JobFitErrors
 	if baseErrorMessage == "" {
-		baseErrorMessage = kbapi.AllNodeUnavailableMsg
+		baseErrorMessage = schedulingapi.AllNodeUnavailableMsg
 	}
 
-	if !shadowPodGroup(job.PodGroup) {
-		pgUnschedulable := job.PodGroup != nil &&
-			(job.PodGroup.Status.Phase == api.PodGroupUnknown ||
-				job.PodGroup.Status.Phase == api.PodGroupPending)
-		pdbUnschedulabe := job.PDB != nil && len(job.TaskStatusIndex[api.Pending]) != 0
+	pgUnschedulable := job.PodGroup != nil &&
+		(job.PodGroup.Status.Phase == scheduling.PodGroupUnknown ||
+			job.PodGroup.Status.Phase == scheduling.PodGroupPending ||
+			job.PodGroup.Status.Phase == scheduling.PodGroupInqueue)
 
-		// If pending or unschedulable, record unschedulable event.
-		if pgUnschedulable || pdbUnschedulabe {
-			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v", len(job.TaskStatusIndex[api.Pending]), len(job.Tasks), job.FitError())
-			if job.PodGroup.Version == api.PodGroupVersionV1Alpha1 {
-				podGroup, err := api.ConvertPodGroupInfoToV1alpha1(job.PodGroup)
-				if err != nil {
-					glog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
-				}
-				sc.Recorder.Eventf(podGroup, v1.EventTypeWarning,
-					string(v1alpha1.PodGroupUnschedulableType), msg)
-			}
-
-			if job.PodGroup.Version == api.PodGroupVersionV1Alpha2 {
-				podGroup, err := api.ConvertPodGroupInfoToV1alpha2(job.PodGroup)
-				if err != nil {
-					glog.Errorf("Error while converting PodGroup to v1alpha2.PodGroup with error: %v", err)
-				}
-				sc.Recorder.Eventf(podGroup, v1.EventTypeWarning,
-					string(v1alpha1.PodGroupUnschedulableType), msg)
-			}
-		}
+	// If pending or unschedulable, record unschedulable event.
+	if pgUnschedulable {
+		msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
+			len(job.TaskStatusIndex[schedulingapi.Pending]),
+			len(job.Tasks),
+			job.FitError())
+		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeWarning, string(scheduling.PodGroupUnschedulableType), msg)
 	}
 
 	// Update podCondition for tasks Allocated and Pending before job discarded
-	for _, status := range []api.TaskStatus{api.Allocated, api.Pending} {
+	for _, status := range []schedulingapi.TaskStatus{schedulingapi.Allocated, schedulingapi.Pending, schedulingapi.Pipelined} {
 		for _, taskInfo := range job.TaskStatusIndex[status] {
 			msg := baseErrorMessage
 			fitError := job.NodesFitErrors[taskInfo.UID]
@@ -816,7 +801,7 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
 				msg = fitError.Error()
 			}
 			if err := sc.taskUnschedulable(taskInfo, msg); err != nil {
-				glog.Errorf("Failed to update unschedulable task status <%s/%s>: %v",
+				klog.Errorf("Failed to update unschedulable task status <%s/%s>: %v",
 					taskInfo.Namespace, taskInfo.Name, err)
 			}
 		}
@@ -824,8 +809,8 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *kbapi.JobInfo) {
 }
 
 // UpdateJobStatus update the status of job and its tasks.
-func (sc *SchedulerCache) UpdateJobStatus(job *kbapi.JobInfo, updatePG bool) (*kbapi.JobInfo, error) {
-	if updatePG && !shadowPodGroup(job.PodGroup) {
+func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePG bool) (*schedulingapi.JobInfo, error) {
+	if updatePG {
 		pg, err := sc.StatusUpdater.UpdatePodGroup(job.PodGroup)
 		if err != nil {
 			return nil, err
@@ -836,4 +821,20 @@ func (sc *SchedulerCache) UpdateJobStatus(job *kbapi.JobInfo, updatePG bool) (*k
 	sc.RecordJobStatusEvent(job)
 
 	return job, nil
+}
+
+func (sc *SchedulerCache) recordPodGroupEvent(podGroup *schedulingapi.PodGroup, eventType, reason, msg string) {
+	if podGroup == nil {
+		return
+	}
+
+	pg := &vcv1beta1.PodGroup{}
+	if err := schedulingscheme.Scheme.Convert(&podGroup.PodGroup, pg, nil); err != nil {
+		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
+		return
+	}
+
+	sc.Recorder.Eventf(pg, eventType, reason, msg)
+
+	return
 }

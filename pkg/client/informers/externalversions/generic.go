@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2020 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,8 +25,7 @@ import (
 	cache "k8s.io/client-go/tools/cache"
 	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	schedulingv1alpha1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha1"
-	v1alpha2 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	v1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
 // GenericInformer is type of SharedIndexInformer which will locate and delegate to other
@@ -63,17 +62,11 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 	case busv1alpha1.SchemeGroupVersion.WithResource("commands"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Bus().V1alpha1().Commands().Informer()}, nil
 
-		// Group=scheduling, Version=v1alpha1
-	case schedulingv1alpha1.SchemeGroupVersion.WithResource("podgroups"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Scheduling().V1alpha1().PodGroups().Informer()}, nil
-	case schedulingv1alpha1.SchemeGroupVersion.WithResource("queues"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Scheduling().V1alpha1().Queues().Informer()}, nil
-
-		// Group=scheduling, Version=v1alpha2
-	case v1alpha2.SchemeGroupVersion.WithResource("podgroups"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Scheduling().V1alpha2().PodGroups().Informer()}, nil
-	case v1alpha2.SchemeGroupVersion.WithResource("queues"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Scheduling().V1alpha2().Queues().Informer()}, nil
+		// Group=scheduling, Version=v1beta1
+	case v1beta1.SchemeGroupVersion.WithResource("podgroups"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Scheduling().V1beta1().PodGroups().Informer()}, nil
+	case v1beta1.SchemeGroupVersion.WithResource("queues"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Scheduling().V1beta1().Queues().Informer()}, nil
 
 	}
 

@@ -17,8 +17,15 @@ limitations under the License.
 package queue
 
 import (
+	"fmt"
 	"os"
+	"strings"
 
+	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	"volcano.sh/volcano/pkg/apis/helpers"
+	"volcano.sh/volcano/pkg/client/clientset/versioned"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	// Initialize client auth plugin.
@@ -34,4 +41,31 @@ func homeDir() string {
 
 func buildConfig(master, kubeconfig string) (*rest.Config, error) {
 	return clientcmd.BuildConfigFromFlags(master, kubeconfig)
+}
+
+func createQueueCommand(config *rest.Config, action busv1alpha1.Action) error {
+	queueClient := versioned.NewForConfigOrDie(config)
+	queue, err := queueClient.SchedulingV1beta1().Queues().Get(operateQueueFlags.Name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	ctrlRef := metav1.NewControllerRef(queue, helpers.V1beta1QueueKind)
+	cmd := &busv1alpha1.Command{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: fmt.Sprintf("%s-%s-",
+				queue.Name, strings.ToLower(string(action))),
+			OwnerReferences: []metav1.OwnerReference{
+				*ctrlRef,
+			},
+		},
+		TargetObject: ctrlRef,
+		Action:       string(action),
+	}
+
+	if _, err := queueClient.BusV1alpha1().Commands("default").Create(cmd); err != nil {
+		return err
+	}
+
+	return nil
 }

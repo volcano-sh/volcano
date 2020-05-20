@@ -8,7 +8,6 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Release.Name }}-admission
-  namespace: {{ .Release.Namespace }}
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
@@ -26,19 +25,21 @@ rules:
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["create", "get", "patch"]
-  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.sigs.dev"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues"]
     verbs: ["get", "list"]
   - apiGroups: [""]
     resources: ["services"]
     verbs: ["get"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
+    resources: ["podgroups"]
+    verbs: ["get", "list", "watch"]
 
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Release.Name }}-admission-role
-  namespace: {{ .Release.Namespace }}
 subjects:
   - kind: ServiceAccount
     name: {{ .Release.Name }}-admission
@@ -78,7 +79,7 @@ spec:
             - --ca-cert-file=/admission.local.config/certificates/ca.crt
             - --webhook-namespace={{ .Release.Namespace }}
             - --webhook-service-name={{ .Release.Name }}-admission-service
-            - --alsologtostderr
+            - --logtostderr
             - --port=443
             - -v=4
             - 2>&1

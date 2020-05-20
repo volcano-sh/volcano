@@ -6,10 +6,10 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/golang/glog"
-
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog"
 
+	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -51,7 +51,7 @@ func (ju *jobUpdater) UpdateAll() {
 	workqueue.ParallelizeUntil(context.TODO(), jobUpdaterWorker, len(ju.jobQueue), ju.updateJob)
 }
 
-func isPodGroupConditionsUpdated(newCondition, oldCondition []api.PodGroupCondition) bool {
+func isPodGroupConditionsUpdated(newCondition, oldCondition []scheduling.PodGroupCondition) bool {
 	if len(newCondition) != len(oldCondition) {
 		return true
 	}
@@ -84,7 +84,7 @@ func isPodGroupConditionsUpdated(newCondition, oldCondition []api.PodGroupCondit
 	return false
 }
 
-func isPodGroupStatusUpdated(newStatus, oldStatus *api.PodGroupStatus) bool {
+func isPodGroupStatusUpdated(newStatus, oldStatus *scheduling.PodGroupStatus) bool {
 	newCondition := newStatus.Conditions
 	newStatus.Conditions = nil
 	oldCondition := oldStatus.Conditions
@@ -115,7 +115,7 @@ func (ju *jobUpdater) updateJob(index int) {
 	updatePG := !found || isPodGroupStatusUpdated(&job.PodGroup.Status, oldStatus)
 
 	if _, err := ssn.cache.UpdateJobStatus(job, updatePG); err != nil {
-		glog.Errorf("Failed to update job <%s/%s>: %v",
+		klog.Errorf("Failed to update job <%s/%s>: %v",
 			job.Namespace, job.Name, err)
 	}
 }

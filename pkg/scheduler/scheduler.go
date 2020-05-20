@@ -19,10 +19,9 @@ package scheduler
 import (
 	"time"
 
-	"github.com/golang/glog"
-
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
+	"k8s.io/klog"
 
 	schedcache "volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -37,6 +36,7 @@ type Scheduler struct {
 	config         *rest.Config
 	actions        []framework.Action
 	plugins        []conf.Tier
+	configurations []conf.Configuration
 	schedulerConf  string
 	schedulePeriod time.Duration
 }
@@ -61,42 +61,46 @@ func NewScheduler(
 
 // Run runs the Scheduler
 func (pc *Scheduler) Run(stopCh <-chan struct{}) {
-	var err error
-
 	// Start cache for policy.
 	go pc.cache.Run(stopCh)
 	pc.cache.WaitForCacheSync(stopCh)
-
-	// Load configuration of scheduler
-	schedConf := defaultSchedulerConf
-	if len(pc.schedulerConf) != 0 {
-		if schedConf, err = readSchedulerConf(pc.schedulerConf); err != nil {
-			glog.Errorf("Failed to read scheduler configuration '%s', using default configuration: %v",
-				pc.schedulerConf, err)
-			schedConf = defaultSchedulerConf
-		}
-	}
-
-	pc.actions, pc.plugins, err = loadSchedulerConf(schedConf)
-	if err != nil {
-		panic(err)
-	}
 
 	go wait.Until(pc.runOnce, pc.schedulePeriod, stopCh)
 }
 
 func (pc *Scheduler) runOnce() {
-	glog.V(4).Infof("Start scheduling ...")
+	klog.V(4).Infof("Start scheduling ...")
 	scheduleStartTime := time.Now()
-	defer glog.V(4).Infof("End scheduling ...")
+	defer klog.V(4).Infof("End scheduling ...")
 	defer metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
 
-	ssn := framework.OpenSession(pc.cache, pc.plugins)
+	pc.loadSchedulerConf()
+
+	ssn := framework.OpenSession(pc.cache, pc.plugins, pc.configurations)
 	defer framework.CloseSession(ssn)
 
 	for _, action := range pc.actions {
 		actionStartTime := time.Now()
 		action.Execute(ssn)
 		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
+	}
+}
+
+func (pc *Scheduler) loadSchedulerConf() {
+	var err error
+
+	// Load configuration of scheduler
+	schedConf := defaultSchedulerConf
+	if len(pc.schedulerConf) != 0 {
+		if schedConf, err = readSchedulerConf(pc.schedulerConf); err != nil {
+			klog.Errorf("Failed to read scheduler configuration '%s', using default configuration: %v",
+				pc.schedulerConf, err)
+			schedConf = defaultSchedulerConf
+		}
+	}
+
+	pc.actions, pc.plugins, pc.configurations, err = loadSchedulerConf(schedConf)
+	if err != nil {
+		panic(err)
 	}
 }

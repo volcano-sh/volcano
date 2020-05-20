@@ -19,9 +19,8 @@ package api
 import (
 	"fmt"
 
-	"github.com/golang/glog"
-
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/klog"
 )
 
 // NodeInfo is node level aggregated information.
@@ -34,6 +33,8 @@ type NodeInfo struct {
 
 	// The releasing resource on that node
 	Releasing *Resource
+	// The pipelined resource on that node
+	Pipelined *Resource
 	// The idle resource on that node
 	Idle *Resource
 	// The used resource on that node, including running and terminating
@@ -49,6 +50,13 @@ type NodeInfo struct {
 	Others map[string]interface{}
 }
 
+// FutureIdle returns resources that will be idle in the future:
+//
+// That is current idle resources plus released resources minus pipelined resources.
+func (ni *NodeInfo) FutureIdle() *Resource {
+	return ni.Idle.Clone().Add(ni.Releasing).Sub(ni.Pipelined)
+}
+
 // NodeState defines the current state of node.
 type NodeState struct {
 	Phase  NodePhase
@@ -62,6 +70,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 	if node == nil {
 		ni = &NodeInfo{
 			Releasing: EmptyResource(),
+			Pipelined: EmptyResource(),
 			Idle:      EmptyResource(),
 			Used:      EmptyResource(),
 
@@ -76,6 +85,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 			Node: node,
 
 			Releasing: EmptyResource(),
+			Pipelined: EmptyResource(),
 			Idle:      NewResource(node.Status.Allocatable),
 			Used:      EmptyResource(),
 
@@ -126,6 +136,17 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 		return
 	}
 
+	// If node not ready, e.g. power off
+	for _, cond := range node.Status.Conditions {
+		if cond.Type == v1.NodeReady && cond.Status != v1.ConditionTrue {
+			ni.State = NodeState{
+				Phase:  NotReady,
+				Reason: "NotReady",
+			}
+			return
+		}
+	}
+
 	// Node is ready (ignore node conditions because of taint/toleration)
 	ni.State = NodeState{
 		Phase:  Ready,
@@ -138,7 +159,7 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.setNodeState(node)
 
 	if !ni.Ready() {
-		glog.Warningf("Failed to set node info, phase: %s, reason: %s",
+		klog.Warningf("Failed to set node info, phase: %s, reason: %s",
 			ni.State.Phase, ni.State.Reason)
 		return
 	}
@@ -148,16 +169,23 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 
 	ni.Allocatable = NewResource(node.Status.Allocatable)
 	ni.Capability = NewResource(node.Status.Capacity)
+	ni.Releasing = EmptyResource()
+	ni.Pipelined = EmptyResource()
 	ni.Idle = NewResource(node.Status.Allocatable)
 	ni.Used = EmptyResource()
 
-	for _, task := range ni.Tasks {
-		if task.Status == Releasing {
-			ni.Releasing.Add(task.Resreq)
+	for _, ti := range ni.Tasks {
+		switch ti.Status {
+		case Releasing:
+			ni.Idle.Sub(ti.Resreq)
+			ni.Releasing.Add(ti.Resreq)
+			ni.Used.Add(ti.Resreq)
+		case Pipelined:
+			ni.Pipelined.Add(ti.Resreq)
+		default:
+			ni.Idle.Sub(ti.Resreq)
+			ni.Used.Add(ti.Resreq)
 		}
-
-		ni.Idle.Sub(task.Resreq)
-		ni.Used.Add(task.Resreq)
 	}
 }
 
@@ -166,15 +194,19 @@ func (ni *NodeInfo) allocateIdleResource(ti *TaskInfo) error {
 		ni.Idle.Sub(ti.Resreq)
 		return nil
 	}
-	ni.State = NodeState{
-		Phase:  NotReady,
-		Reason: "OutOfSync",
-	}
-	return fmt.Errorf("Selected node NotReady")
+
+	return fmt.Errorf("selected node NotReady")
 }
 
 // AddTask is used to add a task in nodeInfo object
+//
+// If error occurs both task and node are guaranteed to be in the original state.
 func (ni *NodeInfo) AddTask(task *TaskInfo) error {
+	if len(task.NodeName) > 0 && len(ni.Name) > 0 && task.NodeName != ni.Name {
+		return fmt.Errorf("task <%v/%v> already on different node <%v>",
+			task.Namespace, task.Name, task.NodeName)
+	}
+
 	key := PodKey(task.Pod)
 	if _, found := ni.Tasks[key]; found {
 		return fmt.Errorf("task <%v/%v> already on node <%v>",
@@ -192,23 +224,28 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 				return err
 			}
 			ni.Releasing.Add(ti.Resreq)
+			ni.Used.Add(ti.Resreq)
 		case Pipelined:
-			ni.Releasing.Sub(ti.Resreq)
+			ni.Pipelined.Add(ti.Resreq)
 		default:
 			if err := ni.allocateIdleResource(ti); err != nil {
 				return err
 			}
+			ni.Used.Add(ti.Resreq)
 		}
-
-		ni.Used.Add(ti.Resreq)
 	}
 
+	// Update task node name upon successful task addition.
+	task.NodeName = ni.Name
+	ti.NodeName = ni.Name
 	ni.Tasks[key] = ti
 
 	return nil
 }
 
-// RemoveTask used to remove a task from nodeInfo object
+// RemoveTask used to remove a task from nodeInfo object.
+//
+// If error occurs both task and node are guaranteed to be in the original state.
 func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 	key := PodKey(ti.Pod)
 
@@ -224,13 +261,13 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 		case Releasing:
 			ni.Releasing.Sub(task.Resreq)
 			ni.Idle.Add(task.Resreq)
+			ni.Used.Sub(task.Resreq)
 		case Pipelined:
-			ni.Releasing.Add(task.Resreq)
+			ni.Pipelined.Sub(task.Resreq)
 		default:
 			ni.Idle.Add(task.Resreq)
+			ni.Used.Sub(task.Resreq)
 		}
-
-		ni.Used.Sub(task.Resreq)
 	}
 
 	delete(ni.Tasks, key)
@@ -238,13 +275,21 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 	return nil
 }
 
-// UpdateTask is used to update a task in nodeInfo object
+// UpdateTask is used to update a task in nodeInfo object.
+//
+// If error occurs both task and node are guaranteed to be in the original state.
 func (ni *NodeInfo) UpdateTask(ti *TaskInfo) error {
 	if err := ni.RemoveTask(ti); err != nil {
 		return err
 	}
 
-	return ni.AddTask(ti)
+	if err := ni.AddTask(ti); err != nil {
+		// This should never happen if task removal was successful,
+		// because only possible error during task addition is when task is still on a node.
+		klog.Fatalf("Failed to add Task <%s,%s> to Node <%s> during task update",
+			ti.Namespace, ti.Name, ni.Name)
+	}
+	return nil
 }
 
 // String returns nodeInfo details in string format

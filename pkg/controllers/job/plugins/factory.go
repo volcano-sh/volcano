@@ -40,7 +40,7 @@ var pluginBuilders = map[string]PluginBuilder{}
 type PluginBuilder func(pluginsinterface.PluginClientset, []string) pluginsinterface.PluginInterface
 
 // RegisterPluginBuilder register plugin builders
-func RegisterPluginBuilder(name string, pc func(pluginsinterface.PluginClientset, []string) pluginsinterface.PluginInterface) {
+func RegisterPluginBuilder(name string, pc PluginBuilder) {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
 

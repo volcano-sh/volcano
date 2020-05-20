@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 func nodesEqual(l, r map[string]*api.NodeInfo) bool {
@@ -125,139 +126,6 @@ func buildOwnerReference(owner string) metav1.OwnerReference {
 	}
 }
 
-func TestAddPod(t *testing.T) {
-
-	owner := buildOwnerReference("j1")
-
-	// case 1:
-	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"),
-		[]metav1.OwnerReference{owner}, make(map[string]string))
-	pi1 := api.NewTaskInfo(pod1)
-	pi1.Job = "j1" // The job name is set by cache.
-	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"),
-		[]metav1.OwnerReference{owner}, make(map[string]string))
-	pi2 := api.NewTaskInfo(pod2)
-	pi2.Job = "j1" // The job name is set by cache.
-
-	j1 := api.NewJobInfo(api.JobID("j1"), pi1, pi2)
-	pg := createShadowPodGroup(pod1)
-	j1.SetPodGroup(pg)
-
-	node1 := buildNode("n1", buildResourceList("2000m", "10G"))
-	ni1 := api.NewNodeInfo(node1)
-	ni1.AddTask(pi2)
-
-	tests := []struct {
-		pods     []*v1.Pod
-		nodes    []*v1.Node
-		expected *SchedulerCache
-	}{
-		{
-			pods:  []*v1.Pod{pod1, pod2},
-			nodes: []*v1.Node{node1},
-			expected: &SchedulerCache{
-				Nodes: map[string]*api.NodeInfo{
-					"n1": ni1,
-				},
-				Jobs: map[api.JobID]*api.JobInfo{
-					"j1": j1,
-				},
-			},
-		},
-	}
-
-	for i, test := range tests {
-		cache := &SchedulerCache{
-			Jobs:  make(map[api.JobID]*api.JobInfo),
-			Nodes: make(map[string]*api.NodeInfo),
-		}
-
-		for _, n := range test.nodes {
-			cache.AddNode(n)
-		}
-
-		for _, p := range test.pods {
-			cache.AddPod(p)
-		}
-
-		if !cacheEqual(cache, test.expected) {
-			t.Errorf("case %d: \n expected %v, \n got %v \n",
-				i, test.expected, cache)
-		}
-	}
-}
-
-func TestAddNode(t *testing.T) {
-	owner1 := buildOwnerReference("j1")
-	owner2 := buildOwnerReference("j2")
-
-	// case 1
-	node1 := buildNode("n1", buildResourceList("2000m", "10G"))
-	pod1 := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"),
-		[]metav1.OwnerReference{owner1}, make(map[string]string))
-	pi1 := api.NewTaskInfo(pod1)
-	pi1.Job = "j1" // The job name is set by cache.
-
-	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"),
-		[]metav1.OwnerReference{owner2}, make(map[string]string))
-	pi2 := api.NewTaskInfo(pod2)
-	pi2.Job = "j2" // The job name is set by cache.
-
-	ni1 := api.NewNodeInfo(node1)
-	ni1.AddTask(pi2)
-
-	j1 := api.NewJobInfo("j1")
-	pg1 := createShadowPodGroup(pod1)
-	j1.SetPodGroup(pg1)
-
-	j2 := api.NewJobInfo("j2")
-	pg2 := createShadowPodGroup(pod2)
-	j2.SetPodGroup(pg2)
-
-	j1.AddTaskInfo(pi1)
-	j2.AddTaskInfo(pi2)
-
-	tests := []struct {
-		pods     []*v1.Pod
-		nodes    []*v1.Node
-		expected *SchedulerCache
-	}{
-		{
-			pods:  []*v1.Pod{pod1, pod2},
-			nodes: []*v1.Node{node1},
-			expected: &SchedulerCache{
-				Nodes: map[string]*api.NodeInfo{
-					"n1": ni1,
-				},
-				Jobs: map[api.JobID]*api.JobInfo{
-					"j1": j1,
-					"j2": j2,
-				},
-			},
-		},
-	}
-
-	for i, test := range tests {
-		cache := &SchedulerCache{
-			Nodes: make(map[string]*api.NodeInfo),
-			Jobs:  make(map[api.JobID]*api.JobInfo),
-		}
-
-		for _, p := range test.pods {
-			cache.AddPod(p)
-		}
-
-		for _, n := range test.nodes {
-			cache.AddNode(n)
-		}
-
-		if !cacheEqual(cache, test.expected) {
-			t.Errorf("case %d: \n expected %v, \n got %v \n",
-				i, test.expected, cache)
-		}
-	}
-}
-
 func TestGetOrCreateJob(t *testing.T) {
 	owner1 := buildOwnerReference("j1")
 	owner2 := buildOwnerReference("j2")
@@ -292,7 +160,7 @@ func TestGetOrCreateJob(t *testing.T) {
 		},
 		{
 			task:   pi2,
-			gotJob: true,
+			gotJob: false,
 		},
 		{
 			task:   pi3,
@@ -305,5 +173,84 @@ func TestGetOrCreateJob(t *testing.T) {
 			t.Errorf("case %d: \n expected %t, \n got %t \n",
 				i, test.gotJob, result)
 		}
+	}
+}
+
+func TestSchedulerCache_Bind_NodeWithSufficientResources(t *testing.T) {
+	owner := buildOwnerReference("j1")
+
+	cache := &SchedulerCache{
+		Jobs:  make(map[api.JobID]*api.JobInfo),
+		Nodes: make(map[string]*api.NodeInfo),
+		Binder: &util.FakeBinder{
+			Binds:   map[string]string{},
+			Channel: make(chan string),
+		},
+	}
+
+	pod := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"),
+		[]metav1.OwnerReference{owner}, make(map[string]string))
+	cache.AddPod(pod)
+
+	node := buildNode("n1", buildResourceList("2000m", "10G"))
+	cache.AddNode(node)
+
+	task := api.NewTaskInfo(pod)
+	task.Job = "j1"
+	if err := cache.addTask(task); err != nil {
+		t.Errorf("failed to add task %v", err)
+	}
+
+	err := cache.Bind(task, "n1")
+	if err != nil {
+		t.Errorf("failed to bind pod to node: %v", err)
+	}
+}
+
+func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
+	owner := buildOwnerReference("j1")
+
+	cache := &SchedulerCache{
+		Jobs:  make(map[api.JobID]*api.JobInfo),
+		Nodes: make(map[string]*api.NodeInfo),
+		Binder: &util.FakeBinder{
+			Binds:   map[string]string{},
+			Channel: make(chan string),
+		},
+	}
+
+	pod := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("5000m", "50G"),
+		[]metav1.OwnerReference{owner}, make(map[string]string))
+	cache.AddPod(pod)
+
+	node := buildNode("n1", buildResourceList("2000m", "10G"))
+	cache.AddNode(node)
+
+	task := api.NewTaskInfo(pod)
+	task.Job = "j1"
+
+	if err := cache.addTask(task); err != nil {
+		t.Errorf("failed to add task %v", err)
+	}
+
+	taskBeforeBind := task.Clone()
+	nodeBeforeBind := cache.Nodes["n1"].Clone()
+
+	err := cache.Bind(task, "n1")
+	if err == nil {
+		t.Errorf("expected bind to fail for node with insufficient resources")
+	}
+
+	_, taskAfterBind, err := cache.findJobAndTask(task)
+	if err != nil {
+		t.Errorf("expected to find task after failed bind")
+	}
+	if !reflect.DeepEqual(taskBeforeBind, taskAfterBind) {
+		t.Errorf("expected task to remain the same after failed bind: \n %#v\n %#v", taskBeforeBind, taskAfterBind)
+	}
+
+	nodeAfterBind := cache.Nodes["n1"]
+	if !reflect.DeepEqual(nodeBeforeBind, nodeAfterBind) {
+		t.Errorf("expected node to remain the same after failed bind")
 	}
 }

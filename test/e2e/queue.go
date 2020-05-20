@@ -27,11 +27,14 @@ import (
 
 var _ = Describe("Queue E2E Test", func() {
 	It("Reclaim", func() {
-		context := initTestContext()
-		defer cleanupTestContext(context)
+		q1, q2 := "reclaim-q1", "reclaim-q2"
+		ctx := initTestContext(options{
+			queues: []string{q1, q2},
+		})
+		defer cleanupTestContext(ctx)
 
 		slot := oneCPU
-		rep := clusterSize(context, slot)
+		rep := clusterSize(ctx, slot)
 
 		spec := &jobSpec{
 			tasks: []taskSpec{
@@ -45,13 +48,13 @@ var _ = Describe("Queue E2E Test", func() {
 		}
 
 		spec.name = "q1-qj-1"
-		spec.queue = defaultQueue1
-		job1 := createJob(context, spec)
-		err := waitJobReady(context, job1)
+		spec.queue = q1
+		job1 := createJob(ctx, spec)
+		err := waitJobReady(ctx, job1)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitQueueStatus(func() (bool, error) {
-			queue, err := context.vcclient.SchedulingV1alpha2().Queues().Get(defaultQueue1, metav1.GetOptions{})
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			return queue.Status.Running == 1, nil
 		})
@@ -67,18 +70,18 @@ var _ = Describe("Queue E2E Test", func() {
 		}
 
 		spec.name = "q2-qj-2"
-		spec.queue = defaultQueue2
-		job2 := createJob(context, spec)
-		err = waitTasksReady(context, job2, expected)
+		spec.queue = q2
+		job2 := createJob(ctx, spec)
+		err = waitTasksReady(ctx, job2, expected)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReady(context, job1, expected)
+		err = waitTasksReady(ctx, job1, expected)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Test Queue status
 		spec = &jobSpec{
 			name:  "q1-qj-2",
-			queue: defaultQueue1,
+			queue: q1,
 			tasks: []taskSpec{
 				{
 					img: defaultNginxImage,
@@ -88,15 +91,14 @@ var _ = Describe("Queue E2E Test", func() {
 				},
 			},
 		}
-		job3 := createJob(context, spec)
-		err = waitJobStatePending(context, job3)
+		job3 := createJob(ctx, spec)
+		err = waitJobStatePending(ctx, job3)
 		Expect(err).NotTo(HaveOccurred())
 		err = waitQueueStatus(func() (bool, error) {
-			queue, err := context.vcclient.SchedulingV1alpha2().Queues().Get(defaultQueue1, metav1.GetOptions{})
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			return queue.Status.Pending == 1, nil
 		})
 		Expect(err).NotTo(HaveOccurred())
 	})
-
 })

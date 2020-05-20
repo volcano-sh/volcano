@@ -24,7 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
-	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	schedulingv1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -41,21 +41,21 @@ func TestReclaim(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		podGroups []*kbv1.PodGroup
+		podGroups []*schedulingv1.PodGroup
 		pods      []*v1.Pod
 		nodes     []*v1.Node
-		queues    []*kbv1.Queue
+		queues    []*schedulingv1.Queue
 		expected  int
 	}{
 		{
 			name: "Two Queue with one Queue overusing resource, should reclaim",
-			podGroups: []*kbv1.PodGroup{
+			podGroups: []*schedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 					},
-					Spec: kbv1.PodGroupSpec{
+					Spec: schedulingv1.PodGroupSpec{
 						Queue: "q1",
 					},
 				},
@@ -64,7 +64,7 @@ func TestReclaim(t *testing.T) {
 						Name:      "pg2",
 						Namespace: "c1",
 					},
-					Spec: kbv1.PodGroupSpec{
+					Spec: schedulingv1.PodGroupSpec{
 						Queue: "q2",
 					},
 				},
@@ -78,12 +78,12 @@ func TestReclaim(t *testing.T) {
 			nodes: []*v1.Node{
 				util.BuildNode("n1", util.BuildResourceList("3", "3Gi"), make(map[string]string)),
 			},
-			queues: []*kbv1.Queue{
+			queues: []*schedulingv1.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "q1",
 					},
-					Spec: kbv1.QueueSpec{
+					Spec: schedulingv1.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -91,7 +91,7 @@ func TestReclaim(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "q2",
 					},
-					Spec: kbv1.QueueSpec{
+					Spec: schedulingv1.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -108,7 +108,6 @@ func TestReclaim(t *testing.T) {
 			Channel: make(chan string),
 		}
 		evictor := &util.FakeEvictor{
-			Evicts:  make([]string, 0),
 			Channel: make(chan string),
 		}
 		schedulerCache := &cache.SchedulerCache{
@@ -130,11 +129,11 @@ func TestReclaim(t *testing.T) {
 		}
 
 		for _, ss := range test.podGroups {
-			schedulerCache.AddPodGroupV1alpha2(ss)
+			schedulerCache.AddPodGroupV1beta1(ss)
 		}
 
 		for _, q := range test.queues {
-			schedulerCache.AddQueueV1alpha2(q)
+			schedulerCache.AddQueueV1beta1(q)
 		}
 
 		trueValue := true
@@ -151,7 +150,7 @@ func TestReclaim(t *testing.T) {
 					},
 				},
 			},
-		})
+		}, nil)
 		defer framework.CloseSession(ssn)
 
 		reclaim.Execute(ssn)
@@ -164,8 +163,8 @@ func TestReclaim(t *testing.T) {
 			}
 		}
 
-		if test.expected != len(evictor.Evicts) {
-			t.Errorf("case %d (%s): expected: %v, got %v ", i, test.name, test.expected, len(evictor.Evicts))
+		if test.expected != len(evictor.Evicts()) {
+			t.Errorf("case %d (%s): expected: %v, got %v ", i, test.name, test.expected, len(evictor.Evicts()))
 		}
 	}
 }

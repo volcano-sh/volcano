@@ -21,9 +21,9 @@ function kind-up-cluster {
   kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}
 
   echo "Loading docker images into kind cluster"
-  kind load docker-image ${IMAGE_PREFIX}-controllers:${TAG}  ${CLUSTER_CONTEXT}
+  kind load docker-image ${IMAGE_PREFIX}-controller-manager:${TAG}  ${CLUSTER_CONTEXT}
   kind load docker-image ${IMAGE_PREFIX}-scheduler:${TAG}  ${CLUSTER_CONTEXT}
-  kind load docker-image ${IMAGE_PREFIX}-admission:${TAG}  ${CLUSTER_CONTEXT}
+  kind load docker-image ${IMAGE_PREFIX}-webhook-manager:${TAG}  ${CLUSTER_CONTEXT}
 }
 
 
@@ -45,7 +45,7 @@ function check-kind {
   which kind >/dev/null 2>&1
   if [[ $? -ne 0 ]]; then
     echo "installing kind ."
-    GO111MODULE="on" go get sigs.k8s.io/kind@v0.4.0
+    GO111MODULE="on" go get sigs.k8s.io/kind@v0.6.1
   else
     echo -n "found kind, version: " && kind version
   fi
@@ -60,7 +60,7 @@ function install-helm {
     HELM_TEMP_DIR=`mktemp -d`
     curl https://raw.githubusercontent.com/helm/helm/master/scripts/get > ${HELM_TEMP_DIR}/get_helm.sh
     #TODO: There are some issue with helm's latest version, remove '--version' when it get fixed.
-    chmod 700 ${HELM_TEMP_DIR}/get_helm.sh && ${HELM_TEMP_DIR}/get_helm.sh   --version v2.13.0
+    chmod 700 ${HELM_TEMP_DIR}/get_helm.sh && ${HELM_TEMP_DIR}/get_helm.sh   --version v3.0.1
   else
     echo -n "found helm, version: " && helm version
   fi

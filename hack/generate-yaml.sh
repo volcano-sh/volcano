@@ -59,7 +59,7 @@ if [[ ! -d ${RELEASE_FOLDER} ]];then
 fi
 
 DEPLOYMENT_FILE=${RELEASE_FOLDER}/${YAML_FILENAME}
-echo "Generating volcano yaml file into ${DEPLOYMENT_FILE}}"
+echo "Generating volcano yaml file into ${DEPLOYMENT_FILE}"
 
 if [[ -f ${DEPLOYMENT_FILE} ]];then
     rm ${DEPLOYMENT_FILE}
@@ -67,14 +67,11 @@ fi
 cat ${VK_ROOT}/installer/namespace.yaml > ${DEPLOYMENT_FILE}
 ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
       --name volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} \
-      --set basic.scheduler_config_file=volcano-scheduler.conf \
       -x templates/admission.yaml \
       -x templates/batch_v1alpha1_job.yaml \
       -x templates/bus_v1alpha1_command.yaml \
       -x templates/controllers.yaml \
       -x templates/scheduler.yaml \
-      -x templates/scheduling_v1alpha1_podgroup.yaml \
-      -x templates/scheduling_v1alpha1_queue.yaml \
-      -x templates/scheduling_v1alpha2_podgroup.yaml \
-      -x templates/scheduling_v1alpha2_queue.yaml \
+      -x templates/scheduling_v1beta1_podgroup.yaml \
+      -x templates/scheduling_v1beta1_queue.yaml \
       --notes >> ${DEPLOYMENT_FILE}

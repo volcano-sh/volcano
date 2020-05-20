@@ -20,9 +20,10 @@ import "fmt"
 
 // ClusterInfo is a snapshot of cluster by cache.
 type ClusterInfo struct {
-	Jobs   map[JobID]*JobInfo
-	Nodes  map[string]*NodeInfo
-	Queues map[QueueID]*QueueInfo
+	Jobs          map[JobID]*JobInfo
+	Nodes         map[string]*NodeInfo
+	Queues        map[QueueID]*QueueInfo
+	NamespaceInfo map[NamespaceName]*NamespaceInfo
 }
 
 func (ci ClusterInfo) String() string {
@@ -54,6 +55,14 @@ func (ci ClusterInfo) String() string {
 				str = str + fmt.Sprintf("\t\t %d: %v\n", i, task)
 				i++
 			}
+		}
+	}
+
+	if len(ci.NamespaceInfo) != 0 {
+		str = str + "Namespaces:\n"
+		for _, ns := range ci.NamespaceInfo {
+			str = str + fmt.Sprintf("\t Namespace(%s) Weight(%v)\n",
+				ns.Name, ns.Weight)
 		}
 	}
 

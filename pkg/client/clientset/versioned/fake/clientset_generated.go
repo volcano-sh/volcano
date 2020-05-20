@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2020 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,10 +29,8 @@ import (
 	fakebatchv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/batch/v1alpha1/fake"
 	busv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/bus/v1alpha1"
 	fakebusv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/bus/v1alpha1/fake"
-	schedulingv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/scheduling/v1alpha1"
-	fakeschedulingv1alpha1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/scheduling/v1alpha1/fake"
-	schedulingv1alpha2 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/scheduling/v1alpha2"
-	fakeschedulingv1alpha2 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/scheduling/v1alpha2/fake"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/scheduling/v1beta1"
+	fakeschedulingv1beta1 "volcano.sh/volcano/pkg/client/clientset/versioned/typed/scheduling/v1beta1/fake"
 )
 
 // NewSimpleClientset returns a clientset that will respond with the provided objects.
@@ -47,7 +45,7 @@ func NewSimpleClientset(objects ...runtime.Object) *Clientset {
 		}
 	}
 
-	cs := &Clientset{}
+	cs := &Clientset{tracker: o}
 	cs.discovery = &fakediscovery.FakeDiscovery{Fake: &cs.Fake}
 	cs.AddReactor("*", "*", testing.ObjectReaction(o))
 	cs.AddWatchReactor("*", func(action testing.Action) (handled bool, ret watch.Interface, err error) {
@@ -69,10 +67,15 @@ func NewSimpleClientset(objects ...runtime.Object) *Clientset {
 type Clientset struct {
 	testing.Fake
 	discovery *fakediscovery.FakeDiscovery
+	tracker   testing.ObjectTracker
 }
 
 func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 	return c.discovery
+}
+
+func (c *Clientset) Tracker() testing.ObjectTracker {
+	return c.tracker
 }
 
 var _ clientset.Interface = &Clientset{}
@@ -82,32 +85,12 @@ func (c *Clientset) BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface {
 	return &fakebatchv1alpha1.FakeBatchV1alpha1{Fake: &c.Fake}
 }
 
-// Batch retrieves the BatchV1alpha1Client
-func (c *Clientset) Batch() batchv1alpha1.BatchV1alpha1Interface {
-	return &fakebatchv1alpha1.FakeBatchV1alpha1{Fake: &c.Fake}
-}
-
 // BusV1alpha1 retrieves the BusV1alpha1Client
 func (c *Clientset) BusV1alpha1() busv1alpha1.BusV1alpha1Interface {
 	return &fakebusv1alpha1.FakeBusV1alpha1{Fake: &c.Fake}
 }
 
-// Bus retrieves the BusV1alpha1Client
-func (c *Clientset) Bus() busv1alpha1.BusV1alpha1Interface {
-	return &fakebusv1alpha1.FakeBusV1alpha1{Fake: &c.Fake}
-}
-
-// SchedulingV1alpha1 retrieves the SchedulingV1alpha1Client
-func (c *Clientset) SchedulingV1alpha1() schedulingv1alpha1.SchedulingV1alpha1Interface {
-	return &fakeschedulingv1alpha1.FakeSchedulingV1alpha1{Fake: &c.Fake}
-}
-
-// Scheduling retrieves the SchedulingV1alpha1Client
-func (c *Clientset) Scheduling() schedulingv1alpha1.SchedulingV1alpha1Interface {
-	return &fakeschedulingv1alpha1.FakeSchedulingV1alpha1{Fake: &c.Fake}
-}
-
-// SchedulingV1alpha2 retrieves the SchedulingV1alpha2Client
-func (c *Clientset) SchedulingV1alpha2() schedulingv1alpha2.SchedulingV1alpha2Interface {
-	return &fakeschedulingv1alpha2.FakeSchedulingV1alpha2{Fake: &c.Fake}
+// SchedulingV1beta1 retrieves the SchedulingV1beta1Client
+func (c *Clientset) SchedulingV1beta1() schedulingv1beta1.SchedulingV1beta1Interface {
+	return &fakeschedulingv1beta1.FakeSchedulingV1beta1{Fake: &c.Fake}
 }

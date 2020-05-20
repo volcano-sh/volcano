@@ -24,7 +24,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
-	kbv1 "volcano.sh/volcano/pkg/apis/scheduling/v1alpha2"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
+	schedulingv1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -37,26 +38,32 @@ import (
 func TestPreempt(t *testing.T) {
 	framework.RegisterPluginBuilder("conformance", conformance.New)
 	framework.RegisterPluginBuilder("gang", gang.New)
+	options.ServerOpts = &options.ServerOption{
+		MinNodesToFind:             100,
+		MinPercentageOfNodesToFind: 5,
+		PercentageOfNodesToFind:    100,
+	}
 	defer framework.CleanupPluginBuilders()
 
 	tests := []struct {
 		name      string
-		podGroups []*kbv1.PodGroup
+		podGroups []*schedulingv1.PodGroup
 		pods      []*v1.Pod
 		nodes     []*v1.Node
-		queues    []*kbv1.Queue
+		queues    []*schedulingv1.Queue
 		expected  int
 	}{
 		{
-			name: "one Job with two Pods on one node",
-			podGroups: []*kbv1.PodGroup{
+			name: "do not preempt if there are enough idle resources",
+			podGroups: []*schedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 					},
-					Spec: kbv1.PodGroupSpec{
-						Queue: "q1",
+					Spec: schedulingv1.PodGroupSpec{
+						MinMember: 3,
+						Queue:     "q1",
 					},
 				},
 			},
@@ -64,33 +71,34 @@ func TestPreempt(t *testing.T) {
 				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
 				util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
 				util.BuildPod("c1", "preemptor1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-				util.BuildPod("c1", "preemptor2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
 			},
+			// If there are enough idle resources on the node, then there is no need to preempt anything.
 			nodes: []*v1.Node{
-				util.BuildNode("n1", util.BuildResourceList("3", "3Gi"), make(map[string]string)),
+				util.BuildNode("n1", util.BuildResourceList("10", "10G"), make(map[string]string)),
 			},
-			queues: []*kbv1.Queue{
+			queues: []*schedulingv1.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "q1",
 					},
-					Spec: kbv1.QueueSpec{
+					Spec: schedulingv1.QueueSpec{
 						Weight: 1,
 					},
 				},
 			},
-			expected: 1,
+			expected: 0,
 		},
 		{
-			name: "two Jobs on one node",
-			podGroups: []*kbv1.PodGroup{
+			name: "do not preempt if job is pipelined",
+			podGroups: []*schedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 					},
-					Spec: kbv1.PodGroupSpec{
-						Queue: "q1",
+					Spec: schedulingv1.PodGroupSpec{
+						MinMember: 1,
+						Queue:     "q1",
 					},
 				},
 				{
@@ -98,31 +106,122 @@ func TestPreempt(t *testing.T) {
 						Name:      "pg2",
 						Namespace: "c1",
 					},
-					Spec: kbv1.PodGroupSpec{
-						Queue: "q1",
+					Spec: schedulingv1.PodGroupSpec{
+						MinMember: 1,
+						Queue:     "q1",
+					},
+				},
+			},
+			// Both pg1 and pg2 jobs are pipelined, because enough pods are already running.
+			pods: []*v1.Pod{
+				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "preemptee3", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "preemptor2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			// All resources on the node will be in use.
+			nodes: []*v1.Node{
+				util.BuildNode("n1", util.BuildResourceList("3", "3G"), make(map[string]string)),
+			},
+			queues: []*schedulingv1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "q1",
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight: 1,
+					},
+				},
+			},
+			expected: 0,
+		},
+		{
+			name: "preempt one task of different job to fit both jobs on one node",
+			podGroups: []*schedulingv1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						MinMember: 1,
+						Queue:     "q1",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						MinMember: 1,
+						Queue:     "q1",
 					},
 				},
 			},
 
 			pods: []*v1.Pod{
-				// running pod with pg1, under c1
 				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-				// running pod with pg1, under c1
 				util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-				// pending pod with pg2, under c1
 				util.BuildPod("c1", "preemptor1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
-				// pending pod with pg2, under c1
 				util.BuildPod("c1", "preemptor2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
 			},
 			nodes: []*v1.Node{
 				util.BuildNode("n1", util.BuildResourceList("2", "2G"), make(map[string]string)),
 			},
-			queues: []*kbv1.Queue{
+			queues: []*schedulingv1.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "q1",
 					},
-					Spec: kbv1.QueueSpec{
+					Spec: schedulingv1.QueueSpec{
+						Weight: 1,
+					},
+				},
+			},
+			expected: 1,
+		},
+		{
+			name: "preempt enough tasks to fit large task of different job",
+			podGroups: []*schedulingv1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						MinMember: 1,
+						Queue:     "q1",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						MinMember: 1,
+						Queue:     "q1",
+					},
+				},
+			},
+			// There are 3 cpus and 3G of memory idle and 3 tasks running each consuming 1 cpu and 1G of memory.
+			// Big task requiring 5 cpus and 5G of memory should preempt 2 of 3 running tasks to fit into the node.
+			pods: []*v1.Pod{
+				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "preemptee3", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "preemptor1", "", v1.PodPending, util.BuildResourceList("5", "5G"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			nodes: []*v1.Node{
+				util.BuildNode("n1", util.BuildResourceList("6", "6G"), make(map[string]string)),
+			},
+			queues: []*schedulingv1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "q1",
+					},
+					Spec: schedulingv1.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -131,72 +230,79 @@ func TestPreempt(t *testing.T) {
 		},
 	}
 
-	allocate := New()
+	preempt := New()
 
-	for i, test := range tests {
-		binder := &util.FakeBinder{
-			Binds:   map[string]string{},
-			Channel: make(chan string),
-		}
-		evictor := &util.FakeEvictor{
-			Evicts:  make([]string, 0),
-			Channel: make(chan string),
-		}
-		schedulerCache := &cache.SchedulerCache{
-			Nodes:         make(map[string]*api.NodeInfo),
-			Jobs:          make(map[api.JobID]*api.JobInfo),
-			Queues:        make(map[api.QueueID]*api.QueueInfo),
-			Binder:        binder,
-			Evictor:       evictor,
-			StatusUpdater: &util.FakeStatusUpdater{},
-			VolumeBinder:  &util.FakeVolumeBinder{},
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			binder := &util.FakeBinder{
+				Binds:   map[string]string{},
+				Channel: make(chan string),
+			}
+			evictor := &util.FakeEvictor{
+				Channel: make(chan string),
+			}
+			schedulerCache := &cache.SchedulerCache{
+				Nodes:         make(map[string]*api.NodeInfo),
+				Jobs:          make(map[api.JobID]*api.JobInfo),
+				Queues:        make(map[api.QueueID]*api.QueueInfo),
+				Binder:        binder,
+				Evictor:       evictor,
+				StatusUpdater: &util.FakeStatusUpdater{},
+				VolumeBinder:  &util.FakeVolumeBinder{},
 
-			Recorder: record.NewFakeRecorder(100),
-		}
-		for _, node := range test.nodes {
-			schedulerCache.AddNode(node)
-		}
-		for _, pod := range test.pods {
-			schedulerCache.AddPod(pod)
-		}
+				Recorder: record.NewFakeRecorder(100),
+			}
+			for _, node := range test.nodes {
+				schedulerCache.AddNode(node)
+			}
+			for _, pod := range test.pods {
+				schedulerCache.AddPod(pod)
+			}
 
-		for _, ss := range test.podGroups {
-			schedulerCache.AddPodGroupV1alpha2(ss)
-		}
+			for _, ss := range test.podGroups {
+				schedulerCache.AddPodGroupV1beta1(ss)
+			}
 
-		for _, q := range test.queues {
-			schedulerCache.AddQueueV1alpha2(q)
-		}
+			for _, q := range test.queues {
+				schedulerCache.AddQueueV1beta1(q)
+			}
 
-		trueValue := true
-		ssn := framework.OpenSession(schedulerCache, []conf.Tier{
-			{
-				Plugins: []conf.PluginOption{
-					{
-						Name:               "conformance",
-						EnabledPreemptable: &trueValue,
-					},
-					{
-						Name:               "gang",
-						EnabledPreemptable: &trueValue,
+			trueValue := true
+			ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+				{
+					Plugins: []conf.PluginOption{
+						{
+							Name:               "conformance",
+							EnabledPreemptable: &trueValue,
+						},
+						{
+							Name:                "gang",
+							EnabledPreemptable:  &trueValue,
+							EnabledJobPipelined: &trueValue,
+						},
 					},
 				},
-			},
-		})
-		defer framework.CloseSession(ssn)
+			}, nil)
+			defer framework.CloseSession(ssn)
 
-		allocate.Execute(ssn)
+			preempt.Execute(ssn)
 
-		for i := 0; i < test.expected; i++ {
-			select {
-			case <-evictor.Channel:
-			case <-time.After(3 * time.Second):
-				t.Errorf("Failed to get evicting request.")
+			for i := 0; i < test.expected; i++ {
+				select {
+				case <-evictor.Channel:
+				case <-time.After(time.Second):
+					t.Errorf("not enough evictions")
+				}
 			}
-		}
-
-		if test.expected != len(evictor.Evicts) {
-			t.Errorf("case %d (%s): expected: %v, got %v ", i, test.name, test.expected, len(evictor.Evicts))
-		}
+			select {
+			case key, opened := <-evictor.Channel:
+				if opened {
+					t.Errorf("unexpected eviction: %s", key)
+				}
+			case <-time.After(50 * time.Millisecond):
+				// TODO: Active waiting here is not optimal, but there is no better way currently.
+				//	 Ideally we would like to wait for evict and bind request goroutines to finish first.
+			}
+		})
 	}
 }

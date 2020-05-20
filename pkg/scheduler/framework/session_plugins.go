@@ -18,6 +18,7 @@ package framework
 
 import (
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -34,6 +35,11 @@ func (ssn *Session) AddQueueOrderFn(name string, qf api.CompareFn) {
 // AddTaskOrderFn add task order function
 func (ssn *Session) AddTaskOrderFn(name string, cf api.CompareFn) {
 	ssn.taskOrderFns[name] = cf
+}
+
+// AddNamespaceOrderFn add namespace order function
+func (ssn *Session) AddNamespaceOrderFn(name string, cf api.CompareFn) {
+	ssn.namespaceOrderFns[name] = cf
 }
 
 // AddPreemptableFn add preemptable function
@@ -59,6 +65,11 @@ func (ssn *Session) AddJobPipelinedFn(name string, vf api.ValidateFn) {
 // AddPredicateFn add Predicate function
 func (ssn *Session) AddPredicateFn(name string, pf api.PredicateFn) {
 	ssn.predicateFns[name] = pf
+}
+
+// AddBestNodeFn add BestNode function
+func (ssn *Session) AddBestNodeFn(name string, pf api.BestNodeFn) {
+	ssn.bestNodeFns[name] = pf
 }
 
 // AddNodeOrderFn add Node order function
@@ -304,6 +315,31 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 
 }
 
+// NamespaceOrderFn invoke namespaceorder function of the plugins
+func (ssn *Session) NamespaceOrderFn(l, r interface{}) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledNamespaceOrder) {
+				continue
+			}
+			nof, found := ssn.namespaceOrderFns[plugin.Name]
+			if !found {
+				continue
+			}
+			if j := nof(l, r); j != 0 {
+				return j < 0
+			}
+		}
+	}
+
+	// TODO(lminzhw): if all NamespaceOrderFn treat these two namespace as the same,
+	// we should make the job order have its affect among namespaces.
+	// or just schedule namespace one by one
+	lv := l.(api.NamespaceName)
+	rv := r.(api.NamespaceName)
+	return lv < rv
+}
+
 // QueueOrderFn invoke queueorder function of the plugins
 func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
 	for _, tier := range ssn.Tiers {
@@ -382,6 +418,26 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 			err := pfn(task, node)
 			if err != nil {
 				return err
+			}
+		}
+	}
+	return nil
+}
+
+// BestNodeFn invoke bestNode function of the plugins
+func (ssn *Session) BestNodeFn(task *api.TaskInfo, nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledBestNode) {
+				continue
+			}
+			pfn, found := ssn.bestNodeFns[plugin.Name]
+			if !found {
+				continue
+			}
+			// Only the first plugin that enables and realizes bestNodeFn is allowed to choose best node for task
+			if bestNode := pfn(task, nodeScores); bestNode != nil {
+				return bestNode
 			}
 		}
 	}

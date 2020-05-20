@@ -22,11 +22,21 @@ type SchedulerConfiguration struct {
 	Actions string `yaml:"actions"`
 	// Tiers defines plugins in different tiers
 	Tiers []Tier `yaml:"tiers"`
+	// Configurations is configuration for actions
+	Configurations []Configuration `yaml:"configurations"`
 }
 
 // Tier defines plugin tier
 type Tier struct {
 	Plugins []PluginOption `yaml:"plugins"`
+}
+
+// Configuration is configuration of action
+type Configuration struct {
+	// Name is name of action
+	Name string `yaml:"name"`
+	// Arguments defines the different arguments that can be given to specified action
+	Arguments map[string]string `yaml:"arguments"`
 }
 
 // PluginOption defines the options of plugin
@@ -35,6 +45,8 @@ type PluginOption struct {
 	Name string `yaml:"name"`
 	// EnabledJobOrder defines whether jobOrderFn is enabled
 	EnabledJobOrder *bool `yaml:"enableJobOrder"`
+	// EnabledNamespaceOrder defines whether namespaceOrderFn is enabled
+	EnabledNamespaceOrder *bool `yaml:"enableNamespaceOrder"`
 	// EnabledJobReady defines whether jobReadyFn is enabled
 	EnabledJobReady *bool `yaml:"enableJobReady"`
 	// EnabledJobPipelined defines whether jobPipelinedFn is enabled
@@ -49,6 +61,8 @@ type PluginOption struct {
 	EnabledQueueOrder *bool `yaml:"enableQueueOrder"`
 	// EnabledPredicate defines whether predicateFn is enabled
 	EnabledPredicate *bool `yaml:"enablePredicate"`
+	// EnabledBestNode defines whether bestNodeFn is enabled
+	EnabledBestNode *bool `yaml:"enableBestNode"`
 	// EnabledNodeOrder defines whether NodeOrderFn is enabled
 	EnabledNodeOrder *bool `yaml:"enableNodeOrder"`
 	// Arguments defines the different arguments that can be given to different plugins

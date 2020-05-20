@@ -26,7 +26,11 @@ import (
 
 func TestLoadSchedulerConf(t *testing.T) {
 	configuration := `
-actions: "allocate, backfill"
+actions: "enqueue, allocate, backfill"
+configurations:
+- name: enqueue
+  arguments:
+    "overcommit-factor": 1.5
 tiers:
 - plugins:
   - name: priority
@@ -44,103 +48,123 @@ tiers:
 		{
 			Plugins: []conf.PluginOption{
 				{
-					Name:                "priority",
-					EnabledJobOrder:     &trueValue,
-					EnabledJobReady:     &trueValue,
-					EnabledJobPipelined: &trueValue,
-					EnabledTaskOrder:    &trueValue,
-					EnabledPreemptable:  &trueValue,
-					EnabledReclaimable:  &trueValue,
-					EnabledQueueOrder:   &trueValue,
-					EnabledPredicate:    &trueValue,
-					EnabledNodeOrder:    &trueValue,
+					Name:                  "priority",
+					EnabledJobOrder:       &trueValue,
+					EnabledNamespaceOrder: &trueValue,
+					EnabledJobReady:       &trueValue,
+					EnabledJobPipelined:   &trueValue,
+					EnabledTaskOrder:      &trueValue,
+					EnabledPreemptable:    &trueValue,
+					EnabledReclaimable:    &trueValue,
+					EnabledQueueOrder:     &trueValue,
+					EnabledPredicate:      &trueValue,
+					EnabledNodeOrder:      &trueValue,
 				},
 				{
-					Name:                "gang",
-					EnabledJobOrder:     &trueValue,
-					EnabledJobReady:     &trueValue,
-					EnabledJobPipelined: &trueValue,
-					EnabledTaskOrder:    &trueValue,
-					EnabledPreemptable:  &trueValue,
-					EnabledReclaimable:  &trueValue,
-					EnabledQueueOrder:   &trueValue,
-					EnabledPredicate:    &trueValue,
-					EnabledNodeOrder:    &trueValue,
+					Name:                  "gang",
+					EnabledJobOrder:       &trueValue,
+					EnabledNamespaceOrder: &trueValue,
+					EnabledJobReady:       &trueValue,
+					EnabledJobPipelined:   &trueValue,
+					EnabledTaskOrder:      &trueValue,
+					EnabledPreemptable:    &trueValue,
+					EnabledReclaimable:    &trueValue,
+					EnabledQueueOrder:     &trueValue,
+					EnabledPredicate:      &trueValue,
+					EnabledNodeOrder:      &trueValue,
 				},
 				{
-					Name:                "conformance",
-					EnabledJobOrder:     &trueValue,
-					EnabledJobReady:     &trueValue,
-					EnabledJobPipelined: &trueValue,
-					EnabledTaskOrder:    &trueValue,
-					EnabledPreemptable:  &trueValue,
-					EnabledReclaimable:  &trueValue,
-					EnabledQueueOrder:   &trueValue,
-					EnabledPredicate:    &trueValue,
-					EnabledNodeOrder:    &trueValue,
+					Name:                  "conformance",
+					EnabledJobOrder:       &trueValue,
+					EnabledNamespaceOrder: &trueValue,
+					EnabledJobReady:       &trueValue,
+					EnabledJobPipelined:   &trueValue,
+					EnabledTaskOrder:      &trueValue,
+					EnabledPreemptable:    &trueValue,
+					EnabledReclaimable:    &trueValue,
+					EnabledQueueOrder:     &trueValue,
+					EnabledPredicate:      &trueValue,
+					EnabledNodeOrder:      &trueValue,
 				},
 			},
 		},
 		{
 			Plugins: []conf.PluginOption{
 				{
-					Name:                "drf",
-					EnabledJobOrder:     &trueValue,
-					EnabledJobReady:     &trueValue,
-					EnabledJobPipelined: &trueValue,
-					EnabledTaskOrder:    &trueValue,
-					EnabledPreemptable:  &trueValue,
-					EnabledReclaimable:  &trueValue,
-					EnabledQueueOrder:   &trueValue,
-					EnabledPredicate:    &trueValue,
-					EnabledNodeOrder:    &trueValue,
+					Name:                  "drf",
+					EnabledJobOrder:       &trueValue,
+					EnabledNamespaceOrder: &trueValue,
+					EnabledJobReady:       &trueValue,
+					EnabledJobPipelined:   &trueValue,
+					EnabledTaskOrder:      &trueValue,
+					EnabledPreemptable:    &trueValue,
+					EnabledReclaimable:    &trueValue,
+					EnabledQueueOrder:     &trueValue,
+					EnabledPredicate:      &trueValue,
+					EnabledNodeOrder:      &trueValue,
 				},
 				{
-					Name:                "predicates",
-					EnabledJobOrder:     &trueValue,
-					EnabledJobReady:     &trueValue,
-					EnabledJobPipelined: &trueValue,
-					EnabledTaskOrder:    &trueValue,
-					EnabledPreemptable:  &trueValue,
-					EnabledReclaimable:  &trueValue,
-					EnabledQueueOrder:   &trueValue,
-					EnabledPredicate:    &trueValue,
-					EnabledNodeOrder:    &trueValue,
+					Name:                  "predicates",
+					EnabledJobOrder:       &trueValue,
+					EnabledNamespaceOrder: &trueValue,
+					EnabledJobReady:       &trueValue,
+					EnabledJobPipelined:   &trueValue,
+					EnabledTaskOrder:      &trueValue,
+					EnabledPreemptable:    &trueValue,
+					EnabledReclaimable:    &trueValue,
+					EnabledQueueOrder:     &trueValue,
+					EnabledPredicate:      &trueValue,
+					EnabledNodeOrder:      &trueValue,
 				},
 				{
-					Name:                "proportion",
-					EnabledJobOrder:     &trueValue,
-					EnabledJobReady:     &trueValue,
-					EnabledJobPipelined: &trueValue,
-					EnabledTaskOrder:    &trueValue,
-					EnabledPreemptable:  &trueValue,
-					EnabledReclaimable:  &trueValue,
-					EnabledQueueOrder:   &trueValue,
-					EnabledPredicate:    &trueValue,
-					EnabledNodeOrder:    &trueValue,
+					Name:                  "proportion",
+					EnabledJobOrder:       &trueValue,
+					EnabledNamespaceOrder: &trueValue,
+					EnabledJobReady:       &trueValue,
+					EnabledJobPipelined:   &trueValue,
+					EnabledTaskOrder:      &trueValue,
+					EnabledPreemptable:    &trueValue,
+					EnabledReclaimable:    &trueValue,
+					EnabledQueueOrder:     &trueValue,
+					EnabledPredicate:      &trueValue,
+					EnabledNodeOrder:      &trueValue,
 				},
 				{
-					Name:                "nodeorder",
-					EnabledJobOrder:     &trueValue,
-					EnabledJobReady:     &trueValue,
-					EnabledJobPipelined: &trueValue,
-					EnabledTaskOrder:    &trueValue,
-					EnabledPreemptable:  &trueValue,
-					EnabledReclaimable:  &trueValue,
-					EnabledQueueOrder:   &trueValue,
-					EnabledPredicate:    &trueValue,
-					EnabledNodeOrder:    &trueValue,
+					Name:                  "nodeorder",
+					EnabledJobOrder:       &trueValue,
+					EnabledNamespaceOrder: &trueValue,
+					EnabledJobReady:       &trueValue,
+					EnabledJobPipelined:   &trueValue,
+					EnabledTaskOrder:      &trueValue,
+					EnabledPreemptable:    &trueValue,
+					EnabledReclaimable:    &trueValue,
+					EnabledQueueOrder:     &trueValue,
+					EnabledPredicate:      &trueValue,
+					EnabledNodeOrder:      &trueValue,
 				},
 			},
 		},
 	}
 
-	_, tiers, err := loadSchedulerConf(configuration)
+	expectedConfigurations := []conf.Configuration{
+		{
+			Name: "enqueue",
+			Arguments: map[string]string{
+				"overcommit-factor": "1.5",
+			},
+		},
+	}
+
+	_, tiers, configurations, err := loadSchedulerConf(configuration)
 	if err != nil {
 		t.Errorf("Failed to load scheduler configuration: %v", err)
 	}
 	if !reflect.DeepEqual(tiers, expectedTiers) {
 		t.Errorf("Failed to set default settings for plugins, expected: %+v, got %+v",
 			expectedTiers, tiers)
+	}
+	if !reflect.DeepEqual(configurations, expectedConfigurations) {
+		t.Errorf("Wrong configuration, expected: %+v, got %+v",
+			expectedConfigurations, configurations)
 	}
 }

@@ -17,14 +17,13 @@ limitations under the License.
 package util
 
 import (
-	"fmt"
-
-	"github.com/golang/glog"
+	"k8s.io/apimachinery/pkg/api/errors"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
-	"k8s.io/kubernetes/pkg/scheduler/cache"
+	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -98,7 +97,7 @@ func (pl *PodLister) GetPod(task *api.TaskInfo) *v1.Pod {
 	if !found {
 		// we could not write the copied pod back into cache for read only
 		pod = pl.copyTaskPod(task)
-		glog.Warningf("DeepCopy for pod %s/%s at PodLister.GetPod is unexpected", pod.Namespace, pod.Name)
+		klog.Warningf("DeepCopy for pod %s/%s at PodLister.GetPod is unexpected", pod.Namespace, pod.Name)
 	}
 	return pod
 }
@@ -183,12 +182,12 @@ func (pal *PodAffinityLister) FilteredList(podFilter algorithm.PodFilter, select
 }
 
 // GenerateNodeMapAndSlice returns the nodeMap and nodeSlice generated from ssn
-func GenerateNodeMapAndSlice(nodes map[string]*api.NodeInfo) (map[string]*cache.NodeInfo, []*v1.Node) {
-	var nodeMap map[string]*cache.NodeInfo
+func GenerateNodeMapAndSlice(nodes map[string]*api.NodeInfo) (map[string]*schedulernodeinfo.NodeInfo, []*v1.Node) {
+	var nodeMap map[string]*schedulernodeinfo.NodeInfo
 	var nodeSlice []*v1.Node
-	nodeMap = make(map[string]*cache.NodeInfo)
+	nodeMap = make(map[string]*schedulernodeinfo.NodeInfo)
 	for _, node := range nodes {
-		nodeInfo := cache.NewNodeInfo(node.Pods()...)
+		nodeInfo := schedulernodeinfo.NewNodeInfo(node.Pods()...)
 		nodeInfo.SetNode(node.Node)
 		nodeMap[node.Name] = nodeInfo
 		nodeSlice = append(nodeSlice, node.Node)
@@ -205,7 +204,8 @@ type CachedNodeInfo struct {
 func (c *CachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
 	node, found := c.Session.Nodes[name]
 	if !found {
-		return nil, fmt.Errorf("failed to find node <%s>", name)
+
+		return nil, errors.NewNotFound(v1.Resource("node"), name)
 	}
 
 	return node.Node, nil

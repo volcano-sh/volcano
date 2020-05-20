@@ -31,6 +31,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/cli/util"
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
@@ -60,12 +61,12 @@ func InitViewFlags(cmd *cobra.Command) {
 
 // ViewJob gives full details of the  job
 func ViewJob() error {
-	config, err := buildConfig(viewJobFlags.Master, viewJobFlags.Kubeconfig)
+	config, err := util.BuildConfig(viewJobFlags.Master, viewJobFlags.Kubeconfig)
 	if err != nil {
 		return err
 	}
 	if viewJobFlags.JobName == "" {
-		err := fmt.Errorf("job name (specified by --name or -N) is mandaorty to view a particular job")
+		err := fmt.Errorf("job name (specified by --name or -N) is mandatory to view a particular job")
 		return err
 	}
 

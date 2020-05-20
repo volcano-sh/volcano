@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Vulcan Authors.
+Copyright 2018 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,13 +24,11 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 
-	vkbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	vkbusv1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
@@ -40,10 +38,6 @@ func homeDir() string {
 		return h
 	}
 	return os.Getenv("USERPROFILE") // windows
-}
-
-func buildConfig(master, kubeconfig string) (*rest.Config, error) {
-	return clientcmd.BuildConfigFromFlags(master, kubeconfig)
 }
 
 // populateResourceListV1 takes strings of form <resourceName1>=<value1>,<resourceName1>=<value2>
@@ -71,7 +65,7 @@ func populateResourceListV1(spec string) (v1.ResourceList, error) {
 	return result, nil
 }
 
-func createJobCommand(config *rest.Config, ns, name string, action vkbatchv1.Action) error {
+func createJobCommand(config *rest.Config, ns, name string, action vcbus.Action) error {
 	jobClient := versioned.NewForConfigOrDie(config)
 	job, err := jobClient.BatchV1alpha1().Jobs(ns).Get(name, metav1.GetOptions{})
 	if err != nil {
@@ -79,7 +73,7 @@ func createJobCommand(config *rest.Config, ns, name string, action vkbatchv1.Act
 	}
 
 	ctrlRef := metav1.NewControllerRef(job, helpers.JobKind)
-	cmd := &vkbusv1.Command{
+	cmd := &vcbus.Command{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: fmt.Sprintf("%s-%s-",
 				job.Name, strings.ToLower(string(action))),

@@ -53,7 +53,7 @@ make images
 
 ## Building a specific docker image
 
-If you want to make a local change and test some component, say `vc-controllers`, you
+If you want to make a local change and test some component, say `vc-controller-manager`, you
 could do:
 
 Under volcano.sh/volcano repo
@@ -73,10 +73,10 @@ export HUB=docker.io/yourrepo
 export TAG=citadel
 ```
 
-Make some local change of the code, then build `vc-controllers`
+Make some local change of the code, then build `vc-controller-manager`
 
 ```bash
-make image.vc-controllers
+make image.vc-controller-manager
 ```
 
 ## Building the Volcano manifests
@@ -118,7 +118,7 @@ make e2e-test-kind
 If you want to run e2e test in a existing cluster with volcano deployed, run the following:
 
 ```bash
-export VK_BIN= need to set vcctl binary path (eg:.../src/volcano.sh/volcano/_output/bin/)
+export VC_BIN= need to set vcctl binary path (eg:.../src/volcano.sh/volcano/_output/bin/)
 KUBECONFIG=${KUBECONFIG} go test ./test/e2e
 ```
 
@@ -141,12 +141,17 @@ make verify
 
 ## Adding dependencies
 
-Volcano uses [dep](https://github.com/golang/dep) to manage its dependencies. 
+Volcano uses [Go Modules](https://blog.golang.org/migrating-to-go-modules) to manage its dependencies.
 If you want to add or update a dependency, running:
 
 ```bash
-dep ensure -add dependency-name@version
+go get dependency-name@version
+go mod tidy
+go mod vendor
 ```
+
+Note: Go's module system, introduced in Go 1.11, provides an official dependency management solution built into the go command.
+      Make sure `GO111MODULE` env is not `off` before using it.
 
 ## About testing
 

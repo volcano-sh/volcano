@@ -44,7 +44,7 @@ After `InQueue`, the state transform map is updated as follow.
 
 The `InQueue` is a new state between `Pending` and `Running`; and it'll let operators/controllers start to
 create pods. If it meets errors, e.g. unschedulable, it rollbacks to `Pending` instead of `InQueue` to
-avoid retry-loop. 
+avoid retry-loop.
 
 ### Action
 
