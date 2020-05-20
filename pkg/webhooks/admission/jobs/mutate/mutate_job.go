@@ -45,7 +45,7 @@ func init() {
 
 var service = &router.AdmissionService{
 	Path: "/jobs/mutate",
-	Func: MutateJobs,
+	Func: Jobs,
 
 	MutatingConfig: &whv1beta1.MutatingWebhookConfiguration{
 		Webhooks: []whv1beta1.MutatingWebhook{{
@@ -71,7 +71,7 @@ type patchOperation struct {
 }
 
 // MutateJobs mutate jobs
-func MutateJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
+func Jobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	klog.V(3).Infof("mutating jobs")
 
 	job, err := schema.DecodeJob(ar.Request.Object, ar.Request.Resource)

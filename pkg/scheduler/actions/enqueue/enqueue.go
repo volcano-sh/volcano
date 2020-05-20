@@ -37,21 +37,21 @@ var (
 	defaultOverCommitFactor = 1.2
 )
 
-type enqueueAction struct {
+type Action struct {
 	ssn *framework.Session
 }
 
-func New() *enqueueAction {
-	return &enqueueAction{}
+func New() *Action {
+	return &Action{}
 }
 
-func (enqueue *enqueueAction) Name() string {
+func (enqueue *Action) Name() string {
 	return "enqueue"
 }
 
-func (enqueue *enqueueAction) Initialize() {}
+func (enqueue *Action) Initialize() {}
 
-func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
+func (enqueue *Action) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("Enter Enqueue ...")
 	defer klog.V(3).Infof("Leaving Enqueue ...")
 
@@ -135,9 +135,9 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 	}
 }
 
-func (enqueue *enqueueAction) UnInitialize() {}
+func (enqueue *Action) UnInitialize() {}
 
-func (enqueue *enqueueAction) getOverCommitFactor(ssn *framework.Session) float64 {
+func (enqueue *Action) getOverCommitFactor(ssn *framework.Session) float64 {
 	factor := defaultOverCommitFactor
 	arg := framework.GetArgOfActionFromConf(ssn.Configurations, enqueue.Name())
 	if arg != nil {
