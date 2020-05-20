@@ -7,7 +7,6 @@ volcano.sh/volcano/pkg/scheduler/actions/enqueue
 volcano.sh/volcano/pkg/scheduler/actions/preempt
 volcano.sh/volcano/pkg/scheduler/actions/reclaim
 volcano.sh/volcano/pkg/webhooks/admission/jobs/mutate
-volcano.sh/volcano/pkg/webhooks/admission/queues/mutate
 volcano.sh/volcano/pkg/webhooks/router
 volcano.sh/volcano/pkg/webhooks/schema
 volcano.sh/volcano/test/e2e
