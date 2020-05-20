@@ -51,6 +51,9 @@ var policyActionMap = map[busv1alpha1.Action]bool{
 	busv1alpha1.EnqueueAction:      false,
 }
 
+// supportedGPUList defines all supported GPU resource name
+var supportedGPUList = []string{"nvidia.com/gpu", "huawei.com/ascend-310"}
+
 func validatePolicies(policies []batchv1alpha1.LifecyclePolicy, fldPath *field.Path) error {
 	var err error
 	policyEvents := map[busv1alpha1.Event]struct{}{}

@@ -24,6 +24,7 @@ import (
 	whv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
+	resource "k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -257,6 +258,8 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 		if container.SecurityContext != nil && container.SecurityContext.Privileged != nil {
 			coreTemplateSpec.Spec.Containers[i].SecurityContext.Privileged = nil
 		}
+		// Skip the integer check on GPU as it might be decimal in GPU share case
+		skipValidateGPU(&container.Resources)
 	}
 
 	corePodTemplate := k8score.PodTemplate{
@@ -276,4 +279,16 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 	}
 
 	return ""
+}
+
+func skipValidateGPU(res *k8score.ResourceRequirements) {
+	for _, v := range supportedGPUList {
+		resName := k8score.ResourceName(v)
+		if _, exist := res.Limits[resName]; exist {
+			res.Limits[resName] = resource.Quantity{}
+		}
+		if _, exist := res.Requests[resName]; exist {
+			res.Requests[resName] = resource.Quantity{}
+		}
+	}
 }
