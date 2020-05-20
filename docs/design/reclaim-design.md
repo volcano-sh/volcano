@@ -15,7 +15,7 @@ Reclaim runs in each session and the workflow of the session is explained below 
             1. If queue is overused, move on to next queue from queues object
             2. If queue is not overused, check for for jobs which has pending tasks within that queue and select preemptor task
 4.  Range over all nodes and run predicateFn for preemptor task
-    1. If predicates are not satisfied, move on to next node 
+    1. If predicates are not satisfied, move on to next node
     2. If all the predicates are satisfied
         1.  Range over all tasks running that node but from different queue other than preemptor task's queue and find all **reclaimees** tasks
         2. Send preemptor task and set of **reclaimees** task to ReclaimableFn which has been loaded by following plugins such as conformance, gang and proportion
@@ -25,7 +25,6 @@ Reclaim runs in each session and the workflow of the session is explained below 
 8. Run this until **queues** object is empty
 
 ![Execution flow graph for Reclaim](./images/ReclaimDesign.png)
- 
-    
-    
-    
+
+
+

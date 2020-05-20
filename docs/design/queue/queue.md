@@ -4,7 +4,7 @@
 
 ## Motivation
 
-`Queue` was introduced in [kube-batch](http://github.com/kubernetes-sigs/kube-batch) long time ago as an internal feature, which makes all jobs are submitted to the same queue, named `default`. As more and more users would like to share resources with each other by queue, this proposal is going to cover primary features of queue achieve that. 
+`Queue` was introduced in [kube-batch](http://github.com/kubernetes-sigs/kube-batch) long time ago as an internal feature, which makes all jobs are submitted to the same queue, named `default`. As more and more users would like to share resources with each other by queue, this proposal is going to cover primary features of queue achieve that.
 
 ## Function Specification
 
@@ -50,7 +50,7 @@ type QueueStatus struct {
 
 ### QueueController
 
-The `QueueController` will manage the lifecycle of queue: 
+The `QueueController` will manage the lifecycle of queue:
 
 1. Watching `PodGroup`/`Job` for status
 2. If `Queue` was deleted, also delete all related `PodGroup`/`Job` in the queue
@@ -66,7 +66,7 @@ The admission controller will check `PodGroup`/`Job` 's queue when creation:
 
 #### Customized Job/PodGroup
 
-If the `PodGroup` is created by customized controller, the `QueueController` will count those `PodGroup` into `Unknown` status; because `PodGroup` focus on scheduling specification which did not include customized job's status. 
+If the `PodGroup` is created by customized controller, the `QueueController` will count those `PodGroup` into `Unknown` status; because `PodGroup` focus on scheduling specification which did not include customized job's status.
 
 #### cli
 
@@ -100,11 +100,11 @@ myqueue   10      10     5        5
 
 #### Scheduler
 
-* Proportion plugin: 
+* Proportion plugin:
 
-  Proportion plugin is used to share resource between `Queue`s by weight. The deserved resource of a queue is `(weight/total-weight) * total-resource`. When allocating resources, it will not allocate resource more than its deserved resources. 
+  Proportion plugin is used to share resource between `Queue`s by weight. The deserved resource of a queue is `(weight/total-weight) * total-resource`. When allocating resources, it will not allocate resource more than its deserved resources.
 
-* Reclaim action: 
+* Reclaim action:
 
   `reclaim` action will go through all queues to reclaim others by `ReclaimableFn`'s return value; the time complexity is `O(n^2)`. In `ReclaimableFn`, both `proportion` and `gang` will take effect: 1. `proportion` makes sure the queue will not be under-used after reclaim, 2. `gang` makes sure the job will not be reclaimed if its `minAvailable` > 1.
 

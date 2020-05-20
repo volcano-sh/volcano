@@ -14,22 +14,22 @@ When a new queue is created, resource is divided among queues depending on its r
 Consider two queues is already present and entire cluster resource is used by both the queues.  When third queue
 is created, deserved share of previous two queues is reduced since resource should be given to third queue as well.
 So jobs/tasks which is under old queues will not be evicted until, new jobs/tasks comes to new queue(Third Queue).  At that point of time,
-resource for third queue(i.e. New Queue) should be reclaimed(i.e. few tasks/jobs should be evicted) from previous two queues, so that new job in third queue can 
+resource for third queue(i.e. New Queue) should be reclaimed(i.e. few tasks/jobs should be evicted) from previous two queues, so that new job in third queue can
 be created.
 
-Reclaim is basically evicting tasks from other queues so that present queue can make use of it's entire deserved share for 
+Reclaim is basically evicting tasks from other queues so that present queue can make use of it's entire deserved share for
 creating tasks.
 
 In Reclaim Action, there are multiple plugin functions that are getting used like,
 
-1.  TaskOrderFn(Plugin: Priority), 
+1.  TaskOrderFn(Plugin: Priority),
 2.  JobOrderFn(Plugin: Priority, DRF, Gang),
-3.  NodeOrderFn(Plugin: NodeOrder), 
-4.  PredicateFn(Plugin: Predicates), 
+3.  NodeOrderFn(Plugin: NodeOrder),
+4.  PredicateFn(Plugin: Predicates),
 5.  ReclaimableFn(Plugin: Conformance, Gang, Proportion).
 
 ### 1. TaskOrderFn:
-#### Priority: 
+#### Priority:
 Compares taskPriority set in PodSpec and returns the decision of comparison between two priorities.
 
 ### 2. JobOrderFn:

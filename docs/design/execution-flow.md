@@ -19,7 +19,7 @@ The Allocation of the workloads to the node in scheduler happens in each session
                 1. If List is empty then continue to Step 4
                 2. If Yes then Pop a Job from the JobsList
                     1. If Job exits the Local PendingTasks
-                        1. If Not then : 
+                        1. If Not then :
                             1. Create a Local Task List
                                 1. Get the List of Each Tasks in the pending state for that job
                                     1. If the required resource for the job is Empty then go back to previous step
@@ -38,10 +38,10 @@ The Allocation of the workloads to the node in scheduler happens in each session
                             1. If yes the push the Job
                             2. If No then add the Queue back to the list.
                 3. Continue till all the Job is ready
-    2. Continue till each Queue is processed.      
-                                            
-                                       
-                                 
+    2. Continue till each Queue is processed.
+
+
+
 
 
 

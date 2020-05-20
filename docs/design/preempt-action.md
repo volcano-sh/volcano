@@ -2,7 +2,7 @@
 
 ## Introduction
 
-In scheduler there are 4 actions such as `allocate`, `preempt`, `reclaim`, `backfill` and with the help of 
+In scheduler there are 4 actions such as `allocate`, `preempt`, `reclaim`, `backfill` and with the help of
 plugins like `conformance`, `drf`, `gang`, `nodeorder` and more plugins. All these plugins provides
 behavioural characteristics how scheduler make scheduling decisions.
 
@@ -12,16 +12,16 @@ As discussed in Introduction, preempt is one of the actions in kube-batch schedu
 when a high priority task comes and there is no resource requested by that task is available in the cluster,
 then few of the tasks should be evicted so that new task will get resource to run.
 
-In preempt action, multiple plugin function are getting used like 
+In preempt action, multiple plugin function are getting used like
 
-1.  TaskOrderFn(Plugin: Priority), 
-2.  JobOrderFn(Plugin: Priority, DRF, Gang), 
-3.  NodeOrderFn(Plugin: NodeOrder), 
-4.  PredicateFn(Plugin: Predicates), 
+1.  TaskOrderFn(Plugin: Priority),
+2.  JobOrderFn(Plugin: Priority, DRF, Gang),
+3.  NodeOrderFn(Plugin: NodeOrder),
+4.  PredicateFn(Plugin: Predicates),
 5.  PreemptableFn(Plugin: Conformance, Gang, DRF).
 
 ### 1. TaskOrderFn:
-#### Priority: 
+#### Priority:
 Compares taskPriority set in PodSpec and returns the decision of comparison between two priorities.
 
 ### 2. JobOrderFn:

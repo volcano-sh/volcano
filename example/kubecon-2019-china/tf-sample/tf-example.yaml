@@ -65,7 +65,7 @@ spec:
               ports:
                 - containerPort: 2222
                   name: tfjob-port
-              resources: 
+              resources:
                 requests:
                   cpu: "1000m"
                   memory: "2048Mi"

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if [ -z $GOPATH ]; then 
+if [ -z $GOPATH ]; then
     echo "Please set GOPATH to start the cluster :)"
     exit 1
 fi
@@ -22,7 +22,7 @@ function install_tools {
     for d in work logs certs config static-pods
     do
         mkdir -p ${VC_HOME}/volcano/$d
-    done 
+    done
 
     go get -u github.com/cloudflare/cfssl/cmd/...
 }
@@ -30,7 +30,7 @@ function install_tools {
 function build_binaries {
     echo "Building Kubernetes ...... "
     echo "$(
-        cd $K8S_HOME 
+        cd $K8S_HOME
         make kubectl kube-controller-manager kube-apiserver kubelet kube-proxy
     )"
 
@@ -58,7 +58,7 @@ function create_certkey {
 
     echo '{"CN":"'${cn}'","hosts":['${hosts}'],"key":{"algo":"rsa","size":2048},"names":[{"O":"'${org}'"}]}' \
         | cfssl gencert -ca=${CERT_DIR}/root.pem -ca-key=${CERT_DIR}/root-key.pem -config=${CERT_DIR}/root-ca-config.json - \
-        | cfssljson -bare ${CERT_DIR}/$name 
+        | cfssljson -bare ${CERT_DIR}/$name
 }
 
 function generate_cert_files {
@@ -69,7 +69,7 @@ function generate_cert_files {
 
     echo '{"CN":"volcano","key":{"algo":"rsa","size":2048},"names":[{"O":"volcano"}]}' | cfssl gencert -initca - \
         | cfssljson -bare ${CERT_DIR}/root
-    
+
     create_certkey "kube-apiserver" "kubernetes.default" "volcano" "kubernetes.default.svc" "localhost" "127.0.0.1" "10.0.0.1"
     create_certkey "admin" "system:admin" "system:masters"
     create_certkey "kube-proxy" "system:kube-proxy" "volcano"

@@ -70,12 +70,12 @@ The similar Slurm command lines are listed below:
 | `vcctl queue list ` | `vqueues` |
 
 #### `vsub` submit via file
-Command `vsub` can also submit a batch job via `.sh` file, like: 
+Command `vsub` can also submit a batch job via `.sh` file, like:
 ```shell
 [user@host]$ vsub test.sh
 Submitted batch job test
 ```
-The job file <test.sh> owns a format like: 
+The job file <test.sh> owns a format like:
 ```shell
 #!/bin/bash`
 
