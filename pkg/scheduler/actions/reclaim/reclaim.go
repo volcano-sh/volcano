@@ -25,21 +25,21 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-type reclaimAction struct {
+type Action struct {
 	ssn *framework.Session
 }
 
-func New() *reclaimAction {
-	return &reclaimAction{}
+func New() *Action {
+	return &Action{}
 }
 
-func (alloc *reclaimAction) Name() string {
+func (ra *Action) Name() string {
 	return "reclaim"
 }
 
-func (alloc *reclaimAction) Initialize() {}
+func (ra *Action) Initialize() {}
 
-func (alloc *reclaimAction) Execute(ssn *framework.Session) {
+func (ra *Action) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("Enter Reclaim ...")
 	defer klog.V(3).Infof("Leaving Reclaim ...")
 
@@ -197,5 +197,5 @@ func (alloc *reclaimAction) Execute(ssn *framework.Session) {
 
 }
 
-func (ra *reclaimAction) UnInitialize() {
+func (ra *Action) UnInitialize() {
 }

@@ -24,21 +24,21 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
-type backfillAction struct {
+type Action struct {
 	ssn *framework.Session
 }
 
-func New() *backfillAction {
-	return &backfillAction{}
+func New() *Action {
+	return &Action{}
 }
 
-func (alloc *backfillAction) Name() string {
+func (alloc *Action) Name() string {
 	return "backfill"
 }
 
-func (alloc *backfillAction) Initialize() {}
+func (alloc *Action) Initialize() {}
 
-func (alloc *backfillAction) Execute(ssn *framework.Session) {
+func (alloc *Action) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("Enter Backfill ...")
 	defer klog.V(3).Infof("Leaving Backfill ...")
 
@@ -90,4 +90,4 @@ func (alloc *backfillAction) Execute(ssn *framework.Session) {
 	}
 }
 
-func (alloc *backfillAction) UnInitialize() {}
+func (alloc *Action) UnInitialize() {}

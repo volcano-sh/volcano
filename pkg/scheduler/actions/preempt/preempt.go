@@ -26,21 +26,21 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-type preemptAction struct {
+type Action struct {
 	ssn *framework.Session
 }
 
-func New() *preemptAction {
-	return &preemptAction{}
+func New() *Action {
+	return &Action{}
 }
 
-func (alloc *preemptAction) Name() string {
+func (alloc *Action) Name() string {
 	return "preempt"
 }
 
-func (alloc *preemptAction) Initialize() {}
+func (alloc *Action) Initialize() {}
 
-func (alloc *preemptAction) Execute(ssn *framework.Session) {
+func (alloc *Action) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("Enter Preempt ...")
 	defer klog.V(3).Infof("Leaving Preempt ...")
 
@@ -174,7 +174,7 @@ func (alloc *preemptAction) Execute(ssn *framework.Session) {
 	}
 }
 
-func (alloc *preemptAction) UnInitialize() {}
+func (alloc *Action) UnInitialize() {}
 
 func preempt(
 	ssn *framework.Session,

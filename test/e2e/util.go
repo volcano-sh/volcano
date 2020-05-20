@@ -1109,7 +1109,7 @@ func waitPodGone(ctx *context, podName, namespace string) error {
 		_, err := ctx.kubeclient.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
 		expected := errors.IsNotFound(err)
 		if !expected {
-			additionalError = fmt.Errorf("Job related pod should be deleted when aborting job.")
+			additionalError = fmt.Errorf("job related pod should be deleted when aborting job")
 		}
 
 		return expected, nil

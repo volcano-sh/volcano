@@ -37,7 +37,7 @@ func init() {
 
 var service = &router.AdmissionService{
 	Path: "/queues/mutate",
-	Func: MutateQueues,
+	Func: Queues,
 
 	MutatingConfig: &whv1beta1.MutatingWebhookConfiguration{
 		Webhooks: []whv1beta1.MutatingWebhook{{
@@ -62,8 +62,8 @@ type patchOperation struct {
 	Value interface{} `json:"value,omitempty"`
 }
 
-// MutateQueues mutate queues
-func MutateQueues(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
+// Queues mutate queues
+func Queues(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	klog.V(3).Infof("Mutating %s queue %s.", ar.Request.Operation, ar.Request.Name)
 
 	queue, err := schema.DecodeQueue(ar.Request.Object, ar.Request.Resource)
