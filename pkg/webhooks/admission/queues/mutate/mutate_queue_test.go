@@ -192,7 +192,7 @@ func TestMutateQueues(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			reviewResponse := MutateQueues(testCase.AR)
+			reviewResponse := Queues(testCase.AR)
 			if !reflect.DeepEqual(reviewResponse, testCase.reviewResponse) {
 				t.Errorf("Test case '%s' failed, expect: %v, got: %v", testCase.Name,
 					reviewResponse, testCase.reviewResponse)

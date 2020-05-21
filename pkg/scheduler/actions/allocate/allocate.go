@@ -25,21 +25,21 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-type allocateAction struct {
+type Action struct {
 	ssn *framework.Session
 }
 
-func New() *allocateAction {
-	return &allocateAction{}
+func New() *Action {
+	return &Action{}
 }
 
-func (alloc *allocateAction) Name() string {
+func (alloc *Action) Name() string {
 	return "allocate"
 }
 
-func (alloc *allocateAction) Initialize() {}
+func (alloc *Action) Initialize() {}
 
-func (alloc *allocateAction) Execute(ssn *framework.Session) {
+func (alloc *Action) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("Enter Allocate ...")
 	defer klog.V(3).Infof("Leaving Allocate ...")
 
@@ -126,11 +126,11 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 		// because the allocation of job would change the priority of queue among all namespaces,
 		// and the PriorityQueue have no ability to update priority for a special queue.
 		var queue *api.QueueInfo
-		for queueId := range queueInNamespace {
-			currentQueue := ssn.Queues[queueId]
+		for queueID := range queueInNamespace {
+			currentQueue := ssn.Queues[queueID]
 			if ssn.Overused(currentQueue) {
 				klog.V(3).Infof("Namespace <%s> Queue <%s> is overused, ignore it.", namespace, currentQueue.Name)
-				delete(queueInNamespace, queueId)
+				delete(queueInNamespace, queueID)
 				continue
 			}
 
@@ -251,4 +251,4 @@ func (alloc *allocateAction) Execute(ssn *framework.Session) {
 	}
 }
 
-func (alloc *allocateAction) UnInitialize() {}
+func (alloc *Action) UnInitialize() {}
