@@ -90,7 +90,7 @@ func validatePolicies(policies []batchv1alpha1.LifecyclePolicy, fldPath *field.P
 					policyEvents[event] = struct{}{}
 				}
 			}
-			if bFlag == true {
+			if bFlag {
 				break
 			}
 

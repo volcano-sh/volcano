@@ -70,7 +70,6 @@ func (sp *servicePlugin) addFlags() {
 	if err := flagSet.Parse(sp.pluginArguments); err != nil {
 		klog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
 	}
-	return
 }
 
 func (sp *servicePlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {

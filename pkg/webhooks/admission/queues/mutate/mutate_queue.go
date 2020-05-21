@@ -75,8 +75,6 @@ func Queues(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	switch ar.Request.Operation {
 	case v1beta1.Create:
 		patchBytes, err = createQueuePatch(queue)
-
-		break
 	default:
 		return util.ToAdmissionResponse(fmt.Errorf("invalid operation `%s`, "+
 			"expect operation to be `CREATE`", ar.Request.Operation))

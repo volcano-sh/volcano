@@ -144,7 +144,7 @@ func DeleteConfigmap(job *vcbatch.Job, kubeClients kubernetes.Interface, cmName 
 // DeleteSecret delete secret
 func DeleteSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, secretName string) error {
 	err := kubeClients.CoreV1().Secrets(job.Namespace).Delete(secretName, nil)
-	if err != nil && true == apierrors.IsNotFound(err) {
+	if err != nil && apierrors.IsNotFound(err) {
 		return nil
 	}
 
@@ -157,7 +157,7 @@ func GeneratePodgroupName(pod *v1.Pod) string {
 
 	if len(pod.OwnerReferences) != 0 {
 		for _, ownerReference := range pod.OwnerReferences {
-			if ownerReference.Controller != nil && *ownerReference.Controller == true {
+			if ownerReference.Controller != nil && *ownerReference.Controller {
 				pgName += string(ownerReference.UID)
 				return pgName
 			}
@@ -206,8 +206,7 @@ func runServer(server *http.Server, ln net.Listener) error {
 	go func() {
 		defer utilruntime.HandleCrash()
 
-		var listener net.Listener
-		listener = tcpKeepAliveListener{ln.(*net.TCPListener)}
+		listener := tcpKeepAliveListener{ln.(*net.TCPListener)}
 
 		err := server.Serve(listener)
 		msg := fmt.Sprintf("Stopped listening on %s", listener.Addr().String())

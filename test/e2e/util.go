@@ -693,7 +693,7 @@ func createContainers(img, command, workingDir string, req, limit v1.ResourceLis
 			Limits:   limit,
 		},
 	}
-	if strings.Index(img, ":") < 0 {
+	if !strings.Contains(img, ":") {
 		imageRepo = strings.Split(img, "/")
 	} else {
 		imageRepo = strings.Split(img[:strings.Index(img, ":")], "/")
@@ -974,8 +974,7 @@ func getTasksOfJob(ctx *context, job *batchv1alpha1.Job) []*v1.Pod {
 		if !metav1.IsControlledBy(&pod, job) {
 			continue
 		}
-		var duplicatePod *v1.Pod
-		duplicatePod = pod.DeepCopy()
+		duplicatePod := pod.DeepCopy()
 		tasks = append(tasks, duplicatePod)
 	}
 

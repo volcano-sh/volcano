@@ -84,7 +84,6 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	switch ar.Request.Operation {
 	case v1beta1.Create:
 		msg = validateJobCreate(job, &reviewResponse)
-		break
 	case v1beta1.Update:
 		oldJob, err := schema.DecodeJob(ar.Request.OldObject, ar.Request.Resource)
 		if err != nil {
@@ -94,7 +93,6 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		if err != nil {
 			return util.ToAdmissionResponse(err)
 		}
-		break
 	default:
 		err := fmt.Errorf("expect operation to be 'CREATE' or 'UPDATE'")
 		return util.ToAdmissionResponse(err)

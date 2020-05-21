@@ -318,11 +318,10 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	sc.podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
-				switch obj.(type) {
+				switch v := obj.(type) {
 				case *v1.Pod:
-					pod := obj.(*v1.Pod)
-					if !responsibleForPod(pod, schedulerName) {
-						if len(pod.Spec.NodeName) == 0 {
+					if !responsibleForPod(v, schedulerName) {
+						if len(v.Spec.NodeName) == 0 {
 							return false
 						}
 					}
@@ -835,6 +834,4 @@ func (sc *SchedulerCache) recordPodGroupEvent(podGroup *schedulingapi.PodGroup, 
 	}
 
 	sc.Recorder.Eventf(pg, eventType, reason, msg)
-
-	return
 }

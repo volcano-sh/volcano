@@ -25,11 +25,7 @@ import (
 )
 
 func jobInfoEqual(l, r *JobInfo) bool {
-	if !reflect.DeepEqual(l, r) {
-		return false
-	}
-
-	return true
+	return reflect.DeepEqual(l, r)
 }
 
 func TestAddTaskInfo(t *testing.T) {

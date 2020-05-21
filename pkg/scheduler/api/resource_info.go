@@ -225,10 +225,7 @@ func (r *Resource) Multi(ratio float64) *Resource {
 // Less checks whether a resource is less than other
 func (r *Resource) Less(rr *Resource) bool {
 	lessFunc := func(l, r float64) bool {
-		if l < r {
-			return true
-		}
-		return false
+		return l < r
 	}
 
 	if !lessFunc(r.MilliCPU, rr.MilliCPU) {
@@ -266,10 +263,7 @@ func (r *Resource) Less(rr *Resource) bool {
 // LessEqualStrict checks whether a resource is less or equal than other
 func (r *Resource) LessEqualStrict(rr *Resource) bool {
 	lessFunc := func(l, r float64) bool {
-		if l <= r {
-			return true
-		}
-		return false
+		return l <= r
 	}
 
 	if !lessFunc(r.MilliCPU, rr.MilliCPU) {

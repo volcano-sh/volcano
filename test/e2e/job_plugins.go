@@ -206,7 +206,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// Check whether network policy is created with job name
-		networkPolicyName := fmt.Sprintf("%s", jobName)
+		networkPolicyName := jobName
 		_, err = ctx.kubeclient.NetworkingV1().NetworkPolicies(ctx.namespace).Get(networkPolicyName, v1.GetOptions{})
 		// Error will occur because there is no policy should be created
 		Expect(err).To(HaveOccurred())

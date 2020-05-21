@@ -444,7 +444,6 @@ func (cc *Controller) addPriorityClass(obj interface{}) {
 	defer cc.Mutex.Unlock()
 
 	cc.priorityClasses[pc.Name] = pc
-	return
 }
 
 func (cc *Controller) deletePriorityClass(obj interface{}) {
@@ -457,7 +456,6 @@ func (cc *Controller) deletePriorityClass(obj interface{}) {
 	defer cc.Mutex.Unlock()
 
 	delete(cc.priorityClasses, pc.Name)
-	return
 }
 
 func convert2PriorityClass(obj interface{}) *v1beta1.PriorityClass {

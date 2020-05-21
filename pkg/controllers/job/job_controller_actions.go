@@ -629,7 +629,6 @@ func classifyAndAddUpPodBaseOnPhase(pod *v1.Pod, pending, running, succeeded, fa
 	default:
 		atomic.AddInt32(unknown, 1)
 	}
-	return
 }
 
 func isInitiated(job *batch.Job) bool {
