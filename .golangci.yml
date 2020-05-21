@@ -69,12 +69,11 @@ issues:
       linters:
         - gomnd
         - dupl
-    - path: pkg/apis/scheduling/v1beta1/conversion.go
+    - path: v1beta1
       linters:
         - golint
-    - path: generated
-      linters:
-        - golint
+        - deadcode
     - path: fake
       linters:
         - golint
+        - deadcode

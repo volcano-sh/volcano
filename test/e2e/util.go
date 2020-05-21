@@ -1082,27 +1082,6 @@ func IsNodeReady(node *v1.Node) bool {
 	return false
 }
 
-func waitClusterReady(ctx *context) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
-		if readyNodeAmount(ctx) >= 1 {
-			return true, nil
-		}
-		return false, nil
-	})
-}
-
-func readyNodeAmount(ctx *context) int {
-	var amount int
-	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
-	for _, n := range nodes.Items {
-		if IsNodeReady(&n) && len(n.Spec.Taints) == 0 {
-			amount++
-		}
-	}
-	return amount
-}
-
 func waitPodGone(ctx *context, podName, namespace string) error {
 	var additionalError error
 	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
