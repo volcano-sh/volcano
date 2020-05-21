@@ -64,6 +64,4 @@ func (os *openState) Execute(action v1alpha1.Action) error {
 			return
 		})
 	}
-
-	return nil
 }
