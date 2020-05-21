@@ -148,8 +148,6 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 
 		pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
 	}
-
-	return
 }
 
 func generateRsaKey(job *batch.Job) (map[string][]byte, error) {
@@ -198,7 +196,6 @@ func (sp *sshPlugin) addFlags() {
 	if err := flagSet.Parse(sp.pluginArguments); err != nil {
 		klog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
 	}
-	return
 }
 
 func generateSSHConfig(job *batch.Job) string {

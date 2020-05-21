@@ -131,7 +131,7 @@ func NewJobController(
 	cc := &Controller{
 		kubeClient:      kubeClient,
 		vcClient:        vcClient,
-		queueList:       make([]workqueue.RateLimitingInterface, workers, workers),
+		queueList:       make([]workqueue.RateLimitingInterface, workers),
 		commandQueue:    workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		cache:           jobcache.New(),
 		errTasks:        newRateLimitingQueue(),
@@ -157,12 +157,11 @@ func NewJobController(
 	cc.cmdInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
-				switch obj.(type) {
+				switch v := obj.(type) {
 				case *busv1alpha1.Command:
-					cmd := obj.(*busv1alpha1.Command)
-					if cmd.TargetObject != nil &&
-						cmd.TargetObject.APIVersion == batchv1alpha1.SchemeGroupVersion.String() &&
-						cmd.TargetObject.Kind == "Job" {
+					if v.TargetObject != nil &&
+						v.TargetObject.APIVersion == batchv1alpha1.SchemeGroupVersion.String() &&
+						v.TargetObject.Kind == "Job" {
 						return true
 					}
 
@@ -270,11 +269,7 @@ func (cc *Controller) belongsToThisRoutine(key string, count uint32) bool {
 
 	val = hashVal.Sum32()
 
-	if val%cc.workers == count {
-		return true
-	}
-
-	return false
+	return val%cc.workers == count
 }
 
 func (cc *Controller) getWorkerQueue(key string) workqueue.RateLimitingInterface {

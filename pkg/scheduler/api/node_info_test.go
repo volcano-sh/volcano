@@ -25,11 +25,7 @@ import (
 )
 
 func nodeInfoEqual(l, r *NodeInfo) bool {
-	if !reflect.DeepEqual(l, r) {
-		return false
-	}
-
-	return true
+	return reflect.DeepEqual(l, r)
 }
 
 func TestNodeInfo_AddPod(t *testing.T) {

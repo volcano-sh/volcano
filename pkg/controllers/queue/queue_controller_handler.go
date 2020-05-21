@@ -64,7 +64,6 @@ func (c *Controller) deleteQueue(obj interface{}) {
 
 func (c *Controller) updateQueue(_, _ interface{}) {
 	// currently do not care about queue update
-	return
 }
 
 func (c *Controller) addPodGroup(obj interface{}) {
@@ -165,5 +164,4 @@ func (c *Controller) recordEventsForQueue(name, eventType, reason, message strin
 	}
 
 	c.recorder.Event(queue, eventType, reason, message)
-	return
 }

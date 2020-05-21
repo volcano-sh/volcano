@@ -121,8 +121,6 @@ func TestViewJob(t *testing.T) {
 		if err == nil {
 			w.Write(val)
 		}
-		return
-
 	})
 
 	server := httptest.NewServer(handler)

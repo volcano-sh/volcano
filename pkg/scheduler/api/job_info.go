@@ -309,7 +309,7 @@ func (ji JobInfo) String() string {
 func (ji *JobInfo) FitError() string {
 	reasons := make(map[string]int)
 	for status, taskMap := range ji.TaskStatusIndex {
-		reasons[fmt.Sprintf("%s", status)] += len(taskMap)
+		reasons[status.String()] += len(taskMap)
 	}
 	reasons["minAvailable"] = int(ji.MinAvailable)
 

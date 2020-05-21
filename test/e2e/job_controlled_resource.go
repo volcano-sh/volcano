@@ -35,8 +35,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		ctx := initTestContext(options{})
 		defer cleanupTestContext(ctx)
 
-		var tt v12.HostPathType
-		tt = "DirectoryOrCreate"
+		var tt v12.HostPathType = "DirectoryOrCreate"
 
 		storageClsName := "standard"
 
