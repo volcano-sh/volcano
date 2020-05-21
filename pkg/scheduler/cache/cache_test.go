@@ -30,39 +30,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-func nodesEqual(l, r map[string]*api.NodeInfo) bool {
-	if len(l) != len(r) {
-		return false
-	}
-
-	for k, n := range l {
-		if !reflect.DeepEqual(n, r[k]) {
-			return false
-		}
-	}
-
-	return true
-}
-
-func jobsEqual(l, r map[api.JobID]*api.JobInfo) bool {
-	if len(l) != len(r) {
-		return false
-	}
-
-	for k, p := range l {
-		if !reflect.DeepEqual(p, r[k]) {
-			return false
-		}
-	}
-
-	return true
-}
-
-func cacheEqual(l, r *SchedulerCache) bool {
-	return nodesEqual(l.Nodes, r.Nodes) &&
-		jobsEqual(l.Jobs, r.Jobs)
-}
-
 func buildNode(name string, alloc v1.ResourceList) *v1.Node {
 	return &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
@@ -109,13 +76,6 @@ func buildResourceList(cpu string, memory string) v1.ResourceList {
 		v1.ResourceCPU:    resource.MustParse(cpu),
 		v1.ResourceMemory: resource.MustParse(memory),
 	}
-}
-
-func buildResource(cpu string, memory string) *api.Resource {
-	return api.NewResource(v1.ResourceList{
-		v1.ResourceCPU:    resource.MustParse(cpu),
-		v1.ResourceMemory: resource.MustParse(memory),
-	})
 }
 
 func buildOwnerReference(owner string) metav1.OwnerReference {
