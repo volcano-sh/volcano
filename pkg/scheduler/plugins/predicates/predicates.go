@@ -17,9 +17,6 @@ limitations under the License.
 package predicates
 
 import (
-	"fmt"
-	"strings"
-
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
@@ -54,15 +51,6 @@ func New(arguments framework.Arguments) framework.Plugin {
 
 func (pp *predicatesPlugin) Name() string {
 	return PluginName
-}
-
-func formatReason(reasons []predicates.PredicateFailureReason) string {
-	reasonStrings := []string{}
-	for _, v := range reasons {
-		reasonStrings = append(reasonStrings, fmt.Sprintf("%v", v.GetReason()))
-	}
-
-	return strings.Join(reasonStrings, ", ")
 }
 
 type predicateEnable struct {
