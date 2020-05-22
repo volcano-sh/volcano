@@ -28,7 +28,7 @@ import (
 	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 )
 
-// policyEventMap defines all policy events and whether to allow external use
+// policyEventMap defines all policy events and whether to allow external use.
 var policyEventMap = map[busv1alpha1.Event]bool{
 	busv1alpha1.AnyEvent:           true,
 	busv1alpha1.PodFailedEvent:     true,
@@ -39,7 +39,7 @@ var policyEventMap = map[busv1alpha1.Event]bool{
 	busv1alpha1.CommandIssuedEvent: false,
 }
 
-// policyActionMap defines all policy actions and whether to allow external use
+// policyActionMap defines all policy actions and whether to allow external use.
 var policyActionMap = map[busv1alpha1.Action]bool{
 	busv1alpha1.AbortJobAction:     true,
 	busv1alpha1.RestartJobAction:   true,
@@ -158,7 +158,7 @@ func getValidActions() []busv1alpha1.Action {
 	return actions
 }
 
-// validateIO validates IO configuration
+// validateIO validates IO configuration.
 func validateIO(volumes []batchv1alpha1.VolumeSpec) error {
 	volumeMap := map[string]bool{}
 	for _, volume := range volumes {

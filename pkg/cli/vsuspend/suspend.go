@@ -34,7 +34,7 @@ type suspendFlags struct {
 
 var suspendJobFlags = &suspendFlags{}
 
-// InitSuspendFlags  init suspend related flags
+// InitSuspendFlags init suspend related flags.
 func InitSuspendFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &suspendJobFlags.CommonFlags)
 
@@ -42,7 +42,7 @@ func InitSuspendFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&suspendJobFlags.JobName, "name", "n", "", "the name of job")
 }
 
-// SuspendJob  suspends the job
+// SuspendJob suspends the job.
 func SuspendJob() error {
 	config, err := util.BuildConfig(suspendJobFlags.Master, suspendJobFlags.Kubeconfig)
 	if err != nil {

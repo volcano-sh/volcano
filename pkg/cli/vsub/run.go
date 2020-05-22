@@ -64,7 +64,7 @@ const (
 	defaultJobNamespace  = "default"
 )
 
-// InitRunFlags  init the run flags
+// InitRunFlags init the run flags.
 func InitRunFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &launchJobFlags.CommonFlags)
 
@@ -121,7 +121,7 @@ func setDefaultArgs() {
 
 var jobName = "job.volcano.sh"
 
-// RunJob  creates the job
+// RunJob creates the job.
 func RunJob() error {
 	config, err := util.BuildConfig(launchJobFlags.Master, launchJobFlags.Kubeconfig)
 	if err != nil {

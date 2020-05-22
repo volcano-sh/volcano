@@ -90,7 +90,7 @@ func getKubeClient(restConfig *rest.Config) *kubernetes.Clientset {
 	return clientset
 }
 
-// GetVolcanoClient get a clientset for volcano
+// GetVolcanoClient get a clientset for volcano.
 func getVolcanoClient(restConfig *rest.Config) *versioned.Clientset {
 	clientset, err := versioned.NewForConfig(restConfig)
 	if err != nil {
@@ -101,7 +101,7 @@ func getVolcanoClient(restConfig *rest.Config) *versioned.Clientset {
 
 // configTLS is a helper function that generate tls certificates from directly defined tls config or kubeconfig
 // These are passed in as command line for cluster certification. If tls config is passed in, we use the directly
-// defined tls config, else use that defined in kubeconfig
+// defined tls config, else use that defined in kubeconfig.
 func configTLS(config *options.Config, restConfig *rest.Config) *tls.Config {
 	if len(config.CertFile) != 0 && len(config.KeyFile) != 0 {
 		sCert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)

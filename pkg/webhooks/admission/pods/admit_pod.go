@@ -63,7 +63,7 @@ var service = &router.AdmissionService{
 
 var config = &router.AdmissionServiceConfig{}
 
-// AdmitPods is to admit pods and return response
+// AdmitPods is to admit pods and return response.
 func AdmitPods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
 	klog.V(3).Infof("admitting pods -- %s", ar.Request.Operation)
@@ -91,10 +91,12 @@ func AdmitPods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	return &reviewResponse
 }
 
-// allow pods to create when
-// 1. schedulerName of pod isn't volcano
-// 2. pod has Podgroup whose phase isn't Pending
-// 3. normal pods whose schedulerName is volcano don't have podgroup
+/*
+allow pods to create when
+1. schedulerName of pod isn't volcano
+2. pod has Podgroup whose phase isn't Pending
+3. normal pods whose schedulerName is volcano don't have podgroup.
+*/
 func validatePod(pod *v1.Pod, reviewResponse *v1beta1.AdmissionResponse) string {
 	if pod.Spec.SchedulerName != config.SchedulerName {
 		return ""

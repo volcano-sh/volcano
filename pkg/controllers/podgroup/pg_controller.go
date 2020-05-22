@@ -34,7 +34,7 @@ import (
 	schedulinglister "volcano.sh/volcano/pkg/client/listers/scheduling/v1beta1"
 )
 
-// Controller the Podgroup Controller type
+// Controller the Podgroup Controller type.
 type Controller struct {
 	kubeClient kubernetes.Interface
 	vcClient   vcclientset.Interface
@@ -53,7 +53,7 @@ type Controller struct {
 	queue workqueue.RateLimitingInterface
 }
 
-// NewPodgroupController create new Podgroup Controller
+// NewPodgroupController create new Podgroup Controller.
 func NewPodgroupController(
 	kubeClient kubernetes.Interface,
 	vcClient vcclientset.Interface,
@@ -96,7 +96,7 @@ func NewPodgroupController(
 	return cc
 }
 
-// Run start NewPodgroupController
+// Run start NewPodgroupController.
 func (cc *Controller) Run(stopCh <-chan struct{}) {
 	go cc.podInformer.Informer().Run(stopCh)
 	go cc.pgInformer.Informer().Run(stopCh)

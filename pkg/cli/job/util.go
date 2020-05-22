@@ -100,7 +100,7 @@ func translateTimestampSince(timestamp metav1.Time) string {
 	return HumanDuration(time.Since(timestamp.Time))
 }
 
-// HumanDuration translate time.Duration to human readable time string
+// HumanDuration translate time.Duration to human readable time string.
 func HumanDuration(d time.Duration) string {
 	// Allow deviation no more than 2 seconds(excluded) to tolerate machine time
 	// inconsistence, it can be considered as almost now.

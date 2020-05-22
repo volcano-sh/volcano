@@ -89,7 +89,7 @@ type Controller struct {
 	recorder record.EventRecorder
 }
 
-// NewQueueController creates a QueueController
+// NewQueueController creates a QueueController.
 func NewQueueController(
 	kubeClient kubernetes.Interface,
 	vcClient vcclientset.Interface,
@@ -164,7 +164,7 @@ func NewQueueController(
 	return c
 }
 
-// Run starts QueueController
+// Run starts QueueController.
 func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()

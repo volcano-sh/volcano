@@ -31,7 +31,7 @@ type envPlugin struct {
 	Clientset pluginsinterface.PluginClientset
 }
 
-// New creates env plugin
+// New creates env plugin.
 func New(client pluginsinterface.PluginClientset, arguments []string) pluginsinterface.PluginInterface {
 	envPlugin := envPlugin{pluginArguments: arguments, Clientset: client}
 

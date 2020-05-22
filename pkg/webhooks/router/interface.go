@@ -24,7 +24,7 @@ import (
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
-//The AdmitFunc returns response
+//The AdmitFunc returns response.
 type AdmitFunc func(v1beta1.AdmissionReview) *v1beta1.AdmissionResponse
 
 type AdmissionServiceConfig struct {

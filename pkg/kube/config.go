@@ -21,7 +21,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-// ClientOptions used to build kube rest config
+// ClientOptions used to build kube rest config.
 type ClientOptions struct {
 	Master     string
 	KubeConfig string
@@ -29,7 +29,7 @@ type ClientOptions struct {
 	Burst      int
 }
 
-// BuildConfig builds kube rest config with the given options
+// BuildConfig builds kube rest config with the given options.
 func BuildConfig(opt ClientOptions) (*rest.Config, error) {
 	var cfg *rest.Config
 	var err error

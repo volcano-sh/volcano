@@ -60,7 +60,7 @@ var service = &router.AdmissionService{
 
 var config = &router.AdmissionServiceConfig{}
 
-// AdmitQueues is to admit queues and return response
+// AdmitQueues is to admit queues and return response.
 func AdmitQueues(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	klog.V(3).Infof("Admitting %s queue %s.", ar.Request.Operation, ar.Request.Name)
 

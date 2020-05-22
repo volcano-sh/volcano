@@ -37,7 +37,7 @@ type getFlags struct {
 
 var getQueueFlags = &getFlags{}
 
-// InitGetFlags is used to init all flags
+// InitGetFlags is used to init all flags.
 func InitGetFlags(cmd *cobra.Command) {
 	initFlags(cmd, &getQueueFlags.commonFlags)
 
@@ -45,7 +45,7 @@ func InitGetFlags(cmd *cobra.Command) {
 
 }
 
-// GetQueue gets a queue
+// GetQueue gets a queue.
 func GetQueue() error {
 	config, err := buildConfig(getQueueFlags.Master, getQueueFlags.Kubeconfig)
 	if err != nil {
@@ -68,7 +68,7 @@ func GetQueue() error {
 	return nil
 }
 
-// PrintQueue prints queue information
+// PrintQueue prints queue information.
 func PrintQueue(queue *v1beta1.Queue, writer io.Writer) {
 	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s\n",
 		Name, Weight, State, Inqueue, Pending, Running, Unknown)

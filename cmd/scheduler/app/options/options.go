@@ -62,7 +62,7 @@ type ServerOption struct {
 	PercentageOfNodesToFind    int32
 }
 
-// ServerOpts server options
+// ServerOpts server options.
 var ServerOpts *ServerOption
 
 // NewServerOption creates a new CMServer with a default config.
@@ -73,7 +73,7 @@ func NewServerOption() *ServerOption {
 	return &s
 }
 
-// AddFlags adds flags for a specific CMServer to the specified FlagSet
+// AddFlags adds flags for a specific CMServer to the specified FlagSet.
 func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.KubeClientOptions.Master, "master", s.KubeClientOptions.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 	fs.StringVar(&s.KubeClientOptions.KubeConfig, "kubeconfig", s.KubeClientOptions.KubeConfig, "Path to kubeconfig file with authorization and master location information")
@@ -103,7 +103,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.Int32Var(&s.PercentageOfNodesToFind, "percentage-nodes-to-find", defaultPercentageOfNodesToFind, "The percentage of nodes to find and score, if <=0 will be calcuated based on the cluster size")
 }
 
-// CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled
+// CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled.
 func (s *ServerOption) CheckOptionOrDie() error {
 	if s.EnableLeaderElection && s.LockObjectNamespace == "" {
 		return fmt.Errorf("lock-object-namespace must not be nil when LeaderElection is enabled")
@@ -112,7 +112,7 @@ func (s *ServerOption) CheckOptionOrDie() error {
 	return nil
 }
 
-// RegisterOptions registers options
+// RegisterOptions registers options.
 func (s *ServerOption) RegisterOptions() {
 	ServerOpts = s
 }
