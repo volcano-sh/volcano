@@ -18,6 +18,7 @@ package router
 
 import (
 	"encoding/json"
+	"io"
 	"io/ioutil"
 	"net/http"
 
@@ -36,7 +37,7 @@ var CONTENTTYPE = "Content-Type"
 var APPLICATIONJSON = "application/json"
 
 // Serve the http request
-func Serve(w http.ResponseWriter, r *http.Request, admit AdmitFunc) {
+func Serve(w io.Writer, r *http.Request, admit AdmitFunc) {
 	var body []byte
 	if r.Body != nil {
 		if data, err := ioutil.ReadAll(r.Body); err == nil {

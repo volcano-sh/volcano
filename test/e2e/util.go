@@ -551,7 +551,7 @@ func waitJobPhases(ctx *context, job *batchv1alpha1.Job, phases []batchv1alpha1.
 				continue
 			}
 
-			var flag = false
+			var flag bool
 			switch phase {
 			case batchv1alpha1.Pending:
 				flag = (newJob.Status.Pending+newJob.Status.Succeeded+
