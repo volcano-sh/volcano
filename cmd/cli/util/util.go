@@ -23,7 +23,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// CheckError prints the error of commands
+// CheckError prints the error of commands.
 func CheckError(cmd *cobra.Command, err error) {
 	if err != nil {
 		msg := "Failed to"

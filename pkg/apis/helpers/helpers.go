@@ -41,18 +41,20 @@ import (
 	schedulerv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
-// JobKind  creates job GroupVersionKind
+// JobKind creates job GroupVersionKind.
 var JobKind = vcbatch.SchemeGroupVersion.WithKind("Job")
 
-// CommandKind  creates command GroupVersionKind
+// CommandKind creates command GroupVersionKind.
 var CommandKind = vcbus.SchemeGroupVersion.WithKind("Command")
 
-// V1beta1QueueKind is queue kind with v1alpha2 version
+// V1beta1QueueKind is queue kind with v1alpha2 version.
 var V1beta1QueueKind = schedulerv1beta1.SchemeGroupVersion.WithKind("Queue")
 
-// CreateOrUpdateConfigMap :
-// 1. creates config map resource if not present
-// 2. updates config map is necessary
+/*
+CreateOrUpdateConfigMap :
+1. creates config map resource if not present
+2. updates config map is necessary.
+*/
 func CreateOrUpdateConfigMap(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[string]string, cmName string) error {
 	// If ConfigMap does not exist, create one for Job.
 	cmOld, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{})
@@ -97,7 +99,7 @@ func CreateOrUpdateConfigMap(job *vcbatch.Job, kubeClients kubernetes.Interface,
 	return nil
 }
 
-// CreateSecret create secret
+// CreateSecret create secret.
 func CreateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[string][]byte, secretName string) error {
 	secret := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -118,7 +120,7 @@ func CreateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[s
 	return err
 }
 
-// DeleteConfigmap  deletes the config map resource
+// DeleteConfigmap deletes the config map resource.
 func DeleteConfigmap(job *vcbatch.Job, kubeClients kubernetes.Interface, cmName string) error {
 	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -141,7 +143,7 @@ func DeleteConfigmap(job *vcbatch.Job, kubeClients kubernetes.Interface, cmName 
 	return nil
 }
 
-// DeleteSecret delete secret
+// DeleteSecret delete secret.
 func DeleteSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, secretName string) error {
 	err := kubeClients.CoreV1().Secrets(job.Namespace).Delete(secretName, nil)
 	if err != nil && apierrors.IsNotFound(err) {
@@ -151,7 +153,7 @@ func DeleteSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, secretName
 	return err
 }
 
-// GeneratePodgroupName  generate podgroup name of normal pod
+// GeneratePodgroupName generate podgroup name of normal pod.
 func GeneratePodgroupName(pod *v1.Pod) string {
 	pgName := vcbatch.PodgroupNamePrefix
 
@@ -169,7 +171,7 @@ func GeneratePodgroupName(pod *v1.Pod) string {
 	return pgName
 }
 
-// StartHealthz register healthz interface
+// StartHealthz register healthz interface.
 func StartHealthz(healthzBindAddress, name string) error {
 	listener, err := net.Listen("tcp", healthzBindAddress)
 	if err != nil {

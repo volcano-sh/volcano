@@ -30,13 +30,13 @@ import (
 	"volcano.sh/volcano/pkg/webhooks/util"
 )
 
-// CONTENTTYPE http content-type
+// CONTENTTYPE http content-type.
 var CONTENTTYPE = "Content-Type"
 
-// APPLICATIONJSON json content
+// APPLICATIONJSON json content.
 var APPLICATIONJSON = "application/json"
 
-// Serve the http request
+// Serve the http request.
 func Serve(w io.Writer, r *http.Request, admit AdmitFunc) {
 	var body []byte
 	if r.Body != nil {

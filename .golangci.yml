@@ -77,8 +77,30 @@ issues:
       linters:
         - golint
         - dupl
+    - path: pkg/scheduler
+      linters:
+        - godot
+    - path: clientset
+      linters:
+        - godot
+    - path: informers
+      linters:
+        - godot
+    - path: pkg/cli/queue/operate.go
+      linters:
+        - godot
+    - path: pkg/controllers/job/plugins/ssh/ssh.go
+      linters:
+        - godot
+    - path: v1alpha1
+      linters:
+        - godot
+    - path: generated
+      linters:
+        - golint
         - deadcode
     - path: fake
       linters:
         - golint
         - deadcode
+        - godot

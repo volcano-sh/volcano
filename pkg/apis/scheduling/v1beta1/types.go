@@ -24,7 +24,7 @@ import (
 // PodGroupPhase is the phase of a pod group at the current time.
 type PodGroupPhase string
 
-// QueueState is state type of queue
+// QueueState is state type of queue.
 type QueueState string
 
 const (
@@ -113,7 +113,7 @@ const (
 	NotEnoughPodsReason string = "NotEnoughTasks"
 )
 
-// QueueEvent represent the phase of queue
+// QueueEvent represent the phase of queue.
 type QueueEvent string
 
 const (

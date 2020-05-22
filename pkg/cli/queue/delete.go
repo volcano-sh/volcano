@@ -35,14 +35,14 @@ type deleteFlags struct {
 
 var deleteQueueFlags = &deleteFlags{}
 
-// InitDeleteFlags is used to init all flags during queue deleting
+// InitDeleteFlags is used to init all flags during queue deleting.
 func InitDeleteFlags(cmd *cobra.Command) {
 	initFlags(cmd, &deleteQueueFlags.commonFlags)
 
 	cmd.Flags().StringVarP(&deleteQueueFlags.Name, "name", "n", "", "the name of queue")
 }
 
-// DeleteQueue delete queue
+// DeleteQueue delete queue.
 func DeleteQueue() error {
 	config, err := buildConfig(deleteQueueFlags.Master, deleteQueueFlags.Kubeconfig)
 	if err != nil {

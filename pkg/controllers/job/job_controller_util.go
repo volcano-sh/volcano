@@ -32,7 +32,7 @@ import (
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
 
-//MakePodName append podname,jobname,taskName and index and returns the string
+// MakePodName append podname,jobname,taskName and index and returns the string.
 func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(jobhelpers.PodNameFmt, jobName, taskName, index)
 }
@@ -203,14 +203,14 @@ func addResourceList(list, req, limit v1.ResourceList) {
 	}
 }
 
-//TaskPriority structure
+// TaskPriority structure.
 type TaskPriority struct {
 	priority int32
 
 	batch.TaskSpec
 }
 
-//TasksPriority is a slice of TaskPriority
+// TasksPriority is a slice of TaskPriority.
 type TasksPriority []TaskPriority
 
 func (p TasksPriority) Len() int { return len(p) }

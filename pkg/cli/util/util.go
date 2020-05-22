@@ -36,13 +36,13 @@ import (
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
-// CommonFlags are the flags that most command lines have
+// CommonFlags are the flags that most command lines have.
 type CommonFlags struct {
 	Master     string
 	Kubeconfig string
 }
 
-// InitFlags initializes the common flags for most command lines
+// InitFlags initializes the common flags for most command lines.
 func InitFlags(cmd *cobra.Command, cf *CommonFlags) {
 	cmd.Flags().StringVarP(&cf.Master, "master", "s", "", "the address of apiserver")
 
@@ -55,7 +55,7 @@ func InitFlags(cmd *cobra.Command, cf *CommonFlags) {
 	cmd.Flags().StringVarP(&cf.Kubeconfig, "kubeconfig", "k", kubeConfFile, "(optional) absolute path to the kubeconfig file")
 }
 
-// HomeDir gets the env $HOME
+// HomeDir gets the env $HOME.
 func HomeDir() string {
 	if h := os.Getenv("HOME"); h != "" {
 		return h
@@ -63,7 +63,7 @@ func HomeDir() string {
 	return os.Getenv("USERPROFILE") // windows
 }
 
-// BuildConfig builds the configure file for command lines
+// BuildConfig builds the configure file for command lines.
 func BuildConfig(master, kubeconfig string) (*rest.Config, error) {
 	return clientcmd.BuildConfigFromFlags(master, kubeconfig)
 }
@@ -92,7 +92,7 @@ func PopulateResourceListV1(spec string) (v1.ResourceList, error) {
 	return result, nil
 }
 
-// CreateJobCommand executes a command such as resume/suspend
+// CreateJobCommand executes a command such as resume/suspend.
 func CreateJobCommand(config *rest.Config, ns, name string, action vcbus.Action) error {
 	jobClient := versioned.NewForConfigOrDie(config)
 	job, err := jobClient.BatchV1alpha1().Jobs(ns).Get(name, metav1.GetOptions{})
@@ -121,7 +121,7 @@ func CreateJobCommand(config *rest.Config, ns, name string, action vcbus.Action)
 	return nil
 }
 
-// TranslateTimestampSince translates the time stamp
+// TranslateTimestampSince translates the time stamp.
 func TranslateTimestampSince(timestamp metav1.Time) string {
 	if timestamp.IsZero() {
 		return "<unknown>"
@@ -129,7 +129,7 @@ func TranslateTimestampSince(timestamp metav1.Time) string {
 	return HumanDuration(time.Since(timestamp.Time))
 }
 
-// HumanDuration translate time.Duration to human readable time string
+// HumanDuration translate time.Duration to human readable time string.
 func HumanDuration(d time.Duration) string {
 	// Allow deviation no more than 2 seconds(excluded) to tolerate machine time
 	// inconsistence, it can be considered as almost now.

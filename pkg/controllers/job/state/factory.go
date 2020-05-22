@@ -36,10 +36,10 @@ type ActionFn func(job *apis.JobInfo, fn UpdateStatusFn) error
 //KillActionFn kill all Pods of Job with phase not in podRetainPhase.
 type KillActionFn func(job *apis.JobInfo, podRetainPhase PhaseMap, fn UpdateStatusFn) error
 
-//PodRetainPhaseNone stores no phase
+//PodRetainPhaseNone stores no phase.
 var PodRetainPhaseNone = PhaseMap{}
 
-// PodRetainPhaseSoft stores PodSucceeded and PodFailed Phase
+// PodRetainPhaseSoft stores PodSucceeded and PodFailed Phase.
 var PodRetainPhaseSoft = PhaseMap{
 	v1.PodSucceeded: {},
 	v1.PodFailed:    {},
@@ -52,13 +52,13 @@ var (
 	KillJob KillActionFn
 )
 
-//State interface
+//State interface.
 type State interface {
 	// Execute executes the actions based on current state.
 	Execute(act v1alpha1.Action) error
 }
 
-// NewState gets the state from the volcano job Phase
+// NewState gets the state from the volcano job Phase.
 func NewState(jobInfo *apis.JobInfo) State {
 	job := jobInfo.Job
 	switch job.Status.State.Phase {

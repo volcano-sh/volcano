@@ -50,7 +50,7 @@ const (
 	retryPeriod   = 5 * time.Second
 )
 
-// Run the controller
+// Run the controller.
 func Run(opt *options.ServerOption) error {
 	config, err := kube.BuildConfig(opt.KubeClientOptions)
 	if err != nil {

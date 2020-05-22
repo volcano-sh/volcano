@@ -52,7 +52,7 @@ const (
 	retryPeriod   = 5 * time.Second
 )
 
-// Run the volcano scheduler
+// Run the volcano scheduler.
 func Run(opt *options.ServerOption) error {
 	if opt.PrintVersion {
 		version.PrintVersionAndExit()

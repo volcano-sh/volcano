@@ -69,7 +69,7 @@ var service = &router.AdmissionService{
 
 var config = &router.AdmissionServiceConfig{}
 
-// AdmitJobs is to admit jobs and return response
+// AdmitJobs is to admit jobs and return response.
 func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	klog.V(3).Infof("admitting jobs -- %s", ar.Request.Operation)
 

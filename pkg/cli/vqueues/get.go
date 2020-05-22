@@ -61,7 +61,7 @@ const (
 
 var getQueueFlags = &getFlags{}
 
-// InitGetFlags is used to init all flags
+// InitGetFlags is used to init all flags.
 func InitGetFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &getQueueFlags.CommonFlags)
 
@@ -69,7 +69,7 @@ func InitGetFlags(cmd *cobra.Command) {
 
 }
 
-// ListQueue lists all the queue
+// ListQueue lists all the queue.
 func ListQueue() error {
 	config, err := util.BuildConfig(getQueueFlags.Master, getQueueFlags.Kubeconfig)
 	if err != nil {
@@ -91,7 +91,7 @@ func ListQueue() error {
 	return nil
 }
 
-// PrintQueues prints queue information
+// PrintQueues prints queue information.
 func PrintQueues(queues *v1beta1.QueueList, writer io.Writer) {
 	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s\n",
 		Name, Weight, State, Inqueue, Pending, Running, Unknown)
@@ -109,7 +109,7 @@ func PrintQueues(queues *v1beta1.QueueList, writer io.Writer) {
 
 }
 
-// GetQueue gets a queue
+// GetQueue gets a queue.
 func GetQueue() error {
 	config, err := util.BuildConfig(getQueueFlags.Master, getQueueFlags.Kubeconfig)
 	if err != nil {
@@ -132,7 +132,7 @@ func GetQueue() error {
 	return nil
 }
 
-// PrintQueue prints queue information
+// PrintQueue prints queue information.
 func PrintQueue(queue *v1beta1.Queue, writer io.Writer) {
 	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s\n",
 		Name, Weight, State, Inqueue, Pending, Running, Unknown)

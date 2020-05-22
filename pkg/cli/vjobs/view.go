@@ -89,7 +89,7 @@ const (
 
 var viewJobFlags = &viewFlags{}
 
-// InitViewFlags  init the view command flags
+// InitViewFlags init the view command flags.
 func InitViewFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &viewJobFlags.CommonFlags)
 
@@ -100,7 +100,7 @@ func InitViewFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&viewJobFlags.selector, "selector", "", "", "fuzzy matching jobName")
 }
 
-// ViewJob gives full details of the  job
+// ViewJob gives full details of the job.
 func ViewJob() error {
 	config, err := util.BuildConfig(viewJobFlags.Master, viewJobFlags.Kubeconfig)
 	if err != nil {
@@ -125,7 +125,7 @@ func ViewJob() error {
 	return nil
 }
 
-// PrintJobInfo print the job detailed info into writer
+// PrintJobInfo print the job detailed info into writer.
 func PrintJobInfo(job *v1alpha1.Job, writer io.Writer) {
 	WriteLine(writer, Level0, "Name:       \t%s\n", job.Name)
 	WriteLine(writer, Level0, "Namespace:  \t%s\n", job.Namespace)
@@ -239,7 +239,7 @@ func PrintJobInfo(job *v1alpha1.Job, writer io.Writer) {
 	}
 }
 
-// PrintEvents print event info to writer
+// PrintEvents print event info to writer.
 func PrintEvents(events []coreV1.Event, writer io.Writer) {
 	if len(events) > 0 {
 		WriteLine(writer, Level0, "%s:\n%-15s\t%-40s\t%-30s\t%-40s\t%s\n", "Events", "Type", "Reason", "Age", "Form", "Message")
@@ -269,7 +269,7 @@ func PrintEvents(events []coreV1.Event, writer io.Writer) {
 
 }
 
-// GetEvents get the job event by config
+// GetEvents get the job event by config.
 func GetEvents(config *rest.Config, job *v1alpha1.Job) []coreV1.Event {
 	kubernetes, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -286,7 +286,7 @@ func GetEvents(config *rest.Config, job *v1alpha1.Job) []coreV1.Event {
 	return jobEvents
 }
 
-// WriteLine write lines with specified indent
+// WriteLine write lines with specified indent.
 func WriteLine(writer io.Writer, spaces int, content string, params ...interface{}) {
 	prefix := ""
 	for i := 0; i < spaces; i++ {
@@ -295,7 +295,7 @@ func WriteLine(writer io.Writer, spaces int, content string, params ...interface
 	fmt.Fprintf(writer, prefix+content, params...)
 }
 
-// ListJobs  lists all jobs details
+// ListJobs lists all jobs details.
 func ListJobs() error {
 	config, err := util.BuildConfig(viewJobFlags.Master, viewJobFlags.Kubeconfig)
 	if err != nil {
@@ -319,7 +319,7 @@ func ListJobs() error {
 	return nil
 }
 
-// PrintJobs prints all jobs details
+// PrintJobs prints all jobs details.
 func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 	maxLenInfo := getMaxLen(jobs)
 

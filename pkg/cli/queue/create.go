@@ -36,7 +36,7 @@ type createFlags struct {
 
 var createQueueFlags = &createFlags{}
 
-// InitCreateFlags is used to init all flags during queue creating
+// InitCreateFlags is used to init all flags during queue creating.
 func InitCreateFlags(cmd *cobra.Command) {
 	initFlags(cmd, &createQueueFlags.commonFlags)
 
@@ -46,7 +46,7 @@ func InitCreateFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&createQueueFlags.State, "state", "S", "Open", "the state of queue")
 }
 
-// CreateQueue create queue
+// CreateQueue create queue.
 func CreateQueue() error {
 	config, err := buildConfig(createQueueFlags.Master, createQueueFlags.Kubeconfig)
 	if err != nil {
