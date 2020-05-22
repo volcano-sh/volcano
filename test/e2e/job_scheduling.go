@@ -516,7 +516,7 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		//create error job
-		errorJob, err := ctx.kubeclient.BatchV1().Jobs(ctx.namespace).Create(errorJob)
+		_, err := ctx.kubeclient.BatchV1().Jobs(ctx.namespace).Create(errorJob)
 		Expect(err).To(HaveOccurred())
 
 		//create job

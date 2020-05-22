@@ -82,7 +82,7 @@ func Jobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	var patchBytes []byte
 	switch ar.Request.Operation {
 	case v1beta1.Create:
-		patchBytes, err = createPatch(job)
+		patchBytes, _ = createPatch(job)
 		break
 	default:
 		err = fmt.Errorf("expect operation to be 'CREATE' ")
