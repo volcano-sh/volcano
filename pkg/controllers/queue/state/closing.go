@@ -30,7 +30,6 @@ func (cs *closingState) Execute(action v1alpha1.Action) error {
 	case v1alpha1.OpenQueueAction:
 		return OpenQueue(cs.queue, func(status *v1beta1.QueueStatus, podGroupList []string) {
 			status.State = v1beta1.QueueStateOpen
-			return
 		})
 	case v1alpha1.CloseQueueAction:
 		return SyncQueue(cs.queue, func(status *v1beta1.QueueStatus, podGroupList []string) {
@@ -39,8 +38,6 @@ func (cs *closingState) Execute(action v1alpha1.Action) error {
 				return
 			}
 			status.State = v1beta1.QueueStateClosing
-
-			return
 		})
 	default:
 		return SyncQueue(cs.queue, func(status *v1beta1.QueueStatus, podGroupList []string) {
@@ -61,7 +58,6 @@ func (cs *closingState) Execute(action v1alpha1.Action) error {
 			}
 
 			status.State = v1beta1.QueueStateUnknown
-			return
 		})
 	}
 }

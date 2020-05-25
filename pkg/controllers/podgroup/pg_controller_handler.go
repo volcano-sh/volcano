@@ -107,7 +107,7 @@ func (cc *Controller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 func newPGOwnerReferences(pod *v1.Pod) []metav1.OwnerReference {
 	if len(pod.OwnerReferences) != 0 {
 		for _, ownerReference := range pod.OwnerReferences {
-			if ownerReference.Controller != nil && *ownerReference.Controller == true {
+			if ownerReference.Controller != nil && *ownerReference.Controller {
 				return pod.OwnerReferences
 			}
 		}

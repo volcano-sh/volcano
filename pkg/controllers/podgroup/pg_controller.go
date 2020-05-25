@@ -73,11 +73,10 @@ func NewPodgroupController(
 	cc.podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
-				switch obj.(type) {
+				switch v := obj.(type) {
 				case *v1.Pod:
-					pod := obj.(*v1.Pod)
-					if pod.Spec.SchedulerName == schedulerName &&
-						(pod.Annotations == nil || pod.Annotations[scheduling.KubeGroupNameAnnotationKey] == "") {
+					if v.Spec.SchedulerName == schedulerName &&
+						(v.Annotations == nil || v.Annotations[scheduling.KubeGroupNameAnnotationKey] == "") {
 						return true
 					}
 					return false

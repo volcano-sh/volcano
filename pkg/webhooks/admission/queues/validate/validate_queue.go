@@ -72,12 +72,8 @@ func AdmitQueues(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	switch ar.Request.Operation {
 	case v1beta1.Create, v1beta1.Update:
 		err = validateQueue(queue)
-
-		break
 	case v1beta1.Delete:
 		err = validateQueueDeleting(ar.Request.Name)
-
-		break
 	default:
 		return util.ToAdmissionResponse(fmt.Errorf("invalid operation `%s`, "+
 			"expect operation to be `CREATE`, `UPDATE` or `DELETE`", ar.Request.Operation))

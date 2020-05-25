@@ -188,7 +188,6 @@ func (sc *SchedulerCache) AddPod(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("Added pod <%s/%v> into cache.", pod.Namespace, pod.Name)
-	return
 }
 
 // UpdatePod update pod to scheduler cache
@@ -214,8 +213,6 @@ func (sc *SchedulerCache) UpdatePod(oldObj, newObj interface{}) {
 	}
 
 	klog.V(3).Infof("Updated pod <%s/%v> in cache.", oldPod.Namespace, oldPod.Name)
-
-	return
 }
 
 // DeletePod delete pod from scheduler cache
@@ -246,7 +243,6 @@ func (sc *SchedulerCache) DeletePod(obj interface{}) {
 	}
 
 	klog.V(3).Infof("Deleted pod <%s/%v> from cache.", pod.Namespace, pod.Name)
-	return
 }
 
 // Assumes that lock is already acquired.
@@ -295,7 +291,6 @@ func (sc *SchedulerCache) AddNode(obj interface{}) {
 		klog.Errorf("Failed to add node %s into cache: %v", node.Name, err)
 		return
 	}
-	return
 }
 
 // UpdateNode update node to scheduler cache
@@ -319,7 +314,6 @@ func (sc *SchedulerCache) UpdateNode(oldObj, newObj interface{}) {
 		klog.Errorf("Failed to update node %v in cache: %v", oldNode.Name, err)
 		return
 	}
-	return
 }
 
 // DeleteNode delete node from scheduler cache
@@ -348,7 +342,6 @@ func (sc *SchedulerCache) DeleteNode(obj interface{}) {
 		klog.Errorf("Failed to delete node %s from cache: %v", node.Name, err)
 		return
 	}
-	return
 }
 
 func getJobID(pg *schedulingapi.PodGroup) schedulingapi.JobID {
@@ -416,8 +409,6 @@ func (sc *SchedulerCache) AddPodGroupV1beta1(obj interface{}) {
 		klog.Errorf("Failed to add PodGroup %s into cache: %v", ss.Name, err)
 		return
 	}
-
-	return
 }
 
 // UpdatePodGroupV1beta1 add podgroup to scheduler cache
@@ -452,7 +443,6 @@ func (sc *SchedulerCache) UpdatePodGroupV1beta1(oldObj, newObj interface{}) {
 		klog.Errorf("Failed to update SchedulingSpec %s into cache: %v", pg.Name, err)
 		return
 	}
-	return
 }
 
 // DeletePodGroupV1beta1 delete podgroup from scheduler cache
@@ -482,7 +472,6 @@ func (sc *SchedulerCache) DeletePodGroupV1beta1(obj interface{}) {
 		klog.Errorf("Failed to delete podgroup %s from cache: %v", ss.Name, err)
 		return
 	}
-	return
 }
 
 // AddQueueV1beta1 add queue to scheduler cache
@@ -504,8 +493,6 @@ func (sc *SchedulerCache) AddQueueV1beta1(obj interface{}) {
 
 	klog.V(4).Infof("Add Queue(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
 	sc.addQueue(queue)
-
-	return
 }
 
 // UpdateQueueV1beta1 update queue to scheduler cache
@@ -534,8 +521,6 @@ func (sc *SchedulerCache) UpdateQueueV1beta1(oldObj, newObj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 	sc.updateQueue(newQueue)
-
-	return
 }
 
 // DeleteQueueV1beta1 delete queue from the scheduler cache
@@ -559,8 +544,6 @@ func (sc *SchedulerCache) DeleteQueueV1beta1(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 	sc.deleteQueue(schedulingapi.QueueID(ss.Name))
-
-	return
 }
 
 func (sc *SchedulerCache) addQueue(queue *scheduling.Queue) {

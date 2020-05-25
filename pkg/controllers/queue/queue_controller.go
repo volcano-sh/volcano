@@ -138,10 +138,9 @@ func NewQueueController(
 	c.cmdInformer = informerfactory.NewSharedInformerFactory(c.vcClient, 0).Bus().V1alpha1().Commands()
 	c.cmdInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
-			switch obj.(type) {
+			switch v := obj.(type) {
 			case *busv1alpha1.Command:
-				cmd := obj.(*busv1alpha1.Command)
-				return IsQueueReference(cmd.TargetObject)
+				return IsQueueReference(v.TargetObject)
 			default:
 				return false
 			}
@@ -298,7 +297,7 @@ func (c *Controller) handleCommand(cmd *busv1alpha1.Command) error {
 
 	err := c.vcClient.BusV1alpha1().Commands(cmd.Namespace).Delete(cmd.Name, nil)
 	if err != nil {
-		if true == apierrors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			return nil
 		}
 
