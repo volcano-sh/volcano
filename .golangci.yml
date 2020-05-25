@@ -69,9 +69,14 @@ issues:
       linters:
         - gomnd
         - dupl
+    # TODO: unknownState is totally same with closingState
+    - path: pkg/controllers/queue/state/unknown.go
+      linters:
+        - dupl
     - path: v1beta1
       linters:
         - golint
+        - dupl
         - deadcode
     - path: fake
       linters:
