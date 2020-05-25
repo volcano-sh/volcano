@@ -80,7 +80,7 @@ spec:
             - --webhook-namespace={{ .Release.Namespace }}
             - --webhook-service-name={{ .Release.Name }}-admission-service
             - --logtostderr
-            - --port=443
+            - --port={{.Values.basic.admission_port}}
             - -v=4
             - 2>&1
           image: {{.Values.basic.admission_image_name}}:{{.Values.basic.image_tag_version}}
@@ -108,7 +108,7 @@ spec:
   ports:
     - port: 443
       protocol: TCP
-      targetPort: 443
+      targetPort: {{.Values.basic.admission_port}}
   selector:
     app: volcano-admission
   sessionAffinity: None
