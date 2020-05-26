@@ -78,7 +78,7 @@ const (
 
 var listJobFlags = &listFlags{}
 
-// InitListFlags init list command flags
+// InitListFlags init list command flags.
 func InitListFlags(cmd *cobra.Command) {
 	initFlags(cmd, &listJobFlags.commonFlags)
 
@@ -88,7 +88,7 @@ func InitListFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&listJobFlags.selector, "selector", "", "", "fuzzy matching jobName")
 }
 
-// ListJobs  lists all jobs details
+// ListJobs lists all jobs details.
 func ListJobs() error {
 	config, err := util.BuildConfig(listJobFlags.Master, listJobFlags.Kubeconfig)
 	if err != nil {
@@ -112,7 +112,7 @@ func ListJobs() error {
 	return nil
 }
 
-// PrintJobs prints all jobs details
+// PrintJobs prints all jobs details.
 func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 	maxLenInfo := getMaxLen(jobs)
 

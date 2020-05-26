@@ -58,12 +58,12 @@ const (
 
 var listQueueFlags = &listFlags{}
 
-// InitListFlags inits all flags
+// InitListFlags inits all flags.
 func InitListFlags(cmd *cobra.Command) {
 	initFlags(cmd, &listQueueFlags.commonFlags)
 }
 
-// ListQueue lists all the queue
+// ListQueue lists all the queue.
 func ListQueue() error {
 	config, err := buildConfig(listQueueFlags.Master, listQueueFlags.Kubeconfig)
 	if err != nil {
@@ -85,7 +85,7 @@ func ListQueue() error {
 	return nil
 }
 
-// PrintQueues prints queue information
+// PrintQueues prints queue information.
 func PrintQueues(queues *v1beta1.QueueList, writer io.Writer) {
 	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s\n",
 		Name, Weight, State, Inqueue, Pending, Running, Unknown)

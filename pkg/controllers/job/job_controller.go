@@ -63,7 +63,7 @@ const (
 	maxRetries = 15
 )
 
-// Controller the Job Controller type
+// Controller the Job Controller type.
 type Controller struct {
 	kubeClient kubernetes.Interface
 	vcClient   vcclientset.Interface
@@ -114,7 +114,7 @@ type Controller struct {
 	workers  uint32
 }
 
-// NewJobController create new Job Controller
+// NewJobController create new Job Controller.
 func NewJobController(
 	kubeClient kubernetes.Interface,
 	vcClient vcclientset.Interface,
@@ -218,7 +218,7 @@ func NewJobController(
 	return cc
 }
 
-// Run start JobController
+// Run start JobController.
 func (cc *Controller) Run(stopCh <-chan struct{}) {
 
 	go cc.jobInformer.Informer().Run(stopCh)

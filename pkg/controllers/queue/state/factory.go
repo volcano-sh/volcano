@@ -21,13 +21,13 @@ import (
 	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
-// State interface
+// State interface.
 type State interface {
 	// Execute executes the actions based on current state.
 	Execute(action v1alpha1.Action) error
 }
 
-// UpdateQueueStatusFn updates the queue status
+// UpdateQueueStatusFn updates the queue status.
 type UpdateQueueStatusFn func(status *v1beta1.QueueStatus, podGroupList []string)
 
 // QueueActionFn will open, close or sync queue.
@@ -42,7 +42,7 @@ var (
 	CloseQueue QueueActionFn
 )
 
-// NewState gets the state from queue status
+// NewState gets the state from queue status.
 func NewState(queue *v1beta1.Queue) State {
 	switch queue.Status.State {
 	case "", v1beta1.QueueStateOpen:

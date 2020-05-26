@@ -22,7 +22,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// IsQueueReference return if ownerReference is Queue Kind
+// IsQueueReference return if ownerReference is Queue Kind.
 func IsQueueReference(ref *metav1.OwnerReference) bool {
 	if ref == nil {
 		return false

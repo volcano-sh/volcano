@@ -34,7 +34,7 @@ const (
 	persistentVolumeClaimFmt = "%s-pvc-%s"
 )
 
-// GetTaskIndex   returns task Index
+// GetTaskIndex returns task Index.
 func GetTaskIndex(pod *v1.Pod) string {
 	num := strings.Split(pod.Name, "-")
 	if len(num) >= 3 {
@@ -44,12 +44,12 @@ func GetTaskIndex(pod *v1.Pod) string {
 	return ""
 }
 
-// MakePodName creates pod name
+// MakePodName creates pod name.
 func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(PodNameFmt, jobName, taskName, index)
 }
 
-// GenRandomStr generate random str with specified length l
+// GenRandomStr generate random str with specified length l.
 func GenRandomStr(l int) string {
 	str := "0123456789abcdefghijklmnopqrstuvwxyz"
 	bytes := []byte(str)
@@ -61,12 +61,12 @@ func GenRandomStr(l int) string {
 	return string(result)
 }
 
-// GenPVCName generates pvc name with job name
+// GenPVCName generates pvc name with job name.
 func GenPVCName(jobName string) string {
 	return fmt.Sprintf(persistentVolumeClaimFmt, jobName, GenRandomStr(12))
 }
 
-// GetJobKeyByReq gets the key for the job request
+// GetJobKeyByReq gets the key for the job request.
 func GetJobKeyByReq(req *apis.Request) string {
 	return fmt.Sprintf("%s/%s", req.Namespace, req.JobName)
 }

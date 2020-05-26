@@ -23,12 +23,12 @@ import (
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
-// PluginClientset clientset
+// PluginClientset clientset.
 type PluginClientset struct {
 	KubeClients kubernetes.Interface
 }
 
-// PluginInterface interface
+// PluginInterface interface.
 type PluginInterface interface {
 	// The unique name of Plugin.
 	Name() string

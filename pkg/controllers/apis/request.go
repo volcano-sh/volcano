@@ -21,7 +21,7 @@ import (
 	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 )
 
-//Request struct
+//Request struct.
 type Request struct {
 	Namespace string
 	JobName   string
@@ -34,7 +34,7 @@ type Request struct {
 	JobVersion int32
 }
 
-//String function returns the request in string format
+// String function returns the request in string format.
 func (r Request) String() string {
 	return fmt.Sprintf(
 		"Queue: %s, Job: %s/%s, Task:%s, Event:%s, ExitCode:%d, Action:%s, JobVersion: %d",

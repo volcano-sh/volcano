@@ -25,7 +25,7 @@ import (
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// Job defines the volcano job
+// Job defines the volcano job.
 type Job struct {
 	metav1.TypeMeta `json:",inline"`
 
@@ -42,7 +42,7 @@ type Job struct {
 	Status JobStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
 }
 
-// JobSpec describes how the job execution will look like and when it will actually run
+// JobSpec describes how the job execution will look like and when it will actually run.
 type JobSpec struct {
 	// SchedulerName is the default value of `tasks.template.spec.schedulerName`.
 	// +optional
@@ -92,7 +92,7 @@ type JobSpec struct {
 	PriorityClassName string `json:"priorityClassName,omitempty" protobuf:"bytes,10,opt,name=priorityClassName"`
 }
 
-// VolumeSpec defines the specification of Volume, e.g. PVC
+// VolumeSpec defines the specification of Volume, e.g. PVC.
 type VolumeSpec struct {
 	// Path within the container at which the volume should be mounted.  Must
 	// not contain ':'.
@@ -107,7 +107,7 @@ type VolumeSpec struct {
 	VolumeClaim *v1.PersistentVolumeClaimSpec `json:"volumeClaim,omitempty" protobuf:"bytes,3,opt,name=volumeClaim"`
 }
 
-// JobEvent job event
+// JobEvent job event.
 type JobEvent string
 
 const (
@@ -155,7 +155,7 @@ type LifecyclePolicy struct {
 	Timeout *metav1.Duration `json:"timeout,omitempty" protobuf:"bytes,4,opt,name=timeout"`
 }
 
-// TaskSpec specifies the task specification of Job
+// TaskSpec specifies the task specification of Job.
 type TaskSpec struct {
 	// Name specifies the name of tasks
 	// +optional
@@ -175,7 +175,7 @@ type TaskSpec struct {
 	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,4,opt,name=policies"`
 }
 
-// JobPhase defines the phase of the job
+// JobPhase defines the phase of the job.
 type JobPhase string
 
 const (
@@ -220,7 +220,7 @@ type JobState struct {
 	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,4,opt,name=lastTransitionTime"`
 }
 
-// JobStatus represents the current status of a Job
+// JobStatus represents the current status of a Job.
 type JobStatus struct {
 	// Current state of Job.
 	// +optional
@@ -269,7 +269,7 @@ type JobStatus struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// JobList defines the list of jobs
+// JobList defines the list of jobs.
 type JobList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`

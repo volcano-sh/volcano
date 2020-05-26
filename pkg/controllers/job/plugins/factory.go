@@ -33,13 +33,13 @@ func init() {
 
 var pluginMutex sync.Mutex
 
-// Plugin management
+// Plugin management.
 var pluginBuilders = map[string]PluginBuilder{}
 
-// PluginBuilder func prototype
+// PluginBuilder func prototype.
 type PluginBuilder func(pluginsinterface.PluginClientset, []string) pluginsinterface.PluginInterface
 
-// RegisterPluginBuilder register plugin builders
+// RegisterPluginBuilder register plugin builders.
 func RegisterPluginBuilder(name string, pc PluginBuilder) {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()
@@ -47,7 +47,7 @@ func RegisterPluginBuilder(name string, pc PluginBuilder) {
 	pluginBuilders[name] = pc
 }
 
-// GetPluginBuilder returns plugin builder for a given plugin name
+// GetPluginBuilder returns plugin builder for a given plugin name.
 func GetPluginBuilder(name string) (PluginBuilder, bool) {
 	pluginMutex.Lock()
 	defer pluginMutex.Unlock()

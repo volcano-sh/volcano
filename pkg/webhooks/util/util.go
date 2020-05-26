@@ -22,7 +22,7 @@ import (
 	"k8s.io/klog"
 )
 
-//ToAdmissionResponse updates the admission response with the input error
+//ToAdmissionResponse updates the admission response with the input error.
 func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
 	klog.Error(err)
 	return &v1beta1.AdmissionResponse{

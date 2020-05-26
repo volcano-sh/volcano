@@ -44,13 +44,13 @@ type Config struct {
 	WebhookURL        string
 }
 
-// NewConfig create new config
+// NewConfig create new config.
 func NewConfig() *Config {
 	c := Config{}
 	return &c
 }
 
-// AddFlags add flags
+// AddFlags add flags.
 func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.KubeClientOptions.Master, "master", c.KubeClientOptions.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 	fs.StringVar(&c.KubeClientOptions.KubeConfig, "kubeconfig", c.KubeClientOptions.KubeConfig, "Path to kubeconfig file with authorization and master location information.")
@@ -71,7 +71,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.SchedulerName, "scheduler-name", defaultSchedulerName, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
 }
 
-// CheckPortOrDie check valid port range
+// CheckPortOrDie check valid port range.
 func (c *Config) CheckPortOrDie() error {
 	if c.Port < 1 || c.Port > 65535 {
 		return fmt.Errorf("the port should be in the range of 1 and 65535")

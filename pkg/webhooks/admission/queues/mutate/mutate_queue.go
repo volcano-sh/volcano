@@ -62,7 +62,7 @@ type patchOperation struct {
 	Value interface{} `json:"value,omitempty"`
 }
 
-// Queues mutate queues
+// Queues mutate queues.
 func Queues(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	klog.V(3).Infof("Mutating %s queue %s.", ar.Request.Operation, ar.Request.Name)
 

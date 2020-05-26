@@ -36,7 +36,7 @@ type cancelFlags struct {
 
 var cancelJobFlags = &cancelFlags{}
 
-// InitCancelFlags  init the cancel command flags
+// InitCancelFlags init the cancel command flags.
 func InitCancelFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &cancelJobFlags.CommonFlags)
 
@@ -44,7 +44,7 @@ func InitCancelFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&cancelJobFlags.JobName, "name", "n", "", "the name of job")
 }
 
-// CancelJob  cancel the job
+// CancelJob cancel the job.
 func CancelJob() error {
 	config, err := util.BuildConfig(cancelJobFlags.Master, cancelJobFlags.Kubeconfig)
 	if err != nil {

@@ -49,7 +49,7 @@ type runFlags struct {
 
 var launchJobFlags = &runFlags{}
 
-// InitRunFlags  init the run flags
+// InitRunFlags init the run flags.
 func InitRunFlags(cmd *cobra.Command) {
 	initFlags(cmd, &launchJobFlags.commonFlags)
 
@@ -66,7 +66,7 @@ func InitRunFlags(cmd *cobra.Command) {
 
 var jobName = "job.volcano.sh"
 
-// RunJob  creates the job
+// RunJob creates the job.
 func RunJob() error {
 	config, err := util.BuildConfig(launchJobFlags.Master, launchJobFlags.Kubeconfig)
 	if err != nil {
