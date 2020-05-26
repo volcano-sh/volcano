@@ -38,7 +38,7 @@ var (
 )
 
 type Action struct {
-	ssn *framework.Session
+	_ *framework.Session
 }
 
 func New() *Action {
