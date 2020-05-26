@@ -58,7 +58,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 		"File containing the default x509 Certificate for HTTPS. (CA cert, if any, concatenated "+
 		"after server cert).")
 	fs.StringVar(&c.KeyFile, "tls-private-key-file", c.KeyFile, "File containing the default x509 private key matching --tls-cert-file.")
-	fs.IntVar(&c.Port, "port", 443, "the port used by admission-controller-server.")
+	fs.IntVar(&c.Port, "port", 8443, "the port used by admission-controller-server.")
 	fs.BoolVar(&c.PrintVersion, "version", false, "Show version and quit")
 	fs.Float32Var(&c.KubeClientOptions.QPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
 	fs.IntVar(&c.KubeClientOptions.Burst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")

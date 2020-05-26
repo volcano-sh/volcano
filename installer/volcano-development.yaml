@@ -217,7 +217,7 @@ spec:
             - --webhook-namespace=volcano-system
             - --webhook-service-name=volcano-admission-service
             - --logtostderr
-            - --port=443
+            - --port=8443
             - -v=4
             - 2>&1
           image: volcanosh/vc-webhook-manager:latest
@@ -245,7 +245,7 @@ spec:
   ports:
     - port: 443
       protocol: TCP
-      targetPort: 443
+      targetPort: 8443
   selector:
     app: volcano-admission
   sessionAffinity: None
