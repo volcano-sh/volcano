@@ -78,7 +78,6 @@ type SchedulerCache struct {
 
 	podInformer             infov1.PodInformer
 	nodeInformer            infov1.NodeInformer
-	_                       infov1.NamespaceInformer
 	podGroupInformerV1beta1 vcinformerv1.PodGroupInformer
 	queueInformerV1beta1    vcinformerv1.QueueInformer
 	pvInformer              infov1.PersistentVolumeInformer
