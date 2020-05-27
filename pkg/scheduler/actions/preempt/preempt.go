@@ -26,9 +26,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-type Action struct {
-	_ *framework.Session
-}
+type Action struct{}
 
 func New() *Action {
 	return &Action{}
