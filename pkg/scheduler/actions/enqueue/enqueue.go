@@ -37,9 +37,7 @@ var (
 	defaultOverCommitFactor = 1.2
 )
 
-type Action struct {
-	ssn *framework.Session
-}
+type Action struct{}
 
 func New() *Action {
 	return &Action{}
