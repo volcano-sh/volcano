@@ -1,20 +1,6 @@
 # Volcano Roadmap
 
-Volcano is Kubernetes native batch system to support different domain frameworks, e.g. kubeflow, Spark, Flink; and several enhancements are required to achieve its target. As it's hard to complete those features in one or two release, this document gives an overall roadmap of Volcano in coming release. If any comments/suggestion, please feel free to open an issue.
-
-## v0.4 (Q1 2020)
-
-The major target of this release is to support heterogeneous hardware, e.g. GPU.
-
-### GPU Topology ([#623](https://github.com/volcano-sh/volcano/issues/623))
-
-Lots of batch workloads are using GPU to improve the performance. Because of `nvLink`, the topology of GPU is one of important factors to the performance. Overall, it's better for scheduler to dispatch the Pod the node which have available `nvLink`s, and kubelet dispatch the Pod to the target GPUs.
-
-### Virtual Kubelet ([#524](https://github.com/volcano-sh/volcano/issues/524))
-
-Virtual kubelet is also one of solution to support heterogeneous hardware; for example, build a GPU cluster with traditional batch system and dispatch the workload through virtual kubelet. There maybe several tasks in one job, the scheduler should be enhanced to dispatch them to the same virtual kubelet to avoid network impact.
-
-## v1.0 (Q2 2020)
+## v1.0 (Planned on June 30)
 
 The major target of this release to make Volcano more stable for product.
 
@@ -54,4 +40,6 @@ After v1.0,  the `RFVE` (Request For Volcano Enhancement) will drive the roadmap
 * Plugins per Queue
 * Data Management
 * Data Aware Scheduling
+* GPU Topology ([#623](https://github.com/volcano-sh/volcano/issues/623))
+* Virtual Kubelet ([#524](https://github.com/volcano-sh/volcano/issues/524))
 * ......
