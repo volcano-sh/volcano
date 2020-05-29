@@ -161,20 +161,20 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 	for _, node := range nodes {
 		if score, found := reduceScores[node.Name]; found {
 			if orderScore, ok := nodeOrderScoreMap[node.Name]; ok {
-				score = score + orderScore
+				score += orderScore
 			}
 			if batchScore, ok := batchNodeScore[node.Name]; ok {
-				score = score + batchScore
+				score += batchScore
 			}
 			nodeScores[score] = append(nodeScores[score], node)
 		} else {
 			// If no plugin is applied to this node, the default is 0.0
 			score = 0.0
 			if orderScore, ok := nodeOrderScoreMap[node.Name]; ok {
-				score = score + orderScore
+				score += orderScore
 			}
 			if batchScore, ok := batchNodeScore[node.Name]; ok {
-				score = score + batchScore
+				score += batchScore
 			}
 			nodeScores[score] = append(nodeScores[score], node)
 		}

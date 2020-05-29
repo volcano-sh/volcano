@@ -21,7 +21,6 @@ linters:
     - dupl
     - errcheck
     - funlen
-    - gochecknoinits
     - goconst
     - gocritic
     - gocyclo
@@ -103,3 +102,10 @@ issues:
         - golint
         - deadcode
         - godot
+
+linters-settings:
+  lll:
+    line-length: 256
+  funlen:
+    lines: 100
+    statements: 60

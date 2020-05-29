@@ -30,7 +30,7 @@ func CheckError(cmd *cobra.Command, err error) {
 
 		// Ignore the root command.
 		for cur := cmd; cur.Parent() != nil; cur = cur.Parent() {
-			msg = msg + fmt.Sprintf(" %s", cur.Name())
+			msg += fmt.Sprintf(" %s", cur.Name())
 		}
 
 		fmt.Printf("%s: %v\n", msg, err)

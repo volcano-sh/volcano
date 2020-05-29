@@ -183,7 +183,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			return 0, err
 		}
 		// If leastReqWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		score = score + float64(host.Score*weight.leastReqWeight)
+		score += float64(host.Score * weight.leastReqWeight)
 
 		host, err = priorities.BalancedResourceAllocationMap(task.Pod, nil, nodeInfo)
 		if err != nil {
@@ -191,7 +191,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			return 0, err
 		}
 		// If balancedRescourceWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		score = score + float64(host.Score*weight.balancedRescourceWeight)
+		score += float64(host.Score * weight.balancedRescourceWeight)
 
 		host, err = priorities.CalculateNodeAffinityPriorityMap(task.Pod, nil, nodeInfo)
 		if err != nil {
@@ -199,7 +199,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			return 0, err
 		}
 		// If nodeAffinityWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		score = score + float64(host.Score*weight.nodeAffinityWeight)
+		score += float64(host.Score * weight.nodeAffinityWeight)
 
 		klog.V(4).Infof("Total Score for task %s/%s on node %s is: %f", task.Namespace, task.Name, node.Name, score)
 		return score, nil
