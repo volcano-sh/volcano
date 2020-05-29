@@ -128,16 +128,39 @@ func (db *defaultBinder) Bind(p *v1.Pod, hostname string) error {
 
 type defaultEvictor struct {
 	kubeclient *kubernetes.Clientset
+	recorder   record.EventRecorder
 }
 
 //Evict will send delete pod request to api server
-func (de *defaultEvictor) Evict(p *v1.Pod) error {
-	klog.V(3).Infof("Evicting pod %v/%v", p.Namespace, p.Name)
+func (de *defaultEvictor) Evict(p *v1.Pod, reason string) error {
+	klog.V(3).Infof("Evicting pod %v/%v, because of %v", p.Namespace, p.Name, reason)
 
-	if err := de.kubeclient.CoreV1().Pods(p.Namespace).Delete(p.Name, nil); err != nil {
+	evictMsg := fmt.Sprintf("Pod is evicted, because of %v", reason)
+	annotations := map[string]string{}
+	// record that we are evicting the pod
+	de.recorder.AnnotatedEventf(p, annotations, v1.EventTypeWarning, "Evict", evictMsg)
+
+	pod := p.DeepCopy()
+	condition := &v1.PodCondition{
+		Type:    v1.PodReady,
+		Status:  v1.ConditionFalse,
+		Reason:  "Evict",
+		Message: evictMsg,
+	}
+	if podutil.UpdatePodCondition(&pod.Status, condition) == false {
+		klog.V(1).Infof("UpdatePodCondition: existed condition, not update")
+		klog.V(1).Infof("%+v", pod.Status.Conditions)
+		return nil
+	}
+	if _, err := de.kubeclient.CoreV1().Pods(p.Namespace).UpdateStatus(pod); err != nil {
+		klog.Errorf("Failed to update pod <%v/%v> status: %v", err)
+		return err
+	}
+	if err := de.kubeclient.CoreV1().Pods(p.Namespace).Delete(p.Name, &metav1.DeleteOptions{}); err != nil {
 		klog.Errorf("Failed to evict pod <%v/%v>: %#v", p.Namespace, p.Name, err)
 		return err
 	}
+
 	return nil
 }
 
@@ -279,6 +302,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 
 	sc.Evictor = &defaultEvictor{
 		kubeclient: sc.kubeclient,
+		recorder:   sc.Recorder,
 	}
 
 	sc.StatusUpdater = &defaultStatusUpdater{
@@ -473,7 +497,7 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 	p := task.Pod
 
 	go func() {
-		err := sc.Evictor.Evict(p)
+		err := sc.Evictor.Evict(p, reason)
 		if err != nil {
 			sc.resyncTask(task)
 		}
