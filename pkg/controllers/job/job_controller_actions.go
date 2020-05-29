@@ -88,7 +88,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 
 	job = job.DeepCopy()
 	// Job version is bumped only when job is killed
-	job.Status.Version = job.Status.Version + 1
+	job.Status.Version++
 
 	job.Status = batch.JobStatus{
 		State: job.Status.State,

@@ -19,7 +19,7 @@ package cache
 import (
 	"fmt"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -246,18 +246,16 @@ func (sc *SchedulerCache) DeletePod(obj interface{}) {
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) addNode(node *v1.Node) error {
+func (sc *SchedulerCache) addNode(node *v1.Node) {
 	if sc.Nodes[node.Name] != nil {
 		sc.Nodes[node.Name].SetNode(node)
 	} else {
 		sc.Nodes[node.Name] = schedulingapi.NewNodeInfo(node)
 	}
-
-	return nil
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) updateNode(oldNode, newNode *v1.Node) error {
+func (sc *SchedulerCache) updateNode(newNode *v1.Node) error {
 	if sc.Nodes[newNode.Name] != nil {
 		sc.Nodes[newNode.Name].SetNode(newNode)
 		return nil
@@ -286,11 +284,7 @@ func (sc *SchedulerCache) AddNode(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err := sc.addNode(node)
-	if err != nil {
-		klog.Errorf("Failed to add node %s into cache: %v", node.Name, err)
-		return
-	}
+	sc.addNode(node)
 }
 
 // UpdateNode update node to scheduler cache
@@ -309,7 +303,7 @@ func (sc *SchedulerCache) UpdateNode(oldObj, newObj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err := sc.updateNode(oldNode, newNode)
+	err := sc.updateNode(newNode)
 	if err != nil {
 		klog.Errorf("Failed to update node %v in cache: %v", oldNode.Name, err)
 		return
@@ -596,9 +590,7 @@ func (sc *SchedulerCache) UpdatePriorityClass(oldObj, newObj interface{}) {
 	newSS, ok := newObj.(*v1beta1.PriorityClass)
 	if !ok {
 		klog.Errorf("Cannot convert newObj to *v1beta1.PriorityClass: %v", newObj)
-
 		return
-
 	}
 
 	sc.Mutex.Lock()

@@ -469,7 +469,7 @@ func TestJobCache_AddPod(t *testing.T) {
 		if err == nil {
 			job, err := jobCache.Get(fmt.Sprintf("%s/%s", testcase.JobsInCache["job1"].Namespace, testcase.JobsInCache["job1"].Name))
 			if err != nil {
-				t.Errorf("Expected Error not to occur while retriving job from cache in case %d", i)
+				t.Errorf("Expected Error not to occur while retrieving job from cache in case %d", i)
 			}
 			if err == nil {
 				if len(job.Pods) != 1 {

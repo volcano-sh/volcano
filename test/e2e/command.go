@@ -59,7 +59,8 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		Expect(err).NotTo(HaveOccurred())
 		//Command outputs are identical
 		outputs := ListJobs(ctx.namespace)
-		jobs, _ := ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).List(metav1.ListOptions{})
+		jobs, err := ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).List(metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
 		ctlJob.PrintJobs(jobs, &outBuffer)
 		Expect(outputs).To(Equal(outBuffer.String()), "List command result should be:\n %s",
 			outBuffer.String())

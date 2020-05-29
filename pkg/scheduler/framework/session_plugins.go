@@ -460,7 +460,7 @@ func (ssn *Session) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo) (float64
 			if err != nil {
 				return 0, err
 			}
-			priorityScore = priorityScore + score
+			priorityScore += score
 
 		}
 	}
@@ -509,7 +509,7 @@ func (ssn *Session) NodeOrderMapFn(task *api.TaskInfo, node *api.NodeInfo) (map[
 				if err != nil {
 					return nodeScoreMap, priorityScore, err
 				}
-				priorityScore = priorityScore + score
+				priorityScore += score
 			}
 			if pfn, found := ssn.nodeMapFns[plugin.Name]; found {
 				score, err := pfn(task, node)
@@ -540,7 +540,7 @@ func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map
 				return nodeScoreMap, err
 			}
 			for _, hp := range pluginNodeScoreMap[plugin.Name] {
-				nodeScoreMap[hp.Host] = nodeScoreMap[hp.Host] + float64(hp.Score)
+				nodeScoreMap[hp.Host] += float64(hp.Score)
 			}
 		}
 	}

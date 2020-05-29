@@ -73,7 +73,7 @@ func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 
 func (s *Statement) evict(reclaimee *api.TaskInfo, reason string) error {
 	if err := s.ssn.cache.Evict(reclaimee, reason); err != nil {
-		if e := s.unevict(reclaimee, reason); e != nil {
+		if e := s.unevict(reclaimee); e != nil {
 			klog.Errorf("Faled to unevict task <%v/%v>: %v.",
 				reclaimee.Namespace, reclaimee.Name, e)
 		}
@@ -83,7 +83,7 @@ func (s *Statement) evict(reclaimee *api.TaskInfo, reason string) error {
 	return nil
 }
 
-func (s *Statement) unevict(reclaimee *api.TaskInfo, reason string) error {
+func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 	// Update status in session
 	job, found := s.ssn.Jobs[reclaimee.Job]
 	if found {
@@ -251,7 +251,7 @@ func (s *Statement) Allocate(task *api.TaskInfo, hostname string) error {
 	return nil
 }
 
-func (s *Statement) allocate(task *api.TaskInfo, hostname string) error {
+func (s *Statement) allocate(task *api.TaskInfo) error {
 	if err := s.ssn.cache.BindVolumes(task); err != nil {
 		return err
 	}
@@ -278,7 +278,7 @@ func (s *Statement) allocate(task *api.TaskInfo, hostname string) error {
 }
 
 // unallocate the pod for task
-func (s *Statement) unallocate(task *api.TaskInfo, reason string) error {
+func (s *Statement) unallocate(task *api.TaskInfo) error {
 	// Update status in session
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
@@ -314,11 +314,11 @@ func (s *Statement) Discard() {
 		op := s.operations[i]
 		switch op.name {
 		case "evict":
-			s.unevict(op.args[0].(*api.TaskInfo), op.args[1].(string))
+			s.unevict(op.args[0].(*api.TaskInfo))
 		case "pipeline":
 			s.unpipeline(op.args[0].(*api.TaskInfo))
 		case "allocate":
-			s.unallocate(op.args[0].(*api.TaskInfo), op.args[1].(string))
+			s.unallocate(op.args[0].(*api.TaskInfo))
 		}
 	}
 }
@@ -333,7 +333,7 @@ func (s *Statement) Commit() {
 		case "pipeline":
 			s.pipeline(op.args[0].(*api.TaskInfo))
 		case "allocate":
-			s.allocate(op.args[0].(*api.TaskInfo), op.args[1].(string))
+			s.allocate(op.args[0].(*api.TaskInfo))
 		}
 	}
 }
