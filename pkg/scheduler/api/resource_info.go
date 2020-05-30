@@ -214,8 +214,8 @@ func (r *Resource) FitDelta(rr *Resource) *Resource {
 
 // Multi multiples the resource with ratio provided
 func (r *Resource) Multi(ratio float64) *Resource {
-	r.MilliCPU = r.MilliCPU * ratio
-	r.Memory = r.Memory * ratio
+	r.MilliCPU *= ratio
+	r.Memory *= ratio
 	for rName, rQuant := range r.ScalarResources {
 		r.ScalarResources[rName] = rQuant * ratio
 	}
