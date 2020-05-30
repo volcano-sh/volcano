@@ -246,16 +246,17 @@ func (sc *SchedulerCache) DeletePod(obj interface{}) {
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) addNode(node *v1.Node) {
+func (sc *SchedulerCache) addNode(node *v1.Node) error {
 	if sc.Nodes[node.Name] != nil {
 		sc.Nodes[node.Name].SetNode(node)
 	} else {
 		sc.Nodes[node.Name] = schedulingapi.NewNodeInfo(node)
 	}
+	return nil
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) updateNode(newNode *v1.Node) error {
+func (sc *SchedulerCache) updateNode(oldNode, newNode *v1.Node) error {
 	if sc.Nodes[newNode.Name] != nil {
 		sc.Nodes[newNode.Name].SetNode(newNode)
 		return nil
@@ -284,7 +285,11 @@ func (sc *SchedulerCache) AddNode(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	sc.addNode(node)
+	err := sc.addNode(node)
+	if err != nil {
+		klog.Errorf("Failed to add node %s into cache: %v", node.Name, err)
+		return
+	}
 }
 
 // UpdateNode update node to scheduler cache
@@ -303,7 +308,7 @@ func (sc *SchedulerCache) UpdateNode(oldObj, newObj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err := sc.updateNode(newNode)
+	err := sc.updateNode(oldNode, newNode)
 	if err != nil {
 		klog.Errorf("Failed to update node %v in cache: %v", oldNode.Name, err)
 		return

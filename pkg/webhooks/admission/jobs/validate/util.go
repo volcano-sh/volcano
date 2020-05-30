@@ -124,10 +124,10 @@ func getEventList(policy batchv1alpha1.LifecyclePolicy) []busv1alpha1.Event {
 	return uniquePolicyEventlist
 }
 
-func removeDuplicates(EventList []busv1alpha1.Event) []busv1alpha1.Event {
+func removeDuplicates(eventList []busv1alpha1.Event) []busv1alpha1.Event {
 	keys := make(map[busv1alpha1.Event]bool)
 	list := []busv1alpha1.Event{}
-	for _, val := range EventList {
+	for _, val := range eventList {
 		if _, value := keys[val]; !value {
 			keys[val] = true
 			list = append(list, val)

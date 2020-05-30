@@ -21,7 +21,7 @@ import (
 	"sort"
 	"strings"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -296,7 +296,7 @@ func (ji JobInfo) String() string {
 
 	i := 0
 	for _, task := range ji.Tasks {
-		res = res + fmt.Sprintf("\n\t %d: %v", i, task)
+		res += fmt.Sprintf("\n\t %d: %v", i, task)
 		i++
 	}
 
@@ -352,7 +352,7 @@ func (ji *JobInfo) WaitingTaskNum() int32 {
 	occupid := 0
 	for status, tasks := range ji.TaskStatusIndex {
 		if status == Pipelined {
-			occupid = occupid + len(tasks)
+			occupid += len(tasks)
 		}
 	}
 
@@ -367,7 +367,7 @@ func (ji *JobInfo) ValidTaskNum() int32 {
 			status == Succeeded ||
 			status == Pipelined ||
 			status == Pending {
-			occupied = occupied + len(tasks)
+			occupied += len(tasks)
 		}
 	}
 
