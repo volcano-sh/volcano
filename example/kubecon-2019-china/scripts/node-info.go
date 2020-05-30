@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+
 	v1 "k8s.io/api/core/v1"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -89,5 +90,4 @@ func main() {
 		fmt.Printf(" %-20s  |", res)
 	}
 	fmt.Print("\n--------------------------------------------------------------------------------------------------------------\n")
-
 }

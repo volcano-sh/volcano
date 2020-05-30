@@ -50,7 +50,6 @@ func (ra *Action) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("There are <%d> Jobs and <%d> Queues in total for scheduling.",
 		len(ssn.Jobs), len(ssn.Queues))
 
-	var underRequest []*api.JobInfo
 	for _, job := range ssn.Jobs {
 		if job.PodGroup.Status.Phase == scheduling.PodGroupPending {
 			continue
@@ -64,14 +63,10 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			klog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
 				job.Queue, job.Namespace, job.Name)
 			continue
-		} else {
-			if _, existed := queueMap[queue.UID]; !existed {
-				klog.V(4).Infof("Added Queue <%s> for Job <%s/%s>",
-					queue.Name, job.Namespace, job.Name)
-
-				queueMap[queue.UID] = queue
-				queues.Push(queue)
-			}
+		} else if _, existed := queueMap[queue.UID]; !existed {
+			klog.V(4).Infof("Added Queue <%s> for Job <%s/%s>", queue.Name, job.Namespace, job.Name)
+			queueMap[queue.UID] = queue
+			queues.Push(queue)
 		}
 
 		if len(job.TaskStatusIndex[api.Pending]) != 0 {
@@ -79,7 +74,6 @@ func (ra *Action) Execute(ssn *framework.Session) {
 				preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 			}
 			preemptorsMap[job.Queue].Push(job)
-			underRequest = append(underRequest, job)
 			preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
 				preemptorTasks[job.UID].Push(task)
@@ -192,7 +186,6 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		}
 		queues.Push(queue)
 	}
-
 }
 
 func (ra *Action) UnInitialize() {

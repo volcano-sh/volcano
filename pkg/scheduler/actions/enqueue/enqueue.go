@@ -63,14 +63,12 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 			klog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
 				job.Queue, job.Namespace, job.Name)
 			continue
-		} else {
-			if _, existed := queueMap[queue.UID]; !existed {
-				klog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
-					queue.Name, job.Namespace, job.Name)
+		} else if _, existed := queueMap[queue.UID]; !existed {
+			klog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
+				queue.Name, job.Namespace, job.Name)
 
-				queueMap[queue.UID] = queue
-				queues.Push(queue)
-			}
+			queueMap[queue.UID] = queue
+			queues.Push(queue)
 		}
 
 		if job.PodGroup.Status.Phase == scheduling.PodGroupPending {

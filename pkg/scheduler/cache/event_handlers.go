@@ -19,7 +19,7 @@ package cache
 import (
 	"fmt"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -252,7 +252,6 @@ func (sc *SchedulerCache) addNode(node *v1.Node) error {
 	} else {
 		sc.Nodes[node.Name] = schedulingapi.NewNodeInfo(node)
 	}
-
 	return nil
 }
 
@@ -596,9 +595,7 @@ func (sc *SchedulerCache) UpdatePriorityClass(oldObj, newObj interface{}) {
 	newSS, ok := newObj.(*v1beta1.PriorityClass)
 	if !ok {
 		klog.Errorf("Cannot convert newObj to *v1beta1.PriorityClass: %v", newObj)
-
 		return
-
 	}
 
 	sc.Mutex.Lock()

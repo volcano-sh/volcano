@@ -113,8 +113,8 @@ var (
 )
 
 // UpdatePluginDuration updates latency for every plugin
-func UpdatePluginDuration(pluginName, OnSessionStatus string, duration time.Duration) {
-	pluginSchedulingLatency.WithLabelValues(pluginName, OnSessionStatus).Observe(DurationInMicroseconds(duration))
+func UpdatePluginDuration(pluginName, onSessionStatus string, duration time.Duration) {
+	pluginSchedulingLatency.WithLabelValues(pluginName, onSessionStatus).Observe(DurationInMicroseconds(duration))
 }
 
 // UpdateActionDuration updates latency for every action

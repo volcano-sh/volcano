@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
 
@@ -237,7 +237,7 @@ func BinPackingScore(task *api.TaskInfo, node *api.NodeInfo, weight priorityWeig
 
 	// mapping the result from [0, weightSum] to [0, 10(MaxPriority)]
 	if weightSum > 0 {
-		score = score / float64(weightSum)
+		score /= float64(weightSum)
 	}
 	score *= schedulerapi.MaxPriority * float64(weight.BinPackingWeight)
 

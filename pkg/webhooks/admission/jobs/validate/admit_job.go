@@ -131,20 +131,20 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 
 	for index, task := range job.Spec.Tasks {
 		if task.Replicas < 0 {
-			msg = msg + fmt.Sprintf(" 'replicas' < 0 in task: %s;", task.Name)
+			msg += fmt.Sprintf(" 'replicas' < 0 in task: %s;", task.Name)
 		}
 
 		// count replicas
-		totalReplicas = totalReplicas + task.Replicas
+		totalReplicas += task.Replicas
 
 		// validate task name
 		if errMsgs := validation.IsDNS1123Label(task.Name); len(errMsgs) > 0 {
-			msg = msg + fmt.Sprintf(" %v;", errMsgs)
+			msg += fmt.Sprintf(" %v;", errMsgs)
 		}
 
 		// duplicate task name
 		if _, found := taskNames[task.Name]; found {
-			msg = msg + fmt.Sprintf(" duplicated task name %s;", task.Name)
+			msg += fmt.Sprintf(" duplicated task name %s;", task.Name)
 			break
 		} else {
 			taskNames[task.Name] = task.Name
@@ -159,7 +159,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 	}
 
 	if totalReplicas < job.Spec.MinAvailable {
-		msg = msg + " 'minAvailable' should not be greater than total replicas in tasks;"
+		msg += " 'minAvailable' should not be greater than total replicas in tasks;"
 	}
 
 	if err := validatePolicies(job.Spec.Policies, field.NewPath("spec.policies")); err != nil {
@@ -171,23 +171,21 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 	if len(job.Spec.Plugins) != 0 {
 		for name := range job.Spec.Plugins {
 			if _, found := plugins.GetPluginBuilder(name); !found {
-				msg = msg + fmt.Sprintf(" unable to find job plugin: %s", name)
+				msg += fmt.Sprintf(" unable to find job plugin: %s", name)
 			}
 		}
 	}
 
 	if err := validateIO(job.Spec.Volumes); err != nil {
-		msg = msg + err.Error()
+		msg += err.Error()
 	}
 
 	queue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(job.Spec.Queue, metav1.GetOptions{})
 	if err != nil {
-		msg = msg + fmt.Sprintf(" unable to find job queue: %v", err)
-	} else {
-		if queue.Status.State != schedulingv1beta1.QueueStateOpen {
-			msg = msg + fmt.Sprintf("can only submit job to queue with state `Open`, "+
-				"queue `%s` status is `%s`", queue.Name, queue.Status.State)
-		}
+		msg += fmt.Sprintf(" unable to find job queue: %v", err)
+	} else if queue.Status.State != schedulingv1beta1.QueueStateOpen {
+		msg += fmt.Sprintf("can only submit job to queue with state `Open`, "+
+			"queue `%s` status is `%s`", queue.Name, queue.Status.State)
 	}
 
 	if msg != "" {
@@ -204,7 +202,7 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 			return fmt.Errorf("'replicas' must be >= 0 in task: %s", task.Name)
 		}
 		// count replicas
-		totalReplicas = totalReplicas + task.Replicas
+		totalReplicas += task.Replicas
 	}
 	if new.Spec.MinAvailable > totalReplicas {
 		return fmt.Errorf("'minAvailable' must not be greater than total replicas")

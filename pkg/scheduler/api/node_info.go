@@ -297,7 +297,7 @@ func (ni NodeInfo) String() string {
 
 	i := 0
 	for _, task := range ni.Tasks {
-		tasks = tasks + fmt.Sprintf("\n\t %d: %v", i, task)
+		tasks += fmt.Sprintf("\n\t %d: %v", i, task)
 		i++
 	}
 
