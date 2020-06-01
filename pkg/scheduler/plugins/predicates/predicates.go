@@ -145,7 +145,11 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		nodeInfo, found := nodeMap[node.Name]
 		if !found {
 			nodeInfo = schedulernodeinfo.NewNodeInfo(node.Pods()...)
-			nodeInfo.SetNode(node.Node)
+			err := nodeInfo.SetNode(node.Node)
+			if err != nil {
+				klog.Errorf("predicates, generate node info for %s at PredicateFn failed for: %s", node.Name, err.Error())
+				return err
+			}
 			klog.Warningf("predicates, generate node info for %s at PredicateFn is unexpected", node.Name)
 		}
 

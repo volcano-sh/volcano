@@ -52,7 +52,12 @@ func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 
 	// Update task in node.
 	if node, found := s.ssn.Nodes[reclaimee.NodeName]; found {
-		node.UpdateTask(reclaimee)
+		err := node.UpdateTask(reclaimee)
+		if err != nil {
+			klog.Errorf("Failed to update task <%v/%v> in node %v for: %s",
+				reclaimee.Namespace, reclaimee.Name, reclaimee.NodeName, err.Error())
+			return err
+		}
 	}
 
 	for _, eh := range s.ssn.eventHandlers {
@@ -98,7 +103,12 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 
 	// Update task in node.
 	if node, found := s.ssn.Nodes[reclaimee.NodeName]; found {
-		node.UpdateTask(reclaimee)
+		err := node.UpdateTask(reclaimee)
+		if err != nil {
+			klog.Errorf("Failed to update task <%v/%v> in node %v for: %s",
+				reclaimee.Namespace, reclaimee.Name, reclaimee.NodeName, err.Error())
+			return err
+		}
 	}
 
 	for _, eh := range s.ssn.eventHandlers {
@@ -293,7 +303,10 @@ func (s *Statement) unallocate(task *api.TaskInfo) error {
 
 	if node, found := s.ssn.Nodes[task.NodeName]; found {
 		klog.V(3).Infof("Remove Task <%v> on node <%v>", task.Name, task.NodeName)
-		node.RemoveTask(task)
+		err := node.RemoveTask(task)
+		if err != nil {
+			klog.Errorf("Remove Task <%v> on node <%v> failed for: %s", task.Name, task.NodeName, err.Error())
+		}
 	}
 
 	task.NodeName = ""
@@ -314,11 +327,20 @@ func (s *Statement) Discard() {
 		op := s.operations[i]
 		switch op.name {
 		case "evict":
-			s.unevict(op.args[0].(*api.TaskInfo))
+			err := s.unevict(op.args[0].(*api.TaskInfo))
+			if err != nil {
+				klog.Errorf("Unevict task failed for: %s", err.Error())
+			}
 		case "pipeline":
-			s.unpipeline(op.args[0].(*api.TaskInfo))
+			err := s.unpipeline(op.args[0].(*api.TaskInfo))
+			if err != nil {
+				klog.Errorf("Unpipeline task failed for: %s", err.Error())
+			}
 		case "allocate":
-			s.unallocate(op.args[0].(*api.TaskInfo))
+			err := s.unallocate(op.args[0].(*api.TaskInfo))
+			if err != nil {
+				klog.Errorf("Unallocate task failed for: %s", err.Error())
+			}
 		}
 	}
 }
@@ -329,11 +351,17 @@ func (s *Statement) Commit() {
 	for _, op := range s.operations {
 		switch op.name {
 		case "evict":
-			s.evict(op.args[0].(*api.TaskInfo), op.args[1].(string))
+			err := s.evict(op.args[0].(*api.TaskInfo), op.args[1].(string))
+			if err != nil {
+				klog.Errorf("Evict task failed for: %s", err.Error())
+			}
 		case "pipeline":
 			s.pipeline(op.args[0].(*api.TaskInfo))
 		case "allocate":
-			s.allocate(op.args[0].(*api.TaskInfo))
+			err := s.allocate(op.args[0].(*api.TaskInfo))
+			if err != nil {
+				klog.Errorf("Allocate task failed: for %s", err.Error())
+			}
 		}
 	}
 }

@@ -159,8 +159,12 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			if !found {
 				klog.Warningf("node order, update pod %s/%s allocate from NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
 			} else {
-				node.RemovePod(pod)
-				klog.V(4).Infof("node order, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
+				err := node.RemovePod(pod)
+				if err != nil {
+					klog.Errorf("node order, update pod %s/%s deallocate from node [%s] failed for: %s", pod.Namespace, pod.Name, nodeName, err.Error())
+				} else {
+					klog.V(4).Infof("node order, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
+				}
 			}
 		},
 	})
@@ -169,7 +173,11 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		nodeInfo, found := nodeMap[node.Name]
 		if !found {
 			nodeInfo = schedulernodeinfo.NewNodeInfo(node.Pods()...)
-			nodeInfo.SetNode(node.Node)
+			err := nodeInfo.SetNode(node.Node)
+			if err != nil {
+				klog.Errorf("node order, generate node info for %s at NodeOrderFn failed for: %s", node.Name, err.Error())
+				return 0, err
+			}
 			klog.Warningf("node order, generate node info for %s at NodeOrderFn is unexpected", node.Name)
 		}
 		var score = 0.0
