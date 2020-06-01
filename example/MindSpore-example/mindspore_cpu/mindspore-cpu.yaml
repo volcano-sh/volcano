@@ -14,17 +14,6 @@ spec:
     svc: []
   maxRetry: 5
   queue: default
-  # Comment out the following section to enable volumes for job input/output.
-  #volumes:
-  #  - mountPath: "/myinput"
-  #  - mountPath: "/myoutput"
-  #    volumeClaimName: "testvolumeclaimname"
-  #    volumeClaim:
-  #      accessModes: [ "ReadWriteOnce" ]
-  #      storageClassName: "my-storage-class"
-  #      resources:
-  #        requests:
-  #          storage: 1Gi
   tasks:
     - replicas: 8
       name: "pod"
@@ -40,10 +29,4 @@ spec:
                   cpu: "1"
                 requests:
                   cpu: "1"
-              volumeMounts:
-              - name: training-result
-                mountPath: /tmp/result
           restartPolicy: OnFailure
-          volumes:
-            - name: training-result
-              emptyDir: {}
