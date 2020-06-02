@@ -1,0 +1,54 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: mindspore-gpu
+spec:
+  minAvailable: 3
+  schedulerName: volcano
+  plugins:
+    ssh: []
+    svc: []
+  tasks:
+    - replicas: 1
+      name: mpimaster
+      template:
+        spec:
+          containers:
+            - command:
+                - /bin/bash
+                - -c
+                - |
+                  mkdir -p /var/run/sshd; /usr/sbin/sshd;
+                  MPI_HOST=`cat /etc/volcano/mpiworker.host | tr "\n" ","`;
+                  sleep 10;
+                  mpiexec --allow-run-as-root --host ${MPI_HOST} -np 2 --prefix /usr/local/openmpi-3.1.5 python /tmp/gpu-test.py;
+                  sleep 3600;
+              image: lyd911/mindspore-gpu-example:0.2.0
+              name: mpimaster
+              ports:
+                - containerPort: 22
+                  name: mpijob-port
+              workingDir: /home
+          restartPolicy: OnFailure
+    - replicas: 2
+      name: mpiworker
+      template:
+        spec:
+          containers:
+            - command:
+                - /bin/bash
+                - -c
+                - |
+                  mkdir -p /var/run/sshd; /usr/sbin/sshd -D; 
+              image: lyd911/mindspore-gpu-example:0.2.0
+              name: mpiworker
+              resources:
+                limits:
+                  nvidia.com/gpu: "1"
+              ports:
+                - containerPort: 22
+                  name: mpijob-port
+              workingDir: /home
+          restartPolicy: OnFailure
+ 
+---

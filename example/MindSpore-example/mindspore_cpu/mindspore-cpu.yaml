@@ -1,0 +1,32 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: mindspore-cpu
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: default
+  tasks:
+    - replicas: 8
+      name: "pod"
+      template:
+        spec:
+          containers:
+            - command: ["/bin/bash", "-c", "python /tmp/lenet.py"]
+              image: lyd911/mindspore-cpu-example:0.2.0
+              imagePullPolicy: IfNotPresent
+              name: mindspore-cpu-job
+              resources:
+                limits:
+                  cpu: "1"
+                requests:
+                  cpu: "1"
+          restartPolicy: OnFailure
