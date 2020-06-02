@@ -802,7 +802,7 @@ var _ = Describe("Job Error Handling", func() {
 		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 		expteced := map[string]int{
-			masterPriority: int(nodecount),
+			masterPriority: nodecount,
 			workerPriority: 0,
 		}
 
