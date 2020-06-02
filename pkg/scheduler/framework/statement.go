@@ -305,7 +305,7 @@ func (s *Statement) unallocate(task *api.TaskInfo) error {
 		klog.V(3).Infof("Remove Task <%v> on node <%v>", task.Name, task.NodeName)
 		err := node.RemoveTask(task)
 		if err != nil {
-			klog.Errorf("Remove Task <%v> on node <%v> failed for: %s", task.Name, task.NodeName, err.Error())
+			klog.Errorf("Failed to remove Task <%v> on node <%v>: %s", task.Name, task.NodeName, err.Error())
 		}
 	}
 
@@ -329,17 +329,17 @@ func (s *Statement) Discard() {
 		case "evict":
 			err := s.unevict(op.args[0].(*api.TaskInfo))
 			if err != nil {
-				klog.Errorf("Unevict task failed for: %s", err.Error())
+				klog.Errorf("Failed to unevict task: %s", err.Error())
 			}
 		case "pipeline":
 			err := s.unpipeline(op.args[0].(*api.TaskInfo))
 			if err != nil {
-				klog.Errorf("Unpipeline task failed for: %s", err.Error())
+				klog.Errorf("Failed to unpipeline task: %s", err.Error())
 			}
 		case "allocate":
 			err := s.unallocate(op.args[0].(*api.TaskInfo))
 			if err != nil {
-				klog.Errorf("Unallocate task failed for: %s", err.Error())
+				klog.Errorf("Failed to unallocate task: %s", err.Error())
 			}
 		}
 	}
@@ -353,14 +353,14 @@ func (s *Statement) Commit() {
 		case "evict":
 			err := s.evict(op.args[0].(*api.TaskInfo), op.args[1].(string))
 			if err != nil {
-				klog.Errorf("Evict task failed for: %s", err.Error())
+				klog.Errorf("Failed to evict task: %s", err.Error())
 			}
 		case "pipeline":
 			s.pipeline(op.args[0].(*api.TaskInfo))
 		case "allocate":
 			err := s.allocate(op.args[0].(*api.TaskInfo))
 			if err != nil {
-				klog.Errorf("Allocate task failed: for %s", err.Error())
+				klog.Errorf("Failed to allocate task: for %s", err.Error())
 			}
 		}
 	}

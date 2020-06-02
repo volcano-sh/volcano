@@ -161,7 +161,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			} else {
 				err := node.RemovePod(pod)
 				if err != nil {
-					klog.Errorf("node order, update pod %s/%s deallocate from node [%s] failed for: %s", pod.Namespace, pod.Name, nodeName, err.Error())
+					klog.Errorf("Failed to update pod %s/%s and deallocate from node [%s]: %s", pod.Namespace, pod.Name, nodeName, err.Error())
 				} else {
 					klog.V(4).Infof("node order, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
 				}
@@ -175,7 +175,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			nodeInfo = schedulernodeinfo.NewNodeInfo(node.Pods()...)
 			err := nodeInfo.SetNode(node.Node)
 			if err != nil {
-				klog.Errorf("node order, generate node info for %s at NodeOrderFn failed for: %s", node.Name, err.Error())
+				klog.Errorf("Failed to generate node info for %s at NodeOrderFn: %s", node.Name, err.Error())
 				return 0, err
 			}
 			klog.Warningf("node order, generate node info for %s at NodeOrderFn is unexpected", node.Name)

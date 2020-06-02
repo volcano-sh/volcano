@@ -88,7 +88,7 @@ func (sc *SchedulerCache) syncTask(oldTask *schedulingapi.TaskInfo) error {
 		if errors.IsNotFound(err) {
 			err := sc.deleteTask(oldTask)
 			if err != nil {
-				klog.Errorf("Pod <%v/%v> was deleted and removed from cache failed for: %s", oldTask.Namespace, oldTask.Name, err.Error())
+				klog.Errorf("Failed to delete Pod <%v/%v> and remove from cache: %s", oldTask.Namespace, oldTask.Name, err.Error())
 				return err
 			}
 			klog.V(3).Infof("Pod <%v/%v> was deleted, removed from cache.", oldTask.Namespace, oldTask.Name)
