@@ -221,7 +221,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		gomega.Expect(err.Error()).Should(gomega.ContainSubstring(`the podgroup phase is Pending`))
 	})
 
-	ginkgo.It("Valid volcano job", func() {
+	ginkgo.It("Job mutate check", func() {
 		ctx := initTestContext(options{})
 		defer cleanupTestContext(ctx)
 
@@ -286,5 +286,500 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		gomega.Expect(testJob.Spec.SchedulerName).Should(gomega.Equal("volcano"), "Job scheduler wolud default to 'volcano'")
 		gomega.Expect(testJob.Spec.Tasks[0].Name).Should(gomega.Equal("default0"), "task[0].name wolud default to 'default0'")
 		gomega.Expect(testJob.Spec.Tasks[1].Name).Should(gomega.Equal("default1"), "task[1].name wolud default to 'default1'")
+	})
+
+	ginkgo.It("job validate check: duplicate task name check when create", func() {
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+
+		var job v1alpha1.Job
+		jsonData := []byte(`{
+   			"apiVersion": "batch.volcano.sh/v1alpha1",
+   			"kind": "Job",
+			"metadata": {
+				"name": "test-job"
+			},
+			"spec": {
+				"minAvailable": 1,
+				"tasks": [
+					{
+						"name": "test",
+						"replicas": 1,
+						"template": {
+							"spec": {
+								"containers": [
+									{
+										"image": "nginx",
+										"imagePullPolicy": "IfNotPresent",
+										"name": "nginx",
+										"resources": {
+											"requests": {
+												"cpu": "1"
+											}
+										}
+									}
+								],
+								"restartPolicy": "Never"
+							}
+						}
+					},
+					{
+						"name": "test",
+						"replicas": 1,
+						"template": {
+							"spec": {
+								"containers": [
+									{
+										"image": "busybox:1.24",
+										"imagePullPolicy": "IfNotPresent",
+										"name": "busybox",
+										"resources": {
+											"requests": {
+												"cpu": "1"
+											}
+										}
+									}
+								],
+								"restartPolicy": "Never"
+							}
+						}
+					}
+				]
+			}
+		}`)
+		err := json.Unmarshal(jsonData, &job)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(&job)
+		gomega.Expect(err).To(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("job validate check: duplicate job policy event when create", func() {
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+
+		var job v1alpha1.Job
+		jsonData := []byte(`{
+			"apiVersion": "batch.volcano.sh/v1alpha1",
+			"kind": "Job",
+		 	"metadata": {
+			"name": "test-job"
+		 },
+		 "spec": {
+			 "minAvailable": 1,
+			 "tasks": [
+				 {
+					 "replicas": 1,
+					 "template": {
+						 "spec": {
+							 "containers": [
+								 {
+									 "image": "nginx",
+									 "imagePullPolicy": "IfNotPresent",
+									 "name": "nginx",
+									 "resources": {
+										 "requests": {
+											 "cpu": "1"
+										 }
+									 }
+								 }
+							 ],
+							 "restartPolicy": "Never"
+						 }
+					 }
+				 }
+			 ],
+			 "policies": [
+				 {
+					 "event": "PodFailed",
+					 "action": "AbortJob"
+				 },
+				 {
+					"event": "PodFailed",
+					"action": "RestartJob"
+				}
+			 ]
+		 }
+	 }`)
+		err := json.Unmarshal(jsonData, &job)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(&job)
+		gomega.Expect(err).To(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("job validate check: minAvailable larger than replicas when create", func() {
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+
+		var job v1alpha1.Job
+		jsonData := []byte(`{
+			"apiVersion": "batch.volcano.sh/v1alpha1",
+			"kind": "Job",
+		 	"metadata": {
+			"name": "test-job"
+		 },
+		 "spec": {
+			 "minAvailable": 2,
+			 "tasks": [
+				 {
+					 "replicas": 1,
+					 "template": {
+						 "spec": {
+							 "containers": [
+								 {
+									 "image": "nginx",
+									 "imagePullPolicy": "IfNotPresent",
+									 "name": "nginx",
+									 "resources": {
+										 "requests": {
+											 "cpu": "1"
+										 }
+									 }
+								 }
+							 ],
+							 "restartPolicy": "Never"
+						 }
+					 }
+				 }
+			 ]
+		 }
+	 }`)
+		err := json.Unmarshal(jsonData, &job)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(&job)
+		gomega.Expect(err).To(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("job validate check: illegal plugin when create", func() {
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+
+		var job v1alpha1.Job
+		jsonData := []byte(`{
+			"apiVersion": "batch.volcano.sh/v1alpha1",
+			"kind": "Job",
+		 	"metadata": {
+			"name": "test-job"
+		 },
+		 "spec": {
+			 "minAvailable": 1,
+			 "tasks": [
+				 {
+					 "replicas": 2,
+					 "template": {
+						 "spec": {
+							 "containers": [
+								 {
+									 "image": "nginx",
+									 "imagePullPolicy": "IfNotPresent",
+									 "name": "nginx",
+									 "resources": {
+										 "requests": {
+											 "cpu": "1"
+										 }
+									 }
+								 }
+							 ],
+							 "restartPolicy": "Never"
+						 }
+					 }
+				 }
+			 ],
+			 "plugins": {
+				 "big_plugin": []
+			 }
+		 }
+	 }`)
+		err := json.Unmarshal(jsonData, &job)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(&job)
+		gomega.Expect(err).To(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("job validate check: illegal ttl when create", func() {
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+
+		var job v1alpha1.Job
+		jsonData := []byte(`{
+			"apiVersion": "batch.volcano.sh/v1alpha1",
+			"kind": "Job",
+		 	"metadata": {
+			"name": "test-job"
+		 },
+		 "spec": {
+			 "minAvailable": 1,
+			 "tasks": [
+				 {
+					 "replicas": 2,
+					 "template": {
+						 "spec": {
+							 "containers": [
+								 {
+									 "image": "nginx",
+									 "imagePullPolicy": "IfNotPresent",
+									 "name": "nginx",
+									 "resources": {
+										 "requests": {
+											 "cpu": "1"
+										 }
+									 }
+								 }
+							 ],
+							 "restartPolicy": "Never"
+						 }
+					 }
+				 }
+			 ],
+			 "ttlSecondsAfterFinished": -1
+		 }
+	 }`)
+		err := json.Unmarshal(jsonData, &job)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(&job)
+		gomega.Expect(err).To(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("job validate check: illegal minAvailable when create", func() {
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+
+		var job v1alpha1.Job
+		jsonData := []byte(`{
+			"apiVersion": "batch.volcano.sh/v1alpha1",
+			"kind": "Job",
+		 	"metadata": {
+			"name": "test-job"
+		 },
+		 "spec": {
+			 "minAvailable": -1,
+			 "tasks": [
+				 {
+					 "replicas": 2,
+					 "template": {
+						 "spec": {
+							 "containers": [
+								 {
+									 "image": "nginx",
+									 "imagePullPolicy": "IfNotPresent",
+									 "name": "nginx",
+									 "resources": {
+										 "requests": {
+											 "cpu": "1"
+										 }
+									 }
+								 }
+							 ],
+							 "restartPolicy": "Never"
+						 }
+					 }
+				 }
+			 ]
+		 }
+	 }`)
+		err := json.Unmarshal(jsonData, &job)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(&job)
+		gomega.Expect(err).To(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("job validate check: illegal maxRetry when create", func() {
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+
+		var job v1alpha1.Job
+		jsonData := []byte(`{
+			"apiVersion": "batch.volcano.sh/v1alpha1",
+			"kind": "Job",
+		 	"metadata": {
+			"name": "test-job"
+		 },
+		 "spec": {
+			 "minAvailable": 1,
+			 "maxRetry": -1,
+			 "tasks": [
+				 {
+					 "replicas": 2,
+					 "template": {
+						 "spec": {
+							 "containers": [
+								 {
+									 "image": "nginx",
+									 "imagePullPolicy": "IfNotPresent",
+									 "name": "nginx",
+									 "resources": {
+										 "requests": {
+											 "cpu": "1"
+										 }
+									 }
+								 }
+							 ],
+							 "restartPolicy": "Never"
+						 }
+					 }
+				 }
+			 ],
+		 }
+	 }`)
+		err := json.Unmarshal(jsonData, &job)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(&job)
+		gomega.Expect(err).To(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("job validate check: no task spec when create", func() {
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+
+		var job v1alpha1.Job
+		jsonData := []byte(`{
+			"apiVersion": "batch.volcano.sh/v1alpha1",
+			"kind": "Job",
+		 	"metadata": {
+			"name": "test-job"
+		 },
+		 "spec": {
+			 "minAvailable": 1
+			 "tasks":[]
+		 }
+	 }`)
+		err := json.Unmarshal(jsonData, &job)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(&job)
+		gomega.Expect(err).To(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("job validate check: illegal replicas when create", func() {
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+
+		var job v1alpha1.Job
+		jsonData := []byte(`{
+			"apiVersion": "batch.volcano.sh/v1alpha1",
+			"kind": "Job",
+		 	"metadata": {
+			"name": "test-job"
+		 },
+		 "spec": {
+			 "minAvailable": 1,
+			 "tasks": [
+				 {
+					 "replicas": -1,
+					 "template": {
+						 "spec": {
+							 "containers": [
+								 {
+									 "image": "nginx",
+									 "imagePullPolicy": "IfNotPresent",
+									 "name": "nginx",
+									 "resources": {
+										 "requests": {
+											 "cpu": "1"
+										 }
+									 }
+								 }
+							 ],
+							 "restartPolicy": "Never"
+						 }
+					 }
+				 }
+			 ]
+		 }
+	 }`)
+		err := json.Unmarshal(jsonData, &job)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(&job)
+		gomega.Expect(err).To(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("job validate check: illegal task name when create", func() {
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+
+		var job v1alpha1.Job
+		jsonData := []byte(`{
+			"apiVersion": "batch.volcano.sh/v1alpha1",
+			"kind": "Job",
+		 	"metadata": {
+			"name": "test-job"
+		 },
+		 "spec": {
+			 "minAvailable": 1,
+			 "tasks": [
+				 {
+					 "name": "Task-1",
+					 "replicas": 2,
+					 "template": {
+						 "spec": {
+							 "containers": [
+								 {
+									 "image": "nginx",
+									 "imagePullPolicy": "IfNotPresent",
+									 "name": "nginx",
+									 "resources": {
+										 "requests": {
+											 "cpu": "1"
+										 }
+									 }
+								 }
+							 ],
+							 "restartPolicy": "Never"
+						 }
+					 }
+				 }
+			 ]
+		 }
+	 }`)
+		err := json.Unmarshal(jsonData, &job)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(&job)
+		gomega.Expect(err).To(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("job validate check:  when create", func() {
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+
+		var job v1alpha1.Job
+		jsonData := []byte(`{
+			"apiVersion": "batch.volcano.sh/v1alpha1",
+			"kind": "Job",
+		 	"metadata": {
+			"name": "test-job"
+		 },
+		 "spec": {
+			 "minAvailable": 1,
+			 "tasks": [
+				 {
+					 "replicas": 2,
+					 "template": {
+						 "spec": {
+							 "containers": [
+								 {
+									 "image": "nginx",
+									 "imagePullPolicy": "IfNotPresent",
+									 "name": "nginx",
+									 "resources": {
+										 "requests": {
+											 "cpu": "1"
+										 }
+									 }
+								 }
+							 ],
+							 "restartPolicy": "Never"
+						 }
+					 }
+				 }
+			 ],
+			"policies": {
+				"event": "PodFailed",
+				"action": "AbortJob",
+				"exitCode": -1
+			}
+		 }
+	 }`)
+		err := json.Unmarshal(jsonData, &job)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(&job)
+		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 })
