@@ -220,4 +220,70 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		_, err = ctx.kubeclient.CoreV1().Pods(ctx.namespace).Create(pod)
 		gomega.Expect(err.Error()).Should(gomega.ContainSubstring(`the podgroup phase is Pending`))
 	})
+
+	ginkgo.It("Valid volcano job", func() {
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+
+		var job v1alpha1.Job
+		jsonData := []byte(`{
+   			"apiVersion": "batch.volcano.sh/v1alpha1",
+   			"kind": "Job",
+			"metadata": {
+				"name": "test-job"
+			},
+			"spec": {
+				"tasks": [
+					{
+						"replicas": 1,
+						"template": {
+							"spec": {
+								"containers": [
+									{
+										"image": "nginx",
+										"imagePullPolicy": "IfNotPresent",
+										"name": "nginx",
+										"resources": {
+											"requests": {
+												"cpu": "1"
+											}
+										}
+									}
+								],
+								"restartPolicy": "Never"
+							}
+						}
+					},
+					{
+						"replicas": 1,
+						"template": {
+							"spec": {
+								"containers": [
+									{
+										"image": "busybox:1.24",
+										"imagePullPolicy": "IfNotPresent",
+										"name": "busybox",
+										"resources": {
+											"requests": {
+												"cpu": "1"
+											}
+										}
+									}
+								],
+								"restartPolicy": "Never"
+							}
+						}
+					}
+				]
+			}
+		}`)
+		err := json.Unmarshal(jsonData, &job)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		testJob, err := ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(&job)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		gomega.Expect(testJob.Spec.Queue).Should(gomega.Equal("default"), "Job queue attribute would default to 'default' ")
+		gomega.Expect(testJob.Spec.SchedulerName).Should(gomega.Equal("volcano"), "Job scheduler wolud default to 'volcano'")
+		gomega.Expect(testJob.Spec.Tasks[0].Name).Should(gomega.Equal("default0"), "task[0].name wolud default to 'default0'")
+		gomega.Expect(testJob.Spec.Tasks[1].Name).Should(gomega.Equal("default1"), "task[1].name wolud default to 'default1'")
+	})
 })
