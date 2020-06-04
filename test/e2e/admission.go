@@ -919,7 +919,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 			 ],
 			"policies": [
 				{
-					"event": "PodEvicted,
+					"event": "PodEvicted",
 					"action": "fakeAction"
 				}
 			]
@@ -1337,7 +1337,6 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		 },
 		 "spec": {
 			 "minAvailable": 1,
-			 "queue": "fakeQueue",
 			 "tasks": [
 				 {
 					 "replicas": 2,
