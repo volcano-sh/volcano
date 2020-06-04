@@ -617,7 +617,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 						 }
 					 }
 				 }
-			 ],
+			 ]
 		 }
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
@@ -735,7 +735,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("job validate check:  when create", func() {
+	ginkgo.It("job validate check: policy event with exit code when create", func() {
 		ctx := initTestContext(options{})
 		defer cleanupTestContext(ctx)
 
@@ -770,11 +770,13 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 					 }
 				 }
 			 ],
-			"policies": {
-				"event": "PodFailed",
-				"action": "AbortJob",
-				"exitCode": -1
-			}
+			"policies": [
+				{
+					"event": "PodFailed",
+					"action": "AbortJob",
+					"exitCode": -1
+				}
+			]
 		 }
 	 }`)
 		err := json.Unmarshal(jsonData, &job)
