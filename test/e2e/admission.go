@@ -980,56 +980,6 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("job validate check: duplicate exitCode when create", func() {
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
-
-		var job v1alpha1.Job
-		jsonData := []byte(`{
-			"apiVersion": "batch.volcano.sh/v1alpha1",
-			"kind": "Job",
-		 	"metadata": {
-			"name": "test-job"
-		 },
-		 "spec": {
-			 "minAvailable": 1,
-			 "tasks": [
-				 {
-					 "replicas": 2,
-					 "template": {
-						 "spec": {
-							 "containers": [
-								 {
-									 "image": "nginx",
-									 "imagePullPolicy": "IfNotPresent",
-									 "name": "nginx",
-									 "resources": {
-										 "requests": {
-											 "cpu": "1"
-										 }
-									 }
-								 }
-							 ],
-							 "restartPolicy": "Never"
-						 }
-					 }
-				 }
-			 ],
-			"policies": [
-				{
-					"action": "AbortJob",
-					"exitCode": 1,
-					"exitCode": 2
-				}
-			]
-		 }
-	 }`)
-		err := json.Unmarshal(jsonData, &job)
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(&job)
-		gomega.Expect(err).To(gomega.HaveOccurred())
-	})
-
 	ginkgo.It("job validate check: both any event and other events exist when create", func() {
 		ctx := initTestContext(options{})
 		defer cleanupTestContext(ctx)
