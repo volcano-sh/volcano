@@ -233,6 +233,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 				"name": "test-job"
 			},
 			"spec": {
+				"minAvailable": 1,
 				"tasks": [
 					{
 						"replicas": 1,
