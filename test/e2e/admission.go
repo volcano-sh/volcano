@@ -234,7 +234,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 			ObjectMeta: v1.ObjectMeta{
 				Namespace:   ctx.namespace,
 				Name:        podName,
-				Annotations: map[string]string{vcschedulingv1.KubeGroupNameAnnotationKey: "default"},
+				Annotations: map[string]string{vcschedulingv1.KubeGroupNameAnnotationKey: pgName},
 			},
 			Spec: corev1.PodSpec{
 				Containers:    createContainers(defaultNginxImage, "", "", oneCPU, oneCPU, 0),
