@@ -208,8 +208,23 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 
 	ginkgo.It("Create volcano pod with volcano sheduler", func() {
 		podName := "volcano-pod"
+		pgName := "running-pg"
 		ctx := initTestContext(options{})
 		defer cleanupTestContext(ctx)
+
+		pg := &schedulingv1beta1.PodGroup{
+			ObjectMeta: v1.ObjectMeta{
+				Namespace: ctx.namespace,
+				Name:      pgName,
+			},
+			Spec: schedulingv1beta1.PodGroupSpec{
+				MinMember:    1,
+				MinResources: &thirtyCPU,
+			},
+			Status: schedulingv1beta1.PodGroupStatus{
+				Phase: schedulingv1beta1.PodGroupRunning,
+			},
+		}
 
 		pod := &corev1.Pod{
 			TypeMeta: v1.TypeMeta{
@@ -227,9 +242,10 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 			},
 		}
 
-		_, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).Create(pod)
+		_, err := ctx.vcclient.SchedulingV1beta1().PodGroups(ctx.namespace).Create(pg)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
+		_, err = ctx.kubeclient.CoreV1().Pods(ctx.namespace).Create(pod)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		err = waitPodPhase(ctx, pod, []corev1.PodPhase{corev1.PodRunning})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
