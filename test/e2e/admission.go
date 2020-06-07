@@ -27,6 +27,7 @@ import (
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
 var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
@@ -174,6 +175,77 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		_, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).Create(pod)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
+		err = waitPodPhase(ctx, pod, []corev1.PodPhase{corev1.PodRunning})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("Create volcano-scheduler pod", func() {
+		podName := "pod-volcano-scheduler"
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+
+		pod := &corev1.Pod{
+			TypeMeta: v1.TypeMeta{
+				APIVersion: "v1",
+				Kind:       "Pod",
+			},
+			ObjectMeta: v1.ObjectMeta{
+				Namespace: ctx.namespace,
+				Name:      podName,
+			},
+			Spec: corev1.PodSpec{
+				Containers:    createContainers(defaultNginxImage, "", "", oneCPU, oneCPU, 0),
+				SchedulerName: "volcano",
+			},
+		}
+
+		_, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).Create(pod)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		err = waitPodPhase(ctx, pod, []corev1.PodPhase{corev1.PodRunning})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("Create volcano pod with volcano sheduler", func() {
+		podName := "volcano-pod"
+		pgName := "running-pg"
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+
+		pg := &schedulingv1beta1.PodGroup{
+			ObjectMeta: v1.ObjectMeta{
+				Namespace: ctx.namespace,
+				Name:      pgName,
+			},
+			Spec: schedulingv1beta1.PodGroupSpec{
+				MinMember:    1,
+				MinResources: &thirtyCPU,
+			},
+			Status: schedulingv1beta1.PodGroupStatus{
+				Phase: schedulingv1beta1.PodGroupRunning,
+			},
+		}
+
+		pod := &corev1.Pod{
+			TypeMeta: v1.TypeMeta{
+				APIVersion: "v1",
+				Kind:       "Pod",
+			},
+			ObjectMeta: v1.ObjectMeta{
+				Namespace:   ctx.namespace,
+				Name:        podName,
+				Annotations: map[string]string{vcschedulingv1.KubeGroupNameAnnotationKey: pgName},
+			},
+			Spec: corev1.PodSpec{
+				Containers:    createContainers(defaultNginxImage, "", "", oneCPU, oneCPU, 0),
+				SchedulerName: "volcano",
+			},
+		}
+
+		_, err := ctx.vcclient.SchedulingV1beta1().PodGroups(ctx.namespace).Create(pg)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		_, err = ctx.kubeclient.CoreV1().Pods(ctx.namespace).Create(pod)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		err = waitPodPhase(ctx, pod, []corev1.PodPhase{corev1.PodRunning})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
