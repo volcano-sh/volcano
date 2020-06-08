@@ -539,7 +539,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("job validate check: illegal min available instance when create", func() {
+	ginkgo.It("job validate check: illegal minAvailable when create", func() {
 		ctx := initTestContext(options{})
 		defer cleanupTestContext(ctx)
 
