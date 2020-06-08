@@ -18,6 +18,7 @@ package api
 
 import (
 	"fmt"
+	"strconv"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
@@ -45,6 +46,10 @@ type NodeInfo struct {
 	Capability  *Resource
 
 	Tasks map[TaskID]*TaskInfo
+
+	Devices        map[int]*DeviceInfo
+	GPUTotalCore   int
+	GPUTotalMemory int
 
 	// Used to store custom information
 	Others map[string]interface{}
@@ -78,6 +83,10 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 			Capability:  EmptyResource(),
 
 			Tasks: make(map[TaskID]*TaskInfo),
+
+			Devices:        make(map[int]*DeviceInfo),
+			GPUTotalCore:   0,
+			GPUTotalMemory: 0,
 		}
 	} else {
 		ni = &NodeInfo{
@@ -93,9 +102,14 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 			Capability:  NewResource(node.Status.Capacity),
 
 			Tasks: make(map[TaskID]*TaskInfo),
+
+			Devices:        make(map[int]*DeviceInfo),
+			GPUTotalCore:   0,
+			GPUTotalMemory: 0,
 		}
 	}
 
+	ni.SetNodeGPUInfo(node)
 	ni.setNodeState(node)
 
 	return ni
@@ -152,6 +166,24 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 		Phase:  Ready,
 		Reason: "",
 	}
+}
+
+func (ni *NodeInfo) SetNodeGPUInfo(node *v1.Node) {
+
+	core, ok := node.Status.Capacity["volcano.sh/node-gpu-core"]
+	if ok {
+		ni.GPUTotalCore = int(core.Value())
+	}
+
+	mem, ok := node.Status.Capacity["volcano.sh/node-gpu-memory"]
+	if ok {
+		ni.GPUTotalMemory = int(mem.Value())
+	}
+
+	for i := 0; i < int(core.Value()); i++ {
+		ni.Devices[i] = NewDeviceInfo(i, uint(int(mem.Value())/int(core.Value())))
+	}
+
 }
 
 // SetNode sets kubernetes node object to nodeInfo object
@@ -313,4 +345,61 @@ func (ni *NodeInfo) Pods() (pods []*v1.Pod) {
 	}
 
 	return
+}
+
+func (ni *NodeInfo) CheckPredicatePodOnGPUNode(pod *v1.Pod) bool {
+	res := false
+	memReq := uint(0)
+
+	remainMems := ni.GetDevicesRemainGPUMemory()
+	if len(pod.ObjectMeta.Annotations) > 0 {
+		mem, found := pod.ObjectMeta.Annotations["volcano.sh/pod-gpu-memory"]
+		if found {
+			m, _ := strconv.Atoi(mem)
+			memReq = uint(m)
+		}
+	}
+
+	if len(remainMems) > 0 {
+		for devID := 0; devID < len(ni.Devices); devID++ {
+			availableGPU, ok := remainMems[devID]
+			if ok {
+				if availableGPU >= memReq {
+					res = true
+					break
+				}
+			}
+		}
+	}
+
+	return res
+
+}
+
+func (ni *NodeInfo) GetDevicesRemainGPUMemory() map[int]uint {
+	devicesAllGPUMemory := ni.GetDevicesAllGPUMemory()
+	devicesUsedGPUMemory := ni.GetDevicesUsedGPUMemory()
+	res := map[int]uint{}
+	for id, allMemory := range devicesAllGPUMemory {
+		if usedMemory, found := devicesUsedGPUMemory[id]; found {
+			res[id] = allMemory - usedMemory
+		}
+	}
+	return res
+}
+
+func (ni *NodeInfo) GetDevicesUsedGPUMemory() map[int]uint {
+	res := map[int]uint{}
+	for _, device := range ni.Devices {
+		res[device.Id] = device.GetUsedGPUMemory()
+	}
+	return res
+}
+
+func (ni *NodeInfo) GetDevicesAllGPUMemory() map[int]uint {
+	res := map[int]uint{}
+	for _, device := range ni.Devices {
+		res[device.Id] = device.GPUTotalMemory
+	}
+	return res
 }

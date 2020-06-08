@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
@@ -44,6 +45,8 @@ const (
 	DiskPressurePredicate = "predicate.DiskPressureEnable"
 	// PIDPressurePredicate is the key for enabling PID Pressure Predicate in YAML
 	PIDPressurePredicate = "predicate.PIDPressureEnable"
+	// GPUSharingPredicate is the key for enabling GPU Sharing Predicate in YAML
+	GPUSharingPredicate = "predicate.GPUSharingEnable"
 )
 
 type predicatesPlugin struct {
@@ -64,12 +67,13 @@ type predicateEnable struct {
 	memoryPressureEnable bool
 	diskPressureEnable   bool
 	pidPressureEnable    bool
+	gpuSharingEnable     bool
 }
 
 func enablePredicate(args framework.Arguments) predicateEnable {
 
 	/*
-		   User Should give predicatesEnable in this format(predicate.MemoryPressureEnable, predicate.DiskPressureEnable, predicate.PIDPressureEnable.
+		   User Should give predicatesEnable in this format(predicate.MemoryPressureEnable, predicate.DiskPressureEnable, predicate.PIDPressureEnable, predicate.GPUSharingEnable.
 		   Currently supported only for MemoryPressure, DiskPressure, PIDPressure predicate checks.
 
 		   actions: "reclaim, allocate, backfill, preempt"
@@ -85,6 +89,7 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 		 		 predicate.MemoryPressureEnable: true
 		 		 predicate.DiskPressureEnable: true
 				 predicate.PIDPressureEnable: true
+				 predicate.GPUSharingEnable: true
 		     - name: proportion
 		     - name: nodeorder
 	*/
@@ -93,6 +98,7 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 		memoryPressureEnable: false,
 		diskPressureEnable:   false,
 		pidPressureEnable:    false,
+		gpuSharingEnable:     false,
 	}
 
 	// Checks whether predicate.MemoryPressureEnable is provided or not, if given, modifies the value in predicateEnable struct.
@@ -103,6 +109,9 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 
 	// Checks whether predicate.PIDPressureEnable is provided or not, if given, modifies the value in predicateEnable struct.
 	args.GetBool(&predicate.pidPressureEnable, PIDPressurePredicate)
+
+	// Checks whether predicate.GPUSharingEnable is provided or not, if given, modifies the value in predicateEnable struct.
+	args.GetBool(&predicate.gpuSharingEnable, GPUSharingPredicate)
 
 	return predicate
 }
@@ -202,9 +211,22 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		if !status.IsSuccess() {
 			return fmt.Errorf("plugin %s pre-predicates failed %s", interpodaffinity.Name, status.Message())
 		}
+
 		status = podAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 		if !status.IsSuccess() {
 			return fmt.Errorf("plugin %s predicates failed %s", interpodaffinity.Name, status.Message())
+		}
+
+		// if predicate.gpuSharingEnable
+		if true {
+			// CheckGPUSharingPredicate
+			fit, err := CheckNodeGPUSharingPredicate(task.Pod, node)
+			if err != nil {
+				return err
+			}
+
+			klog.V(4).Infof("CheckNodeGPUSharingPredicate predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
+				task.Namespace, task.Name, node.Name, fit, err)
 		}
 
 		return nil
@@ -212,3 +234,17 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 }
 
 func (pp *predicatesPlugin) OnSessionClose(ssn *framework.Session) {}
+
+// CheckNodeGPUSharingPredicate checks if a gpu sharing pod can be scheduled on a node.
+func CheckNodeGPUSharingPredicate(pod *v1.Pod, nodeInfo *api.NodeInfo) (bool, error) {
+	_, ok := nodeInfo.Node.Status.Capacity["volcano.sh/node-gpu-core"]
+	if !ok {
+		return false, fmt.Errorf("node is not gpu sharing")
+	} else {
+		isEnoughGPUMemoryOnNode := nodeInfo.CheckPredicatePodOnGPUNode(pod)
+		if !isEnoughGPUMemoryOnNode {
+			return false, fmt.Errorf("no enough gpu memory on single device")
+		}
+	}
+	return true, nil
+}
