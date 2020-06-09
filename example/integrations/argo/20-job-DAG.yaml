@@ -15,14 +15,17 @@ spec:
           parameters: [{name: message, value: A}, {name: task, value: aaa}]
       - name: B
         template: hello-tmpl
+        dependencies: [A]
         arguments:
           parameters: [{name: message, value: B}, {name: task, value: bbb}]
       - name: C
         template: hello-tmpl
+        dependencies: [A]
         arguments:
           parameters: [{name: message, value: C}, {name: task, value: ccc}]
       - name: D
         template: hello-tmpl
+        dependencies: [B, C]
         arguments:
           parameters: [{name: message, value: D}, {name: task, value: ddd}]
   - name: hello-tmpl
@@ -32,6 +35,8 @@ spec:
       - name: task
     resource:
       action: create
+      successCondition: status.state.phase = Completed
+      failureCondition: status.state.phase = Failed
       manifest: |
         apiVersion: batch.volcano.sh/v1alpha1
         kind: Job

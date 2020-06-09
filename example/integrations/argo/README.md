@@ -1,24 +1,24 @@
-# 使用argo workflow集成volcano job
+# Use Argo Workflow to integrate Volcano Job
 
-argo 资源模板允许用户创建、删除或更新任何kubernetes资源类型（包括CRD），我们可以使用资源模板来将volcano job集成到argo workflow中，利用argo来为volcano增加job依赖管理和DAG流程控制能力。
+The Argo resource template allows users to create, delete, or update any type of Kubernetes resource (including CRDs). We can use the resource template to integrate Volcano Jobs into Argo Workflow, and use Argo to add job dependency management and DAG process control capabilities to volcano.
 
 ```markdown
-[argo使用kubernetes resource](https://github.com/argoproj/argo/blob/master/examples/README.md#kubernetes-resources)
+[argo examples:kubernetes resource](https://github.com/argoproj/argo/blob/master/examples/README.md#kubernetes-resources)
 ```
 
-## argo serviceAccount操作volcano apiGroup权限
+## Argo Workflow RBAC
 
-workflow运行时需要为workflow指定serviceAccount，若无指定则使用当前命名空间下的default serviceAccount。
+When the Argo Workflow is running, you need to specify serviceAccount for the Argo Workflow. If not specified, the default serviceAccount in the current namespace is used.
 
 ```yaml
 argo submit --serviceaccount <name>
 ```
 
-安装argo会默认创建serviceaccount **argo**，rolebinding **argo-binding**和role **argo-role**。若有需要可以手动创建clusterrole和clusterrolebinding。
+Installing argo will create serviceaccount **argo**, rolebinding **argo-binding** and role **argo-role** by default. If necessary, you can manually create clusterrole and clusterrolebinding.
 
-为了成功管理kubernetes资源，需要为serviceAccount所绑定的role/clusterrole增加被操作资源的管理权限。
+In order to successfully manage kubernetes resources, it is necessary to add the management authority of the operated resources for the role/clusterrole bound to serviceAccount.
 
-在这里我们增加对volcano apiGroup中所有资源的管理权限(可根据实际情况细分resources和verbs)：
+We add the management authority for all resources in volcano api groups(resources and verbs can be subdivided according to the actual situation,verbs **create** and **get** is must):
 
 ```yaml
 - apiGroups:
@@ -29,9 +29,9 @@ argo submit --serviceaccount <name>
   - "*"
 ```
 
-## 使用argo workflow创建volcano job 
+## Create Volcano Job by Argo Workflow
 
-为了保证argo workflow能够管理所创建的kubernetes，需要为新资源增加ownerReferences：
+In order to ensure that Argo Workflow can manage the kubernetes resources created by itself, owner references need to be added for new resources:
 
 ```yaml
           ownerReferences:
@@ -42,7 +42,7 @@ argo submit --serviceaccount <name>
             uid: "{{workflow.uid}}"
 ```
 
-使用argo workflow创建volcano job：
+Example of using Argo Workflow to create Volcano Job:
 
 ```yaml
 # in a workflow. The resource template type accepts any k8s manifest
@@ -54,11 +54,12 @@ metadata:
   generateName: volcano-job
 spec:
   entrypoint: nginx-tmpl
-  serviceAccountName: argo              # specify the service account
+  serviceAccountName: argo        # specify the service account
   templates:
   - name: nginx-tmpl
-    resource:				 			# indicates that this is a resource template
-      action: create					# can be any kubectl action (e.g. create, delete, apply, patch)
+    activeDeadlineSeconds: 120        # to limit the elapsed time for a workflow, you need set the variable activeDeadlineSeconds
+    resource:        # indicates that this is a resource template
+      action: create        # can be any kubectl action (e.g. create, delete, apply, patch)
       # The successCondition and failureCondition are optional expressions.
       # If failureCondition is true, the step is considered failed.
       # If successCondition is true, the step is considered successful.
@@ -66,13 +67,17 @@ spec:
       # of the resource (not just labels). Multiple AND conditions can be represented by comma
       # delimited expressions.
       # For more details: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
-      successCondition: status.succeeded > 0
-      failureCondition: status.failed > 3
+      # argoexec will get the resource information by "kubectl get -o json -w resouce/name" and check if the conditions are match
+      # Completed is the phase that all tasks of Job are completed
+      # Failed is the phase that the job is restarted failed reached the maximum number of retries.
+      # change the successCondition or failureCondition according to the actual situation
+      successCondition: status.state.phase = Completed
+      failureCondition: status.state.phase = Failed
       manifest: |						#put your kubernetes spec here
         apiVersion: batch.volcano.sh/v1alpha1
         kind: Job
         metadata:
-          generateName: test-job
+          generateName: test-job-
           ownerReferences:
           - apiVersion: argoproj.io/v1alpha1
             blockOwnerDeletion: true
@@ -107,4 +112,6 @@ spec:
                       cpu: "100m"
                 restartPolicy: OnFailure
 ```
+
+Argo Workflow will create one Volcano Job.If the job is a long running job(like nginx process), you must set activeDeadlineSeconds for template otherwise Workflow will not enter the next step.
 

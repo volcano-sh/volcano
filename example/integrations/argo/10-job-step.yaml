@@ -27,6 +27,8 @@ spec:
       - name: task
     resource:
       action: create
+      successCondition: status.state.phase = Completed
+      failureCondition: status.state.phase = Failed
       manifest: |
         apiVersion: batch.volcano.sh/v1alpha1
         kind: Job
