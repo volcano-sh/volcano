@@ -1,0 +1,69 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: volcano-step-job-
+spec:
+  entrypoint: volcano-step-job
+  serviceAccountName: argo
+  templates:
+  - name: volcano-step-job
+    steps:
+    - - name: hello-1
+        template: hello-tmpl
+        arguments:
+          parameters: [{name: message, value: hello1}, {name: task, value: hello1}]
+    - - name: hello-2a
+        template: hello-tmpl
+        arguments:
+          parameters: [{name: message, value: hello2a}, {name: task, value: hello2a}]
+      - name: hello-2b
+        template: hello-tmpl
+        arguments:
+          parameters: [{name: message, value: hello2b}, {name: task, value: hello2b}]
+  - name: hello-tmpl
+    inputs:
+      parameters:
+      - name: message
+      - name: task
+    resource:
+      action: create
+      manifest: |
+        apiVersion: batch.volcano.sh/v1alpha1
+        kind: Job
+        metadata:
+          generateName: step-job-{{inputs.parameters.task}}-
+          ownerReferences:
+          - apiVersion: argoproj.io/v1alpha1
+            blockOwnerDeletion: true
+            kind: Workflow
+            name: "{{workflow.name}}"
+            uid: "{{workflow.uid}}"
+        spec:
+          minAvailable: 1
+          schedulerName: volcano
+          policies:
+          - event: PodEvicted
+            action: RestartJob
+          plugins:
+            ssh: []
+            env: []
+            svc: []
+          maxRetry: 1
+          queue: default
+          tasks:
+          - replicas: 2
+            name: "default-hello"
+            template:
+              metadata:
+                name: helloworld
+              spec:
+                containers:
+                - image: docker/whalesay
+                  imagePullPolicy: IfNotPresent
+                  command: [cowsay]
+                  args: ["{{inputs.parameters.message}}"]
+                  name: hello
+                  resources:
+                    requests:
+                      cpu: "100m"
+                restartPolicy: OnFailure

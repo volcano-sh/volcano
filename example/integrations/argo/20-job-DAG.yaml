@@ -1,0 +1,74 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: volcano-dag-job-
+spec:
+  entrypoint: volcano-dag-job
+  serviceAccountName: argo
+  templates:
+  - name: volcano-dag-job
+    dag:
+      tasks:
+      - name: A
+        template: hello-tmpl
+        arguments:
+          parameters: [{name: message, value: A}, {name: task, value: aaa}]
+      - name: B
+        template: hello-tmpl
+        arguments:
+          parameters: [{name: message, value: B}, {name: task, value: bbb}]
+      - name: C
+        template: hello-tmpl
+        arguments:
+          parameters: [{name: message, value: C}, {name: task, value: ccc}]
+      - name: D
+        template: hello-tmpl
+        arguments:
+          parameters: [{name: message, value: D}, {name: task, value: ddd}]
+  - name: hello-tmpl
+    inputs:
+      parameters:
+      - name: message
+      - name: task
+    resource:
+      action: create
+      manifest: |
+        apiVersion: batch.volcano.sh/v1alpha1
+        kind: Job
+        metadata:
+          generateName: dag-job-{{inputs.parameters.task}}-
+          ownerReferences:
+          - apiVersion: argoproj.io/v1alpha1
+            blockOwnerDeletion: true
+            kind: Workflow
+            name: "{{workflow.name}}"
+            uid: "{{workflow.uid}}"
+        spec:
+          minAvailable: 1
+          schedulerName: volcano
+          policies:
+          - event: PodEvicted
+            action: RestartJob
+          plugins:
+            ssh: []
+            env: []
+            svc: []
+          maxRetry: 1
+          queue: default
+          tasks:
+          - replicas: 2
+            name: "default-hello"
+            template:
+              metadata:
+                name: helloworld
+              spec:
+                containers:
+                - image: docker/whalesay
+                  imagePullPolicy: IfNotPresent
+                  command: [cowsay]
+                  args: ["{{inputs.parameters.message}}"]
+                  name: hello
+                  resources:
+                    requests:
+                      cpu: "100m"
+                restartPolicy: OnFailure
