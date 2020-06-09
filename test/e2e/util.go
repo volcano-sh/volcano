@@ -689,7 +689,7 @@ func waitJobUnschedulable(ctx *testContext, job *batchv1alpha1.Job) error {
 }
 
 func waitQueueStatus(condition func() (bool, error)) error {
-	return wait.Poll(100*time.Millisecond, oneMinute, condition)
+	return wait.Poll(100*time.Millisecond, twoMinute, condition)
 }
 
 func createContainers(img, command, workingDir string, req, limit v1.ResourceList, hostport int32) []v1.Container {
@@ -1144,6 +1144,25 @@ func waitPodPhase(ctx *testContext, pod *v1.Pod, phase []v1.PodPhase) error {
 		}
 
 		additionalError = fmt.Errorf("expected pod '%s' to %v, actual got %s", pod.Name, phase, pod.Status.Phase)
+		return false, nil
+	})
+	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
+		return fmt.Errorf("[Wait time out]: %s", additionalError)
+	}
+	return err
+}
+
+func waitPgPhase(ctx *testContext, pg *schedulingv1beta1.PodGroup, phase schedulingv1beta1.PodGroupPhase) error {
+	var additionalError error
+	err := wait.Poll(100*time.Millisecond, twoMinute, func() (bool, error) {
+		podGroup, err := ctx.vcclient.SchedulingV1beta1().PodGroups(ctx.namespace).Get(context.TODO(), pg.ObjectMeta.Name, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		if podGroup.Status.Phase == phase {
+			return true, nil
+		}
+
+		additionalError = fmt.Errorf("expected podgroup '%s' to %v, actual got %s", podGroup.ObjectMeta.Name, phase, podGroup.Status.Phase)
 		return false, nil
 	})
 	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
