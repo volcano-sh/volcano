@@ -21,6 +21,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/scheduling/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
@@ -56,7 +57,8 @@ func TestReclaim(t *testing.T) {
 						Namespace: "c1",
 					},
 					Spec: schedulingv1.PodGroupSpec{
-						Queue: "q1",
+						Queue:             "q1",
+						PriorityClassName: "low-priority",
 					},
 				},
 				{
@@ -65,7 +67,8 @@ func TestReclaim(t *testing.T) {
 						Namespace: "c1",
 					},
 					Spec: schedulingv1.PodGroupSpec{
-						Queue: "q2",
+						Queue:             "q2",
+						PriorityClassName: "high-priority",
 					},
 				},
 			},
@@ -111,15 +114,22 @@ func TestReclaim(t *testing.T) {
 			Channel: make(chan string),
 		}
 		schedulerCache := &cache.SchedulerCache{
-			Nodes:         make(map[string]*api.NodeInfo),
-			Jobs:          make(map[api.JobID]*api.JobInfo),
-			Queues:        make(map[api.QueueID]*api.QueueInfo),
-			Binder:        binder,
-			Evictor:       evictor,
-			StatusUpdater: &util.FakeStatusUpdater{},
-			VolumeBinder:  &util.FakeVolumeBinder{},
+			Nodes:           make(map[string]*api.NodeInfo),
+			Jobs:            make(map[api.JobID]*api.JobInfo),
+			Queues:          make(map[api.QueueID]*api.QueueInfo),
+			Binder:          binder,
+			Evictor:         evictor,
+			StatusUpdater:   &util.FakeStatusUpdater{},
+			VolumeBinder:    &util.FakeVolumeBinder{},
+			PriorityClasses: make(map[string]*v1beta1.PriorityClass),
 
 			Recorder: record.NewFakeRecorder(100),
+		}
+		schedulerCache.PriorityClasses["high-priority"] = &v1beta1.PriorityClass{
+			Value: 100000,
+		}
+		schedulerCache.PriorityClasses["low-priority"] = &v1beta1.PriorityClass{
+			Value: 10,
 		}
 		for _, node := range test.nodes {
 			schedulerCache.AddNode(node)
