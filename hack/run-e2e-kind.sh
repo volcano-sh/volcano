@@ -92,7 +92,7 @@ install-volcano
 
 # Run e2e test
 cd ${VK_ROOT}
-KUBECONFIG=${KUBECONFIG} go test ./test/e2e -v -timeout 30m
+KUBECONFIG=${KUBECONFIG} go test ./test/e2e -v -timeout 60m
 
 if [[ $? != 0 ]]; then
   generate-log
