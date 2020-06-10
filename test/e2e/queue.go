@@ -30,6 +30,10 @@ var _ = Describe("Queue E2E Test", func() {
 		q1, q2 := "reclaim-q1", "reclaim-q2"
 		ctx := initTestContext(options{
 			queues: []string{q1, q2},
+			priorityClasses: map[string]int32{
+				"low-priority":  10,
+				"high-priority": 10000,
+			},
 		})
 		defer cleanupTestContext(ctx)
 
@@ -49,6 +53,7 @@ var _ = Describe("Queue E2E Test", func() {
 
 		spec.name = "q1-qj-1"
 		spec.queue = q1
+		spec.pri = "low-priority"
 		job1 := createJob(ctx, spec)
 		err := waitJobReady(ctx, job1)
 		Expect(err).NotTo(HaveOccurred())
@@ -71,6 +76,7 @@ var _ = Describe("Queue E2E Test", func() {
 
 		spec.name = "q2-qj-2"
 		spec.queue = q2
+		spec.pri = "high-priority"
 		job2 := createJob(ctx, spec)
 		err = waitTasksReady(ctx, job2, expected)
 		Expect(err).NotTo(HaveOccurred())
