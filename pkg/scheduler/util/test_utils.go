@@ -126,7 +126,7 @@ func (fe *FakeEvictor) Evicts() []string {
 }
 
 // Evict is used by fake evictor to evict pods
-func (fe *FakeEvictor) Evict(p *v1.Pod) error {
+func (fe *FakeEvictor) Evict(p *v1.Pod, reason string) error {
 	fe.Lock()
 	defer fe.Unlock()
 
