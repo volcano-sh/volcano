@@ -17,6 +17,7 @@ limitations under the License.
 package validate
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -180,7 +181,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 		msg += err.Error()
 	}
 
-	queue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(job.Spec.Queue, metav1.GetOptions{})
+	queue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), job.Spec.Queue, metav1.GetOptions{})
 	if err != nil {
 		msg += fmt.Sprintf(" unable to find job queue: %v", err)
 	} else if queue.Status.State != schedulingv1beta1.QueueStateOpen {

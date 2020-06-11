@@ -17,6 +17,7 @@ limitations under the License.
 package pods
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -128,7 +129,7 @@ func validatePod(pod *v1.Pod, reviewResponse *v1beta1.AdmissionResponse) string 
 }
 
 func checkPGPhase(pod *v1.Pod, pgName string, isVCJob bool) error {
-	pg, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(pgName, metav1.GetOptions{})
+	pg, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 	if err != nil {
 		if isVCJob || (!isVCJob && !apierrors.IsNotFound(err)) {
 			return fmt.Errorf("failed to get PodGroup for pod <%s/%s>: %v", pod.Namespace, pod.Name, err)

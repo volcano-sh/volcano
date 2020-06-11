@@ -17,6 +17,7 @@ limitations under the License.
 package validate
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -1053,7 +1054,7 @@ func TestValidateJobCreate(t *testing.T) {
 			config.VolcanoClient = fakeclient.NewSimpleClientset()
 
 			//create default queue
-			_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Create(&defaultqueue)
+			_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultqueue, metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Queue Creation Failed")
 			}
