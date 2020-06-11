@@ -19,14 +19,120 @@ package e2e
 import (
 	"context"
 	"fmt"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"strconv"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"volcano.sh/volcano/pkg/cli/util"
 )
 
 var _ = Describe("Queue E2E Test", func() {
+	It("Queue Command Close And Open With State Check", func() {
+		q1 := "queue-command-close"
+		ctx := initTestContext(options{
+			queues: []string{q1},
+		})
+		defer cleanupTestContext(ctx)
+
+		By("Close queue command check")
+		err := util.CreateQueueCommand(ctx.vcclient, "default", q1, "CloseQueue")
+		if err != nil {
+			Expect(err).NotTo(HaveOccurred(), "Error send close queue command")
+		}
+
+		err = waitQueueStatus(func() (bool, error) {
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
+			return queue.Status.State == "Closed", nil
+		})
+		Expect(err).NotTo(HaveOccurred(), "Wait for closed queue %s failed", q1)
+
+		By("Open queue command check")
+		err = util.CreateQueueCommand(ctx.vcclient, "default", q1, "OpenQueue")
+		if err != nil {
+			Expect(err).NotTo(HaveOccurred(), "Error send open queue command")
+		}
+
+		err = waitQueueStatus(func() (bool, error) {
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
+			return queue.Status.State == "Open", nil
+		})
+		Expect(err).NotTo(HaveOccurred(), "Wait for reopen queue %s failed", q1)
+
+	})
+
+	It("Queue Job Status Transaction", func() {
+		q1 := "queue-job-status-transaction"
+		ctx := initTestContext(options{
+			queues: []string{q1},
+		})
+		defer cleanupTestContext(ctx)
+		By("Prepare 3 job, first job will take 50% cpu + 500m CPU resources go to running, second will take another 50% go to unknown, third will take 50% go to pending, which means 1 running, 1 pending and 1 unknown")
+
+		slot := halfCPU
+		rep := clusterSize(ctx, slot)
+
+		if rep < 4 {
+			err := fmt.Errorf("Total cpu is too small, you need at least 2 logical cpu for volcano node")
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		for i := 0; i < 3; i++ {
+			currentRep := rep / 2
+			if i == 1 {
+				currentRep = currentRep + 1
+			}
+			spec := &jobSpec{
+				tasks: []taskSpec{
+					{
+						img: defaultNginxImage,
+						req: slot,
+						min: 1,
+						rep: currentRep,
+					},
+				},
+			}
+			spec.name = "queue-job-status-transaction-test-job-" + strconv.Itoa(i)
+			spec.queue = q1
+			createJob(ctx, spec)
+		}
+
+		By("Verify queue have pod groups inqueue")
+		err := waitQueueStatus(func() (bool, error) {
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
+			return queue.Status.Inqueue > 0, nil
+		})
+		Expect(err).NotTo(HaveOccurred(), "Error wait for queue inqueue")
+
+		By("Verify queue have pod groups running")
+		err = waitQueueStatus(func() (bool, error) {
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
+			return queue.Status.Running > 0, nil
+		})
+		Expect(err).NotTo(HaveOccurred(), "Error wait for queue running")
+
+		By("Verify queue have pod groups pending")
+		err = waitQueueStatus(func() (bool, error) {
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
+			return queue.Status.Pending > 0, nil
+		})
+		Expect(err).NotTo(HaveOccurred(), "Error wait for queue pending")
+
+		By("Verify queue have pod groups Unknown")
+		err = waitQueueStatus(func() (bool, error) {
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
+			return queue.Status.Unknown > 0, nil
+		})
+		Expect(err).NotTo(HaveOccurred(), "Error wait for queue unknown")
+
+	})
+
 	It("Reclaim", func() {
 		q1, q2 := "reclaim-q1", "reclaim-q2"
 		ctx := initTestContext(options{
