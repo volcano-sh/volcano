@@ -17,6 +17,8 @@ limitations under the License.
 package podgroup
 
 import (
+	"context"
+
 	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -61,7 +63,7 @@ func (cc *Controller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
 		return nil
 	}
 
-	if _, err := cc.kubeClient.CoreV1().Pods(pod.Namespace).Update(pod); err != nil {
+	if _, err := cc.kubeClient.CoreV1().Pods(pod.Namespace).Update(context.TODO(), pod, metav1.UpdateOptions{}); err != nil {
 		klog.Errorf("Failed to update pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
 		return err
 	}
@@ -94,7 +96,7 @@ func (cc *Controller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 			pg.Spec.Queue = queueName
 		}
 
-		if _, err := cc.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Create(pg); err != nil {
+		if _, err := cc.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{}); err != nil {
 			klog.Errorf("Failed to create normal PodGroup for Pod <%s/%s>: %v",
 				pod.Namespace, pod.Name, err)
 			return err

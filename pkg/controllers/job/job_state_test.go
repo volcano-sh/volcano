@@ -17,6 +17,7 @@ limitations under the License.
 package job
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -87,7 +88,7 @@ func TestAbortedState_Execute(t *testing.T) {
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
 
-			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(testcase.JobInfo.Job)
+			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error while creating Job")
 			}
@@ -199,7 +200,7 @@ func TestAbortingState_Execute(t *testing.T) {
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
 
-			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(testcase.JobInfo.Job)
+			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error while creating Job")
 			}
@@ -310,7 +311,7 @@ func TestCompletingState_Execute(t *testing.T) {
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
 
-			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(testcase.JobInfo.Job)
+			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error while creating Job")
 			}
@@ -382,7 +383,7 @@ func TestFinishedState_Execute(t *testing.T) {
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
 
-			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(testcase.JobInfo.Job)
+			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error while creating Job")
 			}
@@ -677,7 +678,7 @@ func TestPendingState_Execute(t *testing.T) {
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
 
-			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(testcase.JobInfo.Job)
+			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error while creating Job")
 			}
@@ -808,7 +809,7 @@ func TestRestartingState_Execute(t *testing.T) {
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
 
-			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(testcase.JobInfo.Job)
+			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error while creating Job")
 			}
@@ -1138,7 +1139,7 @@ func TestRunningState_Execute(t *testing.T) {
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
 
-			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(testcase.JobInfo.Job)
+			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error while creating Job")
 			}
@@ -1259,7 +1260,7 @@ func TestTerminatingState_Execute(t *testing.T) {
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
 
-			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(testcase.JobInfo.Job)
+			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error while creating Job")
 			}

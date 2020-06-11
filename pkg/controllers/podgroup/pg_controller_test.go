@@ -17,6 +17,7 @@ limitations under the License.
 package podgroup
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -139,7 +140,7 @@ func TestAddPodGroup(t *testing.T) {
 	for _, testCase := range testCases {
 		c := newFakeController()
 
-		pod, err := c.kubeClient.CoreV1().Pods(testCase.pod.Namespace).Create(testCase.pod)
+		pod, err := c.kubeClient.CoreV1().Pods(testCase.pod.Namespace).Create(context.TODO(), testCase.pod, metav1.CreateOptions{})
 		if err != nil {
 			t.Errorf("Case %s failed when creating pod for %v", testCase.name, err)
 		}
@@ -147,7 +148,7 @@ func TestAddPodGroup(t *testing.T) {
 		c.addPod(pod)
 		c.createNormalPodPGIfNotExist(pod)
 
-		pg, err := c.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(
+		pg, err := c.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(context.TODO(),
 			testCase.expectedPodGroup.Name,
 			metav1.GetOptions{},
 		)
