@@ -17,6 +17,7 @@ limitations under the License.
 package util
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -95,7 +96,7 @@ func PopulateResourceListV1(spec string) (v1.ResourceList, error) {
 // CreateJobCommand executes a command such as resume/suspend.
 func CreateJobCommand(config *rest.Config, ns, name string, action vcbus.Action) error {
 	jobClient := versioned.NewForConfigOrDie(config)
-	job, err := jobClient.BatchV1alpha1().Jobs(ns).Get(name, metav1.GetOptions{})
+	job, err := jobClient.BatchV1alpha1().Jobs(ns).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -114,7 +115,7 @@ func CreateJobCommand(config *rest.Config, ns, name string, action vcbus.Action)
 		Action:       string(action),
 	}
 
-	if _, err := jobClient.BusV1alpha1().Commands(ns).Create(cmd); err != nil {
+	if _, err := jobClient.BusV1alpha1().Commands(ns).Create(context.TODO(), cmd, metav1.CreateOptions{}); err != nil {
 		return err
 	}
 

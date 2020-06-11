@@ -17,6 +17,7 @@ limitations under the License.
 package job
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -57,7 +58,7 @@ func DeleteJob() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	err = jobClient.BatchV1alpha1().Jobs(deleteJobFlags.Namespace).Delete(deleteJobFlags.JobName, &metav1.DeleteOptions{})
+	err = jobClient.BatchV1alpha1().Jobs(deleteJobFlags.Namespace).Delete(context.TODO(), deleteJobFlags.JobName, metav1.DeleteOptions{})
 	if err != nil {
 		return err
 	}

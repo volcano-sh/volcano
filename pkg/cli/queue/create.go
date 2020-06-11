@@ -17,6 +17,8 @@ limitations under the License.
 package queue
 
 import (
+	"context"
+
 	"github.com/spf13/cobra"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -66,7 +68,7 @@ func CreateQueue() error {
 	}
 
 	queueClient := versioned.NewForConfigOrDie(config)
-	if _, err := queueClient.SchedulingV1beta1().Queues().Create(queue); err != nil {
+	if _, err := queueClient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{}); err != nil {
 		return err
 	}
 

@@ -17,6 +17,7 @@ limitations under the License.
 package vcancel
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -57,7 +58,7 @@ func CancelJob() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	err = jobClient.BatchV1alpha1().Jobs(cancelJobFlags.Namespace).Delete(cancelJobFlags.JobName, &metav1.DeleteOptions{})
+	err = jobClient.BatchV1alpha1().Jobs(cancelJobFlags.Namespace).Delete(context.TODO(), cancelJobFlags.JobName, metav1.DeleteOptions{})
 	if err != nil {
 		return err
 	}
