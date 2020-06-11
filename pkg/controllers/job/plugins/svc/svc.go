@@ -17,6 +17,7 @@ limitations under the License.
 package svc
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"strconv"
@@ -156,7 +157,7 @@ func (sp *servicePlugin) OnJobDelete(job *batch.Job) error {
 		return err
 	}
 
-	if err := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Delete(job.Name, nil); err != nil {
+	if err := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to delete Service of Job %v/%v: %v", job.Namespace, job.Name, err)
 			return err
@@ -204,7 +205,7 @@ func (sp *servicePlugin) mountConfigmap(pod *v1.Pod, job *batch.Job) {
 
 func (sp *servicePlugin) createServiceIfNotExist(job *batch.Job) error {
 	// If Service does not exist, create one for Job.
-	if _, err := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Get(job.Name, metav1.GetOptions{}); err != nil {
+	if _, err := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.V(3).Infof("Failed to get Service for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
@@ -237,7 +238,7 @@ func (sp *servicePlugin) createServiceIfNotExist(job *batch.Job) error {
 			},
 		}
 
-		if _, e := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Create(svc); e != nil {
+		if _, e := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Create(context.TODO(), svc, metav1.CreateOptions{}); e != nil {
 			klog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v", job.Namespace, job.Name, e)
 			return e
 		}
@@ -251,7 +252,7 @@ func (sp *servicePlugin) createServiceIfNotExist(job *batch.Job) error {
 // Limit pods can be accessible only by pods belong to the job.
 func (sp *servicePlugin) createNetworkPolicyIfNotExist(job *batch.Job) error {
 	// If network policy does not exist, create one for Job.
-	if _, err := sp.Clientset.KubeClients.NetworkingV1().NetworkPolicies(job.Namespace).Get(job.Name, metav1.GetOptions{}); err != nil {
+	if _, err := sp.Clientset.KubeClients.NetworkingV1().NetworkPolicies(job.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.V(3).Infof("Failed to get NetworkPolicy for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
@@ -287,7 +288,7 @@ func (sp *servicePlugin) createNetworkPolicyIfNotExist(job *batch.Job) error {
 			},
 		}
 
-		if _, e := sp.Clientset.KubeClients.NetworkingV1().NetworkPolicies(job.Namespace).Create(networkpolicy); e != nil {
+		if _, e := sp.Clientset.KubeClients.NetworkingV1().NetworkPolicies(job.Namespace).Create(context.TODO(), networkpolicy, metav1.CreateOptions{}); e != nil {
 			klog.V(3).Infof("Failed to create Service for Job <%s/%s>: %v", job.Namespace, job.Name, e)
 			return e
 		}

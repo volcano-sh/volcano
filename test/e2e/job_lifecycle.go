@@ -17,6 +17,8 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
@@ -29,12 +31,12 @@ import (
 
 var _ = Describe("Job Life Cycle", func() {
 	It("Delete job that is pending state", func() {
-		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: "pending-delete-job",
 			tasks: []taskSpec{
 				{
@@ -48,25 +50,25 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending
-		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending})
+		err := waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
+		err = ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobCleanedUp(context, job)
+		err = waitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 	})
 
 	It("Delete job that is Running state", func() {
-		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: "running-delete-job",
 			tasks: []taskSpec{
 				{
@@ -79,25 +81,25 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
+		err = ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobCleanedUp(context, job)
+		err = waitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 	})
 
 	It("Delete job that is Completed state", func() {
-		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: "complete-delete-job",
 			tasks: []taskSpec{
 				{
@@ -112,25 +114,25 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running -> Completed
-		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Completed})
+		err := waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Completed})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
+		err = ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobCleanedUp(context, job)
+		err = waitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 	})
 
 	It("Delete job that is Failed job", func() {
-		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: "failed-delete-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -151,25 +153,25 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running -> Aborted
-		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Aborted})
+		err := waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
+		err = ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobCleanedUp(context, job)
+		err = waitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 	})
 
 	It("Delete job that is terminated job", func() {
-		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: "terminate-delete-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -190,25 +192,25 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running -> Terminated
-		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Terminated})
+		err := waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
+		err = ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobCleanedUp(context, job)
+		err = waitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 	})
 
 	It("Create and Delete job with CPU requirement", func() {
-		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: "terminate-delete-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -230,23 +232,23 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running -> completed
-		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Completed})
+		err := waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Completed})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
+		err = ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobCleanedUp(context, job)
+		err = waitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 	})
 
 	It("Checking Event Generation for job", func() {
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: "terminate-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -266,15 +268,15 @@ var _ = Describe("Job Life Cycle", func() {
 			},
 		})
 
-		err := waitJobTerminateAction(context, job)
+		err := waitJobTerminateAction(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("Checking Unschedulable Event Generation for job", func() {
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
-		nodeName, rep := computeNode(context, oneCPU)
+		nodeName, rep := computeNode(ctx, oneCPU)
 
 		nodeAffinity := &v1.NodeAffinity{
 			RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
@@ -292,7 +294,7 @@ var _ = Describe("Job Life Cycle", func() {
 			},
 		}
 
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: "unschedulable-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -315,7 +317,7 @@ var _ = Describe("Job Life Cycle", func() {
 			},
 		})
 
-		err := waitJobUnschedulable(context, job)
+		err := waitJobUnschedulable(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

@@ -17,10 +17,17 @@ limitations under the License.
 package predicates
 
 import (
+	"context"
+	"fmt"
+
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/scheduler/algorithm"
-	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
-	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeports"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeunschedulable"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -101,11 +108,9 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 }
 
 func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
-	var nodeMap map[string]*schedulernodeinfo.NodeInfo
-
 	pl := util.NewPodLister(ssn)
-
-	nodeMap, _ = util.GenerateNodeMapAndSlice(ssn.Nodes)
+	pods, _ := pl.List(labels.NewSelector())
+	nodeMap, nodeSlice := util.GenerateNodeMapAndSlice(ssn.Nodes)
 
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddEventHandler(&framework.EventHandler{
@@ -135,22 +140,29 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		},
 	})
 
-	ni := &util.CachedNodeInfo{
-		Session: ssn,
-	}
-
-	predicate := enablePredicate(pp.pluginArguments)
+	// Initialize k8s plugins
+	// TODO: Add more predicates, k8s.io/kubernetes/pkg/scheduler/framework/plugins/legacy_registry.go
+	handle := framework.NewFrameworkHandle(pods, nodeSlice)
+	// 1. NodeUnschedulable
+	plugin, _ := nodeunschedulable.New(nil, handle)
+	nodeUnscheduleFilter := plugin.(*nodeunschedulable.NodeUnschedulable)
+	// 2. NodeAffinity
+	plugin, _ = nodeaffinity.New(nil, handle)
+	nodeAffinityFilter := plugin.(*nodeaffinity.NodeAffinity)
+	// 3. NodePorts
+	plugin, _ = nodeports.New(nil, handle)
+	nodePortFilter := plugin.(*nodeports.NodePorts)
+	// 4. TaintToleration
+	plugin, _ = tainttoleration.New(nil, handle)
+	tolerationFilter := plugin.(*tainttoleration.TaintToleration)
+	// 5. InterPodAffinity
+	plugin, _ = interpodaffinity.New(nil, handle)
+	podAffinityFilter := plugin.(*interpodaffinity.InterPodAffinity)
 
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
 		nodeInfo, found := nodeMap[node.Name]
 		if !found {
-			nodeInfo = schedulernodeinfo.NewNodeInfo(node.Pods()...)
-			err := nodeInfo.SetNode(node.Node)
-			if err != nil {
-				klog.Errorf("Failed to predicates, generate node info for %s at PredicateFn: %s", node.Name, err.Error())
-				return err
-			}
-			klog.Warningf("predicates, generate node info for %s at PredicateFn is unexpected", node.Name)
+			fmt.Errorf("failed to predicates, node info for %s not found", node.Name)
 		}
 
 		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods()) {
@@ -159,134 +171,40 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return api.NewFitError(task, node, api.NodePodNumberExceeded)
 		}
 
-		// CheckNodeCondition Predicate
-		fit, reasons, err := predicates.CheckNodeConditionPredicate(task.Pod, nil, nodeInfo)
-		if err != nil {
-			return err
+		state := k8sframework.NewCycleState()
+		// CheckNodeUnschedulable
+		status := nodeUnscheduleFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
+		if !status.IsSuccess() {
+			return fmt.Errorf("plugin %s predicates failed %s", nodeunschedulable.Name, status.Message())
 		}
 
-		klog.V(4).Infof("CheckNodeCondition predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
-			task.Namespace, task.Name, node.Name, fit, err)
-
-		if !fit {
-			return api.NewFitErrorByReasons(task, node, reasons...)
+		// Check NodeAffinity
+		status = nodeAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
+		if !status.IsSuccess() {
+			return fmt.Errorf("plugin %s predicates failed %s", nodeaffinity.Name, status.Message())
 		}
 
-		// CheckNodeUnschedulable Predicate
-		fit, reasons, err = predicates.CheckNodeUnschedulablePredicate(task.Pod, nil, nodeInfo)
-		if err != nil {
-			return err
+		// Check NodePorts
+		nodePortFilter.PreFilter(context.TODO(), state, task.Pod)
+		status = nodePortFilter.Filter(context.TODO(), state, nil, nodeInfo)
+		if !status.IsSuccess() {
+			return fmt.Errorf("plugin %s predicates failed %s", nodeaffinity.Name, status.Message())
 		}
 
-		klog.V(4).Infof("CheckNodeUnschedulable Predicate Task <%s/%s> on Node <%s>: fit %t, err %v",
-			task.Namespace, task.Name, node.Name, fit, err)
-
-		if !fit {
-			return api.NewFitErrorByReasons(task, node, reasons...)
+		// PodToleratesNodeTaints: TaintToleration
+		status = tolerationFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
+		if !status.IsSuccess() {
+			return fmt.Errorf("plugin %s predicates failed %s", tainttoleration.Name, status.Message())
 		}
 
-		// NodeSelector Predicate
-		fit, reasons, err = predicates.PodMatchNodeSelector(task.Pod, nil, nodeInfo)
-		if err != nil {
-			return err
+		// InterPodAffinity Predicate
+		status = podAffinityFilter.PreFilter(context.TODO(), state, task.Pod)
+		if !status.IsSuccess() {
+			return fmt.Errorf("plugin %s pre-predicates failed %s", interpodaffinity.Name, status.Message())
 		}
-
-		klog.V(4).Infof("NodeSelect predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
-			task.Namespace, task.Name, node.Name, fit, err)
-
-		if !fit {
-			return api.NewFitErrorByReasons(task, node, reasons...)
-		}
-
-		// HostPorts Predicate
-		fit, reasons, err = predicates.PodFitsHostPorts(task.Pod, nil, nodeInfo)
-		if err != nil {
-			return err
-		}
-
-		klog.V(4).Infof("HostPorts predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
-			task.Namespace, task.Name, node.Name, fit, err)
-
-		if !fit {
-			return api.NewFitErrorByReasons(task, node, reasons...)
-		}
-
-		// Toleration/Taint Predicate
-		fit, reasons, err = predicates.PodToleratesNodeTaints(task.Pod, nil, nodeInfo)
-		if err != nil {
-			return err
-		}
-
-		klog.V(4).Infof("Toleration/Taint predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
-			task.Namespace, task.Name, node.Name, fit, err)
-
-		if !fit {
-			return api.NewFitErrorByReasons(task, node, reasons...)
-		}
-
-		if predicate.memoryPressureEnable {
-			// CheckNodeMemoryPressurePredicate
-			fit, reasons, err = predicates.CheckNodeMemoryPressurePredicate(task.Pod, nil, nodeInfo)
-			if err != nil {
-				return err
-			}
-
-			klog.V(4).Infof("CheckNodeMemoryPressure predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
-				task.Namespace, task.Name, node.Name, fit, err)
-
-			if !fit {
-				return api.NewFitErrorByReasons(task, node, reasons...)
-			}
-		}
-
-		if predicate.diskPressureEnable {
-			// CheckNodeDiskPressurePredicate
-			fit, reasons, err = predicates.CheckNodeDiskPressurePredicate(task.Pod, nil, nodeInfo)
-			if err != nil {
-				return err
-			}
-
-			klog.V(4).Infof("CheckNodeDiskPressure predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
-				task.Namespace, task.Name, node.Name, fit, err)
-
-			if !fit {
-				return api.NewFitErrorByReasons(task, node, reasons...)
-			}
-		}
-
-		if predicate.pidPressureEnable {
-			// CheckNodePIDPressurePredicate
-			fit, reasons, err = predicates.CheckNodePIDPressurePredicate(task.Pod, nil, nodeInfo)
-			if err != nil {
-				return err
-			}
-
-			klog.V(4).Infof("CheckNodePIDPressurePredicate predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
-				task.Namespace, task.Name, node.Name, fit, err)
-
-			if !fit {
-				return api.NewFitErrorByReasons(task, node, reasons...)
-			}
-		}
-
-		var lister algorithm.PodLister
-		lister = pl
-		if !util.HaveAffinity(task.Pod) {
-			// pod without affinity will be only affected by pod with affinity
-			lister = pl.AffinityLister()
-		}
-		// Pod Affinity/Anti-Affinity Predicate
-		podAffinityPredicate := predicates.NewPodAffinityPredicate(ni, lister)
-		fit, reasons, err = podAffinityPredicate(task.Pod, nil, nodeInfo)
-		if err != nil {
-			return err
-		}
-
-		klog.V(4).Infof("Pod Affinity/Anti-Affinity predicates Task <%s/%s> on Node <%s>: fit %t, err %v",
-			task.Namespace, task.Name, node.Name, fit, err)
-
-		if !fit {
-			return api.NewFitErrorByReasons(task, node, reasons...)
+		status = podAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
+		if !status.IsSuccess() {
+			return fmt.Errorf("plugin %s predicates failed %s", interpodaffinity.Name, status.Message())
 		}
 
 		return nil

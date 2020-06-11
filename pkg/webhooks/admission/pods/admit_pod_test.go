@@ -17,6 +17,7 @@ limitations under the License.
 package pods
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -154,7 +155,7 @@ func TestValidatePod(t *testing.T) {
 		config.SchedulerName = "volcano"
 
 		if !testCase.disabledPG {
-			_, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(namespace).Create(pg)
+			_, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), pg, metav1.CreateOptions{})
 			if err != nil {
 				t.Error("PG Creation Failed")
 			}

@@ -17,9 +17,11 @@ limitations under the License.
 package queue
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s.io/apimachinery/pkg/types"
 
@@ -85,7 +87,8 @@ func OperateQueue() error {
 
 		queueClient := versioned.NewForConfigOrDie(config)
 		patchBytes := []byte(fmt.Sprintf(`{"spec":{"weight":%d}}`, operateQueueFlags.Weight))
-		_, err := queueClient.SchedulingV1beta1().Queues().Patch(operateQueueFlags.Name, types.MergePatchType, patchBytes)
+		_, err := queueClient.SchedulingV1beta1().Queues().Patch(context.TODO(),
+			operateQueueFlags.Name, types.MergePatchType, patchBytes, metav1.PatchOptions{})
 
 		return err
 	case "":

@@ -18,6 +18,7 @@ package e2e
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 
 	. "github.com/onsi/ginkgo"
@@ -59,7 +60,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		Expect(err).NotTo(HaveOccurred())
 		//Command outputs are identical
 		outputs := ListJobs(ctx.namespace)
-		jobs, err := ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).List(metav1.ListOptions{})
+		jobs, err := ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).List(context.TODO(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		ctlJob.PrintJobs(jobs, &outBuffer)
 		Expect(outputs).To(Equal(outBuffer.String()), "List command result should be:\n %s",
@@ -146,7 +147,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 
 		//Pod is gone
 		podName := jobUtil.MakePodName(jobName, taskName, 0)
-		_, err = ctx.kubeclient.CoreV1().Pods(ctx.namespace).Get(podName, metav1.GetOptions{})
+		_, err = ctx.kubeclient.CoreV1().Pods(ctx.namespace).Get(context.TODO(), podName, metav1.GetOptions{})
 		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 			"Job related pod should be deleted when job aborted.")
 	})
@@ -195,13 +196,13 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		err = waitJobStateReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Get(jobName, metav1.GetOptions{})
+		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// Delete job
 		DeleteJob(jobName, ctx.namespace)
 
-		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Get(jobName, metav1.GetOptions{})
+		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
 		Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 			"Job should be deleted on vcctl job delete.")
 	})

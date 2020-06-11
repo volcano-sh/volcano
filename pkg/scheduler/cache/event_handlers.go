@@ -17,6 +17,7 @@ limitations under the License.
 package cache
 
 import (
+	"context"
 	"fmt"
 
 	v1 "k8s.io/api/core/v1"
@@ -83,7 +84,7 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 }
 
 func (sc *SchedulerCache) syncTask(oldTask *schedulingapi.TaskInfo) error {
-	newPod, err := sc.kubeclient.CoreV1().Pods(oldTask.Namespace).Get(oldTask.Name, metav1.GetOptions{})
+	newPod, err := sc.kubeclient.CoreV1().Pods(oldTask.Namespace).Get(context.TODO(), oldTask.Name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err := sc.deleteTask(oldTask)

@@ -17,6 +17,7 @@ limitations under the License.
 package queue
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -269,10 +270,10 @@ func TestSyncQueue(t *testing.T) {
 
 		c.pgInformer.Informer().GetIndexer().Add(testcase.podGroup)
 		c.queueInformer.Informer().GetIndexer().Add(testcase.queue)
-		c.vcClient.SchedulingV1beta1().Queues().Create(testcase.queue)
+		c.vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), testcase.queue, metav1.CreateOptions{})
 
 		err := c.syncQueue(testcase.queue, nil)
-		item, _ := c.vcClient.SchedulingV1beta1().Queues().Get(testcase.queue.Name, metav1.GetOptions{})
+		item, _ := c.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), testcase.queue.Name, metav1.GetOptions{})
 		if err != nil && testcase.ExpectValue != item.Status.Pending {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, c.queue.Len())
 		}

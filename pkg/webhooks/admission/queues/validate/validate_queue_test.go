@@ -17,6 +17,7 @@ limitations under the License.
 package validate
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -134,21 +135,21 @@ func TestAdmitQueues(t *testing.T) {
 	}
 
 	config.VolcanoClient = fakeclient.NewSimpleClientset()
-	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(&openStateForDelete)
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &openStateForDelete, metav1.CreateOptions{})
 	if err != nil {
 		t.Errorf("Crate queue with open state failed for %v.", err)
 	}
 
-	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(&closedStateForDelete)
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &closedStateForDelete, metav1.CreateOptions{})
 	if err != nil {
 		t.Errorf("Crate queue with closed state failed for %v.", err)
 	}
 
 	defer func() {
-		if err := config.VolcanoClient.SchedulingV1beta1().Queues().Delete(openStateForDelete.Name, &v1.DeleteOptions{}); err != nil {
+		if err := config.VolcanoClient.SchedulingV1beta1().Queues().Delete(context.TODO(), openStateForDelete.Name, v1.DeleteOptions{}); err != nil {
 			fmt.Println(fmt.Sprintf("Delete queue with open state failed for %v.", err))
 		}
-		if err := config.VolcanoClient.SchedulingV1beta1().Queues().Delete(closedStateForDelete.Name, &v1.DeleteOptions{}); err != nil {
+		if err := config.VolcanoClient.SchedulingV1beta1().Queues().Delete(context.TODO(), closedStateForDelete.Name, v1.DeleteOptions{}); err != nil {
 			fmt.Println(fmt.Sprintf("Delete queue with closed state failed for %v.", err))
 		}
 	}()

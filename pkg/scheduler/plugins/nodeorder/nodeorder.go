@@ -17,13 +17,17 @@ limitations under the License.
 package nodeorder
 
 import (
-	"k8s.io/apimachinery/pkg/api/errors"
+	"context"
+	"fmt"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/scheduler/algorithm/priorities"
-	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
-	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/noderesources"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -124,18 +128,10 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 }
 
 func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
-	var nodeMap map[string]*schedulernodeinfo.NodeInfo
-	var nodeSlice []*v1.Node
-
 	weight := calculateWeight(pp.pluginArguments)
-
 	pl := util.NewPodLister(ssn)
-
-	cn := &cachedNodeInfo{
-		session: ssn,
-	}
-
-	nodeMap, nodeSlice = util.GenerateNodeMapAndSlice(ssn.Nodes)
+	pods, _ := pl.List(labels.NewSelector())
+	nodeMap, nodeSlice := util.GenerateNodeMapAndSlice(ssn.Nodes)
 
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddEventHandler(&framework.EventHandler{
@@ -169,92 +165,115 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		},
 	})
 
+	// Initialize k8s scheduling plugins
+	handle := framework.NewFrameworkHandle(pods, nodeSlice)
+	// 1. NodeResourcesLeastAllocated
+	p, _ := noderesources.NewLeastAllocated(nil, handle)
+	leastAllocated := p.(*noderesources.LeastAllocated)
+
+	// 2. NodeResourcesBalancedAllocation
+	p, _ = noderesources.NewBalancedAllocation(nil, handle)
+	balancedAllocation := p.(*noderesources.BalancedAllocation)
+
+	// 3. NodeAffinity
+	p, _ = nodeaffinity.New(nil, handle)
+	affinity := p.(*nodeaffinity.NodeAffinity)
+
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-		nodeInfo, found := nodeMap[node.Name]
-		if !found {
-			nodeInfo = schedulernodeinfo.NewNodeInfo(node.Pods()...)
-			err := nodeInfo.SetNode(node.Node)
-			if err != nil {
-				klog.Errorf("Failed to generate node info for %s at NodeOrderFn: %s", node.Name, err.Error())
-				return 0, err
-			}
-			klog.Warningf("node order, generate node info for %s at NodeOrderFn is unexpected", node.Name)
-		}
-		var score = 0.0
+		var nodeScore = 0.0
 
 		//TODO: Add ImageLocalityPriority Function once priorityMetadata is published
 		//Issue: #74132 in kubernetes ( https://github.com/kubernetes/kubernetes/issues/74132 )
 
-		host, err := priorities.LeastRequestedPriorityMap(task.Pod, nil, nodeInfo)
-		if err != nil {
-			klog.Warningf("Least Requested Priority Failed because of Error: %v", err)
-			return 0, err
+		// NodeResourcesLeastAllocated
+		score, status := leastAllocated.Score(context.TODO(), nil, task.Pod, node.Name)
+		if !status.IsSuccess() {
+			klog.Warningf("Least Allocated Priority Failed because of Error: %v", status.AsError())
+			return 0, status.AsError()
 		}
-		// If leastReqWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		score += float64(host.Score * weight.leastReqWeight)
 
-		host, err = priorities.BalancedResourceAllocationMap(task.Pod, nil, nodeInfo)
-		if err != nil {
-			klog.Warningf("Balanced Resource Allocation Priority Failed because of Error: %v", err)
-			return 0, err
+		// If leastReqWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
+		nodeScore += float64(score) * float64(weight.leastReqWeight)
+
+		// NodeResourcesBalancedAllocation
+		score, status = balancedAllocation.Score(context.TODO(), nil, task.Pod, node.Name)
+		if !status.IsSuccess() {
+			klog.Warningf("Balanced Resource Allocation Priority Failed because of Error: %v", status.AsError())
+			return 0, status.AsError()
 		}
 		// If balancedRescourceWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		score += float64(host.Score * weight.balancedRescourceWeight)
+		nodeScore += float64(score) * float64(weight.balancedRescourceWeight)
 
-		host, err = priorities.CalculateNodeAffinityPriorityMap(task.Pod, nil, nodeInfo)
-		if err != nil {
-			klog.Warningf("Calculate Node Affinity Priority Failed because of Error: %v", err)
-			return 0, err
+		score, status = affinity.Score(context.TODO(), nil, task.Pod, node.Name)
+		if !status.IsSuccess() {
+			klog.Warningf("Calculate Node Affinity Priority Failed because of Error: %v", status.AsError())
+			return 0, status.AsError()
 		}
+		// TODO: should we normalize the score
 		// If nodeAffinityWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		score += float64(host.Score * weight.nodeAffinityWeight)
+		nodeScore += float64(score) * float64(weight.nodeAffinityWeight)
 
-		klog.V(4).Infof("Total Score for task %s/%s on node %s is: %f", task.Namespace, task.Name, node.Name, score)
-		return score, nil
+		klog.V(4).Infof("Total Score for task %s/%s on node %s is: %f", task.Namespace, task.Name, node.Name, nodeScore)
+		return nodeScore, nil
 	}
 	ssn.AddNodeOrderFn(pp.Name(), nodeOrderFn)
 
-	batchNodeOrderFn := func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
-		var interPodAffinityScore schedulerapi.HostPriorityList
+	p, _ = interpodaffinity.New(nil, handle)
+	interPodAffinity := p.(*interpodaffinity.InterPodAffinity)
 
-		mapFn := priorities.NewInterPodAffinityPriority(cn, v1.DefaultHardPodAffinitySymmetricWeight)
-		interPodAffinityScore, err := mapFn(task.Pod, nodeMap, nodeSlice)
-		if err != nil {
-			klog.Warningf("Calculate Inter Pod Affinity Priority Failed because of Error: %v", err)
+	batchNodeOrderFn := func(task *api.TaskInfo, nodeInfo []*api.NodeInfo) (map[string]float64, error) {
+		// InterPodAffinity
+		state := k8sframework.NewCycleState()
+		nodes := make([]*v1.Node, 0, len(nodeInfo))
+		for _, node := range nodeInfo {
+			nodes = append(nodes, node.Node)
+		}
+		preScoreStatus := interPodAffinity.PreScore(context.TODO(), state, task.Pod, nodes)
+		if !preScoreStatus.IsSuccess() {
+			return nil, preScoreStatus.AsError()
+		}
+
+		nodescoreList := make(k8sframework.NodeScoreList, len(nodes))
+		errCh := make(chan error, 1)
+		workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), func(index int) {
+			nodeName := nodes[index].Name
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			s, status := interPodAffinity.Score(ctx, state, task.Pod, nodeName)
+			if !status.IsSuccess() {
+				errCh <- fmt.Errorf("calculate inter pod affinity priority failed %v", status.Message())
+				return
+			}
+			nodescoreList[index] = k8sframework.NodeScore{
+				Name:  nodeName,
+				Score: s,
+			}
+		})
+
+		select {
+		case err := <-errCh:
 			return nil, err
+		default:
 		}
 
-		score := make(map[string]float64, len(interPodAffinityScore))
-		for _, host := range interPodAffinityScore {
-			score[host.Host] = float64(host.Score) * float64(weight.podAffinityWeight)
+		interPodAffinity.NormalizeScore(context.TODO(), state, task.Pod, nodescoreList)
+
+		nodeScores := make(map[string]float64, len(nodes))
+		for i, nodeScore := range nodescoreList {
+			// return error if score plugin returns invalid score.
+			if nodeScore.Score > k8sframework.MaxNodeScore || nodeScore.Score < k8sframework.MinNodeScore {
+				return nil, fmt.Errorf("inter pod affinity returns an invalid score %v for node %s", nodeScore.Score, nodeScore.Name)
+			}
+			nodeScore.Score *= int64(weight.podAffinityWeight)
+			nodescoreList[i] = nodeScore
+			nodeScores[nodeScore.Name] = float64(nodeScore.Score)
 		}
 
-		klog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, score)
-		return score, nil
+		klog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, nodeScores)
+		return nodeScores, nil
 	}
 	ssn.AddBatchNodeOrderFn(pp.Name(), batchNodeOrderFn)
 }
 
 func (pp *nodeOrderPlugin) OnSessionClose(ssn *framework.Session) {
-}
-
-type cachedNodeInfo struct {
-	session *framework.Session
-}
-
-func (c *cachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
-	node, found := c.session.Nodes[name]
-	if !found {
-		for _, cacheNode := range c.session.Nodes {
-			pods := cacheNode.Pods()
-			for _, pod := range pods {
-				if pod.Spec.NodeName == "" {
-					return cacheNode.Node, nil
-				}
-			}
-		}
-		return nil, errors.NewNotFound(v1.Resource("node"), name)
-	}
-
-	return node.Node, nil
 }

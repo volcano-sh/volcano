@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -377,10 +378,10 @@ var _ = Describe("Job E2E Test", func() {
 		basePod := basePods[0]
 		baseNodeName := basePod.Spec.NodeName
 
-		node, err := ctx.kubeclient.CoreV1().Nodes().Get(baseNodeName, metav1.GetOptions{})
+		node, err := ctx.kubeclient.CoreV1().Nodes().Get(context.TODO(), baseNodeName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		clusterPods, err := ctx.kubeclient.CoreV1().Pods(v1.NamespaceAll).List(metav1.ListOptions{})
+		clusterPods, err := ctx.kubeclient.CoreV1().Pods(v1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		alloc := schedulingapi.NewResource(node.Status.Allocatable)
@@ -460,7 +461,7 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		//create job
-		job, err := ctx.kubeclient.BatchV1().Jobs(ctx.namespace).Create(job)
+		job, err := ctx.kubeclient.BatchV1().Jobs(ctx.namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitJobPhaseReady(ctx, job)
@@ -516,11 +517,11 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		//create error job
-		_, err := ctx.kubeclient.BatchV1().Jobs(ctx.namespace).Create(errorJob)
+		_, err := ctx.kubeclient.BatchV1().Jobs(ctx.namespace).Create(context.TODO(), errorJob, metav1.CreateOptions{})
 		Expect(err).To(HaveOccurred())
 
 		//create job
-		job, err = ctx.kubeclient.BatchV1().Jobs(ctx.namespace).Create(job)
+		job, err = ctx.kubeclient.BatchV1().Jobs(ctx.namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitJobPhaseReady(ctx, job)
@@ -531,17 +532,21 @@ var _ = Describe("Job E2E Test", func() {
 		ctx := initTestContext(options{})
 		defer cleanupTestContext(ctx)
 		const fairShareNamespace = "fairshare"
-		_, err := ctx.kubeclient.CoreV1().Namespaces().Create(&v1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: fairShareNamespace,
+		_, err := ctx.kubeclient.CoreV1().Namespaces().Create(context.TODO(),
+			&v1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fairShareNamespace,
+				},
 			},
-		})
+			metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		defer func() {
 			deleteForeground := metav1.DeletePropagationForeground
-			err := ctx.kubeclient.CoreV1().Namespaces().Delete(fairShareNamespace, &metav1.DeleteOptions{
-				PropagationPolicy: &deleteForeground,
-			})
+			err := ctx.kubeclient.CoreV1().Namespaces().Delete(context.TODO(),
+				fairShareNamespace,
+				metav1.DeleteOptions{
+					PropagationPolicy: &deleteForeground,
+				})
 			Expect(err).NotTo(HaveOccurred())
 
 			err = wait.Poll(100*time.Millisecond, twoMinute, namespaceNotExistWithName(ctx, fairShareNamespace))
@@ -581,8 +586,9 @@ var _ = Describe("Job E2E Test", func() {
 
 		By("release occupied cluster resources")
 		deleteBackground := metav1.DeletePropagationBackground
-		err = ctx.vcclient.BatchV1alpha1().Jobs(occupiedJob.Namespace).Delete(occupiedJob.Name,
-			&metav1.DeleteOptions{
+		err = ctx.vcclient.BatchV1alpha1().Jobs(occupiedJob.Namespace).Delete(context.TODO(),
+			occupiedJob.Name,
+			metav1.DeleteOptions{
 				PropagationPolicy: &deleteBackground,
 			})
 		Expect(err).NotTo(HaveOccurred())
@@ -602,7 +608,7 @@ var _ = Describe("Job E2E Test", func() {
 			fsScheduledPod = 0
 			testScheduledPod = 0
 
-			pods, err := ctx.kubeclient.CoreV1().Pods(fairShareNamespace).List(metav1.ListOptions{})
+			pods, err := ctx.kubeclient.CoreV1().Pods(fairShareNamespace).List(context.TODO(), metav1.ListOptions{})
 			if err != nil {
 				return false, err
 			}
@@ -612,7 +618,7 @@ var _ = Describe("Job E2E Test", func() {
 				}
 			}
 
-			pods, err = ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(metav1.ListOptions{})
+			pods, err = ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(context.TODO(), metav1.ListOptions{})
 			if err != nil {
 				return false, err
 			}
@@ -676,8 +682,9 @@ var _ = Describe("Job E2E Test", func() {
 
 		By(fmt.Sprintf("release occupied cluster resources, %s/%s", occupiedJob.Namespace, occupiedJob.Name))
 		deleteForeground := metav1.DeletePropagationBackground
-		err = ctx.vcclient.BatchV1alpha1().Jobs(occupiedJob.Namespace).Delete(occupiedJob.Name,
-			&metav1.DeleteOptions{
+		err = ctx.vcclient.BatchV1alpha1().Jobs(occupiedJob.Namespace).Delete(context.TODO(),
+			occupiedJob.Name,
+			metav1.DeleteOptions{
 				PropagationPolicy: &deleteForeground,
 			})
 		Expect(err).NotTo(HaveOccurred())
@@ -697,7 +704,7 @@ var _ = Describe("Job E2E Test", func() {
 			q1ScheduledPod = 0
 			q2ScheduledPod = 0
 
-			pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(metav1.ListOptions{})
+			pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(context.TODO(), metav1.ListOptions{})
 			if err != nil {
 				return false, err
 			}

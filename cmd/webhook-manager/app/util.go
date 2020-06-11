@@ -17,6 +17,7 @@ limitations under the License.
 package app
 
 import (
+	"context"
 	"crypto/tls"
 	"regexp"
 	"strings"
@@ -131,19 +132,19 @@ func configTLS(config *options.Config, restConfig *rest.Config) *tls.Config {
 
 func registerMutateWebhook(clientset *kubernetes.Clientset, hook *v1beta1.MutatingWebhookConfiguration) error {
 	client := clientset.AdmissionregistrationV1beta1().MutatingWebhookConfigurations()
-	existing, err := client.Get(hook.Name, metav1.GetOptions{})
+	existing, err := client.Get(context.TODO(), hook.Name, metav1.GetOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
 	if err == nil && existing != nil {
 		klog.V(4).Infof("Updating MutatingWebhookConfiguration %v", hook)
 		existing.Webhooks = hook.Webhooks
-		if _, err := client.Update(existing); err != nil {
+		if _, err := client.Update(context.TODO(), existing, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 	} else {
 		klog.V(4).Infof("Creating MutatingWebhookConfiguration %v", hook)
-		if _, err := client.Create(hook); err != nil {
+		if _, err := client.Create(context.TODO(), hook, metav1.CreateOptions{}); err != nil {
 			return err
 		}
 	}
@@ -154,19 +155,19 @@ func registerMutateWebhook(clientset *kubernetes.Clientset, hook *v1beta1.Mutati
 func registerValidateWebhook(clientset *kubernetes.Clientset, hook *v1beta1.ValidatingWebhookConfiguration) error {
 	client := clientset.AdmissionregistrationV1beta1().ValidatingWebhookConfigurations()
 
-	existing, err := client.Get(hook.Name, metav1.GetOptions{})
+	existing, err := client.Get(context.TODO(), hook.Name, metav1.GetOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
 	if err == nil && existing != nil {
 		existing.Webhooks = hook.Webhooks
 		klog.V(4).Infof("Updating ValidatingWebhookConfiguration %v", hook)
-		if _, err := client.Update(existing); err != nil {
+		if _, err := client.Update(context.TODO(), existing, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 	} else {
 		klog.V(4).Infof("Creating ValidatingWebhookConfiguration %v", hook)
-		if _, err := client.Create(hook); err != nil {
+		if _, err := client.Create(context.TODO(), hook, metav1.CreateOptions{}); err != nil {
 			return err
 		}
 	}

@@ -17,12 +17,11 @@ limitations under the License.
 package util
 
 import (
-	"k8s.io/apimachinery/pkg/api/errors"
-
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/scheduler/algorithm"
+	"k8s.io/kubernetes/pkg/scheduler/listers"
 	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -141,7 +140,7 @@ func (pl *PodLister) List(selector labels.Selector) ([]*v1.Pod, error) {
 }
 
 // FilteredList is used to list all the pods under filter condition
-func (pl *PodLister) filteredListWithTaskSet(taskSet map[api.TaskID]*api.TaskInfo, podFilter algorithm.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
+func (pl *PodLister) filteredListWithTaskSet(taskSet map[api.TaskID]*api.TaskInfo, podFilter listers.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
 	var pods []*v1.Pod
 	for _, task := range taskSet {
 		pod := pl.GetPod(task)
@@ -154,12 +153,12 @@ func (pl *PodLister) filteredListWithTaskSet(taskSet map[api.TaskID]*api.TaskInf
 }
 
 // FilteredList is used to list all the pods under filter condition
-func (pl *PodLister) FilteredList(podFilter algorithm.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
+func (pl *PodLister) FilteredList(podFilter listers.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
 	return pl.filteredListWithTaskSet(pl.Tasks, podFilter, selector)
 }
 
 // AffinityFilteredList is used to list all the pods with affinity under filter condition
-func (pl *PodLister) AffinityFilteredList(podFilter algorithm.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
+func (pl *PodLister) AffinityFilteredList(podFilter listers.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
 	return pl.filteredListWithTaskSet(pl.TaskWithAffinity, podFilter, selector)
 }
 
@@ -177,7 +176,7 @@ func (pal *PodAffinityLister) List(selector labels.Selector) ([]*v1.Pod, error) 
 }
 
 // FilteredList is used to list all the pods with affinity under filter condition
-func (pal *PodAffinityLister) FilteredList(podFilter algorithm.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
+func (pal *PodAffinityLister) FilteredList(podFilter listers.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
 	return pal.pl.AffinityFilteredList(podFilter, selector)
 }
 

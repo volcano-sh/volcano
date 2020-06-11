@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -25,7 +26,6 @@ import (
 
 	cv1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/kubernetes/pkg/scheduler/api"
 
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
@@ -51,7 +51,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 						{
 							MatchFields: []cv1.NodeSelectorRequirement{
 								{
-									Key:      api.NodeFieldSelectorKeyNodeName,
+									Key:      "metadata.name",
 									Operator: cv1.NodeSelectorOpIn,
 									Values:   []string{nodeName},
 								},
@@ -84,11 +84,11 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		pluginName := fmt.Sprintf("%s-svc", jobName)
-		_, err = ctx.kubeclient.CoreV1().ConfigMaps(ctx.namespace).Get(
+		_, err = ctx.kubeclient.CoreV1().ConfigMaps(ctx.namespace).Get(context.TODO(),
 			pluginName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		pod, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).Get(
+		pod, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).Get(context.TODO(),
 			fmt.Sprintf(helpers.PodNameFmt, jobName, taskName, 0), v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		for _, volume := range pod.Spec.Volumes {
@@ -153,11 +153,11 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		secretName := genSSHSecretName(job)
-		_, err = ctx.kubeclient.CoreV1().Secrets(ctx.namespace).Get(
+		_, err = ctx.kubeclient.CoreV1().Secrets(ctx.namespace).Get(context.TODO(),
 			secretName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		pod, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).Get(
+		pod, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).Get(context.TODO(),
 			fmt.Sprintf(helpers.PodNameFmt, jobName, taskName, 0), v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		for _, volume := range pod.Spec.Volumes {
@@ -207,7 +207,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 
 		// Check whether network policy is created with job name
 		networkPolicyName := jobName
-		_, err = ctx.kubeclient.NetworkingV1().NetworkPolicies(ctx.namespace).Get(networkPolicyName, v1.GetOptions{})
+		_, err = ctx.kubeclient.NetworkingV1().NetworkPolicies(ctx.namespace).Get(context.TODO(), networkPolicyName, v1.GetOptions{})
 		// Error will occur because there is no policy should be created
 		Expect(err).To(HaveOccurred())
 	})
@@ -246,11 +246,11 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		secretName := genSSHSecretName(job)
-		_, err = ctx.kubeclient.CoreV1().Secrets(ctx.namespace).Get(
+		_, err = ctx.kubeclient.CoreV1().Secrets(ctx.namespace).Get(context.TODO(),
 			secretName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		pod, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).Get(
+		pod, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).Get(context.TODO(),
 			fmt.Sprintf(helpers.PodNameFmt, jobName, taskName, 0), v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		for _, volume := range pod.Spec.Volumes {
@@ -287,7 +287,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		}
 
 		// Check whether service is created with job name
-		_, err = ctx.kubeclient.CoreV1().Services(job.Namespace).Get(job.Name, v1.GetOptions{})
+		_, err = ctx.kubeclient.CoreV1().Services(job.Namespace).Get(context.TODO(), job.Name, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 	})
 })

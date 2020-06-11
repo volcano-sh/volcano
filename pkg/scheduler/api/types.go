@@ -17,7 +17,7 @@ limitations under the License.
 package api
 
 import (
-	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
+	schedulerapi "k8s.io/kube-scheduler/extender/v1"
 )
 
 // TaskStatus defines the status of a task/pod.

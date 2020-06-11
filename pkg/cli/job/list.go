@@ -17,6 +17,7 @@ limitations under the License.
 package job
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -98,7 +99,7 @@ func ListJobs() error {
 		listJobFlags.Namespace = ""
 	}
 	jobClient := versioned.NewForConfigOrDie(config)
-	jobs, err := jobClient.BatchV1alpha1().Jobs(listJobFlags.Namespace).List(metav1.ListOptions{})
+	jobs, err := jobClient.BatchV1alpha1().Jobs(listJobFlags.Namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
