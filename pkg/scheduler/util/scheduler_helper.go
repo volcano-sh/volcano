@@ -28,7 +28,7 @@ import (
 	"k8s.io/klog"
 
 	"k8s.io/client-go/util/workqueue"
-	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
+	schedulerapi "k8s.io/kube-scheduler/extender/v1"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -139,7 +139,7 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 			}
 			hp := schedulerapi.HostPriority{}
 			hp.Host = node.Name
-			hp.Score = int(math.Floor(score))
+			hp.Score = int64(math.Floor(score))
 			pluginNodeScoreMap[plugin] = append(nodeScoreMap, hp)
 		}
 		nodeOrderScoreMap[node.Name] = orderScore

@@ -22,7 +22,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
-	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
+	"k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -239,7 +239,7 @@ func BinPackingScore(task *api.TaskInfo, node *api.NodeInfo, weight priorityWeig
 	if weightSum > 0 {
 		score /= float64(weightSum)
 	}
-	score *= schedulerapi.MaxPriority * float64(weight.BinPackingWeight)
+	score *= float64(v1alpha1.MaxNodeScore * int64(weight.BinPackingWeight))
 
 	return score
 }

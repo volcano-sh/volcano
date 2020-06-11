@@ -17,7 +17,7 @@ limitations under the License.
 package framework
 
 import (
-	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
+	schedulerapi "k8s.io/kube-scheduler/extender/v1"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
