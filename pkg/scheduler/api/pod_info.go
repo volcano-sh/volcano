@@ -17,6 +17,8 @@ limitations under the License.
 package api
 
 import (
+	"fmt"
+
 	v1 "k8s.io/api/core/v1"
 )
 
@@ -70,4 +72,15 @@ func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {
 	}
 
 	return result
+}
+
+func UpdateGPUPod(oldPod *v1.Pod, coreId int, memoryPerCore int) (newPod *v1.Pod) {
+	newPod = oldPod.DeepCopy()
+	if len(newPod.ObjectMeta.Annotations) == 0 {
+		newPod.ObjectMeta.Annotations = map[string]string{}
+	}
+
+	newPod.ObjectMeta.Annotations["volcano.sh/gpu-core-id"] = fmt.Sprintf("%d", coreId)
+
+	return newPod
 }

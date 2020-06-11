@@ -403,3 +403,40 @@ func (ni *NodeInfo) GetDevicesAllGPUMemory() map[int]uint {
 	}
 	return res
 }
+
+func (ni *NodeInfo) GetDeviceCoreId(pod *v1.Pod) (int, bool) {
+
+	resId := -1
+	resOk := false
+	cMem := uint(0)
+	rMems := ni.GetDevicesRemainGPUMemory()
+
+	gpuReq := uint(0)
+
+	if len(pod.ObjectMeta.Annotations) > 0 {
+		req, ok := pod.ObjectMeta.Annotations["volcano.sh/pod-gpu-memory"]
+		if ok {
+			s, _ := strconv.Atoi(req)
+			gpuReq = uint(s)
+		}
+	}
+
+	if gpuReq > uint(0) {
+		if len(rMems) > 0 {
+			for i := 0; i < len(ni.Devices); i++ {
+				rMem, ok := rMems[i]
+				if ok {
+					if rMem >= gpuReq {
+						if resId == -1 || cMem > rMem {
+							resId = i
+							cMem = rMem
+						}
+						resOk = true
+					}
+				}
+			}
+		}
+	}
+
+	return resId, resOk
+}

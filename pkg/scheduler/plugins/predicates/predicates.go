@@ -20,6 +20,8 @@ import (
 	"context"
 	"fmt"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
@@ -121,6 +123,11 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	pods, _ := pl.List(labels.NewSelector())
 	nodeMap, nodeSlice := util.GenerateNodeMapAndSlice(ssn.Nodes)
 
+	predicate := enablePredicate(pp.pluginArguments)
+
+	//TODO: (tizhou86) zhonghu will pass the client set into this function
+	clientSet := NewClientSetOrClientSetInstance()
+
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
@@ -128,23 +135,57 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			nodeName := event.Task.NodeName
 			node, found := nodeMap[nodeName]
-			if !found {
-				klog.Warningf("predicates, update pod %s/%s allocate to NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+			nodeInfo, foundInfo := ssn.Nodes[nodeName]
+
+			if predicate.gpuSharingEnable {
+				if !foundInfo {
+					klog.Warningf("predicates with gpu sharing, update pod %s/%s allocate to NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+				} else {
+					coreId, found := nodeInfo.GetDeviceCoreId(pod)
+					if found {
+						var err error
+						pod, err = clientSet.CoreV1().Pods(pod.Namespace).Get(pod.Name, metav1.GetOptions{})
+						newPod := api.UpdateGPUPod(pod, coreId, nodeInfo.GPUTotalMemory/nodeInfo.GPUTotalCore)
+						_, err = clientSet.CoreV1().Pods(newPod.Namespace).Update(newPod)
+					} else {
+						klog.Errorf("The node %s can't place the pod %s in ns %s", pod.Spec.NodeName, pod.Name, pod.Namespace)
+					}
+
+					dev, found := nodeInfo.Devices[coreId]
+					if !found {
+
+					} else {
+						dev.PodMap[newPod.UID] = newPod
+						node.AddPod(pod)
+					}
+
+					klog.V(4).Infof("predicates with gpu sharing, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
+				}
 			} else {
-				node.AddPod(pod)
-				klog.V(4).Infof("predicates, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
+				if !found {
+					klog.Warningf("predicates, update pod %s/%s allocate to NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+				} else {
+					node.AddPod(pod)
+					klog.V(4).Infof("predicates, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
+				}
 			}
+
 		},
 		DeallocateFunc: func(event *framework.Event) {
 			pod := pl.UpdateTask(event.Task, "")
 
 			nodeName := event.Task.NodeName
 			node, found := nodeMap[nodeName]
-			if !found {
-				klog.Warningf("predicates, update pod %s/%s allocate from NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+
+			if predicate.gpuSharingEnable {
+				//TODO: (tizhou86) add deallocate logic
 			} else {
-				node.RemovePod(pod)
-				klog.V(4).Infof("predicates, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
+				if !found {
+					klog.Warningf("predicates, update pod %s/%s allocate from NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+				} else {
+					node.RemovePod(pod)
+					klog.V(4).Infof("predicates, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
+				}
 			}
 		},
 	})
