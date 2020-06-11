@@ -57,7 +57,7 @@ CreateOrUpdateConfigMap :
 */
 func CreateOrUpdateConfigMap(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[string]string, cmName string) error {
 	// If ConfigMap does not exist, create one for Job.
-	cmOld, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{})
+	cmOld, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(context.TODO(), cmName, metav1.GetOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.V(3).Infof("Failed to get Configmap for Job <%s/%s>: %v",
@@ -76,7 +76,7 @@ func CreateOrUpdateConfigMap(job *vcbatch.Job, kubeClients kubernetes.Interface,
 			Data: data,
 		}
 
-		if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Create(cm); err != nil {
+		if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Create(context.TODO(), cm, metav1.CreateOptions{}); err != nil {
 			klog.V(3).Infof("Failed to create ConfigMap for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
 			return err
@@ -90,7 +90,7 @@ func CreateOrUpdateConfigMap(job *vcbatch.Job, kubeClients kubernetes.Interface,
 	}
 
 	cmOld.Data = data
-	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Update(cmOld); err != nil {
+	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Update(context.TODO(), cmOld, metav1.UpdateOptions{}); err != nil {
 		klog.V(3).Infof("Failed to update ConfigMap for Job <%s/%s>: %v",
 			job.Namespace, job.Name, err)
 		return err
@@ -112,7 +112,7 @@ func CreateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[s
 		Data: data,
 	}
 
-	_, err := kubeClients.CoreV1().Secrets(job.Namespace).Create(secret)
+	_, err := kubeClients.CoreV1().Secrets(job.Namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
 	if apierrors.IsAlreadyExists(err) {
 		return nil
 	}
@@ -122,7 +122,7 @@ func CreateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[s
 
 // DeleteConfigmap deletes the config map resource.
 func DeleteConfigmap(job *vcbatch.Job, kubeClients kubernetes.Interface, cmName string) error {
-	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(cmName, metav1.GetOptions{}); err != nil {
+	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(context.TODO(), cmName, metav1.GetOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.V(3).Infof("Failed to get Configmap for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
@@ -132,7 +132,7 @@ func DeleteConfigmap(job *vcbatch.Job, kubeClients kubernetes.Interface, cmName 
 
 	}
 
-	if err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Delete(cmName, nil); err != nil {
+	if err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Delete(context.TODO(), cmName, metav1.DeleteOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to delete Configmap of Job %v/%v: %v",
 				job.Namespace, job.Name, err)
@@ -145,7 +145,7 @@ func DeleteConfigmap(job *vcbatch.Job, kubeClients kubernetes.Interface, cmName 
 
 // DeleteSecret delete secret.
 func DeleteSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, secretName string) error {
-	err := kubeClients.CoreV1().Secrets(job.Namespace).Delete(secretName, nil)
+	err := kubeClients.CoreV1().Secrets(job.Namespace).Delete(context.TODO(), secretName, metav1.DeleteOptions{})
 	if err != nil && apierrors.IsNotFound(err) {
 		return nil
 	}

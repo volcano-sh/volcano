@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -59,7 +60,7 @@ var _ = Describe("Queue E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitQueueStatus(func() (bool, error) {
-			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(q1, metav1.GetOptions{})
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			return queue.Status.Running == 1, nil
 		})
@@ -101,7 +102,7 @@ var _ = Describe("Queue E2E Test", func() {
 		err = waitJobStatePending(ctx, job3)
 		Expect(err).NotTo(HaveOccurred())
 		err = waitQueueStatus(func() (bool, error) {
-			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(q1, metav1.GetOptions{})
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			return queue.Status.Pending == 1, nil
 		})

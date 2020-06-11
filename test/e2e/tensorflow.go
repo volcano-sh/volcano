@@ -17,6 +17,8 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
@@ -114,7 +116,7 @@ var _ = Describe("TensorFlow E2E Test", func() {
 			},
 		}
 
-		created, err := ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(job)
+		created, err := ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitJobStates(ctx, created, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Completed}, twoMinute)

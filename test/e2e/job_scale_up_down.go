@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"fmt"
 
 	. "github.com/onsi/ginkgo"
@@ -29,13 +30,13 @@ import (
 
 var _ = Describe("Dynamic Job scale up and down", func() {
 	It("Scale up", func() {
-		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		jobName := "scale-up-job"
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: jobName,
 			plugins: map[string][]string{
 				"svc": {},
@@ -52,22 +53,22 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobReady(context, job)
+		err := waitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		// scale up
 		job.Spec.MinAvailable = 4
 		job.Spec.Tasks[0].Replicas = 4
-		err = updateJob(context, job)
+		err = updateJob(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		// wait for tasks scaled up
-		err = waitJobReady(context, job)
+		err = waitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		// check configmap updated
 		pluginName := fmt.Sprintf("%s-svc", jobName)
-		cm, err := context.kubeclient.CoreV1().ConfigMaps(context.namespace).Get(
+		cm, err := ctx.kubeclient.CoreV1().ConfigMaps(ctx.namespace).Get(context.TODO(),
 			pluginName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -77,22 +78,22 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 		// TODO: check others
 
 		By("delete job")
-		err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
+		err = ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobCleanedUp(context, job)
+		err = waitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 	})
 
 	It("Scale down", func() {
-		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		jobName := "scale-down-job"
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: jobName,
 			plugins: map[string][]string{
 				"svc": {},
@@ -109,22 +110,22 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobReady(context, job)
+		err := waitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		// scale up
 		job.Spec.MinAvailable = 1
 		job.Spec.Tasks[0].Replicas = 1
-		err = updateJob(context, job)
+		err = updateJob(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		// wait for tasks scaled up
-		err = waitJobReady(context, job)
+		err = waitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		// check configmap updated
 		pluginName := fmt.Sprintf("%s-svc", jobName)
-		cm, err := context.kubeclient.CoreV1().ConfigMaps(context.namespace).Get(
+		cm, err := ctx.kubeclient.CoreV1().ConfigMaps(ctx.namespace).Get(context.TODO(),
 			pluginName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -134,10 +135,10 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 		// TODO: check others
 
 		By("delete job")
-		err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, &metav1.DeleteOptions{})
+		err = ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobCleanedUp(context, job)
+		err = waitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 	})
