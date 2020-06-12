@@ -17,6 +17,7 @@ limitations under the License.
 package cache
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -40,12 +41,12 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
-	"k8s.io/kubernetes/pkg/scheduler/volumebinder"
-	vcv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/volcano/pkg/apis/scheduling/scheme"
+	vcv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 	vcinformer "volcano.sh/volcano/pkg/client/informers/externalversions"
@@ -113,13 +114,15 @@ type defaultBinder struct {
 
 //Bind will send bind request to api server
 func (db *defaultBinder) Bind(p *v1.Pod, hostname string) error {
-	if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(&v1.Binding{
-		ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: p.UID, Annotations: p.Annotations},
-		Target: v1.ObjectReference{
-			Kind: "Node",
-			Name: hostname,
+	if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(context.TODO(),
+		&v1.Binding{
+			ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: p.UID, Annotations: p.Annotations},
+			Target: v1.ObjectReference{
+				Kind: "Node",
+				Name: hostname,
+			},
 		},
-	}); err != nil {
+		metav1.CreateOptions{}); err != nil {
 		klog.Errorf("Failed to bind pod <%v/%v>: %#v", p.Namespace, p.Name, err)
 		return err
 	}
@@ -128,16 +131,39 @@ func (db *defaultBinder) Bind(p *v1.Pod, hostname string) error {
 
 type defaultEvictor struct {
 	kubeclient *kubernetes.Clientset
+	recorder   record.EventRecorder
 }
 
 //Evict will send delete pod request to api server
-func (de *defaultEvictor) Evict(p *v1.Pod) error {
-	klog.V(3).Infof("Evicting pod %v/%v", p.Namespace, p.Name)
+func (de *defaultEvictor) Evict(p *v1.Pod, reason string) error {
+	klog.V(3).Infof("Evicting pod %v/%v, because of %v", p.Namespace, p.Name, reason)
 
-	if err := de.kubeclient.CoreV1().Pods(p.Namespace).Delete(p.Name, nil); err != nil {
+	evictMsg := fmt.Sprintf("Pod is evicted, because of %v", reason)
+	annotations := map[string]string{}
+	// record that we are evicting the pod
+	de.recorder.AnnotatedEventf(p, annotations, v1.EventTypeWarning, "Evict", evictMsg)
+
+	pod := p.DeepCopy()
+	condition := &v1.PodCondition{
+		Type:    v1.PodReady,
+		Status:  v1.ConditionFalse,
+		Reason:  "Evict",
+		Message: evictMsg,
+	}
+	if podutil.UpdatePodCondition(&pod.Status, condition) == false {
+		klog.V(1).Infof("UpdatePodCondition: existed condition, not update")
+		klog.V(1).Infof("%+v", pod.Status.Conditions)
+		return nil
+	}
+	if _, err := de.kubeclient.CoreV1().Pods(p.Namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{}); err != nil {
+		klog.Errorf("Failed to update pod <%v/%v> status: %v", pod.Namespace, pod.Name, err)
+		return err
+	}
+	if err := de.kubeclient.CoreV1().Pods(p.Namespace).Delete(context.TODO(), p.Name, metav1.DeleteOptions{}); err != nil {
 		klog.Errorf("Failed to evict pod <%v/%v>: %#v", p.Namespace, p.Name, err)
 		return err
 	}
+
 	return nil
 }
 
@@ -176,7 +202,7 @@ func podConditionHaveUpdate(status *v1.PodStatus, condition *v1.PodCondition) bo
 func (su *defaultStatusUpdater) UpdatePodCondition(pod *v1.Pod, condition *v1.PodCondition) (*v1.Pod, error) {
 	klog.V(3).Infof("Updating pod condition for %s/%s to (%s==%s)", pod.Namespace, pod.Name, condition.Type, condition.Status)
 	if podutil.UpdatePodCondition(&pod.Status, condition) {
-		return su.kubeclient.CoreV1().Pods(pod.Namespace).UpdateStatus(pod)
+		return su.kubeclient.CoreV1().Pods(pod.Namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{})
 	}
 	return pod, nil
 }
@@ -189,7 +215,7 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*sch
 		return nil, err
 	}
 
-	updated, err := su.vcclient.SchedulingV1beta1().PodGroups(podgroup.Namespace).Update(podgroup)
+	updated, err := su.vcclient.SchedulingV1beta1().PodGroups(podgroup.Namespace).Update(context.TODO(), podgroup, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("Error while updating PodGroup with error: %v", err)
 		return nil, err
@@ -205,12 +231,12 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*sch
 }
 
 type defaultVolumeBinder struct {
-	volumeBinder *volumebinder.VolumeBinder
+	volumeBinder volumescheduling.SchedulerVolumeBinder
 }
 
 // AllocateVolumes allocates volume on the host to the task
 func (dvb *defaultVolumeBinder) AllocateVolumes(task *schedulingapi.TaskInfo, hostname string) error {
-	allBound, err := dvb.volumeBinder.Binder.AssumePodVolumes(task.Pod, hostname)
+	allBound, err := dvb.volumeBinder.AssumePodVolumes(task.Pod, hostname)
 	task.VolumeReady = allBound
 
 	return err
@@ -223,7 +249,7 @@ func (dvb *defaultVolumeBinder) BindVolumes(task *schedulingapi.TaskInfo) error 
 		return nil
 	}
 
-	return dvb.volumeBinder.Binder.BindPodVolumes(task.Pod)
+	return dvb.volumeBinder.BindPodVolumes(task.Pod)
 }
 
 func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue string) *SchedulerCache {
@@ -249,7 +275,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 			Weight: 1,
 		},
 	}
-	if _, err := vcClient.SchedulingV1beta1().Queues().Create(&defaultQue); err != nil && !apierrors.IsAlreadyExists(err) {
+	if _, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultQue, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
 		panic(fmt.Sprintf("failed init default queue, with err: %v", err))
 	}
 
@@ -279,6 +305,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 
 	sc.Evictor = &defaultEvictor{
 		kubeclient: sc.kubeclient,
+		recorder:   sc.Recorder,
 	}
 
 	sc.StatusUpdater = &defaultStatusUpdater{
@@ -292,9 +319,10 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	sc.pvInformer = informerFactory.Core().V1().PersistentVolumes()
 	sc.scInformer = informerFactory.Storage().V1().StorageClasses()
 	sc.VolumeBinder = &defaultVolumeBinder{
-		volumeBinder: volumebinder.NewVolumeBinder(
+		volumeBinder: volumescheduling.NewVolumeBinder(
 			sc.kubeclient,
 			sc.nodeInformer,
+			nil,
 			sc.pvcInformer,
 			sc.pvInformer,
 			sc.scInformer,
@@ -473,7 +501,7 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 	p := task.Pod
 
 	go func() {
-		err := sc.Evictor.Evict(p)
+		err := sc.Evictor.Evict(p, reason)
 		if err != nil {
 			sc.resyncTask(task)
 		}

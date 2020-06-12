@@ -68,7 +68,7 @@ type Binder interface {
 
 // Evictor interface for evict pods
 type Evictor interface {
-	Evict(pod *v1.Pod) error
+	Evict(pod *v1.Pod, reason string) error
 }
 
 // StatusUpdater updates pod with given PodCondition

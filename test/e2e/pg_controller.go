@@ -17,6 +17,8 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
@@ -68,7 +70,7 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 			},
 		}
 
-		_, err := ctx.kubeclient.CoreV1().ReplicationControllers(ctx.namespace).Create(rc)
+		_, err := ctx.kubeclient.CoreV1().ReplicationControllers(ctx.namespace).Create(context.TODO(), rc, v1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitPodPhase(ctx, pod, []corev1.PodPhase{corev1.PodRunning})
@@ -121,7 +123,7 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 			},
 		}
 
-		_, err := ctx.kubeclient.CoreV1().ReplicationControllers(ctx.namespace).Create(rc)
+		_, err := ctx.kubeclient.CoreV1().ReplicationControllers(ctx.namespace).Create(context.TODO(), rc, v1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitPodPhase(ctx, pod, []corev1.PodPhase{corev1.PodRunning})

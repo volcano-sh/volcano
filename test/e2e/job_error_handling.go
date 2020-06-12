@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"strconv"
 
 	. "github.com/onsi/ginkgo"
@@ -106,12 +107,12 @@ var _ = Describe("Job Error Handling", func() {
 	})
 
 	It("job level LifecyclePolicy, Event: PodFailed; Action: AbortJob", func() {
-		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: "failed-abort-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -138,17 +139,17 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> Aborting -> Aborted
-		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Aborting, vcbatch.Aborted})
+		err := waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Aborting, vcbatch.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("job level LifecyclePolicy, Event: PodEvicted; Action: RestartJob", func() {
-		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: "evicted-restart-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -173,26 +174,26 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
 		podName := jobutil.MakePodName(job.Name, "delete", 0)
-		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		err = ctx.kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Restarting -> Running
-		err = waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
+		err = waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("job level LifecyclePolicy, Event: PodEvicted; Action: TerminateJob", func() {
-		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: "evicted-terminate-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -217,26 +218,26 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
 		podName := jobutil.MakePodName(job.Name, "delete", 0)
-		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		err = ctx.kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Terminating -> Terminated
-		err = waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
+		err = waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("job level LifecyclePolicy, Event: PodEvicted; Action: AbortJob", func() {
-		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: "evicted-abort-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -261,26 +262,26 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
 		podName := jobutil.MakePodName(job.Name, "delete", 0)
-		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		err = ctx.kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Aborting -> Aborted
-		err = waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Aborting, vcbatch.Aborted})
+		err = waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Aborting, vcbatch.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("job level LifecyclePolicy, Event: Any; Action: RestartJob", func() {
-		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: "any-restart-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -305,16 +306,16 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
 		podName := jobutil.MakePodName(job.Name, "delete", 0)
-		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		err = ctx.kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Restarting -> Running
-		err = waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
+		err = waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -361,7 +362,7 @@ var _ = Describe("Job Error Handling", func() {
 
 		podName := jobutil.MakePodName(job.Name, "test", 0)
 		By("Kill one of the pod in order to trigger unschedulable status")
-		err = ctx.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		err = ctx.kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Job is restarting")
@@ -420,7 +421,7 @@ var _ = Describe("Job Error Handling", func() {
 
 		podName := jobutil.MakePodName(job.Name, "test", 0)
 		By("Kill one of the pod in order to trigger unschedulable status")
-		err = ctx.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		err = ctx.kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Job is aborted")
@@ -513,12 +514,12 @@ var _ = Describe("Job Error Handling", func() {
 	})
 
 	It("job level LifecyclePolicy, Event[]: PodEvicted, PodFailed; Action: TerminateJob", func() {
-		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: "evicted-terminate-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -546,16 +547,16 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
 		podName := jobutil.MakePodName(job.Name, "delete", 0)
-		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		err = ctx.kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Terminating -> Terminated
-		err = waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
+		err = waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: PodFailed; Action: RestartJob", func() {
@@ -595,12 +596,12 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: PodEvicted; Action: RestartJob", func() {
-		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: "evicted-restart-job",
 
 			tasks: []taskSpec{
@@ -626,25 +627,25 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
 		podName := jobutil.MakePodName(job.Name, "delete", 0)
-		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		err = ctx.kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Restarting -> Running
-		err = waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
+		err = waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: PodEvicted; Action: TerminateJob", func() {
-		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: "evicted-terminate-job",
 			tasks: []taskSpec{
 				{
@@ -669,25 +670,25 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
 		podName := jobutil.MakePodName(job.Name, "delete", 0)
-		err = context.kubeclient.CoreV1().Pods(job.Namespace).Delete(podName, &metav1.DeleteOptions{})
+		err = ctx.kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Terminating -> Terminated
-		err = waitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
+		err = waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: TaskCompleted; Action: CompletedJob", func() {
-		By("init test context")
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job := createJob(ctx, &jobSpec{
 			name: "any-complete-job",
 			tasks: []taskSpec{
 				{
@@ -715,7 +716,7 @@ var _ = Describe("Job Error Handling", func() {
 
 		By("job scheduled, then task 'completed_task' finished and job finally complete")
 		// job phase: pending -> running -> completing -> completed
-		err := waitJobPhases(context, job, []vcbatch.JobPhase{
+		err := waitJobPhases(ctx, job, []vcbatch.JobPhase{
 			vcbatch.Pending, vcbatch.Running, vcbatch.Completing, vcbatch.Completed})
 		Expect(err).NotTo(HaveOccurred())
 

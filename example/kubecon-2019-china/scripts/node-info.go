@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	v1 "k8s.io/api/core/v1"
@@ -18,11 +19,11 @@ func main() {
 		panic(err)
 	}
 	kubeClient := kubernetes.NewForConfigOrDie(config)
-	nodes, err := kubeClient.CoreV1().Nodes().List(metav1.ListOptions{})
+	nodes, err := kubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		panic(err)
 	}
-	pods, err := kubeClient.CoreV1().Pods("").List(metav1.ListOptions{})
+	pods, err := kubeClient.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		panic(err)
 	}

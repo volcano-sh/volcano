@@ -17,6 +17,7 @@ limitations under the License.
 package job
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -71,7 +72,7 @@ func ViewJob() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	job, err := jobClient.BatchV1alpha1().Jobs(viewJobFlags.Namespace).Get(viewJobFlags.JobName, metav1.GetOptions{})
+	job, err := jobClient.BatchV1alpha1().Jobs(viewJobFlags.Namespace).Get(context.TODO(), viewJobFlags.JobName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -235,7 +236,7 @@ func GetEvents(config *rest.Config, job *v1alpha1.Job) []coreV1.Event {
 		fmt.Printf("%v\n", err)
 		return nil
 	}
-	events, _ := kubernetes.CoreV1().Events(viewJobFlags.Namespace).List(metav1.ListOptions{})
+	events, _ := kubernetes.CoreV1().Events(viewJobFlags.Namespace).List(context.TODO(), metav1.ListOptions{})
 	var jobEvents []coreV1.Event
 	for _, v := range events.Items {
 		if strings.HasPrefix(v.ObjectMeta.Name, job.Name+".") {

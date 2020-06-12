@@ -17,6 +17,7 @@ limitations under the License.
 package queue
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -58,7 +59,7 @@ func GetQueue() error {
 	}
 
 	queueClient := versioned.NewForConfigOrDie(config)
-	queue, err := queueClient.SchedulingV1beta1().Queues().Get(getQueueFlags.Name, metav1.GetOptions{})
+	queue, err := queueClient.SchedulingV1beta1().Queues().Get(context.TODO(), getQueueFlags.Name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}

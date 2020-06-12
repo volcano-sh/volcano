@@ -17,6 +17,7 @@ limitations under the License.
 package queue
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -71,7 +72,7 @@ func ListQueue() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	queues, err := jobClient.SchedulingV1beta1().Queues().List(metav1.ListOptions{})
+	queues, err := jobClient.SchedulingV1beta1().Queues().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}

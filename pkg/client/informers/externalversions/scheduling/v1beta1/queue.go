@@ -19,6 +19,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	"context"
 	time "time"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -60,13 +61,13 @@ func NewFilteredQueueInformer(client versioned.Interface, resyncPeriod time.Dura
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.SchedulingV1beta1().Queues().List(options)
+				return client.SchedulingV1beta1().Queues().List(context.TODO(), options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.SchedulingV1beta1().Queues().Watch(options)
+				return client.SchedulingV1beta1().Queues().Watch(context.TODO(), options)
 			},
 		},
 		&schedulingv1beta1.Queue{},

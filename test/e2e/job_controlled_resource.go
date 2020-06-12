@@ -17,6 +17,8 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	v12 "k8s.io/api/core/v1"
@@ -58,7 +60,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 				},
 			},
 		}
-		_, err := ctx.kubeclient.CoreV1().PersistentVolumes().Create(&pv)
+		_, err := ctx.kubeclient.CoreV1().PersistentVolumes().Create(context.TODO(), &pv, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred(), "pv creation ")
 		// create pvc
 		pvc := v12.PersistentVolumeClaim{
@@ -80,7 +82,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 			},
 		}
 
-		_, err1 := ctx.kubeclient.CoreV1().PersistentVolumeClaims(ctx.namespace).Create(&pvc)
+		_, err1 := ctx.kubeclient.CoreV1().PersistentVolumeClaims(ctx.namespace).Create(context.TODO(), &pvc, metav1.CreateOptions{})
 		Expect(err1).NotTo(HaveOccurred(), "pvc creation")
 
 		pvSpec := &v12.PersistentVolumeClaimSpec{
@@ -120,7 +122,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		err = waitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		job, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Get(jobName, metav1.GetOptions{})
+		job, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(len(job.Spec.Volumes)).To(Equal(2),
@@ -174,7 +176,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		err := waitJobStatePending(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pGroup, err := ctx.vcclient.SchedulingV1beta1().PodGroups(ctx.namespace).Get(jobName, metav1.GetOptions{})
+		pGroup, err := ctx.vcclient.SchedulingV1beta1().PodGroups(ctx.namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		for name, q := range *pGroup.Spec.MinResources {

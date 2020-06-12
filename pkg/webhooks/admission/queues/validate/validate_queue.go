@@ -17,6 +17,7 @@ limitations under the License.
 package validate
 
 import (
+	"context"
 	"fmt"
 
 	"k8s.io/api/admission/v1beta1"
@@ -130,7 +131,7 @@ func validateQueueDeleting(queue string) error {
 		return fmt.Errorf("`%s` queue can not be deleted", "default")
 	}
 
-	q, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(queue, metav1.GetOptions{})
+	q, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), queue, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
