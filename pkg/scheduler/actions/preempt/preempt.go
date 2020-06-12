@@ -91,7 +91,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 			preemptorJob := preemptors.Pop().(*api.JobInfo)
 
-			stmt := ssn.Statement()
+			stmt := framework.NewStatement(ssn)
 			assigned := false
 			for {
 				// If job is pipelined, then stop preempting.
@@ -154,7 +154,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 				preemptor := preemptorTasks[job.UID].Pop().(*api.TaskInfo)
 
-				stmt := ssn.Statement()
+				stmt := framework.NewStatement(ssn)
 				assigned, _ := preempt(ssn, stmt, preemptor, func(task *api.TaskInfo) bool {
 					// Ignore non running task.
 					if task.Status != api.Running {
