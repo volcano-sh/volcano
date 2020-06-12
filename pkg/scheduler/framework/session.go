@@ -23,6 +23,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
@@ -36,7 +37,8 @@ import (
 type Session struct {
 	UID types.UID
 
-	cache cache.Cache
+	kubeClient kubernetes.Interface
+	cache      cache.Cache
 
 	podGroupStatus map[api.JobID]*scheduling.PodGroupStatus
 
@@ -72,8 +74,9 @@ type Session struct {
 
 func openSession(cache cache.Cache) *Session {
 	ssn := &Session{
-		UID:   uuid.NewUUID(),
-		cache: cache,
+		UID:        uuid.NewUUID(),
+		kubeClient: cache.Client(),
+		cache:      cache,
 
 		podGroupStatus: map[api.JobID]*scheduling.PodGroupStatus{},
 

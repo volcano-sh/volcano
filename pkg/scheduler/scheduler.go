@@ -33,7 +33,6 @@ import (
 // nodes that they fit on and writes bindings back to the api server.
 type Scheduler struct {
 	cache          schedcache.Cache
-	config         *rest.Config
 	actions        []framework.Action
 	plugins        []conf.Tier
 	configurations []conf.Configuration
@@ -45,13 +44,12 @@ type Scheduler struct {
 func NewScheduler(
 	config *rest.Config,
 	schedulerName string,
-	conf string,
+	schedulerConf string,
 	period time.Duration,
 	defaultQueue string,
 ) (*Scheduler, error) {
 	scheduler := &Scheduler{
-		config:         config,
-		schedulerConf:  conf,
+		schedulerConf:  schedulerConf,
 		cache:          schedcache.New(config, schedulerName, defaultQueue),
 		schedulePeriod: period,
 	}
