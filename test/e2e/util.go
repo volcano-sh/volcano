@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -643,6 +644,31 @@ func waitJobStatePending(ctx *testContext, job *batchv1alpha1.Job) error {
 
 func waitJobStateAborted(ctx *testContext, job *batchv1alpha1.Job) error {
 	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Aborted, oneMinute)
+}
+
+func waitPodPhaseRunningMoreThanNum(ctx *testContext, namespace string, num int) error {
+	var additionalError error
+	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+		clusterPods, err := ctx.kubeclient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred(), "Failed to get cluster pod")
+		runningPodNum := 0
+		for _, pod := range clusterPods.Items {
+			if pod.Status.Phase == "Running" {
+				runningPodNum = runningPodNum + 1
+			}
+		}
+		fmt.Println(strconv.Itoa(runningPodNum))
+
+		expected := runningPodNum >= num
+		if !expected {
+			additionalError = fmt.Errorf("expected running pod is '%s', actual got %s", strconv.Itoa(runningPodNum), strconv.Itoa(num))
+		}
+		return expected, nil
+	})
+	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
+		return fmt.Errorf("[Wait time out]: %s", additionalError)
+	}
+	return err
 }
 
 func waitJobPhaseExpect(ctx *testContext, job *batchv1alpha1.Job, state batchv1alpha1.JobPhase, waitTime time.Duration) error {

@@ -24,6 +24,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"volcano.sh/volcano/pkg/cli/util"
 )
 
@@ -66,29 +67,32 @@ var _ = Describe("Queue E2E Test", func() {
 	Describe("Queue Job Status Transaction", func() {
 		var ctx *testContext
 		var q1 string
-		By("Prepare 2 job")
+		var podNamespace string
+		var rep int32
+		By("Prepare 3 job")
 		BeforeEach(func() {
-			q1 = "queue-job-status-transaction"
+
+			q1 = "queue-jobs-status-transaction"
 			ctx = initTestContext(options{
 				queues: []string{q1},
 			})
+			podNamespace = ctx.namespace
 			slot := oneCPU
-			rep := clusterSize(ctx, slot)
+			rep = clusterSize(ctx, slot)
 
 			if rep < 4 {
 				err := fmt.Errorf("Total cpu is too small, you need at least 2 logical cpu for volcano node")
 				Expect(err).NotTo(HaveOccurred())
 			}
 
-			for i := 0; i < 2; i++ {
-				currentRep := rep / 2
+			for i := 0; i < 3; i++ {
 				spec := &jobSpec{
 					tasks: []taskSpec{
 						{
 							img: defaultNginxImage,
 							req: slot,
-							min: currentRep,
-							rep: currentRep,
+							min: rep,
+							rep: rep,
 						},
 					},
 				}
@@ -122,26 +126,65 @@ var _ = Describe("Queue E2E Test", func() {
 			cleanupTestContext(ctx)
 		})
 
-		// Context("When some of pod deleted and lackof resources pod group status should transaction from Running to Unknown", func() {
-		// 	It("Transate from running to Unknown should succeed", func() {
-		// 		By("Verify queue have pod groups Unknown")
-		// 		err := waitQueueStatus(func() (bool, error) {
-		// 			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
-		// 			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
-		// 			return queue.Status.Unknown > 0, nil
-		// 		})
-		// 		Expect(err).NotTo(HaveOccurred(), "Error wait for queue unknown")
-		// 	})
-		// })
+		Context("When all of pod deleted and lackof resources pod group status should transaction from Running to Pending", func() {
+			It("Transate from running to pending should succeed", func() {
+				By("Verify queue have pod groups running")
+				err := waitQueueStatus(func() (bool, error) {
+					queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+					Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
+					return queue.Status.Running > 0, nil
+				})
+				Expect(err).NotTo(HaveOccurred(), "Error wait for queue running")
 
-		// By("Verify queue have pod groups pending")
-		// err = waitQueueStatus(func() (bool, error) {
-		// 	queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
-		// 	Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
-		// 	return queue.Status.Pending > 0, nil
-		// })
-		// Expect(err).NotTo(HaveOccurred(), "Error wait for queue pending")
+				By("Verify queue have pod groups Pending")
+				err = waitQueueStatus(func() (bool, error) {
+					queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+					Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
+					return queue.Status.Pending > 0, nil
+				})
+				Expect(err).NotTo(HaveOccurred(), "Error wait for queue Pending")
+			})
+		})
 
+		Context("When some of pod deleted and lackof resources pod group status should transaction from Running to Unknown", func() {
+			It("Transate from running to unknown should succeed", func() {
+				By("Verify queue have pod groups running")
+				err := waitQueueStatus(func() (bool, error) {
+					queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+					Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
+					return queue.Status.Running > 0, nil
+				})
+				Expect(err).NotTo(HaveOccurred(), "Error wait for queue running")
+
+				By("Delete some of pod which will case pod")
+				podDeleteNum := 0
+
+				err = waitPodPhaseRunningMoreThanNum(ctx, podNamespace, 2)
+				Expect(err).NotTo(HaveOccurred(), "Failed waiting for pods")
+
+				clusterPods, err := ctx.kubeclient.CoreV1().Pods(podNamespace).List(context.TODO(), metav1.ListOptions{})
+				fmt.Println("Length of cluster pods are: %s" + strconv.Itoa(len(clusterPods.Items)))
+				for _, pod := range clusterPods.Items {
+					fmt.Println(pod.Status.Phase)
+					if pod.Status.Phase == "Running" {
+						err = ctx.kubeclient.CoreV1().Pods(podNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+						Expect(err).NotTo(HaveOccurred(), "Failed to delete pod %s", pod.Name)
+						podDeleteNum = podDeleteNum + 1
+					}
+					if podDeleteNum >= int(rep/2) {
+						break
+					}
+				}
+
+				By("Verify queue have pod groups unknown")
+				err = waitQueueStatus(func() (bool, error) {
+					queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+					Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
+					return queue.Status.Unknown > 0, nil
+				})
+				Expect(err).NotTo(HaveOccurred(), "Error wait for queue unknown")
+			})
+		})
 	})
 
 	It("Reclaim", func() {
