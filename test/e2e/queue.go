@@ -69,6 +69,7 @@ var _ = Describe("Queue E2E Test", func() {
 		var q1 string
 		var podNamespace string
 		var rep int32
+		var firstJobName string
 		By("Prepare 3 job")
 		BeforeEach(func() {
 
@@ -97,6 +98,9 @@ var _ = Describe("Queue E2E Test", func() {
 					},
 				}
 				spec.name = "queue-job-status-transaction-test-job-" + strconv.Itoa(i)
+				if i == 0 {
+					firstJobName = spec.name
+				}
 				spec.queue = q1
 				createJob(ctx, spec)
 			}
@@ -136,6 +140,14 @@ var _ = Describe("Queue E2E Test", func() {
 				})
 				Expect(err).NotTo(HaveOccurred(), "Error wait for queue running")
 
+				clusterPods, err := ctx.kubeclient.CoreV1().Pods(podNamespace).List(context.TODO(), metav1.ListOptions{})
+				for _, pod := range clusterPods.Items {
+					if pod.Labels["volcano.sh/job-name"] == firstJobName {
+						err = ctx.kubeclient.CoreV1().Pods(podNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+						Expect(err).NotTo(HaveOccurred(), "Failed to delete pod %s", pod.Name)
+					}
+				}
+
 				By("Verify queue have pod groups Pending")
 				err = waitQueueStatus(func() (bool, error) {
 					queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
@@ -163,9 +175,7 @@ var _ = Describe("Queue E2E Test", func() {
 				Expect(err).NotTo(HaveOccurred(), "Failed waiting for pods")
 
 				clusterPods, err := ctx.kubeclient.CoreV1().Pods(podNamespace).List(context.TODO(), metav1.ListOptions{})
-				fmt.Println("Length of cluster pods are: %s" + strconv.Itoa(len(clusterPods.Items)))
 				for _, pod := range clusterPods.Items {
-					fmt.Println(pod.Status.Phase)
 					if pod.Status.Phase == "Running" {
 						err = ctx.kubeclient.CoreV1().Pods(podNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 						Expect(err).NotTo(HaveOccurred(), "Failed to delete pod %s", pod.Name)

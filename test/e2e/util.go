@@ -657,7 +657,6 @@ func waitPodPhaseRunningMoreThanNum(ctx *testContext, namespace string, num int)
 				runningPodNum = runningPodNum + 1
 			}
 		}
-		fmt.Println(strconv.Itoa(runningPodNum))
 
 		expected := runningPodNum >= num
 		if !expected {
