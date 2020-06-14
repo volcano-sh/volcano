@@ -67,15 +67,15 @@ func New(config *rest.Config, schedulerName string, defaultQueue string) Cache {
 	return newSchedulerCache(config, schedulerName, defaultQueue)
 }
 
-//SchedulerCache cache for the kube batch
+// SchedulerCache cache for the kube batch
 type SchedulerCache struct {
 	sync.Mutex
 
-	kubeclient *kubernetes.Clientset
-	vcclient   *vcclient.Clientset
+	kubeClient *kubernetes.Clientset
+	vcClient   *vcclient.Clientset
 
 	defaultQueue string
-	// schedulerName is the name for kube batch scheduler
+	// schedulerName is the name for volcano scheduler
 	schedulerName string
 
 	podInformer             infov1.PodInformer
@@ -286,8 +286,8 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		PriorityClasses: make(map[string]*v1beta1.PriorityClass),
 		errTasks:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		deletedJobs:     workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		kubeclient:      kubeClient,
-		vcclient:        vcClient,
+		kubeClient:      kubeClient,
+		vcClient:        vcClient,
 		defaultQueue:    defaultQueue,
 		schedulerName:   schedulerName,
 
@@ -300,27 +300,27 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: schedulerName})
 
 	sc.Binder = &defaultBinder{
-		kubeclient: sc.kubeclient,
+		kubeclient: sc.kubeClient,
 	}
 
 	sc.Evictor = &defaultEvictor{
-		kubeclient: sc.kubeclient,
+		kubeclient: sc.kubeClient,
 		recorder:   sc.Recorder,
 	}
 
 	sc.StatusUpdater = &defaultStatusUpdater{
-		kubeclient: sc.kubeclient,
-		vcclient:   sc.vcclient,
+		kubeclient: sc.kubeClient,
+		vcclient:   sc.vcClient,
 	}
 
-	informerFactory := informers.NewSharedInformerFactory(sc.kubeclient, 0)
+	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, 0)
 
 	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
 	sc.pvInformer = informerFactory.Core().V1().PersistentVolumes()
 	sc.scInformer = informerFactory.Storage().V1().StorageClasses()
 	sc.VolumeBinder = &defaultVolumeBinder{
 		volumeBinder: volumescheduling.NewVolumeBinder(
-			sc.kubeclient,
+			sc.kubeClient,
 			sc.nodeInformer,
 			nil,
 			sc.pvcInformer,
@@ -379,7 +379,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		DeleteFunc: sc.DeleteResourceQuota,
 	})
 
-	vcinformers := vcinformer.NewSharedInformerFactory(sc.vcclient, 0)
+	vcinformers := vcinformer.NewSharedInformerFactory(sc.vcClient, 0)
 
 	// create informer for PodGroup(v1beta1) information
 	sc.podGroupInformerV1beta1 = vcinformers.Scheduling().V1beta1().PodGroups()
@@ -590,6 +590,11 @@ func (sc *SchedulerCache) AllocateVolumes(task *schedulingapi.TaskInfo, hostname
 // BindVolumes binds volumes to the task
 func (sc *SchedulerCache) BindVolumes(task *schedulingapi.TaskInfo) error {
 	return sc.VolumeBinder.BindVolumes(task)
+}
+
+// Client returns the kubernetes clientSet
+func (sc *SchedulerCache) Client() kubernetes.Interface {
+	return sc.kubeClient
 }
 
 // taskUnschedulable updates pod status of pending task
