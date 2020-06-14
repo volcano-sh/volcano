@@ -68,10 +68,11 @@ spec:
       # delimited expressions.
       # For more details: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
       # argoexec will get the resource information by "kubectl get -o json -w resouce/name" and check if the conditions are match
-      # the volcano task replicas is 2, set status.succeeded > 1
-      # change the successCondition according to the actual situation
-      successCondition: status.succeeded > 1
-      failureCondition: status.failed > 3
+      # Completed is the phase that all tasks of Job are completed
+      # Failed is the phase that the job is restarted failed reached the maximum number of retries.
+      # change the successCondition or failureCondition according to the actual situation
+      successCondition: status.state.phase = Completed
+      failureCondition: status.state.phase = Failed
       manifest: |						#put your kubernetes spec here
         apiVersion: batch.volcano.sh/v1alpha1
         kind: Job
