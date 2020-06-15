@@ -207,7 +207,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("Create volcano pod with volcano sheduler", func() {
+	ginkgo.It("Create volcano pod with volcano scheduler", func() {
 		podName := "volcano-pod"
 		pgName := "running-pg"
 		ctx := initTestContext(options{})
@@ -243,7 +243,9 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 			},
 		}
 
-		_, err := ctx.vcclient.SchedulingV1beta1().PodGroups(ctx.namespace).Create(context.TODO(), pg, v1.CreateOptions{})
+		podGroup, err := ctx.vcclient.SchedulingV1beta1().PodGroups(ctx.namespace).Create(context.TODO(), pg, v1.CreateOptions{})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		err = waitPodGroupPhase(ctx, podGroup, "Running")
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		_, err = ctx.kubeclient.CoreV1().Pods(ctx.namespace).Create(context.TODO(), pod, v1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())

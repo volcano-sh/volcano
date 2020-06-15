@@ -670,6 +670,24 @@ func waitPodPhaseRunningMoreThanNum(ctx *testContext, namespace string, num int)
 	return err
 }
 
+func waitPodGroupPhase(ctx *testContext, podGroup *schedulingv1beta1.PodGroup, state schedulingv1beta1.PodGroupPhase) error {
+	var additionalError error
+	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+		podGroup, err := ctx.vcclient.SchedulingV1beta1().PodGroups(podGroup.Namespace).Get(context.TODO(), podGroup.Name, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		expected := podGroup.Status.Phase == state
+		if !expected {
+			additionalError = fmt.Errorf("expected podGroup '%s' phase in %s, actual got %s", podGroup.Name,
+				state, podGroup.Status.Phase)
+		}
+		return expected, nil
+	})
+	if err != nil && strings.Contains(err.Error(), timeOutMessage) {
+		return fmt.Errorf("[Wait time out]: %s", additionalError)
+	}
+	return err
+}
+
 func waitJobPhaseExpect(ctx *testContext, job *batchv1alpha1.Job, state batchv1alpha1.JobPhase, waitTime time.Duration) error {
 	var additionalError error
 	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
