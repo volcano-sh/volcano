@@ -94,8 +94,8 @@ func PopulateResourceListV1(spec string) (v1.ResourceList, error) {
 }
 
 // CreateQueueCommand executes a command such as open/close
-func CreateQueueCommand(queueClient *versioned.Clientset, ns, name string, action vcbus.Action) error {
-	queue, err := queueClient.SchedulingV1beta1().Queues().Get(context.TODO(), name, metav1.GetOptions{})
+func CreateQueueCommand(vcClient *versioned.Clientset, ns, name string, action vcbus.Action) error {
+	queue, err := vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func CreateQueueCommand(queueClient *versioned.Clientset, ns, name string, actio
 		Action:       string(action),
 	}
 
-	if _, err := queueClient.BusV1alpha1().Commands(ns).Create(context.TODO(), cmd, metav1.CreateOptions{}); err != nil {
+	if _, err := vcClient.BusV1alpha1().Commands(ns).Create(context.TODO(), cmd, metav1.CreateOptions{}); err != nil {
 		return err
 	}
 

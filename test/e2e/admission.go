@@ -245,7 +245,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 
 		podGroup, err := ctx.vcclient.SchedulingV1beta1().PodGroups(ctx.namespace).Create(context.TODO(), pg, v1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		err = waitPodGroupPhase(ctx, podGroup, "Running")
+		err = waitPodGroupPhase(ctx, podGroup, schedulingv1beta1.PodGroupRunning)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		_, err = ctx.kubeclient.CoreV1().Pods(ctx.namespace).Create(context.TODO(), pod, v1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
