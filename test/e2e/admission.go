@@ -1393,7 +1393,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("Create queue by default", func() {
+	ginkgo.It("queue check: create queue by default", func() {
 		queueName := "default-queue"
 		ctx := initTestContext(options{})
 		defer cleanupTestContext(ctx)
@@ -1411,7 +1411,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("Open queue can NOT be deleted", func() {
+	ginkgo.It("queue check: open queue can NOT be deleted", func() {
 		queueName := "deleted-open-queue"
 		ctx := initTestContext(options{})
 		defer cleanupTestContext(ctx)
@@ -1440,7 +1440,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("Default queue can NOT be deleted", func() {
+	ginkgo.It("queue check: default queue can NOT be deleted", func() {
 		ctx := initTestContext(options{})
 		defer cleanupTestContext(ctx)
 
