@@ -24,6 +24,7 @@ import (
 	"github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -65,40 +66,40 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 
 		var job v1alpha1.Job
 		jsonData := []byte(`{
-   "apiVersion": "batch.volcano.sh/v1alpha1",
-   "kind": "Job",
-   "metadata": {
-      "name": "test-job"
-   },
-   "spec": {
-      "minAvailable": 3,
-      "schedulerName": "volcano",
-      "queue": "default",
-      "tasks": [
-         {
-            "replicas": 3,
-            "name": "default-nginx",
-            "template": {
-               "spec": {
-                  "containers": [
-                     {
-                        "image": "nginx",
-                        "imagePullPolicy": "IfNotPresent",
-                        "name": "nginx",
-                        "resources": {
-                           "requests": {
-                              "cpu": "-1"
-                           }
-                        }
-                     }
-                  ],
-                  "restartPolicy": "Never"
-               }
-            }
-         }
-      ]
-   }
-}`)
+			"apiVersion": "batch.volcano.sh/v1alpha1",
+			"kind": "Job",
+			"metadata": {
+				"name": "test-job"
+			},
+			"spec": {
+				"minAvailable": 3,
+				"schedulerName": "volcano",
+				"queue": "default",
+				"tasks": [
+					{
+						"replicas": 3,
+						"name": "default-nginx",
+						"template": {
+						"spec": {
+							"containers": [
+								{
+									"image": "nginx",
+									"imagePullPolicy": "IfNotPresent",
+									"name": "nginx",
+									"resources": {
+									"requests": {
+										"cpu": "-1"
+									}
+									}
+								}
+							],
+							"restartPolicy": "Never"
+						}
+						}
+					}
+				]
+			}
+		}`)
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(context.TODO(), &job, v1.CreateOptions{})
@@ -112,40 +113,40 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 
 		var job v1alpha1.Job
 		jsonData := []byte(`{
-   "apiVersion": "batch.volcano.sh/v1alpha1",
-   "kind": "Job",
-   "metadata": {
-      "name": "test-job"
-   },
-   "spec": {
-      "minAvailable": 3,
-      "schedulerName": "volcano",
-      "queue": "default",
-      "tasks": [
-         {
-            "replicas": 3,
-            "name": "default-nginx",
-            "template": {
-               "spec": {
-                  "containers": [
-                     {
-                        "image": "nginx",
-                        "imagePullPolicy": "IfNotPresent",
-                        "name": "nginx",
-                        "resources": {
-                           "requests": {
-                              "memory": "-1"
-                           }
-                        }
-                     }
-                  ],
-                  "restartPolicy": "Never"
-               }
-            }
-         }
-      ]
-   }
-}`)
+			"apiVersion": "batch.volcano.sh/v1alpha1",
+			"kind": "Job",
+			"metadata": {
+				"name": "test-job"
+			},
+			"spec": {
+				"minAvailable": 3,
+				"schedulerName": "volcano",
+				"queue": "default",
+				"tasks": [
+					{
+						"replicas": 3,
+						"name": "default-nginx",
+						"template": {
+						"spec": {
+							"containers": [
+								{
+									"image": "nginx",
+									"imagePullPolicy": "IfNotPresent",
+									"name": "nginx",
+									"resources": {
+									"requests": {
+										"memory": "-1"
+									}
+									}
+								}
+							],
+							"restartPolicy": "Never"
+						}
+						}
+					}
+				]
+			}
+		}`)
 
 		err := json.Unmarshal(jsonData, &job)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -1390,5 +1391,60 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		_, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(context.TODO(), &job, v1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("Create queue by default", func() {
+		queueName := "default-queue"
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+
+		queue := &schedulingv1beta1.Queue{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: queueName,
+			},
+			Spec: schedulingv1beta1.QueueSpec{
+				Weight: 1,
+			},
+		}
+
+		_, err := ctx.vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("Open queue can NOT be deleted", func() {
+		queueName := "deleted-open-queue"
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+
+		queue := &schedulingv1beta1.Queue{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: queueName,
+			},
+			Spec: schedulingv1beta1.QueueSpec{
+				Weight: 1,
+			},
+			Status: schedulingv1beta1.QueueStatus{
+				State: schedulingv1beta1.QueueStateOpen,
+			},
+		}
+
+		_, err := ctx.vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		err = waitQueueStatus(func() (bool, error) {
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), queue.Name, metav1.GetOptions{})
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			return queue.Status.State == schedulingv1beta1.QueueStateOpen, nil
+		})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		err = ctx.vcclient.SchedulingV1beta1().Queues().Delete(context.TODO(), queue.Name, metav1.DeleteOptions{})
+		gomega.Expect(err).To(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("Default queue can NOT be deleted", func() {
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+
+		err := ctx.vcclient.SchedulingV1beta1().Queues().Delete(context.TODO(), "default", metav1.DeleteOptions{})
+		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 })
