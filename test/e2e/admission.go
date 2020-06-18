@@ -220,10 +220,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 			},
 			Spec: schedulingv1beta1.PodGroupSpec{
 				MinMember:    1,
-				MinResources: &thirtyCPU,
-			},
-			Status: schedulingv1beta1.PodGroupStatus{
-				Phase: schedulingv1beta1.PodGroupRunning,
+				MinResources: &oneCPU,
 			},
 		}
 
@@ -238,14 +235,14 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 				Annotations: map[string]string{vcschedulingv1.KubeGroupNameAnnotationKey: pgName},
 			},
 			Spec: corev1.PodSpec{
-				Containers:    createContainers(defaultNginxImage, "", "", oneCPU, oneCPU, 0),
+				Containers:    createContainers(defaultNginxImage, "", "", halfCPU, halfCPU, 0),
 				SchedulerName: "volcano",
 			},
 		}
 
 		podGroup, err := ctx.vcclient.SchedulingV1beta1().PodGroups(ctx.namespace).Create(context.TODO(), pg, v1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		err = waitPodGroupPhase(ctx, podGroup, schedulingv1beta1.PodGroupRunning)
+		err = waitPodGroupPhase(ctx, podGroup, schedulingv1beta1.PodGroupInqueue)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		_, err = ctx.kubeclient.CoreV1().Pods(ctx.namespace).Create(context.TODO(), pod, v1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
