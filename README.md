@@ -25,7 +25,7 @@ refer to [#241](https://github.com/volcano-sh/volcano/issues/241) and [#288](htt
 
 ![cncf_logo](docs/images/cncf-logo.png)
 
-Volcano is an an incubating project of the [Cloud Native Computing Foundation](https://cncf.io/) (CNCF). Please consider joining the CNCF if you are an organization that wants to take an active role in supporting the growth and evolution of the cloud native ecosystem. 
+Volcano is a sandbox project of the [Cloud Native Computing Foundation](https://cncf.io/) (CNCF). Please consider joining the CNCF if you are an organization that wants to take an active role in supporting the growth and evolution of the cloud native ecosystem. 
 
 ## Overall Architecture
 
