@@ -1393,24 +1393,6 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("queue check: create queue by default", func() {
-		queueName := "default-queue"
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
-
-		queue := &schedulingv1beta1.Queue{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: queueName,
-			},
-			Spec: schedulingv1beta1.QueueSpec{
-				Weight: 1,
-			},
-		}
-
-		_, err := ctx.vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	})
-
 	ginkgo.It("queue check: open queue can NOT be deleted", func() {
 		queueName := "deleted-open-queue"
 		ctx := initTestContext(options{})
@@ -1439,13 +1421,4 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		err = ctx.vcclient.SchedulingV1beta1().Queues().Delete(context.TODO(), queue.Name, metav1.DeleteOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
-
-	ginkgo.It("queue check: default queue can NOT be deleted", func() {
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
-
-		err := ctx.vcclient.SchedulingV1beta1().Queues().Delete(context.TODO(), "default", metav1.DeleteOptions{})
-		gomega.Expect(err).To(gomega.HaveOccurred())
-	})
-
 })
