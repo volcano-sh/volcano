@@ -1447,4 +1447,5 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		err := ctx.vcclient.SchedulingV1beta1().Queues().Delete(context.TODO(), "default", metav1.DeleteOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
+
 })
