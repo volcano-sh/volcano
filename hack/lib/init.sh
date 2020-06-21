@@ -26,3 +26,4 @@ KUBE_ROOT="$(cd "$(dirname "${BASH_SOURCE}")/../.." && pwd -P)"
 export no_proxy=127.0.0.1,localhost
 
 source "${KUBE_ROOT}/hack/lib/golang.sh"
+source "${KUBE_ROOT}/hack/lib/util.sh"
