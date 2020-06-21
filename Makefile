@@ -88,6 +88,7 @@ verify:
 	hack/verify-golint.sh
 	hack/verify-gencode.sh
 	hack/verify-vendor.sh
+	hack/verify-vendor-licenses.sh
 
 lint: ## Lint the files
 	golangci-lint version
