@@ -47,7 +47,6 @@ type Session struct {
 	Queues        map[api.QueueID]*api.QueueInfo
 	NamespaceInfo map[api.NamespaceName]*api.NamespaceInfo
 
-	Backlog        []*api.JobInfo
 	Tiers          []conf.Tier
 	Configurations []conf.Configuration
 
@@ -149,7 +148,6 @@ func closeSession(ssn *Session) {
 
 	ssn.Jobs = nil
 	ssn.Nodes = nil
-	ssn.Backlog = nil
 	ssn.plugins = nil
 	ssn.eventHandlers = nil
 	ssn.jobOrderFns = nil

@@ -25,22 +25,41 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
+// Operation type
+type Operation int8
+
+const (
+	// Evict op
+	Evict = iota
+	// Pipeline op
+	Pipeline
+	// Allocate op
+	Allocate
+)
+
+type operation struct {
+	name   Operation
+	task   *api.TaskInfo
+	reason string
+}
+
 // Statement structure
 type Statement struct {
 	operations []operation
 	ssn        *Session
 }
 
-type operation struct {
-	name string
-	args []interface{}
+// NewStatement returns new statement object
+func NewStatement(ssn *Session) *Statement {
+	return &Statement{
+		ssn: ssn,
+	}
 }
 
-//Evict the pod
+// Evict the pod
 func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 	// Update status in session
-	job, found := s.ssn.Jobs[reclaimee.Job]
-	if found {
+	if job, found := s.ssn.Jobs[reclaimee.Job]; found {
 		if err := job.UpdateTaskStatus(reclaimee, api.Releasing); err != nil {
 			klog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
 				reclaimee.Namespace, reclaimee.Name, api.Releasing, s.ssn.UID, err)
@@ -69,8 +88,9 @@ func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 	}
 
 	s.operations = append(s.operations, operation{
-		name: "evict",
-		args: []interface{}{reclaimee, reason},
+		name:   Evict,
+		task:   reclaimee,
+		reason: reason,
 	})
 
 	return nil
@@ -158,8 +178,8 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string) error {
 	}
 
 	s.operations = append(s.operations, operation{
-		name: "pipeline",
-		args: []interface{}{task, hostname},
+		name: Pipeline,
+		task: task,
 	})
 
 	return nil
@@ -254,8 +274,8 @@ func (s *Statement) Allocate(task *api.TaskInfo, hostname string) error {
 	// Update status in session
 	klog.V(3).Info("Allocating operations ...")
 	s.operations = append(s.operations, operation{
-		name: "allocate",
-		args: []interface{}{task, hostname},
+		name: Allocate,
+		task: task,
 	})
 
 	return nil
@@ -326,18 +346,18 @@ func (s *Statement) Discard() {
 	for i := len(s.operations) - 1; i >= 0; i-- {
 		op := s.operations[i]
 		switch op.name {
-		case "evict":
-			err := s.unevict(op.args[0].(*api.TaskInfo))
+		case Evict:
+			err := s.unevict(op.task)
 			if err != nil {
 				klog.Errorf("Failed to unevict task: %s", err.Error())
 			}
-		case "pipeline":
-			err := s.unpipeline(op.args[0].(*api.TaskInfo))
+		case Pipeline:
+			err := s.unpipeline(op.task)
 			if err != nil {
 				klog.Errorf("Failed to unpipeline task: %s", err.Error())
 			}
-		case "allocate":
-			err := s.unallocate(op.args[0].(*api.TaskInfo))
+		case Allocate:
+			err := s.unallocate(op.task)
 			if err != nil {
 				klog.Errorf("Failed to unallocate task: %s", err.Error())
 			}
@@ -350,15 +370,15 @@ func (s *Statement) Commit() {
 	klog.V(3).Info("Committing operations ...")
 	for _, op := range s.operations {
 		switch op.name {
-		case "evict":
-			err := s.evict(op.args[0].(*api.TaskInfo), op.args[1].(string))
+		case Evict:
+			err := s.evict(op.task, op.reason)
 			if err != nil {
 				klog.Errorf("Failed to evict task: %s", err.Error())
 			}
-		case "pipeline":
-			s.pipeline(op.args[0].(*api.TaskInfo))
-		case "allocate":
-			err := s.allocate(op.args[0].(*api.TaskInfo))
+		case Pipeline:
+			s.pipeline(op.task)
+		case Allocate:
+			err := s.allocate(op.task)
 			if err != nil {
 				klog.Errorf("Failed to allocate task: for %s", err.Error())
 			}

@@ -170,7 +170,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		klog.V(3).Infof("Try to allocate resource to %d tasks of Job <%v/%v>",
 			tasks.Len(), job.Namespace, job.Name)
 
-		stmt := ssn.Statement()
+		stmt := framework.NewStatement(ssn)
 
 		for !tasks.Empty() {
 			task := tasks.Pop().(*api.TaskInfo)
