@@ -18,7 +18,6 @@ package api
 
 import (
 	"fmt"
-	"strconv"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
@@ -47,12 +46,9 @@ type NodeInfo struct {
 
 	Tasks map[TaskID]*TaskInfo
 
-	Devices        map[int]*DeviceInfo
-	GPUTotalCore   int
-	GPUTotalMemory int
-
 	// Used to store custom information
-	Others map[string]interface{}
+	Others     map[string]interface{}
+	GPUDevices map[int]*GPUDevice
 }
 
 // FutureIdle returns resources that will be idle in the future:
@@ -70,49 +66,31 @@ type NodeState struct {
 
 // NewNodeInfo is used to create new nodeInfo object
 func NewNodeInfo(node *v1.Node) *NodeInfo {
-	var ni *NodeInfo
+	nodeinfo := &NodeInfo{
+		Releasing: EmptyResource(),
+		Pipelined: EmptyResource(),
+		Idle:      EmptyResource(),
+		Used:      EmptyResource(),
 
-	if node == nil {
-		ni = &NodeInfo{
-			Releasing: EmptyResource(),
-			Pipelined: EmptyResource(),
-			Idle:      EmptyResource(),
-			Used:      EmptyResource(),
+		Allocatable: EmptyResource(),
+		Capability:  EmptyResource(),
 
-			Allocatable: EmptyResource(),
-			Capability:  EmptyResource(),
+		Tasks: make(map[TaskID]*TaskInfo),
 
-			Tasks: make(map[TaskID]*TaskInfo),
-
-			Devices:        make(map[int]*DeviceInfo),
-			GPUTotalCore:   0,
-			GPUTotalMemory: 0,
-		}
-	} else {
-		ni = &NodeInfo{
-			Name: node.Name,
-			Node: node,
-
-			Releasing: EmptyResource(),
-			Pipelined: EmptyResource(),
-			Idle:      NewResource(node.Status.Allocatable),
-			Used:      EmptyResource(),
-
-			Allocatable: NewResource(node.Status.Allocatable),
-			Capability:  NewResource(node.Status.Capacity),
-
-			Tasks: make(map[TaskID]*TaskInfo),
-
-			Devices:        make(map[int]*DeviceInfo),
-			GPUTotalCore:   0,
-			GPUTotalMemory: 0,
-		}
+		GPUDevices: make(map[int]*GPUDevice),
 	}
 
-	ni.SetNodeGPUInfo(node)
-	ni.setNodeState(node)
+	if node != nil {
+		nodeinfo.Name = node.Name
+		nodeinfo.Node = node
+		nodeinfo.Idle = NewResource(node.Status.Allocatable)
+		nodeinfo.Allocatable = NewResource(node.Status.Allocatable)
+		nodeinfo.Capability = NewResource(node.Status.Capacity)
+	}
+	nodeinfo.setNodeGPUInfo(node)
+	nodeinfo.setNodeState(node)
 
-	return ni
+	return nodeinfo
 }
 
 // Clone used to clone nodeInfo Object
@@ -122,7 +100,6 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 	for _, p := range ni.Tasks {
 		res.AddTask(p)
 	}
-	res.Others = ni.Others
 	return res
 }
 
@@ -168,27 +145,35 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 	}
 }
 
-func (ni *NodeInfo) SetNodeGPUInfo(node *v1.Node) {
+func (ni *NodeInfo) setNodeGPUInfo(node *v1.Node) {
+	if node == nil {
+		return
+	}
+	memory, ok := node.Status.Capacity[VolcanoGPUResource]
+	if !ok {
+		return
+	}
+	totalMemory := memory.Value()
 
-	core, ok := node.Status.Capacity["volcano.sh/node-gpu-core"]
-	if ok {
-		ni.GPUTotalCore = int(core.Value())
+	res, ok := node.Status.Capacity[VolcanoGPUNumber]
+	if !ok {
+		return
+	}
+	gpuNumber := res.Value()
+	if gpuNumber == 0 {
+		klog.Warningf("invalid %s=%s", VolcanoGPUNumber, res)
 	}
 
-	mem, ok := node.Status.Capacity["volcano.sh/node-gpu-memory"]
-	if ok {
-		ni.GPUTotalMemory = int(mem.Value())
+	memoryPerCard := uint(totalMemory / gpuNumber)
+	for i := 0; i < int(gpuNumber); i++ {
+		ni.GPUDevices[i] = NewGPUDevice(i, memoryPerCard)
 	}
-
-	for i := 0; i < int(core.Value()); i++ {
-		ni.Devices[i] = NewDeviceInfo(i, uint(int(mem.Value())/int(core.Value())))
-	}
-
 }
 
 // SetNode sets kubernetes node object to nodeInfo object
 func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.setNodeState(node)
+	ni.setNodeGPUInfo(node)
 
 	if !ni.Ready() {
 		klog.Warningf("Failed to set node info, phase: %s, reason: %s",
@@ -212,11 +197,13 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 			ni.Idle.Sub(ti.Resreq)
 			ni.Releasing.Add(ti.Resreq)
 			ni.Used.Add(ti.Resreq)
+			ni.AddGPUResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Add(ti.Resreq)
 		default:
 			ni.Idle.Sub(ti.Resreq)
 			ni.Used.Add(ti.Resreq)
+			ni.AddGPUResource(ti.Pod)
 		}
 	}
 }
@@ -257,6 +244,7 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 			}
 			ni.Releasing.Add(ti.Resreq)
 			ni.Used.Add(ti.Resreq)
+			ni.AddGPUResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Add(ti.Resreq)
 		default:
@@ -264,6 +252,7 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 				return err
 			}
 			ni.Used.Add(ti.Resreq)
+			ni.AddGPUResource(ti.Pod)
 		}
 	}
 
@@ -293,11 +282,13 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 			ni.Releasing.Sub(task.Resreq)
 			ni.Idle.Add(task.Resreq)
 			ni.Used.Sub(task.Resreq)
+			ni.AddGPUResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Sub(task.Resreq)
 		default:
 			ni.Idle.Add(task.Resreq)
 			ni.Used.Sub(task.Resreq)
+			ni.SubGPUResource(ti.Pod)
 		}
 	}
 
@@ -347,38 +338,10 @@ func (ni *NodeInfo) Pods() (pods []*v1.Pod) {
 	return
 }
 
-func (ni *NodeInfo) CheckPredicatePodOnGPUNode(pod *v1.Pod) bool {
-	res := false
-	memReq := uint(0)
-
-	remainMems := ni.GetDevicesRemainGPUMemory()
-	if len(pod.ObjectMeta.Annotations) > 0 {
-		mem, found := pod.ObjectMeta.Annotations["volcano.sh/pod-gpu-memory"]
-		if found {
-			m, _ := strconv.Atoi(mem)
-			memReq = uint(m)
-		}
-	}
-
-	if len(remainMems) > 0 {
-		for devID := 0; devID < len(ni.Devices); devID++ {
-			availableGPU, ok := remainMems[devID]
-			if ok {
-				if availableGPU >= memReq {
-					res = true
-					break
-				}
-			}
-		}
-	}
-
-	return res
-
-}
-
-func (ni *NodeInfo) GetDevicesRemainGPUMemory() map[int]uint {
-	devicesAllGPUMemory := ni.GetDevicesAllGPUMemory()
-	devicesUsedGPUMemory := ni.GetDevicesUsedGPUMemory()
+// GetDevicesIdleGPUMemory returns all the idle GPU memory by gpu card.
+func (ni *NodeInfo) GetDevicesIdleGPUMemory() map[int]uint {
+	devicesAllGPUMemory := ni.getDevicesAllGPUMemory()
+	devicesUsedGPUMemory := ni.getDevicesUsedGPUMemory()
 	res := map[int]uint{}
 	for id, allMemory := range devicesAllGPUMemory {
 		if usedMemory, found := devicesUsedGPUMemory[id]; found {
@@ -388,55 +351,40 @@ func (ni *NodeInfo) GetDevicesRemainGPUMemory() map[int]uint {
 	return res
 }
 
-func (ni *NodeInfo) GetDevicesUsedGPUMemory() map[int]uint {
+func (ni *NodeInfo) getDevicesUsedGPUMemory() map[int]uint {
 	res := map[int]uint{}
-	for _, device := range ni.Devices {
-		res[device.Id] = device.GetUsedGPUMemory()
+	for _, device := range ni.GPUDevices {
+		res[device.ID] = device.getUsedGPUMemory()
 	}
 	return res
 }
 
-func (ni *NodeInfo) GetDevicesAllGPUMemory() map[int]uint {
+func (ni *NodeInfo) getDevicesAllGPUMemory() map[int]uint {
 	res := map[int]uint{}
-	for _, device := range ni.Devices {
-		res[device.Id] = device.GPUTotalMemory
+	for _, device := range ni.GPUDevices {
+		res[device.ID] = device.Memory
 	}
 	return res
 }
 
-func (ni *NodeInfo) GetDeviceCoreId(pod *v1.Pod) (int, bool) {
-
-	resId := -1
-	resOk := false
-	cMem := uint(0)
-	rMems := ni.GetDevicesRemainGPUMemory()
-
-	gpuReq := uint(0)
-
-	if len(pod.ObjectMeta.Annotations) > 0 {
-		req, ok := pod.ObjectMeta.Annotations["volcano.sh/pod-gpu-memory"]
-		if ok {
-			s, _ := strconv.Atoi(req)
-			gpuReq = uint(s)
+// AddGPUResource adds the pod to GPU pool if it is assigned
+func (ni *NodeInfo) AddGPUResource(pod *v1.Pod) {
+	gpuRes := GetGPUResourceOfPod(pod)
+	if gpuRes > 0 {
+		id := GetGPUIndex(pod)
+		if dev := ni.GPUDevices[id]; dev != nil {
+			dev.PodMap[string(pod.UID)] = pod
 		}
 	}
+}
 
-	if gpuReq > uint(0) {
-		if len(rMems) > 0 {
-			for i := 0; i < len(ni.Devices); i++ {
-				rMem, ok := rMems[i]
-				if ok {
-					if rMem >= gpuReq {
-						if resId == -1 || cMem > rMem {
-							resId = i
-							cMem = rMem
-						}
-						resOk = true
-					}
-				}
-			}
+// SubGPUResource frees the gpu hold by the pod
+func (ni *NodeInfo) SubGPUResource(pod *v1.Pod) {
+	gpuRes := GetGPUResourceOfPod(pod)
+	if gpuRes > 0 {
+		id := GetGPUIndex(pod)
+		if dev := ni.GPUDevices[id]; dev != nil {
+			delete(dev.PodMap, string(pod.UID))
 		}
 	}
-
-	return resId, resOk
 }

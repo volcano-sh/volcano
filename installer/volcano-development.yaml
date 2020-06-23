@@ -50,7 +50,7 @@ rules:
     verbs: ["create", "list", "watch", "update", "patch"]
   - apiGroups: [""]
     resources: ["pods", "pods/status"]
-    verbs: ["create", "get", "list", "watch", "update", "bind", "updateStatus", "delete"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "bind", "updateStatus", "delete"]
   - apiGroups: [""]
     resources: ["pods/binding"]
     verbs: ["create"]

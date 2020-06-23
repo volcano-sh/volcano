@@ -18,8 +18,12 @@ package api
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/klog"
 )
 
 // Refer k8s.io/kubernetes/pkg/scheduler/algorithm/predicates/predicates.go#GetResourceRequest.
@@ -74,13 +78,40 @@ func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {
 	return result
 }
 
-func UpdateGPUPod(oldPod *v1.Pod, coreId int, memoryPerCore int) (newPod *v1.Pod) {
-	newPod = oldPod.DeepCopy()
-	if len(newPod.ObjectMeta.Annotations) == 0 {
-		newPod.ObjectMeta.Annotations = map[string]string{}
+// GetGPUIndex returns the ID of the GPU
+func GetGPUIndex(pod *v1.Pod) int {
+	if len(pod.Annotations) > 0 {
+		value, found := pod.Annotations[GPUIndex]
+		if found {
+			id, err := strconv.Atoi(value)
+			if err != nil {
+				klog.Error("invalid %s=%s", GPUIndex, value)
+				return -1
+			}
+			return id
+		}
 	}
 
-	newPod.ObjectMeta.Annotations["volcano.sh/gpu-core-id"] = fmt.Sprintf("%d", coreId)
+	return -1
+}
 
-	return newPod
+func escapeJSONPointer(p string) string {
+	// Escaping reference name using https://tools.ietf.org/html/rfc6901
+	p = strings.Replace(p, "~", "~0", -1)
+	p = strings.Replace(p, "/", "~1", -1)
+	return p
+}
+
+// AddGPUIndexPatch returns the patch adding GPU index
+func AddGPUIndexPatch(id int) string {
+	return fmt.Sprintf(`[{"op": "add", "path": "/metadata/annotations/%s", "value":"%d"},`+
+		`{"op": "add", "path": "/metadata/annotations/%s", "value": "%d"}]`,
+		escapeJSONPointer(PredicateTime), time.Now().UnixNano(),
+		escapeJSONPointer(GPUIndex), id)
+}
+
+// RemoveGPUIndexPatch returns the patch removing GPU index
+func RemoveGPUIndexPatch() string {
+	return fmt.Sprintf(`[{"op": "remove", "path": "/metadata/annotations/%s"},`+
+		`{"op": "remove", "path": "/metadata/annotations/%s"]`, escapeJSONPointer(PredicateTime), escapeJSONPointer(GPUIndex))
 }
