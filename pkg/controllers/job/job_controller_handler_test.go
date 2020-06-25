@@ -35,7 +35,7 @@ import (
 	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
-func newController() *Controller {
+func newController() *jobcontroller {
 	kubeClientSet := kubeclientset.NewForConfigOrDie(&rest.Config{
 		Host: "",
 		ContentConfig: rest.ContentConfig{

@@ -43,8 +43,13 @@ import (
 	busv1alpha1lister "volcano.sh/volcano/pkg/client/listers/bus/v1alpha1"
 	schedulinglister "volcano.sh/volcano/pkg/client/listers/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
+	"volcano.sh/volcano/pkg/controllers/framework"
 	queuestate "volcano.sh/volcano/pkg/controllers/queue/state"
 )
+
+func init() {
+	framework.RegisterController(&pgcontroller{})
+}
 
 const (
 	// maxRetries is the number of times a queue or command will be retried before it is dropped out of the queue.
@@ -54,8 +59,8 @@ const (
 	maxRetries = 15
 )
 
-// Controller manages queue status.
-type Controller struct {
+// pgcontroller manages queue status.
+type pgcontroller struct {
 	kubeClient kubernetes.Interface
 	vcClient   vcclientset.Interface
 
@@ -91,39 +96,34 @@ type Controller struct {
 	recorder record.EventRecorder
 }
 
+func (c *pgcontroller) Name() string {
+	return "pg-controller"
+}
+
 // NewQueueController creates a QueueController.
-func NewQueueController(
-	kubeClient kubernetes.Interface,
-	vcClient vcclientset.Interface,
-) *Controller {
-	factory := informerfactory.NewSharedInformerFactory(vcClient, 0)
+func (c *pgcontroller) Initialize(opt *framework.ControllerOption) error {
+
+	c.vcClient = opt.VolcanoClient
+	c.kubeClient = opt.KubeClient
+
+	factory := informerfactory.NewSharedInformerFactory(c.vcClient, 0)
 	queueInformer := factory.Scheduling().V1beta1().Queues()
 	pgInformer := factory.Scheduling().V1beta1().PodGroups()
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
-	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
+	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: c.kubeClient.CoreV1().Events("")})
 
-	c := &Controller{
-		kubeClient: kubeClient,
-		vcClient:   vcClient,
-
-		queueInformer: queueInformer,
-		pgInformer:    pgInformer,
-
-		queueLister: queueInformer.Lister(),
-		queueSynced: queueInformer.Informer().HasSynced,
-
-		pgLister: pgInformer.Lister(),
-		pgSynced: pgInformer.Informer().HasSynced,
-
-		queue:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		commandQueue: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-
-		podGroups: make(map[string]map[string]struct{}),
-
-		recorder: eventBroadcaster.NewRecorder(versionedscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"}),
-	}
+	c.queueInformer = queueInformer
+	c.pgInformer = pgInformer
+	c.queueLister = queueInformer.Lister()
+	c.queueSynced = queueInformer.Informer().HasSynced
+	c.pgLister = pgInformer.Lister()
+	c.pgSynced = pgInformer.Informer().HasSynced
+	c.queue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	c.commandQueue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	c.podGroups = make(map[string]map[string]struct{})
+	c.recorder = eventBroadcaster.NewRecorder(versionedscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
 
 	queueInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.addQueue,
@@ -163,11 +163,11 @@ func NewQueueController(
 
 	c.enqueueQueue = c.enqueue
 
-	return c
+	return nil
 }
 
 // Run starts QueueController.
-func (c *Controller) Run(stopCh <-chan struct{}) {
+func (c *pgcontroller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 	defer c.commandQueue.ShutDown()
@@ -194,12 +194,12 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 // marks them done. You may run as many of these in parallel as you wish; the
 // workqueue guarantees that they will not end up processing the same `queue`
 // at the same time.
-func (c *Controller) worker() {
+func (c *pgcontroller) worker() {
 	for c.processNextWorkItem() {
 	}
 }
 
-func (c *Controller) processNextWorkItem() bool {
+func (c *pgcontroller) processNextWorkItem() bool {
 	obj, shutdown := c.queue.Get()
 	if shutdown {
 		return false
@@ -218,7 +218,7 @@ func (c *Controller) processNextWorkItem() bool {
 	return true
 }
 
-func (c *Controller) handleQueue(req *apis.Request) error {
+func (c *pgcontroller) handleQueue(req *apis.Request) error {
 	startTime := time.Now()
 	defer func() {
 		klog.V(4).Infof("Finished syncing queue %s (%v).", req.QueueName, time.Since(startTime))
@@ -248,7 +248,7 @@ func (c *Controller) handleQueue(req *apis.Request) error {
 	return nil
 }
 
-func (c *Controller) handleQueueErr(err error, obj interface{}) {
+func (c *pgcontroller) handleQueueErr(err error, obj interface{}) {
 	if err == nil {
 		c.queue.Forget(obj)
 		return
@@ -267,12 +267,12 @@ func (c *Controller) handleQueueErr(err error, obj interface{}) {
 	c.queue.Forget(obj)
 }
 
-func (c *Controller) commandWorker() {
+func (c *pgcontroller) commandWorker() {
 	for c.processNextCommand() {
 	}
 }
 
-func (c *Controller) processNextCommand() bool {
+func (c *pgcontroller) processNextCommand() bool {
 	obj, shutdown := c.commandQueue.Get()
 	if shutdown {
 		return false
@@ -291,7 +291,7 @@ func (c *Controller) processNextCommand() bool {
 	return true
 }
 
-func (c *Controller) handleCommand(cmd *busv1alpha1.Command) error {
+func (c *pgcontroller) handleCommand(cmd *busv1alpha1.Command) error {
 	startTime := time.Now()
 	defer func() {
 		klog.V(4).Infof("Finished syncing command %s/%s (%v).", cmd.Namespace, cmd.Name, time.Since(startTime))
@@ -317,7 +317,7 @@ func (c *Controller) handleCommand(cmd *busv1alpha1.Command) error {
 	return nil
 }
 
-func (c *Controller) handleCommandErr(err error, obj interface{}) {
+func (c *pgcontroller) handleCommandErr(err error, obj interface{}) {
 	if err == nil {
 		c.commandQueue.Forget(obj)
 		return

@@ -29,7 +29,7 @@ import (
 	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
 )
 
-func newFakeController() *Controller {
+func newFakeController() *pgcontroller {
 	KubeBatchClientSet := vcclient.NewSimpleClientset()
 	KubeClientSet := kubeclient.NewSimpleClientset()
 

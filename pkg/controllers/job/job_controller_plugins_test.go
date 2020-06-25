@@ -30,7 +30,7 @@ import (
 	volcanoclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
 )
 
-func newFakeController() *Controller {
+func newFakeController() *jobcontroller {
 	volcanoClientSet := volcanoclient.NewSimpleClientset()
 	kubeClientSet := kubeclient.NewSimpleClientset()
 

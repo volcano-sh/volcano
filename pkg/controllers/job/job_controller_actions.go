@@ -36,7 +36,7 @@ import (
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
-func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseMap, updateStatus state.UpdateStatusFn) error {
+func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseMap, updateStatus state.UpdateStatusFn) error {
 	klog.V(3).Infof("Killing Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
 	defer klog.V(3).Infof("Finished Job <%s/%s> killing", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
@@ -142,7 +142,7 @@ func (cc *Controller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseM
 	return nil
 }
 
-func (cc *Controller) initiateJob(job *batch.Job) (*batch.Job, error) {
+func (cc *jobcontroller) initiateJob(job *batch.Job) (*batch.Job, error) {
 	klog.V(3).Infof("Starting to initiate Job <%s/%s>", job.Namespace, job.Name)
 	defer klog.V(3).Infof("Finished Job <%s/%s> initiate", job.Namespace, job.Name)
 
@@ -176,7 +176,7 @@ func (cc *Controller) initiateJob(job *batch.Job) (*batch.Job, error) {
 	return newJob, nil
 }
 
-func (cc *Controller) initOnJobUpdate(job *batch.Job) error {
+func (cc *jobcontroller) initOnJobUpdate(job *batch.Job) error {
 	klog.V(3).Infof("Starting to initiate Job <%s/%s> on update", job.Namespace, job.Name)
 	defer klog.V(3).Infof("Finished Job <%s/%s> initiate on update", job.Namespace, job.Name)
 
@@ -197,7 +197,7 @@ func (cc *Controller) initOnJobUpdate(job *batch.Job) error {
 	return nil
 }
 
-func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
+func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
 	klog.V(3).Infof("Starting to sync up Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
 	defer klog.V(3).Infof("Finished Job <%s/%s> sync up", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
@@ -392,7 +392,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	return nil
 }
 
-func (cc *Controller) createJobIOIfNotExist(job *batch.Job) (*batch.Job, error) {
+func (cc *jobcontroller) createJobIOIfNotExist(job *batch.Job) (*batch.Job, error) {
 	// If PVC does not exist, create them for Job.
 	var needUpdate bool
 	if job.Status.ControlledResources == nil {
@@ -446,7 +446,7 @@ func (cc *Controller) createJobIOIfNotExist(job *batch.Job) (*batch.Job, error) 
 	return job, nil
 }
 
-func (cc *Controller) checkPVCExist(job *batch.Job, pvc string) (bool, error) {
+func (cc *jobcontroller) checkPVCExist(job *batch.Job, pvc string) (bool, error) {
 	if _, err := cc.pvcLister.PersistentVolumeClaims(job.Namespace).Get(pvc); err != nil {
 		if apierrors.IsNotFound(err) {
 			return false, nil
@@ -458,7 +458,7 @@ func (cc *Controller) checkPVCExist(job *batch.Job, pvc string) (bool, error) {
 	return true, nil
 }
 
-func (cc *Controller) createPVC(job *batch.Job, vcName string, volumeClaim *v1.PersistentVolumeClaimSpec) error {
+func (cc *jobcontroller) createPVC(job *batch.Job, vcName string, volumeClaim *v1.PersistentVolumeClaimSpec) error {
 	pvc := &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: job.Namespace,
@@ -480,7 +480,7 @@ func (cc *Controller) createPVC(job *batch.Job, vcName string, volumeClaim *v1.P
 	return nil
 }
 
-func (cc *Controller) createOrUpdatePodGroup(job *batch.Job) error {
+func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 	// If PodGroup does not exist, create one for Job.
 	pg, err := cc.pgLister.PodGroups(job.Namespace).Get(job.Name)
 	if err != nil {
@@ -531,7 +531,7 @@ func (cc *Controller) createOrUpdatePodGroup(job *batch.Job) error {
 	return nil
 }
 
-func (cc *Controller) deleteJobPod(jobName string, pod *v1.Pod) error {
+func (cc *jobcontroller) deleteJobPod(jobName string, pod *v1.Pod) error {
 	err := cc.kubeClient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		klog.Errorf("Failed to delete pod %s/%s for Job %s, err %#v",
@@ -543,7 +543,7 @@ func (cc *Controller) deleteJobPod(jobName string, pod *v1.Pod) error {
 	return nil
 }
 
-func (cc *Controller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
+func (cc *jobcontroller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 	cc.Mutex.Lock()
 	defer cc.Mutex.Unlock()
 
@@ -577,7 +577,7 @@ func (cc *Controller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 	return &minAvailableTasksRes
 }
 
-func (cc *Controller) initJobStatus(job *batch.Job) (*batch.Job, error) {
+func (cc *jobcontroller) initJobStatus(job *batch.Job) (*batch.Job, error) {
 	if job.Status.State.Phase != "" {
 		return job, nil
 	}
@@ -601,7 +601,7 @@ func (cc *Controller) initJobStatus(job *batch.Job) (*batch.Job, error) {
 	return newJob, nil
 }
 
-func (cc *Controller) updateJobStatus(job *batch.Job) (*batch.Job, error) {
+func (cc *jobcontroller) updateJobStatus(job *batch.Job) (*batch.Job, error) {
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("Failed to update status of Job %v/%v: %v",

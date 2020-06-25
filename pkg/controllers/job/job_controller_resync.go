@@ -38,7 +38,7 @@ func newRateLimitingQueue() workqueue.RateLimitingInterface {
 	))
 }
 
-func (cc *Controller) processResyncTask() {
+func (cc *jobcontroller) processResyncTask() {
 	obj, shutdown := cc.errTasks.Get()
 	if shutdown {
 		return
@@ -64,7 +64,7 @@ func (cc *Controller) processResyncTask() {
 	}
 }
 
-func (cc *Controller) syncTask(oldTask *v1.Pod) error {
+func (cc *jobcontroller) syncTask(oldTask *v1.Pod) error {
 	cc.Mutex.Lock()
 	defer cc.Mutex.Unlock()
 
@@ -85,6 +85,6 @@ func (cc *Controller) syncTask(oldTask *v1.Pod) error {
 	return cc.cache.UpdatePod(newPod)
 }
 
-func (cc *Controller) resyncTask(task *v1.Pod) {
+func (cc *jobcontroller) resyncTask(task *v1.Pod) {
 	cc.errTasks.AddRateLimited(task)
 }

@@ -26,7 +26,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	kubeschedulinginformers "k8s.io/client-go/informers/scheduling/v1beta1"
 	"k8s.io/client-go/kubernetes"
@@ -51,8 +50,13 @@ import (
 	schedulinglisters "volcano.sh/volcano/pkg/client/listers/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobcache "volcano.sh/volcano/pkg/controllers/cache"
+	"volcano.sh/volcano/pkg/controllers/framework"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
+
+func init() {
+	framework.RegisterController(&jobcontroller{})
+}
 
 const (
 	// maxRetries is the number of times a volcano job will be retried before it is dropped out of the queue.
@@ -63,8 +67,8 @@ const (
 	maxRetries = 15
 )
 
-// Controller the Job Controller type.
-type Controller struct {
+// jobcontroller the Job jobcontroller type.
+type jobcontroller struct {
 	kubeClient kubernetes.Interface
 	vcClient   vcclientset.Interface
 
@@ -114,31 +118,31 @@ type Controller struct {
 	workers  uint32
 }
 
-// NewJobController create new Job Controller.
-func NewJobController(
-	kubeClient kubernetes.Interface,
-	vcClient vcclientset.Interface,
-	sharedInformers informers.SharedInformerFactory,
-	workers uint32,
-) *Controller {
+func (cc *jobcontroller) Name() string {
+	return "job-controller"
+}
 
+// NewJobController create new Job jobcontroller.
+func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
+	cc.kubeClient = opt.KubeClient
+	cc.vcClient = opt.VolcanoClient
+
+	sharedInformers := opt.SharedInformerFactory
+	workers := opt.WorkerNum
 	//Initialize event client
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
-	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
+	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: cc.kubeClient.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(vcscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
 
-	cc := &Controller{
-		kubeClient:      kubeClient,
-		vcClient:        vcClient,
-		queueList:       make([]workqueue.RateLimitingInterface, workers),
-		commandQueue:    workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		cache:           jobcache.New(),
-		errTasks:        newRateLimitingQueue(),
-		recorder:        recorder,
-		priorityClasses: make(map[string]*v1beta1.PriorityClass),
-		workers:         workers,
-	}
+	cc.queueList = make([]workqueue.RateLimitingInterface, workers)
+	cc.commandQueue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	cc.cache = jobcache.New()
+	cc.errTasks = newRateLimitingQueue()
+	cc.recorder = recorder
+	cc.priorityClasses = make(map[string]*v1beta1.PriorityClass)
+	cc.workers = workers
+
 	var i uint32
 	for i = 0; i < workers; i++ {
 		cc.queueList[i] = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
@@ -215,11 +219,11 @@ func NewJobController(
 	state.SyncJob = cc.syncJob
 	state.KillJob = cc.killJob
 
-	return cc
+	return nil
 }
 
 // Run start JobController.
-func (cc *Controller) Run(stopCh <-chan struct{}) {
+func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
 
 	go cc.jobInformer.Informer().Run(stopCh)
 	go cc.podInformer.Informer().Run(stopCh)
@@ -253,14 +257,14 @@ func (cc *Controller) Run(stopCh <-chan struct{}) {
 	klog.Infof("JobController is running ...... ")
 }
 
-func (cc *Controller) worker(i uint32) {
+func (cc *jobcontroller) worker(i uint32) {
 	klog.Infof("worker %d start ...... ", i)
 
 	for cc.processNextReq(i) {
 	}
 }
 
-func (cc *Controller) belongsToThisRoutine(key string, count uint32) bool {
+func (cc *jobcontroller) belongsToThisRoutine(key string, count uint32) bool {
 	var hashVal hash.Hash32
 	var val uint32
 
@@ -272,7 +276,7 @@ func (cc *Controller) belongsToThisRoutine(key string, count uint32) bool {
 	return val%cc.workers == count
 }
 
-func (cc *Controller) getWorkerQueue(key string) workqueue.RateLimitingInterface {
+func (cc *jobcontroller) getWorkerQueue(key string) workqueue.RateLimitingInterface {
 	var hashVal hash.Hash32
 	var val uint32
 
@@ -286,7 +290,7 @@ func (cc *Controller) getWorkerQueue(key string) workqueue.RateLimitingInterface
 	return queue
 }
 
-func (cc *Controller) processNextReq(count uint32) bool {
+func (cc *jobcontroller) processNextReq(count uint32) bool {
 	queue := cc.queueList[count]
 	obj, shutdown := queue.Get()
 	if shutdown {
