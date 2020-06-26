@@ -25,6 +25,7 @@ import (
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	volcanoclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
+	"volcano.sh/volcano/pkg/controllers/framework"
 )
 
 func TestGarbageCollector_ProcessJob(t *testing.T) {
@@ -83,7 +84,10 @@ func TestGarbageCollector_ProcessTTL(t *testing.T) {
 		},
 	}
 	for i, testcase := range testcases {
-		gc := NewGarbageCollector(volcanoclient.NewSimpleClientset())
+		gc := &gccontroller{}
+		gc.Initialize(&framework.ControllerOption{
+			VolcanoClient: volcanoclient.NewSimpleClientset(),
+		})
 
 		expired, err := gc.processTTL(testcase.Job)
 		if err != nil {

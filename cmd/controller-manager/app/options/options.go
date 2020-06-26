@@ -31,7 +31,7 @@ const (
 	defaultSchedulerName = "volcano"
 )
 
-// ServerOption is the main context object for the controller manager.
+// ServerOption is the main context object for the controllers.
 type ServerOption struct {
 	KubeClientOptions    kube.ClientOptions
 	EnableLeaderElection bool

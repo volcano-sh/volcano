@@ -21,7 +21,7 @@ import (
 	"reflect"
 	"testing"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
@@ -29,14 +29,24 @@ import (
 
 	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
+	"volcano.sh/volcano/pkg/controllers/framework"
 )
 
-func newFakeController() *Controller {
+func newFakeController() *pgcontroller {
 	kubeClient := kubeclient.NewSimpleClientset()
 	vcClient := vcclient.NewSimpleClientset()
 	sharedInformers := informers.NewSharedInformerFactory(kubeClient, 0)
 
-	controller := NewPodgroupController(kubeClient, vcClient, sharedInformers, "volcano")
+	controller := &pgcontroller{}
+	opt := &framework.ControllerOption{
+		KubeClient:            kubeClient,
+		VolcanoClient:         vcClient,
+		SharedInformerFactory: sharedInformers,
+		SchedulerName:         "volcano",
+	}
+
+	controller.Initialize(opt)
+
 	return controller
 }
 

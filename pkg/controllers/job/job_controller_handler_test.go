@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"testing"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -33,9 +33,10 @@ import (
 	"volcano.sh/volcano/pkg/apis/helpers"
 	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/controllers/framework"
 )
 
-func newController() *Controller {
+func newController() *jobcontroller {
 	kubeClientSet := kubeclientset.NewForConfigOrDie(&rest.Config{
 		Host: "",
 		ContentConfig: rest.ContentConfig{
@@ -53,7 +54,15 @@ func newController() *Controller {
 
 	sharedInformers := informers.NewSharedInformerFactory(kubeClientSet, 0)
 
-	controller := NewJobController(kubeClientSet, vcclient, sharedInformers, 3)
+	controller := &jobcontroller{}
+	opt := &framework.ControllerOption{
+		VolcanoClient:         vcclient,
+		KubeClient:            kubeClientSet,
+		SharedInformerFactory: sharedInformers,
+		WorkerNum:             3,
+	}
+
+	controller.Initialize(opt)
 
 	return controller
 }

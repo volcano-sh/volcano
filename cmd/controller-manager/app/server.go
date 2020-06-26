@@ -37,10 +37,7 @@ import (
 	"volcano.sh/volcano/cmd/controller-manager/app/options"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
-	"volcano.sh/volcano/pkg/controllers/garbagecollector"
-	"volcano.sh/volcano/pkg/controllers/job"
-	"volcano.sh/volcano/pkg/controllers/podgroup"
-	"volcano.sh/volcano/pkg/controllers/queue"
+	"volcano.sh/volcano/pkg/controllers/framework"
 	"volcano.sh/volcano/pkg/kube"
 )
 
@@ -114,22 +111,26 @@ func Run(opt *options.ServerOption) error {
 }
 
 func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx context.Context) {
+	controllerOpt := &framework.ControllerOption{}
+
+	controllerOpt.SchedulerName = opt.SchedulerName
+	controllerOpt.WorkerNum = opt.WorkerThreads
+
 	// TODO: add user agent for different controllers
-	kubeClient := kubeclientset.NewForConfigOrDie(config)
-	vcClient := vcclientset.NewForConfigOrDie(config)
-
-	sharedInformers := informers.NewSharedInformerFactory(kubeClient, 0)
-
-	jobController := job.NewJobController(kubeClient, vcClient, sharedInformers, opt.WorkerThreads)
-	queueController := queue.NewQueueController(kubeClient, vcClient)
-	garbageCollector := garbagecollector.NewGarbageCollector(vcClient)
-	pgController := podgroup.NewPodgroupController(kubeClient, vcClient, sharedInformers, opt.SchedulerName)
+	controllerOpt.KubeClient = kubeclientset.NewForConfigOrDie(config)
+	controllerOpt.VolcanoClient = vcclientset.NewForConfigOrDie(config)
+	controllerOpt.SharedInformerFactory = informers.NewSharedInformerFactory(controllerOpt.KubeClient, 0)
 
 	return func(ctx context.Context) {
-		go jobController.Run(ctx.Done())
-		go queueController.Run(ctx.Done())
-		go garbageCollector.Run(ctx.Done())
-		go pgController.Run(ctx.Done())
+		framework.ForeachController(func(c framework.Controller) {
+			if err := c.Initialize(controllerOpt); err != nil {
+				klog.Errorf("Failed to initialize controller <%s>: %v", c.Name(), err)
+				return
+			}
+
+			go c.Run(ctx.Done())
+		})
+
 		<-ctx.Done()
 	}
 }
