@@ -32,7 +32,7 @@ import (
 	"k8s.io/klog"
 )
 
-func (c *pgcontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
+func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
 	klog.V(4).Infof("Begin to sync queue %s.", queue.Name)
 	defer klog.V(4).Infof("End sync queue %s.", queue.Name)
 
@@ -82,7 +82,7 @@ func (c *pgcontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateFn s
 	return nil
 }
 
-func (c *pgcontroller) openQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
+func (c *queuecontroller) openQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
 	klog.V(4).Infof("Begin to open queue %s.", queue.Name)
 
 	newQueue := queue.DeepCopy()
@@ -125,7 +125,7 @@ func (c *pgcontroller) openQueue(queue *schedulingv1beta1.Queue, updateStateFn s
 	return nil
 }
 
-func (c *pgcontroller) closeQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
+func (c *queuecontroller) closeQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
 	klog.V(4).Infof("Begin to close queue %s.", queue.Name)
 
 	newQueue := queue.DeepCopy()

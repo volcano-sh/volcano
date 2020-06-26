@@ -48,7 +48,7 @@ import (
 )
 
 func init() {
-	framework.RegisterController(&pgcontroller{})
+	framework.RegisterController(&queuecontroller{})
 }
 
 const (
@@ -59,8 +59,8 @@ const (
 	maxRetries = 15
 )
 
-// pgcontroller manages queue status.
-type pgcontroller struct {
+// queuecontroller manages queue status.
+type queuecontroller struct {
 	kubeClient kubernetes.Interface
 	vcClient   vcclientset.Interface
 
@@ -96,12 +96,12 @@ type pgcontroller struct {
 	recorder record.EventRecorder
 }
 
-func (c *pgcontroller) Name() string {
-	return "pg-controller"
+func (c *queuecontroller) Name() string {
+	return "queue-controller"
 }
 
 // NewQueueController creates a QueueController.
-func (c *pgcontroller) Initialize(opt *framework.ControllerOption) error {
+func (c *queuecontroller) Initialize(opt *framework.ControllerOption) error {
 
 	c.vcClient = opt.VolcanoClient
 	c.kubeClient = opt.KubeClient
@@ -167,7 +167,7 @@ func (c *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 }
 
 // Run starts QueueController.
-func (c *pgcontroller) Run(stopCh <-chan struct{}) {
+func (c *queuecontroller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 	defer c.commandQueue.ShutDown()
@@ -194,12 +194,12 @@ func (c *pgcontroller) Run(stopCh <-chan struct{}) {
 // marks them done. You may run as many of these in parallel as you wish; the
 // workqueue guarantees that they will not end up processing the same `queue`
 // at the same time.
-func (c *pgcontroller) worker() {
+func (c *queuecontroller) worker() {
 	for c.processNextWorkItem() {
 	}
 }
 
-func (c *pgcontroller) processNextWorkItem() bool {
+func (c *queuecontroller) processNextWorkItem() bool {
 	obj, shutdown := c.queue.Get()
 	if shutdown {
 		return false
@@ -218,7 +218,7 @@ func (c *pgcontroller) processNextWorkItem() bool {
 	return true
 }
 
-func (c *pgcontroller) handleQueue(req *apis.Request) error {
+func (c *queuecontroller) handleQueue(req *apis.Request) error {
 	startTime := time.Now()
 	defer func() {
 		klog.V(4).Infof("Finished syncing queue %s (%v).", req.QueueName, time.Since(startTime))
@@ -248,7 +248,7 @@ func (c *pgcontroller) handleQueue(req *apis.Request) error {
 	return nil
 }
 
-func (c *pgcontroller) handleQueueErr(err error, obj interface{}) {
+func (c *queuecontroller) handleQueueErr(err error, obj interface{}) {
 	if err == nil {
 		c.queue.Forget(obj)
 		return
@@ -267,12 +267,12 @@ func (c *pgcontroller) handleQueueErr(err error, obj interface{}) {
 	c.queue.Forget(obj)
 }
 
-func (c *pgcontroller) commandWorker() {
+func (c *queuecontroller) commandWorker() {
 	for c.processNextCommand() {
 	}
 }
 
-func (c *pgcontroller) processNextCommand() bool {
+func (c *queuecontroller) processNextCommand() bool {
 	obj, shutdown := c.commandQueue.Get()
 	if shutdown {
 		return false
@@ -291,7 +291,7 @@ func (c *pgcontroller) processNextCommand() bool {
 	return true
 }
 
-func (c *pgcontroller) handleCommand(cmd *busv1alpha1.Command) error {
+func (c *queuecontroller) handleCommand(cmd *busv1alpha1.Command) error {
 	startTime := time.Now()
 	defer func() {
 		klog.V(4).Infof("Finished syncing command %s/%s (%v).", cmd.Namespace, cmd.Name, time.Since(startTime))
@@ -317,7 +317,7 @@ func (c *pgcontroller) handleCommand(cmd *busv1alpha1.Command) error {
 	return nil
 }
 
-func (c *pgcontroller) handleCommandErr(err error, obj interface{}) {
+func (c *queuecontroller) handleCommandErr(err error, obj interface{}) {
 	if err == nil {
 		c.commandQueue.Forget(obj)
 		return

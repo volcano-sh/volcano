@@ -27,13 +27,21 @@ import (
 
 	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
+	"volcano.sh/volcano/pkg/controllers/framework"
 )
 
-func newFakeController() *pgcontroller {
+func newFakeController() *queuecontroller {
 	KubeBatchClientSet := vcclient.NewSimpleClientset()
 	KubeClientSet := kubeclient.NewSimpleClientset()
 
-	controller := NewQueueController(KubeClientSet, KubeBatchClientSet)
+	controller := &queuecontroller{}
+	opt := framework.ControllerOption{
+		VolcanoClient: KubeBatchClientSet,
+		KubeClient:    KubeClientSet,
+	}
+
+	controller.Initialize(&opt)
+
 	return controller
 }
 

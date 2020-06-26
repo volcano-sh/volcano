@@ -25,11 +25,11 @@ import (
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
-func (c *pgcontroller) enqueue(req *apis.Request) {
+func (c *queuecontroller) enqueue(req *apis.Request) {
 	c.queue.Add(req)
 }
 
-func (c *pgcontroller) addQueue(obj interface{}) {
+func (c *queuecontroller) addQueue(obj interface{}) {
 	queue := obj.(*schedulingv1beta1.Queue)
 
 	req := &apis.Request{
@@ -42,7 +42,7 @@ func (c *pgcontroller) addQueue(obj interface{}) {
 	c.enqueue(req)
 }
 
-func (c *pgcontroller) deleteQueue(obj interface{}) {
+func (c *queuecontroller) deleteQueue(obj interface{}) {
 	queue, ok := obj.(*schedulingv1beta1.Queue)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -62,11 +62,11 @@ func (c *pgcontroller) deleteQueue(obj interface{}) {
 	delete(c.podGroups, queue.Name)
 }
 
-func (c *pgcontroller) updateQueue(_, _ interface{}) {
+func (c *queuecontroller) updateQueue(_, _ interface{}) {
 	// currently do not care about queue update
 }
 
-func (c *pgcontroller) addPodGroup(obj interface{}) {
+func (c *queuecontroller) addPodGroup(obj interface{}) {
 	pg := obj.(*schedulingv1beta1.PodGroup)
 	key, _ := cache.MetaNamespaceKeyFunc(obj)
 
@@ -88,7 +88,7 @@ func (c *pgcontroller) addPodGroup(obj interface{}) {
 	c.enqueue(req)
 }
 
-func (c *pgcontroller) updatePodGroup(old, new interface{}) {
+func (c *queuecontroller) updatePodGroup(old, new interface{}) {
 	oldPG := old.(*schedulingv1beta1.PodGroup)
 	newPG := new.(*schedulingv1beta1.PodGroup)
 
@@ -99,7 +99,7 @@ func (c *pgcontroller) updatePodGroup(old, new interface{}) {
 	}
 }
 
-func (c *pgcontroller) deletePodGroup(obj interface{}) {
+func (c *queuecontroller) deletePodGroup(obj interface{}) {
 	pg, ok := obj.(*schedulingv1beta1.PodGroup)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -131,7 +131,7 @@ func (c *pgcontroller) deletePodGroup(obj interface{}) {
 	c.enqueue(req)
 }
 
-func (c *pgcontroller) addCommand(obj interface{}) {
+func (c *queuecontroller) addCommand(obj interface{}) {
 	cmd, ok := obj.(*busv1alpha1.Command)
 	if !ok {
 		klog.Errorf("Obj %v is not command.", obj)
@@ -141,7 +141,7 @@ func (c *pgcontroller) addCommand(obj interface{}) {
 	c.commandQueue.Add(cmd)
 }
 
-func (c *pgcontroller) getPodGroups(key string) []string {
+func (c *queuecontroller) getPodGroups(key string) []string {
 	c.pgMutex.RLock()
 	defer c.pgMutex.RUnlock()
 
@@ -156,7 +156,7 @@ func (c *pgcontroller) getPodGroups(key string) []string {
 	return podGroups
 }
 
-func (c *pgcontroller) recordEventsForQueue(name, eventType, reason, message string) {
+func (c *queuecontroller) recordEventsForQueue(name, eventType, reason, message string) {
 	queue, err := c.queueLister.Get(name)
 	if err != nil {
 		klog.Errorf("Get queue %s failed for %v.", name, err)
