@@ -98,12 +98,6 @@ func Queues(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 func createQueuePatch(queue *schedulingv1beta1.Queue) ([]byte, error) {
 	var patch []patchOperation
 
-	patch = append(patch, patchOperation{
-		Op:    "add",
-		Path:  "/spec/state",
-		Value: schedulingv1beta1.QueueStateOpen,
-	})
-
 	trueValue := true
 	if queue.Spec.Reclaimable == nil {
 		patch = append(patch, patchOperation{
