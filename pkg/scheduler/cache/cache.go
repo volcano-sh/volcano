@@ -267,11 +267,14 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	}
 
 	// create default queue
+	reclaimable := true
 	defaultQue := vcv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: defaultQueue,
 		},
 		Spec: vcv1beta1.QueueSpec{
+			Reclaimable: &reclaimable,
+			State: "Open",
 			Weight: 1,
 		},
 	}

@@ -261,6 +261,7 @@ type QueueStatus struct {
 type QueueSpec struct {
 	Weight     int32           `json:"weight,omitempty" protobuf:"bytes,1,opt,name=weight"`
 	Capability v1.ResourceList `json:"capability,omitempty" protobuf:"bytes,2,opt,name=capability"`
+	State QueueState `json:"state,omitempty" protobuf:"bytes,1,opt,name=state"`
 
 	// Reclaimable indicate whether the queue can be reclaimed by other queue
 	Reclaimable *bool `json:"reclaimable,omitempty" protobuf:"bytes,3,opt,name=reclaimable"`
