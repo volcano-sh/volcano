@@ -18,6 +18,8 @@ package drf
 
 import (
 	"math"
+	"strconv"
+	"strings"
 
 	"k8s.io/klog"
 
@@ -31,6 +33,16 @@ import (
 const PluginName = "drf"
 
 var shareDelta = 0.000001
+
+// hierarchicalNode represents the node hierarchy
+// and the corresponding weight and drf attribute
+type hierarchicalNode struct {
+	parent    *hierarchicalNode
+	attr      *drfAttr
+	weight    float64
+	hierarchy string
+	children  map[string]*hierarchicalNode
+}
 
 type drfAttr struct {
 	share            float64
@@ -47,6 +59,9 @@ type drfPlugin struct {
 	// map[namespaceName]->attr
 	namespaceOpts map[string]*drfAttr
 
+	// hierarchical tree
+	hierarchicalRoot *hierarchicalNode
+
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
 }
@@ -54,15 +69,34 @@ type drfPlugin struct {
 // New return drf plugin
 func New(arguments framework.Arguments) framework.Plugin {
 	return &drfPlugin{
-		totalResource:   api.EmptyResource(),
-		jobAttrs:        map[api.JobID]*drfAttr{},
-		namespaceOpts:   map[string]*drfAttr{},
+		totalResource: api.EmptyResource(),
+		jobAttrs:      map[api.JobID]*drfAttr{},
+		namespaceOpts: map[string]*drfAttr{},
+		hierarchicalRoot: &hierarchicalNode{
+			attr:      &drfAttr{allocated: api.EmptyResource()},
+			hierarchy: "root",
+			weight:    1,
+			children:  map[string]*hierarchicalNode{},
+		},
 		pluginArguments: arguments,
 	}
 }
 
 func (drf *drfPlugin) Name() string {
 	return PluginName
+}
+
+// HierarchyEnabled returns if hierarchy is enabled
+func (drf *drfPlugin) HierarchyEnabled(ssn *framework.Session) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if plugin.Name != PluginName {
+				continue
+			}
+			return plugin.EnableHierarchy != nil && *plugin.EnableHierarchy
+		}
+	}
+	return false
 }
 
 // NamespaceOrderEnabled returns the NamespaceOrder for this plugin is enabled in this session or not
@@ -84,7 +118,10 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		drf.totalResource.Add(n.Allocatable)
 	}
 
+	klog.V(4).Infof("Total Allocatable %s", drf.totalResource)
+
 	namespaceOrderEnabled := drf.NamespaceOrderEnabled(ssn)
+	hierarchEnabled := drf.HierarchyEnabled(ssn)
 
 	for _, job := range ssn.Jobs {
 		attr := &drfAttr{
@@ -115,6 +152,9 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			// all task in job should have the same namespace with job
 			nsOpts.allocated.Add(attr.allocated)
 			drf.updateNamespaceShare(job.Namespace, nsOpts)
+		}
+		if hierarchEnabled {
+			drf.updateHierarchyShare(job, attr)
 		}
 	}
 
@@ -206,6 +246,34 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
 
+		if hierarchEnabled {
+			lnode := drf.hierarchicalRoot
+			lpaths := strings.Split(lv.Hierarchy, "/")
+			rnode := drf.hierarchicalRoot
+			rpaths := strings.Split(rv.Hierarchy, "/")
+			depth := 0
+			if len(lpaths) < len(rpaths) {
+				depth = len(lpaths)
+			} else {
+				depth = len(rpaths)
+			}
+			for i := 0; i < depth; i++ {
+				klog.V(4).Infof("HDRF JobOrderFn: %s share state: %f, weight %f, %s share state: %f, weight %f",
+					lnode.hierarchy, lnode.attr.share, lnode.weight,
+					rnode.hierarchy, rnode.attr.share, rnode.weight)
+				if lnode.attr.share/lnode.weight == rnode.attr.share/rnode.weight {
+					if i < depth-1 {
+						lnode = lnode.children[lpaths[i+1]]
+						rnode = rnode.children[rpaths[i+1]]
+					}
+				} else {
+					if lnode.attr.share/lnode.weight < rnode.attr.share/rnode.weight {
+						return -1
+					}
+					return 1
+				}
+			}
+		}
 		klog.V(4).Infof("DRF JobOrderFn: <%v/%v> share state: %v, <%v/%v> share state: %v",
 			lv.Namespace, lv.Name, drf.jobAttrs[lv.UID].share, rv.Namespace, rv.Name, drf.jobAttrs[rv.UID].share)
 
@@ -216,8 +284,8 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		if drf.jobAttrs[lv.UID].share < drf.jobAttrs[rv.UID].share {
 			return -1
 		}
-
 		return 1
+
 	}
 
 	ssn.AddJobOrderFn(drf.Name(), jobOrderFn)
@@ -275,6 +343,9 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 				drf.updateNamespaceShare(event.Task.Namespace, nsOpt)
 				nsShare = nsOpt.share
 			}
+			if hierarchEnabled {
+				drf.updateHierarchyShare(job, attr)
+			}
 
 			klog.V(4).Infof("DRF AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>, namespace share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share, nsShare)
@@ -295,6 +366,10 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 				nsShare = nsOpt.share
 			}
 
+			if hierarchEnabled {
+				drf.updateHierarchyShare(job, attr)
+			}
+
 			klog.V(4).Infof("DRF EvictFunc: task <%v/%v>, resreq <%v>,  share <%v>, namespace share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share, nsShare)
 		},
@@ -304,6 +379,76 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 func (drf *drfPlugin) updateNamespaceShare(namespaceName string, attr *drfAttr) {
 	drf.updateShare(attr)
 	metrics.UpdateNamespaceShare(namespaceName, attr.share)
+}
+
+func (drf *drfPlugin) updateHierarchyShare(job *api.JobInfo, attr *drfAttr) {
+	inode := drf.hierarchicalRoot
+	paths := strings.Split(job.Hierarchy, "/")
+	weights := strings.Split(job.Weights, "/")
+
+	// build hierarchy if the node does not exist
+	for i := 1; i < len(paths); i++ {
+		if child, ok := inode.children[paths[i]]; ok {
+			inode = child
+		} else {
+			fweight, _ := strconv.ParseFloat(weights[i], 64)
+			if fweight < 1 {
+				fweight = 1
+			}
+			child = &hierarchicalNode{
+				weight:    fweight,
+				hierarchy: paths[i],
+				attr: &drfAttr{
+					allocated: api.EmptyResource(),
+				},
+				children: make(map[string]*hierarchicalNode),
+			}
+			klog.V(4).Infof("Node %s added to %s, weight %f",
+				child.hierarchy, inode.hierarchy, fweight)
+			inode.children[paths[i]] = child
+			child.parent = inode
+			inode = child
+		}
+	}
+
+	// update drf attribute bottom up
+	klog.V(4).Infof("Job <%s/%s> added to %s, weights %s, attr %v",
+		job.Namespace, job.Name, job.Hierarchy, job.Weights, attr)
+	child := &hierarchicalNode{
+		weight:    1,
+		attr:      attr,
+		hierarchy: string(job.UID),
+		children:  nil,
+	}
+	inode.children[string(job.UID)] = child
+	for ; inode != nil; inode = inode.parent {
+		var mdr float64 = math.MaxFloat64
+		// get minumun dominant resource share
+		for _, child := range inode.children {
+			// skip empty child(job or node without tasks added)
+			if child.attr.dominantResource != "" {
+				_, resShare := drf.calculateShare(child.attr.allocated, drf.totalResource)
+				if resShare < mdr {
+					mdr = resShare
+				}
+			}
+		}
+		iattr := &drfAttr{
+			allocated: api.EmptyResource(),
+		}
+		// scale children with minumun drf share and sum them up
+		for _, child := range inode.children {
+			// skip empty child(job or node without tasks added)
+			if child.attr.dominantResource != "" {
+				t := child.attr.allocated.Clone().Scale(mdr / child.attr.share)
+				iattr.allocated.Add(t)
+			}
+		}
+		drf.updateShare(iattr)
+		inode.attr = iattr
+		klog.V(4).Infof("Update hierarchical node %s, share %f, dominant %s, resource %v",
+			inode.hierarchy, iattr.share, iattr.dominantResource, iattr.allocated)
+	}
 }
 
 func (drf *drfPlugin) updateJobShare(jobNs, jobName string, attr *drfAttr) {

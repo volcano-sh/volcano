@@ -16,6 +16,10 @@ limitations under the License.
 
 package v1beta1
 
+const KubeGroupHierarchyAnnotationKey = "scheduling.k8s.io/group-hierarchy"
+
+const KubeGroupHierarchyWeightAnnotationKey = "scheduling.k8s.io/group-hierarchy-weight"
+
 // KubeGroupNameAnnotationKey is the annotation key of Pod to identify
 // which PodGroup it belongs to.
 const KubeGroupNameAnnotationKey = "scheduling.k8s.io/group-name"

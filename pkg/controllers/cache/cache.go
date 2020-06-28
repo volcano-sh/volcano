@@ -119,7 +119,6 @@ func (jc *jobCache) GetStatus(key string) (*v1alpha1.JobStatus, error) {
 func (jc *jobCache) Add(job *v1alpha1.Job) error {
 	jc.Lock()
 	defer jc.Unlock()
-
 	key := JobKey(job)
 	if jobInfo, found := jc.jobs[key]; found {
 		if jobInfo.Job == nil {

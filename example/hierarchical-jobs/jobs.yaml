@@ -1,0 +1,145 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: eng-prod-job
+  annotations:
+    "scheduling.k8s.io/group-hierarchy": "root/eng/prod"
+    "scheduling.k8s.io/group-hierarchy-weight": "1/2/8"
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: default
+  tasks:
+    - replicas: 6
+      name: "default-nginx"
+      template:
+        metadata:
+          name: web
+        spec:
+          schedulerName: volcano
+          containers:
+            - image: nginx
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "0.5"
+          restartPolicy: OnFailure
+---
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: eng-dev-job
+  annotations:
+    "scheduling.k8s.io/group-hierarchy": "root/eng/dev"
+    "scheduling.k8s.io/group-hierarchy-weight": "1/2/2"
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: default
+  tasks:
+    - replicas: 6
+      name: "default-nginx"
+      template:
+        metadata:
+          name: web
+        spec:
+          schedulerName: volcano
+          containers:
+            - image: nginx
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "0.5"
+          restartPolicy: OnFailure
+
+
+---
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: sci-prod-job
+  annotations:
+    "scheduling.k8s.io/group-hierarchy": "root/sci/prod"
+    "scheduling.k8s.io/group-hierarchy-weight": "1/8/8"
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: default
+  tasks:
+    - replicas: 6
+      name: "default-nginx"
+      template:
+        metadata:
+          name: web
+        spec:
+          schedulerName: volcano
+          containers:
+            - image: nginx
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "0.5"
+          restartPolicy: OnFailure
+---
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: sci-dev-job
+  annotations:
+    "scheduling.k8s.io/group-hierarchy": "root/sci/dev"
+    "scheduling.k8s.io/group-hierarchy-weight": "1/8/2"
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: default
+  tasks:
+    - replicas: 6
+      name: "default-nginx"
+      template:
+        metadata:
+          name: web
+        spec:
+          schedulerName: volcano
+          containers:
+            - image: nginx
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "0.5"
+          restartPolicy: OnFailure
