@@ -26,8 +26,10 @@ import (
 )
 
 // PodGroupLister helps list PodGroups.
+// All objects returned here must be treated as read-only.
 type PodGroupLister interface {
 	// List lists all PodGroups in the indexer.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1beta1.PodGroup, err error)
 	// PodGroups returns an object that can list and get PodGroups.
 	PodGroups(namespace string) PodGroupNamespaceLister
@@ -58,10 +60,13 @@ func (s *podGroupLister) PodGroups(namespace string) PodGroupNamespaceLister {
 }
 
 // PodGroupNamespaceLister helps list and get PodGroups.
+// All objects returned here must be treated as read-only.
 type PodGroupNamespaceLister interface {
 	// List lists all PodGroups in the indexer for a given namespace.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1beta1.PodGroup, err error)
 	// Get retrieves the PodGroup from the indexer for a given namespace and name.
+	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1beta1.PodGroup, error)
 	PodGroupNamespaceListerExpansion
 }

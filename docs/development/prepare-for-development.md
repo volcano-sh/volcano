@@ -18,7 +18,7 @@ To build, you'll need a Go development environment. If you haven't set up a Go d
 environment, please follow [these instructions](https://golang.org/doc/install)
 to install the Go tools.
 
-Volcano currently builds with Go 1.12
+Volcano currently builds with Go 1.14
 
 ## Setting up Docker
 

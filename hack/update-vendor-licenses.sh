@@ -192,7 +192,7 @@ if [ -f "${LICENSE_ROOT}/LICENSE" ]; then
 fi
 
 # Loop through every vendored package
-for PACKAGE in $(go list -m -json all | jq -r .Path | sort -f); do
+for PACKAGE in $(go list -m -mod=mod -json all | jq -r .Path | sort -f); do
   if [[ -e "staging/src/${PACKAGE}" ]]; then
     echo "${PACKAGE} is a staging package, skipping" >&2
     continue

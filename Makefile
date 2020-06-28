@@ -41,7 +41,7 @@ vcctl: init
 	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vcctl ./cmd/cli
 
 image_bins: init
-	go get github.com/mitchellh/gox
+	GO111MODULE=off go get github.com/mitchellh/gox
 	CGO_ENABLED=0 gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vcctl ./cmd/cli
 	for name in controller-manager scheduler webhook-manager; do\
 		CGO_ENABLED=0 gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-$$name ./cmd/$$name; \
