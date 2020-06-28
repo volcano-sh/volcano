@@ -69,10 +69,6 @@ func TestMutateQueues(t *testing.T) {
 	var refreshPatch []patchOperation
 	refreshPatch = append(refreshPatch, patchOperation{
 		Op:    "add",
-		Path:  "/spec/state",
-		Value: schedulingv1beta1.QueueStateOpen,
-	}, patchOperation{
-		Op:    "add",
 		Path:  "/spec/reclaimable",
 		Value: &trueValue,
 	})
@@ -80,17 +76,6 @@ func TestMutateQueues(t *testing.T) {
 	refreshPatchJSON, err := json.Marshal(refreshPatch)
 	if err != nil {
 		t.Errorf("Marshal queue patch failed for %v.", err)
-	}
-
-	var openStatePatch []patchOperation
-	openStatePatch = append(openStatePatch, patchOperation{
-		Op:    "add",
-		Path:  "/spec/state",
-		Value: schedulingv1beta1.QueueStateOpen,
-	})
-	openStatePatchJSON, err := json.Marshal(openStatePatch)
-	if err != nil {
-		t.Errorf("Marshal null patch failed for %v.", err)
 	}
 
 	testCases := []struct {
@@ -127,37 +112,6 @@ func TestMutateQueues(t *testing.T) {
 				Allowed:   true,
 				PatchType: &pt,
 				Patch:     refreshPatchJSON,
-			},
-		},
-		{
-			Name: "Normal Case Without Queue State or Reclaimable Patch",
-			AR: v1beta1.AdmissionReview{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "AdmissionReview",
-					APIVersion: "admission.k8s.io/v1beta1",
-				},
-				Request: &v1beta1.AdmissionRequest{
-					Kind: metav1.GroupVersionKind{
-						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
-						Kind:    "Queue",
-					},
-					Resource: metav1.GroupVersionResource{
-						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
-						Resource: "queues",
-					},
-					Name:      "normal-case-set-open",
-					Operation: "CREATE",
-					Object: runtime.RawExtension{
-						Raw: openStateJSON,
-					},
-				},
-			},
-			reviewResponse: &v1beta1.AdmissionResponse{
-				Allowed:   true,
-				PatchType: &pt,
-				Patch:     openStatePatchJSON,
 			},
 		},
 		{
