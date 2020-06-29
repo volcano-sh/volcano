@@ -26,10 +26,13 @@ import (
 )
 
 // QueueLister helps list Queues.
+// All objects returned here must be treated as read-only.
 type QueueLister interface {
 	// List lists all Queues in the indexer.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1beta1.Queue, err error)
 	// Get retrieves the Queue from the index for a given name.
+	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1beta1.Queue, error)
 	QueueListerExpansion
 }
