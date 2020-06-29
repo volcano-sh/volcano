@@ -513,7 +513,7 @@ var _ = Describe("Job E2E Test", func() {
 		if expectPod%1 == 1 {
 			expectPod--
 		}
-		err = wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+		err = wait.Poll(100*time.Millisecond, twoMinute, func() (bool, error) {
 			fsScheduledPod = 0
 			testScheduledPod = 0
 
@@ -609,7 +609,7 @@ var _ = Describe("Job E2E Test", func() {
 		if expectPod%1 == 1 {
 			expectPod--
 		}
-		err = wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+		err = wait.Poll(100*time.Millisecond, twoMinute, func() (bool, error) {
 			q1ScheduledPod = 0
 			q2ScheduledPod = 0
 
