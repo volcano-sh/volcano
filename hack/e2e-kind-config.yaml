@@ -9,4 +9,3 @@ nodes:
   - role: worker
   - role: worker
   - role: worker
-  - role: worker
