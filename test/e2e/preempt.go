@@ -196,7 +196,7 @@ var _ = Describe("Job E2E Test", func() {
 		job.queue = "q1-preemption"
 		job.tasks[0].rep = rep
 		queue1Job3 := createJob(ctx, job)
-		err = waitTasksReady(ctx, queue1Job3, int(rep)/2)
+		err = waitTasksReady(ctx, queue1Job3, 1)
 		Expect(err).NotTo(HaveOccurred())
 		err = waitTasksReady(ctx, queue1Job, int(rep)/2)
 		Expect(err).Should(ContainSubstring("actual got"))
