@@ -3,11 +3,12 @@ package e2e
 import (
 	"context"
 
-	"github.com/onsi/gomega"
-	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
 var _ = Describe("Job E2E Test", func() {
@@ -113,7 +114,7 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 		_, err := ctx.vcclient.SchedulingV1beta1().PodGroups(ctx.namespace).Create(context.TODO(), pg, v1.CreateOptions{})
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 
 		slot := oneCPU
 		rep := clusterSize(ctx, slot)
