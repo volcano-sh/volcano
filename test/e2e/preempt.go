@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
@@ -131,7 +131,7 @@ var _ = Describe("Job E2E Test", func() {
 		job.name = "preemptee"
 		job.pri = workerPriority
 		preempteeJob := createJob(ctx, job)
-		err := waitTasksReady(ctx, preempteeJob, int(rep))
+		err = waitTasksReady(ctx, preempteeJob, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
 		pod := &corev1.Pod{
@@ -172,7 +172,7 @@ var _ = Describe("Job E2E Test", func() {
 					img: defaultNginxImage,
 					req: slot,
 					min: 1,
-					rep: int(rep) / 2,
+					rep: rep / 2,
 				},
 			},
 		}
@@ -194,7 +194,7 @@ var _ = Describe("Job E2E Test", func() {
 		job.name = "j3-q1"
 		job.pri = masterPriority
 		job.queue = "q1"
-		job.tasks[0].rep = int(rep)
+		job.tasks[0].rep = rep
 		queue1Job3 := createJob(ctx, job)
 		err = waitTasksReady(ctx, queue1Job3, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
