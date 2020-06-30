@@ -141,7 +141,7 @@ var _ = Describe("Job E2E Test", func() {
 			},
 			ObjectMeta: v1.ObjectMeta{
 				Namespace:   ctx.namespace,
-				Name:        podName,
+				Name:        "preemptor-pod",
 				Annotations: map[string]string{schedulingv1beta1.KubeGroupNameAnnotationKey: pgName},
 			},
 			Spec: corev1.PodSpec{
