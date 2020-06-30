@@ -4,10 +4,10 @@ import (
 	"context"
 
 	"github.com/onsi/gomega"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	v1 "k8s.io/api/core/v1"
 )
 
 var _ = Describe("Job E2E Test", func() {
