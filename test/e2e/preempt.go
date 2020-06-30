@@ -199,7 +199,7 @@ var _ = Describe("Job E2E Test", func() {
 		err = waitTasksReady(ctx, queue1Job3, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 		err = waitTasksReady(ctx, queue1Job, int(rep)/2)
-		Expect(err).Should(ContainSubstring(`actual got`))
+		Expect(err).Should(ContainSubstring("actual got"))
 		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 	})
