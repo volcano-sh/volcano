@@ -155,7 +155,7 @@ var _ = Describe("Job E2E Test", func() {
 
 	It("preemption only works in the same queue", func() {
 		ctx := initTestContext(options{
-			queues: []string{"q1, q2"}
+			queues: []string{"q1, q2"},
 			priorityClasses: map[string]int32{
 				masterPriority: masterPriorityValue,
 				workerPriority: workerPriorityValue,
@@ -171,7 +171,7 @@ var _ = Describe("Job E2E Test", func() {
 					img: defaultNginxImage,
 					req: slot,
 					min: 1,
-					rep: int(rep)/2,
+					rep: int(rep) / 2,
 				},
 			},
 		}
@@ -179,14 +179,14 @@ var _ = Describe("Job E2E Test", func() {
 		job.name = "j1-q1"
 		job.pri = workerPriority
 		job.queue = "q1"
-	    queue1Job := createJob(ctx, job)
+		queue1Job := createJob(ctx, job)
 		err := waitTasksReady(ctx, queue1Job, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 
 		job.name = "j2-q2"
 		job.pri = workerPriority
 		job.queue = "q2"
-	    queue2Job := createJob(ctx, job)
+		queue2Job := createJob(ctx, job)
 		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -194,7 +194,7 @@ var _ = Describe("Job E2E Test", func() {
 		job.pri = masterPriority
 		job.queue = "q1"
 		job.tasks[0].rep = int(rep)
-	    queue1Job3 := createJob(ctx, job)
+		queue1Job3 := createJob(ctx, job)
 		err = waitTasksReady(ctx, queue1Job3, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 		err = waitTasksReady(ctx, queue1Job, int(rep)/2)
