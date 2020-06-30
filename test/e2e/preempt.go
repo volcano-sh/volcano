@@ -156,7 +156,7 @@ var _ = Describe("Job E2E Test", func() {
 
 	It("preemption only works in the same queue", func() {
 		ctx := initTestContext(options{
-			queues: []string{"q1, q2"},
+			queues: []string{"q1-preemption", "q2-reference"},
 			priorityClasses: map[string]int32{
 				masterPriority: masterPriorityValue,
 				workerPriority: workerPriorityValue,
@@ -179,21 +179,21 @@ var _ = Describe("Job E2E Test", func() {
 
 		job.name = "j1-q1"
 		job.pri = workerPriority
-		job.queue = "q1"
+		job.queue = "q1-preemption"
 		queue1Job := createJob(ctx, job)
 		err := waitTasksReady(ctx, queue1Job, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 
 		job.name = "j2-q2"
 		job.pri = workerPriority
-		job.queue = "q2"
+		job.queue = "q2-reference"
 		queue2Job := createJob(ctx, job)
 		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 
 		job.name = "j3-q1"
 		job.pri = masterPriority
-		job.queue = "q1"
+		job.queue = "q1-preemption"
 		job.tasks[0].rep = rep
 		queue1Job3 := createJob(ctx, job)
 		err = waitTasksReady(ctx, queue1Job3, int(rep)/2)
