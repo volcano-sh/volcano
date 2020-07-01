@@ -21,8 +21,6 @@ set -o pipefail
 VK_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
 export RELEASE_FOLDER=${VK_ROOT}/${RELEASE_DIR}
 
-sed -i 's/[ \t]*$//' ${RELEASE_FOLDER}/volcano-latest.yaml
-
 if ! diff ${VK_ROOT}/installer/volcano-development.yaml ${RELEASE_FOLDER}/volcano-latest.yaml ; then
 	{
 		echo

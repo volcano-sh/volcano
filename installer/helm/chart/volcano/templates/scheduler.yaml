@@ -4,7 +4,7 @@ metadata:
   name: {{ .Release.Name }}-scheduler-configmap
   namespace: {{ .Release.Namespace }}
 data:
-  {{- (.Files.Glob .Values.basic.scheduler_config_file).AsConfig | nindent 2 }}
+  {{- (.Files.Glob .Values.basic.scheduler_config_file).AsConfig | nindent 2}}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -99,10 +99,10 @@ spec:
         app: volcano-scheduler
     spec:
       serviceAccount: {{ .Release.Name }}-scheduler
-      {{ if .Values.basic.image_pull_secret }}
+      {{- if .Values.basic.image_pull_secret }}
       imagePullSecrets:
           - name: {{ .Values.basic.image_pull_secret }}
-      {{ end }}
+      {{- end }}
       containers:
         - name: {{ .Release.Name }}-scheduler
           image: {{.Values.basic.scheduler_image_name}}:{{.Values.basic.image_tag_version}}

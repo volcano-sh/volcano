@@ -83,10 +83,10 @@ spec:
         app: volcano-controller
     spec:
       serviceAccount: {{ .Release.Name }}-controllers
-      {{ if .Values.basic.image_pull_secret }}
+      {{- if .Values.basic.image_pull_secret }}
       imagePullSecrets:
           - name: {{ .Values.basic.image_pull_secret }}
-      {{ end }}
+      {{- end }}
       containers:
           - name: {{ .Release.Name }}-controllers
             image: {{.Values.basic.controller_image_name}}:{{.Values.basic.image_tag_version}}
