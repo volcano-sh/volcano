@@ -40,12 +40,6 @@ const (
 	// PluginName indicates name of volcano scheduler plugin.
 	PluginName = "predicates"
 
-	// MemoryPressurePredicate is the key for enabling Memory Pressure Predicate in YAML
-	MemoryPressurePredicate = "predicate.MemoryPressureEnable"
-	// DiskPressurePredicate is the key for enabling Disk Pressure Predicate in YAML
-	DiskPressurePredicate = "predicate.DiskPressureEnable"
-	// PIDPressurePredicate is the key for enabling PID Pressure Predicate in YAML
-	PIDPressurePredicate = "predicate.PIDPressureEnable"
 	// GPUSharingPredicate is the key for enabling GPU Sharing Predicate in YAML
 	GPUSharingPredicate = "predicate.GPUSharingEnable"
 )
@@ -65,17 +59,14 @@ func (pp *predicatesPlugin) Name() string {
 }
 
 type predicateEnable struct {
-	memoryPressureEnable bool
-	diskPressureEnable   bool
-	pidPressureEnable    bool
-	gpuSharingEnable     bool
+	gpuSharingEnable bool
 }
 
 func enablePredicate(args framework.Arguments) predicateEnable {
 
 	/*
-		   User Should give predicatesEnable in this format(predicate.MemoryPressureEnable, predicate.DiskPressureEnable, predicate.PIDPressureEnable, predicate.GPUSharingEnable.
-		   Currently supported only for MemoryPressure, DiskPressure, PIDPressure predicate checks.
+		   User Should give predicatesEnable in this format(predicate.GPUSharingEnable).
+		   Currently supported only GPUSharing predicate checks.
 
 		   actions: "reclaim, allocate, backfill, preempt"
 		   tiers:
@@ -87,29 +78,14 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 		     - name: drf
 		     - name: predicates
 		       arguments:
-		 		 predicate.MemoryPressureEnable: true
-		 		 predicate.DiskPressureEnable: true
-				 predicate.PIDPressureEnable: true
 				 predicate.GPUSharingEnable: true
 		     - name: proportion
 		     - name: nodeorder
 	*/
 
 	predicate := predicateEnable{
-		memoryPressureEnable: false,
-		diskPressureEnable:   false,
-		pidPressureEnable:    false,
-		gpuSharingEnable:     true, // enable for debug
+		gpuSharingEnable: false,
 	}
-
-	// Checks whether predicate.MemoryPressureEnable is provided or not, if given, modifies the value in predicateEnable struct.
-	args.GetBool(&predicate.memoryPressureEnable, MemoryPressurePredicate)
-
-	// Checks whether predicate.DiskPressureEnable is provided or not, if given, modifies the value in predicateEnable struct.
-	args.GetBool(&predicate.diskPressureEnable, DiskPressurePredicate)
-
-	// Checks whether predicate.PIDPressureEnable is provided or not, if given, modifies the value in predicateEnable struct.
-	args.GetBool(&predicate.pidPressureEnable, PIDPressurePredicate)
 
 	// Checks whether predicate.GPUSharingEnable is provided or not, if given, modifies the value in predicateEnable struct.
 	args.GetBool(&predicate.gpuSharingEnable, GPUSharingPredicate)

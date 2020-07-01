@@ -161,7 +161,8 @@ func (ni *NodeInfo) setNodeGPUInfo(node *v1.Node) {
 	}
 	gpuNumber := res.Value()
 	if gpuNumber == 0 {
-		klog.Warningf("invalid %s=%s", VolcanoGPUNumber, res)
+		klog.Warningf("invalid %s=%s", VolcanoGPUNumber, res.String())
+		return
 	}
 
 	memoryPerCard := uint(totalMemory / gpuNumber)

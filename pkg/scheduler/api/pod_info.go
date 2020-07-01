@@ -85,7 +85,7 @@ func GetGPUIndex(pod *v1.Pod) int {
 		if found {
 			id, err := strconv.Atoi(value)
 			if err != nil {
-				klog.Error("invalid %s=%s", GPUIndex, value)
+				klog.Errorf("invalid %s=%s", GPUIndex, value)
 				return -1
 			}
 			return id
