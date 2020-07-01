@@ -303,12 +303,8 @@ func getNS(context *testContext, job *jobSpec) string {
 	return context.namespace
 }
 
-func createJob(context *testContext, jobSpec *jobSpec) *batchv1alpha1.Job {
-
-	job, err := createJobInner(context, jobSpec)
-	Expect(err).NotTo(HaveOccurred(), "create job")
-
-	return job
+func createJob(context *testContext, jobSpec *jobSpec) (*batchv1alpha1.Job, error) {
+	return createJobInner(context, jobSpec)
 }
 
 func createJobInner(ctx *testContext, jobSpec *jobSpec) (*batchv1alpha1.Job, error) {

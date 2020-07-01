@@ -36,7 +36,7 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 
 		jobName := "scale-up-job"
 		By("create job")
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: jobName,
 			plugins: map[string][]string{
 				"svc": {},
@@ -93,7 +93,7 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 
 		jobName := "scale-down-job"
 		By("create job")
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: jobName,
 			plugins: map[string][]string{
 				"svc": {},

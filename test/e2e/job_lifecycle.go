@@ -36,7 +36,7 @@ var _ = Describe("Job Life Cycle", func() {
 		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: "pending-delete-job",
 			tasks: []taskSpec{
 				{
@@ -68,7 +68,7 @@ var _ = Describe("Job Life Cycle", func() {
 		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: "running-delete-job",
 			tasks: []taskSpec{
 				{
@@ -99,7 +99,7 @@ var _ = Describe("Job Life Cycle", func() {
 		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: "complete-delete-job",
 			tasks: []taskSpec{
 				{
@@ -132,7 +132,7 @@ var _ = Describe("Job Life Cycle", func() {
 		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: "failed-delete-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -171,7 +171,7 @@ var _ = Describe("Job Life Cycle", func() {
 		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: "terminate-delete-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -210,7 +210,7 @@ var _ = Describe("Job Life Cycle", func() {
 		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: "terminate-delete-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -248,7 +248,7 @@ var _ = Describe("Job Life Cycle", func() {
 		ctx := initTestContext(options{})
 		defer cleanupTestContext(ctx)
 
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: "terminate-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -294,7 +294,7 @@ var _ = Describe("Job Life Cycle", func() {
 			},
 		}
 
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: "unschedulable-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{

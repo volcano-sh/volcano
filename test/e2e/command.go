@@ -40,7 +40,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		defer cleanupTestContext(ctx)
 		rep := clusterSize(ctx, oneCPU)
 
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			namespace: ctx.namespace,
 			name:      jobName,
 			tasks: []taskSpec{
@@ -73,7 +73,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		ctx := initTestContext(options{})
 		defer cleanupTestContext(ctx)
 
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			namespace: ctx.namespace,
 			name:      jobName,
 			tasks: []taskSpec{
@@ -120,7 +120,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		jobName := "test-suspend-pending-job"
 		taskName := "long-live-task"
 
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			namespace: ctx.namespace,
 			name:      jobName,
 			tasks: []taskSpec{
@@ -170,7 +170,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		err := taintAllNodes(ctx, taints)
 		Expect(err).NotTo(HaveOccurred())
 
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			namespace: ctx.namespace,
 			name:      jobName,
 			tasks: []taskSpec{

@@ -41,7 +41,7 @@ var _ = Describe("Job E2E Test", func() {
 		defer cleanupTestContext(ctx)
 		rep := clusterSize(ctx, oneCPU)
 
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: "qj-1",
 			tasks: []taskSpec{
 				{
@@ -75,11 +75,11 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		job.name = "mqj-1"
-		job1 := createJob(ctx, job)
+		job1, _ := createJob(ctx, job)
 		job.name = "mqj-2"
-		job2 := createJob(ctx, job)
+		job2, _ := createJob(ctx, job)
 		job.name = "mqj-3"
-		job3 := createJob(ctx, job)
+		job3, _ := createJob(ctx, job)
 
 		err := waitJobReady(ctx, job1)
 		Expect(err).NotTo(HaveOccurred())
@@ -114,7 +114,7 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		job := createJob(ctx, jobSpec)
+		job, _ := createJob(ctx, jobSpec)
 		err = waitJobStatePending(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -146,12 +146,12 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		job.name = "gang-fq-qj1"
-		job1 := createJob(ctx, job)
+		job1, _ := createJob(ctx, job)
 		err := waitJobReady(ctx, job1)
 		Expect(err).NotTo(HaveOccurred())
 
 		job.name = "gang-fq-qj2"
-		job2 := createJob(ctx, job)
+		job2, _ := createJob(ctx, job)
 		err = waitJobStatePending(ctx, job2)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -187,7 +187,7 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		job := createJob(ctx, jobSpec)
+		job, _ := createJob(ctx, jobSpec)
 		err := waitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -216,7 +216,7 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		job := createJob(ctx, spec)
+		job, _ := createJob(ctx, spec)
 
 		err := waitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
@@ -242,14 +242,14 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		spec.name = "st-qj-1"
-		job1 := createJob(ctx, spec)
+		job1, _ := createJob(ctx, spec)
 		err := waitJobReady(ctx, job1)
 		Expect(err).NotTo(HaveOccurred())
 
 		now := time.Now()
 
 		spec.name = "st-qj-2"
-		job2 := createJob(ctx, spec)
+		job2, _ := createJob(ctx, spec)
 		err = waitJobUnschedulable(ctx, job2)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -279,7 +279,7 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		baseJob := createJob(ctx, spec)
+		baseJob, _ := createJob(ctx, spec)
 		err := waitJobReady(ctx, baseJob)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -330,7 +330,7 @@ var _ = Describe("Job E2E Test", func() {
 				},
 			},
 		}
-		job := createJob(ctx, spec)
+		job, _ := createJob(ctx, spec)
 		err = waitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -479,7 +479,7 @@ var _ = Describe("Job E2E Test", func() {
 					},
 				},
 			}
-			job := createJob(ctx, spec)
+			job, _ := createJob(ctx, spec)
 			return job
 		}
 
@@ -575,7 +575,7 @@ var _ = Describe("Job E2E Test", func() {
 					},
 				},
 			}
-			job := createJob(ctx, spec)
+			job, _ := createJob(ctx, spec)
 			return job
 		}
 

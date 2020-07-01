@@ -38,7 +38,7 @@ var _ = Describe("Queue E2E Test", func() {
 		spec.name = "q1-qj-1"
 		spec.queue = q1
 		spec.pri = "low-priority"
-		job1 := createJob(ctx, spec)
+		job1, _ := createJob(ctx, spec)
 		err := waitJobReady(ctx, job1)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -61,7 +61,7 @@ var _ = Describe("Queue E2E Test", func() {
 		spec.name = "q2-qj-2"
 		spec.queue = q2
 		spec.pri = "high-priority"
-		job2 := createJob(ctx, spec)
+		job2, _ := createJob(ctx, spec)
 		err = waitTasksReady(ctx, job2, expected)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -81,7 +81,7 @@ var _ = Describe("Queue E2E Test", func() {
 				},
 			},
 		}
-		job3 := createJob(ctx, spec)
+		job3, _ := createJob(ctx, spec)
 		err = waitJobStatePending(ctx, job3)
 		Expect(err).NotTo(HaveOccurred())
 		err = waitQueueStatus(func() (bool, error) {

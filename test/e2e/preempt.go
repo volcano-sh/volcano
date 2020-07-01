@@ -36,13 +36,13 @@ var _ = Describe("Job E2E Test", func() {
 
 		job.name = "preemptee"
 		job.pri = workerPriority
-		preempteeJob := createJob(ctx, job)
+		preempteeJob, _ := createJob(ctx, job)
 		err := waitTasksReady(ctx, preempteeJob, 1)
 		Expect(err).NotTo(HaveOccurred())
 
 		job.name = "preemptor"
 		job.pri = masterPriority
-		preemptorJob := createJob(ctx, job)
+		preemptorJob, _ := createJob(ctx, job)
 		err = waitTasksReady(ctx, preempteeJob, 1)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -75,14 +75,14 @@ var _ = Describe("Job E2E Test", func() {
 
 		job.name = "preemptee"
 		job.pri = workerPriority
-		preempteeJob := createJob(ctx, job)
+		preempteeJob, _ := createJob(ctx, job)
 		err := waitTasksReady(ctx, preempteeJob, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
 		job.name = "preemptor"
 		job.pri = masterPriority
 		job.min = rep / 2
-		preemptorJob := createJob(ctx, job)
+		preemptorJob, _ := createJob(ctx, job)
 		err = waitTasksReady(ctx, preempteeJob, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -130,7 +130,7 @@ var _ = Describe("Job E2E Test", func() {
 		}
 		job.name = "preemptee"
 		job.pri = workerPriority
-		preempteeJob := createJob(ctx, job)
+		preempteeJob, _ := createJob(ctx, job)
 		err = waitTasksReady(ctx, preempteeJob, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
@@ -180,14 +180,14 @@ var _ = Describe("Job E2E Test", func() {
 		job.name = "j1-q1"
 		job.pri = workerPriority
 		job.queue = "q1-preemption"
-		queue1Job := createJob(ctx, job)
+		queue1Job, _ := createJob(ctx, job)
 		err := waitTasksReady(ctx, queue1Job, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 
 		job.name = "j2-q2"
 		job.pri = workerPriority
 		job.queue = "q2-reference"
-		queue2Job := createJob(ctx, job)
+		queue2Job, _ := createJob(ctx, job)
 		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -195,10 +195,59 @@ var _ = Describe("Job E2E Test", func() {
 		job.pri = masterPriority
 		job.queue = "q1-preemption"
 		job.tasks[0].rep = rep
-		queue1Job3 := createJob(ctx, job)
+		queue1Job3, _ := createJob(ctx, job)
 		err = waitTasksReady(ctx, queue1Job3, 1)
 		Expect(err).NotTo(HaveOccurred())
 		err = waitTasksReady(ctx, queue1Job, 0)
+		Expect(err).NotTo(HaveOccurred())
+		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("preemption only works when job's queue exists", func() {
+		ctx := initTestContext(options{
+			queues: []string{"q1-e2e", "q2-e2e"},
+			priorityClasses: map[string]int32{
+				masterPriority: masterPriorityValue,
+				workerPriority: workerPriorityValue,
+			},
+		})
+		defer cleanupTestContext(ctx)
+
+		slot := oneCPU
+		rep := clusterSize(ctx, slot)
+		job := &jobSpec{
+			tasks: []taskSpec{
+				{
+					img: defaultNginxImage,
+					req: slot,
+					min: 1,
+					rep: rep / 2,
+				},
+			},
+		}
+
+		job.name = "j1-q1"
+		job.pri = workerPriority
+		job.queue = "q1-e2e"
+		queue1Job, _ := createJob(ctx, job)
+		err := waitTasksReady(ctx, queue1Job, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+
+		job.name = "j2-q2"
+		job.pri = workerPriority
+		job.queue = "q2-e2e"
+		queue2Job, _ := createJob(ctx, job)
+		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+
+		job.name = "j3-q1"
+		job.pri = masterPriority
+		job.queue = "q3-preemption"
+		job.tasks[0].rep = rep
+		_, err = createJob(ctx, job)
+		Expect(err).To(HaveOccurred())
+		err = waitTasksReady(ctx, queue1Job, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())

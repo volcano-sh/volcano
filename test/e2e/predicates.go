@@ -45,7 +45,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		job := createJob(context, spec)
+		job, _ := createJob(context, spec)
 
 		err := waitTasksReady(context, job, nn)
 		Expect(err).NotTo(HaveOccurred())
@@ -93,7 +93,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		job := createJob(context, spec)
+		job, _ := createJob(context, spec)
 		err := waitTasksReady(context, job, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
@@ -140,7 +140,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		job := createJob(context, spec)
+		job, _ := createJob(context, spec)
 		err := waitTasksReady(context, job, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
@@ -187,7 +187,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		job := createJob(context, spec)
+		job, _ := createJob(context, spec)
 		err := waitTasksReady(context, job, 2)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -230,7 +230,7 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		job := createJob(context, spec)
+		job, _ := createJob(context, spec)
 		err = waitTasksPending(context, job, 1)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -291,11 +291,11 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		job1 := createJob(context, spec1)
+		job1, _ := createJob(context, spec1)
 		err = waitTasksReady(context, job1, 1)
 		Expect(err).NotTo(HaveOccurred())
 
-		job2 := createJob(context, spec2)
+		job2, _ := createJob(context, spec2)
 		err = waitTasksPending(context, job2, 1)
 		Expect(err).NotTo(HaveOccurred())
 

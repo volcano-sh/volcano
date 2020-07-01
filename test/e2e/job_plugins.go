@@ -62,7 +62,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 			},
 		}
 
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			namespace: ctx.namespace,
 			name:      jobName,
 			plugins: map[string][]string{
@@ -130,7 +130,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 			},
 		}
 
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			namespace: ctx.namespace,
 			name:      jobName,
 			plugins: map[string][]string{
@@ -185,7 +185,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		_, rep := computeNode(ctx, oneCPU)
 		Expect(rep).NotTo(Equal(0))
 
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			namespace: ctx.namespace,
 			name:      jobName,
 			plugins: map[string][]string{
@@ -223,7 +223,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		_, rep := computeNode(ctx, oneCPU)
 		Expect(rep).NotTo(Equal(0))
 
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			namespace: ctx.namespace,
 			name:      jobName,
 			plugins: map[string][]string{

@@ -69,7 +69,7 @@ mpiexec --allow-run-as-root --hostfile /etc/volcano/mpiworker.host -np 2 mpi_hel
 			},
 		}
 
-		job := createJob(context, spec)
+		job, _ := createJob(context, spec)
 
 		err := waitJobPhases(context, job, []vcbatch.JobPhase{
 			vcbatch.Pending, vcbatch.Running, vcbatch.Completing, vcbatch.Completed})

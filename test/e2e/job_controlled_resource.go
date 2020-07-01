@@ -95,7 +95,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 				v12.ReadWriteOnce,
 			},
 		}
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			namespace: ctx.namespace,
 			name:      jobName,
 			tasks: []taskSpec{
@@ -144,7 +144,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 			"nvidia.com/gpu": resource.MustParse("1"),
 		}
 
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			namespace: ctx.namespace,
 			name:      jobName,
 			tasks: []taskSpec{

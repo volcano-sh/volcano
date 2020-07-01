@@ -38,7 +38,7 @@ var _ = Describe("Job Error Handling", func() {
 		defer cleanupTestContext(context)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job, _ := createJob(context, &jobSpec{
 			name: "failed-restart-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -75,7 +75,7 @@ var _ = Describe("Job Error Handling", func() {
 		defer cleanupTestContext(context)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job, _ := createJob(context, &jobSpec{
 			name: "failed-terminate-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -112,7 +112,7 @@ var _ = Describe("Job Error Handling", func() {
 		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: "failed-abort-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -149,7 +149,7 @@ var _ = Describe("Job Error Handling", func() {
 		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: "evicted-restart-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -193,7 +193,7 @@ var _ = Describe("Job Error Handling", func() {
 		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: "evicted-terminate-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -237,7 +237,7 @@ var _ = Describe("Job Error Handling", func() {
 		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: "evicted-abort-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -281,7 +281,7 @@ var _ = Describe("Job Error Handling", func() {
 		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: "any-restart-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -345,7 +345,7 @@ var _ = Describe("Job Error Handling", func() {
 			},
 		}
 		By("Create the Job")
-		job := createJob(ctx, jobSpec)
+		job, _ := createJob(ctx, jobSpec)
 		err := waitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -404,7 +404,7 @@ var _ = Describe("Job Error Handling", func() {
 			},
 		}
 		By("Create the Job")
-		job := createJob(ctx, jobSpec)
+		job, _ := createJob(ctx, jobSpec)
 		err := waitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -439,7 +439,7 @@ var _ = Describe("Job Error Handling", func() {
 		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name:      "any-complete-job",
 			namespace: ctx.namespace,
 			policies: []vcbatch.LifecyclePolicy{
@@ -481,7 +481,7 @@ var _ = Describe("Job Error Handling", func() {
 
 		By("create job")
 		var erroCode int32 = 3
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name:      "errorcode-restart-job",
 			namespace: ctx.namespace,
 			policies: []vcbatch.LifecyclePolicy{
@@ -519,7 +519,7 @@ var _ = Describe("Job Error Handling", func() {
 		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: "evicted-terminate-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -565,7 +565,7 @@ var _ = Describe("Job Error Handling", func() {
 		defer cleanupTestContext(context)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job, _ := createJob(context, &jobSpec{
 			name: "failed-restart-job",
 			tasks: []taskSpec{
 				{
@@ -601,7 +601,7 @@ var _ = Describe("Job Error Handling", func() {
 		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: "evicted-restart-job",
 
 			tasks: []taskSpec{
@@ -645,7 +645,7 @@ var _ = Describe("Job Error Handling", func() {
 		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: "evicted-terminate-job",
 			tasks: []taskSpec{
 				{
@@ -688,7 +688,7 @@ var _ = Describe("Job Error Handling", func() {
 		defer cleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(ctx, &jobSpec{
+		job, _ := createJob(ctx, &jobSpec{
 			name: "any-complete-job",
 			tasks: []taskSpec{
 				{
@@ -728,7 +728,7 @@ var _ = Describe("Job Error Handling", func() {
 		defer cleanupTestContext(context)
 
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job, _ := createJob(context, &jobSpec{
 			name: "failed-restart-job",
 			policies: []vcbatch.LifecyclePolicy{
 				{
@@ -778,7 +778,7 @@ var _ = Describe("Job Error Handling", func() {
 		rep := clusterSize(context, oneCPU)
 		nodecount := clusterNodeNumber(context)
 		By("create job")
-		job := createJob(context, &jobSpec{
+		job, _ := createJob(context, &jobSpec{
 			name: "task-priority-job",
 			min:  int32(nodecount),
 			tasks: []taskSpec{
