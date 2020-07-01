@@ -1,11 +1,11 @@
 # this config file contains all config fields with comments
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
-# 1 control plane node and 3 workers
+# 1 control plane node and 4 workers
 nodes:
   # the control plane node config
   - role: control-plane
-  # the three workers
+  # the four workers
   - role: worker
   - role: worker
   - role: worker

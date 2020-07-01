@@ -192,97 +192,6 @@ var _ = Describe("Job E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("Preemption", func() {
-		ctx := initTestContext(options{
-			priorityClasses: map[string]int32{
-				masterPriority: masterPriorityValue,
-				workerPriority: workerPriorityValue,
-			},
-		})
-		defer cleanupTestContext(ctx)
-
-		slot := oneCPU
-		rep := clusterSize(ctx, slot)
-
-		job := &jobSpec{
-			tasks: []taskSpec{
-				{
-					img: defaultNginxImage,
-					req: slot,
-					min: 1,
-					rep: rep,
-				},
-			},
-		}
-
-		job.name = "preemptee-qj"
-		job.pri = workerPriority
-		job1 := createJob(ctx, job)
-		err := waitTasksReady(ctx, job1, int(rep))
-		Expect(err).NotTo(HaveOccurred())
-
-		job.name = "preemptor-qj"
-		job.pri = masterPriority
-		job.min = rep / 2
-		job2 := createJob(ctx, job)
-		err = waitTasksReady(ctx, job1, int(rep)/2)
-		Expect(err).NotTo(HaveOccurred())
-
-		err = waitTasksReady(ctx, job2, int(rep)/2)
-		Expect(err).NotTo(HaveOccurred())
-	})
-
-	It("Multiple Preemption", func() {
-		ctx := initTestContext(options{
-			priorityClasses: map[string]int32{
-				masterPriority: masterPriorityValue,
-				workerPriority: workerPriorityValue,
-			},
-		})
-		defer cleanupTestContext(ctx)
-
-		slot := oneCPU
-		rep := clusterSize(ctx, slot)
-
-		job := &jobSpec{
-			tasks: []taskSpec{
-				{
-					img: defaultNginxImage,
-					req: slot,
-					min: 1,
-					rep: rep,
-				},
-			},
-		}
-
-		job.name = "multipreemptee-qj"
-		job.pri = workerPriority
-		job1 := createJob(ctx, job)
-
-		err := waitTasksReady(ctx, job1, int(rep))
-		Expect(err).NotTo(HaveOccurred())
-
-		job.name = "multipreemptor-qj1"
-		job.pri = masterPriority
-		job.min = rep / 3
-		job2 := createJob(ctx, job)
-		Expect(err).NotTo(HaveOccurred())
-
-		job.name = "multipreemptor-qj2"
-		job.pri = masterPriority
-		job3 := createJob(ctx, job)
-		Expect(err).NotTo(HaveOccurred())
-
-		err = waitTasksReady(ctx, job1, int(rep)/3)
-		Expect(err).NotTo(HaveOccurred())
-
-		err = waitTasksReady(ctx, job2, int(rep)/3)
-		Expect(err).NotTo(HaveOccurred())
-
-		err = waitTasksReady(ctx, job3, int(rep)/3)
-		Expect(err).NotTo(HaveOccurred())
-	})
-
 	It("Schedule BestEffort Job", func() {
 		ctx := initTestContext(options{})
 		defer cleanupTestContext(ctx)
@@ -604,7 +513,7 @@ var _ = Describe("Job E2E Test", func() {
 		if expectPod%1 == 1 {
 			expectPod--
 		}
-		err = wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+		err = wait.Poll(100*time.Millisecond, twoMinute, func() (bool, error) {
 			fsScheduledPod = 0
 			testScheduledPod = 0
 
@@ -700,7 +609,7 @@ var _ = Describe("Job E2E Test", func() {
 		if expectPod%1 == 1 {
 			expectPod--
 		}
-		err = wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
+		err = wait.Poll(100*time.Millisecond, twoMinute, func() (bool, error) {
 			q1ScheduledPod = 0
 			q2ScheduledPod = 0
 
