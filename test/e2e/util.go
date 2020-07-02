@@ -26,9 +26,12 @@ import (
 	"strings"
 	"time"
 
+	lagencyerror "errors"
+
 	. "github.com/onsi/gomega"
 	appv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	schedv1 "k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -51,6 +54,8 @@ var (
 	oneMinute = 1 * time.Minute
 	twoMinute = 2 * time.Minute
 	oneCPU    = v1.ResourceList{"cpu": resource.MustParse("1000m")}
+	twoCPU    = v1.ResourceList{"cpu": resource.MustParse("2000m")}
+	threeCPU  = v1.ResourceList{"cpu": resource.MustParse("3000m")}
 	thirtyCPU = v1.ResourceList{"cpu": resource.MustParse("30000m")}
 	halfCPU   = v1.ResourceList{"cpu": resource.MustParse("500m")}
 )
@@ -113,9 +118,11 @@ type testContext struct {
 }
 
 type options struct {
-	namespace       string
-	queues          []string
-	priorityClasses map[string]int32
+	namespace          string
+	queues             []string
+	priorityClasses    map[string]int32
+	nodesNumLimit      int
+	nodesResourceLimit v1.ResourceList
 }
 
 var vcClient *vcclient.Clientset
@@ -145,6 +152,10 @@ func initTestContext(o options) *testContext {
 
 	createQueues(ctx)
 	createPriorityClasses(ctx)
+
+	if o.nodesNumLimit != 0 && o.nodesResourceLimit != nil {
+		setPlaceHolderForSchedulerTesting(ctx, o.nodesResourceLimit, o.nodesNumLimit)
+	}
 
 	return ctx
 }
@@ -198,6 +209,8 @@ func cleanupTestContext(ctx *testContext) {
 
 	deletePriorityClasses(ctx)
 
+	deletePlaceHolder(ctx)
+
 	// Wait for namespace deleted.
 	err = wait.Poll(100*time.Millisecond, twoMinute, namespaceNotExist(ctx))
 	Expect(err).NotTo(HaveOccurred())
@@ -205,16 +218,20 @@ func cleanupTestContext(ctx *testContext) {
 
 func createQueues(cxt *testContext) {
 	for _, q := range cxt.queues {
-		_, err := cxt.vcclient.SchedulingV1beta1().Queues().Create(context.TODO(),
-			&schedulingv1beta1.Queue{
+
+		_, err := cxt.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
+
+		//TODO: Better not found error
+		if err != nil {
+			_, err = cxt.vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), &schedulingv1beta1.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: q,
 				},
 				Spec: schedulingv1beta1.QueueSpec{
 					Weight: 1,
 				},
-			},
-			metav1.CreateOptions{})
+			}, metav1.CreateOptions{})
+		}
 
 		Expect(err).NotTo(HaveOccurred())
 	}
@@ -309,6 +326,93 @@ func createJob(context *testContext, jobSpec *jobSpec) *batchv1alpha1.Job {
 	Expect(err).NotTo(HaveOccurred(), "create job")
 
 	return job
+}
+
+func createJobWithCondition(ctx *testContext, jobSpec *jobSpec, pgName string, nodeSelector map[string]string) *batchv1alpha1.Job {
+	ns := getNS(ctx, jobSpec)
+
+	job := &batchv1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      jobSpec.name,
+			Namespace: ns,
+		},
+		Spec: batchv1alpha1.JobSpec{
+			Policies:                jobSpec.policies,
+			Queue:                   jobSpec.queue,
+			Plugins:                 jobSpec.plugins,
+			TTLSecondsAfterFinished: jobSpec.ttl,
+		},
+	}
+
+	var min int32
+	for i, task := range jobSpec.tasks {
+		name := task.name
+		if len(name) == 0 {
+			name = fmt.Sprintf("%s-task-%d", jobSpec.name, i)
+		}
+
+		restartPolicy := v1.RestartPolicyOnFailure
+		if len(task.restartPolicy) > 0 {
+			restartPolicy = task.restartPolicy
+		}
+
+		ts := batchv1alpha1.TaskSpec{
+			Name:     name,
+			Replicas: task.rep,
+			Policies: task.policies,
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   name,
+					Labels: task.labels,
+				},
+				Spec: v1.PodSpec{
+					SchedulerName:     "volcano",
+					RestartPolicy:     restartPolicy,
+					Containers:        createContainers(task.img, task.command, task.workingDir, task.req, task.limit, task.hostport),
+					Affinity:          task.affinity,
+					Tolerations:       task.tolerations,
+					PriorityClassName: task.taskpriority,
+				},
+			},
+		}
+
+		if pgName != "" {
+			ts.Template.ObjectMeta.Annotations = map[string]string{schedulingv1beta1.KubeGroupNameAnnotationKey: pgName}
+		}
+
+		if nodeSelector != nil {
+			ts.Template.Spec.NodeSelector = nodeSelector
+		}
+
+		if task.defaultGracefulPeriod != nil {
+			ts.Template.Spec.TerminationGracePeriodSeconds = task.defaultGracefulPeriod
+		} else {
+			//NOTE: TerminationGracePeriodSeconds is set to 3 in default in case of timeout when restarting tasks in test.
+			var defaultPeriod int64 = 3
+			ts.Template.Spec.TerminationGracePeriodSeconds = &defaultPeriod
+		}
+
+		job.Spec.Tasks = append(job.Spec.Tasks, ts)
+
+		min += task.min
+	}
+
+	if jobSpec.min > 0 {
+		job.Spec.MinAvailable = jobSpec.min
+	} else {
+		job.Spec.MinAvailable = min
+	}
+
+	if jobSpec.pri != "" {
+		job.Spec.PriorityClassName = jobSpec.pri
+	}
+
+	job.Spec.Volumes = jobSpec.volumes
+
+	jobCreated, err := ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+	Expect(err).NotTo(HaveOccurred(), "create job")
+
+	return jobCreated
 }
 
 func createJobInner(ctx *testContext, jobSpec *jobSpec) (*batchv1alpha1.Job, error) {
@@ -889,6 +993,136 @@ func waitReplicaSetReady(ctx *testContext, name string) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, replicaSetReady(ctx, name))
 }
 
+func satisifyMinNodesRequirements(ctx *testContext, num int) bool {
+	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred(), "Failed when get nodes num")
+	taintsNodes := 0
+	for _, node := range nodes.Items {
+		// Skip node with taints
+		if len(node.Spec.Taints) != 0 {
+			taintsNodes = taintsNodes + 1
+		}
+	}
+	if num <= len(nodes.Items)-taintsNodes {
+		return true
+	}
+	return false
+}
+
+func setPlaceHolderForSchedulerTesting(ctx *testContext, req v1.ResourceList, reqNum int) (bool, error) {
+
+	if !satisifyMinNodesRequirements(ctx, reqNum) {
+		return false, lagencyerror.New("Failed to setup environment, you need to have at least " + strconv.Itoa(reqNum) + " worker node.")
+	}
+
+	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	pods, err := ctx.kubeclient.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	used := map[string]*schedulerapi.Resource{}
+
+	for _, pod := range pods.Items {
+		nodeName := pod.Spec.NodeName
+		if len(nodeName) == 0 || pod.DeletionTimestamp != nil {
+			continue
+		}
+
+		if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
+			continue
+		}
+
+		if _, found := used[nodeName]; !found {
+			used[nodeName] = schedulerapi.EmptyResource()
+		}
+
+		for _, c := range pod.Spec.Containers {
+			resource := schedulerapi.NewResource(c.Resources.Requests)
+			used[nodeName].Add(resource)
+		}
+	}
+
+	//var minCPU, minMemory
+	minCPU := req.Cpu()
+	minMemory := req.Memory()
+	resourceRichNode := 0
+
+	//init placeholders
+	placeHolders := map[string]v1.ResourceList{}
+
+	for _, node := range nodes.Items {
+		if len(node.Spec.Taints) != 0 {
+			continue
+		}
+		minCPUMilli := float64(minCPU.MilliValue())
+		minMemoryValue := float64(minMemory.Value())
+		currentAllocatable := schedulerapi.NewResource(node.Status.Allocatable)
+
+		if res, found := used[node.Name]; found {
+			currentAllocatable.Sub(res)
+		}
+
+		if minCPUMilli <= currentAllocatable.MilliCPU && minMemoryValue <= currentAllocatable.Memory {
+			resourceRichNode = resourceRichNode + 1
+			phCPU := currentAllocatable.MilliCPU - minCPUMilli
+			phMemory := currentAllocatable.Memory - minMemoryValue
+			phCPUQuantity := resource.NewMilliQuantity(int64(phCPU), resource.BinarySI)
+			phMemoryQuantity := resource.NewQuantity(int64(phMemory), resource.BinarySI)
+			placeHolders[node.Name] = v1.ResourceList{"cpu": *phCPUQuantity, "memory": *phMemoryQuantity}
+		}
+	}
+
+	if resourceRichNode < reqNum {
+		return false, lagencyerror.New("Failed to setup environment, you need to have at least " + strconv.Itoa(len(req)) + " worker node.")
+	}
+
+	for nodeName, res := range placeHolders {
+		err := createPlaceHolder(ctx, res, nodeName)
+		Expect(err).NotTo(HaveOccurred())
+	}
+
+	return true, nil
+}
+
+func createPlaceHolder(ctx *testContext, phr v1.ResourceList, nodeName string) error {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      nodeName + "-placeholder",
+			Namespace: "default",
+			Labels: map[string]string{
+				"role": "placeholder",
+			},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				corev1.Container{
+					Name: "placeholder",
+					Resources: corev1.ResourceRequirements{
+						Requests: phr,
+						Limits:   phr,
+					},
+					Image: defaultNginxImage,
+				},
+			},
+			NodeName: nodeName,
+		},
+	}
+	_, err := ctx.kubeclient.CoreV1().Pods("default").Create(context.TODO(), pod, metav1.CreateOptions{})
+	return err
+}
+
+func deletePlaceHolder(ctx *testContext) {
+	podList, err := ctx.kubeclient.CoreV1().Pods("default").List(context.TODO(), metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+	for _, pod := range podList.Items {
+		if pod.Labels["role"] == "placeholder" {
+			err := ctx.kubeclient.CoreV1().Pods("default").Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+			Expect(err).NotTo(HaveOccurred())
+		}
+	}
+}
+
 func clusterSize(ctx *testContext, req v1.ResourceList) int32 {
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
@@ -1220,4 +1454,41 @@ func isPodScheduled(pod *v1.Pod) bool {
 		}
 	}
 	return false
+}
+
+func isJobOnlyOnePod(job *batchv1alpha1.Job) bool {
+	if len(job.Spec.Tasks) == 1 {
+		if job.Spec.Tasks[0].Replicas == 1 {
+			return true
+		}
+	}
+	return false
+}
+
+func getJobNode(ctx *testContext, job *batchv1alpha1.Job) (nodeName string, err error) {
+	if !isJobOnlyOnePod(job) {
+		return "", fmt.Errorf("job owns pods more than one")
+	}
+
+
+	pods, err := ctx.kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("volcano.sh/job-name=%s", job.Name),
+	})
+
+	if len(pods.Items) == 1 {
+		return pods.Items[0].Spec.NodeName, nil
+	}
+
+	return "", fmt.Errorf("get pods num not equal 1")
+}
+
+func compareNodename(ctx *testContext, jobA, jobB *batchv1alpha1.Job) (err error) {
+	nodeA, err := getJobNode(ctx, jobA)
+	Expect(err).NotTo(HaveOccurred())
+	nodeB, err := getJobNode(ctx, jobB)
+	Expect(err).NotTo(HaveOccurred())
+	if nodeA != nodeB {
+		return nil
+	}
+	return fmt.Errorf("jobs exist at the same node")
 }
