@@ -11,6 +11,15 @@ import (
 	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
+const (
+	highPriority        = "high-priority"
+	middlePriority      = "middle-priority"
+	lowPriority         = "low-priority"
+	highPriorityValue   = 100
+	middlePriorityValue = 50
+	lowPriorityValue    = 10
+)
+
 var _ = Describe("Job E2E Test", func() {
 	It("schedule high priority job without preemption when resource is enough", func() {
 		ctx := initTestContext(options{
@@ -201,6 +210,62 @@ var _ = Describe("Job E2E Test", func() {
 		err = waitTasksReady(ctx, queue1Job, 0)
 		Expect(err).NotTo(HaveOccurred())
 		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("multi-preemptor-jobs who are in different priority", func() {
+		ctx := initTestContext(options{
+			queues: []string{"q1-preemption"},
+			priorityClasses: map[string]int32{
+				highPriority:   highPriorityValue,
+				middlePriority: middlePriorityValue,
+				lowPriority:    lowPriorityValue,
+			},
+		})
+		defer cleanupTestContext(ctx)
+
+		slot := oneCPU
+		rep := clusterSize(ctx, slot)
+		job := &jobSpec{
+			tasks: []taskSpec{
+				{
+					img: defaultNginxImage,
+					req: slot,
+					min: 1,
+					rep: rep,
+				},
+			},
+		}
+
+		job.name = "j1-q1"
+		job.pri = lowPriority
+		job.queue = "q1-preemption"
+		queue1Job := createJob(ctx, job)
+		err := waitTasksReady(ctx, queue1Job, int(rep))
+		Expect(err).NotTo(HaveOccurred())
+
+		job.name = "j2-q1"
+		job.pri = middlePriority
+		job.queue = "q1-preemption"
+		job.tasks[0].rep = rep / 2
+		job.tasks[0].min = rep / 2
+		queue2Job := createJob(ctx, job)
+		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+		err = waitTasksReady(ctx, queue1Job, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+
+		job.name = "j3-q1"
+		job.pri = highPriority
+		job.queue = "q1-preemption"
+		job.tasks[0].rep = rep
+		job.tasks[0].min = rep
+		queue1Job3 := createJob(ctx, job)
+		err = waitTasksReady(ctx, queue1Job3, int(rep))
+		Expect(err).NotTo(HaveOccurred())
+		err = waitTasksReady(ctx, queue1Job, 0)
+		Expect(err).NotTo(HaveOccurred())
+		err = waitTasksReady(ctx, queue2Job, 0)
 		Expect(err).NotTo(HaveOccurred())
 	})
 })
