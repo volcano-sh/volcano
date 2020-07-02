@@ -970,6 +970,10 @@ func setPlaceHolderForSchedulerTesting(ctx *testContext, req v1.ResourceList, re
 		minMemoryValue := float64(minMemory.Value())
 		currentAllocatable := schedulerapi.NewResource(node.Status.Allocatable)
 
+		fmt.Println(node.Name)
+		fmt.Println(node.Status.Allocatable.Cpu())
+		fmt.Println(node.Status.Allocatable.Memory())
+
 		if res, found := used[node.Name]; found {
 			currentAllocatable.Sub(res)
 		}
@@ -980,7 +984,6 @@ func setPlaceHolderForSchedulerTesting(ctx *testContext, req v1.ResourceList, re
 		if minCPUMilli <= currentAllocatable.MilliCPU && minMemoryValue <= currentAllocatable.Memory {
 			resourceRichNode = resourceRichNode + 1
 			if resourceRichNode <= reqNum {
-				fmt.Println(resourceRichNode)
 				phCPU = currentAllocatable.MilliCPU - minCPUMilli
 				phMemory = currentAllocatable.Memory - minMemoryValue
 			}
@@ -1014,7 +1017,7 @@ func createPlaceHolder(ctx *testContext, phr v1.ResourceList, nodeName string) e
 		},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
-				corev1.Container{
+				{
 					Name: "placeholder",
 					Resources: corev1.ResourceRequirements{
 						Requests: phr,
