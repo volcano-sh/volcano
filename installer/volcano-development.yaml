@@ -23,7 +23,7 @@ data:
       - name: proportion
       - name: nodeorder
       - name: binpack
-
+  
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -118,7 +118,6 @@ spec:
         app: volcano-scheduler
     spec:
       serviceAccount: volcano-scheduler
-
       containers:
         - name: volcano-scheduler
           image: volcanosh/vc-scheduler:latest
@@ -208,7 +207,6 @@ spec:
         app: volcano-admission
     spec:
       serviceAccount: volcano-admission
-
       containers:
         - args:
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
@@ -358,7 +356,6 @@ spec:
         app: volcano-controller
     spec:
       serviceAccount: volcano-controllers
-
       containers:
           - name: volcano-controllers
             image: volcanosh/vc-controller-manager:latest

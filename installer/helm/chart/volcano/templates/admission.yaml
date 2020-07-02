@@ -68,10 +68,10 @@ spec:
         app: volcano-admission
     spec:
       serviceAccount: {{ .Release.Name }}-admission
-      {{ if .Values.basic.image_pull_secret }}
+      {{- if .Values.basic.image_pull_secret }}
       imagePullSecrets:
         - name: {{ .Values.basic.image_pull_secret }}
-      {{ end }}
+      {{- end }}
       containers:
         - args:
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
