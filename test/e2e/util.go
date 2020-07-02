@@ -58,6 +58,8 @@ var (
 	threeCPU  = v1.ResourceList{"cpu": resource.MustParse("3000m")}
 	thirtyCPU = v1.ResourceList{"cpu": resource.MustParse("30000m")}
 	halfCPU   = v1.ResourceList{"cpu": resource.MustParse("500m")}
+	CPU1Mem1  = v1.ResourceList{"cpu": resource.MustParse("750m"), "memory": resource.MustParse("650Mi")}
+	CPU2Mem2  = v1.ResourceList{"cpu": resource.MustParse("1500m"), "memory": resource.MustParse("1400Mi")}
 )
 
 const (
@@ -112,9 +114,10 @@ type testContext struct {
 	kubeclient *kubernetes.Clientset
 	vcclient   *vcclient.Clientset
 
-	namespace       string
-	queues          []string
-	priorityClasses map[string]int32
+	namespace        string
+	queues           []string
+	priorityClasses  map[string]int32
+	usingPlaceHolder bool
 }
 
 type options struct {
@@ -133,11 +136,12 @@ func initTestContext(o options) *testContext {
 		o.namespace = helpers.GenRandomStr(8)
 	}
 	ctx := &testContext{
-		namespace:       o.namespace,
-		queues:          o.queues,
-		priorityClasses: o.priorityClasses,
-		vcclient:        vcClient,
-		kubeclient:      kubeClient,
+		namespace:        o.namespace,
+		queues:           o.queues,
+		priorityClasses:  o.priorityClasses,
+		vcclient:         vcClient,
+		kubeclient:       kubeClient,
+		usingPlaceHolder: false,
 	}
 
 	_, err := ctx.kubeclient.CoreV1().Namespaces().Create(context.TODO(),
@@ -155,6 +159,7 @@ func initTestContext(o options) *testContext {
 
 	if o.nodesNumLimit != 0 && o.nodesResourceLimit != nil {
 		setPlaceHolderForSchedulerTesting(ctx, o.nodesResourceLimit, o.nodesNumLimit)
+		ctx.usingPlaceHolder = true
 	}
 
 	return ctx
@@ -209,7 +214,9 @@ func cleanupTestContext(ctx *testContext) {
 
 	deletePriorityClasses(ctx)
 
-	deletePlaceHolder(ctx)
+	if ctx.usingPlaceHolder {
+		deletePlaceHolder(ctx)
+	}
 
 	// Wait for namespace deleted.
 	err = wait.Poll(100*time.Millisecond, twoMinute, namespaceNotExist(ctx))
@@ -1063,14 +1070,20 @@ func setPlaceHolderForSchedulerTesting(ctx *testContext, req v1.ResourceList, re
 			currentAllocatable.Sub(res)
 		}
 
+		phCPU := currentAllocatable.MilliCPU
+		phMemory := currentAllocatable.Memory
+
 		if minCPUMilli <= currentAllocatable.MilliCPU && minMemoryValue <= currentAllocatable.Memory {
 			resourceRichNode = resourceRichNode + 1
-			phCPU := currentAllocatable.MilliCPU - minCPUMilli
-			phMemory := currentAllocatable.Memory - minMemoryValue
-			phCPUQuantity := resource.NewMilliQuantity(int64(phCPU), resource.BinarySI)
-			phMemoryQuantity := resource.NewQuantity(int64(phMemory), resource.BinarySI)
-			placeHolders[node.Name] = v1.ResourceList{"cpu": *phCPUQuantity, "memory": *phMemoryQuantity}
+			if resourceRichNode <= reqNum {
+				phCPU = currentAllocatable.MilliCPU - minCPUMilli
+				phMemory = currentAllocatable.Memory - minMemoryValue
+			}
 		}
+
+		phCPUQuantity := resource.NewMilliQuantity(int64(phCPU), resource.BinarySI)
+		phMemoryQuantity := resource.NewQuantity(int64(phMemory), resource.BinarySI)
+		placeHolders[node.Name] = v1.ResourceList{"cpu": *phCPUQuantity, "memory": *phMemoryQuantity}
 	}
 
 	if resourceRichNode < reqNum {
@@ -1096,7 +1109,7 @@ func createPlaceHolder(ctx *testContext, phr v1.ResourceList, nodeName string) e
 		},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
-				corev1.Container{
+				{
 					Name: "placeholder",
 					Resources: corev1.ResourceRequirements{
 						Requests: phr,
@@ -1469,7 +1482,6 @@ func getJobNode(ctx *testContext, job *batchv1alpha1.Job) (nodeName string, err 
 	if !isJobOnlyOnePod(job) {
 		return "", fmt.Errorf("job owns pods more than one")
 	}
-
 
 	pods, err := ctx.kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("volcano.sh/job-name=%s", job.Name),
