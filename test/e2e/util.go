@@ -26,9 +26,12 @@ import (
 	"strings"
 	"time"
 
+	lagencyerror "errors"
+
 	. "github.com/onsi/gomega"
 	appv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	schedv1 "k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -113,9 +116,11 @@ type testContext struct {
 }
 
 type options struct {
-	namespace       string
-	queues          []string
-	priorityClasses map[string]int32
+	namespace          string
+	queues             []string
+	priorityClasses    map[string]int32
+	nodesNumLimit      int
+	nodesResourceLimit v1.ResourceList
 }
 
 var vcClient *vcclient.Clientset
@@ -145,6 +150,10 @@ func initTestContext(o options) *testContext {
 
 	createQueues(ctx)
 	createPriorityClasses(ctx)
+
+	if o.nodesNumLimit != 0 && o.nodesResourceLimit != nil {
+		setPlaceHolderForSchedulerTesting(ctx, o.nodesResourceLimit, o.nodesNumLimit)
+	}
 
 	return ctx
 }
@@ -198,6 +207,8 @@ func cleanupTestContext(ctx *testContext) {
 
 	deletePriorityClasses(ctx)
 
+	deletePlaceHolder(ctx)
+
 	// Wait for namespace deleted.
 	err = wait.Poll(100*time.Millisecond, twoMinute, namespaceNotExist(ctx))
 	Expect(err).NotTo(HaveOccurred())
@@ -205,16 +216,20 @@ func cleanupTestContext(ctx *testContext) {
 
 func createQueues(cxt *testContext) {
 	for _, q := range cxt.queues {
-		_, err := cxt.vcclient.SchedulingV1beta1().Queues().Create(context.TODO(),
-			&schedulingv1beta1.Queue{
+
+		_, err := cxt.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
+
+		//TODO: Better not found error
+		if err != nil {
+			_, err = cxt.vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), &schedulingv1beta1.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: q,
 				},
 				Spec: schedulingv1beta1.QueueSpec{
 					Weight: 1,
 				},
-			},
-			metav1.CreateOptions{})
+			}, metav1.CreateOptions{})
+		}
 
 		Expect(err).NotTo(HaveOccurred())
 	}
@@ -887,6 +902,143 @@ func replicaSetReady(ctx *testContext, name string) wait.ConditionFunc {
 
 func waitReplicaSetReady(ctx *testContext, name string) error {
 	return wait.Poll(100*time.Millisecond, oneMinute, replicaSetReady(ctx, name))
+}
+
+func satisifyMinNodesRequirements(ctx *testContext, num int) bool {
+	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred(), "Failed when get nodes num")
+	taintsNodes := 0
+	for _, node := range nodes.Items {
+		// Skip node with taints
+		if len(node.Spec.Taints) != 0 {
+			taintsNodes = taintsNodes + 1
+		}
+	}
+	if num <= len(nodes.Items)-taintsNodes {
+		return true
+	}
+	return false
+}
+
+func setPlaceHolderForSchedulerTesting(ctx *testContext, req v1.ResourceList, reqNum int) (bool, error) {
+
+	if !satisifyMinNodesRequirements(ctx, reqNum) {
+		return false, lagencyerror.New("Failed to setup environment, you need to have at least " + strconv.Itoa(len(req)) + " worker node.")
+	}
+
+	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	pods, err := ctx.kubeclient.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	used := map[string]*schedulerapi.Resource{}
+
+	for _, pod := range pods.Items {
+		nodeName := pod.Spec.NodeName
+		if len(nodeName) == 0 || pod.DeletionTimestamp != nil {
+			continue
+		}
+
+		if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
+			continue
+		}
+
+		if _, found := used[nodeName]; !found {
+			used[nodeName] = schedulerapi.EmptyResource()
+		}
+
+		for _, c := range pod.Spec.Containers {
+			resource := schedulerapi.NewResource(c.Resources.Requests)
+			used[nodeName].Add(resource)
+		}
+	}
+
+	//var minCPU, minMemory
+	minCPU := req.Cpu()
+	minMemory := req.Memory()
+	resourceRichNode := 0
+
+	//init placeholders
+	placeHolders := map[string]v1.ResourceList{}
+
+	for _, node := range nodes.Items {
+		if len(node.Spec.Taints) != 0 {
+			continue
+		}
+		minCPUMilli := float64(minCPU.MilliValue())
+		minMemoryValue := float64(minMemory.Value())
+		currentAllocatable := schedulerapi.NewResource(node.Status.Allocatable)
+
+		if res, found := used[node.Name]; found {
+			currentAllocatable.Sub(res)
+		}
+
+		phCPU := currentAllocatable.MilliCPU
+		phMemory := currentAllocatable.Memory
+
+		if minCPUMilli <= currentAllocatable.MilliCPU && minMemoryValue <= currentAllocatable.Memory {
+			resourceRichNode = resourceRichNode + 1
+			if resourceRichNode <= reqNum {
+				fmt.Println(resourceRichNode)
+				phCPU = currentAllocatable.MilliCPU - minCPUMilli
+				phMemory = currentAllocatable.Memory - minMemoryValue
+			}
+		}
+
+		phCPUQuantity := resource.NewMilliQuantity(int64(phCPU), resource.BinarySI)
+		phMemoryQuantity := resource.NewQuantity(int64(phMemory), resource.BinarySI)
+		placeHolders[node.Name] = v1.ResourceList{"cpu": *phCPUQuantity, "memory": *phMemoryQuantity}
+	}
+
+	if resourceRichNode < reqNum {
+		return false, lagencyerror.New("Failed to setup environment, you need to have at least " + strconv.Itoa(len(req)) + " worker node.")
+	}
+
+	for nodeName, res := range placeHolders {
+		err := createPlaceHolder(ctx, res, nodeName)
+		Expect(err).NotTo(HaveOccurred())
+	}
+
+	return true, nil
+}
+
+func createPlaceHolder(ctx *testContext, phr v1.ResourceList, nodeName string) error {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      nodeName + "-placeholder",
+			Namespace: "default",
+			Labels: map[string]string{
+				"role": "placeholder",
+			},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				corev1.Container{
+					Name: "placeholder",
+					Resources: corev1.ResourceRequirements{
+						Requests: phr,
+						Limits:   phr,
+					},
+					Image: defaultNginxImage,
+				},
+			},
+			NodeName: nodeName,
+		},
+	}
+	_, err := ctx.kubeclient.CoreV1().Pods("default").Create(context.TODO(), pod, metav1.CreateOptions{})
+	return err
+}
+
+func deletePlaceHolder(ctx *testContext) {
+	podList, err := ctx.kubeclient.CoreV1().Pods("default").List(context.TODO(), metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+	for _, pod := range podList.Items {
+		if pod.Labels["role"] == "placeholder" {
+			err := ctx.kubeclient.CoreV1().Pods("default").Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+			Expect(err).NotTo(HaveOccurred())
+		}
+	}
 }
 
 func clusterSize(ctx *testContext, req v1.ResourceList) int32 {
