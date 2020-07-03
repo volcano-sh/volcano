@@ -7,7 +7,6 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
@@ -94,89 +93,6 @@ var _ = Describe("Queue E2E Test", func() {
 		})
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-	})
-
-	It("Reclaim: New queue with job created reclaim when lack of resource", func() {
-		q1 := "default"
-		q2 := "reclaim-q2"
-		ctx := initTestContext(options{
-			queues:             []string{q2},
-			nodesNumLimit:      3,
-			nodesResourceLimit: CPU2Mem2,
-			priorityClasses: map[string]int32{
-				"low-priority":  10,
-				"high-priority": 10000,
-			},
-		})
-
-		defer cleanupTestContext(ctx)
-
-		By("Setup initial jobs")
-		jobSpec1 := &jobSpec{
-			tasks: []taskSpec{
-				{
-					img: defaultNginxImage,
-					req: CPU2Mem2,
-					min: 1,
-					rep: 1,
-				},
-			},
-		}
-		jobSpec2 := &jobSpec{
-			tasks: []taskSpec{
-				{
-					img: defaultNginxImage,
-					req: CPU1Mem1,
-					min: 1,
-					rep: 1,
-				},
-			},
-		}
-
-		jobList := []*vcbatch.Job{}
-		jobSpec1.name = "reclaim-j1"
-		jobSpec1.queue = q1
-		jobSpec1.pri = "low-priority"
-		jobList = append(jobList, createJob(ctx, jobSpec1))
-
-		jobSpec1.name = "reclaim-j2"
-		jobSpec1.queue = q1
-		jobSpec1.pri = "low-priority"
-		jobList = append(jobList, createJob(ctx, jobSpec1))
-
-		jobSpec2.name = "reclaim-j3"
-		jobSpec2.queue = q2
-		jobSpec2.pri = "low-priority"
-		jobList = append(jobList, createJob(ctx, jobSpec2))
-
-		jobSpec2.name = "reclaim-j4"
-		jobSpec2.queue = q2
-		jobSpec2.pri = "low-priority"
-		jobList = append(jobList, createJob(ctx, jobSpec2))
-
-		for _, jobCreated := range jobList {
-			err := waitTasksReady(ctx, jobCreated, 1)
-			Expect(err).NotTo(HaveOccurred(), "Wait for job "+jobCreated.Name+" failed")
-		}
-
-		By("Create new comming queue and job")
-		q3 := "reclaim-q3"
-		ctx.queues = append(ctx.queues, q3)
-		createQueues(ctx)
-
-		jobSpec2.name = "reclaim-j5"
-		jobSpec2.queue = q3
-		jobSpec2.pri = "high-priority"
-		createJob(ctx, jobSpec2)
-
-		// Ensure job is running in q3
-		By("Make sure all job running")
-		err := waitQueueStatus(func() (bool, error) {
-			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q3, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q3)
-			return queue.Status.Running == 1, nil
-		})
-		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 	})
 
 	It("Reclaim", func() {
