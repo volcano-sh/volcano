@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -233,6 +234,13 @@ var _ = Describe("Job E2E Test", func() {
 		q3 := "reclaim-q3"
 		ctx.queues = append(ctx.queues, q3)
 		createQueues(ctx)
+
+		err = waitQueueStatus(func() (bool, error) {
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
+			return queue.Status.State == schedulingv1beta1.QueueStateOpen, nil
+		})
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
 		job.name = "reclaim-j3"
 		job.queue = q3

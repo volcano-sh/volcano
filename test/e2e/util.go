@@ -110,9 +110,10 @@ type testContext struct {
 	kubeclient *kubernetes.Clientset
 	vcclient   *vcclient.Clientset
 
-	namespace       string
-	queues          []string
-	priorityClasses map[string]int32
+	namespace        string
+	queues           []string
+	priorityClasses  map[string]int32
+	usingPlaceHolder bool
 }
 
 type options struct {
@@ -131,11 +132,12 @@ func initTestContext(o options) *testContext {
 		o.namespace = helpers.GenRandomStr(8)
 	}
 	ctx := &testContext{
-		namespace:       o.namespace,
-		queues:          o.queues,
-		priorityClasses: o.priorityClasses,
-		vcclient:        vcClient,
-		kubeclient:      kubeClient,
+		namespace:        o.namespace,
+		queues:           o.queues,
+		priorityClasses:  o.priorityClasses,
+		vcclient:         vcClient,
+		kubeclient:       kubeClient,
+		usingPlaceHolder: false,
 	}
 
 	_, err := ctx.kubeclient.CoreV1().Namespaces().Create(context.TODO(),
@@ -153,6 +155,7 @@ func initTestContext(o options) *testContext {
 
 	if o.nodesNumLimit != 0 && o.nodesResourceLimit != nil {
 		setPlaceHolderForSchedulerTesting(ctx, o.nodesResourceLimit, o.nodesNumLimit)
+		ctx.usingPlaceHolder = true
 	}
 
 	return ctx
@@ -207,7 +210,9 @@ func cleanupTestContext(ctx *testContext) {
 
 	deletePriorityClasses(ctx)
 
-	deletePlaceHolder(ctx)
+	if ctx.usingPlaceHolder {
+		deletePlaceHolder(ctx)
+	}
 
 	// Wait for namespace deleted.
 	err = wait.Poll(100*time.Millisecond, twoMinute, namespaceNotExist(ctx))
@@ -969,10 +974,6 @@ func setPlaceHolderForSchedulerTesting(ctx *testContext, req v1.ResourceList, re
 		minCPUMilli := float64(minCPU.MilliValue())
 		minMemoryValue := float64(minMemory.Value())
 		currentAllocatable := schedulerapi.NewResource(node.Status.Allocatable)
-
-		fmt.Println(node.Name)
-		fmt.Println(node.Status.Allocatable.Cpu())
-		fmt.Println(node.Status.Allocatable.Memory())
 
 		if res, found := used[node.Name]; found {
 			currentAllocatable.Sub(res)
