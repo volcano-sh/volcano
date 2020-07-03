@@ -56,6 +56,8 @@ var (
 	oneCPU    = v1.ResourceList{"cpu": resource.MustParse("1000m")}
 	thirtyCPU = v1.ResourceList{"cpu": resource.MustParse("30000m")}
 	halfCPU   = v1.ResourceList{"cpu": resource.MustParse("500m")}
+	CPU1Mem1  = v1.ResourceList{"cpu": resource.MustParse("1000m"), "memory": resource.MustParse("1024Mi")}
+	CPU2Mem2  = v1.ResourceList{"cpu": resource.MustParse("2000m"), "memory": resource.MustParse("2048Mi")}
 )
 
 const (

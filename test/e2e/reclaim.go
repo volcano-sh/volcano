@@ -6,8 +6,6 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
@@ -20,7 +18,7 @@ var _ = Describe("Queue E2E Test", func() {
 		ctx := initTestContext(options{
 			queues:             []string{q2},
 			nodesNumLimit:      4,
-			nodesResourceLimit: v1.ResourceList{"cpu": resource.MustParse("1000m"), "memory": resource.MustParse("1024Mi")},
+			nodesResourceLimit: CPU1Mem1,
 			priorityClasses: map[string]int32{
 				"low-priority":  10,
 				"high-priority": 10000,
@@ -29,12 +27,12 @@ var _ = Describe("Queue E2E Test", func() {
 
 		defer cleanupTestContext(ctx)
 
-		slot := v1.ResourceList{"cpu": resource.MustParse("1000m"), "memory": resource.MustParse("1024Mi")}
+		By("Setup initial jobs")
 		job := &jobSpec{
 			tasks: []taskSpec{
 				{
 					img: defaultNginxImage,
-					req: slot,
+					req: CPU1Mem1,
 					min: 1,
 					rep: 1,
 				},
@@ -57,7 +55,7 @@ var _ = Describe("Queue E2E Test", func() {
 		err = waitTasksReady(ctx, job2, 1)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
 
-		// create queue3 & append to context queue list
+		By("Create new comming queue and job")
 		q3 := "reclaim-q3"
 		ctx.queues = append(ctx.queues, q3)
 		createQueues(ctx)
@@ -71,9 +69,10 @@ var _ = Describe("Queue E2E Test", func() {
 
 		job.name = "reclaim-j3"
 		job.queue = q3
-		job.pri = "high-priority"
+		job.pri = "low-priority"
 		createJob(ctx, job)
 
+		By("Make sure all job running")
 		err = waitQueueStatus(func() (bool, error) {
 			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
@@ -103,7 +102,7 @@ var _ = Describe("Queue E2E Test", func() {
 		ctx := initTestContext(options{
 			queues:             []string{q2},
 			nodesNumLimit:      3,
-			nodesResourceLimit: v1.ResourceList{"cpu": resource.MustParse("2000m"), "memory": resource.MustParse("2048Mi")},
+			nodesResourceLimit: CPU2Mem2,
 			priorityClasses: map[string]int32{
 				"low-priority":  10,
 				"high-priority": 10000,
@@ -112,13 +111,12 @@ var _ = Describe("Queue E2E Test", func() {
 
 		defer cleanupTestContext(ctx)
 
-		slot1 := v1.ResourceList{"cpu": resource.MustParse("2000m"), "memory": resource.MustParse("2048Mi")}
-		slot2 := v1.ResourceList{"cpu": resource.MustParse("1000m"), "memory": resource.MustParse("1024Mi")}
+		By("Setup initial jobs")
 		jobSpec1 := &jobSpec{
 			tasks: []taskSpec{
 				{
 					img: defaultNginxImage,
-					req: slot1,
+					req: CPU2Mem2,
 					min: 1,
 					rep: 1,
 				},
@@ -128,7 +126,7 @@ var _ = Describe("Queue E2E Test", func() {
 			tasks: []taskSpec{
 				{
 					img: defaultNginxImage,
-					req: slot2,
+					req: CPU1Mem1,
 					min: 1,
 					rep: 1,
 				},
@@ -161,7 +159,7 @@ var _ = Describe("Queue E2E Test", func() {
 			Expect(err).NotTo(HaveOccurred(), "Wait for job "+jobCreated.Name+" failed")
 		}
 
-		// Create queue3 & append to context queue list
+		By("Create new comming queue and job")
 		q3 := "reclaim-q3"
 		ctx.queues = append(ctx.queues, q3)
 		createQueues(ctx)
@@ -172,6 +170,7 @@ var _ = Describe("Queue E2E Test", func() {
 		createJob(ctx, jobSpec2)
 
 		// Ensure job is running in q3
+		By("Make sure all job running")
 		err := waitQueueStatus(func() (bool, error) {
 			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q3, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q3)
