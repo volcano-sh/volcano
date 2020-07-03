@@ -32,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -191,82 +190,6 @@ var _ = Describe("Job E2E Test", func() {
 		job := createJob(ctx, jobSpec)
 		err := waitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
-	})
-
-	It("Reclaim: New queue with job created no reclaim when resource is enough", func() {
-		q1 := "default"
-		q2 := "reclaim-q2"
-		ctx := initTestContext(options{
-			queues:             []string{q2},
-			nodesNumLimit:      4,
-			nodesResourceLimit: v1.ResourceList{"cpu": resource.MustParse("1000m"), "memory": resource.MustParse("1024Mi")},
-		})
-
-		defer cleanupTestContext(ctx)
-
-		slot := v1.ResourceList{"cpu": resource.MustParse("1000m"), "memory": resource.MustParse("1024Mi")}
-		job := &jobSpec{
-			tasks: []taskSpec{
-				{
-					img: defaultNginxImage,
-					req: slot,
-					min: 1,
-					rep: 1,
-				},
-			},
-		}
-
-		job.name = "reclaim-j1"
-		job.queue = q1
-		job1 := createJob(ctx, job)
-
-		job.name = "reclaim-j2"
-		job.queue = q2
-		job2 := createJob(ctx, job)
-
-		err := waitTasksReady(ctx, job1, 1)
-		Expect(err).NotTo(HaveOccurred(), "Wait for job1 failed")
-
-		err = waitTasksReady(ctx, job2, 1)
-		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
-
-		// create queue3 & append to context queue list
-		q3 := "reclaim-q3"
-		ctx.queues = append(ctx.queues, q3)
-		createQueues(ctx)
-
-		err = waitQueueStatus(func() (bool, error) {
-			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
-			return queue.Status.State == schedulingv1beta1.QueueStateOpen, nil
-		})
-		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
-
-		job.name = "reclaim-j3"
-		job.queue = q3
-		createJob(ctx, job)
-
-		err = waitQueueStatus(func() (bool, error) {
-			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
-			return queue.Status.Running == 1, nil
-		})
-		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
-
-		err = waitQueueStatus(func() (bool, error) {
-			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q2, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q2)
-			return queue.Status.Running == 1, nil
-		})
-		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
-
-		err = waitQueueStatus(func() (bool, error) {
-			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q3, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q3)
-			return queue.Status.Running == 1, nil
-		})
-		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
-
 	})
 
 	It("Schedule BestEffort Job", func() {
