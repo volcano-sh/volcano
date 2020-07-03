@@ -7,9 +7,94 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
 var _ = Describe("Queue E2E Test", func() {
+	It("Reclaim: New queue with job created no reclaim when resource is enough", func() {
+		q1 := "default"
+		q2 := "reclaim-q2"
+		ctx := initTestContext(options{
+			queues:             []string{q2},
+			nodesNumLimit:      4,
+			nodesResourceLimit: CPU1Mem1,
+			priorityClasses: map[string]int32{
+				"low-priority":  10,
+				"high-priority": 10000,
+			},
+		})
+
+		defer cleanupTestContext(ctx)
+
+		By("Setup initial jobs")
+		job := &jobSpec{
+			tasks: []taskSpec{
+				{
+					img: defaultNginxImage,
+					req: CPU1Mem1,
+					min: 1,
+					rep: 1,
+				},
+			},
+		}
+
+		job.name = "reclaim-j1"
+		job.queue = q1
+		job.pri = "low-priority"
+		job1 := createJob(ctx, job)
+
+		job.name = "reclaim-j2"
+		job.queue = q2
+		job.pri = "low-priority"
+		job2 := createJob(ctx, job)
+
+		err := waitTasksReady(ctx, job1, 1)
+		Expect(err).NotTo(HaveOccurred(), "Wait for job1 failed")
+
+		err = waitTasksReady(ctx, job2, 1)
+		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
+
+		By("Create new comming queue and job")
+		q3 := "reclaim-q3"
+		ctx.queues = append(ctx.queues, q3)
+		createQueues(ctx)
+
+		err = waitQueueStatus(func() (bool, error) {
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
+			return queue.Status.State == schedulingv1beta1.QueueStateOpen, nil
+		})
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue open")
+
+		job.name = "reclaim-j3"
+		job.queue = q3
+		job.pri = "low-priority"
+		createJob(ctx, job)
+
+		By("Make sure all job running")
+		err = waitQueueStatus(func() (bool, error) {
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
+			return queue.Status.Running == 1, nil
+		})
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
+
+		err = waitQueueStatus(func() (bool, error) {
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q2, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q2)
+			return queue.Status.Running == 1, nil
+		})
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
+
+		err = waitQueueStatus(func() (bool, error) {
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q3, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q3)
+			return queue.Status.Running == 1, nil
+		})
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
+
+	})
+
 	It("Reclaim", func() {
 		q1, q2 := "reclaim-q1", "reclaim-q2"
 		ctx := initTestContext(options{

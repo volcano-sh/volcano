@@ -58,8 +58,8 @@ var (
 	threeCPU  = v1.ResourceList{"cpu": resource.MustParse("3000m")}
 	thirtyCPU = v1.ResourceList{"cpu": resource.MustParse("30000m")}
 	halfCPU   = v1.ResourceList{"cpu": resource.MustParse("500m")}
-	CPU1Mem1  = v1.ResourceList{"cpu": resource.MustParse("750m"), "memory": resource.MustParse("650Mi")}
-	CPU2Mem2  = v1.ResourceList{"cpu": resource.MustParse("1500m"), "memory": resource.MustParse("1400Mi")}
+	CPU1Mem1  = v1.ResourceList{"cpu": resource.MustParse("1000m"), "memory": resource.MustParse("1024Mi")}
+	CPU2Mem2  = v1.ResourceList{"cpu": resource.MustParse("2000m"), "memory": resource.MustParse("2048Mi")}
 )
 
 const (
@@ -335,7 +335,7 @@ func createJob(context *testContext, jobSpec *jobSpec) *batchv1alpha1.Job {
 	return job
 }
 
-func createJobWithCondition(ctx *testContext, jobSpec *jobSpec, pgName string, nodeSelector map[string]string) *batchv1alpha1.Job {
+func createJobWithPodGroup(ctx *testContext, jobSpec *jobSpec, pgName string) *batchv1alpha1.Job {
 	ns := getNS(ctx, jobSpec)
 
 	job := &batchv1alpha1.Job{
@@ -385,10 +385,6 @@ func createJobWithCondition(ctx *testContext, jobSpec *jobSpec, pgName string, n
 
 		if pgName != "" {
 			ts.Template.ObjectMeta.Annotations = map[string]string{schedulingv1beta1.KubeGroupNameAnnotationKey: pgName}
-		}
-
-		if nodeSelector != nil {
-			ts.Template.Spec.NodeSelector = nodeSelector
 		}
 
 		if task.defaultGracefulPeriod != nil {
@@ -1467,40 +1463,4 @@ func isPodScheduled(pod *v1.Pod) bool {
 		}
 	}
 	return false
-}
-
-func isJobOnlyOnePod(job *batchv1alpha1.Job) bool {
-	if len(job.Spec.Tasks) == 1 {
-		if job.Spec.Tasks[0].Replicas == 1 {
-			return true
-		}
-	}
-	return false
-}
-
-func getJobNode(ctx *testContext, job *batchv1alpha1.Job) (nodeName string, err error) {
-	if !isJobOnlyOnePod(job) {
-		return "", fmt.Errorf("job owns pods more than one")
-	}
-
-	pods, err := ctx.kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("volcano.sh/job-name=%s", job.Name),
-	})
-
-	if len(pods.Items) == 1 {
-		return pods.Items[0].Spec.NodeName, nil
-	}
-
-	return "", fmt.Errorf("get pods num not equal 1")
-}
-
-func compareNodename(ctx *testContext, jobA, jobB *batchv1alpha1.Job) (err error) {
-	nodeA, err := getJobNode(ctx, jobA)
-	Expect(err).NotTo(HaveOccurred())
-	nodeB, err := getJobNode(ctx, jobB)
-	Expect(err).NotTo(HaveOccurred())
-	if nodeA != nodeB {
-		return nil
-	}
-	return fmt.Errorf("jobs exist at the same node")
 }
