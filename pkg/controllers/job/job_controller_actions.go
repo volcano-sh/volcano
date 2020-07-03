@@ -22,7 +22,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
@@ -147,20 +147,20 @@ func (cc *Controller) initiateJob(job *batch.Job) (*batch.Job, error) {
 	defer klog.V(3).Infof("Finished Job <%s/%s> initiate", job.Namespace, job.Name)
 
 	klog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
-	job, err := cc.initJobStatus(job)
+	jobInstance, err := cc.initJobStatus(job)
 	if err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.JobStatusError),
 			fmt.Sprintf("Failed to initialize job status, err: %v", err))
 		return nil, err
 	}
 
-	if err := cc.pluginOnJobAdd(job); err != nil {
+	if err := cc.pluginOnJobAdd(jobInstance); err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.PluginError),
 			fmt.Sprintf("Execute plugin when job add failed, err: %v", err))
 		return nil, err
 	}
 
-	newJob, err := cc.createJobIOIfNotExist(job)
+	newJob, err := cc.createJobIOIfNotExist(jobInstance)
 	if err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.PVCError),
 			fmt.Sprintf("Failed to create PVC, err: %v", err))
