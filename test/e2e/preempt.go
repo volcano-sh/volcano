@@ -57,7 +57,7 @@ var _ = Describe("Job E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("schedule high priority job with preemption when resource is NOT enough", func() {
+	It("schedule high priority job with preemption when idle resource is NOT enough but preemptee resource is enough", func() {
 		ctx := initTestContext(options{
 			priorityClasses: map[string]int32{
 				highPriority: highPriorityValue,
@@ -203,6 +203,59 @@ var _ = Describe("Job E2E Test", func() {
 		err = waitTasksReady(ctx, queue1Job3, 1)
 		Expect(err).NotTo(HaveOccurred())
 		err = waitTasksReady(ctx, queue1Job, 0)
+		Expect(err).NotTo(HaveOccurred())
+		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("preemption doesn't work when total resource of idle resource and preemptee is NOT enough", func() {
+		ctx := initTestContext(options{
+			queues: []string{"q1-preemption", "q2-reference"},
+			priorityClasses: map[string]int32{
+				highPriority: highPriorityValue,
+				lowPriority:  lowPriorityValue,
+			},
+		})
+		defer cleanupTestContext(ctx)
+
+		slot := oneCPU
+		rep := clusterSize(ctx, slot)
+		job := &jobSpec{
+			tasks: []taskSpec{
+				{
+					img: defaultNginxImage,
+					req: slot,
+					min: 1,
+					rep: 1,
+				},
+			},
+		}
+
+		job.name = "j1-q1"
+		job.pri = lowPriority
+		job.queue = "q1-preemption"
+		queue1Job := createJob(ctx, job)
+		err := waitTasksReady(ctx, queue1Job, 1)
+		Expect(err).NotTo(HaveOccurred())
+
+		job.name = "j2-q2"
+		job.pri = lowPriority
+		job.queue = "q2-reference"
+		job.tasks[0].min = rep / 2
+		job.tasks[0].rep = rep / 2
+		queue2Job := createJob(ctx, job)
+		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+
+		job.name = "j3-q1"
+		job.pri = highPriority
+		job.queue = "q1-preemption"
+		job.tasks[0].min = rep
+		job.tasks[0].rep = rep
+		queue1Job3 := createJob(ctx, job)
+		err = waitTasksReady(ctx, queue1Job3, int(rep))
+		Expect(err).To(HaveOccurred())
+		err = waitTasksReady(ctx, queue1Job, 1)
 		Expect(err).NotTo(HaveOccurred())
 		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
