@@ -24,8 +24,8 @@ var _ = Describe("Job E2E Test", func() {
 	It("schedule high priority job without preemption when resource is enough", func() {
 		ctx := initTestContext(options{
 			priorityClasses: map[string]int32{
-				masterPriority: masterPriorityValue,
-				workerPriority: workerPriorityValue,
+				highPriority: highPriorityValue,
+				lowPriority:  lowPriorityValue,
 			},
 		})
 		defer cleanupTestContext(ctx)
@@ -44,13 +44,13 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		job.name = "preemptee"
-		job.pri = workerPriority
+		job.pri = lowPriority
 		preempteeJob := createJob(ctx, job)
 		err := waitTasksReady(ctx, preempteeJob, 1)
 		Expect(err).NotTo(HaveOccurred())
 
 		job.name = "preemptor"
-		job.pri = masterPriority
+		job.pri = highPriority
 		preemptorJob := createJob(ctx, job)
 		err = waitTasksReady(ctx, preempteeJob, 1)
 		Expect(err).NotTo(HaveOccurred())
@@ -59,11 +59,11 @@ var _ = Describe("Job E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("schedule high priority job with preemption when resource is NOT enough", func() {
+	It("schedule high priority job with preemption when idle resource is NOT enough but preemptee resource is enough", func() {
 		ctx := initTestContext(options{
 			priorityClasses: map[string]int32{
-				masterPriority: masterPriorityValue,
-				workerPriority: workerPriorityValue,
+				highPriority: highPriorityValue,
+				lowPriority:  lowPriorityValue,
 			},
 		})
 		defer cleanupTestContext(ctx)
@@ -83,13 +83,13 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		job.name = "preemptee"
-		job.pri = workerPriority
+		job.pri = lowPriority
 		preempteeJob := createJob(ctx, job)
 		err := waitTasksReady(ctx, preempteeJob, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
 		job.name = "preemptor"
-		job.pri = masterPriority
+		job.pri = highPriority
 		job.min = rep / 2
 		preemptorJob := createJob(ctx, job)
 		err = waitTasksReady(ctx, preempteeJob, int(rep)/2)
@@ -99,11 +99,11 @@ var _ = Describe("Job E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("preemption don't work when podgroup is pending", func() {
+	It("preemption doesn't work when podgroup is pending", func() {
 		ctx := initTestContext(options{
 			priorityClasses: map[string]int32{
-				masterPriority: masterPriorityValue,
-				workerPriority: workerPriorityValue,
+				highPriority: highPriorityValue,
+				lowPriority:  lowPriorityValue,
 			},
 		})
 		defer cleanupTestContext(ctx)
@@ -117,9 +117,6 @@ var _ = Describe("Job E2E Test", func() {
 			Spec: schedulingv1beta1.PodGroupSpec{
 				MinMember:    1,
 				MinResources: &thirtyCPU,
-			},
-			Status: schedulingv1beta1.PodGroupStatus{
-				Phase: schedulingv1beta1.PodGroupPending,
 			},
 		}
 		_, err := ctx.vcclient.SchedulingV1beta1().PodGroups(ctx.namespace).Create(context.TODO(), pg, v1.CreateOptions{})
@@ -138,7 +135,7 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 		job.name = "preemptee"
-		job.pri = workerPriority
+		job.pri = lowPriority
 		preempteeJob := createJob(ctx, job)
 		err = waitTasksReady(ctx, preempteeJob, int(rep))
 		Expect(err).NotTo(HaveOccurred())
@@ -156,7 +153,7 @@ var _ = Describe("Job E2E Test", func() {
 			Spec: corev1.PodSpec{
 				SchedulerName:     "volcano",
 				Containers:        createContainers(defaultNginxImage, "", "", oneCPU, oneCPU, 0),
-				PriorityClassName: masterPriority,
+				PriorityClassName: highPriority,
 			},
 		}
 		_, err = ctx.kubeclient.CoreV1().Pods(ctx.namespace).Create(context.TODO(), pod, v1.CreateOptions{})
@@ -167,8 +164,8 @@ var _ = Describe("Job E2E Test", func() {
 		ctx := initTestContext(options{
 			queues: []string{"q1-preemption", "q2-reference"},
 			priorityClasses: map[string]int32{
-				masterPriority: masterPriorityValue,
-				workerPriority: workerPriorityValue,
+				highPriority: highPriorityValue,
+				lowPriority:  lowPriorityValue,
 			},
 		})
 		defer cleanupTestContext(ctx)
@@ -187,27 +184,80 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		job.name = "j1-q1"
-		job.pri = workerPriority
+		job.pri = lowPriority
 		job.queue = "q1-preemption"
 		queue1Job := createJob(ctx, job)
 		err := waitTasksReady(ctx, queue1Job, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 
 		job.name = "j2-q2"
-		job.pri = workerPriority
+		job.pri = lowPriority
 		job.queue = "q2-reference"
 		queue2Job := createJob(ctx, job)
 		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 
 		job.name = "j3-q1"
-		job.pri = masterPriority
+		job.pri = highPriority
 		job.queue = "q1-preemption"
 		job.tasks[0].rep = rep
 		queue1Job3 := createJob(ctx, job)
 		err = waitTasksReady(ctx, queue1Job3, 1)
 		Expect(err).NotTo(HaveOccurred())
 		err = waitTasksReady(ctx, queue1Job, 0)
+		Expect(err).NotTo(HaveOccurred())
+		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("preemption doesn't work when total resource of idle resource and preemptee is NOT enough", func() {
+		ctx := initTestContext(options{
+			queues: []string{"q1-preemption", "q2-reference"},
+			priorityClasses: map[string]int32{
+				highPriority: highPriorityValue,
+				lowPriority:  lowPriorityValue,
+			},
+		})
+		defer cleanupTestContext(ctx)
+
+		slot := oneCPU
+		rep := clusterSize(ctx, slot)
+		job := &jobSpec{
+			tasks: []taskSpec{
+				{
+					img: defaultNginxImage,
+					req: slot,
+					min: 1,
+					rep: 1,
+				},
+			},
+		}
+
+		job.name = "j1-q1"
+		job.pri = lowPriority
+		job.queue = "q1-preemption"
+		queue1Job := createJob(ctx, job)
+		err := waitTasksReady(ctx, queue1Job, 1)
+		Expect(err).NotTo(HaveOccurred())
+
+		job.name = "j2-q2"
+		job.pri = lowPriority
+		job.queue = "q2-reference"
+		job.tasks[0].min = rep / 2
+		job.tasks[0].rep = rep / 2
+		queue2Job := createJob(ctx, job)
+		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+
+		job.name = "j3-q1"
+		job.pri = highPriority
+		job.queue = "q1-preemption"
+		job.tasks[0].min = rep
+		job.tasks[0].rep = rep
+		queue1Job3 := createJob(ctx, job)
+		err = waitTasksReady(ctx, queue1Job3, int(rep))
+		Expect(err).To(HaveOccurred())
+		err = waitTasksReady(ctx, queue1Job, 1)
 		Expect(err).NotTo(HaveOccurred())
 		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
