@@ -409,6 +409,13 @@ func createJobInner(ctx *testContext, jobSpec *jobSpec) (*batchv1alpha1.Job, err
 	return ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 }
 
+func deleteJob(ctx *testContext, name, namespace string) error {
+	if namespace == "" {
+		namespace = ctx.namespace
+	}
+	return ctx.vcclient.BatchV1alpha1().Jobs(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
 func updateJob(ctx *testContext, job *batchv1alpha1.Job) error {
 	spec, err := json.Marshal(job.Spec)
 	if err != nil {
