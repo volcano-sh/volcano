@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2020 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,12 +38,16 @@ var _ = Describe("DRF Test", func() {
 				},
 			},
 		}
-
+		// tasks in j1-reference take all the cluster resource
+		// each replicas request 1 CPU
 		job.name = "j1-reference"
 		referenceJob := createJob(ctx, job)
 		err := waitTasksReady(ctx, referenceJob, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
+		// tasks in j2-drf request half of the cluster resource
+		// each replicas request 0.5 CPU
+		// drf works to make j2-drf preempt the cluster resource
 		job.name = "j2-drf"
 		job.tasks[0].req = halfCPU
 		backfillJob := createJob(ctx, job)
