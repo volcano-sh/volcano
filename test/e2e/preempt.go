@@ -287,35 +287,35 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		job.name = "j1-q1"
+		job.name = "low-priority-job"
 		job.pri = lowPriority
 		job.queue = "q1-preemption"
-		queue1Job := createJob(ctx, job)
-		err := waitTasksReady(ctx, queue1Job, int(rep))
+		lowPriorityJob := createJob(ctx, job)
+		err := waitTasksReady(ctx, lowPriorityJob, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
-		job.name = "j2-q1"
+		job.name = "middle-prority-job"
 		job.pri = middlePriority
 		job.queue = "q1-preemption"
 		job.tasks[0].rep = rep / 2
 		job.tasks[0].min = rep / 2
-		queue2Job := createJob(ctx, job)
-		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
+		middlePriorityJob := createJob(ctx, job)
+		err = waitTasksReady(ctx, middlePriorityJob, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
-		err = waitTasksReady(ctx, queue1Job, int(rep)/2)
+		err = waitTasksReady(ctx, lowPriorityJob, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 
-		job.name = "j3-q1"
+		job.name = "high-priority-job"
 		job.pri = highPriority
 		job.queue = "q1-preemption"
 		job.tasks[0].rep = rep
 		job.tasks[0].min = rep
-		queue1Job3 := createJob(ctx, job)
-		err = waitTasksReady(ctx, queue1Job3, int(rep))
+		highPriorityJob := createJob(ctx, job)
+		err = waitTasksReady(ctx, highPriorityJob, int(rep))
 		Expect(err).NotTo(HaveOccurred())
-		err = waitTasksReady(ctx, queue1Job, 0)
+		err = waitTasksReady(ctx, lowPriorityJob, 0)
 		Expect(err).NotTo(HaveOccurred())
-		err = waitTasksReady(ctx, queue2Job, 0)
+		err = waitTasksReady(ctx, middlePriorityJob, 0)
 		Expect(err).NotTo(HaveOccurred())
 	})
 })
