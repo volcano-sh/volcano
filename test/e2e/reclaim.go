@@ -58,7 +58,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 	}
 
 	It("Reclaim Case 1: New queue with job created no reclaim when resource is enough", func() {
-		q1 := "default"
+		q1 := defaultQueue
 		q2 := "reclaim-q2"
 		ctx := initTestContext(options{
 			queues:             []string{q2},
@@ -100,8 +100,8 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 	})
 
-	It("Reclaim Cases 3: New queue with job created no reclaim when job.podGroup.Status.Phase pending", func() {
-		q1 := "default"
+	It("Reclaim Case 3: New queue with job created no reclaim when job.podGroup.Status.Phase pending", func() {
+		q1 := defaultQueue
 		q2 := "reclaim-q2"
 		j1 := "reclaim-j1"
 		j2 := "reclaim-j2"
@@ -162,8 +162,8 @@ var _ = Describe("Reclaim E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue pending")
 	})
 
-	It("Reclaim Cases 4: New queue with job created no reclaim when new queue is not created", func() {
-		q1 := "default"
+	It("Reclaim Case 4: New queue with job created no reclaim when new queue is not created", func() {
+		q1 := defaultQueue
 		q2 := "reclaim-q2"
 		ctx := initTestContext(options{
 			queues:             []string{q2},
@@ -200,8 +200,9 @@ var _ = Describe("Reclaim E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 	})
 
-	It("Reclaim Cases 5: New queue with job created no reclaim when job or task is low-priority", func() {
-		q1 := "default"
+	// As we agreed, this is not intended behavior, actually, it is a bug.
+	It("Reclaim Case 5: New queue with job created no reclaim when job or task is low-priority", func() {
+		q1 := defaultQueue
 		q2 := "reclaim-q2"
 		ctx := initTestContext(options{
 			queues:             []string{q2},
@@ -241,8 +242,8 @@ var _ = Describe("Reclaim E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 	})
 
-	It("Reclaim Cases 6: New queue with job created no reclaim when overused", func() {
-		q1 := "default"
+	It("Reclaim Case 6: New queue with job created no reclaim when overused", func() {
+		q1 := defaultQueue
 		q2 := "reclaim-q2"
 		q3 := "reclaim-q3"
 		ctx := initTestContext(options{
@@ -299,8 +300,8 @@ var _ = Describe("Reclaim E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue pending")
 	})
 
-	It("Reclaim Cases 8: New queue with job created no reclaim when task resources less than reclaimable resource", func() {
-		q1 := "default"
+	It("Reclaim Case 8: New queue with job created no reclaim when task resources less than reclaimable resource", func() {
+		q1 := defaultQueue
 		q2 := "reclaim-q2"
 		ctx := initTestContext(options{
 			queues:             []string{q2},

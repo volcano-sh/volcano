@@ -74,6 +74,7 @@ const (
 	schedulerName                = "volcano"
 	executeAction                = "ExecuteAction"
 	defaultTFImage               = "volcanosh/dist-mnist-tf-example:0.0.1"
+	defaultQueue                 = "default"
 )
 
 func cpuResource(request string) v1.ResourceList {
