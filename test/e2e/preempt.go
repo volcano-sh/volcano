@@ -12,10 +12,12 @@ import (
 )
 
 const (
-	highPriority      = "high-priority"
-	lowPriority       = "low-priority"
-	highPriorityValue = 100
-	lowPriorityValue  = 10
+	highPriority        = "high-priority"
+	middlePriority      = "middle-priority"
+	lowPriority         = "low-priority"
+	highPriorityValue   = 100
+	middlePriorityValue = 50
+	lowPriorityValue    = 10
 )
 
 var _ = Describe("Job E2E Test", func() {
@@ -258,6 +260,62 @@ var _ = Describe("Job E2E Test", func() {
 		err = waitTasksReady(ctx, queue1Job, 1)
 		Expect(err).NotTo(HaveOccurred())
 		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("multi-preemptor-jobs who are in different priority", func() {
+		ctx := initTestContext(options{
+			queues: []string{"q1-preemption"},
+			priorityClasses: map[string]int32{
+				highPriority:   highPriorityValue,
+				middlePriority: middlePriorityValue,
+				lowPriority:    lowPriorityValue,
+			},
+		})
+		defer cleanupTestContext(ctx)
+
+		slot := oneCPU
+		rep := clusterSize(ctx, slot)
+		job := &jobSpec{
+			tasks: []taskSpec{
+				{
+					img: defaultNginxImage,
+					req: slot,
+					min: 1,
+					rep: rep,
+				},
+			},
+		}
+
+		job.name = "low-priority-job"
+		job.pri = lowPriority
+		job.queue = "q1-preemption"
+		lowPriorityJob := createJob(ctx, job)
+		err := waitTasksReady(ctx, lowPriorityJob, int(rep))
+		Expect(err).NotTo(HaveOccurred())
+
+		job.name = "middle-prority-job"
+		job.pri = middlePriority
+		job.queue = "q1-preemption"
+		job.tasks[0].rep = rep / 2
+		job.tasks[0].min = rep / 2
+		middlePriorityJob := createJob(ctx, job)
+		err = waitTasksReady(ctx, middlePriorityJob, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+		err = waitTasksReady(ctx, lowPriorityJob, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+
+		job.name = "high-priority-job"
+		job.pri = highPriority
+		job.queue = "q1-preemption"
+		job.tasks[0].rep = rep
+		job.tasks[0].min = rep
+		highPriorityJob := createJob(ctx, job)
+		err = waitTasksReady(ctx, highPriorityJob, int(rep))
+		Expect(err).NotTo(HaveOccurred())
+		err = waitTasksReady(ctx, lowPriorityJob, 0)
+		Expect(err).NotTo(HaveOccurred())
+		err = waitTasksReady(ctx, middlePriorityJob, 0)
 		Expect(err).NotTo(HaveOccurred())
 	})
 })
