@@ -47,7 +47,8 @@ type NodeInfo struct {
 	Tasks map[TaskID]*TaskInfo
 
 	// Used to store custom information
-	Others map[string]interface{}
+	Others     map[string]interface{}
+	GPUDevices map[int]*GPUDevice
 }
 
 // FutureIdle returns resources that will be idle in the future:
@@ -65,40 +66,31 @@ type NodeState struct {
 
 // NewNodeInfo is used to create new nodeInfo object
 func NewNodeInfo(node *v1.Node) *NodeInfo {
-	var ni *NodeInfo
+	nodeinfo := &NodeInfo{
+		Releasing: EmptyResource(),
+		Pipelined: EmptyResource(),
+		Idle:      EmptyResource(),
+		Used:      EmptyResource(),
 
-	if node == nil {
-		ni = &NodeInfo{
-			Releasing: EmptyResource(),
-			Pipelined: EmptyResource(),
-			Idle:      EmptyResource(),
-			Used:      EmptyResource(),
+		Allocatable: EmptyResource(),
+		Capability:  EmptyResource(),
 
-			Allocatable: EmptyResource(),
-			Capability:  EmptyResource(),
+		Tasks: make(map[TaskID]*TaskInfo),
 
-			Tasks: make(map[TaskID]*TaskInfo),
-		}
-	} else {
-		ni = &NodeInfo{
-			Name: node.Name,
-			Node: node,
-
-			Releasing: EmptyResource(),
-			Pipelined: EmptyResource(),
-			Idle:      NewResource(node.Status.Allocatable),
-			Used:      EmptyResource(),
-
-			Allocatable: NewResource(node.Status.Allocatable),
-			Capability:  NewResource(node.Status.Capacity),
-
-			Tasks: make(map[TaskID]*TaskInfo),
-		}
+		GPUDevices: make(map[int]*GPUDevice),
 	}
 
-	ni.setNodeState(node)
+	if node != nil {
+		nodeinfo.Name = node.Name
+		nodeinfo.Node = node
+		nodeinfo.Idle = NewResource(node.Status.Allocatable)
+		nodeinfo.Allocatable = NewResource(node.Status.Allocatable)
+		nodeinfo.Capability = NewResource(node.Status.Capacity)
+	}
+	nodeinfo.setNodeGPUInfo(node)
+	nodeinfo.setNodeState(node)
 
-	return ni
+	return nodeinfo
 }
 
 // Clone used to clone nodeInfo Object
@@ -108,7 +100,6 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 	for _, p := range ni.Tasks {
 		res.AddTask(p)
 	}
-	res.Others = ni.Others
 	return res
 }
 
@@ -154,9 +145,36 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 	}
 }
 
+func (ni *NodeInfo) setNodeGPUInfo(node *v1.Node) {
+	if node == nil {
+		return
+	}
+	memory, ok := node.Status.Capacity[VolcanoGPUResource]
+	if !ok {
+		return
+	}
+	totalMemory := memory.Value()
+
+	res, ok := node.Status.Capacity[VolcanoGPUNumber]
+	if !ok {
+		return
+	}
+	gpuNumber := res.Value()
+	if gpuNumber == 0 {
+		klog.Warningf("invalid %s=%s", VolcanoGPUNumber, res.String())
+		return
+	}
+
+	memoryPerCard := uint(totalMemory / gpuNumber)
+	for i := 0; i < int(gpuNumber); i++ {
+		ni.GPUDevices[i] = NewGPUDevice(i, memoryPerCard)
+	}
+}
+
 // SetNode sets kubernetes node object to nodeInfo object
 func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.setNodeState(node)
+	ni.setNodeGPUInfo(node)
 
 	if !ni.Ready() {
 		klog.Warningf("Failed to set node info, phase: %s, reason: %s",
@@ -180,11 +198,13 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 			ni.Idle.Sub(ti.Resreq)
 			ni.Releasing.Add(ti.Resreq)
 			ni.Used.Add(ti.Resreq)
+			ni.AddGPUResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Add(ti.Resreq)
 		default:
 			ni.Idle.Sub(ti.Resreq)
 			ni.Used.Add(ti.Resreq)
+			ni.AddGPUResource(ti.Pod)
 		}
 	}
 }
@@ -225,6 +245,7 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 			}
 			ni.Releasing.Add(ti.Resreq)
 			ni.Used.Add(ti.Resreq)
+			ni.AddGPUResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Add(ti.Resreq)
 		default:
@@ -232,6 +253,7 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 				return err
 			}
 			ni.Used.Add(ti.Resreq)
+			ni.AddGPUResource(ti.Pod)
 		}
 	}
 
@@ -261,11 +283,13 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 			ni.Releasing.Sub(task.Resreq)
 			ni.Idle.Add(task.Resreq)
 			ni.Used.Sub(task.Resreq)
+			ni.AddGPUResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Sub(task.Resreq)
 		default:
 			ni.Idle.Add(task.Resreq)
 			ni.Used.Sub(task.Resreq)
+			ni.SubGPUResource(ti.Pod)
 		}
 	}
 
@@ -313,4 +337,55 @@ func (ni *NodeInfo) Pods() (pods []*v1.Pod) {
 	}
 
 	return
+}
+
+// GetDevicesIdleGPUMemory returns all the idle GPU memory by gpu card.
+func (ni *NodeInfo) GetDevicesIdleGPUMemory() map[int]uint {
+	devicesAllGPUMemory := ni.getDevicesAllGPUMemory()
+	devicesUsedGPUMemory := ni.getDevicesUsedGPUMemory()
+	res := map[int]uint{}
+	for id, allMemory := range devicesAllGPUMemory {
+		if usedMemory, found := devicesUsedGPUMemory[id]; found {
+			res[id] = allMemory - usedMemory
+		}
+	}
+	return res
+}
+
+func (ni *NodeInfo) getDevicesUsedGPUMemory() map[int]uint {
+	res := map[int]uint{}
+	for _, device := range ni.GPUDevices {
+		res[device.ID] = device.getUsedGPUMemory()
+	}
+	return res
+}
+
+func (ni *NodeInfo) getDevicesAllGPUMemory() map[int]uint {
+	res := map[int]uint{}
+	for _, device := range ni.GPUDevices {
+		res[device.ID] = device.Memory
+	}
+	return res
+}
+
+// AddGPUResource adds the pod to GPU pool if it is assigned
+func (ni *NodeInfo) AddGPUResource(pod *v1.Pod) {
+	gpuRes := GetGPUResourceOfPod(pod)
+	if gpuRes > 0 {
+		id := GetGPUIndex(pod)
+		if dev := ni.GPUDevices[id]; dev != nil {
+			dev.PodMap[string(pod.UID)] = pod
+		}
+	}
+}
+
+// SubGPUResource frees the gpu hold by the pod
+func (ni *NodeInfo) SubGPUResource(pod *v1.Pod) {
+	gpuRes := GetGPUResourceOfPod(pod)
+	if gpuRes > 0 {
+		id := GetGPUIndex(pod)
+		if dev := ni.GPUDevices[id]; dev != nil {
+			delete(dev.PodMap, string(pod.UID))
+		}
+	}
 }

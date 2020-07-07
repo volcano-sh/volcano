@@ -20,7 +20,9 @@ import (
 	"context"
 	"fmt"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
@@ -38,12 +40,8 @@ const (
 	// PluginName indicates name of volcano scheduler plugin.
 	PluginName = "predicates"
 
-	// MemoryPressurePredicate is the key for enabling Memory Pressure Predicate in YAML
-	MemoryPressurePredicate = "predicate.MemoryPressureEnable"
-	// DiskPressurePredicate is the key for enabling Disk Pressure Predicate in YAML
-	DiskPressurePredicate = "predicate.DiskPressureEnable"
-	// PIDPressurePredicate is the key for enabling PID Pressure Predicate in YAML
-	PIDPressurePredicate = "predicate.PIDPressureEnable"
+	// GPUSharingPredicate is the key for enabling GPU Sharing Predicate in YAML
+	GPUSharingPredicate = "predicate.GPUSharingEnable"
 )
 
 type predicatesPlugin struct {
@@ -61,16 +59,14 @@ func (pp *predicatesPlugin) Name() string {
 }
 
 type predicateEnable struct {
-	memoryPressureEnable bool
-	diskPressureEnable   bool
-	pidPressureEnable    bool
+	gpuSharingEnable bool
 }
 
 func enablePredicate(args framework.Arguments) predicateEnable {
 
 	/*
-		   User Should give predicatesEnable in this format(predicate.MemoryPressureEnable, predicate.DiskPressureEnable, predicate.PIDPressureEnable.
-		   Currently supported only for MemoryPressure, DiskPressure, PIDPressure predicate checks.
+		   User Should give predicatesEnable in this format(predicate.GPUSharingEnable).
+		   Currently supported only GPUSharing predicate checks.
 
 		   actions: "reclaim, allocate, backfill, preempt"
 		   tiers:
@@ -82,27 +78,17 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 		     - name: drf
 		     - name: predicates
 		       arguments:
-		 		 predicate.MemoryPressureEnable: true
-		 		 predicate.DiskPressureEnable: true
-				 predicate.PIDPressureEnable: true
+				 predicate.GPUSharingEnable: true
 		     - name: proportion
 		     - name: nodeorder
 	*/
 
 	predicate := predicateEnable{
-		memoryPressureEnable: false,
-		diskPressureEnable:   false,
-		pidPressureEnable:    false,
+		gpuSharingEnable: false,
 	}
 
-	// Checks whether predicate.MemoryPressureEnable is provided or not, if given, modifies the value in predicateEnable struct.
-	args.GetBool(&predicate.memoryPressureEnable, MemoryPressurePredicate)
-
-	// Checks whether predicate.DiskPressureEnable is provided or not, if given, modifies the value in predicateEnable struct.
-	args.GetBool(&predicate.diskPressureEnable, DiskPressurePredicate)
-
-	// Checks whether predicate.PIDPressureEnable is provided or not, if given, modifies the value in predicateEnable struct.
-	args.GetBool(&predicate.pidPressureEnable, PIDPressurePredicate)
+	// Checks whether predicate.GPUSharingEnable is provided or not, if given, modifies the value in predicateEnable struct.
+	args.GetBool(&predicate.gpuSharingEnable, GPUSharingPredicate)
 
 	return predicate
 }
@@ -112,6 +98,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	pods, _ := pl.List(labels.NewSelector())
 	nodeMap, nodeSlice := util.GenerateNodeMapAndSlice(ssn.Nodes)
 
+	predicate := enablePredicate(pp.pluginArguments)
+
+	kubeClient := ssn.KubeClient()
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
@@ -120,23 +109,61 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			nodeName := event.Task.NodeName
 			node, found := nodeMap[nodeName]
 			if !found {
-				klog.Warningf("predicates, update pod %s/%s allocate to NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
-			} else {
-				node.AddPod(pod)
-				klog.V(4).Infof("predicates, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
+				klog.Errorf("predicates, update pod %s/%s allocate to NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+				return
 			}
+
+			if predicate.gpuSharingEnable && api.GetGPUResourceOfPod(pod) > 0 {
+				nodeInfo, _ := ssn.Nodes[nodeName]
+				id := predicateGPU(pod, nodeInfo)
+				if id < 0 {
+					klog.Errorf("The node %s can't place the pod %s in ns %s", pod.Spec.NodeName, pod.Name, pod.Namespace)
+					return
+				}
+				patch := api.AddGPUIndexPatch(id)
+				pod, err := kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType, []byte(patch), metav1.PatchOptions{})
+				if err != nil {
+					klog.Errorf("Patch pod %s failed with patch %s: %v", pod.Name, patch, err)
+					return
+				}
+				dev, _ := nodeInfo.GPUDevices[id]
+				dev.PodMap[string(pod.UID)] = pod
+				klog.V(4).Infof("predicates with gpu sharing, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
+			}
+
+			node.AddPod(pod)
+			klog.V(4).Infof("predicates, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
 		},
 		DeallocateFunc: func(event *framework.Event) {
 			pod := pl.UpdateTask(event.Task, "")
-
 			nodeName := event.Task.NodeName
 			node, found := nodeMap[nodeName]
 			if !found {
-				klog.Warningf("predicates, update pod %s/%s allocate from NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
-			} else {
-				node.RemovePod(pod)
-				klog.V(4).Infof("predicates, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
+				klog.Errorf("predicates, update pod %s/%s allocate from NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+				return
 			}
+
+			if predicate.gpuSharingEnable && api.GetGPUResourceOfPod(pod) > 0 {
+				// deallocate pod gpu id
+				id := api.GetGPUIndex(pod)
+				patch := api.RemoveGPUIndexPatch()
+				_, err := kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType, []byte(patch), metav1.PatchOptions{})
+				if err != nil {
+					klog.Errorf("Patch pod %s failed with patch %s: %v", pod.Name, patch, err)
+					return
+				}
+
+				nodeInfo, _ := ssn.Nodes[nodeName]
+				if dev, ok := nodeInfo.GPUDevices[id]; ok {
+					delete(dev.PodMap, string(pod.UID))
+				}
+
+				klog.V(4).Infof("predicates with gpu sharing, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
+			}
+
+			node.RemovePod(pod)
+			klog.V(4).Infof("predicates, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
+
 		},
 	})
 
@@ -202,9 +229,21 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		if !status.IsSuccess() {
 			return fmt.Errorf("plugin %s pre-predicates failed %s", interpodaffinity.Name, status.Message())
 		}
+
 		status = podAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 		if !status.IsSuccess() {
 			return fmt.Errorf("plugin %s predicates failed %s", interpodaffinity.Name, status.Message())
+		}
+
+		if predicate.gpuSharingEnable {
+			// CheckGPUSharingPredicate
+			fit, err := checkNodeGPUSharingPredicate(task.Pod, node)
+			if err != nil {
+				return err
+			}
+
+			klog.V(4).Infof("checkNodeGPUSharingPredicate predicates Task <%s/%s> on Node <%s>: fit %v",
+				task.Namespace, task.Name, node.Name, fit)
 		}
 
 		return nil
