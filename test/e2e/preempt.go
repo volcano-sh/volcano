@@ -280,6 +280,7 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("multi-preemptor-jobs who are in different priority", func() {
+		Skip("https://github.com/volcano-sh/volcano/issues/911")
 		ctx := initTestContext(options{
 			queues: []string{"q1-preemption"},
 			priorityClasses: map[string]int32{
