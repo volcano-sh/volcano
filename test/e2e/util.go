@@ -58,6 +58,7 @@ var (
 	halfCPU   = v1.ResourceList{"cpu": resource.MustParse("500m")}
 	CPU1Mem1  = v1.ResourceList{"cpu": resource.MustParse("1000m"), "memory": resource.MustParse("1024Mi")}
 	CPU2Mem2  = v1.ResourceList{"cpu": resource.MustParse("2000m"), "memory": resource.MustParse("2048Mi")}
+	CPU4Mem4  = v1.ResourceList{"cpu": resource.MustParse("4000m"), "memory": resource.MustParse("4096Mi")}
 )
 
 const (
@@ -73,6 +74,7 @@ const (
 	schedulerName                = "volcano"
 	executeAction                = "ExecuteAction"
 	defaultTFImage               = "volcanosh/dist-mnist-tf-example:0.0.1"
+	defaultQueue                 = "default"
 )
 
 func cpuResource(request string) v1.ResourceList {
@@ -930,7 +932,7 @@ func satisifyMinNodesRequirements(ctx *testContext, num int) bool {
 func setPlaceHolderForSchedulerTesting(ctx *testContext, req v1.ResourceList, reqNum int) (bool, error) {
 
 	if !satisifyMinNodesRequirements(ctx, reqNum) {
-		return false, lagencyerror.New("Failed to setup environment, you need to have at least " + strconv.Itoa(len(req)) + " worker node.")
+		return false, lagencyerror.New("Failed to setup environment, you need to have at least " + strconv.Itoa(reqNum) + " worker node.")
 	}
 
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
@@ -1037,13 +1039,17 @@ func createPlaceHolder(ctx *testContext, phr v1.ResourceList, nodeName string) e
 }
 
 func deletePlaceHolder(ctx *testContext) {
-	podList, err := ctx.kubeclient.CoreV1().Pods("default").List(context.TODO(), metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+
+	listOptions := metav1.ListOptions{
+		LabelSelector: labels.Set(map[string]string{"role": "placeholder"}).String(),
+	}
+	podList, err := ctx.kubeclient.CoreV1().Pods("default").List(context.TODO(), listOptions)
+
+	Expect(err).NotTo(HaveOccurred(), "Failed to get pod list")
+
 	for _, pod := range podList.Items {
-		if pod.Labels["role"] == "placeholder" {
-			err := ctx.kubeclient.CoreV1().Pods("default").Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
-			Expect(err).NotTo(HaveOccurred())
-		}
+		err := ctx.kubeclient.CoreV1().Pods("default").Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+		Expect(err).NotTo(HaveOccurred())
 	}
 }
 
