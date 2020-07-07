@@ -1100,7 +1100,7 @@ func createPlaceHolder(ctx *testContext, phr v1.ResourceList, nodeName string) e
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      nodeName + "-placeholder",
-			Namespace: "default",
+			Namespace: ctx.namespace,
 			Labels: map[string]string{
 				"role": "placeholder",
 			},
@@ -1119,7 +1119,7 @@ func createPlaceHolder(ctx *testContext, phr v1.ResourceList, nodeName string) e
 			NodeName: nodeName,
 		},
 	}
-	_, err := ctx.kubeclient.CoreV1().Pods("default").Create(context.TODO(), pod, metav1.CreateOptions{})
+	_, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 	return err
 }
 
@@ -1128,12 +1128,12 @@ func deletePlaceHolder(ctx *testContext) {
 	listOptions := metav1.ListOptions{
 		LabelSelector: labels.Set(map[string]string{"role": "placeholder"}).String(),
 	}
-	podList, err := ctx.kubeclient.CoreV1().Pods("default").List(context.TODO(), listOptions)
+	podList, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(context.TODO(), listOptions)
 
 	Expect(err).NotTo(HaveOccurred(), "Failed to get pod list")
 
 	for _, pod := range podList.Items {
-		err := ctx.kubeclient.CoreV1().Pods("default").Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+		err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 	}
 }
