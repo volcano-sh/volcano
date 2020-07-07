@@ -155,12 +155,12 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 			},
 		}
 
-		job.name = "exist"
+		job.name = "j1"
 		existJob := createJob(ctx, job)
 		err = waitJobReady(ctx, existJob)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		job.name = "allocate"
+		job.name = "j2"
 		allocateJob := createJobWithPodGroup(ctx, job, pgName)
 		err = waitJobPending(ctx, allocateJob)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())

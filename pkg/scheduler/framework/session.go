@@ -401,6 +401,11 @@ func (ssn *Session) AddEventHandler(eh *EventHandler) {
 	ssn.eventHandlers = append(ssn.eventHandlers, eh)
 }
 
+// KubeClient returns the kubernetes client
+func (ssn Session) KubeClient() kubernetes.Interface {
+	return ssn.kubeClient
+}
+
 //String return nodes and jobs information in the session
 func (ssn Session) String() string {
 	msg := fmt.Sprintf("Session %v: \n", ssn.UID)

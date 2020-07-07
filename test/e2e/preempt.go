@@ -1,3 +1,19 @@
+/*
+Copyright 2020 The Volcano Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package e2e
 
 import (
@@ -12,10 +28,12 @@ import (
 )
 
 const (
-	highPriority      = "high-priority"
-	lowPriority       = "low-priority"
-	highPriorityValue = 100
-	lowPriorityValue  = 10
+	highPriority        = "high-priority"
+	middlePriority      = "middle-priority"
+	lowPriority         = "low-priority"
+	highPriorityValue   = 100
+	middlePriorityValue = 50
+	lowPriorityValue    = 10
 )
 
 var _ = Describe("Job E2E Test", func() {
@@ -258,6 +276,63 @@ var _ = Describe("Job E2E Test", func() {
 		err = waitTasksReady(ctx, queue1Job, 1)
 		Expect(err).NotTo(HaveOccurred())
 		err = waitTasksReady(ctx, queue2Job, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("multi-preemptor-jobs who are in different priority", func() {
+		Skip("https://github.com/volcano-sh/volcano/issues/911")
+		ctx := initTestContext(options{
+			queues: []string{"q1-preemption"},
+			priorityClasses: map[string]int32{
+				highPriority:   highPriorityValue,
+				middlePriority: middlePriorityValue,
+				lowPriority:    lowPriorityValue,
+			},
+		})
+		defer cleanupTestContext(ctx)
+
+		slot := oneCPU
+		rep := clusterSize(ctx, slot)
+		job := &jobSpec{
+			tasks: []taskSpec{
+				{
+					img: defaultNginxImage,
+					req: slot,
+					min: 1,
+					rep: rep,
+				},
+			},
+		}
+
+		job.name = "low-priority-job"
+		job.pri = lowPriority
+		job.queue = "q1-preemption"
+		lowPriorityJob := createJob(ctx, job)
+		err := waitTasksReady(ctx, lowPriorityJob, int(rep))
+		Expect(err).NotTo(HaveOccurred())
+
+		job.name = "middle-prority-job"
+		job.pri = middlePriority
+		job.queue = "q1-preemption"
+		job.tasks[0].rep = rep / 2
+		job.tasks[0].min = rep / 2
+		middlePriorityJob := createJob(ctx, job)
+		err = waitTasksReady(ctx, middlePriorityJob, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+		err = waitTasksReady(ctx, lowPriorityJob, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+
+		job.name = "high-priority-job"
+		job.pri = highPriority
+		job.queue = "q1-preemption"
+		job.tasks[0].rep = rep
+		job.tasks[0].min = rep
+		highPriorityJob := createJob(ctx, job)
+		err = waitTasksReady(ctx, highPriorityJob, int(rep))
+		Expect(err).NotTo(HaveOccurred())
+		err = waitTasksReady(ctx, lowPriorityJob, 0)
+		Expect(err).NotTo(HaveOccurred())
+		err = waitTasksReady(ctx, middlePriorityJob, 0)
 		Expect(err).NotTo(HaveOccurred())
 	})
 })
