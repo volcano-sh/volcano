@@ -43,13 +43,13 @@ var _ = Describe("Reclaim E2E Test", func() {
 		err := waitQueueStatus(func() (bool, error) {
 			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), queue, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", queue)
-			switch state := status; state {
+			switch status {
 			case "Running":
-				return queue.Status.Running == 1, nil
+				return queue.Status.Running == num, nil
 			case "Open":
 				return queue.Status.State == schedulingv1beta1.QueueStateOpen, nil
 			case "Pending":
-				return queue.Status.Pending == 1, nil
+				return queue.Status.Pending == num, nil
 			default:
 				return false, nil
 			}
@@ -140,24 +140,26 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 		// delete pod of job3 to make sure reclaim-j3 podgroup is pending
 		listOptions := metav1.ListOptions{
-			LabelSelector: labels.Set(map[string]string{"volcano.sh/job-name": j3}).String(),
+			LabelSelector: labels.Set(map[string]string{batchv1alpha1.JobNameKey: j3}).String(),
 		}
 
 		job3pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(context.TODO(), listOptions)
 		Expect(err).NotTo(HaveOccurred(), "Get %s pod failed", j3)
+
+		By("Make sure q1 q2 with job running in it.")
+		err = WaitQueueStatus(ctx, "Running", 1, q1)
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
+
+		err = WaitQueueStatus(ctx, "Running", 1, q2)
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
+
 		for _, pod := range job3pods.Items {
+			fmt.Println(pod.Name)
 			err = ctx.kubeclient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Failed to delete pod %s", pod.Name)
 		}
 
-		By("Make sure all job running")
-
-		err = WaitQueueStatus(ctx, "Running", 1, q1)
-		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
-
-		err = WaitQueueStatus(ctx, "Running", 2, q2)
-		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
-
+		By("Q3 pending when we delete it.")
 		err = WaitQueueStatus(ctx, "Pending", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue pending")
 	})
