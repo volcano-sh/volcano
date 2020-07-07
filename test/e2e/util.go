@@ -54,6 +54,8 @@ var (
 	oneMinute = 1 * time.Minute
 	twoMinute = 2 * time.Minute
 	oneCPU    = v1.ResourceList{"cpu": resource.MustParse("1000m")}
+	twoCPU    = v1.ResourceList{"cpu": resource.MustParse("2000m")}
+	threeCPU  = v1.ResourceList{"cpu": resource.MustParse("3000m")}
 	thirtyCPU = v1.ResourceList{"cpu": resource.MustParse("30000m")}
 	halfCPU   = v1.ResourceList{"cpu": resource.MustParse("500m")}
 	CPU1Mem1  = v1.ResourceList{"cpu": resource.MustParse("1000m"), "memory": resource.MustParse("1024Mi")}
@@ -333,6 +335,89 @@ func createJob(context *testContext, jobSpec *jobSpec) *batchv1alpha1.Job {
 	Expect(err).NotTo(HaveOccurred(), "create job")
 
 	return job
+}
+
+func createJobWithPodGroup(ctx *testContext, jobSpec *jobSpec, pgName string) *batchv1alpha1.Job {
+	ns := getNS(ctx, jobSpec)
+
+	job := &batchv1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      jobSpec.name,
+			Namespace: ns,
+		},
+		Spec: batchv1alpha1.JobSpec{
+			Policies:                jobSpec.policies,
+			Queue:                   jobSpec.queue,
+			Plugins:                 jobSpec.plugins,
+			TTLSecondsAfterFinished: jobSpec.ttl,
+		},
+	}
+
+	var min int32
+	for i, task := range jobSpec.tasks {
+		name := task.name
+		if len(name) == 0 {
+			name = fmt.Sprintf("%s-task-%d", jobSpec.name, i)
+		}
+
+		restartPolicy := v1.RestartPolicyOnFailure
+		if len(task.restartPolicy) > 0 {
+			restartPolicy = task.restartPolicy
+		}
+
+		ts := batchv1alpha1.TaskSpec{
+			Name:     name,
+			Replicas: task.rep,
+			Policies: task.policies,
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   name,
+					Labels: task.labels,
+				},
+				Spec: v1.PodSpec{
+					SchedulerName:     "volcano",
+					RestartPolicy:     restartPolicy,
+					Containers:        createContainers(task.img, task.command, task.workingDir, task.req, task.limit, task.hostport),
+					Affinity:          task.affinity,
+					Tolerations:       task.tolerations,
+					PriorityClassName: task.taskpriority,
+				},
+			},
+		}
+
+		if pgName != "" {
+			ts.Template.ObjectMeta.Annotations = map[string]string{schedulingv1beta1.KubeGroupNameAnnotationKey: pgName}
+		}
+
+		if task.defaultGracefulPeriod != nil {
+			ts.Template.Spec.TerminationGracePeriodSeconds = task.defaultGracefulPeriod
+		} else {
+			//NOTE: TerminationGracePeriodSeconds is set to 3 in default in case of timeout when restarting tasks in test.
+			var defaultPeriod int64 = 3
+			ts.Template.Spec.TerminationGracePeriodSeconds = &defaultPeriod
+		}
+
+		job.Spec.Tasks = append(job.Spec.Tasks, ts)
+
+		min += task.min
+	}
+
+	if jobSpec.min > 0 {
+		job.Spec.MinAvailable = jobSpec.min
+	} else {
+		job.Spec.MinAvailable = min
+	}
+
+	if jobSpec.pri != "" {
+		job.Spec.PriorityClassName = jobSpec.pri
+	}
+
+	job.Spec.Volumes = jobSpec.volumes
+
+	jobCreated, err := ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+	Expect(err).NotTo(HaveOccurred(), "create job")
+
+	return jobCreated
 }
 
 func createJobInner(ctx *testContext, jobSpec *jobSpec) (*batchv1alpha1.Job, error) {
