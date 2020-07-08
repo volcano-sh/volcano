@@ -225,6 +225,16 @@ func cleanupTestContext(ctx *testContext) {
 	Expect(err).NotTo(HaveOccurred())
 }
 
+func setQueueReclaimable(cxt *testContext, queues []string, reclaimable bool) {
+	for _, q := range queues {
+		queue, err := cxt.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred(), "Queue get failed.")
+		queue.Spec.Reclaimable = &reclaimable
+		_, err = cxt.vcclient.SchedulingV1beta1().Queues().Update(context.TODO(), queue, metav1.UpdateOptions{})
+		Expect(err).NotTo(HaveOccurred(), "Queue reclaimed failed.")
+	}
+}
+
 func createQueues(cxt *testContext) {
 	for _, q := range cxt.queues {
 
@@ -317,6 +327,7 @@ type jobSpec struct {
 	pri       string
 	plugins   map[string][]string
 	volumes   []batchv1alpha1.VolumeSpec
+	nodeName  string
 	// ttl seconds after job finished
 	ttl *int32
 }
@@ -466,6 +477,9 @@ func createJobInner(ctx *testContext, jobSpec *jobSpec) (*batchv1alpha1.Job, err
 					PriorityClassName: task.taskpriority,
 				},
 			},
+		}
+		if jobSpec.nodeName != "" {
+			ts.Template.Spec.NodeName = jobSpec.nodeName
 		}
 
 		if task.defaultGracefulPeriod != nil {
