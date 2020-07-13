@@ -24,9 +24,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
-
-	lagencyerror "errors"
 
 	. "github.com/onsi/gomega"
 	appv1 "k8s.io/api/apps/v1"
@@ -1031,7 +1030,7 @@ func satisifyMinNodesRequirements(ctx *testContext, num int) bool {
 func setPlaceHolderForSchedulerTesting(ctx *testContext, req v1.ResourceList, reqNum int) (bool, error) {
 
 	if !satisifyMinNodesRequirements(ctx, reqNum) {
-		return false, lagencyerror.New("Failed to setup environment, you need to have at least " + strconv.Itoa(reqNum) + " worker node.")
+		return false, fmt.Errorf("Failed to setup environment, you need to have at least " + strconv.Itoa(reqNum) + " worker node.")
 	}
 
 	nodes, err := ctx.kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
@@ -1099,14 +1098,27 @@ func setPlaceHolderForSchedulerTesting(ctx *testContext, req v1.ResourceList, re
 	}
 
 	if resourceRichNode < reqNum {
-		return false, lagencyerror.New("Failed to setup environment, you need to have at least " + strconv.Itoa(len(req)) + " worker node.")
+		return false, fmt.Errorf("Failed to setup environment, you need to have at least " + strconv.Itoa(len(req)) + " worker node.")
 	}
 
-	for nodeName, res := range placeHolders {
-		err := createPlaceHolder(ctx, res, nodeName)
+	errCh := make(chan error, len(placeHolders))
+	wg := sync.WaitGroup{}
+	for nodeName := range placeHolders {
+		go func(node string) {
+			wg.Add(1)
+			defer wg.Done()
+			err := createPlaceHolder(ctx, placeHolders[node], node)
+			if err != nil {
+				errCh <- err
+			}
+		}(nodeName)
+	}
+	wg.Wait()
+	select {
+	case err := <-errCh:
 		Expect(err).NotTo(HaveOccurred())
+	default:
 	}
-
 	return true, nil
 }
 

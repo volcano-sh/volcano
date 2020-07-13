@@ -45,7 +45,7 @@ function check-kind {
   which kind >/dev/null 2>&1
   if [[ $? -ne 0 ]]; then
     echo "installing kind ."
-    GO111MODULE="on" go get sigs.k8s.io/kind@v0.6.1
+    GO111MODULE="on" go get sigs.k8s.io/kind@v0.8.1
   else
     echo -n "found kind, version: " && kind version
   fi
