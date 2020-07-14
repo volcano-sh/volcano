@@ -1,5 +1,12 @@
 # Change Log
 
+## [v0.4.1](https://github.com/volcano-sh/volcano/tree/v0.4) (2020-07-14)
+
+- UpdateJob when Job annotations or labels changed ([#919](https://github.com/volcano-sh/volcano/pull/919), [@Thor-wl](https://github.com/Thor-wl))
+- Fix panic in controller ([#901](https://github.com/volcano-sh/volcano/pull/901), [@Thor-wl](https://github.com/Thor-wl))
+- Support scale up and down ([#796](https://github.com/volcano-sh/volcano/pull/796), [@hzxuzhonghu](https://github.com/hzxuzhonghu))
+- Fix crd to support job patch ops ([#794](https://github.com/volcano-sh/volcano/pull/794), [@hzxuzhonghu](https://github.com/hzxuzhonghu))
+
 ## [v0.4](https://github.com/volcano-sh/volcano/tree/v0.4) (2020-04-07)
 
 - [#756](https://github.com/volcano-sh/volcano/pull/756) [controller] Set `BlockOwnerDeletion` to true when create PodGroup (@xiaogaozi)
