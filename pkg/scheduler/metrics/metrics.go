@@ -65,8 +65,8 @@ var (
 	taskSchedulingLatency = promauto.NewHistogram(
 		prometheus.HistogramOpts{
 			Subsystem: VolcanoNamespace,
-			Name:      "task_scheduling_latency_microseconds",
-			Help:      "Task scheduling latency in microseconds",
+			Name:      "task_scheduling_latency_milliseconds",
+			Help:      "Task scheduling latency in milliseconds",
 			Buckets:   prometheus.ExponentialBuckets(5, 2, 10),
 		},
 	)
@@ -129,7 +129,7 @@ func UpdateE2eDuration(duration time.Duration) {
 
 // UpdateTaskScheduleDuration updates single task scheduling latency
 func UpdateTaskScheduleDuration(duration time.Duration) {
-	taskSchedulingLatency.Observe(DurationInMicroseconds(duration))
+	taskSchedulingLatency.Observe(DurationInMilliseconds(duration))
 }
 
 // UpdatePodScheduleStatus update pod schedule decision, could be Success, Failure, Error
