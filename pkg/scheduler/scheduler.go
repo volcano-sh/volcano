@@ -70,7 +70,6 @@ func (pc *Scheduler) runOnce() {
 	klog.V(4).Infof("Start scheduling ...")
 	scheduleStartTime := time.Now()
 	defer klog.V(4).Infof("End scheduling ...")
-	defer metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
 
 	pc.loadSchedulerConf()
 
@@ -82,6 +81,7 @@ func (pc *Scheduler) runOnce() {
 		action.Execute(ssn)
 		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
 	}
+	metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
 }
 
 func (pc *Scheduler) loadSchedulerConf() {
