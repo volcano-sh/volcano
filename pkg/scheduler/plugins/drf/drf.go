@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 
+	"k8s.io/api/core/v1"
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -39,6 +40,7 @@ var shareDelta = 0.000001
 type hierarchicalNode struct {
 	parent    *hierarchicalNode
 	attr      *drfAttr
+	saturated bool
 	weight    float64
 	hierarchy string
 	children  map[string]*hierarchicalNode
@@ -51,7 +53,8 @@ type drfAttr struct {
 }
 
 type drfPlugin struct {
-	totalResource *api.Resource
+	totalResource  *api.Resource
+	totalAllocated *api.Resource
 
 	// Key is Job ID
 	jobAttrs map[api.JobID]*drfAttr
@@ -154,6 +157,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			drf.updateNamespaceShare(job.Namespace, nsOpts)
 		}
 		if hierarchEnabled {
+			drf.totalAllocated.Add(attr.allocated)
 			drf.updateHierarchyShare(job, attr)
 		}
 	}
@@ -344,6 +348,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 				nsShare = nsOpt.share
 			}
 			if hierarchEnabled {
+				drf.totalAllocated.Add(event.Task.Resreq)
 				drf.updateHierarchyShare(job, attr)
 			}
 
@@ -367,6 +372,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 
 			if hierarchEnabled {
+				drf.totalAllocated.Sub(event.Task.Resreq)
 				drf.updateHierarchyShare(job, attr)
 			}
 
@@ -411,22 +417,32 @@ func (drf *drfPlugin) updateHierarchyShare(job *api.JobInfo, attr *drfAttr) {
 		}
 	}
 
-	// update drf attribute bottom up
-	klog.V(4).Infof("Job <%s/%s> added to %s, weights %s, attr %v",
-		job.Namespace, job.Name, job.Hierarchy, job.Weights, attr)
 	child := &hierarchicalNode{
 		weight:    1,
 		attr:      attr,
+		saturated: !job.Allocated.Less(job.TotalRequest),
 		hierarchy: string(job.UID),
 		children:  nil,
 	}
+
+	// update drf attribute bottom up
+	klog.V(4).Infof("Job <%s/%s> added to %s, weights %s, attr %v, saturated %b",
+		job.Namespace, job.Name, job.Hierarchy, job.Weights, child.attr, child.saturated)
+
+	demandingResources := []v1.ResourceName{}
+	for _, rn := range drf.totalResource.ResourceNames() {
+		if drf.totalAllocated.Get(rn) < drf.totalResource.Get(rn) {
+			demandingResources = append(demandingResources, rn)
+		}
+	}
+
 	inode.children[string(job.UID)] = child
 	for ; inode != nil; inode = inode.parent {
 		var mdr float64 = math.MaxFloat64
 		// get minumun dominant resource share
 		for _, child := range inode.children {
-			// skip empty child(job or node without tasks added)
-			if child.attr.dominantResource != "" {
+			// skip empty child(job or node without tasks added) and saturated child
+			if child.attr.dominantResource != "" && !child.saturated {
 				_, resShare := drf.calculateShare(child.attr.allocated, drf.totalResource)
 				if resShare < mdr {
 					mdr = resShare
@@ -437,15 +453,41 @@ func (drf *drfPlugin) updateHierarchyShare(job *api.JobInfo, attr *drfAttr) {
 			allocated: api.EmptyResource(),
 		}
 		// scale children with minumun drf share and sum them up
+		saturated := true
 		for _, child := range inode.children {
+			if !child.saturated {
+				saturated = false
+			}
 			// skip empty child(job or node without tasks added)
 			if child.attr.dominantResource != "" {
-				t := child.attr.allocated.Clone().Scale(mdr / child.attr.share)
-				iattr.allocated.Add(t)
+				// saturated child is not scaled
+				if child.saturated {
+					t := child.attr.allocated
+					iattr.allocated.Add(t)
+				} else {
+					t := child.attr.allocated.Clone().Scale(mdr / child.attr.share)
+					iattr.allocated.Add(t)
+				}
+
 			}
 		}
-		drf.updateShare(iattr)
+
+		// get dominant resource and share from demanding resources
+		res := 0.0
+		dominantResource := ""
+		for _, rn := range demandingResources {
+			share := helpers.Share(iattr.allocated.Get(rn), drf.totalResource.Get(rn))
+			if share > res {
+				res = share
+				dominantResource = string(rn)
+			}
+
+		}
+		iattr.share = res
+		iattr.dominantResource = dominantResource
 		inode.attr = iattr
+		inode.saturated = saturated
+
 		klog.V(4).Infof("Update hierarchical node %s, share %f, dominant %s, resource %v",
 			inode.hierarchy, iattr.share, iattr.dominantResource, iattr.allocated)
 	}
