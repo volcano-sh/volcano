@@ -68,10 +68,10 @@ e2e:
 	./hack/run-e2e-kind.sh
 
 e2e-test-scheduling:
-	./hack/run-e2e-kind.sh
+	E2E_TYPE=SCHEDULING ./hack/run-e2e-kind.sh
 
 e2e-test-job:
-	./hack/run-e2e-kind.sh
+	E2E_TYPE=JOB ./hack/run-e2e-kind.sh
 
 generate-yaml: init
 	./hack/generate-yaml.sh TAG=${RELEASE_VER}
