@@ -1,6 +1,6 @@
 
 # If tag not explicitly set in users default to the git sha.
-TAG=v0.4
+TAG=v0.4.1
 GitSHA=`git rev-parse HEAD`
 Date=`date "+%Y-%m-%d %H:%M:%S"`
 RELEASE_VER=v0.4.1
