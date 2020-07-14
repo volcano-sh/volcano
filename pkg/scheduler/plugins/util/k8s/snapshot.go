@@ -17,7 +17,7 @@ limitations under the License.
 // Copied from https://github.com/kubernetes/kubernetes/blob/v1.18.3/pkg/scheduler/internal/cache/snapshot.go
 // as internal package is not allowed to import
 
-package util
+package k8s
 
 import (
 	"fmt"
