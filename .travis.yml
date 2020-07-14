@@ -21,7 +21,7 @@ jobs:
     - stage: UT Tests
       script:
         - make unit-test
-    - stage: E2E Tests
+    - stage: E2E Job
       before_script:
         # Download kubectl
         - sudo curl -o /usr/local/bin/kubectl -L https://storage.googleapis.com/kubernetes-release/release/v1.16.6/bin/linux/amd64/kubectl
@@ -32,7 +32,19 @@ jobs:
       script:
         - make vcctl
         - make images
-        - make e2e-test-kind
+        - make e2e-test-job
+    - stage: E2E Scheduling
+      before_script:
+        # Download kubectl
+        - sudo curl -o /usr/local/bin/kubectl -L https://storage.googleapis.com/kubernetes-release/release/v1.16.6/bin/linux/amd64/kubectl
+        - sudo chmod +x /usr/local/bin/kubectl
+        # Download kind binary (0.6.1)
+        - sudo curl -o /usr/local/bin/kind -L https://github.com/kubernetes-sigs/kind/releases/download/v0.6.1/kind-linux-amd64
+        - sudo chmod +x /usr/local/bin/kind
+      script:
+        - make vcctl
+        - make images
+        - make e2e-test-scheduling
     - stage: Publish latest Docker Image on Daily Build
       script:
         - echo "Publish latest Docker Images to DockerHub"

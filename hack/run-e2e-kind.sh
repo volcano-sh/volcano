@@ -21,6 +21,7 @@ export SHOW_VOLCANO_LOGS=${SHOW_VOLCANO_LOGS:-1}
 export CLEANUP_CLUSTER=${CLEANUP_CLUSTER:-1}
 export MPI_EXAMPLE_IMAGE=${MPI_EXAMPLE_IMAGE:-"volcanosh/example-mpi:0.0.1"}
 export TF_EXAMPLE_IMAGE=${TF_EXAMPLE_IMAGE:-"volcanosh/dist-mnist-tf-example:0.0.1"}
+export E2E_TYPE=${E2E_TYPE:-"ALL"}
 
 if [[ "${CLUSTER_NAME}xxx" == "xxx" ]];then
     CLUSTER_NAME="integration"
@@ -106,7 +107,22 @@ install-volcano
 
 # Run e2e test
 cd ${VK_ROOT}
-KUBECONFIG=${KUBECONFIG} go test ./test/e2e -v -timeout 60m
+
+if [[ "${E2E_TYPE}" == "ALL" ]];then
+    echo "Running e2e..."
+    KUBECONFIG=${KUBECONFIG} go test ./test/e2e/job -v -timeout 60m
+    KUBECONFIG=${KUBECONFIG} go test ./test/e2e/scheduling -v -timeout 60m
+fi
+
+if [[ "${E2E_TYPE}" == "JOB" ]];then
+    echo "Running job e2e..."
+    KUBECONFIG=${KUBECONFIG} go test ./test/e2e/job -v -timeout 60m
+fi
+
+if [[ "${E2E_TYPE}" == "SCHEDULING" ]];then
+    echo "Running scheduling e2e..."
+    KUBECONFIG=${KUBECONFIG} go test ./test/e2e/scheduling -v -timeout 60m
+fi
 
 if [[ $? != 0 ]]; then
   generate-log

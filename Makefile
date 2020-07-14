@@ -64,8 +64,14 @@ unit-test:
 	go clean -testcache
 	go list ./... | grep -v e2e | xargs go test -v -race
 
-e2e-test-kind:
+e2e:
 	./hack/run-e2e-kind.sh
+
+e2e-test-scheduling:
+	E2E_TYPE=SCHEDULING ./hack/run-e2e-kind.sh
+
+e2e-test-job:
+	E2E_TYPE=JOB ./hack/run-e2e-kind.sh
 
 generate-yaml: init
 	./hack/generate-yaml.sh TAG=${RELEASE_VER}

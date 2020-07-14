@@ -112,7 +112,7 @@ You can run all the available e2e tests with:
 ```bash
 make vcctl
 make images
-make e2e-test-kind
+make e2e
 ```
 
 If you want to run e2e test in a existing cluster with volcano deployed, run the following:
