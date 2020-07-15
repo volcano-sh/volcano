@@ -47,8 +47,8 @@ type PluginOption struct {
 	EnabledJobOrder *bool `yaml:"enableJobOrder"`
 	// EnabledNamespaceOrder defines whether namespaceOrderFn is enabled
 	EnabledNamespaceOrder *bool `yaml:"enableNamespaceOrder"`
-	// EnableHierachy defines whether hierarchical sharing is enabled
-	EnableHierarchy *bool `yaml:"enableHierarchy"`
+	// EnabledHierachy defines whether hierarchical sharing is enabled
+	EnabledHierarchy *bool `yaml:"enableHierarchy"`
 	// EnabledJobReady defines whether jobReadyFn is enabled
 	EnabledJobReady *bool `yaml:"enableJobReady"`
 	// EnabledJobPipelined defines whether jobPipelinedFn is enabled

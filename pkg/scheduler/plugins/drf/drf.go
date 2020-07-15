@@ -17,6 +17,7 @@ limitations under the License.
 package drf
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -52,6 +53,11 @@ type drfAttr struct {
 	allocated        *api.Resource
 }
 
+func (attr *drfAttr) String() string {
+	return fmt.Sprintf("dominant resource <%s>, dominant share %f, allocated %s",
+		attr.dominantResource, attr.share, attr.allocated)
+}
+
 type drfPlugin struct {
 	totalResource  *api.Resource
 	totalAllocated *api.Resource
@@ -72,9 +78,10 @@ type drfPlugin struct {
 // New return drf plugin
 func New(arguments framework.Arguments) framework.Plugin {
 	return &drfPlugin{
-		totalResource: api.EmptyResource(),
-		jobAttrs:      map[api.JobID]*drfAttr{},
-		namespaceOpts: map[string]*drfAttr{},
+		totalResource:  api.EmptyResource(),
+		totalAllocated: api.EmptyResource(),
+		jobAttrs:       map[api.JobID]*drfAttr{},
+		namespaceOpts:  map[string]*drfAttr{},
 		hierarchicalRoot: &hierarchicalNode{
 			attr:      &drfAttr{allocated: api.EmptyResource()},
 			hierarchy: "root",
@@ -96,7 +103,7 @@ func (drf *drfPlugin) HierarchyEnabled(ssn *framework.Session) bool {
 			if plugin.Name != PluginName {
 				continue
 			}
-			return plugin.EnableHierarchy != nil && *plugin.EnableHierarchy
+			return plugin.EnabledHierarchy != nil && *plugin.EnabledHierarchy
 		}
 	}
 	return false
@@ -387,7 +394,33 @@ func (drf *drfPlugin) updateNamespaceShare(namespaceName string, attr *drfAttr) 
 	metrics.UpdateNamespaceShare(namespaceName, attr.share)
 }
 
+// resourceSaturated return true if any resource is saturated or the any resource of the job is non-demading
+func resourceSaturated(allocated *api.Resource, total *api.Resource, demandingResources map[v1.ResourceName]bool) bool {
+	for _, rn := range allocated.ResourceNames() {
+		if allocated.Get(rn) != 0 && total.Get(rn) != 0 &&
+			allocated.Get(rn) == total.Get(rn) {
+			return true
+		}
+		if !demandingResources[rn] {
+			return true
+		}
+	}
+	return false
+}
+
 func (drf *drfPlugin) updateHierarchyShare(job *api.JobInfo, attr *drfAttr) {
+	// filter out demanding resources
+	demandingResources := map[v1.ResourceName]bool{}
+	for _, rn := range drf.totalResource.ResourceNames() {
+		if drf.totalAllocated.Get(rn) < drf.totalResource.Get(rn) {
+			demandingResources[rn] = true
+		}
+	}
+	if len(demandingResources) == 0 {
+		klog.V(4).Infof("No demanding resources left, skip it")
+		return
+	}
+
 	inode := drf.hierarchicalRoot
 	paths := strings.Split(job.Hierarchy, "/")
 	weights := strings.Split(job.Weights, "/")
@@ -420,25 +453,18 @@ func (drf *drfPlugin) updateHierarchyShare(job *api.JobInfo, attr *drfAttr) {
 	child := &hierarchicalNode{
 		weight:    1,
 		attr:      attr,
-		saturated: !job.Allocated.Less(job.TotalRequest),
+		saturated: resourceSaturated(job.Allocated, job.TotalRequest, demandingResources),
 		hierarchy: string(job.UID),
 		children:  nil,
 	}
 
 	// update drf attribute bottom up
-	klog.V(4).Infof("Job <%s/%s> added to %s, weights %s, attr %v, saturated %b",
-		job.Namespace, job.Name, job.Hierarchy, job.Weights, child.attr, child.saturated)
-
-	demandingResources := []v1.ResourceName{}
-	for _, rn := range drf.totalResource.ResourceNames() {
-		if drf.totalAllocated.Get(rn) < drf.totalResource.Get(rn) {
-			demandingResources = append(demandingResources, rn)
-		}
-	}
+	klog.V(4).Infof("Job <%s/%s> added to %s, weights %s, attr %v, tototal request: %s, saturated %t",
+		job.Namespace, job.Name, job.Hierarchy, job.Weights, child.attr, job.TotalRequest, child.saturated)
 
 	inode.children[string(job.UID)] = child
 	for ; inode != nil; inode = inode.parent {
-		var mdr float64 = math.MaxFloat64
+		var mdr float64 = 1
 		// get minumun dominant resource share
 		for _, child := range inode.children {
 			// skip empty child(job or node without tasks added) and saturated child
@@ -475,7 +501,7 @@ func (drf *drfPlugin) updateHierarchyShare(job *api.JobInfo, attr *drfAttr) {
 		// get dominant resource and share from demanding resources
 		res := 0.0
 		dominantResource := ""
-		for _, rn := range demandingResources {
+		for rn := range demandingResources {
 			share := helpers.Share(iattr.allocated.Get(rn), drf.totalResource.Get(rn))
 			if share > res {
 				res = share
@@ -519,5 +545,6 @@ func (drf *drfPlugin) calculateShare(allocated, totalResource *api.Resource) (st
 func (drf *drfPlugin) OnSessionClose(session *framework.Session) {
 	// Clean schedule data.
 	drf.totalResource = api.EmptyResource()
+	drf.totalAllocated = api.EmptyResource()
 	drf.jobAttrs = map[api.JobID]*drfAttr{}
 }
