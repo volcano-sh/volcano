@@ -201,14 +201,14 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	klog.V(3).Infof("Starting to sync up Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
 	defer klog.V(3).Infof("Finished Job <%s/%s> sync up", jobInfo.Job.Namespace, jobInfo.Job.Name)
 
-	job := jobInfo.Job.DeepCopy()
-	klog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
-
-	if job.DeletionTimestamp != nil {
+	if jobInfo.Job.DeletionTimestamp != nil {
 		klog.Infof("Job <%s/%s> is terminating, skip management process.",
-			job.Namespace, job.Name)
+			jobInfo.Job.Namespace, jobInfo.Job.Name)
 		return nil
 	}
+
+	job := jobInfo.Job.DeepCopy()
+	klog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 
 	// Skip job initiation if job is already initiated
 	if !isInitiated(job) {
