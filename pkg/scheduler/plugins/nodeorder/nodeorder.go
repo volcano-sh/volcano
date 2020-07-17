@@ -32,6 +32,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 )
 
 const (
@@ -166,7 +167,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	// Initialize k8s scheduling plugins
-	handle := framework.NewFrameworkHandle(pods, nodeSlice)
+	handle := k8s.NewFrameworkHandle(pods, nodeSlice)
 	// 1. NodeResourcesLeastAllocated
 	p, _ := noderesources.NewLeastAllocated(nil, handle)
 	leastAllocated := p.(*noderesources.LeastAllocated)

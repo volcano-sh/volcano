@@ -34,6 +34,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 )
 
 const (
@@ -169,7 +170,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	// Initialize k8s plugins
 	// TODO: Add more predicates, k8s.io/kubernetes/pkg/scheduler/framework/plugins/legacy_registry.go
-	handle := framework.NewFrameworkHandle(pods, nodeSlice)
+	handle := k8s.NewFrameworkHandle(pods, nodeSlice)
 	// 1. NodeUnschedulable
 	plugin, _ := nodeunschedulable.New(nil, handle)
 	nodeUnscheduleFilter := plugin.(*nodeunschedulable.NodeUnschedulable)
