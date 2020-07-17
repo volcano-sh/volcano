@@ -29,7 +29,7 @@ type BatchV1alpha1Interface interface {
 	JobsGetter
 }
 
-// BatchV1alpha1Client is used to interact with features provided by the batch group.
+// BatchV1alpha1Client is used to interact with features provided by the batch.volcano.sh group.
 type BatchV1alpha1Client struct {
 	restClient rest.Interface
 }

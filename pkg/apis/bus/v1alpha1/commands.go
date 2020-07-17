@@ -6,6 +6,8 @@ import (
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
 
 // Command defines command structure.
 type Command struct {
@@ -28,6 +30,7 @@ type Command struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
 
 // CommandList defines list of commands.
 type CommandList struct {

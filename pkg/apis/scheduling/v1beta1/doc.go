@@ -14,6 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package v1beta1 contains API Schema definitions for the scheduling v1beta1 API group
+// +kubebuilder:object:generate=true
+// +groupName=scheduling.volcano.sh
 // +k8s:deepcopy-gen=package
 // +k8s:conversion-gen=volcano.sh/volcano/pkg/apis/scheduling
 

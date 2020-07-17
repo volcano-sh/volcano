@@ -129,7 +129,7 @@ func TestValidatePod(t *testing.T) {
 			},
 
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
-			ret:            `failed to get PodGroup for pod <test/volcano-pod-2>: podgroups.scheduling "podgroup-p1" not found`,
+			ret:            `failed to get PodGroup for pod <test/volcano-pod-2>: podgroups.scheduling.volcano.sh "podgroup-p1" not found`,
 			ExpectErr:      true,
 			disabledPG:     true,
 		},
