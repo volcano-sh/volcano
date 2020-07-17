@@ -29,7 +29,7 @@ type BusV1alpha1Interface interface {
 	CommandsGetter
 }
 
-// BusV1alpha1Client is used to interact with features provided by the bus group.
+// BusV1alpha1Client is used to interact with features provided by the bus.volcano.sh group.
 type BusV1alpha1Client struct {
 	restClient rest.Interface
 }

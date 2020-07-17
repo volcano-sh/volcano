@@ -35,9 +35,9 @@ type FakeQueues struct {
 	Fake *FakeSchedulingV1beta1
 }
 
-var queuesResource = schema.GroupVersionResource{Group: "scheduling", Version: "v1beta1", Resource: "queues"}
+var queuesResource = schema.GroupVersionResource{Group: "scheduling.volcano.sh", Version: "v1beta1", Resource: "queues"}
 
-var queuesKind = schema.GroupVersionKind{Group: "scheduling", Version: "v1beta1", Kind: "Queue"}
+var queuesKind = schema.GroupVersionKind{Group: "scheduling.volcano.sh", Version: "v1beta1", Kind: "Queue"}
 
 // Get takes name of the queue, and returns the corresponding queue object, and an error if there is any.
 func (c *FakeQueues) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.Queue, err error) {

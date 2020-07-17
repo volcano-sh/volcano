@@ -36,9 +36,9 @@ type FakeJobs struct {
 	ns   string
 }
 
-var jobsResource = schema.GroupVersionResource{Group: "batch", Version: "v1alpha1", Resource: "jobs"}
+var jobsResource = schema.GroupVersionResource{Group: "batch.volcano.sh", Version: "v1alpha1", Resource: "jobs"}
 
-var jobsKind = schema.GroupVersionKind{Group: "batch", Version: "v1alpha1", Kind: "Job"}
+var jobsKind = schema.GroupVersionKind{Group: "batch.volcano.sh", Version: "v1alpha1", Kind: "Job"}
 
 // Get takes name of the job, and returns the corresponding job object, and an error if there is any.
 func (c *FakeJobs) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.Job, err error) {

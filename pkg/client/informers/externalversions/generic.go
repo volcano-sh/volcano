@@ -54,15 +54,15 @@ func (f *genericInformer) Lister() cache.GenericLister {
 // TODO extend this to unknown resources with a client pool
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
-	// Group=batch, Version=v1alpha1
+	// Group=batch.volcano.sh, Version=v1alpha1
 	case v1alpha1.SchemeGroupVersion.WithResource("jobs"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Batch().V1alpha1().Jobs().Informer()}, nil
 
-		// Group=bus, Version=v1alpha1
+		// Group=bus.volcano.sh, Version=v1alpha1
 	case busv1alpha1.SchemeGroupVersion.WithResource("commands"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Bus().V1alpha1().Commands().Informer()}, nil
 
-		// Group=scheduling, Version=v1beta1
+		// Group=scheduling.volcano.sh, Version=v1beta1
 	case v1beta1.SchemeGroupVersion.WithResource("podgroups"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Scheduling().V1beta1().PodGroups().Informer()}, nil
 	case v1beta1.SchemeGroupVersion.WithResource("queues"):

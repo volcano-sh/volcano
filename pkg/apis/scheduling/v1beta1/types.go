@@ -137,6 +137,9 @@ const (
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:path=podgroups,shortName=pg;podgroup-v1beta1
+// +kubebuilder:subresource:status
 
 // PodGroup is a collection of Pod; used for batch workload.
 type PodGroup struct {
@@ -207,6 +210,7 @@ type PodGroupStatus struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
 
 // PodGroupList is a collection of pod groups.
 type PodGroupList struct {
@@ -223,6 +227,9 @@ type PodGroupList struct {
 // +genclient
 // +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:path=queues,scope=Cluster,shortName=q;queue-v1beta1
+// +kubebuilder:subresource:status
 
 // Queue is a queue of PodGroup.
 type Queue struct {
@@ -267,6 +274,7 @@ type QueueSpec struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:object:root=true
 
 // QueueList is a collection of queues.
 type QueueList struct {

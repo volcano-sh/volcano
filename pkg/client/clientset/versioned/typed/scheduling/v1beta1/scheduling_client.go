@@ -30,7 +30,7 @@ type SchedulingV1beta1Interface interface {
 	QueuesGetter
 }
 
-// SchedulingV1beta1Client is used to interact with features provided by the scheduling group.
+// SchedulingV1beta1Client is used to interact with features provided by the scheduling.volcano.sh group.
 type SchedulingV1beta1Client struct {
 	restClient rest.Interface
 }
