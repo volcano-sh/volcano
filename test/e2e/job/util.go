@@ -433,13 +433,13 @@ func createJobWithPodGroup(ctx *testContext, jobSpec *jobSpec, pgName string) *b
 
 func createJobInner(ctx *testContext, jobSpec *jobSpec) (*batchv1alpha1.Job, error) {
 	ns := getNS(ctx, jobSpec)
-
 	job := &batchv1alpha1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobSpec.name,
 			Namespace: ns,
 		},
 		Spec: batchv1alpha1.JobSpec{
+			SchedulerName:           "volcano",
 			Policies:                jobSpec.policies,
 			Queue:                   jobSpec.queue,
 			Plugins:                 jobSpec.plugins,
@@ -469,7 +469,6 @@ func createJobInner(ctx *testContext, jobSpec *jobSpec) (*batchv1alpha1.Job, err
 					Labels: task.labels,
 				},
 				Spec: v1.PodSpec{
-					SchedulerName:     "volcano",
 					RestartPolicy:     restartPolicy,
 					Containers:        createContainers(task.img, task.command, task.workingDir, task.req, task.limit, task.hostport),
 					Affinity:          task.affinity,

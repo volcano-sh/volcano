@@ -440,6 +440,7 @@ func createJobInner(ctx *testContext, jobSpec *jobSpec) (*batchv1alpha1.Job, err
 			Namespace: ns,
 		},
 		Spec: batchv1alpha1.JobSpec{
+			SchedulerName:           "volcano",
 			Policies:                jobSpec.policies,
 			Queue:                   jobSpec.queue,
 			Plugins:                 jobSpec.plugins,
@@ -469,7 +470,6 @@ func createJobInner(ctx *testContext, jobSpec *jobSpec) (*batchv1alpha1.Job, err
 					Labels: task.labels,
 				},
 				Spec: v1.PodSpec{
-					SchedulerName:     "volcano",
 					RestartPolicy:     restartPolicy,
 					Containers:        createContainers(task.img, task.command, task.workingDir, task.req, task.limit, task.hostport),
 					Affinity:          task.affinity,
