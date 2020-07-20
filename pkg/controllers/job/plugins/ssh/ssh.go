@@ -121,10 +121,6 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 				Path: SSHRelativePath + "/" + SSHPublicKey,
 			},
 			{
-				Key:  SSHAuthorizedKeys,
-				Path: SSHRelativePath + "/" + SSHAuthorizedKeys,
-			},
-			{
 				Key:  SSHConfig,
 				Path: SSHRelativePath + "/" + SSHConfig,
 			},
