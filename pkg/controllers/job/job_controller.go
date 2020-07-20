@@ -122,14 +122,14 @@ func (cc *jobcontroller) Name() string {
 	return "job-controller"
 }
 
-// NewJobController create new Job jobcontroller.
+// NewJobController create new Job job controller.
 func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.kubeClient = opt.KubeClient
 	cc.vcClient = opt.VolcanoClient
 
 	sharedInformers := opt.SharedInformerFactory
 	workers := opt.WorkerNum
-	//Initialize event client
+	// Initialize event client
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: cc.kubeClient.CoreV1().Events("")})
