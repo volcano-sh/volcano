@@ -84,18 +84,13 @@ func isPodGroupConditionsUpdated(newCondition, oldCondition []scheduling.PodGrou
 	return false
 }
 
-func isPodGroupStatusUpdated(newStatus, oldStatus *scheduling.PodGroupStatus) bool {
+func isPodGroupStatusUpdated(newStatus, oldStatus scheduling.PodGroupStatus) bool {
 	newCondition := newStatus.Conditions
 	newStatus.Conditions = nil
 	oldCondition := oldStatus.Conditions
 	oldStatus.Conditions = nil
 
-	shouldUpdate := !reflect.DeepEqual(newStatus, oldStatus) || isPodGroupConditionsUpdated(newCondition, oldCondition)
-
-	newStatus.Conditions = newCondition
-	oldStatus.Conditions = oldCondition
-
-	return shouldUpdate
+	return !reflect.DeepEqual(newStatus, oldStatus) || isPodGroupConditionsUpdated(newCondition, oldCondition)
 }
 
 // updateJob update specified job
@@ -112,7 +107,7 @@ func (ju *jobUpdater) updateJob(index int) {
 
 	job.PodGroup.Status = jobStatus(ssn, job)
 	oldStatus, found := ssn.podGroupStatus[job.UID]
-	updatePG := !found || isPodGroupStatusUpdated(&job.PodGroup.Status, oldStatus)
+	updatePG := !found || isPodGroupStatusUpdated(job.PodGroup.Status, *oldStatus)
 
 	if _, err := ssn.cache.UpdateJobStatus(job, updatePG); err != nil {
 		klog.Errorf("Failed to update job <%s/%s>: %v",
