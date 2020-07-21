@@ -38,7 +38,9 @@ type Session struct {
 
 	cache cache.Cache
 
-	podGroupStatus map[api.JobID]*scheduling.PodGroupStatus
+	// podGroupStatus cache podgroup status during schedule
+	// This should not be mutated after initiated
+	podGroupStatus map[api.JobID]scheduling.PodGroupStatus
 
 	Jobs          map[api.JobID]*api.JobInfo
 	Nodes         map[string]*api.NodeInfo
@@ -75,7 +77,7 @@ func openSession(cache cache.Cache) *Session {
 		UID:   uuid.NewUUID(),
 		cache: cache,
 
-		podGroupStatus: map[api.JobID]*scheduling.PodGroupStatus{},
+		podGroupStatus: map[api.JobID]scheduling.PodGroupStatus{},
 
 		Jobs:   map[api.JobID]*api.JobInfo{},
 		Nodes:  map[string]*api.NodeInfo{},
@@ -107,7 +109,7 @@ func openSession(cache cache.Cache) *Session {
 	for _, job := range ssn.Jobs {
 		// only conditions will be updated periodically
 		if job.PodGroup != nil && job.PodGroup.Status.Conditions != nil {
-			ssn.podGroupStatus[job.UID] = &job.PodGroup.Status
+			ssn.podGroupStatus[job.UID] = job.PodGroup.Status
 		}
 
 		if vjr := ssn.JobValid(job); vjr != nil {
