@@ -18,7 +18,7 @@ package enqueue
 
 import (
 	"k8s.io/klog"
-
+	"strconv"
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -81,7 +81,6 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 	}
 
 	klog.V(3).Infof("Try to enqueue PodGroup to %d Queues", len(jobsMap))
-
 	total := api.EmptyResource()
 	used := api.EmptyResource()
 	for _, node := range ssn.Nodes {
@@ -89,7 +88,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 		used.Add(node.Used)
 	}
 	idle := total.Clone().Multi(enqueue.getOverCommitFactor(ssn)).Sub(used)
-
+	klog.V(3).Infof("used cpu: %s, idle cpu: %s", strconv.FormatFloat(used.MilliCPU, 'E', -1, 64), strconv.FormatFloat(idle.MilliCPU, 'E', -1, 64))
 	for {
 		if queues.Empty() {
 			break
@@ -110,12 +109,14 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 		job := jobs.Pop().(*api.JobInfo)
 
 		inqueue := false
-
 		if job.PodGroup.Spec.MinResources == nil {
 			inqueue = true
 		} else {
 			minReq := api.NewResource(*job.PodGroup.Spec.MinResources)
-			if ssn.JobEnqueueable(job) && minReq.LessEqual(idle) {
+			klog.V(3).Infof("minResources of podgroup of job %s: %s(cpu)", job.Name, strconv.FormatFloat(minReq.MilliCPU, 'E', -1, 64))
+			klog.V(3).Infof("node idle: %s(cpu)", strconv.FormatFloat(idle.MilliCPU, 'E', -1, 64))
+			klog.V(3).Infof("JobEnqueueable: %t", ssn.JobEnqueueable(job))
+			if isCapabilitySatisfied(ssn, job) && ssn.JobEnqueueable(job) && minReq.LessEqual(idle) {
 				idle.Sub(minReq)
 				inqueue = true
 			}
@@ -141,4 +142,48 @@ func (enqueue *Action) getOverCommitFactor(ssn *framework.Session) float64 {
 	}
 
 	return factor
+}
+
+func isCapabilitySatisfied(ssn *framework.Session, targetJob *api.JobInfo) bool {
+	queueID := targetJob.Queue
+	queue := ssn.Queues[queueID]
+
+	// If no capability is set, always enqueue the job.
+	if len(queue.Queue.Spec.Capability) == 0 {
+		klog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Enqueue.",
+			queue.Name, targetJob.Namespace, targetJob.Name)
+		return true
+	}
+
+	// If capability is set, calculate allocated resource of queue which the target belongs to,
+	// compare the sum of allocated and Job minRequest resource with the capability resource
+	allocatedResource := api.EmptyResource()
+	klog.V(4).Infof("Count allocated resource of queue of job <%s/%s>", targetJob.Namespace, targetJob.Name)
+	for _, job := range ssn.Jobs {
+		klog.V(4).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
+		if job.Queue == targetJob.Queue {
+			// if podgroup of job is Inqueue, the resource to be allocated to job should be considered as allocated in capability.
+			// if not so, the following jobs in next loops will incorrectly compare resource allocated with capability
+			if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
+				for _, tasks := range job.TaskStatusIndex {
+					for _, t := range tasks {
+						allocatedResource.Add(t.Resreq)
+					}
+				}
+			} else {
+				// calculate jobs whose tasks have been partly allocated resource
+				for status, tasks := range job.TaskStatusIndex {
+					if api.AllocatedStatus(status) {
+						for _, t := range tasks {
+							allocatedResource.Add(t.Resreq)
+						}
+					}
+				}
+			}
+		}
+	}
+	minReq := api.NewResource(*targetJob.PodGroup.Spec.MinResources)
+	klog.V(3).Infof("minResources of podgroup of job %s: %s(cpu)", targetJob.Name, strconv.FormatFloat(minReq.MilliCPU, 'E', -1, 64))
+	klog.V(3).Infof("podgroup allocated: %s(cpu)", strconv.FormatFloat(allocatedResource.MilliCPU, 'E', -1, 64))
+	return minReq.Add(allocatedResource).LessEqual(api.NewResource(queue.Queue.Spec.Capability))
 }

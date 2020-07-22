@@ -18,7 +18,6 @@ package proportion
 
 import (
 	"k8s.io/klog"
-
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -226,24 +225,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		return overused
-	})
-
-	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) bool {
-		job := obj.(*api.JobInfo)
-		queueID := job.Queue
-		attr := pp.queueOpts[queueID]
-		queue := ssn.Queues[queueID]
-
-		// If no capability is set, always enqueue the job.
-		if len(queue.Queue.Spec.Capability) == 0 {
-			klog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Inqueue.",
-				queue.Name, job.Namespace, job.Name)
-			return true
-		}
-
-		minReq := api.NewResource(*job.PodGroup.Spec.MinResources)
-		// The queue resource quota limit has not reached
-		return minReq.Add(attr.allocated).LessEqual(api.NewResource(queue.Queue.Spec.Capability))
 	})
 
 	// Register event handlers.
