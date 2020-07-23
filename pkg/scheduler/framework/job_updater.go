@@ -98,13 +98,6 @@ func (ju *jobUpdater) updateJob(index int) {
 	job := ju.jobQueue[index]
 	ssn := ju.ssn
 
-	// If job is using PDB, ignore it.
-	// TODO(k82cn): remove it when removing PDB support
-	if job.PodGroup == nil {
-		ssn.cache.RecordJobStatusEvent(job)
-		return
-	}
-
 	job.PodGroup.Status = jobStatus(ssn, job)
 	oldStatus, found := ssn.podGroupStatus[job.UID]
 	updatePG := !found || isPodGroupStatusUpdated(job.PodGroup.Status, oldStatus)
