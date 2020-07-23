@@ -193,7 +193,6 @@ func (ji *JobInfo) addTaskIndex(ti *TaskInfo) {
 	if _, found := ji.TaskStatusIndex[ti.Status]; !found {
 		ji.TaskStatusIndex[ti.Status] = tasksMap{}
 	}
-
 	ji.TaskStatusIndex[ti.Status][ti.UID] = ti
 }
 
