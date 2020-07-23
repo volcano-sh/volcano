@@ -304,7 +304,7 @@ func TestValidateJobCreate(t *testing.T) {
 					Namespace: namespace,
 				},
 				Spec: v1alpha1.JobSpec{
-					MinAvailable: 0,
+					MinAvailable: -1,
 					Queue:        "default",
 					Tasks: []v1alpha1.TaskSpec{
 						{
@@ -328,7 +328,7 @@ func TestValidateJobCreate(t *testing.T) {
 				},
 			},
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
-			ret:            "'minAvailable' must be > 0",
+			ret:            "'minAvailable' must be >= 0",
 			ExpectErr:      true,
 		},
 		// maxretry less than zero
@@ -1120,7 +1120,7 @@ func TestValidateJobUpdate(t *testing.T) {
 		{
 			name:           "invalid minAvailable",
 			replicas:       4,
-			minAvailable:   0,
+			minAvailable:   -1,
 			addTask:        false,
 			mutateTaskName: false,
 			mutateSpec:     false,
