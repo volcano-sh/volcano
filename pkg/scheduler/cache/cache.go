@@ -526,30 +526,11 @@ func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string
 	}
 
 	p := task.Pod
-
-	var pgCopy schedulingapi.PodGroup
-	if job.PodGroup != nil {
-		pgCopy = schedulingapi.PodGroup{
-			Version:  job.PodGroup.Version,
-			PodGroup: *job.PodGroup.PodGroup.DeepCopy(),
-		}
-	}
-
 	go func() {
 		if err := sc.Binder.Bind(p, hostname); err != nil {
 			sc.resyncTask(task)
 		} else {
 			sc.Recorder.Eventf(p, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", p.Namespace, p.Name, hostname)
-
-			if job.PodGroup != nil {
-				msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v, %v minAvailable, %v Pending",
-					len(job.TaskStatusIndex[schedulingapi.Pending]),
-					len(job.Tasks),
-					scheduling.PodGroupReady,
-					job.MinAvailable,
-					len(job.TaskStatusIndex[schedulingapi.Pending]))
-				sc.recordPodGroupEvent(&pgCopy, v1.EventTypeNormal, string(scheduling.PodGroupScheduled), msg)
-			}
 		}
 	}()
 
@@ -773,11 +754,6 @@ func (sc *SchedulerCache) String() string {
 
 // RecordJobStatusEvent records related events according to job status.
 func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo) {
-	baseErrorMessage := job.JobFitErrors
-	if baseErrorMessage == "" {
-		baseErrorMessage = schedulingapi.AllNodeUnavailableMsg
-	}
-
 	pgUnschedulable := job.PodGroup != nil &&
 		(job.PodGroup.Status.Phase == scheduling.PodGroupUnknown ||
 			job.PodGroup.Status.Phase == scheduling.PodGroupPending ||
@@ -790,8 +766,14 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo) {
 			len(job.Tasks),
 			job.FitError())
 		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeWarning, string(scheduling.PodGroupUnschedulableType), msg)
+	} else {
+		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupScheduled), string(scheduling.PodGroupReady))
 	}
 
+	baseErrorMessage := job.JobFitErrors
+	if baseErrorMessage == "" {
+		baseErrorMessage = schedulingapi.AllNodeUnavailableMsg
+	}
 	// Update podCondition for tasks Allocated and Pending before job discarded
 	for _, status := range []schedulingapi.TaskStatus{schedulingapi.Allocated, schedulingapi.Pending, schedulingapi.Pipelined} {
 		for _, taskInfo := range job.TaskStatusIndex[status] {
