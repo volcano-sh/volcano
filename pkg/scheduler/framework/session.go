@@ -123,7 +123,7 @@ func openSession(cache cache.Cache) *Session {
 					Message:            vjr.Message,
 				}
 
-				if err := ssn.UpdateJobCondition(job, jc); err != nil {
+				if err := ssn.UpdatePodGroupCondition(job, jc); err != nil {
 					klog.Errorf("Failed to update job condition: %v", err)
 				}
 			}
@@ -372,8 +372,8 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 	return nil
 }
 
-// UpdateJobCondition update job condition accordingly.
-func (ssn *Session) UpdateJobCondition(jobInfo *api.JobInfo, cond *scheduling.PodGroupCondition) error {
+// UpdatePodGroupCondition update job condition accordingly.
+func (ssn *Session) UpdatePodGroupCondition(jobInfo *api.JobInfo, cond *scheduling.PodGroupCondition) error {
 	job, ok := ssn.Jobs[jobInfo.UID]
 	if !ok {
 		return fmt.Errorf("failed to find job <%s/%s>", jobInfo.Namespace, jobInfo.Name)

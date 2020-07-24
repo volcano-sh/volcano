@@ -160,7 +160,7 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 				Message:            msg,
 			}
 
-			if err := ssn.UpdateJobCondition(job, jc); err != nil {
+			if err := ssn.UpdatePodGroupCondition(job, jc); err != nil {
 				klog.Errorf("Failed to update job <%s/%s> condition: %v",
 					job.Namespace, job.Name, err)
 			}
@@ -186,7 +186,7 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 				Message:            "",
 			}
 
-			if err := ssn.UpdateJobCondition(job, jc); err != nil {
+			if err := ssn.UpdatePodGroupCondition(job, jc); err != nil {
 				klog.Errorf("Failed to update job <%s/%s> condition: %v",
 					job.Namespace, job.Name, err)
 			}
