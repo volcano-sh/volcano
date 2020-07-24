@@ -58,6 +58,7 @@ tiers:
 					EnabledReclaimable:    &trueValue,
 					EnabledQueueOrder:     &trueValue,
 					EnabledPredicate:      &trueValue,
+					EnabledBestNode:       &trueValue,
 					EnabledNodeOrder:      &trueValue,
 				},
 				{
@@ -71,6 +72,7 @@ tiers:
 					EnabledReclaimable:    &trueValue,
 					EnabledQueueOrder:     &trueValue,
 					EnabledPredicate:      &trueValue,
+					EnabledBestNode:       &trueValue,
 					EnabledNodeOrder:      &trueValue,
 				},
 				{
@@ -84,6 +86,7 @@ tiers:
 					EnabledReclaimable:    &trueValue,
 					EnabledQueueOrder:     &trueValue,
 					EnabledPredicate:      &trueValue,
+					EnabledBestNode:       &trueValue,
 					EnabledNodeOrder:      &trueValue,
 				},
 			},
@@ -101,6 +104,7 @@ tiers:
 					EnabledReclaimable:    &trueValue,
 					EnabledQueueOrder:     &trueValue,
 					EnabledPredicate:      &trueValue,
+					EnabledBestNode:       &trueValue,
 					EnabledNodeOrder:      &trueValue,
 				},
 				{
@@ -114,6 +118,7 @@ tiers:
 					EnabledReclaimable:    &trueValue,
 					EnabledQueueOrder:     &trueValue,
 					EnabledPredicate:      &trueValue,
+					EnabledBestNode:       &trueValue,
 					EnabledNodeOrder:      &trueValue,
 				},
 				{
@@ -127,6 +132,7 @@ tiers:
 					EnabledReclaimable:    &trueValue,
 					EnabledQueueOrder:     &trueValue,
 					EnabledPredicate:      &trueValue,
+					EnabledBestNode:       &trueValue,
 					EnabledNodeOrder:      &trueValue,
 				},
 				{
@@ -140,6 +146,7 @@ tiers:
 					EnabledReclaimable:    &trueValue,
 					EnabledQueueOrder:     &trueValue,
 					EnabledPredicate:      &trueValue,
+					EnabledBestNode:       &trueValue,
 					EnabledNodeOrder:      &trueValue,
 				},
 			},
