@@ -18,7 +18,6 @@ package enqueue
 
 import (
 	"k8s.io/klog"
-	"strconv"
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -88,7 +87,6 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 		used.Add(node.Used)
 	}
 	idle := total.Clone().Multi(enqueue.getOverCommitFactor(ssn)).Sub(used)
-	klog.V(3).Infof("used cpu: %s, idle cpu: %s", strconv.FormatFloat(used.MilliCPU, 'E', -1, 64), strconv.FormatFloat(idle.MilliCPU, 'E', -1, 64))
 	for {
 		if queues.Empty() {
 			break
@@ -113,9 +111,6 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 			inqueue = true
 		} else {
 			minReq := api.NewResource(*job.PodGroup.Spec.MinResources)
-			klog.V(3).Infof("minResources of podgroup of job %s: %s(cpu)", job.Name, strconv.FormatFloat(minReq.MilliCPU, 'E', -1, 64))
-			klog.V(3).Infof("node idle: %s(cpu)", strconv.FormatFloat(idle.MilliCPU, 'E', -1, 64))
-			klog.V(3).Infof("JobEnqueueable: %t", ssn.JobEnqueueable(job))
 			if isCapabilitySatisfied(ssn, job) && ssn.JobEnqueueable(job) && minReq.LessEqual(idle) {
 				idle.Sub(minReq)
 				inqueue = true
@@ -183,7 +178,5 @@ func isCapabilitySatisfied(ssn *framework.Session, targetJob *api.JobInfo) bool 
 		}
 	}
 	minReq := api.NewResource(*targetJob.PodGroup.Spec.MinResources)
-	klog.V(3).Infof("minResources of podgroup of job %s: %s(cpu)", targetJob.Name, strconv.FormatFloat(minReq.MilliCPU, 'E', -1, 64))
-	klog.V(3).Infof("podgroup allocated: %s(cpu)", strconv.FormatFloat(allocatedResource.MilliCPU, 'E', -1, 64))
 	return minReq.Add(allocatedResource).LessEqual(api.NewResource(queue.Queue.Spec.Capability))
 }
