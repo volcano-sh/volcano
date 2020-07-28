@@ -57,7 +57,6 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 	queueMap := map[api.QueueID]*api.QueueInfo{}
-
 	jobsMap := map[api.QueueID]*util.PriorityQueue{}
 
 	for _, job := range ssn.Jobs {
@@ -72,6 +71,7 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 
 				queueMap[queue.UID] = queue
 				queues.Push(queue)
+			        ssn.InqueueJobResource[queue.UID] = api.EmptyResource()
 			}
 		}
 
@@ -81,6 +81,11 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 			}
 			klog.V(3).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
 			jobsMap[job.Queue].Push(job)
+		}
+
+		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
+			klog.V(3).Infof("Added Job <%s/%s> into InqueueResource", job.Namespace, job.Name, job.Queue)
+			ssn.InqueueJobResource[job.Queue].Add(api.NewResource(*job.PodGroup.Spec.MinResources))
 		}
 	}
 
@@ -128,6 +133,7 @@ func (enqueue *enqueueAction) Execute(ssn *framework.Session) {
 		if inqueue {
 			job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
 			ssn.Jobs[job.UID] = job
+			ssn.InqueueJobResource[job.Queue].Add(api.NewResource(*job.PodGroup.Spec.MinResources))
 		}
 
 		// Added Queue back until no job in Queue.
