@@ -80,7 +80,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 		}
 
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
-			klog.V(3).Infof("Added Job <%s/%s> into InqueueResource", job.Namespace, job.Name, job.Queue)
+			klog.V(3).Infof("Added Job <%s/%s> into InqueueResource", job.Namespace, job.Name)
 			ssn.InqueueJobResource[job.Queue].Add(api.NewResource(*job.PodGroup.Spec.MinResources))
 		}
 	}
