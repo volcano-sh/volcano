@@ -51,7 +51,12 @@ func (ps *runningState) Execute(action v1alpha1.Action) error {
 		})
 	default:
 		return SyncJob(ps.job, func(status *vcbatch.JobStatus) bool {
-			if status.Succeeded+status.Failed == TotalTasks(ps.job.Job) {
+			jobReplicas := TotalTasks(ps.job.Job)
+			if jobReplicas == 0 {
+				// when scale down to zero, keep the current job phase
+				return false
+			}
+			if status.Succeeded+status.Failed == jobReplicas {
 				if status.Succeeded >= ps.job.Job.Spec.MinAvailable {
 					status.State.Phase = vcbatch.Completed
 				} else {
