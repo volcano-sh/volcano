@@ -181,8 +181,7 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 
 		// check configmap updated
 		pluginName := fmt.Sprintf("%s-svc", jobName)
-		cm, err := ctx.kubeclient.CoreV1().ConfigMaps(ctx.namespace).Get(context.TODO(),
-			pluginName, metav1.GetOptions{})
+		cm, err := ctx.kubeclient.CoreV1().ConfigMaps(ctx.namespace).Get(pluginName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		hosts := svc.GenerateHosts(job)
@@ -199,8 +198,7 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// check configmap updated
-		cm, err = ctx.kubeclient.CoreV1().ConfigMaps(ctx.namespace).Get(context.TODO(),
-			pluginName, metav1.GetOptions{})
+		cm, err = ctx.kubeclient.CoreV1().ConfigMaps(ctx.namespace).Get(pluginName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		hosts = svc.GenerateHosts(job)
@@ -209,7 +207,7 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 		// TODO: check others
 
 		By("delete job")
-		err = ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
+		err = ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = waitJobCleanedUp(ctx, job)
