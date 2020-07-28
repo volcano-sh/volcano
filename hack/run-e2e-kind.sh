@@ -31,14 +31,6 @@ export CLUSTER_CONTEXT="--name ${CLUSTER_NAME}"
 
 export KIND_OPT=${KIND_OPT:=" --config ${VK_ROOT}/hack/e2e-kind-config.yaml"}
 
-# spin up cluster with kind command
-function kind-up-cluster {
-  check-prerequisites
-  check-kind
-  echo "Running kind: [kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}]"
-  kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}
-}
-
 function install-volcano {
   install-helm
 
