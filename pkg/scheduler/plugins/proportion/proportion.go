@@ -18,7 +18,6 @@ package proportion
 
 import (
 	"k8s.io/klog"
-
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -243,7 +242,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		minReq := api.NewResource(*job.PodGroup.Spec.MinResources)
 		// The queue resource quota limit has not reached
-		return minReq.Add(attr.allocated).LessEqual(api.NewResource(queue.Queue.Spec.Capability))
+		return minReq.Add(attr.allocated).Add(ssn.InqueueJobResource[job.Queue]).LessEqual(api.NewResource(queue.Queue.Spec.Capability))
 	})
 
 	// Register event handlers.
