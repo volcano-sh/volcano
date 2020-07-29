@@ -100,21 +100,22 @@ install-volcano
 # Run e2e test
 cd ${VK_ROOT}
 
-if [[ "${E2E_TYPE}" == "ALL" ]];then
+
+case ${E2E_TYPE} in
+"ALL")
     echo "Running e2e..."
     KUBECONFIG=${KUBECONFIG} go test ./test/e2e/job -v -timeout 60m
     KUBECONFIG=${KUBECONFIG} go test ./test/e2e/scheduling -v -timeout 60m
-fi
-
-if [[ "${E2E_TYPE}" == "JOB" ]];then
+    ;;
+"JOB")
     echo "Running job e2e..."
     KUBECONFIG=${KUBECONFIG} go test ./test/e2e/job -v -timeout 60m
-fi
-
-if [[ "${E2E_TYPE}" == "SCHEDULING" ]];then
+    ;;
+"SCHEDULING")
     echo "Running scheduling e2e..."
     KUBECONFIG=${KUBECONFIG} go test ./test/e2e/scheduling -v -timeout 60m
-fi
+    ;;
+esac
 
 if [[ $? != 0 ]]; then
   generate-log
