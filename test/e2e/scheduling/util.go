@@ -510,17 +510,6 @@ func createJobInner(ctx *testContext, jobSpec *jobSpec) (*batchv1alpha1.Job, err
 	return ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 }
 
-func updateJob(ctx *testContext, job *batchv1alpha1.Job) error {
-	spec, err := json.Marshal(job.Spec)
-	if err != nil {
-		return err
-	}
-	patchBytes := []byte(fmt.Sprintf(`{"spec":%s}`, spec))
-	_, err = ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Patch(context.TODO(),
-		job.Name, types.MergePatchType, patchBytes, metav1.PatchOptions{})
-	return err
-}
-
 func waitTaskPhase(ctx *testContext, job *batchv1alpha1.Job, phase []v1.PodPhase, taskNum int) error {
 	var additionalError error
 	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {
