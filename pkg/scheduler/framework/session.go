@@ -40,11 +40,10 @@ type Session struct {
 
 	podGroupStatus map[api.JobID]*scheduling.PodGroupStatus
 
-	Jobs               map[api.JobID]*api.JobInfo
-	Nodes              map[string]*api.NodeInfo
-	Queues             map[api.QueueID]*api.QueueInfo
-	NamespaceInfo      map[api.NamespaceName]*api.NamespaceInfo
-	InqueueJobResource map[api.QueueID]*api.Resource
+	Jobs          map[api.JobID]*api.JobInfo
+	Nodes         map[string]*api.NodeInfo
+	Queues        map[api.QueueID]*api.QueueInfo
+	NamespaceInfo map[api.NamespaceName]*api.NamespaceInfo
 
 	Backlog        []*api.JobInfo
 	Tiers          []conf.Tier
@@ -77,10 +76,9 @@ func openSession(cache cache.Cache) *Session {
 
 		podGroupStatus: map[api.JobID]*scheduling.PodGroupStatus{},
 
-		Jobs:               map[api.JobID]*api.JobInfo{},
-		Nodes:              map[string]*api.NodeInfo{},
-		Queues:             map[api.QueueID]*api.QueueInfo{},
-		InqueueJobResource: map[api.QueueID]*api.Resource{},
+		Jobs:   map[api.JobID]*api.JobInfo{},
+		Nodes:  map[string]*api.NodeInfo{},
+		Queues: map[api.QueueID]*api.QueueInfo{},
 
 		plugins:           map[string]Plugin{},
 		jobOrderFns:       map[string]api.CompareFn{},
@@ -152,7 +150,6 @@ func closeSession(ssn *Session) {
 	ssn.jobOrderFns = nil
 	ssn.namespaceOrderFns = nil
 	ssn.queueOrderFns = nil
-	ssn.InqueueJobResource = nil
 
 	klog.V(3).Infof("Close Session %v", ssn.UID)
 }

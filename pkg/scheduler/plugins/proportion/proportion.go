@@ -18,6 +18,8 @@ package proportion
 
 import (
 	"k8s.io/klog"
+
+	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -42,6 +44,8 @@ type queueAttr struct {
 	deserved  *api.Resource
 	allocated *api.Resource
 	request   *api.Resource
+	// inqueue represents the resource request of the inqueue job
+	inqueue *api.Resource
 }
 
 // New return proportion action
@@ -68,7 +72,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Build attributes for Queues.
 	for _, job := range ssn.Jobs {
 		klog.V(4).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
-
 		if _, found := pp.queueOpts[job.Queue]; !found {
 			queue := ssn.Queues[job.Queue]
 			attr := &queueAttr{
@@ -79,24 +82,28 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				deserved:  api.EmptyResource(),
 				allocated: api.EmptyResource(),
 				request:   api.EmptyResource(),
+				inqueue:   api.EmptyResource(),
 			}
 			pp.queueOpts[job.Queue] = attr
 			klog.V(4).Infof("Added Queue <%s> attributes.", job.Queue)
 		}
 
+		attr := pp.queueOpts[job.Queue]
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
 				for _, t := range tasks {
-					attr := pp.queueOpts[job.Queue]
 					attr.allocated.Add(t.Resreq)
 					attr.request.Add(t.Resreq)
 				}
 			} else if status == api.Pending {
 				for _, t := range tasks {
-					attr := pp.queueOpts[job.Queue]
 					attr.request.Add(t.Resreq)
 				}
 			}
+		}
+
+		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
+			attr.inqueue.Add(api.NewResource(*job.PodGroup.Spec.MinResources))
 		}
 	}
 
@@ -225,7 +232,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		minReq := api.NewResource(*job.PodGroup.Spec.MinResources)
 		// The queue resource quota limit has not reached
-		return minReq.Add(attr.allocated).Add(ssn.InqueueJobResource[job.Queue]).LessEqual(api.NewResource(queue.Queue.Spec.Capability))
+		inqueue := minReq.Add(attr.allocated).Add(attr.inqueue).LessEqual(api.NewResource(queue.Queue.Spec.Capability))
+		if inqueue {
+			attr.inqueue.Add(api.NewResource(*job.PodGroup.Spec.MinResources))
+		}
+		return inqueue
 	})
 
 	// Register event handlers.
