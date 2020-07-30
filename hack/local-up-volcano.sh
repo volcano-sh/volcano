@@ -44,7 +44,7 @@ function install-volcano {
 }
 
 function uninstall-volcano {
-  kubectl delete -f ${VK_ROOT}/installer/helm/chart/volcano/templates/default-queue.yaml
+  kubectl delete -f ${VK_ROOT}/installer/helm/chart/volcano/templates/scheduling_v1beta1_queue.yaml
   kubectl delete -f ${RELEASE_FOLDER}/${YAML_FILENAME}
 }
 
