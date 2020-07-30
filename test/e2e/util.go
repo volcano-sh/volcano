@@ -394,8 +394,9 @@ func updateJob(context *context, job *batchv1alpha1.Job) error {
 	if err != nil {
 		return err
 	}
-	patchBytes := []byte(fmt.Sprintf(`{"spec":%s}`, spec))
-	_, err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Patch(job.Name, types.MergePatchType, patchBytes)
+	patch := fmt.Sprintf(`[{"op": "replace", "path": "/spec", "value":%s}]`, spec)
+	patchBytes := []byte(patch)
+	_, err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Patch(job.Name, types.JSONPatchType, patchBytes)
 	return err
 }
 

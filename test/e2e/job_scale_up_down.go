@@ -112,7 +112,7 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 		err := waitJobReady(context, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		// scale up
+		// scale down
 		job.Spec.MinAvailable = 1
 		job.Spec.Tasks[0].Replicas = 1
 		err = updateJob(context, job)
@@ -142,4 +142,75 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 
 	})
 
+	It("Scale down to zero and scale up", func() {
+		By("init test ctx")
+		ctx := initTestContext(options{})
+		defer cleanupTestContext(ctx)
+
+		jobName := "scale-down-job"
+		By("create job")
+		job := createJob(ctx, &jobSpec{
+			name: jobName,
+			plugins: map[string][]string{
+				"svc": {},
+			},
+			tasks: []taskSpec{
+				{
+					name: "default",
+					img:  defaultNginxImage,
+					min:  2,
+					rep:  2,
+					req:  halfCPU,
+				},
+			},
+		})
+
+		// job phase: pending -> running
+		err := waitJobReady(ctx, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		// scale down
+		job.Spec.MinAvailable = 0
+		job.Spec.Tasks[0].Replicas = 0
+		err = updateJob(ctx, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		// wait for tasks scaled up
+		err = waitJobReady(ctx, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		// check configmap updated
+		pluginName := fmt.Sprintf("%s-svc", jobName)
+		cm, err := ctx.kubeclient.CoreV1().ConfigMaps(ctx.namespace).Get(pluginName, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		hosts := svc.GenerateHosts(job)
+		Expect(hosts).To(Equal(cm.Data))
+
+		// scale up
+		job.Spec.MinAvailable = 2
+		job.Spec.Tasks[0].Replicas = 2
+		err = updateJob(ctx, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		// wait for tasks scaled up
+		err = waitJobReady(ctx, job)
+		Expect(err).NotTo(HaveOccurred())
+
+		// check configmap updated
+		cm, err = ctx.kubeclient.CoreV1().ConfigMaps(ctx.namespace).Get(pluginName, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		hosts = svc.GenerateHosts(job)
+		Expect(hosts).To(Equal(cm.Data))
+
+		// TODO: check others
+
+		By("delete job")
+		err = ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(job.Name, nil)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = waitJobCleanedUp(ctx, job)
+		Expect(err).NotTo(HaveOccurred())
+	})
 })
