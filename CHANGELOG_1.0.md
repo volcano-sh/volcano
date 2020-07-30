@@ -1,3 +1,11 @@
+## v1.0.1
+
+#### Changelog since v1.0.0
+- Fix job's scheduler name does not take effect ([#944](https://github.com/volcano-sh/volcano/pull/944), [@hzxuzhonghu](https://github.com/hzxuzhonghu))
+- Fix podgroup status and event  ([#951](https://github.com/volcano-sh/volcano/pull/951), [@hzxuzhonghu](https://github.com/hzxuzhonghu))
+- Support job scale down to zero ([#945](https://github.com/volcano-sh/volcano/pull/945), [@hzxuzhonghu](https://github.com/hzxuzhonghu))
+- Fix queue capability validation failed when some running jobs finished or deleted ([#959](https://github.com/volcano-sh/volcano/pull/959), [@Thor-wl](https://github.com/Thor-wl))
+
 ## Volcano v1.0 Release Notes
 
 ### 1.0 What's New
