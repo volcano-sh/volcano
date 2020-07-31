@@ -1,5 +1,9 @@
 # Change Log
 
+## [v0.4.2](https://github.com/volcano-sh/volcano/tree/v0.4) (2020-07-31)
+
+- Fix queue capability validation failed when some running jobs finished or deleted ([#959](https://github.com/volcano-sh/volcano/pull/959), [@Thor-wl](https://github.com/Thor-wl))
+
 ## [v0.4.1](https://github.com/volcano-sh/volcano/tree/v0.4) (2020-07-14)
 
 - UpdateJob when Job annotations or labels changed ([#919](https://github.com/volcano-sh/volcano/pull/919), [@Thor-wl](https://github.com/Thor-wl))
