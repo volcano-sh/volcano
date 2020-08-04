@@ -24,7 +24,7 @@ import (
 
 	"k8s.io/klog"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,7 +33,7 @@ import (
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
-	"volcano.sh/volcano/pkg/controllers/job/plugins/interface"
+	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
 type servicePlugin struct {
@@ -130,10 +130,10 @@ func (sp *servicePlugin) OnJobAdd(job *batch.Job) error {
 		return nil
 	}
 
-	hostFile := generateHosts(job)
+	hostFile := GenerateHosts(job)
 
 	// Create ConfigMap of hosts for Pods to mount.
-	if err := helpers.CreateConfigMapIfNotExist(job, sp.Clientset.KubeClients, hostFile, sp.cmName(job)); err != nil {
+	if err := helpers.CreateOrUpdateConfigMap(job, sp.Clientset.KubeClients, hostFile, sp.cmName(job)); err != nil {
 		return err
 	}
 
@@ -162,6 +162,17 @@ func (sp *servicePlugin) OnJobDelete(job *batch.Job) error {
 			klog.Errorf("Failed to delete Service of Job %v/%v: %v", job.Namespace, job.Name, err)
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (sp *servicePlugin) OnJobUpdate(job *batch.Job) error {
+	hostFile := GenerateHosts(job)
+
+	// updates ConfigMap of hosts for Pods to mount.
+	if err := helpers.CreateOrUpdateConfigMap(job, sp.Clientset.KubeClients, hostFile, sp.cmName(job)); err != nil {
+		return err
 	}
 
 	return nil
@@ -292,7 +303,8 @@ func (sp *servicePlugin) cmName(job *batch.Job) string {
 	return fmt.Sprintf("%s-%s", job.Name, sp.Name())
 }
 
-func generateHosts(job *batch.Job) map[string]string {
+// GenerateHosts generates hostnames per task
+func GenerateHosts(job *batch.Job) map[string]string {
 	hostFile := make(map[string]string, len(job.Spec.Tasks))
 
 	for _, ts := range job.Spec.Tasks {

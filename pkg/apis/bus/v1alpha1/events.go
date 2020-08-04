@@ -40,9 +40,12 @@ const (
 
 	// Note: events below are used internally, should not be used by users.
 
-	// OutOfSyncEvent is triggered if Pod/Job were updated
+	// OutOfSyncEvent is triggered if Pod/Job is updated(add/update/delete)
 	OutOfSyncEvent Event = "OutOfSync"
 
 	// CommandIssuedEvent is triggered if a command is raised by user
 	CommandIssuedEvent Event = "CommandIssued"
+
+	// JobUpdatedEvent is triggered if Job is updated, currently only scale up/down
+	JobUpdatedEvent Event = "JobUpdated"
 )

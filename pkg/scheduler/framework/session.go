@@ -38,7 +38,9 @@ type Session struct {
 
 	cache cache.Cache
 
-	podGroupStatus map[api.JobID]*scheduling.PodGroupStatus
+	// podGroupStatus cache podgroup status during schedule
+	// This should not be mutated after initiated
+	podGroupStatus map[api.JobID]scheduling.PodGroupStatus
 
 	Jobs          map[api.JobID]*api.JobInfo
 	Nodes         map[string]*api.NodeInfo
@@ -56,6 +58,7 @@ type Session struct {
 	taskOrderFns      map[string]api.CompareFn
 	namespaceOrderFns map[string]api.CompareFn
 	predicateFns      map[string]api.PredicateFn
+	bestNodeFns       map[string]api.BestNodeFn
 	nodeOrderFns      map[string]api.NodeOrderFn
 	batchNodeOrderFns map[string]api.BatchNodeOrderFn
 	nodeMapFns        map[string]api.NodeMapFn
@@ -74,7 +77,7 @@ func openSession(cache cache.Cache) *Session {
 		UID:   uuid.NewUUID(),
 		cache: cache,
 
-		podGroupStatus: map[api.JobID]*scheduling.PodGroupStatus{},
+		podGroupStatus: map[api.JobID]scheduling.PodGroupStatus{},
 
 		Jobs:   map[api.JobID]*api.JobInfo{},
 		Nodes:  map[string]*api.NodeInfo{},
@@ -86,6 +89,7 @@ func openSession(cache cache.Cache) *Session {
 		taskOrderFns:      map[string]api.CompareFn{},
 		namespaceOrderFns: map[string]api.CompareFn{},
 		predicateFns:      map[string]api.PredicateFn{},
+		bestNodeFns:       map[string]api.BestNodeFn{},
 		nodeOrderFns:      map[string]api.NodeOrderFn{},
 		batchNodeOrderFns: map[string]api.BatchNodeOrderFn{},
 		nodeMapFns:        map[string]api.NodeMapFn{},
@@ -105,7 +109,7 @@ func openSession(cache cache.Cache) *Session {
 	for _, job := range ssn.Jobs {
 		// only conditions will be updated periodically
 		if job.PodGroup != nil && job.PodGroup.Status.Conditions != nil {
-			ssn.podGroupStatus[job.UID] = &job.PodGroup.Status
+			ssn.podGroupStatus[job.UID] = job.PodGroup.Status
 		}
 
 		if vjr := ssn.JobValid(job); vjr != nil {
@@ -119,7 +123,7 @@ func openSession(cache cache.Cache) *Session {
 					Message:            vjr.Message,
 				}
 
-				if err := ssn.UpdateJobCondition(job, jc); err != nil {
+				if err := ssn.UpdatePodGroupCondition(job, jc); err != nil {
 					klog.Errorf("Failed to update job condition: %v", err)
 				}
 			}
@@ -368,8 +372,8 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 	return nil
 }
 
-// UpdateJobCondition update job condition accordingly.
-func (ssn *Session) UpdateJobCondition(jobInfo *api.JobInfo, cond *scheduling.PodGroupCondition) error {
+// UpdatePodGroupCondition update job condition accordingly.
+func (ssn *Session) UpdatePodGroupCondition(jobInfo *api.JobInfo, cond *scheduling.PodGroupCondition) error {
 	job, ok := ssn.Jobs[jobInfo.UID]
 	if !ok {
 		return fmt.Errorf("failed to find job <%s/%s>", jobInfo.Namespace, jobInfo.Name)

@@ -22,7 +22,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
@@ -147,33 +147,54 @@ func (cc *Controller) initiateJob(job *batch.Job) (*batch.Job, error) {
 	defer klog.V(3).Infof("Finished Job <%s/%s> initiate", job.Namespace, job.Name)
 
 	klog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
-	job, err := cc.initJobStatus(job)
+	jobInstance, err := cc.initJobStatus(job)
 	if err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.JobStatusError),
 			fmt.Sprintf("Failed to initialize job status, err: %v", err))
 		return nil, err
 	}
 
-	if err := cc.pluginOnJobAdd(job); err != nil {
+	if err := cc.pluginOnJobAdd(jobInstance); err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.PluginError),
 			fmt.Sprintf("Execute plugin when job add failed, err: %v", err))
 		return nil, err
 	}
 
-	newJob, err := cc.createJobIOIfNotExist(job)
+	newJob, err := cc.createJobIOIfNotExist(jobInstance)
 	if err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.PVCError),
 			fmt.Sprintf("Failed to create PVC, err: %v", err))
 		return nil, err
 	}
 
-	if err := cc.createPodGroupIfNotExist(newJob); err != nil {
+	if err := cc.createOrUpdatePodGroup(newJob); err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.PodGroupError),
 			fmt.Sprintf("Failed to create PodGroup, err: %v", err))
 		return nil, err
 	}
 
 	return newJob, nil
+}
+
+func (cc *Controller) initOnJobUpdate(job *batch.Job) error {
+	klog.V(3).Infof("Starting to initiate Job <%s/%s> on update", job.Namespace, job.Name)
+	defer klog.V(3).Infof("Finished Job <%s/%s> initiate on update", job.Namespace, job.Name)
+
+	klog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
+
+	if err := cc.pluginOnJobUpdate(job); err != nil {
+		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.PluginError),
+			fmt.Sprintf("Execute plugin when job add failed, err: %v", err))
+		return err
+	}
+
+	if err := cc.createOrUpdatePodGroup(job); err != nil {
+		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.PodGroupError),
+			fmt.Sprintf("Failed to create PodGroup, err: %v", err))
+		return err
+	}
+
+	return nil
 }
 
 func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
@@ -193,6 +214,12 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 	if !isInitiated(job) {
 		var err error
 		if job, err = cc.initiateJob(job); err != nil {
+			return err
+		}
+	} else {
+		var err error
+		// TODO: optimize this call it only when scale up/down
+		if err = cc.initOnJobUpdate(job); err != nil {
 			return err
 		}
 	}
@@ -301,8 +328,7 @@ func (cc *Controller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateSt
 		return fmt.Errorf("failed to create %d pods of %d", len(creationErrs), len(podToCreate))
 	}
 
-	// TODO: Can hardly imagine when this is necessary.
-	// Delete unnecessary pods.
+	// Delete pods when scale down.
 	waitDeletionGroup := sync.WaitGroup{}
 	waitDeletionGroup.Add(len(podToDelete))
 	for _, pod := range podToDelete {
@@ -389,6 +415,7 @@ func (cc *Controller) createJobIOIfNotExist(job *batch.Job) (*batch.Job, error) 
 				needUpdate = true
 				break
 			}
+			// TODO: check VolumeClaim must be set if VolumeClaimName is empty
 			if volume.VolumeClaim != nil {
 				if err := cc.createPVC(job, vcName, volume.VolumeClaim); err != nil {
 					return job, err
@@ -453,9 +480,10 @@ func (cc *Controller) createPVC(job *batch.Job, vcName string, volumeClaim *v1.P
 	return nil
 }
 
-func (cc *Controller) createPodGroupIfNotExist(job *batch.Job) error {
+func (cc *Controller) createOrUpdatePodGroup(job *batch.Job) error {
 	// If PodGroup does not exist, create one for Job.
-	if _, err := cc.pgLister.PodGroups(job.Namespace).Get(job.Name); err != nil {
+	pg, err := cc.pgLister.PodGroups(job.Namespace).Get(job.Name)
+	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.V(3).Infof("Failed to get PodGroup for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
@@ -479,6 +507,19 @@ func (cc *Controller) createPodGroupIfNotExist(job *batch.Job) error {
 		}
 
 		if _, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Create(pg); err != nil {
+			if !apierrors.IsAlreadyExists(err) {
+				klog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
+					job.Namespace, job.Name, err)
+				return err
+			}
+		}
+		return nil
+	}
+
+	if pg.Spec.MinMember != job.Spec.MinAvailable {
+		pg.Spec.MinMember = job.Spec.MinAvailable
+		pg.Spec.MinResources = cc.calcPGMinResources(job)
+		if _, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Update(pg); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				klog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
 					job.Namespace, job.Name, err)
@@ -541,8 +582,25 @@ func (cc *Controller) initJobStatus(job *batch.Job) (*batch.Job, error) {
 		return job, nil
 	}
 
+	job.Status.State.LastTransitionTime = metav1.Now()
 	job.Status.State.Phase = batch.Pending
 	job.Status.MinAvailable = job.Spec.MinAvailable
+	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
+	if err != nil {
+		klog.Errorf("Failed to update status of Job %v/%v: %v",
+			job.Namespace, job.Name, err)
+		return nil, err
+	}
+	if err := cc.cache.Update(newJob); err != nil {
+		klog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
+			newJob.Namespace, newJob.Name, err)
+		return nil, err
+	}
+
+	return newJob, nil
+}
+
+func (cc *Controller) updateJobStatus(job *batch.Job) (*batch.Job, error) {
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(job)
 	if err != nil {
 		klog.Errorf("Failed to update status of Job %v/%v: %v",

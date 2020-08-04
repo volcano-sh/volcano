@@ -160,7 +160,7 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 				Message:            msg,
 			}
 
-			if err := ssn.UpdateJobCondition(job, jc); err != nil {
+			if err := ssn.UpdatePodGroupCondition(job, jc); err != nil {
 				klog.Errorf("Failed to update job <%s/%s> condition: %v",
 					job.Namespace, job.Name, err)
 			}
@@ -176,6 +176,21 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 				job.NodesFitErrors[taskInfo.UID] = fitError
 				fitError.SetError(msg)
 			}
+		} else {
+			jc := &scheduling.PodGroupCondition{
+				Type:               scheduling.PodGroupScheduled,
+				Status:             v1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+				TransitionID:       string(ssn.UID),
+				Reason:             "tasks in gang are ready to be scheduled",
+				Message:            "",
+			}
+
+			if err := ssn.UpdatePodGroupCondition(job, jc); err != nil {
+				klog.Errorf("Failed to update job <%s/%s> condition: %v",
+					job.Namespace, job.Name, err)
+			}
+
 		}
 	}
 

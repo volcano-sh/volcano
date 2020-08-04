@@ -187,8 +187,9 @@ func TestUpdateJobFunc(t *testing.T) {
 			Name: "Job Update Success Case",
 			oldJob: &batch.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job1",
-					Namespace: namespace,
+					Name:            "job1",
+					Namespace:       namespace,
+					ResourceVersion: "54467984",
 				},
 				Spec: batch.JobSpec{
 					SchedulerName: "volcano",
@@ -202,8 +203,9 @@ func TestUpdateJobFunc(t *testing.T) {
 			},
 			newJob: &batch.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job1",
-					Namespace: namespace,
+					Name:            "job1",
+					Namespace:       namespace,
+					ResourceVersion: "54469999",
 				},
 				Spec: batch.JobSpec{
 					SchedulerName: "volcano",
@@ -220,8 +222,9 @@ func TestUpdateJobFunc(t *testing.T) {
 			Name: "Job Update Failure Case",
 			oldJob: &batch.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job1",
-					Namespace: namespace,
+					Name:            "job1",
+					Namespace:       namespace,
+					ResourceVersion: "54469999",
 				},
 				Spec: batch.JobSpec{
 					SchedulerName: "volcano",
@@ -235,8 +238,9 @@ func TestUpdateJobFunc(t *testing.T) {
 			},
 			newJob: &batch.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job1",
-					Namespace: namespace,
+					Name:            "job1",
+					Namespace:       namespace,
+					ResourceVersion: "54469999",
 				},
 				Spec: batch.JobSpec{
 					SchedulerName: "volcano",

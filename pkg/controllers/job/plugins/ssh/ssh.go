@@ -25,7 +25,6 @@ import (
 	"fmt"
 
 	"golang.org/x/crypto/ssh"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
@@ -96,6 +95,10 @@ func (sp *sshPlugin) OnJobAdd(job *batch.Job) error {
 
 func (sp *sshPlugin) OnJobDelete(job *batch.Job) error {
 	return helpers.DeleteSecret(job, sp.client.KubeClients, sp.secretName(job))
+}
+
+func (sp *sshPlugin) OnJobUpdate(_ *batch.Job) error {
+	return nil
 }
 
 func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {

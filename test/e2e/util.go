@@ -389,6 +389,17 @@ func createJobInner(context *context, jobSpec *jobSpec) (*batchv1alpha1.Job, err
 	return context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Create(job)
 }
 
+func updateJob(context *context, job *batchv1alpha1.Job) error {
+	spec, err := json.Marshal(job.Spec)
+	if err != nil {
+		return err
+	}
+	patch := fmt.Sprintf(`[{"op": "replace", "path": "/spec", "value":%s}]`, spec)
+	patchBytes := []byte(patch)
+	_, err = context.vcclient.BatchV1alpha1().Jobs(job.Namespace).Patch(job.Name, types.JSONPatchType, patchBytes)
+	return err
+}
+
 func waitTaskPhase(ctx *context, job *batchv1alpha1.Job, phase []v1.PodPhase, taskNum int) error {
 	var additionalError error
 	err := wait.Poll(100*time.Millisecond, oneMinute, func() (bool, error) {

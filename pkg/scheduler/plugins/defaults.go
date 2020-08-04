@@ -49,6 +49,9 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	if option.EnabledPredicate == nil {
 		option.EnabledPredicate = &t
 	}
+	if option.EnabledBestNode == nil {
+		option.EnabledBestNode = &t
+	}
 	if option.EnabledNodeOrder == nil {
 		option.EnabledNodeOrder = &t
 	}

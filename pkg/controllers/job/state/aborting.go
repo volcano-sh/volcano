@@ -17,7 +17,6 @@ limitations under the License.
 package state
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
@@ -43,9 +42,7 @@ func (ps *abortingState) Execute(action v1alpha1.Action) error {
 				return false
 			}
 			status.State.Phase = vcbatch.Aborted
-			status.State.LastTransitionTime = metav1.Now()
 			return true
-
 		})
 	}
 }
