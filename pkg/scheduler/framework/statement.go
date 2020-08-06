@@ -329,7 +329,6 @@ func (s *Statement) unallocate(task *api.TaskInfo) error {
 		}
 	}
 
-	task.NodeName = ""
 	for _, eh := range s.ssn.eventHandlers {
 		if eh.DeallocateFunc != nil {
 			eh.DeallocateFunc(&Event{
@@ -337,6 +336,8 @@ func (s *Statement) unallocate(task *api.TaskInfo) error {
 			})
 		}
 	}
+	task.NodeName = ""
+
 	return nil
 }
 
