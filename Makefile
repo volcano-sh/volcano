@@ -75,7 +75,7 @@ manifests: controller-gen
 
 unit-test:
 	go clean -testcache
-	GOMAXPROCS=4 go list ./... | grep -v e2e | xargs go test -v -race
+	go list ./... | grep -v e2e | xargs go test -p 8 -v -race
 
 e2e:
 	./hack/run-e2e-kind.sh
@@ -106,7 +106,7 @@ verify:
 	hack/verify-gofmt.sh
 	hack/verify-golint.sh
 	hack/verify-gencode.sh
-	hack/verify-vendor.sh
+	#hack/verify-vendor.sh
 	hack/verify-vendor-licenses.sh
 
 lint: ## Lint the files

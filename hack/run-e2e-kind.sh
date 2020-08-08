@@ -38,6 +38,7 @@ function install-volcano {
   docker pull ${MPI_EXAMPLE_IMAGE}
   docker pull ${TF_EXAMPLE_IMAGE}
 
+
   echo "Install volcano chart"
   helm install ${CLUSTER_NAME} installer/helm/chart/volcano --namespace kube-system  --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG} --set basic.scheduler_config_file=config/volcano-scheduler-ci.conf --wait
 }
@@ -100,20 +101,22 @@ install-volcano
 # Run e2e test
 cd ${VK_ROOT}
 
+GO111MODULE=off go get github.com/onsi/ginkgo/ginkgo
 
 case ${E2E_TYPE} in
 "ALL")
     echo "Running e2e..."
-    KUBECONFIG=${KUBECONFIG} go test ./test/e2e/job -v -timeout 60m
-    KUBECONFIG=${KUBECONFIG} go test ./test/e2e/scheduling -v -timeout 60m
+    KUBECONFIG=${KUBECONFIG} ginkgo -r --nodes=4 --compilers=4 --randomizeAllSpecs --randomizeSuites --failOnPending --cover --trace --race --slowSpecThreshold=30 --progress ./test/e2e/jobp/ 
+    KUBECONFIG=${KUBECONFIG} ginkgo -r --slowSpecThreshold=30 --progress ./test/e2e/jobseq/ 
     ;;
 "JOB")
-    echo "Running job e2e..."
-    KUBECONFIG=${KUBECONFIG} go test ./test/e2e/job -v -timeout 60m
+    echo "Running parallel job e2e..."
+    KUBECONFIG=${KUBECONFIG} ginkgo -r --nodes=8 --compilers=8 --randomizeAllSpecs --randomizeSuites --failOnPending --cover --trace --race --slowSpecThreshold=30 --progress ./test/e2e/jobp/ 
+    KUBECONFIG=${KUBECONFIG} ginkgo -r --slowSpecThreshold=30 --progress ./test/e2e/jobseq/ 
     ;;
 "SCHEDULING")
     echo "Running scheduling e2e..."
-    KUBECONFIG=${KUBECONFIG} go test ./test/e2e/scheduling -v -timeout 60m
+    KUBECONFIG=${KUBECONFIG} ginkgo -r --slowSpecThreshold=30 --progress ./test/e2e/scheduling/ 
     ;;
 esac
 

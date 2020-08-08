@@ -2,23 +2,12 @@ dist: xenial
 language: go
 go:
   - '1.14.x'
-cache:
-  bundler: true
-  directories:
-    - $HOME/docker
-    - $HOME/.cache/go-build
-    - $HOME/gopath/pkg/mod
 sudo: required
 env:
   - HOME=/home/travis
 services:
   - docker
 go_import_path: volcano.sh/volcano
-before_cache:
-  # Save tagged docker images
-  - >
-    mkdir -p $HOME/docker && docker images -a --filter='dangling=false' --filter=reference='volcanosh/example*' --filter=reference='kindest/node*' --filter=reference='k8s.gcr.io/*' --format '{{.Repository}}:{{.Tag}} {{.ID}}'
-    | xargs -n 2 -t sh -c 'test -e $HOME/docker/$1.tar.gz || docker save $0 | gzip -2 > $HOME/docker/$1.tar.gz'
 before_install:
   - |
     if ! git diff --name-only $TRAVIS_COMMIT_RANGE | grep -qvE '(\.md)|(\.png)|(\.pdf)|(\.html)|^(LICENSE)|^(docs)|^(OWNERS)|^(MAINTAINERS)'
@@ -31,14 +20,17 @@ jobs:
     - stage: Code Verify 
       #Golint & Gofmt
       script:
+        - go mod tidy && go mod vendor
         - make verify
     - #Verify Deployment Yaml
       script:
         - echo "Verifying contents of installer/development.yaml with generated yaml"
         - make TAG=latest generate-yaml
         - make verify-generated-yaml
+        
     - #UT Tests
       script:
+        - go mod tidy && go mod vendor
         - make unit-test
     - stage: E2E Tests #E2E Job
       before_script:
@@ -48,8 +40,8 @@ jobs:
         # Download kind binary (0.6.1)
         - sudo curl -o /usr/local/bin/kind -L https://github.com/kubernetes-sigs/kind/releases/download/v0.6.1/kind-linux-amd64
         - sudo chmod +x /usr/local/bin/kind
-        - if [[ -d $HOME/docker ]]; then ls $HOME/docker/*.tar.gz | xargs -I {file} sh -c "zcat {file} | docker load"; fi
       script:
+        - go mod tidy && go mod vendor
         - make vcctl
         - make images
         - make e2e-test-job
@@ -61,8 +53,8 @@ jobs:
         # Download kind binary (0.6.1)
         - sudo curl -o /usr/local/bin/kind -L https://github.com/kubernetes-sigs/kind/releases/download/v0.6.1/kind-linux-amd64
         - sudo chmod +x /usr/local/bin/kind
-        - if [[ -d $HOME/docker ]]; then ls $HOME/docker/*.tar.gz | xargs -I {file} sh -c "zcat {file} | docker load"; fi
       script:
+        - go mod tidy && go mod vendor
         - make vcctl
         - make images
         - make e2e-test-scheduling
