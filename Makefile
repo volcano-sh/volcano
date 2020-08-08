@@ -75,7 +75,7 @@ manifests: controller-gen
 
 unit-test:
 	go clean -testcache
-	go list ./... | grep -v e2e | xargs go test -v -race
+	GOMAXPROCS=4 go list ./... | grep -v e2e | xargs go test -v -race
 
 e2e:
 	./hack/run-e2e-kind.sh
