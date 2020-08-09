@@ -11,4 +11,5 @@ volcano.sh/volcano/pkg/webhooks/router
 volcano.sh/volcano/pkg/webhooks/schema
 volcano.sh/volcano/test/e2e/jobp
 volcano.sh/volcano/test/e2e/jobseq
-volcano.sh/volcano/test/e2e/scheduling
+volcano.sh/volcano/test/e2e/schedulingaction
+volcano.sh/volcano/test/e2e/schedulingbase
