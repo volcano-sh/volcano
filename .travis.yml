@@ -58,7 +58,7 @@ jobs:
       script:
         - go mod tidy && go mod vendor
         - make unit-test
-    - #E2E Scheduling Base
+    - #E2E Scheduling Base Suits
       before_script:
         # Download kubectl
         - sudo curl -o /usr/local/bin/kubectl -L https://storage.googleapis.com/kubernetes-release/release/v1.16.6/bin/linux/amd64/kubectl
