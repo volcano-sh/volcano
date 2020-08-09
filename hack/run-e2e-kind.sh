@@ -109,14 +109,21 @@ case ${E2E_TYPE} in
     KUBECONFIG=${KUBECONFIG} ginkgo -r --nodes=4 --compilers=4 --randomizeAllSpecs --randomizeSuites --failOnPending --cover --trace --race --slowSpecThreshold=30 --progress ./test/e2e/jobp/ 
     KUBECONFIG=${KUBECONFIG} ginkgo -r --slowSpecThreshold=30 --progress ./test/e2e/jobseq/ 
     ;;
-"JOB")
-    echo "Running parallel job e2e..."
-    KUBECONFIG=${KUBECONFIG} ginkgo -r --nodes=8 --compilers=8 --randomizeAllSpecs --randomizeSuites --failOnPending --cover --trace --race --slowSpecThreshold=30 --progress ./test/e2e/jobp/ 
+"JOBP")
+    echo "Running parallel job e2e suit..."
+    KUBECONFIG=${KUBECONFIG} ginkgo -r --cover --trace --race --slowSpecThreshold=30 --progress ./test/e2e/jobp/ 
+    ;;
+"JOBSEQ")
+    echo "Running sequence job e2e suit..."
     KUBECONFIG=${KUBECONFIG} ginkgo -r --slowSpecThreshold=30 --progress ./test/e2e/jobseq/ 
     ;;
-"SCHEDULING")
-    echo "Running scheduling e2e..."
-    KUBECONFIG=${KUBECONFIG} ginkgo -r --slowSpecThreshold=30 --progress ./test/e2e/scheduling/ 
+"SCHEDULINGBASE")
+    echo "Running scheduling base e2e suit..."
+    KUBECONFIG=${KUBECONFIG} ginkgo -r --slowSpecThreshold=30 --progress ./test/e2e/schedulingbase/ 
+    ;;
+"SCHEDULINGACTION")
+    echo "Running scheduling action e2e suit..."
+    KUBECONFIG=${KUBECONFIG} ginkgo -r --slowSpecThreshold=30 --progress ./test/e2e/schedulingaction/ 
     ;;
 esac
 

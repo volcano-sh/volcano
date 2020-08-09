@@ -80,11 +80,17 @@ unit-test:
 e2e:
 	./hack/run-e2e-kind.sh
 
-e2e-test-scheduling:
-	E2E_TYPE=SCHEDULING ./hack/run-e2e-kind.sh
+e2e-test-schedulingbase:
+	E2E_TYPE=SCHEDULINGBASE ./hack/run-e2e-kind.sh
 
-e2e-test-job:
-	E2E_TYPE=JOB ./hack/run-e2e-kind.sh
+e2e-test-schedulingaction:
+	E2E_TYPE=SCHEDULINGACTION ./hack/run-e2e-kind.sh
+
+e2e-test-jobp:
+	E2E_TYPE=JOBP ./hack/run-e2e-kind.sh
+
+e2e-test-jobseq:
+	E2E_TYPE=JOBSEQ ./hack/run-e2e-kind.sh
 
 generate-yaml: init
 	./hack/generate-yaml.sh TAG=${RELEASE_VER}

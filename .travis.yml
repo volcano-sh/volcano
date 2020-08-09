@@ -27,12 +27,12 @@ jobs:
         - echo "Verifying contents of installer/development.yaml with generated yaml"
         - make TAG=latest generate-yaml
         - make verify-generated-yaml
-        
     - #UT Tests
       script:
         - go mod tidy && go mod vendor
         - make unit-test
-    - stage: E2E Tests #E2E Job
+
+    - stage: Unit Tests and E2E Tests #E2E Jobs Parallel
       before_script:
         # Download kubectl
         - sudo curl -o /usr/local/bin/kubectl -L https://storage.googleapis.com/kubernetes-release/release/v1.16.6/bin/linux/amd64/kubectl
@@ -44,8 +44,8 @@ jobs:
         - go mod tidy && go mod vendor
         - make vcctl
         - make images
-        - make e2e-test-job
-    - #E2E Scheduling
+        - make e2e-test-jobp
+    - #E2E Job Sequence
       before_script:
         # Download kubectl
         - sudo curl -o /usr/local/bin/kubectl -L https://storage.googleapis.com/kubernetes-release/release/v1.16.6/bin/linux/amd64/kubectl
@@ -57,7 +57,34 @@ jobs:
         - go mod tidy && go mod vendor
         - make vcctl
         - make images
-        - make e2e-test-scheduling
+        - make e2e-test-jobseq
+   
+    - #E2E Scheduling Base Suits
+      before_script:
+        # Download kubectl
+        - sudo curl -o /usr/local/bin/kubectl -L https://storage.googleapis.com/kubernetes-release/release/v1.16.6/bin/linux/amd64/kubectl
+        - sudo chmod +x /usr/local/bin/kubectl
+        # Download kind binary (0.6.1)
+        - sudo curl -o /usr/local/bin/kind -L https://github.com/kubernetes-sigs/kind/releases/download/v0.6.1/kind-linux-amd64
+        - sudo chmod +x /usr/local/bin/kind
+      script:
+        - go mod tidy && go mod vendor
+        - make vcctl
+        - make images
+        - make e2e-test-schedulingbase
+    - #E2E Scheduling Action 
+      before_script:
+        # Download kubectl
+        - sudo curl -o /usr/local/bin/kubectl -L https://storage.googleapis.com/kubernetes-release/release/v1.16.6/bin/linux/amd64/kubectl
+        - sudo chmod +x /usr/local/bin/kubectl
+        # Download kind binary (0.6.1)
+        - sudo curl -o /usr/local/bin/kind -L https://github.com/kubernetes-sigs/kind/releases/download/v0.6.1/kind-linux-amd64
+        - sudo chmod +x /usr/local/bin/kind
+      script:
+        - go mod tidy && go mod vendor
+        - make vcctl
+        - make images
+        - make e2e-test-schedulingaction
     - stage: Publish latest Docker Image on Daily Build
       script:
         - echo "Publish latest Docker Images to DockerHub"
