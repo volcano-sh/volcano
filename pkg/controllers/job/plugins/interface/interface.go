@@ -36,12 +36,15 @@ type PluginInterface interface {
 	// for all pod when createJobPod
 	OnPodCreate(pod *v1.Pod, job *vcbatch.Job) error
 
-	// do once when syncJob
+	// called when do job initiation
+	// Note: it can be called multi times, must be idempotent
 	OnJobAdd(job *vcbatch.Job) error
 
-	// do once when killJob
+	// called when killJob
+	// Note: it can be called multi times, must be idempotent
 	OnJobDelete(job *vcbatch.Job) error
 
-	// do once when updateJob
+	// called when job updated
+	// Note: it can be called multi times, must be idempotent
 	OnJobUpdate(job *vcbatch.Job) error
 }
