@@ -112,7 +112,7 @@ verify:
 	hack/verify-gofmt.sh
 	hack/verify-golint.sh
 	hack/verify-gencode.sh
-	#hack/verify-vendor.sh
+	hack/verify-vendor.sh
 	hack/verify-vendor-licenses.sh
 
 lint: ## Lint the files

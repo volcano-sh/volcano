@@ -24,7 +24,6 @@ jobs:
     - stage: Code Verify 
       #Golint & Gofmt
       script:
-        - go mod tidy && go mod vendor
         - make verify
     - #Verify Deployment Yaml
       script:
@@ -33,7 +32,6 @@ jobs:
         - make verify-generated-yaml
     - #UT Tests
       script:
-        - go mod tidy && go mod vendor
         - make unit-test
 
     - stage: E2E Tests #E2E Jobs Parallel
@@ -45,7 +43,6 @@ jobs:
         - sudo curl -o /usr/local/bin/kind -L https://github.com/kubernetes-sigs/kind/releases/download/v0.6.1/kind-linux-amd64
         - sudo chmod +x /usr/local/bin/kind
       script:
-        - go mod tidy && go mod vendor
         - make vcctl
         - make images
         - make e2e-test-jobp
@@ -58,7 +55,6 @@ jobs:
         - sudo curl -o /usr/local/bin/kind -L https://github.com/kubernetes-sigs/kind/releases/download/v0.6.1/kind-linux-amd64
         - sudo chmod +x /usr/local/bin/kind
       script:
-        - go mod tidy && go mod vendor
         - make vcctl
         - make images
         - make e2e-test-jobseq
@@ -72,7 +68,6 @@ jobs:
         - sudo curl -o /usr/local/bin/kind -L https://github.com/kubernetes-sigs/kind/releases/download/v0.6.1/kind-linux-amd64
         - sudo chmod +x /usr/local/bin/kind
       script:
-        - go mod tidy && go mod vendor
         - make vcctl
         - make images
         - make e2e-test-schedulingbase
@@ -85,7 +80,6 @@ jobs:
         - sudo curl -o /usr/local/bin/kind -L https://github.com/kubernetes-sigs/kind/releases/download/v0.6.1/kind-linux-amd64
         - sudo chmod +x /usr/local/bin/kind
       script:
-        - go mod tidy && go mod vendor
         - make vcctl
         - make images
         - make e2e-test-schedulingaction
