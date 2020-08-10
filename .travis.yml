@@ -45,7 +45,7 @@ jobs:
       script:
         - make vcctl
         - make images
-        - make e2e-test-jobp
+        - travis_retry make e2e-test-jobp
     - #E2E Job Sequence
       before_script:
         # Download kubectl
@@ -57,7 +57,7 @@ jobs:
       script:
         - make vcctl
         - make images
-        - make e2e-test-jobseq
+        - travis_retry make e2e-test-jobseq
    
     - #E2E Scheduling Base Suits
       before_script:
@@ -70,7 +70,7 @@ jobs:
       script:
         - make vcctl
         - make images
-        - make e2e-test-schedulingbase
+        - travis_retry make e2e-test-schedulingbase
     - #E2E Scheduling Action 
       before_script:
         # Download kubectl
@@ -82,7 +82,7 @@ jobs:
       script:
         - make vcctl
         - make images
-        - make e2e-test-schedulingaction
+        - travis_retry make e2e-test-schedulingaction
     - stage: Publish latest Docker Image on Daily Build
       script:
         - echo "Publish latest Docker Images to DockerHub"
