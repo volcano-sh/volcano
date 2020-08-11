@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package scheduling
+package jobseq
 
 import (
 	"context"
@@ -433,7 +433,6 @@ func createJobWithPodGroup(ctx *testContext, jobSpec *jobSpec, pgName string) *b
 
 func createJobInner(ctx *testContext, jobSpec *jobSpec) (*batchv1alpha1.Job, error) {
 	ns := getNS(ctx, jobSpec)
-
 	job := &batchv1alpha1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobSpec.name,
@@ -508,6 +507,18 @@ func createJobInner(ctx *testContext, jobSpec *jobSpec) (*batchv1alpha1.Job, err
 	job.Spec.Volumes = jobSpec.volumes
 
 	return ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+}
+
+func updateJob(ctx *testContext, job *batchv1alpha1.Job) error {
+	spec, err := json.Marshal(job.Spec)
+	if err != nil {
+		return err
+	}
+	patch := fmt.Sprintf(`[{"op": "replace", "path": "/spec", "value":%s}]`, spec)
+	patchBytes := []byte(patch)
+	_, err = ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Patch(context.TODO(),
+		job.Name, types.JSONPatchType, patchBytes, metav1.PatchOptions{})
+	return err
 }
 
 func waitTaskPhase(ctx *testContext, job *batchv1alpha1.Job, phase []v1.PodPhase, taskNum int) error {

@@ -11,7 +11,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package job
+package schedulingbase
 
 import (
 	"testing"
@@ -22,5 +22,5 @@ import (
 
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Volcano Job Test Suite")
+	RunSpecs(t, "Volcano Scheduler Test Suite")
 }
