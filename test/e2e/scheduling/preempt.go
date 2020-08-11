@@ -18,6 +18,7 @@ package scheduling
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -104,6 +105,8 @@ var _ = Describe("Job E2E Test", func() {
 		preempteeJob := createJob(ctx, job)
 		err := waitTasksReady(ctx, preempteeJob, int(rep))
 		Expect(err).NotTo(HaveOccurred())
+
+		time.Sleep(30 * time.Second)
 
 		job.name = "preemptor"
 		job.pri = highPriority
