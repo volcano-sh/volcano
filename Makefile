@@ -14,7 +14,6 @@
 
 BIN_DIR=_output/bin
 RELEASE_DIR=_output/release
-REL_OSARCH=linux/amd64
 REPO_PATH=volcano.sh/volcano
 IMAGE_PREFIX=volcanosh/vc
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
@@ -25,6 +24,30 @@ ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
 else
 GOBIN=$(shell go env GOBIN)
+endif
+
+# Get OS architecture
+OSARCH=$(shell uname -m)
+ifeq ($(OSARCH),x86_64)
+REL_OSARCH=linux/amd64
+else ifeq ($(OSARCH),x64)
+REL_OSARCH=linux/amd64
+else ifeq ($(OSARCH),aarch64)
+REL_OSARCH=linux/arm64
+else ifeq ($(OSARCH),aarch64_be)
+REL_OSARCH=linux/arm64
+else ifeq ($(OSARCH),armv8b)
+REL_OSARCH=linux/arm64
+else ifeq ($(OSARCH),armv8l)
+REL_OSARCH=linux/arm64
+else ifeq ($(OSARCH),i386)
+REL_OSARCH=linux/x86
+else ifeq ($(OSARCH),i686)
+REL_OSARCH=linux/x86
+else ifeq ($(OSARCH),arm)
+REL_OSARCH=linux/arm
+else
+REL_OSARCH=linux/$(OSARCH)
 endif
 
 include Makefile.def
