@@ -31,7 +31,6 @@ import (
 	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/helpers"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
-	"volcano.sh/volcano/pkg/controllers/job/plugins/env"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
@@ -42,25 +41,20 @@ type sshPlugin struct {
 	client pluginsinterface.PluginClientset
 
 	// flag parse args
-	noRoot         bool
 	sshKeyFilePath string
 }
 
 // New creates ssh plugin
 func New(client pluginsinterface.PluginClientset, arguments []string) pluginsinterface.PluginInterface {
-	sshPlugin := sshPlugin{
+	p := sshPlugin{
 		pluginArguments: arguments,
 		client:          client,
 		sshKeyFilePath:  SSHAbsolutePath,
 	}
 
-	sshPlugin.addFlags()
-	// if not set ssh key files path, use the default.
-	if sshPlugin.noRoot && sshPlugin.sshKeyFilePath == SSHAbsolutePath {
-		sshPlugin.sshKeyFilePath = env.ConfigMapMountPath + "/" + SSHRelativePath
-	}
+	p.addFlags()
 
-	return &sshPlugin
+	return &p
 }
 
 func (sp *sshPlugin) Name() string {
@@ -189,8 +183,6 @@ func (sp *sshPlugin) secretName(job *batch.Job) string {
 
 func (sp *sshPlugin) addFlags() {
 	flagSet := flag.NewFlagSet(sp.Name(), flag.ContinueOnError)
-	// TODO: deprecate no-root
-	flagSet.BoolVar(&sp.noRoot, "no-root", sp.noRoot, "The ssh user, --no-root is common user")
 	flagSet.StringVar(&sp.sshKeyFilePath, "ssh-key-file-path", sp.sshKeyFilePath, "The path used to store "+
 		"ssh private and public keys, it is `/root/.ssh` by default.")
 
