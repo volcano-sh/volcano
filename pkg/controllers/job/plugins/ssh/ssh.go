@@ -121,7 +121,7 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 				Path: SSHRelativePath + "/" + SSHPublicKey,
 			},
 			{
-				Key:  SSHPublicKey,
+				Key:  SSHAuthorizedKeys,
 				Path: SSHRelativePath + "/" + SSHAuthorizedKeys,
 			},
 			{
@@ -177,6 +177,7 @@ func generateRsaKey(job *batch.Job) (map[string][]byte, error) {
 	data := make(map[string][]byte)
 	data[SSHPrivateKey] = privateKeyBytes
 	data[SSHPublicKey] = publicKeyBytes
+	data[SSHAuthorizedKeys] = publicKeyBytes
 	data[SSHConfig] = []byte(generateSSHConfig(job))
 
 	return data, nil
