@@ -60,10 +60,14 @@ You can try volcano by one the following two ways.
 
 ### Install with YAML files
 
-Install volcano on an existing Kubernetes cluster.
+Install volcano on an existing Kubernetes cluster. This way is both available for x86_64 and arm64 architecture.
 
 ```
+For x86_64:
 kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/master/installer/volcano-development.yaml
+
+For arm64:
+kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/master/installer/volcano-development-arm64.yaml
 ```
 
 Enjoy! Volcano will create the following resources in `volcano-system` namespace.
@@ -101,6 +105,8 @@ If you don't have a kubernetes cluster, try one-click install from code base:
 ```bash
 ./hack/local-up-volcano.sh
 ```
+
+This way is only available for x86_64 temporarily.
 
 ## Meeting
 
