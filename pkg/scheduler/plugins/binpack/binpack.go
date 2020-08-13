@@ -38,7 +38,7 @@ const (
 	BinpackWeight = "binpack.weight"
 	// BinpackCPU is the key for weight of cpu
 	BinpackCPU = "binpack.cpu"
-	// BinpackMemory is the key for memory of cpu
+	// BinpackMemory is the key for weight of memory
 	BinpackMemory = "binpack.memory"
 
 	// BinpackResources is the key for additional resource key name
