@@ -37,11 +37,10 @@ import (
 )
 
 func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseMap, updateStatus state.UpdateStatusFn) error {
-	klog.V(3).Infof("Killing Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
-	defer klog.V(3).Infof("Finished Job <%s/%s> killing", jobInfo.Job.Namespace, jobInfo.Job.Name)
-
 	job := jobInfo.Job
-	klog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
+	klog.V(3).Infof("Killing Job <%s/%s>, current version %d", job.Namespace, job.Name, job.Status.Version)
+	defer klog.V(3).Infof("Finished Job <%s/%s> killing, current version %d", job.Namespace, job.Name, job.Status.Version)
+
 	if job.DeletionTimestamp != nil {
 		klog.Infof("Job <%s/%s> is terminating, skip management process.",
 			job.Namespace, job.Name)
@@ -144,9 +143,6 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 
 func (cc *jobcontroller) initiateJob(job *batch.Job) (*batch.Job, error) {
 	klog.V(3).Infof("Starting to initiate Job <%s/%s>", job.Namespace, job.Name)
-	defer klog.V(3).Infof("Finished Job <%s/%s> initiate", job.Namespace, job.Name)
-
-	klog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 	jobInstance, err := cc.initJobStatus(job)
 	if err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.JobStatusError),
@@ -178,9 +174,6 @@ func (cc *jobcontroller) initiateJob(job *batch.Job) (*batch.Job, error) {
 
 func (cc *jobcontroller) initOnJobUpdate(job *batch.Job) error {
 	klog.V(3).Infof("Starting to initiate Job <%s/%s> on update", job.Namespace, job.Name)
-	defer klog.V(3).Infof("Finished Job <%s/%s> initiate on update", job.Namespace, job.Name)
-
-	klog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
 
 	if err := cc.pluginOnJobUpdate(job); err != nil {
 		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.PluginError),
@@ -198,8 +191,9 @@ func (cc *jobcontroller) initOnJobUpdate(job *batch.Job) error {
 }
 
 func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
-	klog.V(3).Infof("Starting to sync up Job <%s/%s>", jobInfo.Job.Namespace, jobInfo.Job.Name)
-	defer klog.V(3).Infof("Finished Job <%s/%s> sync up", jobInfo.Job.Namespace, jobInfo.Job.Name)
+	job := jobInfo.Job
+	klog.V(3).Infof("Starting to sync up Job <%s/%s>, current version %d", job.Namespace, job.Name, job.Status.Version)
+	defer klog.V(3).Infof("Finished Job <%s/%s> sync up, current version %d", job.Namespace, job.Name, job.Status.Version)
 
 	if jobInfo.Job.DeletionTimestamp != nil {
 		klog.Infof("Job <%s/%s> is terminating, skip management process.",
@@ -207,17 +201,16 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		return nil
 	}
 
-	job := jobInfo.Job.DeepCopy()
-	klog.Infof("Current Version is: %d of job: %s/%s", job.Status.Version, job.Namespace, job.Name)
+	// deep copy job to prevent mutate it
+	job = job.DeepCopy()
 
+	var err error
 	// Skip job initiation if job is already initiated
 	if !isInitiated(job) {
-		var err error
 		if job, err = cc.initiateJob(job); err != nil {
 			return err
 		}
 	} else {
-		var err error
 		// TODO: optimize this call it only when scale up/down
 		if err = cc.initOnJobUpdate(job); err != nil {
 			return err
@@ -633,7 +626,7 @@ func classifyAndAddUpPodBaseOnPhase(pod *v1.Pod, pending, running, succeeded, fa
 }
 
 func isInitiated(job *batch.Job) bool {
-	if job.Status.State.Phase == "" || job.Status.State.Phase == batch.Pending || job.Status.State.Phase == batch.Restarting {
+	if job.Status.State.Phase == "" || job.Status.State.Phase == batch.Pending {
 		return false
 	}
 
