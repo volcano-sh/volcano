@@ -16,9 +16,9 @@ limitations under the License.
 
 package v1beta1
 
-const KubeGroupHierarchyAnnotationKey = "scheduling.k8s.io/group-hierarchy"
+const KubeHierarchyAnnotationKey = "volcano.sh/hierarchy"
 
-const KubeGroupHierarchyWeightAnnotationKey = "scheduling.k8s.io/group-hierarchy-weight"
+const KubeHierarchyWeightAnnotationKey = "volcano.sh/hierarchy-weights"
 
 // KubeGroupNameAnnotationKey is the annotation key of Pod to identify
 // which PodGroup it belongs to.

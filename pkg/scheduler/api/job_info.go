@@ -127,8 +127,6 @@ type JobInfo struct {
 
 	Name      string
 	Namespace string
-	Hierarchy string
-	Weights   string
 
 	Queue QueueID
 
@@ -176,8 +174,6 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.MinAvailable = pg.Spec.MinMember
 	ji.Queue = QueueID(pg.Spec.Queue)
 	ji.CreationTimestamp = pg.GetCreationTimestamp()
-	ji.Hierarchy = pg.Annotations[v1beta1.KubeGroupHierarchyAnnotationKey]
-	ji.Weights = pg.Annotations[v1beta1.KubeGroupHierarchyWeightAnnotationKey]
 
 	ji.PodGroup = pg
 }
@@ -245,8 +241,6 @@ func (ji *JobInfo) Clone() *JobInfo {
 		UID:       ji.UID,
 		Name:      ji.Name,
 		Namespace: ji.Namespace,
-		Hierarchy: ji.Hierarchy,
-		Weights:   ji.Weights,
 		Queue:     ji.Queue,
 		Priority:  ji.Priority,
 

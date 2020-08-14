@@ -1,0 +1,39 @@
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: root-eng-prod
+  annotations:
+    "volcano.sh/hierarchy": "root/eng/prod"
+    "volcano.sh/hierarchy-weights": "1/2/8"
+spec:
+  weight: 1
+---
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: root-eng-dev
+  annotations:
+    "volcano.sh/hierarchy": "root/eng/dev"
+    "volcano.sh/hierarchy-weights": "1/2/2"
+spec:
+  weight: 1
+---
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: root-sci-prod
+  annotations:
+    "volcano.sh/hierarchy": "root/sci/prod"
+    "volcano.sh/hierarchy-weights": "1/8/8"
+spec:
+  weight: 1
+---
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: root-sci-dev
+  annotations:
+    "volcano.sh/hierarchy": "root/sci/dev"
+    "volcano.sh/hierarchy-weights": "1/8/2"
+spec:
+  weight: 1
