@@ -780,10 +780,12 @@ func TestRestartingState_Execute(t *testing.T) {
 						MaxRetry: 3,
 						Tasks: []v1alpha1.TaskSpec{
 							{
-								Name: "task1",
+								Name:     "task1",
+								Replicas: 1,
 							},
 							{
-								Name: "task2",
+								Name:     "task2",
+								Replicas: 1,
 							},
 						},
 					},
