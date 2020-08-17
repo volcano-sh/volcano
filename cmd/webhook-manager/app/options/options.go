@@ -41,6 +41,7 @@ type Config struct {
 	WebhookName       string
 	WebhookNamespace  string
 	SchedulerName     string
+	EnqueueEnabled    bool
 	WebhookURL        string
 }
 
@@ -69,6 +70,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.WebhookURL, "webhook-url", "", "The url of this webhook")
 
 	fs.StringVar(&c.SchedulerName, "scheduler-name", defaultSchedulerName, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
+	fs.BoolVar(&c.EnqueueEnabled, "enqueue-enabled", true, "Whether enqueue is enabled in volcano scheduler")
 }
 
 // CheckPortOrDie check valid port range.

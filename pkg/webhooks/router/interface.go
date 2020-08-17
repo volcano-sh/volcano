@@ -28,9 +28,10 @@ import (
 type AdmitFunc func(v1beta1.AdmissionReview) *v1beta1.AdmissionResponse
 
 type AdmissionServiceConfig struct {
-	SchedulerName string
-	KubeClient    kubernetes.Interface
-	VolcanoClient versioned.Interface
+	SchedulerName  string
+	EnqueueEnabled bool
+	KubeClient     kubernetes.Interface
+	VolcanoClient  versioned.Interface
 }
 
 type AdmissionService struct {

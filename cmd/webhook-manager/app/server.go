@@ -60,6 +60,7 @@ func Run(config *options.Config) error {
 		if service.Config != nil {
 			service.Config.VolcanoClient = vClient
 			service.Config.SchedulerName = config.SchedulerName
+			service.Config.EnqueueEnabled = config.EnqueueEnabled
 		}
 
 		klog.V(3).Infof("Registered '%s' as webhook.", service.Path)

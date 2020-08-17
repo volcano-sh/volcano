@@ -111,24 +111,29 @@ func validatePod(pod *v1.Pod, reviewResponse *v1beta1.AdmissionResponse) string 
 		pgName = pod.Annotations[vcv1beta1.KubeGroupNameAnnotationKey]
 	}
 	if pgName != "" {
-		if err := checkPGPhase(pod, pgName, true); err != nil {
-			msg = err.Error()
-			reviewResponse.Allowed = false
+		if config.EnqueueEnabled {
+			if err := checkPGPhase(pod, pgName, true); err != nil {
+				msg = err.Error()
+				reviewResponse.Allowed = false
+			}
 		}
 		return msg
 	}
 
 	// normal pod, SN == volcano
 	pgName = helpers.GeneratePodgroupName(pod)
-	if err := checkPGPhase(pod, pgName, false); err != nil {
-		msg = err.Error()
-		reviewResponse.Allowed = false
+	if config.EnqueueEnabled {
+		if err := checkPGPhase(pod, pgName, false); err != nil {
+			msg = err.Error()
+			reviewResponse.Allowed = false
+		}
 	}
 
 	return msg
 }
 
 func checkPGPhase(pod *v1.Pod, pgName string, isVCJob bool) error {
+	// TODO: cache podgroup
 	pg, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 	if err != nil {
 		if isVCJob || (!isVCJob && !apierrors.IsNotFound(err)) {
