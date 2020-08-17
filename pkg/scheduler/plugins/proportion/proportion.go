@@ -48,6 +48,15 @@ type queueAttr struct {
 	inqueue *api.Resource
 }
 
+// GetJobMinResources return the min resources of podgroup.
+func GetJobMinResources(s scheduling.PodGroupSpec) *api.Resource {
+	if s.MinResources == nil {
+		return api.EmptyResource()
+	}
+
+	return api.NewResource(*s.MinResources)
+}
+
 // New return proportion action
 func New(arguments framework.Arguments) framework.Plugin {
 	return &proportionPlugin{
@@ -103,7 +112,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
-			attr.inqueue.Add(api.NewResource(*job.PodGroup.Spec.MinResources))
+			attr.inqueue.Add(GetJobMinResources(job.PodGroup.Spec))
 		}
 	}
 
@@ -230,11 +239,15 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			return true
 		}
 
-		minReq := api.NewResource(*job.PodGroup.Spec.MinResources)
+		if job.PodGroup.Spec.MinResources == nil {
+			return true
+		}
+
+		minReq := GetJobMinResources(job.PodGroup.Spec)
 		// The queue resource quota limit has not reached
 		inqueue := minReq.Add(attr.allocated).Add(attr.inqueue).LessEqual(api.NewResource(queue.Queue.Spec.Capability))
 		if inqueue {
-			attr.inqueue.Add(api.NewResource(*job.PodGroup.Spec.MinResources))
+			attr.inqueue.Add(GetJobMinResources(job.PodGroup.Spec))
 		}
 		return inqueue
 	})
