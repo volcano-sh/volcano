@@ -71,6 +71,10 @@ func (ep *envPlugin) OnJobAdd(job *batch.Job) error {
 }
 
 func (ep *envPlugin) OnJobDelete(job *batch.Job) error {
+	if job.Status.ControlledResources["plugin-"+ep.Name()] != ep.Name() {
+		return nil
+	}
+	delete(job.Status.ControlledResources, "plugin-"+ep.Name())
 	return nil
 }
 

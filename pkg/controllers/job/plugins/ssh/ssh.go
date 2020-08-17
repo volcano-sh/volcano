@@ -88,7 +88,15 @@ func (sp *sshPlugin) OnJobAdd(job *batch.Job) error {
 }
 
 func (sp *sshPlugin) OnJobDelete(job *batch.Job) error {
-	return helpers.DeleteSecret(job, sp.client.KubeClients, sp.secretName(job))
+	if job.Status.ControlledResources["plugin-"+sp.Name()] != sp.Name() {
+		return nil
+	}
+	if err := helpers.DeleteSecret(job, sp.client.KubeClients, sp.secretName(job)); err != nil {
+		return err
+	}
+	delete(job.Status.ControlledResources, "plugin-"+sp.Name())
+
+	return nil
 }
 
 func (sp *sshPlugin) OnJobUpdate(_ *batch.Job) error {

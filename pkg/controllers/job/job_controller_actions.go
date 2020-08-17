@@ -102,6 +102,11 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 		}
 	}
 
+	// must be called before update job status
+	if err := cc.pluginOnJobDelete(job); err != nil {
+		return err
+	}
+
 	// Update Job status
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
 	if err != nil {
@@ -122,10 +127,6 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 				job.Namespace, job.Name, err)
 			return err
 		}
-	}
-
-	if err := cc.pluginOnJobDelete(job); err != nil {
-		return err
 	}
 
 	// NOTE(k82cn): DO NOT delete input/output until job is deleted.
