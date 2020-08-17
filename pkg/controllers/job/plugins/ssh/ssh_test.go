@@ -19,7 +19,6 @@ package ssh
 import (
 	"testing"
 
-	"volcano.sh/volcano/pkg/controllers/job/plugins/env"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
@@ -33,25 +32,11 @@ func TestSSHPlugin(t *testing.T) {
 	}{
 		{
 			name:           "no params specified",
-			noRoot:         false,
 			sshKeyFilePath: SSHAbsolutePath,
-		},
-		{
-			name:           "--no-root=true, ssh-key-file-path empty",
-			params:         []string{"--no-root=true"},
-			noRoot:         true,
-			sshKeyFilePath: env.ConfigMapMountPath + "/" + SSHRelativePath,
-		},
-		{
-			name:           "--no-root=true, --ssh-key-file-path=/a/b",
-			params:         []string{"--no-root=true", "--ssh-key-file-path=/a/b"},
-			noRoot:         true,
-			sshKeyFilePath: "/a/b",
 		},
 		{
 			name:           "--ssh-key-file-path=/a/b",
 			params:         []string{"--ssh-key-file-path=/a/b"},
-			noRoot:         false,
 			sshKeyFilePath: "/a/b",
 		},
 	}
@@ -60,9 +45,6 @@ func TestSSHPlugin(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			pluginInterface := New(pluginsinterface.PluginClientset{}, test.params)
 			plugin := pluginInterface.(*sshPlugin)
-			if plugin.noRoot != test.noRoot {
-				t.Errorf("Expected noRoot=%v, got %v", test.noRoot, plugin.noRoot)
-			}
 
 			if plugin.sshKeyFilePath != test.sshKeyFilePath {
 				t.Errorf("Expected sshKeyFilePath=%s, got %s", test.sshKeyFilePath, plugin.sshKeyFilePath)
