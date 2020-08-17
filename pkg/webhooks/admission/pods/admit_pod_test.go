@@ -36,12 +36,13 @@ func TestValidatePod(t *testing.T) {
 	isController := true
 
 	testCases := []struct {
-		Name           string
-		Pod            v1.Pod
-		ExpectErr      bool
-		reviewResponse v1beta1.AdmissionResponse
-		ret            string
-		disabledPG     bool
+		Name            string
+		Pod             v1.Pod
+		ExpectErr       bool
+		reviewResponse  v1beta1.AdmissionResponse
+		ret             string
+		disabledPG      bool
+		disableEnqueque bool
 	}{
 		// validate normal pod with default-scheduler
 		{
@@ -88,7 +89,7 @@ func TestValidatePod(t *testing.T) {
 			ret:            "failed to create pod <test/normal-pod-2> as the podgroup phase is Pending",
 			ExpectErr:      true,
 		},
-		// validate volcano pod with volcano scheduler
+		// validate volcano pod with volcano scheduler enqueue disabled
 		{
 			Name: "validate volcano-scheduler volcano pod",
 			Pod: v1.Pod{
@@ -109,6 +110,28 @@ func TestValidatePod(t *testing.T) {
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
 			ret:            "failed to create pod <test/volcano-pod-1> as the podgroup phase is Pending",
 			ExpectErr:      true,
+		},
+		// validate volcano pod with volcano scheduler
+		{
+			Name: "validate volcano-scheduler volcano pod",
+			Pod: v1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:   namespace,
+					Name:        "volcano-pod-1",
+					Annotations: map[string]string{vcschedulingv1.KubeGroupNameAnnotationKey: pgName},
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "volcano",
+				},
+			},
+			disableEnqueque: true,
+			reviewResponse:  v1beta1.AdmissionResponse{Allowed: true},
+			ret:             "",
+			ExpectErr:       false,
 		},
 		// validate volcano pod with volcano scheduler when get pg failed
 		{
@@ -153,6 +176,11 @@ func TestValidatePod(t *testing.T) {
 		// create fake volcano clientset
 		config.VolcanoClient = vcclient.NewSimpleClientset()
 		config.SchedulerName = "volcano"
+		config.EnqueueEnabled = true
+
+		if testCase.disableEnqueque {
+			config.EnqueueEnabled = false
+		}
 
 		if !testCase.disabledPG {
 			_, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), pg, metav1.CreateOptions{})
