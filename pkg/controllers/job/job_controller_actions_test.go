@@ -143,6 +143,11 @@ func TestKillJobFunc(t *testing.T) {
 			testcase.JobInfo.Job = testcase.Job
 			testcase.JobInfo.Job.Spec.Plugins = jobPlugins
 
+			testcase.JobInfo.Job.Status.ControlledResources = map[string]string{}
+			for _, name := range testcase.Plugins {
+				testcase.JobInfo.Job.Status.ControlledResources["plugin-"+name] = name
+			}
+
 			err = fakeController.killJob(testcase.JobInfo, testcase.PodRetainPhase, testcase.UpdateStatus)
 			if err != nil {
 				t.Errorf("Case %d (%s): expected: No Error, but got error %v.", i, testcase.Name, err)
