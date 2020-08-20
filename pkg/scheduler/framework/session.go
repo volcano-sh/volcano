@@ -26,7 +26,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog"
 
-	"volcano.sh/volcano/pkg/apis/scheduling"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -42,7 +42,7 @@ type Session struct {
 
 	// podGroupStatus cache podgroup status during schedule
 	// This should not be mutated after initiated
-	podGroupStatus map[api.JobID]scheduling.PodGroupStatus
+	podGroupStatus map[api.JobID]schedulingv1beta1.PodGroupStatus
 
 	Jobs          map[api.JobID]*api.JobInfo
 	Nodes         map[string]*api.NodeInfo
@@ -79,7 +79,7 @@ func openSession(cache cache.Cache) *Session {
 		kubeClient: cache.Client(),
 		cache:      cache,
 
-		podGroupStatus: map[api.JobID]scheduling.PodGroupStatus{},
+		podGroupStatus: map[api.JobID]schedulingv1beta1.PodGroupStatus{},
 
 		Jobs:   map[api.JobID]*api.JobInfo{},
 		Nodes:  map[string]*api.NodeInfo{},
@@ -116,8 +116,8 @@ func openSession(cache cache.Cache) *Session {
 
 		if vjr := ssn.JobValid(job); vjr != nil {
 			if !vjr.Pass {
-				jc := &scheduling.PodGroupCondition{
-					Type:               scheduling.PodGroupUnschedulableType,
+				jc := &schedulingv1beta1.PodGroupCondition{
+					Type:               schedulingv1beta1.PodGroupUnschedulableType,
 					Status:             v1.ConditionTrue,
 					LastTransitionTime: metav1.Now(),
 					TransitionID:       string(ssn.UID),
@@ -159,12 +159,12 @@ func closeSession(ssn *Session) {
 	klog.V(3).Infof("Close Session %v", ssn.UID)
 }
 
-func jobStatus(ssn *Session, jobInfo *api.JobInfo) scheduling.PodGroupStatus {
+func jobStatus(ssn *Session, jobInfo *api.JobInfo) schedulingv1beta1.PodGroupStatus {
 	status := jobInfo.PodGroup.Status
 
 	unschedulable := false
 	for _, c := range status.Conditions {
-		if c.Type == scheduling.PodGroupUnschedulableType &&
+		if c.Type == schedulingv1beta1.PodGroupUnschedulableType &&
 			c.Status == v1.ConditionTrue &&
 			c.TransitionID == string(ssn.UID) {
 
@@ -175,7 +175,7 @@ func jobStatus(ssn *Session, jobInfo *api.JobInfo) scheduling.PodGroupStatus {
 
 	// If running tasks && unschedulable, unknown phase
 	if len(jobInfo.TaskStatusIndex[api.Running]) != 0 && unschedulable {
-		status.Phase = scheduling.PodGroupUnknown
+		status.Phase = schedulingv1beta1.PodGroupUnknown
 	} else {
 		allocated := 0
 		for status, tasks := range jobInfo.TaskStatusIndex {
@@ -186,9 +186,9 @@ func jobStatus(ssn *Session, jobInfo *api.JobInfo) scheduling.PodGroupStatus {
 
 		// If there're enough allocated resource, it's running
 		if int32(allocated) >= jobInfo.PodGroup.Spec.MinMember {
-			status.Phase = scheduling.PodGroupRunning
-		} else if jobInfo.PodGroup.Status.Phase != scheduling.PodGroupInqueue {
-			status.Phase = scheduling.PodGroupPending
+			status.Phase = schedulingv1beta1.PodGroupRunning
+		} else if jobInfo.PodGroup.Status.Phase != schedulingv1beta1.PodGroupInqueue {
+			status.Phase = schedulingv1beta1.PodGroupPending
 		}
 	}
 
@@ -374,7 +374,7 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 }
 
 // UpdatePodGroupCondition update job condition accordingly.
-func (ssn *Session) UpdatePodGroupCondition(jobInfo *api.JobInfo, cond *scheduling.PodGroupCondition) error {
+func (ssn *Session) UpdatePodGroupCondition(jobInfo *api.JobInfo, cond *schedulingv1beta1.PodGroupCondition) error {
 	job, ok := ssn.Jobs[jobInfo.UID]
 	if !ok {
 		return fmt.Errorf("failed to find job <%s/%s>", jobInfo.Namespace, jobInfo.Name)
@@ -408,7 +408,7 @@ func (ssn Session) KubeClient() kubernetes.Interface {
 	return ssn.kubeClient
 }
 
-//String return nodes and jobs information in the session
+// String return nodes and jobs information in the session
 func (ssn Session) String() string {
 	msg := fmt.Sprintf("Session %v: \n", ssn.UID)
 

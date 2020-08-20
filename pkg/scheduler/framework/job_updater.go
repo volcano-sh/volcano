@@ -9,7 +9,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
-	"volcano.sh/volcano/pkg/apis/scheduling"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -51,7 +51,7 @@ func (ju *jobUpdater) UpdateAll() {
 	workqueue.ParallelizeUntil(context.TODO(), jobUpdaterWorker, len(ju.jobQueue), ju.updateJob)
 }
 
-func isPodGroupConditionsUpdated(newCondition, oldCondition []scheduling.PodGroupCondition) bool {
+func isPodGroupConditionsUpdated(newCondition, oldCondition []schedulingv1beta1.PodGroupCondition) bool {
 	if len(newCondition) != len(oldCondition) {
 		return true
 	}
@@ -84,7 +84,7 @@ func isPodGroupConditionsUpdated(newCondition, oldCondition []scheduling.PodGrou
 	return false
 }
 
-func isPodGroupStatusUpdated(newStatus, oldStatus scheduling.PodGroupStatus) bool {
+func isPodGroupStatusUpdated(newStatus, oldStatus schedulingv1beta1.PodGroupStatus) bool {
 	newCondition := newStatus.Conditions
 	newStatus.Conditions = nil
 	oldCondition := oldStatus.Conditions
