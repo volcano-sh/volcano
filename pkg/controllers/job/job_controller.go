@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"hash"
 	"hash/fnv"
-	"sync"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -206,10 +205,6 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
 	cc.pcInformer = sharedInformers.Scheduling().V1beta1().PriorityClasses()
-	cc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    cc.addPriorityClass,
-		DeleteFunc: cc.deletePriorityClass,
-	})
 	cc.pcLister = cc.pcInformer.Lister()
 	cc.pcSynced = cc.pcInformer.Informer().HasSynced
 
