@@ -26,7 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	schedulingv2 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -71,7 +71,7 @@ func BuildPod(namespace, name, nodename string, p v1.PodPhase, req v1.ResourceLi
 			Namespace: namespace,
 			Labels:    labels,
 			Annotations: map[string]string{
-				schedulingv2.KubeGroupNameAnnotationKey: groupName,
+				schedulingv1beta1.KubeGroupNameAnnotationKey: groupName,
 			},
 		},
 		Status: v1.PodStatus{
@@ -150,7 +150,7 @@ func (ftsu *FakeStatusUpdater) UpdatePodCondition(pod *v1.Pod, podCondition *v1.
 }
 
 // UpdatePodGroup is a empty function
-func (ftsu *FakeStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup, error) {
+func (ftsu *FakeStatusUpdater) UpdatePodGroup(pg *schedulingv1beta1.PodGroup) (*schedulingv1beta1.PodGroup, error) {
 	// do nothing here
 	return nil, nil
 }

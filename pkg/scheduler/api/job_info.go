@@ -25,8 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	"volcano.sh/volcano/pkg/apis/scheduling"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
 // TaskID is UID type for Task
@@ -54,7 +53,7 @@ type TaskInfo struct {
 }
 
 func getJobID(pod *v1.Pod) JobID {
-	if gn, found := pod.Annotations[v1beta1.KubeGroupNameAnnotationKey]; found && len(gn) != 0 {
+	if gn, found := pod.Annotations[schedulingv1beta1.KubeGroupNameAnnotationKey]; found && len(gn) != 0 {
 		// Make sure Pod and PodGroup belong to the same namespace.
 		jobID := fmt.Sprintf("%s/%s", pod.Namespace, gn)
 		return JobID(jobID)
@@ -147,7 +146,7 @@ type JobInfo struct {
 	TotalRequest *Resource
 
 	CreationTimestamp metav1.Time
-	PodGroup          *PodGroup
+	PodGroup          *schedulingv1beta1.PodGroup
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks
@@ -179,7 +178,7 @@ func (ji *JobInfo) UnsetPodGroup() {
 }
 
 // SetPodGroup sets podGroup details to a job
-func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
+func (ji *JobInfo) SetPodGroup(pg *schedulingv1beta1.PodGroup) {
 	ji.Name = pg.Name
 	ji.Namespace = pg.Namespace
 	ji.MinAvailable = pg.Spec.MinMember
@@ -320,7 +319,7 @@ func (ji *JobInfo) FitError() string {
 		sort.Strings(reasonStrings)
 		return reasonStrings
 	}
-	reasonMsg := fmt.Sprintf("%v, %v.", scheduling.PodGroupNotReady, strings.Join(sortReasonsHistogram(), ", "))
+	reasonMsg := fmt.Sprintf("%v, %v.", schedulingv1beta1.PodGroupNotReady, strings.Join(sortReasonsHistogram(), ", "))
 	return reasonMsg
 }
 

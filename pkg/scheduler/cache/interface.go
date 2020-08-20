@@ -20,6 +20,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -65,7 +66,7 @@ type VolumeBinder interface {
 	BindVolumes(task *api.TaskInfo) error
 }
 
-//Binder interface for binding task and hostname
+// Binder interface for binding task and hostname
 type Binder interface {
 	Bind(task *v1.Pod, hostname string) error
 }
@@ -78,5 +79,5 @@ type Evictor interface {
 // StatusUpdater updates pod with given PodCondition
 type StatusUpdater interface {
 	UpdatePodCondition(pod *v1.Pod, podCondition *v1.PodCondition) (*v1.Pod, error)
-	UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup, error)
+	UpdatePodGroup(pg *schedulingv1beta1.PodGroup) (*schedulingv1beta1.PodGroup, error)
 }

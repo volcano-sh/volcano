@@ -19,7 +19,7 @@ package api
 import (
 	"k8s.io/apimachinery/pkg/types"
 
-	"volcano.sh/volcano/pkg/apis/scheduling"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
 // QueueID is UID type, serves as unique ID for each queue
@@ -32,11 +32,11 @@ type QueueInfo struct {
 
 	Weight int32
 
-	Queue *scheduling.Queue
+	Queue *schedulingv1beta1.Queue
 }
 
 // NewQueueInfo creates new queueInfo object
-func NewQueueInfo(queue *scheduling.Queue) *QueueInfo {
+func NewQueueInfo(queue *schedulingv1beta1.Queue) *QueueInfo {
 	return &QueueInfo{
 		UID:  QueueID(queue.Name),
 		Name: queue.Name,

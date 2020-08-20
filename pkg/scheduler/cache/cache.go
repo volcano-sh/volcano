@@ -44,8 +44,6 @@ import (
 	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
-	"volcano.sh/volcano/pkg/apis/scheduling"
-	schedulingscheme "volcano.sh/volcano/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
@@ -112,7 +110,7 @@ type defaultBinder struct {
 	kubeclient *kubernetes.Clientset
 }
 
-//Bind will send bind request to api server
+// Bind will send bind request to api server
 func (db *defaultBinder) Bind(p *v1.Pod, hostname string) error {
 	if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(context.TODO(),
 		&v1.Binding{
@@ -134,7 +132,7 @@ type defaultEvictor struct {
 	recorder   record.EventRecorder
 }
 
-//Evict will send delete pod request to api server
+// Evict will send delete pod request to api server
 func (de *defaultEvictor) Evict(p *v1.Pod, reason string) error {
 	klog.V(3).Infof("Evicting pod %v/%v, because of %v", p.Namespace, p.Name, reason)
 
@@ -208,26 +206,14 @@ func (su *defaultStatusUpdater) UpdatePodCondition(pod *v1.Pod, condition *v1.Po
 }
 
 // UpdatePodGroup will Update pod with podCondition
-func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*schedulingapi.PodGroup, error) {
-	podgroup := &vcv1beta1.PodGroup{}
-	if err := schedulingscheme.Scheme.Convert(&pg.PodGroup, podgroup, nil); err != nil {
-		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
-		return nil, err
-	}
-
-	updated, err := su.vcclient.SchedulingV1beta1().PodGroups(podgroup.Namespace).Update(context.TODO(), podgroup, metav1.UpdateOptions{})
+func (su *defaultStatusUpdater) UpdatePodGroup(pg *vcv1beta1.PodGroup) (*vcv1beta1.PodGroup, error) {
+	updated, err := su.vcclient.SchedulingV1beta1().PodGroups(pg.Namespace).Update(context.TODO(), pg, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("Error while updating PodGroup with error: %v", err)
 		return nil, err
 	}
 
-	podGroupInfo := &schedulingapi.PodGroup{Version: schedulingapi.PodGroupVersionV1Beta1}
-	if err := schedulingscheme.Scheme.Convert(updated, &podGroupInfo.PodGroup, nil); err != nil {
-		klog.Errorf("Error while converting v1alpha.PodGroup to api.PodGroup with error: %v", err)
-		return nil, err
-	}
-
-	return podGroupInfo, nil
+	return updated, nil
 }
 
 type defaultVolumeBinder struct {
@@ -386,17 +372,17 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	// create informer for PodGroup(v1beta1) information
 	sc.podGroupInformerV1beta1 = vcinformers.Scheduling().V1beta1().PodGroups()
 	sc.podGroupInformerV1beta1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddPodGroupV1beta1,
-		UpdateFunc: sc.UpdatePodGroupV1beta1,
-		DeleteFunc: sc.DeletePodGroupV1beta1,
+		AddFunc:    sc.AddPodGroup,
+		UpdateFunc: sc.UpdatePodGroup,
+		DeleteFunc: sc.DeletePodGroup,
 	})
 
 	// create informer(v1beta1) for Queue information
 	sc.queueInformerV1beta1 = vcinformers.Scheduling().V1beta1().Queues()
 	sc.queueInformerV1beta1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddQueueV1beta1,
-		UpdateFunc: sc.UpdateQueueV1beta1,
-		DeleteFunc: sc.DeleteQueueV1beta1,
+		AddFunc:    sc.AddQueue,
+		UpdateFunc: sc.UpdateQueue,
+		DeleteFunc: sc.DeleteQueue,
 	})
 
 	return sc
@@ -509,12 +495,7 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 		}
 	}()
 
-	podgroup := &vcv1beta1.PodGroup{}
-	if err := schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil); err != nil {
-		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
-		return err
-	}
-	sc.Recorder.Eventf(podgroup, v1.EventTypeNormal, "Evict", reason)
+	sc.Recorder.Eventf(job.PodGroup, v1.EventTypeNormal, "Evict", reason)
 	return nil
 }
 
@@ -788,9 +769,9 @@ func (sc *SchedulerCache) String() string {
 // RecordJobStatusEvent records related events according to job status.
 func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo) {
 	pgUnschedulable := job.PodGroup != nil &&
-		(job.PodGroup.Status.Phase == scheduling.PodGroupUnknown ||
-			job.PodGroup.Status.Phase == scheduling.PodGroupPending ||
-			job.PodGroup.Status.Phase == scheduling.PodGroupInqueue)
+		(job.PodGroup.Status.Phase == vcv1beta1.PodGroupUnknown ||
+			job.PodGroup.Status.Phase == vcv1beta1.PodGroupPending ||
+			job.PodGroup.Status.Phase == vcv1beta1.PodGroupInqueue)
 
 	// If pending or unschedulable, record unschedulable event.
 	if pgUnschedulable {
@@ -798,9 +779,9 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo) {
 			len(job.TaskStatusIndex[schedulingapi.Pending]),
 			len(job.Tasks),
 			job.FitError())
-		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeWarning, string(scheduling.PodGroupUnschedulableType), msg)
+		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeWarning, string(vcv1beta1.PodGroupUnschedulableType), msg)
 	} else {
-		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupScheduled), string(scheduling.PodGroupReady))
+		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(vcv1beta1.PodGroupScheduled), string(vcv1beta1.PodGroupReady))
 	}
 
 	baseErrorMessage := job.JobFitErrors
@@ -838,15 +819,10 @@ func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePG b
 	return job, nil
 }
 
-func (sc *SchedulerCache) recordPodGroupEvent(podGroup *schedulingapi.PodGroup, eventType, reason, msg string) {
+func (sc *SchedulerCache) recordPodGroupEvent(podGroup *vcv1beta1.PodGroup, eventType, reason, msg string) {
 	if podGroup == nil {
 		return
 	}
 
-	pg := &vcv1beta1.PodGroup{}
-	if err := schedulingscheme.Scheme.Convert(&podGroup.PodGroup, pg, nil); err != nil {
-		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
-		return
-	}
-	sc.Recorder.Eventf(pg, eventType, reason, msg)
+	sc.Recorder.Eventf(podGroup, eventType, reason, msg)
 }
