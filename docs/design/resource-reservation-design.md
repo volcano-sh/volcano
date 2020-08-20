@@ -14,13 +14,27 @@ more jobs requesting less resource comes later, Job A will get a smaller chance 
 priority but request less resource. As current schedule strategy works, volcano will schedule Job B first. What's worst,
 Job A will keep waiting until enough resources are released by some low priority job. 
 ## Consideration
-#### How to recognise Big Job?
+### How to recognise Big Job?
 There are two ways to pick out Big Jobs:
-* request resources
+#### request resources
 Setting standard of request resources. Jobs requesting more resources than standard will be regarded as Big Jobs. This 
 way may not be so reasonable because the standard line is different in different scenes. On the other hand, This standard 
 is set artificially which may be very imprecise.
-* waiting time
+#### waiting time
 Considering waiting time as Big Job standard is another solution. Jobs who waiting for longer time are more likely to be
-Big Jobs.
-#### How to balance priority and waiting time?
+Big Jobs. Different from setting standard line, order jobs by waiting time is a good idea.
+### How to balance priority and waiting time?
+priority is more important than waiting time.
+* No matter how many resources high-priority jobs requests and how much time they have already waited for, they should be
+scheduled first.
+* When jobs are at same priority but waiting time differs, job who waits for the longest time should be scheduled first.
+## Design
+* Add an attribute to every job to record the timestamp of reaching scheduler.
+* In each session, if there has already a job who has been selected as the Big Job, continue to reserve resource in the 
+Reserved Node until reserved resource satisfies its requirement. During the reserving process, do not bind any other jobs 
+to the node.   
+* In each session, if no Big Job was selected, select the job who has the highest priority and waits for the longest time
+as Big Job. Choose a node whose idle resource is closest to Big Job's requirement as Reserved Node.
+## Detail
+* The max resources amount of Reserved Node must be no less than Big Job's requirement.
+* Implement this feature as a plugin.
