@@ -109,11 +109,10 @@ type jobcontroller struct {
 	queueList    []workqueue.RateLimitingInterface
 	commandQueue workqueue.RateLimitingInterface
 	cache        jobcache.Cache
-	//Job Event recorder
+	// Job Event recorder
 	recorder        record.EventRecorder
 	priorityClasses map[string]*v1beta1.PriorityClass
 
-	sync.Mutex
 	errTasks workqueue.RateLimitingInterface
 	workers  uint32
 }
@@ -140,7 +139,6 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.cache = jobcache.New()
 	cc.errTasks = newRateLimitingQueue()
 	cc.recorder = recorder
-	cc.priorityClasses = make(map[string]*v1beta1.PriorityClass)
 	cc.workers = workers
 
 	var i uint32
