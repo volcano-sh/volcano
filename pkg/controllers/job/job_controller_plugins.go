@@ -70,6 +70,9 @@ func (cc *jobcontroller) pluginOnJobAdd(job *batch.Job) error {
 }
 
 func (cc *jobcontroller) pluginOnJobDelete(job *batch.Job) error {
+	if job.Status.ControlledResources == nil {
+		job.Status.ControlledResources = make(map[string]string)
+	}
 	client := pluginsinterface.PluginClientset{KubeClients: cc.kubeClient}
 	for name, args := range job.Spec.Plugins {
 		pb, found := plugins.GetPluginBuilder(name)

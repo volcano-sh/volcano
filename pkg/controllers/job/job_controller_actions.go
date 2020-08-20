@@ -89,25 +89,22 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 	job = job.DeepCopy()
 	// Job version is bumped only when job is killed
 	job.Status.Version++
-
-	job.Status = batch.JobStatus{
-		State: job.Status.State,
-
-		Pending:      pending,
-		Running:      running,
-		Succeeded:    succeeded,
-		Failed:       failed,
-		Terminating:  terminating,
-		Unknown:      unknown,
-		Version:      job.Status.Version,
-		MinAvailable: job.Spec.MinAvailable,
-		RetryCount:   job.Status.RetryCount,
-	}
+	job.Status.Pending = pending
+	job.Status.Running = running
+	job.Status.Succeeded = succeeded
+	job.Status.Failed = failed
+	job.Status.Terminating = terminating
+	job.Status.Unknown = unknown
 
 	if updateStatus != nil {
 		if updateStatus(&job.Status) {
 			job.Status.State.LastTransitionTime = metav1.Now()
 		}
+	}
+
+	// must be called before update job status
+	if err := cc.pluginOnJobDelete(job); err != nil {
+		return err
 	}
 
 	// Update Job status
@@ -130,10 +127,6 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 				job.Namespace, job.Name, err)
 			return err
 		}
-	}
-
-	if err := cc.pluginOnJobDelete(job); err != nil {
-		return err
 	}
 
 	// NOTE(k82cn): DO NOT delete input/output until job is deleted.

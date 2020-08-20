@@ -146,13 +146,16 @@ func (sp *servicePlugin) OnJobAdd(job *batch.Job) error {
 			return err
 		}
 	}
-
 	job.Status.ControlledResources["plugin-"+sp.Name()] = sp.Name()
 
 	return nil
 }
 
 func (sp *servicePlugin) OnJobDelete(job *batch.Job) error {
+	if job.Status.ControlledResources["plugin-"+sp.Name()] != sp.Name() {
+		return nil
+	}
+
 	if err := helpers.DeleteConfigmap(job, sp.Clientset.KubeClients, sp.cmName(job)); err != nil {
 		return err
 	}
@@ -163,6 +166,7 @@ func (sp *servicePlugin) OnJobDelete(job *batch.Job) error {
 			return err
 		}
 	}
+	delete(job.Status.ControlledResources, "plugin-"+sp.Name())
 
 	return nil
 }
