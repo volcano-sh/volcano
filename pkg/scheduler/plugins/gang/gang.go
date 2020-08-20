@@ -23,8 +23,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 
-	"volcano.sh/volcano/pkg/apis/scheduling"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -61,7 +60,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		if vtn < job.MinAvailable {
 			return &api.ValidateResult{
 				Pass:   false,
-				Reason: v1beta1.NotEnoughPodsReason,
+				Reason: schedulingv1beta1.NotEnoughPodsReason,
 				Message: fmt.Sprintf("Not enough valid tasks for gang-scheduling, valid: %d, min: %d",
 					vtn, job.MinAvailable),
 			}
@@ -158,12 +157,12 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			metrics.UpdateUnscheduleTaskCount(job.Name, int(unreadyTaskCount))
 			metrics.RegisterJobRetries(job.Name)
 
-			jc := &scheduling.PodGroupCondition{
-				Type:               scheduling.PodGroupUnschedulableType,
+			jc := &schedulingv1beta1.PodGroupCondition{
+				Type:               schedulingv1beta1.PodGroupUnschedulableType,
 				Status:             v1.ConditionTrue,
 				LastTransitionTime: metav1.Now(),
 				TransitionID:       string(ssn.UID),
-				Reason:             v1beta1.NotEnoughResourcesReason,
+				Reason:             schedulingv1beta1.NotEnoughResourcesReason,
 				Message:            msg,
 			}
 
@@ -184,8 +183,8 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 				fitError.SetError(msg)
 			}
 		} else {
-			jc := &scheduling.PodGroupCondition{
-				Type:               scheduling.PodGroupScheduled,
+			jc := &schedulingv1beta1.PodGroupCondition{
+				Type:               schedulingv1beta1.PodGroupScheduled,
 				Status:             v1.ConditionTrue,
 				LastTransitionTime: metav1.Now(),
 				TransitionID:       string(ssn.UID),

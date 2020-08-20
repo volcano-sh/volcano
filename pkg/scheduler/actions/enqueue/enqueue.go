@@ -19,7 +19,7 @@ package enqueue
 import (
 	"k8s.io/klog"
 
-	"volcano.sh/volcano/pkg/apis/scheduling"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -70,7 +70,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 			queues.Push(queue)
 		}
 
-		if job.PodGroup.Status.Phase == scheduling.PodGroupPending {
+		if job.PodGroup.Status.Phase == schedulingv1beta1.PodGroupPending {
 			if _, found := jobsMap[job.Queue]; !found {
 				jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 			}
@@ -121,7 +121,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 		}
 
 		if inqueue {
-			job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
+			job.PodGroup.Status.Phase = schedulingv1beta1.PodGroupInqueue
 			ssn.Jobs[job.UID] = job
 		}
 

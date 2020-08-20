@@ -19,7 +19,7 @@ package proportion
 import (
 	"k8s.io/klog"
 
-	"volcano.sh/volcano/pkg/apis/scheduling"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -50,7 +50,7 @@ type queueAttr struct {
 }
 
 // GetJobMinResources return the min resources of podgroup.
-func GetJobMinResources(s scheduling.PodGroupSpec) *api.Resource {
+func GetJobMinResources(s schedulingv1beta1.PodGroupSpec) *api.Resource {
 	if s.MinResources == nil {
 		return api.EmptyResource()
 	}
@@ -112,7 +112,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
-		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
+		if job.PodGroup.Status.Phase == schedulingv1beta1.PodGroupInqueue {
 			attr.inqueue.Add(GetJobMinResources(job.PodGroup.Spec))
 		}
 	}
