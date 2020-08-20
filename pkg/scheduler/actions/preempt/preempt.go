@@ -19,7 +19,7 @@ package preempt
 import (
 	"k8s.io/klog"
 
-	"volcano.sh/volcano/pkg/apis/scheduling"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -49,7 +49,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	queues := map[api.QueueID]*api.QueueInfo{}
 
 	for _, job := range ssn.Jobs {
-		if job.PodGroup.Status.Phase == scheduling.PodGroupPending {
+		if job.PodGroup.Status.Phase == schedulingv1beta1.PodGroupPending {
 			continue
 		}
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
