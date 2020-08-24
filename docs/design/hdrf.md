@@ -5,16 +5,16 @@
 DRF(dominant resource fairness) is widely used in multi-resource scheduling.
 In the volcano scheduler, resource sharing fairness is guaranteed by setting the weights of queues and namespaces, while
 this method can not represent a tree-like hierarchy.
-To represent a more complex hierarchical group sharing other than a big weighted flattened namespaces sharing, the HDRF(hierarchical dominant resource fairness) may need to be adopted.
+To represent a more complex hierarchical group sharing other than a big weighted flattened sharing of namespaces or queues, the HDRF(hierarchical dominant resource fairness) may need to be adopted.
 The original [paper](https://people.eecs.berkeley.edu/~alig/papers/h-drf.pdf) refers to two points that naive DRF does not suit in.
 The first is the starvation caused by children with a complementary dominant resource.
 ```
               n
     /                   \
-  n1 w=50%           n2 w=50%
+  n1 w=50%             n2 w=50%
 (0 CPU,1 GPU)
                   /            \
-		        n2,1  w=50%    n2,2 w=50%
+                n2,1  w=50%    n2,2 w=50%
               (1 CPU,0 GPU)  (0 CPU,1 GPU)
 
 ```
@@ -25,10 +25,10 @@ The second is nodes blocking caused by a saturated node.
 ```
                                 n
 /                    |                     |               \
-n1                   n2                    n3                n4
-(1 CPU,0 GPU)  (1 CPU,0 GPU)         /          \          (0 CPU,1 GPU)
+n1                   n2                    n3               n4
+(1 CPU,0 GPU)  (1 CPU,0 GPU)          /          \          (0 CPU,1 GPU)
                                      n3,1          n3,2
-			                     (1 CPU,0 GPU)  (0 CPU,1 GPU)
+                                (1 CPU,0 GPU)  (0 CPU,1 GPU)
 ```
 
 In the case about, at the point that every leaf is allocated 1/3 of its dominant resource.
@@ -53,7 +53,7 @@ With this feature enabled, on the event of task allocation and deallocation, drf
 
 ### allocate
 
-The queue order is determined along the hierarchy path. If the shares of two same level nodes divided by weight meet a tier, the child along the path will be compared. A saturated node has a minimum priority since no more resources can be allocated to this node. If the hierarchy is enabled.
+The queue order is determined along the hierarchy path. If the shares of two same level nodes divided by weight meet a tier, the child along the path will be compared. A saturated node has a minimum priority since no more resources can be allocated to this node. If the hierarchy is enabled. A queue containing both queues and jobs is not allowed. For example a "root/sci" queue conflicts with the "root/sci/dev" queue.
 
 ### preempt
 
@@ -62,4 +62,3 @@ Except for the namespace and job priority, hierarchical queues' priority should 
 ### relcaim
 
 The deserved share is determined by hdrf share of the queues. In the proportion plugin, queues having lower hdrf share should reclaim other queues with higher share.
-
