@@ -530,17 +530,19 @@ func (cc *jobcontroller) deleteJobPod(jobName string, pod *v1.Pod) error {
 }
 
 func (cc *jobcontroller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
-	cc.Mutex.Lock()
-	defer cc.Mutex.Unlock()
-
 	// sort task by priorityClasses
 	var tasksPriority TasksPriority
-	for index := range job.Spec.Tasks {
-		tp := TaskPriority{0, job.Spec.Tasks[index]}
-		pc := job.Spec.Tasks[index].Template.Spec.PriorityClassName
-		if len(cc.priorityClasses) != 0 && cc.priorityClasses[pc] != nil {
-			tp.priority = cc.priorityClasses[pc].Value
+	for _, task := range job.Spec.Tasks {
+		tp := TaskPriority{0, task}
+		pc := task.Template.Spec.PriorityClassName
+
+		priorityClass, err := cc.pcLister.Get(pc)
+		if err != nil || priorityClass == nil {
+			klog.Warningf("Ignore task %s priority class %s: %v", task.Name, pc, err)
+		} else {
+			tp.priority = priorityClass.Value
 		}
+
 		tasksPriority = append(tasksPriority, tp)
 	}
 

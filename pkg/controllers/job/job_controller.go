@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"hash"
 	"hash/fnv"
-	"sync"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -109,11 +108,10 @@ type jobcontroller struct {
 	queueList    []workqueue.RateLimitingInterface
 	commandQueue workqueue.RateLimitingInterface
 	cache        jobcache.Cache
-	//Job Event recorder
+	// Job Event recorder
 	recorder        record.EventRecorder
 	priorityClasses map[string]*v1beta1.PriorityClass
 
-	sync.Mutex
 	errTasks workqueue.RateLimitingInterface
 	workers  uint32
 }
@@ -140,7 +138,6 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.cache = jobcache.New()
 	cc.errTasks = newRateLimitingQueue()
 	cc.recorder = recorder
-	cc.priorityClasses = make(map[string]*v1beta1.PriorityClass)
 	cc.workers = workers
 
 	var i uint32
@@ -208,10 +205,6 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
 	cc.pcInformer = sharedInformers.Scheduling().V1beta1().PriorityClasses()
-	cc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    cc.addPriorityClass,
-		DeleteFunc: cc.deletePriorityClass,
-	})
 	cc.pcLister = cc.pcInformer.Lister()
 	cc.pcSynced = cc.pcInformer.Informer().HasSynced
 
