@@ -49,7 +49,7 @@ With this feature enabled, on the event of task allocation and deallocation, drf
 
 1.  Based on the queue spec the job belongs to, build hierarchical nodes along the path. For example, the hierarchy "root/eng/prod" with weight "1/2/8" will construct a 3-level hierarchy.
 2.  Calculate job drf attribute as ordinary the drf algorithm does, mark it saturated if any of its resources is satisfied, or some kinds of the resources are fully allocated.
-3.  Update internal nodes recursively, calculate the dominant resource of non-blocking nodes, scale non-blocking nodes with the dominant share, sum all the non-blocking and blocking nodes up, and calculate the dominant resource share of the parent node among the demanding resources.
+3.  Update internal nodes recursively from root, calculate the dominant resource of non-blocking child nodes, scale non-blocking nodes with the smallest dominant share, sum all resources of the non-blocking and blocking nodes up, calculate the dominant resource share of the node among the demanding resources, and mark itself saturated if all the children are saturated.
 
 ### allocate
 
@@ -57,7 +57,7 @@ The queue order is determined along the hierarchy path. If the shares of two sam
 
 ### preempt
 
-Except for the namespace and job priority, hierarchical queues' priority should be taken into consideration. Queues with lower share have higher priority, and saturated queues have minimum priority.
+Except for the namespace and job priority, hierarchical queues' priority should be taken into consideration. Queues with lower share have higher priority and saturated queues have minimum priority.
 
 ### relcaim
 
