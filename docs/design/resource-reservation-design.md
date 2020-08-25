@@ -63,15 +63,17 @@ a Big Job according to the strategy above.
 ### Reservation Node Selected
 As job consists of some tasks and each task corresponds to a pod, scheduler will select a series of nodes who can satisfy
 these pods. These nodes will be locked and no pod can be scheduled to them until the Big Job is scheduled. In order to 
-reduce the influence to schedule performance, scheduler will try to select nodes as less as possible. 
+reduce the influence of schedule performance, scheduler will try to select nodes as less as possible. 
 As to the reservation strategy, there are two scenes:
 * If field estimated_running_duration is not set for each task, namely we cannot evaluate the finish time of the running
 pods in all nodes, volcano scheduler will order the nodes by idle resources. Then select some nodes at first until the 
 total resource amount of these nodes is not less than requirement. 
 * If field estimated_running_duration is set for each task, calculate the finish time of each job. Then calculate the 
 time for each node that the last job running in it finishes. Order all nodes by the finish time and select some nodes at
-first whose total amount of resource is not less than requirement. 
-
-## Detail
+first whose total amount of resource is not less than requirement. It should to be noted that if users config true to 
+allow the Big Job preempt resource of running jobs whose running duration is out of date in Reservation Nodes. It is fit
+for users who are very experienced with his/her tasks.
+ 
+## Note
 * The max resources amount of Reserved Node must be no less than Big Job's requirement.
 * Implement this feature as a plugin.
