@@ -61,4 +61,9 @@ Except for the namespace and job priority, hierarchical queues' priority should 
 
 ### relcaim
 
-The deserved share is determined by hdrf share of the queues. In the proportion plugin, queues having lower hdrf share should reclaim other queues with higher share.
+The deserved share is determined by hdrf share of the queues.
+
+## Limitations
+
+1. This feature conflicts with the proportion plugin. If the hdrf is enabled, the proportion should be disabled, and a reclaim function which compares queue by hierarchical shares and weights should be added.
+2. When a job is added in the tree, hdrf travels through the root recursively. It needs to mark all the saturated nodes, if some resources are fully allocated. This may be ineffective.
