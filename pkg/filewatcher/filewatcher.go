@@ -18,6 +18,7 @@ package filewatcher
 
 import "github.com/fsnotify/fsnotify"
 
+// FileWatcher is an interface watching the underlying OS file pach.
 type FileWatcher interface {
 	Events() chan fsnotify.Event
 	Errors() chan error
@@ -28,6 +29,7 @@ type fileWatcher struct {
 	watcher *fsnotify.Watcher
 }
 
+// NewFileWatcher creates a FileWatcher.
 func NewFileWatcher(path string) (FileWatcher, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -45,6 +47,7 @@ func NewFileWatcher(path string) (FileWatcher, error) {
 
 }
 
+// Events returns the event channel.
 func (w *fileWatcher) Events() chan fsnotify.Event {
 	if w == nil || w.watcher == nil {
 		return nil
@@ -52,6 +55,7 @@ func (w *fileWatcher) Events() chan fsnotify.Event {
 	return w.watcher.Events
 }
 
+// Errors returns the error channel.
 func (w *fileWatcher) Errors() chan error {
 	if w == nil || w.watcher == nil {
 		return nil
@@ -59,6 +63,7 @@ func (w *fileWatcher) Errors() chan error {
 	return w.watcher.Errors
 }
 
+// Close closed the file watcher.
 func (w *fileWatcher) Close() {
 	if w == nil || w.watcher == nil {
 		return
