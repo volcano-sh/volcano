@@ -162,7 +162,7 @@ tiers:
 		},
 	}
 
-	_, tiers, configurations, err := loadSchedulerConf(configuration)
+	_, tiers, configurations, err := unmarshalSchedulerConf(configuration)
 	if err != nil {
 		t.Errorf("Failed to load scheduler configuration: %v", err)
 	}

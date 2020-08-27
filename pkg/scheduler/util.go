@@ -41,7 +41,7 @@ tiers:
   - name: nodeorder
 `
 
-func loadSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []conf.Configuration, error) {
+func unmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []conf.Configuration, error) {
 	var actions []framework.Action
 
 	schedulerConf := &conf.SchedulerConfiguration{}
