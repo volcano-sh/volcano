@@ -38,13 +38,15 @@ import (
 // nodes that they fit on and writes bindings back to the api server.
 type Scheduler struct {
 	cache          schedcache.Cache
-	actions        []framework.Action
-	plugins        []conf.Tier
-	configurations []conf.Configuration
 	schedulerConf  string
 	fileWatcher    filewatcher.FileWatcher
 	schedulePeriod time.Duration
 	once           sync.Once
+
+	mutex          sync.Mutex
+	actions        []framework.Action
+	plugins        []conf.Tier
+	configurations []conf.Configuration
 }
 
 // NewScheduler returns a scheduler
@@ -90,10 +92,16 @@ func (pc *Scheduler) runOnce() {
 	scheduleStartTime := time.Now()
 	defer klog.V(4).Infof("End scheduling ...")
 
-	ssn := framework.OpenSession(pc.cache, pc.plugins, pc.configurations)
+	pc.mutex.Lock()
+	actions := pc.actions
+	plugins := pc.plugins
+	configurations := pc.configurations
+	pc.mutex.Unlock()
+
+	ssn := framework.OpenSession(pc.cache, plugins, configurations)
 	defer framework.CloseSession(ssn)
 
-	for _, action := range pc.actions {
+	for _, action := range actions {
 		actionStartTime := time.Now()
 		action.Execute(ssn)
 		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
@@ -126,10 +134,12 @@ func (pc *Scheduler) loadSchedulerConf() {
 		return
 	}
 
+	pc.mutex.Lock()
 	// If it is valid, use the new configuration
 	pc.actions = actions
 	pc.plugins = plugins
 	pc.configurations = configurations
+	pc.mutex.Unlock()
 }
 
 func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
