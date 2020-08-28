@@ -163,6 +163,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 				// have the higher weighted share after preemption.
 				if lNsShareWeighted < rNsShareWeighted {
 					addVictim(preemptee)
+					continue
 				}
 				if lNsShareWeighted-rNsShareWeighted > shareDelta {
 					continue
