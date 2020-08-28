@@ -17,12 +17,17 @@ limitations under the License.
 package scheduler
 
 import (
+	"fmt"
+	"path/filepath"
+	"sync"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
 
+	"volcano.sh/volcano/pkg/filewatcher"
 	schedcache "volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -33,11 +38,15 @@ import (
 // nodes that they fit on and writes bindings back to the api server.
 type Scheduler struct {
 	cache          schedcache.Cache
+	schedulerConf  string
+	fileWatcher    filewatcher.FileWatcher
+	schedulePeriod time.Duration
+	once           sync.Once
+
+	mutex          sync.Mutex
 	actions        []framework.Action
 	plugins        []conf.Tier
 	configurations []conf.Configuration
-	schedulerConf  string
-	schedulePeriod time.Duration
 }
 
 // NewScheduler returns a scheduler
@@ -48,8 +57,19 @@ func NewScheduler(
 	period time.Duration,
 	defaultQueue string,
 ) (*Scheduler, error) {
+	var watcher filewatcher.FileWatcher
+	if schedulerConf != "" {
+		var err error
+		path := filepath.Dir(schedulerConf)
+		watcher, err = filewatcher.NewFileWatcher(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed creating filewatcher for %s: %v", schedulerConf, err)
+		}
+	}
+
 	scheduler := &Scheduler{
 		schedulerConf:  schedulerConf,
+		fileWatcher:    watcher,
 		cache:          schedcache.New(config, schedulerName, defaultQueue),
 		schedulePeriod: period,
 	}
@@ -59,10 +79,11 @@ func NewScheduler(
 
 // Run runs the Scheduler
 func (pc *Scheduler) Run(stopCh <-chan struct{}) {
+	pc.loadSchedulerConf()
+	go pc.watchSchedulerConf(stopCh)
 	// Start cache for policy.
 	go pc.cache.Run(stopCh)
 	pc.cache.WaitForCacheSync(stopCh)
-
 	go wait.Until(pc.runOnce, pc.schedulePeriod, stopCh)
 }
 
@@ -71,12 +92,16 @@ func (pc *Scheduler) runOnce() {
 	scheduleStartTime := time.Now()
 	defer klog.V(4).Infof("End scheduling ...")
 
-	pc.loadSchedulerConf()
+	pc.mutex.Lock()
+	actions := pc.actions
+	plugins := pc.plugins
+	configurations := pc.configurations
+	pc.mutex.Unlock()
 
-	ssn := framework.OpenSession(pc.cache, pc.plugins, pc.configurations)
+	ssn := framework.OpenSession(pc.cache, plugins, configurations)
 	defer framework.CloseSession(ssn)
 
-	for _, action := range pc.actions {
+	for _, action := range actions {
 		actionStartTime := time.Now()
 		action.Execute(ssn)
 		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
@@ -86,19 +111,60 @@ func (pc *Scheduler) runOnce() {
 
 func (pc *Scheduler) loadSchedulerConf() {
 	var err error
+	pc.once.Do(func() {
+		pc.actions, pc.plugins, pc.configurations, err = unmarshalSchedulerConf(defaultSchedulerConf)
+		if err != nil {
+			klog.Errorf("unmarshal scheduler config %s failed: %v", defaultSchedulerConf, err)
+			panic("invalid default configuration")
+		}
+	})
 
-	// Load configuration of scheduler
-	schedConf := defaultSchedulerConf
+	var config string
 	if len(pc.schedulerConf) != 0 {
-		if schedConf, err = readSchedulerConf(pc.schedulerConf); err != nil {
-			klog.Errorf("Failed to read scheduler configuration '%s', using default configuration: %v",
+		if config, err = readSchedulerConf(pc.schedulerConf); err != nil {
+			klog.Errorf("Failed to read scheduler configuration '%s', using previous configuration: %v",
 				pc.schedulerConf, err)
-			schedConf = defaultSchedulerConf
+			return
 		}
 	}
 
-	pc.actions, pc.plugins, pc.configurations, err = loadSchedulerConf(schedConf)
+	actions, plugins, configurations, err := unmarshalSchedulerConf(config)
 	if err != nil {
-		panic(err)
+		klog.Errorf("scheduler config %s is invalid: %v", config, err)
+		return
+	}
+
+	pc.mutex.Lock()
+	// If it is valid, use the new configuration
+	pc.actions = actions
+	pc.plugins = plugins
+	pc.configurations = configurations
+	pc.mutex.Unlock()
+}
+
+func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
+	if pc.fileWatcher == nil {
+		return
+	}
+	eventCh := pc.fileWatcher.Events()
+	errCh := pc.fileWatcher.Errors()
+	for {
+		select {
+		case event, ok := <-eventCh:
+			if !ok {
+				return
+			}
+			klog.V(4).Infof("watch %s event: %v", pc.schedulerConf, event)
+			if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
+				pc.loadSchedulerConf()
+			}
+		case err, ok := <-errCh:
+			if !ok {
+				return
+			}
+			klog.Infof("watch %s error: %v", pc.schedulerConf, err)
+		case <-stopCh:
+			return
+		}
 	}
 }
