@@ -304,7 +304,7 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 
 	klog.V(3).Infof("Try to handle request <%v>", req)
 
-	jobInfo, err := cc.cache.Get(jobcache.JobKeyByReq(&req))
+	jobInfo, err := cc.cache.Get(key)
 	if err != nil {
 		// TODO(k82cn): ignore not-ready error.
 		klog.Errorf("Failed to get job by <%v> from cache: %v", req, err)
