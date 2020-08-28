@@ -47,7 +47,7 @@ type hierarchicalNode struct {
 	children  map[string]*hierarchicalNode
 }
 
-// resourceSaturated returns true if any resource is saturated or any resource of the job is non-demading
+// resourceSaturated returns true if any resource of the job is saturated or the job demands fully allocated resource
 func resourceSaturated(allocated *api.Resource, total *api.Resource, demandingResources map[v1.ResourceName]bool) bool {
 	for _, rn := range allocated.ResourceNames() {
 		if allocated.Get(rn) != 0 && total.Get(rn) != 0 &&
@@ -450,8 +450,7 @@ func (drf *drfPlugin) buildHierarchy(job *api.JobInfo, attr *drfAttr,
 				weight:    fweight,
 				hierarchy: paths[i],
 				attr: &drfAttr{
-					dominantResource: string(v1.ResourceCPU),
-					allocated:        api.EmptyResource(),
+					allocated: api.EmptyResource(),
 				},
 				children: make(map[string]*hierarchicalNode),
 			}
@@ -519,7 +518,7 @@ func (drf *drfPlugin) updateHierarchicalShare(node *hierarchicalNode,
 		}
 		// get dominant resource and share from demanding resources
 		res := 0.0
-		dominantResource := string(v1.ResourceCPU)
+		dominantResource := ""
 		for rn := range demandingResources {
 			share := helpers.Share(node.attr.allocated.Get(rn), drf.totalResource.Get(rn))
 			if share > res {
