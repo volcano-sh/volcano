@@ -87,6 +87,7 @@ type SchedulerCache struct {
 	scInformer              storagev1.StorageClassInformer
 	pcInformer              schedv1.PriorityClassInformer
 	quotaInformer           infov1.ResourceQuotaInformer
+	csiNodeInformer         storagev1.CSINodeInformer
 
 	Binder        Binder
 	Evictor       Evictor
@@ -317,21 +318,6 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 
 	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, 0)
 
-	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
-	sc.pvInformer = informerFactory.Core().V1().PersistentVolumes()
-	sc.scInformer = informerFactory.Storage().V1().StorageClasses()
-	sc.VolumeBinder = &defaultVolumeBinder{
-		volumeBinder: volumescheduling.NewVolumeBinder(
-			sc.kubeClient,
-			sc.nodeInformer,
-			nil,
-			sc.pvcInformer,
-			sc.pvInformer,
-			sc.scInformer,
-			30*time.Second,
-		),
-	}
-
 	// create informer for node information
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
 	sc.nodeInformer.Informer().AddEventHandlerWithResyncPeriod(
@@ -342,6 +328,22 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		},
 		0,
 	)
+
+	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
+	sc.pvInformer = informerFactory.Core().V1().PersistentVolumes()
+	sc.scInformer = informerFactory.Storage().V1().StorageClasses()
+	sc.csiNodeInformer = informerFactory.Storage().V1().CSINodes()
+	sc.VolumeBinder = &defaultVolumeBinder{
+		volumeBinder: volumescheduling.NewVolumeBinder(
+			sc.kubeClient,
+			sc.nodeInformer,
+			sc.csiNodeInformer,
+			sc.pvcInformer,
+			sc.pvInformer,
+			sc.scInformer,
+			30*time.Second,
+		),
+	}
 
 	// create informer for pod information
 	sc.podInformer = informerFactory.Core().V1().Pods()
