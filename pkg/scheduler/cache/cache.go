@@ -287,6 +287,16 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	}
 
 	informerFactory := informers.NewSharedInformerFactory(sc.kubeclient, 0)
+	// create informer for node information
+	sc.nodeInformer = informerFactory.Core().V1().Nodes()
+	sc.nodeInformer.Informer().AddEventHandlerWithResyncPeriod(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.AddNode,
+			UpdateFunc: sc.UpdateNode,
+			DeleteFunc: sc.DeleteNode,
+		},
+		0,
+	)
 
 	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
 	sc.pvInformer = informerFactory.Core().V1().PersistentVolumes()
@@ -301,17 +311,6 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 			30*time.Second,
 		),
 	}
-
-	// create informer for node information
-	sc.nodeInformer = informerFactory.Core().V1().Nodes()
-	sc.nodeInformer.Informer().AddEventHandlerWithResyncPeriod(
-		cache.ResourceEventHandlerFuncs{
-			AddFunc:    sc.AddNode,
-			UpdateFunc: sc.UpdateNode,
-			DeleteFunc: sc.DeleteNode,
-		},
-		0,
-	)
 
 	// create informer for pod information
 	sc.podInformer = informerFactory.Core().V1().Pods()
