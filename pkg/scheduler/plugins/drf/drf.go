@@ -39,8 +39,11 @@ var shareDelta = 0.000001
 // hierarchicalNode represents the node hierarchy
 // and the corresponding weight and drf attribute
 type hierarchicalNode struct {
-	parent    *hierarchicalNode
-	attr      *drfAttr
+	parent *hierarchicalNode
+	attr   *drfAttr
+	// If the node is a leaf node,
+	// request represents the request of the job.
+	request   *api.Resource
 	weight    float64
 	saturated bool
 	hierarchy string
@@ -48,13 +51,13 @@ type hierarchicalNode struct {
 }
 
 // resourceSaturated returns true if any resource of the job is saturated or the job demands fully allocated resource
-func resourceSaturated(allocated *api.Resource, total *api.Resource, demandingResources map[v1.ResourceName]bool) bool {
+func resourceSaturated(allocated *api.Resource, jobRequest *api.Resource, demandingResources map[v1.ResourceName]bool) bool {
 	for _, rn := range allocated.ResourceNames() {
-		if allocated.Get(rn) != 0 && total.Get(rn) != 0 &&
-			allocated.Get(rn) == total.Get(rn) {
+		if allocated.Get(rn) != 0 && jobRequest.Get(rn) != 0 &&
+			allocated.Get(rn) >= jobRequest.Get(rn) {
 			return true
 		}
-		if !demandingResources[rn] && allocated.Get(rn) != 0 {
+		if !demandingResources[rn] && jobRequest.Get(rn) != 0 {
 			return true
 		}
 	}
@@ -466,6 +469,7 @@ func (drf *drfPlugin) buildHierarchy(job *api.JobInfo, attr *drfAttr,
 		weight:    1,
 		attr:      attr,
 		hierarchy: string(job.UID),
+		request:   job.TotalRequest.Clone(),
 		children:  nil,
 	}
 	inode.children[string(job.UID)] = child
@@ -480,7 +484,7 @@ func (drf *drfPlugin) updateHierarchicalShare(node *hierarchicalNode,
 	demandingResources map[v1.ResourceName]bool) {
 	if node.children == nil {
 		node.saturated = resourceSaturated(node.attr.allocated,
-			drf.totalResource, demandingResources)
+			node.request, demandingResources)
 		klog.V(4).Infof("Update hierarchical node %s, share %f, dominant %s, resource %v, saturated: %t",
 			node.hierarchy, node.attr.share, node.attr.dominantResource, node.attr.allocated, node.saturated)
 	} else {
