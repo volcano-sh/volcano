@@ -97,16 +97,6 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 			obj.Spec.Queue = queueName
 		}
 
-		if hierarchy, ok := pod.Annotations[scheduling.KubeGroupHierarchyAnnotationKey]; ok {
-			obj.Annotations[scheduling.KubeGroupHierarchyAnnotationKey] = hierarchy
-		} else {
-			obj.Annotations[scheduling.KubeGroupHierarchyAnnotationKey] = "root"
-		}
-		if hierarchy, ok := pod.Annotations[scheduling.KubeGroupHierarchyWeightAnnotationKey]; ok {
-			obj.Annotations[scheduling.KubeGroupHierarchyWeightAnnotationKey] = hierarchy
-		} else {
-			obj.Annotations[scheduling.KubeGroupHierarchyWeightAnnotationKey] = "1"
-		}
 		if _, err := pg.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Create(context.TODO(), obj, metav1.CreateOptions{}); err != nil {
 			klog.Errorf("Failed to create normal PodGroup for Pod <%s/%s>: %v",
 				pod.Namespace, pod.Name, err)

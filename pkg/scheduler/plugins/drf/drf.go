@@ -489,7 +489,7 @@ func (drf *drfPlugin) updateHierarchicalShare(node *hierarchicalNode,
 			node.hierarchy, node.attr.share, node.attr.dominantResource, node.attr.allocated, node.saturated)
 	} else {
 		var mdr float64 = 1
-		// get minumun dominant resource share
+		// get minimun dominant resource share
 		for _, child := range node.children {
 			drf.updateHierarchicalShare(child, demandingResources)
 			// skip empty child and saturated child
@@ -501,7 +501,7 @@ func (drf *drfPlugin) updateHierarchicalShare(node *hierarchicalNode,
 			}
 		}
 
-		node.attr = &drfAttr{allocated: api.EmptyResource()}
+		node.attr.allocated = api.EmptyResource()
 		saturated := true
 		for _, child := range node.children {
 			if !child.saturated {
@@ -520,21 +520,9 @@ func (drf *drfPlugin) updateHierarchicalShare(node *hierarchicalNode,
 
 			}
 		}
-		// get dominant resource and share from demanding resources
-		res := 0.0
-		dominantResource := ""
-		for rn := range demandingResources {
-			share := helpers.Share(node.attr.allocated.Get(rn), drf.totalResource.Get(rn))
-			if share > res {
-				res = share
-				dominantResource = string(rn)
-			}
-
-		}
-		node.attr.share = res
-		node.attr.dominantResource = dominantResource
+		node.attr.dominantResource, node.attr.share = drf.calculateShare(
+			node.attr.allocated, drf.totalResource)
 		node.saturated = saturated
-
 		klog.V(4).Infof("Update hierarchical node %s, share %f, dominant resource %s, resource %v, saturated: %t",
 			node.hierarchy, node.attr.share, node.attr.dominantResource, node.attr.allocated, node.saturated)
 	}
@@ -549,9 +537,6 @@ func (drf *drfPlugin) UpdateHierarchicalShare(job *api.JobInfo, attr *drfAttr, h
 			demandingResources[rn] = true
 
 		}
-	}
-	if len(demandingResources) == 0 {
-		return
 	}
 	drf.buildHierarchy(job, attr, hierarchy, hierarchicalWeights)
 	drf.updateHierarchicalShare(drf.hierarchicalRoot, demandingResources)
