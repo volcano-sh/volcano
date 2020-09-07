@@ -33,7 +33,12 @@ type QueueInfo struct {
 
 	Weight int32
 
-	Weights   string
+	// Weights is a list of slash sperated float numbers.
+	// Each of them is a weight corresponding the
+	// hierarchy level.
+	Weights string
+	// Hierarchy is a list of node name along the
+	// path from the root to the node itself.
 	Hierarchy string
 
 	Queue *scheduling.Queue
