@@ -223,41 +223,48 @@ func (r *Resource) Multi(ratio float64) *Resource {
 }
 
 // Less checks whether a resource is less than other
-func (r *Resource) Less(rr *Resource) bool {
-	lessFunc := func(l, r float64) bool {
-		return l < r
-	}
+func (l *Resource) Less(r *Resource) bool {
+	var isLess bool
 
-	if !lessFunc(r.MilliCPU, rr.MilliCPU) {
+	if l.MilliCPU > r.MilliCPU {
 		return false
 	}
-	if !lessFunc(r.Memory, rr.Memory) {
-		return false
+	if l.MilliCPU < r.MilliCPU {
+		isLess = true
 	}
 
-	if r.ScalarResources == nil {
-		if rr.ScalarResources != nil {
-			for _, rrQuant := range rr.ScalarResources {
-				if rrQuant <= minMilliScalarResources {
+	if l.Memory > r.Memory {
+		return false
+	}
+	if l.Memory < r.Memory {
+		isLess = true
+	}
+
+	if l.ScalarResources == nil {
+		if r.ScalarResources != nil {
+			for _, rQuant := range r.ScalarResources {
+				if rQuant <= minMilliScalarResources {
 					return false
+				} else {
+					isLess = true
 				}
 			}
 		}
-		return true
 	}
 
-	if rr.ScalarResources == nil {
-		return false
-	}
-
-	for rName, rQuant := range r.ScalarResources {
-		rrQuant := rr.ScalarResources[rName]
-		if !lessFunc(rQuant, rrQuant) {
-			return false
+	if r.ScalarResources != nil {
+		for name, lQuant := range l.ScalarResources {
+			rQuant := r.ScalarResources[name]
+			if lQuant > rQuant {
+				return false
+			}
+			if lQuant < rQuant {
+				isLess = true
+			}
 		}
 	}
 
-	return true
+	return isLess
 }
 
 // LessEqualStrict checks whether a resource is less or equal than other
