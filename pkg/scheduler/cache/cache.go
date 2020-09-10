@@ -113,7 +113,7 @@ type defaultBinder struct {
 	kubeclient *kubernetes.Clientset
 }
 
-//Bind will send bind request to api server
+// Bind will send bind request to api server
 func (db *defaultBinder) Bind(p *v1.Pod, hostname string) error {
 	if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(context.TODO(),
 		&v1.Binding{
@@ -135,7 +135,7 @@ type defaultEvictor struct {
 	recorder   record.EventRecorder
 }
 
-//Evict will send delete pod request to api server
+// Evict will send delete pod request to api server
 func (de *defaultEvictor) Evict(p *v1.Pod, reason string) error {
 	klog.V(3).Infof("Evicting pod %v/%v, because of %v", p.Namespace, p.Name, reason)
 
@@ -683,35 +683,11 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 			continue
 		}
 
-		snapshot.Nodes[value.Name] = value.Clone()
+		snapshot.Nodes[value.Name] = value
 	}
 
 	for _, value := range sc.Queues {
-		snapshot.Queues[value.UID] = value.Clone()
-	}
-
-	var cloneJobLock sync.Mutex
-	var wg sync.WaitGroup
-
-	cloneJob := func(value *schedulingapi.JobInfo) {
-		defer wg.Done()
-		if value.PodGroup != nil {
-			value.Priority = sc.defaultPriority
-
-			priName := value.PodGroup.Spec.PriorityClassName
-			if priorityClass, found := sc.PriorityClasses[priName]; found {
-				value.Priority = priorityClass.Value
-			}
-
-			klog.V(4).Infof("The priority of job <%s/%s> is <%s/%d>",
-				value.Namespace, value.Name, priName, value.Priority)
-		}
-
-		clonedJob := value.Clone()
-
-		cloneJobLock.Lock()
-		snapshot.Jobs[value.UID] = clonedJob
-		cloneJobLock.Unlock()
+		snapshot.Queues[value.UID] = value
 	}
 
 	for _, value := range sc.NamespaceCollection {
@@ -736,10 +712,8 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 			continue
 		}
 
-		wg.Add(1)
-		go cloneJob(value)
+		snapshot.Jobs[value.UID] = value
 	}
-	wg.Wait()
 
 	klog.V(3).Infof("There are <%d> Jobs, <%d> Queues and <%d> Nodes in total for scheduling.",
 		len(snapshot.Jobs), len(snapshot.Queues), len(snapshot.Nodes))
