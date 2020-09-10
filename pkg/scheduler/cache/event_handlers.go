@@ -647,7 +647,7 @@ func (sc *SchedulerCache) deletePriorityClass(pc *v1beta1.PriorityClass) {
 func (sc *SchedulerCache) addPriorityClass(pc *v1beta1.PriorityClass) {
 	if pc.GlobalDefault {
 		if pc.Value <= sc.defaultPriority {
-			klog.Errorf("Updated default priority from <%s> to <%s>",
+			klog.Errorf("Updated default priority from <%d> to <%d>",
 				sc.defaultPriority, pc.Value)
 			sc.defaultPriorityClass = pc
 			sc.defaultPriority = pc.Value
