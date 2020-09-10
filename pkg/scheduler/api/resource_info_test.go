@@ -408,6 +408,30 @@ func TestLess(t *testing.T) {
 			},
 			expected: false,
 		},
+		{
+			resource1: &Resource{
+				MilliCPU: 0,
+				Memory:   0,
+			},
+			resource2: &Resource{
+				MilliCPU: 101,
+				Memory:   0,
+			},
+			expected: true,
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        8000,
+				Memory:          8000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			resource2: &Resource{
+				MilliCPU:        8000,
+				Memory:          8000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 4000, "hugepages-test": 5000},
+			},
+			expected: true,
+		},
 	}
 
 	for _, test := range tests {
