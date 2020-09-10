@@ -151,7 +151,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 
 			// Reclaim victims for tasks.
 			for _, reclaimee := range victims {
-				klog.Errorf("Try to reclaim Task <%s/%s> for Tasks <%s/%s>",
+				klog.V(4).Infof("Try to reclaim Task <%s/%s> for Tasks <%s/%s>",
 					reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name)
 				if err := ssn.Evict(reclaimee, "reclaim"); err != nil {
 					klog.Errorf("Failed to reclaim Task <%s/%s> for Tasks <%s/%s>: %v",

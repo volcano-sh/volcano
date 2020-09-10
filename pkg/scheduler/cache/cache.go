@@ -697,22 +697,30 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 			value.Name, info.GetWeight())
 	}
 
-	for _, value := range sc.Jobs {
+	for _, job := range sc.Jobs {
 		// If no scheduling spec, does not handle it.
-		if value.PodGroup == nil {
+		if job.PodGroup == nil {
 			klog.V(4).Infof("The scheduling spec of Job <%v:%s/%s> is nil, ignore it.",
-				value.UID, value.Namespace, value.Name)
+				job.UID, job.Namespace, job.Name)
 
 			continue
 		}
 
-		if _, found := snapshot.Queues[value.Queue]; !found {
+		job.Priority = sc.defaultPriority
+		priName := job.PodGroup.Spec.PriorityClassName
+		if priorityClass, found := sc.PriorityClasses[priName]; found {
+			job.Priority = priorityClass.Value
+		}
+
+		klog.V(4).Infof("The priority of job <%s/%s> is <%s/%d>",
+			job.Namespace, job.Name, priName, job.Priority)
+
+		if _, found := snapshot.Queues[job.Queue]; !found {
 			klog.V(3).Infof("The Queue <%v> of Job <%v/%v> does not exist, ignore it.",
-				value.Queue, value.Namespace, value.Name)
+				job.Queue, job.Namespace, job.Name)
 			continue
 		}
-
-		snapshot.Jobs[value.UID] = value
+		snapshot.Jobs[job.UID] = job
 	}
 
 	klog.V(3).Infof("There are <%d> Jobs, <%d> Queues and <%d> Nodes in total for scheduling.",

@@ -636,9 +636,9 @@ func (sc *SchedulerCache) AddPriorityClass(obj interface{}) {
 
 func (sc *SchedulerCache) deletePriorityClass(pc *v1beta1.PriorityClass) {
 	if pc.GlobalDefault {
+		// TODO: find the next default priority class
 		sc.defaultPriorityClass = nil
 		sc.defaultPriority = 0
-
 	}
 
 	delete(sc.PriorityClasses, pc.Name)
@@ -646,13 +646,12 @@ func (sc *SchedulerCache) deletePriorityClass(pc *v1beta1.PriorityClass) {
 
 func (sc *SchedulerCache) addPriorityClass(pc *v1beta1.PriorityClass) {
 	if pc.GlobalDefault {
-		if sc.defaultPriorityClass != nil {
-			klog.Errorf("Updated default priority class from <%s> to <%s> forcefully.",
-				sc.defaultPriorityClass.Name, pc.Name)
-
+		if pc.Value <= sc.defaultPriority {
+			klog.Errorf("Updated default priority from <%s> to <%s>",
+				sc.defaultPriority, pc.Value)
+			sc.defaultPriorityClass = pc
+			sc.defaultPriority = pc.Value
 		}
-		sc.defaultPriorityClass = pc
-		sc.defaultPriority = pc.Value
 	}
 
 	sc.PriorityClasses[pc.Name] = pc

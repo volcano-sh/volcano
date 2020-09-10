@@ -79,7 +79,6 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[preemptee.Job]
 
 			preemptable := pJob.Priority > job.Priority
-
 			if !preemptable {
 				klog.V(4).Infof("Can not preempt task <%v/%v> because of gang-scheduling",
 					preemptee.Namespace, preemptee.Name)

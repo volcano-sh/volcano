@@ -42,7 +42,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("Enter Preempt ...")
 	defer klog.V(3).Infof("Leaving Preempt ...")
 
-	preemptorsMap := map[api.QueueID]*util.PriorityQueue{}
+	preemptorJobs := map[api.QueueID]*util.PriorityQueue{}
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}
 
 	var underRequest []*api.JobInfo
@@ -66,10 +66,10 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		}
 
 		if len(job.TaskStatusIndex[api.Pending]) != 0 && !ssn.JobPipelined(job) {
-			if _, found := preemptorsMap[job.Queue]; !found {
-				preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+			if _, found := preemptorJobs[job.Queue]; !found {
+				preemptorJobs[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 			}
-			preemptorsMap[job.Queue].Push(job)
+			preemptorJobs[job.Queue].Push(job)
 			underRequest = append(underRequest, job)
 			preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
@@ -81,7 +81,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	// Preemption between Jobs within Queue.
 	for _, queue := range queues {
 		for {
-			preemptors := preemptorsMap[queue.UID]
+			preemptors := preemptorJobs[queue.UID]
 
 			// If no preemptors, no preemption.
 			if preemptors == nil || preemptors.Empty() {
