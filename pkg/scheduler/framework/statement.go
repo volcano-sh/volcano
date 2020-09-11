@@ -381,7 +381,7 @@ func (s *Statement) Commit() {
 		case Allocate:
 			err := s.allocate(op.task)
 			if err != nil {
-				klog.Errorf("Failed to allocate task: for %s", err.Error())
+				klog.Errorf("Failed to allocate task %s: %s", op.task.NodeName, op.task.Name, err.Error())
 			}
 		}
 	}

@@ -678,12 +678,25 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		NamespaceInfo: make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
 	}
 
-	for _, value := range sc.Nodes {
-		if !value.Ready() {
-			continue
-		}
+	ch := make(chan struct{}, 20)
+	wg := sync.WaitGroup{}
+	// concurrently clone node
+	for nodeName := range sc.Nodes {
+		ch <- struct{}{}
+		wg.Add(1)
+		go func(name string) {
+			defer func() {
+				<-ch
+				wg.Done()
+			}()
+			node := sc.Nodes[nodeName]
+			if !node.Ready() {
+				return
+			}
 
-		snapshot.Nodes[value.Name] = value
+			// The node is internally updated in event handler, so make a copy instead of polluting.
+			snapshot.Nodes[node.Name] = node.Clone()
+		}(nodeName)
 	}
 
 	for _, value := range sc.Queues {
