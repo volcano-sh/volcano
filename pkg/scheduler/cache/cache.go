@@ -678,6 +678,8 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		NamespaceInfo: make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
 	}
 
+	var cloneLock sync.Mutex
+
 	ch := make(chan struct{}, 20)
 	wg := sync.WaitGroup{}
 	// concurrently clone node
@@ -693,9 +695,11 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 			if !node.Ready() {
 				return
 			}
-
 			// The node is internally updated in event handler, so make a copy instead of polluting.
-			snapshot.Nodes[node.Name] = node.Clone()
+			newNode := node.Clone()
+			cloneLock.Lock()
+			snapshot.Nodes[node.Name] = newNode
+			cloneLock.Unlock()
 		}(nodeName)
 	}
 
@@ -742,7 +746,9 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 					newJob.Queue, newJob.Namespace, newJob.Name)
 				return
 			}
+			cloneLock.Lock()
 			snapshot.Jobs[newJob.UID] = newJob
+			cloneLock.Unlock()
 		}(job)
 	}
 
