@@ -260,33 +260,18 @@ func (ji *JobInfo) DeleteTaskInfo(ti *TaskInfo) error {
 
 // Clone is used to clone a jobInfo object
 func (ji *JobInfo) Clone() *JobInfo {
-	info := &JobInfo{
-		UID:       ji.UID,
-		Name:      ji.Name,
-		Namespace: ji.Namespace,
-		Queue:     ji.Queue,
-		Priority:  ji.Priority,
-
-		MinAvailable:  ji.MinAvailable,
-		Allocated:     EmptyResource(),
-		TotalRequest:  EmptyResource(),
-		NodesFitDelta: make(NodeResourceMap),
-
-		NodesFitErrors: make(map[TaskID]*FitErrors),
-
-		PodGroup: ji.PodGroup,
-
-		TaskStatusIndex: map[TaskStatus]tasksMap{},
-		Tasks:           tasksMap{},
+	if ji == nil {
+		return nil
 	}
 
-	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
-
+	newJob := *ji
+	// only TaskStatusIndex and Tasks map need to be cloned
+	newJob.TaskStatusIndex = map[TaskStatus]tasksMap{}
+	newJob.Tasks = tasksMap{}
 	for _, task := range ji.Tasks {
-		info.AddTaskInfo(task.Clone())
+		newJob.AddTaskInfo(task)
 	}
-
-	return info
+	return &newJob
 }
 
 // String returns a jobInfo object in string format

@@ -719,22 +719,34 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 			continue
 		}
 
-		job.Priority = sc.defaultPriority
-		priName := job.PodGroup.Spec.PriorityClassName
-		if priorityClass, found := sc.PriorityClasses[priName]; found {
-			job.Priority = priorityClass.Value
-		}
+		ch <- struct{}{}
+		wg.Add(1)
+		go func(job *schedulingapi.JobInfo) {
+			defer func() {
+				<-ch
+				wg.Done()
+			}()
+			newJob := job.Clone()
+			// TODO: move the priority set in to event handler
+			newJob.Priority = sc.defaultPriority
+			priName := newJob.PodGroup.Spec.PriorityClassName
+			if priorityClass, found := sc.PriorityClasses[priName]; found {
+				newJob.Priority = priorityClass.Value
+			}
 
-		klog.V(4).Infof("The priority of job <%s/%s> is <%s/%d>",
-			job.Namespace, job.Name, priName, job.Priority)
+			klog.V(4).Infof("The priority of job <%s/%s> is <%s/%d>",
+				newJob.Namespace, newJob.Name, priName, newJob.Priority)
 
-		if _, found := snapshot.Queues[job.Queue]; !found {
-			klog.V(3).Infof("The Queue <%v> of Job <%v/%v> does not exist, ignore it.",
-				job.Queue, job.Namespace, job.Name)
-			continue
-		}
-		snapshot.Jobs[job.UID] = job
+			if _, found := snapshot.Queues[newJob.Queue]; !found {
+				klog.V(3).Infof("The Queue <%v> of Job <%v/%v> does not exist, ignore it.",
+					newJob.Queue, newJob.Namespace, newJob.Name)
+				return
+			}
+			snapshot.Jobs[newJob.UID] = newJob
+		}(job)
 	}
+
+	wg.Wait()
 
 	klog.V(3).Infof("There are <%d> Jobs, <%d> Queues and <%d> Nodes in total for scheduling.",
 		len(snapshot.Jobs), len(snapshot.Queues), len(snapshot.Nodes))
