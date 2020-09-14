@@ -893,13 +893,20 @@ status:
 	}
 
 	podgroup := schedulingapi.PodGroup{}
-	if err := schedulingscheme.Scheme.Convert(pg, &podgroup, nil); err != nil {
-		b.Fatalf("Failed to convert podgroup from %T to %T", ss, podgroup)
+	if err := schedulingscheme.Scheme.Convert(&pg, &podgroup.PodGroup, nil); err != nil {
+		b.Fatalf("Failed to convert podgroup from %T to %T: %v", pg, podgroup, err)
+	}
+
+	// construct 1000 node
+	for i := 0; i < 1000; i++ {
+		node.Name = fmt.Sprintf("test-%d", i)
+		sc.Nodes[node.Name] = schedulingapi.NewNodeInfo(&node)
 	}
 
 	// construct 10000 pods and podgroups
 	for i := 0; i < 10000; i++ {
 		pod.Name = fmt.Sprintf("test-%d", i)
+		pod.Spec.Hostname = fmt.Sprintf("test-%d", i/10)
 		pg.Name = fmt.Sprintf("test-%d", i)
 
 		jobID := schedulingapi.JobID(fmt.Sprintf("%s/%s", pg.Namespace, pg.Name))
