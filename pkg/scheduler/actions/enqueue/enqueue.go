@@ -17,6 +17,9 @@ limitations under the License.
 package enqueue
 
 import (
+	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
@@ -58,6 +61,11 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 	jobsMap := map[api.QueueID]*util.PriorityQueue{}
 
 	for _, job := range ssn.Jobs {
+		if job.ScheduleStartTimestamp.IsZero() {
+			ssn.Jobs[job.UID].ScheduleStartTimestamp = metav1.Time{
+				Time: time.Now(),
+			}
+		}
 		if queue, found := ssn.Queues[job.Queue]; !found {
 			klog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
 				job.Queue, job.Namespace, job.Name)
@@ -83,11 +91,22 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 
 	total := api.EmptyResource()
 	used := api.EmptyResource()
+	lockedNodesIdle := api.EmptyResource()
+	if util.Reservation.TargetJob != nil && len(util.Reservation.LockedNodes) != 0 {
+		for _, node := range util.Reservation.LockedNodes {
+			lockedNodesIdle.Add(node.Idle)
+			klog.V(3).Infof("locked node: %s, idle CPU: %f", node.Name, node.Idle)
+		}
+	}
 	for _, node := range ssn.Nodes {
 		total.Add(node.Allocatable)
 		used.Add(node.Used)
 	}
-	idle := total.Clone().Multi(enqueue.getOverCommitFactor(ssn)).Sub(used)
+	klog.V(3).Infof("total CPU: %f", total.MilliCPU)
+	klog.V(3).Infof("used CPU: %f", used.MilliCPU)
+	klog.V(3).Infof("locked CPU: %f", lockedNodesIdle.MilliCPU)
+	idle := total.Clone().Multi(enqueue.getOverCommitFactor(ssn)).Sub(used).Sub(lockedNodesIdle)
+	klog.V(3).Infof("idle CPU: %f", idle.MilliCPU)
 
 	for {
 		if queues.Empty() {
@@ -107,6 +126,10 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 		job := jobs.Pop().(*api.JobInfo)
+		if util.Reservation.TargetJob != nil && job.UID == util.Reservation.TargetJob.UID {
+			klog.V(3).Infof("Target Job name: %s", util.Reservation.TargetJob.Name)
+			continue
+		}
 
 		inqueue := false
 
@@ -127,6 +150,24 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 
 		// Added Queue back until no job in Queue.
 		queues.Push(queue)
+	}
+	// if target job exists, judge whether it can be inqueue or not
+	if util.Reservation.TargetJob != nil && len(util.Reservation.LockedNodes) != 0 {
+		klog.V(3).Infof("Start to deal with Target Job")
+		minReq := api.NewResource(*util.Reservation.TargetJob.PodGroup.Spec.MinResources)
+		klog.V(3).Infof("Target Job request CPU: %f", minReq.MilliCPU)
+		klog.V(3).Infof("Target Job request Memory: %f", minReq.Memory)
+		lockedIdle := api.EmptyResource()
+		for _, lockNode := range util.Reservation.LockedNodes {
+			lockedIdle.Add(lockNode.Idle)
+		}
+		klog.V(3).Infof("locked idle CPU: %f", lockedIdle.MilliCPU)
+		klog.V(3).Infof("locked idle Memory: %f", lockedIdle.Memory)
+		if minReq.LessEqual(lockedIdle) {
+			klog.V(3).Infof("Turn Target Job phase to Inqueue")
+			util.Reservation.TargetJob.PodGroup.Status.Phase = scheduling.PodGroupInqueue
+			ssn.Jobs[util.Reservation.TargetJob.UID] = util.Reservation.TargetJob
+		}
 	}
 }
 

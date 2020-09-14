@@ -94,7 +94,19 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	pendingTasks := map[api.JobID]*util.PriorityQueue{}
 
 	allNodes := util.GetNodeList(ssn.Nodes)
-
+	var unlockedNodes []*api.NodeInfo
+	if util.Reservation.TargetJob != nil && len(util.Reservation.LockedNodes) != 0 {
+		for _, node := range allNodes {
+			if _, exist := util.Reservation.LockedNodes[node.Name]; !exist {
+				unlockedNodes = append(unlockedNodes, node)
+			}
+		}
+	} else {
+		unlockedNodes = allNodes
+	}
+	for _, unlockedNode := range unlockedNodes {
+		klog.V(3).Infof("unlockedNode ID: %s, Name: %s", unlockedNode.Node.UID, unlockedNode.Node.Name)
+	}
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		// Check for Resource Predicate
 		if !task.InitResreq.LessEqual(node.FutureIdle()) {
@@ -151,7 +163,11 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		}
 
 		job := jobs.Pop().(*api.JobInfo)
-		if _, found := pendingTasks[job.UID]; !found {
+		if util.Reservation.TargetJob != nil && job.UID == util.Reservation.TargetJob.UID {
+			klog.V(3).Infof("Target Job Name: %s", util.Reservation.TargetJob.Name)
+			continue
+		}
+		if _, found = pendingTasks[job.UID]; !found {
 			tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
 				// Skip BestEffort task in 'allocate' action.
@@ -176,7 +192,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			task := tasks.Pop().(*api.TaskInfo)
 
 			klog.V(3).Infof("There are <%d> nodes for Job <%v/%v>",
-				len(ssn.Nodes), job.Namespace, job.Name)
+				len(unlockedNodes), job.Namespace, job.Name)
 
 			predicateNodes, fitErrors := util.PredicateNodes(task, allNodes, predicateFn)
 			if len(predicateNodes) == 0 {
@@ -240,6 +256,83 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 		// Added Namespace back until no job in Namespace.
 		namespaces.Push(namespace)
+	}
+
+	// if target job exists, try to allocate resource to it
+	if util.Reservation.TargetJob != nil && len(util.Reservation.LockedNodes) != 0 {
+		klog.V(3).Infof("Start to deal with Target Job...")
+		scheduledTasks := util.NewPriorityQueue(ssn.TaskOrderFn)
+		for _, task := range util.Reservation.TargetJob.TaskStatusIndex[api.Pending] {
+			if task.Resreq.IsEmpty() {
+				klog.V(4).Infof("Task <%v/%v> is BestEffort task, skip it.", task.Namespace, task.Name)
+				continue
+			}
+			scheduledTasks.Push(task)
+		}
+		klog.V(3).Infof("Try to allocate resource to %d tasks of targetJob <%v/%v>", scheduledTasks.Len(),
+			util.Reservation.TargetJob.Namespace, util.Reservation.TargetJob.Name)
+		stmt := framework.NewStatement(ssn)
+		for !scheduledTasks.Empty() {
+			task := scheduledTasks.Pop().(*api.TaskInfo)
+			klog.V(3).Infof("There are <%d> nodes for Job <%v/%v>",
+				len(util.Reservation.LockedNodes), util.Reservation.TargetJob.Namespace, util.Reservation.TargetJob.Name)
+			if len(util.Reservation.TargetJob.NodesFitDelta) > 0 {
+				util.Reservation.TargetJob.NodesFitDelta = make(api.NodeResourceMap)
+			}
+			var lockedNodes []*api.NodeInfo
+			for _, nodeInfo := range util.Reservation.LockedNodes {
+				lockedNodes = append(lockedNodes, nodeInfo)
+			}
+			predicateNodes, fitErrors := util.PredicateNodes(task, lockedNodes, predicateFn)
+			if len(predicateNodes) == 0 {
+				util.Reservation.TargetJob.NodesFitErrors[task.UID] = fitErrors
+				break
+			}
+
+			var candidateNodes []*api.NodeInfo
+			for _, n := range predicateNodes {
+				if task.InitResreq.LessEqual(n.Idle) || task.InitResreq.LessEqual(n.FutureIdle()) {
+					candidateNodes = append(candidateNodes, n)
+				}
+			}
+			if len(candidateNodes) == 0 {
+				continue
+			}
+
+			nodeScores := util.PrioritizeNodes(task, candidateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
+
+			node := ssn.BestNodeFn(task, nodeScores)
+			if node == nil {
+				node = util.SelectBestNode(nodeScores)
+			}
+
+			if task.InitResreq.LessEqual(node.Idle) {
+				klog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
+					task.Namespace, task.Name, node.Name)
+				if err := stmt.Allocate(task, node.Name); err != nil {
+					klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
+						task.UID, node.Name, ssn.UID, err)
+				}
+			} else {
+				util.Reservation.TargetJob.NodesFitDelta[node.Name] = node.Idle.Clone()
+				util.Reservation.TargetJob.NodesFitDelta[node.Name].FitDelta(task.InitResreq)
+				klog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s> with limited resources",
+					task.Namespace, task.Name, node.Name)
+				if task.InitResreq.LessEqual(node.FutureIdle()) {
+					klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
+						task.Namespace, task.Name, node.Name, task.InitResreq, node.Releasing)
+					if err := ssn.Pipeline(task, node.Name); err != nil {
+						klog.Errorf("Failed to pipeline Task %v on %v in Session %v for %v.",
+							task.UID, node.Name, ssn.UID, err)
+					}
+				}
+			}
+		}
+		if ssn.JobReady(util.Reservation.TargetJob) {
+			stmt.Commit()
+		} else {
+			stmt.Discard()
+		}
 	}
 }
 
