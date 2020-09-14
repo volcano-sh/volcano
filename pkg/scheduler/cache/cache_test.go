@@ -897,6 +897,13 @@ status:
 		b.Fatalf("Failed to convert podgroup from %T to %T: %v", pg, podgroup, err)
 	}
 
+	sc.Queues["default"] = &schedulingapi.QueueInfo{
+		UID:  "default",
+		Name: "default",
+
+		Weight: 1,
+	}
+
 	// construct 1000 node
 	for i := 0; i < 1000; i++ {
 		node.Name = fmt.Sprintf("test-%d", i)
