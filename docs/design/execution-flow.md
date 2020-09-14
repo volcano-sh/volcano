@@ -3,7 +3,7 @@
 The Allocation of the workloads to the node in scheduler happens in each session and the workflow of the session is illustrated in the below diagram.
 
 1. Session Opens every 1 sec
-2. In very session local copies of Queues, JobsMap, PendingTasks and Node List is created.
+2. In every session local copies of Queues, JobsMap, PendingTasks and Node List is created.
 3. For Each Jobs in the Session
     1. If the Queued ID in the Job exists in the Local Copy of Queues then :
         1. Add the Queue in the Local Copy of Queues
