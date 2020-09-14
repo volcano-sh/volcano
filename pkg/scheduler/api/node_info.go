@@ -229,7 +229,8 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 
 	key := PodKey(task.Pod)
 	if _, found := ni.Tasks[key]; found {
-		return nil
+		return fmt.Errorf("task <%v/%v> already on node <%v>",
+			task.Namespace, task.Name, ni.Name)
 	}
 
 	// Node will hold a copy of task to make sure the status
