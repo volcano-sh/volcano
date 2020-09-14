@@ -208,6 +208,7 @@ func preempt(
 				preemptees = append(preemptees, task.Clone())
 			}
 		}
+
 		victims := ssn.Preemptable(preemptor, preemptees)
 		metrics.UpdatePreemptionVictimsCount(len(victims))
 

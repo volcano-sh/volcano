@@ -92,19 +92,12 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 
 // Clone is used for cloning a task
 func (ti *TaskInfo) Clone() *TaskInfo {
-	return &TaskInfo{
-		UID:         ti.UID,
-		Job:         ti.Job,
-		Name:        ti.Name,
-		Namespace:   ti.Namespace,
-		NodeName:    ti.NodeName,
-		Status:      ti.Status,
-		Priority:    ti.Priority,
-		Pod:         ti.Pod,
-		Resreq:      ti.Resreq.Clone(),
-		InitResreq:  ti.InitResreq.Clone(),
-		VolumeReady: ti.VolumeReady,
+	if ti == nil {
+		return nil
 	}
+
+	out := *ti
+	return &out
 }
 
 // String returns the taskInfo details in a string
