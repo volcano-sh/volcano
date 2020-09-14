@@ -368,18 +368,18 @@ status:
   - address: integration-worker
     type: Hostname
   allocatable:
-    cpu: "4"
+    cpu: "128"
     ephemeral-storage: 123722704Ki
     hugepages-1Gi: "0"
     hugepages-2Mi: "0"
-    memory: 8174332Ki
+    memory: 817433200Ki
     pods: "110"
   capacity:
-    cpu: "4"
+    cpu: "128"
     ephemeral-storage: 123722704Ki
     hugepages-1Gi: "0"
     hugepages-2Mi: "0"
-    memory: 8174332Ki
+    memory: 817433200Ki
     pods: "110"
   conditions:
   - lastHeartbeatTime: "2020-09-14T03:14:27Z"
@@ -906,7 +906,7 @@ status:
 	// construct 10000 pods and podgroups
 	for i := 0; i < 10000; i++ {
 		pod.Name = fmt.Sprintf("test-%d", i)
-		pod.Spec.Hostname = fmt.Sprintf("test-%d", i/10)
+		pod.Spec.NodeName = fmt.Sprintf("test-%d", i/10)
 		pg.Name = fmt.Sprintf("test-%d", i)
 
 		jobID := schedulingapi.JobID(fmt.Sprintf("%s/%s", pg.Namespace, pg.Name))
@@ -915,7 +915,10 @@ status:
 		sc.Jobs[jobID].SetPodGroup(&podgroup)
 
 		task := schedulingapi.NewTaskInfo(&pod)
-		sc.addTask(task)
+		err := sc.addTask(task)
+		if err != nil {
+			b.Fatalf("Add task failed: %v", err)
+		}
 	}
 
 	for n := 0; n < b.N; n++ {
