@@ -905,13 +905,13 @@ status:
 	}
 
 	// construct 1000 node
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 10000; i++ {
 		node.Name = fmt.Sprintf("test-%d", i)
 		sc.Nodes[node.Name] = schedulingapi.NewNodeInfo(&node)
 	}
 
 	// construct 10000 pods and podgroups
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < 100000; i++ {
 		pod.Name = fmt.Sprintf("test-%d", i)
 		pod.Spec.NodeName = fmt.Sprintf("test-%d", i/10)
 		pg.Name = fmt.Sprintf("test-%d", i)
