@@ -262,7 +262,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 	newJob.TaskStatusIndex = map[TaskStatus]tasksMap{}
 	newJob.Tasks = tasksMap{}
 	for _, task := range ji.Tasks {
-		newJob.AddTaskInfo(task)
+		newJob.AddTaskInfo(task.Clone())
 	}
 	return &newJob
 }
