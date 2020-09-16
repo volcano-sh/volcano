@@ -46,7 +46,8 @@ type queueAttr struct {
 	allocated *api.Resource
 	request   *api.Resource
 	// inqueue represents the resource request of the inqueue job
-	inqueue *api.Resource
+	inqueue    *api.Resource
+	capability *api.Resource
 }
 
 // GetJobMinResources return the min resources of podgroup.
@@ -94,6 +95,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				request:   api.EmptyResource(),
 				inqueue:   api.EmptyResource(),
 			}
+			if len(queue.Queue.Spec.Capability) != 0 {
+				attr.capability = api.NewResource(queue.Queue.Spec.Capability)
+			}
+
 			pp.queueOpts[job.Queue] = attr
 			klog.V(4).Infof("Added Queue <%s> attributes.", job.Queue)
 		}
@@ -161,11 +166,15 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			oldDeserved := attr.deserved.Clone()
 			attr.deserved.Add(remaining.Clone().Multi(float64(attr.weight) / float64(totalWeight)))
 
-			if attr.request.Less(attr.deserved) {
+			if attr.capability != nil && !attr.deserved.LessEqualStrict(attr.capability) {
+				attr.deserved = helpers.Min(attr.deserved, attr.capability)
+				attr.deserved = helpers.Min(attr.deserved, attr.request)
+				meet[attr.queueID] = struct{}{}
+				klog.V(4).Infof("queue <%s> is meet cause of the capability", attr.name)
+			} else if attr.request.Less(attr.deserved) {
 				attr.deserved = helpers.Min(attr.deserved, attr.request)
 				meet[attr.queueID] = struct{}{}
 				klog.V(4).Infof("queue <%s> is meet", attr.name)
-
 			}
 			pp.updateShare(attr)
 
