@@ -98,7 +98,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j2", q2, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
 
-		By("Create new comming queue and job")
+		By("Create new coming queue and job")
 		q3 := "reclaim-q3"
 		ctx.queues = append(ctx.queues, q3)
 		createQueues(ctx)
@@ -149,7 +149,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		_, err = CreateReclaimJob(ctx, CPU1Mem1, j2, q2, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
 
-		By("Create new comming queue and job")
+		By("Create new coming queue and job")
 		q3 := "reclaim-q3"
 		ctx.queues = append(ctx.queues, q3)
 		createQueues(ctx)
@@ -209,7 +209,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j2", q2, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
 
-		By("Create new comming job")
+		By("Create new coming job")
 		q3 := "reclaim-q3"
 
 		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j3", q3, "", "", true)
@@ -248,7 +248,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j2", q2, "high-priority", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
 
-		By("Create new comming queue and job")
+		By("Create new coming queue and job")
 		q3 := "reclaim-q3"
 
 		err = WaitQueueStatus(ctx, "Open", 1, q1)
@@ -331,7 +331,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j2", q2, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
 
-		By("Create new comming queue and job")
+		By("Create new coming queue and job")
 		q3 := "reclaim-q3"
 		ctx.queues = append(ctx.queues, q3)
 		createQueues(ctx)
@@ -378,7 +378,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j2", q2, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
 
-		By("Create new comming queue and job")
+		By("Create new coming queue and job")
 		q3 := "reclaim-q3"
 		ctx.queues = append(ctx.queues, q3)
 		createQueues(ctx)
@@ -431,7 +431,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j2", q2, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
 
-		By("Create new comming queue and job")
+		By("Create new coming queue and job")
 		q3 := "reclaim-q3"
 		ctx.queues = append(ctx.queues, q3)
 		createQueues(ctx)

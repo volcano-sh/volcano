@@ -59,7 +59,7 @@ The queue order is determined along the hierarchy path. If the shares of two sam
 
 Except for the namespace and job priority, hierarchical queues' priority should be taken into consideration. Queues with lower share have higher priority and saturated queues have minimum priority.
 
-### relcaim
+### reclaim
 
 The deserved share is determined by hdrf share of the queues.
 
