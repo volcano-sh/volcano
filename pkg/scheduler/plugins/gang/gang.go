@@ -119,17 +119,6 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 			return -1
 		}
 
-		if !lReady && !rReady {
-			if lv.CreationTimestamp.Equal(&rv.CreationTimestamp) {
-				if lv.UID < rv.UID {
-					return -1
-				}
-			} else if lv.CreationTimestamp.Before(&rv.CreationTimestamp) {
-				return -1
-			}
-			return 1
-		}
-
 		return 0
 	}
 
