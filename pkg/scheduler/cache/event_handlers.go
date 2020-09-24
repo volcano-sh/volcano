@@ -217,7 +217,7 @@ func (sc *SchedulerCache) UpdatePod(oldObj, newObj interface{}) {
 		return
 	}
 
-	klog.V(3).Infof("Updated pod <%s/%v> in cache.", oldPod.Namespace, oldPod.Name)
+	klog.V(4).Infof("Updated pod <%s/%v> in cache.", oldPod.Namespace, oldPod.Name)
 }
 
 // DeletePod delete pod from scheduler cache
