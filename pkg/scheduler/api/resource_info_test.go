@@ -278,6 +278,14 @@ func TestLessEqual(t *testing.T) {
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1},
 			},
 			resource2: &Resource{},
+			expected:  false,
+		},
+		{
+			resource1: &Resource{
+				MilliCPU: 9,
+				Memory:   0,
+			},
+			resource2: &Resource{},
 			expected:  true,
 		},
 		{
