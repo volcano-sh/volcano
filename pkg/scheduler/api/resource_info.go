@@ -69,7 +69,7 @@ func (r *Resource) Clone() *Resource {
 
 var minMilliCPU float64 = 10
 var minMilliScalarResources float64 = 10
-var minMemory float64 = 10 * 1024 * 1024
+var minMemory float64 = 1
 
 // NewResource create a new resource object from resource list
 func NewResource(rl v1.ResourceList) *Resource {
@@ -186,7 +186,7 @@ func (r *Resource) SetMaxResource(rr *Resource) {
 	}
 }
 
-//FitDelta Computes the delta between a resource oject representing available
+//FitDelta Computes the delta between a resource object representing available
 //resources an operand representing resources being requested.  Any
 //field that is less than 0 after the operation represents an
 //insufficient resource.
