@@ -254,7 +254,7 @@ type ResourceReservation struct {
 // NewResourceReservation is used to create global instance
 func NewResourceReservation() *ResourceReservation {
 	return &ResourceReservation{
-		TargetJob: nil,
+		TargetJob:   nil,
 		LockedNodes: map[string]*api.NodeInfo{},
 	}
 }
