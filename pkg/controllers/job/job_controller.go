@@ -57,15 +57,6 @@ func init() {
 	framework.RegisterController(&jobcontroller{})
 }
 
-const (
-	// maxRetries is the number of times a volcano job will be retried before it is dropped out of the queue.
-	// With the current rate-limiter in use (5ms*2^(maxRetries-1)) the following numbers represent the times
-	// a volcano job is going to be requeued:
-	//
-	// 5ms, 10ms, 20ms, 40ms, 80ms, 160ms, 320ms, 640ms, 1.3s, 2.6s, 5.1s, 10.2s, 20.4s, 41s, 82s
-	maxRetries = 15
-)
-
 // jobcontroller the Job jobcontroller type.
 type jobcontroller struct {
 	kubeClient kubernetes.Interface
@@ -112,8 +103,9 @@ type jobcontroller struct {
 	recorder        record.EventRecorder
 	priorityClasses map[string]*v1beta1.PriorityClass
 
-	errTasks workqueue.RateLimitingInterface
-	workers  uint32
+	errTasks      workqueue.RateLimitingInterface
+	workers       uint32
+	maxRequeueNum int
 }
 
 func (cc *jobcontroller) Name() string {
@@ -139,6 +131,10 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.errTasks = newRateLimitingQueue()
 	cc.recorder = recorder
 	cc.workers = workers
+	cc.maxRequeueNum = opt.MaxRequeueNum
+	if cc.maxRequeueNum < 0 {
+		cc.maxRequeueNum = -1
+	}
 
 	var i uint32
 	for i = 0; i < workers; i++ {
@@ -328,7 +324,7 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 	}
 
 	if err := st.Execute(action); err != nil {
-		if queue.NumRequeues(req) < maxRetries {
+		if cc.maxRequeueNum == -1 || queue.NumRequeues(req) < cc.maxRequeueNum {
 			klog.V(2).Infof("Failed to handle Job <%s/%s>: %v",
 				jobInfo.Job.Namespace, jobInfo.Job.Name, err)
 			// If any error, requeue it.
