@@ -134,17 +134,12 @@ type JobInfo struct {
 
 	MinAvailable int32
 
-	NodesFitDelta NodeResourceMap
-
 	JobFitErrors   string
 	NodesFitErrors map[TaskID]*FitErrors
 
 	// All tasks of the Job.
 	TaskStatusIndex map[TaskStatus]tasksMap
 	Tasks           tasksMap
-
-	Allocated    *Resource
-	TotalRequest *Resource
 
 	CreationTimestamp metav1.Time
 	PodGroup          *PodGroup
@@ -153,15 +148,9 @@ type JobInfo struct {
 // NewJobInfo creates a new jobInfo for set of tasks
 func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 	job := &JobInfo{
-		UID: uid,
-
-		MinAvailable:  0,
-		NodesFitDelta: make(NodeResourceMap),
-		Allocated:     EmptyResource(),
-		TotalRequest:  EmptyResource(),
-
-		NodesFitErrors: make(map[TaskID]*FitErrors),
-
+		UID:             uid,
+		MinAvailable:    0,
+		NodesFitErrors:  make(map[TaskID]*FitErrors),
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},
 	}
@@ -200,12 +189,6 @@ func (ji *JobInfo) addTaskIndex(ti *TaskInfo) {
 func (ji *JobInfo) AddTaskInfo(ti *TaskInfo) {
 	ji.Tasks[ti.UID] = ti
 	ji.addTaskIndex(ti)
-
-	ji.TotalRequest.Add(ti.Resreq)
-
-	if AllocatedStatus(ti.Status) {
-		ji.Allocated.Add(ti.Resreq)
-	}
 }
 
 // UpdateTaskStatus is used to update task's status in a job.
@@ -242,12 +225,6 @@ func (ji *JobInfo) deleteTaskIndex(ti *TaskInfo) {
 // DeleteTaskInfo is used to delete a task from a job
 func (ji *JobInfo) DeleteTaskInfo(ti *TaskInfo) error {
 	if task, found := ji.Tasks[ti.UID]; found {
-		ji.TotalRequest.Sub(task.Resreq)
-
-		if AllocatedStatus(task.Status) {
-			ji.Allocated.Sub(task.Resreq)
-		}
-
 		delete(ji.Tasks, task.UID)
 
 		ji.deleteTaskIndex(task)
@@ -267,11 +244,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		Queue:     ji.Queue,
 		Priority:  ji.Priority,
 
-		MinAvailable:  ji.MinAvailable,
-		Allocated:     EmptyResource(),
-		TotalRequest:  EmptyResource(),
-		NodesFitDelta: make(NodeResourceMap),
-
+		MinAvailable:   ji.MinAvailable,
 		NodesFitErrors: make(map[TaskID]*FitErrors),
 
 		PodGroup: ji.PodGroup,
