@@ -19,6 +19,8 @@ package enqueue
 import (
 	"k8s.io/klog"
 
+	"reflect"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -89,6 +91,8 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 	}
 	idle := total.Clone().Multi(enqueue.getOverCommitFactor(ssn)).Sub(used)
 
+	resourceMap := make(map[string]*api.Resource)
+
 	for {
 		if queues.Empty() {
 			break
@@ -114,7 +118,23 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 			inqueue = true
 		} else {
 			minReq := api.NewResource(*job.PodGroup.Spec.MinResources)
+			if _, ok := resourceMap[job.Namespace]; !ok && options.ServerOpts.ConsiderResourceQuotaDuringEnqueue {
+				resource := ssn.NamespaceInfo[api.NamespaceName(job.Namespace)].GetResource()
+				if !reflect.DeepEqual(resource, api.EmptyResource()) {
+					resourceMap[job.Namespace] = resource
+				}
+			}
+			klog.V(3).Infof("Now start to do comparison, for job <%s/%s>, Enqueueable: %t, idle: %t", job.Namespace, job.Name, ssn.JobEnqueueable(job), minReq.LessEqual(idle))
 			if ssn.JobEnqueueable(job) && minReq.LessEqual(idle) {
+				if _, ok := resourceMap[job.Namespace]; ok {
+					klog.V(3).Infof("For job <%s/%s>, ResourceQuota: %t", job.Namespace, job.Name, minReq.LessEqual(resourceMap[job.Namespace]))
+					if minReq.LessEqual(resourceMap[job.Namespace]) {
+						resourceMap[job.Namespace].Sub(minReq)
+					} else {
+						queues.Push(queue)
+						continue
+					}
+				}
 				idle.Sub(minReq)
 				inqueue = true
 			}
