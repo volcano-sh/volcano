@@ -55,12 +55,12 @@ Volcano is a sandbox project of the [Cloud Native Computing Foundation](https://
 - Kubernetes 1.12+ with CRD support
 
 
-You can try volcano by one the following two ways.
+You can try Volcano by one of the following two ways.
 
 
 ### Install with YAML files
 
-Install volcano on an existing Kubernetes cluster. This way is both available for x86_64 and arm64 architecture.
+Install Volcano on an existing Kubernetes cluster. This way is both available for x86_64 and arm64 architecture.
 
 ```
 For x86_64:
