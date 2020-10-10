@@ -79,7 +79,7 @@ Another way to lock N nodes is lock one node every scheduling cycle. The selecte
 cycle. The dynamic selection process can alleviate the stereotype caused by one-time selection, especially in scene that
 task type is unpredictable and complex.
 
-![Feature Design](./images/ReservationDesign.png)
+![Feature Design](./images/reservation_design.png)
 
 ## Implementation
 ### Action
@@ -88,4 +88,4 @@ locked nodes.
 ### Plugin 
 Add new Plugin reservation to implement algorithm detail above.
 
-![Workflow](./images/ReservationWorkflow.png)
+![Workflow](./images/reservation_workflow.png)
