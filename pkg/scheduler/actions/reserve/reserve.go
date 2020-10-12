@@ -34,7 +34,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	}
 	// if target job has not been scheduled, select a locked node for it
 	// else reset target job and locked nodes
-	if util.Reservation.TargetJob.PodGroup.Status.Phase == scheduling.PodGroupPending {
+	phase := util.Reservation.TargetJob.PodGroup.Status.Phase
+	if phase == scheduling.PodGroupPending || phase == scheduling.PodGroupInqueue {
 		ssn.ReservedNodes()
 	} else {
 		klog.V(3).Infof("Target Job has been scheduled. Reset Target Job")

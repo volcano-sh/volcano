@@ -76,6 +76,9 @@ func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateF
 	fe := api.NewFitErrors()
 
 	allNodes := len(nodes)
+	if allNodes == 0 {
+		return make([]*api.NodeInfo, 0), fe
+	}
 	numNodesToFind := CalculateNumOfFeasibleNodesToFind(int32(allNodes))
 
 	//allocate enough space to avoid growing it

@@ -37,7 +37,7 @@ const (
 
 var (
 	// defaultOverCommitFactor defines the default overCommit resource factor for enqueue action
-	defaultOverCommitFactor = 1.2
+	defaultOverCommitFactor = 1.0
 )
 
 type Action struct{}
@@ -152,18 +152,18 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 		queues.Push(queue)
 	}
 	// if target job exists, judge whether it can be inqueue or not
-	if util.Reservation.TargetJob != nil && len(util.Reservation.LockedNodes) != 0 {
+	targetJob := util.Reservation.TargetJob
+	if targetJob != nil && targetJob.PodGroup.Status.Phase == scheduling.PodGroupPending && len(util.Reservation.LockedNodes) != 0 {
 		klog.V(3).Infof("Start to deal with Target Job")
 		minReq := api.NewResource(*util.Reservation.TargetJob.PodGroup.Spec.MinResources)
 		klog.V(3).Infof("Target Job request CPU: %f", minReq.MilliCPU)
-		klog.V(3).Infof("Target Job request Memory: %f", minReq.Memory)
 		lockedIdle := api.EmptyResource()
 		for _, lockNode := range util.Reservation.LockedNodes {
 			lockedIdle.Add(lockNode.Idle)
 		}
 		klog.V(3).Infof("locked idle CPU: %f", lockedIdle.MilliCPU)
-		klog.V(3).Infof("locked idle Memory: %f", lockedIdle.Memory)
-		if minReq.LessEqual(lockedIdle) {
+		idle = idle.Add(lockedIdle)
+		if minReq.LessEqual(idle) {
 			klog.V(3).Infof("Turn Target Job phase to Inqueue")
 			util.Reservation.TargetJob.PodGroup.Status.Phase = scheduling.PodGroupInqueue
 			ssn.Jobs[util.Reservation.TargetJob.UID] = util.Reservation.TargetJob

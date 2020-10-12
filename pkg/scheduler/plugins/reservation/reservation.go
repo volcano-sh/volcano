@@ -130,14 +130,18 @@ func (rp *reservationPlugin) getUnlockedNodesWithMaxIdle(ssn *framework.Session)
 		for _, lockedNode := range util.Reservation.LockedNodes {
 			if node.Node.UID == lockedNode.Node.UID {
 				hasLocked = true
+				break
 			}
 		}
-		if !hasLocked {
-			if maxIdleNode == nil || maxIdleNode.Idle.Less(node.Idle) {
+		if !hasLocked && (maxIdleNode == nil || maxIdleNode.Idle.Less(node.Idle)) {
 				maxIdleNode = node
-			}
 		}
 	}
-	klog.V(3).Infof("max Idle Node: %s:", maxIdleNode.Name)
+	if maxIdleNode != nil {
+		klog.V(3).Infof("max Idle Node: %s:", maxIdleNode.Name)
+	} else {
+		klog.V(3).Info("max Idle Node: nil")
+	}
+
 	return maxIdleNode
 }
