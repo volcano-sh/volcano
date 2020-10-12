@@ -111,6 +111,10 @@ func (jc *jobCache) GetStatus(key string) (*v1alpha1.JobStatus, error) {
 		return nil, fmt.Errorf("failed to find job <%s>", key)
 	}
 
+	if job.Job == nil {
+		return nil, fmt.Errorf("job <%s> is not ready", key)
+	}
+
 	status := job.Job.Status
 
 	return &status, nil
@@ -266,6 +270,7 @@ func (jc *jobCache) TaskCompleted(jobKey, taskName string) bool {
 	for _, task := range jobInfo.Job.Spec.Tasks {
 		if task.Name == taskName {
 			taskReplicas = task.Replicas
+			break
 		}
 	}
 	if taskReplicas <= 0 {
