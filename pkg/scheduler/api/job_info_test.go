@@ -54,7 +54,9 @@ func TestAddTaskInfo(t *testing.T) {
 			uid:  case01UID,
 			pods: []*v1.Pod{case01Pod1, case01Pod2, case01Pod3, case01Pod4},
 			expected: &JobInfo{
-				UID: case01UID,
+				UID:          case01UID,
+				Allocated:    buildResource("4000m", "4G"),
+				TotalRequest: buildResource("5000m", "5G"),
 				Tasks: tasksMap{
 					case01Task1.UID: case01Task1,
 					case01Task2.UID: case01Task2,
@@ -127,7 +129,9 @@ func TestDeleteTaskInfo(t *testing.T) {
 			pods:   []*v1.Pod{case01Pod1, case01Pod2, case01Pod3},
 			rmPods: []*v1.Pod{case01Pod2},
 			expected: &JobInfo{
-				UID: case01UID,
+				Allocated:    buildResource("3000m", "3G"),
+				TotalRequest: buildResource("4000m", "4G"),
+				UID:          case01UID,
 				Tasks: tasksMap{
 					case01Task1.UID: case01Task1,
 					case01Task3.UID: case01Task3,
@@ -145,7 +149,9 @@ func TestDeleteTaskInfo(t *testing.T) {
 			pods:   []*v1.Pod{case02Pod1, case02Pod2, case02Pod3},
 			rmPods: []*v1.Pod{case02Pod2},
 			expected: &JobInfo{
-				UID: case02UID,
+				Allocated:    buildResource("3000m", "3G"),
+				TotalRequest: buildResource("4000m", "4G"),
+				UID:          case02UID,
 				Tasks: tasksMap{
 					case02Task1.UID: case02Task1,
 					case02Task3.UID: case02Task3,
