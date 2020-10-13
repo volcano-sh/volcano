@@ -115,6 +115,7 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 
 	controllerOpt.SchedulerName = opt.SchedulerName
 	controllerOpt.WorkerNum = opt.WorkerThreads
+	controllerOpt.MaxRequeueNum = opt.MaxRequeueNum
 
 	// TODO: add user agent for different controllers
 	controllerOpt.KubeClient = kubeclientset.NewForConfigOrDie(config)
