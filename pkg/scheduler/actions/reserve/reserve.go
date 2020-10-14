@@ -3,7 +3,6 @@ package reserve
 import (
 	"k8s.io/klog"
 
-	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -34,8 +33,9 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	}
 	// if target job has not been scheduled, select a locked node for it
 	// else reset target job and locked nodes
-	phase := util.Reservation.TargetJob.PodGroup.Status.Phase
-	if phase == scheduling.PodGroupPending || phase == scheduling.PodGroupInqueue {
+	util.Reservation.TargetJob = ssn.Jobs[util.Reservation.TargetJob.UID]
+
+	if !util.Reservation.TargetJob.Ready() {
 		ssn.ReservedNodes()
 	} else {
 		klog.V(3).Infof("Target Job has been scheduled. Reset Target Job")
