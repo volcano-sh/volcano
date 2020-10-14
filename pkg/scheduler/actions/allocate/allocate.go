@@ -240,6 +240,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 			if ssn.JobReady(job) && !tasks.Empty() {
 				jobs.Push(job)
+				metrics.UpdateE2eSchedulingDurationByJob(job.Name, metrics.Duration(job.CreationTimestamp.Time))
 				break
 			}
 		}
