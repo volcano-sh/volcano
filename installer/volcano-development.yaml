@@ -3,6 +3,11 @@ kind: Namespace
 metadata:
   name: volcano-system
 ---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: volcano-monitoring 
+---
 # Source: volcano/templates/scheduler.yaml
 apiVersion: v1
 kind: ConfigMap
