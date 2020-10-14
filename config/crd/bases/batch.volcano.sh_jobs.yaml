@@ -41,6 +41,10 @@ spec:
           description: Specification of the desired behavior of the volcano job, including
             the minAvailable
           properties:
+            jobRunningEstimate:
+              description: Job Running Estimate is the running estimate for job Default
+                to nil (take action immediately).
+              type: string
             maxRetry:
               description: Specifies the maximum number of retries before marking
                 this Job failed. Defaults to 3.
@@ -6506,6 +6510,9 @@ spec:
               description: The number of running pods.
               format: int32
               type: integer
+            runningDuration:
+              description: The job running duration
+              type: string
             state:
               description: Current state of Job.
               properties:
