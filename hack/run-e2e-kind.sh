@@ -38,6 +38,8 @@ function install-volcano {
   docker pull ${MPI_EXAMPLE_IMAGE}
   docker pull ${TF_EXAMPLE_IMAGE}
 
+  echo "Ensure create namespace"
+  kubectl apply -f installer/namespace.yaml
 
   echo "Install volcano chart"
   helm install ${CLUSTER_NAME} installer/helm/chart/volcano --namespace kube-system  --kubeconfig ${KUBECONFIG} --set basic.image_tag_version=${TAG} --set basic.scheduler_config_file=config/volcano-scheduler-ci.conf --wait
