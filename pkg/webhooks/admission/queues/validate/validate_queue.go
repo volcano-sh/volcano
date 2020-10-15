@@ -97,6 +97,7 @@ func validateQueue(queue *schedulingv1beta1.Queue) error {
 	resourcePath := field.NewPath("requestBody")
 
 	errs = append(errs, validateStateOfQueue(queue.Status.State, resourcePath.Child("spec").Child("state"))...)
+	errs = append(errs, validateWeightOfQueue(queue.Spec.Weight, resourcePath.Child("spec").Child("weight"))...)
 
 	if len(errs) > 0 {
 		return errs.ToAggregate()
@@ -124,6 +125,14 @@ func validateStateOfQueue(value schedulingv1beta1.QueueState, fldPath *field.Pat
 	}
 
 	return append(errs, field.Invalid(fldPath, value, fmt.Sprintf("queue state must be in %v", validQueueStates)))
+}
+
+func validateWeightOfQueue(value int32, fldPath *field.Path) field.ErrorList {
+	errs := field.ErrorList{}
+	if value > 0 {
+		return errs
+	}
+	return append(errs, field.Invalid(fldPath, value, fmt.Sprint("queue weight must be a positive integer")))
 }
 
 func validateQueueDeleting(queue string) error {

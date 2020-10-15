@@ -134,6 +134,60 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal queue for delete with closed state failed for %v.", err)
 	}
 
+	weightNotSet := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "weight-not-set",
+		},
+		Spec: schedulingv1beta1.QueueSpec{},
+	}
+
+	weightNotSetJSON, err := json.Marshal(weightNotSet)
+	if err != nil {
+		t.Errorf("Marshal queue with no weight failed for %v.", err)
+	}
+
+	negativeWeight := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "negative-weight",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: -1,
+		},
+	}
+
+	negativeWeightJSON, err := json.Marshal(negativeWeight)
+	if err != nil {
+		t.Errorf("Marshal queue with negative weight failed for %v.", err)
+	}
+
+	positiveWeightForUpdate := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "positive-weight-for-update",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+		},
+	}
+
+	positiveWeightForUpdateJSON, err := json.Marshal(positiveWeightForUpdate)
+	if err != nil {
+		t.Errorf("Marshal queue with positive weight failed for %v.", err)
+	}
+
+	negativeWeightForUpdate := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "positive-weight-for-update",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: -1,
+		},
+	}
+
+	negativeWeightForUpdateJSON, err := json.Marshal(negativeWeightForUpdate)
+	if err != nil {
+		t.Errorf("Marshal queue with negative weight failed for %v.", err)
+	}
+
 	config.VolcanoClient = fakeclient.NewSimpleClientset()
 	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &openStateForDelete, metav1.CreateOptions{})
 	if err != nil {
@@ -143,6 +197,11 @@ func TestAdmitQueues(t *testing.T) {
 	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &closedStateForDelete, metav1.CreateOptions{})
 	if err != nil {
 		t.Errorf("Crate queue with closed state failed for %v.", err)
+	}
+
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &positiveWeightForUpdate, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Crate queue with positive weight failed for %v.", err)
 	}
 
 	defer func() {
@@ -507,6 +566,108 @@ func TestAdmitQueues(t *testing.T) {
 			reviewResponse: util.ToAdmissionResponse(fmt.Errorf("invalid operation `%s`, "+
 				"expect operation to be `CREATE`, `UPDATE` or `DELETE`", "Invalid")),
 		},
+		{
+			Name: "Create queue without weight",
+			AR: v1beta1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &v1beta1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "weight-not-set",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: weightNotSetJSON,
+					},
+				},
+			},
+			reviewResponse: &v1beta1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("weight"),
+						0, fmt.Sprintf("queue weight must be a positive integer")).Error(),
+				},
+			},
+		},
+		{
+			Name: "Create queue with negative weight",
+			AR: v1beta1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &v1beta1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "negative-weight",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: negativeWeightJSON,
+					},
+				},
+			},
+			reviewResponse: &v1beta1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("weight"),
+						-1, fmt.Sprintf("queue weight must be a positive integer")).Error(),
+				},
+			},
+		},
+		{
+			Name: "Update queue with negative weight",
+			AR: v1beta1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &v1beta1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "positive-weight-for-update",
+					Operation: "UPDATE",
+					OldObject: runtime.RawExtension{
+						Raw: positiveWeightForUpdateJSON,
+					},
+					Object: runtime.RawExtension{
+						Raw: negativeWeightForUpdateJSON,
+					},
+				},
+			},
+			reviewResponse: &v1beta1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("weight"),
+						-1, fmt.Sprintf("queue weight must be a positive integer")).Error(),
+				},
+			},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -514,7 +675,7 @@ func TestAdmitQueues(t *testing.T) {
 			reviewResponse := AdmitQueues(testCase.AR)
 			if !reflect.DeepEqual(reviewResponse, testCase.reviewResponse) {
 				t.Errorf("Test case %s failed, expect %v, got %v", testCase.Name,
-					reviewResponse, testCase.reviewResponse)
+					testCase.reviewResponse, reviewResponse)
 			}
 		})
 	}
