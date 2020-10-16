@@ -107,5 +107,14 @@ func createQueuePatch(queue *schedulingv1beta1.Queue) ([]byte, error) {
 		})
 	}
 
+	defaultWeight := 1
+	if queue.Spec.Weight == 0 {
+		patch = append(patch, patchOperation{
+			Op:    "add",
+			Path:  "/spec/weight",
+			Value: &defaultWeight,
+		})
+	}
+
 	return json.Marshal(patch)
 }
