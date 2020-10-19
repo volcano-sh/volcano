@@ -57,9 +57,10 @@ type ServerOption struct {
 	HealthzBindAddress string
 
 	// Parameters for scheduling tuning: the number of feasible nodes to find and score
-	MinNodesToFind             int32
-	MinPercentageOfNodesToFind int32
-	PercentageOfNodesToFind    int32
+	MinNodesToFind                     int32
+	MinPercentageOfNodesToFind         int32
+	PercentageOfNodesToFind            int32
+	ConsiderResourceQuotaDuringEnqueue bool
 }
 
 // ServerOpts server options.
@@ -101,6 +102,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 
 	// The percentage of nodes that would be scored in each scheduling cycle; if <= 0, an adpative percentage will be calcuated
 	fs.Int32Var(&s.PercentageOfNodesToFind, "percentage-nodes-to-find", defaultPercentageOfNodesToFind, "The percentage of nodes to find and score, if <=0 will be calcuated based on the cluster size")
+	fs.BoolVar(&s.ConsiderResourceQuotaDuringEnqueue, "consider-resource-quota-during-enqueue", false,
+		"Take resourceQuotas of the namespace into consideration during podgroup enqueue procedure; to enable it, set it true")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled.

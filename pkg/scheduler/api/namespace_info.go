@@ -20,6 +20,9 @@ import (
 	"fmt"
 
 	v1 "k8s.io/api/core/v1"
+	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
+	"strings"
+
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
 )
@@ -40,6 +43,10 @@ type NamespaceInfo struct {
 	Name NamespaceName
 	// Weight is the highest weight among many ResourceQuota.
 	Weight int64
+	// RQStatus stores the ResourceQuotaStatus of all ResourceQuotas in this namespace
+	RQStatus map[string]v1.ResourceQuotaStatus
+
+	RQToResource *Resource
 }
 
 // GetWeight returns weight of a namespace, any invalid case would get default value
@@ -48,6 +55,14 @@ func (n *NamespaceInfo) GetWeight() int64 {
 		return DefaultNamespaceWeight
 	}
 	return n.Weight
+}
+
+// GetResource returns resource of a namespace, if there is no resource quota in such namespace, it will return empty resource
+func (n *NamespaceInfo) GetResource() *Resource {
+	if n == nil {
+		return EmptyResource()
+	}
+	return n.RQToResource
 }
 
 type quotaItem struct {
@@ -75,13 +90,19 @@ type NamespaceCollection struct {
 	Name string
 
 	quotaWeight *cache.Heap
+
+	RQStatus map[string]v1.ResourceQuotaStatus
+
+	RQToResource *Resource
 }
 
 // NewNamespaceCollection creates new NamespaceCollection object to record all information about a namespace
 func NewNamespaceCollection(name string) *NamespaceCollection {
 	n := &NamespaceCollection{
-		Name:        name,
-		quotaWeight: cache.NewHeap(quotaItemKeyFunc, quotaItemLessFunc),
+		Name:         name,
+		quotaWeight:  cache.NewHeap(quotaItemKeyFunc, quotaItemLessFunc),
+		RQStatus:     make(map[string]v1.ResourceQuotaStatus),
+		RQToResource: EmptyResource(),
 	}
 	// add at least one item into quotaWeight.
 	// Because cache.Heap.Pop would be blocked until queue is not empty
@@ -118,11 +139,19 @@ func itemFromQuota(quota *v1.ResourceQuota) *quotaItem {
 // Update modify the registered information according quota object
 func (n *NamespaceCollection) Update(quota *v1.ResourceQuota) {
 	n.updateWeight(itemFromQuota(quota))
+	n.RQStatus[quota.Name] = quota.Status
+	n.RQToResource = n.convertResourceQuotaToResource(n.RQStatus)
 }
 
 // Delete remove the registered information according quota object
 func (n *NamespaceCollection) Delete(quota *v1.ResourceQuota) {
 	n.deleteWeight(itemFromQuota(quota))
+	delete(n.RQStatus, quota.Name)
+	if len(n.RQStatus) == 0 {
+		n.RQToResource = EmptyResource()
+	} else {
+		n.RQToResource = n.convertResourceQuotaToResource(n.RQStatus)
+	}
 }
 
 // Snapshot will clone a NamespaceInfo without Heap according NamespaceCollection
@@ -139,7 +168,43 @@ func (n *NamespaceCollection) Snapshot() *NamespaceInfo {
 	}
 
 	return &NamespaceInfo{
-		Name:   NamespaceName(n.Name),
-		Weight: weight,
+		Name:         NamespaceName(n.Name),
+		Weight:       weight,
+		RQStatus:     n.RQStatus,
+		RQToResource: n.RQToResource,
 	}
+}
+
+func (n *NamespaceCollection) convertResourceQuotaToResource(rQstatus map[string]v1.ResourceQuotaStatus) *Resource {
+	resourceTarget := EmptyResource()
+	resourceTarget.ScalarResources = make(map[v1.ResourceName]float64)
+	notFirstTimeSet := make(map[v1.ResourceName]bool)
+
+	klog.V(3).Infof("Convert resourceQuotaStatus to api resource")
+	for _, rQValue := range rQstatus {
+		for rName, rValue := range rQValue.Hard {
+			rValue.Sub(rQValue.Used[rName])
+			sName := v1.ResourceName(strings.TrimPrefix(string(rName), v1.DefaultResourceRequestsPrefix))
+			switch sName {
+			case v1.ResourceCPU:
+				if resourceTarget.MilliCPU > float64(rValue.MilliValue()) || !notFirstTimeSet[sName] {
+					resourceTarget.MilliCPU = float64(rValue.MilliValue())
+					notFirstTimeSet[sName] = true
+				}
+			case v1.ResourceMemory:
+				if resourceTarget.Memory > float64(rValue.Value()) || !notFirstTimeSet[sName] {
+					resourceTarget.Memory = float64(rValue.Value())
+					notFirstTimeSet[sName] = true
+				}
+			default:
+				if v1helper.IsScalarResourceName(sName) {
+					if resourceTarget.ScalarResources[sName] > float64(rValue.MilliValue()) || !notFirstTimeSet[sName] {
+						resourceTarget.ScalarResources[sName] = float64(rValue.MilliValue())
+						notFirstTimeSet[sName] = true
+					}
+				}
+			}
+		}
+	}
+	return resourceTarget
 }
