@@ -85,7 +85,7 @@ func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateF
 		// to make sure all nodes have the same chance of being examined across pods.
 		node := nodes[(lastProcessedNodeIndex+index)%allNodes]
 		atomic.AddInt32(&processedNodes, 1)
-		klog.V(3).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
+		klog.V(4).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
 			task.Namespace, task.Name, node.Name, task.Resreq, node.Idle)
 
 		// TODO (k82cn): Enable eCache for performance improvement.

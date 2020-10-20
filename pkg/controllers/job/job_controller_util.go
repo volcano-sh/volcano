@@ -100,6 +100,7 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 	pod.Annotations[schedulingv2.KubeGroupNameAnnotationKey] = job.Name
 	pod.Annotations[batch.JobNameKey] = job.Name
 	pod.Annotations[batch.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
+	pod.Annotations[batch.PodTemplateKey] = fmt.Sprintf("%s-%s", job.Name, template.Name)
 
 	if len(pod.Labels) == 0 {
 		pod.Labels = make(map[string]string)
