@@ -111,8 +111,6 @@ tiers:
 					EnabledPredicate:      &trueValue,
 					EnabledBestNode:       &trueValue,
 					EnabledNodeOrder:      &trueValue,
-					EnabledTargetJob:      &trueValue,
-					EnabledReservedNodes:  &trueValue,
 				},
 				{
 					Name:                  "predicates",
@@ -127,8 +125,6 @@ tiers:
 					EnabledPredicate:      &trueValue,
 					EnabledBestNode:       &trueValue,
 					EnabledNodeOrder:      &trueValue,
-					EnabledTargetJob:      &trueValue,
-					EnabledReservedNodes:  &trueValue,
 				},
 				{
 					Name:                  "proportion",
@@ -143,8 +139,6 @@ tiers:
 					EnabledPredicate:      &trueValue,
 					EnabledBestNode:       &trueValue,
 					EnabledNodeOrder:      &trueValue,
-					EnabledTargetJob:      &trueValue,
-					EnabledReservedNodes:  &trueValue,
 				},
 				{
 					Name:                  "nodeorder",
@@ -159,8 +153,6 @@ tiers:
 					EnabledPredicate:      &trueValue,
 					EnabledBestNode:       &trueValue,
 					EnabledNodeOrder:      &trueValue,
-					EnabledTargetJob:      &trueValue,
-					EnabledReservedNodes:  &trueValue,
 				},
 			},
 		},
