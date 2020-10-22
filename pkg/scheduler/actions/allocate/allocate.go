@@ -96,7 +96,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	allNodes := util.GetNodeList(ssn.Nodes)
 	unlockedNodes := allNodes
 	if util.Reservation.TargetJob != nil && len(util.Reservation.LockedNodes) != 0 {
-		unlockedNodes  = unlockedNodes[0:0]
+		unlockedNodes = unlockedNodes[0:0]
 		for _, node := range allNodes {
 			if _, exist := util.Reservation.LockedNodes[node.Name]; !exist {
 				unlockedNodes = append(unlockedNodes, node)
@@ -194,7 +194,6 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			task := tasks.Pop().(*api.TaskInfo)
 
 			klog.V(3).Infof("There are <%d> nodes for Job <%v/%v>", len(nodes), job.Namespace, job.Name)
-
 
 			predicateNodes, fitErrors := util.PredicateNodes(task, allNodes, predicateFn)
 			if len(predicateNodes) == 0 {
