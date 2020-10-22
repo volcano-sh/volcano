@@ -145,7 +145,6 @@ type JobInfo struct {
 	PodGroup          *PodGroup
 
 	ScheduleStartTimestamp  metav1.Time
-	ExpectedFinishTimestamp metav1.Time
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks

@@ -59,8 +59,7 @@ tiers:
 					EnabledQueueOrder:     &trueValue,
 					EnabledPredicate:      &trueValue,
 					EnabledBestNode:       &trueValue,
-					EnabledTargetJob:      &trueValue,
-					EnabledReservedNodes:  &trueValue,
+					EnabledNodeOrder:      &trueValue,
 				},
 				{
 					Name:                  "gang",
@@ -75,8 +74,6 @@ tiers:
 					EnabledPredicate:      &trueValue,
 					EnabledBestNode:       &trueValue,
 					EnabledNodeOrder:      &trueValue,
-					EnabledTargetJob:      &trueValue,
-					EnabledReservedNodes:  &trueValue,
 				},
 				{
 					Name:                  "conformance",
@@ -91,8 +88,6 @@ tiers:
 					EnabledPredicate:      &trueValue,
 					EnabledBestNode:       &trueValue,
 					EnabledNodeOrder:      &trueValue,
-					EnabledTargetJob:      &trueValue,
-					EnabledReservedNodes:  &trueValue,
 				},
 			},
 		},

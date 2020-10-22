@@ -37,7 +37,7 @@ const (
 
 var (
 	// defaultOverCommitFactor defines the default overCommit resource factor for enqueue action
-	defaultOverCommitFactor = 1.0
+	defaultOverCommitFactor = 1.2
 )
 
 type Action struct{}
