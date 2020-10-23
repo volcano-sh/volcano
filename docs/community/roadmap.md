@@ -28,18 +28,38 @@ Investigate to cooperate with argo to support job dependencies.
 
 [MindSpore](https://www.mindspore.cn/) is a deep learning training and inference framework, support running MindSpore training with volcano job.
 
-## v1.\*
+## v1.2(Planned on Oct 23,2020)
+### Queue Resource Reservation
+* Description: Support reserve specified resource for queue without restart Volcano.
+* Priority: High
+* Owner: @hudson741@Thor-wl
 
-After v1.0,  the `RFVE` (Request For Volcano Enhancement) will drive the roadmap. The Release/PM team will help  to identify the RFVEs that are going to be released. The candidate `RFVE`s are listed as follow:
+### Fair Scheduling For Jobs Of Same Priority And Different Queue
+* Description: Schedule jobs of same priority but from different queue accord to create time.
+* Priority: High
+* Owner: 
 
-* Hierarchical Queue
-* Reservation
-* Backfill
-* Execution Time Estimation
-* Job dependency
-* Plugins per Queue
-* Data Management
-* Data Aware Scheduling
-* GPU Topology ([#623](https://github.com/volcano-sh/volcano/issues/623))
-* Virtual Kubelet ([#524](https://github.com/volcano-sh/volcano/issues/524))
-* ......
+### Differentiated Scheduling Strategies For Different Queue
+* Description: Support configure actions and plugins for different queues.
+* Priority: High
+* Owner: @sresthas
+
+### Support Hierarchy Queue
+* Description: Support Hierarchy Queue algorithm.
+* Priority: High
+* Owner: @My-pleasure
+
+### Job PriorityClassName Update
+* Description: Support update vcjob priorityClassName update when job has not been scheduled.
+* Priority: Middle
+* Owner:
+
+### Status Message Enhanced For CRD
+* Description: Provide more status detail for CRD status when use CLI such job fail reason.
+* Priority: Middle
+* Owner:
+
+### Support MinAvailable For Task
+* Description: Support MinAvailable for task
+* Priority: Middle
+* Owner:
