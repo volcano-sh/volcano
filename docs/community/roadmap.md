@@ -39,7 +39,7 @@ Investigate to cooperate with argo to support job dependencies.
 * Description: Schedule jobs of same priority but from different queue accord to create time.
 * Priority: High
 * Issue: https://github.com/volcano-sh/volcano/issues/1098
-* Owner: 
+* Owner: @alcorj-mizar
 
 ### Differentiated Scheduling Strategies For Different Queue
 * Description: Support configure actions and plugins for different queues.
