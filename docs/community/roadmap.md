@@ -69,4 +69,4 @@ Investigate to cooperate with argo to support job dependencies.
 * Description: Support MinAvailable for task
 * Priority: Middle
 * Issue: https://github.com/volcano-sh/volcano/issues/988
-* Owner:
+* Owner: @shinytang6
