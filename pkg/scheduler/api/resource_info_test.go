@@ -416,6 +416,77 @@ func TestLess(t *testing.T) {
 			},
 			expected: false,
 		},
+		{
+			resource1: &Resource{
+				MilliCPU: 0,
+				Memory:   1000,
+			},
+			resource2: &Resource{
+				MilliCPU: 1000,
+				Memory:   1000,
+			},
+			expected: true,
+		},
+		{
+			resource1: &Resource{
+				MilliCPU: 1000,
+				Memory:   0,
+			},
+			resource2: &Resource{
+				MilliCPU: 1000,
+				Memory:   1000,
+			},
+			expected: true,
+		},
+		{
+			resource1: &Resource{
+				MilliCPU: 1000,
+				Memory:   1000,
+			},
+			resource2: &Resource{
+				MilliCPU:        2000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 4000, "hugepages-test": 5000},
+			},
+			expected: true,
+		},
+		{
+			resource1: &Resource{
+				MilliCPU: 1000,
+				Memory:   1000,
+			},
+			resource2: &Resource{
+				MilliCPU:        2000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 0, "hugepages-test": 5000},
+			},
+			expected: true,
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        2000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 0, "hugepages-test": 5000},
+			},
+			resource2: &Resource{
+				MilliCPU:        2000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 5000},
+			},
+			expected: true,
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        100,
+				Memory:          0,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 0, "hugepages-test": 1},
+			},
+			resource2: &Resource{
+				MilliCPU: 100,
+				Memory:   100,
+			},
+			expected: false,
+		},
 	}
 
 	for _, test := range tests {
