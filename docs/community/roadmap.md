@@ -57,7 +57,7 @@ Investigate to cooperate with argo to support job dependencies.
 * Description: Support update vcjob priorityClassName update when job has not been scheduled.
 * Priority: Middle
 * Issue: https://github.com/volcano-sh/volcano/issues/1097
-* Owner:
+* Owner: @merryzhou
 
 ### Status Message Enhanced For CRD
 * Description: Provide more status detail for CRD status when use CLI such job fail reason.
