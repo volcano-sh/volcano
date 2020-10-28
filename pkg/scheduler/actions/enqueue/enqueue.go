@@ -38,7 +38,7 @@ const (
 var (
 	// defaultOverCommitFactor defines the default overCommit resource factor for enqueue action
 	defaultOverCommitFactor = 1.2
-	targetJob = util.Reservation.TargetJob
+	targetJob               = util.Reservation.TargetJob
 )
 
 type Action struct{}
