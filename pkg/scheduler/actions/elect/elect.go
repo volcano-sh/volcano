@@ -31,10 +31,9 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	defer klog.V(3).Infof("Leaving Elect ...")
 
 	if util.Reservation.TargetJob == nil {
-		klog.V(3).Infof("Start select Target Job...")
+		klog.V(4).Infof("Start select Target Job")
 		var pendingJobs []*api.JobInfo
 		for _, job := range ssn.Jobs {
-			klog.V(3).Infof("job: %s, pgStatus: %s", job.Name, job.PodGroup.Status.Phase)
 			if job.PodGroup.Status.Phase == scheduling.PodGroupPending {
 				pendingJobs = append(pendingJobs, job)
 			}

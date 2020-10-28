@@ -25,6 +25,8 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
+var targetJob = util.Reservation.TargetJob
+
 type Action struct{}
 
 func New() *Action {
@@ -95,7 +97,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 	allNodes := util.GetNodeList(ssn.Nodes)
 	unlockedNodes := allNodes
-	if util.Reservation.TargetJob != nil && len(util.Reservation.LockedNodes) != 0 {
+	if targetJob != nil && len(util.Reservation.LockedNodes) != 0 {
 		unlockedNodes = unlockedNodes[0:0]
 		for _, node := range allNodes {
 			if _, exist := util.Reservation.LockedNodes[node.Name]; !exist {
@@ -104,7 +106,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		}
 	}
 	for _, unlockedNode := range unlockedNodes {
-		klog.V(3).Infof("unlockedNode ID: %s, Name: %s", unlockedNode.Node.UID, unlockedNode.Node.Name)
+		klog.V(4).Infof("unlockedNode ID: %s, Name: %s", unlockedNode.Node.UID, unlockedNode.Node.Name)
 	}
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		// Check for Resource Predicate
@@ -163,8 +165,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 		job := jobs.Pop().(*api.JobInfo)
 		var nodes []*api.NodeInfo
-		if util.Reservation.TargetJob != nil && job.UID == util.Reservation.TargetJob.UID {
-			klog.V(3).Infof("try to allocate resource to target job: %s", job.Name)
+		if targetJob != nil && job.UID == targetJob.UID {
+			klog.V(4).Infof("Try to allocate resource to target job: %s", job.Name)
 			nodes = allNodes
 		} else {
 			nodes = unlockedNodes
@@ -195,7 +197,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 			klog.V(3).Infof("There are <%d> nodes for Job <%v/%v>", len(nodes), job.Namespace, job.Name)
 
-			predicateNodes, fitErrors := util.PredicateNodes(task, allNodes, predicateFn)
+			predicateNodes, fitErrors := util.PredicateNodes(task, nodes, predicateFn)
 			if len(predicateNodes) == 0 {
 				job.NodesFitErrors[task.UID] = fitErrors
 				break

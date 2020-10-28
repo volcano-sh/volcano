@@ -48,7 +48,6 @@ func (rp *reservationPlugin) OnSessionOpen(ssn *framework.Session) {
 			return nil
 		}
 		priority := rp.getHighestPriority(jobs)
-		klog.V(3).Infof("highest priority: %d", priority)
 		highestPriorityJobs := rp.getHighestPriorityJobs(priority, jobs)
 		return rp.getTargetJob(highestPriorityJobs)
 	}
@@ -72,8 +71,6 @@ func (rp *reservationPlugin) getHighestPriority(jobs []*api.JobInfo) int32 {
 	}
 	highestPriority := jobs[0].Priority
 	for _, job := range jobs {
-		klog.V(3).Infof("job name: %s", job.Name)
-		klog.V(3).Infof("job name: %d", job.Priority)
 		if job.Priority > highestPriority {
 			highestPriority = job.Priority
 		}
@@ -89,7 +86,6 @@ func (rp *reservationPlugin) getHighestPriorityJobs(priority int32, jobs []*api.
 	for _, job := range jobs {
 		if job.Priority == priority {
 			highestPriorityJobs = append(highestPriorityJobs, job)
-			klog.V(3).Infof("highest priority job name: %s", job.Name)
 		}
 	}
 	return highestPriorityJobs
@@ -100,17 +96,15 @@ func (rp *reservationPlugin) getTargetJob(jobs []*api.JobInfo) *api.JobInfo {
 		return nil
 	}
 	maxWaitDuration := rp.getJobWaitingTime(jobs[0])
-	klog.V(3).Infof("job name: %s, wait duration:", jobs[0].Name, maxWaitDuration)
 	targetJob := jobs[0]
 	for _, job := range jobs {
 		waitDuration := rp.getJobWaitingTime(job)
-		klog.V(3).Infof("job name: %s, wait duration:", job.Name, waitDuration)
 		if waitDuration > maxWaitDuration {
 			maxWaitDuration = waitDuration
 			targetJob = job
 		}
 	}
-	klog.V(3).Infof("Target Job ID: %s, Name: %s", targetJob.UID, targetJob.Name)
+	klog.V(3).Infof("Target job ID: %s, Name: %s", targetJob.UID, targetJob.Name)
 	return targetJob
 }
 
@@ -138,9 +132,9 @@ func (rp *reservationPlugin) getUnlockedNodesWithMaxIdle(ssn *framework.Session)
 		}
 	}
 	if maxIdleNode != nil {
-		klog.V(3).Infof("max Idle Node: %s:", maxIdleNode.Name)
+		klog.V(3).Infof("Max idle node: %s:", maxIdleNode.Name)
 	} else {
-		klog.V(3).Info("max Idle Node: nil")
+		klog.V(3).Info("Max idle node: nil")
 	}
 
 	return maxIdleNode

@@ -28,7 +28,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("Enter Reserve ...")
 	defer klog.V(3).Infof("Leaving Reserve ...")
 	if util.Reservation.TargetJob == nil {
-		klog.V(3).Infof("No target job, skip reserve action")
+		klog.V(4).Infof("No target job, skip reserve action")
 		return
 	}
 	// if target job has not been scheduled, select a locked node for it
@@ -38,7 +38,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	if !util.Reservation.TargetJob.Ready() {
 		ssn.ReservedNodes()
 	} else {
-		klog.V(3).Infof("Target Job has been scheduled. Reset Target Job")
+		klog.V(3).Infof("Target Job has been scheduled. Reset target job")
 		util.Reservation.TargetJob = nil
 		for node := range util.Reservation.LockedNodes {
 			delete(util.Reservation.LockedNodes, node)
