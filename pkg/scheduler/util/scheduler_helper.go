@@ -261,11 +261,3 @@ func NewResourceReservation() *ResourceReservation {
 		LockedNodes: map[string]*api.NodeInfo{},
 	}
 }
-
-func (r *ResourceReservation) IsTargetJobExist() bool {
-	return r.TargetJob != nil
-}
-
-func (r *ResourceReservation) IsTargetJobAndLockedNodesExist() bool {
-	return r.TargetJob != nil
-}
