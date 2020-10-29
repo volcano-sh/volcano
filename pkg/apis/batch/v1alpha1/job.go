@@ -72,9 +72,9 @@ type JobSpec struct {
 	// +optional
 	Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,6,opt,name=plugins"`
 
-	// Job Running Estimate is the running estimate for job
+	// Running Estimate is a user running duration estimate for the job
 	// Default to nil
-	RunningEstimate *metav1.Duration `json:"runningEstimate,omitempty" protobuf:"bytes,4,opt,name=jobRunningEstimate"`
+	RunningEstimate *metav1.Duration `json:"runningEstimate,omitempty" protobuf:"bytes,4,opt,name=runningEstimate"`
 
 	//Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
 	// +optional
