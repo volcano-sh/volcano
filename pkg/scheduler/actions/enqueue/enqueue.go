@@ -153,7 +153,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 		klog.V(4).Infof("Start to deal with Target Job")
 		minReq := api.NewResource(*targetJob.PodGroup.Spec.MinResources)
 		idle = idle.Add(lockedNodesIdle)
-		if minReq.LessEqual(idle) {
+		if ssn.JobEnqueueable(targetJob) && minReq.LessEqual(idle) {
 			klog.V(3).Infof("Turn Target Job phase to Inqueue")
 			targetJob.PodGroup.Status.Phase = scheduling.PodGroupInqueue
 			ssn.Jobs[targetJob.UID] = targetJob

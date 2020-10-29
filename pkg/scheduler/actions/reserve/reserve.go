@@ -37,6 +37,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 	if !util.Reservation.TargetJob.Ready() {
 		ssn.ReservedNodes()
+		return
 	} else {
 		klog.V(3).Infof("Target Job has been scheduled. Reset target job")
 		util.Reservation.TargetJob = nil
