@@ -108,6 +108,15 @@ If you don't have a kubernetes cluster, try one-click install from code base:
 
 This way is only available for x86_64 temporarily.
 
+### Install monitoring system
+
+If you want to get prometheus and grafana volcano dashboard after volcano installed, try following commands:
+
+```bash
+make TAG=latest generate-yaml
+kubectl create -f _output/release/volcano-monitoring-latest.yaml
+```
+
 ## Meeting
 
 Regular Community Meeting:

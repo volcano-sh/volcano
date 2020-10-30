@@ -3,6 +3,11 @@ kind: Namespace
 metadata:
   name: volcano-system
 ---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: volcano-monitoring 
+---
 # Source: volcano/templates/scheduler.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -134,7 +139,24 @@ spec:
         - name: scheduler-config
           configMap:
             name: volcano-scheduler-configmap
-
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8080"
+    prometheus.io/scrape: "true"
+  name: volcano-scheduler-service
+  namespace: volcano-system
+spec:
+  ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: volcano-scheduler
+  type: ClusterIP
 ---
 # Source: volcano/templates/admission.yaml
 apiVersion: v1
