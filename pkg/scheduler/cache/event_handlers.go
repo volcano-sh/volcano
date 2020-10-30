@@ -370,8 +370,8 @@ func (sc *SchedulerCache) setPodGroup(ss *schedulingapi.PodGroup) error {
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) updatePodGroup(newQueue *schedulingapi.PodGroup) error {
-	return sc.setPodGroup(newQueue)
+func (sc *SchedulerCache) updatePodGroup(newPodGroup *schedulingapi.PodGroup) error {
+	return sc.setPodGroup(newPodGroup)
 }
 
 // Assumes that lock is already acquired.

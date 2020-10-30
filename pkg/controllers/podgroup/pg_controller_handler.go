@@ -86,6 +86,7 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 				Namespace:       pod.Namespace,
 				Name:            pgName,
 				OwnerReferences: newPGOwnerReferences(pod),
+				Annotations:     map[string]string{},
 			},
 			Spec: scheduling.PodGroupSpec{
 				MinMember:         1,

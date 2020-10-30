@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"k8s.io/api/admission/v1beta1"
@@ -76,6 +77,43 @@ func TestMutateQueues(t *testing.T) {
 	refreshPatchJSON, err := json.Marshal(refreshPatch)
 	if err != nil {
 		t.Errorf("Marshal queue patch failed for %v.", err)
+	}
+
+	hierarchyWithoutRoot := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "queue-without-root",
+			Annotations: map[string]string{
+				schedulingv1beta1.KubeHierarchyAnnotationKey:       "a/b/c",
+				schedulingv1beta1.KubeHierarchyWeightAnnotationKey: "2/3/4",
+			},
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Reclaimable: &trueValue,
+			Weight:      1,
+		},
+		Status: schedulingv1beta1.QueueStatus{
+			State: schedulingv1beta1.QueueStateOpen,
+		},
+	}
+
+	hierarchyWithoutRootJSON, err := json.Marshal(hierarchyWithoutRoot)
+	if err != nil {
+		t.Errorf("Marshal hierarchy without root failed for %v.", err)
+	}
+	var appendRootPatch []patchOperation
+	appendRootPatch = append(appendRootPatch, patchOperation{
+		Op:    "add",
+		Path:  fmt.Sprintf("/metadata/annotations/%s", strings.ReplaceAll(schedulingv1beta1.KubeHierarchyAnnotationKey, "/", "~1")),
+		Value: fmt.Sprintf("root/%s", hierarchyWithoutRoot.Annotations[schedulingv1beta1.KubeHierarchyAnnotationKey]),
+	})
+	appendRootPatch = append(appendRootPatch, patchOperation{
+		Op:    "add",
+		Path:  fmt.Sprintf("/metadata/annotations/%s", strings.ReplaceAll(schedulingv1beta1.KubeHierarchyWeightAnnotationKey, "/", "~1")),
+		Value: fmt.Sprintf("1/%s", hierarchyWithoutRoot.Annotations[schedulingv1beta1.KubeHierarchyWeightAnnotationKey]),
+	})
+	appendRootPatchJSON, err := json.Marshal(appendRootPatch)
+	if err != nil {
+		t.Errorf("Marshal appendRootPatch failed for %v", err)
 	}
 
 	testCases := []struct {
@@ -142,6 +180,37 @@ func TestMutateQueues(t *testing.T) {
 			reviewResponse: util.ToAdmissionResponse(fmt.Errorf("invalid operation `%s`, "+
 				"expect operation to be `CREATE`", "Invalid")),
 		},
+		{
+			Name: "Normal Case Append Default Root to The HDRF Attributes",
+			AR: v1beta1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &v1beta1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "qeueu-hierarchy-without-root",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: hierarchyWithoutRootJSON,
+					},
+				},
+			},
+			reviewResponse: &v1beta1.AdmissionResponse{
+				Allowed:   true,
+				PatchType: &pt,
+				Patch:     appendRootPatchJSON,
+			},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -149,7 +218,7 @@ func TestMutateQueues(t *testing.T) {
 			reviewResponse := Queues(testCase.AR)
 			if !reflect.DeepEqual(reviewResponse, testCase.reviewResponse) {
 				t.Errorf("Test case '%s' failed, expect: %v, got: %v", testCase.Name,
-					reviewResponse, testCase.reviewResponse)
+					testCase.reviewResponse, reviewResponse)
 			}
 		})
 	}

@@ -141,6 +141,16 @@ func (r *Resource) Add(rr *Resource) *Resource {
 	return r
 }
 
+// Scale updates resource to the provided scale
+func (r *Resource) Scale(scale float64) *Resource {
+	r.MilliCPU *= scale
+	r.Memory *= scale
+	for rName, rQuant := range r.ScalarResources {
+		r.ScalarResources[rName] = rQuant * scale
+	}
+	return r
+}
+
 //Sub subtracts two Resource objects.
 func (r *Resource) Sub(rr *Resource) *Resource {
 	assert.Assertf(rr.LessEqual(r), "resource is not sufficient to do operation: <%v> sub <%v>", r, rr)
