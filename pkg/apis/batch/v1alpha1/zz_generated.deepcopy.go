@@ -127,6 +127,11 @@ func (in *JobSpec) DeepCopyInto(out *JobSpec) {
 			(*out)[key] = outVal
 		}
 	}
+	if in.RunningEstimate != nil {
+		in, out := &in.RunningEstimate, &out.RunningEstimate
+		*out = new(v1.Duration)
+		**out = **in
+	}
 	if in.TTLSecondsAfterFinished != nil {
 		in, out := &in.TTLSecondsAfterFinished, &out.TTLSecondsAfterFinished
 		*out = new(int32)
@@ -166,6 +171,11 @@ func (in *JobState) DeepCopy() *JobState {
 func (in *JobStatus) DeepCopyInto(out *JobStatus) {
 	*out = *in
 	in.State.DeepCopyInto(&out.State)
+	if in.RunningDuration != nil {
+		in, out := &in.RunningDuration, &out.RunningDuration
+		*out = new(v1.Duration)
+		**out = **in
+	}
 	if in.ControlledResources != nil {
 		in, out := &in.ControlledResources, &out.ControlledResources
 		*out = make(map[string]string, len(*in))

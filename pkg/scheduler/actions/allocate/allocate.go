@@ -22,6 +22,7 @@ import (
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -228,11 +229,13 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 			if ssn.JobReady(job) && !tasks.Empty() {
 				jobs.Push(job)
+				metrics.UpdateE2eSchedulingDurationByJob(job.Name, metrics.Duration(job.CreationTimestamp.Time))
 				break
 			}
 		}
 
 		if ssn.JobReady(job) {
+			metrics.UpdateE2eSchedulingDurationByJob(job.Name, metrics.Duration(job.CreationTimestamp.Time))
 			stmt.Commit()
 		} else {
 			stmt.Discard()
