@@ -116,7 +116,7 @@ The Volcano team meets once per week on Friday, alternating between 10am Beijing
 
 Resources:
 - [Meeting notes and agenda](https://docs.google.com/document/d/1YLbF8zjZBiR9PbXQPB22iuc_L0Oui5A1lddVfRnZrqs/edit)
-- [Meeting link](https://zoom.us/j/193601252)
+- [Meeting link](https://zoom.us/j/91804791393)
 - [Meeting Calendar](https://calendar.google.com/calendar/b/1/embed?src=volcano.sh.bot@gmail.com) | [Subscribe](https://calendar.google.com/calendar/b/1?cid=dm9sY2Fuby5zaC5ib3RAZ21haWwuY29t)
 
 ## Contact
