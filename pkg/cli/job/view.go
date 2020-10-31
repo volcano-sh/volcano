@@ -113,7 +113,9 @@ func PrintJobInfo(job *v1alpha1.Job, writer io.Writer) {
 	WriteLine(writer, Level1, "UID:               \t%s\n", job.UID)
 
 	WriteLine(writer, Level0, "Spec:\n")
-	WriteLine(writer, Level1, "Min Available:     \t%d\n", job.Spec.MinAvailable)
+	if job.Spec.MinAvailable != nil {
+		WriteLine(writer, Level1, "Min Available:     \t%d\n", *job.Spec.MinAvailable)
+	}
 	WriteLine(writer, Level1, "Plugins:\n")
 	WriteLine(writer, Level2, "Env:\t%v\n", job.Spec.Plugins["env"])
 	WriteLine(writer, Level2, "Ssh:\t%v\n", job.Spec.Plugins["ssh"])
@@ -121,7 +123,9 @@ func PrintJobInfo(job *v1alpha1.Job, writer io.Writer) {
 	WriteLine(writer, Level1, "Tasks:\n")
 	for i := 0; i < len(job.Spec.Tasks); i++ {
 		WriteLine(writer, Level2, "Name:\t%s\n", job.Spec.Tasks[i].Name)
-		WriteLine(writer, Level2, "Replicas:\t%d\n", job.Spec.Tasks[i].Replicas)
+		if job.Spec.Tasks[i].Replicas != nil {
+			WriteLine(writer, Level2, "Replicas:\t%d\n", *job.Spec.Tasks[i].Replicas)
+		}
 		WriteLine(writer, Level2, "Template:\n")
 		WriteLine(writer, Level2+1, "Metadata:\n")
 		WriteLine(writer, Level2+2, "Annotations:\n")

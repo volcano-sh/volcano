@@ -41,10 +41,6 @@ spec:
           description: Specification of the desired behavior of the volcano job, including
             the minAvailable
           properties:
-            jobRunningEstimate:
-              description: Job Running Estimate is the running estimate for job Default
-                to nil (take action immediately).
-              type: string
             maxRetry:
               description: Specifies the maximum number of retries before marking
                 this Job failed. Defaults to 3.
@@ -101,6 +97,10 @@ spec:
             queue:
               description: Specifies the queue that will be used in the scheduler,
                 "default" queue is used this leaves empty.
+              type: string
+            runningEstimate:
+              description: Running Estimate is a user running duration estimate for
+                the job Default to nil
               type: string
             schedulerName:
               description: SchedulerName is the default value of `tasks.template.spec.schedulerName`.
@@ -6511,7 +6511,8 @@ spec:
               format: int32
               type: integer
             runningDuration:
-              description: The job running duration
+              description: The job running duration is the length of time from job
+                running to complete.
               type: string
             state:
               description: Current state of Job.

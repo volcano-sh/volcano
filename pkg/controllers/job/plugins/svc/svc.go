@@ -312,9 +312,12 @@ func GenerateHosts(job *batch.Job) map[string]string {
 	hostFile := make(map[string]string, len(job.Spec.Tasks))
 
 	for _, ts := range job.Spec.Tasks {
-		hosts := make([]string, 0, ts.Replicas)
+		if ts.Replicas == nil {
+			continue
+		}
+		hosts := make([]string, 0, *ts.Replicas)
 
-		for i := 0; i < int(ts.Replicas); i++ {
+		for i := 0; i < int(*ts.Replicas); i++ {
 			hostName := ts.Template.Spec.Hostname
 			subdomain := ts.Template.Spec.Subdomain
 			if len(hostName) == 0 {

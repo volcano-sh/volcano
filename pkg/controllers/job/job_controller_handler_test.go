@@ -202,7 +202,7 @@ func TestUpdateJobFunc(t *testing.T) {
 				},
 				Spec: batch.JobSpec{
 					SchedulerName: "volcano",
-					MinAvailable:  5,
+					MinAvailable:  getInt32Ptr(5),
 				},
 				Status: batch.JobStatus{
 					State: batch.JobState{
@@ -218,7 +218,7 @@ func TestUpdateJobFunc(t *testing.T) {
 				},
 				Spec: batch.JobSpec{
 					SchedulerName: "volcano",
-					MinAvailable:  5,
+					MinAvailable:  getInt32Ptr(5),
 				},
 				Status: batch.JobStatus{
 					State: batch.JobState{
@@ -237,7 +237,7 @@ func TestUpdateJobFunc(t *testing.T) {
 				},
 				Spec: batch.JobSpec{
 					SchedulerName: "volcano",
-					MinAvailable:  5,
+					MinAvailable:  getInt32Ptr(5),
 				},
 				Status: batch.JobStatus{
 					State: batch.JobState{
@@ -253,7 +253,7 @@ func TestUpdateJobFunc(t *testing.T) {
 				},
 				Spec: batch.JobSpec{
 					SchedulerName: "volcano",
-					MinAvailable:  5,
+					MinAvailable:  getInt32Ptr(5),
 				},
 				Status: batch.JobStatus{
 					State: batch.JobState{

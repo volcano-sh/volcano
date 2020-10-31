@@ -30,6 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/cli/util"
 )
 
 func TestViewJob(t *testing.T) {
@@ -48,7 +49,7 @@ func TestViewJob(t *testing.T) {
 			Tasks: []v1alpha1.TaskSpec{
 				{
 					Name:     "taskWithLongLongLongLongName",
-					Replicas: math.MaxInt32,
+					Replicas: util.GetInt32Ptr(math.MaxInt32),
 					Template: v1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{},
 						Spec: v1.PodSpec{

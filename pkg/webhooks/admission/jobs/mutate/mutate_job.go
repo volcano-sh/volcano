@@ -37,6 +37,8 @@ const (
 	DefaultQueue = "default"
 
 	defaultSchedulerName = "volcano"
+	DefaultReplicas      = 1
+	DefaultMaxRetry      = 3
 )
 
 func init() {
@@ -110,9 +112,17 @@ func createPatch(job *v1alpha1.Job) ([]byte, error) {
 	if pathScheduler != nil {
 		patch = append(patch, *pathScheduler)
 	}
+	pathMaxRetry := patchDefaultMaxRetry(job)
+	if pathMaxRetry != nil {
+		patch = append(patch, *pathMaxRetry)
+	}
 	pathSpec := mutateSpec(job.Spec.Tasks, "/spec/tasks")
 	if pathSpec != nil {
 		patch = append(patch, *pathSpec)
+	}
+	pathMinAvailable := patchDefaultMinAvailable(job)
+	if pathMinAvailable != nil {
+		patch = append(patch, *pathMinAvailable)
 	}
 	return json.Marshal(patch)
 }
@@ -133,6 +143,31 @@ func patchDefaultScheduler(job *v1alpha1.Job) *patchOperation {
 	return nil
 }
 
+func patchDefaultMinAvailable(job *v1alpha1.Job) *patchOperation {
+	// Add default minAvailable if not specified.
+	if job.Spec.MinAvailable == nil {
+		var totalReplicas int32
+		for _, task := range job.Spec.Tasks {
+			if task.Replicas == nil {
+				totalReplicas += DefaultReplicas
+			} else {
+				totalReplicas += *task.Replicas
+			}
+		}
+
+		return &patchOperation{Op: "add", Path: "/spec/minAvailable", Value: totalReplicas}
+	}
+	return nil
+}
+
+func patchDefaultMaxRetry(job *v1alpha1.Job) *patchOperation {
+	// Add default maxRetry if not specified.
+	if job.Spec.MaxRetry == nil {
+		return &patchOperation{Op: "add", Path: "/spec/maxRetry", Value: DefaultMaxRetry}
+	}
+	return nil
+}
+
 func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string) *patchOperation {
 	patched := false
 	for index := range tasks {
@@ -141,6 +176,13 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string) *patchOperation {
 		if len(taskName) == 0 {
 			patched = true
 			tasks[index].Name = v1alpha1.DefaultTaskSpec + strconv.Itoa(index)
+		}
+
+		// add default task replicas
+		if tasks[index].Replicas == nil {
+			patched = true
+			tasks[index].Replicas = new(int32)
+			*tasks[index].Replicas = DefaultReplicas
 		}
 
 		if tasks[index].Template.Spec.HostNetwork && tasks[index].Template.Spec.DNSPolicy == "" {

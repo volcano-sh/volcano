@@ -268,7 +268,11 @@ func (jc *jobCache) TaskCompleted(jobKey, taskName string) bool {
 
 	for _, task := range jobInfo.Job.Spec.Tasks {
 		if task.Name == taskName {
-			taskReplicas = task.Replicas
+			if task.Replicas == nil {
+				return false
+			}
+
+			taskReplicas = *task.Replicas
 			break
 		}
 	}

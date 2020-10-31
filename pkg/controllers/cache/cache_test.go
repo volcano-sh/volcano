@@ -27,6 +27,10 @@ import (
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
+func getInt32Ptr(i int32) *int32 {
+	return &i
+}
+
 func TestJobCache_Add(t *testing.T) {
 	namespace := "test"
 
@@ -721,7 +725,7 @@ func TestJobCache_TaskCompleted(t *testing.T) {
 						Tasks: []v1alpha1.TaskSpec{
 							{
 								Name:     "task1",
-								Replicas: 2,
+								Replicas: getInt32Ptr(2),
 							},
 						},
 					},
@@ -776,7 +780,7 @@ func TestJobCache_TaskCompleted(t *testing.T) {
 						Tasks: []v1alpha1.TaskSpec{
 							{
 								Name:     "task1",
-								Replicas: 2,
+								Replicas: getInt32Ptr(2),
 							},
 						},
 					},

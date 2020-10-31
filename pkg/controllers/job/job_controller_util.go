@@ -236,3 +236,7 @@ func isControlledBy(obj metav1.Object, gvk schema.GroupVersionKind) bool {
 	}
 	return false
 }
+
+func getInt32Ptr(i int32) *int32 {
+	return &i
+}

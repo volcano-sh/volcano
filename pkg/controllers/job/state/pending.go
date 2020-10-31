@@ -52,7 +52,11 @@ func (ps *pendingState) Execute(action v1alpha1.Action) error {
 		})
 	default:
 		return SyncJob(ps.job, func(status *vcbatch.JobStatus) bool {
-			if ps.job.Job.Spec.MinAvailable <= status.Running+status.Succeeded+status.Failed {
+			minAvailable := int32(0)
+			if ps.job.Job.Spec.MinAvailable != nil {
+				minAvailable = *ps.job.Job.Spec.MinAvailable
+			}
+			if minAvailable <= status.Running+status.Succeeded+status.Failed {
 				status.State.Phase = vcbatch.Running
 				return true
 			}

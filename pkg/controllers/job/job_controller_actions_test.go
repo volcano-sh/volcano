@@ -200,7 +200,7 @@ func TestSyncJobFunc(t *testing.T) {
 					Tasks: []v1alpha1.TaskSpec{
 						{
 							Name:     "task1",
-							Replicas: 6,
+							Replicas: getInt32Ptr(6),
 							Template: v1.PodTemplateSpec{
 								ObjectMeta: metav1.ObjectMeta{
 									Name:      "pods",

@@ -203,7 +203,11 @@ func generateSSHConfig(job *batch.Job) string {
 	config := "StrictHostKeyChecking no\nUserKnownHostsFile /dev/null\n"
 
 	for _, ts := range job.Spec.Tasks {
-		for i := 0; i < int(ts.Replicas); i++ {
+		if ts.Replicas == nil {
+			continue
+		}
+
+		for i := 0; i < int(*ts.Replicas); i++ {
 			hostName := ts.Template.Spec.Hostname
 			subdomain := ts.Template.Spec.Subdomain
 			if len(hostName) == 0 {

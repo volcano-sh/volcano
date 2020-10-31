@@ -41,7 +41,7 @@ var _ = Describe("TensorFlow E2E Test", func() {
 				Name: jobName,
 			},
 			Spec: vcbatch.JobSpec{
-				MinAvailable:  int32(3),
+				MinAvailable:  getInt32Ptr(3),
 				SchedulerName: schedulerName,
 				Plugins: map[string][]string{
 					"svc": {},
@@ -55,7 +55,7 @@ var _ = Describe("TensorFlow E2E Test", func() {
 				},
 				Tasks: []vcbatch.TaskSpec{
 					{
-						Replicas: int32(1),
+						Replicas: getInt32Ptr(1),
 						Name:     "ps",
 						Template: v1.PodTemplateSpec{
 							Spec: v1.PodSpec{
@@ -81,7 +81,7 @@ var _ = Describe("TensorFlow E2E Test", func() {
 						},
 					},
 					{
-						Replicas: int32(2),
+						Replicas: getInt32Ptr(2),
 						Name:     "worker",
 						Policies: []vcbatch.LifecyclePolicy{
 							{

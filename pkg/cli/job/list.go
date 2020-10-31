@@ -141,7 +141,9 @@ func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 		}
 		replicas := int32(0)
 		for _, ts := range job.Spec.Tasks {
-			replicas += ts.Replicas
+			if ts.Replicas != nil {
+				replicas += *ts.Replicas
+			}
 		}
 		jobType := job.ObjectMeta.Labels[v1alpha1.JobTypeKey]
 		if jobType == "" {

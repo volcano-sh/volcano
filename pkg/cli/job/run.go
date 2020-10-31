@@ -142,11 +142,11 @@ func constructLaunchJobFlagsJob(launchJobFlags *runFlags, req, limit v1.Resource
 			Namespace: launchJobFlags.Namespace,
 		},
 		Spec: vcbatch.JobSpec{
-			MinAvailable:  int32(launchJobFlags.MinAvailable),
+			MinAvailable:  util.GetInt32Ptr(int32(launchJobFlags.MinAvailable)),
 			SchedulerName: launchJobFlags.SchedulerName,
 			Tasks: []vcbatch.TaskSpec{
 				{
-					Replicas: int32(launchJobFlags.Replicas),
+					Replicas: util.GetInt32Ptr(int32(launchJobFlags.Replicas)),
 
 					Template: v1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{

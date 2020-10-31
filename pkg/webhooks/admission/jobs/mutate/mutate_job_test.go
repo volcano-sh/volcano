@@ -25,6 +25,10 @@ import (
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 )
 
+func getInt32Ptr(i int32) *int32 {
+	return &i
+}
+
 func TestCreatePatchExecution(t *testing.T) {
 
 	namespace := "test"
@@ -41,10 +45,9 @@ func TestCreatePatchExecution(t *testing.T) {
 				Namespace: namespace,
 			},
 			Spec: v1alpha1.JobSpec{
-				MinAvailable: 1,
+				MinAvailable: getInt32Ptr(1),
 				Tasks: []v1alpha1.TaskSpec{
 					{
-						Replicas: 1,
 						Template: v1.PodTemplateSpec{
 							ObjectMeta: metav1.ObjectMeta{
 								Labels: map[string]string{"name": "test"},
@@ -60,7 +63,6 @@ func TestCreatePatchExecution(t *testing.T) {
 						},
 					},
 					{
-						Replicas: 1,
 						Template: v1.PodTemplateSpec{
 							ObjectMeta: metav1.ObjectMeta{
 								Labels: map[string]string{"name": "test"},
@@ -84,7 +86,7 @@ func TestCreatePatchExecution(t *testing.T) {
 			Value: []v1alpha1.TaskSpec{
 				{
 					Name:     v1alpha1.DefaultTaskSpec + "0",
-					Replicas: 1,
+					Replicas: getInt32Ptr(DefaultReplicas),
 					Template: v1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
 							Labels: map[string]string{"name": "test"},
@@ -101,7 +103,7 @@ func TestCreatePatchExecution(t *testing.T) {
 				},
 				{
 					Name:     v1alpha1.DefaultTaskSpec + "1",
-					Replicas: 1,
+					Replicas: getInt32Ptr(DefaultReplicas),
 					Template: v1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
 							Labels: map[string]string{"name": "test"},
@@ -138,6 +140,9 @@ func TestCreatePatchExecution(t *testing.T) {
 			t.Errorf("testCase '%s's expected patch operation with value %v, but got %v",
 				testCase.Name, testCase.operation.Value, ret.Value)
 		}
+		if aTask.Replicas == nil || *aTask.Replicas != *task.Replicas {
+			t.Errorf("testCase '%s's expected patch operation with value %v, but got %v",
+				testCase.Name, testCase.operation.Value, ret.Value)
+		}
 	}
-
 }

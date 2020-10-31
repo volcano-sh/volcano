@@ -378,7 +378,7 @@ func createJobWithPodGroup(ctx *testContext, jobSpec *jobSpec, pgName string) *b
 
 		ts := batchv1alpha1.TaskSpec{
 			Name:     name,
-			Replicas: task.rep,
+			Replicas: &task.rep,
 			Policies: task.policies,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -414,9 +414,9 @@ func createJobWithPodGroup(ctx *testContext, jobSpec *jobSpec, pgName string) *b
 	}
 
 	if jobSpec.min > 0 {
-		job.Spec.MinAvailable = jobSpec.min
+		job.Spec.MinAvailable = &jobSpec.min
 	} else {
-		job.Spec.MinAvailable = min
+		job.Spec.MinAvailable = &min
 	}
 
 	if jobSpec.pri != "" {
@@ -462,7 +462,7 @@ func createJobInner(ctx *testContext, jobSpec *jobSpec) (*batchv1alpha1.Job, err
 
 		ts := batchv1alpha1.TaskSpec{
 			Name:     name,
-			Replicas: task.rep,
+			Replicas: &task.rep,
 			Policies: task.policies,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -496,9 +496,9 @@ func createJobInner(ctx *testContext, jobSpec *jobSpec) (*batchv1alpha1.Job, err
 	}
 
 	if jobSpec.min > 0 {
-		job.Spec.MinAvailable = jobSpec.min
+		job.Spec.MinAvailable = &jobSpec.min
 	} else {
-		job.Spec.MinAvailable = min
+		job.Spec.MinAvailable = &min
 	}
 
 	if jobSpec.pri != "" {
@@ -646,7 +646,9 @@ func waitJobPhases(ctx *testContext, job *batchv1alpha1.Job, phases []batchv1alp
 	var additionalError error
 	total := int32(0)
 	for _, task := range job.Spec.Tasks {
-		total += task.Replicas
+		if task.Replicas != nil {
+			total += *task.Replicas
+		}
 	}
 
 	ch := w.ResultChan()
@@ -686,7 +688,11 @@ func waitJobPhases(ctx *testContext, job *batchv1alpha1.Job, phases []batchv1alp
 					newJob.Status.Running == 0 &&
 					newJob.Status.Terminating == 0
 			case batchv1alpha1.Running:
-				flag = newJob.Status.Running >= newJob.Spec.MinAvailable
+				minAvailable := int32(0)
+				if newJob.Spec.MinAvailable != nil {
+					minAvailable = *newJob.Spec.MinAvailable
+				}
+				flag = newJob.Status.Running >= minAvailable
 			default:
 				return fmt.Errorf("unknown phase %s", phase)
 			}
@@ -727,11 +733,11 @@ func getJobStatusDetail(job *batchv1alpha1.Job) string {
 }
 
 func waitJobReady(ctx *testContext, job *batchv1alpha1.Job) error {
-	return waitTasksReady(ctx, job, int(job.Spec.MinAvailable))
+	return waitTasksReady(ctx, job, int(*job.Spec.MinAvailable))
 }
 
 func waitJobPending(ctx *testContext, job *batchv1alpha1.Job) error {
-	return waitTaskPhase(ctx, job, []v1.PodPhase{v1.PodPending}, int(job.Spec.MinAvailable))
+	return waitTaskPhase(ctx, job, []v1.PodPhase{v1.PodPending}, int(*job.Spec.MinAvailable))
 }
 
 func waitTasksReady(ctx *testContext, job *batchv1alpha1.Job, taskNum int) error {
