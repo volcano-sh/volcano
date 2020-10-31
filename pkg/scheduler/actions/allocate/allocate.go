@@ -193,7 +193,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 		stmt := framework.NewStatement(ssn)
 
-                klog.V(3).Infof("start to allocate resource for tasks")
+		klog.V(3).Infof("start to allocate resource for tasks")
 		for !tasks.Empty() {
 			task := tasks.Pop().(*api.TaskInfo)
 
