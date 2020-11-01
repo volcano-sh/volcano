@@ -155,12 +155,12 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 			msg += err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v",
 				getValidEvents(), getValidActions())
 		}
-		msg += validatePodNameLength(task.Template, job, index)
+		msg += validateK8sPodNameLength(task.Template, job, index)
 
 		msg += validateTaskTemplate(task, job, index)
 	}
 
-	msg += validateSvcNameLength(job)
+	msg += validateK8sSvcNameLength(job)
 
 	if totalReplicas < job.Spec.MinAvailable {
 		msg += " 'minAvailable' should not be greater than total replicas in tasks;"
@@ -278,7 +278,7 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 	return ""
 }
 
-func validatePodNameLength(template v1.PodTemplateSpec, job *v1alpha1.Job, index int) string {
+func validateK8sPodNameLength(template v1.PodTemplateSpec, job *v1alpha1.Job, index int) string {
 	podName := jobhelpers.MakePodName(job.Name, template.Name, index)
 	if len(podName) > 63 {
 		return fmt.Sprintf("create pod with name %s must be no more 63 characters", podName)
@@ -286,7 +286,7 @@ func validatePodNameLength(template v1.PodTemplateSpec, job *v1alpha1.Job, index
 	return ""
 }
 
-func validateSvcNameLength(job *v1alpha1.Job) string {
+func validateK8sSvcNameLength(job *v1alpha1.Job) string {
 	if len(job.Name) > 63 {
 		return fmt.Sprintf("create svc with name %s must be no more 63 characters", job.Name)
 	}
