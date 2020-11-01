@@ -94,10 +94,11 @@ var _ = Describe("Queue E2E Test", func() {
 				spec := &jobSpec{
 					tasks: []taskSpec{
 						{
-							img: defaultNginxImage,
-							req: slot,
-							min: rep,
-							rep: rep,
+							name: "queue-job",
+							img:  defaultNginxImage,
+							req:  slot,
+							min:  rep,
+							rep:  rep,
 						},
 					},
 				}
