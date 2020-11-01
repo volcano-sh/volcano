@@ -19,8 +19,6 @@ package validate
 import (
 	"context"
 	"fmt"
-	"strings"
-
 	"k8s.io/api/admission/v1beta1"
 	whv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	v1 "k8s.io/api/core/v1"
@@ -32,6 +30,8 @@ import (
 	k8score "k8s.io/kubernetes/pkg/apis/core"
 	k8scorev1 "k8s.io/kubernetes/pkg/apis/core/v1"
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
+	"strings"
+	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
@@ -152,12 +152,15 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 		}
 
 		if err := validatePolicies(task.Policies, field.NewPath("spec.tasks.policies")); err != nil {
-			msg = msg + err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v",
+			msg += err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v",
 				getValidEvents(), getValidActions())
 		}
+		msg += validatePodNameLength(task.Template, job, index)
 
 		msg += validateTaskTemplate(task, job, index)
 	}
+
+	msg += validateSvcNameLength(job)
 
 	if totalReplicas < job.Spec.MinAvailable {
 		msg += " 'minAvailable' should not be greater than total replicas in tasks;"
@@ -272,5 +275,20 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 		return msg
 	}
 
+	return ""
+}
+
+func validatePodNameLength(template v1.PodTemplateSpec, job *v1alpha1.Job, index int) string {
+	podName := jobhelpers.MakePodName(job.Name, template.Name, index)
+	if len(podName) > 63 {
+		return fmt.Sprintf("create pod with name %s must be no more 63 characters", podName)
+	}
+	return ""
+}
+
+func validateSvcNameLength(job *v1alpha1.Job) string {
+	if len(job.Name) > 63 {
+		return fmt.Sprintf("create svc with name %s must be no more 63 characters", job.Name)
+	}
 	return ""
 }
