@@ -155,7 +155,8 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 			msg += err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v",
 				getValidEvents(), getValidActions())
 		}
-		msg += validateK8sPodNameLength(task.Template, job, index)
+		podName := jobhelpers.MakePodName(job.Name, task.Template.Name, index)
+		msg += validateK8sPodNameLength(podName)
 
 		msg += validateTaskTemplate(task, job, index)
 	}
@@ -278,8 +279,7 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 	return ""
 }
 
-func validateK8sPodNameLength(template v1.PodTemplateSpec, job *v1alpha1.Job, index int) string {
-	podName := jobhelpers.MakePodName(job.Name, template.Name, index)
+func validateK8sPodNameLength(podName string) string {
 	if errMsgs := validation.IsDNS1123Label(podName); len(errMsgs) > 0 {
 		return fmt.Sprintf("create pod with name %s validate failed %v;", podName, errMsgs)
 	}
