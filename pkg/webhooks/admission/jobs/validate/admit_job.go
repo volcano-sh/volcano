@@ -280,15 +280,15 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 
 func validateK8sPodNameLength(template v1.PodTemplateSpec, job *v1alpha1.Job, index int) string {
 	podName := jobhelpers.MakePodName(job.Name, template.Name, index)
-	if len(podName) > 63 {
-		return fmt.Sprintf("create pod with name %s must be no more 63 characters", podName)
+	if errMsgs := validation.IsDNS1123Label(podName); len(errMsgs) > 0 {
+		return fmt.Sprintf("create pod with name %s validate failed %v;", podName, errMsgs)
 	}
 	return ""
 }
 
 func validateK8sSvcNameLength(job *v1alpha1.Job) string {
-	if len(job.Name) > 63 {
-		return fmt.Sprintf("create svc with name %s must be no more 63 characters", job.Name)
+	if errMsgs := validation.IsDNS1123Label(job.Name); len(errMsgs) > 0 {
+		return fmt.Sprintf("create svc with name %s validate failed %v", job.Name, errMsgs)
 	}
 	return ""
 }
