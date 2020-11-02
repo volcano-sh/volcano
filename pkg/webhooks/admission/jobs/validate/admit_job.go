@@ -31,7 +31,6 @@ import (
 	k8score "k8s.io/kubernetes/pkg/apis/core"
 	k8scorev1 "k8s.io/kubernetes/pkg/apis/core/v1"
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
-	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
@@ -39,6 +38,7 @@ import (
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
+	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
 
 func init() {
