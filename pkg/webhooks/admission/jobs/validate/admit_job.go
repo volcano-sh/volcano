@@ -161,7 +161,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 		msg += validateTaskTemplate(task, job, index)
 	}
 
-	msg += validateK8sSvcNameLength(job)
+	msg += validateJobName(job)
 
 	if totalReplicas < job.Spec.MinAvailable {
 		msg += " 'minAvailable' should not be greater than total replicas in tasks;"
@@ -286,9 +286,9 @@ func validateK8sPodNameLength(podName string) string {
 	return ""
 }
 
-func validateK8sSvcNameLength(job *v1alpha1.Job) string {
+func validateJobName(job *v1alpha1.Job) string {
 	if errMsgs := validation.IsQualifiedName(job.Name); len(errMsgs) > 0 {
-		return fmt.Sprintf("create svc with name %s validate failed %v", job.Name, errMsgs)
+		return fmt.Sprintf("create job with name %s validate failed %v", job.Name, errMsgs)
 	}
 	return ""
 }
