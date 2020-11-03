@@ -174,15 +174,17 @@ var _ = Describe("Job E2E Test", func() {
 			namespace: ctx.namespace,
 			tasks: []taskSpec{
 				{
-					img: defaultNginxImage,
-					req: oneCPU,
-					min: rep / 2,
-					rep: rep / 2,
+					name: "best-effort",
+					img:  defaultNginxImage,
+					req:  oneCPU,
+					min:  rep / 2,
+					rep:  rep / 2,
 				},
 				{
-					img: defaultNginxImage,
-					min: rep - rep/2,
-					rep: rep - rep/2,
+					name: "non-best-effort",
+					img:  defaultNginxImage,
+					min:  rep - rep/2,
+					rep:  rep - rep/2,
 				},
 			},
 		}
