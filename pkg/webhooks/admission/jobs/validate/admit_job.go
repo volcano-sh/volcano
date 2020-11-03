@@ -158,7 +158,6 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 		}
 		podName := jobhelpers.MakePodName(job.Name, task.Template.Name, index)
 		msg += validateK8sPodNameLength(podName)
-
 		msg += validateTaskTemplate(task, job, index)
 	}
 
