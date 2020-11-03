@@ -281,14 +281,14 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 }
 
 func validateK8sPodNameLength(podName string) string {
-	if errMsgs := validation.IsDNS1123Label(podName); len(errMsgs) > 0 {
+	if errMsgs := validation.IsQualifiedName(podName); len(errMsgs) > 0 {
 		return fmt.Sprintf("create pod with name %s validate failed %v;", podName, errMsgs)
 	}
 	return ""
 }
 
 func validateK8sSvcNameLength(job *v1alpha1.Job) string {
-	if errMsgs := validation.IsDNS1123Label(job.Name); len(errMsgs) > 0 {
+	if errMsgs := validation.IsQualifiedName(job.Name); len(errMsgs) > 0 {
 		return fmt.Sprintf("create svc with name %s validate failed %v", job.Name, errMsgs)
 	}
 	return ""
