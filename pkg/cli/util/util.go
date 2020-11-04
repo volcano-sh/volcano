@@ -201,7 +201,7 @@ func HumanDuration(d time.Duration) string {
 	return fmt.Sprintf("%dy", hours/24/365)
 }
 
-// GetInt32Ptr converts int32 to it's pointer
+// GetInt32Ptr converts int32 to int32 pointer
 func GetInt32Ptr(i int32) *int32 {
 	return &i
 }
