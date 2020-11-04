@@ -89,3 +89,8 @@ locked nodes.
 Add new Plugin reservation to implement algorithm detail above.
 
 ![Workflow](./images/reservation_workflow.png)
+
+### TODO
+* support custom define percentage of cluster nodes as the upper limit of locked nodes number, which should be in the 
+form of pure decimal. Default value is 1.0.
+* support custom define wait duration, whose default value is 0.
