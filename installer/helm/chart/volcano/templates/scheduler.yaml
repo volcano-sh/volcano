@@ -135,5 +135,5 @@ spec:
     protocol: TCP
     targetPort: 8080
   selector:
-    app: {{ .Release.Name }}-scheduler
+    app: volcano-scheduler
   type: ClusterIP
