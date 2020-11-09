@@ -337,6 +337,10 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 		}
 		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, batchv1alpha1.ExecuteAction, fmt.Sprintf(
 			"Job failed on action %s for retry limit reached", action))
+		klog.Warningf("Terminating Job <%s/%s> and releasing resources", jobInfo.Job.Namespace, jobInfo.Job.Name)
+		if err = st.Execute(busv1alpha1.TerminateJobAction); err != nil {
+			klog.Errorf("Failed to terminate Job<%s/%s>: %v", jobInfo.Job.Namespace, jobInfo.Job.Name, err)
+		}
 		klog.Warningf("Dropping job<%s/%s> out of the queue: %v because max retries has reached", jobInfo.Job.Namespace, jobInfo.Job.Name, err)
 	}
 
