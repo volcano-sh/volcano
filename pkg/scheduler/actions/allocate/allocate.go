@@ -146,7 +146,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				continue
 			}
 
-			if queue == nil || ssn.QueueOrderFn(currentQueue, queue) {
+			if queue == nil || ssn.JobPriorityQueueOrderFn(queueInNamespace[currentQueue.UID], queueInNamespace[queue.UID]) {
 				queue = currentQueue
 			}
 		}

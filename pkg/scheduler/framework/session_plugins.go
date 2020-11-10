@@ -20,6 +20,7 @@ import (
 	schedulerapi "k8s.io/kube-scheduler/extender/v1"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 // AddJobOrderFn add job order function
@@ -408,7 +409,19 @@ func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
 		return lv.UID < rv.UID
 	}
 	return lv.Queue.CreationTimestamp.Before(&rv.Queue.CreationTimestamp)
+}
 
+// JobPriorityQueueOrderFn invoke queueorder by first job, interface should be job priority queue
+func (ssn *Session) JobPriorityQueueOrderFn(l, r interface{}) bool {
+	// If no queue order funcs, order queue by jobs CreationTimestamp first, then by UID.
+	lv := l.(*util.PriorityQueue)
+	rv := r.(*util.PriorityQueue)
+	lvTop := lv.Top().(*api.JobInfo)
+	rvTop := rv.Top().(*api.JobInfo)
+	if lvTop.CreationTimestamp.Equal(&rvTop.CreationTimestamp) {
+		return lvTop.UID < rvTop.UID
+	}
+	return lvTop.CreationTimestamp.Before(&rvTop.CreationTimestamp)
 }
 
 // TaskCompareFns invoke taskorder function of the plugins

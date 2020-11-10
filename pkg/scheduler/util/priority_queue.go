@@ -47,6 +47,11 @@ func (q *PriorityQueue) Push(it interface{}) {
 	heap.Push(&q.queue, it)
 }
 
+// Top get first element in the priority Queue
+func (q *PriorityQueue) Top() interface{} {
+	return q.queue.Top()
+}
+
 // Pop pops element in the priority Queue
 func (q *PriorityQueue) Pop() interface{} {
 	if q.Len() == 0 {
@@ -90,5 +95,11 @@ func (pq *priorityQueue) Pop() interface{} {
 	n := len(old)
 	item := old[n-1]
 	(*pq).items = old[0 : n-1]
+	return item
+}
+
+func (pq *priorityQueue) Top() interface{} {
+	n := len((*pq).items)
+	item := (*pq).items[n-1]
 	return item
 }
