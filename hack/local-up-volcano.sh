@@ -24,6 +24,7 @@ TAG=${TAG:-`git rev-parse --verify HEAD`}
 RELEASE_DIR=_output/release
 RELEASE_FOLDER=${VK_ROOT}/${RELEASE_DIR}
 YAML_FILENAME=volcano-${TAG}.yaml
+NAMESPACE=${NAMESPACE:-pingcap}
 
 
 # prepare deploy yaml and docker images
@@ -96,6 +97,21 @@ if [ "${INSTALL_MODE}" == "kind" ]; then
   kind-up-cluster
   export KUBECONFIG="$(kind get kubeconfig-path ${CLUSTER_CONTEXT})"
 fi
+
+echo "info: loading images into cluster"
+images=(
+    IMAGE_PREFIX-controller-manager:${TAG}
+    IMAGE_PREFIX-scheduler:${TAG}
+    IMAGE_PREFIX-webhook-manager:${TAG}
+)
+for n in ${images[@]}; do
+    echo "info: loading image $n"
+    kind load docker-image --name $CLUSTER_NAME $n
+done
+
+kubectl delete deploy volcano-admission -n $NAMESPACE
+kubectl delete deploy volcano-controllers  -n $NAMESPACE
+kubectl delete deploy volcano-scheduler   -n $NAMESPACE
 
 install-volcano
 
