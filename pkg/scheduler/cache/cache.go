@@ -49,7 +49,9 @@ import (
 	vcv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
+	informerfactory "volcano.sh/volcano/pkg/client/informers/externalversions"
 	vcinformer "volcano.sh/volcano/pkg/client/informers/externalversions"
+	v1alpha12 "volcano.sh/volcano/pkg/client/informers/externalversions/batch/v1alpha1"
 	vcinformerv1 "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1beta1"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -88,6 +90,7 @@ type SchedulerCache struct {
 	pcInformer              schedv1.PriorityClassInformer
 	quotaInformer           infov1.ResourceQuotaInformer
 	csiNodeInformer         storagev1.CSINodeInformer
+	jobInformer             v1alpha12.JobInformer
 
 	Binder        Binder
 	Evictor       Evictor
@@ -401,6 +404,8 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		DeleteFunc: sc.DeleteQueueV1beta1,
 	})
 
+	sc.jobInformer = informerfactory.NewSharedInformerFactory(sc.vcClient, 0).Batch().V1alpha1().Jobs()
+
 	return sc
 }
 
@@ -414,6 +419,7 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.scInformer.Informer().Run(stopCh)
 	go sc.queueInformerV1beta1.Informer().Run(stopCh)
 	go sc.quotaInformer.Informer().Run(stopCh)
+	go sc.jobInformer.Informer().Run(stopCh)
 
 	if options.ServerOpts.EnablePriorityClass {
 		go sc.pcInformer.Informer().Run(stopCh)
@@ -439,6 +445,7 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 				sc.scInformer.Informer().HasSynced,
 				sc.queueInformerV1beta1.Informer().HasSynced,
 				sc.quotaInformer.Informer().HasSynced,
+				sc.jobInformer.Informer().HasSynced,
 			}
 			if options.ServerOpts.EnablePriorityClass {
 				informerSynced = append(informerSynced, sc.pcInformer.Informer().HasSynced)
@@ -851,4 +858,17 @@ func (sc *SchedulerCache) recordPodGroupEvent(podGroup *schedulingapi.PodGroup, 
 		return
 	}
 	sc.Recorder.Eventf(pg, eventType, reason, msg)
+
+	jobLister := sc.jobInformer.Lister()
+	batchJob, err := jobLister.Jobs(podGroup.Namespace).Get(podGroup.Name)
+	if err != nil {
+		klog.Errorf("Failed to get VolcanoJob  <%s/%s>: %v",
+			podGroup.Namespace, podGroup.Name, err)
+	}
+	if batchJob == nil {
+		klog.Infof("VolcanoJob <%s/%s> not found",
+			podGroup.Namespace, podGroup.Name)
+	} else {
+		sc.Recorder.Eventf(batchJob, eventType, reason, msg)
+	}
 }
