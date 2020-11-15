@@ -17,19 +17,14 @@ limitations under the License.
 package podgroup
 
 import (
-	"fmt"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
-	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
-	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	vcscheme "volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 
 	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
@@ -60,8 +55,6 @@ type pgcontroller struct {
 	pgSynced func() bool
 
 	queue workqueue.RateLimitingInterface
-	// Job Event recorder
-	recorder record.EventRecorder
 }
 
 func (pg *pgcontroller) Name() string {
@@ -101,12 +94,7 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 	pg.pgInformer = informerfactory.NewSharedInformerFactory(pg.vcClient, 0).Scheduling().V1beta1().PodGroups()
 	pg.pgLister = pg.pgInformer.Lister()
 	pg.pgSynced = pg.pgInformer.Informer().HasSynced
-	// Initialize event client
-	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartLogging(klog.Infof)
-	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: pg.kubeClient.CoreV1().Events("")})
-	recorder := eventBroadcaster.NewRecorder(vcscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
-	pg.recorder = recorder
+
 	return nil
 }
 
@@ -146,10 +134,6 @@ func (pg *pgcontroller) processNextReq() bool {
 	// normal pod use volcano
 	if err := pg.createNormalPodPGIfNotExist(pod); err != nil {
 		klog.Errorf("Failed to handle Pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
-
-		pg.recorder.Event(pod, v1.EventTypeWarning, string(batch.PluginError),
-			fmt.Sprintf("Execute plugin when job add failed, err: %v", err))
-
 		pg.queue.AddRateLimited(req)
 		return true
 	}
