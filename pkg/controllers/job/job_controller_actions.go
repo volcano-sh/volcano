@@ -304,11 +304,20 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 				klog.Errorf("Failed to create pod %s for Job %s, err %#v",
 					pod.Name, job.Name, err)
 				appendError(&creationErrs, fmt.Errorf("failed to create pod %s, err: %#v", pod.Name, err))
-			} else {
-				classifyAndAddUpPodBaseOnPhase(newPod, &pending, &running, &succeeded, &failed, &unknown)
-				klog.V(3).Infof("Created Task <%s> of Job <%s/%s>",
-					pod.Name, job.Namespace, job.Name)
+				return
 			}
+			if apierrors.IsAlreadyExists(err) {
+				newPod, err = cc.kubeClient.CoreV1().Pods(pod.Namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+				if err != nil {
+					klog.Errorf("Failed to get pod %s for Job %s, err %#v",
+						pod.Name, job.Name, err)
+					appendError(&creationErrs, fmt.Errorf("failed to get pod %s, err: %#v", pod.Name, err))
+					return
+				}
+			}
+			classifyAndAddUpPodBaseOnPhase(newPod, &pending, &running, &succeeded, &failed, &unknown)
+			klog.V(3).Infof("Created Task <%s> of Job <%s/%s>",
+				pod.Name, job.Namespace, job.Name)
 		}(pod)
 	}
 	waitCreationGroup.Wait()
@@ -608,6 +617,41 @@ func (cc *jobcontroller) updateJobStatus(job *batch.Job) (*batch.Job, error) {
 	}
 
 	return newJob, nil
+}
+
+func (cc *jobcontroller) restartTask(jobInfo *apis.JobInfo, taskName string, updateStatus state.UpdateStatusFn) error {
+	job := jobInfo.Job
+	klog.V(3).Infof("Restart task<%s> of Job <%s/%s>, current version %d", taskName, job.Namespace, job.Name, job.Status.Version)
+	defer klog.V(3).Infof("Finished task<%s> of Job <%s/%s> Restarting, current version %d", taskName, job.Namespace, job.Name, job.Status.Version)
+
+	if job.DeletionTimestamp != nil {
+		klog.Infof("Job <%s/%s> is terminating, skip management process.",
+			job.Namespace, job.Name)
+		return nil
+	}
+
+	var errs []error
+	for _, pod := range jobInfo.Pods[taskName] {
+		if pod.DeletionTimestamp != nil {
+			klog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
+			continue
+		}
+
+		err := cc.deleteJobPod(job.Name, pod)
+		if err == nil {
+			continue
+		}
+		errs = append(errs, err)
+	}
+
+	if len(errs) != 0 {
+		klog.Errorf("failed to kill pods for job %s/%s, with err %+v", job.Namespace, job.Name, errs)
+		cc.recorder.Event(job, v1.EventTypeWarning, FailedDeletePodReason,
+			fmt.Sprintf("Error deleting pods: %+v", errs))
+		return fmt.Errorf("failed to kill %d pods of %d", len(errs), len(jobInfo.Pods[taskName]))
+	}
+
+	return cc.syncJob(jobInfo, updateStatus)
 }
 
 func classifyAndAddUpPodBaseOnPhase(pod *v1.Pod, pending, running, succeeded, failed, unknown *int32) {

@@ -479,3 +479,153 @@ func TestDeleteJobPod(t *testing.T) {
 		})
 	}
 }
+
+func TestRestartTaskFunc(t *testing.T) {
+	namespace := "test"
+
+	testcases := []struct {
+		Name         string
+		Job          *v1alpha1.Job
+		PodGroup     *schedulingv1alpha2.PodGroup
+		UpdateStatus state.UpdateStatusFn
+		JobInfo      *apis.JobInfo
+		Pods         map[string]*v1.Pod
+		TaskName     string
+		TotalNumPods int
+		ExpextVal    error
+	}{
+		{
+			Name: "Restart task success Case",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 2,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+						},
+						{
+							Name:     "task2",
+							Replicas: 2,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				Status: v1alpha1.JobStatus{
+					State: v1alpha1.JobState{
+						Phase: v1alpha1.Pending,
+					},
+				},
+			},
+			PodGroup: &schedulingv1alpha2.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1",
+					Namespace: namespace,
+				},
+				Status: schedulingv1alpha2.PodGroupStatus{
+					Phase: schedulingv1alpha2.PodGroupInqueue,
+				},
+			},
+			UpdateStatus: nil,
+			JobInfo: &apis.JobInfo{
+				Namespace: namespace,
+				Name:      "jobinfo1",
+				Pods: map[string]map[string]*v1.Pod{
+					"task1": {
+						"job1-task1-0": buildPod(namespace, "job1-task1-0", v1.PodRunning, nil),
+					},
+					"task2": {
+						"job1-task2-0": buildPod(namespace, "job1-task2-0", v1.PodFailed, nil),
+					},
+				},
+			},
+			Pods: map[string]*v1.Pod{
+				"job1-task1-0": buildPod(namespace, "job1-task1-0", v1.PodRunning, nil),
+				"job1-task2-0": buildPod(namespace, "job1-task2-0", v1.PodFailed, nil),
+			},
+			TaskName:     "task2",
+			TotalNumPods: 4,
+			ExpextVal:    nil,
+		},
+	}
+	for i, testcase := range testcases {
+
+		t.Run(testcase.Name, func(t *testing.T) {
+			fakeController := newFakeController()
+			fakeController.pgInformer.Informer().GetIndexer().Add(testcase.PodGroup)
+
+			testcase.JobInfo.Job = testcase.Job
+
+			for _, pod := range testcase.Pods {
+				_, err := fakeController.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+				if err != nil {
+					t.Error("Error While Creating pods")
+				}
+			}
+
+			_, err := fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.Job, metav1.CreateOptions{})
+			if err != nil {
+				t.Errorf("Expected no Error while creating job, but got error: %s", err)
+			}
+
+			err = fakeController.cache.Add(testcase.Job)
+			if err != nil {
+				t.Error("Error While Adding Job in cache")
+			}
+
+			err = fakeController.restartTask(testcase.JobInfo, testcase.TaskName, nil)
+			if err != testcase.ExpextVal {
+				t.Errorf("Expected no error while restart task, but got error: %s", err)
+			}
+
+			for _, pod := range testcase.JobInfo.Pods[testcase.TaskName] {
+				_, err := fakeController.kubeClient.CoreV1().Pods(namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+				if err == nil {
+					t.Errorf("Expected pod %s to be deleted, but not", pod.Name)
+				}
+				fakeController.deletePod(pod)
+			}
+
+			err = fakeController.restartTask(testcase.JobInfo, testcase.TaskName, nil)
+			if err != testcase.ExpextVal {
+				t.Errorf("Expected no error while restart task, but got error: %s", err)
+			}
+
+			podList, err := fakeController.kubeClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
+			if err != nil {
+				t.Errorf("Expected no error while listing pods, but got error %s in case %d", err, i)
+			}
+			if testcase.TotalNumPods != len(podList.Items) {
+				t.Errorf("Expected Total number of pods to be same as podlist count: Expected: %d, Got: %d in case: %d", testcase.TotalNumPods, len(podList.Items), i)
+			}
+		})
+	}
+}

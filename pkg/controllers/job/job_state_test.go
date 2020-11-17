@@ -98,7 +98,7 @@ func TestAbortedState_Execute(t *testing.T) {
 				t.Error("Error while adding Job in cache")
 			}
 
-			err = absState.Execute(testcase.Action)
+			err = absState.Execute(testcase.Action, testcase.JobInfo.Name)
 			if err != nil {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
@@ -210,7 +210,7 @@ func TestAbortingState_Execute(t *testing.T) {
 				t.Error("Error while adding Job in cache")
 			}
 
-			err = absState.Execute(testcase.Action)
+			err = absState.Execute(testcase.Action, testcase.JobInfo.Name)
 			if err != nil {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
@@ -321,7 +321,7 @@ func TestCompletingState_Execute(t *testing.T) {
 				t.Error("Error while adding Job in cache")
 			}
 
-			err = testState.Execute(testcase.Action)
+			err = testState.Execute(testcase.Action, testcase.JobInfo.Name)
 			if err != nil {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
@@ -393,7 +393,7 @@ func TestFinishedState_Execute(t *testing.T) {
 				t.Error("Error while adding Job in cache")
 			}
 
-			err = testState.Execute(testcase.Action)
+			err = testState.Execute(testcase.Action, testcase.JobInfo.Name)
 			if err != nil {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
@@ -408,6 +408,7 @@ func TestPendingState_Execute(t *testing.T) {
 		Name        string
 		JobInfo     *apis.JobInfo
 		Action      busv1alpha1.Action
+		Target      string
 		ExpectedVal error
 	}{
 		{
@@ -428,6 +429,7 @@ func TestPendingState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.RestartJobAction,
+			Target:      "Job1",
 			ExpectedVal: nil,
 		},
 		{
@@ -455,6 +457,7 @@ func TestPendingState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.RestartJobAction,
+			Target:      "Job1",
 			ExpectedVal: nil,
 		},
 		{
@@ -475,6 +478,7 @@ func TestPendingState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.AbortJobAction,
+			Target:      "Job1",
 			ExpectedVal: nil,
 		},
 		{
@@ -502,6 +506,7 @@ func TestPendingState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.AbortJobAction,
+			Target:      "Job1",
 			ExpectedVal: nil,
 		},
 		{
@@ -529,6 +534,7 @@ func TestPendingState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.TerminateJobAction,
+			Target:      "Job1",
 			ExpectedVal: nil,
 		},
 		{
@@ -549,6 +555,7 @@ func TestPendingState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.CompleteJobAction,
+			Target:      "Job1",
 			ExpectedVal: nil,
 		},
 		{
@@ -576,6 +583,7 @@ func TestPendingState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.CompleteJobAction,
+			Target:      "Job1",
 			ExpectedVal: nil,
 		},
 		{
@@ -607,6 +615,7 @@ func TestPendingState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.EnqueueAction,
+			Target:      "Job1",
 			ExpectedVal: nil,
 		},
 		{
@@ -637,6 +646,7 @@ func TestPendingState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.EnqueueAction,
+			Target:      "Job1",
 			ExpectedVal: nil,
 		},
 		{
@@ -667,6 +677,33 @@ func TestPendingState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.SyncJobAction,
+			Target:      "Job1",
+			ExpectedVal: nil,
+		},
+		{
+			Name: "PendingState- when restart task",
+			JobInfo: &apis.JobInfo{
+				Namespace: namespace,
+				Name:      "jobinfo1",
+				Job: &v1alpha1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "Job1",
+						Namespace: namespace,
+					},
+					Spec: v1alpha1.JobSpec{
+						Tasks: []v1alpha1.TaskSpec{{
+							Name: "task1",
+						}},
+					},
+				},
+				Pods: map[string]map[string]*v1.Pod{
+					"task1": {
+						"pod1": buildPod(namespace, "pod1", v1.PodRunning, nil),
+					},
+				},
+			},
+			Action:      busv1alpha1.RestartTaskAction,
+			Target:      "task1",
 			ExpectedVal: nil,
 		},
 	}
@@ -677,6 +714,7 @@ func TestPendingState_Execute(t *testing.T) {
 
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
+			state.RestartTask = fakecontroller.restartTask
 
 			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
 			if err != nil {
@@ -688,7 +726,7 @@ func TestPendingState_Execute(t *testing.T) {
 				t.Error("Error while adding Job in cache")
 			}
 
-			err = testState.Execute(testcase.Action)
+			err = testState.Execute(testcase.Action, testcase.Target)
 			if err != nil {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
@@ -698,33 +736,34 @@ func TestPendingState_Execute(t *testing.T) {
 				t.Error("Error while retrieving value from Cache")
 			}
 
-			if testcase.Action == busv1alpha1.RestartJobAction {
+			switch testcase.Action {
+			case busv1alpha1.RestartJobAction, busv1alpha1.RestartTaskAction:
 				// always jump to restarting firstly
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Restarting {
 					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Restarting, jobInfo.Job.Status.State.Phase, i)
 				}
-			} else if testcase.Action == busv1alpha1.AbortJobAction {
+			case busv1alpha1.AbortJobAction:
 				// always jump to aborting firstly
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Aborting {
 					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Aborting, jobInfo.Job.Status.State.Phase, i)
 				}
-			} else if testcase.Action == busv1alpha1.TerminateJobAction {
+			case busv1alpha1.TerminateJobAction:
 				// always jump to completing firstly
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Terminating {
 					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Terminating, jobInfo.Job.Status.State.Phase, i)
 				}
-			} else if testcase.Action == busv1alpha1.CompleteJobAction {
+			case busv1alpha1.CompleteJobAction:
 				// always jump to completing firstly
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Completing {
 					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Completing, jobInfo.Job.Status.State.Phase, i)
 				}
-			} else if testcase.Action == busv1alpha1.EnqueueAction {
+			case busv1alpha1.EnqueueAction:
 				if jobInfo.Job.Spec.MinAvailable <= jobInfo.Job.Status.Running+jobInfo.Job.Status.Succeeded+jobInfo.Job.Status.Failed {
 					if jobInfo.Job.Status.State.Phase != v1alpha1.Running {
 						t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Running, jobInfo.Job.Status.State.Phase, i)
 					}
 				}
-			} else {
+			default:
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Pending {
 					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Pending, jobInfo.Job.Status.State.Phase, i)
 				}
@@ -821,7 +860,7 @@ func TestRestartingState_Execute(t *testing.T) {
 				t.Error("Error while adding Job in cache")
 			}
 
-			err = testState.Execute(testcase.Action)
+			err = testState.Execute(testcase.Action, testcase.JobInfo.Name)
 			if err != nil {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
@@ -851,6 +890,7 @@ func TestRunningState_Execute(t *testing.T) {
 		Name        string
 		JobInfo     *apis.JobInfo
 		Action      busv1alpha1.Action
+		Target      string
 		ExpectedVal error
 	}{
 		{
@@ -879,6 +919,7 @@ func TestRunningState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.RestartJobAction,
+			Target:      "Job1",
 			ExpectedVal: nil,
 		},
 		{
@@ -901,6 +942,7 @@ func TestRunningState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.RestartJobAction,
+			Target:      "Job1",
 			ExpectedVal: nil,
 		},
 		{
@@ -923,6 +965,7 @@ func TestRunningState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.AbortJobAction,
+			Target:      "Job1",
 			ExpectedVal: nil,
 		},
 		{
@@ -951,6 +994,7 @@ func TestRunningState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.AbortJobAction,
+			Target:      "Job1",
 			ExpectedVal: nil,
 		},
 		{
@@ -973,6 +1017,7 @@ func TestRunningState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.TerminateJobAction,
+			Target:      "Job1",
 			ExpectedVal: nil,
 		},
 		{
@@ -1001,6 +1046,7 @@ func TestRunningState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.TerminateJobAction,
+			Target:      "Job1",
 			ExpectedVal: nil,
 		},
 		{
@@ -1023,6 +1069,7 @@ func TestRunningState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.CompleteJobAction,
+			Target:      "Job1",
 			ExpectedVal: nil,
 		},
 		{
@@ -1051,6 +1098,7 @@ func TestRunningState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.CompleteJobAction,
+			Target:      "Job1",
 			ExpectedVal: nil,
 		},
 		{
@@ -1091,6 +1139,7 @@ func TestRunningState_Execute(t *testing.T) {
 				},
 			},
 			Action:      busv1alpha1.SyncJobAction,
+			Target:      "Job1",
 			ExpectedVal: nil,
 		},
 		{
@@ -1132,6 +1181,40 @@ func TestRunningState_Execute(t *testing.T) {
 			Action:      busv1alpha1.SyncJobAction,
 			ExpectedVal: nil,
 		},
+		{
+			Name: "RunningState- when restart task",
+			JobInfo: &apis.JobInfo{
+				Namespace: namespace,
+				Name:      "jobinfo1",
+				Job: &v1alpha1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "job1",
+						Namespace: namespace,
+					},
+					Spec: v1alpha1.JobSpec{
+						Tasks: []v1alpha1.TaskSpec{
+							{
+								Name:     "task1",
+								Replicas: 2,
+								Template: v1.PodTemplateSpec{
+									ObjectMeta: metav1.ObjectMeta{
+										Name: "task1",
+									},
+								},
+							},
+						},
+					},
+				},
+				Pods: map[string]map[string]*v1.Pod{
+					"task1": {
+						"job1-task1-0": buildPod(namespace, "pod1", v1.PodSucceeded, nil),
+					},
+				},
+			},
+			Action:      busv1alpha1.RestartTaskAction,
+			Target:      "task1",
+			ExpectedVal: nil,
+		},
 	}
 
 	for i, testcase := range testcases {
@@ -1140,6 +1223,7 @@ func TestRunningState_Execute(t *testing.T) {
 
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
+			state.RestartTask = fakecontroller.restartTask
 
 			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
 			if err != nil {
@@ -1151,7 +1235,7 @@ func TestRunningState_Execute(t *testing.T) {
 				t.Error("Error while adding Job in cache")
 			}
 
-			err = testState.Execute(testcase.Action)
+			err = testState.Execute(testcase.Action, testcase.JobInfo.Name)
 			if err != nil {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
@@ -1161,27 +1245,28 @@ func TestRunningState_Execute(t *testing.T) {
 				t.Error("Error while retrieving value from Cache")
 			}
 
-			if testcase.Action == busv1alpha1.RestartJobAction {
+			switch testcase.Action {
+			case busv1alpha1.RestartJobAction, busv1alpha1.RestartTaskAction:
 				// always jump to restarting firstly
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Restarting {
 					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Restarting, jobInfo.Job.Status.State.Phase, i)
 				}
-			} else if testcase.Action == busv1alpha1.AbortJobAction {
+			case busv1alpha1.AbortJobAction:
 				// always jump to aborting firstly
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Aborting {
 					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Restarting, jobInfo.Job.Status.State.Phase, i)
 				}
-			} else if testcase.Action == busv1alpha1.TerminateJobAction {
+			case busv1alpha1.TerminateJobAction:
 				// always jump to terminating firstly
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Terminating {
 					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Terminating, jobInfo.Job.Status.State.Phase, i)
 				}
-			} else if testcase.Action == busv1alpha1.CompleteJobAction {
+			case busv1alpha1.CompleteJobAction:
 				// always jump to completing firstly
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Completing {
 					t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Restarting, jobInfo.Job.Status.State.Phase, i)
 				}
-			} else {
+			default:
 				total := state.TotalTasks(testcase.JobInfo.Job)
 				if total == testcase.JobInfo.Job.Status.Succeeded+testcase.JobInfo.Job.Status.Failed {
 					if jobInfo.Job.Status.State.Phase != v1alpha1.Completed {
@@ -1272,7 +1357,7 @@ func TestTerminatingState_Execute(t *testing.T) {
 				t.Error("Error while adding Job in cache")
 			}
 
-			err = testState.Execute(testcase.Action)
+			err = testState.Execute(testcase.Action, testcase.JobInfo.Name)
 			if err != nil {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}

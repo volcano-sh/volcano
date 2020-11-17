@@ -26,7 +26,7 @@ type runningState struct {
 	job *apis.JobInfo
 }
 
-func (ps *runningState) Execute(action v1alpha1.Action) error {
+func (ps *runningState) Execute(action v1alpha1.Action, target string) error {
 	switch action {
 	case v1alpha1.RestartJobAction:
 		return KillJob(ps.job, PodRetainPhaseNone, func(status *vcbatch.JobStatus) bool {
@@ -47,6 +47,11 @@ func (ps *runningState) Execute(action v1alpha1.Action) error {
 	case v1alpha1.CompleteJobAction:
 		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
 			status.State.Phase = vcbatch.Completing
+			return true
+		})
+	case v1alpha1.RestartTaskAction:
+		return RestartTask(ps.job, target, func(status *vcbatch.JobStatus) bool {
+			status.State.Phase = vcbatch.Restarting
 			return true
 		})
 	default:

@@ -26,7 +26,7 @@ type terminatingState struct {
 	job *apis.JobInfo
 }
 
-func (ps *terminatingState) Execute(action v1alpha1.Action) error {
+func (ps *terminatingState) Execute(action v1alpha1.Action, target string) error {
 	return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
 		// If any "alive" pods, still in Terminating phase
 		if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {

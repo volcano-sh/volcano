@@ -25,7 +25,7 @@ type finishedState struct {
 	job *apis.JobInfo
 }
 
-func (ps *finishedState) Execute(action v1alpha1.Action) error {
+func (ps *finishedState) Execute(action v1alpha1.Action, target string) error {
 	// In finished state, e.g. Completed, always kill the whole job.
 	return KillJob(ps.job, PodRetainPhaseSoft, nil)
 }

@@ -36,6 +36,9 @@ type ActionFn func(job *apis.JobInfo, fn UpdateStatusFn) error
 //KillActionFn kill all Pods of Job with phase not in podRetainPhase.
 type KillActionFn func(job *apis.JobInfo, podRetainPhase PhaseMap, fn UpdateStatusFn) error
 
+//RestartTaskActionFn restart all Pods of specified task.
+type RestartTaskActionFn func(job *apis.JobInfo, taskName string, fn UpdateStatusFn) error
+
 //PodRetainPhaseNone stores no phase.
 var PodRetainPhaseNone = PhaseMap{}
 
@@ -50,12 +53,14 @@ var (
 	SyncJob ActionFn
 	// KillJob kill all Pods of Job with phase not in podRetainPhase.
 	KillJob KillActionFn
+	// RestartTask restart all Pods of specified task.
+	RestartTask RestartTaskActionFn
 )
 
 //State interface.
 type State interface {
 	// Execute executes the actions based on current state.
-	Execute(act v1alpha1.Action) error
+	Execute(act v1alpha1.Action, target string) error
 }
 
 // NewState gets the state from the volcano job Phase.

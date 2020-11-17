@@ -26,7 +26,7 @@ type pendingState struct {
 	job *apis.JobInfo
 }
 
-func (ps *pendingState) Execute(action v1alpha1.Action) error {
+func (ps *pendingState) Execute(action v1alpha1.Action, target string) error {
 	switch action {
 	case v1alpha1.RestartJobAction:
 		return KillJob(ps.job, PodRetainPhaseNone, func(status *vcbatch.JobStatus) bool {
@@ -48,6 +48,11 @@ func (ps *pendingState) Execute(action v1alpha1.Action) error {
 	case v1alpha1.TerminateJobAction:
 		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
 			status.State.Phase = vcbatch.Terminating
+			return true
+		})
+	case v1alpha1.RestartTaskAction:
+		return RestartTask(ps.job, target, func(status *vcbatch.JobStatus) bool {
+			status.State.Phase = vcbatch.Restarting
 			return true
 		})
 	default:

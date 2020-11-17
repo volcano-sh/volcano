@@ -27,7 +27,7 @@ type abortingState struct {
 	job *apis.JobInfo
 }
 
-func (ps *abortingState) Execute(action v1alpha1.Action) error {
+func (ps *abortingState) Execute(action v1alpha1.Action, target string) error {
 	switch action {
 	case v1alpha1.ResumeJobAction:
 		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {

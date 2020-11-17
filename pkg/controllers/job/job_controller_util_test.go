@@ -254,10 +254,11 @@ func TestApplyPolicies(t *testing.T) {
 	errorCode0 := int32(0)
 
 	testcases := []struct {
-		Name      string
-		Job       *v1alpha1.Job
-		Request   *apis.Request
-		ReturnVal busv1alpha1.Action
+		Name         string
+		Job          *v1alpha1.Job
+		Request      *apis.Request
+		ReturnAction busv1alpha1.Action
+		ReturnTarget string
 	}{
 		{
 			Name: "Test Apply policies where Action is not empty",
@@ -290,9 +291,11 @@ func TestApplyPolicies(t *testing.T) {
 				},
 			},
 			Request: &apis.Request{
-				Action: busv1alpha1.EnqueueAction,
+				Action:  busv1alpha1.EnqueueAction,
+				JobName: "job1",
 			},
-			ReturnVal: busv1alpha1.EnqueueAction,
+			ReturnAction: busv1alpha1.EnqueueAction,
+			ReturnTarget: "job1",
 		},
 		{
 			Name: "Test Apply policies where event is OutOfSync",
@@ -327,7 +330,8 @@ func TestApplyPolicies(t *testing.T) {
 			Request: &apis.Request{
 				Event: busv1alpha1.OutOfSyncEvent,
 			},
-			ReturnVal: busv1alpha1.SyncJobAction,
+			ReturnAction: busv1alpha1.SyncJobAction,
+			ReturnTarget: "job1",
 		},
 		{
 			Name: "Test Apply policies where version is outdated",
@@ -362,7 +366,8 @@ func TestApplyPolicies(t *testing.T) {
 			Request: &apis.Request{
 				JobVersion: 1,
 			},
-			ReturnVal: busv1alpha1.SyncJobAction,
+			ReturnAction: busv1alpha1.SyncJobAction,
+			ReturnTarget: "job1",
 		},
 		{
 			Name: "Test Apply policies where overriding job level policies and with exitcode",
@@ -403,8 +408,10 @@ func TestApplyPolicies(t *testing.T) {
 			},
 			Request: &apis.Request{
 				TaskName: "task1",
+				JobName:  "job1",
 			},
-			ReturnVal: busv1alpha1.SyncJobAction,
+			ReturnAction: busv1alpha1.SyncJobAction,
+			ReturnTarget: "job1",
 		},
 		{
 			Name: "Test Apply policies where overriding job level policies and without exitcode",
@@ -445,8 +452,10 @@ func TestApplyPolicies(t *testing.T) {
 			Request: &apis.Request{
 				TaskName: "task1",
 				Event:    busv1alpha1.CommandIssuedEvent,
+				JobName:  "job1",
 			},
-			ReturnVal: busv1alpha1.SyncJobAction,
+			ReturnAction: busv1alpha1.SyncJobAction,
+			ReturnTarget: "job1",
 		},
 		{
 			Name: "Test Apply policies with job level policies",
@@ -482,7 +491,8 @@ func TestApplyPolicies(t *testing.T) {
 				TaskName: "task1",
 				Event:    busv1alpha1.CommandIssuedEvent,
 			},
-			ReturnVal: busv1alpha1.SyncJobAction,
+			ReturnAction: busv1alpha1.SyncJobAction,
+			ReturnTarget: "job1",
 		},
 		{
 			Name: "Test Apply policies with job level policies",
@@ -521,9 +531,11 @@ func TestApplyPolicies(t *testing.T) {
 				},
 			},
 			Request: &apis.Request{
-				Event: busv1alpha1.CommandIssuedEvent,
+				Event:   busv1alpha1.CommandIssuedEvent,
+				JobName: "job1",
 			},
-			ReturnVal: busv1alpha1.SyncJobAction,
+			ReturnAction: busv1alpha1.SyncJobAction,
+			ReturnTarget: "job1",
 		},
 		{
 			Name: "Test Apply policies with job level policies with exitcode",
@@ -562,18 +574,64 @@ func TestApplyPolicies(t *testing.T) {
 					},
 				},
 			},
-			Request:   &apis.Request{},
-			ReturnVal: busv1alpha1.SyncJobAction,
+			Request: &apis.Request{
+				JobName: "job1",
+			},
+			ReturnAction: busv1alpha1.SyncJobAction,
+			ReturnTarget: "job1",
+		},
+		{
+			Name: "Test Apply policies with restartTask action",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					SchedulerName: "volcano",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 6,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+							Policies: []v1alpha1.LifecyclePolicy{
+								{
+									Action: busv1alpha1.RestartTaskAction,
+									Event:  busv1alpha1.PodFailedEvent,
+								},
+							},
+						},
+					},
+				},
+			},
+			Request: &apis.Request{
+				TaskName: "task1",
+				Event:    busv1alpha1.PodFailedEvent,
+			},
+			ReturnAction: busv1alpha1.RestartTaskAction,
+			ReturnTarget: "task1",
 		},
 	}
 
 	for i, testcase := range testcases {
 
 		t.Run(testcase.Name, func(t *testing.T) {
-			action := applyPolicies(testcase.Job, testcase.Request)
+			action, target := applyPolicies(testcase.Job, testcase.Request)
 
-			if testcase.ReturnVal != "" && action != "" && testcase.ReturnVal != action {
-				t.Errorf("Expected return value to be %s but got %s in case %d", testcase.ReturnVal, action, i)
+			if testcase.ReturnAction != "" && action != "" && (testcase.ReturnAction != action || testcase.ReturnTarget != target) {
+				t.Errorf("Expected return value to be %s, target to be %s but got %s/%s in case %d", testcase.ReturnAction, testcase.ReturnTarget, action, target, i)
 			}
 		})
 	}

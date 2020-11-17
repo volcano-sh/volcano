@@ -211,6 +211,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	// Register actions
 	state.SyncJob = cc.syncJob
 	state.KillJob = cc.killJob
+	state.RestartTask = cc.restartTask
 
 	return nil
 }
@@ -318,7 +319,7 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 		return true
 	}
 
-	action := applyPolicies(jobInfo.Job, &req)
+	action, target := applyPolicies(jobInfo.Job, &req)
 	klog.V(3).Infof("Execute <%v> on Job <%s/%s> in <%s> by <%T>.",
 		action, req.Namespace, req.JobName, jobInfo.Job.Status.State.Phase, st)
 
@@ -327,7 +328,7 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 			"Start to execute action %s ", action))
 	}
 
-	if err := st.Execute(action); err != nil {
+	if err := st.Execute(action, target); err != nil {
 		if queue.NumRequeues(req) < maxRetries {
 			klog.V(2).Infof("Failed to handle Job <%s/%s>: %v",
 				jobInfo.Job.Namespace, jobInfo.Job.Name, err)
@@ -338,6 +339,8 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, batchv1alpha1.ExecuteAction, fmt.Sprintf(
 			"Job failed on action %s for retry limit reached", action))
 		klog.Warningf("Dropping job<%s/%s> out of the queue: %v because max retries has reached", jobInfo.Job.Namespace, jobInfo.Job.Name, err)
+		err = st.Execute(busv1alpha1.TerminateJobAction, target)
+		klog.Warningf("Terminating job<%s/%s> and release resources, result: %v", jobInfo.Job.Namespace, jobInfo.Job.Name, err)
 	}
 
 	// If no error, forget it.

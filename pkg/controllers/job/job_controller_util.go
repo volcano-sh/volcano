@@ -112,19 +112,19 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 	return pod
 }
 
-func applyPolicies(job *batch.Job, req *apis.Request) v1alpha1.Action {
+func applyPolicies(job *batch.Job, req *apis.Request) (v1alpha1.Action, string) {
 	if len(req.Action) != 0 {
-		return req.Action
+		return req.Action, getActionTarget(req.Action, req)
 	}
 
 	if req.Event == v1alpha1.OutOfSyncEvent {
-		return v1alpha1.SyncJobAction
+		return v1alpha1.SyncJobAction, job.Name
 	}
 
 	// For all the requests triggered from discarded job resources will perform sync action instead
 	if req.JobVersion < job.Status.Version {
 		klog.Infof("Request %s is outdated, will perform sync instead.", req)
-		return v1alpha1.SyncJobAction
+		return v1alpha1.SyncJobAction, job.Name
 	}
 
 	// Overwrite Job level policies
@@ -133,17 +133,17 @@ func applyPolicies(job *batch.Job, req *apis.Request) v1alpha1.Action {
 		for _, task := range job.Spec.Tasks {
 			if task.Name == req.TaskName {
 				for _, policy := range task.Policies {
-					policyEvents := getEventlist(policy)
+					policyEvents := getEventList(policy)
 
 					if len(policyEvents) > 0 && len(req.Event) > 0 {
 						if checkEventExist(policyEvents, req.Event) || checkEventExist(policyEvents, v1alpha1.AnyEvent) {
-							return policy.Action
+							return policy.Action, getActionTarget(policy.Action, req)
 						}
 					}
 
 					// 0 is not an error code, is prevented in validation admission controller
 					if policy.ExitCode != nil && *policy.ExitCode == req.ExitCode {
-						return policy.Action
+						return policy.Action, getActionTarget(policy.Action, req)
 					}
 				}
 				break
@@ -153,24 +153,35 @@ func applyPolicies(job *batch.Job, req *apis.Request) v1alpha1.Action {
 
 	// Parse Job level policies
 	for _, policy := range job.Spec.Policies {
-		policyEvents := getEventlist(policy)
+		policyEvents := getEventList(policy)
 
 		if len(policyEvents) > 0 && len(req.Event) > 0 {
 			if checkEventExist(policyEvents, req.Event) || checkEventExist(policyEvents, v1alpha1.AnyEvent) {
-				return policy.Action
+				return policy.Action, getActionTarget(policy.Action, req)
 			}
 		}
 
 		// 0 is not an error code, is prevented in validation admission controller
 		if policy.ExitCode != nil && *policy.ExitCode == req.ExitCode {
-			return policy.Action
+			return policy.Action, getActionTarget(policy.Action, req)
 		}
 	}
 
-	return v1alpha1.SyncJobAction
+	return v1alpha1.SyncJobAction, job.Name
 }
 
-func getEventlist(policy batch.LifecyclePolicy) []v1alpha1.Event {
+func getActionTarget(action v1alpha1.Action, req *apis.Request) string {
+	switch action {
+	case v1alpha1.RestartTaskAction:
+		return req.TaskName
+	case v1alpha1.SyncQueueAction, v1alpha1.OpenQueueAction, v1alpha1.CloseQueueAction:
+		return req.QueueName
+	default:
+		return req.JobName
+	}
+}
+
+func getEventList(policy batch.LifecyclePolicy) []v1alpha1.Event {
 	policyEventsList := policy.Events
 	if len(policy.Event) > 0 {
 		policyEventsList = append(policyEventsList, policy.Event)

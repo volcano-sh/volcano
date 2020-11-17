@@ -26,7 +26,7 @@ type restartingState struct {
 	job *apis.JobInfo
 }
 
-func (ps *restartingState) Execute(action v1alpha1.Action) error {
+func (ps *restartingState) Execute(action v1alpha1.Action, target string) error {
 	return KillJob(ps.job, PodRetainPhaseNone, func(status *vcbatch.JobStatus) bool {
 		// Get the maximum number of retries.
 		maxRetry := DefaultMaxRetry
