@@ -104,7 +104,7 @@ the more idle resources on the nodes,the priority is higher. and the weight is 0
 
 * Complete formula 
 
-0.4* 1/(sum-target) / [(sum-target)  + used+n +idle]   + 0.35*used/[(sum-target)  + used+n +idle]  +  0.15*1/n/[(sum-target)  + used+n +idle] + 0.1*idle / [(sum-target)  + used+n +idle]
+0.4*1/(sum-target)/[(sum-target)+used+n+idle] + 0.35*used/[(sum-target)+used+n+idle] + 0.15*1/n/[(sum-target)+used+n+idle] + 0.1*idle/[(sum-target)+used+n+idle]
 
 
 ##### Lock Strategy
