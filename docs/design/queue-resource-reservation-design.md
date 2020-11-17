@@ -102,6 +102,10 @@ the nums of the combination nodes is lower,the priority is higher. and the weigh
 
 the more idle resources on the nodes,the priority is higher. and the weight is 0.1
 
+* Complete formula 
+
+0.4* 1/(sum-target) / [(sum-target)  + used+n +idle]   + 0.35*used/[(sum-target)  + used+n +idle]  +  0.15*1/n/[(sum-target)  + used+n +idle] + 0.1*idle / [(sum-target)  + used+n +idle]
+
 
 ##### Lock Strategy
 * schedule relock
@@ -115,5 +119,9 @@ and update the queue's locked nodes,and caculate the idle resources on the locke
 Add a new worker in the queue_controller:  reserveWorker. reserveWorker aims to take care of the queue which has the requirement 
 of reservation ,including finding and updating the node details for the queue to lock, updating the queue reservation status.
 
+![Workflow](./images/queue_reservation_lock_workfow.png)
+
 ###  Plugin
 Add new Plugin node_reservation to implement algorithm detail above.
+
+![Workflow](./images/queue_reservation_allocate_workflow.png)
