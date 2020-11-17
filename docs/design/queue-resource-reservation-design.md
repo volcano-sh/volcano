@@ -6,8 +6,7 @@
 As [issue 1101](https://github.com/volcano-sh/volcano/issues/1101) mentioned, Volcano should support resource reservation
 for specified queue. Requirement detail as follows:
 * Support reserving specified resources for specified queue
-* Consider preemption reservation and non-preemption reservation. The former is used to emergency reservation, which may
-evict existing running workloads but with better efficiency. The later is generally used for reserving without eviction.
+* We only Consider non-preemption reservation. 
 * Support enable and disable resource reservation for specified queue dynamically without restarting Volcano.
 * Support hard reservation resource specified and percentage reservation resource specified.
 
@@ -17,23 +16,20 @@ evict existing running workloads but with better efficiency. The later is genera
 * If `capability` is set, request must be no more than it at all dimensions.
 * The resource amount reserved must be no less than request at all dimensions but should not exceed too much. An algorithm 
 ensuring the reserved amount to the point is necessary.
-* Support total node number percentage of cluster as request. If reservation resource amount is also specified, it's
+* Support total node resource percentage of cluster as request. If reservation resource amount is also specified, it's
 important to decide which configuration is adopted. This feature is more useful on the condition that resource specification
 of all nodes are almost the same.
 
 ### Reservation Algorithm
-* Take preemption and non-preemption reservation into consideration.
-* Preemption reservation may results in running workloads exits abnormally.
-* Non-preemption reservation needs gentle treatment to balance scheduling and reserving performance.
-* Although preemption reservation configured, try to reserve resource without eviction if idle resource can satisfy demand.
+* reservation needs gentle treatment to balance scheduling and reserving performance.
 * Nodes locked by target job cannot be chosen as locked node.
 * Nodes locked by another queue cannot be chosen as locked node.
-* Try to lock nodes, whose total resource is as less as possible on base of satisfying requirement, to avoid dramatic 
+* Try to lock nodes, whose total resource and nodes numbers is as less as possible on base of satisfying requirement, to avoid dramatic 
 scheduling performance degradation.
+
 
 ### Safety
 * Malicious application for large amount of resource reservation will cause jobs in other queue to block.
-* Preemption reservation has a risk of hurting existing business.
 
 ## Design
 ### API
@@ -45,10 +41,11 @@ metadata:
 spec:
   reclaimable: true
   weight: 1
-
   guarantee:            // reservation key word
     policy: Best-Effort // preemption reservation or non-preemption reservation
-    percentage: 0.5     // locked nodes number percentage in cluster
+    percentage:      // locked nodes resource percentage in cluster
+      dimensions: ["cpu", "memory, "gpu", "other-scalable-resource-type"...]  
+      value: 0.2
     resource:           // specified reserving resource
       cpu: 2c
       memory: 4G
@@ -84,27 +81,39 @@ List of locked nodes.
 Total idle resource of locked nodes. You can judge whether reservation has met demand by watching this field.
 
 #### Algorithm
-##### Node Selection
-* Big Nodes
 
-Sort all nodes according total resource amount of one or some dimensions. Select the least nodes which rank first and 
-satisfy requirement. It's the most efficient way for preemption reservation.  
+Sort all nodes combination which satisfy the queue request resource in all dimensions.
 
-* Idle First
+and these situations will effect the order of the nodes  combination.
 
-Sort all nodes according idle resource of one or some dimensions. Select the least nodes which rank first as locked nodes.
-It's suitable for non-preemption. It's should to be noted that the locked nodes are often optimal solution but suboptimal
-solution sometimes. 
+* sum(nodes's resource)
+
+the sum of the combination nodes's resource is lower,the priority is higher. and the weight is 0.4
+
+* queue already used
+
+the more resources are used on the nodes that belong to the queue,the priority is higher. and the weight is 0.35
+
+* sum(nodes's number)
+
+the nums of the combination nodes is lower,the priority is higher. and the weight is 0.15
+
+* sum(nodes's idle resource)
+
+the more idle resources on the nodes,the priority is higher. and the weight is 0.1
+
 
 ##### Lock Strategy
-* Disposable Lock
+* schedule relock
 
-Disposable Lock to all selected nodes. It's certainly effective for preemption reservation. To non-preemption reservation,
-It' a good practice but not always.
+for every 5s or 10s. the worker in the  queueController  will find the best combination nodes for a a queue.
+and update the queue's locked nodes,and caculate the idle resources on the locked nodes.
 
-* Multiple Lock
-
-Lock nodes through a few of scheduling cycle. Just lock one node in one cycle. It's more flexible and dynamic.
 
 ## Implementation
-TODO
+### Controller
+Add a new worker in the queue_controller:  reserveWorker. reserveWorker aims to take care of the queue which has the requirement 
+of reservation ,including finding and updating the node details for the queue to lock, updating the queue reservation status.
+
+###  Plugin
+Add new Plugin node_reservation to implement algorithm detail above.
