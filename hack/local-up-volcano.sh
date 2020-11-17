@@ -95,19 +95,8 @@ prepare
 
 if [ "${INSTALL_MODE}" == "kind" ]; then
   kind-up-cluster
-  export KUBECONFIG="$(kind get kubeconfig-path ${CLUSTER_CONTEXT})"
+  export KUBECONFIG="$(kind get kubeconfig ${CLUSTER_CONTEXT})"
 fi
-
-echo "info: loading images into cluster"
-images=(
-    $IMAGE_PREFIX-controller-manager:${TAG}
-    $IMAGE_PREFIX-scheduler:${TAG}
-    $IMAGE_PREFIX-webhook-manager:${TAG}
-)
-for n in ${images[@]}; do
-    echo "info: loading image $n"
-    kind load docker-image --name $CLUSTER_NAME $n
-done
 
 kubectl delete deploy volcano-admission -n $NAMESPACE
 kubectl delete deploy volcano-controllers  -n $NAMESPACE
