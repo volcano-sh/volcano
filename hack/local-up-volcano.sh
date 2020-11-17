@@ -100,9 +100,9 @@ fi
 
 echo "info: loading images into cluster"
 images=(
-    IMAGE_PREFIX-controller-manager:${TAG}
-    IMAGE_PREFIX-scheduler:${TAG}
-    IMAGE_PREFIX-webhook-manager:${TAG}
+    $IMAGE_PREFIX-controller-manager:${TAG}
+    $IMAGE_PREFIX-scheduler:${TAG}
+    $IMAGE_PREFIX-webhook-manager:${TAG}
 )
 for n in ${images[@]}; do
     echo "info: loading image $n"
