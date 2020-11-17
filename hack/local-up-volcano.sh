@@ -24,7 +24,7 @@ TAG=${TAG:-`git rev-parse --verify HEAD`}
 RELEASE_DIR=_output/release
 RELEASE_FOLDER=${VK_ROOT}/${RELEASE_DIR}
 YAML_FILENAME=volcano-${TAG}.yaml
-NAMESPACE=${NAMESPACE:-pingcap}
+NAMESPACE=${NAMESPACE:-volcano-system}
 
 
 # prepare deploy yaml and docker images
