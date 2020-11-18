@@ -117,7 +117,6 @@ the more idle resources on the nodes,the priority is higher. and the weight is 0
 lokced,The smaller the impact on the cluster.
 * The least important condition is the idle of the nodes,the more idle the nodes are, the more efficient it is to lock on.
 
-
 0.4*1/(sum-target)/[(sum-target)+used+n+idle] + 0.35*used/[(sum-target)+used+n+idle] + 0.15*1/n/[(sum-target)+used+n+idle] + 0.1*idle/[(sum-target)+used+n+idle]
 
 
