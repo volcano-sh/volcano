@@ -94,7 +94,7 @@ func NewResource(rl v1.ResourceList) *Resource {
 
 // IsEmpty returns bool after checking any of resource is less than min possible value
 func (r *Resource) IsEmpty() bool {
-	if !(r.MilliCPU < minMilliCPU && r.Memory < minMemory) {
+	if r.MilliCPU >= minMilliCPU || r.Memory >= minMemory {
 		return false
 	}
 
