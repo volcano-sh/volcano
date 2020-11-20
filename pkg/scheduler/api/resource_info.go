@@ -94,7 +94,12 @@ func NewResource(rl v1.ResourceList) *Resource {
 
 // IsEmpty returns bool after checking any of resource is less than min possible value
 func (r *Resource) IsEmpty() bool {
-	if r.MilliCPU >= minMilliCPU || r.Memory >= minMemory {
+	// Do not use equal to compare floats. Compare if a is greater than or equal to b
+	geFn := func(a, b float64) bool {
+		const precision = 1e-6
+		return a > (b - precision)
+	}
+	if geFn(r.MilliCPU, minMilliCPU) || geFn(r.Memory, minMemory) {
 		return false
 	}
 
