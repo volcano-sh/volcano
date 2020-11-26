@@ -148,7 +148,7 @@ metadata:
     prometheus.io/port: "8080"
     prometheus.io/scrape: "true"
   name: volcano-scheduler-service
-  namespace: volcano-system
+  namespace: volcano-system 
 spec:
   ports:
   - port: 8080
