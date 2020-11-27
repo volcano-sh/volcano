@@ -20,7 +20,6 @@ import (
 	"fmt"
 
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/kubernetes"
@@ -117,25 +116,6 @@ func openSession(cache cache.Cache) *Session {
 		if job.PodGroup != nil && job.PodGroup.Status.Conditions != nil {
 			ssn.podGroupStatus[job.UID] = job.PodGroup.Status
 		}
-
-		if vjr := ssn.JobValid(job); vjr != nil {
-			if !vjr.Pass {
-				jc := &scheduling.PodGroupCondition{
-					Type:               scheduling.PodGroupUnschedulableType,
-					Status:             v1.ConditionTrue,
-					LastTransitionTime: metav1.Now(),
-					TransitionID:       string(ssn.UID),
-					Reason:             vjr.Reason,
-					Message:            vjr.Message,
-				}
-
-				if err := ssn.UpdatePodGroupCondition(job, jc); err != nil {
-					klog.Errorf("Failed to update job condition: %v", err)
-				}
-			}
-
-			delete(ssn.Jobs, job.UID)
-		}
 	}
 
 	ssn.Nodes = snapshot.Nodes
@@ -201,6 +181,19 @@ func jobStatus(ssn *Session, jobInfo *api.JobInfo) scheduling.PodGroupStatus {
 	status.Succeeded = int32(len(jobInfo.TaskStatusIndex[api.Succeeded]))
 
 	return status
+}
+
+// RemoveInvalidJob remove invalid job from session
+func (ssn *Session) RemoveInvalidJob() {
+	for _, job := range ssn.Jobs {
+		if job.PodGroup.Status.Phase == scheduling.PodGroupPending || job.PodGroup.Status.Phase == "" {
+			continue
+		}
+
+		if vjr := ssn.JobValid(job); vjr != nil && !vjr.Pass {
+			delete(ssn.Jobs, job.UID)
+		}
+	}
 }
 
 // Statement returns new statement object

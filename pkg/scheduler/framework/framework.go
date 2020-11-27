@@ -49,6 +49,7 @@ func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Con
 		metrics.UpdatePluginDuration(plugin.Name(), metrics.OnSessionOpen, metrics.Duration(onSessionOpenStart))
 	}
 
+	ssn.RemoveInvalidJob()
 	return ssn
 }
 
