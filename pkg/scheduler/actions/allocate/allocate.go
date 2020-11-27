@@ -230,6 +230,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				if err := stmt.Allocate(task, node.Name); err != nil {
 					klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 						task.UID, node.Name, ssn.UID, err)
+				} else {
+					metrics.UpdateE2eSchedulingDurationByJob(job.Name, metrics.Duration(job.CreationTimestamp.Time))
 				}
 			} else {
 				klog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s> with limited resources",
@@ -242,19 +244,19 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					if err := ssn.Pipeline(task, node.Name); err != nil {
 						klog.Errorf("Failed to pipeline Task %v on %v in Session %v for %v.",
 							task.UID, node.Name, ssn.UID, err)
+					} else {
+						metrics.UpdateE2eSchedulingDurationByJob(job.Name, metrics.Duration(job.CreationTimestamp.Time))
 					}
 				}
 			}
 
 			if ssn.JobReady(job) && !tasks.Empty() {
 				jobs.Push(job)
-				metrics.UpdateE2eSchedulingDurationByJob(job.Name, metrics.Duration(job.CreationTimestamp.Time))
 				break
 			}
 		}
 
 		if ssn.JobReady(job) {
-			metrics.UpdateE2eSchedulingDurationByJob(job.Name, metrics.Duration(job.CreationTimestamp.Time))
 			stmt.Commit()
 		} else {
 			stmt.Discard()
