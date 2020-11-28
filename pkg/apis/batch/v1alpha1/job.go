@@ -130,6 +130,8 @@ const (
 	ExecuteAction JobEvent = "ExecuteAction"
 	//JobStatusError is generated if update job status failed
 	JobStatusError JobEvent = "JobStatusError"
+	// PodGroupPending  pod grp pending event is generated if pg pending due to some error
+	PodGroupPending JobEvent = "PodGroupPending"
 )
 
 // LifecyclePolicy specifies the lifecycle and error handling of task and job.
