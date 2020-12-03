@@ -64,6 +64,13 @@ func (ps *runningState) Execute(action v1alpha1.Action) error {
 				}
 				return true
 			}
+
+			if ps.job.Job.Spec.MinAvailable+status.Pending > jobReplicas {
+				// when scale up from jobReplicas==0
+				status.State.Phase = vcbatch.Pending
+				return true
+			}
+
 			return false
 		})
 	}
