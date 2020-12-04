@@ -488,6 +488,13 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 				job.Namespace, job.Name, err)
 			return err
 		}
+
+		minTaskMember := map[string]int32{}
+		for _, task := range job.Spec.Tasks {
+			if task.MinAvailable != nil {
+				minTaskMember[task.Name] = *task.MinAvailable
+			}
+		}
 		pg := &scheduling.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace:   job.Namespace,
@@ -500,6 +507,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 			},
 			Spec: scheduling.PodGroupSpec{
 				MinMember:         job.Spec.MinAvailable,
+				MinTaskMember:     minTaskMember,
 				Queue:             job.Spec.Queue,
 				MinResources:      cc.calcPGMinResources(job),
 				PriorityClassName: job.Spec.PriorityClassName,
@@ -524,6 +532,19 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 				klog.Errorf("Failed to update PodGroup for Job <%s/%s>: %v",
 					job.Namespace, job.Name, err)
 				return err
+			}
+		}
+	}
+
+	for _, task := range job.Spec.Tasks {
+		if task.MinAvailable != nil && pg.Spec.MinTaskMember[task.Name] != *task.MinAvailable {
+			pg.Spec.MinTaskMember[task.Name] = *task.MinAvailable
+			if _, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Update(context.TODO(), pg, metav1.UpdateOptions{}); err != nil {
+				if !apierrors.IsAlreadyExists(err) {
+					klog.V(3).Infof("Failed to update PodGroup for Job <%s/%s>: %v",
+						job.Namespace, job.Name, err)
+					return err
+				}
 			}
 		}
 	}

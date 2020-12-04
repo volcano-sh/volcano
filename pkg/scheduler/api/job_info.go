@@ -177,8 +177,9 @@ type JobInfo struct {
 	NodesFitErrors map[TaskID]*FitErrors
 
 	// All tasks of the Job.
-	TaskStatusIndex map[TaskStatus]tasksMap
-	Tasks           tasksMap
+	TaskStatusIndex  map[TaskStatus]tasksMap
+	Tasks            tasksMap
+	TaskMinAvailable map[TaskID]int32
 
 	Allocated    *Resource
 	TotalRequest *Resource
@@ -201,13 +202,14 @@ type JobInfo struct {
 // NewJobInfo creates a new jobInfo for set of tasks
 func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 	job := &JobInfo{
-		UID:             uid,
-		MinAvailable:    0,
-		NodesFitErrors:  make(map[TaskID]*FitErrors),
-		Allocated:       EmptyResource(),
-		TotalRequest:    EmptyResource(),
-		TaskStatusIndex: map[TaskStatus]tasksMap{},
-		Tasks:           tasksMap{},
+		UID:              uid,
+		MinAvailable:     0,
+		NodesFitErrors:   make(map[TaskID]*FitErrors),
+		Allocated:        EmptyResource(),
+		TotalRequest:     EmptyResource(),
+		TaskStatusIndex:  map[TaskStatus]tasksMap{},
+		Tasks:            tasksMap{},
+		TaskMinAvailable: map[TaskID]int32{},
 	}
 
 	for _, task := range tasks {
@@ -232,6 +234,9 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.Preemptable = GetJobPreemptable(pg)
 	ji.RevocableZone = GetJobRevocableZone(pg)
 	ji.Budget = GetBudget(pg)
+	for task, member := range pg.Spec.MinTaskMember {
+		ji.TaskMinAvailable[TaskID(task)] = member
+	}
 
 	ji.PodGroup = pg
 
@@ -463,6 +468,29 @@ func (ji *JobInfo) WaitingTaskNum() int32 {
 	}
 
 	return int32(occupid)
+}
+
+// ValidTaskMinAvailable returns whether each job task are valid.
+func (ji *JobInfo) ValidTaskMinAvailable() (map[TaskID]int32, bool) {
+	actual := map[TaskID]int32{}
+	for status, tasks := range ji.TaskStatusIndex {
+		if AllocatedStatus(status) ||
+			status == Succeeded ||
+			status == Pipelined ||
+			status == Pending {
+			for _, task := range tasks {
+				actual[task.UID] += 1
+			}
+		}
+	}
+
+	for task, occupied := range actual {
+		if minAvailable, ok := ji.TaskMinAvailable[task]; ok && occupied < minAvailable {
+			return actual, false
+		}
+	}
+
+	return actual, true
 }
 
 // ValidTaskNum returns the number of tasks that are valid.

@@ -174,6 +174,11 @@ type TaskSpec struct {
 	// +optional
 	Replicas int32 `json:"replicas,omitempty" protobuf:"bytes,2,opt,name=replicas"`
 
+	// The minimal available pods to run for this Task
+	// Defaults to the task replicas
+	// +optional
+	MinAvailable *int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
+
 	// Specifies the pod that will be created for this TaskSpec
 	// when executing a Job
 	// +optional

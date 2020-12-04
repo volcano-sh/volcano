@@ -57,6 +57,15 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
+		if actual, valid := job.ValidTaskMinAvailable(); !valid {
+			return &api.ValidateResult{
+				Pass:   false,
+				Reason: v1beta1.NotEnoughTaskPodReason,
+				Message: fmt.Sprintf("Not enough valid pods of task for gang-scheduling, actual: %v, expected: %v",
+					actual, job.TaskMinAvailable),
+			}
+		}
+
 		vtn := job.ValidTaskNum()
 		if vtn < job.MinAvailable {
 			return &api.ValidateResult{

@@ -116,13 +116,13 @@ func createPatch(job *v1alpha1.Job) ([]byte, error) {
 	if pathMaxRetry != nil {
 		patch = append(patch, *pathMaxRetry)
 	}
-	pathMinAvailable := patchDefaultMinAvailable(job)
-	if pathMinAvailable != nil {
-		patch = append(patch, *pathMinAvailable)
-	}
 	pathSpec := mutateSpec(job.Spec.Tasks, "/spec/tasks")
 	if pathSpec != nil {
 		patch = append(patch, *pathSpec)
+	}
+	pathMinAvailable := patchDefaultMinAvailable(job)
+	if pathMinAvailable != nil {
+		patch = append(patch, *pathMinAvailable)
 	}
 	return json.Marshal(patch)
 }
@@ -154,12 +154,14 @@ func patchDefaultMaxRetry(job *v1alpha1.Job) *patchOperation {
 func patchDefaultMinAvailable(job *v1alpha1.Job) *patchOperation {
 	// Add default minAvailable if minAvailable is zero.
 	if job.Spec.MinAvailable == 0 {
-		var totalReplicas int32
+		var totalTaskMinAvailable int32
 		for _, task := range job.Spec.Tasks {
-			totalReplicas += task.Replicas
+			if task.MinAvailable != nil {
+				totalTaskMinAvailable += *task.MinAvailable
+			}
 		}
 
-		return &patchOperation{Op: "add", Path: "/spec/minAvailable", Value: totalReplicas}
+		return &patchOperation{Op: "add", Path: "/spec/minAvailable", Value: totalTaskMinAvailable}
 	}
 	return nil
 }
@@ -178,6 +180,9 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string) *patchOperation {
 			tasks[index].Template.Spec.DNSPolicy = v1.DNSClusterFirstWithHostNet
 		}
 
+		if tasks[index].MinAvailable == nil {
+			*tasks[index].MinAvailable = tasks[index].Replicas
+		}
 	}
 	if !patched {
 		return nil

@@ -111,6 +111,9 @@ const (
 
 	// NotEnoughPodsReason is probed if there're not enough tasks compared to `spec.minMember`
 	NotEnoughPodsReason string = "NotEnoughTasks"
+
+	// NotEnoughTaskPodReason is probed if there're not enough pods of a task compared to `spec.minTaskMember`
+	NotEnoughTaskPodReason string = "NotEnoughTaskPod"
 )
 
 // QueueEvent represent the phase of queue.
@@ -164,6 +167,11 @@ type PodGroupSpec struct {
 	// if there's not enough resources to start all tasks, the scheduler
 	// will not start anyone.
 	MinMember int32 `json:"minMember,omitempty" protobuf:"bytes,1,opt,name=minMember"`
+
+	// MinTaskMember defines the minimal number of pods to run each task in the pod group;
+	// if there's not enough resources to start each task, the scheduler
+	// will not start anyone.
+	MinTaskMember map[string]int32 `json:"minTaskMember,omitempty" protobuf:"bytes,1,opt,name=minTaskMember"`
 
 	// Queue defines the queue to allocate resource for PodGroup; if queue does not exist,
 	// the PodGroup will not be scheduled. Defaults to `default` Queue with the lowest weight.
