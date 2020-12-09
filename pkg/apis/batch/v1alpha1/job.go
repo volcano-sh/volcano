@@ -32,7 +32,6 @@ import (
 type Job struct {
 	metav1.TypeMeta `json:",inline"`
 
-	// metadata of the volcano job
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
