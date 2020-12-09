@@ -215,6 +215,7 @@ func Convert_scheduling_PodGroupList_To_v1beta1_PodGroupList(in *scheduling.PodG
 
 func autoConvert_v1beta1_PodGroupSpec_To_scheduling_PodGroupSpec(in *PodGroupSpec, out *scheduling.PodGroupSpec, s conversion.Scope) error {
 	out.MinMember = in.MinMember
+	out.MinTaskMember = *(*map[string]int32)(unsafe.Pointer(&in.MinTaskMember))
 	out.Queue = in.Queue
 	out.PriorityClassName = in.PriorityClassName
 	out.MinResources = (*v1.ResourceList)(unsafe.Pointer(in.MinResources))
@@ -228,6 +229,7 @@ func Convert_v1beta1_PodGroupSpec_To_scheduling_PodGroupSpec(in *PodGroupSpec, o
 
 func autoConvert_scheduling_PodGroupSpec_To_v1beta1_PodGroupSpec(in *scheduling.PodGroupSpec, out *PodGroupSpec, s conversion.Scope) error {
 	out.MinMember = in.MinMember
+	out.MinTaskMember = *(*map[string]int32)(unsafe.Pointer(&in.MinTaskMember))
 	out.Queue = in.Queue
 	out.PriorityClassName = in.PriorityClassName
 	out.MinResources = (*v1.ResourceList)(unsafe.Pointer(in.MinResources))

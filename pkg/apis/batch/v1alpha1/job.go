@@ -244,6 +244,10 @@ type JobStatus struct {
 	// +optional
 	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
 
+	// The status of pods for each task
+	// +optional
+	TaskStatusCount map[string]map[v1.PodPhase]int32 `json:"taskStatusCount,omitempty" protobuf:"bytes,2,opt,name=taskStatusCount"`
+
 	// The number of pending pods.
 	// +optional
 	Pending int32 `json:"pending,omitempty" protobuf:"bytes,3,opt,name=pending"`

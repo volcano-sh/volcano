@@ -112,8 +112,8 @@ const (
 	// NotEnoughPodsReason is probed if there're not enough tasks compared to `spec.minMember`
 	NotEnoughPodsReason string = "NotEnoughTasks"
 
-	// NotEnoughTaskPodReason is probed if there're not enough pods of a task compared to `spec.minTaskMember`
-	NotEnoughTaskPodReason string = "NotEnoughTaskPod"
+	// NotEnoughPodsOfTaskReason is probed if there're not enough pods of task compared to `spec.minTaskMember`
+	NotEnoughPodsOfTaskReason string = "NotEnoughPodsOfTask"
 )
 
 // QueueEvent represent the phase of queue.

@@ -180,9 +180,9 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string) *patchOperation {
 			tasks[index].Template.Spec.DNSPolicy = v1.DNSClusterFirstWithHostNet
 		}
 
-		if tasks[index].MinAvailable == nil {
-			*tasks[index].MinAvailable = tasks[index].Replicas
-		}
+		//if tasks[index].MinAvailable == nil {
+		//	*tasks[index].MinAvailable = tasks[index].Replicas
+		//}
 	}
 	if !patched {
 		return nil

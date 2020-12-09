@@ -17,6 +17,7 @@ limitations under the License.
 package state
 
 import (
+	v1 "k8s.io/api/core/v1"
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
@@ -56,7 +57,19 @@ func (ps *runningState) Execute(action v1alpha1.Action) error {
 				// when scale down to zero, keep the current job phase
 				return false
 			}
+
 			if status.Succeeded+status.Failed == jobReplicas {
+				for _, task := range ps.job.Job.Spec.Tasks {
+					if task.MinAvailable == nil {
+						continue
+					}
+
+					if status.TaskStatusCount[task.Name][v1.PodSucceeded] < *task.MinAvailable {
+						status.State.Phase = vcbatch.Failed
+						return true
+					}
+				}
+
 				if status.Succeeded >= ps.job.Job.Spec.MinAvailable {
 					status.State.Phase = vcbatch.Completed
 				} else {
@@ -64,6 +77,7 @@ func (ps *runningState) Execute(action v1alpha1.Action) error {
 				}
 				return true
 			}
+
 			return false
 		})
 	}
