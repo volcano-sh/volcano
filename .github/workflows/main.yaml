@@ -61,9 +61,9 @@ jobs:
         uses: actions/checkout@v2
 
       - run: |
-        make vcctl
-        make images
-        make e2e-test-jobp
+         make vcctl
+         make images
+         make e2e-test-jobp
 
   e2e_sequence:
     runs-on: ubuntu-latest
@@ -89,9 +89,9 @@ jobs:
         uses: actions/checkout@v2
 
       - run: |
-        make vcctl
-        make images
-        make e2e-test-jobseq
+          make vcctl
+          make images
+          make e2e-test-jobseq
   e2e_scheduling_basic:
     runs-on: ubuntu-latest
     name: E2E about Basic Scheduling
@@ -116,9 +116,9 @@ jobs:
         uses: actions/checkout@v2
 
       - run: |
-        make vcctl
-        make images
-        make e2e-test-schedulingbase
+          make vcctl
+          make images
+          make e2e-test-schedulingbase
 
   e2e_scheduling_actions:
     runs-on: ubuntu-latest
@@ -144,6 +144,6 @@ jobs:
         uses: actions/checkout@v2
 
       - run: |
-        make vcctl
-        make images
-        make e2e-test-schedulingaction
+          make vcctl
+          make images
+          make e2e-test-schedulingaction
