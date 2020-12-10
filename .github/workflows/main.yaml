@@ -53,7 +53,7 @@ jobs:
 
       - name: Install dependences
         run: |
-          go get sigs.k8s.io/kind@v0.6.1
+          GO111MODULE="on" go get sigs.k8s.io/kind@v0.6.1
           curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.16.6/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
 
 
@@ -81,7 +81,7 @@ jobs:
 
       - name: Install dependences
         run: |
-          go get sigs.k8s.io/kind@v0.6.1
+          GO111MODULE="on" go get sigs.k8s.io/kind@v0.6.1
           curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.16.6/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
 
 
@@ -108,7 +108,7 @@ jobs:
 
       - name: Install dependences
         run: |
-          go get sigs.k8s.io/kind@v0.6.1
+          GO111MODULE="on" go get sigs.k8s.io/kind@v0.6.1
           curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.16.6/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
 
 
@@ -136,7 +136,7 @@ jobs:
 
       - name: Install dependences
         run: |
-          go get sigs.k8s.io/kind@v0.6.1
+          GO111MODULE="on" go get sigs.k8s.io/kind@v0.6.1
           curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.16.6/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
 
 
