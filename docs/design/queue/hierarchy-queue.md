@@ -16,19 +16,37 @@ The hierarchy queue has two important concepts: parent queues and leaf queues.
 ### API
 
 ```go
+// Parameter is similar to the parameter in Argo which indicates an optional value to be passed to the queue
+type Parameter struct {
+    // Name is the parameter name
+    Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
+
+	// Value is the literal value to use for the parameter
+    Value *AnyString `json:"value,omitempty" protobuf:"bytes,2,opt,name=value"`
+}
+
+type HierarchyAttr struct {
+	// Name is the hierarchy queue name
+    Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
+
+	// Parameters holds the list of queue parameters
+	// +patchStrategy=merge
+	// +patchMergeKey=name
+    Parameters []Parameter `json:"parameters,omitempty" patchStrategy:"merge" patchMergeKey:"name" protobuf:"bytes,2,rep,name=parameters"`
+    
+    Hierarchy []HierarchyAttr `json:"hierarchy,omitempty" protobuf:"bytes,3,opt,name=hierarchy"`
+}
+
 type QueueSpec struct {
     ...
-    // ParentQueue indicates who its parent queue is
-    ParentQueue string `json:"parentQueue,omitempty" protobuf:"bytes,4,opt,name=parentQueue"`
-
-    // ChildQueues indicates which child queues it has
-    ChildQueues []string `json:"childQueues,omitempty" protobuf:"bytes,5,opt,name=childQueues"`
+    // Hierarchy indicates all of its child queues
+    Hierarchy []HierarchyAttr `json:"hierarchy,omitempty" protobuf:"bytes,4,opt,name=hierarchy"`
 
     // MinUserLimitPercent indicates the queue enforces a limit on the percentage of resources allocated to a job at any given time
-    MinUserLimitPercent int `json:"minUserLimitPercent,omitempty" protobuf:"bytes,6,opt,name=minUserLimitPercent"`
+    MinUserLimitPercent int `json:"minUserLimitPercent,omitempty" protobuf:"bytes,5,opt,name=minUserLimitPercent"`
 
     // UserLimitFactor indicates the multiple of the queue capacity which can be configured to allow a single user to acquire more resources
-    UserLimitFactor float32 `json:"userLimitFactor,omitempty" protobuf:"bytes,7,opt,name=userLimitFactor"`
+    UserLimitFactor float32 `json:"userLimitFactor,omitempty" protobuf:"bytes,6,opt,name=userLimitFactor"`
 }
 ```
 
@@ -70,28 +88,27 @@ For example, suppose the value of this filed is 25. If two users have submitted 
 ### Features of hierarchy queue
 
 1. `root` is a top-level parent queue which represents the cluster itself. All other queues are direct or indirect child queues of `root`.
-2. Initially, we only have one queue called `default` which belongs to `root`.
-3. `ParentQueue` is optional. If its value is null when you create a queue, it defaults to `root` as its parent queue.
-4. `ChildQueues` is optional. If its value is null when you create a queue, the queue will be a leaf queue.
+2. The `spec.hierarchy` information of `root` queue will be injected into the child queues level by level when it is created, and the queue with empty `spec.hierarchy` is the leaf queue.
+3. You can control all child queues simply by applying `root` queue and defining or modifying parameters in the `spec.hierarchy`.
 
 ### QueueController
 
 1. Watching `PodGroup/Job` for status; The total number of `PodGroup`/`Job` owned by child queues is the number of `PodGroup`/`Job` owned by the parent queue.
 2. If queue was deleted, also delete all related `PodGroup/Job` and child queues of this queue.
-3. If queue was deleted and its parent queue will become a leaf queue, its parent queue's `ChildQueues` will change and its `MinUserLimitPercent`/`UserLimitFactor` will be valid.
+3. If queue was deleted and its parent queue will become a leaf queue, its `MinUserLimitPercent`/`UserLimitFactor` will be valid.
 4. If a parent queue is closed, its child queues will be closed too.
 
 ### Admission Controller
 
 The admission controller will check `PodGroup`/`Job` 's queue when creation:
 
-1. If the queue is parent queue, the creation will be rejected.
-2. If no queue is specified, it will be scheduled to the `root.default` queue.
+1. If the queue is parent queue, it will be scheduled to a leaf queue with the lowest resource utilization looking up from this queue.
+2. If no queue is specified, it will be scheduled to a leaf queue with the lowest resource utilization looking up from root.
 
 The admission controller will check other related queues when the queue creates:
 
-1. If this queue's `ParentQueue` is a leaf queue, and it has some running jobs, the creation will be rejected.
-2. If this queue meets the creation requirements, and its `ParentQueue` is a leaf queue. Its parent queue's `ChildQueues` will change and its `MinJobLimitPercent`/`JobLimitFactor` will be set to null.
+1. If this queue's parent queue is a leaf queue, and it has some running jobs, the creation will be rejected.
+2. If this queue meets the creation requirements, and its parent queue is a leaf queue. Its parent queue's `MinJobLimitPercent`/`JobLimitFactor` will be set to null.
 
 ### Cli
 
@@ -112,28 +129,44 @@ root                  1   Open        6        0        6        0
 
 ## How to create?
 
-You can create hierarchy queues one by one with yaml. Or you can use `annotations` to define hierarchy queue. Here is an example for creating a leaf queue and its parent queues.
+You can just create a `root` queue to define entire hierarchy queue. Here is an example.
 
 ```yaml
 apiVersion: scheduling.volcano.sh/v1beta1
 kind: Queue
 metadata:
-  name: test1
-  annotations:
-    "volcano.sh/hierarchy-queue": "root/dev/test1"
-    "volcano.sh/hierarchy-queue-weights": "1/5/2"
-    "volcano.sh/hierarchy-queue-reclaim": "true/true/false"
+  name: root
 spec:
   weight: 1
+  hierarchy:
+    - name: default
+      parameters: [{name: weight, value: 5}]
+    - name: dev
+      parameters: [{name: weight, value: 5}]
+      hierarchy:
+        - name: test1
+          parameters: [{name: weight, value: 1},{name: reclaimable, value: false}]
+        - name: test2
+          parameters: [{name: weight, value: 2}]
 ...
 ```
 
-Creation tips:
-1. "volcano.sh/hierarchy-queue" will create as many queues as it defines, and they are a top-down parent-child relationship.
-2. "volcano.sh/hierarchy-queue-weights" and "volcano.sh/hierarchy-queue-reclaim" must correspond one by one to the queue in "volcano.sh/hierarchy-queue".
-3. If "volcano.sh/hierarchy-queue" contains a queue that has been created, it will just change his `ChildQueues` or `weight`, such as `root`.
-4. If we also define the filed in `spec`, it will override the value in the `annotations` like `weight`.
+If you submit this YAML, five queues will be generated. Take `dev` queue as an example.
 
-## Conflict
-
-This feature depends on the proportion plugin. If we use hierarchy queue, the hdrf should be disabled.
+```shell
+Name:         dev
+API Version:  scheduling.volcano.sh/v1beta1
+Kind:         Queue
+Metadata:
+    ...
+Spec:
+  Weight:  5
+  Hierarchy:
+    - name: test1
+      parameters: [{name: weight, value: 1},{name: reclaimable, value: false}]
+    - name: test2
+      parameters: [{name: weight, value: 2}]
+Status:
+  State:  Open
+Events:   <none>
+```
