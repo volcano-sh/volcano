@@ -198,7 +198,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		remaining.Sub(increasedDeserved).Add(decreasedDeserved)
 		klog.V(4).Infof("Remaining resource is  <%s>", remaining)
 		if remaining.IsEmpty() || reflect.DeepEqual(remaining, oldRemaining) {
-			klog.V(4).Infof("Exiting when remaining is empty:  <%v>", remaining)
+			klog.V(4).Infof("Exiting when remaining is empty or no queue has more reosurce request:  <%v>", remaining)
 			break
 		}
 	}
