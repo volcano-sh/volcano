@@ -99,6 +99,7 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 	pod.Annotations[batch.TaskSpecKey] = tsKey
 	pod.Annotations[schedulingv2.KubeGroupNameAnnotationKey] = job.Name
 	pod.Annotations[batch.JobNameKey] = job.Name
+	pod.Annotations[batch.QueueNameKey] = job.Spec.Queue
 	pod.Annotations[batch.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
 
 	if len(pod.Labels) == 0 {
@@ -108,6 +109,7 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 	// Set pod labels for Service.
 	pod.Labels[batch.JobNameKey] = job.Name
 	pod.Labels[batch.JobNamespaceKey] = job.Namespace
+	pod.Labels[batch.QueueNameKey] = job.Spec.Queue
 
 	return pod
 }

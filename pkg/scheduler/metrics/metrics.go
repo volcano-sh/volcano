@@ -59,7 +59,7 @@ var (
 			Name:      "e2e_job_scheduling_duration",
 			Help:      "E2E job scheduling duration",
 		},
-		[]string{"job_name"},
+		[]string{"job_name", "queue", "job_namespace"},
 	)
 
 	pluginSchedulingLatency = promauto.NewHistogramVec(
@@ -146,8 +146,8 @@ func UpdateE2eDuration(duration time.Duration) {
 }
 
 // UpdateE2eSchedulingDurationByJob updates entire end to end scheduling duration
-func UpdateE2eSchedulingDurationByJob(jobName string, duration time.Duration) {
-	e2eJobSchedulingDuration.WithLabelValues(jobName).Set(DurationInMilliseconds(duration))
+func UpdateE2eSchedulingDurationByJob(jobName string, queue string, namespace string, duration time.Duration) {
+	e2eJobSchedulingDuration.WithLabelValues(jobName, queue, namespace).Set(DurationInMilliseconds(duration))
 	e2eJobSchedulingLatency.Observe(DurationInMilliseconds(duration))
 }
 
