@@ -168,6 +168,14 @@ func (sp *servicePlugin) OnJobDelete(job *batch.Job) error {
 	}
 	delete(job.Status.ControlledResources, "plugin-"+sp.Name())
 
+	if !sp.disableNetworkPolicy {
+		if err := sp.Clientset.KubeClients.NetworkingV1().NetworkPolicies(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{}); err != nil {
+			if !apierrors.IsNotFound(err) {
+				klog.Errorf("Failed to delete Network policy of Job %v/%v: %v", job.Namespace, job.Name, err)
+				return err
+			}
+		}
+	}
 	return nil
 }
 
