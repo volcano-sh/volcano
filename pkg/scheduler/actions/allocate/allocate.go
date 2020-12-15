@@ -248,13 +248,13 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 			if ssn.JobReady(job) && !tasks.Empty() {
 				jobs.Push(job)
-				metrics.UpdateE2eSchedulingDurationByJob(job.Name, metrics.Duration(job.CreationTimestamp.Time))
+				metrics.UpdateE2eSchedulingDurationByJob(job.Name, job.PodGroup.Spec.Queue, job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 				break
 			}
 		}
 
 		if ssn.JobReady(job) {
-			metrics.UpdateE2eSchedulingDurationByJob(job.Name, metrics.Duration(job.CreationTimestamp.Time))
+			metrics.UpdateE2eSchedulingDurationByJob(job.Name, job.PodGroup.Spec.Queue, job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 			stmt.Commit()
 		} else {
 			stmt.Discard()
