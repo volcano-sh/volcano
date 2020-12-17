@@ -229,17 +229,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				return false, fmt.Errorf("plugin %s predicates failed %s", tainttoleration.Name, status.Message())
 			}
 
-			// InterPodAffinity Predicate
-			status = podAffinityFilter.PreFilter(context.TODO(), state, task.Pod)
-			if !status.IsSuccess() {
-				return false, fmt.Errorf("plugin %s pre-predicates failed %s", interpodaffinity.Name, status.Message())
-			}
-
-			status = podAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
-			if !status.IsSuccess() {
-				return false, fmt.Errorf("plugin %s predicates failed %s", interpodaffinity.Name, status.Message())
-			}
-
 			return true, nil
 		}
 
@@ -267,6 +256,17 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		status := nodePortFilter.Filter(context.TODO(), state, nil, nodeInfo)
 		if !status.IsSuccess() {
 			return fmt.Errorf("plugin %s predicates failed %s", nodeaffinity.Name, status.Message())
+		}
+
+		// InterPodAffinity Predicate
+		status = podAffinityFilter.PreFilter(context.TODO(), state, task.Pod)
+		if !status.IsSuccess() {
+			return fmt.Errorf("plugin %s pre-predicates failed %s", interpodaffinity.Name, status.Message())
+		}
+
+		status = podAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
+		if !status.IsSuccess() {
+			return fmt.Errorf("plugin %s predicates failed %s", interpodaffinity.Name, status.Message())
 		}
 
 		if predicate.gpuSharingEnable {
