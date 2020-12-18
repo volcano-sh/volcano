@@ -32,7 +32,6 @@ import (
 type Job struct {
 	metav1.TypeMeta `json:",inline"`
 
-	// metadata of the volcano job
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
@@ -52,6 +51,7 @@ type JobSpec struct {
 	SchedulerName string `json:"schedulerName,omitempty" protobuf:"bytes,1,opt,name=schedulerName"`
 
 	// The minimal available pods to run for this Job
+	// Defaults to the summary of tasks' replicas
 	// +optional
 	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
 

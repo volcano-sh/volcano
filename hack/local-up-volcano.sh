@@ -95,7 +95,7 @@ prepare
 
 if [ "${INSTALL_MODE}" == "kind" ]; then
   kind-up-cluster
-  export KUBECONFIG="$(kind get kubeconfig-path ${CLUSTER_CONTEXT})"
+  export KUBECONFIG="$(kind get kubeconfig ${CLUSTER_CONTEXT})"
 fi
 
 install-volcano

@@ -171,7 +171,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				attr.deserved = helpers.Min(attr.deserved, attr.request)
 				meet[attr.queueID] = struct{}{}
 				klog.V(4).Infof("queue <%s> is meet cause of the capability", attr.name)
-			} else if attr.request.Less(attr.deserved) {
+			} else if attr.request.LessEqualStrict(attr.deserved) {
 				attr.deserved = helpers.Min(attr.deserved, attr.request)
 				meet[attr.queueID] = struct{}{}
 				klog.V(4).Infof("queue <%s> is meet", attr.name)
@@ -234,7 +234,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				victims = append(victims, reclaimee)
 			}
 		}
-
+		klog.V(4).Infof("Victims from proportion plugins are %+v", victims)
 		return victims
 	})
 

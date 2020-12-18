@@ -21,6 +21,8 @@ const (
 	TaskSpecKey = "volcano.sh/task-spec"
 	// JobNameKey job name key used in pod annotation / labels
 	JobNameKey = "volcano.sh/job-name"
+	// QueueNameKey queue name key used in pod annotation / labels
+	QueueNameKey = "volcano.sh/queue-name"
 	// JobNamespaceKey job namespace key
 	JobNamespaceKey = "volcano.sh/job-namespace"
 	// DefaultTaskSpec default task spec value
