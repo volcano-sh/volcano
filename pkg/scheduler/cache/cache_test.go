@@ -224,7 +224,7 @@ func TestSchedulerCache_Snapshot_WithNodeSelector(t *testing.T) {
 	// cache2 with nodeSelector
 	// user may input selector with spaces, so spaces are added on purpose
 	cache2 := &SchedulerCache{
-		Nodes: make(map[string]*api.NodeInfo),
+		Nodes:        make(map[string]*api.NodeInfo),
 		nodeSelector: convertNodeSelector(" diskType : ssd "),
 	}
 	// node1 without label
@@ -245,7 +245,6 @@ func TestSchedulerCache_Snapshot_WithNodeSelector(t *testing.T) {
 	}
 	node3.Labels["diskType"] = "hdd"
 	node3.Labels["foo"] = "bar"
-
 
 	// node4 with only other labels
 	node4 := buildNode("n3", buildResourceList("2000m", "10G"))
@@ -271,22 +270,22 @@ func TestSchedulerCache_Snapshot_WithNodeSelector(t *testing.T) {
 	nodeInfo4 := api.NewNodeInfo(node4)
 
 	tests := []struct {
-		cache *SchedulerCache
+		cache    *SchedulerCache
 		expected map[string]*api.NodeInfo
-	} {
+	}{
 		{
 			cache: cache1,
 			expected: map[string]*api.NodeInfo{
-				node1.Name : nodeInfo1,
-				node2.Name : nodeInfo2,
-				node3.Name : nodeInfo3,
-				node4.Name : nodeInfo4,
+				node1.Name: nodeInfo1,
+				node2.Name: nodeInfo2,
+				node3.Name: nodeInfo3,
+				node4.Name: nodeInfo4,
 			},
 		},
 		{
 			cache: cache2,
 			expected: map[string]*api.NodeInfo{
-				node2.Name : nodeInfo2,
+				node2.Name: nodeInfo2,
 			},
 		},
 	}

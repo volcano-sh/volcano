@@ -298,7 +298,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
 
-		nodeSelector:	convertNodeSelector(nodeSelector),
+		nodeSelector: convertNodeSelector(nodeSelector),
 	}
 
 	// Prepare event clients.

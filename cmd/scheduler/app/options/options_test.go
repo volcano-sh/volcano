@@ -60,14 +60,12 @@ func TestAddFlags(t *testing.T) {
 	}
 }
 
-
 func TestAdd_NodeSelector_Flags(t *testing.T) {
 
 	tests := []struct {
-		args []string
+		args     []string
 		expected *ServerOption
-
-	} {
+	}{
 		{
 			args: []string{
 				"--node-selector=diskType:ssd",
@@ -83,7 +81,7 @@ func TestAdd_NodeSelector_Flags(t *testing.T) {
 					QPS:        defaultQPS,
 					Burst:      defaultBurst,
 				},
-				EnablePriorityClass: 		true,
+				EnablePriorityClass:        true,
 				HealthzBindAddress:         ":11251",
 				MinNodesToFind:             defaultMinNodesToFind,
 				MinPercentageOfNodesToFind: defaultMinPercentageOfNodesToFind,
@@ -93,8 +91,7 @@ func TestAdd_NodeSelector_Flags(t *testing.T) {
 			},
 		},
 		{
-			args: []string{
-			},
+			args: []string{},
 			expected: &ServerOption{
 				SchedulerName:  defaultSchedulerName,
 				SchedulePeriod: defaultSchedulerPeriod,
@@ -106,7 +103,7 @@ func TestAdd_NodeSelector_Flags(t *testing.T) {
 					QPS:        defaultQPS,
 					Burst:      defaultBurst,
 				},
-				EnablePriorityClass: 		true,
+				EnablePriorityClass:        true,
 				HealthzBindAddress:         ":11251",
 				MinNodesToFind:             defaultMinNodesToFind,
 				MinPercentageOfNodesToFind: defaultMinPercentageOfNodesToFind,

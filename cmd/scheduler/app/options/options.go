@@ -63,7 +63,6 @@ type ServerOption struct {
 
 	// The node selector
 	NodeSelector string
-
 }
 
 // ServerOpts server options.
