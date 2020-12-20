@@ -63,8 +63,8 @@ func init() {
 }
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerName string, defaultQueue string) Cache {
-	return newSchedulerCache(config, schedulerName, defaultQueue)
+func New(config *rest.Config, schedulerName string, defaultQueue string, nodeSelector string) Cache {
+	return newSchedulerCache(config, schedulerName, defaultQueue, nodeSelector)
 }
 
 // SchedulerCache cache for the kube batch
@@ -107,6 +107,8 @@ type SchedulerCache struct {
 
 	errTasks    workqueue.RateLimitingInterface
 	deletedJobs workqueue.RateLimitingInterface
+
+	nodeSelector map[string]string
 }
 
 type defaultBinder struct {
@@ -253,7 +255,7 @@ func (dvb *defaultVolumeBinder) BindVolumes(task *schedulingapi.TaskInfo) error 
 	return dvb.volumeBinder.BindPodVolumes(task.Pod)
 }
 
-func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue string) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue string, nodeSelector string) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -295,6 +297,8 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		schedulerName:   schedulerName,
 
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
+
+		nodeSelector:	convertNodeSelector(nodeSelector),
 	}
 
 	// Prepare event clients.
@@ -682,8 +686,18 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		if !value.Ready() {
 			continue
 		}
-
-		snapshot.Nodes[value.Name] = value.Clone()
+		var selected = true
+		for key, val := range sc.nodeSelector {
+			nodeValue, ok := value.Node.Labels[key]
+			if !ok || val != nodeValue {
+				// For node without the key or nodeLabel[key] != val, not add into snapshot
+				selected = false
+				break
+			}
+		}
+		if selected {
+			snapshot.Nodes[value.Name] = value.Clone()
+		}
 	}
 
 	for _, value := range sc.Queues {

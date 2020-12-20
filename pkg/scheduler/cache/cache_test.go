@@ -214,3 +214,86 @@ func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
 		t.Errorf("expected node to remain the same after failed bind")
 	}
 }
+
+func TestSchedulerCache_Snapshot_WithNodeSelector(t *testing.T) {
+	// cache1 without nodeSelector
+	cache1 := &SchedulerCache{
+		Nodes: make(map[string]*api.NodeInfo),
+	}
+
+	// cache2 with nodeSelector
+	// user may input selector with spaces, so spaces are added on purpose
+	cache2 := &SchedulerCache{
+		Nodes: make(map[string]*api.NodeInfo),
+		nodeSelector: convertNodeSelector(" diskType : ssd "),
+	}
+	// node1 without label
+	node1 := buildNode("n1", buildResourceList("2000m", "10G"))
+
+	// node2 with label "diskType:ssd"
+	node2 := buildNode("n2", buildResourceList("2000m", "10G"))
+	if node2.Labels == nil {
+		node2.Labels = make(map[string]string)
+	}
+	node2.Labels["diskType"] = "ssd"
+	node2.Labels["foo"] = "bar"
+
+	// node3 with label "diskType:hdd" and other labels
+	node3 := buildNode("n3", buildResourceList("2000m", "10G"))
+	if node3.Labels == nil {
+		node3.Labels = make(map[string]string)
+	}
+	node3.Labels["diskType"] = "hdd"
+	node3.Labels["foo"] = "bar"
+
+
+	// node4 with only other labels
+	node4 := buildNode("n3", buildResourceList("2000m", "10G"))
+	if node4.Labels == nil {
+		node4.Labels = make(map[string]string)
+	}
+	node4.Labels["foo"] = "bar"
+	node4.Labels["abc"] = "123"
+
+	cache1.AddNode(node1)
+	cache1.AddNode(node2)
+	cache1.AddNode(node3)
+	cache1.AddNode(node4)
+
+	cache2.AddNode(node1)
+	cache2.AddNode(node2)
+	cache2.AddNode(node3)
+	cache2.AddNode(node4)
+
+	nodeInfo1 := api.NewNodeInfo(node1)
+	nodeInfo2 := api.NewNodeInfo(node2)
+	nodeInfo3 := api.NewNodeInfo(node3)
+	nodeInfo4 := api.NewNodeInfo(node4)
+
+	tests := []struct {
+		cache *SchedulerCache
+		expected map[string]*api.NodeInfo
+	} {
+		{
+			cache: cache1,
+			expected: map[string]*api.NodeInfo{
+				node1.Name : nodeInfo1,
+				node2.Name : nodeInfo2,
+				node3.Name : nodeInfo3,
+				node4.Name : nodeInfo4,
+			},
+		},
+		{
+			cache: cache2,
+			expected: map[string]*api.NodeInfo{
+				node2.Name : nodeInfo2,
+			},
+		},
+	}
+	for i, test := range tests {
+		nodes := test.cache.Snapshot().Nodes
+		if !reflect.DeepEqual(nodes, test.expected) {
+			t.Errorf("test case %d error: \nexpect %v, \ngot %v", i, test.expected, nodes)
+		}
+	}
+}

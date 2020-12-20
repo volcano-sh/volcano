@@ -59,3 +59,72 @@ func TestAddFlags(t *testing.T) {
 		t.Errorf("Got different run options than expected.\nGot: %+v\nExpected: %+v\n", s, expected)
 	}
 }
+
+
+func TestAdd_NodeSelector_Flags(t *testing.T) {
+
+	tests := []struct {
+		args []string
+		expected *ServerOption
+
+	} {
+		{
+			args: []string{
+				"--node-selector=diskType:ssd",
+			},
+			expected: &ServerOption{
+				SchedulerName:  defaultSchedulerName,
+				SchedulePeriod: defaultSchedulerPeriod,
+				DefaultQueue:   defaultQueue,
+				ListenAddress:  defaultListenAddress,
+				KubeClientOptions: kube.ClientOptions{
+					Master:     "",
+					KubeConfig: "",
+					QPS:        defaultQPS,
+					Burst:      defaultBurst,
+				},
+				EnablePriorityClass: 		true,
+				HealthzBindAddress:         ":11251",
+				MinNodesToFind:             defaultMinNodesToFind,
+				MinPercentageOfNodesToFind: defaultMinPercentageOfNodesToFind,
+				PercentageOfNodesToFind:    defaultPercentageOfNodesToFind,
+
+				NodeSelector: "diskType:ssd",
+			},
+		},
+		{
+			args: []string{
+			},
+			expected: &ServerOption{
+				SchedulerName:  defaultSchedulerName,
+				SchedulePeriod: defaultSchedulerPeriod,
+				DefaultQueue:   defaultQueue,
+				ListenAddress:  defaultListenAddress,
+				KubeClientOptions: kube.ClientOptions{
+					Master:     "",
+					KubeConfig: "",
+					QPS:        defaultQPS,
+					Burst:      defaultBurst,
+				},
+				EnablePriorityClass: 		true,
+				HealthzBindAddress:         ":11251",
+				MinNodesToFind:             defaultMinNodesToFind,
+				MinPercentageOfNodesToFind: defaultMinPercentageOfNodesToFind,
+				PercentageOfNodesToFind:    defaultPercentageOfNodesToFind,
+
+				NodeSelector: "",
+			},
+		},
+	}
+
+	for i, test := range tests {
+		fs := pflag.NewFlagSet("addflagstest", pflag.ContinueOnError)
+		s := NewServerOption()
+		s.AddFlags(fs)
+		fs.Parse(test.args)
+		if !reflect.DeepEqual(s, test.expected) {
+			t.Errorf("case %d: \n expected %v, \n got %v \n",
+				i, test.expected, s)
+		}
+	}
+}
