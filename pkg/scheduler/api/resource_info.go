@@ -18,10 +18,10 @@ package api
 
 import (
 	"fmt"
-	"math"
-
 	v1 "k8s.io/api/core/v1"
 	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
+	"math"
+	"math/big"
 
 	"volcano.sh/volcano/pkg/scheduler/util/assert"
 )
@@ -234,40 +234,47 @@ func (r *Resource) Multi(ratio float64) *Resource {
 
 // Less checks whether a resource is less than other
 func (r *Resource) Less(rr *Resource) bool {
-	lessFunc := func(l, r float64) bool {
-		return l < r
+	cmpFunc := func(l, r float64) int {
+		lf := big.NewFloat(l)
+		rf := big.NewFloat(r)
+		return lf.Cmp(rf)
 	}
-
-	if !lessFunc(r.MilliCPU, rr.MilliCPU) {
-		return false
-	}
-	if !lessFunc(r.Memory, rr.Memory) {
-		return false
-	}
-
-	if r.ScalarResources == nil {
-		if rr.ScalarResources != nil {
-			for _, rrQuant := range rr.ScalarResources {
-				if rrQuant <= minMilliScalarResources {
-					return false
-				}
+	isZero := func(scalarResource map[v1.ResourceName]float64) bool {
+		for _, quantity := range scalarResource {
+			if big.NewFloat(quantity).Cmp(big.NewFloat(0)) != 0 {
+				return false
 			}
 		}
 		return true
 	}
 
-	if rr.ScalarResources == nil {
+	isEqual := true
+	if cmpFunc(r.MilliCPU, rr.MilliCPU) == 1 || cmpFunc(r.Memory, rr.Memory) == 1 {
+		return false
+	}
+	if cmpFunc(r.MilliCPU, rr.MilliCPU) == -1 || cmpFunc(r.Memory, rr.Memory) == -1 {
+		isEqual = false
+	}
+
+	if r.ScalarResources != nil && rr.ScalarResources == nil && !isZero(r.ScalarResources) {
 		return false
 	}
 
+	if r.ScalarResources == nil && rr.ScalarResources != nil && !isZero(rr.ScalarResources) {
+		isEqual = false
+	}
+
 	for rName, rQuant := range r.ScalarResources {
-		rrQuant := rr.ScalarResources[rName]
-		if !lessFunc(rQuant, rrQuant) {
+		rrQuant, ok := rr.ScalarResources[rName]
+		if (!ok && cmpFunc(rQuant, 0) == 1) || (ok && cmpFunc(rQuant, rrQuant) == 1) {
 			return false
+		}
+		if ok && cmpFunc(rQuant, rrQuant) == -1 {
+			isEqual = false
 		}
 	}
 
-	return true
+	return !isEqual
 }
 
 // LessEqualStrict checks whether a resource is less or equal than other
