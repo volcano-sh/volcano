@@ -108,7 +108,7 @@ type SchedulerCache struct {
 	errTasks    workqueue.RateLimitingInterface
 	deletedJobs workqueue.RateLimitingInterface
 
-	nodeSelector *metav1.LabelSelector
+	nodeSelector metav1.LabelSelector
 }
 
 type defaultBinder struct {

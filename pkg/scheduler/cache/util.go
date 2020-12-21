@@ -28,14 +28,14 @@ func responsibleForPod(pod *v1.Pod, schedulerName string) bool {
 }
 
 // convertNodeSelector converts node selector from string to *LabelSelector
-func convertNodeSelector(selector string) *metav1.LabelSelector {
+func convertNodeSelector(selector string) metav1.LabelSelector {
 	matchLabels := make(map[string]string)
 	if selector != "" {
 		s := strings.Split(selector, ":")
 		key, value := strings.TrimSpace(s[0]), strings.TrimSpace(s[1])
 		matchLabels[key] = value
 	}
-	labelSelector := &metav1.LabelSelector{
+	labelSelector := metav1.LabelSelector{
 		MatchLabels:      matchLabels,
 		MatchExpressions: nil,
 	}
