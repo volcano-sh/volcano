@@ -108,7 +108,7 @@ type SchedulerCache struct {
 	errTasks    workqueue.RateLimitingInterface
 	deletedJobs workqueue.RateLimitingInterface
 
-	nodeSelector map[string]string
+	nodeSelector *metav1.LabelSelector
 }
 
 type defaultBinder struct {
@@ -297,8 +297,6 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		schedulerName:   schedulerName,
 
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
-
-		nodeSelector: convertNodeSelector(nodeSelector),
 	}
 
 	// Prepare event clients.
@@ -404,7 +402,9 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		UpdateFunc: sc.UpdateQueueV1beta1,
 		DeleteFunc: sc.DeleteQueueV1beta1,
 	})
-
+	sc.nodeSelector = convertNodeSelector(nodeSelector)
+	fmt.Println("new sc")
+	fmt.Println(sc)
 	return sc
 }
 
@@ -687,7 +687,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 			continue
 		}
 		var selected = true
-		for key, val := range sc.nodeSelector {
+		for key, val := range sc.nodeSelector.MatchLabels {
 			nodeValue, ok := value.Node.Labels[key]
 			if !ok || val != nodeValue {
 				// For node without the key or nodeLabel[key] != val, not add into snapshot

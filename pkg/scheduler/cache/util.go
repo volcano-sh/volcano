@@ -18,6 +18,7 @@ package cache
 
 import (
 	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"strings"
 )
 
@@ -26,14 +27,17 @@ func responsibleForPod(pod *v1.Pod, schedulerName string) bool {
 	return schedulerName == pod.Spec.SchedulerName
 }
 
-// convertNodeSelector converts node selector from string to map
-func convertNodeSelector(selector string) map[string]string {
-	nodeSelector := make(map[string]string)
-	if selector == "" {
-		return nodeSelector
+// convertNodeSelector converts node selector from string to *LabelSelector
+func convertNodeSelector(selector string) *metav1.LabelSelector {
+	matchLabels := make(map[string]string)
+	if selector != "" {
+		s := strings.Split(selector, ":")
+		key, value := strings.TrimSpace(s[0]), strings.TrimSpace(s[1])
+		matchLabels[key] = value
 	}
-	s := strings.Split(selector, ":")
-	key, value := strings.TrimSpace(s[0]), strings.TrimSpace(s[1])
-	nodeSelector[key] = value
-	return nodeSelector
+	labelSelector := &metav1.LabelSelector{
+		MatchLabels:     matchLabels,
+		MatchExpressions: nil,
+	}
+	return labelSelector
 }

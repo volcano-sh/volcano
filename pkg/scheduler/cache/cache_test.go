@@ -219,8 +219,8 @@ func TestSchedulerCache_Snapshot_WithNodeSelector(t *testing.T) {
 	// cache1 without nodeSelector
 	cache1 := &SchedulerCache{
 		Nodes: make(map[string]*api.NodeInfo),
+		nodeSelector: convertNodeSelector(""),
 	}
-
 	// cache2 with nodeSelector
 	// user may input selector with spaces, so spaces are added on purpose
 	cache2 := &SchedulerCache{
