@@ -403,8 +403,6 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		DeleteFunc: sc.DeleteQueueV1beta1,
 	})
 	sc.nodeSelector = convertNodeSelector(nodeSelector)
-	fmt.Println("new sc")
-	fmt.Println(sc)
 	return sc
 }
 
