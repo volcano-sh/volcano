@@ -19,6 +19,7 @@ CLUSTER_NAME=${CLUSTER_NAME:-volcano}
 CLUSTER_CONTEXT="--name ${CLUSTER_NAME}"
 KIND_OPT=${KIND_OPT:-}
 INSTALL_MODE=${INSTALL_MODE:-"kind"}
+VOLCANO_NAMESPACE=${VOLCANO_NAMESPACE:-"volcano-system"}
 IMAGE_PREFIX=volcanosh/vc
 TAG=${TAG:-`git rev-parse --verify HEAD`}
 RELEASE_DIR=_output/release
