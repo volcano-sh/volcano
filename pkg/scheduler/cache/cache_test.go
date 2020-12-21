@@ -218,7 +218,7 @@ func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
 func TestSchedulerCache_Snapshot_WithNodeSelector(t *testing.T) {
 	// cache1 without nodeSelector
 	cache1 := &SchedulerCache{
-		Nodes: make(map[string]*api.NodeInfo),
+		Nodes:        make(map[string]*api.NodeInfo),
 		nodeSelector: convertNodeSelector(""),
 	}
 	// cache2 with nodeSelector

@@ -36,7 +36,7 @@ func convertNodeSelector(selector string) *metav1.LabelSelector {
 		matchLabels[key] = value
 	}
 	labelSelector := &metav1.LabelSelector{
-		MatchLabels:     matchLabels,
+		MatchLabels:      matchLabels,
 		MatchExpressions: nil,
 	}
 	return labelSelector
