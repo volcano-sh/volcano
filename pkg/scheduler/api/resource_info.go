@@ -19,6 +19,7 @@ package api
 import (
 	"fmt"
 	"math"
+	"math/big"
 
 	v1 "k8s.io/api/core/v1"
 	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
@@ -272,19 +273,22 @@ func (r *Resource) Less(rr *Resource) bool {
 
 // LessEqualStrict checks whether a resource is less or equal than other
 func (r *Resource) LessEqualStrict(rr *Resource) bool {
-	lessFunc := func(l, r float64) bool {
-		return l <= r
+	lessEqualFunc := func(l, r float64) bool {
+		lf := big.NewFloat(l)
+		rf := big.NewFloat(r)
+		return lf.Cmp(rf) <= 0
 	}
 
-	if !lessFunc(r.MilliCPU, rr.MilliCPU) {
+	if !lessEqualFunc(r.MilliCPU, rr.MilliCPU) {
 		return false
 	}
-	if !lessFunc(r.Memory, rr.Memory) {
+	if !lessEqualFunc(r.Memory, rr.Memory) {
 		return false
 	}
 
 	for rName, rQuant := range r.ScalarResources {
-		if !lessFunc(rQuant, rr.ScalarResources[rName]) {
+		rrQuant, ok := rr.ScalarResources[rName]
+		if !ok || !lessEqualFunc(rQuant, rrQuant) {
 			return false
 		}
 	}
