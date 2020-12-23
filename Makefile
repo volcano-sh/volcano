@@ -78,8 +78,10 @@ image_bins: init
 		CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-$$name ./cmd/$$name; \
 	done
 
+	CGO_ENABLED=1 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-scheduler-pluginable ./cmd/scheduler
+
 images: image_bins
-	for name in controller-manager scheduler webhook-manager; do\
+	for name in controller-manager scheduler webhook-manager scheduler-pluginable; do\
 		cp ${BIN_DIR}/${REL_OSARCH}/vc-$$name ./installer/dockerfile/$$name/;\
 		if [ ${REL_OSARCH} = linux/amd64 ];then\
 			docker build --no-cache -t $(IMAGE_PREFIX)-$$name:$(TAG) ./installer/dockerfile/$$name;\
