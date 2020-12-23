@@ -49,7 +49,7 @@ func TestAddFlags(t *testing.T) {
 			QPS:        defaultQPS,
 			Burst:      defaultBurst,
 		},
-		PluginsDir: defaultPluginsDir,
+		PluginsDir:                 defaultPluginsDir,
 		HealthzBindAddress:         ":11251",
 		MinNodesToFind:             defaultMinNodesToFind,
 		MinPercentageOfNodesToFind: defaultMinPercentageOfNodesToFind,

@@ -19,7 +19,7 @@ package framework
 import "testing"
 
 func TestGetPluginName(t *testing.T) {
-	cases := []struct{
+	cases := []struct {
 		pluginPath string
 		pluginName string
 	}{

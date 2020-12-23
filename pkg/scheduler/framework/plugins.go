@@ -80,7 +80,6 @@ func getPluginName(pluginPath string) string {
 	return strings.TrimSuffix(filepath.Base(pluginPath), filepath.Ext(pluginPath))
 }
 
-
 func loadPluginBuilder(pluginPath string) (PluginBuilder, error) {
 	plug, err := plugin.Open(pluginPath)
 	if err != nil {
