@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"time"
+	"volcano.sh/volcano/pkg/scheduler/framework"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -61,6 +62,13 @@ func Run(opt *options.ServerOption) error {
 	config, err := kube.BuildConfig(opt.KubeClientOptions)
 	if err != nil {
 		return err
+	}
+
+	if opt.PluginsDir != "" {
+		err := framework.LoadCustomPlugins(opt.PluginsDir)
+		if err != nil {
+			return err
+		}
 	}
 
 	sched, err := scheduler.NewScheduler(config,
