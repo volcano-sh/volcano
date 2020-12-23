@@ -17,7 +17,6 @@ limitations under the License.
 package framework
 
 import (
-	"errors"
 	"fmt"
 	"path/filepath"
 	"plugin"
@@ -93,7 +92,7 @@ func loadPluginBuilder(pluginPath string) (PluginBuilder, error) {
 
 	builder, ok := symBuilder.(PluginBuilder)
 	if !ok {
-		return nil, errors.New(fmt.Sprintf("unexpected plugin: %s, failed to convert PluginBuilder `New`", pluginPath))
+		return nil, fmt.Errorf("unexpected plugin: %s, failed to convert PluginBuilder `New`", pluginPath)
 	}
 
 	return builder, nil
