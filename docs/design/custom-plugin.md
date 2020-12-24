@@ -36,8 +36,18 @@ func (mp *magicPlugin) OnSessionClose(ssn *framework.Session) {}
 ```
 
 ### 2. Build the plugin to .so
+
+vc-scheduler binary is build by `musl-gcc`, so we also need to build the plugin by `musl-gcc`.
+
 ```bash
-GOARCH=amd64 go build -buildmode=plugin -o plugins/magic.so magic.go
+# install musl-gcc
+wget http://musl.libc.org/releases/musl-1.2.1.tar.gz
+tar -xf musl-1.2.1.tar.gz && cd musl-1.2.1
+./configure
+make && sudo make install
+
+# build plugin
+CC=/usr/local/musl/bin/musl-gcc go build -buildmode=plugin -o plugins/magic.so magic.go
 ```
 
 Note the `.so` plugin name must be same with `PluginName`
@@ -47,7 +57,7 @@ Note the `.so` plugin name must be same with `PluginName`
 Your can build your docker image
 
 ```dockerfile
-FROM volcano.sh/vc-scheduler-pluginable:latest
+FROM volcano.sh/vc-scheduler:${VERSION}
 
 COPY plugins plugins
 ```
@@ -59,7 +69,7 @@ Or just use `pvc` to mount these plugins
 ...
     containers:
     - name: volcano-scheduler
-      image: volcano.sh/vc-scheduler-pluginable:latest
+      image: volcano.sh/vc-scheduler:${VERSION}
       args:
         - --logtostderr
         - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
