@@ -67,6 +67,7 @@ func Run(opt *options.ServerOption) error {
 	if opt.PluginsDir != "" {
 		err := framework.LoadCustomPlugins(opt.PluginsDir)
 		if err != nil {
+			klog.Errorf("Fail to load custom plugins: %v", err)
 			return err
 		}
 	}
