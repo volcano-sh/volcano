@@ -53,7 +53,8 @@ type ServerOption struct {
 	PrintVersion         bool
 	ListenAddress        string
 	EnablePriorityClass  bool
-	PluginsDir           string
+	// vc-scheduler will load (not activate) custom plugins which are in this directory
+	PluginsDir string
 	// HealthzBindAddress is the IP address and port for the health check server to serve on
 	// defaulting to :11251
 	HealthzBindAddress string
