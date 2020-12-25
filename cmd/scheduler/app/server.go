@@ -22,7 +22,6 @@ import (
 	"net/http"
 	"os"
 	"time"
-	"volcano.sh/volcano/pkg/scheduler/framework"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -30,6 +29,7 @@ import (
 	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler"
+	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/version"
 
 	v1 "k8s.io/api/core/v1"
