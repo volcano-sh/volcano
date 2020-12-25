@@ -19,6 +19,8 @@ package queue
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,6 +37,7 @@ import (
 	"k8s.io/klog"
 
 	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 	versionedscheme "volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 	informerfactory "volcano.sh/volcano/pkg/client/informers/externalversions"
@@ -84,6 +87,14 @@ type queuecontroller struct {
 	queue        workqueue.RateLimitingInterface
 	commandQueue workqueue.RateLimitingInterface
 
+	hgMutex sync.RWMutex
+	//hierarchy parent queue name -> its child queues name
+	hierarchyGraph map[string][]string
+
+	hpMutex sync.RWMutex
+	//hierarchy child queue name -> its parent queue name
+	hierarchyParent map[string]string
+
 	pgMutex sync.RWMutex
 	// queue name -> podgroup namespace/name
 	podGroups map[string]map[string]struct{}
@@ -122,6 +133,8 @@ func (c *queuecontroller) Initialize(opt *framework.ControllerOption) error {
 	c.pgSynced = pgInformer.Informer().HasSynced
 	c.queue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 	c.commandQueue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	c.hierarchyGraph = make(map[string][]string)
+	c.hierarchyParent = make(map[string]string)
 	c.podGroups = make(map[string]map[string]struct{})
 	c.recorder = eventBroadcaster.NewRecorder(versionedscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
 
@@ -232,6 +245,73 @@ func (c *queuecontroller) handleQueue(req *apis.Request) error {
 		}
 
 		return fmt.Errorf("get queue %s failed for %v", req.QueueName, err)
+	}
+
+	if queue.Spec.Hierarchy != nil {
+		childQueues := make([]*schedulingv1beta1.Queue, 0)
+
+		// Find the immediate child queues of the queue
+		for _, hierarchyAttr := range queue.Spec.Hierarchy {
+			if !strings.Contains(hierarchyAttr.Name, ".") {
+				newQueue := schedulingv1beta1.Queue{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: hierarchyAttr.Name,
+					},
+					Spec: schedulingv1beta1.QueueSpec{
+						Weight:      hierarchyAttr.Parameters.Weight,
+						Capability:  hierarchyAttr.Parameters.Capability,
+						Reclaimable: hierarchyAttr.Parameters.Reclaimable,
+					},
+				}
+
+				childQueues = append(childQueues, &newQueue)
+			}
+		}
+
+		// Get the parameters of the immediate child queues of every child queue
+		for _, hierarchyAttr := range queue.Spec.Hierarchy {
+			for _, newQueue := range childQueues {
+				if len(hierarchyAttr.Name) != len(newQueue.Name) && strings.HasPrefix(hierarchyAttr.Name, newQueue.Name) {
+					newQueue.Spec.Hierarchy = append(newQueue.Spec.Hierarchy, schedulingv1beta1.HierarchyAttr{
+						Name:       hierarchyAttr.Name[len(newQueue.Name)+1:],
+						Parameters: hierarchyAttr.Parameters,
+					})
+				}
+			}
+		}
+
+		// Create or update the immediate child queues of the queue
+		for _, newQueue := range childQueues {
+			oldQueue, err := c.queueLister.Get(newQueue.Name)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					c.hgMutex.Lock()
+					c.hierarchyGraph[queue.Name] = append(c.hierarchyGraph[queue.Name], newQueue.Name)
+					c.hgMutex.Unlock()
+
+					c.hpMutex.Lock()
+					c.hierarchyParent[newQueue.Name] = queue.Name
+					c.hpMutex.Unlock()
+
+					_, err = c.vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), newQueue, metav1.CreateOptions{})
+					if err != nil {
+						return fmt.Errorf("create queue %s failed for %v", newQueue.Name, err)
+					}
+					continue
+				}
+
+				return fmt.Errorf("get queue %s failed for %v", newQueue.Name, err)
+			}
+
+			if reflect.DeepEqual(oldQueue.Spec, newQueue.Spec) {
+				continue
+			}
+			oldQueue.Spec = newQueue.Spec
+			_, err = c.vcClient.SchedulingV1beta1().Queues().Update(context.TODO(), oldQueue, metav1.UpdateOptions{})
+			if err != nil {
+				return fmt.Errorf("update queue %s failed for %v", oldQueue.Name, err)
+			}
+		}
 	}
 
 	queueState := queuestate.NewState(queue)

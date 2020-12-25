@@ -256,6 +256,20 @@ type QueueStatus struct {
 	Inqueue int32
 }
 
+// Parameter is similar to the parameter which indicates an optional value to be passed to the queue
+type Parameter struct {
+	Weight      int32
+	Capability  v1.ResourceList
+	Reclaimable *bool
+}
+
+type HierarchyAttr struct {
+	// Name is the hierarchy queue name
+	Name string
+	// Parameters holds the list of queue parameters
+	Parameters Parameter
+}
+
 // QueueSpec represents the template of Queue.
 type QueueSpec struct {
 	Weight     int32
@@ -265,6 +279,8 @@ type QueueSpec struct {
 	State QueueState
 	// Reclaimable indicate whether the queue can be reclaimed by other queue
 	Reclaimable *bool
+	// Hierarchy indicates all of its child queues
+	Hierarchy []HierarchyAttr
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

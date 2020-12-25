@@ -23,6 +23,7 @@ import (
 
 	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/queue/state"
 
 	v1 "k8s.io/api/core/v1"
@@ -39,25 +40,41 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 	podGroups := c.getPodGroups(queue.Name)
 	queueStatus := schedulingv1beta1.QueueStatus{}
 
-	for _, pgKey := range podGroups {
-		// Ignore error here, tt can not occur.
-		ns, name, _ := cache.SplitMetaNamespaceKey(pgKey)
+	if queue.Spec.Hierarchy != nil {
+		c.hgMutex.RLock()
+		defer c.hgMutex.RUnlock()
 
-		// TODO: check NotFound error and sync local cache.
-		pg, err := c.pgLister.PodGroups(ns).Get(name)
-		if err != nil {
-			return err
+		for _, childQueueName := range c.hierarchyGraph[queue.Name] {
+			childQueue, _ := c.queueLister.Get(childQueueName)
+
+			queueStatus.Unknown += childQueue.Status.Unknown
+			queueStatus.Pending += childQueue.Status.Pending
+			queueStatus.Running += childQueue.Status.Running
+			queueStatus.Inqueue += childQueue.Status.Inqueue
+			klog.V(4).Info("dev child queues: ", c.hierarchyGraph[queue.Name])
 		}
+	} else {
 
-		switch pg.Status.Phase {
-		case schedulingv1beta1.PodGroupPending:
-			queueStatus.Pending++
-		case schedulingv1beta1.PodGroupRunning:
-			queueStatus.Running++
-		case schedulingv1beta1.PodGroupUnknown:
-			queueStatus.Unknown++
-		case schedulingv1beta1.PodGroupInqueue:
-			queueStatus.Inqueue++
+		for _, pgKey := range podGroups {
+			// Ignore error here, tt can not occur.
+			ns, name, _ := cache.SplitMetaNamespaceKey(pgKey)
+
+			// TODO: check NotFound error and sync local cache.
+			pg, err := c.pgLister.PodGroups(ns).Get(name)
+			if err != nil {
+				return err
+			}
+
+			switch pg.Status.Phase {
+			case schedulingv1beta1.PodGroupPending:
+				queueStatus.Pending++
+			case schedulingv1beta1.PodGroupRunning:
+				queueStatus.Running++
+			case schedulingv1beta1.PodGroupUnknown:
+				queueStatus.Unknown++
+			case schedulingv1beta1.PodGroupInqueue:
+				queueStatus.Inqueue++
+			}
 		}
 	}
 
@@ -77,6 +94,20 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 	if _, err := c.vcClient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
 		klog.Errorf("Failed to update status of Queue %s: %v.", newQueue.Name, err)
 		return err
+	}
+
+	c.hpMutex.RLock()
+	defer c.hpMutex.RUnlock()
+	if c.hierarchyParent[queue.Name] != "" {
+		req := &apis.Request{
+			QueueName: c.hierarchyParent[queue.Name],
+
+			Event:  v1alpha1.OutOfSyncEvent,
+			Action: v1alpha1.SyncQueueAction,
+		}
+
+		c.enqueue(req)
+		klog.V(4).Info(c.hierarchyParent[queue.Name], " its req: ", req)
 	}
 
 	return nil

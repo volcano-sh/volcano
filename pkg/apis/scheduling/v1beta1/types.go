@@ -261,6 +261,23 @@ type QueueStatus struct {
 	Inqueue int32 `json:"inqueue,omitempty" protobuf:"bytes,5,opt,name=inqueue"`
 }
 
+// Parameter is similar to the parameter which indicates an optional value to be passed to the queue
+type Parameter struct {
+	Weight      int32           `json:"weight,omitempty" protobuf:"bytes,1,opt,name=weight"`
+	Capability  v1.ResourceList `json:"capability,omitempty" protobuf:"bytes,2,opt,name=capability"`
+	Reclaimable *bool           `json:"reclaimable,omitempty" protobuf:"bytes,3,opt,name=reclaimable"`
+}
+
+type HierarchyAttr struct {
+	// Name is the hierarchy queue name
+	Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
+
+	// Parameters holds the list of queue parameters
+	// +patchStrategy=merge
+	// +patchMergeKey=name
+	Parameters Parameter `json:"parameters,omitempty" patchStrategy:"merge" patchMergeKey:"name" protobuf:"bytes,2,rep,name=parameters"`
+}
+
 // QueueSpec represents the template of Queue.
 type QueueSpec struct {
 	Weight     int32           `json:"weight,omitempty" protobuf:"bytes,1,opt,name=weight"`
@@ -268,6 +285,9 @@ type QueueSpec struct {
 
 	// Reclaimable indicate whether the queue can be reclaimed by other queue
 	Reclaimable *bool `json:"reclaimable,omitempty" protobuf:"bytes,3,opt,name=reclaimable"`
+
+	// Hierarchy indicates all of its child queues
+	Hierarchy []HierarchyAttr `json:"hierarchy,omitempty" protobuf:"bytes,4,opt,name=hierarchy"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

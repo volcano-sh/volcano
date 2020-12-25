@@ -193,6 +193,11 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 			"queue `%s` status is `%s`", queue.Name, queue.Status.State)
 	}
 
+	if queue.Spec.Hierarchy != nil {
+		msg += fmt.Sprintf("can only submit job to a leaf queue, "+
+			"queue `%s` is a parent queue", queue.Name)
+	}
+
 	if msg != "" {
 		reviewResponse.Allowed = false
 	}

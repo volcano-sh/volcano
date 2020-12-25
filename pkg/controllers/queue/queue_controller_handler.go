@@ -62,8 +62,20 @@ func (c *queuecontroller) deleteQueue(obj interface{}) {
 	delete(c.podGroups, queue.Name)
 }
 
-func (c *queuecontroller) updateQueue(_, _ interface{}) {
-	// currently do not care about queue update
+func (c *queuecontroller) updateQueue(old, new interface{}) {
+	oldQueue := old.(*schedulingv1beta1.Queue)
+	newQueue := new.(*schedulingv1beta1.Queue)
+
+	if oldQueue.ResourceVersion != newQueue.ResourceVersion {
+		req := &apis.Request{
+			QueueName: newQueue.Name,
+
+			Event:  busv1alpha1.OutOfSyncEvent,
+			Action: busv1alpha1.SyncQueueAction,
+		}
+
+		c.enqueue(req)
+	}
 }
 
 func (c *queuecontroller) addPodGroup(obj interface{}) {
