@@ -16,12 +16,20 @@ limitations under the License.
 
 package framework
 
-import "sync"
+import (
+	"fmt"
+	"path/filepath"
+	"plugin"
+	"strings"
+	"sync"
+
+	"k8s.io/klog"
+)
 
 var pluginMutex sync.Mutex
 
 // PluginBuilder plugin management
-type PluginBuilder func(Arguments) Plugin
+type PluginBuilder = func(Arguments) Plugin
 
 // Plugin management
 var pluginBuilders = map[string]PluginBuilder{}
@@ -49,6 +57,45 @@ func GetPluginBuilder(name string) (PluginBuilder, bool) {
 
 	pb, found := pluginBuilders[name]
 	return pb, found
+}
+
+// LoadCustomPlugins loads custom implement plugins
+func LoadCustomPlugins(pluginsDir string) error {
+	pluginPaths, _ := filepath.Glob(fmt.Sprintf("%s/*.so", pluginsDir))
+	for _, pluginPath := range pluginPaths {
+		pluginBuilder, err := loadPluginBuilder(pluginPath)
+		if err != nil {
+			return err
+		}
+		pluginName := getPluginName(pluginPath)
+		RegisterPluginBuilder(pluginName, pluginBuilder)
+		klog.V(4).Infof("Custom plugin %s loaded", pluginName)
+	}
+
+	return nil
+}
+
+func getPluginName(pluginPath string) string {
+	return strings.TrimSuffix(filepath.Base(pluginPath), filepath.Ext(pluginPath))
+}
+
+func loadPluginBuilder(pluginPath string) (PluginBuilder, error) {
+	plug, err := plugin.Open(pluginPath)
+	if err != nil {
+		return nil, err
+	}
+
+	symBuilder, err := plug.Lookup("New")
+	if err != nil {
+		return nil, err
+	}
+
+	builder, ok := symBuilder.(PluginBuilder)
+	if !ok {
+		return nil, fmt.Errorf("unexpected plugin: %s, failed to convert PluginBuilder `New`", pluginPath)
+	}
+
+	return builder, nil
 }
 
 // Action management
