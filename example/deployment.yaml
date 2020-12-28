@@ -14,7 +14,9 @@ spec:
       labels:
         app: nginx
     spec:
-      schedulerName: volcano  // set spec.schedulerName to 'volcano' instead of 'default-scheduler' for deployment
+      # set spec.schedulerName to 'volcano' instead of 
+      # 'default-scheduler' for deployment.
+      schedulerName: volcano
       containers:
         - name: nginx
           image: nginx:latest
