@@ -64,9 +64,11 @@ func (ps *runningState) Execute(action v1alpha1.Action) error {
 						continue
 					}
 
-					if status.TaskStatusCount[task.Name][v1.PodSucceeded] < *task.MinAvailable {
-						status.State.Phase = vcbatch.Failed
-						return true
+					if taskStatus, ok := status.TaskStatusCount[task.Name]; ok {
+						if taskStatus.Phase[v1.PodSucceeded] < *task.MinAvailable {
+							status.State.Phase = vcbatch.Failed
+							return true
+						}
 					}
 				}
 

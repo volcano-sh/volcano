@@ -52,7 +52,7 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 
 	var errs []error
 	var total int
-	taskStatusCount := make(map[string]map[v1.PodPhase]int32)
+	taskStatusCount := make(map[string]batch.TaskState)
 
 	for _, pods := range jobInfo.Pods {
 		for _, pod := range pods {
@@ -254,7 +254,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	}
 
 	var running, pending, terminating, succeeded, failed, unknown int32
-	taskStatusCount := make(map[string]map[v1.PodPhase]int32)
+	taskStatusCount := make(map[string]batch.TaskState)
 
 	var podToCreate []*v1.Pod
 	var podToDelete []*v1.Pod
@@ -490,6 +490,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 	// If PodGroup does not exist, create one for Job.
 	pg, err := cc.pgLister.PodGroups(job.Namespace).Get(job.Name)
 	if err != nil {
+		klog.Infof("create new pg!!!!!!!!!!!!!!!!!!!!")
 		if !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to get PodGroup for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
@@ -500,6 +501,8 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 		for _, task := range job.Spec.Tasks {
 			if task.MinAvailable != nil {
 				minTaskMember[task.Name] = *task.MinAvailable
+			} else {
+				minTaskMember[task.Name] = task.Replicas
 			}
 		}
 		pg := &scheduling.PodGroup{
@@ -677,27 +680,29 @@ func classifyAndAddUpPodBaseOnPhase(pod *v1.Pod, pending, running, succeeded, fa
 	}
 }
 
-func calcPodStatus(pod *v1.Pod, taskStatusCount map[string]map[v1.PodPhase]int32) {
+func calcPodStatus(pod *v1.Pod, taskStatusCount map[string]batch.TaskState) {
 	taskName, found := pod.Annotations[batch.TaskSpecKey]
 	if !found {
 		return
 	}
 
-	if taskStatusCount[taskName] == nil {
-		taskStatusCount[taskName] = make(map[v1.PodPhase]int32)
+	if _, ok := taskStatusCount[taskName]; !ok {
+		taskStatusCount[taskName] = batch.TaskState{
+			Phase: make(map[v1.PodPhase]int32),
+		}
 	}
 
 	switch pod.Status.Phase {
 	case v1.PodPending:
-		taskStatusCount[taskName][v1.PodPending]++
+		taskStatusCount[taskName].Phase[v1.PodPending]++
 	case v1.PodRunning:
-		taskStatusCount[taskName][v1.PodRunning]++
+		taskStatusCount[taskName].Phase[v1.PodRunning]++
 	case v1.PodSucceeded:
-		taskStatusCount[taskName][v1.PodSucceeded]++
+		taskStatusCount[taskName].Phase[v1.PodSucceeded]++
 	case v1.PodFailed:
-		taskStatusCount[taskName][v1.PodFailed]++
+		taskStatusCount[taskName].Phase[v1.PodFailed]++
 	default:
-		taskStatusCount[taskName][v1.PodUnknown]++
+		taskStatusCount[taskName].Phase[v1.PodUnknown]++
 	}
 }
 

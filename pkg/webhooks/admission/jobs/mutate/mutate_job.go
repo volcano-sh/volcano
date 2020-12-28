@@ -154,14 +154,16 @@ func patchDefaultMaxRetry(job *v1alpha1.Job) *patchOperation {
 func patchDefaultMinAvailable(job *v1alpha1.Job) *patchOperation {
 	// Add default minAvailable if minAvailable is zero.
 	if job.Spec.MinAvailable == 0 {
-		var totalTaskMinAvailable int32
+		var jobMinAvailable int32
 		for _, task := range job.Spec.Tasks {
 			if task.MinAvailable != nil {
-				totalTaskMinAvailable += *task.MinAvailable
+				jobMinAvailable += *task.MinAvailable
+			} else {
+				jobMinAvailable += task.Replicas
 			}
 		}
 
-		return &patchOperation{Op: "add", Path: "/spec/minAvailable", Value: totalTaskMinAvailable}
+		return &patchOperation{Op: "add", Path: "/spec/minAvailable", Value: jobMinAvailable}
 	}
 	return nil
 }
@@ -177,16 +179,22 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string) *patchOperation {
 		}
 
 		if tasks[index].Template.Spec.HostNetwork && tasks[index].Template.Spec.DNSPolicy == "" {
+			patched = true
 			tasks[index].Template.Spec.DNSPolicy = v1.DNSClusterFirstWithHostNet
 		}
 
-		//if tasks[index].MinAvailable == nil {
-		//	*tasks[index].MinAvailable = tasks[index].Replicas
-		//}
+		if tasks[index].MinAvailable == nil {
+			patched = true
+			minAvailable := tasks[index].Replicas
+			tasks[index].MinAvailable = &minAvailable
+		}
 	}
 	if !patched {
+		klog.Infof("task not patched!!!!!!!")
 		return nil
 	}
+
+	klog.Infof("task patched!!!!!!!!")
 	return &patchOperation{
 		Op:    "replace",
 		Path:  basePath,

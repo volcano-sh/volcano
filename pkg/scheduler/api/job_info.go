@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"strings"
 
+	"k8s.io/klog"
+
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -470,7 +472,7 @@ func (ji *JobInfo) WaitingTaskNum() int32 {
 	return int32(occupid)
 }
 
-// ValidTaskMinAvailable returns whether each job task are valid.
+// ValidTaskMinAvailable returns whether each task of job is valid.
 func (ji *JobInfo) ValidTaskMinAvailable() (map[TaskID]int32, bool) {
 	actual := map[TaskID]int32{}
 	for status, tasks := range ji.TaskStatusIndex {
@@ -483,6 +485,8 @@ func (ji *JobInfo) ValidTaskMinAvailable() (map[TaskID]int32, bool) {
 			}
 		}
 	}
+
+	klog.Infof("actual: %v, ji.TaskMinAvailable: %v", actual, ji.TaskMinAvailable)
 
 	for task, occupied := range actual {
 		if minAvailable, ok := ji.TaskMinAvailable[task]; ok && occupied < minAvailable {

@@ -234,6 +234,13 @@ type JobState struct {
 	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,4,opt,name=lastTransitionTime"`
 }
 
+// TaskState contains details for the current state of the task.
+type TaskState struct {
+	// The phase of Task.
+	// +optional
+	Phase map[v1.PodPhase]int32 `json:"phase,omitempty" protobuf:"bytes,11,opt,name=phase"`
+}
+
 // JobStatus represents the current status of a Job.
 type JobStatus struct {
 	// Current state of Job.
@@ -246,7 +253,7 @@ type JobStatus struct {
 
 	// The status of pods for each task
 	// +optional
-	TaskStatusCount map[string]map[v1.PodPhase]int32 `json:"taskStatusCount,omitempty" protobuf:"bytes,2,opt,name=taskStatusCount"`
+	TaskStatusCount map[string]TaskState `json:"taskStatusCount,omitempty" protobuf:"bytes,21,opt,name=taskStatusCount"`
 
 	// The number of pending pods.
 	// +optional
