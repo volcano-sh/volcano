@@ -7,33 +7,62 @@ As [issue 988](https://github.com/volcano-sh/volcano/issues/988) mentioned, Volc
 
 ## Design
 
-In order to implement this feature, I think it can be decomposed into the following two steps:
+#### Support minAvailable for task
 
-#### 1. Optimize job spec definition
- 
-The first step I think is also an existing problem in the current system, so we can optimize it first. Currently we use `int` in related spec definition of vcjob, like `MinAvailable`, `MaxRetry`. The problem with this is that we cannot distinguish between user behavior(set to 0) and the default int value of 0.
-At the same time, due to this limitation, the current system does not inject default values ​​for these values ​​in admission webhook. Just take `MinAvailable` as an example, by default if the user does not specify it, we should set it to sum(task replicas), but currently we can’t do it.
-
-All we need to do is change these `int` types to pointers, then we can set default values ​​for them and move forward to implement the second step of this feature.
-
-The first step will **cause some compatibility issues**, users can submit yaml normally, but if users quote the definition of Job in their code, they need to modify the type of the corresponding fields.
-**So users may need to update their code before upgrading to the latest version of Volcano.**
-
-#### 2. Support minAvailable for task
-
-This step needs to rely on the first step to proceed. Before talking about the specific implementation, l will first describe the purpose of `MinAvailable` field:
+Before talking about the specific implementation, l will first describe the purpose of `MinAvailable` field:
 Currently `MinAvailable` field only supported at job level.
-1. `MinAvailable` decides whether a vcjob can be scheduled during gang schedule. If sumof(valid tasks) >= job.minavailable, we take this job as valid(can be scheduled).
+1. `MinAvailable` decides whether a vcjob can be scheduled during gang scheduling. If sumof(valid tasks) >= job.minavailable, we take this job as valid(can be scheduled).
 2. `MinAvailable` decides the final status of the vcjob. E.g. If the number of successful tasks in a finished job >= job.minavailable, we set the status of this job as `Completed`, or we set it as `Failed`.
 
 So if we want to support minAvailable for task level, I think the changes involved in this feature are as follows:
-1. We need to verify/set the default value in the webhook.
+1. We need to define `minAvailable` field at the task level & verify/set the default value in the webhook.
+
+    The new field is as follows：
+    ```
+    // TaskSpec specifies the task specification of Job.
+    type TaskSpec struct {
+        ...
+        
+        // The minimal available pods to run for this Task
+        // Defaults to the task replicas
+        // +optional
+        MinAvailable *int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
+    }
+    ```
+
 2. Since the scheduler does not aware jobs, it schedules based on `PodGroup`, we need to add a field to the `PodGroup` to describe the minMember corresponding to different tasks.
-p.s: There is already a `minMember` field in `PodGroup`, which is equal to `MinAvailable` in corresponding job.
-3. Modify the behavior of the current gang schedule. If the `minAvailable` field of the task is set, all tasks under the current job must meet the conditions of (valid pod of the task) >= job.task.minAvailable, then we can take the job as valid.
-4. Modify the judgment of job status. Still take judging whether the job is completed as an example, only if the (successful pod of every task) >= job.task.minAvailable, then we can take the status of the job as `Completed`. This change may need another field in `JobStatus` to record the status of the pod corresponding to the task, currently `JobStatus` only records the number of pods in different states which we cannot distinguish which task belongs to. 
 
-## Compatibility
+   The new field is as follows：
+   ```
+   // PodGroupSpec represents the template of a pod group.
+   type PodGroupSpec struct {
+        ...
+       
+        // MinTaskMember defines the minimal number of pods to run each task in the pod group;
+        // if there's not enough resources to start each task, the scheduler
+        // will not start anyone.
+        MinTaskMember map[string]int32
+   }
+   ```
+3. Add a new judgment logic to the current gang scheduling. The current logic is if sumof(valid tasks) >= job.minavailable, we take this job as valid(can be scheduled). We need to add a logic before that. The logic is that if the `minAvailable` field of the task is set, the task under current job must meet the conditions of (valid pod of the task) >= job.task.minAvailable, then we can take the job as valid.
+4. Modify the judgment of job status. The current logic is that if the (successful pod of every task) >= job.task.minAvailable, then we can take the status of the job as `Completed`. This change may need another field in `JobStatus` to record the status of the pod corresponding to the task, currently `JobStatus` only records the number of pods in different states which we cannot distinguish which task belongs to.
 
-As l described above, the first step will cause some compatibility issues, but I think the changes make senses.
-If the user does not set `MinAvailable` in task level, it should be consistent with the original behavior.
+    The newly added fields are as follows：
+    
+    ```
+    // TaskState contains details for the current state of the task.
+    type TaskState struct {
+        // The phase of Task.
+        // +optional
+        Phase map[v1.PodPhase]int32 `json:"phase,omitempty" protobuf:"bytes,11,opt,name=phase"`
+    } 
+   
+    // JobStatus represents the current status of a Job.
+    type JobStatus struct {
+        ...
+        
+        // The status of pods for each task
+        // +optional
+        TaskStatusCount map[string]TaskState `json:"taskStatusCount,omitempty" protobuf:"bytes,21,opt,name=taskStatusCount"`
+    }
+    ```
