@@ -45,7 +45,7 @@ So if we want to support minAvailable for task level, I think the changes involv
    }
    ```
 3. Add a new judgment logic to the current gang scheduling. The current logic is if sumof(valid tasks) >= job.minavailable, we take this job as valid(can be scheduled). We need to add a logic before that. The logic is that if the `minAvailable` field of the task is set, the task under current job must meet the conditions of (valid pod of the task) >= job.task.minAvailable, then we can take the job as valid.
-4. Modify the judgment of job status. The current logic is that if the (successful pod of every task) >= job.task.minAvailable, then we can take the status of the job as `Completed`. This change may need another field in `JobStatus` to record the status of the pod corresponding to the task, currently `JobStatus` only records the number of pods in different states which we cannot distinguish which task belongs to.
+4. Modify the judgment of job status. The current logic is that if the sumof(successful pods) >= job.minAvailable, then we can take the status of the job as `Completed`. This change may need another field in `JobStatus` to record the status of the pods under each task, currently `JobStatus` only records the number of pods in different states which we cannot distinguish which task pod belongs to.
 
     The newly added fields are as follows：
     
