@@ -160,6 +160,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 		jobs, found := queueInNamespace[queue.UID]
 		if !found || jobs.Empty() {
+			delete(queueInNamespace, queue.UID)
+			namespaces.Push(namespace)
 			klog.V(4).Infof("Can not find jobs for queue %s.", queue.Name)
 			continue
 		}
