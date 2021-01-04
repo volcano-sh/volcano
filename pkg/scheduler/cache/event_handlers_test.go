@@ -343,7 +343,7 @@ func TestSchedulerCache_UpdatePodGroupV1beta1(t *testing.T) {
 		}
 		cache.AddPod(test.Pod)
 
-		cache.UpdateQueueV1beta1(test.OldPodGroup, test.NewPodGroup)
+		cache.UpdatePodGroupV1beta1(test.OldPodGroup, test.NewPodGroup)
 		jobID := api.JobID("test/j1")
 
 		job := cache.Jobs[jobID]
