@@ -7,7 +7,6 @@ need to set up before being able to build and run the code.
 
 - [Setting up Go](#setting-up-go)
 - [Setting up Docker](#setting-up-docker)
-- [Other dependencies](#other-dependencies)
 - [Setting up Kubernetes](#setting-up-kubernetes)
 - [Setting up personal access token](#setting-up-a-personal-access-token)
 
