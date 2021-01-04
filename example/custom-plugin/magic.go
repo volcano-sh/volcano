@@ -14,19 +14,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package state
+package main // note!!! package must be named main
 
 import (
-	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"k8s.io/klog"
+
+	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
-// TotalTasks returns number of tasks in a given volcano job.
-func TotalTasks(job *vcbatch.Job) int32 {
-	var rep int32
+const PluginName = "magic"
 
-	for _, task := range job.Spec.Tasks {
-		rep += task.Replicas
-	}
+type magicPlugin struct{}
 
-	return rep
+func (mp *magicPlugin) Name() string {
+	return PluginName
 }
+
+func New(arguments framework.Arguments) framework.Plugin { // `New` is PluginBuilder
+	return &magicPlugin{}
+}
+
+func (mp *magicPlugin) OnSessionOpen(ssn *framework.Session) {
+	klog.V(4).Info("Enter magic plugin ...")
+}
+
+func (mp *magicPlugin) OnSessionClose(ssn *framework.Session) {}

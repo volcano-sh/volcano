@@ -580,3 +580,53 @@ func TestLessEqualStrict(t *testing.T) {
 		}
 	}
 }
+
+func TestMinDimensionResource(t *testing.T) {
+	tests := []struct {
+		resource1 *Resource
+		resource2 *Resource
+		expected  *Resource
+	}{
+		{
+			resource1: &Resource{
+				MilliCPU:        4000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1, "hugepages-test": 2},
+			},
+			resource2: &Resource{
+				MilliCPU:        3000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 0, "hugepages-test": 0},
+			},
+			expected: &Resource{
+				MilliCPU:        3000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 0, "hugepages-test": 0},
+			},
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        4000,
+				Memory:          4000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			resource2: &Resource{
+				MilliCPU:        5000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 0, "hugepages-test": 3000},
+			},
+			expected: &Resource{
+				MilliCPU:        4000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 0, "hugepages-test": 2000},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		test.resource1.MinDimensionResource(test.resource2)
+		if !reflect.DeepEqual(test.expected, test.resource1) {
+			t.Errorf("expected: %#v, got: %#v", test.expected, test.resource1)
+		}
+	}
+}

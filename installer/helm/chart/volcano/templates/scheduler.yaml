@@ -127,8 +127,8 @@ metadata:
     prometheus.io/path: /metrics
     prometheus.io/port: "8080"
     prometheus.io/scrape: "true"
-  name: volcano-scheduler-service
-  namespace: volcano-system
+  name: {{ .Release.Name }}-scheduler-service
+  namespace: {{ .Release.Namespace }} 
 spec:
   ports:
   - port: 8080

@@ -17,6 +17,8 @@ limitations under the License.
 package proportion
 
 import (
+	"reflect"
+
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
@@ -151,6 +153,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			break
 		}
 
+		oldRemaining := remaining.Clone()
 		// Calculates the deserved of each Queue.
 		// increasedDeserved is the increased value for attr.deserved of processed queues
 		// decreasedDeserved is the decreased value for attr.deserved of processed queues
@@ -171,10 +174,13 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				attr.deserved = helpers.Min(attr.deserved, attr.request)
 				meet[attr.queueID] = struct{}{}
 				klog.V(4).Infof("queue <%s> is meet cause of the capability", attr.name)
-			} else if attr.request.Less(attr.deserved) {
+			} else if attr.request.LessEqualStrict(attr.deserved) {
 				attr.deserved = helpers.Min(attr.deserved, attr.request)
 				meet[attr.queueID] = struct{}{}
 				klog.V(4).Infof("queue <%s> is meet", attr.name)
+			} else {
+				attr.deserved.MinDimensionResource(attr.request)
+				klog.V(4).Infof("Format queue <%s> deserved resource to <%v>", attr.name, attr.deserved)
 			}
 			pp.updateShare(attr)
 
@@ -190,8 +196,9 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		remaining.Sub(increasedDeserved).Add(decreasedDeserved)
-		if remaining.IsEmpty() {
-			klog.V(4).Infof("Exiting when remaining is empty:  <%v>", remaining)
+		klog.V(4).Infof("Remaining resource is  <%s>", remaining)
+		if remaining.IsEmpty() || reflect.DeepEqual(remaining, oldRemaining) {
+			klog.V(4).Infof("Exiting when remaining is empty or no queue has more reosurce request:  <%v>", remaining)
 			break
 		}
 	}
@@ -234,7 +241,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				victims = append(victims, reclaimee)
 			}
 		}
-
+		klog.V(4).Infof("Victims from proportion plugins are %+v", victims)
 		return victims
 	})
 
