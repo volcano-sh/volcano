@@ -57,20 +57,22 @@ func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *scheduling
 }
 
 func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
-	job := sc.getOrCreateJob(pi)
-	if job != nil {
-		job.AddTaskInfo(pi)
-	}
-
 	if len(pi.NodeName) != 0 {
 		if _, found := sc.Nodes[pi.NodeName]; !found {
-			sc.Nodes[pi.NodeName] = schedulingapi.NewNodeInfo(nil)
+			return fmt.Errorf("node <%s> does not exist", pi.NodeName)
 		}
 
 		node := sc.Nodes[pi.NodeName]
 		if !isTerminated(pi.Status) {
-			return node.AddTask(pi)
+			if err := node.AddTask(pi); err != nil {
+				return err
+			}
 		}
+	}
+
+	job := sc.getOrCreateJob(pi)
+	if job != nil {
+		job.AddTaskInfo(pi)
 	}
 
 	return nil
@@ -370,8 +372,8 @@ func (sc *SchedulerCache) setPodGroup(ss *schedulingapi.PodGroup) error {
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) updatePodGroup(newQueue *schedulingapi.PodGroup) error {
-	return sc.setPodGroup(newQueue)
+func (sc *SchedulerCache) updatePodGroup(newPodGroup *schedulingapi.PodGroup) error {
+	return sc.setPodGroup(newPodGroup)
 }
 
 // Assumes that lock is already acquired.

@@ -52,11 +52,25 @@ func unmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []
 	if err := yaml.Unmarshal(buf, schedulerConf); err != nil {
 		return nil, nil, nil, err
 	}
-
 	// Set default settings for each plugin if not set
 	for i, tier := range schedulerConf.Tiers {
+		// drf with hierarchy enabled
+		hdrf := false
+		// proportion enabled
+		proportion := false
 		for j := range tier.Plugins {
+			if tier.Plugins[j].Name == "drf" &&
+				tier.Plugins[j].EnabledHierarchy != nil &&
+				*tier.Plugins[j].EnabledHierarchy == true {
+				hdrf = true
+			}
+			if tier.Plugins[j].Name == "proportion" {
+				proportion = true
+			}
 			plugins.ApplyPluginConfDefaults(&schedulerConf.Tiers[i].Plugins[j])
+		}
+		if hdrf && proportion {
+			return nil, nil, nil, fmt.Errorf("proportion and drf with hierarchy enabled conflicts")
 		}
 	}
 

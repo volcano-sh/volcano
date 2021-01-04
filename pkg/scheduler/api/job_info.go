@@ -141,8 +141,13 @@ type JobInfo struct {
 	TaskStatusIndex map[TaskStatus]tasksMap
 	Tasks           tasksMap
 
+	Allocated    *Resource
+	TotalRequest *Resource
+
 	CreationTimestamp metav1.Time
 	PodGroup          *PodGroup
+
+	ScheduleStartTimestamp metav1.Time
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks
@@ -151,6 +156,8 @@ func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 		UID:             uid,
 		MinAvailable:    0,
 		NodesFitErrors:  make(map[TaskID]*FitErrors),
+		Allocated:       EmptyResource(),
+		TotalRequest:    EmptyResource(),
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},
 	}
@@ -189,6 +196,10 @@ func (ji *JobInfo) addTaskIndex(ti *TaskInfo) {
 func (ji *JobInfo) AddTaskInfo(ti *TaskInfo) {
 	ji.Tasks[ti.UID] = ti
 	ji.addTaskIndex(ti)
+	ji.TotalRequest.Add(ti.Resreq)
+	if AllocatedStatus(ti.Status) {
+		ji.Allocated.Add(ti.Resreq)
+	}
 }
 
 // UpdateTaskStatus is used to update task's status in a job.
@@ -225,8 +236,11 @@ func (ji *JobInfo) deleteTaskIndex(ti *TaskInfo) {
 // DeleteTaskInfo is used to delete a task from a job
 func (ji *JobInfo) DeleteTaskInfo(ti *TaskInfo) error {
 	if task, found := ji.Tasks[ti.UID]; found {
+		ji.TotalRequest.Sub(task.Resreq)
+		if AllocatedStatus(task.Status) {
+			ji.Allocated.Sub(task.Resreq)
+		}
 		delete(ji.Tasks, task.UID)
-
 		ji.deleteTaskIndex(task)
 		return nil
 	}
@@ -246,6 +260,8 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 		MinAvailable:   ji.MinAvailable,
 		NodesFitErrors: make(map[TaskID]*FitErrors),
+		Allocated:      EmptyResource(),
+		TotalRequest:   EmptyResource(),
 
 		PodGroup: ji.PodGroup,
 

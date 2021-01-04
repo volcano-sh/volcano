@@ -283,7 +283,7 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 			ni.Releasing.Sub(task.Resreq)
 			ni.Idle.Add(task.Resreq)
 			ni.Used.Sub(task.Resreq)
-			ni.AddGPUResource(ti.Pod)
+			ni.SubGPUResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Sub(task.Resreq)
 		default:

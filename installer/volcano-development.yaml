@@ -3,6 +3,11 @@ kind: Namespace
 metadata:
   name: volcano-system
 ---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: volcano-monitoring 
+---
 # Source: volcano/templates/scheduler.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -134,7 +139,24 @@ spec:
         - name: scheduler-config
           configMap:
             name: volcano-scheduler-configmap
-
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8080"
+    prometheus.io/scrape: "true"
+  name: volcano-scheduler-service
+  namespace: volcano-system 
+spec:
+  ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: volcano-scheduler
+  type: ClusterIP
 ---
 # Source: volcano/templates/admission.yaml
 apiVersion: v1
@@ -321,7 +343,7 @@ rules:
     verbs: ["get", "list", "watch", "create", "delete"]
   - apiGroups: ["networking.k8s.io"]
     resources: ["networkpolicies"]
-    verbs: ["get", "create"]
+    verbs: ["get", "create", "delete"]
 
 ---
 kind: ClusterRoleBinding
@@ -400,6 +422,9 @@ spec:
           description: Specification of the desired behavior of a cron job, including
             the minAvailable
           properties:
+            runningEstimate:
+              description: Running Estimate is a user running duration estimate for job Default to nil.
+              type: string 
             volumes:
               description: The volumes for Job
               items:
@@ -539,6 +564,9 @@ spec:
               type: object
               additionalProperties:
                 type: string
+            runningDuration:
+              description: the length of time from job running to complete 
+              type: string 
             state:
               description: Current state of Job.
               properties:

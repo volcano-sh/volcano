@@ -17,7 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 )
@@ -32,7 +32,6 @@ import (
 type Job struct {
 	metav1.TypeMeta `json:",inline"`
 
-	// metadata of the volcano job
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
@@ -52,6 +51,7 @@ type JobSpec struct {
 	SchedulerName string `json:"schedulerName,omitempty" protobuf:"bytes,1,opt,name=schedulerName"`
 
 	// The minimal available pods to run for this Job
+	// Defaults to the summary of tasks' replicas
 	// +optional
 	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
 
@@ -71,6 +71,10 @@ type JobSpec struct {
 	// Key is plugin name, value is the arguments of the plugin
 	// +optional
 	Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,6,opt,name=plugins"`
+
+	// Running Estimate is a user running duration estimate for the job
+	// Default to nil
+	RunningEstimate *metav1.Duration `json:"runningEstimate,omitempty" protobuf:"bytes,4,opt,name=runningEstimate"`
 
 	//Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
 	// +optional
@@ -126,6 +130,8 @@ const (
 	ExecuteAction JobEvent = "ExecuteAction"
 	//JobStatusError is generated if update job status failed
 	JobStatusError JobEvent = "JobStatusError"
+	// PodGroupPending  pod grp pending event is generated if pg pending due to some error
+	PodGroupPending JobEvent = "PodGroupPending"
 )
 
 // LifecyclePolicy specifies the lifecycle and error handling of task and job.
@@ -264,6 +270,10 @@ type JobStatus struct {
 	// The number of Job retries.
 	// +optional
 	RetryCount int32 `json:"retryCount,omitempty" protobuf:"bytes,10,opt,name=retryCount"`
+
+	// The job running duration is the length of time from job running to complete.
+	// +optional
+	RunningDuration *metav1.Duration `json:"runningDuration,omitempty" protobuf:"bytes,4,opt,name=runningDuration"`
 
 	// The resources that controlled by this job, e.g. Service, ConfigMap
 	// +optional

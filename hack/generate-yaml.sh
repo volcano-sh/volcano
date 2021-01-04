@@ -25,6 +25,7 @@ export RELEASE_FOLDER=${VK_ROOT}/${RELEASE_DIR}
 export HELM_VER=${HELM_VER:-v2.13.0}
 export VOLCANO_IMAGE_TAG=${TAG:-"latest"}
 export YAML_FILENAME=volcano-${VOLCANO_IMAGE_TAG}.yaml
+export MONITOR_YAML_FILENAME=volcano-monitoring-${VOLCANO_IMAGE_TAG}.yaml
 
 LOCAL_OS=${OSTYPE}
 case $LOCAL_OS in
@@ -59,6 +60,7 @@ if [[ ! -d ${RELEASE_FOLDER} ]];then
 fi
 
 DEPLOYMENT_FILE=${RELEASE_FOLDER}/${YAML_FILENAME}
+MONITOR_DEPLOYMENT_YAML_FILENAME=${RELEASE_FOLDER}/${MONITOR_YAML_FILENAME}
 echo "Generating volcano yaml file into ${DEPLOYMENT_FILE}"
 
 if [[ -f ${DEPLOYMENT_FILE} ]];then
@@ -75,3 +77,10 @@ ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespac
       -x templates/scheduling_v1beta1_podgroup.yaml \
       -x templates/scheduling_v1beta1_queue.yaml \
       --notes >> ${DEPLOYMENT_FILE}
+
+${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-monitoring \
+      --name volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} \
+      -x templates/prometheus.yaml \
+      -x templates/kubestatemetrics.yaml \
+      -x templates/grafana.yaml \
+      --notes >> ${MONITOR_DEPLOYMENT_YAML_FILENAME}

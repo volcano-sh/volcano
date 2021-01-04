@@ -119,3 +119,21 @@ spec:
         - name: scheduler-config
           configMap:
             name: {{ .Release.Name }}-scheduler-configmap
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8080"
+    prometheus.io/scrape: "true"
+  name: {{ .Release.Name }}-scheduler-service
+  namespace: {{ .Release.Namespace }} 
+spec:
+  ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: volcano-scheduler
+  type: ClusterIP

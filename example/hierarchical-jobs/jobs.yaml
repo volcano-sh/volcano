@@ -1,0 +1,135 @@
+
+---
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: eng-prod-job
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: root-eng-prod
+  tasks:
+    - replicas: 6
+      name: "default-nginx"
+      template:
+        metadata:
+          name: web
+        spec:
+          schedulerName: volcano
+          containers:
+            - image: nginx
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "0.5"
+          restartPolicy: OnFailure
+---
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: eng-dev-job
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: root-eng-dev
+  tasks:
+    - replicas: 6
+      name: "default-nginx"
+      template:
+        metadata:
+          name: web
+        spec:
+          schedulerName: volcano
+          containers:
+            - image: nginx
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "0.5"
+          restartPolicy: OnFailure
+
+
+---
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: sci-prod-job
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: root-sci-prod
+  tasks:
+    - replicas: 6
+      name: "default-nginx"
+      template:
+        metadata:
+          name: web
+        spec:
+          schedulerName: volcano
+          containers:
+            - image: nginx
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "0.5"
+          restartPolicy: OnFailure
+---
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: sci-dev-job
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: root-sci-dev
+  tasks:
+    - replicas: 6
+      name: "default-nginx"
+      template:
+        metadata:
+          name: web
+        spec:
+          schedulerName: volcano
+          containers:
+            - image: nginx
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "0.5"
+          restartPolicy: OnFailure

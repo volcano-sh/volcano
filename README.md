@@ -57,6 +57,9 @@ Volcano is a sandbox project of the [Cloud Native Computing Foundation](https://
 
 You can try Volcano by one of the following two ways.
 
+Note: 
+* For Kubernetes v1.16+ use CRDs under config/crd/bases (recommended)
+* For Kubernetes versions < v1.16 use CRDs under config/crd/v1beta1 (deprecated)
 
 ### Install with YAML files
 
@@ -108,6 +111,15 @@ If you don't have a kubernetes cluster, try one-click install from code base:
 
 This way is only available for x86_64 temporarily.
 
+### Install monitoring system
+
+If you want to get prometheus and grafana volcano dashboard after volcano installed, try following commands:
+
+```bash
+make TAG=latest generate-yaml
+kubectl create -f _output/release/volcano-monitoring-latest.yaml
+```
+
 ## Meeting
 
 Regular Community Meeting:
@@ -116,7 +128,7 @@ The Volcano team meets once per week on Friday, alternating between 10am Beijing
 
 Resources:
 - [Meeting notes and agenda](https://docs.google.com/document/d/1YLbF8zjZBiR9PbXQPB22iuc_L0Oui5A1lddVfRnZrqs/edit)
-- [Meeting link](https://zoom.us/j/193601252)
+- [Meeting link](https://zoom.us/j/91804791393)
 - [Meeting Calendar](https://calendar.google.com/calendar/b/1/embed?src=volcano.sh.bot@gmail.com) | [Subscribe](https://calendar.google.com/calendar/b/1?cid=dm9sY2Fuby5zaC5ib3RAZ21haWwuY29t)
 
 ## Contact
