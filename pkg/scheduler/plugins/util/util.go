@@ -21,12 +21,12 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/scheduler/listers"
-	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
+	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
+
 
 const (
 	// Permit indicates that plugin callback function permits job to be inqueue, pipelined, or other status
@@ -36,6 +36,18 @@ const (
 	// Reject indicates that plugin callback function rejects job to be inqueue, pipelined, or other status
 	Reject = -1
 )
+
+// PodFilter is a function to filter a pod. If pod passed return true else return false.
+type PodFilter func(*v1.Pod) bool
+
+// PodsLister interface represents anything that can list pods for a scheduler.
+type PodsLister interface {
+	// Returns the list of pods.
+	List(labels.Selector) ([]*v1.Pod, error)
+	// This is similar to "List()", but the returned slice does not
+	// contain pods that don't pass `podFilter`.
+	FilteredList(podFilter PodFilter, selector labels.Selector) ([]*v1.Pod, error)
+}
 
 // PodLister is used in predicate and nodeorder plugin
 type PodLister struct {
@@ -180,7 +192,7 @@ func (pl *PodLister) List(selector labels.Selector) ([]*v1.Pod, error) {
 }
 
 // FilteredList is used to list all the pods under filter condition
-func (pl *PodLister) filteredListWithTaskSet(taskSet map[api.TaskID]*api.TaskInfo, podFilter listers.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
+func (pl *PodLister) filteredListWithTaskSet(taskSet map[api.TaskID]*api.TaskInfo, podFilter PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
 	var pods []*v1.Pod
 	for _, task := range taskSet {
 		pod := pl.GetPod(task)
@@ -193,12 +205,12 @@ func (pl *PodLister) filteredListWithTaskSet(taskSet map[api.TaskID]*api.TaskInf
 }
 
 // FilteredList is used to list all the pods under filter condition
-func (pl *PodLister) FilteredList(podFilter listers.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
+func (pl *PodLister) FilteredList(podFilter PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
 	return pl.filteredListWithTaskSet(pl.Tasks, podFilter, selector)
 }
 
 // AffinityFilteredList is used to list all the pods with affinity under filter condition
-func (pl *PodLister) AffinityFilteredList(podFilter listers.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
+func (pl *PodLister) AffinityFilteredList(podFilter PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
 	return pl.filteredListWithTaskSet(pl.TaskWithAffinity, podFilter, selector)
 }
 
@@ -216,7 +228,7 @@ func (pal *PodAffinityLister) List(selector labels.Selector) ([]*v1.Pod, error) 
 }
 
 // FilteredList is used to list all the pods with affinity under filter condition
-func (pal *PodAffinityLister) FilteredList(podFilter listers.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
+func (pal *PodAffinityLister) FilteredList(podFilter PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
 	return pal.pl.AffinityFilteredList(podFilter, selector)
 }
 

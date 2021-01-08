@@ -24,13 +24,12 @@ import (
 	"k8s.io/kubernetes/pkg/controller/volume/scheduling"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
-	schedulerlisters "k8s.io/kubernetes/pkg/scheduler/listers"
 )
 
 // Framework is a K8S framework who mainly provides some methods
 // about snapshot and plugins such as predicates
 type Framework struct {
-	snapshot schedulerlisters.SharedLister
+	snapshot v1alpha1.SharedLister
 }
 
 var _ v1alpha1.FrameworkHandle = &Framework{}
@@ -39,7 +38,7 @@ var _ v1alpha1.FrameworkHandle = &Framework{}
 // snapshot. The snapshot is taken at the beginning of a scheduling cycle and remains
 // unchanged until a pod finishes "Reserve". There is no guarantee that the information
 // remains unchanged after "Reserve".
-func (f *Framework) SnapshotSharedLister() schedulerlisters.SharedLister {
+func (f *Framework) SnapshotSharedLister() v1alpha1.SharedLister {
 	return f.snapshot
 }
 
