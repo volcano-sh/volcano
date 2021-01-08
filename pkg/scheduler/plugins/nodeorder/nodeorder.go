@@ -19,8 +19,6 @@ package nodeorder
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/labels"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
@@ -131,7 +129,7 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	weight := calculateWeight(pp.pluginArguments)
 	pl := util.NewPodLister(ssn)
-	pods, _ := pl.List(labels.NewSelector())
+	//pods, _ := pl.List(labels.NewSelector())
 	nodeMap := util.GenerateNodeMapAndSlice(ssn.Nodes)
 
 	// Register event handlers to update task info in PodLister & nodeMap
