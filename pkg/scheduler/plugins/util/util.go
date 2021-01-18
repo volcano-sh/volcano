@@ -69,6 +69,10 @@ func NewPodLister(ssn *framework.Session) *PodLister {
 
 			for _, task := range tasks {
 				pl.Tasks[task.UID] = task
+
+				pod := pl.copyTaskPod(task)
+				pl.CachedPods[task.UID] = pod
+
 				if HaveAffinity(task.Pod) {
 					pl.TaskWithAffinity[task.UID] = task
 				}
