@@ -41,12 +41,12 @@ metadata:
 spec:
   reclaimable: true
   weight: 1
-  guarantee:            // reservation key word
-    policy: Best-Effort // preemption reservation or non-preemption reservation
-    percentage:      // locked nodes resource percentage in cluster
+  guarantee:             // reservation key word
+    policy: Best-Effort  // preemption reservation or non-preemption reservation
+    percentage:          // locked nodes resource percentage in cluster
       dimensions: ["cpu", "memory, "gpu", "other-scalable-resource-type"...]  
       value: 0.2
-    resource:           // specified reserving resource
+    resource:            // specified reserving resource
       cpu: 2c
       memory: 4G
 
@@ -54,7 +54,7 @@ status:
   state: Open
 
   reservation:          // reservation status key word
-    nodes: [n1, n2]              // locked nodes list
+    nodes: [n1, n2]     // locked nodes list
     resource:           // total idle resource in locked nodes
       cpu: 1C
       memory: 2G 
