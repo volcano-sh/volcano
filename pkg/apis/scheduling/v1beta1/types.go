@@ -135,6 +135,16 @@ const (
 	CloseQueueAction QueueAction = "CloseQueue"
 )
 
+// QueueResourceReservationPolicy is the policy about how to reserve resource for queue
+type QueueResourceReservationPolicy string
+
+const (
+	// default policy, BestEffort represents reserving resource without preemption
+	BestEffort QueueResourceReservationPolicy = "BestEffort"
+	// Guaranteed represents reserving resource with preemption
+	Guaranteed QueueResourceReservationPolicy = "Guaranteed"
+)
+
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
@@ -246,6 +256,39 @@ type Queue struct {
 	Status QueueStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
 }
 
+// Percentage represents the percentage of cluster resource for reservation
+type Percentage struct {
+	// Dimensions are what kinds of resource for reservation, for example, ['cpu', 'memory', ...]
+	// +optional
+	Dimensions []string `json:"dimensions,omitempty" protobuf:"bytes,1,opt,name=dimensions"`
+	// Value is a decimal within (0, 1]
+	// +optional
+	Value float64 `json:"value,omitempty" protobuf:"bytes,2,opt,name=value"`
+}
+
+// Guarantee represents configuration of queue resource reservation
+type Guarantee struct {
+	// The queue resource reservation policy. Default to be `BestEffort`.
+	// +optional
+	Policy QueueResourceReservationPolicy `json:"policy,omitempty" protobuf:"bytes,1,opt,name=policy"`
+	// The percentage of cluster resource reserved for queue. Just set either `percentage` or `resource`
+	// +optional
+	Percentage Percentage `json:"percentage,omitempty" protobuf:"bytes,2,opt,name=percentage"`
+	// The amount of cluster resource reserved for queue. Just set either `percentage` or `resource`
+	// +optional
+	Resource v1.ResourceList `json:"resource,omitempty" protobuf:"bytes,3,opt,name=resource"`
+}
+
+// Reservation represents current condition about resource reservation
+type Reservation struct {
+	// Nodes are Locked nodes for queue
+	// +optional
+	Nodes []string `json:"nodes,omitempty" protobuf:"bytes,1,opt,name=nodes"`
+	// Resource is a list of total idle resource in locked nodes.
+	// +optional
+	Resource v1.ResourceList `json:"resource,omitempty" protobuf:"bytes,2,opt,name=resource"`
+}
+
 // QueueStatus represents the status of Queue.
 type QueueStatus struct {
 	// State is state of queue
@@ -259,6 +302,9 @@ type QueueStatus struct {
 	Running int32 `json:"running,omitempty" protobuf:"bytes,4,opt,name=running"`
 	// The number of `Inqueue` PodGroup in this queue.
 	Inqueue int32 `json:"inqueue,omitempty" protobuf:"bytes,5,opt,name=inqueue"`
+
+	// Reservation is the profile of resource reservation for queue
+	Reservation Reservation `json:"reservation,omitempty" protobuf:"bytes,6,opt,name=reservation"`
 }
 
 // QueueSpec represents the template of Queue.
@@ -268,6 +314,9 @@ type QueueSpec struct {
 
 	// Reclaimable indicate whether the queue can be reclaimed by other queue
 	Reclaimable *bool `json:"reclaimable,omitempty" protobuf:"bytes,3,opt,name=reclaimable"`
+
+	// Guarantee indicate configuration about resource reservation
+	Guarantee Guarantee `json:"guarantee,omitempty" protobuf:"bytes,4,opt,name=guarantee"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
