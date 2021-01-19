@@ -54,9 +54,7 @@ status:
   state: Open
 
   reservation:          // reservation status key word
-    nodes:              // locked nodes list
-      - n1
-      - n2
+    nodes: [n1, n2]              // locked nodes list
     resource:           // total idle resource in locked nodes
       cpu: 1C
       memory: 2G 
