@@ -100,6 +100,7 @@ func validateQueue(queue *schedulingv1beta1.Queue) error {
 
 	errs = append(errs, validateStateOfQueue(queue.Status.State, resourcePath.Child("spec").Child("state"))...)
 	errs = append(errs, validateWeightOfQueue(queue.Spec.Weight, resourcePath.Child("spec").Child("weight"))...)
+	errs = append(errs, validateGuaranteeOfQueue(queue.Spec.Guarantee, resourcePath.Child("spec").Child("guarantee"))...)
 	errs = append(errs, validateHierarchicalAttributes(queue, resourcePath.Child("metadata").Child("annotations"))...)
 
 	if len(errs) > 0 {
@@ -108,6 +109,63 @@ func validateQueue(queue *schedulingv1beta1.Queue) error {
 
 	return nil
 }
+
+func validateStateOfQueue(value schedulingv1beta1.QueueState, fldPath *field.Path) field.ErrorList {
+	errs := field.ErrorList{}
+
+	if len(value) == 0 {
+		return errs
+	}
+
+	validQueueStates := []schedulingv1beta1.QueueState{
+		schedulingv1beta1.QueueStateOpen,
+		schedulingv1beta1.QueueStateClosed,
+	}
+
+	for _, validQueue := range validQueueStates {
+		if value == validQueue {
+			return errs
+		}
+	}
+
+	return append(errs, field.Invalid(fldPath, value, fmt.Sprintf("queue state must be in %v", validQueueStates)))
+}
+
+func validateWeightOfQueue(value int32, fldPath *field.Path) field.ErrorList {
+	errs := field.ErrorList{}
+	if value > 0 {
+		return errs
+	}
+	return append(errs, field.Invalid(fldPath, value, fmt.Sprint("queue weight must be a positive integer")))
+}
+
+func validateGuaranteeOfQueue(value schedulingv1beta1.Guarantee, fldPath *field.Path) field.ErrorList {
+	errs := field.ErrorList{}
+
+	reservationPolicies := []schedulingv1beta1.QueueResourceReservationPolicy{
+		schedulingv1beta1.BestEffort,
+		schedulingv1beta1.Guaranteed,
+	}
+	if value.Policy != "" {
+		isValid := false
+		for _, policy := range reservationPolicies {
+			if value.Policy == policy {
+				isValid = true
+				break
+			}
+		}
+		if !isValid {
+			errs = append(errs, field.Invalid(fldPath, value.Policy, fmt.Sprintf("queue resource reservation policy must be in %v", reservationPolicies)))
+		}
+	}
+
+	if value.Percentage.Value < 0 || value.Percentage.Value > 1 {
+		errs = append(errs, field.Invalid(fldPath, value.Percentage.Value, fmt.Sprintf("queue resource reservation percentage value must be within (0, 1]")))
+	}
+
+	return errs
+}
+
 func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *field.Path) field.ErrorList {
 	errs := field.ErrorList{}
 	hierarchy := queue.Annotations[schedulingv1beta1.KubeHierarchyAnnotationKey]
@@ -165,35 +223,6 @@ func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *fie
 
 	}
 	return errs
-}
-
-func validateStateOfQueue(value schedulingv1beta1.QueueState, fldPath *field.Path) field.ErrorList {
-	errs := field.ErrorList{}
-
-	if len(value) == 0 {
-		return errs
-	}
-
-	validQueueStates := []schedulingv1beta1.QueueState{
-		schedulingv1beta1.QueueStateOpen,
-		schedulingv1beta1.QueueStateClosed,
-	}
-
-	for _, validQueue := range validQueueStates {
-		if value == validQueue {
-			return errs
-		}
-	}
-
-	return append(errs, field.Invalid(fldPath, value, fmt.Sprintf("queue state must be in %v", validQueueStates)))
-}
-
-func validateWeightOfQueue(value int32, fldPath *field.Path) field.ErrorList {
-	errs := field.ErrorList{}
-	if value > 0 {
-		return errs
-	}
-	return append(errs, field.Invalid(fldPath, value, fmt.Sprint("queue weight must be a positive integer")))
 }
 
 func validateQueueDeleting(queue string) error {

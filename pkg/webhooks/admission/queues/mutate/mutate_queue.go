@@ -136,5 +136,16 @@ func createQueuePatch(queue *schedulingv1beta1.Queue) ([]byte, error) {
 		})
 	}
 
+	if queue.Spec.Guarantee.Percentage.Value != 0 || len(queue.Spec.Guarantee.Resource) != 0 {
+		if queue.Spec.Guarantee.Policy == "" {
+			defaultPolicy := schedulingv1beta1.QueueResourceReservationPolicy("BestEffort")
+			patch = append(patch, patchOperation{
+				Op:    "add",
+				Path:  "/spec/guarantee/policy",
+				Value: &defaultPolicy,
+			})
+		}
+	}
+
 	return json.Marshal(patch)
 }
