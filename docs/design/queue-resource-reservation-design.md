@@ -17,7 +17,7 @@ for specified queue. Requirement detail as follows:
 * The resource amount reserved must be no less than request at all dimensions but should not exceed too much. An algorithm 
 ensuring the reserved amount to the point is necessary.
 * Support total node resource percentage of cluster as request. If reservation resource amount is also specified, it's
-important to decide which configuration is adopted. This feature is more useful on the condition that resource specification
+important to decide which configuration is adopted. This feature is more useful on condition that resource specification
 of all nodes are almost the same.
 
 ### Reservation Algorithm
