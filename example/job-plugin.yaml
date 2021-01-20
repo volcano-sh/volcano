@@ -1,0 +1,37 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: test-job-plugin
+spec:
+  minAvailable: 3
+  schedulerName: volcano
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  plugins:
+    # Add env to each container(VK_TASK_INDEX & VC_TASK_INDEX)
+    env: []
+    # Support ssh-free authentication
+    # :param ssh-key-file-path: The path used to store ssh private and public keys(`/root/.ssh` by default)
+    ssh: ["--ssh-key-file-path=/home/user/.ssh"]
+    # Provide network information: hosts file(under path `/etc/volcano/`), headless service, etc.
+    # :param publish-not-ready-addresses: publish not ready addresses(false by default)
+    # :param disable-network-policy: disable network policy of the job(false by default)
+    svc: ["--publish-not-ready-addresses=false", "--disable-network-policy=false"]
+  maxRetry: 5
+  queue: default
+  tasks:
+    - replicas: 3
+      name: "default-nginx"
+      template:
+        metadata:
+          name: web
+        spec:
+          containers:
+            - image: nginx
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "1"
+          restartPolicy: OnFailure
