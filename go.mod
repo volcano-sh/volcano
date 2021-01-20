@@ -3,8 +3,6 @@ module volcano.sh/volcano
 go 1.14
 
 require (
-	github.com/coreos/go-etcd v2.0.0+incompatible // indirect
-	github.com/cpuguy83/go-md2man v1.0.10 // indirect
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/hashicorp/go-multierror v1.0.0
@@ -13,7 +11,6 @@ require (
 	github.com/prometheus/client_golang v1.7.1
 	github.com/spf13/cobra v1.0.0
 	github.com/spf13/pflag v1.0.5
-	github.com/ugorji/go/codec v0.0.0-20181204163529-d75b2dcb6bc8 // indirect
 	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	gopkg.in/yaml.v2 v2.2.8
@@ -50,6 +47,7 @@ replace (
 	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.19.6
 	k8s.io/kubectl => k8s.io/kubectl v0.19.6
 	k8s.io/kubelet => k8s.io/kubelet v0.19.6
+	k8s.io/kubernetes => k8s.io/kubernetes v1.19.6
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.19.6
 	k8s.io/metrics => k8s.io/metrics v0.19.6
 	k8s.io/node-api => k8s.io/node-api v0.19.6
