@@ -229,7 +229,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			if task.InitResreq.LessEqual(node.Idle) {
 				klog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
 					task.Namespace, task.Name, node.Name)
-				if err := stmt.Allocate(task, node.Name); err != nil {
+				podVolumesInNode := ssn.PodVolumesInfo[node.Name]
+				if err := stmt.Allocate(task, node.Name, &podVolumesInNode); err != nil {
 					klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 						task.UID, node.Name, ssn.UID, err)
 				} else {

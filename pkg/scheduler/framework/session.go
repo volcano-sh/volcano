@@ -18,6 +18,7 @@ package framework
 
 import (
 	"fmt"
+	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,10 +45,11 @@ type Session struct {
 	// This should not be mutated after initiated
 	podGroupStatus map[api.JobID]scheduling.PodGroupStatus
 
-	Jobs          map[api.JobID]*api.JobInfo
-	Nodes         map[string]*api.NodeInfo
-	Queues        map[api.QueueID]*api.QueueInfo
-	NamespaceInfo map[api.NamespaceName]*api.NamespaceInfo
+	Jobs           map[api.JobID]*api.JobInfo
+	Nodes          map[string]*api.NodeInfo
+	Queues         map[api.QueueID]*api.QueueInfo
+	NamespaceInfo  map[api.NamespaceName]*api.NamespaceInfo
+	PodVolumesInfo map[string]volumescheduling.PodVolumes
 
 	Tiers          []conf.Tier
 	Configurations []conf.Configuration
@@ -83,9 +85,10 @@ func openSession(cache cache.Cache) *Session {
 
 		podGroupStatus: map[api.JobID]scheduling.PodGroupStatus{},
 
-		Jobs:   map[api.JobID]*api.JobInfo{},
-		Nodes:  map[string]*api.NodeInfo{},
-		Queues: map[api.QueueID]*api.QueueInfo{},
+		Jobs:           map[api.JobID]*api.JobInfo{},
+		Nodes:          map[string]*api.NodeInfo{},
+		Queues:         map[api.QueueID]*api.QueueInfo{},
+		PodVolumesInfo: map[string]volumescheduling.PodVolumes{},
 
 		plugins:           map[string]Plugin{},
 		jobOrderFns:       map[string]api.CompareFn{},
@@ -154,6 +157,7 @@ func closeSession(ssn *Session) {
 
 	ssn.Jobs = nil
 	ssn.Nodes = nil
+	ssn.PodVolumesInfo = nil
 	ssn.plugins = nil
 	ssn.eventHandlers = nil
 	ssn.jobOrderFns = nil
@@ -254,8 +258,8 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 }
 
 //Allocate the task to the node in the session
-func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
-	if err := ssn.cache.AllocateVolumes(task, hostname); err != nil {
+func (ssn *Session) Allocate(task *api.TaskInfo, hostname string, podVolumes *volumescheduling.PodVolumes) error {
+	if err := ssn.cache.AllocateVolumes(task, hostname, podVolumes); err != nil {
 		return err
 	}
 
@@ -300,7 +304,7 @@ func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
 
 	if ssn.JobReady(job) {
 		for _, task := range job.TaskStatusIndex[api.Allocated] {
-			if err := ssn.dispatch(task); err != nil {
+			if err := ssn.dispatch(task, podVolumes); err != nil {
 				klog.Errorf("Failed to dispatch task <%v/%v>: %v",
 					task.Namespace, task.Name, err)
 				return err
@@ -311,8 +315,8 @@ func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
 	return nil
 }
 
-func (ssn *Session) dispatch(task *api.TaskInfo) error {
-	if err := ssn.cache.BindVolumes(task); err != nil {
+func (ssn *Session) dispatch(task *api.TaskInfo, volumes *volumescheduling.PodVolumes) error {
+	if err := ssn.cache.BindVolumes(task, volumes); err != nil {
 		return err
 	}
 

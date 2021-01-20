@@ -193,7 +193,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			fmt.Errorf("failed to predicates, node info for %s not found", node.Name)
 		}
 
-		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods()) {
+		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods) {
 			klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed",
 				task.Namespace, task.Name, node.Name)
 			return api.NewFitError(task, node, api.NodePodNumberExceeded)

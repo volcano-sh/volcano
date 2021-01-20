@@ -1,5 +1,4 @@
 = vendor/gopkg.in/tomb.v1 licensed under: =
-
 tomb - support for clean goroutine termination in Go.
 
 Copyright (c) 2010-2011 - Gustavo Niemeyer <gustavo@niemeyer.net>

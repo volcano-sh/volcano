@@ -6,16 +6,12 @@ github.com/beorn7/perks/quantile
 github.com/blang/semver
 # github.com/cespare/xxhash/v2 v2.1.1
 github.com/cespare/xxhash/v2
-# github.com/coreos/go-etcd v2.0.0+incompatible
-## explicit
 # github.com/coreos/go-semver v0.3.0
 github.com/coreos/go-semver/semver
 # github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e
 github.com/coreos/go-systemd/journal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 github.com/coreos/pkg/capnslog
-# github.com/cpuguy83/go-md2man v1.0.10
-## explicit
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
 # github.com/docker/distribution v2.7.1+incompatible
@@ -147,8 +143,6 @@ github.com/spf13/cobra
 # github.com/spf13/pflag v1.0.5
 ## explicit
 github.com/spf13/pflag
-# github.com/ugorji/go/codec v0.0.0-20181204163529-d75b2dcb6bc8
-## explicit
 # go.etcd.io/etcd v0.5.0-alpha.5.0.20200819165624-17cef6e3e9d5
 go.etcd.io/etcd/auth/authpb
 go.etcd.io/etcd/clientv3
@@ -764,7 +758,6 @@ sigs.k8s.io/yaml
 # k8s.io/component-base => k8s.io/component-base v0.19.6
 # k8s.io/cri-api => k8s.io/cri-api v0.19.6
 # k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.19.6
-# k8s.io/kubernetes => k8s.io/kubernetes v1.19.6
 # k8s.io/klog => k8s.io/klog v1.0.0
 # k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.19.6
 # k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.19.6
@@ -772,6 +765,7 @@ sigs.k8s.io/yaml
 # k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.19.6
 # k8s.io/kubectl => k8s.io/kubectl v0.19.6
 # k8s.io/kubelet => k8s.io/kubelet v0.19.6
+# k8s.io/kubernetes => k8s.io/kubernetes v1.19.6
 # k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.19.6
 # k8s.io/metrics => k8s.io/metrics v0.19.6
 # k8s.io/node-api => k8s.io/node-api v0.19.6
