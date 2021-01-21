@@ -318,8 +318,7 @@ func (ji *JobInfo) ReadyTaskNum() int32 {
 	var occupied int32
 	for status, tasks := range ji.TaskStatusIndex {
 		if AllocatedStatus(status) ||
-			status == Succeeded ||
-			status == Pipelined {
+			status == Succeeded {
 			occupied += int32(len(tasks))
 			continue
 		}
