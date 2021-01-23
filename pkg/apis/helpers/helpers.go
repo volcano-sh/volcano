@@ -50,17 +50,13 @@ var CommandKind = vcbus.SchemeGroupVersion.WithKind("Command")
 // V1beta1QueueKind is queue kind with v1alpha2 version.
 var V1beta1QueueKind = schedulerv1beta1.SchemeGroupVersion.WithKind("Queue")
 
-/*
-CreateOrUpdateConfigMap :
-1. creates config map resource if not present
-2. updates config map is necessary.
-*/
+// CreateOrUpdateConfigMap creates config map if not present or updates config map if necessary.
 func CreateOrUpdateConfigMap(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[string]string, cmName string) error {
 	// If ConfigMap does not exist, create one for Job.
 	cmOld, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(context.TODO(), cmName, metav1.GetOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
-			klog.V(3).Infof("Failed to get Configmap for Job <%s/%s>: %v",
+			klog.V(3).Infof("Failed to get ConfigMap for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
 			return err
 		}
@@ -99,16 +95,10 @@ func CreateOrUpdateConfigMap(job *vcbatch.Job, kubeClients kubernetes.Interface,
 	return nil
 }
 
-/*
-CreateOrUpdateSecret :
-1. creates secret if not present
-2. updates secret is necessary.
-*/
+// CreateOrUpdateSecret creates secret if not present or updates secret if necessary
 func CreateOrUpdateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[string][]byte, secretName string) error {
 	secretOld, err := kubeClients.CoreV1().Secrets(job.Namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
 	if err != nil {
-		klog.Infof("!!!!!!!!!!!!!!!!!!!!Create secret for Job <%s/%s>",
-			job.Namespace, job.Name)
 		if !apierrors.IsNotFound(err) {
 			klog.V(3).Infof("Failed to get Secret for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
@@ -135,18 +125,11 @@ func CreateOrUpdateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, da
 		return nil
 	}
 
-	klog.Infof("old secret: %+v", secretOld)
-	klog.Infof("cur secret data: %+v", data)
-
 	// no changes
 	if reflect.DeepEqual(secretOld.Data, data) {
-		klog.Infof("!!!!!!!!!!!!!!!!!!!!secret not changes for Job <%s/%s>",
-			job.Namespace, job.Name)
 		return nil
 	}
 
-	klog.Infof("!!!!!!!!!!!!!!!!!!!!Update secret for Job <%s/%s>",
-		job.Namespace, job.Name)
 	secretOld.Data = data
 	if _, err := kubeClients.CoreV1().Secrets(job.Namespace).Update(context.TODO(), secretOld, metav1.UpdateOptions{}); err != nil {
 		klog.V(3).Infof("Failed to update Secret for Job <%s/%s>: %v",

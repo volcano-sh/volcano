@@ -75,12 +75,12 @@ vcctl: init
 image_bins: init
 	GO111MODULE=off go get github.com/mitchellh/gox
 	CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vcctl ./cmd/cli
-	for name in scheduler controller-manager webhook-manager; do\
+	for name in controller-manager webhook-manager; do\
 		CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-$$name ./cmd/$$name; \
 	done
 
-# 	# scheduler need cgo enabled to support plugin
-# 	CC=${CC} CGO_ENABLED=1 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-scheduler ./cmd/scheduler;
+	# scheduler need cgo enabled to support plugin
+	CC=${CC} CGO_ENABLED=1 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-scheduler ./cmd/scheduler;
 
 images: image_bins
 	for name in controller-manager scheduler webhook-manager; do\
