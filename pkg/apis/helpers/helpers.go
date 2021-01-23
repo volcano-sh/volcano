@@ -99,25 +99,62 @@ func CreateOrUpdateConfigMap(job *vcbatch.Job, kubeClients kubernetes.Interface,
 	return nil
 }
 
-// CreateSecret create secret.
-func CreateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[string][]byte, secretName string) error {
-	secret := &v1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: job.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(job, JobKind),
-			},
-		},
-		Data: data,
-	}
+/*
+CreateOrUpdateSecret :
+1. creates secret if not present
+2. updates secret is necessary.
+*/
+func CreateOrUpdateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[string][]byte, secretName string) error {
+	secretOld, err := kubeClients.CoreV1().Secrets(job.Namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
+	if err != nil {
+		klog.Infof("!!!!!!!!!!!!!!!!!!!!Create secret for Job <%s/%s>",
+			job.Namespace, job.Name)
+		if !apierrors.IsNotFound(err) {
+			klog.V(3).Infof("Failed to get Secret for Job <%s/%s>: %v",
+				job.Namespace, job.Name, err)
+			return err
+		}
 
-	_, err := kubeClients.CoreV1().Secrets(job.Namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
-	if apierrors.IsAlreadyExists(err) {
+		secret := &v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      secretName,
+				Namespace: job.Namespace,
+				OwnerReferences: []metav1.OwnerReference{
+					*metav1.NewControllerRef(job, JobKind),
+				},
+			},
+			Data: data,
+		}
+
+		if _, err := kubeClients.CoreV1().Secrets(job.Namespace).Create(context.TODO(), secret, metav1.CreateOptions{}); err != nil {
+			klog.V(3).Infof("Failed to create Secret for Job <%s/%s>: %v",
+				job.Namespace, job.Name, err)
+			return err
+		}
+
 		return nil
 	}
 
-	return err
+	klog.Infof("old secret: %+v", secretOld)
+	klog.Infof("cur secret data: %+v", data)
+
+	// no changes
+	if reflect.DeepEqual(secretOld.Data, data) {
+		klog.Infof("!!!!!!!!!!!!!!!!!!!!secret not changes for Job <%s/%s>",
+			job.Namespace, job.Name)
+		return nil
+	}
+
+	klog.Infof("!!!!!!!!!!!!!!!!!!!!Update secret for Job <%s/%s>",
+		job.Namespace, job.Name)
+	secretOld.Data = data
+	if _, err := kubeClients.CoreV1().Secrets(job.Namespace).Update(context.TODO(), secretOld, metav1.UpdateOptions{}); err != nil {
+		klog.V(3).Infof("Failed to update Secret for Job <%s/%s>: %v",
+			job.Namespace, job.Name, err)
+		return err
+	}
+
+	return nil
 }
 
 // DeleteConfigmap deletes the config map resource.
