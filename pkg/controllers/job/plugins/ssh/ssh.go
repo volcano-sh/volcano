@@ -77,7 +77,7 @@ func (sp *sshPlugin) OnJobAdd(job *batch.Job) error {
 		return err
 	}
 
-	if err := helpers.CreateSecret(job, sp.client.KubeClients, data, sp.secretName(job)); err != nil {
+	if err := helpers.CreateOrUpdateSecret(job, sp.client.KubeClients, data, sp.secretName(job)); err != nil {
 		return fmt.Errorf("create secret for job <%s/%s> with ssh plugin failed for %v",
 			job.Namespace, job.Name, err)
 	}
@@ -99,7 +99,17 @@ func (sp *sshPlugin) OnJobDelete(job *batch.Job) error {
 	return nil
 }
 
-func (sp *sshPlugin) OnJobUpdate(_ *batch.Job) error {
+func (sp *sshPlugin) OnJobUpdate(job *batch.Job) error {
+	data, err := generateRsaKey(job)
+	if err != nil {
+		return err
+	}
+
+	if err := helpers.CreateOrUpdateSecret(job, sp.client.KubeClients, data, sp.secretName(job)); err != nil {
+		return fmt.Errorf("update secret for job <%s/%s> with ssh plugin failed for %v",
+			job.Namespace, job.Name, err)
+	}
+
 	return nil
 }
 
@@ -112,25 +122,7 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 
 	var mode int32 = 0600
 	sshVolume.Secret = &v1.SecretVolumeSource{
-		SecretName: secretName,
-		Items: []v1.KeyToPath{
-			{
-				Key:  SSHPrivateKey,
-				Path: SSHRelativePath + "/" + SSHPrivateKey,
-			},
-			{
-				Key:  SSHPublicKey,
-				Path: SSHRelativePath + "/" + SSHPublicKey,
-			},
-			{
-				Key:  SSHAuthorizedKeys,
-				Path: SSHRelativePath + "/" + SSHAuthorizedKeys,
-			},
-			{
-				Key:  SSHConfig,
-				Path: SSHRelativePath + "/" + SSHConfig,
-			},
-		},
+		SecretName:  secretName,
 		DefaultMode: &mode,
 	}
 
@@ -144,7 +136,6 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 	for i, c := range pod.Spec.Containers {
 		vm := v1.VolumeMount{
 			MountPath: sp.sshKeyFilePath,
-			SubPath:   SSHRelativePath,
 			Name:      secretName,
 		}
 
