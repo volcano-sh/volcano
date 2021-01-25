@@ -54,6 +54,9 @@ var _ = Describe("MPI E2E Test", func() {
 					workingDir: "/home",
 					//Need sometime waiting for worker node ready
 					command: `sleep 5;
+cat /etc/ssh/sshd_config | grep -v StrictModes > /etc/ssh/sshd_config.new && \
+echo "StrictModes no" >> /etc/ssh/sshd_config.new && \
+mv /etc/ssh/sshd_config.new /etc/ssh/sshd_config;
 mkdir -p /var/run/sshd; /usr/sbin/sshd;
 mpiexec --allow-run-as-root --hostfile /etc/volcano/mpiworker.host -np 2 mpi_hello_world > /home/re`,
 				},
@@ -64,7 +67,10 @@ mpiexec --allow-run-as-root --hostfile /etc/volcano/mpiworker.host -np 2 mpi_hel
 					min:        2,
 					rep:        2,
 					workingDir: "/home",
-					command:    "mkdir -p /var/run/sshd; /usr/sbin/sshd -D;",
+					command: `cat /etc/ssh/sshd_config | grep -v StrictModes > /etc/ssh/sshd_config.new && \
+echo "StrictModes no" >> /etc/ssh/sshd_config.new && \
+mv /etc/ssh/sshd_config.new /etc/ssh/sshd_config;
+mkdir -p /var/run/sshd; /usr/sbin/sshd -D;`,
 				},
 			},
 		}

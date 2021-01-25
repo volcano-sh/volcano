@@ -14,4 +14,8 @@ RUN git clone https://github.com/wesleykendall/mpitutorial \
     && apt-get autoremove -y git \
     && apt-get autoremove -y build-essential \
     && rm -rf "/mpitutorial"
+# Disable OpenSSH checking file modes and ownership of the user's files and home directory before accepting login
+RUN cat /etc/ssh/sshd_config | grep -v StrictModes > /etc/ssh/sshd_config.new && \
+    echo "StrictModes no" >> /etc/ssh/sshd_config.new && \
+    mv /etc/ssh/sshd_config.new /etc/ssh/sshd_config
 CMD mkdir -p /var/run/sshd; /usr/sbin/sshd;
