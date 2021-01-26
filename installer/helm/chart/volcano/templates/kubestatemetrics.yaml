@@ -168,8 +168,10 @@ spec:
             initialDelaySeconds: 5
             timeoutSeconds: 5
       dnsPolicy: ClusterFirst
+      {{ if eq .Values.custom.metrics_enable "true" }}
       nodeSelector:
         node.kubernetes.io/instance-type: controlpanel
+      {{ end }}
       serviceAccountName: kube-state-metrics
 ---
 apiVersion: v1

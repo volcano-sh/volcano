@@ -66,7 +66,7 @@ type NodeState struct {
 
 // NewNodeInfo is used to create new nodeInfo object
 func NewNodeInfo(node *v1.Node) *NodeInfo {
-	nodeinfo := &NodeInfo{
+	nodeInfo := &NodeInfo{
 		Releasing: EmptyResource(),
 		Pipelined: EmptyResource(),
 		Idle:      EmptyResource(),
@@ -81,16 +81,16 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 	}
 
 	if node != nil {
-		nodeinfo.Name = node.Name
-		nodeinfo.Node = node
-		nodeinfo.Idle = NewResource(node.Status.Allocatable)
-		nodeinfo.Allocatable = NewResource(node.Status.Allocatable)
-		nodeinfo.Capability = NewResource(node.Status.Capacity)
+		nodeInfo.Name = node.Name
+		nodeInfo.Node = node
+		nodeInfo.Idle = NewResource(node.Status.Allocatable)
+		nodeInfo.Allocatable = NewResource(node.Status.Allocatable)
+		nodeInfo.Capability = NewResource(node.Status.Capacity)
 	}
-	nodeinfo.setNodeGPUInfo(node)
-	nodeinfo.setNodeState(node)
+	nodeInfo.setNodeGPUInfo(node)
+	nodeInfo.setNodeState(node)
 
-	return nodeinfo
+	return nodeInfo
 }
 
 // Clone used to clone nodeInfo Object
@@ -283,7 +283,7 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 			ni.Releasing.Sub(task.Resreq)
 			ni.Idle.Add(task.Resreq)
 			ni.Used.Sub(task.Resreq)
-			ni.AddGPUResource(ti.Pod)
+			ni.SubGPUResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Sub(task.Resreq)
 		default:

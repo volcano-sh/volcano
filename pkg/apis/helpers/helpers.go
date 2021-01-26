@@ -50,17 +50,13 @@ var CommandKind = vcbus.SchemeGroupVersion.WithKind("Command")
 // V1beta1QueueKind is queue kind with v1alpha2 version.
 var V1beta1QueueKind = schedulerv1beta1.SchemeGroupVersion.WithKind("Queue")
 
-/*
-CreateOrUpdateConfigMap :
-1. creates config map resource if not present
-2. updates config map is necessary.
-*/
+// CreateOrUpdateConfigMap creates config map if not present or updates config map if necessary.
 func CreateOrUpdateConfigMap(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[string]string, cmName string) error {
 	// If ConfigMap does not exist, create one for Job.
 	cmOld, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(context.TODO(), cmName, metav1.GetOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
-			klog.V(3).Infof("Failed to get Configmap for Job <%s/%s>: %v",
+			klog.V(3).Infof("Failed to get ConfigMap for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
 			return err
 		}
@@ -99,25 +95,49 @@ func CreateOrUpdateConfigMap(job *vcbatch.Job, kubeClients kubernetes.Interface,
 	return nil
 }
 
-// CreateSecret create secret.
-func CreateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[string][]byte, secretName string) error {
-	secret := &v1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: job.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(job, JobKind),
-			},
-		},
-		Data: data,
-	}
+// CreateOrUpdateSecret creates secret if not present or updates secret if necessary
+func CreateOrUpdateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[string][]byte, secretName string) error {
+	secretOld, err := kubeClients.CoreV1().Secrets(job.Namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			klog.V(3).Infof("Failed to get Secret for Job <%s/%s>: %v",
+				job.Namespace, job.Name, err)
+			return err
+		}
 
-	_, err := kubeClients.CoreV1().Secrets(job.Namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
-	if apierrors.IsAlreadyExists(err) {
+		secret := &v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      secretName,
+				Namespace: job.Namespace,
+				OwnerReferences: []metav1.OwnerReference{
+					*metav1.NewControllerRef(job, JobKind),
+				},
+			},
+			Data: data,
+		}
+
+		if _, err := kubeClients.CoreV1().Secrets(job.Namespace).Create(context.TODO(), secret, metav1.CreateOptions{}); err != nil {
+			klog.V(3).Infof("Failed to create Secret for Job <%s/%s>: %v",
+				job.Namespace, job.Name, err)
+			return err
+		}
+
 		return nil
 	}
 
-	return err
+	// no changes
+	if reflect.DeepEqual(secretOld.Data, data) {
+		return nil
+	}
+
+	secretOld.Data = data
+	if _, err := kubeClients.CoreV1().Secrets(job.Namespace).Update(context.TODO(), secretOld, metav1.UpdateOptions{}); err != nil {
+		klog.V(3).Infof("Failed to update Secret for Job <%s/%s>: %v",
+			job.Namespace, job.Name, err)
+		return err
+	}
+
+	return nil
 }
 
 // DeleteConfigmap deletes the config map resource.

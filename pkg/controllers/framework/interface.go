@@ -29,6 +29,7 @@ type ControllerOption struct {
 	SharedInformerFactory informers.SharedInformerFactory
 	SchedulerName         string
 	WorkerNum             uint32
+	MaxRequeueNum         int
 }
 
 // Controller is the interface of all controllers.

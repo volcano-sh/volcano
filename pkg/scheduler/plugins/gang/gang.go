@@ -73,7 +73,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
 		var victims []*api.TaskInfo
-		var pJob *api.JobInfo = ssn.Jobs[preemptor.Job]
+		pJob := ssn.Jobs[preemptor.Job]
 
 		for _, preemptee := range preemptees {
 			job := ssn.Jobs[preemptee.Job]
