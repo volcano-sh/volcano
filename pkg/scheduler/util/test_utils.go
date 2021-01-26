@@ -166,6 +166,6 @@ func (fvb *FakeVolumeBinder) AllocateVolumes(task *api.TaskInfo, hostname string
 }
 
 // BindVolumes is a empty function
-func (fvb *FakeVolumeBinder) BindVolumes(task *api.TaskInfo) error {
+func (fvb *FakeVolumeBinder) BindVolumes(task *api.TaskInfo, podVolumes *volumescheduling.PodVolumes) error {
 	return nil
 }

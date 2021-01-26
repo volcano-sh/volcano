@@ -711,6 +711,7 @@ k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeports
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/noderesources
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeunschedulable
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration
+k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding
 k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1
 k8s.io/kubernetes/pkg/scheduler/internal/parallelize
 k8s.io/kubernetes/pkg/scheduler/util
