@@ -18,7 +18,7 @@ REPO_PATH=volcano.sh/volcano
 IMAGE_PREFIX=volcanosh/vc
 CRD_OPTIONS ?= "crd:crdVersions=v1"
 CC ?= "gcc"
-SUPPORT_PLUGINS ?= "no"
+SUPPORT_PLUGINS ?= "yes"
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
