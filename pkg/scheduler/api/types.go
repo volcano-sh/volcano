@@ -159,3 +159,6 @@ type TargetJobFn func([]*JobInfo) *JobInfo
 
 // ReservedNodesFn is the func declaration used to select the reserved nodes
 type ReservedNodesFn func()
+
+// VictimTasksFn is the func declaration used to select victim tasks
+type VictimTasksFn func() []*TaskInfo
