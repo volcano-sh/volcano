@@ -62,6 +62,7 @@ tiers:
 					EnabledNodeOrder:      &trueValue,
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
+					EnabledVictim:         &trueValue,
 				},
 				{
 					Name:                  "gang",
@@ -78,6 +79,7 @@ tiers:
 					EnabledNodeOrder:      &trueValue,
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
+					EnabledVictim:         &trueValue,
 				},
 				{
 					Name:                  "conformance",
@@ -94,6 +96,7 @@ tiers:
 					EnabledNodeOrder:      &trueValue,
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
+					EnabledVictim:         &trueValue,
 				},
 			},
 		},
@@ -114,6 +117,7 @@ tiers:
 					EnabledNodeOrder:      &trueValue,
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
+					EnabledVictim:         &trueValue,
 				},
 				{
 					Name:                  "predicates",
@@ -130,6 +134,7 @@ tiers:
 					EnabledNodeOrder:      &trueValue,
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
+					EnabledVictim:         &trueValue,
 				},
 				{
 					Name:                  "proportion",
@@ -146,6 +151,7 @@ tiers:
 					EnabledNodeOrder:      &trueValue,
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
+					EnabledVictim:         &trueValue,
 				},
 				{
 					Name:                  "nodeorder",
@@ -162,6 +168,7 @@ tiers:
 					EnabledNodeOrder:      &trueValue,
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
+					EnabledVictim:         &trueValue,
 				},
 			},
 		},
