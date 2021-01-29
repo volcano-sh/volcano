@@ -42,17 +42,26 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 
 	if queue.Spec.Hierarchy != nil {
 		c.hgMutex.RLock()
-		defer c.hgMutex.RUnlock()
-
 		for _, childQueueName := range c.hierarchyGraph[queue.Name] {
 			childQueue, _ := c.queueLister.Get(childQueueName)
+			if childQueue == nil {
+				req := &apis.Request{
+					QueueName: queue.Name,
+					Event:     v1alpha1.OutOfSyncEvent,
+					Action:    v1alpha1.SyncQueueAction,
+				}
+				c.enqueue(req)
+
+				return fmt.Errorf("%s queue's child queue: %s haven't been created yet", queue.Name, childQueueName)
+			}
 
 			queueStatus.Unknown += childQueue.Status.Unknown
 			queueStatus.Pending += childQueue.Status.Pending
 			queueStatus.Running += childQueue.Status.Running
 			queueStatus.Inqueue += childQueue.Status.Inqueue
-			klog.V(4).Info("dev child queues: ", c.hierarchyGraph[queue.Name])
 		}
+		c.hgMutex.RUnlock()
+
 	} else {
 
 		for _, pgKey := range podGroups {
@@ -97,7 +106,6 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 	}
 
 	c.hpMutex.RLock()
-	defer c.hpMutex.RUnlock()
 	if c.hierarchyParent[queue.Name] != "" {
 		req := &apis.Request{
 			QueueName: c.hierarchyParent[queue.Name],
@@ -107,8 +115,8 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 		}
 
 		c.enqueue(req)
-		klog.V(4).Info(c.hierarchyParent[queue.Name], " its req: ", req)
 	}
+	c.hpMutex.RUnlock()
 
 	return nil
 }

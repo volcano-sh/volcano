@@ -294,6 +294,7 @@ func (c *queuecontroller) handleQueue(req *apis.Request) error {
 					c.hpMutex.Unlock()
 
 					_, err = c.vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), newQueue, metav1.CreateOptions{})
+					klog.V(4).Infof("%s queue create its child queue: %s", queue.Name, newQueue.Name)
 					if err != nil {
 						return fmt.Errorf("create queue %s failed for %v", newQueue.Name, err)
 					}
@@ -312,6 +313,30 @@ func (c *queuecontroller) handleQueue(req *apis.Request) error {
 				return fmt.Errorf("update queue %s failed for %v", oldQueue.Name, err)
 			}
 		}
+
+		c.hgMutex.Lock()
+		var newChildQueuesGraph []string
+		for _, checkQueue := range c.hierarchyGraph[queue.Name] {
+			needDelete := true
+			for _, newQueue := range childQueues {
+				if checkQueue == newQueue.Name {
+					needDelete = false
+					break
+				}
+			}
+			if needDelete {
+				klog.V(4).Infof("%s queue delete its child queue: %s", queue.Name, checkQueue)
+
+				err = c.vcClient.SchedulingV1beta1().Queues().Delete(context.TODO(), checkQueue, metav1.DeleteOptions{})
+				if err != nil {
+					return fmt.Errorf("delete queue %s failed for %v", checkQueue, err)
+				}
+				continue
+			}
+			newChildQueuesGraph = append(newChildQueuesGraph, checkQueue)
+		}
+		c.hierarchyGraph[queue.Name] = newChildQueuesGraph
+		c.hgMutex.Unlock()
 	}
 
 	queueState := queuestate.NewState(queue)

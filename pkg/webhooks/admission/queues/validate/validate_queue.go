@@ -101,6 +101,9 @@ func validateQueue(queue *schedulingv1beta1.Queue) error {
 	errs = append(errs, validateStateOfQueue(queue.Status.State, resourcePath.Child("spec").Child("state"))...)
 	errs = append(errs, validateWeightOfQueue(queue.Spec.Weight, resourcePath.Child("spec").Child("weight"))...)
 	errs = append(errs, validateHierarchicalAttributes(queue, resourcePath.Child("metadata").Child("annotations"))...)
+	if queue.Name == "root" {
+		errs = append(errs, validateHierarchyQueue(queue.Spec.Hierarchy, resourcePath.Child("spec").Child("hierarchy"))...)
+	}
 
 	if len(errs) > 0 {
 		return errs.ToAggregate()
@@ -108,6 +111,43 @@ func validateQueue(queue *schedulingv1beta1.Queue) error {
 
 	return nil
 }
+
+func validateHierarchyQueue(value []schedulingv1beta1.HierarchyAttr, fldPath *field.Path) field.ErrorList {
+	errs := field.ErrorList{}
+	queueList, _ := config.VolcanoClient.SchedulingV1beta1().Queues().List(context.TODO(), metav1.ListOptions{})
+	if len(queueList.Items) == 0 {
+		return errs
+	}
+
+	checkQueues := make(map[string]bool, 0)
+	for _, hierarchyAttr := range value {
+		tempQueue := strings.Split(hierarchyAttr.Name, ".")
+		for _, v := range tempQueue {
+			if _, ok := checkQueues[v]; !ok {
+				checkQueues[v] = true
+			}
+		}
+	}
+
+	for _, q := range queueList.Items {
+		if q.Name == "root" {
+			continue
+		}
+		isMatching := false
+		for checkQ := range checkQueues {
+			if q.Name == checkQ {
+				isMatching = true
+				break
+			}
+		}
+		if !isMatching && q.Status.State != "Closed" {
+			return append(errs, field.Invalid(fldPath, value, fmt.Sprintf("Modify hierarchy queues failed, %s queue state must be in Closed", q.Name)))
+		}
+	}
+
+	return errs
+}
+
 func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *field.Path) field.ErrorList {
 	errs := field.ErrorList{}
 	hierarchy := queue.Annotations[schedulingv1beta1.KubeHierarchyAnnotationKey]
