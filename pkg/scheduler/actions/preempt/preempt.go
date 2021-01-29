@@ -268,7 +268,7 @@ func victimTasks(ssn *framework.Session) {
 	stmt := framework.NewStatement(ssn)
 	victimTasks := ssn.VictimTasks()
 	for _, victim := range victimTasks {
-		if err := stmt.Evict(victim, "evict"); err != nil {
+		if err := stmt.Evict(victim.Clone(), "evict"); err != nil {
 			klog.Errorf("Failed to evict Task <%s/%s>: %v",
 				victim.Namespace, victim.Name, err)
 			continue
