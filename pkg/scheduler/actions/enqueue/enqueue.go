@@ -60,7 +60,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 	queueMap := map[api.QueueID]*api.QueueInfo{}
 	jobsMap := map[api.QueueID]*util.PriorityQueue{}
-
+	inqueueJobReq := api.EmptyResource()
 	for _, job := range ssn.Jobs {
 		if job.ScheduleStartTimestamp.IsZero() {
 			ssn.Jobs[job.UID].ScheduleStartTimestamp = metav1.Time{
@@ -86,6 +86,10 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 			klog.V(3).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
 			jobsMap[job.Queue].Push(job)
 		}
+		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
+			minReq := api.NewResource(*job.PodGroup.Spec.MinResources)
+			inqueueJobReq.Add(minReq)
+		}
 	}
 
 	klog.V(3).Infof("Try to enqueue PodGroup to %d Queues", len(jobsMap))
@@ -103,7 +107,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 		total.Add(node.Allocatable)
 		used.Add(node.Used)
 	}
-	idle := total.Clone().Multi(enqueue.getOverCommitFactor(ssn)).Sub(used).Sub(lockedNodesIdle)
+	idle := total.Clone().Multi(enqueue.getOverCommitFactor(ssn)).Sub(used).Sub(lockedNodesIdle).Sub(inqueueJobReq)
 
 	for {
 		if queues.Empty() {
