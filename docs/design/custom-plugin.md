@@ -2,20 +2,44 @@
 
 ## Background
 
-Until now, plugins like `binpack`, `drf`, `gang` are provided by official.
-But some users may want to implement the plugin by themselves. So if scheduler can dynamically load plugins, that will make it more flexible when handling different business scenarios.
+Until now, plugins like `binpack`, `drf`, `gang` are provided by official. But some users may want to implement the
+plugin by themselves. So if scheduler can dynamically load plugins, that will make it more flexible when handling
+different business scenarios.
 
 ## How to build a plugin
 
-### 1. Coding
+### 1. Build pluginable scheduler
+
+#### A. `alpine`
+
+If use `alpine` as base docker image, you should use `musl-gcc` to build scheduler.
+
+```bash
+# install musl
+wget http://musl.libc.org/releases/musl-1.2.1.tar.gz
+tar -xf musl-1.2.1.tar.gz && cd musl-1.2.1
+./configure
+make && sudo make install
+
+# build scheduler
+make images CC=/usr/local/musl/bin/musl-gcc SUPPORT_PLUGINS=yes
+```
+
+If use `ubuntu` as base docker image
+
+```bash
+make images SUPPORT_PLUGINS=yes
+```
+
+### 2. Coding
 
 ```go
 // magic.go
 
-package main  // note!!! package must be named main
+package main // note!!! package must be named main
 
 import (
-    "volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
 const PluginName = "magic"
@@ -35,7 +59,7 @@ func (mp *magicPlugin) OnSessionOpen(ssn *framework.Session) {}
 func (mp *magicPlugin) OnSessionClose(ssn *framework.Session) {}
 ```
 
-### 2. Build the plugin to .so
+### 3. Build the plugin to .so
 
 #### A. Use musl-libc build plugin
 
@@ -69,7 +93,7 @@ you can just build the plugin in local.
 CGO_ENABLED=1 go build -buildmode=plugin magic.go
 ```
 
-### 3. Add plugins into container
+### 4. Add plugins into container
 
 Your can build your docker image
 

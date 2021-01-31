@@ -18,6 +18,7 @@ REPO_PATH=volcano.sh/volcano
 IMAGE_PREFIX=volcanosh/vc
 CRD_OPTIONS ?= "crd:crdVersions=v1"
 CC ?= "gcc"
+SUPPORT_PLUGINS ?= "no"
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -79,8 +80,11 @@ image_bins: init
 		CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-$$name ./cmd/$$name; \
 	done
 
-	# scheduler need cgo enabled to support plugin
-	CC=${CC} CGO_ENABLED=1 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-scheduler ./cmd/scheduler;
+	if [ ${SUPPORT_PLUGINS} = "yes" ];then\
+		CC=${CC} CGO_ENABLED=1 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-scheduler ./cmd/scheduler;\
+	else\
+	 	CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-scheduler ./cmd/scheduler;\
+  	fi;
 
 images: image_bins
 	for name in controller-manager scheduler webhook-manager; do\
