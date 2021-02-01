@@ -101,6 +101,11 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 	pod.Annotations[batch.JobNameKey] = job.Name
 	pod.Annotations[batch.QueueNameKey] = job.Spec.Queue
 	pod.Annotations[batch.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
+	if len(job.Annotations) > 0 {
+		if value, found := job.Annotations[schedulingv2.PodPreemptable]; found {
+			pod.Annotations[schedulingv2.PodPreemptable] = value
+		}
+	}
 
 	if len(pod.Labels) == 0 {
 		pod.Labels = make(map[string]string)

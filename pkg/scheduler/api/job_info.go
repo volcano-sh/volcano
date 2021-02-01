@@ -49,6 +49,7 @@ type TaskInfo struct {
 	Status      TaskStatus
 	Priority    int32
 	VolumeReady bool
+	Preemptable bool
 
 	Pod *v1.Pod
 }
@@ -67,20 +68,22 @@ func getJobID(pod *v1.Pod) JobID {
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	req := GetPodResourceWithoutInitContainers(pod)
 	initResreq := GetPodResourceRequest(pod)
+	preemptable := GetPodPreemptable(pod)
 
 	jobID := getJobID(pod)
 
 	ti := &TaskInfo{
-		UID:        TaskID(pod.UID),
-		Job:        jobID,
-		Name:       pod.Name,
-		Namespace:  pod.Namespace,
-		NodeName:   pod.Spec.NodeName,
-		Status:     getTaskStatus(pod),
-		Priority:   1,
-		Pod:        pod,
-		Resreq:     req,
-		InitResreq: initResreq,
+		UID:         TaskID(pod.UID),
+		Job:         jobID,
+		Name:        pod.Name,
+		Namespace:   pod.Namespace,
+		NodeName:    pod.Spec.NodeName,
+		Status:      getTaskStatus(pod),
+		Priority:    1,
+		Pod:         pod,
+		Resreq:      req,
+		InitResreq:  initResreq,
+		Preemptable: preemptable,
 	}
 
 	if pod.Spec.Priority != nil {
@@ -104,13 +107,14 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		Resreq:      ti.Resreq.Clone(),
 		InitResreq:  ti.InitResreq.Clone(),
 		VolumeReady: ti.VolumeReady,
+		Preemptable: ti.Preemptable,
 	}
 }
 
 // String returns the taskInfo details in a string
 func (ti TaskInfo) String() string {
-	return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v, resreq %v",
-		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority, ti.Resreq)
+	return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v, resreq %v, preemptable %v",
+		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority, ti.Resreq, ti.Preemptable)
 }
 
 // JobID is the type of JobInfo's ID.
@@ -148,6 +152,8 @@ type JobInfo struct {
 	PodGroup          *PodGroup
 
 	ScheduleStartTimestamp metav1.Time
+
+	Preemptable bool
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks

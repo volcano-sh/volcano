@@ -24,6 +24,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
 // Refer k8s.io/kubernetes/pkg/scheduler/algorithm/predicates/predicates.go#GetResourceRequest.
@@ -65,6 +66,21 @@ func GetPodResourceRequest(pod *v1.Pod) *Resource {
 	}
 
 	return result
+}
+
+// GetPodPreemptable return volcano.sh/preemptable value for pod
+func GetPodPreemptable(pod *v1.Pod) bool {
+	if len(pod.Annotations) > 0 {
+		if value, found := pod.Annotations[v1beta1.PodPreemptable]; found {
+			b, err := strconv.ParseBool(value)
+			if err != nil {
+				klog.Warningf("invalid %s=%s", v1beta1.PodPreemptable, value)
+				return false
+			}
+			return b
+		}
+	}
+	return false
 }
 
 // GetPodResourceWithoutInitContainers returns Pod's resource request, it does not contain
