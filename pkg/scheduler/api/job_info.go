@@ -200,6 +200,7 @@ func (ji *JobInfo) addTaskIndex(ti *TaskInfo) {
 
 // AddTaskInfo is used to add a task to a job
 func (ji *JobInfo) AddTaskInfo(ti *TaskInfo) {
+	ji.Preemptable = ti.Preemptable
 	ji.Tasks[ti.UID] = ti
 	ji.addTaskIndex(ti)
 	ji.TotalRequest.Add(ti.Resreq)
@@ -273,6 +274,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},
+		Preemptable:     ji.Preemptable,
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
