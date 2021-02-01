@@ -72,9 +72,12 @@ func GetPodResourceRequest(pod *v1.Pod) *Resource {
 func GetPodPreemptable(pod *v1.Pod) bool {
 	if len(pod.Annotations) > 0 {
 		if value, found := pod.Annotations[v1beta1.PodPreemptable]; found {
-			if value == "true" {
-				return true
+			b, err := strconv.ParseBool(value)
+			if err != nil {
+				klog.Warningf("invalid %s=%s", v1beta1.PodPreemptable, value)
+				return false
 			}
+			return b
 		}
 	}
 	return false
