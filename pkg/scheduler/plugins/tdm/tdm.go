@@ -270,11 +270,24 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 		return 1
 	}
 
+	jobPipelinedFn := func(obj interface{}) bool {
+		jobInfo := obj.(*api.JobInfo)
+		if jobInfo.Preemptable {
+			// ignore preemptable job
+			return true
+		}
+		// non preemptable job(high priority) try to feed all its tasks
+		occupied := jobInfo.WaitingTaskNum() + jobInfo.ReadyTaskNum()
+		return occupied >= (int32)(len(jobInfo.Tasks))
+
+	}
+
 	ssn.AddPredicateFn(bp.Name(), predicateFn)
 	ssn.AddNodeOrderFn(bp.Name(), nodeOrderFn)
 	ssn.AddPreemptableFn(bp.Name(), preemptableFn)
 	ssn.AddVictimTasksFns(bp.Name(), victimsFn)
 	ssn.AddJobOrderFn(bp.Name(), jobOrderFn)
+	ssn.AddJobPipelinedFn(bp.Name(), jobPipelinedFn)
 }
 
 func (bp *tdmPlugin) maxVictims(victims []*api.TaskInfo) []*api.TaskInfo {
