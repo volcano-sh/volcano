@@ -99,6 +99,7 @@ func (sp *sshPlugin) OnJobDelete(job *batch.Job) error {
 	return nil
 }
 
+// TODO: currently a container using a Secret as a subPath volume mount will not receive Secret updates.
 func (sp *sshPlugin) OnJobUpdate(job *batch.Job) error {
 	data, err := generateRsaKey(job)
 	if err != nil {
@@ -122,7 +123,25 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 
 	var mode int32 = 0600
 	sshVolume.Secret = &v1.SecretVolumeSource{
-		SecretName:  secretName,
+		SecretName: secretName,
+		Items: []v1.KeyToPath{
+			{
+				Key:  SSHPrivateKey,
+				Path: SSHRelativePath + "/" + SSHPrivateKey,
+			},
+			{
+				Key:  SSHPublicKey,
+				Path: SSHRelativePath + "/" + SSHPublicKey,
+			},
+			{
+				Key:  SSHAuthorizedKeys,
+				Path: SSHRelativePath + "/" + SSHAuthorizedKeys,
+			},
+			{
+				Key:  SSHConfig,
+				Path: SSHRelativePath + "/" + SSHConfig,
+			},
+		},
 		DefaultMode: &mode,
 	}
 
@@ -136,6 +155,7 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 	for i, c := range pod.Spec.Containers {
 		vm := v1.VolumeMount{
 			MountPath: sp.sshKeyFilePath,
+			SubPath:   SSHRelativePath,
 			Name:      secretName,
 		}
 

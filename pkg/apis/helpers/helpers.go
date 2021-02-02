@@ -126,7 +126,8 @@ func CreateOrUpdateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, da
 	}
 
 	// no changes
-	if reflect.DeepEqual(secretOld.Data, data) {
+	SSHConfig := "config"
+	if reflect.DeepEqual(secretOld.Data[SSHConfig], data[SSHConfig]) {
 		return nil
 	}
 
