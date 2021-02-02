@@ -247,6 +247,7 @@ func (ssn *Session) JobReady(obj interface{}) bool {
 
 // JobPipelined invoke pipelined function of the plugins
 func (ssn *Session) JobPipelined(obj interface{}) bool {
+	var hasFound bool
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledJobPipelined) {
@@ -256,10 +257,15 @@ func (ssn *Session) JobPipelined(obj interface{}) bool {
 			if !found {
 				continue
 			}
+			hasFound = true
 
 			if !jrf(obj) {
 				return false
 			}
+		}
+		// this tier registed function
+		if hasFound {
+			return true
 		}
 	}
 
