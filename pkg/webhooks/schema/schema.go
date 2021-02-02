@@ -104,3 +104,22 @@ func DecodeQueue(object runtime.RawExtension, resource metav1.GroupVersionResour
 
 	return &queue, nil
 }
+
+func DecodeConfigmap(object runtime.RawExtension, resource metav1.GroupVersionResource) (*v1.ConfigMap, error) {
+	cmResource := metav1.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"}
+	raw := object.Raw
+	cm := v1.ConfigMap{}
+
+	if resource != cmResource {
+		err := fmt.Errorf("expect resource to be %s", cmResource)
+		return &cm, err
+	}
+
+	deserializer := Codecs.UniversalDeserializer()
+	if _, _, err := deserializer.Decode(raw, nil, &cm); err != nil {
+		return &cm, err
+	}
+	klog.V(3).Infof("the cm struct is %+v", cm)
+
+	return &cm, nil
+}

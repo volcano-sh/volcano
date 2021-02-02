@@ -34,6 +34,7 @@ tiers:
 - plugins:
   - name: priority
   - name: gang
+  - name: conformance
 - plugins:
   - name: drf
   - name: predicates
