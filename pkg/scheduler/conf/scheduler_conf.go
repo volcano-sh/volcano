@@ -73,6 +73,8 @@ type PluginOption struct {
 	EnabledReservedNodes *bool `yaml:"enableReservedNodes"`
 	// EnabledVictim defines whether victimsFn is enabled
 	EnabledVictim *bool `yaml:"enabledVictim"`
+	// EnabledPreemptCommit defines whether preemptCommitFn is enabled
+	EnabledPreemptCommit *bool `yaml:"enablePreemptCommit"`
 	// Arguments defines the different arguments that can be given to different plugins
 	Arguments map[string]string `yaml:"arguments"`
 }

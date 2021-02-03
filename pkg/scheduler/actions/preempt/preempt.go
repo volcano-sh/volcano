@@ -128,8 +128,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				}
 			}
 
-			// Commit changes only if job is pipelined, otherwise try next job.
-			if ssn.JobPipelined(preemptorJob) {
+			// Commit changes only if plugin PreemptCommit fn allow, otherwise try next job.
+			if ssn.PreemptCommit(preemptorJob) {
 				stmt.Commit()
 			} else {
 				stmt.Discard()

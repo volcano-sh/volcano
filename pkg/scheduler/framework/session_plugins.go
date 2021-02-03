@@ -122,6 +122,11 @@ func (ssn *Session) AddVictimTasksFns(name string, fn api.VictimTasksFn) {
 	ssn.victimTasksFns[name] = fn
 }
 
+// AddPreemptCommitFns add reservedNodesFn function
+func (ssn *Session) AddPreemptCommitFns(name string, fn api.ValidateFn) {
+	ssn.preemptCommitFns[name] = fn
+}
+
 // Reclaimable invoke reclaimable function of the plugins
 func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
@@ -254,6 +259,33 @@ func (ssn *Session) JobPipelined(obj interface{}) bool {
 				continue
 			}
 			jrf, found := ssn.jobPipelinedFns[plugin.Name]
+			if !found {
+				continue
+			}
+			hasFound = true
+
+			if !jrf(obj) {
+				return false
+			}
+		}
+		// this tier registed function
+		if hasFound {
+			return true
+		}
+	}
+
+	return true
+}
+
+// PreemptCommit invoke PreemptCommit function of the plugins
+func (ssn *Session) PreemptCommit(obj interface{}) bool {
+	var hasFound bool
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledPreemptCommit) {
+				continue
+			}
+			jrf, found := ssn.preemptCommitFns[plugin.Name]
 			if !found {
 				continue
 			}

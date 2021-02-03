@@ -64,4 +64,7 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	if option.EnabledVictim == nil {
 		option.EnabledVictim = &t
 	}
+	if option.EnabledPreemptCommit == nil {
+		option.EnabledPreemptCommit = &t
+	}
 }

@@ -127,10 +127,13 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		ji := obj.(*api.JobInfo)
 		return ji.Ready()
 	})
-	ssn.AddJobPipelinedFn(gp.Name(), func(obj interface{}) bool {
+
+	pipelinedFn := func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
 		return ji.Pipelined()
-	})
+	}
+	ssn.AddJobPipelinedFn(gp.Name(), pipelinedFn)
+	ssn.AddPreemptCommitFns(gp.Name(), pipelinedFn)
 }
 
 func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {

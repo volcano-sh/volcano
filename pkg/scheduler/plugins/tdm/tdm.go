@@ -282,12 +282,22 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	}
 
+	preemptCommitFn := func(obj interface{}) bool {
+		jobInfo := obj.(*api.JobInfo)
+		// allow none preemptable elastic job (deployment) preempt task
+		if !jobInfo.Preemptable {
+			return true
+		}
+		return false
+	}
+
 	ssn.AddPredicateFn(bp.Name(), predicateFn)
 	ssn.AddNodeOrderFn(bp.Name(), nodeOrderFn)
 	ssn.AddPreemptableFn(bp.Name(), preemptableFn)
 	ssn.AddVictimTasksFns(bp.Name(), victimsFn)
 	ssn.AddJobOrderFn(bp.Name(), jobOrderFn)
 	ssn.AddJobPipelinedFn(bp.Name(), jobPipelinedFn)
+	ssn.AddPreemptCommitFns(bp.Name(), preemptCommitFn)
 }
 
 func (bp *tdmPlugin) maxVictims(victims []*api.TaskInfo) []*api.TaskInfo {
