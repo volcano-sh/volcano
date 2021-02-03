@@ -105,6 +105,12 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 		if value, found := job.Annotations[schedulingv2.PodPreemptable]; found {
 			pod.Annotations[schedulingv2.PodPreemptable] = value
 		}
+		if value, found := job.Annotations[schedulingv2.PodMinAlive]; found {
+			pod.Annotations[schedulingv2.PodMinAlive] = value
+		}
+		if value, found := job.Annotations[schedulingv2.PodEvictMaxStep]; found {
+			pod.Annotations[schedulingv2.PodEvictMaxStep] = value
+		}
 	}
 
 	if len(pod.Labels) == 0 {
@@ -115,6 +121,17 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 	pod.Labels[batch.JobNameKey] = job.Name
 	pod.Labels[batch.JobNamespaceKey] = job.Namespace
 	pod.Labels[batch.QueueNameKey] = job.Spec.Queue
+	if len(job.Labels) > 0 {
+		if value, found := job.Labels[schedulingv2.PodPreemptable]; found {
+			pod.Labels[schedulingv2.PodPreemptable] = value
+		}
+		if value, found := job.Labels[schedulingv2.PodMinAlive]; found {
+			pod.Labels[schedulingv2.PodMinAlive] = value
+		}
+		if value, found := job.Labels[schedulingv2.PodEvictMaxStep]; found {
+			pod.Labels[schedulingv2.PodEvictMaxStep] = value
+		}
+	}
 
 	return pod
 }

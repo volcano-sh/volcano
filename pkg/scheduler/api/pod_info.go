@@ -70,6 +70,7 @@ func GetPodResourceRequest(pod *v1.Pod) *Resource {
 
 // GetPodPreemptable return volcano.sh/preemptable value for pod
 func GetPodPreemptable(pod *v1.Pod) bool {
+	// check annotaion first
 	if len(pod.Annotations) > 0 {
 		if value, found := pod.Annotations[v1beta1.PodPreemptable]; found {
 			b, err := strconv.ParseBool(value)
@@ -80,6 +81,19 @@ func GetPodPreemptable(pod *v1.Pod) bool {
 			return b
 		}
 	}
+
+	// it annotation does not exit, check label
+	if len(pod.Labels) > 0 {
+		if value, found := pod.Labels[v1beta1.PodPreemptable]; found {
+			b, err := strconv.ParseBool(value)
+			if err != nil {
+				klog.Warningf("invalid %s=%s", v1beta1.PodPreemptable, value)
+				return false
+			}
+			return b
+		}
+	}
+
 	return false
 }
 

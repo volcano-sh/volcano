@@ -493,6 +493,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 				Namespace:   job.Namespace,
 				Name:        job.Name,
 				Annotations: job.Annotations,
+				Labels:      job.Labels,
 				OwnerReferences: []metav1.OwnerReference{
 					*metav1.NewControllerRef(job, helpers.JobKind),
 				},
