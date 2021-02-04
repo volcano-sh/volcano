@@ -37,7 +37,7 @@ const (
 	revocableZoneLayout      = "15:04"
 	revocableZoneLabelPrefix = "tdm.revocable-zone."
 	evictPeriodLabel         = "tdm.evict.period"
-	evictMaxNumLabel         = "tdm.evict.maxNum"
+	evictMaxStepLabel        = "tdm.evict.max-step"
 )
 
 var lastEvictAt time.Time
@@ -51,7 +51,7 @@ var lastEvictAt time.Time
          tdm.revocable-zone.rz1: 10:00-21:00
          tdm.revocable-zone.rz2: 12:00-14:00
          tdm.evict.period: 1m
-         tdm.evict.maxNum: 5%
+         tdm.evict.max-step: 5%
 */
 
 type tdmPlugin struct {
@@ -59,16 +59,16 @@ type tdmPlugin struct {
 	// evictPeriod
 	// default 1m
 	evictPeriod time.Duration
-	// evictMaxNum value can be an absolute number (ex: 5) or a percentage of desired pods (ex: 10%)
+	// maxEvictStep value can be an absolute number (ex: 5) or a percentage of desired pods (ex: 10%)
 	// default 5%
-	evictMaxNum intstr.IntOrString
+	maxEvictStep intstr.IntOrString
 }
 
 // New function returns prioritizePlugin object
 func New(args framework.Arguments) framework.Plugin {
 	revocableZone := make(map[string]string)
 	evictPeriod := time.Minute
-	evictMaxNum := intstr.FromString("5%")
+	maxEvictStep := intstr.FromString("5%")
 
 	for k, v := range args {
 		if strings.Contains(k, revocableZoneLabelPrefix) {
@@ -82,11 +82,11 @@ func New(args framework.Arguments) framework.Plugin {
 		}
 	}
 
-	if maxNum, ok := args[evictMaxNumLabel]; ok {
-		evictMaxNum = intstr.Parse(maxNum)
+	if maxStep, ok := args[evictMaxStepLabel]; ok {
+		maxEvictStep = intstr.Parse(maxStep)
 	}
 
-	return &tdmPlugin{revocableZone, evictPeriod, evictMaxNum}
+	return &tdmPlugin{revocableZone, evictPeriod, maxEvictStep}
 }
 
 func (bp *tdmPlugin) Name() string {
@@ -241,12 +241,15 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 		for rz := range bp.revocableZone {
 			if err := bp.availableRevocableZone(rz); err != nil {
 				klog.V(4).Infof("TDM revocable zone %v disactive, %v", rz, err)
-				// rz disactive, then evict preemptable tasks from the revocable node
-				victims = append(victims, bp.revocableNodePreemptableTask(rz, ssn)...)
+				// rz disactive, then evict preemptable tasks by job from the revocable node
+				for jobID, tmp := range bp.revocableNodePreemptableTask(rz, ssn) {
+					if job, ok := ssn.Jobs[jobID]; ok {
+						victims = append(victims, bp.maxVictims(job, tmp)...)
+					}
+				}
 			}
 		}
 
-		victims = bp.maxVictims(victims)
 		// need to consider concurrency?
 		lastEvictAt = time.Now()
 
@@ -294,14 +297,21 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddJobStarvingFns(bp.Name(), jobStarvingFn)
 }
 
-func (bp *tdmPlugin) maxVictims(victims []*api.TaskInfo) []*api.TaskInfo {
+func (bp *tdmPlugin) maxVictims(job *api.JobInfo, victims []*api.TaskInfo) []*api.TaskInfo {
+	maxEvictStep := bp.maxEvictStep
+
+	// the data type of MaxEvictStep can be int or percent
+	if job.MaxEvictStep != "" {
+		maxEvictStep = intstr.Parse(job.MaxEvictStep)
+	}
+
 	targetNum := 0
-	switch bp.evictMaxNum.Type {
+	switch maxEvictStep.Type {
 	case intstr.Int:
-		targetNum = int(math.Min(float64(bp.evictMaxNum.IntValue()), float64(len(victims))))
+		targetNum = int(math.Min(float64(maxEvictStep.IntValue()), float64(len(victims))))
 	case intstr.String:
-		if v, err := intstr.GetValueFromIntOrPercent(&bp.evictMaxNum, len(victims), true); err == nil {
-			targetNum = v
+		if v, err := intstr.GetValueFromIntOrPercent(&maxEvictStep, len(job.Tasks), true); err == nil {
+			targetNum = int(math.Min(float64(v), float64(len(victims))))
 		} else {
 			klog.V(4).Infof("TDM get percent value err: %v", err)
 		}
@@ -310,8 +320,8 @@ func (bp *tdmPlugin) maxVictims(victims []*api.TaskInfo) []*api.TaskInfo {
 	return victims[:targetNum]
 }
 
-func (bp *tdmPlugin) revocableNodePreemptableTask(rz string, ssn *framework.Session) []*api.TaskInfo {
-	tasks := make([]*api.TaskInfo, 0)
+func (bp *tdmPlugin) revocableNodePreemptableTask(rz string, ssn *framework.Session) map[api.JobID][]*api.TaskInfo {
+	tasksMap := make(map[api.JobID][]*api.TaskInfo)
 	for _, node := range ssn.Nodes {
 		if node.RevocableZone != rz {
 			continue
@@ -320,13 +330,13 @@ func (bp *tdmPlugin) revocableNodePreemptableTask(rz string, ssn *framework.Sess
 		for _, task := range node.Tasks {
 			if task.Preemptable {
 				if task.Status == api.Running {
-					tasks = append(tasks, task)
+					tasksMap[task.Job] = append(tasksMap[task.Job], task)
 				}
 			}
 		}
 	}
 
-	return tasks
+	return tasksMap
 }
 
 func (bp *tdmPlugin) noneRevocableNodePreemptableTask(ssn *framework.Session) []*api.TaskInfo {
