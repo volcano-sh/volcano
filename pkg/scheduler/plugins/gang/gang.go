@@ -133,7 +133,12 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		return ji.Pipelined()
 	}
 	ssn.AddJobPipelinedFn(gp.Name(), pipelinedFn)
-	ssn.AddPreemptCommitFns(gp.Name(), pipelinedFn)
+
+	jobStarvingFn := func(obj interface{}) bool {
+		ji := obj.(*api.JobInfo)
+		return !ji.Pipelined()
+	}
+	ssn.AddJobStarvingFns(gp.Name(), jobStarvingFn)
 }
 
 func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {

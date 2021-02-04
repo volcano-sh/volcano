@@ -272,23 +272,17 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	jobPipelinedFn := func(obj interface{}) bool {
 		jobInfo := obj.(*api.JobInfo)
-		if jobInfo.Preemptable {
-			// ignore preemptable job
-			return true
-		}
-		// non preemptable job(high priority) try to feed all its tasks
 		occupied := jobInfo.WaitingTaskNum() + jobInfo.ReadyTaskNum()
-		return occupied >= (int32)(len(jobInfo.Tasks))
-
+		return occupied >= jobInfo.MinAvailable
 	}
 
-	preemptCommitFn := func(obj interface{}) bool {
+	jobStarvingFn := func(obj interface{}) bool {
 		jobInfo := obj.(*api.JobInfo)
 		// allow none preemptable elastic job (deployment) preempt task
-		if !jobInfo.Preemptable {
-			return true
+		if jobInfo.Preemptable {
+			return false
 		}
-		return false
+		return len(jobInfo.TaskStatusIndex[api.Pending]) > 0
 	}
 
 	ssn.AddPredicateFn(bp.Name(), predicateFn)
@@ -297,7 +291,7 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddVictimTasksFns(bp.Name(), victimsFn)
 	ssn.AddJobOrderFn(bp.Name(), jobOrderFn)
 	ssn.AddJobPipelinedFn(bp.Name(), jobPipelinedFn)
-	ssn.AddPreemptCommitFns(bp.Name(), preemptCommitFn)
+	ssn.AddJobStarvingFns(bp.Name(), jobStarvingFn)
 }
 
 func (bp *tdmPlugin) maxVictims(victims []*api.TaskInfo) []*api.TaskInfo {

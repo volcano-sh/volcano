@@ -63,7 +63,7 @@ tiers:
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
 					EnabledVictim:         &trueValue,
-					EnabledPreemptCommit:  &trueValue,
+					EnabledJobStarving:    &trueValue,
 				},
 				{
 					Name:                  "gang",
@@ -81,7 +81,7 @@ tiers:
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
 					EnabledVictim:         &trueValue,
-					EnabledPreemptCommit:  &trueValue,
+					EnabledJobStarving:    &trueValue,
 				},
 				{
 					Name:                  "conformance",
@@ -99,7 +99,7 @@ tiers:
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
 					EnabledVictim:         &trueValue,
-					EnabledPreemptCommit:  &trueValue,
+					EnabledJobStarving:    &trueValue,
 				},
 			},
 		},
@@ -121,7 +121,7 @@ tiers:
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
 					EnabledVictim:         &trueValue,
-					EnabledPreemptCommit:  &trueValue,
+					EnabledJobStarving:    &trueValue,
 				},
 				{
 					Name:                  "predicates",
@@ -139,7 +139,7 @@ tiers:
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
 					EnabledVictim:         &trueValue,
-					EnabledPreemptCommit:  &trueValue,
+					EnabledJobStarving:    &trueValue,
 				},
 				{
 					Name:                  "proportion",
@@ -157,7 +157,7 @@ tiers:
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
 					EnabledVictim:         &trueValue,
-					EnabledPreemptCommit:  &trueValue,
+					EnabledJobStarving:    &trueValue,
 				},
 				{
 					Name:                  "nodeorder",
@@ -175,7 +175,7 @@ tiers:
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
 					EnabledVictim:         &trueValue,
-					EnabledPreemptCommit:  &trueValue,
+					EnabledJobStarving:    &trueValue,
 				},
 			},
 		},

@@ -74,7 +74,7 @@ type Session struct {
 	targetJobFns      map[string]api.TargetJobFn
 	reservedNodesFns  map[string]api.ReservedNodesFn
 	victimTasksFns    map[string]api.VictimTasksFn
-	preemptCommitFns  map[string]api.ValidateFn
+	jobStarvingFns    map[string]api.ValidateFn
 }
 
 func openSession(cache cache.Cache) *Session {
@@ -110,7 +110,7 @@ func openSession(cache cache.Cache) *Session {
 		targetJobFns:      map[string]api.TargetJobFn{},
 		reservedNodesFns:  map[string]api.ReservedNodesFn{},
 		victimTasksFns:    map[string]api.VictimTasksFn{},
-		preemptCommitFns:  map[string]api.ValidateFn{},
+		jobStarvingFns:    map[string]api.ValidateFn{},
 	}
 
 	snapshot := cache.Snapshot()

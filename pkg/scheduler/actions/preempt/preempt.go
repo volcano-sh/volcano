@@ -65,7 +65,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			queues[queue.UID] = queue
 		}
 
-		if len(job.TaskStatusIndex[api.Pending]) != 0 && !ssn.JobPipelined(job) {
+		// check job if starting for more resources.
+		if ssn.JobStarving(job) {
 			if _, found := preemptorsMap[job.Queue]; !found {
 				preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 			}
@@ -94,8 +95,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			stmt := framework.NewStatement(ssn)
 			assigned := false
 			for {
-				// If job is pipelined, then stop preempting.
-				if ssn.JobPipelined(preemptorJob) {
+				// If job is not request more resource, then stop preempting.
+				if !ssn.JobStarving(preemptorJob) {
 					break
 				}
 
@@ -128,8 +129,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				}
 			}
 
-			// Commit changes only if plugin PreemptCommit fn allow, otherwise try next job.
-			if ssn.PreemptCommit(preemptorJob) {
+			// Commit changes only if job is pipelined, otherwise try next job.
+			if ssn.JobPipelined(preemptorJob) {
 				stmt.Commit()
 			} else {
 				stmt.Discard()

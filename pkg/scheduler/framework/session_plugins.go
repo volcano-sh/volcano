@@ -117,14 +117,14 @@ func (ssn *Session) AddReservedNodesFn(name string, fn api.ReservedNodesFn) {
 	ssn.reservedNodesFns[name] = fn
 }
 
-// AddVictimTasksFns add reservedNodesFn function
+// AddVictimTasksFns add victimTasksFns function
 func (ssn *Session) AddVictimTasksFns(name string, fn api.VictimTasksFn) {
 	ssn.victimTasksFns[name] = fn
 }
 
-// AddPreemptCommitFns add reservedNodesFn function
-func (ssn *Session) AddPreemptCommitFns(name string, fn api.ValidateFn) {
-	ssn.preemptCommitFns[name] = fn
+// AddJobStarvingFns add jobStarvingFns function
+func (ssn *Session) AddJobStarvingFns(name string, fn api.ValidateFn) {
+	ssn.jobStarvingFns[name] = fn
 }
 
 // Reclaimable invoke reclaimable function of the plugins
@@ -251,6 +251,7 @@ func (ssn *Session) JobReady(obj interface{}) bool {
 }
 
 // JobPipelined invoke pipelined function of the plugins
+// Check if job has get enough resource to run
 func (ssn *Session) JobPipelined(obj interface{}) bool {
 	var hasFound bool
 	for _, tier := range ssn.Tiers {
@@ -277,31 +278,32 @@ func (ssn *Session) JobPipelined(obj interface{}) bool {
 	return true
 }
 
-// PreemptCommit invoke PreemptCommit function of the plugins
-func (ssn *Session) PreemptCommit(obj interface{}) bool {
+// JobStarving invoke jobStarving function of the plugins
+// Check if job still need more resource
+func (ssn *Session) JobStarving(obj interface{}) bool {
 	var hasFound bool
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledPreemptCommit) {
+			if !isEnabled(plugin.EnabledJobStarving) {
 				continue
 			}
-			jrf, found := ssn.preemptCommitFns[plugin.Name]
+			jrf, found := ssn.jobStarvingFns[plugin.Name]
 			if !found {
 				continue
 			}
 			hasFound = true
 
-			if !jrf(obj) {
-				return false
+			if jrf(obj) {
+				return true
 			}
 		}
 		// this tier registed function
 		if hasFound {
-			return true
+			return false
 		}
 	}
 
-	return true
+	return false
 }
 
 // JobValid invoke jobvalid function of the plugins
