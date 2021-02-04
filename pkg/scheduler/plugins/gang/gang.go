@@ -127,10 +127,18 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		ji := obj.(*api.JobInfo)
 		return ji.Ready()
 	})
-	ssn.AddJobPipelinedFn(gp.Name(), func(obj interface{}) bool {
+
+	pipelinedFn := func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
 		return ji.Pipelined()
-	})
+	}
+	ssn.AddJobPipelinedFn(gp.Name(), pipelinedFn)
+
+	jobStarvingFn := func(obj interface{}) bool {
+		ji := obj.(*api.JobInfo)
+		return !ji.Pipelined()
+	}
+	ssn.AddJobStarvingFns(gp.Name(), jobStarvingFn)
 }
 
 func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
