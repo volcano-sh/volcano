@@ -155,9 +155,9 @@ type JobInfo struct {
 
 	ScheduleStartTimestamp metav1.Time
 
-	Preemptable     bool
-	PodAliveNum     string
-	PodEvictMaxStep string
+	Preemptable    bool
+	MinPodAliveNum string
+	MaxEvictStep   string
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks
@@ -192,8 +192,8 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.Queue = QueueID(pg.Spec.Queue)
 	ji.CreationTimestamp = pg.GetCreationTimestamp()
 	ji.Preemptable = GetJobPreemptable(pg)
-	ji.PodAliveNum = GetPodMinAlive(pg)
-	ji.PodEvictMaxStep = GetPodEvictMaxStep(pg)
+	ji.MinPodAliveNum = GetMinPodAlive(pg)
+	ji.MaxEvictStep = GetMaxEvictStep(pg)
 
 	ji.PodGroup = pg
 
@@ -228,8 +228,8 @@ func GetJobPreemptable(pg *PodGroup) bool {
 	return false
 }
 
-// GetPodMinAlive return volcano.sh/pod-min-alive value for job
-func GetPodMinAlive(pg *PodGroup) string {
+// GetMinPodAlive return volcano.sh/min-pod-alive value for job
+func GetMinPodAlive(pg *PodGroup) string {
 	// check annotaion first
 	if len(pg.Annotations) > 0 {
 		if value, found := pg.Annotations[v1beta1.PodMinAlive]; found {
@@ -247,8 +247,8 @@ func GetPodMinAlive(pg *PodGroup) string {
 	return "0"
 }
 
-// GetPodEvictMaxStep return volcano.sh/evict-max-step value for job
-func GetPodEvictMaxStep(pg *PodGroup) string {
+// GetMaxEvictStep return volcano.sh/max-evict-step value for job
+func GetMaxEvictStep(pg *PodGroup) string {
 	// check annotaion first
 	if len(pg.Annotations) > 0 {
 		if value, found := pg.Annotations[v1beta1.PodEvictMaxStep]; found {
@@ -349,8 +349,8 @@ func (ji *JobInfo) Clone() *JobInfo {
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},
 		Preemptable:     ji.Preemptable,
-		PodAliveNum:     ji.PodAliveNum,
-		PodEvictMaxStep: ji.PodEvictMaxStep,
+		MinPodAliveNum:  ji.MinPodAliveNum,
+		MaxEvictStep:    ji.MaxEvictStep,
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
@@ -372,8 +372,8 @@ func (ji JobInfo) String() string {
 		i++
 	}
 
-	return fmt.Sprintf("Job (%v): namespace %v (%v), name %v, minAvailable %d, podGroup %+v, preemptable %+v, podAliveNum %+v, podEvictMaxStep %+v",
-		ji.UID, ji.Namespace, ji.Queue, ji.Name, ji.MinAvailable, ji.PodGroup, ji.Preemptable, ji.PodAliveNum, ji.PodEvictMaxStep) + res
+	return fmt.Sprintf("Job (%v): namespace %v (%v), name %v, minAvailable %d, podGroup %+v, preemptable %+v, minPodAliveNum %+v, maxEvictStep %+v",
+		ji.UID, ji.Namespace, ji.Queue, ji.Name, ji.MinAvailable, ji.PodGroup, ji.Preemptable, ji.MinPodAliveNum, ji.MaxEvictStep) + res
 }
 
 // FitError returns detailed information on why a job's task failed to fit on

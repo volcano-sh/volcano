@@ -39,7 +39,7 @@ const PodPreemptable = "volcano.sh/preemptable"
 const NodeRevocableZone = "volcano.sh/revocable-zone"
 
 // PodMinAlive is the key of min alive pod number
-const PodMinAlive = "volcano.sh/pod-min-alive"
+const PodMinAlive = "volcano.sh/min-pod-alive"
 
 // PodEvictMaxStep is the key of min alive pod number
-const PodEvictMaxStep = "volcano.sh/evict-max-step"
+const PodEvictMaxStep = "volcano.sh/max-evict-step"
