@@ -293,13 +293,13 @@ func (ssn *Session) JobStarving(obj interface{}) bool {
 			}
 			hasFound = true
 
-			if jrf(obj) {
-				return true
+			if !jrf(obj) {
+				return false
 			}
 		}
 		// this tier registed function
 		if hasFound {
-			return false
+			return true
 		}
 	}
 
