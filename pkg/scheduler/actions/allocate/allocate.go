@@ -22,8 +22,11 @@ import (
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
+
+var targetJob = util.Reservation.TargetJob
 
 type Action struct{}
 
@@ -94,7 +97,18 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	pendingTasks := map[api.JobID]*util.PriorityQueue{}
 
 	allNodes := util.GetNodeList(ssn.Nodes)
-
+	unlockedNodes := allNodes
+	if targetJob != nil && len(util.Reservation.LockedNodes) != 0 {
+		unlockedNodes = unlockedNodes[0:0]
+		for _, node := range allNodes {
+			if _, exist := util.Reservation.LockedNodes[node.Name]; !exist {
+				unlockedNodes = append(unlockedNodes, node)
+			}
+		}
+	}
+	for _, unlockedNode := range unlockedNodes {
+		klog.V(4).Infof("unlockedNode ID: %s, Name: %s", unlockedNode.Node.UID, unlockedNode.Node.Name)
+	}
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		// Check for Resource Predicate
 		if !task.InitResreq.LessEqual(node.FutureIdle()) {
@@ -146,12 +160,21 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 		jobs, found := queueInNamespace[queue.UID]
 		if !found || jobs.Empty() {
+			delete(queueInNamespace, queue.UID)
+			namespaces.Push(namespace)
 			klog.V(4).Infof("Can not find jobs for queue %s.", queue.Name)
 			continue
 		}
 
 		job := jobs.Pop().(*api.JobInfo)
-		if _, found := pendingTasks[job.UID]; !found {
+		var nodes []*api.NodeInfo
+		if targetJob != nil && job.UID == targetJob.UID {
+			klog.V(4).Infof("Try to allocate resource to target job: %s", job.Name)
+			nodes = allNodes
+		} else {
+			nodes = unlockedNodes
+		}
+		if _, found = pendingTasks[job.UID]; !found {
 			tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
 				// Skip BestEffort task in 'allocate' action.
@@ -175,18 +198,9 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		for !tasks.Empty() {
 			task := tasks.Pop().(*api.TaskInfo)
 
-			klog.V(3).Infof("There are <%d> nodes for Job <%v/%v>",
-				len(ssn.Nodes), job.Namespace, job.Name)
+			klog.V(3).Infof("There are <%d> nodes for Job <%v/%v>", len(nodes), job.Namespace, job.Name)
 
-			//any task that doesn't fit will be the last processed
-			//within this loop context so any existing contents of
-			//NodesFitDelta are for tasks that eventually did fit on a
-			//node
-			if len(job.NodesFitDelta) > 0 {
-				job.NodesFitDelta = make(api.NodeResourceMap)
-			}
-
-			predicateNodes, fitErrors := util.PredicateNodes(task, allNodes, predicateFn)
+			predicateNodes, fitErrors := util.PredicateNodes(task, nodes, predicateFn)
 			if len(predicateNodes) == 0 {
 				job.NodesFitErrors[task.UID] = fitErrors
 				break
@@ -218,11 +232,10 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				if err := stmt.Allocate(task, node.Name); err != nil {
 					klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 						task.UID, node.Name, ssn.UID, err)
+				} else {
+					metrics.UpdateE2eSchedulingDurationByJob(job.Name, job.PodGroup.Spec.Queue, job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 				}
 			} else {
-				//store information about missing resources
-				job.NodesFitDelta[node.Name] = node.Idle.Clone()
-				job.NodesFitDelta[node.Name].FitDelta(task.InitResreq)
 				klog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s> with limited resources",
 					task.Namespace, task.Name, node.Name)
 
@@ -233,6 +246,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					if err := ssn.Pipeline(task, node.Name); err != nil {
 						klog.Errorf("Failed to pipeline Task %v on %v in Session %v for %v.",
 							task.UID, node.Name, ssn.UID, err)
+					} else {
+						metrics.UpdateE2eSchedulingDurationByJob(job.Name, job.PodGroup.Spec.Queue, job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 					}
 				}
 			}
@@ -246,8 +261,9 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		if ssn.JobReady(job) {
 			stmt.Commit()
 		} else {
-			stmt.Discard()
-			break
+			if !ssn.JobPipelined(job) {
+				stmt.Discard()
+			}
 		}
 
 		// Added Namespace back until no job in Namespace.

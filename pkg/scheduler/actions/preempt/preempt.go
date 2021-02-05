@@ -65,7 +65,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			queues[queue.UID] = queue
 		}
 
-		if len(job.TaskStatusIndex[api.Pending]) != 0 && !ssn.JobPipelined(job) {
+		// check job if starting for more resources.
+		if ssn.JobStarving(job) {
 			if _, found := preemptorsMap[job.Queue]; !found {
 				preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 			}
@@ -94,8 +95,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			stmt := framework.NewStatement(ssn)
 			assigned := false
 			for {
-				// If job is pipelined, then stop preempting.
-				if ssn.JobPipelined(preemptorJob) {
+				// If job is not request more resource, then stop preempting.
+				if !ssn.JobStarving(preemptorJob) {
 					break
 				}
 
@@ -176,6 +177,9 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			}
 		}
 	}
+
+	// call victimTasksFn to evict tasks
+	victimTasks(ssn)
 }
 
 func (alloc *Action) UnInitialize() {}
@@ -259,4 +263,17 @@ func preempt(
 	}
 
 	return assigned, nil
+}
+
+func victimTasks(ssn *framework.Session) {
+	stmt := framework.NewStatement(ssn)
+	victimTasks := ssn.VictimTasks()
+	for _, victim := range victimTasks {
+		if err := stmt.Evict(victim.Clone(), "evict"); err != nil {
+			klog.Errorf("Failed to evict Task <%s/%s>: %v",
+				victim.Namespace, victim.Name, err)
+			continue
+		}
+	}
+	stmt.Commit()
 }

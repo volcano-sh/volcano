@@ -44,6 +44,24 @@ var (
 		},
 	)
 
+	e2eJobSchedulingLatency = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "e2e_job_scheduling_latency_milliseconds",
+			Help:      "E2e job scheduling latency in milliseconds",
+			Buckets:   prometheus.ExponentialBuckets(32, 2, 10),
+		},
+	)
+
+	e2eJobSchedulingDuration = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "e2e_job_scheduling_duration",
+			Help:      "E2E job scheduling duration",
+		},
+		[]string{"job_name", "queue", "job_namespace"},
+	)
+
 	pluginSchedulingLatency = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Subsystem: VolcanoNamespace,
@@ -125,6 +143,12 @@ func UpdateActionDuration(actionName string, duration time.Duration) {
 // UpdateE2eDuration updates entire end to end scheduling latency
 func UpdateE2eDuration(duration time.Duration) {
 	e2eSchedulingLatency.Observe(DurationInMilliseconds(duration))
+}
+
+// UpdateE2eSchedulingDurationByJob updates entire end to end scheduling duration
+func UpdateE2eSchedulingDurationByJob(jobName string, queue string, namespace string, duration time.Duration) {
+	e2eJobSchedulingDuration.WithLabelValues(jobName, queue, namespace).Set(DurationInMilliseconds(duration))
+	e2eJobSchedulingLatency.Observe(DurationInMilliseconds(duration))
 }
 
 // UpdateTaskScheduleDuration updates single task scheduling latency

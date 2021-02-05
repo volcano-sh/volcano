@@ -35,6 +35,7 @@ import (
 )
 
 func TestAdmitQueues(t *testing.T) {
+
 	stateNotSet := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "normal-case-not-set",
@@ -134,15 +135,161 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal queue for delete with closed state failed for %v.", err)
 	}
 
+	weightNotSet := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "weight-not-set",
+		},
+		Spec: schedulingv1beta1.QueueSpec{},
+	}
+
+	weightNotSetJSON, err := json.Marshal(weightNotSet)
+	if err != nil {
+		t.Errorf("Marshal queue with no weight failed for %v.", err)
+	}
+
+	negativeWeight := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "negative-weight",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: -1,
+		},
+	}
+
+	negativeWeightJSON, err := json.Marshal(negativeWeight)
+	if err != nil {
+		t.Errorf("Marshal queue with negative weight failed for %v.", err)
+	}
+
+	positiveWeightForUpdate := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "positive-weight-for-update",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+		},
+	}
+	positiveWeightForUpdateJSON, err := json.Marshal(positiveWeightForUpdate)
+	if err != nil {
+		t.Errorf("Marshal queue with positive weight failed for %v.", err)
+	}
+
+	negativeWeightForUpdate := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "positive-weight-for-update",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: -1,
+		},
+	}
+
+	negativeWeightForUpdateJSON, err := json.Marshal(negativeWeightForUpdate)
+	if err != nil {
+		t.Errorf("Marshal queue with negative weight failed for %v.", err)
+
+	}
+
+	hierarchyWeightsDontMatch := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "hierarchy-weights-dont-match",
+			Annotations: map[string]string{
+				schedulingv1beta1.KubeHierarchyAnnotationKey:       "root/a/b",
+				schedulingv1beta1.KubeHierarchyWeightAnnotationKey: "1/2/3/4",
+			},
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+		},
+	}
+
+	hierarchyWeightsDontMatchJSON, err := json.Marshal(hierarchyWeightsDontMatch)
+	if err != nil {
+		t.Errorf("Marshal hierarchyWeightsDontMatch failed for %v.", err)
+	}
+
+	hierarchyWeightsNegative := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "hierarchy-weights-dont-match",
+			Annotations: map[string]string{
+				schedulingv1beta1.KubeHierarchyAnnotationKey:       "root/a/b",
+				schedulingv1beta1.KubeHierarchyWeightAnnotationKey: "1/-1/3",
+			},
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+		},
+	}
+	hierarchyWeightsNegativeJSON, err := json.Marshal(hierarchyWeightsNegative)
+	if err != nil {
+		t.Errorf("Marshal weightsFormatNegative failed for %v.", err)
+	}
+
+	weightsFormatIllegal := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "hierarchy-weights-dont-match",
+			Annotations: map[string]string{
+				schedulingv1beta1.KubeHierarchyAnnotationKey:       "root/a/b",
+				schedulingv1beta1.KubeHierarchyWeightAnnotationKey: "1/a/3",
+			},
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+		},
+	}
+
+	weightsFormatIllegalJSON, err := json.Marshal(weightsFormatIllegal)
+	if err != nil {
+		t.Errorf("Marshal weightsFormatIllegal failed for %v.", err)
+	}
+
+	ordinaryHierchicalQueue := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "ordinary-hierarchical-queue",
+			Annotations: map[string]string{
+				schedulingv1beta1.KubeHierarchyAnnotationKey:       "root/node1/node2",
+				schedulingv1beta1.KubeHierarchyWeightAnnotationKey: "1/2/3",
+			},
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+		},
+	}
+
+	hierarchicalQueueInSubPathOfAnotherQueue := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "hierarchical-queue-in-sub-path-of-another-queue",
+			Annotations: map[string]string{
+				schedulingv1beta1.KubeHierarchyAnnotationKey:       "root/node1",
+				schedulingv1beta1.KubeHierarchyWeightAnnotationKey: "1/4",
+			},
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+		},
+	}
+	hierarchicalQueueInSubPathOfAnotherQueueJSON, err := json.Marshal(hierarchicalQueueInSubPathOfAnotherQueue)
+	if err != nil {
+		t.Errorf("Marshal hierarchicalQueueInSubPathOfAnotherQueue failed for %v.", err)
+	}
+
 	config.VolcanoClient = fakeclient.NewSimpleClientset()
 	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &openStateForDelete, metav1.CreateOptions{})
 	if err != nil {
-		t.Errorf("Crate queue with open state failed for %v.", err)
+		t.Errorf("Create queue with open state failed for %v.", err)
 	}
 
 	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &closedStateForDelete, metav1.CreateOptions{})
 	if err != nil {
-		t.Errorf("Crate queue with closed state failed for %v.", err)
+		t.Errorf("Create queue with closed state failed for %v.", err)
+	}
+
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &ordinaryHierchicalQueue, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Create hierarchical queue failed for %v.", err)
+	}
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &positiveWeightForUpdate, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Crate queue with positive weight failed for %v.", err)
 	}
 
 	defer func() {
@@ -151,6 +298,9 @@ func TestAdmitQueues(t *testing.T) {
 		}
 		if err := config.VolcanoClient.SchedulingV1beta1().Queues().Delete(context.TODO(), closedStateForDelete.Name, v1.DeleteOptions{}); err != nil {
 			fmt.Println(fmt.Sprintf("Delete queue with closed state failed for %v.", err))
+		}
+		if err := config.VolcanoClient.SchedulingV1beta1().Queues().Delete(context.TODO(), ordinaryHierchicalQueue.Name, v1.DeleteOptions{}); err != nil {
+			t.Errorf("Delete hierarchical queue failed for %v.", err)
 		}
 	}()
 
@@ -507,6 +657,253 @@ func TestAdmitQueues(t *testing.T) {
 			reviewResponse: util.ToAdmissionResponse(fmt.Errorf("invalid operation `%s`, "+
 				"expect operation to be `CREATE`, `UPDATE` or `DELETE`", "Invalid")),
 		},
+		{
+			Name: "Create queue without weight",
+			AR: v1beta1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &v1beta1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "weight-not-set",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: weightNotSetJSON,
+					},
+				},
+			},
+			reviewResponse: &v1beta1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("weight"),
+						0, fmt.Sprintf("queue weight must be a positive integer")).Error(),
+				},
+			},
+		},
+		{
+			Name: "Create queue with negative weight",
+			AR: v1beta1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &v1beta1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "negative-weight",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: negativeWeightJSON,
+					},
+				},
+			},
+			reviewResponse: &v1beta1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("weight"),
+						-1, fmt.Sprintf("queue weight must be a positive integer")).Error(),
+				},
+			},
+		},
+		{
+			Name: "Update queue with negative weight",
+			AR: v1beta1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &v1beta1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "positive-weight-for-update",
+					Operation: "UPDATE",
+					OldObject: runtime.RawExtension{
+						Raw: positiveWeightForUpdateJSON,
+					},
+					Object: runtime.RawExtension{
+						Raw: negativeWeightForUpdateJSON,
+					},
+				},
+			},
+			reviewResponse: &v1beta1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("weight"),
+						-1, fmt.Sprintf("queue weight must be a positive integer")).Error(),
+				},
+			},
+		},
+
+		{
+			Name: "Abnormal Case Hierarchy And Weights Do Not Match",
+			AR: v1beta1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &v1beta1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "default",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: hierarchyWeightsDontMatchJSON,
+					},
+				},
+			},
+			reviewResponse: &v1beta1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: field.Invalid(field.NewPath("requestBody").Child("metadata").Child("annotations"),
+						"root/a/b", fmt.Sprintf("%s must have the same length with %s",
+							schedulingv1beta1.KubeHierarchyAnnotationKey,
+							schedulingv1beta1.KubeHierarchyWeightAnnotationKey,
+						)).Error(),
+				},
+			},
+		},
+		{
+			Name: "Abnormal Case Weights Is Negative",
+			AR: v1beta1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &v1beta1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "default",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: hierarchyWeightsNegativeJSON,
+					},
+				},
+			},
+			reviewResponse: &v1beta1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: field.Invalid(field.NewPath("requestBody").Child("metadata").Child("annotations"),
+						"1/-1/3",
+						fmt.Sprintf("%s in the %s must be larger than 0",
+							"-1", "1/-1/3",
+						)).Error(),
+				},
+			},
+		},
+		{
+			Name: "Abnormal Case Weights Is Format Illegal",
+			AR: v1beta1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &v1beta1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "default",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: weightsFormatIllegalJSON,
+					},
+				},
+			},
+			reviewResponse: &v1beta1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: field.Invalid(field.NewPath("requestBody").Child("metadata").Child("annotations"),
+						"1/a/3",
+						fmt.Sprintf("%s in the %s is invalid number: strconv.ParseFloat: parsing \"a\": invalid syntax",
+							"a", "1/a/3",
+						)).Error(),
+				},
+			},
+		},
+		{
+			Name: "Abnormal Case Hierarchy Is In Sub Path of Another Queue",
+			AR: v1beta1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &v1beta1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "default",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: hierarchicalQueueInSubPathOfAnotherQueueJSON,
+					},
+				},
+			},
+			reviewResponse: &v1beta1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: field.Invalid(field.NewPath("requestBody").Child("metadata").Child("annotations"),
+						"root/node1",
+						fmt.Sprintf("%s is not allowed to be in the sub path of %s of queue %s",
+							"root/node1", "root/node1/node2", ordinaryHierchicalQueue.Name,
+						)).Error(),
+				},
+			},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -514,7 +911,7 @@ func TestAdmitQueues(t *testing.T) {
 			reviewResponse := AdmitQueues(testCase.AR)
 			if !reflect.DeepEqual(reviewResponse, testCase.reviewResponse) {
 				t.Errorf("Test case %s failed, expect %v, got %v", testCase.Name,
-					reviewResponse, testCase.reviewResponse)
+					testCase.reviewResponse, reviewResponse)
 			}
 		})
 	}

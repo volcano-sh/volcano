@@ -24,7 +24,7 @@ Please make sure to read and observe our [Code of Conduct](./code_of_conduct.md)
 ## Community Expectations
 
 Volcano is a community project driven by its community which strives to promote a healthy, friendly and productive environment.
-The goal of the community is to develop a volcano system which is useful for runnning high performance workloads such as AI,ML,Deep Learning Application on top of Kubernetes. To build a such volcano system at such scale requires the support of a community with similar aspirations.
+The goal of the community is to develop a volcano system which is useful for running high performance workloads such as AI, ML, Deep Learning Application on top of Kubernetes. To build a such volcano system at such scale requires the support of a community with similar aspirations.
 
 - See [Community Membership](./community-membership.md) for a list of various community roles. With gradual contributions, one can move up in the chain.
 

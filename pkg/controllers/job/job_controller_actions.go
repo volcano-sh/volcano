@@ -22,6 +22,7 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -95,6 +96,10 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 	job.Status.Failed = failed
 	job.Status.Terminating = terminating
 	job.Status.Unknown = unknown
+
+	// Update running duration
+	klog.V(3).Infof("Running duration is %s", metav1.Duration{Duration: time.Since(jobInfo.Job.CreationTimestamp.Time)}.ToUnstructured())
+	job.Status.RunningDuration = &metav1.Duration{Duration: time.Since(jobInfo.Job.CreationTimestamp.Time)}
 
 	if updateStatus != nil {
 		if updateStatus(&job.Status) {
@@ -212,8 +217,16 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 
 	var syncTask bool
 	if pg, _ := cc.pgLister.PodGroups(job.Namespace).Get(job.Name); pg != nil {
+
 		if pg.Status.Phase != "" && pg.Status.Phase != scheduling.PodGroupPending {
 			syncTask = true
+		}
+
+		for _, condition := range pg.Status.Conditions {
+			if condition.Type == scheduling.PodGroupUnschedulableType {
+				cc.recorder.Eventf(job, v1.EventTypeWarning, string(batch.PodGroupPending),
+					fmt.Sprintf("PodGroup %s:%s unschedule,reason: %s", job.Namespace, job.Name, condition.Message))
+			}
 		}
 	}
 
@@ -480,6 +493,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 				Namespace:   job.Namespace,
 				Name:        job.Name,
 				Annotations: job.Annotations,
+				Labels:      job.Labels,
 				OwnerReferences: []metav1.OwnerReference{
 					*metav1.NewControllerRef(job, helpers.JobKind),
 				},

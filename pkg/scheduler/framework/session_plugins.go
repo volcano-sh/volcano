@@ -107,6 +107,26 @@ func (ssn *Session) AddJobEnqueueableFn(name string, fn api.ValidateFn) {
 	ssn.jobEnqueueableFns[name] = fn
 }
 
+// AddTargetJobFn add targetjob function
+func (ssn *Session) AddTargetJobFn(name string, fn api.TargetJobFn) {
+	ssn.targetJobFns[name] = fn
+}
+
+// AddReservedNodesFn add reservedNodesFn function
+func (ssn *Session) AddReservedNodesFn(name string, fn api.ReservedNodesFn) {
+	ssn.reservedNodesFns[name] = fn
+}
+
+// AddVictimTasksFns add victimTasksFns function
+func (ssn *Session) AddVictimTasksFns(name string, fn api.VictimTasksFn) {
+	ssn.victimTasksFns[name] = fn
+}
+
+// AddJobStarvingFns add jobStarvingFns function
+func (ssn *Session) AddJobStarvingFns(name string, fn api.ValidateFn) {
+	ssn.jobStarvingFns[name] = fn
+}
+
 // Reclaimable invoke reclaimable function of the plugins
 func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
@@ -231,7 +251,9 @@ func (ssn *Session) JobReady(obj interface{}) bool {
 }
 
 // JobPipelined invoke pipelined function of the plugins
+// Check if job has get enough resource to run
 func (ssn *Session) JobPipelined(obj interface{}) bool {
+	var hasFound bool
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledJobPipelined) {
@@ -241,14 +263,47 @@ func (ssn *Session) JobPipelined(obj interface{}) bool {
 			if !found {
 				continue
 			}
+			hasFound = true
 
 			if !jrf(obj) {
 				return false
 			}
 		}
+		// this tier registed function
+		if hasFound {
+			return true
+		}
 	}
 
 	return true
+}
+
+// JobStarving invoke jobStarving function of the plugins
+// Check if job still need more resource
+func (ssn *Session) JobStarving(obj interface{}) bool {
+	var hasFound bool
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledJobStarving) {
+				continue
+			}
+			jrf, found := ssn.jobStarvingFns[plugin.Name]
+			if !found {
+				continue
+			}
+			hasFound = true
+
+			if !jrf(obj) {
+				return false
+			}
+		}
+		// this tier registed function
+		if hasFound {
+			return true
+		}
+	}
+
+	return false
 }
 
 // JobValid invoke jobvalid function of the plugins
@@ -286,6 +341,82 @@ func (ssn *Session) JobEnqueueable(obj interface{}) bool {
 	}
 
 	return true
+}
+
+// TargetJob invoke targetJobFns function of the plugins
+func (ssn *Session) TargetJob(jobs []*api.JobInfo) *api.JobInfo {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledTargetJob) {
+				continue
+			}
+			fn, found := ssn.targetJobFns[plugin.Name]
+			if !found {
+				continue
+			}
+			return fn(jobs)
+		}
+	}
+	return nil
+}
+
+// VictimTasks invoke ReservedNodes function of the plugins
+func (ssn *Session) VictimTasks() []*api.TaskInfo {
+	var victims []*api.TaskInfo
+	var init bool
+
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledVictim) {
+				continue
+			}
+
+			pf, found := ssn.victimTasksFns[plugin.Name]
+			if !found {
+				continue
+			}
+			candidates := pf()
+			if !init {
+				victims = candidates
+				init = true
+			} else {
+				var intersection []*api.TaskInfo
+				// Get intersection of victims and candidates.
+				for _, v := range victims {
+					for _, c := range candidates {
+						if v.UID == c.UID {
+							intersection = append(intersection, v)
+						}
+					}
+				}
+
+				// Update victims to intersection
+				victims = intersection
+			}
+		}
+		// Plugins in this tier made decision if victims is not nil
+		if victims != nil {
+			return victims
+		}
+	}
+
+	return victims
+}
+
+// ReservedNodes invoke ReservedNodes function of the plugins
+func (ssn *Session) ReservedNodes() {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledReservedNodes) {
+				continue
+			}
+			fn, found := ssn.reservedNodesFns[plugin.Name]
+			if !found {
+				continue
+			}
+			fn()
+		}
+	}
 }
 
 // JobOrderFn invoke joborder function of the plugins

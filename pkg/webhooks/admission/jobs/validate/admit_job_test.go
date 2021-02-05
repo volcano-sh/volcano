@@ -48,7 +48,7 @@ func TestValidateJobCreate(t *testing.T) {
 			Name: "validate valid-job",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "valid-Job",
+					Name:      "valid-job",
 					Namespace: namespace,
 				},
 				Spec: v1alpha1.JobSpec{
@@ -1001,7 +1001,7 @@ func TestValidateJobCreate(t *testing.T) {
 			Name: "job with priviledged container",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "valid-Job",
+					Name:      "valid-job",
 					Namespace: namespace,
 				},
 				Spec: v1alpha1.JobSpec{
@@ -1207,7 +1207,7 @@ func TestValidateJobUpdate(t *testing.T) {
 func newJob() *v1alpha1.Job {
 	return &v1alpha1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "valid-Job",
+			Name:      "valid-job",
 			Namespace: "default",
 		},
 		Spec: v1alpha1.JobSpec{

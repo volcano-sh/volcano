@@ -75,8 +75,6 @@ func TestAddTaskInfo(t *testing.T) {
 						case01Task4.UID: case01Task4,
 					},
 				},
-				NodesFitDelta: make(NodeResourceMap),
-
 				NodesFitErrors: make(map[TaskID]*FitErrors),
 			},
 		},
@@ -131,9 +129,9 @@ func TestDeleteTaskInfo(t *testing.T) {
 			pods:   []*v1.Pod{case01Pod1, case01Pod2, case01Pod3},
 			rmPods: []*v1.Pod{case01Pod2},
 			expected: &JobInfo{
-				UID:          case01UID,
 				Allocated:    buildResource("3000m", "3G"),
 				TotalRequest: buildResource("4000m", "4G"),
+				UID:          case01UID,
 				Tasks: tasksMap{
 					case01Task1.UID: case01Task1,
 					case01Task3.UID: case01Task3,
@@ -142,8 +140,6 @@ func TestDeleteTaskInfo(t *testing.T) {
 					Pending: {case01Task1.UID: case01Task1},
 					Running: {case01Task3.UID: case01Task3},
 				},
-				NodesFitDelta: make(NodeResourceMap),
-
 				NodesFitErrors: make(map[TaskID]*FitErrors),
 			},
 		},
@@ -153,9 +149,9 @@ func TestDeleteTaskInfo(t *testing.T) {
 			pods:   []*v1.Pod{case02Pod1, case02Pod2, case02Pod3},
 			rmPods: []*v1.Pod{case02Pod2},
 			expected: &JobInfo{
-				UID:          case02UID,
 				Allocated:    buildResource("3000m", "3G"),
 				TotalRequest: buildResource("4000m", "4G"),
+				UID:          case02UID,
 				Tasks: tasksMap{
 					case02Task1.UID: case02Task1,
 					case02Task3.UID: case02Task3,
@@ -168,8 +164,6 @@ func TestDeleteTaskInfo(t *testing.T) {
 						case02Task3.UID: case02Task3,
 					},
 				},
-				NodesFitDelta: make(NodeResourceMap),
-
 				NodesFitErrors: make(map[TaskID]*FitErrors),
 			},
 		},

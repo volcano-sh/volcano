@@ -35,6 +35,7 @@ import (
 
 	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
@@ -152,12 +153,15 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 		}
 
 		if err := validatePolicies(task.Policies, field.NewPath("spec.tasks.policies")); err != nil {
-			msg = msg + err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v",
+			msg += err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v",
 				getValidEvents(), getValidActions())
 		}
-
+		podName := jobhelpers.MakePodName(job.Name, task.Template.Name, index)
+		msg += validateK8sPodNameLength(podName)
 		msg += validateTaskTemplate(task, job, index)
 	}
+
+	msg += validateJobName(job)
 
 	if totalReplicas < job.Spec.MinAvailable {
 		msg += " 'minAvailable' should not be greater than total replicas in tasks;"
@@ -272,5 +276,19 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 		return msg
 	}
 
+	return ""
+}
+
+func validateK8sPodNameLength(podName string) string {
+	if errMsgs := validation.IsQualifiedName(podName); len(errMsgs) > 0 {
+		return fmt.Sprintf("create pod with name %s validate failed %v;", podName, errMsgs)
+	}
+	return ""
+}
+
+func validateJobName(job *v1alpha1.Job) string {
+	if errMsgs := validation.IsQualifiedName(job.Name); len(errMsgs) > 0 {
+		return fmt.Sprintf("create job with name %s validate failed %v", job.Name, errMsgs)
+	}
 	return ""
 }

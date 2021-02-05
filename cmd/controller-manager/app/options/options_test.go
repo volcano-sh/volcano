@@ -47,6 +47,7 @@ func TestAddFlags(t *testing.T) {
 		PrintVersion:       false,
 		WorkerThreads:      defaultWorkers,
 		SchedulerName:      defaultSchedulerName,
+		MaxRequeueNum:      defaultMaxRequeueNum,
 		HealthzBindAddress: ":11252",
 	}
 

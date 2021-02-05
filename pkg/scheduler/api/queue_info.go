@@ -20,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
 // QueueID is UID type, serves as unique ID for each queue
@@ -32,6 +33,14 @@ type QueueInfo struct {
 
 	Weight int32
 
+	// Weights is a list of slash sperated float numbers.
+	// Each of them is a weight corresponding the
+	// hierarchy level.
+	Weights string
+	// Hierarchy is a list of node name along the
+	// path from the root to the node itself.
+	Hierarchy string
+
 	Queue *scheduling.Queue
 }
 
@@ -41,7 +50,9 @@ func NewQueueInfo(queue *scheduling.Queue) *QueueInfo {
 		UID:  QueueID(queue.Name),
 		Name: queue.Name,
 
-		Weight: queue.Spec.Weight,
+		Weight:    queue.Spec.Weight,
+		Hierarchy: queue.Annotations[v1beta1.KubeHierarchyAnnotationKey],
+		Weights:   queue.Annotations[v1beta1.KubeHierarchyWeightAnnotationKey],
 
 		Queue: queue,
 	}
@@ -50,10 +61,12 @@ func NewQueueInfo(queue *scheduling.Queue) *QueueInfo {
 // Clone is used to clone queueInfo object
 func (q *QueueInfo) Clone() *QueueInfo {
 	return &QueueInfo{
-		UID:    q.UID,
-		Name:   q.Name,
-		Weight: q.Weight,
-		Queue:  q.Queue,
+		UID:       q.UID,
+		Name:      q.Name,
+		Weight:    q.Weight,
+		Hierarchy: q.Hierarchy,
+		Weights:   q.Weights,
+		Queue:     q.Queue,
 	}
 }
 

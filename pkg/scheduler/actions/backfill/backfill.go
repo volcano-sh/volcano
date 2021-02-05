@@ -22,6 +22,7 @@ import (
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
 type Action struct{}
@@ -74,6 +75,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 						continue
 					}
 
+					metrics.UpdateE2eSchedulingDurationByJob(job.Name, job.PodGroup.Spec.Queue, job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 					allocated = true
 					break
 				}

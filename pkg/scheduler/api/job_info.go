@@ -19,11 +19,13 @@ package api
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
@@ -49,6 +51,7 @@ type TaskInfo struct {
 	Status      TaskStatus
 	Priority    int32
 	VolumeReady bool
+	Preemptable bool
 
 	Pod *v1.Pod
 }
@@ -67,20 +70,22 @@ func getJobID(pod *v1.Pod) JobID {
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	req := GetPodResourceWithoutInitContainers(pod)
 	initResreq := GetPodResourceRequest(pod)
+	preemptable := GetPodPreemptable(pod)
 
 	jobID := getJobID(pod)
 
 	ti := &TaskInfo{
-		UID:        TaskID(pod.UID),
-		Job:        jobID,
-		Name:       pod.Name,
-		Namespace:  pod.Namespace,
-		NodeName:   pod.Spec.NodeName,
-		Status:     getTaskStatus(pod),
-		Priority:   1,
-		Pod:        pod,
-		Resreq:     req,
-		InitResreq: initResreq,
+		UID:         TaskID(pod.UID),
+		Job:         jobID,
+		Name:        pod.Name,
+		Namespace:   pod.Namespace,
+		NodeName:    pod.Spec.NodeName,
+		Status:      getTaskStatus(pod),
+		Priority:    1,
+		Pod:         pod,
+		Resreq:      req,
+		InitResreq:  initResreq,
+		Preemptable: preemptable,
 	}
 
 	if pod.Spec.Priority != nil {
@@ -104,13 +109,14 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		Resreq:      ti.Resreq.Clone(),
 		InitResreq:  ti.InitResreq.Clone(),
 		VolumeReady: ti.VolumeReady,
+		Preemptable: ti.Preemptable,
 	}
 }
 
 // String returns the taskInfo details in a string
 func (ti TaskInfo) String() string {
-	return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v, resreq %v",
-		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority, ti.Resreq)
+	return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v, resreq %v, preemptable %v",
+		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority, ti.Resreq, ti.Preemptable)
 }
 
 // JobID is the type of JobInfo's ID.
@@ -134,8 +140,6 @@ type JobInfo struct {
 
 	MinAvailable int32
 
-	NodesFitDelta NodeResourceMap
-
 	JobFitErrors   string
 	NodesFitErrors map[TaskID]*FitErrors
 
@@ -148,20 +152,22 @@ type JobInfo struct {
 
 	CreationTimestamp metav1.Time
 	PodGroup          *PodGroup
+
+	ScheduleStartTimestamp metav1.Time
+
+	Preemptable    bool
+	MinPodAliveNum string
+	MaxEvictStep   string
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks
 func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 	job := &JobInfo{
-		UID: uid,
-
-		MinAvailable:  0,
-		NodesFitDelta: make(NodeResourceMap),
-		Allocated:     EmptyResource(),
-		TotalRequest:  EmptyResource(),
-
-		NodesFitErrors: make(map[TaskID]*FitErrors),
-
+		UID:             uid,
+		MinAvailable:    0,
+		NodesFitErrors:  make(map[TaskID]*FitErrors),
+		Allocated:       EmptyResource(),
+		TotalRequest:    EmptyResource(),
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},
 	}
@@ -185,8 +191,79 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.MinAvailable = pg.Spec.MinMember
 	ji.Queue = QueueID(pg.Spec.Queue)
 	ji.CreationTimestamp = pg.GetCreationTimestamp()
+	ji.Preemptable = GetJobPreemptable(pg)
+	ji.MinPodAliveNum = GetMinPodAlive(pg)
+	ji.MaxEvictStep = GetMaxEvictStep(pg)
 
 	ji.PodGroup = pg
+
+}
+
+// GetJobPreemptable return volcano.sh/preemptable value for job
+func GetJobPreemptable(pg *PodGroup) bool {
+	// check annotaion first
+	if len(pg.Annotations) > 0 {
+		if value, found := pg.Annotations[v1beta1.PodPreemptable]; found {
+			b, err := strconv.ParseBool(value)
+			if err != nil {
+				klog.Warningf("invalid %s=%s", v1beta1.PodPreemptable, value)
+				return false
+			}
+			return b
+		}
+	}
+
+	// it annotation does not exit, check label
+	if len(pg.Labels) > 0 {
+		if value, found := pg.Labels[v1beta1.PodPreemptable]; found {
+			b, err := strconv.ParseBool(value)
+			if err != nil {
+				klog.Warningf("invalid %s=%s", v1beta1.PodPreemptable, value)
+				return false
+			}
+			return b
+		}
+	}
+
+	return false
+}
+
+// GetMinPodAlive return volcano.sh/min-pod-alive value for job
+func GetMinPodAlive(pg *PodGroup) string {
+	// check annotaion first
+	if len(pg.Annotations) > 0 {
+		if value, found := pg.Annotations[v1beta1.PodMinAlive]; found {
+			return value
+		}
+	}
+
+	// it annotation does not exit, check label
+	if len(pg.Labels) > 0 {
+		if value, found := pg.Labels[v1beta1.PodMinAlive]; found {
+			return value
+		}
+	}
+
+	return "0"
+}
+
+// GetMaxEvictStep return volcano.sh/max-evict-step value for job
+func GetMaxEvictStep(pg *PodGroup) string {
+	// check annotaion first
+	if len(pg.Annotations) > 0 {
+		if value, found := pg.Annotations[v1beta1.PodEvictMaxStep]; found {
+			return value
+		}
+	}
+
+	// it annotation does not exit, check label
+	if len(pg.Labels) > 0 {
+		if value, found := pg.Labels[v1beta1.PodEvictMaxStep]; found {
+			return value
+		}
+	}
+
+	return ""
 }
 
 func (ji *JobInfo) addTaskIndex(ti *TaskInfo) {
@@ -200,9 +277,7 @@ func (ji *JobInfo) addTaskIndex(ti *TaskInfo) {
 func (ji *JobInfo) AddTaskInfo(ti *TaskInfo) {
 	ji.Tasks[ti.UID] = ti
 	ji.addTaskIndex(ti)
-
 	ji.TotalRequest.Add(ti.Resreq)
-
 	if AllocatedStatus(ti.Status) {
 		ji.Allocated.Add(ti.Resreq)
 	}
@@ -243,13 +318,10 @@ func (ji *JobInfo) deleteTaskIndex(ti *TaskInfo) {
 func (ji *JobInfo) DeleteTaskInfo(ti *TaskInfo) error {
 	if task, found := ji.Tasks[ti.UID]; found {
 		ji.TotalRequest.Sub(task.Resreq)
-
 		if AllocatedStatus(task.Status) {
 			ji.Allocated.Sub(task.Resreq)
 		}
-
 		delete(ji.Tasks, task.UID)
-
 		ji.deleteTaskIndex(task)
 		return nil
 	}
@@ -267,17 +339,18 @@ func (ji *JobInfo) Clone() *JobInfo {
 		Queue:     ji.Queue,
 		Priority:  ji.Priority,
 
-		MinAvailable:  ji.MinAvailable,
-		Allocated:     EmptyResource(),
-		TotalRequest:  EmptyResource(),
-		NodesFitDelta: make(NodeResourceMap),
-
+		MinAvailable:   ji.MinAvailable,
 		NodesFitErrors: make(map[TaskID]*FitErrors),
+		Allocated:      EmptyResource(),
+		TotalRequest:   EmptyResource(),
 
 		PodGroup: ji.PodGroup,
 
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},
+		Preemptable:     ji.Preemptable,
+		MinPodAliveNum:  ji.MinPodAliveNum,
+		MaxEvictStep:    ji.MaxEvictStep,
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
@@ -299,8 +372,8 @@ func (ji JobInfo) String() string {
 		i++
 	}
 
-	return fmt.Sprintf("Job (%v): namespace %v (%v), name %v, minAvailable %d, podGroup %+v",
-		ji.UID, ji.Namespace, ji.Queue, ji.Name, ji.MinAvailable, ji.PodGroup) + res
+	return fmt.Sprintf("Job (%v): namespace %v (%v), name %v, minAvailable %d, podGroup %+v, preemptable %+v, minPodAliveNum %+v, maxEvictStep %+v",
+		ji.UID, ji.Namespace, ji.Queue, ji.Name, ji.MinAvailable, ji.PodGroup, ji.Preemptable, ji.MinPodAliveNum, ji.MaxEvictStep) + res
 }
 
 // FitError returns detailed information on why a job's task failed to fit on

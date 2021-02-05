@@ -69,7 +69,7 @@ func (r *Resource) Clone() *Resource {
 
 var minMilliCPU float64 = 10
 var minMilliScalarResources float64 = 10
-var minMemory float64 = 10 * 1024 * 1024
+var minMemory float64 = 1
 
 // NewResource create a new resource object from resource list
 func NewResource(rl v1.ResourceList) *Resource {
@@ -141,6 +141,16 @@ func (r *Resource) Add(rr *Resource) *Resource {
 	return r
 }
 
+// Scale updates resource to the provided scale
+func (r *Resource) Scale(scale float64) *Resource {
+	r.MilliCPU *= scale
+	r.Memory *= scale
+	for rName, rQuant := range r.ScalarResources {
+		r.ScalarResources[rName] = rQuant * scale
+	}
+	return r
+}
+
 //Sub subtracts two Resource objects.
 func (r *Resource) Sub(rr *Resource) *Resource {
 	assert.Assertf(rr.LessEqual(r), "resource is not sufficient to do operation: <%v> sub <%v>", r, rr)
@@ -186,7 +196,7 @@ func (r *Resource) SetMaxResource(rr *Resource) {
 	}
 }
 
-//FitDelta Computes the delta between a resource oject representing available
+//FitDelta Computes the delta between a resource object representing available
 //resources an operand representing resources being requested.  Any
 //field that is less than 0 after the operation represents an
 //insufficient resource.
@@ -401,4 +411,35 @@ func (r *Resource) SetScalar(name v1.ResourceName, quantity float64) {
 		r.ScalarResources = map[v1.ResourceName]float64{}
 	}
 	r.ScalarResources[name] = quantity
+}
+
+// MinDimensionResource is used to reset the r resource dimension which is less than rr
+// e.g r resource is <cpu 2000.00, memory 4047845376.00, hugepages-2Mi 0.00, hugepages-1Gi 0.00>
+// rr resource is <cpu 3000.00, memory 1000.00>
+// return r resource is <cpu 2000.00, memory 1000.00, hugepages-2Mi 0.00, hugepages-1Gi 0.00>
+func (r *Resource) MinDimensionResource(rr *Resource) *Resource {
+
+	if rr.MilliCPU < r.MilliCPU {
+		r.MilliCPU = rr.MilliCPU
+	}
+	if rr.Memory < r.Memory {
+		r.Memory = rr.Memory
+	}
+
+	if rr.ScalarResources == nil {
+		if r.ScalarResources != nil {
+			for name := range r.ScalarResources {
+				r.ScalarResources[name] = 0
+			}
+		}
+	} else {
+		if r.ScalarResources != nil {
+			for name, quant := range rr.ScalarResources {
+				if quant < r.ScalarResources[name] {
+					r.ScalarResources[name] = quant
+				}
+			}
+		}
+	}
+	return r
 }

@@ -19,6 +19,7 @@ package mutate
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"k8s.io/api/admission/v1beta1"
 	whv1beta1 "k8s.io/api/admissionregistration/v1beta1"
@@ -98,12 +99,40 @@ func Queues(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 func createQueuePatch(queue *schedulingv1beta1.Queue) ([]byte, error) {
 	var patch []patchOperation
 
+	// add root node if the root node not specified
+	hierarchy := queue.Annotations[schedulingv1beta1.KubeHierarchyAnnotationKey]
+	hierarchicalWeights := queue.Annotations[schedulingv1beta1.KubeHierarchyWeightAnnotationKey]
+
+	if hierarchy != "" && hierarchicalWeights != "" && !strings.HasPrefix(hierarchy, "root") {
+		// based on https://tools.ietf.org/html/rfc6901#section-3
+		// escape "/" with "~1"
+		patch = append(patch, patchOperation{
+			Op:    "add",
+			Path:  fmt.Sprintf("/metadata/annotations/%s", strings.ReplaceAll(schedulingv1beta1.KubeHierarchyAnnotationKey, "/", "~1")),
+			Value: fmt.Sprintf("root/%s", hierarchy),
+		})
+		patch = append(patch, patchOperation{
+			Op:    "add",
+			Path:  fmt.Sprintf("/metadata/annotations/%s", strings.ReplaceAll(schedulingv1beta1.KubeHierarchyWeightAnnotationKey, "/", "~1")),
+			Value: fmt.Sprintf("1/%s", hierarchicalWeights),
+		})
+	}
+
 	trueValue := true
 	if queue.Spec.Reclaimable == nil {
 		patch = append(patch, patchOperation{
 			Op:    "add",
 			Path:  "/spec/reclaimable",
 			Value: &trueValue,
+		})
+	}
+
+	defaultWeight := 1
+	if queue.Spec.Weight == 0 {
+		patch = append(patch, patchOperation{
+			Op:    "add",
+			Path:  "/spec/weight",
+			Value: &defaultWeight,
 		})
 	}
 
