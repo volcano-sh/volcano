@@ -61,7 +61,7 @@ var _ = Describe("Hierarchy Queue E2E Test", func() {
 
 		queueList, err := ctx.vcclient.SchedulingV1beta1().Queues().List(context.TODO(), metav1.ListOptions{})
 		for _, queue := range queueList.Items {
-			Expect(queue.Name).Should(SatisfyAny(Equal("default"), Equal("dev"), Equal("test1"), Equal("test2")))
+			Expect(queue.Name).Should(SatisfyAny(Equal("default"), Equal("dev"), Equal("test1"), Equal("test2"), Equal("root")))
 		}
 
 		err = util.CreateQueueCommand(ctx.vcclient, defaultQueue, "test2", busv1alpha1.CloseQueueAction)
