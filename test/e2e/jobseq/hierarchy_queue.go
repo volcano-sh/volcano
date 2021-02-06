@@ -64,14 +64,19 @@ var _ = Describe("Hierarchy Queue E2E Test", func() {
 			Expect(queue.Name).Should(SatisfyAny(Equal("default"), Equal("dev"), Equal("test1"), Equal("test2"), Equal("root")))
 		}
 
-		err = util.CreateQueueCommand(ctx.vcclient, defaultQueue, "test2", busv1alpha1.CloseQueueAction)
-		if err != nil {
-			Expect(err).NotTo(HaveOccurred(), "Error send close queue command")
-		}
+		Eventually(
+			func() error {
+				return util.CreateQueueCommand(ctx.vcclient, defaultQueue, "test2", busv1alpha1.CloseQueueAction)
+			},
+			time.Second*60, time.Second*5).Should(BeNil())
+
 		Eventually(
 			func() error {
 				t := "test2"
 				q, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), t, metav1.GetOptions{})
+				if err != nil {
+					return err
+				}
 				Expect(err).NotTo(HaveOccurred())
 				fmt.Println("-----------", q.Status.State)
 				if q.Status.State != "Closed" {
@@ -80,7 +85,6 @@ var _ = Describe("Hierarchy Queue E2E Test", func() {
 				return nil
 			},
 			time.Second*60, time.Second*5).Should(BeNil())
-		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue closed")
 
 		By("Update hierarchy queues check")
 		updateRoot := root.DeepCopy()
