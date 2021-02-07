@@ -322,7 +322,7 @@ func (bp *tdmPlugin) maxVictims(job *api.JobInfo, victims []*api.TaskInfo) []*ap
 
 func (bp *tdmPlugin) revocableNodePreemptableTask(rz string, ssn *framework.Session) map[api.JobID][]*api.TaskInfo {
 	tasksMap := make(map[api.JobID][]*api.TaskInfo)
-	for _, node := range ssn.Nodes {
+	for _, node := range ssn.RevocableNodes {
 		if node.RevocableZone != rz {
 			continue
 		}
