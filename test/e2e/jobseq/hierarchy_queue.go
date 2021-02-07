@@ -2,9 +2,9 @@ package jobseq
 
 import (
 	"context"
-	"fmt"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"time"
+
+	"k8s.io/apimachinery/pkg/api/errors"
 	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/cli/util"
 
@@ -70,21 +70,12 @@ var _ = Describe("Hierarchy Queue E2E Test", func() {
 			},
 			time.Second*60, time.Second*5).Should(BeNil())
 
-		Eventually(
-			func() error {
-				t := "test2"
-				q, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), t, metav1.GetOptions{})
-				if err != nil {
-					return err
-				}
-				Expect(err).NotTo(HaveOccurred())
-				fmt.Println("-----------", q.Status.State)
-				if q.Status.State != "Closed" {
-					return fmt.Errorf("The queue %s status is not close", t)
-				}
-				return nil
-			},
-			time.Second*60, time.Second*5).Should(BeNil())
+		err = waitQueueStatus(func() (bool, error) {
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), "test2", metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "Get queue test2 failed")
+			return queue.Status.State == "Closed", nil
+		})
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue closed")
 
 		By("Update hierarchy queues check")
 		updateRoot := root.DeepCopy()
@@ -119,12 +110,14 @@ var _ = Describe("Hierarchy Queue E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		test1, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), "test1", metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "Get queue test1 failed")
 		Expect(test1.Spec.Weight).Should(Equal(2))
+
 		_, err = ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), "test2", metav1.GetOptions{})
 		Expect(errors.IsNotFound(err)).Should(Equal(true))
+
 		_, err = ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), "test3", metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "Get queue test3 failed")
 
 		By("Hierarchy queue job status transition")
 		job1 := createJob(ctx, &jobSpec{
