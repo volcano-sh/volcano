@@ -226,7 +226,7 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		for jobID, tmp := range tasksMap {
 			if job, ok := ssn.Jobs[jobID]; ok {
-				maxPodEvictNum := bp.getMaxPodEvictNum(job)
+				maxPodEvictNum, _ := bp.getMaxPodEvictNum(job)
 				if maxPodEvictNum >= len(tmp) {
 					victims = append(victims, tmp...)
 				} else {
@@ -317,29 +317,38 @@ func (bp *tdmPlugin) maxVictims(job *api.JobInfo, victims []*api.TaskInfo) []*ap
 		maxEvictStep = intstr.Parse(job.MaxEvictStep)
 	}
 
-	maxPodEvictNum := bp.getMaxPodEvictNum(job)
+	// if not config volcano.sh/min-pod-alive, max-evict-step will take effect
+	maxPodEvictNum, config := bp.getMaxPodEvictNum(job)
 	targetNum := 0
 	switch maxEvictStep.Type {
 	case intstr.Int:
-		targetNum = util.GetMinInt(maxEvictStep.IntValue(), len(victims), maxPodEvictNum)
-		klog.V(3).Infof("Job <%s/%s> max evict per steps:%v, potential victims number:%v, max evict for pod alive:%v, max victims number:%v",
-			job.Namespace, job.Name, maxEvictStep.IntValue(), len(victims), maxPodEvictNum, targetNum)
+		if !config {
+			maxPodEvictNum = maxEvictStep.IntValue()
+		}
 	case intstr.String:
 		if v, err := intstr.GetValueFromIntOrPercent(&maxEvictStep, len(job.Tasks), true); err == nil {
-			targetNum = util.GetMinInt(v, len(victims), maxPodEvictNum)
-			klog.V(3).Infof("Job <%s/%s> max evict per steps:%v, potential victims number:%v, max evict for pod alive:%v, max victims number:%v",
-				job.Namespace, job.Name, v, len(victims), maxPodEvictNum, targetNum)
+			if !config {
+				maxPodEvictNum = v
+			}
 		} else {
 			klog.Warningf("TDM get percent value err: %v", err)
 		}
 	}
 
+	targetNum = util.GetMinInt(maxPodEvictNum, len(victims))
+	klog.V(3).Infof("Job <%s/%s> max evict:%v, potential victims number:%v, max victims number:%v",
+		job.Namespace, job.Name, maxPodEvictNum, len(victims), targetNum)
+
 	return victims[:targetNum]
 }
 
 // return max pod evict number from job volcano.sh/min-pod-alive configure
-func (bp *tdmPlugin) getMaxPodEvictNum(job *api.JobInfo) int {
+func (bp *tdmPlugin) getMaxPodEvictNum(job *api.JobInfo) (int, bool) {
 	minPodAlive := job.JobDisruptionBudget.MinPodAliveNum
+	// not configure volcano.sh/min-pod-alive, max-evict-step will take effect
+	if minPodAlive == 0 {
+		return 0, false
+	}
 	klog.V(3).Infof("Job <%s/%s> config min pod alive is %v", job.Namespace, job.Name, minPodAlive)
 
 	jobRunningTaskNum := len(job.TaskStatusIndex[api.Running])
@@ -349,7 +358,7 @@ func (bp *tdmPlugin) getMaxPodEvictNum(job *api.JobInfo) int {
 	} else {
 		maxPodEvictNum = 0
 	}
-	return maxPodEvictNum
+	return maxPodEvictNum, true
 }
 
 func (bp *tdmPlugin) revocableNodePreemptableTask(rz string, ssn *framework.Session) map[api.JobID][]*api.TaskInfo {
