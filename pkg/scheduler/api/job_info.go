@@ -31,6 +31,31 @@ import (
 	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
+// DisruptionBudget define job min pod alive and max pod unvailable value
+// When both parameters are defined, MinPodAliveNum take effect
+type DisruptionBudget struct {
+	MinPodAliveNum   int
+	MaxUnavilableNum int // left to furture use
+}
+
+// NewDisruptionBudget create disruption budget for job
+func NewDisruptionBudget(minPodAliveNum, maxUnavilableNum int) *DisruptionBudget {
+
+	disruptionBudget := &DisruptionBudget{
+		MinPodAliveNum:   minPodAliveNum,
+		MaxUnavilableNum: maxUnavilableNum,
+	}
+	return disruptionBudget
+}
+
+// Clone return a clone of DisruptionBudget
+func (db *DisruptionBudget) Clone() *DisruptionBudget {
+	return &DisruptionBudget{
+		MinPodAliveNum:   db.MinPodAliveNum,
+		MaxUnavilableNum: db.MaxUnavilableNum,
+	}
+}
+
 // TaskID is UID type for Task
 type TaskID types.UID
 
@@ -155,9 +180,9 @@ type JobInfo struct {
 
 	ScheduleStartTimestamp metav1.Time
 
-	Preemptable    bool
-	MinPodAliveNum string
-	MaxEvictStep   string
+	Preemptable         bool
+	JobDisruptionBudget *DisruptionBudget
+	MaxEvictStep        string
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks
@@ -192,7 +217,7 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.Queue = QueueID(pg.Spec.Queue)
 	ji.CreationTimestamp = pg.GetCreationTimestamp()
 	ji.Preemptable = GetJobPreemptable(pg)
-	ji.MinPodAliveNum = GetMinPodAlive(pg)
+	ji.JobDisruptionBudget = GetJobDisruptionBudget(pg)
 	ji.MaxEvictStep = GetMaxEvictStep(pg)
 
 	ji.PodGroup = pg
@@ -228,23 +253,27 @@ func GetJobPreemptable(pg *PodGroup) bool {
 	return false
 }
 
-// GetMinPodAlive return volcano.sh/min-pod-alive value for job
-func GetMinPodAlive(pg *PodGroup) string {
+// GetJobDisruptionBudget return volcano.sh/min-pod-alive value for job
+func GetJobDisruptionBudget(pg *PodGroup) *DisruptionBudget {
 	// check annotaion first
 	if len(pg.Annotations) > 0 {
 		if value, found := pg.Annotations[v1beta1.PodMinAlive]; found {
-			return value
+			if minPodAlive, err := strconv.Atoi(value); err == nil {
+				return NewDisruptionBudget(minPodAlive, 0)
+			}
 		}
 	}
 
 	// it annotation does not exit, check label
 	if len(pg.Labels) > 0 {
 		if value, found := pg.Labels[v1beta1.PodMinAlive]; found {
-			return value
+			if minPodAlive, err := strconv.Atoi(value); err == nil {
+				return NewDisruptionBudget(minPodAlive, 0)
+			}
 		}
 	}
 
-	return "0"
+	return NewDisruptionBudget(0, 0)
 }
 
 // GetMaxEvictStep return volcano.sh/max-evict-step value for job
@@ -346,11 +375,11 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 		PodGroup: ji.PodGroup,
 
-		TaskStatusIndex: map[TaskStatus]tasksMap{},
-		Tasks:           tasksMap{},
-		Preemptable:     ji.Preemptable,
-		MinPodAliveNum:  ji.MinPodAliveNum,
-		MaxEvictStep:    ji.MaxEvictStep,
+		TaskStatusIndex:     map[TaskStatus]tasksMap{},
+		Tasks:               tasksMap{},
+		Preemptable:         ji.Preemptable,
+		JobDisruptionBudget: ji.JobDisruptionBudget.Clone(),
+		MaxEvictStep:        ji.MaxEvictStep,
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
@@ -373,7 +402,7 @@ func (ji JobInfo) String() string {
 	}
 
 	return fmt.Sprintf("Job (%v): namespace %v (%v), name %v, minAvailable %d, podGroup %+v, preemptable %+v, minPodAliveNum %+v, maxEvictStep %+v",
-		ji.UID, ji.Namespace, ji.Queue, ji.Name, ji.MinAvailable, ji.PodGroup, ji.Preemptable, ji.MinPodAliveNum, ji.MaxEvictStep) + res
+		ji.UID, ji.Namespace, ji.Queue, ji.Name, ji.MinAvailable, ji.PodGroup, ji.Preemptable, ji.JobDisruptionBudget.MinPodAliveNum, ji.MaxEvictStep) + res
 }
 
 // FitError returns detailed information on why a job's task failed to fit on
