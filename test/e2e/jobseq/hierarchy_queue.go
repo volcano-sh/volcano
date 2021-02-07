@@ -2,6 +2,7 @@ package jobseq
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -70,12 +71,15 @@ var _ = Describe("Hierarchy Queue E2E Test", func() {
 			},
 			time.Second*60, time.Second*5).Should(BeNil())
 
-		err = waitQueueStatus(func() (bool, error) {
-			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), "test2", metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred(), "Get queue test2 failed")
-			return queue.Status.State == "Closed", nil
-		})
-		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue closed")
+		Eventually(
+			func() error {
+				queue, _ := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), "test2", metav1.GetOptions{})
+				if queue.Status.State == "Closed" {
+					return nil
+				}
+				return fmt.Errorf("Error waiting for queue closed")
+			},
+			time.Second*60, time.Second*5).Should(BeNil())
 
 		By("Update hierarchy queues check")
 		updateRoot := root.DeepCopy()
