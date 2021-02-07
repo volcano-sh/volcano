@@ -363,7 +363,7 @@ func (bp *tdmPlugin) getMaxPodEvictNum(job *api.JobInfo) (int, bool) {
 
 func (bp *tdmPlugin) revocableNodePreemptableTask(rz string, ssn *framework.Session) map[api.JobID][]*api.TaskInfo {
 	tasksMap := make(map[api.JobID][]*api.TaskInfo)
-	for _, node := range ssn.Nodes {
+	for _, node := range ssn.RevocableNodes {
 		if node.RevocableZone != rz {
 			continue
 		}
