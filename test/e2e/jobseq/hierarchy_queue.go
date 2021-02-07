@@ -82,7 +82,6 @@ var _ = Describe("Hierarchy Queue E2E Test", func() {
 			time.Second*60, time.Second*5).Should(BeNil())
 
 		By("Update hierarchy queues check")
-		updateRoot := root.DeepCopy()
 		updateHierarchy := []schedulingv1beta1.HierarchyAttr{
 			{
 				Name: "default",
@@ -109,8 +108,8 @@ var _ = Describe("Hierarchy Queue E2E Test", func() {
 				},
 			},
 		}
-		updateRoot.Spec.Hierarchy = updateHierarchy
-		_, err = ctx.vcclient.SchedulingV1beta1().Queues().Update(context.TODO(), updateRoot, metav1.UpdateOptions{})
+		root.Spec.Hierarchy = updateHierarchy
+		_, err = ctx.vcclient.SchedulingV1beta1().Queues().Update(context.TODO(), &root, metav1.UpdateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		test1, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), "test1", metav1.GetOptions{})
