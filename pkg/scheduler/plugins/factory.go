@@ -27,6 +27,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
+	"volcano.sh/volcano/pkg/scheduler/plugins/sla"
 	"volcano.sh/volcano/pkg/scheduler/plugins/tdm"
 )
 
@@ -41,6 +42,7 @@ func init() {
 	framework.RegisterPluginBuilder(binpack.PluginName, binpack.New)
 	framework.RegisterPluginBuilder(tdm.PluginName, tdm.New)
 	framework.RegisterPluginBuilder(overcommit.PluginName, overcommit.New)
+	framework.RegisterPluginBuilder(sla.PluginName, sla.New)
 
 	// Plugins for Queues
 	framework.RegisterPluginBuilder(proportion.PluginName, proportion.New)

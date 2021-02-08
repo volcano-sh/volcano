@@ -58,7 +58,7 @@ func (ssn *Session) AddJobReadyFn(name string, vf api.ValidateFn) {
 }
 
 // AddJobPipelinedFn add pipelined function
-func (ssn *Session) AddJobPipelinedFn(name string, vf api.ValidateFn) {
+func (ssn *Session) AddJobPipelinedFn(name string, vf api.VoteFn) {
 	ssn.jobPipelinedFns[name] = vf
 }
 
@@ -103,7 +103,7 @@ func (ssn *Session) AddJobValidFn(name string, fn api.ValidateExFn) {
 }
 
 // AddJobEnqueueableFn add jobenqueueable function
-func (ssn *Session) AddJobEnqueueableFn(name string, fn api.ValidateFn) {
+func (ssn *Session) AddJobEnqueueableFn(name string, fn api.VoteFn) {
 	ssn.jobEnqueueableFns[name] = fn
 }
 
@@ -255,8 +255,14 @@ func (ssn *Session) JobPipelined(obj interface{}) bool {
 			}
 			hasFound = true
 
-			if !jrf(obj) {
+			res := jrf(obj)
+			switch res {
+			case 1:
+				return true
+			case -1:
 				return false
+			default:
+				continue
 			}
 		}
 		// this tier registered function
@@ -317,8 +323,8 @@ func (ssn *Session) JobValid(obj interface{}) *api.ValidateResult {
 
 // JobEnqueueable invoke jobEnqueueableFns function of the plugins
 func (ssn *Session) JobEnqueueable(obj interface{}) bool {
+	var hasFound bool
 	for _, tier := range ssn.Tiers {
-		var hasFound bool
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledJobEnqueued) {
 				continue
@@ -328,8 +334,15 @@ func (ssn *Session) JobEnqueueable(obj interface{}) bool {
 				continue
 			}
 			hasFound = true
-			if res := fn(obj); !res {
-				return res
+
+			res := fn(obj)
+			switch res {
+			case 1:
+				return true
+			case -1:
+				return false
+			default:
+				continue
 			}
 		}
 		// this tier registered function

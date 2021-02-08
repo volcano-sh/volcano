@@ -259,7 +259,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return overused
 	})
 
-	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) bool {
+	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {
 		job := obj.(*api.JobInfo)
 		queueID := job.Queue
 		attr := pp.queueOpts[queueID]
@@ -269,11 +269,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		if len(queue.Queue.Spec.Capability) == 0 {
 			klog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Inqueue.",
 				queue.Name, job.Namespace, job.Name)
-			return true
-		}
-
-		if job.PodGroup.Spec.MinResources == nil {
-			return true
+			return 0
 		}
 
 		minReq := GetJobMinResources(job.PodGroup.Spec)
@@ -281,8 +277,9 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		inqueue := minReq.Add(attr.allocated).Add(attr.inqueue).LessEqual(api.NewResource(queue.Queue.Spec.Capability))
 		if inqueue {
 			attr.inqueue.Add(GetJobMinResources(job.PodGroup.Spec))
+			return 0
 		}
-		return inqueue
+		return -1
 	})
 
 	// Register event handlers.

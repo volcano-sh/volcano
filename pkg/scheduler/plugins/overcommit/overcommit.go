@@ -88,14 +88,14 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	op.inqueueResource = inqueue.Clone()
 
-	ssn.AddJobEnqueueableFn(op.Name(), func(obj interface{}) bool {
+	ssn.AddJobEnqueueableFn(op.Name(), func(obj interface{}) int {
 		job := obj.(*api.JobInfo)
 		idle := op.idleResource
 		inqueue := api.EmptyResource()
 		inqueue.Add(op.inqueueResource)
 		if job.PodGroup.Spec.MinResources == nil {
 			klog.V(4).Infof("job <%s/%s> is bestEffort, allow it be inqueue", job.Namespace, job.Name)
-			return true
+			return 0
 		}
 
 		//TODO: if allow 1 more job to be inqueue beyond overcommit-factor, large job may be inqueue and create pods
@@ -103,11 +103,11 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 		if inqueue.Add(jobMinReq).LessEqual(idle) {
 			klog.V(4).Infof("sufficient resources, allow job <%s/%s> be inqueue", job.Namespace, job.Name)
 			op.inqueueResource.Add(jobMinReq)
-			return true
+			return 0
 		}
 		klog.V(4).Infof("idle resource in cluster is overused, ignore job <%s/%s>",
 			job.Namespace, job.Name)
-		return false
+		return -1
 	})
 }
 

@@ -273,10 +273,13 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 		return 1
 	}
 
-	jobPipelinedFn := func(obj interface{}) bool {
+	jobPipelinedFn := func(obj interface{}) int {
 		jobInfo := obj.(*api.JobInfo)
 		occupied := jobInfo.WaitingTaskNum() + jobInfo.ReadyTaskNum()
-		return occupied >= jobInfo.MinAvailable
+		if occupied < jobInfo.MinAvailable {
+			return -1
+		}
+		return 0
 	}
 
 	jobStarvingFn := func(obj interface{}) bool {

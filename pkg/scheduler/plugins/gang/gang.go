@@ -128,9 +128,12 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		return ji.Ready()
 	})
 
-	pipelinedFn := func(obj interface{}) bool {
+	pipelinedFn := func(obj interface{}) int {
 		ji := obj.(*api.JobInfo)
-		return ji.Pipelined()
+		if !ji.Pipelined() {
+			return -1
+		}
+		return 0
 	}
 	ssn.AddJobPipelinedFn(gp.Name(), pipelinedFn)
 

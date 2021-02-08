@@ -117,6 +117,9 @@ type CompareFn func(interface{}, interface{}) int
 // ValidateFn is the func declaration used to check object's status.
 type ValidateFn func(interface{}) bool
 
+// VoteFn is the func declaration used to check object's complicated status.
+type VoteFn func(interface{}) int
+
 // ValidateResult is struct to which can used to determine the result
 type ValidateResult struct {
 	Pass    bool
