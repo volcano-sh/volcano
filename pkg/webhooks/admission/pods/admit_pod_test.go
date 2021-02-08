@@ -133,6 +133,151 @@ func TestValidatePod(t *testing.T) {
 			ExpectErr:      true,
 			disabledPG:     true,
 		},
+		// validate pod with budget volcano.sh/job-distributed-budget/max-unavailable=50% configure
+		{
+			Name: "validate pod with budget volcano.sh/job-distributed-budget/max-unavailable=50",
+			Pod: v1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "normal-pod-1",
+					Annotations: map[string]string{
+						vcschedulingv1.JDBMaxUnavailable: "50%",
+					},
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "volcano",
+				},
+			},
+
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+		},
+		// validate pod with budget volcano.sh/job-distributed-budget/max-unavailable=5 configure
+		{
+			Name: "validate pod with budget volcano.sh/job-distributed-budget/max-unavailable=5",
+			Pod: v1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "normal-pod-1",
+					Annotations: map[string]string{
+						vcschedulingv1.JDBMaxUnavailable: "5",
+					},
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "volcano",
+				},
+			},
+
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+		},
+		// validate pod with budget volcano.sh/job-distributed-budget/max-unavailable=0  configure
+		{
+			Name: "validate pod with budget volcano.sh/job-distributed-budget/max-unavailable=0",
+			Pod: v1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "normal-pod-1",
+					Annotations: map[string]string{
+						vcschedulingv1.JDBMaxUnavailable: "0",
+					},
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "volcano",
+				},
+			},
+
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
+			ret:            "",
+			ExpectErr:      true,
+		},
+		// validate pod with budget volcano.sh/job-distributed-budget/max-unavailable=100%  configure
+		{
+			Name: "validate pod with budget volcano.sh/job-distributed-budget/max-unavailable=100% ",
+			Pod: v1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "normal-pod-1",
+					Annotations: map[string]string{
+						vcschedulingv1.JDBMaxUnavailable: "110%",
+					},
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "volcano",
+				},
+			},
+
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
+			ret:            "",
+			ExpectErr:      true,
+		},
+		// validate pod with budget volcano.sh/job-distributed-budget/max-unavailable=abc  configure
+		{
+			Name: "validate pod with budget volcano.sh/job-distributed-budget/max-unavailable=abc",
+			Pod: v1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "normal-pod-1",
+					Annotations: map[string]string{
+						vcschedulingv1.JDBMaxUnavailable: "abc",
+					},
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "volcano",
+				},
+			},
+
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
+			ret:            "",
+			ExpectErr:      true,
+		},
+		// validate pod with budget JDBMaxUnavailable=1 and JDBMinAvailable=2 configure
+		{
+			Name: "validate pod with budget JDBMaxUnavailable=1 and JDBMinAvailable=2",
+			Pod: v1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "normal-pod-1",
+					Annotations: map[string]string{
+						vcschedulingv1.JDBMaxUnavailable: "1",
+						vcschedulingv1.JDBMinAvailable:   "2",
+					},
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "volcano",
+				},
+			},
+
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
+			ret:            "",
+			ExpectErr:      true,
+		},
 	}
 
 	for _, testCase := range testCases {

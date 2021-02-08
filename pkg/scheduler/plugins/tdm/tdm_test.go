@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
@@ -344,29 +344,6 @@ func Test_TDM_victimsFn(t *testing.T) {
 		schedulingv2.NodeRevocableZone: "rz1",
 	})
 
-	pg1 := &schedulingv2.PodGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "pg1",
-			Namespace: "c1",
-		},
-		Spec: schedulingv2.PodGroupSpec{
-			Queue: "c1",
-		},
-	}
-
-	pg2 := &schedulingv2.PodGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "pg2",
-			Namespace: "c2",
-			Annotations: map[string]string{
-				schedulingv2.PodEvictMaxStep: "50%",
-			},
-		},
-		Spec: schedulingv2.PodGroupSpec{
-			Queue: "c2",
-		},
-	}
-
 	queue1 := &schedulingv2.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "c1",
@@ -395,7 +372,18 @@ func Test_TDM_victimsFn(t *testing.T) {
 	}{
 		{
 			podGroups: []*schedulingv2.PodGroup{
-				pg1,
+				&schedulingv2.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+						Annotations: map[string]string{
+							schedulingv2.JDBMaxUnavailable: "30%",
+						},
+					},
+					Spec: schedulingv2.PodGroupSpec{
+						Queue: "c1",
+					},
+				},
 			},
 			queues: []*schedulingv2.Queue{
 				queue1,
@@ -409,13 +397,23 @@ func Test_TDM_victimsFn(t *testing.T) {
 			args: framework.Arguments{
 				"tdm.revocable-zone.rz1": "0:00-0:01",
 				"tdm.evict.period":       "100ms",
-				"tdm.evict.max-step":     "30%",
 			},
 			want: 2,
 		},
 		{
 			podGroups: []*schedulingv2.PodGroup{
-				pg1,
+				&schedulingv2.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+						Annotations: map[string]string{
+							schedulingv2.JDBMaxUnavailable: "30%",
+						},
+					},
+					Spec: schedulingv2.PodGroupSpec{
+						Queue: "c1",
+					},
+				},
 			},
 			queues: []*schedulingv2.Queue{
 				queue1,
@@ -429,13 +427,23 @@ func Test_TDM_victimsFn(t *testing.T) {
 			args: framework.Arguments{
 				"tdm.revocable-zone.rz1": "0:00-0:00",
 				"tdm.evict.period":       "100ms",
-				"tdm.evict.max-step":     "30%",
 			},
 			want: 0,
 		},
 		{
 			podGroups: []*schedulingv2.PodGroup{
-				pg1,
+				&schedulingv2.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+						Annotations: map[string]string{
+							schedulingv2.JDBMaxUnavailable: "99%",
+						},
+					},
+					Spec: schedulingv2.PodGroupSpec{
+						Queue: "c1",
+					},
+				},
 			},
 			queues: []*schedulingv2.Queue{
 				queue1,
@@ -449,13 +457,23 @@ func Test_TDM_victimsFn(t *testing.T) {
 			args: framework.Arguments{
 				"tdm.revocable-zone.rz1": "0:00-0:01",
 				"tdm.evict.period":       "1s",
-				"tdm.evict.max-step":     "100%",
 			},
 			want: 3,
 		},
 		{
 			podGroups: []*schedulingv2.PodGroup{
-				pg2,
+				&schedulingv2.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c2",
+						Annotations: map[string]string{
+							schedulingv2.JDBMaxUnavailable: "50%",
+						},
+					},
+					Spec: schedulingv2.PodGroupSpec{
+						Queue: "c2",
+					},
+				},
 			},
 			queues: []*schedulingv2.Queue{
 				queue2,
@@ -469,14 +487,35 @@ func Test_TDM_victimsFn(t *testing.T) {
 			args: framework.Arguments{
 				"tdm.revocable-zone.rz1": "0:00-0:01",
 				"tdm.evict.period":       "1s",
-				"tdm.evict.max-step":     "100%",
 			},
 			want: 3,
 		},
 		{
 			podGroups: []*schedulingv2.PodGroup{
-				pg2,
-				pg1,
+				&schedulingv2.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c2",
+						Annotations: map[string]string{
+							schedulingv2.JDBMaxUnavailable: "50%",
+						},
+					},
+					Spec: schedulingv2.PodGroupSpec{
+						Queue: "c2",
+					},
+				},
+				&schedulingv2.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+						Annotations: map[string]string{
+							schedulingv2.JDBMaxUnavailable: "90%",
+						},
+					},
+					Spec: schedulingv2.PodGroupSpec{
+						Queue: "c1",
+					},
+				},
 			},
 			queues: []*schedulingv2.Queue{
 				queue1,
@@ -491,7 +530,139 @@ func Test_TDM_victimsFn(t *testing.T) {
 			args: framework.Arguments{
 				"tdm.revocable-zone.rz1": "0:00-0:01",
 				"tdm.evict.period":       "1s",
-				"tdm.evict.max-step":     "100%",
+			},
+			want: 6,
+		},
+		{
+			podGroups: []*schedulingv2.PodGroup{
+				&schedulingv2.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c2",
+						Annotations: map[string]string{
+							schedulingv2.JDBMaxUnavailable: "3",
+						},
+					},
+					Spec: schedulingv2.PodGroupSpec{
+						Queue: "c2",
+					},
+				},
+			},
+			queues: []*schedulingv2.Queue{
+				queue2,
+			},
+			pods: []*v1.Pod{
+				p6, p7, p8, p9, p10,
+			},
+			nodes: []*v1.Node{
+				n2,
+			},
+			args: framework.Arguments{
+				"tdm.revocable-zone.rz1": "0:00-0:01",
+				"tdm.evict.period":       "1s",
+			},
+			want: 3,
+		},
+		{
+			podGroups: []*schedulingv2.PodGroup{
+				&schedulingv2.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c2",
+						Annotations: map[string]string{
+							schedulingv2.JDBMinAvailable: "3",
+						},
+					},
+					Spec: schedulingv2.PodGroupSpec{
+						Queue: "c2",
+					},
+				},
+			},
+			queues: []*schedulingv2.Queue{
+				queue2,
+			},
+			pods: []*v1.Pod{
+				p6, p7, p8, p9, p10,
+			},
+			nodes: []*v1.Node{
+				n2,
+			},
+			args: framework.Arguments{
+				"tdm.revocable-zone.rz1": "0:00-0:01",
+				"tdm.evict.period":       "1s",
+			},
+			want: 2,
+		},
+		{
+			podGroups: []*schedulingv2.PodGroup{
+				&schedulingv2.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c2",
+						Annotations: map[string]string{
+							schedulingv2.JDBMinAvailable: "30%",
+						},
+					},
+					Spec: schedulingv2.PodGroupSpec{
+						Queue: "c2",
+					},
+				},
+			},
+			queues: []*schedulingv2.Queue{
+				queue2,
+			},
+			pods: []*v1.Pod{
+				p6, p7, p8, p9, p10,
+			},
+			nodes: []*v1.Node{
+				n2,
+			},
+			args: framework.Arguments{
+				"tdm.revocable-zone.rz1": "0:00-0:01",
+				"tdm.evict.period":       "1s",
+			},
+			want: 3,
+		},
+		{
+			podGroups: []*schedulingv2.PodGroup{
+				&schedulingv2.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c2",
+						Annotations: map[string]string{
+							schedulingv2.JDBMinAvailable: "2",
+						},
+					},
+					Spec: schedulingv2.PodGroupSpec{
+						Queue: "c2",
+					},
+				},
+				&schedulingv2.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+						Annotations: map[string]string{
+							schedulingv2.JDBMaxUnavailable: "3",
+						},
+					},
+					Spec: schedulingv2.PodGroupSpec{
+						Queue: "c1",
+					},
+				},
+			},
+			queues: []*schedulingv2.Queue{
+				queue1,
+				queue2,
+			},
+			pods: []*v1.Pod{
+				p1, p2, p3, p4, p5, p6, p7, p8, p9, p10,
+			},
+			nodes: []*v1.Node{
+				n1, n2,
+			},
+			args: framework.Arguments{
+				"tdm.revocable-zone.rz1": "0:00-0:01",
+				"tdm.evict.period":       "1s",
 			},
 			want: 6,
 		},
