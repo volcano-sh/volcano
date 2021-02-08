@@ -154,11 +154,5 @@ type NodeOrderMapFn func(*TaskInfo, *NodeInfo) (map[string]float64, float64, err
 // NodeOrderReduceFn is the func declaration used to reduce priority score of all nodes for a plugin for a particular task.
 type NodeOrderReduceFn func(*TaskInfo, map[string]schedulerapi.HostPriorityList) (map[string]float64, error)
 
-// TargetJobFn is the func declaration used to select the target job satisfies some conditions
-type TargetJobFn func([]*JobInfo) *JobInfo
-
-// ReservedNodesFn is the func declaration used to select the reserved nodes
-type ReservedNodesFn func()
-
 // VictimTasksFn is the func declaration used to select victim tasks
 type VictimTasksFn func() []*TaskInfo

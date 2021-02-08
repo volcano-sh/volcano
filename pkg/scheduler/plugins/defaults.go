@@ -58,12 +58,6 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	if option.EnabledNodeOrder == nil {
 		option.EnabledNodeOrder = &t
 	}
-	if option.EnabledTargetJob == nil {
-		option.EnabledTargetJob = &t
-	}
-	if option.EnabledReservedNodes == nil {
-		option.EnabledReservedNodes = &t
-	}
 	if option.EnabledVictim == nil {
 		option.EnabledVictim = &t
 	}

@@ -38,13 +38,6 @@ const baselinePercentageOfNodesToFind = 50
 
 var lastProcessedNodeIndex int
 
-// Reservation is used to record target job and locked nodes
-var Reservation *ResourceReservation
-
-func init() {
-	Reservation = NewResourceReservation()
-}
-
 // CalculateNumOfFeasibleNodesToFind returns the number of feasible nodes that once found,
 // the scheduler stops its search for more feasible nodes.
 func CalculateNumOfFeasibleNodesToFind(numAllNodes int32) (numNodes int32) {
@@ -246,18 +239,4 @@ func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api
 			preemptor.InitResreq, futureIdle)
 	}
 	return nil
-}
-
-// ResourceReservation is struct used for resource reservation
-type ResourceReservation struct {
-	TargetJob   *api.JobInfo
-	LockedNodes map[string]*api.NodeInfo
-}
-
-// NewResourceReservation is used to create global instance
-func NewResourceReservation() *ResourceReservation {
-	return &ResourceReservation{
-		TargetJob:   nil,
-		LockedNodes: map[string]*api.NodeInfo{},
-	}
 }

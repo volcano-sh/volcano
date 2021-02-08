@@ -26,8 +26,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-var targetJob = util.Reservation.TargetJob
-
 type Action struct{}
 
 func New() *Action {
@@ -97,18 +95,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	pendingTasks := map[api.JobID]*util.PriorityQueue{}
 
 	allNodes := util.GetNodeList(ssn.Nodes)
-	unlockedNodes := allNodes
-	if targetJob != nil && len(util.Reservation.LockedNodes) != 0 {
-		unlockedNodes = unlockedNodes[0:0]
-		for _, node := range allNodes {
-			if _, exist := util.Reservation.LockedNodes[node.Name]; !exist {
-				unlockedNodes = append(unlockedNodes, node)
-			}
-		}
-	}
-	for _, unlockedNode := range unlockedNodes {
-		klog.V(4).Infof("unlockedNode ID: %s, Name: %s", unlockedNode.Node.UID, unlockedNode.Node.Name)
-	}
+
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		// Check for Resource Predicate
 		if !task.InitResreq.LessEqual(node.FutureIdle()) {
@@ -132,7 +119,6 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		queueInNamespace := jobsMap[namespace]
 
 		// pick queue for given namespace
-		//
 		// This block use a algorithm with time complex O(n).
 		// But at least PriorityQueue could not be used here,
 		// because the allocation of job would change the priority of queue among all namespaces,
@@ -167,13 +153,6 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		}
 
 		job := jobs.Pop().(*api.JobInfo)
-		var nodes []*api.NodeInfo
-		if targetJob != nil && job.UID == targetJob.UID {
-			klog.V(4).Infof("Try to allocate resource to target job: %s", job.Name)
-			nodes = allNodes
-		} else {
-			nodes = unlockedNodes
-		}
 		if _, found = pendingTasks[job.UID]; !found {
 			tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
@@ -198,9 +177,9 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		for !tasks.Empty() {
 			task := tasks.Pop().(*api.TaskInfo)
 
-			klog.V(3).Infof("There are <%d> nodes for Job <%v/%v>", len(nodes), job.Namespace, job.Name)
+			klog.V(3).Infof("There are <%d> nodes for Job <%v/%v>", len(ssn.Nodes), job.Namespace, job.Name)
 
-			predicateNodes, fitErrors := util.PredicateNodes(task, nodes, predicateFn)
+			predicateNodes, fitErrors := util.PredicateNodes(task, allNodes, predicateFn)
 			if len(predicateNodes) == 0 {
 				job.NodesFitErrors[task.UID] = fitErrors
 				break
