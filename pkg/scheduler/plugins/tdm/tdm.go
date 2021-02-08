@@ -218,12 +218,7 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		for jobID, preemptableTasks := range tasksMap {
 			if job, ok := ssn.Jobs[jobID]; ok {
-				maxPodEvictNum := bp.getMaxPodEvictNum(job)
-				if maxPodEvictNum >= len(preemptableTasks) {
-					victims = append(victims, preemptableTasks...)
-				} else {
-					victims = append(victims, preemptableTasks[:maxPodEvictNum]...)
-				}
+				victims = append(victims, bp.maxVictims(job, preemptableTasks)...)
 			}
 		}
 
