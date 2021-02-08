@@ -372,7 +372,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 	}{
 		{
 			podGroups: []*schedulingv2.PodGroup{
-				&schedulingv2.PodGroup{
+				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
@@ -402,7 +402,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 		},
 		{
 			podGroups: []*schedulingv2.PodGroup{
-				&schedulingv2.PodGroup{
+				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
@@ -432,7 +432,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 		},
 		{
 			podGroups: []*schedulingv2.PodGroup{
-				&schedulingv2.PodGroup{
+				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
@@ -462,7 +462,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 		},
 		{
 			podGroups: []*schedulingv2.PodGroup{
-				&schedulingv2.PodGroup{
+				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg2",
 						Namespace: "c2",
@@ -492,7 +492,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 		},
 		{
 			podGroups: []*schedulingv2.PodGroup{
-				&schedulingv2.PodGroup{
+				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg2",
 						Namespace: "c2",
@@ -504,7 +504,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 						Queue: "c2",
 					},
 				},
-				&schedulingv2.PodGroup{
+				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
@@ -535,7 +535,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 		},
 		{
 			podGroups: []*schedulingv2.PodGroup{
-				&schedulingv2.PodGroup{
+				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg2",
 						Namespace: "c2",
@@ -565,7 +565,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 		},
 		{
 			podGroups: []*schedulingv2.PodGroup{
-				&schedulingv2.PodGroup{
+				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg2",
 						Namespace: "c2",
@@ -595,7 +595,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 		},
 		{
 			podGroups: []*schedulingv2.PodGroup{
-				&schedulingv2.PodGroup{
+				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg2",
 						Namespace: "c2",
@@ -625,7 +625,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 		},
 		{
 			podGroups: []*schedulingv2.PodGroup{
-				&schedulingv2.PodGroup{
+				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg2",
 						Namespace: "c2",
@@ -637,7 +637,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 						Queue: "c2",
 					},
 				},
-				&schedulingv2.PodGroup{
+				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
