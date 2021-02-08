@@ -115,12 +115,18 @@ var _ = Describe("Hierarchy Queue E2E Test", func() {
 		_, err = ctx.vcclient.SchedulingV1beta1().Queues().Update(context.TODO(), updateRoot, metav1.UpdateOptions{})
 		Expect(err).NotTo(HaveOccurred(), "Update queue root failed")
 
-		test1, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), "test1", metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred(), "Get queue test1 failed")
-		Expect(test1.Spec.Weight).Should(Equal(2))
+		err = waitQueueStatus(func() (bool, error) {
+			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), "test1", metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "Get queue test1 failed")
+			return queue.Spec.Weight == 2, nil
+		})
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue test1 update")
 
-		_, err = ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), "test2", metav1.GetOptions{})
-		Expect(errors.IsNotFound(err)).Should(Equal(true))
+		err = waitQueueStatus(func() (bool, error) {
+			_, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), "test2", metav1.GetOptions{})
+			return errors.IsNotFound(err), nil
+		})
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue test2 update")
 
 		_, err = ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), "test3", metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred(), "Get queue test3 failed")
