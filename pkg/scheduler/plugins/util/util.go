@@ -83,6 +83,33 @@ func NewPodLister(ssn *framework.Session) *PodLister {
 	return pl
 }
 
+// NewPodListerFromNode returns a PodLister generate from ssn
+func NewPodListerFromNode(ssn *framework.Session) *PodLister {
+	pl := &PodLister{
+		Session:          ssn,
+		CachedPods:       make(map[api.TaskID]*v1.Pod),
+		Tasks:            make(map[api.TaskID]*api.TaskInfo),
+		TaskWithAffinity: make(map[api.TaskID]*api.TaskInfo),
+	}
+
+	for _, node := range pl.Session.Nodes {
+		for _, task := range node.Tasks {
+			if !api.AllocatedStatus(task.Status) && task.Status != api.Releasing {
+				continue
+			}
+
+			pl.Tasks[task.UID] = task
+			pod := pl.copyTaskPod(task)
+			pl.CachedPods[task.UID] = pod
+			if HaveAffinity(task.Pod) {
+				pl.TaskWithAffinity[task.UID] = task
+			}
+		}
+	}
+
+	return pl
+}
+
 func (pl *PodLister) copyTaskPod(task *api.TaskInfo) *v1.Pod {
 	pod := task.Pod.DeepCopy()
 	pod.Spec.NodeName = task.NodeName
