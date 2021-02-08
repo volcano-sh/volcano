@@ -17,8 +17,6 @@ limitations under the License.
 package overcommit
 
 import (
-	"time"
-
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
@@ -58,17 +56,25 @@ func (op *overcommitPlugin) Name() string {
 	return PluginName
 }
 
+/*
+   User should give overcommit-factor through overcommit plugin arguments as format below:
+
+   actions: "enqueue, allocate, backfill"
+   tiers:
+   - plugins:
+     - name: overcommit
+       arguments:
+         overcommit-factor: 1.0
+*/
 func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
-	overcommitStartTime := time.Now().UnixNano()
 	op.pluginArguments.GetFloat64(&op.overCommitFactor, overCommitFactor)
 	if op.overCommitFactor < 1.0 {
 		klog.Warningf("invalid input %f for overcommit-factor, reason: overcommit-factor cannot be less than 1,"+
 			" using default value: %f", op.overCommitFactor, defaultOverCommitFactor)
 		op.overCommitFactor = defaultOverCommitFactor
 	}
-	klog.V(4).Infof("overcommit plugin starts, overCommitFactor: %f", op.overCommitFactor)
-	defer klog.V(4).Infof("overcommit plugin finishes, execution time: %dns",
-		time.Now().UnixNano()-overcommitStartTime)
+	klog.V(4).Infof("Enter overcommit plugin ...")
+	defer klog.V(4).Infof("Leaving overcommit plugin.")
 
 	// calculate idle resources of total cluster, overcommit resources included
 	total := api.EmptyResource()
@@ -105,7 +111,7 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 			op.inqueueResource.Add(jobMinReq)
 			return true
 		}
-		klog.V(4).Infof("idle resource in cluster is overused, ignore job <%s/%s>",
+		klog.V(4).Infof("resource in cluster is overused, not allow job <%s/%s> be inqueue",
 			job.Namespace, job.Name)
 		return false
 	})
