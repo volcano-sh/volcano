@@ -87,6 +87,7 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 				Name:            pgName,
 				OwnerReferences: newPGOwnerReferences(pod),
 				Annotations:     map[string]string{},
+				Labels:          map[string]string{},
 			},
 			Spec: scheduling.PodGroupSpec{
 				MinMember:         1,
@@ -95,6 +96,27 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 		}
 		if queueName, ok := pod.Annotations[scheduling.QueueNameAnnotationKey]; ok {
 			obj.Spec.Queue = queueName
+		}
+
+		if value, ok := pod.Annotations[scheduling.PodPreemptable]; ok {
+			obj.Annotations[scheduling.PodPreemptable] = value
+		}
+		if value, ok := pod.Labels[scheduling.PodPreemptable]; ok {
+			obj.Labels[scheduling.PodPreemptable] = value
+		}
+
+		if value, ok := pod.Annotations[scheduling.PodMinAlive]; ok {
+			obj.Annotations[scheduling.PodMinAlive] = value
+		}
+		if value, ok := pod.Labels[scheduling.PodMinAlive]; ok {
+			obj.Labels[scheduling.PodMinAlive] = value
+		}
+
+		if value, ok := pod.Annotations[scheduling.PodEvictMaxStep]; ok {
+			obj.Annotations[scheduling.PodEvictMaxStep] = value
+		}
+		if value, ok := pod.Labels[scheduling.PodEvictMaxStep]; ok {
+			obj.Labels[scheduling.PodEvictMaxStep] = value
 		}
 
 		if _, err := pg.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Create(context.TODO(), obj, metav1.CreateOptions{}); err != nil {

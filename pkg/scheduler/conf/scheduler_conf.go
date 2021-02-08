@@ -71,6 +71,10 @@ type PluginOption struct {
 	EnabledTargetJob *bool `yaml:"enableTargetJob"`
 	// EnabledReservedNodes defines whether reservedNodesFn is enabled
 	EnabledReservedNodes *bool `yaml:"enableReservedNodes"`
+	// EnabledVictim defines whether victimsFn is enabled
+	EnabledVictim *bool `yaml:"enabledVictim"`
+	// EnabledJobStarving defines whether jobStarvingFn is enabled
+	EnabledJobStarving *bool `yaml:"enableJobStarving"`
 	// Arguments defines the different arguments that can be given to different plugins
 	Arguments map[string]string `yaml:"arguments"`
 }
