@@ -27,11 +27,7 @@ import (
 
 	"k8s.io/klog"
 
-	apicorev1 "k8s.io/api/core/v1"
-	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/tools/record"
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
-	"volcano.sh/volcano/pkg/apis/scheduling/scheme"
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/version"
 	"volcano.sh/volcano/pkg/webhooks/router"
@@ -60,15 +56,9 @@ func Run(config *options.Config) error {
 
 	vClient := getVolcanoClient(restConfig)
 	kubeClient := getKubeClient(restConfig)
-
-	broadcaster := record.NewBroadcaster()
-	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
-
 	router.ForEachAdmission(func(service *router.AdmissionService) {
 		if service.Config != nil {
 			service.Config.VolcanoClient = vClient
-			service.Config.KubeClient = kubeClient
-			service.Config.Recorder = broadcaster.NewRecorder(scheme.Scheme, apicorev1.EventSource{Component: config.SchedulerName})
 			service.Config.SchedulerName = config.SchedulerName
 		}
 
