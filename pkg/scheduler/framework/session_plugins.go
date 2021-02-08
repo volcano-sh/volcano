@@ -269,7 +269,7 @@ func (ssn *Session) JobPipelined(obj interface{}) bool {
 				return false
 			}
 		}
-		// this tier registed function
+		// this tier registered function
 		if hasFound {
 			return true
 		}
@@ -297,7 +297,7 @@ func (ssn *Session) JobStarving(obj interface{}) bool {
 				return false
 			}
 		}
-		// this tier registed function
+		// this tier registered function
 		if hasFound {
 			return true
 		}
@@ -328,18 +328,25 @@ func (ssn *Session) JobValid(obj interface{}) *api.ValidateResult {
 // JobEnqueueable invoke jobEnqueueableFns function of the plugins
 func (ssn *Session) JobEnqueueable(obj interface{}) bool {
 	for _, tier := range ssn.Tiers {
+		var hasFound bool
 		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledJobEnqueued) {
+				continue
+			}
 			fn, found := ssn.jobEnqueueableFns[plugin.Name]
 			if !found {
 				continue
 			}
-
+			hasFound = true
 			if res := fn(obj); !res {
 				return res
 			}
 		}
+		// this tier registered function
+		if hasFound {
+			return true
+		}
 	}
-
 	return true
 }
 
