@@ -101,6 +101,17 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 	pod.Annotations[batch.JobNameKey] = job.Name
 	pod.Annotations[batch.QueueNameKey] = job.Spec.Queue
 	pod.Annotations[batch.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
+	if len(job.Annotations) > 0 {
+		if value, found := job.Annotations[schedulingv2.PodPreemptable]; found {
+			pod.Annotations[schedulingv2.PodPreemptable] = value
+		}
+
+		if value, found := job.Annotations[schedulingv2.JDBMinAvailable]; found {
+			pod.Annotations[schedulingv2.JDBMinAvailable] = value
+		} else if value, found := job.Annotations[schedulingv2.JDBMaxUnavailable]; found {
+			pod.Annotations[schedulingv2.JDBMaxUnavailable] = value
+		}
+	}
 
 	if len(pod.Labels) == 0 {
 		pod.Labels = make(map[string]string)
@@ -110,6 +121,11 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 	pod.Labels[batch.JobNameKey] = job.Name
 	pod.Labels[batch.JobNamespaceKey] = job.Namespace
 	pod.Labels[batch.QueueNameKey] = job.Spec.Queue
+	if len(job.Labels) > 0 {
+		if value, found := job.Labels[schedulingv2.PodPreemptable]; found {
+			pod.Labels[schedulingv2.PodPreemptable] = value
+		}
+	}
 
 	return pod
 }
