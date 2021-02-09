@@ -27,10 +27,6 @@ import (
 func TestLoadSchedulerConf(t *testing.T) {
 	configuration := `
 actions: "enqueue, allocate, backfill"
-configurations:
-- name: enqueue
-  arguments:
-    "overcommit-factor": 1.5
 tiers:
 - plugins:
   - name: priority
@@ -62,6 +58,7 @@ tiers:
 					EnabledNodeOrder:      &trueValue,
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
+					EnabledJobEnqueued:    &trueValue,
 					EnabledVictim:         &trueValue,
 					EnabledJobStarving:    &trueValue,
 				},
@@ -80,6 +77,7 @@ tiers:
 					EnabledNodeOrder:      &trueValue,
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
+					EnabledJobEnqueued:    &trueValue,
 					EnabledVictim:         &trueValue,
 					EnabledJobStarving:    &trueValue,
 				},
@@ -98,6 +96,7 @@ tiers:
 					EnabledNodeOrder:      &trueValue,
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
+					EnabledJobEnqueued:    &trueValue,
 					EnabledVictim:         &trueValue,
 					EnabledJobStarving:    &trueValue,
 				},
@@ -120,6 +119,7 @@ tiers:
 					EnabledNodeOrder:      &trueValue,
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
+					EnabledJobEnqueued:    &trueValue,
 					EnabledVictim:         &trueValue,
 					EnabledJobStarving:    &trueValue,
 				},
@@ -138,6 +138,7 @@ tiers:
 					EnabledNodeOrder:      &trueValue,
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
+					EnabledJobEnqueued:    &trueValue,
 					EnabledVictim:         &trueValue,
 					EnabledJobStarving:    &trueValue,
 				},
@@ -156,6 +157,7 @@ tiers:
 					EnabledNodeOrder:      &trueValue,
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
+					EnabledJobEnqueued:    &trueValue,
 					EnabledVictim:         &trueValue,
 					EnabledJobStarving:    &trueValue,
 				},
@@ -174,6 +176,7 @@ tiers:
 					EnabledNodeOrder:      &trueValue,
 					EnabledTargetJob:      &trueValue,
 					EnabledReservedNodes:  &trueValue,
+					EnabledJobEnqueued:    &trueValue,
 					EnabledVictim:         &trueValue,
 					EnabledJobStarving:    &trueValue,
 				},
@@ -181,14 +184,7 @@ tiers:
 		},
 	}
 
-	expectedConfigurations := []conf.Configuration{
-		{
-			Name: "enqueue",
-			Arguments: map[string]string{
-				"overcommit-factor": "1.5",
-			},
-		},
-	}
+	var expectedConfigurations []conf.Configuration
 
 	_, tiers, configurations, err := unmarshalSchedulerConf(configuration)
 	if err != nil {

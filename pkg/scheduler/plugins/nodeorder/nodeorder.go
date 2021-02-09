@@ -130,7 +130,7 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 
 func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	weight := calculateWeight(pp.pluginArguments)
-	pl := util.NewPodLister(ssn)
+	pl := util.NewPodListerFromNode(ssn)
 	pods, _ := pl.List(labels.NewSelector())
 	nodeMap, nodeSlice := util.GenerateNodeMapAndSlice(ssn.Nodes)
 
