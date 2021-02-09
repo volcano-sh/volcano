@@ -34,6 +34,9 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	if option.EnabledJobPipelined == nil {
 		option.EnabledJobPipelined = &t
 	}
+	if option.EnabledJobEnqueued == nil {
+		option.EnabledJobEnqueued = &t
+	}
 	if option.EnabledTaskOrder == nil {
 		option.EnabledTaskOrder = &t
 	}
