@@ -69,32 +69,34 @@ func GetPodResourceRequest(pod *v1.Pod) *Resource {
 }
 
 // GetPodPreemptable return volcano.sh/preemptable value for pod
-func GetPodPreemptable(pod *v1.Pod) bool {
+func GetPodPreemptable(pod *v1.Pod) PreemptType {
 	// check annotaion first
 	if len(pod.Annotations) > 0 {
 		if value, found := pod.Annotations[v1beta1.PodPreemptable]; found {
-			b, err := strconv.ParseBool(value)
-			if err != nil {
-				klog.Warningf("invalid %s=%s", v1beta1.PodPreemptable, value)
-				return false
+			if value == "false" {
+				return NonPreemptable
+			} else if value == "true" {
+				return Preemptable
+			} else if value == "revocable" {
+				return Revocable
 			}
-			return b
 		}
 	}
 
 	// it annotation does not exit, check label
 	if len(pod.Labels) > 0 {
 		if value, found := pod.Labels[v1beta1.PodPreemptable]; found {
-			b, err := strconv.ParseBool(value)
-			if err != nil {
-				klog.Warningf("invalid %s=%s", v1beta1.PodPreemptable, value)
-				return false
+			if value == "false" {
+				return NonPreemptable
+			} else if value == "true" {
+				return Preemptable
+			} else if value == "revocable" {
+				return Revocable
 			}
-			return b
 		}
 	}
 
-	return false
+	return NonPreemptable
 }
 
 // GetPodResourceWithoutInitContainers returns Pod's resource request, it does not contain

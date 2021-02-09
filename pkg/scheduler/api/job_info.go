@@ -19,16 +19,28 @@ package api
 import (
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+)
+
+// PreemptType has preemptable, non-preemptable, revocable types
+type PreemptType int
+
+const (
+	// Preemptable means the task can be scheduled to revocable nodes and can be evict and preempted.
+	Preemptable PreemptType = 1 << iota
+
+	// NonPreemptable means the task can not be scheduled to revocable and can preempt Preemptable tasks
+	NonPreemptable
+
+	// Revocable means the task can be scheduled to revocable nodes but can not be evict or preempted
+	Revocable
 )
 
 // DisruptionBudget define job min pod available and max pod unvailable value
@@ -75,7 +87,7 @@ type TaskInfo struct {
 	Status      TaskStatus
 	Priority    int32
 	VolumeReady bool
-	Preemptable bool
+	Preemptable PreemptType
 
 	Pod *v1.Pod
 }
@@ -179,7 +191,7 @@ type JobInfo struct {
 
 	ScheduleStartTimestamp metav1.Time
 
-	Preemptable bool
+	Preemptable PreemptType
 	Budget      *DisruptionBudget
 }
 
@@ -222,32 +234,33 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 }
 
 // GetJobPreemptable return volcano.sh/preemptable value for job
-func GetJobPreemptable(pg *PodGroup) bool {
+func GetJobPreemptable(pg *PodGroup) PreemptType {
 	// check annotaion first
 	if len(pg.Annotations) > 0 {
 		if value, found := pg.Annotations[v1beta1.PodPreemptable]; found {
-			b, err := strconv.ParseBool(value)
-			if err != nil {
-				klog.Warningf("invalid %s=%s", v1beta1.PodPreemptable, value)
-				return false
+			if value == "false" {
+				return NonPreemptable
+			} else if value == "true" {
+				return Preemptable
+			} else if value == "revocable" {
+				return Revocable
 			}
-			return b
 		}
 	}
 
 	// it annotation does not exit, check label
 	if len(pg.Labels) > 0 {
 		if value, found := pg.Labels[v1beta1.PodPreemptable]; found {
-			b, err := strconv.ParseBool(value)
-			if err != nil {
-				klog.Warningf("invalid %s=%s", v1beta1.PodPreemptable, value)
-				return false
+			if value == "false" {
+				return NonPreemptable
+			} else if value == "true" {
+				return Preemptable
+			} else if value == "revocable" {
+				return Revocable
 			}
-			return b
 		}
 	}
-
-	return false
+	return NonPreemptable
 }
 
 // GetBudget return budget value for job

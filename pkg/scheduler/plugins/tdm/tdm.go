@@ -156,7 +156,7 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		klog.V(4).Infof("TDM node %v revocable zone %v:%v is active", node.Name, node.RevocableZone, bp.revocableZone[node.RevocableZone])
 
-		if !task.Preemptable {
+		if task.Preemptable == api.NonPreemptable {
 			msg := fmt.Sprintf("task %s/%s is not preemptable task, skip to schedule to node %s", task.Namespace, task.Name, node.Name)
 			return fmt.Errorf("plugin %s predicates %s", bp.Name(), msg)
 		}
@@ -178,7 +178,7 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 			return score, err
 		}
 
-		if !task.Preemptable {
+		if task.Preemptable == api.NonPreemptable {
 			klog.V(4).Infof("TDM task %s/%s is not preemptable task, skip to schedule to node %s", task.Namespace, task.Name, node.Name)
 			return score, nil
 		}
@@ -190,7 +190,7 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
-		if preemptor.Preemptable {
+		if preemptor.Preemptable == api.Preemptable || preemptor.Preemptable == api.Revocable {
 			klog.V(4).Infof("TDM task %s/%s is preemptable, do nothing skip", preemptor.Namespace, preemptor.Name)
 			return nil
 		}
@@ -200,7 +200,7 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// find preemptable tasks which appear on none revocable node
 		for _, task := range preemptees {
-			if !task.Preemptable || task.Status != api.Running {
+			if task.Preemptable == api.NonPreemptable || task.Preemptable == api.Revocable || task.Status != api.Running {
 				continue
 			}
 
@@ -265,7 +265,7 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 			return 0
 		}
 
-		if !lv.Preemptable {
+		if lv.Preemptable == api.NonPreemptable {
 			return -1
 		}
 
@@ -281,7 +281,7 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 	jobStarvingFn := func(obj interface{}) bool {
 		jobInfo := obj.(*api.JobInfo)
 		// allow none preemptable elastic job (deployment) preempt task
-		if jobInfo.Preemptable {
+		if jobInfo.Preemptable == api.Preemptable || jobInfo.Preemptable == api.Revocable {
 			return false
 		}
 		return len(jobInfo.TaskStatusIndex[api.Pending]) > 0
@@ -353,7 +353,7 @@ func (bp *tdmPlugin) revocableNodePreemptableTask(rz string, ssn *framework.Sess
 		}
 
 		for _, task := range node.Tasks {
-			if task.Preemptable {
+			if task.Preemptable == api.Preemptable {
 				if task.Status == api.Running {
 					tasksMap[task.Job] = append(tasksMap[task.Job], task)
 				}
@@ -373,7 +373,7 @@ func (bp *tdmPlugin) noneRevocableNodePreemptableTask(ssn *framework.Session) []
 		}
 
 		for _, task := range node.Tasks {
-			if task.Preemptable {
+			if task.Preemptable == api.Preemptable {
 				if task.Status == api.Running {
 					tasks = append(tasks, task)
 				}
