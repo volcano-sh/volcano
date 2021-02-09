@@ -490,7 +490,6 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 	// If PodGroup does not exist, create one for Job.
 	pg, err := cc.pgLister.PodGroups(job.Namespace).Get(job.Name)
 	if err != nil {
-		klog.Infof("create new pg!!!!!!!!!!!!!!!!!!!!")
 		if !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to get PodGroup for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)

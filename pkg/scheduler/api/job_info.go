@@ -22,8 +22,6 @@ import (
 	"strconv"
 	"strings"
 
-	"k8s.io/klog"
-
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -481,7 +479,7 @@ func (ji *JobInfo) ValidTaskMinAvailable() (map[TaskID]int32, bool) {
 			status == Pipelined ||
 			status == Pending {
 			for _, task := range tasks {
-				actual[task.UID] += 1
+				actual[task.UID]++
 			}
 		}
 	}

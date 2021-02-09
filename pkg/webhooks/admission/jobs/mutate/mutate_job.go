@@ -190,11 +190,9 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string) *patchOperation {
 		}
 	}
 	if !patched {
-		klog.Infof("task not patched!!!!!!!")
 		return nil
 	}
 
-	klog.Infof("task patched!!!!!!!!")
 	return &patchOperation{
 		Op:    "replace",
 		Path:  basePath,

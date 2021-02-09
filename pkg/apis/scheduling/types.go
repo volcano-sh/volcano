@@ -164,7 +164,7 @@ type PodGroupSpec struct {
 	// will not start anyone.
 	MinMember int32
 
-	// MinTaskMember defines the minimal number of pods to run each task in the pod group;
+	// MinTaskMember defines the minimal number of pods to run for each task in the pod group;
 	// if there's not enough resources to start each task, the scheduler
 	// will not start anyone.
 	MinTaskMember map[string]int32
