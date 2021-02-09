@@ -18,7 +18,6 @@ package tdm
 
 import (
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -28,6 +27,7 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 const (
@@ -38,6 +38,7 @@ const (
 	revocableZoneLabelPrefix = "tdm.revocable-zone."
 	evictPeriodLabel         = "tdm.evict.period"
 	evictMaxStepLabel        = "tdm.evict.max-step"
+	defaultPodEvictNum       = 1
 )
 
 var lastEvictAt time.Time
@@ -51,7 +52,6 @@ var lastEvictAt time.Time
          tdm.revocable-zone.rz1: 10:00-21:00
          tdm.revocable-zone.rz2: 12:00-14:00
          tdm.evict.period: 1m
-         tdm.evict.max-step: 5%
 */
 
 type tdmPlugin struct {
@@ -59,16 +59,12 @@ type tdmPlugin struct {
 	// evictPeriod
 	// default 1m
 	evictPeriod time.Duration
-	// maxEvictStep value can be an absolute number (ex: 5) or a percentage of desired pods (ex: 10%)
-	// default 5%
-	maxEvictStep intstr.IntOrString
 }
 
 // New function returns prioritizePlugin object
 func New(args framework.Arguments) framework.Plugin {
 	revocableZone := make(map[string]string)
 	evictPeriod := time.Minute
-	maxEvictStep := intstr.FromString("5%")
 
 	for k, v := range args {
 		if strings.Contains(k, revocableZoneLabelPrefix) {
@@ -82,11 +78,7 @@ func New(args framework.Arguments) framework.Plugin {
 		}
 	}
 
-	if maxStep, ok := args[evictMaxStepLabel]; ok {
-		maxEvictStep = intstr.Parse(maxStep)
-	}
-
-	return &tdmPlugin{revocableZone, evictPeriod, maxEvictStep}
+	return &tdmPlugin{revocableZone, evictPeriod}
 }
 
 func (bp *tdmPlugin) Name() string {
@@ -204,6 +196,7 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		var victims []*api.TaskInfo
+		tasksMap := make(map[api.JobID][]*api.TaskInfo)
 
 		// find preemptable tasks which appear on none revocable node
 		for _, task := range preemptees {
@@ -220,7 +213,13 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 				continue
 			}
 
-			victims = append(victims, task)
+			tasksMap[task.Job] = append(tasksMap[task.Job], task)
+		}
+
+		for jobID, preemptableTasks := range tasksMap {
+			if job, ok := ssn.Jobs[jobID]; ok {
+				victims = append(victims, bp.maxVictims(job, preemptableTasks)...)
+			}
 		}
 
 		klog.V(4).Infof("TDM victims are %+v", victims)
@@ -242,9 +241,9 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 			if err := bp.availableRevocableZone(rz); err != nil {
 				klog.V(4).Infof("TDM revocable zone %v disactive, %v", rz, err)
 				// rz disactive, then evict preemptable tasks by job from the revocable node
-				for jobID, tmp := range bp.revocableNodePreemptableTask(rz, ssn) {
+				for jobID, preemtableTasks := range bp.revocableNodePreemptableTask(rz, ssn) {
 					if job, ok := ssn.Jobs[jobID]; ok {
-						victims = append(victims, bp.maxVictims(job, tmp)...)
+						victims = append(victims, bp.maxVictims(job, preemtableTasks)...)
 					}
 				}
 			}
@@ -298,26 +297,52 @@ func (bp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 }
 
 func (bp *tdmPlugin) maxVictims(job *api.JobInfo, victims []*api.TaskInfo) []*api.TaskInfo {
-	maxEvictStep := bp.maxEvictStep
+	maxPodEvictNum := bp.getMaxPodEvictNum(job)
+	targetNum := util.GetMinInt(maxPodEvictNum, len(victims))
+	klog.V(3).Infof("Job <%s/%s> max evict:%v, potential victims number:%v, max victims number:%v",
+		job.Namespace, job.Name, maxPodEvictNum, len(victims), targetNum)
 
-	// the data type of MaxEvictStep can be int or percent
-	if job.MaxEvictStep != "" {
-		maxEvictStep = intstr.Parse(job.MaxEvictStep)
+	return victims[:targetNum]
+}
+
+// get max pod evict number from job budget configure
+func (bp *tdmPlugin) getMaxPodEvictNum(job *api.JobInfo) int {
+	jobRunningTaskNum := len(job.TaskStatusIndex[api.Running])
+	if job.Budget.MaxUnavilable != "" {
+		maxUnavilable := bp.parseIntStr(job.Budget.MaxUnavilable, len(job.Tasks))
+		finalTaskNum := len(job.TaskStatusIndex[api.Succeeded]) + len(job.TaskStatusIndex[api.Failed])
+		realUnavilable := len(job.Tasks) - finalTaskNum - jobRunningTaskNum
+		if realUnavilable >= maxUnavilable {
+			return 0
+		}
+		return maxUnavilable - realUnavilable
 	}
 
-	targetNum := 0
-	switch maxEvictStep.Type {
-	case intstr.Int:
-		targetNum = int(math.Min(float64(maxEvictStep.IntValue()), float64(len(victims))))
-	case intstr.String:
-		if v, err := intstr.GetValueFromIntOrPercent(&maxEvictStep, len(job.Tasks), true); err == nil {
-			targetNum = int(math.Min(float64(v), float64(len(victims))))
-		} else {
-			klog.V(4).Infof("TDM get percent value err: %v", err)
+	if job.Budget.MinAvailable != "" {
+		minAvailable := bp.parseIntStr(job.Budget.MinAvailable, len(job.Tasks))
+		if jobRunningTaskNum >= minAvailable {
+			return jobRunningTaskNum - minAvailable
 		}
 	}
 
-	return victims[:targetNum]
+	return defaultPodEvictNum
+}
+
+func (bp *tdmPlugin) parseIntStr(input string, taskNum int) int {
+	resultValue := 0
+	tmp := intstr.Parse(input)
+	switch tmp.Type {
+	case intstr.Int:
+		resultValue = tmp.IntValue()
+	case intstr.String:
+		if v, err := intstr.GetValueFromIntOrPercent(&tmp, taskNum, true); err == nil {
+			resultValue = v
+		} else {
+			klog.Warningf("TDM get percent value err: %v", err)
+		}
+	}
+
+	return resultValue
 }
 
 func (bp *tdmPlugin) revocableNodePreemptableTask(rz string, ssn *framework.Session) map[api.JobID][]*api.TaskInfo {
