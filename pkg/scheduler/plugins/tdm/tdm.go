@@ -309,7 +309,13 @@ func (bp *tdmPlugin) maxVictims(job *api.JobInfo, victims []*api.TaskInfo) []*ap
 func (bp *tdmPlugin) getMaxPodEvictNum(job *api.JobInfo) int {
 	jobRunningTaskNum := len(job.TaskStatusIndex[api.Running])
 	if job.Budget.MaxUnavilable != "" {
-		return bp.parseIntStr(job.Budget.MaxUnavilable, len(job.Tasks))
+		maxUnavilable := bp.parseIntStr(job.Budget.MaxUnavilable, len(job.Tasks))
+		finalTaskNum := len(job.TaskStatusIndex[api.Succeeded]) + len(job.TaskStatusIndex[api.Failed])
+		realUnavilable := len(job.Tasks) - finalTaskNum - jobRunningTaskNum
+		if realUnavilable >= maxUnavilable {
+			return 0
+		}
+		return maxUnavilable - realUnavilable
 	}
 
 	if job.Budget.MinAvailable != "" {
