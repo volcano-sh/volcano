@@ -148,7 +148,7 @@ metadata:
     prometheus.io/port: "8080"
     prometheus.io/scrape: "true"
   name: volcano-scheduler-service
-  namespace: volcano-system
+  namespace: volcano-system 
 spec:
   ports:
   - port: 8080
@@ -343,7 +343,7 @@ rules:
     verbs: ["get", "list", "watch", "create", "delete"]
   - apiGroups: ["networking.k8s.io"]
     resources: ["networkpolicies"]
-    verbs: ["get", "create"]
+    verbs: ["get", "create", "delete"]
 
 ---
 kind: ClusterRoleBinding

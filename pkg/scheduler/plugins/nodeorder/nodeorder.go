@@ -57,8 +57,8 @@ type nodeOrderPlugin struct {
 }
 
 // New function returns prioritize plugin object.
-func New(aruguments framework.Arguments) framework.Plugin {
-	return &nodeOrderPlugin{pluginArguments: aruguments}
+func New(arguments framework.Arguments) framework.Plugin {
+	return &nodeOrderPlugin{pluginArguments: arguments}
 }
 
 func (pp *nodeOrderPlugin) Name() string {
@@ -66,11 +66,11 @@ func (pp *nodeOrderPlugin) Name() string {
 }
 
 type priorityWeight struct {
-	leastReqWeight          int
-	mostReqWeight           int
-	nodeAffinityWeight      int
-	podAffinityWeight       int
-	balancedRescourceWeight int
+	leastReqWeight         int
+	mostReqWeight          int
+	nodeAffinityWeight     int
+	podAffinityWeight      int
+	balancedResourceWeight int
 }
 
 // calculateWeight from the provided arguments.
@@ -103,11 +103,11 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 	// By default, for backward compatibility and for reasonable scores,
 	// least requested priority is enabled and most requested priority is disabled.
 	weight := priorityWeight{
-		leastReqWeight:          1,
-		mostReqWeight:           0,
-		nodeAffinityWeight:      1,
-		podAffinityWeight:       1,
-		balancedRescourceWeight: 1,
+		leastReqWeight:         1,
+		mostReqWeight:          0,
+		nodeAffinityWeight:     1,
+		podAffinityWeight:      1,
+		balancedResourceWeight: 1,
 	}
 
 	// Checks whether mostrequested.weight is provided or not, if given, modifies the value in weight struct.
@@ -123,14 +123,14 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 	args.GetInt(&weight.leastReqWeight, LeastRequestedWeight)
 
 	// Checks whether balancedresource.weight is provided or not, if given, modifies the value in weight struct.
-	args.GetInt(&weight.balancedRescourceWeight, BalancedResourceWeight)
+	args.GetInt(&weight.balancedResourceWeight, BalancedResourceWeight)
 
 	return weight
 }
 
 func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	weight := calculateWeight(pp.pluginArguments)
-	pl := util.NewPodLister(ssn)
+	pl := util.NewPodListerFromNode(ssn)
 	pods, _ := pl.List(labels.NewSelector())
 	nodeMap, nodeSlice := util.GenerateNodeMapAndSlice(ssn.Nodes)
 
@@ -202,8 +202,8 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			klog.Warningf("Balanced Resource Allocation Priority Failed because of Error: %v", status.AsError())
 			return 0, status.AsError()
 		}
-		// If balancedRescourceWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		nodeScore += float64(score) * float64(weight.balancedRescourceWeight)
+		// If balancedResourceWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
+		nodeScore += float64(score) * float64(weight.balancedResourceWeight)
 
 		score, status = affinity.Score(context.TODO(), nil, task.Pod, node.Name)
 		if !status.IsSuccess() {

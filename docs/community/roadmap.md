@@ -63,7 +63,7 @@ Investigate to cooperate with argo to support job dependencies.
 * Description: Provide more status detail for CRD status when use CLI such job fail reason.
 * Priority: Middle
 * Issue: https://github.com/volcano-sh/volcano/issues/1094
-* Owner:
+* Owner:@mikechengwei
 
 ### Support MinAvailable For Task
 * Description: Support MinAvailable for task

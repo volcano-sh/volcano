@@ -31,7 +31,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: default
-  namespace: volcano-monitoring
+  namespace: {{ .Release.Namespace }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -39,7 +39,7 @@ metadata:
   name: prometheus-server-conf
   labels:
     name: prometheus-server-conf
-  namespace: volcano-monitoring
+  namespace: {{ .Release.Namespace }}
 data:
   prometheus.rules: |-
     groups:
@@ -132,7 +132,7 @@ data:
       
       - job_name: 'kube-state-metrics'
         static_configs:
-          - targets: ['kube-state-metrics.volcano-monitoring.svc.cluster.local:8080']
+          - targets: ['kube-state-metrics.{{ .Release.Namespace }}.svc.cluster.local:8080']
 
       - job_name: 'kubernetes-cadvisor'
 
@@ -190,7 +190,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: prometheus-deployment
-  namespace: volcano-monitoring
+  namespace: {{ .Release.Namespace }}
   labels:
     app: prometheus-server
 spec:
@@ -229,7 +229,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: prometheus-service
-  namespace: volcano-monitoring
+  namespace: {{ .Release.Namespace }}
   annotations:
       prometheus.io/scrape: 'true'
       prometheus.io/port:   '9090'
