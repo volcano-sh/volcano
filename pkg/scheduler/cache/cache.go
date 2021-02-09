@@ -656,7 +656,7 @@ func (sc *SchedulerCache) processResyncTask() {
 
 	task, ok := obj.(*schedulingapi.TaskInfo)
 	if !ok {
-		klog.Errorf("failed to convert %v to *v1.Pod", obj)
+		klog.Errorf("failed to convert %v to *schedulingapi.TaskInfo", obj)
 		return
 	}
 
