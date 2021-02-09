@@ -17,10 +17,12 @@ limitations under the License.
 package api
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -54,6 +56,10 @@ func (db *DisruptionBudget) Clone() *DisruptionBudget {
 		MaxUnavilable: db.MaxUnavilable,
 	}
 }
+
+// JobWaitingTime is maximum waiting time that a job could stay Pending in service level agreement
+// when job waits longer than waiting time, it should be inqueue at once, and cluster should reserve resources for it
+const JobWaitingTime = "sla-waiting-time"
 
 // TaskID is UID type for Task
 type TaskID types.UID
@@ -173,6 +179,8 @@ type JobInfo struct {
 
 	MinAvailable int32
 
+	WaitingTime *time.Duration
+
 	JobFitErrors   string
 	NodesFitErrors map[TaskID]*FitErrors
 
@@ -229,12 +237,40 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.MinAvailable = pg.Spec.MinMember
 	ji.Queue = QueueID(pg.Spec.Queue)
 	ji.CreationTimestamp = pg.GetCreationTimestamp()
+
+	var err error
+	ji.WaitingTime, err = GetWaitingTime(pg)
+	if err != nil {
+		klog.Warningf("Error occurs in parsing waiting time for job <%s/%s>, err: %s.",
+			pg.Namespace, pg.Name, err.Error())
+		ji.WaitingTime = nil
+	}
+
 	ji.Preemptable = GetJobPreemptable(pg)
 	ji.RevocableZone = GetJobRevocableZone(pg)
 	ji.Budget = GetBudget(pg)
 
 	ji.PodGroup = pg
 
+}
+
+// GetWaitingTime reads sla waiting time for job from podgroup annotations
+// TODO: should also read from given field in volcano job spec
+func GetWaitingTime(pg *PodGroup) (*time.Duration, error) {
+	if _, exist := pg.Annotations[JobWaitingTime]; !exist {
+		return nil, nil
+	}
+
+	jobWaitingTime, err := time.ParseDuration(pg.Annotations[JobWaitingTime])
+	if err != nil {
+		return nil, err
+	}
+
+	if jobWaitingTime <= 0 {
+		return nil, errors.New("invalid sla waiting time")
+	}
+
+	return &jobWaitingTime, nil
 }
 
 // GetJobPreemptable return volcano.sh/preemptable value for job
@@ -374,6 +410,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		Priority:  ji.Priority,
 
 		MinAvailable:   ji.MinAvailable,
+		WaitingTime:    ji.WaitingTime,
 		NodesFitErrors: make(map[TaskID]*FitErrors),
 		Allocated:      EmptyResource(),
 		TotalRequest:   EmptyResource(),

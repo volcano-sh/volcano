@@ -22,6 +22,7 @@ import (
 	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
 const (
@@ -94,14 +95,14 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	op.inqueueResource = inqueue.Clone()
 
-	ssn.AddJobEnqueueableFn(op.Name(), func(obj interface{}) bool {
+	ssn.AddJobEnqueueableFn(op.Name(), func(obj interface{}) int {
 		job := obj.(*api.JobInfo)
 		idle := op.idleResource
 		inqueue := api.EmptyResource()
 		inqueue.Add(op.inqueueResource)
 		if job.PodGroup.Spec.MinResources == nil {
 			klog.V(4).Infof("job <%s/%s> is bestEffort, allow it be inqueue", job.Namespace, job.Name)
-			return true
+			return util.Permit
 		}
 
 		//TODO: if allow 1 more job to be inqueue beyond overcommit-factor, large job may be inqueue and create pods
@@ -109,11 +110,11 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 		if inqueue.Add(jobMinReq).LessEqual(idle) {
 			klog.V(4).Infof("sufficient resources, allow job <%s/%s> be inqueue", job.Namespace, job.Name)
 			op.inqueueResource.Add(jobMinReq)
-			return true
+			return util.Permit
 		}
 		klog.V(4).Infof("resource in cluster is overused, not allow job <%s/%s> be inqueue",
 			job.Namespace, job.Name)
-		return false
+		return util.Reject
 	})
 }
 

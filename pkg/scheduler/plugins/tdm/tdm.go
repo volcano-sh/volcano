@@ -27,6 +27,7 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	tutil "volcano.sh/volcano/pkg/scheduler/plugins/util"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -273,10 +274,13 @@ func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 		return 1
 	}
 
-	jobPipelinedFn := func(obj interface{}) bool {
+	jobPipelinedFn := func(obj interface{}) int {
 		jobInfo := obj.(*api.JobInfo)
 		occupied := jobInfo.WaitingTaskNum() + jobInfo.ReadyTaskNum()
-		return occupied >= jobInfo.MinAvailable
+		if occupied >= jobInfo.MinAvailable {
+			return tutil.Permit
+		}
+		return tutil.Reject
 	}
 
 	jobStarvingFn := func(obj interface{}) bool {
