@@ -270,8 +270,17 @@ func GetJobPreemptable(pg *PodGroup) bool {
 func GetJobRevocableZone(pg *PodGroup) string {
 	// check annotaion first
 	if len(pg.Annotations) > 0 {
-		if value, found := pg.Annotations[v1beta1.RevocableZone]; found && value == "*" {
+		if value, found := pg.Annotations[v1beta1.RevocableZone]; found {
+			if value != "*" {
+				return ""
+			}
 			return value
+		}
+
+		if value, found := pg.Annotations[v1beta1.PodPreemptable]; found {
+			if b, err := strconv.ParseBool(value); err == nil && b {
+				return "*"
+			}
 		}
 	}
 
@@ -280,7 +289,6 @@ func GetJobRevocableZone(pg *PodGroup) string {
 
 // GetBudget return budget value for job
 func GetBudget(pg *PodGroup) *DisruptionBudget {
-	// check annotaion first
 	if len(pg.Annotations) > 0 {
 		if value, found := pg.Annotations[v1beta1.JDBMinAvailable]; found {
 			return NewDisruptionBudget(value, "")

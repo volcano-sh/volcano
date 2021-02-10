@@ -99,13 +99,20 @@ func GetPodPreemptable(pod *v1.Pod) bool {
 
 // GetPodRevocableZone return volcano.sh/revocable-zone value for pod/podgroup
 func GetPodRevocableZone(pod *v1.Pod) string {
-	// check annotaion first
 	if len(pod.Annotations) > 0 {
-		if value, found := pod.Annotations[v1beta1.RevocableZone]; found && value == "*" {
+		if value, found := pod.Annotations[v1beta1.RevocableZone]; found {
+			if value != "*" {
+				return ""
+			}
 			return value
 		}
-	}
 
+		if value, found := pod.Annotations[v1beta1.PodPreemptable]; found {
+			if b, err := strconv.ParseBool(value); err == nil && b {
+				return "*"
+			}
+		}
+	}
 	return ""
 }
 
