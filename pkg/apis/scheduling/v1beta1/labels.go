@@ -35,8 +35,8 @@ const QueueNameAnnotationKey = GroupName + "/queue-name"
 // PodPreemptable is the key of preemptable
 const PodPreemptable = "volcano.sh/preemptable"
 
-//NodeRevocableZone is the key of revocable-zone
-const NodeRevocableZone = "volcano.sh/revocable-zone"
+//RevocableZone is the key of revocable-zone
+const RevocableZone = "volcano.sh/revocable-zone"
 
 // JDBMinAvailable is the key of min available pod number
 const JDBMinAvailable = "volcano.sh/jdb-min-available"

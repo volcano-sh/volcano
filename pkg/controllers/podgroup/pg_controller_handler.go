@@ -101,6 +101,9 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 		if value, ok := pod.Annotations[scheduling.PodPreemptable]; ok {
 			obj.Annotations[scheduling.PodPreemptable] = value
 		}
+		if value, ok := pod.Annotations[scheduling.RevocableZone]; ok {
+			obj.Annotations[scheduling.RevocableZone] = value
+		}
 		if value, ok := pod.Labels[scheduling.PodPreemptable]; ok {
 			obj.Labels[scheduling.PodPreemptable] = value
 		}

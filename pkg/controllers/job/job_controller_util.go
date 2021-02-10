@@ -105,6 +105,9 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 		if value, found := job.Annotations[schedulingv2.PodPreemptable]; found {
 			pod.Annotations[schedulingv2.PodPreemptable] = value
 		}
+		if value, found := job.Annotations[schedulingv2.RevocableZone]; found {
+			pod.Annotations[schedulingv2.RevocableZone] = value
+		}
 
 		if value, found := job.Annotations[schedulingv2.JDBMinAvailable]; found {
 			pod.Annotations[schedulingv2.JDBMinAvailable] = value

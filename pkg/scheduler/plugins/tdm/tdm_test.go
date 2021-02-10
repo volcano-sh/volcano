@@ -114,22 +114,22 @@ func Test_TDM(t *testing.T) {
 	p2 := util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
 	p3 := util.BuildPod("c1", "p3", "", v1.PodPending, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
 
-	p1.Annotations[schedulingv2.PodPreemptable] = "true"
-	p3.Annotations[schedulingv2.PodPreemptable] = "true"
+	p1.Annotations[schedulingv2.RevocableZone] = "*"
+	p3.Annotations[schedulingv2.RevocableZone] = "*"
 
 	n1 := util.BuildNode("n1", util.BuildResourceList("16", "64Gi"), map[string]string{
-		schedulingv2.NodeRevocableZone: "rz1",
+		schedulingv2.RevocableZone: "rz1",
 	})
 
 	n2 := util.BuildNode("n2", util.BuildResourceList("16", "64Gi"), map[string]string{
-		schedulingv2.NodeRevocableZone: "rz1",
+		schedulingv2.RevocableZone: "rz1",
 	})
 
 	n3 := util.BuildNode("n3", util.BuildResourceList("16", "64Gi"), map[string]string{})
 	n4 := util.BuildNode("n4", util.BuildResourceList("16", "64Gi"), map[string]string{})
 
 	n5 := util.BuildNode("n5", util.BuildResourceList("16", "64Gi"), map[string]string{
-		schedulingv2.NodeRevocableZone: "rz2",
+		schedulingv2.RevocableZone: "rz2",
 	})
 
 	pg1 := &schedulingv2.PodGroup{
@@ -337,11 +337,11 @@ func Test_TDM_victimsFn(t *testing.T) {
 	p10.Annotations[schedulingv2.PodPreemptable] = "true"
 
 	n1 := util.BuildNode("n1", util.BuildResourceList("16", "64Gi"), map[string]string{
-		schedulingv2.NodeRevocableZone: "rz1",
+		schedulingv2.RevocableZone: "rz1",
 	})
 
 	n2 := util.BuildNode("n2", util.BuildResourceList("16", "64Gi"), map[string]string{
-		schedulingv2.NodeRevocableZone: "rz1",
+		schedulingv2.RevocableZone: "rz1",
 	})
 
 	queue1 := &schedulingv2.Queue{
