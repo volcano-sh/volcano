@@ -97,6 +97,18 @@ func GetPodPreemptable(pod *v1.Pod) bool {
 	return false
 }
 
+// GetPodRevocableZone return volcano.sh/revocable-zone value for pod/podgroup
+func GetPodRevocableZone(pod *v1.Pod) string {
+	// check annotaion first
+	if len(pod.Annotations) > 0 {
+		if value, found := pod.Annotations[v1beta1.RevocableZone]; found && value == "*" {
+			return value
+		}
+	}
+
+	return ""
+}
+
 // GetPodResourceWithoutInitContainers returns Pod's resource request, it does not contain
 // init containers' resource request.
 func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {

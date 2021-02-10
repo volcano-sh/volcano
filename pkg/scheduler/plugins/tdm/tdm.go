@@ -156,8 +156,8 @@ func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		klog.V(4).Infof("TDM node %v revocable zone %v:%v is active", node.Name, node.RevocableZone, tp.revocableZone[node.RevocableZone])
 
-		if !task.Preemptable {
-			msg := fmt.Sprintf("task %s/%s is not preemptable task, skip to schedule to node %s", task.Namespace, task.Name, node.Name)
+		if len(task.RevocableZone) == 0 {
+			msg := fmt.Sprintf("task %s/%s is not allow to dispatch to revocable node %s", task.Namespace, task.Name, node.Name)
 			return fmt.Errorf("plugin %s predicates %s", tp.Name(), msg)
 		}
 
@@ -178,8 +178,8 @@ func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 			return score, err
 		}
 
-		if !task.Preemptable {
-			klog.V(4).Infof("TDM task %s/%s is not preemptable task, skip to schedule to node %s", task.Namespace, task.Name, node.Name)
+		if len(task.RevocableZone) == 0 {
+			klog.V(4).Infof("TDM task %s/%s is not allow to dispatch to revocable node %s", task.Namespace, task.Name, node.Name)
 			return score, nil
 		}
 
@@ -364,23 +364,4 @@ func (tp *tdmPlugin) revocableNodePreemptableTask(rz string, ssn *framework.Sess
 	return tasksMap
 }
 
-func (tp *tdmPlugin) noneRevocableNodePreemptableTask(ssn *framework.Session) []*api.TaskInfo {
-	tasks := make([]*api.TaskInfo, 0)
-
-	for _, node := range ssn.Nodes {
-		if node.RevocableZone != "" {
-			continue
-		}
-
-		for _, task := range node.Tasks {
-			if task.Preemptable {
-				if task.Status == api.Running {
-					tasks = append(tasks, task)
-				}
-			}
-		}
-	}
-
-	return tasks
-}
 func (tp *tdmPlugin) OnSessionClose(ssn *framework.Session) {}

@@ -77,6 +77,12 @@ type TaskInfo struct {
 	VolumeReady bool
 	Preemptable bool
 
+	// RevocableZone support set volcano.sh/revocable-zone annotaion or label for pod/podgroup
+	// we only support empty value or * value for this version and we will support specify revocable zone name for futrue release
+	// empty value means workload can not use revocable node
+	// * value means workload can use all the revocable node for during node active revocable time.
+	RevocableZone string
+
 	Pod *v1.Pod
 }
 
@@ -95,21 +101,23 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	req := GetPodResourceWithoutInitContainers(pod)
 	initResreq := GetPodResourceRequest(pod)
 	preemptable := GetPodPreemptable(pod)
+	revocableZone := GetPodRevocableZone(pod)
 
 	jobID := getJobID(pod)
 
 	ti := &TaskInfo{
-		UID:         TaskID(pod.UID),
-		Job:         jobID,
-		Name:        pod.Name,
-		Namespace:   pod.Namespace,
-		NodeName:    pod.Spec.NodeName,
-		Status:      getTaskStatus(pod),
-		Priority:    1,
-		Pod:         pod,
-		Resreq:      req,
-		InitResreq:  initResreq,
-		Preemptable: preemptable,
+		UID:           TaskID(pod.UID),
+		Job:           jobID,
+		Name:          pod.Name,
+		Namespace:     pod.Namespace,
+		NodeName:      pod.Spec.NodeName,
+		Status:        getTaskStatus(pod),
+		Priority:      1,
+		Pod:           pod,
+		Resreq:        req,
+		InitResreq:    initResreq,
+		Preemptable:   preemptable,
+		RevocableZone: revocableZone,
 	}
 
 	if pod.Spec.Priority != nil {
@@ -122,25 +130,26 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 // Clone is used for cloning a task
 func (ti *TaskInfo) Clone() *TaskInfo {
 	return &TaskInfo{
-		UID:         ti.UID,
-		Job:         ti.Job,
-		Name:        ti.Name,
-		Namespace:   ti.Namespace,
-		NodeName:    ti.NodeName,
-		Status:      ti.Status,
-		Priority:    ti.Priority,
-		Pod:         ti.Pod,
-		Resreq:      ti.Resreq.Clone(),
-		InitResreq:  ti.InitResreq.Clone(),
-		VolumeReady: ti.VolumeReady,
-		Preemptable: ti.Preemptable,
+		UID:           ti.UID,
+		Job:           ti.Job,
+		Name:          ti.Name,
+		Namespace:     ti.Namespace,
+		NodeName:      ti.NodeName,
+		Status:        ti.Status,
+		Priority:      ti.Priority,
+		Pod:           ti.Pod,
+		Resreq:        ti.Resreq.Clone(),
+		InitResreq:    ti.InitResreq.Clone(),
+		VolumeReady:   ti.VolumeReady,
+		Preemptable:   ti.Preemptable,
+		RevocableZone: ti.RevocableZone,
 	}
 }
 
 // String returns the taskInfo details in a string
 func (ti TaskInfo) String() string {
-	return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v, resreq %v, preemptable %v",
-		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority, ti.Resreq, ti.Preemptable)
+	return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v, resreq %v, preemptable %v, revocableZone %v",
+		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority, ti.Resreq, ti.Preemptable, ti.RevocableZone)
 }
 
 // JobID is the type of JobInfo's ID.
@@ -180,7 +189,13 @@ type JobInfo struct {
 	ScheduleStartTimestamp metav1.Time
 
 	Preemptable bool
-	Budget      *DisruptionBudget
+
+	// RevocableZone support set volcano.sh/revocable-zone annotaion or label for pod/podgroup
+	// we only support empty value or * value for this version and we will support specify revocable zone name for futrue release
+	// empty value means workload can not use revocable node
+	// * value means workload can use all the revocable node for during node active revocable time.
+	RevocableZone string
+	Budget        *DisruptionBudget
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks
@@ -215,6 +230,7 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.Queue = QueueID(pg.Spec.Queue)
 	ji.CreationTimestamp = pg.GetCreationTimestamp()
 	ji.Preemptable = GetJobPreemptable(pg)
+	ji.RevocableZone = GetJobRevocableZone(pg)
 	ji.Budget = GetBudget(pg)
 
 	ji.PodGroup = pg
@@ -248,6 +264,18 @@ func GetJobPreemptable(pg *PodGroup) bool {
 	}
 
 	return false
+}
+
+// GetJobRevocableZone return volcano.sh/revocable-zone value for pod/podgroup
+func GetJobRevocableZone(pg *PodGroup) string {
+	// check annotaion first
+	if len(pg.Annotations) > 0 {
+		if value, found := pg.Annotations[v1beta1.RevocableZone]; found && value == "*" {
+			return value
+		}
+	}
+
+	return ""
 }
 
 // GetBudget return budget value for job
@@ -347,6 +375,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		TaskStatusIndex: map[TaskStatus]tasksMap{},
 		Tasks:           tasksMap{},
 		Preemptable:     ji.Preemptable,
+		RevocableZone:   ji.RevocableZone,
 		Budget:          ji.Budget.Clone(),
 	}
 
@@ -369,8 +398,8 @@ func (ji JobInfo) String() string {
 		i++
 	}
 
-	return fmt.Sprintf("Job (%v): namespace %v (%v), name %v, minAvailable %d, podGroup %+v, preemptable %+v, minAvailable %+v, maxAvailable %+v",
-		ji.UID, ji.Namespace, ji.Queue, ji.Name, ji.MinAvailable, ji.PodGroup, ji.Preemptable, ji.Budget.MinAvailable, ji.Budget.MaxUnavilable) + res
+	return fmt.Sprintf("Job (%v): namespace %v (%v), name %v, minAvailable %d, podGroup %+v, preemptable %+v, revocableZone %+v, minAvailable %+v, maxAvailable %+v",
+		ji.UID, ji.Namespace, ji.Queue, ji.Name, ji.MinAvailable, ji.PodGroup, ji.Preemptable, ji.RevocableZone, ji.Budget.MinAvailable, ji.Budget.MaxUnavilable) + res
 }
 
 // FitError returns detailed information on why a job's task failed to fit on
