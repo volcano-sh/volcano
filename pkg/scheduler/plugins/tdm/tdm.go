@@ -190,7 +190,8 @@ func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
-		if preemptor.Preemptable {
+		// for the preemptable or can use revocablezone workload, they can not preempt other tasks.
+		if preemptor.Preemptable || len(preemptor.RevocableZone) > 0 {
 			klog.V(4).Infof("TDM task %s/%s is preemptable, do nothing skip", preemptor.Namespace, preemptor.Name)
 			return nil
 		}
