@@ -43,3 +43,6 @@ const JDBMinAvailable = "volcano.sh/jdb-min-available"
 
 // JDBMaxUnavailable is the key of max unavailable pod number
 const JDBMaxUnavailable = "volcano.sh/jdb-max-unavailable"
+
+// TaskSpecKey is the key of task spec
+const TaskSpecKey = "volcano.sh/task-spec"

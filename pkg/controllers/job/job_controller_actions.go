@@ -37,6 +37,8 @@ import (
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
+var calMutex sync.Mutex
+
 func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseMap, updateStatus state.UpdateStatusFn) error {
 	job := jobInfo.Job
 	klog.V(3).Infof("Killing Job <%s/%s>, current version %d", job.Namespace, job.Name, job.Status.Version)
@@ -319,7 +321,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 				appendError(&creationErrs, fmt.Errorf("failed to create pod %s, err: %#v", pod.Name, err))
 			} else {
 				classifyAndAddUpPodBaseOnPhase(newPod, &pending, &running, &succeeded, &failed, &unknown)
-				calcPodStatus(pod, taskStatusCount)
+				calcPodStatus(newPod, taskStatusCount)
 				klog.V(3).Infof("Created Task <%s> of Job <%s/%s>",
 					pod.Name, job.Namespace, job.Name)
 			}
@@ -680,6 +682,8 @@ func classifyAndAddUpPodBaseOnPhase(pod *v1.Pod, pending, running, succeeded, fa
 }
 
 func calcPodStatus(pod *v1.Pod, taskStatusCount map[string]batch.TaskState) {
+	calMutex.Lock()
+	defer calMutex.Unlock()
 	taskName, found := pod.Annotations[batch.TaskSpecKey]
 	if !found {
 		return

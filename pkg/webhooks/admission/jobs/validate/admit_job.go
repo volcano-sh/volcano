@@ -113,7 +113,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 
 	if job.Spec.MinAvailable < 0 {
 		reviewResponse.Allowed = false
-		return fmt.Sprintf("'job minAvailable' must be >= 0.")
+		return fmt.Sprintf("job 'minAvailable' must be >= 0.")
 	}
 
 	if job.Spec.MaxRetry < 0 {
@@ -137,7 +137,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 		}
 
 		if task.MinAvailable != nil && *task.MinAvailable > task.Replicas {
-			msg += fmt.Sprintf(" 'minAvailable' is greater than 'replicas' in task: %s;", task.Name)
+			msg += fmt.Sprintf(" 'minAvailable' is greater than 'replicas' in task: %s, job: %s", task.Name, job.Name)
 		}
 
 		// count replicas
@@ -168,7 +168,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 	msg += validateJobName(job)
 
 	if totalReplicas < job.Spec.MinAvailable {
-		msg += " 'minAvailable' should not be greater than total replicas in tasks;"
+		msg += "job 'minAvailable' should not be greater than total replicas in tasks;"
 	}
 
 	if err := validatePolicies(job.Spec.Policies, field.NewPath("spec.policies")); err != nil {
@@ -211,9 +211,9 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 			return fmt.Errorf("'replicas' must be >= 0 in task: %s", task.Name)
 		}
 
-		if task.MinAvailable == nil || *task.MinAvailable > task.Replicas {
-			return fmt.Errorf(" 'minAvailable' must be <= 'replicas' in task: %s;", task.Name)
-		}
+		//if task.MinAvailable != nil && *task.MinAvailable > task.Replicas {
+		//	return fmt.Errorf(" 'minAvailable' must be <= 'replicas' in task: %s;", task.Name)
+		//}
 		// count replicas
 		totalReplicas += task.Replicas
 	}
@@ -227,6 +227,7 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	if len(old.Spec.Tasks) != len(new.Spec.Tasks) {
 		return fmt.Errorf("job updates may not add or remove tasks")
 	}
+
 	// other fields under spec are not allowed to mutate
 	new.Spec.MinAvailable = old.Spec.MinAvailable
 	for i := range new.Spec.Tasks {

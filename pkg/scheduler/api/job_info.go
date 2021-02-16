@@ -96,6 +96,14 @@ func getJobID(pod *v1.Pod) JobID {
 	return ""
 }
 
+func getTaskID(pod *v1.Pod) TaskID {
+	if ts, found := pod.Annotations[v1beta1.TaskSpecKey]; found && len(ts) != 0 {
+		return TaskID(ts)
+	}
+
+	return ""
+}
+
 // NewTaskInfo creates new taskInfo object for a Pod
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	req := GetPodResourceWithoutInitContainers(pod)
@@ -385,11 +393,12 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 		PodGroup: ji.PodGroup,
 
-		TaskStatusIndex: map[TaskStatus]tasksMap{},
-		Tasks:           tasksMap{},
-		Preemptable:     ji.Preemptable,
-		RevocableZone:   ji.RevocableZone,
-		Budget:          ji.Budget.Clone(),
+		TaskStatusIndex:  map[TaskStatus]tasksMap{},
+		TaskMinAvailable: ji.TaskMinAvailable,
+		Tasks:            tasksMap{},
+		Preemptable:      ji.Preemptable,
+		RevocableZone:    ji.RevocableZone,
+		Budget:           ji.Budget.Clone(),
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
@@ -479,12 +488,12 @@ func (ji *JobInfo) ValidTaskMinAvailable() (map[TaskID]int32, bool) {
 			status == Pipelined ||
 			status == Pending {
 			for _, task := range tasks {
-				actual[task.UID]++
+				actual[getTaskID(task.Pod)]++
 			}
 		}
 	}
 
-	klog.Infof("actual: %v, ji.TaskMinAvailable: %v", actual, ji.TaskMinAvailable)
+	klog.Infof("job %s/%s actual: %+v, ji.TaskMinAvailable: %+v", ji.Name, ji.Namespace, actual, ji.TaskMinAvailable)
 
 	for task, occupied := range actual {
 		if minAvailable, ok := ji.TaskMinAvailable[task]; ok && occupied < minAvailable {
