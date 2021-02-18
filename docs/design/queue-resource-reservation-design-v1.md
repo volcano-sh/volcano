@@ -136,3 +136,5 @@ of reservation ,including finding and updating the node details for the queue to
 Add new Plugin node_reservation to implement algorithm detail above.
 
 ![Workflow](./images/queue_reservation_allocate_workflow.png)
+
+
