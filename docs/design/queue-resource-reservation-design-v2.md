@@ -1,6 +1,6 @@
 # Volcano Resource Reservation For Queue(v2)
 
-@[Thor-wl](https://github.com/Thor-wl); Feb 28th, 2021
+@[Thor-wl](https://github.com/Thor-wl); Feb 18th, 2021
 
 Inspired by design optimization of `target job resource reservation`, our goal is to ensure the SLA of jobs in target
 queues. So just allocate resource for jobs by order SLA.
@@ -32,4 +32,3 @@ status:
 * Reuse action `sla` to decide the scheduling order of jobs according the remaining waiting time.
   `remainingWaitingTime = maxWaitingTime - hasAlreadyWaitingTime`.
 * Remaining waiting time will be recalculated again in every session.
-
