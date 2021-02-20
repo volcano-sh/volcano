@@ -34,6 +34,9 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	if option.EnabledJobPipelined == nil {
 		option.EnabledJobPipelined = &t
 	}
+	if option.EnabledJobEnqueued == nil {
+		option.EnabledJobEnqueued = &t
+	}
 	if option.EnabledTaskOrder == nil {
 		option.EnabledTaskOrder = &t
 	}
@@ -60,5 +63,11 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	}
 	if option.EnabledReservedNodes == nil {
 		option.EnabledReservedNodes = &t
+	}
+	if option.EnabledVictim == nil {
+		option.EnabledVictim = &t
+	}
+	if option.EnabledJobStarving == nil {
+		option.EnabledJobStarving = &t
 	}
 }

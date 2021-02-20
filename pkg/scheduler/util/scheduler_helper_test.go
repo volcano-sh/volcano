@@ -61,3 +61,37 @@ func TestSelectBestNode(t *testing.T) {
 		}
 	}
 }
+
+func TestGetMinInt(t *testing.T) {
+	cases := []struct {
+		vals   []int
+		result int
+	}{
+		{
+			vals:   []int{1, 2, 3},
+			result: 1,
+		},
+		{
+			vals:   []int{10, 9, 8},
+			result: 8,
+		},
+		{
+			vals:   []int{10, 0, 8},
+			result: 0,
+		},
+		{
+			vals:   []int{},
+			result: 0,
+		},
+		{
+			vals:   []int{0, -1, 1},
+			result: -1,
+		},
+	}
+	for i, test := range cases {
+		result := GetMinInt(test.vals...)
+		if result != test.result {
+			t.Errorf("Failed test case #%d, expected: %#v, got %#v", i, test.result, result)
+		}
+	}
+}

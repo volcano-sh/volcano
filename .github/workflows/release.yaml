@@ -13,6 +13,13 @@ jobs:
         with:
           go-version: 1.14.x
 
+      - name: Install musl
+        run: |
+          wget http://musl.libc.org/releases/musl-1.2.1.tar.gz
+          tar -xf musl-1.2.1.tar.gz && cd musl-1.2.1
+          ./configure
+          make && sudo make install
+
       - name: Checkout code
         uses: actions/checkout@v2
         with:
@@ -39,5 +46,5 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Daily Release
-        run: make TAG=latest RELEASE_VER=latest release
+        run: make TAG=latest RELEASE_VER=latest CC=/usr/local/musl/bin/musl-gcc release
         working-directory: ./src/github.com/${{ github.repository }}

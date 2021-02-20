@@ -17,6 +17,8 @@ limitations under the License.
 package proportion
 
 import (
+	"reflect"
+
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/apis/scheduling"
@@ -24,6 +26,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
 // PluginName indicates name of volcano scheduler plugin.
@@ -151,6 +154,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			break
 		}
 
+		oldRemaining := remaining.Clone()
 		// Calculates the deserved of each Queue.
 		// increasedDeserved is the increased value for attr.deserved of processed queues
 		// decreasedDeserved is the decreased value for attr.deserved of processed queues
@@ -175,6 +179,9 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				attr.deserved = helpers.Min(attr.deserved, attr.request)
 				meet[attr.queueID] = struct{}{}
 				klog.V(4).Infof("queue <%s> is meet", attr.name)
+			} else {
+				attr.deserved.MinDimensionResource(attr.request)
+				klog.V(4).Infof("Format queue <%s> deserved resource to <%v>", attr.name, attr.deserved)
 			}
 			pp.updateShare(attr)
 
@@ -190,8 +197,9 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		remaining.Sub(increasedDeserved).Add(decreasedDeserved)
-		if remaining.IsEmpty() {
-			klog.V(4).Infof("Exiting when remaining is empty:  <%v>", remaining)
+		klog.V(4).Infof("Remaining resource is  <%s>", remaining)
+		if remaining.IsEmpty() || reflect.DeepEqual(remaining, oldRemaining) {
+			klog.V(4).Infof("Exiting when remaining is empty or no queue has more reosurce request:  <%v>", remaining)
 			break
 		}
 	}
@@ -252,7 +260,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return overused
 	})
 
-	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) bool {
+	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {
 		job := obj.(*api.JobInfo)
 		queueID := job.Queue
 		attr := pp.queueOpts[queueID]
@@ -262,20 +270,20 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		if len(queue.Queue.Spec.Capability) == 0 {
 			klog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Inqueue.",
 				queue.Name, job.Namespace, job.Name)
-			return true
+			return util.Permit
 		}
 
 		if job.PodGroup.Spec.MinResources == nil {
-			return true
+			return util.Permit
 		}
-
 		minReq := GetJobMinResources(job.PodGroup.Spec)
 		// The queue resource quota limit has not reached
 		inqueue := minReq.Add(attr.allocated).Add(attr.inqueue).LessEqual(api.NewResource(queue.Queue.Spec.Capability))
 		if inqueue {
 			attr.inqueue.Add(GetJobMinResources(job.PodGroup.Spec))
+			return util.Permit
 		}
-		return inqueue
+		return util.Reject
 	})
 
 	// Register event handlers.

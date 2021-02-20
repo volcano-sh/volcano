@@ -291,6 +291,7 @@ func TestPreempt(t *testing.T) {
 							Name:                "gang",
 							EnabledPreemptable:  &trueValue,
 							EnabledJobPipelined: &trueValue,
+							EnabledJobStarving:  &trueValue,
 						},
 					},
 				},
