@@ -50,7 +50,7 @@ type Session struct {
 	RevocableNodes map[string]*api.NodeInfo
 	Queues         map[api.QueueID]*api.QueueInfo
 	NamespaceInfo  map[api.NamespaceName]*api.NamespaceInfo
-  PodVolumesInfo map[string]volumescheduling.PodVolumes
+	PodVolumesInfo map[string]volumescheduling.PodVolumes
 
 	Tiers          []conf.Tier
 	Configurations []conf.Configuration
@@ -92,7 +92,7 @@ func openSession(cache cache.Cache) *Session {
 		Nodes:          map[string]*api.NodeInfo{},
 		RevocableNodes: map[string]*api.NodeInfo{},
 		Queues:         map[api.QueueID]*api.QueueInfo{},
-    PodVolumesInfo: map[string]volumescheduling.PodVolumes{},
+		PodVolumesInfo: map[string]volumescheduling.PodVolumes{},
 
 		plugins:           map[string]Plugin{},
 		jobOrderFns:       map[string]api.CompareFn{},

@@ -27,7 +27,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
-
 // PodFilter is a function to filter a pod. If pod passed return true else return false.
 type PodFilter func(*v1.Pod) bool
 
@@ -39,6 +38,7 @@ type PodsLister interface {
 	// contain pods that don't pass `podFilter`.
 	FilteredList(podFilter PodFilter, selector labels.Selector) ([]*v1.Pod, error)
 }
+
 const (
 	// Permit indicates that plugin callback function permits job to be inqueue, pipelined, or other status
 	Permit = 1
