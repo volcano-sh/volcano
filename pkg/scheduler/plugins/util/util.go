@@ -36,7 +36,6 @@ const (
 	// Reject indicates that plugin callback function rejects job to be inqueue, pipelined, or other status
 	Reject = -1
 )
-
 // PodFilter is a function to filter a pod. If pod passed return true else return false.
 type PodFilter func(*v1.Pod) bool
 
