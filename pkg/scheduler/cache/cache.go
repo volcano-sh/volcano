@@ -332,6 +332,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		0,
 	)
 
+	sc.podInformer = informerFactory.Core().V1().Pods()
 	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
 	sc.pvInformer = informerFactory.Core().V1().PersistentVolumes()
 	sc.scInformer = informerFactory.Storage().V1().StorageClasses()
@@ -356,7 +357,6 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	}
 
 	// create informer for pod information
-	sc.podInformer = informerFactory.Core().V1().Pods()
 	sc.podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
