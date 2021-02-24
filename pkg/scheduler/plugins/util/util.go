@@ -27,6 +27,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
+
 // PodFilter is a function to filter a pod. If pod passed return true else return false.
 type PodFilter func(*v1.Pod) bool
 
@@ -38,6 +39,14 @@ type PodsLister interface {
 	// contain pods that don't pass `podFilter`.
 	FilteredList(podFilter PodFilter, selector labels.Selector) ([]*v1.Pod, error)
 }
+const (
+	// Permit indicates that plugin callback function permits job to be inqueue, pipelined, or other status
+	Permit = 1
+	// Abstain indicates that plugin callback function abstains in voting job to be inqueue, pipelined, or other status
+	Abstain = 0
+	// Reject indicates that plugin callback function rejects job to be inqueue, pipelined, or other status
+	Reject = -1
+)
 
 // PodLister is used in predicate and nodeorder plugin
 type PodLister struct {
@@ -80,9 +89,40 @@ func NewPodLister(ssn *framework.Session) *PodLister {
 
 			for _, task := range tasks {
 				pl.Tasks[task.UID] = task
+
+				pod := pl.copyTaskPod(task)
+				pl.CachedPods[task.UID] = pod
+
 				if HaveAffinity(task.Pod) {
 					pl.TaskWithAffinity[task.UID] = task
 				}
+			}
+		}
+	}
+
+	return pl
+}
+
+// NewPodListerFromNode returns a PodLister generate from ssn
+func NewPodListerFromNode(ssn *framework.Session) *PodLister {
+	pl := &PodLister{
+		Session:          ssn,
+		CachedPods:       make(map[api.TaskID]*v1.Pod),
+		Tasks:            make(map[api.TaskID]*api.TaskInfo),
+		TaskWithAffinity: make(map[api.TaskID]*api.TaskInfo),
+	}
+
+	for _, node := range pl.Session.Nodes {
+		for _, task := range node.Tasks {
+			if !api.AllocatedStatus(task.Status) && task.Status != api.Releasing {
+				continue
+			}
+
+			pl.Tasks[task.UID] = task
+			pod := pl.copyTaskPod(task)
+			pl.CachedPods[task.UID] = pod
+			if HaveAffinity(task.Pod) {
+				pl.TaskWithAffinity[task.UID] = task
 			}
 		}
 	}

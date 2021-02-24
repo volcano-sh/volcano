@@ -47,9 +47,10 @@ type Session struct {
 
 	Jobs           map[api.JobID]*api.JobInfo
 	Nodes          map[string]*api.NodeInfo
+	RevocableNodes map[string]*api.NodeInfo
 	Queues         map[api.QueueID]*api.QueueInfo
 	NamespaceInfo  map[api.NamespaceName]*api.NamespaceInfo
-	PodVolumesInfo map[string]volumescheduling.PodVolumes
+  PodVolumesInfo map[string]volumescheduling.PodVolumes
 
 	Tiers          []conf.Tier
 	Configurations []conf.Configuration
@@ -70,11 +71,13 @@ type Session struct {
 	reclaimableFns    map[string]api.EvictableFn
 	overusedFns       map[string]api.ValidateFn
 	jobReadyFns       map[string]api.ValidateFn
-	jobPipelinedFns   map[string]api.ValidateFn
+	jobPipelinedFns   map[string]api.VoteFn
 	jobValidFns       map[string]api.ValidateExFn
-	jobEnqueueableFns map[string]api.ValidateFn
+	jobEnqueueableFns map[string]api.VoteFn
 	targetJobFns      map[string]api.TargetJobFn
 	reservedNodesFns  map[string]api.ReservedNodesFn
+	victimTasksFns    map[string]api.VictimTasksFn
+	jobStarvingFns    map[string]api.ValidateFn
 }
 
 func openSession(cache cache.Cache) *Session {
@@ -87,8 +90,9 @@ func openSession(cache cache.Cache) *Session {
 
 		Jobs:           map[api.JobID]*api.JobInfo{},
 		Nodes:          map[string]*api.NodeInfo{},
+		RevocableNodes: map[string]*api.NodeInfo{},
 		Queues:         map[api.QueueID]*api.QueueInfo{},
-		PodVolumesInfo: map[string]volumescheduling.PodVolumes{},
+    PodVolumesInfo: map[string]volumescheduling.PodVolumes{},
 
 		plugins:           map[string]Plugin{},
 		jobOrderFns:       map[string]api.CompareFn{},
@@ -105,11 +109,13 @@ func openSession(cache cache.Cache) *Session {
 		reclaimableFns:    map[string]api.EvictableFn{},
 		overusedFns:       map[string]api.ValidateFn{},
 		jobReadyFns:       map[string]api.ValidateFn{},
-		jobPipelinedFns:   map[string]api.ValidateFn{},
+		jobPipelinedFns:   map[string]api.VoteFn{},
 		jobValidFns:       map[string]api.ValidateExFn{},
-		jobEnqueueableFns: map[string]api.ValidateFn{},
+		jobEnqueueableFns: map[string]api.VoteFn{},
 		targetJobFns:      map[string]api.TargetJobFn{},
 		reservedNodesFns:  map[string]api.ReservedNodesFn{},
+		victimTasksFns:    map[string]api.VictimTasksFn{},
+		jobStarvingFns:    map[string]api.ValidateFn{},
 	}
 
 	snapshot := cache.Snapshot()
@@ -142,6 +148,7 @@ func openSession(cache cache.Cache) *Session {
 	}
 
 	ssn.Nodes = snapshot.Nodes
+	ssn.RevocableNodes = snapshot.RevocableNodes
 	ssn.Queues = snapshot.Queues
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
 
@@ -158,6 +165,7 @@ func closeSession(ssn *Session) {
 	ssn.Jobs = nil
 	ssn.Nodes = nil
 	ssn.PodVolumesInfo = nil
+	ssn.RevocableNodes = nil
 	ssn.plugins = nil
 	ssn.eventHandlers = nil
 	ssn.jobOrderFns = nil

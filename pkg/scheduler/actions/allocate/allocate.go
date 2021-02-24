@@ -269,7 +269,9 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		if ssn.JobReady(job) {
 			stmt.Commit()
 		} else {
-			stmt.Discard()
+			if !ssn.JobPipelined(job) {
+				stmt.Discard()
+			}
 		}
 
 		// Added Namespace back until no job in Namespace.
