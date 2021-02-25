@@ -676,7 +676,7 @@ func TestAddResourceList(t *testing.T) {
 			addResourceList(testcase.List, testcase.Req, testcase.Limit)
 			if testcase.ExpectedVal != nil {
 				for k, v := range testcase.ExpectedVal {
-					if kk, ok := testcase.List[k]; !ok || !kk.Equal(v) {
+					if _v, ok := testcase.List[k]; !ok || !_v.Equal(v) {
 						t.Errorf("Expected return value to be %v but got %v in case %d", testcase.ExpectedVal, testcase.List, i)
 					}
 				}
