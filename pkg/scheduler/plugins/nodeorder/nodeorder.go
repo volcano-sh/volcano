@@ -179,7 +179,18 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Initialize k8s scheduling plugins
 	handle := k8s.NewFrameworkHandle(pods, nodeSlice)
 	// 1. NodeResourcesLeastAllocated
-	laArgs := &config.NodeResourcesLeastAllocatedArgs{}
+	laArgs := &config.NodeResourcesLeastAllocatedArgs{
+		Resources: []config.ResourceSpec{
+			{
+				Name: "cpu",
+				Weight: 50,
+			},
+			{
+				Name: "memory",
+				Weight: 50,
+			},
+		},
+	}
 	p, _ := noderesources.NewLeastAllocated(laArgs, handle)
 	leastAllocated := p.(*noderesources.LeastAllocated)
 
