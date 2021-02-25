@@ -31,6 +31,13 @@ const (
 	JobAffinityKey = "volcano.sh/task-topology"
 	// OutOfBucket indicates task is outside of any bucket
 	OutOfBucket = -1
+
+	// JobAffinityAnnotations is the key to read in task-topology affinity arguments from podgroup annotations
+	JobAffinityAnnotations = "volcano.sh/task-topology-affinity"
+	// JobAntiAffinityAnnotations is the key to read in task-topology anti-affinity arguments from podgroup annotations
+	JobAntiAffinityAnnotations = "volcano.sh/task-topology-anti-affinity"
+	// TaskOrderAnnotations is the key to read in task-topology task order arguments from podgroup annotations
+	TaskOrderAnnotations = "volcano.sh/task-topology-task-order"
 )
 
 // TaskTopology is struct used to save affinity infos of a job read from job plugin or annotations
@@ -72,7 +79,7 @@ func addAffinity(m map[string]map[string]struct{}, src, dst string) {
 	srcMap[dst] = struct{}{}
 }
 
-func allTaskHaveNode(job *api.JobInfo) bool {
+func noPendingTasks(job *api.JobInfo) bool {
 	return len(job.TaskStatusIndex[api.Pending]) == 0
 }
 
