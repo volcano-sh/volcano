@@ -182,11 +182,11 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	laArgs := &config.NodeResourcesLeastAllocatedArgs{
 		Resources: []config.ResourceSpec{
 			{
-				Name: "cpu",
+				Name:   "cpu",
 				Weight: 50,
 			},
 			{
-				Name: "memory",
+				Name:   "memory",
 				Weight: 50,
 			},
 		},
