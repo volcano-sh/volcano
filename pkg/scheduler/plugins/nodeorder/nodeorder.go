@@ -230,7 +230,8 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	ssn.AddNodeOrderFn(pp.Name(), nodeOrderFn)
 
-	p, _ = interpodaffinity.New(nil, handle)
+	plArgs := &config.InterPodAffinityArgs{}
+	p, _ = interpodaffinity.New(plArgs, handle)
 	interPodAffinity := p.(*interpodaffinity.InterPodAffinity)
 
 	p, _ = tainttoleration.New(nil, handle)
