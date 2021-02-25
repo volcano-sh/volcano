@@ -581,17 +581,22 @@ func TestApplyPolicies(t *testing.T) {
 
 func TestAddResourceList(t *testing.T) {
 	testcases := []struct {
-		Name string
-		List v1.ResourceList
-		New  v1.ResourceList
+		Name        string
+		List        v1.ResourceList
+		Req         v1.ResourceList
+		Limit       v1.ResourceList
+		ExpectedVal v1.ResourceList
 	}{
 		{
 			Name: "Already Present resource",
 			List: map[v1.ResourceName]resource.Quantity{
 				"cpu": *resource.NewQuantity(100, ""),
 			},
-			New: map[v1.ResourceName]resource.Quantity{
+			Req: map[v1.ResourceName]resource.Quantity{
 				"cpu": *resource.NewQuantity(100, ""),
+			},
+			ExpectedVal: map[v1.ResourceName]resource.Quantity{
+				"cpu": *resource.NewQuantity(200, ""),
 			},
 		},
 		{
@@ -599,15 +604,83 @@ func TestAddResourceList(t *testing.T) {
 			List: map[v1.ResourceName]resource.Quantity{
 				"cpu": *resource.NewQuantity(100, ""),
 			},
-			New: map[v1.ResourceName]resource.Quantity{
+			Req: map[v1.ResourceName]resource.Quantity{
+				"memory": *resource.NewQuantity(100, ""),
+			},
+			ExpectedVal: map[v1.ResourceName]resource.Quantity{
+				"cpu":    *resource.NewQuantity(100, ""),
+				"memory": *resource.NewQuantity(100, ""),
+			},
+		},
+		{
+			Name: "Nil Req with different resource",
+			List: map[v1.ResourceName]resource.Quantity{
+				"cpu": *resource.NewQuantity(100, ""),
+			},
+			Limit: map[v1.ResourceName]resource.Quantity{
+				"memory": *resource.NewQuantity(100, ""),
+			},
+			ExpectedVal: map[v1.ResourceName]resource.Quantity{
+				"cpu":    *resource.NewQuantity(100, ""),
+				"memory": *resource.NewQuantity(100, ""),
+			},
+		},
+		{
+			Name: "Nil Req with same resource",
+			List: map[v1.ResourceName]resource.Quantity{
+				"cpu": *resource.NewQuantity(100, ""),
+			},
+			Limit: map[v1.ResourceName]resource.Quantity{
+				"cpu": *resource.NewQuantity(100, ""),
+			},
+			ExpectedVal: map[v1.ResourceName]resource.Quantity{
+				"cpu": *resource.NewQuantity(200, ""),
+			},
+		},
+		{
+			Name: "Nil Req with multiple resource",
+			List: map[v1.ResourceName]resource.Quantity{
+				"cpu": *resource.NewQuantity(100, ""),
+			},
+			Limit: map[v1.ResourceName]resource.Quantity{
+				"cpu":    *resource.NewQuantity(100, ""),
+				"memory": *resource.NewQuantity(100, ""),
+			},
+			ExpectedVal: map[v1.ResourceName]resource.Quantity{
+				"cpu":    *resource.NewQuantity(200, ""),
+				"memory": *resource.NewQuantity(100, ""),
+			},
+		},
+		{
+			Name: "Req and Limit exist simultaneously",
+			List: map[v1.ResourceName]resource.Quantity{
+				"cpu": *resource.NewQuantity(100, ""),
+			},
+			Req: map[v1.ResourceName]resource.Quantity{
+				"cpu":    *resource.NewQuantity(100, ""),
+				"memory": *resource.NewQuantity(100, ""),
+			},
+			Limit: map[v1.ResourceName]resource.Quantity{
+				"cpu":    *resource.NewQuantity(100, ""),
+				"memory": *resource.NewQuantity(100, ""),
+			},
+			ExpectedVal: map[v1.ResourceName]resource.Quantity{
+				"cpu":    *resource.NewQuantity(200, ""),
 				"memory": *resource.NewQuantity(100, ""),
 			},
 		},
 	}
 
-	for _, testcase := range testcases {
+	for i, testcase := range testcases {
 		t.Run(testcase.Name, func(t *testing.T) {
-			addResourceList(testcase.List, testcase.New, nil)
+			addResourceList(testcase.List, testcase.Req, testcase.Limit)
+			if testcase.ExpectedVal != nil {
+				for k, v := range testcase.ExpectedVal {
+					if kk, ok := testcase.List[k]; !ok || !kk.Equal(v) {
+						t.Errorf("Expected return value to be %v but got %v in case %d", testcase.ExpectedVal, testcase.List, i)
+					}
+				}
+			}
 		})
 	}
 }
