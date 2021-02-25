@@ -348,13 +348,15 @@ func createJob(context *testContext, jobSpec *jobSpec) *batchv1alpha1.Job {
 	return job
 }
 
-func createJobWithPodGroup(ctx *testContext, jobSpec *jobSpec, pgName string) *batchv1alpha1.Job {
+func createJobWithPodGroup(ctx *testContext, jobSpec *jobSpec,
+	pgName string, annotations map[string]string) *batchv1alpha1.Job {
 	ns := getNS(ctx, jobSpec)
 
 	job := &batchv1alpha1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      jobSpec.name,
-			Namespace: ns,
+			Name:        jobSpec.name,
+			Namespace:   ns,
+			Annotations: annotations,
 		},
 		Spec: batchv1alpha1.JobSpec{
 			Policies:                jobSpec.policies,
