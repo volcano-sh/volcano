@@ -221,7 +221,8 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	ssn.AddNodeOrderFn(pp.Name(), nodeOrderFn)
 
-	p, _ = interpodaffinity.New(nil, handle)
+	plArgs := &config.InterPodAffinityArgs{}
+	p, _ = interpodaffinity.New(plArgs, handle)
 	interPodAffinity := p.(*interpodaffinity.InterPodAffinity)
 
 	batchNodeOrderFn := func(task *api.TaskInfo, nodeInfo []*api.NodeInfo) (map[string]float64, error) {
