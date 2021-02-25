@@ -19,6 +19,7 @@ package nodeorder
 import (
 	"context"
 	"fmt"
+	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -169,7 +170,8 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Initialize k8s scheduling plugins
 	handle := k8s.NewFrameworkHandle(pods, nodeSlice)
 	// 1. NodeResourcesLeastAllocated
-	p, _ := noderesources.NewLeastAllocated(nil, handle)
+	laArgs := &config.NodeResourcesLeastAllocatedArgs{}
+	p, _ := noderesources.NewLeastAllocated(laArgs, handle)
 	leastAllocated := p.(*noderesources.LeastAllocated)
 
 	// 2. NodeResourcesBalancedAllocation
