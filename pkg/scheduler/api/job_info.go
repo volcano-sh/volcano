@@ -523,10 +523,3 @@ func (ji *JobInfo) Ready() bool {
 
 	return occupied >= ji.MinAvailable
 }
-
-// Pipelined returns whether the number of ready and pipelined task is enough
-func (ji *JobInfo) Pipelined() bool {
-	occupied := ji.WaitingTaskNum() + ji.ReadyTaskNum()
-
-	return occupied >= ji.MinAvailable
-}

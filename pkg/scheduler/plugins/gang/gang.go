@@ -131,7 +131,8 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	pipelinedFn := func(obj interface{}) int {
 		ji := obj.(*api.JobInfo)
-		if ji.Pipelined() {
+		occupied := ji.WaitingTaskNum() + ji.ReadyTaskNum()
+		if occupied >= ji.MinAvailable {
 			return util.Permit
 		}
 		return util.Reject
@@ -140,7 +141,8 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	jobStarvingFn := func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
-		return !ji.Pipelined()
+		occupied := ji.WaitingTaskNum() + ji.ReadyTaskNum()
+		return occupied < ji.MinAvailable
 	}
 	ssn.AddJobStarvingFns(gp.Name(), jobStarvingFn)
 }
