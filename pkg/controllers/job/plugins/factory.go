@@ -18,6 +18,7 @@ package plugins
 
 import (
 	"sync"
+	"volcano.sh/volcano/pkg/controllers/job/plugins/mpi"
 
 	"volcano.sh/volcano/pkg/controllers/job/plugins/env"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/interface"
@@ -29,6 +30,7 @@ func init() {
 	RegisterPluginBuilder("ssh", ssh.New)
 	RegisterPluginBuilder("env", env.New)
 	RegisterPluginBuilder("svc", svc.New)
+	RegisterPluginBuilder("mpi", mpi.New)
 }
 
 var pluginMutex sync.Mutex
