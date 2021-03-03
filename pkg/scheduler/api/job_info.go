@@ -239,16 +239,16 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.CreationTimestamp = pg.GetCreationTimestamp()
 
 	var err error
-	ji.WaitingTime, err = GetWaitingTime(pg)
+	ji.WaitingTime, err = ji.GetWaitingTime(pg)
 	if err != nil {
 		klog.Warningf("Error occurs in parsing waiting time for job <%s/%s>, err: %s.",
 			pg.Namespace, pg.Name, err.Error())
 		ji.WaitingTime = nil
 	}
 
-	ji.Preemptable = GetJobPreemptable(pg)
-	ji.RevocableZone = GetJobRevocableZone(pg)
-	ji.Budget = GetBudget(pg)
+	ji.Preemptable = ji.GetJobPreemptable(pg)
+	ji.RevocableZone = ji.GetJobRevocableZone(pg)
+	ji.Budget = ji.GetBudget(pg)
 
 	ji.PodGroup = pg
 
@@ -256,7 +256,7 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 
 // GetWaitingTime reads sla waiting time for job from podgroup annotations
 // TODO: should also read from given field in volcano job spec
-func GetWaitingTime(pg *PodGroup) (*time.Duration, error) {
+func (ji *JobInfo) GetWaitingTime(pg *PodGroup) (*time.Duration, error) {
 	if _, exist := pg.Annotations[JobWaitingTime]; !exist {
 		return nil, nil
 	}
@@ -274,7 +274,7 @@ func GetWaitingTime(pg *PodGroup) (*time.Duration, error) {
 }
 
 // GetJobPreemptable return volcano.sh/preemptable value for job
-func GetJobPreemptable(pg *PodGroup) bool {
+func (ji *JobInfo) GetJobPreemptable(pg *PodGroup) bool {
 	// check annotaion first
 	if len(pg.Annotations) > 0 {
 		if value, found := pg.Annotations[v1beta1.PodPreemptable]; found {
@@ -303,7 +303,7 @@ func GetJobPreemptable(pg *PodGroup) bool {
 }
 
 // GetJobRevocableZone return volcano.sh/revocable-zone value for pod/podgroup
-func GetJobRevocableZone(pg *PodGroup) string {
+func (ji *JobInfo) GetJobRevocableZone(pg *PodGroup) string {
 	// check annotaion first
 	if len(pg.Annotations) > 0 {
 		if value, found := pg.Annotations[v1beta1.RevocableZone]; found {
@@ -324,7 +324,7 @@ func GetJobRevocableZone(pg *PodGroup) string {
 }
 
 // GetBudget return budget value for job
-func GetBudget(pg *PodGroup) *DisruptionBudget {
+func (ji *JobInfo) GetBudget(pg *PodGroup) *DisruptionBudget {
 	if len(pg.Annotations) > 0 {
 		if value, found := pg.Annotations[v1beta1.JDBMinAvailable]; found {
 			return NewDisruptionBudget(value, "")
