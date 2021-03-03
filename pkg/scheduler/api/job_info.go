@@ -336,6 +336,15 @@ func (ji *JobInfo) GetBudget(pg *PodGroup) *DisruptionBudget {
 	return NewDisruptionBudget("", "")
 }
 
+// GetJobMinResources return the min resources of podgroup.
+func (ji *JobInfo) GetJobMinResources(s scheduling.PodGroupSpec) *Resource {
+	if s.MinResources == nil {
+		return EmptyResource()
+	}
+
+	return NewResource(*s.MinResources)
+}
+
 func (ji *JobInfo) addTaskIndex(ti *TaskInfo) {
 	if _, found := ji.TaskStatusIndex[ti.Status]; !found {
 		ji.TaskStatusIndex[ti.Status] = tasksMap{}
