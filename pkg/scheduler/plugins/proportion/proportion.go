@@ -112,7 +112,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
-			attr.inqueue.Add(job.GetJobMinResources(job.PodGroup.Spec))
+			attr.inqueue.Add(job.GetMinResources())
 		}
 	}
 
@@ -267,11 +267,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		if job.PodGroup.Spec.MinResources == nil {
 			return util.Permit
 		}
-		minReq := job.GetJobMinResources(job.PodGroup.Spec)
+		minReq := job.GetMinResources()
 		// The queue resource quota limit has not reached
 		inqueue := minReq.Add(attr.allocated).Add(attr.inqueue).LessEqual(api.NewResource(queue.Queue.Spec.Capability))
 		if inqueue {
-			attr.inqueue.Add(job.GetJobMinResources(job.PodGroup.Spec))
+			attr.inqueue.Add(job.GetMinResources())
 			return util.Permit
 		}
 		return util.Reject
