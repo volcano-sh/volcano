@@ -218,6 +218,10 @@ func SelectBestNode(nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
 		}
 	}
 
+	if len(bestNodes) == 0 {
+		return nil
+	}
+
 	return bestNodes[rand.Intn(len(bestNodes))]
 }
 
