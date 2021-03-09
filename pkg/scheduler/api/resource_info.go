@@ -18,7 +18,7 @@ package api
 
 import (
 	"fmt"
-	"math"
+	"math/big"
 
 	v1 "k8s.io/api/core/v1"
 	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
@@ -234,26 +234,33 @@ func (r *Resource) Multi(ratio float64) *Resource {
 
 // Less checks whether a resource is less than other
 func (r *Resource) Less(rr *Resource) bool {
-	lessFunc := func(l, r float64) bool {
-		return l < r
+	cmpFunc := func(l, r float64) int {
+		lf := new(big.Rat).SetFloat64(l)
+		rf := new(big.Rat).SetFloat64(r)
+		return lf.Cmp(rf)
 	}
 
-	if !lessFunc(r.MilliCPU, rr.MilliCPU) {
+	isEqual := true
+	cpuCmp := cmpFunc(r.MilliCPU, rr.MilliCPU)
+	memCmp := cmpFunc(r.Memory, rr.Memory)
+	if cpuCmp == 1 || memCmp == 1 {
 		return false
 	}
-	if !lessFunc(r.Memory, rr.Memory) {
-		return false
+
+	if cpuCmp != 0 || memCmp != 0 {
+		isEqual = false
 	}
 
 	if r.ScalarResources == nil {
 		if rr.ScalarResources != nil {
 			for _, rrQuant := range rr.ScalarResources {
-				if rrQuant <= minMilliScalarResources {
-					return false
+				if rrQuant > minMilliScalarResources {
+					return true
 				}
 			}
 		}
-		return true
+
+		return !isEqual
 	}
 
 	if rr.ScalarResources == nil {
@@ -261,30 +268,38 @@ func (r *Resource) Less(rr *Resource) bool {
 	}
 
 	for rName, rQuant := range r.ScalarResources {
-		rrQuant := rr.ScalarResources[rName]
-		if !lessFunc(rQuant, rrQuant) {
+		rrQuant, ok := rr.ScalarResources[rName]
+		quantCmp := cmpFunc(rQuant, rrQuant)
+		if !ok || quantCmp == 1 {
 			return false
+		}
+
+		if quantCmp != 0 {
+			isEqual = false
 		}
 	}
 
-	return true
+	return !isEqual
 }
 
 // LessEqualStrict checks whether a resource is less or equal than other
 func (r *Resource) LessEqualStrict(rr *Resource) bool {
-	lessFunc := func(l, r float64) bool {
-		return l <= r
+	lessEqualStrictFunc := func(l, r float64) bool {
+		lf := new(big.Rat).SetFloat64(l)
+		rf := new(big.Rat).SetFloat64(r)
+		return lf.Cmp(rf) <= 0
 	}
 
-	if !lessFunc(r.MilliCPU, rr.MilliCPU) {
+	if !lessEqualStrictFunc(r.MilliCPU, rr.MilliCPU) {
 		return false
 	}
-	if !lessFunc(r.Memory, rr.Memory) {
+	if !lessEqualStrictFunc(r.Memory, rr.Memory) {
 		return false
 	}
 
 	for rName, rQuant := range r.ScalarResources {
-		if !lessFunc(rQuant, rr.ScalarResources[rName]) {
+		rrQuant, ok := rr.ScalarResources[rName]
+		if !ok || !lessEqualStrictFunc(rQuant, rrQuant) {
 			return false
 		}
 	}
@@ -295,7 +310,10 @@ func (r *Resource) LessEqualStrict(rr *Resource) bool {
 // LessEqual checks whether a resource is less than other resource
 func (r *Resource) LessEqual(rr *Resource) bool {
 	lessEqualFunc := func(l, r, diff float64) bool {
-		if l < r || math.Abs(l-r) < diff {
+		lf := new(big.Rat).SetFloat64(l)
+		rf := new(big.Rat).SetFloat64(r)
+		df := new(big.Rat).SetFloat64(diff)
+		if lf.Cmp(rf) < 0 || lf.Abs(lf.Sub(lf, rf)).Cmp(df) < 0 {
 			return true
 		}
 		return false
@@ -308,20 +326,13 @@ func (r *Resource) LessEqual(rr *Resource) bool {
 		return false
 	}
 
-	if r.ScalarResources == nil {
-		return true
-	}
-
 	for rName, rQuant := range r.ScalarResources {
 		if rQuant <= minMilliScalarResources {
 			continue
 		}
-		if rr.ScalarResources == nil {
-			return false
-		}
 
-		rrQuant := rr.ScalarResources[rName]
-		if !lessEqualFunc(rQuant, rrQuant, minMilliScalarResources) {
+		rrQuant, ok := rr.ScalarResources[rName]
+		if !ok || !lessEqualFunc(rQuant, rrQuant, minMilliScalarResources) {
 			return false
 		}
 	}
