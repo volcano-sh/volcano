@@ -23,7 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-func TestGetGPUResourceOfPod(t *testing.T) {
+func TestGetGPUMemoryOfPod(t *testing.T) {
 	testCases := []struct {
 		name string
 		pod  *v1.Pod
@@ -90,7 +90,7 @@ func TestGetGPUResourceOfPod(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := GetGPUResourceOfPod(tc.pod)
+			got := GetGPUMemoryOfPod(tc.pod)
 			if tc.want != got {
 				t.Errorf("unexpected result, want: %v, got: %v", tc.want, got)
 			}
