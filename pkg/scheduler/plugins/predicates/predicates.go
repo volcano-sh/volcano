@@ -19,6 +19,8 @@ package predicates
 import (
 	"context"
 	"fmt"
+	v1 "k8s.io/api/core/v1"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -43,6 +45,10 @@ const (
 
 	// GPUSharingPredicate is the key for enabling GPU Sharing Predicate in YAML
 	GPUSharingPredicate = "predicate.GPUSharingEnable"
+	// ProportionalPredicate is the key for enabling Proportional Predicate in YAML
+	ProportionalPredicate       = "predicate.ProportionalEnable"
+	ProportionalResource        = "predicate.resources"
+	ProportionalResourcesPrefix = ProportionalResource + "."
 )
 
 type predicatesPlugin struct {
@@ -59,8 +65,15 @@ func (pp *predicatesPlugin) Name() string {
 	return PluginName
 }
 
+type baseResource struct {
+	CPU    int
+	Memory int
+}
+
 type predicateEnable struct {
 	gpuSharingEnable bool
+	proportionalEnable bool
+	proportional       map[v1.ResourceName]baseResource
 }
 
 func enablePredicate(args framework.Arguments) predicateEnable {
@@ -80,6 +93,10 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 		     - name: predicates
 		       arguments:
 				 predicate.GPUSharingEnable: true
+				 predicate.ProportionalEnable: true
+				 predicate.resources: nvidia.com/gpu
+		         predicate.resources.nvidia.com/gpu.cpu: 4
+		      	 predicate.resources.nvidia.com/gpu.memory: 8
 		     - name: proportion
 		     - name: nodeorder
 	*/
@@ -90,6 +107,36 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 
 	// Checks whether predicate.GPUSharingEnable is provided or not, if given, modifies the value in predicateEnable struct.
 	args.GetBool(&predicate.gpuSharingEnable, GPUSharingPredicate)
+	// Checks whether predicate.ProportionalEnable is provided or not, if given, modifies the value in predicateEnable struct.
+	args.GetBool(&predicate.proportionalEnable, ProportionalPredicate)
+	resourcesProportional := make(map[v1.ResourceName]baseResource)
+	resourcesStr := args[ProportionalResource]
+	resources := strings.Split(resourcesStr, ",")
+	for _, resource := range resources {
+		resource = strings.TrimSpace(resource)
+		if resource == "" {
+			continue
+		}
+		// proportional.resources.[ResourceName]
+		cpuResourceKey := ProportionalResourcesPrefix + resource + ".cpu"
+		cpuResourceRate := 1
+		args.GetInt(&cpuResourceRate, cpuResourceKey)
+		if cpuResourceRate < 0 {
+			cpuResourceRate = 1
+		}
+		memoryResourceKey := ProportionalResourcesPrefix + resource + ".memory"
+		memoryResourceRate := 1
+		args.GetInt(&memoryResourceRate, memoryResourceKey)
+		if memoryResourceRate < 0 {
+			memoryResourceRate = 1
+		}
+		r := baseResource{
+			CPU:    cpuResourceRate,
+			Memory: memoryResourceRate,
+		}
+		resourcesProportional[v1.ResourceName(resource)] = r
+	}
+	predicate.proportional = resourcesProportional
 
 	return predicate
 }
@@ -246,7 +293,10 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			klog.V(4).Infof("checkNodeGPUSharingPredicate predicates Task <%s/%s> on Node <%s>: fit %v",
 				task.Namespace, task.Name, node.Name, fit)
 		}
+		if predicate.proportionalEnable {
+			// TODO Check ProportionalPredicate
 
+		}
 		return nil
 	})
 }
