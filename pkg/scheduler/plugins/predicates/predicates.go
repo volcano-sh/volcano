@@ -294,8 +294,13 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				task.Namespace, task.Name, node.Name, fit)
 		}
 		if predicate.proportionalEnable {
-			// TODO Check ProportionalPredicate
-
+			// Check ProportionalPredicate
+			fit, err := checkNodeResourceIsProportional(task, node, predicate.proportional)
+			if err != nil {
+				return err
+			}
+			klog.V(4).Infof("checkNodeResourceIsProportional predicates Task <%s/%s> on Node <%s>: fit %v",
+				task.Namespace, task.Name, node.Name, fit)
 		}
 		return nil
 	})
