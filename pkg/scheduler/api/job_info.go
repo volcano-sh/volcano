@@ -104,7 +104,7 @@ func getJobID(pod *v1.Pod) JobID {
 
 // NewTaskInfo creates new taskInfo object for a Pod
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
-	req := GetPodResourceWithoutInitContainers(pod)
+	req := GetPodResourceRequest(pod)
 	initResreq := GetPodResourceRequest(pod)
 	preemptable := GetPodPreemptable(pod)
 	revocableZone := GetPodRevocableZone(pod)
