@@ -46,8 +46,10 @@ const (
 	// GPUSharingPredicate is the key for enabling GPU Sharing Predicate in YAML
 	GPUSharingPredicate = "predicate.GPUSharingEnable"
 	// ProportionalPredicate is the key for enabling Proportional Predicate in YAML
-	ProportionalPredicate       = "predicate.ProportionalEnable"
-	ProportionalResource        = "predicate.resources"
+	ProportionalPredicate = "predicate.ProportionalEnable"
+	// ProportionalResource is the key for additional resource key name
+	ProportionalResource = "predicate.resources"
+	// ProportionalResourcesPrefix is the key prefix for additional resource key name
 	ProportionalResourcesPrefix = ProportionalResource + "."
 )
 
@@ -71,7 +73,7 @@ type baseResource struct {
 }
 
 type predicateEnable struct {
-	gpuSharingEnable bool
+	gpuSharingEnable   bool
 	proportionalEnable bool
 	proportional       map[v1.ResourceName]baseResource
 }

@@ -24,7 +24,7 @@ import (
 
 // checkNodeResourceIsProportional checks if a gpu:cpu:memory is Proportional
 func checkNodeResourceIsProportional(task *api.TaskInfo, node *api.NodeInfo, proportional map[v1.ResourceName]baseResource) (bool, error) {
-	for resourceName, _ := range proportional {
+	for resourceName := range proportional {
 		if value, found := task.Resreq.ScalarResources[resourceName]; found && value > 0 {
 			return true, nil
 		}
