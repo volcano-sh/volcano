@@ -107,11 +107,14 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 		if value, found := job.Annotations[schedulingv2.PodPreemptable]; found {
 			pod.Annotations[schedulingv2.PodPreemptable] = value
 		}
-		if value, found := job.Annotations[schedulingv2.PodMinAlive]; found {
-			pod.Annotations[schedulingv2.PodMinAlive] = value
+		if value, found := job.Annotations[schedulingv2.RevocableZone]; found {
+			pod.Annotations[schedulingv2.RevocableZone] = value
 		}
-		if value, found := job.Annotations[schedulingv2.PodEvictMaxStep]; found {
-			pod.Annotations[schedulingv2.PodEvictMaxStep] = value
+
+		if value, found := job.Annotations[schedulingv2.JDBMinAvailable]; found {
+			pod.Annotations[schedulingv2.JDBMinAvailable] = value
+		} else if value, found := job.Annotations[schedulingv2.JDBMaxUnavailable]; found {
+			pod.Annotations[schedulingv2.JDBMaxUnavailable] = value
 		}
 	}
 
@@ -126,12 +129,6 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 	if len(job.Labels) > 0 {
 		if value, found := job.Labels[schedulingv2.PodPreemptable]; found {
 			pod.Labels[schedulingv2.PodPreemptable] = value
-		}
-		if value, found := job.Labels[schedulingv2.PodMinAlive]; found {
-			pod.Labels[schedulingv2.PodMinAlive] = value
-		}
-		if value, found := job.Labels[schedulingv2.PodEvictMaxStep]; found {
-			pod.Labels[schedulingv2.PodEvictMaxStep] = value
 		}
 	}
 
@@ -225,11 +222,18 @@ func addResourceList(list, req, limit v1.ResourceList) {
 		}
 	}
 
+	if req != nil {
+		return
+	}
+
 	// If Requests is omitted for a container,
 	// it defaults to Limits if that is explicitly specified.
 	for name, quantity := range limit {
-		if _, ok := list[name]; !ok {
+		if value, ok := list[name]; !ok {
 			list[name] = quantity.DeepCopy()
+		} else {
+			value.Add(quantity)
+			list[name] = value
 		}
 	}
 }

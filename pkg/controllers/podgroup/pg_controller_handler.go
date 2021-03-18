@@ -101,22 +101,17 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 		if value, ok := pod.Annotations[scheduling.PodPreemptable]; ok {
 			obj.Annotations[scheduling.PodPreemptable] = value
 		}
+		if value, ok := pod.Annotations[scheduling.RevocableZone]; ok {
+			obj.Annotations[scheduling.RevocableZone] = value
+		}
 		if value, ok := pod.Labels[scheduling.PodPreemptable]; ok {
 			obj.Labels[scheduling.PodPreemptable] = value
 		}
 
-		if value, ok := pod.Annotations[scheduling.PodMinAlive]; ok {
-			obj.Annotations[scheduling.PodMinAlive] = value
-		}
-		if value, ok := pod.Labels[scheduling.PodMinAlive]; ok {
-			obj.Labels[scheduling.PodMinAlive] = value
-		}
-
-		if value, ok := pod.Annotations[scheduling.PodEvictMaxStep]; ok {
-			obj.Annotations[scheduling.PodEvictMaxStep] = value
-		}
-		if value, ok := pod.Labels[scheduling.PodEvictMaxStep]; ok {
-			obj.Labels[scheduling.PodEvictMaxStep] = value
+		if value, found := pod.Annotations[scheduling.JDBMinAvailable]; found {
+			obj.Annotations[scheduling.JDBMinAvailable] = value
+		} else if value, found := pod.Annotations[scheduling.JDBMaxUnavailable]; found {
+			obj.Annotations[scheduling.JDBMaxUnavailable] = value
 		}
 
 		if _, err := pg.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Create(context.TODO(), obj, metav1.CreateOptions{}); err != nil {

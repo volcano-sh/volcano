@@ -218,6 +218,10 @@ func SelectBestNode(nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
 		}
 	}
 
+	if len(bestNodes) == 0 {
+		return nil
+	}
+
 	return bestNodes[rand.Intn(len(bestNodes))]
 }
 
@@ -260,4 +264,19 @@ func NewResourceReservation() *ResourceReservation {
 		TargetJob:   nil,
 		LockedNodes: map[string]*api.NodeInfo{},
 	}
+}
+
+// GetMinInt return minimum int from vals
+func GetMinInt(vals ...int) int {
+	if len(vals) == 0 {
+		return 0
+	}
+
+	var min int = vals[0]
+	for _, val := range vals {
+		if val <= min {
+			min = val
+		}
+	}
+	return min
 }

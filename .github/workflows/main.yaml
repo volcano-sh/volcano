@@ -67,7 +67,7 @@ jobs:
       - run: |
           make vcctl
           make images CC=/usr/local/musl/bin/musl-gcc
-          make e2e-test-jobp || make e2e-test-jobp || make e2e-test-jobp
+          make e2e-test-jobp
 
   e2e_sequence:
     runs-on: ubuntu-latest
@@ -100,7 +100,7 @@ jobs:
       - run: |
           make vcctl
           make images CC=/usr/local/musl/bin/musl-gcc
-          make e2e-test-jobseq || make e2e-test-jobseq || make e2e-test-jobseq
+          make e2e-test-jobseq
 
   e2e_scheduling_basic:
     runs-on: ubuntu-latest
@@ -134,7 +134,7 @@ jobs:
       - run: |
           make vcctl
           make images CC=/usr/local/musl/bin/musl-gcc
-          make e2e-test-schedulingbase || make e2e-test-schedulingbase || make e2e-test-schedulingbase
+          make e2e-test-schedulingbase
 
   e2e_scheduling_actions:
     runs-on: ubuntu-latest
@@ -168,4 +168,4 @@ jobs:
       - run: |
           make vcctl
           make images CC=/usr/local/musl/bin/musl-gcc
-          make e2e-test-schedulingaction || make e2e-test-schedulingaction || make e2e-test-schedulingaction
+          make e2e-test-schedulingaction

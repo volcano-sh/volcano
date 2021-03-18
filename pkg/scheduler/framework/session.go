@@ -44,10 +44,11 @@ type Session struct {
 	// This should not be mutated after initiated
 	podGroupStatus map[api.JobID]scheduling.PodGroupStatus
 
-	Jobs          map[api.JobID]*api.JobInfo
-	Nodes         map[string]*api.NodeInfo
-	Queues        map[api.QueueID]*api.QueueInfo
-	NamespaceInfo map[api.NamespaceName]*api.NamespaceInfo
+	Jobs           map[api.JobID]*api.JobInfo
+	Nodes          map[string]*api.NodeInfo
+	RevocableNodes map[string]*api.NodeInfo
+	Queues         map[api.QueueID]*api.QueueInfo
+	NamespaceInfo  map[api.NamespaceName]*api.NamespaceInfo
 
 	Tiers          []conf.Tier
 	Configurations []conf.Configuration
@@ -68,9 +69,9 @@ type Session struct {
 	reclaimableFns    map[string]api.EvictableFn
 	overusedFns       map[string]api.ValidateFn
 	jobReadyFns       map[string]api.ValidateFn
-	jobPipelinedFns   map[string]api.ValidateFn
+	jobPipelinedFns   map[string]api.VoteFn
 	jobValidFns       map[string]api.ValidateExFn
-	jobEnqueueableFns map[string]api.ValidateFn
+	jobEnqueueableFns map[string]api.VoteFn
 	targetJobFns      map[string]api.TargetJobFn
 	reservedNodesFns  map[string]api.ReservedNodesFn
 	victimTasksFns    map[string]api.VictimTasksFn
@@ -85,9 +86,10 @@ func openSession(cache cache.Cache) *Session {
 
 		podGroupStatus: map[api.JobID]scheduling.PodGroupStatus{},
 
-		Jobs:   map[api.JobID]*api.JobInfo{},
-		Nodes:  map[string]*api.NodeInfo{},
-		Queues: map[api.QueueID]*api.QueueInfo{},
+		Jobs:           map[api.JobID]*api.JobInfo{},
+		Nodes:          map[string]*api.NodeInfo{},
+		RevocableNodes: map[string]*api.NodeInfo{},
+		Queues:         map[api.QueueID]*api.QueueInfo{},
 
 		plugins:           map[string]Plugin{},
 		jobOrderFns:       map[string]api.CompareFn{},
@@ -104,9 +106,9 @@ func openSession(cache cache.Cache) *Session {
 		reclaimableFns:    map[string]api.EvictableFn{},
 		overusedFns:       map[string]api.ValidateFn{},
 		jobReadyFns:       map[string]api.ValidateFn{},
-		jobPipelinedFns:   map[string]api.ValidateFn{},
+		jobPipelinedFns:   map[string]api.VoteFn{},
 		jobValidFns:       map[string]api.ValidateExFn{},
-		jobEnqueueableFns: map[string]api.ValidateFn{},
+		jobEnqueueableFns: map[string]api.VoteFn{},
 		targetJobFns:      map[string]api.TargetJobFn{},
 		reservedNodesFns:  map[string]api.ReservedNodesFn{},
 		victimTasksFns:    map[string]api.VictimTasksFn{},
@@ -143,6 +145,7 @@ func openSession(cache cache.Cache) *Session {
 	}
 
 	ssn.Nodes = snapshot.Nodes
+	ssn.RevocableNodes = snapshot.RevocableNodes
 	ssn.Queues = snapshot.Queues
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
 
@@ -158,6 +161,7 @@ func closeSession(ssn *Session) {
 
 	ssn.Jobs = nil
 	ssn.Nodes = nil
+	ssn.RevocableNodes = nil
 	ssn.plugins = nil
 	ssn.eventHandlers = nil
 	ssn.jobOrderFns = nil
