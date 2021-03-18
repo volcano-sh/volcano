@@ -1,24 +1,14 @@
 ---
-name: Bug Report or Feature Request
-about: Create a Bug/Feature to help us improve
-title: ''
-labels: ''
-assignees: ''
+name: Bug Report
+about: Report a bug encountered while operating Volcano
+labels: kind/bug
 
 ---
 
-<!-- This form is for bug reports and feature requests ONLY!
+<!-- This form is for bug reports ONLY!
 
-If you're looking for a help then check our [Slack Channel](http://volcano-sh.slack.com/) or have a look at our [dev mailing](https://groups.google.com/forum/#!forum/volcano-sh) 
+If you're looking for a help then check our [Slack Channel](https://cloud-native.slack.com/messages/volcano) or have a look at our [dev mailing](https://groups.google.com/forum/#!forum/volcano-sh) 
 -->
-
-**Is this a BUG REPORT or FEATURE REQUEST?**:
-
-> Uncomment only one, leave it on its own line:
->
-> /kind bug
-> /kind feature
-
 
 **What happened**:
 

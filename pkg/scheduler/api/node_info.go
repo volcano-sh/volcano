@@ -21,6 +21,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
+	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 )
 
 // NodeInfo is node level aggregated information.
@@ -45,6 +46,8 @@ type NodeInfo struct {
 	Capability  *Resource
 
 	Tasks map[TaskID]*TaskInfo
+
+	RevocableZone string
 
 	// Used to store custom information
 	Others     map[string]interface{}
@@ -89,6 +92,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 	}
 	nodeInfo.setNodeGPUInfo(node)
 	nodeInfo.setNodeState(node)
+	nodeInfo.setRevocableZone(node)
 
 	return nodeInfo
 }
@@ -106,6 +110,16 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 // Ready returns whether node is ready for scheduling
 func (ni *NodeInfo) Ready() bool {
 	return ni.State.Phase == Ready
+}
+
+func (ni *NodeInfo) setRevocableZone(node *v1.Node) {
+	revocableZone := ""
+	if len(node.Labels) > 0 {
+		if value, found := node.Labels[v1beta1.RevocableZone]; found {
+			revocableZone = value
+		}
+	}
+	ni.RevocableZone = revocableZone
 }
 
 func (ni *NodeInfo) setNodeState(node *v1.Node) {

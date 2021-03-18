@@ -76,7 +76,7 @@ type JobSpec struct {
 	// Default to nil
 	RunningEstimate *metav1.Duration `json:"runningEstimate,omitempty" protobuf:"bytes,4,opt,name=runningEstimate"`
 
-	//Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
+	// Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
 	// +optional
 	Queue string `json:"queue,omitempty" protobuf:"bytes,7,opt,name=queue"`
 
@@ -126,9 +126,9 @@ const (
 	PVCError JobEvent = "PVCError"
 	// PodGroupError  pod grp error event is generated if error happens during pod grp creation
 	PodGroupError JobEvent = "PodGroupError"
-	//ExecuteAction action issued event for each action
+	// ExecuteAction action issued event for each action
 	ExecuteAction JobEvent = "ExecuteAction"
-	//JobStatusError is generated if update job status failed
+	// JobStatusError is generated if update job status failed
 	JobStatusError JobEvent = "JobStatusError"
 	// PodGroupPending  pod grp pending event is generated if pg pending due to some error
 	PodGroupPending JobEvent = "PodGroupPending"
@@ -263,7 +263,7 @@ type JobStatus struct {
 	// +optional
 	Unknown int32 `json:"unknown,omitempty" protobuf:"bytes,8,opt,name=unknown"`
 
-	//Current version of job
+	// Current version of job
 	// +optional
 	Version int32 `json:"version,omitempty" protobuf:"bytes,9,opt,name=version"`
 
