@@ -75,10 +75,11 @@ fi
 # Step2. update helm templates from config dir
 HELM_TEMPLATES_DIR=${VK_ROOT}/installer/helm/chart/volcano/templates
 echo Updating templates in $HELM_TEMPLATES_DIR
-cp ${VK_ROOT}/config/crd/${CRD_DIR}/batch.volcano.sh_jobs.yaml ${HELM_TEMPLATES_DIR}/batch_v1alpha1_job.yaml
-cp ${VK_ROOT}/config/crd/${CRD_DIR}/bus.volcano.sh_commands.yaml ${HELM_TEMPLATES_DIR}/bus_v1alpha1_command.yaml
-cp ${VK_ROOT}/config/crd/${CRD_DIR}/scheduling.volcano.sh_podgroups.yaml ${HELM_TEMPLATES_DIR}/scheduling_v1beta1_podgroup.yaml
-cp ${VK_ROOT}/config/crd/${CRD_DIR}/scheduling.volcano.sh_queues.yaml ${HELM_TEMPLATES_DIR}/scheduling_v1beta1_queue.yaml
+# use tail because we should skip top two line
+tail -n +3 ${VK_ROOT}/config/crd/${CRD_DIR}/batch.volcano.sh_jobs.yaml > ${HELM_TEMPLATES_DIR}/batch_v1alpha1_job.yaml
+tail -n +3 ${VK_ROOT}/config/crd/${CRD_DIR}/bus.volcano.sh_commands.yaml > ${HELM_TEMPLATES_DIR}/bus_v1alpha1_command.yaml
+tail -n +3 ${VK_ROOT}/config/crd/${CRD_DIR}/scheduling.volcano.sh_podgroups.yaml > ${HELM_TEMPLATES_DIR}/scheduling_v1beta1_podgroup.yaml
+tail -n +3 ${VK_ROOT}/config/crd/${CRD_DIR}/scheduling.volcano.sh_queues.yaml > ${HELM_TEMPLATES_DIR}/scheduling_v1beta1_queue.yaml
 
 # Step3. generate yaml in folder
 if [[ ! -d ${RELEASE_FOLDER} ]];then
