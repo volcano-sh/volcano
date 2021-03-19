@@ -1,6 +1,20 @@
 #!/bin/bash
 
-# Copyright 2019 The Volcano Authors.
+#
+# Copyright 2021 The Volcano Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,6 +40,22 @@ export HELM_VER=${HELM_VER:-v2.13.0}
 export VOLCANO_IMAGE_TAG=${TAG:-"latest"}
 export YAML_FILENAME=volcano-${VOLCANO_IMAGE_TAG}.yaml
 export MONITOR_YAML_FILENAME=volcano-monitoring-${VOLCANO_IMAGE_TAG}.yaml
+
+CRD_VERSION=${CRD_VERSION:-"v1beta1"}
+
+case $CRD_VERSION in
+  "v1")
+    CRD_DIR="bases"
+    ;;
+  "v1beta1")
+    CRD_DIR="v1beta1"
+    ;;
+  *)
+    echo Invaild CRD_VERSION !!!
+    echo CRD_VERSION only support \"v1\" and \"v1beta1\"
+    exit 1
+    ;;
+  esac
 
 LOCAL_OS=${OSTYPE}
 case $LOCAL_OS in
@@ -54,7 +84,15 @@ if [[ ! -f "${HELM_BIN_DIR}/version.helm.${HELM_VER}" ]] ; then
         touch "${HELM_BIN_DIR}/version.helm.${HELM_VER}"
 fi
 
-# Step2. generate yaml in folder
+# Step2. update helm templates from config dir
+HELM_TEMPLATES_DIR=${VK_ROOT}/installer/helm/chart/volcano/templates
+echo Updating templates in $HELM_TEMPLATES_DIR
+cp ${VK_ROOT}/config/crd/${CRD_DIR}/batch.volcano.sh_jobs.yaml ${HELM_TEMPLATES_DIR}/batch_v1alpha1_job.yaml
+cp ${VK_ROOT}/config/crd/${CRD_DIR}/bus.volcano.sh_commands.yaml ${HELM_TEMPLATES_DIR}/bus_v1alpha1_command.yaml
+cp ${VK_ROOT}/config/crd/${CRD_DIR}/scheduling.volcano.sh_podgroups.yaml ${HELM_TEMPLATES_DIR}/scheduling_v1beta1_podgroup.yaml
+cp ${VK_ROOT}/config/crd/${CRD_DIR}/scheduling.volcano.sh_queues.yaml ${HELM_TEMPLATES_DIR}/scheduling_v1beta1_queue.yaml
+
+# Step3. generate yaml in folder
 if [[ ! -d ${RELEASE_FOLDER} ]];then
     mkdir ${RELEASE_FOLDER}
 fi
