@@ -135,7 +135,7 @@ e2e-test-jobp:
 e2e-test-jobseq:
 	E2E_TYPE=JOBSEQ ./hack/run-e2e-kind.sh
 
-generate-yaml: init
+generate-yaml: init manifests
 	./hack/generate-yaml.sh TAG=${RELEASE_VER}
 
 release-env:
