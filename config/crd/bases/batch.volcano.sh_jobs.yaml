@@ -46,7 +46,8 @@ spec:
                 format: int32
                 type: integer
               minAvailable:
-                description: The minimal available pods to run for this Job
+                description: The minimal available pods to run for this Job Defaults
+                  to the summary of tasks' replicas
                 format: int32
                 type: integer
               plugins:
