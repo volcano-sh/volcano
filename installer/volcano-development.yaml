@@ -388,7 +388,7 @@ spec:
             imagePullPolicy: "IfNotPresent"
 
 ---
-# Source: volcano/templates/batch_v1alpha1_job.yaml
+# Source: volcano/templates/crd/v1beta1/batch.volcano.sh_jobs.yaml
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
@@ -6953,7 +6953,7 @@ status:
   storedVersions: []
 
 ---
-# Source: volcano/templates/bus_v1alpha1_command.yaml
+# Source: volcano/templates/crd/v1beta1/bus.volcano.sh_commands.yaml
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
@@ -7039,7 +7039,7 @@ status:
   storedVersions: []
 
 ---
-# Source: volcano/templates/scheduling_v1beta1_podgroup.yaml
+# Source: volcano/templates/crd/v1beta1/scheduling.volcano.sh_podgroups.yaml
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
@@ -7173,7 +7173,7 @@ status:
   storedVersions: []
 
 ---
-# Source: volcano/templates/scheduling_v1beta1_queue.yaml
+# Source: volcano/templates/crd/v1beta1/scheduling.volcano.sh_queues.yaml
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:

@@ -32,15 +32,18 @@ export MONITOR_YAML_FILENAME=volcano-monitoring-${VOLCANO_IMAGE_TAG}.yaml
 CRD_VERSION=${CRD_VERSION:-"v1beta1"}
 
 case $CRD_VERSION in
+  "bases")
+    # pass
+    ;;
   "v1")
-    CRD_DIR="bases"
+    CRD_VERSION="bases"
     ;;
   "v1beta1")
-    CRD_DIR="v1beta1"
+    # pass
     ;;
   *)
     echo Invaild CRD_VERSION !!!
-    echo CRD_VERSION only support \"v1\" and \"v1beta1\"
+    echo CRD_VERSION only support \"bases\", \"v1\" and \"v1beta1\"
     exit 1
     ;;
   esac
@@ -76,10 +79,16 @@ fi
 HELM_TEMPLATES_DIR=${VK_ROOT}/installer/helm/chart/volcano/templates
 echo Updating templates in $HELM_TEMPLATES_DIR
 # use tail because we should skip top two line
-tail -n +3 ${VK_ROOT}/config/crd/${CRD_DIR}/batch.volcano.sh_jobs.yaml > ${HELM_TEMPLATES_DIR}/batch_v1alpha1_job.yaml
-tail -n +3 ${VK_ROOT}/config/crd/${CRD_DIR}/bus.volcano.sh_commands.yaml > ${HELM_TEMPLATES_DIR}/bus_v1alpha1_command.yaml
-tail -n +3 ${VK_ROOT}/config/crd/${CRD_DIR}/scheduling.volcano.sh_podgroups.yaml > ${HELM_TEMPLATES_DIR}/scheduling_v1beta1_podgroup.yaml
-tail -n +3 ${VK_ROOT}/config/crd/${CRD_DIR}/scheduling.volcano.sh_queues.yaml > ${HELM_TEMPLATES_DIR}/scheduling_v1beta1_queue.yaml
+# sync bases
+tail -n +3 ${VK_ROOT}/config/crd/bases/batch.volcano.sh_jobs.yaml > ${HELM_TEMPLATES_DIR}/crd/bases/batch.volcano.sh_jobs.yaml
+tail -n +3 ${VK_ROOT}/config/crd/bases/bus.volcano.sh_commands.yaml > ${HELM_TEMPLATES_DIR}/crd/bases/bus.volcano.sh_commands.yaml
+tail -n +3 ${VK_ROOT}/config/crd/bases/scheduling.volcano.sh_podgroups.yaml > ${HELM_TEMPLATES_DIR}/crd/bases/scheduling.volcano.sh_podgroups.yaml
+tail -n +3 ${VK_ROOT}/config/crd/bases/scheduling.volcano.sh_queues.yaml > ${HELM_TEMPLATES_DIR}/crd/bases/scheduling.volcano.sh_queues.yaml
+# sync v1beta1
+tail -n +3 ${VK_ROOT}/config/crd/v1beta1/batch.volcano.sh_jobs.yaml > ${HELM_TEMPLATES_DIR}/crd/v1beta1/batch.volcano.sh_jobs.yaml
+tail -n +3 ${VK_ROOT}/config/crd/v1beta1/bus.volcano.sh_commands.yaml > ${HELM_TEMPLATES_DIR}/crd/v1beta1/bus.volcano.sh_commands.yaml
+tail -n +3 ${VK_ROOT}/config/crd/v1beta1/scheduling.volcano.sh_podgroups.yaml > ${HELM_TEMPLATES_DIR}/crd/v1beta1/scheduling.volcano.sh_podgroups.yaml
+tail -n +3 ${VK_ROOT}/config/crd/v1beta1/scheduling.volcano.sh_queues.yaml > ${HELM_TEMPLATES_DIR}/crd/v1beta1/scheduling.volcano.sh_queues.yaml
 
 # Step3. generate yaml in folder
 if [[ ! -d ${RELEASE_FOLDER} ]];then
@@ -97,12 +106,12 @@ cat ${VK_ROOT}/installer/namespace.yaml > ${DEPLOYMENT_FILE}
 ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
       --name volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} \
       -x templates/admission.yaml \
-      -x templates/batch_v1alpha1_job.yaml \
-      -x templates/bus_v1alpha1_command.yaml \
+      -x templates/crd/${CRD_VERSION}/batch.volcano.sh_jobs.yaml \
+      -x templates/crd/${CRD_VERSION}/bus.volcano.sh_commands.yaml \
       -x templates/controllers.yaml \
       -x templates/scheduler.yaml \
-      -x templates/scheduling_v1beta1_podgroup.yaml \
-      -x templates/scheduling_v1beta1_queue.yaml \
+      -x templates/crd/${CRD_VERSION}/scheduling.volcano.sh_podgroups.yaml \
+      -x templates/crd/${CRD_VERSION}/scheduling.volcano.sh_queues.yaml \
       --notes >> ${DEPLOYMENT_FILE}
 
 ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-monitoring \
