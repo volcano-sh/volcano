@@ -18,6 +18,7 @@ package tasktopology
 
 import (
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -80,6 +81,8 @@ func (b *Bucket) CalcResReq(req *api.Resource, action reqAction) {
 	case reqAdd:
 		b.reqScore += score
 		b.request.Add(req)
+	default:
+		klog.V(3).Infof("Invalid action <%v> for resource <%v>", action, req)
 	}
 }
 
