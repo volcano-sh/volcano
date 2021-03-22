@@ -28,19 +28,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-const (
-	// overCommitFactor is resource overCommit factor for enqueue action
-	// It determines the number of `pending` pods that the scheduler will tolerate
-	// when the resources of the cluster is insufficient
-	overCommitFactor = "overcommit-factor"
-)
-
-var (
-	// defaultOverCommitFactor defines the default overCommit resource factor for enqueue action
-	defaultOverCommitFactor = 1.2
-	targetJob               = util.Reservation.TargetJob
-)
-
 type Action struct{}
 
 func New() *Action {
@@ -90,28 +77,8 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 
 	klog.V(3).Infof("Try to enqueue PodGroup to %d Queues", len(jobsMap))
 
-	total := api.EmptyResource()
-	used := api.EmptyResource()
-	lockedNodesIdle := api.EmptyResource()
-	if targetJob != nil && len(util.Reservation.LockedNodes) != 0 {
-		for _, node := range util.Reservation.LockedNodes {
-			lockedNodesIdle.Add(node.Idle)
-			klog.V(4).Infof("locked node: %s", node.Name)
-		}
-	}
-	for _, node := range ssn.Nodes {
-		total.Add(node.Allocatable)
-		used.Add(node.Used)
-	}
-	idle := total.Clone().Multi(enqueue.getOverCommitFactor(ssn)).Sub(used).Sub(lockedNodesIdle)
-
 	for {
 		if queues.Empty() {
-			break
-		}
-
-		if idle.IsEmpty() {
-			klog.V(3).Infof("Node idle resource is overused, ignore it.")
 			break
 		}
 
@@ -123,24 +90,8 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 		job := jobs.Pop().(*api.JobInfo)
-		if targetJob != nil && job.UID == targetJob.UID {
-			klog.V(3).Infof("Target Job name: %s", targetJob.Name)
-			continue
-		}
 
-		inqueue := false
-
-		if job.PodGroup.Spec.MinResources == nil {
-			inqueue = true
-		} else {
-			minReq := api.NewResource(*job.PodGroup.Spec.MinResources)
-			if ssn.JobEnqueueable(job) && minReq.LessEqual(idle) {
-				idle.Sub(minReq)
-				inqueue = true
-			}
-		}
-
-		if inqueue {
+		if job.PodGroup.Spec.MinResources == nil || ssn.JobEnqueueable(job) {
 			job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
 			ssn.Jobs[job.UID] = job
 		}
@@ -148,27 +99,6 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 		// Added Queue back until no job in Queue.
 		queues.Push(queue)
 	}
-	// if target job exists, judge whether it can be inqueue or not
-	if targetJob != nil && targetJob.PodGroup.Status.Phase == scheduling.PodGroupPending && len(util.Reservation.LockedNodes) != 0 {
-		klog.V(4).Infof("Start to deal with Target Job")
-		minReq := api.NewResource(*targetJob.PodGroup.Spec.MinResources)
-		idle = idle.Add(lockedNodesIdle)
-		if ssn.JobEnqueueable(targetJob) && minReq.LessEqual(idle) {
-			klog.V(3).Infof("Turn Target Job phase to Inqueue")
-			targetJob.PodGroup.Status.Phase = scheduling.PodGroupInqueue
-			ssn.Jobs[targetJob.UID] = targetJob
-		}
-	}
 }
 
 func (enqueue *Action) UnInitialize() {}
-
-func (enqueue *Action) getOverCommitFactor(ssn *framework.Session) float64 {
-	factor := defaultOverCommitFactor
-	arg := framework.GetArgOfActionFromConf(ssn.Configurations, enqueue.Name())
-	if arg != nil {
-		arg.GetFloat64(&factor, overCommitFactor)
-	}
-
-	return factor
-}

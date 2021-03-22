@@ -17,7 +17,7 @@ for specified queue. Requirement detail as follows:
 * The resource amount reserved must be no less than request at all dimensions but should not exceed too much. An algorithm 
 ensuring the reserved amount to the point is necessary.
 * Support total node resource percentage of cluster as request. If reservation resource amount is also specified, it's
-important to decide which configuration is adopted. This feature is more useful on the condition that resource specification
+important to decide which configuration is adopted. This feature is more useful on condition that resource specification
 of all nodes are almost the same.
 
 ### Reservation Algorithm
@@ -41,12 +41,12 @@ metadata:
 spec:
   reclaimable: true
   weight: 1
-  guarantee:            // reservation key word
-    policy: Best-Effort // preemption reservation or non-preemption reservation
-    percentage:      // locked nodes resource percentage in cluster
+  guarantee:             // reservation key word
+    policy: Best-Effort  // preemption reservation or non-preemption reservation
+    percentage:          // locked nodes resource percentage in cluster
       dimensions: ["cpu", "memory, "gpu", "other-scalable-resource-type"...]  
       value: 0.2
-    resource:           // specified reserving resource
+    resource:            // specified reserving resource
       cpu: 2c
       memory: 4G
 
@@ -54,9 +54,7 @@ status:
   state: Open
 
   reservation:          // reservation status key word
-    nodes:              // locked nodes list
-      - n1
-      - n2
+    nodes: [n1, n2]     // locked nodes list
     resource:           // total idle resource in locked nodes
       cpu: 1C
       memory: 2G 
@@ -116,9 +114,9 @@ the more idle resources on the nodes,the priority is higher. and the weight is 0
 * When the above two conditions's score are almost close. we preffer the The least number of combination nodes as the best choice,cause the fewer nodes
 lokced,The smaller the impact on the cluster.
 * The least important condition is the idle of the nodes,the more idle the nodes are, the more efficient it is to lock on.
-
+```
 0.4*1/(sum-target)/[(sum-target)+used+n+idle] + 0.35*used/[(sum-target)+used+n+idle] + 0.15*1/n/[(sum-target)+used+n+idle] + 0.1*idle/[(sum-target)+used+n+idle]
-
+```
 
 ##### Lock Strategy
 * schedule relock

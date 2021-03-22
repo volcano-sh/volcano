@@ -96,7 +96,9 @@ source "${VK_ROOT}/hack/lib/install.sh"
 check-prerequisites
 kind-up-cluster
 
-export KUBECONFIG="$(kind get kubeconfig-path ${CLUSTER_CONTEXT})"
+if [[ -z ${KUBECONFIG+x} ]]; then
+    export KUBECONFIG="${HOME}/.kube/config"
+fi
 
 install-volcano
 

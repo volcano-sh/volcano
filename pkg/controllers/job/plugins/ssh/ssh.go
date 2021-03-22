@@ -77,7 +77,7 @@ func (sp *sshPlugin) OnJobAdd(job *batch.Job) error {
 		return err
 	}
 
-	if err := helpers.CreateSecret(job, sp.client.KubeClients, data, sp.secretName(job)); err != nil {
+	if err := helpers.CreateOrUpdateSecret(job, sp.client.KubeClients, data, sp.secretName(job)); err != nil {
 		return fmt.Errorf("create secret for job <%s/%s> with ssh plugin failed for %v",
 			job.Namespace, job.Name, err)
 	}
@@ -99,7 +99,18 @@ func (sp *sshPlugin) OnJobDelete(job *batch.Job) error {
 	return nil
 }
 
-func (sp *sshPlugin) OnJobUpdate(_ *batch.Job) error {
+// TODO: currently a container using a Secret as a subPath volume mount will not receive Secret updates.
+func (sp *sshPlugin) OnJobUpdate(job *batch.Job) error {
+	data, err := generateRsaKey(job)
+	if err != nil {
+		return err
+	}
+
+	if err := helpers.CreateOrUpdateSecret(job, sp.client.KubeClients, data, sp.secretName(job)); err != nil {
+		return fmt.Errorf("update secret for job <%s/%s> with ssh plugin failed for %v",
+			job.Namespace, job.Name, err)
+	}
+
 	return nil
 }
 
