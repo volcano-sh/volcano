@@ -8,156 +8,6 @@ kind: Namespace
 metadata:
   name: volcano-monitoring 
 ---
-# Source: volcano/templates/scheduler.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: volcano-scheduler-configmap
-  namespace: volcano-system
-data:
-  volcano-scheduler.conf: |
-    actions: "enqueue, allocate, backfill"
-    tiers:
-    - plugins:
-      - name: priority
-      - name: gang
-      - name: conformance
-    - plugins:
-      - name: drf
-      - name: predicates
-      - name: proportion
-      - name: nodeorder
-      - name: binpack
-  
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: volcano-scheduler
-  namespace: volcano-system
----
-kind: ClusterRole
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: volcano-scheduler
-rules:
-  - apiGroups: ["apiextensions.k8s.io"]
-    resources: ["customresourcedefinitions"]
-    verbs: ["create", "get", "list", "watch", "delete"]
-  - apiGroups: ["batch.volcano.sh"]
-    resources: ["jobs"]
-    verbs: ["get", "list", "watch", "update", "delete"]
-  - apiGroups: ["batch.volcano.sh"]
-    resources: ["jobs/status"]
-    verbs: ["update", "patch"]
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["create", "list", "watch", "update", "patch"]
-  - apiGroups: [""]
-    resources: ["pods", "pods/status"]
-    verbs: ["create", "get", "list", "watch", "update", "patch", "bind", "updateStatus", "delete"]
-  - apiGroups: [""]
-    resources: ["pods/binding"]
-    verbs: ["create"]
-  - apiGroups: [""]
-    resources: ["persistentvolumeclaims"]
-    verbs: ["list", "watch"]
-  - apiGroups: [""]
-    resources: ["persistentvolumes"]
-    verbs: ["list", "watch"]
-  - apiGroups: [""]
-    resources: ["namespaces"]
-    verbs: ["list", "watch"]
-  - apiGroups: [""]
-    resources: ["resourcequotas"]
-    verbs: ["list", "watch"]
-  - apiGroups: ["storage.k8s.io"]
-    resources: ["storageclasses"]
-    verbs: ["list", "watch"]
-  - apiGroups: [""]
-    resources: ["nodes"]
-    verbs: ["list", "watch"]
-  - apiGroups: ["policy"]
-    resources: ["poddisruptionbudgets"]
-    verbs: ["list", "watch"]
-  - apiGroups: ["scheduling.k8s.io"]
-    resources: ["priorityclasses"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
-    resources: ["queues"]
-    verbs: ["get", "list", "watch", "create", "delete"]
-  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
-    resources: ["podgroups"]
-    verbs: ["list", "watch", "update"]
-
----
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: volcano-scheduler-role
-subjects:
-  - kind: ServiceAccount
-    name: volcano-scheduler
-    namespace: volcano-system
-roleRef:
-  kind: ClusterRole
-  name: volcano-scheduler
-  apiGroup: rbac.authorization.k8s.io
-
----
-kind: Deployment
-apiVersion: apps/v1
-metadata:
-  name: volcano-scheduler
-  namespace: volcano-system
-  labels:
-    app: volcano-scheduler
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: volcano-scheduler
-  template:
-    metadata:
-      labels:
-        app: volcano-scheduler
-    spec:
-      serviceAccount: volcano-scheduler
-      containers:
-        - name: volcano-scheduler
-          image: volcanosh/vc-scheduler:latest
-          args:
-            - --logtostderr
-            - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
-            - -v=3
-            - 2>&1
-          imagePullPolicy: "IfNotPresent"
-          volumeMounts:
-            - name: scheduler-config
-              mountPath: /volcano.scheduler
-      volumes:
-        - name: scheduler-config
-          configMap:
-            name: volcano-scheduler-configmap
----
-apiVersion: v1
-kind: Service
-metadata:
-  annotations:
-    prometheus.io/path: /metrics
-    prometheus.io/port: "8080"
-    prometheus.io/scrape: "true"
-  name: volcano-scheduler-service
-  namespace: volcano-system 
-spec:
-  ports:
-  - port: 8080
-    protocol: TCP
-    targetPort: 8080
-  selector:
-    app: volcano-scheduler
-  type: ClusterIP
----
 # Source: volcano/templates/admission.yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -165,6 +15,7 @@ metadata:
   name: volcano-admission
   namespace: volcano-system
 ---
+# Source: volcano/templates/admission.yaml
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
@@ -195,8 +46,8 @@ rules:
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
     verbs: ["get", "list", "watch"]
-
 ---
+# Source: volcano/templates/admission.yaml
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
@@ -209,8 +60,25 @@ roleRef:
   kind: ClusterRole
   name: volcano-admission
   apiGroup: rbac.authorization.k8s.io
-
 ---
+# Source: volcano/templates/admission.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: volcano-admission
+  name: volcano-admission-service
+  namespace: volcano-system
+spec:
+  ports:
+    - port: 443
+      protocol: TCP
+      targetPort: 8443
+  selector:
+    app: volcano-admission
+  sessionAffinity: None
+---
+# Source: volcano/templates/admission.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -252,25 +120,8 @@ spec:
           secret:
             defaultMode: 420
             secretName: volcano-admission-secret
-
 ---
-apiVersion: v1
-kind: Service
-metadata:
-  labels:
-    app: volcano-admission
-  name: volcano-admission-service
-  namespace: volcano-system
-spec:
-  ports:
-    - port: 443
-      protocol: TCP
-      targetPort: 8443
-  selector:
-    app: volcano-admission
-  sessionAffinity: None
-
----
+# Source: volcano/templates/admission.yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -290,105 +141,8 @@ spec:
           imagePullPolicy: IfNotPresent
           command: ["./gen-admission-secret.sh", "--service", "volcano-admission-service", "--namespace",
                     "volcano-system", "--secret", "volcano-admission-secret"]
-
 ---
-# Source: volcano/templates/controllers.yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: volcano-controllers
-  namespace: volcano-system
-
----
-kind: ClusterRole
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: volcano-controllers
-rules:
-  - apiGroups: ["apiextensions.k8s.io"]
-    resources: ["customresourcedefinitions"]
-    verbs: ["create", "get", "list", "watch", "delete"]
-  - apiGroups: ["batch.volcano.sh"]
-    resources: ["jobs"]
-    verbs: ["get", "list", "watch", "update", "delete"]
-  - apiGroups: ["batch.volcano.sh"]
-    resources: ["jobs/status", "jobs/finalizers"]
-    verbs: ["update", "patch"]
-  - apiGroups: ["bus.volcano.sh"]
-    resources: ["commands"]
-    verbs: ["get", "list", "watch", "delete"]
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["create", "list", "watch", "update", "patch"]
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["create", "get", "list", "watch", "update", "bind", "delete"]
-  - apiGroups: [""]
-    resources: ["persistentvolumeclaims"]
-    verbs: ["get", "list", "watch", "create"]
-  - apiGroups: [""]
-    resources: ["services"]
-    verbs: ["get", "list", "watch", "create", "delete"]
-  - apiGroups: [""]
-    resources: ["configmaps"]
-    verbs: ["get", "list", "watch", "create", "delete", "update"]
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "list", "watch", "create", "delete", "update"]
-  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
-    resources: ["podgroups", "queues", "queues/status"]
-    verbs: ["get", "list", "watch", "create", "delete", "update"]
-  - apiGroups: ["scheduling.k8s.io"]
-    resources: ["priorityclasses"]
-    verbs: ["get", "list", "watch", "create", "delete"]
-  - apiGroups: ["networking.k8s.io"]
-    resources: ["networkpolicies"]
-    verbs: ["get", "create", "delete"]
-
----
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: volcano-controllers-role
-subjects:
-  - kind: ServiceAccount
-    name: volcano-controllers
-    namespace: volcano-system
-roleRef:
-  kind: ClusterRole
-  name: volcano-controllers
-  apiGroup: rbac.authorization.k8s.io
-
----
-kind: Deployment
-apiVersion: apps/v1
-metadata:
-  name: volcano-controllers
-  namespace: volcano-system
-  labels:
-    app: volcano-controller
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: volcano-controller
-  template:
-    metadata:
-      labels:
-        app: volcano-controller
-    spec:
-      serviceAccount: volcano-controllers
-      containers:
-          - name: volcano-controllers
-            image: volcanosh/vc-controller-manager:latest
-            args:
-              - --logtostderr
-              - -v=4
-              - 2>&1
-            imagePullPolicy: "IfNotPresent"
-
----
-# Source: volcano/templates/crd/v1beta1/batch.volcano.sh_jobs.yaml
+# Source: volcano/templates/batch_v1alpha1_job.yaml
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
@@ -6951,9 +6705,8 @@ status:
     plural: ""
   conditions: []
   storedVersions: []
-
 ---
-# Source: volcano/templates/crd/v1beta1/bus.volcano.sh_commands.yaml
+# Source: volcano/templates/bus_v1alpha1_command.yaml
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
@@ -7037,9 +6790,255 @@ status:
     plural: ""
   conditions: []
   storedVersions: []
-
 ---
-# Source: volcano/templates/crd/v1beta1/scheduling.volcano.sh_podgroups.yaml
+# Source: volcano/templates/controllers.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: volcano-controllers
+  namespace: volcano-system
+---
+# Source: volcano/templates/controllers.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: volcano-controllers
+rules:
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: ["batch.volcano.sh"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "update", "delete"]
+  - apiGroups: ["batch.volcano.sh"]
+    resources: ["jobs/status", "jobs/finalizers"]
+    verbs: ["update", "patch"]
+  - apiGroups: ["bus.volcano.sh"]
+    resources: ["commands"]
+    verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "get", "list", "watch", "update", "bind", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "delete", "update"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "delete", "update"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
+    resources: ["podgroups", "queues", "queues/status"]
+    verbs: ["get", "list", "watch", "create", "delete", "update"]
+  - apiGroups: ["scheduling.k8s.io"]
+    resources: ["priorityclasses"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "create", "delete"]
+---
+# Source: volcano/templates/controllers.yaml
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: volcano-controllers-role
+subjects:
+  - kind: ServiceAccount
+    name: volcano-controllers
+    namespace: volcano-system
+roleRef:
+  kind: ClusterRole
+  name: volcano-controllers
+  apiGroup: rbac.authorization.k8s.io
+---
+# Source: volcano/templates/controllers.yaml
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: volcano-controllers
+  namespace: volcano-system
+  labels:
+    app: volcano-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: volcano-controller
+  template:
+    metadata:
+      labels:
+        app: volcano-controller
+    spec:
+      serviceAccount: volcano-controllers
+      containers:
+          - name: volcano-controllers
+            image: volcanosh/vc-controller-manager:latest
+            args:
+              - --logtostderr
+              - -v=4
+              - 2>&1
+            imagePullPolicy: "IfNotPresent"
+---
+# Source: volcano/templates/scheduler.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: volcano-scheduler
+  namespace: volcano-system
+---
+# Source: volcano/templates/scheduler.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: volcano-scheduler-configmap
+  namespace: volcano-system
+data:
+  volcano-scheduler.conf: |
+    actions: "enqueue, allocate, backfill"
+    tiers:
+    - plugins:
+      - name: priority
+      - name: gang
+      - name: conformance
+    - plugins:
+      - name: drf
+      - name: predicates
+      - name: proportion
+      - name: nodeorder
+      - name: binpack
+---
+# Source: volcano/templates/scheduler.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: volcano-scheduler
+rules:
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: ["batch.volcano.sh"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "update", "delete"]
+  - apiGroups: ["batch.volcano.sh"]
+    resources: ["jobs/status"]
+    verbs: ["update", "patch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/status"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "bind", "updateStatus", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/binding"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["list", "watch"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["list", "watch"]
+  - apiGroups: [""]
+    resources: ["resourcequotas"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["scheduling.k8s.io"]
+    resources: ["priorityclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
+    resources: ["queues"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
+    resources: ["podgroups"]
+    verbs: ["list", "watch", "update"]
+---
+# Source: volcano/templates/scheduler.yaml
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: volcano-scheduler-role
+subjects:
+  - kind: ServiceAccount
+    name: volcano-scheduler
+    namespace: volcano-system
+roleRef:
+  kind: ClusterRole
+  name: volcano-scheduler
+  apiGroup: rbac.authorization.k8s.io
+---
+# Source: volcano/templates/scheduler.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8080"
+    prometheus.io/scrape: "true"
+  name: volcano-scheduler-service
+  namespace: volcano-system 
+spec:
+  ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: volcano-scheduler
+  type: ClusterIP
+---
+# Source: volcano/templates/scheduler.yaml
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: volcano-scheduler
+  namespace: volcano-system
+  labels:
+    app: volcano-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: volcano-scheduler
+  template:
+    metadata:
+      labels:
+        app: volcano-scheduler
+    spec:
+      serviceAccount: volcano-scheduler
+      containers:
+        - name: volcano-scheduler
+          image: volcanosh/vc-scheduler:latest
+          args:
+            - --logtostderr
+            - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
+            - -v=3
+            - 2>&1
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: scheduler-config
+              mountPath: /volcano.scheduler
+      volumes:
+        - name: scheduler-config
+          configMap:
+            name: volcano-scheduler-configmap
+---
+# Source: volcano/templates/scheduling_v1beta1_podgroup.yaml
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
@@ -7171,9 +7170,8 @@ status:
     plural: ""
   conditions: []
   storedVersions: []
-
 ---
-# Source: volcano/templates/crd/v1beta1/scheduling.volcano.sh_queues.yaml
+# Source: volcano/templates/scheduling_v1beta1_queue.yaml
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
@@ -7266,4 +7264,3 @@ status:
     plural: ""
   conditions: []
   storedVersions: []
-
