@@ -28,25 +28,22 @@ export HELM_VER=${HELM_VER:-v3.5.3}
 export VOLCANO_IMAGE_TAG=${TAG:-"latest"}
 export YAML_FILENAME=volcano-${VOLCANO_IMAGE_TAG}.yaml
 export MONITOR_YAML_FILENAME=volcano-monitoring-${VOLCANO_IMAGE_TAG}.yaml
-
-CRD_VERSION=${CRD_VERSION:-"v1beta1"}
+export CRD_VERSION=${CRD_VERSION:-v1beta1}
 
 case $CRD_VERSION in
-  "bases")
-    # pass
+  bases)
     ;;
-  "v1")
+  v1)
     CRD_VERSION="bases"
     ;;
-  "v1beta1")
-    # pass
+  v1beta1)
     ;;
   *)
-    echo Invaild CRD_VERSION !!!
+    echo Invaild CRD_VERSION $CRD_VERSION !!!
     echo CRD_VERSION only support \"bases\", \"v1\" and \"v1beta1\"
     exit 1
     ;;
-  esac
+esac
 
 LOCAL_OS=${OSTYPE}
 case $LOCAL_OS in
@@ -113,11 +110,11 @@ ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespac
       -s templates/scheduler.yaml \
       -s templates/scheduling_v1beta1_podgroup.yaml \
       -s templates/scheduling_v1beta1_queue.yaml \
-      > ${DEPLOYMENT_FILE}
+      >> ${DEPLOYMENT_FILE}
 
 ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-monitoring \
       --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} \
       -s templates/prometheus.yaml \
       -s templates/kubestatemetrics.yaml \
       -s templates/grafana.yaml \
-      > ${MONITOR_DEPLOYMENT_YAML_FILENAME}
+      >> ${MONITOR_DEPLOYMENT_YAML_FILENAME}
