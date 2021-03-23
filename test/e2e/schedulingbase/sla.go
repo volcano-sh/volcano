@@ -18,10 +18,13 @@ package schedulingbase
 
 import (
 	"context"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
 const (
@@ -30,85 +33,85 @@ const (
 
 var _ = Describe("SLA Test", func() {
 	It("sla permits job to be inqueue", func() {
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
 
-		slot := oneCPU
-		rep := clusterSize(ctx, slot)
+		slot := e2eutil.OneCPU
+		rep := e2eutil.ClusterSize(ctx, slot)
 
 		// job requests resources more than the whole cluster, but after sla-waiting-time, job can be inqueue
 		// and create Pending pods
-		job := &jobSpec{
-			tasks: []taskSpec{
+		job := &e2eutil.JobSpec{
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img: defaultNginxImage,
-					req: slot,
-					min: rep * 2,
-					rep: rep * 2,
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot,
+					Min: rep * 2,
+					Rep: rep * 2,
 				},
 			},
 		}
 
 		annotations := map[string]string{jobWaitingTime: "3s"}
 
-		job.name = "j1-overlarge"
-		overlargeJob := createJobWithPodGroup(ctx, job, "", annotations)
-		err := waitTaskPhase(ctx, overlargeJob, []v1.PodPhase{v1.PodPending}, int(rep*2))
+		job.Name = "j1-overlarge"
+		overlargeJob := e2eutil.CreateJobWithPodGroup(ctx, job, "", annotations)
+		err := e2eutil.WaitTaskPhase(ctx, overlargeJob, []v1.PodPhase{v1.PodPending}, int(rep*2))
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("sla adjusts job order", func() {
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
 
-		slot := oneCPU
-		rep := clusterSize(ctx, slot)
+		slot := e2eutil.OneCPU
+		rep := e2eutil.ClusterSize(ctx, slot)
 
 		// job requests resources more than the whole cluster, but after sla-waiting-time, job can be inqueue
 		// and create Pending pods
-		job1 := &jobSpec{
-			tasks: []taskSpec{
+		job1 := &e2eutil.JobSpec{
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img: defaultNginxImage,
-					req: slot,
-					min: rep * 2,
-					rep: rep * 2,
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot,
+					Min: rep * 2,
+					Rep: rep * 2,
 				},
 			},
 		}
-		job2 := &jobSpec{
-			tasks: []taskSpec{
+		job2 := &e2eutil.JobSpec{
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img: defaultNginxImage,
-					req: slot,
-					min: rep,
-					rep: rep,
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot,
+					Min: rep,
+					Rep: rep,
 				},
 			},
 		}
 
-		job1.name = "j1-overlarge"
-		overlargeJob := createJobWithPodGroup(ctx, job1, "", map[string]string{jobWaitingTime: "3s"})
-		err := waitTaskPhase(ctx, overlargeJob, []v1.PodPhase{v1.PodPending}, int(rep*2))
+		job1.Name = "j1-overlarge"
+		overlargeJob := e2eutil.CreateJobWithPodGroup(ctx, job1, "", map[string]string{jobWaitingTime: "3s"})
+		err := e2eutil.WaitTaskPhase(ctx, overlargeJob, []v1.PodPhase{v1.PodPending}, int(rep*2))
 		Expect(err).NotTo(HaveOccurred())
 
-		job2.name = "j2-slow-sla"
-		slowSlaJob := createJobWithPodGroup(ctx, job2, "", map[string]string{jobWaitingTime: "1h"})
-		err = waitTaskPhase(ctx, slowSlaJob, []v1.PodPhase{v1.PodPending}, 0)
+		job2.Name = "j2-slow-sla"
+		slowSlaJob := e2eutil.CreateJobWithPodGroup(ctx, job2, "", map[string]string{jobWaitingTime: "1h"})
+		err = e2eutil.WaitTaskPhase(ctx, slowSlaJob, []v1.PodPhase{v1.PodPending}, 0)
 		Expect(err).NotTo(HaveOccurred())
 
-		job2.name = "j3-fast-sla"
-		fastSlaJob := createJobWithPodGroup(ctx, job2, "", map[string]string{jobWaitingTime: "30m"})
-		err = waitTaskPhase(ctx, fastSlaJob, []v1.PodPhase{v1.PodPending}, 0)
+		job2.Name = "j3-fast-sla"
+		fastSlaJob := e2eutil.CreateJobWithPodGroup(ctx, job2, "", map[string]string{jobWaitingTime: "30m"})
+		err = e2eutil.WaitTaskPhase(ctx, fastSlaJob, []v1.PodPhase{v1.PodPending}, 0)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = ctx.vcclient.BatchV1alpha1().Jobs(getNS(ctx, job1)).Delete(context.TODO(), job1.name, metav1.DeleteOptions{})
+		err = ctx.Vcclient.BatchV1alpha1().Jobs(e2eutil.Namespace(ctx, job1)).Delete(context.TODO(), job1.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTaskPhase(ctx, slowSlaJob, []v1.PodPhase{v1.PodPending}, 0)
+		err = e2eutil.WaitTaskPhase(ctx, slowSlaJob, []v1.PodPhase{v1.PodPending}, 0)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReady(ctx, fastSlaJob, int(rep))
+		err = e2eutil.WaitTasksReady(ctx, fastSlaJob, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 	})
 })

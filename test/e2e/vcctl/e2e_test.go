@@ -14,25 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package schedulingaction
+package vcctl
 
 import (
-	"os"
 	"testing"
 
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
-
-	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned"
-
-	e2eutil "volcano.sh/volcano/test/e2e/util"
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 )
 
-func TestMain(m *testing.M) {
-	home := e2eutil.HomeDir()
-	configPath := e2eutil.KubeconfigPath(home)
-	config, _ := clientcmd.BuildConfigFromFlags(e2eutil.MasterURL(), configPath)
-	e2eutil.VcClient = vcclient.NewForConfigOrDie(config)
-	e2eutil.KubeClient = kubernetes.NewForConfigOrDie(config)
-	os.Exit(m.Run())
+func TestE2E(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Volcano CLI Test Suite")
 }
