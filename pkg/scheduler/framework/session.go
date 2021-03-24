@@ -69,9 +69,9 @@ type Session struct {
 	reclaimableFns    map[string]api.EvictableFn
 	overusedFns       map[string]api.ValidateFn
 	jobReadyFns       map[string]api.ValidateFn
-	jobPipelinedFns   map[string]api.ValidateFn
+	jobPipelinedFns   map[string]api.VoteFn
 	jobValidFns       map[string]api.ValidateExFn
-	jobEnqueueableFns map[string]api.ValidateFn
+	jobEnqueueableFns map[string]api.VoteFn
 	targetJobFns      map[string]api.TargetJobFn
 	reservedNodesFns  map[string]api.ReservedNodesFn
 	victimTasksFns    map[string]api.VictimTasksFn
@@ -106,9 +106,9 @@ func openSession(cache cache.Cache) *Session {
 		reclaimableFns:    map[string]api.EvictableFn{},
 		overusedFns:       map[string]api.ValidateFn{},
 		jobReadyFns:       map[string]api.ValidateFn{},
-		jobPipelinedFns:   map[string]api.ValidateFn{},
+		jobPipelinedFns:   map[string]api.VoteFn{},
 		jobValidFns:       map[string]api.ValidateExFn{},
-		jobEnqueueableFns: map[string]api.ValidateFn{},
+		jobEnqueueableFns: map[string]api.VoteFn{},
 		targetJobFns:      map[string]api.TargetJobFn{},
 		reservedNodesFns:  map[string]api.ReservedNodesFn{},
 		victimTasksFns:    map[string]api.VictimTasksFn{},

@@ -26,6 +26,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
 // PluginName indicates name of volcano scheduler plugin.
@@ -50,15 +51,6 @@ type queueAttr struct {
 	// inqueue represents the resource request of the inqueue job
 	inqueue    *api.Resource
 	capability *api.Resource
-}
-
-// GetJobMinResources return the min resources of podgroup.
-func GetJobMinResources(s scheduling.PodGroupSpec) *api.Resource {
-	if s.MinResources == nil {
-		return api.EmptyResource()
-	}
-
-	return api.NewResource(*s.MinResources)
 }
 
 // New return proportion action
@@ -120,7 +112,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
-			attr.inqueue.Add(GetJobMinResources(job.PodGroup.Spec))
+			attr.inqueue.Add(job.GetMinResources())
 		}
 	}
 
@@ -259,7 +251,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return overused
 	})
 
-	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) bool {
+	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {
 		job := obj.(*api.JobInfo)
 		queueID := job.Queue
 		attr := pp.queueOpts[queueID]
@@ -269,20 +261,20 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		if len(queue.Queue.Spec.Capability) == 0 {
 			klog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Inqueue.",
 				queue.Name, job.Namespace, job.Name)
-			return true
+			return util.Permit
 		}
 
 		if job.PodGroup.Spec.MinResources == nil {
-			return true
+			return util.Permit
 		}
-
-		minReq := GetJobMinResources(job.PodGroup.Spec)
+		minReq := job.GetMinResources()
 		// The queue resource quota limit has not reached
 		inqueue := minReq.Add(attr.allocated).Add(attr.inqueue).LessEqual(api.NewResource(queue.Queue.Spec.Capability))
 		if inqueue {
-			attr.inqueue.Add(GetJobMinResources(job.PodGroup.Spec))
+			attr.inqueue.Add(job.GetMinResources())
+			return util.Permit
 		}
-		return inqueue
+		return util.Reject
 	})
 
 	// Register event handlers.

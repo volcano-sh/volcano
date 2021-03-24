@@ -220,11 +220,18 @@ func addResourceList(list, req, limit v1.ResourceList) {
 		}
 	}
 
+	if req != nil {
+		return
+	}
+
 	// If Requests is omitted for a container,
 	// it defaults to Limits if that is explicitly specified.
 	for name, quantity := range limit {
-		if _, ok := list[name]; !ok {
+		if value, ok := list[name]; !ok {
 			list[name] = quantity.DeepCopy()
+		} else {
+			value.Add(quantity)
+			list[name] = value
 		}
 	}
 }

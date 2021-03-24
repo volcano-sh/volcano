@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2021 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,56 +22,58 @@ import (
 
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
 	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+
+	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
 var _ = Describe("MPI E2E Test", func() {
 	It("will run and complete finally", func() {
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		context := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(context)
 
-		slot := oneCPU
+		slot := e2eutil.OneCPU
 
-		spec := &jobSpec{
-			name: "mpi",
-			policies: []vcbatch.LifecyclePolicy{
+		spec := &e2eutil.JobSpec{
+			Name: "mpi",
+			Policies: []vcbatch.LifecyclePolicy{
 				{
 					Action: vcbus.CompleteJobAction,
 					Event:  vcbus.TaskCompletedEvent,
 				},
 			},
-			plugins: map[string][]string{
+			Plugins: map[string][]string{
 				"ssh": {},
 				"env": {},
 				"svc": {},
 			},
-			tasks: []taskSpec{
+			Tasks: []e2eutil.TaskSpec{
 				{
-					name:       "mpimaster",
-					img:        defaultMPIImage,
-					req:        slot,
-					min:        1,
-					rep:        1,
-					workingDir: "/home",
-					//Need sometime waiting for worker node ready
-					command: `sleep 5;
+					Name:       "mpimaster",
+					Img:        e2eutil.DefaultMPIImage,
+					Req:        slot,
+					Min:        1,
+					Rep:        1,
+					WorkingDir: "/home",
+					// Need sometime waiting for worker node ready
+					Command: `sleep 5;
 mkdir -p /var/run/sshd; /usr/sbin/sshd;
 mpiexec --allow-run-as-root --hostfile /etc/volcano/mpiworker.host -np 2 mpi_hello_world > /home/re`,
 				},
 				{
-					name:       "mpiworker",
-					img:        defaultMPIImage,
-					req:        slot,
-					min:        2,
-					rep:        2,
-					workingDir: "/home",
-					command:    "mkdir -p /var/run/sshd; /usr/sbin/sshd -D;",
+					Name:       "mpiworker",
+					Img:        e2eutil.DefaultMPIImage,
+					Req:        slot,
+					Min:        2,
+					Rep:        2,
+					WorkingDir: "/home",
+					Command:    "mkdir -p /var/run/sshd; /usr/sbin/sshd -D;",
 				},
 			},
 		}
 
-		job := createJob(context, spec)
+		job := e2eutil.CreateJob(context, spec)
 
-		err := waitJobPhases(context, job, []vcbatch.JobPhase{
+		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{
 			vcbatch.Pending, vcbatch.Running, vcbatch.Completing, vcbatch.Completed})
 		Expect(err).NotTo(HaveOccurred())
 	})
