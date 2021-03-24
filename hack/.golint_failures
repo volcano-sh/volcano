@@ -13,3 +13,5 @@ volcano.sh/volcano/test/e2e/jobp
 volcano.sh/volcano/test/e2e/jobseq
 volcano.sh/volcano/test/e2e/schedulingaction
 volcano.sh/volcano/test/e2e/schedulingbase
+volcano.sh/volcano/test/e2e/util
+volcano.sh/volcano/test/e2e/vcctl

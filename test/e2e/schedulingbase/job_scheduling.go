@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Volcano Authors.
+Copyright 2021 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,267 +32,270 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
+
+	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
 var _ = Describe("Job E2E Test", func() {
 	It("Schedule Job", func() {
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
-		rep := clusterSize(ctx, oneCPU)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
+		rep := e2eutil.ClusterSize(ctx, e2eutil.OneCPU)
 
-		job := createJob(ctx, &jobSpec{
-			name: "qj-1",
-			tasks: []taskSpec{
+		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+			Name: "qj-1",
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img: defaultBusyBoxImage,
-					req: oneCPU,
-					min: 2,
-					rep: rep,
+					Img: e2eutil.DefaultBusyBoxImage,
+					Req: e2eutil.OneCPU,
+					Min: 2,
+					Rep: rep,
 				},
 			},
 		})
 
-		err := waitJobReady(ctx, job)
+		err := e2eutil.WaitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("Schedule Multiple Jobs", func() {
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
 
-		rep := clusterSize(ctx, oneCPU)
+		rep := e2eutil.ClusterSize(ctx, e2eutil.OneCPU)
 
-		job := &jobSpec{
-			tasks: []taskSpec{
+		job := &e2eutil.JobSpec{
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img: defaultBusyBoxImage,
-					req: oneCPU,
-					min: 2,
-					rep: rep,
+					Img: e2eutil.DefaultBusyBoxImage,
+					Req: e2eutil.OneCPU,
+					Min: 2,
+					Rep: rep,
 				},
 			},
 		}
 
-		job.name = "mqj-1"
-		job1 := createJob(ctx, job)
-		job.name = "mqj-2"
-		job2 := createJob(ctx, job)
-		job.name = "mqj-3"
-		job3 := createJob(ctx, job)
+		job.Name = "mqj-1"
+		job1 := e2eutil.CreateJob(ctx, job)
+		job.Name = "mqj-2"
+		job2 := e2eutil.CreateJob(ctx, job)
+		job.Name = "mqj-3"
+		job3 := e2eutil.CreateJob(ctx, job)
 
-		err := waitJobReady(ctx, job1)
+		err := e2eutil.WaitJobReady(ctx, job1)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobReady(ctx, job2)
+		err = e2eutil.WaitJobReady(ctx, job2)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobReady(ctx, job3)
+		err = e2eutil.WaitJobReady(ctx, job3)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("Gang scheduling", func() {
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
-		rep := clusterSize(ctx, oneCPU)/2 + 1
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
+		rep := e2eutil.ClusterSize(ctx, e2eutil.OneCPU)/2 + 1
 
-		replicaset := createReplicaSet(ctx, "rs-1", rep, defaultNginxImage, oneCPU)
-		err := waitReplicaSetReady(ctx, replicaset.Name)
+		replicaset := e2eutil.CreateReplicaSet(ctx, "rs-1", rep, e2eutil.DefaultNginxImage, e2eutil.OneCPU)
+		err := e2eutil.WaitReplicaSetReady(ctx, replicaset.Name)
 		Expect(err).NotTo(HaveOccurred())
 
-		jobSpec := &jobSpec{
-			name:      "gang-qj",
-			namespace: ctx.namespace,
-			tasks: []taskSpec{
+		jobSpec := &e2eutil.JobSpec{
+			Name:      "gang-qj",
+			Namespace: ctx.Namespace,
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img:     defaultBusyBoxImage,
-					req:     oneCPU,
-					min:     rep,
-					rep:     rep,
-					command: "sleep 10s",
+					Img:     e2eutil.DefaultBusyBoxImage,
+					Req:     e2eutil.OneCPU,
+					Min:     rep,
+					Rep:     rep,
+					Command: "sleep 10s",
 				},
 			},
 		}
 
-		job := createJob(ctx, jobSpec)
-		err = waitJobStatePending(ctx, job)
+		job := e2eutil.CreateJob(ctx, jobSpec)
+		err = e2eutil.WaitJobStatePending(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobUnschedulable(ctx, job)
+		err = e2eutil.WaitJobUnschedulable(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = deleteReplicaSet(ctx, replicaset.Name)
+		err = e2eutil.DeleteReplicaSet(ctx, replicaset.Name)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobReady(ctx, job)
+		err = e2eutil.WaitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("Gang scheduling: Full Occupied", func() {
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
-		rep := clusterSize(ctx, oneCPU)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
+		rep := e2eutil.ClusterSize(ctx, e2eutil.OneCPU)
 
-		job := &jobSpec{
-			namespace: ctx.namespace,
-			tasks: []taskSpec{
+		job := &e2eutil.JobSpec{
+			Namespace: ctx.Namespace,
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img: defaultNginxImage,
-					req: oneCPU,
-					min: rep,
-					rep: rep,
+					Img: e2eutil.DefaultNginxImage,
+					Req: e2eutil.OneCPU,
+					Min: rep,
+					Rep: rep,
 				},
 			},
 		}
 
-		job.name = "gang-fq-qj1"
-		job1 := createJob(ctx, job)
-		err := waitJobReady(ctx, job1)
+		job.Name = "gang-fq-qj1"
+		job1 := e2eutil.CreateJob(ctx, job)
+		err := e2eutil.WaitJobReady(ctx, job1)
 		Expect(err).NotTo(HaveOccurred())
 
-		job.name = "gang-fq-qj2"
-		job2 := createJob(ctx, job)
-		err = waitJobStatePending(ctx, job2)
+		job.Name = "gang-fq-qj2"
+		job2 := e2eutil.CreateJob(ctx, job)
+		err = e2eutil.WaitJobStatePending(ctx, job2)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobReady(ctx, job1)
+		err = e2eutil.WaitJobReady(ctx, job1)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("Gang scheduling: Contains both best-effort pod and non-best-effort pod", func() {
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
-		rep := clusterSize(ctx, oneCPU)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
+		rep := e2eutil.ClusterSize(ctx, e2eutil.OneCPU)
 
 		if rep < 2 {
 			fmt.Println("Skip e2e test for insufficient resources.")
 			return
 		}
 
-		jobSpec := &jobSpec{
-			name:      "gang-both-best-effort-non-best-effort-pods",
-			namespace: ctx.namespace,
-			tasks: []taskSpec{
+		jobSpec := &e2eutil.JobSpec{
+			Name:      "gang-both-best-effort-non-best-effort-pods",
+			Namespace: ctx.Namespace,
+			Tasks: []e2eutil.TaskSpec{
 				{
-					name: "best-effort",
-					img:  defaultNginxImage,
-					req:  oneCPU,
-					min:  rep / 2,
-					rep:  rep / 2,
+					Name: "best-effort",
+					Img:  e2eutil.DefaultNginxImage,
+					Req:  e2eutil.OneCPU,
+					Min:  rep / 2,
+					Rep:  rep / 2,
 				},
 				{
-					name: "non-best-effort",
-					img:  defaultNginxImage,
-					min:  rep - rep/2,
-					rep:  rep - rep/2,
+					Name: "non-best-effort",
+					Img:  e2eutil.DefaultNginxImage,
+					Min:  rep - rep/2,
+					Rep:  rep - rep/2,
 				},
 			},
 		}
 
-		job := createJob(ctx, jobSpec)
-		err := waitJobReady(ctx, job)
+		job := e2eutil.CreateJob(ctx, jobSpec)
+		err := e2eutil.WaitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("Schedule BestEffort Job", func() {
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
 
-		slot := oneCPU
-		rep := clusterSize(ctx, slot)
+		slot := e2eutil.OneCPU
+		rep := e2eutil.ClusterSize(ctx, slot)
 
-		spec := &jobSpec{
-			name: "test",
-			tasks: []taskSpec{
+		spec := &e2eutil.JobSpec{
+			Name: "test",
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img: defaultNginxImage,
-					req: slot,
-					min: 2,
-					rep: rep,
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot,
+					Min: 2,
+					Rep: rep,
 				},
 				{
-					img: defaultNginxImage,
-					min: 2,
-					rep: rep / 2,
+					Img: e2eutil.DefaultNginxImage,
+					Min: 2,
+					Rep: rep / 2,
 				},
 			},
 		}
 
-		job := createJob(ctx, spec)
+		job := e2eutil.CreateJob(ctx, spec)
 
-		err := waitJobReady(ctx, job)
+		err := e2eutil.WaitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("Statement", func() {
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
 
-		slot := oneCPU
-		rep := clusterSize(ctx, slot)
+		slot := e2eutil.OneCPU
+		rep := e2eutil.ClusterSize(ctx, slot)
 
-		spec := &jobSpec{
-			namespace: ctx.namespace,
-			tasks: []taskSpec{
+		spec := &e2eutil.JobSpec{
+			Namespace: ctx.Namespace,
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img: defaultNginxImage,
-					req: slot,
-					min: rep,
-					rep: rep,
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot,
+					Min: rep,
+					Rep: rep,
 				},
 			},
 		}
 
-		spec.name = "st-qj-1"
-		job1 := createJob(ctx, spec)
-		err := waitJobReady(ctx, job1)
+		spec.Name = "st-qj-1"
+		job1 := e2eutil.CreateJob(ctx, spec)
+		err := e2eutil.WaitJobReady(ctx, job1)
 		Expect(err).NotTo(HaveOccurred())
 
 		now := time.Now()
 
-		spec.name = "st-qj-2"
-		job2 := createJob(ctx, spec)
-		err = waitJobUnschedulable(ctx, job2)
+		spec.Name = "st-qj-2"
+		job2 := e2eutil.CreateJob(ctx, spec)
+		err = e2eutil.WaitJobUnschedulable(ctx, job2)
 		Expect(err).NotTo(HaveOccurred())
 
 		// No preemption event
-		evicted, err := jobEvicted(ctx, job1, now)()
+		evicted, err := e2eutil.JobEvicted(ctx, job1, now)()
 		Expect(err).NotTo(HaveOccurred())
 		Expect(evicted).NotTo(BeTrue())
 	})
 
 	It("support binpack policy", func() {
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
 
-		slot := oneCPU
+		slot := e2eutil.OneCPU
 
 		By("create base job")
-		spec := &jobSpec{
-			name:      "binpack-base-1",
-			namespace: ctx.namespace,
-			tasks: []taskSpec{
+		spec := &e2eutil.JobSpec{
+			Name:      "binpack-base-1",
+			Namespace: ctx.Namespace,
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img: defaultNginxImage,
-					req: slot,
-					min: 1,
-					rep: 1,
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot,
+					Min: 1,
+					Rep: 1,
 				},
 			},
 		}
 
-		baseJob := createJob(ctx, spec)
-		err := waitJobReady(ctx, baseJob)
+		baseJob := e2eutil.CreateJob(ctx, spec)
+		err := e2eutil.WaitJobReady(ctx, baseJob)
 		Expect(err).NotTo(HaveOccurred())
 
-		basePods := getTasksOfJob(ctx, baseJob)
+		basePods := e2eutil.GetTasksOfJob(ctx, baseJob)
 		basePod := basePods[0]
 		baseNodeName := basePod.Spec.NodeName
 
-		node, err := ctx.kubeclient.CoreV1().Nodes().Get(context.TODO(), baseNodeName, metav1.GetOptions{})
+		node, err := ctx.Kubeclient.CoreV1().Nodes().Get(context.TODO(), baseNodeName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		clusterPods, err := ctx.kubeclient.CoreV1().Pods(v1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
+		clusterPods, err := ctx.Kubeclient.CoreV1().Pods(v1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		alloc := schedulingapi.NewResource(node.Status.Allocatable)
@@ -320,23 +323,23 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		By(fmt.Sprintf("create test job with %d pods", count))
-		spec = &jobSpec{
-			name:      "binpack-test-1",
-			namespace: ctx.namespace,
-			tasks: []taskSpec{
+		spec = &e2eutil.JobSpec{
+			Name:      "binpack-test-1",
+			Namespace: ctx.Namespace,
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img: defaultNginxImage,
-					req: slot,
-					min: count,
-					rep: count,
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot,
+					Min: count,
+					Rep: count,
 				},
 			},
 		}
-		job := createJob(ctx, spec)
-		err = waitJobReady(ctx, job)
+		job := e2eutil.CreateJob(ctx, spec)
+		err = e2eutil.WaitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pods := getTasksOfJob(ctx, baseJob)
+		pods := e2eutil.GetTasksOfJob(ctx, baseJob)
 		for _, pod := range pods {
 			nodeName := pod.Spec.NodeName
 			Expect(nodeName).Should(Equal(baseNodeName),
@@ -345,21 +348,21 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("Schedule v1.Job type using Volcano scheduler", func() {
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
 		parallel := int32(2)
 
 		job := &batchv1.Job{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "job1",
-				Namespace: ctx.namespace,
+				Namespace: ctx.Namespace,
 			},
 			Spec: batchv1.JobSpec{
 				Parallelism: &parallel,
 				Template: v1.PodTemplateSpec{
 					Spec: v1.PodSpec{
 						RestartPolicy: v1.RestartPolicyNever,
-						SchedulerName: schedulerName,
+						SchedulerName: e2eutil.SchedulerName,
 						Containers: []v1.Container{
 							{
 								Name:  "test-container",
@@ -372,28 +375,28 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		//create job
-		job, err := ctx.kubeclient.BatchV1().Jobs(ctx.namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+		job, err := ctx.Kubeclient.BatchV1().Jobs(ctx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobPhaseReady(ctx, job)
+		err = e2eutil.WaitJobPhaseReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("Schedule v1.Job type using Volcano scheduler with error case", func() {
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
 		parallel := int32(2)
 
 		errorJob := &batchv1.Job{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "job1",
-				Namespace: ctx.namespace,
+				Namespace: ctx.Namespace,
 			},
 			Spec: batchv1.JobSpec{
 				Parallelism: &parallel,
 				Template: v1.PodTemplateSpec{
 					Spec: v1.PodSpec{
-						SchedulerName: schedulerName,
+						SchedulerName: e2eutil.SchedulerName,
 						Containers: []v1.Container{
 							{
 								Name:  "test-container",
@@ -408,14 +411,14 @@ var _ = Describe("Job E2E Test", func() {
 		job := &batchv1.Job{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "job1",
-				Namespace: ctx.namespace,
+				Namespace: ctx.Namespace,
 			},
 			Spec: batchv1.JobSpec{
 				Parallelism: &parallel,
 				Template: v1.PodTemplateSpec{
 					Spec: v1.PodSpec{
 						RestartPolicy: v1.RestartPolicyNever,
-						SchedulerName: schedulerName,
+						SchedulerName: e2eutil.SchedulerName,
 						Containers: []v1.Container{
 							{
 								Name:  "test-container",
@@ -428,23 +431,23 @@ var _ = Describe("Job E2E Test", func() {
 		}
 
 		//create error job
-		_, err := ctx.kubeclient.BatchV1().Jobs(ctx.namespace).Create(context.TODO(), errorJob, metav1.CreateOptions{})
+		_, err := ctx.Kubeclient.BatchV1().Jobs(ctx.Namespace).Create(context.TODO(), errorJob, metav1.CreateOptions{})
 		Expect(err).To(HaveOccurred())
 
 		//create job
-		job, err = ctx.kubeclient.BatchV1().Jobs(ctx.namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+		job, err = ctx.Kubeclient.BatchV1().Jobs(ctx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobPhaseReady(ctx, job)
+		err = e2eutil.WaitJobPhaseReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("Namespace Fair Share", func() {
 		Skip("Failed when add yaml and test case may fail in some condition")
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
 		const fairShareNamespace = "fairshare"
-		_, err := ctx.kubeclient.CoreV1().Namespaces().Create(context.TODO(),
+		_, err := ctx.Kubeclient.CoreV1().Namespaces().Create(context.TODO(),
 			&v1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: fairShareNamespace,
@@ -454,51 +457,51 @@ var _ = Describe("Job E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 		defer func() {
 			deleteForeground := metav1.DeletePropagationForeground
-			err := ctx.kubeclient.CoreV1().Namespaces().Delete(context.TODO(),
+			err := ctx.Kubeclient.CoreV1().Namespaces().Delete(context.TODO(),
 				fairShareNamespace,
 				metav1.DeleteOptions{
 					PropagationPolicy: &deleteForeground,
 				})
 			Expect(err).NotTo(HaveOccurred())
 
-			err = wait.Poll(100*time.Millisecond, twoMinute, namespaceNotExistWithName(ctx, fairShareNamespace))
+			err = wait.Poll(100*time.Millisecond, e2eutil.TwoMinute, e2eutil.NamespaceNotExistWithName(ctx, fairShareNamespace))
 			Expect(err).NotTo(HaveOccurred())
 		}()
 
-		slot := halfCPU
-		rep := clusterSize(ctx, slot)
+		slot := e2eutil.HalfCPU
+		rep := e2eutil.ClusterSize(ctx, slot)
 
 		createJobToNamespace := func(namespace string, index int, replica int32) *vcbatch.Job {
-			spec := &jobSpec{
-				name:      fmt.Sprintf("namespace-fair-share-%s-%d", namespace, index),
-				namespace: namespace,
-				tasks: []taskSpec{
+			spec := &e2eutil.JobSpec{
+				Name:      fmt.Sprintf("namespace-fair-share-%s-%d", namespace, index),
+				Namespace: namespace,
+				Tasks: []e2eutil.TaskSpec{
 					{
-						img:     defaultNginxImage,
-						command: "sleep 10000",
-						req:     slot,
-						min:     2,
-						rep:     replica,
+						Img:     e2eutil.DefaultNginxImage,
+						Command: "sleep 10000",
+						Req:     slot,
+						Min:     2,
+						Rep:     replica,
 					},
 				},
 			}
-			job := createJob(ctx, spec)
+			job := e2eutil.CreateJob(ctx, spec)
 			return job
 		}
 
 		By("occupy all cluster resources")
 		occupiedJob := createJobToNamespace("default", 123, rep*2)
-		err = waitJobReady(ctx, occupiedJob)
+		err = e2eutil.WaitJobReady(ctx, occupiedJob)
 		Expect(err).NotTo(HaveOccurred())
 
 		for i := 0; i < int(rep); i++ {
-			createJobToNamespace(ctx.namespace, i, 2)
+			createJobToNamespace(ctx.Namespace, i, 2)
 			createJobToNamespace(fairShareNamespace, i, 2)
 		}
 
 		By("release occupied cluster resources")
 		deleteBackground := metav1.DeletePropagationBackground
-		err = ctx.vcclient.BatchV1alpha1().Jobs(occupiedJob.Namespace).Delete(context.TODO(),
+		err = ctx.Vcclient.BatchV1alpha1().Jobs(occupiedJob.Namespace).Delete(context.TODO(),
 			occupiedJob.Name,
 			metav1.DeleteOptions{
 				PropagationPolicy: &deleteBackground,
@@ -506,7 +509,7 @@ var _ = Describe("Job E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("wait occupied cluster resources releasing")
-		err = waitJobCleanedUp(ctx, occupiedJob)
+		err = e2eutil.WaitJobCleanedUp(ctx, occupiedJob)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("wait pod in fs/test namespace scheduled")
@@ -516,26 +519,26 @@ var _ = Describe("Job E2E Test", func() {
 		if expectPod%1 == 1 {
 			expectPod--
 		}
-		err = wait.Poll(100*time.Millisecond, twoMinute, func() (bool, error) {
+		err = wait.Poll(100*time.Millisecond, e2eutil.TwoMinute, func() (bool, error) {
 			fsScheduledPod = 0
 			testScheduledPod = 0
 
-			pods, err := ctx.kubeclient.CoreV1().Pods(fairShareNamespace).List(context.TODO(), metav1.ListOptions{})
+			pods, err := ctx.Kubeclient.CoreV1().Pods(fairShareNamespace).List(context.TODO(), metav1.ListOptions{})
 			if err != nil {
 				return false, err
 			}
 			for _, pod := range pods.Items {
-				if isPodScheduled(&pod) {
+				if e2eutil.IsPodScheduled(&pod) {
 					fsScheduledPod++
 				}
 			}
 
-			pods, err = ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(context.TODO(), metav1.ListOptions{})
+			pods, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
 			if err != nil {
 				return false, err
 			}
 			for _, pod := range pods.Items {
-				if isPodScheduled(&pod) {
+				if e2eutil.IsPodScheduled(&pod) {
 					testScheduledPod++
 				}
 			}
@@ -556,36 +559,36 @@ var _ = Describe("Job E2E Test", func() {
 	It("Queue Fair Share", func() {
 		Skip("Failed when add yaml, test case may fail in some condition")
 		q1, q2 := "q1", "q2"
-		ctx := initTestContext(options{
-			queues: []string{q1, q2},
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues: []string{q1, q2},
 		})
-		defer cleanupTestContext(ctx)
+		defer e2eutil.CleanupTestContext(ctx)
 
-		slot := halfCPU
-		rep := clusterSize(ctx, slot)
+		slot := e2eutil.HalfCPU
+		rep := e2eutil.ClusterSize(ctx, slot)
 
 		createJobToQueue := func(queue string, index int, replica int32) *vcbatch.Job {
-			spec := &jobSpec{
-				name:      fmt.Sprintf("queue-fair-share-%s-%d", queue, index),
-				namespace: ctx.namespace,
-				queue:     queue,
-				tasks: []taskSpec{
+			spec := &e2eutil.JobSpec{
+				Name:      fmt.Sprintf("queue-fair-share-%s-%d", queue, index),
+				Namespace: ctx.Namespace,
+				Queue:     queue,
+				Tasks: []e2eutil.TaskSpec{
 					{
-						img:     defaultNginxImage,
-						command: "sleep 10000",
-						req:     slot,
-						min:     2,
-						rep:     replica,
+						Img:     e2eutil.DefaultNginxImage,
+						Command: "sleep 10000",
+						Req:     slot,
+						Min:     2,
+						Rep:     replica,
 					},
 				},
 			}
-			job := createJob(ctx, spec)
+			job := e2eutil.CreateJob(ctx, spec)
 			return job
 		}
 
 		By("occupy all cluster resources")
 		occupiedJob := createJobToQueue("default", 123, rep*2)
-		err := waitJobReady(ctx, occupiedJob)
+		err := e2eutil.WaitJobReady(ctx, occupiedJob)
 		Expect(err).NotTo(HaveOccurred())
 
 		for i := 0; i < int(rep); i++ {
@@ -595,7 +598,7 @@ var _ = Describe("Job E2E Test", func() {
 
 		By(fmt.Sprintf("release occupied cluster resources, %s/%s", occupiedJob.Namespace, occupiedJob.Name))
 		deleteForeground := metav1.DeletePropagationBackground
-		err = ctx.vcclient.BatchV1alpha1().Jobs(occupiedJob.Namespace).Delete(context.TODO(),
+		err = ctx.Vcclient.BatchV1alpha1().Jobs(occupiedJob.Namespace).Delete(context.TODO(),
 			occupiedJob.Name,
 			metav1.DeleteOptions{
 				PropagationPolicy: &deleteForeground,
@@ -603,7 +606,7 @@ var _ = Describe("Job E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("wait occupied cluster resources releasing")
-		err = waitJobCleanedUp(ctx, occupiedJob)
+		err = e2eutil.WaitJobCleanedUp(ctx, occupiedJob)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("wait pod in queue q1/q2 scheduled")
@@ -613,16 +616,16 @@ var _ = Describe("Job E2E Test", func() {
 		if expectPod%1 == 1 {
 			expectPod--
 		}
-		err = wait.Poll(100*time.Millisecond, twoMinute, func() (bool, error) {
+		err = wait.Poll(100*time.Millisecond, e2eutil.TwoMinute, func() (bool, error) {
 			q1ScheduledPod = 0
 			q2ScheduledPod = 0
 
-			pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(context.TODO(), metav1.ListOptions{})
+			pods, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
 			if err != nil {
 				return false, err
 			}
 			for _, pod := range pods.Items {
-				if !isPodScheduled(&pod) {
+				if !e2eutil.IsPodScheduled(&pod) {
 					continue
 				}
 				jobName := pod.Annotations[vcbatch.JobNameKey]

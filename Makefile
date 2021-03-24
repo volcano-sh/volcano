@@ -19,6 +19,7 @@ IMAGE_PREFIX=volcanosh/vc
 CRD_OPTIONS ?= "crd:crdVersions=v1"
 CC ?= "gcc"
 SUPPORT_PLUGINS ?= "no"
+CRD_VERSION ?= v1beta1
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -135,8 +136,11 @@ e2e-test-jobp:
 e2e-test-jobseq:
 	E2E_TYPE=JOBSEQ ./hack/run-e2e-kind.sh
 
+e2e-test-vcctl:
+	E2E_TYPE=VCCTL ./hack/run-e2e-kind.sh
+
 generate-yaml: init manifests
-	./hack/generate-yaml.sh TAG=${RELEASE_VER}
+	./hack/generate-yaml.sh TAG=${RELEASE_VER} CRD_VERSION=${CRD_VERSION}
 
 release-env:
 	./hack/build-env.sh release
