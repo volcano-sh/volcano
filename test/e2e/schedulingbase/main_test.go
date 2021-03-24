@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Volcano Authors.
+Copyright 2021 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,13 +24,15 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned"
+
+	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
 func TestMain(m *testing.M) {
-	home := homeDir()
-	configPath := kubeconfigPath(home)
-	config, _ := clientcmd.BuildConfigFromFlags(masterURL(), configPath)
-	vcClient = vcclient.NewForConfigOrDie(config)
-	kubeClient = kubernetes.NewForConfigOrDie(config)
+	home := e2eutil.HomeDir()
+	configPath := e2eutil.KubeconfigPath(home)
+	config, _ := clientcmd.BuildConfigFromFlags(e2eutil.MasterURL(), configPath)
+	e2eutil.VcClient = vcclient.NewForConfigOrDie(config)
+	e2eutil.KubeClient = kubernetes.NewForConfigOrDie(config)
 	os.Exit(m.Run())
 }

@@ -30,6 +30,7 @@ const (
 	defaultSchedulerPeriod = time.Second
 	defaultQueue           = "default"
 	defaultListenAddress   = ":8080"
+	defaultPluginsDir      = ""
 
 	defaultQPS   = 50.0
 	defaultBurst = 100
@@ -52,6 +53,8 @@ type ServerOption struct {
 	PrintVersion         bool
 	ListenAddress        string
 	EnablePriorityClass  bool
+	// vc-scheduler will load (not activate) custom plugins which are in this directory
+	PluginsDir string
 	// HealthzBindAddress is the IP address and port for the health check server to serve on
 	// defaulting to :11251
 	HealthzBindAddress string
@@ -101,6 +104,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 
 	// The percentage of nodes that would be scored in each scheduling cycle; if <= 0, an adpative percentage will be calcuated
 	fs.Int32Var(&s.PercentageOfNodesToFind, "percentage-nodes-to-find", defaultPercentageOfNodesToFind, "The percentage of nodes to find and score, if <=0 will be calcuated based on the cluster size")
+
+	fs.StringVar(&s.PluginsDir, "plugins-dir", defaultPluginsDir, "vc-scheduler will load custom plugins which are in this directory")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled.

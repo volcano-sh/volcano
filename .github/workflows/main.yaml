@@ -1,0 +1,213 @@
+name: Main CI WorkFlow
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    name: Verify codes, generated files
+    timeout-minutes: 40
+    env:
+      GOPATH: /home/runner/work/${{ github.repository }}
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.14.x
+
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          path: ./src/github.com/${{ github.repository }}
+
+      - uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+
+      - name: Run verify test
+        run: |
+          make verify
+          make TAG=latest generate-yaml
+          make verify-generated-yaml
+          make unit-test
+        working-directory: ./src/github.com/${{ github.repository }}
+
+  e2e_parallel_jobs:
+    runs-on: ubuntu-latest
+    name: E2E about Parallel Jobs
+    timeout-minutes: 40
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.14.x
+
+      - name: Install musl
+        run: |
+          wget http://musl.libc.org/releases/musl-1.2.1.tar.gz
+          tar -xf musl-1.2.1.tar.gz && cd musl-1.2.1
+          ./configure
+          make && sudo make install
+      - uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+
+      - name: Install dependences
+        run: |
+          GO111MODULE="on" go get sigs.k8s.io/kind@v0.6.1
+          curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.16.6/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Run E2E Tests
+        run: |
+          make images CC=/usr/local/musl/bin/musl-gcc
+          make e2e-test-jobp
+
+  e2e_sequence:
+    runs-on: ubuntu-latest
+    name: E2E about Sequence
+    timeout-minutes: 40
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.14.x
+
+      - name: Install musl
+        run: |
+          wget http://musl.libc.org/releases/musl-1.2.1.tar.gz
+          tar -xf musl-1.2.1.tar.gz && cd musl-1.2.1
+          ./configure
+          make && sudo make install
+      - uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+
+      - name: Install dependences
+        run: |
+          GO111MODULE="on" go get sigs.k8s.io/kind@v0.6.1
+          curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.16.6/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
+
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Run E2E Tests
+        run: |
+          make images CC=/usr/local/musl/bin/musl-gcc
+          make e2e-test-jobseq
+
+  e2e_scheduling_basic:
+    runs-on: ubuntu-latest
+    name: E2E about Basic Scheduling
+    timeout-minutes: 40
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.14.x
+
+      - name: Install musl
+        run: |
+          wget http://musl.libc.org/releases/musl-1.2.1.tar.gz
+          tar -xf musl-1.2.1.tar.gz && cd musl-1.2.1
+          ./configure
+          make && sudo make install
+
+      - uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+
+      - name: Install dependences
+        run: |
+          GO111MODULE="on" go get sigs.k8s.io/kind@v0.6.1
+          curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.16.6/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
+
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Run E2E Tests
+        run: |
+          make images CC=/usr/local/musl/bin/musl-gcc
+          make e2e-test-schedulingbase
+
+  e2e_scheduling_actions:
+    runs-on: ubuntu-latest
+    name: E2E about Scheduling Actions
+    timeout-minutes: 40
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.14.x
+
+      - name: Install musl
+        run: |
+          wget http://musl.libc.org/releases/musl-1.2.1.tar.gz
+          tar -xf musl-1.2.1.tar.gz && cd musl-1.2.1
+          ./configure
+          make && sudo make install
+
+      - uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+
+      - name: Install dependences
+        run: |
+          GO111MODULE="on" go get sigs.k8s.io/kind@v0.6.1
+          curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.16.6/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
+
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Run E2E Tests
+        run: |
+          make images CC=/usr/local/musl/bin/musl-gcc
+          make e2e-test-schedulingaction
+
+  e2e_vcctl:
+    runs-on: ubuntu-latest
+    name: E2E about Volcano CLI
+    timeout-minutes: 20
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.14.x
+
+      - name: Install musl
+        run: |
+          wget http://musl.libc.org/releases/musl-1.2.1.tar.gz
+          tar -xf musl-1.2.1.tar.gz && cd musl-1.2.1
+          ./configure
+          make && sudo make install
+
+      - uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+
+      - name: Install dependences
+        run: |
+          GO111MODULE="on" go get sigs.k8s.io/kind@v0.6.1
+          curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.16.6/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
+
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Run E2E Tests
+        run: |
+          make vcctl
+          make images CC=/usr/local/musl/bin/musl-gcc
+          make e2e-test-vcctl

@@ -150,6 +150,60 @@ func TestAllocate(t *testing.T) {
 				"c1/p1": "n1",
 			},
 		},
+		{
+			name: "high priority queue should not block others",
+			podGroups: []*schedulingv1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c1",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c2",
+					},
+				},
+			},
+
+			pods: []*v1.Pod{
+				// pending pod with owner1, under ns:c1/q:c1
+				util.BuildPod("c1", "p1", "", v1.PodPending, util.BuildResourceList("3", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				// pending pod with owner2, under ns:c1/q:c2
+				util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			nodes: []*v1.Node{
+				util.BuildNode("n1", util.BuildResourceList("2", "4G"), make(map[string]string)),
+			},
+			queues: []*schedulingv1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c1",
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight: 1,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c2",
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight: 1,
+					},
+				},
+			},
+			expected: map[string]string{
+				"c1/p2": "n1",
+			},
+		},
 	}
 
 	allocate := New()
