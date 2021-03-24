@@ -28,6 +28,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
 // PluginName indicates name of volcano scheduler plugin.
@@ -128,15 +129,20 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		return ji.Ready()
 	})
 
-	pipelinedFn := func(obj interface{}) bool {
+	pipelinedFn := func(obj interface{}) int {
 		ji := obj.(*api.JobInfo)
-		return ji.Pipelined()
+		occupied := ji.WaitingTaskNum() + ji.ReadyTaskNum()
+		if occupied >= ji.MinAvailable {
+			return util.Permit
+		}
+		return util.Reject
 	}
 	ssn.AddJobPipelinedFn(gp.Name(), pipelinedFn)
 
 	jobStarvingFn := func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
-		return !ji.Pipelined()
+		occupied := ji.WaitingTaskNum() + ji.ReadyTaskNum()
+		return occupied < ji.MinAvailable
 	}
 	ssn.AddJobStarvingFns(gp.Name(), jobStarvingFn)
 }

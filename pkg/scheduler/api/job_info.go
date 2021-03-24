@@ -17,10 +17,12 @@ limitations under the License.
 package api
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -54,6 +56,10 @@ func (db *DisruptionBudget) Clone() *DisruptionBudget {
 		MaxUnavilable: db.MaxUnavilable,
 	}
 }
+
+// JobWaitingTime is maximum waiting time that a job could stay Pending in service level agreement
+// when job waits longer than waiting time, it should be inqueue at once, and cluster should reserve resources for it
+const JobWaitingTime = "sla-waiting-time"
 
 // TaskID is UID type for Task
 type TaskID types.UID
@@ -98,7 +104,7 @@ func getJobID(pod *v1.Pod) JobID {
 
 // NewTaskInfo creates new taskInfo object for a Pod
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
-	req := GetPodResourceWithoutInitContainers(pod)
+	req := GetPodResourceRequest(pod)
 	initResreq := GetPodResourceRequest(pod)
 	preemptable := GetPodPreemptable(pod)
 	revocableZone := GetPodRevocableZone(pod)
@@ -173,6 +179,8 @@ type JobInfo struct {
 
 	MinAvailable int32
 
+	WaitingTime *time.Duration
+
 	JobFitErrors   string
 	NodesFitErrors map[TaskID]*FitErrors
 
@@ -229,16 +237,44 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.MinAvailable = pg.Spec.MinMember
 	ji.Queue = QueueID(pg.Spec.Queue)
 	ji.CreationTimestamp = pg.GetCreationTimestamp()
-	ji.Preemptable = GetJobPreemptable(pg)
-	ji.RevocableZone = GetJobRevocableZone(pg)
-	ji.Budget = GetBudget(pg)
+
+	var err error
+	ji.WaitingTime, err = ji.extractWaitingTime(pg)
+	if err != nil {
+		klog.Warningf("Error occurs in parsing waiting time for job <%s/%s>, err: %s.",
+			pg.Namespace, pg.Name, err.Error())
+		ji.WaitingTime = nil
+	}
+
+	ji.Preemptable = ji.extractPreemptable(pg)
+	ji.RevocableZone = ji.extractRevocableZone(pg)
+	ji.Budget = ji.extractBudget(pg)
 
 	ji.PodGroup = pg
 
 }
 
-// GetJobPreemptable return volcano.sh/preemptable value for job
-func GetJobPreemptable(pg *PodGroup) bool {
+// extractWaitingTime reads sla waiting time for job from podgroup annotations
+// TODO: should also read from given field in volcano job spec
+func (ji *JobInfo) extractWaitingTime(pg *PodGroup) (*time.Duration, error) {
+	if _, exist := pg.Annotations[JobWaitingTime]; !exist {
+		return nil, nil
+	}
+
+	jobWaitingTime, err := time.ParseDuration(pg.Annotations[JobWaitingTime])
+	if err != nil {
+		return nil, err
+	}
+
+	if jobWaitingTime <= 0 {
+		return nil, errors.New("invalid sla waiting time")
+	}
+
+	return &jobWaitingTime, nil
+}
+
+// extractPreemptable return volcano.sh/preemptable value for job
+func (ji *JobInfo) extractPreemptable(pg *PodGroup) bool {
 	// check annotaion first
 	if len(pg.Annotations) > 0 {
 		if value, found := pg.Annotations[v1beta1.PodPreemptable]; found {
@@ -266,8 +302,8 @@ func GetJobPreemptable(pg *PodGroup) bool {
 	return false
 }
 
-// GetJobRevocableZone return volcano.sh/revocable-zone value for pod/podgroup
-func GetJobRevocableZone(pg *PodGroup) string {
+// extractRevocableZone return volcano.sh/revocable-zone value for pod/podgroup
+func (ji *JobInfo) extractRevocableZone(pg *PodGroup) string {
 	// check annotaion first
 	if len(pg.Annotations) > 0 {
 		if value, found := pg.Annotations[v1beta1.RevocableZone]; found {
@@ -287,8 +323,8 @@ func GetJobRevocableZone(pg *PodGroup) string {
 	return ""
 }
 
-// GetBudget return budget value for job
-func GetBudget(pg *PodGroup) *DisruptionBudget {
+// extractBudget return budget value for job
+func (ji *JobInfo) extractBudget(pg *PodGroup) *DisruptionBudget {
 	if len(pg.Annotations) > 0 {
 		if value, found := pg.Annotations[v1beta1.JDBMinAvailable]; found {
 			return NewDisruptionBudget(value, "")
@@ -298,6 +334,15 @@ func GetBudget(pg *PodGroup) *DisruptionBudget {
 	}
 
 	return NewDisruptionBudget("", "")
+}
+
+// GetMinResources return the min resources of podgroup.
+func (ji *JobInfo) GetMinResources() *Resource {
+	if ji.PodGroup.Spec.MinResources == nil {
+		return EmptyResource()
+	}
+
+	return NewResource(*ji.PodGroup.Spec.MinResources)
 }
 
 func (ji *JobInfo) addTaskIndex(ti *TaskInfo) {
@@ -374,6 +419,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		Priority:  ji.Priority,
 
 		MinAvailable:   ji.MinAvailable,
+		WaitingTime:    ji.WaitingTime,
 		NodesFitErrors: make(map[TaskID]*FitErrors),
 		Allocated:      EmptyResource(),
 		TotalRequest:   EmptyResource(),
@@ -483,13 +529,6 @@ func (ji *JobInfo) ValidTaskNum() int32 {
 // Ready returns whether job is ready for run
 func (ji *JobInfo) Ready() bool {
 	occupied := ji.ReadyTaskNum()
-
-	return occupied >= ji.MinAvailable
-}
-
-// Pipelined returns whether the number of ready and pipelined task is enough
-func (ji *JobInfo) Pipelined() bool {
-	occupied := ji.WaitingTaskNum() + ji.ReadyTaskNum()
 
 	return occupied >= ji.MinAvailable
 }
