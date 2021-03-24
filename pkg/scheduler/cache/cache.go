@@ -656,7 +656,7 @@ func (sc *SchedulerCache) processResyncTask() {
 
 	task, ok := obj.(*schedulingapi.TaskInfo)
 	if !ok {
-		klog.Errorf("failed to convert %v to *v1.Pod", obj)
+		klog.Errorf("failed to convert %v to *schedulingapi.TaskInfo", obj)
 		return
 	}
 
@@ -672,10 +672,11 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	defer sc.Mutex.Unlock()
 
 	snapshot := &schedulingapi.ClusterInfo{
-		Nodes:         make(map[string]*schedulingapi.NodeInfo),
-		Jobs:          make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
-		Queues:        make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
-		NamespaceInfo: make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
+		Nodes:          make(map[string]*schedulingapi.NodeInfo),
+		Jobs:           make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Queues:         make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+		NamespaceInfo:  make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
+		RevocableNodes: make(map[string]*schedulingapi.NodeInfo),
 	}
 
 	for _, value := range sc.Nodes {
@@ -684,6 +685,10 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		}
 
 		snapshot.Nodes[value.Name] = value.Clone()
+
+		if value.RevocableZone != "" {
+			snapshot.RevocableNodes[value.Name] = snapshot.Nodes[value.Name]
+		}
 	}
 
 	for _, value := range sc.Queues {

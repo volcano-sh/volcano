@@ -58,7 +58,7 @@ func (ssn *Session) AddJobReadyFn(name string, vf api.ValidateFn) {
 }
 
 // AddJobPipelinedFn add pipelined function
-func (ssn *Session) AddJobPipelinedFn(name string, vf api.ValidateFn) {
+func (ssn *Session) AddJobPipelinedFn(name string, vf api.VoteFn) {
 	ssn.jobPipelinedFns[name] = vf
 }
 
@@ -103,7 +103,7 @@ func (ssn *Session) AddJobValidFn(name string, fn api.ValidateExFn) {
 }
 
 // AddJobEnqueueableFn add jobenqueueable function
-func (ssn *Session) AddJobEnqueueableFn(name string, fn api.ValidateFn) {
+func (ssn *Session) AddJobEnqueueableFn(name string, fn api.VoteFn) {
 	ssn.jobEnqueueableFns[name] = fn
 }
 
@@ -115,6 +115,16 @@ func (ssn *Session) AddTargetJobFn(name string, fn api.TargetJobFn) {
 // AddReservedNodesFn add reservedNodesFn function
 func (ssn *Session) AddReservedNodesFn(name string, fn api.ReservedNodesFn) {
 	ssn.reservedNodesFns[name] = fn
+}
+
+// AddVictimTasksFns add victimTasksFns function
+func (ssn *Session) AddVictimTasksFns(name string, fn api.VictimTasksFn) {
+	ssn.victimTasksFns[name] = fn
+}
+
+// AddJobStarvingFns add jobStarvingFns function
+func (ssn *Session) AddJobStarvingFns(name string, fn api.ValidateFn) {
+	ssn.jobStarvingFns[name] = fn
 }
 
 // Reclaimable invoke reclaimable function of the plugins
@@ -241,7 +251,9 @@ func (ssn *Session) JobReady(obj interface{}) bool {
 }
 
 // JobPipelined invoke pipelined function of the plugins
+// Check if job has get enough resource to run
 func (ssn *Session) JobPipelined(obj interface{}) bool {
+	var hasFound bool
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledJobPipelined) {
@@ -252,13 +264,50 @@ func (ssn *Session) JobPipelined(obj interface{}) bool {
 				continue
 			}
 
-			if !jrf(obj) {
+			res := jrf(obj)
+			if res < 0 {
 				return false
 			}
+			if res > 0 {
+				hasFound = true
+			}
+		}
+		// if plugin exists that votes permit, meanwhile other plugin votes abstention,
+		// permit job to be pipelined, do not check next tier
+		if hasFound {
+			return true
 		}
 	}
 
 	return true
+}
+
+// JobStarving invoke jobStarving function of the plugins
+// Check if job still need more resource
+func (ssn *Session) JobStarving(obj interface{}) bool {
+	var hasFound bool
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledJobStarving) {
+				continue
+			}
+			jrf, found := ssn.jobStarvingFns[plugin.Name]
+			if !found {
+				continue
+			}
+			hasFound = true
+
+			if !jrf(obj) {
+				return false
+			}
+		}
+		// this tier registered function
+		if hasFound {
+			return true
+		}
+	}
+
+	return false
 }
 
 // JobValid invoke jobvalid function of the plugins
@@ -282,16 +331,29 @@ func (ssn *Session) JobValid(obj interface{}) *api.ValidateResult {
 
 // JobEnqueueable invoke jobEnqueueableFns function of the plugins
 func (ssn *Session) JobEnqueueable(obj interface{}) bool {
+	var hasFound bool
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledJobEnqueued) {
+				continue
+			}
 			fn, found := ssn.jobEnqueueableFns[plugin.Name]
 			if !found {
 				continue
 			}
 
-			if res := fn(obj); !res {
-				return res
+			res := fn(obj)
+			if res < 0 {
+				return false
 			}
+			if res > 0 {
+				hasFound = true
+			}
+		}
+		// if plugin exists that votes permit, meanwhile other plugin votes abstention,
+		// permit job to be enqueueable, do not check next tier
+		if hasFound {
+			return true
 		}
 	}
 
@@ -313,6 +375,49 @@ func (ssn *Session) TargetJob(jobs []*api.JobInfo) *api.JobInfo {
 		}
 	}
 	return nil
+}
+
+// VictimTasks invoke ReservedNodes function of the plugins
+func (ssn *Session) VictimTasks() []*api.TaskInfo {
+	var victims []*api.TaskInfo
+	var init bool
+
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledVictim) {
+				continue
+			}
+
+			pf, found := ssn.victimTasksFns[plugin.Name]
+			if !found {
+				continue
+			}
+			candidates := pf()
+			if !init {
+				victims = candidates
+				init = true
+			} else {
+				var intersection []*api.TaskInfo
+				// Get intersection of victims and candidates.
+				for _, v := range victims {
+					for _, c := range candidates {
+						if v.UID == c.UID {
+							intersection = append(intersection, v)
+						}
+					}
+				}
+
+				// Update victims to intersection
+				victims = intersection
+			}
+		}
+		// Plugins in this tier made decision if victims is not nil
+		if victims != nil {
+			return victims
+		}
+	}
+
+	return victims
 }
 
 // ReservedNodes invoke ReservedNodes function of the plugins
