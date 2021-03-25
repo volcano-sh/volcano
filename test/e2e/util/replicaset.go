@@ -94,7 +94,7 @@ func replicaSetReady(ctx *TestContext, name string) wait.ConditionFunc {
 }
 
 func WaitReplicaSetReady(ctx *TestContext, name string) error {
-	return wait.Poll(100*time.Millisecond, TwoMinute, replicaSetReady(ctx, name))
+	return wait.Poll(100*time.Millisecond, FiveMinute, replicaSetReady(ctx, name))
 }
 
 func DeleteReplicaSet(ctx *TestContext, name string) error {

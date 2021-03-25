@@ -31,7 +31,7 @@ import (
 
 func WaitPodGroupPhase(ctx *TestContext, podGroup *schedulingv1beta1.PodGroup, state schedulingv1beta1.PodGroupPhase) error {
 	var additionalError error
-	err := wait.Poll(100*time.Millisecond, TwoMinute, func() (bool, error) {
+	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
 		podGroup, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(podGroup.Namespace).Get(context.TODO(), podGroup.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		expected := podGroup.Status.Phase == state
