@@ -56,7 +56,7 @@ func deleteQueues(cxt *TestContext) {
 		queue.Status.State = schedulingv1beta1.QueueStateClosed
 		_, err = cxt.Vcclient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), queue, metav1.UpdateOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		err = wait.Poll(100*time.Millisecond, OneMinute, queueClosed(cxt, q))
+		err = wait.Poll(100*time.Millisecond, FiveMinute, queueClosed(cxt, q))
 		Expect(err).NotTo(HaveOccurred())
 
 		err = cxt.Vcclient.SchedulingV1beta1().Queues().Delete(context.TODO(), q,
@@ -79,7 +79,7 @@ func SetQueueReclaimable(cxt *TestContext, queues []string, reclaimable bool) {
 }
 
 func WaitQueueStatus(condition func() (bool, error)) error {
-	return wait.Poll(100*time.Millisecond, TwoMinute, condition)
+	return wait.Poll(100*time.Millisecond, FiveMinute, condition)
 }
 
 func queueClosed(ctx *TestContext, name string) wait.ConditionFunc {

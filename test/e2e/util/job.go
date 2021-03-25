@@ -261,7 +261,7 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 
 func WaitTaskPhase(ctx *TestContext, job *batchv1alpha1.Job, phase []v1.PodPhase, taskNum int) error {
 	var additionalError error
-	err := wait.Poll(100*time.Millisecond, TwoMinute, func() (bool, error) {
+	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
 		pods, err := ctx.Kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -294,7 +294,7 @@ func WaitTaskPhase(ctx *TestContext, job *batchv1alpha1.Job, phase []v1.PodPhase
 }
 
 func taskPhaseEx(ctx *TestContext, job *batchv1alpha1.Job, phase []v1.PodPhase, taskNum map[string]int) error {
-	err := wait.Poll(100*time.Millisecond, TwoMinute, func() (bool, error) {
+	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
 
 		pods, err := ctx.Kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
@@ -331,7 +331,7 @@ func taskPhaseEx(ctx *TestContext, job *batchv1alpha1.Job, phase []v1.PodPhase, 
 func jobUnschedulable(ctx *TestContext, job *batchv1alpha1.Job, now time.Time) error {
 	var additionalError error
 	// TODO(k82cn): check Job's Condition instead of PodGroup's event.
-	err := wait.Poll(10*time.Second, TwoMinute, func() (bool, error) {
+	err := wait.Poll(10*time.Second, FiveMinute, func() (bool, error) {
 		pg, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(job.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
 		if err != nil {
 			additionalError = fmt.Errorf("expected to have job's podgroup %s created, actual got error %s",
@@ -400,7 +400,7 @@ func WaitJobPhases(ctx *TestContext, job *batchv1alpha1.Job, phases []batchv1alp
 
 	ch := w.ResultChan()
 	index := 0
-	timeout := time.After(TwoMinute)
+	timeout := time.After(FiveMinute)
 
 	for index < len(phases) {
 		select {
@@ -448,7 +448,7 @@ func WaitJobPhases(ctx *TestContext, job *batchv1alpha1.Job, phases []batchv1alp
 			}
 
 			index++
-			timeout = time.After(TwoMinute)
+			timeout = time.After(FiveMinute)
 
 		case <-timeout:
 			return fmt.Errorf("[Wait time out]: %s", additionalError)
@@ -496,20 +496,20 @@ func WaitTasksPending(ctx *TestContext, job *batchv1alpha1.Job, taskNum int) err
 }
 
 func WaitJobStateReady(ctx *TestContext, job *batchv1alpha1.Job) error {
-	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Running, TwoMinute)
+	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Running, FiveMinute)
 }
 
 func WaitJobStatePending(ctx *TestContext, job *batchv1alpha1.Job) error {
-	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Pending, TwoMinute)
+	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Pending, FiveMinute)
 }
 
 func WaitJobStateAborted(ctx *TestContext, job *batchv1alpha1.Job) error {
-	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Aborted, TwoMinute)
+	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Aborted, FiveMinute)
 }
 
 func WaitPodPhaseRunningMoreThanNum(ctx *TestContext, namespace string, num int) error {
 	var additionalError error
-	err := wait.Poll(100*time.Millisecond, TwoMinute, func() (bool, error) {
+	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
 		clusterPods, err := ctx.Kubeclient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred(), "Failed to get cluster pod")
 		runningPodNum := 0
@@ -533,7 +533,7 @@ func WaitPodPhaseRunningMoreThanNum(ctx *TestContext, namespace string, num int)
 
 func waitJobPhaseExpect(ctx *TestContext, job *batchv1alpha1.Job, state batchv1alpha1.JobPhase, waitTime time.Duration) error {
 	var additionalError error
-	err := wait.Poll(100*time.Millisecond, TwoMinute, func() (bool, error) {
+	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
 		job, err := ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		expected := job.Status.State.Phase == state
@@ -552,7 +552,7 @@ func waitJobPhaseExpect(ctx *TestContext, job *batchv1alpha1.Job, state batchv1a
 func WaitJobPhaseReady(ctx *TestContext, job *batchv1.Job) error {
 	var additionalError error
 
-	err := wait.Poll(100*time.Millisecond, TwoMinute, func() (bool, error) {
+	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
 		job, err := ctx.Kubeclient.BatchV1().Jobs(job.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		expected := job.Status.Active > 0
@@ -617,7 +617,7 @@ func WaitJobCleanedUp(ctx *TestContext, cleanupjob *batchv1alpha1.Job) error {
 
 	pods := GetTasksOfJob(ctx, cleanupjob)
 
-	err := wait.Poll(100*time.Millisecond, TwoMinute, func() (bool, error) {
+	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
 		job, err := ctx.Vcclient.BatchV1alpha1().Jobs(cleanupjob.Namespace).Get(context.TODO(), cleanupjob.Name, metav1.GetOptions{})
 		if err != nil && !errors.IsNotFound(err) {
 			return false, nil
@@ -671,7 +671,7 @@ func GetTasksOfJob(ctx *TestContext, job *batchv1alpha1.Job) []*v1.Pod {
 
 func WaitPodGone(ctx *TestContext, podName, namespace string) error {
 	var additionalError error
-	err := wait.Poll(100*time.Millisecond, TwoMinute, func() (bool, error) {
+	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
 		_, err := ctx.Kubeclient.CoreV1().Pods(namespace).Get(context.TODO(), podName, metav1.GetOptions{})
 		expected := errors.IsNotFound(err)
 		if !expected {
@@ -687,7 +687,7 @@ func WaitPodGone(ctx *TestContext, podName, namespace string) error {
 }
 
 func WaitJobTerminateAction(ctx *TestContext, pg *batchv1alpha1.Job) error {
-	return wait.Poll(10*time.Second, TwoMinute, jobTerminateAction(ctx, pg, time.Now()))
+	return wait.Poll(10*time.Second, FiveMinute, jobTerminateAction(ctx, pg, time.Now()))
 }
 
 func jobTerminateAction(ctx *TestContext, pg *batchv1alpha1.Job, time time.Time) wait.ConditionFunc {
@@ -710,7 +710,7 @@ func jobTerminateAction(ctx *TestContext, pg *batchv1alpha1.Job, time time.Time)
 
 func WaitPodPhase(ctx *TestContext, pod *v1.Pod, phase []v1.PodPhase) error {
 	var additionalError error
-	err := wait.Poll(100*time.Millisecond, TwoMinute, func() (bool, error) {
+	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
 		pods, err := ctx.Kubeclient.CoreV1().Pods(pod.Namespace).List(context.TODO(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
