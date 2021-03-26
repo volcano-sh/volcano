@@ -111,10 +111,10 @@ func (sp *slaPlugin) OnSessionOpen(ssn *framework.Session) {
 			if rJobWaitingTime == nil {
 				return 0
 			}
-			return -1
+			return 1
 		}
 		if rJobWaitingTime == nil {
-			return 1
+			return -1
 		}
 
 		lCreationTimestamp := lv.CreationTimestamp

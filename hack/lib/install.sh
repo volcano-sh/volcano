@@ -60,7 +60,7 @@ function install-helm {
     HELM_TEMP_DIR=`mktemp -d`
     curl https://raw.githubusercontent.com/helm/helm/master/scripts/get > ${HELM_TEMP_DIR}/get_helm.sh
     #TODO: There are some issue with helm's latest version, remove '--version' when it get fixed.
-    chmod 700 ${HELM_TEMP_DIR}/get_helm.sh && ${HELM_TEMP_DIR}/get_helm.sh   --version v3.0.1
+    chmod 700 ${HELM_TEMP_DIR}/get_helm.sh && ${HELM_TEMP_DIR}/get_helm.sh   --version v3.5.3
   else
     echo -n "found helm, version: " && helm version
   fi
