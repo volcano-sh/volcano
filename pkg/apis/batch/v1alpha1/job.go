@@ -99,6 +99,7 @@ type JobSpec struct {
 	PriorityClassName string `json:"priorityClassName,omitempty" protobuf:"bytes,10,opt,name=priorityClassName"`
 
 	// The minimal success pods to run for this Job
+	// +kubebuilder:validation:Minimum=1
 	// +optional
 	MinSuccess *int32 `json:"minSuccess,omitempty" protobuf:"varint,11,opt,name=minSuccess"`
 }

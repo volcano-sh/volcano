@@ -196,6 +196,7 @@ spec:
             minSuccess:
               description: The minimal success pods to run for this Job
               format: int32
+              minimum: 1
               type: integer
             plugins:
               additionalProperties:
