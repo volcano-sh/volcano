@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2021 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package jobseq
+package vcctl
 
 import (
 	"fmt"
@@ -22,9 +22,11 @@ import (
 	"strings"
 
 	. "github.com/onsi/gomega"
+
+	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
-//ResumeJob resumes the job in the given namespace.
+// ResumeJob resumes the job in the given namespace.
 func ResumeJob(name string, namespace string) string {
 	command := []string{"job", "resume"}
 	Expect(name).NotTo(Equal(""), "Job name should not be empty in Resume job command")
@@ -35,7 +37,7 @@ func ResumeJob(name string, namespace string) string {
 	return RunCliCommand(command)
 }
 
-// SuspendJob suspends the job in the given namepsace.
+// SuspendJob suspends the job in the given namespace.
 func SuspendJob(name string, namespace string) string {
 	command := []string{"job", "suspend"}
 	Expect(name).NotTo(Equal(""), "Job name should not be empty in Suspend job command")
@@ -68,12 +70,12 @@ func DeleteJob(name string, namespace string) string {
 
 // RunCliCommand runs the volcano command.
 func RunCliCommand(command []string) string {
-	if masterURL() != "" {
-		command = append(command, "--master", masterURL())
+	if e2eutil.MasterURL() != "" {
+		command = append(command, "--master", e2eutil.MasterURL())
 	}
-	command = append(command, "--kubeconfig", kubeconfigPath(homeDir()))
-	vcctl := VolcanoCliBinary()
-	Expect(fileExist(vcctl)).To(BeTrue(), fmt.Sprintf(
+	command = append(command, "--kubeconfig", e2eutil.KubeconfigPath(e2eutil.HomeDir()))
+	vcctl := e2eutil.VolcanoCliBinary()
+	Expect(e2eutil.FileExist(vcctl)).To(BeTrue(), fmt.Sprintf(
 		"vcctl binary: %s is required for E2E tests, please update VC_BIN environment", vcctl))
 	output, err := exec.Command(vcctl, command...).Output()
 	Expect(err).NotTo(HaveOccurred(),
@@ -83,11 +85,11 @@ func RunCliCommand(command []string) string {
 
 // RunCliCommandWithoutKubeConfig runs the volcano command.
 func RunCliCommandWithoutKubeConfig(command []string) string {
-	if masterURL() != "" {
-		command = append(command, "--master", masterURL())
+	if e2eutil.MasterURL() != "" {
+		command = append(command, "--master", e2eutil.MasterURL())
 	}
-	vcctl := VolcanoCliBinary()
-	Expect(fileExist(vcctl)).To(BeTrue(), fmt.Sprintf(
+	vcctl := e2eutil.VolcanoCliBinary()
+	Expect(e2eutil.FileExist(vcctl)).To(BeTrue(), fmt.Sprintf(
 		"vcctl binary: %s is required for E2E tests, please update VC_BIN environment", vcctl))
 	output, err := exec.Command(vcctl, command...).Output()
 	Expect(err).NotTo(HaveOccurred(),

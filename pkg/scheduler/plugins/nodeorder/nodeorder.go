@@ -27,6 +27,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/noderesources"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -49,6 +50,8 @@ const (
 	BalancedResourceWeight = "balancedresource.weight"
 	// MostRequestedWeight is the key for providing Most Requested Priority Weight in YAML
 	MostRequestedWeight = "mostrequested.weight"
+	// TaintTolerationWeight is the key for providing Most Requested Priority Weight in YAML
+	TaintTolerationWeight = "tainttoleration.weight"
 )
 
 type nodeOrderPlugin struct {
@@ -57,8 +60,8 @@ type nodeOrderPlugin struct {
 }
 
 // New function returns prioritize plugin object.
-func New(aruguments framework.Arguments) framework.Plugin {
-	return &nodeOrderPlugin{pluginArguments: aruguments}
+func New(arguments framework.Arguments) framework.Plugin {
+	return &nodeOrderPlugin{pluginArguments: arguments}
 }
 
 func (pp *nodeOrderPlugin) Name() string {
@@ -66,11 +69,12 @@ func (pp *nodeOrderPlugin) Name() string {
 }
 
 type priorityWeight struct {
-	leastReqWeight          int
-	mostReqWeight           int
-	nodeAffinityWeight      int
-	podAffinityWeight       int
-	balancedRescourceWeight int
+	leastReqWeight         int
+	mostReqWeight          int
+	nodeAffinityWeight     int
+	podAffinityWeight      int
+	balancedResourceWeight int
+	taintTolerationWeight  int
 }
 
 // calculateWeight from the provided arguments.
@@ -97,17 +101,19 @@ type priorityWeight struct {
 //        nodeaffinity.weight: 2
 //        podaffinity.weight: 2
 //        balancedresource.weight: 2
+//        tainttoleration.weight: 2
 func calculateWeight(args framework.Arguments) priorityWeight {
 
 	// Initial values for weights.
 	// By default, for backward compatibility and for reasonable scores,
 	// least requested priority is enabled and most requested priority is disabled.
 	weight := priorityWeight{
-		leastReqWeight:          1,
-		mostReqWeight:           0,
-		nodeAffinityWeight:      1,
-		podAffinityWeight:       1,
-		balancedRescourceWeight: 1,
+		leastReqWeight:         1,
+		mostReqWeight:          0,
+		nodeAffinityWeight:     1,
+		podAffinityWeight:      1,
+		balancedResourceWeight: 1,
+		taintTolerationWeight:  1,
 	}
 
 	// Checks whether mostrequested.weight is provided or not, if given, modifies the value in weight struct.
@@ -123,14 +129,17 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 	args.GetInt(&weight.leastReqWeight, LeastRequestedWeight)
 
 	// Checks whether balancedresource.weight is provided or not, if given, modifies the value in weight struct.
-	args.GetInt(&weight.balancedRescourceWeight, BalancedResourceWeight)
+	args.GetInt(&weight.balancedResourceWeight, BalancedResourceWeight)
+
+	// Checks whether tainttoleration.weight is provided or not, if given, modifies the value in weight struct.
+	args.GetInt(&weight.taintTolerationWeight, TaintTolerationWeight)
 
 	return weight
 }
 
 func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	weight := calculateWeight(pp.pluginArguments)
-	pl := util.NewPodLister(ssn)
+	pl := util.NewPodListerFromNode(ssn)
 	pods, _ := pl.List(labels.NewSelector())
 	nodeMap, nodeSlice := util.GenerateNodeMapAndSlice(ssn.Nodes)
 
@@ -202,8 +211,8 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			klog.Warningf("Balanced Resource Allocation Priority Failed because of Error: %v", status.AsError())
 			return 0, status.AsError()
 		}
-		// If balancedRescourceWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		nodeScore += float64(score) * float64(weight.balancedRescourceWeight)
+		// If balancedResourceWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
+		nodeScore += float64(score) * float64(weight.balancedResourceWeight)
 
 		score, status = affinity.Score(context.TODO(), nil, task.Pod, node.Name)
 		if !status.IsSuccess() {
@@ -222,6 +231,9 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	p, _ = interpodaffinity.New(nil, handle)
 	interPodAffinity := p.(*interpodaffinity.InterPodAffinity)
 
+	p, _ = tainttoleration.New(nil, handle)
+	taintToleration := p.(*tainttoleration.TaintToleration)
+
 	batchNodeOrderFn := func(task *api.TaskInfo, nodeInfo []*api.NodeInfo) (map[string]float64, error) {
 		// InterPodAffinity
 		state := k8sframework.NewCycleState()
@@ -229,51 +241,131 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		for _, node := range nodeInfo {
 			nodes = append(nodes, node.Node)
 		}
-		preScoreStatus := interPodAffinity.PreScore(context.TODO(), state, task.Pod, nodes)
-		if !preScoreStatus.IsSuccess() {
-			return nil, preScoreStatus.AsError()
-		}
-
-		nodescoreList := make(k8sframework.NodeScoreList, len(nodes))
-		errCh := make(chan error, 1)
-		workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), func(index int) {
-			nodeName := nodes[index].Name
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			s, status := interPodAffinity.Score(ctx, state, task.Pod, nodeName)
-			if !status.IsSuccess() {
-				errCh <- fmt.Errorf("calculate inter pod affinity priority failed %v", status.Message())
-				return
-			}
-			nodescoreList[index] = k8sframework.NodeScore{
-				Name:  nodeName,
-				Score: s,
-			}
-		})
-
-		select {
-		case err := <-errCh:
-			return nil, err
-		default:
-		}
-
-		interPodAffinity.NormalizeScore(context.TODO(), state, task.Pod, nodescoreList)
 
 		nodeScores := make(map[string]float64, len(nodes))
-		for i, nodeScore := range nodescoreList {
-			// return error if score plugin returns invalid score.
-			if nodeScore.Score > k8sframework.MaxNodeScore || nodeScore.Score < k8sframework.MinNodeScore {
-				return nil, fmt.Errorf("inter pod affinity returns an invalid score %v for node %s", nodeScore.Score, nodeScore.Name)
-			}
-			nodeScore.Score *= int64(weight.podAffinityWeight)
-			nodescoreList[i] = nodeScore
-			nodeScores[nodeScore.Name] = float64(nodeScore.Score)
+
+		podAffinityScores, podErr := interPodAffinityScore(interPodAffinity, state, task.Pod, nodes, weight.podAffinityWeight)
+		if podErr != nil {
+			return nil, podErr
+		}
+
+		nodeTolerationScores, err := taintTolerationScore(taintToleration, state, task.Pod, nodes, weight.taintTolerationWeight)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, node := range nodes {
+			nodeScores[node.Name] = podAffinityScores[node.Name] + nodeTolerationScores[node.Name]
 		}
 
 		klog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, nodeScores)
 		return nodeScores, nil
 	}
 	ssn.AddBatchNodeOrderFn(pp.Name(), batchNodeOrderFn)
+}
+
+func interPodAffinityScore(
+	interPodAffinity *interpodaffinity.InterPodAffinity,
+	state *k8sframework.CycleState,
+	pod *v1.Pod,
+	nodes []*v1.Node,
+	podAffinityWeight int,
+) (map[string]float64, error) {
+	preScoreStatus := interPodAffinity.PreScore(context.TODO(), state, pod, nodes)
+	if !preScoreStatus.IsSuccess() {
+		return nil, preScoreStatus.AsError()
+	}
+
+	nodescoreList := make(k8sframework.NodeScoreList, len(nodes))
+	errCh := make(chan error, 1)
+	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), func(index int) {
+		nodeName := nodes[index].Name
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		s, status := interPodAffinity.Score(ctx, state, pod, nodeName)
+		if !status.IsSuccess() {
+			errCh <- fmt.Errorf("calculate inter pod affinity priority failed %v", status.Message())
+			return
+		}
+		nodescoreList[index] = k8sframework.NodeScore{
+			Name:  nodeName,
+			Score: s,
+		}
+	})
+
+	select {
+	case err := <-errCh:
+		return nil, err
+	default:
+	}
+
+	interPodAffinity.NormalizeScore(context.TODO(), state, pod, nodescoreList)
+
+	nodeScores := make(map[string]float64, len(nodes))
+	for i, nodeScore := range nodescoreList {
+		// return error if score plugin returns invalid score.
+		if nodeScore.Score > k8sframework.MaxNodeScore || nodeScore.Score < k8sframework.MinNodeScore {
+			return nil, fmt.Errorf("inter pod affinity returns an invalid score %v for node %s", nodeScore.Score, nodeScore.Name)
+		}
+		nodeScore.Score *= int64(podAffinityWeight)
+		nodescoreList[i] = nodeScore
+		nodeScores[nodeScore.Name] = float64(nodeScore.Score)
+	}
+
+	klog.V(4).Infof("inter pod affinity Score for task %s/%s is: %v", pod.Namespace, pod.Name, nodeScores)
+	return nodeScores, nil
+}
+
+func taintTolerationScore(
+	taintToleration *tainttoleration.TaintToleration,
+	cycleState *k8sframework.CycleState,
+	pod *v1.Pod,
+	nodes []*v1.Node,
+	taintTolerationWeight int,
+) (map[string]float64, error) {
+	preScoreStatus := taintToleration.PreScore(context.TODO(), cycleState, pod, nodes)
+	if !preScoreStatus.IsSuccess() {
+		return nil, preScoreStatus.AsError()
+	}
+
+	nodescoreList := make(k8sframework.NodeScoreList, len(nodes))
+	errCh := make(chan error, 1)
+	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), func(index int) {
+		nodeName := nodes[index].Name
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		s, status := taintToleration.Score(ctx, cycleState, pod, nodeName)
+		if !status.IsSuccess() {
+			errCh <- fmt.Errorf("calculate taint toleration priority failed %v", status.Message())
+			return
+		}
+		nodescoreList[index] = k8sframework.NodeScore{
+			Name:  nodeName,
+			Score: s,
+		}
+	})
+
+	select {
+	case err := <-errCh:
+		return nil, err
+	default:
+	}
+
+	taintToleration.NormalizeScore(context.TODO(), cycleState, pod, nodescoreList)
+
+	nodeScores := make(map[string]float64, len(nodes))
+	for i, nodeScore := range nodescoreList {
+		// return error if score plugin returns invalid score.
+		if nodeScore.Score > k8sframework.MaxNodeScore || nodeScore.Score < k8sframework.MinNodeScore {
+			return nil, fmt.Errorf("taint toleration returns an invalid score %v for node %s", nodeScore.Score, nodeScore.Name)
+		}
+		nodeScore.Score *= int64(taintTolerationWeight)
+		nodescoreList[i] = nodeScore
+		nodeScores[nodeScore.Name] = float64(nodeScore.Score)
+	}
+
+	klog.V(4).Infof("taint toleration Score for task %s/%s is: %v", pod.Namespace, pod.Name, nodeScores)
+	return nodeScores, nil
 }
 
 func (pp *nodeOrderPlugin) OnSessionClose(ssn *framework.Session) {

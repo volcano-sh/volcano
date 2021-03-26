@@ -48,7 +48,7 @@ rules:
     verbs: ["get", "list", "watch", "create", "delete"]
   - apiGroups: ["networking.k8s.io"]
     resources: ["networkpolicies"]
-    verbs: ["get", "create"]
+    verbs: ["get", "create", "delete"]
 
 ---
 kind: ClusterRoleBinding
