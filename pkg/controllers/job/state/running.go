@@ -56,6 +56,13 @@ func (ps *runningState) Execute(action v1alpha1.Action) error {
 				// when scale down to zero, keep the current job phase
 				return false
 			}
+
+			minSuccess := ps.job.Job.Spec.MinSuccess
+			if minSuccess != nil && status.Succeeded >= *minSuccess {
+				status.State.Phase = vcbatch.Completed
+				return true
+			}
+
 			if status.Succeeded+status.Failed == jobReplicas {
 				if status.Succeeded >= ps.job.Job.Spec.MinAvailable {
 					status.State.Phase = vcbatch.Completed
