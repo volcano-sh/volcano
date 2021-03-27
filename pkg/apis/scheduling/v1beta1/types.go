@@ -222,6 +222,11 @@ type PodGroupList struct {
 	Items []PodGroup `json:"items" protobuf:"bytes,2,rep,name=items"`
 }
 
+const (
+	// DefaultQueue constant stores the name of the queue as "default"
+	DefaultQueue = "default"
+)
+
 // +genclient
 // +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

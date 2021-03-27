@@ -104,3 +104,23 @@ func DecodeQueue(object runtime.RawExtension, resource metav1.GroupVersionResour
 
 	return &queue, nil
 }
+
+// DecodePodGroup decodes the podgroup using deserializer from the raw object.
+func DecodePodGroup(object runtime.RawExtension, resource metav1.GroupVersionResource) (*schedulingv1beta1.PodGroup, error) {
+	podgroupResource := metav1.GroupVersionResource{
+		Group:    schedulingv1beta1.SchemeGroupVersion.Group,
+		Version:  schedulingv1beta1.SchemeGroupVersion.Version,
+		Resource: "podgroups",
+	}
+
+	if resource != podgroupResource {
+		return nil, fmt.Errorf("expect resource to be %s", podgroupResource)
+	}
+
+	podgroup := schedulingv1beta1.PodGroup{}
+	if _, _, err := Codecs.UniversalDeserializer().Decode(object.Raw, nil, &podgroup); err != nil {
+		return nil, err
+	}
+
+	return &podgroup, nil
+}
