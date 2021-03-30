@@ -109,7 +109,7 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 		res.AddTask(p)
 	}
 
-	for taskID, _ := range ni.bindingTasks {
+	for taskID := range ni.bindingTasks {
 		res.AddBindingTask(taskID)
 	}
 
@@ -417,7 +417,7 @@ func (ni *NodeInfo) SubGPUResource(pod *v1.Pod) {
 func (ni *NodeInfo) GetBindingTasks() []TaskID {
 	var tasks []TaskID
 
-	for taskId, _ := range ni.bindingTasks {
+	for taskId := range ni.bindingTasks {
 		tasks = append(tasks, taskId)
 	}
 
