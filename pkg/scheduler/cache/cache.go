@@ -557,16 +557,15 @@ func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string
 
 	p := task.Pod
 	go func() {
-		node := sc.Nodes[hostname]
-		taskId := schedulingapi.PodKey(p)
+		taskID := schedulingapi.PodKey(p)
 
 		sc.Lock()
-		node.AddBindingTask(taskId)
+		node.AddBindingTask(taskID)
 		sc.Unlock()
 
 		defer func() {
 			sc.Lock()
-			node.RemoveBindingTask(taskId)
+			node.RemoveBindingTask(taskID)
 			sc.Unlock()
 		}()
 

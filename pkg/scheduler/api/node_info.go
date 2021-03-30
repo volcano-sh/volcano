@@ -417,8 +417,8 @@ func (ni *NodeInfo) SubGPUResource(pod *v1.Pod) {
 func (ni *NodeInfo) GetBindingTasks() []TaskID {
 	var tasks []TaskID
 
-	for taskId := range ni.bindingTasks {
-		tasks = append(tasks, taskId)
+	for taskID := range ni.bindingTasks {
+		tasks = append(tasks, taskID)
 	}
 
 	return tasks
