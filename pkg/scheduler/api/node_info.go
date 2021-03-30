@@ -1,17 +1,17 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+ Copyright 2021 The Volcano Authors.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+     http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
 */
 
 package api
@@ -52,6 +52,8 @@ type NodeInfo struct {
 	// Used to store custom information
 	Others     map[string]interface{}
 	GPUDevices map[int]*GPUDevice
+
+	bindingTasks map[TaskID]string
 }
 
 // FutureIdle returns resources that will be idle in the future:
@@ -81,6 +83,8 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		Tasks: make(map[TaskID]*TaskInfo),
 
 		GPUDevices: make(map[int]*GPUDevice),
+
+		bindingTasks: make(map[TaskID]string),
 	}
 
 	if node != nil {
@@ -104,6 +108,11 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 	for _, p := range ni.Tasks {
 		res.AddTask(p)
 	}
+
+	for taskID, _ := range ni.bindingTasks {
+		res.AddBindingTask(taskID)
+	}
+
 	return res
 }
 
@@ -401,5 +410,28 @@ func (ni *NodeInfo) SubGPUResource(pod *v1.Pod) {
 		if dev := ni.GPUDevices[id]; dev != nil {
 			delete(dev.PodMap, string(pod.UID))
 		}
+	}
+}
+
+// GetBindingTasks return binding task ids
+func (ni *NodeInfo) GetBindingTasks() []TaskID {
+	var tasks []TaskID
+
+	for taskId, _ := range ni.bindingTasks {
+		tasks = append(tasks, taskId)
+	}
+
+	return tasks
+}
+
+// AddBindingTask add binding taskId to node
+func (ni *NodeInfo) AddBindingTask(task TaskID) {
+	ni.bindingTasks[task] = ""
+}
+
+// RemoveBindingTask remove binding taskId from node
+func (ni *NodeInfo) RemoveBindingTask(task TaskID) {
+	if _, found := ni.bindingTasks[task]; found {
+		delete(ni.bindingTasks, task)
 	}
 }
