@@ -1,17 +1,17 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+ Copyright 2021 The Volcano Authors.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+     http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
 */
 
 package api
@@ -62,7 +62,8 @@ func TestNodeInfo_AddPod(t *testing.T) {
 					"c1/p1": NewTaskInfo(case01Pod1),
 					"c1/p2": NewTaskInfo(case01Pod2),
 				},
-				GPUDevices: make(map[int]*GPUDevice),
+				GPUDevices:   make(map[int]*GPUDevice),
+				bindingTasks: make(map[TaskID]string),
 			},
 		},
 		{
@@ -70,17 +71,18 @@ func TestNodeInfo_AddPod(t *testing.T) {
 			node: case02Node,
 			pods: []*v1.Pod{case02Pod1},
 			expected: &NodeInfo{
-				Name:        "n2",
-				Node:        case02Node,
-				Idle:        buildResource("2000m", "1G"),
-				Used:        EmptyResource(),
-				Releasing:   EmptyResource(),
-				Pipelined:   EmptyResource(),
-				Allocatable: buildResource("2000m", "1G"),
-				Capability:  buildResource("2000m", "1G"),
-				State:       NodeState{Phase: Ready},
-				Tasks:       map[TaskID]*TaskInfo{},
-				GPUDevices:  make(map[int]*GPUDevice),
+				Name:         "n2",
+				Node:         case02Node,
+				Idle:         buildResource("2000m", "1G"),
+				Used:         EmptyResource(),
+				Releasing:    EmptyResource(),
+				Pipelined:    EmptyResource(),
+				Allocatable:  buildResource("2000m", "1G"),
+				Capability:   buildResource("2000m", "1G"),
+				State:        NodeState{Phase: Ready},
+				Tasks:        map[TaskID]*TaskInfo{},
+				GPUDevices:   make(map[int]*GPUDevice),
+				bindingTasks: make(map[TaskID]string),
 			},
 			expectedFailure: true,
 		},
@@ -140,7 +142,8 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 					"c1/p1": NewTaskInfo(case01Pod1),
 					"c1/p3": NewTaskInfo(case01Pod3),
 				},
-				GPUDevices: make(map[int]*GPUDevice),
+				GPUDevices:   make(map[int]*GPUDevice),
+				bindingTasks: make(map[TaskID]string),
 			},
 		},
 	}
