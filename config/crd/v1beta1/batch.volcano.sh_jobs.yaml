@@ -81,6 +81,11 @@ spec:
                 to the summary of tasks' replicas
               format: int32
               type: integer
+            minSuccess:
+              description: The minimal success pods to run for this Job
+              format: int32
+              minimum: 1
+              type: integer
             plugins:
               additionalProperties:
                 items:
