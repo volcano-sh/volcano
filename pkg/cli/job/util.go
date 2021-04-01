@@ -29,9 +29,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/rest"
 
-	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/helpers"
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
+	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	"volcano.sh/apis/pkg/apis/helpers"
+	"volcano.sh/apis/pkg/client/clientset/versioned"
 )
 
 func homeDir() string {

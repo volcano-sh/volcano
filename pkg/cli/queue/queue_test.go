@@ -27,7 +27,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 func getTestQueueHTTPServer(t *testing.T) *httptest.Server {

@@ -23,7 +23,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned"
+	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )

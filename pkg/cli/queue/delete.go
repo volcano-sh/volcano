@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
+	"volcano.sh/apis/pkg/client/clientset/versioned"
 
 	"github.com/spf13/cobra"
 
