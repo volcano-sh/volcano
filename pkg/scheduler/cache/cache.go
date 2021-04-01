@@ -1,17 +1,17 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+ Copyright 2021 The Volcano Authors.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+     http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
 */
 
 package cache
@@ -19,6 +19,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 	"k8s.io/api/scheduling/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -63,8 +65,8 @@ func init() {
 }
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerName string, defaultQueue string) Cache {
-	return newSchedulerCache(config, schedulerName, defaultQueue)
+func New(config *rest.Config, schedulerName string, defaultQueue string, nodeSelector string) Cache {
+	return newSchedulerCache(config, schedulerName, defaultQueue, nodeSelector)
 }
 
 // SchedulerCache cache for the kube batch
@@ -77,6 +79,8 @@ type SchedulerCache struct {
 	defaultQueue string
 	// schedulerName is the name for volcano scheduler
 	schedulerName string
+	// nodeSelector is used to choose which nodes can be scheduled
+	nodeSelector string
 
 	podInformer             infov1.PodInformer
 	nodeInformer            infov1.NodeInformer
@@ -253,7 +257,7 @@ func (dvb *defaultVolumeBinder) BindVolumes(task *schedulingapi.TaskInfo) error 
 	return dvb.volumeBinder.BindPodVolumes(task.Pod)
 }
 
-func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue string) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue string, nodeSelector string) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -293,6 +297,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		vcClient:        vcClient,
 		defaultQueue:    defaultQueue,
 		schedulerName:   schedulerName,
+		nodeSelector:    nodeSelector,
 
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
 	}
@@ -679,8 +684,18 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		RevocableNodes: make(map[string]*schedulingapi.NodeInfo),
 	}
 
+	// If nodeSelector == "", will match all nodes
+	selector, err := labels.Parse(strings.TrimSpace(sc.nodeSelector))
+	if err != nil {
+		panic(fmt.Errorf("the provided selector %q is not valid: %v", sc.nodeSelector, err))
+	}
+
 	for _, value := range sc.Nodes {
 		if !value.Ready() {
+			continue
+		}
+
+		if !selector.Matches(labels.Set(value.Node.Labels)) {
 			continue
 		}
 
