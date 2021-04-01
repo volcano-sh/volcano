@@ -23,6 +23,7 @@ require (
 	k8s.io/kube-scheduler v0.0.0
 	k8s.io/kubernetes v1.18.3
 	sigs.k8s.io/yaml v1.2.0
+	volcano.sh/apis v1.2.0-k8s1.18.3-alpha.0
 )
 
 replace (
