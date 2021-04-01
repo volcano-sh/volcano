@@ -36,8 +36,8 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
-	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 	vcscheme "volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 	informerfactory "volcano.sh/volcano/pkg/client/informers/externalversions"

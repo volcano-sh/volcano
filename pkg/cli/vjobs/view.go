@@ -31,7 +31,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/cli/util"
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )

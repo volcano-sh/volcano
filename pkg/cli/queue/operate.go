@@ -25,7 +25,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 
-	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 

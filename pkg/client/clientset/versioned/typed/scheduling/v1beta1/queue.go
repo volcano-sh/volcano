@@ -26,7 +26,7 @@ import (
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	rest "k8s.io/client-go/rest"
-	v1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	v1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	scheme "volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 )
 

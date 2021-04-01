@@ -20,7 +20,7 @@ package v1beta1
 
 import (
 	rest "k8s.io/client-go/rest"
-	v1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	v1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
 )
 
