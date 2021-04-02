@@ -17,7 +17,38 @@ spec:
     singular: job
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.pending
+      name: Pending
+      type: integer
+    - jsonPath: .status.running
+      name: Running
+      type: integer
+    - jsonPath: .status.succeeded
+      name: Succeeded
+      type: integer
+    - jsonPath: .status.failed
+      name: Failed
+      type: integer
+    - jsonPath: .status.terminating
+      name: Terminating
+      type: integer
+    - jsonPath: .status.unknown
+      name: Unknown
+      type: integer
+    - jsonPath: .status.retryCount
+      name: RetryCount
+      type: integer
+    - jsonPath: .status.minAvailable
+      name: MinAvailable
+      type: integer
+    - jsonPath: .status.state.phase
+      name: State
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Job defines the volcano job.
@@ -47,6 +78,11 @@ spec:
                 description: The minimal available pods to run for this Job Defaults
                   to the summary of tasks' replicas
                 format: int32
+                type: integer
+              minSuccess:
+                description: The minimal success pods to run for this Job
+                format: int32
+                minimum: 1
                 type: integer
               plugins:
                 additionalProperties:
@@ -6610,6 +6646,7 @@ spec:
                   ConfigMap
                 type: object
               failed:
+                default: 0
                 description: The number of pods which reached phase Failed.
                 format: int32
                 type: integer
@@ -6618,14 +6655,17 @@ spec:
                 format: int32
                 type: integer
               pending:
+                default: 0
                 description: The number of pending pods.
                 format: int32
                 type: integer
               retryCount:
+                default: 0
                 description: The number of Job retries.
                 format: int32
                 type: integer
               running:
+                default: 0
                 description: The number of running pods.
                 format: int32
                 type: integer
@@ -6654,14 +6694,17 @@ spec:
                     type: string
                 type: object
               succeeded:
+                default: 0
                 description: The number of pods which reached phase Succeeded.
                 format: int32
                 type: integer
               terminating:
+                default: 0
                 description: The number of pods which reached phase Terminating.
                 format: int32
                 type: integer
               unknown:
+                default: 0
                 description: The number of pods which reached phase Unknown.
                 format: int32
                 type: integer

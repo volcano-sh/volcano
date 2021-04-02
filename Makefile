@@ -193,3 +193,7 @@ CONTROLLER_GEN=$(GOBIN)/controller-gen
 else
 CONTROLLER_GEN=$(shell which controller-gen)
 endif
+
+update-development-yaml:
+	make generate-yaml TAG=latest RELEASE_DIR=installer
+	mv installer/volcano-latest.yaml installer/volcano-development.yaml
