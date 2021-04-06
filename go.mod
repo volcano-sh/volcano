@@ -22,7 +22,7 @@ require (
 	k8s.io/kube-scheduler v0.0.0
 	k8s.io/kubernetes v1.18.3
 	sigs.k8s.io/yaml v1.2.0
-	volcano.sh/apis v1.3.0-k8s1.18.3-alpha.2
+	volcano.sh/apis v1.3.0-k8s1.18.3-alpha.3
 )
 
 replace (
@@ -51,5 +51,5 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.18.3
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.18.3
 	k8s.io/sample-controller => k8s.io/sample-controller v0.18.3
-	volcano.sh/apis => volcano.sh/apis v1.3.0-k8s1.18.3-alpha.2
+	volcano.sh/apis => volcano.sh/apis v1.3.0-k8s1.18.3-alpha.3
 )
