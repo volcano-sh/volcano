@@ -1,8 +1,8 @@
-
 approvers:
   - k82cn
   - animeshsingh
   - Thor-wl
+  - shinytang6
   - zen-xu
 reviewers:
   - k82cn
@@ -11,5 +11,6 @@ reviewers:
   - Thor-wl
   - alcorj-mizar
   - hudson741
+  - zen-xu
   - shinytang6
   - merryzhou
