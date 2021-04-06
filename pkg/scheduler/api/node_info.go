@@ -21,7 +21,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 // NodeInfo is node level aggregated information.
