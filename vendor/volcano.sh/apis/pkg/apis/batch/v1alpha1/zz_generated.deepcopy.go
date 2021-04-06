@@ -136,6 +136,11 @@ func (in *JobSpec) DeepCopyInto(out *JobSpec) {
 		*out = new(int32)
 		**out = **in
 	}
+	if in.MinSuccess != nil {
+		in, out := &in.MinSuccess, &out.MinSuccess
+		*out = new(int32)
+		**out = **in
+	}
 	return
 }
 

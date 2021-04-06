@@ -18,6 +18,8 @@ limitations under the License.
 package fake
 
 import (
+	"context"
+
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -37,7 +39,7 @@ var queuesResource = schema.GroupVersionResource{Group: "scheduling.volcano.sh",
 var queuesKind = schema.GroupVersionKind{Group: "scheduling.volcano.sh", Version: "v1beta1", Kind: "Queue"}
 
 // Get takes name of the queue, and returns the corresponding queue object, and an error if there is any.
-func (c *FakeQueues) Get(name string, options v1.GetOptions) (result *v1beta1.Queue, err error) {
+func (c *FakeQueues) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.Queue, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootGetAction(queuesResource, name), &v1beta1.Queue{})
 	if obj == nil {
@@ -47,7 +49,7 @@ func (c *FakeQueues) Get(name string, options v1.GetOptions) (result *v1beta1.Qu
 }
 
 // List takes label and field selectors, and returns the list of Queues that match those selectors.
-func (c *FakeQueues) List(opts v1.ListOptions) (result *v1beta1.QueueList, err error) {
+func (c *FakeQueues) List(ctx context.Context, opts v1.ListOptions) (result *v1beta1.QueueList, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootListAction(queuesResource, queuesKind, opts), &v1beta1.QueueList{})
 	if obj == nil {
@@ -68,13 +70,13 @@ func (c *FakeQueues) List(opts v1.ListOptions) (result *v1beta1.QueueList, err e
 }
 
 // Watch returns a watch.Interface that watches the requested queues.
-func (c *FakeQueues) Watch(opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeQueues) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewRootWatchAction(queuesResource, opts))
 }
 
 // Create takes the representation of a queue and creates it.  Returns the server's representation of the queue, and an error, if there is any.
-func (c *FakeQueues) Create(queue *v1beta1.Queue) (result *v1beta1.Queue, err error) {
+func (c *FakeQueues) Create(ctx context.Context, queue *v1beta1.Queue, opts v1.CreateOptions) (result *v1beta1.Queue, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootCreateAction(queuesResource, queue), &v1beta1.Queue{})
 	if obj == nil {
@@ -84,7 +86,7 @@ func (c *FakeQueues) Create(queue *v1beta1.Queue) (result *v1beta1.Queue, err er
 }
 
 // Update takes the representation of a queue and updates it. Returns the server's representation of the queue, and an error, if there is any.
-func (c *FakeQueues) Update(queue *v1beta1.Queue) (result *v1beta1.Queue, err error) {
+func (c *FakeQueues) Update(ctx context.Context, queue *v1beta1.Queue, opts v1.UpdateOptions) (result *v1beta1.Queue, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootUpdateAction(queuesResource, queue), &v1beta1.Queue{})
 	if obj == nil {
@@ -95,7 +97,7 @@ func (c *FakeQueues) Update(queue *v1beta1.Queue) (result *v1beta1.Queue, err er
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeQueues) UpdateStatus(queue *v1beta1.Queue) (*v1beta1.Queue, error) {
+func (c *FakeQueues) UpdateStatus(ctx context.Context, queue *v1beta1.Queue, opts v1.UpdateOptions) (*v1beta1.Queue, error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootUpdateSubresourceAction(queuesResource, "status", queue), &v1beta1.Queue{})
 	if obj == nil {
@@ -105,22 +107,22 @@ func (c *FakeQueues) UpdateStatus(queue *v1beta1.Queue) (*v1beta1.Queue, error) 
 }
 
 // Delete takes name of the queue and deletes it. Returns an error if one occurs.
-func (c *FakeQueues) Delete(name string, options *v1.DeleteOptions) error {
+func (c *FakeQueues) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
 		Invokes(testing.NewRootDeleteAction(queuesResource, name), &v1beta1.Queue{})
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeQueues) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(queuesResource, listOptions)
+func (c *FakeQueues) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+	action := testing.NewRootDeleteCollectionAction(queuesResource, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1beta1.QueueList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched queue.
-func (c *FakeQueues) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1beta1.Queue, err error) {
+func (c *FakeQueues) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.Queue, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootPatchSubresourceAction(queuesResource, name, pt, data, subresources...), &v1beta1.Queue{})
 	if obj == nil {
