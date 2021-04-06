@@ -29,7 +29,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/cli/util"
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
+	"volcano.sh/apis/pkg/client/clientset/versioned"
 )
 
 type listFlags struct {

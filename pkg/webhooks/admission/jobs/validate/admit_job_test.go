@@ -28,7 +28,7 @@ import (
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	schedulingv1beta2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-	fakeclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
+	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 )
 
 func TestValidateJobCreate(t *testing.T) {

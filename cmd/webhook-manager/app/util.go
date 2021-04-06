@@ -30,7 +30,7 @@ import (
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
+	"volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/webhooks/router"
 )
 

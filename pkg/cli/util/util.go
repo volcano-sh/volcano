@@ -34,7 +34,7 @@ import (
 
 	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	"volcano.sh/apis/pkg/apis/helpers"
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
+	"volcano.sh/apis/pkg/client/clientset/versioned"
 )
 
 // CommonFlags are the flags that most command lines have.

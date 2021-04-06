@@ -26,8 +26,8 @@ import (
 	"k8s.io/client-go/informers"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 
-	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	volcanoclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	volcanoclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
 
