@@ -18,6 +18,8 @@ limitations under the License.
 package fake
 
 import (
+	"context"
+
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -38,7 +40,7 @@ var podgroupsResource = schema.GroupVersionResource{Group: "scheduling.volcano.s
 var podgroupsKind = schema.GroupVersionKind{Group: "scheduling.volcano.sh", Version: "v1beta1", Kind: "PodGroup"}
 
 // Get takes name of the podGroup, and returns the corresponding podGroup object, and an error if there is any.
-func (c *FakePodGroups) Get(name string, options v1.GetOptions) (result *v1beta1.PodGroup, err error) {
+func (c *FakePodGroups) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.PodGroup, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewGetAction(podgroupsResource, c.ns, name), &v1beta1.PodGroup{})
 
@@ -49,7 +51,7 @@ func (c *FakePodGroups) Get(name string, options v1.GetOptions) (result *v1beta1
 }
 
 // List takes label and field selectors, and returns the list of PodGroups that match those selectors.
-func (c *FakePodGroups) List(opts v1.ListOptions) (result *v1beta1.PodGroupList, err error) {
+func (c *FakePodGroups) List(ctx context.Context, opts v1.ListOptions) (result *v1beta1.PodGroupList, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewListAction(podgroupsResource, podgroupsKind, c.ns, opts), &v1beta1.PodGroupList{})
 
@@ -71,14 +73,14 @@ func (c *FakePodGroups) List(opts v1.ListOptions) (result *v1beta1.PodGroupList,
 }
 
 // Watch returns a watch.Interface that watches the requested podGroups.
-func (c *FakePodGroups) Watch(opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakePodGroups) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewWatchAction(podgroupsResource, c.ns, opts))
 
 }
 
 // Create takes the representation of a podGroup and creates it.  Returns the server's representation of the podGroup, and an error, if there is any.
-func (c *FakePodGroups) Create(podGroup *v1beta1.PodGroup) (result *v1beta1.PodGroup, err error) {
+func (c *FakePodGroups) Create(ctx context.Context, podGroup *v1beta1.PodGroup, opts v1.CreateOptions) (result *v1beta1.PodGroup, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewCreateAction(podgroupsResource, c.ns, podGroup), &v1beta1.PodGroup{})
 
@@ -89,7 +91,7 @@ func (c *FakePodGroups) Create(podGroup *v1beta1.PodGroup) (result *v1beta1.PodG
 }
 
 // Update takes the representation of a podGroup and updates it. Returns the server's representation of the podGroup, and an error, if there is any.
-func (c *FakePodGroups) Update(podGroup *v1beta1.PodGroup) (result *v1beta1.PodGroup, err error) {
+func (c *FakePodGroups) Update(ctx context.Context, podGroup *v1beta1.PodGroup, opts v1.UpdateOptions) (result *v1beta1.PodGroup, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewUpdateAction(podgroupsResource, c.ns, podGroup), &v1beta1.PodGroup{})
 
@@ -101,7 +103,7 @@ func (c *FakePodGroups) Update(podGroup *v1beta1.PodGroup) (result *v1beta1.PodG
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakePodGroups) UpdateStatus(podGroup *v1beta1.PodGroup) (*v1beta1.PodGroup, error) {
+func (c *FakePodGroups) UpdateStatus(ctx context.Context, podGroup *v1beta1.PodGroup, opts v1.UpdateOptions) (*v1beta1.PodGroup, error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewUpdateSubresourceAction(podgroupsResource, "status", c.ns, podGroup), &v1beta1.PodGroup{})
 
@@ -112,7 +114,7 @@ func (c *FakePodGroups) UpdateStatus(podGroup *v1beta1.PodGroup) (*v1beta1.PodGr
 }
 
 // Delete takes name of the podGroup and deletes it. Returns an error if one occurs.
-func (c *FakePodGroups) Delete(name string, options *v1.DeleteOptions) error {
+func (c *FakePodGroups) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
 		Invokes(testing.NewDeleteAction(podgroupsResource, c.ns, name), &v1beta1.PodGroup{})
 
@@ -120,15 +122,15 @@ func (c *FakePodGroups) Delete(name string, options *v1.DeleteOptions) error {
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakePodGroups) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
-	action := testing.NewDeleteCollectionAction(podgroupsResource, c.ns, listOptions)
+func (c *FakePodGroups) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+	action := testing.NewDeleteCollectionAction(podgroupsResource, c.ns, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1beta1.PodGroupList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched podGroup.
-func (c *FakePodGroups) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1beta1.PodGroup, err error) {
+func (c *FakePodGroups) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.PodGroup, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewPatchSubresourceAction(podgroupsResource, c.ns, name, pt, data, subresources...), &v1beta1.PodGroup{})
 

@@ -110,11 +110,6 @@ func RegisterConversions(s *runtime.Scheme) error {
 	}); err != nil {
 		return err
 	}
-	if err := s.AddGeneratedConversionFunc((*scheduling.QueueSpec)(nil), (*QueueSpec)(nil), func(a, b interface{}, scope conversion.Scope) error {
-		return Convert_scheduling_QueueSpec_To_v1beta1_QueueSpec(a.(*scheduling.QueueSpec), b.(*QueueSpec), scope)
-	}); err != nil {
-		return err
-	}
 	if err := s.AddGeneratedConversionFunc((*QueueStatus)(nil), (*scheduling.QueueStatus)(nil), func(a, b interface{}, scope conversion.Scope) error {
 		return Convert_v1beta1_QueueStatus_To_scheduling_QueueStatus(a.(*QueueStatus), b.(*scheduling.QueueStatus), scope)
 	}); err != nil {
