@@ -26,7 +26,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
+	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
 

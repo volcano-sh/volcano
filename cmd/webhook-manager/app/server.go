@@ -31,7 +31,7 @@ import (
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
-	"volcano.sh/volcano/pkg/apis/scheduling/scheme"
+	"volcano.sh/apis/pkg/apis/scheduling/scheme"
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/version"
 	"volcano.sh/volcano/pkg/webhooks/router"

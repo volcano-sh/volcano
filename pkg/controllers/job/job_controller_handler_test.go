@@ -28,11 +28,11 @@ import (
 	kubeclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	bus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/helpers"
-	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
-	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	bus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	"volcano.sh/apis/pkg/apis/helpers"
+	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
 

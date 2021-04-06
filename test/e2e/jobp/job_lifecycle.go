@@ -25,8 +25,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )

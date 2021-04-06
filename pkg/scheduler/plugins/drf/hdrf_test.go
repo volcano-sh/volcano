@@ -10,7 +10,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
-	schedulingv1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
