@@ -32,8 +32,8 @@ import (
 	"k8s.io/client-go/rest"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	"volcano.sh/volcano/pkg/cli/util"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/cli/util"
 )
 
 type viewFlags struct {
