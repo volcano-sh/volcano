@@ -66,7 +66,8 @@ type JobSpec struct {
 	Volumes   []batchv1alpha1.VolumeSpec
 	NodeName  string
 	// ttl seconds after job finished
-	Ttl *int32
+	Ttl        *int32
+	MinSuccess *int32
 }
 
 func Namespace(context *TestContext, job *JobSpec) string {
@@ -194,6 +195,7 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 			Queue:                   jobSpec.Queue,
 			Plugins:                 jobSpec.Plugins,
 			TTLSecondsAfterFinished: jobSpec.Ttl,
+			MinSuccess:              jobSpec.MinSuccess,
 		},
 	}
 
@@ -738,4 +740,35 @@ func IsPodScheduled(pod *v1.Pod) bool {
 		}
 	}
 	return false
+}
+
+func WaitTasksCompleted(ctx *TestContext, job *batchv1alpha1.Job, successNum int32) error {
+	var additionalError error
+	err := wait.Poll(100*time.Millisecond, TwoMinute, func() (bool, error) {
+		pods, err := ctx.Kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		var succeeded int32 = 0
+		for _, pod := range pods.Items {
+			if !metav1.IsControlledBy(&pod, job) {
+				continue
+			}
+
+			if pod.Status.Phase == "Succeeded" {
+				succeeded++
+			}
+		}
+
+		ready := succeeded >= successNum
+		if !ready {
+			additionalError = fmt.Errorf("expected job '%s' to have %d succeeded pods, actual got %d", job.Name,
+				successNum,
+				succeeded)
+		}
+		return ready, nil
+	})
+	if err != nil && strings.Contains(err.Error(), TimeOutMessage) {
+		return fmt.Errorf("[Wait time out]: %s", additionalError)
+	}
+	return err
 }
