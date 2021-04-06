@@ -119,7 +119,7 @@ manifests: controller-gen
 
 unit-test:
 	go clean -testcache
-	go list ./... | grep -v e2e | xargs go test -p 8 -v -race
+	go test -p 8 -race $$(find pkg -type f -name '*_test.go' | sed -r 's|/[^/]+$$||' | sort | uniq | sed "s|^|volcano.sh/volcano/|")
 
 e2e:
 	./hack/run-e2e-kind.sh
