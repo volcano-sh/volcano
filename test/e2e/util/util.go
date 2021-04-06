@@ -200,7 +200,7 @@ func CleanupTestContext(ctx *TestContext) {
 	}
 
 	// Wait for namespace deleted.
-	err = wait.Poll(100*time.Millisecond, TwoMinute, NamespaceNotExist(ctx))
+	err = wait.Poll(100*time.Millisecond, FiveMinute, NamespaceNotExist(ctx))
 	Expect(err).NotTo(HaveOccurred())
 }
 
