@@ -20,6 +20,7 @@ import (
 	"context"
 	"time"
 
+	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -27,10 +28,10 @@ import (
 )
 
 func CreateQueues(cxt *TestContext) {
+	By("Creating Queues")
+
 	for _, q := range cxt.Queues {
-
 		_, err := cxt.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
-
 		//TODO: Better not found error
 		if err != nil {
 			_, err = cxt.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), &schedulingv1beta1.Queue{
@@ -42,8 +43,7 @@ func CreateQueues(cxt *TestContext) {
 				},
 			}, metav1.CreateOptions{})
 		}
-
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to create queue %s", q)
 	}
 }
 
@@ -52,29 +52,33 @@ func deleteQueues(cxt *TestContext) {
 
 	for _, q := range cxt.Queues {
 		queue, err := cxt.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to get queue %s", q)
+
 		queue.Status.State = schedulingv1beta1.QueueStateClosed
 		_, err = cxt.Vcclient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), queue, metav1.UpdateOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to update status of queue %s", q)
+
 		err = wait.Poll(100*time.Millisecond, FiveMinute, queueClosed(cxt, q))
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to wait queue %s closed", q)
 
 		err = cxt.Vcclient.SchedulingV1beta1().Queues().Delete(context.TODO(), q,
 			metav1.DeleteOptions{
 				PropagationPolicy: &foreground,
 			})
-
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to delete queue %s", q)
 	}
 }
 
 func SetQueueReclaimable(cxt *TestContext, queues []string, reclaimable bool) {
+	By("Setting queue reclaimable")
+
 	for _, q := range queues {
 		queue, err := cxt.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred(), "failed to get queue")
+		Expect(err).NotTo(HaveOccurred(), "failed to get queue %s", q)
+
 		queue.Spec.Reclaimable = &reclaimable
 		_, err = cxt.Vcclient.SchedulingV1beta1().Queues().Update(context.TODO(), queue, metav1.UpdateOptions{})
-		Expect(err).NotTo(HaveOccurred(), "failed to update queue")
+		Expect(err).NotTo(HaveOccurred(), "failed to update queue %s", q)
 	}
 }
 
