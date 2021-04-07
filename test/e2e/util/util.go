@@ -25,7 +25,9 @@ import (
 
 	lagencyerror "errors"
 
+	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	schedv1 "k8s.io/api/scheduling/v1beta1"
@@ -129,6 +131,8 @@ var VcClient *vcclient.Clientset
 var KubeClient *kubernetes.Clientset
 
 func InitTestContext(o Options) *TestContext {
+	By("Initializing test context")
+
 	if o.Namespace == "" {
 		o.Namespace = helpers.GenRandomStr(8)
 	}
@@ -186,6 +190,8 @@ func FileExist(name string) bool {
 }
 
 func CleanupTestContext(ctx *TestContext) {
+	By("Cleaning up test context")
+
 	foreground := metav1.DeletePropagationForeground
 	err := ctx.Kubeclient.CoreV1().Namespaces().Delete(context.TODO(), ctx.Namespace, metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
@@ -200,8 +206,8 @@ func CleanupTestContext(ctx *TestContext) {
 	}
 
 	// Wait for namespace deleted.
-	err = wait.Poll(100*time.Millisecond, TwoMinute, NamespaceNotExist(ctx))
-	Expect(err).NotTo(HaveOccurred())
+	err = wait.Poll(100*time.Millisecond, FiveMinute, NamespaceNotExist(ctx))
+	Expect(err).NotTo(HaveOccurred(), "failed to wait for namespace deleted")
 }
 
 func createPriorityClasses(cxt *TestContext) {
@@ -215,7 +221,7 @@ func createPriorityClasses(cxt *TestContext) {
 				GlobalDefault: false,
 			},
 			metav1.CreateOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to create priority class: %s", name)
 	}
 }
 
@@ -339,11 +345,10 @@ func deletePlaceHolder(ctx *TestContext) {
 		LabelSelector: labels.Set(map[string]string{"role": "placeholder"}).String(),
 	}
 	podList, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).List(context.TODO(), listOptions)
-
-	Expect(err).NotTo(HaveOccurred(), "failed to get pod list")
+	Expect(err).NotTo(HaveOccurred(), "failed to list pods")
 
 	for _, pod := range podList.Items {
 		err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to delete pod %s", pod.Name)
 	}
 }

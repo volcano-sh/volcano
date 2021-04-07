@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
+// CreateReplicaSet creates a new replica set
 func CreateReplicaSet(ctx *TestContext, name string, rep int32, img string, req v1.ResourceList) *appv1.ReplicaSet {
 	deploymentName := "deployment.k8s.io"
 	deployment := &appv1.ReplicaSet{
@@ -64,7 +65,7 @@ func CreateReplicaSet(ctx *TestContext, name string, rep int32, img string, req 
 	}
 
 	deployment, err := ctx.Kubeclient.AppsV1().ReplicaSets(ctx.Namespace).Create(context.TODO(), deployment, metav1.CreateOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	Expect(err).NotTo(HaveOccurred(), "failed to create replica sets %s", name)
 
 	return deployment
 }
@@ -72,10 +73,10 @@ func CreateReplicaSet(ctx *TestContext, name string, rep int32, img string, req 
 func replicaSetReady(ctx *TestContext, name string) wait.ConditionFunc {
 	return func() (bool, error) {
 		deployment, err := ctx.Kubeclient.AppsV1().ReplicaSets(ctx.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to get replica set %s in namespace %s", name, ctx.Namespace)
 
 		pods, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to list pods in namespace %s", ctx.Namespace)
 
 		labelSelector := labels.SelectorFromSet(deployment.Spec.Selector.MatchLabels)
 
@@ -94,7 +95,7 @@ func replicaSetReady(ctx *TestContext, name string) wait.ConditionFunc {
 }
 
 func WaitReplicaSetReady(ctx *TestContext, name string) error {
-	return wait.Poll(100*time.Millisecond, TwoMinute, replicaSetReady(ctx, name))
+	return wait.Poll(100*time.Millisecond, FiveMinute, replicaSetReady(ctx, name))
 }
 
 func DeleteReplicaSet(ctx *TestContext, name string) error {

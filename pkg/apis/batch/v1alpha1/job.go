@@ -29,6 +29,16 @@ import (
 // +kubebuilder:subresource:status
 
 // Job defines the volcano job.
+// +kubebuilder:printcolumn:name="Pending",type=integer,JSONPath=`.status.pending`
+// +kubebuilder:printcolumn:name="Running",type=integer,JSONPath=`.status.running`
+// +kubebuilder:printcolumn:name="Succeeded",type=integer,JSONPath=`.status.succeeded`
+// +kubebuilder:printcolumn:name="Failed",type=integer,JSONPath=`.status.failed`
+// +kubebuilder:printcolumn:name="Terminating",type=integer,JSONPath=`.status.terminating`
+// +kubebuilder:printcolumn:name="Unknown",type=integer,JSONPath=`.status.unknown`
+// +kubebuilder:printcolumn:name="RetryCount",type=integer,JSONPath=`.status.retryCount`
+// +kubebuilder:printcolumn:name="MinAvailable",type=integer,JSONPath=`.status.minAvailable`
+// +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state.phase`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 type Job struct {
 	metav1.TypeMeta `json:",inline"`
 
@@ -97,6 +107,11 @@ type JobSpec struct {
 	// If specified, indicates the job's priority.
 	// +optional
 	PriorityClassName string `json:"priorityClassName,omitempty" protobuf:"bytes,10,opt,name=priorityClassName"`
+
+	// The minimal success pods to run for this Job
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	MinSuccess *int32 `json:"minSuccess,omitempty" protobuf:"varint,11,opt,name=minSuccess"`
 }
 
 // VolumeSpec defines the specification of Volume, e.g. PVC.
@@ -240,26 +255,32 @@ type JobStatus struct {
 	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
 
 	// The number of pending pods.
+	// +kubebuilder:default=0
 	// +optional
 	Pending int32 `json:"pending,omitempty" protobuf:"bytes,3,opt,name=pending"`
 
 	// The number of running pods.
+	// +kubebuilder:default=0
 	// +optional
 	Running int32 `json:"running,omitempty" protobuf:"bytes,4,opt,name=running"`
 
 	// The number of pods which reached phase Succeeded.
+	// +kubebuilder:default=0
 	// +optional
 	Succeeded int32 `json:"succeeded,omitempty" protobuf:"bytes,5,opt,name=succeeded"`
 
 	// The number of pods which reached phase Failed.
+	// +kubebuilder:default=0
 	// +optional
 	Failed int32 `json:"failed,omitempty" protobuf:"bytes,6,opt,name=failed"`
 
 	// The number of pods which reached phase Terminating.
+	// +kubebuilder:default=0
 	// +optional
 	Terminating int32 `json:"terminating,omitempty" protobuf:"bytes,7,opt,name=terminating"`
 
 	// The number of pods which reached phase Unknown.
+	// +kubebuilder:default=0
 	// +optional
 	Unknown int32 `json:"unknown,omitempty" protobuf:"bytes,8,opt,name=unknown"`
 
@@ -268,6 +289,7 @@ type JobStatus struct {
 	Version int32 `json:"version,omitempty" protobuf:"bytes,9,opt,name=version"`
 
 	// The number of Job retries.
+	// +kubebuilder:default=0
 	// +optional
 	RetryCount int32 `json:"retryCount,omitempty" protobuf:"bytes,10,opt,name=retryCount"`
 

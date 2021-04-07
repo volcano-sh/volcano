@@ -8,6 +8,37 @@ metadata:
   creationTimestamp: null
   name: jobs.batch.volcano.sh
 spec:
+  additionalPrinterColumns:
+  - JSONPath: .status.pending
+    name: Pending
+    type: integer
+  - JSONPath: .status.running
+    name: Running
+    type: integer
+  - JSONPath: .status.succeeded
+    name: Succeeded
+    type: integer
+  - JSONPath: .status.failed
+    name: Failed
+    type: integer
+  - JSONPath: .status.terminating
+    name: Terminating
+    type: integer
+  - JSONPath: .status.unknown
+    name: Unknown
+    type: integer
+  - JSONPath: .status.retryCount
+    name: RetryCount
+    type: integer
+  - JSONPath: .status.minAvailable
+    name: MinAvailable
+    type: integer
+  - JSONPath: .status.state.phase
+    name: State
+    type: string
+  - JSONPath: .metadata.creationTimestamp
+    name: Age
+    type: date
   group: batch.volcano.sh
   names:
     kind: Job
@@ -49,6 +80,11 @@ spec:
               description: The minimal available pods to run for this Job Defaults
                 to the summary of tasks' replicas
               format: int32
+              type: integer
+            minSuccess:
+              description: The minimal success pods to run for this Job
+              format: int32
+              minimum: 1
               type: integer
             plugins:
               additionalProperties:
