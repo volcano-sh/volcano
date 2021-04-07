@@ -7,7 +7,8 @@
 | Klaus Ma             | [k82cn](https://github.com/k82cn)                       | Huawei      |
 | Kevin Wang           | [kevin-wangzefeng](https://github.com/kevin-wangzefeng) | Huawei      |
 | Zhonghu Xu           | [hzxuzhonghu](https://github.com/hzxuzhonghu)           | Huawei      |
-
+| Thor-wl              | [Thor-wl](https://github.com/Thor-wl)                   | Huawei      |
+| William-wang         | [william-wang](https://github.com/william-wang)         | Huawei      |
 
 ## Emeritus
 

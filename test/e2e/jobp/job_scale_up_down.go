@@ -32,7 +32,6 @@ import (
 
 var _ = Describe("Dynamic Job scale up and down", func() {
 	It("Scale up", func() {
-		By("init test ctx")
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
 
@@ -89,7 +88,6 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 	})
 
 	It("Scale down", func() {
-		By("init test ctx")
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
 
@@ -146,7 +144,6 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 	})
 
 	It("Scale down to zero and scale up", func() {
-		By("init test ctx")
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
 
