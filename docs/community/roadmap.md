@@ -81,21 +81,25 @@ Investigate to cooperate with argo to support job dependencies.
 * Description: Support multiple scheduler by admission controller.
 * Priority: High
 * Issue: https://github.com/volcano-sh/volcano/issues/1322
+* Owner: @Thor-wl @zen-xu
 
 ### Stability and Resilience
 * Description: Improve the UT/E2E test coverage and add the stress test to improve stability.
 * Priority: High
 * Issue: https://github.com/volcano-sh/volcano/issues/1284
+* Owner: @rudeigerc
 
 ### Volcano Device Plugin enhancement
 * Description: Support container using multiples GPU as well as part of GPU card.
 * Priority: Hign
 * Issue: https://github.com/volcano-sh/devices/issues/12
+* Owner: @peiniliu
 
 ### Queue Resource Reservation
 * Description: Support reserve specified resource for queue without restart Volcano.
 * Priority: Medium
 * Issue: https://github.com/volcano-sh/volcano/issues/1101
+* Owner: @Thor-wl @hudson741
 
 ## v1.4 and later (To be updated)
 ### Support Hierarchy Queue
