@@ -91,7 +91,7 @@ Investigate to cooperate with argo to support job dependencies.
 
 ### Volcano Device Plugin enhancement
 * Description: Support container using multiples GPU as well as part of GPU card.
-* Priority: Hign
+* Priority: High
 * Issue: https://github.com/volcano-sh/devices/issues/12
 * Owner: @peiniliu
 
