@@ -221,11 +221,9 @@ var _ = Describe("Job E2E Test", func() {
 		job.Queue = "q1-preemption"
 		job.Tasks[0].Rep = rep
 		queue1Job3 := e2eutil.CreateJob(ctx, job)
-		err = e2eutil.WaitTasksReady(ctx, queue1Job3, 1)
+		err = e2eutil.WaitTasksReady(ctx, queue1Job3, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 		err = e2eutil.WaitTasksReady(ctx, queue1Job, 0)
-		Expect(err).NotTo(HaveOccurred())
-		err = e2eutil.WaitTasksReady(ctx, queue2Job, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
