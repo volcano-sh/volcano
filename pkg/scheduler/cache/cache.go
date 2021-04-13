@@ -1,17 +1,17 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+ Copyright 2021 The Volcano Authors.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+     http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
 */
 
 package cache
@@ -557,6 +557,18 @@ func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string
 
 	p := task.Pod
 	go func() {
+		taskID := schedulingapi.PodKey(p)
+
+		sc.Lock()
+		node.AddBindingTask(taskID)
+		sc.Unlock()
+
+		defer func() {
+			sc.Lock()
+			node.RemoveBindingTask(taskID)
+			sc.Unlock()
+		}()
+
 		if err := sc.Binder.Bind(p, hostname); err != nil {
 			sc.resyncTask(task)
 		} else {
@@ -681,6 +693,12 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 
 	for _, value := range sc.Nodes {
 		if !value.Ready() {
+			continue
+		}
+
+		bindingTasks := value.GetBindingTasks()
+		if len(bindingTasks) > 0 {
+			klog.V(4).Infof("There are %d binding tasks, skip node %s", len(bindingTasks), value.Name)
 			continue
 		}
 
