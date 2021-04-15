@@ -24,8 +24,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/kubernetes/pkg/apis/core/validation"
 
-	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 )
 
 // policyEventMap defines all policy events and whether to allow external use.

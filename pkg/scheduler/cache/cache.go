@@ -43,14 +43,14 @@ import (
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
 
+	"volcano.sh/apis/pkg/apis/scheduling"
+	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
+	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+	"volcano.sh/apis/pkg/client/clientset/versioned/scheme"
+	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
+	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
-	"volcano.sh/volcano/pkg/apis/scheduling"
-	schedulingscheme "volcano.sh/volcano/pkg/apis/scheduling/scheme"
-	vcv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
-	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned"
-	"volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
-	vcinformer "volcano.sh/volcano/pkg/client/informers/externalversions"
-	vcinformerv1 "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1beta1"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 

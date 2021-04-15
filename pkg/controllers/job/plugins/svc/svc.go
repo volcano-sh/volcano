@@ -31,8 +31,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
-	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/helpers"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/helpers"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )

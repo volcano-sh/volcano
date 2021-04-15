@@ -19,7 +19,7 @@ package jobp
 import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )

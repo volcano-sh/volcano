@@ -19,8 +19,8 @@ package api
 import (
 	"k8s.io/apimachinery/pkg/types"
 
-	"volcano.sh/volcano/pkg/apis/scheduling"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/apis/pkg/apis/scheduling"
+	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 // QueueID is UID type, serves as unique ID for each queue

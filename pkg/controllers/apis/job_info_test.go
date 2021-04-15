@@ -24,8 +24,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	vcbatchv1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 )
 
 func TestAddPod(t *testing.T) {

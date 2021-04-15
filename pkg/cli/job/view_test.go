@@ -29,7 +29,7 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	v1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
 
 func TestViewJob(t *testing.T) {

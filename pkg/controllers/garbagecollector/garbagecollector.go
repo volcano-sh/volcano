@@ -28,11 +28,11 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
-	informerfactory "volcano.sh/volcano/pkg/client/informers/externalversions"
-	batchinformers "volcano.sh/volcano/pkg/client/informers/externalversions/batch/v1alpha1"
-	batchlisters "volcano.sh/volcano/pkg/client/listers/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
+	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
+	batchinformers "volcano.sh/apis/pkg/client/informers/externalversions/batch/v1alpha1"
+	batchlisters "volcano.sh/apis/pkg/client/listers/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
 
