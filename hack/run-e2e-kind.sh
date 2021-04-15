@@ -31,7 +31,7 @@ fi
 
 export CLUSTER_CONTEXT="--name ${CLUSTER_NAME}"
 
-export KIND_OPT=${KIND_OPT:=" --config ${VK_ROOT}/hack/e2e-kind-config.yaml"}
+export KIND_OPT=${KIND_OPT:="--config ${VK_ROOT}/hack/e2e-kind-config.yaml"}
 
 function get-k8s-server-version {
     echo $(kubectl version --short=true | grep Server | sed "s/.*: v//" | tr "." " ")
@@ -52,15 +52,17 @@ function install-volcano {
     fi
   fi
 
-  echo "Pulling required docker images"
-  docker pull ${MPI_EXAMPLE_IMAGE}
-  docker pull ${TF_EXAMPLE_IMAGE}
+  if [[ ${E2E_TYPE} = "ALL" ]] || [[ ${E2E_TYPE} = "JOBSEQ" ]]; then
+    echo "Pulling required docker images"
+    docker pull ${MPI_EXAMPLE_IMAGE}
+    docker pull ${TF_EXAMPLE_IMAGE}
+  fi
 
   echo "Ensure create namespace"
   kubectl apply -f installer/namespace.yaml
 
   echo "Install volcano chart with crd version $crd_version"
-  helm install ${CLUSTER_NAME} installer/helm/chart/volcano --namespace kube-system  --kubeconfig ${KUBECONFIG} \
+  helm install ${CLUSTER_NAME} installer/helm/chart/volcano --namespace kube-system --kubeconfig ${KUBECONFIG} \
     --set basic.image_tag_version=${TAG} \
     --set basic.scheduler_config_file=config/volcano-scheduler-ci.conf \
     --set basic.crd_version=${crd_version} \
@@ -76,7 +78,6 @@ function generate-log {
     kubectl logs deployment/${CLUSTER_NAME}-admission -n kube-system > volcano-admission.log
     kubectl logs deployment/${CLUSTER_NAME}-controllers -n kube-system > volcano-controller.log
     kubectl logs deployment/${CLUSTER_NAME}-scheduler -n kube-system > volcano-scheduler.log
-
 }
 
 # clean up
@@ -160,7 +161,7 @@ case ${E2E_TYPE} in
     ;;
 esac
 
-if [[ $? != 0 ]]; then
+if [[ $? -ne 0 ]]; then
   generate-log
   exit 1
 fi

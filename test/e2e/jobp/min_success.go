@@ -26,7 +26,6 @@ import (
 
 var _ = Describe("Check min success", func() {
 	It("Min Success", func() {
-		By("init test ctx")
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
 

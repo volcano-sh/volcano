@@ -80,7 +80,7 @@ func Namespace(context *TestContext, job *JobSpec) string {
 
 func CreateJob(context *TestContext, jobSpec *JobSpec) *batchv1alpha1.Job {
 	job, err := CreateJobInner(context, jobSpec)
-	Expect(err).NotTo(HaveOccurred(), "failed to create job")
+	Expect(err).NotTo(HaveOccurred(), "failed to create job %s in namespace %s", jobSpec.Name, jobSpec.Namespace)
 	return job
 }
 
@@ -164,7 +164,7 @@ func CreateJobWithPodGroup(ctx *TestContext, jobSpec *JobSpec,
 	job.Spec.Volumes = jobSpec.Volumes
 
 	jobCreated, err := ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
-	Expect(err).NotTo(HaveOccurred(), "failed to create job")
+	Expect(err).NotTo(HaveOccurred(), "failed to create job %s in namespace %s", job.Name, job.Namespace)
 
 	return jobCreated
 }
@@ -265,7 +265,7 @@ func WaitTaskPhase(ctx *TestContext, job *batchv1alpha1.Job, phase []v1.PodPhase
 	var additionalError error
 	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
 		pods, err := ctx.Kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to list pods in namespace %s", job.Namespace)
 
 		readyTaskNum := 0
 		for _, pod := range pods.Items {
@@ -299,7 +299,7 @@ func taskPhaseEx(ctx *TestContext, job *batchv1alpha1.Job, phase []v1.PodPhase, 
 	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
 
 		pods, err := ctx.Kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to list pods in namespace %s", job.Namespace)
 
 		readyTaskNum := map[string]int{}
 		for _, pod := range pods.Items {
@@ -369,10 +369,10 @@ func JobEvicted(ctx *TestContext, job *batchv1alpha1.Job, time time.Time) wait.C
 	// TODO(k82cn): check Job's conditions instead of PodGroup's event.
 	return func() (bool, error) {
 		pg, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(job.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to get pod group of job %s in namespace %s", job.Name, job.Namespace)
 
 		events, err := ctx.Kubeclient.CoreV1().Events(pg.Namespace).List(context.TODO(), metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to list events in namespace %s", pg.Namespace)
 
 		for _, event := range events.Items {
 			target := event.InvolvedObject
@@ -382,7 +382,6 @@ func JobEvicted(ctx *TestContext, job *batchv1alpha1.Job, time time.Time) wait.C
 				}
 			}
 		}
-
 		return false, nil
 	}
 }
@@ -477,14 +476,17 @@ func getJobStatusDetail(job *batchv1alpha1.Job) string {
 		job.Status.Succeeded, job.Status.Terminating, job.Status.Failed)
 }
 
+// WaitJobReady waits for the Job to be ready
 func WaitJobReady(ctx *TestContext, job *batchv1alpha1.Job) error {
 	return WaitTasksReady(ctx, job, int(job.Spec.MinAvailable))
 }
 
+// WaitJobPending waits for the Job to be pending
 func WaitJobPending(ctx *TestContext, job *batchv1alpha1.Job) error {
 	return WaitTaskPhase(ctx, job, []v1.PodPhase{v1.PodPending}, int(job.Spec.MinAvailable))
 }
 
+// WaitTasksReady waits for the tasks of a Job to be ready
 func WaitTasksReady(ctx *TestContext, job *batchv1alpha1.Job, taskNum int) error {
 	return WaitTaskPhase(ctx, job, []v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum)
 }
@@ -493,31 +495,37 @@ func WaitTasksReadyEx(ctx *TestContext, job *batchv1alpha1.Job, taskNum map[stri
 	return taskPhaseEx(ctx, job, []v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum)
 }
 
+// WaitTasksPending waits for the tasks of a Job to be pending
 func WaitTasksPending(ctx *TestContext, job *batchv1alpha1.Job, taskNum int) error {
 	return WaitTaskPhase(ctx, job, []v1.PodPhase{v1.PodPending}, taskNum)
 }
 
+// WaitJobStateReady waits for the state of a Job to be ready
 func WaitJobStateReady(ctx *TestContext, job *batchv1alpha1.Job) error {
 	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Running, FiveMinute)
 }
 
+// WaitJobStatePending waits for the state of a Job to be pending
 func WaitJobStatePending(ctx *TestContext, job *batchv1alpha1.Job) error {
 	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Pending, FiveMinute)
 }
 
+// WaitJobStateAborted waits for the state of a Job to be aborted
 func WaitJobStateAborted(ctx *TestContext, job *batchv1alpha1.Job) error {
 	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Aborted, FiveMinute)
 }
 
+// WaitPodPhaseRunningMoreThanNum waits for the number of running pods to be more than specified number
 func WaitPodPhaseRunningMoreThanNum(ctx *TestContext, namespace string, num int) error {
 	var additionalError error
 	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
 		clusterPods, err := ctx.Kubeclient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred(), "Failed to get cluster pod")
+		Expect(err).NotTo(HaveOccurred(), "failed to list pods in namespace %s", namespace)
+
 		runningPodNum := 0
 		for _, pod := range clusterPods.Items {
 			if pod.Status.Phase == "Running" {
-				runningPodNum = runningPodNum + 1
+				runningPodNum++
 			}
 		}
 
@@ -614,6 +622,7 @@ func CreateContainers(img, command, workingDir string, req, limit v1.ResourceLis
 	return []v1.Container{container}
 }
 
+// WaitJobCleanedUp waits for the Job to be cleaned up
 func WaitJobCleanedUp(ctx *TestContext, cleanupjob *batchv1alpha1.Job) error {
 	var additionalError error
 
@@ -654,9 +663,10 @@ func WaitJobCleanedUp(ctx *TestContext, cleanupjob *batchv1alpha1.Job) error {
 	return err
 }
 
+// GetTasksOfJob returns the tasks belongs to the job
 func GetTasksOfJob(ctx *TestContext, job *batchv1alpha1.Job) []*v1.Pod {
 	pods, err := ctx.Kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	Expect(err).NotTo(HaveOccurred(), "failed to list pods in namespace %s", job.Namespace)
 
 	var tasks []*v1.Pod
 
@@ -671,6 +681,7 @@ func GetTasksOfJob(ctx *TestContext, job *batchv1alpha1.Job) []*v1.Pod {
 	return tasks
 }
 
+// WaitPodGone waits the Pod to be deleted when aborting a Job
 func WaitPodGone(ctx *TestContext, podName, namespace string) error {
 	var additionalError error
 	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
@@ -688,6 +699,7 @@ func WaitPodGone(ctx *TestContext, podName, namespace string) error {
 	return err
 }
 
+// WaitJobTerminateAction waits for the Job to be terminated
 func WaitJobTerminateAction(ctx *TestContext, pg *batchv1alpha1.Job) error {
 	return wait.Poll(10*time.Second, FiveMinute, jobTerminateAction(ctx, pg, time.Now()))
 }
@@ -695,7 +707,7 @@ func WaitJobTerminateAction(ctx *TestContext, pg *batchv1alpha1.Job) error {
 func jobTerminateAction(ctx *TestContext, pg *batchv1alpha1.Job, time time.Time) wait.ConditionFunc {
 	return func() (bool, error) {
 		events, err := ctx.Kubeclient.CoreV1().Events(pg.Namespace).List(context.TODO(), metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to list events in namespace %s", pg.Namespace)
 
 		for _, event := range events.Items {
 			target := event.InvolvedObject
@@ -710,11 +722,12 @@ func jobTerminateAction(ctx *TestContext, pg *batchv1alpha1.Job, time time.Time)
 	}
 }
 
+// WaitPodPhase waits for the Pod to be the specified phase
 func WaitPodPhase(ctx *TestContext, pod *v1.Pod, phase []v1.PodPhase) error {
 	var additionalError error
 	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
 		pods, err := ctx.Kubeclient.CoreV1().Pods(pod.Namespace).List(context.TODO(), metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to list pods in namespace %s", pod.Namespace)
 
 		for _, p := range phase {
 			for _, pod := range pods.Items {
@@ -733,6 +746,7 @@ func WaitPodPhase(ctx *TestContext, pod *v1.Pod, phase []v1.PodPhase) error {
 	return err
 }
 
+// IsPodScheduled returns whether the Pod is scheduled
 func IsPodScheduled(pod *v1.Pod) bool {
 	for _, cond := range pod.Status.Conditions {
 		if cond.Type == v1.PodScheduled && cond.Status == v1.ConditionTrue {
@@ -742,11 +756,12 @@ func IsPodScheduled(pod *v1.Pod) bool {
 	return false
 }
 
+// WaitTasksCompleted waits for the tasks of a job to be completed
 func WaitTasksCompleted(ctx *TestContext, job *batchv1alpha1.Job, successNum int32) error {
 	var additionalError error
 	err := wait.Poll(100*time.Millisecond, TwoMinute, func() (bool, error) {
 		pods, err := ctx.Kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to list pods in namespace %s", job.Namespace)
 
 		var succeeded int32 = 0
 		for _, pod := range pods.Items {
