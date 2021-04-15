@@ -26,7 +26,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
-
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 

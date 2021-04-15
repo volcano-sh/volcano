@@ -24,7 +24,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
-
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 

@@ -30,7 +30,6 @@ import (
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 

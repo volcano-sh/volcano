@@ -32,9 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
-
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 

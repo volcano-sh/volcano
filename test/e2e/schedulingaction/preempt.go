@@ -26,7 +26,6 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 

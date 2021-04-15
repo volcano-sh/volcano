@@ -27,7 +27,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
-
 const (
 	// Permit indicates that plugin callback function permits job to be inqueue, pipelined, or other status
 	Permit = 1
@@ -36,6 +35,7 @@ const (
 	// Reject indicates that plugin callback function rejects job to be inqueue, pipelined, or other status
 	Reject = -1
 )
+
 // PodFilter is a function to filter a pod. If pod passed return true else return false.
 type PodFilter func(*v1.Pod) bool
 

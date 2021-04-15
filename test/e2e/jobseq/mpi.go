@@ -22,7 +22,6 @@ import (
 
 	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
-
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 

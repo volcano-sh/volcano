@@ -45,8 +45,8 @@ type Session struct {
 	// This should not be mutated after initiated
 	podGroupStatus map[api.JobID]scheduling.PodGroupStatus
 
-	Jobs           map[api.JobID]*api.JobInfo
-	Nodes          map[string]*api.NodeInfo
+	Jobs  map[api.JobID]*api.JobInfo
+	Nodes map[string]*api.NodeInfo
 
 	RevocableNodes map[string]*api.NodeInfo
 	NamespaceInfo  map[api.NamespaceName]*api.NamespaceInfo
