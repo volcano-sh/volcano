@@ -156,7 +156,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 			msg += err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v",
 				getValidEvents(), getValidActions())
 		}
-		podName := jobhelpers.MakePodName(job.Name, task.Template.Name, index)
+		podName := jobhelpers.MakePodName(job.Name, task.Name, index)
 		msg += validateK8sPodNameLength(podName)
 		msg += validateTaskTemplate(task, job, index)
 	}
