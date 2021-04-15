@@ -1,17 +1,17 @@
 /*
- Copyright 2021 The Volcano Authors.
+Copyright 2017 The Kubernetes Authors.
 
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-     http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 */
 
 package cache
@@ -33,6 +33,7 @@ import (
 	infov1 "k8s.io/client-go/informers/core/v1"
 	schedv1 "k8s.io/client-go/informers/scheduling/v1beta1"
 	storagev1 "k8s.io/client-go/informers/storage/v1"
+	storagev1alpha1 "k8s.io/client-go/informers/storage/v1alpha1"
 	"k8s.io/client-go/kubernetes"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
@@ -43,14 +44,14 @@ import (
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
 
-	"volcano.sh/apis/pkg/apis/scheduling"
-	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
-	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
-	"volcano.sh/apis/pkg/client/clientset/versioned/scheme"
-	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
-	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/apis/scheduling"
+	schedulingscheme "volcano.sh/volcano/pkg/apis/scheduling/scheme"
+	vcv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
+	vcinformer "volcano.sh/volcano/pkg/client/informers/externalversions"
+	vcinformerv1 "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1beta1"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -78,16 +79,18 @@ type SchedulerCache struct {
 	// schedulerName is the name for volcano scheduler
 	schedulerName string
 
-	podInformer             infov1.PodInformer
-	nodeInformer            infov1.NodeInformer
-	podGroupInformerV1beta1 vcinformerv1.PodGroupInformer
-	queueInformerV1beta1    vcinformerv1.QueueInformer
-	pvInformer              infov1.PersistentVolumeInformer
-	pvcInformer             infov1.PersistentVolumeClaimInformer
-	scInformer              storagev1.StorageClassInformer
-	pcInformer              schedv1.PriorityClassInformer
-	quotaInformer           infov1.ResourceQuotaInformer
-	csiNodeInformer         storagev1.CSINodeInformer
+	podInformer                infov1.PodInformer
+	nodeInformer               infov1.NodeInformer
+	podGroupInformerV1beta1    vcinformerv1.PodGroupInformer
+	queueInformerV1beta1       vcinformerv1.QueueInformer
+	pvInformer                 infov1.PersistentVolumeInformer
+	pvcInformer                infov1.PersistentVolumeClaimInformer
+	scInformer                 storagev1.StorageClassInformer
+	pcInformer                 schedv1.PriorityClassInformer
+	quotaInformer              infov1.ResourceQuotaInformer
+	csiNodeInformer            storagev1.CSINodeInformer
+	csiDriverInformer          storagev1.CSIDriverInformer
+	csiStorageCapacityInformer storagev1alpha1.CSIStorageCapacityInformer
 
 	Binder        Binder
 	Evictor       Evictor
@@ -236,21 +239,21 @@ type defaultVolumeBinder struct {
 }
 
 // AllocateVolumes allocates volume on the host to the task
-func (dvb *defaultVolumeBinder) AllocateVolumes(task *schedulingapi.TaskInfo, hostname string) error {
-	allBound, err := dvb.volumeBinder.AssumePodVolumes(task.Pod, hostname)
+func (dvb *defaultVolumeBinder) AllocateVolumes(task *schedulingapi.TaskInfo, hostname string, podVolumes *volumescheduling.PodVolumes) error {
+	allBound, err := dvb.volumeBinder.AssumePodVolumes(task.Pod, hostname, podVolumes)
 	task.VolumeReady = allBound
 
 	return err
 }
 
 // BindVolumes binds volumes to the task
-func (dvb *defaultVolumeBinder) BindVolumes(task *schedulingapi.TaskInfo) error {
+func (dvb *defaultVolumeBinder) BindVolumes(task *schedulingapi.TaskInfo, podVolumes *volumescheduling.PodVolumes) error {
 	// If task's volumes are ready, did not bind them again.
 	if task.VolumeReady {
 		return nil
 	}
 
-	return dvb.volumeBinder.BindPodVolumes(task.Pod)
+	return dvb.volumeBinder.BindPodVolumes(task.Pod, podVolumes)
 }
 
 func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue string) *SchedulerCache {
@@ -329,24 +332,31 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		0,
 	)
 
+	sc.podInformer = informerFactory.Core().V1().Pods()
 	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
 	sc.pvInformer = informerFactory.Core().V1().PersistentVolumes()
 	sc.scInformer = informerFactory.Storage().V1().StorageClasses()
 	sc.csiNodeInformer = informerFactory.Storage().V1().CSINodes()
+	sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
+	sc.csiStorageCapacityInformer = informerFactory.Storage().V1alpha1().CSIStorageCapacities()
 	sc.VolumeBinder = &defaultVolumeBinder{
 		volumeBinder: volumescheduling.NewVolumeBinder(
 			sc.kubeClient,
+			sc.podInformer,
 			sc.nodeInformer,
 			sc.csiNodeInformer,
 			sc.pvcInformer,
 			sc.pvInformer,
 			sc.scInformer,
+			&volumescheduling.CapacityCheck{
+				CSIDriverInformer:          sc.csiDriverInformer,
+				CSIStorageCapacityInformer: sc.csiStorageCapacityInformer,
+			},
 			30*time.Second,
 		),
 	}
 
 	// create informer for pod information
-	sc.podInformer = informerFactory.Core().V1().Pods()
 	sc.podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
@@ -557,18 +567,6 @@ func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string
 
 	p := task.Pod
 	go func() {
-		taskID := schedulingapi.PodKey(p)
-
-		sc.Lock()
-		node.AddBindingTask(taskID)
-		sc.Unlock()
-
-		defer func() {
-			sc.Lock()
-			node.RemoveBindingTask(taskID)
-			sc.Unlock()
-		}()
-
 		if err := sc.Binder.Bind(p, hostname); err != nil {
 			sc.resyncTask(task)
 		} else {
@@ -580,13 +578,13 @@ func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string
 }
 
 // AllocateVolumes allocates volume on the host to the task
-func (sc *SchedulerCache) AllocateVolumes(task *schedulingapi.TaskInfo, hostname string) error {
-	return sc.VolumeBinder.AllocateVolumes(task, hostname)
+func (sc *SchedulerCache) AllocateVolumes(task *schedulingapi.TaskInfo, hostname string, podVolumes *volumescheduling.PodVolumes) error {
+	return sc.VolumeBinder.AllocateVolumes(task, hostname, podVolumes)
 }
 
 // BindVolumes binds volumes to the task
-func (sc *SchedulerCache) BindVolumes(task *schedulingapi.TaskInfo) error {
-	return sc.VolumeBinder.BindVolumes(task)
+func (sc *SchedulerCache) BindVolumes(task *schedulingapi.TaskInfo, podVolumes *volumescheduling.PodVolumes) error {
+	return sc.VolumeBinder.BindVolumes(task, podVolumes)
 }
 
 // Client returns the kubernetes clientSet
@@ -693,12 +691,6 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 
 	for _, value := range sc.Nodes {
 		if !value.Ready() {
-			continue
-		}
-
-		bindingTasks := value.GetBindingTasks()
-		if len(bindingTasks) > 0 {
-			klog.V(4).Infof("There are %d binding tasks, skip node %s", len(bindingTasks), value.Name)
 			continue
 		}
 
