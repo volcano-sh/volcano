@@ -97,6 +97,11 @@ type JobSpec struct {
 	// If specified, indicates the job's priority.
 	// +optional
 	PriorityClassName string `json:"priorityClassName,omitempty" protobuf:"bytes,10,opt,name=priorityClassName"`
+
+	// The minimal success pods to run for this Job
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	MinSuccess *int32 `json:"minSuccess,omitempty" protobuf:"varint,11,opt,name=minSuccess"`
 }
 
 // VolumeSpec defines the specification of Volume, e.g. PVC.

@@ -19,7 +19,6 @@ package allocate
 import (
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog"
 	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
@@ -236,7 +235,11 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			if task.InitResreq.LessEqual(node.Idle) {
 				klog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
 					task.Namespace, task.Name, node.Name)
-				podVolumesInNode := setPodVolumesByNode(task.Pod, node.Node)
+				ssn.KubeClient()
+				podVolumesInNode, err := setPodVolumesByNode(task.Pod, node.Node, ssn)
+				if err != nil {
+					return
+				}
 				if err := stmt.Allocate(task, node.Name, podVolumesInNode); err != nil {
 					klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 						task.UID, node.Name, ssn.UID, err)
@@ -281,8 +284,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 func (alloc *Action) UnInitialize() {}
 
-func setPodVolumesByNode(pod *v1.Pod, node *v1.Node) *volumescheduling.PodVolumes {
-	client := fake.NewSimpleClientset()
+func setPodVolumesByNode(pod *v1.Pod, node *v1.Node, ssn *framework.Session) (*volumescheduling.PodVolumes, error) {
+	client := ssn.KubeClient()
 	informerFactory := informers.NewSharedInformerFactory(client, 0)
 	opts := []runtime.Option{
 		runtime.WithClientSet(client),
@@ -291,14 +294,14 @@ func setPodVolumesByNode(pod *v1.Pod, node *v1.Node) *volumescheduling.PodVolume
 	fh, err := runtime.NewFramework(nil, nil, nil, opts...)
 	if err != nil {
 		klog.V(3).Infof("new framework handle instance failed for %v", err.Error())
-		return nil
+		return nil, err
 	}
 	pl, err := volumebinding.New(&config.VolumeBindingArgs{
 		BindTimeoutSeconds: 300,
 	}, fh)
 	if err != nil {
 		klog.V(3).Infof("new volumebinding instance failed for %v", err.Error())
-		return nil
+		return nil, err
 	}
 
 	p := pl.(*volumebinding.VolumeBinding)
@@ -306,12 +309,12 @@ func setPodVolumesByNode(pod *v1.Pod, node *v1.Node) *volumescheduling.PodVolume
 	boundClaims, claimsToBind, _, err := p.Binder.GetPodVolumes(pod)
 	if err != nil {
 		klog.V(3).Infof("Get podVolumes for pod %v on node %v failed for %v", pod.Name, node.Name, err.Error())
-		return podVolumes
+		return nil, err
 	}
 	podVolumes, _, err = p.Binder.FindPodVolumes(pod, boundClaims, claimsToBind, node)
 	if err != nil {
 		klog.V(3).Infof("Find podVolumes for pod %v on node %v failed for %v", pod.Name, node.Name, err.Error())
-		return podVolumes
+		return nil, err
 	}
-	return podVolumes
+	return podVolumes, nil
 }
