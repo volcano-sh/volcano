@@ -25,7 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-
+	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
 	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -160,11 +160,11 @@ type FakeVolumeBinder struct {
 }
 
 // AllocateVolumes is a empty function
-func (fvb *FakeVolumeBinder) AllocateVolumes(task *api.TaskInfo, hostname string) error {
+func (fvb *FakeVolumeBinder) AllocateVolumes(task *api.TaskInfo, hostname string, podVolumes *volumescheduling.PodVolumes) error {
 	return nil
 }
 
 // BindVolumes is a empty function
-func (fvb *FakeVolumeBinder) BindVolumes(task *api.TaskInfo) error {
+func (fvb *FakeVolumeBinder) BindVolumes(task *api.TaskInfo, podVolumes *volumescheduling.PodVolumes) error {
 	return nil
 }

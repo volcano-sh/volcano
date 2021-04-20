@@ -19,6 +19,7 @@ package framework
 import (
 	"fmt"
 
+	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -227,8 +228,8 @@ func (s *Statement) unpipeline(task *api.TaskInfo) error {
 }
 
 // Allocate the task to node
-func (s *Statement) Allocate(task *api.TaskInfo, hostname string) error {
-	if err := s.ssn.cache.AllocateVolumes(task, hostname); err != nil {
+func (s *Statement) Allocate(task *api.TaskInfo, hostname string, podVolumes *volumescheduling.PodVolumes) error {
+	if err := s.ssn.cache.AllocateVolumes(task, hostname, podVolumes); err != nil {
 		return err
 	}
 
@@ -281,8 +282,8 @@ func (s *Statement) Allocate(task *api.TaskInfo, hostname string) error {
 	return nil
 }
 
-func (s *Statement) allocate(task *api.TaskInfo) error {
-	if err := s.ssn.cache.BindVolumes(task); err != nil {
+func (s *Statement) allocate(task *api.TaskInfo, volumes *volumescheduling.PodVolumes) error {
+	if err := s.ssn.cache.BindVolumes(task, volumes); err != nil {
 		return err
 	}
 
@@ -379,7 +380,8 @@ func (s *Statement) Commit() {
 		case Pipeline:
 			s.pipeline(op.task)
 		case Allocate:
-			err := s.allocate(op.task)
+			podVolumesInNode := s.ssn.PodVolumesInfo[op.task.NodeName]
+			err := s.allocate(op.task, &podVolumesInNode)
 			if err != nil {
 				klog.Errorf("Failed to allocate task: for %s", err.Error())
 			}
