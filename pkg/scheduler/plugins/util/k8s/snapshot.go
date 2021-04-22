@@ -51,8 +51,7 @@ func NewEmptySnapshot() *Snapshot {
 }
 
 // NewSnapshot initializes a Snapshot struct and returns it.
-func NewSnapshot(pods []*v1.Pod, nodes []*v1.Node) *Snapshot {
-	nodeInfoMap := createNodeInfoMap(pods, nodes)
+func NewSnapshot(nodeInfoMap map[string]*v1alpha1.NodeInfo) *Snapshot {
 	nodeInfoList := make([]*v1alpha1.NodeInfo, 0, len(nodeInfoMap))
 	havePodsWithAffinityNodeInfoList := make([]*v1alpha1.NodeInfo, 0, len(nodeInfoMap))
 	for _, v := range nodeInfoMap {

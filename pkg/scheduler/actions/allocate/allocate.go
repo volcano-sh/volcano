@@ -19,7 +19,6 @@ package allocate
 import (
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog"
 	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
@@ -286,7 +285,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 func (alloc *Action) UnInitialize() {}
 
 func setPodVolumesByNode(pod *v1.Pod, node *v1.Node, ssn *framework.Session) (*volumescheduling.PodVolumes, error) {
-	client := fake.NewSimpleClientset()
+	client := ssn.KubeClient()
 	informerFactory := informers.NewSharedInformerFactory(client, 0)
 	opts := []runtime.Option{
 		runtime.WithClientSet(client),
