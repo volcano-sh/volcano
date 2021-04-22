@@ -25,8 +25,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"volcano.sh/apis/pkg/apis/helpers"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
-	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler"
 	"volcano.sh/volcano/pkg/scheduler/framework"

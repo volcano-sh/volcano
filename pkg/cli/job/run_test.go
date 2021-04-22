@@ -27,7 +27,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	v1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	v1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
 
 func TestCreateJob(t *testing.T) {

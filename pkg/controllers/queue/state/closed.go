@@ -17,8 +17,8 @@ limitations under the License.
 package state
 
 import (
-	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 type closedState struct {

@@ -21,7 +21,8 @@ import (
 	"io/ioutil"
 	"strings"
 
-	yaml "gopkg.in/yaml.v2"
+
+  "gopkg.in/yaml.v2"
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -47,10 +48,7 @@ func unmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []
 
 	schedulerConf := &conf.SchedulerConfiguration{}
 
-	buf := make([]byte, len(confStr))
-	copy(buf, confStr)
-
-	if err := yaml.Unmarshal(buf, schedulerConf); err != nil {
+	if err := yaml.Unmarshal([]byte(confStr), schedulerConf); err != nil {
 		return nil, nil, nil, err
 	}
 	// Set default settings for each plugin if not set

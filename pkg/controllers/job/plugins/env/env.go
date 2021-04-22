@@ -19,7 +19,7 @@ package env
 import (
 	v1 "k8s.io/api/core/v1"
 
-	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )

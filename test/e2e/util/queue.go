@@ -24,7 +24,7 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
-	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 func CreateQueues(cxt *TestContext) {
@@ -57,7 +57,6 @@ func deleteQueues(cxt *TestContext) {
 		queue.Status.State = schedulingv1beta1.QueueStateClosed
 		_, err = cxt.Vcclient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), queue, metav1.UpdateOptions{})
 		Expect(err).NotTo(HaveOccurred(), "failed to update status of queue %s", q)
-
 		err = wait.Poll(100*time.Millisecond, FiveMinute, queueClosed(cxt, q))
 		Expect(err).NotTo(HaveOccurred(), "failed to wait queue %s closed", q)
 
