@@ -21,7 +21,6 @@ import (
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
@@ -95,9 +94,8 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 }
 
 func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
-	pl := util.NewPodLister(ssn)
-	pods, _ := pl.List(labels.NewSelector())
-	nodeMap, nodeSlice := util.GenerateNodeMapAndSlice(ssn.Nodes)
+	pl := util.NewPodListerFromNode(ssn)
+	nodeMap := util.GenerateNodeMapAndSlice(ssn.Nodes)
 
 	predicate := enablePredicate(pp.pluginArguments)
 
@@ -170,7 +168,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	// Initialize k8s plugins
 	// TODO: Add more predicates, k8s.io/kubernetes/pkg/scheduler/framework/plugins/legacy_registry.go
-	handle := k8s.NewFrameworkHandle(pods, nodeSlice)
+	handle := k8s.NewFrameworkHandle(nodeMap)
 	// 1. NodeUnschedulable
 	plugin, _ := nodeunschedulable.New(nil, handle)
 	nodeUnscheduleFilter := plugin.(*nodeunschedulable.NodeUnschedulable)
