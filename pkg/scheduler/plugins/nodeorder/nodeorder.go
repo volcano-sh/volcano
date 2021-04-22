@@ -22,7 +22,6 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
@@ -117,9 +116,6 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 		taintTolerationWeight:  1,
 	}
 
-	// Checks whether mostrequested.weight is provided or not, if given, modifies the value in weight struct.
-	args.GetInt(&weight.mostReqWeight, MostRequestedWeight)
-
 	// Checks whether nodeaffinity.weight is provided or not, if given, modifies the value in weight struct.
 	args.GetInt(&weight.nodeAffinityWeight, NodeAffinityWeight)
 
@@ -128,6 +124,9 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 
 	// Checks whether leastrequested.weight is provided or not, if given, modifies the value in weight struct.
 	args.GetInt(&weight.leastReqWeight, LeastRequestedWeight)
+
+	// Checks whether mostrequested.weight is provided or not, if given, modifies the value in weight struct.
+	args.GetInt(&weight.mostReqWeight, MostRequestedWeight)
 
 	// Checks whether balancedresource.weight is provided or not, if given, modifies the value in weight struct.
 	args.GetInt(&weight.balancedResourceWeight, BalancedResourceWeight)
@@ -141,8 +140,7 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	weight := calculateWeight(pp.pluginArguments)
 	pl := util.NewPodListerFromNode(ssn)
-	pods, _ := pl.List(labels.NewSelector())
-	nodeMap, nodeSlice := util.GenerateNodeMapAndSlice(ssn.Nodes)
+	nodeMap := util.GenerateNodeMapAndSlice(ssn.Nodes)
 
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddEventHandler(&framework.EventHandler{
@@ -177,7 +175,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	// Initialize k8s scheduling plugins
-	handle := k8s.NewFrameworkHandle(pods, nodeSlice)
+	handle := k8s.NewFrameworkHandle(nodeMap)
 	// 1. NodeResourcesLeastAllocated
 	laArgs := &config.NodeResourcesLeastAllocatedArgs{
 		Resources: []config.ResourceSpec{
@@ -194,13 +192,17 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	p, _ := noderesources.NewLeastAllocated(laArgs, handle)
 	leastAllocated := p.(*noderesources.LeastAllocated)
 
-	// 2. NodeResourcesBalancedAllocation
+	// 2. NodeResourcesMostAllocated
+	p, _ = noderesources.NewMostAllocated(nil, handle)
+	mostAllocated := p.(*noderesources.MostAllocated)
+
+	// 3. NodeResourcesBalancedAllocation
 	p, _ = noderesources.NewBalancedAllocation(nil, handle)
 	balancedAllocation := p.(*noderesources.BalancedAllocation)
 
-	// 3. NodeAffinity
+	// 4. NodeAffinity
 	p, _ = nodeaffinity.New(nil, handle)
-	affinity := p.(*nodeaffinity.NodeAffinity)
+	nodeAffinity := p.(*nodeaffinity.NodeAffinity)
 
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 		var nodeScore = 0.0
@@ -209,32 +211,53 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		//Issue: #74132 in kubernetes ( https://github.com/kubernetes/kubernetes/issues/74132 )
 
 		// NodeResourcesLeastAllocated
-		score, status := leastAllocated.Score(context.TODO(), nil, task.Pod, node.Name)
-		if !status.IsSuccess() {
-			klog.Warningf("Least Allocated Priority Failed because of Error: %v", status.AsError())
-			return 0, status.AsError()
+		if weight.leastReqWeight != 0 {
+			score, status := leastAllocated.Score(context.TODO(), nil, task.Pod, node.Name)
+			if !status.IsSuccess() {
+				klog.Warningf("Least Allocated Priority Failed because of Error: %v", status.AsError())
+				return 0, status.AsError()
+			}
+
+			// If leastReqWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
+			nodeScore += float64(score) * float64(weight.leastReqWeight)
 		}
 
-		// If leastReqWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		nodeScore += float64(score) * float64(weight.leastReqWeight)
+		// NodeResourcesMostAllocated
+		if weight.mostReqWeight != 0 {
+			score, status := mostAllocated.Score(context.TODO(), nil, task.Pod, node.Name)
+			if !status.IsSuccess() {
+				klog.Warningf("Most Allocated Priority Failed because of Error: %v", status.AsError())
+				return 0, status.AsError()
+			}
+
+			// If mostRequestedWeight is provided, host.Score is multiplied with weight, it's 0 by default
+			nodeScore += float64(score) * float64(weight.mostReqWeight)
+		}
 
 		// NodeResourcesBalancedAllocation
-		score, status = balancedAllocation.Score(context.TODO(), nil, task.Pod, node.Name)
-		if !status.IsSuccess() {
-			klog.Warningf("Balanced Resource Allocation Priority Failed because of Error: %v", status.AsError())
-			return 0, status.AsError()
-		}
-		// If balancedResourceWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		nodeScore += float64(score) * float64(weight.balancedResourceWeight)
+		if weight.balancedResourceWeight != 0 {
+			score, status := balancedAllocation.Score(context.TODO(), nil, task.Pod, node.Name)
+			if !status.IsSuccess() {
+				klog.Warningf("Balanced Resource Allocation Priority Failed because of Error: %v", status.AsError())
+				return 0, status.AsError()
+			}
 
-		score, status = affinity.Score(context.TODO(), nil, task.Pod, node.Name)
-		if !status.IsSuccess() {
-			klog.Warningf("Calculate Node Affinity Priority Failed because of Error: %v", status.AsError())
-			return 0, status.AsError()
+			// If balancedResourceWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
+			nodeScore += float64(score) * float64(weight.balancedResourceWeight)
 		}
-		// TODO: should we normalize the score
-		// If nodeAffinityWeight in provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-		nodeScore += float64(score) * float64(weight.nodeAffinityWeight)
+
+		// NodeAffinity
+		if weight.nodeAffinityWeight != 0 {
+			score, status := nodeAffinity.Score(context.TODO(), nil, task.Pod, node.Name)
+			if !status.IsSuccess() {
+				klog.Warningf("Calculate Node Affinity Priority Failed because of Error: %v", status.AsError())
+				return 0, status.AsError()
+			}
+
+			// TODO: should we normalize the score
+			// If nodeAffinityWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
+			nodeScore += float64(score) * float64(weight.nodeAffinityWeight)
+		}
 
 		klog.V(4).Infof("Total Score for task %s/%s on node %s is: %f", task.Namespace, task.Name, node.Name, nodeScore)
 		return nodeScore, nil
@@ -255,7 +278,6 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		for _, node := range nodeInfo {
 			nodes = append(nodes, node.Node)
 		}
-
 		nodeScores := make(map[string]float64, len(nodes))
 
 		podAffinityScores, podErr := interPodAffinityScore(interPodAffinity, state, task.Pod, nodes, weight.podAffinityWeight)

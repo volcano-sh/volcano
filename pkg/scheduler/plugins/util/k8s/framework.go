@@ -17,7 +17,6 @@ limitations under the License.
 package k8s
 
 import (
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -106,8 +105,8 @@ func (f *Framework) PreemptHandle() v1alpha1.PreemptHandle {
 }
 
 // NewFrameworkHandle creates a FrameworkHandle interface, which is used by k8s plugins.
-func NewFrameworkHandle(pods []*v1.Pod, nodes []*v1.Node) v1alpha1.FrameworkHandle {
-	snapshot := NewSnapshot(pods, nodes)
+func NewFrameworkHandle(nodeMap map[string]*schedulernodeinfo.NodeInfo) v1alpha1.FrameworkHandle {
+	snapshot := NewSnapshot(nodeMap)
 	return &Framework{
 		snapshot: snapshot,
 	}
