@@ -100,16 +100,18 @@ func (sp *sshPlugin) OnJobDelete(job *batch.Job) error {
 }
 
 // TODO: currently a container using a Secret as a subPath volume mount will not receive Secret updates.
+// we may not update the job secret due to the above reason now.
+// related issue: https://github.com/volcano-sh/volcano/issues/1420
 func (sp *sshPlugin) OnJobUpdate(job *batch.Job) error {
-	data, err := generateRsaKey(job)
-	if err != nil {
-		return err
-	}
-
-	if err := helpers.CreateOrUpdateSecret(job, sp.client.KubeClients, data, sp.secretName(job)); err != nil {
-		return fmt.Errorf("update secret for job <%s/%s> with ssh plugin failed for %v",
-			job.Namespace, job.Name, err)
-	}
+	//data, err := generateRsaKey(job)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//if err := helpers.CreateOrUpdateSecret(job, sp.client.KubeClients, data, sp.secretName(job)); err != nil {
+	//	return fmt.Errorf("update secret for job <%s/%s> with ssh plugin failed for %v",
+	//		job.Namespace, job.Name, err)
+	//}
 
 	return nil
 }
