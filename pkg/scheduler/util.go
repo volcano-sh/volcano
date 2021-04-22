@@ -21,8 +21,7 @@ import (
 	"io/ioutil"
 	"strings"
 
-
-  "gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v2"
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/scheduler/conf"
