@@ -231,7 +231,7 @@ tiers:
 	}
 
 	if !reflect.DeepEqual(actions, expectedActions) {
-		t.Errorf("Failed to set default settings for plugins, expected: %+v, got %+v",
+		t.Errorf("Wrong action configuration, expected: %+v, got %+v",
 			actionNameFunc(actions), actionNameFunc(expectedActions))
 	}
 }
