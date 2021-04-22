@@ -232,6 +232,6 @@ tiers:
 
 	if !reflect.DeepEqual(actions, expectedActions) {
 		t.Errorf("Wrong action configuration, expected: %+v, got %+v",
-			actionNameFunc(actions), actionNameFunc(expectedActions))
+			actionNameFunc(expectedActions), actionNameFunc(actions))
 	}
 }
