@@ -21,7 +21,11 @@ import (
 	"testing"
 
 	_ "volcano.sh/volcano/pkg/scheduler/actions"
+	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
+	"volcano.sh/volcano/pkg/scheduler/actions/backfill"
+	"volcano.sh/volcano/pkg/scheduler/actions/enqueue"
 	"volcano.sh/volcano/pkg/scheduler/conf"
+	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
 func TestLoadSchedulerConf(t *testing.T) {
@@ -197,5 +201,37 @@ tiers:
 	if !reflect.DeepEqual(configurations, expectedConfigurations) {
 		t.Errorf("Wrong configuration, expected: %+v, got %+v",
 			expectedConfigurations, configurations)
+	}
+}
+
+func TestUnfoundActionConf(t *testing.T) {
+	configuration := `
+actions: "enqueue, allocate, backfill, unfound"
+tiers:
+- plugins:
+  - name: priority
+  - name: gang
+  - name: conformance
+`
+	expectedActions := []framework.Action{
+		enqueue.New(), allocate.New(), backfill.New(),
+	}
+
+	actions, _, _, err := unmarshalSchedulerConf(configuration)
+	if err != nil {
+		t.Errorf("Failed to load scheduler configuration: %v", err)
+	}
+
+	actionNameFunc := func(a []framework.Action) []string {
+		var actionNames []string
+		for _, action := range a {
+			actionNames = append(actionNames, action.Name())
+		}
+		return actionNames
+	}
+
+	if !reflect.DeepEqual(actions, expectedActions) {
+		t.Errorf("Failed to set default settings for plugins, expected: %+v, got %+v",
+			actionNameFunc(actions), actionNameFunc(expectedActions))
 	}
 }
