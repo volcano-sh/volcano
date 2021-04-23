@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
@@ -139,7 +140,8 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	weight := calculateWeight(pp.pluginArguments)
 	pl := util.NewPodListerFromNode(ssn)
-	nodeMap := util.GenerateNodeMapAndSlice(ssn.Nodes)
+	pods, _ := pl.List(labels.NewSelector())
+	nodeMap, nodeSlice := util.GenerateNodeMapAndSlice(ssn.Nodes)
 
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddEventHandler(&framework.EventHandler{
@@ -174,7 +176,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	// Initialize k8s scheduling plugins
-	handle := k8s.NewFrameworkHandle(nodeMap)
+	handle := k8s.NewFrameworkHandle(pods, nodeSlice)
 	// 1. NodeResourcesLeastAllocated
 	p, _ := noderesources.NewLeastAllocated(nil, handle)
 	leastAllocated := p.(*noderesources.LeastAllocated)
