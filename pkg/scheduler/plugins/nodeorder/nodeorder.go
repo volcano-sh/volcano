@@ -21,8 +21,10 @@ import (
 	"fmt"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
+	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/noderesources"
@@ -139,7 +141,8 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	weight := calculateWeight(pp.pluginArguments)
 	pl := util.NewPodListerFromNode(ssn)
-	nodeMap := util.GenerateNodeMapAndSlice(ssn.Nodes)
+	pods, _ := pl.List(labels.NewSelector())
+	nodeMap, nodeSlice := util.GenerateNodeMapAndSlice(ssn.Nodes)
 
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddEventHandler(&framework.EventHandler{
@@ -174,13 +177,30 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	// Initialize k8s scheduling plugins
-	handle := k8s.NewFrameworkHandle(nodeMap)
+	handle := k8s.NewFrameworkHandle(pods, nodeSlice)
 	// 1. NodeResourcesLeastAllocated
-	p, _ := noderesources.NewLeastAllocated(nil, handle)
+	laArgs := &config.NodeResourcesLeastAllocatedArgs{
+		Resources: []config.ResourceSpec{
+			{
+				Name:   "cpu",
+				Weight: 50,
+			},
+			{
+				Name:   "memory",
+				Weight: 50,
+			},
+		},
+	}
+	p, _ := noderesources.NewLeastAllocated(laArgs, handle)
 	leastAllocated := p.(*noderesources.LeastAllocated)
 
 	// 2. NodeResourcesMostAllocated
-	p, _ = noderesources.NewMostAllocated(nil, handle)
+	defaultResourceMostAllocatedSet := []config.ResourceSpec{
+		{Name: string(v1.ResourceCPU), Weight: 1},
+		{Name: string(v1.ResourceMemory), Weight: 1},
+	}
+	args := config.NodeResourcesMostAllocatedArgs{Resources: defaultResourceMostAllocatedSet}
+	p, _ = noderesources.NewMostAllocated(&args, handle)
 	mostAllocated := p.(*noderesources.MostAllocated)
 
 	// 3. NodeResourcesBalancedAllocation
@@ -190,7 +210,6 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	// 4. NodeAffinity
 	p, _ = nodeaffinity.New(nil, handle)
 	nodeAffinity := p.(*nodeaffinity.NodeAffinity)
-
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 		var nodeScore = 0.0
 
@@ -251,7 +270,8 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	ssn.AddNodeOrderFn(pp.Name(), nodeOrderFn)
 
-	p, _ = interpodaffinity.New(nil, handle)
+	plArgs := &config.InterPodAffinityArgs{}
+	p, _ = interpodaffinity.New(plArgs, handle)
 	interPodAffinity := p.(*interpodaffinity.InterPodAffinity)
 
 	p, _ = tainttoleration.New(nil, handle)

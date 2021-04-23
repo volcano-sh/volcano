@@ -17,20 +17,20 @@ limitations under the License.
 package k8s
 
 import (
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/kubernetes/pkg/controller/volume/scheduling"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
-	schedulerlisters "k8s.io/kubernetes/pkg/scheduler/listers"
-	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 )
 
 // Framework is a K8S framework who mainly provides some methods
 // about snapshot and plugins such as predicates
 type Framework struct {
-	snapshot schedulerlisters.SharedLister
+	snapshot v1alpha1.SharedLister
 }
 
 var _ v1alpha1.FrameworkHandle = &Framework{}
@@ -39,7 +39,7 @@ var _ v1alpha1.FrameworkHandle = &Framework{}
 // snapshot. The snapshot is taken at the beginning of a scheduling cycle and remains
 // unchanged until a pod finishes "Reserve". There is no guarantee that the information
 // remains unchanged after "Reserve".
-func (f *Framework) SnapshotSharedLister() schedulerlisters.SharedLister {
+func (f *Framework) SnapshotSharedLister() v1alpha1.SharedLister {
 	return f.snapshot
 }
 
@@ -95,9 +95,19 @@ func (f *Framework) VolumeBinder() scheduling.SchedulerVolumeBinder {
 	return nil
 }
 
+// EventRecorder was introduced in k8s v1.19.6 and to be implemented
+func (f *Framework) EventRecorder() events.EventRecorder {
+	return nil
+}
+
+// PreemptHandle was introduced in k8s v1.19.6 and to be implemented
+func (f *Framework) PreemptHandle() v1alpha1.PreemptHandle {
+	return nil
+}
+
 // NewFrameworkHandle creates a FrameworkHandle interface, which is used by k8s plugins.
-func NewFrameworkHandle(nodeMap map[string]*schedulernodeinfo.NodeInfo) v1alpha1.FrameworkHandle {
-	snapshot := NewSnapshot(nodeMap)
+func NewFrameworkHandle(pods []*v1.Pod, nodes []*v1.Node) v1alpha1.FrameworkHandle {
+	snapshot := NewSnapshot(pods, nodes)
 	return &Framework{
 		snapshot: snapshot,
 	}

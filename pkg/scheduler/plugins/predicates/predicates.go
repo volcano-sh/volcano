@@ -21,8 +21,10 @@ import (
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
+	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeports"
@@ -94,8 +96,9 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 }
 
 func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
-	pl := util.NewPodListerFromNode(ssn)
-	nodeMap := util.GenerateNodeMapAndSlice(ssn.Nodes)
+	pl := util.NewPodLister(ssn)
+	pods, _ := pl.List(labels.NewSelector())
+	nodeMap, nodeSlice := util.GenerateNodeMapAndSlice(ssn.Nodes)
 
 	predicate := enablePredicate(pp.pluginArguments)
 
@@ -168,7 +171,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	// Initialize k8s plugins
 	// TODO: Add more predicates, k8s.io/kubernetes/pkg/scheduler/framework/plugins/legacy_registry.go
-	handle := k8s.NewFrameworkHandle(nodeMap)
+	handle := k8s.NewFrameworkHandle(pods, nodeSlice)
 	// 1. NodeUnschedulable
 	plugin, _ := nodeunschedulable.New(nil, handle)
 	nodeUnscheduleFilter := plugin.(*nodeunschedulable.NodeUnschedulable)
@@ -182,7 +185,8 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	plugin, _ = tainttoleration.New(nil, handle)
 	tolerationFilter := plugin.(*tainttoleration.TaintToleration)
 	// 5. InterPodAffinity
-	plugin, _ = interpodaffinity.New(nil, handle)
+	plArgs := &config.InterPodAffinityArgs{}
+	plugin, _ = interpodaffinity.New(plArgs, handle)
 	podAffinityFilter := plugin.(*interpodaffinity.InterPodAffinity)
 
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
@@ -191,7 +195,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			fmt.Errorf("failed to predicates, node info for %s not found", node.Name)
 		}
 
-		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods()) {
+		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods) {
 			klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed",
 				task.Namespace, task.Name, node.Name)
 			return api.NewFitError(task, node, api.NodePodNumberExceeded)
