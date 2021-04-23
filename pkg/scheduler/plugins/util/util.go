@@ -221,15 +221,17 @@ func (pal *PodAffinityLister) FilteredList(podFilter listers.PodFilter, selector
 }
 
 // GenerateNodeMapAndSlice returns the nodeMap and nodeSlice generated from ssn
-func GenerateNodeMapAndSlice(nodes map[string]*api.NodeInfo) map[string]*schedulernodeinfo.NodeInfo {
+func GenerateNodeMapAndSlice(nodes map[string]*api.NodeInfo) (map[string]*schedulernodeinfo.NodeInfo, []*v1.Node) {
 	var nodeMap map[string]*schedulernodeinfo.NodeInfo
+	var nodeSlice []*v1.Node
 	nodeMap = make(map[string]*schedulernodeinfo.NodeInfo)
 	for _, node := range nodes {
 		nodeInfo := schedulernodeinfo.NewNodeInfo(node.Pods()...)
 		nodeInfo.SetNode(node.Node)
 		nodeMap[node.Name] = nodeInfo
+		nodeSlice = append(nodeSlice, node.Node)
 	}
-	return nodeMap
+	return nodeMap, nodeSlice
 }
 
 // CachedNodeInfo is used in nodeorder and predicate plugin
