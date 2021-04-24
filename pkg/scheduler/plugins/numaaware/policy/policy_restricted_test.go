@@ -25,13 +25,13 @@ import (
 
 func Test_restricted_predicate(t *testing.T) {
 	teseCases := []struct {
-		name string
+		name           string
 		providersHints []map[string][]TopologyHint
-		expect TopologyHint
-	} {
+		expect         TopologyHint
+	}{
 		{
 			name: "test-1",
-			providersHints: []map[string][]TopologyHint {
+			providersHints: []map[string][]TopologyHint{
 				{
 					"cpu": []TopologyHint{
 						{
@@ -79,7 +79,7 @@ func Test_restricted_predicate(t *testing.T) {
 		},
 		{
 			name: "test-2",
-			providersHints: []map[string][]TopologyHint {
+			providersHints: []map[string][]TopologyHint{
 				{
 					"cpu": []TopologyHint{
 						{
@@ -127,7 +127,7 @@ func Test_restricted_predicate(t *testing.T) {
 		},
 		{
 			name: "test-3",
-			providersHints: []map[string][]TopologyHint {
+			providersHints: []map[string][]TopologyHint{
 				{
 					"cpu": []TopologyHint{
 						{
@@ -189,7 +189,7 @@ func Test_restricted_predicate(t *testing.T) {
 		},
 		{
 			name: "test-4",
-			providersHints: []map[string][]TopologyHint {
+			providersHints: []map[string][]TopologyHint{
 				{
 					"cpu": []TopologyHint{
 						{
@@ -237,7 +237,7 @@ func Test_restricted_predicate(t *testing.T) {
 		},
 		{
 			name: "test-5",
-			providersHints: []map[string][]TopologyHint {
+			providersHints: []map[string][]TopologyHint{
 				{
 					"cpu": []TopologyHint{
 						{
@@ -278,7 +278,7 @@ func Test_restricted_predicate(t *testing.T) {
 		},
 		{
 			name: "test-6",
-			providersHints: []map[string][]TopologyHint {
+			providersHints: []map[string][]TopologyHint{
 				{
 					"cpu": []TopologyHint{
 						{
@@ -304,7 +304,7 @@ func Test_restricted_predicate(t *testing.T) {
 			},
 			expect: TopologyHint{
 				NUMANodeAffinity: func() bitmask.BitMask {
-					mask, _ := bitmask.NewBitMask(0,1)
+					mask, _ := bitmask.NewBitMask(0, 1)
 					return mask
 				}(),
 				Preferred: true,
@@ -313,9 +313,9 @@ func Test_restricted_predicate(t *testing.T) {
 	}
 
 	for _, testcase := range teseCases {
-		policy := NewPolicyRestricted([]int{0,1})
+		policy := NewPolicyRestricted([]int{0, 1})
 		bestHit, _ := policy.Predicate(testcase.providersHints)
-		if !reflect.DeepEqual(bestHit, testcase.expect){
+		if !reflect.DeepEqual(bestHit, testcase.expect) {
 			t.Errorf("%s failed, expect %v, bestHit= %v\n", testcase.name, testcase.expect, bestHit)
 		}
 	}

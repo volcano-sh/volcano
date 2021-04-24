@@ -205,14 +205,13 @@ func Test_GetTopologyHints(t *testing.T) {
 	}
 }
 
-
 func Test_Allocate(t *testing.T) {
 	teseCases := []struct {
 		name        string
 		container   v1.Container
 		resNumaSets api.ResNumaSets
-		bestHit *policy.TopologyHint
-		expect  cpuset.CPUSet
+		bestHit     *policy.TopologyHint
+		expect      cpuset.CPUSet
 	}{
 		{
 			name: "test-1",
@@ -233,7 +232,7 @@ func Test_Allocate(t *testing.T) {
 				}(),
 				Preferred: true,
 			},
-			expect: cpuset.NewCPUSet(0,1,2,3),
+			expect: cpuset.NewCPUSet(0, 1, 2, 3),
 		},
 		{
 			name: "test-2",
@@ -254,7 +253,7 @@ func Test_Allocate(t *testing.T) {
 				}(),
 				Preferred: true,
 			},
-			expect: cpuset.NewCPUSet(4,5,6,7),
+			expect: cpuset.NewCPUSet(4, 5, 6, 7),
 		},
 		{
 			name: "test-3",
@@ -270,12 +269,12 @@ func Test_Allocate(t *testing.T) {
 			},
 			bestHit: &policy.TopologyHint{
 				NUMANodeAffinity: func() bitmask.BitMask {
-					mask, _ := bitmask.NewBitMask(0,1)
+					mask, _ := bitmask.NewBitMask(0, 1)
 					return mask
 				}(),
 				Preferred: true,
 			},
-			expect: cpuset.NewCPUSet(0,1,2,3,4),
+			expect: cpuset.NewCPUSet(0, 1, 2, 3, 4),
 		},
 		{
 			name: "test-4",
@@ -291,12 +290,12 @@ func Test_Allocate(t *testing.T) {
 			},
 			bestHit: &policy.TopologyHint{
 				NUMANodeAffinity: func() bitmask.BitMask {
-					mask, _ := bitmask.NewBitMask(0,1)
+					mask, _ := bitmask.NewBitMask(0, 1)
 					return mask
 				}(),
 				Preferred: true,
 			},
-			expect: cpuset.NewCPUSet(1,4,5,6,7),
+			expect: cpuset.NewCPUSet(1, 4, 5, 6, 7),
 		},
 		{
 			name: "test-5",
@@ -312,7 +311,7 @@ func Test_Allocate(t *testing.T) {
 			},
 			bestHit: &policy.TopologyHint{
 				NUMANodeAffinity: func() bitmask.BitMask {
-					mask, _ := bitmask.NewBitMask(0,1)
+					mask, _ := bitmask.NewBitMask(0, 1)
 					return mask
 				}(),
 				Preferred: true,

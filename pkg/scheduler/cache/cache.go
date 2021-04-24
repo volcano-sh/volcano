@@ -46,13 +46,13 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	cpuclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/apis/pkg/client/clientset/versioned/scheme"
-	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
-	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
-	cpuclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	cpuinformer "volcano.sh/apis/pkg/client/informers/externalversions"
+	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	cpuinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/nodeinfo/v1alpha1"
+	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
@@ -601,7 +601,6 @@ func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string
 			}
 		}()
 	}
-
 
 	return nil
 }

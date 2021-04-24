@@ -17,10 +17,10 @@ limitations under the License.
 package api
 
 import (
-	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
+	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 )
 
 // NumaChgFlag indicate node numainfo changed status
@@ -28,11 +28,11 @@ type NumaChgFlag int
 
 const (
 	// NumaInfoResetFlag indicate reset operate
-	NumaInfoResetFlag NumaChgFlag = 0B00
+	NumaInfoResetFlag NumaChgFlag = 0b00
 	// NumaInfoMoreFlag indicate the received allocatable resource is getting more
-	NumaInfoMoreFlag NumaChgFlag = 0B11
+	NumaInfoMoreFlag NumaChgFlag = 0b11
 	// NumaInfoLessFlag indicate the received allocatable resource is getting less
-	NumaInfoLessFlag NumaChgFlag = 0B10
+	NumaInfoLessFlag NumaChgFlag = 0b10
 )
 
 // ResourceInfo is the allocatable information for the resource
@@ -179,5 +179,3 @@ func (resSets ResNumaSets) Clone() ResNumaSets {
 
 	return newSets
 }
-
-

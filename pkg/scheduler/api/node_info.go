@@ -47,7 +47,7 @@ type NodeInfo struct {
 
 	Tasks             map[TaskID]*TaskInfo
 	NumaInfo          *NumatopoInfo
-	NumaChgFlag		  NumaChgFlag
+	NumaChgFlag       NumaChgFlag
 	NumaSchedulerInfo *NumatopoInfo
 	RevocableZone     string
 

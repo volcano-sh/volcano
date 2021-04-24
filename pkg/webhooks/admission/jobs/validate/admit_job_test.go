@@ -1243,16 +1243,16 @@ func newJob() *v1alpha1.Job {
 }
 
 func TestValidateTaskTopoPolicy(t *testing.T) {
-	testCases := []struct{
-		name string
+	testCases := []struct {
+		name     string
 		taskSpec v1alpha1.TaskSpec
-		expect string
-	} {
+		expect   string
+	}{
 		{
 			name: "test-1",
-			taskSpec : v1alpha1.TaskSpec{
-				Name:     "task-1",
-				Replicas: 5,
+			taskSpec: v1alpha1.TaskSpec{
+				Name:           "task-1",
+				Replicas:       5,
 				TopologyPolicy: v1alpha1.Restricted,
 				Template: v1.PodTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{
@@ -1262,8 +1262,8 @@ func TestValidateTaskTopoPolicy(t *testing.T) {
 						Containers: []v1.Container{
 							{
 								Resources: v1.ResourceRequirements{
-									Limits:   v1.ResourceList{
-										v1.ResourceCPU: *resource.NewQuantity(1, ""),
+									Limits: v1.ResourceList{
+										v1.ResourceCPU:    *resource.NewQuantity(1, ""),
 										v1.ResourceMemory: *resource.NewQuantity(2000, resource.BinarySI),
 									},
 								},
@@ -1276,16 +1276,16 @@ func TestValidateTaskTopoPolicy(t *testing.T) {
 		},
 		{
 			name: "test-2",
-			taskSpec : v1alpha1.TaskSpec{
-				Name:     "task-2",
+			taskSpec: v1alpha1.TaskSpec{
+				Name:           "task-2",
 				TopologyPolicy: v1alpha1.Restricted,
 				Template: v1.PodTemplateSpec{
 					Spec: v1.PodSpec{
 						Containers: []v1.Container{
 							{
 								Resources: v1.ResourceRequirements{
-									Limits:   v1.ResourceList{
-										v1.ResourceCPU: *resource.NewMilliQuantity(500, resource.DecimalSI),
+									Limits: v1.ResourceList{
+										v1.ResourceCPU:    *resource.NewMilliQuantity(500, resource.DecimalSI),
 										v1.ResourceMemory: *resource.NewQuantity(2000, resource.BinarySI),
 									},
 								},
@@ -1298,9 +1298,9 @@ func TestValidateTaskTopoPolicy(t *testing.T) {
 		},
 		{
 			name: "test-3",
-			taskSpec : v1alpha1.TaskSpec{
-				Name:     "task-3",
-				Replicas: 5,
+			taskSpec: v1alpha1.TaskSpec{
+				Name:           "task-3",
+				Replicas:       5,
 				TopologyPolicy: v1alpha1.Restricted,
 				Template: v1.PodTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{
@@ -1310,8 +1310,8 @@ func TestValidateTaskTopoPolicy(t *testing.T) {
 						Containers: []v1.Container{
 							{
 								Resources: v1.ResourceRequirements{
-									Requests:   v1.ResourceList{
-										v1.ResourceCPU: *resource.NewQuantity(1, ""),
+									Requests: v1.ResourceList{
+										v1.ResourceCPU:    *resource.NewQuantity(1, ""),
 										v1.ResourceMemory: *resource.NewQuantity(2000, resource.BinarySI),
 									},
 								},

@@ -43,3 +43,6 @@ const JDBMinAvailable = "volcano.sh/jdb-min-available"
 
 // JDBMaxUnavailable is the key of max unavailable pod number
 const JDBMaxUnavailable = "volcano.sh/jdb-max-unavailable"
+
+// NumaPolicyKey is the key of pod nuam-topology policy
+const NumaPolicyKey = "volcano.sh/numa-topology-policy"
