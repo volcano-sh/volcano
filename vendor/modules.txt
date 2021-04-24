@@ -34,6 +34,8 @@ github.com/golang/protobuf/ptypes
 github.com/golang/protobuf/ptypes/any
 github.com/golang/protobuf/ptypes/duration
 github.com/golang/protobuf/ptypes/timestamp
+# github.com/google/cadvisor v0.35.0
+github.com/google/cadvisor/info/v1
 # github.com/google/go-cmp v0.3.0
 github.com/google/go-cmp/cmp
 github.com/google/go-cmp/cmp/internal/diff
@@ -635,6 +637,7 @@ k8s.io/kubernetes/pkg/apis/core/helper
 k8s.io/kubernetes/pkg/apis/core/pods
 k8s.io/kubernetes/pkg/apis/core/v1
 k8s.io/kubernetes/pkg/apis/core/v1/helper
+k8s.io/kubernetes/pkg/apis/core/v1/helper/qos
 k8s.io/kubernetes/pkg/apis/core/validation
 k8s.io/kubernetes/pkg/apis/scheduling
 k8s.io/kubernetes/pkg/capabilities
@@ -643,6 +646,9 @@ k8s.io/kubernetes/pkg/controller/volume/scheduling
 k8s.io/kubernetes/pkg/controller/volume/scheduling/metrics
 k8s.io/kubernetes/pkg/features
 k8s.io/kubernetes/pkg/fieldpath
+k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology
+k8s.io/kubernetes/pkg/kubelet/cm/cpuset
+k8s.io/kubernetes/pkg/kubelet/cm/topologymanager/bitmask
 k8s.io/kubernetes/pkg/kubelet/types
 k8s.io/kubernetes/pkg/master/ports
 k8s.io/kubernetes/pkg/scheduler/apis/config
@@ -689,11 +695,12 @@ sigs.k8s.io/structured-merge-diff/v3/value
 # sigs.k8s.io/yaml v1.2.0
 ## explicit
 sigs.k8s.io/yaml
-# volcano.sh/apis v1.3.0-k8s1.18.3-alpha.3 => volcano.sh/apis v1.3.0-k8s1.18.3-alpha.3
+# volcano.sh/apis v1.2.0-k8s1.18.3-alpha.6 => volcano.sh/apis v1.2.0-k8s1.18.3-alpha.6
 ## explicit
 volcano.sh/apis/pkg/apis/batch/v1alpha1
 volcano.sh/apis/pkg/apis/bus/v1alpha1
 volcano.sh/apis/pkg/apis/helpers
+volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1
 volcano.sh/apis/pkg/apis/scheduling
 volcano.sh/apis/pkg/apis/scheduling/scheme
 volcano.sh/apis/pkg/apis/scheduling/v1beta1
@@ -705,6 +712,8 @@ volcano.sh/apis/pkg/client/clientset/versioned/typed/batch/v1alpha1
 volcano.sh/apis/pkg/client/clientset/versioned/typed/batch/v1alpha1/fake
 volcano.sh/apis/pkg/client/clientset/versioned/typed/bus/v1alpha1
 volcano.sh/apis/pkg/client/clientset/versioned/typed/bus/v1alpha1/fake
+volcano.sh/apis/pkg/client/clientset/versioned/typed/nodeinfo/v1alpha1
+volcano.sh/apis/pkg/client/clientset/versioned/typed/nodeinfo/v1alpha1/fake
 volcano.sh/apis/pkg/client/clientset/versioned/typed/scheduling/v1beta1
 volcano.sh/apis/pkg/client/clientset/versioned/typed/scheduling/v1beta1/fake
 volcano.sh/apis/pkg/client/informers/externalversions
@@ -713,10 +722,13 @@ volcano.sh/apis/pkg/client/informers/externalversions/batch/v1alpha1
 volcano.sh/apis/pkg/client/informers/externalversions/bus
 volcano.sh/apis/pkg/client/informers/externalversions/bus/v1alpha1
 volcano.sh/apis/pkg/client/informers/externalversions/internalinterfaces
+volcano.sh/apis/pkg/client/informers/externalversions/nodeinfo
+volcano.sh/apis/pkg/client/informers/externalversions/nodeinfo/v1alpha1
 volcano.sh/apis/pkg/client/informers/externalversions/scheduling
 volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1
 volcano.sh/apis/pkg/client/listers/batch/v1alpha1
 volcano.sh/apis/pkg/client/listers/bus/v1alpha1
+volcano.sh/apis/pkg/client/listers/nodeinfo/v1alpha1
 volcano.sh/apis/pkg/client/listers/scheduling/v1beta1
 # k8s.io/api => k8s.io/api v0.18.3
 # k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.18.3
@@ -743,4 +755,4 @@ volcano.sh/apis/pkg/client/listers/scheduling/v1beta1
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.18.3
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.18.3
 # k8s.io/sample-controller => k8s.io/sample-controller v0.18.3
-# volcano.sh/apis => volcano.sh/apis v1.3.0-k8s1.18.3-alpha.3
+# volcano.sh/apis => volcano.sh/apis v1.2.0-k8s1.18.3-alpha.6
