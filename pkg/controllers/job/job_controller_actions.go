@@ -277,7 +277,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		for i := 0; i < int(ts.Replicas); i++ {
 			podName := fmt.Sprintf(jobhelpers.PodNameFmt, job.Name, name, i)
 			if pod, found := pods[podName]; !found {
-				newPod := createJobPod(job, tc, i)
+				newPod := createJobPod(job, tc, ts.TopologyPolicy, i)
 				if err := cc.pluginOnPodCreate(job, newPod); err != nil {
 					return err
 				}
