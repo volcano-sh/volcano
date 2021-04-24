@@ -31,6 +31,7 @@ import (
 	"k8s.io/klog"
 	k8score "k8s.io/kubernetes/pkg/apis/core"
 	k8scorev1 "k8s.io/kubernetes/pkg/apis/core/v1"
+	v1qos "k8s.io/kubernetes/pkg/apis/core/v1/helper/qos"
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -276,6 +277,11 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 		return msg
 	}
 
+	msg := validateTaskTopoPolicy(task, index)
+	if msg != "" {
+		return msg
+	}
+
 	return ""
 }
 
@@ -291,4 +297,51 @@ func validateJobName(job *v1alpha1.Job) string {
 		return fmt.Sprintf("create job with name %s validate failed %v", job.Name, errMsgs)
 	}
 	return ""
+}
+
+func validateTaskTopoPolicy(task v1alpha1.TaskSpec, index int) string {
+	if task.TopologyPolicy == "" || task.TopologyPolicy == v1alpha1.None {
+		return ""
+	}
+
+	template := task.Template.DeepCopy()
+
+	for id, container := range template.Spec.Containers {
+		if len(container.Resources.Requests) == 0 {
+			template.Spec.Containers[id].Resources.Requests = container.Resources.Limits.DeepCopy()
+		}
+	}
+
+	for id, container := range template.Spec.InitContainers {
+		if len(container.Resources.Requests) == 0 {
+			template.Spec.InitContainers[id].Resources.Requests = container.Resources.Limits.DeepCopy()
+		}
+	}
+
+	pod := &v1.Pod{
+		Spec: template.Spec,
+	}
+
+	if v1qos.GetPodQOS(pod) != v1.PodQOSGuaranteed {
+		return fmt.Sprintf("spec.task[%d] isn't Guaranteed pod, kind=%v", index, v1qos.GetPodQOS(pod))
+	}
+
+	for id, container := range append(template.Spec.Containers, template.Spec.InitContainers...) {
+		requestNum := guaranteedCPUs(container)
+		if requestNum == 0 {
+			return fmt.Sprintf("the cpu request isn't  an integer in spec.task[%d] container[%d].",
+				index, id)
+		}
+	}
+
+	return ""
+}
+
+func guaranteedCPUs(container v1.Container) int {
+	cpuQuantity := container.Resources.Requests[v1.ResourceCPU]
+	if cpuQuantity.Value()*1000 != cpuQuantity.MilliValue() {
+		return 0
+	}
+
+	return int(cpuQuantity.Value())
 }

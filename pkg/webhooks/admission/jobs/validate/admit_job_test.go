@@ -1241,3 +1241,93 @@ func newJob() *v1alpha1.Job {
 		},
 	}
 }
+
+func TestValidateTaskTopoPolicy(t *testing.T) {
+	testCases := []struct{
+		name string
+		taskSpec v1alpha1.TaskSpec
+		expect string
+	} {
+		{
+			name: "test-1",
+			taskSpec : v1alpha1.TaskSpec{
+				Name:     "task-1",
+				Replicas: 5,
+				TopologyPolicy: v1alpha1.Restricted,
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{"name": "test"},
+					},
+					Spec: v1.PodSpec{
+						Containers: []v1.Container{
+							{
+								Resources: v1.ResourceRequirements{
+									Limits:   v1.ResourceList{
+										v1.ResourceCPU: *resource.NewQuantity(1, ""),
+										v1.ResourceMemory: *resource.NewQuantity(2000, resource.BinarySI),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expect: "",
+		},
+		{
+			name: "test-2",
+			taskSpec : v1alpha1.TaskSpec{
+				Name:     "task-2",
+				TopologyPolicy: v1alpha1.Restricted,
+				Template: v1.PodTemplateSpec{
+					Spec: v1.PodSpec{
+						Containers: []v1.Container{
+							{
+								Resources: v1.ResourceRequirements{
+									Limits:   v1.ResourceList{
+										v1.ResourceCPU: *resource.NewMilliQuantity(500, resource.DecimalSI),
+										v1.ResourceMemory: *resource.NewQuantity(2000, resource.BinarySI),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expect: "the cpu request isn't  an integer",
+		},
+		{
+			name: "test-3",
+			taskSpec : v1alpha1.TaskSpec{
+				Name:     "task-3",
+				Replicas: 5,
+				TopologyPolicy: v1alpha1.Restricted,
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{"name": "test"},
+					},
+					Spec: v1.PodSpec{
+						Containers: []v1.Container{
+							{
+								Resources: v1.ResourceRequirements{
+									Requests:   v1.ResourceList{
+										v1.ResourceCPU: *resource.NewQuantity(1, ""),
+										v1.ResourceMemory: *resource.NewQuantity(2000, resource.BinarySI),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expect: "isn't Guaranteed pod",
+		},
+	}
+
+	for _, testcase := range testCases {
+		msg := validateTaskTopoPolicy(testcase.taskSpec, 0)
+		if !strings.Contains(msg, testcase.expect) {
+			t.Errorf("%s failed.", testcase.name)
+		}
+	}
+}

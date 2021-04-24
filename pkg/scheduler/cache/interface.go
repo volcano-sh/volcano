@@ -57,6 +57,8 @@ type Cache interface {
 
 	// Client returns the kubernetes clientSet, which can be used by plugins
 	Client() kubernetes.Interface
+
+	UpdateSchedulerNumaInfo(sets map[string]api.ResNumaSets) error
 }
 
 // VolumeBinder interface for allocate and bind volumes
