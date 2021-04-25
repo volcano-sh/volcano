@@ -65,6 +65,9 @@ rules:
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
     verbs: ["list", "watch", "update"]
+  - apiGroups: ["nodeinfo.volcano.sh"]
+    resources: ["numatopos"]
+    verbs: ["get", "list", "watch"]
 
 ---
 kind: ClusterRoleBinding
