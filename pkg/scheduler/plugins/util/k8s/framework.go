@@ -17,6 +17,7 @@ limitations under the License.
 package k8s
 
 import (
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -24,7 +25,6 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	schedulerlisters "k8s.io/kubernetes/pkg/scheduler/listers"
-	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 )
 
 // Framework is a K8S framework who mainly provides some methods
@@ -96,8 +96,8 @@ func (f *Framework) VolumeBinder() scheduling.SchedulerVolumeBinder {
 }
 
 // NewFrameworkHandle creates a FrameworkHandle interface, which is used by k8s plugins.
-func NewFrameworkHandle(nodeMap map[string]*schedulernodeinfo.NodeInfo) v1alpha1.FrameworkHandle {
-	snapshot := NewSnapshot(nodeMap)
+func NewFrameworkHandle(pods []*v1.Pod, nodes []*v1.Node) v1alpha1.FrameworkHandle {
+	snapshot := NewSnapshot(pods, nodes)
 	return &Framework{
 		snapshot: snapshot,
 	}

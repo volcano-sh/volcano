@@ -22,7 +22,7 @@ package k8s
 import (
 	"fmt"
 
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
 	schedulerlisters "k8s.io/kubernetes/pkg/scheduler/listers"
@@ -51,7 +51,8 @@ func NewEmptySnapshot() *Snapshot {
 }
 
 // NewSnapshot initializes a Snapshot struct and returns it.
-func NewSnapshot(nodeInfoMap map[string]*schedulernodeinfo.NodeInfo) *Snapshot {
+func NewSnapshot(pods []*v1.Pod, nodes []*v1.Node) *Snapshot {
+	nodeInfoMap := createNodeInfoMap(pods, nodes)
 	nodeInfoList := make([]*schedulernodeinfo.NodeInfo, 0, len(nodeInfoMap))
 	havePodsWithAffinityNodeInfoList := make([]*schedulernodeinfo.NodeInfo, 0, len(nodeInfoMap))
 	for _, v := range nodeInfoMap {
