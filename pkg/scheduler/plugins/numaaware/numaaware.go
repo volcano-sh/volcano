@@ -38,8 +38,8 @@ import (
 
 const (
 	// PluginName indicates name of volcano scheduler plugin.
-	PluginName = "numa-topology"
-	// NumaTopoWeight indicates the weight of numa-topology plugin.
+	PluginName = "numa-aware"
+	// NumaTopoWeight indicates the weight of numa-aware plugin.
 	NumaTopoWeight = "weight"
 )
 

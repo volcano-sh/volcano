@@ -116,7 +116,7 @@ func GetPodRevocableZone(pod *v1.Pod) string {
 	return ""
 }
 
-// GetPodTopologyPolicy return volcano.sh/numa-topology-policy value for pod/podgroup
+// GetPodTopologyPolicy return volcano.sh/numa-topology-policy value for pod
 func GetPodTopologyPolicy(pod *v1.Pod) string {
 	if len(pod.Annotations) > 0 {
 		if value, found := pod.Annotations[v1beta1.NumaPolicyKey]; found {
