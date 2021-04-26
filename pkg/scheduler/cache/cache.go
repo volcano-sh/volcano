@@ -96,8 +96,7 @@ type SchedulerCache struct {
 	Evictor       Evictor
 	StatusUpdater StatusUpdater
 	VolumeBinder  VolumeBinder
-
-	Recorder record.EventRecorder
+	Recorder      record.EventRecorder
 
 	Jobs                 map[schedulingapi.JobID]*schedulingapi.JobInfo
 	Nodes                map[string]*schedulingapi.NodeInfo
@@ -244,6 +243,18 @@ func (dvb *defaultVolumeBinder) AllocateVolumes(task *schedulingapi.TaskInfo, ho
 	task.VolumeReady = allBound
 
 	return err
+}
+
+// GetPodVolumes get pod volume on the host
+func (dvb *defaultVolumeBinder) GetPodVolumes(task *schedulingapi.TaskInfo,
+	node *v1.Node) (podVolumes *volumescheduling.PodVolumes, err error) {
+	boundClaims, claimsToBind, _, err := dvb.volumeBinder.GetPodVolumes(task.Pod)
+	if err != nil {
+		return nil, err
+	}
+
+	podVolumes, _, err = dvb.volumeBinder.FindPodVolumes(task.Pod, boundClaims, claimsToBind, node)
+	return podVolumes, err
 }
 
 // BindVolumes binds volumes to the task
@@ -587,6 +598,11 @@ func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string
 	}()
 
 	return nil
+}
+
+// GetPodVolumes get pod volume on the host
+func (sc *SchedulerCache) GetPodVolumes(task *schedulingapi.TaskInfo, node *v1.Node) (*volumescheduling.PodVolumes, error) {
+	return sc.VolumeBinder.GetPodVolumes(task, node)
 }
 
 // AllocateVolumes allocates volume on the host to the task

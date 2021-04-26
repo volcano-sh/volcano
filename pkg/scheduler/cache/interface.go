@@ -50,6 +50,8 @@ type Cache interface {
 	// UpdateJobStatus puts job in backlog for a while.
 	UpdateJobStatus(job *api.JobInfo, updatePG bool) (*api.JobInfo, error)
 
+	GetPodVolumes(task *api.TaskInfo, node *v1.Node) (*scheduling.PodVolumes, error)
+
 	// AllocateVolumes allocates volume on the host to the task
 	AllocateVolumes(task *api.TaskInfo, hostname string, podVolumes *scheduling.PodVolumes) error
 
@@ -62,6 +64,7 @@ type Cache interface {
 
 // VolumeBinder interface for allocate and bind volumes
 type VolumeBinder interface {
+	GetPodVolumes(task *api.TaskInfo, node *v1.Node) (*scheduling.PodVolumes, error)
 	AllocateVolumes(task *api.TaskInfo, hostname string, podVolumes *scheduling.PodVolumes) error
 	BindVolumes(task *api.TaskInfo, podVolumes *scheduling.PodVolumes) error
 }

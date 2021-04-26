@@ -40,7 +40,6 @@ type Session struct {
 
 	kubeClient kubernetes.Interface
 	cache      cache.Cache
-
 	// podGroupStatus cache podgroup status during schedule
 	// This should not be mutated after initiated
 	podGroupStatus map[api.JobID]scheduling.PodGroupStatus
@@ -50,7 +49,6 @@ type Session struct {
 	RevocableNodes map[string]*api.NodeInfo
 	Queues         map[api.QueueID]*api.QueueInfo
 	NamespaceInfo  map[api.NamespaceName]*api.NamespaceInfo
-	PodVolumesInfo map[string]volumescheduling.PodVolumes
 
 	Tiers          []conf.Tier
 	Configurations []conf.Configuration
@@ -92,7 +90,6 @@ func openSession(cache cache.Cache) *Session {
 		Nodes:          map[string]*api.NodeInfo{},
 		RevocableNodes: map[string]*api.NodeInfo{},
 		Queues:         map[api.QueueID]*api.QueueInfo{},
-		PodVolumesInfo: map[string]volumescheduling.PodVolumes{},
 
 		plugins:           map[string]Plugin{},
 		jobOrderFns:       map[string]api.CompareFn{},
@@ -151,7 +148,6 @@ func openSession(cache cache.Cache) *Session {
 	ssn.RevocableNodes = snapshot.RevocableNodes
 	ssn.Queues = snapshot.Queues
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
-
 	klog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues",
 		ssn.UID, len(ssn.Jobs), len(ssn.Queues))
 
@@ -165,7 +161,6 @@ func closeSession(ssn *Session) {
 	ssn.Jobs = nil
 	ssn.Nodes = nil
 	ssn.RevocableNodes = nil
-	ssn.PodVolumesInfo = nil
 	ssn.plugins = nil
 	ssn.eventHandlers = nil
 	ssn.jobOrderFns = nil
@@ -266,10 +261,19 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 }
 
 //Allocate the task to the node in the session
-func (ssn *Session) Allocate(task *api.TaskInfo, hostname string, podVolumes *volumescheduling.PodVolumes) error {
+func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+	podVolumes, err := ssn.cache.GetPodVolumes(task, nodeInfo.Node)
+	if err != nil {
+		return err
+	}
+
+	hostname := nodeInfo.Name
 	if err := ssn.cache.AllocateVolumes(task, hostname, podVolumes); err != nil {
 		return err
 	}
+
+	task.Pod.Spec.NodeName = hostname
+	task.PodVolumes = podVolumes
 
 	// Only update status in session
 	job, found := ssn.Jobs[task.Job]
@@ -325,6 +329,7 @@ func (ssn *Session) Allocate(task *api.TaskInfo, hostname string, podVolumes *vo
 
 func (ssn *Session) dispatch(task *api.TaskInfo, volumes *volumescheduling.PodVolumes) error {
 	if err := ssn.cache.BindVolumes(task, volumes); err != nil {
+		task.Pod.Spec.NodeName = ""
 		return err
 	}
 

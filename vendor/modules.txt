@@ -661,7 +661,6 @@ k8s.io/cloud-provider/volume
 ## explicit
 k8s.io/component-base/cli/flag
 k8s.io/component-base/config
-k8s.io/component-base/config/v1alpha1
 k8s.io/component-base/config/validation
 k8s.io/component-base/featuregate
 k8s.io/component-base/metrics
@@ -679,8 +678,6 @@ k8s.io/klog/v2
 k8s.io/kube-openapi/pkg/util/proto
 # k8s.io/kube-scheduler v0.0.0 => k8s.io/kube-scheduler v0.19.6
 ## explicit
-k8s.io/kube-scheduler/config/v1
-k8s.io/kube-scheduler/config/v1beta1
 k8s.io/kube-scheduler/extender/v1
 # k8s.io/kubernetes v1.19.6
 ## explicit
@@ -705,9 +702,6 @@ k8s.io/kubernetes/pkg/fieldpath
 k8s.io/kubernetes/pkg/kubelet/types
 k8s.io/kubernetes/pkg/master/ports
 k8s.io/kubernetes/pkg/scheduler/apis/config
-k8s.io/kubernetes/pkg/scheduler/apis/config/scheme
-k8s.io/kubernetes/pkg/scheduler/apis/config/v1
-k8s.io/kubernetes/pkg/scheduler/apis/config/v1beta1
 k8s.io/kubernetes/pkg/scheduler/apis/config/validation
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/helper
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity
@@ -716,11 +710,8 @@ k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeports
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/noderesources
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeunschedulable
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration
-k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding
-k8s.io/kubernetes/pkg/scheduler/framework/runtime
 k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1
 k8s.io/kubernetes/pkg/scheduler/internal/parallelize
-k8s.io/kubernetes/pkg/scheduler/metrics
 k8s.io/kubernetes/pkg/scheduler/util
 k8s.io/kubernetes/pkg/security/apparmor
 k8s.io/kubernetes/pkg/securitycontext

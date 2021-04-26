@@ -169,3 +169,8 @@ func (fvb *FakeVolumeBinder) AllocateVolumes(task *api.TaskInfo, hostname string
 func (fvb *FakeVolumeBinder) BindVolumes(task *api.TaskInfo, podVolumes *volumescheduling.PodVolumes) error {
 	return nil
 }
+
+// GetPodVolumes is a empty function
+func (fvb *FakeVolumeBinder) GetPodVolumes(task *api.TaskInfo, node *v1.Node) (*volumescheduling.PodVolumes, error) {
+	return nil, nil
+}

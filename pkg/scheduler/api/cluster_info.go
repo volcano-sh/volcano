@@ -16,7 +16,9 @@ limitations under the License.
 
 package api
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // ClusterInfo is a snapshot of cluster by cache.
 type ClusterInfo struct {
