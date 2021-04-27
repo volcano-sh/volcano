@@ -67,7 +67,7 @@ rules:
     verbs: ["list", "watch", "update"]
   - apiGroups: ["nodeinfo.volcano.sh"]
     resources: ["numatopos"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "delete"]
 
 ---
 kind: ClusterRoleBinding

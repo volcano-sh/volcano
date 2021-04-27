@@ -281,7 +281,18 @@ func (sc *SchedulerCache) deleteNode(node *v1.Node) error {
 	if _, ok := sc.Nodes[node.Name]; !ok {
 		return fmt.Errorf("node <%s> does not exist", node.Name)
 	}
+
+	numaInfo := sc.Nodes[node.Name].NumaInfo
+	if numaInfo != nil {
+		klog.V(3).Infof("delete numatopo <%s/%s>", numaInfo.Namespace, numaInfo.Name)
+		err := sc.vcClient.NodeinfoV1alpha1().Numatopos(numaInfo.Namespace).Delete(context.TODO(), numaInfo.Name, metav1.DeleteOptions{})
+		if err != nil {
+			klog.Errorf("delete numatopo <%s/%s> failed.", numaInfo.Namespace, numaInfo.Name)
+		}
+	}
+
 	delete(sc.Nodes, node.Name)
+
 	return nil
 }
 
@@ -743,6 +754,8 @@ func (sc *SchedulerCache) AddResourceQuota(obj interface{}) {
 
 func getNumaInfo(srcInfo *nodeinfov1alpha1.Numatopo) *schedulingapi.NumatopoInfo {
 	numaInfo := &schedulingapi.NumatopoInfo{
+		Namespace:   srcInfo.Namespace,
+		Name:        srcInfo.Name,
 		Policies:    make(map[nodeinfov1alpha1.PolicyName]string),
 		NumaResMap:  make(map[string]*schedulingapi.ResourceInfo),
 		CPUDetail:   topology.CPUDetails{},

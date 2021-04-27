@@ -43,6 +43,8 @@ type ResourceInfo struct {
 
 // NumatopoInfo is the information about topology manager on the node
 type NumatopoInfo struct {
+	Namespace   string
+	Name        string
 	Policies    map[nodeinfov1alpha1.PolicyName]string
 	NumaResMap  map[string]*ResourceInfo
 	CPUDetail   topology.CPUDetails
@@ -52,6 +54,8 @@ type NumatopoInfo struct {
 // DeepCopy used to copy NumatopoInfo
 func (info *NumatopoInfo) DeepCopy() *NumatopoInfo {
 	numaInfo := &NumatopoInfo{
+		Namespace:   info.Namespace,
+		Name:        info.Name,
 		Policies:    make(map[nodeinfov1alpha1.PolicyName]string),
 		NumaResMap:  make(map[string]*ResourceInfo),
 		CPUDetail:   topology.CPUDetails{},

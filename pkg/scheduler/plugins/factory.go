@@ -48,8 +48,8 @@ func init() {
 	framework.RegisterPluginBuilder(overcommit.PluginName, overcommit.New)
 	framework.RegisterPluginBuilder(sla.PluginName, sla.New)
 	framework.RegisterPluginBuilder(tasktopology.PluginName, tasktopology.New)
-  framework.RegisterPluginBuilder(numaaware.PluginName, numaaware.New)
-  
+	framework.RegisterPluginBuilder(numaaware.PluginName, numaaware.New)
+
 	// Plugins for Queues
 	framework.RegisterPluginBuilder(proportion.PluginName, proportion.New)
 }

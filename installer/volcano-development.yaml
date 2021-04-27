@@ -6906,7 +6906,7 @@ rules:
     verbs: ["list", "watch", "update"]
   - apiGroups: ["nodeinfo.volcano.sh"]
     resources: ["numatopos"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "delete"]
 ---
 # Source: volcano/templates/scheduler.yaml
 kind: ClusterRoleBinding
