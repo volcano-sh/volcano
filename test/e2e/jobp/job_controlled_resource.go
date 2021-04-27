@@ -43,6 +43,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 
 		storageClsName := "standard"
 
+		// create pv
 		pv := v12.PersistentVolume{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: pvName,
@@ -83,7 +84,6 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 				},
 			},
 		}
-
 		_, err1 := ctx.Kubeclient.CoreV1().PersistentVolumeClaims(ctx.Namespace).Create(context.TODO(), &pvc, metav1.CreateOptions{})
 		Expect(err1).NotTo(HaveOccurred(), "pvc creation")
 

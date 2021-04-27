@@ -69,7 +69,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					}
 
 					klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
-					if err := ssn.Allocate(task, node.Name); err != nil {
+					if err := ssn.Allocate(task, node); err != nil {
 						klog.Errorf("Failed to bind Task %v on %v in Session %v", task.UID, node.Name, ssn.UID)
 						fe.SetNodeError(node.Name, err)
 						continue
