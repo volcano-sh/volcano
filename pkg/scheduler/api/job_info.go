@@ -19,6 +19,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
 	"sort"
 	"strconv"
 	"strings"
@@ -89,7 +90,8 @@ type TaskInfo struct {
 	// * value means workload can use all the revocable node for during node active revocable time.
 	RevocableZone string
 
-	Pod *v1.Pod
+	PodVolumes *volumescheduling.PodVolumes
+	Pod        *v1.Pod
 }
 
 func getJobID(pod *v1.Pod) JobID {

@@ -20,7 +20,6 @@ import (
 	"fmt"
 
 	"k8s.io/klog"
-
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
@@ -227,10 +226,19 @@ func (s *Statement) unpipeline(task *api.TaskInfo) error {
 }
 
 // Allocate the task to node
-func (s *Statement) Allocate(task *api.TaskInfo, hostname string) error {
-	if err := s.ssn.cache.AllocateVolumes(task, hostname); err != nil {
+func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+	podVolumes, err := s.ssn.cache.GetPodVolumes(task, nodeInfo.Node)
+	if err != nil {
 		return err
 	}
+
+	hostname := nodeInfo.Name
+	if err := s.ssn.cache.AllocateVolumes(task, hostname, podVolumes); err != nil {
+		return err
+	}
+
+	task.Pod.Spec.NodeName = hostname
+	task.PodVolumes = podVolumes
 
 	// Only update status in session
 	job, found := s.ssn.Jobs[task.Job]
@@ -247,7 +255,6 @@ func (s *Statement) Allocate(task *api.TaskInfo, hostname string) error {
 	}
 
 	task.NodeName = hostname
-
 	if node, found := s.ssn.Nodes[hostname]; found {
 		if err := node.AddTask(task); err != nil {
 			klog.Errorf("Failed to add task <%v/%v> to node <%v> in Session <%v>: %v",
@@ -282,7 +289,7 @@ func (s *Statement) Allocate(task *api.TaskInfo, hostname string) error {
 }
 
 func (s *Statement) allocate(task *api.TaskInfo) error {
-	if err := s.ssn.cache.BindVolumes(task); err != nil {
+	if err := s.ssn.cache.BindVolumes(task, task.PodVolumes); err != nil {
 		return err
 	}
 
