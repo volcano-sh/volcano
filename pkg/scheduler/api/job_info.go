@@ -19,6 +19,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,8 +30,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 
-	"volcano.sh/volcano/pkg/apis/scheduling"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/apis/pkg/apis/scheduling"
+	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 // DisruptionBudget define job min pod available and max pod unvailable value
@@ -89,7 +90,8 @@ type TaskInfo struct {
 	// * value means workload can use all the revocable node for during node active revocable time.
 	RevocableZone string
 
-	Pod *v1.Pod
+	PodVolumes *volumescheduling.PodVolumes
+	Pod        *v1.Pod
 }
 
 func getJobID(pod *v1.Pod) JobID {

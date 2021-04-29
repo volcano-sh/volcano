@@ -49,7 +49,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 				{
 					Img: e2eutil.DefaultNginxImage,
 					Req: e2eutil.OneCPU,
-					Min: rep,
+					Min: 1,
 					Rep: rep,
 				},
 			},
@@ -179,7 +179,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 				{
 					Img: e2eutil.DefaultNginxImage,
 					Req: e2eutil.OneCPU,
-					Min: rep,
+					Min: rep / 2,
 					Rep: rep,
 				},
 			},

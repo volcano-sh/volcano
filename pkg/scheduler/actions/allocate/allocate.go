@@ -18,8 +18,7 @@ package allocate
 
 import (
 	"k8s.io/klog"
-
-	"volcano.sh/volcano/pkg/apis/scheduling"
+	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -229,7 +228,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			if task.InitResreq.LessEqual(node.Idle) {
 				klog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
 					task.Namespace, task.Name, node.Name)
-				if err := stmt.Allocate(task, node.Name); err != nil {
+				if err := stmt.Allocate(task, node); err != nil {
 					klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 						task.UID, node.Name, ssn.UID, err)
 				} else {
@@ -243,7 +242,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				if task.InitResreq.LessEqual(node.FutureIdle()) {
 					klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
 						task.Namespace, task.Name, node.Name, task.InitResreq, node.Releasing)
-					if err := ssn.Pipeline(task, node.Name); err != nil {
+					if err := stmt.Pipeline(task, node.Name); err != nil {
 						klog.Errorf("Failed to pipeline Task %v on %v in Session %v for %v.",
 							task.UID, node.Name, ssn.UID, err)
 					} else {

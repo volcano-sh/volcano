@@ -24,7 +24,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
 
 func TestDeleteJobJob(t *testing.T) {

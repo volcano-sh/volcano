@@ -25,7 +25,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
@@ -221,11 +221,9 @@ var _ = Describe("Job E2E Test", func() {
 		job.Queue = "q1-preemption"
 		job.Tasks[0].Rep = rep
 		queue1Job3 := e2eutil.CreateJob(ctx, job)
-		err = e2eutil.WaitTasksReady(ctx, queue1Job3, 1)
+		err = e2eutil.WaitTasksReady(ctx, queue1Job3, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 		err = e2eutil.WaitTasksReady(ctx, queue1Job, 0)
-		Expect(err).NotTo(HaveOccurred())
-		err = e2eutil.WaitTasksReady(ctx, queue2Job, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

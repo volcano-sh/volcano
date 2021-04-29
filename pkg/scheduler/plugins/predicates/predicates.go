@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
+	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeports"
@@ -194,7 +195,8 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	plugin, _ = tainttoleration.New(nil, handle)
 	tolerationFilter := plugin.(*tainttoleration.TaintToleration)
 	// 5. InterPodAffinity
-	plugin, _ = interpodaffinity.New(nil, handle)
+	plArgs := &config.InterPodAffinityArgs{}
+	plugin, _ = interpodaffinity.New(plArgs, handle)
 	podAffinityFilter := plugin.(*interpodaffinity.InterPodAffinity)
 
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
@@ -203,7 +205,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			fmt.Errorf("failed to predicates, node info for %s not found", node.Name)
 		}
 
-		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods()) {
+		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods) {
 			klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed",
 				task.Namespace, task.Name, node.Name)
 			return api.NewFitError(task, node, api.NodePodNumberExceeded)

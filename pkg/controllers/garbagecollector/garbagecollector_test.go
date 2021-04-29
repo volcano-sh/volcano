@@ -23,8 +23,8 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	volcanoclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
+	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	volcanoclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
 

@@ -25,8 +25,8 @@ import (
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
 
-	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
-	vcclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
 

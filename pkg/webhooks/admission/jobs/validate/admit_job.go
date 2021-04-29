@@ -33,8 +33,8 @@ import (
 	k8scorev1 "k8s.io/kubernetes/pkg/apis/core/v1"
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
 
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
 	"volcano.sh/volcano/pkg/webhooks/router"
@@ -156,7 +156,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 			msg += err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v",
 				getValidEvents(), getValidActions())
 		}
-		podName := jobhelpers.MakePodName(job.Name, task.Template.Name, index)
+		podName := jobhelpers.MakePodName(job.Name, task.Name, index)
 		msg += validateK8sPodNameLength(podName)
 		msg += validateTaskTemplate(task, job, index)
 	}

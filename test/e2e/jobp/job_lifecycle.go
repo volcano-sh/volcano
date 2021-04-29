@@ -25,15 +25,14 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
 var _ = Describe("Job Life Cycle", func() {
 	It("Delete job that is pending state", func() {
-		By("init test ctx")
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
 
@@ -65,7 +64,6 @@ var _ = Describe("Job Life Cycle", func() {
 	})
 
 	It("Delete job that is Running state", func() {
-		By("init test ctx")
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
 
@@ -96,7 +94,6 @@ var _ = Describe("Job Life Cycle", func() {
 	})
 
 	It("Delete job that is Completed state", func() {
-		By("init test ctx")
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
 
@@ -129,7 +126,6 @@ var _ = Describe("Job Life Cycle", func() {
 	})
 
 	It("Delete job that is Failed job", func() {
-		By("init test ctx")
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
 
@@ -168,7 +164,6 @@ var _ = Describe("Job Life Cycle", func() {
 	})
 
 	It("Delete job that is terminated job", func() {
-		By("init test ctx")
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
 
@@ -207,7 +202,6 @@ var _ = Describe("Job Life Cycle", func() {
 	})
 
 	It("Create and Delete job with CPU requirement", func() {
-		By("init test ctx")
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
 
