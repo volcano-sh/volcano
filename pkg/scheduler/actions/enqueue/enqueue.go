@@ -92,6 +92,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 		job := jobs.Pop().(*api.JobInfo)
 
 		if job.PodGroup.Spec.MinResources == nil || ssn.JobEnqueueable(job) {
+			ssn.JobEnqueued(job)
 			job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
 			ssn.Jobs[job.UID] = job
 		}
