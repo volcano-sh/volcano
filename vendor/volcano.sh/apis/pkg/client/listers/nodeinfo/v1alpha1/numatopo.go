@@ -25,8 +25,10 @@ import (
 )
 
 // NumatopoLister helps list Numatopos.
+// All objects returned here must be treated as read-only.
 type NumatopoLister interface {
 	// List lists all Numatopos in the indexer.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.Numatopo, err error)
 	// Numatopos returns an object that can list and get Numatopos.
 	Numatopos(namespace string) NumatopoNamespaceLister
@@ -57,10 +59,13 @@ func (s *numatopoLister) Numatopos(namespace string) NumatopoNamespaceLister {
 }
 
 // NumatopoNamespaceLister helps list and get Numatopos.
+// All objects returned here must be treated as read-only.
 type NumatopoNamespaceLister interface {
 	// List lists all Numatopos in the indexer for a given namespace.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.Numatopo, err error)
 	// Get retrieves the Numatopo from the indexer for a given namespace and name.
+	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1alpha1.Numatopo, error)
 	NumatopoNamespaceListerExpansion
 }

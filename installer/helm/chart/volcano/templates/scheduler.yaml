@@ -68,6 +68,9 @@ rules:
   - apiGroups: ["nodeinfo.volcano.sh"]
     resources: ["numatopos"]
     verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "create", "delete", "update"]
 
 ---
 kind: ClusterRoleBinding

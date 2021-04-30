@@ -4,20 +4,20 @@ apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.2.4
+    controller-gen.kubebuilder.io/version: v0.4.1
   creationTimestamp: null
-  name: numatopos.nodeinfo.volcano.sh
+  name: numatopoes.nodeinfo.volcano.sh
 spec:
   group: nodeinfo.volcano.sh
   names:
     kind: Numatopo
     listKind: NumatopoList
-    plural: numatopos
+    plural: numatopoes
     singular: numatopo
   scope: Namespaced
   validation:
     openAPIV3Schema:
-      description: Numatopo is the Schema for the numatopos API
+      description: Numatopo is the Schema for the numatopoes API
       properties:
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation

@@ -2,7 +2,7 @@ apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.2.4
+    controller-gen.kubebuilder.io/version: v0.4.1
   creationTimestamp: null
   name: queues.scheduling.volcano.sh
 spec:
@@ -40,7 +40,11 @@ spec:
           properties:
             capability:
               additionalProperties:
-                type: string
+                anyOf:
+                - type: integer
+                - type: string
+                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                x-kubernetes-int-or-string: true
               description: ResourceList is a set of (resource name, quantity) pairs.
               type: object
             reclaimable:
