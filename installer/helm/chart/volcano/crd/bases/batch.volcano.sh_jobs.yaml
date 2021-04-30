@@ -6855,6 +6855,9 @@ spec:
                           - containers
                           type: object
                       type: object
+                    topologyPolicy:
+                      description: Specifies the topology policy of task
+                      type: string
                   type: object
                 type: array
               ttlSecondsAfterFinished:
