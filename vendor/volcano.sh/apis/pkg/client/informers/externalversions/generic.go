@@ -24,6 +24,7 @@ import (
 	cache "k8s.io/client-go/tools/cache"
 	v1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 	v1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
@@ -60,6 +61,10 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		// Group=bus.volcano.sh, Version=v1alpha1
 	case busv1alpha1.SchemeGroupVersion.WithResource("commands"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Bus().V1alpha1().Commands().Informer()}, nil
+
+		// Group=nodeinfo.volcano.sh, Version=v1alpha1
+	case nodeinfov1alpha1.SchemeGroupVersion.WithResource("numatopos"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Nodeinfo().V1alpha1().Numatopos().Informer()}, nil
 
 		// Group=scheduling.volcano.sh, Version=v1beta1
 	case v1beta1.SchemeGroupVersion.WithResource("podgroups"):
