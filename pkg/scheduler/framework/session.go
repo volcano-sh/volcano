@@ -423,6 +423,11 @@ func (ssn *Session) AddEventHandler(eh *EventHandler) {
 	ssn.eventHandlers = append(ssn.eventHandlers, eh)
 }
 
+// UpdateSchedulerNumaInfo update SchedulerNumaInfo
+func (ssn *Session) UpdateSchedulerNumaInfo(AllocatedSets map[string]api.ResNumaSets) {
+	ssn.cache.UpdateSchedulerNumaInfo(AllocatedSets)
+}
+
 // KubeClient returns the kubernetes client
 func (ssn Session) KubeClient() kubernetes.Interface {
 	return ssn.kubeClient
