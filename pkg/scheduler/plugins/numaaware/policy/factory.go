@@ -22,6 +22,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/cm/topologymanager/bitmask"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -35,7 +36,7 @@ type TopologyHint struct {
 
 // Policy is an interface for topology manager policy
 type Policy interface {
-	// Execute executes the actions based on current state.
+	// Predicate Get the best hit.
 	Predicate(providersHints []map[string][]TopologyHint) (TopologyHint, bool)
 }
 
@@ -51,8 +52,8 @@ type HintProvider interface {
 }
 
 // GetPolicy return the interface matched the input task topology config
-func GetPolicy(task *api.TaskInfo, numaNodes []int) Policy {
-	switch batch.NumaPolicy(task.TopologyPolicy) {
+func GetPolicy(node *api.NodeInfo, numaNodes []int) Policy {
+	switch batch.NumaPolicy(node.NumaSchedulerInfo.Policies[nodeinfov1alpha1.TopologyManagerPolicy]) {
 	case batch.None:
 		return NewPolicyNone(numaNodes)
 	case batch.BestEffort:

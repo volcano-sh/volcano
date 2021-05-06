@@ -122,18 +122,18 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		resNumaSets := pp.nodeResSets[node.Name].Clone()
 
-		taskPolicy := policy.GetPolicy(task, numaNodes[node.Name])
+		taskPolicy := policy.GetPolicy(node, numaNodes[node.Name])
 		allResAssignMap := make(map[string]cpuset.CPUSet)
 		for _, container := range task.Pod.Spec.Containers {
 			providersHints := policy.AccumulateProvidersHints(&container, node.NumaSchedulerInfo, resNumaSets, pp.hintProviders)
-			klog.V(3).Infof("[numaaware] hits for task %s container '%v': %v on node %s",
-				task.Name, container.Name, providersHints, node.Name)
 			hit, admit := taskPolicy.Predicate(providersHints)
 			if admit != true {
 				return fmt.Errorf("plugin %s predicates failed for task %s container %s on node %s",
 					pp.Name(), task.Name, container.Name, node.Name)
 			}
 
+			klog.V(3).Infof("[numaaware] hits for task %s container '%v': %v on node %s, besthit: %v",
+				task.Name, container.Name, providersHints, node.Name, hit)
 			resAssignMap := policy.Allocate(&container, &hit, node.NumaSchedulerInfo, resNumaSets, pp.hintProviders)
 			for resName, assign := range resAssignMap {
 				allResAssignMap[resName] = allResAssignMap[resName].Union(assign)
@@ -211,6 +211,7 @@ func filterNodeByPolicy(task *api.TaskInfo, node *api.NodeInfo, nodeResSets map[
 		if node.NumaSchedulerInfo.Policies[nodeinfov1alpha1.CPUManagerPolicy] != "static" {
 			return false, nil
 		}
+
 		if (node.NumaSchedulerInfo.Policies[nodeinfov1alpha1.TopologyManagerPolicy] == "none") ||
 			(node.NumaSchedulerInfo.Policies[nodeinfov1alpha1.TopologyManagerPolicy] == "") {
 			return false, nil

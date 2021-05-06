@@ -170,7 +170,7 @@ func (mng *cpuMng) Allocate(container *v1.Container, bestHit *policy.TopologyHin
 	availableCPUSet := resNumaSets[string(v1.ResourceCPU)]
 	availableCPUSet = availableCPUSet.Difference(reserved)
 
-	klog.V(3).Infof("alignedCPUs: %v numAlignedToAlloc: %v", availableCPUSet, requestNum)
+	klog.V(3).Infof("alignedCPUs: %v requestNum: %v bestHit %v", availableCPUSet, requestNum, bestHit)
 
 	result := cpuset.NewCPUSet()
 	if bestHit.NUMANodeAffinity != nil {
