@@ -20,8 +20,8 @@ import (
 	"k8s.io/api/admission/v1beta1"
 	whv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	"k8s.io/client-go/kubernetes"
-
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
+	"k8s.io/client-go/tools/record"
+	"volcano.sh/apis/pkg/client/clientset/versioned"
 )
 
 //The AdmitFunc returns response.
@@ -31,6 +31,7 @@ type AdmissionServiceConfig struct {
 	SchedulerName string
 	KubeClient    kubernetes.Interface
 	VolcanoClient versioned.Interface
+	Recorder      record.EventRecorder
 }
 
 type AdmissionService struct {

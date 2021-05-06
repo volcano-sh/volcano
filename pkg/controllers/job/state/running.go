@@ -17,8 +17,8 @@ limitations under the License.
 package state
 
 import (
-	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -56,8 +56,17 @@ func (ps *runningState) Execute(action v1alpha1.Action) error {
 				// when scale down to zero, keep the current job phase
 				return false
 			}
+
+			minSuccess := ps.job.Job.Spec.MinSuccess
+			if minSuccess != nil && status.Succeeded >= *minSuccess {
+				status.State.Phase = vcbatch.Completed
+				return true
+			}
+
 			if status.Succeeded+status.Failed == jobReplicas {
-				if status.Succeeded >= ps.job.Job.Spec.MinAvailable {
+				if minSuccess != nil && status.Succeeded < *minSuccess {
+					status.State.Phase = vcbatch.Failed
+				} else if status.Succeeded >= ps.job.Job.Spec.MinAvailable {
 					status.State.Phase = vcbatch.Completed
 				} else {
 					status.State.Phase = vcbatch.Failed

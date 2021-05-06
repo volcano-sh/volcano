@@ -63,10 +63,65 @@ Investigate to cooperate with argo to support job dependencies.
 * Description: Provide more status detail for CRD status when use CLI such job fail reason.
 * Priority: Middle
 * Issue: https://github.com/volcano-sh/volcano/issues/1094
-* Owner:
+* Owner:@mikechengwei
 
 ### Support MinAvailable For Task
 * Description: Support MinAvailable for task
 * Priority: Middle
 * Issue: https://github.com/volcano-sh/volcano/issues/988
 * Owner: @shinytang6
+
+## v1.3(Planned on March 12, 2021)
+### Task-Topology
+* Description: Support task topology scheduling
+* Priority: High
+* Issue: https://github.com/volcano-sh/volcano/issues/1349
+
+### Support multiple scheduler
+* Description: Support multiple scheduler by admission controller.
+* Priority: High
+* Issue: https://github.com/volcano-sh/volcano/issues/1322
+* Owner: @Thor-wl @zen-xu
+
+### Stability and Resilience
+* Description: Improve the UT/E2E test coverage and add the stress test to improve stability.
+* Priority: High
+* Issue: https://github.com/volcano-sh/volcano/issues/1284
+* Owner: @rudeigerc
+
+### Volcano Device Plugin enhancement
+* Description: Support container using multiples GPU as well as part of GPU card.
+* Priority: High
+* Issue: https://github.com/volcano-sh/devices/issues/12
+* Owner: @peiniliu
+
+### Queue Resource Reservation
+* Description: Support reserve specified resource for queue without restart Volcano.
+* Priority: Medium
+* Issue: https://github.com/volcano-sh/volcano/issues/1101
+* Owner: @Thor-wl @hudson741
+
+## v1.4 and later (To be updated)
+### Support Hierarchy Queue
+* Description: Support Hierarchy Queue algorithm.
+* Issue: https://github.com/volcano-sh/volcano/issues/1033
+
+### Support configuration hot update
+* Description: Add hot update for Volcano components arguments.
+* Issue: https://github.com/volcano-sh/volcano/issues/1326
+
+### Improve resource calculation accuracy
+* Description: Support high accurate resource calculation.
+* Issue: https://github.com/volcano-sh/volcano/issues/1196
+
+### Support job backfill
+* Description: Add backfill functionality to improve the resource utilization.
+
+### Improve the Autoscaling enficiency
+* Description: Combine the Autoscaler and scheduler to improve the scaling efficiency.
+
+### Add fine-grained monitor metrics
+* Description: Enhance monitor to add more metrics for jobs, queues, etc.
+
+### Add stress test
+* Description: Add the stress test.

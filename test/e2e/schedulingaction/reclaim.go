@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Volcano Authors.
+Copyright 2021 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,42 +26,44 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
-	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
+	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
 var _ = Describe("Reclaim E2E Test", func() {
 
-	CreateReclaimJob := func(ctx *testContext, req v1.ResourceList, name string, queue string, pri string, nodeName string, waitTaskReady bool) (*batchv1alpha1.Job, error) {
-		job := &jobSpec{
-			tasks: []taskSpec{
+	CreateReclaimJob := func(ctx *e2eutil.TestContext, req v1.ResourceList, name string, queue string, pri string, nodeName string, waitTaskReady bool) (*batchv1alpha1.Job, error) {
+		job := &e2eutil.JobSpec{
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img: defaultNginxImage,
-					req: req,
-					min: 1,
-					rep: 1,
+					Img: e2eutil.DefaultNginxImage,
+					Req: req,
+					Min: 1,
+					Rep: 1,
 				},
 			},
-			name:     name,
-			queue:    queue,
-			nodeName: nodeName,
+			Name:     name,
+			Queue:    queue,
+			NodeName: nodeName,
 		}
 		if pri != "" {
-			job.pri = pri
+			job.Pri = pri
 		}
-		batchJob, err := createJobInner(ctx, job)
+		batchJob, err := e2eutil.CreateJobInner(ctx, job)
 		if err != nil {
 			return nil, err
 		}
 		if waitTaskReady {
-			err = waitTasksReady(ctx, batchJob, 1)
+			err = e2eutil.WaitTasksReady(ctx, batchJob, 1)
 		}
 		return batchJob, err
 	}
 
-	WaitQueueStatus := func(ctx *testContext, status string, num int32, queue string) error {
-		err := waitQueueStatus(func() (bool, error) {
-			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), queue, metav1.GetOptions{})
+	WaitQueueStatus := func(ctx *e2eutil.TestContext, status string, num int32, queue string) error {
+		err := e2eutil.WaitQueueStatus(func() (bool, error) {
+			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), queue, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", queue)
 			switch status {
 			case "Running":
@@ -80,33 +82,33 @@ var _ = Describe("Reclaim E2E Test", func() {
 	}
 
 	It("Reclaim Case 1: New queue with job created no reclaim when resource is enough", func() {
-		q1 := defaultQueue
+		q1 := e2eutil.DefaultQueue
 		q2 := "reclaim-q2"
-		ctx := initTestContext(options{
-			queues:             []string{q2},
-			nodesNumLimit:      4,
-			nodesResourceLimit: CPU1Mem1,
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{q2},
+			NodesNumLimit:      4,
+			NodesResourceLimit: e2eutil.CPU1Mem1,
 		})
 
-		defer cleanupTestContext(ctx)
+		defer e2eutil.CleanupTestContext(ctx)
 
 		By("Setup initial jobs")
 
-		_, err := CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j1", q1, "", "", true)
+		_, err := CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j1", q1, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job1 failed")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j2", q2, "", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j2", q2, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
 
 		By("Create new coming queue and job")
 		q3 := "reclaim-q3"
-		ctx.queues = append(ctx.queues, q3)
-		createQueues(ctx)
+		ctx.Queues = append(ctx.Queues, q3)
+		e2eutil.CreateQueues(ctx)
 
 		err = WaitQueueStatus(ctx, "Open", 1, q1)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue open")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j3", q3, "", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j3", q3, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job3 failed")
 
 		By("Make sure all job running")
@@ -122,42 +124,42 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 	})
 
-	It("Reclaim Case 3: New queue with job created no reclaim when job.podGroup.Status.Phase pending", func() {
-		q1 := defaultQueue
+	It("Reclaim Case 3: New queue with job created no reclaim when job.PodGroup.Status.Phase pending", func() {
+		q1 := e2eutil.DefaultQueue
 		q2 := "reclaim-q2"
 		j1 := "reclaim-j1"
 		j2 := "reclaim-j2"
 		j3 := "reclaim-j3"
 
-		ctx := initTestContext(options{
-			queues:             []string{q2},
-			nodesNumLimit:      3,
-			nodesResourceLimit: CPU1Mem1,
-			priorityClasses: map[string]int32{
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{q2},
+			NodesNumLimit:      3,
+			NodesResourceLimit: e2eutil.CPU1Mem1,
+			PriorityClasses: map[string]int32{
 				"low-priority":  10,
 				"high-priority": 10000,
 			},
 		})
 
-		defer cleanupTestContext(ctx)
+		defer e2eutil.CleanupTestContext(ctx)
 
 		By("Setup initial jobs")
 
-		_, err := CreateReclaimJob(ctx, CPU1Mem1, j1, q1, "", "", true)
+		_, err := CreateReclaimJob(ctx, e2eutil.CPU1Mem1, j1, q1, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job1 failed")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, j2, q2, "", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, j2, q2, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
 
 		By("Create new coming queue and job")
 		q3 := "reclaim-q3"
-		ctx.queues = append(ctx.queues, q3)
-		createQueues(ctx)
+		ctx.Queues = append(ctx.Queues, q3)
+		e2eutil.CreateQueues(ctx)
 
 		err = WaitQueueStatus(ctx, "Open", 1, q1)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue open")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, j3, q3, "", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, j3, q3, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job3 failed")
 
 		// delete pod of job3 to make sure reclaim-j3 podgroup is pending
@@ -165,7 +167,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 			LabelSelector: labels.Set(map[string]string{batchv1alpha1.JobNameKey: j3}).String(),
 		}
 
-		job3pods, err := ctx.kubeclient.CoreV1().Pods(ctx.namespace).List(context.TODO(), listOptions)
+		job3pods, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).List(context.TODO(), listOptions)
 		Expect(err).NotTo(HaveOccurred(), "Get %s pod failed", j3)
 
 		By("Make sure q1 q2 with job running in it.")
@@ -177,7 +179,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 		for _, pod := range job3pods.Items {
 			fmt.Println(pod.Name)
-			err = ctx.kubeclient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+			err = ctx.Kubeclient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Failed to delete pod %s", pod.Name)
 		}
 
@@ -187,32 +189,32 @@ var _ = Describe("Reclaim E2E Test", func() {
 	})
 
 	It("Reclaim Case 4: New queue with job created no reclaim when new queue is not created", func() {
-		q1 := defaultQueue
+		q1 := e2eutil.DefaultQueue
 		q2 := "reclaim-q2"
-		ctx := initTestContext(options{
-			queues:             []string{q2},
-			nodesNumLimit:      3,
-			nodesResourceLimit: CPU1Mem1,
-			priorityClasses: map[string]int32{
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{q2},
+			NodesNumLimit:      3,
+			NodesResourceLimit: e2eutil.CPU1Mem1,
+			PriorityClasses: map[string]int32{
 				"low-priority":  10,
 				"high-priority": 10000,
 			},
 		})
 
-		defer cleanupTestContext(ctx)
+		defer e2eutil.CleanupTestContext(ctx)
 
 		By("Setup initial jobs")
 
-		_, err := CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j1", q1, "", "", true)
+		_, err := CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j1", q1, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job1 failed")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j2", q2, "", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j2", q2, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
 
 		By("Create new coming job")
 		q3 := "reclaim-q3"
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j3", q3, "", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j3", q3, "", "", true)
 		Expect(err).Should(HaveOccurred(), "job3 create failed when queue3 is not created")
 
 		By("Make sure all job running")
@@ -226,26 +228,26 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 	// As we agreed, this is not intended behavior, actually, it is a bug.
 	It("Reclaim Case 5: New queue with job created no reclaim when job or task is low-priority", func() {
-		q1 := defaultQueue
+		q1 := e2eutil.DefaultQueue
 		q2 := "reclaim-q2"
-		ctx := initTestContext(options{
-			queues:             []string{q2},
-			nodesNumLimit:      3,
-			nodesResourceLimit: CPU1Mem1,
-			priorityClasses: map[string]int32{
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{q2},
+			NodesNumLimit:      3,
+			NodesResourceLimit: e2eutil.CPU1Mem1,
+			PriorityClasses: map[string]int32{
 				"low-priority":  10,
 				"high-priority": 10000,
 			},
 		})
 
-		defer cleanupTestContext(ctx)
+		defer e2eutil.CleanupTestContext(ctx)
 
 		By("Setup initial jobs")
 
-		_, err := CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j1", q1, "high-priority", "", true)
+		_, err := CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j1", q1, "high-priority", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job1 failed")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j2", q2, "high-priority", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j2", q2, "high-priority", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
 
 		By("Create new coming queue and job")
@@ -254,7 +256,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		err = WaitQueueStatus(ctx, "Open", 1, q1)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue open")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j3", q3, "low-priority", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j3", q3, "low-priority", "", true)
 		Expect(err).Should(HaveOccurred(), "job3 create failed when queue3 is not created")
 
 		By("Make sure all job running")
@@ -267,34 +269,34 @@ var _ = Describe("Reclaim E2E Test", func() {
 	})
 
 	It("Reclaim Case 6: New queue with job created no reclaim when overused", func() {
-		q1 := defaultQueue
+		q1 := e2eutil.DefaultQueue
 		q2 := "reclaim-q2"
 		q3 := "reclaim-q3"
-		ctx := initTestContext(options{
-			queues:             []string{q2, q3},
-			nodesNumLimit:      3,
-			nodesResourceLimit: CPU1Mem1,
-			priorityClasses: map[string]int32{
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{q2, q3},
+			NodesNumLimit:      3,
+			NodesResourceLimit: e2eutil.CPU1Mem1,
+			PriorityClasses: map[string]int32{
 				"low-priority":  10,
 				"high-priority": 10000,
 			},
 		})
 
-		defer cleanupTestContext(ctx)
+		defer e2eutil.CleanupTestContext(ctx)
 
 		By("Setup initial jobs")
 
-		_, err := CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j1", q1, "", "", true)
+		_, err := CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j1", q1, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job1 failed")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j2", q2, "", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j2", q2, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j3", q3, "", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j3", q3, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job3 failed")
 
 		By("Create job4 to testing overused cases.")
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j4", q3, "", "", false)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j4", q3, "", "", false)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job4 failed")
 
 		By("Make sure all job running")
@@ -313,33 +315,33 @@ var _ = Describe("Reclaim E2E Test", func() {
 	})
 
 	It("Reclaim Case 7:  New queue with job created no reclaim when job not satisfied with predicates", func() {
-		q1 := defaultQueue
+		q1 := e2eutil.DefaultQueue
 		q2 := "reclaim-q2"
-		ctx := initTestContext(options{
-			queues:             []string{q2},
-			nodesNumLimit:      3,
-			nodesResourceLimit: CPU1Mem1,
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{q2},
+			NodesNumLimit:      3,
+			NodesResourceLimit: e2eutil.CPU1Mem1,
 		})
 
-		defer cleanupTestContext(ctx)
+		defer e2eutil.CleanupTestContext(ctx)
 
 		By("Setup initial jobs")
 
-		_, err := CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j1", q1, "", "", true)
+		_, err := CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j1", q1, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job1 failed")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j2", q2, "", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j2", q2, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
 
 		By("Create new coming queue and job")
 		q3 := "reclaim-q3"
-		ctx.queues = append(ctx.queues, q3)
-		createQueues(ctx)
+		ctx.Queues = append(ctx.Queues, q3)
+		e2eutil.CreateQueues(ctx)
 
 		err = WaitQueueStatus(ctx, "Open", 1, q1)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue open")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j3", q3, "", "fake-node", false)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j3", q3, "", "fake-node", false)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job3 failed")
 
 		By("Make sure all job running")
@@ -356,49 +358,49 @@ var _ = Describe("Reclaim E2E Test", func() {
 	})
 
 	It("Reclaim Case 8: New queue with job created no reclaim when task resources less than reclaimable resource", func() {
-		q1 := defaultQueue
+		q1 := e2eutil.DefaultQueue
 		q2 := "reclaim-q2"
-		ctx := initTestContext(options{
-			queues:             []string{q2},
-			nodesNumLimit:      3,
-			nodesResourceLimit: CPU1Mem1,
-			priorityClasses: map[string]int32{
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{q2},
+			NodesNumLimit:      3,
+			NodesResourceLimit: e2eutil.CPU1Mem1,
+			PriorityClasses: map[string]int32{
 				"low-priority":  10,
 				"high-priority": 10000,
 			},
 		})
 
-		defer cleanupTestContext(ctx)
+		defer e2eutil.CleanupTestContext(ctx)
 
 		By("Setup initial jobs")
 
-		_, err := CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j1", q1, "", "", true)
+		_, err := CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j1", q1, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job1 failed")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j2", q2, "", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j2", q2, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
 
 		By("Create new coming queue and job")
 		q3 := "reclaim-q3"
-		ctx.queues = append(ctx.queues, q3)
-		createQueues(ctx)
+		ctx.Queues = append(ctx.Queues, q3)
+		e2eutil.CreateQueues(ctx)
 
 		err = WaitQueueStatus(ctx, "Open", 1, q1)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue open")
 
-		job := &jobSpec{
-			tasks: []taskSpec{
+		job := &e2eutil.JobSpec{
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img: defaultNginxImage,
-					req: CPU4Mem4,
-					min: 1,
-					rep: 1,
+					Img: e2eutil.DefaultNginxImage,
+					Req: e2eutil.CPU4Mem4,
+					Min: 1,
+					Rep: 1,
 				},
 			},
-			name:  "reclaim-j4",
-			queue: q3,
+			Name:  "reclaim-j4",
+			Queue: q3,
 		}
-		createJob(ctx, job)
+		e2eutil.CreateJob(ctx, job)
 
 		By("Make sure all job running")
 
@@ -413,36 +415,36 @@ var _ = Describe("Reclaim E2E Test", func() {
 	})
 
 	It("Reclaim Case 9:  New queue with job created, all queues.spec.reclaimable is false, no reclaim", func() {
-		q1 := defaultQueue
+		q1 := e2eutil.DefaultQueue
 		q2 := "reclaim-q2"
-		ctx := initTestContext(options{
-			queues:             []string{q2},
-			nodesNumLimit:      3,
-			nodesResourceLimit: CPU1Mem1,
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{q2},
+			NodesNumLimit:      3,
+			NodesResourceLimit: e2eutil.CPU1Mem1,
 		})
 
-		defer cleanupTestContext(ctx)
+		defer e2eutil.CleanupTestContext(ctx)
 
 		By("Setup initial jobs")
 
-		_, err := CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j1", q1, "", "", true)
+		_, err := CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j1", q1, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job1 failed")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j2", q2, "", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j2", q2, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
 
 		By("Create new coming queue and job")
 		q3 := "reclaim-q3"
-		ctx.queues = append(ctx.queues, q3)
-		createQueues(ctx)
+		ctx.Queues = append(ctx.Queues, q3)
+		e2eutil.CreateQueues(ctx)
 
-		setQueueReclaimable(ctx, []string{q1, q2}, false)
-		defer setQueueReclaimable(ctx, []string{q1}, true)
+		e2eutil.SetQueueReclaimable(ctx, []string{q1, q2}, false)
+		defer e2eutil.SetQueueReclaimable(ctx, []string{q1}, true)
 
 		err = WaitQueueStatus(ctx, "Open", 1, q1)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue open")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j3", q3, "", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j3", q3, "", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job3 failed")
 
 		By("Make sure all job running")
@@ -460,42 +462,42 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 	// Reclaim rely on priority is a bug here.
 	It("Reclaim Case 10: Multi reclaimed queue", func() {
-		q1 := defaultQueue
+		q1 := e2eutil.DefaultQueue
 		q2 := "reclaim-q2"
 		q3 := "reclaim-q3"
 		q4 := "reclaim-q4"
-		ctx := initTestContext(options{
-			queues:             []string{q2, q3, q4},
-			nodesNumLimit:      4,
-			nodesResourceLimit: CPU1Mem1,
-			priorityClasses: map[string]int32{
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues:             []string{q2, q3, q4},
+			NodesNumLimit:      4,
+			NodesResourceLimit: e2eutil.CPU1Mem1,
+			PriorityClasses: map[string]int32{
 				"low-priority":  10,
 				"high-priority": 10000,
 			},
 		})
 
-		defer cleanupTestContext(ctx)
+		defer e2eutil.CleanupTestContext(ctx)
 
 		By("Setup initial jobs")
 
-		_, err := CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j1", q1, "low-priority", "", true)
+		_, err := CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j1", q1, "low-priority", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job1 failed")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j2", q1, "low-priority", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j2", q1, "low-priority", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j3", q2, "low-priority", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j3", q2, "low-priority", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job3 failed")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j4", q2, "low-priority", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j4", q2, "low-priority", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job4 failed")
 
 		By("Create coming jobs")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j5", q3, "high-priority", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j5", q3, "high-priority", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job4 failed")
 
-		_, err = CreateReclaimJob(ctx, CPU1Mem1, "reclaim-j6", q4, "high-priority", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j6", q4, "high-priority", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job4 failed")
 
 		By("Make sure all job running")
@@ -522,38 +524,38 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 	It("Reclaim", func() {
 		q1, q2 := "reclaim-q1", "reclaim-q2"
-		ctx := initTestContext(options{
-			queues: []string{q1, q2},
-			priorityClasses: map[string]int32{
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues: []string{q1, q2},
+			PriorityClasses: map[string]int32{
 				"low-priority":  10,
 				"high-priority": 10000,
 			},
 		})
-		defer cleanupTestContext(ctx)
+		defer e2eutil.CleanupTestContext(ctx)
 
-		slot := oneCPU
-		rep := clusterSize(ctx, slot)
+		slot := e2eutil.OneCPU
+		rep := e2eutil.ClusterSize(ctx, slot)
 
-		spec := &jobSpec{
-			tasks: []taskSpec{
+		spec := &e2eutil.JobSpec{
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img: defaultNginxImage,
-					req: slot,
-					min: 1,
-					rep: rep,
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot,
+					Min: 1,
+					Rep: rep,
 				},
 			},
 		}
 
-		spec.name = "q1-qj-1"
-		spec.queue = q1
-		spec.pri = "low-priority"
-		job1 := createJob(ctx, spec)
-		err := waitJobReady(ctx, job1)
+		spec.Name = "q1-qj-1"
+		spec.Queue = q1
+		spec.Pri = "low-priority"
+		job1 := e2eutil.CreateJob(ctx, spec)
+		err := e2eutil.WaitJobReady(ctx, job1)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitQueueStatus(func() (bool, error) {
-			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+		err = e2eutil.WaitQueueStatus(func() (bool, error) {
+			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			return queue.Status.Running == 1, nil
 		})
@@ -568,34 +570,34 @@ var _ = Describe("Reclaim E2E Test", func() {
 			Expect(err).NotTo(HaveOccurred())
 		}
 
-		spec.name = "q2-qj-2"
-		spec.queue = q2
-		spec.pri = "high-priority"
-		job2 := createJob(ctx, spec)
-		err = waitTasksReady(ctx, job2, expected)
+		spec.Name = "q2-qj-2"
+		spec.Queue = q2
+		spec.Pri = "high-priority"
+		job2 := e2eutil.CreateJob(ctx, spec)
+		err = e2eutil.WaitTasksReady(ctx, job2, expected)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReady(ctx, job1, expected)
+		err = e2eutil.WaitTasksReady(ctx, job1, expected)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Test Queue status
-		spec = &jobSpec{
-			name:  "q1-qj-2",
-			queue: q1,
-			tasks: []taskSpec{
+		spec = &e2eutil.JobSpec{
+			Name:  "q1-qj-2",
+			Queue: q1,
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img: defaultNginxImage,
-					req: slot,
-					min: rep * 2,
-					rep: rep * 2,
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot,
+					Min: rep * 2,
+					Rep: rep * 2,
 				},
 			},
 		}
-		job3 := createJob(ctx, spec)
-		err = waitJobStatePending(ctx, job3)
+		job3 := e2eutil.CreateJob(ctx, spec)
+		err = e2eutil.WaitJobStatePending(ctx, job3)
 		Expect(err).NotTo(HaveOccurred())
-		err = waitQueueStatus(func() (bool, error) {
-			queue, err := ctx.vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+		err = e2eutil.WaitQueueStatus(func() (bool, error) {
+			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			return queue.Status.Pending == 1, nil
 		})

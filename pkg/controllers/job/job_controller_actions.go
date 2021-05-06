@@ -30,9 +30,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 
-	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/helpers"
-	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/helpers"
+	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
@@ -218,8 +218,16 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 
 	var syncTask bool
 	if pg, _ := cc.pgLister.PodGroups(job.Namespace).Get(job.Name); pg != nil {
+
 		if pg.Status.Phase != "" && pg.Status.Phase != scheduling.PodGroupPending {
 			syncTask = true
+		}
+
+		for _, condition := range pg.Status.Conditions {
+			if condition.Type == scheduling.PodGroupUnschedulableType {
+				cc.recorder.Eventf(job, v1.EventTypeWarning, string(batch.PodGroupPending),
+					fmt.Sprintf("PodGroup %s:%s unschedule,reason: %s", job.Namespace, job.Name, condition.Message))
+			}
 		}
 	}
 
@@ -477,7 +485,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 	pg, err := cc.pgLister.PodGroups(job.Namespace).Get(job.Name)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
-			klog.V(3).Infof("Failed to get PodGroup for Job <%s/%s>: %v",
+			klog.Errorf("Failed to get PodGroup for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
 			return err
 		}
@@ -486,6 +494,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 				Namespace:   job.Namespace,
 				Name:        job.Name,
 				Annotations: job.Annotations,
+				Labels:      job.Labels,
 				OwnerReferences: []metav1.OwnerReference{
 					*metav1.NewControllerRef(job, helpers.JobKind),
 				},
@@ -500,7 +509,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 
 		if _, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{}); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
-				klog.V(3).Infof("Failed to create PodGroup for Job <%s/%s>: %v",
+				klog.Errorf("Failed to create PodGroup for Job <%s/%s>: %v",
 					job.Namespace, job.Name, err)
 				return err
 			}

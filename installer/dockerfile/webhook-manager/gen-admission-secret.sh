@@ -80,10 +80,10 @@ DNS.3 = ${SERVICE}.${NAMESPACE}.svc
 EOF
 
   openssl genrsa -out ${CERTDIR}/ca.key 2048
-  openssl req -x509 -new -nodes -key ${CERTDIR}/ca.key -subj "/CN=${SERVICE}.${NAMESPACE}.svc" -out ${CERTDIR}/ca.crt
+  openssl req -x509 -new -nodes -key ${CERTDIR}/ca.key -subj "/CN=${SERVICE}.${NAMESPACE}.svc" -days 3650 -out ${CERTDIR}/ca.crt
 
   openssl genrsa -out ${CERTDIR}/server.key 2048
-  openssl req -new -key ${CERTDIR}/server.key -subj "/CN=${SERVICE}.${NAMESPACE}.svc" -out ${CERTDIR}/server.csr -config ${CERTDIR}/csr.conf
+  openssl req -new -key ${CERTDIR}/server.key -subj "/CN=${SERVICE}.${NAMESPACE}.svc" -days 3650 -out ${CERTDIR}/server.csr -config ${CERTDIR}/csr.conf
 
   openssl x509 -req -in  ${CERTDIR}/server.csr -CA  ${CERTDIR}/ca.crt -CAkey  ${CERTDIR}/ca.key \
   -CAcreateserial -out  ${CERTDIR}/server.crt \

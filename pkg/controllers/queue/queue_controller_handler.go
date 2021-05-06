@@ -20,8 +20,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
 
-	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 

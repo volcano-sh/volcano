@@ -1,7 +1,7 @@
 # Distributed Training with MXNet and CPU on Volcano
 
 This is an example of running distributed training with MXNet and CPU on Volcano. The source code is taken from
-MXNet team's example [here](https://github.com/apache/incubator-mxnet/blob/master/example/image-classification/train_mnist.py).
+MXNet team's example [here](https://github.com/apache/incubator-mxnet/blob/master/example/distributed_training-horovod/gluon_mnist.py).
 
 The directory contains the following files:
 * Dockerfile: Builds the independent worker image.

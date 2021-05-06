@@ -127,6 +127,9 @@ type ValidateResult struct {
 // ValidateExFn is the func declaration used to validate the result.
 type ValidateExFn func(interface{}) *ValidateResult
 
+// VoteFn is the func declaration used to check object's complicated status.
+type VoteFn func(interface{}) int
+
 // PredicateFn is the func declaration used to predicate node for task.
 type PredicateFn func(*TaskInfo, *NodeInfo) error
 
@@ -159,3 +162,6 @@ type TargetJobFn func([]*JobInfo) *JobInfo
 
 // ReservedNodesFn is the func declaration used to select the reserved nodes
 type ReservedNodesFn func()
+
+// VictimTasksFn is the func declaration used to select victim tasks
+type VictimTasksFn func() []*TaskInfo

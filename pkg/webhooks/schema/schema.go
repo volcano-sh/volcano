@@ -27,8 +27,8 @@ import (
 	"k8s.io/klog"
 	corev1 "k8s.io/kubernetes/pkg/apis/core/v1"
 
-	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 func init() {
@@ -103,4 +103,24 @@ func DecodeQueue(object runtime.RawExtension, resource metav1.GroupVersionResour
 	}
 
 	return &queue, nil
+}
+
+// DecodePodGroup decodes the podgroup using deserializer from the raw object.
+func DecodePodGroup(object runtime.RawExtension, resource metav1.GroupVersionResource) (*schedulingv1beta1.PodGroup, error) {
+	podgroupResource := metav1.GroupVersionResource{
+		Group:    schedulingv1beta1.SchemeGroupVersion.Group,
+		Version:  schedulingv1beta1.SchemeGroupVersion.Version,
+		Resource: "podgroups",
+	}
+
+	if resource != podgroupResource {
+		return nil, fmt.Errorf("expect resource to be %s", podgroupResource)
+	}
+
+	podgroup := schedulingv1beta1.PodGroup{}
+	if _, _, err := Codecs.UniversalDeserializer().Decode(object.Raw, nil, &podgroup); err != nil {
+		return nil, err
+	}
+
+	return &podgroup, nil
 }

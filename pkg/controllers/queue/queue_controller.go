@@ -34,14 +34,14 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
-	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
-	versionedscheme "volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
-	informerfactory "volcano.sh/volcano/pkg/client/informers/externalversions"
-	busv1alpha1informer "volcano.sh/volcano/pkg/client/informers/externalversions/bus/v1alpha1"
-	schedulinginformer "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1beta1"
-	busv1alpha1lister "volcano.sh/volcano/pkg/client/listers/bus/v1alpha1"
-	schedulinglister "volcano.sh/volcano/pkg/client/listers/scheduling/v1beta1"
+	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
+	versionedscheme "volcano.sh/apis/pkg/client/clientset/versioned/scheme"
+	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
+	busv1alpha1informer "volcano.sh/apis/pkg/client/informers/externalversions/bus/v1alpha1"
+	schedulinginformer "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
+	busv1alpha1lister "volcano.sh/apis/pkg/client/listers/bus/v1alpha1"
+	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/framework"
 	queuestate "volcano.sh/volcano/pkg/controllers/queue/state"
@@ -50,14 +50,6 @@ import (
 func init() {
 	framework.RegisterController(&queuecontroller{})
 }
-
-const (
-	// maxRetries is the number of times a queue or command will be retried before it is dropped out of the queue.
-	// With the current rate-limiter in use (5ms*2^(maxRetries-1)) the following numbers represent the times
-	// a queue or command is going to be requeued:
-	// 5ms, 10ms, 20ms, 40ms, 80ms, 160ms, 320ms, 640ms, 1.3s, 2.6s, 5.1s, 10.2s, 20.4s, 41s, 82s
-	maxRetries = 15
-)
 
 // queuecontroller manages queue status.
 type queuecontroller struct {
@@ -93,7 +85,8 @@ type queuecontroller struct {
 
 	enqueueQueue func(req *apis.Request)
 
-	recorder record.EventRecorder
+	recorder      record.EventRecorder
+	maxRequeueNum int
 }
 
 func (c *queuecontroller) Name() string {
@@ -124,6 +117,10 @@ func (c *queuecontroller) Initialize(opt *framework.ControllerOption) error {
 	c.commandQueue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 	c.podGroups = make(map[string]map[string]struct{})
 	c.recorder = eventBroadcaster.NewRecorder(versionedscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
+	c.maxRequeueNum = opt.MaxRequeueNum
+	if c.maxRequeueNum < 0 {
+		c.maxRequeueNum = -1
+	}
 
 	queueInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.addQueue,
@@ -254,7 +251,7 @@ func (c *queuecontroller) handleQueueErr(err error, obj interface{}) {
 		return
 	}
 
-	if c.queue.NumRequeues(obj) < maxRetries {
+	if c.maxRequeueNum == -1 || c.queue.NumRequeues(obj) < c.maxRequeueNum {
 		klog.V(4).Infof("Error syncing queue request %v for %v.", obj, err)
 		c.queue.AddRateLimited(obj)
 		return
@@ -323,7 +320,7 @@ func (c *queuecontroller) handleCommandErr(err error, obj interface{}) {
 		return
 	}
 
-	if c.commandQueue.NumRequeues(obj) < maxRetries {
+	if c.maxRequeueNum == -1 || c.commandQueue.NumRequeues(obj) < c.maxRequeueNum {
 		klog.V(4).Infof("Error syncing command %v for %v.", obj, err)
 		c.commandQueue.AddRateLimited(obj)
 		return

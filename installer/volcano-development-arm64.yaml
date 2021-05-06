@@ -84,6 +84,9 @@ rules:
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
     verbs: ["list", "watch", "update"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "create", "delete", "update"]
 
 ---
 kind: ClusterRoleBinding
@@ -321,7 +324,7 @@ rules:
     verbs: ["get", "list", "watch", "create", "delete"]
   - apiGroups: ["networking.k8s.io"]
     resources: ["networkpolicies"]
-    verbs: ["get", "create"]
+    verbs: ["get", "create", "delete"]
 
 ---
 kind: ClusterRoleBinding

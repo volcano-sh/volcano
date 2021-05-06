@@ -26,7 +26,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -35,6 +35,8 @@ import (
 const (
 	// DefaultQueue constant stores the name of the queue as "default"
 	DefaultQueue = "default"
+	// DefaultMaxRetry is the default number of retries.
+	DefaultMaxRetry = 3
 
 	defaultSchedulerName = "volcano"
 )
@@ -110,6 +112,14 @@ func createPatch(job *v1alpha1.Job) ([]byte, error) {
 	if pathScheduler != nil {
 		patch = append(patch, *pathScheduler)
 	}
+	pathMaxRetry := patchDefaultMaxRetry(job)
+	if pathMaxRetry != nil {
+		patch = append(patch, *pathMaxRetry)
+	}
+	pathMinAvailable := patchDefaultMinAvailable(job)
+	if pathMinAvailable != nil {
+		patch = append(patch, *pathMinAvailable)
+	}
 	pathSpec := mutateSpec(job.Spec.Tasks, "/spec/tasks")
 	if pathSpec != nil {
 		patch = append(patch, *pathSpec)
@@ -129,6 +139,27 @@ func patchDefaultScheduler(job *v1alpha1.Job) *patchOperation {
 	// Add default scheduler name if not specified.
 	if job.Spec.SchedulerName == "" {
 		return &patchOperation{Op: "add", Path: "/spec/schedulerName", Value: defaultSchedulerName}
+	}
+	return nil
+}
+
+func patchDefaultMaxRetry(job *v1alpha1.Job) *patchOperation {
+	// Add default maxRetry if maxRetry is zero.
+	if job.Spec.MaxRetry == 0 {
+		return &patchOperation{Op: "add", Path: "/spec/maxRetry", Value: DefaultMaxRetry}
+	}
+	return nil
+}
+
+func patchDefaultMinAvailable(job *v1alpha1.Job) *patchOperation {
+	// Add default minAvailable if minAvailable is zero.
+	if job.Spec.MinAvailable == 0 {
+		var totalReplicas int32
+		for _, task := range job.Spec.Tasks {
+			totalReplicas += task.Replicas
+		}
+
+		return &patchOperation{Op: "add", Path: "/spec/minAvailable", Value: totalReplicas}
 	}
 	return nil
 }

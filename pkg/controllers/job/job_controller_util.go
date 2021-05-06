@@ -24,10 +24,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog"
 
-	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/helpers"
-	schedulingv2 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	"volcano.sh/apis/pkg/apis/helpers"
+	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
@@ -99,7 +99,22 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 	pod.Annotations[batch.TaskSpecKey] = tsKey
 	pod.Annotations[schedulingv2.KubeGroupNameAnnotationKey] = job.Name
 	pod.Annotations[batch.JobNameKey] = job.Name
+	pod.Annotations[batch.QueueNameKey] = job.Spec.Queue
 	pod.Annotations[batch.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
+	if len(job.Annotations) > 0 {
+		if value, found := job.Annotations[schedulingv2.PodPreemptable]; found {
+			pod.Annotations[schedulingv2.PodPreemptable] = value
+		}
+		if value, found := job.Annotations[schedulingv2.RevocableZone]; found {
+			pod.Annotations[schedulingv2.RevocableZone] = value
+		}
+
+		if value, found := job.Annotations[schedulingv2.JDBMinAvailable]; found {
+			pod.Annotations[schedulingv2.JDBMinAvailable] = value
+		} else if value, found := job.Annotations[schedulingv2.JDBMaxUnavailable]; found {
+			pod.Annotations[schedulingv2.JDBMaxUnavailable] = value
+		}
+	}
 
 	if len(pod.Labels) == 0 {
 		pod.Labels = make(map[string]string)
@@ -108,6 +123,12 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 	// Set pod labels for Service.
 	pod.Labels[batch.JobNameKey] = job.Name
 	pod.Labels[batch.JobNamespaceKey] = job.Namespace
+	pod.Labels[batch.QueueNameKey] = job.Spec.Queue
+	if len(job.Labels) > 0 {
+		if value, found := job.Labels[schedulingv2.PodPreemptable]; found {
+			pod.Labels[schedulingv2.PodPreemptable] = value
+		}
+	}
 
 	return pod
 }
@@ -199,11 +220,18 @@ func addResourceList(list, req, limit v1.ResourceList) {
 		}
 	}
 
+	if req != nil {
+		return
+	}
+
 	// If Requests is omitted for a container,
 	// it defaults to Limits if that is explicitly specified.
 	for name, quantity := range limit {
-		if _, ok := list[name]; !ok {
+		if value, ok := list[name]; !ok {
 			list[name] = quantity.DeepCopy()
+		} else {
+			value.Add(quantity)
+			list[name] = value
 		}
 	}
 }

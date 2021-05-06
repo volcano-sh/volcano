@@ -31,8 +31,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
-	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/helpers"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/helpers"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
@@ -168,6 +168,14 @@ func (sp *servicePlugin) OnJobDelete(job *batch.Job) error {
 	}
 	delete(job.Status.ControlledResources, "plugin-"+sp.Name())
 
+	if !sp.disableNetworkPolicy {
+		if err := sp.Clientset.KubeClients.NetworkingV1().NetworkPolicies(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{}); err != nil {
+			if !apierrors.IsNotFound(err) {
+				klog.Errorf("Failed to delete Network policy of Job %v/%v: %v", job.Namespace, job.Name, err)
+				return err
+			}
+		}
+	}
 	return nil
 }
 

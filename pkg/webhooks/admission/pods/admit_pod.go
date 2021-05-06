@@ -19,17 +19,20 @@ package pods
 import (
 	"context"
 	"fmt"
+	"strconv"
+
 	"strings"
 
 	"k8s.io/api/admission/v1beta1"
 	whv1beta1 "k8s.io/api/admissionregistration/v1beta1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog"
 
-	"volcano.sh/volcano/pkg/apis/helpers"
-	vcv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/apis/pkg/apis/helpers"
+	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -97,6 +100,7 @@ allow pods to create when
 1. schedulerName of pod isn't volcano
 2. pod has Podgroup whose phase isn't Pending
 3. normal pods whose schedulerName is volcano don't have podgroup.
+4. check pod budget annotations configure
 */
 func validatePod(pod *v1.Pod, reviewResponse *v1beta1.AdmissionResponse) string {
 	if pod.Spec.SchedulerName != config.SchedulerName {
@@ -125,6 +129,12 @@ func validatePod(pod *v1.Pod, reviewResponse *v1beta1.AdmissionResponse) string 
 		reviewResponse.Allowed = false
 	}
 
+	// check pod annotatations
+	if err := validateAnnotation(pod); err != nil {
+		msg = err.Error()
+		reviewResponse.Allowed = false
+	}
+
 	return msg
 }
 
@@ -141,4 +151,53 @@ func checkPGPhase(pod *v1.Pod, pgName string, isVCJob bool) error {
 	}
 	return fmt.Errorf("failed to create pod <%s/%s> as the podgroup phase is Pending",
 		pod.Namespace, pod.Name)
+}
+
+func validateAnnotation(pod *v1.Pod) error {
+	num := 0
+	if len(pod.Annotations) > 0 {
+		keys := []string{
+			vcv1beta1.JDBMinAvailable,
+			vcv1beta1.JDBMaxUnavailable,
+		}
+		for _, key := range keys {
+			if value, found := pod.Annotations[key]; found {
+				num++
+				if err := validateIntPercentageStr(key, value); err != nil {
+					recordEvent(err)
+					return err
+				}
+			}
+		}
+		if num > 1 {
+			return fmt.Errorf("not allow configure multiple annotations <%v> at same time", keys)
+		}
+	}
+	return nil
+}
+
+func recordEvent(err error) {
+	config.Recorder.Eventf(nil, v1.EventTypeWarning, "Admit", "Create pod failed due to %v", err)
+}
+
+func validateIntPercentageStr(key, value string) error {
+	tmp := intstr.Parse(value)
+	switch tmp.Type {
+	case intstr.Int:
+		if tmp.IntValue() <= 0 {
+			return fmt.Errorf("invalid value <%q> for %v, it must be a positive integer", value, key)
+		}
+		return nil
+	case intstr.String:
+		s := strings.Replace(tmp.StrVal, "%", "", -1)
+		v, err := strconv.Atoi(s)
+		if err != nil {
+			return fmt.Errorf("invalid value %v for %v", err, key)
+		}
+		if v <= 0 || v >= 100 {
+			return fmt.Errorf("invalid value <%q> for %v, it must be a valid percentage which between 1%% ~ 99%%", tmp.StrVal, key)
+		}
+		return nil
+	}
+	return fmt.Errorf("invalid type: neither int nor percentage for %v", key)
 }

@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Volcano Authors.
+Copyright 2021 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,49 +26,50 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/volcano/pkg/controllers/job/plugins/svc"
+
+	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
 var _ = Describe("Dynamic Job scale up and down", func() {
 	It("Scale up", func() {
-		By("init test ctx")
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
 
 		jobName := "scale-up-job"
 		By("create job")
-		job := createJob(ctx, &jobSpec{
-			name: jobName,
-			plugins: map[string][]string{
+		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+			Name: jobName,
+			Plugins: map[string][]string{
 				"svc": {},
 			},
-			tasks: []taskSpec{
+			Tasks: []e2eutil.TaskSpec{
 				{
-					name: "default",
-					img:  defaultNginxImage,
-					min:  2,
-					rep:  2,
-					req:  halfCPU,
+					Name: "default",
+					Img:  e2eutil.DefaultNginxImage,
+					Min:  2,
+					Rep:  2,
+					Req:  e2eutil.HalfCPU,
 				},
 			},
 		})
 
 		// job phase: pending -> running
-		err := waitJobReady(ctx, job)
+		err := e2eutil.WaitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		// scale up
 		job.Spec.MinAvailable = 4
 		job.Spec.Tasks[0].Replicas = 4
-		err = updateJob(ctx, job)
+		err = e2eutil.UpdateJob(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		// wait for tasks scaled up
-		err = waitJobReady(ctx, job)
+		err = e2eutil.WaitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		// check configmap updated
 		pluginName := fmt.Sprintf("%s-svc", jobName)
-		cm, err := ctx.kubeclient.CoreV1().ConfigMaps(ctx.namespace).Get(context.TODO(),
+		cm, err := ctx.Kubeclient.CoreV1().ConfigMaps(ctx.Namespace).Get(context.TODO(),
 			pluginName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -78,54 +79,53 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 		// TODO: check others
 
 		By("delete job")
-		err = ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
+		err = ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobCleanedUp(ctx, job)
+		err = e2eutil.WaitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 	})
 
 	It("Scale down", func() {
-		By("init test ctx")
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
 
 		jobName := "scale-down-job"
 		By("create job")
-		job := createJob(ctx, &jobSpec{
-			name: jobName,
-			plugins: map[string][]string{
+		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+			Name: jobName,
+			Plugins: map[string][]string{
 				"svc": {},
 			},
-			tasks: []taskSpec{
+			Tasks: []e2eutil.TaskSpec{
 				{
-					name: "default",
-					img:  defaultNginxImage,
-					min:  2,
-					rep:  2,
-					req:  halfCPU,
+					Name: "default",
+					Img:  e2eutil.DefaultNginxImage,
+					Min:  2,
+					Rep:  2,
+					Req:  e2eutil.HalfCPU,
 				},
 			},
 		})
 
 		// job phase: pending -> running
-		err := waitJobReady(ctx, job)
+		err := e2eutil.WaitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		// scale down
 		job.Spec.MinAvailable = 1
 		job.Spec.Tasks[0].Replicas = 1
-		err = updateJob(ctx, job)
+		err = e2eutil.UpdateJob(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		// wait for tasks scaled up
-		err = waitJobReady(ctx, job)
+		err = e2eutil.WaitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		// check configmap updated
 		pluginName := fmt.Sprintf("%s-svc", jobName)
-		cm, err := ctx.kubeclient.CoreV1().ConfigMaps(ctx.namespace).Get(context.TODO(),
+		cm, err := ctx.Kubeclient.CoreV1().ConfigMaps(ctx.Namespace).Get(context.TODO(),
 			pluginName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -135,54 +135,53 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 		// TODO: check others
 
 		By("delete job")
-		err = ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
+		err = ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobCleanedUp(ctx, job)
+		err = e2eutil.WaitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 	})
 
 	It("Scale down to zero and scale up", func() {
-		By("init test ctx")
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
 
 		jobName := "scale-down-job"
 		By("create job")
-		job := createJob(ctx, &jobSpec{
-			name: jobName,
-			plugins: map[string][]string{
+		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+			Name: jobName,
+			Plugins: map[string][]string{
 				"svc": {},
 			},
-			tasks: []taskSpec{
+			Tasks: []e2eutil.TaskSpec{
 				{
-					name: "default",
-					img:  defaultNginxImage,
-					min:  2,
-					rep:  2,
-					req:  halfCPU,
+					Name: "default",
+					Img:  e2eutil.DefaultNginxImage,
+					Min:  2,
+					Rep:  2,
+					Req:  e2eutil.HalfCPU,
 				},
 			},
 		})
 
 		// job phase: pending -> running
-		err := waitJobReady(ctx, job)
+		err := e2eutil.WaitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		// scale down
 		job.Spec.MinAvailable = 0
 		job.Spec.Tasks[0].Replicas = 0
-		err = updateJob(ctx, job)
+		err = e2eutil.UpdateJob(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		// wait for tasks scaled up
-		err = waitJobReady(ctx, job)
+		err = e2eutil.WaitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		// check configmap updated
 		pluginName := fmt.Sprintf("%s-svc", jobName)
-		cm, err := ctx.kubeclient.CoreV1().ConfigMaps(ctx.namespace).Get(context.TODO(),
+		cm, err := ctx.Kubeclient.CoreV1().ConfigMaps(ctx.Namespace).Get(context.TODO(),
 			pluginName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -192,15 +191,15 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 		// scale up
 		job.Spec.MinAvailable = 2
 		job.Spec.Tasks[0].Replicas = 2
-		err = updateJob(ctx, job)
+		err = e2eutil.UpdateJob(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		// wait for tasks scaled up
-		err = waitJobReady(ctx, job)
+		err = e2eutil.WaitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		// check configmap updated
-		cm, err = ctx.kubeclient.CoreV1().ConfigMaps(ctx.namespace).Get(context.TODO(),
+		cm, err = ctx.Kubeclient.CoreV1().ConfigMaps(ctx.Namespace).Get(context.TODO(),
 			pluginName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -210,10 +209,10 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 		// TODO: check others
 
 		By("delete job")
-		err = ctx.vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
+		err = ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobCleanedUp(ctx, job)
+		err = e2eutil.WaitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 	})
 })

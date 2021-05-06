@@ -25,8 +25,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
+	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
-	schedulingv1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -148,6 +148,60 @@ func TestAllocate(t *testing.T) {
 			expected: map[string]string{
 				"c2/p1": "n1",
 				"c1/p1": "n1",
+			},
+		},
+		{
+			name: "high priority queue should not block others",
+			podGroups: []*schedulingv1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c1",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c2",
+					},
+				},
+			},
+
+			pods: []*v1.Pod{
+				// pending pod with owner1, under ns:c1/q:c1
+				util.BuildPod("c1", "p1", "", v1.PodPending, util.BuildResourceList("3", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				// pending pod with owner2, under ns:c1/q:c2
+				util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			nodes: []*v1.Node{
+				util.BuildNode("n1", util.BuildResourceList("2", "4G"), make(map[string]string)),
+			},
+			queues: []*schedulingv1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c1",
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight: 1,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c2",
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight: 1,
+					},
+				},
+			},
+			expected: map[string]string{
+				"c1/p2": "n1",
 			},
 		},
 	}

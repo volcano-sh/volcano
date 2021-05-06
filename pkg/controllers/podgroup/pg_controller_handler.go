@@ -25,8 +25,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog"
 
-	"volcano.sh/volcano/pkg/apis/helpers"
-	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/apis/pkg/apis/helpers"
+	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 type podRequest struct {
@@ -87,6 +87,7 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 				Name:            pgName,
 				OwnerReferences: newPGOwnerReferences(pod),
 				Annotations:     map[string]string{},
+				Labels:          map[string]string{},
 			},
 			Spec: scheduling.PodGroupSpec{
 				MinMember:         1,
@@ -95,6 +96,22 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 		}
 		if queueName, ok := pod.Annotations[scheduling.QueueNameAnnotationKey]; ok {
 			obj.Spec.Queue = queueName
+		}
+
+		if value, ok := pod.Annotations[scheduling.PodPreemptable]; ok {
+			obj.Annotations[scheduling.PodPreemptable] = value
+		}
+		if value, ok := pod.Annotations[scheduling.RevocableZone]; ok {
+			obj.Annotations[scheduling.RevocableZone] = value
+		}
+		if value, ok := pod.Labels[scheduling.PodPreemptable]; ok {
+			obj.Labels[scheduling.PodPreemptable] = value
+		}
+
+		if value, found := pod.Annotations[scheduling.JDBMinAvailable]; found {
+			obj.Annotations[scheduling.JDBMinAvailable] = value
+		} else if value, found := pod.Annotations[scheduling.JDBMaxUnavailable]; found {
+			obj.Annotations[scheduling.JDBMaxUnavailable] = value
 		}
 
 		if _, err := pg.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Create(context.TODO(), obj, metav1.CreateOptions{}); err != nil {

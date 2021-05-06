@@ -25,10 +25,11 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"volcano.sh/apis/pkg/apis/helpers"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
-	"volcano.sh/volcano/pkg/apis/helpers"
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler"
+	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/version"
 
 	v1 "k8s.io/api/core/v1"
@@ -61,6 +62,14 @@ func Run(opt *options.ServerOption) error {
 	config, err := kube.BuildConfig(opt.KubeClientOptions)
 	if err != nil {
 		return err
+	}
+
+	if opt.PluginsDir != "" {
+		err := framework.LoadCustomPlugins(opt.PluginsDir)
+		if err != nil {
+			klog.Errorf("Fail to load custom plugins: %v", err)
+			return err
+		}
 	}
 
 	sched, err := scheduler.NewScheduler(config,

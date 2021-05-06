@@ -7,3 +7,6 @@ basic:
   scheduler_config_file: "config/volcano-scheduler.conf"
   image_pull_secret: ""
   admission_port: 8443
+  crd_version: "v1beta1"
+custom:
+  metrics_enable: "false"

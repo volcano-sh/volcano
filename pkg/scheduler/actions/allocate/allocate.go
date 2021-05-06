@@ -18,8 +18,7 @@ package allocate
 
 import (
 	"k8s.io/klog"
-
-	"volcano.sh/volcano/pkg/apis/scheduling"
+	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -160,6 +159,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 		jobs, found := queueInNamespace[queue.UID]
 		if !found || jobs.Empty() {
+			delete(queueInNamespace, queue.UID)
+			namespaces.Push(namespace)
 			klog.V(4).Infof("Can not find jobs for queue %s.", queue.Name)
 			continue
 		}
@@ -227,9 +228,11 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			if task.InitResreq.LessEqual(node.Idle) {
 				klog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
 					task.Namespace, task.Name, node.Name)
-				if err := stmt.Allocate(task, node.Name); err != nil {
+				if err := stmt.Allocate(task, node); err != nil {
 					klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 						task.UID, node.Name, ssn.UID, err)
+				} else {
+					metrics.UpdateE2eSchedulingDurationByJob(job.Name, job.PodGroup.Spec.Queue, job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 				}
 			} else {
 				klog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s> with limited resources",
@@ -239,25 +242,27 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				if task.InitResreq.LessEqual(node.FutureIdle()) {
 					klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
 						task.Namespace, task.Name, node.Name, task.InitResreq, node.Releasing)
-					if err := ssn.Pipeline(task, node.Name); err != nil {
+					if err := stmt.Pipeline(task, node.Name); err != nil {
 						klog.Errorf("Failed to pipeline Task %v on %v in Session %v for %v.",
 							task.UID, node.Name, ssn.UID, err)
+					} else {
+						metrics.UpdateE2eSchedulingDurationByJob(job.Name, job.PodGroup.Spec.Queue, job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 					}
 				}
 			}
 
 			if ssn.JobReady(job) && !tasks.Empty() {
 				jobs.Push(job)
-				metrics.UpdateE2eSchedulingDurationByJob(job.Name, metrics.Duration(job.CreationTimestamp.Time))
 				break
 			}
 		}
 
 		if ssn.JobReady(job) {
-			metrics.UpdateE2eSchedulingDurationByJob(job.Name, metrics.Duration(job.CreationTimestamp.Time))
 			stmt.Commit()
 		} else {
-			stmt.Discard()
+			if !ssn.JobPipelined(job) {
+				stmt.Discard()
+			}
 		}
 
 		// Added Namespace back until no job in Namespace.

@@ -19,7 +19,7 @@ package backfill
 import (
 	"k8s.io/klog"
 
-	"volcano.sh/volcano/pkg/apis/scheduling"
+	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -69,13 +69,13 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					}
 
 					klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
-					if err := ssn.Allocate(task, node.Name); err != nil {
+					if err := ssn.Allocate(task, node); err != nil {
 						klog.Errorf("Failed to bind Task %v on %v in Session %v", task.UID, node.Name, ssn.UID)
 						fe.SetNodeError(node.Name, err)
 						continue
 					}
 
-					metrics.UpdateE2eSchedulingDurationByJob(job.Name, metrics.Duration(job.CreationTimestamp.Time))
+					metrics.UpdateE2eSchedulingDurationByJob(job.Name, job.PodGroup.Spec.Queue, job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 					allocated = true
 					break
 				}

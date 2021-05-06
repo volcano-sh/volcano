@@ -25,8 +25,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
 
-	"volcano.sh/volcano/pkg/apis/scheduling"
-	schedulingv1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/apis/pkg/apis/scheduling"
+	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -343,7 +343,7 @@ func TestSchedulerCache_UpdatePodGroupV1beta1(t *testing.T) {
 		}
 		cache.AddPod(test.Pod)
 
-		cache.UpdateQueueV1beta1(test.OldPodGroup, test.NewPodGroup)
+		cache.UpdatePodGroupV1beta1(test.OldPodGroup, test.NewPodGroup)
 		jobID := api.JobID("test/j1")
 
 		job := cache.Jobs[jobID]

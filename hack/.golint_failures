@@ -1,6 +1,3 @@
-volcano.sh/volcano/pkg/apis/scheduling
-volcano.sh/volcano/pkg/apis/scheduling/v1beta1
-volcano.sh/volcano/pkg/apis/utils
 volcano.sh/volcano/pkg/scheduler/actions/allocate
 volcano.sh/volcano/pkg/scheduler/actions/backfill
 volcano.sh/volcano/pkg/scheduler/actions/enqueue
@@ -13,3 +10,5 @@ volcano.sh/volcano/test/e2e/jobp
 volcano.sh/volcano/test/e2e/jobseq
 volcano.sh/volcano/test/e2e/schedulingaction
 volcano.sh/volcano/test/e2e/schedulingbase
+volcano.sh/volcano/test/e2e/util
+volcano.sh/volcano/test/e2e/vcctl

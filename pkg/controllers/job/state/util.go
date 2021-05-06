@@ -17,11 +17,8 @@ limitations under the License.
 package state
 
 import (
-	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
-
-// DefaultMaxRetry is the default number of retries.
-const DefaultMaxRetry int32 = 3
 
 // TotalTasks returns number of tasks in a given volcano job.
 func TotalTasks(job *vcbatch.Job) int32 {

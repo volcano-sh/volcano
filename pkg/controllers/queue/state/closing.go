@@ -17,8 +17,8 @@ limitations under the License.
 package state
 
 import (
-	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 type closingState struct {
@@ -47,7 +47,7 @@ func (cs *closingState) Execute(action v1alpha1.Action) error {
 				return
 			}
 
-			if specState == v1beta1.QueueStateClosed {
+			if specState == v1beta1.QueueStateClosing {
 				if len(podGroupList) == 0 {
 					status.State = v1beta1.QueueStateClosed
 					return
