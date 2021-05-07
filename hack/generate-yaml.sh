@@ -102,6 +102,11 @@ echo "Generating volcano yaml file into ${DEPLOYMENT_FILE}"
 if [[ -f ${DEPLOYMENT_FILE} ]];then
     rm ${DEPLOYMENT_FILE}
 fi
+
+if [[ -f ${MONITOR_DEPLOYMENT_YAML_FILENAME} ]];then
+    rm ${MONITOR_DEPLOYMENT_YAML_FILENAME}
+fi
+
 cat ${VK_ROOT}/installer/namespace.yaml > ${DEPLOYMENT_FILE}
 ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
       --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set basic.crd_version=${CRD_VERSION}\
