@@ -96,7 +96,7 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 				} else {
 					victims = append(victims, preemptee)
 				}
-			} else { // same job's diffenrent tasks should compare task's priority
+			} else { // same job's different tasks should compare task's priority
 				if preemptee.Priority >= preemptor.Priority {
 					klog.V(4).Infof("Can not preempt task <%v/%v>"+
 						"because preemptee task has greater or equal task priority (%d) than preemptor (%d)",

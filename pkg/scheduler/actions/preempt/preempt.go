@@ -144,6 +144,11 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 		// Preemption between Task within Job.
 		for _, job := range underRequest {
+			// Fix: preemptor numbers lose when in same job
+			preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
+			for _, task := range job.TaskStatusIndex[api.Pending] {
+				preemptorTasks[job.UID].Push(task)
+			}
 			for {
 				if _, found := preemptorTasks[job.UID]; !found {
 					break
