@@ -42,8 +42,8 @@ func Resource(resource string) schema.GroupResource {
 // addKnownTypes adds the set of types defined in this package to the supplied scheme.
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
-		&Numatopo{},
-		&NumatopoList{},
+		&Numatopology{},
+		&NumatopologyList{},
 	)
 
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)

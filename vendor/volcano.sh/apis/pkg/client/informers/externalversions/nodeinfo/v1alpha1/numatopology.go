@@ -31,59 +31,59 @@ import (
 	v1alpha1 "volcano.sh/apis/pkg/client/listers/nodeinfo/v1alpha1"
 )
 
-// NumatopoInformer provides access to a shared informer and lister for
-// Numatopos.
-type NumatopoInformer interface {
+// NumatopologyInformer provides access to a shared informer and lister for
+// Numatopologies.
+type NumatopologyInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1alpha1.NumatopoLister
+	Lister() v1alpha1.NumatopologyLister
 }
 
-type numatopoInformer struct {
+type numatopologyInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
 	tweakListOptions internalinterfaces.TweakListOptionsFunc
 	namespace        string
 }
 
-// NewNumatopoInformer constructs a new informer for Numatopo type.
+// NewNumatopologyInformer constructs a new informer for Numatopology type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewNumatopoInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return NewFilteredNumatopoInformer(client, namespace, resyncPeriod, indexers, nil)
+func NewNumatopologyInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+	return NewFilteredNumatopologyInformer(client, namespace, resyncPeriod, indexers, nil)
 }
 
-// NewFilteredNumatopoInformer constructs a new informer for Numatopo type.
+// NewFilteredNumatopologyInformer constructs a new informer for Numatopology type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewFilteredNumatopoInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
+func NewFilteredNumatopologyInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.NodeinfoV1alpha1().Numatopos(namespace).List(context.TODO(), options)
+				return client.NodeinfoV1alpha1().Numatopologies(namespace).List(context.TODO(), options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.NodeinfoV1alpha1().Numatopos(namespace).Watch(context.TODO(), options)
+				return client.NodeinfoV1alpha1().Numatopologies(namespace).Watch(context.TODO(), options)
 			},
 		},
-		&nodeinfov1alpha1.Numatopo{},
+		&nodeinfov1alpha1.Numatopology{},
 		resyncPeriod,
 		indexers,
 	)
 }
 
-func (f *numatopoInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewFilteredNumatopoInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
+func (f *numatopologyInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	return NewFilteredNumatopologyInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
 }
 
-func (f *numatopoInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&nodeinfov1alpha1.Numatopo{}, f.defaultInformer)
+func (f *numatopologyInformer) Informer() cache.SharedIndexInformer {
+	return f.factory.InformerFor(&nodeinfov1alpha1.Numatopology{}, f.defaultInformer)
 }
 
-func (f *numatopoInformer) Lister() v1alpha1.NumatopoLister {
-	return v1alpha1.NewNumatopoLister(f.Informer().GetIndexer())
+func (f *numatopologyInformer) Lister() v1alpha1.NumatopologyLister {
+	return v1alpha1.NewNumatopologyLister(f.Informer().GetIndexer())
 }

@@ -285,7 +285,7 @@ func (sc *SchedulerCache) deleteNode(node *v1.Node) error {
 	numaInfo := sc.Nodes[node.Name].NumaInfo
 	if numaInfo != nil {
 		klog.V(3).Infof("delete numatopo <%s/%s>", numaInfo.Namespace, numaInfo.Name)
-		err := sc.vcClient.NodeinfoV1alpha1().Numatopos(numaInfo.Namespace).Delete(context.TODO(), numaInfo.Name, metav1.DeleteOptions{})
+		err := sc.vcClient.NodeinfoV1alpha1().Numatopologies(numaInfo.Namespace).Delete(context.TODO(), numaInfo.Name, metav1.DeleteOptions{})
 		if err != nil {
 			klog.Errorf("delete numatopo <%s/%s> failed.", numaInfo.Namespace, numaInfo.Name)
 		}
@@ -752,7 +752,7 @@ func (sc *SchedulerCache) AddResourceQuota(obj interface{}) {
 	sc.updateResourceQuota(r)
 }
 
-func getNumaInfo(srcInfo *nodeinfov1alpha1.Numatopo) *schedulingapi.NumatopoInfo {
+func getNumaInfo(srcInfo *nodeinfov1alpha1.Numatopology) *schedulingapi.NumatopoInfo {
 	numaInfo := &schedulingapi.NumatopoInfo{
 		Namespace:   srcInfo.Namespace,
 		Name:        srcInfo.Name,
@@ -796,7 +796,7 @@ func getNumaInfo(srcInfo *nodeinfov1alpha1.Numatopo) *schedulingapi.NumatopoInfo
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) addNumaInfo(info *nodeinfov1alpha1.Numatopo) error {
+func (sc *SchedulerCache) addNumaInfo(info *nodeinfov1alpha1.Numatopology) error {
 
 	if sc.Nodes[info.Name] == nil {
 		sc.Nodes[info.Name] = schedulingapi.NewNodeInfo(nil)
@@ -825,7 +825,7 @@ func (sc *SchedulerCache) addNumaInfo(info *nodeinfov1alpha1.Numatopo) error {
 }
 
 // Assumes that lock is already acquired.
-func (sc *SchedulerCache) deleteNumaInfo(info *nodeinfov1alpha1.Numatopo) {
+func (sc *SchedulerCache) deleteNumaInfo(info *nodeinfov1alpha1.Numatopology) {
 	if sc.Nodes[info.Name] != nil {
 		sc.Nodes[info.Name].NumaInfo = nil
 		sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoResetFlag
@@ -835,9 +835,9 @@ func (sc *SchedulerCache) deleteNumaInfo(info *nodeinfov1alpha1.Numatopo) {
 
 // AddNumaInfoV1alpha1 add numa information to scheduler cache
 func (sc *SchedulerCache) AddNumaInfoV1alpha1(obj interface{}) {
-	ss, ok := obj.(*nodeinfov1alpha1.Numatopo)
+	ss, ok := obj.(*nodeinfov1alpha1.Numatopology)
 	if !ok {
-		klog.Errorf("Cannot convert oldObj to *nodeinfov1alpha1.Numatopo: %v", obj)
+		klog.Errorf("Cannot convert oldObj to *nodeinfov1alpha1.Numatopology: %v", obj)
 		return
 	}
 
@@ -849,9 +849,9 @@ func (sc *SchedulerCache) AddNumaInfoV1alpha1(obj interface{}) {
 
 // UpdateNumaInfoV1alpha1 update numa information to scheduler cache
 func (sc *SchedulerCache) UpdateNumaInfoV1alpha1(oldObj, newObj interface{}) {
-	ss, ok := newObj.(*nodeinfov1alpha1.Numatopo)
+	ss, ok := newObj.(*nodeinfov1alpha1.Numatopology)
 	if !ok {
-		klog.Errorf("Cannot convert oldObj to *nodeinfov1alpha1.Numatopo: %v", newObj)
+		klog.Errorf("Cannot convert oldObj to *nodeinfov1alpha1.Numatopology: %v", newObj)
 		return
 	}
 
@@ -863,13 +863,13 @@ func (sc *SchedulerCache) UpdateNumaInfoV1alpha1(oldObj, newObj interface{}) {
 
 // DeleteNumaInfoV1alpha1 delete numa information from scheduler cache
 func (sc *SchedulerCache) DeleteNumaInfoV1alpha1(obj interface{}) {
-	var ss *nodeinfov1alpha1.Numatopo
+	var ss *nodeinfov1alpha1.Numatopology
 	switch t := obj.(type) {
-	case *nodeinfov1alpha1.Numatopo:
+	case *nodeinfov1alpha1.Numatopology:
 		ss = t
 	case cache.DeletedFinalStateUnknown:
 		var ok bool
-		ss, ok = t.Obj.(*nodeinfov1alpha1.Numatopo)
+		ss, ok = t.Obj.(*nodeinfov1alpha1.Numatopology)
 		if !ok {
 			klog.Errorf("Cannot convert to Numatopo: %v", t.Obj)
 			return

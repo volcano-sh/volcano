@@ -4,20 +4,22 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.4.1
   creationTimestamp: null
-  name: numatopos.nodeinfo.volcano.sh
+  name: numatopologies.nodeinfo.volcano.sh
 spec:
   group: nodeinfo.volcano.sh
   names:
-    kind: Numatopo
-    listKind: NumatopoList
-    plural: numatopos
-    singular: numatopo
+    kind: Numatopology
+    listKind: NumatopologyList
+    plural: numatopologies
+    shortNames:
+    - numatopo
+    singular: numatopology
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Numatopo is the Schema for the numatopos API
+        description: Numatopology is the Schema for the Numatopologies API
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation

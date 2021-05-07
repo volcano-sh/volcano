@@ -95,7 +95,7 @@ type SchedulerCache struct {
 	csiNodeInformer            storagev1.CSINodeInformer
 	csiDriverInformer          storagev1.CSIDriverInformer
 	csiStorageCapacityInformer storagev1alpha1.CSIStorageCapacityInformer
-	cpuInformer                cpuinformerv1.NumatopoInformer
+	cpuInformer                cpuinformerv1.NumatopologyInformer
 
 	Binder        Binder
 	Evictor       Evictor
@@ -433,7 +433,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		DeleteFunc: sc.DeleteQueueV1beta1,
 	})
 
-	sc.cpuInformer = cpuinformer.NewSharedInformerFactory(sc.cpuClient, 0).Nodeinfo().V1alpha1().Numatopos()
+	sc.cpuInformer = cpuinformer.NewSharedInformerFactory(sc.cpuClient, 0).Nodeinfo().V1alpha1().Numatopologies()
 	sc.cpuInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.AddNumaInfoV1alpha1,
 		UpdateFunc: sc.UpdateNumaInfoV1alpha1,

@@ -46,7 +46,7 @@ const (
 	TopologyManagerPolicy PolicyName = "TopologyManagerPolicy"
 )
 
-// NumatopoSpec defines the desired state of Numatopo
+// NumatopoSpec defines the desired state of Numatopology
 type NumatopoSpec struct {
 	// Specifies the policy of the manager
 	// +optional
@@ -70,10 +70,11 @@ type NumatopoSpec struct {
 
 // +genclient
 // +kubebuilder:object:root=true
+// +kubebuilder:resource:shortName=numatopo
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// Numatopo is the Schema for the numatopoes API
-type Numatopo struct {
+// Numatopology is the Schema for the Numatopologies API
+type Numatopology struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
@@ -84,9 +85,9 @@ type Numatopo struct {
 // +kubebuilder:object:root=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// NumatopoList contains a list of Numatopo
-type NumatopoList struct {
+// NumatopologyList contains a list of Numatopology
+type NumatopologyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Numatopo `json:"items"`
+	Items           []Numatopology `json:"items"`
 }

@@ -25,7 +25,7 @@ import (
 
 type NodeinfoV1alpha1Interface interface {
 	RESTClient() rest.Interface
-	NumatoposGetter
+	NumatopologiesGetter
 }
 
 // NodeinfoV1alpha1Client is used to interact with features provided by the nodeinfo.volcano.sh group.
@@ -33,8 +33,8 @@ type NodeinfoV1alpha1Client struct {
 	restClient rest.Interface
 }
 
-func (c *NodeinfoV1alpha1Client) Numatopos(namespace string) NumatopoInterface {
-	return newNumatopos(c, namespace)
+func (c *NodeinfoV1alpha1Client) Numatopologies(namespace string) NumatopologyInterface {
+	return newNumatopologies(c, namespace)
 }
 
 // NewForConfig creates a new NodeinfoV1alpha1Client for the given config.

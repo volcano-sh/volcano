@@ -17,10 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
-// NumatopoListerExpansion allows custom methods to be added to
-// NumatopoLister.
-type NumatopoListerExpansion interface{}
+// NumatopologyListerExpansion allows custom methods to be added to
+// NumatopologyLister.
+type NumatopologyListerExpansion interface{}
 
-// NumatopoNamespaceListerExpansion allows custom methods to be added to
-// NumatopoNamespaceLister.
-type NumatopoNamespaceListerExpansion interface{}
+// NumatopologyNamespaceListerExpansion allows custom methods to be added to
+// NumatopologyNamespaceLister.
+type NumatopologyNamespaceListerExpansion interface{}

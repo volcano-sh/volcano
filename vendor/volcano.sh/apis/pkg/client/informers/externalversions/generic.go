@@ -63,8 +63,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Bus().V1alpha1().Commands().Informer()}, nil
 
 		// Group=nodeinfo.volcano.sh, Version=v1alpha1
-	case nodeinfov1alpha1.SchemeGroupVersion.WithResource("numatopos"):
-		return &genericInformer{resource: resource.GroupResource(), informer: f.Nodeinfo().V1alpha1().Numatopos().Informer()}, nil
+	case nodeinfov1alpha1.SchemeGroupVersion.WithResource("numatopologies"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Nodeinfo().V1alpha1().Numatopologies().Informer()}, nil
 
 		// Group=scheduling.volcano.sh, Version=v1beta1
 	case v1beta1.SchemeGroupVersion.WithResource("podgroups"):

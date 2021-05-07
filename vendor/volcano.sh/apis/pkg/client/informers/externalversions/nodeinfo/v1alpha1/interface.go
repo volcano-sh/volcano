@@ -23,8 +23,8 @@ import (
 
 // Interface provides access to all the informers in this group version.
 type Interface interface {
-	// Numatopos returns a NumatopoInformer.
-	Numatopos() NumatopoInformer
+	// Numatopologies returns a NumatopologyInformer.
+	Numatopologies() NumatopologyInformer
 }
 
 type version struct {
@@ -38,7 +38,7 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 	return &version{factory: f, namespace: namespace, tweakListOptions: tweakListOptions}
 }
 
-// Numatopos returns a NumatopoInformer.
-func (v *version) Numatopos() NumatopoInformer {
-	return &numatopoInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+// Numatopologies returns a NumatopologyInformer.
+func (v *version) Numatopologies() NumatopologyInformer {
+	return &numatopologyInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
