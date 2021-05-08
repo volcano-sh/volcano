@@ -19,6 +19,7 @@ package job
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -516,19 +517,29 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 		return nil
 	}
 
-	if pg.Spec.MinMember != job.Spec.MinAvailable {
-		pg.Spec.MinMember = job.Spec.MinAvailable
-		pg.Spec.MinResources = cc.calcPGMinResources(job)
-		if _, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Update(context.TODO(), pg, metav1.UpdateOptions{}); err != nil {
-			if !apierrors.IsAlreadyExists(err) {
-				klog.Errorf("Failed to update PodGroup for Job <%s/%s>: %v",
-					job.Namespace, job.Name, err)
-				return err
-			}
-		}
+	pgShouldUpdate := false
+	if pg.Spec.PriorityClassName != job.Spec.PriorityClassName {
+		pg.Spec.PriorityClassName = job.Spec.PriorityClassName
+		pgShouldUpdate = true
 	}
 
-	return nil
+	minResources := cc.calcPGMinResources(job)
+	if pg.Spec.MinMember != job.Spec.MinAvailable || !reflect.DeepEqual(pg.Spec.MinResources, minResources) {
+		pg.Spec.MinMember = job.Spec.MinAvailable
+		pg.Spec.MinResources = minResources
+		pgShouldUpdate = true
+	}
+
+	if !pgShouldUpdate {
+		return nil
+	}
+
+	_, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Update(context.TODO(), pg, metav1.UpdateOptions{})
+	if err != nil {
+		klog.V(3).Infof("Failed to update PodGroup for Job <%s/%s>: %v",
+			job.Namespace, job.Name, err)
+	}
+	return err
 }
 
 func (cc *jobcontroller) deleteJobPod(jobName string, pod *v1.Pod) error {

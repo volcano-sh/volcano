@@ -221,6 +221,7 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	}
 	// other fields under spec are not allowed to mutate
 	new.Spec.MinAvailable = old.Spec.MinAvailable
+	new.Spec.PriorityClassName = old.Spec.PriorityClassName
 	for i := range new.Spec.Tasks {
 		new.Spec.Tasks[i].Replicas = old.Spec.Tasks[i].Replicas
 	}
