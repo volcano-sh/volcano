@@ -883,5 +883,5 @@ sigs.k8s.io/yaml v1.1.0/go.mod h1:UJmg0vDUVViEyp3mgSv9WPwZCDxu4rQW1olrI1uml+o=
 sigs.k8s.io/yaml v1.2.0 h1:kr/MCeFWJWTwyaHoR9c8EjH9OumOmoF9YGiZd7lFm/Q=
 sigs.k8s.io/yaml v1.2.0/go.mod h1:yfXDCHCao9+ENCvLSE62v9VSji2MKu5jeNfTrofGhJc=
 vbom.ml/util v0.0.0-20160121211510-db5cfe13f5cc/go.mod h1:so/NYdZXCz+E3ZpW0uAoCj6uzU2+8OWDFv/HxUSs7kI=
-volcano.sh/apis v0.0.0-20210429115320-3501d712b885 h1:RRS4g7a4DVVu1qIpaGVLdqMMyxVFD/emUVTryQqH6rg=
-volcano.sh/apis v0.0.0-20210429115320-3501d712b885/go.mod h1:UaeJ/s5Hyd+ZhFLc+Kw9YlgM8gRZ/5OzXqHa0yKOoXY=
+volcano.sh/apis v0.0.0-20210508022404-709890078fe9 h1:02TKehkcgj6AdQWgpby0Ud7Xa6BtuQlZzSqah0wruV4=
+volcano.sh/apis v0.0.0-20210508022404-709890078fe9/go.mod h1:UaeJ/s5Hyd+ZhFLc+Kw9YlgM8gRZ/5OzXqHa0yKOoXY=
