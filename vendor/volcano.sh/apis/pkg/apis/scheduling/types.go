@@ -1,12 +1,9 @@
 /*
 Copyright 2019 The Volcano Authors.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
     http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -163,6 +160,11 @@ type PodGroupSpec struct {
 	// if there's not enough resources to start all tasks, the scheduler
 	// will not start anyone.
 	MinMember int32
+
+	// MinTaskMember defines the minimal number of pods to run for each task in the pod group;
+	// if there's not enough resources to start each task, the scheduler
+	// will not start anyone.
+	MinTaskMember map[string]int32
 
 	// Queue defines the queue to allocate resource for PodGroup; if queue does not exist,
 	// the PodGroup will not be scheduled.
