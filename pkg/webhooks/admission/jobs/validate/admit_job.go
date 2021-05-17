@@ -232,6 +232,7 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	new.Spec.PriorityClassName = old.Spec.PriorityClassName
 	for i := range new.Spec.Tasks {
 		new.Spec.Tasks[i].Replicas = old.Spec.Tasks[i].Replicas
+		new.Spec.Tasks[i].MinAvailable = old.Spec.Tasks[i].MinAvailable
 	}
 
 	// job controller will update the pvc name if not provided
