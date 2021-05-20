@@ -32,8 +32,8 @@ const (
 	defaultListenAddress   = ":8080"
 	defaultPluginsDir      = ""
 
-	defaultQPS   = 50.0
-	defaultBurst = 100
+	defaultQPS   = 2000.0
+	defaultBurst = 2000
 
 	// Default parameters to control the number of feasible nodes to find and score
 	defaultMinPercentageOfNodesToFind = 5
