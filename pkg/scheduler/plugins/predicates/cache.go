@@ -23,7 +23,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
-	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
 
 type predicateCache struct {

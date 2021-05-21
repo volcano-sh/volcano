@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	v1 "k8s.io/api/core/v1"
-	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -212,7 +211,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		state := k8sframework.NewCycleState()
-		predicateByStablefilter := func(pod *v1.Pod, nodeInfo *schedulernodeinfo.NodeInfo) (bool, error) {
+		predicateByStablefilter := func(pod *v1.Pod, nodeInfo *k8sframework.NodeInfo) (bool, error) {
 			// CheckNodeUnschedulable
 			status := nodeUnscheduleFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 			if !status.IsSuccess() {
