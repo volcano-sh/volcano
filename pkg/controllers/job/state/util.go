@@ -30,3 +30,18 @@ func TotalTasks(job *vcbatch.Job) int32 {
 
 	return rep
 }
+
+// TotalTaskMinAvailable returns the sum of task minAvailable
+func TotalTaskMinAvailable(job *vcbatch.Job) int32 {
+	var rep int32
+
+	for _, task := range job.Spec.Tasks {
+		if task.MinAvailable != nil {
+			rep += *task.MinAvailable
+		} else {
+			rep += task.Replicas
+		}
+	}
+
+	return rep
+}
