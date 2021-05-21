@@ -51,5 +51,5 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.19.6
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.19.6
 	k8s.io/sample-controller => k8s.io/sample-controller v0.19.6
-	volcano.sh/apis => volcano.sh/apis v1.2.0-k8s1.19.6
+	volcano.sh/apis => volcano.sh/apis v0.0.0-20210511041619-70cf288db7c5
 )
