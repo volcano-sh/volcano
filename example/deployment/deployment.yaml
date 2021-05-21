@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-with-volcano
+  labels:
+    app: nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+      annotations:
+        #create test queue and use this annotation
+        #to make deployment be scheduled into test queue
+        scheduling.volcano.sh/queue-name: test
+    spec:
+      # set spec.schedulerName to 'volcano' instead of
+      # 'default-scheduler' for deployment.
+      schedulerName: volcano
+      containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 300m

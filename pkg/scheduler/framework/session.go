@@ -24,8 +24,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog"
+	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
 
-	"volcano.sh/volcano/pkg/apis/scheduling"
+	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -38,7 +39,6 @@ type Session struct {
 
 	kubeClient kubernetes.Interface
 	cache      cache.Cache
-
 	// podGroupStatus cache podgroup status during schedule
 	// This should not be mutated after initiated
 	podGroupStatus map[api.JobID]scheduling.PodGroupStatus
@@ -128,7 +128,6 @@ func openSession(cache cache.Cache) *Session {
 	ssn.RevocableNodes = snapshot.RevocableNodes
 	ssn.Queues = snapshot.Queues
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
-
 	klog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues",
 		ssn.UID, len(ssn.Jobs), len(ssn.Queues))
 
@@ -255,10 +254,19 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 }
 
 //Allocate the task to the node in the session
-func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
-	if err := ssn.cache.AllocateVolumes(task, hostname); err != nil {
+func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+	podVolumes, err := ssn.cache.GetPodVolumes(task, nodeInfo.Node)
+	if err != nil {
 		return err
 	}
+
+	hostname := nodeInfo.Name
+	if err := ssn.cache.AllocateVolumes(task, hostname, podVolumes); err != nil {
+		return err
+	}
+
+	task.Pod.Spec.NodeName = hostname
+	task.PodVolumes = podVolumes
 
 	// Only update status in session
 	job, found := ssn.Jobs[task.Job]
@@ -301,7 +309,7 @@ func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
 
 	if ssn.JobReady(job) {
 		for _, task := range job.TaskStatusIndex[api.Allocated] {
-			if err := ssn.dispatch(task); err != nil {
+			if err := ssn.dispatch(task, podVolumes); err != nil {
 				klog.Errorf("Failed to dispatch task <%v/%v>: %v",
 					task.Namespace, task.Name, err)
 				return err
@@ -312,8 +320,8 @@ func (ssn *Session) Allocate(task *api.TaskInfo, hostname string) error {
 	return nil
 }
 
-func (ssn *Session) dispatch(task *api.TaskInfo) error {
-	if err := ssn.cache.BindVolumes(task); err != nil {
+func (ssn *Session) dispatch(task *api.TaskInfo, volumes *volumescheduling.PodVolumes) error {
+	if err := ssn.cache.BindVolumes(task, volumes); err != nil {
 		return err
 	}
 

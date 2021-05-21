@@ -114,12 +114,12 @@ generate-code:
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) paths="./pkg/apis/scheduling/v1beta1;./pkg/apis/batch/v1alpha1;./pkg/apis/bus/v1alpha1;" output:crd:artifacts:config=config/crd/bases
-	$(CONTROLLER_GEN) "crd:crdVersions=v1beta1" paths="./pkg/apis/scheduling/v1beta1;./pkg/apis/batch/v1alpha1;./pkg/apis/bus/v1alpha1;" output:crd:artifacts:config=config/crd/v1beta1
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) paths="./vendor/volcano.sh/apis/pkg/apis/scheduling/v1beta1;./vendor/volcano.sh/apis/pkg/apis/batch/v1alpha1;./vendor/volcano.sh/apis/pkg/apis/bus/v1alpha1;" output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) "crd:crdVersions=v1beta1" paths="./vendor/volcano.sh/apis/pkg/apis/scheduling/v1beta1;./vendor/volcano.sh/apis/pkg/apis/batch/v1alpha1;./vendor/volcano.sh/apis/pkg/apis/bus/v1alpha1;" output:crd:artifacts:config=config/crd/v1beta1
 
 unit-test:
 	go clean -testcache
-	go list ./... | grep -v e2e | xargs go test -p 8 -v -race
+	go test -p 8 -race $$(find pkg -type f -name '*_test.go' | sed -r 's|/[^/]+$$||' | sort | uniq | sed "s|^|volcano.sh/volcano/|")
 
 e2e:
 	./hack/run-e2e-kind.sh
@@ -193,3 +193,7 @@ CONTROLLER_GEN=$(GOBIN)/controller-gen
 else
 CONTROLLER_GEN=$(shell which controller-gen)
 endif
+
+update-development-yaml:
+	make generate-yaml TAG=latest RELEASE_DIR=installer
+	mv installer/volcano-latest.yaml installer/volcano-development.yaml

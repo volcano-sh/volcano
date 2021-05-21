@@ -25,10 +25,10 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	schedulingv1beta2 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
-	fakeclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
+	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	schedulingv1beta2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 )
 
 func TestValidateJobCreate(t *testing.T) {
@@ -217,7 +217,7 @@ func TestValidateJobCreate(t *testing.T) {
 				},
 			},
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
-			ret:            "'minAvailable' should not be greater than total replicas in tasks",
+			ret:            "job 'minAvailable' should not be greater than total replicas in tasks",
 			ExpectErr:      true,
 		},
 		// Job Plugin illegal
@@ -329,7 +329,7 @@ func TestValidateJobCreate(t *testing.T) {
 				},
 			},
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
-			ret:            "'minAvailable' must be >= 0",
+			ret:            "job 'minAvailable' must be >= 0",
 			ExpectErr:      true,
 		},
 		// maxretry less than zero

@@ -78,7 +78,7 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 		err = e2eutil.WaitPodPhase(ctx, pod, []corev1.PodPhase{corev1.PodRunning})
 		Expect(err).NotTo(HaveOccurred())
 
-		ready, err := e2eutil.PgIsReady(ctx, ctx.Namespace)
+		ready, err := e2eutil.PodGroupIsReady(ctx, ctx.Namespace)
 		Expect(ready).Should(Equal(true))
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -131,8 +131,8 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 		err = e2eutil.WaitPodPhase(ctx, pod, []corev1.PodPhase{corev1.PodRunning})
 		Expect(err).NotTo(HaveOccurred())
 
-		ready, err := e2eutil.PgIsReady(ctx, ctx.Namespace)
+		ready, err := e2eutil.PodGroupIsReady(ctx, ctx.Namespace)
 		Expect(ready).Should(Equal(false))
-		Expect(err.Error()).Should(Equal("podgroup is not found"))
+		Expect(err.Error()).Should(Equal("pod group not found"))
 	})
 })

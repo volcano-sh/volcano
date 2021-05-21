@@ -32,7 +32,6 @@ import (
 
 var _ = Describe("Dynamic Job scale up and down", func() {
 	It("Scale up", func() {
-		By("init test ctx")
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
 
@@ -89,7 +88,6 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 	})
 
 	It("Scale down", func() {
-		By("init test ctx")
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
 
@@ -116,8 +114,10 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// scale down
+		var taskMinAvailable int32 = 1
 		job.Spec.MinAvailable = 1
 		job.Spec.Tasks[0].Replicas = 1
+		job.Spec.Tasks[0].MinAvailable = &taskMinAvailable
 		err = e2eutil.UpdateJob(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -146,7 +146,6 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 	})
 
 	It("Scale down to zero and scale up", func() {
-		By("init test ctx")
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
 
@@ -173,8 +172,10 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// scale down
+		var taskMinAvailable int32 = 0
 		job.Spec.MinAvailable = 0
 		job.Spec.Tasks[0].Replicas = 0
+		job.Spec.Tasks[0].MinAvailable = &taskMinAvailable
 		err = e2eutil.UpdateJob(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 

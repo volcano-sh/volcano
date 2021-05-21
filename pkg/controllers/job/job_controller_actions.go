@@ -19,6 +19,7 @@ package job
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -29,13 +30,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 
-	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/helpers"
-	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/helpers"
+	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
+
+var calMutex sync.Mutex
 
 func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseMap, updateStatus state.UpdateStatusFn) error {
 	job := jobInfo.Job
@@ -49,6 +52,7 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 	}
 
 	var pending, running, terminating, succeeded, failed, unknown int32
+	taskStatusCount := make(map[string]batch.TaskState)
 
 	var errs []error
 	var total int
@@ -77,6 +81,7 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 			}
 
 			classifyAndAddUpPodBaseOnPhase(pod, &pending, &running, &succeeded, &failed, &unknown)
+			calcPodStatus(pod, taskStatusCount)
 		}
 	}
 
@@ -96,6 +101,7 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 	job.Status.Failed = failed
 	job.Status.Terminating = terminating
 	job.Status.Unknown = unknown
+	job.Status.TaskStatusCount = taskStatusCount
 
 	// Update running duration
 	klog.V(3).Infof("Running duration is %s", metav1.Duration{Duration: time.Since(jobInfo.Job.CreationTimestamp.Time)}.ToUnstructured())
@@ -251,6 +257,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	}
 
 	var running, pending, terminating, succeeded, failed, unknown int32
+	taskStatusCount := make(map[string]batch.TaskState)
 
 	var podToCreate []*v1.Pod
 	var podToDelete []*v1.Pod
@@ -291,6 +298,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 				}
 
 				classifyAndAddUpPodBaseOnPhase(pod, &pending, &running, &succeeded, &failed, &unknown)
+				calcPodStatus(pod, taskStatusCount)
 			}
 		}
 
@@ -314,6 +322,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 				appendError(&creationErrs, fmt.Errorf("failed to create pod %s, err: %#v", pod.Name, err))
 			} else {
 				classifyAndAddUpPodBaseOnPhase(newPod, &pending, &running, &succeeded, &failed, &unknown)
+				calcPodStatus(pod, taskStatusCount)
 				klog.V(3).Infof("Created Task <%s> of Job <%s/%s>",
 					pod.Name, job.Namespace, job.Name)
 			}
@@ -367,6 +376,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		Unknown:             unknown,
 		Version:             job.Status.Version,
 		MinAvailable:        job.Spec.MinAvailable,
+		TaskStatusCount:     taskStatusCount,
 		ControlledResources: job.Status.ControlledResources,
 		RetryCount:          job.Status.RetryCount,
 	}
@@ -488,6 +498,16 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 				job.Namespace, job.Name, err)
 			return err
 		}
+
+		minTaskMember := map[string]int32{}
+		for _, task := range job.Spec.Tasks {
+			if task.MinAvailable != nil {
+				minTaskMember[task.Name] = *task.MinAvailable
+			} else {
+				minTaskMember[task.Name] = task.Replicas
+			}
+		}
+
 		pg := &scheduling.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace:   job.Namespace,
@@ -500,6 +520,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 			},
 			Spec: scheduling.PodGroupSpec{
 				MinMember:         job.Spec.MinAvailable,
+				MinTaskMember:     minTaskMember,
 				Queue:             job.Spec.Queue,
 				MinResources:      cc.calcPGMinResources(job),
 				PriorityClassName: job.Spec.PriorityClassName,
@@ -516,19 +537,52 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 		return nil
 	}
 
-	if pg.Spec.MinMember != job.Spec.MinAvailable {
+	pgShouldUpdate := false
+	if pg.Spec.PriorityClassName != job.Spec.PriorityClassName {
+		pg.Spec.PriorityClassName = job.Spec.PriorityClassName
+		pgShouldUpdate = true
+	}
+
+	minResources := cc.calcPGMinResources(job)
+	if pg.Spec.MinMember != job.Spec.MinAvailable || !reflect.DeepEqual(pg.Spec.MinResources, minResources) {
 		pg.Spec.MinMember = job.Spec.MinAvailable
-		pg.Spec.MinResources = cc.calcPGMinResources(job)
-		if _, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Update(context.TODO(), pg, metav1.UpdateOptions{}); err != nil {
-			if !apierrors.IsAlreadyExists(err) {
-				klog.Errorf("Failed to update PodGroup for Job <%s/%s>: %v",
-					job.Namespace, job.Name, err)
-				return err
+		pg.Spec.MinResources = minResources
+		pgShouldUpdate = true
+	}
+
+	if pg.Spec.MinTaskMember == nil {
+		pgShouldUpdate = true
+		pg.Spec.MinTaskMember = make(map[string]int32)
+	}
+
+	for _, task := range job.Spec.Tasks {
+		if task.MinAvailable == nil {
+			continue
+		}
+
+		if taskMember, ok := pg.Spec.MinTaskMember[task.Name]; !ok {
+			pgShouldUpdate = true
+			pg.Spec.MinTaskMember[task.Name] = *task.MinAvailable
+		} else {
+			if taskMember == *task.MinAvailable {
+				continue
 			}
+
+			pgShouldUpdate = true
+			pg.Spec.MinTaskMember[task.Name] = *task.MinAvailable
 		}
 	}
 
-	return nil
+	if !pgShouldUpdate {
+		return nil
+	}
+
+	_, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Update(context.TODO(), pg, metav1.UpdateOptions{})
+	if err != nil {
+		klog.V(3).Infof("Failed to update PodGroup for Job <%s/%s>: %v",
+			job.Namespace, job.Name, err)
+	}
+	return err
 }
 
 func (cc *jobcontroller) deleteJobPod(jobName string, pod *v1.Pod) error {
@@ -631,6 +685,34 @@ func classifyAndAddUpPodBaseOnPhase(pod *v1.Pod, pending, running, succeeded, fa
 		atomic.AddInt32(failed, 1)
 	default:
 		atomic.AddInt32(unknown, 1)
+	}
+}
+
+func calcPodStatus(pod *v1.Pod, taskStatusCount map[string]batch.TaskState) {
+	taskName, found := pod.Annotations[batch.TaskSpecKey]
+	if !found {
+		return
+	}
+
+	calMutex.Lock()
+	defer calMutex.Unlock()
+	if _, ok := taskStatusCount[taskName]; !ok {
+		taskStatusCount[taskName] = batch.TaskState{
+			Phase: make(map[v1.PodPhase]int32),
+		}
+	}
+
+	switch pod.Status.Phase {
+	case v1.PodPending:
+		taskStatusCount[taskName].Phase[v1.PodPending]++
+	case v1.PodRunning:
+		taskStatusCount[taskName].Phase[v1.PodRunning]++
+	case v1.PodSucceeded:
+		taskStatusCount[taskName].Phase[v1.PodSucceeded]++
+	case v1.PodFailed:
+		taskStatusCount[taskName].Phase[v1.PodFailed]++
+	default:
+		taskStatusCount[taskName].Phase[v1.PodUnknown]++
 	}
 }
 

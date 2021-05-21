@@ -57,6 +57,14 @@ spec:
                   to run the pod group; if there's not enough resources to start all
                   tasks, the scheduler will not start anyone.
                 type: object
+              minTaskMember:
+                additionalProperties:
+                  format: int32
+                  type: integer
+                description: MinTaskMember defines the minimal number of pods to run
+                  each task in the pod group; if there's not enough resources to start
+                  each task, the scheduler will not start anyone.
+                type: object
               priorityClassName:
                 description: If specified, indicates the PodGroup's priority. "system-node-critical"
                   and "system-cluster-critical" are two special keywords which indicate

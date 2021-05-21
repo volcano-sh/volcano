@@ -25,7 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
@@ -43,6 +43,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 
 		storageClsName := "standard"
 
+		// create pv
 		pv := v12.PersistentVolume{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: pvName,
@@ -83,7 +84,6 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 				},
 			},
 		}
-
 		_, err1 := ctx.Kubeclient.CoreV1().PersistentVolumeClaims(ctx.Namespace).Create(context.TODO(), &pvc, metav1.CreateOptions{})
 		Expect(err1).NotTo(HaveOccurred(), "pvc creation")
 

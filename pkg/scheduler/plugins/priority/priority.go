@@ -88,12 +88,22 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 		var victims []*api.TaskInfo
 		for _, preemptee := range preemptees {
 			preempteeJob := ssn.Jobs[preemptee.Job]
-			if preempteeJob.Priority >= preemptorJob.Priority {
-				klog.V(4).Infof("Can not preempt task <%v/%v> because "+
-					"preemptee has greater or equal job priority (%d) than preemptor (%d)",
-					preemptee.Namespace, preemptee.Name, preempteeJob.Priority, preemptorJob.Priority)
-			} else {
-				victims = append(victims, preemptee)
+			if preempteeJob.UID != preemptorJob.UID {
+				if preempteeJob.Priority >= preemptorJob.Priority { // Preemption between Jobs within Queue
+					klog.V(4).Infof("Can not preempt task <%v/%v>"+
+						"because preemptee job has greater or equal job priority (%d) than preemptor (%d)",
+						preemptee.Namespace, preemptee.Name, preempteeJob.Priority, preemptorJob.Priority)
+				} else {
+					victims = append(victims, preemptee)
+				}
+			} else { // same job's different tasks should compare task's priority
+				if preemptee.Priority >= preemptor.Priority {
+					klog.V(4).Infof("Can not preempt task <%v/%v>"+
+						"because preemptee task has greater or equal task priority (%d) than preemptor (%d)",
+						preemptee.Namespace, preemptee.Name, preemptee.Priority, preemptor.Priority)
+				} else {
+					victims = append(victims, preemptee)
+				}
 			}
 		}
 

@@ -17,8 +17,9 @@ limitations under the License.
 package state
 
 import (
-	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	v1 "k8s.io/api/core/v1"
+	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -56,8 +57,33 @@ func (ps *runningState) Execute(action v1alpha1.Action) error {
 				// when scale down to zero, keep the current job phase
 				return false
 			}
+
+			minSuccess := ps.job.Job.Spec.MinSuccess
+			if minSuccess != nil && status.Succeeded >= *minSuccess {
+				status.State.Phase = vcbatch.Completed
+				return true
+			}
+
+			totalTaskMinAvailable := TotalTaskMinAvailable(ps.job.Job)
 			if status.Succeeded+status.Failed == jobReplicas {
-				if status.Succeeded >= ps.job.Job.Spec.MinAvailable {
+				if ps.job.Job.Spec.MinAvailable >= totalTaskMinAvailable {
+					for _, task := range ps.job.Job.Spec.Tasks {
+						if task.MinAvailable == nil {
+							continue
+						}
+
+						if taskStatus, ok := status.TaskStatusCount[task.Name]; ok {
+							if taskStatus.Phase[v1.PodSucceeded] < *task.MinAvailable {
+								status.State.Phase = vcbatch.Failed
+								return true
+							}
+						}
+					}
+				}
+
+				if minSuccess != nil && status.Succeeded < *minSuccess {
+					status.State.Phase = vcbatch.Failed
+				} else if status.Succeeded >= ps.job.Job.Spec.MinAvailable {
 					status.State.Phase = vcbatch.Completed
 				} else {
 					status.State.Phase = vcbatch.Failed

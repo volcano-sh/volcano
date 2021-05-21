@@ -31,7 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 
-	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 
@@ -464,7 +464,7 @@ var _ = Describe("Job E2E Test", func() {
 				})
 			Expect(err).NotTo(HaveOccurred())
 
-			err = wait.Poll(100*time.Millisecond, e2eutil.TwoMinute, e2eutil.NamespaceNotExistWithName(ctx, fairShareNamespace))
+			err = wait.Poll(100*time.Millisecond, e2eutil.FiveMinute, e2eutil.NamespaceNotExistWithName(ctx, fairShareNamespace))
 			Expect(err).NotTo(HaveOccurred())
 		}()
 
@@ -519,7 +519,7 @@ var _ = Describe("Job E2E Test", func() {
 		if expectPod%1 == 1 {
 			expectPod--
 		}
-		err = wait.Poll(100*time.Millisecond, e2eutil.TwoMinute, func() (bool, error) {
+		err = wait.Poll(100*time.Millisecond, e2eutil.FiveMinute, func() (bool, error) {
 			fsScheduledPod = 0
 			testScheduledPod = 0
 
@@ -616,7 +616,7 @@ var _ = Describe("Job E2E Test", func() {
 		if expectPod%1 == 1 {
 			expectPod--
 		}
-		err = wait.Poll(100*time.Millisecond, e2eutil.TwoMinute, func() (bool, error) {
+		err = wait.Poll(100*time.Millisecond, e2eutil.FiveMinute, func() (bool, error) {
 			q1ScheduledPod = 0
 			q2ScheduledPod = 0
 

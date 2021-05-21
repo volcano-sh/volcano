@@ -32,9 +32,9 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/helpers"
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
+	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	"volcano.sh/apis/pkg/apis/helpers"
+	"volcano.sh/apis/pkg/client/clientset/versioned"
 )
 
 // CommonFlags are the flags that most command lines have.

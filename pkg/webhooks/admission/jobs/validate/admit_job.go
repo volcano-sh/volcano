@@ -33,8 +33,8 @@ import (
 	k8scorev1 "k8s.io/kubernetes/pkg/apis/core/v1"
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
 
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
 	"volcano.sh/volcano/pkg/webhooks/router"
@@ -113,7 +113,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 
 	if job.Spec.MinAvailable < 0 {
 		reviewResponse.Allowed = false
-		return fmt.Sprintf("'minAvailable' must be >= 0.")
+		return fmt.Sprintf("job 'minAvailable' must be >= 0.")
 	}
 
 	if job.Spec.MaxRetry < 0 {
@@ -136,6 +136,10 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 			msg += fmt.Sprintf(" 'replicas' < 0 in task: %s;", task.Name)
 		}
 
+		if task.MinAvailable != nil && *task.MinAvailable > task.Replicas {
+			msg += fmt.Sprintf(" 'minAvailable' is greater than 'replicas' in task: %s, job: %s", task.Name, job.Name)
+		}
+
 		// count replicas
 		totalReplicas += task.Replicas
 
@@ -156,7 +160,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 			msg += err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v",
 				getValidEvents(), getValidActions())
 		}
-		podName := jobhelpers.MakePodName(job.Name, task.Template.Name, index)
+		podName := jobhelpers.MakePodName(job.Name, task.Name, index)
 		msg += validateK8sPodNameLength(podName)
 		msg += validateTaskTemplate(task, job, index)
 	}
@@ -164,7 +168,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 	msg += validateJobName(job)
 
 	if totalReplicas < job.Spec.MinAvailable {
-		msg += " 'minAvailable' should not be greater than total replicas in tasks;"
+		msg += "job 'minAvailable' should not be greater than total replicas in tasks;"
 	}
 
 	if err := validatePolicies(job.Spec.Policies, field.NewPath("spec.policies")); err != nil {
@@ -206,14 +210,18 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 		if task.Replicas < 0 {
 			return fmt.Errorf("'replicas' must be >= 0 in task: %s", task.Name)
 		}
+
+		if task.MinAvailable != nil && *task.MinAvailable > task.Replicas {
+			return fmt.Errorf("'minAvailable' must be <= 'replicas' in task: %s;", task.Name)
+		}
 		// count replicas
 		totalReplicas += task.Replicas
 	}
 	if new.Spec.MinAvailable > totalReplicas {
-		return fmt.Errorf("'minAvailable' must not be greater than total replicas")
+		return fmt.Errorf("job 'minAvailable' must not be greater than total replicas")
 	}
 	if new.Spec.MinAvailable < 0 {
-		return fmt.Errorf("'minAvailable' must be >= 0")
+		return fmt.Errorf("job 'minAvailable' must be >= 0")
 	}
 
 	if len(old.Spec.Tasks) != len(new.Spec.Tasks) {
@@ -221,8 +229,10 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	}
 	// other fields under spec are not allowed to mutate
 	new.Spec.MinAvailable = old.Spec.MinAvailable
+	new.Spec.PriorityClassName = old.Spec.PriorityClassName
 	for i := range new.Spec.Tasks {
 		new.Spec.Tasks[i].Replicas = old.Spec.Tasks[i].Replicas
+		new.Spec.Tasks[i].MinAvailable = old.Spec.Tasks[i].MinAvailable
 	}
 
 	// job controller will update the pvc name if not provided

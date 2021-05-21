@@ -22,6 +22,7 @@ import (
 	"fmt"
 
 	. "github.com/onsi/gomega"
+
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -32,10 +33,10 @@ import (
 
 func ClusterSize(ctx *TestContext, req v1.ResourceList) int32 {
 	nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	Expect(err).NotTo(HaveOccurred(), "failed to list nodes")
 
 	pods, err := ctx.Kubeclient.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	Expect(err).NotTo(HaveOccurred(), "failed to list nodes")
 
 	used := map[string]*schedulerapi.Resource{}
 
@@ -62,7 +63,7 @@ func ClusterSize(ctx *TestContext, req v1.ResourceList) int32 {
 	res := int32(0)
 
 	for _, node := range nodes.Items {
-		// Skip node with taints
+		// skip node with taints
 		if len(node.Spec.Taints) != 0 {
 			continue
 		}
@@ -70,7 +71,7 @@ func ClusterSize(ctx *TestContext, req v1.ResourceList) int32 {
 		alloc := schedulerapi.NewResource(node.Status.Allocatable)
 		slot := schedulerapi.NewResource(req)
 
-		// Removed used resources.
+		// remove used resources
 		if res, found := used[node.Name]; found {
 			alloc.Sub(res)
 		}
@@ -85,9 +86,10 @@ func ClusterSize(ctx *TestContext, req v1.ResourceList) int32 {
 	return res
 }
 
+// ClusterNodeNumber returns the number of untainted nodes
 func ClusterNodeNumber(ctx *TestContext) int {
 	nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	Expect(err).NotTo(HaveOccurred(), "failed to list nodes")
 
 	nn := 0
 	for _, node := range nodes.Items {
@@ -102,10 +104,10 @@ func ClusterNodeNumber(ctx *TestContext) int {
 
 func ComputeNode(ctx *TestContext, req v1.ResourceList) (string, int32) {
 	nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	Expect(err).NotTo(HaveOccurred(), "failed to list nodes")
 
 	pods, err := ctx.Kubeclient.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	Expect(err).NotTo(HaveOccurred(), "failed to list pods")
 
 	used := map[string]*schedulerapi.Resource{}
 
@@ -139,7 +141,7 @@ func ComputeNode(ctx *TestContext, req v1.ResourceList) (string, int32) {
 		alloc := schedulerapi.NewResource(node.Status.Allocatable)
 		slot := schedulerapi.NewResource(req)
 
-		// Removed used resources.
+		// remove used resources
 		if res, found := used[node.Name]; found {
 			alloc.Sub(res)
 		}
@@ -157,9 +159,10 @@ func ComputeNode(ctx *TestContext, req v1.ResourceList) (string, int32) {
 	return "", 0
 }
 
+// TaintAllNodes taints all nodes in the cluster
 func TaintAllNodes(ctx *TestContext, taints []v1.Taint) error {
 	nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	Expect(err).NotTo(HaveOccurred(), "failed to list nodes")
 
 	for _, node := range nodes.Items {
 		newNode := node.DeepCopy()
@@ -182,10 +185,10 @@ func TaintAllNodes(ctx *TestContext, taints []v1.Taint) error {
 		newNode.Spec.Taints = newTaints
 
 		patchBytes, err := preparePatchBytesforNode(node.Name, &node, newNode)
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to prepare patch bytes for node %s", node.Name)
 
 		_, err = ctx.Kubeclient.CoreV1().Nodes().Patch(context.TODO(), node.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to taint node %s", node.Name)
 	}
 
 	return nil
@@ -193,7 +196,7 @@ func TaintAllNodes(ctx *TestContext, taints []v1.Taint) error {
 
 func RemoveTaintsFromAllNodes(ctx *TestContext, taints []v1.Taint) error {
 	nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
+	Expect(err).NotTo(HaveOccurred(), "failed to list nodes")
 
 	for _, node := range nodes.Items {
 		if len(node.Spec.Taints) == 0 {
@@ -219,16 +222,16 @@ func RemoveTaintsFromAllNodes(ctx *TestContext, taints []v1.Taint) error {
 		newNode.Spec.Taints = newTaints
 
 		patchBytes, err := preparePatchBytesforNode(node.Name, &node, newNode)
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to prepare patch bytes for node %s", node.Name)
 
 		_, err = ctx.Kubeclient.CoreV1().Nodes().Patch(context.TODO(), node.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to remove taints from node %s", node.Name)
 	}
 
 	return nil
 }
 
-// IsNodeReady returns the node ready status.
+// IsNodeReady returns the node ready status
 func IsNodeReady(node *v1.Node) bool {
 	for _, c := range node.Status.Conditions {
 		if c.Type == v1.NodeReady {
@@ -259,16 +262,13 @@ func preparePatchBytesforNode(nodeName string, oldNode *v1.Node, newNode *v1.Nod
 
 func satisfyMinNodesRequirements(ctx *TestContext, num int) bool {
 	nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred(), "Failed when get nodes num")
-	taintsNodes := 0
+	Expect(err).NotTo(HaveOccurred(), "failed to list nodes")
+
+	taintedNodes := 0
 	for _, node := range nodes.Items {
-		// Skip node with taints
 		if len(node.Spec.Taints) != 0 {
-			taintsNodes = taintsNodes + 1
+			taintedNodes++
 		}
 	}
-	if num <= len(nodes.Items)-taintsNodes {
-		return true
-	}
-	return false
+	return num <= len(nodes.Items)-taintedNodes
 }
