@@ -113,6 +113,11 @@ spec:
                 items:
                   description: TaskSpec specifies the task specification of Job.
                   properties:
+                    maxRetry:
+                      description: Specifies the maximum number of retries before
+                        marking this Task failed. Defaults to 3.
+                      format: int32
+                      type: integer
                     minAvailable:
                       description: The minimal available pods to run for this Task
                         Defaults to the task replicas

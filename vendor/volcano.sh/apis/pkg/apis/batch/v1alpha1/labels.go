@@ -33,4 +33,6 @@ const (
 	JobTypeKey = "volcano.sh/job-type"
 	// PodgroupNamePrefix podgroup name prefix
 	PodgroupNamePrefix = "podgroup-"
+	// PodTemplateKey type specify a equivalence pod class
+	PodTemplateKey = "volcano.sh/template-uid"
 )
