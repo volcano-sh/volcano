@@ -296,8 +296,9 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 
 	task, found := ni.Tasks[key]
 	if !found {
-		return fmt.Errorf("failed to find task <%v/%v> on host <%v>",
+		klog.Warningf("failed to find task <%v/%v> on host <%v>",
 			ti.Namespace, ti.Name, ni.Name)
+		return nil
 	}
 
 	if ni.Node != nil {
