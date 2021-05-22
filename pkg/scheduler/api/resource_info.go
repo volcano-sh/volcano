@@ -368,6 +368,41 @@ func (r *Resource) LessEqualStrict(rr *Resource) bool {
 	return true
 }
 
+// GreaterEqual returns true only on the following conditions:
+// 1. All dimensions resources in r are bigger than that of rr
+// 2. Part dimensions are equal while the others are bigger in r
+// 3. All dimensions resources in r are equal with that of rr
+// Otherwise returns false.
+// Note: Any dimension of resource, which is not listed in resource object, is regarded as zero.
+func (r *Resource) GreaterEqual(rr *Resource) bool {
+	greaterEqualFn := func(l, r float64) bool {
+		return l >= r
+	}
+
+	if !greaterEqualFn(r.MilliCPU, rr.MilliCPU) {
+		return false
+	}
+	if !greaterEqualFn(r.Memory, rr.Memory) {
+		return false
+	}
+
+	for rName, rQuant := range r.ScalarResources {
+		if !greaterEqualFn(rQuant, rr.ScalarResources[rName]) {
+			return false
+		}
+	}
+
+	// check case r.ScalarResources not exist rName, but rr exist
+	// in those case r.ScalarResources[rName] regarded as zero
+	for rName, rQuant := range rr.ScalarResources {
+		if _, ok := r.ScalarResources[rName]; !ok && rQuant > 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
 // LessInSomeDimension returns true if there exists any dimension whose resource amount in r is less than that in rr.
 // Otherwise returns false.
 // Note: Any dimension of resource, which is not listed in resource object, is regarded as zero.

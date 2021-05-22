@@ -24,8 +24,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
-
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
@@ -89,6 +89,81 @@ func TestAllocate(t *testing.T) {
 			expected: map[string]string{
 				"c1/p1": "n1",
 				"c1/p2": "n1",
+			},
+		},
+		{
+			name: "one Job with two Pods on one node with queue has capability",
+			podGroups: []*schedulingv1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c1",
+					},
+				},
+			},
+			pods: []*v1.Pod{
+				util.BuildPod("c1", "p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "p3", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+			},
+			nodes: []*v1.Node{
+				util.BuildNode("n1", util.BuildResourceList("8", "16Gi"), make(map[string]string)),
+			},
+			queues: []*schedulingv1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c1",
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight:     1,
+						Capability: util.BuildResourceList("2", "2G"),
+					},
+				},
+			},
+			expected: map[string]string{
+				"c1/p1": "n1",
+				"c1/p2": "n1",
+			},
+		},
+		{
+			name: "one Job with three Pods on one node with queue has capability",
+			podGroups: []*schedulingv1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c1",
+					},
+				},
+			},
+			pods: []*v1.Pod{
+				util.BuildPod("c1", "p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "p3", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+			},
+			nodes: []*v1.Node{
+				util.BuildNode("n1", util.BuildResourceList("8", "16Gi"), make(map[string]string)),
+			},
+			queues: []*schedulingv1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c1",
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight:     1,
+						Capability: util.BuildResourceList("3", "3G"),
+					},
+				},
+			},
+			expected: map[string]string{
+				"c1/p1": "n1",
+				"c1/p2": "n1",
+				"c1/p3": "n1",
 			},
 		},
 		{

@@ -22,6 +22,7 @@ import (
 	"k8s.io/klog"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -236,12 +237,14 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		klog.V(4).Infof("Victims from proportion plugins are %+v", victims)
 		return victims
 	})
-
 	ssn.AddOverusedFn(pp.Name(), func(obj interface{}) bool {
 		queue := obj.(*api.QueueInfo)
 		attr := pp.queueOpts[queue.UID]
 
-		overused := !attr.allocated.LessEqual(attr.deserved)
+		// all dimension of allocated >= deserved, queue should set as overuse
+		// Otherwise it still can accept some pod which request sub resource not overuse
+		// todo add queue can allocate validate functions
+		overused := attr.allocated.GreaterEqual(attr.deserved)
 		metrics.UpdateQueueOverused(attr.name, overused)
 		if overused {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
@@ -250,7 +253,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		return overused
 	})
-
 	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {
 		job := obj.(*api.JobInfo)
 		queueID := job.Queue
