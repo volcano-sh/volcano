@@ -19,6 +19,7 @@ package predicates
 import (
 	"context"
 	"fmt"
+	v1 "k8s.io/api/core/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -44,6 +45,9 @@ const (
 
 	// GPUSharingPredicate is the key for enabling GPU Sharing Predicate in YAML
 	GPUSharingPredicate = "predicate.GPUSharingEnable"
+
+	// CachePredicate control cache predicate feature
+	CachePredicate = "predicate.CacheEnable"
 )
 
 type predicatesPlugin struct {
@@ -62,6 +66,7 @@ func (pp *predicatesPlugin) Name() string {
 
 type predicateEnable struct {
 	gpuSharingEnable bool
+	cacheEnable      bool
 }
 
 func enablePredicate(args framework.Arguments) predicateEnable {
@@ -81,16 +86,19 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 		     - name: predicates
 		       arguments:
 				 predicate.GPUSharingEnable: true
+				 predicate.CacheEnable: true
 		     - name: proportion
 		     - name: nodeorder
 	*/
 
 	predicate := predicateEnable{
 		gpuSharingEnable: false,
+		cacheEnable:      false,
 	}
 
 	// Checks whether predicate.GPUSharingEnable is provided or not, if given, modifies the value in predicateEnable struct.
 	args.GetBool(&predicate.gpuSharingEnable, GPUSharingPredicate)
+	args.GetBool(&predicate.cacheEnable, CachePredicate)
 
 	return predicate
 }
@@ -100,6 +108,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	pods, _ := pl.List(labels.NewSelector())
 	nodeMap, nodeSlice := util.GenerateNodeMapAndSlice(ssn.Nodes)
 
+	pCache := predicateCacheNew()
 	predicate := enablePredicate(pp.pluginArguments)
 
 	kubeClient := ssn.KubeClient()
@@ -202,29 +211,52 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		state := k8sframework.NewCycleState()
-		// CheckNodeUnschedulable
-		status := nodeUnscheduleFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
-		if !status.IsSuccess() {
-			return fmt.Errorf("plugin %s predicates failed %s", nodeunschedulable.Name, status.Message())
+		predicateByStablefilter := func(pod *v1.Pod, nodeInfo *k8sframework.NodeInfo) (bool, error) {
+			// CheckNodeUnschedulable
+			status := nodeUnscheduleFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
+			if !status.IsSuccess() {
+				return false, fmt.Errorf("plugin %s predicates failed %s", nodeunschedulable.Name, status.Message())
+			}
+
+			// Check NodeAffinity
+			status = nodeAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
+			if !status.IsSuccess() {
+				return false, fmt.Errorf("plugin %s predicates failed %s", nodeaffinity.Name, status.Message())
+			}
+
+			// PodToleratesNodeTaints: TaintToleration
+			status = tolerationFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
+			if !status.IsSuccess() {
+				return false, fmt.Errorf("plugin %s predicates failed %s", tainttoleration.Name, status.Message())
+			}
+
+			return true, nil
 		}
 
-		// Check NodeAffinity
-		status = nodeAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
-		if !status.IsSuccess() {
-			return fmt.Errorf("plugin %s predicates failed %s", nodeaffinity.Name, status.Message())
+		// Check PredicateWithCache
+		{
+			var err error
+			var fit bool
+			if predicate.cacheEnable {
+				fit, err = pCache.PredicateWithCache(node.Name, task.Pod)
+				if err != nil {
+					fit, err = predicateByStablefilter(task.Pod, nodeInfo)
+					pCache.UpdateCache(node.Name, task.Pod, fit)
+				}
+			} else {
+				fit, err = predicateByStablefilter(task.Pod, nodeInfo)
+			}
+
+			if !fit {
+				return err
+			}
 		}
 
 		// Check NodePorts
 		nodePortFilter.PreFilter(context.TODO(), state, task.Pod)
-		status = nodePortFilter.Filter(context.TODO(), state, nil, nodeInfo)
+		status := nodePortFilter.Filter(context.TODO(), state, nil, nodeInfo)
 		if !status.IsSuccess() {
 			return fmt.Errorf("plugin %s predicates failed %s", nodeaffinity.Name, status.Message())
-		}
-
-		// PodToleratesNodeTaints: TaintToleration
-		status = tolerationFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
-		if !status.IsSuccess() {
-			return fmt.Errorf("plugin %s predicates failed %s", tainttoleration.Name, status.Message())
 		}
 
 		// InterPodAffinity Predicate
