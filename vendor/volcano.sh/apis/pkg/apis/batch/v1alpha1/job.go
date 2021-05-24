@@ -205,6 +205,11 @@ type TaskSpec struct {
 	// Specifies the topology policy of task
 	// +optional
 	TopologyPolicy NumaPolicy `json:"topologyPolicy,omitempty" protobuf:"bytes,5,opt,name=topologyPolicy"`
+
+	// Specifies the maximum number of retries before marking this Task failed.
+	// Defaults to 3.
+	// +optional
+	MaxRetry int32 `json:"maxRetry,omitempty" protobuf:"bytes,5,opt,name=maxRetry"`
 }
 
 // JobPhase defines the phase of the job.
