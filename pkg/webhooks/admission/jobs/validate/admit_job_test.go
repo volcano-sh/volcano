@@ -218,7 +218,7 @@ func TestValidateJobCreate(t *testing.T) {
 				},
 			},
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
-			ret:            "'minAvailable' should not be greater than total replicas in tasks",
+			ret:            "job 'minAvailable' should not be greater than total replicas in tasks",
 			ExpectErr:      true,
 		},
 		// Job Plugin illegal
@@ -330,7 +330,7 @@ func TestValidateJobCreate(t *testing.T) {
 				},
 			},
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
-			ret:            "'minAvailable' must be >= 0",
+			ret:            "job 'minAvailable' must be >= 0",
 			ExpectErr:      true,
 		},
 		// maxretry less than zero

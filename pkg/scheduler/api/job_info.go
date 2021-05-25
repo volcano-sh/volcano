@@ -19,7 +19,6 @@ package api
 import (
 	"errors"
 	"fmt"
-	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,7 +28,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
+	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
 
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
@@ -100,6 +101,14 @@ func getJobID(pod *v1.Pod) JobID {
 		// Make sure Pod and PodGroup belong to the same namespace.
 		jobID := fmt.Sprintf("%s/%s", pod.Namespace, gn)
 		return JobID(jobID)
+	}
+
+	return ""
+}
+
+func getTaskID(pod *v1.Pod) TaskID {
+	if ts, found := pod.Annotations[batch.TaskSpecKey]; found && len(ts) != 0 {
+		return TaskID(ts)
 	}
 
 	return ""
@@ -193,8 +202,10 @@ type JobInfo struct {
 	NodesFitErrors map[TaskID]*FitErrors
 
 	// All tasks of the Job.
-	TaskStatusIndex map[TaskStatus]tasksMap
-	Tasks           tasksMap
+	TaskStatusIndex       map[TaskStatus]tasksMap
+	Tasks                 tasksMap
+	TaskMinAvailable      map[TaskID]int32
+	TaskMinAvailableTotal int32
 
 	Allocated    *Resource
 	TotalRequest *Resource
@@ -217,13 +228,14 @@ type JobInfo struct {
 // NewJobInfo creates a new jobInfo for set of tasks
 func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 	job := &JobInfo{
-		UID:             uid,
-		MinAvailable:    0,
-		NodesFitErrors:  make(map[TaskID]*FitErrors),
-		Allocated:       EmptyResource(),
-		TotalRequest:    EmptyResource(),
-		TaskStatusIndex: map[TaskStatus]tasksMap{},
-		Tasks:           tasksMap{},
+		UID:              uid,
+		MinAvailable:     0,
+		NodesFitErrors:   make(map[TaskID]*FitErrors),
+		Allocated:        EmptyResource(),
+		TotalRequest:     EmptyResource(),
+		TaskStatusIndex:  map[TaskStatus]tasksMap{},
+		Tasks:            tasksMap{},
+		TaskMinAvailable: map[TaskID]int32{},
 	}
 
 	for _, task := range tasks {
@@ -257,6 +269,13 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.Preemptable = ji.extractPreemptable(pg)
 	ji.RevocableZone = ji.extractRevocableZone(pg)
 	ji.Budget = ji.extractBudget(pg)
+
+	taskMinAvailableTotal := int32(0)
+	for task, member := range pg.Spec.MinTaskMember {
+		ji.TaskMinAvailable[TaskID(task)] = member
+		taskMinAvailableTotal += member
+	}
+	ji.TaskMinAvailableTotal = taskMinAvailableTotal
 
 	ji.PodGroup = pg
 
@@ -434,11 +453,12 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 		PodGroup: ji.PodGroup,
 
-		TaskStatusIndex: map[TaskStatus]tasksMap{},
-		Tasks:           tasksMap{},
-		Preemptable:     ji.Preemptable,
-		RevocableZone:   ji.RevocableZone,
-		Budget:          ji.Budget.Clone(),
+		TaskStatusIndex:  map[TaskStatus]tasksMap{},
+		TaskMinAvailable: ji.TaskMinAvailable,
+		Tasks:            tasksMap{},
+		Preemptable:      ji.Preemptable,
+		RevocableZone:    ji.RevocableZone,
+		Budget:           ji.Budget.Clone(),
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
@@ -517,6 +537,35 @@ func (ji *JobInfo) WaitingTaskNum() int32 {
 	}
 
 	return int32(occupid)
+}
+
+// CheckTaskMinAvailable returns whether each task of job is valid.
+func (ji *JobInfo) CheckTaskMinAvailable() bool {
+	// if job minAvailable is less than sumof(task minAvailable), skip this check
+	if ji.MinAvailable < ji.TaskMinAvailableTotal {
+		return true
+	}
+
+	actual := map[TaskID]int32{}
+	for status, tasks := range ji.TaskStatusIndex {
+		if AllocatedStatus(status) ||
+			status == Succeeded ||
+			status == Pipelined ||
+			status == Pending {
+			for _, task := range tasks {
+				actual[getTaskID(task.Pod)]++
+			}
+		}
+	}
+
+	klog.Infof("job %s/%s actual: %+v, ji.TaskMinAvailable: %+v", ji.Name, ji.Namespace, actual, ji.TaskMinAvailable)
+	for task, minAvailable := range ji.TaskMinAvailable {
+		if act, ok := actual[task]; !ok || act < minAvailable {
+			return false
+		}
+	}
+
+	return true
 }
 
 // ValidTaskNum returns the number of tasks that are valid.

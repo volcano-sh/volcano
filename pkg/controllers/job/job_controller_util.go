@@ -101,6 +101,7 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 	pod.Annotations[batch.JobNameKey] = job.Name
 	pod.Annotations[batch.QueueNameKey] = job.Spec.Queue
 	pod.Annotations[batch.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
+	pod.Annotations[batch.PodTemplateKey] = fmt.Sprintf("%s-%s", job.Name, template.Name)
 
 	if topologyPolicy != "" {
 		pod.Annotations[schedulingv2.NumaPolicyKey] = string(topologyPolicy)

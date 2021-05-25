@@ -48,4 +48,7 @@ const (
 
 	// JobUpdatedEvent is triggered if Job is updated, currently only scale up/down
 	JobUpdatedEvent Event = "JobUpdated"
+
+	// TaskFailedEvent is triggered when task finished unexpected.
+	TaskFailedEvent Event = "TaskFailed"
 )

@@ -113,6 +113,16 @@ spec:
               items:
                 description: TaskSpec specifies the task specification of Job.
                 properties:
+                  maxRetry:
+                    description: Specifies the maximum number of retries before marking
+                      this Task failed. Defaults to 3.
+                    format: int32
+                    type: integer
+                  minAvailable:
+                    description: The minimal available pods to run for this Task Defaults
+                      to the task replicas
+                    format: int32
+                    type: integer
                   name:
                     description: Name specifies the name of tasks
                     type: string
@@ -6935,6 +6945,20 @@ spec:
               description: The number of pods which reached phase Succeeded.
               format: int32
               type: integer
+            taskStatusCount:
+              additionalProperties:
+                description: TaskState contains details for the current state of the
+                  task.
+                properties:
+                  phase:
+                    additionalProperties:
+                      format: int32
+                      type: integer
+                    description: The phase of Task.
+                    type: object
+                type: object
+              description: The status of pods for each task
+              type: object
             terminating:
               description: The number of pods which reached phase Terminating.
               format: int32

@@ -188,6 +188,11 @@ type TaskSpec struct {
 	// +optional
 	Replicas int32 `json:"replicas,omitempty" protobuf:"bytes,2,opt,name=replicas"`
 
+	// The minimal available pods to run for this Task
+	// Defaults to the task replicas
+	// +optional
+	MinAvailable *int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
+
 	// Specifies the pod that will be created for this TaskSpec
 	// when executing a Job
 	// +optional
@@ -200,6 +205,11 @@ type TaskSpec struct {
 	// Specifies the topology policy of task
 	// +optional
 	TopologyPolicy NumaPolicy `json:"topologyPolicy,omitempty" protobuf:"bytes,5,opt,name=topologyPolicy"`
+
+	// Specifies the maximum number of retries before marking this Task failed.
+	// Defaults to 3.
+	// +optional
+	MaxRetry int32 `json:"maxRetry,omitempty" protobuf:"bytes,5,opt,name=maxRetry"`
 }
 
 // JobPhase defines the phase of the job.
@@ -247,6 +257,13 @@ type JobState struct {
 	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,4,opt,name=lastTransitionTime"`
 }
 
+// TaskState contains details for the current state of the task.
+type TaskState struct {
+	// The phase of Task.
+	// +optional
+	Phase map[v1.PodPhase]int32 `json:"phase,omitempty" protobuf:"bytes,11,opt,name=phase"`
+}
+
 // JobStatus represents the current status of a Job.
 type JobStatus struct {
 	// Current state of Job.
@@ -256,6 +273,10 @@ type JobStatus struct {
 	// The minimal available pods to run for this Job
 	// +optional
 	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
+
+	// The status of pods for each task
+	// +optional
+	TaskStatusCount map[string]TaskState `json:"taskStatusCount,omitempty" protobuf:"bytes,21,opt,name=taskStatusCount"`
 
 	// The number of pending pods.
 	// +optional

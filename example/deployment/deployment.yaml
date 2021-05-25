@@ -13,8 +13,12 @@ spec:
     metadata:
       labels:
         app: nginx
+      annotations:
+        #create test queue and use this annotation
+        #to make deployment be scheduled into test queue
+        scheduling.volcano.sh/queue-name: test
     spec:
-      # set spec.schedulerName to 'volcano' instead of 
+      # set spec.schedulerName to 'volcano' instead of
       # 'default-scheduler' for deployment.
       schedulerName: volcano
       containers:
