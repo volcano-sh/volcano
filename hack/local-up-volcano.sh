@@ -31,7 +31,7 @@ YAML_FILENAME=volcano-${TAG}.yaml
 function prepare {
   echo "Preparing..."
   install-helm
-  echo "Generating valcano deploy yaml"
+  echo "Generating volcano deploy yaml"
   make generate-yaml
 
   echo "Building docker images"
@@ -95,9 +95,7 @@ prepare
 
 if [ "${INSTALL_MODE}" == "kind" ]; then
   kind-up-cluster
-  export KUBECONFIG="$(kind get kubeconfig ${CLUSTER_CONTEXT})"
+  export KUBECONFIG=${HOME}/.kube/config
 fi
 
 install-volcano
-
-
