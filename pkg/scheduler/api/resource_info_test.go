@@ -165,7 +165,7 @@ func TestIsZero(t *testing.T) {
 			resource: &Resource{
 				MilliCPU:        4000,
 				Memory:          4000,
-				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 4, "hugepages-test": 5},
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 0, "hugepages-test": 5},
 			},
 			resourceName: "scalar.test/scalar1",
 			expected:     true,
@@ -282,7 +282,7 @@ func TestLessEqual(t *testing.T) {
 		},
 		{
 			resource1: &Resource{
-				MilliCPU: 9,
+				MilliCPU: 0,
 				Memory:   0,
 			},
 			resource2: &Resource{},
