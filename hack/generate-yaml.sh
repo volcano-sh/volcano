@@ -28,7 +28,7 @@ export HELM_VER=${HELM_VER:-v3.5.3}
 export VOLCANO_IMAGE_TAG=${TAG:-"latest"}
 export YAML_FILENAME=volcano-${VOLCANO_IMAGE_TAG}.yaml
 export MONITOR_YAML_FILENAME=volcano-monitoring-${VOLCANO_IMAGE_TAG}.yaml
-export CRD_VERSION=${CRD_VERSION:-v1beta1}
+export CRD_VERSION=${CRD_VERSION:-v1}
 
 case $CRD_VERSION in
   bases)
