@@ -19,6 +19,7 @@ package numaaware
 import (
 	"context"
 	"fmt"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/util/workqueue"
@@ -132,7 +133,7 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 					pp.Name(), task.Name, container.Name, node.Name)
 			}
 
-			klog.V(3).Infof("[numaaware] hits for task %s container '%v': %v on node %s, besthit: %v",
+			klog.V(4).Infof("[numaaware] hits for task %s container '%v': %v on node %s, besthit: %v",
 				task.Name, container.Name, providersHints, node.Name, hit)
 			resAssignMap := policy.Allocate(&container, &hit, node.NumaSchedulerInfo, resNumaSets, pp.hintProviders)
 			for resName, assign := range resAssignMap {
@@ -147,7 +148,7 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		pp.assignRes[task.UID][node.Name] = allResAssignMap
 
-		klog.V(3).Infof(" task %s's on node<%s> resAssignMap: %v",
+		klog.V(4).Infof(" task %s's on node<%s> resAssignMap: %v",
 			task.Name, node.Name, pp.assignRes[task.UID][node.Name])
 
 		return nil
@@ -166,7 +167,7 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		scoreList := getNodeNumaNumForTask(nodeInfo, pp.assignRes[task.UID])
-		normalizeScore(100, true, scoreList)
+		util.NormalizeScore(100, true, scoreList)
 
 		for nodeName, score := range scoreList {
 			score *= int64(weight)
@@ -243,34 +244,6 @@ func getNumaNodeCntForcpuID(cpus cpuset.CPUSet, cpuDetails topology.CPUDetails) 
 	return mask.Count()
 }
 
-func normalizeScore(maxPriority int64, reverse bool, scores map[string]int64) {
-	var maxCount int64
-	for _, score := range scores {
-		if score > maxCount {
-			maxCount = score
-		}
-	}
-
-	if maxCount == 0 {
-		if reverse {
-			for key := range scores {
-				scores[key] = maxPriority
-			}
-		}
-		return
-	}
-
-	for key, score := range scores {
-		score = maxPriority * score / maxCount
-		if reverse {
-			score = maxPriority - score
-		}
-
-		scores[key] = score
-	}
-	return
-}
-
 func (pp *numaPlugin) OnSessionClose(ssn *framework.Session) {
 	if len(pp.taskBindNodeMap) == 0 {
 		return
@@ -300,6 +273,6 @@ func (pp *numaPlugin) OnSessionClose(ssn *framework.Session) {
 		}
 	}
 
-	klog.V(3).Infof("[numaPlugin]allocatedResSet: %v", allocatedResSet)
+	klog.V(4).Infof("[numaPlugin]allocatedResSet: %v", allocatedResSet)
 	ssn.UpdateSchedulerNumaInfo(allocatedResSet)
 }

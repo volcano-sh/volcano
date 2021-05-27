@@ -36,6 +36,6 @@ func (p *policyBestEffort) Predicate(providersHints []map[string][]TopologyHint)
 	bestHint := mergeFilteredHints(p.numaNodes, filteredProvidersHints)
 	admit := p.canAdmitPodResult(&bestHint)
 
-	klog.V(3).Infof("bestHint: %v admit %v\n", bestHint, admit)
+	klog.V(4).Infof("bestHint: %v admit %v\n", bestHint, admit)
 	return bestHint, admit
 }

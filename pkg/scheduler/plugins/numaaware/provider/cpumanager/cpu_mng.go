@@ -130,7 +130,7 @@ func (mng *cpuMng) GetTopologyHints(container *v1.Container,
 		reservedCPUsFloat := float64(reservedCPUs.MilliValue()) / 1000
 		numReservedCPUs := int(math.Ceil(reservedCPUsFloat))
 		reserved, _ = takeByTopology(cputopo, cputopo.CPUDetails.CPUs(), numReservedCPUs)
-		klog.V(3).Infof("[cpumanager] reserve cpuset :%v", reserved)
+		klog.V(4).Infof("[cpumanager] reserve cpuset :%v", reserved)
 	}
 
 	availableCPUSet, ok := resNumaSets[string(v1.ResourceCPU)]
@@ -140,7 +140,7 @@ func (mng *cpuMng) GetTopologyHints(container *v1.Container,
 	}
 
 	availableCPUSet = availableCPUSet.Difference(reserved)
-	klog.V(3).Infof("requested: %d, availableCPUSet: %v", requestNum, availableCPUSet)
+	klog.V(4).Infof("requested: %d, availableCPUSet: %v", requestNum, availableCPUSet)
 	return map[string][]policy.TopologyHint{
 		string(v1.ResourceCPU): generateCPUTopologyHints(availableCPUSet, topoInfo.CPUDetail, requestNum),
 	}
@@ -170,7 +170,7 @@ func (mng *cpuMng) Allocate(container *v1.Container, bestHit *policy.TopologyHin
 	availableCPUSet := resNumaSets[string(v1.ResourceCPU)]
 	availableCPUSet = availableCPUSet.Difference(reserved)
 
-	klog.V(3).Infof("alignedCPUs: %v requestNum: %v bestHit %v", availableCPUSet, requestNum, bestHit)
+	klog.V(4).Infof("alignedCPUs: %v requestNum: %v bestHit %v", availableCPUSet, requestNum, bestHit)
 
 	result := cpuset.NewCPUSet()
 	if bestHit.NUMANodeAffinity != nil {

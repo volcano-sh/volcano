@@ -53,7 +53,7 @@ func (policy *policySingleNumaNode) Predicate(providersHints []map[string][]Topo
 	filteredHints := filterProvidersHints(providersHints)
 	singleNumaHints := filterSingleNumaHints(filteredHints)
 	bestHint := mergeFilteredHints(policy.numaNodes, singleNumaHints)
-	klog.V(3).Infof("bestHint: %v\n", bestHint)
+	klog.V(4).Infof("bestHint: %v\n", bestHint)
 	admit := policy.canAdmitPodResult(&bestHint)
 	return bestHint, admit
 }

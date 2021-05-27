@@ -138,12 +138,12 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 
 	if ni.NumaSchedulerInfo != nil {
 		res.NumaSchedulerInfo = ni.NumaSchedulerInfo.DeepCopy()
-		klog.V(3).Infof("node[%s]", ni.Name)
+		klog.V(5).Infof("node[%s]", ni.Name)
 		for resName, resInfo := range res.NumaSchedulerInfo.NumaResMap {
-			klog.V(3).Infof("current resource %s : %v", resName, resInfo)
+			klog.V(5).Infof("current resource %s : %v", resName, resInfo)
 		}
 
-		klog.V(3).Infof("current Policies : %v", res.NumaSchedulerInfo.Policies)
+		klog.V(5).Infof("current Policies : %v", res.NumaSchedulerInfo.Policies)
 	}
 
 	return res
