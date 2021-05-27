@@ -604,7 +604,7 @@ func (drf *drfPlugin) updateHierarchicalShare(node *hierarchicalNode,
 					t := child.attr.allocated
 					node.attr.allocated.Add(t)
 				} else {
-					t := child.attr.allocated.Clone().Scale(mdr / child.attr.share)
+					t := child.attr.allocated.Clone().Multi(mdr / child.attr.share)
 					node.attr.allocated.Add(t)
 				}
 

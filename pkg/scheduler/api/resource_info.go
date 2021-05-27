@@ -27,6 +27,15 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util/assert"
 )
 
+const (
+	// GPUResourceName need to follow https://github.com/NVIDIA/k8s-device-plugin/blob/66a35b71ac4b5cbfb04714678b548bd77e5ba719/server.go#L20
+	GPUResourceName = "nvidia.com/gpu"
+)
+
+const (
+	minResource float64 = 0.1
+)
+
 // Resource struct defines all the resource type
 type Resource struct {
 	MilliCPU float64
@@ -40,37 +49,12 @@ type Resource struct {
 	MaxTaskNum int
 }
 
-const (
-	// GPUResourceName need to follow https://github.com/NVIDIA/k8s-device-plugin/blob/66a35b71ac4b5cbfb04714678b548bd77e5ba719/server.go#L20
-	GPUResourceName = "nvidia.com/gpu"
-)
-
 // EmptyResource creates a empty resource object and returns
 func EmptyResource() *Resource {
 	return &Resource{}
 }
 
-// Clone is used to clone a resource type
-func (r *Resource) Clone() *Resource {
-	clone := &Resource{
-		MilliCPU:   r.MilliCPU,
-		Memory:     r.Memory,
-		MaxTaskNum: r.MaxTaskNum,
-	}
-
-	if r.ScalarResources != nil {
-		clone.ScalarResources = make(map[v1.ResourceName]float64)
-		for k, v := range r.ScalarResources {
-			clone.ScalarResources[k] = v
-		}
-	}
-
-	return clone
-}
-
-var minResource float64 = 0.1
-
-// NewResource create a new resource object from resource list
+// NewResource creates a new resource object from resource list
 func NewResource(rl v1.ResourceList) *Resource {
 	r := EmptyResource()
 	for rName, rQuant := range rl {
@@ -91,7 +75,60 @@ func NewResource(rl v1.ResourceList) *Resource {
 	return r
 }
 
-// IsEmpty returns bool after checking any of resource is less than min possible value
+// Clone is used to clone a resource type, which is a deep copy function.
+func (r *Resource) Clone() *Resource {
+	clone := &Resource{
+		MilliCPU:   r.MilliCPU,
+		Memory:     r.Memory,
+		MaxTaskNum: r.MaxTaskNum,
+	}
+
+	if r.ScalarResources != nil {
+		clone.ScalarResources = make(map[v1.ResourceName]float64)
+		for k, v := range r.ScalarResources {
+			clone.ScalarResources[k] = v
+		}
+	}
+
+	return clone
+}
+
+// String returns resource details in string format
+func (r *Resource) String() string {
+	str := fmt.Sprintf("cpu %0.2f, memory %0.2f", r.MilliCPU, r.Memory)
+	for rName, rQuant := range r.ScalarResources {
+		str = fmt.Sprintf("%s, %s %0.2f", str, rName, rQuant)
+	}
+	return str
+}
+
+// ResourceNames returns all resource types
+func (r *Resource) ResourceNames() []v1.ResourceName {
+	resNames := []v1.ResourceName{v1.ResourceCPU, v1.ResourceMemory}
+
+	for rName := range r.ScalarResources {
+		resNames = append(resNames, rName)
+	}
+
+	return resNames
+}
+
+// Get returns the resource value for that particular resource type
+func (r *Resource) Get(rn v1.ResourceName) float64 {
+	switch rn {
+	case v1.ResourceCPU:
+		return r.MilliCPU
+	case v1.ResourceMemory:
+		return r.Memory
+	default:
+		if r.ScalarResources == nil {
+			return 0
+		}
+		return r.ScalarResources[rn]
+	}
+}
+
+// IsEmpty returns false if any kind of resource is not less than min value, otherwise returns true
 func (r *Resource) IsEmpty() bool {
 	if !(r.MilliCPU < minResource && r.Memory < minResource) {
 		return false
@@ -106,7 +143,7 @@ func (r *Resource) IsEmpty() bool {
 	return true
 }
 
-// IsZero checks whether that resource is less than min possible value
+// IsZero returns false if the given kind of resource is not less than min value
 func (r *Resource) IsZero(rn v1.ResourceName) bool {
 	switch rn {
 	case v1.ResourceCPU:
@@ -125,7 +162,7 @@ func (r *Resource) IsZero(rn v1.ResourceName) bool {
 	}
 }
 
-// Add is used to add the two resources
+// Add is used to add two given resources
 func (r *Resource) Add(rr *Resource) *Resource {
 	r.MilliCPU += rr.MilliCPU
 	r.Memory += rr.Memory
@@ -137,16 +174,6 @@ func (r *Resource) Add(rr *Resource) *Resource {
 		r.ScalarResources[rName] += rQuant
 	}
 
-	return r
-}
-
-// Scale updates resource to the provided scale
-func (r *Resource) Scale(scale float64) *Resource {
-	r.MilliCPU *= scale
-	r.Memory *= scale
-	for rName, rQuant := range r.ScalarResources {
-		r.ScalarResources[rName] = rQuant * scale
-	}
 	return r
 }
 
@@ -164,6 +191,16 @@ func (r *Resource) Sub(rr *Resource) *Resource {
 		r.ScalarResources[rrName] -= rrQuant
 	}
 
+	return r
+}
+
+// Multi multiples the resource with ratio provided
+func (r *Resource) Multi(ratio float64) *Resource {
+	r.MilliCPU *= ratio
+	r.Memory *= ratio
+	for rName, rQuant := range r.ScalarResources {
+		r.ScalarResources[rName] = rQuant * ratio
+	}
 	return r
 }
 
@@ -188,8 +225,8 @@ func (r *Resource) SetMaxResource(rr *Resource) {
 			}
 			return
 		}
-
-		if rrQuant > r.ScalarResources[rrName] {
+		_, ok := r.ScalarResources[rrName]
+		if !ok || rrQuant > r.ScalarResources[rrName] {
 			r.ScalarResources[rrName] = rrQuant
 		}
 	}
@@ -208,12 +245,16 @@ func (r *Resource) FitDelta(rr *Resource) *Resource {
 		r.Memory -= rr.Memory + minResource
 	}
 
-	for rrName, rrQuant := range rr.ScalarResources {
-		if r.ScalarResources == nil {
-			r.ScalarResources = map[v1.ResourceName]float64{}
-		}
+	if r.ScalarResources == nil {
+		r.ScalarResources = make(map[v1.ResourceName]float64)
+	}
 
+	for rrName, rrQuant := range rr.ScalarResources {
 		if rrQuant > 0 {
+			_, ok := r.ScalarResources[rrName]
+			if !ok {
+				r.ScalarResources[rrName] = 0
+			}
 			r.ScalarResources[rrName] -= rrQuant + minResource
 		}
 	}
@@ -221,17 +262,9 @@ func (r *Resource) FitDelta(rr *Resource) *Resource {
 	return r
 }
 
-// Multi multiples the resource with ratio provided
-func (r *Resource) Multi(ratio float64) *Resource {
-	r.MilliCPU *= ratio
-	r.Memory *= ratio
-	for rName, rQuant := range r.ScalarResources {
-		r.ScalarResources[rName] = rQuant * ratio
-	}
-	return r
-}
-
-// Less checks whether a resource is less than other
+// Less returns true only on condition that all dimensions of resources in r are less than that of rr
+// Otherwise returns false.
+// Note: Any dimension of resource, which is not listed in resource object, is regarded as zero.
 func (r *Resource) Less(rr *Resource) bool {
 	lessFunc := func(l, r float64) bool {
 		return l < r
@@ -269,29 +302,8 @@ func (r *Resource) Less(rr *Resource) bool {
 	return true
 }
 
-// LessEqualStrict checks whether a resource is less or equal than other
-func (r *Resource) LessEqualStrict(rr *Resource) bool {
-	lessFunc := func(l, r float64) bool {
-		return l <= r
-	}
-
-	if !lessFunc(r.MilliCPU, rr.MilliCPU) {
-		return false
-	}
-	if !lessFunc(r.Memory, rr.Memory) {
-		return false
-	}
-
-	for rName, rQuant := range r.ScalarResources {
-		if !lessFunc(rQuant, rr.ScalarResources[rName]) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// LessEqual checks whether a resource is less than other resource
+// LessEqual works as the same as the LessEqualStrict.
+// The difference is that function lessEqualFunc regards tiny value difference as Equal.
 func (r *Resource) LessEqual(rr *Resource) bool {
 	lessEqualFunc := func(l, r, diff float64) bool {
 		if l < r || math.Abs(l-r) < diff {
@@ -311,16 +323,16 @@ func (r *Resource) LessEqual(rr *Resource) bool {
 		return true
 	}
 
+	if rr.ScalarResources == nil {
+		return false
+	}
+
 	for rName, rQuant := range r.ScalarResources {
 		if rQuant <= minResource {
 			continue
 		}
-		if rr.ScalarResources == nil {
-			return false
-		}
-
-		rrQuant := rr.ScalarResources[rName]
-		if !lessEqualFunc(rQuant, rrQuant, minResource) {
+		rrQuant, ok := rr.ScalarResources[rName]
+		if !ok || !lessEqualFunc(rQuant, rrQuant, minResource) {
 			return false
 		}
 	}
@@ -328,7 +340,35 @@ func (r *Resource) LessEqual(rr *Resource) bool {
 	return true
 }
 
-// Diff calculate the difference between two resource
+// LessEqualStrict returns true only on the following conditions:
+// 1. All dimensions resources in r are less than that of rr
+// 2. Part dimensions are equal while the others are less in r
+// 3. All dimensions resources in r are equal with that of rr
+// Otherwise returns false.
+// Note: Any dimension of resource, which is not listed in resource object, is regarded as zero.
+func (r *Resource) LessEqualStrict(rr *Resource) bool {
+	lessFunc := func(l, r float64) bool {
+		return l <= r
+	}
+
+	if !lessFunc(r.MilliCPU, rr.MilliCPU) {
+		return false
+	}
+	if !lessFunc(r.Memory, rr.Memory) {
+		return false
+	}
+
+	for rName, rQuant := range r.ScalarResources {
+		_, ok := rr.ScalarResources[rName]
+		if !ok || !lessFunc(rQuant, rr.ScalarResources[rName]) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Diff calculate the difference between two resource object
 func (r *Resource) Diff(rr *Resource) (*Resource, *Resource) {
 	increasedVal := EmptyResource()
 	decreasedVal := EmptyResource()
@@ -345,7 +385,11 @@ func (r *Resource) Diff(rr *Resource) (*Resource, *Resource) {
 	}
 
 	for rName, rQuant := range r.ScalarResources {
-		rrQuant := rr.ScalarResources[rName]
+		rrQuant, ok := rr.ScalarResources[rName]
+
+		if !ok {
+			rrQuant = 0
+		}
 
 		if rQuant > rrQuant {
 			if increasedVal.ScalarResources == nil {
@@ -361,41 +405,6 @@ func (r *Resource) Diff(rr *Resource) (*Resource, *Resource) {
 	}
 
 	return increasedVal, decreasedVal
-}
-
-// String returns resource details in string format
-func (r *Resource) String() string {
-	str := fmt.Sprintf("cpu %0.2f, memory %0.2f", r.MilliCPU, r.Memory)
-	for rName, rQuant := range r.ScalarResources {
-		str = fmt.Sprintf("%s, %s %0.2f", str, rName, rQuant)
-	}
-	return str
-}
-
-// Get returns the resource value for that particular resource type
-func (r *Resource) Get(rn v1.ResourceName) float64 {
-	switch rn {
-	case v1.ResourceCPU:
-		return r.MilliCPU
-	case v1.ResourceMemory:
-		return r.Memory
-	default:
-		if r.ScalarResources == nil {
-			return 0
-		}
-		return r.ScalarResources[rn]
-	}
-}
-
-// ResourceNames returns all resource types
-func (r *Resource) ResourceNames() []v1.ResourceName {
-	resNames := []v1.ResourceName{v1.ResourceCPU, v1.ResourceMemory}
-
-	for rName := range r.ScalarResources {
-		resNames = append(resNames, rName)
-	}
-
-	return resNames
 }
 
 // AddScalar adds a resource by a scalar value of this resource.
