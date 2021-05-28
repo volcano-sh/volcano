@@ -47,10 +47,14 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	cpuclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/apis/pkg/client/clientset/versioned/scheme"
+	cpuinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
+	cpuinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/nodeinfo/v1alpha1"
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
+
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -72,9 +76,9 @@ func New(config *rest.Config, schedulerName string, defaultQueue string) Cache {
 type SchedulerCache struct {
 	sync.Mutex
 
-	kubeClient *kubernetes.Clientset
-	vcClient   *vcclient.Clientset
-
+	kubeClient   *kubernetes.Clientset
+	vcClient     *vcclient.Clientset
+	cpuClient    *cpuclient.Clientset
 	defaultQueue string
 	// schedulerName is the name for volcano scheduler
 	schedulerName string
@@ -91,6 +95,7 @@ type SchedulerCache struct {
 	csiNodeInformer            storagev1.CSINodeInformer
 	csiDriverInformer          storagev1.CSIDriverInformer
 	csiStorageCapacityInformer storagev1alpha1.CSIStorageCapacityInformer
+	cpuInformer                cpuinformerv1.NumatopologyInformer
 
 	Binder        Binder
 	Evictor       Evictor
@@ -281,6 +286,11 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		panic(fmt.Sprintf("failed init eventClient, with err: %v", err))
 	}
 
+	cpuClient, err := cpuclient.NewForConfig(config)
+	if err != nil {
+		panic(fmt.Sprintf("failed init cpuClient, with err: %v", err))
+	}
+
 	// create default queue
 	reclaimable := true
 	defaultQue := vcv1beta1.Queue{
@@ -305,6 +315,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		deletedJobs:     workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		kubeClient:      kubeClient,
 		vcClient:        vcClient,
+		cpuClient:       cpuClient,
 		defaultQueue:    defaultQueue,
 		schedulerName:   schedulerName,
 
@@ -422,6 +433,12 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		DeleteFunc: sc.DeleteQueueV1beta1,
 	})
 
+	sc.cpuInformer = cpuinformer.NewSharedInformerFactory(sc.cpuClient, 0).Nodeinfo().V1alpha1().Numatopologies()
+	sc.cpuInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddNumaInfoV1alpha1,
+		UpdateFunc: sc.UpdateNumaInfoV1alpha1,
+		DeleteFunc: sc.DeleteNumaInfoV1alpha1,
+	})
 	return sc
 }
 
@@ -435,6 +452,7 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go sc.scInformer.Informer().Run(stopCh)
 	go sc.queueInformerV1beta1.Informer().Run(stopCh)
 	go sc.quotaInformer.Informer().Run(stopCh)
+	go sc.cpuInformer.Informer().Run(stopCh)
 
 	if options.ServerOpts.EnablePriorityClass {
 		go sc.pcInformer.Informer().Run(stopCh)
@@ -460,6 +478,7 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) bool {
 				sc.scInformer.Informer().HasSynced,
 				sc.queueInformerV1beta1.Informer().HasSynced,
 				sc.quotaInformer.Informer().HasSynced,
+				sc.cpuInformer.Informer().HasSynced,
 			}
 			if options.ServerOpts.EnablePriorityClass {
 				informerSynced = append(informerSynced, sc.pcInformer.Informer().HasSynced)
@@ -577,25 +596,33 @@ func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string
 	}
 
 	p := task.Pod
-	go func() {
-		taskID := schedulingapi.PodKey(p)
-
-		sc.Lock()
-		node.AddBindingTask(taskID)
-		sc.Unlock()
-
-		defer func() {
-			sc.Lock()
-			node.RemoveBindingTask(taskID)
-			sc.Unlock()
-		}()
-
+	if !(task.TopologyPolicy == "" || task.TopologyPolicy == "none") {
 		if err := sc.Binder.Bind(p, hostname); err != nil {
 			sc.resyncTask(task)
 		} else {
 			sc.Recorder.Eventf(p, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", p.Namespace, p.Name, hostname)
 		}
-	}()
+	} else {
+		go func() {
+			taskID := schedulingapi.PodKey(p)
+
+			sc.Lock()
+			node.AddBindingTask(taskID)
+			sc.Unlock()
+
+			defer func() {
+				sc.Lock()
+				node.RemoveBindingTask(taskID)
+				sc.Unlock()
+			}()
+
+			if err := sc.Binder.Bind(p, hostname); err != nil {
+				sc.resyncTask(task)
+			} else {
+				sc.Recorder.Eventf(p, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", p.Namespace, p.Name, hostname)
+			}
+		}()
+	}
 
 	return nil
 }
@@ -618,6 +645,26 @@ func (sc *SchedulerCache) BindVolumes(task *schedulingapi.TaskInfo, podVolumes *
 // Client returns the kubernetes clientSet
 func (sc *SchedulerCache) Client() kubernetes.Interface {
 	return sc.kubeClient
+}
+
+// UpdateSchedulerNumaInfo used to update scheduler node cache NumaSchedulerInfo
+func (sc *SchedulerCache) UpdateSchedulerNumaInfo(AllocatedSets map[string]schedulingapi.ResNumaSets) error {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	for nodeName, sets := range AllocatedSets {
+		if _, found := sc.Nodes[nodeName]; !found {
+			continue
+		}
+
+		numaInfo := sc.Nodes[nodeName].NumaSchedulerInfo
+		if numaInfo == nil {
+			continue
+		}
+
+		numaInfo.Allocate(sets)
+	}
+	return nil
 }
 
 // taskUnschedulable updates pod status of pending task
@@ -715,6 +762,10 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		Queues:         make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
 		NamespaceInfo:  make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
 		RevocableNodes: make(map[string]*schedulingapi.NodeInfo),
+	}
+
+	for _, value := range sc.Nodes {
+		value.RefreshNumaSchedulerInfoByCrd()
 	}
 
 	for _, value := range sc.Nodes {
