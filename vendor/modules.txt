@@ -745,7 +745,7 @@ sigs.k8s.io/structured-merge-diff/v4/value
 # sigs.k8s.io/yaml v1.2.0
 ## explicit
 sigs.k8s.io/yaml
-# volcano.sh/apis v0.0.0-20210518032656-21e2239e42bc
+# volcano.sh/apis v0.0.0-20210521015619-64f9b8edac3e
 ## explicit
 volcano.sh/apis/pkg/apis/batch/v1alpha1
 volcano.sh/apis/pkg/apis/bus/v1alpha1
