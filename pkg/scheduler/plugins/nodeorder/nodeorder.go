@@ -21,7 +21,6 @@ import (
 	"fmt"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
@@ -141,8 +140,7 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	weight := calculateWeight(pp.pluginArguments)
 	pl := util.NewPodListerFromNode(ssn)
-	pods, _ := pl.List(labels.NewSelector())
-	nodeMap, nodeSlice := util.GenerateNodeMapAndSlice(ssn.Nodes)
+	nodeMap := util.GenerateNodeMapAndSlice(ssn.Nodes)
 
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddEventHandler(&framework.EventHandler{
@@ -177,7 +175,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	// Initialize k8s scheduling plugins
-	handle := k8s.NewFrameworkHandle(pods, nodeSlice)
+	handle := k8s.NewFrameworkHandle(nodeMap)
 	// 1. NodeResourcesLeastAllocated
 	laArgs := &config.NodeResourcesLeastAllocatedArgs{
 		Resources: []config.ResourceSpec{
