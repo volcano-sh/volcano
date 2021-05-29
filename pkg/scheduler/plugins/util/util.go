@@ -274,3 +274,32 @@ func (nl *NodeLister) List() ([]*v1.Node, error) {
 	}
 	return nodes, nil
 }
+
+// NormalizeScore normalizes the score for each filteredNode
+func NormalizeScore(maxPriority int64, reverse bool, scores map[string]int64) {
+	var maxCount int64
+	for _, score := range scores {
+		if score > maxCount {
+			maxCount = score
+		}
+	}
+
+	if maxCount == 0 {
+		if reverse {
+			for key := range scores {
+				scores[key] = maxPriority
+			}
+		}
+		return
+	}
+
+	for key, score := range scores {
+		score = maxPriority * score / maxCount
+		if reverse {
+			score = maxPriority - score
+		}
+
+		scores[key] = score
+	}
+	return
+}

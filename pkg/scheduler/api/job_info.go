@@ -91,8 +91,9 @@ type TaskInfo struct {
 	// * value means workload can use all the revocable node for during node active revocable time.
 	RevocableZone string
 
-	PodVolumes *volumescheduling.PodVolumes
-	Pod        *v1.Pod
+	TopologyPolicy string
+	PodVolumes     *volumescheduling.PodVolumes
+	Pod            *v1.Pod
 }
 
 func getJobID(pod *v1.Pod) JobID {
@@ -119,22 +120,24 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	initResreq := GetPodResourceRequest(pod)
 	preemptable := GetPodPreemptable(pod)
 	revocableZone := GetPodRevocableZone(pod)
+	topologyPolicy := GetPodTopologyPolicy(pod)
 
 	jobID := getJobID(pod)
 
 	ti := &TaskInfo{
-		UID:           TaskID(pod.UID),
-		Job:           jobID,
-		Name:          pod.Name,
-		Namespace:     pod.Namespace,
-		NodeName:      pod.Spec.NodeName,
-		Status:        getTaskStatus(pod),
-		Priority:      1,
-		Pod:           pod,
-		Resreq:        req,
-		InitResreq:    initResreq,
-		Preemptable:   preemptable,
-		RevocableZone: revocableZone,
+		UID:            TaskID(pod.UID),
+		Job:            jobID,
+		Name:           pod.Name,
+		Namespace:      pod.Namespace,
+		NodeName:       pod.Spec.NodeName,
+		Status:         getTaskStatus(pod),
+		Priority:       1,
+		Pod:            pod,
+		Resreq:         req,
+		InitResreq:     initResreq,
+		Preemptable:    preemptable,
+		RevocableZone:  revocableZone,
+		TopologyPolicy: topologyPolicy,
 	}
 
 	if pod.Spec.Priority != nil {
@@ -147,26 +150,29 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 // Clone is used for cloning a task
 func (ti *TaskInfo) Clone() *TaskInfo {
 	return &TaskInfo{
-		UID:           ti.UID,
-		Job:           ti.Job,
-		Name:          ti.Name,
-		Namespace:     ti.Namespace,
-		NodeName:      ti.NodeName,
-		Status:        ti.Status,
-		Priority:      ti.Priority,
-		Pod:           ti.Pod,
-		Resreq:        ti.Resreq.Clone(),
-		InitResreq:    ti.InitResreq.Clone(),
-		VolumeReady:   ti.VolumeReady,
-		Preemptable:   ti.Preemptable,
-		RevocableZone: ti.RevocableZone,
+		UID:            ti.UID,
+		Job:            ti.Job,
+		Name:           ti.Name,
+		Namespace:      ti.Namespace,
+		NodeName:       ti.NodeName,
+		Status:         ti.Status,
+		Priority:       ti.Priority,
+		Pod:            ti.Pod,
+		Resreq:         ti.Resreq.Clone(),
+		InitResreq:     ti.InitResreq.Clone(),
+		VolumeReady:    ti.VolumeReady,
+		Preemptable:    ti.Preemptable,
+		RevocableZone:  ti.RevocableZone,
+		TopologyPolicy: ti.TopologyPolicy,
 	}
 }
 
 // String returns the taskInfo details in a string
 func (ti TaskInfo) String() string {
-	return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v, resreq %v, preemptable %v, revocableZone %v",
-		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority, ti.Resreq, ti.Preemptable, ti.RevocableZone)
+	return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v"+
+		"resreq %v, preemptable %v, revocableZone %v, TopologyPolicy %v",
+		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority,
+		ti.Resreq, ti.Preemptable, ti.RevocableZone, ti.TopologyPolicy)
 }
 
 // JobID is the type of JobInfo's ID.

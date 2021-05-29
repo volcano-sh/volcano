@@ -45,9 +45,11 @@ type NodeInfo struct {
 	Allocatable *Resource
 	Capability  *Resource
 
-	Tasks map[TaskID]*TaskInfo
-
-	RevocableZone string
+	Tasks             map[TaskID]*TaskInfo
+	NumaInfo          *NumatopoInfo
+	NumaChgFlag       NumaChgFlag
+	NumaSchedulerInfo *NumatopoInfo
+	RevocableZone     string
 
 	// Used to store custom information
 	Others     map[string]interface{}
@@ -101,12 +103,47 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 	return nodeInfo
 }
 
+// RefreshNumaSchedulerInfoByCrd used to update scheduler numa information based the CRD numatopo
+func (ni *NodeInfo) RefreshNumaSchedulerInfoByCrd() {
+	if ni.NumaInfo == nil {
+		ni.NumaSchedulerInfo = nil
+		return
+	}
+
+	tmp := ni.NumaInfo.DeepCopy()
+	if ni.NumaChgFlag == NumaInfoMoreFlag {
+		ni.NumaSchedulerInfo = tmp
+	} else if ni.NumaChgFlag == NumaInfoLessFlag {
+		numaResMap := ni.NumaSchedulerInfo.NumaResMap
+		for resName, resInfo := range tmp.NumaResMap {
+			klog.V(5).Infof("resource %s Allocatable : current %v new %v on node %s",
+				resName, numaResMap[resName], resInfo, ni.Name)
+			if numaResMap[resName].Allocatable.Size() >= resInfo.Allocatable.Size() {
+				numaResMap[resName].Allocatable = resInfo.Allocatable.Clone()
+				numaResMap[resName].Capacity = resInfo.Capacity
+			}
+		}
+	}
+
+	ni.NumaChgFlag = NumaInfoResetFlag
+}
+
 // Clone used to clone nodeInfo Object
 func (ni *NodeInfo) Clone() *NodeInfo {
 	res := NewNodeInfo(ni.Node)
 
 	for _, p := range ni.Tasks {
 		res.AddTask(p)
+	}
+
+	if ni.NumaSchedulerInfo != nil {
+		res.NumaSchedulerInfo = ni.NumaSchedulerInfo.DeepCopy()
+		klog.V(5).Infof("node[%s]", ni.Name)
+		for resName, resInfo := range res.NumaSchedulerInfo.NumaResMap {
+			klog.V(5).Infof("current resource %s : %v", resName, resInfo)
+		}
+
+		klog.V(5).Infof("current Policies : %v", res.NumaSchedulerInfo.Policies)
 	}
 
 	for taskID := range ni.bindingTasks {
@@ -122,6 +159,10 @@ func (ni *NodeInfo) Ready() bool {
 }
 
 func (ni *NodeInfo) setRevocableZone(node *v1.Node) {
+	if node == nil {
+		return
+	}
+
 	revocableZone := ""
 	if len(node.Labels) > 0 {
 		if value, found := node.Labels[v1beta1.RevocableZone]; found {
