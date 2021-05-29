@@ -72,6 +72,7 @@ func Run(opt *options.ServerOption) error {
 		}
 	}
 
+	klog.V(3).Infof("ci test")
 	sched, err := scheduler.NewScheduler(config,
 		opt.SchedulerName,
 		opt.SchedulerConf,
