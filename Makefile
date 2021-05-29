@@ -197,3 +197,4 @@ endif
 update-development-yaml:
 	make generate-yaml TAG=latest RELEASE_DIR=installer
 	mv installer/volcano-latest.yaml installer/volcano-development.yaml
+
