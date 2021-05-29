@@ -33,8 +33,8 @@ type NodeinfoV1alpha1Client struct {
 	restClient rest.Interface
 }
 
-func (c *NodeinfoV1alpha1Client) Numatopologies(namespace string) NumatopologyInterface {
-	return newNumatopologies(c, namespace)
+func (c *NodeinfoV1alpha1Client) Numatopologies() NumatopologyInterface {
+	return newNumatopologies(c)
 }
 
 // NewForConfig creates a new NodeinfoV1alpha1Client for the given config.

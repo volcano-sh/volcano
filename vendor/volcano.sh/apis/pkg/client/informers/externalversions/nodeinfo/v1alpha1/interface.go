@@ -40,5 +40,5 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 
 // Numatopologies returns a NumatopologyInformer.
 func (v *version) Numatopologies() NumatopologyInformer {
-	return &numatopologyInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+	return &numatopologyInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }

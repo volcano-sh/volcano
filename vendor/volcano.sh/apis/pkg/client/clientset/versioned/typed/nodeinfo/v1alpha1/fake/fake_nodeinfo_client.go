@@ -27,8 +27,8 @@ type FakeNodeinfoV1alpha1 struct {
 	*testing.Fake
 }
 
-func (c *FakeNodeinfoV1alpha1) Numatopologies(namespace string) v1alpha1.NumatopologyInterface {
-	return &FakeNumatopologies{c, namespace}
+func (c *FakeNodeinfoV1alpha1) Numatopologies() v1alpha1.NumatopologyInterface {
+	return &FakeNumatopologies{c}
 }
 
 // RESTClient returns a RESTClient that is used to communicate
