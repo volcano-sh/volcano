@@ -49,20 +49,6 @@ spec:
                 x-kubernetes-int-or-string: true
               description: ResourceList is a set of (resource name, quantity) pairs.
               type: object
-            guarantee:
-              description: Guarantee indicate configuration about resource reservation
-              properties:
-                resource:
-                  additionalProperties:
-                    anyOf:
-                    - type: integer
-                    - type: string
-                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                    x-kubernetes-int-or-string: true
-                  description: The amount of cluster resource reserved for queue.
-                    Just set either `percentage` or `resource`
-                  type: object
-              type: object
             reclaimable:
               description: Reclaimable indicate whether the queue can be reclaimed
                 by other queue
@@ -82,26 +68,6 @@ spec:
               description: The number of 'Pending' PodGroup in this queue.
               format: int32
               type: integer
-            reservation:
-              description: Reservation is the profile of resource reservation for
-                queue
-              properties:
-                nodes:
-                  description: Nodes are Locked nodes for queue
-                  items:
-                    type: string
-                  type: array
-                resource:
-                  additionalProperties:
-                    anyOf:
-                    - type: integer
-                    - type: string
-                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                    x-kubernetes-int-or-string: true
-                  description: Resource is a list of total idle resource in locked
-                    nodes.
-                  type: object
-              type: object
             running:
               description: The number of 'Running' PodGroup in this queue.
               format: int32
