@@ -19,6 +19,7 @@ package util
 import (
 	"context"
 	"fmt"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	"math"
 	"math/rand"
 	"sort"
@@ -28,8 +29,6 @@ import (
 	"k8s.io/klog"
 
 	"k8s.io/client-go/util/workqueue"
-	schedulerapi "k8s.io/kube-scheduler/extender/v1"
-
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -129,7 +128,7 @@ func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateF
 
 // PrioritizeNodes returns a map whose key is node's score and value are corresponding nodes
 func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.BatchNodeOrderFn, mapFn api.NodeOrderMapFn, reduceFn api.NodeOrderReduceFn) map[float64][]*api.NodeInfo {
-	pluginNodeScoreMap := map[string]schedulerapi.HostPriorityList{}
+	pluginNodeScoreMap := map[string]k8sframework.NodeScoreList{}
 	nodeOrderScoreMap := map[string]float64{}
 	nodeScores := map[float64][]*api.NodeInfo{}
 	var workerLock sync.Mutex
@@ -145,10 +144,10 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 		for plugin, score := range mapScores {
 			nodeScoreMap, ok := pluginNodeScoreMap[plugin]
 			if !ok {
-				nodeScoreMap = schedulerapi.HostPriorityList{}
+				nodeScoreMap = k8sframework.NodeScoreList{}
 			}
-			hp := schedulerapi.HostPriority{}
-			hp.Host = node.Name
+			hp := k8sframework.NodeScore{}
+			hp.Name = node.Name
 			hp.Score = int64(math.Floor(score))
 			pluginNodeScoreMap[plugin] = append(nodeScoreMap, hp)
 		}
