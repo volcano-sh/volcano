@@ -67,9 +67,7 @@ func (r *Resource) Clone() *Resource {
 	return clone
 }
 
-var minMilliCPU float64 = 10
-var minMilliScalarResources float64 = 10
-var minMemory float64 = 1
+var minResource float64 = 0.1
 
 // NewResource create a new resource object from resource list
 func NewResource(rl v1.ResourceList) *Resource {
@@ -94,12 +92,12 @@ func NewResource(rl v1.ResourceList) *Resource {
 
 // IsEmpty returns bool after checking any of resource is less than min possible value
 func (r *Resource) IsEmpty() bool {
-	if !(r.MilliCPU < minMilliCPU && r.Memory < minMemory) {
+	if !(r.MilliCPU < minResource && r.Memory < minResource) {
 		return false
 	}
 
 	for _, rQuant := range r.ScalarResources {
-		if rQuant >= minMilliScalarResources {
+		if rQuant >= minResource {
 			return false
 		}
 	}
@@ -111,9 +109,9 @@ func (r *Resource) IsEmpty() bool {
 func (r *Resource) IsZero(rn v1.ResourceName) bool {
 	switch rn {
 	case v1.ResourceCPU:
-		return r.MilliCPU < minMilliCPU
+		return r.MilliCPU < minResource
 	case v1.ResourceMemory:
-		return r.Memory < minMemory
+		return r.Memory < minResource
 	default:
 		if r.ScalarResources == nil {
 			return true
@@ -122,7 +120,7 @@ func (r *Resource) IsZero(rn v1.ResourceName) bool {
 		_, found := r.ScalarResources[rn]
 		assert.Assertf(found, "unknown resource %s", rn)
 
-		return r.ScalarResources[rn] < minMilliScalarResources
+		return r.ScalarResources[rn] < minResource
 	}
 }
 
@@ -202,11 +200,11 @@ func (r *Resource) SetMaxResource(rr *Resource) {
 //insufficient resource.
 func (r *Resource) FitDelta(rr *Resource) *Resource {
 	if rr.MilliCPU > 0 {
-		r.MilliCPU -= rr.MilliCPU + minMilliCPU
+		r.MilliCPU -= rr.MilliCPU + minResource
 	}
 
 	if rr.Memory > 0 {
-		r.Memory -= rr.Memory + minMemory
+		r.Memory -= rr.Memory + minResource
 	}
 
 	for rrName, rrQuant := range rr.ScalarResources {
@@ -215,7 +213,7 @@ func (r *Resource) FitDelta(rr *Resource) *Resource {
 		}
 
 		if rrQuant > 0 {
-			r.ScalarResources[rrName] -= rrQuant + minMilliScalarResources
+			r.ScalarResources[rrName] -= rrQuant + minResource
 		}
 	}
 
@@ -248,7 +246,7 @@ func (r *Resource) Less(rr *Resource) bool {
 	if r.ScalarResources == nil {
 		if rr.ScalarResources != nil {
 			for _, rrQuant := range rr.ScalarResources {
-				if rrQuant <= minMilliScalarResources {
+				if rrQuant <= minResource {
 					return false
 				}
 			}
@@ -301,10 +299,10 @@ func (r *Resource) LessEqual(rr *Resource) bool {
 		return false
 	}
 
-	if !lessEqualFunc(r.MilliCPU, rr.MilliCPU, minMilliCPU) {
+	if !lessEqualFunc(r.MilliCPU, rr.MilliCPU, minResource) {
 		return false
 	}
-	if !lessEqualFunc(r.Memory, rr.Memory, minMemory) {
+	if !lessEqualFunc(r.Memory, rr.Memory, minResource) {
 		return false
 	}
 
@@ -313,7 +311,7 @@ func (r *Resource) LessEqual(rr *Resource) bool {
 	}
 
 	for rName, rQuant := range r.ScalarResources {
-		if rQuant <= minMilliScalarResources {
+		if rQuant <= minResource {
 			continue
 		}
 		if rr.ScalarResources == nil {
@@ -321,7 +319,7 @@ func (r *Resource) LessEqual(rr *Resource) bool {
 		}
 
 		rrQuant := rr.ScalarResources[rName]
-		if !lessEqualFunc(rQuant, rrQuant, minMilliScalarResources) {
+		if !lessEqualFunc(rQuant, rrQuant, minResource) {
 			return false
 		}
 	}
