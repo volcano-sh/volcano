@@ -17,7 +17,7 @@ limitations under the License.
 package framework
 
 import (
-	schedulerapi "k8s.io/kube-scheduler/extender/v1"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -673,7 +673,7 @@ func (ssn *Session) NodeOrderMapFn(task *api.TaskInfo, node *api.NodeInfo) (map[
 }
 
 // NodeOrderReduceFn invoke node order function of the plugins
-func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map[string]schedulerapi.HostPriorityList) (map[string]float64, error) {
+func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map[string]k8sframework.NodeScoreList) (map[string]float64, error) {
 	nodeScoreMap := map[string]float64{}
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
@@ -688,7 +688,7 @@ func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map
 				return nodeScoreMap, err
 			}
 			for _, hp := range pluginNodeScoreMap[plugin.Name] {
-				nodeScoreMap[hp.Host] += float64(hp.Score)
+				nodeScoreMap[hp.Name] += float64(hp.Score)
 			}
 		}
 	}

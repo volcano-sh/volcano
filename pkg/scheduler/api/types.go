@@ -17,7 +17,7 @@ limitations under the License.
 package api
 
 import (
-	schedulerapi "k8s.io/kube-scheduler/extender/v1"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 )
 
 // TaskStatus defines the status of a task/pod.
@@ -149,13 +149,13 @@ type BatchNodeOrderFn func(*TaskInfo, []*NodeInfo) (map[string]float64, error)
 type NodeMapFn func(*TaskInfo, *NodeInfo) (float64, error)
 
 // NodeReduceFn is the func declaration used to reduce priority score for a node for a particular task.
-type NodeReduceFn func(*TaskInfo, schedulerapi.HostPriorityList) error
+type NodeReduceFn func(*TaskInfo, k8sframework.NodeScoreList) error
 
 // NodeOrderMapFn is the func declaration used to get priority score of all plugins for a node for a particular task.
 type NodeOrderMapFn func(*TaskInfo, *NodeInfo) (map[string]float64, float64, error)
 
 // NodeOrderReduceFn is the func declaration used to reduce priority score of all nodes for a plugin for a particular task.
-type NodeOrderReduceFn func(*TaskInfo, map[string]schedulerapi.HostPriorityList) (map[string]float64, error)
+type NodeOrderReduceFn func(*TaskInfo, map[string]k8sframework.NodeScoreList) (map[string]float64, error)
 
 // TargetJobFn is the func declaration used to select the target job satisfies some conditions
 type TargetJobFn func([]*JobInfo) *JobInfo
