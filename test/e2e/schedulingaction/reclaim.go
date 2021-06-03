@@ -492,6 +492,12 @@ var _ = Describe("Reclaim E2E Test", func() {
 		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j4", q2, "low-priority", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job4 failed")
 
+		err = WaitQueueStatus(ctx, "Running", 2, q1)
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue1 running")
+
+		err = WaitQueueStatus(ctx, "Running", 2, q2)
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue2 running")
+
 		By("Create coming jobs")
 
 		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j5", q3, "high-priority", "", true)
@@ -502,23 +508,11 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 		By("Make sure all job running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q1)
-		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
-
-		err = WaitQueueStatus(ctx, "Inqueue", 1, q1)
-		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
-
-		err = WaitQueueStatus(ctx, "Running", 1, q2)
-		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
-
-		err = WaitQueueStatus(ctx, "Inqueue", 1, q2)
-		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
-
 		err = WaitQueueStatus(ctx, "Running", 1, q3)
-		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue3 running")
 
 		err = WaitQueueStatus(ctx, "Running", 1, q4)
-		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue4 running")
 
 	})
 
