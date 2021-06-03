@@ -30,8 +30,9 @@ type NumatopologyLister interface {
 	// List lists all Numatopologies in the indexer.
 	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.Numatopology, err error)
-	// Numatopologies returns an object that can list and get Numatopologies.
-	Numatopologies(namespace string) NumatopologyNamespaceLister
+	// Get retrieves the Numatopology from the index for a given name.
+	// Objects returned here must be treated as read-only.
+	Get(name string) (*v1alpha1.Numatopology, error)
 	NumatopologyListerExpansion
 }
 
@@ -53,41 +54,9 @@ func (s *numatopologyLister) List(selector labels.Selector) (ret []*v1alpha1.Num
 	return ret, err
 }
 
-// Numatopologies returns an object that can list and get Numatopologies.
-func (s *numatopologyLister) Numatopologies(namespace string) NumatopologyNamespaceLister {
-	return numatopologyNamespaceLister{indexer: s.indexer, namespace: namespace}
-}
-
-// NumatopologyNamespaceLister helps list and get Numatopologies.
-// All objects returned here must be treated as read-only.
-type NumatopologyNamespaceLister interface {
-	// List lists all Numatopologies in the indexer for a given namespace.
-	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1alpha1.Numatopology, err error)
-	// Get retrieves the Numatopology from the indexer for a given namespace and name.
-	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1alpha1.Numatopology, error)
-	NumatopologyNamespaceListerExpansion
-}
-
-// numatopologyNamespaceLister implements the NumatopologyNamespaceLister
-// interface.
-type numatopologyNamespaceLister struct {
-	indexer   cache.Indexer
-	namespace string
-}
-
-// List lists all Numatopologies in the indexer for a given namespace.
-func (s numatopologyNamespaceLister) List(selector labels.Selector) (ret []*v1alpha1.Numatopology, err error) {
-	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1alpha1.Numatopology))
-	})
-	return ret, err
-}
-
-// Get retrieves the Numatopology from the indexer for a given namespace and name.
-func (s numatopologyNamespaceLister) Get(name string) (*v1alpha1.Numatopology, error) {
-	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
+// Get retrieves the Numatopology from the index for a given name.
+func (s *numatopologyLister) Get(name string) (*v1alpha1.Numatopology, error) {
+	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err
 	}
