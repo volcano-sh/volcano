@@ -67,6 +67,7 @@ const (
 	SchedulerName                = "volcano"
 	ExecuteAction                = "ExecuteAction"
 	DefaultQueue                 = "default"
+	NumStress                    = 10
 )
 
 const (
