@@ -150,6 +150,7 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 		res.AddBindingTask(taskID)
 	}
 
+	res.Others = ni.Others
 	return res
 }
 
