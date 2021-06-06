@@ -116,8 +116,8 @@ func getTaskID(pod *v1.Pod) TaskID {
 
 // NewTaskInfo creates new taskInfo object for a Pod
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
-	req := GetPodResourceRequest(pod)
-	initResreq := GetPodResourceRequest(pod)
+	initResReq := GetPodResourceRequest(pod)
+	resReq := initResReq
 	preemptable := GetPodPreemptable(pod)
 	revocableZone := GetPodRevocableZone(pod)
 	topologyPolicy := GetPodTopologyPolicy(pod)
@@ -133,8 +133,8 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		Status:         getTaskStatus(pod),
 		Priority:       1,
 		Pod:            pod,
-		Resreq:         req,
-		InitResreq:     initResreq,
+		Resreq:         resReq,
+		InitResreq:     initResReq,
 		Preemptable:    preemptable,
 		RevocableZone:  revocableZone,
 		TopologyPolicy: topologyPolicy,
