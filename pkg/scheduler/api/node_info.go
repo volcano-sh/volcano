@@ -414,6 +414,8 @@ func (ni *NodeInfo) GetDevicesIdleGPUMemory() map[int]uint {
 	for id, allMemory := range devicesAllGPUMemory {
 		if usedMemory, found := devicesUsedGPUMemory[id]; found {
 			res[id] = allMemory - usedMemory
+		} else {
+			res[id] = allMemory
 		}
 	}
 	return res
