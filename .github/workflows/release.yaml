@@ -7,6 +7,8 @@ on:
 jobs:
   docker:
     runs-on: ubuntu-latest
+    env:
+      GOPATH: /home/runner/work/${{ github.repository }}
     steps:
       - name: Install Go
         uses: actions/setup-go@v2
