@@ -359,6 +359,7 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 		}
 	}
 
+	ti.NodeName = "" // remove nodename from taskinfo
 	delete(ni.Tasks, key)
 
 	return nil
@@ -413,6 +414,8 @@ func (ni *NodeInfo) GetDevicesIdleGPUMemory() map[int]uint {
 	for id, allMemory := range devicesAllGPUMemory {
 		if usedMemory, found := devicesUsedGPUMemory[id]; found {
 			res[id] = allMemory - usedMemory
+		} else {
+			res[id] = allMemory
 		}
 	}
 	return res
