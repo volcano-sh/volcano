@@ -278,6 +278,13 @@ type QueueStatus struct {
 	Reservation Reservation `json:"reservation,omitempty" protobuf:"bytes,6,opt,name=reservation"`
 }
 
+// CluterSpec represents the template of Cluster
+type Cluster struct {
+	Name string
+	Weight int32
+	Capacity v1.ResourceList
+}
+
 // QueueSpec represents the template of Queue.
 type QueueSpec struct {
 	Weight     int32
@@ -287,6 +294,9 @@ type QueueSpec struct {
 	State QueueState
 	// Reclaimable indicate whether the queue can be reclaimed by other queue
 	Reclaimable *bool
+
+	// extendCluster indicate the jobs in this Queue will be dispatched to these clusters.
+	ExtendClusters []Cluster
 
 	// Guarantee indicate configuration about resource reservation
 	Guarantee Guarantee `json:"guarantee,omitempty" protobuf:"bytes,4,opt,name=guarantee"`

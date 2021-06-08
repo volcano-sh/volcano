@@ -3,6 +3,7 @@ module volcano.sh/volcano
 go 1.14
 
 require (
+	github.com/agiledragon/gomonkey/v2 v2.1.0
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/hashicorp/go-multierror v1.0.0
@@ -22,7 +23,7 @@ require (
 	k8s.io/klog v1.0.0
 	k8s.io/kubernetes v1.19.6
 	sigs.k8s.io/yaml v1.2.0
-	volcano.sh/apis v0.0.0-20210528062323-838630df511b
+	volcano.sh/apis v0.0.0-20210603070204-70005b2d502a
 )
 
 replace (

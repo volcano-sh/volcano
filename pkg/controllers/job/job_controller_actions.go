@@ -194,6 +194,15 @@ func (cc *jobcontroller) initOnJobUpdate(job *batch.Job) error {
 	return nil
 }
 
+func (cc *jobcontroller) GetQueueInfo(queue string) (*scheduling.Queue, error) {
+	queueInfo, err := cc.queueLister.Get(queue)
+	if err != nil {
+		klog.Errorf("Failed to get queue from queueLister, error: %s", err.Error())
+	}
+
+	return queueInfo, err
+}
+
 func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
 	job := jobInfo.Job
 	klog.V(3).Infof("Starting to sync up Job <%s/%s>, current version %d", job.Namespace, job.Name, job.Status.Version)
@@ -209,9 +218,8 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	job = job.DeepCopy()
 
 	// Find queue that job belongs to, and check if the queue has forwarding metadata
-	queueInfo, err := cc.queueLister.Get(job.Spec.Queue)
+	queueInfo, err := cc.GetQueueInfo(job.Spec.Queue)
 	if err != nil {
-		klog.Errorf("Failed to get queue from queueLister, error: %s", err.Error())
 		return err
 	}
 

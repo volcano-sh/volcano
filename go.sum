@@ -44,6 +44,8 @@ github.com/PuerkitoBio/purell v1.1.1/go.mod h1:c11w/QuzBsJSee3cPx9rAFu61PvFxuPbt
 github.com/PuerkitoBio/urlesc v0.0.0-20160726150825-5bd2802263f2/go.mod h1:uGdkoq3SwY9Y+13GIhn11/XLaGBb4BfwItxLd5jeuXE=
 github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 h1:d+Bc7a5rLufV/sSk/8dngufqelfh6jnri85riMAaF/M=
 github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578/go.mod h1:uGdkoq3SwY9Y+13GIhn11/XLaGBb4BfwItxLd5jeuXE=
+github.com/agiledragon/gomonkey/v2 v2.1.0 h1:+5Dbq8a1fn89IgVk35O233R41FH0nBKFPn50wDZpNs0=
+github.com/agiledragon/gomonkey/v2 v2.1.0/go.mod h1:ap1AmDzcVOAz1YpeJ3TCzIgstoaWLA6jbbgxfB4w2iY=
 github.com/agnivade/levenshtein v1.0.1/go.mod h1:CURSv5d9Uaml+FovSIICkLbAUZ9S4RqaHDIsdSBg7lM=
 github.com/ajstarks/svgo v0.0.0-20180226025133-644b8db467af/go.mod h1:K08gAheRH3/J6wwsYMMT4xOr94bZjxIelGM0+d/wbFw=
 github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
@@ -855,5 +857,5 @@ sigs.k8s.io/yaml v1.1.0/go.mod h1:UJmg0vDUVViEyp3mgSv9WPwZCDxu4rQW1olrI1uml+o=
 sigs.k8s.io/yaml v1.2.0 h1:kr/MCeFWJWTwyaHoR9c8EjH9OumOmoF9YGiZd7lFm/Q=
 sigs.k8s.io/yaml v1.2.0/go.mod h1:yfXDCHCao9+ENCvLSE62v9VSji2MKu5jeNfTrofGhJc=
 vbom.ml/util v0.0.0-20160121211510-db5cfe13f5cc/go.mod h1:so/NYdZXCz+E3ZpW0uAoCj6uzU2+8OWDFv/HxUSs7kI=
-volcano.sh/apis v0.0.0-20210528062323-838630df511b h1:Tgg9IcLXQRiTli7KH+xteBTIrawUM07MGvN541/XyMo=
-volcano.sh/apis v0.0.0-20210528062323-838630df511b/go.mod h1:UaeJ/s5Hyd+ZhFLc+Kw9YlgM8gRZ/5OzXqHa0yKOoXY=
+volcano.sh/apis v0.0.0-20210603070204-70005b2d502a h1:h6c+NZglstX8JGuwLrU6/0/FnBcT26XO1S3PvtykRTk=
+volcano.sh/apis v0.0.0-20210603070204-70005b2d502a/go.mod h1:UaeJ/s5Hyd+ZhFLc+Kw9YlgM8gRZ/5OzXqHa0yKOoXY=

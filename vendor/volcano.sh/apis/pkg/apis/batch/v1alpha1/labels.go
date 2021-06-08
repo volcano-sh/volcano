@@ -35,4 +35,12 @@ const (
 	PodgroupNamePrefix = "podgroup-"
 	// PodTemplateKey type specify a equivalence pod class
 	PodTemplateKey = "volcano.sh/template-uid"
+	// JobForwardingKey job forwarding key used in job annotation
+	JobForwardingKey = "volcano.sh/job-forwarding"
+	// ForwardClusterKey cluster key used in pod annotation
+	ForwardClusterKey = "volcano.sh/forward-cluster"
+	// OrginalNameKey annotation key for resource name
+	OrginalNameKey = "volcano.sh/burst-name"
+	// BurstToSiloClusterAnnotation labels key for resource only in silo cluster
+	BurstToSiloClusterAnnotation = "volcano.sh/silo-resource"
 )

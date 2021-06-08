@@ -20,7 +20,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
+
+	gomonkey "github.com/agiledragon/gomonkey/v2"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -261,6 +264,12 @@ func TestSyncJobFunc(t *testing.T) {
 
 		t.Run(testcase.Name, func(t *testing.T) {
 			fakeController := newFakeController()
+
+			patches := gomonkey.ApplyMethod(reflect.TypeOf(fakeController), "GetQueueInfo", func(_ *jobcontroller, _ string) (*schedulingv1alpha2.Queue, error) {
+				return &schedulingv1alpha2.Queue{}, nil
+			})
+
+			defer patches.Reset()
 
 			jobPlugins := make(map[string][]string)
 
