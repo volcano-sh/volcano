@@ -19,6 +19,7 @@ package framework
 import (
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 
+	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -30,6 +31,11 @@ func (ssn *Session) AddJobOrderFn(name string, cf api.CompareFn) {
 // AddQueueOrderFn add queue order function
 func (ssn *Session) AddQueueOrderFn(name string, qf api.CompareFn) {
 	ssn.queueOrderFns[name] = qf
+}
+
+// AddClusterOrderFn add queue order function
+func (ssn *Session) AddClusterOrderFn(name string, qf api.CompareFn) {
+	ssn.clusterOrderFns[name] = qf
 }
 
 // AddTaskOrderFn add task order function
@@ -486,6 +492,29 @@ func (ssn *Session) NamespaceOrderFn(l, r interface{}) bool {
 	lv := l.(api.NamespaceName)
 	rv := r.(api.NamespaceName)
 	return lv < rv
+}
+
+// ClusterOrderFn invoke ClusterOrderFn function of the plugins
+func (ssn *Session) ClusterOrderFn(l, r interface{}) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledClusterOrder) {
+				continue
+			}
+			cof, found := ssn.clusterOrderFns[plugin.Name]
+			if !found {
+				continue
+			}
+			if j := cof(l, r); j != 0 {
+				return j < 0
+			}
+		}
+	}
+
+	// If no cluster order funcs, order cluster by ClusterID
+	lv := l.(*scheduling.Cluster)
+	rv := r.(*scheduling.Cluster)
+	return lv.Name < rv.Name
 }
 
 // QueueOrderFn invoke queueorder function of the plugins

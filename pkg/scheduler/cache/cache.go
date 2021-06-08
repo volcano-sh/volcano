@@ -44,6 +44,7 @@ import (
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
 
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -97,11 +98,13 @@ type SchedulerCache struct {
 	csiStorageCapacityInformer storagev1alpha1.CSIStorageCapacityInformer
 	cpuInformer                cpuinformerv1.NumatopologyInformer
 
-	Binder        Binder
-	Evictor       Evictor
-	StatusUpdater StatusUpdater
-	VolumeBinder  VolumeBinder
-	Recorder      record.EventRecorder
+	Binder         Binder
+	Evictor        Evictor
+	StatusUpdater  StatusUpdater
+	PodGroupBinder BatchBinder
+	VolumeBinder   VolumeBinder
+
+	Recorder record.EventRecorder
 
 	Jobs                 map[schedulingapi.JobID]*schedulingapi.JobInfo
 	Nodes                map[string]*schedulingapi.NodeInfo
@@ -272,6 +275,45 @@ func (dvb *defaultVolumeBinder) BindVolumes(task *schedulingapi.TaskInfo, podVol
 	return dvb.volumeBinder.BindPodVolumes(task.Pod, podVolumes)
 }
 
+type podgroupBinder struct {
+	kubeclient *kubernetes.Clientset
+	vcclient   *vcclient.Clientset
+}
+
+// Bind will add silo cluster annotaion on pod and podgroup
+func (pgb *podgroupBinder) Bind(job *schedulingapi.JobInfo, cluster string) (*schedulingapi.JobInfo, error) {
+	if len(job.Tasks) == 0 {
+		klog.V(4).Infof("Job pods have not been created yet")
+		return job, nil
+	}
+	for _, task := range job.Tasks {
+		pod := task.Pod
+		pod.Annotations[batch.ForwardClusterKey] = cluster
+		pod.ResourceVersion = ""
+		_, err := pgb.kubeclient.CoreV1().Pods(pod.Namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{})
+		if err != nil {
+			klog.Errorf("Error while update pod annotation with error: %v", err)
+			return nil, err
+		}
+	}
+
+	pg := job.PodGroup
+	pg.Annotations[batch.ForwardClusterKey] = cluster
+	podgroup := &vcv1beta1.PodGroup{}
+	if err := schedulingscheme.Scheme.Convert(&pg.PodGroup, podgroup, nil); err != nil {
+		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
+		return nil, err
+	}
+	newPg, err := pgb.vcclient.SchedulingV1beta1().PodGroups(pg.Namespace).Update(context.TODO(), podgroup, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Errorf("Error while update PodGroup annotation with error: %v", err)
+		return nil, err
+	}
+	job.PodGroup.ResourceVersion = newPg.ResourceVersion
+	klog.V(4).Infof("Bind PodGroup <%s> successfully", job.PodGroup.Name)
+	return job, nil
+}
+
 func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue string) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -337,6 +379,11 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	}
 
 	sc.StatusUpdater = &defaultStatusUpdater{
+		kubeclient: sc.kubeClient,
+		vcclient:   sc.vcClient,
+	}
+
+	sc.PodGroupBinder = &podgroupBinder{
 		kubeclient: sc.kubeClient,
 		vcclient:   sc.vcClient,
 	}
@@ -624,6 +671,15 @@ func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string
 		}()
 	}
 
+	return nil
+}
+
+// BindPodGroup binds job to silo cluster
+func (sc *SchedulerCache) BindPodGroup(job *schedulingapi.JobInfo, cluster string) error {
+	if _, err := sc.PodGroupBinder.Bind(job, cluster); err != nil {
+		klog.Errorf("Bind job <%s> to cluster <%s> failed: %v", job.Name, cluster, err)
+		return err
+	}
 	return nil
 }
 

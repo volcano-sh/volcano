@@ -62,13 +62,14 @@ type jobcontroller struct {
 	kubeClient kubernetes.Interface
 	vcClient   vcclientset.Interface
 
-	jobInformer batchinformer.JobInformer
-	podInformer coreinformers.PodInformer
-	pvcInformer coreinformers.PersistentVolumeClaimInformer
-	pgInformer  schedulinginformers.PodGroupInformer
-	svcInformer coreinformers.ServiceInformer
-	cmdInformer businformer.CommandInformer
-	pcInformer  kubeschedulinginformers.PriorityClassInformer
+	jobInformer   batchinformer.JobInformer
+	podInformer   coreinformers.PodInformer
+	pvcInformer   coreinformers.PersistentVolumeClaimInformer
+	pgInformer    schedulinginformers.PodGroupInformer
+	svcInformer   coreinformers.ServiceInformer
+	cmdInformer   businformer.CommandInformer
+	pcInformer    kubeschedulinginformers.PriorityClassInformer
+	queueInformer schedulinginformers.QueueInformer
 
 	// A store of jobs
 	jobLister batchlister.JobLister
@@ -94,6 +95,9 @@ type jobcontroller struct {
 
 	pcLister kubeschedulinglisters.PriorityClassLister
 	pcSynced func() bool
+
+	queueLister schedulinglisters.QueueLister
+	queueSynced func() bool
 
 	// queue that need to sync up
 	queueList    []workqueue.RateLimitingInterface
@@ -204,6 +208,10 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.pcLister = cc.pcInformer.Lister()
 	cc.pcSynced = cc.pcInformer.Informer().HasSynced
 
+	cc.queueInformer = informerfactory.NewSharedInformerFactory(cc.vcClient, 0).Scheduling().V1beta1().Queues()
+	cc.queueLister = cc.queueInformer.Lister()
+	cc.queueSynced = cc.queueInformer.Informer().HasSynced
+
 	// Register actions
 	state.SyncJob = cc.syncJob
 	state.KillJob = cc.killJob
@@ -221,9 +229,10 @@ func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
 	go cc.svcInformer.Informer().Run(stopCh)
 	go cc.cmdInformer.Informer().Run(stopCh)
 	go cc.pcInformer.Informer().Run(stopCh)
+	go cc.queueInformer.Informer().Run(stopCh)
 
 	cache.WaitForCacheSync(stopCh, cc.jobSynced, cc.podSynced, cc.pgSynced,
-		cc.svcSynced, cc.cmdSynced, cc.pvcSynced, cc.pcSynced)
+		cc.svcSynced, cc.cmdSynced, cc.pvcSynced, cc.pcSynced, cc.queueSynced)
 
 	go wait.Until(cc.handleCommands, 0, stopCh)
 	var i uint32
