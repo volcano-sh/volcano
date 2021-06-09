@@ -21,6 +21,8 @@ If we take GPU as primary resource and want to use 1GPU 'binded' with 8CPUs, the
 
 ## with proportion plugin
 
+![](./images/proportional-diagram.png)
+
 Firstly set the proportion binding in volcano-scheduler.conf:
 
 ```yaml
