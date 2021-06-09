@@ -37,7 +37,7 @@ func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(jobhelpers.PodNameFmt, jobName, taskName, index)
 }
 
-func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy batch.NumaPolicy, ix int) *v1.Pod {
+func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy batch.NumaPolicy, ix int, jobForwarding bool) *v1.Pod {
 	templateCopy := template.DeepCopy()
 
 	pod := &v1.Pod{
@@ -134,6 +134,11 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 		if value, found := job.Labels[schedulingv2.PodPreemptable]; found {
 			pod.Labels[schedulingv2.PodPreemptable] = value
 		}
+	}
+
+	if jobForwarding {
+		pod.Annotations[batch.JobForwardingKey] = "true"
+		pod.Labels[batch.JobForwardingKey] = "true"
 	}
 
 	return pod

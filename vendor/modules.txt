@@ -4,6 +4,9 @@ cloud.google.com/go/compute/metadata
 github.com/PuerkitoBio/purell
 # github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578
 github.com/PuerkitoBio/urlesc
+# github.com/agiledragon/gomonkey/v2 v2.1.0
+## explicit
+github.com/agiledragon/gomonkey/v2
 # github.com/beorn7/perks v1.0.1
 github.com/beorn7/perks/quantile
 # github.com/blang/semver v3.5.0+incompatible
@@ -835,7 +838,7 @@ sigs.k8s.io/structured-merge-diff/v4/value
 # sigs.k8s.io/yaml v1.2.0
 ## explicit
 sigs.k8s.io/yaml
-# volcano.sh/apis v0.0.0-20210528062323-838630df511b
+# volcano.sh/apis v0.0.0-20210603070204-70005b2d502a
 ## explicit
 volcano.sh/apis/pkg/apis/batch/v1alpha1
 volcano.sh/apis/pkg/apis/bus/v1alpha1

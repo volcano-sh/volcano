@@ -59,6 +59,7 @@ type Session struct {
 	queueOrderFns     map[string]api.CompareFn
 	taskOrderFns      map[string]api.CompareFn
 	namespaceOrderFns map[string]api.CompareFn
+	clusterOrderFns   map[string]api.CompareFn
 	predicateFns      map[string]api.PredicateFn
 	bestNodeFns       map[string]api.BestNodeFn
 	nodeOrderFns      map[string]api.NodeOrderFn
@@ -96,6 +97,7 @@ func openSession(cache cache.Cache) *Session {
 		queueOrderFns:     map[string]api.CompareFn{},
 		taskOrderFns:      map[string]api.CompareFn{},
 		namespaceOrderFns: map[string]api.CompareFn{},
+		clusterOrderFns:   map[string]api.CompareFn{},
 		predicateFns:      map[string]api.PredicateFn{},
 		bestNodeFns:       map[string]api.BestNodeFn{},
 		nodeOrderFns:      map[string]api.NodeOrderFn{},
@@ -166,6 +168,7 @@ func closeSession(ssn *Session) {
 	ssn.jobOrderFns = nil
 	ssn.namespaceOrderFns = nil
 	ssn.queueOrderFns = nil
+	ssn.clusterOrderFns = nil
 
 	klog.V(3).Infof("Close Session %v", ssn.UID)
 }
@@ -391,6 +394,11 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 	}
 
 	return nil
+}
+
+// BindPodGroup bind PodGroup to specified cluster
+func (ssn *Session) BindPodGroup(job *api.JobInfo, cluster string) error {
+	return ssn.cache.BindPodGroup(job, cluster)
 }
 
 // UpdatePodGroupCondition update job condition accordingly.

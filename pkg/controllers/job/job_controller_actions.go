@@ -194,6 +194,15 @@ func (cc *jobcontroller) initOnJobUpdate(job *batch.Job) error {
 	return nil
 }
 
+func (cc *jobcontroller) GetQueueInfo(queue string) (*scheduling.Queue, error) {
+	queueInfo, err := cc.queueLister.Get(queue)
+	if err != nil {
+		klog.Errorf("Failed to get queue from queueLister, error: %s", err.Error())
+	}
+
+	return queueInfo, err
+}
+
 func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
 	job := jobInfo.Job
 	klog.V(3).Infof("Starting to sync up Job <%s/%s>, current version %d", job.Namespace, job.Name, job.Status.Version)
@@ -208,7 +217,26 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	// deep copy job to prevent mutate it
 	job = job.DeepCopy()
 
-	var err error
+	// Find queue that job belongs to, and check if the queue has forwarding metadata
+	queueInfo, err := cc.GetQueueInfo(job.Spec.Queue)
+	if err != nil {
+		return err
+	}
+
+	var jobForwarding bool
+	if len(queueInfo.Spec.ExtendClusters) != 0 {
+		jobForwarding = true
+		if len(job.Annotations) == 0 {
+			job.Annotations = make(map[string]string)
+		}
+		job.Annotations[batch.JobForwardingKey] = "true"
+		job, err = cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).Update(context.TODO(), job, metav1.UpdateOptions{})
+		if err != nil {
+			klog.Errorf("failed to update job: %s/%s, error: %s", job.Namespace, job.Name, err.Error())
+			return err
+		}
+	}
+
 	// Skip job initiation if job is already initiated
 	if !isInitiated(job) {
 		if job, err = cc.initiateJob(job); err != nil {
@@ -217,6 +245,16 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	} else {
 		// TODO: optimize this call it only when scale up/down
 		if err = cc.initOnJobUpdate(job); err != nil {
+			return err
+		}
+	}
+
+	if len(queueInfo.Spec.ExtendClusters) != 0 {
+		jobForwarding = true
+		job.Annotations[batch.JobForwardingKey] = "true"
+		_, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).Update(context.TODO(), job, metav1.UpdateOptions{})
+		if err != nil {
+			klog.Errorf("failed to update job: %s/%s, error: %s", job.Namespace, job.Name, err.Error())
 			return err
 		}
 	}
@@ -284,7 +322,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		for i := 0; i < int(ts.Replicas); i++ {
 			podName := fmt.Sprintf(jobhelpers.PodNameFmt, job.Name, name, i)
 			if pod, found := pods[podName]; !found {
-				newPod := createJobPod(job, tc, ts.TopologyPolicy, i)
+				newPod := createJobPod(job, tc, ts.TopologyPolicy, i, jobForwarding)
 				if err := cc.pluginOnPodCreate(job, newPod); err != nil {
 					return err
 				}

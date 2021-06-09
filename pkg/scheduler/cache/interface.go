@@ -40,6 +40,9 @@ type Cache interface {
 	// TODO(jinzhej): clean up expire Tasks.
 	Bind(task *api.TaskInfo, hostname string) error
 
+	// Bind Pod/PodGroup to cluster
+	BindPodGroup(job *api.JobInfo, cluster string) error
+
 	// Evict evicts the task to release resources.
 	Evict(task *api.TaskInfo, reason string) error
 
@@ -85,4 +88,9 @@ type Evictor interface {
 type StatusUpdater interface {
 	UpdatePodCondition(pod *v1.Pod, podCondition *v1.PodCondition) (*v1.Pod, error)
 	UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup, error)
+}
+
+// BatchBinder updates podgroup or job information
+type BatchBinder interface {
+	Bind(job *api.JobInfo, cluster string) (*api.JobInfo, error)
 }
