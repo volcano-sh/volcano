@@ -40,7 +40,7 @@ spec:
                 requests:
                   cpu: "1"
           restartPolicy: OnFailure
-    - replicas: 5
+    - replicas: 1
       name: "redis"
       template:
         metadata:
