@@ -39,7 +39,7 @@ The goal of the community is to develop a volcano system which is useful for run
 
 We will help you to contribute in different areas like filing issues, developing features, fixing critical bugs and getting your work reviewed and merged.
 
-If you have questions about the development process, feel free to jump into our [Slack Channel](https://github.com/volcano-sh/volcano/blob/master/slack-invitation) or join our [mailing list](https://groups.google.com/forum/#!forum/volcano-sh).
+If you have questions about the development process, feel free to jump into our [Slack Channel](https://volcano-sh.slack.com/) or join our [mailing list](https://groups.google.com/forum/#!forum/volcano-sh).
 
 ## Find something to work on
 
@@ -51,7 +51,7 @@ Here is how you get started.
 
 There are [multiple repositories](https://github.com/volcano-sh/) within the Volcano organization.
 Each repository has beginner-friendly issues that provide a good first issue.
-For example, [Volcano-Issues](https://github.com/volcano-sh/volcano) has [help wanted](https://github.com/volcano-sh/volcano/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22) and [good first issue](https://github.com/volcano-sh/volcano/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) labels for issues that should not need deep knowledge of the system.
+For example, [Volcano-Issues](https://github.com/volcano-sh/volcano/issues) has [help wanted](https://github.com/volcano-sh/volcano/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22) and [good first issue](https://github.com/volcano-sh/volcano/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) labels for issues that should not need deep knowledge of the system.
 We can help new contributors who wish to work on such issues.
 
 Another good way to contribute is to find a documentation improvement, such as a missing/broken link.

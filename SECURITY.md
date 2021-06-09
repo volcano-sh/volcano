@@ -19,7 +19,7 @@ The initial Product Security Team will consist of all maintainers in the private
 
 If you find a security vulnerability or any security related issues,
 please DO NOT file a public issue. Do not create a Github issue.
-Instead, send your report privately to [volcano-security](volcano-security@googlegroups.com).
+Instead, send your report privately to [volcano-security@googlegroups.com](volcano-security@googlegroups.com).
 Security reports are greatly appreciated and we will publicly thank you for it.
 
 Please provide as much information as possible, so we can react quickly.
@@ -30,7 +30,7 @@ For instance, that could include:
 
 ### Public Disclosure Processes
 
-If you know of a publicly disclosed security vulnerability please IMMEDIATELY email [volcano-security](volcano-security@googlegroups.com)
+If you know of a publicly disclosed security vulnerability please IMMEDIATELY email [volcano-security@googlegroups.com](volcano-security@googlegroups.com)
 to inform the Product Security Team (PST) about the vulnerability so we start the patch, release, and communication process.
 
 If possible the PST will ask the person making the public report if the issue can be handled via a private disclosure process
