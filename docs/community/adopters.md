@@ -15,7 +15,7 @@ please feel free to add yourself into the following list by a pull request. Ther
 | [Baidu](https://baidu.com/) |[@tizhou86](https://github.com/tizhou86)| Production | Scheduler for Deep Learning Platform to Optimize Performance |
 | [IQIYI](https://www.iqiyi.com/) | [@lihao](https://github.com/silenceli)| Production | Scheduler & Job Management for Deep Learning platform on K8s |
 | [Xiaohongshu](https://www.xiaohongshu.com/) | [@xiaogaozi](https://github.com/xiaogaozi), [@Cplo](https://github.com/Cplo) | Production | Batch system for internal machine learning platform |
-| [VIPS](https://www.vip.com/) | [@xinchun-wang](@https://github.com/xinchun-wang) | Production | Tensorflow on K8s |
+| [VIPS](https://www.vip.com/) | [@xinchun-wang](https://github.com/xinchun-wang) | Production | Tensorflow on K8s |
 | [DiDi](https://www.didiglobal.com/) | [@tongchao199](https://github.com/tongchao199) | Production | Batch system for Distributed Deep Learning platform on K8s |
 | [Bosszhipin](https://www.zhipin.com/?sid=sem_pz_bdpc_dasou_title) | [@hudson741](https://github.com/hudson741) | Production | Batch system for Distributed AI platform on K8s |
 | [Leinao](http://www.leinao.ai/) | [@king-jingxiang](https://github.com/king-jingxiang) | Production | Work as part of Leinao OS |
