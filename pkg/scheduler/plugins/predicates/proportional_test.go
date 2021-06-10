@@ -25,6 +25,7 @@ func Test_checkNodeResourceIsProportional(t *testing.T) {
 
 	t1 := buildTask("t1", "4", "4G", "0")
 	t2 := buildTask("t1", "10", "10G", "0")
+	t3 := buildTask("t1", "10", "10G", "1")
 	n1 := buildNode("n1", "30", "30G", "6")
 	n2 := buildNode("n2", "26", "26G", "2")
 	proportional := map[v1.ResourceName]baseResource{
@@ -66,14 +67,24 @@ func Test_checkNodeResourceIsProportional(t *testing.T) {
 			true,
 		},
 		{
+			"gpu_task_no_proportional_check",
+			args{
+				task:         t3,
+				node:         n1,
+				proportional: proportional,
+			},
+			true,
+			false,
+		},
+		{
 			"cpu_task_less_than_idle_resource",
 			args{
 				task:         t2,
 				node:         n2,
 				proportional: proportional,
 			},
-			false,
 			true,
+			false,
 		},
 	}
 	for _, tt := range tests {
