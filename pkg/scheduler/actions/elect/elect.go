@@ -18,15 +18,15 @@ func New() *Action {
 }
 
 // Name returns the action name
-func (alloc *Action) Name() string {
+func (e *Action) Name() string {
 	return "elect"
 }
 
 // Initialize inits the action
-func (alloc *Action) Initialize() {}
+func (e *Action) Initialize() {}
 
 // Execute selects the target job which is of the highest priority and waits for the longest time.
-func (alloc *Action) Execute(ssn *framework.Session) {
+func (e *Action) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("Enter Elect ...")
 	defer klog.V(3).Infof("Leaving Elect ...")
 
@@ -34,7 +34,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		klog.V(4).Infof("Start select Target Job")
 		var pendingJobs []*api.JobInfo
 		for _, job := range ssn.Jobs {
-			if job.PodGroup.Status.Phase == scheduling.PodGroupPending {
+			if e.isJobElectable(job) {
 				pendingJobs = append(pendingJobs, job)
 			}
 		}
@@ -47,5 +47,9 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	}
 }
 
+func (e *Action) isJobElectable(job *api.JobInfo) bool {
+	return job.PodGroup.Status.Phase == scheduling.PodGroupPending || job.PodGroup.Status.Phase == scheduling.PodGroupInqueue
+}
+
 // UnInitialize releases resource which are not useful.
-func (alloc *Action) UnInitialize() {}
+func (e *Action) UnInitialize() {}
