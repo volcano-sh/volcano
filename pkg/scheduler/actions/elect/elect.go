@@ -34,7 +34,7 @@ func (e *Action) Execute(ssn *framework.Session) {
 		klog.V(4).Infof("Start select Target Job")
 		var pendingJobs []*api.JobInfo
 		for _, job := range ssn.Jobs {
-			if e.isJobElectable(job) {
+			if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
 				pendingJobs = append(pendingJobs, job)
 			}
 		}
@@ -45,10 +45,6 @@ func (e *Action) Execute(ssn *framework.Session) {
 			klog.V(3).Infof("Target Job name: nil")
 		}
 	}
-}
-
-func (e *Action) isJobElectable(job *api.JobInfo) bool {
-	return job.PodGroup.Status.Phase == scheduling.PodGroupPending || job.PodGroup.Status.Phase == scheduling.PodGroupInqueue
 }
 
 // UnInitialize releases resource which are not useful.
