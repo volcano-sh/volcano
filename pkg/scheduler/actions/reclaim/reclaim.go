@@ -118,9 +118,6 @@ func (ra *Action) Execute(ssn *framework.Session) {
 				continue
 			}
 
-			resreq := task.InitResreq.Clone()
-			reclaimed := api.EmptyResource()
-
 			klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
 				task.Namespace, task.Name, n.Name)
 
@@ -148,6 +145,9 @@ func (ra *Action) Execute(ssn *framework.Session) {
 				klog.V(3).Infof("No validated victims on Node <%s>: %v", n.Name, err)
 				continue
 			}
+
+			resreq := task.InitResreq.Clone()
+			reclaimed := api.EmptyResource()
 
 			// Reclaim victims for tasks.
 			for _, reclaimee := range victims {
