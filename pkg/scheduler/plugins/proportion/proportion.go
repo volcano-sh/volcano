@@ -228,8 +228,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				continue
 			}
 
-			allocated.Sub(reclaimee.Resreq)
-			if attr.deserved.LessEqualStrict(allocated) {
+			if !allocated.LessEqualStrict(attr.deserved) {
+				allocated.Sub(reclaimee.Resreq)
 				victims = append(victims, reclaimee)
 			}
 		}
