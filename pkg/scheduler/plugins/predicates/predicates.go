@@ -72,8 +72,8 @@ func (pp *predicatesPlugin) Name() string {
 }
 
 type baseResource struct {
-	CPU    int
-	Memory int
+	CPU    float64
+	Memory float64
 }
 
 type predicateEnable struct {
@@ -86,27 +86,27 @@ type predicateEnable struct {
 func enablePredicate(args framework.Arguments) predicateEnable {
 
 	/*
-			   User Should give predicatesEnable in this format(predicate.GPUSharingEnable).
-			   Currently supported only GPUSharing predicate checks.
+	   User Should give predicatesEnable in this format(predicate.GPUSharingEnable).
+	   Currently supported only GPUSharing predicate checks.
 
-			   actions: "reclaim, allocate, backfill, preempt"
-			   tiers:
-			   - plugins:
-			     - name: priority
-			     - name: gang
-			     - name: conformance
-			   - plugins:
-			     - name: drf
-			     - name: predicates
-			       arguments:
-					 predicate.GPUSharingEnable: true
-					 predicate.CacheEnable: true
-		             predicate.ProportionalEnable: true
-		             predicate.resources: nvidia.com/gpu
-		             predicate.resources.nvidia.com/gpu.cpu: 4
-		             predicate.resources.nvidia.com/gpu.memory: 8
-			     - name: proportion
-			     - name: nodeorder
+	   actions: "reclaim, allocate, backfill, preempt"
+	   tiers:
+	   - plugins:
+	     - name: priority
+	     - name: gang
+	     - name: conformance
+	   - plugins:
+	     - name: drf
+	     - name: predicates
+	       arguments:
+	         predicate.GPUSharingEnable: true
+	         predicate.CacheEnable: true
+	         predicate.ProportionalEnable: true
+	         predicate.resources: nvidia.com/gpu
+	         predicate.resources.nvidia.com/gpu.cpu: 4
+	         predicate.resources.nvidia.com/gpu.memory: 8
+	     - name: proportion
+	     - name: nodeorder
 	*/
 
 	predicate := predicateEnable{
@@ -130,16 +130,16 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 		}
 		// proportional.resources.[ResourceName]
 		cpuResourceKey := ProportionalResourcesPrefix + resource + ".cpu"
-		cpuResourceRate := 1
-		args.GetInt(&cpuResourceRate, cpuResourceKey)
+		cpuResourceRate := 1.0
+		args.GetFloat64(&cpuResourceRate, cpuResourceKey)
 		if cpuResourceRate < 0 {
-			cpuResourceRate = 1
+			cpuResourceRate = 1.0
 		}
 		memoryResourceKey := ProportionalResourcesPrefix + resource + ".memory"
-		memoryResourceRate := 1
-		args.GetInt(&memoryResourceRate, memoryResourceKey)
+		memoryResourceRate := 1.0
+		args.GetFloat64(&memoryResourceRate, memoryResourceKey)
 		if memoryResourceRate < 0 {
-			memoryResourceRate = 1
+			memoryResourceRate = 1.0
 		}
 		r := baseResource{
 			CPU:    cpuResourceRate,
