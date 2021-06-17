@@ -39,16 +39,12 @@ func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Con
 			} else {
 				plugin := pb(plugin.Arguments)
 				ssn.plugins[plugin.Name()] = plugin
+				onSessionOpenStart := time.Now()
+				plugin.OnSessionOpen(ssn)
+				metrics.UpdatePluginDuration(plugin.Name(), metrics.OnSessionOpen, metrics.Duration(onSessionOpenStart))
 			}
 		}
 	}
-
-	for _, plugin := range ssn.plugins {
-		onSessionOpenStart := time.Now()
-		plugin.OnSessionOpen(ssn)
-		metrics.UpdatePluginDuration(plugin.Name(), metrics.OnSessionOpen, metrics.Duration(onSessionOpenStart))
-	}
-
 	return ssn
 }
 
