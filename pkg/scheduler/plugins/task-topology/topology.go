@@ -134,7 +134,7 @@ func (p *taskTopologyPlugin) TaskOrderFn(l interface{}, r interface{}) int {
 func (p *taskTopologyPlugin) calcBucketScore(task *api.TaskInfo, node *api.NodeInfo) (int, *JobManager, error) {
 	// task could never fits the node
 	maxResource := node.Idle.Clone().Add(node.Releasing)
-	if req := task.Resreq; req != nil && maxResource.Less(req) {
+	if req := task.Resreq; req != nil && maxResource.LessInSomeDimension(req) {
 		return 0, nil, nil
 	}
 
