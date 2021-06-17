@@ -231,6 +231,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			allocated.Sub(reclaimee.Resreq)
 			if attr.deserved.LessEqualStrict(allocated) {
 				victims = append(victims, reclaimee)
+			} else {
+				allocated.Add(reclaimee.Resreq)
 			}
 		}
 		klog.V(4).Infof("Victims from proportion plugins are %+v", victims)
