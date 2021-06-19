@@ -170,7 +170,11 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				klog.V(4).Infof("predicates with gpu sharing, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
 			}
 
-			node.RemovePod(pod)
+			err := node.RemovePod(pod)
+			if err != nil {
+				klog.Errorf("predicates, remove pod %s/%s from node [%s] error: %v", pod.Namespace, pod.Name, nodeName, err)
+				return
+			}
 			klog.V(4).Infof("predicates, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
 
 		},
@@ -199,7 +203,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
 		nodeInfo, found := nodeMap[node.Name]
 		if !found {
-			fmt.Errorf("failed to predicates, node info for %s not found", node.Name)
+			return fmt.Errorf("failed to predicates, node info for %s not found", node.Name)
 		}
 
 		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods) {
