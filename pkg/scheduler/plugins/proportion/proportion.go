@@ -161,13 +161,13 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			oldDeserved := attr.deserved.Clone()
 			attr.deserved.Add(remaining.Clone().Multi(float64(attr.weight) / float64(totalWeight)))
 
-			if attr.capability != nil && !attr.deserved.LessEqualStrict(attr.capability) {
-				attr.deserved = helpers.Min(attr.deserved, attr.capability)
-				attr.deserved = helpers.Min(attr.deserved, attr.request)
+			if attr.capability != nil && attr.capability.LessInSomeDimension(attr.deserved) {
+				attr.deserved = helpers.Min(attr.deserved, attr.capability, helpers.DefaultInfinity)
+				attr.deserved = helpers.Min(attr.deserved, attr.request, helpers.DefaultInfinity)
 				meet[attr.queueID] = struct{}{}
 				klog.V(4).Infof("queue <%s> is meet cause of the capability", attr.name)
 			} else if attr.request.LessEqualStrict(attr.deserved) {
-				attr.deserved = helpers.Min(attr.deserved, attr.request)
+				attr.deserved = helpers.Min(attr.deserved, attr.request, helpers.DefaultInfinity)
 				meet[attr.queueID] = struct{}{}
 				klog.V(4).Infof("queue <%s> is meet", attr.name)
 			} else {

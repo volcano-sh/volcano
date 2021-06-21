@@ -24,20 +24,57 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
-// Min is used to find the min of two resource types
-func Min(l, r *api.Resource) *api.Resource {
+const (
+	// DefaultZero means resource not defined will be treated as zero
+	DefaultZero = "DefaultZero"
+	// DefaultInfinity means resource not defined will be treated as infinity
+	DefaultInfinity = "DefaultInfinity"
+)
+
+// Min is used to find the min of two resource types.
+// If defaultMode is "DefaultZero", any dimension not defined will be regarded as zero.
+// If defaultMode is "DefaultInfinity", any dimension not defined will be regarded as infinity.
+func Min(l, r *api.Resource, defaultMode string) *api.Resource {
 	res := &api.Resource{}
 
 	res.MilliCPU = math.Min(l.MilliCPU, r.MilliCPU)
 	res.Memory = math.Min(l.Memory, r.Memory)
 
-	if l.ScalarResources == nil || r.ScalarResources == nil {
-		return res
+	if defaultMode == DefaultZero {
+		if l.ScalarResources == nil || r.ScalarResources == nil {
+			return res
+		}
+
+		res.ScalarResources = map[v1.ResourceName]float64{}
+		for lName, lQuant := range l.ScalarResources {
+			if _, ok := r.ScalarResources[lName]; ok {
+				res.ScalarResources[lName] = math.Min(lQuant, r.ScalarResources[lName])
+			}
+		}
 	}
 
-	res.ScalarResources = map[v1.ResourceName]float64{}
-	for lName, lQuant := range l.ScalarResources {
-		res.ScalarResources[lName] = math.Min(lQuant, r.ScalarResources[lName])
+	if defaultMode == DefaultInfinity {
+		if l.ScalarResources == nil {
+			res.ScalarResources = r.ScalarResources
+			return res
+		}
+		if r.ScalarResources == nil {
+			res.ScalarResources = l.ScalarResources
+			return res
+		}
+		res.ScalarResources = map[v1.ResourceName]float64{}
+		for lName, lQuant := range l.ScalarResources {
+			if _, ok := r.ScalarResources[lName]; ok {
+				res.ScalarResources[lName] = math.Min(lQuant, r.ScalarResources[lName])
+			} else {
+				res.ScalarResources[lName] = lQuant
+			}
+		}
+		for rName, rQuant := range r.ScalarResources {
+			if _, ok := l.ScalarResources[rName]; !ok {
+				res.ScalarResources[rName] = rQuant
+			}
+		}
 	}
 
 	return res
