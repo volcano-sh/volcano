@@ -138,6 +138,8 @@ func (pg *pgcontroller) processNextReq() bool {
 		return true
 	}
 
+
+
 	// If no error, forget it.
 	pg.queue.Forget(req)
 
