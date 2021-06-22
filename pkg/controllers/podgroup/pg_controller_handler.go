@@ -74,7 +74,11 @@ func (pg *pgcontroller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
 
 func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 	pgName := helpers.GeneratePodgroupName(pod)
-	cpuReq, memReq := GetPodMaxRequest(pod)
+	podNum := int64(1)
+	replica, cpuReq, memReq := pg.GetMaxRequest(pod)
+	if replica != 1 {
+		podNum = replica
+	}
 	if _, err := pg.pgLister.PodGroups(pod.Namespace).Get(pgName); err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to get normal PodGroup for Pod <%s/%s>: %v",
@@ -90,12 +94,15 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 				Labels:          map[string]string{},
 			},
 			Spec: scheduling.PodGroupSpec{
-				MinMember:         1,
+				MinMember:         int32(podNum),
 				PriorityClassName: pod.Spec.PriorityClassName,
 				MinResources: &v1.ResourceList{
-					v1.ResourceCPU: cpuReq,
-					v1.ResourceMemory: memReq,
+					v1.ResourceCPU: *cpuReq,
+					v1.ResourceMemory: *memReq,
 				},
+			},
+			Status: scheduling.PodGroupStatus{
+				Phase:      "Pending",
 			},
 		}
 		if queueName, ok := pod.Annotations[scheduling.QueueNameAnnotationKey]; ok {
@@ -145,8 +152,33 @@ func newPGOwnerReferences(pod *v1.Pod) []metav1.OwnerReference {
 	return []metav1.OwnerReference{*ref}
 }
 
-func GetPodMaxRequest(pod *v1.Pod) (resource.Quantity, resource.Quantity) {
-
+//func (pg *pgcontroller) updateMinResources(pod *v1.Pod, pgName string) error {
+//	podGroup, err := pg.pgLister.PodGroups(pod.Namespace).Get(pgName)
+//	if err != nil {
+//		klog.Errorf("Failed to get PodGroup for Pod <%s/%s>: %v",
+//			pod.Namespace, pod.Name, err)
+//		return err
+//	}
+//
+//	cpuReq, memReq := pg.GetMaxRequest(pod)
+//	cpuReq.Add(*podGroup.Spec.MinResources.Cpu())
+//	memReq.Add(*podGroup.Spec.MinResources.Memory())
+//
+//	podGroup.Spec.MinResources = &v1.ResourceList{
+//		v1.ResourceCPU: *cpuReq,
+//		v1.ResourceMemory: *memReq,
+//	}
+//	if _, err := pg.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Update(context.TODO(), podGroup, metav1.UpdateOptions{}); err != nil {
+//		klog.Errorf("Failed to update normal PodGroup for Pod <%s/%s>: %v",
+//			pod.Namespace, pod.Name, err)
+//		return err
+//	}
+//
+//	return nil
+//
+//}
+func (pg *pgcontroller) GetMaxRequest(pod *v1.Pod) (int64, *resource.Quantity, *resource.Quantity) {
+	replica := int64(1)
 	initCpuReq := resource.NewQuantity(0, resource.DecimalSI)
 	initMemReq := resource.NewQuantity(0, resource.DecimalSI)
 
@@ -171,5 +203,23 @@ func GetPodMaxRequest(pod *v1.Pod) (resource.Quantity, resource.Quantity) {
 		memReq = initMemReq
 	}
 
-	return *cpuReq, *memReq
+	if len(pod.OwnerReferences) != 0 {
+		for _, ownerReference := range pod.OwnerReferences {
+			if ownerReference.Controller != nil && *ownerReference.Controller && ownerReference.Kind == "ReplicaSet"{
+				rsName := ownerReference.Name
+				rs, err := pg.kubeClient.AppsV1().ReplicaSets(pod.Namespace).Get(context.TODO(), rsName, metav1.GetOptions{})
+				if err != nil {
+					klog.Errorf("Failed to get ReplicaSet for Pod <%s/%s>: %v",
+						pod.Namespace, pod.Name, err)
+					return replica, cpuReq, memReq
+				}
+
+				replica = int64(*rs.Spec.Replicas)
+				cpuReq.Set(cpuReq.Value() * replica)
+				memReq.Set(memReq.Value() * replica)
+			}
+		}
+	}
+
+	return replica, cpuReq, memReq
 }
