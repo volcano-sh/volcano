@@ -80,25 +80,25 @@ func TestOperateQueue(t *testing.T) {
 			Name:      "Abnormal Case Update Queue Failed For Invalid Weight",
 			QueueName: "abnormal-case-invalid-weight",
 			Action:    ActionUpdate,
-			ExpectValue: fmt.Errorf("When %s queue %s, weight must be specified, "+
+			ExpectValue: fmt.Errorf("when %s queue %s, weight must be specified, "+
 				"the value must be greater than 0", ActionUpdate, "abnormal-case-invalid-weight"),
 		},
 		{
 			Name:        "Abnormal Case Operate Queue Failed For Name Not Specified",
 			QueueName:   "",
-			ExpectValue: fmt.Errorf("Queue name must be specified"),
+			ExpectValue: fmt.Errorf("queue name must be specified"),
 		},
 		{
 			Name:        "Abnormal Case Operate Queue Failed For Action null",
 			QueueName:   "abnormal-case-null-action",
 			Action:      "",
-			ExpectValue: fmt.Errorf("Action can not be null"),
+			ExpectValue: fmt.Errorf("action can not be null"),
 		},
 		{
 			Name:      "Abnormal Case Operate Queue Failed For Action Invalid",
 			QueueName: "abnormal-case-invalid-action",
 			Action:    "invalid",
-			ExpectValue: fmt.Errorf("Action %s invalid, valid actions are %s, %s and %s",
+			ExpectValue: fmt.Errorf("action %s invalid, valid actions are %s, %s and %s",
 				"invalid", ActionOpen, ActionClose, ActionUpdate),
 		},
 	}

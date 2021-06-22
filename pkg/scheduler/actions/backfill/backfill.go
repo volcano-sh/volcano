@@ -83,9 +83,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				if !allocated {
 					job.NodesFitErrors[task.UID] = fe
 				}
-			} else {
-				// TODO (k82cn): backfill for other case.
 			}
+			// TODO (k82cn): backfill for other case.
 		}
 	}
 }

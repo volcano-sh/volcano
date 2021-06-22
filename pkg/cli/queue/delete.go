@@ -51,7 +51,7 @@ func DeleteQueue() error {
 	}
 
 	if len(deleteQueueFlags.Name) == 0 {
-		return fmt.Errorf("Queue name must be specified")
+		return fmt.Errorf("queue name must be specified")
 	}
 
 	queueClient := versioned.NewForConfigOrDie(config)

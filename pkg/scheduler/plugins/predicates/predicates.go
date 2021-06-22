@@ -19,8 +19,9 @@ package predicates
 import (
 	"context"
 	"fmt"
-	v1 "k8s.io/api/core/v1"
 	"strings"
+
+	v1 "k8s.io/api/core/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -173,7 +174,12 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 
 			if predicate.gpuSharingEnable && api.GetGPUResourceOfPod(pod) > 0 {
-				nodeInfo, _ := ssn.Nodes[nodeName]
+				nodeInfo, ok := ssn.Nodes[nodeName]
+				if !ok {
+					klog.Errorf("Failed to get node %s info from cache", nodeName)
+					return
+				}
+
 				id := predicateGPU(pod, nodeInfo)
 				if id < 0 {
 					klog.Errorf("The node %s can't place the pod %s in ns %s", pod.Spec.NodeName, pod.Name, pod.Namespace)
@@ -185,7 +191,11 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 					klog.Errorf("Patch pod %s failed with patch %s: %v", pod.Name, patch, err)
 					return
 				}
-				dev, _ := nodeInfo.GPUDevices[id]
+				dev, ok := nodeInfo.GPUDevices[id]
+				if !ok {
+					klog.Errorf("Failed to get GPU %d from node %s", id, nodeName)
+					return
+				}
 				dev.PodMap[string(pod.UID)] = pod
 				klog.V(4).Infof("predicates with gpu sharing, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
 			}
@@ -212,7 +222,11 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 					return
 				}
 
-				nodeInfo, _ := ssn.Nodes[nodeName]
+				nodeInfo, ok := ssn.Nodes[nodeName]
+				if !ok {
+					klog.Errorf("Failed to get node %s info from cache", nodeName)
+					return
+				}
 				if dev, ok := nodeInfo.GPUDevices[id]; ok {
 					delete(dev.PodMap, string(pod.UID))
 				}

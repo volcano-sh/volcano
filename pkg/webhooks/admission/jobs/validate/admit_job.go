@@ -114,22 +114,22 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 
 	if job.Spec.MinAvailable < 0 {
 		reviewResponse.Allowed = false
-		return fmt.Sprintf("job 'minAvailable' must be >= 0.")
+		return "job 'minAvailable' must be >= 0."
 	}
 
 	if job.Spec.MaxRetry < 0 {
 		reviewResponse.Allowed = false
-		return fmt.Sprintf("'maxRetry' cannot be less than zero.")
+		return "'maxRetry' cannot be less than zero."
 	}
 
 	if job.Spec.TTLSecondsAfterFinished != nil && *job.Spec.TTLSecondsAfterFinished < 0 {
 		reviewResponse.Allowed = false
-		return fmt.Sprintf("'ttlSecondsAfterFinished' cannot be less than zero.")
+		return "'ttlSecondsAfterFinished' cannot be less than zero."
 	}
 
 	if len(job.Spec.Tasks) == 0 {
 		reviewResponse.Allowed = false
-		return fmt.Sprintf("No task specified in job spec")
+		return "No task specified in job spec"
 	}
 
 	for index, task := range job.Spec.Tasks {

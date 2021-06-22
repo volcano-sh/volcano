@@ -695,22 +695,6 @@ func (cc *jobcontroller) initJobStatus(job *batch.Job) (*batch.Job, error) {
 	return newJob, nil
 }
 
-func (cc *jobcontroller) updateJobStatus(job *batch.Job) (*batch.Job, error) {
-	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
-	if err != nil {
-		klog.Errorf("Failed to update status of Job %v/%v: %v",
-			job.Namespace, job.Name, err)
-		return nil, err
-	}
-	if err := cc.cache.Update(newJob); err != nil {
-		klog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
-			newJob.Namespace, newJob.Name, err)
-		return nil, err
-	}
-
-	return newJob, nil
-}
-
 func classifyAndAddUpPodBaseOnPhase(pod *v1.Pod, pending, running, succeeded, failed, unknown *int32) {
 	switch pod.Status.Phase {
 	case v1.PodPending:

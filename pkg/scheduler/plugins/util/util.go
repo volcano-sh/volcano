@@ -233,8 +233,7 @@ func (pal *PodAffinityLister) FilteredList(podFilter PodFilter, selector labels.
 
 // GenerateNodeMapAndSlice returns the nodeMap and nodeSlice generated from ssn
 func GenerateNodeMapAndSlice(nodes map[string]*api.NodeInfo) map[string]*schedulernodeinfo.NodeInfo {
-	var nodeMap map[string]*schedulernodeinfo.NodeInfo
-	nodeMap = make(map[string]*schedulernodeinfo.NodeInfo)
+	nodeMap := make(map[string]*schedulernodeinfo.NodeInfo)
 	for _, node := range nodes {
 		nodeInfo := schedulernodeinfo.NewNodeInfo(node.Pods()...)
 		nodeInfo.SetNode(node.Node)
@@ -299,5 +298,4 @@ func NormalizeScore(maxPriority int64, reverse bool, scores map[string]int64) {
 
 		scores[key] = score
 	}
-	return
 }

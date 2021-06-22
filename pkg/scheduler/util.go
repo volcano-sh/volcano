@@ -58,7 +58,7 @@ func unmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []
 		for j := range tier.Plugins {
 			if tier.Plugins[j].Name == "drf" &&
 				tier.Plugins[j].EnabledHierarchy != nil &&
-				*tier.Plugins[j].EnabledHierarchy == true {
+				*tier.Plugins[j].EnabledHierarchy {
 				hdrf = true
 			}
 			if tier.Plugins[j].Name == "proportion" {

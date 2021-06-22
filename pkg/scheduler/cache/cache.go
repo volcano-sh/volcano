@@ -48,10 +48,8 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-	cpuclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/apis/pkg/client/clientset/versioned/scheme"
-	cpuinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	cpuinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/nodeinfo/v1alpha1"
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
@@ -79,7 +77,6 @@ type SchedulerCache struct {
 
 	kubeClient   *kubernetes.Clientset
 	vcClient     *vcclient.Clientset
-	cpuClient    *cpuclient.Clientset
 	defaultQueue string
 	// schedulerName is the name for volcano scheduler
 	schedulerName string
@@ -161,7 +158,7 @@ func (de *defaultEvictor) Evict(p *v1.Pod, reason string) error {
 		Reason:  "Evict",
 		Message: evictMsg,
 	}
-	if podutil.UpdatePodCondition(&pod.Status, condition) == false {
+	if !podutil.UpdatePodCondition(&pod.Status, condition) {
 		klog.V(1).Infof("UpdatePodCondition: existed condition, not update")
 		klog.V(1).Infof("%+v", pod.Status.Conditions)
 		return nil
@@ -328,11 +325,6 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		panic(fmt.Sprintf("failed init eventClient, with err: %v", err))
 	}
 
-	cpuClient, err := cpuclient.NewForConfig(config)
-	if err != nil {
-		panic(fmt.Sprintf("failed init cpuClient, with err: %v", err))
-	}
-
 	// create default queue
 	reclaimable := true
 	defaultQue := vcv1beta1.Queue{
@@ -357,7 +349,6 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		deletedJobs:     workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		kubeClient:      kubeClient,
 		vcClient:        vcClient,
-		cpuClient:       cpuClient,
 		defaultQueue:    defaultQueue,
 		schedulerName:   schedulerName,
 
@@ -480,7 +471,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		DeleteFunc: sc.DeleteQueueV1beta1,
 	})
 
-	sc.cpuInformer = cpuinformer.NewSharedInformerFactory(sc.cpuClient, 0).Nodeinfo().V1alpha1().Numatopologies()
+	sc.cpuInformer = vcinformers.Nodeinfo().V1alpha1().Numatopologies()
 	sc.cpuInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.AddNumaInfoV1alpha1,
 		UpdateFunc: sc.UpdateNumaInfoV1alpha1,
