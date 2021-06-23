@@ -120,6 +120,8 @@ spec:
           secret:
             defaultMode: 420
             secretName: volcano-admission-secret
+      nodeSelector:
+        kubernetes.io/arch: amd64
 ---
 # Source: volcano/templates/admission.yaml
 apiVersion: batch/v1
@@ -141,6 +143,8 @@ spec:
           imagePullPolicy: IfNotPresent
           command: ["./gen-admission-secret.sh", "--service", "volcano-admission-service", "--namespace",
                     "volcano-system", "--secret", "volcano-admission-secret"]
+      nodeSelector:
+        kubernetes.io/arch: amd64
 ---
 # Source: volcano/templates/batch_v1alpha1_job.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -7447,6 +7451,8 @@ spec:
               - -v=4
               - 2>&1
             imagePullPolicy: "IfNotPresent"
+      nodeSelector:
+        kubernetes.io/arch: amd64
 ---
 # Source: volcano/templates/scheduler.yaml
 apiVersion: v1
@@ -7605,6 +7611,8 @@ spec:
         - name: scheduler-config
           configMap:
             name: volcano-scheduler-configmap
+      nodeSelector:
+        kubernetes.io/arch: amd64
 ---
 # Source: volcano/templates/scheduling_v1beta1_podgroup.yaml
 apiVersion: apiextensions.k8s.io/v1
