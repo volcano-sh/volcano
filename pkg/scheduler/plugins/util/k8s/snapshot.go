@@ -22,9 +22,8 @@ package k8s
 import (
 	"fmt"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
@@ -38,7 +37,6 @@ type Snapshot struct {
 	nodeInfoList []*v1alpha1.NodeInfo
 	// havePodsWithAffinityNodeInfoList is the list of nodes with at least one pod declaring affinity terms.
 	havePodsWithAffinityNodeInfoList []*v1alpha1.NodeInfo
-	generation                       int64
 }
 
 var _ v1alpha1.SharedLister = &Snapshot{}
@@ -128,61 +126,4 @@ func (s *Snapshot) Get(nodeName string) (*v1alpha1.NodeInfo, error) {
 		return v, nil
 	}
 	return nil, fmt.Errorf("nodeinfo not found for node name %q", nodeName)
-}
-
-// createNodeInfoMap obtains a list of pods and pivots that list into a map
-// where the keys are node names and the values are the aggregated information
-// for that node.
-func createNodeInfoMap(pods []*v1.Pod, nodes []*v1.Node) map[string]*v1alpha1.NodeInfo {
-	nodeNameToInfo := make(map[string]*v1alpha1.NodeInfo)
-	for _, pod := range pods {
-		nodeName := pod.Spec.NodeName
-		if _, ok := nodeNameToInfo[nodeName]; !ok {
-			nodeNameToInfo[nodeName] = v1alpha1.NewNodeInfo()
-		}
-		nodeNameToInfo[nodeName].AddPod(pod)
-	}
-	imageExistenceMap := createImageExistenceMap(nodes)
-
-	for _, node := range nodes {
-		if _, ok := nodeNameToInfo[node.Name]; !ok {
-			nodeNameToInfo[node.Name] = v1alpha1.NewNodeInfo()
-		}
-		nodeInfo := nodeNameToInfo[node.Name]
-		nodeInfo.SetNode(node)
-		nodeInfo.ImageStates = getNodeImageStates(node, imageExistenceMap)
-	}
-	return nodeNameToInfo
-}
-
-// createImageExistenceMap returns a map recording on which nodes the images exist, keyed by the images' names.
-func createImageExistenceMap(nodes []*v1.Node) map[string]sets.String {
-	imageExistenceMap := make(map[string]sets.String)
-	for _, node := range nodes {
-		for _, image := range node.Status.Images {
-			for _, name := range image.Names {
-				if _, ok := imageExistenceMap[name]; !ok {
-					imageExistenceMap[name] = sets.NewString(node.Name)
-				} else {
-					imageExistenceMap[name].Insert(node.Name)
-				}
-			}
-		}
-	}
-	return imageExistenceMap
-}
-
-// getNodeImageStates returns the given node's image states based on the given imageExistence map.
-func getNodeImageStates(node *v1.Node, imageExistenceMap map[string]sets.String) map[string]*v1alpha1.ImageStateSummary {
-	imageStates := make(map[string]*v1alpha1.ImageStateSummary)
-
-	for _, image := range node.Status.Images {
-		for _, name := range image.Names {
-			imageStates[name] = &v1alpha1.ImageStateSummary{
-				Size:     image.SizeBytes,
-				NumNodes: len(imageExistenceMap[name]),
-			}
-		}
-	}
-	return imageStates
 }

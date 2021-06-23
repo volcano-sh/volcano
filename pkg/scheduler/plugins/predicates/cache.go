@@ -64,7 +64,7 @@ func (pc *predicateCache) PredicateWithCache(nodeName string, pod *v1.Pod) (bool
 		}
 	}
 
-	return false, fmt.Errorf("No information of node %s and pod %s in predicate cache", nodeName, pod.Name)
+	return false, fmt.Errorf("no information of node %s and pod %s in predicate cache", nodeName, pod.Name)
 }
 
 // UpdateCache update cache data

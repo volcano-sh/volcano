@@ -136,7 +136,7 @@ func (sp *slaPlugin) OnSessionOpen(ssn *framework.Session) {
 			return util.Abstain
 		}
 
-		if time.Now().Sub(jobInfo.CreationTimestamp.Time) < *jwt {
+		if time.Since(jobInfo.CreationTimestamp.Time) < *jwt {
 			return util.Abstain
 		}
 

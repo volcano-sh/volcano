@@ -129,7 +129,7 @@ func readFile(filename string) (*vcbatch.Job, error) {
 
 	var job vcbatch.Job
 	if err := yaml.Unmarshal(file, &job); err != nil {
-		return nil, fmt.Errorf("Failed to unmarshal file, err:  %v", err)
+		return nil, fmt.Errorf("failed to unmarshal file, err:  %v", err)
 	}
 
 	return &job, nil

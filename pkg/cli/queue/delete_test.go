@@ -63,7 +63,7 @@ func TestDeleteQueue(t *testing.T) {
 		{
 			Name:        "Abnormal Case Delete Queue Failed For Name Not Specified",
 			QueueName:   "",
-			ExpectValue: fmt.Errorf("Queue name must be specified"),
+			ExpectValue: fmt.Errorf("queue name must be specified"),
 		},
 	}
 

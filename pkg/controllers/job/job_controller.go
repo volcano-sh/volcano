@@ -23,7 +23,6 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	kubeschedulinginformers "k8s.io/client-go/informers/scheduling/v1beta1"
@@ -104,8 +103,7 @@ type jobcontroller struct {
 	commandQueue workqueue.RateLimitingInterface
 	cache        jobcache.Cache
 	// Job Event recorder
-	recorder        record.EventRecorder
-	priorityClasses map[string]*v1beta1.PriorityClass
+	recorder record.EventRecorder
 
 	errTasks      workqueue.RateLimitingInterface
 	workers       uint32

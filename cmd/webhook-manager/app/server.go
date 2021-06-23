@@ -79,7 +79,7 @@ func Run(config *options.Config) error {
 	})
 
 	webhookServeError := make(chan struct{})
-	stopChannel := make(chan os.Signal)
+	stopChannel := make(chan os.Signal, 1)
 	signal.Notify(stopChannel, syscall.SIGTERM, syscall.SIGINT)
 
 	server := &http.Server{

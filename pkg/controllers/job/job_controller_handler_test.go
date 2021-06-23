@@ -272,7 +272,7 @@ func TestUpdateJobFunc(t *testing.T) {
 			key := fmt.Sprintf("%s/%s", testcase.newJob.Namespace, testcase.newJob.Name)
 			job, err := controller.cache.Get(key)
 
-			if job == nil || err != nil {
+			if job == nil || job.Job == nil || err != nil {
 				t.Errorf("Error while Updating Job in case %d with error %s", i, err)
 			}
 
@@ -345,7 +345,7 @@ func TestAddPodFunc(t *testing.T) {
 			key := fmt.Sprintf("%s/%s", testcase.Job.Namespace, testcase.Job.Name)
 			job, err := controller.cache.Get(key)
 
-			if job == nil || err != nil {
+			if job == nil || job.Pods == nil || err != nil {
 				t.Errorf("Error while Getting Job in case %d with error %s", i, err)
 			}
 
@@ -419,7 +419,7 @@ func TestUpdatePodFunc(t *testing.T) {
 			key := fmt.Sprintf("%s/%s", testcase.Job.Namespace, testcase.Job.Name)
 			job, err := controller.cache.Get(key)
 
-			if job == nil || err != nil {
+			if job == nil || job.Pods == nil || err != nil {
 				t.Errorf("Error while Getting Job in case %d with error %s", i, err)
 			}
 
@@ -499,7 +499,7 @@ func TestDeletePodFunc(t *testing.T) {
 			key := fmt.Sprintf("%s/%s", testcase.Job.Namespace, testcase.Job.Name)
 			job, err := controller.cache.Get(key)
 
-			if job == nil || err != nil {
+			if job == nil || job.Pods == nil || err != nil {
 				t.Errorf("Error while Getting Job in case %d with error %s", i, err)
 			}
 

@@ -477,7 +477,5 @@ func (ni *NodeInfo) AddBindingTask(task TaskID) {
 
 // RemoveBindingTask remove binding taskId from node
 func (ni *NodeInfo) RemoveBindingTask(task TaskID) {
-	if _, found := ni.bindingTasks[task]; found {
-		delete(ni.bindingTasks, task)
-	}
+	delete(ni.bindingTasks, task)
 }

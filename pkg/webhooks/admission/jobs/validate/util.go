@@ -72,13 +72,13 @@ func validatePolicies(policies []batchv1alpha1.LifecyclePolicy, fldPath *field.P
 			policyEventsList := getEventList(policy)
 			for _, event := range policyEventsList {
 				if allow, ok := policyEventMap[event]; !ok || !allow {
-					err = multierror.Append(err, field.Invalid(fldPath, event, fmt.Sprintf("invalid policy event")))
+					err = multierror.Append(err, field.Invalid(fldPath, event, "invalid policy event"))
 					bFlag = true
 					break
 				}
 
 				if allow, ok := policyActionMap[policy.Action]; !ok || !allow {
-					err = multierror.Append(err, field.Invalid(fldPath, policy.Action, fmt.Sprintf("invalid policy action")))
+					err = multierror.Append(err, field.Invalid(fldPath, policy.Action, "invalid policy action"))
 					bFlag = true
 					break
 				}

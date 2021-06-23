@@ -19,6 +19,7 @@ package numaaware
 import (
 	"context"
 	"fmt"
+
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 
 	v1 "k8s.io/api/core/v1"
@@ -128,7 +129,7 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 		for _, container := range task.Pod.Spec.Containers {
 			providersHints := policy.AccumulateProvidersHints(&container, node.NumaSchedulerInfo, resNumaSets, pp.hintProviders)
 			hit, admit := taskPolicy.Predicate(providersHints)
-			if admit != true {
+			if !admit {
 				return fmt.Errorf("plugin %s predicates failed for task %s container %s on node %s",
 					pp.Name(), task.Name, container.Name, node.Name)
 			}

@@ -193,7 +193,7 @@ func validateWeightOfQueue(value int32, fldPath *field.Path) field.ErrorList {
 	if value > 0 {
 		return errs
 	}
-	return append(errs, field.Invalid(fldPath, value, fmt.Sprint("queue weight must be a positive integer")))
+	return append(errs, field.Invalid(fldPath, value, "queue weight must be a positive integer"))
 }
 
 func validateQueueDeleting(queue string) error {

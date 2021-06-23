@@ -95,8 +95,7 @@ func (c *queuecontroller) openQueue(queue *schedulingv1beta1.Queue, updateStateF
 			return err
 		}
 
-		c.recorder.Event(newQueue, v1.EventTypeNormal, string(v1alpha1.OpenQueueAction),
-			fmt.Sprintf("Open queue succeed"))
+		c.recorder.Event(newQueue, v1.EventTypeNormal, string(v1alpha1.OpenQueueAction), "Open queue succeed")
 	} else {
 		return nil
 	}
@@ -138,8 +137,7 @@ func (c *queuecontroller) closeQueue(queue *schedulingv1beta1.Queue, updateState
 			return err
 		}
 
-		c.recorder.Event(newQueue, v1.EventTypeNormal, string(v1alpha1.CloseQueueAction),
-			fmt.Sprintf("Close queue succeed"))
+		c.recorder.Event(newQueue, v1.EventTypeNormal, string(v1alpha1.CloseQueueAction), "Close queue succeed")
 	} else {
 		return nil
 	}

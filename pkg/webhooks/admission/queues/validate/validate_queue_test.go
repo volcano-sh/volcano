@@ -25,7 +25,6 @@ import (
 
 	"k8s.io/api/admission/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
@@ -293,13 +292,13 @@ func TestAdmitQueues(t *testing.T) {
 	}
 
 	defer func() {
-		if err := config.VolcanoClient.SchedulingV1beta1().Queues().Delete(context.TODO(), openStateForDelete.Name, v1.DeleteOptions{}); err != nil {
-			fmt.Println(fmt.Sprintf("Delete queue with open state failed for %v.", err))
+		if err := config.VolcanoClient.SchedulingV1beta1().Queues().Delete(context.TODO(), openStateForDelete.Name, metav1.DeleteOptions{}); err != nil {
+			fmt.Printf("Delete queue with open state failed for %v.\n", err)
 		}
-		if err := config.VolcanoClient.SchedulingV1beta1().Queues().Delete(context.TODO(), closedStateForDelete.Name, v1.DeleteOptions{}); err != nil {
-			fmt.Println(fmt.Sprintf("Delete queue with closed state failed for %v.", err))
+		if err := config.VolcanoClient.SchedulingV1beta1().Queues().Delete(context.TODO(), closedStateForDelete.Name, metav1.DeleteOptions{}); err != nil {
+			fmt.Printf("Delete queue with closed state failed for %v.\n", err)
 		}
-		if err := config.VolcanoClient.SchedulingV1beta1().Queues().Delete(context.TODO(), ordinaryHierchicalQueue.Name, v1.DeleteOptions{}); err != nil {
+		if err := config.VolcanoClient.SchedulingV1beta1().Queues().Delete(context.TODO(), ordinaryHierchicalQueue.Name, metav1.DeleteOptions{}); err != nil {
 			t.Errorf("Delete hierarchical queue failed for %v.", err)
 		}
 	}()
@@ -686,7 +685,7 @@ func TestAdmitQueues(t *testing.T) {
 				Allowed: false,
 				Result: &metav1.Status{
 					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("weight"),
-						0, fmt.Sprintf("queue weight must be a positive integer")).Error(),
+						0, "queue weight must be a positive integer").Error(),
 				},
 			},
 		},
@@ -719,7 +718,7 @@ func TestAdmitQueues(t *testing.T) {
 				Allowed: false,
 				Result: &metav1.Status{
 					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("weight"),
-						-1, fmt.Sprintf("queue weight must be a positive integer")).Error(),
+						-1, "queue weight must be a positive integer").Error(),
 				},
 			},
 		},
@@ -755,7 +754,7 @@ func TestAdmitQueues(t *testing.T) {
 				Allowed: false,
 				Result: &metav1.Status{
 					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("weight"),
-						-1, fmt.Sprintf("queue weight must be a positive integer")).Error(),
+						-1, "queue weight must be a positive integer").Error(),
 				},
 			},
 		},
