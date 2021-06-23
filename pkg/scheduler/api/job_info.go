@@ -558,7 +558,7 @@ func (ji *JobInfo) CheckTaskMinAvailable() bool {
 		}
 	}
 
-	klog.Infof("job %s/%s actual: %+v, ji.TaskMinAvailable: %+v", ji.Name, ji.Namespace, actual, ji.TaskMinAvailable)
+	klog.V(4).Infof("job %s/%s actual: %+v, ji.TaskMinAvailable: %+v", ji.Name, ji.Namespace, actual, ji.TaskMinAvailable)
 	for task, minAvailable := range ji.TaskMinAvailable {
 		if act, ok := actual[task]; !ok || act < minAvailable {
 			return false

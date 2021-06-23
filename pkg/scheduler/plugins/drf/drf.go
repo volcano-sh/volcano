@@ -29,6 +29,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
 // PluginName indicates name of volcano scheduler plugin.
@@ -246,7 +247,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
-	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
+	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		var victims []*api.TaskInfo
 
 		addVictim := func(candidate *api.TaskInfo) {
@@ -325,7 +326,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		klog.V(4).Infof("Victims from DRF plugins are %+v", victims)
 
-		return victims
+		return victims, util.Permit
 	}
 
 	ssn.AddPreemptableFn(drf.Name(), preemptableFn)
@@ -345,7 +346,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 		ssn.AddQueueOrderFn(drf.Name(), queueOrderFn)
 
-		reclaimFn := func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
+		reclaimFn := func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 			var victims []*api.TaskInfo
 			// clone hdrf tree
 			totalAllocated := drf.totalAllocated.Clone()
@@ -400,7 +401,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			klog.V(4).Infof("Victims from HDRF plugins are %+v", victims)
 
-			return victims
+			return victims, util.Permit
 
 		}
 		ssn.AddReclaimableFn(drf.Name(), reclaimFn)
