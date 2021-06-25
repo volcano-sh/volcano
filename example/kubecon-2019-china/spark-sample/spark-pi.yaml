@@ -35,8 +35,6 @@ spec:
       hostPath:
         path: "/tmp"
         type: Directory
-  nodeSelector:
-    kubernetes.io/arch: amd64
   driver:
     schedulerName: volcano
     cores: 0.1
