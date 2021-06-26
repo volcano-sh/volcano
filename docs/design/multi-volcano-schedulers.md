@@ -4,7 +4,7 @@
 
 Sometimes we may want to the cluster be divided into multi sections for different usage.
 
-![multi-scheduler](./images/multi-schedulers.png)
+![multi-scheduler](images/multi-volcano-schedulers.png)
 
 ### Advantage
 - Each section can keep isolated.
