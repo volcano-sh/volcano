@@ -148,6 +148,11 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 				continue
 			}
 			candidates := rf(reclaimer, reclaimees)
+			// intersection will be nil if length is 0, don't need to do any more check
+			if len(candidates) == 0 {
+				victims = nil
+				break
+			}
 			if !init {
 				victims = candidates
 				init = true
@@ -191,6 +196,12 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 				continue
 			}
 			candidates := pf(preemptor, preemptees)
+			// intersection will be nil if length is 0, don't need to do any more check
+			if len(candidates) == 0 {
+				victims = nil
+				break
+			}
+
 			if !init {
 				victims = candidates
 				init = true
