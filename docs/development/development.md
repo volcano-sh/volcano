@@ -51,6 +51,12 @@ Build the containers in your local docker cache:
 make images
 ```
 
+To build cross-platform images:
+
+```bash
+make images DOCKER_PLATFORMS="linux/amd64,linux/arm64" BUILDX_OUTPUT_TYPE=registry IMAGE_PREFIX=[yourregistry]
+```
+
 ## Building a specific docker image
 
 If you want to make a local change and test some component, say `vc-controller-manager`, you
