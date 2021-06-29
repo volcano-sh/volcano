@@ -15,8 +15,13 @@
 
 # The base image is created via `Dockerfile.base`, the base image is cached
 # since the required packages change very rarely.
+FROM golang:1.16 AS builder
+WORKDIR /go/src/volcano.sh/
+ADD . volcano
+RUN cd volcano && make vc-webhook-manager
+
 FROM volcanosh/vc-webhook-manager-base:1.3.1
 
-ADD vc-webhook-manager /vc-webhook-manager
+COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/vc-webhook-manager /vc-webhook-manager
 ADD gen-admission-secret.sh /gen-admission-secret.sh
 ENTRYPOINT ["/vc-webhook-manager"]
