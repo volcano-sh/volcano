@@ -20,6 +20,7 @@ CRD_OPTIONS ?= "crd:crdVersions=v1,generateEmbeddedObjectMeta=true"
 CC ?= "gcc"
 SUPPORT_PLUGINS ?= "no"
 CRD_VERSION ?= v1
+DOCKER_PLATFORMS ?= "linux/amd64,linux/arm64"
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -84,30 +85,16 @@ image_bins: init
 	if [ ${SUPPORT_PLUGINS} = "yes" ];then\
 		CC=${CC} CGO_ENABLED=1 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-scheduler ./cmd/scheduler;\
 	else\
-	 	CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-scheduler ./cmd/scheduler;\
-  	fi;
+		CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-scheduler ./cmd/scheduler;\
+	fi;
 
-images: image_bins
+images:
 	for name in controller-manager scheduler webhook-manager; do\
-		cp ${BIN_DIR}/${REL_OSARCH}/vc-$$name ./installer/dockerfile/$$name/;\
-		if [ ${REL_OSARCH} = linux/amd64 ];then\
-			docker build --no-cache -t $(IMAGE_PREFIX)-$$name:$(TAG) ./installer/dockerfile/$$name;\
-		elif [ ${REL_OSARCH} = linux/arm64 ];then\
-			docker build --no-cache -t $(IMAGE_PREFIX)-$$name-arm64:$(TAG) -f ./installer/dockerfile/$$name/Dockerfile.arm64 ./installer/dockerfile/$$name;\
-		else\
-			echo "only support x86_64 and arm64. Please build image according to your architecture";\
-		fi;\
-		rm installer/dockerfile/$$name/vc-$$name;\
+		docker buildx build -t "${IMAGE_PREFIX}-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --push --platform "${DOCKER_PLATFORMS}"; \
 	done
 
 webhook-manager-base-image:
-	if [ ${REL_OSARCH} = linux/amd64 ];then\
-		docker build --no-cache -t $(IMAGE_PREFIX)-webhook-manager-base:$(TAG) ./installer/dockerfile/webhook-manager/ -f ./installer/dockerfile/webhook-manager/Dockerfile.base;\
-	elif [ ${REL_OSARCH} = linux/arm64 ];then\
-		docker build --no-cache -t $(IMAGE_PREFIX)-webhook-manager-base-arm64:$(TAG) ./installer/dockerfile/webhook-manager/ -f ./installer/dockerfile/webhook-manager/Dockerfile.base.arm64;\
-	else\
-		echo "only support x86_64 and arm64. Please build webhook-manager-base-image according to your architecture";\
-	fi
+	docker buildx build -t ${IMAGE_PREFIX}-webhook-manager-base:$(TAG) . -f ./installer/dockerfile/webhook-manager/Dockerfile.base --push --platform "${DOCKER_PLATFORMS}"
 
 generate-code:
 	./hack/update-gencode.sh
