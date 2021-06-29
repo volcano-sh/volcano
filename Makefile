@@ -20,7 +20,7 @@ CRD_OPTIONS ?= "crd:crdVersions=v1,generateEmbeddedObjectMeta=true"
 CC ?= "gcc"
 SUPPORT_PLUGINS ?= "no"
 CRD_VERSION ?= v1
-DOCKER_PLATFORMS ?= "linux/amd64,linux/arm64"
+BUILDX_OUTPUT_TYPE ?= "docker"
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -52,6 +52,10 @@ REL_OSARCH=linux/arm
 else
 REL_OSARCH=linux/$(OSARCH)
 endif
+
+# Run make images DOCKER_PLATFORMS="linux/amd64,linux/arm64" BUILDX_OUTPUT_TYPE=registry IMAGE_PREFIX=[yourregistry] to push multi-platform
+DOCKER_PLATFORMS ?= "${REL_OSARCH}"
+
 
 include Makefile.def
 
@@ -90,11 +94,11 @@ image_bins: init
 
 images:
 	for name in controller-manager scheduler webhook-manager; do\
-		docker buildx build -t "${IMAGE_PREFIX}-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --push --platform "${DOCKER_PLATFORMS}"; \
+		docker buildx build -t "${IMAGE_PREFIX}-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type="${BUILDX_OUTPUT_TYPE}" --platform "${DOCKER_PLATFORMS}"; \
 	done
 
 webhook-manager-base-image:
-	docker buildx build -t ${IMAGE_PREFIX}-webhook-manager-base:$(TAG) . -f ./installer/dockerfile/webhook-manager/Dockerfile.base --push --platform "${DOCKER_PLATFORMS}"
+	docker buildx build -t ${IMAGE_PREFIX}-webhook-manager-base:$(TAG) . -f ./installer/dockerfile/webhook-manager/Dockerfile.base --output=type="${BUILDX_OUTPUT_TYPE}" --platform "${DOCKER_PLATFORMS}"
 
 generate-code:
 	./hack/update-gencode.sh
