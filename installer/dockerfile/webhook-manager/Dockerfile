@@ -23,5 +23,5 @@ RUN cd volcano && make vc-webhook-manager
 FROM volcanosh/vc-webhook-manager-base:1.3.1
 
 COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/vc-webhook-manager /vc-webhook-manager
-ADD gen-admission-secret.sh /gen-admission-secret.sh
+ADD ./installer/dockerfile/webhook-manager/gen-admission-secret.sh /gen-admission-secret.sh
 ENTRYPOINT ["/vc-webhook-manager"]
