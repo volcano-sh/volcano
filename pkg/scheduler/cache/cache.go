@@ -107,6 +107,7 @@ type SchedulerCache struct {
 	Nodes                map[string]*schedulingapi.NodeInfo
 	Queues               map[schedulingapi.QueueID]*schedulingapi.QueueInfo
 	PriorityClasses      map[string]*v1beta1.PriorityClass
+	NodeList             []string
 	defaultPriorityClass *v1beta1.PriorityClass
 	defaultPriority      int32
 
@@ -353,6 +354,8 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		schedulerName:   schedulerName,
 
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
+
+		NodeList: []string{},
 	}
 
 	// Prepare event clients.
@@ -809,8 +812,10 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		Queues:         make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
 		NamespaceInfo:  make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
 		RevocableNodes: make(map[string]*schedulingapi.NodeInfo),
+		NodeList:       make([]string, len(sc.NodeList)),
 	}
 
+	copy(snapshot.NodeList, sc.NodeList)
 	for _, value := range sc.Nodes {
 		value.RefreshNumaSchedulerInfoByCrd()
 	}
@@ -929,6 +934,10 @@ func (sc *SchedulerCache) String() string {
 			str += fmt.Sprintf("\t Namespace(%s) Weight(%v)\n",
 				info.Name, info.Weight)
 		}
+	}
+
+	if len(sc.NodeList) != 0 {
+		str += fmt.Sprintf("NodeList: %v\n", sc.NodeList)
 	}
 
 	return str

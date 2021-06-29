@@ -225,10 +225,12 @@ func SelectBestNode(nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
 }
 
 // GetNodeList returns values of the map 'nodes'
-func GetNodeList(nodes map[string]*api.NodeInfo) []*api.NodeInfo {
-	result := make([]*api.NodeInfo, 0, len(nodes))
-	for _, v := range nodes {
-		result = append(result, v)
+func GetNodeList(nodes map[string]*api.NodeInfo, nodeList []string) []*api.NodeInfo {
+	result := make([]*api.NodeInfo, 0, len(nodeList))
+	for _, nodename := range nodeList {
+		if ni, ok := nodes[nodename]; ok {
+			result = append(result, ni)
+		}
 	}
 	return result
 }
