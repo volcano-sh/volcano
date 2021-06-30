@@ -147,8 +147,11 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 			if !found {
 				continue
 			}
-			candidates := rf(reclaimer, reclaimees)
-			// intersection will be nil if length is 0, don't need to do any more check
+
+			candidates, abstain := rf(reclaimer, reclaimees)
+			if abstain == 0 {
+				continue
+			}
 			if len(candidates) == 0 {
 				victims = nil
 				break
@@ -195,7 +198,10 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 			if !found {
 				continue
 			}
-			candidates := pf(preemptor, preemptees)
+			candidates, abstain := pf(preemptor, preemptees)
+			if abstain == 0 {
+				continue
+			}
 			// intersection will be nil if length is 0, don't need to do any more check
 			if len(candidates) == 0 {
 				victims = nil

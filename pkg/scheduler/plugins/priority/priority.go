@@ -21,6 +21,7 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
 // PluginName indicates name of volcano scheduler plugin.
@@ -82,7 +83,7 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddJobOrderFn(pp.Name(), jobOrderFn)
 
-	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
+	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		preemptorJob := ssn.Jobs[preemptor.Job]
 
 		var victims []*api.TaskInfo
@@ -108,7 +109,7 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		klog.V(4).Infof("Victims from Priority plugins are %+v", victims)
-		return victims
+		return victims, util.Permit
 	}
 
 	ssn.AddPreemptableFn(pp.Name(), preemptableFn)

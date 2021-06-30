@@ -53,8 +53,9 @@ func BuildResourceListWithGPU(cpu string, memory string, GPU string) v1.Resource
 func BuildNode(name string, alloc v1.ResourceList, labels map[string]string) *v1.Node {
 	return &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   name,
-			Labels: labels,
+			Name:        name,
+			Labels:      labels,
+			Annotations: map[string]string{},
 		},
 		Status: v1.NodeStatus{
 			Capacity:    alloc,

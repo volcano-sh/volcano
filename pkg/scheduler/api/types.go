@@ -137,7 +137,7 @@ type PredicateFn func(*TaskInfo, *NodeInfo) error
 type BestNodeFn func(*TaskInfo, map[float64][]*NodeInfo) *NodeInfo
 
 // EvictableFn is the func declaration used to evict tasks.
-type EvictableFn func(*TaskInfo, []*TaskInfo) []*TaskInfo
+type EvictableFn func(*TaskInfo, []*TaskInfo) ([]*TaskInfo, int)
 
 // NodeOrderFn is the func declaration used to get priority score for a node for a particular task.
 type NodeOrderFn func(*TaskInfo, *NodeInfo) (float64, error)

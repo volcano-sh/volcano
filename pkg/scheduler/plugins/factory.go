@@ -30,7 +30,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
 	"volcano.sh/volcano/pkg/scheduler/plugins/reservation"
 	"volcano.sh/volcano/pkg/scheduler/plugins/sla"
-	"volcano.sh/volcano/pkg/scheduler/plugins/task-topology"
+	tasktopology "volcano.sh/volcano/pkg/scheduler/plugins/task-topology"
 	"volcano.sh/volcano/pkg/scheduler/plugins/tdm"
 )
 

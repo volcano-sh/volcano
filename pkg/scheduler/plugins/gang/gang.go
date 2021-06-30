@@ -80,7 +80,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddJobValidFn(gp.Name(), validJobFn)
 
-	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
+	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		var victims []*api.TaskInfo
 		pJob := ssn.Jobs[preemptor.Job]
 
@@ -99,7 +99,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		klog.V(4).Infof("Victims from Gang plugins are %+v", victims)
 
-		return victims
+		return victims, util.Permit
 	}
 
 	// TODO(k82cn): Support preempt/reclaim batch job.
