@@ -34,6 +34,7 @@ import (
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/version"
+	wkconfig "volcano.sh/volcano/pkg/webhooks/config"
 	"volcano.sh/volcano/pkg/webhooks/router"
 )
 
@@ -53,6 +54,13 @@ func Run(config *options.Config) error {
 		return fmt.Errorf("unable to build k8s config: %v", err)
 	}
 
+	admissionConf := wkconfig.LoadAdmissionConf(config.ConfigPath)
+	if admissionConf == nil {
+		klog.Errorf("loadSchedulerConf failed.")
+	} else {
+		klog.V(2).Infof("loadSchedulerConf:%v", admissionConf.ResGroupsConfig)
+	}
+
 	caBundle, err := ioutil.ReadFile(config.CaCertFile)
 	if err != nil {
 		return fmt.Errorf("unable to read cacert file (%s): %v", config.CaCertFile, err)
@@ -69,6 +77,7 @@ func Run(config *options.Config) error {
 			service.Config.VolcanoClient = vClient
 			service.Config.SchedulerName = config.SchedulerName
 			service.Config.Recorder = recorder
+			service.Config.ConfigData = admissionConf
 		}
 
 		klog.V(3).Infof("Registered '%s' as webhook.", service.Path)
@@ -96,6 +105,7 @@ func Run(config *options.Config) error {
 		klog.Info("Volcano Webhook manager started.")
 	}()
 
+	go wkconfig.WatchAdmissionConf(config.ConfigPath, stopChannel)
 	select {
 	case <-stopChannel:
 		if err := server.Close(); err != nil {
@@ -105,4 +115,5 @@ func Run(config *options.Config) error {
 	case <-webhookServeError:
 		return fmt.Errorf("unknown webhook server error")
 	}
+
 }

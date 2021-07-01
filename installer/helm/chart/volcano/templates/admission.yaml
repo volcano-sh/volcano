@@ -1,4 +1,12 @@
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-admission-configmap
+  namespace: {{ .Release.Namespace }}
+data:
+  {{- (.Files.Glob .Values.basic.admission_config_file).AsConfig | nindent 2}}
+---
+apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ .Release.Name }}-admission
@@ -77,6 +85,7 @@ spec:
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
             - --tls-private-key-file=/admission.local.config/certificates/tls.key
             - --ca-cert-file=/admission.local.config/certificates/ca.crt
+            - --admission-conf=/admission.local.config/configmap/{{base .Values.basic.admission_config_file}}
             - --webhook-namespace={{ .Release.Namespace }}
             - --webhook-service-name={{ .Release.Name }}-admission-service
             - --logtostderr
@@ -90,11 +99,16 @@ spec:
             - mountPath: /admission.local.config/certificates
               name: admission-certs
               readOnly: true
+            - mountPath: /admission.local.config/configmap
+              name: admission-config
       volumes:
         - name: admission-certs
           secret:
             defaultMode: 420
             secretName: {{.Values.basic.admission_secret_name}}
+        - name: admission-config
+          configMap:
+            name: {{ .Release.Name }}-admission-configmap
 
 ---
 apiVersion: v1

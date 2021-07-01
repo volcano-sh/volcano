@@ -16,6 +16,40 @@ metadata:
   namespace: volcano-system
 ---
 # Source: volcano/templates/admission.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: volcano-admission-configmap
+  namespace: volcano-system
+data:
+  volcano-admission.conf: |
+    #resourceGroups:
+    #- resourceGroup: management                    # set the resource group name
+    #  object:
+    #    key: namespace                             # set the field and the value to be matched
+    #    value:
+    #    - mng-ns-1
+    #  schedulerName: default-scheduler             # set the scheduler for patching
+    #  tolerations:                                 # set the tolerations for patching
+    #  - effect: NoSchedule
+    #    key: taint
+    #    operator: Exists
+    #  labels:
+    #    volcano.sh/nodetype: management           # set the nodeSelector for patching
+    #- resourceGroup: cpu
+    #  object:
+    #    key: annotation
+    #    value:
+    #    - "volcano.sh/resource-group: cpu"
+    #  schedulerName: volcano
+    #  labels:
+    #    volcano.sh/nodetype: cpu
+    #- resourceGroup: gpu                          # if the object is unsetted, default is:  the key is annotation,
+    #  schedulerName: volcano                      # the annotation key is fixed and is "volcano.sh/resource-group", The corresponding value is the resourceGroup field
+    #  labels:
+    #    volcano.sh/nodetype: gpu
+---
+# Source: volcano/templates/admission.yaml
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
@@ -102,6 +136,7 @@ spec:
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
             - --tls-private-key-file=/admission.local.config/certificates/tls.key
             - --ca-cert-file=/admission.local.config/certificates/ca.crt
+            - --admission-conf=/admission.local.config/configmap/volcano-admission.conf
             - --webhook-namespace=volcano-system
             - --webhook-service-name=volcano-admission-service
             - --logtostderr
@@ -115,11 +150,16 @@ spec:
             - mountPath: /admission.local.config/certificates
               name: admission-certs
               readOnly: true
+            - mountPath: /admission.local.config/configmap
+              name: admission-config
       volumes:
         - name: admission-certs
           secret:
             defaultMode: 420
             secretName: volcano-admission-secret
+        - name: admission-config
+          configMap:
+            name: volcano-admission-configmap
 ---
 # Source: volcano/templates/admission.yaml
 apiVersion: batch/v1

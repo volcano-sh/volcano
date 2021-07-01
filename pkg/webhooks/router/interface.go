@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/webhooks/config"
 )
 
 //The AdmitFunc returns response.
@@ -32,6 +33,7 @@ type AdmissionServiceConfig struct {
 	KubeClient    kubernetes.Interface
 	VolcanoClient versioned.Interface
 	Recorder      record.EventRecorder
+	ConfigData    *config.AdmissionConfiguration
 }
 
 type AdmissionService struct {
