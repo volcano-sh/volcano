@@ -68,9 +68,7 @@ func (pp *proportionPlugin) Name() string {
 
 func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Prepare scheduling data for this session.
-	for _, n := range ssn.Nodes {
-		pp.totalResource.Add(n.Allocatable)
-	}
+	pp.totalResource.Add(ssn.TotalResource)
 
 	klog.V(4).Infof("The total resource is <%v>", pp.totalResource)
 
