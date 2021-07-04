@@ -21,7 +21,7 @@ import (
 	"math"
 	"testing"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
@@ -236,7 +236,7 @@ func TestNode(t *testing.T) {
 			Channel: make(chan string),
 		}
 		schedulerCache := &cache.SchedulerCache{
-			Nodes:         make(map[string]*api.NodeInfo),
+			Nodes:         api.NewOrderNodes(),
 			Jobs:          make(map[api.JobID]*api.JobInfo),
 			Queues:        make(map[api.QueueID]*api.QueueInfo),
 			Binder:        binder,
@@ -275,7 +275,7 @@ func TestNode(t *testing.T) {
 		for _, job := range ssn.Jobs {
 			for _, task := range job.Tasks {
 				taskID := fmt.Sprintf("%s/%s", task.Namespace, task.Name)
-				for _, node := range ssn.Nodes {
+				for _, node := range ssn.Nodes.IterateMap() {
 					score, err := ssn.NodeOrderFn(task, node)
 					if err != nil {
 						t.Errorf("case%d: task %s on node %s has err %v", i, taskID, node.Name, err)

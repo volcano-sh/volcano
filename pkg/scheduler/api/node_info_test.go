@@ -170,3 +170,165 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 		}
 	}
 }
+
+func TestOrderNodeAdd(t *testing.T) {
+	n := NewOrderNodes()
+	node1 := buildNode("n1", buildResourceList("2000m", "10G"))
+	ni1 := NewNodeInfo(node1)
+	n.AddIfNotPresent("n1", ni1)
+
+	node, ok := n.CheckAndGet("n1")
+	if !ok {
+		t.Fatalf("Expect: true, Got, false")
+	}
+
+	if !reflect.DeepEqual(node.Node, node1) {
+		t.Fatalf("\nExpect: %v\n   Got, %v.", node1, node.Node)
+	}
+
+	if inx := n.Index("n1"); inx != 0 {
+		t.Fatalf("Got index: %v, expect: %v", inx, 0)
+	}
+}
+
+func TestOrderNodeUpdate(t *testing.T) {
+	n := NewOrderNodes()
+	node1 := buildNode("n1", buildResourceList("2000m", "10G"))
+	ni1 := NewNodeInfo(node1)
+	n.AddIfNotPresent("n1", ni1)
+
+	node, ok := n.CheckAndGet("n1")
+	if !ok {
+		t.Fatalf("Expect: true, Got, false")
+	}
+
+	if !reflect.DeepEqual(node.Node, node1) {
+		t.Fatalf("\nExpect: %v\n   Got, %v.", node1, node.Node)
+	}
+
+	node2 := buildNode("n2", buildResourceList("1000m", "1G"))
+	ni2 := NewNodeInfo(node2)
+	n.Update("n1", ni2)
+	newNode := n.Get("n1")
+
+	if !reflect.DeepEqual(newNode.Node, node2) {
+		t.Fatalf("\nExpect: %v\n   Got, %v.", node2, newNode.Node)
+	}
+}
+
+func TestOrderNodeIterate(t *testing.T) {
+
+	node1 := buildNode("n1", buildResourceList("1000m", "1G"))
+	node2 := buildNode("n2", buildResourceList("2000m", "2G"))
+	node3 := buildNode("n3", buildResourceList("3000m", "3G"))
+
+	tests := []struct {
+		names        []string
+		nodes        []*NodeInfo
+		expectedName []string
+	}{
+		{
+			names: []string{"n1", "n2", "n3", "n4"},
+			nodes: []*NodeInfo{
+				NewNodeInfo(node1),
+				NewNodeInfo(node2),
+				NewNodeInfo(node3),
+				nil,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		n := NewOrderNodes()
+		for j, node := range test.nodes {
+			n.AddIfNotPresent(test.names[j], node)
+		}
+
+		res := n.IterateList()
+		if !reflect.DeepEqual(n.IterateList(), test.nodes) {
+			t.Fatalf("Expect:%v, Got:%v", test.nodes, res)
+		}
+	}
+}
+
+func TestNodeOperation(t *testing.T) {
+	// case 1
+	node1 := buildNode("n1", buildResourceList("2000m", "10G"))
+	node2 := buildNode("n2", buildResourceList("4000m", "16G"))
+	node3 := buildNode("n3", buildResourceList("3000m", "12G"))
+	nodeInfo1 := NewNodeInfo(node1)
+	nodeInfo2 := NewNodeInfo(node2)
+	nodeInfo3 := NewNodeInfo(node3)
+	tests := []struct {
+		NodeList    []string
+		deletedNode *v1.Node
+		nodes       []*v1.Node
+		expected    []*NodeInfo
+		delExpect   []*NodeInfo
+	}{
+		{
+			NodeList:    []string{"n1", "n2", "n3"},
+			deletedNode: node2,
+			nodes:       []*v1.Node{node1, node2, node3},
+			expected: []*NodeInfo{
+				nodeInfo1,
+				nodeInfo2,
+				nodeInfo3,
+			},
+			delExpect: []*NodeInfo{
+				nodeInfo1,
+				nodeInfo3,
+			},
+		},
+		{
+			NodeList:    []string{"n1", "n2", "n3"},
+			deletedNode: node1,
+			nodes:       []*v1.Node{node1, node2, node3},
+			expected: []*NodeInfo{
+				nodeInfo1,
+				nodeInfo2,
+				nodeInfo3,
+			},
+			delExpect: []*NodeInfo{
+				nodeInfo2,
+				nodeInfo3,
+			},
+		},
+		{
+			NodeList:    []string{"n1", "n2", "n3"},
+			deletedNode: node3,
+			nodes:       []*v1.Node{node1, node2, node3},
+			expected: []*NodeInfo{
+				nodeInfo1,
+				nodeInfo2,
+				nodeInfo3,
+			},
+			delExpect: []*NodeInfo{
+				nodeInfo1,
+				nodeInfo2,
+			},
+		},
+	}
+
+	for i, test := range tests {
+		cache := NewOrderNodes()
+
+		for j, name := range test.NodeList {
+			cache.AddIfNotPresent(name, NewNodeInfo(test.nodes[j]))
+		}
+
+		got := cache.IterateList()
+		if !reflect.DeepEqual(got, test.expected) {
+			t.Errorf("case %d: \n expected %v, \n got %v \n",
+				i, test.expected, got)
+		}
+
+		// delete node
+		cache.Delete(test.deletedNode.Name)
+		got = cache.IterateList()
+		if !reflect.DeepEqual(got, test.delExpect) {
+			t.Errorf("case %d: \n expected %v, \n got %v \n",
+				i, test.delExpect, got)
+		}
+	}
+}

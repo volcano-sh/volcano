@@ -114,7 +114,7 @@ func TestReclaim(t *testing.T) {
 			Channel: make(chan string),
 		}
 		schedulerCache := &cache.SchedulerCache{
-			Nodes:           make(map[string]*api.NodeInfo),
+			Nodes:           api.NewOrderNodes(),
 			Jobs:            make(map[api.JobID]*api.JobInfo),
 			Queues:          make(map[api.QueueID]*api.QueueInfo),
 			Binder:          binder,

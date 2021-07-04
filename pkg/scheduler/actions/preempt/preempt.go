@@ -197,7 +197,7 @@ func preempt(
 ) (bool, error) {
 	assigned := false
 
-	allNodes := util.GetNodeList(ssn.Nodes)
+	allNodes := ssn.Nodes.IterateList()
 
 	predicateNodes, _ := util.PredicateNodes(preemptor, allNodes, ssn.PredicateFn)
 

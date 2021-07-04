@@ -105,7 +105,7 @@ func TestGetOrCreateJob(t *testing.T) {
 	pi3 := api.NewTaskInfo(pod3)
 
 	cache := &SchedulerCache{
-		Nodes:         make(map[string]*api.NodeInfo),
+		Nodes:         api.NewOrderNodes(),
 		Jobs:          make(map[api.JobID]*api.JobInfo),
 		schedulerName: "volcano",
 	}
@@ -141,7 +141,7 @@ func TestSchedulerCache_Bind_NodeWithSufficientResources(t *testing.T) {
 
 	cache := &SchedulerCache{
 		Jobs:  make(map[api.JobID]*api.JobInfo),
-		Nodes: make(map[string]*api.NodeInfo),
+		Nodes: api.NewOrderNodes(),
 		Binder: &util.FakeBinder{
 			Binds:   map[string]string{},
 			Channel: make(chan string),
@@ -172,7 +172,7 @@ func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
 
 	cache := &SchedulerCache{
 		Jobs:  make(map[api.JobID]*api.JobInfo),
-		Nodes: make(map[string]*api.NodeInfo),
+		Nodes: api.NewOrderNodes(),
 		Binder: &util.FakeBinder{
 			Binds:   map[string]string{},
 			Channel: make(chan string),
@@ -194,7 +194,8 @@ func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
 	}
 
 	taskBeforeBind := task.Clone()
-	nodeBeforeBind := cache.Nodes["n1"].Clone()
+	n, _ := cache.Nodes.CheckAndGet("n1")
+	nodeBeforeBind := n.Clone()
 
 	err := cache.Bind(task, "n1")
 	if err == nil {
@@ -209,7 +210,7 @@ func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
 		t.Errorf("expected task to remain the same after failed bind: \n %#v\n %#v", taskBeforeBind, taskAfterBind)
 	}
 
-	nodeAfterBind := cache.Nodes["n1"]
+	nodeAfterBind, _ := cache.Nodes.CheckAndGet("n1")
 	if !reflect.DeepEqual(nodeBeforeBind, nodeAfterBind) {
 		t.Errorf("expected node to remain the same after failed bind")
 	}

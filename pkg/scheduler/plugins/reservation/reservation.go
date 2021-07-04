@@ -119,7 +119,7 @@ func (rp *reservationPlugin) getJobWaitingTime(job *api.JobInfo) time.Duration {
 // select the node which has not been locked and idle resource is the most as the locked node
 func (rp *reservationPlugin) getUnlockedNodesWithMaxIdle(ssn *framework.Session) *api.NodeInfo {
 	var maxIdleNode *api.NodeInfo
-	for _, node := range ssn.Nodes {
+	for _, node := range ssn.Nodes.IterateMap() {
 		hasLocked := false
 		for _, lockedNode := range util.Reservation.LockedNodes {
 			if node.Node.UID == lockedNode.Node.UID {

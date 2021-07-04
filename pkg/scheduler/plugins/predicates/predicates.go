@@ -155,7 +155,7 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 
 func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	pl := util.NewPodListerFromNode(ssn)
-	nodeMap := util.GenerateNodeMapAndSlice(ssn.Nodes)
+	nodeMap := util.GenerateNodeMapAndSlice(ssn.Nodes.IterateMap())
 
 	pCache := predicateCacheNew()
 	predicate := enablePredicate(pp.pluginArguments)
@@ -174,7 +174,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 
 			if predicate.gpuSharingEnable && api.GetGPUResourceOfPod(pod) > 0 {
-				nodeInfo, ok := ssn.Nodes[nodeName]
+				nodeInfo, ok := ssn.Nodes.CheckAndGet(nodeName)
 				if !ok {
 					klog.Errorf("Failed to get node %s info from cache", nodeName)
 					return
@@ -222,7 +222,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 					return
 				}
 
-				nodeInfo, ok := ssn.Nodes[nodeName]
+				nodeInfo, ok := ssn.Nodes.CheckAndGet(nodeName)
 				if !ok {
 					klog.Errorf("Failed to get node %s info from cache", nodeName)
 					return

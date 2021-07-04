@@ -95,7 +95,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 	pendingTasks := map[api.JobID]*util.PriorityQueue{}
 
-	allNodes := util.GetNodeList(ssn.Nodes)
+	allNodes := ssn.Nodes.IterateList()
 	unlockedNodes := allNodes
 	if targetJob != nil && len(util.Reservation.LockedNodes) != 0 {
 		unlockedNodes = unlockedNodes[0:0]

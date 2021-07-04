@@ -206,7 +206,7 @@ func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 				continue
 			}
 
-			node, ok := ssn.Nodes[task.NodeName]
+			node, ok := ssn.Nodes.CheckAndGet(task.NodeName)
 			if !ok {
 				continue
 			}

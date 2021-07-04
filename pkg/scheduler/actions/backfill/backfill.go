@@ -58,7 +58,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 				// As task did not request resources, so it only need to meet predicates.
 				// TODO (k82cn): need to prioritize nodes to avoid pod hole.
-				for _, node := range ssn.Nodes {
+				for _, node := range ssn.Nodes.IterateMap() {
 					// TODO (k82cn): predicates did not consider pod number for now, there'll
 					// be ping-pong case here.
 					if err := ssn.PredicateFn(task, node); err != nil {

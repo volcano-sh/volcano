@@ -78,8 +78,8 @@ func calculateWeight(args framework.Arguments) int {
 
 func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 	weight := calculateWeight(pp.pluginArguments)
-	numaNodes := api.GenerateNumaNodes(ssn.Nodes)
-	pp.nodeResSets = api.GenerateNodeResNumaSets(ssn.Nodes)
+	numaNodes := api.GenerateNumaNodes(ssn.Nodes.IterateMap())
+	pp.nodeResSets = api.GenerateNodeResNumaSets(ssn.Nodes.IterateMap())
 
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {

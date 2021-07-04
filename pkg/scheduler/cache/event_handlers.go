@@ -62,11 +62,11 @@ func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *scheduling
 
 func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 	if len(pi.NodeName) != 0 {
-		if _, found := sc.Nodes[pi.NodeName]; !found {
+		if _, found := sc.Nodes.CheckAndGet(pi.NodeName); !found {
 			return fmt.Errorf("node <%s> does not exist", pi.NodeName)
 		}
 
-		node := sc.Nodes[pi.NodeName]
+		node := sc.Nodes.Get(pi.NodeName)
 		if !isTerminated(pi.Status) {
 			if err := node.AddTask(pi); err != nil {
 				return err
@@ -147,7 +147,7 @@ func (sc *SchedulerCache) deleteTask(pi *schedulingapi.TaskInfo) error {
 	}
 
 	if len(pi.NodeName) != 0 {
-		node := sc.Nodes[pi.NodeName]
+		node := sc.Nodes.Get(pi.NodeName)
 		if node != nil {
 			nodeErr = node.RemoveTask(pi)
 		}
@@ -260,18 +260,18 @@ func (sc *SchedulerCache) DeletePod(obj interface{}) {
 
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) addNode(node *v1.Node) error {
-	if sc.Nodes[node.Name] != nil {
-		sc.Nodes[node.Name].SetNode(node)
+	if sc.Nodes.Get(node.Name) != nil {
+		sc.Nodes.Get(node.Name).SetNode(node)
 	} else {
-		sc.Nodes[node.Name] = schedulingapi.NewNodeInfo(node)
+		sc.Nodes.Update(node.Name, schedulingapi.NewNodeInfo(node))
 	}
 	return nil
 }
 
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) updateNode(oldNode, newNode *v1.Node) error {
-	if sc.Nodes[newNode.Name] != nil {
-		sc.Nodes[newNode.Name].SetNode(newNode)
+	if sc.Nodes.Get(newNode.Name) != nil {
+		sc.Nodes.Get(newNode.Name).SetNode(newNode)
 		return nil
 	}
 
@@ -280,11 +280,11 @@ func (sc *SchedulerCache) updateNode(oldNode, newNode *v1.Node) error {
 
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) deleteNode(node *v1.Node) error {
-	if _, ok := sc.Nodes[node.Name]; !ok {
+	if _, ok := sc.Nodes.CheckAndGet(node.Name); !ok {
 		return fmt.Errorf("node <%s> does not exist", node.Name)
 	}
 
-	numaInfo := sc.Nodes[node.Name].NumaInfo
+	numaInfo := sc.Nodes.Get(node.Name).NumaInfo
 	if numaInfo != nil {
 		klog.V(3).Infof("delete numatopo <%s/%s>", numaInfo.Namespace, numaInfo.Name)
 		err := sc.vcClient.NodeinfoV1alpha1().Numatopologies().Delete(context.TODO(), numaInfo.Name, metav1.DeleteOptions{})
@@ -293,7 +293,7 @@ func (sc *SchedulerCache) deleteNode(node *v1.Node) error {
 		}
 	}
 
-	delete(sc.Nodes, node.Name)
+	sc.Nodes.Delete(node.Name)
 
 	return nil
 }
@@ -800,37 +800,38 @@ func getNumaInfo(srcInfo *nodeinfov1alpha1.Numatopology) *schedulingapi.Numatopo
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) addNumaInfo(info *nodeinfov1alpha1.Numatopology) error {
 
-	if sc.Nodes[info.Name] == nil {
-		sc.Nodes[info.Name] = schedulingapi.NewNodeInfo(nil)
+	if sc.Nodes.Get(info.Name) == nil {
+		sc.Nodes.Update(info.Name, schedulingapi.NewNodeInfo(nil))
 	}
 
-	if sc.Nodes[info.Name].NumaInfo == nil {
-		sc.Nodes[info.Name].NumaInfo = getNumaInfo(info)
+	if sc.Nodes.Get(info.Name).NumaInfo == nil {
+		sc.Nodes.Get(info.Name).NumaInfo = getNumaInfo(info)
 	}
 
+	ni := sc.Nodes.Get(info.Name)
 	newLocalInfo := getNumaInfo(info)
-	if sc.Nodes[info.Name].NumaInfo.Compare(newLocalInfo) {
-		sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoMoreFlag
+	if ni.NumaInfo.Compare(newLocalInfo) {
+		ni.NumaChgFlag = schedulingapi.NumaInfoMoreFlag
 	} else {
-		sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoLessFlag
+		ni.NumaChgFlag = schedulingapi.NumaInfoLessFlag
 	}
 
-	sc.Nodes[info.Name].NumaInfo = newLocalInfo
+	ni.NumaInfo = newLocalInfo
 
-	for resName, NumaResInfo := range sc.Nodes[info.Name].NumaInfo.NumaResMap {
+	for resName, NumaResInfo := range sc.Nodes.Get(info.Name).NumaInfo.NumaResMap {
 		klog.V(3).Infof("resource %s Allocatable %v on node[%s] into cache", resName, NumaResInfo, info.Name)
 	}
 
 	klog.V(3).Infof("Policies %v on node[%s] into cache, change= %v",
-		sc.Nodes[info.Name].NumaInfo.Policies, info.Name, sc.Nodes[info.Name].NumaChgFlag)
+		ni.NumaInfo.Policies, info.Name, ni.NumaChgFlag)
 	return nil
 }
 
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) deleteNumaInfo(info *nodeinfov1alpha1.Numatopology) {
-	if sc.Nodes[info.Name] != nil {
-		sc.Nodes[info.Name].NumaInfo = nil
-		sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoResetFlag
+	if sc.Nodes.Get(info.Name) != nil {
+		sc.Nodes.Get(info.Name).NumaInfo = nil
+		sc.Nodes.Get(info.Name).NumaChgFlag = schedulingapi.NumaInfoResetFlag
 		klog.V(3).Infof("delete numainfo in cahce for node<%s>", info.Name)
 	}
 }

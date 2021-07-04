@@ -71,7 +71,7 @@ func TestSchedulerCache_updateTask(t *testing.T) {
 	for i, test := range tests {
 		cache := &SchedulerCache{
 			Jobs:  make(map[api.JobID]*api.JobInfo),
-			Nodes: make(map[string]*api.NodeInfo),
+			Nodes: api.NewOrderNodes(),
 		}
 
 		for _, n := range test.Nodes {
@@ -125,7 +125,7 @@ func TestSchedulerCache_UpdatePod(t *testing.T) {
 	for i, test := range tests {
 		cache := &SchedulerCache{
 			Jobs:  make(map[api.JobID]*api.JobInfo),
-			Nodes: make(map[string]*api.NodeInfo),
+			Nodes: api.NewOrderNodes(),
 		}
 
 		for _, n := range test.Nodes {
@@ -206,7 +206,7 @@ func TestSchedulerCache_AddPodGroupV1beta1(t *testing.T) {
 	for i, test := range tests {
 		cache := &SchedulerCache{
 			Jobs:  make(map[api.JobID]*api.JobInfo),
-			Nodes: make(map[string]*api.NodeInfo),
+			Nodes: api.NewOrderNodes(),
 		}
 
 		for _, n := range test.Nodes {
@@ -332,7 +332,7 @@ func TestSchedulerCache_UpdatePodGroupV1beta1(t *testing.T) {
 	for i, test := range tests {
 		cache := &SchedulerCache{
 			Jobs:  make(map[api.JobID]*api.JobInfo),
-			Nodes: make(map[string]*api.NodeInfo),
+			Nodes: api.NewOrderNodes(),
 		}
 
 		for _, n := range test.Nodes {
@@ -425,7 +425,7 @@ func TestSchedulerCache_DeletePodGroupV1beta1(t *testing.T) {
 	for i, test := range tests {
 		cache := &SchedulerCache{
 			Jobs:  make(map[api.JobID]*api.JobInfo),
-			Nodes: make(map[string]*api.NodeInfo),
+			Nodes: api.NewOrderNodes(),
 		}
 
 		cache.deletedJobs = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
@@ -489,7 +489,7 @@ func TestSchedulerCache_AddQueueV1beta1(t *testing.T) {
 	for i, test := range tests {
 		cache := &SchedulerCache{
 			Jobs:   make(map[api.JobID]*api.JobInfo),
-			Nodes:  make(map[string]*api.NodeInfo),
+			Nodes:  api.NewOrderNodes(),
 			Queues: make(map[api.QueueID]*api.QueueInfo)}
 
 		cache.AddQueueV1beta1(test.Queue)
@@ -569,7 +569,7 @@ func TestSchedulerCache_UpdateQueueV1beta1(t *testing.T) {
 	for i, test := range tests {
 		cache := &SchedulerCache{
 			Jobs:   make(map[api.JobID]*api.JobInfo),
-			Nodes:  make(map[string]*api.NodeInfo),
+			Nodes:  api.NewOrderNodes(),
 			Queues: make(map[api.QueueID]*api.QueueInfo),
 		}
 
@@ -621,7 +621,7 @@ func TestSchedulerCache_DeleteQueueV1beta1(t *testing.T) {
 	for i, test := range tests {
 		cache := &SchedulerCache{
 			Jobs:   make(map[api.JobID]*api.JobInfo),
-			Nodes:  make(map[string]*api.NodeInfo),
+			Nodes:  api.NewOrderNodes(),
 			Queues: make(map[api.QueueID]*api.QueueInfo),
 		}
 

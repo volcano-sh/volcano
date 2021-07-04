@@ -55,6 +55,7 @@ import (
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -104,7 +105,7 @@ type SchedulerCache struct {
 	Recorder record.EventRecorder
 
 	Jobs                 map[schedulingapi.JobID]*schedulingapi.JobInfo
-	Nodes                map[string]*schedulingapi.NodeInfo
+	Nodes                *schedulingapi.OrderNodes
 	Queues               map[schedulingapi.QueueID]*schedulingapi.QueueInfo
 	PriorityClasses      map[string]*v1beta1.PriorityClass
 	defaultPriorityClass *v1beta1.PriorityClass
@@ -342,7 +343,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 
 	sc := &SchedulerCache{
 		Jobs:            make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
-		Nodes:           make(map[string]*schedulingapi.NodeInfo),
+		Nodes:           schedulingapi.NewOrderNodes(),
 		Queues:          make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
 		PriorityClasses: make(map[string]*v1beta1.PriorityClass),
 		errTasks:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
@@ -556,7 +557,7 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 		return err
 	}
 
-	node, found := sc.Nodes[task.NodeName]
+	node, found := sc.Nodes.CheckAndGet(task.NodeName)
 	if !found {
 		return fmt.Errorf("failed to bind Task %v to host %v, host does not exist",
 			task.UID, task.NodeName)
@@ -609,7 +610,7 @@ func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string
 		return err
 	}
 
-	node, found := sc.Nodes[hostname]
+	node, found := sc.Nodes.CheckAndGet(hostname)
 	if !found {
 		return fmt.Errorf("failed to bind Task %v to host %v, host does not exist",
 			task.UID, hostname)
@@ -700,11 +701,11 @@ func (sc *SchedulerCache) UpdateSchedulerNumaInfo(AllocatedSets map[string]sched
 	defer sc.Mutex.Unlock()
 
 	for nodeName, sets := range AllocatedSets {
-		if _, found := sc.Nodes[nodeName]; !found {
+		if _, found := sc.Nodes.CheckAndGet(nodeName); !found {
 			continue
 		}
 
-		numaInfo := sc.Nodes[nodeName].NumaSchedulerInfo
+		numaInfo := sc.Nodes.Get(nodeName).NumaSchedulerInfo
 		if numaInfo == nil {
 			continue
 		}
@@ -804,18 +805,18 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	defer sc.Mutex.Unlock()
 
 	snapshot := &schedulingapi.ClusterInfo{
-		Nodes:          make(map[string]*schedulingapi.NodeInfo),
+		Nodes:          api.NewOrderNodes(),
 		Jobs:           make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
 		Queues:         make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
 		NamespaceInfo:  make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
 		RevocableNodes: make(map[string]*schedulingapi.NodeInfo),
 	}
 
-	for _, value := range sc.Nodes {
+	for _, value := range sc.Nodes.IterateMap() {
 		value.RefreshNumaSchedulerInfoByCrd()
 	}
 
-	for _, value := range sc.Nodes {
+	for _, value := range sc.Nodes.IterateMap() {
 		if !value.Ready() {
 			continue
 		}
@@ -826,10 +827,10 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 			continue
 		}
 
-		snapshot.Nodes[value.Name] = value.Clone()
+		snapshot.Nodes.Update(value.Name, value.Clone())
 
 		if value.RevocableZone != "" {
-			snapshot.RevocableNodes[value.Name] = snapshot.Nodes[value.Name]
+			snapshot.RevocableNodes[value.Name] = snapshot.Nodes.Get(value.Name)
 		}
 	}
 
@@ -889,7 +890,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	wg.Wait()
 
 	klog.V(3).Infof("There are <%d> Jobs, <%d> Queues and <%d> Nodes in total for scheduling.",
-		len(snapshot.Jobs), len(snapshot.Queues), len(snapshot.Nodes))
+		len(snapshot.Jobs), len(snapshot.Queues), snapshot.Nodes.Len())
 
 	return snapshot
 }
@@ -901,9 +902,9 @@ func (sc *SchedulerCache) String() string {
 
 	str := "Cache:\n"
 
-	if len(sc.Nodes) != 0 {
+	if sc.Nodes.Len() != 0 {
 		str += "Nodes:\n"
-		for _, n := range sc.Nodes {
+		for _, n := range sc.Nodes.IterateMap() {
 			str += fmt.Sprintf("\t %s: idle(%v) used(%v) allocatable(%v) pods(%d)\n",
 				n.Name, n.Idle, n.Used, n.Allocatable, len(n.Tasks))
 

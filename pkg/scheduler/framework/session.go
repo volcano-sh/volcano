@@ -47,7 +47,7 @@ type Session struct {
 	podGroupStatus map[api.JobID]scheduling.PodGroupStatus
 
 	Jobs           map[api.JobID]*api.JobInfo
-	Nodes          map[string]*api.NodeInfo
+	Nodes          *api.OrderNodes
 	RevocableNodes map[string]*api.NodeInfo
 	Queues         map[api.QueueID]*api.QueueInfo
 	NamespaceInfo  map[api.NamespaceName]*api.NamespaceInfo
@@ -91,7 +91,7 @@ func openSession(cache cache.Cache) *Session {
 		podGroupStatus: map[api.JobID]scheduling.PodGroupStatus{},
 
 		Jobs:           map[api.JobID]*api.JobInfo{},
-		Nodes:          map[string]*api.NodeInfo{},
+		Nodes:          api.NewOrderNodes(),
 		RevocableNodes: map[string]*api.NodeInfo{},
 		Queues:         map[api.QueueID]*api.QueueInfo{},
 
@@ -154,7 +154,7 @@ func openSession(cache cache.Cache) *Session {
 	ssn.Queues = snapshot.Queues
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
 	// calculate all nodes' resource only once in each schedule cycle, other plugins can clone it when need
-	for _, n := range ssn.Nodes {
+	for _, n := range ssn.Nodes.IterateMap() {
 		ssn.TotalResource.Add(n.Allocatable)
 	}
 
@@ -247,7 +247,7 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 
 	task.NodeName = hostname
 
-	if node, found := ssn.Nodes[hostname]; found {
+	if node, found := ssn.Nodes.CheckAndGet(hostname); found {
 		if err := node.AddTask(task); err != nil {
 			klog.Errorf("Failed to add task <%v/%v> to node <%v> in Session <%v>: %v",
 				task.Namespace, task.Name, hostname, ssn.UID, err)
@@ -303,7 +303,7 @@ func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 
 	task.NodeName = hostname
 
-	if node, found := ssn.Nodes[hostname]; found {
+	if node, found := ssn.Nodes.CheckAndGet(hostname); found {
 		if err := node.AddTask(task); err != nil {
 			klog.Errorf("Failed to add task <%v/%v> to node <%v> in Session <%v>: %v",
 				task.Namespace, task.Name, hostname, ssn.UID, err)
@@ -386,7 +386,7 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 	}
 
 	// Update task in node.
-	if node, found := ssn.Nodes[reclaimee.NodeName]; found {
+	if node, found := ssn.Nodes.CheckAndGet(reclaimee.NodeName); found {
 		if err := node.UpdateTask(reclaimee); err != nil {
 			klog.Errorf("Failed to update task <%v/%v> in Session <%v>: %v",
 				reclaimee.Namespace, reclaimee.Name, ssn.UID, err)
@@ -458,7 +458,7 @@ func (ssn Session) String() string {
 		msg = fmt.Sprintf("%s%v\n", msg, job)
 	}
 
-	for _, node := range ssn.Nodes {
+	for _, node := range ssn.Nodes.IterateMap() {
 		msg = fmt.Sprintf("%s%v\n", msg, node)
 	}
 

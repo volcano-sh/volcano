@@ -536,3 +536,70 @@ func (ni *NodeInfo) AddBindingTask(task TaskID) {
 func (ni *NodeInfo) RemoveBindingTask(task TaskID) {
 	delete(ni.bindingTasks, task)
 }
+
+// OrderNodes implement
+type OrderNodes struct {
+	OrderMap
+}
+
+// NewOrderNodes return OrderNodes instance
+func NewOrderNodes() *OrderNodes {
+	return &OrderNodes{
+		OrderMap: OrderMap{
+			keys:   make([]string, 0),
+			values: make(map[string]interface{}),
+		},
+	}
+}
+
+// CheckAndGet return object and bool
+func (od *OrderNodes) CheckAndGet(key string) (*NodeInfo, bool) {
+	od.RLock()
+	defer od.RUnlock()
+
+	v, ok := od.values[key]
+	if !ok {
+		return nil, false
+	}
+
+	n, _ := v.(*NodeInfo)
+	return n, ok
+}
+
+// Get just return object
+func (od *OrderNodes) Get(key string) *NodeInfo {
+	od.RLock()
+	defer od.RUnlock()
+
+	v, ok := od.values[key]
+	if !ok {
+		return nil
+	}
+
+	n := v.(*NodeInfo)
+	return n
+}
+
+// IterateList return value list with order of key
+func (om *OrderMap) IterateList() []*NodeInfo {
+	om.RLock()
+	defer om.RUnlock()
+
+	nl := make([]*NodeInfo, 0, len(om.keys))
+	for _, key := range om.keys {
+		nl = append(nl, om.values[key].(*NodeInfo))
+	}
+	return nl
+}
+
+// IterateMap return map value
+func (om *OrderMap) IterateMap() map[string]*NodeInfo {
+	om.RLock()
+	defer om.RUnlock()
+
+	values := make(map[string]*NodeInfo, len(om.keys))
+	for _, key := range om.keys {
+		values[key] = om.values[key].(*NodeInfo)
+	}
+	return values
+}

@@ -164,7 +164,7 @@ func (bp *binpackPlugin) OnSessionOpen(ssn *framework.Session) {
 		notFoundResource := []string{}
 		for resource := range bp.weight.BinPackingResources {
 			found := false
-			for _, nodeInfo := range ssn.Nodes {
+			for _, nodeInfo := range ssn.Nodes.IterateMap() {
 				if nodeInfo.Allocatable.Get(resource) > 0 {
 					found = true
 					break

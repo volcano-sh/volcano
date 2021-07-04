@@ -23,7 +23,7 @@ import (
 // ClusterInfo is a snapshot of cluster by cache.
 type ClusterInfo struct {
 	Jobs           map[JobID]*JobInfo
-	Nodes          map[string]*NodeInfo
+	Nodes          *OrderNodes
 	Queues         map[QueueID]*QueueInfo
 	NamespaceInfo  map[NamespaceName]*NamespaceInfo
 	RevocableNodes map[string]*NodeInfo
@@ -33,9 +33,9 @@ func (ci ClusterInfo) String() string {
 
 	str := "Cache:\n"
 
-	if len(ci.Nodes) != 0 {
+	if ci.Nodes.Len() != 0 {
 		str += "Nodes:\n"
-		for _, n := range ci.Nodes {
+		for _, n := range ci.Nodes.IterateMap() {
 			str += fmt.Sprintf("\t %s: idle(%v) used(%v) allocatable(%v) pods(%d)\n",
 				n.Name, n.Idle, n.Used, n.Allocatable, len(n.Tasks))
 

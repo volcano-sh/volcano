@@ -112,7 +112,7 @@ func NewPodListerFromNode(ssn *framework.Session) *PodLister {
 		TaskWithAffinity: make(map[api.TaskID]*api.TaskInfo),
 	}
 
-	for _, node := range pl.Session.Nodes {
+	for _, node := range pl.Session.Nodes.IterateMap() {
 		for _, task := range node.Tasks {
 			if !api.AllocatedStatus(task.Status) && task.Status != api.Releasing {
 				continue
@@ -249,7 +249,7 @@ type CachedNodeInfo struct {
 
 // GetNodeInfo is used to get info of a particular node
 func (c *CachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
-	node, found := c.Session.Nodes[name]
+	node, found := c.Session.Nodes.CheckAndGet(name)
 	if !found {
 
 		return nil, errors.NewNotFound(v1.Resource("node"), name)
@@ -266,7 +266,7 @@ type NodeLister struct {
 // List is used to list all the nodes
 func (nl *NodeLister) List() ([]*v1.Node, error) {
 	var nodes []*v1.Node
-	for _, node := range nl.Session.Nodes {
+	for _, node := range nl.Session.Nodes.IterateMap() {
 		nodes = append(nodes, node.Node)
 	}
 	return nodes, nil

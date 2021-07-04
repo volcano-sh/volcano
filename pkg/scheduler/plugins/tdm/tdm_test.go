@@ -233,7 +233,7 @@ func Test_TDM(t *testing.T) {
 				Channel: make(chan string),
 			}
 			schedulerCache := &cache.SchedulerCache{
-				Nodes:         make(map[string]*api.NodeInfo),
+				Nodes:         api.NewOrderNodes(),
 				Jobs:          make(map[api.JobID]*api.JobInfo),
 				Queues:        make(map[api.QueueID]*api.QueueInfo),
 				Binder:        binder,
@@ -279,7 +279,7 @@ func Test_TDM(t *testing.T) {
 					taskID := fmt.Sprintf("%s/%s", task.Namespace, task.Name)
 
 					predicatedNode := make([]*api.NodeInfo, 0)
-					for _, node := range ssn.Nodes {
+					for _, node := range ssn.Nodes.IterateMap() {
 						if err := ssn.PredicateFn(task, node); err != nil {
 							continue
 						}
@@ -675,7 +675,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 				Channel: make(chan string),
 			}
 			schedulerCache := &cache.SchedulerCache{
-				Nodes:         make(map[string]*api.NodeInfo),
+				Nodes:         api.NewOrderNodes(),
 				Jobs:          make(map[api.JobID]*api.JobInfo),
 				Queues:        make(map[api.QueueID]*api.QueueInfo),
 				Binder:        binder,

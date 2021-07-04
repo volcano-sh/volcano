@@ -112,7 +112,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		}
 
 		assigned := false
-		for _, n := range ssn.Nodes {
+		for _, n := range ssn.Nodes.IterateMap() {
 			// If predicates failed, next node.
 			if err := ssn.PredicateFn(task, n); err != nil {
 				continue

@@ -82,7 +82,7 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 	// calculate idle resources of total cluster, overcommit resources included
 	total := api.EmptyResource()
 	used := api.EmptyResource()
-	for _, node := range ssn.Nodes {
+	for _, node := range ssn.Nodes.IterateMap() {
 		total.Add(node.Allocatable)
 		used.Add(node.Used)
 	}

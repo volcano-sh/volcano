@@ -69,7 +69,7 @@ func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 	}
 
 	// Update task in node.
-	if node, found := s.ssn.Nodes[reclaimee.NodeName]; found {
+	if node, found := s.ssn.Nodes.CheckAndGet(reclaimee.NodeName); found {
 		err := node.UpdateTask(reclaimee)
 		if err != nil {
 			klog.Errorf("Failed to update task <%v/%v> in node %v for: %s",
@@ -121,7 +121,7 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 	}
 
 	// Update task in node.
-	if node, found := s.ssn.Nodes[reclaimee.NodeName]; found {
+	if node, found := s.ssn.Nodes.CheckAndGet(reclaimee.NodeName); found {
 		err := node.UpdateTask(reclaimee)
 		if err != nil {
 			klog.Errorf("Failed to update task <%v/%v> in node %v for: %s",
@@ -156,7 +156,7 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string) error {
 
 	task.NodeName = hostname
 
-	if node, found := s.ssn.Nodes[hostname]; found {
+	if node, found := s.ssn.Nodes.CheckAndGet(hostname); found {
 		if err := node.AddTask(task); err != nil {
 			klog.Errorf("Failed to pipeline task <%v/%v> to node <%v> in Session <%v>: %v",
 				task.Namespace, task.Name, hostname, s.ssn.UID, err)
@@ -202,7 +202,7 @@ func (s *Statement) unpipeline(task *api.TaskInfo) error {
 	hostname := task.NodeName
 	task.NodeName = ""
 
-	if node, found := s.ssn.Nodes[hostname]; found {
+	if node, found := s.ssn.Nodes.CheckAndGet(hostname); found {
 		if err := node.RemoveTask(task); err != nil {
 			klog.Errorf("Failed to pipeline task <%v/%v> to node <%v> in Session <%v>: %v",
 				task.Namespace, task.Name, hostname, s.ssn.UID, err)
@@ -255,7 +255,7 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 	}
 
 	task.NodeName = hostname
-	if node, found := s.ssn.Nodes[hostname]; found {
+	if node, found := s.ssn.Nodes.CheckAndGet(hostname); found {
 		if err := node.AddTask(task); err != nil {
 			klog.Errorf("Failed to add task <%v/%v> to node <%v> in Session <%v>: %v",
 				task.Namespace, task.Name, hostname, s.ssn.UID, err)
@@ -328,7 +328,7 @@ func (s *Statement) unallocate(task *api.TaskInfo) error {
 			task.Job, s.ssn.UID)
 	}
 
-	if node, found := s.ssn.Nodes[task.NodeName]; found {
+	if node, found := s.ssn.Nodes.CheckAndGet(task.NodeName); found {
 		klog.V(3).Infof("Remove Task <%v> on node <%v>", task.Name, task.NodeName)
 		err := node.RemoveTask(task)
 		if err != nil {
