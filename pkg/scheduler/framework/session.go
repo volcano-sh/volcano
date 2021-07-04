@@ -41,6 +41,8 @@ type Session struct {
 
 	kubeClient kubernetes.Interface
 	cache      cache.Cache
+
+	TotalResource *api.Resource
 	// podGroupStatus cache podgroup status during schedule
 	// This should not be mutated after initiated
 	podGroupStatus map[api.JobID]scheduling.PodGroupStatus
@@ -88,6 +90,7 @@ func openSession(cache cache.Cache) *Session {
 		kubeClient: cache.Client(),
 		cache:      cache,
 
+		TotalResource:  api.EmptyResource(),
 		podGroupStatus: map[api.JobID]scheduling.PodGroupStatus{},
 
 		Jobs:           map[api.JobID]*api.JobInfo{},
@@ -154,6 +157,11 @@ func openSession(cache cache.Cache) *Session {
 	ssn.RevocableNodes = snapshot.RevocableNodes
 	ssn.Queues = snapshot.Queues
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
+	// calculate all nodes' resource only once in each schedule cycle, other plugins can clone it when need
+	for _, n := range ssn.Nodes {
+		ssn.TotalResource.Add(n.Allocatable)
+	}
+
 	klog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues",
 		ssn.UID, len(ssn.Jobs), len(ssn.Queues))
 
@@ -174,6 +182,7 @@ func closeSession(ssn *Session) {
 	ssn.queueOrderFns = nil
 	ssn.clusterOrderFns = nil
 	ssn.NodeList = nil
+	ssn.TotalResource = nil
 
 	klog.V(3).Infof("Close Session %v", ssn.UID)
 }
