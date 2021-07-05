@@ -84,8 +84,16 @@ function install-helm {
     HELM_TEMP_DIR=$(mktemp -d)
     curl https://raw.githubusercontent.com/helm/helm/master/scripts/get > ${HELM_TEMP_DIR}/get_helm.sh
     # TODO: There are some issue with helm's latest version, remove '--version' when it get fixed.
-    chmod 700 ${HELM_TEMP_DIR}/get_helm.sh && ${HELM_TEMP_DIR}/get_helm.sh --version v3.5.3
+    chmod 700 ${HELM_TEMP_DIR}/get_helm.sh && ${HELM_TEMP_DIR}/get_helm.sh --version v3.0.1
   else
-    echo -n "Found helm, version: " && helm version
+    HELM_VERSION_DETAILS=$(helm version)
+    echo -n "Found helm, version: $HELM_VERSION_DETAILS"
+    HELM_VERSION=$(echo $HELM_VERSION_DETAILS | grep -Eo "v[0-9](.[0-9])+")
+    DESIRED_VERSION="v3.0.1"
+    if [ "$HELM_VERSION" != "$DESIRED_VERSION" ]; then
+      wget https://get.helm.sh/helm-v3.0.1-linux-amd64.tar.gz
+      tar -zxvf helm-v3.0.1-linux-amd64.tar.gz
+      mv linux-amd64/helm /usr/bin/helm
+    fi
   fi
 }
