@@ -308,6 +308,8 @@ func (jc *jobCache) TaskFailed(jobKey, taskName string) bool {
 			break
 		}
 	}
+
+	// maxRetry == -1 means no limit
 	if taskReplicas == 0 || maxRetry == -1 {
 		return false
 	}

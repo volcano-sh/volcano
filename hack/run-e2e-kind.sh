@@ -62,7 +62,7 @@ function install-volcano {
   kubectl apply -f installer/namespace.yaml
 
   echo "Install volcano chart with crd version $crd_version"
-  helm install ${CLUSTER_NAME} installer/helm/chart/volcano --namespace kube-system --kubeconfig ${KUBECONFIG} \
+  helm install ${CLUSTER_NAME} installer/helm/chart/volcano --namespace volcano-system --kubeconfig ${KUBECONFIG} \
     --set basic.image_tag_version=${TAG} \
     --set basic.scheduler_config_file=config/volcano-scheduler-ci.conf \
     --set basic.crd_version=${crd_version} \

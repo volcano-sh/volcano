@@ -473,54 +473,55 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: TaskFailed; Action: TerminateJob", func() {
 		By("init test context")
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
 
 		By("create job")
-		job := createJob(ctx, &jobSpec{
-			name:      "task-failed-terminate-job",
-			namespace: ctx.namespace,
-			policies: []vcbatch.LifecyclePolicy{
+		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+			Name:      "task-failed-terminate-job",
+			Namespace: ctx.Namespace,
+			Policies: []vcbatch.LifecyclePolicy{
 				{
 					Action: vcbus.TerminateJobAction,
 					Event:  vcbus.TaskFailedEvent,
 				},
 			},
-			tasks: []taskSpec{
+			Tasks: []e2eutil.TaskSpec{
 				{
-					name: "success",
-					img:  defaultBusyBoxImage,
-					min:  2,
-					rep:  2,
+					Name: "success",
+					Img:  e2eutil.DefaultBusyBoxImage,
+					Min:  2,
+					Rep:  2,
 					//Sleep 5 seconds ensure job in running state
-					command: "sleep 5",
+					Command: "sleep 5",
 				},
 				{
-					name:          "failed",
-					img:           defaultNginxImage,
-					min:           2,
-					rep:           2,
-					command:       "sleep 10s && xxx",
-					restartPolicy: v1.RestartPolicyNever,
+					Name:          "failed",
+					Img:           e2eutil.DefaultBusyBoxImage,
+					Min:           2,
+					Rep:           2,
+					Command:       "sleep 10s && xxx",
+					RestartPolicy: v1.RestartPolicyNever,
+					MaxRetry:      3,
 				},
 			},
 		})
 
 		// job phase: Pending -> Running
-		err := waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("update one pod of job")
-		podName := jobutil.MakePodName(job.Name, "failed", 0)
-		pod, err := ctx.kubeclient.CoreV1().Pods(job.Namespace).Get(context.TODO(), podName, metav1.GetOptions{})
+		podName := jobctl.MakePodName(job.Name, "failed", 0)
+		pod, err := ctx.Kubeclient.CoreV1().Pods(job.Namespace).Get(context.TODO(), podName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		pod.Status.ContainerStatuses = []v1.ContainerStatus{{RestartCount: 3}}
-		_, err = ctx.kubeclient.CoreV1().Pods(job.Namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{})
+		pod.Status.ContainerStatuses = []v1.ContainerStatus{{RestartCount: 4}}
+		_, err = ctx.Kubeclient.CoreV1().Pods(job.Namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Terminating -> Terminated
-		err = waitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
+		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 
 	})

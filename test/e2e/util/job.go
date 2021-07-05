@@ -52,6 +52,7 @@ type TaskSpec struct {
 	Tolerations           []v1.Toleration
 	DefaultGracefulPeriod *int64
 	Taskpriority          string
+	MaxRetry              int32
 }
 
 type JobSpec struct {
@@ -211,10 +212,16 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 			restartPolicy = task.RestartPolicy
 		}
 
+		maxRetry := task.MaxRetry
+		if maxRetry == 0 {
+			maxRetry = -1
+		}
+
 		ts := batchv1alpha1.TaskSpec{
 			Name:     name,
 			Replicas: task.Rep,
 			Policies: task.Policies,
+			MaxRetry: maxRetry,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   name,
