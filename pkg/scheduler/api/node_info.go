@@ -94,6 +94,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		nodeInfo.Allocatable = NewResource(node.Status.Allocatable)
 		nodeInfo.Capability = NewResource(node.Status.Capacity)
 	}
+
 	nodeInfo.setNodeGPUInfo(node)
 	nodeInfo.setNodeState(node)
 	nodeInfo.setRevocableZone(node)
@@ -122,6 +123,11 @@ func (ni *NodeInfo) Ready() bool {
 }
 
 func (ni *NodeInfo) setRevocableZone(node *v1.Node) {
+	if node == nil {
+		klog.Warningf("the argument node is null.")
+		return
+	}
+
 	revocableZone := ""
 	if len(node.Labels) > 0 {
 		if value, found := node.Labels[v1beta1.RevocableZone]; found {
@@ -138,6 +144,7 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 			Phase:  NotReady,
 			Reason: "UnInitialized",
 		}
+		klog.Warningf("set the node %s status to %s.", node.Name, NotReady.String())
 		return
 	}
 
@@ -147,6 +154,7 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 			Phase:  NotReady,
 			Reason: "OutOfSync",
 		}
+		klog.Warningf("set the node %s status to %s.", node.Name, NotReady.String())
 		return
 	}
 
@@ -157,6 +165,7 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 				Phase:  NotReady,
 				Reason: "NotReady",
 			}
+			klog.Warningf("set the node %s status to %s.", node.Name, NotReady.String())
 			return
 		}
 	}
@@ -166,10 +175,12 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 		Phase:  Ready,
 		Reason: "",
 	}
+	klog.V(4).Infof("set the node %s status to %s.", node.Name, Ready.String())
 }
 
 func (ni *NodeInfo) setNodeGPUInfo(node *v1.Node) {
 	if node == nil {
+		klog.Warningf("the argument node is null.")
 		return
 	}
 	memory, ok := node.Status.Capacity[VolcanoGPUResource]
@@ -198,6 +209,7 @@ func (ni *NodeInfo) setNodeGPUInfo(node *v1.Node) {
 func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.setNodeState(node)
 	ni.setNodeGPUInfo(node)
+	ni.setRevocableZone(node)
 
 	if !ni.Ready() {
 		klog.Warningf("Failed to set node info, phase: %s, reason: %s",

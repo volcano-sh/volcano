@@ -59,7 +59,7 @@ func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *scheduling
 func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 	if len(pi.NodeName) != 0 {
 		if _, found := sc.Nodes[pi.NodeName]; !found {
-			return fmt.Errorf("node <%s> does not exist", pi.NodeName)
+			sc.Nodes[pi.NodeName] = schedulingapi.NewNodeInfo(nil)
 		}
 
 		node := sc.Nodes[pi.NodeName]
