@@ -8,6 +8,17 @@ on:
   pull_request:
 
 jobs:
+  tools:
+    runs-on: ubuntu-latest
+    name: Get Helm/kind/kubectl version
+    timeout-minutes: 40
+    steps:
+      - name: Get Tools Verison
+        run: |
+          helm version
+          kind version
+          kubectl version
+
   verify:
     runs-on: ubuntu-latest
     name: Verify codes, generated files
