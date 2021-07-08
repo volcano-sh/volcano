@@ -53,7 +53,7 @@ else
 REL_OSARCH=linux/$(OSARCH)
 endif
 
-# Run make images DOCKER_PLATFORMS="linux/amd64,linux/arm64" BUILDX_OUTPUT_TYPE=registry IMAGE_PREFIX=[yourregistry] to push multi-platform
+# Run make images DOCKER_PLATFORMS="linux/amd64,linux/arm64" BUILDX_OUTPUT_TYPE=registry IMAGE_PREFIX=[yourregistry]/vc to push multi-platform
 DOCKER_PLATFORMS ?= "${REL_OSARCH}"
 
 
