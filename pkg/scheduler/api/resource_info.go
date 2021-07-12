@@ -189,7 +189,7 @@ func (r *Resource) Add(rr *Resource) *Resource {
 
 //Sub subtracts two Resource objects.
 func (r *Resource) Sub(rr *Resource) *Resource {
-	assert.Assertf(rr.LessEqual(r), "resource is not sufficient to do operation: <%v> sub <%v>", r, rr)
+	assert.Assertf(rr.LessEqualInAllDimension(r, Zero), "resource is not sufficient to do operation: <%v> sub <%v>", r, rr)
 
 	r.MilliCPU -= rr.MilliCPU
 	r.Memory -= rr.Memory
@@ -304,9 +304,10 @@ func (r *Resource) LessInAllDimension(rr *Resource, defaultValue DimensionDefaul
 	return true
 }
 
-// LessEqual works as the same as the LessEqualStrict.
-// The difference is that function lessEqualFunc regards tiny value difference as Equal.
-func (r *Resource) LessEqual(rr *Resource) bool {
+// LessEqualInAllDimension returns true only on condition that all dimensions of resources in r are less than or equal with that of rr,
+// Otherwise returns false.
+// @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
+func (r *Resource) LessEqualInAllDimension(rr *Resource, defaultValue DimensionDefaultValue) bool {
 	lessEqualFunc := func(l, r, diff float64) bool {
 		if l < r || math.Abs(l-r) < diff {
 			return true
@@ -314,59 +315,27 @@ func (r *Resource) LessEqual(rr *Resource) bool {
 		return false
 	}
 
-	if !lessEqualFunc(r.MilliCPU, rr.MilliCPU, minResource) {
+	leftResource := r.Clone()
+	rightResource := rr.Clone()
+
+	if !lessEqualFunc(leftResource.MilliCPU, rightResource.MilliCPU, minResource) {
 		return false
 	}
-	if !lessEqualFunc(r.Memory, rr.Memory, minResource) {
-		return false
-	}
-
-	if r.ScalarResources == nil {
-		return true
-	}
-
-	if rr.ScalarResources == nil {
+	if !lessEqualFunc(leftResource.Memory, rightResource.Memory, minResource) {
 		return false
 	}
 
-	for rName, rQuant := range r.ScalarResources {
-		if rQuant <= minResource {
+	r.setDefaultValue(leftResource, rightResource, defaultValue)
+
+	for resourceName, leftValue := range leftResource.ScalarResources {
+		rightValue, _ := rightResource.ScalarResources[resourceName]
+		if rightValue == -1 {
 			continue
 		}
-		rrQuant, ok := rr.ScalarResources[rName]
-		if !ok || !lessEqualFunc(rQuant, rrQuant, minResource) {
+		if leftValue == -1 || !lessEqualFunc(leftValue, rightValue, minResource) {
 			return false
 		}
 	}
-
-	return true
-}
-
-// LessEqualStrict returns true only on the following conditions:
-// 1. All dimensions resources in r are less than that of rr
-// 2. Part dimensions are equal while the others are less in r
-// 3. All dimensions resources in r are equal with that of rr
-// Otherwise returns false.
-// Note: Any dimension of resource, which is not listed in resource object, is regarded as zero.
-func (r *Resource) LessEqualStrict(rr *Resource) bool {
-	lessFunc := func(l, r float64) bool {
-		return l <= r
-	}
-
-	if !lessFunc(r.MilliCPU, rr.MilliCPU) {
-		return false
-	}
-	if !lessFunc(r.Memory, rr.Memory) {
-		return false
-	}
-
-	for rName, rQuant := range r.ScalarResources {
-		_, ok := rr.ScalarResources[rName]
-		if !ok || !lessFunc(rQuant, rr.ScalarResources[rName]) {
-			return false
-		}
-	}
-
 	return true
 }
 
