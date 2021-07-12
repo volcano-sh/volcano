@@ -36,6 +36,16 @@ const (
 	minResource float64 = 0.1
 )
 
+// DimensionDefaultValue means default value for black resource dimension
+type DimensionDefaultValue string
+
+const (
+	// Zero means resource dimension not defined will be treated as zero
+	Zero DimensionDefaultValue = "Zero"
+	// Infinity means resource dimension not defined will be treated as infinity
+	Infinity DimensionDefaultValue = "Infinity"
+)
+
 // Resource struct defines all the resource type
 type Resource struct {
 	MilliCPU float64
@@ -262,43 +272,35 @@ func (r *Resource) FitDelta(rr *Resource) *Resource {
 	return r
 }
 
-// Less returns true only on condition that all dimensions of resources in r are less than that of rr
+// LessInAllDimension returns true only on condition that all dimensions of resources in r are less than that of rr,
 // Otherwise returns false.
-// Note: Any dimension of resource, which is not listed in resource object, is regarded as zero.
-func (r *Resource) Less(rr *Resource) bool {
+// @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
+func (r *Resource) LessInAllDimension(rr *Resource, defaultValue DimensionDefaultValue) bool {
 	lessFunc := func(l, r float64) bool {
 		return l < r
 	}
 
-	if !lessFunc(r.MilliCPU, rr.MilliCPU) {
+	leftResource := r.Clone()
+	rightResource := rr.Clone()
+
+	if !lessFunc(leftResource.MilliCPU, rightResource.MilliCPU) {
 		return false
 	}
-	if !lessFunc(r.Memory, rr.Memory) {
+	if !lessFunc(leftResource.Memory, rightResource.Memory) {
 		return false
 	}
 
-	if r.ScalarResources == nil {
-		if rr.ScalarResources != nil {
-			for _, rrQuant := range rr.ScalarResources {
-				if rrQuant <= minResource {
-					return false
-				}
-			}
+	r.setDefaultValue(leftResource, rightResource, defaultValue)
+
+	for resourceName, leftValue := range leftResource.ScalarResources {
+		rightValue, _ := rightResource.ScalarResources[resourceName]
+		if rightValue == -1 {
+			continue
 		}
-		return true
-	}
-
-	if rr.ScalarResources == nil {
-		return false
-	}
-
-	for rName, rQuant := range r.ScalarResources {
-		rrQuant := rr.ScalarResources[rName]
-		if !lessFunc(rQuant, rrQuant) {
+		if leftValue == -1 || !lessFunc(leftValue, rightValue) {
 			return false
 		}
 	}
-
 	return true
 }
 
@@ -479,6 +481,38 @@ func (r *Resource) MinDimensionResource(rr *Resource) *Resource {
 		}
 	}
 	return r
+}
+
+// setDefaultValue sets default value for resource dimension not defined of ScalarResource in leftResource and rightResource
+// @param defaultValue "default value for resource dimension not defined in ScalarResources. It can only be one of 'Zero' or 'Infinity'"
+func (r *Resource) setDefaultValue(leftResource, rightResource *Resource, defaultValue DimensionDefaultValue) {
+	if leftResource.ScalarResources == nil {
+		leftResource.ScalarResources = map[v1.ResourceName]float64{}
+	}
+	if rightResource.ScalarResources == nil {
+		rightResource.ScalarResources = map[v1.ResourceName]float64{}
+	}
+	for resourceName := range leftResource.ScalarResources {
+		_, ok := rightResource.ScalarResources[resourceName]
+		if !ok {
+			if defaultValue == Zero {
+				rightResource.ScalarResources[resourceName] = 0
+			} else if defaultValue == Infinity {
+				rightResource.ScalarResources[resourceName] = -1
+			}
+		}
+	}
+
+	for resourceName := range rightResource.ScalarResources {
+		_, ok := leftResource.ScalarResources[resourceName]
+		if !ok {
+			if defaultValue == Zero {
+				leftResource.ScalarResources[resourceName] = 0
+			} else if defaultValue == Infinity {
+				leftResource.ScalarResources[resourceName] = -1
+			}
+		}
+	}
 }
 
 // ParseResourceList parses the given configuration map into an API

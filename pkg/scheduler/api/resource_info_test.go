@@ -357,8 +357,8 @@ func TestSubResource(t *testing.T) {
 	}
 }
 
-func TestLess(t *testing.T) {
-	tests := []struct {
+func TestLessInAllDimension(t *testing.T) {
+	testsForDefaultZero := []struct {
 		resource1 *Resource
 		resource2 *Resource
 		expected  bool
@@ -418,8 +418,47 @@ func TestLess(t *testing.T) {
 		},
 	}
 
-	for _, test := range tests {
-		flag := test.resource1.Less(test.resource2)
+	testsForDefaultInfinity := []struct {
+		resource1 *Resource
+		resource2 *Resource
+		expected  bool
+	}{
+		{
+			resource1: &Resource{
+				MilliCPU:        1000,
+				Memory:          1000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			resource2: &Resource{
+				MilliCPU:        2000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"hugepages-test": 3000},
+			},
+			expected: true,
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        1000,
+				Memory:          1000,
+				ScalarResources: map[v1.ResourceName]float64{"hugepages-test": 1000},
+			},
+			resource2: &Resource{
+				MilliCPU:        2000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			expected: false,
+		},
+	}
+
+	for _, test := range testsForDefaultZero {
+		flag := test.resource1.LessInAllDimension(test.resource2, Zero)
+		if !reflect.DeepEqual(test.expected, flag) {
+			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
+		}
+	}
+	for _, test := range testsForDefaultInfinity {
+		flag := test.resource1.LessInAllDimension(test.resource2, Infinity)
 		if !reflect.DeepEqual(test.expected, flag) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
 		}
