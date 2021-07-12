@@ -76,7 +76,7 @@ func ClusterSize(ctx *TestContext, req v1.ResourceList) int32 {
 			alloc.Sub(res)
 		}
 
-		for slot.LessEqual(alloc) {
+		for slot.LessEqualInAllDimension(alloc, schedulerapi.Zero) {
 			alloc.Sub(slot)
 			res++
 		}
@@ -146,7 +146,7 @@ func ComputeNode(ctx *TestContext, req v1.ResourceList) (string, int32) {
 			alloc.Sub(res)
 		}
 
-		for slot.LessEqual(alloc) {
+		for slot.LessEqualInAllDimension(alloc, schedulerapi.Zero) {
 			alloc.Sub(slot)
 			res++
 		}

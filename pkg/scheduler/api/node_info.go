@@ -239,7 +239,7 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 	}
 
 	// set NodeState according to resources
-	if !ni.Used.LessEqual(ni.Allocatable) {
+	if !ni.Used.LessEqualInAllDimension(ni.Allocatable, Zero) {
 		ni.State = NodeState{
 			Phase:  NotReady,
 			Reason: "OutOfSync",
@@ -331,7 +331,7 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 }
 
 func (ni *NodeInfo) allocateIdleResource(ti *TaskInfo) error {
-	if ti.Resreq.LessEqual(ni.Idle) {
+	if ti.Resreq.LessEqualInAllDimension(ni.Idle, Zero) {
 		ni.Idle.Sub(ti.Resreq)
 		return nil
 	}
