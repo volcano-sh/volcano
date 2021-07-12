@@ -537,12 +537,35 @@ func TestLessEqualInAllDimension(t *testing.T) {
 	}
 }
 
-func TestLessInSomeDimension(t *testing.T) {
-	tests := []struct {
+func TestLessPartly(t *testing.T) {
+	testsForDefaultZero := []struct {
 		resource1 *Resource
 		resource2 *Resource
 		expected  bool
 	}{
+		{
+			resource1: &Resource{},
+			resource2: &Resource{},
+			expected:  false,
+		},
+		{
+			resource1: &Resource{},
+			resource2: &Resource{
+				MilliCPU:        2000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			expected: true,
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        2000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			resource2: &Resource{},
+			expected:  false,
+		},
 		{
 			resource1: &Resource{
 				MilliCPU:        2000,
@@ -623,8 +646,47 @@ func TestLessInSomeDimension(t *testing.T) {
 		},
 	}
 
-	for _, test := range tests {
-		flag := test.resource1.LessInSomeDimension(test.resource2)
+	testsForDefaultInfinity := []struct {
+		resource1 *Resource
+		resource2 *Resource
+		expected  bool
+	}{
+		{
+			resource1: &Resource{
+				MilliCPU:        2000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"hugepages-test": 2000},
+			},
+			resource2: &Resource{
+				MilliCPU:        2000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			expected: false,
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        2000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			resource2: &Resource{
+				MilliCPU:        2000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"hugepages-test": 2000},
+			},
+			expected: true,
+		},
+	}
+
+	for _, test := range testsForDefaultZero {
+		flag := test.resource1.LessPartly(test.resource2, Zero)
+		if !reflect.DeepEqual(test.expected, flag) {
+			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
+		}
+	}
+	for _, test := range testsForDefaultInfinity {
+		flag := test.resource1.LessPartly(test.resource2, Infinity)
 		if !reflect.DeepEqual(test.expected, flag) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
 		}
