@@ -37,6 +37,8 @@ var policyEventMap = map[busv1alpha1.Event]bool{
 	busv1alpha1.TaskCompletedEvent: true,
 	busv1alpha1.OutOfSyncEvent:     false,
 	busv1alpha1.CommandIssuedEvent: false,
+	busv1alpha1.JobUpdatedEvent:    true,
+	busv1alpha1.TaskFailedEvent:    true,
 }
 
 // policyActionMap defines all policy actions and whether to allow external use.
@@ -49,6 +51,9 @@ var policyActionMap = map[busv1alpha1.Action]bool{
 	busv1alpha1.ResumeJobAction:    true,
 	busv1alpha1.SyncJobAction:      false,
 	busv1alpha1.EnqueueAction:      false,
+	busv1alpha1.SyncQueueAction:    false,
+	busv1alpha1.OpenQueueAction:    false,
+	busv1alpha1.CloseQueueAction:   false,
 }
 
 func validatePolicies(policies []batchv1alpha1.LifecyclePolicy, fldPath *field.Path) error {
