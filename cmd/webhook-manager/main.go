@@ -34,6 +34,7 @@ import (
 	_ "volcano.sh/volcano/pkg/webhooks/admission/jobs/validate"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/podgroups/mutate"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/pods"
+	_ "volcano.sh/volcano/pkg/webhooks/admission/pods/mutate"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/queues/mutate"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/queues/validate"
 )

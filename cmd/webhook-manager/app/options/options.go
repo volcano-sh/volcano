@@ -42,6 +42,7 @@ type Config struct {
 	WebhookNamespace  string
 	SchedulerName     string
 	WebhookURL        string
+	ConfigPath        string
 }
 
 // NewConfig create new config.
@@ -69,6 +70,8 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.WebhookURL, "webhook-url", "", "The url of this webhook")
 
 	fs.StringVar(&c.SchedulerName, "scheduler-name", defaultSchedulerName, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
+
+	fs.StringVar(&c.ConfigPath, "admission-conf", "", "The configmap file of this webhook")
 }
 
 // CheckPortOrDie check valid port range.
