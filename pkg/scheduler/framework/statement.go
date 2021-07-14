@@ -199,19 +199,16 @@ func (s *Statement) unpipeline(task *api.TaskInfo) error {
 			task.Job, s.ssn.UID)
 	}
 
-	hostname := task.NodeName
-	task.NodeName = ""
-
-	if node, found := s.ssn.Nodes[hostname]; found {
+	if node, found := s.ssn.Nodes[task.NodeName]; found {
 		if err := node.RemoveTask(task); err != nil {
 			klog.Errorf("Failed to pipeline task <%v/%v> to node <%v> in Session <%v>: %v",
-				task.Namespace, task.Name, hostname, s.ssn.UID, err)
+				task.Namespace, task.Name, task.NodeName, s.ssn.UID, err)
 		}
 		klog.V(3).Infof("After pipelined Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
 			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
 	} else {
 		klog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
-			hostname, s.ssn.UID)
+			task.NodeName, s.ssn.UID)
 	}
 
 	for _, eh := range s.ssn.eventHandlers {
@@ -221,6 +218,7 @@ func (s *Statement) unpipeline(task *api.TaskInfo) error {
 			})
 		}
 	}
+	task.NodeName = ""
 
 	return nil
 }
