@@ -339,32 +339,32 @@ func (r *Resource) LessEqualInAllDimension(rr *Resource, defaultValue DimensionD
 	return true
 }
 
-// LessInSomeDimension returns true if there exists any dimension whose resource amount in r is less than that in rr.
+// LessPartly returns true if there exists any dimension whose resource amount in r is less than that in rr.
 // Otherwise returns false.
-// Note: Any dimension of resource, which is not listed in resource object, is regarded as zero.
-func (r *Resource) LessInSomeDimension(rr *Resource) bool {
+// @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
+func (r *Resource) LessPartly(rr *Resource, defaultValue DimensionDefaultValue) bool {
 	lessFunc := func(l, r float64) bool {
 		return l < r
 	}
 
-	if lessFunc(r.MilliCPU, rr.MilliCPU) || lessFunc(r.Memory, rr.Memory) {
+	leftResource := r.Clone()
+	rightResource := rr.Clone()
+
+	if lessFunc(leftResource.MilliCPU, rightResource.MilliCPU) || lessFunc(leftResource.Memory, rightResource.Memory) {
 		return true
 	}
 
-	for rName, rQuant := range r.ScalarResources {
-		_, ok := rr.ScalarResources[rName]
-		if ok && lessFunc(rQuant, rr.ScalarResources[rName]) {
+	r.setDefaultValue(leftResource, rightResource, defaultValue)
+
+	for resourceName, leftValue := range leftResource.ScalarResources {
+		rightValue, _ := rightResource.ScalarResources[resourceName]
+		if leftValue == -1 {
+			continue
+		}
+		if rightValue == -1 || lessFunc(leftValue, rightValue) {
 			return true
 		}
 	}
-
-	for rrName, rrQuant := range rr.ScalarResources {
-		_, ok := r.ScalarResources[rrName]
-		if !ok && rrQuant > minResource {
-			return true
-		}
-	}
-
 	return false
 }
 
