@@ -368,6 +368,38 @@ func (r *Resource) LessInSomeDimension(rr *Resource) bool {
 	return false
 }
 
+// LessEqualPartly returns true if there exists any dimension whose resource amount in r is less than or equal with that in rr.
+// Otherwise returns false.
+// @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
+func (r *Resource) LessEqualPartly(rr *Resource, defaultValue DimensionDefaultValue) bool {
+	lessEqualFunc := func(l, r, diff float64) bool {
+		if l < r || math.Abs(l-r) < diff {
+			return true
+		}
+		return false
+	}
+
+	leftResource := r.Clone()
+	rightResource := rr.Clone()
+
+	if lessEqualFunc(leftResource.MilliCPU, rightResource.MilliCPU, minResource) || lessEqualFunc(leftResource.Memory, rightResource.Memory, minResource) {
+		return true
+	}
+
+	r.setDefaultValue(leftResource, rightResource, defaultValue)
+
+	for resourceName, leftValue := range leftResource.ScalarResources {
+		rightValue, _ := rightResource.ScalarResources[resourceName]
+		if leftValue == -1 {
+			continue
+		}
+		if rightValue == -1 || lessEqualFunc(leftValue, rightValue, minResource) {
+			return true
+		}
+	}
+	return false
+}
+
 // Diff calculate the difference between two resource object
 func (r *Resource) Diff(rr *Resource) (*Resource, *Resource) {
 	increasedVal := EmptyResource()
