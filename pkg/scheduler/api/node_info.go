@@ -60,7 +60,7 @@ type NodeInfo struct {
 
 	// enable node resource oversubscription
 	OversubscriptionNode bool
-	// OfflineJobEvicting true means node resource useage too high then dispatched pod can not use oversubscription resource
+	// OfflineJobEvicting true means node resource usage too high then dispatched pod can not use oversubscription resource
 	OfflineJobEvicting bool
 
 	// Resource Oversubscription feature: the Oversubscription Resource reported in annotation
@@ -74,7 +74,7 @@ func (ni *NodeInfo) FutureIdle() *Resource {
 	return ni.Idle.Clone().Add(ni.Releasing).Sub(ni.Pipelined)
 }
 
-// GetNodeAllocatable return node Allocatable withou OversubscriptionResource resource
+// GetNodeAllocatable return node Allocatable without OversubscriptionResource resource
 func (ni *NodeInfo) GetNodeAllocatable() *Resource {
 	return NewResource(ni.Node.Status.Allocatable)
 }

@@ -143,7 +143,7 @@ type defaultEvictor struct {
 	recorder   record.EventRecorder
 }
 
-//Evict will send delete pod request to api server
+// Evict will send delete pod request to api server
 func (de *defaultEvictor) Evict(p *v1.Pod, reason string) error {
 	klog.V(3).Infof("Evicting pod %v/%v, because of %v", p.Namespace, p.Name, reason)
 

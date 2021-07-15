@@ -89,8 +89,8 @@ func (info *NumatopoInfo) DeepCopy() *NumatopoInfo {
 
 // Compare is the function to show the change of the resource on kubelet
 // return val:
-// - true : the resource on kubelet is geting more or no change
-// - false :  the resource on kubelet is geting less
+// - true : the resource on kubelet is getting more or no change
+// - false :  the resource on kubelet is getting less
 func (info *NumatopoInfo) Compare(newInfo *NumatopoInfo) bool {
 	for resName := range info.NumaResMap {
 		oldSize := info.NumaResMap[resName].Allocatable.Size()
