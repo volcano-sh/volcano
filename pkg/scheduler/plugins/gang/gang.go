@@ -166,7 +166,6 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			job.JobFitErrors = msg
 
 			unScheduleJobCount++
-			metrics.UpdateUnscheduleTaskCount(job.Name, int(unreadyTaskCount))
 			metrics.RegisterJobRetries(job.Name)
 
 			jc := &scheduling.PodGroupCondition{
@@ -210,6 +209,8 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			}
 
 		}
+		metrics.UpdateUnscheduleTaskCount(job.Name, int(unreadyTaskCount))
+		unreadyTaskCount = 0
 	}
 
 	metrics.UpdateUnscheduleJobCount(unScheduleJobCount)
