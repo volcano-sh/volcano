@@ -314,6 +314,7 @@ func (sc *SchedulerCache) AddNode(obj interface{}) {
 		klog.Errorf("Failed to add node %s into cache: %v", node.Name, err)
 		return
 	}
+	sc.NodeList = append(sc.NodeList, node.Name)
 }
 
 // UpdateNode update node to scheduler cache
@@ -364,6 +365,13 @@ func (sc *SchedulerCache) DeleteNode(obj interface{}) {
 	if err != nil {
 		klog.Errorf("Failed to delete node %s from cache: %v", node.Name, err)
 		return
+	}
+
+	for i, name := range sc.NodeList {
+		if name == node.Name {
+			sc.NodeList = append(sc.NodeList[:i], sc.NodeList[i+1:]...)
+			break
+		}
 	}
 }
 

@@ -32,6 +32,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 // Session information for the current session
@@ -52,6 +53,7 @@ type Session struct {
 
 	Tiers          []conf.Tier
 	Configurations []conf.Configuration
+	NodeList       []*api.NodeInfo
 
 	plugins           map[string]Plugin
 	eventHandlers     []*EventHandler
@@ -147,7 +149,7 @@ func openSession(cache cache.Cache) *Session {
 			delete(ssn.Jobs, job.UID)
 		}
 	}
-
+	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
 	ssn.Nodes = snapshot.Nodes
 	ssn.RevocableNodes = snapshot.RevocableNodes
 	ssn.Queues = snapshot.Queues
@@ -171,6 +173,7 @@ func closeSession(ssn *Session) {
 	ssn.namespaceOrderFns = nil
 	ssn.queueOrderFns = nil
 	ssn.clusterOrderFns = nil
+	ssn.NodeList = nil
 
 	klog.V(3).Infof("Close Session %v", ssn.UID)
 }

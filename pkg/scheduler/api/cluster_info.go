@@ -27,6 +27,7 @@ type ClusterInfo struct {
 	Queues         map[QueueID]*QueueInfo
 	NamespaceInfo  map[NamespaceName]*NamespaceInfo
 	RevocableNodes map[string]*NodeInfo
+	NodeList       []string
 }
 
 func (ci ClusterInfo) String() string {
@@ -67,6 +68,10 @@ func (ci ClusterInfo) String() string {
 			str += fmt.Sprintf("\t Namespace(%s) Weight(%v)\n",
 				ns.Name, ns.Weight)
 		}
+	}
+
+	if len(ci.NodeList) != 0 {
+		str += fmt.Sprintf("NodeList: %v\n", ci.NodeList)
 	}
 
 	return str
