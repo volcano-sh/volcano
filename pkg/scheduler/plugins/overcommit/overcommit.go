@@ -109,12 +109,20 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 		jobMinReq := api.NewResource(*job.PodGroup.Spec.MinResources)
 		if inqueue.Add(jobMinReq).LessEqualInAllDimension(idle, api.Zero) {
 			klog.V(4).Infof("Sufficient resources, permit job <%s/%s> to be inqueue", job.Namespace, job.Name)
-			op.inqueueResource.Add(jobMinReq)
 			return util.Permit
 		}
 		klog.V(4).Infof("Resource in cluster is overused, reject job <%s/%s> to be inqueue",
 			job.Namespace, job.Name)
 		return util.Reject
+	})
+
+	ssn.AddJobEnqueuedFn(op.Name(), func(obj interface{}) {
+		job := obj.(*api.JobInfo)
+		if job.PodGroup.Spec.MinResources == nil {
+			return
+		}
+		jobMinReq := api.NewResource(*job.PodGroup.Spec.MinResources)
+		op.inqueueResource.Add(jobMinReq)
 	})
 }
 

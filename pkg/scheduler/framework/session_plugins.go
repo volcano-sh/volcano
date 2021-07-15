@@ -113,6 +113,11 @@ func (ssn *Session) AddJobEnqueueableFn(name string, fn api.VoteFn) {
 	ssn.jobEnqueueableFns[name] = fn
 }
 
+// AddJobEnqueuedFn add jobEnqueued function
+func (ssn *Session) AddJobEnqueuedFn(name string, fn api.JobEnqueuedFn) {
+	ssn.jobEnqueuedFns[name] = fn
+}
+
 // AddTargetJobFn add targetjob function
 func (ssn *Session) AddTargetJobFn(name string, fn api.TargetJobFn) {
 	ssn.targetJobFns[name] = fn
@@ -381,6 +386,24 @@ func (ssn *Session) JobEnqueueable(obj interface{}) bool {
 	}
 
 	return true
+}
+
+// JobEnqueued invoke jobEnqueuedFns function of the plugins
+func (ssn *Session) JobEnqueued(obj interface{}) {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledJobEnqueued) {
+				continue
+			}
+			fn, found := ssn.jobEnqueuedFns[plugin.Name]
+			if !found {
+				continue
+			}
+
+			fn(obj)
+		}
+	}
+
 }
 
 // TargetJob invoke targetJobFns function of the plugins

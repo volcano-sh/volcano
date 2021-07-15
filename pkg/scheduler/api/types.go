@@ -130,6 +130,9 @@ type ValidateExFn func(interface{}) *ValidateResult
 // VoteFn is the func declaration used to check object's complicated status.
 type VoteFn func(interface{}) int
 
+// JobEnqueuedFn is the func declaration used to call after job enqueued.
+type JobEnqueuedFn func(interface{})
+
 // PredicateFn is the func declaration used to predicate node for task.
 type PredicateFn func(*TaskInfo, *NodeInfo) error
 
