@@ -34,6 +34,6 @@ const (
 	OversubscriptionCPU = "volcano.sh/oversubscription-cpu"
 	// OversubscriptionMemory is the key of memory oversubscription
 	OversubscriptionMemory = "volcano.sh/oversubscription-memory"
-	// OfflineJobEvicting node will not schedule pod due to offline job evciting
+	// OfflineJobEvicting node will not schedule pod due to offline job evicting
 	OfflineJobEvicting = "volcano.sh/offline-job-evicting"
 )
