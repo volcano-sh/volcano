@@ -308,6 +308,10 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				if err != nil {
 					fit, err = predicateByStablefilter(task.Pod, nodeInfo)
 					pCache.UpdateCache(node.Name, task.Pod, fit)
+				} else {
+					if !fit {
+						err = fmt.Errorf("plugin equivalence cache predicates failed")
+					}
 				}
 			} else {
 				fit, err = predicateByStablefilter(task.Pod, nodeInfo)
