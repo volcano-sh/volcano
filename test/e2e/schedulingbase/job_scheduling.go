@@ -317,7 +317,7 @@ var _ = Describe("Job E2E Test", func() {
 
 		need := schedulingapi.NewResource(v1.ResourceList{"cpu": resource.MustParse("500m")})
 		var count int32
-		for need.LessEqualInAllDimension(alloc, schedulingapi.Zero) {
+		for need.LessEqual(alloc, schedulingapi.Zero) {
 			count++
 			alloc.Sub(need)
 		}

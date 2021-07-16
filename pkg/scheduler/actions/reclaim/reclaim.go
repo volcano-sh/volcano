@@ -160,7 +160,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 				}
 				reclaimed.Add(reclaimee.Resreq)
 				// If reclaimed enough resources, break loop to avoid Sub panic.
-				if resreq.LessEqualInAllDimension(reclaimed, api.Zero) {
+				if resreq.LessEqual(reclaimed, api.Zero) {
 					break
 				}
 			}
@@ -168,7 +168,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			klog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>.",
 				reclaimed, task.Namespace, task.Name, task.InitResreq)
 
-			if task.InitResreq.LessEqualInAllDimension(reclaimed, api.Zero) {
+			if task.InitResreq.LessEqual(reclaimed, api.Zero) {
 				if err := ssn.Pipeline(task, n.Name); err != nil {
 					klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 						task.Namespace, task.Name, n.Name)

@@ -127,7 +127,7 @@ func (rp *reservationPlugin) getUnlockedNodesWithMaxIdle(ssn *framework.Session)
 				break
 			}
 		}
-		if !hasLocked && (maxIdleNode == nil || maxIdleNode.Idle.LessEqualInAllDimension(node.Idle, api.Zero)) {
+		if !hasLocked && (maxIdleNode == nil || maxIdleNode.Idle.LessEqual(node.Idle, api.Zero)) {
 			maxIdleNode = node
 		}
 	}

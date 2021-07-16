@@ -165,7 +165,7 @@ func (p *taskTopologyPlugin) calcBucketScore(task *api.TaskInfo, node *api.NodeI
 
 	// 3. the other tasks in bucket take into considering
 	score += len(bucket.tasks)
-	if bucket.request == nil || bucket.request.LessEqualInAllDimension(maxResource, api.Zero) {
+	if bucket.request == nil || bucket.request.LessEqual(maxResource, api.Zero) {
 		return score, jobManager, nil
 	}
 
@@ -178,7 +178,7 @@ func (p *taskTopologyPlugin) calcBucketScore(task *api.TaskInfo, node *api.NodeI
 		}
 		remains.Sub(bucketTask.Resreq)
 		score--
-		if remains.LessEqualInAllDimension(maxResource, api.Zero) {
+		if remains.LessEqual(maxResource, api.Zero) {
 			break
 		}
 	}

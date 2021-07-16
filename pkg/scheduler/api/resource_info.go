@@ -189,7 +189,7 @@ func (r *Resource) Add(rr *Resource) *Resource {
 
 //Sub subtracts two Resource objects.
 func (r *Resource) Sub(rr *Resource) *Resource {
-	assert.Assertf(rr.LessEqualInAllDimension(r, Zero), "resource is not sufficient to do operation: <%v> sub <%v>", r, rr)
+	assert.Assertf(rr.LessEqual(r, Zero), "resource is not sufficient to do operation: <%v> sub <%v>", r, rr)
 
 	r.MilliCPU -= rr.MilliCPU
 	r.Memory -= rr.Memory
@@ -272,10 +272,10 @@ func (r *Resource) FitDelta(rr *Resource) *Resource {
 	return r
 }
 
-// LessInAllDimension returns true only on condition that all dimensions of resources in r are less than that of rr,
+// Less returns true only on condition that all dimensions of resources in r are less than that of rr,
 // Otherwise returns false.
 // @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
-func (r *Resource) LessInAllDimension(rr *Resource, defaultValue DimensionDefaultValue) bool {
+func (r *Resource) Less(rr *Resource, defaultValue DimensionDefaultValue) bool {
 	lessFunc := func(l, r float64) bool {
 		return l < r
 	}
@@ -304,10 +304,10 @@ func (r *Resource) LessInAllDimension(rr *Resource, defaultValue DimensionDefaul
 	return true
 }
 
-// LessEqualInAllDimension returns true only on condition that all dimensions of resources in r are less than or equal with that of rr,
+// LessEqual returns true only on condition that all dimensions of resources in r are less than or equal with that of rr,
 // Otherwise returns false.
 // @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
-func (r *Resource) LessEqualInAllDimension(rr *Resource, defaultValue DimensionDefaultValue) bool {
+func (r *Resource) LessEqual(rr *Resource, defaultValue DimensionDefaultValue) bool {
 	lessEqualFunc := func(l, r, diff float64) bool {
 		if l < r || math.Abs(l-r) < diff {
 			return true

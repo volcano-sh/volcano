@@ -159,12 +159,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			oldDeserved := attr.deserved.Clone()
 			attr.deserved.Add(remaining.Clone().Multi(float64(attr.weight) / float64(totalWeight)))
 
-			if attr.capability != nil && !attr.deserved.LessEqualInAllDimension(attr.capability, api.Infinity) {
+			if attr.capability != nil && !attr.deserved.LessEqual(attr.capability, api.Infinity) {
 				attr.deserved = helpers.Min(attr.deserved, attr.capability)
 				attr.deserved = helpers.Min(attr.deserved, attr.request)
 				meet[attr.queueID] = struct{}{}
 				klog.V(4).Infof("queue <%s> is meet cause of the capability", attr.name)
-			} else if attr.request.LessEqualInAllDimension(attr.deserved, api.Zero) {
+			} else if attr.request.LessEqual(attr.deserved, api.Zero) {
 				attr.deserved = helpers.Min(attr.deserved, attr.request)
 				meet[attr.queueID] = struct{}{}
 				klog.V(4).Infof("queue <%s> is meet", attr.name)
@@ -220,13 +220,13 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				allocations[job.Queue] = attr.allocated.Clone()
 			}
 			allocated := allocations[job.Queue]
-			if allocated.LessInAllDimension(reclaimee.Resreq, api.Zero) {
+			if allocated.Less(reclaimee.Resreq, api.Zero) {
 				klog.V(3).Infof("Failed to allocate resource for Task <%s/%s> in Queue <%s>, not enough resource.",
 					reclaimee.Namespace, reclaimee.Name, job.Queue)
 				continue
 			}
 
-			if !allocated.LessEqualInAllDimension(attr.deserved, api.Zero) {
+			if !allocated.LessEqual(attr.deserved, api.Zero) {
 				allocated.Sub(reclaimee.Resreq)
 				victims = append(victims, reclaimee)
 			}
@@ -239,7 +239,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		queue := obj.(*api.QueueInfo)
 		attr := pp.queueOpts[queue.UID]
 
-		overused := !attr.allocated.LessEqualInAllDimension(attr.deserved, api.Zero)
+		overused := !attr.allocated.LessEqual(attr.deserved, api.Zero)
 		metrics.UpdateQueueOverused(attr.name, overused)
 		if overused {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
@@ -267,7 +267,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 		minReq := job.GetMinResources()
 		// The queue resource quota limit has not reached
-		inqueue := minReq.Add(attr.allocated).Add(attr.inqueue).LessEqualInAllDimension(api.NewResource(queue.Queue.Spec.Capability), api.Infinity)
+		inqueue := minReq.Add(attr.allocated).Add(attr.inqueue).LessEqual(api.NewResource(queue.Queue.Spec.Capability), api.Infinity)
 		if inqueue {
 			attr.inqueue.Add(job.GetMinResources())
 			return util.Permit

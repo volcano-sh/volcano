@@ -289,7 +289,7 @@ func TestSubResource(t *testing.T) {
 	}
 }
 
-func TestLessInAllDimension(t *testing.T) {
+func TestLess(t *testing.T) {
 	testsForDefaultZero := []struct {
 		resource1 *Resource
 		resource2 *Resource
@@ -384,20 +384,20 @@ func TestLessInAllDimension(t *testing.T) {
 	}
 
 	for _, test := range testsForDefaultZero {
-		flag := test.resource1.LessInAllDimension(test.resource2, Zero)
+		flag := test.resource1.Less(test.resource2, Zero)
 		if !reflect.DeepEqual(test.expected, flag) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
 		}
 	}
 	for _, test := range testsForDefaultInfinity {
-		flag := test.resource1.LessInAllDimension(test.resource2, Infinity)
+		flag := test.resource1.Less(test.resource2, Infinity)
 		if !reflect.DeepEqual(test.expected, flag) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
 		}
 	}
 }
 
-func TestLessEqualInAllDimension(t *testing.T) {
+func TestLessEqual(t *testing.T) {
 	testsForDefaultZero := []struct {
 		resource1 *Resource
 		resource2 *Resource
@@ -524,13 +524,13 @@ func TestLessEqualInAllDimension(t *testing.T) {
 	}
 
 	for _, test := range testsForDefaultZero {
-		flag := test.resource1.LessEqualInAllDimension(test.resource2, Zero)
+		flag := test.resource1.LessEqual(test.resource2, Zero)
 		if !reflect.DeepEqual(test.expected, flag) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
 		}
 	}
 	for _, test := range testsForDefaultInfinity {
-		flag := test.resource1.LessEqualInAllDimension(test.resource2, Infinity)
+		flag := test.resource1.LessEqual(test.resource2, Infinity)
 		if !reflect.DeepEqual(test.expected, flag) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
 		}
