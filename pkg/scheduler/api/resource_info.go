@@ -400,6 +400,32 @@ func (r *Resource) LessEqualPartly(rr *Resource, defaultValue DimensionDefaultVa
 	return false
 }
 
+// Equal returns true only on condition that values in all dimension are equal with each other for r and rr
+// Otherwise returns false.
+// @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
+func (r *Resource) Equal(rr *Resource, defaultValue DimensionDefaultValue) bool {
+	equalFunc := func(l, r, diff float64) bool {
+		return l == r || math.Abs(l-r) < diff
+	}
+
+	leftResource := r.Clone()
+	rightResource := rr.Clone()
+
+	if !equalFunc(leftResource.MilliCPU, rightResource.MilliCPU, minResource) || !equalFunc(leftResource.Memory, rightResource.Memory, minResource) {
+		return false
+	}
+
+	r.setDefaultValue(leftResource, rightResource, defaultValue)
+
+	for resourceName, leftValue := range leftResource.ScalarResources {
+		rightValue, _ := rightResource.ScalarResources[resourceName]
+		if !equalFunc(leftValue, rightValue, minResource) {
+			return false
+		}
+	}
+	return true
+}
+
 // Diff calculate the difference between two resource object
 func (r *Resource) Diff(rr *Resource) (*Resource, *Resource) {
 	increasedVal := EmptyResource()
