@@ -236,7 +236,7 @@ func preempt(
 
 		for !victimsQueue.Empty() {
 			// If reclaimed enough resources, break loop to avoid Sub panic.
-			if preemptor.InitResreq.LessEqualInAllDimension(node.FutureIdle(), api.Zero) {
+			if preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 				break
 			}
 			preemptee := victimsQueue.Pop().(*api.TaskInfo)
@@ -254,7 +254,7 @@ func preempt(
 		klog.V(3).Infof("Preempted <%v> for Task <%s/%s> requested <%v>.",
 			preempted, preemptor.Namespace, preemptor.Name, preemptor.InitResreq)
 
-		if preemptor.InitResreq.LessEqualInAllDimension(node.FutureIdle(), api.Zero) {
+		if preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 			if err := stmt.Pipeline(preemptor, node.Name); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)

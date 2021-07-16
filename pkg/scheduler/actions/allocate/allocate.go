@@ -110,7 +110,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	}
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		// Check for Resource Predicate
-		if !task.InitResreq.LessEqualInAllDimension(node.FutureIdle(), api.Zero) {
+		if !task.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 			return api.NewFitError(task, node, api.NodeResourceFitFailed)
 		}
 
@@ -211,7 +211,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 			var candidateNodes []*api.NodeInfo
 			for _, n := range predicateNodes {
-				if task.InitResreq.LessEqualInAllDimension(n.Idle, api.Zero) || task.InitResreq.LessEqualInAllDimension(n.FutureIdle(), api.Zero) {
+				if task.InitResreq.LessEqual(n.Idle, api.Zero) || task.InitResreq.LessEqual(n.FutureIdle(), api.Zero) {
 					candidateNodes = append(candidateNodes, n)
 				}
 			}
@@ -229,7 +229,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			}
 
 			// Allocate idle resource to the task.
-			if task.InitResreq.LessEqualInAllDimension(node.Idle, api.Zero) {
+			if task.InitResreq.LessEqual(node.Idle, api.Zero) {
 				klog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
 					task.Namespace, task.Name, node.Name)
 				if err := stmt.Allocate(task, node); err != nil {
@@ -243,7 +243,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					task.Namespace, task.Name, node.Name)
 
 				// Allocate releasing resource to the task if any.
-				if task.InitResreq.LessEqualInAllDimension(node.FutureIdle(), api.Zero) {
+				if task.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 					klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
 						task.Namespace, task.Name, node.Name, task.InitResreq, node.Releasing)
 					if err := stmt.Pipeline(task, node.Name); err != nil {
