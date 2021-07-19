@@ -128,6 +128,7 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 
 	// Set pod labels for Service.
 	pod.Labels[batch.JobNameKey] = job.Name
+	pod.Labels[batch.TaskSpecKey] = tsKey
 	pod.Labels[batch.JobNamespaceKey] = job.Namespace
 	pod.Labels[batch.QueueNameKey] = job.Spec.Queue
 	if len(job.Labels) > 0 {
