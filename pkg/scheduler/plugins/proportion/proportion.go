@@ -220,7 +220,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				allocations[job.Queue] = attr.allocated.Clone()
 			}
 			allocated := allocations[job.Queue]
-			if allocated.Less(reclaimee.Resreq, api.Zero) {
+			if allocated.LessPartly(reclaimer.Resreq, api.Zero) {
 				klog.V(3).Infof("Failed to allocate resource for Task <%s/%s> in Queue <%s>, not enough resource.",
 					reclaimee.Namespace, reclaimee.Name, job.Queue)
 				continue
