@@ -138,6 +138,10 @@ func TestCreatePatchExecution(t *testing.T) {
 			t.Errorf("testCase '%s's expected patch operation with value %v, but got %v",
 				testCase.Name, testCase.operation.Value, ret.Value)
 		}
+		if aTask.MaxRetry != defaultMaxRetry {
+			t.Errorf("testCase '%s's expected patch 'task.MaxRetry' with value %v, but got %v",
+				testCase.Name, defaultMaxRetry, aTask.MaxRetry)
+		}
 	}
 
 }

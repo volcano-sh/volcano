@@ -38,4 +38,5 @@ type Cache interface {
 	DeletePod(pod *v1.Pod) error
 
 	TaskCompleted(jobKey, taskName string) bool
+	TaskFailed(jobKey, taskName string) bool
 }

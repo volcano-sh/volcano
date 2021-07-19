@@ -36,7 +36,7 @@ func ClusterSize(ctx *TestContext, req v1.ResourceList) int32 {
 	Expect(err).NotTo(HaveOccurred(), "failed to list nodes")
 
 	pods, err := ctx.Kubeclient.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred(), "failed to list nodes")
+	Expect(err).NotTo(HaveOccurred(), "failed to list pods")
 
 	used := map[string]*schedulerapi.Resource{}
 

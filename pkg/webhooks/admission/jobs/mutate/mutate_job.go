@@ -39,6 +39,8 @@ const (
 	DefaultMaxRetry = 3
 
 	defaultSchedulerName = "volcano"
+
+	defaultMaxRetry int32 = 3
 )
 
 func init() {
@@ -186,6 +188,11 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string) *patchOperation {
 			patched = true
 			minAvailable := tasks[index].Replicas
 			tasks[index].MinAvailable = &minAvailable
+		}
+
+		if tasks[index].MaxRetry == 0 {
+			patched = true
+			tasks[index].MaxRetry = defaultMaxRetry
 		}
 	}
 	if !patched {

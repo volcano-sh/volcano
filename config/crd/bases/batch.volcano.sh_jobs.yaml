@@ -168,6 +168,11 @@ spec:
                         in Job
                       format: int32
                       type: integer
+                    maxRetry:
+                      description: Specifies the maximum number of retries before marking
+                        this Task failed. Defaults to 3.
+                      format: int32
+                      type: integer
                     template:
                       description: Specifies the pod that will be created for this
                         TaskSpec when executing a Job
