@@ -29,7 +29,7 @@ Investigate to cooperate with argo to support job dependencies.
 [MindSpore](https://www.mindspore.cn/) is a deep learning training and inference framework, support running MindSpore training with volcano job.
 
 ## v1.2(Planned on Oct 23,2020)
-### Queue Resource Reservation
+### Queue Resource Reservation(Delay)
 * Description: Support reserve specified resource for queue without restart Volcano.
 * Priority: High
 * Issue: https://github.com/volcano-sh/volcano/issues/1101
@@ -47,7 +47,7 @@ Investigate to cooperate with argo to support job dependencies.
 * Issue: https://github.com/volcano-sh/volcano/issues/1035
 * Owner: @sresthas
 
-### Support Hierarchy Queue
+### Support Hierarchy Queue(Delay)
 * Description: Support Hierarchy Queue algorithm.
 * Priority: High
 * Issue: https://github.com/volcano-sh/volcano/issues/1033
@@ -59,7 +59,7 @@ Investigate to cooperate with argo to support job dependencies.
 * Issue: https://github.com/volcano-sh/volcano/issues/1097
 * Owner: @merryzhou
 
-### Status Message Enhanced For CRD
+### Status Message Enhanced For CRD(Delay)
 * Description: Provide more status detail for CRD status when use CLI such job fail reason.
 * Priority: Middle
 * Issue: https://github.com/volcano-sh/volcano/issues/1094
@@ -95,17 +95,46 @@ Investigate to cooperate with argo to support job dependencies.
 * Issue: https://github.com/volcano-sh/devices/issues/12
 * Owner: @peiniliu
 
-### Queue Resource Reservation
-* Description: Support reserve specified resource for queue without restart Volcano.
-* Priority: Medium
-* Issue: https://github.com/volcano-sh/volcano/issues/1101
-* Owner: @Thor-wl @hudson741
-
-## v1.4 and later (To be updated)
+## v1.4 (To be updated)
 ### Support Hierarchy Queue
 * Description: Support Hierarchy Queue algorithm.
+* Priority: High
 * Issue: https://github.com/volcano-sh/volcano/issues/1033
+* Owner: @Thor-wl
 
+### Monitoring: Cluster Resource
+* Description: Support monitoring metrics at cluster level
+* Priority: Middle
+* Issue: https://github.com/volcano-sh/volcano/issues/1586
+* Owner: @yanglilangqun @Tammy-kunyu
+
+### Add Stress Test
+* Description: Add stress test for Volcano.
+* Priority: Middle
+* Issue: https://github.com/volcano-sh/volcano/issues/1284
+* Owner: @rudeigerc
+
+## v1.5 (To be updated)
+### Task Dag
+* Description: Support Dag for task level
+* Priority: High
+* Issue: https://github.com/volcano-sh/volcano/issues/1627
+* Owner: @hwdef @shinytang6 @Thor-wl
+
+### Monitoring: Queue
+* Description: Support monitoring metrics at queue level
+* Priority: Middle
+* Issue: https://github.com/volcano-sh/volcano/issues/1586
+* Owner: @yanglilangqun @Tammy-kunyu
+
+## v1.6 (To be updated)
+### Monitoring: Job
+* Description: Support monitoring metrics at job level
+* Priority: Middle
+* Issue: https://github.com/volcano-sh/volcano/issues/1586
+* Owner: @yanglilangqun @Tammy-kunyu
+
+## Later (To be updated)
 ### Support configuration hot update
 * Description: Add hot update for Volcano components arguments.
 * Issue: https://github.com/volcano-sh/volcano/issues/1326
@@ -119,9 +148,3 @@ Investigate to cooperate with argo to support job dependencies.
 
 ### Improve the Autoscaling enficiency
 * Description: Combine the Autoscaler and scheduler to improve the scaling efficiency.
-
-### Add fine-grained monitor metrics
-* Description: Enhance monitor to add more metrics for jobs, queues, etc.
-
-### Add stress test
-* Description: Add the stress test.
