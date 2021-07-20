@@ -3,8 +3,7 @@
 ## Introduction
 
 In a co-located environment, some nodes are in both Kubernetes cluster and Yarn cluster. For these nodes, Kubernetes and Yarn cluster can use these resource by time-sharing multiplexing.
-For example, in 8:00~24:00 the on-line service in kubernetes can can use these nodes. And in 0:00~8:00, kubernetes need evict the workload on these nodes, left the resource for Yarn cluster.
-
+For example, in 8:00~24:00 the on-line service in kubernetes can use these nodes. And in 0:00~8:00, kubernetes need evict the workload on these nodes, left the resource for Yarn cluster.
 
 ## Solution
 

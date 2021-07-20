@@ -4,13 +4,15 @@
 
 ### Pre-Condition
 
- - Enable cpu manager and set policy to "static"
- - Enable topology manager and set the policy option you want
+- Enable cpu manager and set policy to "static"
+- Enable topology manager and set the policy option you want
     <br><br>
-    1. Set the above conditions by editing the kubelet configuration file 
+    1. Set the above conditions by editing the kubelet configuration file
+
    ```
     cat /var/lib/kubelet/config.yaml
    ```
+
    ```
     {...}
     cpuManagerPolicy: static
@@ -18,14 +20,17 @@
     kubeReserved:
       cpu: 1000m
    ```
+
    2. Restart kubelet to take effect <br>
       Run the following:
+
       ```
       1. systemctl stop kubelet
       2. rm -rf /var/lib/kubelet/cpu_manager_state
       3. systemctl daemon-reload
       4. systemctl start kubelet
       ```
+
 ### Install volcano
 
 #### 1. Install from source
@@ -63,7 +68,7 @@ data:
           weight: 10
 ```
 
-#### 2. Install from release package.
+#### 2. Install from release package
 
 Same as above, after installed, update the scheduler configuration in `volcano-scheduler-configmap` configmap.
 
@@ -74,19 +79,21 @@ Please refer to [volcano resource exporter](https://github.com/volcano-sh/resour
 ### Verify environment is ready
 
 Check the CRD **numatopo** whether the data of all nodes exists.
+
 ```
 kubectl get numatopo 
 NAME              AGE
 node-1            4h8m
 node-2            4h8m
 node-3            4h8m
-``` 
+```
 
 ## Usage
 
 ### Running volcano Job with topology policy
 
 Support the task-level topology policy and edit **spec.tasks.topologyPolicy** to specify whether to perform topology scheduling.<br> The supported options are the same as [topology manager](https://v1-19.docs.kubernetes.io/docs/tasks/administer-cluster/topology-manager/) on kubelet:
+
 ````
    1. single-numa-node
    2. best-effort
@@ -94,7 +101,9 @@ Support the task-level topology policy and edit **spec.tasks.topologyPolicy** to
    4. none
 
 ````
+
 For example
+
 ```
 apiVersion: batch.volcano.sh/v1alpha1
 kind: Job
@@ -122,6 +131,7 @@ spec:
 ```
 
 ### Running TFJob with topology policy
+
 Add the annotation **volcano.sh/numa-topology-policy** to specify the topology policy you want.
 
 ```
@@ -177,12 +187,14 @@ spec:
 ```
 
 ### Practice
+
 |worker node|allocatable cpu on NUMA node 0|allocatable cpu on NUMA node 2|
 |-----|----|-----|
 | node-1| 12 | 12|
 | node-2| 20 | 20|
 
 Submit a volcano job as the following:
+
 ```
 apiVersion: batch.volcano.sh/v1alpha1
 kind: Job
@@ -208,7 +220,5 @@ spec:
                   memory: "100Mi"
           restartPolicy: OnFailure
 ```
-The pod will be scheduled to node-2, because it can allocate the cpu request of the pod on a single NUMA node and the node-2 needs to do this on two NUMA nodes.
 
-
-
+The pod will be scheduled to node-2, because it can allocate the cpu request of the pod on a single NUMA node and the node-1 needs to do this on two NUMA nodes.
