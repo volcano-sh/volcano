@@ -29,7 +29,8 @@ import (
 // Framework is a K8S framework who mainly provides some methods
 // about snapshot and plugins such as predicates
 type Framework struct {
-	snapshot v1alpha1.SharedLister
+	snapshot   v1alpha1.SharedLister
+	kubeClient kubernetes.Interface
 }
 
 var _ v1alpha1.FrameworkHandle = &Framework{}
@@ -78,14 +79,12 @@ func (f *Framework) ListPlugins() map[string][]config.Plugin {
 
 // ClientSet returns a kubernetes clientset.
 func (f *Framework) ClientSet() kubernetes.Interface {
-	panic("not implemented")
-	return nil
+	return f.kubeClient
 }
 
 // SharedInformerFactory returns a shared informer factory.
 func (f *Framework) SharedInformerFactory() informers.SharedInformerFactory {
-	panic("not implemented")
-	return nil
+	return informers.NewSharedInformerFactory(f.kubeClient, 0)
 }
 
 // VolumeBinder returns the volume binder used by scheduler.
@@ -105,9 +104,10 @@ func (f *Framework) PreemptHandle() v1alpha1.PreemptHandle {
 }
 
 // NewFrameworkHandle creates a FrameworkHandle interface, which is used by k8s plugins.
-func NewFrameworkHandle(nodeMap map[string]*v1alpha1.NodeInfo) v1alpha1.FrameworkHandle {
+func NewFrameworkHandle(nodeMap map[string]*v1alpha1.NodeInfo, kClient kubernetes.Interface) v1alpha1.FrameworkHandle {
 	snapshot := NewSnapshot(nodeMap)
 	return &Framework{
-		snapshot: snapshot,
+		snapshot:   snapshot,
+		kubeClient: kClient,
 	}
 }
