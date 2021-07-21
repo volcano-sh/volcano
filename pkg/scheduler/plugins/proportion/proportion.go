@@ -235,18 +235,30 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return victims, util.Permit
 	})
 
-	ssn.AddOverusedFn(pp.Name(), func(obj interface{}) bool {
-		queue := obj.(*api.QueueInfo)
+	ssn.AddOverusedFn(pp.Name(), func(queue *api.QueueInfo) (bool, map[string]float64) {
 		attr := pp.queueOpts[queue.UID]
+		overusedMap := map[string]float64{}
 
 		overused := !attr.allocated.LessEqual(attr.deserved, api.Zero)
-		metrics.UpdateQueueOverused(attr.name, overused)
 		if overused {
+			overusedList, _ := attr.allocated.Diff(attr.deserved)
+			if overusedList.MilliCPU > 0 {
+				overusedMap["MilliCPU"] = overusedList.MilliCPU
+			}
+			if overusedList.Memory > 0 {
+				overusedMap["Memory"] = overusedList.Memory
+			}
+			for rName, rQuant := range overusedList.ScalarResources {
+				if rQuant > 0 {
+					overusedMap[string(rName)] = rQuant
+				}
+			}
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
 				queue.Name, attr.deserved, attr.allocated, attr.share)
 		}
+		metrics.UpdateQueueOverused(attr.name, overused)
 
-		return overused
+		return overused, overusedMap
 	})
 
 	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {

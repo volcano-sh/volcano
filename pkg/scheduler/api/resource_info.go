@@ -194,10 +194,10 @@ func (r *Resource) Sub(rr *Resource) *Resource {
 	r.MilliCPU -= rr.MilliCPU
 	r.Memory -= rr.Memory
 
+	if r.ScalarResources == nil {
+		return r
+	}
 	for rrName, rrQuant := range rr.ScalarResources {
-		if r.ScalarResources == nil {
-			return r
-		}
 		r.ScalarResources[rrName] -= rrQuant
 	}
 
