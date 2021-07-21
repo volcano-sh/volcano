@@ -111,6 +111,13 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			task = tasks.Pop().(*api.TaskInfo)
 		}
 
+		// Check whether the queue is overused on dimension that the task requested
+		taskRequest := task.Resreq.ResourceNames()
+		if !ssn.UnderusedResources(queue).Contains(taskRequest) {
+			klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
+			continue
+		}
+
 		assigned := false
 		for _, n := range ssn.Nodes {
 			// If predicates failed, next node.

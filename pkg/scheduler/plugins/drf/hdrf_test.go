@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
+
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
@@ -16,6 +17,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -54,6 +56,7 @@ func TestHDRF(t *testing.T) {
 	s.RegisterOptions()
 
 	framework.RegisterPluginBuilder(PluginName, New)
+	framework.RegisterPluginBuilder("proportion", proportion.New)
 	defer framework.CleanupPluginBuilders()
 
 	tests := []struct {
@@ -249,6 +252,12 @@ func TestHDRF(t *testing.T) {
 						EnabledHierarchy:  &trueValue,
 						EnabledQueueOrder: &trueValue,
 						EnabledJobOrder:   &trueValue,
+					},
+					{
+						Name:               "proportion",
+						EnabledJobEnqueued: &trueValue,
+						EnabledQueueOrder:  &trueValue,
+						EnabledReclaimable: &trueValue,
 					},
 				},
 			},

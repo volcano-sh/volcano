@@ -32,12 +32,14 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
+	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 func TestReclaim(t *testing.T) {
 	framework.RegisterPluginBuilder("conformance", conformance.New)
 	framework.RegisterPluginBuilder("gang", gang.New)
+	framework.RegisterPluginBuilder("proportion", proportion.New)
 	defer framework.CleanupPluginBuilders()
 
 	tests := []struct {
@@ -156,6 +158,10 @@ func TestReclaim(t *testing.T) {
 					},
 					{
 						Name:               "gang",
+						EnabledReclaimable: &trueValue,
+					},
+					{
+						Name:               "proportion",
 						EnabledReclaimable: &trueValue,
 					},
 				},
