@@ -168,3 +168,6 @@ type ReservedNodesFn func()
 
 // VictimTasksFn is the func declaration used to select victim tasks
 type VictimTasksFn func() []*TaskInfo
+
+// OverusedFn is the func declaration used to judge whether queue is overused and return the overused dimension list
+type OverusedFn func(*QueueInfo) (bool, map[string]float64)

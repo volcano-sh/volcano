@@ -137,9 +137,13 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		// because the allocation of job would change the priority of queue among all namespaces,
 		// and the PriorityQueue have no ability to update priority for a special queue.
 		var queue *api.QueueInfo
+		overusedMap := make(map[string]float64)
 		for queueID := range queueInNamespace {
 			currentQueue := ssn.Queues[queueID]
-			if ssn.Overused(currentQueue) {
+			overused, overusedMap := ssn.Overused(currentQueue)
+			_, cpuOverused := overusedMap["MilliCPU"]
+			_, memoryOverused := overusedMap["Memory"]
+			if overused && (cpuOverused || memoryOverused) {
 				klog.V(3).Infof("Namespace <%s> Queue <%s> is overused, ignore it.", namespace, currentQueue.Name)
 				delete(queueInNamespace, queueID)
 				continue
@@ -170,6 +174,14 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		}
 
 		job := jobs.Pop().(*api.JobInfo)
+		if isScalarResourceOverused(job, overusedMap) {
+			jobs.Push(job)
+			klog.V(3).Infof("Queue <%s> is overused when considering job <%s>, ignore it.", queue.Name, job.Name)
+			delete(queueInNamespace, queue.UID)
+			namespaces.Push(namespace)
+			continue
+		}
+
 		var nodes []*api.NodeInfo
 		if targetJob != nil && job.UID == targetJob.UID {
 			klog.V(4).Infof("Try to allocate resource to target job: %s", job.Name)
@@ -275,3 +287,15 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 }
 
 func (alloc *Action) UnInitialize() {}
+
+// isScalarResourceOverused returns true if any dimension resource is overused when comparing job and overusedMap
+func isScalarResourceOverused(job *api.JobInfo, overusedMap map[string]float64) bool {
+	for requestResourceName := range job.TotalRequest.ScalarResources {
+		for overusedResourceName := range overusedMap {
+			if string(requestResourceName) == overusedResourceName {
+				return true
+			}
+		}
+	}
+	return false
+}

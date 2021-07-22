@@ -91,7 +91,8 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		var task *api.TaskInfo
 
 		queue := queues.Pop().(*api.QueueInfo)
-		if ssn.Overused(queue) {
+		overused, _ := ssn.Overused(queue)
+		if overused {
 			klog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
 			continue
 		}
