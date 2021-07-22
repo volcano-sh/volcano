@@ -12,8 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+FROM golang:1.16.5 AS builder
+WORKDIR /go/src/volcano.sh/
+ADD . volcano
+RUN cd volcano && make vc-scheduler
 FROM alpine:latest
 
-ADD vc-scheduler /vc-scheduler
+COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/vc-scheduler /vc-scheduler
 ENTRYPOINT ["/vc-scheduler"]

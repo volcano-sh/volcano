@@ -12,8 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+FROM golang:1.16.5 AS builder
+WORKDIR /go/src/volcano.sh/
+ADD . volcano
+RUN cd volcano && make vc-controller-manager
 
 FROM alpine:latest
 
-ADD vc-controller-manager /vc-controller-manager
+COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/vc-controller-manager /vc-controller-manager
 ENTRYPOINT ["/vc-controller-manager"]
