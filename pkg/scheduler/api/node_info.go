@@ -56,8 +56,6 @@ type NodeInfo struct {
 	Others     map[string]interface{}
 	GPUDevices map[int]*GPUDevice
 
-	bindingTasks map[TaskID]string
-
 	// enable node resource oversubscription
 	OversubscriptionNode bool
 	// OfflineJobEvicting true means node resource usage too high then dispatched pod can not use oversubscription resource
@@ -100,8 +98,6 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		Tasks:                    make(map[TaskID]*TaskInfo),
 
 		GPUDevices: make(map[int]*GPUDevice),
-
-		bindingTasks: make(map[TaskID]string),
 	}
 
 	nodeInfo.setOversubscription(node)
@@ -161,10 +157,6 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 		}
 
 		klog.V(5).Infof("current Policies : %v", res.NumaSchedulerInfo.Policies)
-	}
-
-	for taskID := range ni.bindingTasks {
-		res.AddBindingTask(taskID)
 	}
 
 	res.Others = ni.Others
@@ -514,25 +506,4 @@ func (ni *NodeInfo) SubGPUResource(pod *v1.Pod) {
 			delete(dev.PodMap, string(pod.UID))
 		}
 	}
-}
-
-// GetBindingTasks return binding task ids
-func (ni *NodeInfo) GetBindingTasks() []TaskID {
-	var tasks []TaskID
-
-	for taskID := range ni.bindingTasks {
-		tasks = append(tasks, taskID)
-	}
-
-	return tasks
-}
-
-// AddBindingTask add binding taskId to node
-func (ni *NodeInfo) AddBindingTask(task TaskID) {
-	ni.bindingTasks[task] = ""
-}
-
-// RemoveBindingTask remove binding taskId from node
-func (ni *NodeInfo) RemoveBindingTask(task TaskID) {
-	delete(ni.bindingTasks, task)
 }

@@ -645,18 +645,6 @@ func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string
 		}
 	} else {
 		go func() {
-			taskID := schedulingapi.PodKey(p)
-
-			sc.Lock()
-			node.AddBindingTask(taskID)
-			sc.Unlock()
-
-			defer func() {
-				sc.Lock()
-				node.RemoveBindingTask(taskID)
-				sc.Unlock()
-			}()
-
 			if err := sc.Binder.Bind(p, hostname); err != nil {
 				sc.resyncTask(task)
 			} else {
@@ -822,12 +810,6 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 
 	for _, value := range sc.Nodes {
 		if !value.Ready() {
-			continue
-		}
-
-		bindingTasks := value.GetBindingTasks()
-		if len(bindingTasks) > 0 {
-			klog.V(4).Infof("There are %d binding tasks, skip node %s", len(bindingTasks), value.Name)
 			continue
 		}
 
