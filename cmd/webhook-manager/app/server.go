@@ -72,7 +72,7 @@ func Run(config *options.Config) error {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
 	recorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: config.SchedulerName})
-	router.ForEachAdmission(func(service *router.AdmissionService) {
+	router.ForEachAdmission(config, func(service *router.AdmissionService) {
 		if service.Config != nil {
 			service.Config.VolcanoClient = vClient
 			service.Config.SchedulerName = config.SchedulerName
