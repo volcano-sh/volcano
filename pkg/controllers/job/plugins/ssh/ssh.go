@@ -56,7 +56,6 @@ func New(client pluginsinterface.PluginClientset, arguments []string) pluginsint
 		pluginArguments: arguments,
 		client:          client,
 		sshKeyFilePath:  SSHAbsolutePath,
-
 	}
 
 	p.addFlags()
