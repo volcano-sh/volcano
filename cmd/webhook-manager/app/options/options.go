@@ -25,9 +25,10 @@ import (
 )
 
 const (
-	defaultSchedulerName = "volcano"
-	defaultQPS           = 50.0
-	defaultBurst         = 100
+	defaultSchedulerName    = "volcano"
+	defaultQPS              = 50.0
+	defaultBurst            = 100
+	defaultEnabledAdmission = "/jobs/mutate;/jobs/validate;/podgroups/mutate;/pods/validate;/pods/mutate;/queues/mutate;/queues/validate"
 )
 
 // Config admission-controller server config.
@@ -43,6 +44,7 @@ type Config struct {
 	SchedulerName     string
 	WebhookURL        string
 	ConfigPath        string
+	EnabledAdmission  string
 }
 
 // NewConfig create new config.
@@ -68,6 +70,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.WebhookNamespace, "webhook-namespace", "", "The namespace of this webhook")
 	fs.StringVar(&c.WebhookName, "webhook-service-name", "", "The name of this webhook")
 	fs.StringVar(&c.WebhookURL, "webhook-url", "", "The url of this webhook")
+	fs.StringVar(&c.EnabledAdmission, "enabled-admission", defaultEnabledAdmission, "enabled admission webhooks")
 
 	fs.StringVar(&c.SchedulerName, "scheduler-name", defaultSchedulerName, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
 
