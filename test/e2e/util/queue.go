@@ -29,16 +29,18 @@ import (
 
 // CreateQueue creates Queue with the specified name
 func CreateQueue(ctx *TestContext, q string) {
-	By("Creating Queue")
-	_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), &schedulingv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: q,
-		},
-		Spec: schedulingv1beta1.QueueSpec{
-			Weight: 1,
-		},
-	}, metav1.CreateOptions{})
-	Expect(err).NotTo(HaveOccurred(), "failed to create queue %s", q)
+	_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
+	if err != nil {
+		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), &schedulingv1beta1.Queue{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: q,
+			},
+			Spec: schedulingv1beta1.QueueSpec{
+				Weight: 1,
+			},
+		}, metav1.CreateOptions{})
+		Expect(err).NotTo(HaveOccurred(), "failed to create queue %s", q)
+	}
 }
 
 // CreateQueues create Queues specified in the test context
@@ -52,7 +54,6 @@ func CreateQueues(ctx *TestContext) {
 
 // DelereQueue deletes Queue with the specified name
 func DeleteQueue(ctx *TestContext, q string) {
-	By("Deleting Queue")
 	foreground := metav1.DeletePropagationForeground
 	queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
 	Expect(err).NotTo(HaveOccurred(), "failed to get queue %s", q)
@@ -79,7 +80,7 @@ func deleteQueues(ctx *TestContext) {
 
 // SeyQueueReclaimable sets the Queue to be reclaimable
 func SetQueueReclaimable(ctx *TestContext, queues []string, reclaimable bool) {
-	By("Setting queue reclaimable")
+	By("Setting Queue reclaimable")
 
 	for _, q := range queues {
 		queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
