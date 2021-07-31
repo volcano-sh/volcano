@@ -185,6 +185,10 @@ func (ni *NodeInfo) setRevocableZone(node *v1.Node) {
 // Check node if enable Oversubscription and set Oversubscription resources
 // Only support oversubscription cpu and memory resource for this version
 func (ni *NodeInfo) setOversubscription(node *v1.Node) {
+	if node == nil {
+		return
+	}
+
 	ni.OversubscriptionNode = false
 	ni.OfflineJobEvicting = false
 	if len(node.Labels) > 0 {
