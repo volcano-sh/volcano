@@ -30,6 +30,7 @@ import (
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
+// CreatePodGroup creates a PodGroup with the specified name in the namespace
 func CreatePodGroup(ctx *TestContext, pg string, namespace string) *schedulingv1beta1.PodGroup {
 	podGroup, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), &schedulingv1beta1.PodGroup{
 		ObjectMeta: metav1.ObjectMeta{
@@ -44,6 +45,7 @@ func CreatePodGroup(ctx *TestContext, pg string, namespace string) *schedulingv1
 	return podGroup
 }
 
+// DeletePodGroup deletes a PodGroup with the specified name in the namespace
 func DeletePodGroup(ctx *TestContext, pg string, namespace string) {
 	_, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), pg, metav1.GetOptions{})
 	Expect(err).NotTo(HaveOccurred(), "failed to get pod group %s", pg)

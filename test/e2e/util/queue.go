@@ -27,19 +27,21 @@ import (
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
-func CreateQueue(ctx *TestContext, queue string) {
+// CreateQueue creates Queue with the specified name
+func CreateQueue(ctx *TestContext, q string) {
 	By("Creating Queue")
 	_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), &schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: queue,
+			Name: q,
 		},
 		Spec: schedulingv1beta1.QueueSpec{
 			Weight: 1,
 		},
 	}, metav1.CreateOptions{})
-	Expect(err).NotTo(HaveOccurred(), "failed to create queue %s", queue)
+	Expect(err).NotTo(HaveOccurred(), "failed to create queue %s", q)
 }
 
+// CreateQueues create Queues specified in the test context
 func CreateQueues(ctx *TestContext) {
 	By("Creating Queues")
 
@@ -48,12 +50,12 @@ func CreateQueues(ctx *TestContext) {
 	}
 }
 
-// DelereQueue deletes Queue with specified name
+// DelereQueue deletes Queue with the specified name
 func DeleteQueue(ctx *TestContext, q string) {
 	By("Deleting Queue")
 	foreground := metav1.DeletePropagationForeground
 	queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
-	Expect(err).NotTo(HaveOccurred(), "failed to get queue %s", queue)
+	Expect(err).NotTo(HaveOccurred(), "failed to get queue %s", q)
 
 	queue.Status.State = schedulingv1beta1.QueueStateClosed
 	_, err = ctx.Vcclient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), queue, metav1.UpdateOptions{})
@@ -75,6 +77,7 @@ func deleteQueues(ctx *TestContext) {
 	}
 }
 
+// SeyQueueReclaimable sets the Queue to be reclaimable
 func SetQueueReclaimable(ctx *TestContext, queues []string, reclaimable bool) {
 	By("Setting queue reclaimable")
 
@@ -92,6 +95,7 @@ func WaitQueueStatus(condition func() (bool, error)) error {
 	return wait.Poll(100*time.Millisecond, FiveMinute, condition)
 }
 
+// queueClosed returns whether the Queue is closed
 func queueClosed(ctx *TestContext, name string) wait.ConditionFunc {
 	return func() (bool, error) {
 		queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), name, metav1.GetOptions{})
