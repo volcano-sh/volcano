@@ -480,30 +480,43 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 		By("Setup initial jobs")
 
-		_, err := CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j1", q1, "low-priority", "", true)
-		Expect(err).NotTo(HaveOccurred(), "Wait for job1 failed")
+		spec := &e2eutil.JobSpec{
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img: e2eutil.DefaultNginxImage,
+					Req: e2eutil.CPU1Mem1,
+					Min: 1,
+					Rep: 2,
+				},
+			},
+		}
 
-		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j2", q1, "low-priority", "", true)
-		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
+		spec.Name = "reclaim-j1"
+		spec.Queue = q1
+		spec.Pri = "low-priority"
+		job1 := e2eutil.CreateJob(ctx, spec)
+		err := e2eutil.WaitJobReady(ctx, job1)
+		Expect(err).NotTo(HaveOccurred())
 
-		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j3", q2, "low-priority", "", true)
-		Expect(err).NotTo(HaveOccurred(), "Wait for job3 failed")
+		spec.Name = "reclaim-j2"
+		spec.Queue = q2
+		spec.Pri = "low-priority"
+		job2 := e2eutil.CreateJob(ctx, spec)
+		err = e2eutil.WaitJobReady(ctx, job2)
+		Expect(err).NotTo(HaveOccurred())
 
-		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j4", q2, "low-priority", "", true)
-		Expect(err).NotTo(HaveOccurred(), "Wait for job4 failed")
-
-		err = WaitQueueStatus(ctx, "Running", 2, q1)
+		err = WaitQueueStatus(ctx, "Running", 1, q1)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue1 running")
 
-		err = WaitQueueStatus(ctx, "Running", 2, q2)
+		err = WaitQueueStatus(ctx, "Running", 1, q2)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue2 running")
 
 		By("Create coming jobs")
 
-		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j5", q3, "high-priority", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j3", q3, "high-priority", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job4 failed")
 
-		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j6", q4, "high-priority", "", true)
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j4", q4, "high-priority", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job4 failed")
 
 		By("Make sure all job running")
