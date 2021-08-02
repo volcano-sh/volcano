@@ -50,7 +50,7 @@ Volcano is a sandbox project of the [Cloud Native Computing Foundation](https://
 
 - [spark-operator](https://github.com/GoogleCloudPlatform/spark-on-k8s-operator/blob/master/docs/volcano-integration.md)
 - [kubeflow/tf-operator](https://www.kubeflow.org/docs/use-cases/job-scheduling/)
-- [kubeflow/arena](https://github.com/kubeflow/arena/blob/master/docs/userguide/12-volcanojob.md)
+- [kubeflow/arena](https://github.com/kubeflow/arena/blob/master/docs/training/volcanojob/volcanojob.md)
 - [Horovod/MPI](https://github.com/volcano-sh/volcano/tree/master/example/integrations/mpi)
 - [paddlepaddle](https://github.com/volcano-sh/volcano/tree/master/example/integrations/paddlepaddle)
 - [cromwell](https://github.com/broadinstitute/cromwell/blob/develop/docs/backends/Volcano.md)
