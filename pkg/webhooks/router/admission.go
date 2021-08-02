@@ -49,7 +49,7 @@ func RegisterAdmission(service *AdmissionService) error {
 }
 
 func ForEachAdmission(config *options.Config, handler func(*AdmissionService)) {
-	admissions := strings.Split(config.EnabledAdmission, ";")
+	admissions := strings.Split(strings.TrimSpace(config.EnabledAdmission), ",")
 	for _, admission := range admissions {
 		if service, found := admissionMap[admission]; found {
 			handler(service)
