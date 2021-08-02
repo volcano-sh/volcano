@@ -66,7 +66,7 @@ func (gc *gccontroller) Name() string {
 	return "gc-controller"
 }
 
-// NewGarbageCollector creates an instance of gccontroller.
+// Initialize creates an instance of gccontroller.
 func (gc *gccontroller) Initialize(opt *framework.ControllerOption) error {
 	gc.vcClient = opt.VolcanoClient
 	jobInformer := informerfactory.NewSharedInformerFactory(gc.vcClient, 0).Batch().V1alpha1().Jobs()

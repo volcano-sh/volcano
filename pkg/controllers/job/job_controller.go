@@ -114,7 +114,7 @@ func (cc *jobcontroller) Name() string {
 	return "job-controller"
 }
 
-// NewJobController create new Job job controller.
+// Initialize creates the new Job job controller.
 func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.kubeClient = opt.KubeClient
 	cc.vcClient = opt.VolcanoClient
