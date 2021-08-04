@@ -17,16 +17,15 @@ limitations under the License.
 package config
 
 import (
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
 
+	"github.com/fsnotify/fsnotify"
+	"gopkg.in/yaml.v2"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
-
-	"github.com/fsnotify/fsnotify"
 
 	"volcano.sh/volcano/pkg/filewatcher"
 )

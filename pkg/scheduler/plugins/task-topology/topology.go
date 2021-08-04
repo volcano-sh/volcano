@@ -18,10 +18,11 @@ package tasktopology
 
 import (
 	"fmt"
-	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	"strings"
 	"time"
+
+	"k8s.io/klog"
+	"k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"

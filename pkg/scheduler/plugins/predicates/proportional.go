@@ -18,7 +18,9 @@ package predicates
 
 import (
 	"fmt"
+
 	v1 "k8s.io/api/core/v1"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 

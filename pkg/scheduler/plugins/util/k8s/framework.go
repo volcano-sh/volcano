@@ -61,20 +61,17 @@ func (f *Framework) RejectWaitingPod(uid types.UID) {
 // HasFilterPlugins returns true if at least one filter plugin is defined.
 func (f *Framework) HasFilterPlugins() bool {
 	panic("not implemented")
-	return false
 }
 
 // HasScorePlugins returns true if at least one score plugin is defined.
 func (f *Framework) HasScorePlugins() bool {
 	panic("not implemented")
-	return false
 }
 
 // ListPlugins returns a map of extension point name to plugin names configured at each extension
 // point. Returns nil if no plugins where configred.
 func (f *Framework) ListPlugins() map[string][]config.Plugin {
 	panic("not implemented")
-	return nil
 }
 
 // ClientSet returns a kubernetes clientset.
@@ -90,7 +87,6 @@ func (f *Framework) SharedInformerFactory() informers.SharedInformerFactory {
 // VolumeBinder returns the volume binder used by scheduler.
 func (f *Framework) VolumeBinder() scheduling.SchedulerVolumeBinder {
 	panic("not implemented")
-	return nil
 }
 
 // EventRecorder was introduced in k8s v1.19.6 and to be implemented
