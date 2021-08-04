@@ -97,8 +97,9 @@ func (sp *servicePlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 
 	for _, ts := range job.Spec.Tasks {
 		// TODO(k82cn): The splitter and the prefix of env should be configurable.
-		envNames = append(envNames, fmt.Sprintf(EnvTaskHostFmt, strings.ToUpper(ts.Name)))
-		envNames = append(envNames, fmt.Sprintf(EnvHostNumFmt, strings.ToUpper(ts.Name)))
+		formateENVKey := strings.Replace(ts.Name, "-", "_", -1)
+		envNames = append(envNames, fmt.Sprintf(EnvTaskHostFmt, strings.ToUpper(formateENVKey)))
+		envNames = append(envNames, fmt.Sprintf(EnvHostNumFmt, strings.ToUpper(formateENVKey)))
 	}
 
 	for _, name := range envNames {
@@ -337,15 +338,16 @@ func GenerateHosts(job *batch.Job) map[string]string {
 			}
 		}
 
-		key := fmt.Sprintf(ConfigMapTaskHostFmt, ts.Name)
+		formateENVKey := strings.Replace(ts.Name, "-", "_", -1)
+		key := fmt.Sprintf(ConfigMapTaskHostFmt, formateENVKey)
 		hostFile[key] = strings.Join(hosts, "\n")
 
 		// TODO(k82cn): The splitter and the prefix of env should be configurable.
 		// export hosts as environment
-		key = fmt.Sprintf(EnvTaskHostFmt, strings.ToUpper(ts.Name))
+		key = fmt.Sprintf(EnvTaskHostFmt, strings.ToUpper(formateENVKey))
 		hostFile[key] = strings.Join(hosts, ",")
 		// export host number as environment.
-		key = fmt.Sprintf(EnvHostNumFmt, strings.ToUpper(ts.Name))
+		key = fmt.Sprintf(EnvHostNumFmt, strings.ToUpper(formateENVKey))
 		hostFile[key] = strconv.Itoa(len(hosts))
 	}
 
