@@ -163,8 +163,7 @@ verify:
 	hack/verify-vendor-licenses.sh
 
 lint: ## Lint the files
-	golangci-lint version
-	golangci-lint run -v
+	hack/verify-golangci-lint.sh
 
 verify-generated-yaml:
 	./hack/check-generated-yaml.sh
