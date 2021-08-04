@@ -52,7 +52,7 @@ func CreateQueues(ctx *TestContext) {
 	}
 }
 
-// DelereQueue deletes Queue with the specified name
+// DeleteQueue deletes Queue with the specified name
 func DeleteQueue(ctx *TestContext, q string) {
 	foreground := metav1.DeletePropagationForeground
 	queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
@@ -71,7 +71,7 @@ func DeleteQueue(ctx *TestContext, q string) {
 	Expect(err).NotTo(HaveOccurred(), "failed to delete queue %s", q)
 }
 
-// DelereQueues deletes Queues specified in the test context
+// deleteQueues deletes Queues specified in the test context
 func deleteQueues(ctx *TestContext) {
 	for _, q := range ctx.Queues {
 		DeleteQueue(ctx, q)
