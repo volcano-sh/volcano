@@ -47,7 +47,7 @@ linters:
     # linters default enabled by golangci-lint .
     - deadcode
     #- errcheck
-    #- gosimple
+    - gosimple
     - ineffassign
     - staticcheck
     - structcheck

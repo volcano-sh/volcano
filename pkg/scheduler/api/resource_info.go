@@ -293,7 +293,7 @@ func (r *Resource) Less(rr *Resource, defaultValue DimensionDefaultValue) bool {
 	r.setDefaultValue(leftResource, rightResource, defaultValue)
 
 	for resourceName, leftValue := range leftResource.ScalarResources {
-		rightValue, _ := rightResource.ScalarResources[resourceName]
+		rightValue := rightResource.ScalarResources[resourceName]
 		if rightValue == -1 {
 			continue
 		}
@@ -328,7 +328,7 @@ func (r *Resource) LessEqual(rr *Resource, defaultValue DimensionDefaultValue) b
 	r.setDefaultValue(leftResource, rightResource, defaultValue)
 
 	for resourceName, leftValue := range leftResource.ScalarResources {
-		rightValue, _ := rightResource.ScalarResources[resourceName]
+		rightValue := rightResource.ScalarResources[resourceName]
 		if rightValue == -1 {
 			continue
 		}
@@ -357,7 +357,7 @@ func (r *Resource) LessPartly(rr *Resource, defaultValue DimensionDefaultValue) 
 	r.setDefaultValue(leftResource, rightResource, defaultValue)
 
 	for resourceName, leftValue := range leftResource.ScalarResources {
-		rightValue, _ := rightResource.ScalarResources[resourceName]
+		rightValue := rightResource.ScalarResources[resourceName]
 		if leftValue == -1 {
 			continue
 		}
@@ -389,7 +389,7 @@ func (r *Resource) LessEqualPartly(rr *Resource, defaultValue DimensionDefaultVa
 	r.setDefaultValue(leftResource, rightResource, defaultValue)
 
 	for resourceName, leftValue := range leftResource.ScalarResources {
-		rightValue, _ := rightResource.ScalarResources[resourceName]
+		rightValue := rightResource.ScalarResources[resourceName]
 		if leftValue == -1 {
 			continue
 		}
@@ -418,7 +418,7 @@ func (r *Resource) Equal(rr *Resource, defaultValue DimensionDefaultValue) bool 
 	r.setDefaultValue(leftResource, rightResource, defaultValue)
 
 	for resourceName, leftValue := range leftResource.ScalarResources {
-		rightValue, _ := rightResource.ScalarResources[resourceName]
+		rightValue := rightResource.ScalarResources[resourceName]
 		if !equalFunc(leftValue, rightValue, minResource) {
 			return false
 		}
