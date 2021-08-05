@@ -43,7 +43,6 @@ func InitGetFlags(cmd *cobra.Command) {
 	initFlags(cmd, &getQueueFlags.commonFlags)
 
 	cmd.Flags().StringVarP(&getQueueFlags.Name, "name", "n", "", "the name of queue")
-
 }
 
 // GetQueue gets a queue.

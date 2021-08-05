@@ -622,7 +622,6 @@ func (sc *SchedulerCache) UpdatePriorityClass(oldObj, newObj interface{}) {
 		klog.Errorf("Cannot convert oldObj to *v1beta1.PriorityClass: %v", oldObj)
 
 		return
-
 	}
 
 	newSS, ok := newObj.(*v1beta1.PriorityClass)
@@ -666,7 +665,6 @@ func (sc *SchedulerCache) deletePriorityClass(pc *v1beta1.PriorityClass) {
 	if pc.GlobalDefault {
 		sc.defaultPriorityClass = nil
 		sc.defaultPriority = 0
-
 	}
 
 	delete(sc.PriorityClasses, pc.Name)
@@ -677,7 +675,6 @@ func (sc *SchedulerCache) addPriorityClass(pc *v1beta1.PriorityClass) {
 		if sc.defaultPriorityClass != nil {
 			klog.Errorf("Updated default priority class from <%s> to <%s> forcefully.",
 				sc.defaultPriorityClass.Name, pc.Name)
-
 		}
 		sc.defaultPriorityClass = pc
 		sc.defaultPriority = pc.Value
@@ -808,7 +805,6 @@ func getNumaInfo(srcInfo *nodeinfov1alpha1.Numatopology) *schedulingapi.Numatopo
 
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) addNumaInfo(info *nodeinfov1alpha1.Numatopology) error {
-
 	if sc.Nodes[info.Name] == nil {
 		sc.Nodes[info.Name] = schedulingapi.NewNodeInfo(nil)
 		sc.Nodes[info.Name].Name = info.Name

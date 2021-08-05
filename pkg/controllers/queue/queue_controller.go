@@ -95,7 +95,6 @@ func (c *queuecontroller) Name() string {
 
 // NewQueueController creates a QueueController.
 func (c *queuecontroller) Initialize(opt *framework.ControllerOption) error {
-
 	c.vcClient = opt.VolcanoClient
 	c.kubeClient = opt.KubeClient
 

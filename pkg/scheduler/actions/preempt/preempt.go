@@ -210,7 +210,6 @@ func preempt(
 
 		var preemptees []*api.TaskInfo
 		for _, task := range node.Tasks {
-
 			if filter == nil {
 				preemptees = append(preemptees, task.Clone())
 			} else if filter(task) {

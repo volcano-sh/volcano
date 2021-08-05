@@ -34,6 +34,5 @@ func (ps *terminatingState) Execute(action v1alpha1.Action) error {
 		}
 		status.State.Phase = vcbatch.Terminated
 		return true
-
 	})
 }

@@ -69,7 +69,6 @@ var config = &router.AdmissionServiceConfig{}
 
 // AdmitPods is to admit pods and return response.
 func AdmitPods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
-
 	klog.V(3).Infof("admitting pods -- %s", ar.Request.Operation)
 
 	pod, err := schema.DecodePod(ar.Request.Object, ar.Request.Resource)

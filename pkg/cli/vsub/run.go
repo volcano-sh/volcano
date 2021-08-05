@@ -117,7 +117,6 @@ func setDefaultArgs() {
 			launchJobFlags.Namespace = defaultJobNamespace
 		}
 	}
-
 }
 
 var jobName = "job.volcano.sh"
@@ -165,7 +164,6 @@ func RunJob() error {
 }
 
 func constructLaunchJobFlagsJob(launchJobFlags *runFlags, req, limit v1.ResourceList) (*vcbatch.Job, error) {
-
 	var commands []string
 
 	if launchJobFlags.Command != "" {

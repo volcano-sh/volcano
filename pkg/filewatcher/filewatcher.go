@@ -44,7 +44,6 @@ func NewFileWatcher(path string) (FileWatcher, error) {
 	return &fileWatcher{
 		watcher: watcher,
 	}, nil
-
 }
 
 // Events returns the event channel.

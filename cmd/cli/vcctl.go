@@ -71,7 +71,6 @@ func checkError(cmd *cobra.Command, err error) {
 var versionExample = `vcctl version`
 
 func versionCommand() *cobra.Command {
-
 	var command = &cobra.Command{
 		Use:     "version",
 		Short:   "Print the version information",

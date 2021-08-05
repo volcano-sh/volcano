@@ -101,5 +101,4 @@ func PrintQueues(queues *v1beta1.QueueList, writer io.Writer) {
 			fmt.Printf("Failed to print queue command result: %s.\n", err)
 		}
 	}
-
 }

@@ -226,7 +226,6 @@ func PrintEvents(events []coreV1.Event, writer io.Writer) {
 	} else {
 		WriteLine(writer, Level0, "Events: \t<none>\n")
 	}
-
 }
 
 // GetEvents get the job event by config.

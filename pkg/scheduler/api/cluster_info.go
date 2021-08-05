@@ -31,7 +31,6 @@ type ClusterInfo struct {
 }
 
 func (ci ClusterInfo) String() string {
-
 	str := "Cache:\n"
 
 	if len(ci.Nodes) != 0 {

@@ -350,7 +350,6 @@ func (ssn *Session) JobValid(obj interface{}) *api.ValidateResult {
 			if vr := jrf(obj); vr != nil && !vr.Pass {
 				return vr
 			}
-
 		}
 	}
 
@@ -403,7 +402,6 @@ func (ssn *Session) JobEnqueued(obj interface{}) {
 			fn(obj)
 		}
 	}
-
 }
 
 // TargetJob invoke targetJobFns function of the plugins
@@ -506,7 +504,6 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 		return lv.UID < rv.UID
 	}
 	return lv.CreationTimestamp.Before(&rv.CreationTimestamp)
-
 }
 
 // NamespaceOrderFn invoke namespaceorder function of the plugins
@@ -571,7 +568,6 @@ func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
 			if j := qof(l, r); j != 0 {
 				return j < 0
 			}
-
 		}
 	}
 
@@ -582,7 +578,6 @@ func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
 		return lv.UID < rv.UID
 	}
 	return lv.Queue.CreationTimestamp.Before(&rv.Queue.CreationTimestamp)
-
 }
 
 // TaskCompareFns invoke taskorder function of the plugins
@@ -618,7 +613,6 @@ func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 		return lv.UID < rv.UID
 	}
 	return lv.Pod.CreationTimestamp.Before(&rv.Pod.CreationTimestamp)
-
 }
 
 // PredicateFn invoke predicate function of the plugins
@@ -678,7 +672,6 @@ func (ssn *Session) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo) (float64
 				return 0, err
 			}
 			priorityScore += score
-
 		}
 	}
 	return priorityScore, nil
@@ -735,7 +728,6 @@ func (ssn *Session) NodeOrderMapFn(task *api.TaskInfo, node *api.NodeInfo) (map[
 				}
 				nodeScoreMap[plugin.Name] = score
 			}
-
 		}
 	}
 	return nodeScoreMap, priorityScore, nil

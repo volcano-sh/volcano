@@ -195,7 +195,6 @@ func jobStatus(ssn *Session, jobInfo *api.JobInfo) scheduling.PodGroupStatus {
 		if c.Type == scheduling.PodGroupUnschedulableType &&
 			c.Status == v1.ConditionTrue &&
 			c.TransitionID == string(ssn.UID) {
-
 			unschedulable = true
 			break
 		}
@@ -468,5 +467,4 @@ func (ssn Session) String() string {
 	}
 
 	return msg
-
 }

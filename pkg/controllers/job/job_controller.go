@@ -219,7 +219,6 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 
 // Run start JobController.
 func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
-
 	go cc.jobInformer.Informer().Run(stopCh)
 	go cc.podInformer.Informer().Run(stopCh)
 	go cc.pvcInformer.Informer().Run(stopCh)

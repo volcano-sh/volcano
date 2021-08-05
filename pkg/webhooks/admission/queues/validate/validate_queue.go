@@ -150,7 +150,6 @@ func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *fie
 					schedulingv1beta1.KubeHierarchyAnnotationKey,
 					err,
 				)))
-
 		}
 		for _, queueInTree := range queueList.Items {
 			hierarchyInTree := queueInTree.Annotations[schedulingv1beta1.KubeHierarchyAnnotationKey]
@@ -159,10 +158,8 @@ func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *fie
 				return append(errs, field.Invalid(fldPath, hierarchy,
 					fmt.Sprintf("%s is not allowed to be in the sub path of %s of queue %s",
 						hierarchy, hierarchyInTree, queueInTree.Name)))
-
 			}
 		}
-
 	}
 	return errs
 }
