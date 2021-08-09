@@ -63,7 +63,8 @@ func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *scheduling
 func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 	if len(pi.NodeName) != 0 {
 		if _, found := sc.Nodes[pi.NodeName]; !found {
-			return fmt.Errorf("node <%s> does not exist", pi.NodeName)
+			sc.Nodes[pi.NodeName] = schedulingapi.NewNodeInfo(nil)
+			sc.Nodes[pi.NodeName].Name = pi.NodeName
 		}
 
 		node := sc.Nodes[pi.NodeName]
@@ -810,6 +811,7 @@ func (sc *SchedulerCache) addNumaInfo(info *nodeinfov1alpha1.Numatopology) error
 
 	if sc.Nodes[info.Name] == nil {
 		sc.Nodes[info.Name] = schedulingapi.NewNodeInfo(nil)
+		sc.Nodes[info.Name].Name = info.Name
 	}
 
 	if sc.Nodes[info.Name].NumaInfo == nil {

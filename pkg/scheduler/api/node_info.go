@@ -170,6 +170,7 @@ func (ni *NodeInfo) Ready() bool {
 
 func (ni *NodeInfo) setRevocableZone(node *v1.Node) {
 	if node == nil {
+		klog.Warningf("the argument node is null.")
 		return
 	}
 
@@ -231,6 +232,7 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 			Phase:  NotReady,
 			Reason: "UnInitialized",
 		}
+		klog.Warningf("set the node %s status to %s for the reason UnInitialized.", node.Name, NotReady.String())
 		return
 	}
 
@@ -250,6 +252,7 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 				Phase:  NotReady,
 				Reason: "NotReady",
 			}
+			klog.Warningf("set the node %s status to %s.", node.Name, NotReady.String())
 			return
 		}
 	}
@@ -259,6 +262,8 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 		Phase:  Ready,
 		Reason: "",
 	}
+
+	klog.V(4).Infof("set the node %s status to %s.", node.Name, Ready.String())
 }
 
 func (ni *NodeInfo) setNodeGPUInfo(node *v1.Node) {
@@ -292,6 +297,7 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.setOversubscription(node)
 	ni.setNodeState(node)
 	ni.setNodeGPUInfo(node)
+	ni.setRevocableZone(node)
 
 	if !ni.Ready() {
 		klog.Warningf("Failed to set node info, phase: %s, reason: %s",
