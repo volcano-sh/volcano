@@ -254,7 +254,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		queueID := job.Queue
 		attr := pp.queueOpts[queueID]
 		queue := ssn.Queues[queueID]
-
 		// If no capability is set, always enqueue the job.
 		if len(queue.Queue.Spec.Capability) == 0 {
 			klog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Inqueue.",
@@ -263,9 +262,14 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		if job.PodGroup.Spec.MinResources == nil {
+			klog.V(4).Infof("job %s MinResources is null.", job.Name)
 			return util.Permit
 		}
 		minReq := job.GetMinResources()
+
+		klog.V(5).Infof("job %s min resource <%s>", job.Name, minReq.String())
+		klog.V(5).Infof("queue %s capability <%s>", queue.Name, api.NewResource(queue.Queue.Spec.Capability).String())
+		klog.V(5).Infof("queue %s allocated <%s>", queue.Name, attr.allocated.String())
 		// The queue resource quota limit has not reached
 		inqueue := minReq.Add(attr.allocated).Add(attr.inqueue).LessEqual(api.NewResource(queue.Queue.Spec.Capability), api.Infinity)
 		if inqueue {

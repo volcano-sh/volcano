@@ -60,6 +60,9 @@ func TestReclaim(t *testing.T) {
 						Queue:             "q1",
 						PriorityClassName: "low-priority",
 					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -69,6 +72,9 @@ func TestReclaim(t *testing.T) {
 					Spec: schedulingv1.PodGroupSpec{
 						Queue:             "q2",
 						PriorityClassName: "high-priority",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
 					},
 				},
 			},

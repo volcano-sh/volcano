@@ -66,6 +66,9 @@ func TestPreempt(t *testing.T) {
 						MinMember: 3,
 						Queue:     "q1",
 					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
 				},
 			},
 			pods: []*v1.Pod{
@@ -101,6 +104,9 @@ func TestPreempt(t *testing.T) {
 						MinMember: 1,
 						Queue:     "q1",
 					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -110,6 +116,9 @@ func TestPreempt(t *testing.T) {
 					Spec: schedulingv1.PodGroupSpec{
 						MinMember: 1,
 						Queue:     "q1",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
 					},
 				},
 			},
@@ -149,6 +158,9 @@ func TestPreempt(t *testing.T) {
 						Queue:             "q1",
 						PriorityClassName: "low-priority",
 					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -159,6 +171,9 @@ func TestPreempt(t *testing.T) {
 						MinMember:         1,
 						Queue:             "q1",
 						PriorityClassName: "high-priority",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
 					},
 				},
 			},
@@ -197,6 +212,9 @@ func TestPreempt(t *testing.T) {
 						Queue:             "q1",
 						PriorityClassName: "low-priority",
 					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -207,6 +225,9 @@ func TestPreempt(t *testing.T) {
 						MinMember:         1,
 						Queue:             "q1",
 						PriorityClassName: "high-priority",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
 					},
 				},
 			},
