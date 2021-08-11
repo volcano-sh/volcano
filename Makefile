@@ -164,7 +164,7 @@ verify:
 
 lint: ## Lint the files
 	golangci-lint version
-	golangci-lint run pkg/kube pkg/version pkg/apis/...
+	golangci-lint run -v
 
 verify-generated-yaml:
 	./hack/check-generated-yaml.sh

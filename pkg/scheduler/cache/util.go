@@ -16,9 +16,7 @@ limitations under the License.
 
 package cache
 
-import (
-	"k8s.io/api/core/v1"
-)
+import v1 "k8s.io/api/core/v1"
 
 // responsibleForPod returns true if the pod has asked to be scheduled by the given scheduler.
 func responsibleForPod(pod *v1.Pod, schedulerName string) bool {

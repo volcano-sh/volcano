@@ -17,8 +17,9 @@ limitations under the License.
 package reservation
 
 import (
-	"k8s.io/klog"
 	"time"
+
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
