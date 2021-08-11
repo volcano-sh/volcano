@@ -43,7 +43,6 @@ linters:
     # linters maintained by golang.org
     - gofmt
     - goimports
-    - golint
     - govet
     # linters default enabled by golangci-lint .
     #- deadcode
