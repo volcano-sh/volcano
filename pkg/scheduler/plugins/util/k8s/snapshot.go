@@ -38,6 +38,9 @@ type Snapshot struct {
 	nodeInfoList []*v1alpha1.NodeInfo
 	// havePodsWithAffinityNodeInfoList is the list of nodes with at least one pod declaring affinity terms.
 	havePodsWithAffinityNodeInfoList []*v1alpha1.NodeInfo
+	// havePodsWithRequiredAntiAffinityNodeInfoList is the list of nodes with at least one pod declaring
+	// required anti-affinity terms.
+	havePodsWithRequiredAntiAffinityNodeInfoList []*v1alpha1.NodeInfo
 }
 
 var _ v1alpha1.SharedLister = &Snapshot{}
@@ -53,10 +56,14 @@ func NewEmptySnapshot() *Snapshot {
 func NewSnapshot(nodeInfoMap map[string]*v1alpha1.NodeInfo) *Snapshot {
 	nodeInfoList := make([]*v1alpha1.NodeInfo, 0, len(nodeInfoMap))
 	havePodsWithAffinityNodeInfoList := make([]*v1alpha1.NodeInfo, 0, len(nodeInfoMap))
+	havePodsWithRequiredAntiAffinityNodeInfoList := make([]*v1alpha1.NodeInfo, 0, len(nodeInfoMap))
 	for _, v := range nodeInfoMap {
 		nodeInfoList = append(nodeInfoList, v)
 		if len(v.PodsWithAffinity) > 0 {
 			havePodsWithAffinityNodeInfoList = append(havePodsWithAffinityNodeInfoList, v)
+		}
+		if len(v.PodsWithRequiredAntiAffinity) > 0 {
+			havePodsWithRequiredAntiAffinityNodeInfoList = append(havePodsWithRequiredAntiAffinityNodeInfoList, v)
 		}
 	}
 
@@ -64,6 +71,7 @@ func NewSnapshot(nodeInfoMap map[string]*v1alpha1.NodeInfo) *Snapshot {
 	s.nodeInfoMap = nodeInfoMap
 	s.nodeInfoList = nodeInfoList
 	s.havePodsWithAffinityNodeInfoList = havePodsWithAffinityNodeInfoList
+	s.havePodsWithRequiredAntiAffinityNodeInfoList = havePodsWithRequiredAntiAffinityNodeInfoList
 
 	return s
 }
@@ -118,7 +126,7 @@ func (s *Snapshot) HavePodsWithAffinityList() ([]*v1alpha1.NodeInfo, error) {
 
 // HavePodsWithRequiredAntiAffinityList returns the list of NodeInfos of nodes with pods with required anti-affinity terms.
 func (s *Snapshot) HavePodsWithRequiredAntiAffinityList() ([]*v1alpha1.NodeInfo, error) {
-	return nil, nil
+	return s.havePodsWithRequiredAntiAffinityNodeInfoList, nil
 }
 
 // Get returns the NodeInfo of the given node name.
