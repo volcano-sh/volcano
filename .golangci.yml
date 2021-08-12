@@ -45,18 +45,18 @@ linters:
     - goimports
     - govet
     # linters default enabled by golangci-lint .
-    #- deadcode
+    - deadcode
     #- errcheck
     #- gosimple
-    #- ineffassign
-    #- staticcheck
-    #- structcheck
-    #- typecheck
-    #- unused
-    #- varcheck
+    - ineffassign
+    - staticcheck
+    - structcheck
+    - typecheck
+    - unused
+    - varcheck
     # other linters supported by golangci-lint.
     #- gosec
-    #- whitespace
+    - whitespace
 
 linters-settings:
   goimports:

@@ -209,7 +209,6 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 				klog.Errorf("Failed to update job <%s/%s> condition: %v",
 					job.Namespace, job.Name, err)
 			}
-
 		}
 		metrics.UpdateUnscheduleTaskCount(job.Name, int(unreadyTaskCount))
 		unreadyTaskCount = 0

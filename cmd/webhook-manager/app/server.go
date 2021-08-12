@@ -115,5 +115,4 @@ func Run(config *options.Config) error {
 	case <-webhookServeError:
 		return fmt.Errorf("unknown webhook server error")
 	}
-
 }

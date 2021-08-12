@@ -218,12 +218,10 @@ func checkEventExist(policyEvents []v1alpha1.Event, reqEvent v1alpha1.Event) boo
 		}
 	}
 	return false
-
 }
 
 func addResourceList(list, req, limit v1.ResourceList) {
 	for name, quantity := range req {
-
 		if value, ok := list[name]; !ok {
 			list[name] = quantity.DeepCopy()
 		} else {

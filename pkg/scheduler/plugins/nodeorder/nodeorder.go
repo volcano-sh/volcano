@@ -103,7 +103,6 @@ type priorityWeight struct {
 //        balancedresource.weight: 2
 //        tainttoleration.weight: 2
 func calculateWeight(args framework.Arguments) priorityWeight {
-
 	// Initial values for weights.
 	// By default, for backward compatibility and for reasonable scores,
 	// least requested priority is enabled and most requested priority is disabled.

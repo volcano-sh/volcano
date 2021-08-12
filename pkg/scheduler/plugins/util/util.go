@@ -251,7 +251,6 @@ type CachedNodeInfo struct {
 func (c *CachedNodeInfo) GetNodeInfo(name string) (*v1.Node, error) {
 	node, found := c.Session.Nodes[name]
 	if !found {
-
 		return nil, errors.NewNotFound(v1.Resource("node"), name)
 	}
 

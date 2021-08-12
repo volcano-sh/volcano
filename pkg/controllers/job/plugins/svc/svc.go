@@ -256,7 +256,6 @@ func (sp *servicePlugin) createServiceIfNotExist(job *batch.Job) error {
 			return e
 		}
 		job.Status.ControlledResources["plugin-"+sp.Name()] = sp.Name()
-
 	}
 
 	return nil
@@ -306,7 +305,6 @@ func (sp *servicePlugin) createNetworkPolicyIfNotExist(job *batch.Job) error {
 			return e
 		}
 		job.Status.ControlledResources["plugin-"+sp.Name()] = sp.Name()
-
 	}
 
 	return nil

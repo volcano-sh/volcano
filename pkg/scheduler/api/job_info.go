@@ -43,7 +43,6 @@ type DisruptionBudget struct {
 
 // NewDisruptionBudget create disruption budget for job
 func NewDisruptionBudget(minAvailable, maxUnavilable string) *DisruptionBudget {
-
 	disruptionBudget := &DisruptionBudget{
 		MinAvailable:  minAvailable,
 		MaxUnavilable: maxUnavilable,
@@ -278,7 +277,6 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.TaskMinAvailableTotal = taskMinAvailableTotal
 
 	ji.PodGroup = pg
-
 }
 
 // extractWaitingTime reads sla waiting time for job from podgroup annotations

@@ -38,7 +38,6 @@ const (
 	revocableZoneLayout      = "15:04"
 	revocableZoneLabelPrefix = "tdm.revocable-zone."
 	evictPeriodLabel         = "tdm.evict.period"
-	evictMaxStepLabel        = "tdm.evict.max-step"
 	defaultPodEvictNum       = 1
 )
 

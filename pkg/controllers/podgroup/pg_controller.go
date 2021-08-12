@@ -63,7 +63,6 @@ func (pg *pgcontroller) Name() string {
 
 // Initialize create new Podgroup Controller.
 func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
-
 	pg.kubeClient = opt.KubeClient
 	pg.vcClient = opt.VolcanoClient
 

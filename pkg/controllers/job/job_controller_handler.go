@@ -265,7 +265,6 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 		if oldPod.Status.Phase != v1.PodSucceeded &&
 			cc.cache.TaskCompleted(jobcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
 			event = bus.TaskCompletedEvent
-
 		}
 	case v1.PodPending, v1.PodRunning:
 		if cc.cache.TaskFailed(jobcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
@@ -364,7 +363,6 @@ func (cc *jobcontroller) recordJobEvent(namespace, name string, event batch.JobE
 		return
 	}
 	cc.recorder.Event(job.Job, v1.EventTypeNormal, string(event), message)
-
 }
 
 func (cc *jobcontroller) handleCommands() {

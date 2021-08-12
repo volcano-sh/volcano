@@ -484,7 +484,6 @@ func (r *Resource) SetScalar(name v1.ResourceName, quantity float64) {
 // rr resource is <cpu 3000.00, memory 1000.00>
 // return r resource is <cpu 2000.00, memory 1000.00, hugepages-2Mi 0.00, hugepages-1Gi 0.00>
 func (r *Resource) MinDimensionResource(rr *Resource) *Resource {
-
 	if rr.MilliCPU < r.MilliCPU {
 		r.MilliCPU = rr.MilliCPU
 	}

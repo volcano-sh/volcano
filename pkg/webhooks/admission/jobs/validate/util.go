@@ -98,7 +98,6 @@ func validatePolicies(policies []batchv1alpha1.LifecyclePolicy, fldPath *field.P
 			if bFlag {
 				break
 			}
-
 		} else {
 			if *policy.ExitCode == 0 {
 				err = multierror.Append(err, fmt.Errorf("0 is not a valid error code"))

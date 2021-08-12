@@ -85,7 +85,6 @@ type predicateEnable struct {
 }
 
 func enablePredicate(args framework.Arguments) predicateEnable {
-
 	/*
 	   User Should give predicatesEnable in this format(predicate.GPUSharingEnable).
 	   Currently supported only GPUSharing predicate checks.
@@ -240,7 +239,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 			klog.V(4).Infof("predicates, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
-
 		},
 	})
 

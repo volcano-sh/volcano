@@ -52,7 +52,6 @@ func (pp *conformancePlugin) OnSessionOpen(ssn *framework.Session) {
 			if className == scheduling.SystemClusterCritical ||
 				className == scheduling.SystemNodeCritical ||
 				evictee.Namespace == v1.NamespaceSystem {
-
 				continue
 			}
 

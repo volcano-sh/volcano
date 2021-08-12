@@ -48,5 +48,4 @@ func (ps *restartingState) Execute(action v1alpha1.Action) error {
 
 		return false
 	})
-
 }
