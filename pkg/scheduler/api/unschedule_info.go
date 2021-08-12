@@ -16,6 +16,19 @@ const (
 	AllNodeUnavailableMsg = "all nodes are unavailable"
 )
 
+// These are reasons for a pod's transition to a condition.
+const (
+	// PodReasonUnschedulable reason in PodScheduled PodCondition means that the scheduler
+	// can't schedule the pod right now, for example due to insufficient resources in the cluster.
+	PodReasonUnschedulable = "Unschedulable"
+	// PodReasonSchedulable reason in PodScheduled PodCondition means that the scheduler
+	// can schedule the pod right now, but not bind yet
+	PodReasonSchedulable = "Schedulable"
+	// PodReasonUndetermined reason in PodScheduled PodCondition means that the scheduler
+	// skips scheduling the pod which left the pod `Undetermined`, for example due to unschedulable pod already occurred.
+	PodReasonUndetermined = "Undetermined"
+)
+
 // FitErrors is set of FitError on many nodes
 type FitErrors struct {
 	nodes map[string]*FitError

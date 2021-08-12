@@ -706,13 +706,13 @@ func (sc *SchedulerCache) UpdateSchedulerNumaInfo(AllocatedSets map[string]sched
 }
 
 // taskUnschedulable updates pod status of pending task
-func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, message string) error {
+func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason, message string) error {
 	pod := task.Pod
 
 	condition := &v1.PodCondition{
 		Type:    v1.PodScheduled,
 		Status:  v1.ConditionFalse,
-		Reason:  v1.PodReasonUnschedulable,
+		Reason:  reason, // Add more reasons in order to distinguish more specific scenario of pending tasks
 		Message: message,
 	}
 
@@ -721,7 +721,7 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, messag
 
 		// The reason field in 'Events' should be "FailedScheduling", there is not constants defined for this in
 		// k8s core, so using the same string here.
-		// The reason field in PodCondition should be "Unschedulable"
+		// The reason field in PodCondition can be "Unschedulable"
 		sc.Recorder.Eventf(pod, v1.EventTypeWarning, "FailedScheduling", message)
 		if _, err := sc.StatusUpdater.UpdatePodCondition(pod, condition); err != nil {
 			return err
@@ -950,12 +950,11 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo) {
 	// Update podCondition for tasks Allocated and Pending before job discarded
 	for _, status := range []schedulingapi.TaskStatus{schedulingapi.Allocated, schedulingapi.Pending, schedulingapi.Pipelined} {
 		for _, taskInfo := range job.TaskStatusIndex[status] {
-			msg := baseErrorMessage
-			fitError := job.NodesFitErrors[taskInfo.UID]
-			if fitError != nil {
-				msg = fitError.Error()
+			reason, msg := job.TaskSchedulingReason(taskInfo.UID)
+			if len(msg) == 0 {
+				msg = baseErrorMessage
 			}
-			if err := sc.taskUnschedulable(taskInfo, msg); err != nil {
+			if err := sc.taskUnschedulable(taskInfo, reason, msg); err != nil {
 				klog.Errorf("Failed to update unschedulable task status <%s/%s>: %v",
 					taskInfo.Namespace, taskInfo.Name, err)
 			}
