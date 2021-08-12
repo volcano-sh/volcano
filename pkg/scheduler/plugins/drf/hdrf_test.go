@@ -238,6 +238,9 @@ func TestHDRF(t *testing.T) {
 				Spec: schedulingv1.PodGroupSpec{
 					Queue: pgSpec.queue,
 				},
+				Status: schedulingv1.PodGroupStatus{
+					Phase: schedulingv1.PodGroupInqueue,
+				},
 			})
 		}
 		trueValue := true

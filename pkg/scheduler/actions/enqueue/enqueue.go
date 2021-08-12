@@ -66,7 +66,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 			queues.Push(queue)
 		}
 
-		if job.PodGroup.Status.Phase == scheduling.PodGroupPending {
+		if job.IsPending() {
 			if _, found := jobsMap[job.Queue]; !found {
 				jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 			}

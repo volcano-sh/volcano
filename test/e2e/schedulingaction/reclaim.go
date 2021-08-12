@@ -19,6 +19,7 @@ package schedulingaction
 import (
 	"context"
 	"fmt"
+	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -299,6 +300,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j4", q3, "", "", false)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job4 failed")
 
+		time.Sleep(10 * time.Second)
 		By("Make sure all job running")
 
 		err = WaitQueueStatus(ctx, "Running", 1, q1)
@@ -310,7 +312,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		err = WaitQueueStatus(ctx, "Running", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-		err = WaitQueueStatus(ctx, "Pending", 1, q3)
+		err = WaitQueueStatus(ctx, "Inqueue", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue pending")
 	})
 
@@ -344,6 +346,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j3", q3, "", "fake-node", false)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job3 failed")
 
+		time.Sleep(10 * time.Second)
 		By("Make sure all job running")
 
 		err = WaitQueueStatus(ctx, "Running", 1, q1)
@@ -352,7 +355,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		err = WaitQueueStatus(ctx, "Running", 1, q2)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-		err = WaitQueueStatus(ctx, "Pending", 1, q3)
+		err = WaitQueueStatus(ctx, "Inqueue", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue pending")
 
 	})
@@ -402,6 +405,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		}
 		e2eutil.CreateJob(ctx, job)
 
+		time.Sleep(10 * time.Second)
 		By("Make sure all job running")
 
 		err = WaitQueueStatus(ctx, "Running", 1, q1)
@@ -410,7 +414,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		err = WaitQueueStatus(ctx, "Running", 1, q2)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-		err = WaitQueueStatus(ctx, "Pending", 1, q3)
+		err = WaitQueueStatus(ctx, "Inqueue", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 	})
 
