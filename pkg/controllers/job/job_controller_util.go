@@ -265,11 +265,11 @@ func (p TasksPriority) Less(i, j int) bool {
 func (p TasksPriority) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
 
 func isControlledBy(obj metav1.Object, gvk schema.GroupVersionKind) bool {
-	controlerRef := metav1.GetControllerOf(obj)
-	if controlerRef == nil {
+	controllerRef := metav1.GetControllerOf(obj)
+	if controllerRef == nil {
 		return false
 	}
-	if controlerRef.APIVersion == gvk.GroupVersion().String() && controlerRef.Kind == gvk.Kind {
+	if controllerRef.APIVersion == gvk.GroupVersion().String() && controllerRef.Kind == gvk.Kind {
 		return true
 	}
 	return false
