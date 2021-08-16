@@ -33,6 +33,7 @@ jobs:
 
       - name: Run verify test
         run: |
+          make lint
           make verify
           make TAG=latest generate-yaml
           make verify-generated-yaml
