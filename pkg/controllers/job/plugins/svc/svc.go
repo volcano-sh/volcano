@@ -184,11 +184,7 @@ func (sp *servicePlugin) OnJobUpdate(job *batch.Job) error {
 	hostFile := GenerateHosts(job)
 
 	// updates ConfigMap of hosts for Pods to mount.
-	if err := helpers.CreateOrUpdateConfigMap(job, sp.Clientset.KubeClients, hostFile, sp.cmName(job)); err != nil {
-		return err
-	}
-
-	return nil
+	return helpers.CreateOrUpdateConfigMap(job, sp.Clientset.KubeClients, hostFile, sp.cmName(job))
 }
 
 func (sp *servicePlugin) mountConfigmap(pod *v1.Pod, job *batch.Job) {
