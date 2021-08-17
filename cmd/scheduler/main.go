@@ -25,6 +25,7 @@ import (
 	_ "net/http/pprof"
 
 	"github.com/spf13/pflag"
+	_ "go.uber.org/automaxprocs"
 
 	"k8s.io/apimachinery/pkg/util/wait"
 	cliflag "k8s.io/component-base/cli/flag"
