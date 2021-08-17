@@ -146,7 +146,6 @@ func newPGOwnerReferences(pod *v1.Pod) []metav1.OwnerReference {
 // addResourceList add list resource quantity
 func addResourceList(list, req, limit v1.ResourceList) {
 	for name, quantity := range req {
-
 		if value, ok := list[name]; !ok {
 			list[name] = quantity.DeepCopy()
 		} else {

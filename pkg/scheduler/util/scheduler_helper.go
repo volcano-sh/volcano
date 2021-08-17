@@ -273,7 +273,7 @@ func GetMinInt(vals ...int) int {
 		return 0
 	}
 
-	var min int = vals[0]
+	min := vals[0]
 	for _, val := range vals {
 		if val <= min {
 			min = val

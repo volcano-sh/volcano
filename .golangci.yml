@@ -56,6 +56,7 @@ linters:
     - varcheck
     # other linters supported by golangci-lint.
     #- gosec
+    - revive
     - whitespace
 
 linters-settings:

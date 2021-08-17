@@ -74,7 +74,7 @@ type patchOperation struct {
 	Value interface{} `json:"value,omitempty"`
 }
 
-// MutateJobs mutate jobs.
+// Jobs mutate jobs.
 func Jobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	klog.V(3).Infof("mutating jobs")
 

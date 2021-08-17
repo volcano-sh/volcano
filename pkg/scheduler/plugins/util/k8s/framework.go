@@ -100,10 +100,10 @@ func (f *Framework) PreemptHandle() v1alpha1.PreemptHandle {
 }
 
 // NewFrameworkHandle creates a FrameworkHandle interface, which is used by k8s plugins.
-func NewFrameworkHandle(nodeMap map[string]*v1alpha1.NodeInfo, kClient kubernetes.Interface) v1alpha1.FrameworkHandle {
+func NewFrameworkHandle(nodeMap map[string]*v1alpha1.NodeInfo, client kubernetes.Interface) v1alpha1.FrameworkHandle {
 	snapshot := NewSnapshot(nodeMap)
 	return &Framework{
 		snapshot:   snapshot,
-		kubeClient: kClient,
+		kubeClient: client,
 	}
 }
