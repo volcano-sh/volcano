@@ -56,8 +56,8 @@ func (g *GPUDevice) getUsedGPUMemory() uint {
 // GetGPUResourceOfPod returns the GPU resource required by the pod.
 func GetGPUResourceOfPod(pod *v1.Pod) uint {
 	var mem uint
-	for _, container := range pod.Spec.Containers {
-		mem += getGPUResourceOfContainer(&container)
+	for index := range pod.Spec.Containers {
+		mem += getGPUResourceOfContainer(&pod.Spec.Containers[index])
 	}
 	return mem
 }

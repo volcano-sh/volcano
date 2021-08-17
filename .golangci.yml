@@ -55,12 +55,14 @@ linters:
     - unused
     - varcheck
     # other linters supported by golangci-lint.
-    #- gosec
+    - gosec
     - revive
     - whitespace
 
 linters-settings:
   goimports:
     local-prefixes: volcano.sh
-
+  gosec:
+    includes:
+      - G601
 

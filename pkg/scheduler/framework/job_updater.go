@@ -72,7 +72,8 @@ func isPodGroupConditionsUpdated(newCondition, oldCondition []scheduling.PodGrou
 		newTransitionID := newCond.TransitionID
 		newCond.TransitionID = oldCond.TransitionID
 
-		shouldUpdate := !reflect.DeepEqual(&newCond, &oldCond)
+		tempNewCond := newCond
+		shouldUpdate := !reflect.DeepEqual(&tempNewCond, &oldCond)
 
 		newCond.LastTransitionTime = newTime
 		newCond.TransitionID = newTransitionID

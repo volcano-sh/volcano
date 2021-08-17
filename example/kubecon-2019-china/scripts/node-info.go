@@ -61,7 +61,8 @@ func main() {
 		if _, found := podMap[nodeName]; !found {
 			podMap[nodeName] = api.EmptyResource()
 		}
-		res := api.GetPodResourceWithoutInitContainers(&p)
+		pod := p
+		res := api.GetPodResourceWithoutInitContainers(&pod)
 		podMap[nodeName].Add(res)
 	}
 

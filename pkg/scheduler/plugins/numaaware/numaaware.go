@@ -127,7 +127,8 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 		taskPolicy := policy.GetPolicy(node, numaNodes[node.Name])
 		allResAssignMap := make(map[string]cpuset.CPUSet)
 		for _, container := range task.Pod.Spec.Containers {
-			providersHints := policy.AccumulateProvidersHints(&container, node.NumaSchedulerInfo, resNumaSets, pp.hintProviders)
+			con := container
+			providersHints := policy.AccumulateProvidersHints(&con, node.NumaSchedulerInfo, resNumaSets, pp.hintProviders)
 			hit, admit := taskPolicy.Predicate(providersHints)
 			if !admit {
 				return fmt.Errorf("plugin %s predicates failed for task %s container %s on node %s",
@@ -136,7 +137,7 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			klog.V(4).Infof("[numaaware] hits for task %s container '%v': %v on node %s, besthit: %v",
 				task.Name, container.Name, providersHints, node.Name, hit)
-			resAssignMap := policy.Allocate(&container, &hit, node.NumaSchedulerInfo, resNumaSets, pp.hintProviders)
+			resAssignMap := policy.Allocate(&con, &hit, node.NumaSchedulerInfo, resNumaSets, pp.hintProviders)
 			for resName, assign := range resAssignMap {
 				allResAssignMap[resName] = allResAssignMap[resName].Union(assign)
 				resNumaSets[resName] = resNumaSets[resName].Difference(assign)
