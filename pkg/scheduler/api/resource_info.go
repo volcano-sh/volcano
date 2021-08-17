@@ -187,6 +187,26 @@ func (r *Resource) Add(rr *Resource) *Resource {
 	return r
 }
 
+// AddBaseLeft is used to add two given resources based on the resource list of Resource r
+func (r *Resource) AddBaseLeft(rr *Resource) *Resource {
+	r.MilliCPU += rr.MilliCPU
+	r.Memory += rr.Memory
+
+	if rr.ScalarResources == nil {
+		return r
+	}
+
+	for rName := range r.ScalarResources {
+		if _, ok := rr.ScalarResources[rName]; !ok {
+			continue
+		}
+
+		r.ScalarResources[rName] += rr.ScalarResources[rName]
+	}
+
+	return r
+}
+
 //Sub subtracts two Resource objects.
 func (r *Resource) Sub(rr *Resource) *Resource {
 	assert.Assertf(rr.LessEqual(r, Zero), "resource is not sufficient to do operation: <%v> sub <%v>", r, rr)
@@ -194,10 +214,11 @@ func (r *Resource) Sub(rr *Resource) *Resource {
 	r.MilliCPU -= rr.MilliCPU
 	r.Memory -= rr.Memory
 
+	if r.ScalarResources == nil {
+		return r
+	}
+
 	for rrName, rrQuant := range rr.ScalarResources {
-		if r.ScalarResources == nil {
-			return r
-		}
 		r.ScalarResources[rrName] -= rrQuant
 	}
 

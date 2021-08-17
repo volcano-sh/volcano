@@ -99,8 +99,13 @@ func (ssn *Session) AddNodeReduceFn(name string, pf api.NodeReduceFn) {
 }
 
 // AddOverusedFn add overused function
-func (ssn *Session) AddOverusedFn(name string, fn api.ValidateFn) {
+func (ssn *Session) AddOverusedFn(name string, fn api.QueueOverusedFn) {
 	ssn.overusedFns[name] = fn
+}
+
+// AddOverusedForTask add overusedAfterJobEnqueue function
+func (ssn *Session) AddOverusedForTask(name string, fn api.OverusedForTaskFn) {
+	ssn.overusedForTaskFns[name] = fn
 }
 
 // AddJobValidFn add jobvalid function
@@ -241,19 +246,36 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 }
 
 // Overused invoke overused function of the plugins
-func (ssn *Session) Overused(queue *api.QueueInfo) bool {
+func (ssn *Session) Overused(queue *api.QueueInfo) (bool, bool) {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			of, found := ssn.overusedFns[plugin.Name]
 			if !found {
 				continue
 			}
-			if of(queue) {
-				return true
+			isOverUsed, isAllDimensionOverUsed := of(queue)
+			if isOverUsed {
+				return true, isAllDimensionOverUsed
 			}
 		}
 	}
 
+	return false, false
+}
+
+// OverusedForTask invoke overused function of the plugins
+func (ssn *Session) OverusedForTask(taskInfo *api.TaskInfo, queueID api.QueueID) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			of, found := ssn.overusedForTaskFns[plugin.Name]
+			if !found {
+				continue
+			}
+			if of(taskInfo, queueID) {
+				return true
+			}
+		}
+	}
 	return false
 }
 

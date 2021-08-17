@@ -168,3 +168,9 @@ type ReservedNodesFn func()
 
 // VictimTasksFn is the func declaration used to select victim tasks
 type VictimTasksFn func() []*TaskInfo
+
+// QueueOverusedFn is the func declaration used to judge whether queue is overused.If overused, whether it is all dimensions overused.
+type QueueOverusedFn func(*QueueInfo) (bool, bool)
+
+// OverusedForTaskFn is the func declaration used to judge whether queue is overused after pod is allocated resource.
+type OverusedForTaskFn func(*TaskInfo, QueueID) bool
