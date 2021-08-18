@@ -148,7 +148,7 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 	}
 
 	if sp.sshKeyFilePath != SSHAbsolutePath {
-		var noRootMode int32 = 0755
+		var noRootMode int32 = 0600
 		sshVolume.Secret.DefaultMode = &noRootMode
 	}
 
