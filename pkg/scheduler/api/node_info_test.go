@@ -167,3 +167,69 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 		}
 	}
 }
+
+func TestNodeInfo_SetNode(t *testing.T) {
+	// case1
+	case01Node1 := buildNode("n1", buildResourceList("10", "10G"))
+	case01Node2 := buildNode("n1", buildResourceList("8", "8G"))
+	case01Pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, buildResourceList("1", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+	case01Pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2", "2G"), []metav1.OwnerReference{}, make(map[string]string))
+	case01Pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("6", "6G"), []metav1.OwnerReference{}, make(map[string]string))
+
+	tests := []struct {
+		name     string
+		node     *v1.Node
+		updated  *v1.Node
+		pods     []*v1.Pod
+		expected *NodeInfo
+	}{
+		{
+			name:    "add 3 running non-owner pod",
+			node:    case01Node1,
+			updated: case01Node2,
+			pods:    []*v1.Pod{case01Pod1, case01Pod2, case01Pod3},
+			expected: &NodeInfo{
+				Name:                     "n1",
+				Node:                     case01Node1,
+				Idle:                     buildResource("1", "1G"),
+				Used:                     buildResource("9", "9G"),
+				OversubscriptionResource: EmptyResource(),
+				Releasing:                EmptyResource(),
+				Pipelined:                EmptyResource(),
+				Allocatable:              buildResource("10", "10G"),
+				Capability:               buildResource("10", "10G"),
+				State:                    NodeState{Phase: NotReady, Reason: "OutOfSync"},
+				Tasks: map[TaskID]*TaskInfo{
+					"c1/p1": NewTaskInfo(case01Pod1),
+					"c1/p2": NewTaskInfo(case01Pod2),
+					"c1/p3": NewTaskInfo(case01Pod3),
+				},
+				GPUDevices: make(map[int]*GPUDevice),
+			},
+		},
+	}
+
+	for i, test := range tests {
+		ni := NewNodeInfo(test.node)
+		for _, pod := range test.pods {
+			pi := NewTaskInfo(pod)
+			ni.AddTask(pi)
+			ni.Name = pod.Spec.NodeName
+		}
+
+		// OutOfSync. e.g.: nvidia-device-plugin is down causes gpus turn from 8 to 0 (node.status.allocatable."nvidia.com/gpu": 0)
+		ni.SetNode(test.updated)
+		if !nodeInfoEqual(ni, test.expected) {
+			t.Errorf("node info %d: \n expected\t%v, \n got\t\t%v \n",
+				i, test.expected, ni)
+		}
+
+		// Recover. e.g.: nvidia-device-plugin is restarted successfully
+		ni.SetNode(test.node)
+		test.expected.State = NodeState{Phase: Ready}
+		if !nodeInfoEqual(ni, test.expected) {
+			t.Errorf("recovered %d: \n expected\t%v, \n got\t\t%v \n",
+				i, test.expected, ni)
+		}
+	}
+}
