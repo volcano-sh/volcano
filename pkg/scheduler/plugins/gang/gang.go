@@ -162,9 +162,21 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 	var unScheduleJobCount int
 	for _, job := range ssn.Jobs {
 		if !job.Ready() {
-			unreadyTaskCount = job.MinAvailable - job.ReadyTaskNum()
+			schedulableTaskNum := func() (num int32) {
+				for _, task := range job.TaskStatusIndex[api.Pending] {
+					ctx := task.GetTransactionContext()
+					if task.LastTransaction != nil {
+						ctx = *task.LastTransaction
+					}
+					if api.AllocatedStatus(ctx.Status) {
+						num++
+					}
+				}
+				return num + job.ReadyTaskNum()
+			}
+			unreadyTaskCount = job.MinAvailable - schedulableTaskNum()
 			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
-				job.MinAvailable-job.ReadyTaskNum(), len(job.Tasks), job.FitError())
+				unreadyTaskCount, len(job.Tasks), job.FitError())
 			job.JobFitErrors = msg
 
 			unScheduleJobCount++
