@@ -136,7 +136,6 @@ spec:
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
             - --tls-private-key-file=/admission.local.config/certificates/tls.key
             - --ca-cert-file=/admission.local.config/certificates/ca.crt
-            - --admission-conf=/admission.local.config/configmap/volcano-admission.conf
             - --webhook-namespace=volcano-system
             - --webhook-service-name=volcano-admission-service
             - --logtostderr
