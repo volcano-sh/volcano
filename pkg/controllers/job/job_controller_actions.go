@@ -1,9 +1,12 @@
 /*
 Copyright 2019 The Volcano Authors.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -339,7 +342,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		for i := 0; i < int(ts.Replicas); i++ {
 			podName := fmt.Sprintf(jobhelpers.PodNameFmt, job.Name, name, i)
 			if pod, found := pods[podName]; !found {
-				newPod := createJobPod(job, tc, i, envValues[initIndex])
+				newPod := createJobPod(job, tc, ts.TopologyPolicy, i, jobForwarding, envValues[initIndex])
 				initIndex += 1
 				if err := cc.pluginOnPodCreate(job, newPod); err != nil {
 					return err
