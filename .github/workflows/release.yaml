@@ -1,8 +1,9 @@
-name: daily release
+name: Tag Release to https://hub.docker.com/repository/docker/dipanjank/spark-volcano
+
 on:
-  schedule:
-  # run at every 12nd minute past 0:00
-  - cron:  '*/12 0 * * *'
+  push:
+    tags:
+      - '*'
 
 jobs:
   docker:
@@ -40,11 +41,10 @@ jobs:
         working-directory: ./src/github.com/${{ github.repository }}
 
       - name: Login to DockerHub
-        uses: docker/login-action@v1 
+        uses: docker/login-action@v1
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Daily Release
-        run: make TAG=latest RELEASE_VER=latest CC=/usr/local/musl/bin/musl-gcc release
+      - name: Tag Release
+        run: make TAG=${GITHUB_REF#refs/*/} RELEASE_VER=${GITHUB_REF#refs/*/} CC=/usr/local/musl/bin/musl-gcc release
         working-directory: ./src/github.com/${{ github.repository }}

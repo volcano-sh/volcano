@@ -15,7 +15,7 @@
 BIN_DIR=_output/bin
 RELEASE_DIR=_output/release
 REPO_PATH=volcano.sh/volcano
-IMAGE_PREFIX=volcanosh/vc
+IMAGE_PREFIX=dipanjank/spark-volcano
 CRD_OPTIONS ?= "crd:crdVersions=v1"
 CC ?= "gcc"
 SUPPORT_PLUGINS ?= "no"
