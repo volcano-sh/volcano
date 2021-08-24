@@ -1,12 +1,9 @@
 /*
 Copyright 2019 The Volcano Authors.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
     http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -68,9 +65,15 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 				continue
 			}
 
+			maxRetry := job.Spec.MaxRetry
+			lastRetry := false
+			if job.Status.RetryCount >= maxRetry-1 {
+				lastRetry = true
+			}
+
 			_, retain := podRetainPhase[pod.Status.Phase]
 
-			if !retain {
+			if !retain && !lastRetry {
 				err := cc.deleteJobPod(job.Name, pod)
 				if err == nil {
 					terminating++
@@ -195,6 +198,15 @@ func (cc *jobcontroller) initOnJobUpdate(job *batch.Job) error {
 	return nil
 }
 
+func (cc *jobcontroller) GetQueueInfo(queue string) (*scheduling.Queue, error) {
+	queueInfo, err := cc.queueLister.Get(queue)
+	if err != nil {
+		klog.Errorf("Failed to get queue from queueLister, error: %s", err.Error())
+	}
+
+	return queueInfo, err
+}
+
 func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
 	job := jobInfo.Job
 	klog.V(3).Infof("Starting to sync up Job <%s/%s>, current version %d", job.Namespace, job.Name, job.Status.Version)
@@ -209,7 +221,26 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	// deep copy job to prevent mutate it
 	job = job.DeepCopy()
 
-	var err error
+	// Find queue that job belongs to, and check if the queue has forwarding metadata
+	queueInfo, err := cc.GetQueueInfo(job.Spec.Queue)
+	if err != nil {
+		return err
+	}
+
+	var jobForwarding bool
+	if len(queueInfo.Spec.ExtendClusters) != 0 {
+		jobForwarding = true
+		if len(job.Annotations) == 0 {
+			job.Annotations = make(map[string]string)
+		}
+		job.Annotations[batch.JobForwardingKey] = "true"
+		job, err = cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).Update(context.TODO(), job, metav1.UpdateOptions{})
+		if err != nil {
+			klog.Errorf("failed to update job: %s/%s, error: %s", job.Namespace, job.Name, err.Error())
+			return err
+		}
+	}
+
 	// Skip job initiation if job is already initiated
 	if !isInitiated(job) {
 		if job, err = cc.initiateJob(job); err != nil {
@@ -222,9 +253,18 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		}
 	}
 
+	if len(queueInfo.Spec.ExtendClusters) != 0 {
+		jobForwarding = true
+		job.Annotations[batch.JobForwardingKey] = "true"
+		_, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).Update(context.TODO(), job, metav1.UpdateOptions{})
+		if err != nil {
+			klog.Errorf("failed to update job: %s/%s, error: %s", job.Namespace, job.Name, err.Error())
+			return err
+		}
+	}
+
 	var syncTask bool
 	if pg, _ := cc.pgLister.PodGroups(job.Namespace).Get(job.Name); pg != nil {
-
 		if pg.Status.Phase != "" && pg.Status.Phase != scheduling.PodGroupPending {
 			syncTask = true
 		}
@@ -285,6 +325,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	klog.Infof("Executor ID list: %s", envValues)
 
 	initIndex := 0
+
 	for _, ts := range job.Spec.Tasks {
 		ts.Template.Name = ts.Name
 		tc := ts.Template.DeepCopy()
@@ -657,22 +698,6 @@ func (cc *jobcontroller) initJobStatus(job *batch.Job) (*batch.Job, error) {
 	job.Status.State.Phase = batch.Pending
 	job.Status.State.LastTransitionTime = metav1.Now()
 	job.Status.MinAvailable = job.Spec.MinAvailable
-	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
-	if err != nil {
-		klog.Errorf("Failed to update status of Job %v/%v: %v",
-			job.Namespace, job.Name, err)
-		return nil, err
-	}
-	if err := cc.cache.Update(newJob); err != nil {
-		klog.Errorf("CreateJob - Failed to update Job %v/%v in cache:  %v",
-			newJob.Namespace, newJob.Name, err)
-		return nil, err
-	}
-
-	return newJob, nil
-}
-
-func (cc *jobcontroller) updateJobStatus(job *batch.Job) (*batch.Job, error) {
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("Failed to update status of Job %v/%v: %v",

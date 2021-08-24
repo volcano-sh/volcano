@@ -1,12 +1,9 @@
 /*
 Copyright 2019 The Volcano Authors.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
     http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -240,7 +237,7 @@ func TestCreateJobPod(t *testing.T) {
 	for i, testcase := range testcases {
 
 		t.Run(testcase.Name, func(t *testing.T) {
-			pod := createJobPod(testcase.Job, testcase.PodTemplate, testcase.Index, "")
+			pod := createJobPod(testcase.Job, testcase.PodTemplate, v1alpha1.NumaPolicy(""), testcase.Index, false, "")
 
 			if testcase.ReturnVal != nil && pod != nil && pod.Name != testcase.ReturnVal.Name && pod.Namespace != testcase.ReturnVal.Namespace {
 				t.Errorf("Expected Return Value to be %v but got %v in case %d", testcase.ReturnVal, pod, i)
