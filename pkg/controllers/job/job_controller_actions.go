@@ -310,7 +310,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 				if valueIndex < len(envValues) {
 					envVarOverrides[dynamicEnvVarName] = envValues[valueIndex]
 				}
-
+				klog.Infof("envVarOverrides is %s for replica %s", envVarOverrides, i)
 				newPod := createJobPod(job, tc, i, envVarOverrides)
 				valueIndex++
 				if err := cc.pluginOnPodCreate(job, newPod); err != nil {

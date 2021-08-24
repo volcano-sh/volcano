@@ -32,13 +32,13 @@ jobs:
           path: ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
 
-      - name: Run verify test
-        run: |
-          make verify
-          make TAG=latest generate-yaml
-          make verify-generated-yaml
-          make unit-test
-        working-directory: ./src/github.com/${{ github.repository }}
+#      - name: Run verify test
+#        run: |
+#          make verify
+#          make TAG=latest generate-yaml
+#          make verify-generated-yaml
+#          make unit-test
+#        working-directory: ./src/github.com/${{ github.repository }}
 
       - name: Login to DockerHub
         uses: docker/login-action@v1
