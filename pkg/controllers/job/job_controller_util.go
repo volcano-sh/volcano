@@ -37,7 +37,7 @@ func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(jobhelpers.PodNameFmt, jobName, taskName, index)
 }
 
-func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy batch.NumaPolicy, ix int, jobForwarding bool) *v1.Pod {
+func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int, executorId string) *v1.Pod {
 	templateCopy := template.DeepCopy()
 
 	pod := &v1.Pod{
@@ -51,6 +51,10 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 			Annotations: templateCopy.Annotations,
 		},
 		Spec: templateCopy.Spec,
+	}
+
+	if executorId != "" {
+		pod.Spec.Containers[0].Env = append(pod.Spec.Containers[0].Env, v1.EnvVar{Name: "SPARK_EXECUTOR_ID", Value: executorId})
 	}
 
 	// If no scheduler name in Pod, use scheduler name from Job.
@@ -103,10 +107,6 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 	pod.Annotations[batch.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
 	pod.Annotations[batch.PodTemplateKey] = fmt.Sprintf("%s-%s", job.Name, template.Name)
 
-	if topologyPolicy != "" {
-		pod.Annotations[schedulingv2.NumaPolicyKey] = string(topologyPolicy)
-	}
-
 	if len(job.Annotations) > 0 {
 		if value, found := job.Annotations[schedulingv2.PodPreemptable]; found {
 			pod.Annotations[schedulingv2.PodPreemptable] = value
@@ -128,18 +128,12 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 
 	// Set pod labels for Service.
 	pod.Labels[batch.JobNameKey] = job.Name
-	pod.Labels[batch.TaskSpecKey] = tsKey
 	pod.Labels[batch.JobNamespaceKey] = job.Namespace
 	pod.Labels[batch.QueueNameKey] = job.Spec.Queue
 	if len(job.Labels) > 0 {
 		if value, found := job.Labels[schedulingv2.PodPreemptable]; found {
 			pod.Labels[schedulingv2.PodPreemptable] = value
 		}
-	}
-
-	if jobForwarding {
-		pod.Annotations[batch.JobForwardingKey] = "true"
-		pod.Labels[batch.JobForwardingKey] = "true"
 	}
 
 	return pod
@@ -218,10 +212,12 @@ func checkEventExist(policyEvents []v1alpha1.Event, reqEvent v1alpha1.Event) boo
 		}
 	}
 	return false
+
 }
 
 func addResourceList(list, req, limit v1.ResourceList) {
 	for name, quantity := range req {
+
 		if value, ok := list[name]; !ok {
 			list[name] = quantity.DeepCopy()
 		} else {
@@ -265,11 +261,11 @@ func (p TasksPriority) Less(i, j int) bool {
 func (p TasksPriority) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
 
 func isControlledBy(obj metav1.Object, gvk schema.GroupVersionKind) bool {
-	controllerRef := metav1.GetControllerOf(obj)
-	if controllerRef == nil {
+	controlerRef := metav1.GetControllerOf(obj)
+	if controlerRef == nil {
 		return false
 	}
-	if controllerRef.APIVersion == gvk.GroupVersion().String() && controllerRef.Kind == gvk.Kind {
+	if controlerRef.APIVersion == gvk.GroupVersion().String() && controlerRef.Kind == gvk.Kind {
 		return true
 	}
 	return false
