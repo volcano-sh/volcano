@@ -312,7 +312,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 				}
 
 				newPod := createJobPod(job, tc, i, envVarOverrides)
-				valueIndex += 1
+				valueIndex++
 				if err := cc.pluginOnPodCreate(job, newPod); err != nil {
 					return err
 				}
