@@ -136,7 +136,6 @@ spec:
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
             - --tls-private-key-file=/admission.local.config/certificates/tls.key
             - --ca-cert-file=/admission.local.config/certificates/ca.crt
-            - --admission-conf=/admission.local.config/configmap/volcano-admission.conf
             - --webhook-namespace=volcano-system
             - --webhook-service-name=volcano-admission-service
             - --logtostderr
@@ -144,7 +143,7 @@ spec:
             - -v=4
             - 2>&1
           image: volcanosh/vc-webhook-manager:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           name: admission
           volumeMounts:
             - mountPath: /admission.local.config/certificates
@@ -178,7 +177,7 @@ spec:
       containers:
         - name: main
           image: volcanosh/vc-webhook-manager:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           command: ["./gen-admission-secret.sh", "--service", "volcano-admission-service", "--namespace",
                     "volcano-system", "--secret", "volcano-admission-secret"]
 ---
@@ -7520,7 +7519,7 @@ spec:
               - --logtostderr
               - -v=4
               - 2>&1
-            imagePullPolicy: "IfNotPresent"
+            imagePullPolicy: "Always"
 ---
 # Source: volcano/templates/scheduler.yaml
 apiVersion: v1
@@ -7537,18 +7536,21 @@ metadata:
   namespace: volcano-system
 data:
   volcano-scheduler.conf: |
-    actions: "enqueue, allocate, backfill"
+    actions: "preempt, reclaim, enqueue, allocate, backfill"
     tiers:
     - plugins:
-      - name: priority
-      - name: gang
-      - name: conformance
-    - plugins:
+      - name: priority   
       - name: drf
-      - name: predicates
-      - name: proportion
+        # These must be set to true to reproduce fairshare behaviour
+        enableHierarchy: true
+        enableReclaimable: true
+        enablePreemptable: true
+      # node order optimisations: least-used node for example
       - name: nodeorder
+      # optimal binpacking for nodes
       - name: binpack
+      # Option to add cluster-critical pods
+      - name: conformance
 ---
 # Source: volcano/templates/scheduler.yaml
 kind: ClusterRole
@@ -7669,9 +7671,9 @@ spec:
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
-            - -v=3
+            - -v=4
             - 2>&1
-          imagePullPolicy: "IfNotPresent"
+          imagePullPolicy: "Always"
           volumeMounts:
             - name: scheduler-config
               mountPath: /volcano.scheduler

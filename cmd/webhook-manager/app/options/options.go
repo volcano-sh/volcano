@@ -41,7 +41,6 @@ type Config struct {
 	WebhookName       string
 	WebhookNamespace  string
 	SchedulerName     string
-	ConfigPath        string
 	WebhookURL        string
 }
 
