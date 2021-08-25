@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
 	"k8s.io/api/admission/v1beta1"
 	whv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	v1 "k8s.io/api/core/v1"
@@ -28,10 +27,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
 	k8score "k8s.io/kubernetes/pkg/apis/core"
 	k8scorev1 "k8s.io/kubernetes/pkg/apis/core/v1"
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
+	"time"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -189,6 +190,12 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 		msg += err.Error()
 	}
 
+	if dynamicQueue, ok := job.Annotations["volcano.sh/dynamic-queue"]; ok {
+		var queues = strings.Split(dynamicQueue, "/")
+		msg += createDynamicQueue(queues, []int32{}, []string{})
+		//do something here
+	}
+
 	queue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), job.Spec.Queue, metav1.GetOptions{})
 	if err != nil {
 		msg += fmt.Sprintf(" unable to find job queue: %v", err)
@@ -202,6 +209,91 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 	}
 
 	return msg
+}
+
+func createDynamicQueue(queues []string, previousWeight []int32, previousQueues [] string) string {
+
+	var newWeight []int32
+	var newQueues []string
+
+	queueName := queues[0]
+	remainderQueue := queues[1:]
+
+	newQueues = append(previousQueues, queueName)
+
+	if queueName == "root" {
+		newWeight = append(previousWeight, 1)
+		return createDynamicQueue(remainderQueue, newWeight, newQueues)
+	}
+
+	// Get the root queue
+	rootQueue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), queueName, metav1.GetOptions{})
+
+	// Check if the root queue exist
+	if err != nil {
+		klog.V(3).Infof("Queue `%s` does not exist, so we will try to create one", queueName)
+
+		newWeight = append(previousWeight, 1)
+
+		hierarchyWeights := strings.Trim(strings.Join(strings.Fields(fmt.Sprint(newWeight)), "/"), "[]")
+
+		hierarchy := strings.Trim(strings.Join(newQueues, "/"), "[]")
+
+		var queue = schedulingv1beta1.Queue{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: queueName,
+				Annotations: map[string]string{
+					"volcano.sh/hierarchy":        	hierarchy,
+					"volcano.sh/hierarchy-weights": hierarchyWeights,
+				},
+			},
+			Spec: schedulingv1beta1.QueueSpec{
+				Weight: 1,
+			},
+		}
+
+		_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &queue, metav1.CreateOptions{})
+
+
+		if err != nil {
+			return fmt.Sprintf("Unable to create the queue: %v", err)
+		}
+
+		poll_err := wait.PollImmediate(time.Second / 2, time.Second * 5, isQueueRunning(queueName))
+
+		if poll_err != nil {
+			return fmt.Sprintf("Unable to start the queue: %v", err)
+		}
+
+	} else if rootQueue.Status.State != schedulingv1beta1.QueueStateOpen {
+		return fmt.Sprintf("can only add a queue to a queue with the state `Open`, "+
+			"the root queue `%s` status is `%s`", rootQueue.Name, rootQueue.Status.State)
+	} else {
+		klog.V(3).Infof("Queue `%s` does exist, so lets use that one", queueName)
+		newWeight = append(previousWeight, rootQueue.Spec.Weight)
+	}
+
+	if len(remainderQueue) == 0 {
+		return ""
+	}
+
+	return createDynamicQueue(remainderQueue, newWeight, newQueues)
+}
+
+func isQueueRunning(queueName string) wait.ConditionFunc {
+	return func() (bool, error) {
+		queue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), queueName, metav1.GetOptions{})
+
+		if err != nil {
+			return false, err
+		}
+
+		switch queue.Status.State {
+		case schedulingv1beta1.QueueStateOpen:
+			return true, nil
+		}
+		return false, nil
+	}
 }
 
 func validateJobUpdate(old, new *v1alpha1.Job) error {
