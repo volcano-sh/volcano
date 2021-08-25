@@ -152,7 +152,9 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 		// and if the queue has annotation dynamyc
 	}
 
-	if dynamicQueue, ok := job.Annotations["volcano.sh/dynamic-queue"]; ok && dynamicQueue == "true" && queue.Status.State != schedulingv1beta1.QueueStateClosed  {
+	if dynamic, ok := job.Annotations["volcano.sh/dynamic"]; ok &&
+		dynamic == "true" &&
+		queue.Status.State != schedulingv1beta1.QueueStateClosed  {
 
 		klog.V(3).Infof("Delete dynamically created queue %v/%v", queue.Namespace, queue.Name)
 

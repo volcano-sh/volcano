@@ -19,7 +19,6 @@ package validate
 import (
 	"context"
 	"fmt"
-	"strings"
 	"k8s.io/api/admission/v1beta1"
 	whv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	v1 "k8s.io/api/core/v1"
@@ -32,6 +31,7 @@ import (
 	k8score "k8s.io/kubernetes/pkg/apis/core"
 	k8scorev1 "k8s.io/kubernetes/pkg/apis/core/v1"
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
+	"strings"
 	"time"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -245,6 +245,7 @@ func createDynamicQueue(queues []string, previousWeight []int32, previousQueues 
 				Annotations: map[string]string{
 					"volcano.sh/hierarchy":        	hierarchy,
 					"volcano.sh/hierarchy-weights": hierarchyWeights,
+					"volcano.sh/dynamic":			"true",
 				},
 			},
 			Spec: schedulingv1beta1.QueueSpec{
