@@ -18,6 +18,8 @@ package job
 
 import (
 	"fmt"
+	"math/rand"
+	"strconv"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -55,12 +57,9 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int, envVarOv
 
 	// For every container in the pod, iterate over the envOverrides map and set an environment variable
 	// for each key-value pair
-	klog.Infof("CreateJobPod: envVarOverrides is %s for replica %s", envVarOverrides, ix)
-	for i, container := range pod.Spec.Containers {
-		for name, value := range envVarOverrides {
-			klog.Infof("Apply envVarOverrides for container %s: %s=%s", container.Name, name, value)
-			pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{Name: name, Value: value})
-		}
+	klog.Infof( "For all executors create a random id", envVarOverrides, ix)
+	for i, _ := range pod.Spec.Containers {
+		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{Name: "SPARK_EXECUTOR_ID", Value: strconv.Itoa(rand.Int())})
 	}
 
 	// If no scheduler name in Pod, use scheduler name from Job.

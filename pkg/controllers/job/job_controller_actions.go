@@ -357,13 +357,14 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 			podName := fmt.Sprintf(jobhelpers.PodNameFmt, job.Name, name, i)
 			if pod, found := pods[podName]; !found {
 
-				envVarOverrides := make(map[string]string)
+				//envVarOverrides := make(map[string]string)
+				//
+				//if valueIndex < len(envValues) {
+				//	envVarOverrides[dynamicEnvVarName] = envValues[valueIndex]
+				//}
+				//klog.Infof("envVarOverrides is %s for replica %s", envVarOverrides, i)
 
-				if valueIndex < len(envValues) {
-					envVarOverrides[dynamicEnvVarName] = envValues[valueIndex]
-				}
-				klog.Infof("envVarOverrides is %s for replica %s", envVarOverrides, i)
-				newPod := createJobPod(job, tc, i, envVarOverrides)
+				newPod := createJobPod(job, tc, i, make(map[string]string))
 				valueIndex++
 				if err := cc.pluginOnPodCreate(job, newPod); err != nil {
 					return err
