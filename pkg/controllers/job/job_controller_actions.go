@@ -19,17 +19,20 @@ package job
 import (
 	"context"
 	"fmt"
+	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/klog"
 	"reflect"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	v1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog"
+	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/cli/util"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/helpers"
@@ -141,10 +144,57 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 		}
 	}
 
+	queue, err := cc.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), job.Spec.Queue, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("Failed to find Queue %v/%v: %v", job.Namespace, job.Name, err)
+		return err
+		// also check if there are no jobs
+		// and if the queue has annotation dynamyc
+	}
+
+	if dynamicQueue, ok := job.Annotations["volcano.sh/dynamic-queue"]; ok && dynamicQueue == "true" && queue.Status.State != schedulingv1beta1.QueueStateClosed  {
+
+		klog.V(3).Infof("Delete dynamically created queue %v/%v", queue.Namespace, queue.Name)
+
+		err = util.CreateQueueCommandInterface(cc.vcClient, job.Namespace, queue.Name, busv1alpha1.OpenQueueAction)
+		if err != nil {
+			klog.Errorf("Failed to close Queue %v/%v: %v", queue.Namespace, queue.Name, err)
+			return err
+		}
+
+		err = wait.PollImmediate(time.Second / 2, time.Second * 5,
+			func() (bool, error) {
+				queue, err := cc.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), queue.Name, metav1.GetOptions{})
+
+				if err != nil {
+					return false, err
+				}
+
+				switch queue.Status.State {
+				case schedulingv1beta1.QueueStateClosed:
+					return true, nil
+				}
+				return false, nil
+			},
+		)
+
+		if err != nil {
+			klog.Errorf("Failed to delete Queue %v/%v: %v", queue.Namespace, queue.Name, err)
+			return err
+		}
+
+		err = cc.vcClient.SchedulingV1beta1().Queues().Delete(context.TODO(), job.Spec.Queue, metav1.DeleteOptions{})
+		if err != nil {
+			klog.Errorf("Failed to delete Queue %v/%v: %v", queue.Namespace, queue.Name, err)
+			return err
+		}
+	}
 	// NOTE(k82cn): DO NOT delete input/output until job is deleted.
 
 	return nil
 }
+
+
 
 func (cc *jobcontroller) initiateJob(job *batch.Job) (*batch.Job, error) {
 	klog.V(3).Infof("Starting to initiate Job <%s/%s>", job.Namespace, job.Name)

@@ -38,6 +38,10 @@ const (
 	// TaskCompletedEvent is triggered if the 'Replicas' amount of pods in one task are succeed
 	TaskCompletedEvent Event = "TaskCompleted"
 
+	// TaskCompletedEvent is triggered if the 'Replicas' amount of pods in one task are succeed
+	JobCompletedEvent Event = "JobCompleted"
+
+
 	// Note: events below are used internally, should not be used by users.
 
 	// OutOfSyncEvent is triggered if Pod/Job is updated(add/update/delete)

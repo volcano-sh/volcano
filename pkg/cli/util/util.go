@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -94,6 +95,32 @@ func PopulateResourceListV1(spec string) (v1.ResourceList, error) {
 }
 
 // CreateQueueCommand executes a command such as open/close
+func CreateQueueCommandInterface(vcClient versioned.Interface, ns, name string, action busv1alpha1.Action) error {
+	queue, err := vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	ctrlRef := metav1.NewControllerRef(queue, helpers.V1beta1QueueKind)
+	cmd := &vcbus.Command{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: fmt.Sprintf("%s-%s-",
+				queue.Name, strings.ToLower(string(action))),
+			Namespace: queue.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*ctrlRef,
+			},
+		},
+		TargetObject: ctrlRef,
+		Action:       string(action),
+	}
+
+	if _, err := vcClient.BusV1alpha1().Commands(ns).Create(context.TODO(), cmd, metav1.CreateOptions{}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func CreateQueueCommand(vcClient *versioned.Clientset, ns, name string, action vcbus.Action) error {
 	queue, err := vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {

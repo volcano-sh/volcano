@@ -47,6 +47,8 @@ var policyActionMap = map[busv1alpha1.Action]bool{
 	busv1alpha1.TerminateJobAction: true,
 	busv1alpha1.CompleteJobAction:  true,
 	busv1alpha1.ResumeJobAction:    true,
+	busv1alpha1.CleanupQueueAction: true,
+
 	busv1alpha1.SyncJobAction:      false,
 	busv1alpha1.EnqueueAction:      false,
 }

@@ -42,6 +42,9 @@ const (
 	// ResumeJobAction is the action to resume an aborted job.
 	ResumeJobAction Action = "ResumeJob"
 
+	// Cleanup queue that is dynamically generated
+	CleanupQueueAction Action = "CleanupQueue"
+
 	// Note: actions below are only used internally, should not be used by users.
 
 	// SyncJobAction is the action to sync Job/Pod status.
