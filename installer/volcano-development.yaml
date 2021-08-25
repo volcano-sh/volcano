@@ -16,6 +16,40 @@ metadata:
   namespace: volcano-system
 ---
 # Source: volcano/templates/admission.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: volcano-admission-configmap
+  namespace: volcano-system
+data:
+  volcano-admission.conf: |
+    #resourceGroups:
+    #- resourceGroup: management                    # set the resource group name
+    #  object:
+    #    key: namespace                             # set the field and the value to be matched
+    #    value:
+    #    - mng-ns-1
+    #  schedulerName: default-scheduler             # set the scheduler for patching
+    #  tolerations:                                 # set the tolerations for patching
+    #  - effect: NoSchedule
+    #    key: taint
+    #    operator: Exists
+    #  labels:
+    #    volcano.sh/nodetype: management           # set the nodeSelector for patching
+    #- resourceGroup: cpu
+    #  object:
+    #    key: annotation
+    #    value:
+    #    - "volcano.sh/resource-group: cpu"
+    #  schedulerName: volcano
+    #  labels:
+    #    volcano.sh/nodetype: cpu
+    #- resourceGroup: gpu                          # if the object is unsetted, default is:  the key is annotation,
+    #  schedulerName: volcano                      # the annotation key is fixed and is "volcano.sh/resource-group", The corresponding value is the resourceGroup field
+    #  labels:
+    #    volcano.sh/nodetype: gpu
+---
+# Source: volcano/templates/admission.yaml
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
@@ -109,17 +143,22 @@ spec:
             - -v=4
             - 2>&1
           image: volcanosh/vc-webhook-manager:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           name: admission
           volumeMounts:
             - mountPath: /admission.local.config/certificates
               name: admission-certs
               readOnly: true
+            - mountPath: /admission.local.config/configmap
+              name: admission-config
       volumes:
         - name: admission-certs
           secret:
             defaultMode: 420
             secretName: volcano-admission-secret
+        - name: admission-config
+          configMap:
+            name: volcano-admission-configmap
 ---
 # Source: volcano/templates/admission.yaml
 apiVersion: batch/v1
@@ -138,7 +177,7 @@ spec:
       containers:
         - name: main
           image: volcanosh/vc-webhook-manager:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           command: ["./gen-admission-secret.sh", "--service", "volcano-admission-service", "--namespace",
                     "volcano-system", "--secret", "volcano-admission-secret"]
 ---
@@ -147,7 +186,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.4.1
+    controller-gen.kubebuilder.io/version: v0.6.0
   creationTimestamp: null
   name: jobs.batch.volcano.sh
 spec:
@@ -317,6 +356,23 @@ spec:
                       properties:
                         metadata:
                           description: 'Standard object''s metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata'
+                          properties:
+                            annotations:
+                              additionalProperties:
+                                type: string
+                              type: object
+                            finalizers:
+                              items:
+                                type: string
+                              type: array
+                            labels:
+                              additionalProperties:
+                                type: string
+                              type: object
+                            name:
+                              type: string
+                            namespace:
+                              type: string
                           type: object
                         spec:
                           description: 'Specification of the desired behavior of the
@@ -5839,6 +5895,23 @@ spec:
                                               that will be copied into the PVC when
                                               creating it. No other fields are allowed
                                               and will be rejected during validation.
+                                            properties:
+                                              annotations:
+                                                additionalProperties:
+                                                  type: string
+                                                type: object
+                                              finalizers:
+                                                items:
+                                                  type: string
+                                                type: array
+                                              labels:
+                                                additionalProperties:
+                                                  type: string
+                                                type: object
+                                              name:
+                                                type: string
+                                              namespace:
+                                                type: string
                                             type: object
                                           spec:
                                             description: The specification for the
@@ -7273,7 +7346,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.4.1
+    controller-gen.kubebuilder.io/version: v0.6.0
   creationTimestamp: null
   name: commands.bus.volcano.sh
 spec:
@@ -7446,7 +7519,7 @@ spec:
               - --logtostderr
               - -v=4
               - 2>&1
-            imagePullPolicy: "IfNotPresent"
+            imagePullPolicy: "Always"
 ---
 # Source: volcano/templates/scheduler.yaml
 apiVersion: v1
@@ -7463,18 +7536,21 @@ metadata:
   namespace: volcano-system
 data:
   volcano-scheduler.conf: |
-    actions: "enqueue, allocate, backfill"
+    actions: "preempt, reclaim, enqueue, allocate, backfill"
     tiers:
     - plugins:
-      - name: priority
-      - name: gang
-      - name: conformance
-    - plugins:
+      - name: priority   
       - name: drf
-      - name: predicates
-      - name: proportion
+        # These must be set to true to reproduce fairshare behaviour
+        enableHierarchy: true
+        enableReclaimable: true
+        enablePreemptable: true
+      # node order optimisations: least-used node for example
       - name: nodeorder
+      # optimal binpacking for nodes
       - name: binpack
+      # Option to add cluster-critical pods
+      - name: conformance
 ---
 # Source: volcano/templates/scheduler.yaml
 kind: ClusterRole
@@ -7530,6 +7606,9 @@ rules:
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
     verbs: ["list", "watch", "update"]
+  - apiGroups: ["nodeinfo.volcano.sh"]
+    resources: ["numatopologies"]
+    verbs: ["get", "list", "watch", "delete"]
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "create", "delete", "update"]
@@ -7592,9 +7671,9 @@ spec:
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
-            - -v=3
+            - -v=4
             - 2>&1
-          imagePullPolicy: "IfNotPresent"
+          imagePullPolicy: "Always"
           volumeMounts:
             - name: scheduler-config
               mountPath: /volcano.scheduler
@@ -7608,7 +7687,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.4.1
+    controller-gen.kubebuilder.io/version: v0.6.0
   creationTimestamp: null
   name: podgroups.scheduling.volcano.sh
 spec:
@@ -7748,7 +7827,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.4.1
+    controller-gen.kubebuilder.io/version: v0.6.0
   creationTimestamp: null
   name: queues.scheduling.volcano.sh
 spec:
@@ -7793,6 +7872,43 @@ spec:
                   x-kubernetes-int-or-string: true
                 description: ResourceList is a set of (resource name, quantity) pairs.
                 type: object
+              extendClusters:
+                description: extendCluster indicate the jobs in this Queue will be
+                  dispatched to these clusters.
+                items:
+                  description: CluterSpec represents the template of Cluster
+                  properties:
+                    capacity:
+                      additionalProperties:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      description: ResourceList is a set of (resource name, quantity)
+                        pairs.
+                      type: object
+                    name:
+                      type: string
+                    weight:
+                      format: int32
+                      type: integer
+                  type: object
+                type: array
+              guarantee:
+                description: Guarantee indicate configuration about resource reservation
+                properties:
+                  resource:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    description: The amount of cluster resource reserved for queue.
+                      Just set either `percentage` or `resource`
+                    type: object
+                type: object
               reclaimable:
                 description: Reclaimable indicate whether the queue can be reclaimed
                   by other queue
@@ -7812,6 +7928,26 @@ spec:
                 description: The number of 'Pending' PodGroup in this queue.
                 format: int32
                 type: integer
+              reservation:
+                description: Reservation is the profile of resource reservation for
+                  queue
+                properties:
+                  nodes:
+                    description: Nodes are Locked nodes for queue
+                    items:
+                      type: string
+                    type: array
+                  resource:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    description: Resource is a list of total idle resource in locked
+                      nodes.
+                    type: object
+                type: object
               running:
                 description: The number of 'Running' PodGroup in this queue.
                 format: int32
@@ -7829,6 +7965,93 @@ spec:
     storage: true
     subresources:
       status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
+---
+# Source: volcano/templates/nodeinfo_v1alpha1_numatopologies.yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.6.0
+  creationTimestamp: null
+  name: numatopologies.nodeinfo.volcano.sh
+spec:
+  group: nodeinfo.volcano.sh
+  names:
+    kind: Numatopology
+    listKind: NumatopologyList
+    plural: numatopologies
+    shortNames:
+    - numatopo
+    singular: numatopology
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Numatopology is the Schema for the Numatopologies API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Specification of the numa information of the worker node
+            properties:
+              cpuDetail:
+                additionalProperties:
+                  description: CPUInfo is the cpu topology detail
+                  properties:
+                    core:
+                      type: integer
+                    numa:
+                      type: integer
+                    socket:
+                      type: integer
+                  type: object
+                description: Specifies the cpu topology info Key is cpu id
+                type: object
+              numares:
+                additionalProperties:
+                  description: ResourceInfo is the sets about resource capacity and
+                    allocatable
+                  properties:
+                    allocatable:
+                      type: string
+                    capacity:
+                      type: integer
+                  type: object
+                description: Specifies the numa info for the resource Key is resource
+                  name
+                type: object
+              policies:
+                additionalProperties:
+                  type: string
+                description: Specifies the policy of the manager
+                type: object
+              resReserved:
+                additionalProperties:
+                  type: string
+                description: Specifies the reserved resource of the node Key is resource
+                  name
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
 status:
   acceptedNames:
     kind: ""

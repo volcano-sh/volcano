@@ -1,0 +1,87 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.6.0
+  creationTimestamp: null
+  name: numatopologies.nodeinfo.volcano.sh
+spec:
+  group: nodeinfo.volcano.sh
+  names:
+    kind: Numatopology
+    listKind: NumatopologyList
+    plural: numatopologies
+    shortNames:
+    - numatopo
+    singular: numatopology
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Numatopology is the Schema for the Numatopologies API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Specification of the numa information of the worker node
+            properties:
+              cpuDetail:
+                additionalProperties:
+                  description: CPUInfo is the cpu topology detail
+                  properties:
+                    core:
+                      type: integer
+                    numa:
+                      type: integer
+                    socket:
+                      type: integer
+                  type: object
+                description: Specifies the cpu topology info Key is cpu id
+                type: object
+              numares:
+                additionalProperties:
+                  description: ResourceInfo is the sets about resource capacity and
+                    allocatable
+                  properties:
+                    allocatable:
+                      type: string
+                    capacity:
+                      type: integer
+                  type: object
+                description: Specifies the numa info for the resource Key is resource
+                  name
+                type: object
+              policies:
+                additionalProperties:
+                  type: string
+                description: Specifies the policy of the manager
+                type: object
+              resReserved:
+                additionalProperties:
+                  type: string
+                description: Specifies the reserved resource of the node Key is resource
+                  name
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
