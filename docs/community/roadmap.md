@@ -96,13 +96,7 @@ Investigate to cooperate with argo to support job dependencies.
 * Owner: @peiniliu
 
 ## v1.4 (To be updated)
-### Support Hierarchy Queue
-* Description: Support Hierarchy Queue algorithm.
-* Priority: High
-* Issue: https://github.com/volcano-sh/volcano/issues/1033
-* Owner: @Thor-wl
-
-### Monitoring: Cluster Resource
+### Monitoring: Cluster Resource(Delay)
 * Description: Support monitoring metrics at cluster level
 * Priority: Middle
 * Issue: https://github.com/volcano-sh/volcano/issues/1586
@@ -115,8 +109,14 @@ Investigate to cooperate with argo to support job dependencies.
 * Owner: @rudeigerc
 
 ## v1.5 (To be updated)
-### Task Dag
-* Description: Support Dag for task level
+### Support Hierarchy Queue(Part-1)
+* Description: Support Hierarchy Queue algorithm. This version plans to give feature design and api implementation.
+* Priority: High
+* Issue: https://github.com/volcano-sh/volcano/issues/1033
+* Owner: @Thor-wl
+
+### Task Scheduling (Part-1)
+* Description: Support scheduling for task level. This version plans to give feature design and api implementation.
 * Priority: High
 * Issue: https://github.com/volcano-sh/volcano/issues/1627
 * Owner: @hwdef @shinytang6 @Thor-wl
@@ -128,11 +128,36 @@ Investigate to cooperate with argo to support job dependencies.
 * Owner: @yanglilangqun @Tammy-kunyu
 
 ## v1.6 (To be updated)
+### Support Hierarchy Queue(Part-2)
+* Description: Support Hierarchy Queue algorithm. This version plans to give basic functions about resource sharing
+* Priority: High
+* Issue: https://github.com/volcano-sh/volcano/issues/1033
+* Owner: @Thor-wl
+
+### Task Scheduling (Part-2)
+* Description: Support scheduling for task level. This version plans to support task start order based on readiness and liveness of previous task.
+* Priority: High
+* Issue: https://github.com/volcano-sh/volcano/issues/1627
+* Owner: @hwdef @shinytang6 @Thor-wl
+
 ### Monitoring: Job
 * Description: Support monitoring metrics at job level
 * Priority: Middle
 * Issue: https://github.com/volcano-sh/volcano/issues/1586
 * Owner: @yanglilangqun @Tammy-kunyu
+
+## v1.7 (To be updated)
+### Support Hierarchy Queue(Part-3)
+* Description: Support Hierarchy Queue algorithm. This version plans to provide feature enhancement. More details are to be discussed. 
+* Priority: High
+* Issue: https://github.com/volcano-sh/volcano/issues/1033
+* Owner: @Thor-wl
+
+### Task Scheduling (Part-3)
+* Description: Support scheduling for task level. This version plans to support task start order based status of previous tasks.
+* Priority: High
+* Issue: https://github.com/volcano-sh/volcano/issues/1627
+* Owner: @hwdef @shinytang6 @Thor-wl
 
 ## Later (To be updated)
 ### Support configuration hot update
