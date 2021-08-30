@@ -48,5 +48,5 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Daily Release
-        run: make TAG=latest RELEASE_VER=latest CC=/usr/local/musl/bin/musl-gcc release
+        run: make TAG=latest RELEASE_VER=latest DOCKER_USERNAME=${{ secrets.DOCKERHUB_USERNAME }} DOCKER_PASSWORD=${{ secrets.DOCKERHUB_TOKEN }} CC=/usr/local/musl/bin/musl-gcc release
         working-directory: ./src/github.com/${{ github.repository }}
