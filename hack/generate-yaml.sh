@@ -24,7 +24,7 @@ VK_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
 export HELM_BIN_DIR=${VK_ROOT}/${BIN_DIR}
 export RELEASE_FOLDER=${VK_ROOT}/${RELEASE_DIR}
 
-export HELM_VER=${HELM_VER:-v3.5.3}
+export HELM_VER=${HELM_VER:-v3.6.3}
 export VOLCANO_IMAGE_TAG=${TAG:-"latest"}
 export YAML_FILENAME=volcano-${VOLCANO_IMAGE_TAG}.yaml
 export MONITOR_YAML_FILENAME=volcano-monitoring-${VOLCANO_IMAGE_TAG}.yaml
