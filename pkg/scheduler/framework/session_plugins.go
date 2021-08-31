@@ -103,6 +103,11 @@ func (ssn *Session) AddOverusedFn(name string, fn api.ValidateFn) {
 	ssn.overusedFns[name] = fn
 }
 
+// AddUnderusedResourceFn add underused function
+func (ssn *Session) AddUnderusedResourceFn(name string, fn api.UnderUsedResourceFn) {
+	ssn.underUsedFns[name] = fn
+}
+
 // AddJobValidFn add jobvalid function
 func (ssn *Session) AddJobValidFn(name string, fn api.ValidateExFn) {
 	ssn.jobValidFns[name] = fn
@@ -255,6 +260,22 @@ func (ssn *Session) Overused(queue *api.QueueInfo) bool {
 	}
 
 	return false
+}
+
+// UnderusedResources invoke underused function of the plugins
+func (ssn *Session) UnderusedResources(queue *api.QueueInfo) api.ResourceNameList {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			of, found := ssn.underUsedFns[plugin.Name]
+			if !found {
+				continue
+			}
+			underUsedResourceList := of(queue)
+			return underUsedResourceList
+		}
+	}
+
+	return api.ResourceNameList{}
 }
 
 // JobReady invoke jobready function of the plugins

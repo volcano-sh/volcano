@@ -113,11 +113,21 @@ func (r *Resource) String() string {
 }
 
 // ResourceNames returns all resource types
-func (r *Resource) ResourceNames() []v1.ResourceName {
-	resNames := []v1.ResourceName{v1.ResourceCPU, v1.ResourceMemory}
+func (r *Resource) ResourceNames() ResourceNameList {
+	resNames := ResourceNameList{}
 
-	for rName := range r.ScalarResources {
-		resNames = append(resNames, rName)
+	if r.MilliCPU >= minResource {
+		resNames = append(resNames, v1.ResourceCPU)
+	}
+
+	if r.Memory >= minResource {
+		resNames = append(resNames, v1.ResourceMemory)
+	}
+
+	for rName, rMount := range r.ScalarResources {
+		if rMount >= minResource {
+			resNames = append(resNames, rName)
+		}
 	}
 
 	return resNames
@@ -194,10 +204,10 @@ func (r *Resource) Sub(rr *Resource) *Resource {
 	r.MilliCPU -= rr.MilliCPU
 	r.Memory -= rr.Memory
 
+	if r.ScalarResources == nil {
+		return r
+	}
 	for rrName, rrQuant := range rr.ScalarResources {
-		if r.ScalarResources == nil {
-			return r
-		}
 		r.ScalarResources[rrName] -= rrQuant
 	}
 
@@ -565,4 +575,28 @@ func ParseResourceList(m map[string]string) (v1.ResourceList, error) {
 		}
 	}
 	return rl, nil
+}
+
+func GetMinResource() float64 {
+	return minResource
+}
+
+// ResourceNameList struct defines resource name collection
+type ResourceNameList []v1.ResourceName
+
+// Contains judges whether rr is subset of r
+func (r ResourceNameList) Contains(rr ResourceNameList) bool {
+	for _, rrName := range ([]v1.ResourceName)(rr) {
+		isResourceExist := false
+		for _, rName := range ([]v1.ResourceName)(r) {
+			if rName == rrName {
+				isResourceExist = true
+				break
+			}
+		}
+		if !isResourceExist {
+			return false
+		}
+	}
+	return true
 }
