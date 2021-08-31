@@ -18,6 +18,7 @@ package cache
 
 import (
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/pkg/controller/volume/scheduling"
 
@@ -65,6 +66,9 @@ type Cache interface {
 	Client() kubernetes.Interface
 
 	UpdateSchedulerNumaInfo(sets map[string]api.ResNumaSets) error
+
+	// SharedInformerFactory return scheduler SharedInformerFactory
+	SharedInformerFactory() informers.SharedInformerFactory
 }
 
 // VolumeBinder interface for allocate and bind volumes
