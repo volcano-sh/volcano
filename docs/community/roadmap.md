@@ -96,11 +96,48 @@ Investigate to cooperate with argo to support job dependencies.
 * Owner: @peiniliu
 
 ## v1.4 (To be updated)
+### Support NUMA-Awareness scheduling in Volcano
+* Description: Support NUMA-Awareness scheduling in Volcano.
+* Priority: High
+* Issue: https://github.com/volcano-sh/volcano/issues/1707
+* Owner: @huone1 @william-wang
+
+### Support multi-scheduler by admission controller
+* Description: Use default scheduler for system daemon and Volcano scheduler for biz workload.
+* Priority: High
+* Issue: https://github.com/volcano-sh/volcano/issues/1322
+* Owner: @huone1 @william-wang
+
+### Support scheduling with proportion of resources
+* Description: Add scheduling policy with proportion of resources.
+* Priority: Middle
+* Issue: https://github.com/volcano-sh/volcano/issues/1368
+* Owner: @king-jingxiang
+
+### Enhance the resource comparison functions for various of scenarios
+* Description: Improve the Fundamental comparison functions
+* Priority: Middle
+* Issue: https://github.com/volcano-sh/volcano/issues/1525
+* Owner: @Thor-wl
+
+### System Stability Enhancement
+* Description: Add UT/E2E to cover more scenarios and add basic stress test.
+* Priority: Middle
+* Issue: https://github.com/volcano-sh/volcano/issues/1284
+* Owner: @rudeigerc
+
+## v1.5 (To be updated)
 ### Support Hierarchy Queue
 * Description: Support Hierarchy Queue algorithm.
 * Priority: High
 * Issue: https://github.com/volcano-sh/volcano/issues/1033
 * Owner: @Thor-wl
+
+### Support Volcano scheduler in Spark community
+* Description: Support Volcano scheduler in Spark community.
+* Priority: High
+* Issue: https://github.com/volcano-sh/volcano/issues/1704
+* Owner: @william-wang @Yikun
 
 ### Monitoring: Cluster Resource
 * Description: Support monitoring metrics at cluster level
@@ -108,36 +145,22 @@ Investigate to cooperate with argo to support job dependencies.
 * Issue: https://github.com/volcano-sh/volcano/issues/1586
 * Owner: @yanglilangqun @Tammy-kunyu
 
-### Add Stress Test
-* Description: Add stress test for Volcano.
-* Priority: Middle
-* Issue: https://github.com/volcano-sh/volcano/issues/1284
-* Owner: @rudeigerc
-
-## v1.5 (To be updated)
-### Task Dag
+### Task Dag scheduling
 * Description: Support Dag for task level
 * Priority: High
 * Issue: https://github.com/volcano-sh/volcano/issues/1627
 * Owner: @hwdef @shinytang6 @Thor-wl
 
-### Monitoring: Queue
-* Description: Support monitoring metrics at queue level
-* Priority: Middle
-* Issue: https://github.com/volcano-sh/volcano/issues/1586
-* Owner: @yanglilangqun @Tammy-kunyu
-
-## v1.6 (To be updated)
-### Monitoring: Job
-* Description: Support monitoring metrics at job level
-* Priority: Middle
-* Issue: https://github.com/volcano-sh/volcano/issues/1586
-* Owner: @yanglilangqun @Tammy-kunyu
-
-## Later (To be updated)
 ### Support configuration hot update
 * Description: Add hot update for Volcano components arguments.
 * Issue: https://github.com/volcano-sh/volcano/issues/1326
+
+## Later (To be updated)
+### Monitoring: 
+* Description: Support monitoring metrics at queue and job level
+* Priority: Middle
+* Issue: https://github.com/volcano-sh/volcano/issues/1586
+* Owner: @yanglilangqun @Tammy-kunyu
 
 ### Improve resource calculation accuracy
 * Description: Support high accurate resource calculation.
