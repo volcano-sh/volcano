@@ -26,7 +26,7 @@ import (
 	"k8s.io/klog"
 	"reflect"
 	"sort"
-	"strings"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -147,18 +147,21 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 	queue, err := cc.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), job.Spec.Queue, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("Failed to find Queue %v/%v: %v", job.Namespace, job.Name, err)
-		return err
+		// todo: tinco the queue might already be deleted
+		return nil
 		// also check if there are no jobs
 		// and if the queue has annotation dynamyc
 	}
 
-	if dynamic, ok := job.Annotations["volcano.sh/dynamic"]; ok &&
+	klog.V(3).Infof("Look for job annotation %v/%v", job.Name, queue.Annotations["volcano.sh/dynamic"])
+
+	if dynamic, ok := queue.Annotations["volcano.sh/dynamic"]; ok &&
 		dynamic == "true" &&
 		queue.Status.State != schedulingv1beta1.QueueStateClosed  {
 
 		klog.V(3).Infof("Delete dynamically created queue %v/%v", queue.Namespace, queue.Name)
 
-		err = util.CreateQueueCommandInterface(cc.vcClient, job.Namespace, queue.Name, busv1alpha1.OpenQueueAction)
+		err = util.CreateQueueCommandInterface(cc.vcClient, job.Namespace, queue.Name, busv1alpha1.CloseQueueAction)
 		if err != nil {
 			klog.Errorf("Failed to close Queue %v/%v: %v", queue.Namespace, queue.Name, err)
 			return err
@@ -324,24 +327,9 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		*container = append(*container, err)
 	}
 
-	var envValues []string
+	incrementValue := job.Status.Counter
 
-	// If the dynamic-env-var annotation exists in the job, then collect the list of
-	// all other annotations where the key starts with the value of job.Annotations["dynamic-env-var"]
-	dynamicEnvVarName, found := job.Annotations["dynamic-env-var"]
-	if found {
-		for key, value := range job.Annotations {
-			if strings.HasPrefix(key, dynamicEnvVarName) {
-				envValues = append(envValues, value)
-			}
-		}
-		if len(envValues) == 0 {
-			klog.Warningf("No values specified for dynamic env var: %s", dynamicEnvVarName)
-		}
-		klog.Infof("Apply dynamic Env Var %s: %s ", dynamicEnvVarName, envValues)
-	}
-
-	valueIndex := 0
+	incrementLabel, labelFound := job.Annotations["volcano.sh/increment-label"]
 
 	for _, ts := range job.Spec.Tasks {
 		ts.Template.Name = ts.Name
@@ -357,18 +345,20 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 			podName := fmt.Sprintf(jobhelpers.PodNameFmt, job.Name, name, i)
 			if pod, found := pods[podName]; !found {
 
-				//envVarOverrides := make(map[string]string)
-				//
-				//if valueIndex < len(envValues) {
-				//	envVarOverrides[dynamicEnvVarName] = envValues[valueIndex]
-				//}
-				//klog.Infof("envVarOverrides is %s for replica %s", envVarOverrides, i)
-
 				newPod := createJobPod(job, tc, i, make(map[string]string))
-				valueIndex++
+
 				if err := cc.pluginOnPodCreate(job, newPod); err != nil {
 					return err
 				}
+
+				exec := strconv.Itoa(int(incrementValue))
+
+				if labelFound {
+					newPod.Labels[incrementLabel] = exec
+				}
+
+				incrementValue++
+
 				podToCreate = append(podToCreate, newPod)
 			} else {
 				delete(pods, podName)
@@ -446,6 +436,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 			fmt.Sprintf("Error deleting pods: %+v", deletionErrs))
 		return fmt.Errorf("failed to delete %d pods of %d", len(deletionErrs), len(podToDelete))
 	}
+
 	job.Status = batch.JobStatus{
 		State: job.Status.State,
 
@@ -460,6 +451,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		TaskStatusCount:     taskStatusCount,
 		ControlledResources: job.Status.ControlledResources,
 		RetryCount:          job.Status.RetryCount,
+		Counter: 			 incrementValue,
 	}
 
 	if updateStatus != nil {
@@ -467,6 +459,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 			job.Status.State.LastTransitionTime = metav1.Now()
 		}
 	}
+
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("Failed to update status of Job %v/%v: %v",

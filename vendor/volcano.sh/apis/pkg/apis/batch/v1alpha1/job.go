@@ -317,6 +317,10 @@ type JobStatus struct {
 	// The resources that controlled by this job, e.g. Service, ConfigMap
 	// +optional
 	ControlledResources map[string]string `json:"controlledResources,omitempty" protobuf:"bytes,11,opt,name=controlledResources"`
+
+	// The job running duration is the length of time from job running to complete.
+	// +optional
+	Counter int32 `json:"counter,omitempty" protobuf:"bytes,12,opt,name=counter"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
