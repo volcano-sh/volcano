@@ -178,7 +178,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			klog.V(4).Infof("The attributes of queue <%s> in proportion: deserved <%v>, allocate <%v>, request <%v>, share <%0.2f>",
 				attr.name, attr.deserved, attr.allocated, attr.request, attr.share)
 
-			increased, decreased := attr.deserved.Diff(oldDeserved)
+			increased, decreased := attr.deserved.Diff(oldDeserved, api.Zero)
 			increasedDeserved.Add(increased)
 			decreasedDeserved.Add(decreased)
 
@@ -254,7 +254,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		underUsedResNames := api.ResourceNameList{}
 		attr := pp.queueOpts[queue.UID]
 
-		_, underUsedResource := attr.allocated.Diff(attr.deserved)
+		_, underUsedResource := attr.allocated.Diff(attr.deserved, api.Zero)
 		if underUsedResource.MilliCPU >= api.GetMinResource() {
 			underUsedResNames = append(underUsedResNames, v1.ResourceCPU)
 		}
@@ -268,7 +268,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			queue.Name, attr.deserved, attr.allocated, attr.share, underUsedResNames)
 
 		return underUsedResNames
-
 	})
 
 	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {
