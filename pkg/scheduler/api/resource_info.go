@@ -443,23 +443,22 @@ func (r *Resource) Diff(rr *Resource, defaultValue DimensionDefaultValue) (*Reso
 	rightRes := rr.Clone()
 	increasedVal := EmptyResource()
 	decreasedVal := EmptyResource()
-
 	r.setDefaultValue(leftRes, rightRes, defaultValue)
 
 	if leftRes.MilliCPU > rightRes.MilliCPU {
-		increasedVal.MilliCPU += leftRes.MilliCPU - rightRes.MilliCPU
+		increasedVal.MilliCPU = leftRes.MilliCPU - rightRes.MilliCPU
 	} else {
-		decreasedVal.MilliCPU += rightRes.MilliCPU - leftRes.MilliCPU
+		decreasedVal.MilliCPU = rightRes.MilliCPU - leftRes.MilliCPU
 	}
 
 	if leftRes.Memory > rightRes.Memory {
-		increasedVal.Memory += leftRes.Memory - rightRes.Memory
+		increasedVal.Memory = leftRes.Memory - rightRes.Memory
 	} else {
-		decreasedVal.Memory += rightRes.Memory - leftRes.Memory
+		decreasedVal.Memory = rightRes.Memory - leftRes.Memory
 	}
 
-	increasedVal.ScalarResources = map[v1.ResourceName]float64{}
-	decreasedVal.ScalarResources = map[v1.ResourceName]float64{}
+	increasedVal.ScalarResources = make(map[v1.ResourceName]float64, 0)
+	decreasedVal.ScalarResources = make(map[v1.ResourceName]float64, 0)
 	for lName, lQuant := range leftRes.ScalarResources {
 		rQuant, _ := rightRes.ScalarResources[lName]
 		if lQuant == -1 {
