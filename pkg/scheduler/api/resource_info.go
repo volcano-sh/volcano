@@ -437,38 +437,42 @@ func (r *Resource) Equal(rr *Resource, defaultValue DimensionDefaultValue) bool 
 }
 
 // Diff calculate the difference between two resource object
-func (r *Resource) Diff(rr *Resource) (*Resource, *Resource) {
+// Note: if `defaultValue` equals `Infinity`, the difference between two values will be `Infinity`, marked as -1
+func (r *Resource) Diff(rr *Resource, defaultValue DimensionDefaultValue) (*Resource, *Resource) {
+	leftRes := r.Clone()
+	rightRes := rr.Clone()
 	increasedVal := EmptyResource()
 	decreasedVal := EmptyResource()
-	if r.MilliCPU > rr.MilliCPU {
-		increasedVal.MilliCPU += r.MilliCPU - rr.MilliCPU
+	r.setDefaultValue(leftRes, rightRes, defaultValue)
+
+	if leftRes.MilliCPU > rightRes.MilliCPU {
+		increasedVal.MilliCPU = leftRes.MilliCPU - rightRes.MilliCPU
 	} else {
-		decreasedVal.MilliCPU += rr.MilliCPU - r.MilliCPU
+		decreasedVal.MilliCPU = rightRes.MilliCPU - leftRes.MilliCPU
 	}
 
-	if r.Memory > rr.Memory {
-		increasedVal.Memory += r.Memory - rr.Memory
+	if leftRes.Memory > rightRes.Memory {
+		increasedVal.Memory = leftRes.Memory - rightRes.Memory
 	} else {
-		decreasedVal.Memory += rr.Memory - r.Memory
+		decreasedVal.Memory = rightRes.Memory - leftRes.Memory
 	}
 
-	for rName, rQuant := range r.ScalarResources {
-		rrQuant, ok := rr.ScalarResources[rName]
-
-		if !ok {
-			rrQuant = 0
+	increasedVal.ScalarResources = make(map[v1.ResourceName]float64, 0)
+	decreasedVal.ScalarResources = make(map[v1.ResourceName]float64, 0)
+	for lName, lQuant := range leftRes.ScalarResources {
+		rQuant, _ := rightRes.ScalarResources[lName]
+		if lQuant == -1 {
+			increasedVal.ScalarResources[lName] = -1
+			continue
 		}
-
-		if rQuant > rrQuant {
-			if increasedVal.ScalarResources == nil {
-				increasedVal.ScalarResources = map[v1.ResourceName]float64{}
-			}
-			increasedVal.ScalarResources[rName] += rQuant - rrQuant
+		if rQuant == -1 {
+			decreasedVal.ScalarResources[lName] = -1
+			continue
+		}
+		if lQuant > rQuant {
+			increasedVal.ScalarResources[lName] = lQuant - rQuant
 		} else {
-			if decreasedVal.ScalarResources == nil {
-				decreasedVal.ScalarResources = map[v1.ResourceName]float64{}
-			}
-			decreasedVal.ScalarResources[rName] += rrQuant - rQuant
+			decreasedVal.ScalarResources[lName] = rQuant - lQuant
 		}
 	}
 

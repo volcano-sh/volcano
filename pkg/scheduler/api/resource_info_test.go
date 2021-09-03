@@ -289,6 +289,179 @@ func TestSubResource(t *testing.T) {
 	}
 }
 
+func TestDiff(t *testing.T) {
+	testsForDefaultZero := []struct {
+		resource1         *Resource
+		resource2         *Resource
+		expectedIncreased *Resource
+		expectedDecreased *Resource
+	}{
+		{
+			resource1: &Resource{},
+			resource2: &Resource{},
+			expectedIncreased: &Resource{
+				ScalarResources: make(map[v1.ResourceName]float64, 0),
+			},
+			expectedDecreased: &Resource{
+				ScalarResources: make(map[v1.ResourceName]float64, 0),
+			},
+		},
+		{
+			resource1: &Resource{
+				MilliCPU: 1000,
+				Memory:   2000,
+			},
+			resource2: &Resource{},
+			expectedIncreased: &Resource{
+				MilliCPU:        1000,
+				Memory:          2000,
+				ScalarResources: make(map[v1.ResourceName]float64, 0),
+			},
+			expectedDecreased: &Resource{
+				ScalarResources: make(map[v1.ResourceName]float64, 0),
+			},
+		},
+		{
+			resource1: &Resource{},
+			resource2: &Resource{
+				MilliCPU: 1000,
+				Memory:   2000,
+			},
+			expectedIncreased: &Resource{
+				ScalarResources: make(map[v1.ResourceName]float64, 0),
+			},
+			expectedDecreased: &Resource{
+				MilliCPU:        1000,
+				Memory:          2000,
+				ScalarResources: make(map[v1.ResourceName]float64, 0),
+			},
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        1000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000},
+			},
+			resource2: &Resource{
+				MilliCPU: 2000,
+				Memory:   1000,
+			},
+			expectedIncreased: &Resource{
+				Memory:          1000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000},
+			},
+			expectedDecreased: &Resource{
+				MilliCPU:        1000,
+				ScalarResources: make(map[v1.ResourceName]float64, 0),
+			},
+		},
+		{
+			resource1: &Resource{
+				MilliCPU: 2000,
+				Memory:   1000,
+			},
+			resource2: &Resource{
+				MilliCPU:        1000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000},
+			},
+			expectedIncreased: &Resource{
+				MilliCPU:        1000,
+				ScalarResources: make(map[v1.ResourceName]float64, 0),
+			},
+			expectedDecreased: &Resource{
+				Memory:          1000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000},
+			},
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        1000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 3000},
+			},
+			resource2: &Resource{
+				MilliCPU:        2000,
+				Memory:          1000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000},
+			},
+			expectedIncreased: &Resource{
+				Memory:          1000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 2000},
+			},
+			expectedDecreased: &Resource{
+				MilliCPU:        1000,
+				ScalarResources: make(map[v1.ResourceName]float64, 0),
+			},
+		},
+	}
+
+	testsForDefaultInfinity := []struct {
+		resource1         *Resource
+		resource2         *Resource
+		expectedIncreased *Resource
+		expectedDecreased *Resource
+	}{
+		{
+			resource1: &Resource{
+				MilliCPU:        1000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000},
+			},
+			resource2: &Resource{
+				MilliCPU: 2000,
+				Memory:   1000,
+			},
+			expectedIncreased: &Resource{
+				Memory:          1000,
+				ScalarResources: make(map[v1.ResourceName]float64, 0),
+			},
+			expectedDecreased: &Resource{
+				MilliCPU:        1000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": -1},
+			},
+		},
+		{
+			resource1: &Resource{
+				MilliCPU: 2000,
+				Memory:   1000,
+			},
+			resource2: &Resource{
+				MilliCPU:        1000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000},
+			},
+			expectedIncreased: &Resource{
+				MilliCPU:        1000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": -1},
+			},
+			expectedDecreased: &Resource{
+				Memory:          1000,
+				ScalarResources: make(map[v1.ResourceName]float64, 0),
+			},
+		},
+	}
+
+	for _, test := range testsForDefaultZero {
+		increased, decreased := test.resource1.Diff(test.resource2, Zero)
+		if !reflect.DeepEqual(test.expectedIncreased, increased) {
+			t.Errorf("expected: %#v, got: %#v", test.expectedIncreased, increased)
+		}
+		if !reflect.DeepEqual(test.expectedDecreased, decreased) {
+			t.Errorf("expected: %#v, got: %#v", test.expectedDecreased, decreased)
+		}
+	}
+	for _, test := range testsForDefaultInfinity {
+		increased, decreased := test.resource1.Diff(test.resource2, Infinity)
+		if !reflect.DeepEqual(test.expectedIncreased, increased) {
+			t.Errorf("expected: %#v, got: %#v", test.expectedIncreased, increased)
+		}
+		if !reflect.DeepEqual(test.expectedDecreased, decreased) {
+			t.Errorf("expected: %#v, got: %#v", test.expectedDecreased, decreased)
+		}
+	}
+}
+
 func TestLess(t *testing.T) {
 	testsForDefaultZero := []struct {
 		resource1 *Resource
