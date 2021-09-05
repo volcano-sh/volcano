@@ -75,7 +75,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 						continue
 					}
 
-					metrics.UpdateE2eSchedulingDurationByJob(job.Name, job.PodGroup.Spec.Queue, job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
+					metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 					allocated = true
 					break
 				}
