@@ -1,4 +1,6 @@
-![volcano-logo](docs/images/volcano-horizontal-color.png)
+<a href="https://volcano.sh/">
+    <img src="https://raw.githubusercontent.com/volcano-sh/volcano/master/docs/images/volcano-horizontal-color.png"/>
+</a>
 
 -------
 
@@ -10,7 +12,7 @@
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/3012/badge)](https://bestpractices.coreinfrastructure.org/projects/3012)
 
 
-Volcano is a batch system built on Kubernetes. It provides a suite of mechanisms that are commonly required by
+[Volcano](https://volcano.sh/) is a batch system built on Kubernetes. It provides a suite of mechanisms that are commonly required by
 many classes of batch & elastic workload including: machine learning/deep learning, bioinformatics/genomics and
 other "big data" applications. These types of applications typically run on generalized domain frameworks like
 TensorFlow, Spark, PyTorch, MPI, etc, which Volcano integrates with.
