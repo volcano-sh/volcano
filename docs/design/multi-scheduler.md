@@ -13,7 +13,7 @@ when the schedulers work in parallel, it is easy to occur the resource conflicts
 To devide the cluster resource, user need to set the taints and labels on cluster nodes and set the corresponding tolerations and nodeSelector on the pods. It will need a lot of manpower to modify the yaml files. 
 For less user operation, volcano supports the action about the pod parts automatically and adds a new MutatingAdmissionWebhook in volcano admission deployment to do it.
 
-###New configmap (volcano-admission-configmap)
+### New configmap (volcano-admission-configmap)
 
 The configmap defines some resource groups, each resource group contains
 - The identification information of the pod object, volcano support two fields:
