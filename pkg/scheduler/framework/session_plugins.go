@@ -263,7 +263,13 @@ func (ssn *Session) Overused(queue *api.QueueInfo) bool {
 }
 
 // UnderusedResources invoke underused function of the plugins
+// Returns:
+//  * nil if no `UnderUsedResourceFn` is registered
+//  * [] if no under-used resources
 func (ssn *Session) UnderusedResources(queue *api.QueueInfo) api.ResourceNameList {
+	if len(ssn.underUsedFns) == 0 {
+		return nil
+	}
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			of, found := ssn.underUsedFns[plugin.Name]
