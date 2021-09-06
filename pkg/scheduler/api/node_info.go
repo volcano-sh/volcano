@@ -418,7 +418,6 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 		}
 	}
 
-	ti.NodeName = "" // remove nodename from taskinfo
 	delete(ni.Tasks, key)
 
 	return nil
