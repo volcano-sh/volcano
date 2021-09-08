@@ -75,6 +75,7 @@ func Run(config *options.Config) error {
 	router.ForEachAdmission(config, func(service *router.AdmissionService) {
 		if service.Config != nil {
 			service.Config.VolcanoClient = vClient
+			service.Config.KubeClient = kubeClient
 			service.Config.SchedulerName = config.SchedulerName
 			service.Config.Recorder = recorder
 			service.Config.ConfigData = admissionConf
