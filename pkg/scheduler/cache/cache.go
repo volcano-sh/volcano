@@ -19,6 +19,8 @@ package cache
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/types"
+	"strings"
 	"sync"
 	"time"
 
@@ -655,7 +657,11 @@ func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string
 			}
 		}()
 	}
-
+	// add QueueNameKey label
+	labelPatch := fmt.Sprintf(`[{"op":"add","path":"/metadata/labels/%s","value":"%s" }]`, strings.Replace(batch.QueueNameKey,"/","~1",-1), string(job.Queue))
+	if _, err := sc.kubeClient.CoreV1().Pods(p.Namespace).Patch(context.TODO(), p.Name, types.JSONPatchType, []byte(labelPatch), metav1.PatchOptions{}); err != nil {
+		klog.Errorf("set pod %s label %s = %s error: %v", p.Name, batch.QueueNameKey, string(job.Queue), err)
+	}
 	return nil
 }
 
