@@ -32,7 +32,6 @@ import (
 
 var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 	It("use exisisting PVC in job", func() {
-		Skip("Skip temporarily for there may be some bugs and fix is on the way")
 		jobName := "job-pvc-name-exist"
 		taskName := "pvctask"
 		pvName := "job-pv-name"
