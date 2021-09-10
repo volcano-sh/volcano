@@ -87,7 +87,8 @@ func WatchAdmissionConf(path string, stopCh chan os.Signal) {
 	dirPath := filepath.Dir(path)
 	fileWatcher, err := filewatcher.NewFileWatcher(dirPath)
 	if err != nil {
-		klog.Errorf("failed creating filewatcher for %s: %v", path, err)
+		klog.Errorf("failed to create filewatcher for %s: %v", path, err)
+		return
 	}
 
 	eventCh := fileWatcher.Events()
