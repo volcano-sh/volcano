@@ -30,6 +30,7 @@ import (
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/signals"
 	"volcano.sh/volcano/pkg/version"
 
 	v1 "k8s.io/api/core/v1"
@@ -90,13 +91,14 @@ func Run(opt *options.ServerOption) error {
 		return err
 	}
 
+	ctx := signals.SetupSignalContext()
 	run := func(ctx context.Context) {
 		sched.Run(ctx.Done())
 		<-ctx.Done()
 	}
 
 	if !opt.EnableLeaderElection {
-		run(context.TODO())
+		run(ctx)
 		return fmt.Errorf("finished without leader elect")
 	}
 
@@ -130,7 +132,7 @@ func Run(opt *options.ServerOption) error {
 		return fmt.Errorf("couldn't create resource lock: %v", err)
 	}
 
-	leaderelection.RunOrDie(context.TODO(), leaderelection.LeaderElectionConfig{
+	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
 		Lock:          rl,
 		LeaseDuration: leaseDuration,
 		RenewDeadline: renewDeadline,
