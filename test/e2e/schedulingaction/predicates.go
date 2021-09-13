@@ -106,7 +106,6 @@ var _ = Describe("Predicates E2E Test", func() {
 	})
 
 	It("Pod Affinity", func() {
-		Skip("Skip temporarily for there may be some bugs and fix is on the way")
 		context := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(context)
 
