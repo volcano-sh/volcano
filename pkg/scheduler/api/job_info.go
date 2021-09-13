@@ -654,8 +654,8 @@ func (ji *JobInfo) CheckTaskMinAvailable() bool {
 
 // CheckTaskMinAvailableReady return ready pods meet task minavaliable.
 func (ji *JobInfo) CheckTaskMinAvailableReady() bool {
-	if ji.MinAvailable < ji.TaskMinAvailableTotal{
-		return false
+	if ji.MinAvailable < ji.TaskMinAvailableTotal {
+		return true
 	}
 	occupiedMap := map[TaskID]int32{}
 	for status, tasks := range ji.TaskStatusIndex {
@@ -686,8 +686,8 @@ func (ji *JobInfo) CheckTaskMinAvailableReady() bool {
 
 // CheckTaskMinAvailableReady return ready pods meet task minavaliable.
 func (ji *JobInfo) CheckTaskMinAvailablePipelined() bool {
-	if ji.MinAvailable < ji.TaskMinAvailableTotal{
-		return false
+	if ji.MinAvailable < ji.TaskMinAvailableTotal {
+		return true
 	}
 	occupiedMap := map[TaskID]int32{}
 	for status, tasks := range ji.TaskStatusIndex {
