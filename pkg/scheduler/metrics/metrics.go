@@ -61,7 +61,14 @@ var (
 		},
 		[]string{"job_name", "queue", "job_namespace"},
 	)
-
+	e2eJobSchedulingJobLatencyReason = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "e2e_job_scheduling_latency_reason",
+			Help:      "E2e job scheduling latency reason (scheduling algorithm + binding)",
+		},
+		[]string{"reason", "job_name", "queue", "job_namespace"},
+	)
 	pluginSchedulingLatency = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Subsystem: VolcanoNamespace,
@@ -87,6 +94,14 @@ var (
 			Help:      "Task scheduling latency in milliseconds",
 			Buckets:   prometheus.ExponentialBuckets(5, 2, 10),
 		},
+	)
+	taskSchedulingLatencyReason = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "task_scheduling_latency_reason",
+			Help:      "task scheduling latency reason (scheduling algorithm + binding)",
+		},
+		[]string{"reason", "task_name", "job_name", "queue", "job_namespace"},
 	)
 
 	scheduleAttempts = promauto.NewCounterVec(
@@ -159,6 +174,14 @@ func UpdateTaskScheduleDuration(duration time.Duration) {
 // UpdatePodScheduleStatus update pod schedule decision, could be Success, Failure, Error
 func UpdatePodScheduleStatus(label string, count int) {
 	scheduleAttempts.WithLabelValues(label).Add(float64(count))
+}
+
+func IncSchedulingLatencyReasonByJob(reason string, jobName string, queue string, namespace string) {
+	e2eJobSchedulingJobLatencyReason.WithLabelValues(reason, jobName, queue, namespace).Inc()
+}
+
+func IncTaskSchedulingLatencyReason(reason string, taskName string, jobName string, queue string, namespace string) {
+	taskSchedulingLatencyReason.WithLabelValues(reason, taskName, jobName, queue, namespace).Inc()
 }
 
 // UpdatePreemptionVictimsCount updates count of preemption victims

@@ -61,16 +61,19 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		if job.IsPending() {
 			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: job status is pending.",
 				job.Namespace, job.Name, job.Queue)
+			metrics.IncSchedulingLatencyReasonByJob("JobStatusIsPending", job.Name, string(job.Queue), job.Namespace)
 			continue
 		}
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
 			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
+			metrics.IncSchedulingLatencyReasonByJob(vr.Message, job.Name, string(job.Queue), job.Namespace)
 			continue
 		}
 
 		if _, found := ssn.Queues[job.Queue]; !found {
 			klog.Warningf("Skip adding Job <%s/%s> because its queue %s is not found",
 				job.Namespace, job.Name, job.Queue)
+			metrics.IncSchedulingLatencyReasonByJob("JobQueueIsNotFound", job.Name, string(job.Queue), job.Namespace)
 			continue
 		}
 
@@ -206,6 +209,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			taskRequest := task.Resreq.ResourceNames()
 			if underusedResources := ssn.UnderusedResources(queue); underusedResources != nil && !underusedResources.Contains(taskRequest) {
 				klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
+				metrics.IncTaskSchedulingLatencyReason("QueueIsOverusedWhenConsideringTask", task.Name,job.Name, queue.Name, job.Namespace)
 				continue
 			}
 
@@ -243,6 +247,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				if err := stmt.Allocate(task, node); err != nil {
 					klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 						task.UID, node.Name, ssn.UID, err)
+					metrics.IncTaskSchedulingLatencyReason(err.Error(),task.Name, job.Name, queue.Name, job.Namespace)
 				} else {
 					metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 				}
@@ -257,6 +262,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					if err := stmt.Pipeline(task, node.Name); err != nil {
 						klog.Errorf("Failed to pipeline Task %v on %v in Session %v for %v.",
 							task.UID, node.Name, ssn.UID, err)
+						metrics.IncTaskSchedulingLatencyReason(err.Error(),task.Name, job.Name, queue.Name, job.Namespace)
 					} else {
 						metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 					}
