@@ -100,6 +100,7 @@ type TaskInfo struct {
 	Priority    int32
 	VolumeReady bool
 	Preemptable bool
+	BestEffort  bool
 
 	// RevocableZone support set volcano.sh/revocable-zone annotaion or label for pod/podgroup
 	// we only support empty value or * value for this version and we will support specify revocable zone name for futrue release
@@ -134,6 +135,7 @@ func getTaskID(pod *v1.Pod) TaskID {
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	initResReq := GetPodResourceRequest(pod)
 	resReq := initResReq
+	bestEffort := initResReq.IsEmpty()
 	preemptable := GetPodPreemptable(pod)
 	revocableZone := GetPodRevocableZone(pod)
 	topologyPolicy := GetPodTopologyPolicy(pod)
@@ -150,6 +152,7 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		Resreq:         resReq,
 		InitResreq:     initResReq,
 		Preemptable:    preemptable,
+		BestEffort:     bestEffort,
 		RevocableZone:  revocableZone,
 		TopologyPolicy: topologyPolicy,
 
@@ -195,6 +198,7 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		InitResreq:     ti.InitResreq.Clone(),
 		VolumeReady:    ti.VolumeReady,
 		Preemptable:    ti.Preemptable,
+		BestEffort:     ti.BestEffort,
 		RevocableZone:  ti.RevocableZone,
 		TopologyPolicy: ti.TopologyPolicy,
 
@@ -591,36 +595,27 @@ func (ji *JobInfo) TaskSchedulingReason(tid TaskID) (reason string, msg string) 
 
 // ReadyTaskNum returns the number of tasks that are ready or that is best-effort.
 func (ji *JobInfo) ReadyTaskNum() int32 {
-	var occupied int32
-	for status, tasks := range ji.TaskStatusIndex {
-		if AllocatedStatus(status) ||
-			status == Succeeded {
-			occupied += int32(len(tasks))
-			continue
-		}
+	occupied := 0
+	occupied += len(ji.TaskStatusIndex[Bound])
+	occupied += len(ji.TaskStatusIndex[Binding])
+	occupied += len(ji.TaskStatusIndex[Running])
+	occupied += len(ji.TaskStatusIndex[Allocated])
+	occupied += len(ji.TaskStatusIndex[Succeeded])
 
-		if status == Pending {
-			for _, task := range tasks {
-				if task.InitResreq.IsEmpty() {
-					occupied++
-				}
+	if tasks, found := ji.TaskStatusIndex[Pending]; found {
+		for _, task := range tasks {
+			if task.BestEffort {
+				occupied++
 			}
 		}
 	}
 
-	return occupied
+	return int32(occupied)
 }
 
 // WaitingTaskNum returns the number of tasks that are pipelined.
 func (ji *JobInfo) WaitingTaskNum() int32 {
-	occupid := 0
-	for status, tasks := range ji.TaskStatusIndex {
-		if status == Pipelined {
-			occupid += len(tasks)
-		}
-	}
-
-	return int32(occupid)
+	return int32(len(ji.TaskStatusIndex[Pipelined]))
 }
 
 // CheckTaskMinAvailable returns whether each task of job is valid.
