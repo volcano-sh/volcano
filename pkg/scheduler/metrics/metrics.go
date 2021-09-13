@@ -69,6 +69,7 @@ var (
 		},
 		[]string{"reason", "job_name", "queue", "job_namespace"},
 	)
+
 	pluginSchedulingLatency = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Subsystem: VolcanoNamespace,
