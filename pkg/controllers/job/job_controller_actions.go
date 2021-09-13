@@ -69,7 +69,7 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 
 			maxRetry := job.Spec.MaxRetry
 			lastRetry := false
-			if job.Status.RetryCount >= maxRetry-1 {
+			if job.Status.RetryCount > maxRetry-1 {
 				lastRetry = true
 			}
 
