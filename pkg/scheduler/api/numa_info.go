@@ -36,10 +36,22 @@ const (
 	NumaInfoLessFlag NumaChgFlag = 0b10
 )
 
+// TopoInfo is the detail information for the resource
+type TopoInfo struct {
+	Set cpuset.CPUSet
+	Total float64
+}
+
 // ResourceInfo is the allocatable information for the resource
 type ResourceInfo struct {
-	Allocatable cpuset.CPUSet
-	Capacity    int
+	// the allocatable information in per numa node
+	NumaAllocatable map[int]*TopoInfo
+	// the total allocatable resource
+	Allocatable float64
+	// the used information in per numa node
+	NumaUsed map[int]*TopoInfo
+	// the total used resource
+	Used float64
 }
 
 // NumatopoInfo is the information about topology manager on the node
@@ -50,6 +62,14 @@ type NumatopoInfo struct {
 	NumaResMap  map[string]*ResourceInfo
 	CPUDetail   topology.CPUDetails
 	ResReserved v1.ResourceList
+}
+
+// DeepCopy used to copy TopoInfo
+func (info *TopoInfo) DeepCopy() *TopoInfo {
+	return &TopoInfo{
+		Set: info.Set.Clone(),
+		Total: info.Total,
+	}
 }
 
 // DeepCopy used to copy NumatopoInfo
@@ -69,10 +89,30 @@ func (info *NumatopoInfo) DeepCopy() *NumatopoInfo {
 	}
 
 	for resName, resInfo := range info.NumaResMap {
-		var tmpInfo ResourceInfo
-		tmpInfo.Capacity = resInfo.Capacity
-		tmpInfo.Allocatable = resInfo.Allocatable.Clone()
-		numaInfo.NumaResMap[resName] = &tmpInfo
+		tmpInfo := &ResourceInfo {
+			NumaAllocatable: make(map[int]*TopoInfo),
+			NumaUsed: make(map[int]*TopoInfo),
+		}
+
+		for numaId, data := range resInfo.NumaAllocatable {
+			topoInfo := &TopoInfo{
+				Set: data.Set.Clone(),
+				Total: data.Total,
+			}
+			tmpInfo.NumaAllocatable[numaId] = topoInfo
+		}
+
+		for numaId, data := range resInfo.NumaUsed {
+			topoInfo := &TopoInfo{
+				Set: data.Set.Clone(),
+				Total: data.Total,
+			}
+			tmpInfo.NumaUsed[numaId] = topoInfo
+		}
+
+		tmpInfo.Allocatable = resInfo.Allocatable
+		tmpInfo.Used = resInfo.Used
+		numaInfo.NumaResMap[resName] = tmpInfo
 	}
 
 	cpuDetail := info.CPUDetail
@@ -94,9 +134,9 @@ func (info *NumatopoInfo) DeepCopy() *NumatopoInfo {
 // - false :  the resource on kubelet is getting less
 func (info *NumatopoInfo) Compare(newInfo *NumatopoInfo) bool {
 	for resName := range info.NumaResMap {
-		oldSize := info.NumaResMap[resName].Allocatable.Size()
-		newSize := newInfo.NumaResMap[resName].Allocatable.Size()
-		if oldSize <= newSize {
+		oldSize := info.NumaResMap[resName].Allocatable - info.NumaResMap[resName].Used
+		newSize := newInfo.NumaResMap[resName].Allocatable - newInfo.NumaResMap[resName].Used
+		if oldSize < newSize {
 			return true
 		}
 	}
@@ -106,15 +146,49 @@ func (info *NumatopoInfo) Compare(newInfo *NumatopoInfo) bool {
 
 // Allocate is the function to remove the allocated resource
 func (info *NumatopoInfo) Allocate(resSets ResNumaSets) {
-	for resName := range resSets {
-		info.NumaResMap[resName].Allocatable = info.NumaResMap[resName].Allocatable.Difference(resSets[resName])
+	for resName, set := range resSets {
+		resNumaInfo := info.NumaResMap[resName]
+		resNumaInfo.Used += float64(set.Size() * 1000)
+
+		for _, CPUId := range set.ToSlice() {
+			for numaId, topoInfo := range resNumaInfo.NumaAllocatable {
+				if topoInfo.Set.Contains(CPUId) {
+					if _, ok := resNumaInfo.NumaUsed[numaId]; !ok {
+						resNumaInfo.NumaUsed[numaId] = &TopoInfo{
+							Set: cpuset.NewCPUSet(),
+						}
+					}
+
+					resNumaInfo.NumaUsed[numaId].Set = resNumaInfo.NumaUsed[numaId].Set.Union(cpuset.NewCPUSet(CPUId))
+					resNumaInfo.NumaUsed[numaId].Total -= 1000
+					break
+				}
+			}
+		}
 	}
 }
 
 // Release is the function to reclaim the allocated resource
 func (info *NumatopoInfo) Release(resSets ResNumaSets) {
-	for resName := range resSets {
-		info.NumaResMap[resName].Allocatable = info.NumaResMap[resName].Allocatable.Union(resSets[resName])
+	for resName, set := range resSets {
+		resNumaInfo := info.NumaResMap[resName]
+		resNumaInfo.Used -= float64(set.Size() * 1000)
+
+		for _, CPUId := range set.ToSlice() {
+			for numaId, topoInfo := range resNumaInfo.NumaAllocatable {
+				if topoInfo.Set.Contains(CPUId) {
+					if _, ok := resNumaInfo.NumaUsed[numaId]; !ok {
+						resNumaInfo.NumaUsed[numaId] = &TopoInfo{
+							Set: cpuset.NewCPUSet(),
+						}
+					}
+
+					resNumaInfo.NumaUsed[numaId].Set = resNumaInfo.NumaUsed[numaId].Set.Difference(cpuset.NewCPUSet(CPUId))
+					resNumaInfo.NumaUsed[numaId].Total -= 1000
+					break
+				}
+			}
+		}
 	}
 }
 
@@ -127,8 +201,19 @@ func GenerateNodeResNumaSets(nodes map[string]*NodeInfo) map[string]ResNumaSets 
 		}
 
 		resMaps := make(ResNumaSets)
+
 		for resName, resMap := range node.NumaSchedulerInfo.NumaResMap {
-			resMaps[resName] = resMap.Allocatable.Clone()
+			useSet := cpuset.NewCPUSet()
+			for _, topoInfo := range resMap.NumaUsed {
+				useSet = useSet.Union(topoInfo.Set)
+			}
+
+			AllocatableSet := cpuset.NewCPUSet()
+			for _, topoInfo := range resMap.NumaAllocatable {
+				AllocatableSet = AllocatableSet.Union(topoInfo.Set)
+			}
+
+			resMaps[resName] = AllocatableSet.Difference(useSet)
 		}
 
 		nodeSlice[node.Name] = resMaps

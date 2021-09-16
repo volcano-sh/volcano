@@ -132,9 +132,15 @@ func (ni *NodeInfo) RefreshNumaSchedulerInfoByCrd() {
 		for resName, resInfo := range tmp.NumaResMap {
 			klog.V(5).Infof("resource %s Allocatable : current %v new %v on node %s",
 				resName, numaResMap[resName], resInfo, ni.Name)
-			if numaResMap[resName].Allocatable.Size() >= resInfo.Allocatable.Size() {
-				numaResMap[resName].Allocatable = resInfo.Allocatable.Clone()
-				numaResMap[resName].Capacity = resInfo.Capacity
+			if numaResMap[resName].Used <= resInfo.Used {
+				numaResMap[resName].Allocatable = resInfo.Allocatable
+				numaResMap[resName].Used = resInfo.Used
+				for numaId, info := range resInfo.NumaUsed {
+					numaResMap[resName].NumaUsed[numaId] = info.DeepCopy()
+				}
+				for numaId, info := range resInfo.NumaAllocatable {
+					numaResMap[resName].NumaAllocatable[numaId] = info.DeepCopy()
+				}
 			}
 		}
 	}

@@ -26,7 +26,9 @@ import (
 // ResourceInfo is the sets about resource capacity and allocatable
 type ResourceInfo struct {
 	Allocatable string `json:"allocatable,omitempty"`
+	NumaAllocatable map[string]string `json:"numaAllocatable,omitempty"`
 	Capacity    int    `json:"capacity,omitempty"`
+	NumaCapacity map[string]string `json:"numaCapacity,omitempty"`
 }
 
 // CPUInfo is the cpu topology detail
