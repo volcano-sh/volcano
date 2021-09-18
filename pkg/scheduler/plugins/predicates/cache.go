@@ -27,7 +27,7 @@ import (
 )
 
 type predicateCache struct {
-	sync.Mutex
+	sync.RWMutex
 	cache map[string]map[string]bool //key_1: nodename key_2:pod uid
 }
 
@@ -55,8 +55,8 @@ func (pc *predicateCache) PredicateWithCache(nodeName string, pod *v1.Pod) (bool
 		return false, fmt.Errorf("no anonation of volcano.sh/template-uid in pod %s", pod.Name)
 	}
 
-	pc.Lock()
-	defer pc.Unlock()
+	pc.RLock()
+	defer pc.RUnlock()
 	if nodeCache, exist := pc.cache[nodeName]; exist {
 		if result, exist := nodeCache[podTemplateUID]; exist {
 			klog.V(4).Infof("Predicate node %s and pod %s result %v", nodeName, pod.Name, result)
