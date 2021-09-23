@@ -802,8 +802,8 @@ func getNumaInfo(srcInfo *nodeinfov1alpha1.Numatopology) *schedulingapi.Numatopo
 			}
 
 			tmp.NumaUsed[numaId] = &schedulingapi.TopoInfo{
-				Set: tmp.NumaUsed[numaId].Set.Difference(cpuset.MustParse(info)),
-				Total: tmp.NumaUsed[numaId].Total - float64(cpuset.MustParse(info).Size() * 1000),
+				Set: tmp.NumaAllocatable[numaId].Set.Difference(cpuset.MustParse(info)),
+				Total: tmp.NumaAllocatable[numaId].Total - float64(cpuset.MustParse(info).Size() * 1000),
 			}
 		}
 

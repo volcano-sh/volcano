@@ -640,7 +640,7 @@ func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string
 	}
 
 	p := task.Pod
-	if !(task.TopologyPolicy == "" || task.TopologyPolicy == "none") {
+	if !(task.NumaInfo == nil ||  task.NumaInfo.Policy == "" || task.NumaInfo.Policy == "none") {
 		if err := sc.Binder.Bind(p, hostname); err != nil {
 			sc.resyncTask(task)
 		} else {

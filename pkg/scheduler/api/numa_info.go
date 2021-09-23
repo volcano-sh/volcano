@@ -178,9 +178,7 @@ func (info *NumatopoInfo) Release(resSets ResNumaSets) {
 			for numaId, topoInfo := range resNumaInfo.NumaAllocatable {
 				if topoInfo.Set.Contains(CPUId) {
 					if _, ok := resNumaInfo.NumaUsed[numaId]; !ok {
-						resNumaInfo.NumaUsed[numaId] = &TopoInfo{
-							Set: cpuset.NewCPUSet(),
-						}
+						break
 					}
 
 					resNumaInfo.NumaUsed[numaId].Set = resNumaInfo.NumaUsed[numaId].Set.Difference(cpuset.NewCPUSet(CPUId))
@@ -192,6 +190,32 @@ func (info *NumatopoInfo) Release(resSets ResNumaSets) {
 	}
 }
 
+func (info *NumatopoInfo) AddTask(ti *TaskInfo) {
+	if len(ti.NumaInfo.ResMap) == 0 {
+		return
+	}
+
+	for numaId, resList := range ti.NumaInfo.ResMap {
+		for resName, quantity := range resList {
+			info.NumaResMap[string(resName)].NumaUsed[numaId].Total += ResQuantity2Float64(resName, quantity)
+			info.NumaResMap[string(resName)].Used += ResQuantity2Float64(resName, quantity)
+		}
+	}
+
+}
+
+func (info *NumatopoInfo) RemoveTask(ti *TaskInfo) {
+	if len(ti.NumaInfo.ResMap) == 0 {
+		return
+	}
+
+	for numaId, resList := range ti.NumaInfo.ResMap {
+		for resName, quantity := range resList {
+			info.NumaResMap[string(resName)].NumaUsed[numaId].Total -= ResQuantity2Float64(resName, quantity)
+			info.NumaResMap[string(resName)].Used -= ResQuantity2Float64(resName, quantity)
+		}
+	}
+}
 // GenerateNodeResNumaSets return the idle resource sets of all node
 func GenerateNodeResNumaSets(nodes map[string]*NodeInfo) map[string]ResNumaSets {
 	nodeSlice := make(map[string]ResNumaSets)

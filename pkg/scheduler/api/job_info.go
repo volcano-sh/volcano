@@ -80,6 +80,23 @@ func (ctx *TransactionContext) Clone() *TransactionContext {
 	return &clone
 }
 
+type TopologyInfo struct {
+	Policy string
+	ResMap map[int]v1.ResourceList
+}
+
+func (info *TopologyInfo) Clone() *TopologyInfo {
+	copyInfo := &TopologyInfo {
+		Policy: info.Policy,
+		ResMap: make(map[int]v1.ResourceList),
+	}
+
+	for numaId, resList := range info.ResMap {
+		copyInfo.ResMap[numaId] = resList.DeepCopy()
+	}
+
+	return copyInfo
+}
 // TaskInfo will have all infos about the task
 type TaskInfo struct {
 	UID TaskID
@@ -107,7 +124,7 @@ type TaskInfo struct {
 	// * value means workload can use all the revocable node for during node active revocable time.
 	RevocableZone string
 
-	TopologyPolicy string
+	NumaInfo *TopologyInfo
 	PodVolumes     *volumescheduling.PodVolumes
 	Pod            *v1.Pod
 }
@@ -151,7 +168,6 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		InitResreq:     initResReq,
 		Preemptable:    preemptable,
 		RevocableZone:  revocableZone,
-		TopologyPolicy: topologyPolicy,
 
 		TransactionContext: TransactionContext{
 			NodeName: pod.Spec.NodeName,
@@ -163,6 +179,12 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		ti.Priority = *pod.Spec.Priority
 	}
 
+	numaInfo := &TopologyInfo {
+		Policy: topologyPolicy,
+		ResMap: make(map[int]v1.ResourceList),
+	}
+
+	ti.NumaInfo = numaInfo
 	return ti
 }
 
@@ -196,8 +218,7 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		VolumeReady:    ti.VolumeReady,
 		Preemptable:    ti.Preemptable,
 		RevocableZone:  ti.RevocableZone,
-		TopologyPolicy: ti.TopologyPolicy,
-
+		NumaInfo: ti.NumaInfo.Clone(),
 		TransactionContext: TransactionContext{
 			NodeName: ti.NodeName,
 			Status:   ti.Status,
@@ -208,10 +229,17 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 
 // String returns the taskInfo details in a string
 func (ti TaskInfo) String() string {
+	if ti.NumaInfo == nil {
+		return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v"+
+			"resreq %v, preemptable %v, revocableZone %v",
+			ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority,
+			ti.Resreq, ti.Preemptable, ti.RevocableZone)
+	}
+
 	return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v"+
 		"resreq %v, preemptable %v, revocableZone %v, TopologyPolicy %v",
 		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority,
-		ti.Resreq, ti.Preemptable, ti.RevocableZone, ti.TopologyPolicy)
+		ti.Resreq, ti.Preemptable, ti.RevocableZone, ti.NumaInfo.Policy)
 }
 
 // JobID is the type of JobInfo's ID.

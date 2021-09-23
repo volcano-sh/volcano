@@ -159,7 +159,7 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	batchNodeOrderFn := func(task *api.TaskInfo, nodeInfo []*api.NodeInfo) (map[string]float64, error) {
 		nodeScores := make(map[string]float64, len(nodeInfo))
-		if task.TopologyPolicy == "" || task.TopologyPolicy == "none" {
+		if task.NumaInfo == nil ||  task.NumaInfo.Policy == "" || task.NumaInfo.Policy == "none" {
 			return nodeScores, nil
 		}
 
@@ -184,7 +184,7 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 }
 
 func filterNodeByPolicy(task *api.TaskInfo, node *api.NodeInfo, nodeResSets map[string]api.ResNumaSets) (fit bool, err error) {
-	if !(task.TopologyPolicy == "" || task.TopologyPolicy == "none") {
+	if !(task.NumaInfo == nil ||  task.NumaInfo.Policy == "" || task.NumaInfo.Policy == "none") {
 		if node.NumaSchedulerInfo == nil {
 			return false, fmt.Errorf("numa info is empty")
 		}
@@ -193,9 +193,9 @@ func filterNodeByPolicy(task *api.TaskInfo, node *api.NodeInfo, nodeResSets map[
 			return false, fmt.Errorf("cpu manager policy isn't static")
 		}
 
-		if task.TopologyPolicy != node.NumaSchedulerInfo.Policies[nodeinfov1alpha1.TopologyManagerPolicy] {
+		if task.NumaInfo.Policy != node.NumaSchedulerInfo.Policies[nodeinfov1alpha1.TopologyManagerPolicy] {
 			return false, fmt.Errorf("task topology polocy[%s] is different with node[%s]",
-				task.TopologyPolicy, node.NumaSchedulerInfo.Policies[nodeinfov1alpha1.TopologyManagerPolicy])
+				task.NumaInfo.Policy, node.NumaSchedulerInfo.Policies[nodeinfov1alpha1.TopologyManagerPolicy])
 		}
 
 		if _, ok := nodeResSets[node.Name]; !ok {

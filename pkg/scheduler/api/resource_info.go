@@ -85,6 +85,32 @@ func NewResource(rl v1.ResourceList) *Resource {
 	return r
 }
 
+// ResFloat642Quantity transform resource quantity
+func ResFloat642Quantity(resName v1.ResourceName, quantity float64) resource.Quantity {
+	var resQuantity *resource.Quantity
+	switch resName {
+	case v1.ResourceCPU:
+		resQuantity = resource.NewMilliQuantity(int64(quantity), resource.DecimalSI)
+	default:
+		resQuantity = resource.NewQuantity(int64(quantity), resource.BinarySI)
+	}
+
+	return *resQuantity
+}
+
+// ResQuantity2Float64 transform resource quantity
+func ResQuantity2Float64(resName v1.ResourceName, quantity resource.Quantity) float64 {
+	var resQuantity float64
+	switch resName {
+	case v1.ResourceCPU:
+		resQuantity = float64(quantity.MilliValue())
+	default:
+		resQuantity = float64(quantity.Value())
+	}
+
+	return resQuantity
+}
+
 // Clone is used to clone a resource type, which is a deep copy function.
 func (r *Resource) Clone() *Resource {
 	clone := &Resource{

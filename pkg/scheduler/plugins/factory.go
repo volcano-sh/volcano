@@ -19,6 +19,7 @@ package plugins
 import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/binpack"
+	ccinuma "volcano.sh/volcano/pkg/scheduler/plugins/cci-numa"
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
@@ -49,6 +50,7 @@ func init() {
 	framework.RegisterPluginBuilder(sla.PluginName, sla.New)
 	framework.RegisterPluginBuilder(tasktopology.PluginName, tasktopology.New)
 	framework.RegisterPluginBuilder(numaaware.PluginName, numaaware.New)
+	framework.RegisterPluginBuilder(ccinuma.PluginName, ccinuma.New)
 
 	// Plugins for Queues
 	framework.RegisterPluginBuilder(proportion.PluginName, proportion.New)

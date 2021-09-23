@@ -387,6 +387,10 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 		}
 	}
 
+	if ni.NumaSchedulerInfo != nil {
+		ni.NumaSchedulerInfo.AddTask(ti)
+	}
+
 	// Update task node name upon successful task addition.
 	task.NodeName = ni.Name
 	ti.NodeName = ni.Name
@@ -422,6 +426,10 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 			ni.Used.Sub(task.Resreq)
 			ni.SubGPUResource(ti.Pod)
 		}
+	}
+
+	if ni.NumaSchedulerInfo != nil {
+		ni.NumaSchedulerInfo.RemoveTask(ti)
 	}
 
 	delete(ni.Tasks, key)
