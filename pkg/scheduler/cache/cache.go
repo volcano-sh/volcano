@@ -610,7 +610,6 @@ func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string
 	defer sc.Mutex.Unlock()
 
 	job, task, err := sc.findJobAndTask(taskInfo)
-
 	if err != nil {
 		return err
 	}
@@ -639,9 +638,15 @@ func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string
 		return err
 	}
 
+	err = task.SetPodResourceDecision()
+	if err != nil {
+		return fmt.Errorf("set task %v/%v resource decision failed, err %v", task.Namespace, task.Name, err)
+	}
+
 	p := task.Pod
 	if !(task.NumaInfo == nil ||  task.NumaInfo.Policy == "" || task.NumaInfo.Policy == "none") {
 		if err := sc.Binder.Bind(p, hostname); err != nil {
+			task.UnsetPodResourceDecision()
 			sc.resyncTask(task)
 		} else {
 			sc.Recorder.Eventf(p, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", p.Namespace, p.Name, hostname)
@@ -649,6 +654,7 @@ func (sc *SchedulerCache) Bind(taskInfo *schedulingapi.TaskInfo, hostname string
 	} else {
 		go func() {
 			if err := sc.Binder.Bind(p, hostname); err != nil {
+				task.UnsetPodResourceDecision()
 				sc.resyncTask(task)
 			} else {
 				sc.Recorder.Eventf(p, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", p.Namespace, p.Name, hostname)

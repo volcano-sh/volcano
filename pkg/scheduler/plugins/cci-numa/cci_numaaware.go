@@ -16,8 +16,6 @@ const (
 	PluginName = "cci-numa-aware"
 	// Weight indicates the weight of cci-numa-aware plugin.
 	Weight = "weight"
-
-	topologyDecisionAnnotationKey = "volcano.sh/topology-decision"
 )
 
 type cciNumaPlugin struct {
@@ -88,8 +86,7 @@ func (pp *cciNumaPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			for resName := range AssignedResMap {
 				for numaID, quantity := range AssignedResMap[resName] {
-					nodeInfo.NumaResMap[string(resName)].NumaUsed[numaID].Total += quantity
-					nodeInfo.NumaResMap[string(resName)].Used += quantity
+					nodeInfo.NumaResMap[string(resName)].UsedPerNuma[numaID] += quantity
 				}
 			}
 
@@ -102,8 +99,7 @@ func (pp *cciNumaPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			for resName := range AssignedResMap {
 				for numaID, quantity := range AssignedResMap[resName] {
-					nodeInfo.NumaResMap[string(resName)].NumaUsed[numaID].Total -= quantity
-					nodeInfo.NumaResMap[string(resName)].Used -= quantity
+					nodeInfo.NumaResMap[string(resName)].UsedPerNuma[numaID] -= quantity
 				}
 			}
 

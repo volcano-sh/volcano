@@ -33,13 +33,12 @@ func GetNodeNumaRes(topoInfo *api.NumatopoInfo) ResNumaSetType {
 	nodeNumaMap := make(ResNumaSetType)
 	for resName, resInfo := range topoInfo.NumaResMap {
 		numaMap := make(map[int]float64)
-		for numaId, info := range resInfo.NumaAllocatable {
-			if _, ok := resInfo.NumaUsed[numaId]; !ok {
-				numaMap[numaId] = info.Total
+		for numaId, value := range resInfo.AllocatablePerNuma {
+			if _, ok := resInfo.UsedPerNuma[numaId]; !ok {
+				numaMap[numaId] = value
 			} else {
-				numaMap[numaId] = info.Total - resInfo.NumaUsed[numaId].Total
+				numaMap[numaId] = value - resInfo.UsedPerNuma[numaId]
 			}
-
 		}
 
 		nodeNumaMap[v1.ResourceName(resName)] = numaMap

@@ -26,13 +26,9 @@ func TestGetNodeNumaRes(t *testing.T) {
 				topoInfo: &api.NumatopoInfo{
 					NumaResMap: map[string]*api.ResourceInfo{
 						"cpu": {
-							NumaAllocatable: map[int]*api.TopoInfo{
-								0: {
-									Total: 4000,
-								},
-								1: {
-									Total: 3000,
-								},
+							AllocatablePerNuma: map[int]float64{
+								0: 4000,
+								1: 3000,
 							},
 						},
 					},
@@ -51,21 +47,13 @@ func TestGetNodeNumaRes(t *testing.T) {
 				topoInfo: &api.NumatopoInfo{
 					NumaResMap: map[string]*api.ResourceInfo{
 						"cpu": {
-							NumaAllocatable: map[int]*api.TopoInfo{
-								0: {
-									Total: 4000,
-								},
-								1: {
-									Total: 4000,
-								},
+							AllocatablePerNuma: map[int]float64{
+								0: 4000,
+								1: 4000,
 							},
-							NumaUsed: map[int]*api.TopoInfo{
-								0: {
-									Total: 1000,
-								},
-								1: {
-									Total: 2000,
-								},
+							UsedPerNuma: map[int]float64{
+								0: 1000,
+								1: 2000,
 							},
 						},
 					},
@@ -84,18 +72,12 @@ func TestGetNodeNumaRes(t *testing.T) {
 				topoInfo: &api.NumatopoInfo{
 					NumaResMap: map[string]*api.ResourceInfo{
 						"cpu": {
-							NumaAllocatable: map[int]*api.TopoInfo{
-								0: {
-									Total: 4000,
-								},
-								1: {
-									Total: 4000,
-								},
+							AllocatablePerNuma: map[int]float64{
+								0: 4000,
+								1: 4000,
 							},
-							NumaUsed: map[int]*api.TopoInfo{
-								0: {
-									Total: 1000,
-								},
+							UsedPerNuma: map[int]float64{
+								0: 1000,
 							},
 						},
 					},
@@ -114,36 +96,22 @@ func TestGetNodeNumaRes(t *testing.T) {
 				topoInfo: &api.NumatopoInfo{
 					NumaResMap: map[string]*api.ResourceInfo{
 						"cpu": {
-							NumaAllocatable: map[int]*api.TopoInfo{
-								0: {
-									Total: 4000,
-								},
-								1: {
-									Total: 4000,
-								},
+							AllocatablePerNuma: map[int]float64{
+								0: 4000,
+								1: 4000,
 							},
-							NumaUsed: map[int]*api.TopoInfo{
-								0: {
-									Total: 1000,
-								},
+							UsedPerNuma: map[int]float64{
+								0: 1000,
 							},
 						},
 						"gpu": {
-							NumaAllocatable: map[int]*api.TopoInfo{
-								0: {
-									Total: 4000,
-								},
-								1: {
-									Total: 4000,
-								},
+							AllocatablePerNuma: map[int]float64{
+								0: 4000,
+								1: 4000,
 							},
-							NumaUsed: map[int]*api.TopoInfo{
-								0: {
-									Total: 1000,
-								},
-								1: {
-									Total: 3000,
-								},
+							UsedPerNuma: map[int]float64{
+								0: 1000,
+								1: 3000,
 							},
 						},
 					},

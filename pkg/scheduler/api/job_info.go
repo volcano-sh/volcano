@@ -17,6 +17,7 @@ limitations under the License.
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -202,6 +203,28 @@ func (ti *TaskInfo) GenerateLastTxContext() {
 // ClearLastTxContext clear context of last transaction for a task
 func (ti *TaskInfo) ClearLastTxContext() {
 	ti.LastTransaction = nil
+}
+
+func (ti *TaskInfo) SetPodResourceDecision() error {
+	if ti.NumaInfo == nil {
+		return nil
+	}
+
+	decision := PodResourceDecision{
+		NUMAResources: ti.NumaInfo.ResMap,
+	}
+
+	layout, err := json.Marshal(&decision)
+	if err != nil {
+		return err
+	}
+
+	metav1.SetMetaDataAnnotation(&ti.Pod.ObjectMeta, topologyDecisionAnnotation, string(layout[:]))
+	return nil
+}
+
+func (ti *TaskInfo) UnsetPodResourceDecision() {
+	delete(ti.Pod.Annotations, topologyDecisionAnnotation)
 }
 
 // Clone is used for cloning a task

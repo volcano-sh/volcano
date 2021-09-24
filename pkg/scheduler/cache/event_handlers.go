@@ -777,36 +777,9 @@ func getNumaInfo(srcInfo *nodeinfov1alpha1.Numatopology) *schedulingapi.Numatopo
 
 	numaResMap := srcInfo.Spec.NumaResMap
 	for name, resInfo := range numaResMap {
-		tmp := schedulingapi.ResourceInfo{
-			NumaAllocatable: make(map[int]*schedulingapi.TopoInfo),
-			NumaUsed: make(map[int]*schedulingapi.TopoInfo),
-		}
-
-		tmp.Allocatable = float64(1000 * resInfo.Capacity)
-		for numaIdStr, info := range resInfo.NumaCapacity {
-			numaId, err := strconv.Atoi(numaIdStr)
-			if err != nil {
-				continue
-			}
-
-			tmp.NumaAllocatable[numaId] = &schedulingapi.TopoInfo{
-				Set: cpuset.MustParse(info),
-				Total: float64(cpuset.MustParse(info).Size() * 1000),
-			}
-		}
-
-		for numaIdStr, info := range resInfo.NumaAllocatable {
-			numaId, err := strconv.Atoi(numaIdStr)
-			if err != nil {
-				continue
-			}
-
-			tmp.NumaUsed[numaId] = &schedulingapi.TopoInfo{
-				Set: tmp.NumaAllocatable[numaId].Set.Difference(cpuset.MustParse(info)),
-				Total: tmp.NumaAllocatable[numaId].Total - float64(cpuset.MustParse(info).Size() * 1000),
-			}
-		}
-
+		tmp := schedulingapi.ResourceInfo{}
+		tmp.Capacity = resInfo.Capacity
+		tmp.Allocatable = cpuset.MustParse(resInfo.Allocatable)
 		numaInfo.NumaResMap[name] = &tmp
 	}
 

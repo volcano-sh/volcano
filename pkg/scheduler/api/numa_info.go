@@ -17,6 +17,7 @@ limitations under the License.
 package api
 
 import (
+	"encoding/json"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
@@ -36,22 +37,20 @@ const (
 	NumaInfoLessFlag NumaChgFlag = 0b10
 )
 
-// TopoInfo is the detail information for the resource
-type TopoInfo struct {
-	Set cpuset.CPUSet
-	Total float64
+// PodResourceDecision is resource allocation determinated by scheduler,
+// and passed to kubelet through pod annotation.
+type PodResourceDecision struct {
+	// NUMAResources is resource list with numa info indexed by numa id.
+	NUMAResources map[int]v1.ResourceList `json:"numa,omitempty"`
 }
+
 
 // ResourceInfo is the allocatable information for the resource
 type ResourceInfo struct {
-	// the allocatable information in per numa node
-	NumaAllocatable map[int]*TopoInfo
-	// the total allocatable resource
-	Allocatable float64
-	// the used information in per numa node
-	NumaUsed map[int]*TopoInfo
-	// the total used resource
-	Used float64
+	Allocatable cpuset.CPUSet
+	Capacity    int
+	AllocatablePerNuma map[int]float64      // key: NUMA ID
+	UsedPerNuma map[int]float64    // key: NUMA ID
 }
 
 // NumatopoInfo is the information about topology manager on the node
@@ -62,14 +61,6 @@ type NumatopoInfo struct {
 	NumaResMap  map[string]*ResourceInfo
 	CPUDetail   topology.CPUDetails
 	ResReserved v1.ResourceList
-}
-
-// DeepCopy used to copy TopoInfo
-func (info *TopoInfo) DeepCopy() *TopoInfo {
-	return &TopoInfo{
-		Set: info.Set.Clone(),
-		Total: info.Total,
-	}
 }
 
 // DeepCopy used to copy NumatopoInfo
@@ -90,28 +81,20 @@ func (info *NumatopoInfo) DeepCopy() *NumatopoInfo {
 
 	for resName, resInfo := range info.NumaResMap {
 		tmpInfo := &ResourceInfo {
-			NumaAllocatable: make(map[int]*TopoInfo),
-			NumaUsed: make(map[int]*TopoInfo),
+			AllocatablePerNuma: make(map[int]float64),
+			UsedPerNuma: make(map[int]float64),
+		}
+		tmpInfo.Capacity = resInfo.Capacity
+		tmpInfo.Allocatable = resInfo.Allocatable.Clone()
+
+		for numaId, data := range resInfo.AllocatablePerNuma {
+			tmpInfo.AllocatablePerNuma[numaId] = data
 		}
 
-		for numaId, data := range resInfo.NumaAllocatable {
-			topoInfo := &TopoInfo{
-				Set: data.Set.Clone(),
-				Total: data.Total,
-			}
-			tmpInfo.NumaAllocatable[numaId] = topoInfo
+		for numaId, data := range resInfo.UsedPerNuma {
+			tmpInfo.UsedPerNuma[numaId] = data
 		}
 
-		for numaId, data := range resInfo.NumaUsed {
-			topoInfo := &TopoInfo{
-				Set: data.Set.Clone(),
-				Total: data.Total,
-			}
-			tmpInfo.NumaUsed[numaId] = topoInfo
-		}
-
-		tmpInfo.Allocatable = resInfo.Allocatable
-		tmpInfo.Used = resInfo.Used
 		numaInfo.NumaResMap[resName] = tmpInfo
 	}
 
@@ -134,9 +117,9 @@ func (info *NumatopoInfo) DeepCopy() *NumatopoInfo {
 // - false :  the resource on kubelet is getting less
 func (info *NumatopoInfo) Compare(newInfo *NumatopoInfo) bool {
 	for resName := range info.NumaResMap {
-		oldSize := info.NumaResMap[resName].Allocatable - info.NumaResMap[resName].Used
-		newSize := newInfo.NumaResMap[resName].Allocatable - newInfo.NumaResMap[resName].Used
-		if oldSize < newSize {
+		oldSize := info.NumaResMap[resName].Allocatable.Size()
+		newSize := newInfo.NumaResMap[resName].Allocatable.Size()
+		if oldSize <= newSize {
 			return true
 		}
 	}
@@ -146,76 +129,63 @@ func (info *NumatopoInfo) Compare(newInfo *NumatopoInfo) bool {
 
 // Allocate is the function to remove the allocated resource
 func (info *NumatopoInfo) Allocate(resSets ResNumaSets) {
-	for resName, set := range resSets {
-		resNumaInfo := info.NumaResMap[resName]
-		resNumaInfo.Used += float64(set.Size() * 1000)
-
-		for _, CPUId := range set.ToSlice() {
-			for numaId, topoInfo := range resNumaInfo.NumaAllocatable {
-				if topoInfo.Set.Contains(CPUId) {
-					if _, ok := resNumaInfo.NumaUsed[numaId]; !ok {
-						resNumaInfo.NumaUsed[numaId] = &TopoInfo{
-							Set: cpuset.NewCPUSet(),
-						}
-					}
-
-					resNumaInfo.NumaUsed[numaId].Set = resNumaInfo.NumaUsed[numaId].Set.Union(cpuset.NewCPUSet(CPUId))
-					resNumaInfo.NumaUsed[numaId].Total -= 1000
-					break
-				}
-			}
-		}
+	for resName := range resSets {
+		info.NumaResMap[resName].Allocatable = info.NumaResMap[resName].Allocatable.Difference(resSets[resName])
 	}
 }
 
 // Release is the function to reclaim the allocated resource
 func (info *NumatopoInfo) Release(resSets ResNumaSets) {
-	for resName, set := range resSets {
-		resNumaInfo := info.NumaResMap[resName]
-		resNumaInfo.Used -= float64(set.Size() * 1000)
-
-		for _, CPUId := range set.ToSlice() {
-			for numaId, topoInfo := range resNumaInfo.NumaAllocatable {
-				if topoInfo.Set.Contains(CPUId) {
-					if _, ok := resNumaInfo.NumaUsed[numaId]; !ok {
-						break
-					}
-
-					resNumaInfo.NumaUsed[numaId].Set = resNumaInfo.NumaUsed[numaId].Set.Difference(cpuset.NewCPUSet(CPUId))
-					resNumaInfo.NumaUsed[numaId].Total -= 1000
-					break
-				}
-			}
-		}
+	for resName := range resSets {
+		info.NumaResMap[resName].Allocatable = info.NumaResMap[resName].Allocatable.Union(resSets[resName])
 	}
 }
 
+func GetPodResourceNumaInfo(ti *TaskInfo) map[int]v1.ResourceList {
+	if ti.NumaInfo != nil {
+		return ti.NumaInfo.ResMap
+	}
+
+	if _, ok := ti.Pod.Annotations[topologyDecisionAnnotation]; !ok {
+		return nil
+	}
+
+	decision := PodResourceDecision{}
+	err := json.Unmarshal([]byte(ti.Pod.Annotations[topologyDecisionAnnotation]), &decision)
+	if err != nil {
+		return nil
+	}
+
+	return decision.NUMAResources
+}
+
 func (info *NumatopoInfo) AddTask(ti *TaskInfo) {
-	if len(ti.NumaInfo.ResMap) == 0 {
+	numaInfo := GetPodResourceNumaInfo(ti)
+	if numaInfo == nil {
 		return
 	}
 
-	for numaId, resList := range ti.NumaInfo.ResMap {
+	for numaId, resList := range numaInfo {
 		for resName, quantity := range resList {
-			info.NumaResMap[string(resName)].NumaUsed[numaId].Total += ResQuantity2Float64(resName, quantity)
-			info.NumaResMap[string(resName)].Used += ResQuantity2Float64(resName, quantity)
+			info.NumaResMap[string(resName)].UsedPerNuma[numaId] += ResQuantity2Float64(resName, quantity)
 		}
 	}
 
 }
 
 func (info *NumatopoInfo) RemoveTask(ti *TaskInfo) {
-	if len(ti.NumaInfo.ResMap) == 0 {
+	decision := GetPodResourceNumaInfo(ti)
+	if decision == nil {
 		return
 	}
 
 	for numaId, resList := range ti.NumaInfo.ResMap {
 		for resName, quantity := range resList {
-			info.NumaResMap[string(resName)].NumaUsed[numaId].Total -= ResQuantity2Float64(resName, quantity)
-			info.NumaResMap[string(resName)].Used -= ResQuantity2Float64(resName, quantity)
+			info.NumaResMap[string(resName)].UsedPerNuma[numaId] -= ResQuantity2Float64(resName, quantity)
 		}
 	}
 }
+
 // GenerateNodeResNumaSets return the idle resource sets of all node
 func GenerateNodeResNumaSets(nodes map[string]*NodeInfo) map[string]ResNumaSets {
 	nodeSlice := make(map[string]ResNumaSets)
@@ -225,19 +195,8 @@ func GenerateNodeResNumaSets(nodes map[string]*NodeInfo) map[string]ResNumaSets 
 		}
 
 		resMaps := make(ResNumaSets)
-
 		for resName, resMap := range node.NumaSchedulerInfo.NumaResMap {
-			useSet := cpuset.NewCPUSet()
-			for _, topoInfo := range resMap.NumaUsed {
-				useSet = useSet.Union(topoInfo.Set)
-			}
-
-			AllocatableSet := cpuset.NewCPUSet()
-			for _, topoInfo := range resMap.NumaAllocatable {
-				AllocatableSet = AllocatableSet.Union(topoInfo.Set)
-			}
-
-			resMaps[resName] = AllocatableSet.Difference(useSet)
+			resMaps[resName] = resMap.Allocatable.Clone()
 		}
 
 		nodeSlice[node.Name] = resMaps
