@@ -85,6 +85,32 @@ func NewResource(rl v1.ResourceList) *Resource {
 	return r
 }
 
+// ResFloat642Quantity transform resource quantity
+func ResFloat642Quantity(resName v1.ResourceName, quantity float64) resource.Quantity {
+	var resQuantity *resource.Quantity
+	switch resName {
+	case v1.ResourceCPU:
+		resQuantity = resource.NewMilliQuantity(int64(quantity), resource.DecimalSI)
+	default:
+		resQuantity = resource.NewQuantity(int64(quantity), resource.BinarySI)
+	}
+
+	return *resQuantity
+}
+
+// ResQuantity2Float64 transform resource quantity
+func ResQuantity2Float64(resName v1.ResourceName, quantity resource.Quantity) float64 {
+	var resQuantity float64
+	switch resName {
+	case v1.ResourceCPU:
+		resQuantity = float64(quantity.MilliValue())
+	default:
+		resQuantity = float64(quantity.Value())
+	}
+
+	return resQuantity
+}
+
 // Clone is used to clone a resource type, which is a deep copy function.
 func (r *Resource) Clone() *Resource {
 	clone := &Resource{
@@ -440,10 +466,10 @@ func (r *Resource) Diff(rr *Resource, defaultValue DimensionDefaultValue) (*Reso
 		decreasedVal.Memory = rightRes.Memory - leftRes.Memory
 	}
 
-	increasedVal.ScalarResources = make(map[v1.ResourceName]float64, 0)
-	decreasedVal.ScalarResources = make(map[v1.ResourceName]float64, 0)
+	increasedVal.ScalarResources = make(map[v1.ResourceName]float64)
+	decreasedVal.ScalarResources = make(map[v1.ResourceName]float64)
 	for lName, lQuant := range leftRes.ScalarResources {
-		rQuant, _ := rightRes.ScalarResources[lName]
+		rQuant := rightRes.ScalarResources[lName]
 		if lQuant == -1 {
 			increasedVal.ScalarResources[lName] = -1
 			continue
