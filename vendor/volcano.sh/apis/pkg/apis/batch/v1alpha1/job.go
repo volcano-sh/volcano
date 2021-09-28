@@ -317,6 +317,12 @@ type JobStatus struct {
 	// The resources that controlled by this job, e.g. Service, ConfigMap
 	// +optional
 	ControlledResources map[string]string `json:"controlledResources,omitempty" protobuf:"bytes,11,opt,name=controlledResources"`
+
+	// Which conditions caused the current job state.
+	// +optional
+	// +patchMergeKey=status
+	// +patchStrategy=merge
+	Conditions []JobCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"status" protobuf:"bytes,12,rep,name=conditions"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -328,4 +334,13 @@ type JobList struct {
 	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
 	Items []Job `json:"items" protobuf:"bytes,2,rep,name=items"`
+}
+
+// JobCondition contains details for the current condition of this job.
+type JobCondition struct {
+	// Status is the new phase of job after performing the state's action.
+	Status JobPhase `json:"status" protobuf:"bytes,1,opt,name=status,casttype=JobPhase"`
+	// Last time the condition transitioned from one phase to another.
+	// +optional
+	LastTransitionTime *metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,2,opt,name=lastTransitionTime"`
 }
