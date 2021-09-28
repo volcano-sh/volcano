@@ -193,6 +193,7 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		Name:           ti.Name,
 		Namespace:      ti.Namespace,
 		Priority:       ti.Priority,
+		PodVolumes:     ti.PodVolumes,
 		Pod:            ti.Pod,
 		Resreq:         ti.Resreq.Clone(),
 		InitResreq:     ti.InitResreq.Clone(),
@@ -489,18 +490,20 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 		MinAvailable:   ji.MinAvailable,
 		WaitingTime:    ji.WaitingTime,
+		JobFitErrors:   ji.JobFitErrors,
 		NodesFitErrors: make(map[TaskID]*FitErrors),
 		Allocated:      EmptyResource(),
 		TotalRequest:   EmptyResource(),
 
 		PodGroup: ji.PodGroup,
 
-		TaskStatusIndex:  map[TaskStatus]tasksMap{},
-		TaskMinAvailable: ji.TaskMinAvailable,
-		Tasks:            tasksMap{},
-		Preemptable:      ji.Preemptable,
-		RevocableZone:    ji.RevocableZone,
-		Budget:           ji.Budget.Clone(),
+		TaskStatusIndex:       map[TaskStatus]tasksMap{},
+		TaskMinAvailable:      ji.TaskMinAvailable,
+		TaskMinAvailableTotal: ji.TaskMinAvailableTotal,
+		Tasks:                 tasksMap{},
+		Preemptable:           ji.Preemptable,
+		RevocableZone:         ji.RevocableZone,
+		Budget:                ji.Budget.Clone(),
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
