@@ -48,7 +48,7 @@ func Serve(w io.Writer, r *http.Request, admit AdmitFunc) {
 	// verify the content type is accurate
 	contentType := r.Header.Get(CONTENTTYPE)
 	if contentType != APPLICATIONJSON {
-		klog.Errorf("contentType=%s, expect application/json", contentType)
+		klog.Errorf("contentType is not application/json")
 		return
 	}
 
