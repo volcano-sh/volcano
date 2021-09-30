@@ -17,6 +17,7 @@ limitations under the License.
 package api
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -54,6 +55,33 @@ func TestNewResource(t *testing.T) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, r)
 		}
 	}
+}
+
+func TestLessEqualWithSeparateDefaultValue(t *testing.T) {
+
+	inqueue := &Resource{
+		MilliCPU: 0,
+		Memory:   0,
+	}
+	allocated := &Resource{
+		MilliCPU: 0,
+		Memory:   0,
+	}
+	minReq := &Resource{
+		MilliCPU:        1000,
+		Memory:          0,
+		ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1000},
+	}
+	capability := &Resource{
+		MilliCPU:        47000.00,
+		Memory:          134974480384.00,
+		ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1000, "tencent.com/vcuda-memory": 87000.00},
+	}
+
+	tmp := minReq.Add(allocated)
+	tmp = tmp.Add(inqueue)
+	less := tmp.LessEqualWithSeparateDefaultValue(capability, Zero, Infinity)
+	t.Errorf("expected: %#v, got: %#v", true, less)
 }
 
 func TestResourceAddScalar(t *testing.T) {
@@ -241,6 +269,24 @@ func TestAddResource(t *testing.T) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, test.resource1)
 		}
 	}
+}
+
+func TestAddResource2(t *testing.T) {
+	a := &Resource{
+		MilliCPU: 0,
+		Memory:   0,
+	}
+
+	b := &Resource{
+		MilliCPU:        1000,
+		Memory:          0,
+		ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1000},
+	}
+
+
+	sum := a.Add(b)
+	fmt.Println(a)
+	fmt.Println(sum.String())
 }
 
 func TestSubResource(t *testing.T) {
