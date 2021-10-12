@@ -197,6 +197,14 @@ func PrintJobInfo(job *v1alpha1.Job, writer io.Writer) {
 			WriteLine(writer, Level2, "%s: \t%s\n", key, value)
 		}
 	}
+	if len(job.Status.Conditions) > 0 {
+		WriteLine(writer, Level1, "Conditions:\n    Status\tTransitionTime\n")
+		for _, c := range job.Status.Conditions {
+			WriteLine(writer, Level2, "%v \t%v \n",
+				c.Status,
+				c.LastTransitionTime)
+		}
+	}
 }
 
 // PrintEvents print event info to writer.

@@ -25,7 +25,7 @@ require (
 	k8s.io/klog v1.0.0
 	k8s.io/kubernetes v1.19.11
 	sigs.k8s.io/yaml v1.2.0
-	volcano.sh/apis v0.0.0-20210603070204-70005b2d502a
+	volcano.sh/apis v0.0.0-20210923020136-eb779276d17e
 )
 
 replace (

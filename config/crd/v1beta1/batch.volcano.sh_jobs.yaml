@@ -6894,6 +6894,25 @@ spec:
         status:
           description: Current status of the volcano Job
           properties:
+            conditions:
+              description: Which conditions caused the current job state.
+              items:
+                description: JobCondition contains details for the current condition
+                  of this job.
+                properties:
+                  lastTransitionTime:
+                    description: Last time the condition transitioned from one phase
+                      to another.
+                    format: date-time
+                    type: string
+                  status:
+                    description: Status is the new phase of job after performing the
+                      state's action.
+                    type: string
+                required:
+                - status
+                type: object
+              type: array
             controlledResources:
               additionalProperties:
                 type: string
