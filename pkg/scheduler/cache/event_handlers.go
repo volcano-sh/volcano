@@ -70,6 +70,12 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 		node := sc.Nodes[pi.NodeName]
 		if !isTerminated(pi.Status) {
 			if err := node.AddTask(pi); err != nil {
+				if _, outOfSync := err.(*schedulingapi.AllocateFailError); outOfSync {
+					node.State = schedulingapi.NodeState{
+						Phase:  schedulingapi.NotReady,
+						Reason: "OutOfSync",
+					}
+				}
 				return err
 			}
 		} else {

@@ -26,6 +26,14 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
+type AllocateFailError struct {
+	Reason string
+}
+
+func (o *AllocateFailError) Error() string {
+	return o.Reason
+}
+
 // NodeInfo is node level aggregated information.
 type NodeInfo struct {
 	Name string
@@ -339,7 +347,10 @@ func (ni *NodeInfo) allocateIdleResource(ti *TaskInfo) error {
 		return nil
 	}
 
-	return fmt.Errorf("selected node NotReady")
+	return &AllocateFailError{Reason: fmt.Sprintf(
+		"cannot allocate resource, idle: %s req: %s",
+		ti.Resreq.String(), ni.Idle.String(),
+	)}
 }
 
 // AddTask is used to add a task in nodeInfo object
