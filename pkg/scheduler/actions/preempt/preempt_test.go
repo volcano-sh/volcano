@@ -32,13 +32,69 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
+	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
+	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 func TestPreempt(t *testing.T) {
 	framework.RegisterPluginBuilder("conformance", conformance.New)
 	framework.RegisterPluginBuilder("gang", gang.New)
+	framework.RegisterPluginBuilder("priority", priority.New)
+	framework.RegisterPluginBuilder("drf", drf.New)
+
+	trueValue := true
+	singleTier := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               "priority",
+					EnabledPreemptable: &trueValue,
+				},
+				{
+					Name:               "conformance",
+					EnabledPreemptable: &trueValue,
+				},
+				{
+					Name:                "gang",
+					EnabledPreemptable:  &trueValue,
+					EnabledJobPipelined: &trueValue,
+					EnabledJobStarving:  &trueValue,
+				},
+			},
+		},
+	}
+
+	multipleTier := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               "priority",
+					EnabledPreemptable: &trueValue,
+				},
+				{
+					Name:               "conformance",
+					EnabledPreemptable: &trueValue,
+				},
+				{
+					Name:                "gang",
+					EnabledPreemptable:  &trueValue,
+					EnabledJobPipelined: &trueValue,
+					EnabledJobStarving:  &trueValue,
+				},
+			},
+		},
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               "drf",
+					EnabledPreemptable: &trueValue,
+				},
+			},
+		},
+	}
+
 	options.ServerOpts = &options.ServerOption{
 		MinNodesToFind:             100,
 		MinPercentageOfNodesToFind: 5,
@@ -47,15 +103,17 @@ func TestPreempt(t *testing.T) {
 	defer framework.CleanupPluginBuilders()
 
 	tests := []struct {
-		name      string
-		podGroups []*schedulingv1.PodGroup
-		pods      []*v1.Pod
-		nodes     []*v1.Node
-		queues    []*schedulingv1.Queue
-		expected  int
+		name        string
+		pluginTiers []conf.Tier
+		podGroups   []*schedulingv1.PodGroup
+		pods        []*v1.Pod
+		nodes       []*v1.Node
+		queues      []*schedulingv1.Queue
+		expected    int
 	}{
 		{
-			name: "do not preempt if there are enough idle resources",
+			name:        "do not preempt if there are enough idle resources",
+			pluginTiers: singleTier,
 			podGroups: []*schedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -93,7 +151,8 @@ func TestPreempt(t *testing.T) {
 			expected: 0,
 		},
 		{
-			name: "do not preempt if job is pipelined",
+			name:        "do not preempt if job is pipelined",
+			pluginTiers: singleTier,
 			podGroups: []*schedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -146,7 +205,8 @@ func TestPreempt(t *testing.T) {
 			expected: 0,
 		},
 		{
-			name: "preempt one task of different job to fit both jobs on one node",
+			name:        "preempt one task of different job to fit both jobs on one node",
+			pluginTiers: singleTier,
 			podGroups: []*schedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -200,7 +260,8 @@ func TestPreempt(t *testing.T) {
 			expected: 1,
 		},
 		{
-			name: "preempt enough tasks to fit large task of different job",
+			name:        "preempt enough tasks to fit large task of different job",
+			pluginTiers: singleTier,
 			podGroups: []*schedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -254,6 +315,61 @@ func TestPreempt(t *testing.T) {
 			},
 			expected: 2,
 		},
+		{
+			name:        "should not preempt task of higher priority",
+			pluginTiers: multipleTier,
+			podGroups: []*schedulingv1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						MinMember:         1,
+						Queue:             "q1",
+						PriorityClassName: "high-priority",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						MinMember:         1,
+						Queue:             "q1",
+						PriorityClassName: "low-priority",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
+				},
+			},
+
+			pods: []*v1.Pod{
+				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "preemptor1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "preemptor2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			nodes: []*v1.Node{
+				util.BuildNode("n1", util.BuildResourceList("2", "2G"), make(map[string]string)),
+			},
+			queues: []*schedulingv1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "q1",
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight: 1,
+					},
+				},
+			},
+			expected: 0,
+		},
 	}
 
 	preempt := New()
@@ -300,23 +416,7 @@ func TestPreempt(t *testing.T) {
 				schedulerCache.AddQueueV1beta1(q)
 			}
 
-			trueValue := true
-			ssn := framework.OpenSession(schedulerCache, []conf.Tier{
-				{
-					Plugins: []conf.PluginOption{
-						{
-							Name:               "conformance",
-							EnabledPreemptable: &trueValue,
-						},
-						{
-							Name:                "gang",
-							EnabledPreemptable:  &trueValue,
-							EnabledJobPipelined: &trueValue,
-							EnabledJobStarving:  &trueValue,
-						},
-					},
-				},
-			}, nil)
+			ssn := framework.OpenSession(schedulerCache, test.pluginTiers, nil)
 			defer framework.CloseSession(ssn)
 
 			preempt.Execute(ssn)

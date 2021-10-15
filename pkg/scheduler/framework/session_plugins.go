@@ -153,6 +153,7 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 			if !isEnabled(plugin.EnabledReclaimable) {
 				continue
 			}
+
 			rf, found := ssn.reclaimableFns[plugin.Name]
 			if !found {
 				continue
@@ -162,10 +163,7 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 			if abstain == 0 {
 				continue
 			}
-			if len(candidates) == 0 {
-				victims = nil
-				break
-			}
+
 			if !init {
 				victims = candidates
 				init = true
@@ -183,9 +181,15 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 				// Update victims to intersection
 				victims = intersection
 			}
+
+			// intersection will be nil if length is 0, don't need to do any more check
+			if len(victims) == 0 {
+				break
+			}
 		}
-		// Plugins in this tier made decision if victims is not nil
-		if victims != nil {
+
+		// Plugins in this tier made decision if initialized
+		if init {
 			return victims
 		}
 	}
@@ -208,14 +212,10 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 			if !found {
 				continue
 			}
+
 			candidates, abstain := pf(preemptor, preemptees)
 			if abstain == 0 {
 				continue
-			}
-			// intersection will be nil if length is 0, don't need to do any more check
-			if len(candidates) == 0 {
-				victims = nil
-				break
 			}
 
 			if !init {
@@ -235,9 +235,14 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 				// Update victims to intersection
 				victims = intersection
 			}
+
+			// intersection will be nil if length is 0, don't need to do any more check
+			if len(victims) == 0 {
+				break
+			}
 		}
-		// Plugins in this tier made decision if victims is not nil
-		if victims != nil {
+		// Plugins in this tier made decision if initialized
+		if init {
 			return victims
 		}
 	}
