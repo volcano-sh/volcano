@@ -76,7 +76,7 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 			FilterFunc: func(obj interface{}) bool {
 				switch v := obj.(type) {
 				case *v1.Pod:
-					if v.Spec.SchedulerName == opt.SchedulerName &&
+					if contains(opt.SchedulerNames, v.Spec.SchedulerName) &&
 						(v.Annotations == nil || v.Annotations[scheduling.KubeGroupNameAnnotationKey] == "") {
 						return true
 					}
@@ -141,4 +141,13 @@ func (pg *pgcontroller) processNextReq() bool {
 	pg.queue.Forget(req)
 
 	return true
+}
+
+func contains(slice []string, element string) bool {
+	for _, item := range slice {
+		if item == element {
+			return true
+		}
+	}
+	return false
 }
