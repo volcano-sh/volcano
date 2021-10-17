@@ -765,7 +765,7 @@ var _ = Describe("Job Error Handling", func() {
 		By("job scheduled, then task 'completed_task' finished and job finally complete")
 		// job phase: pending -> running -> completing -> completed
 		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{
-			vcbatch.Pending, vcbatch.Running, vcbatch.Completing, vcbatch.Completed})
+			vcbatch.Pending, vcbatch.Completed})
 		Expect(err).NotTo(HaveOccurred())
 
 	})

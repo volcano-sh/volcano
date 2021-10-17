@@ -355,7 +355,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		err = WaitQueueStatus(ctx, "Running", 1, q2)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-		err = WaitQueueStatus(ctx, "Inqueue", 1, q3)
+		err = WaitQueueStatus(ctx, "Running", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue pending")
 
 	})
