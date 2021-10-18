@@ -134,7 +134,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 		// pick queue for given namespace
 		//
-		// This block use a algorithm with time complex O(n).
+		// This block use an algorithm with time complex O(n).
 		// But at least PriorityQueue could not be used here,
 		// because the allocation of job would change the priority of queue among all namespaces,
 		// and the PriorityQueue have no ability to update priority for a special queue.
