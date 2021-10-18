@@ -22,8 +22,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-
 	"k8s.io/apimachinery/pkg/util/wait"
+	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/version"
