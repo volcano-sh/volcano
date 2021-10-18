@@ -893,3 +893,15 @@ func (sc *SchedulerCache) DeleteNumaInfoV1alpha1(obj interface{}) {
 	sc.deleteNumaInfo(ss)
 	klog.V(3).Infof("Delete numaInfo<%s> from cahce, with spec: Policy: %v, resMap: %v", ss.Name, ss.Spec.Policies, ss.Spec.NumaResMap)
 }
+
+// AddJob add job to scheduler cache
+func (sc *SchedulerCache) AddJob(obj interface{}) {
+	job, ok := obj.(*schedulingapi.JobInfo)
+	if !ok {
+		klog.Errorf("Cannot convert to *api.JobInfo: %v", obj)
+		return
+	}
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+	sc.Jobs[job.UID] = job
+}
