@@ -349,11 +349,7 @@ func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 }
 
 func (ssn *Session) dispatch(task *api.TaskInfo, volumes *volumescheduling.PodVolumes) error {
-	if err := ssn.cache.BindVolumes(task, volumes); err != nil {
-		return err
-	}
-
-	if err := ssn.cache.Bind(task, task.NodeName); err != nil {
+	if err := ssn.cache.AddBindTask(task); err != nil {
 		return err
 	}
 

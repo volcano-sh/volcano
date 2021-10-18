@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
 
 	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -94,22 +95,18 @@ func BuildPod(namespace, name, nodename string, p v1.PodPhase, req v1.ResourceLi
 
 // FakeBinder is used as fake binder
 type FakeBinder struct {
-	sync.Mutex
 	Binds   map[string]string
 	Channel chan string
 }
 
 // Bind used by fake binder struct to bind pods
-func (fb *FakeBinder) Bind(p *v1.Pod, hostname string) error {
-	fb.Lock()
-	defer fb.Unlock()
+func (fb *FakeBinder) Bind(kubeClient *kubernetes.Clientset, tasks []*api.TaskInfo) (error, []*api.TaskInfo) {
+	for _, p := range tasks {
+		key := fmt.Sprintf("%v/%v", p.Namespace, p.Name)
+		fb.Binds[key] = p.NodeName
+	}
 
-	key := fmt.Sprintf("%v/%v", p.Namespace, p.Name)
-	fb.Binds[key] = hostname
-
-	fb.Channel <- key
-
-	return nil
+	return nil, nil
 }
 
 // FakeEvictor is used as fake evictor

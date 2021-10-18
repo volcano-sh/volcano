@@ -3,8 +3,16 @@ package predicates
 import (
 	"reflect"
 	"testing"
-	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
+
+	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/api/scheduling/v1beta1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/record"
+
+	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -14,13 +22,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 	"volcano.sh/volcano/pkg/scheduler/util"
-
-	apiv1 "k8s.io/api/core/v1"
-	"k8s.io/api/scheduling/v1beta1"
-	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/tools/record"
-	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 func getWorkerAffinity() *apiv1.Affinity {
@@ -45,6 +46,13 @@ func getWorkerAffinity() *apiv1.Affinity {
 }
 
 func TestEventHandler(t *testing.T) {
+	var tmp *cache.SchedulerCache
+	patches := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "AddBindTask", func(scCache *cache.SchedulerCache, task *api.TaskInfo) error {
+		scCache.Binder.Bind(nil, []*api.TaskInfo{task})
+		return nil
+	})
+	defer patches.Reset()
+
 	framework.RegisterPluginBuilder(PluginName, New)
 	framework.RegisterPluginBuilder(gang.PluginName, gang.New)
 	framework.RegisterPluginBuilder(priority.PluginName, priority.New)
@@ -189,15 +197,6 @@ func TestEventHandler(t *testing.T) {
 		allocator := allocate.New()
 		allocator.Execute(ssn)
 		framework.CloseSession(ssn)
-
-		// assert
-		for i := 0; i < len(test.expected); i++ {
-			select {
-			case <-binder.Channel:
-			case <-time.After(1 * time.Second):
-				t.Errorf("Failed to get binding request.")
-			}
-		}
 
 		t.Logf("expected: %#v, got: %#v", test.expected, binder.Binds)
 		if !reflect.DeepEqual(test.expected, binder.Binds) {
