@@ -106,7 +106,10 @@ func Run(config *options.Config) error {
 		klog.Info("Volcano Webhook manager started.")
 	}()
 
-	go wkconfig.WatchAdmissionConf(config.ConfigPath, stopChannel)
+	if config.ConfigPath != "" {
+		go wkconfig.WatchAdmissionConf(config.ConfigPath, stopChannel)
+	}
+
 	select {
 	case <-stopChannel:
 		if err := server.Close(); err != nil {

@@ -55,6 +55,10 @@ var admissionConf AdmissionConfiguration
 
 // LoadAdmissionConf parse the configuration from config path
 func LoadAdmissionConf(confPath string) *AdmissionConfiguration {
+	if confPath == "" {
+		return nil
+	}
+
 	configBytes, err := readAdmissionConf(confPath)
 	if err != nil {
 		klog.Errorf("read admission file failed, err=%v", err)
