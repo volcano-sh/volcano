@@ -78,7 +78,7 @@ func unmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []
 		if action, found := framework.GetAction(strings.TrimSpace(actionName)); found {
 			actions = append(actions, action)
 		} else {
-			return nil, nil, nil, fmt.Errorf("failed to found Action %s, ignore it", actionName)
+			return nil, nil, nil, fmt.Errorf("failed to find Action %s, ignore it", actionName)
 		}
 	}
 
