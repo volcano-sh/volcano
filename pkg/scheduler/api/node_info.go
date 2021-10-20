@@ -348,8 +348,8 @@ func (ni *NodeInfo) allocateIdleResource(ti *TaskInfo) error {
 	}
 
 	return &AllocateFailError{Reason: fmt.Sprintf(
-		"cannot allocate resource, idle: %s req: %s",
-		ti.Resreq.String(), ni.Idle.String(),
+		"cannot allocate resource, <%s> idle: %s <%s/%s> req: %s",
+		ni.Name, ni.Idle.String(), ti.Namespace, ti.Name, ti.Resreq.String(),
 	)}
 }
 
