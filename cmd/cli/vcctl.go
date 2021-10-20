@@ -44,6 +44,9 @@ func main() {
 		Use: "vcctl",
 	}
 
+	// tell Cobra not to provide the default completion command
+	rootCmd.CompletionOptions.DisableDefaultCmd = true
+
 	rootCmd.AddCommand(buildJobCmd())
 	rootCmd.AddCommand(buildQueueCmd())
 	rootCmd.AddCommand(versionCommand())
