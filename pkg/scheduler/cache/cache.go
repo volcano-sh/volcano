@@ -832,11 +832,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		snapshot.Queues[value.UID] = value.Clone()
 	}
 
-	var cloneJobLock sync.Mutex
-	var wg sync.WaitGroup
-
-	cloneJob := func(value *schedulingapi.JobInfo) {
-		defer wg.Done()
+	cloneJob := func(value *schedulingapi.JobInfo) *schedulingapi.JobInfo {
 		if value.PodGroup != nil {
 			value.Priority = sc.defaultPriority
 
@@ -849,11 +845,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 				value.Namespace, value.Name, priName, value.Priority)
 		}
 
-		clonedJob := value.Clone()
-
-		cloneJobLock.Lock()
-		snapshot.Jobs[value.UID] = clonedJob
-		cloneJobLock.Unlock()
+		return value.Clone()
 	}
 
 	for _, value := range sc.NamespaceCollection {
@@ -863,6 +855,8 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 			value.Name, info.GetWeight())
 	}
 
+	var cloneJobLock sync.Mutex
+	var wg sync.WaitGroup
 	for _, value := range sc.Jobs {
 		// If no scheduling spec, does not handle it.
 		if value.PodGroup == nil {
@@ -879,7 +873,14 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		}
 
 		wg.Add(1)
-		go cloneJob(value)
+		go func(jInfo *schedulingapi.JobInfo) {
+			defer wg.Done()
+
+			cj := cloneJob(jInfo)
+			cloneJobLock.Lock()
+			snapshot.Jobs[cj.UID] = cj
+			cloneJobLock.Unlock()
+		}(value)
 	}
 	wg.Wait()
 

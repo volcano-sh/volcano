@@ -18,6 +18,7 @@ package priority
 
 import (
 	"k8s.io/klog"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
@@ -117,7 +118,6 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return ji.ReadyTaskNum()+ji.WaitingTaskNum() < int32(len(ji.Tasks))
 	}
 	ssn.AddJobStarvingFns(pp.Name(), jobStarvingFn)
-
 }
 
 func (pp *priorityPlugin) OnSessionClose(ssn *framework.Session) {}

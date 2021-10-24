@@ -461,10 +461,10 @@ func (r *Resource) Diff(rr *Resource, defaultValue DimensionDefaultValue) (*Reso
 		decreasedVal.Memory = rightRes.Memory - leftRes.Memory
 	}
 
-	increasedVal.ScalarResources = make(map[v1.ResourceName]float64, 0)
-	decreasedVal.ScalarResources = make(map[v1.ResourceName]float64, 0)
+	increasedVal.ScalarResources = make(map[v1.ResourceName]float64)
+	decreasedVal.ScalarResources = make(map[v1.ResourceName]float64)
 	for lName, lQuant := range leftRes.ScalarResources {
-		rQuant, _ := rightRes.ScalarResources[lName]
+		rQuant := rightRes.ScalarResources[lName]
 		if lQuant == -1 {
 			increasedVal.ScalarResources[lName] = -1
 			continue
