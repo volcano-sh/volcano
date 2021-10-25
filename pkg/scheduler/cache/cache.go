@@ -23,7 +23,6 @@ import (
 	"strconv"
 	"sync"
 	"time"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/api/scheduling/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -45,7 +44,6 @@ import (
 	"k8s.io/klog"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
-
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
@@ -413,14 +411,25 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 
 	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, 0)
 	sc.informerFactory = informerFactory
+	mySchedulerPodName, c := getMultiSchedulerInfo()
 
 	// create informer for node information
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
 	sc.nodeInformer.Informer().AddEventHandlerWithResyncPeriod(
-		cache.ResourceEventHandlerFuncs{
-			AddFunc:    sc.AddNode,
-			UpdateFunc: sc.UpdateNode,
-			DeleteFunc: sc.DeleteNode,
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				switch v := obj.(type) {
+				case *v1.Node:
+					return responsibleForNode(v.Name, mySchedulerPodName, c)
+				default:
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    sc.AddNode,
+				UpdateFunc: sc.UpdateNode,
+				DeleteFunc: sc.DeleteNode,
+			},
 		},
 		0,
 	)
@@ -455,8 +464,11 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 			FilterFunc: func(obj interface{}) bool {
 				switch v := obj.(type) {
 				case *v1.Pod:
-					if !responsibleForPod(v, schedulerName) {
+					if !responsibleForPod(v, schedulerName, mySchedulerPodName, c) {
 						if len(v.Spec.NodeName) == 0 {
+							return false
+						}
+						if !responsibleForNode(v.Spec.NodeName, mySchedulerPodName, c) {
 							return false
 						}
 					}
@@ -490,11 +502,22 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 
 	// create informer for PodGroup(v1beta1) information
 	sc.podGroupInformerV1beta1 = vcinformers.Scheduling().V1beta1().PodGroups()
-	sc.podGroupInformerV1beta1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddPodGroupV1beta1,
-		UpdateFunc: sc.UpdatePodGroupV1beta1,
-		DeleteFunc: sc.DeletePodGroupV1beta1,
-	})
+	sc.podGroupInformerV1beta1.Informer().AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				switch v := obj.(type) {
+				case *vcv1beta1.PodGroup:
+					return responsibleForPodGroup(v, mySchedulerPodName, c)
+				default:
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    sc.AddPodGroupV1beta1,
+				UpdateFunc: sc.UpdatePodGroupV1beta1,
+				DeleteFunc: sc.DeletePodGroupV1beta1,
+			},
+		})
 
 	// create informer(v1beta1) for Queue information
 	sc.queueInformerV1beta1 = vcinformers.Scheduling().V1beta1().Queues()

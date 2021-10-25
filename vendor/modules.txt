@@ -846,6 +846,9 @@ sigs.k8s.io/structured-merge-diff/v4/value
 # sigs.k8s.io/yaml v1.2.0
 ## explicit
 sigs.k8s.io/yaml
+# stathat.com/c/consistent v1.0.0
+## explicit
+stathat.com/c/consistent
 # volcano.sh/apis v0.0.0-20210923020136-eb779276d17e
 ## explicit
 volcano.sh/apis/pkg/apis/batch/v1alpha1
