@@ -113,7 +113,7 @@ func Run(opt *options.ServerOption) error {
 func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx context.Context) {
 	controllerOpt := &framework.ControllerOption{}
 
-	controllerOpt.SchedulerName = opt.SchedulerName
+	controllerOpt.SchedulerNames = opt.SchedulerNames
 	controllerOpt.WorkerNum = opt.WorkerThreads
 	controllerOpt.MaxRequeueNum = opt.MaxRequeueNum
 
