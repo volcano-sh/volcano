@@ -37,13 +37,13 @@ const (
 )
 
 // DimensionDefaultValue means default value for black resource dimension
-type DimensionDefaultValue string
+type DimensionDefaultValue int
 
 const (
 	// Zero means resource dimension not defined will be treated as zero
-	Zero DimensionDefaultValue = "Zero"
+	Zero DimensionDefaultValue = 0
 	// Infinity means resource dimension not defined will be treated as infinity
-	Infinity DimensionDefaultValue = "Infinity"
+	Infinity DimensionDefaultValue = -1
 )
 
 // Resource struct defines all the resource type
@@ -294,24 +294,20 @@ func (r *Resource) Less(rr *Resource, defaultValue DimensionDefaultValue) bool {
 		return l < r
 	}
 
-	leftResource := r.Clone()
-	rightResource := rr.Clone()
-
-	if !lessFunc(leftResource.MilliCPU, rightResource.MilliCPU) {
+	if !lessFunc(r.MilliCPU, rr.MilliCPU) {
 		return false
 	}
-	if !lessFunc(leftResource.Memory, rightResource.Memory) {
+	if !lessFunc(r.Memory, rr.Memory) {
 		return false
 	}
 
-	r.setDefaultValue(leftResource, rightResource, defaultValue)
-
-	for resourceName, leftValue := range leftResource.ScalarResources {
-		rightValue := rightResource.ScalarResources[resourceName]
-		if rightValue == -1 {
+	for resourceName, leftValue := range r.ScalarResources {
+		rightValue, ok := rr.ScalarResources[resourceName]
+		if !ok && defaultValue == Infinity {
 			continue
 		}
-		if leftValue == -1 || !lessFunc(leftValue, rightValue) {
+
+		if !lessFunc(leftValue, rightValue) {
 			return false
 		}
 	}
@@ -329,24 +325,20 @@ func (r *Resource) LessEqual(rr *Resource, defaultValue DimensionDefaultValue) b
 		return false
 	}
 
-	leftResource := r.Clone()
-	rightResource := rr.Clone()
-
-	if !lessEqualFunc(leftResource.MilliCPU, rightResource.MilliCPU, minResource) {
+	if !lessEqualFunc(r.MilliCPU, rr.MilliCPU, minResource) {
 		return false
 	}
-	if !lessEqualFunc(leftResource.Memory, rightResource.Memory, minResource) {
+	if !lessEqualFunc(r.Memory, rr.Memory, minResource) {
 		return false
 	}
 
-	r.setDefaultValue(leftResource, rightResource, defaultValue)
-
-	for resourceName, leftValue := range leftResource.ScalarResources {
-		rightValue := rightResource.ScalarResources[resourceName]
-		if rightValue == -1 {
+	for resourceName, leftValue := range r.ScalarResources {
+		rightValue, ok := rr.ScalarResources[resourceName]
+		if !ok && defaultValue == Infinity {
 			continue
 		}
-		if leftValue == -1 || !lessEqualFunc(leftValue, rightValue, minResource) {
+
+		if !lessEqualFunc(leftValue, rightValue, minResource) {
 			return false
 		}
 	}
@@ -361,21 +353,17 @@ func (r *Resource) LessPartly(rr *Resource, defaultValue DimensionDefaultValue) 
 		return l < r
 	}
 
-	leftResource := r.Clone()
-	rightResource := rr.Clone()
-
-	if lessFunc(leftResource.MilliCPU, rightResource.MilliCPU) || lessFunc(leftResource.Memory, rightResource.Memory) {
+	if lessFunc(r.MilliCPU, rr.MilliCPU) || lessFunc(r.Memory, rr.Memory) {
 		return true
 	}
 
-	r.setDefaultValue(leftResource, rightResource, defaultValue)
-
-	for resourceName, leftValue := range leftResource.ScalarResources {
-		rightValue := rightResource.ScalarResources[resourceName]
-		if leftValue == -1 {
-			continue
+	for resourceName, leftValue := range r.ScalarResources {
+		rightValue, ok := rr.ScalarResources[resourceName]
+		if !ok && defaultValue == Infinity {
+			return true
 		}
-		if rightValue == -1 || lessFunc(leftValue, rightValue) {
+
+		if lessFunc(leftValue, rightValue) {
 			return true
 		}
 	}
@@ -393,21 +381,17 @@ func (r *Resource) LessEqualPartly(rr *Resource, defaultValue DimensionDefaultVa
 		return false
 	}
 
-	leftResource := r.Clone()
-	rightResource := rr.Clone()
-
-	if lessEqualFunc(leftResource.MilliCPU, rightResource.MilliCPU, minResource) || lessEqualFunc(leftResource.Memory, rightResource.Memory, minResource) {
+	if lessEqualFunc(r.MilliCPU, rr.MilliCPU, minResource) || lessEqualFunc(r.Memory, rr.Memory, minResource) {
 		return true
 	}
 
-	r.setDefaultValue(leftResource, rightResource, defaultValue)
-
-	for resourceName, leftValue := range leftResource.ScalarResources {
-		rightValue := rightResource.ScalarResources[resourceName]
-		if leftValue == -1 {
-			continue
+	for resourceName, leftValue := range r.ScalarResources {
+		rightValue, ok := rr.ScalarResources[resourceName]
+		if !ok && defaultValue == Infinity {
+			return true
 		}
-		if rightValue == -1 || lessEqualFunc(leftValue, rightValue, minResource) {
+
+		if lessEqualFunc(leftValue, rightValue, minResource) {
 			return true
 		}
 	}
@@ -422,17 +406,12 @@ func (r *Resource) Equal(rr *Resource, defaultValue DimensionDefaultValue) bool 
 		return l == r || math.Abs(l-r) < diff
 	}
 
-	leftResource := r.Clone()
-	rightResource := rr.Clone()
-
-	if !equalFunc(leftResource.MilliCPU, rightResource.MilliCPU, minResource) || !equalFunc(leftResource.Memory, rightResource.Memory, minResource) {
+	if !equalFunc(r.MilliCPU, rr.MilliCPU, minResource) || !equalFunc(r.Memory, rr.Memory, minResource) {
 		return false
 	}
 
-	r.setDefaultValue(leftResource, rightResource, defaultValue)
-
-	for resourceName, leftValue := range leftResource.ScalarResources {
-		rightValue := rightResource.ScalarResources[resourceName]
+	for resourceName, leftValue := range r.ScalarResources {
+		rightValue := rr.ScalarResources[resourceName]
 		if !equalFunc(leftValue, rightValue, minResource) {
 			return false
 		}
