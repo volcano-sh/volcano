@@ -241,7 +241,6 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 			Phase:  NotReady,
 			Reason: "UnInitialized",
 		}
-		klog.Warningf("set the node %s status to %s for the reason UnInitialized.", node.Name, NotReady.String())
 		return
 	}
 
