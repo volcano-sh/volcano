@@ -288,15 +288,10 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 }
 
 func (s *Statement) allocate(task *api.TaskInfo) error {
-	if err := s.ssn.cache.BindVolumes(task, task.PodVolumes); err != nil {
+	if err := s.ssn.cache.AddBindTask(task); err != nil {
 		return err
 	}
 
-	if err := s.ssn.cache.Bind(task, task.NodeName); err != nil {
-		return err
-	}
-
-	// Update status in session
 	if job, found := s.ssn.Jobs[task.Job]; found {
 		if err := job.UpdateTaskStatus(task, api.Binding); err != nil {
 			klog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
