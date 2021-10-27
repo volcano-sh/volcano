@@ -72,7 +72,7 @@ spec:
 
 
 
-In the implementation of `tensorfrlowPlugin`, these arguments will be parsed.
+In the implementation of `tensorflowPlugin`, these arguments will be parsed.
 
 ```go
 // tensorflowPlugin is plugin for tensorflow framework
@@ -159,12 +159,12 @@ func (tp *tensorflowPlugin) generateTFConfig(pod *v1.Pod, job *batch.Job) (tfClu
 	// get task index by pod
 	index, err := strconv.Atoi(helpers.GetTaskIndex(pod))
 	if err != nil {
-		return tfConfig{}, err
+		return tfClusterSpec{}, err
 	}
 	// get task type by pod and job
 	taskType := tp.getTaskType(pod, job)
 	// get cluster info by job
-	spec := tfConfig{
+	spec := tfClusterSpec{
 		Cluster: tp.getClusterInfo(job),
 		Task: taskInfo{
 			Type:  taskType,
@@ -247,15 +247,15 @@ In `OnPodCreate` phase, the `hostfile` will be added into pod volumes, and moute
 func (mp *mpiPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	// generate hostfile volume and volumeMount
 	volume := mp.hostfileVolume(job)
-    mount := mp.hostfileVolumeMount(job)
+	mount := mp.hostfileVolumeMount(job)
 	// add to pod and containers
-    pod.Spec.Volumes = append(pod.Spec.Volumes, vm)
+	pod.Spec.Volumes = append(pod.Spec.Volumes, vm)
 	for i := range pod.Spec.Containers {
 		pod.Spec.Containers[i].VolumeMounts = append(pod.Spec.Containers[i].VolumeMounts, mount)
-        pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
-            Name: "OMPI_MCA_orte_default_hostfile",
-            Value: "/etc/mpi/hostfile",
-        })
+		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
+		    Name: "OMPI_MCA_orte_default_hostfile",
+		    Value: "/etc/mpi/hostfile",
+		})
 	}
 	return nil
 }
