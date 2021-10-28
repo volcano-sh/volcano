@@ -49,6 +49,8 @@ func responsibleForPod(pod *v1.Pod, schedulerName string, mySchedulerPodName str
 			return false
 		}
 	}
+
+	klog.V(4).Infof("schedulerPodName %v is responsible to Pod %v/%v", mySchedulerPodName, pod.Namespace, pod.Name)
 	return true
 }
 
@@ -63,6 +65,8 @@ func responsibleForNode(nodeName string, mySchedulerPodName string, c *consisten
 			return false
 		}
 	}
+
+	klog.V(4).Infof("schedulerPodName %v is responsible to Node %v", mySchedulerPodName, nodeName)
 	return true
 }
 
@@ -83,6 +87,8 @@ func responsibleForPodGroup(pg *scheduling.PodGroup, mySchedulerPodName string, 
 			return false
 		}
 	}
+
+	klog.V(4).Infof("schedulerPodName %v is responsible to PodGroup %v/%v", mySchedulerPodName, pg.Namespace, pg.Name)
 	return true
 }
 
