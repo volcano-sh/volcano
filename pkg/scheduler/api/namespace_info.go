@@ -83,12 +83,6 @@ func NewNamespaceCollection(name string) *NamespaceCollection {
 		Name:        name,
 		quotaWeight: cache.NewHeap(quotaItemKeyFunc, quotaItemLessFunc),
 	}
-	// add at least one item into quotaWeight.
-	// Because cache.Heap.Pop would be blocked until queue is not empty
-	n.updateWeight(&quotaItem{
-		name:   NamespaceWeightKey,
-		weight: DefaultNamespaceWeight,
-	})
 	return n
 }
 
