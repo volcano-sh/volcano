@@ -66,6 +66,8 @@ type ServerOption struct {
 	MinNodesToFind             int32
 	MinPercentageOfNodesToFind int32
 	PercentageOfNodesToFind    int32
+
+	NodeSelector []string
 }
 
 // ServerOpts server options.
@@ -111,6 +113,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 		"Enable tracking of available storage capacity that CSI drivers provide; it is false by default")
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")
+	fs.StringSliceVar(&s.NodeSelector, "node-selector", nil, "volcano only work with the labeled node, like: --node-selector=volcano.sh/role:train --node-selector=volcano.sh/role:serving")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled.
