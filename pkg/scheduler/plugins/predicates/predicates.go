@@ -223,12 +223,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 					klog.Errorf("The node %s can't place the pod %s in ns %s", pod.Spec.NodeName, pod.Name, pod.Namespace)
 					return
 				}
-				patch := api.AddGPUIndexPatch(ids)
-				pod, err := kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType, []byte(patch), metav1.PatchOptions{})
-				if err != nil {
-					klog.Errorf("Patch pod %s failed with patch %s: %v", pod.Name, patch, err)
-					return
-				}
 				for _, id := range ids {
 					dev, ok := nodeInfo.GPUDevices[id]
 					if !ok {
@@ -253,13 +247,14 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 
 			if (predicate.gpuSharingEnable && api.GetGPUMemoryOfPod(pod) > 0) || (predicate.gpuNumberEnable && api.GetGPUNumberOfPod(pod) > 0) {
-				// deallocate pod gpu id
-				ids := api.GetGPUIndex(pod)
-				patch := api.RemoveGPUIndexPatch()
-				_, err := kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType, []byte(patch), metav1.PatchOptions{})
-				if err != nil {
-					klog.Errorf("Patch pod %s failed with patch %s: %v", pod.Name, patch, err)
-					return
+				// Remove annotations for GPU Sharing Pods
+				if predicate.gpuSharingEnable && api.GetGPUMemoryOfPod(pod) > 0 {
+					patch := api.RemoveGPUIndexPatch()
+					_, err := kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType, []byte(patch), metav1.PatchOptions{})
+					if err != nil {
+						klog.Errorf("Patch pod %s failed with patch %s: %v", pod.Name, patch, err)
+						return
+					}
 				}
 
 				nodeInfo, ok := ssn.Nodes[nodeName]
@@ -267,6 +262,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 					klog.Errorf("Failed to get node %s info from cache", nodeName)
 					return
 				}
+
+				// deallocate pod gpu id
+				ids := api.GetGPUIndex(pod)
 				for _, id := range ids {
 					if dev, ok := nodeInfo.GPUDevices[id]; ok {
 						delete(dev.PodMap, string(pod.UID))
