@@ -44,11 +44,11 @@ For the ease of end user's experince, we need to unify the way of composing a co
 
 ### Field
 
-Add a field in `vcjob.spec.task.dependentTask`, it represents the name of the task that this task needs to depend on
+Add a field in `vcjob.spec.task.dependsOn`, it represents the name of the tasks that this task needs to depend on
 
 ### API
 vcjob example
-```
+```yaml
 apiVersion: batch.volcano.sh/v1alpha1
 kind: Job
 metadata:
@@ -62,14 +62,40 @@ spec:
       ......
     - replicas: 1
       name: mpimaster
-      dependentTask: 
+      dependsOn: 
         name: mpiworker
       template:
       ......
 ```
 
+```yaml
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: example-job
+spec:
+  ......
+  tasks:
+    - replicas: 2
+      name: task1
+      template:
+      ......
+    - replicas: 1
+      name: task2
+      template:
+      ......
+    - replicas: 2
+      name: task3
+      dependsOn: 
+        name: task1, task2
+        iteration: any
+      template:
+      ......
+```
+
 ### Usage
-* create a job that contains at least two tasks, fill in the task name in the `vcjob.spec.task.DependentTask` field, this name indicates the task that this task wants to rely on.
+* create a job that contains at least two tasks, fill in the task name in the `vcjob.spec.task.dependsOn` field, this name indicates the task that this task wants to rely on.
+* If there are multiple dependent tasks, you need to fill in the `iteration` field, the value can be `any` or `all`, `any` means that one of the multiple tasks reach the running state then run this task, `all` means that all tasks reach the runnig state before running this task.
 * get task status to check if it is correct order
 
 ### Implementaion
@@ -77,4 +103,4 @@ spec:
 * create admission for this field
 
 ### Notice
-* deal with the conflict with gang-scheduling
+* deal with the conflict with gang-scheduling, you need to disable the gang plugin when using it.
