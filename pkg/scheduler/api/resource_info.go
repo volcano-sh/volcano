@@ -30,6 +30,7 @@ import (
 const (
 	// GPUResourceName need to follow https://github.com/NVIDIA/k8s-device-plugin/blob/66a35b71ac4b5cbfb04714678b548bd77e5ba719/server.go#L20
 	GPUResourceName = "nvidia.com/gpu"
+	GPUMemoryName   = "nvidia.com/gpu.memory"
 )
 
 const (
@@ -440,8 +441,8 @@ func (r *Resource) Diff(rr *Resource, defaultValue DimensionDefaultValue) (*Reso
 		decreasedVal.Memory = rightRes.Memory - leftRes.Memory
 	}
 
-	increasedVal.ScalarResources = make(map[v1.ResourceName]float64, 0)
-	decreasedVal.ScalarResources = make(map[v1.ResourceName]float64, 0)
+	increasedVal.ScalarResources = make(map[v1.ResourceName]float64)
+	decreasedVal.ScalarResources = make(map[v1.ResourceName]float64)
 	for lName, lQuant := range leftRes.ScalarResources {
 		rQuant, _ := rightRes.ScalarResources[lName]
 		if lQuant == -1 {

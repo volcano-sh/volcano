@@ -278,13 +278,8 @@ func (ni *NodeInfo) setNodeGPUInfo(node *v1.Node) {
 	if node == nil {
 		return
 	}
-	memory, ok := node.Status.Capacity[VolcanoGPUResource]
-	if !ok {
-		return
-	}
-	totalMemory := memory.Value()
 
-	res, ok := node.Status.Capacity[VolcanoGPUNumber]
+	res, ok := node.Status.Capacity[GPUResourceName]
 	if !ok {
 		return
 	}
@@ -294,7 +289,15 @@ func (ni *NodeInfo) setNodeGPUInfo(node *v1.Node) {
 		return
 	}
 
-	memoryPerCard := uint(totalMemory / gpuNumber)
+	memory, ok := node.Status.Capacity[VolcanoGPUResource]
+	if !ok {
+		for i := 0; i < int(gpuNumber); i++ {
+			ni.GPUDevices[i] = NewGPUDevice(i, 0)
+		}
+		return
+	}
+
+	memoryPerCard := uint(memory.Value() / gpuNumber)
 	for i := 0; i < int(gpuNumber); i++ {
 		ni.GPUDevices[i] = NewGPUDevice(i, memoryPerCard)
 	}
@@ -524,22 +527,36 @@ func (ni *NodeInfo) getDevicesAllGPUMemory() map[int]uint {
 
 // AddGPUResource adds the pod to GPU pool if it is assigned
 func (ni *NodeInfo) AddGPUResource(pod *v1.Pod) {
-	gpuRes := GetGPUResourceOfPod(pod)
+	gpuRes := GetGPUMemoryOfPod(pod)
 	if gpuRes > 0 {
-		id := GetGPUIndex(pod)
-		if dev := ni.GPUDevices[id]; dev != nil {
-			dev.PodMap[string(pod.UID)] = pod
+		ids := GetGPUIndex(pod)
+		for _, id := range ids {
+			if dev := ni.GPUDevices[id]; dev != nil {
+				dev.PodMap[string(pod.UID)] = pod
+			}
 		}
 	}
 }
 
 // SubGPUResource frees the gpu hold by the pod
 func (ni *NodeInfo) SubGPUResource(pod *v1.Pod) {
-	gpuRes := GetGPUResourceOfPod(pod)
+	gpuRes := GetGPUMemoryOfPod(pod)
 	if gpuRes > 0 {
-		id := GetGPUIndex(pod)
-		if dev := ni.GPUDevices[id]; dev != nil {
-			delete(dev.PodMap, string(pod.UID))
+		ids := GetGPUIndex(pod)
+		for _, id := range ids {
+			if dev := ni.GPUDevices[id]; dev != nil {
+				delete(dev.PodMap, string(pod.UID))
+			}
 		}
 	}
+}
+
+func (ni *NodeInfo) GetDevicesIdleGPUs() []int {
+	res := []int{}
+	for _, device := range ni.GPUDevices {
+		if device.isIdleGPU() {
+			res = append(res, device.ID)
+		}
+	}
+	return res
 }
