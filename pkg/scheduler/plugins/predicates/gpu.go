@@ -77,6 +77,8 @@ func predicateGPUbyNumber(pod *v1.Pod, node *api.NodeInfo) []int {
 
 	var devIDs []int
 
+	klog.Infof("Requesting %d on %s with %d GPUS", gpuRequest, node.Name, len(allocatableGPUs))
+
 	if len(allocatableGPUs) < gpuRequest {
 		klog.Errorf("Not enough gpu cards")
 		return nil

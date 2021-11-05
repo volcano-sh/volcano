@@ -281,18 +281,25 @@ func (ni *NodeInfo) setNodeGPUInfo(node *v1.Node) {
 
 	res, ok := node.Status.Capacity[GPUResourceName]
 	if !ok {
+		klog.Warningf("%s Unavailable on %s", GPUResourceName, node.Name)
 		return
+	} else {
+		klog.Infof("%s Found on %s", GPUResourceName, node.Name)
 	}
+
 	gpuNumber := res.Value()
 	if gpuNumber == 0 {
-		klog.Warningf("invalid %s=%s", VolcanoGPUNumber, res.String())
+		klog.Warningf("invalid %s=%s", GPUResourceName, res.String())
 		return
+	} else {
+		klog.Infof("%s has %d %s", node.Name, gpuNumber, GPUResourceName)
 	}
 
 	memory, ok := node.Status.Capacity[VolcanoGPUResource]
 	if !ok {
+		klog.Infof("Adding %d %s on %s", gpuNumber, GPUResourceName, node.Name)
 		for i := 0; i < int(gpuNumber); i++ {
-			ni.GPUDevices[i] = NewGPUDevice(i, 0)
+			ni.GPUDevices[i] = NewGPUDevice(i, 1)
 		}
 		return
 	}
@@ -556,6 +563,9 @@ func (ni *NodeInfo) GetDevicesIdleGPUs() []int {
 	for _, device := range ni.GPUDevices {
 		if device.isIdleGPU() {
 			res = append(res, device.ID)
+			klog.Infof("%s gpu idx %d Idle", ni.Node.Name, device.ID)
+		} else {
+			klog.Infof("%s gpu idx %d Used", ni.Node.Name, device.ID)
 		}
 	}
 	return res

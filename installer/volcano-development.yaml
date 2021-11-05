@@ -143,8 +143,8 @@ spec:
             - --port=8443
             - -v=4
             - 2>&1
-          image: volcanosh/vc-webhook-manager:latest
-          imagePullPolicy: IfNotPresent
+          image: mu00212607.esol.monash.edu.au:5000/vc-webhook-manager:devel
+          imagePullPolicy: Always
           name: admission
           volumeMounts:
             - mountPath: /admission.local.config/certificates
@@ -152,6 +152,8 @@ spec:
               readOnly: true
             - mountPath: /admission.local.config/configmap
               name: admission-config
+      imagePullSecrets:
+      - name: dkr-creds
       volumes:
         - name: admission-certs
           secret:
@@ -177,10 +179,12 @@ spec:
       restartPolicy: Never
       containers:
         - name: main
-          image: volcanosh/vc-webhook-manager:latest
-          imagePullPolicy: IfNotPresent
+          image: mu00212607.esol.monash.edu.au:5000/vc-webhook-manager:devel
+          imagePullPolicy: Always
           command: ["./gen-admission-secret.sh", "--service", "volcano-admission-service", "--namespace",
                     "volcano-system", "--secret", "volcano-admission-secret"]
+      imagePullSecrets:
+      - name: dkr-creds
 ---
 # Source: volcano/templates/batch_v1alpha1_job.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -7534,12 +7538,14 @@ spec:
       serviceAccount: volcano-controllers
       containers:
           - name: volcano-controllers
-            image: volcanosh/vc-controller-manager:latest
+            image: mu00212607.esol.monash.edu.au:5000/vc-controller-manager:devel
             args:
               - --logtostderr
               - -v=4
               - 2>&1
-            imagePullPolicy: "IfNotPresent"
+            imagePullPolicy: "Always"
+      imagePullSecrets:
+      - name: dkr-creds
 ---
 # Source: volcano/templates/scheduler.yaml
 apiVersion: v1
@@ -7566,6 +7572,8 @@ data:
       - name: overcommit
       - name: drf
       - name: predicates
+        arguments:
+          predicate.GPUNumberEnable: true
       - name: proportion
       - name: nodeorder
       - name: binpack
@@ -7685,16 +7693,18 @@ spec:
       serviceAccount: volcano-scheduler
       containers:
         - name: volcano-scheduler
-          image: volcanosh/vc-scheduler:latest
+          image: mu00212607.esol.monash.edu.au:5000/vc-scheduler:devel
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
             - -v=3
             - 2>&1
-          imagePullPolicy: "IfNotPresent"
+          imagePullPolicy: "Always"
           volumeMounts:
             - name: scheduler-config
               mountPath: /volcano.scheduler
+      imagePullSecrets:
+      - name: dkr-creds
       volumes:
         - name: scheduler-config
           configMap:

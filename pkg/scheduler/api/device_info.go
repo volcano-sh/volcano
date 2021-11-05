@@ -73,7 +73,7 @@ func getGPUMemoryOfContainer(container *v1.Container) uint {
 
 // isIdleGPU check if the device is idled.
 func (g *GPUDevice) isIdleGPU() bool {
-	return g.PodMap == nil
+	return len(g.PodMap) == 0
 }
 
 // GetGPUNumberOfPod returns the number of GPUs required by the pod.
