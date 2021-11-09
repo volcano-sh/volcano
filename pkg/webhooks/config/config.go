@@ -59,14 +59,14 @@ func LoadAdmissionConf(confPath string) *AdmissionConfiguration {
 		return nil
 	}
 
-	configBytes, err := readAdmissionConf(confPath)
+	configBytes, err := ioutil.ReadFile(confPath)
 	if err != nil {
 		klog.Errorf("read admission file failed, err=%v", err)
 		return nil
 	}
 
 	data := AdmissionConfiguration{}
-	if err := yaml.Unmarshal([]byte(configBytes), &data); err != nil {
+	if err := yaml.Unmarshal(configBytes, &data); err != nil {
 		klog.Errorf("Unmarshal admission file failed, err=%v", err)
 		return nil
 	}
@@ -75,15 +75,6 @@ func LoadAdmissionConf(confPath string) *AdmissionConfiguration {
 	admissionConf.ResGroupsConfig = data.ResGroupsConfig
 	admissionConf.Unlock()
 	return &admissionConf
-}
-
-// readAdmissionConf read the configuration from config path
-func readAdmissionConf(confPath string) (string, error) {
-	dat, err := ioutil.ReadFile(confPath)
-	if err != nil {
-		return "", err
-	}
-	return string(dat), nil
 }
 
 // WatchAdmissionConf listen the changes of the configuration file
