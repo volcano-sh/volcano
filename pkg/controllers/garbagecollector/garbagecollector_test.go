@@ -25,6 +25,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	volcanoclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
+	vcinformers "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
 
@@ -85,8 +86,11 @@ func TestGarbageCollector_ProcessTTL(t *testing.T) {
 	}
 	for i, testcase := range testcases {
 		gc := &gccontroller{}
+		vcClient := volcanoclient.NewSimpleClientset()
+		vcInformerFactory := vcinformers.NewSharedInformerFactory(vcClient, 0)
 		gc.Initialize(&framework.ControllerOption{
-			VolcanoClient: volcanoclient.NewSimpleClientset(),
+			VolcanoClient:          vcClient,
+			VolcanoInformerFactory: vcInformerFactory,
 		})
 
 		expired, err := gc.processTTL(testcase.Job)

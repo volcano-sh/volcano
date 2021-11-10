@@ -37,7 +37,6 @@ import (
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	versionedscheme "volcano.sh/apis/pkg/client/clientset/versioned/scheme"
-	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	busv1alpha1informer "volcano.sh/apis/pkg/client/informers/externalversions/bus/v1alpha1"
 	schedulinginformer "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 	busv1alpha1lister "volcano.sh/apis/pkg/client/listers/bus/v1alpha1"
@@ -98,9 +97,8 @@ func (c *queuecontroller) Initialize(opt *framework.ControllerOption) error {
 	c.vcClient = opt.VolcanoClient
 	c.kubeClient = opt.KubeClient
 
-	factory := informerfactory.NewSharedInformerFactory(c.vcClient, 0)
-	queueInformer := factory.Scheduling().V1beta1().Queues()
-	pgInformer := factory.Scheduling().V1beta1().PodGroups()
+	queueInformer := opt.VolcanoInformerFactory.Scheduling().V1beta1().Queues()
+	pgInformer := opt.VolcanoInformerFactory.Scheduling().V1beta1().PodGroups()
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
@@ -133,7 +131,7 @@ func (c *queuecontroller) Initialize(opt *framework.ControllerOption) error {
 		DeleteFunc: c.deletePodGroup,
 	})
 
-	c.cmdInformer = informerfactory.NewSharedInformerFactory(c.vcClient, 0).Bus().V1alpha1().Commands()
+	c.cmdInformer = opt.VolcanoInformerFactory.Bus().V1alpha1().Commands()
 	c.cmdInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
 			switch v := obj.(type) {
@@ -170,10 +168,6 @@ func (c *queuecontroller) Run(stopCh <-chan struct{}) {
 
 	klog.Infof("Starting queue controller.")
 	defer klog.Infof("Shutting down queue controller.")
-
-	go c.queueInformer.Informer().Run(stopCh)
-	go c.pgInformer.Informer().Run(stopCh)
-	go c.cmdInformer.Informer().Run(stopCh)
 
 	if !cache.WaitForCacheSync(stopCh, c.queueSynced, c.pgSynced, c.cmdSynced) {
 		klog.Errorf("unable to sync caches for queue controller.")

@@ -22,22 +22,29 @@ import (
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
+	vcinformers "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
 
 func newFakeController() *queuecontroller {
-	KubeBatchClientSet := vcclient.NewSimpleClientset()
-	KubeClientSet := kubeclient.NewSimpleClientset()
+	kubeBatchClientSet := vcclient.NewSimpleClientset()
+	kubeClientSet := kubeclient.NewSimpleClientset()
+
+	sharedInformers := informers.NewSharedInformerFactory(kubeClientSet, 0)
+	volcanoSharedInformers := vcinformers.NewSharedInformerFactory(kubeBatchClientSet, 0)
 
 	controller := &queuecontroller{}
 	opt := framework.ControllerOption{
-		VolcanoClient: KubeBatchClientSet,
-		KubeClient:    KubeClientSet,
+		VolcanoClient:          kubeBatchClientSet,
+		KubeClient:             kubeClientSet,
+		SharedInformerFactory:  sharedInformers,
+		VolcanoInformerFactory: volcanoSharedInformers,
 	}
 
 	controller.Initialize(&opt)

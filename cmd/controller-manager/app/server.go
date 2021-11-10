@@ -36,6 +36,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/helpers"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
+	vcinformers "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/cmd/controller-manager/app/options"
 	"volcano.sh/volcano/pkg/controllers/framework"
 	"volcano.sh/volcano/pkg/kube"
@@ -58,7 +59,15 @@ func Run(opt *options.ServerOption) error {
 		return err
 	}
 
-	run := startControllers(config, opt)
+	run := func(ctx context.Context) {
+
+		controllerOpt := createControllerOpt(config, opt)
+		startControllers(ctx, controllerOpt)
+
+		controllerOpt.SharedInformerFactory.Start(ctx.Done())
+		controllerOpt.VolcanoInformerFactory.Start(ctx.Done())
+		<-ctx.Done()
+	}
 
 	if !opt.EnableLeaderElection {
 		run(context.TODO())
@@ -110,28 +119,31 @@ func Run(opt *options.ServerOption) error {
 	return fmt.Errorf("lost lease")
 }
 
-func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx context.Context) {
-	controllerOpt := &framework.ControllerOption{}
+func startControllers(ctx context.Context, controllerOpt *framework.ControllerOption) {
+	framework.ForeachController(func(c framework.Controller) {
+		if err := c.Initialize(controllerOpt); err != nil {
+			klog.Errorf("Failed to initialize controller <%s>: %v", c.Name(), err)
+			return
+		}
 
-	controllerOpt.SchedulerNames = opt.SchedulerNames
-	controllerOpt.WorkerNum = opt.WorkerThreads
-	controllerOpt.MaxRequeueNum = opt.MaxRequeueNum
+		go c.Run(ctx.Done())
+	})
 
+}
+
+func createControllerOpt(config *rest.Config, opt *options.ServerOption) *framework.ControllerOption {
 	// TODO: add user agent for different controllers
-	controllerOpt.KubeClient = kubeclientset.NewForConfigOrDie(config)
-	controllerOpt.VolcanoClient = vcclientset.NewForConfigOrDie(config)
-	controllerOpt.SharedInformerFactory = informers.NewSharedInformerFactory(controllerOpt.KubeClient, 0)
-
-	return func(ctx context.Context) {
-		framework.ForeachController(func(c framework.Controller) {
-			if err := c.Initialize(controllerOpt); err != nil {
-				klog.Errorf("Failed to initialize controller <%s>: %v", c.Name(), err)
-				return
-			}
-
-			go c.Run(ctx.Done())
-		})
-
-		<-ctx.Done()
+	kubeClient := kubeclientset.NewForConfigOrDie(config)
+	vcClient := vcclientset.NewForConfigOrDie(config)
+	sharedInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
+	vcInformerFactory := vcinformers.NewSharedInformerFactory(vcClient, 0)
+	return &framework.ControllerOption{
+		KubeClient:             kubeClient,
+		VolcanoClient:          vcClient,
+		SharedInformerFactory:  sharedInformerFactory,
+		VolcanoInformerFactory: vcInformerFactory,
+		SchedulerNames:         opt.SchedulerNames,
+		WorkerNum:              opt.WorkerThreads,
+		MaxRequeueNum:          opt.MaxRequeueNum,
 	}
 }

@@ -29,6 +29,7 @@ import (
 
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
+	vcinformers "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
 
@@ -36,13 +37,15 @@ func newFakeController() *pgcontroller {
 	kubeClient := kubeclient.NewSimpleClientset()
 	vcClient := vcclient.NewSimpleClientset()
 	sharedInformers := informers.NewSharedInformerFactory(kubeClient, 0)
+	vcSharedInformers := vcinformers.NewSharedInformerFactory(vcClient, 0)
 
 	controller := &pgcontroller{}
 	opt := &framework.ControllerOption{
-		KubeClient:            kubeClient,
-		VolcanoClient:         vcClient,
-		SharedInformerFactory: sharedInformers,
-		SchedulerNames:        []string{"volcano"},
+		KubeClient:             kubeClient,
+		VolcanoClient:          vcClient,
+		SharedInformerFactory:  sharedInformers,
+		VolcanoInformerFactory: vcSharedInformers,
+		SchedulerNames:         []string{"volcano"},
 	}
 
 	controller.Initialize(opt)
