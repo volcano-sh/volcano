@@ -645,19 +645,9 @@ func (sc *SchedulerCache) UpdatePriorityClass(oldObj, newObj interface{}) {
 
 //AddPriorityClass add priorityclass to scheduler cache
 func (sc *SchedulerCache) AddPriorityClass(obj interface{}) {
-	var ss *v1beta1.PriorityClass
-	switch t := obj.(type) {
-	case *v1beta1.PriorityClass:
-		ss = t
-	case cache.DeletedFinalStateUnknown:
-		var ok bool
-		ss, ok = t.Obj.(*v1beta1.PriorityClass)
-		if !ok {
-			klog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t.Obj)
-			return
-		}
-	default:
-		klog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t)
+	ss, ok := obj.(*v1beta1.PriorityClass)
+	if !ok {
+		klog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", obj)
 		return
 	}
 
