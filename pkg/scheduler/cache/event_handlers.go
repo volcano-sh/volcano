@@ -818,16 +818,17 @@ func (sc *SchedulerCache) addNumaInfo(info *nodeinfov1alpha1.Numatopology) error
 
 	if sc.Nodes[info.Name].NumaInfo == nil {
 		sc.Nodes[info.Name].NumaInfo = getNumaInfo(info)
-	}
-
-	newLocalInfo := getNumaInfo(info)
-	if sc.Nodes[info.Name].NumaInfo.Compare(newLocalInfo) {
 		sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoMoreFlag
 	} else {
-		sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoLessFlag
-	}
+		newLocalInfo := getNumaInfo(info)
+		if sc.Nodes[info.Name].NumaInfo.Compare(newLocalInfo) {
+			sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoMoreFlag
+		} else {
+			sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoLessFlag
+		}
 
-	sc.Nodes[info.Name].NumaInfo = newLocalInfo
+		sc.Nodes[info.Name].NumaInfo = newLocalInfo
+	}
 
 	for resName, NumaResInfo := range sc.Nodes[info.Name].NumaInfo.NumaResMap {
 		klog.V(3).Infof("resource %s Allocatable %v on node[%s] into cache", resName, NumaResInfo, info.Name)
