@@ -116,7 +116,7 @@ func (tp *tensorflowPlugin) OnJobUpdate(job *batch.Job) error {
 }
 
 func (tp *tensorflowPlugin) generateTFClusterSpec(pod *v1.Pod, job *batch.Job) (tfClusterSpec, error) {
-	index, err := strconv.Atoi(jobhelpers.GetTaskIndex(pod))
+	index, err := strconv.Atoi(jobhelpers.GetPodIndexUnderTask(pod))
 	if err != nil {
 		return tfClusterSpec{}, err
 	}

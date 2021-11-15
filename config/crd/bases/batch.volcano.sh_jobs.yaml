@@ -115,6 +115,23 @@ spec:
                 items:
                   description: TaskSpec specifies the task specification of Job.
                   properties:
+                    dependsOn:
+                      description: Specifies the tasks that this task depends on.
+                      properties:
+                        iteration:
+                          description: This field specifies that when there are multiple
+                            dependent tasks, as long as one task becomes the specified
+                            state, the task scheduling is triggered or all tasks must
+                            be changed to the specified state to trigger the task
+                            scheduling
+                          type: string
+                        name:
+                          description: Indicates the name of the tasks that this task
+                            depends on, which can depend on multiple tasks
+                          items:
+                            type: string
+                          type: array
+                      type: object
                     maxRetry:
                       description: Specifies the maximum number of retries before
                         marking this Task failed. Defaults to 3.
