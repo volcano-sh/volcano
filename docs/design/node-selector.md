@@ -6,7 +6,7 @@ In my case, k8s cluster has 10 nodes (10 gpu per node), 5 for training, 5 for se
 
 ![](./images/node-selector.png)
 
-if you just want to schedule workloads on training job, you can use nodeSelector or nodeAffinity. but it is not properly when considering volcano queue mechanism, because volcano think it can work on 10 node (and use all resources of 10 nodes), it has 100 gpu. but in fact, it only can work on 5 nodes for training, it has 50 gpu. 
+if you just want to schedule workloads on training job, you can use nodeSelector or nodeAffinity on `Pod.Spec`. but it is not properly when considering volcano queue mechanism, because volcano think it can work on 10 node (and use all resources of 10 nodes), it has 100 gpu. but in fact, it only can work on 5 nodes for training, it has 50 gpu. 
 
 if there are two queue: queue1 and queue2
 
@@ -15,7 +15,7 @@ if there are two queue: queue1 and queue2
 |queue1|1|true|50|
 |queue2|1|true|50|
 
-if queue1 already used 45 gpu, then i submit a training job of queue2 using 10 gpu, the job will pending because are none resources on training nodes, and queue1 is not overused in volcano's view, so it will not reclaim job of queue1 to release resource.   
+if queue1 already used 45 gpu, then i submit a training job of queue2 using 10 gpu, the job will pending because are not enough gpu on training nodes, and queue1 is not overused in volcano's view, so it will not reclaim job of queue1 to release resource.   
 
 so it is necessary to tell volcano scheduler that it can only work on training nodes(not all nodes in cluster), queue1 only can use 25 gpu, it is overused for queue1 to use 45 gpu.
 
