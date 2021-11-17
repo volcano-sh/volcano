@@ -6,7 +6,7 @@ In my case, k8s cluster has 10 nodes (10 gpu per node), 5 for training, 5 for se
 
 ![](./images/node-selector-1.png)
 
-if you just want to schedule workloads on training job, you can use nodeSelector or nodeAffinity on `Pod.Spec`. but it is not properly when considering volcano queue mechanism, because volcano think it can work on 10 node (and use all resources of 10 nodes), it has 100 gpu. but in fact, it only can work on 5 nodes for training, it has 50 gpu. 
+if you just want to schedule workloads on training nodes, you can use nodeSelector or nodeAffinity on `Pod.Spec`. but it is not properly when considering volcano queue mechanism, because volcano think it can work on 10 node (and use all resources of 10 nodes), it has 100 gpu. but in fact, it only can work on 5 nodes for training, it has 50 gpu. 
 
 if there are two queue: queue1 and queue2
 
