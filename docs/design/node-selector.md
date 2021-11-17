@@ -17,7 +17,7 @@ if there are two queue: queue1 and queue2
 
 if queue1 already used 45 gpu, then i submit a training job of queue2 using 10 gpu, the job will pending because are not enough gpu on training nodes, and queue1 is not overused in volcano's view, so it will not reclaim job of queue1 to release resource.   
 
-so it is necessary to tell volcano scheduler that it can only work on training nodes(not all nodes in cluster), queue1 only can use 25 gpu, it is overused for queue1 to use 45 gpu.
+so it is necessary to tell volcano scheduler that it can only work on training nodes(not all nodes in cluster), queue1 can only use 25 gpu normally, it is overused for queue1 to use 45 gpu.
 
 so I add nodeSelector for volcano scheduler.
 
