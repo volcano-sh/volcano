@@ -178,5 +178,5 @@ func AddGPUIndexPatch(ids []int) string {
 // RemoveGPUIndexPatch returns the patch removing GPU index
 func RemoveGPUIndexPatch() string {
 	return fmt.Sprintf(`[{"op": "remove", "path": "/metadata/annotations/%s"},`+
-		`{"op": "remove", "path": "/metadata/annotations/%s"]`, escapeJSONPointer(PredicateTime), escapeJSONPointer(GPUIndex))
+		`{"op": "remove", "path": "/metadata/annotations/%s"}]`, escapeJSONPointer(PredicateTime), escapeJSONPointer(GPUIndex))
 }
