@@ -689,7 +689,6 @@ func (cc *jobcontroller) initJobStatus(job *batch.Job) (*batch.Job, error) {
 		return job, nil
 	}
 
-	job.Status.State.LastTransitionTime = metav1.Now()
 	job.Status.State.Phase = batch.Pending
 	job.Status.State.LastTransitionTime = metav1.Now()
 	job.Status.MinAvailable = job.Spec.MinAvailable
