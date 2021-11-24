@@ -25,11 +25,12 @@ import (
 )
 
 const (
-	defaultQPS           = 50.0
-	defaultBurst         = 100
-	defaultWorkers       = 3
-	defaultMaxRequeueNum = 15
-	defaultSchedulerName = "volcano"
+	defaultQPS            = 50.0
+	defaultBurst          = 100
+	defaultWorkers        = 3
+	defaultMaxRequeueNum  = 15
+	defaultSchedulerName  = "volcano"
+	defaultHealthzAddress = ":11251"
 )
 
 // ServerOption is the main context object for the controllers.
@@ -54,10 +55,7 @@ type ServerOption struct {
 
 // NewServerOption creates a new CMServer with a default config.
 func NewServerOption() *ServerOption {
-	s := ServerOption{
-		HealthzBindAddress: ":11252",
-	}
-	return &s
+	return &ServerOption{}
 }
 
 // AddFlags adds flags for a specific CMServer to the specified FlagSet.
@@ -74,6 +72,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 		"Larger number = faster job updating, but more CPU load")
 	fs.StringArrayVar(&s.SchedulerNames, "scheduler-name", []string{defaultSchedulerName}, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.IntVar(&s.MaxRequeueNum, "max-requeue-num", defaultMaxRequeueNum, "The number of times a job, queue or command will be requeued before it is dropped out of the queue")
+	fs.StringVar(&s.HealthzBindAddress, "healthz-address", defaultHealthzAddress, "The address to listen on for the health check server.")
 }
 
 // CheckOptionOrDie checks the LockObjectNamespace.
