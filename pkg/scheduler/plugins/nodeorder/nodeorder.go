@@ -316,7 +316,7 @@ func interPodAffinityScore(
 	}
 
 	nodescoreList := make(k8sframework.NodeScoreList, len(nodes))
-	errCh := make(chan error, 1)
+	errCh := make(chan error, len(nodes))
 	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), func(index int) {
 		nodeName := nodes[index].Name
 		ctx, cancel := context.WithCancel(context.Background())
@@ -368,7 +368,7 @@ func taintTolerationScore(
 	}
 
 	nodescoreList := make(k8sframework.NodeScoreList, len(nodes))
-	errCh := make(chan error, 1)
+	errCh := make(chan error, len(nodes))
 	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), func(index int) {
 		nodeName := nodes[index].Name
 		ctx, cancel := context.WithCancel(context.Background())
