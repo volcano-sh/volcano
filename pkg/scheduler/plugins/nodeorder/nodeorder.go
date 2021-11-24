@@ -316,13 +316,22 @@ func interPodAffinityScore(
 	}
 
 	nodescoreList := make(k8sframework.NodeScoreList, len(nodes))
-	errCh := make(chan error, len(nodes))
-	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), func(index int) {
+	// the default parallelization worker number is 16.
+	// the whole scoring will fail if one of the processes failed.
+	// so just create a parallelizeContext to control the whole ParallelizeUntil process.
+	// if the parallelizeCancel is invoked, the whole "ParallelizeUntil" goes to the end.
+	// and the ParallelizeUntil guarantees only "workerNum" goroutines will be working simultaneously.
+	// so it's enough to allocate workerNum size for errCh.
+	workerNum := 16
+	errCh := make(chan error, workerNum)
+	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
+	workqueue.ParallelizeUntil(parallelizeContext, workerNum, len(nodes), func(index int) {
 		nodeName := nodes[index].Name
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		s, status := interPodAffinity.Score(ctx, state, pod, nodeName)
 		if !status.IsSuccess() {
+			parallelizeCancel()
 			errCh <- fmt.Errorf("calculate inter pod affinity priority failed %v", status.Message())
 			return
 		}
@@ -368,13 +377,17 @@ func taintTolerationScore(
 	}
 
 	nodescoreList := make(k8sframework.NodeScoreList, len(nodes))
-	errCh := make(chan error, len(nodes))
-	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), func(index int) {
+	// same description for this part was written within interPodAffinityScore
+	workerNum := 16
+	errCh := make(chan error, workerNum)
+	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
+	workqueue.ParallelizeUntil(parallelizeContext, 16, len(nodes), func(index int) {
 		nodeName := nodes[index].Name
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		s, status := taintToleration.Score(ctx, cycleState, pod, nodeName)
 		if !status.IsSuccess() {
+			parallelizeCancel()
 			errCh <- fmt.Errorf("calculate taint toleration priority failed %v", status.Message())
 			return
 		}
