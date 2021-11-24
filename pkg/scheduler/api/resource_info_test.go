@@ -17,6 +17,7 @@ limitations under the License.
 package api
 
 import (
+	"math"
 	"reflect"
 	"testing"
 
@@ -1091,7 +1092,7 @@ func TestEqual(t *testing.T) {
 	}
 }
 
-func TestMinDimensionResource(t *testing.T) {
+func TestMinDimensionResourceZero(t *testing.T) {
 	tests := []struct {
 		resource1 *Resource
 		resource2 *Resource
@@ -1131,10 +1132,92 @@ func TestMinDimensionResource(t *testing.T) {
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 0, "hugepages-test": 2000},
 			},
 		},
+		{
+			resource1: &Resource{
+				MilliCPU:        4000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1, "hugepages-test": 2},
+			},
+			resource2: &Resource{
+				MilliCPU:        3000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 0},
+			},
+			expected: &Resource{
+				MilliCPU:        3000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 0, "hugepages-test": 0},
+			},
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        4000,
+				Memory:          4000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			resource2: &Resource{
+				MilliCPU: math.MaxFloat64,
+				Memory:   2000,
+			},
+			expected: &Resource{
+				MilliCPU:        4000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 0, "hugepages-test": 0},
+			},
+		},
 	}
 
 	for _, test := range tests {
-		test.resource1.MinDimensionResource(test.resource2)
+		test.resource1.MinDimensionResource(test.resource2, Zero)
+		if !reflect.DeepEqual(test.expected, test.resource1) {
+			t.Errorf("expected: %#v, got: %#v", test.expected, test.resource1)
+		}
+	}
+}
+
+func TestMinDimensionResourceInfinity(t *testing.T) {
+	tests := []struct {
+		resource1 *Resource
+		resource2 *Resource
+		expected  *Resource
+	}{
+		{
+			resource1: &Resource{
+				MilliCPU:        4000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1, "hugepages-test": 2},
+			},
+			resource2: &Resource{
+				MilliCPU:        3000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 0},
+			},
+			expected: &Resource{
+				MilliCPU:        3000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 0, "hugepages-test": 2},
+			},
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        4000,
+				Memory:          4000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			resource2: &Resource{
+				MilliCPU: math.MaxFloat64,
+				Memory:   2000,
+			},
+			expected: &Resource{
+				MilliCPU:        4000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		test.resource1.MinDimensionResource(test.resource2, Infinity)
 		if !reflect.DeepEqual(test.expected, test.resource1) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, test.resource1)
 		}
