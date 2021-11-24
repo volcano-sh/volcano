@@ -93,7 +93,7 @@ func Run(config *options.Config) error {
 	signal.Notify(stopChannel, syscall.SIGTERM, syscall.SIGINT)
 
 	server := &http.Server{
-		Addr:      ":" + strconv.Itoa(config.Port),
+		Addr:      config.ListenAddress + ":" + strconv.Itoa(config.Port),
 		TLSConfig: configTLS(config, restConfig),
 	}
 	go func() {
