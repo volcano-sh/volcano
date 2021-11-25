@@ -30,6 +30,7 @@ const (
 	defaultSchedulerPeriod = time.Second
 	defaultQueue           = "default"
 	defaultListenAddress   = ":8080"
+	defaultHealthzAddress  = ":11251"
 	defaultPluginsDir      = ""
 
 	defaultQPS   = 2000.0
@@ -70,10 +71,7 @@ var ServerOpts *ServerOption
 
 // NewServerOption creates a new CMServer with a default config.
 func NewServerOption() *ServerOption {
-	s := ServerOption{
-		HealthzBindAddress: ":11251",
-	}
-	return &s
+	return &ServerOption{}
 }
 
 // AddFlags adds flags for a specific CMServer to the specified FlagSet.
@@ -91,6 +89,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
 	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", s.LockObjectNamespace, "Define the namespace of the lock object that is used for leader election")
 	fs.StringVar(&s.ListenAddress, "listen-address", defaultListenAddress, "The address to listen on for HTTP requests.")
+	fs.StringVar(&s.HealthzBindAddress, "healthz-address", defaultHealthzAddress, "The address to listen on for the health check server.")
 	fs.BoolVar(&s.EnablePriorityClass, "priority-class", true,
 		"Enable PriorityClass to provide the capacity of preemption at pod group level; to disable it, set it false")
 	fs.Float32Var(&s.KubeClientOptions.QPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
