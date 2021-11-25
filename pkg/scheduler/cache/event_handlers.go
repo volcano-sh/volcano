@@ -129,8 +129,27 @@ func (sc *SchedulerCache) updateTask(oldTask, newTask *schedulingapi.TaskInfo) e
 	return sc.addTask(newTask)
 }
 
+// Check the pod allocated status in cache
+func (sc *SchedulerCache) allocatedPodInCache(pod *v1.Pod) bool {
+	pi := schedulingapi.NewTaskInfo(pod)
+
+	if job, found := sc.Jobs[pi.Job]; found {
+		if t, found := job.Tasks[pi.UID]; found {
+			return schedulingapi.AllocatedStatus(t.Status)
+		}
+	}
+
+	return false
+}
+
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
+	//ignore the update event if pod is allocated in cache but not present in NodeName
+	if sc.allocatedPodInCache(newPod) && newPod.Spec.NodeName == "" {
+		klog.V(4).Infof("Pod <%s/%v> already in cache with allocated status, ignore the update event", newPod.Namespace, newPod.Name)
+		return nil
+	}
+
 	if err := sc.deletePod(oldPod); err != nil {
 		return err
 	}
