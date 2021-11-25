@@ -184,15 +184,15 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 					klog.Errorf("The node %s can't place the pod %s in ns %s", pod.Spec.NodeName, pod.Name, pod.Namespace)
 					return
 				}
+				dev, ok := nodeInfo.GPUDevices[id]
+				if !ok {
+					klog.Errorf("Failed to get GPU %d from node %s", id, nodeName)
+					return
+				}
 				patch := api.AddGPUIndexPatch(id)
 				pod, err := kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType, []byte(patch), metav1.PatchOptions{})
 				if err != nil {
 					klog.Errorf("Patch pod %s failed with patch %s: %v", pod.Name, patch, err)
-					return
-				}
-				dev, ok := nodeInfo.GPUDevices[id]
-				if !ok {
-					klog.Errorf("Failed to get GPU %d from node %s", id, nodeName)
 					return
 				}
 				dev.PodMap[string(pod.UID)] = pod
