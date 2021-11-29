@@ -19,7 +19,6 @@ package proportion
 import (
 	"reflect"
 
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -250,24 +249,16 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return overused
 	})
 
-	ssn.AddUnderusedResourceFn(pp.Name(), func(queue *api.QueueInfo) api.ResourceNameList {
-		underUsedResNames := api.ResourceNameList{}
+	ssn.AddAllocatableFn(pp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		attr := pp.queueOpts[queue.UID]
 
-		_, underUsedResource := attr.allocated.Diff(attr.deserved, api.Zero)
-		if underUsedResource.MilliCPU >= api.GetMinResource() {
-			underUsedResNames = append(underUsedResNames, v1.ResourceCPU)
+		free, _ := attr.deserved.Diff(attr.allocated, api.Zero)
+		allocatable := candidate.Resreq.LessEqual(free, api.Zero)
+		if !allocatable {
+			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
+				queue.Name, attr.deserved, attr.allocated, candidate.Name, candidate.Resreq)
 		}
-		if underUsedResource.Memory >= api.GetMinResource() {
-			underUsedResNames = append(underUsedResNames, v1.ResourceMemory)
-		}
-		for rName := range underUsedResource.ScalarResources {
-			underUsedResNames = append(underUsedResNames, rName)
-		}
-		klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>, underUsedResName %v",
-			queue.Name, attr.deserved, attr.allocated, attr.share, underUsedResNames)
-
-		return underUsedResNames
+		return allocatable
 	})
 
 	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {
