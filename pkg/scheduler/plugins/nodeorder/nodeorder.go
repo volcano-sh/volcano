@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/imagelocality"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/noderesources"
@@ -52,6 +53,8 @@ const (
 	MostRequestedWeight = "mostrequested.weight"
 	// TaintTolerationWeight is the key for providing Most Requested Priority Weight in YAML
 	TaintTolerationWeight = "tainttoleration.weight"
+	// ImageLocalityWeight is the key for providing Image Locality Priority Weight in YAML
+	ImageLocalityWeight = "imagelocality.weight"
 )
 
 type nodeOrderPlugin struct {
@@ -75,12 +78,13 @@ type priorityWeight struct {
 	podAffinityWeight      int
 	balancedResourceWeight int
 	taintTolerationWeight  int
+	imageLocalityWeight    int
 }
 
 // calculateWeight from the provided arguments.
 //
 // Currently only supported priorities are nodeaffinity, podaffinity, leastrequested,
-// mostrequested, balancedresouce.
+// mostrequested, balancedresouce, imagelocality.
 //
 // User should specify priority weights in the config in this format:
 //
@@ -96,12 +100,13 @@ type priorityWeight struct {
 //    - name: proportion
 //    - name: nodeorder
 //      arguments:
-//        leastrequested.weight: 2
+//        leastrequested.weight: 1
 //        mostrequested.weight: 0
-//        nodeaffinity.weight: 2
-//        podaffinity.weight: 2
-//        balancedresource.weight: 2
-//        tainttoleration.weight: 2
+//        nodeaffinity.weight: 1
+//        podaffinity.weight: 1
+//        balancedresource.weight: 1
+//        tainttoleration.weight: 1
+//        imagelocality.weight: 1
 func calculateWeight(args framework.Arguments) priorityWeight {
 	// Initial values for weights.
 	// By default, for backward compatibility and for reasonable scores,
@@ -113,6 +118,7 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 		podAffinityWeight:      1,
 		balancedResourceWeight: 1,
 		taintTolerationWeight:  1,
+		imageLocalityWeight:    1,
 	}
 
 	// Checks whether nodeaffinity.weight is provided or not, if given, modifies the value in weight struct.
@@ -132,6 +138,9 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 
 	// Checks whether tainttoleration.weight is provided or not, if given, modifies the value in weight struct.
 	args.GetInt(&weight.taintTolerationWeight, TaintTolerationWeight)
+
+	// Checks whether imagelocality.weight is provided or not, if given, modifies the value in weight struct.
+	args.GetInt(&weight.imageLocalityWeight, ImageLocalityWeight)
 
 	return weight
 }
@@ -207,11 +216,24 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	// 4. NodeAffinity
 	p, _ = nodeaffinity.New(nil, handle)
 	nodeAffinity := p.(*nodeaffinity.NodeAffinity)
+
+	// 5. ImageLocality
+	p, _ = imagelocality.New(nil, handle)
+	imageLocality := p.(*imagelocality.ImageLocality)
+
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 		var nodeScore = 0.0
 
-		//TODO: Add ImageLocalityPriority Function once priorityMetadata is published
-		//Issue: #74132 in kubernetes ( https://github.com/kubernetes/kubernetes/issues/74132 )
+		if weight.imageLocalityWeight != 0 {
+			score, status := imageLocality.Score(context.TODO(), nil, task.Pod, node.Name)
+			if !status.IsSuccess() {
+				klog.Warningf("Image Locality Priority Failed because of Error: %v", status.AsError())
+				return 0, status.AsError()
+			}
+
+			// If imageLocalityWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
+			nodeScore += float64(score) * float64(weight.imageLocalityWeight)
+		}
 
 		// NodeResourcesLeastAllocated
 		if weight.leastReqWeight != 0 {
