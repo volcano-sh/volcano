@@ -7621,7 +7621,7 @@ rules:
     resources: ["nodes"]
     verbs: ["list", "watch"]
   - apiGroups: [ "storage.k8s.io" ]
-    resources: [ "csinodes" ]
+    resources: ["storageclasses", "csinodes", "csidrivers", "csistoragecapacities"]
     verbs: [ "list", "watch" ]
   - apiGroups: ["policy"]
     resources: ["poddisruptionbudgets"]
