@@ -810,6 +810,7 @@ k8s.io/kubernetes/pkg/master/ports
 k8s.io/kubernetes/pkg/scheduler/apis/config
 k8s.io/kubernetes/pkg/scheduler/apis/config/validation
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/helper
+k8s.io/kubernetes/pkg/scheduler/framework/plugins/imagelocality
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeports
