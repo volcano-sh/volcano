@@ -443,6 +443,17 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	sc.csiNodeInformer = informerFactory.Storage().V1().CSINodes()
 	sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
 	sc.csiStorageCapacityInformer = informerFactory.Storage().V1alpha1().CSIStorageCapacities()
+
+	var capacityCheck *volumescheduling.CapacityCheck
+	if options.ServerOpts.EnableCSIStorage {
+		capacityCheck = &volumescheduling.CapacityCheck{
+			CSIDriverInformer:          sc.csiDriverInformer,
+			CSIStorageCapacityInformer: sc.csiStorageCapacityInformer,
+		}
+	} else {
+		capacityCheck = nil
+	}
+
 	sc.VolumeBinder = &defaultVolumeBinder{
 		volumeBinder: volumescheduling.NewVolumeBinder(
 			sc.kubeClient,
@@ -452,10 +463,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 			sc.pvcInformer,
 			sc.pvInformer,
 			sc.scInformer,
-			&volumescheduling.CapacityCheck{
-				CSIDriverInformer:          sc.csiDriverInformer,
-				CSIStorageCapacityInformer: sc.csiStorageCapacityInformer,
-			},
+			capacityCheck,
 			30*time.Second,
 		),
 	}
