@@ -54,6 +54,7 @@ type ServerOption struct {
 	PrintVersion         bool
 	ListenAddress        string
 	EnablePriorityClass  bool
+	EnableCSIStorage     bool
 	// vc-scheduler will load (not activate) custom plugins which are in this directory
 	PluginsDir string
 	// HealthzBindAddress is the IP address and port for the health check server to serve on
@@ -105,6 +106,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.Int32Var(&s.PercentageOfNodesToFind, "percentage-nodes-to-find", defaultPercentageOfNodesToFind, "The percentage of nodes to find and score, if <=0 will be calcuated based on the cluster size")
 
 	fs.StringVar(&s.PluginsDir, "plugins-dir", defaultPluginsDir, "vc-scheduler will load custom plugins which are in this directory")
+	fs.BoolVar(&s.EnableCSIStorage, "csi-storage", false,
+		"Enables tracking of available storage capacity that CSI drivers provide; it is false by default")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled.
