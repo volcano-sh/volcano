@@ -20,7 +20,6 @@ import (
 	"fmt"
 
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/informers"
@@ -136,25 +135,6 @@ func openSession(cache cache.Cache) *Session {
 		// only conditions will be updated periodically
 		if job.PodGroup != nil && job.PodGroup.Status.Conditions != nil {
 			ssn.podGroupStatus[job.UID] = job.PodGroup.Status
-		}
-
-		if vjr := ssn.JobValid(job); vjr != nil {
-			if !vjr.Pass {
-				jc := &scheduling.PodGroupCondition{
-					Type:               scheduling.PodGroupUnschedulableType,
-					Status:             v1.ConditionTrue,
-					LastTransitionTime: metav1.Now(),
-					TransitionID:       string(ssn.UID),
-					Reason:             vjr.Reason,
-					Message:            vjr.Message,
-				}
-
-				if err := ssn.UpdatePodGroupCondition(job, jc); err != nil {
-					klog.Errorf("Failed to update job condition: %v", err)
-				}
-			}
-
-			delete(ssn.Jobs, job.UID)
 		}
 	}
 	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
