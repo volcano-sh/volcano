@@ -135,7 +135,7 @@ func openSession(cache cache.Cache) *Session {
 	for _, job := range ssn.Jobs {
 		// only conditions will be updated periodically
 		if job.PodGroup != nil && job.PodGroup.Status.Conditions != nil {
-			ssn.podGroupStatus[job.UID] = job.PodGroup.Status
+			ssn.podGroupStatus[job.UID] = *job.PodGroup.Status.DeepCopy()
 		}
 
 		if vjr := ssn.JobValid(job); vjr != nil {
