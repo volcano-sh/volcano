@@ -192,6 +192,7 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		}
 	}
 
+	klog.V(4).Infof("NewTaskInfo: <%v/%v> priority is %v", pod.Namespace, pod.Name, ti.Priority)
 	return ti
 }
 
@@ -477,6 +478,13 @@ func (ji *JobInfo) GetMinResources() *Resource {
 	return NewResource(*ji.PodGroup.Spec.MinResources)
 }
 
+func (ji *JobInfo) GetElasticResources() *Resource {
+	if ji.Allocated.LessEqual(ji.GetMinResources(), Zero) {
+		return EmptyResource()
+	}
+	return ji.Allocated.Clone().Sub(ji.GetMinResources())
+}
+
 func (ji *JobInfo) addTaskIndex(ti *TaskInfo) {
 	if _, found := ji.TaskStatusIndex[ti.Status]; !found {
 		ji.TaskStatusIndex[ti.Status] = tasksMap{}
@@ -676,6 +684,10 @@ func (ji *JobInfo) ReadyTaskNum() int32 {
 	}
 
 	return int32(occupied)
+}
+
+func (ji *JobInfo) ElasticTaskNum() int32 {
+	return ji.ReadyTaskNum() - ji.MinAvailable
 }
 
 // WaitingTaskNum returns the number of tasks that are pipelined.

@@ -18,7 +18,7 @@ package preempt
 
 import (
 	"k8s.io/klog"
-
+	"volcano.sh/volcano/pkg/cli/job"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -46,6 +46,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 	var underRequest []*api.JobInfo
 	queues := map[api.QueueID]*api.QueueInfo{}
+
+	clearElasticTaskForPreemptorJobs(ssn)
 
 	for _, job := range ssn.Jobs {
 		if job.IsPending() {
@@ -92,7 +94,6 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			}
 
 			preemptorJob := preemptors.Pop().(*api.JobInfo)
-
 			stmt := framework.NewStatement(ssn)
 			assigned := false
 			for {
@@ -282,4 +283,131 @@ func victimTasks(ssn *framework.Session) {
 		}
 	}
 	stmt.Commit()
+}
+
+func clearElasticTaskForPreemptorJobs(ssn *framework.Session) {
+	klog.V(3).Infof("Enter clearElasticTaskInElasticJob ...")
+	defer klog.V(3).Infof("Leaving clearElasticTaskInElasticJob ...")
+
+	starvingJobs := map[api.QueueID]*util.PriorityQueue{}
+	readyJobs := map[api.QueueID]*util.PriorityQueue{}
+
+	queues := map[api.QueueID]*api.QueueInfo{}
+
+	for _, job := range ssn.Jobs {
+		//if job.IsPending() {
+		//	continue
+		//}
+		if queue, found := ssn.Queues[job.Queue]; !found {
+			continue
+		} else if _, existed := queues[queue.UID]; !existed {
+			klog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
+				queue.Name, job.Namespace, job.Name)
+			queues[queue.UID] = queue
+		}
+
+		// check job if starting for more resources.
+		if ssn.JobStarving(job) {
+			if _, found := starvingJobs[job.Queue]; !found {
+				starvingJobs[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+			}
+			klog.V(5).Infof("session id <%v>, job <%v> Allocated <%v>  JobStarving <%v>.", ssn.UID, job.Name, job.Allocated, ssn.JobStarving(job))
+			klog.V(5).Infof("add <%v> into starvingJobs, job.CheckTaskMinAvailablePipelined <%v> job.WaitingTaskNum <%v> job.ReadyTaskNum <%v>.", job.Name, job.CheckTaskMinAvailablePipelined(), job.WaitingTaskNum(), job.ReadyTaskNum())
+			starvingJobs[job.Queue].Push(job)
+		} else if ssn.JobReady(job) {
+			if _, found := readyJobs[job.Queue]; !found {
+				readyJobs[job.Queue] = util.NewPriorityQueue(func(l interface{}, r interface{}) bool {
+					return !ssn.JobOrderFn(l, r)
+				})
+			}
+			klog.V(5).Infof("add <%v> into readyJobs, job.CheckTaskMinAvailablePipelined <%v> job.WaitingTaskNum <%v> job.ReadyTaskNum <%v>.", job.Name, job.CheckTaskMinAvailablePipelined(), job.WaitingTaskNum(), job.ReadyTaskNum())
+			readyJobs[job.Queue].Push(job)
+		}
+	}
+
+	for _, queue := range queues {
+		for {
+			preemptorJobs := starvingJobs[queue.UID]
+			preempteeJobs := readyJobs[queue.UID]
+
+			// If no preemptors, no preemption.
+			if preemptorJobs == nil || preemptorJobs.Empty() {
+				klog.V(4).Infof("No preemptors in Queue <%s>, break.", queue.Name)
+				break
+			}
+			// If no preemptees, no preemption.
+			if preempteeJobs == nil || preempteeJobs.Empty() {
+				klog.V(4).Infof("No preemptees in Queue <%s>, break.", queue.Name)
+				break
+			}
+
+			preemptorJob := preemptorJobs.Pop().(*api.JobInfo)
+			klog.V(4).Infof("try clear elastic task for preemptor <%v> in Queue <%s>.", preemptorJob.Name, preemptorJob.Queue)
+			elasticResourceInQueue := ssn.UnderElasticResources(queue)
+			klog.V(4).Infof("elasticResourceInQueue <%v> in Queue <%s>.", elasticResourceInQueue, queue.Name)
+			if preemptorJob.Allocated.IsEmpty() && elasticResourceInQueue.Less(preemptorJob.GetMinResources(), api.Zero) {
+				klog.V(3).Infof("elastic resource in Queue <%s> is <%v>, can not run for Job <%s/%s> minResources <%v>",
+					queue.Name, elasticResourceInQueue, preemptorJob.Namespace, preemptorJob.Name, preemptorJob.GetMinResources())
+				continue
+			}
+			clearElasticTaskForPreemptorJob(ssn, preemptorJob, preempteeJobs)
+		}
+	}
+
+}
+
+func clearElasticTaskForPreemptorJob(ssn *framework.Session, preemptorJob *api.JobInfo, preempteeJobs *util.PriorityQueue) {
+	klog.V(4).Infof("try clear elastic task for preemptor <%v> in Queue <%s>.", preemptorJob.Name, preemptorJob.Queue)
+	preempteeResources := api.EmptyResource()
+	for !preempteeJobs.Empty() {
+		if preemptorJob.GetMinResources().LessEqual(preempteeResources, api.Zero) {
+			break
+		}
+		preempteeJob := preempteeJobs.Pop().(*api.JobInfo)
+		defer preempteeJobs.Push(preempteeJob)
+		preempteeResource := clearElasticJob(ssn, preemptorJob, preempteeJob)
+		klog.V(3).Infof("collect elastic resource <%v> from job <%v>",
+			preempteeResource, preemptorJob.Name)
+		preempteeResources.Add(preempteeResource)
+	}
+}
+func clearElasticJob(ssn *framework.Session, preemptorJob *api.JobInfo, preempteeJob *api.JobInfo) *api.Resource {
+	preempteeResources := api.EmptyResource()
+	elasticNum := preempteeJob.ElasticTaskNum()
+	klog.V(4).Infof("session id %v, try preempt job <%v> task for <%v>, elasticNum <%v>", ssn.UID, preempteeJob.Name, preemptorJob.Name, elasticNum)
+	if elasticNum <= 0 {
+		klog.V(3).Infof("job <%v> elasticNum is <%v>,ignore clear elastic task", preempteeJob.Name, elasticNum)
+		return preempteeResources
+	}
+	preempteeTasks := util.NewPriorityQueue(func(l interface{}, r interface{}) bool {
+		return !ssn.TaskOrderFn(l, r)
+	})
+	// sort task
+	for status, tasks := range preempteeJob.TaskStatusIndex {
+		if !api.AllocatedStatus(status) {
+			continue
+		}
+		for _, t := range tasks {
+			preempteeTasks.Push(t)
+		}
+	}
+
+	for elasticNum > 0 && !preempteeTasks.Empty() {
+		klog.V(4).Infof("preemptorJob <%v> MinResources <%v> <= preempteeResources <%v> = %v",
+			preemptorJob.Name, preemptorJob.GetMinResources(), preempteeResources, preemptorJob.GetMinResources().LessEqual(preempteeResources, api.Zero))
+		if preemptorJob.GetMinResources().LessEqual(preempteeResources, api.Zero) {
+			break
+		}
+		t := preempteeTasks.Pop().(*api.TaskInfo)
+		klog.V(3).Infof("Try to preempt Task <%s/%s> because job <%v> is elastic and queue <%v> is overused",
+			t.Namespace, t.Name, job.Name, preemptorJob.Queue)
+		if err := ssn.Evict(t, "preempt"); err != nil {
+			klog.Errorf("Failed to preempt Task <%s/%s>: %v",
+				t.Namespace, t.Name, err)
+			continue
+		}
+		elasticNum--
+		preempteeResources.Add(t.InitResreq)
+	}
+	return preempteeResources
 }

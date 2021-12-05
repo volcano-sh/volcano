@@ -17,11 +17,10 @@ limitations under the License.
 package proportion
 
 import (
-	"math"
-	"reflect"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
+	"math"
+	"reflect"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -51,6 +50,7 @@ type queueAttr struct {
 	deserved  *api.Resource
 	allocated *api.Resource
 	request   *api.Resource
+	elastic   *api.Resource
 	// inqueue represents the resource request of the inqueue job
 	inqueue    *api.Resource
 	capability *api.Resource
@@ -88,7 +88,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	klog.V(4).Infof("The total guarantee resource is <%v>", pp.totalGuarantee)
 	// Build attributes for Queues.
 	for _, job := range ssn.Jobs {
-		klog.V(4).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
+		klog.V(4).Infof("Considering Job <%s/%s> allocated <%v> minResources <%v> elastic <%v>.", job.Namespace, job.Name, job.Allocated, job.GetMinResources(), job.GetElasticResources())
 		if _, found := pp.queueOpts[job.Queue]; !found {
 			queue := ssn.Queues[job.Queue]
 			attr := &queueAttr{
@@ -101,6 +101,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				request:   api.EmptyResource(),
 				inqueue:   api.EmptyResource(),
 				guarantee: api.EmptyResource(),
+				elastic:   api.EmptyResource(),
 			}
 			if len(queue.Queue.Spec.Capability) != 0 {
 				attr.capability = api.NewResource(queue.Queue.Spec.Capability)
@@ -141,6 +142,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
 			attr.inqueue.Add(job.GetMinResources())
 		}
+		attr.elastic.Add(job.GetElasticResources())
 	}
 
 	// Record metrics
@@ -205,8 +207,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.deserved = helpers.Max(attr.deserved, attr.guarantee)
 			pp.updateShare(attr)
 
-			klog.V(4).Infof("The attributes of queue <%s> in proportion: deserved <%v>, realCapability <%v>, allocate <%v>, request <%v>, share <%0.2f>",
-				attr.name, attr.deserved, attr.realCapability, attr.allocated, attr.request, attr.share)
+			klog.V(4).Infof("The attributes of queue <%s> in proportion: deserved <%v>, realCapability <%v>, allocate <%v>, request <%v>, elastic <%v>, share <%0.2f>",
+				attr.name, attr.deserved, attr.realCapability, attr.allocated, attr.request, attr.elastic, attr.share)
 
 			increased, decreased := attr.deserved.Diff(oldDeserved, api.Zero)
 			increasedDeserved.Add(increased)
@@ -269,8 +271,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddOverusedFn(pp.Name(), func(obj interface{}) bool {
 		queue := obj.(*api.QueueInfo)
 		attr := pp.queueOpts[queue.UID]
-
-		overused := attr.deserved.LessEqual(attr.allocated, api.Zero)
+		// todo is equal means overused
+		overused := attr.deserved.Less(attr.allocated, api.Zero)
 		metrics.UpdateQueueOverused(attr.name, overused)
 		if overused {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
@@ -302,6 +304,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return underUsedResNames
 	})
 
+	ssn.AddUnderElasticResourceFn(pp.Name(), func(queue *api.QueueInfo) *api.Resource {
+		attr := pp.queueOpts[queue.UID]
+		return attr.elastic.Clone()
+	})
+
 	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {
 		job := obj.(*api.JobInfo)
 		queueID := job.Queue
@@ -320,8 +327,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 		minReq := job.GetMinResources()
 
-		klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s>",
-			job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String())
+		klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s> elastic <%s>",
+			job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.elastic.String())
 		// The queue resource quota limit has not reached
 		inqueue := minReq.Add(attr.allocated).Add(attr.inqueue).LessEqual(attr.realCapability, api.Infinity)
 		klog.V(5).Infof("job %s inqueue %v", job.Name, inqueue)

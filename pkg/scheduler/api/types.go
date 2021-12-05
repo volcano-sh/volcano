@@ -171,3 +171,5 @@ type VictimTasksFn func() []*TaskInfo
 
 // UnderUsedResourceFn is the func declaration used to get under used resource list for queue
 type UnderUsedResourceFn func(*QueueInfo) ResourceNameList
+
+type UnderElasticResourceFn func(*QueueInfo) *Resource

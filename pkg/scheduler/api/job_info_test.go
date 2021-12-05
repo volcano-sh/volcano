@@ -17,6 +17,7 @@ limitations under the License.
 package api
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -287,4 +288,20 @@ func TestTaskSchedulingReason(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestJobInfo_GetElasticResources(t *testing.T) {
+	r1 := &Resource{
+		MilliCPU: 0.0,
+		Memory:   0.0,
+	}
+	r2 := &Resource{
+		MilliCPU: 2.0,
+		Memory:   0.0,
+		ScalarResources: map[v1.ResourceName]float64{
+			"nvidia.com/gpu": 2000.0,
+		},
+	}
+	less := r1.LessEqual(r2, Zero)
+	fmt.Println(less)
 }
