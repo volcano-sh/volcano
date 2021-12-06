@@ -18,13 +18,16 @@ package podgroup
 
 import (
 	"context"
-
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	_ "k8s.io/client-go/restmapper"
 	"k8s.io/klog"
 
+	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/helpers"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
@@ -72,7 +75,7 @@ func (pg *pgcontroller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
 }
 
 func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
-	pgName := helpers.GeneratePodgroupName(pod)
+	pgName := helpers.GeneratePodgroupName(pg.kubeDynamicClient, pg.kubeClient, pod)
 
 	if _, err := pg.pgLister.PodGroups(pod.Namespace).Get(pgName); err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -81,11 +84,18 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 			return err
 		}
 
+		unstructuredPod, err := runtime.DefaultUnstructuredConverter.ToUnstructured(pod)
+		if err != nil {
+			klog.Errorf("failed to convert pod to unstructed.error=%v", err)
+			return err
+		}
+		owner := make([]metav1.OwnerReference, 0)
+		helpers.GetOutestOwner(pg.kubeDynamicClient, pg.kubeClient, &unstructured.Unstructured{unstructuredPod}, &owner)
 		obj := &scheduling.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace:       pod.Namespace,
 				Name:            pgName,
-				OwnerReferences: newPGOwnerReferences(pod),
+				OwnerReferences: owner,
 				Annotations:     map[string]string{},
 				Labels:          map[string]string{},
 			},
@@ -125,10 +135,14 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 	return pg.updatePodAnnotations(pod, pgName)
 }
 
+// newPGOwnerReferences create ownerreference for pg,the pod that create by other controller use pod as the ownerreference
 func newPGOwnerReferences(pod *v1.Pod) []metav1.OwnerReference {
 	if len(pod.OwnerReferences) != 0 {
 		for _, ownerReference := range pod.OwnerReferences {
-			if ownerReference.Controller != nil && *ownerReference.Controller {
+			if ownerReference.Controller != nil &&
+				*ownerReference.Controller &&
+				ownerReference.APIVersion == batchv1alpha1.SchemeGroupVersion.String() &&
+				ownerReference.Kind == "Job" {
 				return pod.OwnerReferences
 			}
 		}

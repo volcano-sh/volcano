@@ -19,6 +19,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/dynamic"
 	"os"
 	"time"
 
@@ -124,6 +125,7 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 
 	// TODO: add user agent for different controllers
 	controllerOpt.KubeClient = kubeclientset.NewForConfigOrDie(config)
+	controllerOpt.KubeDynamicClient = dynamic.NewForConfigOrDie(config)
 	controllerOpt.VolcanoClient = vcclientset.NewForConfigOrDie(config)
 	controllerOpt.SharedInformerFactory = informers.NewSharedInformerFactory(controllerOpt.KubeClient, 0)
 

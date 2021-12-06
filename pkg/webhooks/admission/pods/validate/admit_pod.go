@@ -19,6 +19,8 @@ package validate
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	"strconv"
 	"strings"
 
@@ -81,7 +83,7 @@ func AdmitPods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
 	switch ar.Request.Operation {
 	case v1beta1.Create:
-		msg = validatePod(pod, &reviewResponse)
+		msg = validatePod(config.KubeDynamicClient, config.KubeClient, pod, &reviewResponse)
 	default:
 		err := fmt.Errorf("expect operation to be 'CREATE'")
 		return util.ToAdmissionResponse(err)
@@ -100,7 +102,7 @@ allow pods to create when
 3. normal pods whose schedulerName is volcano don't have podgroup.
 4. check pod budget annotations configure
 */
-func validatePod(pod *v1.Pod, reviewResponse *v1beta1.AdmissionResponse) string {
+func validatePod(dyClient dynamic.Interface, kubeClient kubernetes.Interface, pod *v1.Pod, reviewResponse *v1beta1.AdmissionResponse) string {
 	if pod.Spec.SchedulerName != config.SchedulerName {
 		return ""
 	}
@@ -121,7 +123,7 @@ func validatePod(pod *v1.Pod, reviewResponse *v1beta1.AdmissionResponse) string 
 	}
 
 	// normal pod, SN == volcano
-	pgName = helpers.GeneratePodgroupName(pod)
+	pgName = helpers.GeneratePodgroupName(dyClient, kubeClient, pod)
 	if err := checkPGPhase(pod, pgName, false); err != nil {
 		msg = err.Error()
 		reviewResponse.Allowed = false

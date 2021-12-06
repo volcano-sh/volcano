@@ -18,6 +18,7 @@ package podgroup
 
 import (
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/dynamic"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
@@ -39,8 +40,9 @@ func init() {
 
 // pgcontroller the Podgroup pgcontroller type.
 type pgcontroller struct {
-	kubeClient kubernetes.Interface
-	vcClient   vcclientset.Interface
+	kubeClient        kubernetes.Interface
+	kubeDynamicClient dynamic.Interface
+	vcClient          vcclientset.Interface
 
 	podInformer coreinformers.PodInformer
 	pgInformer  schedulinginformer.PodGroupInformer
@@ -65,6 +67,7 @@ func (pg *pgcontroller) Name() string {
 // Initialize create new Podgroup Controller.
 func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 	pg.kubeClient = opt.KubeClient
+	pg.kubeDynamicClient = opt.KubeDynamicClient
 	pg.vcClient = opt.VolcanoClient
 
 	pg.queue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())

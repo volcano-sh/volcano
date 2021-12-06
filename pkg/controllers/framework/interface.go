@@ -17,6 +17,7 @@ limitations under the License.
 package framework
 
 import (
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 
@@ -26,6 +27,7 @@ import (
 // ControllerOption is the main context object for the controllers.
 type ControllerOption struct {
 	KubeClient            kubernetes.Interface
+	KubeDynamicClient     dynamic.Interface
 	VolcanoClient         vcclientset.Interface
 	SharedInformerFactory informers.SharedInformerFactory
 	SchedulerNames        []string

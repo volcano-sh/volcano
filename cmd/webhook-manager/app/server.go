@@ -62,6 +62,7 @@ func Run(config *options.Config) error {
 
 	vClient := getVolcanoClient(restConfig)
 	kubeClient := getKubeClient(restConfig)
+	dyClinet := getDyClient(restConfig)
 
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
@@ -70,6 +71,7 @@ func Run(config *options.Config) error {
 		if service.Config != nil {
 			service.Config.VolcanoClient = vClient
 			service.Config.KubeClient = kubeClient
+			service.Config.KubeDynamicClient = dyClinet
 			service.Config.SchedulerName = config.SchedulerName
 			service.Config.Recorder = recorder
 			service.Config.ConfigData = admissionConf

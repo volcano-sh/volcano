@@ -24,16 +24,22 @@ import (
 	"os"
 	"os/signal"
 	"reflect"
+	"strings"
 	"syscall"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apiserver/pkg/server/healthz"
 	"k8s.io/apiserver/pkg/server/mux"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/restmapper"
 	"k8s.io/klog"
 
 	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -163,21 +169,67 @@ func DeleteSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, secretName
 }
 
 // GeneratePodgroupName generate podgroup name of normal pod.
-func GeneratePodgroupName(pod *v1.Pod) string {
+func GeneratePodgroupName(dyClient dynamic.Interface, kubeClient kubernetes.Interface, pod *v1.Pod) string {
+	unstructuredPod, err := runtime.DefaultUnstructuredConverter.ToUnstructured(pod)
+	if err != nil {
+		klog.Errorf("failed to convert pod to unstructed.error=%v", err)
+		return ""
+	}
+	owners := make([]metav1.OwnerReference, 0)
+	GetOutestOwner(dyClient, kubeClient, &unstructured.Unstructured{unstructuredPod}, &owners)
 	pgName := vcbatch.PodgroupNamePrefix
-
 	if len(pod.OwnerReferences) != 0 {
-		for _, ownerReference := range pod.OwnerReferences {
-			if ownerReference.Controller != nil && *ownerReference.Controller {
-				pgName += string(ownerReference.UID)
+		for _, owner := range owners {
+			if owner.Controller != nil && *owner.Controller {
+				pgName += string(owner.UID)
 				return pgName
 			}
 		}
 	}
-
 	pgName += string(pod.UID)
 
 	return pgName
+}
+
+func GetOutestOwner(dyClient dynamic.Interface, kubeClient kubernetes.Interface, object *unstructured.Unstructured, result *[]metav1.OwnerReference) {
+	owners := object.GetOwnerReferences()
+	if len(owners) == 0 {
+		ref := metav1.NewControllerRef(object, object.GroupVersionKind())
+		*result = append(*result, *ref)
+	}
+
+	for _, owner := range owners {
+		if owner.Controller == nil {
+			continue
+		}
+		apiversionList := strings.Split(owner.APIVersion, "/")
+		var group, version string
+		if len(apiversionList) == 2 {
+			group, version = apiversionList[0], apiversionList[1]
+		} else if len(apiversionList) == 1 {
+			version = apiversionList[0]
+		}
+		gk := schema.GroupKind{
+			Group: group,
+			Kind:  owner.Kind,
+		}
+
+		groupResources, err := restmapper.GetAPIGroupResources(kubeClient.Discovery())
+		if err != nil {
+			klog.Errorf("failed to get resouces(%s:%s)in ns(%s),error=%v", gk.String(), owner.Name, object.GetNamespace())
+			return
+		}
+		rm := restmapper.NewDiscoveryRESTMapper(groupResources)
+		mapping, err := rm.RESTMapping(gk, version)
+		parentObj, err := dyClient.Resource(mapping.Resource).
+			Namespace(object.GetNamespace()).
+			Get(context.Background(), owner.Name, metav1.GetOptions{})
+		if err != nil {
+			klog.Errorf("failed to get resouces(%s:%s)in ns(%s),error=%v", gk.String(), owner.Name, object.GetNamespace())
+			return
+		}
+		GetOutestOwner(dyClient, kubeClient, parentObj, result)
+	}
 }
 
 // StartHealthz register healthz interface.
