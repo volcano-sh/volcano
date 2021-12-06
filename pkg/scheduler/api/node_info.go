@@ -291,13 +291,10 @@ func (ni *NodeInfo) setNodeGPUInfo(node *v1.Node) {
 	if gpuNumber == 0 {
 		klog.Warningf("invalid %s=%s", GPUResourceName, res.String())
 		return
-	} else {
-		klog.Infof("%s has %d %s", node.Name, gpuNumber, GPUResourceName)
 	}
 
 	memory, ok := node.Status.Capacity[VolcanoGPUResource]
 	if !ok {
-		klog.Infof("Adding %d %s on %s", gpuNumber, GPUResourceName, node.Name)
 		for i := 0; i < int(gpuNumber); i++ {
 			ni.GPUDevices[i] = NewGPUDevice(i, 1)
 		}
