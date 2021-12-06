@@ -144,7 +144,7 @@ spec:
             - -v=4
             - 2>&1
           image: volcanosh/vc-webhook-manager:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           name: admission
           volumeMounts:
             - mountPath: /admission.local.config/certificates
@@ -152,8 +152,6 @@ spec:
               readOnly: true
             - mountPath: /admission.local.config/configmap
               name: admission-config
-      imagePullSecrets:
-      - name: dkr-creds
       volumes:
         - name: admission-certs
           secret:
@@ -180,11 +178,9 @@ spec:
       containers:
         - name: main
           image: volcanosh/vc-webhook-manager:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           command: ["./gen-admission-secret.sh", "--service", "volcano-admission-service", "--namespace",
                     "volcano-system", "--secret", "volcano-admission-secret"]
-      imagePullSecrets:
-      - name: dkr-creds
 ---
 # Source: volcano/templates/batch_v1alpha1_job.yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -7544,9 +7540,7 @@ spec:
               - --enable-healthz=true
               - -v=4
               - 2>&1
-            imagePullPolicy: "Always"
-      imagePullSecrets:
-      - name: dkr-creds
+            imagePullPolicy: IfNotPresent
 ---
 # Source: volcano/templates/scheduler.yaml
 apiVersion: v1
@@ -7700,12 +7694,10 @@ spec:
             - --enable-metrics=true
             - -v=3
             - 2>&1
-          imagePullPolicy: "Always"
+          imagePullPolicy: IfNotPresent
           volumeMounts:
             - name: scheduler-config
               mountPath: /volcano.scheduler
-      imagePullSecrets:
-      - name: dkr-creds
       volumes:
         - name: scheduler-config
           configMap:
