@@ -7541,6 +7541,7 @@ spec:
             image: mu00212607.esol.monash.edu.au:5000/vc-controller-manager:devel
             args:
               - --logtostderr
+              - --enable-healthz=true
               - -v=4
               - 2>&1
             imagePullPolicy: "Always"
@@ -7614,12 +7615,12 @@ rules:
   - apiGroups: [""]
     resources: ["resourcequotas"]
     verbs: ["list", "watch"]
-  - apiGroups: ["storage.k8s.io"]
-    resources: ["storageclasses"]
-    verbs: ["list", "watch"]
   - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["list", "watch"]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: ["storageclasses", "csinodes", "csidrivers", "csistoragecapacities"]
+    verbs: [ "list", "watch" ]
   - apiGroups: ["policy"]
     resources: ["poddisruptionbudgets"]
     verbs: ["list", "watch"]
@@ -7697,6 +7698,8 @@ spec:
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
+            - --enable-healthz=true
+            - --enable-metrics=true
             - -v=3
             - 2>&1
           imagePullPolicy: "Always"

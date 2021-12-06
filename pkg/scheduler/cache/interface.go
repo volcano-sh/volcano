@@ -35,7 +35,7 @@ type Cache interface {
 	Snapshot() *api.ClusterInfo
 
 	// WaitForCacheSync waits for all cache synced
-	WaitForCacheSync(stopCh <-chan struct{}) bool
+	WaitForCacheSync(stopCh <-chan struct{})
 
 	// AddBindTask binds Task to the target host.
 	// TODO(jinzhej): clean up expire Tasks.

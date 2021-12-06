@@ -239,10 +239,10 @@ func preempt(
 				break
 			}
 			preemptee := victimsQueue.Pop().(*api.TaskInfo)
-			klog.V(3).Infof("Try to preempt Task <%s/%s> for Tasks <%s/%s>",
+			klog.V(3).Infof("Try to preempt Task <%s/%s> for Task <%s/%s>",
 				preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name)
 			if err := stmt.Evict(preemptee, "preempt"); err != nil {
-				klog.Errorf("Failed to preempt Task <%s/%s> for Tasks <%s/%s>: %v",
+				klog.Errorf("Failed to preempt Task <%s/%s> for Task <%s/%s>: %v",
 					preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name, err)
 				continue
 			}
