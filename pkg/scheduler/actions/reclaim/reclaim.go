@@ -49,6 +49,8 @@ func (ra *Action) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("There are <%d> Jobs and <%d> Queues in total for scheduling.",
 		len(ssn.Jobs), len(ssn.Queues))
 
+	clearStarvedJobInOverusedQueue(ssn)
+
 	for _, job := range ssn.Jobs {
 		if job.IsPending() {
 			continue
@@ -192,6 +194,31 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			jobs.Push(job)
 		}
 		queues.Push(queue)
+	}
+}
+
+func clearStarvedJobInOverusedQueue(ssn *framework.Session) {
+	klog.V(3).Infof("Enter clearStarvedJobInOverusedQueue ...")
+	defer klog.V(3).Infof("Leaving clearStarvedJobInOverusedQueue ...")
+	for _, job := range ssn.Jobs {
+		queue := ssn.Queues[job.Queue]
+		if job.ReadyTaskNum() >= job.MinAvailable || !ssn.Overused(queue) {
+			continue
+		}
+		for status, tasks := range job.TaskStatusIndex {
+			if !api.AllocatedStatus(status) {
+				continue
+			}
+			for _, t := range tasks {
+				klog.Errorf("Try to reclaim Task <%s/%s> because job <%v> is starved and queue <%v> is overused",
+					t.Namespace, t.Name, job.Name, queue.Name)
+				if err := ssn.Evict(t, "reclaim"); err != nil {
+					klog.Errorf("Failed to reclaim Task <%s/%s>: %v",
+						t.Namespace, t.Name, err)
+					continue
+				}
+			}
+		}
 	}
 }
 

@@ -25,11 +25,11 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
-	kubeschedulinginformers "k8s.io/client-go/informers/scheduling/v1beta1"
+	kubeschedulinginformers "k8s.io/client-go/informers/scheduling/v1"
 	"k8s.io/client-go/kubernetes"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
-	kubeschedulinglisters "k8s.io/client-go/listers/scheduling/v1beta1"
+	kubeschedulinglisters "k8s.io/client-go/listers/scheduling/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
@@ -202,7 +202,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.pgLister = cc.pgInformer.Lister()
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
-	cc.pcInformer = sharedInformers.Scheduling().V1beta1().PriorityClasses()
+	cc.pcInformer = sharedInformers.Scheduling().V1().PriorityClasses()
 	cc.pcLister = cc.pcInformer.Lister()
 	cc.pcSynced = cc.pcInformer.Informer().HasSynced
 

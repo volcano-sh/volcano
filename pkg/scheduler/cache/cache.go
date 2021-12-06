@@ -25,7 +25,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/api/scheduling/v1beta1"
+	schedulingv1 "k8s.io/api/scheduling/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -33,7 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	infov1 "k8s.io/client-go/informers/core/v1"
-	schedv1 "k8s.io/client-go/informers/scheduling/v1beta1"
+	schedv1 "k8s.io/client-go/informers/scheduling/v1"
 	storagev1 "k8s.io/client-go/informers/storage/v1"
 	storagev1alpha1 "k8s.io/client-go/informers/storage/v1alpha1"
 	"k8s.io/client-go/kubernetes"
@@ -108,9 +108,9 @@ type SchedulerCache struct {
 	Jobs                 map[schedulingapi.JobID]*schedulingapi.JobInfo
 	Nodes                map[string]*schedulingapi.NodeInfo
 	Queues               map[schedulingapi.QueueID]*schedulingapi.QueueInfo
-	PriorityClasses      map[string]*v1beta1.PriorityClass
+	PriorityClasses      map[string]*schedulingv1.PriorityClass
 	NodeList             []string
-	defaultPriorityClass *v1beta1.PriorityClass
+	defaultPriorityClass *schedulingv1.PriorityClass
 	defaultPriority      int32
 
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
@@ -367,7 +367,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		Jobs:            make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
 		Nodes:           make(map[string]*schedulingapi.NodeInfo),
 		Queues:          make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
-		PriorityClasses: make(map[string]*v1beta1.PriorityClass),
+		PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
 		errTasks:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		deletedJobs:     workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		kubeClient:      kubeClient,
@@ -495,7 +495,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		})
 
 	if options.ServerOpts.EnablePriorityClass {
-		sc.pcInformer = informerFactory.Scheduling().V1beta1().PriorityClasses()
+		sc.pcInformer = informerFactory.Scheduling().V1().PriorityClasses()
 		sc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    sc.AddPriorityClass,
 			UpdateFunc: sc.UpdatePriorityClass,

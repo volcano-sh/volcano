@@ -18,6 +18,7 @@ package api
 
 import (
 	"math"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -242,6 +243,24 @@ func TestAddResource(t *testing.T) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, test.resource1)
 		}
 	}
+}
+
+func TestAddResource2(t *testing.T) {
+	a := &Resource{
+		MilliCPU: 0,
+		Memory:   0,
+	}
+
+	b := &Resource{
+		MilliCPU:        1000,
+		Memory:          0,
+		ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1000},
+	}
+
+
+	sum := a.Add(b)
+	fmt.Println(a)
+	fmt.Println(sum.String())
 }
 
 func TestSubResource(t *testing.T) {
