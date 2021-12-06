@@ -52,15 +52,16 @@ type ServerOption struct {
 	LockObjectNamespace  string
 	DefaultQueue         string
 	PrintVersion         bool
+	EnableMetrics        bool
 	ListenAddress        string
 	EnablePriorityClass  bool
 	EnableCSIStorage     bool
 	// vc-scheduler will load (not activate) custom plugins which are in this directory
-	PluginsDir string
+	PluginsDir    string
+	EnableHealthz bool
 	// HealthzBindAddress is the IP address and port for the health check server to serve on
 	// defaulting to :11251
 	HealthzBindAddress string
-
 	// Parameters for scheduling tuning: the number of feasible nodes to find and score
 	MinNodesToFind             int32
 	MinPercentageOfNodesToFind int32
@@ -107,7 +108,9 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 
 	fs.StringVar(&s.PluginsDir, "plugins-dir", defaultPluginsDir, "vc-scheduler will load custom plugins which are in this directory")
 	fs.BoolVar(&s.EnableCSIStorage, "csi-storage", false,
-		"Enables tracking of available storage capacity that CSI drivers provide; it is false by default")
+		"Enable tracking of available storage capacity that CSI drivers provide; it is false by default")
+	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
+	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled.
