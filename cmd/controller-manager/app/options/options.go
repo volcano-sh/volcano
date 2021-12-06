@@ -51,6 +51,7 @@ type ServerOption struct {
 	// HealthzBindAddress is the IP address and port for the health check server to serve on,
 	// defaulting to 0.0.0.0:11252
 	HealthzBindAddress string
+	EnableHealthz      bool
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -73,6 +74,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringArrayVar(&s.SchedulerNames, "scheduler-name", []string{defaultSchedulerName}, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.IntVar(&s.MaxRequeueNum, "max-requeue-num", defaultMaxRequeueNum, "The number of times a job, queue or command will be requeued before it is dropped out of the queue")
 	fs.StringVar(&s.HealthzBindAddress, "healthz-address", defaultHealthzAddress, "The address to listen on for the health check server.")
+	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 }
 
 // CheckOptionOrDie checks the LockObjectNamespace.

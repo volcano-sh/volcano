@@ -127,6 +127,8 @@ spec:
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
+            - --enable-healthz=true
+            - --enable-metrics=true
             - -v=3
             - 2>&1
           imagePullPolicy: "IfNotPresent"
@@ -369,6 +371,7 @@ spec:
           image: volcanosh/vc-controller-manager-arm64:latest
           args:
             - --logtostderr
+            - --enable-healthz=true
             - -v=4
             - 2>&1
           imagePullPolicy: "IfNotPresent"
