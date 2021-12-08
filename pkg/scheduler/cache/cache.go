@@ -33,7 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	infov1 "k8s.io/client-go/informers/core/v1"
-	schedv1 "k8s.io/client-go/informers/scheduling/v1beta1"
+	schedv1 "k8s.io/client-go/informers/scheduling/v1"
 	storagev1 "k8s.io/client-go/informers/storage/v1"
 	storagev1alpha1 "k8s.io/client-go/informers/storage/v1alpha1"
 	"k8s.io/client-go/kubernetes"
@@ -495,7 +495,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		})
 
 	if options.ServerOpts.EnablePriorityClass {
-		sc.pcInformer = informerFactory.Scheduling().V1beta1().PriorityClasses()
+		sc.pcInformer = informerFactory.Scheduling().V1().PriorityClasses()
 		sc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    sc.AddPriorityClass,
 			UpdateFunc: sc.UpdatePriorityClass,
