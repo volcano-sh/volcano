@@ -17,6 +17,7 @@ limitations under the License.
 package podgroup
 
 import (
+	"context"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
@@ -87,23 +88,24 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 }
 
 // Run start NewPodgroupController.
-func (pg *pgcontroller) Run(stopCh <-chan struct{}) {
-	go pg.podInformer.Informer().Run(stopCh)
-	go pg.pgInformer.Informer().Run(stopCh)
+func (pg *pgcontroller) Run(ctx context.Context, workers uint32) {
+	go pg.podInformer.Informer().Run(ctx.Done())
+	go pg.pgInformer.Informer().Run(ctx.Done())
 
-	cache.WaitForCacheSync(stopCh, pg.podSynced, pg.pgSynced)
+	cache.WaitForCacheSync(ctx.Done(), pg.podSynced, pg.pgSynced)
 
-	go wait.Until(pg.worker, 0, stopCh)
+	go wait.UntilWithContext(ctx, pg.worker, 0)
 
 	klog.Infof("PodgroupController is running ...... ")
+	<-ctx.Done()
 }
 
-func (pg *pgcontroller) worker() {
-	for pg.processNextReq() {
+func (pg *pgcontroller) worker(ctx context.Context) {
+	for pg.processNextReq(ctx) {
 	}
 }
 
-func (pg *pgcontroller) processNextReq() bool {
+func (pg *pgcontroller) processNextReq(ctx context.Context) bool {
 	obj, shutdown := pg.queue.Get()
 	if shutdown {
 		klog.Errorf("Fail to pop item from queue")

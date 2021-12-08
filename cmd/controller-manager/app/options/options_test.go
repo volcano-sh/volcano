@@ -50,6 +50,7 @@ func TestAddFlags(t *testing.T) {
 		WorkerThreads:      defaultWorkers,
 		SchedulerNames:     []string{"volcano", "volcano2"},
 		MaxRequeueNum:      defaultMaxRequeueNum,
+		ConcurrentTTLSyncs: defaultConcurrentTTLSyncs,
 		HealthzBindAddress: ":11252",
 	}
 

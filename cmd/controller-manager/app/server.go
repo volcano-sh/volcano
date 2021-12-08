@@ -133,8 +133,12 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 				klog.Errorf("Failed to initialize controller <%s>: %v", c.Name(), err)
 				return
 			}
-
-			go c.Run(ctx.Done())
+			switch c.Name() {
+			case "gc-controller":
+				go c.Run(ctx, opt.ConcurrentTTLSyncs)
+			default:
+				go c.Run(ctx, 1)
+			}
 		})
 
 		<-ctx.Done()

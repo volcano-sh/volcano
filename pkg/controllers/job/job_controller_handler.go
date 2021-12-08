@@ -365,12 +365,12 @@ func (cc *jobcontroller) recordJobEvent(namespace, name string, event batch.JobE
 	cc.recorder.Event(job.Job, v1.EventTypeNormal, string(event), message)
 }
 
-func (cc *jobcontroller) handleCommands() {
-	for cc.processNextCommand() {
+func (cc *jobcontroller) handleCommands(ctx context.Context) {
+	for cc.processNextCommand(ctx) {
 	}
 }
 
-func (cc *jobcontroller) processNextCommand() bool {
+func (cc *jobcontroller) processNextCommand(ctx context.Context) bool {
 	obj, shutdown := cc.commandQueue.Get()
 	if shutdown {
 		return false
@@ -378,7 +378,7 @@ func (cc *jobcontroller) processNextCommand() bool {
 	cmd := obj.(*bus.Command)
 	defer cc.commandQueue.Done(cmd)
 
-	if err := cc.vcClient.BusV1alpha1().Commands(cmd.Namespace).Delete(context.TODO(), cmd.Name, metav1.DeleteOptions{}); err != nil {
+	if err := cc.vcClient.BusV1alpha1().Commands(cmd.Namespace).Delete(ctx, cmd.Name, metav1.DeleteOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to delete Command <%s/%s>.", cmd.Namespace, cmd.Name)
 			cc.commandQueue.AddRateLimited(cmd)

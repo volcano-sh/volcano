@@ -37,7 +37,7 @@ func newRateLimitingQueue() workqueue.RateLimitingInterface {
 	))
 }
 
-func (cc *jobcontroller) processResyncTask() {
+func (cc *jobcontroller) processResyncTask(ctx context.Context) {
 	obj, shutdown := cc.errTasks.Get()
 	if shutdown {
 		return
@@ -57,14 +57,14 @@ func (cc *jobcontroller) processResyncTask() {
 		return
 	}
 
-	if err := cc.syncTask(task); err != nil {
+	if err := cc.syncTask(task, ctx); err != nil {
 		klog.Errorf("Failed to sync pod <%v/%v>, retry it, err %v", task.Namespace, task.Name, err)
 		cc.resyncTask(task)
 	}
 }
 
-func (cc *jobcontroller) syncTask(oldTask *v1.Pod) error {
-	newPod, err := cc.kubeClient.CoreV1().Pods(oldTask.Namespace).Get(context.TODO(), oldTask.Name, metav1.GetOptions{})
+func (cc *jobcontroller) syncTask(oldTask *v1.Pod, ctx context.Context) error {
+	newPod, err := cc.kubeClient.CoreV1().Pods(oldTask.Namespace).Get(ctx, oldTask.Name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			if err := cc.cache.DeletePod(oldTask); err != nil {

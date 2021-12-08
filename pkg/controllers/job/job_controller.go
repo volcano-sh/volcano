@@ -17,6 +17,7 @@ limitations under the License.
 package job
 
 import (
+	"context"
 	"fmt"
 	"hash"
 	"hash/fnv"
@@ -218,20 +219,20 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 }
 
 // Run start JobController.
-func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
-	go cc.jobInformer.Informer().Run(stopCh)
-	go cc.podInformer.Informer().Run(stopCh)
-	go cc.pvcInformer.Informer().Run(stopCh)
-	go cc.pgInformer.Informer().Run(stopCh)
-	go cc.svcInformer.Informer().Run(stopCh)
-	go cc.cmdInformer.Informer().Run(stopCh)
-	go cc.pcInformer.Informer().Run(stopCh)
-	go cc.queueInformer.Informer().Run(stopCh)
+func (cc *jobcontroller) Run(ctx context.Context, workers uint32) {
+	go cc.jobInformer.Informer().Run(ctx.Done())
+	go cc.podInformer.Informer().Run(ctx.Done())
+	go cc.pvcInformer.Informer().Run(ctx.Done())
+	go cc.pgInformer.Informer().Run(ctx.Done())
+	go cc.svcInformer.Informer().Run(ctx.Done())
+	go cc.cmdInformer.Informer().Run(ctx.Done())
+	go cc.pcInformer.Informer().Run(ctx.Done())
+	go cc.queueInformer.Informer().Run(ctx.Done())
 
-	cache.WaitForCacheSync(stopCh, cc.jobSynced, cc.podSynced, cc.pgSynced,
+	cache.WaitForCacheSync(ctx.Done(), cc.jobSynced, cc.podSynced, cc.pgSynced,
 		cc.svcSynced, cc.cmdSynced, cc.pvcSynced, cc.pcSynced, cc.queueSynced)
 
-	go wait.Until(cc.handleCommands, 0, stopCh)
+	go wait.UntilWithContext(ctx, cc.handleCommands, 0)
 	var i uint32
 	for i = 0; i < cc.workers; i++ {
 		go func(num uint32) {
@@ -240,16 +241,17 @@ func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
 					cc.worker(num)
 				},
 				time.Second,
-				stopCh)
+				ctx.Done())
 		}(i)
 	}
 
-	go cc.cache.Run(stopCh)
+	go cc.cache.Run(ctx.Done())
 
 	// Re-sync error tasks.
-	go wait.Until(cc.processResyncTask, 0, stopCh)
+	go wait.UntilWithContext(ctx, cc.processResyncTask, 0)
 
 	klog.Infof("JobController is running ...... ")
+	<-ctx.Done()
 }
 
 func (cc *jobcontroller) worker(i uint32) {

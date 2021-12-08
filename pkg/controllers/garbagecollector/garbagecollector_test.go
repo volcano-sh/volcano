@@ -17,11 +17,13 @@ limitations under the License.
 package garbagecollector
 
 import (
+	"context"
 	"fmt"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubeclient "k8s.io/client-go/kubernetes/fake"
 	"testing"
 	"time"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	volcanoclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
@@ -380,6 +382,59 @@ func TestGarbageCollector_JobFinishTime(t *testing.T) {
 		_, err := jobFinishTime(testcase.Job)
 		if err != nil && err.Error() != testcase.ExpectedVal.Error() {
 			t.Errorf("Expected Error to be: %s but got: %s in case %d", testcase.ExpectedVal, err, i)
+		}
+	}
+}
+
+func newFakeController() *gccontroller {
+	KubeBatchClientSet := vcclient.NewSimpleClientset()
+	KubeClientSet := kubeclient.NewSimpleClientset()
+
+	controller := &gccontroller{}
+	opt := framework.ControllerOption{
+		VolcanoClient: KubeBatchClientSet,
+		KubeClient:    KubeClientSet,
+	}
+
+	controller.Initialize(&opt)
+
+	return controller
+}
+
+func TestProcessNextWorkItem(t *testing.T) {
+	var ttlSecond int32 = 3
+	namespace := "test"
+	job := v1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "job1",
+			Namespace: namespace,
+		},
+		Spec: v1alpha1.JobSpec{
+			TTLSecondsAfterFinished: &ttlSecond,
+		},
+		Status: v1alpha1.JobStatus{
+			State: v1alpha1.JobState{
+				Phase:              v1alpha1.Completed,
+				LastTransitionTime: metav1.NewTime(time.Date(1, 1, 1, 1, 1, 1, 0, time.UTC)),
+			},
+		}}
+
+	testCases := []struct {
+		Name        string
+		ExpectValue int32
+	}{
+		{
+			Name:        "processNextWorkItem",
+			ExpectValue: 0,
+		},
+	}
+	for i, testcase := range testCases {
+		c := newFakeController()
+		c.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), &job, metav1.CreateOptions{})
+		c.addJob(&job)
+		c.processNextWorkItem(context.TODO())
+		if c.queue.Len() != 0 {
+			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, c.queue.Len())
 		}
 	}
 }

@@ -163,7 +163,7 @@ func (c *queuecontroller) Initialize(opt *framework.ControllerOption) error {
 }
 
 // Run starts QueueController.
-func (c *queuecontroller) Run(stopCh <-chan struct{}) {
+func (c *queuecontroller) Run(ctx context.Context, workers uint32) {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 	defer c.commandQueue.ShutDown()
@@ -171,19 +171,19 @@ func (c *queuecontroller) Run(stopCh <-chan struct{}) {
 	klog.Infof("Starting queue controller.")
 	defer klog.Infof("Shutting down queue controller.")
 
-	go c.queueInformer.Informer().Run(stopCh)
-	go c.pgInformer.Informer().Run(stopCh)
-	go c.cmdInformer.Informer().Run(stopCh)
+	go c.queueInformer.Informer().Run(ctx.Done())
+	go c.pgInformer.Informer().Run(ctx.Done())
+	go c.cmdInformer.Informer().Run(ctx.Done())
 
-	if !cache.WaitForCacheSync(stopCh, c.queueSynced, c.pgSynced, c.cmdSynced) {
+	if !cache.WaitForCacheSync(ctx.Done(), c.queueSynced, c.pgSynced, c.cmdSynced) {
 		klog.Errorf("unable to sync caches for queue controller.")
 		return
 	}
 
-	go wait.Until(c.worker, 0, stopCh)
-	go wait.Until(c.commandWorker, 0, stopCh)
+	go wait.Until(c.worker, 0, ctx.Done())
+	go wait.Until(c.commandWorker, 0, ctx.Done())
 
-	<-stopCh
+	<-ctx.Done()
 }
 
 // worker runs a worker thread that just dequeues items, processes them, and

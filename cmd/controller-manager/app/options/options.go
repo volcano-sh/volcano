@@ -31,6 +31,7 @@ const (
 	defaultWorkers                        = 3
 	defaultMaxRequeueNum                  = 15
 	defaultSchedulerName                  = "volcano"
+	defaultConcurrentTTLSyncs             = 15
 	defaultHealthzAddress                 = ":11251"
 	defaultDetectionPeriodOfDependsOntask = 100 * time.Millisecond
 )
@@ -53,10 +54,13 @@ type ServerOption struct {
 	// HealthzBindAddress is the IP address and port for the health check server to serve on,
 	// defaulting to 0.0.0.0:11252
 	HealthzBindAddress string
-	EnableHealthz      bool
+
+	EnableHealthz bool
 	// For dependent tasks, there is a detection cycle inside volcano
 	// It indicates how often to detect the status of dependent tasks
 	DetectionPeriodOfDependsOntask time.Duration
+
+	ConcurrentTTLSyncs uint32
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -82,6 +86,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.DurationVar(&s.DetectionPeriodOfDependsOntask, "detection-period-of-dependson-task", defaultDetectionPeriodOfDependsOntask, "It indicates how often to detect the status of dependent tasks."+
 		"e.g. --detection-period-of-dependson-task=1s")
+	fs.Uint32Var(&s.ConcurrentTTLSyncs, "concurrent-ttl-after-finished-syncs", defaultConcurrentTTLSyncs, "The number of TTL-after-finished controller workers that are allowed to sync concurrently.")
 }
 
 // CheckOptionOrDie checks the LockObjectNamespace.

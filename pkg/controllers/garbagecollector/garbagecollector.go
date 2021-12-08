@@ -19,6 +19,7 @@ package garbagecollector
 import (
 	"context"
 	"fmt"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -85,20 +86,22 @@ func (gc *gccontroller) Initialize(opt *framework.ControllerOption) error {
 }
 
 // Run starts the worker to clean up Jobs.
-func (gc *gccontroller) Run(stopCh <-chan struct{}) {
+func (gc *gccontroller) Run(ctx context.Context, workers uint32) {
+	defer utilruntime.HandleCrash()
 	defer gc.queue.ShutDown()
 
 	klog.Infof("Starting garbage collector")
 	defer klog.Infof("Shutting down garbage collector")
 
-	go gc.jobInformer.Informer().Run(stopCh)
-	if !cache.WaitForCacheSync(stopCh, gc.jobSynced) {
+	go gc.jobInformer.Informer().Run(ctx.Done())
+	if !cache.WaitForNamedCacheSync("Volcano TTL after finished", ctx.Done(), gc.jobSynced) {
 		return
 	}
+	for i := uint32(0); i < workers; i++ {
+		go wait.UntilWithContext(ctx, gc.worker, 1*time.Second)
+	}
 
-	go wait.Until(gc.worker, time.Second, stopCh)
-
-	<-stopCh
+	<-ctx.Done()
 }
 
 func (gc *gccontroller) addJob(obj interface{}) {
@@ -140,19 +143,19 @@ func (gc *gccontroller) enqueueAfter(job *v1alpha1.Job, after time.Duration) {
 	gc.queue.AddAfter(key, after)
 }
 
-func (gc *gccontroller) worker() {
-	for gc.processNextWorkItem() {
+func (gc *gccontroller) worker(ctx context.Context) {
+	for gc.processNextWorkItem(ctx) {
 	}
 }
 
-func (gc *gccontroller) processNextWorkItem() bool {
+func (gc *gccontroller) processNextWorkItem(ctx context.Context) bool {
 	key, quit := gc.queue.Get()
 	if quit {
 		return false
 	}
 	defer gc.queue.Done(key)
 
-	err := gc.processJob(key.(string))
+	err := gc.processJob(ctx, key.(string))
 	gc.handleErr(err, key)
 
 	return true
@@ -173,7 +176,7 @@ func (gc *gccontroller) handleErr(err error, key interface{}) {
 // its TTL hasn't expired, it will be added to the queue after the TTL is expected
 // to expire.
 // This function is not meant to be invoked concurrently with the same key.
-func (gc *gccontroller) processJob(key string) error {
+func (gc *gccontroller) processJob(ctx context.Context, key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		return err
@@ -199,7 +202,7 @@ func (gc *gccontroller) processJob(key string) error {
 	// Before deleting the Job, do a final sanity check.
 	// If TTL is modified before we do this check, we cannot be sure if the TTL truly expires.
 	// The latest Job may have a different UID, but it's fine because the checks will be run again.
-	fresh, err := gc.vcClient.BatchV1alpha1().Jobs(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	fresh, err := gc.vcClient.BatchV1alpha1().Jobs(namespace).Get(ctx, name, metav1.GetOptions{})
 	if errors.IsNotFound(err) {
 		return nil
 	}
@@ -219,7 +222,7 @@ func (gc *gccontroller) processJob(key string) error {
 		Preconditions:     &metav1.Preconditions{UID: &fresh.UID},
 	}
 	klog.V(4).Infof("Cleaning up Job %s/%s", namespace, name)
-	return gc.vcClient.BatchV1alpha1().Jobs(fresh.Namespace).Delete(context.TODO(), fresh.Name, options)
+	return gc.vcClient.BatchV1alpha1().Jobs(fresh.Namespace).Delete(ctx, fresh.Name, options)
 }
 
 // processTTL checks whether a given Job's TTL has expired, and add it to the queue after the TTL is expected to expire

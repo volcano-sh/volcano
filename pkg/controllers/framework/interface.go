@@ -17,6 +17,7 @@ limitations under the License.
 package framework
 
 import (
+	"context"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 
@@ -38,5 +39,5 @@ type Controller interface {
 	Name() string
 	Initialize(opt *ControllerOption) error
 	// Run run the controller
-	Run(stopCh <-chan struct{})
+	Run(ctx context.Context, workers uint32)
 }
