@@ -131,6 +131,8 @@ func getTaskID(pod *v1.Pod) TaskID {
 	return ""
 }
 
+const TaskPriorityAnnotation = "volcano.sh/task-priority"
+
 // NewTaskInfo creates new taskInfo object for a Pod
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	initResReq := GetPodResourceRequest(pod)
@@ -166,7 +168,7 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		ti.Priority = *pod.Spec.Priority
 	}
 
-	if taskPriority, ok := pod.Labels["volcano.sh/task-priority"]; ok {
+	if taskPriority, ok := pod.Annotations[TaskPriorityAnnotation]; ok {
 		if priority, err := strconv.ParseInt(taskPriority, 10, 32); err == nil {
 			ti.Priority = int32(priority)
 		}
