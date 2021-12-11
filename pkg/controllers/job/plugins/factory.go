@@ -19,6 +19,7 @@ package plugins
 import (
 	"sync"
 
+	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/tensorflow"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/env"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/ssh"
@@ -29,6 +30,7 @@ func init() {
 	RegisterPluginBuilder("ssh", ssh.New)
 	RegisterPluginBuilder("env", env.New)
 	RegisterPluginBuilder("svc", svc.New)
+	RegisterPluginBuilder("tensorflow", tensorflow.New)
 }
 
 var pluginMutex sync.Mutex
