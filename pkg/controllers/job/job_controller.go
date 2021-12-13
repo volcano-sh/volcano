@@ -18,8 +18,6 @@ package job
 
 import (
 	"fmt"
-	"hash"
-	"hash/fnv"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -99,7 +97,7 @@ type jobcontroller struct {
 	queueSynced func() bool
 
 	// queue that need to sync up
-	queueList    []workqueue.RateLimitingInterface
+	queue        workqueue.RateLimitingInterface
 	commandQueue workqueue.RateLimitingInterface
 	cache        jobcache.Cache
 	// Job Event recorder
@@ -127,7 +125,6 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: cc.kubeClient.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(vcscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
 
-	cc.queueList = make([]workqueue.RateLimitingInterface, workers)
 	cc.commandQueue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 	cc.cache = jobcache.New()
 	cc.errTasks = newRateLimitingQueue()
@@ -138,10 +135,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 		cc.maxRequeueNum = -1
 	}
 
-	var i uint32
-	for i = 0; i < workers; i++ {
-		cc.queueList[i] = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
-	}
+	cc.queue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 
 	cc.jobInformer = informerfactory.NewSharedInformerFactory(cc.vcClient, 0).Batch().V1alpha1().Jobs()
 	cc.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -255,54 +249,21 @@ func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
 func (cc *jobcontroller) worker(i uint32) {
 	klog.Infof("worker %d start ...... ", i)
 
-	for cc.processNextReq(i) {
+	for cc.processNextReq() {
 	}
 }
 
-func (cc *jobcontroller) belongsToThisRoutine(key string, count uint32) bool {
-	var hashVal hash.Hash32
-	var val uint32
-
-	hashVal = fnv.New32()
-	hashVal.Write([]byte(key))
-
-	val = hashVal.Sum32()
-
-	return val%cc.workers == count
-}
-
-func (cc *jobcontroller) getWorkerQueue(key string) workqueue.RateLimitingInterface {
-	var hashVal hash.Hash32
-	var val uint32
-
-	hashVal = fnv.New32()
-	hashVal.Write([]byte(key))
-
-	val = hashVal.Sum32()
-
-	queue := cc.queueList[val%cc.workers]
-
-	return queue
-}
-
-func (cc *jobcontroller) processNextReq(count uint32) bool {
-	queue := cc.queueList[count]
-	obj, shutdown := queue.Get()
+func (cc *jobcontroller) processNextReq() bool {
+	obj, shutdown := cc.queue.Get()
 	if shutdown {
 		klog.Errorf("Fail to pop item from queue")
 		return false
 	}
 
 	req := obj.(apis.Request)
-	defer queue.Done(req)
+	defer cc.queue.Done(req)
 
 	key := jobcache.JobKeyByReq(&req)
-	if !cc.belongsToThisRoutine(key, count) {
-		klog.Errorf("should not occur The job does not belongs to this routine key:%s, worker:%d...... ", key, count)
-		queueLocal := cc.getWorkerQueue(key)
-		queueLocal.Add(req)
-		return true
-	}
 
 	klog.V(3).Infof("Try to handle request <%v>", req)
 
@@ -330,11 +291,11 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 	}
 
 	if err := st.Execute(action); err != nil {
-		if cc.maxRequeueNum == -1 || queue.NumRequeues(req) < cc.maxRequeueNum {
+		if cc.maxRequeueNum == -1 || cc.queue.NumRequeues(req) < cc.maxRequeueNum {
 			klog.V(2).Infof("Failed to handle Job <%s/%s>: %v",
 				jobInfo.Job.Namespace, jobInfo.Job.Name, err)
 			// If any error, requeue it.
-			queue.AddRateLimited(req)
+			cc.queue.AddRateLimited(req)
 			return true
 		}
 		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, batchv1alpha1.ExecuteAction, fmt.Sprintf(
@@ -347,7 +308,7 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 	}
 
 	// If no error, forget it.
-	queue.Forget(req)
+	cc.queue.Forget(req)
 
 	return true
 }
