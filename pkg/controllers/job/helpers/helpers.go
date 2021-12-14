@@ -19,6 +19,7 @@ package helpers
 import (
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
+	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 const (
@@ -43,6 +45,21 @@ func GetTaskIndex(pod *v1.Pod) string {
 	}
 
 	return ""
+}
+
+// ComparePodByIndex by pod index
+func CompareTask(lv, rv *api.TaskInfo) bool {
+	lStr := GetTaskIndex(lv.Pod)
+	rStr := GetTaskIndex(rv.Pod)
+	lIndex, lErr := strconv.Atoi(lStr)
+	rIndex, rErr := strconv.Atoi(rStr)
+	if lErr != nil || rErr != nil || lIndex == rIndex {
+		return lv.Pod.CreationTimestamp.Before(&rv.Pod.CreationTimestamp)
+	}
+	if lIndex > rIndex {
+		return false
+	}
+	return true
 }
 
 // GetTaskKey returns task key/name
