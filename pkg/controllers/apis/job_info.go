@@ -65,7 +65,7 @@ func (ji *JobInfo) SetJob(job *batch.Job) {
 func (ji *JobInfo) AddPod(pod *v1.Pod) error {
 	taskName, found := pod.Annotations[batch.TaskSpecKey]
 	if !found {
-		return fmt.Errorf("failed to taskName of Pod <%s/%s>",
+		return fmt.Errorf("failed to find taskName of Pod <%s/%s>",
 			pod.Namespace, pod.Name)
 	}
 
