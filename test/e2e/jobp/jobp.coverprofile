@@ -64,10 +64,10 @@ volcano.sh/volcano/test/e2e/jobp/admission.go:1398.65,1417.54 7 1
 volcano.sh/volcano/test/e2e/jobp/admission.go:1422.3,1424.47 3 1
 volcano.sh/volcano/test/e2e/jobp/admission.go:1417.54,1421.4 3 1
 volcano.sh/volcano/test/e2e/jobp/job_controlled_resource.go:33.56,34.41 1 4
-volcano.sh/volcano/test/e2e/jobp/job_controlled_resource.go:139.2,139.73 1 4
-volcano.sh/volcano/test/e2e/jobp/job_controlled_resource.go:34.41,137.3 24 1
-volcano.sh/volcano/test/e2e/jobp/job_controlled_resource.go:139.73,185.50 11 1
-volcano.sh/volcano/test/e2e/jobp/job_controlled_resource.go:185.50,189.4 3 3
+volcano.sh/volcano/test/e2e/jobp/job_controlled_resource.go:138.2,138.73 1 4
+volcano.sh/volcano/test/e2e/jobp/job_controlled_resource.go:34.41,136.3 23 1
+volcano.sh/volcano/test/e2e/jobp/job_controlled_resource.go:138.73,184.50 11 1
+volcano.sh/volcano/test/e2e/jobp/job_controlled_resource.go:184.50,188.4 3 3
 volcano.sh/volcano/test/e2e/jobp/job_lifecycle.go:34.43,35.48 1 4
 volcano.sh/volcano/test/e2e/jobp/job_lifecycle.go:66.2,66.48 1 4
 volcano.sh/volcano/test/e2e/jobp/job_lifecycle.go:96.2,96.50 1 4
@@ -84,6 +84,10 @@ volcano.sh/volcano/test/e2e/jobp/job_lifecycle.go:166.49,202.3 11 1
 volcano.sh/volcano/test/e2e/jobp/job_lifecycle.go:204.58,241.3 11 1
 volcano.sh/volcano/test/e2e/jobp/job_lifecycle.go:243.49,269.3 5 1
 volcano.sh/volcano/test/e2e/jobp/job_lifecycle.go:271.63,318.3 7 1
+volcano.sh/volcano/test/e2e/jobp/job_restart.go:33.45,34.47 1 4
+volcano.sh/volcano/test/e2e/jobp/job_restart.go:91.2,91.54 1 4
+volcano.sh/volcano/test/e2e/jobp/job_restart.go:34.47,89.3 16 1
+volcano.sh/volcano/test/e2e/jobp/job_restart.go:91.54,149.3 16 1
 volcano.sh/volcano/test/e2e/jobp/job_scale_up_down.go:33.58,34.24 1 4
 volcano.sh/volcano/test/e2e/jobp/job_scale_up_down.go:90.2,90.26 1 4
 volcano.sh/volcano/test/e2e/jobp/job_scale_up_down.go:148.2,148.47 1 4
