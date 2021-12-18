@@ -58,6 +58,10 @@ func main() {
 		klog.Fatalf("Configured port is invalid: %v", err)
 	}
 
+	if err := config.ParseCAFiles(nil); err != nil {
+		klog.Fatalf("Failed to parse CA file: %v", err)
+	}
+
 	if err := app.Run(config); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)

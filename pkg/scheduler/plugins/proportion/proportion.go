@@ -17,6 +17,7 @@ limitations under the License.
 package proportion
 
 import (
+	"math"
 	"reflect"
 
 	v1 "k8s.io/api/core/v1"
@@ -90,6 +91,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			if len(queue.Queue.Spec.Capability) != 0 {
 				attr.capability = api.NewResource(queue.Queue.Spec.Capability)
+				if attr.capability.MilliCPU <= 0 {
+					attr.capability.MilliCPU = math.MaxFloat64
+				}
+				if attr.capability.Memory <= 0 {
+					attr.capability.Memory = math.MaxFloat64
+				}
 			}
 
 			pp.queueOpts[job.Queue] = attr
@@ -160,18 +167,18 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			oldDeserved := attr.deserved.Clone()
 			attr.deserved.Add(remaining.Clone().Multi(float64(attr.weight) / float64(totalWeight)))
 
-			if attr.capability != nil && !attr.deserved.LessEqual(attr.capability, api.Infinity) {
-				attr.deserved = helpers.Min(attr.deserved, attr.capability)
-				attr.deserved = helpers.Min(attr.deserved, attr.request)
-				meet[attr.queueID] = struct{}{}
-				klog.V(4).Infof("queue <%s> is meet cause of the capability", attr.name)
-			} else if attr.request.LessEqual(attr.deserved, api.Zero) {
-				attr.deserved = helpers.Min(attr.deserved, attr.request)
+			if attr.capability != nil {
+				attr.deserved.MinDimensionResource(attr.capability, api.Infinity)
+			}
+			attr.deserved.MinDimensionResource(attr.request, api.Zero)
+			klog.V(4).Infof("Format queue <%s> deserved resource to <%v>", attr.name, attr.deserved)
+
+			if attr.request.LessEqual(attr.deserved, api.Zero) {
 				meet[attr.queueID] = struct{}{}
 				klog.V(4).Infof("queue <%s> is meet", attr.name)
-			} else {
-				attr.deserved.MinDimensionResource(attr.request)
-				klog.V(4).Infof("Format queue <%s> deserved resource to <%v>", attr.name, attr.deserved)
+			} else if reflect.DeepEqual(attr.deserved, oldDeserved) {
+				meet[attr.queueID] = struct{}{}
+				klog.V(4).Infof("queue <%s> is meet cause of the capability", attr.name)
 			}
 			pp.updateShare(attr)
 

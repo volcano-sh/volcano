@@ -42,7 +42,7 @@ func newFakeController() *pgcontroller {
 		KubeClient:            kubeClient,
 		VolcanoClient:         vcClient,
 		SharedInformerFactory: sharedInformers,
-		SchedulerName:         "volcano",
+		SchedulerNames:        []string{"volcano"},
 	}
 
 	controller.Initialize(opt)

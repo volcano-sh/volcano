@@ -134,7 +134,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 		// pick queue for given namespace
 		//
-		// This block use a algorithm with time complex O(n).
+		// This block use an algorithm with time complex O(n).
 		// But at least PriorityQueue could not be used here,
 		// because the allocation of job would change the priority of queue among all namespaces,
 		// and the PriorityQueue have no ability to update priority for a special queue.
@@ -198,7 +198,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			tasks.Len(), job.Namespace, job.Name)
 
 		stmt := framework.NewStatement(ssn)
-
+		ph := util.NewPredicateHelper()
 		for !tasks.Empty() {
 			task := tasks.Pop().(*api.TaskInfo)
 
@@ -211,7 +211,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 			klog.V(3).Infof("There are <%d> nodes for Job <%v/%v>", len(nodes), job.Namespace, job.Name)
 
-			predicateNodes, fitErrors := util.PredicateNodes(task, nodes, predicateFn)
+			predicateNodes, fitErrors := ph.PredicateNodes(task, nodes, predicateFn)
 			if len(predicateNodes) == 0 {
 				job.NodesFitErrors[task.UID] = fitErrors
 				break

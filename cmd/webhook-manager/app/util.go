@@ -19,6 +19,7 @@ package app
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"regexp"
 	"strings"
 
@@ -104,14 +105,25 @@ func getVolcanoClient(restConfig *rest.Config) *versioned.Clientset {
 // These are passed in as command line for cluster certification. If tls config is passed in, we use the directly
 // defined tls config, else use that defined in kubeconfig.
 func configTLS(config *options.Config, restConfig *rest.Config) *tls.Config {
-	if len(config.CertFile) != 0 && len(config.KeyFile) != 0 {
-		sCert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
+	if len(config.CertData) != 0 && len(config.KeyData) != 0 {
+		certPool := x509.NewCertPool()
+		certPool.AppendCertsFromPEM(config.CaCertData)
+
+		sCert, err := tls.X509KeyPair(config.CertData, config.KeyData)
 		if err != nil {
 			klog.Fatal(err)
 		}
 
 		return &tls.Config{
 			Certificates: []tls.Certificate{sCert},
+			RootCAs:      certPool,
+			MinVersion:   tls.VersionTLS12,
+			ClientAuth:   tls.VerifyClientCertIfGiven,
+			CipherSuites: []uint16{
+				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			},
 		}
 	}
 

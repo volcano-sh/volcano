@@ -125,6 +125,11 @@ func createPatch(job *v1alpha1.Job) ([]byte, error) {
 	if pathMinAvailable != nil {
 		patch = append(patch, *pathMinAvailable)
 	}
+	// Add default plugins for some distributed-framework plugin cases
+	patchPlugins := patchDefaultPlugins(job)
+	if patchPlugins != nil {
+		patch = append(patch, *patchPlugins)
+	}
 	return json.Marshal(patch)
 }
 
@@ -202,5 +207,29 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string) *patchOperation {
 		Op:    "replace",
 		Path:  basePath,
 		Value: tasks,
+	}
+}
+
+func patchDefaultPlugins(job *v1alpha1.Job) *patchOperation {
+	if job.Spec.Plugins == nil {
+		return nil
+	}
+	plugins := map[string][]string{}
+	for k, v := range job.Spec.Plugins {
+		plugins[k] = v
+	}
+
+	// Because the tensorflow-plugin depends on svc-plugin.
+	// If the svc-plugin is not defined, we should add it.
+	if _, ok := job.Spec.Plugins["tensorflow"]; ok {
+		if _, ok := plugins["svc"]; !ok {
+			plugins["svc"] = []string{}
+		}
+	}
+
+	return &patchOperation{
+		Op:    "replace",
+		Path:  "/spec/plugins",
+		Value: plugins,
 	}
 }

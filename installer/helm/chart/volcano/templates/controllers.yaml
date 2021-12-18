@@ -92,6 +92,7 @@ spec:
             image: {{.Values.basic.controller_image_name}}:{{.Values.basic.image_tag_version}}
             args:
               - --logtostderr
+              - --enable-healthz=true
               - -v=4
               - 2>&1
             imagePullPolicy: "IfNotPresent"

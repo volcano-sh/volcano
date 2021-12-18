@@ -19,12 +19,15 @@ package helpers
 import (
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
 
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
+	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 const (
@@ -42,6 +45,52 @@ func GetTaskIndex(pod *v1.Pod) string {
 	}
 
 	return ""
+}
+
+// ComparePodByIndex by pod index
+func CompareTask(lv, rv *api.TaskInfo) bool {
+	lStr := GetTaskIndex(lv.Pod)
+	rStr := GetTaskIndex(rv.Pod)
+	lIndex, lErr := strconv.Atoi(lStr)
+	rIndex, rErr := strconv.Atoi(rStr)
+	if lErr != nil || rErr != nil || lIndex == rIndex {
+		return lv.Pod.CreationTimestamp.Before(&rv.Pod.CreationTimestamp)
+	}
+	if lIndex > rIndex {
+		return false
+	}
+	return true
+}
+
+// GetTaskKey returns task key/name
+func GetTaskKey(pod *v1.Pod) string {
+	if pod.Annotations == nil || pod.Annotations[batch.TaskSpecKey] == "" {
+		return batch.DefaultTaskSpec
+	}
+	return pod.Annotations[batch.TaskSpecKey]
+}
+
+// GetTaskSpec returns task spec
+func GetTaskSpec(job *batch.Job, taskName string) (batch.TaskSpec, bool) {
+	for _, ts := range job.Spec.Tasks {
+		if ts.Name == taskName {
+			return ts, true
+		}
+	}
+	return batch.TaskSpec{}, false
+}
+
+// MakeDomainName creates task domain name
+func MakeDomainName(ts batch.TaskSpec, job *batch.Job, index int) string {
+	hostName := ts.Template.Spec.Hostname
+	subdomain := ts.Template.Spec.Subdomain
+	if len(hostName) == 0 {
+		hostName = MakePodName(job.Name, ts.Name, index)
+	}
+	if len(subdomain) == 0 {
+		subdomain = job.Name
+	}
+	return hostName + "." + subdomain
 }
 
 // MakePodName creates pod name.

@@ -26,6 +26,14 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
+type AllocateFailError struct {
+	Reason string
+}
+
+func (o *AllocateFailError) Error() string {
+	return o.Reason
+}
+
 // NodeInfo is node level aggregated information.
 type NodeInfo struct {
 	Name string
@@ -233,7 +241,6 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 			Phase:  NotReady,
 			Reason: "UnInitialized",
 		}
-		klog.Warningf("set the node %s status to %s for the reason UnInitialized.", node.Name, NotReady.String())
 		return
 	}
 
@@ -295,16 +302,33 @@ func (ni *NodeInfo) setNodeGPUInfo(node *v1.Node) {
 
 // SetNode sets kubernetes node object to nodeInfo object
 func (ni *NodeInfo) SetNode(node *v1.Node) {
-	ni.setOversubscription(node)
 	ni.setNodeState(node)
-	ni.setNodeGPUInfo(node)
-	ni.setRevocableZone(node)
-
 	if !ni.Ready() {
-		klog.Warningf("Failed to set node info, phase: %s, reason: %s",
-			ni.State.Phase, ni.State.Reason)
+		klog.Warningf("Failed to set node info for %s, phase: %s, reason: %s",
+			ni.Name, ni.State.Phase, ni.State.Reason)
 		return
 	}
+
+	// Dry run, make sure all fields other than `State` are in the original state.
+	copy := ni.Clone()
+	copy.setNode(node)
+	copy.setNodeState(node)
+	if !copy.Ready() {
+		klog.Warningf("SetNode makes node %s not ready, phase: %s, reason: %s",
+			copy.Name, copy.State.Phase, copy.State.Reason)
+		// Set state of node to !Ready, left other fields untouched
+		ni.State = copy.State
+		return
+	}
+
+	ni.setNode(node)
+}
+
+// setNode sets kubernetes node object to nodeInfo object without assertion
+func (ni *NodeInfo) setNode(node *v1.Node) {
+	ni.setOversubscription(node)
+	ni.setNodeGPUInfo(node)
+	ni.setRevocableZone(node)
 
 	ni.Name = node.Name
 	ni.Node = node
@@ -319,14 +343,14 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 	for _, ti := range ni.Tasks {
 		switch ti.Status {
 		case Releasing:
-			ni.Idle.Sub(ti.Resreq)
+			ni.Idle.sub(ti.Resreq) // sub without assertion
 			ni.Releasing.Add(ti.Resreq)
 			ni.Used.Add(ti.Resreq)
 			ni.AddGPUResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Add(ti.Resreq)
 		default:
-			ni.Idle.Sub(ti.Resreq)
+			ni.Idle.sub(ti.Resreq) // sub without assertion
 			ni.Used.Add(ti.Resreq)
 			ni.AddGPUResource(ti.Pod)
 		}
@@ -339,7 +363,10 @@ func (ni *NodeInfo) allocateIdleResource(ti *TaskInfo) error {
 		return nil
 	}
 
-	return fmt.Errorf("selected node NotReady")
+	return &AllocateFailError{Reason: fmt.Sprintf(
+		"cannot allocate resource, <%s> idle: %s <%s/%s> req: %s",
+		ni.Name, ni.Idle.String(), ti.Namespace, ti.Name, ti.Resreq.String(),
+	)}
 }
 
 // AddTask is used to add a task in nodeInfo object

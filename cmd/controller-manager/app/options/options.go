@@ -25,11 +25,12 @@ import (
 )
 
 const (
-	defaultQPS           = 50.0
-	defaultBurst         = 100
-	defaultWorkers       = 3
-	defaultMaxRequeueNum = 15
-	defaultSchedulerName = "volcano"
+	defaultQPS            = 50.0
+	defaultBurst          = 100
+	defaultWorkers        = 3
+	defaultMaxRequeueNum  = 15
+	defaultSchedulerName  = "volcano"
+	defaultHealthzAddress = ":11251"
 )
 
 // ServerOption is the main context object for the controllers.
@@ -45,19 +46,17 @@ type ServerOption struct {
 	// With the current rate-limiter in use (5ms*2^(maxRetries-1)) the following numbers represent the times
 	// a job, queue or command is going to be requeued:
 	// 5ms, 10ms, 20ms, 40ms, 80ms, 160ms, 320ms, 640ms, 1.3s, 2.6s, 5.1s, 10.2s, 20.4s, 41s, 82s
-	MaxRequeueNum int
-	SchedulerName string
+	MaxRequeueNum  int
+	SchedulerNames []string
 	// HealthzBindAddress is the IP address and port for the health check server to serve on,
 	// defaulting to 0.0.0.0:11252
 	HealthzBindAddress string
+	EnableHealthz      bool
 }
 
 // NewServerOption creates a new CMServer with a default config.
 func NewServerOption() *ServerOption {
-	s := ServerOption{
-		HealthzBindAddress: ":11252",
-	}
-	return &s
+	return &ServerOption{}
 }
 
 // AddFlags adds flags for a specific CMServer to the specified FlagSet.
@@ -72,8 +71,10 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
 	fs.Uint32Var(&s.WorkerThreads, "worker-threads", defaultWorkers, "The number of threads syncing job operations concurrently. "+
 		"Larger number = faster job updating, but more CPU load")
-	fs.StringVar(&s.SchedulerName, "scheduler-name", defaultSchedulerName, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
+	fs.StringArrayVar(&s.SchedulerNames, "scheduler-name", []string{defaultSchedulerName}, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.IntVar(&s.MaxRequeueNum, "max-requeue-num", defaultMaxRequeueNum, "The number of times a job, queue or command will be requeued before it is dropped out of the queue")
+	fs.StringVar(&s.HealthzBindAddress, "healthz-address", defaultHealthzAddress, "The address to listen on for the health check server.")
+	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 }
 
 // CheckOptionOrDie checks the LockObjectNamespace.

@@ -131,6 +131,8 @@ func getTaskID(pod *v1.Pod) TaskID {
 	return ""
 }
 
+const TaskPriorityAnnotation = "volcano.sh/task-priority"
+
 // NewTaskInfo creates new taskInfo object for a Pod
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	initResReq := GetPodResourceRequest(pod)
@@ -164,6 +166,12 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 
 	if pod.Spec.Priority != nil {
 		ti.Priority = *pod.Spec.Priority
+	}
+
+	if taskPriority, ok := pod.Annotations[TaskPriorityAnnotation]; ok {
+		if priority, err := strconv.ParseInt(taskPriority, 10, 32); err == nil {
+			ti.Priority = int32(priority)
+		}
 	}
 
 	return ti
@@ -209,6 +217,13 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		},
 		LastTransaction: ti.LastTransaction.Clone(),
 	}
+}
+
+func (ti *TaskInfo) GetTaskSpecKey() TaskID {
+	if ti.Pod == nil {
+		return ""
+	}
+	return getTaskID(ti.Pod)
 }
 
 // String returns the taskInfo details in a string
@@ -374,7 +389,7 @@ func (ji *JobInfo) extractPreemptable(pg *PodGroup) bool {
 
 // extractRevocableZone return volcano.sh/revocable-zone value for pod/podgroup
 func (ji *JobInfo) extractRevocableZone(pg *PodGroup) string {
-	// check annotaion first
+	// check annotation first
 	if len(pg.Annotations) > 0 {
 		if value, found := pg.Annotations[v1beta1.RevocableZone]; found {
 			if value != "*" {
@@ -495,7 +510,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		Allocated:      EmptyResource(),
 		TotalRequest:   EmptyResource(),
 
-		PodGroup: ji.PodGroup,
+		PodGroup: ji.PodGroup.Clone(),
 
 		TaskStatusIndex:       map[TaskStatus]tasksMap{},
 		TaskMinAvailable:      ji.TaskMinAvailable,
@@ -647,6 +662,71 @@ func (ji *JobInfo) CheckTaskMinAvailable() bool {
 		}
 	}
 
+	return true
+}
+
+// CheckTaskMinAvailableReady return ready pods meet task minavaliable.
+func (ji *JobInfo) CheckTaskMinAvailableReady() bool {
+	if ji.MinAvailable < ji.TaskMinAvailableTotal {
+		return true
+	}
+	occupiedMap := map[TaskID]int32{}
+	for status, tasks := range ji.TaskStatusIndex {
+		if AllocatedStatus(status) ||
+			status == Succeeded {
+			for _, task := range tasks {
+				occupiedMap[getTaskID(task.Pod)] += 1
+			}
+			continue
+		}
+
+		if status == Pending {
+			for _, task := range tasks {
+				if task.InitResreq.IsEmpty() {
+					occupiedMap[getTaskID(task.Pod)] += 1
+				}
+			}
+		}
+	}
+	for taskId, minNum := range ji.TaskMinAvailable {
+		if occupiedMap[taskId] < minNum {
+			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskId, occupiedMap[taskId])
+			return false
+		}
+	}
+	return true
+}
+
+// CheckTaskMinAvailableReady return ready pods meet task minavaliable.
+func (ji *JobInfo) CheckTaskMinAvailablePipelined() bool {
+	if ji.MinAvailable < ji.TaskMinAvailableTotal {
+		return true
+	}
+	occupiedMap := map[TaskID]int32{}
+	for status, tasks := range ji.TaskStatusIndex {
+		if AllocatedStatus(status) ||
+			status == Succeeded ||
+			status == Pipelined {
+			for _, task := range tasks {
+				occupiedMap[getTaskID(task.Pod)] += 1
+			}
+			continue
+		}
+
+		if status == Pending {
+			for _, task := range tasks {
+				if task.InitResreq.IsEmpty() {
+					occupiedMap[getTaskID(task.Pod)] += 1
+				}
+			}
+		}
+	}
+	for taskId, minNum := range ji.TaskMinAvailable {
+		if occupiedMap[taskId] < minNum {
+			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskId, occupiedMap[taskId])
+			return false
+		}
+	}
 	return true
 }
 

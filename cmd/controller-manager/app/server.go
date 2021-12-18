@@ -54,8 +54,10 @@ func Run(opt *options.ServerOption) error {
 		return err
 	}
 
-	if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-controller"); err != nil {
-		return err
+	if opt.EnableHealthz {
+		if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-controller"); err != nil {
+			return err
+		}
 	}
 
 	run := startControllers(config, opt)
@@ -113,7 +115,7 @@ func Run(opt *options.ServerOption) error {
 func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx context.Context) {
 	controllerOpt := &framework.ControllerOption{}
 
-	controllerOpt.SchedulerName = opt.SchedulerName
+	controllerOpt.SchedulerNames = opt.SchedulerNames
 	controllerOpt.WorkerNum = opt.WorkerThreads
 	controllerOpt.MaxRequeueNum = opt.MaxRequeueNum
 
