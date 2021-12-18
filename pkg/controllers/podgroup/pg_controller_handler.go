@@ -24,6 +24,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog"
+	quotacore "k8s.io/kubernetes/pkg/quota/v1/evaluator/core"
+	"k8s.io/utils/clock"
 
 	"volcano.sh/apis/pkg/apis/helpers"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -146,40 +148,9 @@ func newPGOwnerReferences(pod *v1.Pod) []metav1.OwnerReference {
 	return []metav1.OwnerReference{*ref}
 }
 
-// addResourceList add list resource quantity
-func addResourceList(list, req, limit v1.ResourceList) {
-	for name, quantity := range req {
-		if value, ok := list[name]; !ok {
-			list[name] = quantity.DeepCopy()
-		} else {
-			value.Add(quantity)
-			list[name] = value
-		}
-	}
-
-	if req != nil {
-		return
-	}
-
-	// If Requests is omitted for a container,
-	// it defaults to Limits if that is explicitly specified.
-	for name, quantity := range limit {
-		if value, ok := list[name]; !ok {
-			list[name] = quantity.DeepCopy()
-		} else {
-			value.Add(quantity)
-			list[name] = value
-		}
-	}
-}
-
 // calcPGMinResources calculate podgroup minimum resource
 func calcPGMinResources(pod *v1.Pod) *v1.ResourceList {
-	pgMinRes := v1.ResourceList{}
-
-	for _, c := range pod.Spec.Containers {
-		addResourceList(pgMinRes, c.Resources.Requests, c.Resources.Limits)
-	}
+	pgMinRes, _ := quotacore.PodUsageFunc(pod, clock.RealClock{})
 
 	return &pgMinRes
 }
