@@ -219,6 +219,13 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 	}
 }
 
+func (ti *TaskInfo) GetTaskSpecKey() TaskID {
+	if ti.Pod == nil {
+		return ""
+	}
+	return getTaskID(ti.Pod)
+}
+
 // String returns the taskInfo details in a string
 func (ti TaskInfo) String() string {
 	return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v"+
@@ -382,7 +389,7 @@ func (ji *JobInfo) extractPreemptable(pg *PodGroup) bool {
 
 // extractRevocableZone return volcano.sh/revocable-zone value for pod/podgroup
 func (ji *JobInfo) extractRevocableZone(pg *PodGroup) string {
-	// check annotaion first
+	// check annotation first
 	if len(pg.Annotations) > 0 {
 		if value, found := pg.Annotations[v1beta1.RevocableZone]; found {
 			if value != "*" {
