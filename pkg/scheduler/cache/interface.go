@@ -20,6 +20,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/record"
 	scheduling "k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -76,6 +77,9 @@ type Cache interface {
 
 	// SetMetricsConf set the metrics server related configuration
 	SetMetricsConf(conf map[string]string)
+
+	// EventRecorder returns the event recorder
+	EventRecorder() record.EventRecorder
 }
 
 // VolumeBinder interface for allocate and bind volumes
