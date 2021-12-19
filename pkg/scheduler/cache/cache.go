@@ -70,8 +70,8 @@ func init() {
 }
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerName string, defaultQueue string, nodeSelectors []string) Cache {
-	return newSchedulerCache(config, schedulerName, defaultQueue, nodeSelectors)
+func New(config *rest.Config, schedulerName string, defaultQueue string, nodeSelectors []string, ehc *options.EventHandlerConfiguration) Cache {
+	return newSchedulerCache(config, schedulerName, defaultQueue, nodeSelectors, ehc)
 }
 
 // SchedulerCache cache for the kube batch
@@ -84,6 +84,14 @@ type SchedulerCache struct {
 	// schedulerName is the name for volcano scheduler
 	schedulerName      string
 	nodeSelectorLabels map[string]string
+
+	// CustomInformers is an interface list for custom informers.
+	// It is the entry point for custom object event processing, which can be
+	// accessed to the scheduling framework by implementing the SharedInformer interface.
+	// These shared informer will start and run at the beginning of the scheduler.
+	// The CustomInformers will be used along with the EventHandler framework.
+	// Initialize the CustomInformers, while initializing the EventHandler object.
+	CustomInformers []cache.SharedIndexInformer
 
 	podInformer                infov1.PodInformer
 	nodeInformer               infov1.NodeInformer
@@ -336,7 +344,7 @@ func (pgb *podgroupBinder) Bind(job *schedulingapi.JobInfo, cluster string) (*sc
 	return job, nil
 }
 
-func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue string, nodeSelectors []string) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue string, nodeSelectors []string, ehc *options.EventHandlerConfiguration) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -399,6 +407,13 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		}
 
 	}
+
+	eh, err := GetEventHandler(ehc.Name, ehc.ConfigFile, sc, config)
+	if err != nil {
+		klog.Fatalf("Get event handler failed for %v.", err)
+		return sc
+	}
+
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: eventClient.CoreV1().Events("")})
@@ -460,9 +475,9 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 				return false
 			},
 			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc:    sc.AddNode,
-				UpdateFunc: sc.UpdateNode,
-				DeleteFunc: sc.DeleteNode,
+				AddFunc:    eh.AddNode,
+				UpdateFunc: eh.UpdateNode,
+				DeleteFunc: eh.DeleteNode,
 			},
 		},
 		0,
@@ -520,26 +535,26 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 				}
 			},
 			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc:    sc.AddPod,
-				UpdateFunc: sc.UpdatePod,
-				DeleteFunc: sc.DeletePod,
+				AddFunc:    eh.AddPod,
+				UpdateFunc: eh.UpdatePod,
+				DeleteFunc: eh.DeletePod,
 			},
 		})
 
 	if options.ServerOpts.EnablePriorityClass {
 		sc.pcInformer = informerFactory.Scheduling().V1().PriorityClasses()
 		sc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    sc.AddPriorityClass,
-			UpdateFunc: sc.UpdatePriorityClass,
-			DeleteFunc: sc.DeletePriorityClass,
+			AddFunc:    eh.AddPriorityClass,
+			UpdateFunc: eh.UpdatePriorityClass,
+			DeleteFunc: eh.DeletePriorityClass,
 		})
 	}
 
 	sc.quotaInformer = informerFactory.Core().V1().ResourceQuotas()
 	sc.quotaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddResourceQuota,
-		UpdateFunc: sc.UpdateResourceQuota,
-		DeleteFunc: sc.DeleteResourceQuota,
+		AddFunc:    eh.AddResourceQuota,
+		UpdateFunc: eh.UpdateResourceQuota,
+		DeleteFunc: eh.DeleteResourceQuota,
 	})
 
 	vcinformers := vcinformer.NewSharedInformerFactory(sc.vcClient, 0)
@@ -558,25 +573,25 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 				}
 			},
 			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc:    sc.AddPodGroupV1beta1,
-				UpdateFunc: sc.UpdatePodGroupV1beta1,
-				DeleteFunc: sc.DeletePodGroupV1beta1,
+				AddFunc:    eh.AddPodGroup,
+				UpdateFunc: eh.UpdatePodGroup,
+				DeleteFunc: eh.DeletePodGroup,
 			},
 		})
 
 	// create informer(v1beta1) for Queue information
 	sc.queueInformerV1beta1 = vcinformers.Scheduling().V1beta1().Queues()
 	sc.queueInformerV1beta1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddQueueV1beta1,
-		UpdateFunc: sc.UpdateQueueV1beta1,
-		DeleteFunc: sc.DeleteQueueV1beta1,
+		AddFunc:    eh.AddQueue,
+		UpdateFunc: eh.UpdateQueue,
+		DeleteFunc: eh.DeleteQueue,
 	})
 
 	sc.cpuInformer = vcinformers.Nodeinfo().V1alpha1().Numatopologies()
 	sc.cpuInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddNumaInfoV1alpha1,
-		UpdateFunc: sc.UpdateNumaInfoV1alpha1,
-		DeleteFunc: sc.DeleteNumaInfoV1alpha1,
+		AddFunc:    eh.AddNUMATopology,
+		UpdateFunc: eh.UpdateNUMATopology,
+		DeleteFunc: eh.DeleteNUMATopology,
 	})
 	return sc
 }
@@ -585,6 +600,9 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	sc.informerFactory.Start(stopCh)
 	sc.vcInformerFactory.Start(stopCh)
+	for _, ci := range sc.CustomInformers {
+		go ci.Run(stopCh)
+	}
 	// Re-sync error tasks.
 	go wait.Until(sc.processResyncTask, 0, stopCh)
 
@@ -598,6 +616,20 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) {
 	sc.informerFactory.WaitForCacheSync(stopCh)
 	sc.vcInformerFactory.WaitForCacheSync(stopCh)
+	sc.WaitForCustomCacheSync(stopCh)
+}
+
+// WaitForCustomCacheSync waits for caches of custom informers to populate.
+// The function returns when all informers are synchronized.
+func (sc *SchedulerCache) WaitForCustomCacheSync(stopCh <-chan struct{}) {
+	cache.WaitForCacheSync(stopCh, func() []cache.InformerSynced {
+		var informerSynced []cache.InformerSynced
+		for _, ci := range sc.CustomInformers {
+			informerSynced = append(informerSynced, ci.HasSynced)
+		}
+
+		return informerSynced
+	}()...)
 }
 
 // findJobAndTask returns job and the task info

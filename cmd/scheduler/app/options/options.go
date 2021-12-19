@@ -40,6 +40,11 @@ const (
 	defaultMinPercentageOfNodesToFind = 5
 	defaultMinNodesToFind             = 100
 	defaultPercentageOfNodesToFind    = 100
+
+	// DefaultEventHandlerName is the name of the default event handler.
+	// If external eventHandler was not specified,
+	// use the default eventHandler to process the object event.
+	DefaultEventHandlerName = "default"
 )
 
 // ServerOption is the main context object for the controller manager.
@@ -68,10 +73,20 @@ type ServerOption struct {
 	PercentageOfNodesToFind    int32
 
 	NodeSelector []string
+	// EventHandler holds configuration for event handler related features.
+	EventHandler EventHandlerConfiguration
 }
 
 // ServerOpts server options.
 var ServerOpts *ServerOption
+
+// EventHandlerConfiguration contains basically elements about event handler.
+type EventHandlerConfiguration struct {
+	// Name is the handler for event processing.
+	Name string
+	// ConfigFile is the path to the event handler configuration file.
+	ConfigFile string
+}
 
 // NewServerOption creates a new CMServer with a default config.
 func NewServerOption() *ServerOption {
@@ -114,6 +129,11 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")
 	fs.StringSliceVar(&s.NodeSelector, "node-selector", nil, "volcano only work with the labeled node, like: --node-selector=volcano.sh/role:train --node-selector=volcano.sh/role:serving")
+
+	fs.StringVar(&s.EventHandler.Name, "event-handler", DefaultEventHandlerName,
+		"The name of event handler. Empty string for default event handler.")
+	fs.StringVar(&s.EventHandler.ConfigFile, "event-handler-config", s.EventHandler.ConfigFile,
+		"The path to the event handler configuration file. Empty string for no configuration file.")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled.

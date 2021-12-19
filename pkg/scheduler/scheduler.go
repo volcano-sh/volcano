@@ -27,6 +27,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
 
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/filewatcher"
 	schedcache "volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -57,6 +58,7 @@ func NewScheduler(
 	period time.Duration,
 	defaultQueue string,
 	nodeSelectors []string,
+	ehc *options.EventHandlerConfiguration,
 ) (*Scheduler, error) {
 	var watcher filewatcher.FileWatcher
 	if schedulerConf != "" {
@@ -71,7 +73,7 @@ func NewScheduler(
 	scheduler := &Scheduler{
 		schedulerConf:  schedulerConf,
 		fileWatcher:    watcher,
-		cache:          schedcache.New(config, schedulerName, defaultQueue, nodeSelectors),
+		cache:          schedcache.New(config, schedulerName, defaultQueue, nodeSelectors, ehc),
 		schedulePeriod: period,
 	}
 
