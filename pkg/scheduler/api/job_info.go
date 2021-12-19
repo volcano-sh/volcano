@@ -162,6 +162,11 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		},
 	}
 
+	if taskPriority, ok := pod.Labels["volcano.sh/task-priority"]; ok {
+		if priority, err := strconv.ParseInt(taskPriority, 10, 32); err == nil {
+			ti.Priority = int32(priority)
+		}
+	}
 	if pod.Spec.Priority != nil {
 		ti.Priority = *pod.Spec.Priority
 	}
@@ -495,7 +500,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		Allocated:      EmptyResource(),
 		TotalRequest:   EmptyResource(),
 
-		PodGroup: ji.PodGroup,
+		PodGroup: ji.PodGroup.Clone(),
 
 		TaskStatusIndex:       map[TaskStatus]tasksMap{},
 		TaskMinAvailable:      ji.TaskMinAvailable,
