@@ -131,6 +131,8 @@ func getTaskID(pod *v1.Pod) TaskID {
 	return ""
 }
 
+const TaskPriorityAnnotation = "volcano.sh/task-priority"
+
 // NewTaskInfo creates new taskInfo object for a Pod
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	initResReq := GetPodResourceRequest(pod)
@@ -162,13 +164,14 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		},
 	}
 
-	if taskPriority, ok := pod.Labels["volcano.sh/task-priority"]; ok {
+	if pod.Spec.Priority != nil {
+		ti.Priority = *pod.Spec.Priority
+	}
+
+	if taskPriority, ok := pod.Annotations[TaskPriorityAnnotation]; ok {
 		if priority, err := strconv.ParseInt(taskPriority, 10, 32); err == nil {
 			ti.Priority = int32(priority)
 		}
-	}
-	if pod.Spec.Priority != nil {
-		ti.Priority = *pod.Spec.Priority
 	}
 
 	return ti
@@ -214,6 +217,13 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		},
 		LastTransaction: ti.LastTransaction.Clone(),
 	}
+}
+
+func (ti *TaskInfo) GetTaskSpecKey() TaskID {
+	if ti.Pod == nil {
+		return ""
+	}
+	return getTaskID(ti.Pod)
 }
 
 // String returns the taskInfo details in a string
@@ -379,7 +389,7 @@ func (ji *JobInfo) extractPreemptable(pg *PodGroup) bool {
 
 // extractRevocableZone return volcano.sh/revocable-zone value for pod/podgroup
 func (ji *JobInfo) extractRevocableZone(pg *PodGroup) string {
-	// check annotaion first
+	// check annotation first
 	if len(pg.Annotations) > 0 {
 		if value, found := pg.Annotations[v1beta1.RevocableZone]; found {
 			if value != "*" {
