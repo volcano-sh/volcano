@@ -70,8 +70,8 @@ func init() {
 }
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerName string, defaultQueue string, nodeSelector []string) Cache {
-	return newSchedulerCache(config, schedulerName, defaultQueue, nodeSelector)
+func New(config *rest.Config, schedulerName string, defaultQueue string, nodeSelectors []string) Cache {
+	return newSchedulerCache(config, schedulerName, defaultQueue, nodeSelectors)
 }
 
 // SchedulerCache cache for the kube batch
@@ -336,7 +336,7 @@ func (pgb *podgroupBinder) Bind(job *schedulingapi.JobInfo, cluster string) (*sc
 	return job, nil
 }
 
-func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue string, nodeSelector []string) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue string, nodeSelectors []string) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -381,8 +381,8 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 
 		NodeList: []string{},
 	}
-	if len(nodeSelector) > 0 {
-		for _, nodeSelectorLabel := range nodeSelector {
+	if len(nodeSelectors) > 0 {
+		for _, nodeSelectorLabel := range nodeSelectors {
 			nodeSelectorLabelLen := len(nodeSelectorLabel)
 			if nodeSelectorLabelLen <= 0 {
 				continue
