@@ -18,12 +18,13 @@ package tdm
 
 import (
 	"fmt"
+	"k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
+	k8sFramework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -183,7 +184,7 @@ func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 			return score, nil
 		}
 
-		score = float64(v1alpha1.MaxNodeScore)
+		score = float64(k8sFramework.MaxNodeScore)
 
 		klog.V(4).Infof("TDM score for Task %s/%s on node %s is: %v", task.Namespace, task.Name, node.Name, score)
 		return score, nil
