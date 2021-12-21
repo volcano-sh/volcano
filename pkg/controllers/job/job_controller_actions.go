@@ -373,7 +373,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		go func(taskName string, podToCreateEachTask []*v1.Pod) {
 			taskIndex := jobhelpers.GetTasklndexUnderJob(taskName, job)
 			if job.Spec.Tasks[taskIndex].DependsOn != nil {
-				cc.waitDependsOnTaskMeetCondition(taskName, podToCreateEachTask, job)
+				cc.waitDependsOnTaskMeetCondition(taskName, taskIndex, podToCreateEachTask, job)
 			}
 
 			for _, pod := range podToCreateEachTask {
@@ -474,12 +474,11 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	return nil
 }
 
-func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskName string, podToCreateEachTask []*v1.Pod, job *batch.Job) {
-	taskIndex := jobhelpers.GetTasklndexUnderJob(taskName, job)
+func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskName string, taskIndex int, podToCreateEachTask []*v1.Pod, job *batch.Job) {
 	if job.Spec.Tasks[taskIndex].DependsOn != nil {
 		dependsOn := *job.Spec.Tasks[taskIndex].DependsOn
 		if len(dependsOn.Name) > 1 && dependsOn.Iteration == batch.IterationAny {
-			wait.PollInfinite(100*time.Millisecond, func() (bool, error) {
+			wait.PollInfinite(detectionPeriodOfDependsOntask, func() (bool, error) {
 				for _, task := range dependsOn.Name {
 					if cc.isDependsOnPodsReady(task, job) {
 						return true, nil
@@ -489,7 +488,7 @@ func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskName string, podToCr
 			})
 		} else {
 			for _, dependsOnTask := range dependsOn.Name {
-				wait.PollInfinite(100*time.Millisecond, func() (bool, error) {
+				wait.PollInfinite(detectionPeriodOfDependsOntask, func() (bool, error) {
 					if cc.isDependsOnPodsReady(dependsOnTask, job) {
 						return true, nil
 					}

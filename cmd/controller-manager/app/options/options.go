@@ -18,6 +18,7 @@ package options
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/pflag"
 
@@ -25,12 +26,13 @@ import (
 )
 
 const (
-	defaultQPS            = 50.0
-	defaultBurst          = 100
-	defaultWorkers        = 3
-	defaultMaxRequeueNum  = 15
-	defaultSchedulerName  = "volcano"
-	defaultHealthzAddress = ":11251"
+	defaultQPS                            = 50.0
+	defaultBurst                          = 100
+	defaultWorkers                        = 3
+	defaultMaxRequeueNum                  = 15
+	defaultSchedulerName                  = "volcano"
+	defaultHealthzAddress                 = ":11251"
+	defaultDetectionPeriodOfDependsOntask = 100 * time.Millisecond
 )
 
 // ServerOption is the main context object for the controllers.
@@ -52,6 +54,9 @@ type ServerOption struct {
 	// defaulting to 0.0.0.0:11252
 	HealthzBindAddress string
 	EnableHealthz      bool
+	// For dependent tasks, there is a detection cycle inside volcano
+	// It indicates how often to detect the status of dependent tasks
+	DetectionPeriodOfDependsOntask time.Duration
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -75,6 +80,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.IntVar(&s.MaxRequeueNum, "max-requeue-num", defaultMaxRequeueNum, "The number of times a job, queue or command will be requeued before it is dropped out of the queue")
 	fs.StringVar(&s.HealthzBindAddress, "healthz-address", defaultHealthzAddress, "The address to listen on for the health check server.")
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
+	fs.DurationVar(&s.DetectionPeriodOfDependsOntask, "detection-period-of-dependson-task", defaultDetectionPeriodOfDependsOntask, "It indicates how often to detect the status of dependent tasks."+
+		"e.g. --detection-period-of-dependson-task=1s")
 }
 
 // CheckOptionOrDie checks the LockObjectNamespace.

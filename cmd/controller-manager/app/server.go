@@ -38,6 +38,7 @@ import (
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/cmd/controller-manager/app/options"
 	"volcano.sh/volcano/pkg/controllers/framework"
+	"volcano.sh/volcano/pkg/controllers/job"
 	"volcano.sh/volcano/pkg/kube"
 )
 
@@ -59,6 +60,8 @@ func Run(opt *options.ServerOption) error {
 			return err
 		}
 	}
+
+	job.SetDetectionPeriodOfDependsOntask(opt.DetectionPeriodOfDependsOntask)
 
 	run := startControllers(config, opt)
 
