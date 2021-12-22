@@ -110,10 +110,32 @@ job.batch/volcano-admission-init   1/1           48s        96s
 
 ```
 
+### Install descheduler with YAML files(optional)
+If you want to run descheduler with Volcano, just run the following command.
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/master/installer/descheduler.yaml
+```
+
+Then you will get the outputs as follows:
+
+```bash
+[root@volcano] kubectl get configmap -n kube-system
+NAME                                 DATA   AGE
+descheduler-policy-configmap         1      1m
+
+[root@volcano] kubectl get deployment -n kube-system
+NAME                        READY   UP-TO-DATE   AVAILABLE   AGE
+descheduler                 1/1     1            1           1m
+```
+
+More details for descheduler can be referred to [kubernetes-sigs/descheduler](https://github.com/kubernetes-sigs/descheduler) 
+
+Note: this feature is **beta** version for Volcano. Suggest to just make use in non-production environments temporarily.
+
 ### Install from code
 
 If you don't have a kubernetes cluster, try one-click install from code base:
-
 ```bash
 ./hack/local-up-volcano.sh
 ```

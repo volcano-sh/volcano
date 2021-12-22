@@ -1,0 +1,129 @@
+# fork from kubernetes-sigs/descheduler/kubernetes/base/rbac.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: descheduler-cluster-role
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "update"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "watch", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/eviction"]
+    verbs: ["create"]
+  - apiGroups: ["scheduling.k8s.io"]
+    resources: ["priorityclasses"]
+    verbs: ["get", "watch", "list"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: descheduler-sa
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: descheduler-cluster-role-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: descheduler-cluster-role
+subjects:
+  - name: descheduler-sa
+    kind: ServiceAccount
+    namespace: kube-system
+---
+# fork from kubernetes-sigs/descheduler/kubernetes/base/rbac.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: descheduler-policy-configmap
+  namespace: kube-system
+data:
+  policy.yaml: |
+    apiVersion: "descheduler/v1alpha1"
+    kind: "DeschedulerPolicy"
+    strategies:
+      "RemoveDuplicates":
+         enabled: true
+      "RemovePodsViolatingInterPodAntiAffinity":
+         enabled: true
+      "LowNodeUtilization":
+         enabled: true
+         params:
+           nodeResourceUtilizationThresholds:
+             thresholds:
+               "cpu" : 20
+               "memory": 20
+               "pods": 20
+             targetThresholds:
+               "cpu" : 50
+               "memory": 50
+               "pods": 50
+---
+# fork from kubernetes-sigs/descheduler/kubernetes/deployment/deployment.yaml
+# allow container run as root by default
+# change the image to be v0.19.0 to match the k8s version master branch depends on
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: descheduler
+  namespace: kube-system
+  labels:
+    app: descheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: descheduler
+  template:
+    metadata:
+      labels:
+        app: descheduler
+    spec:
+      priorityClassName: system-cluster-critical
+      serviceAccountName: descheduler-sa
+      containers:
+        - name: descheduler
+          image: k8s.gcr.io/descheduler/descheduler:v0.19.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - "/bin/descheduler"
+          args:
+            - "--policy-config-file"
+            - "/policy-dir/policy.yaml"
+            - "--descheduling-interval"
+            - "5m"
+            - "--v"
+            - "3"
+          ports:
+            - containerPort: 10258
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: false
+          volumeMounts:
+            - mountPath: /policy-dir
+              name: policy-volume
+      volumes:
+        - name: policy-volume
+          configMap:
+            name: descheduler-policy-configmap
