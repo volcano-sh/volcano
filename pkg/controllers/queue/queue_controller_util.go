@@ -17,9 +17,9 @@ limitations under the License.
 package queue
 
 import (
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 // IsQueueReference return if ownerReference is Queue Kind.

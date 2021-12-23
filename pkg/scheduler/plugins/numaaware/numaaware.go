@@ -21,8 +21,6 @@ import (
 	"fmt"
 	"sync"
 
-	"volcano.sh/volcano/pkg/scheduler/plugins/util"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
@@ -32,11 +30,11 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/cm/topologymanager/bitmask"
 
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
-
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/numaaware/policy"
 	"volcano.sh/volcano/pkg/scheduler/plugins/numaaware/provider/cpumanager"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
 const (
