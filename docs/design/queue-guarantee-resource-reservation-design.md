@@ -3,6 +3,11 @@
 @[qiankunli](https://github.com/qiankunli); Oct 11rd, 2021
 
 ## Motivation
+
+In my case, we use volcano to schedule training job(tfjob/pytorchjob/vcjob) in k8s cluster, there are many groups such as ad/recommend/tts, a queue represents a group.
+In order to ensure the full utilization of resources, we generally do not configure `queue.capability`. but this will cause a queue to running out all resources, and make the new job of other queue unable to execute.
+so we want to reserve some resources for a queue, so that any new job in the queue can be submitted immediately.
+
 As [issue 1101](https://github.com/volcano-sh/volcano/issues/1101) mentioned, Volcano should support resource reservation
 for specified queue. Requirement detail as follows:
 * Support reserving specified resources for specified queue
@@ -109,4 +114,46 @@ then we create queue4 and submit a new job(request 2GPUs) in queue4
 
 1. the overcommit plugin will deny the new job in queue4 because there is no free GPUs in cluster. so,we should change the logic, if `job.request < queue4.guarantee`, the job can be `Inqueue` whether there are free GPUs or not.
 2. we should enable the reclaim action, so that volcano can reclaim the task in overused queue
+
+## Usage
+Configure guarantee for queue
+```yaml
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: q1
+spec:
+  reclaimable: true
+  weight: 1
+  guarantee:             // reservation key word
+    resource:            // specified reserving resource
+      cpu: 2c
+      memory: 4G
+```
+Enable reclaim action for scheduler.
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: volcano-scheduler-configmap
+  namespace: volcano-system
+data:
+  volcano-scheduler.conf: |
+    actions: "enqueue,allocate,reclaim,backfill"
+    tiers:
+    - plugins:
+      - name: priority
+      - name: gang
+      - name: conformance
+    - plugins:
+      - name: overcommit
+      - name: drf
+      - name: predicates
+      - name: proportion
+      - name: nodeorder
+      - name: binpack
+```
+
+
+
 
