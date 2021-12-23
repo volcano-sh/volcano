@@ -20,7 +20,6 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/go-multierror"
-
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/kubernetes/pkg/apis/core/validation"
 
@@ -188,4 +187,63 @@ func validateIO(volumes []batchv1alpha1.VolumeSpec) error {
 		volumeMap[volume.MountPath] = true
 	}
 	return nil
+}
+
+// topoSort uses topo sort to sort job tasks based on dependsOn field
+// it will return an array contains all sorted task names and a bool which indicates whether it's a valid dag
+func topoSort(job *batchv1alpha1.Job) ([]string, bool) {
+	graph, inDegree, taskList := makeGraph(job)
+	var taskStack []string
+	for task, degree := range inDegree {
+		if degree == 0 {
+			taskStack = append(taskStack, task)
+		}
+	}
+
+	sortedTasks := make([]string, 0)
+	for len(taskStack) > 0 {
+		length := len(taskStack)
+		var out string
+		out, taskStack = taskStack[length-1], taskStack[:length-1]
+		sortedTasks = append(sortedTasks, out)
+		for in, connected := range graph[out] {
+			if connected {
+				graph[out][in] = false
+				inDegree[in]--
+				if inDegree[in] == 0 {
+					taskStack = append(taskStack, in)
+				}
+			}
+		}
+	}
+
+	isDag := len(sortedTasks) == len(taskList)
+	if !isDag {
+		return nil, false
+	}
+
+	return sortedTasks, isDag
+}
+
+func makeGraph(job *batchv1alpha1.Job) (map[string]map[string]bool, map[string]int, []string) {
+	graph := make(map[string]map[string]bool)
+	inDegree := make(map[string]int)
+	taskList := make([]string, 0)
+
+	for _, task := range job.Spec.Tasks {
+		taskList = append(taskList, task.Name)
+		inDegree[task.Name] = 0
+		if task.DependsOn != nil {
+			for _, dependOnTask := range task.DependsOn.Name {
+				if graph[dependOnTask] == nil {
+					graph[dependOnTask] = make(map[string]bool)
+				}
+
+				graph[dependOnTask][task.Name] = true
+				inDegree[task.Name]++
+			}
+		}
+	}
+
+	return graph, inDegree, taskList
 }

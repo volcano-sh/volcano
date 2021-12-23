@@ -18,6 +18,7 @@ package priority
 
 import (
 	"k8s.io/klog"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
