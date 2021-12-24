@@ -36,4 +36,7 @@ const (
 	OversubscriptionMemory = "volcano.sh/oversubscription-memory"
 	// OfflineJobEvicting node will not schedule pod due to offline job evicting
 	OfflineJobEvicting = "volcano.sh/offline-job-evicting"
+
+	// topologyDecisionAnnotation is the key of topology decision about pod request resource
+	topologyDecisionAnnotation = "volcano.sh/topology-decision"
 )

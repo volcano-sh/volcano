@@ -17,6 +17,7 @@ limitations under the License.
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -117,14 +118,27 @@ func GetPodRevocableZone(pod *v1.Pod) string {
 	return ""
 }
 
-// GetPodTopologyPolicy return volcano.sh/numa-topology-policy value for pod
-func GetPodTopologyPolicy(pod *v1.Pod) string {
+// GetPodTopologyInfo return volcano.sh/numa-topology-policy value for pod
+func GetPodTopologyInfo(pod *v1.Pod) *TopologyInfo {
+	info := TopologyInfo{
+		ResMap: make(map[int]v1.ResourceList),
+	}
+
 	if len(pod.Annotations) > 0 {
 		if value, found := pod.Annotations[v1beta1.NumaPolicyKey]; found {
-			return value
+			info.Policy = value
+		}
+
+		if value, found := pod.Annotations[topologyDecisionAnnotation]; found {
+			decision := PodResourceDecision{}
+			err := json.Unmarshal([]byte(value), &decision)
+			if err == nil {
+				info.ResMap = decision.NUMAResources
+			}
 		}
 	}
-	return ""
+
+	return &info
 }
 
 // GetPodResourceWithoutInitContainers returns Pod's resource request, it does not contain
