@@ -1,1 +1,1 @@
-{{- tpl ($.Files.Get (printf "crd/%s/batch.volcano.sh_jobs.yaml" .Values.basic.crd_version)) . }}
+{{- tpl ($.Files.Get (printf "crd/%s/batch.volcano.sh_jobs.yaml" (include "crd_version" .))) . }}

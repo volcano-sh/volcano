@@ -1,1 +1,1 @@
-{{- tpl ($.Files.Get (printf "crd/%s/scheduling.volcano.sh_podgroups.yaml" .Values.basic.crd_version)) . }}
+{{- tpl ($.Files.Get (printf "crd/%s/scheduling.volcano.sh_podgroups.yaml" (include "crd_version" .))) . }}
