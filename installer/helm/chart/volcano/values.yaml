@@ -9,6 +9,6 @@ basic:
 
   image_pull_secret: ""
   admission_port: 8443
-  crd_version: "v1beta1"
+  crd_version: "v1"
 custom:
   metrics_enable: "false"
