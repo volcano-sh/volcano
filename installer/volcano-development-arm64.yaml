@@ -380,7 +380,7 @@ spec:
 
 ---
 # Source: volcano/templates/batch_v1alpha1_job.yaml
-apiVersion: apiextensions.k8s.io/v1
+apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
   name: jobs.batch.volcano.sh
@@ -584,7 +584,7 @@ status:
 
 ---
 # Source: volcano/templates/bus_v1alpha1_command.yaml
-apiVersion: apiextensions.k8s.io/v1
+apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
   name: commands.bus.volcano.sh
@@ -632,7 +632,7 @@ status:
 
 ---
 # Source: volcano/templates/scheduling_v1beta1_podgroup.yaml
-apiVersion: apiextensions.k8s.io/v1
+apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
   name: podgroups.scheduling.volcano.sh
@@ -681,7 +681,7 @@ spec:
 
 ---
 # Source: volcano/templates/scheduling_v1beta1_queue.yaml
-apiVersion: apiextensions.k8s.io/v1
+apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
   name: queues.scheduling.volcano.sh
