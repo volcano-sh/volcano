@@ -1,1 +1,1 @@
-{{- tpl ($.Files.Get (printf "crd/%s/nodeinfo.volcano.sh_numatopologies.yaml" .Values.basic.crd_version)) . }}
+{{- tpl ($.Files.Get (printf "crd/%s/nodeinfo.volcano.sh_numatopologies.yaml" (include "crd_version" .))) . }}
