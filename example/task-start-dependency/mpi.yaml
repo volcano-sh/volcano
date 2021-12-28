@@ -1,0 +1,54 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: lm-mpi-job
+spec:
+  minAvailable: 3
+  schedulerName: volcano
+  plugins:
+    ssh: []
+    svc: []
+  tasks:
+    - replicas: 1
+      name: mpimaster
+      policies:
+        - event: TaskCompleted
+          action: CompleteJob
+      template:
+        spec:
+          containers:
+            - command:
+                - /bin/sh
+                - -c
+                - |
+                  MPI_HOST=`cat /etc/volcano/mpiworker.host | tr "\n" ","`;
+                  mkdir -p /var/run/sshd; /usr/sbin/sshd;
+                  mpiexec --allow-run-as-root --host ${MPI_HOST} -np 10 mpi_hello_world;
+              image: volcanosh/example-mpi:0.0.1
+              name: mpimaster
+              ports:
+                - containerPort: 22
+                  name: mpijob-port
+              workingDir: /home
+          restartPolicy: OnFailure
+      dependsOn:
+        name: 
+        - "mpiworker"
+    - replicas: 10
+      name: mpiworker
+      template:
+        spec:
+          containers:
+            - command:
+                - /bin/sh
+                - -c
+                - |
+                  mkdir -p /var/run/sshd; /usr/sbin/sshd -D;
+              image: volcanosh/example-mpi:0.0.1
+              name: mpiworker
+              ports:
+                - containerPort: 22
+                  name: mpijob-port
+              workingDir: /home
+          restartPolicy: OnFailure
+---
