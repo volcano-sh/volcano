@@ -111,8 +111,8 @@ type SchedulerCache struct {
 	deletedJobs workqueue.RateLimitingInterface
 }
 
-type defaultBinder struct {
-	kubeclient *kubernetes.Clientset
+type DefaultBinder struct {
+	// kubeclient *kubernetes.Clientset
 }
 
 //Bind will send bind request to api server
@@ -310,7 +310,6 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
 	}
-
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: eventClient.CoreV1().Events("")})
