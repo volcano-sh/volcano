@@ -119,8 +119,8 @@ type SchedulerCache struct {
 	informerFactory informers.SharedInformerFactory
 }
 
-type defaultBinder struct {
-	kubeclient *kubernetes.Clientset
+type DefaultBinder struct {
+	// kubeclient *kubernetes.Clientset
 }
 
 //Bind will send bind request to api server
@@ -359,7 +359,6 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 
 		NodeList: []string{},
 	}
-
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: eventClient.CoreV1().Events("")})
