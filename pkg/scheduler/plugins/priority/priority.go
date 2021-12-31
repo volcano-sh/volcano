@@ -118,7 +118,6 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return ji.ReadyTaskNum()+ji.WaitingTaskNum() < int32(len(ji.Tasks))
 	}
 	ssn.AddJobStarvingFns(pp.Name(), jobStarvingFn)
-
 }
 
 func (pp *priorityPlugin) OnSessionClose(ssn *framework.Session) {}

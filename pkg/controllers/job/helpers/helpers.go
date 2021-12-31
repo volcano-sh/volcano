@@ -47,7 +47,7 @@ func GetPodIndexUnderTask(pod *v1.Pod) string {
 	return ""
 }
 
-// ComparePodByIndex by pod index
+// CompareTask by pod index
 func CompareTask(lv, rv *api.TaskInfo) bool {
 	lStr := GetPodIndexUnderTask(lv.Pod)
 	rStr := GetPodIndexUnderTask(rv.Pod)

@@ -128,12 +128,12 @@ type SchedulerCache struct {
 	batchNum        int
 }
 
-type defaultBinder struct {
-	kubeclient *kubernetes.Clientset
+type DefaultBinder struct {
+	// kubeclient *kubernetes.Clientset
 }
 
 //Bind will send bind request to api server
-func (db *defaultBinder) Bind(kubeClient *kubernetes.Clientset, tasks []*schedulingapi.TaskInfo) (error, []*schedulingapi.TaskInfo) {
+func (db *DefaultBinder) Bind(kubeClient *kubernetes.Clientset, tasks []*schedulingapi.TaskInfo) ([]*schedulingapi.TaskInfo, error) {
 	var errTasks []*schedulingapi.TaskInfo
 	for _, task := range tasks {
 		p := task.Pod
@@ -152,14 +152,14 @@ func (db *defaultBinder) Bind(kubeClient *kubernetes.Clientset, tasks []*schedul
 	}
 
 	if len(errTasks) > 0 {
-		return fmt.Errorf("failed to bind pods"), errTasks
+		return errTasks, fmt.Errorf("failed to bind pods")
 	}
 
 	return nil, nil
 }
 
-func NewBinder() *defaultBinder {
-	return &defaultBinder{}
+func NewBinder() *DefaultBinder {
+	return &DefaultBinder{}
 }
 
 type defaultEvictor struct {
@@ -397,7 +397,6 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 			key := nodeSelectorLabelName + ":" + nodeSelectorLabelValue
 			sc.nodeSelectorLabels[key] = ""
 		}
-
 	}
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
@@ -676,7 +675,7 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 func (sc *SchedulerCache) Bind(tasks []*schedulingapi.TaskInfo) error {
 	go func(taskArray []*schedulingapi.TaskInfo) {
 		tmp := time.Now()
-		err, errTasks := sc.Binder.Bind(sc.kubeClient, taskArray)
+		errTasks, err := sc.Binder.Bind(sc.kubeClient, taskArray)
 		if err == nil {
 			klog.V(3).Infof("bind ok, latency %v", time.Since(tmp))
 			for _, task := range tasks {
@@ -690,7 +689,6 @@ func (sc *SchedulerCache) Bind(tasks []*schedulingapi.TaskInfo) error {
 			}
 		}
 	}(tasks)
-
 	return nil
 }
 
@@ -888,6 +886,7 @@ func (sc *SchedulerCache) processBindTask() {
 			if len(sc.bindCache) == sc.batchNum {
 				sc.BindTask()
 			}
+		default:
 		}
 
 		if len(sc.BindFlowChannel) == 0 {
@@ -923,7 +922,6 @@ func (sc *SchedulerCache) BindTask() {
 	}
 
 	sc.bindCache = sc.bindCache[0:0]
-	return
 }
 
 // Snapshot returns the complete snapshot of the cluster from cache

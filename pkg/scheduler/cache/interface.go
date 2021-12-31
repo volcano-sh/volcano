@@ -80,7 +80,7 @@ type VolumeBinder interface {
 
 //Binder interface for binding task and hostname
 type Binder interface {
-	Bind(kubeClient *kubernetes.Clientset, tasks []*api.TaskInfo) (error, []*api.TaskInfo)
+	Bind(kubeClient *kubernetes.Clientset, tasks []*api.TaskInfo) ([]*api.TaskInfo, error)
 }
 
 // Evictor interface for evict pods
