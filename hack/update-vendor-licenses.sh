@@ -222,6 +222,13 @@ for PACKAGE in $(go list -m -mod=mod -json all | jq -r .Path | sort -f); do
     echo "${PACKAGE}, temporarily skipping" >&2
     continue
   fi
+  if [[ "${PACKAGE}" = "github.com/onsi/ginkgo" ]]; then
+      # there are 2 versions v1 and v2 under 2 folders indirectly used
+      # so it can't be filtered by the previous rule
+      # temporarily treat this way until find out a better rule
+      echo "${PACKAGE}, temporarily skipping" >&2
+      continue
+  fi
   echo "${PACKAGE}"
 
   process_content "${PACKAGE}" LICENSE

@@ -206,7 +206,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 	if hasDependenciesBetweenTasks {
 		_, isDag := topoSort(job)
 		if !isDag {
-			msg += fmt.Sprintf("job has dependencies between tasks, but doesn't form a directed acyclic graph(DAG)")
+			msg += "job has dependencies between tasks, but doesn't form a directed acyclic graph(DAG)"
 		}
 	}
 

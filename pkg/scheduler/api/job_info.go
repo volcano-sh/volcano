@@ -92,8 +92,8 @@ func (info *TopologyInfo) Clone() *TopologyInfo {
 		ResMap: make(map[int]v1.ResourceList),
 	}
 
-	for numaId, resList := range info.ResMap {
-		copyInfo.ResMap[numaId] = resList.DeepCopy()
+	for numaID, resList := range info.ResMap {
+		copyInfo.ResMap[numaID] = resList.DeepCopy()
 	}
 
 	return copyInfo
@@ -722,7 +722,7 @@ func (ji *JobInfo) CheckTaskMinAvailableReady() bool {
 		if AllocatedStatus(status) ||
 			status == Succeeded {
 			for _, task := range tasks {
-				occupiedMap[getTaskID(task.Pod)] += 1
+				occupiedMap[getTaskID(task.Pod)]++
 			}
 			continue
 		}
@@ -730,21 +730,21 @@ func (ji *JobInfo) CheckTaskMinAvailableReady() bool {
 		if status == Pending {
 			for _, task := range tasks {
 				if task.InitResreq.IsEmpty() {
-					occupiedMap[getTaskID(task.Pod)] += 1
+					occupiedMap[getTaskID(task.Pod)]++
 				}
 			}
 		}
 	}
-	for taskId, minNum := range ji.TaskMinAvailable {
-		if occupiedMap[taskId] < minNum {
-			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskId, occupiedMap[taskId])
+	for taskID, minNum := range ji.TaskMinAvailable {
+		if occupiedMap[taskID] < minNum {
+			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskID, occupiedMap[taskID])
 			return false
 		}
 	}
 	return true
 }
 
-// CheckTaskMinAvailableReady return ready pods meet task minavaliable.
+// CheckTaskMinAvailablePipelined return ready pods meet task minavaliable.
 func (ji *JobInfo) CheckTaskMinAvailablePipelined() bool {
 	if ji.MinAvailable < ji.TaskMinAvailableTotal {
 		return true
@@ -755,7 +755,7 @@ func (ji *JobInfo) CheckTaskMinAvailablePipelined() bool {
 			status == Succeeded ||
 			status == Pipelined {
 			for _, task := range tasks {
-				occupiedMap[getTaskID(task.Pod)] += 1
+				occupiedMap[getTaskID(task.Pod)]++
 			}
 			continue
 		}
@@ -763,14 +763,14 @@ func (ji *JobInfo) CheckTaskMinAvailablePipelined() bool {
 		if status == Pending {
 			for _, task := range tasks {
 				if task.InitResreq.IsEmpty() {
-					occupiedMap[getTaskID(task.Pod)] += 1
+					occupiedMap[getTaskID(task.Pod)]++
 				}
 			}
 		}
 	}
-	for taskId, minNum := range ji.TaskMinAvailable {
-		if occupiedMap[taskId] < minNum {
-			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskId, occupiedMap[taskId])
+	for taskID, minNum := range ji.TaskMinAvailable {
+		if occupiedMap[taskID] < minNum {
+			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskID, occupiedMap[taskID])
 			return false
 		}
 	}
