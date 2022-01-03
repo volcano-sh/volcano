@@ -917,7 +917,6 @@ func (sc *SchedulerCache) BindTask() {
 	}
 
 	sc.bindCache = sc.bindCache[0:0]
-	return
 }
 
 // Snapshot returns the complete snapshot of the cluster from cache
