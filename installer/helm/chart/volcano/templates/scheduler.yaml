@@ -37,7 +37,7 @@ rules:
     verbs: ["create"]
   - apiGroups: [""]
     resources: ["persistentvolumeclaims"]
-    verbs: ["list", "watch"]
+    verbs: ["list", "watch", "update"]
   - apiGroups: [""]
     resources: ["persistentvolumes"]
     verbs: ["list", "watch"]
@@ -47,12 +47,12 @@ rules:
   - apiGroups: [""]
     resources: ["resourcequotas"]
     verbs: ["list", "watch"]
-  - apiGroups: ["storage.k8s.io"]
-    resources: ["storageclasses"]
-    verbs: ["list", "watch"]
   - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["list", "watch"]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: ["storageclasses", "csinodes", "csidrivers", "csistoragecapacities"]
+    verbs: [ "list", "watch" ]
   - apiGroups: ["policy"]
     resources: ["poddisruptionbudgets"]
     verbs: ["list", "watch"]
@@ -115,6 +115,8 @@ spec:
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/{{base .Values.basic.scheduler_config_file}}
+            - --enable-healthz=true
+            - --enable-metrics=true
             - -v=3
             - 2>&1
           imagePullPolicy: "IfNotPresent"

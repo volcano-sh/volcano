@@ -70,6 +70,12 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 		node := sc.Nodes[pi.NodeName]
 		if !isTerminated(pi.Status) {
 			if err := node.AddTask(pi); err != nil {
+				if _, outOfSync := err.(*schedulingapi.AllocateFailError); outOfSync {
+					node.State = schedulingapi.NodeState{
+						Phase:  schedulingapi.NotReady,
+						Reason: "OutOfSync",
+					}
+				}
 				return err
 			}
 		} else {
@@ -123,8 +129,27 @@ func (sc *SchedulerCache) updateTask(oldTask, newTask *schedulingapi.TaskInfo) e
 	return sc.addTask(newTask)
 }
 
+// Check the pod allocated status in cache
+func (sc *SchedulerCache) allocatedPodInCache(pod *v1.Pod) bool {
+	pi := schedulingapi.NewTaskInfo(pod)
+
+	if job, found := sc.Jobs[pi.Job]; found {
+		if t, found := job.Tasks[pi.UID]; found {
+			return schedulingapi.AllocatedStatus(t.Status)
+		}
+	}
+
+	return false
+}
+
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
+	//ignore the update event if pod is allocated in cache but not present in NodeName
+	if sc.allocatedPodInCache(newPod) && newPod.Spec.NodeName == "" {
+		klog.V(4).Infof("Pod <%s/%v> already in cache with allocated status, ignore the update event", newPod.Namespace, newPod.Name)
+		return nil
+	}
+
 	if err := sc.deletePod(oldPod); err != nil {
 		return err
 	}
@@ -639,19 +664,9 @@ func (sc *SchedulerCache) UpdatePriorityClass(oldObj, newObj interface{}) {
 
 //AddPriorityClass add priorityclass to scheduler cache
 func (sc *SchedulerCache) AddPriorityClass(obj interface{}) {
-	var ss *v1beta1.PriorityClass
-	switch t := obj.(type) {
-	case *v1beta1.PriorityClass:
-		ss = t
-	case cache.DeletedFinalStateUnknown:
-		var ok bool
-		ss, ok = t.Obj.(*v1beta1.PriorityClass)
-		if !ok {
-			klog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t.Obj)
-			return
-		}
-	default:
-		klog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", t)
+	ss, ok := obj.(*v1beta1.PriorityClass)
+	if !ok {
+		klog.Errorf("Cannot convert to *v1beta1.PriorityClass: %v", obj)
 		return
 	}
 
@@ -812,16 +827,17 @@ func (sc *SchedulerCache) addNumaInfo(info *nodeinfov1alpha1.Numatopology) error
 
 	if sc.Nodes[info.Name].NumaInfo == nil {
 		sc.Nodes[info.Name].NumaInfo = getNumaInfo(info)
-	}
-
-	newLocalInfo := getNumaInfo(info)
-	if sc.Nodes[info.Name].NumaInfo.Compare(newLocalInfo) {
 		sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoMoreFlag
 	} else {
-		sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoLessFlag
-	}
+		newLocalInfo := getNumaInfo(info)
+		if sc.Nodes[info.Name].NumaInfo.Compare(newLocalInfo) {
+			sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoMoreFlag
+		} else {
+			sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoLessFlag
+		}
 
-	sc.Nodes[info.Name].NumaInfo = newLocalInfo
+		sc.Nodes[info.Name].NumaInfo = newLocalInfo
+	}
 
 	for resName, NumaResInfo := range sc.Nodes[info.Name].NumaInfo.NumaResMap {
 		klog.V(3).Infof("resource %s Allocatable %v on node[%s] into cache", resName, NumaResInfo, info.Name)
@@ -892,4 +908,16 @@ func (sc *SchedulerCache) DeleteNumaInfoV1alpha1(obj interface{}) {
 
 	sc.deleteNumaInfo(ss)
 	klog.V(3).Infof("Delete numaInfo<%s> from cahce, with spec: Policy: %v, resMap: %v", ss.Name, ss.Spec.Policies, ss.Spec.NumaResMap)
+}
+
+// AddJob add job to scheduler cache
+func (sc *SchedulerCache) AddJob(obj interface{}) {
+	job, ok := obj.(*schedulingapi.JobInfo)
+	if !ok {
+		klog.Errorf("Cannot convert to *api.JobInfo: %v", obj)
+		return
+	}
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+	sc.Jobs[job.UID] = job
 }

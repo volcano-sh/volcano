@@ -104,8 +104,8 @@ func getVolcanoClient(restConfig *rest.Config) *versioned.Clientset {
 // These are passed in as command line for cluster certification. If tls config is passed in, we use the directly
 // defined tls config, else use that defined in kubeconfig.
 func configTLS(config *options.Config, restConfig *rest.Config) *tls.Config {
-	if len(config.CertFile) != 0 && len(config.KeyFile) != 0 {
-		sCert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
+	if len(config.CertData) != 0 && len(config.KeyData) != 0 {
+		sCert, err := tls.X509KeyPair(config.CertData, config.KeyData)
 		if err != nil {
 			klog.Fatal(err)
 		}

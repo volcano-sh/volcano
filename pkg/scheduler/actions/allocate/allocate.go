@@ -134,7 +134,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 		// pick queue for given namespace
 		//
-		// This block use a algorithm with time complex O(n).
+		// This block use an algorithm with time complex O(n).
 		// But at least PriorityQueue could not be used here,
 		// because the allocation of job would change the priority of queue among all namespaces,
 		// and the PriorityQueue have no ability to update priority for a special queue.
@@ -204,8 +204,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 			// Check whether the queue is overused on dimension that the task requested
 			taskRequest := task.Resreq.ResourceNames()
-
-			if !ssn.UnderusedResources(queue).Contains(taskRequest) {
+			if underusedResources := ssn.UnderusedResources(queue); underusedResources != nil && !underusedResources.Contains(taskRequest) {
 				klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
 				continue
 			}
@@ -245,7 +244,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 						task.UID, node.Name, ssn.UID, err)
 				} else {
-					metrics.UpdateE2eSchedulingDurationByJob(job.Name, job.PodGroup.Spec.Queue, job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
+					metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 				}
 			} else {
 				klog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s> with limited resources",
@@ -259,7 +258,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 						klog.Errorf("Failed to pipeline Task %v on %v in Session %v for %v.",
 							task.UID, node.Name, ssn.UID, err)
 					} else {
-						metrics.UpdateE2eSchedulingDurationByJob(job.Name, job.PodGroup.Spec.Queue, job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
+						metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 					}
 				}
 			}

@@ -27,56 +27,67 @@ import (
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
-func CreateQueues(cxt *TestContext) {
-	By("Creating Queues")
-
-	for _, q := range cxt.Queues {
-		_, err := cxt.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
-		//TODO: Better not found error
-		if err != nil {
-			_, err = cxt.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), &schedulingv1beta1.Queue{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: q,
-				},
-				Spec: schedulingv1beta1.QueueSpec{
-					Weight: 1,
-				},
-			}, metav1.CreateOptions{})
-		}
+// CreateQueue creates Queue with the specified name
+func CreateQueue(ctx *TestContext, q string) {
+	_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
+	if err != nil {
+		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), &schedulingv1beta1.Queue{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: q,
+			},
+			Spec: schedulingv1beta1.QueueSpec{
+				Weight: 1,
+			},
+		}, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred(), "failed to create queue %s", q)
 	}
 }
 
-func deleteQueues(cxt *TestContext) {
-	foreground := metav1.DeletePropagationForeground
+// CreateQueues create Queues specified in the test context
+func CreateQueues(ctx *TestContext) {
+	By("Creating Queues")
 
-	for _, q := range cxt.Queues {
-		queue, err := cxt.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred(), "failed to get queue %s", q)
-
-		queue.Status.State = schedulingv1beta1.QueueStateClosed
-		_, err = cxt.Vcclient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), queue, metav1.UpdateOptions{})
-		Expect(err).NotTo(HaveOccurred(), "failed to update status of queue %s", q)
-		err = wait.Poll(100*time.Millisecond, FiveMinute, queueClosed(cxt, q))
-		Expect(err).NotTo(HaveOccurred(), "failed to wait queue %s closed", q)
-
-		err = cxt.Vcclient.SchedulingV1beta1().Queues().Delete(context.TODO(), q,
-			metav1.DeleteOptions{
-				PropagationPolicy: &foreground,
-			})
-		Expect(err).NotTo(HaveOccurred(), "failed to delete queue %s", q)
+	for _, queue := range ctx.Queues {
+		CreateQueue(ctx, queue)
 	}
 }
 
-func SetQueueReclaimable(cxt *TestContext, queues []string, reclaimable bool) {
-	By("Setting queue reclaimable")
+// DeleteQueue deletes Queue with the specified name
+func DeleteQueue(ctx *TestContext, q string) {
+	foreground := metav1.DeletePropagationForeground
+	queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to get queue %s", q)
+
+	queue.Status.State = schedulingv1beta1.QueueStateClosed
+	_, err = ctx.Vcclient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), queue, metav1.UpdateOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to update status of queue %s", q)
+	err = wait.Poll(100*time.Millisecond, FiveMinute, queueClosed(ctx, q))
+	Expect(err).NotTo(HaveOccurred(), "failed to wait queue %s closed", q)
+
+	err = ctx.Vcclient.SchedulingV1beta1().Queues().Delete(context.TODO(), q,
+		metav1.DeleteOptions{
+			PropagationPolicy: &foreground,
+		})
+	Expect(err).NotTo(HaveOccurred(), "failed to delete queue %s", q)
+}
+
+// deleteQueues deletes Queues specified in the test context
+func deleteQueues(ctx *TestContext) {
+	for _, q := range ctx.Queues {
+		DeleteQueue(ctx, q)
+	}
+}
+
+// SeyQueueReclaimable sets the Queue to be reclaimable
+func SetQueueReclaimable(ctx *TestContext, queues []string, reclaimable bool) {
+	By("Setting Queue reclaimable")
 
 	for _, q := range queues {
-		queue, err := cxt.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
+		queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred(), "failed to get queue %s", q)
 
 		queue.Spec.Reclaimable = &reclaimable
-		_, err = cxt.Vcclient.SchedulingV1beta1().Queues().Update(context.TODO(), queue, metav1.UpdateOptions{})
+		_, err = ctx.Vcclient.SchedulingV1beta1().Queues().Update(context.TODO(), queue, metav1.UpdateOptions{})
 		Expect(err).NotTo(HaveOccurred(), "failed to update queue %s", q)
 	}
 }
@@ -85,6 +96,7 @@ func WaitQueueStatus(condition func() (bool, error)) error {
 	return wait.Poll(100*time.Millisecond, FiveMinute, condition)
 }
 
+// queueClosed returns whether the Queue is closed
 func queueClosed(ctx *TestContext, name string) wait.ConditionFunc {
 	return func() (bool, error) {
 		queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), name, metav1.GetOptions{})

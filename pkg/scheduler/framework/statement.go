@@ -65,7 +65,7 @@ func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 				reclaimee.Namespace, reclaimee.Name, api.Releasing, s.ssn.UID, err)
 		}
 	} else {
-		klog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
+		klog.Errorf("Failed to find Job <%s> in Session <%s> index when binding.",
 			reclaimee.Job, s.ssn.UID)
 	}
 
@@ -117,7 +117,7 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 				reclaimee.Namespace, reclaimee.Name, api.Releasing, s.ssn.UID, err)
 		}
 	} else {
-		klog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
+		klog.Errorf("Failed to find Job <%s> in Session <%s> index when binding.",
 			reclaimee.Job, s.ssn.UID)
 	}
 
@@ -151,7 +151,7 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string) error {
 				task.Namespace, task.Name, api.Pipelined, s.ssn.UID, err)
 		}
 	} else {
-		klog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
+		klog.Errorf("Failed to find Job <%s> in Session <%s> index when binding.",
 			task.Job, s.ssn.UID)
 	}
 
@@ -165,7 +165,7 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string) error {
 		klog.V(3).Infof("After pipelined Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
 			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
 	} else {
-		klog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
+		klog.Errorf("Failed to find Node <%s> in Session <%s> index when binding.",
 			hostname, s.ssn.UID)
 	}
 
@@ -196,7 +196,7 @@ func (s *Statement) unpipeline(task *api.TaskInfo) error {
 				task.Namespace, task.Name, api.Pipelined, s.ssn.UID, err)
 		}
 	} else {
-		klog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
+		klog.Errorf("Failed to find Job <%s> in Session <%s> index when binding.",
 			task.Job, s.ssn.UID)
 	}
 
@@ -208,7 +208,7 @@ func (s *Statement) unpipeline(task *api.TaskInfo) error {
 		klog.V(3).Infof("After pipelined Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
 			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
 	} else {
-		klog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
+		klog.Errorf("Failed to find Node <%s> in Session <%s> index when binding.",
 			task.NodeName, s.ssn.UID)
 	}
 
@@ -248,7 +248,7 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 			return err
 		}
 	} else {
-		klog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
+		klog.Errorf("Failed to find Job <%s> in Session <%s> index when binding.",
 			task.Job, s.ssn.UID)
 		return fmt.Errorf("failed to find job %s", task.Job)
 	}
@@ -263,7 +263,7 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 		klog.V(3).Infof("After allocated Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
 			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
 	} else {
-		klog.Errorf("Failed to found Node <%s> in Session <%s> index when binding.",
+		klog.Errorf("Failed to find Node <%s> in Session <%s> index when binding.",
 			hostname, s.ssn.UID)
 		return fmt.Errorf("failed to find node %s", hostname)
 	}
@@ -288,15 +288,10 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 }
 
 func (s *Statement) allocate(task *api.TaskInfo) error {
-	if err := s.ssn.cache.BindVolumes(task, task.PodVolumes); err != nil {
+	if err := s.ssn.cache.AddBindTask(task); err != nil {
 		return err
 	}
 
-	if err := s.ssn.cache.Bind(task, task.NodeName); err != nil {
-		return err
-	}
-
-	// Update status in session
 	if job, found := s.ssn.Jobs[task.Job]; found {
 		if err := job.UpdateTaskStatus(task, api.Binding); err != nil {
 			klog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
@@ -304,7 +299,7 @@ func (s *Statement) allocate(task *api.TaskInfo) error {
 			return err
 		}
 	} else {
-		klog.Errorf("Failed to found Job <%s> in Session <%s> index when binding.",
+		klog.Errorf("Failed to find Job <%s> in Session <%s> index when binding.",
 			task.Job, s.ssn.UID)
 		return fmt.Errorf("failed to find job %s", task.Job)
 	}

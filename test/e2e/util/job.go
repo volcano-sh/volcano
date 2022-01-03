@@ -69,6 +69,8 @@ type JobSpec struct {
 	// ttl seconds after job finished
 	Ttl        *int32
 	MinSuccess *int32
+	// job max retry
+	MaxRetry int32
 }
 
 func Namespace(context *TestContext, job *JobSpec) string {
@@ -197,6 +199,7 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 			Plugins:                 jobSpec.Plugins,
 			TTLSecondsAfterFinished: jobSpec.Ttl,
 			MinSuccess:              jobSpec.MinSuccess,
+			MaxRetry:                jobSpec.MaxRetry,
 		},
 	}
 
