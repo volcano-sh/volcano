@@ -1,20 +1,8 @@
-# Report on GPU Topology Awareness Based on Device Plugin Mechanism
+## 1. Build device relationships using the official NVML library
 
-<center>吴建博（牧瑜）</center>
-<center>16th August 2021 - 30th September 2021</center>
+[github.com/NVIDIA/gpu-monitoring-tools/bindings/go/nvml](http://github.com/NVIDIA/gpu-monitoring-tools/bindings/go/nvml)
 
-选型：
-
-* 计划选用官方的 github.com/NVIDIA/gpu-monitoring-tools/bindings/go/nvml 库来构建设备之间的关系，功能比较全
-
-* 自下而上通过 mask 构建拓扑树  
-* 通过 pod informer 来维护拓扑树中 gpu 节点的可用情况
-* GPU 分配过程按照单卡/多卡区分不同的算法
-* 在 Node 上 patch 上拓扑信息**并定时更新**，同时实现相应调度插件
-
-### 1、选用官方的 nvml 库来构建设备之间的关系
-
-```go
+```
 // github.com/NVIDIA/gpu-monitoring-tools/bindings/go/nvml.go
 type DeviceStatus struct {
 	Power       *uint
@@ -28,12 +16,11 @@ type DeviceStatus struct {
 	Throttle    ThrottleReason
 	Performance PerfState
 }
-
 ```
 
-nvml获取设备拓扑结构
+### retrieve device topo using NVML library
 
-```go
+```
 // device type
 const (
 	P2PLinkUnknown P2PLinkType = iota
@@ -56,11 +43,6 @@ const (
 	ElevenNVLINKLinks
 	TwelveNVLINKLinks
 )
-```
-
-
-
-```go
 func GetP2PLink(dev1, dev2 *Device) (link P2PLinkType, err error) {
 	level, err := deviceGetTopologyCommonAncestor(dev1.handle, dev2.handle)
 	if err != nil || level == nil {
@@ -125,14 +107,13 @@ func GetNVLink(dev1, dev2 *Device) (link P2PLinkType, err error) {
 	}
 
 	// TODO(klueska): Handle NVSwitch semantics
-
 	return nvlink, nil
 }
 ```
 
-得到两张卡之间的拓扑类型
+### retrieve topo type between two cards
 
-```go
+```
 //bindings/go/nvml/bindings.go
 func deviceGetTopologyCommonAncestor(h1, h2 handle) (*uint, error) {
 	r := dl.lookupSymbol("nvmlDeviceGetTopologyCommonAncestor")
@@ -150,13 +131,11 @@ func deviceGetTopologyCommonAncestor(h1, h2 handle) (*uint, error) {
 }
 ```
 
+## 2. Build topo trees from bottom to up using Mask
 
+### The structure of GPU Node:
 
-### 2、自下而上通过 mask 构建拓扑树
-
-GPU Node 的结构体如下：
-
-```go
+```
 //SchedulerCache contains allocatable resource of GPU
 type SchedulerCache struct {
 	Cores  int64
@@ -190,11 +169,13 @@ type NvidiaNode struct {
 }
 ```
 
-其中比较重要的是 `Mask`，表示该 Node 下可用的 GPU 节点(第 i 位为 1 的话表示第 i 个 GPU 节点可用)。
+`Mask` matters most which represent which GPU node is usable under the Node.
 
-获取某节点下可用的叶子节点(GPU 节点)：
+The ith position of `Mask` is 1, meaning the ith GPU Node is usable.  (if 0, not usable).
 
-```go
+### Retrieve usable leaf nodes(GPU Nodes) under some node
+
+```
 //GetAvailableLeaves returns leaves of this NvidiaNode
 //which available for allocating.
 func (n *NvidiaNode) GetAvailableLeaves() []*NvidiaNode {
@@ -213,11 +194,9 @@ func (n *NvidiaNode) GetAvailableLeaves() []*NvidiaNode {
 }
 ```
 
+### GPU Tree
 
-
-GPU Tree 结构体如下：
-
-```go
+```
 //NvidiaTree represents a Nvidia GPU in a tree.
 type NvidiaTree struct {
 	sync.Mutex
@@ -232,11 +211,9 @@ type NvidiaTree struct {
 }
 ```
 
+The key process to **initialize the Nvidia Tree** is **parseFromLibrary** function
 
-
-初始化 NvidiaTree 关键操作就是 parseFromLibrary 函数：
-
-```go
+```
 func (t *NvidiaTree) parseFromLibrary() error {
 	if err := nvml.Init(); err != nil {
 		return err
@@ -301,18 +278,15 @@ func (t *NvidiaTree) parseFromLibrary() error {
 		klog.V(2).Infof("type: %d, len %d", int(t), len(ns))
 	}
 	
-    // join 未建立连接关系，只是创建了一堆节点(虚拟节点和叶子节点)，所以构建树的操作都放在了 buildTree
+// join operation has not built the connection, but only create some nodes(virtual nodes and leaf nodes), so buildTree function takes the responsiblity of building the tree.
 	t.buildTree(nodes)
-
 	return nil
 }
-
-
 ```
 
-在程序中可以由` nvml.DeviceGetTopologyCommonAncestor(devA, devB) `得到两张卡之间的拓扑类型，进而构造` GPUTree` 的非叶子节点。
+We can retrieve the topo type between two cards using `nvml.DeviceGetTopologyCommonAncestor(devA, devB)`, then build the non-leaf nodes of `GPUTree`.
 
-```go
+```
 //bindings/go/nvml/bindings.go
 func deviceGetTopologyCommonAncestor(h1, h2 handle) (*uint, error) {
 	r := dl.lookupSymbol("nvmlDeviceGetTopologyCommonAncestor")
@@ -328,11 +302,6 @@ func deviceGetTopologyCommonAncestor(h1, h2 handle) (*uint, error) {
 
 	return uintPtr(C.uint(level)), errorString(r)
 }
-```
-
-
-
-```go
 func (t *NvidiaTree) buildTree(nodes LevelMap) {
 	// Create connections
 	for _, cur := range t.leaves {
@@ -411,19 +380,17 @@ func (t *NvidiaTree) buildTree(nodes LevelMap) {
 }
 ```
 
-<img src="C:\Users\realPolymath\Downloads\未命名文件 (5).png" alt="未命名文件 (5)" style="zoom:50%;" />
+![Failure](https://gateway.pinata.cloud/ipfs/QmNo9ASGcZgHRSDocrVHaXXZtjM11SPjEsLzDr2Fus2HDD?preview=1)
 
-该buildTree实现方案可能会出现这样的问题：针对一个叶子节点来说，其可能在某一层具有超过多余一个的父亲节点，但是在12行break掉，导致出现遗漏节点的情况，故需要进行修改。
+There may exist some problems e.g. for one specific leaf node, the program may break the loop if one level has more than one parent nodes which leads to nodes being missed.
 
+### 3. Maintain the usable GPU nodes in Topo Trees using Pod Informer
 
-
-### 3、通过 pod informer 来维护拓扑树中 gpu 节点的可用情况
-
-通过 informer 监听 pod 事件(主要监听声明对应 gpu 资源 pods 的 delete 和 update 事件)，这个 controller 在 device plugin 的主循环中运行。这里着重分析下上述两个事件的 Handler。
+Watch pod events using **Pod Informer** (mainly focusing on `delete` and `update` events of pods of corresponding  GPU resources). The controller runs in the main loop of the device plugin. Then we will deal with the handlers of these two events.
 
 **delete handler**
 
-```go
+```
 func (c *controller) deletePodFunc(obj interface{}) {
 	var pod *v1.Pod
 	switch t := obj.(type) {
@@ -450,11 +417,11 @@ func (c *controller) deletePodFunc(obj interface{}) {
 }
 ```
 
-删除 handler 主要从 pod 的 Annotations 中获取对应资源的设备 ids，然后通过 UpdatePodDevice 去更新拓扑树，维护拓扑树中可用的 GPU 节点。
+**Delete handler** mainly retrieves **device ids** of corresponding resources from **Annotations** of the pod. And update the topo trees by **UpdatePodDevice** function to maintain usable GPU nodes in topo trees.
 
 **update handler**
 
-```go
+```
 func (c *controller) updatePodFunc(o, obj interface{}) {
 
 	var pod *v1.Pod
@@ -510,17 +477,15 @@ func (c *controller) updatePodFunc(o, obj interface{}) {
 }
 ```
 
-更新 handler 主要从 kubelet 的 kubelet_internal_checkpoint 文件中过滤出当前事件中 pod 的使用 gpus，然后 patch 到 pod 的 Annotations 上，这里并没有去更新拓扑树是因为这一步在 device plugin Allocate 的时候去做了。
+**Update handler** mainly filters out the GPUs used by pods in current events from kubelet_internal_checkpoint file of kubelet, then patch to Annotations of Pod. Here we do not update the topo trees because we already finished it during Allocate operation of device plugin.
 
+### 4. Differentiate the allocation process of GPU by one card / multiple cards situations.
 
-
-### 4、GPU 分配过程按照单卡/多卡区分不同的算法
-
-核心的分配 GPU 逻辑在 device plugin 的 Allocate 函数中实现。
+The core of allocating GPU logic is implemented in Allocate function of device plugin.
 
 **Allocate**
 
-```go
+```
 // Allocate which return list of devices.
 func (m *NvidiaDevicePlugin) Allocate(ctx context.Context, reqs *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
 	devs := m.devs
@@ -556,15 +521,14 @@ func (m *NvidiaDevicePlugin) Allocate(ctx context.Context, reqs *pluginapi.Alloc
 }
 ```
 
-可以看到核心有两步：
+**Allocate Funtion** can be divided into **two steps**:
 
-* 通过 findBestDevice 函数找到 len(req.DevicesIDs) 个 GPU 设备来覆盖 req.DevicesIDs。
-* 通过 UpdatePodDevice 去更新拓扑树。
+1. Find  len(req.DevicesIDs) GPU devices using **findBestDevice** function to cover req.DevicesIDs.
+2. Update topo trees using **UpdatePodDevice** funtion.
 
+**UpdatePodDevice** has been introduced above, then we will introduce **findBestDevice** function.
 
-UpdatePodDevice 上述已经介绍过，主要来看 findBestDevice 函数。
-
-```go
+```
 func (dp *NvidiaDevicePlugin) findBestDevice(t string, n int) []string {
 	devs := []string{}
 	switch t {
@@ -587,10 +551,7 @@ func (dp *NvidiaDevicePlugin) findBestDevice(t string, n int) []string {
 
 	return devs
 }
-```
-
-```go
-// find1GPUDevice: 遍历所有节点，找到分数最低的单个 GPU 节点
+// find1GPUDevice: travese all nodes，find single GPU node has the minimum score
 func find1GPUDevice(root *pciDevice) string {
 	// if the current node has maximum GPU devices, select the first one
 	// else find the one to make sure left GPU devices have highest score
@@ -614,10 +575,8 @@ func find1GPUDevice(root *pciDevice) string {
 	}
 	return find1GPUDevice(minDev)
 }
-```
-
-```go
-// findNGPUDevice: 找到分数最高的，且满足可用节点最少但是 >=n 的节点，然后遍历这些符合条件的节点，返回其可用的叶子 GPU 节点(这里其实有个问题，过滤出来的节点不一定可用节点就等于 n，这里没考虑这种情况)
+// findNGPUDevice：find nodes with the maximum score which also satisfy the condition that the number of usable nodes is minimized but more than n, then traverse the nodes, return usable leaf GPU nodes.
+// Attention: filterd nodes may not have n usable nodes. Here we ignore the situation.
 func findNGPUDevice(root *pciDevice, n int) []string {
 	var max float64
 	var queue = []*pciDevice{root}
@@ -665,11 +624,11 @@ func findNGPUDevice(root *pciDevice, n int) []string {
 }
 ```
 
-### 5、在 Node 上 patch 上拓扑信息**并定时更新**，同时实现相应调度插件
+### 5. Patch topo info on nodes and update regularly, and implement corresponding schedule plugin.
 
-在 device plugin 的主循环中，将当前的所有拓扑节点(包括两两之间的拓扑连接关系)都 patch 到了 node 上。
+We patch all current topo nodes(including topo connection relationships between two nodes) to node in main loop of device plugin.
 
-```go
+```
 // RegisterToSched register the nvml link info to extender sched
 func (m *NvidiaDevicePlugin) RegisterToSched(kubeClient *kubernetes.Clientset, endpoint string) error {
 	var t = &Topology{
@@ -696,23 +655,12 @@ func (m *NvidiaDevicePlugin) RegisterToSched(kubeClient *kubernetes.Clientset, e
 }
 ```
 
-node patch 了设备之间的拓扑信息，但调度层面没有看到相关的优化项目
+![Result](https://gateway.pinata.cloud/ipfs/QmQHc91fjiuJdnsVVfEGjFhP4aYjFxTDYaorniEUoUkYFV?preview=1)
 
+<iframe class="embed" src="https://gateway.pinata.cloud/ipfs/QmQHc91fjiuJdnsVVfEGjFhP4aYjFxTDYaorniEUoUkYFV?preview=1" contenteditable="false"></iframe>
 
+## 6. Problems
 
-最终结果图如下：
+### 6.1 fail to build tree - Cut apart
 
-<img src="C:\Users\realPolymath\Downloads\按表画 (5).png" alt="按表画 (5)" style="zoom:50%;" />
-
-
-
-### 6、 存在的问题
-
-#### 6.1 buildTree构树失败 割裂
-
-<img src="C:\Users\realPolymath\Downloads\按表画 (6).png" alt="按表画 (6)" style="zoom:50%;" />
-
-
-
-
-
+![Problem 1](https://gateway.pinata.cloud/ipfs/QmNo9ASGcZgHRSDocrVHaXXZtjM11SPjEsLzDr2Fus2HDD?preview=1)
