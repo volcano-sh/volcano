@@ -18,7 +18,6 @@ package app
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"os/signal"
@@ -61,11 +60,6 @@ func Run(config *options.Config) error {
 		klog.V(2).Infof("loadAdmissionConf:%v", admissionConf.ResGroupsConfig)
 	}
 
-	caBundle, err := ioutil.ReadFile(config.CaCertFile)
-	if err != nil {
-		return fmt.Errorf("unable to read cacert file (%s): %v", config.CaCertFile, err)
-	}
-
 	vClient := getVolcanoClient(restConfig)
 	kubeClient := getKubeClient(restConfig)
 
@@ -85,7 +79,7 @@ func Run(config *options.Config) error {
 		http.HandleFunc(service.Path, service.Handler)
 
 		klog.V(3).Infof("Registered configuration for webhook <%s>", service.Path)
-		registerWebhookConfig(kubeClient, config, service, caBundle)
+		registerWebhookConfig(kubeClient, config, service, config.CaCertData)
 	})
 
 	webhookServeError := make(chan struct{})
@@ -93,7 +87,7 @@ func Run(config *options.Config) error {
 	signal.Notify(stopChannel, syscall.SIGTERM, syscall.SIGINT)
 
 	server := &http.Server{
-		Addr:      ":" + strconv.Itoa(config.Port),
+		Addr:      config.ListenAddress + ":" + strconv.Itoa(config.Port),
 		TLSConfig: configTLS(config, restConfig),
 	}
 	go func() {

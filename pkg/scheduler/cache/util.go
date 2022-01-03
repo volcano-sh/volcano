@@ -18,12 +18,13 @@ package cache
 
 import (
 	"fmt"
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog"
 	"os"
-	"stathat.com/c/consistent"
 	"strconv"
 	"strings"
+
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/klog"
+	"stathat.com/c/consistent"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
@@ -49,6 +50,8 @@ func responsibleForPod(pod *v1.Pod, schedulerName string, mySchedulerPodName str
 			return false
 		}
 	}
+
+	klog.V(4).Infof("schedulerPodName %v is responsible to Pod %v/%v", mySchedulerPodName, pod.Namespace, pod.Name)
 	return true
 }
 
@@ -63,6 +66,8 @@ func responsibleForNode(nodeName string, mySchedulerPodName string, c *consisten
 			return false
 		}
 	}
+
+	klog.V(4).Infof("schedulerPodName %v is responsible to Node %v", mySchedulerPodName, nodeName)
 	return true
 }
 
@@ -83,6 +88,8 @@ func responsibleForPodGroup(pg *scheduling.PodGroup, mySchedulerPodName string, 
 			return false
 		}
 	}
+
+	klog.V(4).Infof("schedulerPodName %v is responsible to PodGroup %v/%v", mySchedulerPodName, pg.Namespace, pg.Name)
 	return true
 }
 

@@ -82,13 +82,17 @@ func Run(opt *options.ServerOption) error {
 		panic(err)
 	}
 
-	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		klog.Fatalf("Prometheus Http Server failed %s", http.ListenAndServe(opt.ListenAddress, nil))
-	}()
+	if opt.EnableMetrics {
+		go func() {
+			http.Handle("/metrics", promhttp.Handler())
+			klog.Fatalf("Prometheus Http Server failed %s", http.ListenAndServe(opt.ListenAddress, nil))
+		}()
+	}
 
-	if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-scheduler"); err != nil {
-		return err
+	if opt.EnableHealthz {
+		if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-scheduler"); err != nil {
+			return err
+		}
 	}
 
 	ctx := signals.SetupSignalContext()

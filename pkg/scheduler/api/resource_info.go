@@ -30,6 +30,7 @@ import (
 const (
 	// GPUResourceName need to follow https://github.com/NVIDIA/k8s-device-plugin/blob/66a35b71ac4b5cbfb04714678b548bd77e5ba719/server.go#L20
 	GPUResourceName = "nvidia.com/gpu"
+	GPUMemoryName   = "nvidia.com/gpu.memory"
 )
 
 const (
@@ -440,8 +441,8 @@ func (r *Resource) Diff(rr *Resource, defaultValue DimensionDefaultValue) (*Reso
 		decreasedVal.Memory = rightRes.Memory - leftRes.Memory
 	}
 
-	increasedVal.ScalarResources = make(map[v1.ResourceName]float64, 0)
-	decreasedVal.ScalarResources = make(map[v1.ResourceName]float64, 0)
+	increasedVal.ScalarResources = make(map[v1.ResourceName]float64)
+	decreasedVal.ScalarResources = make(map[v1.ResourceName]float64)
 	for lName, lQuant := range leftRes.ScalarResources {
 		rQuant, _ := rightRes.ScalarResources[lName]
 		if lQuant == -1 {
@@ -480,7 +481,8 @@ func (r *Resource) SetScalar(name v1.ResourceName, quantity float64) {
 // e.g r resource is <cpu 2000.00, memory 4047845376.00, hugepages-2Mi 0.00, hugepages-1Gi 0.00>
 // rr resource is <cpu 3000.00, memory 1000.00>
 // return r resource is <cpu 2000.00, memory 1000.00, hugepages-2Mi 0.00, hugepages-1Gi 0.00>
-func (r *Resource) MinDimensionResource(rr *Resource) *Resource {
+// @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
+func (r *Resource) MinDimensionResource(rr *Resource, defaultValue DimensionDefaultValue) *Resource {
 	if rr.MilliCPU < r.MilliCPU {
 		r.MilliCPU = rr.MilliCPU
 	}
@@ -488,19 +490,31 @@ func (r *Resource) MinDimensionResource(rr *Resource) *Resource {
 		r.Memory = rr.Memory
 	}
 
+	if r.ScalarResources == nil {
+		return r
+	}
+
 	if rr.ScalarResources == nil {
-		if r.ScalarResources != nil {
-			for name := range r.ScalarResources {
-				r.ScalarResources[name] = 0
-			}
+		if defaultValue == Infinity {
+			return r
 		}
-	} else {
-		if r.ScalarResources != nil {
-			for name, quant := range rr.ScalarResources {
-				if quant < r.ScalarResources[name] {
-					r.ScalarResources[name] = quant
-				}
+
+		for name := range r.ScalarResources {
+			r.ScalarResources[name] = 0
+		}
+		return r
+	}
+
+	for name, quant := range r.ScalarResources {
+		rQuant, ok := rr.ScalarResources[name]
+		if ok {
+			r.ScalarResources[name] = math.Min(quant, rQuant)
+		} else {
+			if defaultValue == Infinity {
+				continue
 			}
+
+			r.ScalarResources[name] = 0
 		}
 	}
 	return r
