@@ -56,6 +56,7 @@ func NewScheduler(
 	schedulerConf string,
 	period time.Duration,
 	defaultQueue string,
+	nodeSelectors []string,
 ) (*Scheduler, error) {
 	var watcher filewatcher.FileWatcher
 	if schedulerConf != "" {
@@ -70,7 +71,7 @@ func NewScheduler(
 	scheduler := &Scheduler{
 		schedulerConf:  schedulerConf,
 		fileWatcher:    watcher,
-		cache:          schedcache.New(config, schedulerName, defaultQueue),
+		cache:          schedcache.New(config, schedulerName, defaultQueue, nodeSelectors),
 		schedulePeriod: period,
 	}
 
@@ -82,7 +83,7 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	pc.loadSchedulerConf()
 	go pc.watchSchedulerConf(stopCh)
 	// Start cache for policy.
-	go pc.cache.Run(stopCh)
+	pc.cache.Run(stopCh)
 	pc.cache.WaitForCacheSync(stopCh)
 	klog.V(2).Infof("scheduler completes Initialization and start to run")
 	go wait.Until(pc.runOnce, pc.schedulePeriod, stopCh)

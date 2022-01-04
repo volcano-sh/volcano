@@ -26,7 +26,7 @@ require (
 	k8s.io/kubernetes v1.19.15
 	sigs.k8s.io/yaml v1.2.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v0.0.0-20210923020136-eb779276d17e
+	volcano.sh/apis v0.0.0-20211109104455-7e8d893a9f66
 )
 
 replace (

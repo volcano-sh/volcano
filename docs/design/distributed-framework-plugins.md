@@ -157,7 +157,7 @@ And we can generate a `tfClusterSpec` for each pod in the job, here is an exampl
 // generateTFConfig generate tfClusterSpec by a given pod and job
 func (tp *tensorflowPlugin) generateTFConfig(pod *v1.Pod, job *batch.Job) (tfClusterSpec, error) {
 	// get task index by pod
-	index, err := strconv.Atoi(helpers.GetTaskIndex(pod))
+	index, err := strconv.Atoi(helpers.GetPodIndexUnderTask(pod))
 	if err != nil {
 		return tfClusterSpec{}, err
 	}

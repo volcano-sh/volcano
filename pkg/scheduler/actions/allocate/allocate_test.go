@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
-
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
@@ -131,15 +130,17 @@ func TestAllocate(t *testing.T) {
 				},
 			},
 
+			// pod name should be like "*-*-{index}",
+			// due to change of TaskOrderFn
 			pods: []*v1.Pod{
 				// pending pod with owner1, under c1
-				util.BuildPod("c1", "p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg1-p-1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
 				// pending pod with owner1, under c1
-				util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg1-p-2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
 				// pending pod with owner2, under c2
-				util.BuildPod("c2", "p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
-				// pending pod with owner, under c2
-				util.BuildPod("c2", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c2", "pg2-p-1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				// pending pod with owner2, under c2
+				util.BuildPod("c2", "pg2-p-2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
 			},
 			nodes: []*v1.Node{
 				util.BuildNode("n1", util.BuildResourceList("2", "4G"), make(map[string]string)),
@@ -163,8 +164,8 @@ func TestAllocate(t *testing.T) {
 				},
 			},
 			expected: map[string]string{
-				"c2/p1": "n1",
-				"c1/p1": "n1",
+				"c2/pg2-p-1": "n1",
+				"c1/pg1-p-1": "n1",
 			},
 		},
 		{

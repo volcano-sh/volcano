@@ -157,6 +157,9 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 	for _, p := range ni.Tasks {
 		res.AddTask(p)
 	}
+	if ni.NumaInfo != nil {
+		res.NumaInfo = ni.NumaInfo.DeepCopy()
+	}
 
 	if ni.NumaSchedulerInfo != nil {
 		res.NumaSchedulerInfo = ni.NumaSchedulerInfo.DeepCopy()
@@ -408,6 +411,10 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 		}
 	}
 
+	if ni.NumaInfo != nil {
+		ni.NumaInfo.AddTask(ti)
+	}
+
 	// Update task node name upon successful task addition.
 	task.NodeName = ni.Name
 	ti.NodeName = ni.Name
@@ -443,6 +450,10 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 			ni.Used.Sub(task.Resreq)
 			ni.SubGPUResource(ti.Pod)
 		}
+	}
+
+	if ni.NumaInfo != nil {
+		ni.NumaInfo.RemoveTask(ti)
 	}
 
 	delete(ni.Tasks, key)

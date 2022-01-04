@@ -1143,5 +1143,5 @@ sigs.k8s.io/yaml v1.2.0/go.mod h1:yfXDCHCao9+ENCvLSE62v9VSji2MKu5jeNfTrofGhJc=
 stathat.com/c/consistent v1.0.0 h1:ezyc51EGcRPJUxfHGSgJjWzJdj3NiMU9pNfLNGiXV0c=
 stathat.com/c/consistent v1.0.0/go.mod h1:QkzMWzcbB+yQBL2AttO6sgsQS/JSTapcDISJalmCDS0=
 vbom.ml/util v0.0.0-20160121211510-db5cfe13f5cc/go.mod h1:so/NYdZXCz+E3ZpW0uAoCj6uzU2+8OWDFv/HxUSs7kI=
-volcano.sh/apis v0.0.0-20210923020136-eb779276d17e h1:F89sQUZt3YjQ6EYyeu1Nqecruc7V2/2N8Q1CiSLlGYE=
-volcano.sh/apis v0.0.0-20210923020136-eb779276d17e/go.mod h1:UaeJ/s5Hyd+ZhFLc+Kw9YlgM8gRZ/5OzXqHa0yKOoXY=
+volcano.sh/apis v0.0.0-20211109104455-7e8d893a9f66 h1:vmCou3lcAeNSmyMXBVlfQnJYsQvhfS3mMv2FJrtACyg=
+volcano.sh/apis v0.0.0-20211109104455-7e8d893a9f66/go.mod h1:UaeJ/s5Hyd+ZhFLc+Kw9YlgM8gRZ/5OzXqHa0yKOoXY=
