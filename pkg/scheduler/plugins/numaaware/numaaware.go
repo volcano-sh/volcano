@@ -46,6 +46,7 @@ const (
 )
 
 type numaPlugin struct {
+	sync.Mutex
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
 	hintProviders   []policy.HintProvider
@@ -143,6 +144,8 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
+		pp.Lock()
+		defer pp.Unlock()
 		if _, ok := pp.assignRes[task.UID]; !ok {
 			pp.assignRes[task.UID] = make(map[string]api.ResNumaSets)
 		}
