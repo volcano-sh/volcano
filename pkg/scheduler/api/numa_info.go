@@ -87,8 +87,8 @@ func (info *NumatopoInfo) DeepCopy() *NumatopoInfo {
 		tmpInfo.Capacity = resInfo.Capacity
 		tmpInfo.Allocatable = resInfo.Allocatable.Clone()
 
-		for numaId, data := range resInfo.AllocatablePerNuma {
-			tmpInfo.AllocatablePerNuma[numaId] = data
+		for numaID, data := range resInfo.AllocatablePerNuma {
+			tmpInfo.AllocatablePerNuma[numaID] = data
 		}
 
 		for numaID, data := range resInfo.UsedPerNuma {
