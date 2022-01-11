@@ -850,6 +850,12 @@ func (sc *SchedulerCache) AddBindTask(taskInfo *schedulingapi.TaskInfo) error {
 		return err
 	}
 
+	err = taskInfo.SetPodResourceDecision()
+	if err != nil {
+		return fmt.Errorf("set task %v/%v resource decision failed, err %v", task.Namespace, task.Name, err)
+	}
+	task.NumaInfo = taskInfo.NumaInfo.Clone()
+
 	// Add task to the node.
 	if err := node.AddTask(task); err != nil {
 		// After failing to update task to a node we need to revert task status from Releasing,
