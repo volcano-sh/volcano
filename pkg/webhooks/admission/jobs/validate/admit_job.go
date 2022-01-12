@@ -291,7 +291,8 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 		Template: coreTemplateSpec,
 	}
 
-	if allErrs := k8scorevalid.ValidatePodTemplate(&corePodTemplate); len(allErrs) > 0 {
+	opts := k8scorevalid.PodValidationOptions{}
+	if allErrs := k8scorevalid.ValidatePodTemplate(&corePodTemplate, opts); len(allErrs) > 0 {
 		msg := fmt.Sprintf("spec.task[%d].", index)
 		for index := range allErrs {
 			msg += allErrs[index].Error() + ". "

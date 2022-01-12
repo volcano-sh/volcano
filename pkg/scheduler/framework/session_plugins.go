@@ -17,7 +17,7 @@ limitations under the License.
 package framework
 
 import (
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"

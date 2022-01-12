@@ -22,7 +22,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
+	v1helper "k8s.io/kubernetes/pkg/scheduler/util"
 
 	"volcano.sh/volcano/pkg/scheduler/util/assert"
 )
