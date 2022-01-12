@@ -59,7 +59,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 				job.Queue, job.Namespace, job.Name)
 			continue
 		} else if _, existed := queueMap[queue.UID]; !existed {
-			klog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
+			klog.V(5).Infof("Added Queue <%s> for Job <%s/%s>",
 				queue.Name, job.Namespace, job.Name)
 
 			queueMap[queue.UID] = queue
@@ -70,7 +70,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 			if _, found := jobsMap[job.Queue]; !found {
 				jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 			}
-			klog.V(3).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
+			klog.V(5).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
 			jobsMap[job.Queue].Push(job)
 		}
 	}
