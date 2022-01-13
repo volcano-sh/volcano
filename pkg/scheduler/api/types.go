@@ -17,7 +17,7 @@ limitations under the License.
 package api
 
 import (
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
 // TaskStatus defines the status of a task/pod.

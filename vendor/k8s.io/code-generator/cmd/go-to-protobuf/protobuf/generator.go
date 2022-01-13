@@ -573,7 +573,7 @@ func protobufTagToField(tag string, field *protoField, m types.Member, t *types.
 	switch parts[0] {
 	case "varint", "fixed32", "fixed64", "bytes", "group":
 	default:
-		name := types.Name{}
+		var name types.Name
 		if last := strings.LastIndex(parts[0], "."); last != -1 {
 			prefix := parts[0][:last]
 			name = types.Name{
@@ -740,7 +740,7 @@ func formatProtoFile(source []byte) ([]byte, error) {
 func assembleProtoFile(w io.Writer, f *generator.File) {
 	w.Write(f.Header)
 
-	fmt.Fprint(w, "syntax = 'proto2';\n\n")
+	fmt.Fprint(w, "syntax = \"proto2\";\n\n")
 
 	if len(f.PackageName) > 0 {
 		fmt.Fprintf(w, "package %s;\n\n", f.PackageName)

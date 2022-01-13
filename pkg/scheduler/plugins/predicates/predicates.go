@@ -26,12 +26,13 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeports"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeunschedulable"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -248,7 +249,10 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	plugin, _ := nodeunschedulable.New(nil, handle)
 	nodeUnscheduleFilter := plugin.(*nodeunschedulable.NodeUnschedulable)
 	// 2. NodeAffinity
-	plugin, _ = nodeaffinity.New(nil, handle)
+	nodeAffinityArgs := config.NodeAffinityArgs{
+		AddedAffinity: &v1.NodeAffinity{},
+	}
+	plugin, _ = nodeaffinity.New(&nodeAffinityArgs, handle)
 	nodeAffinityFilter := plugin.(*nodeaffinity.NodeAffinity)
 	// 3. NodePorts
 	plugin, _ = nodeports.New(nil, handle)
@@ -258,7 +262,8 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	tolerationFilter := plugin.(*tainttoleration.TaintToleration)
 	// 5. InterPodAffinity
 	plArgs := &config.InterPodAffinityArgs{}
-	plugin, _ = interpodaffinity.New(plArgs, handle)
+	features := feature.Features{}
+	plugin, _ = interpodaffinity.New(plArgs, handle, features)
 	podAffinityFilter := plugin.(*interpodaffinity.InterPodAffinity)
 
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {

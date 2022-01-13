@@ -26,7 +26,7 @@ import (
 
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"

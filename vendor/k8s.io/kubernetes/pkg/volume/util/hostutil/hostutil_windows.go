@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 /*
@@ -26,7 +27,7 @@ import (
 	"strings"
 
 	"k8s.io/klog/v2"
-	"k8s.io/utils/mount"
+	"k8s.io/mount-utils"
 	utilpath "k8s.io/utils/path"
 )
 

@@ -17,45 +17,45 @@ limitations under the License.
 package k8s
 
 import (
+	"context"
+
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/kubernetes/pkg/controller/volume/scheduling"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
-	"k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
+	"k8s.io/kubernetes/pkg/scheduler/framework"
+	"k8s.io/kubernetes/pkg/scheduler/framework/parallelize"
+	scheduling "k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 )
 
 // Framework is a K8S framework who mainly provides some methods
 // about snapshot and plugins such as predicates
 type Framework struct {
-	snapshot        v1alpha1.SharedLister
+	snapshot        framework.SharedLister
 	kubeClient      kubernetes.Interface
 	informerFactory informers.SharedInformerFactory
 }
 
-var _ v1alpha1.FrameworkHandle = &Framework{}
+var _ framework.Handle = &Framework{}
 
 // SnapshotSharedLister returns the scheduler's SharedLister of the latest NodeInfo
 // snapshot. The snapshot is taken at the beginning of a scheduling cycle and remains
 // unchanged until a pod finishes "Reserve". There is no guarantee that the information
 // remains unchanged after "Reserve".
-func (f *Framework) SnapshotSharedLister() v1alpha1.SharedLister {
+func (f *Framework) SnapshotSharedLister() framework.SharedLister {
 	return f.snapshot
 }
 
 // IterateOverWaitingPods acquires a read lock and iterates over the WaitingPods map.
-func (f *Framework) IterateOverWaitingPods(callback func(v1alpha1.WaitingPod)) {
+func (f *Framework) IterateOverWaitingPods(callback func(framework.WaitingPod)) {
 	panic("not implemented")
 }
 
 // GetWaitingPod returns a reference to a WaitingPod given its UID.
-func (f *Framework) GetWaitingPod(uid types.UID) v1alpha1.WaitingPod {
-	panic("not implemented")
-}
-
-// RejectWaitingPod rejects a WaitingPod given its UID.
-func (f *Framework) RejectWaitingPod(uid types.UID) {
+func (f *Framework) GetWaitingPod(uid types.UID) framework.WaitingPod {
 	panic("not implemented")
 }
 
@@ -95,13 +95,64 @@ func (f *Framework) EventRecorder() events.EventRecorder {
 	return nil
 }
 
-// PreemptHandle was introduced in k8s v1.19.6 and to be implemented
-func (f *Framework) PreemptHandle() v1alpha1.PreemptHandle {
-	return nil
+func (f *Framework) AddNominatedPod(pod *framework.PodInfo, nodeName string) {
+	panic("implement me")
+}
+
+func (f *Framework) DeleteNominatedPodIfExists(pod *v1.Pod) {
+	panic("implement me")
+}
+
+func (f *Framework) UpdateNominatedPod(oldPod *v1.Pod, newPodInfo *framework.PodInfo) {
+	panic("implement me")
+}
+
+func (f *Framework) NominatedPodsForNode(nodeName string) []*framework.PodInfo {
+	panic("implement me")
+}
+
+func (f *Framework) RunPreScorePlugins(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodes []*v1.Node) *framework.Status {
+	panic("implement me")
+}
+
+func (f *Framework) RunScorePlugins(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodes []*v1.Node) (framework.PluginToNodeScores, *framework.Status) {
+	panic("implement me")
+}
+
+func (f *Framework) RunFilterPlugins(ctx context.Context, state *framework.CycleState, pod *v1.Pod, info *framework.NodeInfo) framework.PluginToStatus {
+	panic("implement me")
+}
+
+func (f *Framework) RunPreFilterExtensionAddPod(ctx context.Context, state *framework.CycleState, podToSchedule *v1.Pod, podInfoToAdd *framework.PodInfo, nodeInfo *framework.NodeInfo) *framework.Status {
+	panic("implement me")
+}
+
+func (f *Framework) RunPreFilterExtensionRemovePod(ctx context.Context, state *framework.CycleState, podToSchedule *v1.Pod, podInfoToRemove *framework.PodInfo, nodeInfo *framework.NodeInfo) *framework.Status {
+	panic("implement me")
+}
+
+func (f *Framework) RejectWaitingPod(uid types.UID) bool {
+	panic("implement me")
+}
+
+func (f *Framework) KubeConfig() *rest.Config {
+	panic("implement me")
+}
+
+func (f *Framework) RunFilterPluginsWithNominatedPods(ctx context.Context, state *framework.CycleState, pod *v1.Pod, info *framework.NodeInfo) *framework.Status {
+	panic("implement me")
+}
+
+func (f *Framework) Extenders() []framework.Extender {
+	panic("implement me")
+}
+
+func (f *Framework) Parallelizer() parallelize.Parallelizer {
+	return parallelize.NewParallelizer(16)
 }
 
 // NewFrameworkHandle creates a FrameworkHandle interface, which is used by k8s plugins.
-func NewFrameworkHandle(nodeMap map[string]*v1alpha1.NodeInfo, client kubernetes.Interface, informerFactory informers.SharedInformerFactory) v1alpha1.FrameworkHandle {
+func NewFrameworkHandle(nodeMap map[string]*framework.NodeInfo, client kubernetes.Interface, informerFactory informers.SharedInformerFactory) framework.Handle {
 	snapshot := NewSnapshot(nodeMap)
 	return &Framework{
 		snapshot:        snapshot,

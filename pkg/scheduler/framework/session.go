@@ -26,7 +26,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog"
-	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
+	volumescheduling "k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"

@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"k8s.io/klog"
-	"k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
+	k8sFramework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -194,7 +194,7 @@ func (p *taskTopologyPlugin) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo)
 	}
 	fScore := float64(score * p.weight)
 	if jobManager != nil && jobManager.bucketMaxSize != 0 {
-		fScore = fScore * float64(v1alpha1.MaxNodeScore) / float64(jobManager.bucketMaxSize)
+		fScore = fScore * float64(k8sFramework.MaxNodeScore) / float64(jobManager.bucketMaxSize)
 	}
 	klog.V(4).Infof("task %s/%s at node %s has bucket score %d, score %f",
 		task.Namespace, task.Name, node.Name, score, fScore)
