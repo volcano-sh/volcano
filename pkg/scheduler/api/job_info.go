@@ -365,11 +365,19 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.CreationTimestamp = pg.GetCreationTimestamp()
 
 	var err error
-	ji.WaitingTime, err = ji.extractWaitingTime(pg)
+	ji.WaitingTime, err = ji.extractWaitingTime(pg, v1beta1.JobWaitingTime)
 	if err != nil {
 		klog.Warningf("Error occurs in parsing waiting time for job <%s/%s>, err: %s.",
 			pg.Namespace, pg.Name, err.Error())
 		ji.WaitingTime = nil
+	}
+	if ji.WaitingTime == nil {
+		ji.WaitingTime, err = ji.extractWaitingTime(pg, JobWaitingTime)
+		if err != nil {
+			klog.Warningf("Error occurs in parsing waiting time for job <%s/%s>, err: %s.",
+				pg.Namespace, pg.Name, err.Error())
+			ji.WaitingTime = nil
+		}
 	}
 
 	ji.Preemptable = ji.extractPreemptable(pg)
@@ -388,12 +396,12 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 
 // extractWaitingTime reads sla waiting time for job from podgroup annotations
 // TODO: should also read from given field in volcano job spec
-func (ji *JobInfo) extractWaitingTime(pg *PodGroup) (*time.Duration, error) {
-	if _, exist := pg.Annotations[JobWaitingTime]; !exist {
+func (ji *JobInfo) extractWaitingTime(pg *PodGroup, waitingTimeKey string) (*time.Duration, error) {
+	if _, exist := pg.Annotations[waitingTimeKey]; !exist {
 		return nil, nil
 	}
 
-	jobWaitingTime, err := time.ParseDuration(pg.Annotations[JobWaitingTime])
+	jobWaitingTime, err := time.ParseDuration(pg.Annotations[waitingTimeKey])
 	if err != nil {
 		return nil, err
 	}
