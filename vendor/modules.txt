@@ -160,7 +160,7 @@ github.com/onsi/gomega/types
 # github.com/opencontainers/go-digest v1.0.0
 ## explicit; go 1.13
 github.com/opencontainers/go-digest
-# github.com/opencontainers/runc v1.0.2
+# github.com/opencontainers/runc v1.0.3 => github.com/opencontainers/runc v1.0.3
 ## explicit; go 1.13
 github.com/opencontainers/runc/libcontainer/apparmor
 github.com/opencontainers/runc/libcontainer/utils
@@ -1066,6 +1066,7 @@ volcano.sh/apis/pkg/client/listers/batch/v1alpha1
 volcano.sh/apis/pkg/client/listers/bus/v1alpha1
 volcano.sh/apis/pkg/client/listers/nodeinfo/v1alpha1
 volcano.sh/apis/pkg/client/listers/scheduling/v1beta1
+# github.com/opencontainers/runc => github.com/opencontainers/runc v1.0.3
 # google.golang.org/grpc => google.golang.org/grpc v1.29.1
 # k8s.io/api => k8s.io/api v0.23.0
 # k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.23.0

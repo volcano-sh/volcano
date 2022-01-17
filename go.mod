@@ -66,7 +66,7 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/opencontainers/runc v1.0.2 // indirect
+	github.com/opencontainers/runc v1.0.3 // indirect
 	github.com/opencontainers/selinux v1.8.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
@@ -106,6 +106,7 @@ require (
 )
 
 replace (
+	github.com/opencontainers/runc => github.com/opencontainers/runc v1.0.3
 	google.golang.org/grpc => google.golang.org/grpc v1.29.1
 	k8s.io/api => k8s.io/api v0.23.0
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.23.0
