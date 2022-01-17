@@ -46,3 +46,6 @@ const JDBMaxUnavailable = "volcano.sh/jdb-max-unavailable"
 
 // NumaPolicyKey is the key of pod nuam-topology policy
 const NumaPolicyKey = "volcano.sh/numa-topology-policy"
+
+// TopologyDecisionAnnotation is the key of topology decision about pod request resource
+const TopologyDecisionAnnotation = "volcano.sh/topology-decision"
