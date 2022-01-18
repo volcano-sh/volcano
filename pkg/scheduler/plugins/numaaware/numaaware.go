@@ -19,6 +19,7 @@ package numaaware
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 
@@ -46,6 +47,7 @@ const (
 )
 
 type numaPlugin struct {
+	sync.Mutex
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
 	hintProviders   []policy.HintProvider
@@ -143,6 +145,8 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
+		pp.Lock()
+		defer pp.Unlock()
 		if _, ok := pp.assignRes[task.UID]; !ok {
 			pp.assignRes[task.UID] = make(map[string]api.ResNumaSets)
 		}
@@ -225,9 +229,12 @@ func filterNodeByPolicy(task *api.TaskInfo, node *api.NodeInfo, nodeResSets map[
 
 func getNodeNumaNumForTask(nodeInfo []*api.NodeInfo, resAssignMap map[string]api.ResNumaSets) map[string]int64 {
 	nodeNumaNumMap := make(map[string]int64)
+	var mx sync.RWMutex
 	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodeInfo), func(index int) {
 		node := nodeInfo[index]
 		assignCpus := resAssignMap[node.Name][string(v1.ResourceCPU)]
+		mx.Lock()
+		defer mx.Unlock()
 		nodeNumaNumMap[node.Name] = int64(getNumaNodeCntForcpuID(assignCpus, node.NumaSchedulerInfo.CPUDetail))
 	})
 
