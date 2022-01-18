@@ -197,10 +197,14 @@ func (r *Resource) Add(rr *Resource) *Resource {
 	return r
 }
 
-//Sub subtracts two Resource objects.
+// Sub subtracts two Resource objects with assertion.
 func (r *Resource) Sub(rr *Resource) *Resource {
 	assert.Assertf(rr.LessEqual(r, Zero), "resource is not sufficient to do operation: <%v> sub <%v>", r, rr)
+	return r.sub(rr)
+}
 
+// sub subtracts two Resource objects.
+func (r *Resource) sub(rr *Resource) *Resource {
 	r.MilliCPU -= rr.MilliCPU
 	r.Memory -= rr.Memory
 
