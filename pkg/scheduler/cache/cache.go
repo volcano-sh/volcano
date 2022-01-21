@@ -275,6 +275,16 @@ func (dvb *defaultVolumeBinder) AllocateVolumes(task *schedulingapi.TaskInfo, ho
 	return err
 }
 
+// AllocateVolumes allocates volume on the host to the task
+func (dvb *defaultVolumeBinder) RevertVolumes(task *schedulingapi.TaskInfo, podVolumes *volumescheduling.PodVolumes) {
+	if podVolumes != nil {
+		klog.Infof("Revert assumed volumes for task %v/%v on node %s", task.Namespace, task.Name, task.NodeName)
+		dvb.volumeBinder.RevertAssumedPodVolumes(podVolumes)
+		task.VolumeReady = false
+		task.PodVolumes = nil
+	}
+}
+
 // GetPodVolumes get pod volume on the host
 func (dvb *defaultVolumeBinder) GetPodVolumes(task *schedulingapi.TaskInfo,
 	node *v1.Node) (podVolumes *volumescheduling.PodVolumes, err error) {
@@ -685,6 +695,7 @@ func (sc *SchedulerCache) Bind(tasks []*schedulingapi.TaskInfo) error {
 		} else {
 			for _, task := range errTasks {
 				klog.V(2).Infof("resyncTask task %s", task.Name)
+				sc.VolumeBinder.RevertVolumes(task, task.PodVolumes)
 				sc.resyncTask(task)
 			}
 		}
@@ -701,19 +712,9 @@ func (sc *SchedulerCache) BindPodGroup(job *schedulingapi.JobInfo, cluster strin
 	return nil
 }
 
-// GetPodVolumes get pod volume on the host
-func (sc *SchedulerCache) GetPodVolumes(task *schedulingapi.TaskInfo, node *v1.Node) (*volumescheduling.PodVolumes, error) {
-	return sc.VolumeBinder.GetPodVolumes(task, node)
-}
-
-// AllocateVolumes allocates volume on the host to the task
-func (sc *SchedulerCache) AllocateVolumes(task *schedulingapi.TaskInfo, hostname string, podVolumes *volumescheduling.PodVolumes) error {
-	return sc.VolumeBinder.AllocateVolumes(task, hostname, podVolumes)
-}
-
-// BindVolumes binds volumes to the task
-func (sc *SchedulerCache) BindVolumes(task *schedulingapi.TaskInfo, podVolumes *volumescheduling.PodVolumes) error {
-	return sc.VolumeBinder.BindVolumes(task, podVolumes)
+// SchedulerVolumeBinder returns volume binder
+func (sc *SchedulerCache) SchedulerVolumeBinder() VolumeBinder {
+	return sc.VolumeBinder
 }
 
 // Client returns the kubernetes clientSet
@@ -904,8 +905,9 @@ func (sc *SchedulerCache) processBindTask() {
 func (sc *SchedulerCache) BindTask() {
 	klog.V(5).Infof("batch bind task count %d", len(sc.bindCache))
 	for _, task := range sc.bindCache {
-		if err := sc.BindVolumes(task, task.PodVolumes); err != nil {
+		if err := sc.VolumeBinder.BindVolumes(task, task.PodVolumes); err != nil {
 			klog.Errorf("task %s/%s bind Volumes failed: %#v", task.Namespace, task.Name, err)
+			sc.VolumeBinder.RevertVolumes(task, task.PodVolumes)
 			sc.resyncTask(task)
 			return
 		}

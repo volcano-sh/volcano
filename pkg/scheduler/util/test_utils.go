@@ -171,3 +171,8 @@ func (fvb *FakeVolumeBinder) BindVolumes(task *api.TaskInfo, podVolumes *volumes
 func (fvb *FakeVolumeBinder) GetPodVolumes(task *api.TaskInfo, node *v1.Node) (*volumescheduling.PodVolumes, error) {
 	return nil, nil
 }
+
+// RevertVolumes is a empty function
+func (fvb *FakeVolumeBinder) RevertVolumes(task *api.TaskInfo, podVolumes *volumescheduling.PodVolumes) {
+
+}

@@ -53,15 +53,7 @@ type Cache interface {
 
 	// UpdateJobStatus puts job in backlog for a while.
 	UpdateJobStatus(job *api.JobInfo, updatePG bool) (*api.JobInfo, error)
-
-	GetPodVolumes(task *api.TaskInfo, node *v1.Node) (*scheduling.PodVolumes, error)
-
-	// AllocateVolumes allocates volume on the host to the task
-	AllocateVolumes(task *api.TaskInfo, hostname string, podVolumes *scheduling.PodVolumes) error
-
-	// BindVolumes binds volumes to the task
-	BindVolumes(task *api.TaskInfo, volumes *scheduling.PodVolumes) error
-
+	
 	// Client returns the kubernetes clientSet, which can be used by plugins
 	Client() kubernetes.Interface
 
@@ -69,11 +61,15 @@ type Cache interface {
 
 	// SharedInformerFactory return scheduler SharedInformerFactory
 	SharedInformerFactory() informers.SharedInformerFactory
+
+	// SchedulerVolumeBinder return scheduler volume binder
+	SchedulerVolumeBinder() VolumeBinder
 }
 
 // VolumeBinder interface for allocate and bind volumes
 type VolumeBinder interface {
 	GetPodVolumes(task *api.TaskInfo, node *v1.Node) (*scheduling.PodVolumes, error)
+	RevertVolumes(task *api.TaskInfo, podVolumes *scheduling.PodVolumes)
 	AllocateVolumes(task *api.TaskInfo, hostname string, podVolumes *scheduling.PodVolumes) error
 	BindVolumes(task *api.TaskInfo, podVolumes *scheduling.PodVolumes) error
 }
