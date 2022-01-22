@@ -30,13 +30,13 @@ func New() *Action {
 	return &Action{}
 }
 
-func (alloc *Action) Name() string {
+func (backfill *Action) Name() string {
 	return "backfill"
 }
 
-func (alloc *Action) Initialize() {}
+func (backfill *Action) Initialize() {}
 
-func (alloc *Action) Execute(ssn *framework.Session) {
+func (backfill *Action) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("Enter Backfill ...")
 	defer klog.V(3).Infof("Leaving Backfill ...")
 
@@ -89,4 +89,4 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	}
 }
 
-func (alloc *Action) UnInitialize() {}
+func (backfill *Action) UnInitialize() {}

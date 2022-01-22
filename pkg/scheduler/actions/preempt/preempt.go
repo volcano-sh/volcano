@@ -31,13 +31,13 @@ func New() *Action {
 	return &Action{}
 }
 
-func (alloc *Action) Name() string {
+func (pmpt *Action) Name() string {
 	return "preempt"
 }
 
-func (alloc *Action) Initialize() {}
+func (pmpt *Action) Initialize() {}
 
-func (alloc *Action) Execute(ssn *framework.Session) {
+func (pmpt *Action) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("Enter Preempt ...")
 	defer klog.V(3).Infof("Leaving Preempt ...")
 
@@ -188,7 +188,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	victimTasks(ssn)
 }
 
-func (alloc *Action) UnInitialize() {}
+func (pmpt *Action) UnInitialize() {}
 
 func preempt(
 	ssn *framework.Session,
