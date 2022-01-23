@@ -1,7 +1,6 @@
 
 # Welcome to Volcano!
 
-- [Welcome to Volcano!](#welcome-to-volcano)
 - [Before you get started](#before-you-get-started)
   - [Code of Conduct](#code-of-conduct)
   - [Community Expectations](#community-expectations)
@@ -9,12 +8,11 @@
 - [Your First Contribution](#your-first-contribution)
   - [Find something to work on](#find-something-to-work-on)
     - [Find a good first topic](#find-a-good-first-topic)
-      - [Work on an issue](#work-on-an-issue)
+    - [Work on an issue](#work-on-an-issue)
     - [File an Issue](#file-an-issue)
 - [Contributor Workflow](#contributor-workflow)
   - [Creating Pull Requests](#creating-pull-requests)
   - [Code Review](#code-review)
-    - [Format of the commit message](#format-of-the-commit-message)
   - [Testing](#testing)
 
 # Before you get started
