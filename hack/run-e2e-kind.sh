@@ -133,7 +133,7 @@ GO111MODULE=off go get github.com/onsi/ginkgo/ginkgo
 case ${E2E_TYPE} in
 "ALL")
     echo "Running e2e..."
-    KUBECONFIG=${KUBECONFIG} ginkgo -r --nodes=4 --compilers=4 --randomizeAllSpecs --randomizeSuites --failOnPending --cover --trace --race --slow-spec-threshold='30s' --progress ./test/e2e/jobp/
+    KUBECONFIG=${KUBECONFIG} ginkgo -r --nodes=4 --compilers=4 --randomize-all --randomize-suites --fail-on-pending --cover --trace --race --slow-spec-threshold='30s' --progress ./test/e2e/jobp/
     KUBECONFIG=${KUBECONFIG} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/jobseq/
     KUBECONFIG=${KUBECONFIG} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulingbase/
     KUBECONFIG=${KUBECONFIG} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulingaction/
@@ -141,7 +141,7 @@ case ${E2E_TYPE} in
     ;;
 "JOBP")
     echo "Running parallel job e2e suite..."
-    KUBECONFIG=${KUBECONFIG} ginkgo -r --nodes=4 --compilers=4 --randomizeAllSpecs --randomizeSuites --failOnPending --cover --trace --race --slow-spec-threshold='30s' --progress ./test/e2e/jobp/
+    KUBECONFIG=${KUBECONFIG} ginkgo -r --nodes=4 --compilers=4 --randomize-all --randomize-suites --fail-on-pending --cover --trace --race --slow-spec-threshold='30s' --progress ./test/e2e/jobp/
     ;;
 "JOBSEQ")
     echo "Running sequence job e2e suite..."
