@@ -281,18 +281,18 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 
 //Allocate the task to the node in the session
 func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err error) {
-	podVolumes, err := ssn.cache.SchedulerVolumeBinder().GetPodVolumes(task, nodeInfo.Node)
+	podVolumes, err := ssn.cache.GetPodVolumes(task, nodeInfo.Node)
 	if err != nil {
 		return err
 	}
 
 	hostname := nodeInfo.Name
-	if err := ssn.cache.SchedulerVolumeBinder().AllocateVolumes(task, hostname, podVolumes); err != nil {
+	if err := ssn.cache.AllocateVolumes(task, hostname, podVolumes); err != nil {
 		return err
 	}
 	defer func() {
 		if err != nil {
-			ssn.cache.SchedulerVolumeBinder().RevertVolumes(task, podVolumes)
+			ssn.cache.RevertVolumes(task, podVolumes)
 		}
 	}()
 
@@ -347,7 +347,7 @@ func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err er
 			}
 		}
 	} else {
-		ssn.cache.SchedulerVolumeBinder().RevertVolumes(task, podVolumes)
+		ssn.cache.RevertVolumes(task, podVolumes)
 	}
 
 	return nil
