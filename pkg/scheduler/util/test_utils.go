@@ -97,7 +97,7 @@ func BuildPod(namespace, name, nodename string, p v1.PodPhase, req v1.ResourceLi
 	}
 }
 
-// BuildPod builts Pod object
+// BuildPodWithPVC builts Pod object with pvc volume
 func BuildPodWithPVC(namespace, name, nodename string, p v1.PodPhase, req v1.ResourceList, pvc *v1.PersistentVolumeClaim, groupName string, labels map[string]string, selector map[string]string) *v1.Pod {
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -142,6 +142,7 @@ func BuildPodWithPVC(namespace, name, nodename string, p v1.PodPhase, req v1.Res
 	}
 }
 
+// BuildDynamicPVC create pv pvc and storage class
 func BuildDynamicPVC(namespace, name string, req v1.ResourceList) (*v1.PersistentVolumeClaim, *v1.PersistentVolume, *storagev1.StorageClass){
 	tmp := v1.PersistentVolumeReclaimDelete
 	tmp2 := storagev1.VolumeBindingWaitForFirstConsumer
@@ -258,6 +259,7 @@ type FakeVolumeBinder struct {
 	Actions      map[string][]string
 }
 
+// NewFakeVolumeBinder create fake volume binder with kubeclient
 func NewFakeVolumeBinder(kubeClient kubernetes.Interface) *FakeVolumeBinder {
 	informerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
 	podInformer := informerFactory.Core().V1().Pods()
