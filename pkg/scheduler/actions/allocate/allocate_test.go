@@ -300,7 +300,6 @@ func TestAllocate(t *testing.T) {
 	}
 }
 
-
 func TestAllocateWithDynamicPVC(t *testing.T) {
 	var tmp *cache.SchedulerCache
 	patches := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "AddBindTask", func(scCache *cache.SchedulerCache, task *api.TaskInfo) error {
@@ -335,7 +334,7 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 			Namespace: "c1",
 		},
 		Spec: schedulingv1.PodGroupSpec{
-			Queue: "c1",
+			Queue:     "c1",
 			MinMember: 2,
 		},
 		Status: schedulingv1.PodGroupStatus{
@@ -351,7 +350,7 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 	pvcs := []*v1.PersistentVolumeClaim{pvc}
 	for i := 1; i <= 5; i++ {
 		tmp := pvc.DeepCopy()
-		tmp.Name = fmt.Sprintf("pvc%d",i)
+		tmp.Name = fmt.Sprintf("pvc%d", i)
 		pvcs = append(pvcs, tmp)
 		kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(context.TODO(), tmp, metav1.CreateOptions{})
 	}
@@ -360,10 +359,10 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 	allocate := New()
 
 	tests := []struct {
-		name      string
-		pods      []*v1.Pod
-		nodes     []*v1.Node
-		pvs       []*v1.PersistentVolume
+		name            string
+		pods            []*v1.Pod
+		nodes           []*v1.Node
+		pvs             []*v1.PersistentVolume
 		expectedBind    map[string]string
 		expectedActions map[string][]string
 	}{
@@ -376,9 +375,8 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 			nodes: []*v1.Node{
 				util.BuildNode("n1", util.BuildResourceList("1", "4Gi"), make(map[string]string)),
 			},
-			expectedBind: map[string]string{
-			},
-			expectedActions: map[string][]string {
+			expectedBind: map[string]string{},
+			expectedActions: map[string][]string{
 				"c1/p1": {"GetPodVolumes", "AllocateVolumes", "RevertVolumes"},
 			},
 		},
@@ -395,7 +393,7 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 				"c1/p1": "n2",
 				"c1/p2": "n2",
 			},
-			expectedActions: map[string][]string {
+			expectedActions: map[string][]string{
 				"c1/p1": {"GetPodVolumes", "AllocateVolumes", "DynamicProvisions"},
 				"c1/p2": {"GetPodVolumes", "AllocateVolumes", "DynamicProvisions"},
 			},
@@ -416,7 +414,7 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 				"c1/p3": "n3",
 				"c1/p4": "n3",
 			},
-			expectedActions: map[string][]string {
+			expectedActions: map[string][]string{
 				"c1/p3": {"GetPodVolumes", "AllocateVolumes", "StaticBindings"},
 				"c1/p4": {"GetPodVolumes", "AllocateVolumes", "DynamicProvisions"},
 			},
@@ -436,7 +434,7 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 				Binder:        binder,
 				StatusUpdater: &util.FakeStatusUpdater{},
 				VolumeBinder:  fakeVolumeBinder,
-				Recorder: record.NewFakeRecorder(100),
+				Recorder:      record.NewFakeRecorder(100),
 			}
 
 			schedulerCache.AddQueueV1beta1(queue)
@@ -457,18 +455,18 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 				{
 					Plugins: []conf.PluginOption{
 						{
-							Name:                  "priority",
-							EnabledJobReady:        &trueValue,
-							EnabledPredicate:       &trueValue,
-							EnabledJobPipelined:    &trueValue,
-							EnabledTaskOrder:       &trueValue,
+							Name:                "priority",
+							EnabledJobReady:     &trueValue,
+							EnabledPredicate:    &trueValue,
+							EnabledJobPipelined: &trueValue,
+							EnabledTaskOrder:    &trueValue,
 						},
 						{
-							Name:                  "gang",
-							EnabledJobReady:        &trueValue,
-							EnabledPredicate:       &trueValue,
-							EnabledJobPipelined:    &trueValue,
-							EnabledTaskOrder:       &trueValue,
+							Name:                "gang",
+							EnabledJobReady:     &trueValue,
+							EnabledPredicate:    &trueValue,
+							EnabledJobPipelined: &trueValue,
+							EnabledTaskOrder:    &trueValue,
 						},
 					},
 				},

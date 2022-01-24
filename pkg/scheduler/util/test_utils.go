@@ -128,7 +128,7 @@ func BuildPodWithPVC(namespace, name, nodename string, p v1.PodPhase, req v1.Res
 					},
 				},
 			},
-			Volumes: []v1.Volume {
+			Volumes: []v1.Volume{
 				{
 					Name: pvc.Name,
 					VolumeSource: v1.VolumeSource{
@@ -143,45 +143,45 @@ func BuildPodWithPVC(namespace, name, nodename string, p v1.PodPhase, req v1.Res
 }
 
 // BuildDynamicPVC create pv pvc and storage class
-func BuildDynamicPVC(namespace, name string, req v1.ResourceList) (*v1.PersistentVolumeClaim, *v1.PersistentVolume, *storagev1.StorageClass){
+func BuildDynamicPVC(namespace, name string, req v1.ResourceList) (*v1.PersistentVolumeClaim, *v1.PersistentVolume, *storagev1.StorageClass) {
 	tmp := v1.PersistentVolumeReclaimDelete
 	tmp2 := storagev1.VolumeBindingWaitForFirstConsumer
 	sc := &storagev1.StorageClass{
 		ObjectMeta: metav1.ObjectMeta{
-			UID:       types.UID(fmt.Sprintf("%v-%v", namespace, name)),
+			UID:             types.UID(fmt.Sprintf("%v-%v", namespace, name)),
 			ResourceVersion: "1",
-			Name: name,
+			Name:            name,
 		},
-		Provisioner: name,
-		ReclaimPolicy: &tmp,
+		Provisioner:       name,
+		ReclaimPolicy:     &tmp,
 		VolumeBindingMode: &tmp2,
 	}
 	tmp3 := v1.PersistentVolumeFilesystem
 	pvc := &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			UID:       types.UID(fmt.Sprintf("%v-%v", namespace, name)),
+			UID:             types.UID(fmt.Sprintf("%v-%v", namespace, name)),
 			ResourceVersion: "1",
-			Namespace: namespace,
-			Name: name,
+			Namespace:       namespace,
+			Name:            name,
 		},
 		Spec: v1.PersistentVolumeClaimSpec{
 			Resources: v1.ResourceRequirements{
 				Requests: req,
 			},
 			StorageClassName: &sc.Name,
-			VolumeMode: &tmp3,
+			VolumeMode:       &tmp3,
 		},
 	}
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			UID:       types.UID(fmt.Sprintf("%v-%v", namespace, name)),
+			UID:             types.UID(fmt.Sprintf("%v-%v", namespace, name)),
 			ResourceVersion: "1",
-			Name: name,
+			Name:            name,
 		},
 		Spec: v1.PersistentVolumeSpec{
 			StorageClassName: sc.Name,
-			Capacity: req,
-			VolumeMode: &tmp3,
+			Capacity:         req,
+			VolumeMode:       &tmp3,
 			AccessModes: []v1.PersistentVolumeAccessMode{
 				v1.ReadWriteOnce,
 			},
