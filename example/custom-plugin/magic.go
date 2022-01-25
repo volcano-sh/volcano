@@ -31,9 +31,9 @@ func (mp *magicPlugin) Name() string {
 }
 
 // New is a PluginBuilder, remove the comment when used.
-// func New(arguments framework.Arguments) framework.Plugin {
-//	 return &magicPlugin{}
-// }
+func New(arguments framework.Arguments) framework.Plugin {
+	return &magicPlugin{}
+}
 
 func (mp *magicPlugin) OnSessionOpen(ssn *framework.Session) {
 	klog.V(4).Info("Enter magic plugin ...")
