@@ -121,7 +121,10 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	// Checks whether predicate.ProportionalEnable is provided or not, if given, modifies the value in predicateEnable struct.
 	args.GetBool(&predicate.proportionalEnable, ProportionalPredicate)
 	resourcesProportional := make(map[v1.ResourceName]baseResource)
-	resourcesStr := args[ProportionalResource]
+	resourcesStr, ok := args[ProportionalResource].(string)
+	if !ok {
+		resourcesStr = ""
+	}
 	resources := strings.Split(resourcesStr, ",")
 	for _, resource := range resources {
 		resource = strings.TrimSpace(resource)
