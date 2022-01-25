@@ -68,12 +68,12 @@ func New(args framework.Arguments) framework.Plugin {
 
 	for k, v := range args {
 		if strings.Contains(k, revocableZoneLabelPrefix) {
-			revocableZone[strings.Replace(k, revocableZoneLabelPrefix, "", 1)] = v
+			revocableZone[strings.Replace(k, revocableZoneLabelPrefix, "", 1)] = v.(string)
 		}
 	}
 
 	if period, ok := args[evictPeriodLabel]; ok {
-		if d, err := time.ParseDuration(period); err == nil {
+		if d, err := time.ParseDuration(period.(string)); err == nil {
 			evictPeriod = d
 		}
 	}

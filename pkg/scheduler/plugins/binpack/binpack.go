@@ -129,7 +129,11 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 		weight.BinPackingMemory = 1
 	}
 
-	resourcesStr := args[BinpackResources]
+	resourcesStr, ok := args[BinpackResources].(string)
+	if !ok {
+		resourcesStr = ""
+	}
+
 	resources := strings.Split(resourcesStr, ",")
 	for _, resource := range resources {
 		resource = strings.TrimSpace(resource)
