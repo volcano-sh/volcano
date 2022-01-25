@@ -16,27 +16,30 @@ limitations under the License.
 
 package main // note!!! package must be named main
 
-import (
-	"k8s.io/klog"
+// Because of the CI code verification for unused functions and structs, add comments temporarily.
+// Remove all the comments when used.
 
-	"volcano.sh/volcano/pkg/scheduler/framework"
-)
-
-const PluginName = "magic"
-
-type magicPlugin struct{}
-
-func (mp *magicPlugin) Name() string {
-	return PluginName
-}
+//import (
+//	"k8s.io/klog"
+//
+//	"volcano.sh/volcano/pkg/scheduler/framework"
+//)
+//
+//const PluginName = "magic"
+//
+//type magicPlugin struct{}
+//
+//func (mp *magicPlugin) Name() string {
+//	return PluginName
+//}
 
 // New is a PluginBuilder, remove the comment when used.
 // func New(arguments framework.Arguments) framework.Plugin {
 //	 return &magicPlugin{}
 // }
 
-func (mp *magicPlugin) OnSessionOpen(ssn *framework.Session) {
-	klog.V(4).Info("Enter magic plugin ...")
-}
-
-func (mp *magicPlugin) OnSessionClose(ssn *framework.Session) {}
+//func (mp *magicPlugin) OnSessionOpen(ssn *framework.Session) {
+//	klog.V(4).Info("Enter magic plugin ...")
+//}
+//
+//func (mp *magicPlugin) OnSessionClose(ssn *framework.Session) {}
