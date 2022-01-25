@@ -67,7 +67,7 @@ Volcano is a sandbox project of the [Cloud Native Computing Foundation](https://
 You can try Volcano by one of the following two ways.
 
 Note: 
-* For Kubernetes v1.16+ use CRDs under config/crd/bases (recommended)
+* For Kubernetes v1.17+ use CRDs under config/crd/bases (recommended)
 * For Kubernetes versions < v1.16 use CRDs under config/crd/v1beta1 (deprecated)
 
 ### Install with YAML files
