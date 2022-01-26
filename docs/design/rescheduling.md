@@ -77,9 +77,20 @@ tiers:
       - name: rescheduling       ## rescheduling plugin
         arguments:
           interval: 5m           ## optional, the strategies will be called in this duration periodcally. 5 minuters by default. 
-          strategies:              ## required, strategies working in order
-            - offlineOnly
-            - lowPriorityFirst
+          strategies:            ## required, strategies working in order
+            - name: offlineOnly
+            - name: lowPriorityFirst
+            - name: lowNodeUtilization
+              params:
+                nodeResourceUtilizationThresholds:
+                  thresholds:
+                    "cpu" : 20
+                    "memory": 20
+                    "pods": 20
+                  targetThresholds:
+                    "cpu" : 50
+                    "memory": 50
+                    "pods": 50
           queueSelector:         ## optional, select workloads in specified queues as potential evictees. All queues by default.
             - default
             - test-queue
