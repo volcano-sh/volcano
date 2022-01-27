@@ -1,19 +1,19 @@
 
 # Welcome to Volcano!
 
--   [Before you get started](#before-you-get-started)
-    -   [Code of Conduct](#code-of-conduct)
-    -   [Community Expectations](#community-expectations)
--   [Getting started](#getting-started)
--   [Your First Contribution](#your-first-contribution)
-    -   [Find something to work on](#find-something-to-work-on)
-        -   [Find a good first topic](#find-a-good-first-topic)
-        -   [Work on an Issue](#work-on-an-issue)
-        -   [File an Issue](#file-an-issue)
--   [Contributor Workflow](#contributor-workflow)
-    -   [Creating Pull Requests](#creating-pull-requests)
-    -   [Code Review](#code-review)
-    -   [Testing](#testing)
+- [Before you get started](#before-you-get-started)
+  - [Code of Conduct](#code-of-conduct)
+  - [Community Expectations](#community-expectations)
+- [Getting started](#getting-started)
+- [Your First Contribution](#your-first-contribution)
+  - [Find something to work on](#find-something-to-work-on)
+    - [Find a good first topic](#find-a-good-first-topic)
+    - [Work on an issue](#work-on-an-issue)
+    - [File an Issue](#file-an-issue)
+- [Contributor Workflow](#contributor-workflow)
+  - [Creating Pull Requests](#creating-pull-requests)
+  - [Code Review](#code-review)
+  - [Testing](#testing)
 
 # Before you get started
 
@@ -24,7 +24,7 @@ Please make sure to read and observe our [Code of Conduct](./code_of_conduct.md)
 ## Community Expectations
 
 Volcano is a community project driven by its community which strives to promote a healthy, friendly and productive environment.
-The goal of the community is to develop a volcano system which is useful for running high performance workloads such as AI, ML, Deep Learning Application on top of Kubernetes. To build a such volcano system at such scale requires the support of a community with similar aspirations.
+The goal of the community is to develop a volcano system which is useful for running high performance workloads such as AI, ML, Deep Learning Application on top of Kubernetes. To build a volcano system at such scale requires the support of a community with similar aspirations.
 
 - See [Community Membership](./community-membership.md) for a list of various community roles. With gradual contributions, one can move up in the chain.
 
@@ -59,7 +59,7 @@ Another good way to contribute is to find a documentation improvement, such as a
 #### Work on an issue
 
 When you are willing to take on an issue, you can assign it to yourself. Just reply with `/assign` or `/assign @yourself` on an issue,
-then the robot will assign the issue to you and your name will present at `Assignees` list.
+then the robot will assign the issue to you and your name will be present on the `Assignees` list.
 
 ### File an Issue
 
@@ -111,7 +111,7 @@ The subject line should feature the what and the body of the commit should descr
 ```
 scripts: add test codes for metamanager
 
-this add some unit test codes to improve code coverage for metamanager
+this adds some unit test codes to improve code coverage for metamanager
 
 Fixes #12
 ```
