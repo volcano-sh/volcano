@@ -28,7 +28,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/utils/pointer"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 
@@ -440,7 +439,8 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 			schedulerCache.AddQueueV1beta1(queue)
 			schedulerCache.AddPodGroupV1beta1(pg)
 			for i, pod := range test.pods {
-				pod.Spec.Priority = pointer.Int32(int32(-i))
+				priority := int32(-i)
+				pod.Spec.Priority = &priority
 				schedulerCache.AddPod(pod)
 			}
 			for _, pv := range test.pvs {
