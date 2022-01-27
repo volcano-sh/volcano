@@ -403,6 +403,7 @@ func (ssn *Session) JobEnqueueable(obj interface{}) bool {
 			}
 			if res > 0 {
 				hasFound = true
+				break
 			}
 		}
 		// if plugin exists that votes permit, meanwhile other plugin votes abstention,
