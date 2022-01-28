@@ -126,6 +126,14 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 }
 
 func newPGOwnerReferences(pod *v1.Pod) []metav1.OwnerReference {
+	if len(pod.OwnerReferences) != 0 {
+		for _, ownerReference := range pod.OwnerReferences {
+			if ownerReference.Controller != nil && *ownerReference.Controller {
+				return pod.OwnerReferences
+			}
+		}
+	}
+
 	gvk := schema.GroupVersionKind{
 		Group:   v1.SchemeGroupVersion.Group,
 		Version: v1.SchemeGroupVersion.Version,
