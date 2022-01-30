@@ -32,15 +32,15 @@ func New() *Action {
 }
 
 // Name returns the action name
-func (alloc *Action) Name() string {
+func (reserve *Action) Name() string {
 	return "reserve"
 }
 
 // Initialize inits the action
-func (alloc *Action) Initialize() {}
+func (reserve *Action) Initialize() {}
 
 // Execute selects a node which is not locked and has the most idle resource
-func (alloc *Action) Execute(ssn *framework.Session) {
+func (reserve *Action) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("Enter Reserve ...")
 	defer klog.V(3).Infof("Leaving Reserve ...")
 	if util.Reservation.TargetJob == nil {
@@ -74,4 +74,4 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 }
 
 // UnInitialize releases resource which are not useful.
-func (alloc *Action) UnInitialize() {}
+func (reserve *Action) UnInitialize() {}
