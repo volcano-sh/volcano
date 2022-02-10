@@ -119,8 +119,8 @@ type SchedulerCache struct {
 	informerFactory informers.SharedInformerFactory
 }
 
-type DefaultBinder struct {
-	// kubeclient *kubernetes.Clientset
+type defaultBinder struct {
+	kubeclient *kubernetes.Clientset
 }
 
 //Bind will send bind request to api server
