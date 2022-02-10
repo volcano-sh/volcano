@@ -23,5 +23,33 @@ Note that the orange components are which need to be modifyed, while others are 
 
 ## Walkthrough of vgpu pods
 
+If a pod with vGPU resouce is submitted, the flow of prcessing is shown in the following image:
+
+![img](./podflow.jpg)
+
+The reason we need to modify nvidia-container-runtime is that is the only chance to set the NVIDIA_VISIBLE_DEVICES env. We can't set it in mutating webhook because the pods hasn't been scheduled yet, nor can we set it in device-plugin because we don't know which container request the vGPU resource.
+
+nvidia-container-runtime communicates with scheduler cache by using gRpc. It sends the containerUUID set in admission webhook in order to identify the requesting container.
+
 ## How to maintain vgpu status
+
+Scheduler cache get the overview of vGPU status by using informer.AddFunc, It collects vGPU related annotations on each pods. Restarting the scheduler won't cause any issue.
+
+## Files need to be modifyed in volcano main repo
+
+volcano
+|--webhooks
+	|--admission
+        	|--pods
+		    |--mutate
+		    	|--[M]mutate-pod.go
+...
+|--pkg
+   |--scheduler
+	|--cache
+	    |--[M]cache.go
+	|--plugins
+	    |--[A]vgpupredicates
+
+
 
