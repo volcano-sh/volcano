@@ -37,7 +37,6 @@ Scheduler cache get the overview of vGPU status by using informer.AddFunc, It co
 
 ## Files need to be modifyed in volcano main repo
 
-volcano
 |--webhooks
 	|--admission
         	|--pods
