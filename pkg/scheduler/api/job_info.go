@@ -127,9 +127,10 @@ type TaskInfo struct {
 	// * value means workload can use all the revocable node for during node active revocable time.
 	RevocableZone string
 
-	NumaInfo   *TopologyInfo
-	PodVolumes *volumescheduling.PodVolumes
-	Pod        *v1.Pod
+	NumaInfo               *TopologyInfo
+	EasAcceleratorFlavorId string
+	PodVolumes             *volumescheduling.PodVolumes
+	Pod                    *v1.Pod
 }
 
 func getJobID(pod *v1.Pod) JobID {
@@ -160,22 +161,24 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	preemptable := GetPodPreemptable(pod)
 	revocableZone := GetPodRevocableZone(pod)
 	topologyInfo := GetPodTopologyInfo(pod)
+	easAcceleratorFlavorId := GetPodEasAcceleratorInfo(pod)
 
 	jobID := getJobID(pod)
 
 	ti := &TaskInfo{
-		UID:           TaskID(pod.UID),
-		Job:           jobID,
-		Name:          pod.Name,
-		Namespace:     pod.Namespace,
-		Priority:      1,
-		Pod:           pod,
-		Resreq:        resReq,
-		InitResreq:    initResReq,
-		Preemptable:   preemptable,
-		BestEffort:    bestEffort,
-		RevocableZone: revocableZone,
-		NumaInfo:      topologyInfo,
+		UID:                    TaskID(pod.UID),
+		Job:                    jobID,
+		Name:                   pod.Name,
+		Namespace:              pod.Namespace,
+		Priority:               1,
+		Pod:                    pod,
+		Resreq:                 resReq,
+		InitResreq:             initResReq,
+		Preemptable:            preemptable,
+		BestEffort:             bestEffort,
+		RevocableZone:          revocableZone,
+		NumaInfo:               topologyInfo,
+		EasAcceleratorFlavorId: easAcceleratorFlavorId,
 		TransactionContext: TransactionContext{
 			NodeName: pod.Spec.NodeName,
 			Status:   getTaskStatus(pod),
@@ -237,20 +240,21 @@ func (ti *TaskInfo) UnsetPodResourceDecision() {
 // Clone is used for cloning a task
 func (ti *TaskInfo) Clone() *TaskInfo {
 	return &TaskInfo{
-		UID:           ti.UID,
-		Job:           ti.Job,
-		Name:          ti.Name,
-		Namespace:     ti.Namespace,
-		Priority:      ti.Priority,
-		PodVolumes:    ti.PodVolumes,
-		Pod:           ti.Pod,
-		Resreq:        ti.Resreq.Clone(),
-		InitResreq:    ti.InitResreq.Clone(),
-		VolumeReady:   ti.VolumeReady,
-		Preemptable:   ti.Preemptable,
-		BestEffort:    ti.BestEffort,
-		RevocableZone: ti.RevocableZone,
-		NumaInfo:      ti.NumaInfo.Clone(),
+		UID:                    ti.UID,
+		Job:                    ti.Job,
+		Name:                   ti.Name,
+		Namespace:              ti.Namespace,
+		Priority:               ti.Priority,
+		PodVolumes:             ti.PodVolumes,
+		Pod:                    ti.Pod,
+		Resreq:                 ti.Resreq.Clone(),
+		InitResreq:             ti.InitResreq.Clone(),
+		VolumeReady:            ti.VolumeReady,
+		Preemptable:            ti.Preemptable,
+		BestEffort:             ti.BestEffort,
+		RevocableZone:          ti.RevocableZone,
+		NumaInfo:               ti.NumaInfo.Clone(),
+		EasAcceleratorFlavorId: ti.EasAcceleratorFlavorId,
 		TransactionContext: TransactionContext{
 			NodeName: ti.NodeName,
 			Status:   ti.Status,
@@ -270,15 +274,15 @@ func (ti *TaskInfo) GetTaskSpecKey() TaskID {
 func (ti TaskInfo) String() string {
 	if ti.NumaInfo == nil {
 		return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v"+
-			"resreq %v, preemptable %v, revocableZone %v",
+			"resreq %v, preemptable %v, revocableZone %v, EasAcceleratorFlavorId: %v",
 			ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority,
-			ti.Resreq, ti.Preemptable, ti.RevocableZone)
+			ti.Resreq, ti.Preemptable, ti.RevocableZone, ti.EasAcceleratorFlavorId)
 	}
 
 	return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v"+
-		"resreq %v, preemptable %v, revocableZone %v, numaInfo %v",
+		"resreq %v, preemptable %v, revocableZone %v, numaInfo %v, EasAcceleratorFlavorId: %v, ",
 		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority,
-		ti.Resreq, ti.Preemptable, ti.RevocableZone, *ti.NumaInfo)
+		ti.Resreq, ti.Preemptable, ti.RevocableZone, *ti.NumaInfo, ti.EasAcceleratorFlavorId)
 }
 
 // JobID is the type of JobInfo's ID.
@@ -327,8 +331,9 @@ type JobInfo struct {
 	// we only support empty value or * value for this version and we will support specify revocable zone name for futrue release
 	// empty value means workload can not use revocable node
 	// * value means workload can use all the revocable node for during node active revocable time.
-	RevocableZone string
-	Budget        *DisruptionBudget
+	RevocableZone  string
+	EasAccelerator bool
+	Budget         *DisruptionBudget
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks
@@ -492,6 +497,7 @@ func (ji *JobInfo) AddTaskInfo(ti *TaskInfo) {
 	if AllocatedStatus(ti.Status) {
 		ji.Allocated.Add(ti.Resreq)
 	}
+	ji.EasAccelerator = ji.EasAccelerator || (ti.EasAcceleratorFlavorId != "")
 }
 
 // UpdateTaskStatus is used to update task's status in a job.

@@ -141,6 +141,17 @@ func GetPodTopologyInfo(pod *v1.Pod) *TopologyInfo {
 	return &info
 }
 
+// GetPodEasAccelerator return volcano.sh/eas-accelerator value and
+// volcano.sh/eas-accelerator-flavor-id value for the pod
+func GetPodEasAcceleratorInfo(pod *v1.Pod) string {
+	if len(pod.Annotations) > 0 {
+		if flavorId, found := pod.Annotations[v1beta1.EasAcceleratorFlavorId]; found {
+			return flavorId
+		}
+	}
+	return ""
+}
+
 // GetPodResourceWithoutInitContainers returns Pod's resource request, it does not contain
 // init containers' resource request.
 func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {

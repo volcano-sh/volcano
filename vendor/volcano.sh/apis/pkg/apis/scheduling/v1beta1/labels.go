@@ -49,3 +49,7 @@ const NumaPolicyKey = "volcano.sh/numa-topology-policy"
 
 // TopologyDecisionAnnotation is the key of topology decision about pod request resource
 const TopologyDecisionAnnotation = "volcano.sh/topology-decision"
+
+// EasAcceleratorFlavorId is the key of pod to identify the flavor id of the
+// specific EAS accelerator it uses
+const EasAcceleratorFlavorId = "volcano.sh/eas-accelerator-flavor-id"
