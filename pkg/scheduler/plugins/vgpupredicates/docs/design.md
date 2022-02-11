@@ -4,9 +4,9 @@
 
 volcano-vgpu is designed to provide volcano cluster the ability to 
 
-***Virtualize GPU*** A task can allocate a vGPU by specifying the device memory limit. volcano-vgpu will make sure that task senses the vGPU as a physical GPU with specified device memory.
+***Virtualize GPU*** A task can allocate a vGPU device by specifying the device memory limit. volcano-vgpu will make sure that task senses the vGPU as a physical GPU with specified device memory.
 
-***Share multiple GPUs*** A task can allocate vGPUs. It can do so by setting both device number and device memory.
+***Share multiple GPUs*** A task can allocate multiple vGPUs. It can do so by setting both device number and device memory.
 
 ***Device memory control*** Volcano-vgpu will ensure proper isolation between vGPUs. The device memory usage of a vGPU will never excced the specified limit.
 
