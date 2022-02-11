@@ -359,6 +359,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 
 		NodeList: []string{},
 	}
+
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: eventClient.CoreV1().Events("")})
