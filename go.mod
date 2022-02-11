@@ -10,7 +10,7 @@ require (
 	github.com/imdario/mergo v0.3.5
 	github.com/onsi/ginkgo v1.11.0
 	github.com/onsi/gomega v1.7.0
-	github.com/prometheus/client_golang v1.7.1
+	github.com/prometheus/client_golang v1.12.0
 	github.com/spf13/cobra v1.2.1
 	github.com/spf13/pflag v1.0.5
 	go.uber.org/automaxprocs v1.4.0
