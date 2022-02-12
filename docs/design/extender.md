@@ -22,8 +22,8 @@
      arguments:
        extender.urlPrefix: http://127.0.0.1
        extender.httpTimeout: 100ms
-       extender.openSessionOpenVerb: onSessionOpen
-       extender.openSessionCloseVerb: onSessionClose
+       extender.onSessionOpenVerb: onSessionOpen
+       extender.onSessionCloseVerb: onSessionClose
        extender.predicateVerb: predicate
        extender.prioritizeVerb: prioritize
        extender.preemptableVerb: preemptable

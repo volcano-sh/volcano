@@ -66,8 +66,14 @@ func (f *FitErrors) SetNodeError(nodeName string, err error) {
 
 // Error returns the final error message
 func (f *FitErrors) Error() string {
-	reasons := make(map[string]int)
+	if f.err == "" {
+		f.err = AllNodeUnavailableMsg
+	}
+	if len(f.nodes) == 0 {
+		return f.err
+	}
 
+	reasons := make(map[string]int)
 	for _, node := range f.nodes {
 		for _, reason := range node.Reasons {
 			reasons[reason]++
@@ -81,9 +87,6 @@ func (f *FitErrors) Error() string {
 		}
 		sort.Strings(reasonStrings)
 		return reasonStrings
-	}
-	if f.err == "" {
-		f.err = AllNodeUnavailableMsg
 	}
 	reasonMsg := fmt.Sprintf(f.err+": %v.", strings.Join(sortReasonsHistogram(), ", "))
 	return reasonMsg
