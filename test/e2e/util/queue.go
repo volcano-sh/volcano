@@ -18,14 +18,40 @@ package util
 
 import (
 	"context"
+	v1 "k8s.io/api/core/v1"
 	"time"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
+
+type QueueSpec struct {
+	Name              string
+	Weight            int32
+	GuaranteeResource v1.ResourceList
+}
+
+func CreateQueueWithQueueSpec(ctx *TestContext, queueSpec *QueueSpec) {
+	_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), queueSpec.Name, metav1.GetOptions{})
+	if err != nil {
+		queue := &schedulingv1beta1.Queue{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: queueSpec.Name,
+			},
+			Spec: schedulingv1beta1.QueueSpec{
+				Weight: queueSpec.Weight,
+			},
+		}
+		if len(queueSpec.GuaranteeResource) != 0 {
+			queue.Spec.Guarantee.Resource = queueSpec.GuaranteeResource
+		}
+		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
+		Expect(err).NotTo(HaveOccurred(), "failed to create queue %s", queueSpec.Name)
+	}
+}
 
 // CreateQueue creates Queue with the specified name
 func CreateQueue(ctx *TestContext, q string) {

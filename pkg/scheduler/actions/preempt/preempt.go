@@ -31,13 +31,13 @@ func New() *Action {
 	return &Action{}
 }
 
-func (alloc *Action) Name() string {
+func (pmpt *Action) Name() string {
 	return "preempt"
 }
 
-func (alloc *Action) Initialize() {}
+func (pmpt *Action) Initialize() {}
 
-func (alloc *Action) Execute(ssn *framework.Session) {
+func (pmpt *Action) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("Enter Preempt ...")
 	defer klog.V(3).Infof("Leaving Preempt ...")
 
@@ -79,6 +79,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		}
 	}
 
+	ph := util.NewPredicateHelper()
 	// Preemption between Jobs within Queue.
 	for _, queue := range queues {
 		for {
@@ -124,7 +125,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					}
 					// Preempt other jobs within queue
 					return job.Queue == preemptorJob.Queue && preemptor.Job != task.Job
-				}); preempted {
+				}, ph); preempted {
 					assigned = true
 				}
 			}
@@ -172,7 +173,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					}
 					// Preempt tasks within job.
 					return preemptor.Job == task.Job
-				})
+				}, ph)
 				stmt.Commit()
 
 				// If no preemption, next job.
@@ -187,19 +188,20 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	victimTasks(ssn)
 }
 
-func (alloc *Action) UnInitialize() {}
+func (pmpt *Action) UnInitialize() {}
 
 func preempt(
 	ssn *framework.Session,
 	stmt *framework.Statement,
 	preemptor *api.TaskInfo,
 	filter func(*api.TaskInfo) bool,
+	predicateHelper util.PredicateHelper,
 ) (bool, error) {
 	assigned := false
 
 	allNodes := ssn.NodeList
 
-	predicateNodes, _ := util.PredicateNodes(preemptor, allNodes, ssn.PredicateFn)
+	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, ssn.PredicateFn)
 
 	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 

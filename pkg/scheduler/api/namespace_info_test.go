@@ -60,4 +60,44 @@ func TestNamespaceCollection(t *testing.T) {
 	if info.Weight != 16 {
 		t.Errorf("weight of namespace should be %d, but not %d", 16, info.Weight)
 	}
+
+	c.Delete(newQuota("abc", 0))
+	c.Delete(newQuota("def", 15))
+	c.Delete(newQuota("ghi", -1))
+
+	info = c.Snapshot()
+	if info.Weight != DefaultNamespaceWeight {
+		t.Errorf("weight of namespace should be default weight %d, but not %d", DefaultNamespaceWeight, info.Weight)
+	}
+}
+
+func TestEmptyNamespaceCollection(t *testing.T) {
+	c := NewNamespaceCollection("testEmptyCollection")
+
+	info := c.Snapshot()
+	if info.Weight != DefaultNamespaceWeight {
+		t.Errorf("weight of namespace should be %d, but not %d", DefaultNamespaceWeight, info.Weight)
+	}
+
+	// snapshot can be called anytime
+	info = c.Snapshot()
+	if info.Weight != DefaultNamespaceWeight {
+		t.Errorf("weight of namespace should be %d, but not %d", DefaultNamespaceWeight, info.Weight)
+	}
+
+	c.Delete(newQuota("abc", 0))
+
+	info = c.Snapshot()
+	if info.Weight != DefaultNamespaceWeight {
+		t.Errorf("weight of namespace should be %d, but not %d", DefaultNamespaceWeight, info.Weight)
+	}
+
+	c.Delete(newQuota("abc", 0))
+	c.Delete(newQuota("def", 15))
+	c.Delete(newQuota("ghi", -1))
+
+	info = c.Snapshot()
+	if info.Weight != DefaultNamespaceWeight {
+		t.Errorf("weight of namespace should be default weight %d, but not %d", DefaultNamespaceWeight, info.Weight)
+	}
 }

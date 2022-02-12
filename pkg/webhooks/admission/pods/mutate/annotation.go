@@ -19,9 +19,8 @@ package mutate
 import (
 	"github.com/imdario/mergo"
 	"gopkg.in/yaml.v2"
-	"k8s.io/klog"
-
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/klog"
 
 	wkconfig "volcano.sh/volcano/pkg/webhooks/config"
 )

@@ -132,7 +132,12 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 		return "No task specified in job spec"
 	}
 
+	hasDependenciesBetweenTasks := false
 	for index, task := range job.Spec.Tasks {
+		if task.DependsOn != nil {
+			hasDependenciesBetweenTasks = true
+		}
+
 		if task.Replicas < 0 {
 			msg += fmt.Sprintf(" 'replicas' < 0 in task: %s;", task.Name)
 		}
@@ -196,6 +201,13 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionRespo
 	} else if queue.Status.State != schedulingv1beta1.QueueStateOpen {
 		msg += fmt.Sprintf("can only submit job to queue with state `Open`, "+
 			"queue `%s` status is `%s`", queue.Name, queue.Status.State)
+	}
+
+	if hasDependenciesBetweenTasks {
+		_, isDag := topoSort(job)
+		if !isDag {
+			msg += "job has dependencies between tasks, but doesn't form a directed acyclic graph(DAG)"
+		}
 	}
 
 	if msg != "" {
@@ -279,7 +291,8 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 		Template: coreTemplateSpec,
 	}
 
-	if allErrs := k8scorevalid.ValidatePodTemplate(&corePodTemplate); len(allErrs) > 0 {
+	opts := k8scorevalid.PodValidationOptions{}
+	if allErrs := k8scorevalid.ValidatePodTemplate(&corePodTemplate, opts); len(allErrs) > 0 {
 		msg := fmt.Sprintf("spec.task[%d].", index)
 		for index := range allErrs {
 			msg += allErrs[index].Error() + ". "

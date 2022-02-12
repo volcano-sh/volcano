@@ -21,7 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
-	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
+	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"

@@ -457,10 +457,8 @@ func TestValidateJobCreate(t *testing.T) {
 				},
 			},
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
-			ret: "[a DNS-1123 label must consist of lower case alphanumeric characters or '-', and " +
-				"must start and end with an alphanumeric character (e.g. 'my-name',  " +
-				"or '123-abc', regex used for validation is '[a-z0-9]([-a-z0-9]*[a-z0-9])?')];",
-			ExpectErr: true,
+			ret:            "[a lowercase RFC 1123 label must consist of lower case alphanumeric characters or '-', and must start and end with an alphanumeric character (e.g. 'my-name',  or '123-abc', regex used for validation is '[a-z0-9]([-a-z0-9]*[a-z0-9])?')];",
+			ExpectErr:      true,
 		},
 		// Policy Event with exit code
 		{
@@ -1035,6 +1033,106 @@ func TestValidateJobCreate(t *testing.T) {
 			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
 			ret:            "",
 			ExpectErr:      false,
+		},
+		{
+			Name: "job with valid task depends on",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job-with-valid-task-depends-on",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "t1",
+							Replicas: 1,
+							DependsOn: &v1alpha1.DependsOn{
+								Name: []string{"t2"},
+							},
+							Template: v1.PodTemplateSpec{
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+						{
+							Name:      "t2",
+							Replicas:  1,
+							DependsOn: nil,
+							Template: v1.PodTemplateSpec{
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+		},
+		{
+			Name: "job with invalid task depends on",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job-with-invalid-task-depends-on",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "t1",
+							Replicas: 1,
+							DependsOn: &v1alpha1.DependsOn{
+								Name: []string{"t3"},
+							},
+							Template: v1.PodTemplateSpec{
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+						{
+							Name:      "t2",
+							Replicas:  1,
+							DependsOn: nil,
+							Template: v1.PodTemplateSpec{
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			ret:            "job has dependencies between tasks, but doesn't form a directed acyclic graph(DAG)",
+			ExpectErr:      true,
 		},
 	}
 

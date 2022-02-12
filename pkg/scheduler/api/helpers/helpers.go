@@ -43,6 +43,35 @@ func Min(l, r *api.Resource) *api.Resource {
 	return res
 }
 
+// Max returns the resource object with larger value in each dimension.
+func Max(l, r *api.Resource) *api.Resource {
+	res := &api.Resource{}
+
+	res.MilliCPU = math.Max(l.MilliCPU, r.MilliCPU)
+	res.Memory = math.Max(l.Memory, r.Memory)
+
+	if l.ScalarResources == nil && r.ScalarResources == nil {
+		return res
+	}
+	res.ScalarResources = map[v1.ResourceName]float64{}
+	if l.ScalarResources != nil {
+		for lName, lQuant := range l.ScalarResources {
+			if lQuant > 0 {
+				res.ScalarResources[lName] = lQuant
+			}
+		}
+	}
+	if r.ScalarResources != nil {
+		for rName, rQuant := range r.ScalarResources {
+			if rQuant > 0 {
+				maxQuant := math.Max(rQuant, res.ScalarResources[rName])
+				res.ScalarResources[rName] = maxQuant
+			}
+		}
+	}
+	return res
+}
+
 // Share is used to determine the share
 func Share(l, r float64) float64 {
 	var share float64

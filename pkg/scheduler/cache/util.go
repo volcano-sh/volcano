@@ -18,12 +18,14 @@ package cache
 
 import (
 	"fmt"
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog"
 	"os"
-	"stathat.com/c/consistent"
 	"strconv"
 	"strings"
+
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/klog"
+	"stathat.com/c/consistent"
+
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 

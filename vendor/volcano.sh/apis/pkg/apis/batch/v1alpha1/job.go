@@ -74,16 +74,16 @@ type JobSpec struct {
 
 	// Running Estimate is a user running duration estimate for the job
 	// Default to nil
-	RunningEstimate *metav1.Duration `json:"runningEstimate,omitempty" protobuf:"bytes,4,opt,name=runningEstimate"`
+	RunningEstimate *metav1.Duration `json:"runningEstimate,omitempty" protobuf:"bytes,7,opt,name=runningEstimate"`
 
 	//Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
 	// +optional
-	Queue string `json:"queue,omitempty" protobuf:"bytes,7,opt,name=queue"`
+	Queue string `json:"queue,omitempty" protobuf:"bytes,8,opt,name=queue"`
 
 	// Specifies the maximum number of retries before marking this Job failed.
 	// Defaults to 3.
 	// +optional
-	MaxRetry int32 `json:"maxRetry,omitempty" protobuf:"bytes,8,opt,name=maxRetry"`
+	MaxRetry int32 `json:"maxRetry,omitempty" protobuf:"bytes,9,opt,name=maxRetry"`
 
 	// ttlSecondsAfterFinished limits the lifetime of a Job that has finished
 	// execution (either Completed or Failed). If this field is set,
@@ -92,16 +92,16 @@ type JobSpec struct {
 	// the Job won't be automatically deleted. If this field is set to zero,
 	// the Job becomes eligible to be deleted immediately after it finishes.
 	// +optional
-	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" protobuf:"varint,9,opt,name=ttlSecondsAfterFinished"`
+	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty" protobuf:"varint,10,opt,name=ttlSecondsAfterFinished"`
 
 	// If specified, indicates the job's priority.
 	// +optional
-	PriorityClassName string `json:"priorityClassName,omitempty" protobuf:"bytes,10,opt,name=priorityClassName"`
+	PriorityClassName string `json:"priorityClassName,omitempty" protobuf:"bytes,11,opt,name=priorityClassName"`
 
 	// The minimal success pods to run for this Job
 	// +kubebuilder:validation:Minimum=1
 	// +optional
-	MinSuccess *int32 `json:"minSuccess,omitempty" protobuf:"varint,11,opt,name=minSuccess"`
+	MinSuccess *int32 `json:"minSuccess,omitempty" protobuf:"varint,12,opt,name=minSuccess"`
 }
 
 // VolumeSpec defines the specification of Volume, e.g. PVC.
@@ -161,12 +161,12 @@ type LifecyclePolicy struct {
 	// according to this code.
 	// Note: only one of `Event` or `ExitCode` can be specified.
 	// +optional
-	ExitCode *int32 `json:"exitCode,omitempty" protobuf:"bytes,5,opt,name=exitCode"`
+	ExitCode *int32 `json:"exitCode,omitempty" protobuf:"bytes,4,opt,name=exitCode"`
 
 	// Timeout is the grace period for controller to take actions.
 	// Default to nil (take action immediately).
 	// +optional
-	Timeout *metav1.Duration `json:"timeout,omitempty" protobuf:"bytes,4,opt,name=timeout"`
+	Timeout *metav1.Duration `json:"timeout,omitempty" protobuf:"bytes,5,opt,name=timeout"`
 }
 
 type NumaPolicy string
@@ -191,25 +191,29 @@ type TaskSpec struct {
 	// The minimal available pods to run for this Task
 	// Defaults to the task replicas
 	// +optional
-	MinAvailable *int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
+	MinAvailable *int32 `json:"minAvailable,omitempty" protobuf:"bytes,3,opt,name=minAvailable"`
 
 	// Specifies the pod that will be created for this TaskSpec
 	// when executing a Job
 	// +optional
-	Template v1.PodTemplateSpec `json:"template,omitempty" protobuf:"bytes,3,opt,name=template"`
+	Template v1.PodTemplateSpec `json:"template,omitempty" protobuf:"bytes,4,opt,name=template"`
 
 	// Specifies the lifecycle of task
 	// +optional
-	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,4,opt,name=policies"`
+	Policies []LifecyclePolicy `json:"policies,omitempty" protobuf:"bytes,5,opt,name=policies"`
 
 	// Specifies the topology policy of task
 	// +optional
-	TopologyPolicy NumaPolicy `json:"topologyPolicy,omitempty" protobuf:"bytes,5,opt,name=topologyPolicy"`
+	TopologyPolicy NumaPolicy `json:"topologyPolicy,omitempty" protobuf:"bytes,6,opt,name=topologyPolicy"`
 
 	// Specifies the maximum number of retries before marking this Task failed.
 	// Defaults to 3.
 	// +optional
-	MaxRetry int32 `json:"maxRetry,omitempty" protobuf:"bytes,5,opt,name=maxRetry"`
+	MaxRetry int32 `json:"maxRetry,omitempty" protobuf:"bytes,7,opt,name=maxRetry"`
+
+	// Specifies the tasks that this task depends on.
+	// +optional
+	DependsOn *DependsOn `json:"dependsOn,omitempty" protobuf:"bytes,8,opt,name=dependsOn"`
 }
 
 // JobPhase defines the phase of the job.
@@ -312,17 +316,17 @@ type JobStatus struct {
 
 	// The job running duration is the length of time from job running to complete.
 	// +optional
-	RunningDuration *metav1.Duration `json:"runningDuration,omitempty" protobuf:"bytes,4,opt,name=runningDuration"`
+	RunningDuration *metav1.Duration `json:"runningDuration,omitempty" protobuf:"bytes,11,opt,name=runningDuration"`
 
 	// The resources that controlled by this job, e.g. Service, ConfigMap
 	// +optional
-	ControlledResources map[string]string `json:"controlledResources,omitempty" protobuf:"bytes,11,opt,name=controlledResources"`
+	ControlledResources map[string]string `json:"controlledResources,omitempty" protobuf:"bytes,12,opt,name=controlledResources"`
 
 	// Which conditions caused the current job state.
 	// +optional
 	// +patchMergeKey=status
 	// +patchStrategy=merge
-	Conditions []JobCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"status" protobuf:"bytes,12,rep,name=conditions"`
+	Conditions []JobCondition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"status" protobuf:"bytes,13,rep,name=conditions"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -343,4 +347,32 @@ type JobCondition struct {
 	// Last time the condition transitioned from one phase to another.
 	// +optional
 	LastTransitionTime *metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,2,opt,name=lastTransitionTime"`
+}
+
+// Iteration defines the phase of the iteration.
+type Iteration string
+
+const (
+	// Indicates that when there are multiple tasks,
+	// as long as one task becomes the specified state,
+	// the task scheduling will be triggered
+	IterationAny Iteration = "any"
+	// Indicates that when there are multiple tasks,
+	// all tasks must become the specified state,
+	// the task scheduling will be triggered
+	IterationAll Iteration = "all"
+)
+
+// DependsOn represents the tasks that this task depends on and their dependencies
+type DependsOn struct {
+	// Indicates the name of the tasks that this task depends on,
+	// which can depend on multiple tasks
+	// +optional
+	Name []string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
+	// This field specifies that when there are multiple dependent tasks,
+	// as long as one task becomes the specified state,
+	// the task scheduling is triggered or
+	// all tasks must be changed to the specified state to trigger the task scheduling
+	// +optional
+	Iteration Iteration `json:"iteration,omitempty" protobuf:"bytes,2,opt,name=iteration"`
 }

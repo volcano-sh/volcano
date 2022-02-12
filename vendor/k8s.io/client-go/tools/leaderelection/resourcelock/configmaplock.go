@@ -52,13 +52,14 @@ func (cml *ConfigMapLock) Get(ctx context.Context) (*LeaderElectionRecord, []byt
 	if cml.cm.Annotations == nil {
 		cml.cm.Annotations = make(map[string]string)
 	}
-	recordBytes, found := cml.cm.Annotations[LeaderElectionRecordAnnotationKey]
+	recordStr, found := cml.cm.Annotations[LeaderElectionRecordAnnotationKey]
+	recordBytes := []byte(recordStr)
 	if found {
-		if err := json.Unmarshal([]byte(recordBytes), &record); err != nil {
+		if err := json.Unmarshal(recordBytes, &record); err != nil {
 			return nil, nil, err
 		}
 	}
-	return &record, []byte(recordBytes), nil
+	return &record, recordBytes, nil
 }
 
 // Create attempts to create a LeaderElectionRecord annotation
@@ -106,7 +107,11 @@ func (cml *ConfigMapLock) RecordEvent(s string) {
 		return
 	}
 	events := fmt.Sprintf("%v %v", cml.LockConfig.Identity, s)
-	cml.LockConfig.EventRecorder.Eventf(&v1.ConfigMap{ObjectMeta: cml.cm.ObjectMeta}, v1.EventTypeNormal, "LeaderElection", events)
+	subject := &v1.ConfigMap{ObjectMeta: cml.cm.ObjectMeta}
+	// Populate the type meta, so we don't have to get it from the schema
+	subject.Kind = "ConfigMap"
+	subject.APIVersion = v1.SchemeGroupVersion.String()
+	cml.LockConfig.EventRecorder.Eventf(subject, v1.EventTypeNormal, "LeaderElection", events)
 }
 
 // Describe is used to convert details on current resource lock

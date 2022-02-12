@@ -43,7 +43,7 @@ func (ep *envPlugin) Name() string {
 }
 
 func (ep *envPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
-	index := jobhelpers.GetTaskIndex(pod)
+	index := jobhelpers.GetPodIndexUnderTask(pod)
 
 	// add VK_TASK_INDEX and VC_TASK_INDEX env to each container
 	for i := range pod.Spec.Containers {

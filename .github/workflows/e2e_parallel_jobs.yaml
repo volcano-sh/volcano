@@ -16,7 +16,7 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v2
         with:
-          go-version: 1.16.x
+          go-version: 1.17.x
 
       - name: Install musl
         run: |
@@ -32,7 +32,7 @@ jobs:
       - name: Install dependences
         run: |
           GO111MODULE="on" go get sigs.k8s.io/kind@v0.11.0
-          curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.19.3/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
+          curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.23.0/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
       - name: Checkout code
         uses: actions/checkout@v2
 

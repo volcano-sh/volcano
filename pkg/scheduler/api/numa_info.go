@@ -17,6 +17,8 @@ limitations under the License.
 package api
 
 import (
+	"encoding/json"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
@@ -36,10 +38,19 @@ const (
 	NumaInfoLessFlag NumaChgFlag = 0b10
 )
 
+// PodResourceDecision is resource allocation determinated by scheduler,
+// and passed to kubelet through pod annotation.
+type PodResourceDecision struct {
+	// NUMAResources is resource list with numa info indexed by numa id.
+	NUMAResources map[int]v1.ResourceList `json:"numa,omitempty"`
+}
+
 // ResourceInfo is the allocatable information for the resource
 type ResourceInfo struct {
-	Allocatable cpuset.CPUSet
-	Capacity    int
+	Allocatable        cpuset.CPUSet
+	Capacity           int
+	AllocatablePerNuma map[int]float64 // key: NUMA ID
+	UsedPerNuma        map[int]float64 // key: NUMA ID
 }
 
 // NumatopoInfo is the information about topology manager on the node
@@ -69,10 +80,22 @@ func (info *NumatopoInfo) DeepCopy() *NumatopoInfo {
 	}
 
 	for resName, resInfo := range info.NumaResMap {
-		var tmpInfo ResourceInfo
+		tmpInfo := &ResourceInfo{
+			AllocatablePerNuma: make(map[int]float64),
+			UsedPerNuma:        make(map[int]float64),
+		}
 		tmpInfo.Capacity = resInfo.Capacity
 		tmpInfo.Allocatable = resInfo.Allocatable.Clone()
-		numaInfo.NumaResMap[resName] = &tmpInfo
+
+		for numaID, data := range resInfo.AllocatablePerNuma {
+			tmpInfo.AllocatablePerNuma[numaID] = data
+		}
+
+		for numaID, data := range resInfo.UsedPerNuma {
+			tmpInfo.UsedPerNuma[numaID] = data
+		}
+
+		numaInfo.NumaResMap[resName] = tmpInfo
 	}
 
 	cpuDetail := info.CPUDetail
@@ -115,6 +138,52 @@ func (info *NumatopoInfo) Allocate(resSets ResNumaSets) {
 func (info *NumatopoInfo) Release(resSets ResNumaSets) {
 	for resName := range resSets {
 		info.NumaResMap[resName].Allocatable = info.NumaResMap[resName].Allocatable.Union(resSets[resName])
+	}
+}
+
+func GetPodResourceNumaInfo(ti *TaskInfo) map[int]v1.ResourceList {
+	if ti.NumaInfo != nil && len(ti.NumaInfo.ResMap) > 0 {
+		return ti.NumaInfo.ResMap
+	}
+
+	if _, ok := ti.Pod.Annotations[topologyDecisionAnnotation]; !ok {
+		return nil
+	}
+
+	decision := PodResourceDecision{}
+	err := json.Unmarshal([]byte(ti.Pod.Annotations[topologyDecisionAnnotation]), &decision)
+	if err != nil {
+		return nil
+	}
+
+	return decision.NUMAResources
+}
+
+// AddTask is the function to update the used resource of per numa node
+func (info *NumatopoInfo) AddTask(ti *TaskInfo) {
+	numaInfo := GetPodResourceNumaInfo(ti)
+	if numaInfo == nil {
+		return
+	}
+
+	for numaID, resList := range numaInfo {
+		for resName, quantity := range resList {
+			info.NumaResMap[string(resName)].UsedPerNuma[numaID] += ResQuantity2Float64(resName, quantity)
+		}
+	}
+}
+
+// RemoveTask is the function to update the used resource of per numa node
+func (info *NumatopoInfo) RemoveTask(ti *TaskInfo) {
+	decision := GetPodResourceNumaInfo(ti)
+	if decision == nil {
+		return
+	}
+
+	for numaID, resList := range ti.NumaInfo.ResMap {
+		for resName, quantity := range resList {
+			info.NumaResMap[string(resName)].UsedPerNuma[numaID] -= ResQuantity2Float64(resName, quantity)
+		}
 	}
 }
 

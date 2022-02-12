@@ -17,9 +17,10 @@ limitations under the License.
 package framework
 
 import (
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -633,13 +634,10 @@ func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 		return res < 0
 	}
 
-	// If no task order funcs, order task by CreationTimestamp first, then by UID.
+	// If no task order funcs, order task by default func.
 	lv := l.(*api.TaskInfo)
 	rv := r.(*api.TaskInfo)
-	if lv.Pod.CreationTimestamp.Equal(&rv.Pod.CreationTimestamp) {
-		return lv.UID < rv.UID
-	}
-	return lv.Pod.CreationTimestamp.Before(&rv.Pod.CreationTimestamp)
+	return helpers.CompareTask(lv, rv)
 }
 
 // PredicateFn invoke predicate function of the plugins

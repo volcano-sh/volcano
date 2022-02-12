@@ -31,8 +31,10 @@ import (
 )
 
 const (
+	// DefaultPort defines default port for service
 	DefaultPort = 2222
-	TFConfig    = "TF_CONFIG"
+	// TFConfig defines environment variables for TF
+	TFConfig = "TF_CONFIG"
 )
 
 type tensorflowPlugin struct {
@@ -116,7 +118,7 @@ func (tp *tensorflowPlugin) OnJobUpdate(job *batch.Job) error {
 }
 
 func (tp *tensorflowPlugin) generateTFClusterSpec(pod *v1.Pod, job *batch.Job) (tfClusterSpec, error) {
-	index, err := strconv.Atoi(jobhelpers.GetTaskIndex(pod))
+	index, err := strconv.Atoi(jobhelpers.GetPodIndexUnderTask(pod))
 	if err != nil {
 		return tfClusterSpec{}, err
 	}

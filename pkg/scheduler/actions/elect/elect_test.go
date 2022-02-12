@@ -19,13 +19,13 @@ import (
 	"reflect"
 	"testing"
 	"time"
-	"volcano.sh/volcano/pkg/scheduler/util"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/reservation"
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 func TestElect(t *testing.T) {

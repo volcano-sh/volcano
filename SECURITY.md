@@ -1,6 +1,6 @@
 # Security Release Process
 
-The Volcano project has adopted this security disclosures and response policy
+The Volcano project has adopted this security disclosure and response policy
 to ensure responsible handling of critical issues.
 
 
