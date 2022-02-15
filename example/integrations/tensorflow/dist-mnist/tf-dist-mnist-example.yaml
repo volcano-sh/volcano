@@ -11,6 +11,7 @@ spec:
   policies:
     - event: PodEvicted
       action: RestartJob
+  queue: default
   tasks:
     - replicas: 1
       name: ps
