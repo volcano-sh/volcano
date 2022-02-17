@@ -552,20 +552,33 @@ func TestLess(t *testing.T) {
 				Memory:          2000,
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
 			},
+			expected: true,
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        1000,
+				Memory:          1000,
+				ScalarResources: map[v1.ResourceName]float64{"hugepages-test": 2000},
+			},
+			resource2: &Resource{
+				MilliCPU:        2000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
 			expected: false,
 		},
 	}
 
-	for _, test := range testsForDefaultZero {
+	for caseID, test := range testsForDefaultZero {
 		flag := test.resource1.Less(test.resource2, Zero)
 		if !reflect.DeepEqual(test.expected, flag) {
-			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
+			t.Errorf("caseID %d expected: %#v, got: %#v", caseID, test.expected, flag)
 		}
 	}
-	for _, test := range testsForDefaultInfinity {
+	for caseID, test := range testsForDefaultInfinity {
 		flag := test.resource1.Less(test.resource2, Infinity)
 		if !reflect.DeepEqual(test.expected, flag) {
-			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
+			t.Errorf("caseID %d expected: %#v, got: %#v", caseID, test.expected, flag)
 		}
 	}
 }
@@ -683,7 +696,7 @@ func TestLessEqual(t *testing.T) {
 				Memory:          2000,
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
 			},
-			expected: false,
+			expected: true,
 		},
 		{
 			resource1: &Resource{
@@ -702,10 +715,10 @@ func TestLessEqual(t *testing.T) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
 		}
 	}
-	for _, test := range testsForDefaultInfinity {
+	for caseID, test := range testsForDefaultInfinity {
 		flag := test.resource1.LessEqual(test.resource2, Infinity)
 		if !reflect.DeepEqual(test.expected, flag) {
-			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
+			t.Errorf("caseID %d expected: %#v, got: %#v", caseID, test.expected, flag)
 		}
 	}
 }
@@ -789,7 +802,7 @@ func TestLessPartly(t *testing.T) {
 				Memory:          2000,
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
 			},
-			expected: true,
+			expected: false,
 		},
 		{
 			resource1: &Resource{
@@ -852,10 +865,10 @@ func TestLessPartly(t *testing.T) {
 		},
 	}
 
-	for _, test := range testsForDefaultZero {
+	for caseID, test := range testsForDefaultZero {
 		flag := test.resource1.LessPartly(test.resource2, Zero)
 		if !reflect.DeepEqual(test.expected, flag) {
-			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
+			t.Errorf("caseID %d expected: %#v, got: %#v", caseID, test.expected, flag)
 		}
 	}
 	for _, test := range testsForDefaultInfinity {
