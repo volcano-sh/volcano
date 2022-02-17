@@ -36,6 +36,6 @@ jobs:
           make lint
           make verify
           make TAG=latest generate-yaml
-          make verify-generated-yaml
+          # make verify-generated-yaml
           make unit-test
         working-directory: ./src/github.com/${{ github.repository }}
