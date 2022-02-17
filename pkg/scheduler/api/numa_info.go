@@ -36,6 +36,8 @@ const (
 	NumaInfoMoreFlag NumaChgFlag = 0b11
 	// NumaInfoLessFlag indicate the received allocatable resource is getting less
 	NumaInfoLessFlag NumaChgFlag = 0b10
+	// DefaultMaxNodeScore indicates the default max node score
+	DefaultMaxNodeScore = 100
 )
 
 // PodResourceDecision is resource allocation determinated by scheduler,
@@ -252,4 +254,10 @@ func (resSets ResNumaSets) Clone() ResNumaSets {
 	}
 
 	return newSets
+}
+
+// ScoredNode is the wrapper for node during Scoring.
+type ScoredNode struct {
+	NodeName string
+	Score    int64
 }
