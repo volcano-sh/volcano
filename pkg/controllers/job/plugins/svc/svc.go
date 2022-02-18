@@ -27,7 +27,6 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -235,14 +234,6 @@ func (sp *servicePlugin) createServiceIfNotExist(job *batch.Job) error {
 					batch.JobNamespaceKey: job.Namespace,
 				},
 				PublishNotReadyAddresses: sp.publishNotReadyAddresses,
-				Ports: []v1.ServicePort{
-					{
-						Name:       "placeholder-volcano",
-						Port:       1,
-						Protocol:   v1.ProtocolTCP,
-						TargetPort: intstr.FromInt(1),
-					},
-				},
 			},
 		}
 
