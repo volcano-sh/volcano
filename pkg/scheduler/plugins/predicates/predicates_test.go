@@ -188,10 +188,6 @@ func TestEventHandler(t *testing.T) {
 				},
 			},
 		}, nil)
-		ssn.AddUnderusedResourceFn(PluginName, func(info *api.QueueInfo) api.ResourceNameList {
-			// to prevent queue from overusing
-			return api.ResourceNameList{apiv1.ResourceCPU, apiv1.ResourceMemory}
-		})
 		// allocate
 		allocator := allocate.New()
 		allocator.Execute(ssn)

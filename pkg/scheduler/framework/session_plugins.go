@@ -104,9 +104,9 @@ func (ssn *Session) AddOverusedFn(name string, fn api.ValidateFn) {
 	ssn.overusedFns[name] = fn
 }
 
-// AddUnderusedResourceFn add underused function
-func (ssn *Session) AddUnderusedResourceFn(name string, fn api.UnderUsedResourceFn) {
-	ssn.underUsedFns[name] = fn
+// AddAllocatableFn add allocatable function
+func (ssn *Session) AddAllocatableFn(name string, fn api.AllocatableFn) {
+	ssn.allocatableFns[name] = fn
 }
 
 // AddJobValidFn add jobvalid function
@@ -263,26 +263,21 @@ func (ssn *Session) Overused(queue *api.QueueInfo) bool {
 	return false
 }
 
-// UnderusedResources invoke underused function of the plugins
-// Returns:
-//  * nil if no `UnderUsedResourceFn` is registered
-//  * [] if no under-used resources
-func (ssn *Session) UnderusedResources(queue *api.QueueInfo) api.ResourceNameList {
-	if len(ssn.underUsedFns) == 0 {
-		return nil
-	}
+// Allocatable invoke allocatable function of the plugins
+func (ssn *Session) Allocatable(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
-			of, found := ssn.underUsedFns[plugin.Name]
+			af, found := ssn.allocatableFns[plugin.Name]
 			if !found {
 				continue
 			}
-			underUsedResourceList := of(queue)
-			return underUsedResourceList
+			if !af(queue, candidate) {
+				return false
+			}
 		}
 	}
 
-	return api.ResourceNameList{}
+	return true
 }
 
 // JobReady invoke jobready function of the plugins
