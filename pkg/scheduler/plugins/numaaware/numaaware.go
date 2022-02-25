@@ -231,15 +231,17 @@ func getNodeNumaNumForTask(nodeInfo []*api.NodeInfo, resAssignMap map[string]api
 	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodeInfo), func(index int) {
 		node := nodeInfo[index]
 		assignCpus := resAssignMap[node.Name][string(v1.ResourceCPU)]
+
 		mx.Lock()
 		defer mx.Unlock()
-		nodeNumaNumMap[node.Name] = int64(getNumaNodeCntForcpuID(assignCpus, node.NumaSchedulerInfo.CPUDetail))
+		nodeNumaNumMap[node.Name] = int64(getNumaNodeCntForCPUID(assignCpus, node.NumaSchedulerInfo.CPUDetail))
+
 	})
 
 	return nodeNumaNumMap
 }
 
-func getNumaNodeCntForcpuID(cpus cpuset.CPUSet, cpuDetails topology.CPUDetails) int {
+func getNumaNodeCntForCPUID(cpus cpuset.CPUSet, cpuDetails topology.CPUDetails) int {
 	mask, _ := bitmask.NewBitMask()
 	s := cpus.ToSlice()
 

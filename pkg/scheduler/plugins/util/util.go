@@ -298,3 +298,48 @@ func NormalizeScore(maxPriority int64, reverse bool, scores map[string]int64) {
 		scores[key] = score
 	}
 }
+
+// GetAllocatedResource returns allocated resource for given job
+func GetAllocatedResource(job *api.JobInfo) *api.Resource {
+	allocated := &api.Resource{}
+	for status, tasks := range job.TaskStatusIndex {
+		if api.AllocatedStatus(status) {
+			for _, t := range tasks {
+				allocated.Add(t.Resreq)
+			}
+		}
+	}
+	return allocated
+}
+
+// GetInqueueResource returns reserved resource for running job whose part of pods have not been allocated resource.
+func GetInqueueResource(job *api.JobInfo, allocated *api.Resource) *api.Resource {
+	inqueue := &api.Resource{}
+	for rName, rQuantity := range *job.PodGroup.Spec.MinResources {
+		switch rName {
+		case v1.ResourceCPU:
+			reservedCPU := float64(rQuantity.Value()) - allocated.MilliCPU
+			if reservedCPU > 0 {
+				inqueue.MilliCPU = reservedCPU
+			}
+		case v1.ResourceMemory:
+			reservedMemory := float64(rQuantity.Value()) - allocated.Memory
+			if reservedMemory > 0 {
+				inqueue.Memory = reservedMemory
+			}
+		default:
+			if inqueue.ScalarResources == nil {
+				inqueue.ScalarResources = make(map[v1.ResourceName]float64)
+			}
+			if allocatedMount, ok := allocated.ScalarResources[rName]; !ok {
+				inqueue.ScalarResources[rName] = float64(rQuantity.Value())
+			} else {
+				reservedScalarRes := float64(rQuantity.Value()) - allocatedMount
+				if reservedScalarRes > 0 {
+					inqueue.ScalarResources[rName] = reservedScalarRes
+				}
+			}
+		}
+	}
+	return inqueue
+}
