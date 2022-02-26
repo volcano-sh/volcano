@@ -36,7 +36,7 @@ type Configuration struct {
 	// Name is name of action
 	Name string `yaml:"name"`
 	// Arguments defines the different arguments that can be given to specified action
-	Arguments map[string]string `yaml:"arguments"`
+	Arguments map[string]interface{} `yaml:"arguments"`
 }
 
 // PluginOption defines the options of plugin
@@ -80,5 +80,5 @@ type PluginOption struct {
 	// EnabledJobStarving defines whether jobStarvingFn is enabled
 	EnabledJobStarving *bool `yaml:"enableJobStarving"`
 	// Arguments defines the different arguments that can be given to different plugins
-	Arguments map[string]string `yaml:"arguments"`
+	Arguments map[string]interface{} `yaml:"arguments"`
 }
