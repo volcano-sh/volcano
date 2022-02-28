@@ -105,20 +105,20 @@ func parseExtenderConfig(arguments framework.Arguments) *extenderConfig {
 		     - name: nodeorder
 	*/
 	ec := &extenderConfig{}
-	ec.urlPrefix = arguments[ExtenderURLPrefix]
-	ec.onSessionOpenVerb = arguments[ExtenderOnSessionOpenVerb]
-	ec.onSessionCloseVerb = arguments[ExtenderOnSessionCloseVerb]
-	ec.predicateVerb = arguments[ExtenderPredicateVerb]
-	ec.prioritizeVerb = arguments[ExtenderPrioritizeVerb]
-	ec.preemptableVerb = arguments[ExtenderPreemptableVerb]
-	ec.reclaimableVerb = arguments[ExtenderReclaimableVerb]
-	ec.queueOverusedVerb = arguments[ExtenderQueueOverusedVerb]
-	ec.jobEnqueueableVerb = arguments[ExtenderJobEnqueueableVerb]
+	ec.urlPrefix, _ = arguments[ExtenderURLPrefix].(string)
+	ec.onSessionOpenVerb, _ = arguments[ExtenderOnSessionOpenVerb].(string)
+	ec.onSessionCloseVerb, _ = arguments[ExtenderOnSessionCloseVerb].(string)
+	ec.predicateVerb, _ = arguments[ExtenderPredicateVerb].(string)
+	ec.prioritizeVerb, _ = arguments[ExtenderPrioritizeVerb].(string)
+	ec.preemptableVerb, _ = arguments[ExtenderPreemptableVerb].(string)
+	ec.reclaimableVerb, _ = arguments[ExtenderReclaimableVerb].(string)
+	ec.queueOverusedVerb, _ = arguments[ExtenderQueueOverusedVerb].(string)
+	ec.jobEnqueueableVerb, _ = arguments[ExtenderJobEnqueueableVerb].(string)
 
 	arguments.GetBool(&ec.ignorable, ExtenderIgnorable)
 
 	ec.httpTimeout = time.Second
-	if httpTimeout := arguments[ExtenderHTTPTimeout]; httpTimeout != "" {
+	if httpTimeout, _ := arguments[ExtenderHTTPTimeout].(string); httpTimeout != "" {
 		if timeoutDuration, err := time.ParseDuration(httpTimeout); err == nil {
 			ec.httpTimeout = timeoutDuration
 		}
