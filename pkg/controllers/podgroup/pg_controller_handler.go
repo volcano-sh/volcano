@@ -94,6 +94,9 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 				PriorityClassName: pod.Spec.PriorityClassName,
 				MinResources:      calcPGMinResources(pod),
 			},
+			Status: scheduling.PodGroupStatus{
+				Phase: scheduling.PodGroupPending,
+			},
 		}
 		if queueName, ok := pod.Annotations[scheduling.QueueNameAnnotationKey]; ok {
 			obj.Spec.Queue = queueName
