@@ -94,11 +94,11 @@ image_bins: init
 
 images:
 	for name in controller-manager scheduler webhook-manager; do\
-		docker buildx build -t "${IMAGE_PREFIX}-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type="${BUILDX_OUTPUT_TYPE}" --platform "${DOCKER_PLATFORMS}"; \
+		docker buildx build -t "${IMAGE_PREFIX}-${name}:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS}; \
 	done
 
 webhook-manager-base-image:
-	docker buildx build -t ${IMAGE_PREFIX}-webhook-manager-base:$(TAG) . -f ./installer/dockerfile/webhook-manager/Dockerfile.base --output=type="${BUILDX_OUTPUT_TYPE}" --platform "${DOCKER_PLATFORMS}"
+	docker buildx build -t ${IMAGE_PREFIX}-webhook-manager-base:$(TAG) . -f ./installer/dockerfile/webhook-manager/Dockerfile.base --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS}
 
 generate-code:
 	./hack/update-gencode.sh
