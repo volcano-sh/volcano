@@ -140,6 +140,17 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
 			attr.inqueue.Add(job.GetMinResources())
 		}
+
+		// calculate inqueue resource for running jobs
+		// the judgement 'job.PodGroup.Status.Running >= job.PodGroup.Spec.MinMember' will work on cases such as the following condition:
+		// Considering a Spark job is completed(driver pod is completed) while the podgroup keeps running, the allocated resource will be reserved again if without the judgement.
+		if job.PodGroup.Status.Phase == scheduling.PodGroupRunning &&
+			job.PodGroup.Spec.MinResources != nil &&
+			job.PodGroup.Status.Running >= job.PodGroup.Spec.MinMember {
+			allocated := util.GetAllocatedResource(job)
+			inqueued := util.GetInqueueResource(job, allocated)
+			attr.inqueue.Add(inqueued)
+		}
 	}
 
 	// Record metrics

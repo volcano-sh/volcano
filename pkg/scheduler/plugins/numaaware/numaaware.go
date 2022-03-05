@@ -233,14 +233,14 @@ func getNodeNumaNumForTask(nodeInfo []*api.NodeInfo, resAssignMap map[string]api
 		assignCpus := resAssignMap[node.Name][string(v1.ResourceCPU)]
 		nodeNumaCnts[index] = api.ScoredNode{
 			NodeName: node.Name,
-			Score:    int64(getNumaNodeCntForCpuID(assignCpus, node.NumaSchedulerInfo.CPUDetail)),
+			Score:    int64(getNumaNodeCntForCPUID(assignCpus, node.NumaSchedulerInfo.CPUDetail)),
 		}
 	})
 
 	return nodeNumaCnts
 }
 
-func getNumaNodeCntForCpuID(cpus cpuset.CPUSet, cpuDetails topology.CPUDetails) int {
+func getNumaNodeCntForCPUID(cpus cpuset.CPUSet, cpuDetails topology.CPUDetails) int {
 	mask, _ := bitmask.NewBitMask()
 	s := cpus.ToSlice()
 
