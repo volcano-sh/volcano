@@ -36,15 +36,7 @@ func TestArgumentsGetInt(t *testing.T) {
 	cases := []GetIntTestCases{
 		{
 			arg: Arguments{
-				"anotherkey": "12",
-			},
-			key:         key1,
-			baseValue:   10,
-			expectValue: 10,
-		},
-		{
-			arg: Arguments{
-				key1: "15",
+				key1: 15,
 			},
 			key:         key1,
 			baseValue:   10,
@@ -100,7 +92,7 @@ func TestArgumentsGetFloat64(t *testing.T) {
 		{
 			name: "key exist",
 			arg: Arguments{
-				key1: "1.5",
+				key1: 1.5,
 			},
 			key:         key1,
 			baseValue:   1.2,
