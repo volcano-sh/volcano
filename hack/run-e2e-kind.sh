@@ -66,7 +66,8 @@ function install-volcano {
     --set basic.image_tag_version=${TAG} \
     --set basic.scheduler_config_file=config/volcano-scheduler-ci.conf \
     --set basic.crd_version=${crd_version} \
-    --wait
+    --debug
+    #--wait
 }
 
 function uninstall-volcano {
