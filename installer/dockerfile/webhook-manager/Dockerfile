@@ -15,7 +15,7 @@
 
 # The base image is created via `Dockerfile.base`, the base image is cached
 # since the required packages change very rarely.
-FROM golang:1.16 AS builder
+FROM golang:1.17 AS builder
 WORKDIR /go/src/volcano.sh/
 ADD . volcano
 RUN cd volcano && make vc-webhook-manager
