@@ -88,10 +88,21 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	op.idleResource = total.Clone().Multi(op.overCommitFactor).Sub(used)
 
-	// calculate inqueue job resources
 	for _, job := range ssn.Jobs {
+		// calculate inqueue job resources
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue && job.PodGroup.Spec.MinResources != nil {
 			op.inqueueResource.Add(api.NewResource(*job.PodGroup.Spec.MinResources))
+			continue
+		}
+		// calculate inqueue resource for running jobs
+		// the judgement 'job.PodGroup.Status.Running >= job.PodGroup.Spec.MinMember' will work on cases such as the following condition:
+		// Considering a Spark job is completed(driver pod is completed) while the podgroup keeps running, the allocated resource will be reserved again if without the judgement.
+		if job.PodGroup.Status.Phase == scheduling.PodGroupRunning &&
+			job.PodGroup.Spec.MinResources != nil &&
+			job.PodGroup.Status.Running >= job.PodGroup.Spec.MinMember {
+			allocated := util.GetAllocatedResource(job)
+			inqueued := util.GetInqueueResource(job, allocated)
+			op.inqueueResource.Add(inqueued)
 		}
 	}
 

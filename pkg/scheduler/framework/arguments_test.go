@@ -147,19 +147,19 @@ func TestGetArgOfActionFromConf(t *testing.T) {
 			configurations: []conf.Configuration{
 				{
 					Name: "enqueue",
-					Arguments: map[string]string{
+					Arguments: map[string]interface{}{
 						"overCommitFactor": "1.5",
 					},
 				},
 				{
 					Name: "allocate",
-					Arguments: map[string]string{
+					Arguments: map[string]interface{}{
 						"placeholde": "placeholde",
 					},
 				},
 			},
 			action: "enqueue",
-			expectedArguments: map[string]string{
+			expectedArguments: map[string]interface{}{
 				"overCommitFactor": "1.5",
 			},
 		},
@@ -168,7 +168,7 @@ func TestGetArgOfActionFromConf(t *testing.T) {
 			configurations: []conf.Configuration{
 				{
 					Name: "enqueue",
-					Arguments: map[string]string{
+					Arguments: map[string]interface{}{
 						"overCommitFactor": "1.5",
 					},
 				},

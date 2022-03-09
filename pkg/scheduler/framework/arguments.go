@@ -25,7 +25,7 @@ import (
 )
 
 // Arguments map
-type Arguments map[string]string
+type Arguments map[string]interface{}
 
 // GetInt get the integer value from string
 func (a Arguments) GetInt(ptr *int, key string) {
@@ -34,13 +34,14 @@ func (a Arguments) GetInt(ptr *int, key string) {
 	}
 
 	argv, ok := a[key]
-	if !ok || argv == "" {
+	if !ok {
 		return
 	}
 
-	value, err := strconv.Atoi(argv)
+	valueStr, _ := argv.(string)
+	value, err := strconv.Atoi(valueStr)
 	if err != nil {
-		klog.Warningf("Could not parse argument: %s for key %s, with err %v", argv, key, err)
+		klog.Warningf("Could not parse argument: %s for key %s to int, with err %v", argv, key, err.Error())
 		return
 	}
 
@@ -54,13 +55,14 @@ func (a Arguments) GetFloat64(ptr *float64, key string) {
 	}
 
 	argv, ok := a[key]
-	if !ok || len(argv) == 0 {
+	if !ok {
 		return
 	}
 
-	value, err := strconv.ParseFloat(argv, 64)
+	valueStr, _ := argv.(string)
+	value, err := strconv.ParseFloat(valueStr, 64)
 	if err != nil {
-		klog.Warningf("Could not parse argument: %s for key %s, with err %v", argv, key, err)
+		klog.Warningf("Could not parse argument: %s for key %s to float64, with err %v", argv, key, err.Error())
 		return
 	}
 
@@ -74,13 +76,14 @@ func (a Arguments) GetBool(ptr *bool, key string) {
 	}
 
 	argv, ok := a[key]
-	if !ok || argv == "" {
+	if !ok {
 		return
 	}
 
-	value, err := strconv.ParseBool(argv)
+	valueStr, _ := argv.(string)
+	value, err := strconv.ParseBool(valueStr)
 	if err != nil {
-		klog.Warningf("Could not parse argument: %s for key %s, with err %v", argv, key, err)
+		klog.Warningf("Could not parse argument: %s for key %s to bool, with err %v", argv, key, err.Error())
 		return
 	}
 

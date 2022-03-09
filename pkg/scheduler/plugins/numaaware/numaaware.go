@@ -170,11 +170,12 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		scoreList := getNodeNumaNumForTask(nodeInfo, pp.assignRes[task.UID])
-		util.NormalizeScore(100, true, scoreList)
+		util.NormalizeScore(api.DefaultMaxNodeScore, true, scoreList)
 
-		for nodeName, score := range scoreList {
-			score *= int64(weight)
-			nodeScores[nodeName] = float64(score)
+		for idx, scoreNode := range scoreList {
+			scoreNode.Score *= int64(weight)
+			nodeName := nodeInfo[idx].Name
+			nodeScores[nodeName] = float64(scoreNode.Score)
 		}
 
 		klog.V(4).Infof("numa-aware plugin Score for task %s/%s is: %v",
@@ -225,21 +226,21 @@ func filterNodeByPolicy(task *api.TaskInfo, node *api.NodeInfo, nodeResSets map[
 	return true, nil
 }
 
-func getNodeNumaNumForTask(nodeInfo []*api.NodeInfo, resAssignMap map[string]api.ResNumaSets) map[string]int64 {
-	nodeNumaNumMap := make(map[string]int64)
-	var mx sync.RWMutex
+func getNodeNumaNumForTask(nodeInfo []*api.NodeInfo, resAssignMap map[string]api.ResNumaSets) []api.ScoredNode {
+	nodeNumaCnts := make([]api.ScoredNode, len(nodeInfo))
 	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodeInfo), func(index int) {
 		node := nodeInfo[index]
 		assignCpus := resAssignMap[node.Name][string(v1.ResourceCPU)]
-		mx.Lock()
-		defer mx.Unlock()
-		nodeNumaNumMap[node.Name] = int64(getNumaNodeCntForcpuID(assignCpus, node.NumaSchedulerInfo.CPUDetail))
+		nodeNumaCnts[index] = api.ScoredNode{
+			NodeName: node.Name,
+			Score:    int64(getNumaNodeCntForCPUID(assignCpus, node.NumaSchedulerInfo.CPUDetail)),
+		}
 	})
 
-	return nodeNumaNumMap
+	return nodeNumaCnts
 }
 
-func getNumaNodeCntForcpuID(cpus cpuset.CPUSet, cpuDetails topology.CPUDetails) int {
+func getNumaNodeCntForCPUID(cpus cpuset.CPUSet, cpuDetails topology.CPUDetails) int {
 	mask, _ := bitmask.NewBitMask()
 	s := cpus.ToSlice()
 
