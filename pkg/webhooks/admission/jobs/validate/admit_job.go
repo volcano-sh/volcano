@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"strings"
 
-	"k8s.io/api/admission/v1beta1"
-	whv1beta1 "k8s.io/api/admissionregistration/v1beta1"
+	admissionv1 "k8s.io/api/admission/v1"
+	whv1 "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -53,13 +53,13 @@ var service = &router.AdmissionService{
 
 	Config: config,
 
-	ValidatingConfig: &whv1beta1.ValidatingWebhookConfiguration{
-		Webhooks: []whv1beta1.ValidatingWebhook{{
+	ValidatingConfig: &whv1.ValidatingWebhookConfiguration{
+		Webhooks: []whv1.ValidatingWebhook{{
 			Name: "validatejob.volcano.sh",
-			Rules: []whv1beta1.RuleWithOperations{
+			Rules: []whv1.RuleWithOperations{
 				{
-					Operations: []whv1beta1.OperationType{whv1beta1.Create, whv1beta1.Update},
-					Rule: whv1beta1.Rule{
+					Operations: []whv1.OperationType{whv1.Create, whv1.Update},
+					Rule: whv1.Rule{
 						APIGroups:   []string{"batch.volcano.sh"},
 						APIVersions: []string{"v1alpha1"},
 						Resources:   []string{"jobs"},
@@ -73,7 +73,7 @@ var service = &router.AdmissionService{
 var config = &router.AdmissionServiceConfig{}
 
 // AdmitJobs is to admit jobs and return response.
-func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
+func AdmitJobs(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	klog.V(3).Infof("admitting jobs -- %s", ar.Request.Operation)
 
 	job, err := schema.DecodeJob(ar.Request.Object, ar.Request.Resource)
@@ -81,13 +81,13 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		return util.ToAdmissionResponse(err)
 	}
 	var msg string
-	reviewResponse := v1beta1.AdmissionResponse{}
+	reviewResponse := admissionv1.AdmissionResponse{}
 	reviewResponse.Allowed = true
 
 	switch ar.Request.Operation {
-	case v1beta1.Create:
+	case admissionv1.Create:
 		msg = validateJobCreate(job, &reviewResponse)
-	case v1beta1.Update:
+	case admissionv1.Update:
 		oldJob, err := schema.DecodeJob(ar.Request.OldObject, ar.Request.Resource)
 		if err != nil {
 			return util.ToAdmissionResponse(err)
@@ -107,7 +107,7 @@ func AdmitJobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	return &reviewResponse
 }
 
-func validateJobCreate(job *v1alpha1.Job, reviewResponse *v1beta1.AdmissionResponse) string {
+func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionResponse) string {
 	var msg string
 	taskNames := map[string]string{}
 	var totalReplicas int32

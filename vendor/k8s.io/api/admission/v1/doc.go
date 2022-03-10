@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2019 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,21 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package util
+// +k8s:deepcopy-gen=package
+// +k8s:protobuf-gen=package
+// +k8s:openapi-gen=false
 
-import (
-	admissionv1 "k8s.io/api/admission/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog"
-)
+// +groupName=admission.k8s.io
 
-//ToAdmissionResponse updates the admission response with the input error.
-func ToAdmissionResponse(err error) *admissionv1.AdmissionResponse {
-	klog.Error(err)
-	return &admissionv1.AdmissionResponse{
-		Allowed: false,
-		Result: &metav1.Status{
-			Message: err.Error(),
-		},
-	}
-}
+package v1 // import "k8s.io/api/admission/v1"

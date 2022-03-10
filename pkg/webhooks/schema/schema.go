@@ -19,7 +19,7 @@ package schema
 import (
 	"fmt"
 
-	"k8s.io/api/admission/v1beta1"
+	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -43,7 +43,7 @@ var Codecs = serializer.NewCodecFactory(scheme)
 
 func addToScheme(scheme *runtime.Scheme) {
 	corev1.AddToScheme(scheme)
-	v1beta1.AddToScheme(scheme)
+	admissionv1.AddToScheme(scheme)
 }
 
 //DecodeJob decodes the job using deserializer from the raw object.

@@ -22,7 +22,7 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"k8s.io/api/admission/v1beta1"
+	admissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog"
 
@@ -52,8 +52,8 @@ func Serve(w io.Writer, r *http.Request, admit AdmitFunc) {
 		return
 	}
 
-	var reviewResponse *v1beta1.AdmissionResponse
-	ar := v1beta1.AdmissionReview{}
+	var reviewResponse *admissionv1.AdmissionResponse
+	ar := admissionv1.AdmissionReview{}
 	deserializer := schema.Codecs.UniversalDeserializer()
 	if _, _, err := deserializer.Decode(body, nil, &ar); err != nil {
 		reviewResponse = util.ToAdmissionResponse(err)
@@ -72,9 +72,11 @@ func Serve(w io.Writer, r *http.Request, admit AdmitFunc) {
 	}
 }
 
-func createResponse(reviewResponse *v1beta1.AdmissionResponse, ar *v1beta1.AdmissionReview) v1beta1.AdmissionReview {
-	response := v1beta1.AdmissionReview{}
+func createResponse(reviewResponse *admissionv1.AdmissionResponse, ar *admissionv1.AdmissionReview) admissionv1.AdmissionReview {
+	response := admissionv1.AdmissionReview{}
 	if reviewResponse != nil {
+		response.APIVersion = "admission.k8s.io/v1"
+		response.Kind = "AdmissionReview"
 		response.Response = reviewResponse
 		response.Response.UID = ar.Request.UID
 	}
