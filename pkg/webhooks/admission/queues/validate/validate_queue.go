@@ -198,14 +198,9 @@ func validateQueueDeleting(queue string) error {
 		return fmt.Errorf("`%s` queue can not be deleted", "default")
 	}
 
-	q, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), queue, metav1.GetOptions{})
+	_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), queue, metav1.GetOptions{})
 	if err != nil {
 		return err
-	}
-
-	if q.Status.State != schedulingv1beta1.QueueStateClosed {
-		return fmt.Errorf("only queue with state `%s` can be deleted, queue `%s` state is `%s`",
-			schedulingv1beta1.QueueStateClosed, q.Name, q.Status.State)
 	}
 
 	return nil
