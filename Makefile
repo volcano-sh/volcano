@@ -199,4 +199,8 @@ update-development-yaml:
 	make generate-yaml TAG=latest RELEASE_DIR=installer
 	cp installer/volcano-latest.yaml installer/volcano-development-arm64.yaml
 	sed -r -i 's#(.*)image:([^:]*):(.*)#\1image:\2-arm64:\3#'  installer/volcano-development-arm64.yaml
-	mv installer/volcano-latest.yaml installer/volcano-development.yaml
+	cp installer/volcano-latest.yaml installer/volcano-development.yaml
+	sed -i 's/PullPolicy: IfNotPresent/PullPolicy: Always/g' installer/volcano-latest.yaml
+	sed -i 's/PullPolicy: "IfNotPresent"/PullPolicy: "Always"/g' installer/volcano-latest.yaml
+	cp installer/volcano-latest.yaml installer/volcano-latest-arm64.yaml
+	sed -r -i 's#(.*)image:([^:]*):(.*)#\1image:\2-arm64:\3#' installer/volcano-latest-arm64.yaml
