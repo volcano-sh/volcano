@@ -118,7 +118,7 @@ under the status of queue, not the `state` under the `spec` of queue.
 Add `validatingwebhookconfiguration` for queue validation during creating, updating or deleting of queue.
 
 ```yaml
-apiVersion: admissionregistration.k8s.io/v1beta1
+apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
   name: {{ .Release.Name }}-validate-queue
@@ -165,7 +165,7 @@ We need another `webhook` to set default state value for queue during queue crea
 and `MutateQueues` function
 
 ```yaml
-apiVersion: admissionregistration.k8s.io/v1beta1
+apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
   name: {{ .Release.Name }}-mutate-queue

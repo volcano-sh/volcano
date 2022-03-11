@@ -22,8 +22,8 @@ import (
 	"strconv"
 	"strings"
 
-	"k8s.io/api/admission/v1beta1"
-	whv1beta1 "k8s.io/api/admissionregistration/v1beta1"
+	admissionv1 "k8s.io/api/admission/v1"
+	whv1 "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -47,13 +47,13 @@ var service = &router.AdmissionService{
 
 	Config: config,
 
-	ValidatingConfig: &whv1beta1.ValidatingWebhookConfiguration{
-		Webhooks: []whv1beta1.ValidatingWebhook{{
+	ValidatingConfig: &whv1.ValidatingWebhookConfiguration{
+		Webhooks: []whv1.ValidatingWebhook{{
 			Name: "validatepod.volcano.sh",
-			Rules: []whv1beta1.RuleWithOperations{
+			Rules: []whv1.RuleWithOperations{
 				{
-					Operations: []whv1beta1.OperationType{whv1beta1.Create},
-					Rule: whv1beta1.Rule{
+					Operations: []whv1.OperationType{whv1.Create},
+					Rule: whv1.Rule{
 						APIGroups:   []string{""},
 						APIVersions: []string{"v1"},
 						Resources:   []string{"pods"},
@@ -67,7 +67,7 @@ var service = &router.AdmissionService{
 var config = &router.AdmissionServiceConfig{}
 
 // AdmitPods is to admit pods and return response.
-func AdmitPods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
+func AdmitPods(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	klog.V(3).Infof("admitting pods -- %s", ar.Request.Operation)
 
 	pod, err := schema.DecodePod(ar.Request.Object, ar.Request.Resource)
@@ -76,11 +76,11 @@ func AdmitPods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	}
 
 	var msg string
-	reviewResponse := v1beta1.AdmissionResponse{}
+	reviewResponse := admissionv1.AdmissionResponse{}
 	reviewResponse.Allowed = true
 
 	switch ar.Request.Operation {
-	case v1beta1.Create:
+	case admissionv1.Create:
 		msg = validatePod(pod, &reviewResponse)
 	default:
 		err := fmt.Errorf("expect operation to be 'CREATE'")
@@ -100,7 +100,7 @@ allow pods to create when
 3. normal pods whose schedulerName is volcano don't have podgroup.
 4. check pod budget annotations configure
 */
-func validatePod(pod *v1.Pod, reviewResponse *v1beta1.AdmissionResponse) string {
+func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) string {
 	if pod.Spec.SchedulerName != config.SchedulerName {
 		return ""
 	}
