@@ -564,7 +564,7 @@ func TestAdmitQueues(t *testing.T) {
 			},
 		},
 		{
-			Name: "Abnormal Case Queue With Open State Can Not Be Deleted",
+			Name: "Normal Case Queue With Open State Can Be Deleted (Until close queue in kubectl supported)",
 			AR: admissionv1.AdmissionReview{
 				TypeMeta: metav1.TypeMeta{
 					Kind:       "AdmissionReview",
@@ -589,11 +589,7 @@ func TestAdmitQueues(t *testing.T) {
 				},
 			},
 			reviewResponse: &admissionv1.AdmissionResponse{
-				Allowed: false,
-				Result: &metav1.Status{
-					Message: fmt.Sprintf("only queue with state `%s` can be deleted, queue `%s` state is `%s`",
-						schedulingv1beta1.QueueStateClosed, "open-state-for-delete", schedulingv1beta1.QueueStateOpen),
-				},
+				Allowed: true,
 			},
 		},
 		{
