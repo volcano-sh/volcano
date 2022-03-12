@@ -96,9 +96,8 @@ func AdmitPods(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 /*
 allow pods to create when
 1. schedulerName of pod isn't volcano
-2. pod has Podgroup whose phase isn't Pending
-3. normal pods whose schedulerName is volcano don't have podgroup.
-4. check pod budget annotations configure
+2. normal pods whose schedulerName is volcano don't have podgroup.
+3. check pod budget annotations configure
 */
 func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) string {
 	if pod.Spec.SchedulerName != config.SchedulerName {
@@ -113,7 +112,7 @@ func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) str
 		pgName = pod.Annotations[vcv1beta1.KubeGroupNameAnnotationKey]
 	}
 	if pgName != "" {
-		if err := checkPGPhase(pod, pgName, true); err != nil {
+		if err := checkPG(pod, pgName, true); err != nil {
 			msg = err.Error()
 			reviewResponse.Allowed = false
 		}
@@ -122,7 +121,7 @@ func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) str
 
 	// normal pod, SN == volcano
 	pgName = helpers.GeneratePodgroupName(pod)
-	if err := checkPGPhase(pod, pgName, false); err != nil {
+	if err := checkPG(pod, pgName, false); err != nil {
 		msg = err.Error()
 		reviewResponse.Allowed = false
 	}
@@ -136,19 +135,15 @@ func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) str
 	return msg
 }
 
-func checkPGPhase(pod *v1.Pod, pgName string, isVCJob bool) error {
-	pg, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+func checkPG(pod *v1.Pod, pgName string, isVCJob bool) error {
+	_, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 	if err != nil {
 		if isVCJob || (!isVCJob && !apierrors.IsNotFound(err)) {
 			return fmt.Errorf("failed to get PodGroup for pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
 		}
 		return nil
 	}
-	if pg.Status.Phase != vcv1beta1.PodGroupPending {
-		return nil
-	}
-	return fmt.Errorf("failed to create pod <%s/%s> as the podgroup phase is Pending",
-		pod.Namespace, pod.Name)
+	return nil
 }
 
 func validateAnnotation(pod *v1.Pod) error {
