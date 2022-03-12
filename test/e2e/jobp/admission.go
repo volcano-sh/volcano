@@ -1395,7 +1395,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("queue check: open queue can NOT be deleted", func() {
+	ginkgo.It("queue check: open queue can be deleted", func() {
 		queueName := "deleted-open-queue"
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
@@ -1421,6 +1421,6 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		err = ctx.Vcclient.SchedulingV1beta1().Queues().Delete(context.TODO(), queue.Name, metav1.DeleteOptions{})
-		gomega.Expect(err).To(gomega.HaveOccurred())
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 })

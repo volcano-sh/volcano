@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"k8s.io/api/admission/v1beta1"
-	whv1beta1 "k8s.io/api/admissionregistration/v1beta1"
+	admissionv1 "k8s.io/api/admission/v1"
+	whv1 "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
@@ -51,13 +51,13 @@ var service = &router.AdmissionService{
 	Path: "/jobs/mutate",
 	Func: Jobs,
 
-	MutatingConfig: &whv1beta1.MutatingWebhookConfiguration{
-		Webhooks: []whv1beta1.MutatingWebhook{{
+	MutatingConfig: &whv1.MutatingWebhookConfiguration{
+		Webhooks: []whv1.MutatingWebhook{{
 			Name: "mutatejob.volcano.sh",
-			Rules: []whv1beta1.RuleWithOperations{
+			Rules: []whv1.RuleWithOperations{
 				{
-					Operations: []whv1beta1.OperationType{whv1beta1.Create},
-					Rule: whv1beta1.Rule{
+					Operations: []whv1.OperationType{whv1.Create},
+					Rule: whv1.Rule{
 						APIGroups:   []string{"batch.volcano.sh"},
 						APIVersions: []string{"v1alpha1"},
 						Resources:   []string{"jobs"},
@@ -75,7 +75,7 @@ type patchOperation struct {
 }
 
 // Jobs mutate jobs.
-func Jobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
+func Jobs(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	klog.V(3).Infof("mutating jobs")
 
 	job, err := schema.DecodeJob(ar.Request.Object, ar.Request.Resource)
@@ -85,7 +85,7 @@ func Jobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
 	var patchBytes []byte
 	switch ar.Request.Operation {
-	case v1beta1.Create:
+	case admissionv1.Create:
 		patchBytes, _ = createPatch(job)
 	default:
 		err = fmt.Errorf("expect operation to be 'CREATE' ")
@@ -93,11 +93,11 @@ func Jobs(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	}
 
 	klog.V(3).Infof("AdmissionResponse: patch=%v", string(patchBytes))
-	reviewResponse := v1beta1.AdmissionResponse{
+	reviewResponse := admissionv1.AdmissionResponse{
 		Allowed: true,
 		Patch:   patchBytes,
 	}
-	pt := v1beta1.PatchTypeJSONPatch
+	pt := admissionv1.PatchTypeJSONPatch
 	reviewResponse.PatchType = &pt
 
 	return &reviewResponse

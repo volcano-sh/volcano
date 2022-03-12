@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"k8s.io/api/admission/v1beta1"
+	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -39,7 +39,7 @@ func TestValidatePod(t *testing.T) {
 		Name           string
 		Pod            v1.Pod
 		ExpectErr      bool
-		reviewResponse v1beta1.AdmissionResponse
+		reviewResponse admissionv1.AdmissionResponse
 		ret            string
 		disabledPG     bool
 	}{
@@ -60,7 +60,7 @@ func TestValidatePod(t *testing.T) {
 				},
 			},
 
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "",
 			ExpectErr:      false,
 		},
@@ -84,7 +84,7 @@ func TestValidatePod(t *testing.T) {
 				},
 			},
 
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
 			ret:            "failed to create pod <test/normal-pod-2> as the podgroup phase is Pending",
 			ExpectErr:      true,
 		},
@@ -106,7 +106,7 @@ func TestValidatePod(t *testing.T) {
 				},
 			},
 
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
 			ret:            "failed to create pod <test/volcano-pod-1> as the podgroup phase is Pending",
 			ExpectErr:      true,
 		},
@@ -128,7 +128,7 @@ func TestValidatePod(t *testing.T) {
 				},
 			},
 
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
 			ret:            `failed to get PodGroup for pod <test/volcano-pod-2>: podgroups.scheduling.volcano.sh "podgroup-p1" not found`,
 			ExpectErr:      true,
 			disabledPG:     true,
