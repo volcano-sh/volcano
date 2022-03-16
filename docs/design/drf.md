@@ -20,7 +20,7 @@ This share value is used for job ordering and task premption.
 
 
  ##### 1.1 Gang Scheduling with DRF in job ordering ( Gang -> DRF)
-   Gang scheduling sorts the job based on whether the job has atleast **minAvailable** task already (allocated + successfully completed + pipelined) or not.
+   Gang scheduling sorts the job based on whether the job has at least **minAvailable** task already (allocated + successfully completed + pipelined) or not.
    Jobs which has not met the minAvailable criteria has higher priority than jobs which has met
    the minAvailable criteria.
 
