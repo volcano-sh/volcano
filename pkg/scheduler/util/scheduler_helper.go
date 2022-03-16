@@ -23,6 +23,7 @@ import (
 	"math/rand"
 	"sort"
 	"sync"
+	"time"
 
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
@@ -39,8 +40,23 @@ var lastProcessedNodeIndex int
 // Reservation is used to record target job and locked nodes
 var Reservation *ResourceReservation
 
+// FnsLastExecTime records the last execution time of functions registering in the plugins and executing periodically
+var FnsLastExecTime map[string]time.Time
+
 func init() {
 	Reservation = NewResourceReservation()
+	FnsLastExecTime = make(map[string]time.Time)
+}
+
+// IsToBeExecuted checks whether it is time for the function to be executed now
+func IsToBeExecuted(fnName string, interval time.Duration) bool {
+	now := time.Now()
+	lastExecuteTime, ok := FnsLastExecTime[fnName]
+	if !ok || lastExecuteTime.Add(interval).Before(now) {
+		FnsLastExecTime[fnName] = now
+		return true
+	}
+	return false
 }
 
 // CalculateNumOfFeasibleNodesToFind returns the number of feasible nodes that once found,
