@@ -83,6 +83,7 @@ type Session struct {
 	reservedNodesFns  map[string]api.ReservedNodesFn
 	victimTasksFns    map[string]api.VictimTasksFn
 	jobStarvingFns    map[string]api.ValidateFn
+	reschedulingFns   map[string][]api.VictimTasksFromCandidatesFn
 }
 
 func openSession(cache cache.Cache) *Session {
@@ -125,6 +126,7 @@ func openSession(cache cache.Cache) *Session {
 		reservedNodesFns:  map[string]api.ReservedNodesFn{},
 		victimTasksFns:    map[string]api.VictimTasksFn{},
 		jobStarvingFns:    map[string]api.ValidateFn{},
+		reschedulingFns:   map[string][]api.VictimTasksFromCandidatesFn{},
 	}
 
 	snapshot := cache.Snapshot()
@@ -184,6 +186,7 @@ func closeSession(ssn *Session) {
 	ssn.namespaceOrderFns = nil
 	ssn.queueOrderFns = nil
 	ssn.clusterOrderFns = nil
+	ssn.reschedulingFns = nil
 	ssn.NodeList = nil
 	ssn.TotalResource = nil
 

@@ -18,7 +18,6 @@ package framework
 
 import (
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
-
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -137,6 +136,11 @@ func (ssn *Session) AddReservedNodesFn(name string, fn api.ReservedNodesFn) {
 // AddVictimTasksFns add victimTasksFns function
 func (ssn *Session) AddVictimTasksFns(name string, fn api.VictimTasksFn) {
 	ssn.victimTasksFns[name] = fn
+}
+
+// AddVictimTasksFromCandidatesFns add VictimTasksFromCandidatesFns function
+func (ssn *Session) AddVictimTasksFromCandidatesFns(name string, fns []api.VictimTasksFromCandidatesFn) {
+	ssn.reschedulingFns[name] = fns
 }
 
 // AddJobStarvingFns add jobStarvingFns function
@@ -501,6 +505,30 @@ func (ssn *Session) ReservedNodes() {
 			fn()
 		}
 	}
+}
+
+// Victims returns the victims for rescheduling
+func (ssn *Session) Victims(tasks []*api.TaskInfo) map[*api.TaskInfo]bool {
+	// different filters may add the same task to victims, so use a map to remove duplicate tasks.
+	victimSet := make(map[*api.TaskInfo]bool)
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledVictim) {
+				continue
+			}
+			fns, found := ssn.reschedulingFns[plugin.Name]
+			if !found {
+				continue
+			}
+			for _, fn := range fns {
+				victimTasks := fn(tasks)
+				for _, victim := range victimTasks {
+					victimSet[victim] = true
+				}
+			}
+		}
+	}
+	return victimSet
 }
 
 // JobOrderFn invoke joborder function of the plugins

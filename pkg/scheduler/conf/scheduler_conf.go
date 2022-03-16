@@ -79,6 +79,7 @@ type PluginOption struct {
 	EnabledVictim *bool `yaml:"enabledVictim"`
 	// EnabledJobStarving defines whether jobStarvingFn is enabled
 	EnabledJobStarving *bool `yaml:"enableJobStarving"`
+
 	// Arguments defines the different arguments that can be given to different plugins
 	Arguments map[string]interface{} `yaml:"arguments"`
 }

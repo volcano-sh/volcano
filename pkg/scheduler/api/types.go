@@ -171,3 +171,9 @@ type VictimTasksFn func() []*TaskInfo
 
 // AllocatableFn is the func declaration used to check whether the task can be allocated
 type AllocatableFn func(*QueueInfo, *TaskInfo) bool
+
+// VictimTasksFromCandidatesFn is the func declaration used to select victim tasks from candidates and evict them
+type VictimTasksFromCandidatesFn func([]*TaskInfo) []*TaskInfo
+
+// UnderUsedResourceFn is the func declaration used to get under used resource list for queue
+type UnderUsedResourceFn func(*QueueInfo) ResourceNameList
