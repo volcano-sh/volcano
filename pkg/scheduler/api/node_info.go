@@ -34,6 +34,11 @@ func (o *AllocateFailError) Error() string {
 	return o.Reason
 }
 
+type NodeUsage struct {
+	CPUUsageAvg map[string]float64
+	MemUsageAvg map[string]float64
+}
+
 // NodeInfo is node level aggregated information.
 type NodeInfo struct {
 	Name string
@@ -52,8 +57,9 @@ type NodeInfo struct {
 	// pods
 	Used *Resource
 
-	Allocatable *Resource
-	Capability  *Resource
+	Allocatable   *Resource
+	Capability    *Resource
+	ResourceUsage NodeUsage
 
 	Tasks             map[TaskID]*TaskInfo
 	NumaInfo          *NumatopoInfo
@@ -100,8 +106,9 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		Idle:      EmptyResource(),
 		Used:      EmptyResource(),
 
-		Allocatable: EmptyResource(),
-		Capability:  EmptyResource(),
+		Allocatable:   EmptyResource(),
+		Capability:    EmptyResource(),
+		ResourceUsage: NodeUsage{},
 
 		OversubscriptionResource: EmptyResource(),
 		Tasks:                    make(map[TaskID]*TaskInfo),
