@@ -119,6 +119,9 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					if task.Resreq.IsEmpty() {
 						return false
 					}
+					if !task.Preemptable {
+						return false
+					}
 					job, found := ssn.Jobs[task.Job]
 					if !found {
 						return false

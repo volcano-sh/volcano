@@ -134,6 +134,9 @@ func (ra *Action) Execute(ssn *framework.Session) {
 				if task.Status != api.Running {
 					continue
 				}
+				if !task.Preemptable {
+					continue
+				}
 
 				if j, found := ssn.Jobs[task.Job]; !found {
 					continue
