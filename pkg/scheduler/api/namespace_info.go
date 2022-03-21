@@ -41,8 +41,8 @@ type NamespaceInfo struct {
 	// Weight is the highest weight among many ResourceQuota.
 	Weight int64
 
-	// RQStatus stores the ResourceQuotaStatus of all ResourceQuotas in this namespace
-	RQStatus map[string]v1.ResourceQuotaStatus
+	// QuotaStatus stores the ResourceQuotaStatus of all ResourceQuotas in this namespace
+	QuotaStatus map[string]v1.ResourceQuotaStatus
 }
 
 // GetWeight returns weight of a namespace, any invalid case would get default value
@@ -79,7 +79,7 @@ type NamespaceCollection struct {
 
 	quotaWeight *cache.Heap
 
-	RQStatus map[string]v1.ResourceQuotaStatus
+	QuotaStatus map[string]v1.ResourceQuotaStatus
 }
 
 // NewNamespaceCollection creates new NamespaceCollection object to record all information about a namespace
@@ -87,7 +87,7 @@ func NewNamespaceCollection(name string) *NamespaceCollection {
 	n := &NamespaceCollection{
 		Name:        name,
 		quotaWeight: cache.NewHeap(quotaItemKeyFunc, quotaItemLessFunc),
-		RQStatus:    make(map[string]v1.ResourceQuotaStatus),
+		QuotaStatus: make(map[string]v1.ResourceQuotaStatus),
 	}
 	// add at least one item into quotaWeight.
 	// Because cache.Heap.Pop would be blocked until queue is not empty
@@ -124,13 +124,13 @@ func itemFromQuota(quota *v1.ResourceQuota) *quotaItem {
 // Update modify the registered information according quota object
 func (n *NamespaceCollection) Update(quota *v1.ResourceQuota) {
 	n.updateWeight(itemFromQuota(quota))
-	n.RQStatus[quota.Name] = quota.Status
+	n.QuotaStatus[quota.Name] = quota.Status
 }
 
 // Delete remove the registered information according quota object
 func (n *NamespaceCollection) Delete(quota *v1.ResourceQuota) {
 	n.deleteWeight(itemFromQuota(quota))
-	delete(n.RQStatus, quota.Name)
+	delete(n.QuotaStatus, quota.Name)
 }
 
 // Snapshot will clone a NamespaceInfo without Heap according NamespaceCollection
@@ -147,8 +147,8 @@ func (n *NamespaceCollection) Snapshot() *NamespaceInfo {
 	}
 
 	return &NamespaceInfo{
-		Name:     NamespaceName(n.Name),
-		Weight:   weight,
-		RQStatus: n.RQStatus,
+		Name:        NamespaceName(n.Name),
+		Weight:      weight,
+		QuotaStatus: n.QuotaStatus,
 	}
 }

@@ -51,7 +51,7 @@ func TestNamespaceCollection(t *testing.T) {
 	c.Update(newQuota("abc", 123, 1))
 
 	info := c.Snapshot()
-	req := info.RQStatus["abc"].Hard[v1.ResourceCPU]
+	req := info.QuotaStatus["abc"].Hard[v1.ResourceCPU]
 	if req.Value() != 1 {
 		t.Errorf("cpu request of quota %s should be %d, but got %d", "abc", 1, req.Value())
 	}
@@ -65,7 +65,7 @@ func TestNamespaceCollection(t *testing.T) {
 	if info.Weight != 456 {
 		t.Errorf("weight of namespace should be %d, but got %d", 456, info.Weight)
 	}
-	req = info.RQStatus["abc"].Hard[v1.ResourceCPU]
+	req = info.QuotaStatus["abc"].Hard[v1.ResourceCPU]
 	if req.Value() != 2 {
 		t.Errorf("cpu request of quota %s should be %d, but got %d", "abc", 2, req.Value())
 	}
@@ -76,8 +76,8 @@ func TestNamespaceCollection(t *testing.T) {
 	if info.Weight != 16 {
 		t.Errorf("weight of namespace should be %d, but not %d", 16, info.Weight)
 	}
-	if _, ok := info.RQStatus["abc"]; ok {
-		t.Errorf("RQStatus abc of namespace should not exist")
+	if _, ok := info.QuotaStatus["abc"]; ok {
+		t.Errorf("QuotaStatus abc of namespace should not exist")
 	}
 
 	c.Delete(newQuota("abc", 0, 0))
