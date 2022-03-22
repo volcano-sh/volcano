@@ -82,9 +82,8 @@ function install-helm {
   if [[ $? -ne 0 ]]; then
     echo "Installing helm via script"
     HELM_TEMP_DIR=$(mktemp -d)
-    curl https://raw.githubusercontent.com/helm/helm/master/scripts/get > ${HELM_TEMP_DIR}/get_helm.sh
-    # TODO: There are some issue with helm's latest version, remove '--version' when it get fixed.
-    chmod 700 ${HELM_TEMP_DIR}/get_helm.sh && ${HELM_TEMP_DIR}/get_helm.sh --version v3.5.3
+    curl -fsSL -o ${HELM_TEMP_DIR}/get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+    chmod 700 ${HELM_TEMP_DIR}/get_helm.sh && ${HELM_TEMP_DIR}/get_helm.sh
   else
     echo -n "Found helm, version: " && helm version
   fi
