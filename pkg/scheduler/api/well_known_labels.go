@@ -16,12 +16,14 @@ limitations under the License.
 
 package api
 
+import "volcano.sh/volcano/pkg/scheduler/plugins/vgpupredicates/vgpuutil"
+
 const (
 
 	// VolcanovGPUResource extended gpu resource
-	VolcanovGPUResource = "volcano.sh/vgpu-memory"
+	VolcanovGPUResource = vgpuutil.VolcanovGPUResource
 	// VolcanovGPUNumber virtual GPU card number
-	VolcanovGPUNumber = "volcano.sh/vgpu-number"
+	VolcanovGPUNumber = vgpuutil.VolcanovGPUNumber
 
 	// VolcanoGPUResource extended gpu resource
 	VolcanoGPUResource = "volcano.sh/gpu-memory"

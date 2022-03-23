@@ -33,8 +33,8 @@ const (
 )
 
 var (
-	ResourceName  = "volcano.sh/vgpu-number"
-	ResourceMem   = "volcsno.sh/vgpu-memory"
+	ResourceName  = VolcanovGPUNumber
+	ResourceMem   = VolcanovGPUResource
 	ResourceCores string
 	DebugMode     bool
 )

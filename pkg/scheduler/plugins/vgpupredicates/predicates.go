@@ -85,7 +85,6 @@ type predicateEnable struct {
 	cacheEnable        bool
 	proportionalEnable bool
 	proportional       map[v1.ResourceName]baseResource
-	serverStarted      bool
 }
 
 func enablePredicate(args framework.Arguments) predicateEnable {
@@ -152,11 +151,6 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 		}
 		resourcesProportional[v1.ResourceName(resource)] = r
 	}
-	/*
-		predicate.proportional = resourcesProportional
-		if !predicate.serverStarted {
-			/* Start grpc server */
-	//predicate.serverStarted = true
 	return predicate
 }
 
