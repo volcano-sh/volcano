@@ -34,22 +34,23 @@ const (
 
 // Config admission-controller server config.
 type Config struct {
-	KubeClientOptions kube.ClientOptions
-	CertFile          string
-	KeyFile           string
-	CaCertFile        string
-	CertData          []byte
-	KeyData           []byte
-	CaCertData        []byte
-	ListenAddress     string
-	Port              int
-	PrintVersion      bool
-	WebhookName       string
-	WebhookNamespace  string
-	SchedulerName     string
-	WebhookURL        string
-	ConfigPath        string
-	EnabledAdmission  string
+	KubeClientOptions  kube.ClientOptions
+	CertFile           string
+	KeyFile            string
+	CaCertFile         string
+	CertData           []byte
+	KeyData            []byte
+	CaCertData         []byte
+	ListenAddress      string
+	Port               int
+	PrintVersion       bool
+	WebhookName        string
+	WebhookServiceName string
+	WebhookNamespace   string
+	SchedulerName      string
+	WebhookURL         string
+	ConfigPath         string
+	EnabledAdmission   string
 }
 
 type DecryptFunc func(c *Config) error
@@ -76,7 +77,8 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 
 	fs.StringVar(&c.CaCertFile, "ca-cert-file", c.CaCertFile, "File containing the x509 Certificate for HTTPS.")
 	fs.StringVar(&c.WebhookNamespace, "webhook-namespace", "", "The namespace of this webhook")
-	fs.StringVar(&c.WebhookName, "webhook-service-name", "", "The name of this webhook")
+	fs.StringVar(&c.WebhookName, "webhook-name", "webhook", "The name of this webhook")
+	fs.StringVar(&c.WebhookServiceName, "webhook-service-name", "", "The webhook service's name ")
 	fs.StringVar(&c.WebhookURL, "webhook-url", "", "The url of this webhook")
 	fs.StringVar(&c.EnabledAdmission, "enabled-admission", defaultEnabledAdmission, "enabled admission webhooks")
 

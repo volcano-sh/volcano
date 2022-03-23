@@ -46,14 +46,14 @@ func registerWebhookConfig(kubeClient *kubernetes.Clientset, config *options.Con
 		clientConfig.URL = &url
 		klog.Infof("The URL of webhook manager is <%s>.", url)
 	}
-	if config.WebhookName != "" && config.WebhookNamespace != "" {
+	if config.WebhookServiceName != "" && config.WebhookNamespace != "" {
 		clientConfig.Service = &v1.ServiceReference{
-			Name:      config.WebhookName,
+			Name:      config.WebhookServiceName,
 			Namespace: config.WebhookNamespace,
 			Path:      &service.Path,
 		}
 		klog.Infof("The service of webhook manager is <%s/%s/%s>.",
-			config.WebhookName, config.WebhookNamespace, service.Path)
+			config.WebhookServiceName, config.WebhookNamespace, service.Path)
 	}
 	if service.MutatingConfig != nil {
 		for i := range service.MutatingConfig.Webhooks {
@@ -61,7 +61,7 @@ func registerWebhookConfig(kubeClient *kubernetes.Clientset, config *options.Con
 			service.MutatingConfig.Webhooks[i].AdmissionReviewVersions = reviewVersions
 			service.MutatingConfig.Webhooks[i].ClientConfig = clientConfig
 		}
-
+		// fix webhook name pattern whether use  service or url
 		service.MutatingConfig.ObjectMeta.Name = webhookConfigName(config.WebhookName, service.Path)
 
 		if err := registerMutateWebhook(kubeClient, service.MutatingConfig); err != nil {
@@ -195,7 +195,7 @@ func registerValidateWebhook(clientset *kubernetes.Clientset, hook *v1.Validatin
 
 func webhookConfigName(name, path string) string {
 	if name == "" {
-		name = "webhook"
+		name = "volcano-webhook"
 	}
 
 	re := regexp.MustCompile(`-+`)
