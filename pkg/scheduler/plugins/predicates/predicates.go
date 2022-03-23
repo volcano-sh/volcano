@@ -162,7 +162,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
-			klog.Infof("predicate:AllocFunc")
 			pod := pl.UpdateTask(event.Task, event.Task.NodeName)
 
 			nodeName := event.Task.NodeName
@@ -203,7 +202,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			klog.V(4).Infof("predicates, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
 		},
 		DeallocateFunc: func(event *framework.Event) {
-			klog.Infof("predicate dealloc func")
 			pod := pl.UpdateTask(event.Task, "")
 			nodeName := event.Task.NodeName
 			node, found := nodeMap[nodeName]
@@ -264,7 +262,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	podAffinityFilter := plugin.(*interpodaffinity.InterPodAffinity)
 
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
-		klog.Infof("Predicate predicateFn")
 		nodeInfo, found := nodeMap[node.Name]
 		if !found {
 			return fmt.Errorf("failed to predicates, node info for %s not found", node.Name)

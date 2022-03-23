@@ -26,16 +26,10 @@ import (
 type GPUDevice struct {
 	// GPU ID
 	ID int
-	// UUID of this GPU device
-	UUID string
 	// The pods that are sharing this GPU
 	PodMap map[string]*v1.Pod
 	// memory per card
 	Memory uint
-	// How many containers are sharing this GPU
-	Count int32
-	// Healthy status of this device
-	Health bool
 }
 
 // NewGPUDevice creates a device

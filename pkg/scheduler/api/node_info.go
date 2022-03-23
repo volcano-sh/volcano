@@ -122,7 +122,6 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		nodeInfo.Capability = NewResource(node.Status.Capacity).Add(nodeInfo.OversubscriptionResource)
 	}
 	nodeInfo.setNodeGPUInfo(node)
-	//nodeInfo.setNodevGPUInfo(node)
 	nodeInfo.setNodeState(node)
 	nodeInfo.setRevocableZone(node)
 
@@ -306,11 +305,6 @@ func (ni *NodeInfo) setNodeGPUInfo(node *v1.Node) {
 		ni.GPUDevices[i] = NewGPUDevice(i, memoryPerCard)
 	}
 }
-
-/*
-func (ni *NodeInfo) setNodevGPUInfo(node *v1.Node) {
-	return
-}*/
 
 // SetNode sets kubernetes node object to nodeInfo object
 func (ni *NodeInfo) SetNode(node *v1.Node) {

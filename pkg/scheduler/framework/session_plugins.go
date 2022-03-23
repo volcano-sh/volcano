@@ -17,7 +17,6 @@ limitations under the License.
 package framework
 
 import (
-	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -648,12 +647,10 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 			if !isEnabled(plugin.EnabledPredicate) {
 				continue
 			}
-			klog.Infof("PredicateFn", plugin.Name)
 			pfn, found := ssn.predicateFns[plugin.Name]
 			if !found {
 				continue
 			}
-			klog.Infof("PredicateFn Found", plugin.Name)
 			err := pfn(task, node)
 			if err != nil {
 				return err
