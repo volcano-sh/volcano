@@ -77,7 +77,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 
 	fs.StringVar(&c.CaCertFile, "ca-cert-file", c.CaCertFile, "File containing the x509 Certificate for HTTPS.")
 	fs.StringVar(&c.WebhookNamespace, "webhook-namespace", "", "The namespace of this webhook")
-	fs.StringVar(&c.WebhookName, "webhook-name", "webhook", "The name of this webhook")
+	fs.StringVar(&c.WebhookName, "webhook-name", "", "The name of this webhook")
 	fs.StringVar(&c.WebhookServiceName, "webhook-service-name", "", "The webhook service's name ")
 	fs.StringVar(&c.WebhookURL, "webhook-url", "", "The url of this webhook")
 	fs.StringVar(&c.EnabledAdmission, "enabled-admission", defaultEnabledAdmission, "enabled admission webhooks")
