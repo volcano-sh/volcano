@@ -8124,16 +8124,16 @@ metadata:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: webhook-jobs-validate
+  name: volcano-webhook-jobs-validate
 
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: webhook-pods-validate
+  name: volcano-webhook-pods-validate
 
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: webhook-queues-validate
+  name: volcano-webhook-queues-validate
