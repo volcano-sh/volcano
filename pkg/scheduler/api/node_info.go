@@ -24,6 +24,7 @@ import (
 	"k8s.io/klog"
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/scheduler/plugins/vgpupredicates/vgpuutil"
 )
 
 type AllocateFailError struct {
@@ -62,8 +63,9 @@ type NodeInfo struct {
 	RevocableZone     string
 
 	// Used to store custom information
-	Others     map[string]interface{}
-	GPUDevices map[int]*GPUDevice
+	Others      map[string]interface{}
+	GPUDevices  map[int]*GPUDevice
+	VGPUDevices []VGPUDevice
 
 	// enable node resource oversubscription
 	OversubscriptionNode bool
@@ -106,7 +108,8 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		OversubscriptionResource: EmptyResource(),
 		Tasks:                    make(map[TaskID]*TaskInfo),
 
-		GPUDevices: make(map[int]*GPUDevice),
+		GPUDevices:  make(map[int]*GPUDevice),
+		VGPUDevices: []VGPUDevice{},
 	}
 
 	nodeInfo.setOversubscription(node)
@@ -119,6 +122,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		nodeInfo.Capability = NewResource(node.Status.Capacity).Add(nodeInfo.OversubscriptionResource)
 	}
 	nodeInfo.setNodeGPUInfo(node)
+	//nodeInfo.setNodevGPUInfo(node)
 	nodeInfo.setNodeState(node)
 	nodeInfo.setRevocableZone(node)
 
@@ -302,6 +306,11 @@ func (ni *NodeInfo) setNodeGPUInfo(node *v1.Node) {
 		ni.GPUDevices[i] = NewGPUDevice(i, memoryPerCard)
 	}
 }
+
+/*
+func (ni *NodeInfo) setNodevGPUInfo(node *v1.Node) {
+	return
+}*/
 
 // SetNode sets kubernetes node object to nodeInfo object
 func (ni *NodeInfo) SetNode(node *v1.Node) {
@@ -514,6 +523,22 @@ func (ni *NodeInfo) GetDevicesIdleGPUMemory() map[int]uint {
 			res[id] = allMemory
 		}
 	}
+	return res
+}
+
+func (ni *NodeInfo) GetVGPURemains() []vgpuutil.NodeRemainDevice {
+	res := []vgpuutil.NodeRemainDevice{}
+	//klog.Infof("GETVRemains:", ni.VGPUDevices)
+	for _, device := range ni.VGPUDevices {
+		res = append(res, vgpuutil.NodeRemainDevice{
+			UUID:   device.UUID,
+			Idx:    device.ID,
+			Memory: int32(device.Memory) - int32(device.getUsedvGPUMemory()),
+		})
+	}
+	//sort.Slice(res, func(i int, j int) bool {
+	//	return res[i].Memory < res[j].Memory
+	//})
 	return res
 }
 

@@ -25,6 +25,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
+	"volcano.sh/volcano/pkg/scheduler/plugins/vgpupredicates/vgpuutil"
 	wkconfig "volcano.sh/volcano/pkg/webhooks/config"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
@@ -71,6 +72,7 @@ func Pods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	klog.V(3).Infof("mutating pods -- %s", ar.Request.Operation)
 	pod, err := schema.DecodePod(ar.Request.Object, ar.Request.Resource)
 	if err != nil {
+		klog.Info("mutating pods err", err.Error())
 		return util.ToAdmissionResponse(err)
 	}
 
@@ -97,7 +99,38 @@ func Pods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	return &reviewResponse
 }
 
-// createPatch patch pod
+func createvGPUPatch(pod *v1.Pod) ([]patchOperation, error) {
+	nums := vgpuutil.ResourceNums(pod, v1.ResourceName(vgpuutil.ResourceName))
+	//gpu_mems := k8sutil.ResourceNums(pod, corev1.ResourceName("nvidia.com/gpu_device_memory"))
+	total := 0
+	// use request uid
+	// podname := pod.Name
+	res := []patchOperation{}
+	for i := 0; i < len(nums); i++ {
+		if nums[i] == 0 {
+			continue
+		}
+		//if gpu_mems[i] != 0 {
+		//	fmt.Println("gpu_mem limit is", gpu_mems[i])
+		//}
+		total += nums[i]
+		envs := []v1.EnvVar{}
+		env := v1.EnvVar{
+			Name:  "VGPU_4PD_UUID",
+			Value: fmt.Sprintf("%v_%v/%v", pod.Namespace, pod.Name, pod.Spec.Containers[i].Name),
+		}
+		envs = append(envs, env)
+		tmp := patchOperation{
+			Op:    "add",
+			Path:  fmt.Sprintf("/spec/containers/%d/env", i),
+			Value: envs,
+		}
+		res = append(res, tmp)
+	}
+	fmt.Println("createvGPUPatch=", res)
+	return res, nil
+}
+
 func createPatch(pod *v1.Pod) ([]byte, error) {
 	if config.ConfigData == nil {
 		klog.V(5).Infof("admission configuration is empty.")
@@ -107,6 +140,9 @@ func createPatch(pod *v1.Pod) ([]byte, error) {
 	var patch []patchOperation
 	config.ConfigData.Lock()
 	defer config.ConfigData.Unlock()
+
+	vgpupatch, _ := createvGPUPatch(pod)
+	patch = append(patch, vgpupatch...)
 
 	for _, resourceGroup := range config.ConfigData.ResGroupsConfig {
 		klog.V(3).Infof("resourceGroup %s", resourceGroup.ResourceGroup)

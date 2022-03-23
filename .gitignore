@@ -128,3 +128,8 @@ kubernetes.tar.gz
 
 # test coverage file
 coverage.txt
+
+scheduler_image
+*.yaml
+webhook_image
+

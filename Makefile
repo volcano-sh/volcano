@@ -69,7 +69,7 @@ vc-controller-manager: init
 	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vc-controller-manager ./cmd/controller-manager
 
 vc-webhook-manager: init
-	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vc-webhook-manager ./cmd/webhook-manager
+	CGO_ENABLED=0 go build -a -ldflags ${LD_STATIC_FLAGS} -o=${BIN_DIR}/vc-webhook-manager ./cmd/webhook-manager
 
 vcctl: init
 	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vcctl ./cmd/cli

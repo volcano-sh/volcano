@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package predicates
+package vgpupredicates
 
 import (
 	"context"
@@ -37,22 +37,26 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
+	"volcano.sh/volcano/pkg/scheduler/plugins/vgpupredicates/vgpuutil"
 )
 
 const (
 	// PluginName indicates name of volcano scheduler plugin.
-	PluginName = "predicates"
+	PluginName = "vgpupredicates"
+
+	// GrpcBind is the address for device plugin to register
+	GrpcBind = "0.0.0.0:1081"
 
 	// GPUSharingPredicate is the key for enabling GPU Sharing Predicate in YAML
-	GPUSharingPredicate = "predicate.GPUSharingEnable"
+	GPUSharingPredicate = "vgpupredicate.GPUSharingEnable"
 
 	// CachePredicate control cache predicate feature
-	CachePredicate = "predicate.CacheEnable"
+	CachePredicate = "vgpupredicate.CacheEnable"
 
 	// ProportionalPredicate is the key for enabling Proportional Predicate in YAML
-	ProportionalPredicate = "predicate.ProportionalEnable"
+	ProportionalPredicate = "vgpupredicate.ProportionalEnable"
 	// ProportionalResource is the key for additional resource key name
-	ProportionalResource = "predicate.resources"
+	ProportionalResource = "vgpupredicate.resources"
 	// ProportionalResourcesPrefix is the key prefix for additional resource key name
 	ProportionalResourcesPrefix = ProportionalResource + "."
 )
@@ -81,9 +85,11 @@ type predicateEnable struct {
 	cacheEnable        bool
 	proportionalEnable bool
 	proportional       map[v1.ResourceName]baseResource
+	serverStarted      bool
 }
 
 func enablePredicate(args framework.Arguments) predicateEnable {
+	klog.Infof("vgpupredicate enablePredicate")
 	/*
 	   User Should give predicatesEnable in this format(predicate.GPUSharingEnable).
 	   Currently supported only GPUSharing predicate checks.
@@ -146,8 +152,11 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 		}
 		resourcesProportional[v1.ResourceName(resource)] = r
 	}
-	predicate.proportional = resourcesProportional
-
+	/*
+		predicate.proportional = resourcesProportional
+		if !predicate.serverStarted {
+			/* Start grpc server */
+	//predicate.serverStarted = true
 	return predicate
 }
 
@@ -159,10 +168,11 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	predicate := enablePredicate(pp.pluginArguments)
 
 	kubeClient := ssn.KubeClient()
+	klog.Infof("OnSessionOpen")
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
-			klog.Infof("predicate:AllocFunc")
+			klog.Infof("vgpupredicate:AllocFunc")
 			pod := pl.UpdateTask(event.Task, event.Task.NodeName)
 
 			nodeName := event.Task.NodeName
@@ -172,30 +182,27 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 
-			if predicate.gpuSharingEnable && api.GetGPUResourceOfPod(pod) > 0 {
+			if predicate.gpuSharingEnable && api.GetvGPUResourceOfPod(pod) > 0 {
 				nodeInfo, ok := ssn.Nodes[nodeName]
 				if !ok {
 					klog.Errorf("Failed to get node %s info from cache", nodeName)
 					return
 				}
 
-				id := predicateGPU(pod, nodeInfo)
-				if id < 0 {
+				id, err := appointvGPU(pod, nodeInfo)
+				if err != nil {
+					klog.Errorf("appointvGPU failed", err.Error())
+				}
+				if len(id) == 0 {
 					klog.Errorf("The node %s can't place the pod %s in ns %s", pod.Spec.NodeName, pod.Name, pod.Namespace)
 					return
 				}
-				dev, ok := nodeInfo.GPUDevices[id]
-				if !ok {
-					klog.Errorf("Failed to get GPU %d from node %s", id, nodeName)
-					return
-				}
-				patch := api.AddGPUIndexPatch(id)
+				patch := vgpuutil.AddGPUIndexPatch(id)
 				pod, err := kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType, []byte(patch), metav1.PatchOptions{})
 				if err != nil {
 					klog.Errorf("Patch pod %s failed with patch %s: %v", pod.Name, patch, err)
 					return
 				}
-				dev.PodMap[string(pod.UID)] = pod
 				klog.V(4).Infof("predicates with gpu sharing, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
 			}
 
@@ -203,7 +210,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			klog.V(4).Infof("predicates, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
 		},
 		DeallocateFunc: func(event *framework.Event) {
-			klog.Infof("predicate dealloc func")
 			pod := pl.UpdateTask(event.Task, "")
 			nodeName := event.Task.NodeName
 			node, found := nodeMap[nodeName]
@@ -264,7 +270,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	podAffinityFilter := plugin.(*interpodaffinity.InterPodAffinity)
 
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
-		klog.Infof("Predicate predicateFn")
+		klog.Infof("vgpupredicate:PredicateFn")
 		nodeInfo, found := nodeMap[node.Name]
 		if !found {
 			return fmt.Errorf("failed to predicates, node info for %s not found", node.Name)

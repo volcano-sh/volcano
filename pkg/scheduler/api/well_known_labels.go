@@ -18,6 +18,11 @@ package api
 
 const (
 
+	// VolcanovGPUResource extended gpu resource
+	VolcanovGPUResource = "volcano.sh/vgpu-memory"
+	// VolcanovGPUNumber virtual GPU card number
+	VolcanovGPUNumber = "volcano.sh/vgpu-number"
+
 	// VolcanoGPUResource extended gpu resource
 	VolcanoGPUResource = "volcano.sh/gpu-memory"
 	// VolcanoGPUNumber virtual GPU card number

@@ -59,12 +59,12 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 	for _, job := range ssn.Jobs {
 		if job.IsPending() {
-			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: job status is pending.",
+			klog.V(3).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: job status is pending.",
 				job.Namespace, job.Name, job.Queue)
 			continue
 		}
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
-			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
+			klog.V(3).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
 			continue
 		}
 
@@ -89,7 +89,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			queueMap[job.Queue] = jobs
 		}
 
-		klog.V(4).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
+		klog.V(3).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
 		jobs.Push(job)
 	}
 

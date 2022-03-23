@@ -27,6 +27,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog"
 	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
+	schedcache "volcano.sh/volcano/pkg/scheduler/cache"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -163,8 +164,9 @@ func openSession(cache cache.Cache) *Session {
 	ssn.Queues = snapshot.Queues
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
 	// calculate all nodes' resource only once in each schedule cycle, other plugins can clone it when need
-	for _, n := range ssn.Nodes {
+	for idx, n := range ssn.Nodes {
 		ssn.TotalResource.Add(n.Allocatable)
+		n.VGPUDevices = cache.(*schedcache.SchedulerCache).Nodes[idx].VGPUDevices
 	}
 
 	klog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues",

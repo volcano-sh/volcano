@@ -32,6 +32,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/sla"
 	tasktopology "volcano.sh/volcano/pkg/scheduler/plugins/task-topology"
 	"volcano.sh/volcano/pkg/scheduler/plugins/tdm"
+	"volcano.sh/volcano/pkg/scheduler/plugins/vgpupredicates"
 )
 
 func init() {
@@ -52,4 +53,7 @@ func init() {
 
 	// Plugins for Queues
 	framework.RegisterPluginBuilder(proportion.PluginName, proportion.New)
+
+	// Plugin for vGPU
+	framework.RegisterPluginBuilder(vgpupredicates.PluginName, vgpupredicates.New)
 }

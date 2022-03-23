@@ -8,4 +8,9 @@ LD_FLAGS=" \
     -X '${REPO_PATH}/pkg/version.GitSHA=${GitSHA}' \
     -X '${REPO_PATH}/pkg/version.Built=${Date}'   \
     -X '${REPO_PATH}/pkg/version.Version=${RELEASE_VER}'"
+LD_STATIC_FLAGS=" \
+    -extldflags=-static \
+    -X '${REPO_PATH}/pkg/version.GitSHA=${GitSHA}' \
+    -X '${REPO_PATH}/pkg/version.Built=${Date}'   \
+    -X '${REPO_PATH}/pkg/version.Version=${RELEASE_VER}'"
 

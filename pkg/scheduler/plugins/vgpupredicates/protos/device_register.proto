@@ -1,0 +1,41 @@
+syntax = "proto3";
+package protos;
+
+service DeviceService {
+  rpc Register (stream RegisterRequest) returns (RegisterReply);
+
+  rpc GetContainer(GetContainerRequest) returns (GetContainerReply);
+}
+
+message DeviceInfo {
+  string  id = 1;
+  int32 count = 2;
+  int32 devmem = 3;
+  bool health = 4;
+}
+
+message RegisterRequest {
+  string node = 1;
+  repeated DeviceInfo devices = 2;
+}
+
+message RegisterReply {
+}
+
+message GetContainerRequest {
+  string uuid = 1;
+}
+
+message DeviceUsage {
+  string id = 1;
+  int32 devmem = 2;
+  int32 cores = 3;
+}
+
+message GetContainerReply {
+  repeated DeviceUsage devList = 1;
+  string podUID = 3;
+  string ctrName = 4;
+  string podNamespace = 5;
+  string podName = 6;
+}
