@@ -19,6 +19,7 @@ package api
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -76,6 +77,9 @@ func NewResource(rl v1.ResourceList) *Resource {
 		case v1.ResourcePods:
 			r.MaxTaskNum += int(rQuant.Value())
 		default:
+			if isCountQuota(rName) {
+				continue
+			}
 			//NOTE: When converting this back to k8s resource, we need record the format as well as / 1000
 			if v1helper.IsScalarResourceName(rName) {
 				r.AddScalar(rName, float64(rQuant.MilliValue()))
@@ -625,4 +629,8 @@ func (r ResourceNameList) Contains(rr ResourceNameList) bool {
 		}
 	}
 	return true
+}
+
+func isCountQuota(name v1.ResourceName) bool {
+	return strings.HasPrefix(string(name), "count/")
 }

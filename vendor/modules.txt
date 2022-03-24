@@ -536,6 +536,9 @@ k8s.io/apimachinery/third_party/forked/golang/json
 k8s.io/apimachinery/third_party/forked/golang/reflect
 # k8s.io/apiserver v0.23.0 => k8s.io/apiserver v0.23.0
 ## explicit; go 1.16
+k8s.io/apiserver/pkg/admission
+k8s.io/apiserver/pkg/apis/apiserver
+k8s.io/apiserver/pkg/apis/apiserver/v1
 k8s.io/apiserver/pkg/apis/audit
 k8s.io/apiserver/pkg/apis/audit/v1
 k8s.io/apiserver/pkg/apis/audit/v1alpha1
@@ -549,6 +552,8 @@ k8s.io/apiserver/pkg/endpoints/metrics
 k8s.io/apiserver/pkg/endpoints/request
 k8s.io/apiserver/pkg/endpoints/responsewriter
 k8s.io/apiserver/pkg/features
+k8s.io/apiserver/pkg/quota/v1
+k8s.io/apiserver/pkg/quota/v1/generic
 k8s.io/apiserver/pkg/server/healthz
 k8s.io/apiserver/pkg/server/mux
 k8s.io/apiserver/pkg/storage
@@ -963,6 +968,7 @@ k8s.io/kubernetes/pkg/kubelet/cm/cpuset
 k8s.io/kubernetes/pkg/kubelet/cm/topologymanager/bitmask
 k8s.io/kubernetes/pkg/kubelet/types
 k8s.io/kubernetes/pkg/proxy/util
+k8s.io/kubernetes/pkg/quota/v1/evaluator/core
 k8s.io/kubernetes/pkg/scheduler/apis/config
 k8s.io/kubernetes/pkg/scheduler/apis/config/v1beta2
 k8s.io/kubernetes/pkg/scheduler/apis/config/v1beta3

@@ -775,6 +775,11 @@ func (sc *SchedulerCache) UpdateSchedulerNumaInfo(AllocatedSets map[string]sched
 	return nil
 }
 
+// EventRecorder returns the Event Recorder
+func (sc *SchedulerCache) EventRecorder() record.EventRecorder {
+	return sc.Recorder
+}
+
 // taskUnschedulable updates pod status of pending task
 func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason, message string) error {
 	pod := task.Pod

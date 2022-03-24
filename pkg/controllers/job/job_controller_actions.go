@@ -29,7 +29,10 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	quotav1 "k8s.io/apiserver/pkg/quota/v1"
 	"k8s.io/klog"
+	quotacore "k8s.io/kubernetes/pkg/quota/v1/evaluator/core"
+	"k8s.io/utils/clock"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/helpers"
@@ -745,27 +748,29 @@ func (cc *jobcontroller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 		} else {
 			tp.priority = priorityClass.Value
 		}
-
 		tasksPriority = append(tasksPriority, tp)
 	}
 
 	sort.Sort(tasksPriority)
 
-	minAvailableTasksRes := v1.ResourceList{}
+	minReq := v1.ResourceList{}
 	podCnt := int32(0)
 	for _, task := range tasksPriority {
 		for i := int32(0); i < task.Replicas; i++ {
 			if podCnt >= job.Spec.MinAvailable {
 				break
 			}
+
 			podCnt++
-			for _, c := range task.Template.Spec.Containers {
-				addResourceList(minAvailableTasksRes, c.Resources.Requests, c.Resources.Limits)
+			pod := &v1.Pod{
+				Spec: task.Template.Spec,
 			}
+			res, _ := quotacore.PodUsageFunc(pod, clock.RealClock{})
+			minReq = quotav1.Add(minReq, res)
 		}
 	}
 
-	return &minAvailableTasksRes
+	return &minReq
 }
 
 func (cc *jobcontroller) initJobStatus(job *batch.Job) (*batch.Job, error) {
