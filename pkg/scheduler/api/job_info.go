@@ -652,7 +652,7 @@ func (ji *JobInfo) TaskSchedulingReason(tid TaskID) (reason string, msg string) 
 			return PodReasonUnschedulable, fe.Error()
 		}
 		// Pod is not scheduled yet
-		return PodReasonUndetermined, msg
+		return PodReasonUnschedulable, msg
 	default:
 		return status.String(), msg
 	}
