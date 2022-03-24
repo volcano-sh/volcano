@@ -55,6 +55,6 @@ jobs:
         run: make release-images
         env:
           IMAGE_PREFIX: ghcr.io/spotify/volcano/vc
-          IMAGE_TAG: ${{ steps.prep.outputs.image_tag }}
+          VOLCANO_IMAGE_TAG: ${{ steps.prep.outputs.image_tag }}
           CC: /usr/local/musl/bin/musl-gcc
         working-directory: ./src/github.com/${{ github.repository }}
