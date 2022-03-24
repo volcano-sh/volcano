@@ -155,14 +155,12 @@ release: images generate-yaml
 	./hack/publish.sh
 
 release-images: images
-	echo "pushing ${IMAGE_PREFIX}-controller-manager:${VOLCANO_IMAGE_TAG}"
-	docker push ${IMAGE_PREFIX}-controller-manager:${VOLCANO_IMAGE_TAG}
-
-	echo "pushing ${IMAGE_PREFIX}-scheduler:${VOLCANO_IMAGE_TAG}"
-	docker push ${IMAGE_PREFIX}-scheduler:${VOLCANO_IMAGE_TAG}
-
-	echo "pushing ${IMAGE_PREFIX}-webhook-manager:${VOLCANO_IMAGE_TAG}"
-	docker push ${IMAGE_PREFIX}-webhook-manager:${VOLCANO_IMAGE_TAG}
+	echo "pushing ${IMAGE_PREFIX}-controller-manager:${TAG}"
+	docker push ${IMAGE_PREFIX}-controller-manager:${TAG}
+	echo "pushing ${IMAGE_PREFIX}-scheduler:${TAG}"
+	docker push ${IMAGE_PREFIX}-scheduler:${TAG}
+	echo "pushing ${IMAGE_PREFIX}-webhook-manager:${TAG}"
+	docker push ${IMAGE_PREFIX}-webhook-manager:${TAG}
 
 clean:
 	rm -rf _output/

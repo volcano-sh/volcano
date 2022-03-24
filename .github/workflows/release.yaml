@@ -45,7 +45,7 @@ jobs:
         working-directory: ./src/github.com/${{ github.repository }}
 
       - name: Login to Github container registry
-        uses: docker/login-action@v1.1.1
+        uses: docker/login-action@v1
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
@@ -55,6 +55,6 @@ jobs:
         run: make release-images
         env:
           IMAGE_PREFIX: ghcr.io/spotify/volcano/vc
-          VOLCANO_IMAGE_TAG: ${{ steps.prep.outputs.image_tag }}
+          TAG: ${{ steps.prep.outputs.image_tag }}
           CC: /usr/local/musl/bin/musl-gcc
         working-directory: ./src/github.com/${{ github.repository }}
