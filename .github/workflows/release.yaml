@@ -1,8 +1,7 @@
-name: daily release
+name: release
 on:
-  schedule:
-  # Runs at 0:00 and 12:00 UTC every day
-  - cron:  '0 */12 * * *'
+  push:
+    tags: ["v*"]
 
 jobs:
   docker:
@@ -10,6 +9,10 @@ jobs:
     env:
       GOPATH: /home/runner/work/${{ github.repository }}
     steps:
+      - name: Prepare
+        id: prep
+        run: |
+          echo ::set-output name=image_tag::${GITHUB_REF/refs\/tags\//}
       - name: Install Go
         uses: actions/setup-go@v2
         with:
@@ -41,15 +44,17 @@ jobs:
           make unit-test
         working-directory: ./src/github.com/${{ github.repository }}
 
-      - name: Login to DockerHub
-        uses: docker/login-action@v1 
+      - name: Login to Github container registry
+        uses: docker/login-action@v1.1.1
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Daily Release
-        run: make TAG=latest RELEASE_VER=latest DOCKER_USERNAME=${{ secrets.DOCKERHUB_USERNAME }} DOCKER_PASSWORD=${{ secrets.DOCKERHUB_TOKEN }} CC=/usr/local/musl/bin/musl-gcc release
+      - name: Publish Images
+        run: make release-images
+        env:
+          IMAGE_PREFIX: ghcr.io/spotify/volcano/vc
+          IMAGE_TAG: ${{ steps.prep.outputs.image_tag }}
+          CC: /usr/local/musl/bin/musl-gcc
         working-directory: ./src/github.com/${{ github.repository }}
-
-      - name: Loginout DockerHub
-        run: docker logout

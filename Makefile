@@ -15,7 +15,7 @@
 BIN_DIR=_output/bin
 RELEASE_DIR=_output/release
 REPO_PATH=volcano.sh/volcano
-IMAGE_PREFIX=volcanosh/vc
+IMAGE_PREFIX ?= volcanosh/vc
 CRD_OPTIONS ?= "crd:crdVersions=v1,generateEmbeddedObjectMeta=true"
 CC ?= "gcc"
 SUPPORT_PLUGINS ?= "no"
@@ -85,7 +85,7 @@ image_bins: init
 		CC=${CC} CGO_ENABLED=1 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-scheduler ./cmd/scheduler;\
 	else\
 	 	CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-scheduler ./cmd/scheduler;\
-  	fi;
+	fi;
 
 images: image_bins
 	for name in controller-manager scheduler webhook-manager; do\
@@ -153,6 +153,16 @@ dev-env:
 
 release: images generate-yaml
 	./hack/publish.sh
+
+release-images: images
+	echo "pushing ${IMAGE_PREFIX}-controller-manager:${VOLCANO_IMAGE_TAG}"
+	docker push ${IMAGE_PREFIX}-controller-manager:${VOLCANO_IMAGE_TAG}
+
+	echo "pushing ${IMAGE_PREFIX}-scheduler:${VOLCANO_IMAGE_TAG}"
+	docker push ${IMAGE_PREFIX}-scheduler:${VOLCANO_IMAGE_TAG}
+
+	echo "pushing ${IMAGE_PREFIX}-webhook-manager:${VOLCANO_IMAGE_TAG}"
+	docker push ${IMAGE_PREFIX}-webhook-manager:${VOLCANO_IMAGE_TAG}
 
 clean:
 	rm -rf _output/
