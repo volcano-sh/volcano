@@ -35,7 +35,7 @@ spec:
       serviceAccount: volcano-scheduler
       containers:
         - name: volcano-scheduler
-          image: volcanosh/vc-scheduler:ae78900d21dce8522eb04b6817aac66c9abd01e2
+          image: ghcr.io/spotify/volcano/vc-scheduler:ae78900d21dce8522eb04b6817aac66c9abd01e2
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf

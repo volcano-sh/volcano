@@ -1,8 +1,8 @@
 basic:
   image_tag_version: "latest"
-  controller_image_name: "volcanosh/vc-controller-manager"
-  scheduler_image_name: "volcanosh/vc-scheduler"
-  admission_image_name: "volcanosh/vc-webhook-manager"
+  controller_image_name: "ghcr.io/spotify/volcano/vc-controller-manager"
+  scheduler_image_name: "ghcr.io/spotify/volcano/vc-scheduler"
+  admission_image_name: "ghcr.io/spotify/volcano/vc-webhook-manager"
   admission_secret_name: "volcano-admission-secret"
   admission_config_file: "config/volcano-admission.conf"
   scheduler_config_file: "config/volcano-scheduler.conf"
