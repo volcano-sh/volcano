@@ -33,9 +33,12 @@ jobs:
       with:
         go-version: 1.17.x
     - name: start minikube
-      run: |
-        # Use pre-install minikube
-        minikube start
+      id: minikube
+      # minikube v0.07, See more: https://minikube.sigs.k8s.io/docs/tutorials/setup_minikube_in_github_actions
+      uses: medyagh/setup-minikube@0ff5b450588f2aee88fd0daba616d04a5582e490
+      with:
+        cpus: 8
+        memory: 15g
     - name: Build lastest volcano images
       run: |
         eval $(minikube docker-env)
