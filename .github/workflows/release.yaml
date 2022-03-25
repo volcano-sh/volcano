@@ -39,9 +39,11 @@ jobs:
       - name: Run verify test
         run: |
           make verify
-          make TAG=latest generate-yaml
+          make generate-yaml
           make verify-generated-yaml
           make unit-test
+        env:
+          TAG: ${{ steps.prep.outputs.image_tag }}
         working-directory: ./src/github.com/${{ github.repository }}
 
       - name: Login to Github container registry
