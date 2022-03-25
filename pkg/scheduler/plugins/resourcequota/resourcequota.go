@@ -37,6 +37,7 @@ func (rq *resourceQuotaPlugin) OnSessionOpen(ssn *framework.Session) {
 	pendingResources := make(map[string]v1.ResourceList)
 
 	ssn.AddJobEnqueueableFn(rq.Name(), func(obj interface{}) int {
+		klog.V(4).Infof("XXX: resourcequota enqueue")
 		job := obj.(*api.JobInfo)
 
 		resourcesRequests := job.PodGroup.Spec.MinResources
@@ -46,7 +47,9 @@ func (rq *resourceQuotaPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		quotas := ssn.NamespaceInfo[api.NamespaceName(job.Namespace)].QuotaStatus
+		klog.V(4).Infof("XXX: quotas: %#v", quotas)
 		for _, resourceQuota := range quotas {
+			klog.V(4).Infof("XXX: resourceQuota: %v", resourceQuota)
 			hardResources := quotav1.ResourceNames(resourceQuota.Hard)
 			requestedUsage := quotav1.Mask(*resourcesRequests, hardResources)
 
@@ -54,9 +57,11 @@ func (rq *resourceQuotaPlugin) OnSessionOpen(ssn *framework.Session) {
 			if pendingUse, found := pendingResources[job.Namespace]; found {
 				resourcesUsed = quotav1.Add(pendingUse, resourcesUsed)
 			}
+			klog.V(4).Infof("XXX: resourcesUsed: %#v", resourcesUsed)
 			newUsage := quotav1.Add(resourcesUsed, requestedUsage)
 			maskedNewUsage := quotav1.Mask(newUsage, quotav1.ResourceNames(requestedUsage))
 
+			klog.V(4).Infof("XXX: masked resources: %#v %#v", newUsage, maskedNewUsage)
 			if allowed, exceeded := quotav1.LessThanOrEqual(maskedNewUsage, resourceQuota.Hard); !allowed {
 				failedRequestedUsage := quotav1.Mask(requestedUsage, exceeded)
 				failedUsed := quotav1.Mask(resourceQuota.Used, exceeded)
@@ -75,6 +80,7 @@ func (rq *resourceQuotaPlugin) OnSessionOpen(ssn *framework.Session) {
 			pendingResources[job.Namespace] = v1.ResourceList{}
 		}
 		pendingResources[job.Namespace] = quotav1.Add(pendingResources[job.Namespace], *resourcesRequests)
+		klog.V(4).Infof("XXX: resourcequota enqueue finish")
 		return util.Permit
 	})
 }
