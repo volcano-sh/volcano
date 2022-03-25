@@ -143,7 +143,7 @@ spec:
             - --port=8443
             - -v=4
             - 2>&1
-          image: ghcr.io/spotify/volcano/vc-webhook-manager-arm64:v1.5.1-spotify.2
+          image: ghcr.io/spotify/volcano/vc-webhook-manager-arm64:v1.5.1-spotify.2-logging
           imagePullPolicy: IfNotPresent
           name: admission
           volumeMounts:
@@ -177,7 +177,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: main
-          image: ghcr.io/spotify/volcano/vc-webhook-manager-arm64:v1.5.1-spotify.2
+          image: ghcr.io/spotify/volcano/vc-webhook-manager-arm64:v1.5.1-spotify.2-logging
           imagePullPolicy: IfNotPresent
           command: ["./gen-admission-secret.sh", "--service", "volcano-admission-service", "--namespace",
                     "volcano-system", "--secret", "volcano-admission-secret"]
@@ -8475,7 +8475,7 @@ spec:
       serviceAccount: volcano-controllers
       containers:
           - name: volcano-controllers
-            image: ghcr.io/spotify/volcano/vc-controller-manager-arm64:v1.5.1-spotify.2
+            image: ghcr.io/spotify/volcano/vc-controller-manager-arm64:v1.5.1-spotify.2-logging
             args:
               - --logtostderr
               - --enable-healthz=true
@@ -8627,7 +8627,7 @@ spec:
       serviceAccount: volcano-scheduler
       containers:
         - name: volcano-scheduler
-          image: ghcr.io/spotify/volcano/vc-scheduler-arm64:v1.5.1-spotify.2
+          image: ghcr.io/spotify/volcano/vc-scheduler-arm64:v1.5.1-spotify.2-logging
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
