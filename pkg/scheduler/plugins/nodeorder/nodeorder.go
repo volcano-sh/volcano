@@ -203,7 +203,6 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			Resources: []config.ResourceSpec{{Name: "cpu", Weight: 50}, {Name: "memory", Weight: 50}},
 		},
 	}
-	noderesources.NewFit(leastAllocatedArgs, handle, fts)
 	p, _ := noderesources.NewFit(leastAllocatedArgs, handle, fts)
 	leastAllocated := p.(*noderesources.Fit)
 
