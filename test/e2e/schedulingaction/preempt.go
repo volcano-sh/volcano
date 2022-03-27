@@ -118,7 +118,7 @@ var _ = Describe("Job E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("preemption doesn't work when podgroup is pending due to insufficient resource", func() {
+	It("preemption doesn't work when podgroup is pending", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
 			PriorityClasses: map[string]int32{
 				highPriority: highPriorityValue,
@@ -175,12 +175,8 @@ var _ = Describe("Job E2E Test", func() {
 				PriorityClassName: highPriority,
 			},
 		}
-		// Pod is allowed to be created, preemption does not happen due to PodGroup is in pending state
 		_, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), pod, v1.CreateOptions{})
-		Expect(err).NotTo(HaveOccurred())
-		// Make sure preempteeJob is not preempted as expected
-		err = e2eutil.WaitTasksReady(ctx, preempteeJob, int(rep))
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).To(HaveOccurred())
 	})
 
 	It("preemption only works in the same queue", func() {
