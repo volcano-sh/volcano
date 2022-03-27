@@ -144,7 +144,7 @@ func checkPGPhase(pod *v1.Pod, pgName string, isVCJob bool) error {
 		}
 		return nil
 	}
-	if pg.Status.Phase != vcv1beta1.PodGroupPending {
+	if pg.Status.Phase != "" && pg.Status.Phase != vcv1beta1.PodGroupPending {
 		return nil
 	}
 	return fmt.Errorf("failed to create pod <%s/%s> as the podgroup phase is Pending",
