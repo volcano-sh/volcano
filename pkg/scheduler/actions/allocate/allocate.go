@@ -230,7 +230,6 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			case len(candidateNodes) == 1: // If only one node after predicate, just use it.
 				// When only one node after predicate, just use it.
 				node = candidateNodes[0]
-				klog.Infof("only one node")
 			case len(candidateNodes) > 1: // If more than one node after predicate, using "the best" one
 				nodeScores := util.PrioritizeNodes(task, candidateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 
