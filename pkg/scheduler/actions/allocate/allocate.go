@@ -225,10 +225,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			var node *api.NodeInfo
 			switch {
 			case len(candidateNodes) == 0: // If not candidate nodes for this task, skip it.
-				// If not candidate nodes for this task, skip it.
 				continue
 			case len(candidateNodes) == 1: // If only one node after predicate, just use it.
-				// When only one node after predicate, just use it.
 				node = candidateNodes[0]
 			case len(candidateNodes) > 1: // If more than one node after predicate, using "the best" one
 				nodeScores := util.PrioritizeNodes(task, candidateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
