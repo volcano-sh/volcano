@@ -33,6 +33,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/sla"
 	tasktopology "volcano.sh/volcano/pkg/scheduler/plugins/task-topology"
 	"volcano.sh/volcano/pkg/scheduler/plugins/tdm"
+	"volcano.sh/volcano/pkg/scheduler/plugins/usage"
 )
 
 func init() {
@@ -50,6 +51,7 @@ func init() {
 	framework.RegisterPluginBuilder(sla.PluginName, sla.New)
 	framework.RegisterPluginBuilder(tasktopology.PluginName, tasktopology.New)
 	framework.RegisterPluginBuilder(numaaware.PluginName, numaaware.New)
+	framework.RegisterPluginBuilder(usage.PluginName, usage.New)
 
 	// Plugins for Queues
 	framework.RegisterPluginBuilder(proportion.PluginName, proportion.New)
