@@ -73,6 +73,9 @@ type Cache interface {
 
 	// SharedInformerFactory return scheduler SharedInformerFactory
 	SharedInformerFactory() informers.SharedInformerFactory
+
+	// SetMetricsConf set the metrics server related configuration
+	SetMetricsConf(conf map[string]string)
 }
 
 // VolumeBinder interface for allocate and bind volumes

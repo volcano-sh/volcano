@@ -52,8 +52,9 @@ type NodeInfo struct {
 	// pods
 	Used *Resource
 
-	Allocatable *Resource
-	Capability  *Resource
+	Allocatable   *Resource
+	Capability    *Resource
+	ResourceUsage *NodeUsage
 
 	Tasks             map[TaskID]*TaskInfo
 	NumaInfo          *NumatopoInfo
@@ -92,6 +93,25 @@ type NodeState struct {
 	Reason string
 }
 
+type NodeUsage struct {
+	CpuUsageAvg map[string]float64
+	MemUsageAvg map[string]float64
+}
+
+func (nu *NodeUsage) DeepCopy() *NodeUsage {
+	newUsage := &NodeUsage{
+		CpuUsageAvg: make(map[string]float64),
+		MemUsageAvg: make(map[string]float64),
+	}
+	for k, v := range nu.CpuUsageAvg {
+		newUsage.CpuUsageAvg[k] = v
+	}
+	for k, v := range nu.MemUsageAvg {
+		newUsage.MemUsageAvg[k] = v
+	}
+	return newUsage
+}
+
 // NewNodeInfo is used to create new nodeInfo object
 func NewNodeInfo(node *v1.Node) *NodeInfo {
 	nodeInfo := &NodeInfo{
@@ -100,8 +120,9 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		Idle:      EmptyResource(),
 		Used:      EmptyResource(),
 
-		Allocatable: EmptyResource(),
-		Capability:  EmptyResource(),
+		Allocatable:   EmptyResource(),
+		Capability:    EmptyResource(),
+		ResourceUsage: &NodeUsage{},
 
 		OversubscriptionResource: EmptyResource(),
 		Tasks:                    make(map[TaskID]*TaskInfo),
@@ -159,6 +180,9 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 	}
 	if ni.NumaInfo != nil {
 		res.NumaInfo = ni.NumaInfo.DeepCopy()
+	}
+	if ni.ResourceUsage != nil {
+		res.ResourceUsage = ni.ResourceUsage.DeepCopy()
 	}
 
 	if ni.NumaSchedulerInfo != nil {
