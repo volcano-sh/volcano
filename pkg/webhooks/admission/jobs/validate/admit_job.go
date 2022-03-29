@@ -277,6 +277,11 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 
 	// Skip verify container SecurityContex.Privileged as it depends on
 	// the kube-apiserver `allow-privileged` flag.
+	for i, container := range coreTemplateSpec.Spec.InitContainers {
+		if container.SecurityContext != nil && container.SecurityContext.Privileged != nil {
+			coreTemplateSpec.Spec.InitContainers[i].SecurityContext.Privileged = nil
+		}
+	}
 	for i, container := range coreTemplateSpec.Spec.Containers {
 		if container.SecurityContext != nil && container.SecurityContext.Privileged != nil {
 			coreTemplateSpec.Spec.Containers[i].SecurityContext.Privileged = nil

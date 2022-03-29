@@ -997,6 +997,50 @@ func TestValidateJobCreate(t *testing.T) {
 			ExpectErr:      true,
 		},
 		{
+			Name: "job with priviledged init container",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "valid-job",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									InitContainers: []v1.Container{
+										{
+											Name:  "init-fake-name",
+											Image: "busybox:1.24",
+											SecurityContext: &v1.SecurityContext{
+												Privileged: &priviledged,
+											},
+										},
+									},
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+		},
+		{
 			Name: "job with priviledged container",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
