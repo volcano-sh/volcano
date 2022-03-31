@@ -59,7 +59,7 @@ func TestKillJobFunc(t *testing.T) {
 			},
 			PodGroup: &schedulingv1alpha2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job1",
+					Name:      "job1-e7f18111-1cec-11ea-b688-fa163ec79500",
 					Namespace: namespace,
 				},
 			},
@@ -195,6 +195,7 @@ func TestSyncJobFunc(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
+					UID:       "e7f18111-1cec-11ea-b688-fa163ec79500",
 				},
 				Spec: v1alpha1.JobSpec{
 					Tasks: []v1alpha1.TaskSpec{
@@ -225,7 +226,7 @@ func TestSyncJobFunc(t *testing.T) {
 			},
 			PodGroup: &schedulingv1alpha2.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job1",
+					Name:      "job1-e7f18111-1cec-11ea-b688-fa163ec79500",
 					Namespace: namespace,
 				},
 				Status: schedulingv1alpha2.PodGroupStatus{
@@ -405,6 +406,7 @@ func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: namespace,
 					Name:      "job1",
+					UID:       "e7f18111-1cec-11ea-b688-fa163ec79500",
 				},
 			},
 			ExpextVal: nil,
@@ -420,7 +422,8 @@ func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 				t.Errorf("Expected return value to be equal to expected: %s, but got: %s", testcase.ExpextVal, err)
 			}
 
-			_, err = fakeController.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), testcase.Job.Name, metav1.GetOptions{})
+			pgName := testcase.Job.Name + "-" + string(testcase.Job.UID)
+			_, err = fakeController.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 			if err != nil {
 				t.Error("Expected PodGroup to get created, but not created")
 			}
