@@ -219,7 +219,6 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	var syncTask bool
 	pgName := job.Name + "-" + string(job.UID)
 	if pg, _ := cc.pgLister.PodGroups(job.Namespace).Get(pgName); pg != nil {
-
 		if pg.Status.Phase != "" && pg.Status.Phase != scheduling.PodGroupPending {
 			syncTask = true
 		}
