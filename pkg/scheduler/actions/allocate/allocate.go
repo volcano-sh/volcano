@@ -222,16 +222,19 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				}
 			}
 
-			// If not candidate nodes for this task, skip it.
-			if len(candidateNodes) == 0 {
+			var node *api.NodeInfo
+			switch {
+			case len(candidateNodes) == 0: // If not candidate nodes for this task, skip it.
 				continue
-			}
+			case len(candidateNodes) == 1: // If only one node after predicate, just use it.
+				node = candidateNodes[0]
+			case len(candidateNodes) > 1: // If more than one node after predicate, using "the best" one
+				nodeScores := util.PrioritizeNodes(task, candidateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 
-			nodeScores := util.PrioritizeNodes(task, candidateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
-
-			node := ssn.BestNodeFn(task, nodeScores)
-			if node == nil {
-				node = util.SelectBestNode(nodeScores)
+				node = ssn.BestNodeFn(task, nodeScores)
+				if node == nil {
+					node = util.SelectBestNode(nodeScores)
+				}
 			}
 
 			// Allocate idle resource to the task.
