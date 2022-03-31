@@ -28,10 +28,13 @@ import (
 	"strings"
 	"time"
 
-	"go.etcd.io/etcd/clientv3"
+	clientv3 "go.etcd.io/etcd/client/v3"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/conversion"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -41,7 +44,7 @@ import (
 	"k8s.io/apiserver/pkg/storage/etcd3/metrics"
 	"k8s.io/apiserver/pkg/storage/value"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	utiltrace "k8s.io/utils/trace"
 )
 
@@ -62,17 +65,16 @@ func (d authenticatedDataString) AuthenticatedData() []byte {
 var _ value.Context = authenticatedDataString("")
 
 type store struct {
-	client *clientv3.Client
-	// getOpts contains additional options that should be passed
-	// to all Get() calls.
-	getOps        []clientv3.OpOption
-	codec         runtime.Codec
-	versioner     storage.Versioner
-	transformer   value.Transformer
-	pathPrefix    string
-	watcher       *watcher
-	pagingEnabled bool
-	leaseManager  *leaseManager
+	client              *clientv3.Client
+	codec               runtime.Codec
+	versioner           storage.Versioner
+	transformer         value.Transformer
+	pathPrefix          string
+	groupResource       schema.GroupResource
+	groupResourceString string
+	watcher             *watcher
+	pagingEnabled       bool
+	leaseManager        *leaseManager
 }
 
 type objState struct {
@@ -84,11 +86,11 @@ type objState struct {
 }
 
 // New returns an etcd3 implementation of storage.Interface.
-func New(c *clientv3.Client, codec runtime.Codec, prefix string, transformer value.Transformer, pagingEnabled bool) storage.Interface {
-	return newStore(c, pagingEnabled, codec, prefix, transformer)
+func New(c *clientv3.Client, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool, leaseManagerConfig LeaseManagerConfig) storage.Interface {
+	return newStore(c, codec, newFunc, prefix, groupResource, transformer, pagingEnabled, leaseManagerConfig)
 }
 
-func newStore(c *clientv3.Client, pagingEnabled bool, codec runtime.Codec, prefix string, transformer value.Transformer) *store {
+func newStore(c *clientv3.Client, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool, leaseManagerConfig LeaseManagerConfig) *store {
 	versioner := APIObjectVersioner{}
 	result := &store{
 		client:        c,
@@ -99,9 +101,11 @@ func newStore(c *clientv3.Client, pagingEnabled bool, codec runtime.Codec, prefi
 		// for compatibility with etcd2 impl.
 		// no-op for default prefix of '/registry'.
 		// keeps compatibility with etcd2 impl for custom prefixes that don't start with '/'
-		pathPrefix:   path.Join("/", prefix),
-		watcher:      newWatcher(c, codec, versioner, transformer),
-		leaseManager: newDefaultLeaseManager(c),
+		pathPrefix:          path.Join("/", prefix),
+		groupResource:       groupResource,
+		groupResourceString: groupResource.String(),
+		watcher:             newWatcher(c, codec, newFunc, versioner, transformer),
+		leaseManager:        newDefaultLeaseManager(c, leaseManagerConfig),
 	}
 	return result
 }
@@ -112,20 +116,20 @@ func (s *store) Versioner() storage.Versioner {
 }
 
 // Get implements storage.Interface.Get.
-func (s *store) Get(ctx context.Context, key string, resourceVersion string, out runtime.Object, ignoreNotFound bool) error {
+func (s *store) Get(ctx context.Context, key string, opts storage.GetOptions, out runtime.Object) error {
 	key = path.Join(s.pathPrefix, key)
 	startTime := time.Now()
-	getResp, err := s.client.KV.Get(ctx, key, s.getOps...)
+	getResp, err := s.client.KV.Get(ctx, key)
 	metrics.RecordEtcdRequestLatency("get", getTypeName(out), startTime)
 	if err != nil {
 		return err
 	}
-	if err = s.ensureMinimumResourceVersion(resourceVersion, uint64(getResp.Header.Revision)); err != nil {
+	if err = s.validateMinimumResourceVersion(opts.ResourceVersion, uint64(getResp.Header.Revision)); err != nil {
 		return err
 	}
 
 	if len(getResp.Kvs) == 0 {
-		if ignoreNotFound {
+		if opts.IgnoreNotFound {
 			return runtime.SetZeroValue(out)
 		}
 		return storage.NewKeyNotFoundError(key, 0)
@@ -186,35 +190,97 @@ func (s *store) Create(ctx context.Context, key string, obj, out runtime.Object,
 }
 
 // Delete implements storage.Interface.Delete.
-func (s *store) Delete(ctx context.Context, key string, out runtime.Object, preconditions *storage.Preconditions, validateDeletion storage.ValidateObjectFunc) error {
+func (s *store) Delete(
+	ctx context.Context, key string, out runtime.Object, preconditions *storage.Preconditions,
+	validateDeletion storage.ValidateObjectFunc, cachedExistingObject runtime.Object) error {
 	v, err := conversion.EnforcePtr(out)
 	if err != nil {
 		return fmt.Errorf("unable to convert output object to pointer: %v", err)
 	}
 	key = path.Join(s.pathPrefix, key)
-	return s.conditionalDelete(ctx, key, out, v, preconditions, validateDeletion)
+	return s.conditionalDelete(ctx, key, out, v, preconditions, validateDeletion, cachedExistingObject)
 }
 
-func (s *store) conditionalDelete(ctx context.Context, key string, out runtime.Object, v reflect.Value, preconditions *storage.Preconditions, validateDeletion storage.ValidateObjectFunc) error {
-	startTime := time.Now()
-	getResp, err := s.client.KV.Get(ctx, key)
-	metrics.RecordEtcdRequestLatency("get", getTypeName(out), startTime)
+func (s *store) conditionalDelete(
+	ctx context.Context, key string, out runtime.Object, v reflect.Value, preconditions *storage.Preconditions,
+	validateDeletion storage.ValidateObjectFunc, cachedExistingObject runtime.Object) error {
+	getCurrentState := func() (*objState, error) {
+		startTime := time.Now()
+		getResp, err := s.client.KV.Get(ctx, key)
+		metrics.RecordEtcdRequestLatency("get", getTypeName(out), startTime)
+		if err != nil {
+			return nil, err
+		}
+		return s.getState(getResp, key, v, false)
+	}
+
+	var origState *objState
+	var err error
+	var origStateIsCurrent bool
+	if cachedExistingObject != nil {
+		origState, err = s.getStateFromObject(cachedExistingObject)
+	} else {
+		origState, err = getCurrentState()
+		origStateIsCurrent = true
+	}
 	if err != nil {
 		return err
 	}
+
 	for {
-		origState, err := s.getState(getResp, key, v, false)
-		if err != nil {
-			return err
-		}
 		if preconditions != nil {
 			if err := preconditions.Check(key, origState.obj); err != nil {
-				return err
+				if origStateIsCurrent {
+					return err
+				}
+
+				// It's possible we're working with stale data.
+				// Remember the revision of the potentially stale data and the resulting update error
+				cachedRev := origState.rev
+				cachedUpdateErr := err
+
+				// Actually fetch
+				origState, err = getCurrentState()
+				if err != nil {
+					return err
+				}
+				origStateIsCurrent = true
+
+				// it turns out our cached data was not stale, return the error
+				if cachedRev == origState.rev {
+					return cachedUpdateErr
+				}
+
+				// Retry
+				continue
 			}
 		}
 		if err := validateDeletion(ctx, origState.obj); err != nil {
-			return err
+			if origStateIsCurrent {
+				return err
+			}
+
+			// It's possible we're working with stale data.
+			// Remember the revision of the potentially stale data and the resulting update error
+			cachedRev := origState.rev
+			cachedUpdateErr := err
+
+			// Actually fetch
+			origState, err = getCurrentState()
+			if err != nil {
+				return err
+			}
+			origStateIsCurrent = true
+
+			// it turns out our cached data was not stale, return the error
+			if cachedRev == origState.rev {
+				return cachedUpdateErr
+			}
+
+			// Retry
+			continue
 		}
+
 		startTime := time.Now()
 		txnResp, err := s.client.KV.Txn(ctx).If(
 			clientv3.Compare(clientv3.ModRevision(key), "=", origState.rev),
@@ -228,8 +294,13 @@ func (s *store) conditionalDelete(ctx context.Context, key string, out runtime.O
 			return err
 		}
 		if !txnResp.Succeeded {
-			getResp = (*clientv3.GetResponse)(txnResp.Responses[0].GetResponseRange())
+			getResp := (*clientv3.GetResponse)(txnResp.Responses[0].GetResponseRange())
 			klog.V(4).Infof("deletion of %s failed because of a conflict, going to retry", key)
+			origState, err = s.getState(getResp, key, v, false)
+			if err != nil {
+				return err
+			}
+			origStateIsCurrent = true
 			continue
 		}
 		return decode(s.codec, s.versioner, origState.data, out, origState.rev)
@@ -239,7 +310,7 @@ func (s *store) conditionalDelete(ctx context.Context, key string, out runtime.O
 // GuaranteedUpdate implements storage.Interface.GuaranteedUpdate.
 func (s *store) GuaranteedUpdate(
 	ctx context.Context, key string, out runtime.Object, ignoreNotFound bool,
-	preconditions *storage.Preconditions, tryUpdate storage.UpdateFunc, suggestion ...runtime.Object) error {
+	preconditions *storage.Preconditions, tryUpdate storage.UpdateFunc, cachedExistingObject runtime.Object) error {
 	trace := utiltrace.New("GuaranteedUpdate etcd3", utiltrace.Field{"type", getTypeName(out)})
 	defer trace.LogIfLong(500 * time.Millisecond)
 
@@ -251,7 +322,7 @@ func (s *store) GuaranteedUpdate(
 
 	getCurrentState := func() (*objState, error) {
 		startTime := time.Now()
-		getResp, err := s.client.KV.Get(ctx, key, s.getOps...)
+		getResp, err := s.client.KV.Get(ctx, key)
 		metrics.RecordEtcdRequestLatency("get", getTypeName(out), startTime)
 		if err != nil {
 			return nil, err
@@ -260,18 +331,15 @@ func (s *store) GuaranteedUpdate(
 	}
 
 	var origState *objState
-	var mustCheckData bool
-	if len(suggestion) == 1 && suggestion[0] != nil {
-		origState, err = s.getStateFromObject(suggestion[0])
-		if err != nil {
-			return err
-		}
-		mustCheckData = true
+	var origStateIsCurrent bool
+	if cachedExistingObject != nil {
+		origState, err = s.getStateFromObject(cachedExistingObject)
 	} else {
 		origState, err = getCurrentState()
-		if err != nil {
-			return err
-		}
+		origStateIsCurrent = true
+	}
+	if err != nil {
+		return err
 	}
 	trace.Step("initial value restored")
 
@@ -279,7 +347,7 @@ func (s *store) GuaranteedUpdate(
 	for {
 		if err := preconditions.Check(key, origState.obj); err != nil {
 			// If our data is already up to date, return the error
-			if !mustCheckData {
+			if origStateIsCurrent {
 				return err
 			}
 
@@ -289,7 +357,7 @@ func (s *store) GuaranteedUpdate(
 			if err != nil {
 				return err
 			}
-			mustCheckData = false
+			origStateIsCurrent = true
 			// Retry
 			continue
 		}
@@ -297,17 +365,27 @@ func (s *store) GuaranteedUpdate(
 		ret, ttl, err := s.updateState(origState, tryUpdate)
 		if err != nil {
 			// If our data is already up to date, return the error
-			if !mustCheckData {
+			if origStateIsCurrent {
 				return err
 			}
 
 			// It's possible we were working with stale data
+			// Remember the revision of the potentially stale data and the resulting update error
+			cachedRev := origState.rev
+			cachedUpdateErr := err
+
 			// Actually fetch
 			origState, err = getCurrentState()
 			if err != nil {
 				return err
 			}
-			mustCheckData = false
+			origStateIsCurrent = true
+
+			// it turns out our cached data was not stale, return the error
+			if cachedRev == origState.rev {
+				return cachedUpdateErr
+			}
+
 			// Retry
 			continue
 		}
@@ -320,12 +398,12 @@ func (s *store) GuaranteedUpdate(
 			// if we skipped the original Get in this loop, we must refresh from
 			// etcd in order to be sure the data in the store is equivalent to
 			// our desired serialization
-			if mustCheckData {
+			if !origStateIsCurrent {
 				origState, err = getCurrentState()
 				if err != nil {
 					return err
 				}
-				mustCheckData = false
+				origStateIsCurrent = true
 				if !bytes.Equal(data, origState.data) {
 					// original data changed, restart loop
 					continue
@@ -369,7 +447,7 @@ func (s *store) GuaranteedUpdate(
 				return err
 			}
 			trace.Step("Retry value restored")
-			mustCheckData = false
+			origStateIsCurrent = true
 			continue
 		}
 		putResp := txnResp.Responses[0].GetResponsePut()
@@ -379,10 +457,14 @@ func (s *store) GuaranteedUpdate(
 }
 
 // GetToList implements storage.Interface.GetToList.
-func (s *store) GetToList(ctx context.Context, key string, resourceVersion string, pred storage.SelectionPredicate, listObj runtime.Object) error {
+func (s *store) GetToList(ctx context.Context, key string, listOpts storage.ListOptions, listObj runtime.Object) error {
+	resourceVersion := listOpts.ResourceVersion
+	match := listOpts.ResourceVersionMatch
+	pred := listOpts.Predicate
 	trace := utiltrace.New("GetToList etcd3",
 		utiltrace.Field{"key", key},
 		utiltrace.Field{"resourceVersion", resourceVersion},
+		utiltrace.Field{"resourceVersionMatch", match},
 		utiltrace.Field{"limit", pred.Limit},
 		utiltrace.Field{"continue", pred.Continue})
 	defer trace.LogIfLong(500 * time.Millisecond)
@@ -399,12 +481,21 @@ func (s *store) GetToList(ctx context.Context, key string, resourceVersion strin
 
 	key = path.Join(s.pathPrefix, key)
 	startTime := time.Now()
-	getResp, err := s.client.KV.Get(ctx, key, s.getOps...)
+	var opts []clientv3.OpOption
+	if len(resourceVersion) > 0 && match == metav1.ResourceVersionMatchExact {
+		rv, err := s.versioner.ParseResourceVersion(resourceVersion)
+		if err != nil {
+			return apierrors.NewBadRequest(fmt.Sprintf("invalid resource version: %v", err))
+		}
+		opts = append(opts, clientv3.WithRev(int64(rv)))
+	}
+
+	getResp, err := s.client.KV.Get(ctx, key, opts...)
 	metrics.RecordEtcdRequestLatency("get", getTypeName(listPtr), startTime)
 	if err != nil {
 		return err
 	}
-	if err = s.ensureMinimumResourceVersion(resourceVersion, uint64(getResp.Header.Revision)); err != nil {
+	if err = s.validateMinimumResourceVersion(resourceVersion, uint64(getResp.Header.Revision)); err != nil {
 		return err
 	}
 
@@ -440,6 +531,14 @@ func getNewItemFunc(listObj runtime.Object, v reflect.Value) func() runtime.Obje
 
 func (s *store) Count(key string) (int64, error) {
 	key = path.Join(s.pathPrefix, key)
+
+	// We need to make sure the key ended with "/" so that we only get children "directories".
+	// e.g. if we have key "/a", "/a/b", "/ab", getting keys with prefix "/a" will return all three,
+	// while with prefix "/a/" will return only "/a/b" which is the correct answer.
+	if !strings.HasSuffix(key, "/") {
+		key += "/"
+	}
+
 	startTime := time.Now()
 	getResp, err := s.client.KV.Get(context.Background(), key, clientv3.WithRange(clientv3.GetPrefixRangeEnd(key)), clientv3.WithCountOnly())
 	metrics.RecordEtcdRequestLatency("listWithCount", key, startTime)
@@ -510,10 +609,14 @@ func encodeContinue(key, keyPrefix string, resourceVersion int64) (string, error
 }
 
 // List implements storage.Interface.List.
-func (s *store) List(ctx context.Context, key, resourceVersion string, pred storage.SelectionPredicate, listObj runtime.Object) error {
+func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, listObj runtime.Object) error {
+	resourceVersion := opts.ResourceVersion
+	match := opts.ResourceVersionMatch
+	pred := opts.Predicate
 	trace := utiltrace.New("List etcd3",
 		utiltrace.Field{"key", key},
 		utiltrace.Field{"resourceVersion", resourceVersion},
+		utiltrace.Field{"resourceVersionMatch", match},
 		utiltrace.Field{"limit", pred.Limit},
 		utiltrace.Field{"continue", pred.Continue})
 	defer trace.LogIfLong(500 * time.Millisecond)
@@ -547,7 +650,16 @@ func (s *store) List(ctx context.Context, key, resourceVersion string, pred stor
 
 	newItemFunc := getNewItemFunc(listObj, v)
 
-	var returnedRV, continueRV int64
+	var fromRV *uint64
+	if len(resourceVersion) > 0 {
+		parsedRV, err := s.versioner.ParseResourceVersion(resourceVersion)
+		if err != nil {
+			return apierrors.NewBadRequest(fmt.Sprintf("invalid resource version: %v", err))
+		}
+		fromRV = &parsedRV
+	}
+
+	var returnedRV, continueRV, withRev int64
 	var continueKey string
 	switch {
 	case s.pagingEnabled && len(pred.Continue) > 0:
@@ -568,32 +680,63 @@ func (s *store) List(ctx context.Context, key, resourceVersion string, pred stor
 		// continueRV==0 is invalid.
 		// If continueRV < 0, the request is for the latest resource version.
 		if continueRV > 0 {
-			options = append(options, clientv3.WithRev(continueRV))
+			withRev = continueRV
 			returnedRV = continueRV
 		}
 	case s.pagingEnabled && pred.Limit > 0:
-		if len(resourceVersion) > 0 {
-			fromRV, err := s.versioner.ParseResourceVersion(resourceVersion)
-			if err != nil {
-				return apierrors.NewBadRequest(fmt.Sprintf("invalid resource version: %v", err))
+		if fromRV != nil {
+			switch match {
+			case metav1.ResourceVersionMatchNotOlderThan:
+				// The not older than constraint is checked after we get a response from etcd,
+				// and returnedRV is then set to the revision we get from the etcd response.
+			case metav1.ResourceVersionMatchExact:
+				returnedRV = int64(*fromRV)
+				withRev = returnedRV
+			case "": // legacy case
+				if *fromRV > 0 {
+					returnedRV = int64(*fromRV)
+					withRev = returnedRV
+				}
+			default:
+				return fmt.Errorf("unknown ResourceVersionMatch value: %v", match)
 			}
-			if fromRV > 0 {
-				options = append(options, clientv3.WithRev(int64(fromRV)))
-			}
-			returnedRV = int64(fromRV)
 		}
 
 		rangeEnd := clientv3.GetPrefixRangeEnd(keyPrefix)
 		options = append(options, clientv3.WithRange(rangeEnd))
-
 	default:
+		if fromRV != nil {
+			switch match {
+			case metav1.ResourceVersionMatchNotOlderThan:
+				// The not older than constraint is checked after we get a response from etcd,
+				// and returnedRV is then set to the revision we get from the etcd response.
+			case metav1.ResourceVersionMatchExact:
+				returnedRV = int64(*fromRV)
+				withRev = returnedRV
+			case "": // legacy case
+			default:
+				return fmt.Errorf("unknown ResourceVersionMatch value: %v", match)
+			}
+		}
+
 		options = append(options, clientv3.WithPrefix())
+	}
+	if withRev != 0 {
+		options = append(options, clientv3.WithRev(withRev))
 	}
 
 	// loop until we have filled the requested limit from etcd or there are no more results
 	var lastKey []byte
 	var hasMore bool
 	var getResp *clientv3.GetResponse
+	var numFetched int
+	var numEvald int
+	// Because these metrics are for understanding the costs of handling LIST requests,
+	// get them recorded even in error cases.
+	defer func() {
+		numReturn := v.Len()
+		metrics.RecordStorageListMetrics(s.groupResourceString, numFetched, numEvald, numReturn)
+	}()
 	for {
 		startTime := time.Now()
 		getResp, err = s.client.KV.Get(ctx, key, options...)
@@ -601,7 +744,8 @@ func (s *store) List(ctx context.Context, key, resourceVersion string, pred stor
 		if err != nil {
 			return interpretListError(err, len(pred.Continue) > 0, continueKey, keyPrefix)
 		}
-		if err = s.ensureMinimumResourceVersion(resourceVersion, uint64(getResp.Header.Revision)); err != nil {
+		numFetched += len(getResp.Kvs)
+		if err = s.validateMinimumResourceVersion(resourceVersion, uint64(getResp.Header.Revision)); err != nil {
 			return err
 		}
 		hasMore = getResp.More
@@ -619,7 +763,7 @@ func (s *store) List(ctx context.Context, key, resourceVersion string, pred stor
 		}
 
 		// take items from the response until the bucket is full, filtering as we go
-		for _, kv := range getResp.Kvs {
+		for i, kv := range getResp.Kvs {
 			if paging && int64(v.Len()) >= pred.Limit {
 				hasMore = true
 				break
@@ -634,6 +778,10 @@ func (s *store) List(ctx context.Context, key, resourceVersion string, pred stor
 			if err := appendListItem(v, data, uint64(kv.ModRevision), pred, s.codec, s.versioner, newItemFunc); err != nil {
 				return err
 			}
+			numEvald++
+
+			// free kv early. Long lists can take O(seconds) to decode.
+			getResp.Kvs[i] = nil
 		}
 
 		// indicate to the client which resource version was returned
@@ -650,6 +798,10 @@ func (s *store) List(ctx context.Context, key, resourceVersion string, pred stor
 			break
 		}
 		key = string(lastKey) + "\x00"
+		if withRev == 0 {
+			withRev = returnedRV
+			options = append(options, clientv3.WithRev(withRev))
+		}
 	}
 
 	// instruct the client to begin querying from immediately after the last key we returned
@@ -709,22 +861,22 @@ func growSlice(v reflect.Value, maxCapacity int, sizes ...int) {
 }
 
 // Watch implements storage.Interface.Watch.
-func (s *store) Watch(ctx context.Context, key string, resourceVersion string, pred storage.SelectionPredicate) (watch.Interface, error) {
-	return s.watch(ctx, key, resourceVersion, pred, false)
+func (s *store) Watch(ctx context.Context, key string, opts storage.ListOptions) (watch.Interface, error) {
+	return s.watch(ctx, key, opts, false)
 }
 
 // WatchList implements storage.Interface.WatchList.
-func (s *store) WatchList(ctx context.Context, key string, resourceVersion string, pred storage.SelectionPredicate) (watch.Interface, error) {
-	return s.watch(ctx, key, resourceVersion, pred, true)
+func (s *store) WatchList(ctx context.Context, key string, opts storage.ListOptions) (watch.Interface, error) {
+	return s.watch(ctx, key, opts, true)
 }
 
-func (s *store) watch(ctx context.Context, key string, rv string, pred storage.SelectionPredicate, recursive bool) (watch.Interface, error) {
-	rev, err := s.versioner.ParseResourceVersion(rv)
+func (s *store) watch(ctx context.Context, key string, opts storage.ListOptions, recursive bool) (watch.Interface, error) {
+	rev, err := s.versioner.ParseResourceVersion(opts.ResourceVersion)
 	if err != nil {
 		return nil, err
 	}
 	key = path.Join(s.pathPrefix, key)
-	return s.watcher.Watch(ctx, key, int64(rev), recursive, pred)
+	return s.watcher.Watch(ctx, key, int64(rev), recursive, opts.ProgressNotify, opts.Predicate)
 }
 
 func (s *store) getState(getResp *clientv3.GetResponse, key string, v reflect.Value, ignoreNotFound bool) (*objState, error) {
@@ -818,9 +970,9 @@ func (s *store) ttlOpts(ctx context.Context, ttl int64) ([]clientv3.OpOption, er
 	return []clientv3.OpOption{clientv3.WithLease(id)}, nil
 }
 
-// ensureMinimumResourceVersion returns a 'too large resource' version error when the provided minimumResourceVersion is
+// validateMinimumResourceVersion returns a 'too large resource' version error when the provided minimumResourceVersion is
 // greater than the most recent actualRevision available from storage.
-func (s *store) ensureMinimumResourceVersion(minimumResourceVersion string, actualRevision uint64) error {
+func (s *store) validateMinimumResourceVersion(minimumResourceVersion string, actualRevision uint64) error {
 	if minimumResourceVersion == "" {
 		return nil
 	}

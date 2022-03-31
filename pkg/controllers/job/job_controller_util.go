@@ -18,26 +18,29 @@ package job
 
 import (
 	"fmt"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog"
 
-	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/helpers"
-	schedulingv2 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	"volcano.sh/apis/pkg/apis/helpers"
+	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
+
+var detectionPeriodOfDependsOntask time.Duration
 
 // MakePodName append podname,jobname,taskName and index and returns the string.
 func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(jobhelpers.PodNameFmt, jobName, taskName, index)
 }
 
-func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod {
+func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy batch.NumaPolicy, ix int, jobForwarding bool) *v1.Pod {
 	templateCopy := template.DeepCopy()
 
 	pod := &v1.Pod{
@@ -101,9 +104,24 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 	pod.Annotations[batch.JobNameKey] = job.Name
 	pod.Annotations[batch.QueueNameKey] = job.Spec.Queue
 	pod.Annotations[batch.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
+	pod.Annotations[batch.PodTemplateKey] = fmt.Sprintf("%s-%s", job.Name, template.Name)
+
+	if topologyPolicy != "" {
+		pod.Annotations[schedulingv2.NumaPolicyKey] = string(topologyPolicy)
+	}
+
 	if len(job.Annotations) > 0 {
 		if value, found := job.Annotations[schedulingv2.PodPreemptable]; found {
 			pod.Annotations[schedulingv2.PodPreemptable] = value
+		}
+		if value, found := job.Annotations[schedulingv2.RevocableZone]; found {
+			pod.Annotations[schedulingv2.RevocableZone] = value
+		}
+
+		if value, found := job.Annotations[schedulingv2.JDBMinAvailable]; found {
+			pod.Annotations[schedulingv2.JDBMinAvailable] = value
+		} else if value, found := job.Annotations[schedulingv2.JDBMaxUnavailable]; found {
+			pod.Annotations[schedulingv2.JDBMaxUnavailable] = value
 		}
 	}
 
@@ -113,8 +131,19 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int) *v1.Pod 
 
 	// Set pod labels for Service.
 	pod.Labels[batch.JobNameKey] = job.Name
+	pod.Labels[batch.TaskSpecKey] = tsKey
 	pod.Labels[batch.JobNamespaceKey] = job.Namespace
 	pod.Labels[batch.QueueNameKey] = job.Spec.Queue
+	if len(job.Labels) > 0 {
+		if value, found := job.Labels[schedulingv2.PodPreemptable]; found {
+			pod.Labels[schedulingv2.PodPreemptable] = value
+		}
+	}
+
+	if jobForwarding {
+		pod.Annotations[batch.JobForwardingKey] = "true"
+		pod.Labels[batch.JobForwardingKey] = "true"
+	}
 
 	return pod
 }
@@ -192,12 +221,10 @@ func checkEventExist(policyEvents []v1alpha1.Event, reqEvent v1alpha1.Event) boo
 		}
 	}
 	return false
-
 }
 
 func addResourceList(list, req, limit v1.ResourceList) {
 	for name, quantity := range req {
-
 		if value, ok := list[name]; !ok {
 			list[name] = quantity.DeepCopy()
 		} else {
@@ -206,11 +233,18 @@ func addResourceList(list, req, limit v1.ResourceList) {
 		}
 	}
 
+	if req != nil {
+		return
+	}
+
 	// If Requests is omitted for a container,
 	// it defaults to Limits if that is explicitly specified.
 	for name, quantity := range limit {
-		if _, ok := list[name]; !ok {
+		if value, ok := list[name]; !ok {
 			list[name] = quantity.DeepCopy()
+		} else {
+			value.Add(quantity)
+			list[name] = value
 		}
 	}
 }
@@ -234,12 +268,16 @@ func (p TasksPriority) Less(i, j int) bool {
 func (p TasksPriority) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
 
 func isControlledBy(obj metav1.Object, gvk schema.GroupVersionKind) bool {
-	controlerRef := metav1.GetControllerOf(obj)
-	if controlerRef == nil {
+	controllerRef := metav1.GetControllerOf(obj)
+	if controllerRef == nil {
 		return false
 	}
-	if controlerRef.APIVersion == gvk.GroupVersion().String() && controlerRef.Kind == gvk.Kind {
+	if controllerRef.APIVersion == gvk.GroupVersion().String() && controllerRef.Kind == gvk.Kind {
 		return true
 	}
 	return false
+}
+
+func SetDetectionPeriodOfDependsOntask(period time.Duration) {
+	detectionPeriodOfDependsOntask = period
 }

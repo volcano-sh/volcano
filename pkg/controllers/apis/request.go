@@ -18,7 +18,8 @@ package apis
 
 import (
 	"fmt"
-	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+
+	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
 )
 
 //Request struct.

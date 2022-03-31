@@ -27,9 +27,9 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/cli/util"
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
 type runFlags struct {
@@ -117,7 +117,6 @@ func setDefaultArgs() {
 			launchJobFlags.Namespace = defaultJobNamespace
 		}
 	}
-
 }
 
 var jobName = "job.volcano.sh"
@@ -165,7 +164,6 @@ func RunJob() error {
 }
 
 func constructLaunchJobFlagsJob(launchJobFlags *runFlags, req, limit v1.ResourceList) (*vcbatch.Job, error) {
-
 	var commands []string
 
 	if launchJobFlags.Command != "" {

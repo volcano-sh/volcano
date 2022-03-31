@@ -21,7 +21,7 @@ import (
 	"io/ioutil"
 	"strings"
 
-	yaml "gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v2"
 
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -34,7 +34,9 @@ tiers:
 - plugins:
   - name: priority
   - name: gang
+  - name: conformance
 - plugins:
+  - name: overcommit
   - name: drf
   - name: predicates
   - name: proportion
@@ -46,10 +48,7 @@ func unmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []
 
 	schedulerConf := &conf.SchedulerConfiguration{}
 
-	buf := make([]byte, len(confStr))
-	copy(buf, confStr)
-
-	if err := yaml.Unmarshal(buf, schedulerConf); err != nil {
+	if err := yaml.Unmarshal([]byte(confStr), schedulerConf); err != nil {
 		return nil, nil, nil, err
 	}
 	// Set default settings for each plugin if not set
@@ -61,7 +60,7 @@ func unmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []
 		for j := range tier.Plugins {
 			if tier.Plugins[j].Name == "drf" &&
 				tier.Plugins[j].EnabledHierarchy != nil &&
-				*tier.Plugins[j].EnabledHierarchy == true {
+				*tier.Plugins[j].EnabledHierarchy {
 				hdrf = true
 			}
 			if tier.Plugins[j].Name == "proportion" {
@@ -79,7 +78,7 @@ func unmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []
 		if action, found := framework.GetAction(strings.TrimSpace(actionName)); found {
 			actions = append(actions, action)
 		} else {
-			return nil, nil, nil, fmt.Errorf("failed to found Action %s, ignore it", actionName)
+			return nil, nil, nil, fmt.Errorf("failed to find Action %s, ignore it", actionName)
 		}
 	}
 

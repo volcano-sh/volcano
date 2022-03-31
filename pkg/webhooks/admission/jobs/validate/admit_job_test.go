@@ -18,17 +18,18 @@ package validate
 
 import (
 	"context"
+	admissionv1 "k8s.io/api/admission/v1"
 	"strings"
 	"testing"
 
-	"k8s.io/api/admission/v1beta1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	schedulingv1beta2 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
-	fakeclient "volcano.sh/volcano/pkg/client/clientset/versioned/fake"
+	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	schedulingv1beta2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 )
 
 func TestValidateJobCreate(t *testing.T) {
@@ -41,7 +42,7 @@ func TestValidateJobCreate(t *testing.T) {
 		Name           string
 		Job            v1alpha1.Job
 		ExpectErr      bool
-		reviewResponse v1beta1.AdmissionResponse
+		reviewResponse admissionv1.AdmissionResponse
 		ret            string
 	}{
 		{
@@ -81,7 +82,7 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "",
 			ExpectErr:      false,
 		},
@@ -134,7 +135,7 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "duplicated task name duplicated-task-1",
 			ExpectErr:      true,
 		},
@@ -180,7 +181,7 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "duplicate",
 			ExpectErr:      true,
 		},
@@ -216,8 +217,8 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
-			ret:            "'minAvailable' should not be greater than total replicas in tasks",
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "job 'minAvailable' should not be greater than total replicas in tasks",
 			ExpectErr:      true,
 		},
 		// Job Plugin illegal
@@ -255,7 +256,7 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "unable to find job plugin: big_plugin",
 			ExpectErr:      true,
 		},
@@ -292,7 +293,7 @@ func TestValidateJobCreate(t *testing.T) {
 					TTLSecondsAfterFinished: &invTTL,
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "'ttlSecondsAfterFinished' cannot be less than zero",
 			ExpectErr:      true,
 		},
@@ -328,8 +329,8 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
-			ret:            "'minAvailable' must be >= 0",
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "job 'minAvailable' must be >= 0",
 			ExpectErr:      true,
 		},
 		// maxretry less than zero
@@ -365,7 +366,7 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
 			ret:            "'maxRetry' cannot be less than zero.",
 			ExpectErr:      true,
 		},
@@ -383,7 +384,7 @@ func TestValidateJobCreate(t *testing.T) {
 					Tasks:        []v1alpha1.TaskSpec{},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
 			ret:            "No task specified in job spec",
 			ExpectErr:      true,
 		},
@@ -419,7 +420,7 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
 			ret:            "'replicas' < 0 in task: task-1;",
 			ExpectErr:      true,
 		},
@@ -455,11 +456,9 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
-			ret: "[a DNS-1123 label must consist of lower case alphanumeric characters or '-', and " +
-				"must start and end with an alphanumeric character (e.g. 'my-name',  " +
-				"or '123-abc', regex used for validation is '[a-z0-9]([-a-z0-9]*[a-z0-9])?')];",
-			ExpectErr: true,
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "[a lowercase RFC 1123 label must consist of lower case alphanumeric characters or '-', and must start and end with an alphanumeric character (e.g. 'my-name',  or '123-abc', regex used for validation is '[a-z0-9]([-a-z0-9]*[a-z0-9])?')];",
+			ExpectErr:      true,
 		},
 		// Policy Event with exit code
 		{
@@ -500,7 +499,7 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "must not specify event and exitCode simultaneously",
 			ExpectErr:      true,
 		},
@@ -541,7 +540,7 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "either event and exitCode should be specified",
 			ExpectErr:      true,
 		},
@@ -583,7 +582,7 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "invalid policy event",
 			ExpectErr:      true,
 		},
@@ -625,7 +624,7 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "invalid policy action",
 			ExpectErr:      true,
 		},
@@ -669,7 +668,7 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "0 is not a valid error code",
 			ExpectErr:      true,
 		},
@@ -717,7 +716,7 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "duplicate exitCode 1",
 			ExpectErr:      true,
 		},
@@ -763,7 +762,7 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "if there's * here, no other policy should be here",
 			ExpectErr:      true,
 		},
@@ -810,7 +809,7 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            " mountPath is required;",
 			ExpectErr:      true,
 		},
@@ -862,7 +861,7 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            " duplicated mountPath: /var;",
 			ExpectErr:      true,
 		},
@@ -911,7 +910,7 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            " either VolumeClaim or VolumeClaimName must be specified;",
 			ExpectErr:      true,
 		},
@@ -957,7 +956,7 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "if there's * here, no other policy should be here",
 			ExpectErr:      true,
 		},
@@ -993,9 +992,53 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "unable to find job queue",
 			ExpectErr:      true,
+		},
+		{
+			Name: "job with priviledged init container",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "valid-job",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									InitContainers: []v1.Container{
+										{
+											Name:  "init-fake-name",
+											Image: "busybox:1.24",
+											SecurityContext: &v1.SecurityContext{
+												Privileged: &priviledged,
+											},
+										},
+									},
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
 		},
 		{
 			Name: "job with priviledged container",
@@ -1031,9 +1074,109 @@ func TestValidateJobCreate(t *testing.T) {
 					},
 				},
 			},
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "",
 			ExpectErr:      false,
+		},
+		{
+			Name: "job with valid task depends on",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job-with-valid-task-depends-on",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "t1",
+							Replicas: 1,
+							DependsOn: &v1alpha1.DependsOn{
+								Name: []string{"t2"},
+							},
+							Template: v1.PodTemplateSpec{
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+						{
+							Name:      "t2",
+							Replicas:  1,
+							DependsOn: nil,
+							Template: v1.PodTemplateSpec{
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+		},
+		{
+			Name: "job with invalid task depends on",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job-with-invalid-task-depends-on",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "t1",
+							Replicas: 1,
+							DependsOn: &v1alpha1.DependsOn{
+								Name: []string{"t3"},
+							},
+							Template: v1.PodTemplateSpec{
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+						{
+							Name:      "t2",
+							Replicas:  1,
+							DependsOn: nil,
+							Template: v1.PodTemplateSpec{
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "job has dependencies between tasks, but doesn't form a directed acyclic graph(DAG)",
+			ExpectErr:      true,
 		},
 	}
 
@@ -1239,5 +1382,95 @@ func newJob() *v1alpha1.Job {
 				},
 			},
 		},
+	}
+}
+
+func TestValidateTaskTopoPolicy(t *testing.T) {
+	testCases := []struct {
+		name     string
+		taskSpec v1alpha1.TaskSpec
+		expect   string
+	}{
+		{
+			name: "test-1",
+			taskSpec: v1alpha1.TaskSpec{
+				Name:           "task-1",
+				Replicas:       5,
+				TopologyPolicy: v1alpha1.Restricted,
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{"name": "test"},
+					},
+					Spec: v1.PodSpec{
+						Containers: []v1.Container{
+							{
+								Resources: v1.ResourceRequirements{
+									Limits: v1.ResourceList{
+										v1.ResourceCPU:    *resource.NewQuantity(1, ""),
+										v1.ResourceMemory: *resource.NewQuantity(2000, resource.BinarySI),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expect: "",
+		},
+		{
+			name: "test-2",
+			taskSpec: v1alpha1.TaskSpec{
+				Name:           "task-2",
+				TopologyPolicy: v1alpha1.Restricted,
+				Template: v1.PodTemplateSpec{
+					Spec: v1.PodSpec{
+						Containers: []v1.Container{
+							{
+								Resources: v1.ResourceRequirements{
+									Limits: v1.ResourceList{
+										v1.ResourceCPU:    *resource.NewMilliQuantity(500, resource.DecimalSI),
+										v1.ResourceMemory: *resource.NewQuantity(2000, resource.BinarySI),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expect: "the cpu request isn't  an integer",
+		},
+		{
+			name: "test-3",
+			taskSpec: v1alpha1.TaskSpec{
+				Name:           "task-3",
+				Replicas:       5,
+				TopologyPolicy: v1alpha1.Restricted,
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{"name": "test"},
+					},
+					Spec: v1.PodSpec{
+						Containers: []v1.Container{
+							{
+								Resources: v1.ResourceRequirements{
+									Requests: v1.ResourceList{
+										v1.ResourceCPU:    *resource.NewQuantity(1, ""),
+										v1.ResourceMemory: *resource.NewQuantity(2000, resource.BinarySI),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expect: "isn't Guaranteed pod",
+		},
+	}
+
+	for _, testcase := range testCases {
+		msg := validateTaskTopoPolicy(testcase.taskSpec, 0)
+		if !strings.Contains(msg, testcase.expect) {
+			t.Errorf("%s failed.", testcase.name)
+		}
 	}
 }

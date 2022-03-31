@@ -16,9 +16,10 @@ BIN_DIR=_output/bin
 RELEASE_DIR=_output/release
 REPO_PATH=volcano.sh/volcano
 IMAGE_PREFIX=volcanosh/vc
-CRD_OPTIONS ?= "crd:crdVersions=v1"
+CRD_OPTIONS ?= "crd:crdVersions=v1,generateEmbeddedObjectMeta=true"
 CC ?= "gcc"
 SUPPORT_PLUGINS ?= "no"
+CRD_VERSION ?= v1
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -113,12 +114,12 @@ generate-code:
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) paths="./pkg/apis/scheduling/v1beta1;./pkg/apis/batch/v1alpha1;./pkg/apis/bus/v1alpha1;" output:crd:artifacts:config=config/crd/bases
-	$(CONTROLLER_GEN) "crd:crdVersions=v1beta1" paths="./pkg/apis/scheduling/v1beta1;./pkg/apis/batch/v1alpha1;./pkg/apis/bus/v1alpha1;" output:crd:artifacts:config=config/crd/v1beta1
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) paths="./vendor/volcano.sh/apis/pkg/apis/scheduling/v1beta1;./vendor/volcano.sh/apis/pkg/apis/batch/v1alpha1;./vendor/volcano.sh/apis/pkg/apis/bus/v1alpha1;./vendor/volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1" output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) "crd:crdVersions=v1beta1" paths="./vendor/volcano.sh/apis/pkg/apis/scheduling/v1beta1;./vendor/volcano.sh/apis/pkg/apis/batch/v1alpha1;./vendor/volcano.sh/apis/pkg/apis/bus/v1alpha1;./vendor/volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1" output:crd:artifacts:config=config/crd/v1beta1
 
 unit-test:
 	go clean -testcache
-	go list ./... | grep -v e2e | xargs go test -p 8 -v -race
+	go test -p 8 -race $$(find pkg -type f -name '*_test.go' | sed -r 's|/[^/]+$$||' | sort | uniq | sed "s|^|volcano.sh/volcano/|")
 
 e2e:
 	./hack/run-e2e-kind.sh
@@ -135,8 +136,14 @@ e2e-test-jobp:
 e2e-test-jobseq:
 	E2E_TYPE=JOBSEQ ./hack/run-e2e-kind.sh
 
-generate-yaml: init
-	./hack/generate-yaml.sh TAG=${RELEASE_VER}
+e2e-test-vcctl:
+	E2E_TYPE=VCCTL ./hack/run-e2e-kind.sh
+
+e2e-test-stress:
+	E2E_TYPE=STRESS ./hack/run-e2e-kind.sh
+
+generate-yaml: init manifests
+	./hack/generate-yaml.sh TAG=${RELEASE_VER} CRD_VERSION=${CRD_VERSION}
 
 release-env:
 	./hack/build-env.sh release
@@ -153,14 +160,12 @@ clean:
 
 verify:
 	hack/verify-gofmt.sh
-	hack/verify-golint.sh
 	hack/verify-gencode.sh
 	hack/verify-vendor.sh
 	hack/verify-vendor-licenses.sh
 
 lint: ## Lint the files
-	golangci-lint version
-	golangci-lint run pkg/kube pkg/version pkg/apis/...
+	hack/verify-golangci-lint.sh
 
 verify-generated-yaml:
 	./hack/check-generated-yaml.sh
@@ -182,10 +187,16 @@ ifeq (, $(shell which controller-gen))
 	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
 	cd $$CONTROLLER_GEN_TMP_DIR ;\
 	go mod init tmp ;\
-	go get sigs.k8s.io/controller-tools/cmd/controller-gen@v0.4.1 ;\
+	go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.6.0 ;\
 	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
 	}
 CONTROLLER_GEN=$(GOBIN)/controller-gen
 else
 CONTROLLER_GEN=$(shell which controller-gen)
 endif
+
+update-development-yaml:
+	make generate-yaml TAG=latest RELEASE_DIR=installer
+	cp installer/volcano-latest.yaml installer/volcano-development-arm64.yaml
+	sed -r -i 's#(.*)image:([^:]*):(.*)#\1image:\2-arm64:\3#'  installer/volcano-development-arm64.yaml
+	mv installer/volcano-latest.yaml installer/volcano-development.yaml

@@ -19,7 +19,7 @@ package env
 import (
 	v1 "k8s.io/api/core/v1"
 
-	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
@@ -43,7 +43,7 @@ func (ep *envPlugin) Name() string {
 }
 
 func (ep *envPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
-	index := jobhelpers.GetTaskIndex(pod)
+	index := jobhelpers.GetPodIndexUnderTask(pod)
 
 	// add VK_TASK_INDEX and VC_TASK_INDEX env to each container
 	for i := range pod.Spec.Containers {

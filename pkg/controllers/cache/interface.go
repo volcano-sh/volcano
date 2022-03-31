@@ -17,9 +17,9 @@ limitations under the License.
 package cache
 
 import (
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -38,4 +38,5 @@ type Cache interface {
 	DeletePod(pod *v1.Pod) error
 
 	TaskCompleted(jobKey, taskName string) bool
+	TaskFailed(jobKey, taskName string) bool
 }

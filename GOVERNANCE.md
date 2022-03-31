@@ -4,7 +4,7 @@
 
 The Volcano community adheres to the following principles:
 
-- Open: Volcano is open source community.
+- Open: Volcano is an open source community.
 - Welcoming and respectful: See [Code of Conduct](https://github.com/cncf/foundation/blob/master/code-of-conduct.md).
 - Transparent and accessible: Changes to the Volcano organization, Volcano code repositories, and CNCF related activities (e.g. level, involvement, etc) are done in public.
 - Merit: Ideas and contributions are accepted according to their technical merit and alignment with
@@ -38,7 +38,7 @@ or adhere to the [Code of Conduct](https://github.com/cncf/foundation/blob/maste
 
 ## Decision making process
 
-Decisions are build on consensus between maintainers.
+Decisions are built on consensus between maintainers.
 Proposals and ideas can either be submitted for agreement via a github issue or PR.
 
 In general, we prefer that technical issues and maintainer membership are amicably worked out between the persons involved.
@@ -87,4 +87,4 @@ The [Volcano Code of Conduct](https://github.com/cncf/foundation/blob/master/cod
 
 ## Credits
 
-Sections of this documents have been borrowed from [CoreDns](https://github.com/coredns/coredns/blob/master/GOVERNANCE.md).
+Sections of this document have been borrowed from [CoreDns](https://github.com/coredns/coredns/blob/master/GOVERNANCE.md).

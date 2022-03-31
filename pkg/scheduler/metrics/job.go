@@ -44,6 +44,11 @@ func UpdateJobShare(jobNs, jobID string, share float64) {
 	jobShare.WithLabelValues(jobNs, jobID).Set(share)
 }
 
+// DeleteJobShare delete jobShare for one job
+func DeleteJobShare(jobNs, jobID string) {
+	jobShare.DeleteLabelValues(jobNs, jobID)
+}
+
 // RegisterJobRetries total number of job retries.
 func RegisterJobRetries(jobID string) {
 	jobRetryCount.WithLabelValues(jobID).Inc()

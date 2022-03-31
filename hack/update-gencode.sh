@@ -26,13 +26,13 @@ SCRIPT_ROOT=$(unset CDPATH && cd $(dirname "${BASH_SOURCE[0]}")/.. && pwd)
 # --output-base    because this script should also be able to run inside the vendor dir of
 #                  k8s.io/kubernetes. The output-base is needed for the generators to output into the vendor dir
 #                  instead of the $GOPATH directly. For normal projects this can be dropped.
-${SCRIPT_ROOT}/hack/generate-groups.sh "deepcopy,client,informer,lister" \
-  volcano.sh/volcano/pkg/client volcano.sh/volcano/pkg/apis \
+bash vendor/k8s.io/code-generator/generate-groups.sh "deepcopy,client,informer,lister" \
+  volcano.sh/apis/pkg/client volcano.sh/apis/pkg/apis \
   "batch:v1alpha1 bus:v1alpha1 scheduling:v1beta1" \
   --go-header-file ${SCRIPT_ROOT}/hack/boilerplate/boilerplate.go.txt
 
-${SCRIPT_ROOT}/hack/generate-internal-groups.sh "deepcopy,conversion" \
-  volcano.sh/volcano/pkg/apis/ volcano.sh/volcano/pkg/apis volcano.sh/volcano/pkg/apis\
+bash vendor/k8s.io/code-generator/generate-internal-groups.sh "deepcopy,conversion" \
+  volcano.sh/apis/pkg/apis/ volcano.sh/apis/pkg/apis volcano.sh/apis/pkg/apis\
   "scheduling:v1beta1"   \
   --output-base "$(dirname "${BASH_SOURCE[0]}")/../../.." \
   --go-header-file ${SCRIPT_ROOT}/hack/boilerplate/boilerplate.go.txt

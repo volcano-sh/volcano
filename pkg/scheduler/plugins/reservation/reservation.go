@@ -17,8 +17,9 @@ limitations under the License.
 package reservation
 
 import (
-	"k8s.io/klog"
 	"time"
+
+	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -127,7 +128,7 @@ func (rp *reservationPlugin) getUnlockedNodesWithMaxIdle(ssn *framework.Session)
 				break
 			}
 		}
-		if !hasLocked && (maxIdleNode == nil || maxIdleNode.Idle.LessEqual(node.Idle)) {
+		if !hasLocked && (maxIdleNode == nil || maxIdleNode.Idle.LessEqual(node.Idle, api.Zero)) {
 			maxIdleNode = node
 		}
 	}

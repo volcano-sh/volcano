@@ -38,8 +38,13 @@ var (
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(SchemeGroupVersion,
 		&KubeSchedulerConfiguration{},
-		&Policy{},
+		&DefaultPreemptionArgs{},
+		&InterPodAffinityArgs{},
+		&NodeResourcesFitArgs{},
+		&PodTopologySpreadArgs{},
+		&VolumeBindingArgs{},
+		&NodeResourcesBalancedAllocationArgs{},
+		&NodeAffinityArgs{},
 	)
-	scheme.AddKnownTypes(schema.GroupVersion{Group: "", Version: runtime.APIVersionInternal}, &Policy{})
 	return nil
 }

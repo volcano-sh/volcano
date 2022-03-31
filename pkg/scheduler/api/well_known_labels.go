@@ -27,4 +27,16 @@ const (
 	PredicateTime = "volcano.sh/predicate-time"
 	// GPUIndex is the key of gpu index
 	GPUIndex = "volcano.sh/gpu-index"
+
+	// OversubscriptionNode is the key of node oversubscription
+	OversubscriptionNode = "volcano.sh/oversubscription"
+	// OversubscriptionCPU is the key of cpu oversubscription
+	OversubscriptionCPU = "volcano.sh/oversubscription-cpu"
+	// OversubscriptionMemory is the key of memory oversubscription
+	OversubscriptionMemory = "volcano.sh/oversubscription-memory"
+	// OfflineJobEvicting node will not schedule pod due to offline job evicting
+	OfflineJobEvicting = "volcano.sh/offline-job-evicting"
+
+	// topologyDecisionAnnotation is the key of topology decision about pod request resource
+	topologyDecisionAnnotation = "volcano.sh/topology-decision"
 )

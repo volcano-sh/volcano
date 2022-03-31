@@ -18,7 +18,7 @@ This document gives a brief overview of the Volcano community roles with the req
 ## Member
 
 Members are active participants in the community who contribute by authoring PRs,
-reviewing issues/PRs or participate in community discussions on slack/mailing list.
+reviewing issues/PRs or participating in community discussions on slack/mailing list.
 
 
 ### Requirements
@@ -113,7 +113,7 @@ Has deep understanding of Volcano and related domain and facilitates major agree
 - Participate & Drive design/development of multiple features
 
 
-**Note :** These roles are applicable only for Volcano github organization and repositories. Currently Volcano doesn't have a formal process for review and acceptance into these roles. We will come-up with a process soon.
+**Note :** These roles are applicable only for Volcano github organization and repositories. Currently, Volcano doesn't have a formal process for review and acceptance into these roles. We will come up with a process soon.
 
 
 [two-factor authentication]: https://help.github.com/articles/about-two-factor-authentication

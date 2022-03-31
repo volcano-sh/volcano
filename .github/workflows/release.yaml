@@ -1,17 +1,19 @@
 name: daily release
 on:
   schedule:
-  # run at every 12nd minute past 0:00
-  - cron:  '*/12 0 * * *'
+  # Runs at 0:00 and 12:00 UTC every day
+  - cron:  '0 */12 * * *'
 
 jobs:
   docker:
     runs-on: ubuntu-latest
+    env:
+      GOPATH: /home/runner/work/${{ github.repository }}
     steps:
       - name: Install Go
         uses: actions/setup-go@v2
         with:
-          go-version: 1.14.x
+          go-version: 1.17.x
 
       - name: Install musl
         run: |
@@ -46,5 +48,8 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Daily Release
-        run: make TAG=latest RELEASE_VER=latest CC=/usr/local/musl/bin/musl-gcc release
+        run: make TAG=latest RELEASE_VER=latest DOCKER_USERNAME=${{ secrets.DOCKERHUB_USERNAME }} DOCKER_PASSWORD=${{ secrets.DOCKERHUB_TOKEN }} CC=/usr/local/musl/bin/musl-gcc release
         working-directory: ./src/github.com/${{ github.repository }}
+
+      - name: Loginout DockerHub
+        run: docker logout

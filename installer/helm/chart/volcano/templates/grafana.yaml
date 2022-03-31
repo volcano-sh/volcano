@@ -70,6 +70,16 @@ spec:
       containers:
       - name: grafana
         image: grafana/grafana:latest
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 10
         ports:
         - name: grafana
           containerPort: 3000

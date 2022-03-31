@@ -17,7 +17,7 @@ limitations under the License.
 package api
 
 import (
-	"volcano.sh/volcano/pkg/apis/scheduling"
+	"volcano.sh/apis/pkg/apis/scheduling"
 )
 
 // PodGroupPhase is the phase of a pod group at the current time.
@@ -35,4 +35,11 @@ type PodGroup struct {
 
 	// Version represents the version of PodGroup
 	Version string
+}
+
+func (pg *PodGroup) Clone() *PodGroup {
+	return &PodGroup{
+		PodGroup: *pg.PodGroup.DeepCopy(),
+		Version:  pg.Version,
+	}
 }

@@ -22,7 +22,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
-	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
@@ -41,7 +41,6 @@ func (cc *jobcontroller) pluginOnPodCreate(job *batch.Job, pod *v1.Pod) error {
 			klog.Errorf("Failed to process on pod create plugin %s, err %v.", name, err)
 			return err
 		}
-
 	}
 	return nil
 }
@@ -63,7 +62,6 @@ func (cc *jobcontroller) pluginOnJobAdd(job *batch.Job) error {
 			klog.Errorf("Failed to process on job add plugin %s, err %v.", name, err)
 			return err
 		}
-
 	}
 
 	return nil
@@ -86,7 +84,6 @@ func (cc *jobcontroller) pluginOnJobDelete(job *batch.Job) error {
 			klog.Errorf("failed to process on job delete plugin %s, err %v.", name, err)
 			return err
 		}
-
 	}
 
 	return nil
@@ -109,7 +106,6 @@ func (cc *jobcontroller) pluginOnJobUpdate(job *batch.Job) error {
 			klog.Errorf("Failed to process on job update plugin %s, err %v.", name, err)
 			return err
 		}
-
 	}
 
 	return nil

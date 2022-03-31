@@ -22,7 +22,7 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
 
 func TestCreatePatchExecution(t *testing.T) {
@@ -137,6 +137,10 @@ func TestCreatePatchExecution(t *testing.T) {
 		if aTask.Name != task.Name {
 			t.Errorf("testCase '%s's expected patch operation with value %v, but got %v",
 				testCase.Name, testCase.operation.Value, ret.Value)
+		}
+		if aTask.MaxRetry != defaultMaxRetry {
+			t.Errorf("testCase '%s's expected patch 'task.MaxRetry' with value %v, but got %v",
+				testCase.Name, defaultMaxRetry, aTask.MaxRetry)
 		}
 	}
 

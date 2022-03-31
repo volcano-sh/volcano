@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2021 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,20 +19,22 @@ package jobseq
 import (
 	"context"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+
+	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
 var _ = Describe("TensorFlow E2E Test", func() {
 	It("Will Start in pending state and goes through other phases to get complete phase", func() {
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
 
 		jobName := "tensorflow-dist-mnist"
 
@@ -42,7 +44,7 @@ var _ = Describe("TensorFlow E2E Test", func() {
 			},
 			Spec: vcbatch.JobSpec{
 				MinAvailable:  int32(3),
-				SchedulerName: schedulerName,
+				SchedulerName: e2eutil.SchedulerName,
 				Plugins: map[string][]string{
 					"svc": {},
 					"env": {},
@@ -67,7 +69,7 @@ var _ = Describe("TensorFlow E2E Test", func() {
 											"-c",
 											"PS_HOST=`cat /etc/volcano/ps.host | sed 's/$/&:2222/g' | sed 's/^/\"/;s/$/\"/' | tr \"\n\" \",\"`; WORKER_HOST=`cat /etc/volcano/worker.host | sed 's/$/&:2222/g' | sed 's/^/\"/;s/$/\"/' | tr \"\n\" \",\"`; export TF_CONFIG={\\\"cluster\\\":{\\\"ps\\\":[${PS_HOST}],\\\"worker\\\":[${WORKER_HOST}]},\\\"task\\\":{\\\"type\\\":\\\"ps\\\",\\\"index\\\":${VK_TASK_INDEX}},\\\"environment\\\":\\\"cloud\\\"}; echo ${TF_CONFIG}; python /var/tf_dist_mnist/dist_mnist.py --train_steps 1000",
 										},
-										Image: defaultTFImage,
+										Image: e2eutil.DefaultTFImage,
 										Name:  "tensorflow",
 										Ports: []v1.ContainerPort{
 											{
@@ -99,7 +101,7 @@ var _ = Describe("TensorFlow E2E Test", func() {
 											"-c",
 											"PS_HOST=`cat /etc/volcano/ps.host | sed 's/$/&:2222/g' | sed 's/^/\"/;s/$/\"/' | tr \"\n\" \",\"`; WORKER_HOST=`cat /etc/volcano/worker.host | sed 's/$/&:2222/g' | sed 's/^/\"/;s/$/\"/' | tr \"\n\" \",\"`; export TF_CONFIG={\\\"cluster\\\":{\\\"ps\\\":[${PS_HOST}],\\\"worker\\\":[${WORKER_HOST}]},\\\"task\\\":{\\\"type\\\":\\\"worker\\\",\\\"index\\\":${VK_TASK_INDEX}},\\\"environment\\\":\\\"cloud\\\"}; echo ${TF_CONFIG}; python /var/tf_dist_mnist/dist_mnist.py --train_steps 1000",
 										},
-										Image: defaultTFImage,
+										Image: e2eutil.DefaultTFImage,
 										Name:  "tensorflow",
 										Ports: []v1.ContainerPort{
 											{
@@ -116,10 +118,10 @@ var _ = Describe("TensorFlow E2E Test", func() {
 			},
 		}
 
-		created, err := ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+		created, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitJobStates(ctx, created, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Completed}, twoMinute)
+		err = e2eutil.WaitJobStates(ctx, created, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Completed}, e2eutil.FiveMinute)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

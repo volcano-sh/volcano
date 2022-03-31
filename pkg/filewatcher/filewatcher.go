@@ -18,7 +18,7 @@ package filewatcher
 
 import "github.com/fsnotify/fsnotify"
 
-// FileWatcher is an interface watching the underlying OS file pach.
+// FileWatcher is an interface watching the underlying OS file path.
 type FileWatcher interface {
 	Events() chan fsnotify.Event
 	Errors() chan error
@@ -44,7 +44,6 @@ func NewFileWatcher(path string) (FileWatcher, error) {
 	return &fileWatcher{
 		watcher: watcher,
 	}, nil
-
 }
 
 // Events returns the event channel.

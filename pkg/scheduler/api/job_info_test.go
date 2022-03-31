@@ -22,6 +22,10 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+
+	"volcano.sh/apis/pkg/apis/scheduling"
+	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 func jobInfoEqual(l, r *JobInfo) bool {
@@ -75,7 +79,8 @@ func TestAddTaskInfo(t *testing.T) {
 						case01Task4.UID: case01Task4,
 					},
 				},
-				NodesFitErrors: make(map[TaskID]*FitErrors),
+				NodesFitErrors:   make(map[TaskID]*FitErrors),
+				TaskMinAvailable: make(map[TaskID]int32),
 			},
 		},
 	}
@@ -140,7 +145,8 @@ func TestDeleteTaskInfo(t *testing.T) {
 					Pending: {case01Task1.UID: case01Task1},
 					Running: {case01Task3.UID: case01Task3},
 				},
-				NodesFitErrors: make(map[TaskID]*FitErrors),
+				NodesFitErrors:   make(map[TaskID]*FitErrors),
+				TaskMinAvailable: make(map[TaskID]int32),
 			},
 		},
 		{
@@ -164,7 +170,8 @@ func TestDeleteTaskInfo(t *testing.T) {
 						case02Task3.UID: case02Task3,
 					},
 				},
-				NodesFitErrors: make(map[TaskID]*FitErrors),
+				NodesFitErrors:   make(map[TaskID]*FitErrors),
+				TaskMinAvailable: make(map[TaskID]int32),
 			},
 		},
 	}
@@ -185,6 +192,99 @@ func TestDeleteTaskInfo(t *testing.T) {
 		if !jobInfoEqual(ps, test.expected) {
 			t.Errorf("podset info %d: \n expected: %v, \n got: %v \n",
 				i, test.expected, ps)
+		}
+	}
+}
+
+func TestTaskSchedulingReason(t *testing.T) {
+	t1 := buildPod("ns1", "task-1", "", v1.PodPending, buildResourceList("1", "1G"), nil, make(map[string]string))
+	t2 := buildPod("ns1", "task-2", "", v1.PodPending, buildResourceList("1", "1G"), nil, make(map[string]string))
+	t3 := buildPod("ns1", "task-3", "node1", v1.PodPending, buildResourceList("1", "1G"), nil, make(map[string]string))
+	t4 := buildPod("ns1", "task-4", "node2", v1.PodPending, buildResourceList("1", "1G"), nil, make(map[string]string))
+	t5 := buildPod("ns1", "task-5", "node3", v1.PodPending, buildResourceList("1", "1G"), nil, make(map[string]string))
+	t6 := buildPod("ns1", "task-6", "", v1.PodPending, buildResourceList("1", "1G"), nil, make(map[string]string))
+
+	tests := []struct {
+		desc     string
+		pods     []*v1.Pod
+		jobid    JobID
+		nodefes  map[TaskID]*FitErrors
+		expected map[types.UID]string
+	}{
+		{
+			desc:  "task3 ~ 5 are schedulable",
+			pods:  []*v1.Pod{t1, t2, t3, t4, t5, t6},
+			jobid: JobID("case1"),
+			nodefes: map[TaskID]*FitErrors{
+				TaskID(t6.UID): {
+					nodes: map[string]*FitError{
+						"node1": {Reasons: []string{NodePodNumberExceeded}},
+						"node2": {Reasons: []string{NodeResourceFitFailed}},
+						"node3": {Reasons: []string{NodeResourceFitFailed}},
+					},
+				},
+			},
+			expected: map[types.UID]string{
+				"pg":   "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 1 Unschedulable, 2 Undetermined, 3 Schedulable",
+				t1.UID: "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 1 Unschedulable, 2 Undetermined, 3 Schedulable",
+				t2.UID: "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 1 Unschedulable, 2 Undetermined, 3 Schedulable",
+				t3.UID: "Pod ns1/task-3 can possibly be assigned to node1",
+				t4.UID: "Pod ns1/task-4 can possibly be assigned to node2",
+				t5.UID: "Pod ns1/task-5 can possibly be assigned to node3",
+				t6.UID: "all nodes are unavailable: 1 node(s) pod number exceeded, 2 node(s) resource fit failed.",
+			},
+		},
+	}
+
+	for i, test := range tests {
+		job := NewJobInfo(test.jobid)
+		pg := scheduling.PodGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "ns1",
+				Name:      "pg1",
+			},
+			Spec: scheduling.PodGroupSpec{
+				MinMember: int32(len(test.pods)),
+			},
+		}
+		for _, pod := range test.pods {
+			// set pod group
+			pod.Annotations = map[string]string{
+				schedulingv2.KubeGroupNameAnnotationKey: pg.Name,
+			}
+
+			// add TaskInfo
+			ti := NewTaskInfo(pod)
+			job.AddTaskInfo(ti)
+
+			// pod is schedulable
+			if len(pod.Spec.NodeName) > 0 {
+				ti.LastTransaction = &TransactionContext{
+					NodeName: pod.Spec.NodeName,
+					Status:   Allocated,
+				}
+			}
+		}
+		// complete job
+		job.SetPodGroup(&PodGroup{PodGroup: pg})
+		job.NodesFitErrors = test.nodefes
+		job.TaskStatusIndex = map[TaskStatus]tasksMap{Pending: {}}
+		for _, task := range job.Tasks {
+			task.Status = Pending
+			job.TaskStatusIndex[Pending][task.UID] = task
+		}
+		job.JobFitErrors = job.FitError()
+
+		// assert
+		for uid, exp := range test.expected {
+			msg := job.JobFitErrors
+			if uid != "pg" {
+				_, msg = job.TaskSchedulingReason(TaskID(uid))
+			}
+			t.Logf("case #%d, task %v, result: %s", i, uid, msg)
+			if msg != exp {
+				t.Errorf("[x] case #%d, task %v, expected: %s, got: %s", i, uid, exp, msg)
+			}
 		}
 	}
 }

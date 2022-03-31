@@ -3,19 +3,23 @@ package drf
 import (
 	"flag"
 	"fmt"
+	"reflect"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
+
+	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
-	schedulingv1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -48,12 +52,20 @@ func TestHDRF(t *testing.T) {
 	klog.InitFlags(nil)
 	flag.Set("v", "4")
 	flag.Set("alsologtostderr", "true")
+	var tmp *cache.SchedulerCache
+	patches := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "AddBindTask", func(scCache *cache.SchedulerCache, task *api.TaskInfo) error {
+		scCache.Binder.Bind(nil, []*api.TaskInfo{task})
+		return nil
+	})
+	defer patches.Reset()
+
 	s := options.NewServerOption()
 	s.MinNodesToFind = 100
 	s.PercentageOfNodesToFind = 100
 	s.RegisterOptions()
 
 	framework.RegisterPluginBuilder(PluginName, New)
+	framework.RegisterPluginBuilder("proportion", proportion.New)
 	defer framework.CleanupPluginBuilders()
 
 	tests := []struct {
@@ -238,6 +250,9 @@ func TestHDRF(t *testing.T) {
 				Spec: schedulingv1.PodGroupSpec{
 					Queue: pgSpec.queue,
 				},
+				Status: schedulingv1.PodGroupStatus{
+					Phase: schedulingv1.PodGroupInqueue,
+				},
 			})
 		}
 		trueValue := true
@@ -249,6 +264,12 @@ func TestHDRF(t *testing.T) {
 						EnabledHierarchy:  &trueValue,
 						EnabledQueueOrder: &trueValue,
 						EnabledJobOrder:   &trueValue,
+					},
+					{
+						Name:               "proportion",
+						EnabledJobEnqueued: &trueValue,
+						EnabledQueueOrder:  &trueValue,
+						EnabledReclaimable: &trueValue,
 					},
 				},
 			},

@@ -1,3 +1,19 @@
+/*
+ Copyright 2021 The Volcano Authors.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+*/
+
 package reserve
 
 import (
@@ -16,15 +32,15 @@ func New() *Action {
 }
 
 // Name returns the action name
-func (alloc *Action) Name() string {
+func (reserve *Action) Name() string {
 	return "reserve"
 }
 
 // Initialize inits the action
-func (alloc *Action) Initialize() {}
+func (reserve *Action) Initialize() {}
 
 // Execute selects a node which is not locked and has the most idle resource
-func (alloc *Action) Execute(ssn *framework.Session) {
+func (reserve *Action) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("Enter Reserve ...")
 	defer klog.V(3).Infof("Leaving Reserve ...")
 	if util.Reservation.TargetJob == nil {
@@ -33,7 +49,18 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	}
 	// if target job has not been scheduled, select a locked node for it
 	// else reset target job and locked nodes
-	util.Reservation.TargetJob = ssn.Jobs[util.Reservation.TargetJob.UID]
+	targetJob := ssn.Jobs[util.Reservation.TargetJob.UID]
+	if targetJob == nil {
+		// targetJob is deleted
+		klog.V(3).Infof("Target Job has been deleted. Reset target job")
+		util.Reservation.TargetJob = nil
+		for node := range util.Reservation.LockedNodes {
+			delete(util.Reservation.LockedNodes, node)
+		}
+		return
+	}
+
+	util.Reservation.TargetJob = targetJob
 
 	if !util.Reservation.TargetJob.Ready() {
 		ssn.ReservedNodes()
@@ -47,4 +74,4 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 }
 
 // UnInitialize releases resource which are not useful.
-func (alloc *Action) UnInitialize() {}
+func (reserve *Action) UnInitialize() {}

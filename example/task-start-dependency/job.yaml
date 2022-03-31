@@ -1,0 +1,63 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: job
+spec:
+  schedulerName: volcano
+  queue: default
+  minAvailable: 1
+  tasks:
+    - replicas: 1
+      name: "job-nginx1"
+      template:
+        metadata:
+          name: nginx1
+        spec:
+          nodeSelector:
+            kubernetes.io/os: linux
+          containers:
+            - image: nginx
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "100m" 
+          restartPolicy: OnFailure
+    - replicas: 5
+      name: "job-nginx2"
+      template:
+        metadata:
+          name: nginx2
+        spec:
+          nodeSelector:
+            kubernetes.io/os: linux
+          containers:
+            - image: nginx
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "100m"
+          restartPolicy: OnFailure
+      dependsOn:
+        name: 
+        - "job-nginx1"
+    - replicas: 5
+      name: "job-nginx3"
+      template:
+        metadata:
+          name: nginx3
+        spec:
+          nodeSelector:
+            kubernetes.io/os: linux
+          containers:
+            - image: nginx
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "100m"
+          restartPolicy: OnFailure
+      dependsOn:
+        name: 
+        - "job-nginx2"

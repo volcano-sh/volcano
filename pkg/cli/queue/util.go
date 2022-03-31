@@ -22,15 +22,15 @@ import (
 	"os"
 	"strings"
 
-	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/helpers"
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	// Initialize client auth plugin.
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+
+	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	"volcano.sh/apis/pkg/apis/helpers"
+	"volcano.sh/apis/pkg/client/clientset/versioned"
 )
 
 func homeDir() string {

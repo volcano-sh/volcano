@@ -19,9 +19,9 @@ package apis
 import (
 	"fmt"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 
-	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
 
 //JobInfo struct.
@@ -65,7 +65,7 @@ func (ji *JobInfo) SetJob(job *batch.Job) {
 func (ji *JobInfo) AddPod(pod *v1.Pod) error {
 	taskName, found := pod.Annotations[batch.TaskSpecKey]
 	if !found {
-		return fmt.Errorf("failed to taskName of Pod <%s/%s>",
+		return fmt.Errorf("failed to find taskName of Pod <%s/%s>",
 			pod.Namespace, pod.Name)
 	}
 

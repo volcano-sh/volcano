@@ -29,9 +29,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/rest"
 
-	vcbus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/helpers"
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
+	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	"volcano.sh/apis/pkg/apis/helpers"
+	"volcano.sh/apis/pkg/client/clientset/versioned"
 )
 
 func homeDir() string {
@@ -106,9 +106,9 @@ func HumanDuration(d time.Duration) string {
 	// Allow deviation no more than 2 seconds(excluded) to tolerate machine time
 	// inconsistence, it can be considered as almost now.
 	if seconds := int(d.Seconds()); seconds < -1 {
-		return fmt.Sprintf("<invalid>")
+		return "<invalid>"
 	} else if seconds < 0 {
-		return fmt.Sprintf("0s")
+		return "0s"
 	} else if seconds < 60*2 {
 		return fmt.Sprintf("%ds", seconds)
 	}

@@ -28,10 +28,10 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
 
-	batch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	bus "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	"volcano.sh/volcano/pkg/apis/helpers"
-	scheduling "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	bus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	"volcano.sh/apis/pkg/apis/helpers"
+	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobcache "volcano.sh/volcano/pkg/controllers/cache"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
@@ -250,20 +250,25 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 
 	event := bus.OutOfSyncEvent
 	var exitCode int32
-	if oldPod.Status.Phase != v1.PodFailed &&
-		newPod.Status.Phase == v1.PodFailed {
-		event = bus.PodFailedEvent
-		// TODO: currently only one container pod is supported by volcano
-		// Once multi containers pod is supported, update accordingly.
-		if len(newPod.Status.ContainerStatuses) > 0 && newPod.Status.ContainerStatuses[0].State.Terminated != nil {
-			exitCode = newPod.Status.ContainerStatuses[0].State.Terminated.ExitCode
-		}
-	}
 
-	if oldPod.Status.Phase != v1.PodSucceeded &&
-		newPod.Status.Phase == v1.PodSucceeded {
-		if cc.cache.TaskCompleted(jobcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
+	switch newPod.Status.Phase {
+	case v1.PodFailed:
+		if oldPod.Status.Phase != v1.PodFailed {
+			event = bus.PodFailedEvent
+			// TODO: currently only one container pod is supported by volcano
+			// Once multi containers pod is supported, update accordingly.
+			if len(newPod.Status.ContainerStatuses) > 0 && newPod.Status.ContainerStatuses[0].State.Terminated != nil {
+				exitCode = newPod.Status.ContainerStatuses[0].State.Terminated.ExitCode
+			}
+		}
+	case v1.PodSucceeded:
+		if oldPod.Status.Phase != v1.PodSucceeded &&
+			cc.cache.TaskCompleted(jobcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
 			event = bus.TaskCompletedEvent
+		}
+	case v1.PodPending, v1.PodRunning:
+		if cc.cache.TaskFailed(jobcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
+			event = bus.TaskFailedEvent
 		}
 	}
 
@@ -358,7 +363,6 @@ func (cc *jobcontroller) recordJobEvent(namespace, name string, event batch.JobE
 		return
 	}
 	cc.recorder.Event(job.Job, v1.EventTypeNormal, string(event), message)
-
 }
 
 func (cc *jobcontroller) handleCommands() {

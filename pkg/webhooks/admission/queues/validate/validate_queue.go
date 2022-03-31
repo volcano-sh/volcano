@@ -19,16 +19,16 @@ package validate
 import (
 	"context"
 	"fmt"
+	admissionv1 "k8s.io/api/admission/v1"
 	"strconv"
 	"strings"
 
-	"k8s.io/api/admission/v1beta1"
-	whv1beta1 "k8s.io/api/admissionregistration/v1beta1"
+	whv1 "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/klog"
 
-	schedulingv1beta1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -44,13 +44,13 @@ var service = &router.AdmissionService{
 
 	Config: config,
 
-	ValidatingConfig: &whv1beta1.ValidatingWebhookConfiguration{
-		Webhooks: []whv1beta1.ValidatingWebhook{{
+	ValidatingConfig: &whv1.ValidatingWebhookConfiguration{
+		Webhooks: []whv1.ValidatingWebhook{{
 			Name: "validatequeue.volcano.sh",
-			Rules: []whv1beta1.RuleWithOperations{
+			Rules: []whv1.RuleWithOperations{
 				{
-					Operations: []whv1beta1.OperationType{whv1beta1.Create, whv1beta1.Update, whv1beta1.Delete},
-					Rule: whv1beta1.Rule{
+					Operations: []whv1.OperationType{whv1.Create, whv1.Update, whv1.Delete},
+					Rule: whv1.Rule{
 						APIGroups:   []string{schedulingv1beta1.SchemeGroupVersion.Group},
 						APIVersions: []string{schedulingv1beta1.SchemeGroupVersion.Version},
 						Resources:   []string{"queues"},
@@ -64,7 +64,7 @@ var service = &router.AdmissionService{
 var config = &router.AdmissionServiceConfig{}
 
 // AdmitQueues is to admit queues and return response.
-func AdmitQueues(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
+func AdmitQueues(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	klog.V(3).Infof("Admitting %s queue %s.", ar.Request.Operation, ar.Request.Name)
 
 	queue, err := schema.DecodeQueue(ar.Request.Object, ar.Request.Resource)
@@ -73,9 +73,9 @@ func AdmitQueues(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	}
 
 	switch ar.Request.Operation {
-	case v1beta1.Create, v1beta1.Update:
+	case admissionv1.Create, admissionv1.Update:
 		err = validateQueue(queue)
-	case v1beta1.Delete:
+	case admissionv1.Delete:
 		err = validateQueueDeleting(ar.Request.Name)
 	default:
 		return util.ToAdmissionResponse(fmt.Errorf("invalid operation `%s`, "+
@@ -83,13 +83,13 @@ func AdmitQueues(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	}
 
 	if err != nil {
-		return &v1beta1.AdmissionResponse{
+		return &admissionv1.AdmissionResponse{
 			Allowed: false,
 			Result:  &metav1.Status{Message: err.Error()},
 		}
 	}
 
-	return &v1beta1.AdmissionResponse{
+	return &admissionv1.AdmissionResponse{
 		Allowed: true,
 	}
 }
@@ -150,7 +150,6 @@ func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *fie
 					schedulingv1beta1.KubeHierarchyAnnotationKey,
 					err,
 				)))
-
 		}
 		for _, queueInTree := range queueList.Items {
 			hierarchyInTree := queueInTree.Annotations[schedulingv1beta1.KubeHierarchyAnnotationKey]
@@ -159,10 +158,8 @@ func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *fie
 				return append(errs, field.Invalid(fldPath, hierarchy,
 					fmt.Sprintf("%s is not allowed to be in the sub path of %s of queue %s",
 						hierarchy, hierarchyInTree, queueInTree.Name)))
-
 			}
 		}
-
 	}
 	return errs
 }
@@ -193,7 +190,7 @@ func validateWeightOfQueue(value int32, fldPath *field.Path) field.ErrorList {
 	if value > 0 {
 		return errs
 	}
-	return append(errs, field.Invalid(fldPath, value, fmt.Sprint("queue weight must be a positive integer")))
+	return append(errs, field.Invalid(fldPath, value, "queue weight must be a positive integer"))
 }
 
 func validateQueueDeleting(queue string) error {
@@ -201,14 +198,9 @@ func validateQueueDeleting(queue string) error {
 		return fmt.Errorf("`%s` queue can not be deleted", "default")
 	}
 
-	q, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), queue, metav1.GetOptions{})
+	_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), queue, metav1.GetOptions{})
 	if err != nil {
 		return err
-	}
-
-	if q.Status.State != schedulingv1beta1.QueueStateClosed {
-		return fmt.Errorf("only queue with state `%s` can be deleted, queue `%s` state is `%s`",
-			schedulingv1beta1.QueueStateClosed, q.Name, q.Status.State)
 	}
 
 	return nil

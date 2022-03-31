@@ -26,7 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
-	schedulingv1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -43,12 +43,12 @@ func TestArguments(t *testing.T) {
 	defer framework.CleanupPluginBuilders()
 
 	arguments := framework.Arguments{
-		"binpack.weight":                    "10",
-		"binpack.cpu":                       "5",
-		"binpack.memory":                    "2",
+		"binpack.weight":                    10,
+		"binpack.cpu":                       5,
+		"binpack.memory":                    2,
 		"binpack.resources":                 "nvidia.com/gpu, example.com/foo",
-		"binpack.resources.nvidia.com/gpu":  "7",
-		"binpack.resources.example.com/foo": "-3",
+		"binpack.resources.nvidia.com/gpu":  7,
+		"binpack.resources.example.com/foo": -3,
 	}
 
 	builder, ok := framework.GetPluginBuilder(PluginName)
@@ -154,12 +154,12 @@ func TestNode(t *testing.T) {
 				n1, n2, n3,
 			},
 			arguments: framework.Arguments{
-				"binpack.weight":                    "10",
-				"binpack.cpu":                       "2",
-				"binpack.memory":                    "3",
+				"binpack.weight":                    10,
+				"binpack.cpu":                       2,
+				"binpack.memory":                    3,
 				"binpack.resources":                 "nvidia.com/gpu, example.com/foo",
-				"binpack.resources.nvidia.com/gpu":  "7",
-				"binpack.resources.example.com/foo": "8",
+				"binpack.resources.nvidia.com/gpu":  7,
+				"binpack.resources.example.com/foo": 8,
 			},
 			expected: map[string]map[string]float64{
 				"c1/p1": {
@@ -199,11 +199,11 @@ func TestNode(t *testing.T) {
 				n1, n2, n3,
 			},
 			arguments: framework.Arguments{
-				"binpack.weight":                   "1",
-				"binpack.cpu":                      "1",
-				"binpack.memory":                   "1",
+				"binpack.weight":                   1,
+				"binpack.cpu":                      1,
+				"binpack.memory":                   1,
 				"binpack.resources":                "nvidia.com/gpu",
-				"binpack.resources.nvidia.com/gpu": "23",
+				"binpack.resources.nvidia.com/gpu": 23,
 			},
 			expected: map[string]map[string]float64{
 				"c1/p1": {

@@ -17,6 +17,7 @@ limitations under the License.
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -24,7 +25,8 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
-	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+
+	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 // Refer k8s.io/kubernetes/pkg/scheduler/algorithm/predicates/predicates.go#GetResourceRequest.
@@ -70,6 +72,7 @@ func GetPodResourceRequest(pod *v1.Pod) *Resource {
 
 // GetPodPreemptable return volcano.sh/preemptable value for pod
 func GetPodPreemptable(pod *v1.Pod) bool {
+	// check annotaion first
 	if len(pod.Annotations) > 0 {
 		if value, found := pod.Annotations[v1beta1.PodPreemptable]; found {
 			b, err := strconv.ParseBool(value)
@@ -80,7 +83,62 @@ func GetPodPreemptable(pod *v1.Pod) bool {
 			return b
 		}
 	}
+
+	// it annotation does not exit, check label
+	if len(pod.Labels) > 0 {
+		if value, found := pod.Labels[v1beta1.PodPreemptable]; found {
+			b, err := strconv.ParseBool(value)
+			if err != nil {
+				klog.Warningf("invalid %s=%s", v1beta1.PodPreemptable, value)
+				return false
+			}
+			return b
+		}
+	}
+
 	return false
+}
+
+// GetPodRevocableZone return volcano.sh/revocable-zone value for pod/podgroup
+func GetPodRevocableZone(pod *v1.Pod) string {
+	if len(pod.Annotations) > 0 {
+		if value, found := pod.Annotations[v1beta1.RevocableZone]; found {
+			if value != "*" {
+				return ""
+			}
+			return value
+		}
+
+		if value, found := pod.Annotations[v1beta1.PodPreemptable]; found {
+			if b, err := strconv.ParseBool(value); err == nil && b {
+				return "*"
+			}
+		}
+	}
+	return ""
+}
+
+// GetPodTopologyInfo return volcano.sh/numa-topology-policy value for pod
+func GetPodTopologyInfo(pod *v1.Pod) *TopologyInfo {
+	info := TopologyInfo{
+		ResMap: make(map[int]v1.ResourceList),
+	}
+
+	if len(pod.Annotations) > 0 {
+		if value, found := pod.Annotations[v1beta1.NumaPolicyKey]; found {
+			info.Policy = value
+		}
+
+		if value, found := pod.Annotations[topologyDecisionAnnotation]; found {
+			decision := PodResourceDecision{}
+			err := json.Unmarshal([]byte(value), &decision)
+			if err == nil {
+				info.ResMap = decision.NUMAResources
+			}
+		}
+	}
+
+	return &info
 }
 
 // GetPodResourceWithoutInitContainers returns Pod's resource request, it does not contain
@@ -129,5 +187,5 @@ func AddGPUIndexPatch(id int) string {
 // RemoveGPUIndexPatch returns the patch removing GPU index
 func RemoveGPUIndexPatch() string {
 	return fmt.Sprintf(`[{"op": "remove", "path": "/metadata/annotations/%s"},`+
-		`{"op": "remove", "path": "/metadata/annotations/%s"]`, escapeJSONPointer(PredicateTime), escapeJSONPointer(GPUIndex))
+		`{"op": "remove", "path": "/metadata/annotations/%s"}]`, escapeJSONPointer(PredicateTime), escapeJSONPointer(GPUIndex))
 }

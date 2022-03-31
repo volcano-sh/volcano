@@ -19,7 +19,8 @@ package framework
 import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
+
+	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 )
 
 // ControllerOption is the main context object for the controllers.
@@ -27,7 +28,7 @@ type ControllerOption struct {
 	KubeClient            kubernetes.Interface
 	VolcanoClient         vcclientset.Interface
 	SharedInformerFactory informers.SharedInformerFactory
-	SchedulerName         string
+	SchedulerNames        []string
 	WorkerNum             uint32
 	MaxRequeueNum         int
 }

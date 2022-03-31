@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
+	"volcano.sh/apis/pkg/client/clientset/versioned"
 
 	"github.com/spf13/cobra"
 
@@ -51,7 +51,7 @@ func DeleteQueue() error {
 	}
 
 	if len(deleteQueueFlags.Name) == 0 {
-		return fmt.Errorf("Queue name must be specified")
+		return fmt.Errorf("queue name must be specified")
 	}
 
 	queueClient := versioned.NewForConfigOrDie(config)

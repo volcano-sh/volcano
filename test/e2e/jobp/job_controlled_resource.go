@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2021 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,13 +19,15 @@ package jobp
 import (
 	"context"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v12 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+
+	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
 var _ = Describe("Job E2E Test: Test Job PVCs", func() {
@@ -34,13 +36,14 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		taskName := "pvctask"
 		pvName := "job-pv-name"
 		pvcName := "job-pvc-name-exist"
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
 
 		var tt v12.HostPathType = "DirectoryOrCreate"
 
 		storageClsName := "standard"
 
+		// create pv
 		pv := v12.PersistentVolume{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: pvName,
@@ -60,12 +63,12 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 				},
 			},
 		}
-		_, err := ctx.kubeclient.CoreV1().PersistentVolumes().Create(context.TODO(), &pv, metav1.CreateOptions{})
+		_, err := ctx.Kubeclient.CoreV1().PersistentVolumes().Create(context.TODO(), &pv, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred(), "pv creation ")
 		// create pvc
 		pvc := v12.PersistentVolumeClaim{
 			ObjectMeta: metav1.ObjectMeta{
-				Namespace: ctx.namespace,
+				Namespace: ctx.Namespace,
 				Name:      pvcName,
 			},
 			Spec: v12.PersistentVolumeClaimSpec{
@@ -81,8 +84,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 				},
 			},
 		}
-
-		_, err1 := ctx.kubeclient.CoreV1().PersistentVolumeClaims(ctx.namespace).Create(context.TODO(), &pvc, metav1.CreateOptions{})
+		_, err1 := ctx.Kubeclient.CoreV1().PersistentVolumeClaims(ctx.Namespace).Create(context.TODO(), &pvc, metav1.CreateOptions{})
 		Expect(err1).NotTo(HaveOccurred(), "pvc creation")
 
 		pvSpec := &v12.PersistentVolumeClaimSpec{
@@ -95,19 +97,19 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 				v12.ReadWriteOnce,
 			},
 		}
-		job := createJob(ctx, &jobSpec{
-			namespace: ctx.namespace,
-			name:      jobName,
-			tasks: []taskSpec{
+		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+			Namespace: ctx.Namespace,
+			Name:      jobName,
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img:  defaultNginxImage,
-					req:  oneCPU,
-					min:  1,
-					rep:  1,
-					name: taskName,
+					Img:  e2eutil.DefaultNginxImage,
+					Req:  e2eutil.HalfCPU,
+					Min:  1,
+					Rep:  1,
+					Name: taskName,
 				},
 			},
-			volumes: []v1alpha1.VolumeSpec{
+			Volumes: []v1alpha1.VolumeSpec{
 				{
 					MountPath:       "/mountone",
 					VolumeClaimName: pvcName,
@@ -119,10 +121,10 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 			},
 		})
 
-		err = waitJobReady(ctx, job)
+		err = e2eutil.WaitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		job, err = ctx.vcclient.BatchV1alpha1().Jobs(ctx.namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
+		job, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(len(job.Spec.Volumes)).To(Equal(2),
@@ -135,8 +137,8 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 
 	It("Generate PodGroup and valid minResource when creating job", func() {
 		jobName := "job-name-podgroup"
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
 
 		resource := v12.ResourceList{
 			"cpu":            resource.MustParse("1000m"),
@@ -144,25 +146,25 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 			"nvidia.com/gpu": resource.MustParse("1"),
 		}
 
-		job := createJob(ctx, &jobSpec{
-			namespace: ctx.namespace,
-			name:      jobName,
-			tasks: []taskSpec{
+		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+			Namespace: ctx.Namespace,
+			Name:      jobName,
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img:   defaultNginxImage,
-					min:   1,
-					rep:   1,
-					name:  "task-1",
-					req:   resource,
-					limit: resource,
+					Img:   e2eutil.DefaultNginxImage,
+					Min:   1,
+					Rep:   1,
+					Name:  "task-1",
+					Req:   resource,
+					Limit: resource,
 				},
 				{
-					img:   defaultNginxImage,
-					min:   1,
-					rep:   1,
-					name:  "task-2",
-					req:   resource,
-					limit: resource,
+					Img:   e2eutil.DefaultNginxImage,
+					Min:   1,
+					Rep:   1,
+					Name:  "task-2",
+					Req:   resource,
+					Limit: resource,
 				},
 			},
 		})
@@ -173,10 +175,10 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 			"nvidia.com/gpu": 2,
 		}
 
-		err := waitJobStatePending(ctx, job)
+		err := e2eutil.WaitJobStatePending(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pGroup, err := ctx.vcclient.SchedulingV1beta1().PodGroups(ctx.namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
+		pGroup, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		for name, q := range *pGroup.Spec.MinResources {

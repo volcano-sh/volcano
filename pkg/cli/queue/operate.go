@@ -25,8 +25,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 
-	"volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
+	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	"volcano.sh/apis/pkg/client/clientset/versioned"
 )
 
 const (
@@ -69,7 +69,7 @@ func OperateQueue() error {
 	}
 
 	if len(operateQueueFlags.Name) == 0 {
-		return fmt.Errorf("Queue name must be specified")
+		return fmt.Errorf("queue name must be specified")
 	}
 
 	var action v1alpha1.Action
@@ -81,7 +81,7 @@ func OperateQueue() error {
 		action = v1alpha1.CloseQueueAction
 	case ActionUpdate:
 		if operateQueueFlags.Weight == 0 {
-			return fmt.Errorf("When %s queue %s, weight must be specified, "+
+			return fmt.Errorf("when %s queue %s, weight must be specified, "+
 				"the value must be greater than 0", ActionUpdate, operateQueueFlags.Name)
 		}
 
@@ -92,9 +92,9 @@ func OperateQueue() error {
 
 		return err
 	case "":
-		return fmt.Errorf("Action can not be null")
+		return fmt.Errorf("action can not be null")
 	default:
-		return fmt.Errorf("Action %s invalid, valid actions are %s, %s and %s",
+		return fmt.Errorf("action %s invalid, valid actions are %s, %s and %s",
 			operateQueueFlags.Action, ActionOpen, ActionClose, ActionUpdate)
 	}
 

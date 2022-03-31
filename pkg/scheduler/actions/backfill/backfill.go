@@ -19,7 +19,6 @@ package backfill
 import (
 	"k8s.io/klog"
 
-	"volcano.sh/volcano/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -31,21 +30,22 @@ func New() *Action {
 	return &Action{}
 }
 
-func (alloc *Action) Name() string {
+func (backfill *Action) Name() string {
 	return "backfill"
 }
 
-func (alloc *Action) Initialize() {}
+func (backfill *Action) Initialize() {}
 
-func (alloc *Action) Execute(ssn *framework.Session) {
+func (backfill *Action) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("Enter Backfill ...")
 	defer klog.V(3).Infof("Leaving Backfill ...")
 
 	// TODO (k82cn): When backfill, it's also need to balance between Queues.
 	for _, job := range ssn.Jobs {
-		if job.PodGroup.Status.Phase == scheduling.PodGroupPending {
+		if job.IsPending() {
 			continue
 		}
+
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
 			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip backfill, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
 			continue
@@ -69,13 +69,13 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					}
 
 					klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
-					if err := ssn.Allocate(task, node.Name); err != nil {
+					if err := ssn.Allocate(task, node); err != nil {
 						klog.Errorf("Failed to bind Task %v on %v in Session %v", task.UID, node.Name, ssn.UID)
 						fe.SetNodeError(node.Name, err)
 						continue
 					}
 
-					metrics.UpdateE2eSchedulingDurationByJob(job.Name, job.PodGroup.Spec.Queue, job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
+					metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 					allocated = true
 					break
 				}
@@ -83,11 +83,10 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				if !allocated {
 					job.NodesFitErrors[task.UID] = fe
 				}
-			} else {
-				// TODO (k82cn): backfill for other case.
 			}
+			// TODO (k82cn): backfill for other case.
 		}
 	}
 }
 
-func (alloc *Action) UnInitialize() {}
+func (backfill *Action) UnInitialize() {}

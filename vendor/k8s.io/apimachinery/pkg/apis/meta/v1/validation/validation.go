@@ -18,6 +18,7 @@ package validation
 
 import (
 	"fmt"
+	"regexp"
 	"unicode"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -80,6 +81,7 @@ func ValidateLabels(labels map[string]string, fldPath *field.Path) field.ErrorLi
 
 func ValidateDeleteOptions(options *metav1.DeleteOptions) field.ErrorList {
 	allErrs := field.ErrorList{}
+	//lint:file-ignore SA1019 Keep validation for deprecated OrphanDependents option until it's being removed
 	if options.OrphanDependents != nil && options.PropagationPolicy != nil {
 		allErrs = append(allErrs, field.Invalid(field.NewPath("propagationPolicy"), options.PropagationPolicy, "orphanDependents and deletionPropagation cannot be both set"))
 	}
@@ -94,17 +96,19 @@ func ValidateDeleteOptions(options *metav1.DeleteOptions) field.ErrorList {
 }
 
 func ValidateCreateOptions(options *metav1.CreateOptions) field.ErrorList {
-	return append(
-		ValidateFieldManager(options.FieldManager, field.NewPath("fieldManager")),
-		ValidateDryRun(field.NewPath("dryRun"), options.DryRun)...,
-	)
+	allErrs := field.ErrorList{}
+	allErrs = append(allErrs, ValidateFieldManager(options.FieldManager, field.NewPath("fieldManager"))...)
+	allErrs = append(allErrs, ValidateDryRun(field.NewPath("dryRun"), options.DryRun)...)
+	allErrs = append(allErrs, ValidateFieldValidation(field.NewPath("fieldValidation"), options.FieldValidation)...)
+	return allErrs
 }
 
 func ValidateUpdateOptions(options *metav1.UpdateOptions) field.ErrorList {
-	return append(
-		ValidateFieldManager(options.FieldManager, field.NewPath("fieldManager")),
-		ValidateDryRun(field.NewPath("dryRun"), options.DryRun)...,
-	)
+	allErrs := field.ErrorList{}
+	allErrs = append(allErrs, ValidateFieldManager(options.FieldManager, field.NewPath("fieldManager"))...)
+	allErrs = append(allErrs, ValidateDryRun(field.NewPath("dryRun"), options.DryRun)...)
+	allErrs = append(allErrs, ValidateFieldValidation(field.NewPath("fieldValidation"), options.FieldValidation)...)
+	return allErrs
 }
 
 func ValidatePatchOptions(options *metav1.PatchOptions, patchType types.PatchType) field.ErrorList {
@@ -121,6 +125,7 @@ func ValidatePatchOptions(options *metav1.PatchOptions, patchType types.PatchTyp
 	}
 	allErrs = append(allErrs, ValidateFieldManager(options.FieldManager, field.NewPath("fieldManager"))...)
 	allErrs = append(allErrs, ValidateDryRun(field.NewPath("dryRun"), options.DryRun)...)
+	allErrs = append(allErrs, ValidateFieldValidation(field.NewPath("fieldValidation"), options.FieldValidation)...)
 	return allErrs
 }
 
@@ -157,6 +162,18 @@ func ValidateDryRun(fldPath *field.Path, dryRun []string) field.ErrorList {
 	return allErrs
 }
 
+var allowedFieldValidationValues = sets.NewString("", metav1.FieldValidationIgnore, metav1.FieldValidationWarn, metav1.FieldValidationStrict)
+
+// ValidateFieldValidation validates that a fieldValidation query param only contains allowed values.
+func ValidateFieldValidation(fldPath *field.Path, fieldValidation string) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if !allowedFieldValidationValues.Has(fieldValidation) {
+		allErrs = append(allErrs, field.NotSupported(fldPath, fieldValidation, allowedFieldValidationValues.List()))
+	}
+	return allErrs
+
+}
+
 const UninitializedStatusUpdateErrorMsg string = `must not update status when the object is uninitialized`
 
 // ValidateTableOptions returns any invalid flags on TableOptions.
@@ -170,17 +187,100 @@ func ValidateTableOptions(opts *metav1.TableOptions) field.ErrorList {
 	return allErrs
 }
 
+const MaxSubresourceNameLength = 256
+
 func ValidateManagedFields(fieldsList []metav1.ManagedFieldsEntry, fldPath *field.Path) field.ErrorList {
 	var allErrs field.ErrorList
-	for _, fields := range fieldsList {
+	for i, fields := range fieldsList {
+		fldPath := fldPath.Index(i)
 		switch fields.Operation {
 		case metav1.ManagedFieldsOperationApply, metav1.ManagedFieldsOperationUpdate:
 		default:
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("operation"), fields.Operation, "must be `Apply` or `Update`"))
 		}
-		if fields.FieldsType != "FieldsV1" {
+		if len(fields.FieldsType) > 0 && fields.FieldsType != "FieldsV1" {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("fieldsType"), fields.FieldsType, "must be `FieldsV1`"))
+		}
+		allErrs = append(allErrs, ValidateFieldManager(fields.Manager, fldPath.Child("manager"))...)
+
+		if len(fields.Subresource) > MaxSubresourceNameLength {
+			allErrs = append(allErrs, field.TooLong(fldPath.Child("subresource"), fields.Subresource, MaxSubresourceNameLength))
 		}
 	}
 	return allErrs
+}
+
+func ValidateConditions(conditions []metav1.Condition, fldPath *field.Path) field.ErrorList {
+	var allErrs field.ErrorList
+
+	conditionTypeToFirstIndex := map[string]int{}
+	for i, condition := range conditions {
+		if _, ok := conditionTypeToFirstIndex[condition.Type]; ok {
+			allErrs = append(allErrs, field.Duplicate(fldPath.Index(i).Child("type"), condition.Type))
+		} else {
+			conditionTypeToFirstIndex[condition.Type] = i
+		}
+
+		allErrs = append(allErrs, ValidateCondition(condition, fldPath.Index(i))...)
+	}
+
+	return allErrs
+}
+
+// validConditionStatuses is used internally to check validity and provide a good message
+var validConditionStatuses = sets.NewString(string(metav1.ConditionTrue), string(metav1.ConditionFalse), string(metav1.ConditionUnknown))
+
+const (
+	maxReasonLen  = 1 * 1024
+	maxMessageLen = 32 * 1024
+)
+
+func ValidateCondition(condition metav1.Condition, fldPath *field.Path) field.ErrorList {
+	var allErrs field.ErrorList
+
+	// type is set and is a valid format
+	allErrs = append(allErrs, ValidateLabelName(condition.Type, fldPath.Child("type"))...)
+
+	// status is set and is an accepted value
+	if !validConditionStatuses.Has(string(condition.Status)) {
+		allErrs = append(allErrs, field.NotSupported(fldPath.Child("status"), condition.Status, validConditionStatuses.List()))
+	}
+
+	if condition.ObservedGeneration < 0 {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("observedGeneration"), condition.ObservedGeneration, "must be greater than or equal to zero"))
+	}
+
+	if condition.LastTransitionTime.IsZero() {
+		allErrs = append(allErrs, field.Required(fldPath.Child("lastTransitionTime"), "must be set"))
+	}
+
+	if len(condition.Reason) == 0 {
+		allErrs = append(allErrs, field.Required(fldPath.Child("reason"), "must be set"))
+	} else {
+		for _, currErr := range isValidConditionReason(condition.Reason) {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("reason"), condition.Reason, currErr))
+		}
+		if len(condition.Reason) > maxReasonLen {
+			allErrs = append(allErrs, field.TooLong(fldPath.Child("reason"), condition.Reason, maxReasonLen))
+		}
+	}
+
+	if len(condition.Message) > maxMessageLen {
+		allErrs = append(allErrs, field.TooLong(fldPath.Child("message"), condition.Message, maxMessageLen))
+	}
+
+	return allErrs
+}
+
+const conditionReasonFmt string = "[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?"
+const conditionReasonErrMsg string = "a condition reason must start with alphabetic character, optionally followed by a string of alphanumeric characters or '_,:', and must end with an alphanumeric character or '_'"
+
+var conditionReasonRegexp = regexp.MustCompile("^" + conditionReasonFmt + "$")
+
+// isValidConditionReason tests for a string that conforms to rules for condition reasons. This checks the format, but not the length.
+func isValidConditionReason(value string) []string {
+	if !conditionReasonRegexp.MatchString(value) {
+		return []string{validation.RegexError(conditionReasonErrMsg, conditionReasonFmt, "my_name", "MY_NAME", "MyName", "ReasonA,ReasonB", "ReasonA:ReasonB")}
+	}
+	return nil
 }

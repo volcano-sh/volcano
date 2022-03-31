@@ -26,9 +26,9 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/cli/util"
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
 type getFlags struct {
@@ -67,7 +67,6 @@ func InitGetFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &getQueueFlags.CommonFlags)
 
 	cmd.Flags().StringVarP(&getQueueFlags.Name, "name", "n", "", "the name of queue")
-
 }
 
 // ListQueue lists all the queue.
@@ -107,7 +106,6 @@ func PrintQueues(queues *v1beta1.QueueList, writer io.Writer) {
 			fmt.Printf("Failed to print queue command result: %s.\n", err)
 		}
 	}
-
 }
 
 // GetQueue gets a queue.

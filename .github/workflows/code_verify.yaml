@@ -1,0 +1,41 @@
+name: Code Verify
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-18.04
+    name: Verify codes, generated files
+    timeout-minutes: 40
+    env:
+      GOPATH: /home/runner/work/${{ github.repository }}
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17.x
+
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          path: ./src/github.com/${{ github.repository }}
+
+      - uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+
+      - name: Run verify test
+        run: |
+          make lint
+          make verify
+          make TAG=latest generate-yaml
+          make verify-generated-yaml
+          make unit-test
+        working-directory: ./src/github.com/${{ github.repository }}

@@ -31,9 +31,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/cli/util"
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
 type viewFlags struct {
@@ -267,7 +267,6 @@ func PrintEvents(events []coreV1.Event, writer io.Writer) {
 	} else {
 		WriteLine(writer, Level0, "Events: \t<none>\n")
 	}
-
 }
 
 // GetEvents get the job event by config.

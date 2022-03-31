@@ -22,6 +22,7 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
 // PluginName indicates name of volcano scheduler plugin.
@@ -42,7 +43,7 @@ func (pp *conformancePlugin) Name() string {
 }
 
 func (pp *conformancePlugin) OnSessionOpen(ssn *framework.Session) {
-	evictableFn := func(evictor *api.TaskInfo, evictees []*api.TaskInfo) []*api.TaskInfo {
+	evictableFn := func(evictor *api.TaskInfo, evictees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		var victims []*api.TaskInfo
 
 		for _, evictee := range evictees {
@@ -51,14 +52,13 @@ func (pp *conformancePlugin) OnSessionOpen(ssn *framework.Session) {
 			if className == scheduling.SystemClusterCritical ||
 				className == scheduling.SystemNodeCritical ||
 				evictee.Namespace == v1.NamespaceSystem {
-
 				continue
 			}
 
 			victims = append(victims, evictee)
 		}
 
-		return victims
+		return victims, util.Permit
 	}
 
 	ssn.AddPreemptableFn(pp.Name(), evictableFn)

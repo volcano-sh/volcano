@@ -19,7 +19,10 @@ package router
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
+
+	"volcano.sh/volcano/cmd/webhook-manager/app/options"
 )
 
 type AdmissionHandler func(w http.ResponseWriter, r *http.Request)
@@ -45,8 +48,11 @@ func RegisterAdmission(service *AdmissionService) error {
 	return nil
 }
 
-func ForEachAdmission(handler func(*AdmissionService)) {
-	for _, f := range admissionMap {
-		handler(f)
+func ForEachAdmission(config *options.Config, handler func(*AdmissionService)) {
+	admissions := strings.Split(strings.TrimSpace(config.EnabledAdmission), ",")
+	for _, admission := range admissions {
+		if service, found := admissionMap[admission]; found {
+			handler(service)
+		}
 	}
 }

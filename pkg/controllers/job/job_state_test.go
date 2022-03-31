@@ -19,13 +19,16 @@ package job
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
+	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	schedulingv1alpha2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
@@ -678,6 +681,12 @@ func TestPendingState_Execute(t *testing.T) {
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
 
+			patches := gomonkey.ApplyMethod(reflect.TypeOf(fakecontroller), "GetQueueInfo", func(_ *jobcontroller, _ string) (*schedulingv1alpha2.Queue, error) {
+				return &schedulingv1alpha2.Queue{}, nil
+			})
+
+			defer patches.Reset()
+
 			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error while creating Job")
@@ -1140,6 +1149,12 @@ func TestRunningState_Execute(t *testing.T) {
 
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
+
+			patches := gomonkey.ApplyMethod(reflect.TypeOf(fakecontroller), "GetQueueInfo", func(_ *jobcontroller, _ string) (*schedulingv1alpha2.Queue, error) {
+				return &schedulingv1alpha2.Queue{}, nil
+			})
+
+			defer patches.Reset()
 
 			_, err := fakecontroller.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.JobInfo.Job, metav1.CreateOptions{})
 			if err != nil {

@@ -28,9 +28,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	vcbatch "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
+	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/cli/util"
-	"volcano.sh/volcano/pkg/client/clientset/versioned"
 )
 
 type runFlags struct {
@@ -129,7 +129,7 @@ func readFile(filename string) (*vcbatch.Job, error) {
 
 	var job vcbatch.Job
 	if err := yaml.Unmarshal(file, &job); err != nil {
-		return nil, fmt.Errorf("Failed to unmarshal file, err:  %v", err)
+		return nil, fmt.Errorf("failed to unmarshal file, err:  %v", err)
 	}
 
 	return &job, nil

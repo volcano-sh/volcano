@@ -16,18 +16,21 @@ limitations under the License.
 
 package api
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // ClusterInfo is a snapshot of cluster by cache.
 type ClusterInfo struct {
-	Jobs          map[JobID]*JobInfo
-	Nodes         map[string]*NodeInfo
-	Queues        map[QueueID]*QueueInfo
-	NamespaceInfo map[NamespaceName]*NamespaceInfo
+	Jobs           map[JobID]*JobInfo
+	Nodes          map[string]*NodeInfo
+	Queues         map[QueueID]*QueueInfo
+	NamespaceInfo  map[NamespaceName]*NamespaceInfo
+	RevocableNodes map[string]*NodeInfo
+	NodeList       []string
 }
 
 func (ci ClusterInfo) String() string {
-
 	str := "Cache:\n"
 
 	if len(ci.Nodes) != 0 {
@@ -64,6 +67,10 @@ func (ci ClusterInfo) String() string {
 			str += fmt.Sprintf("\t Namespace(%s) Weight(%v)\n",
 				ns.Name, ns.Weight)
 		}
+	}
+
+	if len(ci.NodeList) != 0 {
+		str += fmt.Sprintf("NodeList: %v\n", ci.NodeList)
 	}
 
 	return str

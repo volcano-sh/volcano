@@ -34,10 +34,11 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
 
+	"volcano.sh/apis/pkg/apis/helpers"
+	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/cmd/controller-manager/app/options"
-	"volcano.sh/volcano/pkg/apis/helpers"
-	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/controllers/framework"
+	"volcano.sh/volcano/pkg/controllers/job"
 	"volcano.sh/volcano/pkg/kube"
 )
 
@@ -54,9 +55,13 @@ func Run(opt *options.ServerOption) error {
 		return err
 	}
 
-	if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-controller"); err != nil {
-		return err
+	if opt.EnableHealthz {
+		if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-controller"); err != nil {
+			return err
+		}
 	}
+
+	job.SetDetectionPeriodOfDependsOntask(opt.DetectionPeriodOfDependsOntask)
 
 	run := startControllers(config, opt)
 
@@ -113,7 +118,7 @@ func Run(opt *options.ServerOption) error {
 func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx context.Context) {
 	controllerOpt := &framework.ControllerOption{}
 
-	controllerOpt.SchedulerName = opt.SchedulerName
+	controllerOpt.SchedulerNames = opt.SchedulerNames
 	controllerOpt.WorkerNum = opt.WorkerThreads
 	controllerOpt.MaxRequeueNum = opt.MaxRequeueNum
 

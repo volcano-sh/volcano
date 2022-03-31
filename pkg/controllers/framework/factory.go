@@ -18,6 +18,7 @@ package framework
 
 import (
 	"fmt"
+
 	"k8s.io/klog"
 )
 
@@ -40,7 +41,7 @@ func RegisterController(ctrl Controller) error {
 		return fmt.Errorf("duplicated controller")
 	}
 
-	klog.Infof("Controller <%s> is registered.", ctrl.Name())
+	klog.V(3).Infof("Controller <%s> is registered.", ctrl.Name())
 	controllers[ctrl.Name()] = ctrl
 	return nil
 }

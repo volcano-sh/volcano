@@ -3,7 +3,8 @@ package elect
 
 import (
 	"k8s.io/klog"
-	"volcano.sh/volcano/pkg/apis/scheduling"
+
+	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -18,15 +19,15 @@ func New() *Action {
 }
 
 // Name returns the action name
-func (alloc *Action) Name() string {
+func (elect *Action) Name() string {
 	return "elect"
 }
 
 // Initialize inits the action
-func (alloc *Action) Initialize() {}
+func (elect *Action) Initialize() {}
 
 // Execute selects the target job which is of the highest priority and waits for the longest time.
-func (alloc *Action) Execute(ssn *framework.Session) {
+func (elect *Action) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("Enter Elect ...")
 	defer klog.V(3).Infof("Leaving Elect ...")
 
@@ -48,4 +49,4 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 }
 
 // UnInitialize releases resource which are not useful.
-func (alloc *Action) UnInitialize() {}
+func (elect *Action) UnInitialize() {}

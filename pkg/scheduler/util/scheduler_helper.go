@@ -23,12 +23,10 @@ import (
 	"math/rand"
 	"sort"
 	"sync"
-	"sync/atomic"
-
-	"k8s.io/klog"
 
 	"k8s.io/client-go/util/workqueue"
-	schedulerapi "k8s.io/kube-scheduler/extender/v1"
+	"k8s.io/klog"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -68,68 +66,9 @@ func CalculateNumOfFeasibleNodesToFind(numAllNodes int32) (numNodes int32) {
 	return numNodes
 }
 
-// PredicateNodes returns the specified number of nodes that fit a task
-func PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn) ([]*api.NodeInfo, *api.FitErrors) {
-	//var workerLock sync.Mutex
-
-	var errorLock sync.Mutex
-	fe := api.NewFitErrors()
-
-	allNodes := len(nodes)
-	if allNodes == 0 {
-		return make([]*api.NodeInfo, 0), fe
-	}
-	numNodesToFind := CalculateNumOfFeasibleNodesToFind(int32(allNodes))
-
-	//allocate enough space to avoid growing it
-	predicateNodes := make([]*api.NodeInfo, numNodesToFind)
-
-	numFoundNodes := int32(0)
-	processedNodes := int32(0)
-
-	//create a context with cancellation
-	ctx, cancel := context.WithCancel(context.Background())
-
-	checkNode := func(index int) {
-		// Check the nodes starting from where is left off in the previous scheduling cycle,
-		// to make sure all nodes have the same chance of being examined across pods.
-		node := nodes[(lastProcessedNodeIndex+index)%allNodes]
-		atomic.AddInt32(&processedNodes, 1)
-		klog.V(4).Infof("Considering Task <%v/%v> on node <%v>: <%v> vs. <%v>",
-			task.Namespace, task.Name, node.Name, task.Resreq, node.Idle)
-
-		// TODO (k82cn): Enable eCache for performance improvement.
-		if err := fn(task, node); err != nil {
-			klog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
-				task.Namespace, task.Name, node.Name, err)
-			errorLock.Lock()
-			fe.SetNodeError(node.Name, err)
-			errorLock.Unlock()
-			return
-		}
-
-		//check if the number of found nodes is more than the numNodesTofind
-		length := atomic.AddInt32(&numFoundNodes, 1)
-		if length > numNodesToFind {
-			cancel()
-			atomic.AddInt32(&numFoundNodes, -1)
-		} else {
-			predicateNodes[length-1] = node
-		}
-	}
-
-	//workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), checkNode)
-	workqueue.ParallelizeUntil(ctx, 16, allNodes, checkNode)
-
-	//processedNodes := int(numFoundNodes) + len(filteredNodesStatuses) + len(failedPredicateMap)
-	lastProcessedNodeIndex = (lastProcessedNodeIndex + int(processedNodes)) % allNodes
-	predicateNodes = predicateNodes[:numFoundNodes]
-	return predicateNodes, fe
-}
-
 // PrioritizeNodes returns a map whose key is node's score and value are corresponding nodes
 func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.BatchNodeOrderFn, mapFn api.NodeOrderMapFn, reduceFn api.NodeOrderReduceFn) map[float64][]*api.NodeInfo {
-	pluginNodeScoreMap := map[string]schedulerapi.HostPriorityList{}
+	pluginNodeScoreMap := map[string]k8sframework.NodeScoreList{}
 	nodeOrderScoreMap := map[string]float64{}
 	nodeScores := map[float64][]*api.NodeInfo{}
 	var workerLock sync.Mutex
@@ -145,10 +84,10 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 		for plugin, score := range mapScores {
 			nodeScoreMap, ok := pluginNodeScoreMap[plugin]
 			if !ok {
-				nodeScoreMap = schedulerapi.HostPriorityList{}
+				nodeScoreMap = k8sframework.NodeScoreList{}
 			}
-			hp := schedulerapi.HostPriority{}
-			hp.Host = node.Name
+			hp := k8sframework.NodeScore{}
+			hp.Name = node.Name
 			hp.Score = int64(math.Floor(score))
 			pluginNodeScoreMap[plugin] = append(nodeScoreMap, hp)
 		}
@@ -218,14 +157,20 @@ func SelectBestNode(nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
 		}
 	}
 
+	if len(bestNodes) == 0 {
+		return nil
+	}
+
 	return bestNodes[rand.Intn(len(bestNodes))]
 }
 
 // GetNodeList returns values of the map 'nodes'
-func GetNodeList(nodes map[string]*api.NodeInfo) []*api.NodeInfo {
-	result := make([]*api.NodeInfo, 0, len(nodes))
-	for _, v := range nodes {
-		result = append(result, v)
+func GetNodeList(nodes map[string]*api.NodeInfo, nodeList []string) []*api.NodeInfo {
+	result := make([]*api.NodeInfo, 0, len(nodeList))
+	for _, nodename := range nodeList {
+		if ni, ok := nodes[nodename]; ok {
+			result = append(result, ni)
+		}
 	}
 	return result
 }
@@ -241,7 +186,7 @@ func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api
 	}
 	// Every resource of the preemptor needs to be less or equal than corresponding
 	// idle resource after preemption.
-	if !preemptor.InitResreq.LessEqual(futureIdle) {
+	if !preemptor.InitResreq.LessEqual(futureIdle, api.Zero) {
 		return fmt.Errorf("not enough resources: requested <%v>, but future idle <%v>",
 			preemptor.InitResreq, futureIdle)
 	}
@@ -260,4 +205,19 @@ func NewResourceReservation() *ResourceReservation {
 		TargetJob:   nil,
 		LockedNodes: map[string]*api.NodeInfo{},
 	}
+}
+
+// GetMinInt return minimum int from vals
+func GetMinInt(vals ...int) int {
+	if len(vals) == 0 {
+		return 0
+	}
+
+	min := vals[0]
+	for _, val := range vals {
+		if val <= min {
+			min = val
+		}
+	}
+	return min
 }

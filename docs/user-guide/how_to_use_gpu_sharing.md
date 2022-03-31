@@ -4,7 +4,6 @@
 
 ### Install volcano
 
-
 #### 1. Install from source
 
 Refer to [Install Guide](../../installer/README.md) to install volcano.
@@ -39,7 +38,7 @@ data:
       - name: binpack
 ```
 
-#### 2. Install from release package.
+#### 2. Install from release package
 
 Same as above, after installed, update the scheduler configuration in `volcano-scheduler-configmap` configmap.
 
@@ -49,7 +48,7 @@ Please refer to [volcano device plugin](https://github.com/volcano-sh/devices/bl
 
 ### Verify environment is ready
 
-Check the node status, it is ok if `volcano.sh/gpu-memory` and `volcano.sh/gpu-number` are included in the allocatable resources. 
+Check the node status, it is ok if `volcano.sh/gpu-memory` and `volcano.sh/gpu-number` are included in the allocatable resources.
 
 ```shell script
 $ kubectl get node {node name} -oyaml
@@ -83,6 +82,7 @@ status:
 ### Running GPU Sharing Jobs
 
 NVIDIA GPUs can now be shared via container level resource requirements using the resource name `volcano.sh/gpu-memory`:
+
 ```shell script
 $ cat <<EOF | kubectl apply -f -
 apiVersion: v1
@@ -90,6 +90,7 @@ kind: Pod
 metadata:
   name: gpu-pod1
 spec:
+  schedulerName: volcano
   containers:
     - name: cuda-container
       image: nvidia/cuda:9.0-devel
@@ -106,6 +107,7 @@ kind: Pod
 metadata:
   name: gpu-pod2
 spec:
+  schedulerName: volcano
   containers:
     - name: cuda-container
       image: nvidia/cuda:9.0-devel
@@ -147,19 +149,15 @@ The GPU sharing workflow is depicted as below:
 
 ```yaml
 annotations:
-  volcano.sh/gpu-index: “0”
-  volcano.sh/predicate-time: “1593764466550835304”
+  volcano.sh/gpu-index: "0"
+  volcano.sh/predicate-time: "1593764466550835304"
 ```
 
 3. kubelet watches the pod bound to itself, and call allocate API to set env before running the container.
 
 ```yaml
 env:
-  NVIDIA_VISIBLE_DEVICES: “0” # GPU card index
-  VOLCANO_GPU_ALLOCATED: “1024” # GPU allocated
-  VOLCANO_GPU_TOTAL: “11178” # GPU memory of the card
+  NVIDIA_VISIBLE_DEVICES: "0" # GPU card index
+  VOLCANO_GPU_ALLOCATED: "1024" # GPU allocated
+  VOLCANO_GPU_TOTAL: "11178" # GPU memory of the card
 ```
-
-
-
-

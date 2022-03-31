@@ -19,44 +19,78 @@ package noderesources
 import (
 	"context"
 	"fmt"
+	"strings"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
-	"k8s.io/kubernetes/pkg/features"
-	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
-	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
+	"k8s.io/kubernetes/pkg/scheduler/apis/config"
+	"k8s.io/kubernetes/pkg/scheduler/apis/config/validation"
+	"k8s.io/kubernetes/pkg/scheduler/framework"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/names"
 )
 
 var _ framework.PreFilterPlugin = &Fit{}
 var _ framework.FilterPlugin = &Fit{}
+var _ framework.EnqueueExtensions = &Fit{}
+var _ framework.ScorePlugin = &Fit{}
 
 const (
 	// FitName is the name of the plugin used in the plugin registry and configurations.
-	FitName = "NodeResourcesFit"
+	FitName = names.NodeResourcesFit
 
 	// preFilterStateKey is the key in CycleState to NodeResourcesFit pre-computed data.
 	// Using the name of the plugin will likely help us avoid collisions with other plugins.
 	preFilterStateKey = "PreFilter" + FitName
 )
 
-// Fit is a plugin that checks if a node has sufficient resources.
-type Fit struct {
-	ignoredResources sets.String
+// nodeResourceStrategyTypeMap maps strategy to scorer implementation
+var nodeResourceStrategyTypeMap = map[config.ScoringStrategyType]scorer{
+	config.LeastAllocated: func(args *config.NodeResourcesFitArgs) *resourceAllocationScorer {
+		resToWeightMap := resourcesToWeightMap(args.ScoringStrategy.Resources)
+		return &resourceAllocationScorer{
+			Name:                string(config.LeastAllocated),
+			scorer:              leastResourceScorer(resToWeightMap),
+			resourceToWeightMap: resToWeightMap,
+		}
+	},
+	config.MostAllocated: func(args *config.NodeResourcesFitArgs) *resourceAllocationScorer {
+		resToWeightMap := resourcesToWeightMap(args.ScoringStrategy.Resources)
+		return &resourceAllocationScorer{
+			Name:                string(config.MostAllocated),
+			scorer:              mostResourceScorer(resToWeightMap),
+			resourceToWeightMap: resToWeightMap,
+		}
+	},
+	config.RequestedToCapacityRatio: func(args *config.NodeResourcesFitArgs) *resourceAllocationScorer {
+		resToWeightMap := resourcesToWeightMap(args.ScoringStrategy.Resources)
+		return &resourceAllocationScorer{
+			Name:                string(config.RequestedToCapacityRatio),
+			scorer:              requestedToCapacityRatioScorer(resToWeightMap, args.ScoringStrategy.RequestedToCapacityRatio.Shape),
+			resourceToWeightMap: resToWeightMap,
+		}
+	},
 }
 
-// FitArgs holds the args that are used to configure the plugin.
-type FitArgs struct {
-	// IgnoredResources is the list of resources that NodeResources fit filter
-	// should ignore.
-	IgnoredResources []string `json:"ignoredResources,omitempty"`
+// Fit is a plugin that checks if a node has sufficient resources.
+type Fit struct {
+	ignoredResources      sets.String
+	ignoredResourceGroups sets.String
+	enablePodOverhead     bool
+	handle                framework.Handle
+	resourceAllocationScorer
+}
+
+// ScoreExtensions of the Score plugin.
+func (f *Fit) ScoreExtensions() framework.ScoreExtensions {
+	return nil
 }
 
 // preFilterState computed at PreFilter and used at Filter.
 type preFilterState struct {
-	schedulernodeinfo.Resource
+	framework.Resource
 }
 
 // Clone the prefilter state.
@@ -69,7 +103,36 @@ func (f *Fit) Name() string {
 	return FitName
 }
 
-// computePodResourceRequest returns a schedulernodeinfo.Resource that covers the largest
+// NewFit initializes a new plugin and returns it.
+func NewFit(plArgs runtime.Object, h framework.Handle, fts feature.Features) (framework.Plugin, error) {
+	args, ok := plArgs.(*config.NodeResourcesFitArgs)
+	if !ok {
+		return nil, fmt.Errorf("want args to be of type NodeResourcesFitArgs, got %T", plArgs)
+	}
+	if err := validation.ValidateNodeResourcesFitArgs(nil, args); err != nil {
+		return nil, err
+	}
+
+	if args.ScoringStrategy == nil {
+		return nil, fmt.Errorf("scoring strategy not specified")
+	}
+
+	strategy := args.ScoringStrategy.Type
+	scorePlugin, exists := nodeResourceStrategyTypeMap[strategy]
+	if !exists {
+		return nil, fmt.Errorf("scoring strategy %s is not supported", strategy)
+	}
+
+	return &Fit{
+		ignoredResources:         sets.NewString(args.IgnoredResources...),
+		ignoredResourceGroups:    sets.NewString(args.IgnoredResourceGroups...),
+		enablePodOverhead:        fts.EnablePodOverhead,
+		handle:                   h,
+		resourceAllocationScorer: *scorePlugin(args),
+	}, nil
+}
+
+// computePodResourceRequest returns a framework.Resource that covers the largest
 // width in each resource dimension. Because init-containers run sequentially, we collect
 // the max in each dimension iteratively. In contrast, we sum the resource vectors for
 // regular containers since they run simultaneously.
@@ -96,7 +159,7 @@ func (f *Fit) Name() string {
 //       Memory: 1G
 //
 // Result: CPU: 3, Memory: 3G
-func computePodResourceRequest(pod *v1.Pod) *preFilterState {
+func computePodResourceRequest(pod *v1.Pod, enablePodOverhead bool) *preFilterState {
 	result := &preFilterState{}
 	for _, container := range pod.Spec.Containers {
 		result.Add(container.Resources.Requests)
@@ -108,7 +171,7 @@ func computePodResourceRequest(pod *v1.Pod) *preFilterState {
 	}
 
 	// If Overhead is being utilized, add to the total requests for the pod
-	if pod.Spec.Overhead != nil && utilfeature.DefaultFeatureGate.Enabled(features.PodOverhead) {
+	if pod.Spec.Overhead != nil && enablePodOverhead {
 		result.Add(pod.Spec.Overhead)
 	}
 
@@ -117,7 +180,7 @@ func computePodResourceRequest(pod *v1.Pod) *preFilterState {
 
 // PreFilter invoked at the prefilter extension point.
 func (f *Fit) PreFilter(ctx context.Context, cycleState *framework.CycleState, pod *v1.Pod) *framework.Status {
-	cycleState.Write(preFilterStateKey, computePodResourceRequest(pod))
+	cycleState.Write(preFilterStateKey, computePodResourceRequest(pod, f.enablePodOverhead))
 	return nil
 }
 
@@ -130,7 +193,7 @@ func getPreFilterState(cycleState *framework.CycleState) (*preFilterState, error
 	c, err := cycleState.Read(preFilterStateKey)
 	if err != nil {
 		// preFilterState doesn't exist, likely PreFilter wasn't invoked.
-		return nil, fmt.Errorf("error reading %q from cycleState: %v", preFilterStateKey, err)
+		return nil, fmt.Errorf("error reading %q from cycleState: %w", preFilterStateKey, err)
 	}
 
 	s, ok := c.(*preFilterState)
@@ -140,22 +203,34 @@ func getPreFilterState(cycleState *framework.CycleState) (*preFilterState, error
 	return s, nil
 }
 
+// EventsToRegister returns the possible events that may make a Pod
+// failed by this plugin schedulable.
+// NOTE: if in-place-update (KEP 1287) gets implemented, then PodUpdate event
+// should be registered for this plugin since a Pod update may free up resources
+// that make other Pods schedulable.
+func (f *Fit) EventsToRegister() []framework.ClusterEvent {
+	return []framework.ClusterEvent{
+		{Resource: framework.Pod, ActionType: framework.Delete},
+		{Resource: framework.Node, ActionType: framework.Add | framework.UpdateNodeAllocatable},
+	}
+}
+
 // Filter invoked at the filter extension point.
 // Checks if a node has sufficient resources, such as cpu, memory, gpu, opaque int resources etc to run a pod.
 // It returns a list of insufficient resources, if empty, then the node has all the resources requested by the pod.
-func (f *Fit) Filter(ctx context.Context, cycleState *framework.CycleState, pod *v1.Pod, nodeInfo *schedulernodeinfo.NodeInfo) *framework.Status {
+func (f *Fit) Filter(ctx context.Context, cycleState *framework.CycleState, pod *v1.Pod, nodeInfo *framework.NodeInfo) *framework.Status {
 	s, err := getPreFilterState(cycleState)
 	if err != nil {
-		return framework.NewStatus(framework.Error, err.Error())
+		return framework.AsStatus(err)
 	}
 
-	insufficientResources := fitsRequest(s, nodeInfo, f.ignoredResources)
+	insufficientResources := fitsRequest(s, nodeInfo, f.ignoredResources, f.ignoredResourceGroups)
 
 	if len(insufficientResources) != 0 {
 		// We will keep all failure reasons.
 		failureReasons := make([]string, 0, len(insufficientResources))
-		for _, r := range insufficientResources {
-			failureReasons = append(failureReasons, r.Reason)
+		for i := range insufficientResources {
+			failureReasons = append(failureReasons, insufficientResources[i].Reason)
 		}
 		return framework.NewStatus(framework.Unschedulable, failureReasons...)
 	}
@@ -174,26 +249,22 @@ type InsufficientResource struct {
 }
 
 // Fits checks if node have enough resources to host the pod.
-func Fits(pod *v1.Pod, nodeInfo *schedulernodeinfo.NodeInfo, ignoredExtendedResources sets.String) []InsufficientResource {
-	return fitsRequest(computePodResourceRequest(pod), nodeInfo, ignoredExtendedResources)
+func Fits(pod *v1.Pod, nodeInfo *framework.NodeInfo, enablePodOverhead bool) []InsufficientResource {
+	return fitsRequest(computePodResourceRequest(pod, enablePodOverhead), nodeInfo, nil, nil)
 }
 
-func fitsRequest(podRequest *preFilterState, nodeInfo *schedulernodeinfo.NodeInfo, ignoredExtendedResources sets.String) []InsufficientResource {
+func fitsRequest(podRequest *preFilterState, nodeInfo *framework.NodeInfo, ignoredExtendedResources, ignoredResourceGroups sets.String) []InsufficientResource {
 	insufficientResources := make([]InsufficientResource, 0, 4)
 
-	allowedPodNumber := nodeInfo.AllowedPodNumber()
-	if len(nodeInfo.Pods())+1 > allowedPodNumber {
+	allowedPodNumber := nodeInfo.Allocatable.AllowedPodNumber
+	if len(nodeInfo.Pods)+1 > allowedPodNumber {
 		insufficientResources = append(insufficientResources, InsufficientResource{
 			v1.ResourcePods,
 			"Too many pods",
 			1,
-			int64(len(nodeInfo.Pods())),
+			int64(len(nodeInfo.Pods)),
 			int64(allowedPodNumber),
 		})
-	}
-
-	if ignoredExtendedResources == nil {
-		ignoredExtendedResources = sets.NewString()
 	}
 
 	if podRequest.MilliCPU == 0 &&
@@ -203,50 +274,53 @@ func fitsRequest(podRequest *preFilterState, nodeInfo *schedulernodeinfo.NodeInf
 		return insufficientResources
 	}
 
-	allocatable := nodeInfo.AllocatableResource()
-	if allocatable.MilliCPU < podRequest.MilliCPU+nodeInfo.RequestedResource().MilliCPU {
+	if podRequest.MilliCPU > (nodeInfo.Allocatable.MilliCPU - nodeInfo.Requested.MilliCPU) {
 		insufficientResources = append(insufficientResources, InsufficientResource{
 			v1.ResourceCPU,
 			"Insufficient cpu",
 			podRequest.MilliCPU,
-			nodeInfo.RequestedResource().MilliCPU,
-			allocatable.MilliCPU,
+			nodeInfo.Requested.MilliCPU,
+			nodeInfo.Allocatable.MilliCPU,
 		})
 	}
-	if allocatable.Memory < podRequest.Memory+nodeInfo.RequestedResource().Memory {
+	if podRequest.Memory > (nodeInfo.Allocatable.Memory - nodeInfo.Requested.Memory) {
 		insufficientResources = append(insufficientResources, InsufficientResource{
 			v1.ResourceMemory,
 			"Insufficient memory",
 			podRequest.Memory,
-			nodeInfo.RequestedResource().Memory,
-			allocatable.Memory,
+			nodeInfo.Requested.Memory,
+			nodeInfo.Allocatable.Memory,
 		})
 	}
-	if allocatable.EphemeralStorage < podRequest.EphemeralStorage+nodeInfo.RequestedResource().EphemeralStorage {
+	if podRequest.EphemeralStorage > (nodeInfo.Allocatable.EphemeralStorage - nodeInfo.Requested.EphemeralStorage) {
 		insufficientResources = append(insufficientResources, InsufficientResource{
 			v1.ResourceEphemeralStorage,
 			"Insufficient ephemeral-storage",
 			podRequest.EphemeralStorage,
-			nodeInfo.RequestedResource().EphemeralStorage,
-			allocatable.EphemeralStorage,
+			nodeInfo.Requested.EphemeralStorage,
+			nodeInfo.Allocatable.EphemeralStorage,
 		})
 	}
 
 	for rName, rQuant := range podRequest.ScalarResources {
 		if v1helper.IsExtendedResourceName(rName) {
-			// If this resource is one of the extended resources that should be
-			// ignored, we will skip checking it.
-			if ignoredExtendedResources.Has(string(rName)) {
+			// If this resource is one of the extended resources that should be ignored, we will skip checking it.
+			// rName is guaranteed to have a slash due to API validation.
+			var rNamePrefix string
+			if ignoredResourceGroups.Len() > 0 {
+				rNamePrefix = strings.Split(string(rName), "/")[0]
+			}
+			if ignoredExtendedResources.Has(string(rName)) || ignoredResourceGroups.Has(rNamePrefix) {
 				continue
 			}
 		}
-		if allocatable.ScalarResources[rName] < rQuant+nodeInfo.RequestedResource().ScalarResources[rName] {
+		if rQuant > (nodeInfo.Allocatable.ScalarResources[rName] - nodeInfo.Requested.ScalarResources[rName]) {
 			insufficientResources = append(insufficientResources, InsufficientResource{
 				rName,
 				fmt.Sprintf("Insufficient %v", rName),
 				podRequest.ScalarResources[rName],
-				nodeInfo.RequestedResource().ScalarResources[rName],
-				allocatable.ScalarResources[rName],
+				nodeInfo.Requested.ScalarResources[rName],
+				nodeInfo.Allocatable.ScalarResources[rName],
 			})
 		}
 	}
@@ -254,14 +328,12 @@ func fitsRequest(podRequest *preFilterState, nodeInfo *schedulernodeinfo.NodeInf
 	return insufficientResources
 }
 
-// NewFit initializes a new plugin and returns it.
-func NewFit(plArgs *runtime.Unknown, _ framework.FrameworkHandle) (framework.Plugin, error) {
-	args := &FitArgs{}
-	if err := framework.DecodeInto(plArgs, args); err != nil {
-		return nil, err
+// Score invoked at the Score extension point.
+func (f *Fit) Score(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodeName string) (int64, *framework.Status) {
+	nodeInfo, err := f.handle.SnapshotSharedLister().NodeInfos().Get(nodeName)
+	if err != nil {
+		return 0, framework.AsStatus(fmt.Errorf("getting node %q from Snapshot: %w", nodeName, err))
 	}
 
-	fit := &Fit{}
-	fit.ignoredResources = sets.NewString(args.IgnoredResources...)
-	return fit, nil
+	return f.score(pod, nodeInfo)
 }

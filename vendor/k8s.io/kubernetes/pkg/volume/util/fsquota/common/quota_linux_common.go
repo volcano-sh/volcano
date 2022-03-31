@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 /*
@@ -31,11 +32,6 @@ const (
 	UnknownQuotaID QuotaID = -1
 	// BadQuotaID -- Invalid quota
 	BadQuotaID QuotaID = 0
-)
-
-const (
-	acct      = iota
-	enforcing = iota
 )
 
 // QuotaType -- type of quota to be applied

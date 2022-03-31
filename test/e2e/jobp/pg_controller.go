@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2021 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,11 +19,13 @@ package jobp
 import (
 	"context"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
 var _ = Describe("PG E2E Test: Test PG controller", func() {
@@ -31,8 +33,8 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 		rcName := "rc-volcano"
 		podName := "pod-volcano"
 		label := map[string]string{"schedulerName": "volcano"}
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
 
 		rc := &corev1.ReplicationController{
 			TypeMeta: v1.TypeMeta{
@@ -41,7 +43,7 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 			},
 			ObjectMeta: v1.ObjectMeta{
 				Name:      rcName,
-				Namespace: ctx.namespace,
+				Namespace: ctx.Namespace,
 			},
 			Spec: corev1.ReplicationControllerSpec{
 				Selector: label,
@@ -55,7 +57,7 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 						Containers: []corev1.Container{
 							{
 								Name:            podName,
-								Image:           defaultNginxImage,
+								Image:           e2eutil.DefaultNginxImage,
 								ImagePullPolicy: corev1.PullIfNotPresent,
 							},
 						},
@@ -66,17 +68,17 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 
 		pod := &corev1.Pod{
 			ObjectMeta: v1.ObjectMeta{
-				Namespace: ctx.namespace,
+				Namespace: ctx.Namespace,
 			},
 		}
 
-		_, err := ctx.kubeclient.CoreV1().ReplicationControllers(ctx.namespace).Create(context.TODO(), rc, v1.CreateOptions{})
+		_, err := ctx.Kubeclient.CoreV1().ReplicationControllers(ctx.Namespace).Create(context.TODO(), rc, v1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitPodPhase(ctx, pod, []corev1.PodPhase{corev1.PodRunning})
+		err = e2eutil.WaitPodPhase(ctx, pod, []corev1.PodPhase{corev1.PodRunning})
 		Expect(err).NotTo(HaveOccurred())
 
-		ready, err := pgIsReady(ctx, ctx.namespace)
+		ready, err := e2eutil.PodGroupIsReady(ctx, ctx.Namespace)
 		Expect(ready).Should(Equal(true))
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -85,8 +87,8 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 		rcName := "rc-default-scheduler"
 		podName := "pod-default-scheduler"
 		label := map[string]string{"a": "b"}
-		ctx := initTestContext(options{})
-		defer cleanupTestContext(ctx)
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
 
 		rc := &corev1.ReplicationController{
 			TypeMeta: v1.TypeMeta{
@@ -95,7 +97,7 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 			},
 			ObjectMeta: v1.ObjectMeta{
 				Name:      rcName,
-				Namespace: ctx.namespace,
+				Namespace: ctx.Namespace,
 			},
 			Spec: corev1.ReplicationControllerSpec{
 				Selector: label,
@@ -108,7 +110,7 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 						Containers: []corev1.Container{
 							{
 								Name:            podName,
-								Image:           defaultNginxImage,
+								Image:           e2eutil.DefaultNginxImage,
 								ImagePullPolicy: corev1.PullIfNotPresent,
 							},
 						},
@@ -119,18 +121,18 @@ var _ = Describe("PG E2E Test: Test PG controller", func() {
 
 		pod := &corev1.Pod{
 			ObjectMeta: v1.ObjectMeta{
-				Namespace: ctx.namespace,
+				Namespace: ctx.Namespace,
 			},
 		}
 
-		_, err := ctx.kubeclient.CoreV1().ReplicationControllers(ctx.namespace).Create(context.TODO(), rc, v1.CreateOptions{})
+		_, err := ctx.Kubeclient.CoreV1().ReplicationControllers(ctx.Namespace).Create(context.TODO(), rc, v1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitPodPhase(ctx, pod, []corev1.PodPhase{corev1.PodRunning})
+		err = e2eutil.WaitPodPhase(ctx, pod, []corev1.PodPhase{corev1.PodRunning})
 		Expect(err).NotTo(HaveOccurred())
 
-		ready, err := pgIsReady(ctx, ctx.namespace)
+		ready, err := e2eutil.PodGroupIsReady(ctx, ctx.Namespace)
 		Expect(ready).Should(Equal(false))
-		Expect(err.Error()).Should(Equal("podgroup is not found"))
+		Expect(err.Error()).Should(Equal("pod group not found"))
 	})
 })

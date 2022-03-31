@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Volcano Authors.
+Copyright 2021 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,49 +17,51 @@ limitations under the License.
 package schedulingaction
 
 import (
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
 var _ = Describe("Predicates E2E Test", func() {
 
 	It("Hostport", func() {
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		context := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(context)
 
-		nn := clusterNodeNumber(context)
+		nn := e2eutil.ClusterNodeNumber(context)
 
-		spec := &jobSpec{
-			name: "hp-spec",
-			tasks: []taskSpec{
+		spec := &e2eutil.JobSpec{
+			Name: "hp-spec",
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img:      defaultNginxImage,
-					min:      int32(nn),
-					req:      oneCPU,
-					rep:      int32(nn * 2),
-					hostport: 28080,
+					Img:      e2eutil.DefaultNginxImage,
+					Min:      int32(nn),
+					Req:      e2eutil.OneCPU,
+					Rep:      int32(nn * 2),
+					Hostport: 28080,
 				},
 			},
 		}
 
-		job := createJob(context, spec)
+		job := e2eutil.CreateJob(context, spec)
 
-		err := waitTasksReady(context, job, nn)
+		err := e2eutil.WaitTasksReady(context, job, nn)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksPending(context, job, nn)
+		err = e2eutil.WaitTasksPending(context, job, nn)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("NodeAffinity", func() {
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		context := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(context)
 
-		slot := oneCPU
-		nodeName, rep := computeNode(context, oneCPU)
+		slot := e2eutil.OneCPU
+		nodeName, rep := e2eutil.ComputeNode(context, e2eutil.OneCPU)
 		Expect(rep).NotTo(Equal(0))
 
 		affinity := &v1.Affinity{
@@ -69,7 +71,7 @@ var _ = Describe("Predicates E2E Test", func() {
 						{
 							MatchFields: []v1.NodeSelectorRequirement{
 								{
-									Key:      nodeFieldSelectorKeyNodeName,
+									Key:      e2eutil.NodeFieldSelectorKeyNodeName,
 									Operator: v1.NodeSelectorOpIn,
 									Values:   []string{nodeName},
 								},
@@ -80,35 +82,35 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		spec := &jobSpec{
-			name: "na-job",
-			tasks: []taskSpec{
+		spec := &e2eutil.JobSpec{
+			Name: "na-job",
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img:      defaultNginxImage,
-					req:      slot,
-					min:      1,
-					rep:      rep,
-					affinity: affinity,
+					Img:      e2eutil.DefaultNginxImage,
+					Req:      slot,
+					Min:      1,
+					Rep:      rep,
+					Affinity: affinity,
 				},
 			},
 		}
 
-		job := createJob(context, spec)
-		err := waitTasksReady(context, job, int(rep))
+		job := e2eutil.CreateJob(context, spec)
+		err := e2eutil.WaitTasksReady(context, job, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
-		pods := getTasksOfJob(context, job)
+		pods := e2eutil.GetTasksOfJob(context, job)
 		for _, pod := range pods {
 			Expect(pod.Spec.NodeName).To(Equal(nodeName))
 		}
 	})
 
 	It("Pod Affinity", func() {
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		context := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(context)
 
-		slot := oneCPU
-		_, rep := computeNode(context, oneCPU)
+		slot := e2eutil.HalfCPU
+		_, rep := e2eutil.ComputeNode(context, e2eutil.HalfCPU)
 		Expect(rep).NotTo(Equal(0))
 
 		labels := map[string]string{"foo": "bar"}
@@ -126,25 +128,25 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		spec := &jobSpec{
-			name: "pa-job",
-			tasks: []taskSpec{
+		spec := &e2eutil.JobSpec{
+			Name: "pa-job",
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img:      defaultNginxImage,
-					req:      slot,
-					min:      rep,
-					rep:      rep,
-					affinity: affinity,
-					labels:   labels,
+					Img:      e2eutil.DefaultNginxImage,
+					Req:      slot,
+					Min:      rep / 2,
+					Rep:      rep / 2,
+					Affinity: affinity,
+					Labels:   labels,
 				},
 			},
 		}
 
-		job := createJob(context, spec)
-		err := waitTasksReady(context, job, int(rep))
+		job := e2eutil.CreateJob(context, spec)
+		err := e2eutil.WaitTasksReady(context, job, int(rep/2))
 		Expect(err).NotTo(HaveOccurred())
 
-		pods := getTasksOfJob(context, job)
+		pods := e2eutil.GetTasksOfJob(context, job)
 		// All pods should be scheduled to the same node.
 		nodeName := pods[0].Spec.NodeName
 		for _, pod := range pods {
@@ -153,10 +155,10 @@ var _ = Describe("Predicates E2E Test", func() {
 	})
 
 	It("Pod Anti-Affinity", func() {
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		context := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(context)
 
-		slot := oneCPU
+		slot := e2eutil.OneCPU
 
 		labels := map[string]string{"foo": "bar"}
 
@@ -173,25 +175,25 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		spec := &jobSpec{
-			name: "pa-job",
-			tasks: []taskSpec{
+		spec := &e2eutil.JobSpec{
+			Name: "pa-job",
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img:      defaultNginxImage,
-					req:      slot,
-					min:      2,
-					rep:      2,
-					affinity: affinity,
-					labels:   labels,
+					Img:      e2eutil.DefaultNginxImage,
+					Req:      slot,
+					Min:      2,
+					Rep:      2,
+					Affinity: affinity,
+					Labels:   labels,
 				},
 			},
 		}
 
-		job := createJob(context, spec)
-		err := waitTasksReady(context, job, 2)
+		job := e2eutil.CreateJob(context, spec)
+		err := e2eutil.WaitTasksReady(context, job, 2)
 		Expect(err).NotTo(HaveOccurred())
 
-		pods := getTasksOfJob(context, job)
+		pods := e2eutil.GetTasksOfJob(context, job)
 		// All pods should be scheduled to the same node.
 		nodeName := pods[0].Spec.NodeName
 
@@ -203,8 +205,8 @@ var _ = Describe("Predicates E2E Test", func() {
 	})
 
 	It("Taints", func() {
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		context := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(context)
 
 		taints := []v1.Taint{
 			{
@@ -213,37 +215,37 @@ var _ = Describe("Predicates E2E Test", func() {
 				Effect: v1.TaintEffectNoSchedule,
 			},
 		}
-		defer removeTaintsFromAllNodes(context, taints)
+		defer e2eutil.RemoveTaintsFromAllNodes(context, taints)
 
-		err := taintAllNodes(context, taints)
+		err := e2eutil.TaintAllNodes(context, taints)
 		Expect(err).NotTo(HaveOccurred())
 
-		spec := &jobSpec{
-			name: "tt-job",
-			tasks: []taskSpec{
+		spec := &e2eutil.JobSpec{
+			Name: "tt-job",
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img: defaultNginxImage,
-					req: oneCPU,
-					min: 1,
-					rep: 1,
+					Img: e2eutil.DefaultNginxImage,
+					Req: e2eutil.OneCPU,
+					Min: 1,
+					Rep: 1,
 				},
 			},
 		}
 
-		job := createJob(context, spec)
-		err = waitTasksPending(context, job, 1)
+		job := e2eutil.CreateJob(context, spec)
+		err = e2eutil.WaitTasksPending(context, job, 1)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = removeTaintsFromAllNodes(context, taints)
+		err = e2eutil.RemoveTaintsFromAllNodes(context, taints)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReady(context, job, 1)
+		err = e2eutil.WaitTasksReady(context, job, 1)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("Taints and Tolerations", func() {
-		context := initTestContext(options{})
-		defer cleanupTestContext(context)
+		context := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(context)
 
 		taints := []v1.Taint{
 			{
@@ -252,7 +254,7 @@ var _ = Describe("Predicates E2E Test", func() {
 				Effect: v1.TaintEffectNoSchedule,
 			},
 		}
-		defer removeTaintsFromAllNodes(context, taints)
+		defer e2eutil.RemoveTaintsFromAllNodes(context, taints)
 
 		tolerations := []v1.Toleration{
 			{
@@ -263,46 +265,46 @@ var _ = Describe("Predicates E2E Test", func() {
 			},
 		}
 
-		err := taintAllNodes(context, taints)
+		err := e2eutil.TaintAllNodes(context, taints)
 		Expect(err).NotTo(HaveOccurred())
 
-		spec1 := &jobSpec{
-			name: "tt-job",
-			tasks: []taskSpec{
+		spec1 := &e2eutil.JobSpec{
+			Name: "tt-job",
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img:         defaultNginxImage,
-					req:         oneCPU,
-					min:         1,
-					rep:         1,
-					tolerations: tolerations,
+					Img:         e2eutil.DefaultNginxImage,
+					Req:         e2eutil.OneCPU,
+					Min:         1,
+					Rep:         1,
+					Tolerations: tolerations,
 				},
 			},
 		}
 
-		spec2 := &jobSpec{
-			name: "tt-job-no-toleration",
-			tasks: []taskSpec{
+		spec2 := &e2eutil.JobSpec{
+			Name: "tt-job-no-toleration",
+			Tasks: []e2eutil.TaskSpec{
 				{
-					img: defaultNginxImage,
-					req: oneCPU,
-					min: 1,
-					rep: 1,
+					Img: e2eutil.DefaultNginxImage,
+					Req: e2eutil.OneCPU,
+					Min: 1,
+					Rep: 1,
 				},
 			},
 		}
 
-		job1 := createJob(context, spec1)
-		err = waitTasksReady(context, job1, 1)
+		job1 := e2eutil.CreateJob(context, spec1)
+		err = e2eutil.WaitTasksReady(context, job1, 1)
 		Expect(err).NotTo(HaveOccurred())
 
-		job2 := createJob(context, spec2)
-		err = waitTasksPending(context, job2, 1)
+		job2 := e2eutil.CreateJob(context, spec2)
+		err = e2eutil.WaitTasksPending(context, job2, 1)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = removeTaintsFromAllNodes(context, taints)
+		err = e2eutil.RemoveTaintsFromAllNodes(context, taints)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = waitTasksReady(context, job2, 1)
+		err = e2eutil.WaitTasksReady(context, job2, 1)
 		Expect(err).NotTo(HaveOccurred())
 	})
 })

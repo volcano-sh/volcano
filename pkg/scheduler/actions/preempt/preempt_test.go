@@ -21,12 +21,12 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/api/scheduling/v1beta1"
+	schedulingv1 "k8s.io/api/scheduling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
-	schedulingv1 "volcano.sh/volcano/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -48,23 +48,26 @@ func TestPreempt(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		podGroups []*schedulingv1.PodGroup
+		podGroups []*schedulingv1beta1.PodGroup
 		pods      []*v1.Pod
 		nodes     []*v1.Node
-		queues    []*schedulingv1.Queue
+		queues    []*schedulingv1beta1.Queue
 		expected  int
 	}{
 		{
 			name: "do not preempt if there are enough idle resources",
-			podGroups: []*schedulingv1.PodGroup{
+			podGroups: []*schedulingv1beta1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 					},
-					Spec: schedulingv1.PodGroupSpec{
+					Spec: schedulingv1beta1.PodGroupSpec{
 						MinMember: 3,
 						Queue:     "q1",
+					},
+					Status: schedulingv1beta1.PodGroupStatus{
+						Phase: schedulingv1beta1.PodGroupInqueue,
 					},
 				},
 			},
@@ -77,12 +80,12 @@ func TestPreempt(t *testing.T) {
 			nodes: []*v1.Node{
 				util.BuildNode("n1", util.BuildResourceList("10", "10G"), make(map[string]string)),
 			},
-			queues: []*schedulingv1.Queue{
+			queues: []*schedulingv1beta1.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "q1",
 					},
-					Spec: schedulingv1.QueueSpec{
+					Spec: schedulingv1beta1.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -91,15 +94,18 @@ func TestPreempt(t *testing.T) {
 		},
 		{
 			name: "do not preempt if job is pipelined",
-			podGroups: []*schedulingv1.PodGroup{
+			podGroups: []*schedulingv1beta1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 					},
-					Spec: schedulingv1.PodGroupSpec{
+					Spec: schedulingv1beta1.PodGroupSpec{
 						MinMember: 1,
 						Queue:     "q1",
+					},
+					Status: schedulingv1beta1.PodGroupStatus{
+						Phase: schedulingv1beta1.PodGroupInqueue,
 					},
 				},
 				{
@@ -107,9 +113,12 @@ func TestPreempt(t *testing.T) {
 						Name:      "pg2",
 						Namespace: "c1",
 					},
-					Spec: schedulingv1.PodGroupSpec{
+					Spec: schedulingv1beta1.PodGroupSpec{
 						MinMember: 1,
 						Queue:     "q1",
+					},
+					Status: schedulingv1beta1.PodGroupStatus{
+						Phase: schedulingv1beta1.PodGroupInqueue,
 					},
 				},
 			},
@@ -124,12 +133,12 @@ func TestPreempt(t *testing.T) {
 			nodes: []*v1.Node{
 				util.BuildNode("n1", util.BuildResourceList("3", "3G"), make(map[string]string)),
 			},
-			queues: []*schedulingv1.Queue{
+			queues: []*schedulingv1beta1.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "q1",
 					},
-					Spec: schedulingv1.QueueSpec{
+					Spec: schedulingv1beta1.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -138,16 +147,19 @@ func TestPreempt(t *testing.T) {
 		},
 		{
 			name: "preempt one task of different job to fit both jobs on one node",
-			podGroups: []*schedulingv1.PodGroup{
+			podGroups: []*schedulingv1beta1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 					},
-					Spec: schedulingv1.PodGroupSpec{
+					Spec: schedulingv1beta1.PodGroupSpec{
 						MinMember:         1,
 						Queue:             "q1",
 						PriorityClassName: "low-priority",
+					},
+					Status: schedulingv1beta1.PodGroupStatus{
+						Phase: schedulingv1beta1.PodGroupInqueue,
 					},
 				},
 				{
@@ -155,10 +167,13 @@ func TestPreempt(t *testing.T) {
 						Name:      "pg2",
 						Namespace: "c1",
 					},
-					Spec: schedulingv1.PodGroupSpec{
+					Spec: schedulingv1beta1.PodGroupSpec{
 						MinMember:         1,
 						Queue:             "q1",
 						PriorityClassName: "high-priority",
+					},
+					Status: schedulingv1beta1.PodGroupStatus{
+						Phase: schedulingv1beta1.PodGroupInqueue,
 					},
 				},
 			},
@@ -172,12 +187,12 @@ func TestPreempt(t *testing.T) {
 			nodes: []*v1.Node{
 				util.BuildNode("n1", util.BuildResourceList("2", "2G"), make(map[string]string)),
 			},
-			queues: []*schedulingv1.Queue{
+			queues: []*schedulingv1beta1.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "q1",
 					},
-					Spec: schedulingv1.QueueSpec{
+					Spec: schedulingv1beta1.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -186,16 +201,19 @@ func TestPreempt(t *testing.T) {
 		},
 		{
 			name: "preempt enough tasks to fit large task of different job",
-			podGroups: []*schedulingv1.PodGroup{
+			podGroups: []*schedulingv1beta1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 					},
-					Spec: schedulingv1.PodGroupSpec{
+					Spec: schedulingv1beta1.PodGroupSpec{
 						MinMember:         1,
 						Queue:             "q1",
 						PriorityClassName: "low-priority",
+					},
+					Status: schedulingv1beta1.PodGroupStatus{
+						Phase: schedulingv1beta1.PodGroupInqueue,
 					},
 				},
 				{
@@ -203,10 +221,13 @@ func TestPreempt(t *testing.T) {
 						Name:      "pg2",
 						Namespace: "c1",
 					},
-					Spec: schedulingv1.PodGroupSpec{
+					Spec: schedulingv1beta1.PodGroupSpec{
 						MinMember:         1,
 						Queue:             "q1",
 						PriorityClassName: "high-priority",
+					},
+					Status: schedulingv1beta1.PodGroupStatus{
+						Phase: schedulingv1beta1.PodGroupInqueue,
 					},
 				},
 			},
@@ -221,12 +242,12 @@ func TestPreempt(t *testing.T) {
 			nodes: []*v1.Node{
 				util.BuildNode("n1", util.BuildResourceList("6", "6G"), make(map[string]string)),
 			},
-			queues: []*schedulingv1.Queue{
+			queues: []*schedulingv1beta1.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "q1",
 					},
-					Spec: schedulingv1.QueueSpec{
+					Spec: schedulingv1beta1.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -254,14 +275,14 @@ func TestPreempt(t *testing.T) {
 				Evictor:         evictor,
 				StatusUpdater:   &util.FakeStatusUpdater{},
 				VolumeBinder:    &util.FakeVolumeBinder{},
-				PriorityClasses: make(map[string]*v1beta1.PriorityClass),
+				PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
 
 				Recorder: record.NewFakeRecorder(100),
 			}
-			schedulerCache.PriorityClasses["high-priority"] = &v1beta1.PriorityClass{
+			schedulerCache.PriorityClasses["high-priority"] = &schedulingv1.PriorityClass{
 				Value: 100000,
 			}
-			schedulerCache.PriorityClasses["low-priority"] = &v1beta1.PriorityClass{
+			schedulerCache.PriorityClasses["low-priority"] = &schedulingv1.PriorityClass{
 				Value: 10,
 			}
 			for _, node := range test.nodes {
@@ -291,6 +312,7 @@ func TestPreempt(t *testing.T) {
 							Name:                "gang",
 							EnabledPreemptable:  &trueValue,
 							EnabledJobPipelined: &trueValue,
+							EnabledJobStarving:  &trueValue,
 						},
 					},
 				},

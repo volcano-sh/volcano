@@ -23,30 +23,29 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/api/scheduling/v1beta1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
-	kubeschedulinginformers "k8s.io/client-go/informers/scheduling/v1beta1"
+	kubeschedulinginformers "k8s.io/client-go/informers/scheduling/v1"
 	"k8s.io/client-go/kubernetes"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
-	kubeschedulinglisters "k8s.io/client-go/listers/scheduling/v1beta1"
+	kubeschedulinglisters "k8s.io/client-go/listers/scheduling/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
-	batchv1alpha1 "volcano.sh/volcano/pkg/apis/batch/v1alpha1"
-	busv1alpha1 "volcano.sh/volcano/pkg/apis/bus/v1alpha1"
-	vcclientset "volcano.sh/volcano/pkg/client/clientset/versioned"
-	vcscheme "volcano.sh/volcano/pkg/client/clientset/versioned/scheme"
-	informerfactory "volcano.sh/volcano/pkg/client/informers/externalversions"
-	batchinformer "volcano.sh/volcano/pkg/client/informers/externalversions/batch/v1alpha1"
-	businformer "volcano.sh/volcano/pkg/client/informers/externalversions/bus/v1alpha1"
-	schedulinginformers "volcano.sh/volcano/pkg/client/informers/externalversions/scheduling/v1beta1"
-	batchlister "volcano.sh/volcano/pkg/client/listers/batch/v1alpha1"
-	buslister "volcano.sh/volcano/pkg/client/listers/bus/v1alpha1"
-	schedulinglisters "volcano.sh/volcano/pkg/client/listers/scheduling/v1beta1"
+	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
+	vcscheme "volcano.sh/apis/pkg/client/clientset/versioned/scheme"
+	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
+	batchinformer "volcano.sh/apis/pkg/client/informers/externalversions/batch/v1alpha1"
+	businformer "volcano.sh/apis/pkg/client/informers/externalversions/bus/v1alpha1"
+	schedulinginformers "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
+	batchlister "volcano.sh/apis/pkg/client/listers/batch/v1alpha1"
+	buslister "volcano.sh/apis/pkg/client/listers/bus/v1alpha1"
+	schedulinglisters "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobcache "volcano.sh/volcano/pkg/controllers/cache"
 	"volcano.sh/volcano/pkg/controllers/framework"
@@ -62,13 +61,14 @@ type jobcontroller struct {
 	kubeClient kubernetes.Interface
 	vcClient   vcclientset.Interface
 
-	jobInformer batchinformer.JobInformer
-	podInformer coreinformers.PodInformer
-	pvcInformer coreinformers.PersistentVolumeClaimInformer
-	pgInformer  schedulinginformers.PodGroupInformer
-	svcInformer coreinformers.ServiceInformer
-	cmdInformer businformer.CommandInformer
-	pcInformer  kubeschedulinginformers.PriorityClassInformer
+	jobInformer   batchinformer.JobInformer
+	podInformer   coreinformers.PodInformer
+	pvcInformer   coreinformers.PersistentVolumeClaimInformer
+	pgInformer    schedulinginformers.PodGroupInformer
+	svcInformer   coreinformers.ServiceInformer
+	cmdInformer   businformer.CommandInformer
+	pcInformer    kubeschedulinginformers.PriorityClassInformer
+	queueInformer schedulinginformers.QueueInformer
 
 	// A store of jobs
 	jobLister batchlister.JobLister
@@ -95,13 +95,15 @@ type jobcontroller struct {
 	pcLister kubeschedulinglisters.PriorityClassLister
 	pcSynced func() bool
 
+	queueLister schedulinglisters.QueueLister
+	queueSynced func() bool
+
 	// queue that need to sync up
 	queueList    []workqueue.RateLimitingInterface
 	commandQueue workqueue.RateLimitingInterface
 	cache        jobcache.Cache
 	// Job Event recorder
-	recorder        record.EventRecorder
-	priorityClasses map[string]*v1beta1.PriorityClass
+	recorder record.EventRecorder
 
 	errTasks      workqueue.RateLimitingInterface
 	workers       uint32
@@ -112,7 +114,7 @@ func (cc *jobcontroller) Name() string {
 	return "job-controller"
 }
 
-// NewJobController create new Job job controller.
+// Initialize creates the new Job job controller.
 func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.kubeClient = opt.KubeClient
 	cc.vcClient = opt.VolcanoClient
@@ -200,9 +202,13 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.pgLister = cc.pgInformer.Lister()
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
-	cc.pcInformer = sharedInformers.Scheduling().V1beta1().PriorityClasses()
+	cc.pcInformer = sharedInformers.Scheduling().V1().PriorityClasses()
 	cc.pcLister = cc.pcInformer.Lister()
 	cc.pcSynced = cc.pcInformer.Informer().HasSynced
+
+	cc.queueInformer = informerfactory.NewSharedInformerFactory(cc.vcClient, 0).Scheduling().V1beta1().Queues()
+	cc.queueLister = cc.queueInformer.Lister()
+	cc.queueSynced = cc.queueInformer.Informer().HasSynced
 
 	// Register actions
 	state.SyncJob = cc.syncJob
@@ -213,7 +219,6 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 
 // Run start JobController.
 func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
-
 	go cc.jobInformer.Informer().Run(stopCh)
 	go cc.podInformer.Informer().Run(stopCh)
 	go cc.pvcInformer.Informer().Run(stopCh)
@@ -221,9 +226,10 @@ func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
 	go cc.svcInformer.Informer().Run(stopCh)
 	go cc.cmdInformer.Informer().Run(stopCh)
 	go cc.pcInformer.Informer().Run(stopCh)
+	go cc.queueInformer.Informer().Run(stopCh)
 
 	cache.WaitForCacheSync(stopCh, cc.jobSynced, cc.podSynced, cc.pgSynced,
-		cc.svcSynced, cc.cmdSynced, cc.pvcSynced, cc.pcSynced)
+		cc.svcSynced, cc.cmdSynced, cc.pvcSynced, cc.pcSynced, cc.queueSynced)
 
 	go wait.Until(cc.handleCommands, 0, stopCh)
 	var i uint32
