@@ -147,7 +147,8 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 	}
 
 	// Delete PodGroup
-	if err := cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{}); err != nil {
+	pgName := job.Name + "-" + string(job.UID)
+	if err := cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Delete(context.TODO(), pgName, metav1.DeleteOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to delete PodGroup of Job %v/%v: %v",
 				job.Namespace, job.Name, err)
@@ -275,7 +276,8 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	}
 
 	var syncTask bool
-	if pg, _ := cc.pgLister.PodGroups(job.Namespace).Get(job.Name); pg != nil {
+	pgName := job.Name + "-" + string(job.UID)
+	if pg, _ := cc.pgLister.PodGroups(job.Namespace).Get(pgName); pg != nil {
 		if pg.Status.Phase != "" && pg.Status.Phase != scheduling.PodGroupPending {
 			syncTask = true
 		}
@@ -626,7 +628,8 @@ func (cc *jobcontroller) createPVC(job *batch.Job, vcName string, volumeClaim *v
 
 func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 	// If PodGroup does not exist, create one for Job.
-	pg, err := cc.pgLister.PodGroups(job.Namespace).Get(job.Name)
+	pgName := job.Name + "-" + string(job.UID)
+	pg, err := cc.pgLister.PodGroups(job.Namespace).Get(pgName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to get PodGroup for Job <%s/%s>: %v",
@@ -646,7 +649,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 		pg := &scheduling.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace:   job.Namespace,
-				Name:        job.Name,
+				Name:        pgName,
 				Annotations: job.Annotations,
 				Labels:      job.Labels,
 				OwnerReferences: []metav1.OwnerReference{
