@@ -648,7 +648,8 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 
 		pg := &scheduling.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
-				Namespace:   job.Namespace,
+				Namespace: job.Namespace,
+				//add job.UID into its name when create new PodGroup
 				Name:        pgName,
 				Annotations: job.Annotations,
 				Labels:      job.Labels,
