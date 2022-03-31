@@ -47,8 +47,8 @@ tiers:
       - name: usage  # usage based scheduling plugin
         arguments:
           thresholds:
-            CpuUsageAvg.5m: 90 # The node whose usage is higher than 90% will be filtered 
-            MemUsageAvg.5m: 80 # # The node whose usage is higher than 80% will be filtered 
+            CPUUsageAvg.5m: 90 # The node whose average usage in 5 minute is higher than 90% will be filtered in predicating stage
+            MEMUsageAvg.5m: 80 # The node whose average usage in 5 minute is higher than 80% will be filtered in predicating stage
   - plugins:
       - name: overcommit
       - name: drf
