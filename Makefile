@@ -104,7 +104,7 @@ webhook-manager-base-image:
 	if [ ${REL_OSARCH} = linux/amd64 ];then\
 		docker build --no-cache -t $(IMAGE_PREFIX)-webhook-manager-base:$(TAG) ./installer/dockerfile/webhook-manager/ -f ./installer/dockerfile/webhook-manager/Dockerfile.base;\
 	elif [ ${REL_OSARCH} = linux/arm64 ];then\
-		docker build --no-cache -t $(IMAGE_PREFIX)-webhook-manager-base-arm64:$(TAG) ./installer/dockerfile/webhook-manager/ -f ./installer/dockerfile/webhook-manager/Dockerfile.base.arm64;\
+		docker build --no-cache -t $(IMAGE_PREFIX)-webhook-manager-base-arm64:$(TAG) ./installer/dockerfile/webhook-manager/ -f ./installer/dockerfile/webhook-manager/Dockerfile.base;\
 	else\
 		echo "only support x86_64 and arm64. Please build webhook-manager-base-image according to your architecture";\
 	fi
