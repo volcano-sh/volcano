@@ -15,7 +15,7 @@
 
 # The base image is created via `Dockerfile.base`, the base image is cached
 # since the required packages change very rarely.
-FROM yikunkero/vc-webhook-manager-base:0402
+FROM volcanosh/vc-webhook-manager-base:1.3.1
 
 ADD vc-webhook-manager /vc-webhook-manager
 ADD gen-admission-secret.sh /gen-admission-secret.sh
