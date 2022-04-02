@@ -94,20 +94,20 @@ type NodeState struct {
 }
 
 type NodeUsage struct {
-	CpuUsageAvg map[string]float64
-	MemUsageAvg map[string]float64
+	CPUUsageAvg map[string]float64
+	MEMUsageAvg map[string]float64
 }
 
 func (nu *NodeUsage) DeepCopy() *NodeUsage {
 	newUsage := &NodeUsage{
-		CpuUsageAvg: make(map[string]float64),
-		MemUsageAvg: make(map[string]float64),
+		CPUUsageAvg: make(map[string]float64),
+		MEMUsageAvg: make(map[string]float64),
 	}
-	for k, v := range nu.CpuUsageAvg {
-		newUsage.CpuUsageAvg[k] = v
+	for k, v := range nu.CPUUsageAvg {
+		newUsage.CPUUsageAvg[k] = v
 	}
-	for k, v := range nu.MemUsageAvg {
-		newUsage.MemUsageAvg[k] = v
+	for k, v := range nu.MEMUsageAvg {
+		newUsage.MEMUsageAvg[k] = v
 	}
 	return newUsage
 }

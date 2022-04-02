@@ -633,7 +633,6 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 		interval = time.Duration(defaultMetricsInternal)
 	}
 	go wait.Until(sc.GetMetricsData, interval, stopCh)
-
 }
 
 // WaitForCacheSync sync the cache with the api server
@@ -1200,8 +1199,8 @@ func (sc *SchedulerCache) GetMetricsData() {
 	sc.Mutex.Lock()
 	for k := range sc.Nodes {
 		nodeUsageMap[k] = &schedulingapi.NodeUsage{
-			CpuUsageAvg: make(map[string]float64),
-			MemUsageAvg: make(map[string]float64),
+			CPUUsageAvg: make(map[string]float64),
+			MEMUsageAvg: make(map[string]float64),
 		}
 	}
 	sc.Mutex.Unlock()
@@ -1227,11 +1226,11 @@ func (sc *SchedulerCache) GetMetricsData() {
 					switch metric {
 					case "cpu_usage_avg":
 						cpuUsage, _ := strconv.ParseFloat(value[0], 64)
-						nodeUsageMap[node].CpuUsageAvg[period] = cpuUsage
+						nodeUsageMap[node].CPUUsageAvg[period] = cpuUsage
 						klog.V(4).Infof("node: %v, CpuUsageAvg: %v, period:%v", node, cpuUsage, period)
 					case "mem_usage_avg":
 						memUsage, _ := strconv.ParseFloat(value[0], 64)
-						nodeUsageMap[node].MemUsageAvg[period] = memUsage
+						nodeUsageMap[node].MEMUsageAvg[period] = memUsage
 						klog.V(4).Infof("node: %v, MemUsageAvg: %v, period:%v", node, memUsage, period)
 					}
 				}

@@ -29,8 +29,8 @@ import (
 const (
 	// PluginName indicates name of volcano scheduler plugin.
 	PluginName        = "usage"
-	cpuUsageAvgPrefix = "CpuUsageAvg."
-	memUsageAvgPrefix = "MemUsageAvg."
+	cpuUsageAvgPrefix = "CPUUsageAvg."
+	memUsageAvgPrefix = "MEMUsageAvg."
 	thresholdSection  = "thresholds"
 	cpuUsageAvg5m     = "5m"
 )
@@ -42,8 +42,8 @@ const (
      - name: usage
        arguments:
           thresholds:
-            CpuUsageAvg.5m: 80
-            MemUsageAvg.5m: 90
+            CPUUsageAvg.5m: 80
+            MEMUsageAvg.5m: 90
 */
 
 type thresholdConfig struct {
@@ -53,8 +53,8 @@ type thresholdConfig struct {
 
 type usagePlugin struct {
 	pluginArguments framework.Arguments
-	weight int
-	threshold thresholdConfig
+	weight          int
+	threshold       thresholdConfig
 }
 
 // New function returns usagePlugin object
@@ -87,7 +87,7 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 	if klog.V(4) {
 		for node := range ssn.Nodes {
 			usage := ssn.Nodes[node].ResourceUsage
-			klog.V(4).Infof("node:%v, cpu usage:%v, mem usage:%v", node, usage.CpuUsageAvg["5m"], usage.MemUsageAvg["5m"])
+			klog.V(4).Infof("node:%v, cpu usage:%v, mem usage:%v", node, usage.CPUUsageAvg["5m"], usage.MEMUsageAvg["5m"])
 		}
 	}
 
@@ -100,19 +100,19 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 		for k, v := range args {
 			key, _ := k.(string)
 			var val float64
-			switch v.(type) {
+			switch a := v.(type) {
 			case string:
-				val, _ = strconv.ParseFloat(v.(string), 64)
+				val, _ = strconv.ParseFloat(a, 64)
 			case int:
-				val = float64(v.(int))
+				val = float64(a)
 			case float64:
-				val = v.(float64)
+				val = a
 			default:
-				klog.V(4).Infof("The threshold %v is an unknown type", v)
+				klog.V(4).Infof("The threshold %v is an unknown type", a)
 			}
 			if strings.Contains(key, cpuUsageAvgPrefix) {
 				periodKey := strings.Replace(key, cpuUsageAvgPrefix, "", 1)
-				up.threshold.cpuUsageAvg[periodKey] = val	
+				up.threshold.cpuUsageAvg[periodKey] = val
 			}
 			if strings.Contains(key, memUsageAvgPrefix) {
 				periodKey := strings.Replace(key, memUsageAvgPrefix, "", 1)
@@ -127,16 +127,16 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		for period, value := range up.threshold.cpuUsageAvg {
 			klog.V(4).Infof("predicateFn cpuUsageAvg:%v", up.threshold.cpuUsageAvg)
-			if node.ResourceUsage.CpuUsageAvg[period] > value {
-				msg := fmt.Sprintf("Node %s cpu usage %f exceeds the threshold %f", node.Name, node.ResourceUsage.CpuUsageAvg[period], value)
+			if node.ResourceUsage.CPUUsageAvg[period] > value {
+				msg := fmt.Sprintf("Node %s cpu usage %f exceeds the threshold %f", node.Name, node.ResourceUsage.CPUUsageAvg[period], value)
 				return fmt.Errorf("plugin %s predicates failed %s", up.Name(), msg)
 			}
 		}
 
 		for period, value := range up.threshold.memUsageAvg {
 			klog.V(4).Infof("predicateFn memUsageAvg:%v", up.threshold.memUsageAvg)
-			if node.ResourceUsage.MemUsageAvg[period] > value {
-				msg := fmt.Sprintf("Node %s mem usage %f exceeds the threshold %f", node.Name, node.ResourceUsage.MemUsageAvg[period], value)
+			if node.ResourceUsage.MEMUsageAvg[period] > value {
+				msg := fmt.Sprintf("Node %s mem usage %f exceeds the threshold %f", node.Name, node.ResourceUsage.MEMUsageAvg[period], value)
 				return fmt.Errorf("plugin %s memory usage predicates failed %s", up.Name(), msg)
 			}
 		}
@@ -146,7 +146,7 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 		score := 0.0
-		cpuUsage, exist := node.ResourceUsage.CpuUsageAvg[cpuUsageAvg5m]
+		cpuUsage, exist := node.ResourceUsage.CPUUsageAvg[cpuUsageAvg5m]
 		klog.V(4).Infof("Node %s cpu usage is %f.", node.Name, cpuUsage)
 		if !exist {
 			return 0, nil
