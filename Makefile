@@ -92,7 +92,7 @@ image_bins: init
 		CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-scheduler ./cmd/scheduler;\
 	fi;
 
-images:
+images: webhook-manager-base-image
 	for name in controller-manager scheduler webhook-manager; do\
 		docker buildx build -t "${IMAGE_PREFIX}-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type="${BUILDX_OUTPUT_TYPE}" --platform "${DOCKER_PLATFORMS}"; \
 	done

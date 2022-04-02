@@ -18,5 +18,8 @@ ADD . volcano
 RUN cd volcano && make vc-scheduler
 FROM alpine:latest
 
-COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/vc-scheduler /vc-scheduler
+# See also: https://docs.docker.com/engine/reference/builder/#automatic-platform-args-in-the-global-scope
+ARG TARGETPLATFORM
+
+COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/$TARGETPLATFORM/vc-scheduler /vc-scheduler
 ENTRYPOINT ["/vc-scheduler"]

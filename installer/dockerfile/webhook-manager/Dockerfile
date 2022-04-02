@@ -20,8 +20,11 @@ WORKDIR /go/src/volcano.sh/
 ADD . volcano
 RUN cd volcano && make vc-webhook-manager
 
-FROM volcanosh/vc-webhook-manager-base:1.3.1
+FROM volcanosh/vc-webhook-manager-base:latest
 
-COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/vc-webhook-manager /vc-webhook-manager
+# See also: https://docs.docker.com/engine/reference/builder/#automatic-platform-args-in-the-global-scope
+ARG TARGETPLATFORM
+
+COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/$TARGETPLATFORM/vc-webhook-manager /vc-webhook-manager
 ADD ./installer/dockerfile/webhook-manager/gen-admission-secret.sh /gen-admission-secret.sh
 ENTRYPOINT ["/vc-webhook-manager"]

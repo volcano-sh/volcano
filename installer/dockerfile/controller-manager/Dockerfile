@@ -19,5 +19,8 @@ RUN cd volcano && make vc-controller-manager
 
 FROM alpine:latest
 
-COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/vc-controller-manager /vc-controller-manager
+# See also: https://docs.docker.com/engine/reference/builder/#automatic-platform-args-in-the-global-scope
+ARG TARGETPLATFORM
+
+COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/$TARGETPLATFORM/vc-controller-manager /vc-controller-manager
 ENTRYPOINT ["/vc-controller-manager"]
