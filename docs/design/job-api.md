@@ -447,7 +447,7 @@ We provide Job api plugins to give users a better focus on core business.
 Now we have three plugins, every plugin has parameters, if not provided, we use default.
 
 * env: set VK_TASK_INDEX to each container, is a index for giving the identity to container.
-* svc: create Serivce and *.host to enable pods communicate.
+* svc: create Service and *.host to enable pods communicate.
 * ssh: sign in ssh without password, e.g. use command mpirun or mpiexec.
 
 ```yaml
