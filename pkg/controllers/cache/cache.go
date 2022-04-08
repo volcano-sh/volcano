@@ -330,7 +330,7 @@ func (jc *jobCache) TaskFailed(jobKey, taskName string) bool {
 			}
 		}
 	}
-	return retried > maxRetry
+	return retried >= maxRetry
 }
 
 func (jc *jobCache) worker() {
