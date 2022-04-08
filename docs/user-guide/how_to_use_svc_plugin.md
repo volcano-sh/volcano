@@ -1,0 +1,69 @@
+# Volcano Job Plugin -- SVC User Guidance
+
+## Background
+**SVC Plugin** is designed for the communication for pods within a job. It is suitable for the scenarios that 
+## Key Points
+
+## Examples
+```yaml
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: tensorflow-dist-mnist
+spec:
+  minAvailable: 3
+  schedulerName: volcano
+  plugins:
+    env: []
+    svc: []
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  queue: default
+  tasks:
+    - replicas: 1
+      name: ps
+      template:
+        spec:
+          containers:
+            - command:
+                - sh
+                - -c
+                - |
+                  PS_HOST=`cat /etc/volcano/ps.host | sed 's/$/&:2222/g' | sed 's/^/"/;s/$/"/' | tr "\n" ","`;
+                  WORKER_HOST=`cat /etc/volcano/worker.host | sed 's/$/&:2222/g' | sed 's/^/"/;s/$/"/' | tr "\n" ","`;
+                  export TF_CONFIG={\"cluster\":{\"ps\":[${PS_HOST}],\"worker\":[${WORKER_HOST}]},\"task\":{\"type\":\"ps\",\"index\":${VK_TASK_INDEX}},\"environment\":\"cloud\"};
+                  python /var/tf_dist_mnist/dist_mnist.py
+              image: volcanosh/dist-mnist-tf-example:0.0.1
+              name: tensorflow
+              ports:
+                - containerPort: 2222
+                  name: tfjob-port
+              resources: {}
+          restartPolicy: Never
+    - replicas: 2
+      name: worker
+      policies:
+        - event: TaskCompleted
+          action: CompleteJob
+      template:
+        spec:
+          containers:
+            - command:
+                - sh
+                - -c
+                - |
+                  PS_HOST=`cat /etc/volcano/ps.host | sed 's/$/&:2222/g' | sed 's/^/"/;s/$/"/' | tr "\n" ","`;
+                  WORKER_HOST=`cat /etc/volcano/worker.host | sed 's/$/&:2222/g' | sed 's/^/"/;s/$/"/' | tr "\n" ","`;
+                  export TF_CONFIG={\"cluster\":{\"ps\":[${PS_HOST}],\"worker\":[${WORKER_HOST}]},\"task\":{\"type\":\"worker\",\"index\":${VK_TASK_INDEX}},\"environment\":\"cloud\"};
+                  python /var/tf_dist_mnist/dist_mnist.py
+              image: volcanosh/dist-mnist-tf-example:0.0.1
+              name: tensorflow
+              ports:
+                - containerPort: 2222
+                  name: tfjob-port
+              resources: {}
+          restartPolicy: Never
+```
+
+## Note
