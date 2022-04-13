@@ -739,11 +739,13 @@ func (cc *jobcontroller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 		tp := TaskPriority{0, task}
 		pc := task.Template.Spec.PriorityClassName
 
-		priorityClass, err := cc.pcLister.Get(pc)
-		if err != nil || priorityClass == nil {
-			klog.Warningf("Ignore task %s priority class %s: %v", task.Name, pc, err)
-		} else {
-			tp.priority = priorityClass.Value
+		if pc != "" {
+			priorityClass, err := cc.pcLister.Get(pc)
+			if err != nil || priorityClass == nil {
+				klog.Warningf("Ignore task %s priority class %s: %v", task.Name, pc, err)
+			} else {
+				tp.priority = priorityClass.Value
+			}
 		}
 
 		tasksPriority = append(tasksPriority, tp)
