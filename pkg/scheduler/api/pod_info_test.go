@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 func TestGetPodResourceRequest(t *testing.T) {
@@ -149,6 +150,30 @@ func TestGetPodResourceWithoutInitContainers(t *testing.T) {
 				},
 			},
 			expectedResource: NewResource(buildResourceList("3000m", "2G")),
+		},
+		{
+			name: "get resource for pod with overhead",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Resources: v1.ResourceRequirements{
+								Requests: buildResourceList("1000m", "1G"),
+							},
+						},
+						{
+							Resources: v1.ResourceRequirements{
+								Requests: buildResourceList("2000m", "1G"),
+							},
+						},
+					},
+					Overhead: v1.ResourceList{
+						v1.ResourceCPU:    resource.MustParse("500m"),
+						v1.ResourceMemory: resource.MustParse("1G"),
+					},
+				},
+			},
+			expectedResource: NewResource(buildResourceList("3500m", "3G")),
 		},
 	}
 
