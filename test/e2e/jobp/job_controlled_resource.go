@@ -149,6 +149,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Namespace: ctx.Namespace,
 			Name:      jobName,
+			UID:       "e7f18111-1cec-11ea-b688-fa163ec79500",
 			Tasks: []e2eutil.TaskSpec{
 				{
 					Img:   e2eutil.DefaultNginxImage,
@@ -178,7 +179,8 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		err := e2eutil.WaitJobStatePending(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pGroup, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
+		pgName := "job-name-podgroup-e7f18111-1cec-11ea-b688-fa163ec79500"
+		pGroup, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		for name, q := range *pGroup.Spec.MinResources {
