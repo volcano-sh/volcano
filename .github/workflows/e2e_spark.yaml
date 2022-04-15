@@ -5,8 +5,6 @@ on:
   push:
     branches:
       - master
-  # PR triggered job
-  pull_request:
 jobs:
   k8s-integration-tests:
     name: "E2E about Spark Integration test"
