@@ -273,7 +273,12 @@ func preempt(
 
 func victimTasks(ssn *framework.Session) {
 	stmt := framework.NewStatement(ssn)
-	victimTasks := ssn.VictimTasks()
+	tasks := make([]*api.TaskInfo, 0)
+	victimTasksMap := ssn.VictimTasks(tasks)
+	victimTasks := make([]*api.TaskInfo, 0)
+	for task, _ := range victimTasksMap {
+		victimTasks = append(victimTasks, task)
+	}
 	for _, victim := range victimTasks {
 		if err := stmt.Evict(victim.Clone(), "evict"); err != nil {
 			klog.Errorf("Failed to evict Task <%s/%s>: %v",
