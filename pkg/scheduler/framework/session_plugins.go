@@ -443,49 +443,6 @@ func (ssn *Session) TargetJob(jobs []*api.JobInfo) *api.JobInfo {
 	return nil
 }
 
-// VictimTasks invoke ReservedNodes function of the plugins
-//func (ssn *Session) VictimTasks() []*api.TaskInfo {
-//	var victims []*api.TaskInfo
-//	var init bool
-//
-//	for _, tier := range ssn.Tiers {
-//		for _, plugin := range tier.Plugins {
-//			if !isEnabled(plugin.EnabledVictim) {
-//				continue
-//			}
-//
-//			pf, found := ssn.victimTasksFns[plugin.Name]
-//			if !found {
-//				continue
-//			}
-//			candidates := pf()
-//			if !init {
-//				victims = candidates
-//				init = true
-//			} else {
-//				var intersection []*api.TaskInfo
-//				// Get intersection of victims and candidates.
-//				for _, v := range victims {
-//					for _, c := range candidates {
-//						if v.UID == c.UID {
-//							intersection = append(intersection, v)
-//						}
-//					}
-//				}
-//
-//				// Update victims to intersection
-//				victims = intersection
-//			}
-//		}
-//		// Plugins in this tier made decision if victims is not nil
-//		if victims != nil {
-//			return victims
-//		}
-//	}
-//
-//	return victims
-//}
-
 // VictimTasks returns the victims selected
 func (ssn *Session) VictimTasks(tasks []*api.TaskInfo) map[*api.TaskInfo]bool {
 	// different filters may add the same task to victims, so use a map to remove duplicate tasks.

@@ -276,7 +276,7 @@ func victimTasks(ssn *framework.Session) {
 	tasks := make([]*api.TaskInfo, 0)
 	victimTasksMap := ssn.VictimTasks(tasks)
 	victimTasks := make([]*api.TaskInfo, 0)
-	for task, _ := range victimTasksMap {
+	for task := range victimTasksMap {
 		victimTasks = append(victimTasks, task)
 	}
 	for _, victim := range victimTasks {

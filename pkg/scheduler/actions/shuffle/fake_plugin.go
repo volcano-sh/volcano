@@ -39,13 +39,12 @@ func (fp *fakePlugin) Name() string {
 }
 
 func (fp *fakePlugin) OnSessionOpen(ssn *framework.Session) {
-	var lowPriority int32
-	lowPriority = 10
+	lowPriority := 10
 
 	victimTasksFn := func(candidates []*api.TaskInfo) []*api.TaskInfo {
 		evicts := make([]*api.TaskInfo, 0)
 		for _, task := range candidates {
-			if task.Priority == lowPriority {
+			if task.Priority == int32(lowPriority) {
 				evicts = append(evicts, task)
 			}
 		}

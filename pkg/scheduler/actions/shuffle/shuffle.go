@@ -23,6 +23,7 @@ import (
 )
 
 const (
+	// Shuffle indicates the action name
 	Shuffle = "shuffle"
 )
 
@@ -57,7 +58,7 @@ func (shuffle *Action) Execute(ssn *framework.Session) {
 		}
 	}
 	for _, task := range tasks {
-		klog.V(4).Infof("Running tasks %s: [ns: %s, job: %s]\n", task.Name, task.Namespace, task.Job)
+		klog.V(5).Infof("Running tasks %s: [ns: %s, job: %s]\n", task.Name, task.Namespace, task.Job)
 	}
 
 	// Evict target workloads
