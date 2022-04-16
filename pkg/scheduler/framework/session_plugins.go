@@ -18,7 +18,6 @@ package framework
 
 import (
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
-
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -135,8 +134,8 @@ func (ssn *Session) AddReservedNodesFn(name string, fn api.ReservedNodesFn) {
 }
 
 // AddVictimTasksFns add victimTasksFns function
-func (ssn *Session) AddVictimTasksFns(name string, fn api.VictimTasksFn) {
-	ssn.victimTasksFns[name] = fn
+func (ssn *Session) AddVictimTasksFns(name string, fns []api.VictimTasksFn) {
+	ssn.victimTasksFns[name] = fns
 }
 
 // AddJobStarvingFns add jobStarvingFns function
@@ -445,46 +444,70 @@ func (ssn *Session) TargetJob(jobs []*api.JobInfo) *api.JobInfo {
 }
 
 // VictimTasks invoke ReservedNodes function of the plugins
-func (ssn *Session) VictimTasks() []*api.TaskInfo {
-	var victims []*api.TaskInfo
-	var init bool
+//func (ssn *Session) VictimTasks() []*api.TaskInfo {
+//	var victims []*api.TaskInfo
+//	var init bool
+//
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			if !isEnabled(plugin.EnabledVictim) {
+//				continue
+//			}
+//
+//			pf, found := ssn.victimTasksFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//			candidates := pf()
+//			if !init {
+//				victims = candidates
+//				init = true
+//			} else {
+//				var intersection []*api.TaskInfo
+//				// Get intersection of victims and candidates.
+//				for _, v := range victims {
+//					for _, c := range candidates {
+//						if v.UID == c.UID {
+//							intersection = append(intersection, v)
+//						}
+//					}
+//				}
+//
+//				// Update victims to intersection
+//				victims = intersection
+//			}
+//		}
+//		// Plugins in this tier made decision if victims is not nil
+//		if victims != nil {
+//			return victims
+//		}
+//	}
+//
+//	return victims
+//}
 
+// VictimTasks returns the victims selected
+func (ssn *Session) VictimTasks(tasks []*api.TaskInfo) map[*api.TaskInfo]bool {
+	// different filters may add the same task to victims, so use a map to remove duplicate tasks.
+	victimSet := make(map[*api.TaskInfo]bool)
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledVictim) {
 				continue
 			}
-
-			pf, found := ssn.victimTasksFns[plugin.Name]
+			fns, found := ssn.victimTasksFns[plugin.Name]
 			if !found {
 				continue
 			}
-			candidates := pf()
-			if !init {
-				victims = candidates
-				init = true
-			} else {
-				var intersection []*api.TaskInfo
-				// Get intersection of victims and candidates.
-				for _, v := range victims {
-					for _, c := range candidates {
-						if v.UID == c.UID {
-							intersection = append(intersection, v)
-						}
-					}
+			for _, fn := range fns {
+				victimTasks := fn(tasks)
+				for _, victim := range victimTasks {
+					victimSet[victim] = true
 				}
-
-				// Update victims to intersection
-				victims = intersection
 			}
 		}
-		// Plugins in this tier made decision if victims is not nil
-		if victims != nil {
-			return victims
-		}
 	}
-
-	return victims
+	return victimSet
 }
 
 // ReservedNodes invoke ReservedNodes function of the plugins

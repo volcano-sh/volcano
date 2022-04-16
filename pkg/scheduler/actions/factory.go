@@ -24,6 +24,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/actions/preempt"
 	"volcano.sh/volcano/pkg/scheduler/actions/reclaim"
 	"volcano.sh/volcano/pkg/scheduler/actions/reserve"
+	"volcano.sh/volcano/pkg/scheduler/actions/shuffle"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
@@ -35,4 +36,5 @@ func init() {
 	framework.RegisterAction(enqueue.New())
 	framework.RegisterAction(elect.New())
 	framework.RegisterAction(reserve.New())
+	framework.RegisterAction(shuffle.New())
 }
