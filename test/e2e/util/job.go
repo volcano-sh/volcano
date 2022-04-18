@@ -57,6 +57,7 @@ type TaskSpec struct {
 
 type JobSpec struct {
 	Name      string
+	UID       string
 	Namespace string
 	Queue     string
 	Tasks     []TaskSpec
@@ -95,6 +96,7 @@ func CreateJobWithPodGroup(ctx *TestContext, jobSpec *JobSpec,
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        jobSpec.Name,
 			Namespace:   ns,
+			UID:         jobSpec.UID,
 			Annotations: annotations,
 		},
 		Spec: batchv1alpha1.JobSpec{
@@ -191,6 +193,7 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobSpec.Name,
 			Namespace: ns,
+			UID:       jobSpec.UID,
 		},
 		Spec: batchv1alpha1.JobSpec{
 			SchedulerName:           "volcano",

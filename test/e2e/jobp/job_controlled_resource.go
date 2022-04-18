@@ -33,6 +33,7 @@ import (
 var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 	It("use exisisting PVC in job", func() {
 		jobName := "job-pvc-name-exist"
+		jobUID := "e7f18111-1cec-11ea-b688-fa163ec79500"
 		taskName := "pvctask"
 		pvName := "job-pv-name"
 		pvcName := "job-pvc-name-exist"
@@ -100,6 +101,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Namespace: ctx.Namespace,
 			Name:      jobName,
+			UID:       jobUID,
 			Tasks: []e2eutil.TaskSpec{
 				{
 					Img:  e2eutil.DefaultNginxImage,
@@ -137,6 +139,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 
 	It("Generate PodGroup and valid minResource when creating job", func() {
 		jobName := "job-name-podgroup"
+		jobUID := "e7f18111-1cec-11ea-b688-fa163ec79500"
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
 
@@ -149,7 +152,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Namespace: ctx.Namespace,
 			Name:      jobName,
-			UID:       "e7f18111-1cec-11ea-b688-fa163ec79500",
+			UID:       jobUID,
 			Tasks: []e2eutil.TaskSpec{
 				{
 					Img:   e2eutil.DefaultNginxImage,
@@ -179,7 +182,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		err := e2eutil.WaitJobStatePending(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pgName := "job-name-podgroup-e7f18111-1cec-11ea-b688-fa163ec79500"
+		pgName := jobName + "-" + jobUID
 		pGroup, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
