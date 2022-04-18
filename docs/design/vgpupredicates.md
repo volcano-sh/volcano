@@ -50,7 +50,7 @@ There are 2 containers(ctrA,ctrB) in a pod. ctrA requires vGPU0,vGPU1. ctrB requ
 ## Details of libvgpu.so
 
 ![img](./images/libvgpu.jpg)
-Libvgpu.so is a cuda driver hacked library. By adding it in LD_PRELOAD or "/etc/ld.so.preload", it can hack the invocation from CUDA Runtime to CUDA Driver as the image above. We track the device memory usage and utilization of each process in libvgpu.so and reject device memory allocation if it exceeds the number set in "gpumem" to ensure proper isolation. 
+Libvgpu.so is a cuda driver layer library. By adding it in LD_PRELOAD or "/etc/ld.so.preload", it intercepts the invocation from CUDA Runtime to CUDA Driver as the image above. We track the device memory usage and utilization of each process in libvgpu.so and reject device memory allocation if it exceeds the number set in "gpumem" to ensure proper isolation. 
 
 
 
