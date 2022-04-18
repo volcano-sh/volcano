@@ -57,7 +57,7 @@ type TaskSpec struct {
 
 type JobSpec struct {
 	Name      string
-	UID       string
+	UID       types.UID
 	Namespace string
 	Queue     string
 	Tasks     []TaskSpec

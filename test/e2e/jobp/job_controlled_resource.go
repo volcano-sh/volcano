@@ -182,7 +182,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		err := e2eutil.WaitJobStatePending(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pgName := jobName + "-" + jobUID
+		pgName := jobName + "-" + string(jobUID)
 		pGroup, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
