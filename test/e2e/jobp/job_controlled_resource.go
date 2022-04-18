@@ -24,6 +24,7 @@ import (
 	v12 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 
@@ -101,7 +102,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Namespace: ctx.Namespace,
 			Name:      jobName,
-			UID:       jobUID,
+			UID:       types.UID(jobUID),
 			Tasks: []e2eutil.TaskSpec{
 				{
 					Img:  e2eutil.DefaultNginxImage,
@@ -152,7 +153,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Namespace: ctx.Namespace,
 			Name:      jobName,
-			UID:       jobUID,
+			UID:       types.UID(jobUID),
 			Tasks: []e2eutil.TaskSpec{
 				{
 					Img:   e2eutil.DefaultNginxImage,
