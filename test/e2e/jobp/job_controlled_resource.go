@@ -24,7 +24,6 @@ import (
 	v12 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 
@@ -34,7 +33,6 @@ import (
 var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 	It("use exisisting PVC in job", func() {
 		jobName := "job-pvc-name-exist"
-		jobUID := "e7f18111-1cec-11ea-b688-fa163ec79500"
 		taskName := "pvctask"
 		pvName := "job-pv-name"
 		pvcName := "job-pvc-name-exist"
@@ -102,7 +100,6 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Namespace: ctx.Namespace,
 			Name:      jobName,
-			UID:       types.UID(jobUID),
 			Tasks: []e2eutil.TaskSpec{
 				{
 					Img:  e2eutil.DefaultNginxImage,
@@ -140,7 +137,6 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 
 	It("Generate PodGroup and valid minResource when creating job", func() {
 		jobName := "job-name-podgroup"
-		jobUID := "e7f18111-1cec-11ea-b688-fa163ec79500"
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
 
@@ -153,7 +149,6 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Namespace: ctx.Namespace,
 			Name:      jobName,
-			UID:       types.UID(jobUID),
 			Tasks: []e2eutil.TaskSpec{
 				{
 					Img:   e2eutil.DefaultNginxImage,
@@ -183,7 +178,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		err := e2eutil.WaitJobStatePending(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		pgName := jobName + "-" + string(jobUID)
+		pgName := jobName + "-" + string(job.UID)
 		pGroup, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
