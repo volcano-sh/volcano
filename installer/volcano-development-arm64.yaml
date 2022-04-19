@@ -204,7 +204,20 @@ spec:
     singular: job
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.state.phase
+      name: STATUS
+      type: string
+    - jsonPath: .status.minAvailable
+      name: minAvailable
+      type: integer
+    - jsonPath: .status.running
+      name: RUNNINGS
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Job defines the volcano job.
@@ -8886,6 +8899,10 @@ spec:
           status:
             description: The status of queue.
             properties:
+              completed:
+                description: The number of `Completed` PodGroup in this queue.
+                format: int32
+                type: integer
               inqueue:
                 description: The number of `Inqueue` PodGroup in this queue.
                 format: int32
