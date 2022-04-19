@@ -35,6 +35,7 @@ import (
 func TestValidateJobCreate(t *testing.T) {
 	var invTTL int32 = -1
 	var policyExitCode int32 = -1
+	var invMinAvailable int32 = -1
 	namespace := "test"
 	priviledged := true
 
@@ -421,7 +422,44 @@ func TestValidateJobCreate(t *testing.T) {
 				},
 			},
 			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
-			ret:            "'replicas' < 0 in task: task-1;",
+			ret:            "'replicas' < 0 in task: task-1, job: replica-lessThanZero; job 'minAvailable' should not be greater than total replicas in tasks;",
+			ExpectErr:      true,
+		},
+		// task minAvailable set less than zero
+		{
+			Name: "replica-lessThanZero",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "taskMinAvailable-lessThanZero",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "task-1",
+							Replicas:     1,
+							MinAvailable: &invMinAvailable,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "'minAvailable' < 0 in task: task-1, job: taskMinAvailable-lessThanZero;",
 			ExpectErr:      true,
 		},
 		// task name error
