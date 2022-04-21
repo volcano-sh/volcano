@@ -93,6 +93,7 @@ type NodeState struct {
 	Reason string
 }
 
+// NodeUsage defines the real load usage of node
 type NodeUsage struct {
 	CPUUsageAvg map[string]float64
 	MEMUsageAvg map[string]float64

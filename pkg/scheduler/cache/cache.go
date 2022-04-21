@@ -25,6 +25,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/api"
+	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
+
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -47,8 +50,6 @@ import (
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	volumescheduling "k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 
-	"github.com/prometheus/client_golang/api"
-	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
@@ -68,7 +69,7 @@ const (
 	cpuUsageAvg = "cpu_usage_avg"
 	// record name of mem average usage defined in prometheus rules
 	memUsageAvg = "mem_usage_avg"
-	// default interval for sync data from metrics server
+	// default interval for sync data from metrics server, the value is 5s
 	defaultMetricsInternal = 5
 )
 
@@ -1220,19 +1221,17 @@ func (sc *SchedulerCache) GetMetricsData() {
 					klog.V(3).Infof("Warning querying Prometheus: %v", warnings)
 				}
 
-				if err == nil {
-					rowValues := strings.Split(strings.TrimSpace(res.String()), "=>")
-					value := strings.Split(strings.TrimSpace(rowValues[1]), " ")
-					switch metric {
-					case "cpu_usage_avg":
-						cpuUsage, _ := strconv.ParseFloat(value[0], 64)
-						nodeUsageMap[node].CPUUsageAvg[period] = cpuUsage
-						klog.V(4).Infof("node: %v, CpuUsageAvg: %v, period:%v", node, cpuUsage, period)
-					case "mem_usage_avg":
-						memUsage, _ := strconv.ParseFloat(value[0], 64)
-						nodeUsageMap[node].MEMUsageAvg[period] = memUsage
-						klog.V(4).Infof("node: %v, MemUsageAvg: %v, period:%v", node, memUsage, period)
-					}
+				rowValues := strings.Split(strings.TrimSpace(res.String()), "=>")
+				value := strings.Split(strings.TrimSpace(rowValues[1]), " ")
+				switch metric {
+				case cpuUsageAvg:
+					cpuUsage, _ := strconv.ParseFloat(value[0], 64)
+					nodeUsageMap[node].CPUUsageAvg[period] = cpuUsage
+					klog.V(4).Infof("node: %v, CpuUsageAvg: %v, period:%v", node, cpuUsage, period)
+				case memUsageAvg:
+					memUsage, _ := strconv.ParseFloat(value[0], 64)
+					nodeUsageMap[node].MEMUsageAvg[period] = memUsage
+					klog.V(4).Infof("node: %v, MemUsageAvg: %v, period:%v", node, memUsage, period)
 				}
 			}
 		}
