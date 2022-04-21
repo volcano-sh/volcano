@@ -173,6 +173,8 @@ github.com/opencontainers/selinux/pkg/pwalk
 github.com/pkg/errors
 # github.com/prometheus/client_golang v1.12.0
 ## explicit; go 1.13
+github.com/prometheus/client_golang/api
+github.com/prometheus/client_golang/api/prometheus/v1
 github.com/prometheus/client_golang/prometheus
 github.com/prometheus/client_golang/prometheus/internal
 github.com/prometheus/client_golang/prometheus/promauto
