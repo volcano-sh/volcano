@@ -17,8 +17,10 @@
 package shuffle
 
 import (
+	"github.com/golang/mock/gomock"
 	"testing"
 	"time"
+	mock_framework "volcano.sh/volcano/pkg/scheduler/framework/mock_gen"
 
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -39,7 +41,15 @@ func TestShuffle(t *testing.T) {
 	highPriority = 100
 	lowPriority = 10
 
-	framework.RegisterPluginBuilder("fake", NewFakePlugin)
+	ctl := gomock.NewController(t)
+	fakePlugin := mock_framework.NewMockPlugin(ctl)
+	fakePlugin.EXPECT().Name().AnyTimes().Return("fake")
+	fakePlugin.EXPECT().OnSessionOpen(gomock.Any()).Return()
+	fakePlugin.EXPECT().OnSessionClose(gomock.Any()).Return()
+	fakePluginBuilder := func(arguments framework.Arguments) framework.Plugin {
+		return fakePlugin
+	}
+	framework.RegisterPluginBuilder("fake", fakePluginBuilder)
 
 	tests := []struct {
 		name      string
@@ -170,8 +180,24 @@ func TestShuffle(t *testing.T) {
 		}, nil)
 		defer framework.CloseSession(ssn)
 
-		shuffle.Execute(ssn)
+		fakePluginVictimFns := func() []api.VictimTasksFn {
+			victimTasksFn := func(candidates []*api.TaskInfo) []*api.TaskInfo {
+				evicts := make([]*api.TaskInfo, 0)
+				for _, task := range candidates {
+					if task.Priority == lowPriority {
+						evicts = append(evicts, task)
+					}
+				}
+				return evicts
+			}
 
+			victimTasksFns := make([]api.VictimTasksFn, 0)
+			victimTasksFns = append(victimTasksFns, victimTasksFn)
+			return victimTasksFns
+		}
+		ssn.AddVictimTasksFns("fake", fakePluginVictimFns())
+
+		shuffle.Execute(ssn)
 		for {
 			select {
 			case <-evictor.Channel:
