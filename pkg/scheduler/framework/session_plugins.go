@@ -463,6 +463,9 @@ func (ssn *Session) VictimTasks(tasks []*api.TaskInfo) map[*api.TaskInfo]bool {
 				}
 			}
 		}
+		if len(victimSet) > 0 {
+			return victimSet
+		}
 	}
 	return victimSet
 }
