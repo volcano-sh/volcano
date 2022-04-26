@@ -167,7 +167,7 @@ type TargetJobFn func([]*JobInfo) *JobInfo
 type ReservedNodesFn func()
 
 // VictimTasksFn is the func declaration used to select victim tasks
-type VictimTasksFn func() []*TaskInfo
+type VictimTasksFn func([]*TaskInfo) []*TaskInfo
 
 // AllocatableFn is the func declaration used to check whether the task can be allocated
 type AllocatableFn func(*QueueInfo, *TaskInfo) bool

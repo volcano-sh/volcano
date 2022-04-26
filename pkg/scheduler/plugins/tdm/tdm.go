@@ -228,7 +228,7 @@ func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 		return victims, tutil.Permit
 	}
 
-	victimsFn := func() []*api.TaskInfo {
+	victimsFn := func([]*api.TaskInfo) []*api.TaskInfo {
 		if lastEvictAt.Add(tp.evictPeriod).After(time.Now()) {
 			klog.V(4).Infof("TDM next evict time at %v", lastEvictAt)
 			return nil
@@ -291,10 +291,12 @@ func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 		return len(jobInfo.TaskStatusIndex[api.Pending]) > 0
 	}
 
+	victimsFns := make([]api.VictimTasksFn, 0)
+	victimsFns = append(victimsFns, victimsFn)
 	ssn.AddPredicateFn(tp.Name(), predicateFn)
 	ssn.AddNodeOrderFn(tp.Name(), nodeOrderFn)
 	ssn.AddPreemptableFn(tp.Name(), preemptableFn)
-	ssn.AddVictimTasksFns(tp.Name(), victimsFn)
+	ssn.AddVictimTasksFns(tp.Name(), victimsFns)
 	ssn.AddJobOrderFn(tp.Name(), jobOrderFn)
 	ssn.AddJobPipelinedFn(tp.Name(), jobPipelinedFn)
 	ssn.AddJobStarvingFns(tp.Name(), jobStarvingFn)
