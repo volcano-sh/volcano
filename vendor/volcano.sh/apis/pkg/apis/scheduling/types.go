@@ -37,11 +37,11 @@ const (
 
 // These are the valid phase of podGroups.
 const (
-	// PodPending means the pod group has been accepted by the system, but scheduler can not allocate
+	// PodGroupPending means the pod group has been accepted by the system, but scheduler can not allocate
 	// enough resources to it.
 	PodGroupPending PodGroupPhase = "Pending"
 
-	// PodRunning means `spec.minMember` pods of PodGroups has been in running phase.
+	// PodGroupRunning means `spec.minMember` pods of PodGroup has been in running phase.
 	PodGroupRunning PodGroupPhase = "Running"
 
 	// PodGroupUnknown means part of `spec.minMember` pods are running but the other part can not
@@ -51,6 +51,9 @@ const (
 	// PodGroupInqueue means controllers can start to create pods,
 	// is a new state between PodGroupPending and PodGroupRunning
 	PodGroupInqueue PodGroupPhase = "Inqueue"
+
+	// PodGroupCompleted means all the pods of PodGroup are completed
+	PodGroupCompleted PodGroupPhase = "Completed"
 )
 
 type PodGroupConditionType string
@@ -136,6 +139,10 @@ const (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // PodGroup is a collection of Pod; used for batch workload.
+// +kubebuilder:printcolumn:name="STATUS",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="minMember",type=integer,JSONPath=`.spec.minMember`
+// +kubebuilder:printcolumn:name="RUNNINGS",type=integer,JSONPath=`.status.running`
+// +kubebuilder:printcolumn:name="AGE",type=date,JSONPath=`.metadata.creationTimestamp`
 type PodGroup struct {
 	metav1.TypeMeta
 	// Standard object's metadata.
@@ -273,6 +280,8 @@ type QueueStatus struct {
 	Running int32
 	// The number of `Inqueue` PodGroup in this queue.
 	Inqueue int32
+	// The number of `Completed` PodGroup in this queue.
+	Completed int32
 
 	// Reservation is the profile of resource reservation for queue
 	Reservation Reservation `json:"reservation,omitempty" protobuf:"bytes,6,opt,name=reservation"`

@@ -98,7 +98,7 @@ func (c *FakeNumatopologies) Update(ctx context.Context, numatopology *v1alpha1.
 // Delete takes name of the numatopology and deletes it. Returns an error if one occurs.
 func (c *FakeNumatopologies) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(numatopologiesResource, name), &v1alpha1.Numatopology{})
+		Invokes(testing.NewRootDeleteActionWithOptions(numatopologiesResource, name, opts), &v1alpha1.Numatopology{})
 	return err
 }
 
