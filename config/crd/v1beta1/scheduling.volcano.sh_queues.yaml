@@ -97,6 +97,10 @@ spec:
         status:
           description: The status of queue.
           properties:
+            completed:
+              description: The number of `Completed` PodGroup in this queue.
+              format: int32
+              type: integer
             inqueue:
               description: The number of `Inqueue` PodGroup in this queue.
               format: int32
