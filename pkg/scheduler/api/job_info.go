@@ -477,6 +477,13 @@ func (ji *JobInfo) GetMinResources() *Resource {
 	return NewResource(*ji.PodGroup.Spec.MinResources)
 }
 
+func (ji *JobInfo) GetElasticResources() *Resource {
+	if ji.Allocated.LessEqual(ji.GetMinResources(), Zero) {
+		return EmptyResource()
+	}
+	return ji.Allocated.Clone().Sub(ji.GetMinResources())
+}
+
 func (ji *JobInfo) addTaskIndex(ti *TaskInfo) {
 	if _, found := ji.TaskStatusIndex[ti.Status]; !found {
 		ji.TaskStatusIndex[ti.Status] = tasksMap{}

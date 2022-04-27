@@ -50,6 +50,8 @@ type queueAttr struct {
 	deserved  *api.Resource
 	allocated *api.Resource
 	request   *api.Resource
+	// elastic represents the sum of job's elastic resource, job's elastic = job.allocated - job.minAvailable
+	elastic *api.Resource
 	// inqueue represents the resource request of the inqueue job
 	inqueue    *api.Resource
 	capability *api.Resource
@@ -98,6 +100,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				deserved:  api.EmptyResource(),
 				allocated: api.EmptyResource(),
 				request:   api.EmptyResource(),
+				elastic:   api.EmptyResource(),
 				inqueue:   api.EmptyResource(),
 				guarantee: api.EmptyResource(),
 			}
@@ -151,6 +154,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			inqueued := util.GetInqueueResource(job, allocated)
 			attr.inqueue.Add(inqueued)
 		}
+		attr.elastic.Add(job.GetElasticResources())
 	}
 
 	// Record metrics
@@ -215,8 +219,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.deserved = helpers.Max(attr.deserved, attr.guarantee)
 			pp.updateShare(attr)
 
-			klog.V(4).Infof("The attributes of queue <%s> in proportion: deserved <%v>, realCapability <%v>, allocate <%v>, request <%v>, share <%0.2f>",
-				attr.name, attr.deserved, attr.realCapability, attr.allocated, attr.request, attr.share)
+			klog.V(4).Infof("The attributes of queue <%s> in proportion: deserved <%v>, realCapability <%v>, allocate <%v>, request <%v>, elastic <%v>, share <%0.2f>",
+				attr.name, attr.deserved, attr.realCapability, attr.allocated, attr.request, attr.elastic, attr.share)
 
 			increased, decreased := attr.deserved.Diff(oldDeserved, api.Zero)
 			increasedDeserved.Add(increased)
@@ -321,10 +325,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 		minReq := job.GetMinResources()
 
-		klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s>",
-			job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String())
+		klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s> elastic <%s>",
+			job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.elastic.String())
 		// The queue resource quota limit has not reached
-		inqueue := minReq.Add(attr.allocated).Add(attr.inqueue).LessEqual(attr.realCapability, api.Infinity)
+		inqueue := minReq.Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic).LessEqual(attr.realCapability, api.Infinity)
 		klog.V(5).Infof("job %s inqueue %v", job.Name, inqueue)
 		if inqueue {
 			attr.inqueue.Add(job.GetMinResources())
