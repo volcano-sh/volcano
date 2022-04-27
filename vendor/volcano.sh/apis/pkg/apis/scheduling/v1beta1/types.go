@@ -40,11 +40,11 @@ const (
 
 // These are the valid phase of podGroups.
 const (
-	// PodPending means the pod group has been accepted by the system, but scheduler can not allocate
+	// PodGroupPending means the pod group has been accepted by the system, but scheduler can not allocate
 	// enough resources to it.
 	PodGroupPending PodGroupPhase = "Pending"
 
-	// PodRunning means `spec.minMember` pods of PodGroups has been in running phase.
+	// PodGroupRunning means `spec.minMember` pods of PodGroup has been in running phase.
 	PodGroupRunning PodGroupPhase = "Running"
 
 	// PodGroupUnknown means part of `spec.minMember` pods are running but the other part can not
@@ -54,6 +54,9 @@ const (
 	// PodGroupInqueue means controllers can start to create pods,
 	// is a new state between PodGroupPending and PodGroupRunning
 	PodGroupInqueue PodGroupPhase = "Inqueue"
+
+	// PodGroupCompleted means all the pods of PodGroup are completed
+	PodGroupCompleted PodGroupPhase = "Completed"
 )
 
 type PodGroupConditionType string
@@ -289,6 +292,8 @@ type QueueStatus struct {
 	Running int32 `json:"running,omitempty" protobuf:"bytes,4,opt,name=running"`
 	// The number of `Inqueue` PodGroup in this queue.
 	Inqueue int32 `json:"inqueue,omitempty" protobuf:"bytes,5,opt,name=inqueue"`
+	// The number of `Completed` PodGroup in this queue.
+	Completed int32 `json:"completed,omitempty" protobuf:"bytes,7,opt,name=completed"`
 
 	// Reservation is the profile of resource reservation for queue
 	Reservation Reservation `json:"reservation,omitempty" protobuf:"bytes,6,opt,name=reservation"`

@@ -28,7 +28,7 @@ require (
 	k8s.io/kubernetes v1.23.0
 	sigs.k8s.io/yaml v1.2.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v1.5.0-beta.0
+	volcano.sh/apis v1.5.0-beta.0.0.20220427084719-22d3dd007a8f
 )
 
 require (

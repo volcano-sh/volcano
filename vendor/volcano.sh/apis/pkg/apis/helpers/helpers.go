@@ -204,7 +204,7 @@ func runServer(server *http.Server, ln net.Listener) error {
 		return fmt.Errorf("listener and server must not be nil")
 	}
 
-	stopCh := make(chan os.Signal)
+	stopCh := make(chan os.Signal, 2)
 	signal.Notify(stopCh, syscall.SIGTERM, syscall.SIGINT)
 
 	go func() {
