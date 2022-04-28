@@ -6,6 +6,7 @@ basic:
   admission_secret_name: "volcano-admission-secret"
   admission_config_file: "config/volcano-admission.conf"
   scheduler_config_file: "config/volcano-scheduler.conf"
+  pre_delete_hook_image_name: "bitnami/kubectl:latest"
 
   image_pull_secret: ""
   admission_port: 8443

@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-pre-delete-hook
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: volcano-pre-delete-hook
+  annotations:
+    "helm.sh/hook": pre-delete
+    "helm.sh/hook-delete-policy": hook-succeeded,hook-failed
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccount: {{ .Release.Name }}-admission
+      priorityClassName: system-cluster-critical
+      {{- if .Values.basic.image_pull_secret }}
+      imagePullSecrets:
+        - name: {{ .Values.basic.image_pull_secret }}
+      {{- end }}
+      containers:
+        - name: pre-delete-hook
+          image: {{ .Values.basic.pre_delete_hook_image_name }}
+          imagePullPolicy: "IfNotPresent"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              kubectl delete mutatingwebhookconfiguration {{ .Release.Name }}-admission-service-jobs-mutate;
+              kubectl delete mutatingwebhookconfiguration {{ .Release.Name }}-admission-service-podgroups-mutate;
+              kubectl delete mutatingwebhookconfiguration {{ .Release.Name }}-admission-service-pods-mutate;
+              kubectl delete mutatingwebhookconfiguration {{ .Release.Name }}-admission-service-queues-mutate;
+              kubectl delete validatingwebhookconfiguration {{ .Release.Name }}-admission-service-jobs-validate;
+              kubectl delete validatingwebhookconfiguration {{ .Release.Name }}-admission-service-pods-validate;
+              kubectl delete validatingwebhookconfiguration {{ .Release.Name }}-admission-service-queues-validate;
+              kubectl delete secret {{.Values.basic.admission_secret_name}} -n {{ .Release.Namespace }};
+      restartPolicy: Never

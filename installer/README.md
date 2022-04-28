@@ -79,6 +79,7 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`basic.admission_app_name`|Admission Controller App Name|`volcano-admission`|
 |`basic.controller_app_name`|Controller App Name|`volcano-controller`|
 |`basic.scheduler_app_name`|Scheduler App Name|`volcano-scheduler`|
+|`basic.pre_delete_hook_image_name`|Pre Delete Hook Image Name|`bitnami/kubectl:latest`|
 
 Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
 
