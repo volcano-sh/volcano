@@ -76,6 +76,7 @@ spec:
         app: volcano-admission
     spec:
       serviceAccount: {{ .Release.Name }}-admission
+      priorityClassName: system-cluster-critical
       {{- if .Values.basic.image_pull_secret }}
       imagePullSecrets:
         - name: {{ .Values.basic.image_pull_secret }}
@@ -140,6 +141,7 @@ spec:
   template:
     spec:
       serviceAccountName: {{ .Release.Name }}-admission
+      priorityClassName: system-cluster-critical
       {{- if .Values.basic.image_pull_secret }}
       imagePullSecrets:
         - name: {{ .Values.basic.image_pull_secret }}

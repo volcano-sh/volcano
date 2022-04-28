@@ -131,6 +131,7 @@ spec:
         app: volcano-admission
     spec:
       serviceAccount: volcano-admission
+      priorityClassName: system-cluster-critical
       containers:
         - args:
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
@@ -174,6 +175,7 @@ spec:
   template:
     spec:
       serviceAccountName: volcano-admission
+      priorityClassName: system-cluster-critical
       restartPolicy: Never
       containers:
         - name: main
@@ -8473,6 +8475,7 @@ spec:
         app: volcano-controller
     spec:
       serviceAccount: volcano-controllers
+      priorityClassName: system-cluster-critical
       containers:
           - name: volcano-controllers
             image: volcanosh/vc-controller-manager-arm64:latest
@@ -8625,6 +8628,7 @@ spec:
         app: volcano-scheduler
     spec:
       serviceAccount: volcano-scheduler
+      priorityClassName: system-cluster-critical
       containers:
         - name: volcano-scheduler
           image: volcanosh/vc-scheduler-arm64:latest
