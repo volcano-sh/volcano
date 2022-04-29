@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - master
+  # PR triggered job
+  pull_request:
 jobs:
   k8s-integration-tests:
     name: "E2E about Spark Integration test"
@@ -58,6 +60,11 @@ jobs:
         minikube kubectl -- create clusterrolebinding serviceaccounts-cluster-admin --clusterrole=cluster-admin --group=system:serviceaccounts || true
         build/sbt -Pvolcano -Pkubernetes -Pkubernetes-integration-tests -Dtest.include.tags=volcano "kubernetes-integration-tests/test"
       working-directory: ${{ github.workspace }}/spark
+    - name: Collect Volcano logs
+      if: failure()
+      run: |
+        kubectl logs $(kubectl get po -nvolcano-system | grep volcano-scheduler |cut -d" " -f1) -nvolcano-system
+        kubectl get pod -A
     - name: Upload spark integration tests log files
       if: failure()
       uses: actions/upload-artifact@v2

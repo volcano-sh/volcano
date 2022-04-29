@@ -18,6 +18,7 @@ package api
 
 import (
 	"fmt"
+	"k8s.io/klog"
 	"math"
 	"strings"
 
@@ -229,6 +230,7 @@ func (r *Resource) Add(rr *Resource) *Resource {
 
 // Sub subtracts two Resource objects with assertion.
 func (r *Resource) Sub(rr *Resource) *Resource {
+	klog.V(4).Infof("r <%v>, rr <%v>", r, rr)
 	assert.Assertf(rr.LessEqual(r, Zero), "resource is not sufficient to do operation: <%v> sub <%v>", r, rr)
 	return r.sub(rr)
 }

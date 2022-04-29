@@ -478,9 +478,11 @@ func (ji *JobInfo) GetMinResources() *Resource {
 }
 
 func (ji *JobInfo) GetElasticResources() *Resource {
+	klog.V(4).Infof("job %s allocated <%v>, minResource <%v>", ji.Name, ji.Allocated, ji.GetMinResources())
 	if ji.Allocated.LessEqual(ji.GetMinResources(), Zero) {
 		return EmptyResource()
 	}
+	klog.V(4).Infof("job %s allocated <%v>, minResource <%v>, try sub", ji.Name, ji.Allocated, ji.GetMinResources())
 	return ji.Allocated.Clone().Sub(ji.GetMinResources())
 }
 
