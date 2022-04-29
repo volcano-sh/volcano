@@ -20,6 +20,7 @@ import (
 	"math"
 	"reflect"
 
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -334,6 +335,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.inqueue.Add(job.GetMinResources())
 			return util.Permit
 		}
+		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")
 		return util.Reject
 	})
 

@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/framework"
+	v1helper "k8s.io/kubernetes/pkg/scheduler/util"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -328,6 +329,10 @@ func GetInqueueResource(job *api.JobInfo, allocated *api.Resource) *api.Resource
 				inqueue.Memory = reservedMemory
 			}
 		default:
+			if api.IsCountQuota(rName) || !v1helper.IsScalarResourceName(rName) {
+				continue
+			}
+
 			if inqueue.ScalarResources == nil {
 				inqueue.ScalarResources = make(map[v1.ResourceName]float64)
 			}
