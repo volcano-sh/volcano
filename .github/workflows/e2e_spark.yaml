@@ -58,12 +58,22 @@ jobs:
         minikube kubectl -- create clusterrolebinding serviceaccounts-cluster-admin --clusterrole=cluster-admin --group=system:serviceaccounts || true
         build/sbt -Pvolcano -Pkubernetes -Pkubernetes-integration-tests -Dtest.include.tags=volcano "kubernetes-integration-tests/test"
       working-directory: ${{ github.workspace }}/spark
-    - name: Upload spark integration tests log files
+    - name: Collect Volcano logs
+      if: failure()
+      run: |
+        kubectl logs $(kubectl get po -nvolcano-system | grep volcano-scheduler |cut -d" " -f1) -nvolcano-system > volcano-scheduler.log
+        kubectl logs $(kubectl get po -nvolcano-system | grep volcano-admission |cut -d" " -f1 | grep -v init) -nvolcano-system > volcano-admission.log
+        kubectl logs $(kubectl get po -nvolcano-system | grep volcano-controllers |cut -d" " -f1) -nvolcano-system > volcano-controllers.log
+        kubectl get pod -A
+        kubectl describe node
+    - name: Upload Spark on K8S integration tests log files
       if: failure()
       uses: actions/upload-artifact@v2
       with:
-        name: spark-on-kubernetes-with-volcano-it-log
-        path: "**/target/integration-tests.log"
+        name: spark-on-kubernetes-it-log
+        path: |
+          **/target/integration-tests.log
+          **/volcano-*.log
     - name: Cleanup minikube
       if: always()
       run: |
