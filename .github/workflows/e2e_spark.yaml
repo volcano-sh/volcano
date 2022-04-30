@@ -59,6 +59,7 @@ jobs:
         eval $(minikube docker-env)
         minikube kubectl -- create clusterrolebinding serviceaccounts-cluster-admin --clusterrole=cluster-admin --group=system:serviceaccounts || true
         build/sbt -Pvolcano -Pkubernetes -Pkubernetes-integration-tests -Dtest.include.tags=volcano "kubernetes-integration-tests/test"
+        build/sbt -Pvolcano -Pkubernetes -Pkubernetes-integration-tests -Dtest.include.tags=volcano "kubernetes-integration-tests/testOnly *VolcanoSuite -- -z SPARK-38187"
       working-directory: ${{ github.workspace }}/spark
     - name: Collect Volcano logs
       if: failure()
