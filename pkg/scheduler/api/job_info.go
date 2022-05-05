@@ -478,7 +478,7 @@ func (ji *JobInfo) GetMinResources() *Resource {
 }
 
 func (ji *JobInfo) GetElasticResources() *Resource {
-	if ji.Allocated.LessEqual(ji.GetMinResources(), Zero) {
+	if ji.Allocated.LessEqualPartly(ji.GetMinResources(), Zero) {
 		return EmptyResource()
 	}
 	return ji.Allocated.Clone().Sub(ji.GetMinResources())
