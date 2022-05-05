@@ -56,16 +56,17 @@ jobs:
       working-directory: ${{ github.workspace }}/spark
     - name: Run K8S integration test
       run: |
+        echo `kubectl get po -nvolcano-system | grep volcano-scheduler |cut -d" " -f1` > test.txt
         eval $(minikube docker-env)
         minikube kubectl -- create clusterrolebinding serviceaccounts-cluster-admin --clusterrole=cluster-admin --group=system:serviceaccounts || true
         build/sbt -Pvolcano -Pkubernetes -Pkubernetes-integration-tests -Dtest.include.tags=volcano "kubernetes-integration-tests/test"
-        build/sbt -Pvolcano -Pkubernetes -Pkubernetes-integration-tests -Dtest.include.tags=volcano "kubernetes-integration-tests/testOnly *VolcanoSuite -- -z SPARK-38187"
       working-directory: ${{ github.workspace }}/spark
     - name: Collect Volcano logs
       if: failure()
       run: |
-        kubectl logs $(kubectl get po -nvolcano-system | grep volcano-scheduler |cut -d" " -f1) -nvolcano-system
+        kubectl logs `cat test.txt` -nvolcano-system
         kubectl get pod -A
+      working-directory: ${{ github.workspace }}/spark
     - name: Upload spark integration tests log files
       if: failure()
       uses: actions/upload-artifact@v2
