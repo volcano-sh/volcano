@@ -19,14 +19,13 @@ package util
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"math"
 	"math/rand"
 	"sort"
 	"sync"
-
-	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"

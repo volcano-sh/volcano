@@ -29,6 +29,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
+	"volcano.sh/volcano/pkg/scheduler/plugins/rescheduling"
 	"volcano.sh/volcano/pkg/scheduler/plugins/reservation"
 	"volcano.sh/volcano/pkg/scheduler/plugins/resourcequota"
 	"volcano.sh/volcano/pkg/scheduler/plugins/sla"
@@ -52,6 +53,7 @@ func init() {
 	framework.RegisterPluginBuilder(sla.PluginName, sla.New)
 	framework.RegisterPluginBuilder(tasktopology.PluginName, tasktopology.New)
 	framework.RegisterPluginBuilder(numaaware.PluginName, numaaware.New)
+	framework.RegisterPluginBuilder(rescheduling.PluginName, rescheduling.New)
 	framework.RegisterPluginBuilder(usage.PluginName, usage.New)
 
 	// Plugins for Queues
