@@ -27,6 +27,7 @@ import (
 	"k8s.io/klog"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	controllerMpi "volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/mpi"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -117,7 +118,7 @@ func createPatch(job *v1alpha1.Job) ([]byte, error) {
 	if pathMaxRetry != nil {
 		patch = append(patch, *pathMaxRetry)
 	}
-	pathSpec := mutateSpec(job.Spec.Tasks, "/spec/tasks")
+	pathSpec := mutateSpec(job.Spec.Tasks, "/spec/tasks", job)
 	if pathSpec != nil {
 		patch = append(patch, *pathSpec)
 	}
@@ -174,7 +175,11 @@ func patchDefaultMinAvailable(job *v1alpha1.Job) *patchOperation {
 	return nil
 }
 
-func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string) *patchOperation {
+func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string, job *v1alpha1.Job) *patchOperation {
+	// TODO: Enable this configuration when dependOn supports coexistence with the gang plugin
+	// if _, ok := job.Spec.Plugins[controllerMpi.MpiPluginName]; ok {
+	// 	mpi.AddDependsOn(job)
+	// }
 	patched := false
 	for index := range tasks {
 		// add default task name
@@ -219,11 +224,19 @@ func patchDefaultPlugins(job *v1alpha1.Job) *patchOperation {
 		plugins[k] = v
 	}
 
-	// Because the tensorflow-plugin depends on svc-plugin.
+	// Because the tensorflow-plugin and mpi-plugin depends on svc-plugin.
 	// If the svc-plugin is not defined, we should add it.
-	if _, ok := job.Spec.Plugins["tensorflow"]; ok {
+	_, hasTf := job.Spec.Plugins["tensorflow"]
+	_, hasMPI := job.Spec.Plugins[controllerMpi.MpiPluginName]
+	if hasTf || hasMPI {
 		if _, ok := plugins["svc"]; !ok {
 			plugins["svc"] = []string{}
+		}
+	}
+
+	if _, ok := job.Spec.Plugins["mpi"]; ok {
+		if _, ok := plugins["ssh"]; !ok {
+			plugins["ssh"] = []string{}
 		}
 	}
 

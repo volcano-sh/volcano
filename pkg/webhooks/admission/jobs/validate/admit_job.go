@@ -36,8 +36,10 @@ import (
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
+	controllerMpi "volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/mpi"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -130,6 +132,20 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	if len(job.Spec.Tasks) == 0 {
 		reviewResponse.Allowed = false
 		return "No task specified in job spec"
+	}
+
+	if _, ok := job.Spec.Plugins[controllerMpi.MpiPluginName]; ok {
+		mp := controllerMpi.NewInstance(job.Spec.Plugins[controllerMpi.MpiPluginName])
+		masterIndex := helpers.GetTasklndexUnderJob(mp.GetMasterName(), job)
+		workerIndex := helpers.GetTasklndexUnderJob(mp.GetWorkerName(), job)
+		if masterIndex == -1 {
+			reviewResponse.Allowed = false
+			return "The specified mpi master task was not found"
+		}
+		if workerIndex == -1 {
+			reviewResponse.Allowed = false
+			return "The specified mpi worker task was not found"
+		}
 	}
 
 	hasDependenciesBetweenTasks := false
