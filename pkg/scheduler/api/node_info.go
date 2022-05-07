@@ -298,6 +298,7 @@ func (ni *NodeInfo) setNodeGPUInfo(node *v1.Node) {
 	}
 
 	memoryPerCard := uint(totalMemory / gpuNumber)
+	ni.GPUDevices = make(map[int]*GPUDevice)
 	for i := 0; i < int(gpuNumber); i++ {
 		ni.GPUDevices[i] = NewGPUDevice(i, memoryPerCard)
 	}
