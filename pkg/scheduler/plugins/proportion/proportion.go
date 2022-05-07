@@ -150,12 +150,14 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		// Considering a Spark job is completed(driver pod is completed) while the podgroup keeps running, the allocated resource will be reserved again if without the judgement.
 		if job.PodGroup.Status.Phase == scheduling.PodGroupRunning &&
 			job.PodGroup.Spec.MinResources != nil &&
-			job.PodGroup.Status.Running >= job.PodGroup.Spec.MinMember {
+			int32(util.CalculateAllocatedTaskNum(job)) >= job.PodGroup.Spec.MinMember {
 			allocated := util.GetAllocatedResource(job)
 			inqueued := util.GetInqueueResource(job, allocated)
 			attr.inqueue.Add(inqueued)
 		}
 		attr.elastic.Add(job.GetElasticResources())
+		klog.V(5).Infof("Queue %s allocated <%s> request <%s> inqueue <%s> elastic <%s>",
+			attr.name, attr.allocated.String(), attr.request.String(), attr.inqueue.String(), attr.elastic.String())
 	}
 
 	// Record metrics
@@ -326,8 +328,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 		minReq := job.GetMinResources()
 
-		klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s> elastic <%s>",
-			job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.elastic.String())
+		klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s> inqueue <%s> elastic <%s>",
+			job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.inqueue.String(), attr.elastic.String())
 		// The queue resource quota limit has not reached
 		inqueue := minReq.Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic).LessEqual(attr.realCapability, api.Infinity)
 		klog.V(5).Infof("job %s inqueue %v", job.Name, inqueue)

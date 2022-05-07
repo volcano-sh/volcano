@@ -313,13 +313,24 @@ func GetAllocatedResource(job *api.JobInfo) *api.Resource {
 	return allocated
 }
 
+// CalculateAllocatedTaskNum returns allocated resource num for given job
+func CalculateAllocatedTaskNum(job *api.JobInfo) int {
+	allocatedNum := 0
+	for status, tasks := range job.TaskStatusIndex {
+		if api.AllocatedStatus(status) {
+			allocatedNum += len(tasks)
+		}
+	}
+	return allocatedNum
+}
+
 // GetInqueueResource returns reserved resource for running job whose part of pods have not been allocated resource.
 func GetInqueueResource(job *api.JobInfo, allocated *api.Resource) *api.Resource {
 	inqueue := &api.Resource{}
 	for rName, rQuantity := range *job.PodGroup.Spec.MinResources {
 		switch rName {
 		case v1.ResourceCPU:
-			reservedCPU := float64(rQuantity.Value()) - allocated.MilliCPU
+			reservedCPU := float64(rQuantity.MilliValue()) - allocated.MilliCPU
 			if reservedCPU > 0 {
 				inqueue.MilliCPU = reservedCPU
 			}

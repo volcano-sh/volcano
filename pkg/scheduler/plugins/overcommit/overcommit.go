@@ -100,7 +100,7 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 		// Considering a Spark job is completed(driver pod is completed) while the podgroup keeps running, the allocated resource will be reserved again if without the judgement.
 		if job.PodGroup.Status.Phase == scheduling.PodGroupRunning &&
 			job.PodGroup.Spec.MinResources != nil &&
-			job.PodGroup.Status.Running >= job.PodGroup.Spec.MinMember {
+			int32(util.CalculateAllocatedTaskNum(job)) >= job.PodGroup.Spec.MinMember {
 			allocated := util.GetAllocatedResource(job)
 			inqueued := util.GetInqueueResource(job, allocated)
 			op.inqueueResource.Add(inqueued)
