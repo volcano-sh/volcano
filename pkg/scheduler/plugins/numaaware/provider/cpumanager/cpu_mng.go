@@ -17,6 +17,7 @@ limitations under the License.
 package cpumanager
 
 import (
+	"fmt"
 	"math"
 
 	v1 "k8s.io/api/core/v1"
@@ -102,6 +103,18 @@ func generateCPUTopologyHints(availableCPUs cpuset.CPUSet, CPUDetails topology.C
 	return hints
 }
 
+// getPhysicalCoresNum return the number of physical cores.
+// The resourc-exporter reports core ids only unique in each socket,
+// we use the platform unique form to get all physical cores.
+func getPhysicalCoresNum(CPUDetails topology.CPUDetails) int {
+	uniques := make(map[string]struct{})
+	for _, v := range CPUDetails {
+		key := fmt.Sprintf("%d/%d", v.SocketID, v.CoreID)
+		uniques[key] = struct{}{}
+	}
+	return len(uniques)
+}
+
 func (mng *cpuMng) GetTopologyHints(container *v1.Container,
 	topoInfo *api.NumatopoInfo, resNumaSets api.ResNumaSets) map[string][]policy.TopologyHint {
 	if _, ok := container.Resources.Requests[v1.ResourceCPU]; !ok {
@@ -117,7 +130,7 @@ func (mng *cpuMng) GetTopologyHints(container *v1.Container,
 
 	cputopo := &topology.CPUTopology{
 		NumCPUs:    topoInfo.CPUDetail.CPUs().Size(),
-		NumCores:   topoInfo.CPUDetail.Cores().Size() * topoInfo.CPUDetail.Sockets().Size(),
+		NumCores:   getPhysicalCoresNum(topoInfo.CPUDetail),
 		NumSockets: topoInfo.CPUDetail.Sockets().Size(),
 		CPUDetails: topoInfo.CPUDetail,
 	}
@@ -150,7 +163,7 @@ func (mng *cpuMng) Allocate(container *v1.Container, bestHit *policy.TopologyHin
 	topoInfo *api.NumatopoInfo, resNumaSets api.ResNumaSets) map[string]cpuset.CPUSet {
 	cputopo := &topology.CPUTopology{
 		NumCPUs:    topoInfo.CPUDetail.CPUs().Size(),
-		NumCores:   topoInfo.CPUDetail.Cores().Size() * topoInfo.CPUDetail.Sockets().Size(),
+		NumCores:   getPhysicalCoresNum(topoInfo.CPUDetail),
 		NumSockets: topoInfo.CPUDetail.Sockets().Size(),
 		CPUDetails: topoInfo.CPUDetail,
 	}
