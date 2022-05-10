@@ -1,4 +1,4 @@
-{{- if eq .Values.custom.metrics_enable "true" }}
+{{- if .Values.custom.metrics_enable }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
