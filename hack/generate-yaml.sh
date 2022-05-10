@@ -121,7 +121,7 @@ ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespac
       >> ${DEPLOYMENT_FILE}
 
 ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-monitoring \
-      --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} \
+      --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set custom.metrics_enable=true \
       -s templates/prometheus.yaml \
       -s templates/kubestatemetrics.yaml \
       -s templates/grafana.yaml \
