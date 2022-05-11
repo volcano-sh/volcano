@@ -85,6 +85,26 @@ func (a Arguments) GetBool(ptr *bool, key string) {
 	*ptr = value
 }
 
+// GetString get the bool value from string
+func (a Arguments) GetString(ptr *string, key string) {
+	if ptr == nil {
+		return
+	}
+
+	argv, ok := a[key]
+	if !ok {
+		return
+	}
+
+	value, ok := argv.(string)
+	if !ok {
+		klog.Warningf("Could not parse argument: %v for key %s to string", argv, key)
+		return
+	}
+
+	*ptr = value
+}
+
 // GetArgOfActionFromConf return argument of action reading from configuration of schedule
 func GetArgOfActionFromConf(configurations []conf.Configuration, actionName string) Arguments {
 	for _, c := range configurations {
