@@ -1,3 +1,4 @@
+{{- if .Values.custom.scheduler_enable }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -146,3 +147,4 @@ spec:
   selector:
     app: volcano-scheduler
   type: ClusterIP
+{{- end }}
