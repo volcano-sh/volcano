@@ -30,6 +30,7 @@ func Min(l, r *api.Resource) *api.Resource {
 
 	res.MilliCPU = math.Min(l.MilliCPU, r.MilliCPU)
 	res.Memory = math.Min(l.Memory, r.Memory)
+	res.EphemeralStorage = math.Min(l.EphemeralStorage, r.EphemeralStorage)
 
 	if l.ScalarResources == nil || r.ScalarResources == nil {
 		return res
@@ -49,6 +50,7 @@ func Max(l, r *api.Resource) *api.Resource {
 
 	res.MilliCPU = math.Max(l.MilliCPU, r.MilliCPU)
 	res.Memory = math.Max(l.Memory, r.Memory)
+	res.EphemeralStorage = math.Max(l.EphemeralStorage, r.EphemeralStorage)
 
 	if l.ScalarResources == nil && r.ScalarResources == nil {
 		return res

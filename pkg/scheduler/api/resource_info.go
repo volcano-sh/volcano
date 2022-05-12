@@ -48,8 +48,9 @@ const (
 
 // Resource struct defines all the resource type
 type Resource struct {
-	MilliCPU float64
-	Memory   float64
+	MilliCPU         float64
+	Memory           float64
+	EphemeralStorage float64
 
 	// ScalarResources
 	ScalarResources map[v1.ResourceName]float64
@@ -75,6 +76,8 @@ func NewResource(rl v1.ResourceList) *Resource {
 			r.Memory += float64(rQuant.Value())
 		case v1.ResourcePods:
 			r.MaxTaskNum += int(rQuant.Value())
+		case v1.ResourceEphemeralStorage:
+			r.EphemeralStorage += float64(rQuant.Value())
 		default:
 			//NOTE: When converting this back to k8s resource, we need record the format as well as / 1000
 			if v1helper.IsScalarResourceName(rName) {
@@ -114,9 +117,10 @@ func ResQuantity2Float64(resName v1.ResourceName, quantity resource.Quantity) fl
 // Clone is used to clone a resource type, which is a deep copy function.
 func (r *Resource) Clone() *Resource {
 	clone := &Resource{
-		MilliCPU:   r.MilliCPU,
-		Memory:     r.Memory,
-		MaxTaskNum: r.MaxTaskNum,
+		MilliCPU:         r.MilliCPU,
+		Memory:           r.Memory,
+		EphemeralStorage: r.EphemeralStorage,
+		MaxTaskNum:       r.MaxTaskNum,
 	}
 
 	if r.ScalarResources != nil {
@@ -131,7 +135,7 @@ func (r *Resource) Clone() *Resource {
 
 // String returns resource details in string format
 func (r *Resource) String() string {
-	str := fmt.Sprintf("cpu %0.2f, memory %0.2f", r.MilliCPU, r.Memory)
+	str := fmt.Sprintf("cpu %0.2f, memory %0.2f, ephemeral-storage %0.2f", r.MilliCPU, r.Memory, r.EphemeralStorage)
 	for rName, rQuant := range r.ScalarResources {
 		str = fmt.Sprintf("%s, %s %0.2f", str, rName, rQuant)
 	}
@@ -150,6 +154,10 @@ func (r *Resource) ResourceNames() ResourceNameList {
 		resNames = append(resNames, v1.ResourceMemory)
 	}
 
+	if r.EphemeralStorage >= minResource {
+		resNames = append(resNames, v1.ResourceEphemeralStorage)
+	}
+
 	for rName, rMount := range r.ScalarResources {
 		if rMount >= minResource {
 			resNames = append(resNames, rName)
@@ -166,6 +174,8 @@ func (r *Resource) Get(rn v1.ResourceName) float64 {
 		return r.MilliCPU
 	case v1.ResourceMemory:
 		return r.Memory
+	case v1.ResourceEphemeralStorage:
+		return r.EphemeralStorage
 	default:
 		if r.ScalarResources == nil {
 			return 0
@@ -176,7 +186,7 @@ func (r *Resource) Get(rn v1.ResourceName) float64 {
 
 // IsEmpty returns false if any kind of resource is not less than min value, otherwise returns true
 func (r *Resource) IsEmpty() bool {
-	if !(r.MilliCPU < minResource && r.Memory < minResource) {
+	if !(r.MilliCPU < minResource && r.Memory < minResource && r.EphemeralStorage < minResource) {
 		return false
 	}
 
@@ -196,6 +206,8 @@ func (r *Resource) IsZero(rn v1.ResourceName) bool {
 		return r.MilliCPU < minResource
 	case v1.ResourceMemory:
 		return r.Memory < minResource
+	case v1.ResourceEphemeralStorage:
+		return r.EphemeralStorage < minResource
 	default:
 		if r.ScalarResources == nil {
 			return true
@@ -212,6 +224,7 @@ func (r *Resource) IsZero(rn v1.ResourceName) bool {
 func (r *Resource) Add(rr *Resource) *Resource {
 	r.MilliCPU += rr.MilliCPU
 	r.Memory += rr.Memory
+	r.EphemeralStorage += rr.EphemeralStorage
 
 	for rName, rQuant := range rr.ScalarResources {
 		if r.ScalarResources == nil {
@@ -233,6 +246,7 @@ func (r *Resource) Sub(rr *Resource) *Resource {
 func (r *Resource) sub(rr *Resource) *Resource {
 	r.MilliCPU -= rr.MilliCPU
 	r.Memory -= rr.Memory
+	r.EphemeralStorage -= rr.EphemeralStorage
 
 	if r.ScalarResources == nil {
 		return r
@@ -248,6 +262,7 @@ func (r *Resource) sub(rr *Resource) *Resource {
 func (r *Resource) Multi(ratio float64) *Resource {
 	r.MilliCPU *= ratio
 	r.Memory *= ratio
+	r.EphemeralStorage *= ratio
 	for rName, rQuant := range r.ScalarResources {
 		r.ScalarResources[rName] = rQuant * ratio
 	}
@@ -265,6 +280,9 @@ func (r *Resource) SetMaxResource(rr *Resource) {
 	}
 	if rr.Memory > r.Memory {
 		r.Memory = rr.Memory
+	}
+	if rr.EphemeralStorage > r.EphemeralStorage {
+		r.EphemeralStorage = rr.EphemeralStorage
 	}
 
 	for rrName, rrQuant := range rr.ScalarResources {
@@ -293,6 +311,10 @@ func (r *Resource) FitDelta(rr *Resource) *Resource {
 
 	if rr.Memory > 0 {
 		r.Memory -= rr.Memory + minResource
+	}
+
+	if rr.EphemeralStorage > 0 {
+		r.EphemeralStorage -= rr.EphemeralStorage + minResource
 	}
 
 	if r.ScalarResources == nil {
@@ -326,6 +348,9 @@ func (r *Resource) Less(rr *Resource, defaultValue DimensionDefaultValue) bool {
 	if !lessFunc(r.Memory, rr.Memory) {
 		return false
 	}
+	if !lessFunc(r.EphemeralStorage, rr.EphemeralStorage) {
+		return false
+	}
 
 	for resourceName, leftValue := range r.ScalarResources {
 		rightValue, ok := rr.ScalarResources[resourceName]
@@ -357,6 +382,9 @@ func (r *Resource) LessEqual(rr *Resource, defaultValue DimensionDefaultValue) b
 	if !lessEqualFunc(r.Memory, rr.Memory, minResource) {
 		return false
 	}
+	if !lessEqualFunc(r.EphemeralStorage, rr.EphemeralStorage, minResource) {
+		return false
+	}
 
 	for resourceName, leftValue := range r.ScalarResources {
 		rightValue, ok := rr.ScalarResources[resourceName]
@@ -379,7 +407,7 @@ func (r *Resource) LessPartly(rr *Resource, defaultValue DimensionDefaultValue) 
 		return l < r
 	}
 
-	if lessFunc(r.MilliCPU, rr.MilliCPU) || lessFunc(r.Memory, rr.Memory) {
+	if lessFunc(r.MilliCPU, rr.MilliCPU) || lessFunc(r.Memory, rr.Memory) || lessFunc(r.EphemeralStorage, rr.EphemeralStorage) {
 		return true
 	}
 
@@ -407,7 +435,7 @@ func (r *Resource) LessEqualPartly(rr *Resource, defaultValue DimensionDefaultVa
 		return false
 	}
 
-	if lessEqualFunc(r.MilliCPU, rr.MilliCPU, minResource) || lessEqualFunc(r.Memory, rr.Memory, minResource) {
+	if lessEqualFunc(r.MilliCPU, rr.MilliCPU, minResource) || lessEqualFunc(r.Memory, rr.Memory, minResource) || lessEqualFunc(r.EphemeralStorage, rr.EphemeralStorage, minResource) {
 		return true
 	}
 
@@ -432,7 +460,7 @@ func (r *Resource) Equal(rr *Resource, defaultValue DimensionDefaultValue) bool 
 		return l == r || math.Abs(l-r) < diff
 	}
 
-	if !equalFunc(r.MilliCPU, rr.MilliCPU, minResource) || !equalFunc(r.Memory, rr.Memory, minResource) {
+	if !equalFunc(r.MilliCPU, rr.MilliCPU, minResource) || !equalFunc(r.Memory, rr.Memory, minResource) || !equalFunc(r.EphemeralStorage, rr.EphemeralStorage, minResource) {
 		return false
 	}
 
@@ -464,6 +492,12 @@ func (r *Resource) Diff(rr *Resource, defaultValue DimensionDefaultValue) (*Reso
 		increasedVal.Memory = leftRes.Memory - rightRes.Memory
 	} else {
 		decreasedVal.Memory = rightRes.Memory - leftRes.Memory
+	}
+
+	if leftRes.EphemeralStorage > rightRes.EphemeralStorage {
+		increasedVal.EphemeralStorage = leftRes.EphemeralStorage - rightRes.EphemeralStorage
+	} else {
+		decreasedVal.EphemeralStorage = rightRes.EphemeralStorage - leftRes.EphemeralStorage
 	}
 
 	increasedVal.ScalarResources = make(map[v1.ResourceName]float64)
@@ -513,6 +547,9 @@ func (r *Resource) MinDimensionResource(rr *Resource, defaultValue DimensionDefa
 	}
 	if rr.Memory < r.Memory {
 		r.Memory = rr.Memory
+	}
+	if rr.EphemeralStorage < r.EphemeralStorage {
+		r.EphemeralStorage = rr.EphemeralStorage
 	}
 
 	if r.ScalarResources == nil {

@@ -122,9 +122,9 @@ func TestHDRF(t *testing.T) {
 				},
 			},
 			expected: map[string]string{
-				"pg1":  "cpu 5000.00, memory 5000000000.00, nvidia.com/gpu 0.00",
-				"pg21": "cpu 5000.00, memory 0.00, nvidia.com/gpu 0.00",
-				"pg22": "cpu 0.00, memory 5000000000.00, nvidia.com/gpu 0.00",
+				"pg1":  "cpu 5000.00, memory 5000000000.00, ephemeral-storage 0.00, nvidia.com/gpu 0.00",
+				"pg21": "cpu 5000.00, memory 0.00, ephemeral-storage 0.00, nvidia.com/gpu 0.00",
+				"pg22": "cpu 0.00, memory 5000000000.00, ephemeral-storage 0.00, nvidia.com/gpu 0.00",
 			},
 		},
 		{
@@ -197,11 +197,11 @@ func TestHDRF(t *testing.T) {
 				},
 			},
 			expected: map[string]string{
-				"pg1":  "cpu 10000.00, memory 0.00, nvidia.com/gpu 0.00",
-				"pg2":  "cpu 10000.00, memory 0.00, nvidia.com/gpu 0.00",
-				"pg31": "cpu 10000.00, memory 0.00, nvidia.com/gpu 0.00",
-				"pg32": "cpu 0.00, memory 15000000000.00, nvidia.com/gpu 0.00",
-				"pg4":  "cpu 0.00, memory 15000000000.00, nvidia.com/gpu 0.00",
+				"pg1":  "cpu 10000.00, memory 0.00, ephemeral-storage 0.00, nvidia.com/gpu 0.00",
+				"pg2":  "cpu 10000.00, memory 0.00, ephemeral-storage 0.00, nvidia.com/gpu 0.00",
+				"pg31": "cpu 10000.00, memory 0.00, ephemeral-storage 0.00, nvidia.com/gpu 0.00",
+				"pg32": "cpu 0.00, memory 15000000000.00, ephemeral-storage 0.00, nvidia.com/gpu 0.00",
+				"pg4":  "cpu 0.00, memory 15000000000.00, ephemeral-storage 0.00, nvidia.com/gpu 0.00",
 			},
 		},
 	}

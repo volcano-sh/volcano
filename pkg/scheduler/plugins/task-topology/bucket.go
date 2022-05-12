@@ -69,7 +69,8 @@ func (b *Bucket) CalcResReq(req *api.Resource, action reqAction) {
 	cpu := req.MilliCPU
 	// treat 1Mi the same as 1m cpu 1m gpu
 	mem := req.Memory / 1024 / 1024
-	score := cpu + mem
+	eStorarge := req.EphemeralStorage / 1024 / 1024
+	score := cpu + mem + eStorarge
 	for _, request := range req.ScalarResources {
 		score += request
 	}

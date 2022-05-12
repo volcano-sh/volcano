@@ -327,6 +327,11 @@ func GetInqueueResource(job *api.JobInfo, allocated *api.Resource) *api.Resource
 			if reservedMemory > 0 {
 				inqueue.Memory = reservedMemory
 			}
+		case v1.ResourceEphemeralStorage:
+			reservedEphemeralStorage := float64(rQuantity.Value()) - allocated.EphemeralStorage
+			if reservedEphemeralStorage > 0 {
+				inqueue.EphemeralStorage = reservedEphemeralStorage
+			}
 		default:
 			if inqueue.ScalarResources == nil {
 				inqueue.ScalarResources = make(map[v1.ResourceName]float64)
