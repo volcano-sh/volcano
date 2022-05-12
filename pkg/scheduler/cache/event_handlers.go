@@ -36,6 +36,7 @@ import (
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/apis/pkg/apis/utils"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
 func isTerminated(status schedulingapi.TaskStatus) bool {
@@ -613,7 +614,10 @@ func (sc *SchedulerCache) updateQueue(queue *scheduling.Queue) {
 }
 
 func (sc *SchedulerCache) deleteQueue(id schedulingapi.QueueID) {
-	delete(sc.Queues, id)
+	if queue, ok := sc.Queues[id]; ok {
+		delete(sc.Queues, id)
+		metrics.DeleteQueueMetrics(queue.Name)
+	}
 }
 
 //DeletePriorityClass delete priorityclass from the scheduler cache
