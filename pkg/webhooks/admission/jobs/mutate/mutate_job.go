@@ -98,8 +98,10 @@ func Jobs(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 		Allowed: true,
 		Patch:   patchBytes,
 	}
-	pt := admissionv1.PatchTypeJSONPatch
-	reviewResponse.PatchType = &pt
+	if len(patchBytes) > 0 {
+		pt := admissionv1.PatchTypeJSONPatch
+		reviewResponse.PatchType = &pt
+	}
 
 	return &reviewResponse
 }
