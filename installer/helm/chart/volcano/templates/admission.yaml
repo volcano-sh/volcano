@@ -1,3 +1,4 @@
+{{- if .Values.custom.admission_enable }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -153,3 +154,4 @@ spec:
           imagePullPolicy: IfNotPresent
           command: ["./gen-admission-secret.sh", "--service", "{{ .Release.Name }}-admission-service", "--namespace",
                     "{{ .Release.Namespace }}", "--secret", "{{.Values.basic.admission_secret_name}}"]
+{{- end }}
