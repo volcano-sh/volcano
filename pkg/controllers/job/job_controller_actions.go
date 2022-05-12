@@ -756,19 +756,15 @@ func (cc *jobcontroller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 	sort.Sort(tasksPriority)
 
 	minReq := v1.ResourceList{}
-	podCnt := int32(0)
-	for _, task := range tasksPriority {
-		for i := int32(0); i < task.Replicas; i++ {
-			if podCnt >= job.Spec.MinAvailable {
-				break
+	for j := int32(0); j < job.Spec.MinAvailable; j++ {
+		for _, task := range tasksPriority {
+			for i := int32(0); i < task.Replicas; i++ {
+				pod := &v1.Pod{
+					Spec: task.Template.Spec,
+				}
+				res, _ := quotacore.PodUsageFunc(pod, clock.RealClock{})
+				minReq = quotav1.Add(minReq, res)
 			}
-
-			podCnt++
-			pod := &v1.Pod{
-				Spec: task.Template.Spec,
-			}
-			res, _ := quotacore.PodUsageFunc(pod, clock.RealClock{})
-			minReq = quotav1.Add(minReq, res)
 		}
 	}
 

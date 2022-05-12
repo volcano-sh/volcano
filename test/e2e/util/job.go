@@ -105,7 +105,6 @@ func CreateJobWithPodGroup(ctx *TestContext, jobSpec *JobSpec,
 		},
 	}
 
-	var min int32
 	for i, task := range jobSpec.Tasks {
 		name := task.Name
 		if len(name) == 0 {
@@ -150,14 +149,12 @@ func CreateJobWithPodGroup(ctx *TestContext, jobSpec *JobSpec,
 		}
 
 		job.Spec.Tasks = append(job.Spec.Tasks, ts)
-
-		min += task.Min
 	}
 
 	if jobSpec.Min > 0 {
 		job.Spec.MinAvailable = jobSpec.Min
 	} else {
-		job.Spec.MinAvailable = min
+		job.Spec.MinAvailable = 1
 	}
 
 	if jobSpec.Pri != "" {
@@ -203,7 +200,6 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 		},
 	}
 
-	var min int32
 	for i, task := range jobSpec.Tasks {
 		name := task.Name
 		if len(name) == 0 {
@@ -252,14 +248,12 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 		}
 
 		job.Spec.Tasks = append(job.Spec.Tasks, ts)
-
-		min += task.Min
 	}
 
 	if jobSpec.Min > 0 {
 		job.Spec.MinAvailable = jobSpec.Min
 	} else {
-		job.Spec.MinAvailable = min
+		job.Spec.MinAvailable = 1
 	}
 
 	if jobSpec.Pri != "" {
