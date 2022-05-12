@@ -87,12 +87,15 @@ func PodGroups(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 		}
 	}
 
-	pt := admissionv1.PatchTypeJSONPatch
-	return &admissionv1.AdmissionResponse{
-		Allowed:   true,
-		Patch:     patchBytes,
-		PatchType: &pt,
+	reviewResponse := admissionv1.AdmissionResponse{
+		Allowed: true,
+		Patch:   patchBytes,
 	}
+	if len(patchBytes) > 0 {
+		pt := admissionv1.PatchTypeJSONPatch
+		reviewResponse.PatchType = &pt
+	}
+	return &reviewResponse
 }
 
 func createPodGroupPatch(podgroup *schedulingv1beta1.PodGroup) ([]byte, error) {
