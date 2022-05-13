@@ -329,9 +329,9 @@ func (ni *NodeInfo) setNodeGPUInfo(node *v1.Node) {
 		ni.GPUDevices[i] = NewGPUDevice(i, memoryPerCard)
 	}
 	unhealthyGPUs := ni.getUnhealthyGPUs(node)
-	for id := range unhealthyGPUs {
-		klog.V(4).Infof("delete unhealthy gpu id %d from GPUDevices", id)
-		delete(ni.GPUDevices, id)
+	for i := range unhealthyGPUs {
+		klog.V(4).Infof("delete unhealthy gpu id %d from GPUDevices", unhealthyGPUs[i])
+		delete(ni.GPUDevices, unhealthyGPUs[i])
 	}
 }
 
@@ -588,8 +588,8 @@ func (ni *NodeInfo) SubGPUResource(pod *v1.Pod) {
 }
 
 // getUnhealthyGPUs returns all the unhealthy GPU id.
-func (ni *NodeInfo) getUnhealthyGPUs(node *v1.Node) (unhealthyGPUs map[int]bool) {
-	unhealthyGPUs = map[int]bool{}
+func (ni *NodeInfo) getUnhealthyGPUs(node *v1.Node) (unhealthyGPUs []int) {
+	unhealthyGPUs = []int{}
 	devicesStr, ok := node.Annotations[UnhealthyGPUIDs]
 
 	if !ok {
@@ -602,7 +602,7 @@ func (ni *NodeInfo) getUnhealthyGPUs(node *v1.Node) (unhealthyGPUs map[int]bool)
 		if err != nil {
 			klog.Warningf("Failed to parse unhealthy gpu id %s due to %v", sid, err)
 		} else {
-			unhealthyGPUs[id] = true
+			unhealthyGPUs = append(unhealthyGPUs, id)
 		}
 	}
 	return
