@@ -330,7 +330,7 @@ func (ni *NodeInfo) setNodeGPUInfo(node *v1.Node) {
 	}
 	unhealthyGPUs := ni.getUnhealthyGPUs(node)
 	for id := range unhealthyGPUs {
-		klog.Info("delete unhealthy gpu id %d from GPUDevices", id)
+		klog.V(4).Infof("delete unhealthy gpu id %d from GPUDevices", id)
 		delete(ni.GPUDevices, id)
 	}
 }
