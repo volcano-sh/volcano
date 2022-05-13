@@ -853,7 +853,7 @@ func (sc *SchedulerCache) processCleanupJob() {
 
 	if schedulingapi.JobTerminated(job) {
 		delete(sc.Jobs, job.UID)
-		metrics.DeleteJobShare(job.Namespace, job.Name)
+		metrics.DeleteJobMetrics(job.Name, string(job.Queue), job.Namespace)
 		klog.V(3).Infof("Job <%v:%v/%v> was deleted.", job.UID, job.Namespace, job.Name)
 	} else {
 		// Retry
