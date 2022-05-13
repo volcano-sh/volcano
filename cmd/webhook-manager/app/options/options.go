@@ -73,15 +73,12 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&c.PrintVersion, "version", false, "Show version and quit")
 	fs.Float32Var(&c.KubeClientOptions.QPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
 	fs.IntVar(&c.KubeClientOptions.Burst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
-
 	fs.StringVar(&c.CaCertFile, "ca-cert-file", c.CaCertFile, "File containing the x509 Certificate for HTTPS.")
 	fs.StringVar(&c.WebhookNamespace, "webhook-namespace", "", "The namespace of this webhook")
 	fs.StringVar(&c.WebhookName, "webhook-service-name", "", "The name of this webhook")
 	fs.StringVar(&c.WebhookURL, "webhook-url", "", "The url of this webhook")
 	fs.StringVar(&c.EnabledAdmission, "enabled-admission", defaultEnabledAdmission, "enabled admission webhooks")
-
 	fs.StringVar(&c.SchedulerName, "scheduler-name", defaultSchedulerName, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
-
 	fs.StringVar(&c.ConfigPath, "admission-conf", "", "The configmap file of this webhook")
 }
 
