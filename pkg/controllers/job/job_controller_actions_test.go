@@ -54,9 +54,10 @@ func TestKillJobFunc(t *testing.T) {
 			Name: "KillJob success Case",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job1",
-					Namespace: namespace,
-					UID:       "e7f18111-1cec-11ea-b688-fa163ec79500",
+					Name:            "job1",
+					Namespace:       namespace,
+					UID:             "e7f18111-1cec-11ea-b688-fa163ec79500",
+					ResourceVersion: "100",
 				},
 			},
 			PodGroup: &schedulingv1alpha2.PodGroup{
@@ -327,8 +328,9 @@ func TestCreateJobIOIfNotExistFunc(t *testing.T) {
 			Name: "Create Job IO case",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job1",
-					Namespace: namespace,
+					Name:            "job1",
+					Namespace:       namespace,
+					ResourceVersion: "100",
 				},
 				Spec: v1alpha1.JobSpec{
 					Volumes: []v1alpha1.VolumeSpec{
@@ -378,8 +380,9 @@ func TestCreatePVCFunc(t *testing.T) {
 			Name: "CreatePVC success Case",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job1",
-					Namespace: namespace,
+					Name:            "job1",
+					Namespace:       namespace,
+					ResourceVersion: "100",
 				},
 			},
 			VolumeClaim: &v1.PersistentVolumeClaimSpec{
@@ -521,8 +524,9 @@ func TestDeleteJobPod(t *testing.T) {
 			Name: "DeleteJobPod success case",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job1",
-					Namespace: namespace,
+					Name:            "job1",
+					Namespace:       namespace,
+					ResourceVersion: "100",
 				},
 			},
 			Pods: map[string]*v1.Pod{

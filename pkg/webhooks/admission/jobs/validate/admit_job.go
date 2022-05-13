@@ -33,6 +33,7 @@ import (
 	k8scorev1 "k8s.io/kubernetes/pkg/apis/core/v1"
 	v1qos "k8s.io/kubernetes/pkg/apis/core/v1/helper/qos"
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
+	"k8s.io/kubernetes/pkg/capabilities"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -44,6 +45,14 @@ import (
 )
 
 func init() {
+	capabilities.Initialize(capabilities.Capabilities{
+		AllowPrivileged: true,
+		PrivilegedSources: capabilities.PrivilegedSources{
+			HostNetworkSources: []string{},
+			HostPIDSources:     []string{},
+			HostIPCSources:     []string{},
+		},
+	})
 	router.RegisterAdmission(service)
 }
 
@@ -139,11 +148,15 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		}
 
 		if task.Replicas < 0 {
-			msg += fmt.Sprintf(" 'replicas' < 0 in task: %s;", task.Name)
+			msg += fmt.Sprintf(" 'replicas' < 0 in task: %s, job: %s;", task.Name, job.Name)
 		}
 
-		if task.MinAvailable != nil && *task.MinAvailable > task.Replicas {
-			msg += fmt.Sprintf(" 'minAvailable' is greater than 'replicas' in task: %s, job: %s", task.Name, job.Name)
+		if task.MinAvailable != nil {
+			if *task.MinAvailable < 0 {
+				msg += fmt.Sprintf(" 'minAvailable' < 0 in task: %s, job: %s;", task.Name, job.Name)
+			} else if *task.MinAvailable > task.Replicas {
+				msg += fmt.Sprintf(" 'minAvailable' is greater than 'replicas' in task: %s, job: %s;", task.Name, job.Name)
+			}
 		}
 
 		// count replicas
@@ -163,7 +176,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		}
 
 		if err := validatePolicies(task.Policies, field.NewPath("spec.tasks.policies")); err != nil {
-			msg += err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v",
+			msg += err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v;",
 				getValidEvents(), getValidActions())
 		}
 		podName := jobhelpers.MakePodName(job.Name, task.Name, index)
@@ -174,7 +187,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	msg += validateJobName(job)
 
 	if totalReplicas < job.Spec.MinAvailable {
-		msg += "job 'minAvailable' should not be greater than total replicas in tasks;"
+		msg += " job 'minAvailable' should not be greater than total replicas in tasks;"
 	}
 
 	if err := validatePolicies(job.Spec.Policies, field.NewPath("spec.policies")); err != nil {
@@ -186,7 +199,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	if len(job.Spec.Plugins) != 0 {
 		for name := range job.Spec.Plugins {
 			if _, found := plugins.GetPluginBuilder(name); !found {
-				msg += fmt.Sprintf(" unable to find job plugin: %s", name)
+				msg += fmt.Sprintf(" unable to find job plugin: %s;", name)
 			}
 		}
 	}
@@ -197,16 +210,16 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 
 	queue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), job.Spec.Queue, metav1.GetOptions{})
 	if err != nil {
-		msg += fmt.Sprintf(" unable to find job queue: %v", err)
+		msg += fmt.Sprintf(" unable to find job queue: %v;", err)
 	} else if queue.Status.State != schedulingv1beta1.QueueStateOpen {
-		msg += fmt.Sprintf("can only submit job to queue with state `Open`, "+
-			"queue `%s` status is `%s`", queue.Name, queue.Status.State)
+		msg += fmt.Sprintf(" can only submit job to queue with state `Open`, "+
+			"queue `%s` status is `%s`;", queue.Name, queue.Status.State)
 	}
 
 	if hasDependenciesBetweenTasks {
 		_, isDag := topoSort(job)
 		if !isDag {
-			msg += "job has dependencies between tasks, but doesn't form a directed acyclic graph(DAG)"
+			msg += " job has dependencies between tasks, but doesn't form a directed acyclic graph(DAG);"
 		}
 	}
 
@@ -224,9 +237,14 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 			return fmt.Errorf("'replicas' must be >= 0 in task: %s", task.Name)
 		}
 
-		if task.MinAvailable != nil && *task.MinAvailable > task.Replicas {
-			return fmt.Errorf("'minAvailable' must be <= 'replicas' in task: %s;", task.Name)
+		if task.MinAvailable != nil {
+			if *task.MinAvailable < 0 {
+				return fmt.Errorf("'minAvailable' must be >= 0 in task: %s", task.Name)
+			} else if *task.MinAvailable > task.Replicas {
+				return fmt.Errorf("'minAvailable' must be <= 'replicas' in task: %s", task.Name)
+			}
 		}
+
 		// count replicas
 		totalReplicas += task.Replicas
 	}
@@ -274,19 +292,6 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 
 	var coreTemplateSpec k8score.PodTemplateSpec
 	k8scorev1.Convert_v1_PodTemplateSpec_To_core_PodTemplateSpec(&v1PodTemplate.Template, &coreTemplateSpec, nil)
-
-	// Skip verify container SecurityContex.Privileged as it depends on
-	// the kube-apiserver `allow-privileged` flag.
-	for i, container := range coreTemplateSpec.Spec.InitContainers {
-		if container.SecurityContext != nil && container.SecurityContext.Privileged != nil {
-			coreTemplateSpec.Spec.InitContainers[i].SecurityContext.Privileged = nil
-		}
-	}
-	for i, container := range coreTemplateSpec.Spec.Containers {
-		if container.SecurityContext != nil && container.SecurityContext.Privileged != nil {
-			coreTemplateSpec.Spec.Containers[i].SecurityContext.Privileged = nil
-		}
-	}
 
 	corePodTemplate := k8score.PodTemplate{
 		ObjectMeta: metav1.ObjectMeta{

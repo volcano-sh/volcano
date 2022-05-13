@@ -54,10 +54,11 @@ var _ = Describe("Job E2E Test", func() {
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
 				{
-					Img: e2eutil.DefaultNginxImage,
-					Req: slot,
-					Min: 1,
-					Rep: 1,
+					Img:    e2eutil.DefaultNginxImage,
+					Req:    slot,
+					Min:    1,
+					Rep:    1,
+					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
 				},
 			},
 		}
@@ -93,10 +94,11 @@ var _ = Describe("Job E2E Test", func() {
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
 				{
-					Img: e2eutil.DefaultNginxImage,
-					Req: slot,
-					Min: 1,
-					Rep: rep,
+					Img:    e2eutil.DefaultNginxImage,
+					Req:    slot,
+					Min:    1,
+					Rep:    rep,
+					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
 				},
 			},
 		}
@@ -198,10 +200,11 @@ var _ = Describe("Job E2E Test", func() {
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
 				{
-					Img: e2eutil.DefaultNginxImage,
-					Req: slot,
-					Min: 1,
-					Rep: rep / 2,
+					Img:    e2eutil.DefaultNginxImage,
+					Req:    slot,
+					Min:    1,
+					Rep:    rep / 2,
+					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
 				},
 			},
 		}
@@ -246,10 +249,11 @@ var _ = Describe("Job E2E Test", func() {
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
 				{
-					Img: e2eutil.DefaultNginxImage,
-					Req: slot,
-					Min: 1,
-					Rep: 1,
+					Img:    e2eutil.DefaultNginxImage,
+					Req:    slot,
+					Min:    1,
+					Rep:    1,
+					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
 				},
 			},
 		}
@@ -301,10 +305,11 @@ var _ = Describe("Job E2E Test", func() {
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
 				{
-					Img: e2eutil.DefaultNginxImage,
-					Req: slot,
-					Min: 1,
-					Rep: rep,
+					Img:    e2eutil.DefaultNginxImage,
+					Req:    slot,
+					Min:    1,
+					Rep:    rep,
+					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
 				},
 			},
 		}

@@ -58,6 +58,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				OversubscriptionResource: EmptyResource(),
 				Allocatable:              buildResource("8000m", "10G"),
 				Capability:               buildResource("8000m", "10G"),
+				ResourceUsage:            &NodeUsage{},
 				State:                    NodeState{Phase: Ready},
 				Tasks: map[TaskID]*TaskInfo{
 					"c1/p1": NewTaskInfo(case01Pod1),
@@ -80,6 +81,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				OversubscriptionResource: EmptyResource(),
 				Allocatable:              buildResource("2000m", "1G"),
 				Capability:               buildResource("2000m", "1G"),
+				ResourceUsage:            &NodeUsage{},
 				State:                    NodeState{Phase: Ready},
 				Tasks:                    map[TaskID]*TaskInfo{},
 				GPUDevices:               make(map[int]*GPUDevice),
@@ -138,6 +140,7 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 				Pipelined:                EmptyResource(),
 				Allocatable:              buildResource("8000m", "10G"),
 				Capability:               buildResource("8000m", "10G"),
+				ResourceUsage:            &NodeUsage{},
 				State:                    NodeState{Phase: Ready},
 				Tasks: map[TaskID]*TaskInfo{
 					"c1/p1": NewTaskInfo(case01Pod1),
@@ -198,6 +201,7 @@ func TestNodeInfo_SetNode(t *testing.T) {
 				Pipelined:                EmptyResource(),
 				Allocatable:              buildResource("10", "10G"),
 				Capability:               buildResource("10", "10G"),
+				ResourceUsage:            &NodeUsage{},
 				State:                    NodeState{Phase: NotReady, Reason: "OutOfSync"},
 				Tasks: map[TaskID]*TaskInfo{
 					"c1/p1": NewTaskInfo(case01Pod1),

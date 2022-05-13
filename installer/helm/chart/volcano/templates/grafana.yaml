@@ -1,3 +1,4 @@
+{{- if .Values.custom.metrics_enable }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -134,3 +135,4 @@ spec:
     - port: 3000
       targetPort: 3000
       nodePort: 30004
+{{- end }}

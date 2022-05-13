@@ -342,7 +342,7 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 		},
 	}
 
-	pvc, pv, sc := util.BuildDynamicPVC("c1", "pvc", v1.ResourceList{
+	pvc, _, sc := util.BuildDynamicPVC("c1", "pvc", v1.ResourceList{
 		v1.ResourceStorage: resource.MustParse("1Gi"),
 	})
 	pvc1 := pvc.DeepCopy()
@@ -394,29 +394,6 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 			expectedActions: map[string][]string{
 				"c1/p1": {"GetPodVolumes", "AllocateVolumes", "DynamicProvisions"},
 				"c1/p2": {"GetPodVolumes", "AllocateVolumes", "DynamicProvisions"},
-			},
-		},
-		{
-			name: "pvc with matched pv",
-			pods: []*v1.Pod{
-				util.BuildPodWithPVC("c1", "p3", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvc, "pg1", make(map[string]string), make(map[string]string)),
-				util.BuildPodWithPVC("c1", "p4", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvc1, "pg1", make(map[string]string), make(map[string]string)),
-			},
-			pvs: []*v1.PersistentVolume{
-				pv,
-			},
-			nodes: []*v1.Node{
-				util.BuildNode("n3", util.BuildResourceList("2", "4Gi"), make(map[string]string)),
-			},
-			sc:   sc,
-			pvcs: []*v1.PersistentVolumeClaim{pvc, pvc1},
-			expectedBind: map[string]string{
-				"c1/p3": "n3",
-				"c1/p4": "n3",
-			},
-			expectedActions: map[string][]string{
-				"c1/p3": {"GetPodVolumes", "AllocateVolumes", "StaticBindings"},
-				"c1/p4": {"GetPodVolumes", "AllocateVolumes", "DynamicProvisions"},
 			},
 		},
 	}

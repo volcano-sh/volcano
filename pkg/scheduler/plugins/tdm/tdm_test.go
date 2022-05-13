@@ -716,7 +716,8 @@ func Test_TDM_victimsFn(t *testing.T) {
 
 			d, _ := time.ParseDuration(test.args[evictPeriodLabel].(string))
 			time.Sleep(d)
-			res := ssn.VictimTasks()
+			tasks := make([]*api.TaskInfo, 0)
+			res := ssn.VictimTasks(tasks)
 			if len(res) != test.want {
 				t.Errorf("want %v, got %v", test.want, len(res))
 				return

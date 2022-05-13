@@ -68,8 +68,8 @@ func BuildNode(name string, alloc v1.ResourceList, labels map[string]string) *v1
 	}
 }
 
-// BuildPod builts Pod object
-func BuildPod(namespace, name, nodename string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string) *v1.Pod {
+// BuildPod builds a Burstable pod object
+func BuildPod(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string) *v1.Pod {
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			UID:       types.UID(fmt.Sprintf("%v-%v", namespace, name)),
@@ -84,7 +84,7 @@ func BuildPod(namespace, name, nodename string, p v1.PodPhase, req v1.ResourceLi
 			Phase: p,
 		},
 		Spec: v1.PodSpec{
-			NodeName:     nodename,
+			NodeName:     nodeName,
 			NodeSelector: selector,
 			Containers: []v1.Container{
 				{
@@ -191,6 +191,65 @@ func BuildDynamicPVC(namespace, name string, req v1.ResourceList) (*v1.Persisten
 		},
 	}
 	return pvc, pv, sc
+}
+
+// BuildBestEffortPod builds a BestEffort pod object
+func BuildBestEffortPod(namespace, name, nodeName string, p v1.PodPhase, groupName string, labels map[string]string, selector map[string]string) *v1.Pod {
+	return &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			UID:       types.UID(fmt.Sprintf("%v-%v", namespace, name)),
+			Name:      name,
+			Namespace: namespace,
+			Labels:    labels,
+			Annotations: map[string]string{
+				schedulingv2.KubeGroupNameAnnotationKey: groupName,
+			},
+		},
+		Status: v1.PodStatus{
+			Phase: p,
+		},
+		Spec: v1.PodSpec{
+			NodeName:     nodeName,
+			NodeSelector: selector,
+			Containers: []v1.Container{
+				{
+					Resources: v1.ResourceRequirements{
+						Requests: v1.ResourceList{},
+					},
+				},
+			},
+		},
+	}
+}
+
+// BuildPodWithPriority builds a pod object with priority
+func BuildPodWithPriority(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string, priority *int32) *v1.Pod {
+	return &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			UID:       types.UID(fmt.Sprintf("%v-%v", namespace, name)),
+			Name:      name,
+			Namespace: namespace,
+			Labels:    labels,
+			Annotations: map[string]string{
+				schedulingv2.KubeGroupNameAnnotationKey: groupName,
+			},
+		},
+		Status: v1.PodStatus{
+			Phase: p,
+		},
+		Spec: v1.PodSpec{
+			NodeName:     nodeName,
+			NodeSelector: selector,
+			Priority:     priority,
+			Containers: []v1.Container{
+				{
+					Resources: v1.ResourceRequirements{
+						Requests: req,
+					},
+				},
+			},
+		},
+	}
 }
 
 // FakeBinder is used as fake binder

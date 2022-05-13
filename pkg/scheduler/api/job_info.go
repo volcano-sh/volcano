@@ -477,6 +477,13 @@ func (ji *JobInfo) GetMinResources() *Resource {
 	return NewResource(*ji.PodGroup.Spec.MinResources)
 }
 
+func (ji *JobInfo) GetElasticResources() *Resource {
+	if ji.Allocated.LessEqualPartly(ji.GetMinResources(), Zero) {
+		return EmptyResource()
+	}
+	return ji.Allocated.Clone().Sub(ji.GetMinResources())
+}
+
 func (ji *JobInfo) addTaskIndex(ti *TaskInfo) {
 	if _, found := ji.TaskStatusIndex[ti.Status]; !found {
 		ji.TaskStatusIndex[ti.Status] = tasksMap{}
@@ -704,6 +711,9 @@ func (ji *JobInfo) CheckTaskMinAvailable() bool {
 
 	klog.V(4).Infof("job %s/%s actual: %+v, ji.TaskMinAvailable: %+v", ji.Name, ji.Namespace, actual, ji.TaskMinAvailable)
 	for task, minAvailable := range ji.TaskMinAvailable {
+		if minAvailable == 0 {
+			continue
+		}
 		if act, ok := actual[task]; !ok || act < minAvailable {
 			return false
 		}

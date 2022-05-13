@@ -170,9 +170,16 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		})
 
 		expected := map[string]int64{
-			"cpu":            2,
-			"memory":         1024 * 1024 * 2000,
-			"nvidia.com/gpu": 2,
+			"count/pods":              2,
+			"cpu":                     2,
+			"memory":                  1024 * 1024 * 2000,
+			"nvidia.com/gpu":          2,
+			"limits.cpu":              2,
+			"limits.memory":           1024 * 1024 * 2000,
+			"requests.memory":         1024 * 1024 * 2000,
+			"requests.nvidia.com/gpu": 2,
+			"pods":                    2,
+			"requests.cpu":            2,
 		}
 
 		err := e2eutil.WaitJobStatePending(ctx, job)

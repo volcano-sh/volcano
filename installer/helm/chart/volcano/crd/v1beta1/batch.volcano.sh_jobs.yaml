@@ -6,6 +6,19 @@ metadata:
   creationTimestamp: null
   name: jobs.batch.volcano.sh
 spec:
+  additionalPrinterColumns:
+  - JSONPath: .status.state.phase
+    name: STATUS
+    type: string
+  - JSONPath: .status.minAvailable
+    name: minAvailable
+    type: integer
+  - JSONPath: .status.running
+    name: RUNNINGS
+    type: integer
+  - JSONPath: .metadata.creationTimestamp
+    name: AGE
+    type: date
   group: batch.volcano.sh
   names:
     kind: Job
