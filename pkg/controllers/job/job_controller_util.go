@@ -100,7 +100,8 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 	}
 
 	pod.Annotations[batch.TaskSpecKey] = tsKey
-	pod.Annotations[schedulingv2.KubeGroupNameAnnotationKey] = job.Name
+	pgName := job.Name + "-" + string(job.UID)
+	pod.Annotations[schedulingv2.KubeGroupNameAnnotationKey] = pgName
 	pod.Annotations[batch.JobNameKey] = job.Name
 	pod.Annotations[batch.QueueNameKey] = job.Spec.Queue
 	pod.Annotations[batch.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
