@@ -244,7 +244,7 @@ func preempt(
 
 		for !victimsQueue.Empty() {
 			// If reclaimed enough resources, break loop to avoid Sub panic.
-			// If preemptor's queue is overused, it means preemptor can not be allcated. So no ned care about the node idle resourace
+			// If preemptor's queue is overused, it means preemptor can not be allcated. So no need care about the node idle resourace
 			if !ssn.Overused(currentQueue) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 				break
 			}
@@ -263,7 +263,7 @@ func preempt(
 		klog.V(3).Infof("Preempted <%v> for Task <%s/%s> requested <%v>.",
 			preempted, preemptor.Namespace, preemptor.Name, preemptor.InitResreq)
 
-		// If preemptor's queue is overused, it means preemptor can not be allcated. So no ned care about the node idle resourace
+		// If preemptor's queue is overused, it means preemptor can not be allcated. So no need care about the node idle resourace
 		if !ssn.Overused(currentQueue) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 			if err := stmt.Pipeline(preemptor, node.Name); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
