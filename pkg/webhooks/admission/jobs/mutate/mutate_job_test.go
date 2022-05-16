@@ -19,7 +19,7 @@ package mutate
 import (
 	"testing"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -120,7 +120,7 @@ func TestCreatePatchExecution(t *testing.T) {
 		},
 	}
 
-	ret := mutateSpec(testCase.Job.Spec.Tasks, "/spec/tasks")
+	ret := mutateSpec(testCase.Job.Spec.Tasks, "/spec/tasks", &testCase.Job)
 	if ret.Path != testCase.operation.Path || ret.Op != testCase.operation.Op {
 		t.Errorf("testCase %s's expected patch operation %v, but got %v",
 			testCase.Name, testCase.operation, *ret)
