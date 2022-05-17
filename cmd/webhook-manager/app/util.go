@@ -23,7 +23,7 @@ import (
 	"regexp"
 	"strings"
 
-	"k8s.io/api/admissionregistration/v1"
+	v1 "k8s.io/api/admissionregistration/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -37,6 +37,7 @@ import (
 
 func registerWebhookConfig(kubeClient *kubernetes.Clientset, config *options.Config, service *router.AdmissionService, caBundle []byte) {
 	sideEffect := v1.SideEffectClassNoneOnDryRun
+	failurePolicyIgnore := v1.Ignore
 	reviewVersions := []string{"v1"}
 	clientConfig := v1.WebhookClientConfig{
 		CABundle: caBundle,
@@ -55,15 +56,16 @@ func registerWebhookConfig(kubeClient *kubernetes.Clientset, config *options.Con
 		klog.Infof("The service of webhook manager is <%s/%s/%s>.",
 			config.WebhookName, config.WebhookNamespace, service.Path)
 	}
+
 	if service.MutatingConfig != nil {
+		failurePolicyIgnore := v1.Ignore
 		for i := range service.MutatingConfig.Webhooks {
 			service.MutatingConfig.Webhooks[i].SideEffects = &sideEffect
 			service.MutatingConfig.Webhooks[i].AdmissionReviewVersions = reviewVersions
 			service.MutatingConfig.Webhooks[i].ClientConfig = clientConfig
+			service.MutatingConfig.Webhooks[i].FailurePolicy = &failurePolicyIgnore
 		}
-
 		service.MutatingConfig.ObjectMeta.Name = webhookConfigName(config.WebhookName, service.Path)
-
 		if err := registerMutateWebhook(kubeClient, service.MutatingConfig); err != nil {
 			klog.Errorf("Failed to register mutating admission webhook (%s): %v",
 				service.Path, err)
@@ -76,6 +78,7 @@ func registerWebhookConfig(kubeClient *kubernetes.Clientset, config *options.Con
 			service.ValidatingConfig.Webhooks[i].SideEffects = &sideEffect
 			service.ValidatingConfig.Webhooks[i].AdmissionReviewVersions = reviewVersions
 			service.ValidatingConfig.Webhooks[i].ClientConfig = clientConfig
+			service.ValidatingConfig.Webhooks[i].FailurePolicy = &failurePolicyIgnore
 		}
 
 		service.ValidatingConfig.ObjectMeta.Name = webhookConfigName(config.WebhookName, service.Path)
