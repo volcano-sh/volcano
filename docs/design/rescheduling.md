@@ -82,15 +82,14 @@ tiers:
             - name: lowPriorityFirst
             - name: lowNodeUtilization
               params:
-                nodeResourceUtilizationThresholds:
-                  thresholds:
-                    "cpu" : 20
-                    "memory": 20
-                    "pods": 20
-                  targetThresholds:
-                    "cpu" : 50
-                    "memory": 50
-                    "pods": 50
+                thresholds:
+                  "cpu" : 20
+                  "memory": 20
+                  "pods": 20
+                targetThresholds:
+                  "cpu" : 50
+                  "memory": 50
+                  "pods": 50
           queueSelector:         ## optional, select workloads in specified queues as potential evictees. All queues by default.
             - default
             - test-queue
