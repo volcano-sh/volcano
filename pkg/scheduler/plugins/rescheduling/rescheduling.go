@@ -161,7 +161,13 @@ func (rc *ReschedulingConfigs) parseArguments(arguments framework.Arguments) {
 	}
 	strategies, ok := arguments["strategies"]
 	if ok {
-		rc.strategies = strategies.([]Strategy)
+		strategyArray, _ := strategies.([]interface{})
+		for _, strategyInterface := range strategyArray {
+			strategy, ok := strategyInterface.(Strategy)
+			if ok {
+				rc.strategies = append(rc.strategies, strategy)
+			}
+		}
 		RegisteredStrategies = RegisteredStrategies[0:0]
 		for k := range RegisteredStrategyConfigs {
 			delete(RegisteredStrategyConfigs, k)
