@@ -330,8 +330,9 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s> inqueue <%s> elastic <%s>",
 			job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.inqueue.String(), attr.elastic.String())
+		minResourceAllocated := attr.allocated.Clone().Sub(attr.elastic)
 		// The queue resource quota limit has not reached
-		inqueue := minReq.Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic).LessEqual(attr.realCapability, api.Infinity)
+		inqueue := minReq.AddDepends(minResourceAllocated).AddDepends(attr.inqueue).LessEqual(attr.realCapability, api.Infinity)
 		klog.V(5).Infof("job %s inqueue %v", job.Name, inqueue)
 		if inqueue {
 			attr.inqueue.Add(job.GetMinResources())

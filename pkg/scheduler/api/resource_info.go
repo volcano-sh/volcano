@@ -212,6 +212,29 @@ func (r *Resource) IsZero(rn v1.ResourceName) bool {
 	}
 }
 
+// AddDepends is used to add two given resources
+// e.g.1 r resource is <cpu 2000.00, memory 1000.00, nvidia.com/gpu 0>
+// rr resource is <cpu 3000.00, memory 2000.00 , nvidia.com/gpu 1>
+// return r resource is <cpu 5000.00, memory 3000.00, nvidia.com/gpu 0>
+// e.g.2 r resource is <cpu 2000.00, memory 1000.00>
+// rr resource is <cpu 3000.00, memory 2000.00 , nvidia.com/gpu 1>
+// return r resource is <cpu 5000.00, memory 3000.00, nvidia.com/gpu 0>
+func (r *Resource) AddDepends(rr *Resource) *Resource {
+	r.MilliCPU += rr.MilliCPU
+	r.Memory += rr.Memory
+
+	for rName, rQuant := range rr.ScalarResources {
+		if r.ScalarResources == nil {
+			r.ScalarResources = map[v1.ResourceName]float64{}
+		}
+		if v, ok := r.ScalarResources[rName]; ok && v > 0 {
+			r.ScalarResources[rName] += rQuant
+		}
+	}
+
+	return r
+}
+
 // Add is used to add two given resources
 func (r *Resource) Add(rr *Resource) *Resource {
 	r.MilliCPU += rr.MilliCPU
