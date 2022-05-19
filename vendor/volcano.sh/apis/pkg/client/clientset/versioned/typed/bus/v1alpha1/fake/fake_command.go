@@ -104,7 +104,7 @@ func (c *FakeCommands) Update(ctx context.Context, command *v1alpha1.Command, op
 // Delete takes name of the command and deletes it. Returns an error if one occurs.
 func (c *FakeCommands) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteAction(commandsResource, c.ns, name), &v1alpha1.Command{})
+		Invokes(testing.NewDeleteActionWithOptions(commandsResource, c.ns, name, opts), &v1alpha1.Command{})
 
 	return err
 }

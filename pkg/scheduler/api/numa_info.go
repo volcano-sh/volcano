@@ -36,6 +36,8 @@ const (
 	NumaInfoMoreFlag NumaChgFlag = 0b11
 	// NumaInfoLessFlag indicate the received allocatable resource is getting less
 	NumaInfoLessFlag NumaChgFlag = 0b10
+	// DefaultMaxNodeScore indicates the default max node score
+	DefaultMaxNodeScore = 100
 )
 
 // PodResourceDecision is resource allocation determinated by scheduler,
@@ -87,8 +89,8 @@ func (info *NumatopoInfo) DeepCopy() *NumatopoInfo {
 		tmpInfo.Capacity = resInfo.Capacity
 		tmpInfo.Allocatable = resInfo.Allocatable.Clone()
 
-		for numaId, data := range resInfo.AllocatablePerNuma {
-			tmpInfo.AllocatablePerNuma[numaId] = data
+		for numaID, data := range resInfo.AllocatablePerNuma {
+			tmpInfo.AllocatablePerNuma[numaID] = data
 		}
 
 		for numaID, data := range resInfo.UsedPerNuma {
@@ -252,4 +254,10 @@ func (resSets ResNumaSets) Clone() ResNumaSets {
 	}
 
 	return newSets
+}
+
+// ScoredNode is the wrapper for node during Scoring.
+type ScoredNode struct {
+	NodeName string
+	Score    int64
 }

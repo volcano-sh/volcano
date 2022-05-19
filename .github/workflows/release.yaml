@@ -1,8 +1,8 @@
 name: daily release
 on:
   schedule:
-  # run at every 12nd minute past 0:00
-  - cron:  '*/12 0 * * *'
+  # Runs at 0:00 and 12:00 UTC every day
+  - cron:  '0 */12 * * *'
 
 jobs:
   docker:

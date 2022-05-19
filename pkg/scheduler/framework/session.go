@@ -25,11 +25,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
-	volumescheduling "k8s.io/kubernetes/pkg/controller/volume/scheduling"
-
 	"volcano.sh/apis/pkg/apis/scheduling"
+	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
+	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -41,6 +43,7 @@ type Session struct {
 	UID types.UID
 
 	kubeClient      kubernetes.Interface
+	recorder        record.EventRecorder
 	cache           cache.Cache
 	informerFactory informers.SharedInformerFactory
 
@@ -75,7 +78,7 @@ type Session struct {
 	preemptableFns    map[string]api.EvictableFn
 	reclaimableFns    map[string]api.EvictableFn
 	overusedFns       map[string]api.ValidateFn
-	underUsedFns      map[string]api.UnderUsedResourceFn
+	allocatableFns    map[string]api.AllocatableFn
 	jobReadyFns       map[string]api.ValidateFn
 	jobPipelinedFns   map[string]api.VoteFn
 	jobValidFns       map[string]api.ValidateExFn
@@ -83,7 +86,7 @@ type Session struct {
 	jobEnqueuedFns    map[string]api.JobEnqueuedFn
 	targetJobFns      map[string]api.TargetJobFn
 	reservedNodesFns  map[string]api.ReservedNodesFn
-	victimTasksFns    map[string]api.VictimTasksFn
+	victimTasksFns    map[string][]api.VictimTasksFn
 	jobStarvingFns    map[string]api.ValidateFn
 }
 
@@ -91,6 +94,7 @@ func openSession(cache cache.Cache) *Session {
 	ssn := &Session{
 		UID:             uuid.NewUUID(),
 		kubeClient:      cache.Client(),
+		recorder:        cache.EventRecorder(),
 		cache:           cache,
 		informerFactory: cache.SharedInformerFactory(),
 
@@ -117,7 +121,7 @@ func openSession(cache cache.Cache) *Session {
 		preemptableFns:    map[string]api.EvictableFn{},
 		reclaimableFns:    map[string]api.EvictableFn{},
 		overusedFns:       map[string]api.ValidateFn{},
-		underUsedFns:      map[string]api.UnderUsedResourceFn{},
+		allocatableFns:    map[string]api.AllocatableFn{},
 		jobReadyFns:       map[string]api.ValidateFn{},
 		jobPipelinedFns:   map[string]api.VoteFn{},
 		jobValidFns:       map[string]api.ValidateExFn{},
@@ -125,7 +129,7 @@ func openSession(cache cache.Cache) *Session {
 		jobEnqueuedFns:    map[string]api.JobEnqueuedFn{},
 		targetJobFns:      map[string]api.TargetJobFn{},
 		reservedNodesFns:  map[string]api.ReservedNodesFn{},
-		victimTasksFns:    map[string]api.VictimTasksFn{},
+		victimTasksFns:    map[string][]api.VictimTasksFn{},
 		jobStarvingFns:    map[string]api.ValidateFn{},
 	}
 
@@ -282,7 +286,7 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 }
 
 //Allocate the task to the node in the session
-func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err error) {
 	podVolumes, err := ssn.cache.GetPodVolumes(task, nodeInfo.Node)
 	if err != nil {
 		return err
@@ -292,6 +296,11 @@ func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 	if err := ssn.cache.AllocateVolumes(task, hostname, podVolumes); err != nil {
 		return err
 	}
+	defer func() {
+		if err != nil {
+			ssn.cache.RevertVolumes(task, podVolumes)
+		}
+	}()
 
 	task.Pod.Spec.NodeName = hostname
 	task.PodVolumes = podVolumes
@@ -337,18 +346,20 @@ func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 
 	if ssn.JobReady(job) {
 		for _, task := range job.TaskStatusIndex[api.Allocated] {
-			if err := ssn.dispatch(task, podVolumes); err != nil {
+			if err := ssn.dispatch(task); err != nil {
 				klog.Errorf("Failed to dispatch task <%v/%v>: %v",
 					task.Namespace, task.Name, err)
 				return err
 			}
 		}
+	} else {
+		ssn.cache.RevertVolumes(task, podVolumes)
 	}
 
 	return nil
 }
 
-func (ssn *Session) dispatch(task *api.TaskInfo, volumes *volumescheduling.PodVolumes) error {
+func (ssn *Session) dispatch(task *api.TaskInfo) error {
 	if err := ssn.cache.AddBindTask(task); err != nil {
 		return err
 	}
@@ -458,6 +469,20 @@ func (ssn Session) KubeClient() kubernetes.Interface {
 // InformerFactory returns the scheduler ShareInformerFactory
 func (ssn Session) InformerFactory() informers.SharedInformerFactory {
 	return ssn.informerFactory
+}
+
+// RecordPodGroupEvent records podGroup events
+func (ssn Session) RecordPodGroupEvent(podGroup *schedulingapi.PodGroup, eventType, reason, msg string) {
+	if podGroup == nil {
+		return
+	}
+
+	pg := &vcv1beta1.PodGroup{}
+	if err := schedulingscheme.Scheme.Convert(&podGroup.PodGroup, pg, nil); err != nil {
+		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
+		return
+	}
+	ssn.recorder.Eventf(pg, eventType, reason, msg)
 }
 
 //String return nodes and jobs information in the session

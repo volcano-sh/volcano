@@ -21,15 +21,18 @@ import (
 	"fmt"
 
 	v1 "k8s.io/api/core/v1"
+	utilFeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
+	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/imagelocality"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/noderesources"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -182,39 +185,54 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		},
 	})
 
+	fts := feature.Features{
+		EnablePodAffinityNamespaceSelector: utilFeature.DefaultFeatureGate.Enabled(features.PodAffinityNamespaceSelector),
+		EnablePodDisruptionBudget:          utilFeature.DefaultFeatureGate.Enabled(features.PodDisruptionBudget),
+		EnablePodOverhead:                  utilFeature.DefaultFeatureGate.Enabled(features.PodOverhead),
+		EnableReadWriteOncePod:             utilFeature.DefaultFeatureGate.Enabled(features.ReadWriteOncePod),
+		EnableVolumeCapacityPriority:       utilFeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority),
+		EnableCSIStorageCapacity:           utilFeature.DefaultFeatureGate.Enabled(features.CSIStorageCapacity),
+	}
+
 	// Initialize k8s scheduling plugins
 	handle := k8s.NewFrameworkHandle(nodeMap, ssn.KubeClient(), ssn.InformerFactory())
 	// 1. NodeResourcesLeastAllocated
-	laArgs := &config.NodeResourcesLeastAllocatedArgs{
-		Resources: []config.ResourceSpec{
-			{
-				Name:   "cpu",
-				Weight: 50,
-			},
-			{
-				Name:   "memory",
-				Weight: 50,
-			},
+	leastAllocatedArgs := &config.NodeResourcesFitArgs{
+		ScoringStrategy: &config.ScoringStrategy{
+			Type:      config.LeastAllocated,
+			Resources: []config.ResourceSpec{{Name: "cpu", Weight: 50}, {Name: "memory", Weight: 50}},
 		},
 	}
-	p, _ := noderesources.NewLeastAllocated(laArgs, handle)
-	leastAllocated := p.(*noderesources.LeastAllocated)
+	p, _ := noderesources.NewFit(leastAllocatedArgs, handle, fts)
+	leastAllocated := p.(*noderesources.Fit)
 
 	// 2. NodeResourcesMostAllocated
-	defaultResourceMostAllocatedSet := []config.ResourceSpec{
-		{Name: string(v1.ResourceCPU), Weight: 1},
-		{Name: string(v1.ResourceMemory), Weight: 1},
+	mostAllocatedArgs := &config.NodeResourcesFitArgs{
+		ScoringStrategy: &config.ScoringStrategy{
+			Type:      config.MostAllocated,
+			Resources: []config.ResourceSpec{{Name: "cpu", Weight: 1}, {Name: "memory", Weight: 1}},
+		},
 	}
-	args := config.NodeResourcesMostAllocatedArgs{Resources: defaultResourceMostAllocatedSet}
-	p, _ = noderesources.NewMostAllocated(&args, handle)
-	mostAllocated := p.(*noderesources.MostAllocated)
+	noderesources.NewFit(mostAllocatedArgs, handle, fts)
+	p, _ = noderesources.NewFit(mostAllocatedArgs, handle, fts)
+	mostAllocation := p.(*noderesources.Fit)
 
 	// 3. NodeResourcesBalancedAllocation
-	p, _ = noderesources.NewBalancedAllocation(nil, handle)
+	blArgs := &config.NodeResourcesBalancedAllocationArgs{
+		Resources: []config.ResourceSpec{
+			{Name: string(v1.ResourceCPU), Weight: 1},
+			{Name: string(v1.ResourceMemory), Weight: 1},
+			{Name: "nvidia.com/gpu", Weight: 1},
+		},
+	}
+	p, _ = noderesources.NewBalancedAllocation(blArgs, handle, fts)
 	balancedAllocation := p.(*noderesources.BalancedAllocation)
 
 	// 4. NodeAffinity
-	p, _ = nodeaffinity.New(nil, handle)
+	naArgs := &config.NodeAffinityArgs{
+		AddedAffinity: &v1.NodeAffinity{},
+	}
+	p, _ = nodeaffinity.New(naArgs, handle)
 	nodeAffinity := p.(*nodeaffinity.NodeAffinity)
 
 	// 5. ImageLocality
@@ -224,8 +242,9 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 		var nodeScore = 0.0
 
+		state := k8sframework.NewCycleState()
 		if weight.imageLocalityWeight != 0 {
-			score, status := imageLocality.Score(context.TODO(), nil, task.Pod, node.Name)
+			score, status := imageLocality.Score(context.TODO(), state, task.Pod, node.Name)
 			if !status.IsSuccess() {
 				klog.Warningf("Image Locality Priority Failed because of Error: %v", status.AsError())
 				return 0, status.AsError()
@@ -237,7 +256,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// NodeResourcesLeastAllocated
 		if weight.leastReqWeight != 0 {
-			score, status := leastAllocated.Score(context.TODO(), nil, task.Pod, node.Name)
+			score, status := leastAllocated.Score(context.TODO(), state, task.Pod, node.Name)
 			if !status.IsSuccess() {
 				klog.Warningf("Least Allocated Priority Failed because of Error: %v", status.AsError())
 				return 0, status.AsError()
@@ -249,7 +268,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// NodeResourcesMostAllocated
 		if weight.mostReqWeight != 0 {
-			score, status := mostAllocated.Score(context.TODO(), nil, task.Pod, node.Name)
+			score, status := mostAllocation.Score(context.TODO(), state, task.Pod, node.Name)
 			if !status.IsSuccess() {
 				klog.Warningf("Most Allocated Priority Failed because of Error: %v", status.AsError())
 				return 0, status.AsError()
@@ -261,7 +280,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// NodeResourcesBalancedAllocation
 		if weight.balancedResourceWeight != 0 {
-			score, status := balancedAllocation.Score(context.TODO(), nil, task.Pod, node.Name)
+			score, status := balancedAllocation.Score(context.TODO(), state, task.Pod, node.Name)
 			if !status.IsSuccess() {
 				klog.Warningf("Balanced Resource Allocation Priority Failed because of Error: %v", status.AsError())
 				return 0, status.AsError()
@@ -273,7 +292,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// NodeAffinity
 		if weight.nodeAffinityWeight != 0 {
-			score, status := nodeAffinity.Score(context.TODO(), nil, task.Pod, node.Name)
+			score, status := nodeAffinity.Score(context.TODO(), state, task.Pod, node.Name)
 			if !status.IsSuccess() {
 				klog.Warningf("Calculate Node Affinity Priority Failed because of Error: %v", status.AsError())
 				return 0, status.AsError()
@@ -290,7 +309,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddNodeOrderFn(pp.Name(), nodeOrderFn)
 
 	plArgs := &config.InterPodAffinityArgs{}
-	p, _ = interpodaffinity.New(plArgs, handle)
+	p, _ = interpodaffinity.New(plArgs, handle, fts)
 	interPodAffinity := p.(*interpodaffinity.InterPodAffinity)
 
 	p, _ = tainttoleration.New(nil, handle)

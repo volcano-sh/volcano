@@ -23,7 +23,8 @@ type SchedulerConfiguration struct {
 	// Tiers defines plugins in different tiers
 	Tiers []Tier `yaml:"tiers"`
 	// Configurations is configuration for actions
-	Configurations []Configuration `yaml:"configurations"`
+	Configurations       []Configuration   `yaml:"configurations"`
+	MetricsConfiguration map[string]string `yaml:"metrics"`
 }
 
 // Tier defines plugin tier
@@ -36,7 +37,7 @@ type Configuration struct {
 	// Name is name of action
 	Name string `yaml:"name"`
 	// Arguments defines the different arguments that can be given to specified action
-	Arguments map[string]string `yaml:"arguments"`
+	Arguments map[string]interface{} `yaml:"arguments"`
 }
 
 // PluginOption defines the options of plugin
@@ -80,5 +81,5 @@ type PluginOption struct {
 	// EnabledJobStarving defines whether jobStarvingFn is enabled
 	EnabledJobStarving *bool `yaml:"enableJobStarving"`
 	// Arguments defines the different arguments that can be given to different plugins
-	Arguments map[string]string `yaml:"arguments"`
+	Arguments map[string]interface{} `yaml:"arguments"`
 }

@@ -31,13 +31,13 @@ func New() *Action {
 	return &Action{}
 }
 
-func (alloc *Action) Name() string {
+func (pmpt *Action) Name() string {
 	return "preempt"
 }
 
-func (alloc *Action) Initialize() {}
+func (pmpt *Action) Initialize() {}
 
-func (alloc *Action) Execute(ssn *framework.Session) {
+func (pmpt *Action) Execute(ssn *framework.Session) {
 	klog.V(3).Infof("Enter Preempt ...")
 	defer klog.V(3).Infof("Leaving Preempt ...")
 
@@ -119,6 +119,9 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					if task.Resreq.IsEmpty() {
 						return false
 					}
+					if !task.Preemptable {
+						return false
+					}
 					job, found := ssn.Jobs[task.Job]
 					if !found {
 						return false
@@ -188,7 +191,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	victimTasks(ssn)
 }
 
-func (alloc *Action) UnInitialize() {}
+func (pmpt *Action) UnInitialize() {}
 
 func preempt(
 	ssn *framework.Session,
@@ -273,7 +276,12 @@ func preempt(
 
 func victimTasks(ssn *framework.Session) {
 	stmt := framework.NewStatement(ssn)
-	victimTasks := ssn.VictimTasks()
+	tasks := make([]*api.TaskInfo, 0)
+	victimTasksMap := ssn.VictimTasks(tasks)
+	victimTasks := make([]*api.TaskInfo, 0)
+	for task := range victimTasksMap {
+		victimTasks = append(victimTasks, task)
+	}
 	for _, victim := range victimTasks {
 		if err := stmt.Evict(victim.Clone(), "evict"); err != nil {
 			klog.Errorf("Failed to evict Task <%s/%s>: %v",

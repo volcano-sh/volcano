@@ -17,15 +17,15 @@ limitations under the License.
 package util
 
 import (
-	"k8s.io/api/admission/v1beta1"
+	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 )
 
 //ToAdmissionResponse updates the admission response with the input error.
-func ToAdmissionResponse(err error) *v1beta1.AdmissionResponse {
+func ToAdmissionResponse(err error) *admissionv1.AdmissionResponse {
 	klog.Error(err)
-	return &v1beta1.AdmissionResponse{
+	return &admissionv1.AdmissionResponse{
 		Allowed: false,
 		Result: &metav1.Status{
 			Message: err.Error(),

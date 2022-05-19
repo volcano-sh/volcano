@@ -16,6 +16,13 @@ limitations under the License.
 
 package v1beta1
 
+// AnnotationPrefix is the key prefix to pick annotations from upper resource to podgroup
+const AnnotationPrefix = "volcano.sh/"
+
+// JobWaitingTime is the key of sla plugin to set maximum waiting time
+// that a job could stay Pending in service level agreement
+const JobWaitingTime = "volcano.sh/sla-waiting-time"
+
 const KubeHierarchyAnnotationKey = "volcano.sh/hierarchy"
 
 const KubeHierarchyWeightAnnotationKey = "volcano.sh/hierarchy-weights"
@@ -35,6 +42,10 @@ const QueueNameAnnotationKey = GroupName + "/queue-name"
 // PodPreemptable is the key of preemptable
 const PodPreemptable = "volcano.sh/preemptable"
 
+// PodPreemptStableTime is the key of preempt-stable-time, value's format "600s","10m" 
+// Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h". 
+const PreemptStableTime = "volcano.sh/preempt-stable-time"
+
 //RevocableZone is the key of revocable-zone
 const RevocableZone = "volcano.sh/revocable-zone"
 
@@ -44,5 +55,8 @@ const JDBMinAvailable = "volcano.sh/jdb-min-available"
 // JDBMaxUnavailable is the key of max unavailable pod number
 const JDBMaxUnavailable = "volcano.sh/jdb-max-unavailable"
 
-// NumaPolicyKey is the key of pod nuam-topology policy
+// NumaPolicyKey is the key of pod numa-topology policy
 const NumaPolicyKey = "volcano.sh/numa-topology-policy"
+
+// TopologyDecisionAnnotation is the key of topology decision about pod request resource
+const TopologyDecisionAnnotation = "volcano.sh/topology-decision"

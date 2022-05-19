@@ -143,22 +143,10 @@ func CreateOrUpdateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, da
 
 // DeleteConfigmap deletes the config map resource.
 func DeleteConfigmap(job *vcbatch.Job, kubeClients kubernetes.Interface, cmName string) error {
-	if _, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(context.TODO(), cmName, metav1.GetOptions{}); err != nil {
-		if !apierrors.IsNotFound(err) {
-			klog.V(3).Infof("Failed to get Configmap for Job <%s/%s>: %v",
-				job.Namespace, job.Name, err)
-			return err
-		}
-		return nil
-
-	}
-
-	if err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Delete(context.TODO(), cmName, metav1.DeleteOptions{}); err != nil {
-		if !apierrors.IsNotFound(err) {
-			klog.Errorf("Failed to delete Configmap of Job %v/%v: %v",
-				job.Namespace, job.Name, err)
-			return err
-		}
+	if err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Delete(context.TODO(), cmName, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+		klog.Errorf("Failed to delete Configmap of Job %v/%v: %v",
+			job.Namespace, job.Name, err)
+		return err
 	}
 
 	return nil
@@ -216,7 +204,7 @@ func runServer(server *http.Server, ln net.Listener) error {
 		return fmt.Errorf("listener and server must not be nil")
 	}
 
-	stopCh := make(chan os.Signal)
+	stopCh := make(chan os.Signal, 2)
 	signal.Notify(stopCh, syscall.SIGTERM, syscall.SIGINT)
 
 	go func() {

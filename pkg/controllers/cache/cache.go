@@ -18,6 +18,7 @@ package cache
 
 import (
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -152,8 +153,20 @@ func (jc *jobCache) Update(obj *v1alpha1.Job) error {
 	if !found {
 		return fmt.Errorf("failed to find job <%v>", key)
 	}
-	job.Job = obj
 
+	var oldResourceversion, newResourceversion uint64
+	var err error
+	if oldResourceversion, err = strconv.ParseUint(job.Job.ResourceVersion, 10, 64); err != nil {
+		return fmt.Errorf("failed to parase job <%v> resource version <%s>", key, job.Job.ResourceVersion)
+	}
+
+	if newResourceversion, err = strconv.ParseUint(obj.ResourceVersion, 10, 64); err != nil {
+		return fmt.Errorf("failed to parase job <%v> resource version <%s>", key, obj.ResourceVersion)
+	}
+	if newResourceversion < oldResourceversion {
+		return fmt.Errorf("job <%v> has too old resource version: %d (%d)", key, newResourceversion, oldResourceversion)
+	}
+	job.Job = obj
 	return nil
 }
 
@@ -330,7 +343,7 @@ func (jc *jobCache) TaskFailed(jobKey, taskName string) bool {
 			}
 		}
 	}
-	return retried > maxRetry
+	return retried >= maxRetry
 }
 
 func (jc *jobCache) worker() {

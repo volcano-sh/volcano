@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"time"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,10 +39,11 @@ var _ = Describe("Reclaim E2E Test", func() {
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
 				{
-					Img: e2eutil.DefaultNginxImage,
-					Req: req,
-					Min: 1,
-					Rep: 1,
+					Img:    e2eutil.DefaultNginxImage,
+					Req:    req,
+					Min:    1,
+					Rep:    1,
+					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
 				},
 			},
 			Name:     name,
@@ -488,10 +489,11 @@ var _ = Describe("Reclaim E2E Test", func() {
 		spec := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
 				{
-					Img: e2eutil.DefaultNginxImage,
-					Req: e2eutil.CPU1Mem1,
-					Min: 1,
-					Rep: 2,
+					Img:    e2eutil.DefaultNginxImage,
+					Req:    e2eutil.CPU1Mem1,
+					Min:    1,
+					Rep:    2,
+					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
 				},
 			},
 		}
@@ -552,10 +554,11 @@ var _ = Describe("Reclaim E2E Test", func() {
 		spec := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
 				{
-					Img: e2eutil.DefaultNginxImage,
-					Req: slot,
-					Min: 1,
-					Rep: rep,
+					Img:    e2eutil.DefaultNginxImage,
+					Req:    slot,
+					Min:    1,
+					Rep:    rep,
+					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
 				},
 			},
 		}

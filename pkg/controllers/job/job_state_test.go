@@ -49,8 +49,9 @@ func TestAbortedState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Status: v1alpha1.JobStatus{
 						State: v1alpha1.JobState{
@@ -69,8 +70,9 @@ func TestAbortedState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Status: v1alpha1.JobStatus{
 						State: v1alpha1.JobState{
@@ -135,8 +137,9 @@ func TestAbortingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Status: v1alpha1.JobStatus{
 						State: v1alpha1.JobState{
@@ -155,8 +158,9 @@ func TestAbortingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Status: v1alpha1.JobStatus{
 						State: v1alpha1.JobState{
@@ -175,8 +179,9 @@ func TestAbortingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Status: v1alpha1.JobStatus{
 						Pending: 1,
@@ -265,8 +270,9 @@ func TestCompletingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Status: v1alpha1.JobStatus{
 						Running: 2,
@@ -292,8 +298,9 @@ func TestCompletingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Status: v1alpha1.JobStatus{
 						State: v1alpha1.JobState{
@@ -364,8 +371,9 @@ func TestFinishedState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Status: v1alpha1.JobStatus{
 						State: v1alpha1.JobState{
@@ -420,8 +428,9 @@ func TestPendingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Status: v1alpha1.JobStatus{
 						State: v1alpha1.JobState{
@@ -440,8 +449,9 @@ func TestPendingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Status: v1alpha1.JobStatus{
 						Terminating: 2,
@@ -467,8 +477,9 @@ func TestPendingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Status: v1alpha1.JobStatus{
 						State: v1alpha1.JobState{
@@ -487,8 +498,9 @@ func TestPendingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Status: v1alpha1.JobStatus{
 						Terminating: 2,
@@ -514,8 +526,9 @@ func TestPendingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Status: v1alpha1.JobStatus{
 						Terminating: 2,
@@ -541,8 +554,9 @@ func TestPendingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Status: v1alpha1.JobStatus{
 						State: v1alpha1.JobState{
@@ -561,8 +575,9 @@ func TestPendingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Status: v1alpha1.JobStatus{
 						Terminating: 2,
@@ -588,8 +603,9 @@ func TestPendingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Spec: v1alpha1.JobSpec{
 						MinAvailable: 3,
@@ -619,8 +635,9 @@ func TestPendingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Spec: v1alpha1.JobSpec{
 						MinAvailable: 3,
@@ -649,8 +666,9 @@ func TestPendingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Spec: v1alpha1.JobSpec{
 						MinAvailable: 3,
@@ -758,8 +776,9 @@ func TestRestartingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Spec: v1alpha1.JobSpec{
 						MaxRetry: 3,
@@ -782,8 +801,9 @@ func TestRestartingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Spec: v1alpha1.JobSpec{
 						MaxRetry: 3,
@@ -869,8 +889,9 @@ func TestRunningState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Spec: v1alpha1.JobSpec{},
 					Status: v1alpha1.JobStatus{
@@ -897,8 +918,9 @@ func TestRunningState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Spec: v1alpha1.JobSpec{},
 					Status: v1alpha1.JobStatus{
@@ -919,8 +941,9 @@ func TestRunningState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Spec: v1alpha1.JobSpec{},
 					Status: v1alpha1.JobStatus{
@@ -941,8 +964,9 @@ func TestRunningState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Spec: v1alpha1.JobSpec{},
 					Status: v1alpha1.JobStatus{
@@ -969,8 +993,9 @@ func TestRunningState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Spec: v1alpha1.JobSpec{},
 					Status: v1alpha1.JobStatus{
@@ -991,8 +1016,9 @@ func TestRunningState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Spec: v1alpha1.JobSpec{},
 					Status: v1alpha1.JobStatus{
@@ -1019,8 +1045,9 @@ func TestRunningState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Spec: v1alpha1.JobSpec{},
 					Status: v1alpha1.JobStatus{
@@ -1041,8 +1068,9 @@ func TestRunningState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Spec: v1alpha1.JobSpec{},
 					Status: v1alpha1.JobStatus{
@@ -1069,8 +1097,9 @@ func TestRunningState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "job1",
-						Namespace: namespace,
+						Name:            "job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Spec: v1alpha1.JobSpec{
 						Tasks: []v1alpha1.TaskSpec{
@@ -1109,8 +1138,9 @@ func TestRunningState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "job1",
-						Namespace: namespace,
+						Name:            "job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Spec: v1alpha1.JobSpec{
 						Tasks: []v1alpha1.TaskSpec{
@@ -1228,8 +1258,9 @@ func TestTerminatingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Status: v1alpha1.JobStatus{
 						Running: 2,
@@ -1255,8 +1286,9 @@ func TestTerminatingState_Execute(t *testing.T) {
 				Name:      "jobinfo1",
 				Job: &v1alpha1.Job{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "Job1",
-						Namespace: namespace,
+						Name:            "Job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Status: v1alpha1.JobStatus{
 						State: v1alpha1.JobState{

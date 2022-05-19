@@ -100,7 +100,8 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 	}
 
 	pod.Annotations[batch.TaskSpecKey] = tsKey
-	pod.Annotations[schedulingv2.KubeGroupNameAnnotationKey] = job.Name
+	pgName := job.Name + "-" + string(job.UID)
+	pod.Annotations[schedulingv2.KubeGroupNameAnnotationKey] = pgName
 	pod.Annotations[batch.JobNameKey] = job.Name
 	pod.Annotations[batch.QueueNameKey] = job.Spec.Queue
 	pod.Annotations[batch.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
@@ -221,32 +222,6 @@ func checkEventExist(policyEvents []v1alpha1.Event, reqEvent v1alpha1.Event) boo
 		}
 	}
 	return false
-}
-
-func addResourceList(list, req, limit v1.ResourceList) {
-	for name, quantity := range req {
-		if value, ok := list[name]; !ok {
-			list[name] = quantity.DeepCopy()
-		} else {
-			value.Add(quantity)
-			list[name] = value
-		}
-	}
-
-	if req != nil {
-		return
-	}
-
-	// If Requests is omitted for a container,
-	// it defaults to Limits if that is explicitly specified.
-	for name, quantity := range limit {
-		if value, ok := list[name]; !ok {
-			list[name] = quantity.DeepCopy()
-		} else {
-			value.Add(quantity)
-			list[name] = value
-		}
-	}
 }
 
 // TaskPriority structure.

@@ -187,7 +187,7 @@ ifeq (, $(shell which controller-gen))
 	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
 	cd $$CONTROLLER_GEN_TMP_DIR ;\
 	go mod init tmp ;\
-	go get sigs.k8s.io/controller-tools/cmd/controller-gen@v0.6.0 ;\
+	go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.6.0 ;\
 	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
 	}
 CONTROLLER_GEN=$(GOBIN)/controller-gen
@@ -197,4 +197,6 @@ endif
 
 update-development-yaml:
 	make generate-yaml TAG=latest RELEASE_DIR=installer
+	cp installer/volcano-latest.yaml installer/volcano-development-arm64.yaml
+	sed -r -i 's#(.*)image:([^:]*):(.*)#\1image:\2-arm64:\3#'  installer/volcano-development-arm64.yaml
 	mv installer/volcano-latest.yaml installer/volcano-development.yaml

@@ -17,8 +17,7 @@ limitations under the License.
 package framework
 
 import (
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
-
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -104,9 +103,9 @@ func (ssn *Session) AddOverusedFn(name string, fn api.ValidateFn) {
 	ssn.overusedFns[name] = fn
 }
 
-// AddUnderusedResourceFn add underused function
-func (ssn *Session) AddUnderusedResourceFn(name string, fn api.UnderUsedResourceFn) {
-	ssn.underUsedFns[name] = fn
+// AddAllocatableFn add allocatable function
+func (ssn *Session) AddAllocatableFn(name string, fn api.AllocatableFn) {
+	ssn.allocatableFns[name] = fn
 }
 
 // AddJobValidFn add jobvalid function
@@ -135,8 +134,8 @@ func (ssn *Session) AddReservedNodesFn(name string, fn api.ReservedNodesFn) {
 }
 
 // AddVictimTasksFns add victimTasksFns function
-func (ssn *Session) AddVictimTasksFns(name string, fn api.VictimTasksFn) {
-	ssn.victimTasksFns[name] = fn
+func (ssn *Session) AddVictimTasksFns(name string, fns []api.VictimTasksFn) {
+	ssn.victimTasksFns[name] = fns
 }
 
 // AddJobStarvingFns add jobStarvingFns function
@@ -263,26 +262,21 @@ func (ssn *Session) Overused(queue *api.QueueInfo) bool {
 	return false
 }
 
-// UnderusedResources invoke underused function of the plugins
-// Returns:
-//  * nil if no `UnderUsedResourceFn` is registered
-//  * [] if no under-used resources
-func (ssn *Session) UnderusedResources(queue *api.QueueInfo) api.ResourceNameList {
-	if len(ssn.underUsedFns) == 0 {
-		return nil
-	}
+// Allocatable invoke allocatable function of the plugins
+func (ssn *Session) Allocatable(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
-			of, found := ssn.underUsedFns[plugin.Name]
+			af, found := ssn.allocatableFns[plugin.Name]
 			if !found {
 				continue
 			}
-			underUsedResourceList := of(queue)
-			return underUsedResourceList
+			if !af(queue, candidate) {
+				return false
+			}
 		}
 	}
 
-	return api.ResourceNameList{}
+	return true
 }
 
 // JobReady invoke jobready function of the plugins
@@ -449,47 +443,31 @@ func (ssn *Session) TargetJob(jobs []*api.JobInfo) *api.JobInfo {
 	return nil
 }
 
-// VictimTasks invoke ReservedNodes function of the plugins
-func (ssn *Session) VictimTasks() []*api.TaskInfo {
-	var victims []*api.TaskInfo
-	var init bool
-
+// VictimTasks returns the victims selected
+func (ssn *Session) VictimTasks(tasks []*api.TaskInfo) map[*api.TaskInfo]bool {
+	// different filters may add the same task to victims, so use a map to remove duplicate tasks.
+	victimSet := make(map[*api.TaskInfo]bool)
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledVictim) {
 				continue
 			}
-
-			pf, found := ssn.victimTasksFns[plugin.Name]
+			fns, found := ssn.victimTasksFns[plugin.Name]
 			if !found {
 				continue
 			}
-			candidates := pf()
-			if !init {
-				victims = candidates
-				init = true
-			} else {
-				var intersection []*api.TaskInfo
-				// Get intersection of victims and candidates.
-				for _, v := range victims {
-					for _, c := range candidates {
-						if v.UID == c.UID {
-							intersection = append(intersection, v)
-						}
-					}
+			for _, fn := range fns {
+				victimTasks := fn(tasks)
+				for _, victim := range victimTasks {
+					victimSet[victim] = true
 				}
-
-				// Update victims to intersection
-				victims = intersection
 			}
 		}
-		// Plugins in this tier made decision if victims is not nil
-		if victims != nil {
-			return victims
+		if len(victimSet) > 0 {
+			return victimSet
 		}
 	}
-
-	return victims
+	return victimSet
 }
 
 // ReservedNodes invoke ReservedNodes function of the plugins

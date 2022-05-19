@@ -1,4 +1,4 @@
-##Background
+## Background
 
 Volcano scheduler handles jobs requiring different types of resources, such as GPU, CPU, memory. Under particular circumstances, we may specify a 'primary' resource(e.g., GPU in deep learning), and preserve the amount of associated 'secondary' resources by a pre-set proportion. This plugin works in the phase of predicates, dedicates to ensure the node's idle resource is enough for the proportion after jobs requiring secondary resources are scheduled.
 

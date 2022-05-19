@@ -19,7 +19,7 @@ package schedulingaction
 import (
 	"context"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
@@ -54,10 +54,11 @@ var _ = Describe("Job E2E Test", func() {
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
 				{
-					Img: e2eutil.DefaultNginxImage,
-					Req: slot,
-					Min: 1,
-					Rep: 1,
+					Img:    e2eutil.DefaultNginxImage,
+					Req:    slot,
+					Min:    1,
+					Rep:    1,
+					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
 				},
 			},
 		}
@@ -93,10 +94,11 @@ var _ = Describe("Job E2E Test", func() {
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
 				{
-					Img: e2eutil.DefaultNginxImage,
-					Req: slot,
-					Min: 1,
-					Rep: rep,
+					Img:    e2eutil.DefaultNginxImage,
+					Req:    slot,
+					Min:    1,
+					Rep:    rep,
+					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
 				},
 			},
 		}
@@ -118,7 +120,7 @@ var _ = Describe("Job E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("preemption doesn't work when podgroup is pending", func() {
+	It("preemption doesn't work when podgroup is pending due to insufficient resource", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
 			PriorityClasses: map[string]int32{
 				highPriority: highPriorityValue,
@@ -175,8 +177,12 @@ var _ = Describe("Job E2E Test", func() {
 				PriorityClassName: highPriority,
 			},
 		}
+		// Pod is allowed to be created, preemption does not happen due to PodGroup is in pending state
 		_, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), pod, v1.CreateOptions{})
-		Expect(err).To(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
+		// Make sure preempteeJob is not preempted as expected
+		err = e2eutil.WaitTasksReady(ctx, preempteeJob, int(rep))
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("preemption only works in the same queue", func() {
@@ -194,10 +200,11 @@ var _ = Describe("Job E2E Test", func() {
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
 				{
-					Img: e2eutil.DefaultNginxImage,
-					Req: slot,
-					Min: 1,
-					Rep: rep / 2,
+					Img:    e2eutil.DefaultNginxImage,
+					Req:    slot,
+					Min:    1,
+					Rep:    rep / 2,
+					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
 				},
 			},
 		}
@@ -242,10 +249,11 @@ var _ = Describe("Job E2E Test", func() {
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
 				{
-					Img: e2eutil.DefaultNginxImage,
-					Req: slot,
-					Min: 1,
-					Rep: 1,
+					Img:    e2eutil.DefaultNginxImage,
+					Req:    slot,
+					Min:    1,
+					Rep:    1,
+					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
 				},
 			},
 		}
@@ -297,10 +305,11 @@ var _ = Describe("Job E2E Test", func() {
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
 				{
-					Img: e2eutil.DefaultNginxImage,
-					Req: slot,
-					Min: 1,
-					Rep: rep,
+					Img:    e2eutil.DefaultNginxImage,
+					Req:    slot,
+					Min:    1,
+					Rep:    rep,
+					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
 				},
 			},
 		}
