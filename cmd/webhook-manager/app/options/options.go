@@ -26,10 +26,11 @@ import (
 )
 
 const (
-	defaultSchedulerName    = "volcano"
-	defaultQPS              = 50.0
-	defaultBurst            = 100
-	defaultEnabledAdmission = "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
+	defaultSchedulerName     = "volcano"
+	defaultQPS               = 50.0
+	defaultBurst             = 100
+	defaultEnabledAdmission  = "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
+	defaultIgnoredNamespaces = "volcano-system,kube-system"
 )
 
 // Config admission-controller server config.
@@ -50,6 +51,7 @@ type Config struct {
 	WebhookURL        string
 	ConfigPath        string
 	EnabledAdmission  string
+	IgnoredNamespaces string
 }
 
 type DecryptFunc func(c *Config) error
@@ -83,6 +85,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.SchedulerName, "scheduler-name", defaultSchedulerName, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
 
 	fs.StringVar(&c.ConfigPath, "admission-conf", "", "The configmap file of this webhook")
+	fs.StringVar(&c.IgnoredNamespaces, "ignored-namespaces", defaultIgnoredNamespaces, "Comma-separated list of namespaces to be ignored by admission webhooks")
 }
 
 // CheckPortOrDie check valid port range.

@@ -23,7 +23,7 @@ import (
 	"regexp"
 	"strings"
 
-	"k8s.io/api/admissionregistration/v1"
+	v1 "k8s.io/api/admissionregistration/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -38,6 +38,7 @@ import (
 func registerWebhookConfig(kubeClient *kubernetes.Clientset, config *options.Config, service *router.AdmissionService, caBundle []byte) {
 	sideEffect := v1.SideEffectClassNoneOnDryRun
 	reviewVersions := []string{"v1"}
+	webhookLabelSelector := &metav1.LabelSelector{}
 	clientConfig := v1.WebhookClientConfig{
 		CABundle: caBundle,
 	}
@@ -55,11 +56,26 @@ func registerWebhookConfig(kubeClient *kubernetes.Clientset, config *options.Con
 		klog.Infof("The service of webhook manager is <%s/%s/%s>.",
 			config.WebhookName, config.WebhookNamespace, service.Path)
 	}
+	if config.IgnoredNamespaces != "" {
+		ignoredNamespaces := strings.Split(strings.TrimSpace(config.IgnoredNamespaces), ",")
+		klog.Infof("The ignored namespaces list of webhook manager is <%v>.",
+			ignoredNamespaces)
+		webhookLabelSelector = &metav1.LabelSelector{
+			MatchExpressions: []metav1.LabelSelectorRequirement{
+				{
+					Values:   ignoredNamespaces,
+					Operator: "NotIn",
+					Key:      "kubernetes.io/metadata.name",
+				},
+			},
+		}
+	}
 	if service.MutatingConfig != nil {
 		for i := range service.MutatingConfig.Webhooks {
 			service.MutatingConfig.Webhooks[i].SideEffects = &sideEffect
 			service.MutatingConfig.Webhooks[i].AdmissionReviewVersions = reviewVersions
 			service.MutatingConfig.Webhooks[i].ClientConfig = clientConfig
+			service.MutatingConfig.Webhooks[i].NamespaceSelector = webhookLabelSelector
 		}
 
 		service.MutatingConfig.ObjectMeta.Name = webhookConfigName(config.WebhookName, service.Path)
@@ -76,6 +92,7 @@ func registerWebhookConfig(kubeClient *kubernetes.Clientset, config *options.Con
 			service.ValidatingConfig.Webhooks[i].SideEffects = &sideEffect
 			service.ValidatingConfig.Webhooks[i].AdmissionReviewVersions = reviewVersions
 			service.ValidatingConfig.Webhooks[i].ClientConfig = clientConfig
+			service.ValidatingConfig.Webhooks[i].NamespaceSelector = webhookLabelSelector
 		}
 
 		service.ValidatingConfig.ObjectMeta.Name = webhookConfigName(config.WebhookName, service.Path)
