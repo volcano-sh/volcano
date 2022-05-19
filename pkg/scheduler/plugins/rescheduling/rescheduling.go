@@ -94,8 +94,7 @@ func (rp *reschedulingPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
-	// Judge whether it is time to execute rescheduling now
-	if !timeToRun("reschedulingFns", configs.interval) {
+	if !timeToRun(configs.interval) {
 		klog.V(4).Infof("It is not the time to execute rescheduling strategies.")
 		return
 	}
