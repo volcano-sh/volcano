@@ -38,9 +38,6 @@ var (
 	// Session contains all the data in session object which will be used for all the rescheduling package
 	Session *framework.Session
 
-	// RegisteredStrategies collects all the strategies registered.
-	RegisteredStrategies []string
-
 	// RegisteredStrategyConfigs collects all the strategy configurations registered.
 	RegisteredStrategyConfigs map[string]interface{}
 
@@ -52,7 +49,6 @@ var (
 )
 
 func init() {
-	RegisteredStrategies = make([]string, 0)
 	RegisteredStrategyConfigs = make(map[string]interface{})
 	VictimFns = make(map[string]api.VictimTasksFn)
 	Interval = "5m"
@@ -79,8 +75,8 @@ func (rp *reschedulingPlugin) Name() string {
 }
 
 func (rp *reschedulingPlugin) OnSessionOpen(ssn *framework.Session) {
-	klog.V(4).Infof("Enter rescheduling plugin ...")
-	defer klog.V(4).Infof("Leaving rescheduling plugin.")
+	klog.V(3).Infof("Enter rescheduling plugin ...")
+	defer klog.V(3).Infof("Leaving rescheduling plugin.")
 
 	// Parse all the rescheduling strategies and execution interval
 	Session = ssn
@@ -95,7 +91,7 @@ func (rp *reschedulingPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	if !timeToRun(configs.interval) {
-		klog.V(4).Infof("It is not the time to execute rescheduling strategies.")
+		klog.V(3).Infof("It is not the time to execute rescheduling strategies.")
 		return
 	}
 
@@ -109,11 +105,9 @@ func (rp *reschedulingPlugin) OnSessionOpen(ssn *framework.Session) {
 
 func (rp *reschedulingPlugin) OnSessionClose(ssn *framework.Session) {
 	Session = nil
-	RegisteredStrategies = RegisteredStrategies[0:0]
 	for k := range RegisteredStrategyConfigs {
 		delete(RegisteredStrategyConfigs, k)
 	}
-	VictimFns = nil
 }
 
 // ReschedulingConfigs is the struct for rescheduling plugin arguments
@@ -139,7 +133,6 @@ func NewReschedulingConfigs() *ReschedulingConfigs {
 			},
 		},
 	}
-	RegisteredStrategies = append(RegisteredStrategies, DefaultStrategy)
 	RegisteredStrategyConfigs[DefaultStrategy] = DefaultLowNodeConf
 	return config
 }
@@ -167,12 +160,10 @@ func (rc *ReschedulingConfigs) parseArguments(arguments framework.Arguments) {
 				rc.strategies = append(rc.strategies, strategy)
 			}
 		}
-		RegisteredStrategies = RegisteredStrategies[0:0]
 		for k := range RegisteredStrategyConfigs {
 			delete(RegisteredStrategyConfigs, k)
 		}
 		for _, strategy := range rc.strategies {
-			RegisteredStrategies = append(RegisteredStrategies, strategy.Name)
 			RegisteredStrategyConfigs[strategy.Name] = strategy.Parameters
 		}
 	}
