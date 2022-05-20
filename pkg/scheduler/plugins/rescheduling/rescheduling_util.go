@@ -18,19 +18,18 @@ package rescheduling
 
 import "time"
 
-// FnsLastExecTime records the last execution time of functions registering in the plugins and executing periodically
-var FnsLastExecTime map[string]time.Time
+// lastRescheduleTime records the last execution time.
+var lastRescheduleTime time.Time
 
 func init() {
-	FnsLastExecTime = make(map[string]time.Time)
+	lastRescheduleTime = time.Now()
 }
 
-// timeToRun checks whether it is time for the function to be executed now
-func timeToRun(fnName string, interval time.Duration) bool {
+// timeToRun checks whether it is time to execute rescheduling
+func timeToRun(interval time.Duration) bool {
 	now := time.Now()
-	lastExecuteTime, ok := FnsLastExecTime[fnName]
-	if !ok || lastExecuteTime.Add(interval).Before(now) {
-		FnsLastExecTime[fnName] = now
+	if lastRescheduleTime.Add(interval).Before(now) {
+		lastRescheduleTime = now
 		return true
 	}
 	return false
