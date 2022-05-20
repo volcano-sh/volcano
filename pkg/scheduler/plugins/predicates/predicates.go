@@ -190,15 +190,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 
-			if pod_gpu_type, ok := pod.Spec.NodeSelector["nvidia.com/gpu.product"]; ok {
-				node_gpu_type, ok := nodeInfo.Node.Labels["nvidia.com/gpu.product"]
-				if !ok || (pod_gpu_type != node_gpu_type) {
-					klog.Errorf("Node %s does not have matching GPU annotation for %s with request %s",
-						pod.Spec.NodeName, pod.Name, pod_gpu_type)
-					return
-				}
-			}
-
 			//predicate gpu sharing
 			if predicate.gpuSharingEnable && api.GetGPUMemoryOfPod(pod) > 0 {
 				ids := predicateGPUbyMemory(pod, nodeInfo)
@@ -288,6 +279,38 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			klog.V(4).Infof("predicates, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
 		},
+	})
+
+	// Needs to be added to the first tier of scheduler configmap
+	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {
+		job := obj.(*api.JobInfo)
+
+		// Determine count of available GPUs per gpu type
+		gpu_type_count := make(map[string]int)
+		for _, nodeInfo := range ssn.Nodes {
+			gpu_name := nodeInfo.Node.Labels["nvidia.com/gpu.product"]
+			if current_count, ok := gpu_type_count[gpu_name]; ok {
+				gpu_type_count[gpu_name] = current_count + len(nodeInfo.GetDevicesIdleGPUs())
+			} else {
+				gpu_type_count[gpu_name] = len(nodeInfo.GetDevicesIdleGPUs())
+			}
+		}
+
+		for _, value := range job.Tasks {
+			if pod_gpu_type, ok := value.Pod.Spec.NodeSelector["nvidia.com/gpu.product"]; ok {
+				gpu_type_count[pod_gpu_type] -= api.GetGPUNumberOfPod(value.Pod)
+			}
+		}
+
+		// If gpu_remain < 0 we are overcommitted
+		for gpu_type, gpu_remain := range gpu_type_count {
+			klog.V(3).Infof("<%s> has available qty <%d>", gpu_type, gpu_remain)
+			if gpu_remain < 0 {
+				return util.Reject
+			}
+		}
+
+		return util.Permit
 	})
 
 	// Initialize k8s plugins
