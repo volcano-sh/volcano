@@ -184,14 +184,23 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 
-			//predicate gpu sharing
-			if predicate.gpuSharingEnable && api.GetGPUMemoryOfPod(pod) > 0 {
-				nodeInfo, ok := ssn.Nodes[nodeName]
-				if !ok {
-					klog.Errorf("Failed to get node %s info from cache", nodeName)
+			nodeInfo, ok := ssn.Nodes[nodeName]
+			if !ok {
+				klog.Errorf("Failed to get node %s info from cache", nodeName)
+				return
+			}
+
+			if pod_gpu_type, ok := pod.Spec.NodeSelector["nvidia.com/gpu.product"]; ok {
+				node_gpu_type, ok := nodeInfo.Node.Labels["nvidia.com/gpu.product"]
+				if !ok || (pod_gpu_type != node_gpu_type) {
+					klog.Errorf("Node %s does not have matching GPU annotation for %s with request %s",
+						pod.Spec.NodeName, pod.Name, pod_gpu_type)
 					return
 				}
+			}
 
+			//predicate gpu sharing
+			if predicate.gpuSharingEnable && api.GetGPUMemoryOfPod(pod) > 0 {
 				ids := predicateGPUbyMemory(pod, nodeInfo)
 				if ids == nil {
 					klog.Errorf("The node %s can't place the pod %s in ns %s", pod.Spec.NodeName, pod.Name, pod.Namespace)
@@ -216,11 +225,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			//predicate gpu number
 			if predicate.gpuNumberEnable && api.GetGPUNumberOfPod(pod) > 0 {
-				nodeInfo, ok := ssn.Nodes[nodeName]
-				if !ok {
-					klog.Errorf("Failed to get node %s info from cache", nodeName)
-					return
-				}
 				ids := predicateGPUbyNumber(pod, nodeInfo)
 				if ids == nil {
 					klog.Errorf("The node %s can't place the pod %s in ns %s", pod.Spec.NodeName, pod.Name, pod.Namespace)
