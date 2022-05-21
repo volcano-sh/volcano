@@ -134,7 +134,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - args:
-            - --tls-cert-file=/admission.local.config/certificates/tls.crt
+            - --tls-cert-file=imagePullPolicy/admission.local.config/certificates/tls.crt
             - --tls-private-key-file=/admission.local.config/certificates/tls.key
             - --ca-cert-file=/admission.local.config/certificates/ca.crt
             - --admission-conf=/admission.local.config/configmap/volcano-admission.conf
@@ -145,7 +145,7 @@ spec:
             - -v=4
             - 2>&1
           image: volcanosh/vc-webhook-manager:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           name: admission
           volumeMounts:
             - mountPath: /admission.local.config/certificates
@@ -180,7 +180,7 @@ spec:
       containers:
         - name: main
           image: volcanosh/vc-webhook-manager:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           command: ["./gen-admission-secret.sh", "--service", "volcano-admission-service", "--namespace",
                     "volcano-system", "--secret", "volcano-admission-secret"]
 ---
@@ -8503,7 +8503,7 @@ spec:
               - --enable-healthz=true
               - -v=4
               - 2>&1
-            imagePullPolicy: "IfNotPresent"
+            imagePullPolicy: "Always"
 ---
 # Source: volcano/templates/scheduler.yaml
 apiVersion: v1
@@ -8658,7 +8658,7 @@ spec:
             - --enable-metrics=true
             - -v=3
             - 2>&1
-          imagePullPolicy: "IfNotPresent"
+          imagePullPolicy: "Always"
           volumeMounts:
             - name: scheduler-config
               mountPath: /volcano.scheduler
