@@ -32,14 +32,23 @@ import (
 )
 
 // PluginName indicates name of volcano scheduler plugin.
-const PluginName = "proportion"
+const (
+	PluginName = "proportion"
+	// overCommitFactor is resource overCommit factor for enqueue action
+	// It determines the number of `pending` pods that the scheduler will tolerate
+	// when the resources of the cluster is insufficient
+	overCommitFactor = "overcommit-factor"
+	// defaultOverCommitFactor defines the default overCommit resource factor for enqueue action
+	defaultOverCommitFactor = 1.0
+)
 
 type proportionPlugin struct {
 	totalResource  *api.Resource
 	totalGuarantee *api.Resource
 	queueOpts      map[api.QueueID]*queueAttr
 	// Arguments given for the plugin
-	pluginArguments framework.Arguments
+	pluginArguments  framework.Arguments
+	overCommitFactor float64
 }
 
 type queueAttr struct {
@@ -64,10 +73,11 @@ type queueAttr struct {
 // New return proportion action
 func New(arguments framework.Arguments) framework.Plugin {
 	return &proportionPlugin{
-		totalResource:   api.EmptyResource(),
-		totalGuarantee:  api.EmptyResource(),
-		queueOpts:       map[api.QueueID]*queueAttr{},
-		pluginArguments: arguments,
+		totalResource:    api.EmptyResource(),
+		totalGuarantee:   api.EmptyResource(),
+		queueOpts:        map[api.QueueID]*queueAttr{},
+		pluginArguments:  arguments,
+		overCommitFactor: defaultOverCommitFactor,
 	}
 }
 
@@ -76,8 +86,14 @@ func (pp *proportionPlugin) Name() string {
 }
 
 func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
+	pp.pluginArguments.GetFloat64(&pp.overCommitFactor, overCommitFactor)
+	if pp.overCommitFactor < 1.0 {
+		klog.Warningf("Invalid input %f for overcommit-factor, reason: overcommit-factor cannot be less than 1,"+
+			" using default value: %f.", pp.overCommitFactor, defaultOverCommitFactor)
+		pp.overCommitFactor = defaultOverCommitFactor
+	}
 	// Prepare scheduling data for this session.
-	pp.totalResource.Add(ssn.TotalResource)
+	pp.totalResource.Add(ssn.TotalResource.Clone().Multi(pp.overCommitFactor))
 
 	klog.V(4).Infof("The total resource is <%v>", pp.totalResource)
 	for _, queue := range ssn.Queues {
