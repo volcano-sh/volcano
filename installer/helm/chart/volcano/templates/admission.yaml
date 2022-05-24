@@ -94,7 +94,7 @@ spec:
             - -v=4
             - 2>&1
           image: {{.Values.basic.admission_image_name}}:{{.Values.basic.image_tag_version}}
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           name: admission
           volumeMounts:
             - mountPath: /admission.local.config/certificates
@@ -150,6 +150,6 @@ spec:
       containers:
         - name: main
           image: {{.Values.basic.admission_image_name}}:{{.Values.basic.image_tag_version}}
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           command: ["./gen-admission-secret.sh", "--service", "{{ .Release.Name }}-admission-service", "--namespace",
                     "{{ .Release.Namespace }}", "--secret", "{{.Values.basic.admission_secret_name}}"]
