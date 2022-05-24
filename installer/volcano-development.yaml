@@ -134,7 +134,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - args:
-            - --tls-cert-file=imagePullPolicy/admission.local.config/certificates/tls.crt
+            - --tls-cert-file=/admission.local.config/certificates/tls.crt
             - --tls-private-key-file=/admission.local.config/certificates/tls.key
             - --ca-cert-file=/admission.local.config/certificates/ca.crt
             - --admission-conf=/admission.local.config/configmap/volcano-admission.conf
