@@ -19,6 +19,7 @@ package mutate
 import (
 	"encoding/json"
 	"fmt"
+
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/core/v1"
@@ -90,8 +91,10 @@ func Pods(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 		Allowed: true,
 		Patch:   patchBytes,
 	}
-	pt := admissionv1.PatchTypeJSONPatch
-	reviewResponse.PatchType = &pt
+	if len(patchBytes) > 0 {
+		pt := admissionv1.PatchTypeJSONPatch
+		reviewResponse.PatchType = &pt
+	}
 
 	return &reviewResponse
 }
