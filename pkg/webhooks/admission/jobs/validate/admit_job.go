@@ -277,9 +277,11 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	// other fields under spec are not allowed to mutate
 	new.Spec.MinAvailable = old.Spec.MinAvailable
 	new.Spec.PriorityClassName = old.Spec.PriorityClassName
+	new.Spec.MaxRetry = old.Spec.MaxRetry
 	for i := range new.Spec.Tasks {
 		new.Spec.Tasks[i].Replicas = old.Spec.Tasks[i].Replicas
 		new.Spec.Tasks[i].MinAvailable = old.Spec.Tasks[i].MinAvailable
+		new.Spec.Tasks[i].MaxRetry = old.Spec.Tasks[i].MaxRetry
 	}
 
 	// job controller will update the pvc name if not provided
@@ -295,7 +297,7 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	}
 
 	if !apiequality.Semantic.DeepEqual(new.Spec, old.Spec) {
-		return fmt.Errorf("job updates may not change fields other than `minAvailable`, `tasks[*].replicas under spec`")
+		return fmt.Errorf("job updates may not change fields other than `minAvailable`, `maxRetry`, `tasks[*].replicas under spec`, `tasks[*].maxRetry under spec`")
 	}
 
 	return nil
