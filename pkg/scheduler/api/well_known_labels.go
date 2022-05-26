@@ -28,6 +28,9 @@ const (
 	// GPUIndex is the key of gpu index
 	GPUIndex = "volcano.sh/gpu-index"
 
+	// UnhealthyGPUIDs list of unhealthy gpu ids
+	UnhealthyGPUIDs = "volcano.sh/gpu-unhealthy-ids"
+
 	// OversubscriptionNode is the key of node oversubscription
 	OversubscriptionNode = "volcano.sh/oversubscription"
 	// OversubscriptionCPU is the key of cpu oversubscription
