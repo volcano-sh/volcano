@@ -29,7 +29,10 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	quotav1 "k8s.io/apiserver/pkg/quota/v1"
 	"k8s.io/klog"
+	quotacore "k8s.io/kubernetes/pkg/quota/v1/evaluator/core"
+	"k8s.io/utils/clock"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/helpers"
@@ -147,7 +150,8 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 	}
 
 	// Delete PodGroup
-	if err := cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{}); err != nil {
+	pgName := job.Name + "-" + string(job.UID)
+	if err := cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Delete(context.TODO(), pgName, metav1.DeleteOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to delete PodGroup of Job %v/%v: %v",
 				job.Namespace, job.Name, err)
@@ -275,7 +279,8 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	}
 
 	var syncTask bool
-	if pg, _ := cc.pgLister.PodGroups(job.Namespace).Get(job.Name); pg != nil {
+	pgName := job.Name + "-" + string(job.UID)
+	if pg, _ := cc.pgLister.PodGroups(job.Namespace).Get(pgName); pg != nil {
 		if pg.Status.Phase != "" && pg.Status.Phase != scheduling.PodGroupPending {
 			syncTask = true
 		}
@@ -626,7 +631,8 @@ func (cc *jobcontroller) createPVC(job *batch.Job, vcName string, volumeClaim *v
 
 func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 	// If PodGroup does not exist, create one for Job.
-	pg, err := cc.pgLister.PodGroups(job.Namespace).Get(job.Name)
+	pgName := job.Name + "-" + string(job.UID)
+	pg, err := cc.pgLister.PodGroups(job.Namespace).Get(pgName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to get PodGroup for Job <%s/%s>: %v",
@@ -645,8 +651,9 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 
 		pg := &scheduling.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
-				Namespace:   job.Namespace,
-				Name:        job.Name,
+				Namespace: job.Namespace,
+				//add job.UID into its name when create new PodGroup
+				Name:        pgName,
 				Annotations: job.Annotations,
 				Labels:      job.Labels,
 				OwnerReferences: []metav1.OwnerReference{
@@ -739,33 +746,37 @@ func (cc *jobcontroller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 		tp := TaskPriority{0, task}
 		pc := task.Template.Spec.PriorityClassName
 
-		priorityClass, err := cc.pcLister.Get(pc)
-		if err != nil || priorityClass == nil {
-			klog.Warningf("Ignore task %s priority class %s: %v", task.Name, pc, err)
-		} else {
-			tp.priority = priorityClass.Value
+		if pc != "" {
+			priorityClass, err := cc.pcLister.Get(pc)
+			if err != nil || priorityClass == nil {
+				klog.Warningf("Ignore task %s priority class %s: %v", task.Name, pc, err)
+			} else {
+				tp.priority = priorityClass.Value
+			}
 		}
-
 		tasksPriority = append(tasksPriority, tp)
 	}
 
 	sort.Sort(tasksPriority)
 
-	minAvailableTasksRes := v1.ResourceList{}
+	minReq := v1.ResourceList{}
 	podCnt := int32(0)
 	for _, task := range tasksPriority {
 		for i := int32(0); i < task.Replicas; i++ {
 			if podCnt >= job.Spec.MinAvailable {
 				break
 			}
+
 			podCnt++
-			for _, c := range task.Template.Spec.Containers {
-				addResourceList(minAvailableTasksRes, c.Resources.Requests, c.Resources.Limits)
+			pod := &v1.Pod{
+				Spec: task.Template.Spec,
 			}
+			res, _ := quotacore.PodUsageFunc(pod, clock.RealClock{})
+			minReq = quotav1.Add(minReq, res)
 		}
 	}
 
-	return &minAvailableTasksRes
+	return &minReq
 }
 
 func (cc *jobcontroller) initJobStatus(job *batch.Job) (*batch.Job, error) {

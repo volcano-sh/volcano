@@ -157,7 +157,7 @@ data:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: prometheus
+  name: prometheus-volcano
 rules:
 - apiGroups: [""]
   resources:
@@ -179,11 +179,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: prometheus
+  name: prometheus-volcano
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: prometheus
+  name: prometheus-volcano
 subjects:
 - kind: ServiceAccount
   name: default
@@ -445,6 +445,9 @@ spec:
             initialDelaySeconds: 5
             timeoutSeconds: 5
       dnsPolicy: ClusterFirst
+      
+      nodeSelector:
+        node.kubernetes.io/instance-type: controlpanel
       
       serviceAccountName: kube-state-metrics
 ---

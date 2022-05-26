@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"k8s.io/api/admission/v1beta1"
+	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -33,13 +33,12 @@ func TestValidatePod(t *testing.T) {
 
 	namespace := "test"
 	pgName := "podgroup-p1"
-	isController := true
 
 	testCases := []struct {
 		Name           string
 		Pod            v1.Pod
 		ExpectErr      bool
-		reviewResponse v1beta1.AdmissionResponse
+		reviewResponse admissionv1.AdmissionResponse
 		ret            string
 		disabledPG     bool
 	}{
@@ -60,55 +59,9 @@ func TestValidatePod(t *testing.T) {
 				},
 			},
 
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: true},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "",
 			ExpectErr:      false,
-		},
-		// validate normal pod with volcano scheduler
-		{
-			Name: "validate volcano-scheduler normal pod",
-			Pod: v1.Pod{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Pod",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: namespace,
-					Name:      "normal-pod-2",
-					OwnerReferences: []metav1.OwnerReference{
-						{UID: "p1", Controller: &isController},
-					},
-				},
-				Spec: v1.PodSpec{
-					SchedulerName: "volcano",
-				},
-			},
-
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
-			ret:            "failed to create pod <test/normal-pod-2> as the podgroup phase is Pending",
-			ExpectErr:      true,
-		},
-		// validate volcano pod with volcano scheduler
-		{
-			Name: "validate volcano-scheduler volcano pod",
-			Pod: v1.Pod{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "Pod",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace:   namespace,
-					Name:        "volcano-pod-1",
-					Annotations: map[string]string{vcschedulingv1.KubeGroupNameAnnotationKey: pgName},
-				},
-				Spec: v1.PodSpec{
-					SchedulerName: "volcano",
-				},
-			},
-
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
-			ret:            "failed to create pod <test/volcano-pod-1> as the podgroup phase is Pending",
-			ExpectErr:      true,
 		},
 		// validate volcano pod with volcano scheduler when get pg failed
 		{
@@ -128,7 +81,7 @@ func TestValidatePod(t *testing.T) {
 				},
 			},
 
-			reviewResponse: v1beta1.AdmissionResponse{Allowed: false},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
 			ret:            `failed to get PodGroup for pod <test/volcano-pod-2>: podgroups.scheduling.volcano.sh "podgroup-p1" not found`,
 			ExpectErr:      true,
 			disabledPG:     true,

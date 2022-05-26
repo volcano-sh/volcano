@@ -185,3 +185,20 @@ func UpdateQueuePodGroupRunningCount(queueName string, count int32) {
 func UpdateQueuePodGroupUnknownCount(queueName string, count int32) {
 	queuePodGroupUnknown.WithLabelValues(queueName).Set(float64(count))
 }
+
+// DeleteQueueMetrics delete all metrics related to the queue
+func DeleteQueueMetrics(queueName string) {
+	queueAllocatedMilliCPU.DeleteLabelValues(queueName)
+	queueAllocatedMemory.DeleteLabelValues(queueName)
+	queueRequestMilliCPU.DeleteLabelValues(queueName)
+	queueRequestMemory.DeleteLabelValues(queueName)
+	queueDeservedMilliCPU.DeleteLabelValues(queueName)
+	queueDeservedMemory.DeleteLabelValues(queueName)
+	queueShare.DeleteLabelValues(queueName)
+	queueWeight.DeleteLabelValues(queueName)
+	queueOverused.DeleteLabelValues(queueName)
+	queuePodGroupInqueue.DeleteLabelValues(queueName)
+	queuePodGroupPending.DeleteLabelValues(queueName)
+	queuePodGroupRunning.DeleteLabelValues(queueName)
+	queuePodGroupUnknown.DeleteLabelValues(queueName)
+}

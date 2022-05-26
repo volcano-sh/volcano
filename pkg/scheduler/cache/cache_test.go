@@ -212,7 +212,7 @@ func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
 		t.Errorf("expected task to remain the same after failed bind: \n %#v\n %#v", taskBeforeBind, taskAfterBind)
 	}
 
-	nodeAfterBind := cache.Nodes["n1"]
+	nodeAfterBind := cache.Nodes["n1"].Clone()
 	if !reflect.DeepEqual(nodeBeforeBind, nodeAfterBind) {
 		t.Errorf("expected node to remain the same after failed bind")
 	}

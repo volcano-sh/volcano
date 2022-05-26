@@ -1,6 +1,6 @@
 # Volcano Roadmap
 
-## v1.0 (Planned on June 30)
+## v1.0(Released on July 8, 2020)
 
 The major target of this release to make Volcano more stable for product.
 
@@ -28,7 +28,7 @@ Investigate to cooperate with argo to support job dependencies.
 
 [MindSpore](https://www.mindspore.cn/) is a deep learning training and inference framework, support running MindSpore training with volcano job.
 
-## v1.2(Planned on Oct 23,2020)
+## v1.2(Released on Feb 27, 2021)
 ### Queue Resource Reservation(Delay)
 * Description: Support reserve specified resource for queue without restart Volcano.
 * Priority: High
@@ -71,7 +71,7 @@ Investigate to cooperate with argo to support job dependencies.
 * Issue: https://github.com/volcano-sh/volcano/issues/988
 * Owner: @shinytang6
 
-## v1.3(Planned on March 12, 2021)
+## v1.3(Released on May 27, 2021)
 ### Task-Topology
 * Description: Support task topology scheduling
 * Priority: High
@@ -95,7 +95,7 @@ Investigate to cooperate with argo to support job dependencies.
 * Issue: https://github.com/volcano-sh/devices/issues/12
 * Owner: @peiniliu
 
-## v1.4 (To be updated)
+## v1.4(Released on Sep 18, 2021)
 ### Support NUMA-Awareness scheduling in Volcano
 * Description: Support NUMA-Awareness scheduling in Volcano.
 * Priority: High
@@ -126,20 +126,20 @@ Investigate to cooperate with argo to support job dependencies.
 * Issue: https://github.com/volcano-sh/volcano/issues/1284
 * Owner: @rudeigerc
 
-## v1.5 (To be updated)
-### Support Hierarchy Queue
+## v1.5(Released on Feb 20, 2022)
+### Support Hierarchy Queue(Delay)
 * Description: Support Hierarchy Queue algorithm.
 * Priority: High
 * Issue: https://github.com/volcano-sh/volcano/issues/1033
 * Owner: @Thor-wl
 
-### Support Volcano scheduler in Spark community
+### Support Volcano scheduler in Spark community(Delay)
 * Description: Support Volcano scheduler in Spark community.
 * Priority: High
 * Issue: https://github.com/volcano-sh/volcano/issues/1704
 * Owner: @william-wang @Yikun
 
-### Monitoring: Cluster Resource
+### Monitoring: Cluster Resource(Delay)
 * Description: Support monitoring metrics at cluster level
 * Priority: Middle
 * Issue: https://github.com/volcano-sh/volcano/issues/1586
@@ -151,9 +151,28 @@ Investigate to cooperate with argo to support job dependencies.
 * Issue: https://github.com/volcano-sh/volcano/issues/1627
 * Owner: @hwdef @shinytang6 @Thor-wl
 
-### Support configuration hot update
+### Support configuration hot update(Delay)
 * Description: Add hot update for Volcano components arguments.
 * Issue: https://github.com/volcano-sh/volcano/issues/1326
+
+## v1.6(To Be Released around May 15, 2022)
+### Support Dynamic Scheduling Based on Realtime Load
+* Description: Support dynamic scheduling based on realtime load.
+* Priority: High
+* Issue: https://github.com/volcano-sh/volcano/issues/1777
+* Owner: @william-wang
+
+### Support Rescheduling Based on Realtime Load
+* Description: Support rescheduling based on realtime load.
+* Priority: High
+* Issue: https://github.com/volcano-sh/volcano/issues/1777
+* Owner: @Thor-wl
+
+### Support Elastic Scheduling
+* Description: Support elastic scheduling for workloads.
+* Priority: High
+* Issue: TO BE ADDED
+* Owner: @qiankunli @Thor-wl
 
 ## Later (To be updated)
 ### Monitoring: 

@@ -1,3 +1,4 @@
+{{- if .Values.custom.metrics_enable }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -168,7 +169,7 @@ spec:
             initialDelaySeconds: 5
             timeoutSeconds: 5
       dnsPolicy: ClusterFirst
-      {{ if eq .Values.custom.metrics_enable "true" }}
+      {{ if .Values.custom.metrics_enable }}
       nodeSelector:
         node.kubernetes.io/instance-type: controlpanel
       {{ end }}
@@ -195,3 +196,4 @@ spec:
     targetPort: telemetry
   selector:
     k8s-app: kube-state-metrics
+{{- end }}

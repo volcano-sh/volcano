@@ -5,6 +5,7 @@ go 1.17
 require (
 	github.com/agiledragon/gomonkey/v2 v2.1.0
 	github.com/fsnotify/fsnotify v1.4.9
+	github.com/golang/mock v1.6.0
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/hashicorp/go-multierror v1.0.0
 	github.com/imdario/mergo v0.3.5
@@ -25,9 +26,10 @@ require (
 	k8s.io/component-base v0.23.0
 	k8s.io/klog v1.0.0
 	k8s.io/kubernetes v1.23.0
+	k8s.io/utils v0.0.0-20210930125809-cb0fa318a74b
 	sigs.k8s.io/yaml v1.2.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v1.5.0-beta.0
+	volcano.sh/apis v1.5.0-beta.0.0.20220427084719-22d3dd007a8f
 )
 
 require (
@@ -100,7 +102,6 @@ require (
 	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65 // indirect
 	k8s.io/kube-scheduler v0.0.0 // indirect
 	k8s.io/mount-utils v0.23.0 // indirect
-	k8s.io/utils v0.0.0-20210930125809-cb0fa318a74b // indirect
 	sigs.k8s.io/json v0.0.0-20211020170558-c049b76a60c6 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.1.2 // indirect
 )

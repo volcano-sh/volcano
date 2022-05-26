@@ -23,7 +23,7 @@ import (
 	"regexp"
 	"strings"
 
-	"k8s.io/api/admissionregistration/v1beta1"
+	v1 "k8s.io/api/admissionregistration/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -36,7 +36,10 @@ import (
 )
 
 func registerWebhookConfig(kubeClient *kubernetes.Clientset, config *options.Config, service *router.AdmissionService, caBundle []byte) {
-	clientConfig := v1beta1.WebhookClientConfig{
+	sideEffect := v1.SideEffectClassNoneOnDryRun
+	reviewVersions := []string{"v1"}
+	webhookLabelSelector := &metav1.LabelSelector{}
+	clientConfig := v1.WebhookClientConfig{
 		CABundle: caBundle,
 	}
 	if config.WebhookURL != "" {
@@ -45,7 +48,7 @@ func registerWebhookConfig(kubeClient *kubernetes.Clientset, config *options.Con
 		klog.Infof("The URL of webhook manager is <%s>.", url)
 	}
 	if config.WebhookName != "" && config.WebhookNamespace != "" {
-		clientConfig.Service = &v1beta1.ServiceReference{
+		clientConfig.Service = &v1.ServiceReference{
 			Name:      config.WebhookName,
 			Namespace: config.WebhookNamespace,
 			Path:      &service.Path,
@@ -53,9 +56,26 @@ func registerWebhookConfig(kubeClient *kubernetes.Clientset, config *options.Con
 		klog.Infof("The service of webhook manager is <%s/%s/%s>.",
 			config.WebhookName, config.WebhookNamespace, service.Path)
 	}
+	if config.IgnoredNamespaces != "" {
+		ignoredNamespaces := strings.Split(strings.TrimSpace(config.IgnoredNamespaces), ",")
+		klog.Infof("The ignored namespaces list of webhook manager is <%v>.",
+			ignoredNamespaces)
+		webhookLabelSelector = &metav1.LabelSelector{
+			MatchExpressions: []metav1.LabelSelectorRequirement{
+				{
+					Values:   ignoredNamespaces,
+					Operator: "NotIn",
+					Key:      "kubernetes.io/metadata.name",
+				},
+			},
+		}
+	}
 	if service.MutatingConfig != nil {
 		for i := range service.MutatingConfig.Webhooks {
+			service.MutatingConfig.Webhooks[i].SideEffects = &sideEffect
+			service.MutatingConfig.Webhooks[i].AdmissionReviewVersions = reviewVersions
 			service.MutatingConfig.Webhooks[i].ClientConfig = clientConfig
+			service.MutatingConfig.Webhooks[i].NamespaceSelector = webhookLabelSelector
 		}
 
 		service.MutatingConfig.ObjectMeta.Name = webhookConfigName(config.WebhookName, service.Path)
@@ -69,7 +89,10 @@ func registerWebhookConfig(kubeClient *kubernetes.Clientset, config *options.Con
 	}
 	if service.ValidatingConfig != nil {
 		for i := range service.ValidatingConfig.Webhooks {
+			service.ValidatingConfig.Webhooks[i].SideEffects = &sideEffect
+			service.ValidatingConfig.Webhooks[i].AdmissionReviewVersions = reviewVersions
 			service.ValidatingConfig.Webhooks[i].ClientConfig = clientConfig
+			service.ValidatingConfig.Webhooks[i].NamespaceSelector = webhookLabelSelector
 		}
 
 		service.ValidatingConfig.ObjectMeta.Name = webhookConfigName(config.WebhookName, service.Path)
@@ -142,8 +165,8 @@ func configTLS(config *options.Config, restConfig *rest.Config) *tls.Config {
 	return &tls.Config{}
 }
 
-func registerMutateWebhook(clientset *kubernetes.Clientset, hook *v1beta1.MutatingWebhookConfiguration) error {
-	client := clientset.AdmissionregistrationV1beta1().MutatingWebhookConfigurations()
+func registerMutateWebhook(clientset *kubernetes.Clientset, hook *v1.MutatingWebhookConfiguration) error {
+	client := clientset.AdmissionregistrationV1().MutatingWebhookConfigurations()
 	existing, err := client.Get(context.TODO(), hook.Name, metav1.GetOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
@@ -164,8 +187,8 @@ func registerMutateWebhook(clientset *kubernetes.Clientset, hook *v1beta1.Mutati
 	return nil
 }
 
-func registerValidateWebhook(clientset *kubernetes.Clientset, hook *v1beta1.ValidatingWebhookConfiguration) error {
-	client := clientset.AdmissionregistrationV1beta1().ValidatingWebhookConfigurations()
+func registerValidateWebhook(clientset *kubernetes.Clientset, hook *v1.ValidatingWebhookConfiguration) error {
+	client := clientset.AdmissionregistrationV1().ValidatingWebhookConfigurations()
 
 	existing, err := client.Get(context.TODO(), hook.Name, metav1.GetOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {

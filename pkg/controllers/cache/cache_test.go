@@ -243,8 +243,9 @@ func TestJobCache_Update(t *testing.T) {
 			JobsInCache: map[string]*v1alpha1.Job{
 				"job1": {
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "job1",
-						Namespace: namespace,
+						Name:            "job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
 					},
 					Status: v1alpha1.JobStatus{
 						State: v1alpha1.JobState{
@@ -255,8 +256,9 @@ func TestJobCache_Update(t *testing.T) {
 			},
 			UpdatedJob: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job1",
-					Namespace: namespace,
+					Name:            "job1",
+					Namespace:       namespace,
+					ResourceVersion: "100",
 				},
 				Status: v1alpha1.JobStatus{
 					State: v1alpha1.JobState{
@@ -271,8 +273,9 @@ func TestJobCache_Update(t *testing.T) {
 			JobsInCache: nil,
 			UpdatedJob: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job1",
-					Namespace: namespace,
+					Name:            "job1",
+					Namespace:       namespace,
+					ResourceVersion: "100",
 				},
 				Status: v1alpha1.JobStatus{
 					State: v1alpha1.JobState{

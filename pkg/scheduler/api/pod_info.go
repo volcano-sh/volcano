@@ -24,7 +24,9 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog"
+	"k8s.io/kubernetes/pkg/features"
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
@@ -147,6 +149,11 @@ func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {
 	result := EmptyResource()
 	for _, container := range pod.Spec.Containers {
 		result.Add(NewResource(container.Resources.Requests))
+	}
+
+	// if PodOverhead feature is supported, add overhead for running a pod
+	if pod.Spec.Overhead != nil && utilfeature.DefaultFeatureGate.Enabled(features.PodOverhead) {
+		result.Add(NewResource(pod.Spec.Overhead))
 	}
 
 	return result

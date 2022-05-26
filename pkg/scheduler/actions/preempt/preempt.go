@@ -119,6 +119,9 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 					if task.Resreq.IsEmpty() {
 						return false
 					}
+					if !task.Preemptable {
+						return false
+					}
 					job, found := ssn.Jobs[task.Job]
 					if !found {
 						return false
@@ -273,7 +276,12 @@ func preempt(
 
 func victimTasks(ssn *framework.Session) {
 	stmt := framework.NewStatement(ssn)
-	victimTasks := ssn.VictimTasks()
+	tasks := make([]*api.TaskInfo, 0)
+	victimTasksMap := ssn.VictimTasks(tasks)
+	victimTasks := make([]*api.TaskInfo, 0)
+	for task := range victimTasksMap {
+		victimTasks = append(victimTasks, task)
+	}
 	for _, victim := range victimTasks {
 		if err := stmt.Evict(victim.Clone(), "evict"); err != nil {
 			klog.Errorf("Failed to evict Task <%s/%s>: %v",

@@ -31,6 +31,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 
+	storagev1 "k8s.io/api/storage/v1"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -340,20 +341,12 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 			Phase: schedulingv1.PodGroupInqueue,
 		},
 	}
-	kubeClient := fake.NewSimpleClientset()
-	pvc, pv, sc := util.BuildDynamicPVC("c1", "pvc1", v1.ResourceList{
+
+	pvc, _, sc := util.BuildDynamicPVC("c1", "pvc", v1.ResourceList{
 		v1.ResourceStorage: resource.MustParse("1Gi"),
 	})
-	kubeClient.StorageV1().StorageClasses().Create(context.TODO(), sc, metav1.CreateOptions{})
-	kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(context.TODO(), pvc, metav1.CreateOptions{})
-	pvcs := []*v1.PersistentVolumeClaim{pvc}
-	for i := 1; i <= 5; i++ {
-		tmp := pvc.DeepCopy()
-		tmp.Name = fmt.Sprintf("pvc%d", i)
-		pvcs = append(pvcs, tmp)
-		kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(context.TODO(), tmp, metav1.CreateOptions{})
-	}
-	fakeVolumeBinder := util.NewFakeVolumeBinder(kubeClient)
+	pvc1 := pvc.DeepCopy()
+	pvc1.Name = fmt.Sprintf("pvc%d", 1)
 
 	allocate := New()
 
@@ -362,6 +355,8 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 		pods            []*v1.Pod
 		nodes           []*v1.Node
 		pvs             []*v1.PersistentVolume
+		pvcs            []*v1.PersistentVolumeClaim
+		sc              *storagev1.StorageClass
 		expectedBind    map[string]string
 		expectedActions map[string][]string
 	}{
@@ -369,11 +364,13 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 			name: "resource not match",
 			pods: []*v1.Pod{
 				util.BuildPodWithPVC("c1", "p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvc, "pg1", make(map[string]string), make(map[string]string)),
-				util.BuildPodWithPVC("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvcs[2], "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPodWithPVC("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvc1, "pg1", make(map[string]string), make(map[string]string)),
 			},
 			nodes: []*v1.Node{
 				util.BuildNode("n1", util.BuildResourceList("1", "4Gi"), make(map[string]string)),
 			},
+			sc:           sc,
+			pvcs:         []*v1.PersistentVolumeClaim{pvc, pvc1},
 			expectedBind: map[string]string{},
 			expectedActions: map[string][]string{
 				"c1/p1": {"GetPodVolumes", "AllocateVolumes", "RevertVolumes"},
@@ -383,11 +380,13 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 			name: "node changed with enough resource",
 			pods: []*v1.Pod{
 				util.BuildPodWithPVC("c1", "p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvc, "pg1", make(map[string]string), make(map[string]string)),
-				util.BuildPodWithPVC("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvcs[2], "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPodWithPVC("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvc1, "pg1", make(map[string]string), make(map[string]string)),
 			},
 			nodes: []*v1.Node{
 				util.BuildNode("n2", util.BuildResourceList("2", "4Gi"), make(map[string]string)),
 			},
+			sc:   sc,
+			pvcs: []*v1.PersistentVolumeClaim{pvc, pvc1},
 			expectedBind: map[string]string{
 				"c1/p1": "n2",
 				"c1/p2": "n2",
@@ -397,31 +396,20 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 				"c1/p2": {"GetPodVolumes", "AllocateVolumes", "DynamicProvisions"},
 			},
 		},
-		{
-			name: "pvc with matched pv",
-			pods: []*v1.Pod{
-				util.BuildPodWithPVC("c1", "p3", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvcs[3], "pg1", make(map[string]string), make(map[string]string)),
-				util.BuildPodWithPVC("c1", "p4", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvcs[4], "pg1", make(map[string]string), make(map[string]string)),
-			},
-			pvs: []*v1.PersistentVolume{
-				pv,
-			},
-			nodes: []*v1.Node{
-				util.BuildNode("n3", util.BuildResourceList("2", "4Gi"), make(map[string]string)),
-			},
-			expectedBind: map[string]string{
-				"c1/p3": "n3",
-				"c1/p4": "n3",
-			},
-			expectedActions: map[string][]string{
-				"c1/p3": {"GetPodVolumes", "AllocateVolumes", "StaticBindings"},
-				"c1/p4": {"GetPodVolumes", "AllocateVolumes", "DynamicProvisions"},
-			},
-		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			kubeClient := fake.NewSimpleClientset()
+			kubeClient.StorageV1().StorageClasses().Create(context.TODO(), test.sc, metav1.CreateOptions{})
+			for _, pv := range test.pvs {
+				kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), pv, metav1.CreateOptions{})
+			}
+			for _, pvc := range test.pvcs {
+				kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(context.TODO(), pvc, metav1.CreateOptions{})
+			}
+
+			fakeVolumeBinder := util.NewFakeVolumeBinder(kubeClient)
 			binder := &util.FakeBinder{
 				Binds:   map[string]string{},
 				Channel: make(chan string),
@@ -435,16 +423,12 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 				VolumeBinder:  fakeVolumeBinder,
 				Recorder:      record.NewFakeRecorder(100),
 			}
-
 			schedulerCache.AddQueueV1beta1(queue)
 			schedulerCache.AddPodGroupV1beta1(pg)
 			for i, pod := range test.pods {
 				priority := int32(-i)
 				pod.Spec.Priority = &priority
 				schedulerCache.AddPod(pod)
-			}
-			for _, pv := range test.pvs {
-				kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), pv, metav1.CreateOptions{})
 			}
 			for _, node := range test.nodes {
 				schedulerCache.AddNode(node)
@@ -474,9 +458,6 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 			defer framework.CloseSession(ssn)
 
 			allocate.Execute(ssn)
-			for _, pv := range test.pvs {
-				kubeClient.CoreV1().PersistentVolumes().Delete(context.TODO(), pv.Name, metav1.DeleteOptions{})
-			}
 			if !reflect.DeepEqual(test.expectedBind, binder.Binds) {
 				t.Errorf("expected: %v, got %v ", test.expectedBind, binder.Binds)
 			}

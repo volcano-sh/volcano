@@ -79,7 +79,10 @@ func (c *Clientset) Tracker() testing.ObjectTracker {
 	return c.tracker
 }
 
-var _ clientset.Interface = &Clientset{}
+var (
+	_ clientset.Interface = &Clientset{}
+	_ testing.FakeClient  = &Clientset{}
+)
 
 // BatchV1alpha1 retrieves the BatchV1alpha1Client
 func (c *Clientset) BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface {

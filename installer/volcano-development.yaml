@@ -131,6 +131,7 @@ spec:
         app: volcano-admission
     spec:
       serviceAccount: volcano-admission
+      priorityClassName: system-cluster-critical
       containers:
         - args:
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
@@ -174,6 +175,7 @@ spec:
   template:
     spec:
       serviceAccountName: volcano-admission
+      priorityClassName: system-cluster-critical
       restartPolicy: Never
       containers:
         - name: main
@@ -202,7 +204,20 @@ spec:
     singular: job
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.state.phase
+      name: STATUS
+      type: string
+    - jsonPath: .status.minAvailable
+      name: minAvailable
+      type: integer
+    - jsonPath: .status.running
+      name: RUNNINGS
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Job defines the volcano job.
@@ -8439,6 +8454,12 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources: ["networkpolicies"]
     verbs: ["get", "create", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["daemonsets", "replicasets", "statefulsets"]
+    verbs: ["get"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get"]
 ---
 # Source: volcano/templates/controllers.yaml
 kind: ClusterRoleBinding
@@ -8473,6 +8494,7 @@ spec:
         app: volcano-controller
     spec:
       serviceAccount: volcano-controllers
+      priorityClassName: system-cluster-critical
       containers:
           - name: volcano-controllers
             image: volcanosh/vc-controller-manager:latest
@@ -8625,6 +8647,7 @@ spec:
         app: volcano-scheduler
     spec:
       serviceAccount: volcano-scheduler
+      priorityClassName: system-cluster-critical
       containers:
         - name: volcano-scheduler
           image: volcanosh/vc-scheduler:latest
@@ -8882,6 +8905,10 @@ spec:
           status:
             description: The status of queue.
             properties:
+              completed:
+                description: The number of `Completed` PodGroup in this queue.
+                format: int32
+                type: integer
               inqueue:
                 description: The number of `Inqueue` PodGroup in this queue.
                 format: int32

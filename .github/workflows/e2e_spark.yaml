@@ -1,0 +1,73 @@
+name: E2E Spark Integration Test
+
+on:
+  # Post check in below branches
+  push:
+    branches:
+      - master
+  # PR triggered job
+  pull_request:
+jobs:
+  k8s-integration-tests:
+    name: "E2E about Spark Integration test"
+    runs-on: ubuntu-20.04-spark
+    steps:
+
+    - name: Checkout current Volcano repository
+      if: github.event.inputs.volcano-branch==''
+      uses: actions/checkout@v2
+
+    - name: Checkout Spark repository
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+        repository: apache/spark
+        ref: branch-3.3
+        path: ${{ github.workspace }}/spark
+    - name: Install Java 8
+      uses: actions/setup-java@v1
+      with:
+        java-version: 8
+    - name: Install Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.17.x
+    - name: start minikube
+      run: |
+        # Use pre-install minikube
+        minikube start --cpus max --memory max
+    - name: Build lastest volcano images
+      run: |
+        eval $(minikube docker-env)
+        make TAG=latest update-development-yaml
+        make TAG=latest images
+        docker images | grep volcano
+        cat ./installer/volcano-development.yaml  | grep image:
+        minikube kubectl -- apply -f ./installer/volcano-development.yaml
+    - name: Show all K8S pods and nodes
+      run: |
+        # Use minikube kubectl
+        minikube kubectl -- get pods -A
+        minikube kubectl -- get nodes -oyaml
+    - name: Replace mirror
+      run: |
+        mirror="RUN sed -i 's/deb.debian.org/repo.huaweicloud.com/g' /etc/apt/sources.list\nRUN sed -i 's|security.debian.org/debian-security|repo.huaweicloud.com/debian-security|g' /etc/apt/sources.list\n"
+        sed -i "30 i ${mirror}" resource-managers/kubernetes/docker/src/main/dockerfiles/spark/Dockerfile.java17
+      working-directory: ${{ github.workspace }}/spark
+    - name: Run K8S integration test
+      run: |
+        eval $(minikube docker-env)
+        minikube kubectl -- create clusterrolebinding serviceaccounts-cluster-admin --clusterrole=cluster-admin --group=system:serviceaccounts || true
+        build/sbt -Pvolcano -Pkubernetes -Pkubernetes-integration-tests -Dtest.include.tags=volcano "kubernetes-integration-tests/test"
+      working-directory: ${{ github.workspace }}/spark
+    - name: Upload spark integration tests log files
+      if: failure()
+      uses: actions/upload-artifact@v2
+      with:
+        name: spark-on-kubernetes-with-volcano-it-log
+        path: "**/target/integration-tests.log"
+    - name: Cleanup minikube
+      if: always()
+      run: |
+        minikube delete
+

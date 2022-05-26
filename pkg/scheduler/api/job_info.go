@@ -365,11 +365,19 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.CreationTimestamp = pg.GetCreationTimestamp()
 
 	var err error
-	ji.WaitingTime, err = ji.extractWaitingTime(pg)
+	ji.WaitingTime, err = ji.extractWaitingTime(pg, v1beta1.JobWaitingTime)
 	if err != nil {
 		klog.Warningf("Error occurs in parsing waiting time for job <%s/%s>, err: %s.",
 			pg.Namespace, pg.Name, err.Error())
 		ji.WaitingTime = nil
+	}
+	if ji.WaitingTime == nil {
+		ji.WaitingTime, err = ji.extractWaitingTime(pg, JobWaitingTime)
+		if err != nil {
+			klog.Warningf("Error occurs in parsing waiting time for job <%s/%s>, err: %s.",
+				pg.Namespace, pg.Name, err.Error())
+			ji.WaitingTime = nil
+		}
 	}
 
 	ji.Preemptable = ji.extractPreemptable(pg)
@@ -388,12 +396,12 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 
 // extractWaitingTime reads sla waiting time for job from podgroup annotations
 // TODO: should also read from given field in volcano job spec
-func (ji *JobInfo) extractWaitingTime(pg *PodGroup) (*time.Duration, error) {
-	if _, exist := pg.Annotations[JobWaitingTime]; !exist {
+func (ji *JobInfo) extractWaitingTime(pg *PodGroup, waitingTimeKey string) (*time.Duration, error) {
+	if _, exist := pg.Annotations[waitingTimeKey]; !exist {
 		return nil, nil
 	}
 
-	jobWaitingTime, err := time.ParseDuration(pg.Annotations[JobWaitingTime])
+	jobWaitingTime, err := time.ParseDuration(pg.Annotations[waitingTimeKey])
 	if err != nil {
 		return nil, err
 	}
@@ -475,6 +483,13 @@ func (ji *JobInfo) GetMinResources() *Resource {
 	}
 
 	return NewResource(*ji.PodGroup.Spec.MinResources)
+}
+
+func (ji *JobInfo) GetElasticResources() *Resource {
+	if ji.Allocated.LessEqualPartly(ji.GetMinResources(), Zero) {
+		return EmptyResource()
+	}
+	return ji.Allocated.Clone().Sub(ji.GetMinResources())
 }
 
 func (ji *JobInfo) addTaskIndex(ti *TaskInfo) {
@@ -704,6 +719,9 @@ func (ji *JobInfo) CheckTaskMinAvailable() bool {
 
 	klog.V(4).Infof("job %s/%s actual: %+v, ji.TaskMinAvailable: %+v", ji.Name, ji.Namespace, actual, ji.TaskMinAvailable)
 	for task, minAvailable := range ji.TaskMinAvailable {
+		if minAvailable == 0 {
+			continue
+		}
 		if act, ok := actual[task]; !ok || act < minAvailable {
 			return false
 		}

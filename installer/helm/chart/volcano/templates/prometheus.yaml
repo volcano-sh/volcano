@@ -1,7 +1,8 @@
+{{- if .Values.custom.metrics_enable }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: prometheus
+  name: prometheus-volcano
 rules:
 - apiGroups: [""]
   resources:
@@ -23,11 +24,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: prometheus
+  name: prometheus-volcano
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: prometheus
+  name: prometheus-volcano
 subjects:
 - kind: ServiceAccount
   name: default
@@ -242,3 +243,4 @@ spec:
     - port: 8080
       targetPort: 9090 
       nodePort: 30003
+{{- end }}

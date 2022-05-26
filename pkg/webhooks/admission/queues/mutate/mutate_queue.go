@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"strings"
 
-	"k8s.io/api/admission/v1beta1"
-	whv1beta1 "k8s.io/api/admissionregistration/v1beta1"
+	admissionv1 "k8s.io/api/admission/v1"
+	whv1 "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 
@@ -40,13 +40,13 @@ var service = &router.AdmissionService{
 	Path: "/queues/mutate",
 	Func: Queues,
 
-	MutatingConfig: &whv1beta1.MutatingWebhookConfiguration{
-		Webhooks: []whv1beta1.MutatingWebhook{{
+	MutatingConfig: &whv1.MutatingWebhookConfiguration{
+		Webhooks: []whv1.MutatingWebhook{{
 			Name: "mutatequeue.volcano.sh",
-			Rules: []whv1beta1.RuleWithOperations{
+			Rules: []whv1.RuleWithOperations{
 				{
-					Operations: []whv1beta1.OperationType{whv1beta1.Create},
-					Rule: whv1beta1.Rule{
+					Operations: []whv1.OperationType{whv1.Create},
+					Rule: whv1.Rule{
 						APIGroups:   []string{schedulingv1beta1.SchemeGroupVersion.Group},
 						APIVersions: []string{schedulingv1beta1.SchemeGroupVersion.Version},
 						Resources:   []string{"queues"},
@@ -64,7 +64,7 @@ type patchOperation struct {
 }
 
 // Queues mutate queues.
-func Queues(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
+func Queues(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	klog.V(3).Infof("Mutating %s queue %s.", ar.Request.Operation, ar.Request.Name)
 
 	queue, err := schema.DecodeQueue(ar.Request.Object, ar.Request.Resource)
@@ -74,7 +74,7 @@ func Queues(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
 	var patchBytes []byte
 	switch ar.Request.Operation {
-	case v1beta1.Create:
+	case admissionv1.Create:
 		patchBytes, err = createQueuePatch(queue)
 	default:
 		return util.ToAdmissionResponse(fmt.Errorf("invalid operation `%s`, "+
@@ -82,18 +82,21 @@ func Queues(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	}
 
 	if err != nil {
-		return &v1beta1.AdmissionResponse{
+		return &admissionv1.AdmissionResponse{
 			Allowed: false,
 			Result:  &metav1.Status{Message: err.Error()},
 		}
 	}
 
-	pt := v1beta1.PatchTypeJSONPatch
-	return &v1beta1.AdmissionResponse{
-		Allowed:   true,
-		Patch:     patchBytes,
-		PatchType: &pt,
+	reviewResponse := admissionv1.AdmissionResponse{
+		Allowed: true,
+		Patch:   patchBytes,
 	}
+	if len(patchBytes) > 0 {
+		pt := admissionv1.PatchTypeJSONPatch
+		reviewResponse.PatchType = &pt
+	}
+	return &reviewResponse
 }
 
 func createQueuePatch(queue *schedulingv1beta1.Queue) ([]byte, error) {
