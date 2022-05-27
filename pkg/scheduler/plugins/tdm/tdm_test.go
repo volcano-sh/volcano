@@ -93,7 +93,7 @@ func Test_parseRevocableZone(t *testing.T) {
 
 	for i, c := range tests {
 		t.Run(fmt.Sprintf("case %d", i), func(t *testing.T) {
-			start, end, err := parseRevocableZone(c.rz)
+			start, end, err := parseRevocableZone(c.rz, time.UTC)
 			if (err != nil) != c.err {
 				t.Errorf("want %v ,got %v, err: %v", c.err, err != nil, err)
 			}
@@ -102,6 +102,69 @@ func Test_parseRevocableZone(t *testing.T) {
 				t.Errorf("want %v, got %v", c.delta, end.Unix()-start.Unix())
 			}
 
+		})
+	}
+}
+
+func Test_parseWithTimeZone(t *testing.T) {
+	tests := []struct {
+		rz     string
+		tz     string
+		utc_rz string
+		equal  bool
+	}{
+		{
+			rz:     "08:00-09:00",
+			tz:     "Asia/Shanghai",
+			utc_rz: "00:00-01:00",
+			equal:  true,
+		},
+		{
+			rz:     "08:00-09:00",
+			tz:     "UTC",
+			utc_rz: "08:00-09:00",
+			equal:  true,
+		},
+		{
+			rz:     "08:00-09:00",
+			tz:     "",
+			utc_rz: "08:00-09:00",
+			equal:  true,
+		},
+		{
+			rz:     "08:00-09:00",
+			tz:     "AAA/BBB",
+			utc_rz: "08:00-09:00",
+			equal:  true,
+		},
+		{
+			rz:     "08:00-09:00",
+			tz:     "America/Mexico_City",
+			utc_rz: "08:00-09:00",
+			equal:  false,
+		},
+		{
+			rz:     "08:00-09:00",
+			tz:     "Etc/GMT",
+			utc_rz: "08:00-09:00",
+			equal:  true,
+		},
+	}
+
+	for i, c := range tests {
+		t.Run(fmt.Sprintf("case %d", i), func(t *testing.T) {
+			tz, err := time.LoadLocation(c.tz)
+			if err != nil {
+				// because in TDM plugins, error timezone use default timezone UTC
+				tz = time.UTC
+			}
+			if err == nil {
+				start, end, _ := parseRevocableZone(c.rz, tz)
+				utcStart, utcEnd, _ := parseRevocableZone(c.utc_rz, time.UTC)
+				if (start.Equal(utcStart) && end.Equal(utcEnd)) != c.equal {
+					t.Errorf("want %v, got %v", c.equal, !start.Equal(utcStart) || !end.Equal(utcEnd))
+				}
+			}
 		})
 	}
 }
