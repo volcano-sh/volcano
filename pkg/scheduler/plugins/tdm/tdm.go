@@ -37,6 +37,7 @@ const (
 	// revocableZoneLayout revocable zone layout
 	revocableZoneLayout      = "15:04"
 	revocableZoneLabelPrefix = "tdm.revocable-zone."
+	timeZoneLabel            = "tdm.timezone"
 	evictPeriodLabel         = "tdm.evict.period"
 	defaultPodEvictNum       = 1
 )
@@ -51,11 +52,13 @@ var lastEvictAt time.Time
        arguments:
          tdm.revocable-zone.rz1: 10:00-21:00
          tdm.revocable-zone.rz2: 12:00-14:00
+         tdm.timezone: Asia/Shanghai  	// default timezone use UTC, and error input also use UTC
          tdm.evict.period: 1m
 */
 
 type tdmPlugin struct {
 	revocableZone map[string]string
+	timeZone      *time.Location
 	// evictPeriod
 	// default 1m
 	evictPeriod time.Duration
@@ -64,11 +67,19 @@ type tdmPlugin struct {
 // New function returns prioritizePlugin object
 func New(args framework.Arguments) framework.Plugin {
 	revocableZone := make(map[string]string)
+	timeZone := time.UTC
 	evictPeriod := time.Minute
 
 	for k, v := range args {
 		if strings.Contains(k, revocableZoneLabelPrefix) {
 			revocableZone[strings.Replace(k, revocableZoneLabelPrefix, "", 1)] = v
+		}
+	}
+
+	// check timezone
+	if timezone, ok := args[timeZoneLabel]; ok {
+		if tz, err := time.LoadLocation(timezone); err == nil {
+			timeZone = tz
 		}
 	}
 
@@ -78,14 +89,14 @@ func New(args framework.Arguments) framework.Plugin {
 		}
 	}
 
-	return &tdmPlugin{revocableZone, evictPeriod}
+	return &tdmPlugin{revocableZone, timeZone, evictPeriod}
 }
 
 func (tp *tdmPlugin) Name() string {
 	return PluginName
 }
 
-func parseRevocableZone(rzRaw string) (start, end time.Time, err error) {
+func parseRevocableZone(rzRaw string, location *time.Location) (start, end time.Time, err error) {
 	rzValues := strings.Split(strings.TrimSpace(rzRaw), "-")
 
 	if len(rzValues) != 2 {
@@ -93,17 +104,17 @@ func parseRevocableZone(rzRaw string) (start, end time.Time, err error) {
 		return
 	}
 
-	t1, err := time.Parse(revocableZoneLayout, rzValues[0])
+	t1, err := time.ParseInLocation(revocableZoneLayout, rzValues[0], location)
 	if err != nil {
 		return
 	}
 
-	t2, err := time.Parse(revocableZoneLayout, rzValues[1])
+	t2, err := time.ParseInLocation(revocableZoneLayout, rzValues[1], location)
 	if err != nil {
 		return
 	}
 
-	now := time.Now()
+	now := time.Now().In(location)
 
 	start = time.Date(now.Year(), now.Month(), now.Day(), t1.Hour(), t1.Minute(), 0, 0, now.Location())
 	if t1.After(t2) || t1.Equal(t2) {
@@ -118,13 +129,14 @@ func parseRevocableZone(rzRaw string) (start, end time.Time, err error) {
 func (tp *tdmPlugin) availableRevocableZone(rz string) error {
 	// rzRaw format 00:00-23:59
 	rzRaw, ok := tp.revocableZone[rz]
+	timeZone := tp.timeZone
 	if !ok {
 		return fmt.Errorf("revocable zone %v not support", rz)
 	}
 
-	now := time.Now()
+	now := time.Now().In(timeZone)
 
-	start, end, err := parseRevocableZone(rzRaw)
+	start, end, err := parseRevocableZone(rzRaw, timeZone)
 	if err != nil {
 		return err
 	}
