@@ -1225,8 +1225,16 @@ func (sc *SchedulerCache) GetMetricsData() {
 				if len(warnings) > 0 {
 					klog.V(3).Infof("Warning querying Prometheus: %v", warnings)
 				}
+				if res == nil || res.String() == "" {
+					klog.V(4).Infof("Warning querying Prometheus: no data found for %s", queryStr)
+					continue
+				}
 
+				klog.V(4).Infof("Query prometheus res %s", res.String())
 				rowValues := strings.Split(strings.TrimSpace(res.String()), "=>")
+				if len(rowValues) < 2 {
+					continue
+				}
 				value := strings.Split(strings.TrimSpace(rowValues[1]), " ")
 				switch metric {
 				case cpuUsageAvg:
