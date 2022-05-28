@@ -1232,6 +1232,7 @@ func (sc *SchedulerCache) GetMetricsData() {
 
 				klog.V(4).Infof("Query prometheus res %s", res.String())
 				rowValues := strings.Split(strings.TrimSpace(res.String()), "=>")
+				// ignore invalid prometheus.data to nodeUsage.map
 				if len(rowValues) < 2 {
 					continue
 				}
