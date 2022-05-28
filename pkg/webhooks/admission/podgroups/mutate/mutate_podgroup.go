@@ -17,6 +17,7 @@ limitations under the License.
 package mutate
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -36,9 +37,9 @@ func init() {
 }
 
 var service = &router.AdmissionService{
-	Path: "/podgroups/mutate",
-	Func: PodGroups,
-
+	Path:   "/podgroups/mutate",
+	Func:   PodGroups,
+	Config: config,
 	MutatingConfig: &whv1.MutatingWebhookConfiguration{
 		Webhooks: []whv1.MutatingWebhook{{
 			Name: "mutatepodgroup.volcano.sh",
@@ -55,6 +56,8 @@ var service = &router.AdmissionService{
 		}},
 	},
 }
+
+var config = &router.AdmissionServiceConfig{}
 
 type patchOperation struct {
 	Op    string      `json:"op"`
@@ -100,12 +103,18 @@ func PodGroups(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 
 func createPodGroupPatch(podgroup *schedulingv1beta1.PodGroup) ([]byte, error) {
 	var patch []patchOperation
-
 	if len(podgroup.Spec.Queue) == 0 {
+		queueName := schedulingv1beta1.DefaultQueue
+		ns, err := config.KubeClient.CoreV1().Namespaces().Get(context.TODO(), podgroup.Namespace, metav1.GetOptions{})
+		if err == nil {
+			if val, ok := ns.GetAnnotations()[schedulingv1beta1.QueueNameAnnotationKey]; ok {
+				queueName = val
+			}
+		}
 		patch = append(patch, patchOperation{
 			Op:    "add",
 			Path:  "/spec/queue",
-			Value: schedulingv1beta1.DefaultQueue,
+			Value: queueName,
 		})
 	}
 
