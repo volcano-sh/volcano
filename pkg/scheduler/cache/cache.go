@@ -1261,27 +1261,12 @@ func (sc *SchedulerCache) GetMetricsData() {
 func (sc *SchedulerCache) setMetricsData(usageInfo map[string]*schedulingapi.NodeUsage) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
-	beforeNodeinfo := make(map[string]string, len(sc.Nodes))
-	for nName, nInfo := range sc.Nodes {
-		beforeNodeinfo[nName] = fmt.Sprintf("%+v", *nInfo.ResourceUsage)
-	}
+
 	for k := range usageInfo {
 		nodeInfo, ok := sc.Nodes[k]
 		if ok {
+			klog.V(4).Infof("node: %s, ResourceUsage: %+v => %+v", k, *nodeInfo.ResourceUsage, *usageInfo[k])
 			nodeInfo.ResourceUsage = usageInfo[k]
 		}
-	}
-	// record node.ResourceUsage changes
-	for nName, nInfo := range sc.Nodes {
-		newResourceUsage := fmt.Sprintf("%+v", *nInfo.ResourceUsage)
-		oldResourceUsage, found := beforeNodeinfo[nName]
-		if !found {
-			klog.V(4).Infof("new node: %s, ResourceUsage: %s", nName, newResourceUsage)
-			continue
-		}
-		if oldResourceUsage == newResourceUsage {
-			continue
-		}
-		klog.V(4).Infof("node: %s, ResourceUsage: %s => %s", nName, oldResourceUsage, newResourceUsage)
 	}
 }
