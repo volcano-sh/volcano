@@ -288,3 +288,36 @@ func TestTaskSchedulingReason(t *testing.T) {
 		}
 	}
 }
+
+func TestGetDefaultTaskSpec(t *testing.T) {
+	tests := []struct {
+		pod      *v1.Pod
+		expected string
+	}{
+		{
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "tfjob-ps-1"},
+			},
+			expected: "ps",
+		},
+		{
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "tfjob-prod-worker-2"},
+			},
+			expected: "worker",
+		},
+		{
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "randompod-123"},
+			},
+			expected: "randompod-123",
+		},
+	}
+
+	for i, test := range tests {
+		spec := GetDefaultTaskSpec(test.pod)
+		if spec != test.expected {
+			t.Errorf("case #%d, task %v, expected: %s, got: %s", i, test.pod.Name, test.expected, spec)
+		}
+	}
+}

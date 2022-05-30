@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -147,7 +148,17 @@ func getTaskID(pod *v1.Pod) TaskID {
 		return TaskID(ts)
 	}
 
-	return ""
+	return TaskID(GetDefaultTaskSpec(pod))
+}
+
+// GetDefaultTaskSpec return the pod generate name without pod index
+// if pod name is "tfjob-worker-9", return "worker".
+func GetDefaultTaskSpec(pod *v1.Pod) string {
+	specs := strings.Split(pod.Name, "-")
+	if len(specs) < 3 {
+		return pod.Name
+	}
+	return specs[len(specs)-2]
 }
 
 const TaskPriorityAnnotation = "volcano.sh/task-priority"
@@ -261,7 +272,7 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 
 func (ti *TaskInfo) GetTaskSpecKey() TaskID {
 	if ti.Pod == nil {
-		return ""
+		return TaskID(uuid.New().String())
 	}
 	return getTaskID(ti.Pod)
 }
