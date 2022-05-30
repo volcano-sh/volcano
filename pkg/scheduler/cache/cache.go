@@ -1227,18 +1227,14 @@ func (sc *SchedulerCache) GetMetricsData() {
 					klog.V(3).Infof("Warning querying Prometheus: %v", warnings)
 				}
 				if res == nil || res.String() == "" {
-					klog.V(3).Infof("Warning querying Prometheus: no data found for %s", queryStr)
+					klog.Warning("Warning querying Prometheus: no data found for %s", queryStr)
 					continue
 				}
-
-				klog.V(3).Infof("Query prometheus res %s", res.String())
-				switch res.Type() {
-				case pmodel.ValScalar, pmodel.ValMatrix:
-					continue
-				case pmodel.ValVector: // type pmodel.ValVector need only
-				default:
+				// plugin.usage only need type pmodel.ValVector in Prometheus.rulues
+				if res.Type() != pmodel.ValVector {
 					continue
 				}
+				// only method res.String() can get data, dataType []pmodel.ValVector, eg: "{k1:v1, ...} => #[value] @#[timespace]\n {k2:v2, ...} => ..."
 				firstRowValVector := strings.Split(res.String(), "\n")[0]
 				rowValues := strings.Split(strings.TrimSpace(firstRowValVector), "=>")
 				value := strings.Split(strings.TrimSpace(rowValues[1]), " ")
