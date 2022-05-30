@@ -17,6 +17,8 @@ limitations under the License.
 package preempt
 
 import (
+	"fmt"
+
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -110,7 +112,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 
 				preemptor := preemptorTasks[preemptorJob.UID].Pop().(*api.TaskInfo)
 
-				if preempted, _ := preempt(ssn, stmt, preemptor, preemptorJob, func(task *api.TaskInfo) bool {
+				if preempted, _ := preempt(ssn, stmt, preemptor, func(task *api.TaskInfo) bool {
 					// Ignore non running task.
 					if task.Status != api.Running {
 						return false
@@ -165,7 +167,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 				preemptor := preemptorTasks[job.UID].Pop().(*api.TaskInfo)
 
 				stmt := framework.NewStatement(ssn)
-				assigned, _ := preempt(ssn, stmt, preemptor, job, func(task *api.TaskInfo) bool {
+				assigned, _ := preempt(ssn, stmt, preemptor, func(task *api.TaskInfo) bool {
 					// Ignore non running task.
 					if task.Status != api.Running {
 						return false
@@ -197,7 +199,6 @@ func preempt(
 	ssn *framework.Session,
 	stmt *framework.Statement,
 	preemptor *api.TaskInfo,
-	job *api.JobInfo,
 	filter func(*api.TaskInfo) bool,
 	predicateHelper util.PredicateHelper,
 ) (bool, error) {
@@ -210,6 +211,11 @@ func preempt(
 	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 
 	selectedNodes := util.SortNodes(nodeScores)
+
+	job, found := ssn.Jobs[preemptor.Job]
+	if !found {
+		return false, fmt.Errorf("Job %s not found in SSN", preemptor.Job)
+	}
 
 	currentQueue := ssn.Queues[job.Queue]
 
