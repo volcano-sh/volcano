@@ -1227,11 +1227,11 @@ func (sc *SchedulerCache) GetMetricsData() {
 					klog.V(3).Infof("Warning querying Prometheus: %v", warnings)
 				}
 				if res == nil || res.String() == "" {
-					klog.V(4).Infof("Warning querying Prometheus: no data found for %s", queryStr)
+					klog.V(3).Infof("Warning querying Prometheus: no data found for %s", queryStr)
 					continue
 				}
 
-				klog.V(4).Infof("Query prometheus res %s", res.String())
+				klog.V(3).Infof("Query prometheus res %s", res.String())
 				switch res.Type() {
 				case pmodel.ValScalar, pmodel.ValMatrix:
 					continue
@@ -1265,7 +1265,7 @@ func (sc *SchedulerCache) setMetricsData(usageInfo map[string]*schedulingapi.Nod
 	for k := range usageInfo {
 		nodeInfo, ok := sc.Nodes[k]
 		if ok {
-			klog.V(4).Infof("node: %s, ResourceUsage: %+v => %+v", k, *nodeInfo.ResourceUsage, *usageInfo[k])
+			klog.V(3).Infof("node: %s, ResourceUsage: %+v => %+v", k, *nodeInfo.ResourceUsage, *usageInfo[k])
 			nodeInfo.ResourceUsage = usageInfo[k]
 		}
 	}
