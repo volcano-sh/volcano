@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/api"
+	pmodel "github.com/prometheus/common/model"
 	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 
 	v1 "k8s.io/api/core/v1"
@@ -1231,11 +1232,15 @@ func (sc *SchedulerCache) GetMetricsData() {
 				}
 
 				klog.V(4).Infof("Query prometheus res %s", res.String())
-				rowValues := strings.Split(strings.TrimSpace(res.String()), "=>")
-				// ignore invalid prometheus.data to nodeUsage.map
-				if len(rowValues) < 2 {
+				switch res.Type() {
+				case pmodel.ValScalar, pmodel.ValMatrix:
+					continue
+				case pmodel.ValVector: // type pmodel.ValVector need only
+				default:
 					continue
 				}
+				firstRowValVector := strings.Split(res.String(), "\n")[0]
+				rowValues := strings.Split(strings.TrimSpace(firstRowValVector), "=>")
 				value := strings.Split(strings.TrimSpace(rowValues[1]), " ")
 				switch metric {
 				case cpuUsageAvg:
@@ -1256,10 +1261,27 @@ func (sc *SchedulerCache) GetMetricsData() {
 func (sc *SchedulerCache) setMetricsData(usageInfo map[string]*schedulingapi.NodeUsage) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
+	beforeNodeinfo := make(map[string]string, len(sc.Nodes))
+	for nName, nInfo := range sc.Nodes {
+		beforeNodeinfo[nName] = fmt.Sprintf("%+v", *nInfo.ResourceUsage)
+	}
 	for k := range usageInfo {
 		nodeInfo, ok := sc.Nodes[k]
 		if ok {
 			nodeInfo.ResourceUsage = usageInfo[k]
 		}
+	}
+	// record node.ResourceUsage changes
+	for nName, nInfo := range sc.Nodes {
+		newResourceUsage := fmt.Sprintf("%+v", *nInfo.ResourceUsage)
+		oldResourceUsage, found := beforeNodeinfo[nName]
+		if !found {
+			klog.V(4).Infof("new node: %s, ResourceUsage: %s", nName, newResourceUsage)
+			continue
+		}
+		if oldResourceUsage == newResourceUsage {
+			continue
+		}
+		klog.V(4).Infof("node: %s, ResourceUsage: %s => %s", nName, oldResourceUsage, newResourceUsage)
 	}
 }
