@@ -155,7 +155,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 	jobStarvingFn := func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
 		occupied := ji.WaitingTaskNum() + ji.ReadyTaskNum()
-		if ji.CheckTaskMinAvailablePipelined() && occupied < ji.MinAvailable {
+		if !ji.CheckTaskMinAvailablePipelined() && occupied < ji.MinAvailable {
 			return true
 		}
 		return false
