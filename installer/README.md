@@ -79,6 +79,10 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`basic.admission_app_name`|Admission Controller App Name|`volcano-admission`|
 |`basic.controller_app_name`|Controller App Name|`volcano-controller`|
 |`basic.scheduler_app_name`|Scheduler App Name|`volcano-scheduler`|
+|`custom.metrics_enable`|Whether to Enable Metrics|`false`|
+|`custom.admission_enable`|Whether to Enable Admission|`true`|
+|`custom.controller_enable`|Whether to Enable Controller|`true`|
+|`custom.scheduler_enable`|Whether to Enable Scheduler|`true`|
 
 Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
 
