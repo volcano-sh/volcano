@@ -26,8 +26,8 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/api"
-	pmodel "github.com/prometheus/common/model"
 	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	pmodel "github.com/prometheus/common/model"
 
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -1227,7 +1227,7 @@ func (sc *SchedulerCache) GetMetricsData() {
 					klog.V(3).Infof("Warning querying Prometheus: %v", warnings)
 				}
 				if res == nil || res.String() == "" {
-					klog.Warning("Warning querying Prometheus: no data found for %s", queryStr)
+					klog.Warningf("Warning querying Prometheus: no data found for %s", queryStr)
 					continue
 				}
 				// plugin.usage only need type pmodel.ValVector in Prometheus.rulues
