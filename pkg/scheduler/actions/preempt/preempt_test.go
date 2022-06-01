@@ -64,7 +64,10 @@ func TestPreempt(t *testing.T) {
 					},
 					Spec: schedulingv1beta1.PodGroupSpec{
 						MinMember: 3,
-						Queue:     "q1",
+						MinTaskMember: map[string]int32{
+							"": 3,
+						},
+						Queue: "q1",
 					},
 					Status: schedulingv1beta1.PodGroupStatus{
 						Phase: schedulingv1beta1.PodGroupInqueue,
@@ -102,7 +105,10 @@ func TestPreempt(t *testing.T) {
 					},
 					Spec: schedulingv1beta1.PodGroupSpec{
 						MinMember: 1,
-						Queue:     "q1",
+						MinTaskMember: map[string]int32{
+							"": 2,
+						},
+						Queue: "q1",
 					},
 					Status: schedulingv1beta1.PodGroupStatus{
 						Phase: schedulingv1beta1.PodGroupInqueue,
@@ -115,7 +121,10 @@ func TestPreempt(t *testing.T) {
 					},
 					Spec: schedulingv1beta1.PodGroupSpec{
 						MinMember: 1,
-						Queue:     "q1",
+						MinTaskMember: map[string]int32{
+							"": 2,
+						},
+						Queue: "q1",
 					},
 					Status: schedulingv1beta1.PodGroupStatus{
 						Phase: schedulingv1beta1.PodGroupInqueue,
@@ -154,7 +163,10 @@ func TestPreempt(t *testing.T) {
 						Namespace: "c1",
 					},
 					Spec: schedulingv1beta1.PodGroupSpec{
-						MinMember:         1,
+						MinMember: 1,
+						MinTaskMember: map[string]int32{
+							"": 2,
+						},
 						Queue:             "q1",
 						PriorityClassName: "low-priority",
 					},
@@ -168,7 +180,10 @@ func TestPreempt(t *testing.T) {
 						Namespace: "c1",
 					},
 					Spec: schedulingv1beta1.PodGroupSpec{
-						MinMember:         1,
+						MinMember: 1,
+						MinTaskMember: map[string]int32{
+							"": 2,
+						},
 						Queue:             "q1",
 						PriorityClassName: "high-priority",
 					},
@@ -207,7 +222,10 @@ func TestPreempt(t *testing.T) {
 						Namespace: "c1",
 					},
 					Spec: schedulingv1beta1.PodGroupSpec{
-						MinMember:         1,
+						MinMember: 1,
+						MinTaskMember: map[string]int32{
+							"": 3,
+						},
 						Queue:             "q1",
 						PriorityClassName: "low-priority",
 					},
@@ -221,7 +239,10 @@ func TestPreempt(t *testing.T) {
 						Namespace: "c1",
 					},
 					Spec: schedulingv1beta1.PodGroupSpec{
-						MinMember:         1,
+						MinMember: 1,
+						MinTaskMember: map[string]int32{
+							"": 1,
+						},
 						Queue:             "q1",
 						PriorityClassName: "high-priority",
 					},
