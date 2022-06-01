@@ -19,6 +19,7 @@ package api
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
@@ -327,6 +328,11 @@ func (ni *NodeInfo) setNodeGPUInfo(node *v1.Node) {
 	for i := 0; i < int(gpuNumber); i++ {
 		ni.GPUDevices[i] = NewGPUDevice(i, memoryPerCard)
 	}
+	unhealthyGPUs := ni.getUnhealthyGPUs(node)
+	for i := range unhealthyGPUs {
+		klog.V(4).Infof("delete unhealthy gpu id %d from GPUDevices", unhealthyGPUs[i])
+		delete(ni.GPUDevices, unhealthyGPUs[i])
+	}
 }
 
 // SetNode sets kubernetes node object to nodeInfo object
@@ -579,4 +585,25 @@ func (ni *NodeInfo) SubGPUResource(pod *v1.Pod) {
 			delete(dev.PodMap, string(pod.UID))
 		}
 	}
+}
+
+// getUnhealthyGPUs returns all the unhealthy GPU id.
+func (ni *NodeInfo) getUnhealthyGPUs(node *v1.Node) (unhealthyGPUs []int) {
+	unhealthyGPUs = []int{}
+	devicesStr, ok := node.Annotations[UnhealthyGPUIDs]
+
+	if !ok {
+		return
+	}
+
+	idsStr := strings.Split(devicesStr, ",")
+	for _, sid := range idsStr {
+		id, err := strconv.Atoi(sid)
+		if err != nil {
+			klog.Warningf("Failed to parse unhealthy gpu id %s due to %v", sid, err)
+		} else {
+			unhealthyGPUs = append(unhealthyGPUs, id)
+		}
+	}
+	return
 }

@@ -6,8 +6,10 @@ basic:
   admission_secret_name: "volcano-admission-secret"
   admission_config_file: "config/volcano-admission.conf"
   scheduler_config_file: "config/volcano-scheduler.conf"
-
   image_pull_secret: ""
   admission_port: 8443
 custom:
   metrics_enable: false
+  admission_enable: true
+  controller_enable: true
+  scheduler_enable: true

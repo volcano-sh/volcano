@@ -27,6 +27,7 @@ import (
 
 	"github.com/prometheus/client_golang/api"
 	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	pmodel "github.com/prometheus/common/model"
 
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -1225,8 +1226,17 @@ func (sc *SchedulerCache) GetMetricsData() {
 				if len(warnings) > 0 {
 					klog.V(3).Infof("Warning querying Prometheus: %v", warnings)
 				}
-
-				rowValues := strings.Split(strings.TrimSpace(res.String()), "=>")
+				if res == nil || res.String() == "" {
+					klog.Warningf("Warning querying Prometheus: no data found for %s", queryStr)
+					continue
+				}
+				// plugin.usage only need type pmodel.ValVector in Prometheus.rulues
+				if res.Type() != pmodel.ValVector {
+					continue
+				}
+				// only method res.String() can get data, dataType []pmodel.ValVector, eg: "{k1:v1, ...} => #[value] @#[timespace]\n {k2:v2, ...} => ..."
+				firstRowValVector := strings.Split(res.String(), "\n")[0]
+				rowValues := strings.Split(strings.TrimSpace(firstRowValVector), "=>")
 				value := strings.Split(strings.TrimSpace(rowValues[1]), " ")
 				switch metric {
 				case cpuUsageAvg:
@@ -1247,9 +1257,11 @@ func (sc *SchedulerCache) GetMetricsData() {
 func (sc *SchedulerCache) setMetricsData(usageInfo map[string]*schedulingapi.NodeUsage) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
+
 	for k := range usageInfo {
 		nodeInfo, ok := sc.Nodes[k]
 		if ok {
+			klog.V(3).Infof("node: %s, ResourceUsage: %+v => %+v", k, *nodeInfo.ResourceUsage, *usageInfo[k])
 			nodeInfo.ResourceUsage = usageInfo[k]
 		}
 	}
