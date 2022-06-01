@@ -58,7 +58,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
-		if valid := job.CheckTaskMinAvailable(); !valid {
+		if valid := job.CheckTaskValid(); !valid {
 			return &api.ValidateResult{
 				Pass:    false,
 				Reason:  v1beta1.NotEnoughPodsOfTaskReason,
@@ -136,7 +136,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddJobOrderFn(gp.Name(), jobOrderFn)
 	ssn.AddJobReadyFn(gp.Name(), func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
-		if ji.CheckTaskMinAvailableReady() && ji.Ready() {
+		if ji.CheckTaskReady() && ji.Ready() {
 			return true
 		}
 		return false
@@ -145,7 +145,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 	pipelinedFn := func(obj interface{}) int {
 		ji := obj.(*api.JobInfo)
 		occupied := ji.WaitingTaskNum() + ji.ReadyTaskNum()
-		if ji.CheckTaskMinAvailablePipelined() && occupied >= ji.MinAvailable {
+		if ji.CheckTaskPipelined() && occupied >= ji.MinAvailable {
 			return util.Permit
 		}
 		return util.Reject
@@ -155,7 +155,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 	jobStarvingFn := func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
 		occupied := ji.WaitingTaskNum() + ji.ReadyTaskNum()
-		if ji.CheckTaskMinAvailablePipelined() && occupied < ji.MinAvailable {
+		if ji.CheckTaskStarving() && occupied < ji.MinAvailable {
 			return true
 		}
 		return false
