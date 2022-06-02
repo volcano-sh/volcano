@@ -11,7 +11,7 @@ jobs:
       GOPATH: /home/runner/work/${{ github.repository }}
     steps:
       - name: Install Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v2.4.2
         with:
           go-version: 1.17.x
 
