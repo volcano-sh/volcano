@@ -336,6 +336,9 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 		Spec: schedulingv1.PodGroupSpec{
 			Queue:     "c1",
 			MinMember: 2,
+			MinTaskMember: map[string]int32{
+				"": 2,
+			},
 		},
 		Status: schedulingv1.PodGroupStatus{
 			Phase: schedulingv1.PodGroupInqueue,

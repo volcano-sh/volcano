@@ -698,8 +698,8 @@ func (ji *JobInfo) WaitingTaskNum() int32 {
 	return int32(len(ji.TaskStatusIndex[Pipelined]))
 }
 
-// CheckTaskMinAvailable returns whether each task of job is valid.
-func (ji *JobInfo) CheckTaskMinAvailable() bool {
+// CheckTaskValid returns whether each task of job is valid.
+func (ji *JobInfo) CheckTaskValid() bool {
 	// if job minAvailable is less than sumof(task minAvailable), skip this check
 	if ji.MinAvailable < ji.TaskMinAvailableTotal {
 		return true
@@ -730,8 +730,8 @@ func (ji *JobInfo) CheckTaskMinAvailable() bool {
 	return true
 }
 
-// CheckTaskMinAvailableReady return ready pods meet task minavaliable.
-func (ji *JobInfo) CheckTaskMinAvailableReady() bool {
+// CheckTaskReady return whether each task of job is ready.
+func (ji *JobInfo) CheckTaskReady() bool {
 	if ji.MinAvailable < ji.TaskMinAvailableTotal {
 		return true
 	}
@@ -762,8 +762,8 @@ func (ji *JobInfo) CheckTaskMinAvailableReady() bool {
 	return true
 }
 
-// CheckTaskMinAvailablePipelined return ready pods meet task minavaliable.
-func (ji *JobInfo) CheckTaskMinAvailablePipelined() bool {
+// CheckTaskPipelined return whether each task of job is pipelined.
+func (ji *JobInfo) CheckTaskPipelined() bool {
 	if ji.MinAvailable < ji.TaskMinAvailableTotal {
 		return true
 	}
@@ -793,6 +793,39 @@ func (ji *JobInfo) CheckTaskMinAvailablePipelined() bool {
 		}
 	}
 	return true
+}
+
+// CheckTaskStarving return whether job has at least one task which is starving.
+func (ji *JobInfo) CheckTaskStarving() bool {
+	if ji.MinAvailable < ji.TaskMinAvailableTotal {
+		return true
+	}
+	occupiedMap := map[TaskID]int32{}
+	for status, tasks := range ji.TaskStatusIndex {
+		if AllocatedStatus(status) ||
+			status == Succeeded ||
+			status == Pipelined {
+			for _, task := range tasks {
+				occupiedMap[getTaskID(task.Pod)]++
+			}
+			continue
+		}
+
+		if status == Pending {
+			for _, task := range tasks {
+				if task.InitResreq.IsEmpty() {
+					occupiedMap[getTaskID(task.Pod)]++
+				}
+			}
+		}
+	}
+	for taskID, minNum := range ji.TaskMinAvailable {
+		if occupiedMap[taskID] < minNum {
+			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskID, occupiedMap[taskID])
+			return true
+		}
+	}
+	return false
 }
 
 // ValidTaskNum returns the number of tasks that are valid.
