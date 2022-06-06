@@ -125,21 +125,20 @@ var victimsFnForLnu = func(tasks []*api.TaskInfo) []*api.TaskInfo {
 }
 
 // lowThresholdFilter filter nodes which all resource dimensions are under the low utilization threshold
-func lowThresholdFilter(node *v1.Node, usage *NodeUtilization, config interface{}) bool {
+func lowThresholdFilter(usage *NodeUtilization, config interface{}) bool {
 	utilizationConfig := parseArgToConfig(config)
 	if utilizationConfig == nil {
 		klog.V(4).Infof("lack of LowNodeUtilizationConf pointer parameter")
 		return false
 	}
 
-	if node.Spec.Unschedulable {
+	if usage.nodeInfo.Spec.Unschedulable {
 		return false
 	}
-	nodeCapacity := getNodeCapacity(node)
-	for rName, usage := range usage.utilization {
-		if thresholdPercent, ok := utilizationConfig.Thresholds[string(rName)]; ok {
-			threshold := getThresholdForNode(rName, thresholdPercent, nodeCapacity)
-			if usage.Cmp(*threshold) == 1 {
+	for rName, usagePercent := range usage.utilization {
+		if threshold, ok := utilizationConfig.Thresholds[string(rName)]; ok {
+			klog.V(3).Infof("node: %s, usage: %f, lowThreshold: %f\n", usage.nodeInfo.Name, usagePercent, threshold)
+			if usagePercent >= threshold {
 				return false
 			}
 		}
@@ -148,18 +147,17 @@ func lowThresholdFilter(node *v1.Node, usage *NodeUtilization, config interface{
 }
 
 // highThresholdFilter filter nodes which at least one resource dimension above the target utilization threshold
-func highThresholdFilter(node *v1.Node, usage *NodeUtilization, config interface{}) bool {
+func highThresholdFilter(usage *NodeUtilization, config interface{}) bool {
 	utilizationConfig := parseArgToConfig(config)
 	if utilizationConfig == nil {
 		klog.V(4).Infof("lack of LowNodeUtilizationConf pointer parameter")
 		return false
 	}
 
-	nodeCapacity := getNodeCapacity(node)
-	for rName, usage := range usage.utilization {
-		if thresholdPercent, ok := utilizationConfig.TargetThresholds[string(rName)]; ok {
-			threshold := getThresholdForNode(rName, thresholdPercent, nodeCapacity)
-			if usage.Cmp(*threshold) == 1 {
+	for rName, usagePercent := range usage.utilization {
+		if threshold, ok := utilizationConfig.TargetThresholds[string(rName)]; ok {
+			klog.V(3).Infof("node: %s, usage: %f, highThreshold: %f\n", usage.nodeInfo.Name, usagePercent, threshold)
+			if usagePercent > threshold {
 				return true
 			}
 		}
@@ -168,14 +166,12 @@ func highThresholdFilter(node *v1.Node, usage *NodeUtilization, config interface
 }
 
 // isContinueEvictPods judges whether continue to select victim pods
-func isContinueEvictPods(node *v1.Node, usage *NodeUtilization, totalAllocatableResource map[v1.ResourceName]*resource.Quantity, config interface{}) bool {
+func isContinueEvictPods(usage *NodeUtilization, totalAllocatableResource map[v1.ResourceName]*resource.Quantity, config interface{}) bool {
 	var isNodeOverused bool
 	utilizationConfig := parseArgToConfig(config)
-	nodeCapacity := getNodeCapacity(node)
 	for rName, usage := range usage.utilization {
-		if thresholdPercent, ok := utilizationConfig.TargetThresholds[string(rName)]; ok {
-			threshold := getThresholdForNode(rName, thresholdPercent, nodeCapacity)
-			if usage.Cmp(*threshold) == 1 {
+		if threshold, ok := utilizationConfig.TargetThresholds[string(rName)]; ok {
+			if usage >= threshold {
 				isNodeOverused = true
 				break
 			}
