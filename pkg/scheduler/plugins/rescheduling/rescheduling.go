@@ -19,6 +19,8 @@ package rescheduling
 import (
 	"time"
 
+	"github.com/mitchellh/mapstructure"
+
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -98,6 +100,7 @@ func (rp *reschedulingPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Get all strategies and register the VictimTasksFromCandidatesFns
 	victimFns := make([]api.VictimTasksFn, 0)
 	for _, strategy := range configs.strategies {
+		klog.V(3).Infof("strategy: %s\n", strategy.Name)
 		victimFns = append(victimFns, VictimFns[strategy.Name])
 	}
 	ssn.AddVictimTasksFns(rp.Name(), victimFns)
@@ -118,8 +121,8 @@ type ReschedulingConfigs struct {
 
 // Strategy is the struct for rescheduling strategy
 type Strategy struct {
-	Name       string
-	Parameters map[string]interface{}
+	Name   string                 `json:"name"`
+	Params map[string]interface{} `json:"params"`
 }
 
 // NewReschedulingConfigs creates an object of rescheduling configurations with default configuration
@@ -128,8 +131,8 @@ func NewReschedulingConfigs() *ReschedulingConfigs {
 		interval: DefaultInterval,
 		strategies: []Strategy{
 			{
-				Name:       DefaultStrategy,
-				Parameters: DefaultLowNodeConf,
+				Name:   DefaultStrategy,
+				Params: DefaultLowNodeConf,
 			},
 		},
 	}
@@ -154,17 +157,27 @@ func (rc *ReschedulingConfigs) parseArguments(arguments framework.Arguments) {
 	strategies, ok := arguments["strategies"]
 	if ok {
 		strategyArray, _ := strategies.([]interface{})
+		if len(strategyArray) != 0 {
+			rc.strategies = rc.strategies[0:0]
+		}
 		for _, strategyInterface := range strategyArray {
-			strategy, ok := strategyInterface.(Strategy)
-			if ok {
-				rc.strategies = append(rc.strategies, strategy)
+			strategy := new(Strategy)
+			err := mapstructure.Decode(strategyInterface, strategy)
+			if err != nil {
+				klog.V(3).Infof("Decode error: %s\n", err.Error())
+			} else {
+				rc.strategies = append(rc.strategies, *strategy)
 			}
 		}
 		for k := range RegisteredStrategyConfigs {
 			delete(RegisteredStrategyConfigs, k)
 		}
 		for _, strategy := range rc.strategies {
-			RegisteredStrategyConfigs[strategy.Name] = strategy.Parameters
+			RegisteredStrategyConfigs[strategy.Name] = strategy.Params
 		}
+		klog.V(3).Infof("RegisteredStrategyConfigs: %v\n", RegisteredStrategyConfigs)
+	}
+	for _, strategy := range rc.strategies {
+		klog.V(3).Infof("strategy: %s, params: %v\n", strategy.Name, strategy.Params)
 	}
 }

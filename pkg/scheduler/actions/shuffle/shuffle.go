@@ -57,6 +57,9 @@ func (shuffle *Action) Execute(ssn *framework.Session) {
 			}
 		}
 	}
+	for _, task := range tasks {
+		klog.V(3).Infof("task: %s\n", task.Name)
+	}
 
 	// Evict target workloads
 	victims := ssn.VictimTasks(tasks)
