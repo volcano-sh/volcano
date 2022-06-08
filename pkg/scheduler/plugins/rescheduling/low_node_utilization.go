@@ -58,15 +58,34 @@ func (lnuc *LowNodeUtilizationConf) parse(configs map[string]interface{}) {
 		return
 	}
 	lowThresholdsConfigs, ok := configs["thresholds"]
+	klog.V(3).Infof("lowThresholdsConfigs: %v, ok: %t\n", lowThresholdsConfigs, ok)
 	if ok {
-		lowConfigs, _ := lowThresholdsConfigs.(map[string]int)
-		parseThreshold(lowConfigs, lnuc, "Thresholds")
+		lowConfigs, ok := lowThresholdsConfigs.(map[interface{}]interface{})
+		if !ok {
+			klog.V(3).Infoln("convert lowConfigs error")
+		} else {
+			config := make(map[string]int)
+			for k, v := range lowConfigs {
+				config[k.(string)] = v.(int)
+			}
+			parseThreshold(config, lnuc, "Thresholds")
+		}
+		klog.V(3).Infof("lowConfigs: %v, ok: %t\n", lowConfigs, ok)
 	}
 	targetThresholdsConfigs, ok := configs["targetThresholds"]
 	if ok {
-		targetConfigs, _ := targetThresholdsConfigs.(map[string]int)
-		parseThreshold(targetConfigs, lnuc, "TargetThresholds")
+		targetConfigs, ok := targetThresholdsConfigs.(map[interface{}]interface{})
+		if !ok {
+			klog.V(3).Infoln("convert targetConfigs error")
+		} else {
+			config := make(map[string]int)
+			for k, v := range targetConfigs {
+				config[k.(string)] = v.(int)
+			}
+			parseThreshold(config, lnuc, "TargetThresholds")
+		}
 	}
+	klog.V(3).Infof("targetThresholdsConfigs: %v, ok: %t\n", targetThresholdsConfigs, ok)
 }
 
 func parseThreshold(thresholdsConfig map[string]int, lnuc *LowNodeUtilizationConf, param string) {
@@ -95,13 +114,16 @@ var victimsFnForLnu = func(tasks []*api.TaskInfo) []*api.TaskInfo {
 	// parse configuration arguments
 	utilizationConfig := NewLowNodeUtilizationConf()
 	parametersConfig := RegisteredStrategyConfigs["lowNodeUtilization"]
+	klog.V(3).Infof("parametersConfig: %v\n", parametersConfig)
 	var config map[string]interface{}
 	config, ok := parametersConfig.(map[string]interface{})
 	if !ok {
 		klog.Error("parameters parse error for lowNodeUtilization")
 		return victims
 	}
+	klog.V(3).Infof("config: %v\n", config)
 	utilizationConfig.parse(config)
+	klog.V(3).Infof("utilizationConfig: %v\n", utilizationConfig)
 
 	// group the nodes into lowNodes and highNodes
 	nodeUtilizationList := getNodeUtilization()
