@@ -58,11 +58,11 @@ func (lnuc *LowNodeUtilizationConf) parse(configs map[string]interface{}) {
 		return
 	}
 	lowThresholdsConfigs, ok := configs["thresholds"]
-	klog.V(3).Infof("lowThresholdsConfigs: %v, ok: %t\n", lowThresholdsConfigs, ok)
 	if ok {
 		lowConfigs, ok := lowThresholdsConfigs.(map[interface{}]interface{})
 		if !ok {
-			klog.V(3).Infoln("convert lowConfigs error")
+			klog.Errorln("convert lowConfigs error")
+			return
 		} else {
 			config := make(map[string]int)
 			for k, v := range lowConfigs {
@@ -70,13 +70,13 @@ func (lnuc *LowNodeUtilizationConf) parse(configs map[string]interface{}) {
 			}
 			parseThreshold(config, lnuc, "Thresholds")
 		}
-		klog.V(3).Infof("lowConfigs: %v, ok: %t\n", lowConfigs, ok)
 	}
 	targetThresholdsConfigs, ok := configs["targetThresholds"]
 	if ok {
 		targetConfigs, ok := targetThresholdsConfigs.(map[interface{}]interface{})
 		if !ok {
-			klog.V(3).Infoln("convert targetConfigs error")
+			klog.Errorln("convert targetConfigs error")
+			return
 		} else {
 			config := make(map[string]int)
 			for k, v := range targetConfigs {
@@ -85,7 +85,6 @@ func (lnuc *LowNodeUtilizationConf) parse(configs map[string]interface{}) {
 			parseThreshold(config, lnuc, "TargetThresholds")
 		}
 	}
-	klog.V(3).Infof("targetThresholdsConfigs: %v, ok: %t\n", targetThresholdsConfigs, ok)
 }
 
 func parseThreshold(thresholdsConfig map[string]int, lnuc *LowNodeUtilizationConf, param string) {
@@ -114,16 +113,13 @@ var victimsFnForLnu = func(tasks []*api.TaskInfo) []*api.TaskInfo {
 	// parse configuration arguments
 	utilizationConfig := NewLowNodeUtilizationConf()
 	parametersConfig := RegisteredStrategyConfigs["lowNodeUtilization"]
-	klog.V(3).Infof("parametersConfig: %v\n", parametersConfig)
 	var config map[string]interface{}
 	config, ok := parametersConfig.(map[string]interface{})
 	if !ok {
-		klog.Error("parameters parse error for lowNodeUtilization")
+		klog.Errorln("parameters parse error for lowNodeUtilization")
 		return victims
 	}
-	klog.V(3).Infof("config: %v\n", config)
 	utilizationConfig.parse(config)
-	klog.V(3).Infof("utilizationConfig: %v\n", utilizationConfig)
 
 	// group the nodes into lowNodes and highNodes
 	nodeUtilizationList := getNodeUtilization()
@@ -150,7 +146,7 @@ var victimsFnForLnu = func(tasks []*api.TaskInfo) []*api.TaskInfo {
 func lowThresholdFilter(usage *NodeUtilization, config interface{}) bool {
 	utilizationConfig := parseArgToConfig(config)
 	if utilizationConfig == nil {
-		klog.V(4).Infof("lack of LowNodeUtilizationConf pointer parameter")
+		klog.V(4).Infoln("lack of LowNodeUtilizationConf pointer parameter")
 		return false
 	}
 
@@ -159,7 +155,6 @@ func lowThresholdFilter(usage *NodeUtilization, config interface{}) bool {
 	}
 	for rName, usagePercent := range usage.utilization {
 		if threshold, ok := utilizationConfig.Thresholds[string(rName)]; ok {
-			klog.V(3).Infof("node: %s, usage: %f, lowThreshold: %f\n", usage.nodeInfo.Name, usagePercent, threshold)
 			if usagePercent >= threshold {
 				return false
 			}
@@ -178,7 +173,6 @@ func highThresholdFilter(usage *NodeUtilization, config interface{}) bool {
 
 	for rName, usagePercent := range usage.utilization {
 		if threshold, ok := utilizationConfig.TargetThresholds[string(rName)]; ok {
-			klog.V(3).Infof("node: %s, usage: %f, highThreshold: %f\n", usage.nodeInfo.Name, usagePercent, threshold)
 			if usagePercent > threshold {
 				return true
 			}
@@ -203,8 +197,8 @@ func isContinueEvictPods(usage *NodeUtilization, totalAllocatableResource map[v1
 		return false
 	}
 
-	for rName := range totalAllocatableResource {
-		if totalAllocatableResource[rName].CmpInt64(0) == 0 {
+	for _, amount := range totalAllocatableResource {
+		if amount.CmpInt64(0) == 0 {
 			return false
 		}
 	}
