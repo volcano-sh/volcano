@@ -43,8 +43,8 @@ var (
 	// RegisteredStrategyConfigs collects all the strategy configurations registered.
 	RegisteredStrategyConfigs map[string]interface{}
 
-	// VictimFns contains all the VictimTasksFn for registered the strategies
-	VictimFns map[string]api.VictimTasksFn
+	// VictimFn contains all the VictimTasksFn for registered the strategies
+	VictimFn map[string]api.VictimTasksFn
 
 	// Interval indicates the interval to get metrics, "5m" by default.
 	Interval string
@@ -52,11 +52,11 @@ var (
 
 func init() {
 	RegisteredStrategyConfigs = make(map[string]interface{})
-	VictimFns = make(map[string]api.VictimTasksFn)
+	VictimFn = make(map[string]api.VictimTasksFn)
 	Interval = "5m"
 
 	// register victim functions for all strategies here
-	VictimFns["lowNodeUtilization"] = victimsFnForLnu
+	VictimFn["lowNodeUtilization"] = victimsFnForLnu
 }
 
 type reschedulingPlugin struct {
@@ -97,11 +97,11 @@ func (rp *reschedulingPlugin) OnSessionOpen(ssn *framework.Session) {
 		return
 	}
 
-	// Get all strategies and register the VictimTasksFromCandidatesFns
+	// Get all strategies and register the victim functions
 	victimFns := make([]api.VictimTasksFn, 0)
 	for _, strategy := range configs.strategies {
-		klog.V(3).Infof("strategy: %s\n", strategy.Name)
-		victimFns = append(victimFns, VictimFns[strategy.Name])
+		klog.V(4).Infof("strategy: %s\n", strategy.Name)
+		victimFns = append(victimFns, VictimFn[strategy.Name])
 	}
 	ssn.AddVictimTasksFns(rp.Name(), victimFns)
 }

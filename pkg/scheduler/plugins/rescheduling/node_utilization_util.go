@@ -47,8 +47,8 @@ func groupNodesByUtilization(nodeUtilizationList []*NodeUtilization, lowThreshol
 			highNodes = append(highNodes, nodeUtilization)
 		}
 	}
-	klog.V(3).Infof("lowNodes: %v\n", lowNodes)
-	klog.V(3).Infof("highNodes: %v\n", highNodes)
+	klog.V(4).Infof("lowNodes: %v\n", lowNodes)
+	klog.V(4).Infof("highNodes: %v\n", highNodes)
 	return lowNodes, highNodes
 }
 
@@ -65,7 +65,7 @@ func getNodeUtilization() []*NodeUtilization {
 			pods: nodeInfo.Pods(),
 		}
 		nodeUtilizationList = append(nodeUtilizationList, nodeUtilization)
-		klog.V(3).Infof("node: %s, cpu: %v, memory: %v\n", nodeUtilization.nodeInfo.Name, nodeUtilization.utilization[v1.ResourceCPU], nodeUtilization.utilization[v1.ResourceMemory])
+		klog.V(4).Infof("node: %s, cpu: %v, memory: %v\n", nodeUtilization.nodeInfo.Name, nodeUtilization.utilization[v1.ResourceCPU], nodeUtilization.utilization[v1.ResourceMemory])
 	}
 	return nodeUtilizationList
 }
@@ -116,7 +116,6 @@ func parseArgToConfig(config interface{}) *LowNodeUtilizationConf {
 	if arg, ok := config.(LowNodeUtilizationConf); ok {
 		utilizationConfig = &arg
 	}
-
 	return utilizationConfig
 }
 
@@ -163,16 +162,19 @@ func evict(pods []*v1.Pod, utilization *NodeUtilization, totalAllocatableResourc
 	victims := make([]*api.TaskInfo, 0)
 	for _, pod := range pods {
 		if !continueEviction(utilization, totalAllocatableResource, config) {
+			klog.V(3).Infoln("stop evict pods")
 			return victims
 		}
 		for _, task := range tasks {
-			if task.Pod.UID == pod.UID {
+			if task.Pod.Name == pod.Name {
 				usedCPU := *resource.NewMilliQuantity(int64(task.Resreq.MilliCPU), resource.DecimalSI)
 				usedMem := *resource.NewQuantity(int64(task.Resreq.Memory), resource.BinarySI)
 				totalAllocatableResource[v1.ResourceCPU].Sub(usedCPU)
 				totalAllocatableResource[v1.ResourceMemory].Sub(usedMem)
 				utilization.utilization[v1.ResourceCPU] -= convertQuanToPercent(v1.ResourceCPU, &usedCPU, utilization.nodeInfo.Status.Capacity)
 				utilization.utilization[v1.ResourceMemory] -= convertQuanToPercent(v1.ResourceMemory, &usedMem, utilization.nodeInfo.Status.Capacity)
+				klog.V(4).Infof("totalAllocatableResource: %v\n", totalAllocatableResource)
+				klog.V(4).Infof("node: %s, utilization: %v\n", utilization.nodeInfo.Name, utilization.utilization)
 				victims = append(victims, task)
 				break
 			}
