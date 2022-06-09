@@ -45,7 +45,7 @@ github.com/emicklei/go-restful/log
 # github.com/evanphx/json-patch v4.12.0+incompatible
 ## explicit
 github.com/evanphx/json-patch
-# github.com/fsnotify/fsnotify v1.4.9
+# github.com/fsnotify/fsnotify v1.5.1
 ## explicit; go 1.13
 github.com/fsnotify/fsnotify
 # github.com/go-logr/logr v1.2.0
@@ -111,8 +111,8 @@ github.com/hashicorp/errwrap
 # github.com/hashicorp/go-multierror v1.0.0
 ## explicit
 github.com/hashicorp/go-multierror
-# github.com/imdario/mergo v0.3.5
-## explicit
+# github.com/imdario/mergo v0.3.12
+## explicit; go 1.13
 github.com/imdario/mergo
 # github.com/inconshreveable/mousetrap v1.0.0
 ## explicit
@@ -237,7 +237,7 @@ go.uber.org/automaxprocs/maxprocs
 # go.uber.org/multierr v1.6.0
 ## explicit; go 1.12
 go.uber.org/multierr
-# go.uber.org/zap v1.19.0
+# go.uber.org/zap v1.19.1
 ## explicit; go 1.13
 go.uber.org/zap
 go.uber.org/zap/buffer
@@ -1029,26 +1029,30 @@ k8s.io/utils/path
 k8s.io/utils/pointer
 k8s.io/utils/strings
 k8s.io/utils/trace
+# sigs.k8s.io/controller-runtime v0.11.1
+## explicit; go 1.17
+sigs.k8s.io/controller-runtime/pkg/scheme
 # sigs.k8s.io/json v0.0.0-20211020170558-c049b76a60c6
 ## explicit; go 1.16
 sigs.k8s.io/json
 sigs.k8s.io/json/internal/golang/encoding/json
-# sigs.k8s.io/structured-merge-diff/v4 v4.1.2
+# sigs.k8s.io/structured-merge-diff/v4 v4.2.0
 ## explicit; go 1.13
 sigs.k8s.io/structured-merge-diff/v4/fieldpath
 sigs.k8s.io/structured-merge-diff/v4/schema
 sigs.k8s.io/structured-merge-diff/v4/typed
 sigs.k8s.io/structured-merge-diff/v4/value
-# sigs.k8s.io/yaml v1.2.0
+# sigs.k8s.io/yaml v1.3.0
 ## explicit; go 1.12
 sigs.k8s.io/yaml
 # stathat.com/c/consistent v1.0.0
 ## explicit
 stathat.com/c/consistent
-# volcano.sh/apis v1.5.0-beta.0.0.20220427084719-22d3dd007a8f
+# volcano.sh/apis v1.6.0-alpha.0
 ## explicit; go 1.17
 volcano.sh/apis/pkg/apis/batch/v1alpha1
 volcano.sh/apis/pkg/apis/bus/v1alpha1
+volcano.sh/apis/pkg/apis/flow/v1alpha1
 volcano.sh/apis/pkg/apis/helpers
 volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1
 volcano.sh/apis/pkg/apis/scheduling
@@ -1062,6 +1066,8 @@ volcano.sh/apis/pkg/client/clientset/versioned/typed/batch/v1alpha1
 volcano.sh/apis/pkg/client/clientset/versioned/typed/batch/v1alpha1/fake
 volcano.sh/apis/pkg/client/clientset/versioned/typed/bus/v1alpha1
 volcano.sh/apis/pkg/client/clientset/versioned/typed/bus/v1alpha1/fake
+volcano.sh/apis/pkg/client/clientset/versioned/typed/flow/v1alpha1
+volcano.sh/apis/pkg/client/clientset/versioned/typed/flow/v1alpha1/fake
 volcano.sh/apis/pkg/client/clientset/versioned/typed/nodeinfo/v1alpha1
 volcano.sh/apis/pkg/client/clientset/versioned/typed/nodeinfo/v1alpha1/fake
 volcano.sh/apis/pkg/client/clientset/versioned/typed/scheduling/v1beta1

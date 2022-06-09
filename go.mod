@@ -4,11 +4,11 @@ go 1.17
 
 require (
 	github.com/agiledragon/gomonkey/v2 v2.1.0
-	github.com/fsnotify/fsnotify v1.4.9
+	github.com/fsnotify/fsnotify v1.5.1
 	github.com/golang/mock v1.6.0
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/hashicorp/go-multierror v1.0.0
-	github.com/imdario/mergo v0.3.5
+	github.com/imdario/mergo v0.3.12
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/onsi/ginkgo/v2 v2.0.0
 	github.com/onsi/gomega v1.17.0
@@ -29,9 +29,9 @@ require (
 	k8s.io/klog v1.0.0
 	k8s.io/kubernetes v1.23.0
 	k8s.io/utils v0.0.0-20210930125809-cb0fa318a74b
-	sigs.k8s.io/yaml v1.2.0
+	sigs.k8s.io/yaml v1.3.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v1.5.0-beta.0.0.20220427084719-22d3dd007a8f
+	volcano.sh/apis v1.6.0-alpha.0
 )
 
 require (
@@ -80,7 +80,7 @@ require (
 	go.etcd.io/etcd/client/v3 v3.5.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
-	go.uber.org/zap v1.19.0 // indirect
+	go.uber.org/zap v1.19.1 // indirect
 	golang.org/x/mod v0.4.2 // indirect
 	golang.org/x/net v0.0.0-20210825183410-e898025ed96a // indirect
 	golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f // indirect
@@ -103,8 +103,9 @@ require (
 	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65 // indirect
 	k8s.io/kube-scheduler v0.0.0 // indirect
 	k8s.io/mount-utils v0.23.0 // indirect
+	sigs.k8s.io/controller-runtime v0.11.1 // indirect
 	sigs.k8s.io/json v0.0.0-20211020170558-c049b76a60c6 // indirect
-	sigs.k8s.io/structured-merge-diff/v4 v4.1.2 // indirect
+	sigs.k8s.io/structured-merge-diff/v4 v4.2.0 // indirect
 )
 
 replace (
