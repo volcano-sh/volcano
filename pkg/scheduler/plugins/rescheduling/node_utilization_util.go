@@ -27,13 +27,13 @@ import (
 
 type NodeUtilization struct {
 	nodeInfo    *v1.Node
-	utilization map[v1.ResourceName]*resource.Quantity
+	utilization map[v1.ResourceName]float64
 	pods        []*v1.Pod
 }
 
-type thresholdFilter func(*v1.Node, *NodeUtilization, interface{}) bool
+type thresholdFilter func(*NodeUtilization, interface{}) bool
 
-type isContinueEviction func(node *v1.Node, usage *NodeUtilization, totalAllocatableResource map[v1.ResourceName]*resource.Quantity, config interface{}) bool
+type isContinueEviction func(usage *NodeUtilization, totalAllocatableResource map[v1.ResourceName]*resource.Quantity, config interface{}) bool
 
 // groupNodesByUtilization divides the nodes into two groups by resource utilization filters
 func groupNodesByUtilization(nodeUtilizationList []*NodeUtilization, lowThresholdFilter, highThresholdFilter thresholdFilter, config interface{}) ([]*NodeUtilization, []*NodeUtilization) {
@@ -41,13 +41,14 @@ func groupNodesByUtilization(nodeUtilizationList []*NodeUtilization, lowThreshol
 	highNodes := make([]*NodeUtilization, 0)
 
 	for _, nodeUtilization := range nodeUtilizationList {
-		if lowThresholdFilter(nodeUtilization.nodeInfo, nodeUtilization, config) {
+		if lowThresholdFilter(nodeUtilization, config) {
 			lowNodes = append(lowNodes, nodeUtilization)
-		} else if highThresholdFilter(nodeUtilization.nodeInfo, nodeUtilization, config) {
+		} else if highThresholdFilter(nodeUtilization, config) {
 			highNodes = append(highNodes, nodeUtilization)
 		}
 	}
-
+	klog.V(4).Infof("lowNodes: %v\n", lowNodes)
+	klog.V(4).Infof("highNodes: %v\n", highNodes)
 	return lowNodes, highNodes
 }
 
@@ -56,13 +57,15 @@ func getNodeUtilization() []*NodeUtilization {
 	nodeUtilizationList := make([]*NodeUtilization, 0)
 	for _, nodeInfo := range Session.Nodes {
 		nodeUtilization := &NodeUtilization{
-			nodeInfo:    nodeInfo.Node,
-			utilization: map[v1.ResourceName]*resource.Quantity{},
-			pods:        nodeInfo.Pods(),
+			nodeInfo: nodeInfo.Node,
+			utilization: map[v1.ResourceName]float64{
+				v1.ResourceCPU:    nodeInfo.ResourceUsage.CPUUsageAvg[Interval],
+				v1.ResourceMemory: nodeInfo.ResourceUsage.MEMUsageAvg[Interval],
+			},
+			pods: nodeInfo.Pods(),
 		}
-		nodeUtilization.utilization[v1.ResourceCPU] = resource.NewMilliQuantity(int64(nodeInfo.ResourceUsage.CPUUsageAvg[Interval]), resource.DecimalSI)
-		nodeUtilization.utilization[v1.ResourceMemory] = resource.NewQuantity(int64(nodeInfo.ResourceUsage.MEMUsageAvg[Interval]), resource.BinarySI)
 		nodeUtilizationList = append(nodeUtilizationList, nodeUtilization)
+		klog.V(4).Infof("node: %s, cpu: %v, memory: %v\n", nodeUtilization.nodeInfo.Name, nodeUtilization.utilization[v1.ResourceCPU], nodeUtilization.utilization[v1.ResourceMemory])
 	}
 	return nodeUtilizationList
 }
@@ -81,14 +84,14 @@ func evictPodsFromSourceNodes(sourceNodes, targetNodes []*NodeUtilization, tasks
 	for _, node := range targetNodes {
 		nodeCapacity := getNodeCapacity(node.nodeInfo)
 		for _, rName := range resourceNames {
-			totalAllocatableResource[rName].Add(*getThresholdForNode(rName, utilizationConfig.TargetThresholds[string(rName)], nodeCapacity))
-			totalAllocatableResource[rName].Sub(*node.utilization[rName])
+			totalAllocatableResource[rName].Add(*convertPercentToQuan(rName, utilizationConfig.TargetThresholds[string(rName)], nodeCapacity))
+			totalAllocatableResource[rName].Sub(*convertPercentToQuan(rName, node.utilization[rName], nodeCapacity))
 		}
 	}
 	klog.V(4).Infof("totalAllocatableResource: %s", totalAllocatableResource)
 
 	// sort the source nodes in descending order
-	sortNodes(sourceNodes, Session.Nodes)
+	sortNodes(sourceNodes)
 
 	// victims select algorithm:
 	// 1. Evict pods from nodes with high utilization to low utilization
@@ -102,6 +105,7 @@ func evictPodsFromSourceNodes(sourceNodes, targetNodes []*NodeUtilization, tasks
 		sortPods(node.pods)
 		victims = append(victims, evict(node.pods, node, totalAllocatableResource, evictionCon, tasks, config)...)
 	}
+	klog.V(3).Infof("victims: %v\n", victims)
 	return victims
 }
 
@@ -112,44 +116,22 @@ func parseArgToConfig(config interface{}) *LowNodeUtilizationConf {
 	if arg, ok := config.(LowNodeUtilizationConf); ok {
 		utilizationConfig = &arg
 	}
-
 	return utilizationConfig
 }
 
 // sortNodes sorts all the nodes according the usage of cpu and memory with weight score
-func sortNodes(nodeUtilizationList []*NodeUtilization, nodes map[string]*api.NodeInfo) {
+func sortNodes(nodeUtilizationList []*NodeUtilization) {
 	cmpFn := func(i, j int) bool {
-		return getScoreForNode(i, nodeUtilizationList, nodes) > getScoreForNode(j, nodeUtilizationList, nodes)
+		return getScoreForNode(i, nodeUtilizationList) > getScoreForNode(j, nodeUtilizationList)
 	}
 	sort.Slice(nodeUtilizationList, cmpFn)
 }
 
 // getScoreForNode returns the score for node which considers only for CPU and memory
-func getScoreForNode(index int, nodeUtilizationList []*NodeUtilization, nodes map[string]*api.NodeInfo) float64 {
-	nodeName := nodeUtilizationList[index].nodeInfo.Name
-	cpuScore := float64(nodeUtilizationList[index].utilization[v1.ResourceCPU].MilliValue()) / nodes[nodeName].Capability.MilliCPU
-	memoryScore := float64(nodeUtilizationList[index].utilization[v1.ResourceMemory].MilliValue()) / nodes[nodeName].Capability.Memory
+func getScoreForNode(index int, nodeUtilizationList []*NodeUtilization) float64 {
+	cpuScore := nodeUtilizationList[index].utilization[v1.ResourceCPU]
+	memoryScore := nodeUtilizationList[index].utilization[v1.ResourceMemory]
 	return cpuScore + memoryScore
-}
-
-// getThresholdForNode returns resource threshold on some dimension
-func getThresholdForNode(rName v1.ResourceName, thresholdPercent float64, nodeCapacity v1.ResourceList) *resource.Quantity {
-	var threshold *resource.Quantity
-	if rName == v1.ResourceCPU {
-		threshold = resource.NewMilliQuantity(int64(thresholdPercent*float64(nodeCapacity.Cpu().MilliValue())*0.01), resource.DecimalSI)
-	} else if rName == v1.ResourceMemory {
-		threshold = resource.NewQuantity(int64(thresholdPercent*float64(nodeCapacity.Memory().Value())*0.01), resource.BinarySI)
-	}
-	return threshold
-}
-
-// getNodeCapacity returns node's capacity
-func getNodeCapacity(node *v1.Node) v1.ResourceList {
-	nodeCapacity := node.Status.Capacity
-	if len(node.Status.Allocatable) > 0 {
-		nodeCapacity = node.Status.Allocatable
-	}
-	return nodeCapacity
 }
 
 // sortPods return the pods in order according the priority and QoS
@@ -179,19 +161,55 @@ func sortPods(pods []*v1.Pod) {
 func evict(pods []*v1.Pod, utilization *NodeUtilization, totalAllocatableResource map[v1.ResourceName]*resource.Quantity, continueEviction isContinueEviction, tasks []*api.TaskInfo, config interface{}) []*api.TaskInfo {
 	victims := make([]*api.TaskInfo, 0)
 	for _, pod := range pods {
-		if !continueEviction(utilization.nodeInfo, utilization, totalAllocatableResource, config) {
+		if !continueEviction(utilization, totalAllocatableResource, config) {
+			klog.V(3).Infoln("stop evict pods")
 			return victims
 		}
 		for _, task := range tasks {
-			if task.Pod.UID == pod.UID {
-				totalAllocatableResource[v1.ResourceCPU].Sub(*resource.NewMilliQuantity(int64(task.Resreq.MilliCPU), resource.DecimalSI))
-				totalAllocatableResource[v1.ResourceMemory].Sub(*resource.NewQuantity(int64(task.Resreq.Memory), resource.BinarySI))
-				utilization.utilization[v1.ResourceCPU].Sub(*resource.NewMilliQuantity(int64(task.Resreq.MilliCPU), resource.DecimalSI))
-				utilization.utilization[v1.ResourceMemory].Sub(*resource.NewQuantity(int64(task.Resreq.Memory), resource.BinarySI))
+			if task.Pod.Name == pod.Name {
+				usedCPU := *resource.NewMilliQuantity(int64(task.Resreq.MilliCPU), resource.DecimalSI)
+				usedMem := *resource.NewQuantity(int64(task.Resreq.Memory), resource.BinarySI)
+				totalAllocatableResource[v1.ResourceCPU].Sub(usedCPU)
+				totalAllocatableResource[v1.ResourceMemory].Sub(usedMem)
+				utilization.utilization[v1.ResourceCPU] -= convertQuanToPercent(v1.ResourceCPU, &usedCPU, utilization.nodeInfo.Status.Capacity)
+				utilization.utilization[v1.ResourceMemory] -= convertQuanToPercent(v1.ResourceMemory, &usedMem, utilization.nodeInfo.Status.Capacity)
+				klog.V(4).Infof("totalAllocatableResource: %v\n", totalAllocatableResource)
+				klog.V(4).Infof("node: %s, utilization: %v\n", utilization.nodeInfo.Name, utilization.utilization)
 				victims = append(victims, task)
 				break
 			}
 		}
 	}
 	return victims
+}
+
+// getNodeCapacity returns node's capacity
+func getNodeCapacity(node *v1.Node) v1.ResourceList {
+	nodeCapacity := node.Status.Capacity
+	if len(node.Status.Allocatable) > 0 {
+		nodeCapacity = node.Status.Allocatable
+	}
+	return nodeCapacity
+}
+
+// convertPercentToQuan converts resource percentage to amount
+func convertPercentToQuan(rName v1.ResourceName, percent float64, nodeCapacity v1.ResourceList) *resource.Quantity {
+	var amount *resource.Quantity
+	if rName == v1.ResourceCPU {
+		amount = resource.NewMilliQuantity(int64(percent*float64(nodeCapacity.Cpu().MilliValue())*0.01), resource.DecimalSI)
+	} else if rName == v1.ResourceMemory {
+		amount = resource.NewQuantity(int64(percent*float64(nodeCapacity.Memory().Value())*0.01), resource.BinarySI)
+	}
+	return amount
+}
+
+// convertQuanToPercent converts resource amount to percentage
+func convertQuanToPercent(rName v1.ResourceName, amount *resource.Quantity, nodeCapacity v1.ResourceList) float64 {
+	var percent float64
+	if rName == v1.ResourceCPU {
+		percent = amount.AsApproximateFloat64() / nodeCapacity.Cpu().AsApproximateFloat64()
+	} else if rName == v1.ResourceMemory {
+		percent = amount.AsApproximateFloat64() / nodeCapacity.Memory().AsApproximateFloat64()
+	}
+	return percent
 }
