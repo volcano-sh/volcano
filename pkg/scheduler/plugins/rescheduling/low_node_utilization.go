@@ -63,13 +63,12 @@ func (lnuc *LowNodeUtilizationConf) parse(configs map[string]interface{}) {
 		if !ok {
 			klog.Errorln("convert lowConfigs error")
 			return
-		} else {
-			config := make(map[string]int)
-			for k, v := range lowConfigs {
-				config[k.(string)] = v.(int)
-			}
-			parseThreshold(config, lnuc, "Thresholds")
 		}
+		config := make(map[string]int)
+		for k, v := range lowConfigs {
+			config[k.(string)] = v.(int)
+		}
+		parseThreshold(config, lnuc, "Thresholds")
 	}
 	targetThresholdsConfigs, ok := configs["targetThresholds"]
 	if ok {
@@ -77,13 +76,12 @@ func (lnuc *LowNodeUtilizationConf) parse(configs map[string]interface{}) {
 		if !ok {
 			klog.Errorln("convert targetConfigs error")
 			return
-		} else {
-			config := make(map[string]int)
-			for k, v := range targetConfigs {
-				config[k.(string)] = v.(int)
-			}
-			parseThreshold(config, lnuc, "TargetThresholds")
 		}
+		config := make(map[string]int)
+		for k, v := range targetConfigs {
+			config[k.(string)] = v.(int)
+		}
+		parseThreshold(config, lnuc, "TargetThresholds")
 	}
 }
 

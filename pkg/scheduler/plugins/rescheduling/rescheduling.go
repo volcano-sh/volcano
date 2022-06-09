@@ -113,8 +113,8 @@ func (rp *reschedulingPlugin) OnSessionClose(ssn *framework.Session) {
 	}
 }
 
-// ReschedulingConfigs is the struct for rescheduling plugin arguments
-type ReschedulingConfigs struct {
+// Configs is the struct for rescheduling plugin arguments
+type Configs struct {
 	interval   time.Duration
 	strategies []Strategy
 }
@@ -126,8 +126,8 @@ type Strategy struct {
 }
 
 // NewReschedulingConfigs creates an object of rescheduling configurations with default configuration
-func NewReschedulingConfigs() *ReschedulingConfigs {
-	config := &ReschedulingConfigs{
+func NewReschedulingConfigs() *Configs {
+	config := &Configs{
 		interval: DefaultInterval,
 		strategies: []Strategy{
 			{
@@ -141,7 +141,7 @@ func NewReschedulingConfigs() *ReschedulingConfigs {
 }
 
 // parseArguments parse all the rescheduling arguments
-func (rc *ReschedulingConfigs) parseArguments(arguments framework.Arguments) {
+func (rc *Configs) parseArguments(arguments framework.Arguments) {
 	var intervalStr string
 	var err error
 	if intervalArg, ok := arguments["interval"]; ok {
