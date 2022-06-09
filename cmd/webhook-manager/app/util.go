@@ -56,15 +56,25 @@ func registerWebhookConfig(kubeClient *kubernetes.Clientset, config *options.Con
 		klog.Infof("The service of webhook manager is <%s/%s/%s>.",
 			config.WebhookName, config.WebhookNamespace, service.Path)
 	}
-	if config.IgnoredNamespaces != "" {
-		ignoredNamespaces := strings.Split(strings.TrimSpace(config.IgnoredNamespaces), ",")
-		klog.Infof("The ignored namespaces list of webhook manager is <%v>.",
-			ignoredNamespaces)
+	if config.IgnoredNamespaces != "" || config.ManagedNamespaces != "" {
+		selectorNamespaces := []string{}
+		var selectorOperator metav1.LabelSelectorOperator
+		if config.IgnoredNamespaces != "" {
+			selectorNamespaces = strings.Split(strings.TrimSpace(config.IgnoredNamespaces), ",")
+			selectorOperator = metav1.LabelSelectorOpNotIn
+			klog.Infof("The ignored namespaces list of webhook manager is <%v>.",
+				selectorNamespaces)
+		} else {
+			selectorNamespaces = strings.Split(strings.TrimSpace(config.ManagedNamespaces), ",")
+			selectorOperator = metav1.LabelSelectorOpIn
+			klog.Infof("The managed namespaces list of webhook manager is <%v>.",
+				selectorNamespaces)
+		}
 		webhookLabelSelector = &metav1.LabelSelector{
 			MatchExpressions: []metav1.LabelSelectorRequirement{
 				{
-					Values:   ignoredNamespaces,
-					Operator: "NotIn",
+					Values:   selectorNamespaces,
+					Operator: selectorOperator,
 					Key:      "kubernetes.io/metadata.name",
 				},
 			},

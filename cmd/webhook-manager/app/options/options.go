@@ -26,11 +26,10 @@ import (
 )
 
 const (
-	defaultSchedulerName     = "volcano"
-	defaultQPS               = 50.0
-	defaultBurst             = 100
-	defaultEnabledAdmission  = "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
-	defaultIgnoredNamespaces = "volcano-system,kube-system"
+	defaultSchedulerName    = "volcano"
+	defaultQPS              = 50.0
+	defaultBurst            = 100
+	defaultEnabledAdmission = "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
 )
 
 // Config admission-controller server config.
@@ -52,6 +51,7 @@ type Config struct {
 	ConfigPath        string
 	EnabledAdmission  string
 	IgnoredNamespaces string
+	ManagedNamespaces string
 }
 
 type DecryptFunc func(c *Config) error
@@ -82,7 +82,10 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.EnabledAdmission, "enabled-admission", defaultEnabledAdmission, "enabled admission webhooks")
 	fs.StringVar(&c.SchedulerName, "scheduler-name", defaultSchedulerName, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.StringVar(&c.ConfigPath, "admission-conf", "", "The configmap file of this webhook")
-	fs.StringVar(&c.IgnoredNamespaces, "ignored-namespaces", defaultIgnoredNamespaces, "Comma-separated list of namespaces to be ignored by admission webhooks")
+	fs.StringVar(&c.IgnoredNamespaces, "ignored-namespaces", "", "Comma-separated list of namespaces to be ignored by admission webhooks"+
+		"(Mutually exclusive with --managed-namespaces)")
+	fs.StringVar(&c.ManagedNamespaces, "managed-namespaces", "", "Comma-separated list of namespaces to be managed by admission webhooks"+
+		"(Mutually exclustive with --ignored-namespaces)")
 }
 
 // CheckPortOrDie check valid port range.
@@ -125,5 +128,13 @@ func (c *Config) ParseCAFiles(decryptFunc DecryptFunc) error {
 		return decryptFunc(c)
 	}
 
+	return nil
+}
+
+// MutualExclusiveNSOpt check that only one of IgnoredNamespaces and ManagedNamespaces was passed
+func (c *Config) MutualExclusiveNSOpt() error {
+	if c.IgnoredNamespaces != "" && c.ManagedNamespaces != "" {
+		return fmt.Errorf("Only one of IgnoredNamespaces and ManagedNamespaces may be specified")
+	}
 	return nil
 }

@@ -54,6 +54,10 @@ func main() {
 	go wait.Until(klog.Flush, *logFlushFreq, wait.NeverStop)
 	defer klog.Flush()
 
+	if err := config.MutualExclusiveNSOpt(); err != nil {
+		klog.Fatalf("Only one of --ignored-namespaces and --managed-namespaces may be specified", err)
+	}
+
 	if err := config.CheckPortOrDie(); err != nil {
 		klog.Fatalf("Configured port is invalid: %v", err)
 	}
