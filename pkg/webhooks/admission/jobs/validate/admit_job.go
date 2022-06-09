@@ -143,8 +143,8 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		return "No task specified in job spec"
 	}
 
-	if _, ok := job.Spec.Plugins[controllerMpi.MpiPluginName]; ok {
-		mp := controllerMpi.NewInstance(job.Spec.Plugins[controllerMpi.MpiPluginName])
+	if _, ok := job.Spec.Plugins[controllerMpi.MPIPluginName]; ok {
+		mp := controllerMpi.NewInstance(job.Spec.Plugins[controllerMpi.MPIPluginName])
 		masterIndex := helpers.GetTasklndexUnderJob(mp.GetMasterName(), job)
 		workerIndex := helpers.GetTasklndexUnderJob(mp.GetWorkerName(), job)
 		if masterIndex == -1 {
