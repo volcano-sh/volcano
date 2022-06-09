@@ -61,7 +61,7 @@ func (lnuc *LowNodeUtilizationConf) parse(configs map[string]interface{}) {
 	if ok {
 		lowConfigs, ok := lowThresholdsConfigs.(map[interface{}]interface{})
 		if !ok {
-			klog.Errorln("convert lowConfigs error")
+			klog.Warningln("Assert lowThresholdsConfigs to map error, abort the configuration parse.")
 			return
 		}
 		config := make(map[string]int)
@@ -74,7 +74,7 @@ func (lnuc *LowNodeUtilizationConf) parse(configs map[string]interface{}) {
 	if ok {
 		targetConfigs, ok := targetThresholdsConfigs.(map[interface{}]interface{})
 		if !ok {
-			klog.Errorln("convert targetConfigs error")
+			klog.Warningln("Assert targetThresholdsConfigs to map error, abort the configuration parse.")
 			return
 		}
 		config := make(map[string]int)
