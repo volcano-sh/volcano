@@ -115,6 +115,9 @@ func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) str
 		if err := checkPG(pod, pgName, true); err != nil {
 			msg = err.Error()
 			reviewResponse.Allowed = false
+		} else if err := checkPGQueueState(pod, pgName); err != nil {
+			msg = err.Error()
+			reviewResponse.Allowed = false
 		}
 		return msg
 	}
@@ -143,14 +146,22 @@ func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) str
 }
 
 func checkPG(pod *v1.Pod, pgName string, isVCJob bool) error {
-	pgObj, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+	_, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 	if err != nil {
 		if isVCJob || (!isVCJob && !apierrors.IsNotFound(err)) {
 			return fmt.Errorf("failed to get PodGroup for pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
 		}
 		return nil
-	} else if errQueue := checkQueueState(pgObj.Spec.Queue); errQueue != nil {
-		return fmt.Errorf("failed : %v;", errQueue)
+	}
+	return nil
+}
+
+func checkPGQueueState(pod *v1.Pod, pgName string) error {
+	pgObj, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+	if err == nil {
+		if errQueue := checkQueueState(pgObj.Spec.Queue); errQueue != nil {
+			return fmt.Errorf("failed : %v;", errQueue)
+		}
 	}
 	return nil
 }
