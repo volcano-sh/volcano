@@ -184,6 +184,51 @@ func TestValidatePod(t *testing.T) {
 			queueName:      "queue-closed",
 			queueState:     vcschedulingv1.QueueStateClosed,
 		},
+		// validate volcano pod with volcano scheduler when no queue and no pg
+		{
+			Name: "validate volcano pod with volcano scheduler when no queue and no pg",
+			Pod: v1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "volcano-pod-7",
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "volcano",
+				},
+			},
+
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+			disabledPG:     true,
+		},
+		// validate volcano pod with volcano scheduler when queue name is empty and when pg
+		{
+			Name: "validate volcano pod with volcano scheduler when no queue and no pg",
+			Pod: v1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:   namespace,
+					Name:        "volcano-pod-8",
+					Annotations: map[string]string{vcschedulingv1.KubeGroupNameAnnotationKey: pgName},
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "volcano",
+				},
+			},
+
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+			queueName:      "",
+		},
 	}
 
 	for _, testCase := range testCases {

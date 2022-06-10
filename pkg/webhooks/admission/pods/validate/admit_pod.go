@@ -167,6 +167,9 @@ func checkPGQueueState(pod *v1.Pod, pgName string) error {
 }
 
 func checkQueueState(queueName string) error {
+	if queueName == "" {
+		return nil
+	}
 	queue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), queueName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf(" unable to find job queue: %v;", err)
