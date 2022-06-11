@@ -28,21 +28,21 @@ import (
 )
 
 const (
-	// MPIPluginName is the name of the plugin
-	MPIPluginName = "mpi"
+	// PluginName is the name of the plugin
+	PluginName = "mpi"
 	// DefaultPort is the default port for ssh
 	DefaultPort = 22
 	// DefaultMaster is the default task name of master host
 	DefaultMaster = "master"
 	// DefaultWorker is the default task name of worker host
 	DefaultWorker = "worker"
-	// MPIHost is the environment variable key of MPI host
-	MPIHost = "MPI_HOST"
+	// Host is the environment variable key of MPI host
+	Host = "MPI_HOST"
 )
 
-type MPIPlugin struct {
+type Plugin struct {
 	mpiArguments []string
-	clientset    pluginsinterface.PluginClientset
+	clientSet    pluginsinterface.PluginClientset
 	masterName   string
 	workerName   string
 	port         int
@@ -50,18 +50,18 @@ type MPIPlugin struct {
 
 // New creates mpi plugin.
 func New(client pluginsinterface.PluginClientset, arguments []string) pluginsinterface.PluginInterface {
-	mp := MPIPlugin{mpiArguments: arguments, clientset: client}
+	mp := Plugin{mpiArguments: arguments, clientSet: client}
 	mp.addFlags()
 	return &mp
 }
 
-func NewInstance(arguments []string) MPIPlugin {
-	mp := MPIPlugin{mpiArguments: arguments}
+func NewInstance(arguments []string) Plugin {
+	mp := Plugin{mpiArguments: arguments}
 	mp.addFlags()
 	return mp
 }
 
-func (mp *MPIPlugin) addFlags() {
+func (mp *Plugin) addFlags() {
 	flagSet := flag.NewFlagSet(mp.Name(), flag.ContinueOnError)
 	flagSet.StringVar(&mp.masterName, "master", DefaultMaster, "name of master role task")
 	flagSet.StringVar(&mp.workerName, "worker", DefaultWorker, "name of worker role task")
@@ -71,18 +71,18 @@ func (mp *MPIPlugin) addFlags() {
 	}
 }
 
-func (mp *MPIPlugin) Name() string {
-	return MPIPluginName
+func (mp *Plugin) Name() string {
+	return PluginName
 }
 
-func (mp *MPIPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
+func (mp *Plugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	isMaster := false
 	workerHosts := ""
 	env := v1.EnvVar{}
 	if helpers.GetTaskKey(pod) == mp.masterName {
 		workerHosts = mp.generateTaskHosts(job.Spec.Tasks[helpers.GetTasklndexUnderJob(mp.workerName, job)], job.Name)
 		env = v1.EnvVar{
-			Name:  MPIHost,
+			Name:  Host,
 			Value: workerHosts,
 		}
 
@@ -107,7 +107,7 @@ func (mp *MPIPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	return nil
 }
 
-func (mp *MPIPlugin) generateTaskHosts(task batch.TaskSpec, jobName string) string {
+func (mp *Plugin) generateTaskHosts(task batch.TaskSpec, jobName string) string {
 	hosts := ""
 	for i := 0; i < int(task.Replicas); i++ {
 		hostName := task.Template.Spec.Hostname
@@ -126,7 +126,7 @@ func (mp *MPIPlugin) generateTaskHosts(task batch.TaskSpec, jobName string) stri
 	return hosts[:len(hosts)-1]
 }
 
-func (mp *MPIPlugin) openContainerPort(c *v1.Container, index int, pod *v1.Pod, isInitContainer bool) {
+func (mp *Plugin) openContainerPort(c *v1.Container, index int, pod *v1.Pod, isInitContainer bool) {
 	SSHPortRight := false
 	for _, p := range c.Ports {
 		if p.ContainerPort == int32(mp.port) {
@@ -147,7 +147,7 @@ func (mp *MPIPlugin) openContainerPort(c *v1.Container, index int, pod *v1.Pod, 
 	}
 }
 
-func (mp *MPIPlugin) OnJobAdd(job *batch.Job) error {
+func (mp *Plugin) OnJobAdd(job *batch.Job) error {
 	if job.Status.ControlledResources["plugin-"+mp.Name()] == mp.Name() {
 		return nil
 	}
@@ -155,7 +155,7 @@ func (mp *MPIPlugin) OnJobAdd(job *batch.Job) error {
 	return nil
 }
 
-func (mp *MPIPlugin) OnJobDelete(job *batch.Job) error {
+func (mp *Plugin) OnJobDelete(job *batch.Job) error {
 	if job.Status.ControlledResources["plugin-"+mp.Name()] != mp.Name() {
 		return nil
 	}
@@ -163,18 +163,18 @@ func (mp *MPIPlugin) OnJobDelete(job *batch.Job) error {
 	return nil
 }
 
-func (mp *MPIPlugin) OnJobUpdate(job *batch.Job) error {
+func (mp *Plugin) OnJobUpdate(job *batch.Job) error {
 	return nil
 }
 
-func (mp *MPIPlugin) GetMasterName() string {
+func (mp *Plugin) GetMasterName() string {
 	return mp.masterName
 }
 
-func (mp *MPIPlugin) GetWorkerName() string {
+func (mp *Plugin) GetWorkerName() string {
 	return mp.workerName
 }
 
-func (mp *MPIPlugin) GetMpiArguments() []string {
+func (mp *Plugin) GetMpiArguments() []string {
 	return mp.mpiArguments
 }

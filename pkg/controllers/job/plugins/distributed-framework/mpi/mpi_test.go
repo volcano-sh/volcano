@@ -28,7 +28,7 @@ import (
 
 func TestMpi(t *testing.T) {
 	plugins := make(map[string][]string)
-	plugins[MPIPluginName] = []string{"--port=5000"}
+	plugins[PluginName] = []string{"--port=5000"}
 	testjob5000 := &v1alpha1.Job{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-mpi-1"},
 		Spec: v1alpha1.JobSpec{
@@ -108,7 +108,7 @@ func TestMpi(t *testing.T) {
 
 	for index, testcase := range testcases {
 		t.Run(testcase.Name, func(t *testing.T) {
-			mp := New(pluginsinterface.PluginClientset{}, testcase.Job.Spec.Plugins[MPIPluginName])
+			mp := New(pluginsinterface.PluginClientset{}, testcase.Job.Spec.Plugins[PluginName])
 			if err := mp.OnPodCreate(testcase.Pod, testcase.Job); err != nil {
 				t.Errorf("Case %d (%s): expect no error, but got error %v", index, testcase.Name, err)
 			}
