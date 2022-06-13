@@ -1124,7 +1124,7 @@ func TestValidateJobCreate(t *testing.T) {
 					Namespace: namespace,
 				},
 				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
+					MinAvailable: 2,
 					Queue:        "default",
 					Tasks: []v1alpha1.TaskSpec{
 						{
@@ -1174,7 +1174,7 @@ func TestValidateJobCreate(t *testing.T) {
 					Namespace: namespace,
 				},
 				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
+					MinAvailable: 2,
 					Queue:        "default",
 					Tasks: []v1alpha1.TaskSpec{
 						{

@@ -79,6 +79,13 @@ func TestAddTaskInfo(t *testing.T) {
 						case01Task4.UID: case01Task4,
 					},
 				},
+				TaskStatusCount: map[TaskID]map[TaskStatus]int32{
+					TaskID(""): {
+						Running: 1,
+						Pending: 1,
+						Bound:   2,
+					},
+				},
 				NodesFitErrors:   make(map[TaskID]*FitErrors),
 				TaskMinAvailable: make(map[TaskID]int32),
 			},
@@ -145,6 +152,12 @@ func TestDeleteTaskInfo(t *testing.T) {
 					Pending: {case01Task1.UID: case01Task1},
 					Running: {case01Task3.UID: case01Task3},
 				},
+				TaskStatusCount: map[TaskID]map[TaskStatus]int32{
+					TaskID(""): {
+						Pending: 1,
+						Running: 1,
+					},
+				},
 				NodesFitErrors:   make(map[TaskID]*FitErrors),
 				TaskMinAvailable: make(map[TaskID]int32),
 			},
@@ -168,6 +181,12 @@ func TestDeleteTaskInfo(t *testing.T) {
 					},
 					Running: {
 						case02Task3.UID: case02Task3,
+					},
+				},
+				TaskStatusCount: map[TaskID]map[TaskStatus]int32{
+					TaskID(""): {
+						Pending: 1,
+						Running: 1,
 					},
 				},
 				NodesFitErrors:   make(map[TaskID]*FitErrors),

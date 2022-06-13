@@ -44,6 +44,10 @@ import (
 
 var calMutex sync.Mutex
 
+const (
+	customLaunch = "volcano.sh/custom-launch"
+)
+
 func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseMap, updateStatus state.UpdateStatusFn) error {
 	job := jobInfo.Job
 	klog.V(3).Infof("Killing Job <%s/%s>, current version %d", job.Namespace, job.Name, job.Status.Version)
@@ -667,6 +671,13 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 				MinResources:      cc.calcPGMinResources(job),
 				PriorityClassName: job.Spec.PriorityClassName,
 			},
+		}
+
+		for _, task := range job.Spec.Tasks {
+			if task.DependsOn != nil {
+				pg.Annotations[customLaunch] = "true"
+				break
+			}
 		}
 
 		if _, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{}); err != nil {

@@ -142,7 +142,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
-			attr.inqueue.Add(job.GetMinResources())
+			if !job.CustomLaunch {
+				attr.inqueue.Add(job.GetMinResources())
+			} else {
+				attr.inqueue.Add(job.GetWaitingTaskMinResources())
+			}
 		}
 
 		// calculate inqueue resource for running jobs
