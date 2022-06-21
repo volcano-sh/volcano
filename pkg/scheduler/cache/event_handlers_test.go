@@ -428,7 +428,7 @@ func TestSchedulerCache_DeletePodGroupV1beta1(t *testing.T) {
 			Nodes: make(map[string]*api.NodeInfo),
 		}
 
-		cache.deletedJobs = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+		cache.DeletedJobs = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 
 		for _, n := range test.Nodes {
 			cache.AddNode(n)
