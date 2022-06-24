@@ -132,7 +132,7 @@ type SchedulerCache struct {
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
 	errTasks    workqueue.RateLimitingInterface
-	deletedJobs workqueue.RateLimitingInterface
+	DeletedJobs workqueue.RateLimitingInterface
 
 	informerFactory   informers.SharedInformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
@@ -408,7 +408,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		Queues:              make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
 		PriorityClasses:     make(map[string]*schedulingv1.PriorityClass),
 		errTasks:            workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		deletedJobs:         workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		DeletedJobs:         workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		kubeClient:          kubeClient,
 		vcClient:            vcClient,
 		defaultQueue:        defaultQueue,
@@ -832,16 +832,16 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 func (sc *SchedulerCache) deleteJob(job *schedulingapi.JobInfo) {
 	klog.V(3).Infof("Try to delete Job <%v:%v/%v>", job.UID, job.Namespace, job.Name)
 
-	sc.deletedJobs.AddRateLimited(job)
+	sc.DeletedJobs.AddRateLimited(job)
 }
 
 func (sc *SchedulerCache) processCleanupJob() {
-	obj, shutdown := sc.deletedJobs.Get()
+	obj, shutdown := sc.DeletedJobs.Get()
 	if shutdown {
 		return
 	}
 
-	defer sc.deletedJobs.Done(obj)
+	defer sc.DeletedJobs.Done(obj)
 
 	job, found := obj.(*schedulingapi.JobInfo)
 	if !found {
