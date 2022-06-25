@@ -13,6 +13,8 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
+var EnqueueExist bool
+
 const (
 	jobUpdaterWorker = 16
 
@@ -97,6 +99,10 @@ func isPodGroupStatusUpdated(newStatus, oldStatus scheduling.PodGroupStatus) boo
 func (ju *jobUpdater) updateJob(index int) {
 	job := ju.jobQueue[index]
 	ssn := ju.ssn
+
+	if !EnqueueExist && job.PodGroup.Status.Phase == scheduling.PodGroupPending {
+		job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
+	}
 
 	job.PodGroup.Status = jobStatus(ssn, job)
 	oldStatus, found := ssn.podGroupStatus[job.UID]

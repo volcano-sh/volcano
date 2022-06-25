@@ -102,6 +102,13 @@ func (pc *Scheduler) runOnce() {
 	configurations := pc.configurations
 	pc.mutex.Unlock()
 
+	framework.EnqueueExist = false
+	for _, action := range actions {
+		if action.Name() == "enqueue" {
+			framework.EnqueueExist = true
+		}
+	}
+
 	ssn := framework.OpenSession(pc.cache, plugins, configurations)
 	defer framework.CloseSession(ssn)
 
