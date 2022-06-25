@@ -102,11 +102,10 @@ func (pc *Scheduler) runOnce() {
 	configurations := pc.configurations
 	pc.mutex.Unlock()
 
-	framework.EnqueueExist = false
+	//Load configmap to check which action is enabled.
+	conf.EnabledActionMap = make(map[string]bool)
 	for _, action := range actions {
-		if action.Name() == "enqueue" {
-			framework.EnqueueExist = true
-		}
+		conf.EnabledActionMap[action.Name()] = true
 	}
 
 	ssn := framework.OpenSession(pc.cache, plugins, configurations)

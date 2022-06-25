@@ -11,9 +11,8 @@ import (
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 )
-
-var EnqueueExist bool
 
 const (
 	jobUpdaterWorker = 16
@@ -100,7 +99,8 @@ func (ju *jobUpdater) updateJob(index int) {
 	job := ju.jobQueue[index]
 	ssn := ju.ssn
 
-	if !EnqueueExist && job.PodGroup.Status.Phase == scheduling.PodGroupPending {
+	// If not config enqueue action, change Pending pg into Inqueue statue to avoid blocking job scheduling.
+	if !conf.EnabledActionMap["enqueue"] && job.PodGroup.Status.Phase == scheduling.PodGroupPending {
 		job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
 	}
 
