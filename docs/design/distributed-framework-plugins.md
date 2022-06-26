@@ -61,7 +61,7 @@ With the introduction of distributed pattern in various frameworks, we can imple
 
 The key implementation of tensorflow plugin is that how to set correct `TF_CONFIG` environment variable for every pod.
 
-Firstly, we must known the cluster role of task in volcano job, and the port to be exposed. And this information can be passed by plugin arguments, which is defined in job spec.
+Firstly, we must know the cluster role of task in volcano job, and the port to be exposed. And this information can be passed by plugin arguments, which is defined in job spec.
 
 ```yaml
 spec:
@@ -69,8 +69,6 @@ spec:
     # set tensorflow plugin
     tensorflow: ["--port=5000", "--worker=worker", "--ps=ps"]
 ```
-
-
 
 In the implementation of `tensorflowPlugin`, these arguments will be parsed.
 
@@ -99,8 +97,6 @@ func (tp *tensorflowPlugin) addFlags() {
 }
 ```
 
-
-
 And then patch the pod spec in method `OnPodCreate`.
 
 ```go
@@ -128,8 +124,6 @@ func (tp *tensorflowPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	return nil
 }
 ```
-
-
 
 Here is the structure of  `TF_CONFIG`:
 
@@ -196,6 +190,108 @@ func (tp *tensorflowPlugin) getClusterInfo(job *batch.Job) clusterInfo {
 		}
 	}
 	return cluster
+}
+```
+
+#### Pytorch Plugin
+
+Similar to the tensorflow plugin, firstly we must know the cluster role of task in volcano job, and the port to be exposed. And this information can be passed by plugin arguments, which is defined in job spec.
+
+```yaml
+spec:
+  plugins:
+    # set pytorch plugin
+    pytorch: ["--master=master","--worker=worker","--port=23456"]
+```
+
+In the implementation of `pytorchPlugin`, these arguments will be parsed.
+
+```go
+// pytorchPlugin is plugin for pytorch framework
+type pytorchPlugin struct {
+	pytorchArguments []string
+	clientset        pluginsinterface.PluginClientset
+	masterName       string
+	workerName       string
+	port             int
+}
+// parse all arguments
+func (pp *pytorchPlugin) addFlags() {
+	flagSet := flag.NewFlagSet(pp.Name(), flag.ContinueOnError)
+	flagSet.StringVar(&pp.masterName, "master", DefaultMaster, "name of master role task")
+	flagSet.StringVar(&pp.workerName, "worker", DefaultWorker, "name of worker role task")
+	flagSet.IntVar(&pp.port, "port", DefaultPort, "open port for containers")
+	if err := flagSet.Parse(pp.pytorchArguments); err != nil {
+		klog.Errorf("plugin %s flagset parse failed, err: %v", pp.Name(), err)
+	}
+}
+```
+
+Then we patch pytorch-distributed-training related environment variables to container envs in method `OnPodCreate`.
+The main environment variables are:
+* `MASTER_ADDR`: master address
+* `MASTER_PORT`: master port
+* `WORLD_SIZE`: total node number
+* `RANK`: current node index
+
+```go
+func (pp *pytorchPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
+	taskType := helpers.GetTaskKey(pod)
+	masterIndex := helpers.GetTasklndexUnderJob(pp.masterName, job)
+	if masterIndex == -1 {
+		klog.Errorf("job %v doesn't have task %v", job.Name, pp.masterName)
+		for i, c := range pod.Spec.Containers {
+			pp.openContainerPort(&c, i, pod)
+		}
+
+		return nil
+	}
+
+	masterEnvVars := []v1.EnvVar{}
+	masterAddr := pp.generateMasterAddr(job.Spec.Tasks[masterIndex], job.Name)
+	masterEnvVars = append(masterEnvVars, v1.EnvVar{
+		Name:  EnvMasterAddr,
+		Value: masterAddr,
+	}, v1.EnvVar{
+		Name:  EnvMasterPort,
+		Value: fmt.Sprintf("%v", pp.port),
+	})
+
+	masterRank := 0
+	workerRank := 0
+	if taskType == pp.workerName {
+		index, err := strconv.Atoi(helpers.GetPodIndexUnderTask(pod))
+		if err != nil {
+			return err
+		}
+
+		workerRank = index + 1
+	}
+
+	totalReplicas := pp.getTotalReplicas(job)
+	for i, c := range pod.Spec.Containers {
+		pp.openContainerPort(&c, i, pod)
+
+		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, masterEnvVars...)
+		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
+			Name:  EnvWorldSize,
+			Value: strconv.Itoa(int(totalReplicas)),
+		})
+
+		if taskType == pp.workerName {
+			pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
+				Name:  EnvRank,
+				Value: strconv.Itoa(workerRank),
+			})
+		} else if taskType == pp.masterName {
+			pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
+				Name:  EnvRank,
+				Value: strconv.Itoa(masterRank),
+			})
+		}
+	}
+
+	return nil
 }
 ```
 

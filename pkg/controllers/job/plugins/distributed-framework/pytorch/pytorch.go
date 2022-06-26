@@ -13,11 +13,6 @@ import (
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
-var (
-	masterRank = 0
-	workerRank = 0
-)
-
 const (
 	// PytorchPluginName is the name of the plugin
 	PytorchPluginName = "pytorch"
@@ -28,8 +23,14 @@ const (
 	// DefaultWorker is the default task name of worker host
 	DefaultWorker = "worker"
 
+	// EnvMasterPort is the env name of master port
 	EnvMasterPort = "MASTER_PORT"
+	// EnvMasterAddr is the env name of master addr
 	EnvMasterAddr = "MASTER_ADDR"
+	// EnvWorldSize is the env name of world size
+	EnvWorldSize = "WORLD_SIZE"
+	// EnvWorldSize is the env name of rank
+	EnvRank = "RANK"
 )
 
 type pytorchPlugin struct {
@@ -65,8 +66,9 @@ func (pp *pytorchPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	taskType := helpers.GetTaskKey(pod)
 	masterIndex := helpers.GetTasklndexUnderJob(pp.masterName, job)
 	if masterIndex == -1 {
-		for index, c := range pod.Spec.Containers {
-			pp.openContainerPort(&c, index, pod)
+		klog.Errorf("job %v doesn't have task %v", job.Name, pp.masterName)
+		for i, c := range pod.Spec.Containers {
+			pp.openContainerPort(&c, i, pod)
 		}
 
 		return nil
@@ -82,28 +84,35 @@ func (pp *pytorchPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 		Value: fmt.Sprintf("%v", pp.port),
 	})
 
+	masterRank := 0
+	workerRank := 0
 	if taskType == pp.workerName {
-		workerRank++
+		index, err := strconv.Atoi(helpers.GetPodIndexUnderTask(pod))
+		if err != nil {
+			return err
+		}
+
+		workerRank = index + 1
 	}
 
 	totalReplicas := pp.getTotalReplicas(job)
-	for index, c := range pod.Spec.Containers {
-		pp.openContainerPort(&c, index, pod)
+	for i, c := range pod.Spec.Containers {
+		pp.openContainerPort(&c, i, pod)
 
-		pod.Spec.Containers[index].Env = append(pod.Spec.Containers[index].Env, masterEnvVars...)
-		pod.Spec.Containers[index].Env = append(pod.Spec.Containers[index].Env, v1.EnvVar{
-			Name:  "WORLD_SIZE",
+		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, masterEnvVars...)
+		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
+			Name:  EnvWorldSize,
 			Value: strconv.Itoa(int(totalReplicas)),
 		})
 
 		if taskType == pp.workerName {
-			pod.Spec.Containers[index].Env = append(pod.Spec.Containers[index].Env, v1.EnvVar{
-				Name:  "RANK",
+			pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
+				Name:  EnvRank,
 				Value: strconv.Itoa(workerRank),
 			})
 		} else if taskType == pp.masterName {
-			pod.Spec.Containers[index].Env = append(pod.Spec.Containers[index].Env, v1.EnvVar{
-				Name:  "RANK",
+			pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
+				Name:  EnvRank,
 				Value: strconv.Itoa(masterRank),
 			})
 		}
@@ -122,7 +131,6 @@ func (pp *pytorchPlugin) getTotalReplicas(job *batch.Job) int32 {
 }
 
 func (pp *pytorchPlugin) generateMasterAddr(task batch.TaskSpec, jobName string) string {
-	host := ""
 	hostName := task.Template.Spec.Hostname
 	subdomain := task.Template.Spec.Subdomain
 	if len(hostName) == 0 {
@@ -131,11 +139,8 @@ func (pp *pytorchPlugin) generateMasterAddr(task batch.TaskSpec, jobName string)
 	if len(subdomain) == 0 {
 		subdomain = jobName
 	}
-	host += hostName + "." + subdomain
-	if len(task.Template.Spec.Hostname) != 0 {
-		return ""
-	}
 
+	host := hostName + "." + subdomain
 	return host
 }
 
@@ -149,12 +154,12 @@ func (pp *pytorchPlugin) openContainerPort(c *v1.Container, index int, pod *v1.P
 	}
 
 	if !hasPort {
-		sshPort := v1.ContainerPort{
+		port := v1.ContainerPort{
 			Name:          "pytorchjob-port",
 			ContainerPort: int32(pp.port),
 		}
 
-		pod.Spec.Containers[index].Ports = append(pod.Spec.Containers[index].Ports, sshPort)
+		pod.Spec.Containers[index].Ports = append(pod.Spec.Containers[index].Ports, port)
 	}
 }
 
@@ -184,8 +189,4 @@ func (pp *pytorchPlugin) GetMasterName() string {
 
 func (pp *pytorchPlugin) GetWorkerName() string {
 	return pp.workerName
-}
-
-func (pp *pytorchPlugin) GetMpiArguments() []string {
-	return pp.pytorchArguments
 }

@@ -31,6 +31,8 @@ import (
 )
 
 const (
+	// TFPluginName is the name of the plugin
+	TFPluginName = "tensorflow"
 	// DefaultPort defines default port for service
 	DefaultPort = 2222
 	// TFConfig defines environment variables for TF
@@ -67,7 +69,7 @@ func (tp *tensorflowPlugin) addFlags() {
 }
 
 func (tp *tensorflowPlugin) Name() string {
-	return "tensorflow"
+	return TFPluginName
 }
 
 func (tp *tensorflowPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
