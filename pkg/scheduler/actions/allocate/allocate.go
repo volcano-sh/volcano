@@ -17,6 +17,8 @@
 package allocate
 
 import (
+	"time"
+
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -225,6 +227,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 						task.UID, node.Name, ssn.UID, err)
 				} else {
 					metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
+					metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
 				}
 			} else {
 				klog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s> with limited resources",
@@ -239,6 +242,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 							task.UID, node.Name, ssn.UID, err)
 					} else {
 						metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
+						metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
 					}
 				}
 			}
