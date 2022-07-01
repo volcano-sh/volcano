@@ -420,6 +420,8 @@ func (sc *SchedulerCache) setPodGroup(ss *schedulingapi.PodGroup) error {
 		sc.Jobs[job].Queue = schedulingapi.QueueID(sc.defaultQueue)
 	}
 
+	metrics.UpdateE2eSchedulingStartTimeByJob(sc.Jobs[job].Name, string(sc.Jobs[job].Queue), sc.Jobs[job].Namespace,
+		sc.Jobs[job].CreationTimestamp.Time)
 	return nil
 }
 
