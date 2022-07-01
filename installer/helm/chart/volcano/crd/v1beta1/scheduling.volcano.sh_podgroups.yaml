@@ -6,6 +6,23 @@ metadata:
   creationTimestamp: null
   name: podgroups.scheduling.volcano.sh
 spec:
+  additionalPrinterColumns:
+  - JSONPath: .status.phase
+    name: STATUS
+    type: string
+  - JSONPath: .spec.minMember
+    name: minMember
+    type: integer
+  - JSONPath: .status.running
+    name: RUNNINGS
+    type: integer
+  - JSONPath: .metadata.creationTimestamp
+    name: AGE
+    type: date
+  - JSONPath: .spec.queue
+    name: QUEUE
+    priority: 1
+    type: string
   group: scheduling.volcano.sh
   names:
     kind: PodGroup
@@ -16,6 +33,7 @@ spec:
     - podgroup-v1beta1
     singular: podgroup
   scope: Namespaced
+  subresources: {}
   validation:
     openAPIV3Schema:
       description: PodGroup is a collection of Pod; used for batch workload.

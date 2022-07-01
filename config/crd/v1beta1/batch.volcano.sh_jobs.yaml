@@ -21,6 +21,10 @@ spec:
   - JSONPath: .metadata.creationTimestamp
     name: AGE
     type: date
+  - JSONPath: .spec.queue
+    name: QUEUE
+    priority: 1
+    type: string
   group: batch.volcano.sh
   names:
     kind: Job

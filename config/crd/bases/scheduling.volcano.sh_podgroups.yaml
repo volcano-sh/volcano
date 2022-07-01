@@ -19,7 +19,24 @@ spec:
     singular: podgroup
   scope: Namespaced
   versions:
-  - name: v1beta1
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: STATUS
+      type: string
+    - jsonPath: .spec.minMember
+      name: minMember
+      type: integer
+    - jsonPath: .status.running
+      name: RUNNINGS
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    - jsonPath: .spec.queue
+      name: QUEUE
+      priority: 1
+      type: string
+    name: v1beta1
     schema:
       openAPIV3Schema:
         description: PodGroup is a collection of Pod; used for batch workload.
@@ -132,6 +149,7 @@ spec:
         type: object
     served: true
     storage: true
+    subresources: {}
 status:
   acceptedNames:
     kind: ""
