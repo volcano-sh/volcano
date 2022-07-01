@@ -305,26 +305,24 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		// Check PredicateWithCache
-		{
-			var err error
-			var fit bool
-			if predicate.cacheEnable {
-				fit, err = pCache.PredicateWithCache(node.Name, task.Pod)
-				if err != nil {
-					fit, err = predicateByStablefilter(task.Pod, nodeInfo)
-					pCache.UpdateCache(node.Name, task.Pod, fit)
-				} else {
-					if !fit {
-						err = fmt.Errorf("plugin equivalence cache predicates failed")
-					}
-				}
-			} else {
+		var err error
+		var fit bool
+		if predicate.cacheEnable {
+			fit, err = pCache.PredicateWithCache(node.Name, task.Pod)
+			if err != nil {
 				fit, err = predicateByStablefilter(task.Pod, nodeInfo)
+				pCache.UpdateCache(node.Name, task.Pod, fit)
+			} else {
+				if !fit {
+					err = fmt.Errorf("plugin equivalence cache predicates failed")
+				}
 			}
+		} else {
+			fit, err = predicateByStablefilter(task.Pod, nodeInfo)
+		}
 
-			if !fit {
-				return err
-			}
+		if !fit {
+			return err
 		}
 
 		// Check NodePorts
