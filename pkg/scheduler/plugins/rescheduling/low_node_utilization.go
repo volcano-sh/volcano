@@ -17,10 +17,11 @@ limitations under the License.
 package rescheduling
 
 import (
+	"reflect"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog"
-	"reflect"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -201,4 +202,14 @@ func isContinueEvictPods(usage *NodeUtilization, totalAllocatableResource map[v1
 		}
 	}
 	return true
+}
+
+// resourceExceedsThrehold judges if resource percent exceeds the threhold.
+func resourceExceedsThrehold(reqPercent float64, rName v1.ResourceName, config interface{}) bool {
+	utilizationConfig := parseArgToConfig(config)
+	if threshold, ok := utilizationConfig.TargetThresholds[string(rName)]; ok && reqPercent >= threshold {
+		return true
+	}
+
+	return false
 }

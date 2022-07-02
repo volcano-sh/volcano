@@ -17,11 +17,12 @@ limitations under the License.
 package rescheduling
 
 import (
+	"sort"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog"
 	v1qos "k8s.io/kubernetes/pkg/apis/core/v1/helper/qos"
-	"sort"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -169,10 +170,20 @@ func evict(pods []*v1.Pod, utilization *NodeUtilization, totalAllocatableResourc
 			if task.Pod.Name == pod.Name {
 				usedCPU := *resource.NewMilliQuantity(int64(task.Resreq.MilliCPU), resource.DecimalSI)
 				usedMem := *resource.NewQuantity(int64(task.Resreq.Memory), resource.BinarySI)
+
+				cpuReqPercent := convertQuanToPercent(v1.ResourceCPU, &usedCPU, utilization.nodeInfo.Status.Capacity)
+				memReqPercent := convertQuanToPercent(v1.ResourceMemory, &usedMem, utilization.nodeInfo.Status.Capacity)
+
+				// Ignore to evit task that require too many resources, because it can also become victim on other nodes.
+				if resourceExceedsThrehold(cpuReqPercent, v1.ResourceCPU, config) || resourceExceedsThrehold(memReqPercent, v1.ResourceMemory, config) {
+					klog.V(4).Infof("Task[%s] need too much resource, ignore it...", task.Name)
+					continue
+				}
+
 				totalAllocatableResource[v1.ResourceCPU].Sub(usedCPU)
 				totalAllocatableResource[v1.ResourceMemory].Sub(usedMem)
-				utilization.utilization[v1.ResourceCPU] -= convertQuanToPercent(v1.ResourceCPU, &usedCPU, utilization.nodeInfo.Status.Capacity)
-				utilization.utilization[v1.ResourceMemory] -= convertQuanToPercent(v1.ResourceMemory, &usedMem, utilization.nodeInfo.Status.Capacity)
+				utilization.utilization[v1.ResourceCPU] -= cpuReqPercent
+				utilization.utilization[v1.ResourceMemory] -= memReqPercent
 				klog.V(4).Infof("totalAllocatableResource: %v\n", totalAllocatableResource)
 				klog.V(4).Infof("node: %s, utilization: %v\n", utilization.nodeInfo.Name, utilization.utilization)
 				victims = append(victims, task)
