@@ -73,7 +73,7 @@ const (
 	// record name of mem average usage defined in prometheus rules
 	memUsageAvg = "mem_usage_avg"
 	// default interval for sync data from metrics server, the value is 5s
-	defaultMetricsInternal = 5
+	defaultMetricsInternal = 5000000000
 )
 
 func init() {
