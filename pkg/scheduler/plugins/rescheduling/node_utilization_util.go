@@ -17,11 +17,12 @@ limitations under the License.
 package rescheduling
 
 import (
+	"sort"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog"
 	v1qos "k8s.io/kubernetes/pkg/apis/core/v1/helper/qos"
-	"sort"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -207,9 +208,9 @@ func convertPercentToQuan(rName v1.ResourceName, percent float64, nodeCapacity v
 func convertQuanToPercent(rName v1.ResourceName, amount *resource.Quantity, nodeCapacity v1.ResourceList) float64 {
 	var percent float64
 	if rName == v1.ResourceCPU {
-		percent = amount.AsApproximateFloat64() / nodeCapacity.Cpu().AsApproximateFloat64()
+		percent = amount.AsApproximateFloat64() * 100 / nodeCapacity.Cpu().AsApproximateFloat64()
 	} else if rName == v1.ResourceMemory {
-		percent = amount.AsApproximateFloat64() / nodeCapacity.Memory().AsApproximateFloat64()
+		percent = amount.AsApproximateFloat64() * 100 / nodeCapacity.Memory().AsApproximateFloat64()
 	}
 	return percent
 }
