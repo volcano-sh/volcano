@@ -102,6 +102,12 @@ func (pc *Scheduler) runOnce() {
 	configurations := pc.configurations
 	pc.mutex.Unlock()
 
+	//Load configmap to check which action is enabled.
+	conf.EnabledActionMap = make(map[string]bool)
+	for _, action := range actions {
+		conf.EnabledActionMap[action.Name()] = true
+	}
+
 	ssn := framework.OpenSession(pc.cache, plugins, configurations)
 	defer framework.CloseSession(ssn)
 

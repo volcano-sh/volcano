@@ -16,6 +16,9 @@ limitations under the License.
 
 package conf
 
+// EnabledActionMap check if a action exist in scheduler configmap. If not exist the value is false.
+var EnabledActionMap map[string]bool
+
 // SchedulerConfiguration defines the configuration of scheduler.
 type SchedulerConfiguration struct {
 	// Actions defines the actions list of scheduler in order
