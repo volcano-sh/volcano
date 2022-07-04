@@ -379,26 +379,6 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 				"c1/p1": {"GetPodVolumes", "AllocateVolumes", "RevertVolumes"},
 			},
 		},
-		{
-			name: "node changed with enough resource",
-			pods: []*v1.Pod{
-				util.BuildPodWithPVC("c1", "p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvc, "pg1", make(map[string]string), make(map[string]string)),
-				util.BuildPodWithPVC("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvc1, "pg1", make(map[string]string), make(map[string]string)),
-			},
-			nodes: []*v1.Node{
-				util.BuildNode("n2", util.BuildResourceList("2", "4Gi"), make(map[string]string)),
-			},
-			sc:   sc,
-			pvcs: []*v1.PersistentVolumeClaim{pvc, pvc1},
-			expectedBind: map[string]string{
-				"c1/p1": "n2",
-				"c1/p2": "n2",
-			},
-			expectedActions: map[string][]string{
-				"c1/p1": {"GetPodVolumes", "AllocateVolumes", "DynamicProvisions"},
-				"c1/p2": {"GetPodVolumes", "AllocateVolumes", "DynamicProvisions"},
-			},
-		},
 	}
 
 	for _, test := range tests {
