@@ -329,6 +329,8 @@ type JobInfo struct {
 	// * value means workload can use all the revocable node for during node active revocable time.
 	RevocableZone string
 	Budget        *DisruptionBudget
+
+	DisableGangMinavailablePreemptCheck bool
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks
@@ -391,7 +393,25 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	}
 	ji.TaskMinAvailableTotal = taskMinAvailableTotal
 
+	ji.DisableGangMinavailablePreemptCheck = ji.extractDisableGangMinavailablePreemptCheck(pg)
+
 	ji.PodGroup = pg
+}
+
+// extractDisableGangMinavailablePreemptCheck return volcano.sh/disable-gang-minavailable-preempt-check value for job
+func (ji *JobInfo) extractDisableGangMinavailablePreemptCheck(pg *PodGroup) bool {
+	if len(pg.Annotations) > 0 {
+		if value, found := pg.Annotations[v1beta1.JobDisableGangMinavailablePreemptCheck]; found {
+			b, err := strconv.ParseBool(value)
+			if err != nil {
+				klog.Warningf("invalid %s=%s", v1beta1.JobDisableGangMinavailablePreemptCheck, value)
+				return false
+			}
+			return b
+		}
+	}
+
+	return false
 }
 
 // extractWaitingTime reads sla waiting time for job from podgroup annotations
@@ -581,6 +601,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		Preemptable:           ji.Preemptable,
 		RevocableZone:         ji.RevocableZone,
 		Budget:                ji.Budget.Clone(),
+		DisableGangMinavailablePreemptCheck: ji.DisableGangMinavailablePreemptCheck,
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
@@ -602,8 +623,8 @@ func (ji JobInfo) String() string {
 		i++
 	}
 
-	return fmt.Sprintf("Job (%v): namespace %v (%v), name %v, minAvailable %d, podGroup %+v, preemptable %+v, revocableZone %+v, minAvailable %+v, maxAvailable %+v",
-		ji.UID, ji.Namespace, ji.Queue, ji.Name, ji.MinAvailable, ji.PodGroup, ji.Preemptable, ji.RevocableZone, ji.Budget.MinAvailable, ji.Budget.MaxUnavilable) + res
+	return fmt.Sprintf("Job (%v): namespace %v (%v), name %v, minAvailable %d, podGroup %+v, preemptable %+v, revocableZone %+v, disableGangMinavailablePreemptCheck %+v, minAvailable %+v, maxAvailable %+v",
+		ji.UID, ji.Namespace, ji.Queue, ji.Name, ji.MinAvailable, ji.PodGroup, ji.Preemptable, ji.RevocableZone, ji.DisableGangMinavailablePreemptCheck, ji.Budget.MinAvailable, ji.Budget.MaxUnavilable) + res
 }
 
 // FitError returns detailed information on why a job's task failed to fit on
