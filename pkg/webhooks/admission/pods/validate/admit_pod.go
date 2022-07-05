@@ -115,10 +115,20 @@ func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) str
 		if err := checkPG(pod, pgName, true); err != nil {
 			msg = err.Error()
 			reviewResponse.Allowed = false
+		} else if err := checkPGQueueState(pod, pgName); err != nil {
+			msg = err.Error()
+			reviewResponse.Allowed = false
 		}
 		return msg
 	}
-
+	if pod.Annotations != nil && pod.Annotations[vcv1beta1.QueueNameAnnotationKey] != "" {
+		queueName := pod.Annotations[vcv1beta1.QueueNameAnnotationKey]
+		if err := checkQueueState(queueName); err != nil {
+			msg = err.Error()
+			reviewResponse.Allowed = false
+			return msg
+		}
+	}
 	// normal pod, SN == volcano
 	pgName = helpers.GeneratePodgroupName(pod)
 	if err := checkPG(pod, pgName, false); err != nil {
@@ -142,6 +152,30 @@ func checkPG(pod *v1.Pod, pgName string, isVCJob bool) error {
 			return fmt.Errorf("failed to get PodGroup for pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
 		}
 		return nil
+	}
+	return nil
+}
+
+func checkPGQueueState(pod *v1.Pod, pgName string) error {
+	pgObj, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+	if err == nil {
+		if errQueue := checkQueueState(pgObj.Spec.Queue); errQueue != nil {
+			return fmt.Errorf("failed : %v;", errQueue)
+		}
+	}
+	return nil
+}
+
+func checkQueueState(queueName string) error {
+	if queueName == "" {
+		return nil
+	}
+	queue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), queueName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf(" unable to find job queue: %v;", err)
+	} else if queue.Status.State != vcv1beta1.QueueStateOpen {
+		return fmt.Errorf(" can only submit job to queue with state `Open`, "+
+			"queue `%s` status is `%s`;", queue.Name, queue.Status.State)
 	}
 	return nil
 }

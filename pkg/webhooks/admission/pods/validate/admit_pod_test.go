@@ -41,6 +41,8 @@ func TestValidatePod(t *testing.T) {
 		reviewResponse admissionv1.AdmissionResponse
 		ret            string
 		disabledPG     bool
+		queueName      string
+		queueState     vcschedulingv1.QueueState
 	}{
 		// validate normal pod with default-scheduler
 		{
@@ -86,6 +88,147 @@ func TestValidatePod(t *testing.T) {
 			ExpectErr:      true,
 			disabledPG:     true,
 		},
+		// validate volcano pod with volcano scheduler when queue is closed when no pg
+		{
+			Name: "validate pod when volcano queue is closed when no pg",
+			Pod: v1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:   namespace,
+					Name:        "volcano-pod-3",
+					Annotations: map[string]string{vcschedulingv1.QueueNameAnnotationKey: "queue-closed"},
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "volcano",
+				},
+			},
+
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "can only submit job to queue with state `Open`, queue `queue-closed` status is `Closed`",
+			ExpectErr:      true,
+			queueState:     vcschedulingv1.QueueStateClosed,
+			queueName:      "queue-closed",
+		},
+		// validate volcano pod with volcano scheduler when queue is Open when no pg
+		{
+			Name: "validate pod when volcano queue is open when no pg",
+			Pod: v1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:   namespace,
+					Name:        "volcano-pod-4",
+					Annotations: map[string]string{vcschedulingv1.QueueNameAnnotationKey: "queue-open"},
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "volcano",
+				},
+			},
+
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+			queueState:     vcschedulingv1.QueueStateOpen,
+			queueName:      "queue-open",
+		},
+		// validate volcano pod with volcano scheduler when queue is Open when pg
+		{
+			Name: "validate pod when volcano queue is open when pg",
+			Pod: v1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:   namespace,
+					Name:        "volcano-pod-5",
+					Annotations: map[string]string{vcschedulingv1.KubeGroupNameAnnotationKey: pgName},
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "volcano",
+				},
+			},
+
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+			queueName:      "queue-open",
+			queueState:     vcschedulingv1.QueueStateOpen,
+		},
+		// validate volcano pod with volcano scheduler when queue is Closed when pg
+		{
+			Name: "validate pod when volcano queue is closed when pg",
+			Pod: v1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:   namespace,
+					Name:        "volcano-pod-6",
+					Annotations: map[string]string{vcschedulingv1.KubeGroupNameAnnotationKey: pgName},
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "volcano",
+				},
+			},
+
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "can only submit job to queue with state `Open`, queue `queue-closed` status is `Closed`",
+			ExpectErr:      true,
+			queueName:      "queue-closed",
+			queueState:     vcschedulingv1.QueueStateClosed,
+		},
+		// validate volcano pod with volcano scheduler when no queue and no pg
+		{
+			Name: "validate volcano pod with volcano scheduler when no queue and no pg",
+			Pod: v1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "volcano-pod-7",
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "volcano",
+				},
+			},
+
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+			disabledPG:     true,
+		},
+		// validate volcano pod with volcano scheduler when queue name is empty and when pg
+		{
+			Name: "validate volcano pod with volcano scheduler when no queue and no pg",
+			Pod: v1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:   namespace,
+					Name:        "volcano-pod-8",
+					Annotations: map[string]string{vcschedulingv1.KubeGroupNameAnnotationKey: pgName},
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "volcano",
+				},
+			},
+
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+			queueName:      "",
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -97,9 +240,21 @@ func TestValidatePod(t *testing.T) {
 			},
 			Spec: vcschedulingv1.PodGroupSpec{
 				MinMember: 1,
+				Queue:     testCase.queueName,
 			},
 			Status: vcschedulingv1.PodGroupStatus{
 				Phase: vcschedulingv1.PodGroupPending,
+			},
+		}
+		queue := vcschedulingv1.Queue{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: testCase.queueName,
+			},
+			Spec: vcschedulingv1.QueueSpec{
+				Weight: 1,
+			},
+			Status: vcschedulingv1.QueueStatus{
+				State: testCase.queueState,
 			},
 		}
 
@@ -111,6 +266,14 @@ func TestValidatePod(t *testing.T) {
 			_, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), pg, metav1.CreateOptions{})
 			if err != nil {
 				t.Error("PG Creation Failed")
+			}
+		}
+
+		if testCase.queueName != "" && testCase.queueState != "" {
+			//create default queue
+			_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &queue, metav1.CreateOptions{})
+			if err != nil {
+				t.Error("Queue Creation Failed")
 			}
 		}
 
