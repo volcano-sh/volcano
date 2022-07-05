@@ -17,6 +17,8 @@ limitations under the License.
 package backfill
 
 import (
+	"time"
+
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -76,6 +78,7 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 					}
 
 					metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
+					metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
 					allocated = true
 					break
 				}
