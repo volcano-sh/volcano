@@ -16,6 +16,7 @@ The following flags are required.
        --service          Service name of webhook.
        --namespace        Namespace where webhook service and secret reside.
        --secret           Secret name for CA certificate and server certificate/key pair.
+       --ips              IP address of webhook. example: 127.0.0.1 or multiple IP support: 127.0.0.1,127.0.0.2 (Optional)
 EOF
     exit 0
 }
@@ -32,6 +33,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --namespace)
             NAMESPACE="$2"
+            shift
+            ;;
+         --ips)
+            IPS="$2"
             shift
             ;;
         *)
@@ -53,6 +58,8 @@ fi
 
 [[ -z ${NAMESPACE} ]] && NAMESPACE=default
 
+[[ -z ${IPS} ]] && IPS=127.0.0.1
+
 if [[ ! -x "$(command -v openssl)" ]]; then
     echo "openssl not found"
     exit 1
@@ -63,6 +70,8 @@ CERTDIR=/tmp
 function createCerts() {
   echo "creating certs in dir ${CERTDIR} "
 
+  # add  ips support here
+  ips=`echo $IPS |awk -v RS="," '{print "IP."NR" = "$0}'`
   cat <<EOF > ${CERTDIR}/csr.conf
 [req]
 req_extensions = v3_req
@@ -77,6 +86,8 @@ subjectAltName = @alt_names
 DNS.1 = ${SERVICE}
 DNS.2 = ${SERVICE}.${NAMESPACE}
 DNS.3 = ${SERVICE}.${NAMESPACE}.svc
+
+$ips
 EOF
 
   openssl genrsa -out ${CERTDIR}/ca.key 2048
