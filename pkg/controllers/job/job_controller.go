@@ -24,6 +24,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	kubeschedulinginformers "k8s.io/client-go/informers/scheduling/v1"
 	"k8s.io/client-go/kubernetes"
@@ -40,6 +41,7 @@ import (
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcscheme "volcano.sh/apis/pkg/client/clientset/versioned/scheme"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
+	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	batchinformer "volcano.sh/apis/pkg/client/informers/externalversions/batch/v1alpha1"
 	businformer "volcano.sh/apis/pkg/client/informers/externalversions/bus/v1alpha1"
 	schedulinginformers "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
@@ -69,6 +71,9 @@ type jobcontroller struct {
 	cmdInformer   businformer.CommandInformer
 	pcInformer    kubeschedulinginformers.PriorityClassInformer
 	queueInformer schedulinginformers.QueueInformer
+
+	informerFactory   informers.SharedInformerFactory
+	vcInformerFactory vcinformer.SharedInformerFactory
 
 	// A store of jobs
 	jobLister batchlister.JobLister
@@ -127,6 +132,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: cc.kubeClient.CoreV1().Events("")})
 	recorder := eventBroadcaster.NewRecorder(vcscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
 
+	cc.informerFactory = sharedInformers
 	cc.queueList = make([]workqueue.RateLimitingInterface, workers)
 	cc.commandQueue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 	cc.cache = jobcache.New()
@@ -143,7 +149,9 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 		cc.queueList[i] = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 	}
 
-	cc.jobInformer = informerfactory.NewSharedInformerFactory(cc.vcClient, 0).Batch().V1alpha1().Jobs()
+	factory := informerfactory.NewSharedInformerFactory(cc.vcClient, 0)
+	cc.vcInformerFactory = factory
+	cc.jobInformer = factory.Batch().V1alpha1().Jobs()
 	cc.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    cc.addJob,
 		UpdateFunc: cc.updateJob,
@@ -152,7 +160,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.jobLister = cc.jobInformer.Lister()
 	cc.jobSynced = cc.jobInformer.Informer().HasSynced
 
-	cc.cmdInformer = informerfactory.NewSharedInformerFactory(cc.vcClient, 0).Bus().V1alpha1().Commands()
+	cc.cmdInformer = factory.Bus().V1alpha1().Commands()
 	cc.cmdInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
@@ -195,7 +203,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.svcLister = cc.svcInformer.Lister()
 	cc.svcSynced = cc.svcInformer.Informer().HasSynced
 
-	cc.pgInformer = informerfactory.NewSharedInformerFactory(cc.vcClient, 0).Scheduling().V1beta1().PodGroups()
+	cc.pgInformer = factory.Scheduling().V1beta1().PodGroups()
 	cc.pgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: cc.updatePodGroup,
 	})
@@ -206,7 +214,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.pcLister = cc.pcInformer.Lister()
 	cc.pcSynced = cc.pcInformer.Informer().HasSynced
 
-	cc.queueInformer = informerfactory.NewSharedInformerFactory(cc.vcClient, 0).Scheduling().V1beta1().Queues()
+	cc.queueInformer = factory.Scheduling().V1beta1().Queues()
 	cc.queueLister = cc.queueInformer.Lister()
 	cc.queueSynced = cc.queueInformer.Informer().HasSynced
 
@@ -219,17 +227,22 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 
 // Run start JobController.
 func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
-	go cc.jobInformer.Informer().Run(stopCh)
-	go cc.podInformer.Informer().Run(stopCh)
-	go cc.pvcInformer.Informer().Run(stopCh)
-	go cc.pgInformer.Informer().Run(stopCh)
-	go cc.svcInformer.Informer().Run(stopCh)
-	go cc.cmdInformer.Informer().Run(stopCh)
-	go cc.pcInformer.Informer().Run(stopCh)
-	go cc.queueInformer.Informer().Run(stopCh)
+	cc.informerFactory.Start(stopCh)
+	cc.vcInformerFactory.Start(stopCh)
 
-	cache.WaitForCacheSync(stopCh, cc.jobSynced, cc.podSynced, cc.pgSynced,
-		cc.svcSynced, cc.cmdSynced, cc.pvcSynced, cc.pcSynced, cc.queueSynced)
+	for informerType, ok := range cc.informerFactory.WaitForCacheSync(stopCh) {
+		if !ok {
+			klog.Errorf("caches failed to sync: %v", informerType)
+			return
+		}
+	}
+
+	for informerType, ok := range cc.vcInformerFactory.WaitForCacheSync(stopCh) {
+		if !ok {
+			klog.Errorf("caches failed to sync: %v", informerType)
+			return
+		}
+	}
 
 	go wait.Until(cc.handleCommands, 0, stopCh)
 	var i uint32
