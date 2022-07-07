@@ -1,0 +1,184 @@
+apiVersion: flow.volcano.sh/v1alpha1
+kind: JobTemplate
+metadata:
+  name: a
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  priorityClassName: high-priority
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: default
+  tasks:
+    - replicas: 1
+      name: "default-nginx"
+      template:
+        metadata:
+          name: web
+        spec:
+          containers:
+            - image: nginx:1.14.2
+              command:
+                - sh
+                - -c
+                - sleep 10s
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "1"
+          restartPolicy: OnFailure
+---
+apiVersion: flow.volcano.sh/v1alpha1
+kind: JobTemplate
+metadata:
+  name: b
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  priorityClassName: high-priority
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: default
+  tasks:
+    - replicas: 1
+      name: "default-nginx"
+      template:
+        metadata:
+          name: web
+        spec:
+          containers:
+            - image: nginx:1.14.2
+              command:
+                - sh
+                - -c
+                - sleep 10s
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "1"
+          restartPolicy: OnFailure
+---
+apiVersion: flow.volcano.sh/v1alpha1
+kind: JobTemplate
+metadata:
+  name: c
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  priorityClassName: high-priority
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: default
+  tasks:
+    - replicas: 1
+      name: "default-nginx"
+      template:
+        metadata:
+          name: web
+        spec:
+          containers:
+            - image: nginx:1.14.2
+              command:
+                - sh
+                - -c
+                - sleep 10s
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "1"
+          restartPolicy: OnFailure
+---
+apiVersion: flow.volcano.sh/v1alpha1
+kind: JobTemplate
+metadata:
+  name: d
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  priorityClassName: high-priority
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: default
+  tasks:
+    - replicas: 1
+      name: "default-nginx"
+      template:
+        metadata:
+          name: web
+        spec:
+          containers:
+            - image: nginx:1.14.2
+              command:
+                - sh
+                - -c
+                - sleep 10s
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "1"
+          restartPolicy: OnFailure
+---
+apiVersion: flow.volcano.sh/v1alpha1
+kind: JobTemplate
+metadata:
+  name: e
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  priorityClassName: high-priority
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  plugins:
+    ssh: []
+    env: []
+    svc: []
+  maxRetry: 5
+  queue: default
+  tasks:
+    - replicas: 1
+      name: "default-nginx"
+      template:
+        metadata:
+          name: web
+        spec:
+          containers:
+            - image: nginx:1.14.2
+              command:
+                - sh
+                - -c
+                - sleep 10s
+              imagePullPolicy: IfNotPresent
+              name: nginx
+              resources:
+                requests:
+                  cpu: "1"
+          restartPolicy: OnFailure
