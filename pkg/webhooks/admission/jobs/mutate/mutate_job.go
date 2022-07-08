@@ -98,8 +98,10 @@ func Jobs(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 		Allowed: true,
 		Patch:   patchBytes,
 	}
-	pt := admissionv1.PatchTypeJSONPatch
-	reviewResponse.PatchType = &pt
+	if len(patchBytes) > 0 {
+		pt := admissionv1.PatchTypeJSONPatch
+		reviewResponse.PatchType = &pt
+	}
 
 	return &reviewResponse
 }
@@ -227,7 +229,7 @@ func patchDefaultPlugins(job *v1alpha1.Job) *patchOperation {
 	// Because the tensorflow-plugin and mpi-plugin depends on svc-plugin.
 	// If the svc-plugin is not defined, we should add it.
 	_, hasTf := job.Spec.Plugins["tensorflow"]
-	_, hasMPI := job.Spec.Plugins[controllerMpi.MpiPluginName]
+	_, hasMPI := job.Spec.Plugins[controllerMpi.MPIPluginName]
 	if hasTf || hasMPI {
 		if _, ok := plugins["svc"]; !ok {
 			plugins["svc"] = []string{}

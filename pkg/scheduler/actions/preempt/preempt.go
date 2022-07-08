@@ -17,6 +17,8 @@ limitations under the License.
 package preempt
 
 import (
+	"fmt"
+
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -209,6 +211,14 @@ func preempt(
 	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 
 	selectedNodes := util.SortNodes(nodeScores)
+
+	job, found := ssn.Jobs[preemptor.Job]
+	if !found {
+		return false, fmt.Errorf("Job %s not found in SSN", preemptor.Job)
+	}
+
+	currentQueue := ssn.Queues[job.Queue]
+
 	for _, node := range selectedNodes {
 		klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
 			preemptor.Namespace, preemptor.Name, node.Name)
@@ -240,7 +250,8 @@ func preempt(
 
 		for !victimsQueue.Empty() {
 			// If reclaimed enough resources, break loop to avoid Sub panic.
-			if preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+			// If preemptor's queue is overused, it means preemptor can not be allcated. So no need care about the node idle resourace
+			if !ssn.Overused(currentQueue) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 				break
 			}
 			preemptee := victimsQueue.Pop().(*api.TaskInfo)
@@ -258,7 +269,8 @@ func preempt(
 		klog.V(3).Infof("Preempted <%v> for Task <%s/%s> requested <%v>.",
 			preempted, preemptor.Namespace, preemptor.Name, preemptor.InitResreq)
 
-		if preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+		// If preemptor's queue is overused, it means preemptor can not be allcated. So no need care about the node idle resourace
+		if !ssn.Overused(currentQueue) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 			if err := stmt.Pipeline(preemptor, node.Name); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)

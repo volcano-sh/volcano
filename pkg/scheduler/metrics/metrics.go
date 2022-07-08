@@ -62,6 +62,24 @@ var (
 		[]string{"job_name", "queue", "job_namespace"},
 	)
 
+	e2eJobSchedulingStartTime = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "e2e_job_scheduling_start_time",
+			Help:      "E2E job scheduling start time",
+		},
+		[]string{"job_name", "queue", "job_namespace"},
+	)
+
+	e2eJobSchedulingLastTime = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "e2e_job_scheduling_last_time",
+			Help:      "E2E job scheduling last time",
+		},
+		[]string{"job_name", "queue", "job_namespace"},
+	)
+
 	pluginSchedulingLatency = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Subsystem: VolcanoNamespace,
@@ -151,6 +169,16 @@ func UpdateE2eSchedulingDurationByJob(jobName string, queue string, namespace st
 	e2eJobSchedulingLatency.Observe(DurationInMilliseconds(duration))
 }
 
+// UpdateE2eSchedulingStartTimeByJob updates the start time of scheduling
+func UpdateE2eSchedulingStartTimeByJob(jobName string, queue string, namespace string, t time.Time) {
+	e2eJobSchedulingStartTime.WithLabelValues(jobName, queue, namespace).Set(ConvertToUnix(t))
+}
+
+// UpdateE2eSchedulingLastTimeByJob updates the last time of scheduling
+func UpdateE2eSchedulingLastTimeByJob(jobName string, queue string, namespace string, t time.Time) {
+	e2eJobSchedulingLastTime.WithLabelValues(jobName, queue, namespace).Set(ConvertToUnix(t))
+}
+
 // UpdateTaskScheduleDuration updates single task scheduling latency
 func UpdateTaskScheduleDuration(duration time.Duration) {
 	taskSchedulingLatency.Observe(DurationInMilliseconds(duration))
@@ -199,4 +227,9 @@ func DurationInSeconds(duration time.Duration) float64 {
 // Duration get the time since specified start
 func Duration(start time.Time) time.Duration {
 	return time.Since(start)
+}
+
+// ConvertToUnix convert the time to Unix time
+func ConvertToUnix(t time.Time) float64 {
+	return float64(t.Unix())
 }

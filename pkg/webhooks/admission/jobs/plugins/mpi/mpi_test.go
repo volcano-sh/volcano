@@ -29,7 +29,7 @@ func TestMpi(t *testing.T) {
 	workerName := "fakeWorker"
 	masterName := "fakeMaster"
 	plugins := make(map[string][]string)
-	plugins[controllerMpi.MpiPluginName] = []string{"--master=" + masterName, "--worker=" + workerName}
+	plugins[controllerMpi.MPIPluginName] = []string{"--master=" + masterName, "--worker=" + workerName}
 	testcases := []struct {
 		Name string
 		Job  *v1alpha1.Job

@@ -62,3 +62,11 @@ type QueueOverusedRequest struct {
 type QueueOverusedResponse struct {
 	Overused bool `json:"overused"`
 }
+
+type JobReadyRequest struct {
+	Job *api.JobInfo `json:"job"`
+}
+
+type JobReadyResponse struct {
+	Status bool `json:"status"`
+}

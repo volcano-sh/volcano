@@ -85,7 +85,7 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	go pc.watchSchedulerConf(stopCh)
 	// Start cache for policy.
 	pc.cache.SetMetricsConf(pc.metricsConf)
-	go pc.cache.Run(stopCh)
+	pc.cache.Run(stopCh)
 	pc.cache.WaitForCacheSync(stopCh)
 	klog.V(2).Infof("scheduler completes Initialization and start to run")
 	go wait.Until(pc.runOnce, pc.schedulePeriod, stopCh)
@@ -101,6 +101,12 @@ func (pc *Scheduler) runOnce() {
 	plugins := pc.plugins
 	configurations := pc.configurations
 	pc.mutex.Unlock()
+
+	//Load configmap to check which action is enabled.
+	conf.EnabledActionMap = make(map[string]bool)
+	for _, action := range actions {
+		conf.EnabledActionMap[action.Name()] = true
+	}
 
 	ssn := framework.OpenSession(pc.cache, plugins, configurations)
 	defer framework.CloseSession(ssn)

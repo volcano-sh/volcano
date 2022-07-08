@@ -27,6 +27,7 @@ import (
 
 	"github.com/prometheus/client_golang/api"
 	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	pmodel "github.com/prometheus/common/model"
 
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -70,7 +71,7 @@ const (
 	// record name of mem average usage defined in prometheus rules
 	memUsageAvg = "mem_usage_avg"
 	// default interval for sync data from metrics server, the value is 5s
-	defaultMetricsInternal = 5
+	defaultMetricsInternal = 5000000000
 )
 
 func init() {
@@ -131,7 +132,7 @@ type SchedulerCache struct {
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
 	errTasks    workqueue.RateLimitingInterface
-	deletedJobs workqueue.RateLimitingInterface
+	DeletedJobs workqueue.RateLimitingInterface
 
 	informerFactory   informers.SharedInformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
@@ -407,7 +408,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		Queues:              make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
 		PriorityClasses:     make(map[string]*schedulingv1.PriorityClass),
 		errTasks:            workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		deletedJobs:         workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		DeletedJobs:         workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		kubeClient:          kubeClient,
 		vcClient:            vcClient,
 		defaultQueue:        defaultQueue,
@@ -831,16 +832,16 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 func (sc *SchedulerCache) deleteJob(job *schedulingapi.JobInfo) {
 	klog.V(3).Infof("Try to delete Job <%v:%v/%v>", job.UID, job.Namespace, job.Name)
 
-	sc.deletedJobs.AddRateLimited(job)
+	sc.DeletedJobs.AddRateLimited(job)
 }
 
 func (sc *SchedulerCache) processCleanupJob() {
-	obj, shutdown := sc.deletedJobs.Get()
+	obj, shutdown := sc.DeletedJobs.Get()
 	if shutdown {
 		return
 	}
 
-	defer sc.deletedJobs.Done(obj)
+	defer sc.DeletedJobs.Done(obj)
 
 	job, found := obj.(*schedulingapi.JobInfo)
 	if !found {
@@ -1225,8 +1226,17 @@ func (sc *SchedulerCache) GetMetricsData() {
 				if len(warnings) > 0 {
 					klog.V(3).Infof("Warning querying Prometheus: %v", warnings)
 				}
-
-				rowValues := strings.Split(strings.TrimSpace(res.String()), "=>")
+				if res == nil || res.String() == "" {
+					klog.Warningf("Warning querying Prometheus: no data found for %s", queryStr)
+					continue
+				}
+				// plugin.usage only need type pmodel.ValVector in Prometheus.rulues
+				if res.Type() != pmodel.ValVector {
+					continue
+				}
+				// only method res.String() can get data, dataType []pmodel.ValVector, eg: "{k1:v1, ...} => #[value] @#[timespace]\n {k2:v2, ...} => ..."
+				firstRowValVector := strings.Split(res.String(), "\n")[0]
+				rowValues := strings.Split(strings.TrimSpace(firstRowValVector), "=>")
 				value := strings.Split(strings.TrimSpace(rowValues[1]), " ")
 				switch metric {
 				case cpuUsageAvg:
@@ -1247,9 +1257,11 @@ func (sc *SchedulerCache) GetMetricsData() {
 func (sc *SchedulerCache) setMetricsData(usageInfo map[string]*schedulingapi.NodeUsage) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
+
 	for k := range usageInfo {
 		nodeInfo, ok := sc.Nodes[k]
 		if ok {
+			klog.V(3).Infof("node: %s, ResourceUsage: %+v => %+v", k, *nodeInfo.ResourceUsage, *usageInfo[k])
 			nodeInfo.ResourceUsage = usageInfo[k]
 		}
 	}

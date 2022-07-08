@@ -160,6 +160,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.name, attr.allocated.String(), attr.request.String(), attr.inqueue.String(), attr.elastic.String())
 	}
 
+	for queueID, queueInfo := range ssn.Queues {
+		if _, ok := pp.queueOpts[queueID]; !ok {
+			metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0)
+		}
+	}
+
 	// Record metrics
 	for _, attr := range pp.queueOpts {
 		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
