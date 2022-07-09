@@ -118,6 +118,7 @@ ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespac
       -s templates/scheduling_v1beta1_podgroup.yaml \
       -s templates/scheduling_v1beta1_queue.yaml \
       -s templates/nodeinfo_v1alpha1_numatopologies.yaml \
+      -s templates/webhooks.yaml \
       >> ${DEPLOYMENT_FILE}
 
 ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-monitoring \

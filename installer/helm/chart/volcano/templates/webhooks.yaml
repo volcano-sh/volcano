@@ -1,0 +1,294 @@
+{{- if .Values.custom.admission_enable }}
+
+{{- if .Values.custom.pods_mutatingwebhook_enable }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: volcano-admission-service-pods-mutate
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ .Release.Name }}-admission-service
+        namespace: {{ .Release.Namespace }}
+        path: /pods/mutate
+        port: 443
+    failurePolicy: Fail
+    matchPolicy: Equivalent
+    name: mutatepod.volcano.sh
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - volcano-system
+            - kube-system
+    objectSelector: {}
+    reinvocationPolicy: Never
+    rules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+        resources:
+          - pods
+        scope: '*'
+    sideEffects: NoneOnDryRun
+    timeoutSeconds: 10
+{{- end }}
+
+---
+
+{{- if .Values.custom.queues_mutatingwebhook_enable }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: volcano-admission-service-queues-mutate
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ .Release.Name }}-admission-service
+        namespace: {{ .Release.Namespace }}
+        path: /queues/mutate
+        port: 443
+    failurePolicy: Fail
+    matchPolicy: Equivalent
+    name: mutatequeue.volcano.sh
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - volcano-system
+            - kube-system
+    objectSelector: {}
+    reinvocationPolicy: Never
+    rules:
+      - apiGroups:
+          - scheduling.volcano.sh
+        apiVersions:
+          - v1beta1
+        operations:
+          - CREATE
+        resources:
+          - queues
+        scope: '*'
+    sideEffects: NoneOnDryRun
+    timeoutSeconds: 10
+{{- end }}
+
+---
+
+{{- if .Values.custom.podgroups_mutatingwebhook_enable }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: volcano-admission-service-podgroups-mutate
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ .Release.Name }}-admission-service
+        namespace: {{ .Release.Namespace }}
+        path: /podgroups/mutate
+        port: 443
+    failurePolicy: Fail
+    matchPolicy: Equivalent
+    name: mutatepodgroup.volcano.sh
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - volcano-system
+            - kube-system
+    objectSelector: {}
+    reinvocationPolicy: Never
+    rules:
+      - apiGroups:
+          - scheduling.volcano.sh
+        apiVersions:
+          - v1beta1
+        operations:
+          - CREATE
+        resources:
+          - podgroups
+        scope: '*'
+    sideEffects: NoneOnDryRun
+    timeoutSeconds: 10
+{{- end }}
+
+---
+
+{{- if .Values.custom.jobs_mutatingwebhook_enable }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: volcano-admission-service-jobs-mutate
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ .Release.Name }}-admission-service
+        namespace: {{ .Release.Namespace }}
+        path: /jobs/mutate
+        port: 443
+    failurePolicy: Fail
+    matchPolicy: Equivalent
+    name: mutatejob.volcano.sh
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - volcano-system
+            - kube-system
+    objectSelector: {}
+    reinvocationPolicy: Never
+    rules:
+      - apiGroups:
+          - batch.volcano.sh
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+        resources:
+          - jobs
+        scope: '*'
+    sideEffects: NoneOnDryRun
+    timeoutSeconds: 10
+{{- end }}
+
+---
+
+{{- if .Values.custom.jobs_validatingwebhook_enable }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: volcano-admission-service-jobs-validate
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ .Release.Name }}-admission-service
+        namespace: {{ .Release.Namespace }}
+        path: /jobs/validate
+        port: 443
+    failurePolicy: Fail
+    matchPolicy: Equivalent
+    name: validatejob.volcano.sh
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - volcano-system
+            - kube-system
+    objectSelector: {}
+    rules:
+      - apiGroups:
+          - batch.volcano.sh
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - jobs
+        scope: '*'
+    sideEffects: NoneOnDryRun
+    timeoutSeconds: 10
+{{- end }}
+
+---
+
+{{- if .Values.custom.pods_validatingwebhook_enable }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: volcano-admission-service-pods-validate
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ .Release.Name }}-admission-service
+        namespace: {{ .Release.Namespace }}
+        path: /pods/validate
+        port: 443
+    failurePolicy: Fail
+    matchPolicy: Equivalent
+    name: validatepod.volcano.sh
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - volcano-system
+            - kube-system
+    objectSelector: {}
+    rules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+        resources:
+          - pods
+        scope: '*'
+    sideEffects: NoneOnDryRun
+    timeoutSeconds: 10
+{{- end }}
+
+---
+
+{{- if .Values.custom.queues_validatingwebhook_enable }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: volcano-admission-service-queues-validate
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ .Release.Name }}-admission-service
+        namespace: {{ .Release.Namespace }}
+        path: /queues/validate
+        port: 443
+    failurePolicy: Fail
+    matchPolicy: Equivalent
+    name: validatequeue.volcano.sh
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - volcano-system
+            - kube-system
+    objectSelector: {}
+    rules:
+      - apiGroups:
+          - scheduling.volcano.sh
+        apiVersions:
+          - v1beta1
+        operations:
+          - CREATE
+          - UPDATE
+          - DELETE
+        resources:
+          - queues
+        scope: '*'
+    sideEffects: NoneOnDryRun
+    timeoutSeconds: 10
+{{- end }}
+{{- end }}
