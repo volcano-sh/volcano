@@ -33,6 +33,7 @@ import (
 // +kubebuilder:printcolumn:name="minAvailable",type=integer,JSONPath=`.status.minAvailable`
 // +kubebuilder:printcolumn:name="RUNNINGS",type=integer,JSONPath=`.status.running`
 // +kubebuilder:printcolumn:name="AGE",type=date,JSONPath=`.metadata.creationTimestamp`
+// +kubebuilder:printcolumn:name="QUEUE",type=string,priority=1,JSONPath=`.spec.queue`
 type Job struct {
 	metav1.TypeMeta `json:",inline"`
 
