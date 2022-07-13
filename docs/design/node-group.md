@@ -12,7 +12,7 @@ case2: recommend queue can use private cloud nodes or public cloud nodes, but tt
 
 ## Solution
 
-1. First, we need mark out some nodes(by add specific label for nodes) which are the same group.
+1. First, we need mark out some nodes(add `volcano.sh/nodegroup-name` labels) which are the same group.
 2. Second, we need to express the relationship between queue and nodegroup, such as affinity and anti-affinity, so I add the `queue.spec.affinity` field in Queue.
    ```yaml
    apiVersion: scheduling.volcano.sh/v1beta1
@@ -27,13 +27,13 @@ case2: recommend queue can use private cloud nodes or public cloud nodes, but tt
            requiredDuringSchedulingIgnoredDuringExecution:
            - groupname1
            - gropuname2
-           preferredDuringSchedulingIgnoredDuringExecution
+           preferredDuringSchedulingIgnoredDuringExecution:
            - groupname1
          nodeGroupAntiAffinity:
            requiredDuringSchedulingIgnoredDuringExecution:
            - groupname3
            - gropuname4
-           preferredDuringSchedulingIgnoredDuringExecution
+           preferredDuringSchedulingIgnoredDuringExecution:
            - groupname3
    ```
 
