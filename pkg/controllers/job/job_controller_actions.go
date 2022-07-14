@@ -511,6 +511,15 @@ func (cc *jobcontroller) isDependsOnPodsReady(task string, job *batch.Job) bool 
 	for _, podName := range dependsOnPods {
 		pod, err := cc.podLister.Pods(job.Namespace).Get(podName)
 		if err != nil {
+			// If pod is not found. There are 2 possibilities.
+			// 1. vcjob has been deleted. This function should return true.
+			// 2. pod is not created. This function should return false, continue waiting.
+			if apierrors.IsNotFound(err) {
+				_, errGetJob := cc.jobLister.Jobs(job.Namespace).Get(job.Name)
+				if errGetJob != nil {
+					return apierrors.IsNotFound(errGetJob)
+				}
+			}
 			klog.Errorf("Failed to get pod %v/%v %v", job.Namespace, podName, err)
 			continue
 		}
