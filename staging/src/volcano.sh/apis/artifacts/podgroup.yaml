@@ -1,0 +1,11 @@
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: PodGroup
+metadata:
+  name: test-pg
+  namespace: default
+spec:
+  minMember: 1
+  minResources:
+    cpu: "1000m"
+    memory: "2G"
+  queue: default
