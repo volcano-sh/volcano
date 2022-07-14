@@ -121,25 +121,25 @@ unit-test:
 	go clean -testcache
 	go test -p 8 -race $$(find pkg -type f -name '*_test.go' | sed -r 's|/[^/]+$$||' | sort | uniq | sed "s|^|volcano.sh/volcano/|")
 
-e2e:
+e2e: images
 	./hack/run-e2e-kind.sh
 
-e2e-test-schedulingbase:
+e2e-test-schedulingbase: images
 	E2E_TYPE=SCHEDULINGBASE ./hack/run-e2e-kind.sh
 
-e2e-test-schedulingaction:
+e2e-test-schedulingaction: images
 	E2E_TYPE=SCHEDULINGACTION ./hack/run-e2e-kind.sh
 
-e2e-test-jobp:
+e2e-test-jobp: images
 	E2E_TYPE=JOBP ./hack/run-e2e-kind.sh
 
-e2e-test-jobseq:
+e2e-test-jobseq: images
 	E2E_TYPE=JOBSEQ ./hack/run-e2e-kind.sh
 
-e2e-test-vcctl:
+e2e-test-vcctl: vcctl images
 	E2E_TYPE=VCCTL ./hack/run-e2e-kind.sh
 
-e2e-test-stress:
+e2e-test-stress: images
 	E2E_TYPE=STRESS ./hack/run-e2e-kind.sh
 
 generate-yaml: init manifests

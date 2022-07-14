@@ -38,5 +38,4 @@ jobs:
 
       - name: Run E2E Tests
         run: |
-          make images CC=/usr/local/musl/bin/musl-gcc
-          make e2e-test-schedulingaction
+          make e2e-test-schedulingaction CC=/usr/local/musl/bin/musl-gcc
