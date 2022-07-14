@@ -52,7 +52,7 @@ var _ = Describe("Pytorch Plugin E2E Test", func() {
 
 		job := e2eutil.CreateJob(context, spec)
 		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{
-			vcbatch.Pending, vcbatch.Running, vcbatch.Completing, vcbatch.Completed})
+			vcbatch.Pending, vcbatch.Running, vcbatch.Completed})
 		Expect(err).NotTo(HaveOccurred())
 	})
 })

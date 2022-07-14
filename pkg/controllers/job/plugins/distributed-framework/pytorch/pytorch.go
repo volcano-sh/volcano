@@ -67,10 +67,6 @@ func (pp *pytorchPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	masterIndex := helpers.GetTasklndexUnderJob(pp.masterName, job)
 	if masterIndex == -1 {
 		klog.Errorf("job %v doesn't have task %v", job.Name, pp.masterName)
-		for i, c := range pod.Spec.Containers {
-			pp.openContainerPort(&c, i, pod)
-		}
-
 		return nil
 	}
 
@@ -181,12 +177,4 @@ func (pp *pytorchPlugin) OnJobDelete(job *batch.Job) error {
 
 func (pp *pytorchPlugin) OnJobUpdate(job *batch.Job) error {
 	return nil
-}
-
-func (pp *pytorchPlugin) GetMasterName() string {
-	return pp.masterName
-}
-
-func (pp *pytorchPlugin) GetWorkerName() string {
-	return pp.workerName
 }

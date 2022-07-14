@@ -215,16 +215,6 @@ type pytorchPlugin struct {
 	workerName       string
 	port             int
 }
-// parse all arguments
-func (pp *pytorchPlugin) addFlags() {
-	flagSet := flag.NewFlagSet(pp.Name(), flag.ContinueOnError)
-	flagSet.StringVar(&pp.masterName, "master", DefaultMaster, "name of master role task")
-	flagSet.StringVar(&pp.workerName, "worker", DefaultWorker, "name of worker role task")
-	flagSet.IntVar(&pp.port, "port", DefaultPort, "open port for containers")
-	if err := flagSet.Parse(pp.pytorchArguments); err != nil {
-		klog.Errorf("plugin %s flagset parse failed, err: %v", pp.Name(), err)
-	}
-}
 ```
 
 Then we patch pytorch-distributed-training related environment variables to container envs in method `OnPodCreate`.
@@ -233,67 +223,6 @@ The main environment variables are:
 * `MASTER_PORT`: master port
 * `WORLD_SIZE`: total node number
 * `RANK`: current node index
-
-```go
-func (pp *pytorchPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
-	taskType := helpers.GetTaskKey(pod)
-	masterIndex := helpers.GetTasklndexUnderJob(pp.masterName, job)
-	if masterIndex == -1 {
-		klog.Errorf("job %v doesn't have task %v", job.Name, pp.masterName)
-		for i, c := range pod.Spec.Containers {
-			pp.openContainerPort(&c, i, pod)
-		}
-
-		return nil
-	}
-
-	masterEnvVars := []v1.EnvVar{}
-	masterAddr := pp.generateMasterAddr(job.Spec.Tasks[masterIndex], job.Name)
-	masterEnvVars = append(masterEnvVars, v1.EnvVar{
-		Name:  EnvMasterAddr,
-		Value: masterAddr,
-	}, v1.EnvVar{
-		Name:  EnvMasterPort,
-		Value: fmt.Sprintf("%v", pp.port),
-	})
-
-	masterRank := 0
-	workerRank := 0
-	if taskType == pp.workerName {
-		index, err := strconv.Atoi(helpers.GetPodIndexUnderTask(pod))
-		if err != nil {
-			return err
-		}
-
-		workerRank = index + 1
-	}
-
-	totalReplicas := pp.getTotalReplicas(job)
-	for i, c := range pod.Spec.Containers {
-		pp.openContainerPort(&c, i, pod)
-
-		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, masterEnvVars...)
-		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
-			Name:  EnvWorldSize,
-			Value: strconv.Itoa(int(totalReplicas)),
-		})
-
-		if taskType == pp.workerName {
-			pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
-				Name:  EnvRank,
-				Value: strconv.Itoa(workerRank),
-			})
-		} else if taskType == pp.masterName {
-			pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
-				Name:  EnvRank,
-				Value: strconv.Itoa(masterRank),
-			})
-		}
-	}
-
-	return nil
-}
-```
 
 #### Other Framework
 

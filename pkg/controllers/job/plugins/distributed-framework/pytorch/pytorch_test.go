@@ -39,7 +39,7 @@ func TestPytorch(t *testing.T) {
 			},
 			Pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "worker",
+					Name: "test-pytorch-worker-0",
 				},
 				Spec: v1.PodSpec{
 					Containers: []v1.Container{
@@ -49,11 +49,11 @@ func TestPytorch(t *testing.T) {
 					},
 				},
 			},
-			port: DefaultPort,
+			port: -1,
 			envs: nil,
 		},
 		{
-			Name: "test pod without port",
+			Name: "test master pod without port",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-pytorch"},
 				Spec: v1alpha1.JobSpec{
@@ -73,7 +73,7 @@ func TestPytorch(t *testing.T) {
 			},
 			Pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "master",
+					Name: "test-pytorch-master-0",
 					Annotations: map[string]string{
 						v1alpha1.TaskSpecKey: "master",
 					},
@@ -107,7 +107,7 @@ func TestPytorch(t *testing.T) {
 			},
 		},
 		{
-			Name: "test pod with port",
+			Name: "test master pod with port",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-pytorch"},
 				Spec: v1alpha1.JobSpec{
@@ -127,7 +127,7 @@ func TestPytorch(t *testing.T) {
 			},
 			Pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "master",
+					Name: "test-pytorch-master-0",
 					Annotations: map[string]string{
 						v1alpha1.TaskSpecKey: "master",
 					},
@@ -146,7 +146,7 @@ func TestPytorch(t *testing.T) {
 					},
 				},
 			},
-			port: 23456,
+			port: DefaultPort,
 			envs: []v1.EnvVar{
 				{
 					Name:  EnvMasterAddr,
@@ -179,7 +179,7 @@ func TestPytorch(t *testing.T) {
 						},
 						{
 							Name:     "worker",
-							Replicas: 1,
+							Replicas: 2,
 							Template: v1.PodTemplateSpec{},
 						},
 					},
@@ -187,7 +187,7 @@ func TestPytorch(t *testing.T) {
 			},
 			Pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "master",
+					Name: "test-pytorch-master-0",
 					Annotations: map[string]string{
 						v1alpha1.TaskSpecKey: "master",
 					},
@@ -218,7 +218,7 @@ func TestPytorch(t *testing.T) {
 				},
 				{
 					Name:  "WORLD_SIZE",
-					Value: fmt.Sprintf("%v", 2),
+					Value: fmt.Sprintf("%v", 3),
 				},
 				{
 					Name:  "RANK",
@@ -227,7 +227,7 @@ func TestPytorch(t *testing.T) {
 			},
 		},
 		{
-			Name: "test worker pod env",
+			Name: "test worker-1 pod env",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-pytorch"},
 				Spec: v1alpha1.JobSpec{
@@ -239,7 +239,7 @@ func TestPytorch(t *testing.T) {
 						},
 						{
 							Name:     "worker",
-							Replicas: 1,
+							Replicas: 2,
 							Template: v1.PodTemplateSpec{},
 						},
 					},
@@ -247,7 +247,7 @@ func TestPytorch(t *testing.T) {
 			},
 			Pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "worker",
+					Name: "test-pytorch-worker-0",
 					Annotations: map[string]string{
 						v1alpha1.TaskSpecKey: "worker",
 					},
@@ -278,7 +278,7 @@ func TestPytorch(t *testing.T) {
 				},
 				{
 					Name:  "WORLD_SIZE",
-					Value: fmt.Sprintf("%v", 2),
+					Value: fmt.Sprintf("%v", 3),
 				},
 				{
 					Name:  "RANK",
@@ -299,7 +299,7 @@ func TestPytorch(t *testing.T) {
 						},
 						{
 							Name:     "worker",
-							Replicas: 1,
+							Replicas: 2,
 							Template: v1.PodTemplateSpec{},
 						},
 					},
@@ -307,7 +307,7 @@ func TestPytorch(t *testing.T) {
 			},
 			Pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "worker",
+					Name: "test-pytorch-worker-1",
 					Annotations: map[string]string{
 						v1alpha1.TaskSpecKey: "worker",
 					},
@@ -338,7 +338,7 @@ func TestPytorch(t *testing.T) {
 				},
 				{
 					Name:  "WORLD_SIZE",
-					Value: fmt.Sprintf("%v", 2),
+					Value: fmt.Sprintf("%v", 3),
 				},
 				{
 					Name:  "RANK",
@@ -355,8 +355,14 @@ func TestPytorch(t *testing.T) {
 				t.Errorf("Case %d (%s): expect no error, but got error %v", index, testcase.Name, err)
 			}
 
-			if testcase.Pod.Spec.Containers[0].Ports == nil || testcase.Pod.Spec.Containers[0].Ports[0].ContainerPort != int32(testcase.port) {
-				t.Errorf("Case %d (%s): wrong port, got %d, expected %v", index, testcase.Name, testcase.Pod.Spec.Containers[0].Ports[0].ContainerPort, testcase.port)
+			if testcase.port != -1 {
+				if testcase.Pod.Spec.Containers[0].Ports == nil || testcase.Pod.Spec.Containers[0].Ports[0].ContainerPort != int32(testcase.port) {
+					t.Errorf("Case %d (%s): wrong port, got %d, expected %v", index, testcase.Name, testcase.Pod.Spec.Containers[0].Ports[0].ContainerPort, testcase.port)
+				}
+			} else {
+				if testcase.Pod.Spec.Containers[0].Ports != nil {
+					t.Errorf("Case %d (%s): wrong port, got %d, expected empty", index, testcase.Name, testcase.Pod.Spec.Containers[0].Ports[0].ContainerPort)
+				}
 			}
 
 			if !reflect.DeepEqual(testcase.Pod.Spec.Containers[0].Env, testcase.envs) {
