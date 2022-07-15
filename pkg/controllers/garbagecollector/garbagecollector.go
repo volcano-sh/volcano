@@ -28,12 +28,12 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
-	batchinformers "volcano.sh/apis/pkg/client/informers/externalversions/batch/v1alpha1"
-	batchlisters "volcano.sh/apis/pkg/client/listers/batch/v1alpha1"
+	batchinformers "volcano.sh/apis/pkg/client/informers/externalversions/batch/v1"
+	batchlisters "volcano.sh/apis/pkg/client/listers/batch/v1"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
 
@@ -74,7 +74,7 @@ func (gc *gccontroller) Initialize(opt *framework.ControllerOption) error {
 	gc.vcClient = opt.VolcanoClient
 
 	factory := informerfactory.NewSharedInformerFactory(gc.vcClient, 0)
-	jobInformer := factory.Batch().V1alpha1().Jobs()
+	jobInformer := factory.Batch().V1().Jobs()
 
 	gc.vcInformerFactory = factory
 	gc.jobInformer = jobInformer
@@ -111,7 +111,7 @@ func (gc *gccontroller) Run(stopCh <-chan struct{}) {
 }
 
 func (gc *gccontroller) addJob(obj interface{}) {
-	job := obj.(*v1alpha1.Job)
+	job := obj.(*vcbatchv1.Job)
 	klog.V(4).Infof("Adding job %s/%s", job.Namespace, job.Name)
 
 	if job.DeletionTimestamp == nil && needsCleanup(job) {
@@ -120,7 +120,7 @@ func (gc *gccontroller) addJob(obj interface{}) {
 }
 
 func (gc *gccontroller) updateJob(old, cur interface{}) {
-	job := cur.(*v1alpha1.Job)
+	job := cur.(*vcbatchv1.Job)
 	klog.V(4).Infof("Updating job %s/%s", job.Namespace, job.Name)
 
 	if job.DeletionTimestamp == nil && needsCleanup(job) {
@@ -128,7 +128,7 @@ func (gc *gccontroller) updateJob(old, cur interface{}) {
 	}
 }
 
-func (gc *gccontroller) enqueue(job *v1alpha1.Job) {
+func (gc *gccontroller) enqueue(job *vcbatchv1.Job) {
 	klog.V(4).Infof("Add job %s/%s to cleanup", job.Namespace, job.Name)
 	key, err := cache.MetaNamespaceKeyFunc(job)
 	if err != nil {
@@ -139,7 +139,7 @@ func (gc *gccontroller) enqueue(job *v1alpha1.Job) {
 	gc.queue.Add(key)
 }
 
-func (gc *gccontroller) enqueueAfter(job *v1alpha1.Job, after time.Duration) {
+func (gc *gccontroller) enqueueAfter(job *vcbatchv1.Job, after time.Duration) {
 	key, err := cache.MetaNamespaceKeyFunc(job)
 	if err != nil {
 		klog.Errorf("couldn't get key for object %#v: %v", job, err)
@@ -208,7 +208,7 @@ func (gc *gccontroller) processJob(key string) error {
 	// Before deleting the Job, do a final sanity check.
 	// If TTL is modified before we do this check, we cannot be sure if the TTL truly expires.
 	// The latest Job may have a different UID, but it's fine because the checks will be run again.
-	fresh, err := gc.vcClient.BatchV1alpha1().Jobs(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	fresh, err := gc.vcClient.BatchV1().Jobs(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if errors.IsNotFound(err) {
 		return nil
 	}
@@ -228,12 +228,12 @@ func (gc *gccontroller) processJob(key string) error {
 		Preconditions:     &metav1.Preconditions{UID: &fresh.UID},
 	}
 	klog.V(4).Infof("Cleaning up Job %s/%s", namespace, name)
-	return gc.vcClient.BatchV1alpha1().Jobs(fresh.Namespace).Delete(context.TODO(), fresh.Name, options)
+	return gc.vcClient.BatchV1().Jobs(fresh.Namespace).Delete(context.TODO(), fresh.Name, options)
 }
 
 // processTTL checks whether a given Job's TTL has expired, and add it to the queue after the TTL is expected to expire
 // if the TTL will expire later.
-func (gc *gccontroller) processTTL(job *v1alpha1.Job) (expired bool, err error) {
+func (gc *gccontroller) processTTL(job *vcbatchv1.Job) (expired bool, err error) {
 	// We don't care about the Jobs that are going to be deleted, or the ones that don't need clean up.
 	if job.DeletionTimestamp != nil || !needsCleanup(job) {
 		return false, nil
@@ -255,17 +255,17 @@ func (gc *gccontroller) processTTL(job *v1alpha1.Job) (expired bool, err error) 
 }
 
 // needsCleanup checks whether a Job has finished and has a TTL set.
-func needsCleanup(j *v1alpha1.Job) bool {
+func needsCleanup(j *vcbatchv1.Job) bool {
 	return j.Spec.TTLSecondsAfterFinished != nil && isJobFinished(j)
 }
 
-func isJobFinished(job *v1alpha1.Job) bool {
-	return job.Status.State.Phase == v1alpha1.Completed ||
-		job.Status.State.Phase == v1alpha1.Failed ||
-		job.Status.State.Phase == v1alpha1.Terminated
+func isJobFinished(job *vcbatchv1.Job) bool {
+	return job.Status.State.Phase == vcbatchv1.Completed ||
+		job.Status.State.Phase == vcbatchv1.Failed ||
+		job.Status.State.Phase == vcbatchv1.Terminated
 }
 
-func getFinishAndExpireTime(j *v1alpha1.Job) (*time.Time, *time.Time, error) {
+func getFinishAndExpireTime(j *vcbatchv1.Job) (*time.Time, *time.Time, error) {
 	if !needsCleanup(j) {
 		return nil, nil, fmt.Errorf("job %s/%s should not be cleaned up", j.Namespace, j.Name)
 	}
@@ -278,7 +278,7 @@ func getFinishAndExpireTime(j *v1alpha1.Job) (*time.Time, *time.Time, error) {
 	return &finishAtUTC, &expireAtUTC, nil
 }
 
-func timeLeft(j *v1alpha1.Job, since *time.Time) (*time.Duration, error) {
+func timeLeft(j *vcbatchv1.Job, since *time.Time) (*time.Duration, error) {
 	finishAt, expireAt, err := getFinishAndExpireTime(j)
 	if err != nil {
 		return nil, err
@@ -292,7 +292,7 @@ func timeLeft(j *v1alpha1.Job, since *time.Time) (*time.Duration, error) {
 }
 
 // jobFinishTime takes an already finished Job and returns the time it finishes.
-func jobFinishTime(finishedJob *v1alpha1.Job) (metav1.Time, error) {
+func jobFinishTime(finishedJob *vcbatchv1.Job) (metav1.Time, error) {
 	if finishedJob.Status.State.LastTransitionTime.IsZero() {
 		return metav1.Time{}, fmt.Errorf("unable to find the time when the Job %s/%s finished", finishedJob.Namespace, finishedJob.Name)
 	}

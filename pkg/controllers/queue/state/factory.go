@@ -17,21 +17,21 @@ limitations under the License.
 package state
 
 import (
-	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
-	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 )
 
 // State interface.
 type State interface {
 	// Execute executes the actions based on current state.
-	Execute(action v1alpha1.Action) error
+	Execute(action vcbusv1.Action) error
 }
 
 // UpdateQueueStatusFn updates the queue status.
-type UpdateQueueStatusFn func(status *v1beta1.QueueStatus, podGroupList []string)
+type UpdateQueueStatusFn func(status *vcschedulingv1.QueueStatus, podGroupList []string)
 
 // QueueActionFn will open, close or sync queue.
-type QueueActionFn func(queue *v1beta1.Queue, fn UpdateQueueStatusFn) error
+type QueueActionFn func(queue *vcschedulingv1.Queue, fn UpdateQueueStatusFn) error
 
 var (
 	// SyncQueue will sync queue status.
@@ -43,15 +43,15 @@ var (
 )
 
 // NewState gets the state from queue status.
-func NewState(queue *v1beta1.Queue) State {
+func NewState(queue *vcschedulingv1.Queue) State {
 	switch queue.Status.State {
-	case "", v1beta1.QueueStateOpen:
+	case "", vcschedulingv1.QueueStateOpen:
 		return &openState{queue: queue}
-	case v1beta1.QueueStateClosed:
+	case vcschedulingv1.QueueStateClosed:
 		return &closedState{queue: queue}
-	case v1beta1.QueueStateClosing:
+	case vcschedulingv1.QueueStateClosing:
 		return &closingState{queue: queue}
-	case v1beta1.QueueStateUnknown:
+	case vcschedulingv1.QueueStateUnknown:
 		return &unknownState{queue: queue}
 	}
 

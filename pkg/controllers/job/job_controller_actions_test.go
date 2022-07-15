@@ -27,8 +27,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	schedulingv1alpha2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
@@ -38,8 +38,8 @@ func TestKillJobFunc(t *testing.T) {
 
 	testcases := []struct {
 		Name           string
-		Job            *v1alpha1.Job
-		PodGroup       *schedulingv1alpha2.PodGroup
+		Job            *vcbatchv1.Job
+		PodGroup       *vcschedulingv1.PodGroup
 		PodRetainPhase state.PhaseMap
 		UpdateStatus   state.UpdateStatusFn
 		JobInfo        *apis.JobInfo
@@ -52,7 +52,7 @@ func TestKillJobFunc(t *testing.T) {
 	}{
 		{
 			Name: "KillJob success Case",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            "job1",
 					Namespace:       namespace,
@@ -60,7 +60,7 @@ func TestKillJobFunc(t *testing.T) {
 					ResourceVersion: "100",
 				},
 			},
-			PodGroup: &schedulingv1alpha2.PodGroup{
+			PodGroup: &vcschedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1-e7f18111-1cec-11ea-b688-fa163ec79500",
 					Namespace: namespace,
@@ -130,7 +130,7 @@ func TestKillJobFunc(t *testing.T) {
 				}
 			}
 
-			_, err := fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.Job, metav1.CreateOptions{})
+			_, err := fakeController.vcClient.BatchV1().Jobs(namespace).Create(context.TODO(), testcase.Job, metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Error While Creating Jobs")
 			}
@@ -182,8 +182,8 @@ func TestSyncJobFunc(t *testing.T) {
 
 	testcases := []struct {
 		Name           string
-		Job            *v1alpha1.Job
-		PodGroup       *schedulingv1alpha2.PodGroup
+		Job            *vcbatchv1.Job
+		PodGroup       *vcschedulingv1.PodGroup
 		PodRetainPhase state.PhaseMap
 		UpdateStatus   state.UpdateStatusFn
 		JobInfo        *apis.JobInfo
@@ -194,15 +194,15 @@ func TestSyncJobFunc(t *testing.T) {
 	}{
 		{
 			Name: "SyncJob success Case",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            "job1",
 					Namespace:       namespace,
 					ResourceVersion: "100",
 					UID:             "e7f18111-1cec-11ea-b688-fa163ec79500",
 				},
-				Spec: v1alpha1.JobSpec{
-					Tasks: []v1alpha1.TaskSpec{
+				Spec: vcbatchv1.JobSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task1",
 							Replicas: 6,
@@ -222,23 +222,23 @@ func TestSyncJobFunc(t *testing.T) {
 						},
 					},
 				},
-				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase: v1alpha1.Pending,
+				Status: vcbatchv1.JobStatus{
+					State: vcbatchv1.JobState{
+						Phase: vcbatchv1.Pending,
 					},
 				},
 			},
-			PodGroup: &schedulingv1alpha2.PodGroup{
+			PodGroup: &vcschedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1-e7f18111-1cec-11ea-b688-fa163ec79500",
 					Namespace: namespace,
 				},
-				Spec: schedulingv1alpha2.PodGroupSpec{
+				Spec: vcschedulingv1.PodGroupSpec{
 					MinResources:  &v1.ResourceList{},
 					MinTaskMember: map[string]int32{},
 				},
-				Status: schedulingv1alpha2.PodGroupStatus{
-					Phase: schedulingv1alpha2.PodGroupInqueue,
+				Status: vcschedulingv1.PodGroupStatus{
+					Phase: vcschedulingv1.PodGroupInqueue,
 				},
 			},
 			PodRetainPhase: state.PodRetainPhaseNone,
@@ -267,8 +267,8 @@ func TestSyncJobFunc(t *testing.T) {
 		t.Run(testcase.Name, func(t *testing.T) {
 			fakeController := newFakeController()
 
-			patches := gomonkey.ApplyMethod(reflect.TypeOf(fakeController), "GetQueueInfo", func(_ *jobcontroller, _ string) (*schedulingv1alpha2.Queue, error) {
-				return &schedulingv1alpha2.Queue{}, nil
+			patches := gomonkey.ApplyMethod(reflect.TypeOf(fakeController), "GetQueueInfo", func(_ *jobcontroller, _ string) (*vcschedulingv1.Queue, error) {
+				return &vcschedulingv1.Queue{}, nil
 			})
 
 			defer patches.Reset()
@@ -290,7 +290,7 @@ func TestSyncJobFunc(t *testing.T) {
 				}
 			}
 
-			_, err := fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.Job, metav1.CreateOptions{})
+			_, err := fakeController.vcClient.BatchV1().Jobs(namespace).Create(context.TODO(), testcase.Job, metav1.CreateOptions{})
 			if err != nil {
 				t.Errorf("Expected no Error while creating job, but got error: %s", err)
 			}
@@ -321,19 +321,19 @@ func TestCreateJobIOIfNotExistFunc(t *testing.T) {
 
 	testcases := []struct {
 		Name      string
-		Job       *v1alpha1.Job
+		Job       *vcbatchv1.Job
 		ExpextVal error
 	}{
 		{
 			Name: "Create Job IO case",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            "job1",
 					Namespace:       namespace,
 					ResourceVersion: "100",
 				},
-				Spec: v1alpha1.JobSpec{
-					Volumes: []v1alpha1.VolumeSpec{
+				Spec: vcbatchv1.JobSpec{
+					Volumes: []vcbatchv1.VolumeSpec{
 						{
 							VolumeClaimName: "pvc1",
 						},
@@ -372,13 +372,13 @@ func TestCreatePVCFunc(t *testing.T) {
 
 	testcases := []struct {
 		Name        string
-		Job         *v1alpha1.Job
+		Job         *vcbatchv1.Job
 		VolumeClaim *v1.PersistentVolumeClaimSpec
 		ExpextVal   error
 	}{
 		{
 			Name: "CreatePVC success Case",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            "job1",
 					Namespace:       namespace,
@@ -413,12 +413,12 @@ func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 
 	testcases := []struct {
 		Name      string
-		Job       *v1alpha1.Job
+		Job       *vcbatchv1.Job
 		ExpextVal error
 	}{
 		{
 			Name: "CreatePodGroup success Case",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace:       namespace,
 					Name:            "job1",
@@ -440,7 +440,7 @@ func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 			}
 
 			pgName := testcase.Job.Name + "-" + string(testcase.Job.UID)
-			_, err = fakeController.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+			_, err = fakeController.vcClient.SchedulingV1().PodGroups(namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 			if err != nil {
 				t.Error("Expected PodGroup to get created, but not created")
 			}
@@ -454,29 +454,29 @@ func TestUpdatePodGroupIfJobUpdateFunc(t *testing.T) {
 
 	testcases := []struct {
 		Name      string
-		PodGroup  *schedulingv1alpha2.PodGroup
-		Job       *v1alpha1.Job
+		PodGroup  *vcschedulingv1.PodGroup
+		Job       *vcbatchv1.Job
 		ExpectVal error
 	}{
 		{
 			Name: "UpdatePodGroup success Case",
-			PodGroup: &schedulingv1alpha2.PodGroup{
+			PodGroup: &vcschedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: namespace,
 					Name:      "job1-e7f18111-1cec-11ea-b688-fa163ec79500",
 				},
-				Spec: schedulingv1alpha2.PodGroupSpec{
+				Spec: vcschedulingv1.PodGroupSpec{
 					MinResources: &v1.ResourceList{},
 				},
 			},
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace:       namespace,
 					Name:            "job1",
 					ResourceVersion: "100",
 					UID:             "e7f18111-1cec-11ea-b688-fa163ec79500",
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					PriorityClassName: "new",
 				},
 			},
@@ -488,7 +488,7 @@ func TestUpdatePodGroupIfJobUpdateFunc(t *testing.T) {
 		t.Run(testcase.Name, func(t *testing.T) {
 			fakeController := newFakeController()
 			fakeController.pgInformer.Informer().GetIndexer().Add(testcase.PodGroup)
-			fakeController.vcClient.SchedulingV1beta1().PodGroups(testcase.PodGroup.Namespace).Create(context.TODO(), testcase.PodGroup, metav1.CreateOptions{})
+			fakeController.vcClient.SchedulingV1().PodGroups(testcase.PodGroup.Namespace).Create(context.TODO(), testcase.PodGroup, metav1.CreateOptions{})
 
 			err := fakeController.createOrUpdatePodGroup(testcase.Job)
 			if err != testcase.ExpectVal {
@@ -496,7 +496,7 @@ func TestUpdatePodGroupIfJobUpdateFunc(t *testing.T) {
 			}
 
 			pgName := testcase.Job.Name + "-" + string(testcase.Job.UID)
-			pg, err := fakeController.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+			pg, err := fakeController.vcClient.SchedulingV1().PodGroups(namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 			if err != nil {
 				t.Error("Expected PodGroup to be created, but not created")
 			}
@@ -515,14 +515,14 @@ func TestDeleteJobPod(t *testing.T) {
 
 	testcases := []struct {
 		Name      string
-		Job       *v1alpha1.Job
+		Job       *vcbatchv1.Job
 		Pods      map[string]*v1.Pod
 		DeletePod *v1.Pod
 		ExpextVal error
 	}{
 		{
 			Name: "DeleteJobPod success case",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            "job1",
 					Namespace:       namespace,

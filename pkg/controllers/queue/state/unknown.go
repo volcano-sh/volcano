@@ -17,47 +17,47 @@ limitations under the License.
 package state
 
 import (
-	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
-	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 )
 
 type unknownState struct {
-	queue *v1beta1.Queue
+	queue *vcschedulingv1.Queue
 }
 
-func (us *unknownState) Execute(action v1alpha1.Action) error {
+func (us *unknownState) Execute(action vcbusv1.Action) error {
 	switch action {
-	case v1alpha1.OpenQueueAction:
-		return OpenQueue(us.queue, func(status *v1beta1.QueueStatus, podGroupList []string) {
-			status.State = v1beta1.QueueStateOpen
+	case vcbusv1.OpenQueueAction:
+		return OpenQueue(us.queue, func(status *vcschedulingv1.QueueStatus, podGroupList []string) {
+			status.State = vcschedulingv1.QueueStateOpen
 		})
-	case v1alpha1.CloseQueueAction:
-		return CloseQueue(us.queue, func(status *v1beta1.QueueStatus, podGroupList []string) {
+	case vcbusv1.CloseQueueAction:
+		return CloseQueue(us.queue, func(status *vcschedulingv1.QueueStatus, podGroupList []string) {
 			if len(podGroupList) == 0 {
-				status.State = v1beta1.QueueStateClosed
+				status.State = vcschedulingv1.QueueStateClosed
 				return
 			}
-			status.State = v1beta1.QueueStateClosing
+			status.State = vcschedulingv1.QueueStateClosing
 		})
 	default:
-		return SyncQueue(us.queue, func(status *v1beta1.QueueStatus, podGroupList []string) {
+		return SyncQueue(us.queue, func(status *vcschedulingv1.QueueStatus, podGroupList []string) {
 			specState := us.queue.Status.State
-			if specState == v1beta1.QueueStateOpen {
-				status.State = v1beta1.QueueStateOpen
+			if specState == vcschedulingv1.QueueStateOpen {
+				status.State = vcschedulingv1.QueueStateOpen
 				return
 			}
 
-			if specState == v1beta1.QueueStateClosed {
+			if specState == vcschedulingv1.QueueStateClosed {
 				if len(podGroupList) == 0 {
-					status.State = v1beta1.QueueStateClosed
+					status.State = vcschedulingv1.QueueStateClosed
 					return
 				}
-				status.State = v1beta1.QueueStateClosing
+				status.State = vcschedulingv1.QueueStateClosing
 
 				return
 			}
 
-			status.State = v1beta1.QueueStateUnknown
+			status.State = vcschedulingv1.QueueStateUnknown
 		})
 	}
 }

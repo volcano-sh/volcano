@@ -25,7 +25,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 )
 
@@ -263,7 +263,7 @@ func TestValidatePod(t *testing.T) {
 		config.SchedulerName = "volcano"
 
 		if !testCase.disabledPG {
-			_, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), pg, metav1.CreateOptions{})
+			_, err := config.VolcanoClient.SchedulingV1().PodGroups(namespace).Create(context.TODO(), pg, metav1.CreateOptions{})
 			if err != nil {
 				t.Error("PG Creation Failed")
 			}
@@ -271,7 +271,7 @@ func TestValidatePod(t *testing.T) {
 
 		if testCase.queueName != "" && testCase.queueState != "" {
 			//create default queue
-			_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &queue, metav1.CreateOptions{})
+			_, err := config.VolcanoClient.SchedulingV1().Queues().Create(context.TODO(), &queue, metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Queue Creation Failed")
 			}

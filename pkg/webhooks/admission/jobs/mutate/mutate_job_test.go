@@ -22,7 +22,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/batch/v1"
 )
 
 func TestCreatePatchExecution(t *testing.T) {
@@ -31,18 +31,18 @@ func TestCreatePatchExecution(t *testing.T) {
 
 	testCase := struct {
 		Name      string
-		Job       v1alpha1.Job
+		Job       vcbusv1.Job
 		operation patchOperation
 	}{
 		Name: "patch default task name",
-		Job: v1alpha1.Job{
+		Job: vcbusv1.Job{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "path-task-name",
 				Namespace: namespace,
 			},
-			Spec: v1alpha1.JobSpec{
+			Spec: vcbusv1.JobSpec{
 				MinAvailable: 1,
-				Tasks: []v1alpha1.TaskSpec{
+				Tasks: []vcbusv1.TaskSpec{
 					{
 						Replicas: 1,
 						Template: v1.PodTemplateSpec{
@@ -81,9 +81,9 @@ func TestCreatePatchExecution(t *testing.T) {
 		operation: patchOperation{
 			Op:   "replace",
 			Path: "/spec/tasks",
-			Value: []v1alpha1.TaskSpec{
+			Value: []vcbusv1.TaskSpec{
 				{
-					Name:     v1alpha1.DefaultTaskSpec + "0",
+					Name:     vcbusv1.DefaultTaskSpec + "0",
 					Replicas: 1,
 					Template: v1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
@@ -100,7 +100,7 @@ func TestCreatePatchExecution(t *testing.T) {
 					},
 				},
 				{
-					Name:     v1alpha1.DefaultTaskSpec + "1",
+					Name:     vcbusv1.DefaultTaskSpec + "1",
 					Replicas: 1,
 					Template: v1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
@@ -126,12 +126,12 @@ func TestCreatePatchExecution(t *testing.T) {
 			testCase.Name, testCase.operation, *ret)
 	}
 
-	actualTasks, ok := ret.Value.([]v1alpha1.TaskSpec)
+	actualTasks, ok := ret.Value.([]vcbusv1.TaskSpec)
 	if !ok {
-		t.Errorf("testCase '%s' path value expected to be '[]v1alpha1.TaskSpec', but negative",
+		t.Errorf("testCase '%s' path value expected to be '[]vcbusv1.TaskSpec', but negative",
 			testCase.Name)
 	}
-	expectedTasks, _ := testCase.operation.Value.([]v1alpha1.TaskSpec)
+	expectedTasks, _ := testCase.operation.Value.([]vcbusv1.TaskSpec)
 	for index, task := range expectedTasks {
 		aTask := actualTasks[index]
 		if aTask.Name != task.Name {

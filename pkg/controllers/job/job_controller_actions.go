@@ -34,9 +34,9 @@ import (
 	quotacore "k8s.io/kubernetes/pkg/quota/v1/evaluator/core"
 	"k8s.io/utils/clock"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/apis/pkg/apis/helpers"
-	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
@@ -56,7 +56,7 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 	}
 
 	var pending, running, terminating, succeeded, failed, unknown int32
-	taskStatusCount := make(map[string]batch.TaskState)
+	taskStatusCount := make(map[string]vcbatchv1.TaskState)
 
 	var errs []error
 	var total int
@@ -137,7 +137,7 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 	}
 
 	// Update Job status
-	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
+	newJob, err := cc.vcClient.BatchV1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
@@ -151,7 +151,7 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 
 	// Delete PodGroup
 	pgName := job.Name + "-" + string(job.UID)
-	if err := cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Delete(context.TODO(), pgName, metav1.DeleteOptions{}); err != nil {
+	if err := cc.vcClient.SchedulingV1().PodGroups(job.Namespace).Delete(context.TODO(), pgName, metav1.DeleteOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to delete PodGroup of Job %v/%v: %v",
 				job.Namespace, job.Name, err)
@@ -164,30 +164,30 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 	return nil
 }
 
-func (cc *jobcontroller) initiateJob(job *batch.Job) (*batch.Job, error) {
+func (cc *jobcontroller) initiateJob(job *vcbatchv1.Job) (*vcbatchv1.Job, error) {
 	klog.V(3).Infof("Starting to initiate Job <%s/%s>", job.Namespace, job.Name)
 	jobInstance, err := cc.initJobStatus(job)
 	if err != nil {
-		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.JobStatusError),
+		cc.recorder.Event(job, v1.EventTypeWarning, string(vcbatchv1.JobStatusError),
 			fmt.Sprintf("Failed to initialize job status, err: %v", err))
 		return nil, err
 	}
 
 	if err := cc.pluginOnJobAdd(jobInstance); err != nil {
-		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.PluginError),
+		cc.recorder.Event(job, v1.EventTypeWarning, string(vcbatchv1.PluginError),
 			fmt.Sprintf("Execute plugin when job add failed, err: %v", err))
 		return nil, err
 	}
 
 	newJob, err := cc.createJobIOIfNotExist(jobInstance)
 	if err != nil {
-		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.PVCError),
+		cc.recorder.Event(job, v1.EventTypeWarning, string(vcbatchv1.PVCError),
 			fmt.Sprintf("Failed to create PVC, err: %v", err))
 		return nil, err
 	}
 
 	if err := cc.createOrUpdatePodGroup(newJob); err != nil {
-		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.PodGroupError),
+		cc.recorder.Event(job, v1.EventTypeWarning, string(vcbatchv1.PodGroupError),
 			fmt.Sprintf("Failed to create PodGroup, err: %v", err))
 		return nil, err
 	}
@@ -195,17 +195,17 @@ func (cc *jobcontroller) initiateJob(job *batch.Job) (*batch.Job, error) {
 	return newJob, nil
 }
 
-func (cc *jobcontroller) initOnJobUpdate(job *batch.Job) error {
+func (cc *jobcontroller) initOnJobUpdate(job *vcbatchv1.Job) error {
 	klog.V(3).Infof("Starting to initiate Job <%s/%s> on update", job.Namespace, job.Name)
 
 	if err := cc.pluginOnJobUpdate(job); err != nil {
-		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.PluginError),
+		cc.recorder.Event(job, v1.EventTypeWarning, string(vcbatchv1.PluginError),
 			fmt.Sprintf("Execute plugin when job add failed, err: %v", err))
 		return err
 	}
 
 	if err := cc.createOrUpdatePodGroup(job); err != nil {
-		cc.recorder.Event(job, v1.EventTypeWarning, string(batch.PodGroupError),
+		cc.recorder.Event(job, v1.EventTypeWarning, string(vcbatchv1.PodGroupError),
 			fmt.Sprintf("Failed to create PodGroup, err: %v", err))
 		return err
 	}
@@ -213,7 +213,7 @@ func (cc *jobcontroller) initOnJobUpdate(job *batch.Job) error {
 	return nil
 }
 
-func (cc *jobcontroller) GetQueueInfo(queue string) (*scheduling.Queue, error) {
+func (cc *jobcontroller) GetQueueInfo(queue string) (*vcschedulingv1.Queue, error) {
 	queueInfo, err := cc.queueLister.Get(queue)
 	if err != nil {
 		klog.Errorf("Failed to get queue from queueLister, error: %s", err.Error())
@@ -248,8 +248,8 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		if len(job.Annotations) == 0 {
 			job.Annotations = make(map[string]string)
 		}
-		job.Annotations[batch.JobForwardingKey] = "true"
-		job, err = cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).Update(context.TODO(), job, metav1.UpdateOptions{})
+		job.Annotations[vcbatchv1.JobForwardingKey] = "true"
+		job, err = cc.vcClient.BatchV1().Jobs(job.Namespace).Update(context.TODO(), job, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("failed to update job: %s/%s, error: %s", job.Namespace, job.Name, err.Error())
 			return err
@@ -270,8 +270,8 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 
 	if len(queueInfo.Spec.ExtendClusters) != 0 {
 		jobForwarding = true
-		job.Annotations[batch.JobForwardingKey] = "true"
-		_, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).Update(context.TODO(), job, metav1.UpdateOptions{})
+		job.Annotations[vcbatchv1.JobForwardingKey] = "true"
+		_, err := cc.vcClient.BatchV1().Jobs(job.Namespace).Update(context.TODO(), job, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("failed to update job: %s/%s, error: %s", job.Namespace, job.Name, err.Error())
 			return err
@@ -281,19 +281,19 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	var syncTask bool
 	pgName := job.Name + "-" + string(job.UID)
 	if pg, _ := cc.pgLister.PodGroups(job.Namespace).Get(pgName); pg != nil {
-		if pg.Status.Phase != "" && pg.Status.Phase != scheduling.PodGroupPending {
+		if pg.Status.Phase != "" && pg.Status.Phase != vcschedulingv1.PodGroupPending {
 			syncTask = true
 		}
 
 		for _, condition := range pg.Status.Conditions {
-			if condition.Type == scheduling.PodGroupUnschedulableType {
-				cc.recorder.Eventf(job, v1.EventTypeWarning, string(batch.PodGroupPending),
+			if condition.Type == vcschedulingv1.PodGroupUnschedulableType {
+				cc.recorder.Eventf(job, v1.EventTypeWarning, string(vcbatchv1.PodGroupPending),
 					fmt.Sprintf("PodGroup %s:%s unschedule,reason: %s", job.Namespace, job.Name, condition.Message))
 			}
 		}
 	}
 
-	var jobCondition batch.JobCondition
+	var jobCondition vcbatchv1.JobCondition
 	if !syncTask {
 		if updateStatus != nil {
 			if updateStatus(&job.Status) {
@@ -302,7 +302,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 				job.Status.Conditions = append(job.Status.Conditions, jobCondition)
 			}
 		}
-		newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
+		newJob, err := cc.vcClient.BatchV1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("Failed to update status of Job %v/%v: %v",
 				job.Namespace, job.Name, err)
@@ -317,7 +317,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	}
 
 	var running, pending, terminating, succeeded, failed, unknown int32
-	taskStatusCount := make(map[string]batch.TaskState)
+	taskStatusCount := make(map[string]vcbatchv1.TaskState)
 
 	podToCreate := make(map[string][]*v1.Pod)
 	var podToDelete []*v1.Pod
@@ -440,7 +440,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 			fmt.Sprintf("Error deleting pods: %+v", deletionErrs))
 		return fmt.Errorf("failed to delete %d pods of %d", len(deletionErrs), len(podToDelete))
 	}
-	job.Status = batch.JobStatus{
+	job.Status = vcbatchv1.JobStatus{
 		State: job.Status.State,
 
 		Pending:             pending,
@@ -462,7 +462,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		jobCondition = newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)
 		job.Status.Conditions = append(job.Status.Conditions, jobCondition)
 	}
-	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
+	newJob, err := cc.vcClient.BatchV1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
@@ -477,13 +477,13 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	return nil
 }
 
-func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskName string, taskIndex int, podToCreateEachTask []*v1.Pod, job *batch.Job) {
+func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskName string, taskIndex int, podToCreateEachTask []*v1.Pod, job *vcbatchv1.Job) {
 	if job.Spec.Tasks[taskIndex].DependsOn == nil {
 		return
 	}
 
 	dependsOn := *job.Spec.Tasks[taskIndex].DependsOn
-	if len(dependsOn.Name) > 1 && dependsOn.Iteration == batch.IterationAny {
+	if len(dependsOn.Name) > 1 && dependsOn.Iteration == vcbatchv1.IterationAny {
 		wait.PollInfinite(detectionPeriodOfDependsOntask, func() (bool, error) {
 			for _, task := range dependsOn.Name {
 				if cc.isDependsOnPodsReady(task, job) {
@@ -504,7 +504,7 @@ func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskName string, taskInd
 	}
 }
 
-func (cc *jobcontroller) isDependsOnPodsReady(task string, job *batch.Job) bool {
+func (cc *jobcontroller) isDependsOnPodsReady(task string, job *vcbatchv1.Job) bool {
 	dependsOnPods := jobhelpers.GetPodsNameUnderTask(task, job)
 	dependsOnTaskIndex := jobhelpers.GetTasklndexUnderJob(task, job)
 	runningPodCount := 0
@@ -550,7 +550,7 @@ func (cc *jobcontroller) isDependsOnPodsReady(task string, job *batch.Job) bool 
 	return true
 }
 
-func (cc *jobcontroller) createJobIOIfNotExist(job *batch.Job) (*batch.Job, error) {
+func (cc *jobcontroller) createJobIOIfNotExist(job *vcbatchv1.Job) (*vcbatchv1.Job, error) {
 	// If PVC does not exist, create them for Job.
 	var needUpdate bool
 	if job.Status.ControlledResources == nil {
@@ -591,7 +591,7 @@ func (cc *jobcontroller) createJobIOIfNotExist(job *batch.Job) (*batch.Job, erro
 		job.Status.ControlledResources["volume-pvc-"+vcName] = vcName
 	}
 	if needUpdate {
-		newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).Update(context.TODO(), job, metav1.UpdateOptions{})
+		newJob, err := cc.vcClient.BatchV1().Jobs(job.Namespace).Update(context.TODO(), job, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("Failed to update Job %v/%v for volume claim name: %v ",
 				job.Namespace, job.Name, err)
@@ -604,7 +604,7 @@ func (cc *jobcontroller) createJobIOIfNotExist(job *batch.Job) (*batch.Job, erro
 	return job, nil
 }
 
-func (cc *jobcontroller) checkPVCExist(job *batch.Job, pvc string) (bool, error) {
+func (cc *jobcontroller) checkPVCExist(job *vcbatchv1.Job, pvc string) (bool, error) {
 	if _, err := cc.pvcLister.PersistentVolumeClaims(job.Namespace).Get(pvc); err != nil {
 		if apierrors.IsNotFound(err) {
 			return false, nil
@@ -616,13 +616,13 @@ func (cc *jobcontroller) checkPVCExist(job *batch.Job, pvc string) (bool, error)
 	return true, nil
 }
 
-func (cc *jobcontroller) createPVC(job *batch.Job, vcName string, volumeClaim *v1.PersistentVolumeClaimSpec) error {
+func (cc *jobcontroller) createPVC(job *vcbatchv1.Job, vcName string, volumeClaim *v1.PersistentVolumeClaimSpec) error {
 	pvc := &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: job.Namespace,
 			Name:      vcName,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(job, helpers.JobKind),
+				*metav1.NewControllerRef(job, helpers.V1JobKind),
 			},
 		},
 		Spec: *volumeClaim,
@@ -638,7 +638,7 @@ func (cc *jobcontroller) createPVC(job *batch.Job, vcName string, volumeClaim *v
 	return nil
 }
 
-func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
+func (cc *jobcontroller) createOrUpdatePodGroup(job *vcbatchv1.Job) error {
 	// If PodGroup does not exist, create one for Job.
 	pgName := job.Name + "-" + string(job.UID)
 	pg, err := cc.pgLister.PodGroups(job.Namespace).Get(pgName)
@@ -658,7 +658,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 			}
 		}
 
-		pg := &scheduling.PodGroup{
+		pg := &vcschedulingv1.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: job.Namespace,
 				//add job.UID into its name when create new PodGroup
@@ -666,10 +666,10 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 				Annotations: job.Annotations,
 				Labels:      job.Labels,
 				OwnerReferences: []metav1.OwnerReference{
-					*metav1.NewControllerRef(job, helpers.JobKind),
+					*metav1.NewControllerRef(job, helpers.V1JobKind),
 				},
 			},
-			Spec: scheduling.PodGroupSpec{
+			Spec: vcschedulingv1.PodGroupSpec{
 				MinMember:         job.Spec.MinAvailable,
 				MinTaskMember:     minTaskMember,
 				Queue:             job.Spec.Queue,
@@ -678,7 +678,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 			},
 		}
 
-		if _, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{}); err != nil {
+		if _, err = cc.vcClient.SchedulingV1().PodGroups(job.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{}); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				klog.Errorf("Failed to create PodGroup for Job <%s/%s>: %v",
 					job.Namespace, job.Name, err)
@@ -728,7 +728,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 		return nil
 	}
 
-	_, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Update(context.TODO(), pg, metav1.UpdateOptions{})
+	_, err = cc.vcClient.SchedulingV1().PodGroups(job.Namespace).Update(context.TODO(), pg, metav1.UpdateOptions{})
 	if err != nil {
 		klog.V(3).Infof("Failed to update PodGroup for Job <%s/%s>: %v",
 			job.Namespace, job.Name, err)
@@ -748,7 +748,7 @@ func (cc *jobcontroller) deleteJobPod(jobName string, pod *v1.Pod) error {
 	return nil
 }
 
-func (cc *jobcontroller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
+func (cc *jobcontroller) calcPGMinResources(job *vcbatchv1.Job) *v1.ResourceList {
 	// sort task by priorityClasses
 	var tasksPriority TasksPriority
 	for _, task := range job.Spec.Tasks {
@@ -788,17 +788,17 @@ func (cc *jobcontroller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 	return &minReq
 }
 
-func (cc *jobcontroller) initJobStatus(job *batch.Job) (*batch.Job, error) {
+func (cc *jobcontroller) initJobStatus(job *vcbatchv1.Job) (*vcbatchv1.Job, error) {
 	if job.Status.State.Phase != "" {
 		return job, nil
 	}
 
-	job.Status.State.Phase = batch.Pending
+	job.Status.State.Phase = vcbatchv1.Pending
 	job.Status.State.LastTransitionTime = metav1.Now()
 	job.Status.MinAvailable = job.Spec.MinAvailable
 	jobCondition := newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)
 	job.Status.Conditions = append(job.Status.Conditions, jobCondition)
-	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
+	newJob, err := cc.vcClient.BatchV1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
@@ -828,8 +828,8 @@ func classifyAndAddUpPodBaseOnPhase(pod *v1.Pod, pending, running, succeeded, fa
 	}
 }
 
-func calcPodStatus(pod *v1.Pod, taskStatusCount map[string]batch.TaskState) {
-	taskName, found := pod.Annotations[batch.TaskSpecKey]
+func calcPodStatus(pod *v1.Pod, taskStatusCount map[string]vcbatchv1.TaskState) {
+	taskName, found := pod.Annotations[vcbatchv1.TaskSpecKey]
 	if !found {
 		return
 	}
@@ -837,7 +837,7 @@ func calcPodStatus(pod *v1.Pod, taskStatusCount map[string]batch.TaskState) {
 	calMutex.Lock()
 	defer calMutex.Unlock()
 	if _, ok := taskStatusCount[taskName]; !ok {
-		taskStatusCount[taskName] = batch.TaskState{
+		taskStatusCount[taskName] = vcbatchv1.TaskState{
 			Phase: make(map[v1.PodPhase]int32),
 		}
 	}
@@ -856,16 +856,16 @@ func calcPodStatus(pod *v1.Pod, taskStatusCount map[string]batch.TaskState) {
 	}
 }
 
-func isInitiated(job *batch.Job) bool {
-	if job.Status.State.Phase == "" || job.Status.State.Phase == batch.Pending {
+func isInitiated(job *vcbatchv1.Job) bool {
+	if job.Status.State.Phase == "" || job.Status.State.Phase == vcbatchv1.Pending {
 		return false
 	}
 
 	return true
 }
 
-func newCondition(status batch.JobPhase, lastTransitionTime *metav1.Time) batch.JobCondition {
-	return batch.JobCondition{
+func newCondition(status vcbatchv1.JobPhase, lastTransitionTime *metav1.Time) vcbatchv1.JobCondition {
+	return vcbatchv1.JobCondition{
 		Status:             status,
 		LastTransitionTime: lastTransitionTime,
 	}

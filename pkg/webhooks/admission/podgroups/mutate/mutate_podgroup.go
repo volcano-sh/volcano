@@ -26,7 +26,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
+	vcschedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -47,8 +48,8 @@ var service = &router.AdmissionService{
 				{
 					Operations: []whv1.OperationType{whv1.Create},
 					Rule: whv1.Rule{
-						APIGroups:   []string{schedulingv1beta1.SchemeGroupVersion.Group},
-						APIVersions: []string{schedulingv1beta1.SchemeGroupVersion.Version},
+						APIGroups:   []string{vcschedulingv1.SchemeGroupVersion.Group},
+						APIVersions: []string{vcschedulingv1.SchemeGroupVersion.Version, vcschedulingv1beta1.SchemeGroupVersion.Version},
 						Resources:   []string{"podgroups"},
 					},
 				},
@@ -101,13 +102,13 @@ func PodGroups(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	return &reviewResponse
 }
 
-func createPodGroupPatch(podgroup *schedulingv1beta1.PodGroup) ([]byte, error) {
+func createPodGroupPatch(podgroup *vcschedulingv1.PodGroup) ([]byte, error) {
 	var patch []patchOperation
 	if len(podgroup.Spec.Queue) == 0 {
-		queueName := schedulingv1beta1.DefaultQueue
+		queueName := vcschedulingv1.DefaultQueue
 		ns, err := config.KubeClient.CoreV1().Namespaces().Get(context.TODO(), podgroup.Namespace, metav1.GetOptions{})
 		if err == nil {
-			if val, ok := ns.GetAnnotations()[schedulingv1beta1.QueueNameAnnotationKey]; ok {
+			if val, ok := ns.GetAnnotations()[vcschedulingv1.QueueNameAnnotationKey]; ok {
 				queueName = val
 			}
 		}

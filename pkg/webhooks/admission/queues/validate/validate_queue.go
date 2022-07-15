@@ -28,7 +28,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/klog"
 
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
+	vcschedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -51,8 +52,8 @@ var service = &router.AdmissionService{
 				{
 					Operations: []whv1.OperationType{whv1.Create, whv1.Update, whv1.Delete},
 					Rule: whv1.Rule{
-						APIGroups:   []string{schedulingv1beta1.SchemeGroupVersion.Group},
-						APIVersions: []string{schedulingv1beta1.SchemeGroupVersion.Version},
+						APIGroups:   []string{vcschedulingv1.SchemeGroupVersion.Group},
+						APIVersions: []string{vcschedulingv1.SchemeGroupVersion.Version, vcschedulingv1beta1.SchemeGroupVersion.Version},
 						Resources:   []string{"queues"},
 					},
 				},
@@ -94,7 +95,7 @@ func AdmitQueues(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse 
 	}
 }
 
-func validateQueue(queue *schedulingv1beta1.Queue) error {
+func validateQueue(queue *vcschedulingv1.Queue) error {
 	errs := field.ErrorList{}
 	resourcePath := field.NewPath("requestBody")
 
@@ -108,10 +109,10 @@ func validateQueue(queue *schedulingv1beta1.Queue) error {
 
 	return nil
 }
-func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *field.Path) field.ErrorList {
+func validateHierarchicalAttributes(queue *vcschedulingv1.Queue, fldPath *field.Path) field.ErrorList {
 	errs := field.ErrorList{}
-	hierarchy := queue.Annotations[schedulingv1beta1.KubeHierarchyAnnotationKey]
-	hierarchicalWeights := queue.Annotations[schedulingv1beta1.KubeHierarchyWeightAnnotationKey]
+	hierarchy := queue.Annotations[vcschedulingv1.KubeHierarchyAnnotationKey]
+	hierarchicalWeights := queue.Annotations[vcschedulingv1.KubeHierarchyWeightAnnotationKey]
 	if hierarchy != "" || hierarchicalWeights != "" {
 		paths := strings.Split(hierarchy, "/")
 		weights := strings.Split(hierarchicalWeights, "/")
@@ -119,8 +120,8 @@ func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *fie
 		if len(paths) != len(weights) {
 			return append(errs, field.Invalid(fldPath, hierarchy,
 				fmt.Sprintf("%s must have the same length with %s",
-					schedulingv1beta1.KubeHierarchyAnnotationKey,
-					schedulingv1beta1.KubeHierarchyWeightAnnotationKey,
+					vcschedulingv1.KubeHierarchyAnnotationKey,
+					vcschedulingv1.KubeHierarchyWeightAnnotationKey,
 				)))
 		}
 
@@ -143,16 +144,16 @@ func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *fie
 
 		// The node is not allowed to be in the sub path of a node.
 		// For example, a queue with "root/sci" conflicts with a queue with "root/sci/dev"
-		queueList, err := config.VolcanoClient.SchedulingV1beta1().Queues().List(context.TODO(), metav1.ListOptions{})
+		queueList, err := config.VolcanoClient.SchedulingV1().Queues().List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
 			return append(errs, field.Invalid(fldPath, hierarchy,
 				fmt.Sprintf("checking %s, list queues failed: %v",
-					schedulingv1beta1.KubeHierarchyAnnotationKey,
+					vcschedulingv1.KubeHierarchyAnnotationKey,
 					err,
 				)))
 		}
 		for _, queueInTree := range queueList.Items {
-			hierarchyInTree := queueInTree.Annotations[schedulingv1beta1.KubeHierarchyAnnotationKey]
+			hierarchyInTree := queueInTree.Annotations[vcschedulingv1.KubeHierarchyAnnotationKey]
 			if hierarchyInTree != "" && queue.Name != queueInTree.Name &&
 				strings.HasPrefix(hierarchyInTree, hierarchy) {
 				return append(errs, field.Invalid(fldPath, hierarchy,
@@ -164,16 +165,16 @@ func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *fie
 	return errs
 }
 
-func validateStateOfQueue(value schedulingv1beta1.QueueState, fldPath *field.Path) field.ErrorList {
+func validateStateOfQueue(value vcschedulingv1.QueueState, fldPath *field.Path) field.ErrorList {
 	errs := field.ErrorList{}
 
 	if len(value) == 0 {
 		return errs
 	}
 
-	validQueueStates := []schedulingv1beta1.QueueState{
-		schedulingv1beta1.QueueStateOpen,
-		schedulingv1beta1.QueueStateClosed,
+	validQueueStates := []vcschedulingv1.QueueState{
+		vcschedulingv1.QueueStateOpen,
+		vcschedulingv1.QueueStateClosed,
 	}
 
 	for _, validQueue := range validQueueStates {
@@ -198,7 +199,7 @@ func validateQueueDeleting(queue string) error {
 		return fmt.Errorf("`%s` queue can not be deleted", "default")
 	}
 
-	_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), queue, metav1.GetOptions{})
+	_, err := config.VolcanoClient.SchedulingV1().Queues().Get(context.TODO(), queue, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}

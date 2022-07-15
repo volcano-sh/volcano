@@ -23,7 +23,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 )
 
 type predicateCache struct {
@@ -40,7 +40,7 @@ func predicateCacheNew() *predicateCache {
 
 // getPodTemplateUID return pod template key
 func getPodTemplateUID(pod *v1.Pod) string {
-	uid, found := pod.Annotations[batch.PodTemplateKey]
+	uid, found := pod.Annotations[vcbatchv1.PodTemplateKey]
 	if !found {
 		return ""
 	}

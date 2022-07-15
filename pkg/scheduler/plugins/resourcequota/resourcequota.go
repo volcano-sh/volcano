@@ -7,7 +7,7 @@ import (
 	quotav1 "k8s.io/apiserver/pkg/quota/v1"
 	"k8s.io/klog"
 
-	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
@@ -67,7 +67,7 @@ func (rq *resourceQuotaPlugin) OnSessionOpen(ssn *framework.Session) {
 					failedHard,
 				)
 				klog.V(4).Infof("enqueueable false for job: %s/%s, because :%s", job.Namespace, job.Name, msg)
-				ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), msg)
+				ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(vcschedulingv1.PodGroupUnschedulableType), msg)
 				return util.Reject
 			}
 		}

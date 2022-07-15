@@ -25,9 +25,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
-
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
@@ -51,11 +50,11 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Pending})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
+		err = ctx.Vcclient.BatchV1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = e2eutil.WaitJobCleanedUp(ctx, job)
@@ -81,11 +80,11 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
+		err = ctx.Vcclient.BatchV1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = e2eutil.WaitJobCleanedUp(ctx, job)
@@ -113,11 +112,11 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running -> Completed
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Completed})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running, vcbatchv1.Completed})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
+		err = ctx.Vcclient.BatchV1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = e2eutil.WaitJobCleanedUp(ctx, job)
@@ -132,10 +131,10 @@ var _ = Describe("Job Life Cycle", func() {
 		By("create job")
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Name: "failed-delete-job",
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Action: vcbus.AbortJobAction,
-					Event:  vcbus.PodFailedEvent,
+					Action: vcbusv1.AbortJobAction,
+					Event:  vcbusv1.PodFailedEvent,
 				},
 			},
 			Tasks: []e2eutil.TaskSpec{
@@ -151,11 +150,11 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running -> Aborted
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Aborted})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running, vcbatchv1.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
+		err = ctx.Vcclient.BatchV1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = e2eutil.WaitJobCleanedUp(ctx, job)
@@ -170,10 +169,10 @@ var _ = Describe("Job Life Cycle", func() {
 		By("create job")
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Name: "terminate-delete-job",
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Action: vcbus.TerminateJobAction,
-					Event:  vcbus.PodFailedEvent,
+					Action: vcbusv1.TerminateJobAction,
+					Event:  vcbusv1.PodFailedEvent,
 				},
 			},
 			Tasks: []e2eutil.TaskSpec{
@@ -189,11 +188,11 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running -> Terminated
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Terminated})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running, vcbatchv1.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
+		err = ctx.Vcclient.BatchV1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = e2eutil.WaitJobCleanedUp(ctx, job)
@@ -208,10 +207,10 @@ var _ = Describe("Job Life Cycle", func() {
 		By("create job")
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Name: "terminate-delete-job",
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Action: vcbus.TerminateJobAction,
-					Event:  vcbus.PodFailedEvent,
+					Action: vcbusv1.TerminateJobAction,
+					Event:  vcbusv1.PodFailedEvent,
 				},
 			},
 			Tasks: []e2eutil.TaskSpec{
@@ -228,11 +227,11 @@ var _ = Describe("Job Life Cycle", func() {
 		})
 
 		// job phase: pending -> running -> completed
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Completed})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running, vcbatchv1.Completed})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete job")
-		err = ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
+		err = ctx.Vcclient.BatchV1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = e2eutil.WaitJobCleanedUp(ctx, job)
@@ -246,10 +245,10 @@ var _ = Describe("Job Life Cycle", func() {
 
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Name: "terminate-job",
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Action: vcbus.TerminateJobAction,
-					Event:  vcbus.PodFailedEvent,
+					Action: vcbusv1.TerminateJobAction,
+					Event:  vcbusv1.PodFailedEvent,
 				},
 			},
 			Tasks: []e2eutil.TaskSpec{
@@ -292,10 +291,10 @@ var _ = Describe("Job Life Cycle", func() {
 
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Name: "unschedulable-job",
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Action: vcbus.TerminateJobAction,
-					Event:  vcbus.PodFailedEvent,
+					Action: vcbusv1.TerminateJobAction,
+					Event:  vcbusv1.PodFailedEvent,
 				},
 			},
 			Tasks: []e2eutil.TaskSpec{

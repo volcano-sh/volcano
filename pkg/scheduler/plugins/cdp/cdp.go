@@ -22,7 +22,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
-	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
@@ -55,16 +55,16 @@ func (*CooldownProtectionPlugin) Name() string {
 
 func (sp *CooldownProtectionPlugin) podCooldownTime(pod *v1.Pod) (value time.Duration, enabled bool) {
 	// check labels and annotations
-	v, ok := pod.Labels[v1beta1.CooldownTime]
+	v, ok := pod.Labels[vcschedulingv1.CooldownTime]
 	if !ok {
-		v, ok = pod.Annotations[v1beta1.CooldownTime]
+		v, ok = pod.Annotations[vcschedulingv1.CooldownTime]
 		if !ok {
 			return 0, false
 		}
 	}
 	vi, err := time.ParseDuration(v)
 	if err != nil {
-		klog.Warningf("invalid time duration %s=%s", v1beta1.CooldownTime, v)
+		klog.Warningf("invalid time duration %s=%s", vcschedulingv1.CooldownTime, v)
 		return 0, false
 	}
 	return vi, true

@@ -67,7 +67,7 @@ var _ = Describe("Queue Job Status Transition", func() {
 
 		By("Verify queue have pod groups inqueue")
 		err := e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			queue, err := ctx.Vcclient.SchedulingV1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
 			return queue.Status.Inqueue > 0, nil
 		})
@@ -75,7 +75,7 @@ var _ = Describe("Queue Job Status Transition", func() {
 
 		By("Verify queue have pod groups running")
 		err = e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			queue, err := ctx.Vcclient.SchedulingV1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
 			return queue.Status.Running > 0, nil
 		})
@@ -126,7 +126,7 @@ var _ = Describe("Queue Job Status Transition", func() {
 
 		By("Verify queue have pod groups running")
 		err := e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			queue, err := ctx.Vcclient.SchedulingV1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
 			return queue.Status.Running > 0, nil
 		})
@@ -142,7 +142,7 @@ var _ = Describe("Queue Job Status Transition", func() {
 
 		By("Verify queue have pod groups Pending")
 		err = e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			queue, err := ctx.Vcclient.SchedulingV1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
 			return queue.Status.Pending > 0, nil
 		})
@@ -189,7 +189,7 @@ var _ = Describe("Queue Job Status Transition", func() {
 
 		By("Verify queue have pod groups running")
 		err := e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			queue, err := ctx.Vcclient.SchedulingV1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
 			return queue.Status.Running > 0, nil
 		})
@@ -215,7 +215,7 @@ var _ = Describe("Queue Job Status Transition", func() {
 
 		By("Verify queue have pod groups unknown")
 		err = e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			queue, err := ctx.Vcclient.SchedulingV1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
 			return queue.Status.Unknown > 0, nil
 		})

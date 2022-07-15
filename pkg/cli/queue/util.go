@@ -28,7 +28,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	"volcano.sh/apis/pkg/apis/helpers"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 )
@@ -44,15 +44,15 @@ func buildConfig(master, kubeconfig string) (*rest.Config, error) {
 	return clientcmd.BuildConfigFromFlags(master, kubeconfig)
 }
 
-func createQueueCommand(config *rest.Config, action busv1alpha1.Action) error {
+func createQueueCommand(config *rest.Config, action vcbusv1.Action) error {
 	queueClient := versioned.NewForConfigOrDie(config)
-	queue, err := queueClient.SchedulingV1beta1().Queues().Get(context.TODO(), operateQueueFlags.Name, metav1.GetOptions{})
+	queue, err := queueClient.SchedulingV1().Queues().Get(context.TODO(), operateQueueFlags.Name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 
-	ctrlRef := metav1.NewControllerRef(queue, helpers.V1beta1QueueKind)
-	cmd := &busv1alpha1.Command{
+	ctrlRef := metav1.NewControllerRef(queue, helpers.V1QueueKind)
+	cmd := &vcbusv1.Command{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: fmt.Sprintf("%s-%s-",
 				queue.Name, strings.ToLower(string(action))),
@@ -64,7 +64,7 @@ func createQueueCommand(config *rest.Config, action busv1alpha1.Action) error {
 		Action:       string(action),
 	}
 
-	if _, err := queueClient.BusV1alpha1().Commands("default").Create(context.TODO(), cmd, metav1.CreateOptions{}); err != nil {
+	if _, err := queueClient.BusV1().Commands("default").Create(context.TODO(), cmd, metav1.CreateOptions{}); err != nil {
 		return err
 	}
 

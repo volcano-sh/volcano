@@ -21,7 +21,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	controllerMpi "volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/mpi"
 )
 
@@ -32,15 +32,15 @@ func TestMpi(t *testing.T) {
 	plugins[controllerMpi.MPIPluginName] = []string{"--master=" + masterName, "--worker=" + workerName}
 	testcases := []struct {
 		Name string
-		Job  *v1alpha1.Job
+		Job  *vcbatchv1.Job
 	}{
 		{
 			Name: "add dependsOn",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-mpi-0"},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					Plugins: plugins,
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     masterName,
 							Replicas: 1,

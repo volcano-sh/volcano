@@ -29,7 +29,7 @@ import (
 	"k8s.io/klog"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
-	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
@@ -477,9 +477,9 @@ func (ssn Session) RecordPodGroupEvent(podGroup *schedulingapi.PodGroup, eventTy
 		return
 	}
 
-	pg := &vcv1beta1.PodGroup{}
+	pg := &vcschedulingv1.PodGroup{}
 	if err := schedulingscheme.Scheme.Convert(&podGroup.PodGroup, pg, nil); err != nil {
-		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
+		klog.Errorf("Error while converting PodGroup to v1.PodGroup with error: %v", err)
 		return
 	}
 	ssn.recorder.Eventf(pg, eventType, reason, msg)

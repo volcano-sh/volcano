@@ -22,10 +22,9 @@ import (
 
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"k8s.io/apimachinery/pkg/types"
 
-	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 )
 
@@ -72,13 +71,13 @@ func OperateQueue() error {
 		return fmt.Errorf("queue name must be specified")
 	}
 
-	var action v1alpha1.Action
+	var action vcbusv1.Action
 
 	switch operateQueueFlags.Action {
 	case ActionOpen:
-		action = v1alpha1.OpenQueueAction
+		action = vcbusv1.OpenQueueAction
 	case ActionClose:
-		action = v1alpha1.CloseQueueAction
+		action = vcbusv1.CloseQueueAction
 	case ActionUpdate:
 		if operateQueueFlags.Weight == 0 {
 			return fmt.Errorf("when %s queue %s, weight must be specified, "+
@@ -87,7 +86,7 @@ func OperateQueue() error {
 
 		queueClient := versioned.NewForConfigOrDie(config)
 		patchBytes := []byte(fmt.Sprintf(`{"spec":{"weight":%d}}`, operateQueueFlags.Weight))
-		_, err := queueClient.SchedulingV1beta1().Queues().Patch(context.TODO(),
+		_, err := queueClient.SchedulingV1().Queues().Patch(context.TODO(),
 			operateQueueFlags.Name, types.MergePatchType, patchBytes, metav1.PatchOptions{})
 
 		return err

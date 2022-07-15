@@ -25,7 +25,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -64,24 +64,24 @@ func CompareTask(lv, rv *api.TaskInfo) bool {
 
 // GetTaskKey returns task key/name
 func GetTaskKey(pod *v1.Pod) string {
-	if pod.Annotations == nil || pod.Annotations[batch.TaskSpecKey] == "" {
-		return batch.DefaultTaskSpec
+	if pod.Annotations == nil || pod.Annotations[vcbatchv1.TaskSpecKey] == "" {
+		return vcbatchv1.DefaultTaskSpec
 	}
-	return pod.Annotations[batch.TaskSpecKey]
+	return pod.Annotations[vcbatchv1.TaskSpecKey]
 }
 
 // GetTaskSpec returns task spec
-func GetTaskSpec(job *batch.Job, taskName string) (batch.TaskSpec, bool) {
+func GetTaskSpec(job *vcbatchv1.Job, taskName string) (vcbatchv1.TaskSpec, bool) {
 	for _, ts := range job.Spec.Tasks {
 		if ts.Name == taskName {
 			return ts, true
 		}
 	}
-	return batch.TaskSpec{}, false
+	return vcbatchv1.TaskSpec{}, false
 }
 
 // MakeDomainName creates task domain name
-func MakeDomainName(ts batch.TaskSpec, job *batch.Job, index int) string {
+func MakeDomainName(ts vcbatchv1.TaskSpec, job *vcbatchv1.Job, index int) string {
 	hostName := ts.Template.Spec.Hostname
 	subdomain := ts.Template.Spec.Subdomain
 	if len(hostName) == 0 {
@@ -121,7 +121,7 @@ func GetJobKeyByReq(req *apis.Request) string {
 }
 
 // GetTasklndexUnderJob return index of the task in the job.
-func GetTasklndexUnderJob(taskName string, job *batch.Job) int {
+func GetTasklndexUnderJob(taskName string, job *vcbatchv1.Job) int {
 	for index, task := range job.Spec.Tasks {
 		if task.Name == taskName {
 			return index
@@ -131,7 +131,7 @@ func GetTasklndexUnderJob(taskName string, job *batch.Job) int {
 }
 
 // GetPodsNameUnderTask return names of all pods in the task.
-func GetPodsNameUnderTask(taskName string, job *batch.Job) []string {
+func GetPodsNameUnderTask(taskName string, job *vcbatchv1.Job) []string {
 	var res []string
 	for _, task := range job.Spec.Tasks {
 		if task.Name == taskName {

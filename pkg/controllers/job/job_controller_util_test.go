@@ -22,8 +22,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -62,20 +62,20 @@ func TestCreateJobPod(t *testing.T) {
 
 	testcases := []struct {
 		Name        string
-		Job         *v1alpha1.Job
+		Job         *vcbatchv1.Job
 		PodTemplate *v1.PodTemplateSpec
 		Index       int
 		ReturnVal   *v1.Pod
 	}{
 		{
 			Name: "Test Create Job Pod",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
-					Tasks: []v1alpha1.TaskSpec{
+				Spec: vcbatchv1.JobSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task1",
 							Replicas: 6,
@@ -118,13 +118,13 @@ func TestCreateJobPod(t *testing.T) {
 		},
 		{
 			Name: "Test Create Job Pod with volumes",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
-					Volumes: []v1alpha1.VolumeSpec{
+				Spec: vcbatchv1.JobSpec{
+					Volumes: []vcbatchv1.VolumeSpec{
 						{
 							VolumeClaimName: "vc1",
 						},
@@ -132,7 +132,7 @@ func TestCreateJobPod(t *testing.T) {
 							VolumeClaimName: "vc2",
 						},
 					},
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task1",
 							Replicas: 6,
@@ -175,14 +175,14 @@ func TestCreateJobPod(t *testing.T) {
 		},
 		{
 			Name: "Test Create Job Pod with volumes added to controlled resources",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					SchedulerName: "volcano",
-					Volumes: []v1alpha1.VolumeSpec{
+					Volumes: []vcbatchv1.VolumeSpec{
 						{
 							VolumeClaimName: "vc1",
 							VolumeClaim: &v1.PersistentVolumeClaimSpec{
@@ -193,7 +193,7 @@ func TestCreateJobPod(t *testing.T) {
 							VolumeClaimName: "vc2",
 						},
 					},
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task1",
 							Replicas: 6,
@@ -239,7 +239,7 @@ func TestCreateJobPod(t *testing.T) {
 	for i, testcase := range testcases {
 
 		t.Run(testcase.Name, func(t *testing.T) {
-			pod := createJobPod(testcase.Job, testcase.PodTemplate, v1alpha1.NumaPolicy(""), testcase.Index, false)
+			pod := createJobPod(testcase.Job, testcase.PodTemplate, vcbatchv1.NumaPolicy(""), testcase.Index, false)
 
 			if testcase.ReturnVal != nil && pod != nil && pod.Name != testcase.ReturnVal.Name && pod.Namespace != testcase.ReturnVal.Namespace {
 				t.Errorf("Expected Return Value to be %v but got %v in case %d", testcase.ReturnVal, pod, i)
@@ -254,20 +254,20 @@ func TestApplyPolicies(t *testing.T) {
 
 	testcases := []struct {
 		Name      string
-		Job       *v1alpha1.Job
+		Job       *vcbatchv1.Job
 		Request   *apis.Request
-		ReturnVal busv1alpha1.Action
+		ReturnVal vcbusv1.Action
 	}{
 		{
 			Name: "Test Apply policies where Action is not empty",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					SchedulerName: "volcano",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task1",
 							Replicas: 6,
@@ -289,20 +289,20 @@ func TestApplyPolicies(t *testing.T) {
 				},
 			},
 			Request: &apis.Request{
-				Action: busv1alpha1.EnqueueAction,
+				Action: vcbusv1.EnqueueAction,
 			},
-			ReturnVal: busv1alpha1.EnqueueAction,
+			ReturnVal: vcbusv1.EnqueueAction,
 		},
 		{
 			Name: "Test Apply policies where event is OutOfSync",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					SchedulerName: "volcano",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task1",
 							Replicas: 6,
@@ -324,20 +324,20 @@ func TestApplyPolicies(t *testing.T) {
 				},
 			},
 			Request: &apis.Request{
-				Event: busv1alpha1.OutOfSyncEvent,
+				Event: vcbusv1.OutOfSyncEvent,
 			},
-			ReturnVal: busv1alpha1.SyncJobAction,
+			ReturnVal: vcbusv1.SyncJobAction,
 		},
 		{
 			Name: "Test Apply policies where version is outdated",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					SchedulerName: "volcano",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task1",
 							Replicas: 6,
@@ -361,18 +361,18 @@ func TestApplyPolicies(t *testing.T) {
 			Request: &apis.Request{
 				JobVersion: 1,
 			},
-			ReturnVal: busv1alpha1.SyncJobAction,
+			ReturnVal: vcbusv1.SyncJobAction,
 		},
 		{
 			Name: "Test Apply policies where overriding job level policies and with exitcode",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					SchedulerName: "volcano",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task1",
 							Replicas: 6,
@@ -389,10 +389,10 @@ func TestApplyPolicies(t *testing.T) {
 									},
 								},
 							},
-							Policies: []v1alpha1.LifecyclePolicy{
+							Policies: []vcbatchv1.LifecyclePolicy{
 								{
-									Action:   busv1alpha1.SyncJobAction,
-									Event:    busv1alpha1.CommandIssuedEvent,
+									Action:   vcbusv1.SyncJobAction,
+									Event:    vcbusv1.CommandIssuedEvent,
 									ExitCode: &errorCode0,
 								},
 							},
@@ -403,18 +403,18 @@ func TestApplyPolicies(t *testing.T) {
 			Request: &apis.Request{
 				TaskName: "task1",
 			},
-			ReturnVal: busv1alpha1.SyncJobAction,
+			ReturnVal: vcbusv1.SyncJobAction,
 		},
 		{
 			Name: "Test Apply policies where overriding job level policies and without exitcode",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					SchedulerName: "volcano",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task1",
 							Replicas: 6,
@@ -431,10 +431,10 @@ func TestApplyPolicies(t *testing.T) {
 									},
 								},
 							},
-							Policies: []v1alpha1.LifecyclePolicy{
+							Policies: []vcbatchv1.LifecyclePolicy{
 								{
-									Action: busv1alpha1.SyncJobAction,
-									Event:  busv1alpha1.CommandIssuedEvent,
+									Action: vcbusv1.SyncJobAction,
+									Event:  vcbusv1.CommandIssuedEvent,
 								},
 							},
 						},
@@ -443,20 +443,20 @@ func TestApplyPolicies(t *testing.T) {
 			},
 			Request: &apis.Request{
 				TaskName: "task1",
-				Event:    busv1alpha1.CommandIssuedEvent,
+				Event:    vcbusv1.CommandIssuedEvent,
 			},
-			ReturnVal: busv1alpha1.SyncJobAction,
+			ReturnVal: vcbusv1.SyncJobAction,
 		},
 		{
 			Name: "Test Apply policies with job level policies",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					SchedulerName: "volcano",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task1",
 							Replicas: 6,
@@ -479,20 +479,20 @@ func TestApplyPolicies(t *testing.T) {
 			},
 			Request: &apis.Request{
 				TaskName: "task1",
-				Event:    busv1alpha1.CommandIssuedEvent,
+				Event:    vcbusv1.CommandIssuedEvent,
 			},
-			ReturnVal: busv1alpha1.SyncJobAction,
+			ReturnVal: vcbusv1.SyncJobAction,
 		},
 		{
 			Name: "Test Apply policies with job level policies",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					SchedulerName: "volcano",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task1",
 							Replicas: 6,
@@ -511,29 +511,29 @@ func TestApplyPolicies(t *testing.T) {
 							},
 						},
 					},
-					Policies: []v1alpha1.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
-							Action: busv1alpha1.SyncJobAction,
-							Event:  busv1alpha1.CommandIssuedEvent,
+							Action: vcbusv1.SyncJobAction,
+							Event:  vcbusv1.CommandIssuedEvent,
 						},
 					},
 				},
 			},
 			Request: &apis.Request{
-				Event: busv1alpha1.CommandIssuedEvent,
+				Event: vcbusv1.CommandIssuedEvent,
 			},
-			ReturnVal: busv1alpha1.SyncJobAction,
+			ReturnVal: vcbusv1.SyncJobAction,
 		},
 		{
 			Name: "Test Apply policies with job level policies with exitcode",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					SchedulerName: "volcano",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task1",
 							Replicas: 6,
@@ -552,17 +552,17 @@ func TestApplyPolicies(t *testing.T) {
 							},
 						},
 					},
-					Policies: []v1alpha1.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
-							Action:   busv1alpha1.SyncJobAction,
-							Event:    busv1alpha1.CommandIssuedEvent,
+							Action:   vcbusv1.SyncJobAction,
+							Event:    vcbusv1.CommandIssuedEvent,
 							ExitCode: &errorCode0,
 						},
 					},
 				},
 			},
 			Request:   &apis.Request{},
-			ReturnVal: busv1alpha1.SyncJobAction,
+			ReturnVal: vcbusv1.SyncJobAction,
 		},
 	}
 

@@ -32,8 +32,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 
-	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 )
 
 type TaskSpec struct {
@@ -47,7 +47,7 @@ type TaskSpec struct {
 	Limit                 v1.ResourceList
 	Affinity              *v1.Affinity
 	Labels                map[string]string
-	Policies              []batchv1alpha1.LifecyclePolicy
+	Policies              []vcbatchv1.LifecyclePolicy
 	RestartPolicy         v1.RestartPolicy
 	Tolerations           []v1.Toleration
 	DefaultGracefulPeriod *int64
@@ -60,11 +60,11 @@ type JobSpec struct {
 	Namespace string
 	Queue     string
 	Tasks     []TaskSpec
-	Policies  []batchv1alpha1.LifecyclePolicy
+	Policies  []vcbatchv1.LifecyclePolicy
 	Min       int32
 	Pri       string
 	Plugins   map[string][]string
-	Volumes   []batchv1alpha1.VolumeSpec
+	Volumes   []vcbatchv1.VolumeSpec
 	NodeName  string
 	// ttl seconds after job finished
 	Ttl        *int32
@@ -81,23 +81,23 @@ func Namespace(context *TestContext, job *JobSpec) string {
 	return context.Namespace
 }
 
-func CreateJob(context *TestContext, jobSpec *JobSpec) *batchv1alpha1.Job {
+func CreateJob(context *TestContext, jobSpec *JobSpec) *vcbatchv1.Job {
 	job, err := CreateJobInner(context, jobSpec)
 	Expect(err).NotTo(HaveOccurred(), "failed to create job %s in namespace %s", jobSpec.Name, jobSpec.Namespace)
 	return job
 }
 
 func CreateJobWithPodGroup(ctx *TestContext, jobSpec *JobSpec,
-	pgName string, annotations map[string]string) *batchv1alpha1.Job {
+	pgName string, annotations map[string]string) *vcbatchv1.Job {
 	ns := Namespace(ctx, jobSpec)
 
-	job := &batchv1alpha1.Job{
+	job := &vcbatchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        jobSpec.Name,
 			Namespace:   ns,
 			Annotations: annotations,
 		},
-		Spec: batchv1alpha1.JobSpec{
+		Spec: vcbatchv1.JobSpec{
 			Policies:                jobSpec.Policies,
 			Queue:                   jobSpec.Queue,
 			Plugins:                 jobSpec.Plugins,
@@ -117,7 +117,7 @@ func CreateJobWithPodGroup(ctx *TestContext, jobSpec *JobSpec,
 			restartPolicy = task.RestartPolicy
 		}
 
-		ts := batchv1alpha1.TaskSpec{
+		ts := vcbatchv1.TaskSpec{
 			Name:     name,
 			Replicas: task.Rep,
 			Policies: task.Policies,
@@ -138,7 +138,7 @@ func CreateJobWithPodGroup(ctx *TestContext, jobSpec *JobSpec,
 		}
 
 		if pgName != "" {
-			ts.Template.ObjectMeta.Annotations = map[string]string{schedulingv1beta1.KubeGroupNameAnnotationKey: pgName}
+			ts.Template.ObjectMeta.Annotations = map[string]string{vcschedulingv1.KubeGroupNameAnnotationKey: pgName}
 		}
 
 		if task.DefaultGracefulPeriod != nil {
@@ -166,33 +166,33 @@ func CreateJobWithPodGroup(ctx *TestContext, jobSpec *JobSpec,
 
 	job.Spec.Volumes = jobSpec.Volumes
 
-	jobCreated, err := ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+	jobCreated, err := ctx.Vcclient.BatchV1().Jobs(job.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 	Expect(err).NotTo(HaveOccurred(), "failed to create job %s in namespace %s", job.Name, job.Namespace)
 
 	return jobCreated
 }
 
-func UpdateJob(ctx *TestContext, job *batchv1alpha1.Job) error {
+func UpdateJob(ctx *TestContext, job *vcbatchv1.Job) error {
 	spec, err := json.Marshal(job.Spec)
 	if err != nil {
 		return err
 	}
 	patch := fmt.Sprintf(`[{"op": "replace", "path": "/spec", "value":%s}]`, spec)
 	patchBytes := []byte(patch)
-	_, err = ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Patch(context.TODO(),
+	_, err = ctx.Vcclient.BatchV1().Jobs(job.Namespace).Patch(context.TODO(),
 		job.Name, types.JSONPatchType, patchBytes, metav1.PatchOptions{})
 	return err
 }
 
-func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, error) {
+func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*vcbatchv1.Job, error) {
 	ns := Namespace(ctx, jobSpec)
 
-	job := &batchv1alpha1.Job{
+	job := &vcbatchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobSpec.Name,
 			Namespace: ns,
 		},
-		Spec: batchv1alpha1.JobSpec{
+		Spec: vcbatchv1.JobSpec{
 			SchedulerName:           "volcano",
 			Policies:                jobSpec.Policies,
 			Queue:                   jobSpec.Queue,
@@ -220,7 +220,7 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 			maxRetry = -1
 		}
 
-		ts := batchv1alpha1.TaskSpec{
+		ts := vcbatchv1.TaskSpec{
 			Name:     name,
 			Replicas: task.Rep,
 			Policies: task.Policies,
@@ -268,10 +268,10 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 
 	job.Spec.Volumes = jobSpec.Volumes
 
-	return ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+	return ctx.Vcclient.BatchV1().Jobs(job.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 }
 
-func WaitTaskPhase(ctx *TestContext, job *batchv1alpha1.Job, phase []v1.PodPhase, taskNum int) error {
+func WaitTaskPhase(ctx *TestContext, job *vcbatchv1.Job, phase []v1.PodPhase, taskNum int) error {
 	var additionalError error
 	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
 		pods, err := ctx.Kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{})
@@ -305,7 +305,7 @@ func WaitTaskPhase(ctx *TestContext, job *batchv1alpha1.Job, phase []v1.PodPhase
 	return err
 }
 
-func taskPhaseEx(ctx *TestContext, job *batchv1alpha1.Job, phase []v1.PodPhase, taskNum map[string]int) error {
+func taskPhaseEx(ctx *TestContext, job *vcbatchv1.Job, phase []v1.PodPhase, taskNum map[string]int) error {
 	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
 
 		pods, err := ctx.Kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{})
@@ -340,12 +340,12 @@ func taskPhaseEx(ctx *TestContext, job *batchv1alpha1.Job, phase []v1.PodPhase, 
 
 }
 
-func jobUnschedulable(ctx *TestContext, job *batchv1alpha1.Job, now time.Time) error {
+func jobUnschedulable(ctx *TestContext, job *vcbatchv1.Job, now time.Time) error {
 	var additionalError error
 	// TODO(k82cn): check Job's Condition instead of PodGroup's event.
 	err := wait.Poll(10*time.Second, FiveMinute, func() (bool, error) {
 		pgName := job.Name + "-" + string(job.UID)
-		pg, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(job.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+		pg, err := ctx.Vcclient.SchedulingV1().PodGroups(job.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 		if err != nil {
 			additionalError = fmt.Errorf("expected to have job's podgroup %s created, actual got error %s",
 				job.Name, err.Error())
@@ -376,11 +376,11 @@ func jobUnschedulable(ctx *TestContext, job *batchv1alpha1.Job, now time.Time) e
 	return err
 }
 
-func JobEvicted(ctx *TestContext, job *batchv1alpha1.Job, time time.Time) wait.ConditionFunc {
+func JobEvicted(ctx *TestContext, job *vcbatchv1.Job, time time.Time) wait.ConditionFunc {
 	// TODO(k82cn): check Job's conditions instead of PodGroup's event.
 	return func() (bool, error) {
 		pgName := job.Name + "-" + string(job.UID)
-		pg, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(job.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+		pg, err := ctx.Vcclient.SchedulingV1().PodGroups(job.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred(), "failed to get pod group of job %s in namespace %s", job.Name, job.Namespace)
 
 		events, err := ctx.Kubeclient.CoreV1().Events(pg.Namespace).List(context.TODO(), metav1.ListOptions{})
@@ -398,8 +398,8 @@ func JobEvicted(ctx *TestContext, job *batchv1alpha1.Job, time time.Time) wait.C
 	}
 }
 
-func WaitJobPhases(ctx *TestContext, job *batchv1alpha1.Job, phases []batchv1alpha1.JobPhase) error {
-	w, err := ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Watch(context.TODO(), metav1.ListOptions{})
+func WaitJobPhases(ctx *TestContext, job *vcbatchv1.Job, phases []vcbatchv1.JobPhase) error {
+	w, err := ctx.Vcclient.BatchV1().Jobs(job.Namespace).Watch(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -422,7 +422,7 @@ func WaitJobPhases(ctx *TestContext, job *batchv1alpha1.Job, phases []batchv1alp
 				return fmt.Errorf("watch channel should be always open")
 			}
 
-			newJob := event.Object.(*batchv1alpha1.Job)
+			newJob := event.Object.(*vcbatchv1.Job)
 			phase := phases[index]
 			if newJob.Name != job.Name || newJob.Namespace != job.Namespace {
 				continue
@@ -437,17 +437,17 @@ func WaitJobPhases(ctx *TestContext, job *batchv1alpha1.Job, phases []batchv1alp
 
 			var flag bool
 			switch phase {
-			case batchv1alpha1.Pending:
+			case vcbatchv1.Pending:
 				flag = (newJob.Status.Pending+newJob.Status.Succeeded+
 					newJob.Status.Failed+newJob.Status.Running) == 0 ||
 					(total-newJob.Status.Terminating >= newJob.Status.MinAvailable)
-			case batchv1alpha1.Terminating, batchv1alpha1.Aborting, batchv1alpha1.Restarting, batchv1alpha1.Completing:
+			case vcbatchv1.Terminating, vcbatchv1.Aborting, vcbatchv1.Restarting, vcbatchv1.Completing:
 				flag = newJob.Status.Terminating > 0
-			case batchv1alpha1.Terminated, batchv1alpha1.Aborted, batchv1alpha1.Completed:
+			case vcbatchv1.Terminated, vcbatchv1.Aborted, vcbatchv1.Completed:
 				flag = newJob.Status.Pending == 0 &&
 					newJob.Status.Running == 0 &&
 					newJob.Status.Terminating == 0
-			case batchv1alpha1.Running:
+			case vcbatchv1.Running:
 				flag = newJob.Status.Running >= newJob.Spec.MinAvailable
 			default:
 				return fmt.Errorf("unknown phase %s", phase)
@@ -471,7 +471,7 @@ func WaitJobPhases(ctx *TestContext, job *batchv1alpha1.Job, phases []batchv1alp
 	return nil
 }
 
-func WaitJobStates(ctx *TestContext, job *batchv1alpha1.Job, phases []batchv1alpha1.JobPhase, waitTime time.Duration) error {
+func WaitJobStates(ctx *TestContext, job *vcbatchv1.Job, phases []vcbatchv1.JobPhase, waitTime time.Duration) error {
 	for _, phase := range phases {
 		err := waitJobPhaseExpect(ctx, job, phase, waitTime)
 		if err != nil {
@@ -481,7 +481,7 @@ func WaitJobStates(ctx *TestContext, job *batchv1alpha1.Job, phases []batchv1alp
 	return nil
 }
 
-func getJobStatusDetail(job *batchv1alpha1.Job) string {
+func getJobStatusDetail(job *vcbatchv1.Job) string {
 	return fmt.Sprintf("\nName: %s\n Phase: %s\nPending: %d"+
 		"\nRunning: %d\nSucceeded: %d\nTerminating: %d\nFailed: %d\n ",
 		job.Name, job.Status.State.Phase, job.Status.Pending, job.Status.Running,
@@ -489,42 +489,42 @@ func getJobStatusDetail(job *batchv1alpha1.Job) string {
 }
 
 // WaitJobReady waits for the Job to be ready
-func WaitJobReady(ctx *TestContext, job *batchv1alpha1.Job) error {
+func WaitJobReady(ctx *TestContext, job *vcbatchv1.Job) error {
 	return WaitTasksReady(ctx, job, int(job.Spec.MinAvailable))
 }
 
 // WaitJobPending waits for the Job to be pending
-func WaitJobPending(ctx *TestContext, job *batchv1alpha1.Job) error {
+func WaitJobPending(ctx *TestContext, job *vcbatchv1.Job) error {
 	return WaitTaskPhase(ctx, job, []v1.PodPhase{v1.PodPending}, int(job.Spec.MinAvailable))
 }
 
 // WaitTasksReady waits for the tasks of a Job to be ready
-func WaitTasksReady(ctx *TestContext, job *batchv1alpha1.Job, taskNum int) error {
+func WaitTasksReady(ctx *TestContext, job *vcbatchv1.Job, taskNum int) error {
 	return WaitTaskPhase(ctx, job, []v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum)
 }
 
-func WaitTasksReadyEx(ctx *TestContext, job *batchv1alpha1.Job, taskNum map[string]int) error {
+func WaitTasksReadyEx(ctx *TestContext, job *vcbatchv1.Job, taskNum map[string]int) error {
 	return taskPhaseEx(ctx, job, []v1.PodPhase{v1.PodRunning, v1.PodSucceeded}, taskNum)
 }
 
 // WaitTasksPending waits for the tasks of a Job to be pending
-func WaitTasksPending(ctx *TestContext, job *batchv1alpha1.Job, taskNum int) error {
+func WaitTasksPending(ctx *TestContext, job *vcbatchv1.Job, taskNum int) error {
 	return WaitTaskPhase(ctx, job, []v1.PodPhase{v1.PodPending}, taskNum)
 }
 
 // WaitJobStateReady waits for the state of a Job to be ready
-func WaitJobStateReady(ctx *TestContext, job *batchv1alpha1.Job) error {
-	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Running, FiveMinute)
+func WaitJobStateReady(ctx *TestContext, job *vcbatchv1.Job) error {
+	return waitJobPhaseExpect(ctx, job, vcbatchv1.Running, FiveMinute)
 }
 
 // WaitJobStatePending waits for the state of a Job to be pending
-func WaitJobStatePending(ctx *TestContext, job *batchv1alpha1.Job) error {
-	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Pending, FiveMinute)
+func WaitJobStatePending(ctx *TestContext, job *vcbatchv1.Job) error {
+	return waitJobPhaseExpect(ctx, job, vcbatchv1.Pending, FiveMinute)
 }
 
 // WaitJobStateAborted waits for the state of a Job to be aborted
-func WaitJobStateAborted(ctx *TestContext, job *batchv1alpha1.Job) error {
-	return waitJobPhaseExpect(ctx, job, batchv1alpha1.Aborted, FiveMinute)
+func WaitJobStateAborted(ctx *TestContext, job *vcbatchv1.Job) error {
+	return waitJobPhaseExpect(ctx, job, vcbatchv1.Aborted, FiveMinute)
 }
 
 // WaitPodPhaseRunningMoreThanNum waits for the number of running pods to be more than specified number
@@ -553,10 +553,10 @@ func WaitPodPhaseRunningMoreThanNum(ctx *TestContext, namespace string, num int)
 	return err
 }
 
-func waitJobPhaseExpect(ctx *TestContext, job *batchv1alpha1.Job, state batchv1alpha1.JobPhase, waitTime time.Duration) error {
+func waitJobPhaseExpect(ctx *TestContext, job *vcbatchv1.Job, state vcbatchv1.JobPhase, waitTime time.Duration) error {
 	var additionalError error
 	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
-		job, err := ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
+		job, err := ctx.Vcclient.BatchV1().Jobs(job.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		expected := job.Status.State.Phase == state
 		if !expected {
@@ -591,7 +591,7 @@ func WaitJobPhaseReady(ctx *TestContext, job *batchv1.Job) error {
 	return err
 }
 
-func WaitJobUnschedulable(ctx *TestContext, job *batchv1alpha1.Job) error {
+func WaitJobUnschedulable(ctx *TestContext, job *vcbatchv1.Job) error {
 	now := time.Now()
 	return jobUnschedulable(ctx, job, now)
 }
@@ -635,13 +635,13 @@ func CreateContainers(img, command, workingDir string, req, limit v1.ResourceLis
 }
 
 // WaitJobCleanedUp waits for the Job to be cleaned up
-func WaitJobCleanedUp(ctx *TestContext, cleanupjob *batchv1alpha1.Job) error {
+func WaitJobCleanedUp(ctx *TestContext, cleanupjob *vcbatchv1.Job) error {
 	var additionalError error
 
 	pods := GetTasksOfJob(ctx, cleanupjob)
 
 	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
-		job, err := ctx.Vcclient.BatchV1alpha1().Jobs(cleanupjob.Namespace).Get(context.TODO(), cleanupjob.Name, metav1.GetOptions{})
+		job, err := ctx.Vcclient.BatchV1().Jobs(cleanupjob.Namespace).Get(context.TODO(), cleanupjob.Name, metav1.GetOptions{})
 		if err != nil && !errors.IsNotFound(err) {
 			return false, nil
 		}
@@ -651,7 +651,7 @@ func WaitJobCleanedUp(ctx *TestContext, cleanupjob *batchv1alpha1.Job) error {
 		}
 
 		pgName := cleanupjob.Name + "-" + string(cleanupjob.UID)
-		pg, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(cleanupjob.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+		pg, err := ctx.Vcclient.SchedulingV1().PodGroups(cleanupjob.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 		if err != nil && !errors.IsNotFound(err) {
 			return false, nil
 		}
@@ -677,7 +677,7 @@ func WaitJobCleanedUp(ctx *TestContext, cleanupjob *batchv1alpha1.Job) error {
 }
 
 // GetTasksOfJob returns the tasks belongs to the job
-func GetTasksOfJob(ctx *TestContext, job *batchv1alpha1.Job) []*v1.Pod {
+func GetTasksOfJob(ctx *TestContext, job *vcbatchv1.Job) []*v1.Pod {
 	pods, err := ctx.Kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred(), "failed to list pods in namespace %s", job.Namespace)
 
@@ -713,11 +713,11 @@ func WaitPodGone(ctx *TestContext, podName, namespace string) error {
 }
 
 // WaitJobTerminateAction waits for the Job to be terminated
-func WaitJobTerminateAction(ctx *TestContext, pg *batchv1alpha1.Job) error {
+func WaitJobTerminateAction(ctx *TestContext, pg *vcbatchv1.Job) error {
 	return wait.Poll(10*time.Second, FiveMinute, jobTerminateAction(ctx, pg, time.Now()))
 }
 
-func jobTerminateAction(ctx *TestContext, pg *batchv1alpha1.Job, time time.Time) wait.ConditionFunc {
+func jobTerminateAction(ctx *TestContext, pg *vcbatchv1.Job, time time.Time) wait.ConditionFunc {
 	return func() (bool, error) {
 		events, err := ctx.Kubeclient.CoreV1().Events(pg.Namespace).List(context.TODO(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred(), "failed to list events in namespace %s", pg.Namespace)
@@ -770,7 +770,7 @@ func IsPodScheduled(pod *v1.Pod) bool {
 }
 
 // WaitTasksCompleted waits for the tasks of a job to be completed
-func WaitTasksCompleted(ctx *TestContext, job *batchv1alpha1.Job, successNum int32) error {
+func WaitTasksCompleted(ctx *TestContext, job *vcbatchv1.Job, successNum int32) error {
 	var additionalError error
 	err := wait.Poll(100*time.Millisecond, TwoMinute, func() (bool, error) {
 		pods, err := ctx.Kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{})

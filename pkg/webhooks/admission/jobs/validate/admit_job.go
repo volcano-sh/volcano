@@ -35,8 +35,8 @@ import (
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
 	"k8s.io/kubernetes/pkg/capabilities"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
@@ -72,7 +72,7 @@ var service = &router.AdmissionService{
 					Operations: []whv1.OperationType{whv1.Create, whv1.Update},
 					Rule: whv1.Rule{
 						APIGroups:   []string{"batch.volcano.sh"},
-						APIVersions: []string{"v1alpha1"},
+						APIVersions: []string{"v1alpha1", "v1"},
 						Resources:   []string{"jobs"},
 					},
 				},
@@ -118,7 +118,7 @@ func AdmitJobs(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	return &reviewResponse
 }
 
-func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionResponse) string {
+func validateJobCreate(job *vcbatchv1.Job, reviewResponse *admissionv1.AdmissionResponse) string {
 	var msg string
 	taskNames := map[string]string{}
 	var totalReplicas int32
@@ -224,10 +224,10 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		msg += err.Error()
 	}
 
-	queue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), job.Spec.Queue, metav1.GetOptions{})
+	queue, err := config.VolcanoClient.SchedulingV1().Queues().Get(context.TODO(), job.Spec.Queue, metav1.GetOptions{})
 	if err != nil {
 		msg += fmt.Sprintf(" unable to find job queue: %v;", err)
-	} else if queue.Status.State != schedulingv1beta1.QueueStateOpen {
+	} else if queue.Status.State != vcschedulingv1.QueueStateOpen {
 		msg += fmt.Sprintf(" can only submit job to queue with state `Open`, "+
 			"queue `%s` status is `%s`;", queue.Name, queue.Status.State)
 	}
@@ -246,7 +246,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	return msg
 }
 
-func validateJobUpdate(old, new *v1alpha1.Job) error {
+func validateJobUpdate(old, new *vcbatchv1.Job) error {
 	var totalReplicas int32
 	for _, task := range new.Spec.Tasks {
 		if task.Replicas < 0 {
@@ -301,7 +301,7 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	return nil
 }
 
-func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) string {
+func validateTaskTemplate(task vcbatchv1.TaskSpec, job *vcbatchv1.Job, index int) string {
 	var v1PodTemplate v1.PodTemplate
 	v1PodTemplate.Template = *task.Template.DeepCopy()
 	k8scorev1.SetObjectDefaults_PodTemplate(&v1PodTemplate)
@@ -341,15 +341,15 @@ func validateK8sPodNameLength(podName string) string {
 	return ""
 }
 
-func validateJobName(job *v1alpha1.Job) string {
+func validateJobName(job *vcbatchv1.Job) string {
 	if errMsgs := validation.IsQualifiedName(job.Name); len(errMsgs) > 0 {
 		return fmt.Sprintf("create job with name %s validate failed %v", job.Name, errMsgs)
 	}
 	return ""
 }
 
-func validateTaskTopoPolicy(task v1alpha1.TaskSpec, index int) string {
-	if task.TopologyPolicy == "" || task.TopologyPolicy == v1alpha1.None {
+func validateTaskTopoPolicy(task vcbatchv1.TaskSpec, index int) string {
+	if task.TopologyPolicy == "" || task.TopologyPolicy == vcbatchv1.None {
 		return ""
 	}
 

@@ -27,15 +27,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
-	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
 var _ = Describe("Reclaim E2E Test", func() {
 
-	CreateReclaimJob := func(ctx *e2eutil.TestContext, req v1.ResourceList, name string, queue string, pri string, nodeName string, waitTaskReady bool) (*batchv1alpha1.Job, error) {
+	CreateReclaimJob := func(ctx *e2eutil.TestContext, req v1.ResourceList, name string, queue string, pri string, nodeName string, waitTaskReady bool) (*vcbatchv1.Job, error) {
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
 				{
@@ -43,7 +43,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 					Req:    req,
 					Min:    1,
 					Rep:    1,
-					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
+					Labels: map[string]string{vcschedulingv1.PodPreemptable: "true"},
 				},
 			},
 			Name:     name,
@@ -65,13 +65,13 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 	WaitQueueStatus := func(ctx *e2eutil.TestContext, status string, num int32, queue string) error {
 		err := e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), queue, metav1.GetOptions{})
+			queue, err := ctx.Vcclient.SchedulingV1().Queues().Get(context.TODO(), queue, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", queue)
 			switch status {
 			case "Running":
 				return queue.Status.Running == num, nil
 			case "Open":
-				return queue.Status.State == schedulingv1beta1.QueueStateOpen, nil
+				return queue.Status.State == vcschedulingv1.QueueStateOpen, nil
 			case "Pending":
 				return queue.Status.Pending == num, nil
 			case "Inqueue":
@@ -166,7 +166,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 		// delete pod of job3 to make sure reclaim-j3 podgroup is pending
 		listOptions := metav1.ListOptions{
-			LabelSelector: labels.Set(map[string]string{batchv1alpha1.JobNameKey: j3}).String(),
+			LabelSelector: labels.Set(map[string]string{vcbatchv1.JobNameKey: j3}).String(),
 		}
 
 		job3pods, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).List(context.TODO(), listOptions)
@@ -493,7 +493,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 					Req:    e2eutil.CPU1Mem1,
 					Min:    1,
 					Rep:    2,
-					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
+					Labels: map[string]string{vcschedulingv1.PodPreemptable: "true"},
 				},
 			},
 		}
@@ -558,7 +558,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 					Req:    slot,
 					Min:    1,
 					Rep:    rep,
-					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
+					Labels: map[string]string{vcschedulingv1.PodPreemptable: "true"},
 				},
 			},
 		}
@@ -571,7 +571,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		err = e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			queue, err := ctx.Vcclient.SchedulingV1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			return queue.Status.Running == 1, nil
 		})
@@ -613,7 +613,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		err = e2eutil.WaitJobStatePending(ctx, job3)
 		Expect(err).NotTo(HaveOccurred())
 		err = e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			queue, err := ctx.Vcclient.SchedulingV1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			return queue.Status.Pending == 1, nil
 		})

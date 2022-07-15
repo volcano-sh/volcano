@@ -22,18 +22,18 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
 func TestMpi(t *testing.T) {
 	plugins := make(map[string][]string)
 	plugins[MPIPluginName] = []string{"--port=5000"}
-	testjob5000 := &v1alpha1.Job{
+	testjob5000 := &vcbatchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-mpi-1"},
-		Spec: v1alpha1.JobSpec{
+		Spec: vcbatchv1.JobSpec{
 			Plugins: plugins,
-			Tasks: []v1alpha1.TaskSpec{
+			Tasks: []vcbatchv1.TaskSpec{
 				{
 					Name:     "fakeMaster",
 					Replicas: 1,
@@ -50,16 +50,16 @@ func TestMpi(t *testing.T) {
 
 	testcases := []struct {
 		Name string
-		Job  *v1alpha1.Job
+		Job  *vcbatchv1.Job
 		Pod  *v1.Pod
 		port int
 	}{
 		{
 			Name: "add port",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-mpi-0"},
-				Spec: v1alpha1.JobSpec{
-					Tasks: []v1alpha1.TaskSpec{
+				Spec: vcbatchv1.JobSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "fakeMaster",
 							Replicas: 1,

@@ -23,15 +23,15 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
 func TestTensorflow(t *testing.T) {
-	testjob := &batch.Job{
+	testjob := &vcbatchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{Name: "train-123"},
-		Spec: batch.JobSpec{
-			Tasks: []batch.TaskSpec{
+		Spec: vcbatchv1.JobSpec{
+			Tasks: []vcbatchv1.TaskSpec{
 				{
 					Name:     "ps",
 					Replicas: 2,
@@ -52,7 +52,7 @@ func TestTensorflow(t *testing.T) {
 	}
 	testcases := []struct {
 		Name string
-		Job  *batch.Job
+		Job  *vcbatchv1.Job
 		Pod  *v1.Pod
 	}{
 		{
@@ -62,7 +62,7 @@ func TestTensorflow(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "train-123-ps-0",
 					Annotations: map[string]string{
-						batch.TaskSpecKey: "ps",
+						vcbatchv1.TaskSpecKey: "ps",
 					},
 				},
 				Spec: v1.PodSpec{
@@ -81,7 +81,7 @@ func TestTensorflow(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "train-123-worker-0",
 					Annotations: map[string]string{
-						batch.TaskSpecKey: "worker",
+						vcbatchv1.TaskSpecKey: "worker",
 					},
 				},
 				Spec: v1.PodSpec{
@@ -100,7 +100,7 @@ func TestTensorflow(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "train-123-chief-0",
 					Annotations: map[string]string{
-						batch.TaskSpecKey: "chief",
+						vcbatchv1.TaskSpecKey: "chief",
 					},
 				},
 				Spec: v1.PodSpec{

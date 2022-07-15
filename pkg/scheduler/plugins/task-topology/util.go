@@ -17,7 +17,7 @@ limitations under the License.
 package tasktopology
 
 import (
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
@@ -67,7 +67,7 @@ func calculateWeight(args framework.Arguments) int {
 }
 
 func getTaskName(task *api.TaskInfo) string {
-	return task.Pod.Annotations[v1alpha1.TaskSpecKey]
+	return task.Pod.Annotations[vcbatchv1.TaskSpecKey]
 }
 
 func addAffinity(m map[string]map[string]struct{}, src, dst string) {

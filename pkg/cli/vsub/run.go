@@ -27,7 +27,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/cli/util"
 )
@@ -149,7 +149,7 @@ func RunJob() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	newJob, err := jobClient.BatchV1alpha1().Jobs(launchJobFlags.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+	newJob, err := jobClient.BatchV1().Jobs(launchJobFlags.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 	if err != nil {
 		return err
 	}
@@ -163,7 +163,7 @@ func RunJob() error {
 	return nil
 }
 
-func constructLaunchJobFlagsJob(launchJobFlags *runFlags, req, limit v1.ResourceList) (*vcbatch.Job, error) {
+func constructLaunchJobFlagsJob(launchJobFlags *runFlags, req, limit v1.ResourceList) (*vcbatchv1.Job, error) {
 	var commands []string
 
 	if launchJobFlags.Command != "" {
@@ -173,15 +173,15 @@ func constructLaunchJobFlagsJob(launchJobFlags *runFlags, req, limit v1.Resource
 		}
 	}
 
-	return &vcbatch.Job{
+	return &vcbatchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      launchJobFlags.Name,
 			Namespace: launchJobFlags.Namespace,
 		},
-		Spec: vcbatch.JobSpec{
+		Spec: vcbatchv1.JobSpec{
 			MinAvailable:  int32(launchJobFlags.MinAvailable),
 			SchedulerName: launchJobFlags.SchedulerName,
-			Tasks: []vcbatch.TaskSpec{
+			Tasks: []vcbatchv1.TaskSpec{
 				{
 					Replicas: int32(launchJobFlags.Replicas),
 

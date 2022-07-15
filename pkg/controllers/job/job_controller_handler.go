@@ -28,17 +28,17 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	bus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	"volcano.sh/apis/pkg/apis/helpers"
-	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobcache "volcano.sh/volcano/pkg/controllers/cache"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
 
 func (cc *jobcontroller) addCommand(obj interface{}) {
-	cmd, ok := obj.(*bus.Command)
+	cmd, ok := obj.(*vcbusv1.Command)
 	if !ok {
 		klog.Errorf("obj is not Command")
 		return
@@ -48,7 +48,7 @@ func (cc *jobcontroller) addCommand(obj interface{}) {
 }
 
 func (cc *jobcontroller) addJob(obj interface{}) {
-	job, ok := obj.(*batch.Job)
+	job, ok := obj.(*vcbatchv1.Job)
 	if !ok {
 		klog.Errorf("obj is not Job")
 		return
@@ -58,7 +58,7 @@ func (cc *jobcontroller) addJob(obj interface{}) {
 		Namespace: job.Namespace,
 		JobName:   job.Name,
 
-		Event: bus.OutOfSyncEvent,
+		Event: vcbusv1.OutOfSyncEvent,
 	}
 
 	// TODO(k82cn): if failed to add job, the cache should be refresh
@@ -72,13 +72,13 @@ func (cc *jobcontroller) addJob(obj interface{}) {
 }
 
 func (cc *jobcontroller) updateJob(oldObj, newObj interface{}) {
-	newJob, ok := newObj.(*batch.Job)
+	newJob, ok := newObj.(*vcbatchv1.Job)
 	if !ok {
 		klog.Errorf("newObj is not Job")
 		return
 	}
 
-	oldJob, ok := oldObj.(*batch.Job)
+	oldJob, ok := oldObj.(*vcbatchv1.Job)
 	if !ok {
 		klog.Errorf("oldJob is not Job")
 		return
@@ -105,7 +105,7 @@ func (cc *jobcontroller) updateJob(oldObj, newObj interface{}) {
 	req := apis.Request{
 		Namespace: newJob.Namespace,
 		JobName:   newJob.Name,
-		Event:     bus.OutOfSyncEvent,
+		Event:     vcbusv1.OutOfSyncEvent,
 	}
 	key := jobhelpers.GetJobKeyByReq(&req)
 	queue := cc.getWorkerQueue(key)
@@ -113,7 +113,7 @@ func (cc *jobcontroller) updateJob(oldObj, newObj interface{}) {
 }
 
 func (cc *jobcontroller) deleteJob(obj interface{}) {
-	job, ok := obj.(*batch.Job)
+	job, ok := obj.(*vcbatchv1.Job)
 	if !ok {
 		// If we reached here it means the Job was deleted but its final state is unrecorded.
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -121,7 +121,7 @@ func (cc *jobcontroller) deleteJob(obj interface{}) {
 			klog.Errorf("Couldn't get object from tombstone %#v", obj)
 			return
 		}
-		job, ok = tombstone.Obj.(*batch.Job)
+		job, ok = tombstone.Obj.(*vcbatchv1.Job)
 		if !ok {
 			klog.Errorf("Tombstone contained object that is not a volcano Job: %#v", obj)
 			return
@@ -141,18 +141,18 @@ func (cc *jobcontroller) addPod(obj interface{}) {
 		return
 	}
 	// Filter out pods that are not created from volcano job
-	if !isControlledBy(pod, helpers.JobKind) {
+	if !isControlledBy(pod, helpers.V1JobKind) {
 		return
 	}
 
-	jobName, found := pod.Annotations[batch.JobNameKey]
+	jobName, found := pod.Annotations[vcbatchv1.JobNameKey]
 	if !found {
 		klog.Infof("Failed to find jobName of Pod <%s/%s>, skipping",
 			pod.Namespace, pod.Name)
 		return
 	}
 
-	version, found := pod.Annotations[batch.JobVersion]
+	version, found := pod.Annotations[vcbatchv1.JobVersion]
 	if !found {
 		klog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
 			pod.Namespace, pod.Name)
@@ -175,7 +175,7 @@ func (cc *jobcontroller) addPod(obj interface{}) {
 		Namespace: pod.Namespace,
 		JobName:   jobName,
 
-		Event:      bus.OutOfSyncEvent,
+		Event:      vcbusv1.OutOfSyncEvent,
 		JobVersion: int32(dVersion),
 	}
 
@@ -202,7 +202,7 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 	}
 
 	// Filter out pods that are not created from volcano job
-	if !isControlledBy(newPod, helpers.JobKind) {
+	if !isControlledBy(newPod, helpers.V1JobKind) {
 		return
 	}
 
@@ -215,21 +215,21 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 		return
 	}
 
-	taskName, found := newPod.Annotations[batch.TaskSpecKey]
+	taskName, found := newPod.Annotations[vcbatchv1.TaskSpecKey]
 	if !found {
 		klog.Infof("Failed to find taskName of Pod <%s/%s>, skipping",
 			newPod.Namespace, newPod.Name)
 		return
 	}
 
-	jobName, found := newPod.Annotations[batch.JobNameKey]
+	jobName, found := newPod.Annotations[vcbatchv1.JobNameKey]
 	if !found {
 		klog.Infof("Failed to find jobName of Pod <%s/%s>, skipping",
 			newPod.Namespace, newPod.Name)
 		return
 	}
 
-	version, found := newPod.Annotations[batch.JobVersion]
+	version, found := newPod.Annotations[vcbatchv1.JobVersion]
 	if !found {
 		klog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
 			newPod.Namespace, newPod.Name)
@@ -248,13 +248,13 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 			newPod.Namespace, newPod.Name, err)
 	}
 
-	event := bus.OutOfSyncEvent
+	event := vcbusv1.OutOfSyncEvent
 	var exitCode int32
 
 	switch newPod.Status.Phase {
 	case v1.PodFailed:
 		if oldPod.Status.Phase != v1.PodFailed {
-			event = bus.PodFailedEvent
+			event = vcbusv1.PodFailedEvent
 			// TODO: currently only one container pod is supported by volcano
 			// Once multi containers pod is supported, update accordingly.
 			if len(newPod.Status.ContainerStatuses) > 0 && newPod.Status.ContainerStatuses[0].State.Terminated != nil {
@@ -264,11 +264,11 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 	case v1.PodSucceeded:
 		if oldPod.Status.Phase != v1.PodSucceeded &&
 			cc.cache.TaskCompleted(jobcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
-			event = bus.TaskCompletedEvent
+			event = vcbusv1.TaskCompletedEvent
 		}
 	case v1.PodPending, v1.PodRunning:
 		if cc.cache.TaskFailed(jobcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
-			event = bus.TaskFailedEvent
+			event = vcbusv1.TaskFailedEvent
 		}
 	}
 
@@ -304,25 +304,25 @@ func (cc *jobcontroller) deletePod(obj interface{}) {
 	}
 
 	// Filter out pods that are not created from volcano job
-	if !isControlledBy(pod, helpers.JobKind) {
+	if !isControlledBy(pod, helpers.V1JobKind) {
 		return
 	}
 
-	taskName, found := pod.Annotations[batch.TaskSpecKey]
+	taskName, found := pod.Annotations[vcbatchv1.TaskSpecKey]
 	if !found {
 		klog.Infof("Failed to find taskName of Pod <%s/%s>, skipping",
 			pod.Namespace, pod.Name)
 		return
 	}
 
-	jobName, found := pod.Annotations[batch.JobNameKey]
+	jobName, found := pod.Annotations[vcbatchv1.JobNameKey]
 	if !found {
 		klog.Infof("Failed to find jobName of Pod <%s/%s>, skipping",
 			pod.Namespace, pod.Name)
 		return
 	}
 
-	version, found := pod.Annotations[batch.JobVersion]
+	version, found := pod.Annotations[vcbatchv1.JobVersion]
 	if !found {
 		klog.Infof("Failed to find jobVersion of Pod <%s/%s>, skipping",
 			pod.Namespace, pod.Name)
@@ -341,7 +341,7 @@ func (cc *jobcontroller) deletePod(obj interface{}) {
 		JobName:   jobName,
 		TaskName:  taskName,
 
-		Event:      bus.PodEvictedEvent,
+		Event:      vcbusv1.PodEvictedEvent,
 		JobVersion: int32(dVersion),
 	}
 
@@ -355,7 +355,7 @@ func (cc *jobcontroller) deletePod(obj interface{}) {
 	queue.Add(req)
 }
 
-func (cc *jobcontroller) recordJobEvent(namespace, name string, event batch.JobEvent, message string) {
+func (cc *jobcontroller) recordJobEvent(namespace, name string, event vcbatchv1.JobEvent, message string) {
 	job, err := cc.cache.Get(jobcache.JobKeyByName(namespace, name))
 	if err != nil {
 		klog.Warningf("Failed to find job in cache when reporting job event <%s/%s>: %v",
@@ -375,10 +375,10 @@ func (cc *jobcontroller) processNextCommand() bool {
 	if shutdown {
 		return false
 	}
-	cmd := obj.(*bus.Command)
+	cmd := obj.(*vcbusv1.Command)
 	defer cc.commandQueue.Done(cmd)
 
-	if err := cc.vcClient.BusV1alpha1().Commands(cmd.Namespace).Delete(context.TODO(), cmd.Name, metav1.DeleteOptions{}); err != nil {
+	if err := cc.vcClient.BusV1().Commands(cmd.Namespace).Delete(context.TODO(), cmd.Name, metav1.DeleteOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to delete Command <%s/%s>.", cmd.Namespace, cmd.Name)
 			cc.commandQueue.AddRateLimited(cmd)
@@ -386,14 +386,14 @@ func (cc *jobcontroller) processNextCommand() bool {
 		return true
 	}
 	cc.recordJobEvent(cmd.Namespace, cmd.TargetObject.Name,
-		batch.CommandIssued,
+		vcbatchv1.CommandIssued,
 		fmt.Sprintf(
 			"Start to execute command %s, and clean it up to make sure executed not more than once.", cmd.Action))
 	req := apis.Request{
 		Namespace: cmd.Namespace,
 		JobName:   cmd.TargetObject.Name,
-		Event:     bus.CommandIssuedEvent,
-		Action:    bus.Action(cmd.Action),
+		Event:     vcbusv1.CommandIssuedEvent,
+		Action:    vcbusv1.Action(cmd.Action),
 	}
 
 	key := jobhelpers.GetJobKeyByReq(&req)
@@ -404,13 +404,13 @@ func (cc *jobcontroller) processNextCommand() bool {
 }
 
 func (cc *jobcontroller) updatePodGroup(oldObj, newObj interface{}) {
-	oldPG, ok := oldObj.(*scheduling.PodGroup)
+	oldPG, ok := oldObj.(*vcschedulingv1.PodGroup)
 	if !ok {
 		klog.Errorf("Failed to convert %v to PodGroup", newObj)
 		return
 	}
 
-	newPG, ok := newObj.(*scheduling.PodGroup)
+	newPG, ok := newObj.(*vcschedulingv1.PodGroup)
 	if !ok {
 		klog.Errorf("Failed to convert %v to PodGroup", newObj)
 		return
@@ -436,8 +436,8 @@ func (cc *jobcontroller) updatePodGroup(oldObj, newObj interface{}) {
 			JobName:   jobNameKey,
 		}
 		switch newPG.Status.Phase {
-		case scheduling.PodGroupUnknown:
-			req.Event = bus.JobUnknownEvent
+		case vcschedulingv1.PodGroupUnknown:
+			req.Event = vcbusv1.JobUnknownEvent
 		}
 		key := jobhelpers.GetJobKeyByReq(&req)
 		queue := cc.getWorkerQueue(key)

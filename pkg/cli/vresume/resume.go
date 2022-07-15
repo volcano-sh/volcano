@@ -21,7 +21,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	"volcano.sh/volcano/pkg/cli/util"
 )
 
@@ -55,5 +55,5 @@ func ResumeJob() error {
 
 	return util.CreateJobCommand(config,
 		resumeJobFlags.Namespace, resumeJobFlags.JobName,
-		v1alpha1.ResumeJobAction)
+		vcbusv1.ResumeJobAction)
 }

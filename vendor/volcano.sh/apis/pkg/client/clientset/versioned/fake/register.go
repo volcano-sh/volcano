@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Volcano Authors.
+Copyright 2022 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,10 +23,13 @@ import (
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	batchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	busv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	flowv1alpha1 "volcano.sh/apis/pkg/apis/flow/v1alpha1"
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
+	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
@@ -35,10 +38,13 @@ var codecs = serializer.NewCodecFactory(scheme)
 
 var localSchemeBuilder = runtime.SchemeBuilder{
 	batchv1alpha1.AddToScheme,
+	batchv1.AddToScheme,
 	busv1alpha1.AddToScheme,
+	busv1.AddToScheme,
 	flowv1alpha1.AddToScheme,
 	nodeinfov1alpha1.AddToScheme,
 	schedulingv1beta1.AddToScheme,
+	schedulingv1.AddToScheme,
 }
 
 // AddToScheme adds all types of this clientset into the given scheme. This allows composition

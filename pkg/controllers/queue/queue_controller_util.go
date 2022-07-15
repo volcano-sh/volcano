@@ -19,7 +19,7 @@ package queue
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 )
 
 // IsQueueReference return if ownerReference is Queue Kind.
@@ -28,7 +28,7 @@ func IsQueueReference(ref *metav1.OwnerReference) bool {
 		return false
 	}
 
-	if ref.APIVersion != schedulingv1beta1.SchemeGroupVersion.String() {
+	if ref.APIVersion != vcschedulingv1.SchemeGroupVersion.String() {
 		return false
 	}
 

@@ -23,7 +23,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -81,19 +81,19 @@ func TestGetTasklndexUnderJobFunc(t *testing.T) {
 	testCases := []struct {
 		Name     string
 		TaskName string
-		Job      *batch.Job
+		Job      *vcbatchv1.Job
 		Expect   int
 	}{
 		{
 			Name:     "GetTasklndexUnderJob1",
 			TaskName: "task1",
-			Job: &batch.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: batch.JobSpec{
-					Tasks: []batch.TaskSpec{
+				Spec: vcbatchv1.JobSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task1",
 							Replicas: 2,
@@ -136,13 +136,13 @@ func TestGetTasklndexUnderJobFunc(t *testing.T) {
 		{
 			Name:     "GetTasklndexUnderJob2",
 			TaskName: "task2",
-			Job: &batch.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: batch.JobSpec{
-					Tasks: []batch.TaskSpec{
+				Spec: vcbatchv1.JobSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task1",
 							Replicas: 2,
@@ -199,19 +199,19 @@ func TestGetPodsNameUnderTaskFunc(t *testing.T) {
 	testCases := []struct {
 		Name     string
 		TaskName string
-		Job      *batch.Job
+		Job      *vcbatchv1.Job
 		Expect   []string
 	}{
 		{
 			Name:     "GetTasklndexUnderJob1",
 			TaskName: "task1",
-			Job: &batch.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: batch.JobSpec{
-					Tasks: []batch.TaskSpec{
+				Spec: vcbatchv1.JobSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task1",
 							Replicas: 2,
@@ -254,13 +254,13 @@ func TestGetPodsNameUnderTaskFunc(t *testing.T) {
 		{
 			Name:     "GetTasklndexUnderJob2",
 			TaskName: "task2",
-			Job: &batch.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: batch.JobSpec{
-					Tasks: []batch.TaskSpec{
+				Spec: vcbatchv1.JobSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task1",
 							Replicas: 2,

@@ -19,7 +19,7 @@ package apis
 import (
 	"fmt"
 
-	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 )
 
 //Request struct.
@@ -29,9 +29,9 @@ type Request struct {
 	TaskName  string
 	QueueName string
 
-	Event      v1alpha1.Event
+	Event      vcbusv1.Event
 	ExitCode   int32
-	Action     v1alpha1.Action
+	Action     vcbusv1.Action
 	JobVersion int32
 }
 

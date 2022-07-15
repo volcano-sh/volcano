@@ -24,14 +24,20 @@ import (
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	"k8s.io/client-go/testing"
 	clientset "volcano.sh/apis/pkg/client/clientset/versioned"
+	batchv1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/batch/v1"
+	fakebatchv1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/batch/v1/fake"
 	batchv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/batch/v1alpha1"
 	fakebatchv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/batch/v1alpha1/fake"
+	busv1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/bus/v1"
+	fakebusv1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/bus/v1/fake"
 	busv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/bus/v1alpha1"
 	fakebusv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/bus/v1alpha1/fake"
 	flowv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/flow/v1alpha1"
 	fakeflowv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/flow/v1alpha1/fake"
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/nodeinfo/v1alpha1"
 	fakenodeinfov1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/nodeinfo/v1alpha1/fake"
+	schedulingv1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/scheduling/v1"
+	fakeschedulingv1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/scheduling/v1/fake"
 	schedulingv1beta1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/scheduling/v1beta1"
 	fakeschedulingv1beta1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/scheduling/v1beta1/fake"
 )
@@ -91,9 +97,19 @@ func (c *Clientset) BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface {
 	return &fakebatchv1alpha1.FakeBatchV1alpha1{Fake: &c.Fake}
 }
 
+// BatchV1 retrieves the BatchV1Client
+func (c *Clientset) BatchV1() batchv1.BatchV1Interface {
+	return &fakebatchv1.FakeBatchV1{Fake: &c.Fake}
+}
+
 // BusV1alpha1 retrieves the BusV1alpha1Client
 func (c *Clientset) BusV1alpha1() busv1alpha1.BusV1alpha1Interface {
 	return &fakebusv1alpha1.FakeBusV1alpha1{Fake: &c.Fake}
+}
+
+// BusV1 retrieves the BusV1Client
+func (c *Clientset) BusV1() busv1.BusV1Interface {
+	return &fakebusv1.FakeBusV1{Fake: &c.Fake}
 }
 
 // FlowV1alpha1 retrieves the FlowV1alpha1Client
@@ -109,4 +125,9 @@ func (c *Clientset) NodeinfoV1alpha1() nodeinfov1alpha1.NodeinfoV1alpha1Interfac
 // SchedulingV1beta1 retrieves the SchedulingV1beta1Client
 func (c *Clientset) SchedulingV1beta1() schedulingv1beta1.SchedulingV1beta1Interface {
 	return &fakeschedulingv1beta1.FakeSchedulingV1beta1{Fake: &c.Fake}
+}
+
+// SchedulingV1 retrieves the SchedulingV1Client
+func (c *Clientset) SchedulingV1() schedulingv1.SchedulingV1Interface {
+	return &fakeschedulingv1.FakeSchedulingV1{Fake: &c.Fake}
 }

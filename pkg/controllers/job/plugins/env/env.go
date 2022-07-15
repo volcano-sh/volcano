@@ -19,7 +19,7 @@ package env
 import (
 	v1 "k8s.io/api/core/v1"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
@@ -42,7 +42,7 @@ func (ep *envPlugin) Name() string {
 	return "env"
 }
 
-func (ep *envPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
+func (ep *envPlugin) OnPodCreate(pod *v1.Pod, job *vcbatchv1.Job) error {
 	index := jobhelpers.GetPodIndexUnderTask(pod)
 
 	// add VK_TASK_INDEX and VC_TASK_INDEX env to each container
@@ -60,7 +60,7 @@ func (ep *envPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	return nil
 }
 
-func (ep *envPlugin) OnJobAdd(job *batch.Job) error {
+func (ep *envPlugin) OnJobAdd(job *vcbatchv1.Job) error {
 	if job.Status.ControlledResources["plugin-"+ep.Name()] == ep.Name() {
 		return nil
 	}
@@ -70,7 +70,7 @@ func (ep *envPlugin) OnJobAdd(job *batch.Job) error {
 	return nil
 }
 
-func (ep *envPlugin) OnJobDelete(job *batch.Job) error {
+func (ep *envPlugin) OnJobDelete(job *vcbatchv1.Job) error {
 	if job.Status.ControlledResources["plugin-"+ep.Name()] != ep.Name() {
 		return nil
 	}
@@ -78,6 +78,6 @@ func (ep *envPlugin) OnJobDelete(job *batch.Job) error {
 	return nil
 }
 
-func (ep *envPlugin) OnJobUpdate(job *batch.Job) error {
+func (ep *envPlugin) OnJobUpdate(job *vcbatchv1.Job) error {
 	return nil
 }

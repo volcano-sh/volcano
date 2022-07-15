@@ -20,8 +20,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
 
-	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -30,27 +30,27 @@ func (c *queuecontroller) enqueue(req *apis.Request) {
 }
 
 func (c *queuecontroller) addQueue(obj interface{}) {
-	queue := obj.(*schedulingv1beta1.Queue)
+	queue := obj.(*vcschedulingv1.Queue)
 
 	req := &apis.Request{
 		QueueName: queue.Name,
 
-		Event:  busv1alpha1.OutOfSyncEvent,
-		Action: busv1alpha1.SyncQueueAction,
+		Event:  vcbusv1.OutOfSyncEvent,
+		Action: vcbusv1.SyncQueueAction,
 	}
 
 	c.enqueue(req)
 }
 
 func (c *queuecontroller) deleteQueue(obj interface{}) {
-	queue, ok := obj.(*schedulingv1beta1.Queue)
+	queue, ok := obj.(*vcschedulingv1.Queue)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			klog.Errorf("Couldn't get object from tombstone %#v.", obj)
 			return
 		}
-		queue, ok = tombstone.Obj.(*schedulingv1beta1.Queue)
+		queue, ok = tombstone.Obj.(*vcschedulingv1.Queue)
 		if !ok {
 			klog.Errorf("Tombstone contained object that is not a Queue: %#v.", obj)
 			return
@@ -67,7 +67,7 @@ func (c *queuecontroller) updateQueue(_, _ interface{}) {
 }
 
 func (c *queuecontroller) addPodGroup(obj interface{}) {
-	pg := obj.(*schedulingv1beta1.PodGroup)
+	pg := obj.(*vcschedulingv1.PodGroup)
 	key, _ := cache.MetaNamespaceKeyFunc(obj)
 
 	c.pgMutex.Lock()
@@ -81,16 +81,16 @@ func (c *queuecontroller) addPodGroup(obj interface{}) {
 	req := &apis.Request{
 		QueueName: pg.Spec.Queue,
 
-		Event:  busv1alpha1.OutOfSyncEvent,
-		Action: busv1alpha1.SyncQueueAction,
+		Event:  vcbusv1.OutOfSyncEvent,
+		Action: vcbusv1.SyncQueueAction,
 	}
 
 	c.enqueue(req)
 }
 
 func (c *queuecontroller) updatePodGroup(old, new interface{}) {
-	oldPG := old.(*schedulingv1beta1.PodGroup)
-	newPG := new.(*schedulingv1beta1.PodGroup)
+	oldPG := old.(*vcschedulingv1.PodGroup)
+	newPG := new.(*vcschedulingv1.PodGroup)
 
 	// Note: we have no use case update PodGroup.Spec.Queue
 	// So do not consider it here.
@@ -100,14 +100,14 @@ func (c *queuecontroller) updatePodGroup(old, new interface{}) {
 }
 
 func (c *queuecontroller) deletePodGroup(obj interface{}) {
-	pg, ok := obj.(*schedulingv1beta1.PodGroup)
+	pg, ok := obj.(*vcschedulingv1.PodGroup)
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			klog.Errorf("Couldn't get object from tombstone %#v.", obj)
 			return
 		}
-		pg, ok = tombstone.Obj.(*schedulingv1beta1.PodGroup)
+		pg, ok = tombstone.Obj.(*vcschedulingv1.PodGroup)
 		if !ok {
 			klog.Errorf("Tombstone contained object that is not a PodGroup: %#v.", obj)
 			return
@@ -124,15 +124,15 @@ func (c *queuecontroller) deletePodGroup(obj interface{}) {
 	req := &apis.Request{
 		QueueName: pg.Spec.Queue,
 
-		Event:  busv1alpha1.OutOfSyncEvent,
-		Action: busv1alpha1.SyncQueueAction,
+		Event:  vcbusv1.OutOfSyncEvent,
+		Action: vcbusv1.SyncQueueAction,
 	}
 
 	c.enqueue(req)
 }
 
 func (c *queuecontroller) addCommand(obj interface{}) {
-	cmd, ok := obj.(*busv1alpha1.Command)
+	cmd, ok := obj.(*vcbusv1.Command)
 	if !ok {
 		klog.Errorf("Obj %v is not command.", obj)
 		return

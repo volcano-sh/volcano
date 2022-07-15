@@ -12,7 +12,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
 
-	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -72,7 +72,7 @@ func TestHDRF(t *testing.T) {
 		name       string
 		pgSpecs    []pgSpec
 		nodes      []*v1.Node
-		queues     []*schedulingv1.Queue
+		queues     []*vcschedulingv1.Queue
 		queueSpecs []queueSpec
 		expected   map[string]string
 	}{
@@ -223,16 +223,16 @@ func TestHDRF(t *testing.T) {
 			schedulerCache.AddNode(node)
 		}
 		for _, q := range test.queueSpecs {
-			schedulerCache.AddQueueV1beta1(
-				&schedulingv1.Queue{
+			schedulerCache.AddQueueV1(
+				&vcschedulingv1.Queue{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: q.name,
 						Annotations: map[string]string{
-							schedulingv1.KubeHierarchyAnnotationKey:       q.hierarchy,
-							schedulingv1.KubeHierarchyWeightAnnotationKey: q.weights,
+							vcschedulingv1.KubeHierarchyAnnotationKey:       q.hierarchy,
+							vcschedulingv1.KubeHierarchyWeightAnnotationKey: q.weights,
 						},
 					},
-					Spec: schedulingv1.QueueSpec{
+					Spec: vcschedulingv1.QueueSpec{
 						Weight: 1,
 					},
 				})
@@ -242,16 +242,16 @@ func TestHDRF(t *testing.T) {
 			for _, pod := range pods {
 				schedulerCache.AddPod(pod)
 			}
-			schedulerCache.AddPodGroupV1beta1(&schedulingv1.PodGroup{
+			schedulerCache.AddPodGroupV1(&vcschedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      pgSpec.pg,
 					Namespace: "default",
 				},
-				Spec: schedulingv1.PodGroupSpec{
+				Spec: vcschedulingv1.PodGroupSpec{
 					Queue: pgSpec.queue,
 				},
-				Status: schedulingv1.PodGroupStatus{
-					Phase: schedulingv1.PodGroupInqueue,
+				Status: vcschedulingv1.PodGroupStatus{
+					Phase: vcschedulingv1.PodGroupInqueue,
 				},
 			})
 		}

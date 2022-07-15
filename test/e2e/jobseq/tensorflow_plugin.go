@@ -25,8 +25,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
@@ -38,23 +38,23 @@ var _ = Describe("TensorFlow Plugin E2E Test", func() {
 
 		jobName := "tensorflow-dist-mnist"
 
-		job := &vcbatch.Job{
+		job := &vcbatchv1.Job{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: jobName,
 			},
-			Spec: vcbatch.JobSpec{
+			Spec: vcbatchv1.JobSpec{
 				MinAvailable:  int32(3),
 				SchedulerName: e2eutil.SchedulerName,
 				Plugins: map[string][]string{
 					"tensorflow": {"--ps=ps", "--worker=worker", "--port=2222"},
 				},
-				Policies: []vcbatch.LifecyclePolicy{
+				Policies: []vcbatchv1.LifecyclePolicy{
 					{
-						Event:  vcbus.PodEvictedEvent,
-						Action: vcbus.RestartJobAction,
+						Event:  vcbusv1.PodEvictedEvent,
+						Action: vcbusv1.RestartJobAction,
 					},
 				},
-				Tasks: []vcbatch.TaskSpec{
+				Tasks: []vcbatchv1.TaskSpec{
 					{
 						Replicas: int32(1),
 						Name:     "ps",
@@ -84,10 +84,10 @@ var _ = Describe("TensorFlow Plugin E2E Test", func() {
 					{
 						Replicas: int32(2),
 						Name:     "worker",
-						Policies: []vcbatch.LifecyclePolicy{
+						Policies: []vcbatchv1.LifecyclePolicy{
 							{
-								Event:  vcbus.TaskCompletedEvent,
-								Action: vcbus.CompleteJobAction,
+								Event:  vcbusv1.TaskCompletedEvent,
+								Action: vcbusv1.CompleteJobAction,
 							},
 						},
 						Template: v1.PodTemplateSpec{
@@ -117,10 +117,10 @@ var _ = Describe("TensorFlow Plugin E2E Test", func() {
 			},
 		}
 
-		created, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+		created, err := ctx.Vcclient.BatchV1().Jobs(ctx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = e2eutil.WaitJobStates(ctx, created, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Completed}, e2eutil.FiveMinute)
+		err = e2eutil.WaitJobStates(ctx, created, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running, vcbatchv1.Completed}, e2eutil.FiveMinute)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

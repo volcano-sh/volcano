@@ -19,8 +19,8 @@ package jobseq
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
@@ -34,10 +34,10 @@ var _ = Describe("MPI Plugin E2E Test", func() {
 		spec := &e2eutil.JobSpec{
 			Name: "mpi",
 			Min:  1,
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Action: vcbus.CompleteJobAction,
-					Event:  vcbus.TaskCompletedEvent,
+					Action: vcbusv1.CompleteJobAction,
+					Event:  vcbusv1.TaskCompletedEvent,
 				},
 			},
 			Plugins: map[string][]string{
@@ -68,8 +68,8 @@ mpiexec --allow-run-as-root --host ${MPI_HOST} -np 2 mpi_hello_world > /home/re`
 		}
 
 		job := e2eutil.CreateJob(context, spec)
-		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{
-			vcbatch.Pending, vcbatch.Running, vcbatch.Completing, vcbatch.Completed})
+		err := e2eutil.WaitJobPhases(context, job, []vcbatchv1.JobPhase{
+			vcbatchv1.Pending, vcbatchv1.Running, vcbatchv1.Completing, vcbatchv1.Completed})
 		Expect(err).NotTo(HaveOccurred())
 	})
 })

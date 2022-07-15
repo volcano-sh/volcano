@@ -17,11 +17,11 @@ limitations under the License.
 package state
 
 import (
-	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 )
 
 // TotalTasks returns number of tasks in a given volcano job.
-func TotalTasks(job *vcbatch.Job) int32 {
+func TotalTasks(job *vcbatchv1.Job) int32 {
 	var rep int32
 
 	for _, task := range job.Spec.Tasks {
@@ -32,7 +32,7 @@ func TotalTasks(job *vcbatch.Job) int32 {
 }
 
 // TotalTaskMinAvailable returns the sum of task minAvailable
-func TotalTaskMinAvailable(job *vcbatch.Job) int32 {
+func TotalTaskMinAvailable(job *vcbatchv1.Job) int32 {
 	var rep int32
 
 	for _, task := range job.Spec.Tasks {

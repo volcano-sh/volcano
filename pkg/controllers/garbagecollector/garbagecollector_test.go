@@ -23,7 +23,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	volcanoclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
@@ -38,24 +38,24 @@ func TestGarbageCollector_ProcessTTL(t *testing.T) {
 	var ttlSecondZero int32
 	testcases := []struct {
 		Name        string
-		Job         *v1alpha1.Job
+		Job         *vcbatchv1.Job
 		ExpectedVal bool
 		ExpectedErr error
 	}{
 		{
 			Name: "False Case",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					TTLSecondsAfterFinished: &ttlSecond,
 				},
-				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
+				Status: vcbatchv1.JobStatus{
+					State: vcbatchv1.JobState{
 						LastTransitionTime: metav1.NewTime(time.Now()),
-						Phase:              v1alpha1.Completed,
+						Phase:              vcbatchv1.Completed,
 					},
 				},
 			},
@@ -64,18 +64,18 @@ func TestGarbageCollector_ProcessTTL(t *testing.T) {
 		},
 		{
 			Name: "True Case",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					TTLSecondsAfterFinished: &ttlSecondZero,
 				},
-				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
+				Status: vcbatchv1.JobStatus{
+					State: vcbatchv1.JobState{
 						LastTransitionTime: metav1.NewTime(time.Now()),
-						Phase:              v1alpha1.Completed,
+						Phase:              vcbatchv1.Completed,
 					},
 				},
 			},
@@ -106,22 +106,22 @@ func TestGarbageCollector_NeedsCleanup(t *testing.T) {
 
 	testcases := []struct {
 		Name        string
-		Job         *v1alpha1.Job
+		Job         *vcbatchv1.Job
 		ExpectedVal bool
 	}{
 		{
 			Name: "Success Case",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					TTLSecondsAfterFinished: &ttlSecond,
 				},
-				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase: v1alpha1.Completed,
+				Status: vcbatchv1.JobStatus{
+					State: vcbatchv1.JobState{
+						Phase: vcbatchv1.Completed,
 					},
 				},
 			},
@@ -129,17 +129,17 @@ func TestGarbageCollector_NeedsCleanup(t *testing.T) {
 		},
 		{
 			Name: "Failure Case",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					TTLSecondsAfterFinished: &ttlSecond,
 				},
-				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase: v1alpha1.Running,
+				Status: vcbatchv1.JobStatus{
+					State: vcbatchv1.JobState{
+						Phase: vcbatchv1.Running,
 					},
 				},
 			},
@@ -160,19 +160,19 @@ func TestGarbageCollector_IsJobFinished(t *testing.T) {
 
 	testcases := []struct {
 		Name        string
-		Job         *v1alpha1.Job
+		Job         *vcbatchv1.Job
 		ExpectedVal bool
 	}{
 		{
 			Name: "True Case",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase: v1alpha1.Completed,
+				Status: vcbatchv1.JobStatus{
+					State: vcbatchv1.JobState{
+						Phase: vcbatchv1.Completed,
 					},
 				},
 			},
@@ -180,14 +180,14 @@ func TestGarbageCollector_IsJobFinished(t *testing.T) {
 		},
 		{
 			Name: "False Case",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase: v1alpha1.Running,
+				Status: vcbatchv1.JobStatus{
+					State: vcbatchv1.JobState{
+						Phase: vcbatchv1.Running,
 					},
 				},
 			},
@@ -213,22 +213,22 @@ func TestGarbageCollector_GetFinishAndExpireTime(t *testing.T) {
 
 	testcases := []struct {
 		Name        string
-		Job         *v1alpha1.Job
+		Job         *vcbatchv1.Job
 		ExpectedErr error
 	}{
 		{
 			Name: "Success case",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					TTLSecondsAfterFinished: &ttlSecond,
 				},
-				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase:              v1alpha1.Completed,
+				Status: vcbatchv1.JobStatus{
+					State: vcbatchv1.JobState{
+						Phase:              vcbatchv1.Completed,
 						LastTransitionTime: metav1.NewTime(testTime),
 					},
 				},
@@ -237,17 +237,17 @@ func TestGarbageCollector_GetFinishAndExpireTime(t *testing.T) {
 		},
 		{
 			Name: "Failure case",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					TTLSecondsAfterFinished: &ttlSecondFail,
 				},
-				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase:              v1alpha1.Completed,
+				Status: vcbatchv1.JobStatus{
+					State: vcbatchv1.JobState{
+						Phase:              vcbatchv1.Completed,
 						LastTransitionTime: metav1.NewTime(testTime),
 					},
 				},
@@ -281,24 +281,24 @@ func TestGarbageCollector_TimeLeft(t *testing.T) {
 
 	testcases := []struct {
 		Name        string
-		Job         *v1alpha1.Job
+		Job         *vcbatchv1.Job
 		Time        *time.Time
 		ExpectedVal time.Duration
 		ExpectedErr error
 	}{
 		{
 			Name: "Success Case",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					TTLSecondsAfterFinished: &ttlSecond,
 				},
-				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase:              v1alpha1.Completed,
+				Status: vcbatchv1.JobStatus{
+					State: vcbatchv1.JobState{
+						Phase:              vcbatchv1.Completed,
 						LastTransitionTime: metav1.NewTime(testTime),
 					},
 				},
@@ -309,16 +309,16 @@ func TestGarbageCollector_TimeLeft(t *testing.T) {
 		},
 		{
 			Name: "Failure Case",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					TTLSecondsAfterFinished: &ttlSecond,
 				},
-				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
+				Status: vcbatchv1.JobStatus{
+					State: vcbatchv1.JobState{
 						LastTransitionTime: metav1.NewTime(testTime),
 					},
 				},
@@ -346,18 +346,18 @@ func TestGarbageCollector_JobFinishTime(t *testing.T) {
 
 	testcases := []struct {
 		Name        string
-		Job         *v1alpha1.Job
+		Job         *vcbatchv1.Job
 		ExpectedVal error
 	}{
 		{
 			Name: "Success Case",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
+				Status: vcbatchv1.JobStatus{
+					State: vcbatchv1.JobState{
 						LastTransitionTime: metav1.NewTime(time.Now()),
 					},
 				},
@@ -366,7 +366,7 @@ func TestGarbageCollector_JobFinishTime(t *testing.T) {
 		},
 		{
 			Name: "Failure Case",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,

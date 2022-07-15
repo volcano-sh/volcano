@@ -25,7 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
-	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 )
 
 func jobInfoEqual(l, r *JobInfo) bool {
@@ -250,7 +250,7 @@ func TestTaskSchedulingReason(t *testing.T) {
 		for _, pod := range test.pods {
 			// set pod group
 			pod.Annotations = map[string]string{
-				schedulingv2.KubeGroupNameAnnotationKey: pg.Name,
+				vcschedulingv1.KubeGroupNameAnnotationKey: pg.Name,
 			}
 
 			// add TaskInfo

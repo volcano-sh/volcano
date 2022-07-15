@@ -4,36 +4,36 @@ import (
 	"reflect"
 	"testing"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 )
 
 func TestTopoSort(t *testing.T) {
 	testCases := []struct {
 		name        string
-		job         *v1alpha1.Job
+		job         *vcbatchv1.Job
 		sortedTasks []string
 		isDag       bool
 	}{
 		{
 			name: "test-1",
-			job: &v1alpha1.Job{
-				Spec: v1alpha1.JobSpec{
-					Tasks: []v1alpha1.TaskSpec{
+			job: &vcbatchv1.Job{
+				Spec: vcbatchv1.JobSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name: "t1",
-							DependsOn: &v1alpha1.DependsOn{
+							DependsOn: &vcbatchv1.DependsOn{
 								Name: []string{"t2", "t3"},
 							},
 						},
 						{
 							Name: "t2",
-							DependsOn: &v1alpha1.DependsOn{
+							DependsOn: &vcbatchv1.DependsOn{
 								Name: []string{"t3"},
 							},
 						},
 						{
 							Name: "t3",
-							DependsOn: &v1alpha1.DependsOn{
+							DependsOn: &vcbatchv1.DependsOn{
 								Name: []string{},
 							},
 						},
@@ -45,18 +45,18 @@ func TestTopoSort(t *testing.T) {
 		},
 		{
 			name: "test-2",
-			job: &v1alpha1.Job{
-				Spec: v1alpha1.JobSpec{
-					Tasks: []v1alpha1.TaskSpec{
+			job: &vcbatchv1.Job{
+				Spec: vcbatchv1.JobSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name: "t1",
-							DependsOn: &v1alpha1.DependsOn{
+							DependsOn: &vcbatchv1.DependsOn{
 								Name: []string{"t2"},
 							},
 						},
 						{
 							Name: "t2",
-							DependsOn: &v1alpha1.DependsOn{
+							DependsOn: &vcbatchv1.DependsOn{
 								Name: []string{"t1"},
 							},
 						},
@@ -72,18 +72,18 @@ func TestTopoSort(t *testing.T) {
 		},
 		{
 			name: "test-3",
-			job: &v1alpha1.Job{
-				Spec: v1alpha1.JobSpec{
-					Tasks: []v1alpha1.TaskSpec{
+			job: &vcbatchv1.Job{
+				Spec: vcbatchv1.JobSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name: "t1",
-							DependsOn: &v1alpha1.DependsOn{
+							DependsOn: &vcbatchv1.DependsOn{
 								Name: []string{"t2", "t3"},
 							},
 						},
 						{
 							Name: "t2",
-							DependsOn: &v1alpha1.DependsOn{
+							DependsOn: &vcbatchv1.DependsOn{
 								Name: []string{"t2"},
 							},
 						},
@@ -99,12 +99,12 @@ func TestTopoSort(t *testing.T) {
 		},
 		{
 			name: "test-4",
-			job: &v1alpha1.Job{
-				Spec: v1alpha1.JobSpec{
-					Tasks: []v1alpha1.TaskSpec{
+			job: &vcbatchv1.Job{
+				Spec: vcbatchv1.JobSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name: "t1",
-							DependsOn: &v1alpha1.DependsOn{
+							DependsOn: &vcbatchv1.DependsOn{
 								Name: []string{"t2", "t3"},
 							},
 						},
@@ -114,7 +114,7 @@ func TestTopoSort(t *testing.T) {
 						},
 						{
 							Name: "t3",
-							DependsOn: &v1alpha1.DependsOn{
+							DependsOn: &vcbatchv1.DependsOn{
 								Name: []string{"t2"},
 							},
 						},

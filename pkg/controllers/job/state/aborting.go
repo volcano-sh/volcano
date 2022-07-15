@@ -17,8 +17,8 @@ limitations under the License.
 package state
 
 import (
-	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -26,21 +26,21 @@ type abortingState struct {
 	job *apis.JobInfo
 }
 
-func (ps *abortingState) Execute(action v1alpha1.Action) error {
+func (ps *abortingState) Execute(action vcbusv1.Action) error {
 	switch action {
-	case v1alpha1.ResumeJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
-			status.State.Phase = vcbatch.Restarting
+	case vcbusv1.ResumeJobAction:
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatchv1.JobStatus) bool {
+			status.State.Phase = vcbatchv1.Restarting
 			status.RetryCount++
 			return true
 		})
 	default:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatchv1.JobStatus) bool {
 			// If any "alive" pods, still in Aborting phase
 			if status.Terminating != 0 || status.Pending != 0 || status.Running != 0 {
 				return false
 			}
-			status.State.Phase = vcbatch.Aborted
+			status.State.Phase = vcbatchv1.Aborted
 			return true
 		})
 	}

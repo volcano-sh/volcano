@@ -79,7 +79,7 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 		// TODO: check others
 
 		By("delete job")
-		err = ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
+		err = ctx.Vcclient.BatchV1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = e2eutil.WaitJobCleanedUp(ctx, job)
@@ -137,7 +137,7 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 		// TODO: check others
 
 		By("delete job")
-		err = ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
+		err = ctx.Vcclient.BatchV1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = e2eutil.WaitJobCleanedUp(ctx, job)
@@ -213,7 +213,7 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 		// TODO: check others
 
 		By("delete job")
-		err = ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
+		err = ctx.Vcclient.BatchV1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = e2eutil.WaitJobCleanedUp(ctx, job)

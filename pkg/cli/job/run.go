@@ -28,7 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/cli/util"
 )
@@ -99,7 +99,7 @@ func RunJob() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	newJob, err := jobClient.BatchV1alpha1().Jobs(launchJobFlags.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+	newJob, err := jobClient.BatchV1().Jobs(launchJobFlags.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func RunJob() error {
 	return nil
 }
 
-func readFile(filename string) (*vcbatch.Job, error) {
+func readFile(filename string) (*vcbatchv1.Job, error) {
 	if filename == "" {
 		return nil, nil
 	}
@@ -127,7 +127,7 @@ func readFile(filename string) (*vcbatch.Job, error) {
 		return nil, fmt.Errorf("failed to read file, err: %v", err)
 	}
 
-	var job vcbatch.Job
+	var job vcbatchv1.Job
 	if err := yaml.Unmarshal(file, &job); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal file, err:  %v", err)
 	}
@@ -135,16 +135,16 @@ func readFile(filename string) (*vcbatch.Job, error) {
 	return &job, nil
 }
 
-func constructLaunchJobFlagsJob(launchJobFlags *runFlags, req, limit v1.ResourceList) *vcbatch.Job {
-	return &vcbatch.Job{
+func constructLaunchJobFlagsJob(launchJobFlags *runFlags, req, limit v1.ResourceList) *vcbatchv1.Job {
+	return &vcbatchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      launchJobFlags.Name,
 			Namespace: launchJobFlags.Namespace,
 		},
-		Spec: vcbatch.JobSpec{
+		Spec: vcbatchv1.JobSpec{
 			MinAvailable:  int32(launchJobFlags.MinAvailable),
 			SchedulerName: launchJobFlags.SchedulerName,
-			Tasks: []vcbatch.TaskSpec{
+			Tasks: []vcbatchv1.TaskSpec{
 				{
 					Replicas: int32(launchJobFlags.Replicas),
 

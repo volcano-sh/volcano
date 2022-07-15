@@ -36,20 +36,26 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog"
 
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	flow "volcano.sh/apis/pkg/apis/flow/v1alpha1"
-	schedulerv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
+	vcschedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 // JobKind creates job GroupVersionKind.
-var JobKind = vcbatch.SchemeGroupVersion.WithKind("Job")
+var V1alpha1JobKind = vcbatch.SchemeGroupVersion.WithKind("Job")
+var V1JobKind = vcbatchv1.SchemeGroupVersion.WithKind("Job")
 
 // CommandKind creates command GroupVersionKind.
-var CommandKind = vcbus.SchemeGroupVersion.WithKind("Command")
+var V1alpha1CommandKind = vcbus.SchemeGroupVersion.WithKind("Command")
+var V1CommandKind = vcbusv1.SchemeGroupVersion.WithKind("Command")
 
 // V1beta1QueueKind is queue kind with v1alpha2 version.
-var V1beta1QueueKind = schedulerv1beta1.SchemeGroupVersion.WithKind("Queue")
+var V1beta1QueueKind = vcschedulingv1beta1.SchemeGroupVersion.WithKind("Queue")
+var V1QueueKind = vcschedulingv1.SchemeGroupVersion.WithKind("Queue")
 
 // JobFlowKind creates jobflow GroupVersionKind.
 var JobFlowKind = flow.SchemeGroupVersion.WithKind("JobFlow")
@@ -58,7 +64,7 @@ var JobFlowKind = flow.SchemeGroupVersion.WithKind("JobFlow")
 var JobTemplateKind = flow.SchemeGroupVersion.WithKind("JobTemplate")
 
 // CreateOrUpdateConfigMap creates config map if not present or updates config map if necessary.
-func CreateOrUpdateConfigMap(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[string]string, cmName string) error {
+func CreateOrUpdateConfigMap(job *vcbatchv1.Job, kubeClients kubernetes.Interface, data map[string]string, cmName string) error {
 	// If ConfigMap does not exist, create one for Job.
 	cmOld, err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Get(context.TODO(), cmName, metav1.GetOptions{})
 	if err != nil {
@@ -73,7 +79,7 @@ func CreateOrUpdateConfigMap(job *vcbatch.Job, kubeClients kubernetes.Interface,
 				Namespace: job.Namespace,
 				Name:      cmName,
 				OwnerReferences: []metav1.OwnerReference{
-					*metav1.NewControllerRef(job, JobKind),
+					*metav1.NewControllerRef(job, V1JobKind),
 				},
 			},
 			Data: data,
@@ -103,7 +109,7 @@ func CreateOrUpdateConfigMap(job *vcbatch.Job, kubeClients kubernetes.Interface,
 }
 
 // CreateOrUpdateSecret creates secret if not present or updates secret if necessary
-func CreateOrUpdateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[string][]byte, secretName string) error {
+func CreateOrUpdateSecret(job *vcbatchv1.Job, kubeClients kubernetes.Interface, data map[string][]byte, secretName string) error {
 	secretOld, err := kubeClients.CoreV1().Secrets(job.Namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -117,7 +123,7 @@ func CreateOrUpdateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, da
 				Name:      secretName,
 				Namespace: job.Namespace,
 				OwnerReferences: []metav1.OwnerReference{
-					*metav1.NewControllerRef(job, JobKind),
+					*metav1.NewControllerRef(job, V1JobKind),
 				},
 			},
 			Data: data,
@@ -149,7 +155,7 @@ func CreateOrUpdateSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, da
 }
 
 // DeleteConfigmap deletes the config map resource.
-func DeleteConfigmap(job *vcbatch.Job, kubeClients kubernetes.Interface, cmName string) error {
+func DeleteConfigmap(job *vcbatchv1.Job, kubeClients kubernetes.Interface, cmName string) error {
 	if err := kubeClients.CoreV1().ConfigMaps(job.Namespace).Delete(context.TODO(), cmName, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
 		klog.Errorf("Failed to delete Configmap of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
@@ -160,7 +166,7 @@ func DeleteConfigmap(job *vcbatch.Job, kubeClients kubernetes.Interface, cmName 
 }
 
 // DeleteSecret delete secret.
-func DeleteSecret(job *vcbatch.Job, kubeClients kubernetes.Interface, secretName string) error {
+func DeleteSecret(job *vcbatchv1.Job, kubeClients kubernetes.Interface, secretName string) error {
 	err := kubeClients.CoreV1().Secrets(job.Namespace).Delete(context.TODO(), secretName, metav1.DeleteOptions{})
 	if err != nil && apierrors.IsNotFound(err) {
 		return nil

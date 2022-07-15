@@ -26,7 +26,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
+	vcschedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -47,8 +48,8 @@ var service = &router.AdmissionService{
 				{
 					Operations: []whv1.OperationType{whv1.Create},
 					Rule: whv1.Rule{
-						APIGroups:   []string{schedulingv1beta1.SchemeGroupVersion.Group},
-						APIVersions: []string{schedulingv1beta1.SchemeGroupVersion.Version},
+						APIGroups:   []string{vcschedulingv1.SchemeGroupVersion.Group},
+						APIVersions: []string{vcschedulingv1.SchemeGroupVersion.Version, vcschedulingv1beta1.SchemeGroupVersion.Version},
 						Resources:   []string{"queues"},
 					},
 				},
@@ -99,24 +100,24 @@ func Queues(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	return &reviewResponse
 }
 
-func createQueuePatch(queue *schedulingv1beta1.Queue) ([]byte, error) {
+func createQueuePatch(queue *vcschedulingv1.Queue) ([]byte, error) {
 	var patch []patchOperation
 
 	// add root node if the root node not specified
-	hierarchy := queue.Annotations[schedulingv1beta1.KubeHierarchyAnnotationKey]
-	hierarchicalWeights := queue.Annotations[schedulingv1beta1.KubeHierarchyWeightAnnotationKey]
+	hierarchy := queue.Annotations[vcschedulingv1.KubeHierarchyAnnotationKey]
+	hierarchicalWeights := queue.Annotations[vcschedulingv1.KubeHierarchyWeightAnnotationKey]
 
 	if hierarchy != "" && hierarchicalWeights != "" && !strings.HasPrefix(hierarchy, "root") {
 		// based on https://tools.ietf.org/html/rfc6901#section-3
 		// escape "/" with "~1"
 		patch = append(patch, patchOperation{
 			Op:    "add",
-			Path:  fmt.Sprintf("/metadata/annotations/%s", strings.ReplaceAll(schedulingv1beta1.KubeHierarchyAnnotationKey, "/", "~1")),
+			Path:  fmt.Sprintf("/metadata/annotations/%s", strings.ReplaceAll(vcschedulingv1.KubeHierarchyAnnotationKey, "/", "~1")),
 			Value: fmt.Sprintf("root/%s", hierarchy),
 		})
 		patch = append(patch, patchOperation{
 			Op:    "add",
-			Path:  fmt.Sprintf("/metadata/annotations/%s", strings.ReplaceAll(schedulingv1beta1.KubeHierarchyWeightAnnotationKey, "/", "~1")),
+			Path:  fmt.Sprintf("/metadata/annotations/%s", strings.ReplaceAll(vcschedulingv1.KubeHierarchyWeightAnnotationKey, "/", "~1")),
 			Value: fmt.Sprintf("1/%s", hierarchicalWeights),
 		})
 	}

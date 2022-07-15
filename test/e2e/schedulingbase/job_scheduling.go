@@ -31,7 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 
-	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 
@@ -471,7 +471,7 @@ var _ = Describe("Job E2E Test", func() {
 		slot := e2eutil.HalfCPU
 		rep := e2eutil.ClusterSize(ctx, slot)
 
-		createJobToNamespace := func(namespace string, index int, replica int32) *vcbatch.Job {
+		createJobToNamespace := func(namespace string, index int, replica int32) *vcbatchv1.Job {
 			spec := &e2eutil.JobSpec{
 				Name:      fmt.Sprintf("namespace-fair-share-%s-%d", namespace, index),
 				Namespace: namespace,
@@ -501,7 +501,7 @@ var _ = Describe("Job E2E Test", func() {
 
 		By("release occupied cluster resources")
 		deleteBackground := metav1.DeletePropagationBackground
-		err = ctx.Vcclient.BatchV1alpha1().Jobs(occupiedJob.Namespace).Delete(context.TODO(),
+		err = ctx.Vcclient.BatchV1().Jobs(occupiedJob.Namespace).Delete(context.TODO(),
 			occupiedJob.Name,
 			metav1.DeleteOptions{
 				PropagationPolicy: &deleteBackground,
@@ -567,7 +567,7 @@ var _ = Describe("Job E2E Test", func() {
 		slot := e2eutil.HalfCPU
 		rep := e2eutil.ClusterSize(ctx, slot)
 
-		createJobToQueue := func(queue string, index int, replica int32) *vcbatch.Job {
+		createJobToQueue := func(queue string, index int, replica int32) *vcbatchv1.Job {
 			spec := &e2eutil.JobSpec{
 				Name:      fmt.Sprintf("queue-fair-share-%s-%d", queue, index),
 				Namespace: ctx.Namespace,
@@ -598,7 +598,7 @@ var _ = Describe("Job E2E Test", func() {
 
 		By(fmt.Sprintf("release occupied cluster resources, %s/%s", occupiedJob.Namespace, occupiedJob.Name))
 		deleteForeground := metav1.DeletePropagationBackground
-		err = ctx.Vcclient.BatchV1alpha1().Jobs(occupiedJob.Namespace).Delete(context.TODO(),
+		err = ctx.Vcclient.BatchV1().Jobs(occupiedJob.Namespace).Delete(context.TODO(),
 			occupiedJob.Name,
 			metav1.DeleteOptions{
 				PropagationPolicy: &deleteForeground,
@@ -628,7 +628,7 @@ var _ = Describe("Job E2E Test", func() {
 				if !e2eutil.IsPodScheduled(&pod) {
 					continue
 				}
-				jobName := pod.Annotations[vcbatch.JobNameKey]
+				jobName := pod.Annotations[vcbatchv1.JobNameKey]
 				if strings.Contains(jobName, "queue-fair-share-"+q1) {
 					q1ScheduledPod++
 				}

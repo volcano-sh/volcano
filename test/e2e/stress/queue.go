@@ -26,7 +26,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
@@ -55,9 +55,9 @@ var _ = ginkgo.Describe("[Stress] Queue Test", func() {
 					queueName := fmt.Sprintf("queue-%d", index)
 					e2eutil.CreateQueue(ctx, queueName)
 					err := e2eutil.WaitQueueStatus(func() (bool, error) {
-						queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), queueName, metav1.GetOptions{})
+						queue, err := ctx.Vcclient.SchedulingV1().Queues().Get(context.TODO(), queueName, metav1.GetOptions{})
 						gomega.Expect(err).NotTo(gomega.HaveOccurred())
-						return queue.Status.State == schedulingv1beta1.QueueStateOpen, nil
+						return queue.Status.State == vcschedulingv1.QueueStateOpen, nil
 					})
 					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				}()

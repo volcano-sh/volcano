@@ -23,41 +23,41 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/kubernetes/pkg/apis/core/validation"
 
-	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 )
 
 // policyEventMap defines all policy events and whether to allow external use.
-var policyEventMap = map[busv1alpha1.Event]bool{
-	busv1alpha1.AnyEvent:           true,
-	busv1alpha1.PodFailedEvent:     true,
-	busv1alpha1.PodEvictedEvent:    true,
-	busv1alpha1.JobUnknownEvent:    true,
-	busv1alpha1.TaskCompletedEvent: true,
-	busv1alpha1.TaskFailedEvent:    true,
-	busv1alpha1.OutOfSyncEvent:     false,
-	busv1alpha1.CommandIssuedEvent: false,
-	busv1alpha1.JobUpdatedEvent:    true,
+var policyEventMap = map[vcbusv1.Event]bool{
+	vcbusv1.AnyEvent:           true,
+	vcbusv1.PodFailedEvent:     true,
+	vcbusv1.PodEvictedEvent:    true,
+	vcbusv1.JobUnknownEvent:    true,
+	vcbusv1.TaskCompletedEvent: true,
+	vcbusv1.TaskFailedEvent:    true,
+	vcbusv1.OutOfSyncEvent:     false,
+	vcbusv1.CommandIssuedEvent: false,
+	vcbusv1.JobUpdatedEvent:    true,
 }
 
 // policyActionMap defines all policy actions and whether to allow external use.
-var policyActionMap = map[busv1alpha1.Action]bool{
-	busv1alpha1.AbortJobAction:     true,
-	busv1alpha1.RestartJobAction:   true,
-	busv1alpha1.RestartTaskAction:  true,
-	busv1alpha1.TerminateJobAction: true,
-	busv1alpha1.CompleteJobAction:  true,
-	busv1alpha1.ResumeJobAction:    true,
-	busv1alpha1.SyncJobAction:      false,
-	busv1alpha1.EnqueueAction:      false,
-	busv1alpha1.SyncQueueAction:    false,
-	busv1alpha1.OpenQueueAction:    false,
-	busv1alpha1.CloseQueueAction:   false,
+var policyActionMap = map[vcbusv1.Action]bool{
+	vcbusv1.AbortJobAction:     true,
+	vcbusv1.RestartJobAction:   true,
+	vcbusv1.RestartTaskAction:  true,
+	vcbusv1.TerminateJobAction: true,
+	vcbusv1.CompleteJobAction:  true,
+	vcbusv1.ResumeJobAction:    true,
+	vcbusv1.SyncJobAction:      false,
+	vcbusv1.EnqueueAction:      false,
+	vcbusv1.SyncQueueAction:    false,
+	vcbusv1.OpenQueueAction:    false,
+	vcbusv1.CloseQueueAction:   false,
 }
 
-func validatePolicies(policies []batchv1alpha1.LifecyclePolicy, fldPath *field.Path) error {
+func validatePolicies(policies []vcbatchv1.LifecyclePolicy, fldPath *field.Path) error {
 	var err error
-	policyEvents := map[busv1alpha1.Event]struct{}{}
+	policyEvents := map[vcbusv1.Event]struct{}{}
 	exitCodes := map[int32]struct{}{}
 
 	for _, policy := range policies {
@@ -111,14 +111,14 @@ func validatePolicies(policies []batchv1alpha1.LifecyclePolicy, fldPath *field.P
 		}
 	}
 
-	if _, found := policyEvents[busv1alpha1.AnyEvent]; found && len(policyEvents) > 1 {
+	if _, found := policyEvents[vcbusv1.AnyEvent]; found && len(policyEvents) > 1 {
 		err = multierror.Append(err, fmt.Errorf("if there's * here, no other policy should be here"))
 	}
 
 	return err
 }
 
-func getEventList(policy batchv1alpha1.LifecyclePolicy) []busv1alpha1.Event {
+func getEventList(policy vcbatchv1.LifecyclePolicy) []vcbusv1.Event {
 	policyEventsList := policy.Events
 	if len(policy.Event) > 0 {
 		policyEventsList = append(policyEventsList, policy.Event)
@@ -127,9 +127,9 @@ func getEventList(policy batchv1alpha1.LifecyclePolicy) []busv1alpha1.Event {
 	return uniquePolicyEventlist
 }
 
-func removeDuplicates(eventList []busv1alpha1.Event) []busv1alpha1.Event {
-	keys := make(map[busv1alpha1.Event]bool)
-	list := []busv1alpha1.Event{}
+func removeDuplicates(eventList []vcbusv1.Event) []vcbusv1.Event {
+	keys := make(map[vcbusv1.Event]bool)
+	list := []vcbusv1.Event{}
 	for _, val := range eventList {
 		if _, value := keys[val]; !value {
 			keys[val] = true
@@ -139,8 +139,8 @@ func removeDuplicates(eventList []busv1alpha1.Event) []busv1alpha1.Event {
 	return list
 }
 
-func getValidEvents() []busv1alpha1.Event {
-	var events []busv1alpha1.Event
+func getValidEvents() []vcbusv1.Event {
+	var events []vcbusv1.Event
 	for e, allow := range policyEventMap {
 		if allow {
 			events = append(events, e)
@@ -150,8 +150,8 @@ func getValidEvents() []busv1alpha1.Event {
 	return events
 }
 
-func getValidActions() []busv1alpha1.Action {
-	var actions []busv1alpha1.Action
+func getValidActions() []vcbusv1.Action {
+	var actions []vcbusv1.Action
 	for a, allow := range policyActionMap {
 		if allow {
 			actions = append(actions, a)
@@ -162,7 +162,7 @@ func getValidActions() []busv1alpha1.Action {
 }
 
 // validateIO validates IO configuration.
-func validateIO(volumes []batchv1alpha1.VolumeSpec) error {
+func validateIO(volumes []vcbatchv1.VolumeSpec) error {
 	volumeMap := map[string]bool{}
 	for _, volume := range volumes {
 		if len(volume.MountPath) == 0 {
@@ -191,7 +191,7 @@ func validateIO(volumes []batchv1alpha1.VolumeSpec) error {
 
 // topoSort uses topo sort to sort job tasks based on dependsOn field
 // it will return an array contains all sorted task names and a bool which indicates whether it's a valid dag
-func topoSort(job *batchv1alpha1.Job) ([]string, bool) {
+func topoSort(job *vcbatchv1.Job) ([]string, bool) {
 	graph, inDegree, taskList := makeGraph(job)
 	var taskStack []string
 	for task, degree := range inDegree {
@@ -225,7 +225,7 @@ func topoSort(job *batchv1alpha1.Job) ([]string, bool) {
 	return sortedTasks, isDag
 }
 
-func makeGraph(job *batchv1alpha1.Job) (map[string]map[string]bool, map[string]int, []string) {
+func makeGraph(job *vcbatchv1.Job) (map[string]map[string]bool, map[string]int, []string) {
 	graph := make(map[string]map[string]bool)
 	inDegree := make(map[string]int)
 	taskList := make([]string, 0)

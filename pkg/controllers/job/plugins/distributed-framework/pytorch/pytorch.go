@@ -8,7 +8,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
@@ -62,7 +62,7 @@ func (pp *pytorchPlugin) Name() string {
 	return PytorchPluginName
 }
 
-func (pp *pytorchPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
+func (pp *pytorchPlugin) OnPodCreate(pod *v1.Pod, job *vcbatchv1.Job) error {
 	taskType := helpers.GetTaskKey(pod)
 	masterIndex := helpers.GetTasklndexUnderJob(pp.masterName, job)
 	if masterIndex == -1 {
@@ -117,7 +117,7 @@ func (pp *pytorchPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	return nil
 }
 
-func (pp *pytorchPlugin) getTotalReplicas(job *batch.Job) int32 {
+func (pp *pytorchPlugin) getTotalReplicas(job *vcbatchv1.Job) int32 {
 	jobReplicas := int32(0)
 	for _, task := range job.Spec.Tasks {
 		jobReplicas += task.Replicas
@@ -126,7 +126,7 @@ func (pp *pytorchPlugin) getTotalReplicas(job *batch.Job) int32 {
 	return jobReplicas
 }
 
-func (pp *pytorchPlugin) generateMasterAddr(task batch.TaskSpec, jobName string) string {
+func (pp *pytorchPlugin) generateMasterAddr(task vcbatchv1.TaskSpec, jobName string) string {
 	hostName := task.Template.Spec.Hostname
 	subdomain := task.Template.Spec.Subdomain
 	if len(hostName) == 0 {
@@ -159,7 +159,7 @@ func (pp *pytorchPlugin) openContainerPort(c *v1.Container, index int, pod *v1.P
 	}
 }
 
-func (pp *pytorchPlugin) OnJobAdd(job *batch.Job) error {
+func (pp *pytorchPlugin) OnJobAdd(job *vcbatchv1.Job) error {
 	if job.Status.ControlledResources["plugin-"+pp.Name()] == pp.Name() {
 		return nil
 	}
@@ -167,7 +167,7 @@ func (pp *pytorchPlugin) OnJobAdd(job *batch.Job) error {
 	return nil
 }
 
-func (pp *pytorchPlugin) OnJobDelete(job *batch.Job) error {
+func (pp *pytorchPlugin) OnJobDelete(job *vcbatchv1.Job) error {
 	if job.Status.ControlledResources["plugin-"+pp.Name()] != pp.Name() {
 		return nil
 	}
@@ -175,6 +175,6 @@ func (pp *pytorchPlugin) OnJobDelete(job *batch.Job) error {
 	return nil
 }
 
-func (pp *pytorchPlugin) OnJobUpdate(job *batch.Job) error {
+func (pp *pytorchPlugin) OnJobUpdate(job *vcbatchv1.Job) error {
 	return nil
 }

@@ -23,10 +23,10 @@ import (
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
-	jobctl "volcano.sh/volcano/pkg/controllers/job"
 
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
+	jobctl "volcano.sh/volcano/pkg/controllers/job"
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
@@ -42,9 +42,9 @@ var _ = Describe("Test job restart", func() {
 			Name:       jobName,
 			MinSuccess: &minSuccess,
 			Min:        2,
-			Policies: []vcbatch.LifecyclePolicy{
-				{Event: v1alpha1.PodEvictedEvent, Action: v1alpha1.RestartJobAction},
-				{Event: v1alpha1.PodFailedEvent, Action: v1alpha1.RestartJobAction},
+			Policies: []vcbatchv1.LifecyclePolicy{
+				{Event: vcbusv1.PodEvictedEvent, Action: vcbusv1.RestartJobAction},
+				{Event: vcbusv1.PodFailedEvent, Action: vcbusv1.RestartJobAction},
 			},
 			MaxRetry: 2,
 			Tasks: []e2eutil.TaskSpec{
@@ -70,11 +70,11 @@ var _ = Describe("Test job restart", func() {
 		})
 
 		// wait job failed
-		err := e2eutil.WaitJobStates(ctx, job, []vcbatch.JobPhase{vcbatch.Failed}, e2eutil.FiveMinute)
+		err := e2eutil.WaitJobStates(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Failed}, e2eutil.FiveMinute)
 		Expect(err).NotTo(HaveOccurred())
 
 		// check job restart count
-		curjob, err := e2eutil.VcClient.BatchV1alpha1().Jobs(job.Namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
+		curjob, err := e2eutil.VcClient.BatchV1().Jobs(job.Namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(curjob.Status.RetryCount).Should(Equal(int32(2)))
 
@@ -99,9 +99,9 @@ var _ = Describe("Test job restart", func() {
 			Name:       jobName,
 			MinSuccess: &minSuccess,
 			Min:        2,
-			Policies: []vcbatch.LifecyclePolicy{
-				{Event: v1alpha1.PodEvictedEvent, Action: v1alpha1.RestartJobAction},
-				{Event: v1alpha1.PodFailedEvent, Action: v1alpha1.RestartJobAction},
+			Policies: []vcbatchv1.LifecyclePolicy{
+				{Event: vcbusv1.PodEvictedEvent, Action: vcbusv1.RestartJobAction},
+				{Event: vcbusv1.PodFailedEvent, Action: vcbusv1.RestartJobAction},
 			},
 			MaxRetry: 1,
 			Tasks: []e2eutil.TaskSpec{
@@ -117,8 +117,8 @@ var _ = Describe("Test job restart", func() {
 				{
 					Name: "succeeded-task",
 					Img:  e2eutil.DefaultBusyBoxImage,
-					Policies: []vcbatch.LifecyclePolicy{
-						{Event: v1alpha1.TaskCompletedEvent, Action: v1alpha1.CompleteJobAction},
+					Policies: []vcbatchv1.LifecyclePolicy{
+						{Event: vcbusv1.TaskCompletedEvent, Action: vcbusv1.CompleteJobAction},
 					},
 					Min:           1,
 					Rep:           1,
@@ -130,11 +130,11 @@ var _ = Describe("Test job restart", func() {
 		})
 
 		// wait job failed
-		err := e2eutil.WaitJobStates(ctx, job, []vcbatch.JobPhase{vcbatch.Completed}, e2eutil.FiveMinute)
+		err := e2eutil.WaitJobStates(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Completed}, e2eutil.FiveMinute)
 		Expect(err).NotTo(HaveOccurred())
 
 		// check job restart count
-		curjob, err := e2eutil.VcClient.BatchV1alpha1().Jobs(job.Namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
+		curjob, err := e2eutil.VcClient.BatchV1().Jobs(job.Namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(curjob.Status.RetryCount).Should(Equal(int32(0)))
 

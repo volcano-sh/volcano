@@ -24,7 +24,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
-	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 )
 
 type AllocateFailError struct {
@@ -219,7 +219,7 @@ func (ni *NodeInfo) setRevocableZone(node *v1.Node) {
 
 	revocableZone := ""
 	if len(node.Labels) > 0 {
-		if value, found := node.Labels[v1beta1.RevocableZone]; found {
+		if value, found := node.Labels[vcschedulingv1.RevocableZone]; found {
 			revocableZone = value
 		}
 	}

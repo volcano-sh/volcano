@@ -23,7 +23,7 @@ import (
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
@@ -52,7 +52,7 @@ var _ = ginkgo.Describe("[Stress] Pod Group Test", func() {
 					podGroupName := fmt.Sprintf("pod-group-%d", index)
 					podGroup := e2eutil.CreatePodGroup(ctx, podGroupName, "default")
 
-					err := e2eutil.WaitPodGroupPhase(ctx, podGroup, schedulingv1beta1.PodGroupRunning)
+					err := e2eutil.WaitPodGroupPhase(ctx, podGroup, vcschedulingv1.PodGroupRunning)
 					gomega.Expect(err).NotTo(gomega.HaveOccurred())
 				}()
 			}

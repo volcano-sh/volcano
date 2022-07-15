@@ -29,11 +29,11 @@ import (
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	v1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/batch/v1"
 )
 
 func TestViewJob(t *testing.T) {
-	response := v1alpha1.Job{
+	response := vcbusv1.Job{
 		TypeMeta: metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "testJobWithLongLongLongName",
@@ -44,8 +44,8 @@ func TestViewJob(t *testing.T) {
 				"AnnotationWithLongLongLongLongName": "LongLongLongLongAnnotationValue",
 			},
 		},
-		Spec: v1alpha1.JobSpec{
-			Tasks: []v1alpha1.TaskSpec{
+		Spec: vcbusv1.JobSpec{
+			Tasks: []vcbusv1.TaskSpec{
 				{
 					Name:     "taskWithLongLongLongLongName",
 					Replicas: math.MaxInt32,
@@ -72,7 +72,7 @@ func TestViewJob(t *testing.T) {
 				},
 			},
 		},
-		Status: v1alpha1.JobStatus{
+		Status: vcbusv1.JobStatus{
 			Succeeded:    1,
 			Pending:      3,
 			Running:      1,

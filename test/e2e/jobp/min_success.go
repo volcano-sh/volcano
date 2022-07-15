@@ -19,7 +19,7 @@ package jobp
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
@@ -62,7 +62,7 @@ var _ = Describe("Check min success", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// wait job completed
-		err = e2eutil.WaitJobStates(ctx, job, []vcbatch.JobPhase{vcbatch.Completed}, e2eutil.OneMinute)
+		err = e2eutil.WaitJobStates(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Completed}, e2eutil.OneMinute)
 		Expect(err).NotTo(HaveOccurred())
 	})
 })

@@ -29,7 +29,7 @@ import (
 	"k8s.io/utils/clock"
 
 	"volcano.sh/apis/pkg/apis/helpers"
-	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 )
 
 type podRequest struct {
@@ -56,12 +56,12 @@ func (pg *pgcontroller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
 	if pod.Annotations == nil {
 		pod.Annotations = make(map[string]string)
 	}
-	if pod.Annotations[scheduling.KubeGroupNameAnnotationKey] == "" {
-		pod.Annotations[scheduling.KubeGroupNameAnnotationKey] = pgName
+	if pod.Annotations[vcschedulingv1.KubeGroupNameAnnotationKey] == "" {
+		pod.Annotations[vcschedulingv1.KubeGroupNameAnnotationKey] = pgName
 	} else {
-		if pod.Annotations[scheduling.KubeGroupNameAnnotationKey] != pgName {
+		if pod.Annotations[vcschedulingv1.KubeGroupNameAnnotationKey] != pgName {
 			klog.Errorf("normal pod %s/%s annotations %s value is not %s, but %s", pod.Namespace, pod.Name,
-				scheduling.KubeGroupNameAnnotationKey, pgName, pod.Annotations[scheduling.KubeGroupNameAnnotationKey])
+				vcschedulingv1.KubeGroupNameAnnotationKey, pgName, pod.Annotations[vcschedulingv1.KubeGroupNameAnnotationKey])
 		}
 		return nil
 	}
@@ -119,7 +119,7 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 			return err
 		}
 
-		obj := &scheduling.PodGroup{
+		obj := &vcschedulingv1.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace:       pod.Namespace,
 				Name:            pgName,
@@ -127,13 +127,13 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 				Annotations:     map[string]string{},
 				Labels:          map[string]string{},
 			},
-			Spec: scheduling.PodGroupSpec{
+			Spec: vcschedulingv1.PodGroupSpec{
 				MinMember:         1,
 				PriorityClassName: pod.Spec.PriorityClassName,
 				MinResources:      calcPGMinResources(pod),
 			},
-			Status: scheduling.PodGroupStatus{
-				Phase: scheduling.PodGroupPending,
+			Status: vcschedulingv1.PodGroupStatus{
+				Phase: vcschedulingv1.PodGroupPending,
 			},
 		}
 
@@ -142,7 +142,7 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 			if reference.Kind != "" && reference.Name != "" {
 				var upperAnnotations = pg.getAnnotationsFromUpperRes(reference.Kind, reference.Name, pod.Namespace)
 				for k, v := range upperAnnotations {
-					if strings.HasPrefix(k, scheduling.AnnotationPrefix) {
+					if strings.HasPrefix(k, vcschedulingv1.AnnotationPrefix) {
 						obj.Annotations[k] = v
 					}
 				}
@@ -150,33 +150,33 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 		}
 
 		// Individual annotations on pods would overwrite annotations inherited from upper resources.
-		if queueName, ok := pod.Annotations[scheduling.QueueNameAnnotationKey]; ok {
+		if queueName, ok := pod.Annotations[vcschedulingv1.QueueNameAnnotationKey]; ok {
 			obj.Spec.Queue = queueName
 		}
 
-		if value, ok := pod.Annotations[scheduling.PodPreemptable]; ok {
-			obj.Annotations[scheduling.PodPreemptable] = value
+		if value, ok := pod.Annotations[vcschedulingv1.PodPreemptable]; ok {
+			obj.Annotations[vcschedulingv1.PodPreemptable] = value
 		}
-		if value, ok := pod.Annotations[scheduling.CooldownTime]; ok {
-			obj.Annotations[scheduling.CooldownTime] = value
+		if value, ok := pod.Annotations[vcschedulingv1.CooldownTime]; ok {
+			obj.Annotations[vcschedulingv1.CooldownTime] = value
 		}
-		if value, ok := pod.Annotations[scheduling.RevocableZone]; ok {
-			obj.Annotations[scheduling.RevocableZone] = value
+		if value, ok := pod.Annotations[vcschedulingv1.RevocableZone]; ok {
+			obj.Annotations[vcschedulingv1.RevocableZone] = value
 		}
-		if value, ok := pod.Labels[scheduling.PodPreemptable]; ok {
-			obj.Labels[scheduling.PodPreemptable] = value
+		if value, ok := pod.Labels[vcschedulingv1.PodPreemptable]; ok {
+			obj.Labels[vcschedulingv1.PodPreemptable] = value
 		}
-		if value, ok := pod.Labels[scheduling.CooldownTime]; ok {
-			obj.Labels[scheduling.CooldownTime] = value
-		}
-
-		if value, found := pod.Annotations[scheduling.JDBMinAvailable]; found {
-			obj.Annotations[scheduling.JDBMinAvailable] = value
-		} else if value, found := pod.Annotations[scheduling.JDBMaxUnavailable]; found {
-			obj.Annotations[scheduling.JDBMaxUnavailable] = value
+		if value, ok := pod.Labels[vcschedulingv1.CooldownTime]; ok {
+			obj.Labels[vcschedulingv1.CooldownTime] = value
 		}
 
-		if _, err := pg.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Create(context.TODO(), obj, metav1.CreateOptions{}); err != nil {
+		if value, found := pod.Annotations[vcschedulingv1.JDBMinAvailable]; found {
+			obj.Annotations[vcschedulingv1.JDBMinAvailable] = value
+		} else if value, found := pod.Annotations[vcschedulingv1.JDBMaxUnavailable]; found {
+			obj.Annotations[vcschedulingv1.JDBMaxUnavailable] = value
+		}
+
+		if _, err := pg.vcClient.SchedulingV1().PodGroups(pod.Namespace).Create(context.TODO(), obj, metav1.CreateOptions{}); err != nil {
 			klog.Errorf("Failed to create normal PodGroup for Pod <%s/%s>: %v",
 				pod.Namespace, pod.Name, err)
 			return err

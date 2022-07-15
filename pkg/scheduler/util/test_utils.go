@@ -31,7 +31,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	volumescheduling "k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
-	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -77,7 +77,7 @@ func BuildPod(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceLi
 			Namespace: namespace,
 			Labels:    labels,
 			Annotations: map[string]string{
-				schedulingv2.KubeGroupNameAnnotationKey: groupName,
+				vcschedulingv1.KubeGroupNameAnnotationKey: groupName,
 			},
 		},
 		Status: v1.PodStatus{
@@ -106,7 +106,7 @@ func BuildPodWithPVC(namespace, name, nodename string, p v1.PodPhase, req v1.Res
 			Namespace: namespace,
 			Labels:    labels,
 			Annotations: map[string]string{
-				schedulingv2.KubeGroupNameAnnotationKey: groupName,
+				vcschedulingv1.KubeGroupNameAnnotationKey: groupName,
 			},
 		},
 		Status: v1.PodStatus{
@@ -202,7 +202,7 @@ func BuildBestEffortPod(namespace, name, nodeName string, p v1.PodPhase, groupNa
 			Namespace: namespace,
 			Labels:    labels,
 			Annotations: map[string]string{
-				schedulingv2.KubeGroupNameAnnotationKey: groupName,
+				vcschedulingv1.KubeGroupNameAnnotationKey: groupName,
 			},
 		},
 		Status: v1.PodStatus{
@@ -231,7 +231,7 @@ func BuildPodWithPriority(namespace, name, nodeName string, p v1.PodPhase, req v
 			Namespace: namespace,
 			Labels:    labels,
 			Annotations: map[string]string{
-				schedulingv2.KubeGroupNameAnnotationKey: groupName,
+				vcschedulingv1.KubeGroupNameAnnotationKey: groupName,
 			},
 		},
 		Status: v1.PodStatus{

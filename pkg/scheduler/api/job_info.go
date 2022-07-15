@@ -31,9 +31,9 @@ import (
 	"k8s.io/klog"
 	volumescheduling "k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/apis/pkg/apis/scheduling"
-	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 )
 
 // DisruptionBudget define job min pod available and max pod unvailable value
@@ -133,7 +133,7 @@ type TaskInfo struct {
 }
 
 func getJobID(pod *v1.Pod) JobID {
-	if gn, found := pod.Annotations[v1beta1.KubeGroupNameAnnotationKey]; found && len(gn) != 0 {
+	if gn, found := pod.Annotations[vcschedulingv1.KubeGroupNameAnnotationKey]; found && len(gn) != 0 {
 		// Make sure Pod and PodGroup belong to the same namespace.
 		jobID := fmt.Sprintf("%s/%s", pod.Namespace, gn)
 		return JobID(jobID)
@@ -143,7 +143,7 @@ func getJobID(pod *v1.Pod) JobID {
 }
 
 func getTaskID(pod *v1.Pod) TaskID {
-	if ts, found := pod.Annotations[batch.TaskSpecKey]; found && len(ts) != 0 {
+	if ts, found := pod.Annotations[vcbatchv1.TaskSpecKey]; found && len(ts) != 0 {
 		return TaskID(ts)
 	}
 
@@ -365,7 +365,7 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.CreationTimestamp = pg.GetCreationTimestamp()
 
 	var err error
-	ji.WaitingTime, err = ji.extractWaitingTime(pg, v1beta1.JobWaitingTime)
+	ji.WaitingTime, err = ji.extractWaitingTime(pg, vcschedulingv1.JobWaitingTime)
 	if err != nil {
 		klog.Warningf("Error occurs in parsing waiting time for job <%s/%s>, err: %s.",
 			pg.Namespace, pg.Name, err.Error())
@@ -417,10 +417,10 @@ func (ji *JobInfo) extractWaitingTime(pg *PodGroup, waitingTimeKey string) (*tim
 func (ji *JobInfo) extractPreemptable(pg *PodGroup) bool {
 	// check annotaion first
 	if len(pg.Annotations) > 0 {
-		if value, found := pg.Annotations[v1beta1.PodPreemptable]; found {
+		if value, found := pg.Annotations[vcschedulingv1.PodPreemptable]; found {
 			b, err := strconv.ParseBool(value)
 			if err != nil {
-				klog.Warningf("invalid %s=%s", v1beta1.PodPreemptable, value)
+				klog.Warningf("invalid %s=%s", vcschedulingv1.PodPreemptable, value)
 				return false
 			}
 			return b
@@ -429,10 +429,10 @@ func (ji *JobInfo) extractPreemptable(pg *PodGroup) bool {
 
 	// it annotation does not exit, check label
 	if len(pg.Labels) > 0 {
-		if value, found := pg.Labels[v1beta1.PodPreemptable]; found {
+		if value, found := pg.Labels[vcschedulingv1.PodPreemptable]; found {
 			b, err := strconv.ParseBool(value)
 			if err != nil {
-				klog.Warningf("invalid %s=%s", v1beta1.PodPreemptable, value)
+				klog.Warningf("invalid %s=%s", vcschedulingv1.PodPreemptable, value)
 				return false
 			}
 			return b
@@ -446,14 +446,14 @@ func (ji *JobInfo) extractPreemptable(pg *PodGroup) bool {
 func (ji *JobInfo) extractRevocableZone(pg *PodGroup) string {
 	// check annotation first
 	if len(pg.Annotations) > 0 {
-		if value, found := pg.Annotations[v1beta1.RevocableZone]; found {
+		if value, found := pg.Annotations[vcschedulingv1.RevocableZone]; found {
 			if value != "*" {
 				return ""
 			}
 			return value
 		}
 
-		if value, found := pg.Annotations[v1beta1.PodPreemptable]; found {
+		if value, found := pg.Annotations[vcschedulingv1.PodPreemptable]; found {
 			if b, err := strconv.ParseBool(value); err == nil && b {
 				return "*"
 			}
@@ -466,9 +466,9 @@ func (ji *JobInfo) extractRevocableZone(pg *PodGroup) string {
 // extractBudget return budget value for job
 func (ji *JobInfo) extractBudget(pg *PodGroup) *DisruptionBudget {
 	if len(pg.Annotations) > 0 {
-		if value, found := pg.Annotations[v1beta1.JDBMinAvailable]; found {
+		if value, found := pg.Annotations[vcschedulingv1.JDBMinAvailable]; found {
 			return NewDisruptionBudget(value, "")
-		} else if value, found := pg.Annotations[v1beta1.JDBMaxUnavailable]; found {
+		} else if value, found := pg.Annotations[vcschedulingv1.JDBMaxUnavailable]; found {
 			return NewDisruptionBudget("", value)
 		}
 	}

@@ -73,7 +73,11 @@ func unmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []
 		}
 	}
 
-	actionNames := strings.Split(schedulerConf.Actions, ",")
+	var actionNames []string
+	if schedulerConf.Actions != "" {
+		actionNames = strings.Split(schedulerConf.Actions, ",")
+	}
+
 	for _, actionName := range actionNames {
 		if action, found := framework.GetAction(strings.TrimSpace(actionName)); found {
 			actions = append(actions, action)

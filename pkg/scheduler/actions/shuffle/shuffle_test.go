@@ -27,7 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -53,10 +53,10 @@ func TestShuffle(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		podGroups []*schedulingv1beta1.PodGroup
+		podGroups []*vcschedulingv1.PodGroup
 		pods      []*v1.Pod
 		nodes     []*v1.Node
-		queues    []*schedulingv1beta1.Queue
+		queues    []*vcschedulingv1.Queue
 		expected  int
 	}{
 		{
@@ -65,27 +65,27 @@ func TestShuffle(t *testing.T) {
 				util.BuildNode("node1", util.BuildResourceList("4", "8Gi"), make(map[string]string)),
 				util.BuildNode("node2", util.BuildResourceList("4", "8Gi"), make(map[string]string)),
 			},
-			queues: []*schedulingv1beta1.Queue{
+			queues: []*vcschedulingv1.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "default",
 					},
-					Spec: schedulingv1beta1.QueueSpec{
+					Spec: vcschedulingv1.QueueSpec{
 						Weight: 1,
 					},
 				},
 			},
-			podGroups: []*schedulingv1beta1.PodGroup{
+			podGroups: []*vcschedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "test",
 					},
-					Spec: schedulingv1beta1.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "default",
 					},
-					Status: schedulingv1beta1.PodGroupStatus{
-						Phase: schedulingv1beta1.PodGroupRunning,
+					Status: vcschedulingv1.PodGroupStatus{
+						Phase: vcschedulingv1.PodGroupRunning,
 					},
 				},
 				{
@@ -93,11 +93,11 @@ func TestShuffle(t *testing.T) {
 						Name:      "pg2",
 						Namespace: "test",
 					},
-					Spec: schedulingv1beta1.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "default",
 					},
-					Status: schedulingv1beta1.PodGroupStatus{
-						Phase: schedulingv1beta1.PodGroupRunning,
+					Status: vcschedulingv1.PodGroupStatus{
+						Phase: vcschedulingv1.PodGroupRunning,
 					},
 				},
 				{
@@ -105,11 +105,11 @@ func TestShuffle(t *testing.T) {
 						Name:      "pg3",
 						Namespace: "test",
 					},
-					Spec: schedulingv1beta1.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "default",
 					},
-					Status: schedulingv1beta1.PodGroupStatus{
-						Phase: schedulingv1beta1.PodGroupRunning,
+					Status: vcschedulingv1.PodGroupStatus{
+						Phase: vcschedulingv1.PodGroupRunning,
 					},
 				},
 			},
@@ -158,10 +158,10 @@ func TestShuffle(t *testing.T) {
 			schedulerCache.AddNode(node)
 		}
 		for _, q := range test.queues {
-			schedulerCache.AddQueueV1beta1(q)
+			schedulerCache.AddQueueV1(q)
 		}
 		for _, ss := range test.podGroups {
-			schedulerCache.AddPodGroupV1beta1(ss)
+			schedulerCache.AddPodGroupV1(ss)
 		}
 		for _, pod := range test.pods {
 			schedulerCache.AddPod(pod)

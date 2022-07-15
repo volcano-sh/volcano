@@ -23,13 +23,12 @@ import (
 	"strings"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 
-	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	"volcano.sh/apis/pkg/apis/helpers"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 )
@@ -66,15 +65,15 @@ func populateResourceListV1(spec string) (v1.ResourceList, error) {
 	return result, nil
 }
 
-func createJobCommand(config *rest.Config, ns, name string, action vcbus.Action) error {
+func createJobCommand(config *rest.Config, ns, name string, action vcbusv1.Action) error {
 	jobClient := versioned.NewForConfigOrDie(config)
-	job, err := jobClient.BatchV1alpha1().Jobs(ns).Get(context.TODO(), name, metav1.GetOptions{})
+	job, err := jobClient.BatchV1().Jobs(ns).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 
-	ctrlRef := metav1.NewControllerRef(job, helpers.JobKind)
-	cmd := &vcbus.Command{
+	ctrlRef := metav1.NewControllerRef(job, helpers.V1JobKind)
+	cmd := &vcbusv1.Command{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: fmt.Sprintf("%s-%s-",
 				job.Name, strings.ToLower(string(action))),
@@ -87,7 +86,7 @@ func createJobCommand(config *rest.Config, ns, name string, action vcbus.Action)
 		Action:       string(action),
 	}
 
-	if _, err := jobClient.BusV1alpha1().Commands(ns).Create(context.TODO(), cmd, metav1.CreateOptions{}); err != nil {
+	if _, err := jobClient.BusV1().Commands(ns).Create(context.TODO(), cmd, metav1.CreateOptions{}); err != nil {
 		return err
 	}
 

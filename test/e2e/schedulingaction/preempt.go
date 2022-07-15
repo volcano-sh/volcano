@@ -25,7 +25,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
@@ -58,7 +58,7 @@ var _ = Describe("Job E2E Test", func() {
 					Req:    slot,
 					Min:    1,
 					Rep:    1,
-					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
+					Labels: map[string]string{vcschedulingv1.PodPreemptable: "true"},
 				},
 			},
 		}
@@ -98,7 +98,7 @@ var _ = Describe("Job E2E Test", func() {
 					Req:    slot,
 					Min:    1,
 					Rep:    rep,
-					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
+					Labels: map[string]string{vcschedulingv1.PodPreemptable: "true"},
 				},
 			},
 		}
@@ -130,17 +130,17 @@ var _ = Describe("Job E2E Test", func() {
 		defer e2eutil.CleanupTestContext(ctx)
 
 		pgName := "pending-pg"
-		pg := &schedulingv1beta1.PodGroup{
+		pg := &vcschedulingv1.PodGroup{
 			ObjectMeta: v1.ObjectMeta{
 				Namespace: ctx.Namespace,
 				Name:      pgName,
 			},
-			Spec: schedulingv1beta1.PodGroupSpec{
+			Spec: vcschedulingv1.PodGroupSpec{
 				MinMember:    1,
 				MinResources: &e2eutil.ThirtyCPU,
 			},
 		}
-		_, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Create(context.TODO(), pg, v1.CreateOptions{})
+		_, err := ctx.Vcclient.SchedulingV1().PodGroups(ctx.Namespace).Create(context.TODO(), pg, v1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		slot := e2eutil.OneCPU
@@ -169,7 +169,7 @@ var _ = Describe("Job E2E Test", func() {
 			ObjectMeta: v1.ObjectMeta{
 				Namespace:   ctx.Namespace,
 				Name:        "preemptor-pod",
-				Annotations: map[string]string{schedulingv1beta1.KubeGroupNameAnnotationKey: pgName},
+				Annotations: map[string]string{vcschedulingv1.KubeGroupNameAnnotationKey: pgName},
 			},
 			Spec: corev1.PodSpec{
 				SchedulerName:     "volcano",
@@ -204,7 +204,7 @@ var _ = Describe("Job E2E Test", func() {
 					Req:    slot,
 					Min:    1,
 					Rep:    rep / 2,
-					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
+					Labels: map[string]string{vcschedulingv1.PodPreemptable: "true"},
 				},
 			},
 		}
@@ -253,7 +253,7 @@ var _ = Describe("Job E2E Test", func() {
 					Req:    slot,
 					Min:    1,
 					Rep:    1,
-					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
+					Labels: map[string]string{vcschedulingv1.PodPreemptable: "true"},
 				},
 			},
 		}
@@ -309,7 +309,7 @@ var _ = Describe("Job E2E Test", func() {
 					Req:    slot,
 					Min:    1,
 					Rep:    rep,
-					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
+					Labels: map[string]string{vcschedulingv1.PodPreemptable: "true"},
 				},
 			},
 		}

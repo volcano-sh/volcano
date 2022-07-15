@@ -25,7 +25,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
@@ -72,7 +72,7 @@ func (tp *tensorflowPlugin) Name() string {
 	return TFPluginName
 }
 
-func (tp *tensorflowPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
+func (tp *tensorflowPlugin) OnPodCreate(pod *v1.Pod, job *vcbatchv1.Job) error {
 	// No need to generate TF_CONFIG for stand-alone tensorflow job
 	if len(job.Spec.Tasks) == 1 && job.Spec.Tasks[0].Replicas == 1 {
 		return nil
@@ -97,7 +97,7 @@ func (tp *tensorflowPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	return nil
 }
 
-func (tp *tensorflowPlugin) OnJobAdd(job *batch.Job) error {
+func (tp *tensorflowPlugin) OnJobAdd(job *vcbatchv1.Job) error {
 	if job.Status.ControlledResources["plugin-"+tp.Name()] == tp.Name() {
 		return nil
 	}
@@ -107,7 +107,7 @@ func (tp *tensorflowPlugin) OnJobAdd(job *batch.Job) error {
 	return nil
 }
 
-func (tp *tensorflowPlugin) OnJobDelete(job *batch.Job) error {
+func (tp *tensorflowPlugin) OnJobDelete(job *vcbatchv1.Job) error {
 	if job.Status.ControlledResources["plugin-"+tp.Name()] != tp.Name() {
 		return nil
 	}
@@ -115,11 +115,11 @@ func (tp *tensorflowPlugin) OnJobDelete(job *batch.Job) error {
 	return nil
 }
 
-func (tp *tensorflowPlugin) OnJobUpdate(job *batch.Job) error {
+func (tp *tensorflowPlugin) OnJobUpdate(job *vcbatchv1.Job) error {
 	return nil
 }
 
-func (tp *tensorflowPlugin) generateTFClusterSpec(pod *v1.Pod, job *batch.Job) (tfClusterSpec, error) {
+func (tp *tensorflowPlugin) generateTFClusterSpec(pod *v1.Pod, job *vcbatchv1.Job) (tfClusterSpec, error) {
 	index, err := strconv.Atoi(jobhelpers.GetPodIndexUnderTask(pod))
 	if err != nil {
 		return tfClusterSpec{}, err

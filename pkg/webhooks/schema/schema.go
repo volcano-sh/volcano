@@ -27,8 +27,10 @@ import (
 	"k8s.io/klog"
 	corev1 "k8s.io/kubernetes/pkg/apis/core/v1"
 
-	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcbatchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
+	vcschedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 func init() {
@@ -47,13 +49,32 @@ func addToScheme(scheme *runtime.Scheme) {
 }
 
 //DecodeJob decodes the job using deserializer from the raw object.
-func DecodeJob(object runtime.RawExtension, resource metav1.GroupVersionResource) (*batchv1alpha1.Job, error) {
-	jobResource := metav1.GroupVersionResource{Group: batchv1alpha1.SchemeGroupVersion.Group, Version: batchv1alpha1.SchemeGroupVersion.Version, Resource: "jobs"}
+func DecodeJob(object runtime.RawExtension, resource metav1.GroupVersionResource) (*vcbusv1.Job, error) {
 	raw := object.Raw
-	job := batchv1alpha1.Job{}
+	job := vcbusv1.Job{}
+	supportedGVRs := []metav1.GroupVersionResource{
+		{
+			Group:    vcbatchv1alpha1.SchemeGroupVersion.Group,
+			Version:  vcbatchv1alpha1.SchemeGroupVersion.Version,
+			Resource: "jobs",
+		},
+		{
+			Group:    vcbusv1.SchemeGroupVersion.Group,
+			Version:  vcbusv1.SchemeGroupVersion.Version,
+			Resource: "jobs",
+		},
+	}
 
-	if resource != jobResource {
-		err := fmt.Errorf("expect resource to be %s", jobResource)
+	isSpport := false
+	for _, gvr := range supportedGVRs {
+		if resource == gvr {
+			isSpport = true
+			break
+		}
+	}
+
+	if !isSpport {
+		err := fmt.Errorf("expect resource to be %s", supportedGVRs)
 		return &job, err
 	}
 
@@ -86,18 +107,33 @@ func DecodePod(object runtime.RawExtension, resource metav1.GroupVersionResource
 }
 
 // DecodeQueue decodes the queue using deserializer from the raw object.
-func DecodeQueue(object runtime.RawExtension, resource metav1.GroupVersionResource) (*schedulingv1beta1.Queue, error) {
-	queueResource := metav1.GroupVersionResource{
-		Group:    schedulingv1beta1.SchemeGroupVersion.Group,
-		Version:  schedulingv1beta1.SchemeGroupVersion.Version,
-		Resource: "queues",
+func DecodeQueue(object runtime.RawExtension, resource metav1.GroupVersionResource) (*vcschedulingv1.Queue, error) {
+	supportedGVRs := []metav1.GroupVersionResource{
+		{
+			Group:    vcschedulingv1.SchemeGroupVersion.Group,
+			Version:  vcschedulingv1.SchemeGroupVersion.Version,
+			Resource: "queues",
+		},
+		{
+			Group:    vcschedulingv1beta1.SchemeGroupVersion.Group,
+			Version:  vcschedulingv1beta1.SchemeGroupVersion.Version,
+			Resource: "queues",
+		},
 	}
 
-	if resource != queueResource {
-		return nil, fmt.Errorf("expect resource to be %s", queueResource)
+	isSpport := false
+	for _, gvr := range supportedGVRs {
+		if resource == gvr {
+			isSpport = true
+			break
+		}
 	}
 
-	queue := schedulingv1beta1.Queue{}
+	if !isSpport {
+		return nil, fmt.Errorf("expect resource to be %s", supportedGVRs)
+	}
+
+	queue := vcschedulingv1.Queue{}
 	if _, _, err := Codecs.UniversalDeserializer().Decode(object.Raw, nil, &queue); err != nil {
 		return nil, err
 	}
@@ -106,18 +142,33 @@ func DecodeQueue(object runtime.RawExtension, resource metav1.GroupVersionResour
 }
 
 // DecodePodGroup decodes the podgroup using deserializer from the raw object.
-func DecodePodGroup(object runtime.RawExtension, resource metav1.GroupVersionResource) (*schedulingv1beta1.PodGroup, error) {
-	podgroupResource := metav1.GroupVersionResource{
-		Group:    schedulingv1beta1.SchemeGroupVersion.Group,
-		Version:  schedulingv1beta1.SchemeGroupVersion.Version,
-		Resource: "podgroups",
+func DecodePodGroup(object runtime.RawExtension, resource metav1.GroupVersionResource) (*vcschedulingv1.PodGroup, error) {
+	supportedGVRs := []metav1.GroupVersionResource{
+		{
+			Group:    vcschedulingv1.SchemeGroupVersion.Group,
+			Version:  vcschedulingv1.SchemeGroupVersion.Version,
+			Resource: "podgroups",
+		},
+		{
+			Group:    vcschedulingv1beta1.SchemeGroupVersion.Group,
+			Version:  vcschedulingv1beta1.SchemeGroupVersion.Version,
+			Resource: "podgroups",
+		},
 	}
 
-	if resource != podgroupResource {
-		return nil, fmt.Errorf("expect resource to be %s", podgroupResource)
+	isSpport := false
+	for _, gvr := range supportedGVRs {
+		if resource == gvr {
+			isSpport = true
+			break
+		}
 	}
 
-	podgroup := schedulingv1beta1.PodGroup{}
+	if !isSpport {
+		return nil, fmt.Errorf("expect resource to be %s", supportedGVRs)
+	}
+
+	podgroup := vcschedulingv1.PodGroup{}
 	if _, _, err := Codecs.UniversalDeserializer().Decode(object.Raw, nil, &podgroup); err != nil {
 		return nil, err
 	}

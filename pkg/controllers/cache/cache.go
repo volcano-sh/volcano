@@ -28,7 +28,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -54,7 +54,7 @@ func JobKeyByReq(req *apis.Request) string {
 }
 
 //JobKey gets the "ns"/"name" format of the given job.
-func JobKey(job *v1alpha1.Job) string {
+func JobKey(job *vcbatchv1.Job) string {
 	return keyFn(job.Namespace, job.Name)
 }
 
@@ -63,7 +63,7 @@ func jobTerminated(job *apis.JobInfo) bool {
 }
 
 func jobKeyOfPod(pod *v1.Pod) (string, error) {
-	jobName, found := pod.Annotations[v1alpha1.JobNameKey]
+	jobName, found := pod.Annotations[vcbatchv1.JobNameKey]
 	if !found {
 		return "", fmt.Errorf("failed to find job name of pod <%s/%s>",
 			pod.Namespace, pod.Name)
@@ -102,7 +102,7 @@ func (jc *jobCache) Get(key string) (*apis.JobInfo, error) {
 	return job.Clone(), nil
 }
 
-func (jc *jobCache) GetStatus(key string) (*v1alpha1.JobStatus, error) {
+func (jc *jobCache) GetStatus(key string) (*vcbatchv1.JobStatus, error) {
 	jc.Lock()
 	defer jc.Unlock()
 
@@ -120,7 +120,7 @@ func (jc *jobCache) GetStatus(key string) (*v1alpha1.JobStatus, error) {
 	return &status, nil
 }
 
-func (jc *jobCache) Add(job *v1alpha1.Job) error {
+func (jc *jobCache) Add(job *vcbatchv1.Job) error {
 	jc.Lock()
 	defer jc.Unlock()
 	key := JobKey(job)
@@ -144,7 +144,7 @@ func (jc *jobCache) Add(job *v1alpha1.Job) error {
 	return nil
 }
 
-func (jc *jobCache) Update(obj *v1alpha1.Job) error {
+func (jc *jobCache) Update(obj *vcbatchv1.Job) error {
 	jc.Lock()
 	defer jc.Unlock()
 
@@ -170,7 +170,7 @@ func (jc *jobCache) Update(obj *v1alpha1.Job) error {
 	return nil
 }
 
-func (jc *jobCache) Delete(obj *v1alpha1.Job) error {
+func (jc *jobCache) Delete(obj *vcbatchv1.Job) error {
 	jc.Lock()
 	defer jc.Unlock()
 

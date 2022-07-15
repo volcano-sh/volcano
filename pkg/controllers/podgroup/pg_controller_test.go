@@ -27,7 +27,7 @@ import (
 	"k8s.io/client-go/informers"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 
-	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
@@ -58,7 +58,7 @@ func TestAddPodGroup(t *testing.T) {
 	testCases := []struct {
 		name             string
 		pod              *v1.Pod
-		expectedPodGroup *scheduling.PodGroup
+		expectedPodGroup *vcschedulingv1.PodGroup
 	}{
 		{
 			name: "AddPodGroup: pod has ownerReferences and priorityClassName",
@@ -84,9 +84,9 @@ func TestAddPodGroup(t *testing.T) {
 					PriorityClassName: "test-pc",
 				},
 			},
-			expectedPodGroup: &scheduling.PodGroup{
+			expectedPodGroup: &vcschedulingv1.PodGroup{
 				TypeMeta: metav1.TypeMeta{
-					APIVersion: "scheduling.volcano.sh/v1beta1",
+					APIVersion: "scheduling.volcano.sh/v1",
 					Kind:       "PodGroup",
 				},
 				ObjectMeta: metav1.ObjectMeta{
@@ -102,7 +102,7 @@ func TestAddPodGroup(t *testing.T) {
 						},
 					},
 				},
-				Spec: scheduling.PodGroupSpec{
+				Spec: vcschedulingv1.PodGroupSpec{
 					MinMember:         1,
 					PriorityClassName: "test-pc",
 				},
@@ -121,9 +121,9 @@ func TestAddPodGroup(t *testing.T) {
 					UID:       types.UID("7a09885b-b753-4924-9fba-77c0836bac20"),
 				},
 			},
-			expectedPodGroup: &scheduling.PodGroup{
+			expectedPodGroup: &vcschedulingv1.PodGroup{
 				TypeMeta: metav1.TypeMeta{
-					APIVersion: "scheduling.volcano.sh/v1beta1",
+					APIVersion: "scheduling.volcano.sh/v1",
 					Kind:       "PodGroup",
 				},
 				ObjectMeta: metav1.ObjectMeta{
@@ -140,7 +140,7 @@ func TestAddPodGroup(t *testing.T) {
 						},
 					},
 				},
-				Spec: scheduling.PodGroupSpec{
+				Spec: vcschedulingv1.PodGroupSpec{
 					MinMember: 1,
 				},
 			},
@@ -158,7 +158,7 @@ func TestAddPodGroup(t *testing.T) {
 		c.addPod(pod)
 		c.createNormalPodPGIfNotExist(pod)
 
-		pg, err := c.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(context.TODO(),
+		pg, err := c.vcClient.SchedulingV1().PodGroups(pod.Namespace).Get(context.TODO(),
 			testCase.expectedPodGroup.Name,
 			metav1.GetOptions{},
 		)
@@ -170,7 +170,7 @@ func TestAddPodGroup(t *testing.T) {
 			t.Errorf("Case %s failed, expect %v, got %v", testCase.name, testCase.expectedPodGroup, pg)
 		}
 
-		podAnnotation := pod.Annotations[scheduling.KubeGroupNameAnnotationKey]
+		podAnnotation := pod.Annotations[vcschedulingv1.KubeGroupNameAnnotationKey]
 		if testCase.expectedPodGroup.Name != podAnnotation {
 			t.Errorf("Case %s failed, expect %v, got %v", testCase.name,
 				testCase.expectedPodGroup.Name, podAnnotation)

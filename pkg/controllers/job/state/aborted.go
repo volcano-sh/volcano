@@ -17,8 +17,8 @@ limitations under the License.
 package state
 
 import (
-	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -26,11 +26,11 @@ type abortedState struct {
 	job *apis.JobInfo
 }
 
-func (as *abortedState) Execute(action v1alpha1.Action) error {
+func (as *abortedState) Execute(action vcbusv1.Action) error {
 	switch action {
-	case v1alpha1.ResumeJobAction:
-		return KillJob(as.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
-			status.State.Phase = vcbatch.Restarting
+	case vcbusv1.ResumeJobAction:
+		return KillJob(as.job, PodRetainPhaseSoft, func(status *vcbatchv1.JobStatus) bool {
+			status.State.Phase = vcbatchv1.Restarting
 			status.RetryCount++
 			return true
 		})

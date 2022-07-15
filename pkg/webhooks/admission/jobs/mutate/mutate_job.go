@@ -26,7 +26,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/mpi"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/pytorch"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/tensorflow"
@@ -62,7 +62,7 @@ var service = &router.AdmissionService{
 					Operations: []whv1.OperationType{whv1.Create},
 					Rule: whv1.Rule{
 						APIGroups:   []string{"batch.volcano.sh"},
-						APIVersions: []string{"v1alpha1"},
+						APIVersions: []string{"v1alpha1", "v1"},
 						Resources:   []string{"jobs"},
 					},
 				},
@@ -108,7 +108,7 @@ func Jobs(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	return &reviewResponse
 }
 
-func createPatch(job *v1alpha1.Job) ([]byte, error) {
+func createPatch(job *vcbusv1.Job) ([]byte, error) {
 	var patch []patchOperation
 	pathQueue := patchDefaultQueue(job)
 	if pathQueue != nil {
@@ -138,7 +138,7 @@ func createPatch(job *v1alpha1.Job) ([]byte, error) {
 	return json.Marshal(patch)
 }
 
-func patchDefaultQueue(job *v1alpha1.Job) *patchOperation {
+func patchDefaultQueue(job *vcbusv1.Job) *patchOperation {
 	//Add default queue if not specified.
 	if job.Spec.Queue == "" {
 		return &patchOperation{Op: "add", Path: "/spec/queue", Value: DefaultQueue}
@@ -146,7 +146,7 @@ func patchDefaultQueue(job *v1alpha1.Job) *patchOperation {
 	return nil
 }
 
-func patchDefaultScheduler(job *v1alpha1.Job) *patchOperation {
+func patchDefaultScheduler(job *vcbusv1.Job) *patchOperation {
 	// Add default scheduler name if not specified.
 	if job.Spec.SchedulerName == "" {
 		return &patchOperation{Op: "add", Path: "/spec/schedulerName", Value: defaultSchedulerName}
@@ -154,7 +154,7 @@ func patchDefaultScheduler(job *v1alpha1.Job) *patchOperation {
 	return nil
 }
 
-func patchDefaultMaxRetry(job *v1alpha1.Job) *patchOperation {
+func patchDefaultMaxRetry(job *vcbusv1.Job) *patchOperation {
 	// Add default maxRetry if maxRetry is zero.
 	if job.Spec.MaxRetry == 0 {
 		return &patchOperation{Op: "add", Path: "/spec/maxRetry", Value: DefaultMaxRetry}
@@ -162,7 +162,7 @@ func patchDefaultMaxRetry(job *v1alpha1.Job) *patchOperation {
 	return nil
 }
 
-func patchDefaultMinAvailable(job *v1alpha1.Job) *patchOperation {
+func patchDefaultMinAvailable(job *vcbusv1.Job) *patchOperation {
 	// Add default minAvailable if minAvailable is zero.
 	if job.Spec.MinAvailable == 0 {
 		var jobMinAvailable int32
@@ -179,7 +179,7 @@ func patchDefaultMinAvailable(job *v1alpha1.Job) *patchOperation {
 	return nil
 }
 
-func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string, job *v1alpha1.Job) *patchOperation {
+func mutateSpec(tasks []vcbusv1.TaskSpec, basePath string, job *vcbusv1.Job) *patchOperation {
 	// TODO: Enable this configuration when dependOn supports coexistence with the gang plugin
 	// if _, ok := job.Spec.Plugins[mpi.MpiPluginName]; ok {
 	// 	mpi.AddDependsOn(job)
@@ -190,7 +190,7 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string, job *v1alpha1.Job) *
 		taskName := tasks[index].Name
 		if len(taskName) == 0 {
 			patched = true
-			tasks[index].Name = v1alpha1.DefaultTaskSpec + strconv.Itoa(index)
+			tasks[index].Name = vcbusv1.DefaultTaskSpec + strconv.Itoa(index)
 		}
 
 		if tasks[index].Template.Spec.HostNetwork && tasks[index].Template.Spec.DNSPolicy == "" {
@@ -219,7 +219,7 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string, job *v1alpha1.Job) *
 	}
 }
 
-func patchDefaultPlugins(job *v1alpha1.Job) *patchOperation {
+func patchDefaultPlugins(job *vcbusv1.Job) *patchOperation {
 	if job.Spec.Plugins == nil {
 		return nil
 	}

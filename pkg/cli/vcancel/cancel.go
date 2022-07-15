@@ -58,7 +58,7 @@ func CancelJob() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	err = jobClient.BatchV1alpha1().Jobs(cancelJobFlags.Namespace).Delete(context.TODO(), cancelJobFlags.JobName, metav1.DeleteOptions{})
+	err = jobClient.BatchV1().Jobs(cancelJobFlags.Namespace).Delete(context.TODO(), cancelJobFlags.JobName, metav1.DeleteOptions{})
 	if err != nil {
 		return err
 	}

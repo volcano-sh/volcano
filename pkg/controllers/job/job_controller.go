@@ -36,18 +36,18 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
-	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcscheme "volcano.sh/apis/pkg/client/clientset/versioned/scheme"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
-	batchinformer "volcano.sh/apis/pkg/client/informers/externalversions/batch/v1alpha1"
-	businformer "volcano.sh/apis/pkg/client/informers/externalversions/bus/v1alpha1"
-	schedulinginformers "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
-	batchlister "volcano.sh/apis/pkg/client/listers/batch/v1alpha1"
-	buslister "volcano.sh/apis/pkg/client/listers/bus/v1alpha1"
-	schedulinglisters "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
+	batchinformer "volcano.sh/apis/pkg/client/informers/externalversions/batch/v1"
+	businformer "volcano.sh/apis/pkg/client/informers/externalversions/bus/v1"
+	schedulinginformers "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1"
+	batchlister "volcano.sh/apis/pkg/client/listers/batch/v1"
+	buslister "volcano.sh/apis/pkg/client/listers/bus/v1"
+	schedulinglisters "volcano.sh/apis/pkg/client/listers/scheduling/v1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobcache "volcano.sh/volcano/pkg/controllers/cache"
 	"volcano.sh/volcano/pkg/controllers/framework"
@@ -151,7 +151,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 
 	factory := informerfactory.NewSharedInformerFactory(cc.vcClient, 0)
 	cc.vcInformerFactory = factory
-	cc.jobInformer = factory.Batch().V1alpha1().Jobs()
+	cc.jobInformer = factory.Batch().V1().Jobs()
 	cc.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    cc.addJob,
 		UpdateFunc: cc.updateJob,
@@ -160,14 +160,14 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.jobLister = cc.jobInformer.Lister()
 	cc.jobSynced = cc.jobInformer.Informer().HasSynced
 
-	cc.cmdInformer = factory.Bus().V1alpha1().Commands()
+	cc.cmdInformer = factory.Bus().V1().Commands()
 	cc.cmdInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch v := obj.(type) {
-				case *busv1alpha1.Command:
+				case *vcbusv1.Command:
 					if v.TargetObject != nil &&
-						v.TargetObject.APIVersion == batchv1alpha1.SchemeGroupVersion.String() &&
+						v.TargetObject.APIVersion == vcbatchv1.SchemeGroupVersion.String() &&
 						v.TargetObject.Kind == "Job" {
 						return true
 					}
@@ -203,7 +203,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.svcLister = cc.svcInformer.Lister()
 	cc.svcSynced = cc.svcInformer.Informer().HasSynced
 
-	cc.pgInformer = factory.Scheduling().V1beta1().PodGroups()
+	cc.pgInformer = factory.Scheduling().V1().PodGroups()
 	cc.pgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: cc.updatePodGroup,
 	})
@@ -214,7 +214,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.pcLister = cc.pcInformer.Lister()
 	cc.pcSynced = cc.pcInformer.Informer().HasSynced
 
-	cc.queueInformer = factory.Scheduling().V1beta1().Queues()
+	cc.queueInformer = factory.Scheduling().V1().Queues()
 	cc.queueLister = cc.queueInformer.Lister()
 	cc.queueSynced = cc.queueInformer.Informer().HasSynced
 
@@ -337,8 +337,8 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 	klog.V(3).Infof("Execute <%v> on Job <%s/%s> in <%s> by <%T>.",
 		action, req.Namespace, req.JobName, jobInfo.Job.Status.State.Phase, st)
 
-	if action != busv1alpha1.SyncJobAction {
-		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, batchv1alpha1.ExecuteAction, fmt.Sprintf(
+	if action != vcbusv1.SyncJobAction {
+		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, vcbatchv1.ExecuteAction, fmt.Sprintf(
 			"Start to execute action %s ", action))
 	}
 
@@ -350,10 +350,10 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 			queue.AddRateLimited(req)
 			return true
 		}
-		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, batchv1alpha1.ExecuteAction, fmt.Sprintf(
+		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, vcbatchv1.ExecuteAction, fmt.Sprintf(
 			"Job failed on action %s for retry limit reached", action))
 		klog.Warningf("Terminating Job <%s/%s> and releasing resources", jobInfo.Job.Namespace, jobInfo.Job.Name)
-		if err = st.Execute(busv1alpha1.TerminateJobAction); err != nil {
+		if err = st.Execute(vcbusv1.TerminateJobAction); err != nil {
 			klog.Errorf("Failed to terminate Job<%s/%s>: %v", jobInfo.Job.Namespace, jobInfo.Job.Name, err)
 		}
 		klog.Warningf("Dropping job<%s/%s> out of the queue: %v because max retries has reached", jobInfo.Job.Namespace, jobInfo.Job.Name, err)

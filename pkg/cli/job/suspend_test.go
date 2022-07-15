@@ -25,13 +25,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	v1alpha1batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	v1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 )
 
 func TestSuspendJobJob(t *testing.T) {
-	responsecommand := v1alpha1.Command{}
-	responsejob := v1alpha1batch.Job{}
+	responsecommand := vcbusv1.Command{}
+	responsejob := vcbatchv1.Job{}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "command") {

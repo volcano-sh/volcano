@@ -26,9 +26,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
-	schedulingv1beta2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 )
 
@@ -41,22 +41,22 @@ func TestValidateJobCreate(t *testing.T) {
 
 	testCases := []struct {
 		Name           string
-		Job            v1alpha1.Job
+		Job            vcbatchv1.Job
 		ExpectErr      bool
 		reviewResponse admissionv1.AdmissionResponse
 		ret            string
 	}{
 		{
 			Name: "validate valid-job",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "valid-job",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -75,10 +75,10 @@ func TestValidateJobCreate(t *testing.T) {
 							},
 						},
 					},
-					Policies: []v1alpha1.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
-							Event:  busv1alpha1.PodEvictedEvent,
-							Action: busv1alpha1.RestartTaskAction,
+							Event:  vcbusv1.PodEvictedEvent,
+							Action: vcbusv1.RestartTaskAction,
 						},
 					},
 				},
@@ -90,15 +90,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// duplicate task name
 		{
 			Name: "duplicate-task-job",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "duplicate-task-job",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "duplicated-task-1",
 							Replicas: 1,
@@ -143,15 +143,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// Duplicated Policy Event
 		{
 			Name: "job-policy-duplicated",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-policy-duplicated",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -170,14 +170,14 @@ func TestValidateJobCreate(t *testing.T) {
 							},
 						},
 					},
-					Policies: []v1alpha1.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
-							Event:  busv1alpha1.PodFailedEvent,
-							Action: busv1alpha1.AbortJobAction,
+							Event:  vcbusv1.PodFailedEvent,
+							Action: vcbusv1.AbortJobAction,
 						},
 						{
-							Event:  busv1alpha1.PodFailedEvent,
-							Action: busv1alpha1.RestartJobAction,
+							Event:  vcbusv1.PodFailedEvent,
+							Action: vcbusv1.RestartJobAction,
 						},
 					},
 				},
@@ -189,15 +189,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// Min Available illegal
 		{
 			Name: "Min Available illegal",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-min-illegal",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 2,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -225,15 +225,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// Job Plugin illegal
 		{
 			Name: "Job Plugin illegal",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-plugin-illegal",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -264,15 +264,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// ttl-illegal
 		{
 			Name: "job-ttl-illegal",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-ttl-illegal",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -301,15 +301,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// min-MinAvailable less than zero
 		{
 			Name: "minAvailable-lessThanZero",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "minAvailable-lessThanZero",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: -1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -337,16 +337,16 @@ func TestValidateJobCreate(t *testing.T) {
 		// maxretry less than zero
 		{
 			Name: "maxretry-lessThanZero",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "maxretry-lessThanZero",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					MaxRetry:     -1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -374,15 +374,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// no task specified in the job
 		{
 			Name: "no-task",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "no-task",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks:        []v1alpha1.TaskSpec{},
+					Tasks:        []vcbatchv1.TaskSpec{},
 				},
 			},
 			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
@@ -392,15 +392,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// replica set less than zero
 		{
 			Name: "replica-lessThanZero",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "replica-lessThanZero",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: -1,
@@ -428,15 +428,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// task minAvailable set less than zero
 		{
 			Name: "replica-lessThanZero",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "taskMinAvailable-lessThanZero",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:         "task-1",
 							Replicas:     1,
@@ -465,15 +465,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// task name error
 		{
 			Name: "nonDNS-task",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "replica-lessThanZero",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "Task-1",
 							Replicas: 1,
@@ -501,15 +501,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// Policy Event with exit code
 		{
 			Name: "job-policy-withExitCode",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-policy-withExitCode",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -528,10 +528,10 @@ func TestValidateJobCreate(t *testing.T) {
 							},
 						},
 					},
-					Policies: []v1alpha1.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
-							Event:    busv1alpha1.PodFailedEvent,
-							Action:   busv1alpha1.AbortJobAction,
+							Event:    vcbusv1.PodFailedEvent,
+							Action:   vcbusv1.AbortJobAction,
 							ExitCode: &policyExitCode,
 						},
 					},
@@ -544,15 +544,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// Both policy event and exit code are nil
 		{
 			Name: "policy-noEvent-noExCode",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "policy-noEvent-noExCode",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -571,9 +571,9 @@ func TestValidateJobCreate(t *testing.T) {
 							},
 						},
 					},
-					Policies: []v1alpha1.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
-							Action: busv1alpha1.AbortJobAction,
+							Action: vcbusv1.AbortJobAction,
 						},
 					},
 				},
@@ -585,15 +585,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// invalid policy event
 		{
 			Name: "invalid-policy-event",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "invalid-policy-event",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -612,10 +612,10 @@ func TestValidateJobCreate(t *testing.T) {
 							},
 						},
 					},
-					Policies: []v1alpha1.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
-							Event:  busv1alpha1.Event("someFakeEvent"),
-							Action: busv1alpha1.AbortJobAction,
+							Event:  vcbusv1.Event("someFakeEvent"),
+							Action: vcbusv1.AbortJobAction,
 						},
 					},
 				},
@@ -627,15 +627,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// invalid policy action
 		{
 			Name: "invalid-policy-action",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "invalid-policy-action",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -654,10 +654,10 @@ func TestValidateJobCreate(t *testing.T) {
 							},
 						},
 					},
-					Policies: []v1alpha1.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
-							Event:  busv1alpha1.PodEvictedEvent,
-							Action: busv1alpha1.Action("someFakeAction"),
+							Event:  vcbusv1.PodEvictedEvent,
+							Action: vcbusv1.Action("someFakeAction"),
 						},
 					},
 				},
@@ -669,15 +669,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// policy exit-code zero
 		{
 			Name: "policy-extcode-zero",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "policy-extcode-zero",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -696,9 +696,9 @@ func TestValidateJobCreate(t *testing.T) {
 							},
 						},
 					},
-					Policies: []v1alpha1.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
-							Action: busv1alpha1.AbortJobAction,
+							Action: vcbusv1.AbortJobAction,
 							ExitCode: func(i int32) *int32 {
 								return &i
 							}(int32(0)),
@@ -713,15 +713,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// duplicate policy exit-code
 		{
 			Name: "duplicate-exitcode",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "duplicate-exitcode",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -740,7 +740,7 @@ func TestValidateJobCreate(t *testing.T) {
 							},
 						},
 					},
-					Policies: []v1alpha1.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
 							ExitCode: func(i int32) *int32 {
 								return &i
@@ -761,15 +761,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// Policy with any event and other events
 		{
 			Name: "job-policy-withExitCode",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-policy-withExitCode",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -788,14 +788,14 @@ func TestValidateJobCreate(t *testing.T) {
 							},
 						},
 					},
-					Policies: []v1alpha1.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
-							Event:  busv1alpha1.AnyEvent,
-							Action: busv1alpha1.AbortJobAction,
+							Event:  vcbusv1.AnyEvent,
+							Action: vcbusv1.AbortJobAction,
 						},
 						{
-							Event:  busv1alpha1.PodFailedEvent,
-							Action: busv1alpha1.RestartJobAction,
+							Event:  vcbusv1.PodFailedEvent,
+							Action: vcbusv1.RestartJobAction,
 						},
 					},
 				},
@@ -807,15 +807,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// invalid mount volume
 		{
 			Name: "invalid-mount-volume",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "invalid-mount-volume",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -834,13 +834,13 @@ func TestValidateJobCreate(t *testing.T) {
 							},
 						},
 					},
-					Policies: []v1alpha1.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
-							Event:  busv1alpha1.AnyEvent,
-							Action: busv1alpha1.AbortJobAction,
+							Event:  vcbusv1.AnyEvent,
+							Action: vcbusv1.AbortJobAction,
 						},
 					},
-					Volumes: []v1alpha1.VolumeSpec{
+					Volumes: []vcbatchv1.VolumeSpec{
 						{
 							MountPath: "",
 						},
@@ -854,15 +854,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// duplicate mount volume
 		{
 			Name: "duplicate-mount-volume",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "duplicate-mount-volume",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -881,13 +881,13 @@ func TestValidateJobCreate(t *testing.T) {
 							},
 						},
 					},
-					Policies: []v1alpha1.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
-							Event:  busv1alpha1.AnyEvent,
-							Action: busv1alpha1.AbortJobAction,
+							Event:  vcbusv1.AnyEvent,
+							Action: vcbusv1.AbortJobAction,
 						},
 					},
-					Volumes: []v1alpha1.VolumeSpec{
+					Volumes: []vcbatchv1.VolumeSpec{
 						{
 							MountPath:       "/var",
 							VolumeClaimName: "pvc1",
@@ -905,15 +905,15 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		{
 			Name: "volume without VolumeClaimName and VolumeClaim",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "invalid-volume",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -932,13 +932,13 @@ func TestValidateJobCreate(t *testing.T) {
 							},
 						},
 					},
-					Policies: []v1alpha1.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
-							Event:  busv1alpha1.AnyEvent,
-							Action: busv1alpha1.AbortJobAction,
+							Event:  vcbusv1.AnyEvent,
+							Action: vcbusv1.AbortJobAction,
 						},
 					},
-					Volumes: []v1alpha1.VolumeSpec{
+					Volumes: []vcbatchv1.VolumeSpec{
 						{
 							MountPath: "/var",
 						},
@@ -955,15 +955,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// task Policy with any event and other events
 		{
 			Name: "taskpolicy-withAnyandOthrEvent",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "taskpolicy-withAnyandOthrEvent",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -980,14 +980,14 @@ func TestValidateJobCreate(t *testing.T) {
 									},
 								},
 							},
-							Policies: []v1alpha1.LifecyclePolicy{
+							Policies: []vcbatchv1.LifecyclePolicy{
 								{
-									Event:  busv1alpha1.AnyEvent,
-									Action: busv1alpha1.AbortJobAction,
+									Event:  vcbusv1.AnyEvent,
+									Action: vcbusv1.AbortJobAction,
 								},
 								{
-									Event:  busv1alpha1.PodFailedEvent,
-									Action: busv1alpha1.RestartJobAction,
+									Event:  vcbusv1.PodFailedEvent,
+									Action: vcbusv1.RestartJobAction,
 								},
 							},
 						},
@@ -1001,15 +1001,15 @@ func TestValidateJobCreate(t *testing.T) {
 		// job with no queue created
 		{
 			Name: "job-with-noQueue",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-with-noQueue",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "jobQueue",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -1036,15 +1036,15 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		{
 			Name: "job with priviledged init container",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "valid-job",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -1080,15 +1080,15 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		{
 			Name: "job with priviledged container",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "valid-job",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "task-1",
 							Replicas: 1,
@@ -1118,19 +1118,19 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		{
 			Name: "job with valid task depends on",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-with-valid-task-depends-on",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "t1",
 							Replicas: 1,
-							DependsOn: &v1alpha1.DependsOn{
+							DependsOn: &vcbatchv1.DependsOn{
 								Name: []string{"t2"},
 							},
 							Template: v1.PodTemplateSpec{
@@ -1168,19 +1168,19 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 		{
 			Name: "job with invalid task depends on",
-			Job: v1alpha1.Job{
+			Job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job-with-invalid-task-depends-on",
 					Namespace: namespace,
 				},
-				Spec: v1alpha1.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					MinAvailable: 1,
 					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "t1",
 							Replicas: 1,
-							DependsOn: &v1alpha1.DependsOn{
+							DependsOn: &vcbatchv1.DependsOn{
 								Name: []string{"t3"},
 							},
 							Template: v1.PodTemplateSpec{
@@ -1220,22 +1220,22 @@ func TestValidateJobCreate(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			defaultqueue := schedulingv1beta2.Queue{
+			defaultqueue := vcschedulingv1.Queue{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "default",
 				},
-				Spec: schedulingv1beta2.QueueSpec{
+				Spec: vcschedulingv1.QueueSpec{
 					Weight: 1,
 				},
-				Status: schedulingv1beta2.QueueStatus{
-					State: schedulingv1beta2.QueueStateOpen,
+				Status: vcschedulingv1.QueueStatus{
+					State: vcschedulingv1.QueueStateOpen,
 				},
 			}
 			// create fake volcano clientset
 			config.VolcanoClient = fakeclient.NewSimpleClientset()
 
 			//create default queue
-			_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultqueue, metav1.CreateOptions{})
+			_, err := config.VolcanoClient.SchedulingV1().Queues().Create(context.TODO(), &defaultqueue, metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Queue Creation Failed")
 			}
@@ -1348,7 +1348,7 @@ func TestValidateJobUpdate(t *testing.T) {
 			new.Spec.Tasks[0].Replicas = tc.replicas
 
 			if tc.addTask {
-				new.Spec.Tasks = append(new.Spec.Tasks, v1alpha1.TaskSpec{
+				new.Spec.Tasks = append(new.Spec.Tasks, vcbatchv1.TaskSpec{
 					Name:     "task-2",
 					Replicas: 5,
 					Template: v1.PodTemplateSpec{
@@ -1385,16 +1385,16 @@ func TestValidateJobUpdate(t *testing.T) {
 
 }
 
-func newJob() *v1alpha1.Job {
-	return &v1alpha1.Job{
+func newJob() *vcbatchv1.Job {
+	return &vcbatchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "valid-job",
 			Namespace: "default",
 		},
-		Spec: v1alpha1.JobSpec{
+		Spec: vcbatchv1.JobSpec{
 			MinAvailable: 5,
 			Queue:        "default",
-			Tasks: []v1alpha1.TaskSpec{
+			Tasks: []vcbatchv1.TaskSpec{
 				{
 					Name:     "task-1",
 					Replicas: 5,
@@ -1413,10 +1413,10 @@ func newJob() *v1alpha1.Job {
 					},
 				},
 			},
-			Policies: []v1alpha1.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Event:  busv1alpha1.PodEvictedEvent,
-					Action: busv1alpha1.RestartTaskAction,
+					Event:  vcbusv1.PodEvictedEvent,
+					Action: vcbusv1.RestartTaskAction,
 				},
 			},
 		},
@@ -1426,15 +1426,15 @@ func newJob() *v1alpha1.Job {
 func TestValidateTaskTopoPolicy(t *testing.T) {
 	testCases := []struct {
 		name     string
-		taskSpec v1alpha1.TaskSpec
+		taskSpec vcbatchv1.TaskSpec
 		expect   string
 	}{
 		{
 			name: "test-1",
-			taskSpec: v1alpha1.TaskSpec{
+			taskSpec: vcbatchv1.TaskSpec{
 				Name:           "task-1",
 				Replicas:       5,
-				TopologyPolicy: v1alpha1.Restricted,
+				TopologyPolicy: vcbatchv1.Restricted,
 				Template: v1.PodTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{
 						Labels: map[string]string{"name": "test"},
@@ -1457,9 +1457,9 @@ func TestValidateTaskTopoPolicy(t *testing.T) {
 		},
 		{
 			name: "test-2",
-			taskSpec: v1alpha1.TaskSpec{
+			taskSpec: vcbatchv1.TaskSpec{
 				Name:           "task-2",
-				TopologyPolicy: v1alpha1.Restricted,
+				TopologyPolicy: vcbatchv1.Restricted,
 				Template: v1.PodTemplateSpec{
 					Spec: v1.PodSpec{
 						Containers: []v1.Container{
@@ -1479,10 +1479,10 @@ func TestValidateTaskTopoPolicy(t *testing.T) {
 		},
 		{
 			name: "test-3",
-			taskSpec: v1alpha1.TaskSpec{
+			taskSpec: vcbatchv1.TaskSpec{
 				Name:           "task-3",
 				Replicas:       5,
-				TopologyPolicy: v1alpha1.Restricted,
+				TopologyPolicy: vcbatchv1.Restricted,
 				Template: v1.PodTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{
 						Labels: map[string]string{"name": "test"},

@@ -11,7 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -78,30 +78,30 @@ func TestEventHandler(t *testing.T) {
 	p1 := &schedulingv1.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: "p1"}, Value: 1}
 	p2 := &schedulingv1.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: "p2"}, Value: 2}
 	// podgroup
-	pg1 := &schedulingv1beta1.PodGroup{
+	pg1 := &vcschedulingv1.PodGroup{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "ns1",
 			Name:      "pg1",
 		},
-		Spec: schedulingv1beta1.PodGroupSpec{
+		Spec: vcschedulingv1.PodGroupSpec{
 			Queue:             "q1",
 			MinMember:         int32(2),
 			PriorityClassName: p2.Name,
 		},
 	}
-	pg2 := &schedulingv1beta1.PodGroup{
+	pg2 := &vcschedulingv1.PodGroup{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "ns1",
 			Name:      "pg2",
 		},
-		Spec: schedulingv1beta1.PodGroupSpec{
+		Spec: vcschedulingv1.PodGroupSpec{
 			Queue:             "q1",
 			MinMember:         int32(1),
 			PriorityClassName: p1.Name,
 		},
 	}
 	// queue
-	queue1 := &schedulingv1beta1.Queue{
+	queue1 := &vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "q1",
 		},
@@ -113,7 +113,7 @@ func TestEventHandler(t *testing.T) {
 		pods     []*apiv1.Pod
 		nodes    []*apiv1.Node
 		pcs      []*schedulingv1.PriorityClass
-		pgs      []*schedulingv1beta1.PodGroup
+		pgs      []*vcschedulingv1.PodGroup
 		expected map[string]string
 	}{
 		{
@@ -121,7 +121,7 @@ func TestEventHandler(t *testing.T) {
 			pods:  []*apiv1.Pod{w1, w2, w3},
 			nodes: []*apiv1.Node{n1, n2},
 			pcs:   []*schedulingv1.PriorityClass{p1, p2},
-			pgs:   []*schedulingv1beta1.PodGroup{pg1, pg2},
+			pgs:   []*vcschedulingv1.PodGroup{pg1, pg2},
 			expected: map[string]string{ // podKey -> node
 				"ns1/worker-3": "node1",
 			},
@@ -161,12 +161,12 @@ func TestEventHandler(t *testing.T) {
 			schedulerCache.PriorityClasses[pc.Name] = pc
 		}
 		for _, pg := range test.pgs {
-			pg.Status = schedulingv1beta1.PodGroupStatus{
-				Phase: schedulingv1beta1.PodGroupInqueue,
+			pg.Status = vcschedulingv1.PodGroupStatus{
+				Phase: vcschedulingv1.PodGroupInqueue,
 			}
-			schedulerCache.AddPodGroupV1beta1(pg)
+			schedulerCache.AddPodGroupV1(pg)
 		}
-		schedulerCache.AddQueueV1beta1(queue1)
+		schedulerCache.AddQueueV1(queue1)
 		// session
 		trueValue := true
 		ssn := framework.OpenSession(schedulerCache, []conf.Tier{

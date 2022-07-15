@@ -105,7 +105,7 @@ var _ = Describe("SLA Test", func() {
 		err = e2eutil.WaitTaskPhase(ctx, fastSlaJob, []v1.PodPhase{v1.PodPending}, 0)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = ctx.Vcclient.BatchV1alpha1().Jobs(e2eutil.Namespace(ctx, job1)).Delete(context.TODO(), job1.Name, metav1.DeleteOptions{})
+		err = ctx.Vcclient.BatchV1().Jobs(e2eutil.Namespace(ctx, job1)).Delete(context.TODO(), job1.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = e2eutil.WaitTaskPhase(ctx, slowSlaJob, []v1.PodPhase{v1.PodPending}, 0)

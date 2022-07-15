@@ -17,7 +17,7 @@ limitations under the License.
 package state
 
 import (
-	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -25,7 +25,7 @@ type finishedState struct {
 	job *apis.JobInfo
 }
 
-func (ps *finishedState) Execute(action v1alpha1.Action) error {
+func (ps *finishedState) Execute(action vcbusv1.Action) error {
 	// In finished state, e.g. Completed, always kill the whole job.
 	return KillJob(ps.job, PodRetainPhaseSoft, nil)
 }

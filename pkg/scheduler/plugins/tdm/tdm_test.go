@@ -26,7 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
-	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -114,58 +114,58 @@ func Test_TDM(t *testing.T) {
 	p2 := util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
 	p3 := util.BuildPod("c1", "p3", "", v1.PodPending, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
 
-	p1.Annotations[schedulingv2.RevocableZone] = "*"
-	p3.Annotations[schedulingv2.RevocableZone] = "*"
+	p1.Annotations[vcschedulingv1.RevocableZone] = "*"
+	p3.Annotations[vcschedulingv1.RevocableZone] = "*"
 
 	n1 := util.BuildNode("n1", util.BuildResourceList("16", "64Gi"), map[string]string{
-		schedulingv2.RevocableZone: "rz1",
+		vcschedulingv1.RevocableZone: "rz1",
 	})
 
 	n2 := util.BuildNode("n2", util.BuildResourceList("16", "64Gi"), map[string]string{
-		schedulingv2.RevocableZone: "rz1",
+		vcschedulingv1.RevocableZone: "rz1",
 	})
 
 	n3 := util.BuildNode("n3", util.BuildResourceList("16", "64Gi"), map[string]string{})
 	n4 := util.BuildNode("n4", util.BuildResourceList("16", "64Gi"), map[string]string{})
 
 	n5 := util.BuildNode("n5", util.BuildResourceList("16", "64Gi"), map[string]string{
-		schedulingv2.RevocableZone: "rz2",
+		vcschedulingv1.RevocableZone: "rz2",
 	})
 
-	pg1 := &schedulingv2.PodGroup{
+	pg1 := &vcschedulingv1.PodGroup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "pg1",
 			Namespace: "c1",
 		},
-		Spec: schedulingv2.PodGroupSpec{
+		Spec: vcschedulingv1.PodGroupSpec{
 			Queue: "c1",
 		},
 	}
 
-	queue1 := &schedulingv2.Queue{
+	queue1 := &vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "c1",
 		},
-		Spec: schedulingv2.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Weight: 1,
 		},
 	}
 
 	tests := []struct {
 		name               string
-		podGroups          []*schedulingv2.PodGroup
+		podGroups          []*vcschedulingv1.PodGroup
 		pod                *v1.Pod
 		nodes              []*v1.Node
-		queues             []*schedulingv2.Queue
+		queues             []*vcschedulingv1.Queue
 		predicatedExpected map[string]bool
 		scoreExpected      map[string]map[string]float64
 	}{
 		{
 			name: "preemptable task rz available",
-			podGroups: []*schedulingv2.PodGroup{
+			podGroups: []*vcschedulingv1.PodGroup{
 				pg1,
 			},
-			queues: []*schedulingv2.Queue{
+			queues: []*vcschedulingv1.Queue{
 				queue1,
 			},
 			pod: p1,
@@ -184,10 +184,10 @@ func Test_TDM(t *testing.T) {
 		},
 		{
 			name: "not preemptable task",
-			podGroups: []*schedulingv2.PodGroup{
+			podGroups: []*vcschedulingv1.PodGroup{
 				pg1,
 			},
-			queues: []*schedulingv2.Queue{
+			queues: []*vcschedulingv1.Queue{
 				queue1,
 			},
 			pod: p2,
@@ -204,10 +204,10 @@ func Test_TDM(t *testing.T) {
 		},
 		{
 			name: "preemptable task and multiple rz",
-			podGroups: []*schedulingv2.PodGroup{
+			podGroups: []*vcschedulingv1.PodGroup{
 				pg1,
 			},
-			queues: []*schedulingv2.Queue{
+			queues: []*vcschedulingv1.Queue{
 				queue1,
 			},
 			pod: p3,
@@ -249,10 +249,10 @@ func Test_TDM(t *testing.T) {
 			schedulerCache.AddPod(test.pod)
 
 			for _, ss := range test.podGroups {
-				schedulerCache.AddPodGroupV1beta1(ss)
+				schedulerCache.AddPodGroupV1(ss)
 			}
 			for _, q := range test.queues {
-				schedulerCache.AddQueueV1beta1(q)
+				schedulerCache.AddQueueV1(q)
 			}
 
 			trueValue := true
@@ -326,66 +326,66 @@ func Test_TDM_victimsFn(t *testing.T) {
 	p9 := util.BuildPod("c2", "p9", "n2", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
 	p10 := util.BuildPod("c2", "p10", "n2", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
 
-	p1.Annotations[schedulingv2.PodPreemptable] = "true"
-	p2.Annotations[schedulingv2.PodPreemptable] = "true"
-	p3.Annotations[schedulingv2.PodPreemptable] = "true"
+	p1.Annotations[vcschedulingv1.PodPreemptable] = "true"
+	p2.Annotations[vcschedulingv1.PodPreemptable] = "true"
+	p3.Annotations[vcschedulingv1.PodPreemptable] = "true"
 
-	p6.Annotations[schedulingv2.PodPreemptable] = "true"
-	p7.Annotations[schedulingv2.PodPreemptable] = "true"
-	p8.Annotations[schedulingv2.PodPreemptable] = "true"
-	p9.Annotations[schedulingv2.PodPreemptable] = "true"
-	p10.Annotations[schedulingv2.PodPreemptable] = "true"
+	p6.Annotations[vcschedulingv1.PodPreemptable] = "true"
+	p7.Annotations[vcschedulingv1.PodPreemptable] = "true"
+	p8.Annotations[vcschedulingv1.PodPreemptable] = "true"
+	p9.Annotations[vcschedulingv1.PodPreemptable] = "true"
+	p10.Annotations[vcschedulingv1.PodPreemptable] = "true"
 
 	n1 := util.BuildNode("n1", util.BuildResourceList("16", "64Gi"), map[string]string{
-		schedulingv2.RevocableZone: "rz1",
+		vcschedulingv1.RevocableZone: "rz1",
 	})
 
 	n2 := util.BuildNode("n2", util.BuildResourceList("16", "64Gi"), map[string]string{
-		schedulingv2.RevocableZone: "rz1",
+		vcschedulingv1.RevocableZone: "rz1",
 	})
 
-	queue1 := &schedulingv2.Queue{
+	queue1 := &vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "c1",
 		},
-		Spec: schedulingv2.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Weight: 1,
 		},
 	}
 
-	queue2 := &schedulingv2.Queue{
+	queue2 := &vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "c2",
 		},
-		Spec: schedulingv2.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Weight: 1,
 		},
 	}
 
 	tests := []struct {
-		podGroups []*schedulingv2.PodGroup
+		podGroups []*vcschedulingv1.PodGroup
 		pods      []*v1.Pod
 		nodes     []*v1.Node
-		queues    []*schedulingv2.Queue
+		queues    []*vcschedulingv1.Queue
 		args      framework.Arguments
 		want      int
 	}{
 		{
-			podGroups: []*schedulingv2.PodGroup{
+			podGroups: []*vcschedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 						Annotations: map[string]string{
-							schedulingv2.JDBMaxUnavailable: "30%",
+							vcschedulingv1.JDBMaxUnavailable: "30%",
 						},
 					},
-					Spec: schedulingv2.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "c1",
 					},
 				},
 			},
-			queues: []*schedulingv2.Queue{
+			queues: []*vcschedulingv1.Queue{
 				queue1,
 			},
 			pods: []*v1.Pod{
@@ -401,21 +401,21 @@ func Test_TDM_victimsFn(t *testing.T) {
 			want: 2,
 		},
 		{
-			podGroups: []*schedulingv2.PodGroup{
+			podGroups: []*vcschedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 						Annotations: map[string]string{
-							schedulingv2.JDBMaxUnavailable: "30%",
+							vcschedulingv1.JDBMaxUnavailable: "30%",
 						},
 					},
-					Spec: schedulingv2.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "c1",
 					},
 				},
 			},
-			queues: []*schedulingv2.Queue{
+			queues: []*vcschedulingv1.Queue{
 				queue1,
 			},
 			pods: []*v1.Pod{
@@ -431,21 +431,21 @@ func Test_TDM_victimsFn(t *testing.T) {
 			want: 0,
 		},
 		{
-			podGroups: []*schedulingv2.PodGroup{
+			podGroups: []*vcschedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 						Annotations: map[string]string{
-							schedulingv2.JDBMaxUnavailable: "99%",
+							vcschedulingv1.JDBMaxUnavailable: "99%",
 						},
 					},
-					Spec: schedulingv2.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "c1",
 					},
 				},
 			},
-			queues: []*schedulingv2.Queue{
+			queues: []*vcschedulingv1.Queue{
 				queue1,
 			},
 			pods: []*v1.Pod{
@@ -461,21 +461,21 @@ func Test_TDM_victimsFn(t *testing.T) {
 			want: 3,
 		},
 		{
-			podGroups: []*schedulingv2.PodGroup{
+			podGroups: []*vcschedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg2",
 						Namespace: "c2",
 						Annotations: map[string]string{
-							schedulingv2.JDBMaxUnavailable: "50%",
+							vcschedulingv1.JDBMaxUnavailable: "50%",
 						},
 					},
-					Spec: schedulingv2.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "c2",
 					},
 				},
 			},
-			queues: []*schedulingv2.Queue{
+			queues: []*vcschedulingv1.Queue{
 				queue2,
 			},
 			pods: []*v1.Pod{
@@ -491,16 +491,16 @@ func Test_TDM_victimsFn(t *testing.T) {
 			want: 3,
 		},
 		{
-			podGroups: []*schedulingv2.PodGroup{
+			podGroups: []*vcschedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg2",
 						Namespace: "c2",
 						Annotations: map[string]string{
-							schedulingv2.JDBMaxUnavailable: "50%",
+							vcschedulingv1.JDBMaxUnavailable: "50%",
 						},
 					},
-					Spec: schedulingv2.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "c2",
 					},
 				},
@@ -509,15 +509,15 @@ func Test_TDM_victimsFn(t *testing.T) {
 						Name:      "pg1",
 						Namespace: "c1",
 						Annotations: map[string]string{
-							schedulingv2.JDBMaxUnavailable: "90%",
+							vcschedulingv1.JDBMaxUnavailable: "90%",
 						},
 					},
-					Spec: schedulingv2.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "c1",
 					},
 				},
 			},
-			queues: []*schedulingv2.Queue{
+			queues: []*vcschedulingv1.Queue{
 				queue1,
 				queue2,
 			},
@@ -534,21 +534,21 @@ func Test_TDM_victimsFn(t *testing.T) {
 			want: 6,
 		},
 		{
-			podGroups: []*schedulingv2.PodGroup{
+			podGroups: []*vcschedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg2",
 						Namespace: "c2",
 						Annotations: map[string]string{
-							schedulingv2.JDBMaxUnavailable: "3",
+							vcschedulingv1.JDBMaxUnavailable: "3",
 						},
 					},
-					Spec: schedulingv2.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "c2",
 					},
 				},
 			},
-			queues: []*schedulingv2.Queue{
+			queues: []*vcschedulingv1.Queue{
 				queue2,
 			},
 			pods: []*v1.Pod{
@@ -564,21 +564,21 @@ func Test_TDM_victimsFn(t *testing.T) {
 			want: 3,
 		},
 		{
-			podGroups: []*schedulingv2.PodGroup{
+			podGroups: []*vcschedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg2",
 						Namespace: "c2",
 						Annotations: map[string]string{
-							schedulingv2.JDBMinAvailable: "3",
+							vcschedulingv1.JDBMinAvailable: "3",
 						},
 					},
-					Spec: schedulingv2.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "c2",
 					},
 				},
 			},
-			queues: []*schedulingv2.Queue{
+			queues: []*vcschedulingv1.Queue{
 				queue2,
 			},
 			pods: []*v1.Pod{
@@ -594,21 +594,21 @@ func Test_TDM_victimsFn(t *testing.T) {
 			want: 2,
 		},
 		{
-			podGroups: []*schedulingv2.PodGroup{
+			podGroups: []*vcschedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg2",
 						Namespace: "c2",
 						Annotations: map[string]string{
-							schedulingv2.JDBMinAvailable: "30%",
+							vcschedulingv1.JDBMinAvailable: "30%",
 						},
 					},
-					Spec: schedulingv2.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "c2",
 					},
 				},
 			},
-			queues: []*schedulingv2.Queue{
+			queues: []*vcschedulingv1.Queue{
 				queue2,
 			},
 			pods: []*v1.Pod{
@@ -624,16 +624,16 @@ func Test_TDM_victimsFn(t *testing.T) {
 			want: 3,
 		},
 		{
-			podGroups: []*schedulingv2.PodGroup{
+			podGroups: []*vcschedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg2",
 						Namespace: "c2",
 						Annotations: map[string]string{
-							schedulingv2.JDBMinAvailable: "2",
+							vcschedulingv1.JDBMinAvailable: "2",
 						},
 					},
-					Spec: schedulingv2.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "c2",
 					},
 				},
@@ -642,15 +642,15 @@ func Test_TDM_victimsFn(t *testing.T) {
 						Name:      "pg1",
 						Namespace: "c1",
 						Annotations: map[string]string{
-							schedulingv2.JDBMaxUnavailable: "3",
+							vcschedulingv1.JDBMaxUnavailable: "3",
 						},
 					},
-					Spec: schedulingv2.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "c1",
 					},
 				},
 			},
-			queues: []*schedulingv2.Queue{
+			queues: []*vcschedulingv1.Queue{
 				queue1,
 				queue2,
 			},
@@ -693,10 +693,10 @@ func Test_TDM_victimsFn(t *testing.T) {
 			}
 
 			for _, ss := range test.podGroups {
-				schedulerCache.AddPodGroupV1beta1(ss)
+				schedulerCache.AddPodGroupV1(ss)
 			}
 			for _, q := range test.queues {
-				schedulerCache.AddQueueV1beta1(q)
+				schedulerCache.AddQueueV1(q)
 			}
 
 			trueValue := true

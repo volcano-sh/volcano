@@ -23,7 +23,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -31,7 +31,7 @@ import (
 )
 
 func makePod(labels map[string]string, annotations map[string]string, podScheduledTime time.Time) *v1.Pod {
-	annotations[v1beta1.KubeGroupNameAnnotationKey] = "test-group"
+	annotations[vcschedulingv1.KubeGroupNameAnnotationKey] = "test-group"
 	phase := v1.PodPending
 	conditions := []v1.PodCondition{}
 	if !podScheduledTime.IsZero() {
@@ -79,7 +79,7 @@ func Test_CooldownTimePlugin_podPreemptStableTime(t *testing.T) {
 			sp:   plugin,
 			args: args{
 				pod: makePod(map[string]string{},
-					map[string]string{v1beta1.CooldownTime: "600s"},
+					map[string]string{vcschedulingv1.CooldownTime: "600s"},
 					time.Now().Add(time.Second*-100)),
 			},
 			wantEnabled: true,
@@ -90,7 +90,7 @@ func Test_CooldownTimePlugin_podPreemptStableTime(t *testing.T) {
 			sp:   plugin,
 			args: args{
 				pod: makePod(map[string]string{},
-					map[string]string{v1beta1.CooldownTime: "600abcde"},
+					map[string]string{vcschedulingv1.CooldownTime: "600abcde"},
 					time.Now().Add(time.Second*-100)),
 			},
 			wantEnabled: false,
@@ -136,20 +136,20 @@ func TestPreemptableFn(t *testing.T) {
 	// prepare preemptor and preemptees
 	// task1: should be filtered
 	task1 := api.NewTaskInfo(
-		makePod(map[string]string{v1beta1.PodPreemptable: "true"},
-			map[string]string{v1beta1.CooldownTime: "600s"},
+		makePod(map[string]string{vcschedulingv1.PodPreemptable: "true"},
+			map[string]string{vcschedulingv1.CooldownTime: "600s"},
 			time.Now().Add(time.Second*-100)),
 	)
 	// task2: invalid label, not enabled
 	task2 := api.NewTaskInfo(
-		makePod(map[string]string{v1beta1.PodPreemptable: "true"},
-			map[string]string{v1beta1.CooldownTime: "600abcde"},
+		makePod(map[string]string{vcschedulingv1.PodPreemptable: "true"},
+			map[string]string{vcschedulingv1.CooldownTime: "600abcde"},
 			time.Now().Add(time.Second*-100)),
 	)
 	// task3: after stable time, can be preempted
 	task3 := api.NewTaskInfo(
-		makePod(map[string]string{v1beta1.PodPreemptable: "true"},
-			map[string]string{v1beta1.CooldownTime: "600s"},
+		makePod(map[string]string{vcschedulingv1.PodPreemptable: "true"},
+			map[string]string{vcschedulingv1.CooldownTime: "600s"},
 			time.Now().Add(time.Second*-800)),
 	)
 	preemptees := []*api.TaskInfo{task1, task2, task3}

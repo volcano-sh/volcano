@@ -26,7 +26,7 @@ import (
 	"k8s.io/klog"
 	"stathat.com/c/consistent"
 
-	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1"
 )
 
 // responsibleForPod returns false at following conditions:

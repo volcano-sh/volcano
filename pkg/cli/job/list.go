@@ -27,7 +27,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/cli/util"
 )
@@ -99,7 +99,7 @@ func ListJobs() error {
 		listJobFlags.Namespace = ""
 	}
 	jobClient := versioned.NewForConfigOrDie(config)
-	jobs, err := jobClient.BatchV1alpha1().Jobs(listJobFlags.Namespace).List(context.TODO(), metav1.ListOptions{})
+	jobs, err := jobClient.BatchV1().Jobs(listJobFlags.Namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -114,7 +114,7 @@ func ListJobs() error {
 }
 
 // PrintJobs prints all jobs details.
-func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
+func PrintJobs(jobs *vcbatchv1.JobList, writer io.Writer) {
 	maxLenInfo := getMaxLen(jobs)
 
 	titleFormat := "%%-%ds%%-15s%%-12s%%-12s%%-12s%%-6s%%-10s%%-10s%%-12s%%-10s%%-12s%%-10s\n"
@@ -143,7 +143,7 @@ func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 		for _, ts := range job.Spec.Tasks {
 			replicas += ts.Replicas
 		}
-		jobType := job.ObjectMeta.Labels[v1alpha1.JobTypeKey]
+		jobType := job.ObjectMeta.Labels[vcbatchv1.JobTypeKey]
 		if jobType == "" {
 			jobType = "Batch"
 		}
@@ -163,7 +163,7 @@ func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 	}
 }
 
-func getMaxLen(jobs *v1alpha1.JobList) []int {
+func getMaxLen(jobs *vcbatchv1.JobList) []int {
 	maxNameLen := len(Name)
 	maxNamespaceLen := len(Namespace)
 	for _, job := range jobs.Items {

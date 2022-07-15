@@ -31,7 +31,7 @@ import (
 	"k8s.io/klog"
 
 	"volcano.sh/apis/pkg/apis/helpers"
-	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -109,7 +109,7 @@ func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) str
 
 	// vc-job, SN == volcano
 	if pod.Annotations != nil {
-		pgName = pod.Annotations[vcv1beta1.KubeGroupNameAnnotationKey]
+		pgName = pod.Annotations[vcschedulingv1.KubeGroupNameAnnotationKey]
 	}
 	if pgName != "" {
 		if err := checkPG(pod, pgName, true); err != nil {
@@ -121,8 +121,8 @@ func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) str
 		}
 		return msg
 	}
-	if pod.Annotations != nil && pod.Annotations[vcv1beta1.QueueNameAnnotationKey] != "" {
-		queueName := pod.Annotations[vcv1beta1.QueueNameAnnotationKey]
+	if pod.Annotations != nil && pod.Annotations[vcschedulingv1.QueueNameAnnotationKey] != "" {
+		queueName := pod.Annotations[vcschedulingv1.QueueNameAnnotationKey]
 		if err := checkQueueState(queueName); err != nil {
 			msg = err.Error()
 			reviewResponse.Allowed = false
@@ -146,7 +146,7 @@ func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) str
 }
 
 func checkPG(pod *v1.Pod, pgName string, isVCJob bool) error {
-	_, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+	_, err := config.VolcanoClient.SchedulingV1().PodGroups(pod.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 	if err != nil {
 		if isVCJob || (!isVCJob && !apierrors.IsNotFound(err)) {
 			return fmt.Errorf("failed to get PodGroup for pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
@@ -157,7 +157,7 @@ func checkPG(pod *v1.Pod, pgName string, isVCJob bool) error {
 }
 
 func checkPGQueueState(pod *v1.Pod, pgName string) error {
-	pgObj, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+	pgObj, err := config.VolcanoClient.SchedulingV1().PodGroups(pod.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 	if err == nil {
 		if errQueue := checkQueueState(pgObj.Spec.Queue); errQueue != nil {
 			return fmt.Errorf("failed : %v;", errQueue)
@@ -170,10 +170,10 @@ func checkQueueState(queueName string) error {
 	if queueName == "" {
 		return nil
 	}
-	queue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), queueName, metav1.GetOptions{})
+	queue, err := config.VolcanoClient.SchedulingV1().Queues().Get(context.TODO(), queueName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf(" unable to find job queue: %v;", err)
-	} else if queue.Status.State != vcv1beta1.QueueStateOpen {
+	} else if queue.Status.State != vcschedulingv1.QueueStateOpen {
 		return fmt.Errorf(" can only submit job to queue with state `Open`, "+
 			"queue `%s` status is `%s`;", queue.Name, queue.Status.State)
 	}
@@ -184,8 +184,8 @@ func validateAnnotation(pod *v1.Pod) error {
 	num := 0
 	if len(pod.Annotations) > 0 {
 		keys := []string{
-			vcv1beta1.JDBMinAvailable,
-			vcv1beta1.JDBMaxUnavailable,
+			vcschedulingv1.JDBMinAvailable,
+			vcschedulingv1.JDBMaxUnavailable,
 		}
 		for _, key := range keys {
 			if value, found := pod.Annotations[key]; found {

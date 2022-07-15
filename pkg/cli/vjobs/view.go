@@ -31,7 +31,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/cli/util"
 )
@@ -113,7 +113,7 @@ func ViewJob() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	job, err := jobClient.BatchV1alpha1().Jobs(viewJobFlags.Namespace).Get(context.TODO(), viewJobFlags.JobName, metav1.GetOptions{})
+	job, err := jobClient.BatchV1().Jobs(viewJobFlags.Namespace).Get(context.TODO(), viewJobFlags.JobName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -127,7 +127,7 @@ func ViewJob() error {
 }
 
 // PrintJobInfo print the job detailed info into writer.
-func PrintJobInfo(job *v1alpha1.Job, writer io.Writer) {
+func PrintJobInfo(job *vcbatchv1.Job, writer io.Writer) {
 	WriteLine(writer, Level0, "Name:       \t%s\n", job.Name)
 	WriteLine(writer, Level0, "Namespace:  \t%s\n", job.Namespace)
 	if len(job.Labels) > 0 {
@@ -270,7 +270,7 @@ func PrintEvents(events []coreV1.Event, writer io.Writer) {
 }
 
 // GetEvents get the job event by config.
-func GetEvents(config *rest.Config, job *v1alpha1.Job) []coreV1.Event {
+func GetEvents(config *rest.Config, job *vcbatchv1.Job) []coreV1.Event {
 	kubernetes, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		fmt.Printf("%v\n", err)
@@ -305,7 +305,7 @@ func ListJobs() error {
 		viewJobFlags.Namespace = ""
 	}
 	jobClient := versioned.NewForConfigOrDie(config)
-	jobs, err := jobClient.BatchV1alpha1().Jobs(viewJobFlags.Namespace).List(context.TODO(), metav1.ListOptions{})
+	jobs, err := jobClient.BatchV1().Jobs(viewJobFlags.Namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -320,7 +320,7 @@ func ListJobs() error {
 }
 
 // PrintJobs prints all jobs details.
-func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
+func PrintJobs(jobs *vcbatchv1.JobList, writer io.Writer) {
 	maxLenInfo := getMaxLen(jobs)
 
 	titleFormat := "%%-%ds%%-15s%%-12s%%-12s%%-12s%%-6s%%-10s%%-10s%%-12s%%-10s%%-12s%%-10s\n"
@@ -349,7 +349,7 @@ func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 		for _, ts := range job.Spec.Tasks {
 			replicas += ts.Replicas
 		}
-		jobType := job.ObjectMeta.Labels[v1alpha1.JobTypeKey]
+		jobType := job.ObjectMeta.Labels[vcbatchv1.JobTypeKey]
 		if jobType == "" {
 			jobType = "Batch"
 		}
@@ -369,7 +369,7 @@ func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 	}
 }
 
-func getMaxLen(jobs *v1alpha1.JobList) []int {
+func getMaxLen(jobs *vcbatchv1.JobList) []int {
 	maxNameLen := len(Name)
 	maxNamespaceLen := len(Namespace)
 	for _, job := range jobs.Items {

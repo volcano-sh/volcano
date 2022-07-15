@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
@@ -129,18 +129,18 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		defer e2eutil.CleanupTestContext(ctx)
 
 		pgName := "pending-pg"
-		pg := &schedulingv1beta1.PodGroup{
+		pg := &vcschedulingv1.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: ctx.Namespace,
 				Name:      pgName,
 			},
-			Spec: schedulingv1beta1.PodGroupSpec{
+			Spec: vcschedulingv1.PodGroupSpec{
 				MinMember:    1,
 				MinResources: &e2eutil.ThirtyCPU,
 			},
 		}
 
-		_, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{})
+		_, err := ctx.Vcclient.SchedulingV1().PodGroups(ctx.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
 		slot1 := corev1.ResourceList{

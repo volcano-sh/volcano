@@ -25,7 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
@@ -109,7 +109,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 					Name: taskName,
 				},
 			},
-			Volumes: []v1alpha1.VolumeSpec{
+			Volumes: []vcbatchv1.VolumeSpec{
 				{
 					MountPath:       "/mountone",
 					VolumeClaimName: pvcName,
@@ -124,7 +124,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		err = e2eutil.WaitJobReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
-		job, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
+		job, err = ctx.Vcclient.BatchV1().Jobs(ctx.Namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(len(job.Spec.Volumes)).To(Equal(2),
@@ -186,7 +186,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		pgName := jobName + "-" + string(job.UID)
-		pGroup, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+		pGroup, err := ctx.Vcclient.SchedulingV1().PodGroups(ctx.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		for name, q := range *pGroup.Spec.MinResources {

@@ -28,18 +28,18 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	"volcano.sh/volcano/pkg/webhooks/util"
 )
 
 func TestAdmitQueues(t *testing.T) {
 
-	stateNotSet := schedulingv1beta1.Queue{
+	stateNotSet := vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "normal-case-not-set",
 		},
-		Spec: schedulingv1beta1.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Weight: 1,
 		},
 	}
@@ -49,15 +49,15 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal queue without state set failed for %v.", err)
 	}
 
-	openState := schedulingv1beta1.Queue{
+	openState := vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "normal-case-set-open",
 		},
-		Spec: schedulingv1beta1.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Weight: 1,
 		},
-		Status: schedulingv1beta1.QueueStatus{
-			State: schedulingv1beta1.QueueStateOpen,
+		Status: vcschedulingv1.QueueStatus{
+			State: vcschedulingv1.QueueStateOpen,
 		},
 	}
 
@@ -66,15 +66,15 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal queue with open state failed for %v.", err)
 	}
 
-	closedState := schedulingv1beta1.Queue{
+	closedState := vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "normal-case-set-closed",
 		},
-		Spec: schedulingv1beta1.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Weight: 1,
 		},
-		Status: schedulingv1beta1.QueueStatus{
-			State: schedulingv1beta1.QueueStateClosed,
+		Status: vcschedulingv1.QueueStatus{
+			State: vcschedulingv1.QueueStateClosed,
 		},
 	}
 
@@ -83,14 +83,14 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal queue with closed state failed for %v.", err)
 	}
 
-	wrongState := schedulingv1beta1.Queue{
+	wrongState := vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "abnormal-case",
 		},
-		Spec: schedulingv1beta1.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Weight: 1,
 		},
-		Status: schedulingv1beta1.QueueStatus{
+		Status: vcschedulingv1.QueueStatus{
 			State: "wrong",
 		},
 	}
@@ -100,15 +100,15 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal queue with wrong state failed for %v.", err)
 	}
 
-	openStateForDelete := schedulingv1beta1.Queue{
+	openStateForDelete := vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "open-state-for-delete",
 		},
-		Spec: schedulingv1beta1.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Weight: 1,
 		},
-		Status: schedulingv1beta1.QueueStatus{
-			State: schedulingv1beta1.QueueStateOpen,
+		Status: vcschedulingv1.QueueStatus{
+			State: vcschedulingv1.QueueStateOpen,
 		},
 	}
 
@@ -117,15 +117,15 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal queue for delete with open state failed for %v.", err)
 	}
 
-	closedStateForDelete := schedulingv1beta1.Queue{
+	closedStateForDelete := vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "closed-state-for-delete",
 		},
-		Spec: schedulingv1beta1.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Weight: 1,
 		},
-		Status: schedulingv1beta1.QueueStatus{
-			State: schedulingv1beta1.QueueStateClosed,
+		Status: vcschedulingv1.QueueStatus{
+			State: vcschedulingv1.QueueStateClosed,
 		},
 	}
 
@@ -134,11 +134,11 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal queue for delete with closed state failed for %v.", err)
 	}
 
-	weightNotSet := schedulingv1beta1.Queue{
+	weightNotSet := vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "weight-not-set",
 		},
-		Spec: schedulingv1beta1.QueueSpec{},
+		Spec: vcschedulingv1.QueueSpec{},
 	}
 
 	weightNotSetJSON, err := json.Marshal(weightNotSet)
@@ -146,11 +146,11 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal queue with no weight failed for %v.", err)
 	}
 
-	negativeWeight := schedulingv1beta1.Queue{
+	negativeWeight := vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "negative-weight",
 		},
-		Spec: schedulingv1beta1.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Weight: -1,
 		},
 	}
@@ -160,11 +160,11 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal queue with negative weight failed for %v.", err)
 	}
 
-	positiveWeightForUpdate := schedulingv1beta1.Queue{
+	positiveWeightForUpdate := vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "positive-weight-for-update",
 		},
-		Spec: schedulingv1beta1.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Weight: 1,
 		},
 	}
@@ -173,11 +173,11 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal queue with positive weight failed for %v.", err)
 	}
 
-	negativeWeightForUpdate := schedulingv1beta1.Queue{
+	negativeWeightForUpdate := vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "positive-weight-for-update",
 		},
-		Spec: schedulingv1beta1.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Weight: -1,
 		},
 	}
@@ -188,15 +188,15 @@ func TestAdmitQueues(t *testing.T) {
 
 	}
 
-	hierarchyWeightsDontMatch := schedulingv1beta1.Queue{
+	hierarchyWeightsDontMatch := vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "hierarchy-weights-dont-match",
 			Annotations: map[string]string{
-				schedulingv1beta1.KubeHierarchyAnnotationKey:       "root/a/b",
-				schedulingv1beta1.KubeHierarchyWeightAnnotationKey: "1/2/3/4",
+				vcschedulingv1.KubeHierarchyAnnotationKey:       "root/a/b",
+				vcschedulingv1.KubeHierarchyWeightAnnotationKey: "1/2/3/4",
 			},
 		},
-		Spec: schedulingv1beta1.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Weight: 1,
 		},
 	}
@@ -206,15 +206,15 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal hierarchyWeightsDontMatch failed for %v.", err)
 	}
 
-	hierarchyWeightsNegative := schedulingv1beta1.Queue{
+	hierarchyWeightsNegative := vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "hierarchy-weights-dont-match",
 			Annotations: map[string]string{
-				schedulingv1beta1.KubeHierarchyAnnotationKey:       "root/a/b",
-				schedulingv1beta1.KubeHierarchyWeightAnnotationKey: "1/-1/3",
+				vcschedulingv1.KubeHierarchyAnnotationKey:       "root/a/b",
+				vcschedulingv1.KubeHierarchyWeightAnnotationKey: "1/-1/3",
 			},
 		},
-		Spec: schedulingv1beta1.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Weight: 1,
 		},
 	}
@@ -223,15 +223,15 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal weightsFormatNegative failed for %v.", err)
 	}
 
-	weightsFormatIllegal := schedulingv1beta1.Queue{
+	weightsFormatIllegal := vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "hierarchy-weights-dont-match",
 			Annotations: map[string]string{
-				schedulingv1beta1.KubeHierarchyAnnotationKey:       "root/a/b",
-				schedulingv1beta1.KubeHierarchyWeightAnnotationKey: "1/a/3",
+				vcschedulingv1.KubeHierarchyAnnotationKey:       "root/a/b",
+				vcschedulingv1.KubeHierarchyWeightAnnotationKey: "1/a/3",
 			},
 		},
-		Spec: schedulingv1beta1.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Weight: 1,
 		},
 	}
@@ -241,28 +241,28 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal weightsFormatIllegal failed for %v.", err)
 	}
 
-	ordinaryHierchicalQueue := schedulingv1beta1.Queue{
+	ordinaryHierchicalQueue := vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "ordinary-hierarchical-queue",
 			Annotations: map[string]string{
-				schedulingv1beta1.KubeHierarchyAnnotationKey:       "root/node1/node2",
-				schedulingv1beta1.KubeHierarchyWeightAnnotationKey: "1/2/3",
+				vcschedulingv1.KubeHierarchyAnnotationKey:       "root/node1/node2",
+				vcschedulingv1.KubeHierarchyWeightAnnotationKey: "1/2/3",
 			},
 		},
-		Spec: schedulingv1beta1.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Weight: 1,
 		},
 	}
 
-	hierarchicalQueueInSubPathOfAnotherQueue := schedulingv1beta1.Queue{
+	hierarchicalQueueInSubPathOfAnotherQueue := vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "hierarchical-queue-in-sub-path-of-another-queue",
 			Annotations: map[string]string{
-				schedulingv1beta1.KubeHierarchyAnnotationKey:       "root/node1",
-				schedulingv1beta1.KubeHierarchyWeightAnnotationKey: "1/4",
+				vcschedulingv1.KubeHierarchyAnnotationKey:       "root/node1",
+				vcschedulingv1.KubeHierarchyWeightAnnotationKey: "1/4",
 			},
 		},
-		Spec: schedulingv1beta1.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Weight: 1,
 		},
 	}
@@ -272,33 +272,33 @@ func TestAdmitQueues(t *testing.T) {
 	}
 
 	config.VolcanoClient = fakeclient.NewSimpleClientset()
-	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &openStateForDelete, metav1.CreateOptions{})
+	_, err = config.VolcanoClient.SchedulingV1().Queues().Create(context.TODO(), &openStateForDelete, metav1.CreateOptions{})
 	if err != nil {
 		t.Errorf("Create queue with open state failed for %v.", err)
 	}
 
-	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &closedStateForDelete, metav1.CreateOptions{})
+	_, err = config.VolcanoClient.SchedulingV1().Queues().Create(context.TODO(), &closedStateForDelete, metav1.CreateOptions{})
 	if err != nil {
 		t.Errorf("Create queue with closed state failed for %v.", err)
 	}
 
-	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &ordinaryHierchicalQueue, metav1.CreateOptions{})
+	_, err = config.VolcanoClient.SchedulingV1().Queues().Create(context.TODO(), &ordinaryHierchicalQueue, metav1.CreateOptions{})
 	if err != nil {
 		t.Errorf("Create hierarchical queue failed for %v.", err)
 	}
-	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &positiveWeightForUpdate, metav1.CreateOptions{})
+	_, err = config.VolcanoClient.SchedulingV1().Queues().Create(context.TODO(), &positiveWeightForUpdate, metav1.CreateOptions{})
 	if err != nil {
 		t.Errorf("Crate queue with positive weight failed for %v.", err)
 	}
 
 	defer func() {
-		if err := config.VolcanoClient.SchedulingV1beta1().Queues().Delete(context.TODO(), openStateForDelete.Name, metav1.DeleteOptions{}); err != nil {
+		if err := config.VolcanoClient.SchedulingV1().Queues().Delete(context.TODO(), openStateForDelete.Name, metav1.DeleteOptions{}); err != nil {
 			fmt.Printf("Delete queue with open state failed for %v.\n", err)
 		}
-		if err := config.VolcanoClient.SchedulingV1beta1().Queues().Delete(context.TODO(), closedStateForDelete.Name, metav1.DeleteOptions{}); err != nil {
+		if err := config.VolcanoClient.SchedulingV1().Queues().Delete(context.TODO(), closedStateForDelete.Name, metav1.DeleteOptions{}); err != nil {
 			fmt.Printf("Delete queue with closed state failed for %v.\n", err)
 		}
-		if err := config.VolcanoClient.SchedulingV1beta1().Queues().Delete(context.TODO(), ordinaryHierchicalQueue.Name, metav1.DeleteOptions{}); err != nil {
+		if err := config.VolcanoClient.SchedulingV1().Queues().Delete(context.TODO(), ordinaryHierchicalQueue.Name, metav1.DeleteOptions{}); err != nil {
 			t.Errorf("Delete hierarchical queue failed for %v.", err)
 		}
 	}()
@@ -318,12 +318,12 @@ func TestAdmitQueues(t *testing.T) {
 				Request: &admissionv1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
 						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
+						Version: "v1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
 						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
+						Version:  "v1",
 						Resource: "queues",
 					},
 					Name:      "normal-case-not-set",
@@ -347,12 +347,12 @@ func TestAdmitQueues(t *testing.T) {
 				Request: &admissionv1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
 						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
+						Version: "v1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
 						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
+						Version:  "v1",
 						Resource: "queues",
 					},
 					Name:      "normal-case-set-open",
@@ -376,12 +376,12 @@ func TestAdmitQueues(t *testing.T) {
 				Request: &admissionv1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
 						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
+						Version: "v1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
 						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
+						Version:  "v1",
 						Resource: "queues",
 					},
 					Name:      "normal-case-set-closed",
@@ -405,12 +405,12 @@ func TestAdmitQueues(t *testing.T) {
 				Request: &admissionv1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
 						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
+						Version: "v1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
 						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
+						Version:  "v1",
 						Resource: "queues",
 					},
 					Name:      "abnormal-case",
@@ -424,9 +424,9 @@ func TestAdmitQueues(t *testing.T) {
 				Allowed: false,
 				Result: &metav1.Status{
 					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("state"),
-						"wrong", fmt.Sprintf("queue state must be in %v", []schedulingv1beta1.QueueState{
-							schedulingv1beta1.QueueStateOpen,
-							schedulingv1beta1.QueueStateClosed,
+						"wrong", fmt.Sprintf("queue state must be in %v", []vcschedulingv1.QueueState{
+							vcschedulingv1.QueueStateOpen,
+							vcschedulingv1.QueueStateClosed,
 						})).Error(),
 				},
 			},
@@ -441,12 +441,12 @@ func TestAdmitQueues(t *testing.T) {
 				Request: &admissionv1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
 						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
+						Version: "v1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
 						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
+						Version:  "v1",
 						Resource: "queues",
 					},
 					Name:      "normal-case-open-to-close-updating",
@@ -473,12 +473,12 @@ func TestAdmitQueues(t *testing.T) {
 				Request: &admissionv1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
 						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
+						Version: "v1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
 						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
+						Version:  "v1",
 						Resource: "queues",
 					},
 					Name:      "normal-case-closed-to-open-updating",
@@ -505,12 +505,12 @@ func TestAdmitQueues(t *testing.T) {
 				Request: &admissionv1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
 						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
+						Version: "v1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
 						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
+						Version:  "v1",
 						Resource: "queues",
 					},
 					Name:      "abnormal-case-open-to-wrong-state-updating",
@@ -527,9 +527,9 @@ func TestAdmitQueues(t *testing.T) {
 				Allowed: false,
 				Result: &metav1.Status{
 					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("state"),
-						"wrong", fmt.Sprintf("queue state must be in %v", []schedulingv1beta1.QueueState{
-							schedulingv1beta1.QueueStateOpen,
-							schedulingv1beta1.QueueStateClosed,
+						"wrong", fmt.Sprintf("queue state must be in %v", []vcschedulingv1.QueueState{
+							vcschedulingv1.QueueStateOpen,
+							vcschedulingv1.QueueStateClosed,
 						})).Error(),
 				},
 			},
@@ -544,12 +544,12 @@ func TestAdmitQueues(t *testing.T) {
 				Request: &admissionv1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
 						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
+						Version: "v1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
 						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
+						Version:  "v1",
 						Resource: "queues",
 					},
 					Name:      "closed-state-for-delete",
@@ -573,12 +573,12 @@ func TestAdmitQueues(t *testing.T) {
 				Request: &admissionv1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
 						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
+						Version: "v1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
 						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
+						Version:  "v1",
 						Resource: "queues",
 					},
 					Name:      "open-state-for-delete",
@@ -602,12 +602,12 @@ func TestAdmitQueues(t *testing.T) {
 				Request: &admissionv1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
 						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
+						Version: "v1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
 						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
+						Version:  "v1",
 						Resource: "queues",
 					},
 					Name:      "default",
@@ -634,12 +634,12 @@ func TestAdmitQueues(t *testing.T) {
 				Request: &admissionv1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
 						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
+						Version: "v1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
 						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
+						Version:  "v1",
 						Resource: "queues",
 					},
 					Name:      "default",
@@ -662,12 +662,12 @@ func TestAdmitQueues(t *testing.T) {
 				Request: &admissionv1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
 						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
+						Version: "v1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
 						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
+						Version:  "v1",
 						Resource: "queues",
 					},
 					Name:      "weight-not-set",
@@ -695,12 +695,12 @@ func TestAdmitQueues(t *testing.T) {
 				Request: &admissionv1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
 						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
+						Version: "v1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
 						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
+						Version:  "v1",
 						Resource: "queues",
 					},
 					Name:      "negative-weight",
@@ -728,12 +728,12 @@ func TestAdmitQueues(t *testing.T) {
 				Request: &admissionv1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
 						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
+						Version: "v1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
 						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
+						Version:  "v1",
 						Resource: "queues",
 					},
 					Name:      "positive-weight-for-update",
@@ -765,12 +765,12 @@ func TestAdmitQueues(t *testing.T) {
 				Request: &admissionv1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
 						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
+						Version: "v1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
 						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
+						Version:  "v1",
 						Resource: "queues",
 					},
 					Name:      "default",
@@ -785,8 +785,8 @@ func TestAdmitQueues(t *testing.T) {
 				Result: &metav1.Status{
 					Message: field.Invalid(field.NewPath("requestBody").Child("metadata").Child("annotations"),
 						"root/a/b", fmt.Sprintf("%s must have the same length with %s",
-							schedulingv1beta1.KubeHierarchyAnnotationKey,
-							schedulingv1beta1.KubeHierarchyWeightAnnotationKey,
+							vcschedulingv1.KubeHierarchyAnnotationKey,
+							vcschedulingv1.KubeHierarchyWeightAnnotationKey,
 						)).Error(),
 				},
 			},
@@ -801,12 +801,12 @@ func TestAdmitQueues(t *testing.T) {
 				Request: &admissionv1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
 						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
+						Version: "v1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
 						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
+						Version:  "v1",
 						Resource: "queues",
 					},
 					Name:      "default",
@@ -837,12 +837,12 @@ func TestAdmitQueues(t *testing.T) {
 				Request: &admissionv1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
 						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
+						Version: "v1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
 						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
+						Version:  "v1",
 						Resource: "queues",
 					},
 					Name:      "default",
@@ -873,12 +873,12 @@ func TestAdmitQueues(t *testing.T) {
 				Request: &admissionv1.AdmissionRequest{
 					Kind: metav1.GroupVersionKind{
 						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
+						Version: "v1",
 						Kind:    "Queue",
 					},
 					Resource: metav1.GroupVersionResource{
 						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
+						Version:  "v1",
 						Resource: "queues",
 					},
 					Name:      "default",

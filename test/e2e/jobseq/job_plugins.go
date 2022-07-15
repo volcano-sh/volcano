@@ -27,7 +27,7 @@ import (
 	cv1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/env"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/svc"
@@ -294,6 +294,6 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 	})
 })
 
-func genSSHSecretName(job *batch.Job) string {
+func genSSHSecretName(job *vcbatchv1.Job) string {
 	return job.Name + "-ssh"
 }

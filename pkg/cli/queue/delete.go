@@ -55,5 +55,5 @@ func DeleteQueue() error {
 	}
 
 	queueClient := versioned.NewForConfigOrDie(config)
-	return queueClient.SchedulingV1beta1().Queues().Delete(context.TODO(), deleteQueueFlags.Name, metav1.DeleteOptions{})
+	return queueClient.SchedulingV1().Queues().Delete(context.TODO(), deleteQueueFlags.Name, metav1.DeleteOptions{})
 }

@@ -35,7 +35,7 @@ import (
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/scheme"
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/apis/pkg/apis/utils"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -511,20 +511,20 @@ func (sc *SchedulerCache) deletePodGroup(id schedulingapi.JobID) error {
 }
 
 // AddPodGroupV1beta1 add podgroup to scheduler cache
-func (sc *SchedulerCache) AddPodGroupV1beta1(obj interface{}) {
-	ss, ok := obj.(*schedulingv1beta1.PodGroup)
+func (sc *SchedulerCache) AddPodGroupV1(obj interface{}) {
+	ss, ok := obj.(*vcschedulingv1.PodGroup)
 	if !ok {
-		klog.Errorf("Cannot convert to *schedulingv1beta1.PodGroup: %v", obj)
+		klog.Errorf("Cannot convert to *vcschedulingv1.PodGroup: %v", obj)
 		return
 	}
 
 	podgroup := scheduling.PodGroup{}
 	if err := scheme.Scheme.Convert(ss, &podgroup, nil); err != nil {
-		klog.Errorf("Failed to convert podgroup from %T to %T", ss, podgroup)
+		klog.Errorf("Failed to convert podgroup from %T to %T,%v.", ss, podgroup, err)
 		return
 	}
 
-	pg := &schedulingapi.PodGroup{PodGroup: podgroup, Version: schedulingapi.PodGroupVersionV1Beta1}
+	pg := &schedulingapi.PodGroup{PodGroup: podgroup, Version: schedulingapi.PodGroupVersionV1}
 	klog.V(4).Infof("Add PodGroup(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
 
 	sc.Mutex.Lock()
@@ -537,15 +537,15 @@ func (sc *SchedulerCache) AddPodGroupV1beta1(obj interface{}) {
 }
 
 // UpdatePodGroupV1beta1 add podgroup to scheduler cache
-func (sc *SchedulerCache) UpdatePodGroupV1beta1(oldObj, newObj interface{}) {
-	oldSS, ok := oldObj.(*schedulingv1beta1.PodGroup)
+func (sc *SchedulerCache) UpdatePodGroupV1(oldObj, newObj interface{}) {
+	oldSS, ok := oldObj.(*vcschedulingv1.PodGroup)
 	if !ok {
-		klog.Errorf("Cannot convert oldObj to *schedulingv1beta1.SchedulingSpec: %v", oldObj)
+		klog.Errorf("Cannot convert oldObj to *vcschedulingv1.SchedulingSpec: %v", oldObj)
 		return
 	}
-	newSS, ok := newObj.(*schedulingv1beta1.PodGroup)
+	newSS, ok := newObj.(*vcschedulingv1.PodGroup)
 	if !ok {
-		klog.Errorf("Cannot convert newObj to *schedulingv1beta1.SchedulingSpec: %v", newObj)
+		klog.Errorf("Cannot convert newObj to *vcschedulingv1.SchedulingSpec: %v", newObj)
 		return
 	}
 
@@ -559,7 +559,7 @@ func (sc *SchedulerCache) UpdatePodGroupV1beta1(oldObj, newObj interface{}) {
 		return
 	}
 
-	pg := &schedulingapi.PodGroup{PodGroup: podgroup, Version: schedulingapi.PodGroupVersionV1Beta1}
+	pg := &schedulingapi.PodGroup{PodGroup: podgroup, Version: schedulingapi.PodGroupVersionV1}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
@@ -571,14 +571,14 @@ func (sc *SchedulerCache) UpdatePodGroupV1beta1(oldObj, newObj interface{}) {
 }
 
 // DeletePodGroupV1beta1 delete podgroup from scheduler cache
-func (sc *SchedulerCache) DeletePodGroupV1beta1(obj interface{}) {
-	var ss *schedulingv1beta1.PodGroup
+func (sc *SchedulerCache) DeletePodGroupV1(obj interface{}) {
+	var ss *vcschedulingv1.PodGroup
 	switch t := obj.(type) {
-	case *schedulingv1beta1.PodGroup:
+	case *vcschedulingv1.PodGroup:
 		ss = t
 	case cache.DeletedFinalStateUnknown:
 		var ok bool
-		ss, ok = t.Obj.(*schedulingv1beta1.PodGroup)
+		ss, ok = t.Obj.(*vcschedulingv1.PodGroup)
 		if !ok {
 			klog.Errorf("Cannot convert to podgroup: %v", t.Obj)
 			return
@@ -600,16 +600,16 @@ func (sc *SchedulerCache) DeletePodGroupV1beta1(obj interface{}) {
 }
 
 // AddQueueV1beta1 add queue to scheduler cache
-func (sc *SchedulerCache) AddQueueV1beta1(obj interface{}) {
-	ss, ok := obj.(*schedulingv1beta1.Queue)
+func (sc *SchedulerCache) AddQueueV1(obj interface{}) {
+	ss, ok := obj.(*vcschedulingv1.Queue)
 	if !ok {
-		klog.Errorf("Cannot convert to *schedulingv1beta1.Queue: %v", obj)
+		klog.Errorf("Cannot convert to *vcschedulingv1.Queue: %v", obj)
 		return
 	}
 
 	queue := &scheduling.Queue{}
 	if err := scheme.Scheme.Convert(ss, queue, nil); err != nil {
-		klog.Errorf("Failed to convert queue from %T to %T", ss, queue)
+		klog.Errorf("Failed to convert queue from %T to %T,%v.", ss, queue, err)
 		return
 	}
 
@@ -621,15 +621,15 @@ func (sc *SchedulerCache) AddQueueV1beta1(obj interface{}) {
 }
 
 // UpdateQueueV1beta1 update queue to scheduler cache
-func (sc *SchedulerCache) UpdateQueueV1beta1(oldObj, newObj interface{}) {
-	oldSS, ok := oldObj.(*schedulingv1beta1.Queue)
+func (sc *SchedulerCache) UpdateQueueV1(oldObj, newObj interface{}) {
+	oldSS, ok := oldObj.(*vcschedulingv1.Queue)
 	if !ok {
-		klog.Errorf("Cannot convert oldObj to *schedulingv1beta1.Queue: %v", oldObj)
+		klog.Errorf("Cannot convert oldObj to *vcschedulingv1.Queue: %v", oldObj)
 		return
 	}
-	newSS, ok := newObj.(*schedulingv1beta1.Queue)
+	newSS, ok := newObj.(*vcschedulingv1.Queue)
 	if !ok {
-		klog.Errorf("Cannot convert newObj to *schedulingv1beta1.Queue: %v", newObj)
+		klog.Errorf("Cannot convert newObj to *vcschedulingv1.Queue: %v", newObj)
 		return
 	}
 
@@ -649,20 +649,20 @@ func (sc *SchedulerCache) UpdateQueueV1beta1(oldObj, newObj interface{}) {
 }
 
 // DeleteQueueV1beta1 delete queue from the scheduler cache
-func (sc *SchedulerCache) DeleteQueueV1beta1(obj interface{}) {
-	var ss *schedulingv1beta1.Queue
+func (sc *SchedulerCache) DeleteQueueV1(obj interface{}) {
+	var ss *vcschedulingv1.Queue
 	switch t := obj.(type) {
-	case *schedulingv1beta1.Queue:
+	case *vcschedulingv1.Queue:
 		ss = t
 	case cache.DeletedFinalStateUnknown:
 		var ok bool
-		ss, ok = t.Obj.(*schedulingv1beta1.Queue)
+		ss, ok = t.Obj.(*vcschedulingv1.Queue)
 		if !ok {
-			klog.Errorf("Cannot convert to *schedulingv1beta1.Queue: %v", t.Obj)
+			klog.Errorf("Cannot convert to *vcschedulingv1.Queue: %v", t.Obj)
 			return
 		}
 	default:
-		klog.Errorf("Cannot convert to *schedulingv1beta1.Queue: %v", t)
+		klog.Errorf("Cannot convert to *vcschedulingv1.Queue: %v", t)
 		return
 	}
 

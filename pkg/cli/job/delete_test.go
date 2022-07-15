@@ -24,11 +24,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 )
 
 func TestDeleteJobJob(t *testing.T) {
-	response := v1alpha1.Job{}
+	response := vcbatchv1.Job{}
 	response.Name = "testJob"
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -34,15 +34,15 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
-	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	versionedscheme "volcano.sh/apis/pkg/client/clientset/versioned/scheme"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
-	busv1alpha1informer "volcano.sh/apis/pkg/client/informers/externalversions/bus/v1alpha1"
-	schedulinginformer "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
-	busv1alpha1lister "volcano.sh/apis/pkg/client/listers/bus/v1alpha1"
-	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
+	busv1informer "volcano.sh/apis/pkg/client/informers/externalversions/bus/v1"
+	vcschedulinginv1former "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1"
+	vcbusv1lister "volcano.sh/apis/pkg/client/listers/bus/v1"
+	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/framework"
 	queuestate "volcano.sh/volcano/pkg/controllers/queue/state"
@@ -58,8 +58,8 @@ type queuecontroller struct {
 	vcClient   vcclientset.Interface
 
 	// informer
-	queueInformer schedulinginformer.QueueInformer
-	pgInformer    schedulinginformer.PodGroupInformer
+	queueInformer vcschedulinginv1former.QueueInformer
+	pgInformer    vcschedulinginv1former.PodGroupInformer
 
 	// queueLister
 	queueLister schedulinglister.QueueLister
@@ -69,8 +69,8 @@ type queuecontroller struct {
 	pgLister schedulinglister.PodGroupLister
 	pgSynced cache.InformerSynced
 
-	cmdInformer busv1alpha1informer.CommandInformer
-	cmdLister   busv1alpha1lister.CommandLister
+	cmdInformer busv1informer.CommandInformer
+	cmdLister   vcbusv1lister.CommandLister
 	cmdSynced   cache.InformerSynced
 
 	vcInformerFactory vcinformer.SharedInformerFactory
@@ -84,7 +84,7 @@ type queuecontroller struct {
 	podGroups map[string]map[string]struct{}
 
 	syncHandler        func(req *apis.Request) error
-	syncCommandHandler func(cmd *busv1alpha1.Command) error
+	syncCommandHandler func(cmd *vcbusv1.Command) error
 
 	enqueueQueue func(req *apis.Request)
 
@@ -102,8 +102,8 @@ func (c *queuecontroller) Initialize(opt *framework.ControllerOption) error {
 	c.kubeClient = opt.KubeClient
 
 	factory := informerfactory.NewSharedInformerFactory(c.vcClient, 0)
-	queueInformer := factory.Scheduling().V1beta1().Queues()
-	pgInformer := factory.Scheduling().V1beta1().PodGroups()
+	queueInformer := factory.Scheduling().V1().Queues()
+	pgInformer := factory.Scheduling().V1().PodGroups()
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
@@ -137,11 +137,11 @@ func (c *queuecontroller) Initialize(opt *framework.ControllerOption) error {
 		DeleteFunc: c.deletePodGroup,
 	})
 
-	c.cmdInformer = factory.Bus().V1alpha1().Commands()
+	c.cmdInformer = factory.Bus().V1().Commands()
 	c.cmdInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
 			switch v := obj.(type) {
-			case *busv1alpha1.Command:
+			case *vcbusv1.Command:
 				return IsQueueReference(v.TargetObject)
 			default:
 				return false
@@ -279,7 +279,7 @@ func (c *queuecontroller) processNextCommand() bool {
 	}
 	defer c.commandQueue.Done(obj)
 
-	cmd, ok := obj.(*busv1alpha1.Command)
+	cmd, ok := obj.(*vcbusv1.Command)
 	if !ok {
 		klog.Errorf("%v is not a valid Command struct.", obj)
 		return true
@@ -291,13 +291,13 @@ func (c *queuecontroller) processNextCommand() bool {
 	return true
 }
 
-func (c *queuecontroller) handleCommand(cmd *busv1alpha1.Command) error {
+func (c *queuecontroller) handleCommand(cmd *vcbusv1.Command) error {
 	startTime := time.Now()
 	defer func() {
 		klog.V(4).Infof("Finished syncing command %s/%s (%v).", cmd.Namespace, cmd.Name, time.Since(startTime))
 	}()
 
-	err := c.vcClient.BusV1alpha1().Commands(cmd.Namespace).Delete(context.TODO(), cmd.Name, metav1.DeleteOptions{})
+	err := c.vcClient.BusV1().Commands(cmd.Namespace).Delete(context.TODO(), cmd.Name, metav1.DeleteOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -308,8 +308,8 @@ func (c *queuecontroller) handleCommand(cmd *busv1alpha1.Command) error {
 
 	req := &apis.Request{
 		QueueName: cmd.TargetObject.Name,
-		Event:     busv1alpha1.CommandIssuedEvent,
-		Action:    busv1alpha1.Action(cmd.Action),
+		Event:     vcbusv1.CommandIssuedEvent,
+		Action:    vcbusv1.Action(cmd.Action),
 	}
 
 	c.enqueueQueue(req)

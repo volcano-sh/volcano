@@ -23,7 +23,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -32,13 +32,13 @@ func TestJobCache_Add(t *testing.T) {
 
 	testcases := []struct {
 		Name        string
-		Job         *v1alpha1.Job
-		JobsInCache map[string]*v1alpha1.Job
+		Job         *vcbusv1.Job
+		JobsInCache map[string]*vcbusv1.Job
 		ExpectedVal error
 	}{
 		{
 			Name: "Success case",
-			Job: &v1alpha1.Job{
+			Job: &vcbusv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
@@ -49,13 +49,13 @@ func TestJobCache_Add(t *testing.T) {
 		},
 		{
 			Name: "Error case",
-			Job: &v1alpha1.Job{
+			Job: &vcbusv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
 			},
-			JobsInCache: map[string]*v1alpha1.Job{
+			JobsInCache: map[string]*vcbusv1.Job{
 				"job1": {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "job1",
@@ -89,48 +89,48 @@ func TestJobCache_GetStatus(t *testing.T) {
 
 	testcases := []struct {
 		Name        string
-		Job         *v1alpha1.Job
-		JobsInCache map[string]*v1alpha1.Job
-		ExpectedVal v1alpha1.JobState
+		Job         *vcbusv1.Job
+		JobsInCache map[string]*vcbusv1.Job
+		ExpectedVal vcbusv1.JobState
 		ExpectedErr error
 	}{
 		{
 			Name: "Success Case",
-			Job: &v1alpha1.Job{
+			Job: &vcbusv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
 			},
-			JobsInCache: map[string]*v1alpha1.Job{
+			JobsInCache: map[string]*vcbusv1.Job{
 				"job1": {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "job1",
 						Namespace: namespace,
 					},
-					Status: v1alpha1.JobStatus{
-						State: v1alpha1.JobState{
-							Phase: v1alpha1.Completed,
+					Status: vcbusv1.JobStatus{
+						State: vcbusv1.JobState{
+							Phase: vcbusv1.Completed,
 						},
 					},
 				},
 			},
-			ExpectedVal: v1alpha1.JobState{
-				Phase: v1alpha1.Completed,
+			ExpectedVal: vcbusv1.JobState{
+				Phase: vcbusv1.Completed,
 			},
 			ExpectedErr: nil,
 		},
 		{
 			Name: "Error Case",
-			Job: &v1alpha1.Job{
+			Job: &vcbusv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
 			},
 			JobsInCache: nil,
-			ExpectedVal: v1alpha1.JobState{
-				Phase: v1alpha1.Completed,
+			ExpectedVal: vcbusv1.JobState{
+				Phase: vcbusv1.Completed,
 			},
 			ExpectedErr: fmt.Errorf("failed to find job <%s/%s>", namespace, "job1"),
 		},
@@ -162,22 +162,22 @@ func TestJobCache_Get(t *testing.T) {
 	testcases := []struct {
 		Name        string
 		Key         string
-		JobsInCache map[string]*v1alpha1.Job
+		JobsInCache map[string]*vcbusv1.Job
 		ExpectedVal *apis.JobInfo
 		ExpectedErr error
 	}{
 		{
 			Name: "Success Case",
 			Key:  fmt.Sprintf("%s/%s", namespace, "job1"),
-			JobsInCache: map[string]*v1alpha1.Job{
+			JobsInCache: map[string]*vcbusv1.Job{
 				"job1": {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "job1",
 						Namespace: namespace,
 					},
-					Status: v1alpha1.JobStatus{
-						State: v1alpha1.JobState{
-							Phase: v1alpha1.Completed,
+					Status: vcbusv1.JobStatus{
+						State: vcbusv1.JobState{
+							Phase: vcbusv1.Completed,
 						},
 					},
 				},
@@ -185,14 +185,14 @@ func TestJobCache_Get(t *testing.T) {
 			ExpectedVal: &apis.JobInfo{
 				Name:      "job1",
 				Namespace: namespace,
-				Job: &v1alpha1.Job{
+				Job: &vcbusv1.Job{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "job1",
 						Namespace: namespace,
 					},
-					Status: v1alpha1.JobStatus{
-						State: v1alpha1.JobState{
-							Phase: v1alpha1.Completed,
+					Status: vcbusv1.JobStatus{
+						State: vcbusv1.JobState{
+							Phase: vcbusv1.Completed,
 						},
 					},
 				},
@@ -234,35 +234,35 @@ func TestJobCache_Update(t *testing.T) {
 
 	testcases := []struct {
 		Name        string
-		JobsInCache map[string]*v1alpha1.Job
-		UpdatedJob  *v1alpha1.Job
+		JobsInCache map[string]*vcbusv1.Job
+		UpdatedJob  *vcbusv1.Job
 		ExpectedErr error
 	}{
 		{
 			Name: "Success Case",
-			JobsInCache: map[string]*v1alpha1.Job{
+			JobsInCache: map[string]*vcbusv1.Job{
 				"job1": {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:            "job1",
 						Namespace:       namespace,
 						ResourceVersion: "100",
 					},
-					Status: v1alpha1.JobStatus{
-						State: v1alpha1.JobState{
-							Phase: v1alpha1.Running,
+					Status: vcbusv1.JobStatus{
+						State: vcbusv1.JobState{
+							Phase: vcbusv1.Running,
 						},
 					},
 				},
 			},
-			UpdatedJob: &v1alpha1.Job{
+			UpdatedJob: &vcbusv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            "job1",
 					Namespace:       namespace,
 					ResourceVersion: "100",
 				},
-				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase: v1alpha1.Completed,
+				Status: vcbusv1.JobStatus{
+					State: vcbusv1.JobState{
+						Phase: vcbusv1.Completed,
 					},
 				},
 			},
@@ -271,15 +271,15 @@ func TestJobCache_Update(t *testing.T) {
 		{
 			Name:        "Error Case",
 			JobsInCache: nil,
-			UpdatedJob: &v1alpha1.Job{
+			UpdatedJob: &vcbusv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            "job1",
 					Namespace:       namespace,
 					ResourceVersion: "100",
 				},
-				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase: v1alpha1.Completed,
+				Status: vcbusv1.JobStatus{
+					State: vcbusv1.JobState{
+						Phase: vcbusv1.Completed,
 					},
 				},
 			},
@@ -318,33 +318,33 @@ func TestJobCache_Delete(t *testing.T) {
 
 	testcases := []struct {
 		Name        string
-		JobsInCache map[string]*v1alpha1.Job
-		DeleteJob   *v1alpha1.Job
+		JobsInCache map[string]*vcbusv1.Job
+		DeleteJob   *vcbusv1.Job
 		ExpectedErr error
 	}{
 		{
 			Name: "Success Case",
-			JobsInCache: map[string]*v1alpha1.Job{
+			JobsInCache: map[string]*vcbusv1.Job{
 				"job1": {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "job1",
 						Namespace: namespace,
 					},
-					Status: v1alpha1.JobStatus{
-						State: v1alpha1.JobState{
-							Phase: v1alpha1.Running,
+					Status: vcbusv1.JobStatus{
+						State: vcbusv1.JobState{
+							Phase: vcbusv1.Running,
 						},
 					},
 				},
 			},
-			DeleteJob: &v1alpha1.Job{
+			DeleteJob: &vcbusv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase: v1alpha1.Completed,
+				Status: vcbusv1.JobStatus{
+					State: vcbusv1.JobState{
+						Phase: vcbusv1.Completed,
 					},
 				},
 			},
@@ -353,14 +353,14 @@ func TestJobCache_Delete(t *testing.T) {
 		{
 			Name:        "Error Case",
 			JobsInCache: nil,
-			DeleteJob: &v1alpha1.Job{
+			DeleteJob: &vcbusv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
 				},
-				Status: v1alpha1.JobStatus{
-					State: v1alpha1.JobState{
-						Phase: v1alpha1.Completed,
+				Status: vcbusv1.JobStatus{
+					State: vcbusv1.JobState{
+						Phase: vcbusv1.Completed,
 					},
 				},
 			},
@@ -399,21 +399,21 @@ func TestJobCache_AddPod(t *testing.T) {
 
 	testcases := []struct {
 		Name        string
-		JobsInCache map[string]*v1alpha1.Job
+		JobsInCache map[string]*vcbusv1.Job
 		AddPod      *v1.Pod
 		ExpectedErr error
 	}{
 		{
 			Name: "Success Case",
-			JobsInCache: map[string]*v1alpha1.Job{
+			JobsInCache: map[string]*vcbusv1.Job{
 				"job1": {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "job1",
 						Namespace: namespace,
 					},
-					Status: v1alpha1.JobStatus{
-						State: v1alpha1.JobState{
-							Phase: v1alpha1.Running,
+					Status: vcbusv1.JobStatus{
+						State: vcbusv1.JobState{
+							Phase: vcbusv1.Running,
 						},
 					},
 				},
@@ -423,9 +423,9 @@ func TestJobCache_AddPod(t *testing.T) {
 					Name:      "pod1",
 					Namespace: namespace,
 					Annotations: map[string]string{
-						v1alpha1.JobNameKey:  "job1",
-						v1alpha1.TaskSpecKey: "task1",
-						v1alpha1.JobVersion:  "1",
+						vcbusv1.JobNameKey:  "job1",
+						vcbusv1.TaskSpecKey: "task1",
+						vcbusv1.JobVersion:  "1",
 					},
 				},
 				Status: v1.PodStatus{
@@ -442,8 +442,8 @@ func TestJobCache_AddPod(t *testing.T) {
 					Name:      "pod1",
 					Namespace: namespace,
 					Annotations: map[string]string{
-						v1alpha1.TaskSpecKey: "task1",
-						v1alpha1.JobVersion:  "1",
+						vcbusv1.TaskSpecKey: "task1",
+						vcbusv1.JobVersion:  "1",
 					},
 				},
 				Status: v1.PodStatus{
@@ -488,22 +488,22 @@ func TestJobCache_DeletePod(t *testing.T) {
 
 	testcases := []struct {
 		Name        string
-		JobsInCache map[string]*v1alpha1.Job
+		JobsInCache map[string]*vcbusv1.Job
 		AddPod      map[string]*v1.Pod
 		DeletePod   *v1.Pod
 		ExpectedErr error
 	}{
 		{
 			Name: "Success Case",
-			JobsInCache: map[string]*v1alpha1.Job{
+			JobsInCache: map[string]*vcbusv1.Job{
 				"job1": {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "job1",
 						Namespace: namespace,
 					},
-					Status: v1alpha1.JobStatus{
-						State: v1alpha1.JobState{
-							Phase: v1alpha1.Running,
+					Status: vcbusv1.JobStatus{
+						State: vcbusv1.JobState{
+							Phase: vcbusv1.Running,
 						},
 					},
 				},
@@ -514,9 +514,9 @@ func TestJobCache_DeletePod(t *testing.T) {
 						Name:      "pod1",
 						Namespace: namespace,
 						Annotations: map[string]string{
-							v1alpha1.JobNameKey:  "job1",
-							v1alpha1.TaskSpecKey: "task1",
-							v1alpha1.JobVersion:  "1",
+							vcbusv1.JobNameKey:  "job1",
+							vcbusv1.TaskSpecKey: "task1",
+							vcbusv1.JobVersion:  "1",
 						},
 					},
 					Status: v1.PodStatus{
@@ -528,9 +528,9 @@ func TestJobCache_DeletePod(t *testing.T) {
 						Name:      "pod2",
 						Namespace: namespace,
 						Annotations: map[string]string{
-							v1alpha1.JobNameKey:  "job1",
-							v1alpha1.TaskSpecKey: "task1",
-							v1alpha1.JobVersion:  "1",
+							vcbusv1.JobNameKey:  "job1",
+							vcbusv1.TaskSpecKey: "task1",
+							vcbusv1.JobVersion:  "1",
 						},
 					},
 					Status: v1.PodStatus{
@@ -543,9 +543,9 @@ func TestJobCache_DeletePod(t *testing.T) {
 					Name:      "pod1",
 					Namespace: namespace,
 					Annotations: map[string]string{
-						v1alpha1.JobNameKey:  "job1",
-						v1alpha1.TaskSpecKey: "task1",
-						v1alpha1.JobVersion:  "1",
+						vcbusv1.JobNameKey:  "job1",
+						vcbusv1.TaskSpecKey: "task1",
+						vcbusv1.JobVersion:  "1",
 					},
 				},
 				Status: v1.PodStatus{
@@ -595,22 +595,22 @@ func TestJobCache_UpdatePod(t *testing.T) {
 
 	testcases := []struct {
 		Name        string
-		JobsInCache map[string]*v1alpha1.Job
+		JobsInCache map[string]*vcbusv1.Job
 		AddPod      map[string]*v1.Pod
 		UpdatePod   *v1.Pod
 		ExpectedErr error
 	}{
 		{
 			Name: "Success Case",
-			JobsInCache: map[string]*v1alpha1.Job{
+			JobsInCache: map[string]*vcbusv1.Job{
 				"job1": {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "job1",
 						Namespace: namespace,
 					},
-					Status: v1alpha1.JobStatus{
-						State: v1alpha1.JobState{
-							Phase: v1alpha1.Running,
+					Status: vcbusv1.JobStatus{
+						State: vcbusv1.JobState{
+							Phase: vcbusv1.Running,
 						},
 					},
 				},
@@ -621,9 +621,9 @@ func TestJobCache_UpdatePod(t *testing.T) {
 						Name:      "pod1",
 						Namespace: namespace,
 						Annotations: map[string]string{
-							v1alpha1.JobNameKey:  "job1",
-							v1alpha1.TaskSpecKey: "task1",
-							v1alpha1.JobVersion:  "1",
+							vcbusv1.JobNameKey:  "job1",
+							vcbusv1.TaskSpecKey: "task1",
+							vcbusv1.JobVersion:  "1",
 						},
 					},
 					Status: v1.PodStatus{
@@ -635,9 +635,9 @@ func TestJobCache_UpdatePod(t *testing.T) {
 						Name:      "pod2",
 						Namespace: namespace,
 						Annotations: map[string]string{
-							v1alpha1.JobNameKey:  "job1",
-							v1alpha1.TaskSpecKey: "task1",
-							v1alpha1.JobVersion:  "1",
+							vcbusv1.JobNameKey:  "job1",
+							vcbusv1.TaskSpecKey: "task1",
+							vcbusv1.JobVersion:  "1",
 						},
 					},
 					Status: v1.PodStatus{
@@ -650,9 +650,9 @@ func TestJobCache_UpdatePod(t *testing.T) {
 					Name:      "pod1",
 					Namespace: namespace,
 					Annotations: map[string]string{
-						v1alpha1.JobNameKey:  "job1",
-						v1alpha1.TaskSpecKey: "task1",
-						v1alpha1.JobVersion:  "1",
+						vcbusv1.JobNameKey:  "job1",
+						vcbusv1.TaskSpecKey: "task1",
+						vcbusv1.JobVersion:  "1",
 					},
 				},
 				Status: v1.PodStatus{
@@ -708,29 +708,29 @@ func TestJobCache_TaskCompleted(t *testing.T) {
 
 	testcases := []struct {
 		Name        string
-		JobsInCache map[string]*v1alpha1.Job
+		JobsInCache map[string]*vcbusv1.Job
 		AddPod      map[string]*v1.Pod
 		ExpectedVal bool
 	}{
 		{
 			Name: "Success Case",
-			JobsInCache: map[string]*v1alpha1.Job{
+			JobsInCache: map[string]*vcbusv1.Job{
 				"job1": {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "job1",
 						Namespace: namespace,
 					},
-					Spec: v1alpha1.JobSpec{
-						Tasks: []v1alpha1.TaskSpec{
+					Spec: vcbusv1.JobSpec{
+						Tasks: []vcbusv1.TaskSpec{
 							{
 								Name:     "task1",
 								Replicas: 2,
 							},
 						},
 					},
-					Status: v1alpha1.JobStatus{
-						State: v1alpha1.JobState{
-							Phase: v1alpha1.Running,
+					Status: vcbusv1.JobStatus{
+						State: vcbusv1.JobState{
+							Phase: vcbusv1.Running,
 						},
 					},
 				},
@@ -741,9 +741,9 @@ func TestJobCache_TaskCompleted(t *testing.T) {
 						Name:      "pod1",
 						Namespace: namespace,
 						Annotations: map[string]string{
-							v1alpha1.JobNameKey:  "job1",
-							v1alpha1.TaskSpecKey: "task1",
-							v1alpha1.JobVersion:  "1",
+							vcbusv1.JobNameKey:  "job1",
+							vcbusv1.TaskSpecKey: "task1",
+							vcbusv1.JobVersion:  "1",
 						},
 					},
 					Status: v1.PodStatus{
@@ -755,9 +755,9 @@ func TestJobCache_TaskCompleted(t *testing.T) {
 						Name:      "pod2",
 						Namespace: namespace,
 						Annotations: map[string]string{
-							v1alpha1.JobNameKey:  "job1",
-							v1alpha1.TaskSpecKey: "task1",
-							v1alpha1.JobVersion:  "1",
+							vcbusv1.JobNameKey:  "job1",
+							vcbusv1.TaskSpecKey: "task1",
+							vcbusv1.JobVersion:  "1",
 						},
 					},
 					Status: v1.PodStatus{
@@ -769,23 +769,23 @@ func TestJobCache_TaskCompleted(t *testing.T) {
 		},
 		{
 			Name: "False Case",
-			JobsInCache: map[string]*v1alpha1.Job{
+			JobsInCache: map[string]*vcbusv1.Job{
 				"job1": {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "job1",
 						Namespace: namespace,
 					},
-					Spec: v1alpha1.JobSpec{
-						Tasks: []v1alpha1.TaskSpec{
+					Spec: vcbusv1.JobSpec{
+						Tasks: []vcbusv1.TaskSpec{
 							{
 								Name:     "task1",
 								Replicas: 2,
 							},
 						},
 					},
-					Status: v1alpha1.JobStatus{
-						State: v1alpha1.JobState{
-							Phase: v1alpha1.Running,
+					Status: vcbusv1.JobStatus{
+						State: vcbusv1.JobState{
+							Phase: vcbusv1.Running,
 						},
 					},
 				},
@@ -796,9 +796,9 @@ func TestJobCache_TaskCompleted(t *testing.T) {
 						Name:      "pod1",
 						Namespace: namespace,
 						Annotations: map[string]string{
-							v1alpha1.JobNameKey:  "job1",
-							v1alpha1.TaskSpecKey: "task1",
-							v1alpha1.JobVersion:  "1",
+							vcbusv1.JobNameKey:  "job1",
+							vcbusv1.TaskSpecKey: "task1",
+							vcbusv1.JobVersion:  "1",
 						},
 					},
 					Status: v1.PodStatus{
@@ -810,9 +810,9 @@ func TestJobCache_TaskCompleted(t *testing.T) {
 						Name:      "pod2",
 						Namespace: namespace,
 						Annotations: map[string]string{
-							v1alpha1.JobNameKey:  "job1",
-							v1alpha1.TaskSpecKey: "task1",
-							v1alpha1.JobVersion:  "1",
+							vcbusv1.JobNameKey:  "job1",
+							vcbusv1.TaskSpecKey: "task1",
+							vcbusv1.JobVersion:  "1",
 						},
 					},
 					Status: v1.PodStatus{

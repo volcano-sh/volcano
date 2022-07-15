@@ -21,7 +21,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 )
 
 //JobInfo struct.
@@ -29,7 +29,7 @@ type JobInfo struct {
 	Namespace string
 	Name      string
 
-	Job  *batch.Job
+	Job  *vcbatchv1.Job
 	Pods map[string]map[string]*v1.Pod
 }
 
@@ -54,7 +54,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 }
 
 //SetJob sets the volcano jobs values to the JobInfo struct.
-func (ji *JobInfo) SetJob(job *batch.Job) {
+func (ji *JobInfo) SetJob(job *vcbatchv1.Job) {
 	ji.Name = job.Name
 	ji.Namespace = job.Namespace
 	ji.Job = job
@@ -63,13 +63,13 @@ func (ji *JobInfo) SetJob(job *batch.Job) {
 //AddPod adds the k8s pod object values to the Pods field
 //of JobStruct if it doesn't exist. Otherwise it throws error.
 func (ji *JobInfo) AddPod(pod *v1.Pod) error {
-	taskName, found := pod.Annotations[batch.TaskSpecKey]
+	taskName, found := pod.Annotations[vcbatchv1.TaskSpecKey]
 	if !found {
 		return fmt.Errorf("failed to find taskName of Pod <%s/%s>",
 			pod.Namespace, pod.Name)
 	}
 
-	_, found = pod.Annotations[batch.JobVersion]
+	_, found = pod.Annotations[vcbatchv1.JobVersion]
 	if !found {
 		return fmt.Errorf("failed to find jobVersion of Pod <%s/%s>",
 			pod.Namespace, pod.Name)
@@ -88,12 +88,12 @@ func (ji *JobInfo) AddPod(pod *v1.Pod) error {
 
 //UpdatePod updates the k8s pod object values to the existing pod.
 func (ji *JobInfo) UpdatePod(pod *v1.Pod) error {
-	taskName, found := pod.Annotations[batch.TaskSpecKey]
+	taskName, found := pod.Annotations[vcbatchv1.TaskSpecKey]
 	if !found {
 		return fmt.Errorf("failed to find taskName of Pod <%s/%s>",
 			pod.Namespace, pod.Name)
 	}
-	_, found = pod.Annotations[batch.JobVersion]
+	_, found = pod.Annotations[vcbatchv1.JobVersion]
 	if !found {
 		return fmt.Errorf("failed to find jobVersion of Pod <%s/%s>",
 			pod.Namespace, pod.Name)
@@ -113,12 +113,12 @@ func (ji *JobInfo) UpdatePod(pod *v1.Pod) error {
 
 //DeletePod deletes the given k8s pod from the JobInfo struct.
 func (ji *JobInfo) DeletePod(pod *v1.Pod) error {
-	taskName, found := pod.Annotations[batch.TaskSpecKey]
+	taskName, found := pod.Annotations[vcbatchv1.TaskSpecKey]
 	if !found {
 		return fmt.Errorf("failed to find taskName of Pod <%s/%s>",
 			pod.Namespace, pod.Name)
 	}
-	_, found = pod.Annotations[batch.JobVersion]
+	_, found = pod.Annotations[vcbatchv1.JobVersion]
 	if !found {
 		return fmt.Errorf("failed to find jobVersion of Pod <%s/%s>",
 			pod.Namespace, pod.Name)

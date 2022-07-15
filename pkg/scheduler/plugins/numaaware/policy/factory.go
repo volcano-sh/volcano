@@ -21,7 +21,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"k8s.io/kubernetes/pkg/kubelet/cm/topologymanager/bitmask"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -53,14 +53,14 @@ type HintProvider interface {
 
 // GetPolicy return the interface matched the input task topology config
 func GetPolicy(node *api.NodeInfo, numaNodes []int) Policy {
-	switch batch.NumaPolicy(node.NumaSchedulerInfo.Policies[nodeinfov1alpha1.TopologyManagerPolicy]) {
-	case batch.None:
+	switch vcbatchv1.NumaPolicy(node.NumaSchedulerInfo.Policies[nodeinfov1alpha1.TopologyManagerPolicy]) {
+	case vcbatchv1.None:
 		return NewPolicyNone(numaNodes)
-	case batch.BestEffort:
+	case vcbatchv1.BestEffort:
 		return NewPolicyBestEffort(numaNodes)
-	case batch.Restricted:
+	case vcbatchv1.Restricted:
 		return NewPolicyRestricted(numaNodes)
-	case batch.SingleNumaNode:
+	case vcbatchv1.SingleNumaNode:
 		return NewPolicySingleNumaNode(numaNodes)
 	}
 

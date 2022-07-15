@@ -17,38 +17,38 @@ limitations under the License.
 package state
 
 import (
-	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
-	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 )
 
 type closedState struct {
-	queue *v1beta1.Queue
+	queue *vcschedulingv1.Queue
 }
 
-func (cs *closedState) Execute(action v1alpha1.Action) error {
+func (cs *closedState) Execute(action vcbusv1.Action) error {
 	switch action {
-	case v1alpha1.OpenQueueAction:
-		return OpenQueue(cs.queue, func(status *v1beta1.QueueStatus, podGroupList []string) {
-			status.State = v1beta1.QueueStateOpen
+	case vcbusv1.OpenQueueAction:
+		return OpenQueue(cs.queue, func(status *vcschedulingv1.QueueStatus, podGroupList []string) {
+			status.State = vcschedulingv1.QueueStateOpen
 		})
-	case v1alpha1.CloseQueueAction:
-		return SyncQueue(cs.queue, func(status *v1beta1.QueueStatus, podGroupList []string) {
-			status.State = v1beta1.QueueStateClosed
+	case vcbusv1.CloseQueueAction:
+		return SyncQueue(cs.queue, func(status *vcschedulingv1.QueueStatus, podGroupList []string) {
+			status.State = vcschedulingv1.QueueStateClosed
 		})
 	default:
-		return SyncQueue(cs.queue, func(status *v1beta1.QueueStatus, podGroupList []string) {
+		return SyncQueue(cs.queue, func(status *vcschedulingv1.QueueStatus, podGroupList []string) {
 			specState := cs.queue.Status.State
-			if specState == v1beta1.QueueStateOpen {
-				status.State = v1beta1.QueueStateOpen
+			if specState == vcschedulingv1.QueueStateOpen {
+				status.State = vcschedulingv1.QueueStateOpen
 				return
 			}
 
-			if specState == v1beta1.QueueStateClosed {
-				status.State = v1beta1.QueueStateClosed
+			if specState == vcschedulingv1.QueueStateClosed {
+				status.State = vcschedulingv1.QueueStateClosed
 				return
 			}
 
-			status.State = v1beta1.QueueStateUnknown
+			status.State = vcschedulingv1.QueueStateUnknown
 		})
 	}
 }

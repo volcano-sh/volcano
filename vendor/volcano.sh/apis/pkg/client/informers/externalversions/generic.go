@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Volcano Authors.
+Copyright 2022 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,10 +22,13 @@ import (
 
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
+	v1 "volcano.sh/apis/pkg/apis/batch/v1"
 	v1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	busv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	flowv1alpha1 "volcano.sh/apis/pkg/apis/flow/v1alpha1"
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
+	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	v1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
@@ -55,9 +58,17 @@ func (f *genericInformer) Lister() cache.GenericLister {
 // TODO extend this to unknown resources with a client pool
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
-	// Group=batch.volcano.sh, Version=v1alpha1
+	// Group=batch.volcano.sh, Version=v1
+	case v1.SchemeGroupVersion.WithResource("jobs"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Batch().V1().Jobs().Informer()}, nil
+
+		// Group=batch.volcano.sh, Version=v1alpha1
 	case v1alpha1.SchemeGroupVersion.WithResource("jobs"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Batch().V1alpha1().Jobs().Informer()}, nil
+
+		// Group=bus.volcano.sh, Version=v1
+	case busv1.SchemeGroupVersion.WithResource("commands"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Bus().V1().Commands().Informer()}, nil
 
 		// Group=bus.volcano.sh, Version=v1alpha1
 	case busv1alpha1.SchemeGroupVersion.WithResource("commands"):
@@ -72,6 +83,12 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		// Group=nodeinfo.volcano.sh, Version=v1alpha1
 	case nodeinfov1alpha1.SchemeGroupVersion.WithResource("numatopologies"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Nodeinfo().V1alpha1().Numatopologies().Informer()}, nil
+
+		// Group=scheduling.volcano.sh, Version=v1
+	case schedulingv1.SchemeGroupVersion.WithResource("podgroups"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Scheduling().V1().PodGroups().Informer()}, nil
+	case schedulingv1.SchemeGroupVersion.WithResource("queues"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Scheduling().V1().Queues().Informer()}, nil
 
 		// Group=scheduling.volcano.sh, Version=v1beta1
 	case v1beta1.SchemeGroupVersion.WithResource("podgroups"):

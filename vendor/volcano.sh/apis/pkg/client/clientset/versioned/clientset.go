@@ -24,20 +24,26 @@ import (
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
+	batchv1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/batch/v1"
 	batchv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/batch/v1alpha1"
+	busv1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/bus/v1"
 	busv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/bus/v1alpha1"
 	flowv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/flow/v1alpha1"
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/nodeinfo/v1alpha1"
+	schedulingv1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/scheduling/v1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/scheduling/v1beta1"
 )
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface
+	BatchV1() batchv1.BatchV1Interface
 	BusV1alpha1() busv1alpha1.BusV1alpha1Interface
+	BusV1() busv1.BusV1Interface
 	FlowV1alpha1() flowv1alpha1.FlowV1alpha1Interface
 	NodeinfoV1alpha1() nodeinfov1alpha1.NodeinfoV1alpha1Interface
 	SchedulingV1beta1() schedulingv1beta1.SchedulingV1beta1Interface
+	SchedulingV1() schedulingv1.SchedulingV1Interface
 }
 
 // Clientset contains the clients for groups. Each group has exactly one
@@ -45,10 +51,13 @@ type Interface interface {
 type Clientset struct {
 	*discovery.DiscoveryClient
 	batchV1alpha1     *batchv1alpha1.BatchV1alpha1Client
+	batchV1           *batchv1.BatchV1Client
 	busV1alpha1       *busv1alpha1.BusV1alpha1Client
+	busV1             *busv1.BusV1Client
 	flowV1alpha1      *flowv1alpha1.FlowV1alpha1Client
 	nodeinfoV1alpha1  *nodeinfov1alpha1.NodeinfoV1alpha1Client
 	schedulingV1beta1 *schedulingv1beta1.SchedulingV1beta1Client
+	schedulingV1      *schedulingv1.SchedulingV1Client
 }
 
 // BatchV1alpha1 retrieves the BatchV1alpha1Client
@@ -56,9 +65,19 @@ func (c *Clientset) BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface {
 	return c.batchV1alpha1
 }
 
+// BatchV1 retrieves the BatchV1Client
+func (c *Clientset) BatchV1() batchv1.BatchV1Interface {
+	return c.batchV1
+}
+
 // BusV1alpha1 retrieves the BusV1alpha1Client
 func (c *Clientset) BusV1alpha1() busv1alpha1.BusV1alpha1Interface {
 	return c.busV1alpha1
+}
+
+// BusV1 retrieves the BusV1Client
+func (c *Clientset) BusV1() busv1.BusV1Interface {
+	return c.busV1
 }
 
 // FlowV1alpha1 retrieves the FlowV1alpha1Client
@@ -74,6 +93,11 @@ func (c *Clientset) NodeinfoV1alpha1() nodeinfov1alpha1.NodeinfoV1alpha1Interfac
 // SchedulingV1beta1 retrieves the SchedulingV1beta1Client
 func (c *Clientset) SchedulingV1beta1() schedulingv1beta1.SchedulingV1beta1Interface {
 	return c.schedulingV1beta1
+}
+
+// SchedulingV1 retrieves the SchedulingV1Client
+func (c *Clientset) SchedulingV1() schedulingv1.SchedulingV1Interface {
+	return c.schedulingV1
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -120,7 +144,15 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
+	cs.batchV1, err = batchv1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
 	cs.busV1alpha1, err = busv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
+	cs.busV1, err = busv1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -133,6 +165,10 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 		return nil, err
 	}
 	cs.schedulingV1beta1, err = schedulingv1beta1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
+	cs.schedulingV1, err = schedulingv1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -158,10 +194,13 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
 	cs.batchV1alpha1 = batchv1alpha1.New(c)
+	cs.batchV1 = batchv1.New(c)
 	cs.busV1alpha1 = busv1alpha1.New(c)
+	cs.busV1 = busv1.New(c)
 	cs.flowV1alpha1 = flowv1alpha1.New(c)
 	cs.nodeinfoV1alpha1 = nodeinfov1alpha1.New(c)
 	cs.schedulingV1beta1 = schedulingv1beta1.New(c)
+	cs.schedulingV1 = schedulingv1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs

@@ -32,7 +32,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	"volcano.sh/apis/pkg/apis/helpers"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 )
@@ -94,13 +94,13 @@ func PopulateResourceListV1(spec string) (v1.ResourceList, error) {
 }
 
 // CreateQueueCommand executes a command such as open/close
-func CreateQueueCommand(vcClient *versioned.Clientset, ns, name string, action vcbus.Action) error {
-	queue, err := vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), name, metav1.GetOptions{})
+func CreateQueueCommand(vcClient *versioned.Clientset, ns, name string, action vcbusv1.Action) error {
+	queue, err := vcClient.SchedulingV1().Queues().Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
-	ctrlRef := metav1.NewControllerRef(queue, helpers.V1beta1QueueKind)
-	cmd := &vcbus.Command{
+	ctrlRef := metav1.NewControllerRef(queue, helpers.V1QueueKind)
+	cmd := &vcbusv1.Command{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: fmt.Sprintf("%s-%s-",
 				queue.Name, strings.ToLower(string(action))),
@@ -113,7 +113,7 @@ func CreateQueueCommand(vcClient *versioned.Clientset, ns, name string, action v
 		Action:       string(action),
 	}
 
-	if _, err := vcClient.BusV1alpha1().Commands(ns).Create(context.TODO(), cmd, metav1.CreateOptions{}); err != nil {
+	if _, err := vcClient.BusV1().Commands(ns).Create(context.TODO(), cmd, metav1.CreateOptions{}); err != nil {
 		return err
 	}
 
@@ -121,15 +121,15 @@ func CreateQueueCommand(vcClient *versioned.Clientset, ns, name string, action v
 }
 
 // CreateJobCommand executes a command such as resume/suspend.
-func CreateJobCommand(config *rest.Config, ns, name string, action vcbus.Action) error {
+func CreateJobCommand(config *rest.Config, ns, name string, action vcbusv1.Action) error {
 	jobClient := versioned.NewForConfigOrDie(config)
-	job, err := jobClient.BatchV1alpha1().Jobs(ns).Get(context.TODO(), name, metav1.GetOptions{})
+	job, err := jobClient.BatchV1().Jobs(ns).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 
-	ctrlRef := metav1.NewControllerRef(job, helpers.JobKind)
-	cmd := &vcbus.Command{
+	ctrlRef := metav1.NewControllerRef(job, helpers.V1JobKind)
+	cmd := &vcbusv1.Command{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: fmt.Sprintf("%s-%s-",
 				job.Name, strings.ToLower(string(action))),
@@ -142,7 +142,7 @@ func CreateJobCommand(config *rest.Config, ns, name string, action vcbus.Action)
 		Action:       string(action),
 	}
 
-	if _, err := jobClient.BusV1alpha1().Commands(ns).Create(context.TODO(), cmd, metav1.CreateOptions{}); err != nil {
+	if _, err := jobClient.BusV1().Commands(ns).Create(context.TODO(), cmd, metav1.CreateOptions{}); err != nil {
 		return err
 	}
 

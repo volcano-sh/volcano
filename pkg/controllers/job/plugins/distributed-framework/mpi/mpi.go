@@ -22,7 +22,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
@@ -75,7 +75,7 @@ func (mp *Plugin) Name() string {
 	return MPIPluginName
 }
 
-func (mp *Plugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
+func (mp *Plugin) OnPodCreate(pod *v1.Pod, job *vcbatchv1.Job) error {
 	isMaster := false
 	workerHosts := ""
 	env := v1.EnvVar{}
@@ -107,7 +107,7 @@ func (mp *Plugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	return nil
 }
 
-func (mp *Plugin) generateTaskHosts(task batch.TaskSpec, jobName string) string {
+func (mp *Plugin) generateTaskHosts(task vcbatchv1.TaskSpec, jobName string) string {
 	hosts := ""
 	for i := 0; i < int(task.Replicas); i++ {
 		hostName := task.Template.Spec.Hostname
@@ -147,7 +147,7 @@ func (mp *Plugin) openContainerPort(c *v1.Container, index int, pod *v1.Pod, isI
 	}
 }
 
-func (mp *Plugin) OnJobAdd(job *batch.Job) error {
+func (mp *Plugin) OnJobAdd(job *vcbatchv1.Job) error {
 	if job.Status.ControlledResources["plugin-"+mp.Name()] == mp.Name() {
 		return nil
 	}
@@ -155,7 +155,7 @@ func (mp *Plugin) OnJobAdd(job *batch.Job) error {
 	return nil
 }
 
-func (mp *Plugin) OnJobDelete(job *batch.Job) error {
+func (mp *Plugin) OnJobDelete(job *vcbatchv1.Job) error {
 	if job.Status.ControlledResources["plugin-"+mp.Name()] != mp.Name() {
 		return nil
 	}
@@ -163,7 +163,7 @@ func (mp *Plugin) OnJobDelete(job *batch.Job) error {
 	return nil
 }
 
-func (mp *Plugin) OnJobUpdate(job *batch.Job) error {
+func (mp *Plugin) OnJobUpdate(job *vcbatchv1.Job) error {
 	return nil
 }
 

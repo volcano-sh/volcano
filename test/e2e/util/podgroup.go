@@ -27,17 +27,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 )
 
 // CreatePodGroup creates a PodGroup with the specified name in the namespace
-func CreatePodGroup(ctx *TestContext, pg string, namespace string) *schedulingv1beta1.PodGroup {
-	podGroup, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), &schedulingv1beta1.PodGroup{
+func CreatePodGroup(ctx *TestContext, pg string, namespace string) *vcschedulingv1.PodGroup {
+	podGroup, err := ctx.Vcclient.SchedulingV1().PodGroups(namespace).Create(context.TODO(), &vcschedulingv1.PodGroup{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
 			Name:      pg,
 		},
-		Spec: schedulingv1beta1.PodGroupSpec{
+		Spec: vcschedulingv1.PodGroupSpec{
 			MinResources: &v1.ResourceList{},
 		},
 	}, metav1.CreateOptions{})
@@ -47,17 +47,17 @@ func CreatePodGroup(ctx *TestContext, pg string, namespace string) *schedulingv1
 
 // DeletePodGroup deletes a PodGroup with the specified name in the namespace
 func DeletePodGroup(ctx *TestContext, pg string, namespace string) {
-	_, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), pg, metav1.GetOptions{})
+	_, err := ctx.Vcclient.SchedulingV1().PodGroups(namespace).Get(context.TODO(), pg, metav1.GetOptions{})
 	Expect(err).NotTo(HaveOccurred(), "failed to get pod group %s", pg)
-	err = ctx.Vcclient.SchedulingV1beta1().PodGroups(namespace).Delete(context.TODO(), pg, metav1.DeleteOptions{})
+	err = ctx.Vcclient.SchedulingV1().PodGroups(namespace).Delete(context.TODO(), pg, metav1.DeleteOptions{})
 	Expect(err).NotTo(HaveOccurred(), "failed to delete pod group %s", pg)
 }
 
 // WaitPodGroupPhase waits for the PodGroup to be the specified state
-func WaitPodGroupPhase(ctx *TestContext, podGroup *schedulingv1beta1.PodGroup, state schedulingv1beta1.PodGroupPhase) error {
+func WaitPodGroupPhase(ctx *TestContext, podGroup *vcschedulingv1.PodGroup, state vcschedulingv1.PodGroupPhase) error {
 	var additionalError error
 	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
-		podGroup, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(podGroup.Namespace).Get(context.TODO(), podGroup.Name, metav1.GetOptions{})
+		podGroup, err := ctx.Vcclient.SchedulingV1().PodGroups(podGroup.Namespace).Get(context.TODO(), podGroup.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred(), "failed to get pod group %s in namespace %s", podGroup.Name, podGroup.Namespace)
 		expected := podGroup.Status.Phase == state
 		if !expected {
@@ -74,7 +74,7 @@ func WaitPodGroupPhase(ctx *TestContext, podGroup *schedulingv1beta1.PodGroup, s
 
 // PodGroupIsReady returns whether the status of PodGroup is ready
 func PodGroupIsReady(ctx *TestContext, namespace string) (bool, error) {
-	pgs, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(namespace).List(context.TODO(), metav1.ListOptions{})
+	pgs, err := ctx.Vcclient.SchedulingV1().PodGroups(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return false, err
 	}
@@ -83,7 +83,7 @@ func PodGroupIsReady(ctx *TestContext, namespace string) (bool, error) {
 	}
 
 	for _, pg := range pgs.Items {
-		if pg.Status.Phase != schedulingv1beta1.PodGroupPending {
+		if pg.Status.Phase != vcschedulingv1.PodGroupPending {
 			return true, nil
 		}
 	}

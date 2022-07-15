@@ -17,8 +17,8 @@ limitations under the License.
 package state
 
 import (
-	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -26,34 +26,34 @@ type pendingState struct {
 	job *apis.JobInfo
 }
 
-func (ps *pendingState) Execute(action v1alpha1.Action) error {
+func (ps *pendingState) Execute(action vcbusv1.Action) error {
 	switch action {
-	case v1alpha1.RestartJobAction:
-		return KillJob(ps.job, PodRetainPhaseNone, func(status *vcbatch.JobStatus) bool {
+	case vcbusv1.RestartJobAction:
+		return KillJob(ps.job, PodRetainPhaseNone, func(status *vcbatchv1.JobStatus) bool {
 			status.RetryCount++
-			status.State.Phase = vcbatch.Restarting
+			status.State.Phase = vcbatchv1.Restarting
 			return true
 		})
 
-	case v1alpha1.AbortJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
-			status.State.Phase = vcbatch.Aborting
+	case vcbusv1.AbortJobAction:
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatchv1.JobStatus) bool {
+			status.State.Phase = vcbatchv1.Aborting
 			return true
 		})
-	case v1alpha1.CompleteJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
-			status.State.Phase = vcbatch.Completing
+	case vcbusv1.CompleteJobAction:
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatchv1.JobStatus) bool {
+			status.State.Phase = vcbatchv1.Completing
 			return true
 		})
-	case v1alpha1.TerminateJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
-			status.State.Phase = vcbatch.Terminating
+	case vcbusv1.TerminateJobAction:
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatchv1.JobStatus) bool {
+			status.State.Phase = vcbatchv1.Terminating
 			return true
 		})
 	default:
-		return SyncJob(ps.job, func(status *vcbatch.JobStatus) bool {
+		return SyncJob(ps.job, func(status *vcbatchv1.JobStatus) bool {
 			if ps.job.Job.Spec.MinAvailable <= status.Running+status.Succeeded+status.Failed {
-				status.State.Phase = vcbatch.Running
+				status.State.Phase = vcbatchv1.Running
 				return true
 			}
 			return false

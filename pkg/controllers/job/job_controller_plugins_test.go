@@ -26,7 +26,7 @@ import (
 	"k8s.io/client-go/informers"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	volcanoclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
@@ -55,14 +55,14 @@ func TestPluginOnPodCreate(t *testing.T) {
 
 	testcases := []struct {
 		Name    string
-		Job     *batch.Job
+		Job     *vcbatchv1.Job
 		Pod     *v1.Pod
 		Plugins []string
 		RetVal  error
 	}{
 		{
 			Name: "All Plugin",
-			Job: &batch.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "Job1",
 					Namespace: namespace,
@@ -75,7 +75,7 @@ func TestPluginOnPodCreate(t *testing.T) {
 		},
 		{
 			Name: "Wrong Plugin",
-			Job: &batch.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "Job1",
 					UID:  "e7f18111-1cec-11ea-b688-fa163ec79500",
@@ -156,13 +156,13 @@ func TestPluginOnJobAdd(t *testing.T) {
 
 	testcases := []struct {
 		Name    string
-		Job     *batch.Job
+		Job     *vcbatchv1.Job
 		Plugins []string
 		RetVal  error
 	}{
 		{
 			Name: "Plugins",
-			Job: &batch.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
@@ -174,7 +174,7 @@ func TestPluginOnJobAdd(t *testing.T) {
 		},
 		{
 			Name: "Wrong Plugin",
-			Job: &batch.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "Job1",
 					UID:  "e7f18111-1cec-11ea-b688-fa163ec79500",
@@ -239,13 +239,13 @@ func TestPluginOnJobDelete(t *testing.T) {
 
 	testcases := []struct {
 		Name    string
-		Job     *batch.Job
+		Job     *vcbatchv1.Job
 		Plugins []string
 		RetVal  error
 	}{
 		{
 			Name: "Plugins",
-			Job: &batch.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
@@ -257,7 +257,7 @@ func TestPluginOnJobDelete(t *testing.T) {
 		},
 		{
 			Name: "Wrong Plugin",
-			Job: &batch.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "Job1",
 					UID:  "e7f18111-1cec-11ea-b688-fa163ec79500",

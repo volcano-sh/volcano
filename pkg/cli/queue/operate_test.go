@@ -24,7 +24,7 @@ import (
 	"reflect"
 	"testing"
 
-	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 
 	"github.com/spf13/cobra"
 
@@ -32,7 +32,7 @@ import (
 )
 
 func TestOperateQueue(t *testing.T) {
-	response := v1beta1.Queue{
+	response := vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "test-queue",
 		},

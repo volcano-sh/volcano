@@ -28,10 +28,10 @@ import (
 	kubeclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	bus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	"volcano.sh/apis/pkg/apis/helpers"
-	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
@@ -48,7 +48,7 @@ func newController() *jobcontroller {
 	vcclient := vcclientset.NewForConfigOrDie(&rest.Config{
 		Host: "",
 		ContentConfig: rest.ContentConfig{
-			GroupVersion: &batch.SchemeGroupVersion,
+			GroupVersion: &vcbatchv1.SchemeGroupVersion,
 		},
 	})
 
@@ -78,8 +78,8 @@ func buildPod(namespace, name string, p v1.PodPhase, labels map[string]string) *
 			ResourceVersion: string(uuid.NewUUID()),
 			OwnerReferences: []metav1.OwnerReference{
 				{
-					APIVersion: helpers.JobKind.GroupVersion().String(),
-					Kind:       helpers.JobKind.Kind,
+					APIVersion: helpers.V1JobKind.GroupVersion().String(),
+					Kind:       helpers.V1JobKind.Kind,
 					Controller: &boolValue,
 				},
 			},
@@ -120,7 +120,7 @@ func TestAddCommandFunc(t *testing.T) {
 	}{
 		{
 			Name: "AddCommand Success Case",
-			command: &bus.Command{
+			command: &vcbusv1.Command{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "Valid Command",
 					Namespace: namespace,
@@ -152,12 +152,12 @@ func TestJobAddFunc(t *testing.T) {
 
 	testCases := []struct {
 		Name        string
-		job         *batch.Job
+		job         *vcbatchv1.Job
 		ExpectValue int
 	}{
 		{
 			Name: "AddJob Success",
-			job: &batch.Job{
+			job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "Job1",
 					Namespace: namespace,
@@ -189,75 +189,75 @@ func TestUpdateJobFunc(t *testing.T) {
 
 	testcases := []struct {
 		Name   string
-		oldJob *batch.Job
-		newJob *batch.Job
+		oldJob *vcbatchv1.Job
+		newJob *vcbatchv1.Job
 	}{
 		{
 			Name: "Job Update Success Case",
-			oldJob: &batch.Job{
+			oldJob: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            "job1",
 					Namespace:       namespace,
 					ResourceVersion: "54467984",
 				},
-				Spec: batch.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					SchedulerName: "volcano",
 					MinAvailable:  5,
 				},
-				Status: batch.JobStatus{
-					State: batch.JobState{
-						Phase: batch.Pending,
+				Status: vcbatchv1.JobStatus{
+					State: vcbatchv1.JobState{
+						Phase: vcbatchv1.Pending,
 					},
 				},
 			},
-			newJob: &batch.Job{
+			newJob: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            "job1",
 					Namespace:       namespace,
 					ResourceVersion: "54469999",
 				},
-				Spec: batch.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					SchedulerName: "volcano",
 					MinAvailable:  5,
 				},
-				Status: batch.JobStatus{
-					State: batch.JobState{
-						Phase: batch.Running,
+				Status: vcbatchv1.JobStatus{
+					State: vcbatchv1.JobState{
+						Phase: vcbatchv1.Running,
 					},
 				},
 			},
 		},
 		{
 			Name: "Job Update Failure Case",
-			oldJob: &batch.Job{
+			oldJob: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            "job1",
 					Namespace:       namespace,
 					ResourceVersion: "54469999",
 				},
-				Spec: batch.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					SchedulerName: "volcano",
 					MinAvailable:  5,
 				},
-				Status: batch.JobStatus{
-					State: batch.JobState{
-						Phase: batch.Pending,
+				Status: vcbatchv1.JobStatus{
+					State: vcbatchv1.JobState{
+						Phase: vcbatchv1.Pending,
 					},
 				},
 			},
-			newJob: &batch.Job{
+			newJob: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            "job1",
 					Namespace:       namespace,
 					ResourceVersion: "54469999",
 				},
-				Spec: batch.JobSpec{
+				Spec: vcbatchv1.JobSpec{
 					SchedulerName: "volcano",
 					MinAvailable:  5,
 				},
-				Status: batch.JobStatus{
-					State: batch.JobState{
-						Phase: batch.Pending,
+				Status: vcbatchv1.JobStatus{
+					State: vcbatchv1.JobState{
+						Phase: vcbatchv1.Pending,
 					},
 				},
 			},
@@ -288,14 +288,14 @@ func TestAddPodFunc(t *testing.T) {
 
 	testcases := []struct {
 		Name          string
-		Job           *batch.Job
+		Job           *vcbatchv1.Job
 		pods          []*v1.Pod
 		Annotation    map[string]string
 		ExpectedValue int
 	}{
 		{
 			Name: "AddPod Success case",
-			Job: &batch.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
@@ -305,15 +305,15 @@ func TestAddPodFunc(t *testing.T) {
 				buildPod(namespace, "pod1", v1.PodPending, nil),
 			},
 			Annotation: map[string]string{
-				batch.JobNameKey:  "job1",
-				batch.JobVersion:  "0",
-				batch.TaskSpecKey: "task1",
+				vcbatchv1.JobNameKey:  "job1",
+				vcbatchv1.JobVersion:  "0",
+				vcbatchv1.TaskSpecKey: "task1",
 			},
 			ExpectedValue: 1,
 		},
 		{
 			Name: "AddPod Duplicate Pod case",
-			Job: &batch.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
@@ -324,9 +324,9 @@ func TestAddPodFunc(t *testing.T) {
 				buildPod(namespace, "pod1", v1.PodPending, nil),
 			},
 			Annotation: map[string]string{
-				batch.JobNameKey:  "job1",
-				batch.JobVersion:  "0",
-				batch.TaskSpecKey: "task1",
+				vcbatchv1.JobNameKey:  "job1",
+				vcbatchv1.JobVersion:  "0",
+				vcbatchv1.TaskSpecKey: "task1",
 			},
 			ExpectedValue: 1,
 		},
@@ -365,7 +365,7 @@ func TestUpdatePodFunc(t *testing.T) {
 
 	testcases := []struct {
 		Name          string
-		Job           *batch.Job
+		Job           *vcbatchv1.Job
 		oldPod        *v1.Pod
 		newPod        *v1.Pod
 		Annotation    map[string]string
@@ -373,7 +373,7 @@ func TestUpdatePodFunc(t *testing.T) {
 	}{
 		{
 			Name: "UpdatePod Success case",
-			Job: &batch.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
@@ -382,15 +382,15 @@ func TestUpdatePodFunc(t *testing.T) {
 			oldPod: buildPod(namespace, "pod1", v1.PodPending, nil),
 			newPod: buildPod(namespace, "pod1", v1.PodRunning, nil),
 			Annotation: map[string]string{
-				batch.JobNameKey:  "job1",
-				batch.JobVersion:  "0",
-				batch.TaskSpecKey: "task1",
+				vcbatchv1.JobNameKey:  "job1",
+				vcbatchv1.JobVersion:  "0",
+				vcbatchv1.TaskSpecKey: "task1",
 			},
 			ExpectedValue: v1.PodRunning,
 		},
 		{
 			Name: "UpdatePod Failed case",
-			Job: &batch.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
@@ -399,9 +399,9 @@ func TestUpdatePodFunc(t *testing.T) {
 			oldPod: buildPod(namespace, "pod1", v1.PodPending, nil),
 			newPod: buildPod(namespace, "pod1", v1.PodFailed, nil),
 			Annotation: map[string]string{
-				batch.JobNameKey:  "job1",
-				batch.JobVersion:  "0",
-				batch.TaskSpecKey: "task1",
+				vcbatchv1.JobNameKey:  "job1",
+				vcbatchv1.JobVersion:  "0",
+				vcbatchv1.TaskSpecKey: "task1",
 			},
 			ExpectedValue: v1.PodFailed,
 		},
@@ -423,7 +423,7 @@ func TestUpdatePodFunc(t *testing.T) {
 				t.Errorf("Error while Getting Job in case %d with error %s", i, err)
 			}
 
-			pod := job.Pods[testcase.Annotation[batch.TaskSpecKey]][testcase.oldPod.Name]
+			pod := job.Pods[testcase.Annotation[vcbatchv1.TaskSpecKey]][testcase.oldPod.Name]
 
 			if pod.Status.Phase != testcase.ExpectedValue {
 				t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectedValue, pod.Status.Phase)
@@ -437,7 +437,7 @@ func TestDeletePodFunc(t *testing.T) {
 
 	testcases := []struct {
 		Name          string
-		Job           *batch.Job
+		Job           *vcbatchv1.Job
 		availablePods []*v1.Pod
 		deletePod     *v1.Pod
 		Annotation    map[string]string
@@ -445,7 +445,7 @@ func TestDeletePodFunc(t *testing.T) {
 	}{
 		{
 			Name: "DeletePod success case",
-			Job: &batch.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
@@ -457,15 +457,15 @@ func TestDeletePodFunc(t *testing.T) {
 			},
 			deletePod: buildPod(namespace, "pod2", v1.PodRunning, nil),
 			Annotation: map[string]string{
-				batch.JobNameKey:  "job1",
-				batch.JobVersion:  "0",
-				batch.TaskSpecKey: "task1",
+				vcbatchv1.JobNameKey:  "job1",
+				vcbatchv1.JobVersion:  "0",
+				vcbatchv1.TaskSpecKey: "task1",
 			},
 			ExpectedValue: 1,
 		},
 		{
 			Name: "DeletePod Pod NotAvailable case",
-			Job: &batch.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1",
 					Namespace: namespace,
@@ -477,9 +477,9 @@ func TestDeletePodFunc(t *testing.T) {
 			},
 			deletePod: buildPod(namespace, "pod3", v1.PodRunning, nil),
 			Annotation: map[string]string{
-				batch.JobNameKey:  "job1",
-				batch.JobVersion:  "0",
-				batch.TaskSpecKey: "task1",
+				vcbatchv1.JobNameKey:  "job1",
+				vcbatchv1.JobVersion:  "0",
+				vcbatchv1.TaskSpecKey: "task1",
 			},
 			ExpectedValue: 2,
 		},
@@ -521,34 +521,34 @@ func TestUpdatePodGroupFunc(t *testing.T) {
 
 	testCases := []struct {
 		Name        string
-		oldPodGroup *scheduling.PodGroup
-		newPodGroup *scheduling.PodGroup
+		oldPodGroup *vcschedulingv1.PodGroup
+		newPodGroup *vcschedulingv1.PodGroup
 		ExpectValue int
 	}{
 		{
 			Name: "AddCommand Success Case",
-			oldPodGroup: &scheduling.PodGroup{
+			oldPodGroup: &vcschedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "pg1",
 					Namespace: namespace,
 				},
-				Spec: scheduling.PodGroupSpec{
+				Spec: vcschedulingv1.PodGroupSpec{
 					MinMember: 3,
 				},
-				Status: scheduling.PodGroupStatus{
-					Phase: scheduling.PodGroupPending,
+				Status: vcschedulingv1.PodGroupStatus{
+					Phase: vcschedulingv1.PodGroupPending,
 				},
 			},
-			newPodGroup: &scheduling.PodGroup{
+			newPodGroup: &vcschedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "pg1",
 					Namespace: namespace,
 				},
-				Spec: scheduling.PodGroupSpec{
+				Spec: vcschedulingv1.PodGroupSpec{
 					MinMember: 3,
 				},
-				Status: scheduling.PodGroupStatus{
-					Phase: scheduling.PodGroupRunning,
+				Status: vcschedulingv1.PodGroupStatus{
+					Phase: vcschedulingv1.PodGroupRunning,
 				},
 			},
 			ExpectValue: 1,

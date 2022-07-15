@@ -25,10 +25,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	"volcano.sh/apis/pkg/apis/helpers"
-	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
@@ -40,7 +40,7 @@ func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(jobhelpers.PodNameFmt, jobName, taskName, index)
 }
 
-func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy batch.NumaPolicy, ix int, jobForwarding bool) *v1.Pod {
+func createJobPod(job *vcbatchv1.Job, template *v1.PodTemplateSpec, topologyPolicy vcbatchv1.NumaPolicy, ix int, jobForwarding bool) *v1.Pod {
 	templateCopy := template.DeepCopy()
 
 	pod := &v1.Pod{
@@ -48,7 +48,7 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 			Name:      jobhelpers.MakePodName(job.Name, template.Name, ix),
 			Namespace: job.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(job, helpers.JobKind),
+				*metav1.NewControllerRef(job, helpers.V1JobKind),
 			},
 			Labels:      templateCopy.Labels,
 			Annotations: templateCopy.Annotations,
@@ -92,40 +92,40 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 
 	tsKey := templateCopy.Name
 	if len(tsKey) == 0 {
-		tsKey = batch.DefaultTaskSpec
+		tsKey = vcbatchv1.DefaultTaskSpec
 	}
 
 	if len(pod.Annotations) == 0 {
 		pod.Annotations = make(map[string]string)
 	}
 
-	pod.Annotations[batch.TaskSpecKey] = tsKey
+	pod.Annotations[vcbatchv1.TaskSpecKey] = tsKey
 	pgName := job.Name + "-" + string(job.UID)
-	pod.Annotations[schedulingv2.KubeGroupNameAnnotationKey] = pgName
-	pod.Annotations[batch.JobNameKey] = job.Name
-	pod.Annotations[batch.QueueNameKey] = job.Spec.Queue
-	pod.Annotations[batch.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
-	pod.Annotations[batch.PodTemplateKey] = fmt.Sprintf("%s-%s", job.Name, template.Name)
+	pod.Annotations[vcschedulingv1.KubeGroupNameAnnotationKey] = pgName
+	pod.Annotations[vcbatchv1.JobNameKey] = job.Name
+	pod.Annotations[vcbatchv1.QueueNameKey] = job.Spec.Queue
+	pod.Annotations[vcbatchv1.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
+	pod.Annotations[vcbatchv1.PodTemplateKey] = fmt.Sprintf("%s-%s", job.Name, template.Name)
 
 	if topologyPolicy != "" {
-		pod.Annotations[schedulingv2.NumaPolicyKey] = string(topologyPolicy)
+		pod.Annotations[vcschedulingv1.NumaPolicyKey] = string(topologyPolicy)
 	}
 
 	if len(job.Annotations) > 0 {
-		if value, found := job.Annotations[schedulingv2.PodPreemptable]; found {
-			pod.Annotations[schedulingv2.PodPreemptable] = value
+		if value, found := job.Annotations[vcschedulingv1.PodPreemptable]; found {
+			pod.Annotations[vcschedulingv1.PodPreemptable] = value
 		}
-		if value, found := job.Annotations[schedulingv2.CooldownTime]; found {
-			pod.Annotations[schedulingv2.CooldownTime] = value
+		if value, found := job.Annotations[vcschedulingv1.CooldownTime]; found {
+			pod.Annotations[vcschedulingv1.CooldownTime] = value
 		}
-		if value, found := job.Annotations[schedulingv2.RevocableZone]; found {
-			pod.Annotations[schedulingv2.RevocableZone] = value
+		if value, found := job.Annotations[vcschedulingv1.RevocableZone]; found {
+			pod.Annotations[vcschedulingv1.RevocableZone] = value
 		}
 
-		if value, found := job.Annotations[schedulingv2.JDBMinAvailable]; found {
-			pod.Annotations[schedulingv2.JDBMinAvailable] = value
-		} else if value, found := job.Annotations[schedulingv2.JDBMaxUnavailable]; found {
-			pod.Annotations[schedulingv2.JDBMaxUnavailable] = value
+		if value, found := job.Annotations[vcschedulingv1.JDBMinAvailable]; found {
+			pod.Annotations[vcschedulingv1.JDBMinAvailable] = value
+		} else if value, found := job.Annotations[vcschedulingv1.JDBMaxUnavailable]; found {
+			pod.Annotations[vcschedulingv1.JDBMaxUnavailable] = value
 		}
 	}
 
@@ -134,40 +134,40 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 	}
 
 	// Set pod labels for Service.
-	pod.Labels[batch.JobNameKey] = job.Name
-	pod.Labels[batch.TaskSpecKey] = tsKey
-	pod.Labels[batch.JobNamespaceKey] = job.Namespace
-	pod.Labels[batch.QueueNameKey] = job.Spec.Queue
+	pod.Labels[vcbatchv1.JobNameKey] = job.Name
+	pod.Labels[vcbatchv1.TaskSpecKey] = tsKey
+	pod.Labels[vcbatchv1.JobNamespaceKey] = job.Namespace
+	pod.Labels[vcbatchv1.QueueNameKey] = job.Spec.Queue
 	if len(job.Labels) > 0 {
-		if value, found := job.Labels[schedulingv2.PodPreemptable]; found {
-			pod.Labels[schedulingv2.PodPreemptable] = value
+		if value, found := job.Labels[vcschedulingv1.PodPreemptable]; found {
+			pod.Labels[vcschedulingv1.PodPreemptable] = value
 		}
-		if value, found := job.Labels[schedulingv2.CooldownTime]; found {
-			pod.Labels[schedulingv2.CooldownTime] = value
+		if value, found := job.Labels[vcschedulingv1.CooldownTime]; found {
+			pod.Labels[vcschedulingv1.CooldownTime] = value
 		}
 	}
 
 	if jobForwarding {
-		pod.Annotations[batch.JobForwardingKey] = "true"
-		pod.Labels[batch.JobForwardingKey] = "true"
+		pod.Annotations[vcbatchv1.JobForwardingKey] = "true"
+		pod.Labels[vcbatchv1.JobForwardingKey] = "true"
 	}
 
 	return pod
 }
 
-func applyPolicies(job *batch.Job, req *apis.Request) v1alpha1.Action {
+func applyPolicies(job *vcbatchv1.Job, req *apis.Request) vcbusv1.Action {
 	if len(req.Action) != 0 {
 		return req.Action
 	}
 
-	if req.Event == v1alpha1.OutOfSyncEvent {
-		return v1alpha1.SyncJobAction
+	if req.Event == vcbusv1.OutOfSyncEvent {
+		return vcbusv1.SyncJobAction
 	}
 
 	// For all the requests triggered from discarded job resources will perform sync action instead
 	if req.JobVersion < job.Status.Version {
 		klog.Infof("Request %s is outdated, will perform sync instead.", req)
-		return v1alpha1.SyncJobAction
+		return vcbusv1.SyncJobAction
 	}
 
 	// Overwrite Job level policies
@@ -179,7 +179,7 @@ func applyPolicies(job *batch.Job, req *apis.Request) v1alpha1.Action {
 					policyEvents := getEventlist(policy)
 
 					if len(policyEvents) > 0 && len(req.Event) > 0 {
-						if checkEventExist(policyEvents, req.Event) || checkEventExist(policyEvents, v1alpha1.AnyEvent) {
+						if checkEventExist(policyEvents, req.Event) || checkEventExist(policyEvents, vcbusv1.AnyEvent) {
 							return policy.Action
 						}
 					}
@@ -199,7 +199,7 @@ func applyPolicies(job *batch.Job, req *apis.Request) v1alpha1.Action {
 		policyEvents := getEventlist(policy)
 
 		if len(policyEvents) > 0 && len(req.Event) > 0 {
-			if checkEventExist(policyEvents, req.Event) || checkEventExist(policyEvents, v1alpha1.AnyEvent) {
+			if checkEventExist(policyEvents, req.Event) || checkEventExist(policyEvents, vcbusv1.AnyEvent) {
 				return policy.Action
 			}
 		}
@@ -210,10 +210,10 @@ func applyPolicies(job *batch.Job, req *apis.Request) v1alpha1.Action {
 		}
 	}
 
-	return v1alpha1.SyncJobAction
+	return vcbusv1.SyncJobAction
 }
 
-func getEventlist(policy batch.LifecyclePolicy) []v1alpha1.Event {
+func getEventlist(policy vcbatchv1.LifecyclePolicy) []vcbusv1.Event {
 	policyEventsList := policy.Events
 	if len(policy.Event) > 0 {
 		policyEventsList = append(policyEventsList, policy.Event)
@@ -221,7 +221,7 @@ func getEventlist(policy batch.LifecyclePolicy) []v1alpha1.Event {
 	return policyEventsList
 }
 
-func checkEventExist(policyEvents []v1alpha1.Event, reqEvent v1alpha1.Event) bool {
+func checkEventExist(policyEvents []vcbusv1.Event, reqEvent vcbusv1.Event) bool {
 	for _, event := range policyEvents {
 		if event == reqEvent {
 			return true
@@ -234,7 +234,7 @@ func checkEventExist(policyEvents []v1alpha1.Event, reqEvent v1alpha1.Event) boo
 type TaskPriority struct {
 	priority int32
 
-	batch.TaskSpec
+	vcbatchv1.TaskSpec
 }
 
 // TasksPriority is a slice of TaskPriority.

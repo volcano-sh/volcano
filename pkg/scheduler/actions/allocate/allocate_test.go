@@ -32,7 +32,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 
 	storagev1 "k8s.io/api/storage/v1"
-	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
@@ -64,25 +64,25 @@ func TestAllocate(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		podGroups []*schedulingv1.PodGroup
+		podGroups []*vcschedulingv1.PodGroup
 		pods      []*v1.Pod
 		nodes     []*v1.Node
-		queues    []*schedulingv1.Queue
+		queues    []*vcschedulingv1.Queue
 		expected  map[string]string
 	}{
 		{
 			name: "one Job with two Pods on one node",
-			podGroups: []*schedulingv1.PodGroup{
+			podGroups: []*vcschedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 					},
-					Spec: schedulingv1.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "c1",
 					},
-					Status: schedulingv1.PodGroupStatus{
-						Phase: schedulingv1.PodGroupInqueue,
+					Status: vcschedulingv1.PodGroupStatus{
+						Phase: vcschedulingv1.PodGroupInqueue,
 					},
 				},
 			},
@@ -93,12 +93,12 @@ func TestAllocate(t *testing.T) {
 			nodes: []*v1.Node{
 				util.BuildNode("n1", util.BuildResourceList("2", "4Gi"), make(map[string]string)),
 			},
-			queues: []*schedulingv1.Queue{
+			queues: []*vcschedulingv1.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "c1",
 					},
-					Spec: schedulingv1.QueueSpec{
+					Spec: vcschedulingv1.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -110,17 +110,17 @@ func TestAllocate(t *testing.T) {
 		},
 		{
 			name: "two Jobs on one node",
-			podGroups: []*schedulingv1.PodGroup{
+			podGroups: []*vcschedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 					},
-					Spec: schedulingv1.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "c1",
 					},
-					Status: schedulingv1.PodGroupStatus{
-						Phase: schedulingv1.PodGroupInqueue,
+					Status: vcschedulingv1.PodGroupStatus{
+						Phase: vcschedulingv1.PodGroupInqueue,
 					},
 				},
 				{
@@ -128,11 +128,11 @@ func TestAllocate(t *testing.T) {
 						Name:      "pg2",
 						Namespace: "c2",
 					},
-					Spec: schedulingv1.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "c2",
 					},
-					Status: schedulingv1.PodGroupStatus{
-						Phase: schedulingv1.PodGroupInqueue,
+					Status: vcschedulingv1.PodGroupStatus{
+						Phase: vcschedulingv1.PodGroupInqueue,
 					},
 				},
 			},
@@ -152,12 +152,12 @@ func TestAllocate(t *testing.T) {
 			nodes: []*v1.Node{
 				util.BuildNode("n1", util.BuildResourceList("2", "4G"), make(map[string]string)),
 			},
-			queues: []*schedulingv1.Queue{
+			queues: []*vcschedulingv1.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "c1",
 					},
-					Spec: schedulingv1.QueueSpec{
+					Spec: vcschedulingv1.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -165,7 +165,7 @@ func TestAllocate(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "c2",
 					},
-					Spec: schedulingv1.QueueSpec{
+					Spec: vcschedulingv1.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -177,17 +177,17 @@ func TestAllocate(t *testing.T) {
 		},
 		{
 			name: "high priority queue should not block others",
-			podGroups: []*schedulingv1.PodGroup{
+			podGroups: []*vcschedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "pg1",
 						Namespace: "c1",
 					},
-					Spec: schedulingv1.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "c1",
 					},
-					Status: schedulingv1.PodGroupStatus{
-						Phase: schedulingv1.PodGroupInqueue,
+					Status: vcschedulingv1.PodGroupStatus{
+						Phase: vcschedulingv1.PodGroupInqueue,
 					},
 				},
 				{
@@ -195,11 +195,11 @@ func TestAllocate(t *testing.T) {
 						Name:      "pg2",
 						Namespace: "c1",
 					},
-					Spec: schedulingv1.PodGroupSpec{
+					Spec: vcschedulingv1.PodGroupSpec{
 						Queue: "c2",
 					},
-					Status: schedulingv1.PodGroupStatus{
-						Phase: schedulingv1.PodGroupInqueue,
+					Status: vcschedulingv1.PodGroupStatus{
+						Phase: vcschedulingv1.PodGroupInqueue,
 					},
 				},
 			},
@@ -213,12 +213,12 @@ func TestAllocate(t *testing.T) {
 			nodes: []*v1.Node{
 				util.BuildNode("n1", util.BuildResourceList("2", "4G"), make(map[string]string)),
 			},
-			queues: []*schedulingv1.Queue{
+			queues: []*vcschedulingv1.Queue{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "c1",
 					},
-					Spec: schedulingv1.QueueSpec{
+					Spec: vcschedulingv1.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -226,7 +226,7 @@ func TestAllocate(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "c2",
 					},
-					Spec: schedulingv1.QueueSpec{
+					Spec: vcschedulingv1.QueueSpec{
 						Weight: 1,
 					},
 				},
@@ -264,11 +264,11 @@ func TestAllocate(t *testing.T) {
 			}
 
 			for _, ss := range test.podGroups {
-				schedulerCache.AddPodGroupV1beta1(ss)
+				schedulerCache.AddPodGroupV1(ss)
 			}
 
 			for _, q := range test.queues {
-				schedulerCache.AddQueueV1beta1(q)
+				schedulerCache.AddQueueV1(q)
 			}
 
 			trueValue := true
@@ -320,28 +320,28 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 
 	defer framework.CleanupPluginBuilders()
 
-	queue := &schedulingv1.Queue{
+	queue := &vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "c1",
 		},
-		Spec: schedulingv1.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Weight: 1,
 		},
 	}
-	pg := &schedulingv1.PodGroup{
+	pg := &vcschedulingv1.PodGroup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "pg1",
 			Namespace: "c1",
 		},
-		Spec: schedulingv1.PodGroupSpec{
+		Spec: vcschedulingv1.PodGroupSpec{
 			Queue:     "c1",
 			MinMember: 2,
 			MinTaskMember: map[string]int32{
 				"": 2,
 			},
 		},
-		Status: schedulingv1.PodGroupStatus{
-			Phase: schedulingv1.PodGroupInqueue,
+		Status: vcschedulingv1.PodGroupStatus{
+			Phase: vcschedulingv1.PodGroupInqueue,
 		},
 	}
 
@@ -426,8 +426,8 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 				VolumeBinder:  fakeVolumeBinder,
 				Recorder:      record.NewFakeRecorder(100),
 			}
-			schedulerCache.AddQueueV1beta1(queue)
-			schedulerCache.AddPodGroupV1beta1(pg)
+			schedulerCache.AddQueueV1(queue)
+			schedulerCache.AddPodGroupV1(pg)
 			for i, pod := range test.pods {
 				priority := int32(-i)
 				pod.Spec.Priority = &priority

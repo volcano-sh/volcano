@@ -24,12 +24,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	v1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 )
 
 func TestListJob(t *testing.T) {
-	response := v1alpha1.JobList{}
-	response.Items = append(response.Items, v1alpha1.Job{})
+	response := vcbatchv1.JobList{}
+	response.Items = append(response.Items, vcbatchv1.Job{})
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

@@ -27,6 +27,7 @@ type PodGroupPhase string
 const (
 	// PodGroupVersionV1Beta1 represents PodGroupVersion of v1beta1
 	PodGroupVersionV1Beta1 string = "v1beta1"
+	PodGroupVersionV1      string = "v1"
 )
 
 // PodGroup is a collection of Pod; used for batch workload.

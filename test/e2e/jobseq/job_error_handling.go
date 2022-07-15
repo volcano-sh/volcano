@@ -26,8 +26,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	jobctl "volcano.sh/volcano/pkg/controllers/job"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
@@ -42,10 +42,10 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := e2eutil.CreateJob(context, &e2eutil.JobSpec{
 			Name: "failed-restart-job",
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Action: vcbus.RestartJobAction,
-					Event:  vcbus.PodFailedEvent,
+					Action: vcbusv1.RestartJobAction,
+					Event:  vcbusv1.PodFailedEvent,
 				},
 			},
 			Tasks: []e2eutil.TaskSpec{
@@ -67,7 +67,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> restarting
-		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
+		err := e2eutil.WaitJobPhases(context, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running, vcbatchv1.Restarting})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -79,10 +79,10 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := e2eutil.CreateJob(context, &e2eutil.JobSpec{
 			Name: "failed-terminate-job",
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Action: vcbus.TerminateJobAction,
-					Event:  vcbus.PodFailedEvent,
+					Action: vcbusv1.TerminateJobAction,
+					Event:  vcbusv1.PodFailedEvent,
 				},
 			},
 			Tasks: []e2eutil.TaskSpec{
@@ -104,7 +104,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> Terminating -> Terminated
-		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Terminating, vcbatch.Terminated})
+		err := e2eutil.WaitJobPhases(context, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running, vcbatchv1.Terminating, vcbatchv1.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -115,10 +115,10 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Name: "failed-abort-job",
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Action: vcbus.AbortJobAction,
-					Event:  vcbus.PodFailedEvent,
+					Action: vcbusv1.AbortJobAction,
+					Event:  vcbusv1.PodFailedEvent,
 				},
 			},
 			Tasks: []e2eutil.TaskSpec{
@@ -140,7 +140,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> Aborting -> Aborted
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Aborting, vcbatch.Aborted})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running, vcbatchv1.Aborting, vcbatchv1.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -151,10 +151,10 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Name: "evicted-restart-job",
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Action: vcbus.RestartJobAction,
-					Event:  vcbus.PodEvictedEvent,
+					Action: vcbusv1.RestartJobAction,
+					Event:  vcbusv1.PodEvictedEvent,
 				},
 			},
 			Tasks: []e2eutil.TaskSpec{
@@ -174,7 +174,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
@@ -183,7 +183,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Restarting -> Running
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
+		err = e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Restarting, vcbatchv1.Pending, vcbatchv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -194,10 +194,10 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Name: "evicted-terminate-job",
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Action: vcbus.TerminateJobAction,
-					Event:  vcbus.PodEvictedEvent,
+					Action: vcbusv1.TerminateJobAction,
+					Event:  vcbusv1.PodEvictedEvent,
 				},
 			},
 			Tasks: []e2eutil.TaskSpec{
@@ -217,7 +217,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
@@ -226,7 +226,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Terminating -> Terminated
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
+		err = e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Terminating, vcbatchv1.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -237,10 +237,10 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Name: "evicted-abort-job",
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Action: vcbus.AbortJobAction,
-					Event:  vcbus.PodEvictedEvent,
+					Action: vcbusv1.AbortJobAction,
+					Event:  vcbusv1.PodEvictedEvent,
 				},
 			},
 			Tasks: []e2eutil.TaskSpec{
@@ -260,7 +260,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
@@ -269,7 +269,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Aborting -> Aborted
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Aborting, vcbatch.Aborted})
+		err = e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Aborting, vcbatchv1.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -280,10 +280,10 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Name: "any-restart-job",
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Action: vcbus.RestartJobAction,
-					Event:  vcbus.AnyEvent,
+					Action: vcbusv1.RestartJobAction,
+					Event:  vcbusv1.AnyEvent,
 				},
 			},
 			Tasks: []e2eutil.TaskSpec{
@@ -303,7 +303,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
@@ -312,7 +312,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Restarting -> Running
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
+		err = e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Restarting, vcbatchv1.Pending, vcbatchv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -325,10 +325,10 @@ var _ = Describe("Job Error Handling", func() {
 		jobSpec := &e2eutil.JobSpec{
 			Name:      "job-restart-when-unschedulable",
 			Namespace: ctx.Namespace,
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Event:  vcbus.JobUnknownEvent,
-					Action: vcbus.RestartJobAction,
+					Event:  vcbusv1.JobUnknownEvent,
+					Action: vcbusv1.RestartJobAction,
 				},
 			},
 			Tasks: []e2eutil.TaskSpec{
@@ -363,15 +363,15 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Job is restarting")
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{
-			vcbatch.Restarting, vcbatch.Pending})
+		err = e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{
+			vcbatchv1.Restarting, vcbatchv1.Pending})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Untaint all nodes")
 		err = e2eutil.RemoveTaintsFromAllNodes(ctx, taints)
 		Expect(err).NotTo(HaveOccurred())
 		By("Job is running again")
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Running})
+		err = e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -383,10 +383,10 @@ var _ = Describe("Job Error Handling", func() {
 		jobSpec := &e2eutil.JobSpec{
 			Name:      "job-abort-when-unschedulable",
 			Namespace: ctx.Namespace,
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Event:  vcbus.JobUnknownEvent,
-					Action: vcbus.AbortJobAction,
+					Event:  vcbusv1.JobUnknownEvent,
+					Action: vcbusv1.AbortJobAction,
 				},
 			},
 			Tasks: []e2eutil.TaskSpec{
@@ -421,8 +421,8 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Job is aborted")
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{
-			vcbatch.Aborting, vcbatch.Aborted})
+		err = e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{
+			vcbatchv1.Aborting, vcbatchv1.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = e2eutil.RemoveTaintsFromAllNodes(ctx, taints)
@@ -438,10 +438,10 @@ var _ = Describe("Job Error Handling", func() {
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Name:      "any-complete-job",
 			Namespace: ctx.Namespace,
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Action: vcbus.CompleteJobAction,
-					Event:  vcbus.TaskCompletedEvent,
+					Action: vcbusv1.CompleteJobAction,
+					Event:  vcbusv1.TaskCompletedEvent,
 				},
 			},
 			Tasks: []e2eutil.TaskSpec{
@@ -465,8 +465,8 @@ var _ = Describe("Job Error Handling", func() {
 		By("job scheduled, then task 'completed_task' finished and job finally complete")
 		// job phase: pending -> running -> completing -> completed
 		// TODO: skip running -> completing for the github CI pool performance
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{
-			vcbatch.Pending, vcbatch.Completed})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{
+			vcbatchv1.Pending, vcbatchv1.Completed})
 		Expect(err).NotTo(HaveOccurred())
 
 	})
@@ -480,10 +480,10 @@ var _ = Describe("Job Error Handling", func() {
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Name:      "task-failed-terminate-job",
 			Namespace: ctx.Namespace,
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Action: vcbus.TerminateJobAction,
-					Event:  vcbus.TaskFailedEvent,
+					Action: vcbusv1.TerminateJobAction,
+					Event:  vcbusv1.TaskFailedEvent,
 				},
 			},
 			Tasks: []e2eutil.TaskSpec{
@@ -508,7 +508,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: Pending -> Running
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("update one pod of job")
@@ -521,7 +521,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Terminating -> Terminated
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
+		err = e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Terminating, vcbatchv1.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 
 	})
@@ -536,9 +536,9 @@ var _ = Describe("Job Error Handling", func() {
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Name:      "errorcode-restart-job",
 			Namespace: ctx.Namespace,
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Action:   vcbus.RestartJobAction,
+					Action:   vcbusv1.RestartJobAction,
 					ExitCode: &erroCode,
 				},
 			},
@@ -561,7 +561,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> restarting
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running, vcbatchv1.Restarting})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -572,12 +572,12 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
 			Name: "evicted-terminate-job",
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Action: vcbus.TerminateJobAction,
-					Events: []vcbus.Event{vcbus.PodEvictedEvent,
-						vcbus.PodFailedEvent,
-						vcbus.PodEvictedEvent,
+					Action: vcbusv1.TerminateJobAction,
+					Events: []vcbusv1.Event{vcbusv1.PodEvictedEvent,
+						vcbusv1.PodFailedEvent,
+						vcbusv1.PodEvictedEvent,
 					},
 				},
 			},
@@ -598,7 +598,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
@@ -607,7 +607,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Terminating -> Terminated
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
+		err = e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Terminating, vcbatchv1.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: PodFailed; Action: RestartJob", func() {
@@ -632,10 +632,10 @@ var _ = Describe("Job Error Handling", func() {
 					Rep:           2,
 					Command:       "sleep 10s && xxx",
 					RestartPolicy: v1.RestartPolicyNever,
-					Policies: []vcbatch.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
-							Action: vcbus.RestartJobAction,
-							Event:  vcbus.PodFailedEvent,
+							Action: vcbusv1.RestartJobAction,
+							Event:  vcbusv1.PodFailedEvent,
 						},
 					},
 				},
@@ -643,7 +643,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> restarting
-		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
+		err := e2eutil.WaitJobPhases(context, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running, vcbatchv1.Restarting})
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: PodEvicted; Action: RestartJob", func() {
@@ -666,10 +666,10 @@ var _ = Describe("Job Error Handling", func() {
 					Img:  e2eutil.DefaultNginxImage,
 					Min:  2,
 					Rep:  2,
-					Policies: []vcbatch.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
-							Action: vcbus.RestartJobAction,
-							Event:  vcbus.PodEvictedEvent,
+							Action: vcbusv1.RestartJobAction,
+							Event:  vcbusv1.PodEvictedEvent,
 						},
 					},
 				},
@@ -677,7 +677,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
@@ -686,7 +686,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Restarting -> Running
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
+		err = e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Restarting, vcbatchv1.Pending, vcbatchv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: PodEvicted; Action: TerminateJob", func() {
@@ -708,10 +708,10 @@ var _ = Describe("Job Error Handling", func() {
 					Img:  e2eutil.DefaultNginxImage,
 					Min:  2,
 					Rep:  2,
-					Policies: []vcbatch.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
-							Action: vcbus.TerminateJobAction,
-							Event:  vcbus.PodEvictedEvent,
+							Action: vcbusv1.TerminateJobAction,
+							Event:  vcbusv1.PodEvictedEvent,
 						},
 					},
 				},
@@ -719,7 +719,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
@@ -728,7 +728,7 @@ var _ = Describe("Job Error Handling", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Terminating -> Terminated
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
+		err = e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{vcbatchv1.Terminating, vcbatchv1.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: TaskCompleted; Action: CompletedJob", func() {
@@ -746,10 +746,10 @@ var _ = Describe("Job Error Handling", func() {
 					Rep:  2,
 					// Sleep 5 seconds ensure job in running state
 					Command: "sleep 5",
-					Policies: []vcbatch.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
-							Action: vcbus.CompleteJobAction,
-							Event:  vcbus.TaskCompletedEvent,
+							Action: vcbusv1.CompleteJobAction,
+							Event:  vcbusv1.TaskCompletedEvent,
 						},
 					},
 				},
@@ -764,8 +764,8 @@ var _ = Describe("Job Error Handling", func() {
 
 		By("job scheduled, then task 'completed_task' finished and job finally complete")
 		// job phase: pending -> running -> completing -> completed
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{
-			vcbatch.Pending, vcbatch.Completed})
+		err := e2eutil.WaitJobPhases(ctx, job, []vcbatchv1.JobPhase{
+			vcbatchv1.Pending, vcbatchv1.Completed})
 		Expect(err).NotTo(HaveOccurred())
 
 	})
@@ -778,10 +778,10 @@ var _ = Describe("Job Error Handling", func() {
 		By("create job")
 		job := e2eutil.CreateJob(context, &e2eutil.JobSpec{
 			Name: "failed-restart-job",
-			Policies: []vcbatch.LifecyclePolicy{
+			Policies: []vcbatchv1.LifecyclePolicy{
 				{
-					Action: vcbus.AbortJobAction,
-					Event:  vcbus.PodFailedEvent,
+					Action: vcbusv1.AbortJobAction,
+					Event:  vcbusv1.PodFailedEvent,
 				},
 			},
 			Tasks: []e2eutil.TaskSpec{
@@ -798,10 +798,10 @@ var _ = Describe("Job Error Handling", func() {
 					Rep:           2,
 					Command:       "sleep 10s && xxx",
 					RestartPolicy: v1.RestartPolicyNever,
-					Policies: []vcbatch.LifecyclePolicy{
+					Policies: []vcbatchv1.LifecyclePolicy{
 						{
-							Action: vcbus.RestartJobAction,
-							Event:  vcbus.PodFailedEvent,
+							Action: vcbusv1.RestartJobAction,
+							Event:  vcbusv1.PodFailedEvent,
 						},
 					},
 				},
@@ -809,7 +809,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> Restarting
-		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
+		err := e2eutil.WaitJobPhases(context, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running, vcbatchv1.Restarting})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -848,7 +848,7 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(context, job, []vcbatchv1.JobPhase{vcbatchv1.Pending, vcbatchv1.Running})
 		Expect(err).NotTo(HaveOccurred())
 		expteced := map[string]int{
 			e2eutil.MasterPriority: nodecount,

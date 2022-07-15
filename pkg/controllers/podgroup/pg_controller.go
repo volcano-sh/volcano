@@ -26,12 +26,12 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
-	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
-	schedulinginformer "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
-	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
+	schedulinginformer "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1"
+	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
 
@@ -87,7 +87,7 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 
 	factory := informerfactory.NewSharedInformerFactory(pg.vcClient, 0)
 	pg.vcInformerFactory = factory
-	pg.pgInformer = factory.Scheduling().V1beta1().PodGroups()
+	pg.pgInformer = factory.Scheduling().V1().PodGroups()
 	pg.pgLister = pg.pgInformer.Lister()
 	pg.pgSynced = pg.pgInformer.Informer().HasSynced
 
@@ -142,7 +142,7 @@ func (pg *pgcontroller) processNextReq() bool {
 		return true
 	}
 
-	if pod.Annotations != nil && pod.Annotations[scheduling.KubeGroupNameAnnotationKey] != "" {
+	if pod.Annotations != nil && pod.Annotations[vcschedulingv1.KubeGroupNameAnnotationKey] != "" {
 		klog.V(5).Infof("pod %v/%v has created podgroup", pod.Namespace, pod.Name)
 		return true
 	}

@@ -26,17 +26,17 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
 
-	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	"volcano.sh/volcano/pkg/controllers/queue/state"
 )
 
-func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
+func (c *queuecontroller) syncQueue(queue *vcschedulingv1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
 	klog.V(4).Infof("Begin to sync queue %s.", queue.Name)
 	defer klog.V(4).Infof("End sync queue %s.", queue.Name)
 
 	podGroups := c.getPodGroups(queue.Name)
-	queueStatus := schedulingv1beta1.QueueStatus{}
+	queueStatus := vcschedulingv1.QueueStatus{}
 
 	for _, pgKey := range podGroups {
 		// Ignore error here, tt can not occur.
@@ -49,13 +49,13 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 		}
 
 		switch pg.Status.Phase {
-		case schedulingv1beta1.PodGroupPending:
+		case vcschedulingv1.PodGroupPending:
 			queueStatus.Pending++
-		case schedulingv1beta1.PodGroupRunning:
+		case vcschedulingv1.PodGroupRunning:
 			queueStatus.Running++
-		case schedulingv1beta1.PodGroupUnknown:
+		case vcschedulingv1.PodGroupUnknown:
 			queueStatus.Unknown++
-		case schedulingv1beta1.PodGroupInqueue:
+		case vcschedulingv1.PodGroupInqueue:
 			queueStatus.Inqueue++
 		}
 	}
@@ -73,7 +73,7 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 
 	newQueue := queue.DeepCopy()
 	newQueue.Status = queueStatus
-	if _, err := c.vcClient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
+	if _, err := c.vcClient.SchedulingV1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
 		klog.Errorf("Failed to update status of Queue %s: %v.", newQueue.Name, err)
 		return err
 	}
@@ -81,25 +81,25 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 	return nil
 }
 
-func (c *queuecontroller) openQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
+func (c *queuecontroller) openQueue(queue *vcschedulingv1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
 	klog.V(4).Infof("Begin to open queue %s.", queue.Name)
 
 	newQueue := queue.DeepCopy()
-	newQueue.Status.State = schedulingv1beta1.QueueStateOpen
+	newQueue.Status.State = vcschedulingv1.QueueStateOpen
 
 	if queue.Status.State != newQueue.Status.State {
-		if _, err := c.vcClient.SchedulingV1beta1().Queues().Update(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
-			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.OpenQueueAction),
+		if _, err := c.vcClient.SchedulingV1().Queues().Update(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
+			c.recorder.Event(newQueue, v1.EventTypeWarning, string(vcbusv1.OpenQueueAction),
 				fmt.Sprintf("Open queue failed for %v", err))
 			return err
 		}
 
-		c.recorder.Event(newQueue, v1.EventTypeNormal, string(v1alpha1.OpenQueueAction), "Open queue succeed")
+		c.recorder.Event(newQueue, v1.EventTypeNormal, string(vcbusv1.OpenQueueAction), "Open queue succeed")
 	} else {
 		return nil
 	}
 
-	q, err := c.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), newQueue.Name, metav1.GetOptions{})
+	q, err := c.vcClient.SchedulingV1().Queues().Get(context.TODO(), newQueue.Name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -112,8 +112,8 @@ func (c *queuecontroller) openQueue(queue *schedulingv1beta1.Queue, updateStateF
 	}
 
 	if queue.Status.State != newQueue.Status.State {
-		if _, err := c.vcClient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
-			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.OpenQueueAction),
+		if _, err := c.vcClient.SchedulingV1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
+			c.recorder.Event(newQueue, v1.EventTypeWarning, string(vcbusv1.OpenQueueAction),
 				fmt.Sprintf("Update queue status from %s to %s failed for %v",
 					queue.Status.State, newQueue.Status.State, err))
 			return err
@@ -123,25 +123,25 @@ func (c *queuecontroller) openQueue(queue *schedulingv1beta1.Queue, updateStateF
 	return nil
 }
 
-func (c *queuecontroller) closeQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
+func (c *queuecontroller) closeQueue(queue *vcschedulingv1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
 	klog.V(4).Infof("Begin to close queue %s.", queue.Name)
 
 	newQueue := queue.DeepCopy()
-	newQueue.Status.State = schedulingv1beta1.QueueStateClosed
+	newQueue.Status.State = vcschedulingv1.QueueStateClosed
 
 	if queue.Status.State != newQueue.Status.State {
-		if _, err := c.vcClient.SchedulingV1beta1().Queues().Update(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
-			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.CloseQueueAction),
+		if _, err := c.vcClient.SchedulingV1().Queues().Update(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
+			c.recorder.Event(newQueue, v1.EventTypeWarning, string(vcbusv1.CloseQueueAction),
 				fmt.Sprintf("Close queue failed for %v", err))
 			return err
 		}
 
-		c.recorder.Event(newQueue, v1.EventTypeNormal, string(v1alpha1.CloseQueueAction), "Close queue succeed")
+		c.recorder.Event(newQueue, v1.EventTypeNormal, string(vcbusv1.CloseQueueAction), "Close queue succeed")
 	} else {
 		return nil
 	}
 
-	q, err := c.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), newQueue.Name, metav1.GetOptions{})
+	q, err := c.vcClient.SchedulingV1().Queues().Get(context.TODO(), newQueue.Name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -155,8 +155,8 @@ func (c *queuecontroller) closeQueue(queue *schedulingv1beta1.Queue, updateState
 	}
 
 	if queue.Status.State != newQueue.Status.State {
-		if _, err := c.vcClient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
-			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.CloseQueueAction),
+		if _, err := c.vcClient.SchedulingV1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
+			c.recorder.Event(newQueue, v1.EventTypeWarning, string(vcbusv1.CloseQueueAction),
 				fmt.Sprintf("Update queue status from %s to %s failed for %v",
 					queue.Status.State, newQueue.Status.State, err))
 			return err

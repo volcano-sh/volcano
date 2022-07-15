@@ -19,7 +19,7 @@ package cache
 import (
 	v1 "k8s.io/api/core/v1"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -28,10 +28,10 @@ type Cache interface {
 	Run(stopCh <-chan struct{})
 
 	Get(key string) (*apis.JobInfo, error)
-	GetStatus(key string) (*v1alpha1.JobStatus, error)
-	Add(obj *v1alpha1.Job) error
-	Update(obj *v1alpha1.Job) error
-	Delete(obj *v1alpha1.Job) error
+	GetStatus(key string) (*vcbatchv1.JobStatus, error)
+	Add(obj *vcbatchv1.Job) error
+	Update(obj *vcbatchv1.Job) error
+	Delete(obj *vcbatchv1.Job) error
 
 	AddPod(pod *v1.Pod) error
 	UpdatePod(pod *v1.Pod) error

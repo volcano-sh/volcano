@@ -19,8 +19,8 @@ package state
 import (
 	v1 "k8s.io/api/core/v1"
 
-	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/bus/v1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -28,31 +28,31 @@ type runningState struct {
 	job *apis.JobInfo
 }
 
-func (ps *runningState) Execute(action v1alpha1.Action) error {
+func (ps *runningState) Execute(action vcbusv1.Action) error {
 	switch action {
-	case v1alpha1.RestartJobAction:
-		return KillJob(ps.job, PodRetainPhaseNone, func(status *vcbatch.JobStatus) bool {
-			status.State.Phase = vcbatch.Restarting
+	case vcbusv1.RestartJobAction:
+		return KillJob(ps.job, PodRetainPhaseNone, func(status *vcbatchv1.JobStatus) bool {
+			status.State.Phase = vcbatchv1.Restarting
 			status.RetryCount++
 			return true
 		})
-	case v1alpha1.AbortJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
-			status.State.Phase = vcbatch.Aborting
+	case vcbusv1.AbortJobAction:
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatchv1.JobStatus) bool {
+			status.State.Phase = vcbatchv1.Aborting
 			return true
 		})
-	case v1alpha1.TerminateJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
-			status.State.Phase = vcbatch.Terminating
+	case vcbusv1.TerminateJobAction:
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatchv1.JobStatus) bool {
+			status.State.Phase = vcbatchv1.Terminating
 			return true
 		})
-	case v1alpha1.CompleteJobAction:
-		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
-			status.State.Phase = vcbatch.Completing
+	case vcbusv1.CompleteJobAction:
+		return KillJob(ps.job, PodRetainPhaseSoft, func(status *vcbatchv1.JobStatus) bool {
+			status.State.Phase = vcbatchv1.Completing
 			return true
 		})
 	default:
-		return SyncJob(ps.job, func(status *vcbatch.JobStatus) bool {
+		return SyncJob(ps.job, func(status *vcbatchv1.JobStatus) bool {
 			jobReplicas := TotalTasks(ps.job.Job)
 			if jobReplicas == 0 {
 				// when scale down to zero, keep the current job phase
@@ -61,7 +61,7 @@ func (ps *runningState) Execute(action v1alpha1.Action) error {
 
 			minSuccess := ps.job.Job.Spec.MinSuccess
 			if minSuccess != nil && status.Succeeded >= *minSuccess {
-				status.State.Phase = vcbatch.Completed
+				status.State.Phase = vcbatchv1.Completed
 				return true
 			}
 
@@ -75,7 +75,7 @@ func (ps *runningState) Execute(action v1alpha1.Action) error {
 
 						if taskStatus, ok := status.TaskStatusCount[task.Name]; ok {
 							if taskStatus.Phase[v1.PodSucceeded] < *task.MinAvailable {
-								status.State.Phase = vcbatch.Failed
+								status.State.Phase = vcbatchv1.Failed
 								return true
 							}
 						}
@@ -83,11 +83,11 @@ func (ps *runningState) Execute(action v1alpha1.Action) error {
 				}
 
 				if minSuccess != nil && status.Succeeded < *minSuccess {
-					status.State.Phase = vcbatch.Failed
+					status.State.Phase = vcbatchv1.Failed
 				} else if status.Succeeded >= ps.job.Job.Spec.MinAvailable {
-					status.State.Phase = vcbatch.Completed
+					status.State.Phase = vcbatchv1.Completed
 				} else {
-					status.State.Phase = vcbatch.Failed
+					status.State.Phase = vcbatchv1.Failed
 				}
 				return true
 			}

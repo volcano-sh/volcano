@@ -28,7 +28,7 @@ import (
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/features"
 
-	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 )
 
 // Refer k8s.io/kubernetes/pkg/scheduler/algorithm/predicates/predicates.go#GetResourceRequest.
@@ -76,10 +76,10 @@ func GetPodResourceRequest(pod *v1.Pod) *Resource {
 func GetPodPreemptable(pod *v1.Pod) bool {
 	// check annotaion first
 	if len(pod.Annotations) > 0 {
-		if value, found := pod.Annotations[v1beta1.PodPreemptable]; found {
+		if value, found := pod.Annotations[vcschedulingv1.PodPreemptable]; found {
 			b, err := strconv.ParseBool(value)
 			if err != nil {
-				klog.Warningf("invalid %s=%s", v1beta1.PodPreemptable, value)
+				klog.Warningf("invalid %s=%s", vcschedulingv1.PodPreemptable, value)
 				return false
 			}
 			return b
@@ -88,10 +88,10 @@ func GetPodPreemptable(pod *v1.Pod) bool {
 
 	// it annotation does not exit, check label
 	if len(pod.Labels) > 0 {
-		if value, found := pod.Labels[v1beta1.PodPreemptable]; found {
+		if value, found := pod.Labels[vcschedulingv1.PodPreemptable]; found {
 			b, err := strconv.ParseBool(value)
 			if err != nil {
-				klog.Warningf("invalid %s=%s", v1beta1.PodPreemptable, value)
+				klog.Warningf("invalid %s=%s", vcschedulingv1.PodPreemptable, value)
 				return false
 			}
 			return b
@@ -104,14 +104,14 @@ func GetPodPreemptable(pod *v1.Pod) bool {
 // GetPodRevocableZone return volcano.sh/revocable-zone value for pod/podgroup
 func GetPodRevocableZone(pod *v1.Pod) string {
 	if len(pod.Annotations) > 0 {
-		if value, found := pod.Annotations[v1beta1.RevocableZone]; found {
+		if value, found := pod.Annotations[vcschedulingv1.RevocableZone]; found {
 			if value != "*" {
 				return ""
 			}
 			return value
 		}
 
-		if value, found := pod.Annotations[v1beta1.PodPreemptable]; found {
+		if value, found := pod.Annotations[vcschedulingv1.PodPreemptable]; found {
 			if b, err := strconv.ParseBool(value); err == nil && b {
 				return "*"
 			}
@@ -127,7 +127,7 @@ func GetPodTopologyInfo(pod *v1.Pod) *TopologyInfo {
 	}
 
 	if len(pod.Annotations) > 0 {
-		if value, found := pod.Annotations[v1beta1.NumaPolicyKey]; found {
+		if value, found := pod.Annotations[vcschedulingv1.NumaPolicyKey]; found {
 			info.Policy = value
 		}
 

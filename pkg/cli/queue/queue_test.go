@@ -24,15 +24,14 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 )
 
 func getTestQueueHTTPServer(t *testing.T) *httptest.Server {
 
-	response := v1beta1.Queue{}
+	response := vcschedulingv1.Queue{}
 
 	response.Name = "testQueue"
 	response.Spec.Weight = int32(2)
@@ -49,14 +48,14 @@ func getTestQueueHTTPServer(t *testing.T) *httptest.Server {
 
 func getTestQueueListHTTPServer(t *testing.T) *httptest.Server {
 
-	response := v1beta1.QueueList{}
+	response := vcschedulingv1.QueueList{}
 
-	response.Items = []v1beta1.Queue{
+	response.Items = []vcschedulingv1.Queue{
 		{
 			ObjectMeta: v1.ObjectMeta{
 				Name: "testQueue",
 			},
-			Spec: v1beta1.QueueSpec{
+			Spec: vcschedulingv1.QueueSpec{
 				Weight: int32(2),
 			},
 		},

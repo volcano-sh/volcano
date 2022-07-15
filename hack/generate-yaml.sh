@@ -59,8 +59,9 @@ case $LOCAL_OS in
     ;;
 esac
 
+helm_binary=helm
 # Step1. install helm binary
-if [[ ! -f "${HELM_BIN_DIR}/version.helm.${HELM_VER}" ]] ; then
+if ! [ -x "$(command -v helm)" ] && [[ ! -f "${HELM_BIN_DIR}/version.helm.${HELM_VER}" ]] ; then
     TD=$(mktemp -d)
     cd "${TD}" && \
         curl -Lo "${TD}/helm.tgz" "https://get.helm.sh/helm-${HELM_VER}-${LOCAL_OS}-amd64.tar.gz" && \
@@ -70,7 +71,10 @@ if [[ ! -f "${HELM_BIN_DIR}/version.helm.${HELM_VER}" ]] ; then
         chmod +x ${HELM_BIN_DIR}/helm
         rm -rf "${TD}" && \
         touch "${HELM_BIN_DIR}/version.helm.${HELM_VER}"
+        helm_binary=${HELM_BIN_DIR}/helm
 fi
+
+echo $helm_binary
 
 # Step2. update helm templates from config dir
 HELM_TEMPLATES_DIR=${VK_ROOT}/installer/helm/chart/volcano/templates
@@ -108,7 +112,7 @@ if [[ -f ${MONITOR_DEPLOYMENT_YAML_FILENAME} ]];then
 fi
 
 cat ${VK_ROOT}/installer/namespace.yaml > ${DEPLOYMENT_FILE}
-${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
+$helm_binary template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
       --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set basic.crd_version=${CRD_VERSION}\
       -s templates/admission.yaml \
       -s templates/batch_v1alpha1_job.yaml \
@@ -120,7 +124,7 @@ ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespac
       -s templates/nodeinfo_v1alpha1_numatopologies.yaml \
       >> ${DEPLOYMENT_FILE}
 
-${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-monitoring \
+$helm_binary template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-monitoring \
       --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set custom.metrics_enable=true \
       -s templates/prometheus.yaml \
       -s templates/kubestatemetrics.yaml \

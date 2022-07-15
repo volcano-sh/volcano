@@ -51,15 +51,15 @@ import (
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	volumescheduling "k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
-	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcschedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/apis/pkg/client/clientset/versioned/scheme"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	cpuinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/nodeinfo/v1alpha1"
-	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
+	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -101,8 +101,8 @@ type SchedulerCache struct {
 
 	podInformer                infov1.PodInformer
 	nodeInformer               infov1.NodeInformer
-	podGroupInformerV1beta1    vcinformerv1.PodGroupInformer
-	queueInformerV1beta1       vcinformerv1.QueueInformer
+	podGroupInformerV1         vcinformerv1.PodGroupInformer
+	queueInformerV1            vcinformerv1.QueueInformer
 	pvInformer                 infov1.PersistentVolumeInformer
 	pvcInformer                infov1.PersistentVolumeClaimInformer
 	scInformer                 storagev1.StorageClassInformer
@@ -257,21 +257,21 @@ func (su *defaultStatusUpdater) UpdatePodCondition(pod *v1.Pod, condition *v1.Po
 
 // UpdatePodGroup will Update pod with podCondition
 func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*schedulingapi.PodGroup, error) {
-	podgroup := &vcv1beta1.PodGroup{}
+	podgroup := &vcschedulingv1.PodGroup{}
 	if err := schedulingscheme.Scheme.Convert(&pg.PodGroup, podgroup, nil); err != nil {
-		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
+		klog.Errorf("Error while converting PodGroup to v1.PodGroup with error: %v", err)
 		return nil, err
 	}
 
-	updated, err := su.vcclient.SchedulingV1beta1().PodGroups(podgroup.Namespace).Update(context.TODO(), podgroup, metav1.UpdateOptions{})
+	updated, err := su.vcclient.SchedulingV1().PodGroups(podgroup.Namespace).Update(context.TODO(), podgroup, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("Error while updating PodGroup with error: %v", err)
 		return nil, err
 	}
 
-	podGroupInfo := &schedulingapi.PodGroup{Version: schedulingapi.PodGroupVersionV1Beta1}
+	podGroupInfo := &schedulingapi.PodGroup{Version: schedulingapi.PodGroupVersionV1}
 	if err := schedulingscheme.Scheme.Convert(updated, &podGroupInfo.PodGroup, nil); err != nil {
-		klog.Errorf("Error while converting v1alpha.PodGroup to api.PodGroup with error: %v", err)
+		klog.Errorf("Error while converting v1.PodGroup to api.PodGroup with error: %v", err)
 		return nil, err
 	}
 
@@ -348,7 +348,7 @@ func (pgb *podgroupBinder) Bind(job *schedulingapi.JobInfo, cluster string) (*sc
 	}
 	for _, task := range job.Tasks {
 		pod := task.Pod
-		pod.Annotations[batch.ForwardClusterKey] = cluster
+		pod.Annotations[vcbatchv1.ForwardClusterKey] = cluster
 		pod.ResourceVersion = ""
 		_, err := pgb.kubeclient.CoreV1().Pods(pod.Namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{})
 		if err != nil {
@@ -358,13 +358,13 @@ func (pgb *podgroupBinder) Bind(job *schedulingapi.JobInfo, cluster string) (*sc
 	}
 
 	pg := job.PodGroup
-	pg.Annotations[batch.ForwardClusterKey] = cluster
-	podgroup := &vcv1beta1.PodGroup{}
+	pg.Annotations[vcbatchv1.ForwardClusterKey] = cluster
+	podgroup := &vcschedulingv1.PodGroup{}
 	if err := schedulingscheme.Scheme.Convert(&pg.PodGroup, podgroup, nil); err != nil {
-		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
+		klog.Errorf("Error while converting PodGroup to v1.PodGroup with error: %v", err)
 		return nil, err
 	}
-	newPg, err := pgb.vcclient.SchedulingV1beta1().PodGroups(pg.Namespace).Update(context.TODO(), podgroup, metav1.UpdateOptions{})
+	newPg, err := pgb.vcclient.SchedulingV1().PodGroups(pg.Namespace).Update(context.TODO(), podgroup, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("Error while update PodGroup annotation with error: %v", err)
 		return nil, err
@@ -390,16 +390,16 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 
 	// create default queue
 	reclaimable := true
-	defaultQue := vcv1beta1.Queue{
+	defaultQue := vcschedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: defaultQueue,
 		},
-		Spec: vcv1beta1.QueueSpec{
+		Spec: vcschedulingv1.QueueSpec{
 			Reclaimable: &reclaimable,
 			Weight:      1,
 		},
 	}
-	if _, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultQue, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
+	if _, err := vcClient.SchedulingV1().Queues().Create(context.TODO(), &defaultQue, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
 		panic(fmt.Sprintf("failed init default queue, with err: %v", err))
 	}
 
@@ -591,30 +591,30 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	sc.vcInformerFactory = vcinformers
 
 	// create informer for PodGroup(v1beta1) information
-	sc.podGroupInformerV1beta1 = vcinformers.Scheduling().V1beta1().PodGroups()
-	sc.podGroupInformerV1beta1.Informer().AddEventHandler(
+	sc.podGroupInformerV1 = vcinformers.Scheduling().V1().PodGroups()
+	sc.podGroupInformerV1.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch v := obj.(type) {
-				case *vcv1beta1.PodGroup:
+				case *vcschedulingv1.PodGroup:
 					return responsibleForPodGroup(v, mySchedulerPodName, c)
 				default:
 					return false
 				}
 			},
 			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc:    sc.AddPodGroupV1beta1,
-				UpdateFunc: sc.UpdatePodGroupV1beta1,
-				DeleteFunc: sc.DeletePodGroupV1beta1,
+				AddFunc:    sc.AddPodGroupV1,
+				UpdateFunc: sc.UpdatePodGroupV1,
+				DeleteFunc: sc.DeletePodGroupV1,
 			},
 		})
 
 	// create informer(v1beta1) for Queue information
-	sc.queueInformerV1beta1 = vcinformers.Scheduling().V1beta1().Queues()
-	sc.queueInformerV1beta1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddQueueV1beta1,
-		UpdateFunc: sc.UpdateQueueV1beta1,
-		DeleteFunc: sc.DeleteQueueV1beta1,
+	sc.queueInformerV1 = vcinformers.Scheduling().V1().Queues()
+	sc.queueInformerV1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddQueueV1,
+		UpdateFunc: sc.UpdateQueueV1,
+		DeleteFunc: sc.DeleteQueueV1,
 	})
 
 	sc.cpuInformer = vcinformers.Nodeinfo().V1alpha1().Numatopologies()
@@ -715,9 +715,9 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 		}
 	}()
 
-	podgroup := &vcv1beta1.PodGroup{}
+	podgroup := &vcschedulingv1.PodGroup{}
 	if err := schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil); err != nil {
-		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
+		klog.Errorf("Error while converting PodGroup to v1.PodGroup with error: %v", err)
 		return err
 	}
 	sc.Recorder.Eventf(podgroup, v1.EventTypeNormal, "Evict", reason)
@@ -1188,9 +1188,9 @@ func (sc *SchedulerCache) recordPodGroupEvent(podGroup *schedulingapi.PodGroup, 
 		return
 	}
 
-	pg := &vcv1beta1.PodGroup{}
+	pg := &vcschedulingv1.PodGroup{}
 	if err := schedulingscheme.Scheme.Convert(&podGroup.PodGroup, pg, nil); err != nil {
-		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
+		klog.Errorf("Error while converting PodGroup to v1.PodGroup with error: %v", err)
 		return
 	}
 	sc.Recorder.Eventf(pg, eventType, reason, msg)

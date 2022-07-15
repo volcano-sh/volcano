@@ -8,7 +8,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
@@ -18,17 +18,17 @@ func TestPytorch(t *testing.T) {
 
 	testcases := []struct {
 		Name string
-		Job  *v1alpha1.Job
+		Job  *vcbatchv1.Job
 		Pod  *v1.Pod
 		port int
 		envs []v1.EnvVar
 	}{
 		{
 			Name: "test pod without master",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-pytorch"},
-				Spec: v1alpha1.JobSpec{
-					Tasks: []v1alpha1.TaskSpec{
+				Spec: vcbatchv1.JobSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "worker",
 							Replicas: 1,
@@ -54,10 +54,10 @@ func TestPytorch(t *testing.T) {
 		},
 		{
 			Name: "test master pod without port",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-pytorch"},
-				Spec: v1alpha1.JobSpec{
-					Tasks: []v1alpha1.TaskSpec{
+				Spec: vcbatchv1.JobSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "master",
 							Replicas: 1,
@@ -75,7 +75,7 @@ func TestPytorch(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pytorch-master-0",
 					Annotations: map[string]string{
-						v1alpha1.TaskSpecKey: "master",
+						vcbatchv1.TaskSpecKey: "master",
 					},
 				},
 				Spec: v1.PodSpec{
@@ -108,10 +108,10 @@ func TestPytorch(t *testing.T) {
 		},
 		{
 			Name: "test master pod with port",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-pytorch"},
-				Spec: v1alpha1.JobSpec{
-					Tasks: []v1alpha1.TaskSpec{
+				Spec: vcbatchv1.JobSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "master",
 							Replicas: 1,
@@ -129,7 +129,7 @@ func TestPytorch(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pytorch-master-0",
 					Annotations: map[string]string{
-						v1alpha1.TaskSpecKey: "master",
+						vcbatchv1.TaskSpecKey: "master",
 					},
 				},
 				Spec: v1.PodSpec{
@@ -168,10 +168,10 @@ func TestPytorch(t *testing.T) {
 		},
 		{
 			Name: "test master pod env",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-pytorch"},
-				Spec: v1alpha1.JobSpec{
-					Tasks: []v1alpha1.TaskSpec{
+				Spec: vcbatchv1.JobSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "master",
 							Replicas: 1,
@@ -189,7 +189,7 @@ func TestPytorch(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pytorch-master-0",
 					Annotations: map[string]string{
-						v1alpha1.TaskSpecKey: "master",
+						vcbatchv1.TaskSpecKey: "master",
 					},
 				},
 				Spec: v1.PodSpec{
@@ -228,10 +228,10 @@ func TestPytorch(t *testing.T) {
 		},
 		{
 			Name: "test worker-1 pod env",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-pytorch"},
-				Spec: v1alpha1.JobSpec{
-					Tasks: []v1alpha1.TaskSpec{
+				Spec: vcbatchv1.JobSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "master",
 							Replicas: 1,
@@ -249,7 +249,7 @@ func TestPytorch(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pytorch-worker-0",
 					Annotations: map[string]string{
-						v1alpha1.TaskSpecKey: "worker",
+						vcbatchv1.TaskSpecKey: "worker",
 					},
 				},
 				Spec: v1.PodSpec{
@@ -288,10 +288,10 @@ func TestPytorch(t *testing.T) {
 		},
 		{
 			Name: "test worker-2 pod env",
-			Job: &v1alpha1.Job{
+			Job: &vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-pytorch"},
-				Spec: v1alpha1.JobSpec{
-					Tasks: []v1alpha1.TaskSpec{
+				Spec: vcbatchv1.JobSpec{
+					Tasks: []vcbatchv1.TaskSpec{
 						{
 							Name:     "master",
 							Replicas: 1,
@@ -309,7 +309,7 @@ func TestPytorch(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pytorch-worker-1",
 					Annotations: map[string]string{
-						v1alpha1.TaskSpecKey: "worker",
+						vcbatchv1.TaskSpecKey: "worker",
 					},
 				},
 				Spec: v1.PodSpec{

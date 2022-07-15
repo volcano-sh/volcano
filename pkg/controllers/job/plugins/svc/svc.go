@@ -29,7 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/apis/pkg/apis/helpers"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
@@ -71,7 +71,7 @@ func (sp *servicePlugin) addFlags() {
 	}
 }
 
-func (sp *servicePlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
+func (sp *servicePlugin) OnPodCreate(pod *v1.Pod, job *vcbatchv1.Job) error {
 	// Add `hostname` and `subdomain` for pod, mount service config for pod.
 	// A pod with `hostname` and `subdomain` will have the fully qualified domain name(FQDN)
 	// `hostname.subdomain.namespace.svc.cluster-domain.example`.
@@ -124,7 +124,7 @@ func (sp *servicePlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	return nil
 }
 
-func (sp *servicePlugin) OnJobAdd(job *batch.Job) error {
+func (sp *servicePlugin) OnJobAdd(job *vcbatchv1.Job) error {
 	if job.Status.ControlledResources["plugin-"+sp.Name()] == sp.Name() {
 		return nil
 	}
@@ -150,7 +150,7 @@ func (sp *servicePlugin) OnJobAdd(job *batch.Job) error {
 	return nil
 }
 
-func (sp *servicePlugin) OnJobDelete(job *batch.Job) error {
+func (sp *servicePlugin) OnJobDelete(job *vcbatchv1.Job) error {
 	if job.Status.ControlledResources["plugin-"+sp.Name()] != sp.Name() {
 		return nil
 	}
@@ -178,14 +178,14 @@ func (sp *servicePlugin) OnJobDelete(job *batch.Job) error {
 	return nil
 }
 
-func (sp *servicePlugin) OnJobUpdate(job *batch.Job) error {
+func (sp *servicePlugin) OnJobUpdate(job *vcbatchv1.Job) error {
 	hostFile := GenerateHosts(job)
 
 	// updates ConfigMap of hosts for Pods to mount.
 	return helpers.CreateOrUpdateConfigMap(job, sp.Clientset.KubeClients, hostFile, sp.cmName(job))
 }
 
-func (sp *servicePlugin) mountConfigmap(pod *v1.Pod, job *batch.Job) {
+func (sp *servicePlugin) mountConfigmap(pod *v1.Pod, job *vcbatchv1.Job) {
 	cmName := sp.cmName(job)
 	cmVolume := v1.Volume{
 		Name: cmName,
@@ -210,7 +210,7 @@ func (sp *servicePlugin) mountConfigmap(pod *v1.Pod, job *batch.Job) {
 	}
 }
 
-func (sp *servicePlugin) createServiceIfNotExist(job *batch.Job) error {
+func (sp *servicePlugin) createServiceIfNotExist(job *vcbatchv1.Job) error {
 	// If Service does not exist, create one for Job.
 	if _, err := sp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -224,14 +224,14 @@ func (sp *servicePlugin) createServiceIfNotExist(job *batch.Job) error {
 				Namespace: job.Namespace,
 				Name:      job.Name,
 				OwnerReferences: []metav1.OwnerReference{
-					*metav1.NewControllerRef(job, helpers.JobKind),
+					*metav1.NewControllerRef(job, helpers.V1JobKind),
 				},
 			},
 			Spec: v1.ServiceSpec{
 				ClusterIP: "None",
 				Selector: map[string]string{
-					batch.JobNameKey:      job.Name,
-					batch.JobNamespaceKey: job.Namespace,
+					vcbatchv1.JobNameKey:      job.Name,
+					vcbatchv1.JobNamespaceKey: job.Namespace,
 				},
 				PublishNotReadyAddresses: sp.publishNotReadyAddresses,
 			},
@@ -248,7 +248,7 @@ func (sp *servicePlugin) createServiceIfNotExist(job *batch.Job) error {
 }
 
 // Limit pods can be accessible only by pods belong to the job.
-func (sp *servicePlugin) createNetworkPolicyIfNotExist(job *batch.Job) error {
+func (sp *servicePlugin) createNetworkPolicyIfNotExist(job *vcbatchv1.Job) error {
 	// If network policy does not exist, create one for Job.
 	if _, err := sp.Clientset.KubeClients.NetworkingV1().NetworkPolicies(job.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{}); err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -262,22 +262,22 @@ func (sp *servicePlugin) createNetworkPolicyIfNotExist(job *batch.Job) error {
 				Namespace: job.Namespace,
 				Name:      job.Name,
 				OwnerReferences: []metav1.OwnerReference{
-					*metav1.NewControllerRef(job, helpers.JobKind),
+					*metav1.NewControllerRef(job, helpers.V1JobKind),
 				},
 			},
 			Spec: networkingv1.NetworkPolicySpec{
 				PodSelector: metav1.LabelSelector{
 					MatchLabels: map[string]string{
-						batch.JobNameKey:      job.Name,
-						batch.JobNamespaceKey: job.Namespace,
+						vcbatchv1.JobNameKey:      job.Name,
+						vcbatchv1.JobNamespaceKey: job.Namespace,
 					},
 				},
 				Ingress: []networkingv1.NetworkPolicyIngressRule{{
 					From: []networkingv1.NetworkPolicyPeer{{
 						PodSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{
-								batch.JobNameKey:      job.Name,
-								batch.JobNamespaceKey: job.Namespace,
+								vcbatchv1.JobNameKey:      job.Name,
+								vcbatchv1.JobNamespaceKey: job.Namespace,
 							},
 						},
 					}},
@@ -296,12 +296,12 @@ func (sp *servicePlugin) createNetworkPolicyIfNotExist(job *batch.Job) error {
 	return nil
 }
 
-func (sp *servicePlugin) cmName(job *batch.Job) string {
+func (sp *servicePlugin) cmName(job *vcbatchv1.Job) string {
 	return fmt.Sprintf("%s-%s", job.Name, sp.Name())
 }
 
 // GenerateHosts generates hostnames per task.
-func GenerateHosts(job *batch.Job) map[string]string {
+func GenerateHosts(job *vcbatchv1.Job) map[string]string {
 	hostFile := make(map[string]string, len(job.Spec.Tasks))
 
 	for _, ts := range job.Spec.Tasks {

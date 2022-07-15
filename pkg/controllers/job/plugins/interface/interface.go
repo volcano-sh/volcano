@@ -20,7 +20,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 
-	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1"
 )
 
 // PluginClientset clientset.
@@ -34,17 +34,17 @@ type PluginInterface interface {
 	Name() string
 
 	// OnPodCreate is called for all pod when createJobPod
-	OnPodCreate(pod *v1.Pod, job *vcbatch.Job) error
+	OnPodCreate(pod *v1.Pod, job *vcbatchv1.Job) error
 
 	// OnJobAdd is called when do job initiation
 	// Note: it can be called multi times, must be idempotent
-	OnJobAdd(job *vcbatch.Job) error
+	OnJobAdd(job *vcbatchv1.Job) error
 
 	// OnJobDelete is called when killJob
 	// Note: it can be called multi times, must be idempotent
-	OnJobDelete(job *vcbatch.Job) error
+	OnJobDelete(job *vcbatchv1.Job) error
 
 	// OnJobUpdate is called when job updated
 	// Note: it can be called multi times, must be idempotent
-	OnJobUpdate(job *vcbatch.Job) error
+	OnJobUpdate(job *vcbatchv1.Job) error
 }

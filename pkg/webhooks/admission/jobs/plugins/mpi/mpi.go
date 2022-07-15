@@ -18,12 +18,12 @@ package mpi
 
 import (
 	"k8s.io/klog"
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	vcbusv1 "volcano.sh/apis/pkg/apis/batch/v1"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	controllerMpi "volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/mpi"
 )
 
-func AddDependsOn(job *v1alpha1.Job) {
+func AddDependsOn(job *vcbusv1.Job) {
 	mp := controllerMpi.NewInstance(job.Spec.Plugins[controllerMpi.MPIPluginName])
 	masterIndex := helpers.GetTasklndexUnderJob(mp.GetMasterName(), job)
 	if masterIndex == -1 {
@@ -31,7 +31,7 @@ func AddDependsOn(job *v1alpha1.Job) {
 		return
 	}
 	if job.Spec.Tasks[masterIndex].DependsOn == nil {
-		job.Spec.Tasks[masterIndex].DependsOn = &v1alpha1.DependsOn{
+		job.Spec.Tasks[masterIndex].DependsOn = &vcbusv1.DependsOn{
 			Name: []string{mp.GetWorkerName()},
 		}
 	}
