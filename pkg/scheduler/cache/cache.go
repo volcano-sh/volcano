@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/api"
@@ -695,6 +696,13 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 			sc.resyncTask(task)
 		}
 		return err
+	}
+
+	// Update task eviction times recode in JobInfo
+	if job.Preemptable {
+		if times, ok := job.TaskCooldownTimesRecord[task.Name]; ok {
+			atomic.AddInt32(times, 1)
+		}
 	}
 
 	p := task.Pod

@@ -46,6 +46,10 @@ const PodPreemptable = "volcano.sh/preemptable"
 // Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
 const CooldownTime = "volcano.sh/cooldown-time"
 
+// MaxCooldownTimes is the annotation key of Pod to set maximum number of cooldown(evictions),
+//value's format "0", 1. 0 means no limit.
+const MaxCooldownTimes = "volcano.sh/max-cooldown-times"
+
 //RevocableZone is the key of revocable-zone
 const RevocableZone = "volcano.sh/revocable-zone"
 

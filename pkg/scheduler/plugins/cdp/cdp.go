@@ -53,6 +53,49 @@ func (*CooldownProtectionPlugin) Name() string {
 	return PluginName
 }
 
+// checkMaxCooldownTimes check if the task eviction times not reached the limit
+func (sp *CooldownProtectionPlugin) checkMaxCooldownTimes(ssn *framework.Session, task *api.TaskInfo) bool {
+	// can not be found task
+	job, found := ssn.Jobs[task.Job]
+	if !found {
+		return true
+	}
+
+	// not set max evict times
+	if job.MaxCooldownTimes <= 0 {
+		return true
+	}
+
+	// task evict times lt max evict times
+	if times, ok := job.TaskCooldownTimesRecord[task.Name]; ok && *times >= job.MaxCooldownTimes {
+		return false
+	}
+
+	return true
+}
+
+// checkCooldownTime check if the task time of cool down not reached
+func (sp *CooldownProtectionPlugin) checkCooldownTime(task *api.TaskInfo) bool {
+	stableTime, enabled := sp.podCooldownTime(task.Pod)
+	if !enabled {
+		return true
+	}
+	pod := task.Pod
+	// find the time of pod really transform to running
+	// only running pod check stable time, others all put into victims
+	if pod.Status.Phase == v1.PodRunning {
+		// ensure pod is running and have ready state
+		for _, c := range pod.Status.Conditions {
+			if c.Type == v1.PodScheduled && c.Status == v1.ConditionTrue {
+				if c.LastTransitionTime.Add(stableTime).After(time.Now()) {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
 func (sp *CooldownProtectionPlugin) podCooldownTime(pod *v1.Pod) (value time.Duration, enabled bool) {
 	// check labels and annotations
 	v, ok := pod.Labels[v1beta1.CooldownTime]
@@ -75,27 +118,9 @@ func (sp *CooldownProtectionPlugin) OnSessionOpen(ssn *framework.Session) {
 	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		var victims []*api.TaskInfo
 		for _, preemptee := range preemptees {
-			cooldownTime, enabled := sp.podCooldownTime(preemptee.Pod)
-			if !enabled {
-				victims = append(victims, preemptee)
-				continue
-			}
-			pod := preemptee.Pod
-			// find the time of pod really transform to running
-			// only running pod check stable time, others all put into victims
-			stableFiltered := false
-			if pod.Status.Phase == v1.PodRunning {
-				// ensure pod is running and have ready state
-				for _, c := range pod.Status.Conditions {
-					if c.Type == v1.PodScheduled && c.Status == v1.ConditionTrue {
-						if c.LastTransitionTime.Add(cooldownTime).After(time.Now()) {
-							stableFiltered = true
-						}
-						break
-					}
-				}
-			}
-			if !stableFiltered {
+			evictionTimesEnable := sp.checkMaxCooldownTimes(ssn, preemptee)
+			stableTimeEnable := sp.checkCooldownTime(preemptee)
+			if evictionTimesEnable && stableTimeEnable {
 				victims = append(victims, preemptee)
 			}
 		}

@@ -118,6 +118,9 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 		if value, found := job.Annotations[schedulingv2.CooldownTime]; found {
 			pod.Annotations[schedulingv2.CooldownTime] = value
 		}
+		if value, found := job.Annotations[schedulingv2.MaxCooldownTimes]; found {
+			pod.Annotations[schedulingv2.MaxCooldownTimes] = value
+		}
 		if value, found := job.Annotations[schedulingv2.RevocableZone]; found {
 			pod.Annotations[schedulingv2.RevocableZone] = value
 		}
@@ -144,6 +147,9 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 		}
 		if value, found := job.Labels[schedulingv2.CooldownTime]; found {
 			pod.Labels[schedulingv2.CooldownTime] = value
+		}
+		if value, found := job.Labels[schedulingv2.MaxCooldownTimes]; found {
+			pod.Labels[schedulingv2.MaxCooldownTimes] = value
 		}
 	}
 

@@ -18,6 +18,7 @@ package framework
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"k8s.io/klog"
 
@@ -59,7 +60,8 @@ func NewStatement(ssn *Session) *Statement {
 // Evict the pod
 func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 	// Update status in session
-	if job, found := s.ssn.Jobs[reclaimee.Job]; found {
+	job, found := s.ssn.Jobs[reclaimee.Job]
+	if found {
 		if err := job.UpdateTaskStatus(reclaimee, api.Releasing); err != nil {
 			klog.Errorf("Failed to update task <%v/%v> status to %v in Session <%v>: %v",
 				reclaimee.Namespace, reclaimee.Name, api.Releasing, s.ssn.UID, err)
@@ -76,6 +78,13 @@ func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 			klog.Errorf("Failed to update task <%v/%v> in node %v for: %s",
 				reclaimee.Namespace, reclaimee.Name, reclaimee.NodeName, err.Error())
 			return err
+		}
+	}
+
+	// Update task eviction times recode in JobInfo
+	if job.Preemptable {
+		if times, ok := job.TaskCooldownTimesRecord[reclaimee.Name]; ok {
+			atomic.AddInt32(times, 1)
 		}
 	}
 
@@ -128,6 +137,12 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 			klog.Errorf("Failed to update task <%v/%v> in node %v for: %s",
 				reclaimee.Namespace, reclaimee.Name, reclaimee.NodeName, err.Error())
 			return err
+		}
+	}
+	// Update task eviction times recode in JobInfo
+	if job.Preemptable {
+		if times, ok := job.TaskCooldownTimesRecord[reclaimee.Name]; ok {
+			atomic.AddInt32(times, -1)
 		}
 	}
 

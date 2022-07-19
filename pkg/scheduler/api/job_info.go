@@ -323,6 +323,11 @@ type JobInfo struct {
 
 	Preemptable bool
 
+	// Max eviction times for each task
+	MaxCooldownTimes int32
+	// Eviction times record for each task
+	TaskCooldownTimesRecord map[string]*int32
+
 	// RevocableZone support set volcano.sh/revocable-zone annotaion or label for pod/podgroup
 	// we only support empty value or * value for this version and we will support specify revocable zone name for futrue release
 	// empty value means workload can not use revocable node
@@ -334,14 +339,15 @@ type JobInfo struct {
 // NewJobInfo creates a new jobInfo for set of tasks
 func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 	job := &JobInfo{
-		UID:              uid,
-		MinAvailable:     0,
-		NodesFitErrors:   make(map[TaskID]*FitErrors),
-		Allocated:        EmptyResource(),
-		TotalRequest:     EmptyResource(),
-		TaskStatusIndex:  map[TaskStatus]tasksMap{},
-		Tasks:            tasksMap{},
-		TaskMinAvailable: map[TaskID]int32{},
+		UID:                     uid,
+		MinAvailable:            0,
+		NodesFitErrors:          make(map[TaskID]*FitErrors),
+		Allocated:               EmptyResource(),
+		TotalRequest:            EmptyResource(),
+		TaskStatusIndex:         map[TaskStatus]tasksMap{},
+		Tasks:                   tasksMap{},
+		TaskMinAvailable:        map[TaskID]int32{},
+		TaskCooldownTimesRecord: map[string]*int32{},
 	}
 
 	for _, task := range tasks {
@@ -354,6 +360,12 @@ func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 // UnsetPodGroup removes podGroup details from a job
 func (ji *JobInfo) UnsetPodGroup() {
 	ji.PodGroup = nil
+}
+
+// InitTaskCooldownTimesRecord initialize TaskCooldownTimesRecord for each task
+func (ji *JobInfo) InitTaskCooldownTimesRecord(name string) {
+	var zero = int32(0)
+	ji.TaskCooldownTimesRecord[name] = &zero
 }
 
 // SetPodGroup sets podGroup details to a job
@@ -382,6 +394,7 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 
 	ji.Preemptable = ji.extractPreemptable(pg)
 	ji.RevocableZone = ji.extractRevocableZone(pg)
+	ji.MaxCooldownTimes = ji.extractMaxCooldownTimes(pg)
 	ji.Budget = ji.extractBudget(pg)
 
 	taskMinAvailableTotal := int32(0)
@@ -392,6 +405,12 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.TaskMinAvailableTotal = taskMinAvailableTotal
 
 	ji.PodGroup = pg
+
+	for _, task := range ji.Tasks {
+		if _, found := ji.TaskCooldownTimesRecord[task.Name]; !found {
+			ji.InitTaskCooldownTimesRecord(task.Name)
+		}
+	}
 }
 
 // extractWaitingTime reads sla waiting time for job from podgroup annotations
@@ -440,6 +459,35 @@ func (ji *JobInfo) extractPreemptable(pg *PodGroup) bool {
 	}
 
 	return false
+}
+
+// extractMaxCooldownTimes return volcano.sh/max-cooldown-times value for job
+func (ji *JobInfo) extractMaxCooldownTimes(pg *PodGroup) int32 {
+	// check annotaion first
+	if len(pg.Annotations) > 0 {
+		if value, found := pg.Annotations[v1beta1.MaxCooldownTimes]; found {
+			i, err := strconv.ParseInt(value, 10, 32)
+			if err != nil {
+				klog.Warningf("invalid %s=%s", v1beta1.MaxCooldownTimes, value)
+				return 0
+			}
+			return int32(i)
+		}
+	}
+
+	// it annotation does not exit, check label
+	if len(pg.Labels) > 0 {
+		if value, found := pg.Labels[v1beta1.MaxCooldownTimes]; found {
+			i, err := strconv.ParseInt(value, 10, 32)
+			if err != nil {
+				klog.Warningf("invalid %s=%s", v1beta1.MaxCooldownTimes, value)
+				return 0
+			}
+			return int32(i)
+		}
+	}
+
+	return 0
 }
 
 // extractRevocableZone return volcano.sh/revocable-zone value for pod/podgroup
@@ -574,13 +622,15 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 		PodGroup: ji.PodGroup.Clone(),
 
-		TaskStatusIndex:       map[TaskStatus]tasksMap{},
-		TaskMinAvailable:      ji.TaskMinAvailable,
-		TaskMinAvailableTotal: ji.TaskMinAvailableTotal,
-		Tasks:                 tasksMap{},
-		Preemptable:           ji.Preemptable,
-		RevocableZone:         ji.RevocableZone,
-		Budget:                ji.Budget.Clone(),
+		TaskStatusIndex:         map[TaskStatus]tasksMap{},
+		TaskMinAvailable:        ji.TaskMinAvailable,
+		TaskMinAvailableTotal:   ji.TaskMinAvailableTotal,
+		Tasks:                   tasksMap{},
+		Preemptable:             ji.Preemptable,
+		MaxCooldownTimes:        ji.MaxCooldownTimes,
+		TaskCooldownTimesRecord: ji.TaskCooldownTimesRecord,
+		RevocableZone:           ji.RevocableZone,
+		Budget:                  ji.Budget.Clone(),
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
