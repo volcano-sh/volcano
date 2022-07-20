@@ -553,14 +553,6 @@ func TestProportionRemainingSubPanic(t *testing.T) {
 			}
 		}()
 
-		go func() {
-			http.Handle("/metrics", promhttp.Handler())
-			err := http.ListenAndServe(":8081", nil)
-			if err != nil {
-				t.Errorf("ListenAndServe() err = %v", err.Error())
-			}
-		}()
-
 		for {
 			select {
 			case res := <-c:
