@@ -310,7 +310,7 @@ func TestProportion(t *testing.T) {
 	}
 }
 func TestProportionRemainingSubPanic(t *testing.T) {
-	c := make(chan bool, 1)
+
 	var tmp *cache.SchedulerCache
 	patches := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "AddBindTask", func(scCache *cache.SchedulerCache, task *api.TaskInfo) error {
 		scCache.Binder.Bind(nil, []*api.TaskInfo{task})
@@ -502,7 +502,6 @@ func TestProportionRemainingSubPanic(t *testing.T) {
 		// session
 		trueValue := true
 
-		num := 1
 		// proportion
 		go func() {
 			for {
@@ -531,39 +530,8 @@ func TestProportionRemainingSubPanic(t *testing.T) {
 					allocator := allocate.New()
 					allocator.Execute(ssn)
 					framework.CloseSession(ssn)
-					time.Sleep(time.Second * 3)
-					if num == 1 {
-						metrics := getLocalMetrics()
-						if metrics == 12000 {
-							t.Logf("init queue_allocated metrics is ok,%v", metrics)
-						}
-					} else {
-						metrics := getLocalMetrics()
-						if metrics != 0 {
-							t.Errorf("after delete vcjob pg2, queue_allocated metrics is fail,%v", metrics)
-							c <- false
-							return
-						} else {
-							t.Logf("after delete vcjob pg2, queue_allocated metrics is ok,%v", metrics)
-							c <- true
-						}
-					}
-					num++
 				}
 			}
 		}()
-
-		for {
-			select {
-			case res := <-c:
-				if !res {
-					t.Error("TestProportion failed")
-				} else {
-					t.Log("TestProportion successful")
-				}
-				return
-			}
-
-		}
 	}
 }
