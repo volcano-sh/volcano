@@ -63,13 +63,6 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 
 - Kubernetes 1.12+ with CRD support
 
-
-You can try Volcano by one of the following two ways.
-
-Note: 
-* For Kubernetes v1.17+ use CRDs under config/crd/bases (recommended)
-* For Kubernetes versions < v1.16 use CRDs under config/crd/v1beta1 (deprecated)
-
 ### Install with YAML files
 
 Install Volcano on an existing Kubernetes cluster. This way is both available for x86_64 and arm64 architecture.
@@ -128,6 +121,14 @@ If you want to get prometheus and grafana volcano dashboard after volcano instal
 make TAG=latest generate-yaml
 kubectl create -f _output/release/volcano-monitoring-latest.yaml
 ```
+
+## Kubernetes compatibility
+
+|             | Kubernetes 1.19 | Kubernetes 1.20 | Kubernetes 1.21 | Kubernetes 1.22 | Kubernetes 1.23 | Kubernetes 1.24 |
+| ----------- | --------------- | --------------- | --------------- | --------------- | --------------- | --------------- |
+| Volcano 1.4 | ✓               | ✓               | ✓               | -               | -               | -               |
+| Volcano 1.5 | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               |
+| Volcano 1.6 | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               |
 
 ## Meeting
 
