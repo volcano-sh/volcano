@@ -1,3 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: volcano-monitoring
 ---
 # Source: volcano/templates/prometheus.yaml
 apiVersion: v1
