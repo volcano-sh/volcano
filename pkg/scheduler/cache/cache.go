@@ -128,6 +128,7 @@ type SchedulerCache struct {
 	NodeList             []string
 	defaultPriorityClass *schedulingv1.PriorityClass
 	defaultPriority      int32
+	CSINodesStatus       map[string]*schedulingapi.CSINodeStatusInfo
 
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
@@ -415,6 +416,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		schedulerName:       schedulerName,
 		nodeSelectorLabels:  make(map[string]string),
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
+		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
 
 		NodeList: []string{},
 	}
@@ -509,6 +511,13 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	sc.pvInformer = informerFactory.Core().V1().PersistentVolumes()
 	sc.scInformer = informerFactory.Storage().V1().StorageClasses()
 	sc.csiNodeInformer = informerFactory.Storage().V1().CSINodes()
+	sc.csiNodeInformer.Informer().AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.AddOrUpdateCSINode,
+			UpdateFunc: sc.UpdateCSINode,
+			DeleteFunc: sc.DeleteCSINode,
+		},
+	)
 	sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
 	sc.csiStorageCapacityInformer = informerFactory.Storage().V1beta1().CSIStorageCapacities()
 
@@ -993,11 +1002,16 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		NamespaceInfo:  make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
 		RevocableNodes: make(map[string]*schedulingapi.NodeInfo),
 		NodeList:       make([]string, len(sc.NodeList)),
+		CSINodesStatus: make(map[string]*schedulingapi.CSINodeStatusInfo),
 	}
 
 	copy(snapshot.NodeList, sc.NodeList)
 	for _, value := range sc.Nodes {
 		value.RefreshNumaSchedulerInfoByCrd()
+	}
+
+	for _, value := range sc.CSINodesStatus {
+		snapshot.CSINodesStatus[value.CSINodeName] = value.Clone()
 	}
 
 	for _, value := range sc.Nodes {
