@@ -31,6 +31,7 @@ import (
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
+	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	batchinformers "volcano.sh/apis/pkg/client/informers/externalversions/batch/v1alpha1"
 	batchlisters "volcano.sh/apis/pkg/client/listers/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/framework"
@@ -54,6 +55,8 @@ type gccontroller struct {
 
 	jobInformer batchinformers.JobInformer
 
+	vcInformerFactory vcinformer.SharedInformerFactory
+
 	// A store of jobs
 	jobLister batchlisters.JobLister
 	jobSynced func() bool
@@ -69,8 +72,11 @@ func (gc *gccontroller) Name() string {
 // Initialize creates an instance of gccontroller.
 func (gc *gccontroller) Initialize(opt *framework.ControllerOption) error {
 	gc.vcClient = opt.VolcanoClient
-	jobInformer := informerfactory.NewSharedInformerFactory(gc.vcClient, 0).Batch().V1alpha1().Jobs()
 
+	factory := informerfactory.NewSharedInformerFactory(gc.vcClient, 0)
+	jobInformer := factory.Batch().V1alpha1().Jobs()
+
+	gc.vcInformerFactory = factory
 	gc.jobInformer = jobInformer
 	gc.jobLister = jobInformer.Lister()
 	gc.jobSynced = jobInformer.Informer().HasSynced
@@ -91,9 +97,12 @@ func (gc *gccontroller) Run(stopCh <-chan struct{}) {
 	klog.Infof("Starting garbage collector")
 	defer klog.Infof("Shutting down garbage collector")
 
-	go gc.jobInformer.Informer().Run(stopCh)
-	if !cache.WaitForCacheSync(stopCh, gc.jobSynced) {
-		return
+	gc.vcInformerFactory.Start(stopCh)
+	for informerType, ok := range gc.vcInformerFactory.WaitForCacheSync(stopCh) {
+		if !ok {
+			klog.Errorf("caches failed to sync: %v", informerType)
+			return
+		}
 	}
 
 	go wait.Until(gc.worker, time.Second, stopCh)

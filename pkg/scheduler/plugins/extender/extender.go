@@ -54,6 +54,8 @@ const (
 	ExtenderQueueOverusedVerb = "extender.queueOverusedVerb"
 	// ExtenderJobEnqueueableVerb is the verb of JobEnqueueable method
 	ExtenderJobEnqueueableVerb = "extender.jobEnqueueableVerb"
+	// ExtenderJobReadyVerb is the verb of JobReady method
+	ExtenderJobReadyVerb = "extender.jobReadyVerb"
 	// ExtenderIgnorable indicates whether the extender can ignore unexpected errors
 	ExtenderIgnorable = "extender.ignorable"
 )
@@ -69,6 +71,7 @@ type extenderConfig struct {
 	reclaimableVerb    string
 	queueOverusedVerb  string
 	jobEnqueueableVerb string
+	jobReadyVerb       string
 	ignorable          bool
 }
 
@@ -114,6 +117,7 @@ func parseExtenderConfig(arguments framework.Arguments) *extenderConfig {
 	ec.reclaimableVerb, _ = arguments[ExtenderReclaimableVerb].(string)
 	ec.queueOverusedVerb, _ = arguments[ExtenderQueueOverusedVerb].(string)
 	ec.jobEnqueueableVerb, _ = arguments[ExtenderJobEnqueueableVerb].(string)
+	ec.jobReadyVerb, _ = arguments[ExtenderJobReadyVerb].(string)
 
 	arguments.GetBool(&ec.ignorable, ExtenderIgnorable)
 
@@ -258,6 +262,21 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 
 			return resp.Overused
+		})
+	}
+
+	if ep.config.jobReadyVerb != "" {
+		ssn.AddJobReadyFn(ep.Name(), func(obj interface{}) bool {
+			job := obj.(*api.JobInfo)
+			resp := &JobReadyResponse{}
+			err := ep.send(ep.config.jobReadyVerb, &JobReadyRequest{Job: job}, resp)
+			if err != nil {
+				klog.Warningf("JobReady failed with error %v", err)
+
+				return !ep.config.ignorable
+			}
+
+			return resp.Status
 		})
 	}
 }

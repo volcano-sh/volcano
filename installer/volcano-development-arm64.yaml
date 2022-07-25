@@ -217,6 +217,10 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: AGE
       type: date
+    - jsonPath: .spec.queue
+      name: QUEUE
+      priority: 1
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -8687,7 +8691,24 @@ spec:
     singular: podgroup
   scope: Namespaced
   versions:
-  - name: v1beta1
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: STATUS
+      type: string
+    - jsonPath: .spec.minMember
+      name: minMember
+      type: integer
+    - jsonPath: .status.running
+      name: RUNNINGS
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    - jsonPath: .spec.queue
+      name: QUEUE
+      priority: 1
+      type: string
+    name: v1beta1
     schema:
       openAPIV3Schema:
         description: PodGroup is a collection of Pod; used for batch workload.
@@ -8800,6 +8821,7 @@ spec:
         type: object
     served: true
     storage: true
+    subresources: {}
 status:
   acceptedNames:
     kind: ""
@@ -8848,6 +8870,39 @@ spec:
             description: 'Specification of the desired behavior of the queue. More
               info: https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status'
             properties:
+              affinity:
+                description: If specified, the pod owned by the queue will be scheduled
+                  with constraint
+                properties:
+                  nodeGroupAffinity:
+                    description: Describes nodegroup affinity scheduling rules for
+                      the queue(e.g. putting pods of the queue in the nodes of the
+                      nodegroup)
+                    properties:
+                      preferredDuringSchedulingIgnoredDuringExecution:
+                        items:
+                          type: string
+                        type: array
+                      requiredDuringSchedulingIgnoredDuringExecution:
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                  nodeGroupAntiAffinity:
+                    description: Describes nodegroup anti-affinity scheduling rules
+                      for the queue(e.g. avoid putting pods of the queue in the nodes
+                      of the nodegroup).
+                    properties:
+                      preferredDuringSchedulingIgnoredDuringExecution:
+                        items:
+                          type: string
+                        type: array
+                      requiredDuringSchedulingIgnoredDuringExecution:
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                type: object
               capability:
                 additionalProperties:
                   anyOf:

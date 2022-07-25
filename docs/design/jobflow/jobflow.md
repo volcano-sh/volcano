@@ -80,6 +80,9 @@ E.g: job minAvailable must be greater than or equal to zero
 
 JobFlow defines the running flow of a set of jobs. Fields in JobFlow define how jobs are orchestrated.
 
+JobFlow is abbreviated as jf, and the resource can be viewed through kubectl get jf
+
+JobFlow aims to realize job-dependent operation between vcjobs in volcano. According to the dependency between vcjob, vcjob is issued.
 
 #### Key Fields
 
@@ -127,6 +130,7 @@ The specification of cloud-native services defines service metadata, version lis
 | ----------------- | ------------------------------------ | -------- | ------------- | ------------------------------------------------------------ |
 | `name`       | `string` | Y        |               | JobTemplate name |
 | `dependsOn` | [`DependsOn`](#DependsOn)                             | Y        |               | JobTemplate dependencies |
+| `patch` | [`Patch`](#Patch)                             | N        |               | Patch JobTemplate |
 
 <a id="DependsOn"></a>
 
@@ -137,6 +141,14 @@ The specification of cloud-native services defines service metadata, version lis
 | `targets` | `string array` | Y        |               | All jobtemplate names that JobTemplate depends on |
 | `probe` | [`Probe`](#Probe)                   | N       |               | Probe Type Dependency |
 | `strategy` | `string` | Y        | all | Whether the dependencies need to be all satisfied |
+
+<a id="Patch"></a>
+
+##### Patch
+
+| Attribute         | Type                                 | Required | Default Value | Description                                                  |
+| ----------------- | ------------------------------------ | -------- | ------------- | ------------------------------------------------------------ |
+| `spec` | `spec` | Y        |               | Patch the contents of the jobtemplate's spec |
 
 <a id="Probe"></a>
 
@@ -235,7 +247,31 @@ The specification of cloud-native services defines service metadata, version lis
 | `endTimestamp` | `Time` | N     |               | The end time of a certain state of the vcjob |
 | `state` | `string` | N     |               | Vcjob status |
 
+JobFlow supports the functionality of the JobTemplate patch. The example in JobFlow is as follows:
 
+```
+apiVersion: flow.volcano.sh/v1alpha1
+kind: JobFlow
+metadata:
+  name: test
+  namespace: default
+spec:
+  jobRetainPolicy: delete  
+  flows:
+  - name: a
+    patch: 
+      spec:
+        tasks:
+        - name: "default-nginx"
+          template:
+            spec:
+              containers:
+              - name: nginx
+                command:
+                  - sh
+                  - -c
+                  - sleep 10s
+```
 
 Here is an example of jobflow:
 
@@ -249,6 +285,9 @@ Here is an example of jobflow:
 * JobFlow can reference multiple jobtemplates
 * A jobtemplate can be referenced by multiple jobflows
 * JobTemplate can be converted to and from vcjob.
+* Jobtemplate is abbreviated as jt, and the resource can be viewed through kubectl get jt
+* The difference between jobtemplate and vcjob is that jobtemplate will not be issued by the job controller, and jobflow can directly reference the name of the JobTemplate to implement the issuance of vcjob.
+* JobFlow supports making changes to jobtemplate when referencing jobtemplate
 
 #### Definition
 
@@ -320,6 +359,7 @@ https://www.bilibili.com/video/BV1c44y1Y7FX
 
 ### Features not yet implemented
 
+* JobFlow supports making changes to jobtemplate when referencing jobtemplate
 * `if` statements
 * `switch` statements
 * `for` statements

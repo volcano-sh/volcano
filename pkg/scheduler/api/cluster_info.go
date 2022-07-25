@@ -28,6 +28,7 @@ type ClusterInfo struct {
 	NamespaceInfo  map[NamespaceName]*NamespaceInfo
 	RevocableNodes map[string]*NodeInfo
 	NodeList       []string
+	CSINodesStatus map[string]*CSINodeStatusInfo
 }
 
 func (ci ClusterInfo) String() string {

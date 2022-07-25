@@ -18,6 +18,7 @@ package podgroup
 
 import (
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
@@ -28,6 +29,7 @@ import (
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
+	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	schedulinginformer "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/framework"
@@ -44,6 +46,9 @@ type pgcontroller struct {
 
 	podInformer coreinformers.PodInformer
 	pgInformer  schedulinginformer.PodGroupInformer
+
+	informerFactory   informers.SharedInformerFactory
+	vcInformerFactory vcinformer.SharedInformerFactory
 
 	// A store of pods
 	podLister corelisters.PodLister
@@ -72,6 +77,7 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 	pg.schedulerNames = make([]string, len(opt.SchedulerNames))
 	copy(pg.schedulerNames, opt.SchedulerNames)
 
+	pg.informerFactory = opt.SharedInformerFactory
 	pg.podInformer = opt.SharedInformerFactory.Core().V1().Pods()
 	pg.podLister = pg.podInformer.Lister()
 	pg.podSynced = pg.podInformer.Informer().HasSynced
@@ -79,7 +85,9 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 		AddFunc: pg.addPod,
 	})
 
-	pg.pgInformer = informerfactory.NewSharedInformerFactory(pg.vcClient, 0).Scheduling().V1beta1().PodGroups()
+	factory := informerfactory.NewSharedInformerFactory(pg.vcClient, 0)
+	pg.vcInformerFactory = factory
+	pg.pgInformer = factory.Scheduling().V1beta1().PodGroups()
 	pg.pgLister = pg.pgInformer.Lister()
 	pg.pgSynced = pg.pgInformer.Informer().HasSynced
 
@@ -88,10 +96,20 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 
 // Run start NewPodgroupController.
 func (pg *pgcontroller) Run(stopCh <-chan struct{}) {
-	go pg.podInformer.Informer().Run(stopCh)
-	go pg.pgInformer.Informer().Run(stopCh)
+	pg.informerFactory.Start(stopCh)
+	pg.vcInformerFactory.Start(stopCh)
 
-	cache.WaitForCacheSync(stopCh, pg.podSynced, pg.pgSynced)
+	for informerType, ok := range pg.informerFactory.WaitForCacheSync(stopCh) {
+		if !ok {
+			klog.Errorf("caches failed to sync: %v", informerType)
+		}
+	}
+	for informerType, ok := range pg.vcInformerFactory.WaitForCacheSync(stopCh) {
+		if !ok {
+			klog.Errorf("caches failed to sync: %v", informerType)
+			return
+		}
+	}
 
 	go wait.Until(pg.worker, 0, stopCh)
 

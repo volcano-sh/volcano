@@ -19,6 +19,7 @@ package plugins
 import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/binpack"
+	"volcano.sh/volcano/pkg/scheduler/plugins/cdp"
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 	"volcano.sh/volcano/pkg/scheduler/plugins/extender"
@@ -51,6 +52,7 @@ func init() {
 	framework.RegisterPluginBuilder(sla.PluginName, sla.New)
 	framework.RegisterPluginBuilder(tasktopology.PluginName, tasktopology.New)
 	framework.RegisterPluginBuilder(numaaware.PluginName, numaaware.New)
+	framework.RegisterPluginBuilder(cdp.PluginName, cdp.New)
 	framework.RegisterPluginBuilder(rescheduling.PluginName, rescheduling.New)
 	framework.RegisterPluginBuilder(usage.PluginName, usage.New)
 

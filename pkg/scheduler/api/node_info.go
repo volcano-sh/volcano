@@ -35,6 +35,11 @@ func (o *AllocateFailError) Error() string {
 	return o.Reason
 }
 
+type CSINodeStatusInfo struct {
+	CSINodeName  string
+	DriverStatus map[string]bool
+}
+
 // NodeInfo is node level aggregated information.
 type NodeInfo struct {
 	Name string
@@ -606,4 +611,15 @@ func (ni *NodeInfo) getUnhealthyGPUs(node *v1.Node) (unhealthyGPUs []int) {
 		}
 	}
 	return
+}
+
+func (cs *CSINodeStatusInfo) Clone() *CSINodeStatusInfo {
+	newcs := &CSINodeStatusInfo{
+		CSINodeName:  cs.CSINodeName,
+		DriverStatus: make(map[string]bool),
+	}
+	for k, v := range cs.DriverStatus {
+		newcs.DriverStatus[k] = v
+	}
+	return newcs
 }

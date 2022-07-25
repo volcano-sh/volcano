@@ -457,12 +457,10 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		RetryCount:          job.Status.RetryCount,
 	}
 
-	if updateStatus != nil {
-		if updateStatus(&job.Status) {
-			job.Status.State.LastTransitionTime = metav1.Now()
-			jobCondition = newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)
-			job.Status.Conditions = append(job.Status.Conditions, jobCondition)
-		}
+	if updateStatus != nil && updateStatus(&job.Status) {
+		job.Status.State.LastTransitionTime = metav1.Now()
+		jobCondition = newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)
+		job.Status.Conditions = append(job.Status.Conditions, jobCondition)
 	}
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
 	if err != nil {
@@ -480,26 +478,28 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 }
 
 func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskName string, taskIndex int, podToCreateEachTask []*v1.Pod, job *batch.Job) {
-	if job.Spec.Tasks[taskIndex].DependsOn != nil {
-		dependsOn := *job.Spec.Tasks[taskIndex].DependsOn
-		if len(dependsOn.Name) > 1 && dependsOn.Iteration == batch.IterationAny {
+	if job.Spec.Tasks[taskIndex].DependsOn == nil {
+		return
+	}
+
+	dependsOn := *job.Spec.Tasks[taskIndex].DependsOn
+	if len(dependsOn.Name) > 1 && dependsOn.Iteration == batch.IterationAny {
+		wait.PollInfinite(detectionPeriodOfDependsOntask, func() (bool, error) {
+			for _, task := range dependsOn.Name {
+				if cc.isDependsOnPodsReady(task, job) {
+					return true, nil
+				}
+			}
+			return false, nil
+		})
+	} else {
+		for _, dependsOnTask := range dependsOn.Name {
 			wait.PollInfinite(detectionPeriodOfDependsOntask, func() (bool, error) {
-				for _, task := range dependsOn.Name {
-					if cc.isDependsOnPodsReady(task, job) {
-						return true, nil
-					}
+				if cc.isDependsOnPodsReady(dependsOnTask, job) {
+					return true, nil
 				}
 				return false, nil
 			})
-		} else {
-			for _, dependsOnTask := range dependsOn.Name {
-				wait.PollInfinite(detectionPeriodOfDependsOntask, func() (bool, error) {
-					if cc.isDependsOnPodsReady(dependsOnTask, job) {
-						return true, nil
-					}
-					return false, nil
-				})
-			}
 		}
 	}
 }
@@ -511,6 +511,15 @@ func (cc *jobcontroller) isDependsOnPodsReady(task string, job *batch.Job) bool 
 	for _, podName := range dependsOnPods {
 		pod, err := cc.podLister.Pods(job.Namespace).Get(podName)
 		if err != nil {
+			// If pod is not found. There are 2 possibilities.
+			// 1. vcjob has been deleted. This function should return true.
+			// 2. pod is not created. This function should return false, continue waiting.
+			if apierrors.IsNotFound(err) {
+				_, errGetJob := cc.jobLister.Jobs(job.Namespace).Get(job.Name)
+				if errGetJob != nil {
+					return apierrors.IsNotFound(errGetJob)
+				}
+			}
 			klog.Errorf("Failed to get pod %v/%v %v", job.Namespace, podName, err)
 			continue
 		}

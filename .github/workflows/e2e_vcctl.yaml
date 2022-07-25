@@ -38,6 +38,4 @@ jobs:
 
       - name: Run E2E Tests
         run: |
-          make vcctl
-          make images CC=/usr/local/musl/bin/musl-gcc
-          make e2e-test-vcctl
+          make e2e-test-vcctl CC=/usr/local/musl/bin/musl-gcc
