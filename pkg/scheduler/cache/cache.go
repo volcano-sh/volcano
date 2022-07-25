@@ -92,6 +92,7 @@ type SchedulerCache struct {
 	sync.Mutex
 
 	kubeClient   *kubernetes.Clientset
+	restConfig   *rest.Config
 	vcClient     *vcclient.Clientset
 	defaultQueue string
 	// schedulerName is the name for volcano scheduler
@@ -412,6 +413,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		deletedJobs:         workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		kubeClient:          kubeClient,
 		vcClient:            vcClient,
+		restConfig:          config,
 		defaultQueue:        defaultQueue,
 		schedulerName:       schedulerName,
 		nodeSelectorLabels:  make(map[string]string),
@@ -778,6 +780,11 @@ func (sc *SchedulerCache) RevertVolumes(task *schedulingapi.TaskInfo, podVolumes
 // Client returns the kubernetes clientSet
 func (sc *SchedulerCache) Client() kubernetes.Interface {
 	return sc.kubeClient
+}
+
+// ClientConfig returns the rest config
+func (sc *SchedulerCache) ClientConfig() *rest.Config {
+	return sc.restConfig
 }
 
 // SharedInformerFactory returns the scheduler SharedInformerFactory

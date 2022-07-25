@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -45,6 +46,7 @@ type Session struct {
 	kubeClient      kubernetes.Interface
 	recorder        record.EventRecorder
 	cache           cache.Cache
+	restConfig      *rest.Config
 	informerFactory informers.SharedInformerFactory
 
 	TotalResource *api.Resource
@@ -94,6 +96,7 @@ func openSession(cache cache.Cache) *Session {
 	ssn := &Session{
 		UID:             uuid.NewUUID(),
 		kubeClient:      cache.Client(),
+		restConfig:      cache.ClientConfig(),
 		recorder:        cache.EventRecorder(),
 		cache:           cache,
 		informerFactory: cache.SharedInformerFactory(),
@@ -464,6 +467,11 @@ func (ssn *Session) UpdateSchedulerNumaInfo(AllocatedSets map[string]api.ResNuma
 // KubeClient returns the kubernetes client
 func (ssn Session) KubeClient() kubernetes.Interface {
 	return ssn.kubeClient
+}
+
+// ClientConfig returns the rest client
+func (ssn Session) ClientConfig() *rest.Config {
+	return ssn.restConfig
 }
 
 // InformerFactory returns the scheduler ShareInformerFactory
