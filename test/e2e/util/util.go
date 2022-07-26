@@ -47,6 +47,7 @@ var (
 	OneMinute  = 1 * time.Minute
 	TwoMinute  = 2 * time.Minute
 	FiveMinute = 5 * time.Minute
+	TenMinute  = 10 * time.Minute
 	OneCPU     = v1.ResourceList{"cpu": resource.MustParse("1000m")}
 	TwoCPU     = v1.ResourceList{"cpu": resource.MustParse("2000m")}
 	ThreeCPU   = v1.ResourceList{"cpu": resource.MustParse("3000m")}
@@ -208,6 +209,27 @@ func CleanupTestContext(ctx *TestContext) {
 
 	// Wait for namespace deleted.
 	err = wait.Poll(100*time.Millisecond, FiveMinute, NamespaceNotExist(ctx))
+	Expect(err).NotTo(HaveOccurred(), "failed to wait for namespace deleted")
+}
+
+func CleanupTestPytorchContext(ctx *TestContext) {
+	By("Cleaning up test context")
+
+	foreground := metav1.DeletePropagationForeground
+	err := ctx.Kubeclient.CoreV1().Namespaces().Delete(context.TODO(), ctx.Namespace, metav1.DeleteOptions{
+		PropagationPolicy: &foreground,
+	})
+	Expect(err).NotTo(HaveOccurred(), "failed to delete namespace")
+
+	deleteQueues(ctx)
+	deletePriorityClasses(ctx)
+
+	if ctx.UsingPlaceHolder {
+		deletePlaceHolder(ctx)
+	}
+
+	// Wait for namespace deleted.
+	err = wait.Poll(100*time.Millisecond, TenMinute, NamespaceNotExist(ctx))
 	Expect(err).NotTo(HaveOccurred(), "failed to wait for namespace deleted")
 }
 

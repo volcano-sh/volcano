@@ -11,7 +11,7 @@ import (
 var _ = Describe("Pytorch Plugin E2E Test", func() {
 	It("will run and complete finally", func() {
 		context := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(context)
+		defer e2eutil.CleanupTestPytorchContext(context)
 
 		slot := e2eutil.OneCPU
 
