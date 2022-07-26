@@ -107,7 +107,7 @@ if [[ -f ${MONITOR_DEPLOYMENT_YAML_FILENAME} ]];then
     rm ${MONITOR_DEPLOYMENT_YAML_FILENAME}
 fi
 
-cat ${VK_ROOT}/installer/namespace.yaml > ${DEPLOYMENT_FILE}
+cat ${VK_ROOT}/installer/volcano-system-namespace.yaml > ${DEPLOYMENT_FILE}
 ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
       --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set basic.crd_version=${CRD_VERSION}\
       -s templates/admission.yaml \
@@ -120,6 +120,7 @@ ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespac
       -s templates/nodeinfo_v1alpha1_numatopologies.yaml \
       >> ${DEPLOYMENT_FILE}
 
+cat ${VK_ROOT}/installer/volcano-monitoring-namespace.yaml > ${MONITOR_DEPLOYMENT_YAML_FILENAME}
 ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-monitoring \
       --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set custom.metrics_enable=true \
       -s templates/prometheus.yaml \
