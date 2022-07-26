@@ -163,6 +163,10 @@ case ${E2E_TYPE} in
     echo "Running stress e2e suite..."
     KUBECONFIG=${KUBECONFIG} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/stress/
     ;;
+"JOBFLOW")
+    echo "Running jobflow e2e suite..."
+    KUBECONFIG=${KUBECONFIG} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/jobflow/
+    ;;
 esac
 
 if [[ $? -ne 0 ]]; then
