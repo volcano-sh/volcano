@@ -29,7 +29,7 @@ const (
 	EnvMasterAddr = "MASTER_ADDR"
 	// EnvWorldSize is the env name of world size
 	EnvWorldSize = "WORLD_SIZE"
-	// EnvWorldSize is the env name of rank
+	// EnvRank is the env name of rank
 	EnvRank = "RANK"
 )
 
