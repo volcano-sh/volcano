@@ -39,6 +39,7 @@ import (
 	"volcano.sh/apis/pkg/apis/utils"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 func isTerminated(status schedulingapi.TaskStatus) bool {
@@ -49,9 +50,9 @@ func isTerminated(status schedulingapi.TaskStatus) bool {
 // pi.Pod.Spec.SchedulerName is same as volcano scheduler's name, otherwise it will return nil.
 func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *schedulingapi.JobInfo {
 	if len(pi.Job) == 0 {
-		if pi.Pod.Spec.SchedulerName != sc.schedulerName {
-			klog.V(4).Infof("Pod %s/%s will not scheduled by %s, skip creating PodGroup and Job for it",
-				pi.Pod.Namespace, pi.Pod.Name, sc.schedulerName)
+		if !commonutil.Contains(sc.schedulerNames, pi.Pod.Spec.SchedulerName) {
+			klog.V(4).Infof("Pod %s/%s will not scheduled by %#v, skip creating PodGroup and Job for it",
+				pi.Pod.Namespace, pi.Pod.Name, sc.schedulerNames)
 		}
 		return nil
 	}

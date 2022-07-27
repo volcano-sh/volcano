@@ -63,6 +63,7 @@ import (
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 const (
@@ -83,8 +84,8 @@ func init() {
 }
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerName string, defaultQueue string, nodeSelectors []string) Cache {
-	return newSchedulerCache(config, schedulerName, defaultQueue, nodeSelectors)
+func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string) Cache {
+	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors)
 }
 
 // SchedulerCache cache for the kube batch
@@ -96,7 +97,7 @@ type SchedulerCache struct {
 	vcClient     *vcclient.Clientset
 	defaultQueue string
 	// schedulerName is the name for volcano scheduler
-	schedulerName      string
+	schedulerNames     []string
 	nodeSelectorLabels map[string]string
 	metricsConf        map[string]string
 
@@ -375,7 +376,7 @@ func (pgb *podgroupBinder) Bind(job *schedulingapi.JobInfo, cluster string) (*sc
 	return job, nil
 }
 
-func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue string, nodeSelectors []string) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -415,7 +416,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		vcClient:            vcClient,
 		restConfig:          config,
 		defaultQueue:        defaultQueue,
-		schedulerName:       schedulerName,
+		schedulerNames:      schedulerNames,
 		nodeSelectorLabels:  make(map[string]string),
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
 		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
@@ -442,7 +443,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: eventClient.CoreV1().Events("")})
-	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: schedulerName})
+	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: commonutil.GenerateComponentName(sc.schedulerNames)})
 
 	sc.BindFlowChannel = make(chan *schedulingapi.TaskInfo, 5000)
 	sc.Binder = GetBindMethod()
@@ -553,7 +554,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 			FilterFunc: func(obj interface{}) bool {
 				switch v := obj.(type) {
 				case *v1.Pod:
-					if !responsibleForPod(v, schedulerName, mySchedulerPodName, c) {
+					if !responsibleForPod(v, schedulerNames, mySchedulerPodName, c) {
 						if len(v.Spec.NodeName) == 0 {
 							return false
 						}
