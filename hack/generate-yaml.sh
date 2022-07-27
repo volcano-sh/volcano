@@ -83,12 +83,16 @@ tail -n +3 ${VK_ROOT}/config/crd/bases/bus.volcano.sh_commands.yaml > ${HELM_CRD
 tail -n +3 ${VK_ROOT}/config/crd/bases/scheduling.volcano.sh_podgroups.yaml > ${HELM_CRD_DIR}/bases/scheduling.volcano.sh_podgroups.yaml
 tail -n +3 ${VK_ROOT}/config/crd/bases/scheduling.volcano.sh_queues.yaml > ${HELM_CRD_DIR}/bases/scheduling.volcano.sh_queues.yaml
 tail -n +3 ${VK_ROOT}/config/crd/bases/nodeinfo.volcano.sh_numatopologies.yaml > ${HELM_CRD_DIR}/bases/nodeinfo.volcano.sh_numatopologies.yaml
+tail -n +3 ${VK_ROOT}/config/crd/bases/flow.volcano.sh_jobflows.yaml > ${HELM_CRD_DIR}/bases/flow.volcano.sh_jobflows.yaml
+tail -n +3 ${VK_ROOT}/config/crd/bases/flow.volcano.sh_jobtemplates.yaml > ${HELM_CRD_DIR}/bases/flow.volcano.sh_jobtemplates.yaml
 # sync v1beta1
 tail -n +3 ${VK_ROOT}/config/crd/v1beta1/batch.volcano.sh_jobs.yaml > ${HELM_CRD_DIR}/v1beta1/batch.volcano.sh_jobs.yaml
 tail -n +3 ${VK_ROOT}/config/crd/v1beta1/bus.volcano.sh_commands.yaml > ${HELM_CRD_DIR}/v1beta1/bus.volcano.sh_commands.yaml
 tail -n +3 ${VK_ROOT}/config/crd/v1beta1/scheduling.volcano.sh_podgroups.yaml > ${HELM_CRD_DIR}/v1beta1/scheduling.volcano.sh_podgroups.yaml
 tail -n +3 ${VK_ROOT}/config/crd/v1beta1/scheduling.volcano.sh_queues.yaml > ${HELM_CRD_DIR}/v1beta1/scheduling.volcano.sh_queues.yaml
 tail -n +3 ${VK_ROOT}/config/crd/v1beta1/nodeinfo.volcano.sh_numatopologies.yaml > ${HELM_CRD_DIR}/v1beta1/nodeinfo.volcano.sh_numatopologies.yaml
+tail -n +3 ${VK_ROOT}/config/crd/v1beta1/flow.volcano.sh_jobflows.yaml > ${HELM_CRD_DIR}/v1beta1/flow.volcano.sh_jobflows.yaml
+tail -n +3 ${VK_ROOT}/config/crd/v1beta1/flow.volcano.sh_jobtemplates.yaml > ${HELM_CRD_DIR}/v1beta1/flow.volcano.sh_jobtemplates.yaml
 
 # Step3. generate yaml in folder
 if [[ ! -d ${RELEASE_FOLDER} ]];then
@@ -119,6 +123,8 @@ ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespac
       -s templates/scheduling_v1beta1_queue.yaml \
       -s templates/nodeinfo_v1alpha1_numatopologies.yaml \
       -s templates/webhooks.yaml \
+      -s templates/flow_v1alpha1_jobflow.yaml \
+      -s templates/flow_v1alpha1_jobtemplate.yaml \
       >> ${DEPLOYMENT_FILE}
 
 ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-monitoring \
