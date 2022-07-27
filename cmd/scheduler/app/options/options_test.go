@@ -39,7 +39,7 @@ func TestAddFlags(t *testing.T) {
 
 	// This is a snapshot of expected options parsed by args.
 	expected := &ServerOption{
-		SchedulerName:  defaultSchedulerName,
+		SchedulerNames: []string{defaultSchedulerName},
 		SchedulePeriod: 5 * time.Minute,
 		DefaultQueue:   defaultQueue,
 		ListenAddress:  defaultListenAddress,

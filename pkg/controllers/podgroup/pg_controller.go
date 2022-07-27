@@ -33,6 +33,7 @@ import (
 	schedulinginformer "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/framework"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 func init() {
@@ -137,7 +138,7 @@ func (pg *pgcontroller) processNextReq() bool {
 		return true
 	}
 
-	if !contains(pg.schedulerNames, pod.Spec.SchedulerName) {
+	if !commonutil.Contains(pg.schedulerNames, pod.Spec.SchedulerName) {
 		klog.V(5).Infof("pod %v/%v field SchedulerName is not matched", pod.Namespace, pod.Name)
 		return true
 	}
@@ -158,13 +159,4 @@ func (pg *pgcontroller) processNextReq() bool {
 	pg.queue.Forget(req)
 
 	return true
-}
-
-func contains(slice []string, element string) bool {
-	for _, item := range slice {
-		if item == element {
-			return true
-		}
-	}
-	return false
 }

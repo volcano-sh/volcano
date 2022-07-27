@@ -260,7 +260,7 @@ func TestValidatePod(t *testing.T) {
 
 		// create fake volcano clientset
 		config.VolcanoClient = vcclient.NewSimpleClientset()
-		config.SchedulerName = "volcano"
+		config.SchedulerNames = []string{"volcano"}
 
 		if !testCase.disabledPG {
 			_, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), pg, metav1.CreateOptions{})
