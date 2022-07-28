@@ -1,6 +1,6 @@
 module volcano.sh/volcano
 
-go 1.17
+go 1.18
 
 require (
 	github.com/agiledragon/gomonkey/v2 v2.1.0
