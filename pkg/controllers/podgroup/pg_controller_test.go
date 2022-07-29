@@ -170,7 +170,12 @@ func TestAddPodGroup(t *testing.T) {
 			t.Errorf("Case %s failed, expect %v, got %v", testCase.name, testCase.expectedPodGroup, pg)
 		}
 
-		podAnnotation := pod.Annotations[scheduling.KubeGroupNameAnnotationKey]
+		newpod, err := c.kubeClient.CoreV1().Pods(testCase.pod.Namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+		if err != nil {
+			t.Errorf("Case %s failed when creating pod for %v", testCase.name, err)
+		}
+
+		podAnnotation := newpod.Annotations[scheduling.KubeGroupNameAnnotationKey]
 		if testCase.expectedPodGroup.Name != podAnnotation {
 			t.Errorf("Case %s failed, expect %v, got %v", testCase.name,
 				testCase.expectedPodGroup.Name, podAnnotation)

@@ -18,6 +18,7 @@ package podgroup
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
@@ -28,6 +29,7 @@ import (
 	quotacore "k8s.io/kubernetes/pkg/quota/v1/evaluator/core"
 	"k8s.io/utils/clock"
 
+	"k8s.io/apimachinery/pkg/types"
 	"volcano.sh/apis/pkg/apis/helpers"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
@@ -35,6 +37,14 @@ import (
 type podRequest struct {
 	podName      string
 	podNamespace string
+}
+
+type metadataForMergePatch struct {
+	Metadata annotationForMergePatch `json:"metadata"`
+}
+
+type annotationForMergePatch struct {
+	Annotations map[string]string `json:"annotations"`
 }
 
 func (pg *pgcontroller) addPod(obj interface{}) {
@@ -57,20 +67,30 @@ func (pg *pgcontroller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
 		pod.Annotations = make(map[string]string)
 	}
 	if pod.Annotations[scheduling.KubeGroupNameAnnotationKey] == "" {
-		pod.Annotations[scheduling.KubeGroupNameAnnotationKey] = pgName
+		patch := metadataForMergePatch{
+			Metadata: annotationForMergePatch{
+				Annotations: map[string]string{
+					scheduling.KubeGroupNameAnnotationKey: pgName,
+				},
+			},
+		}
+
+		patchBytes, err := json.Marshal(&patch)
+		if err != nil {
+			klog.Errorf("Failed to json.Marshal pod annotation: %v", err)
+			return err
+		}
+
+		if _, err := pg.kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{}); err != nil {
+			klog.Errorf("Failed to update pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
+			return err
+		}
 	} else {
 		if pod.Annotations[scheduling.KubeGroupNameAnnotationKey] != pgName {
 			klog.Errorf("normal pod %s/%s annotations %s value is not %s, but %s", pod.Namespace, pod.Name,
 				scheduling.KubeGroupNameAnnotationKey, pgName, pod.Annotations[scheduling.KubeGroupNameAnnotationKey])
 		}
-		return nil
 	}
-
-	if _, err := pg.kubeClient.CoreV1().Pods(pod.Namespace).Update(context.TODO(), pod, metav1.UpdateOptions{}); err != nil {
-		klog.Errorf("Failed to update pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
-		return err
-	}
-
 	return nil
 }
 
