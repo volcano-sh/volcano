@@ -650,7 +650,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 				job.Namespace, job.Name, err)
 			return err
 		} else {
-			// try to get old pg
+			// try to get old pg if new pg not exist
 			pg, err = cc.pgLister.PodGroups(job.Namespace).Get(job.Name)
 			if err != nil {
 				if !apierrors.IsNotFound(err) {
