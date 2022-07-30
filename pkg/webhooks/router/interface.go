@@ -30,11 +30,11 @@ import (
 type AdmitFunc func(admissionv1.AdmissionReview) *admissionv1.AdmissionResponse
 
 type AdmissionServiceConfig struct {
-	SchedulerName string
-	KubeClient    kubernetes.Interface
-	VolcanoClient versioned.Interface
-	Recorder      record.EventRecorder
-	ConfigData    *config.AdmissionConfiguration
+	SchedulerNames []string
+	KubeClient     kubernetes.Interface
+	VolcanoClient  versioned.Interface
+	Recorder       record.EventRecorder
+	ConfigData     *config.AdmissionConfiguration
 }
 
 type AdmissionService struct {

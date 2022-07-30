@@ -53,7 +53,7 @@ type Scheduler struct {
 // NewScheduler returns a scheduler
 func NewScheduler(
 	config *rest.Config,
-	schedulerName string,
+	schedulerNames []string,
 	schedulerConf string,
 	period time.Duration,
 	defaultQueue string,
@@ -72,7 +72,7 @@ func NewScheduler(
 	scheduler := &Scheduler{
 		schedulerConf:  schedulerConf,
 		fileWatcher:    watcher,
-		cache:          schedcache.New(config, schedulerName, defaultQueue, nodeSelectors),
+		cache:          schedcache.New(config, schedulerNames, defaultQueue, nodeSelectors),
 		schedulePeriod: period,
 	}
 
