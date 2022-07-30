@@ -56,6 +56,7 @@ type Session struct {
 
 	Jobs           map[api.JobID]*api.JobInfo
 	Nodes          map[string]*api.NodeInfo
+	CSINodesStatus map[string]*api.CSINodeStatusInfo
 	RevocableNodes map[string]*api.NodeInfo
 	Queues         map[api.QueueID]*api.QueueInfo
 	NamespaceInfo  map[api.NamespaceName]*api.NamespaceInfo
@@ -106,6 +107,7 @@ func openSession(cache cache.Cache) *Session {
 
 		Jobs:           map[api.JobID]*api.JobInfo{},
 		Nodes:          map[string]*api.NodeInfo{},
+		CSINodesStatus: map[string]*api.CSINodeStatusInfo{},
 		RevocableNodes: map[string]*api.NodeInfo{},
 		Queues:         map[api.QueueID]*api.QueueInfo{},
 
@@ -166,6 +168,7 @@ func openSession(cache cache.Cache) *Session {
 	}
 	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
 	ssn.Nodes = snapshot.Nodes
+	ssn.CSINodesStatus = snapshot.CSINodesStatus
 	ssn.RevocableNodes = snapshot.RevocableNodes
 	ssn.Queues = snapshot.Queues
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
