@@ -196,7 +196,7 @@ CONTROLLER_GEN=$(shell which controller-gen)
 endif
 
 update-development-yaml:
-	make generate-yaml TAG=latest RELEASE_DIR=installer
-	cp installer/volcano-latest.yaml installer/volcano-development-arm64.yaml
+	make generate-yaml TAG=v1.6.0 RELEASE_DIR=installer
+	cp installer/volcano-v1.6.0.yaml installer/volcano-development-arm64.yaml
 	sed -r -i 's#(.*)image:([^:]*):(.*)#\1image:\2-arm64:\3#'  installer/volcano-development-arm64.yaml
-	mv installer/volcano-latest.yaml installer/volcano-development.yaml
+	mv installer/volcano-v1.6.0.yaml installer/volcano-development.yaml
