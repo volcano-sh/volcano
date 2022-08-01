@@ -632,51 +632,63 @@ func (cc *jobcontroller) createPVC(job *batch.Job, vcName string, volumeClaim *v
 func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 	// If PodGroup does not exist, create one for Job.
 	pgName := job.Name + "-" + string(job.UID)
-	pg, err := cc.pgLister.PodGroups(job.Namespace).Get(pgName)
+	var pg *scheduling.PodGroup
+	var err error
+	pg, err = cc.pgLister.PodGroups(job.Namespace).Get(pgName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to get PodGroup for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
 			return err
-		}
+		} else {
+			// try to get old pg if new pg not exist
+			pg, err = cc.pgLister.PodGroups(job.Namespace).Get(job.Name)
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					klog.Errorf("Failed to get PodGroup for Job <%s/%s>: %v",
+						job.Namespace, job.Name, err)
+					return err
+				}
 
-		minTaskMember := map[string]int32{}
-		for _, task := range job.Spec.Tasks {
-			if task.MinAvailable != nil {
-				minTaskMember[task.Name] = *task.MinAvailable
-			} else {
-				minTaskMember[task.Name] = task.Replicas
+				minTaskMember := map[string]int32{}
+				for _, task := range job.Spec.Tasks {
+					if task.MinAvailable != nil {
+						minTaskMember[task.Name] = *task.MinAvailable
+					} else {
+						minTaskMember[task.Name] = task.Replicas
+					}
+				}
+
+				pg := &scheduling.PodGroup{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: job.Namespace,
+						//add job.UID into its name when create new PodGroup
+						Name:        pgName,
+						Annotations: job.Annotations,
+						Labels:      job.Labels,
+						OwnerReferences: []metav1.OwnerReference{
+							*metav1.NewControllerRef(job, helpers.JobKind),
+						},
+					},
+					Spec: scheduling.PodGroupSpec{
+						MinMember:         job.Spec.MinAvailable,
+						MinTaskMember:     minTaskMember,
+						Queue:             job.Spec.Queue,
+						MinResources:      cc.calcPGMinResources(job),
+						PriorityClassName: job.Spec.PriorityClassName,
+					},
+				}
+
+				if _, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{}); err != nil {
+					if !apierrors.IsAlreadyExists(err) {
+						klog.Errorf("Failed to create PodGroup for Job <%s/%s>: %v",
+							job.Namespace, job.Name, err)
+						return err
+					}
+				}
+				return nil
 			}
 		}
-
-		pg := &scheduling.PodGroup{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: job.Namespace,
-				//add job.UID into its name when create new PodGroup
-				Name:        pgName,
-				Annotations: job.Annotations,
-				Labels:      job.Labels,
-				OwnerReferences: []metav1.OwnerReference{
-					*metav1.NewControllerRef(job, helpers.JobKind),
-				},
-			},
-			Spec: scheduling.PodGroupSpec{
-				MinMember:         job.Spec.MinAvailable,
-				MinTaskMember:     minTaskMember,
-				Queue:             job.Spec.Queue,
-				MinResources:      cc.calcPGMinResources(job),
-				PriorityClassName: job.Spec.PriorityClassName,
-			},
-		}
-
-		if _, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{}); err != nil {
-			if !apierrors.IsAlreadyExists(err) {
-				klog.Errorf("Failed to create PodGroup for Job <%s/%s>: %v",
-					job.Namespace, job.Name, err)
-				return err
-			}
-		}
-		return nil
 	}
 
 	pgShouldUpdate := false
