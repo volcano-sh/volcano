@@ -375,22 +375,5 @@ func validateTaskTopoPolicy(task v1alpha1.TaskSpec, index int) string {
 		return fmt.Sprintf("spec.task[%d] isn't Guaranteed pod, kind=%v", index, v1qos.GetPodQOS(pod))
 	}
 
-	for id, container := range append(template.Spec.Containers, template.Spec.InitContainers...) {
-		requestNum := guaranteedCPUs(container)
-		if requestNum == 0 {
-			return fmt.Sprintf("the cpu request isn't  an integer in spec.task[%d] container[%d].",
-				index, id)
-		}
-	}
-
 	return ""
-}
-
-func guaranteedCPUs(container v1.Container) int {
-	cpuQuantity := container.Resources.Requests[v1.ResourceCPU]
-	if cpuQuantity.Value()*1000 != cpuQuantity.MilliValue() {
-		return 0
-	}
-
-	return int(cpuQuantity.Value())
 }

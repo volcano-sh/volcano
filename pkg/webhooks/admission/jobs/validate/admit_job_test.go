@@ -1475,7 +1475,7 @@ func TestValidateTaskTopoPolicy(t *testing.T) {
 					},
 				},
 			},
-			expect: "the cpu request isn't  an integer",
+			expect: "",
 		},
 		{
 			name: "test-3",
