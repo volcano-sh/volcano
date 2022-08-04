@@ -22,9 +22,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/filewatcher"
@@ -37,11 +39,12 @@ import (
 // Scheduler watches for new unscheduled pods for volcano. It attempts to find
 // nodes that they fit on and writes bindings back to the api server.
 type Scheduler struct {
-	cache          schedcache.Cache
-	schedulerConf  string
-	fileWatcher    filewatcher.FileWatcher
-	schedulePeriod time.Duration
-	once           sync.Once
+	cache              schedcache.Cache
+	schedulerConf      string
+	schedulerConfigmap string
+	fileWatcher        filewatcher.FileWatcher
+	schedulePeriod     time.Duration
+	once               sync.Once
 
 	mutex          sync.Mutex
 	actions        []framework.Action
@@ -55,6 +58,7 @@ func NewScheduler(
 	config *rest.Config,
 	schedulerNames []string,
 	schedulerConf string,
+	schedulerConfigmap string,
 	period time.Duration,
 	defaultQueue string,
 	nodeSelectors []string,
@@ -70,10 +74,11 @@ func NewScheduler(
 	}
 
 	scheduler := &Scheduler{
-		schedulerConf:  schedulerConf,
-		fileWatcher:    watcher,
-		cache:          schedcache.New(config, schedulerNames, defaultQueue, nodeSelectors),
-		schedulePeriod: period,
+		schedulerConf:      schedulerConf,
+		schedulerConfigmap: schedulerConfigmap,
+		fileWatcher:        watcher,
+		cache:              schedcache.New(config, schedulerNames, defaultQueue, nodeSelectors),
+		schedulePeriod:     period,
 	}
 
 	return scheduler, nil
@@ -81,7 +86,7 @@ func NewScheduler(
 
 // Run runs the Scheduler
 func (pc *Scheduler) Run(stopCh <-chan struct{}) {
-	pc.loadSchedulerConf()
+	pc.loadSchedulerConf("")
 	go pc.watchSchedulerConf(stopCh)
 	// Start cache for policy.
 	pc.cache.SetMetricsConf(pc.metricsConf)
@@ -119,7 +124,7 @@ func (pc *Scheduler) runOnce() {
 	metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
 }
 
-func (pc *Scheduler) loadSchedulerConf() {
+func (pc *Scheduler) loadSchedulerConf(config string) {
 	klog.V(4).Infof("Start loadSchedulerConf ...")
 	var err error
 	pc.once.Do(func() {
@@ -130,8 +135,7 @@ func (pc *Scheduler) loadSchedulerConf() {
 		}
 	})
 
-	var config string
-	if len(pc.schedulerConf) != 0 {
+	if config == "" && len(pc.schedulerConf) != 0 {
 		if config, err = readSchedulerConf(pc.schedulerConf); err != nil {
 			klog.Errorf("Failed to read scheduler configuration '%s', using previous configuration: %v",
 				pc.schedulerConf, err)
@@ -155,28 +159,28 @@ func (pc *Scheduler) loadSchedulerConf() {
 }
 
 func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
-	if pc.fileWatcher == nil {
+	informerFactory := informers.NewSharedInformerFactory(pc.cache.Client(), 0)
+	cmInformer := informerFactory.Core().V1().ConfigMaps()
+	cmInformer.Informer().AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			UpdateFunc: pc.updateConfigMap,
+		})
+	informerFactory.Start(stopCh)
+}
+
+// updateConfigMap update scheduler config
+func (pc *Scheduler) updateConfigMap(_, newObj interface{}) {
+	cm, ok := newObj.(*v1.ConfigMap)
+	if !ok {
+		klog.Errorf("Cannot convert to *v1.ConfigMap: %v", newObj)
 		return
 	}
-	eventCh := pc.fileWatcher.Events()
-	errCh := pc.fileWatcher.Errors()
-	for {
-		select {
-		case event, ok := <-eventCh:
-			if !ok {
-				return
-			}
-			klog.V(4).Infof("watch %s event: %v", pc.schedulerConf, event)
-			if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
-				pc.loadSchedulerConf()
-			}
-		case err, ok := <-errCh:
-			if !ok {
-				return
-			}
-			klog.Infof("watch %s error: %v", pc.schedulerConf, err)
-		case <-stopCh:
-			return
-		}
+	if cm.GetNamespace() != "volcano-system" && cm.GetName() != pc.schedulerConfigmap {
+		return
+	}
+	if config, ok := cm.Data["volcano-scheduler.conf"]; !ok {
+		klog.Errorf("Cannot get volcano-scheduler.conf from configmap %v", newObj)
+	} else {
+		pc.loadSchedulerConf(config)
 	}
 }

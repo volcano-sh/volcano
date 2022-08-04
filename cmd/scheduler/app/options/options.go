@@ -47,6 +47,7 @@ type ServerOption struct {
 	KubeClientOptions    kube.ClientOptions
 	SchedulerNames       []string
 	SchedulerConf        string
+	SchedulerConfigmap   string
 	SchedulePeriod       time.Duration
 	EnableLeaderElection bool
 	LockObjectNamespace  string
@@ -85,6 +86,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	// volcano scheduler will ignore pods with scheduler names other than specified with the option
 	fs.StringArrayVar(&s.SchedulerNames, "scheduler-name", []string{defaultSchedulerName}, "vc-scheduler will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.StringVar(&s.SchedulerConf, "scheduler-conf", "", "The absolute path of scheduler configuration file")
+	fs.StringVar(&s.SchedulerConfigmap, "scheduler-configmap", "volcano-scheduler-configmap ", "The configmap of scheduler configuration")
 	fs.DurationVar(&s.SchedulePeriod, "schedule-period", defaultSchedulerPeriod, "The period between each scheduling cycle")
 	fs.StringVar(&s.DefaultQueue, "default-queue", defaultQueue, "The default queue name of the job")
 	fs.BoolVar(&s.EnableLeaderElection, "leader-elect", s.EnableLeaderElection,
