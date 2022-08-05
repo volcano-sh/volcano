@@ -401,8 +401,25 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 			Weight:      1,
 		},
 	}
-	if _, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultQue, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
-		panic(fmt.Sprintf("failed init default queue, with err: %v", err))
+
+	attempts := 20
+	createQueueFunc := func() error {
+		_, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultQue, metav1.CreateOptions{})
+		return err
+	}
+
+	for i := 0; i < attempts; i++ {
+		err := createQueueFunc()
+		if err != nil && !apierrors.IsAlreadyExists(err) {
+			klog.V(2).Infof("Create Queue failed, retry:%d times.", i+1)
+			if i == attempts-1 {
+				panic(fmt.Sprintf("failed init default queue, with err: %v", err))
+			}
+			time.Sleep(time.Second)
+			continue
+		} else if err == nil {
+			break
+		}
 	}
 
 	sc := &SchedulerCache{
