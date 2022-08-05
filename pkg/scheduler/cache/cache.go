@@ -414,7 +414,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		_, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultQue, metav1.CreateOptions{})
 		return err
 	})
-	if err != nil {
+	if err != nil && !apierrors.IsAlreadyExists(err) {
 		panic(fmt.Errorf("failed init default queue, with err: %v", err))
 	}
 	klog.Infof("Create init queue named default")
