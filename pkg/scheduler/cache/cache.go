@@ -46,6 +46,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
@@ -146,7 +147,7 @@ type DefaultBinder struct {
 	// kubeclient *kubernetes.Clientset
 }
 
-//Bind will send bind request to api server
+// Bind will send bind request to api server
 func (db *DefaultBinder) Bind(kubeClient *kubernetes.Clientset, tasks []*schedulingapi.TaskInfo) ([]*schedulingapi.TaskInfo, error) {
 	var errTasks []*schedulingapi.TaskInfo
 	for _, task := range tasks {
@@ -398,9 +399,22 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 			Weight:      1,
 		},
 	}
-	if _, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultQue, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
-		panic(fmt.Sprintf("failed init default queue, with err: %v", err))
+
+	err = retry.OnError(wait.Backoff{
+		Steps:    60,
+		Duration: time.Second,
+		Factor:   1,
+		Jitter:   0.1,
+	}, func(err error) bool {
+		return !apierrors.IsAlreadyExists(err)
+	}, func() error {
+		_, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultQue, metav1.CreateOptions{})
+		return err
+	})
+	if err != nil {
+		panic(fmt.Errorf("failed init default queue, with err: %v", err))
 	}
+	klog.Infof("Create init queue named default")
 
 	sc := &SchedulerCache{
 		Jobs:                make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
