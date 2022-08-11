@@ -30,8 +30,6 @@ are looking forward to your participation.
 **NOTE**: the scheduler is built based on [kube-batch](https://github.com/kubernetes-sigs/kube-batch);
 refer to [#241](https://github.com/volcano-sh/volcano/issues/241) and [#288](https://github.com/volcano-sh/volcano/pull/288) for more detail.
 
-[JobFlow](./docs/design/jobflow/jobflow.md) is a workflow engine based on volcano Job. It proposes two concepts to automate running multiple batch jobs, named JobTemplate and JobFlow, so end users can easily declare their jobs and run them using complex control primitives such as sequential or parallel execution, if-then -else statement, switch-case statement, loop execution, etc.
-
 ![cncf_logo](docs/images/cncf-logo.png)
 
 Volcano is an incubating project of the [Cloud Native Computing Foundation](https://cncf.io/) (CNCF). Please consider joining the CNCF if you are an organization that wants to take an active role in supporting the growth and evolution of the cloud native ecosystem. 
@@ -39,8 +37,6 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 ## Overall Architecture
 
 ![volcano](docs/images/volcano-architecture.png)
-
-![jobflow-1.png](./docs/design/images/jobflow-1.png)
 
 ## Talks
 
@@ -113,10 +109,6 @@ NAME                               COMPLETIONS   DURATION   AGE
 job.batch/volcano-admission-init   1/1           48s        96s
 
 ```
-
-### Disable JobFlow
-
-Disable JobFlow related components if necessary. You need to add --forbid-jobflow=true to the startup parameters of the controller and admission respectively. The default is false to enable the state.
 
 ### Install from code
 
