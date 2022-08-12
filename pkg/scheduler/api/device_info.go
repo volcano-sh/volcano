@@ -55,17 +55,29 @@ func (g *GPUDevice) getUsedGPUMemory() uint {
 
 // GetGPUResourceOfPod returns the GPU resource required by the pod.
 func GetGPUResourceOfPod(pod *v1.Pod) uint {
+	var initMem uint
+	for _, container := range pod.Spec.InitContainers {
+		res := getGPUResourceOfContainer(container.Resources)
+		if initMem < res {
+			initMem = res
+		}
+	}
+
 	var mem uint
 	for _, container := range pod.Spec.Containers {
-		mem += getGPUResourceOfContainer(&container)
+		mem += getGPUResourceOfContainer(container.Resources)
 	}
-	return mem
+
+	if mem > initMem {
+		return mem
+	}
+	return initMem
 }
 
-// getGPUResourceOfPod returns the GPU resource required by the container.
-func getGPUResourceOfContainer(container *v1.Container) uint {
+// getGPUResourceOfContainer returns the GPU resource required by the container.
+func getGPUResourceOfContainer(resources v1.ResourceRequirements) uint {
 	var mem uint
-	if val, ok := container.Resources.Limits[VolcanoGPUResource]; ok {
+	if val, ok := resources.Limits[VolcanoGPUResource]; ok {
 		mem = uint(val.Value())
 	}
 	return mem
