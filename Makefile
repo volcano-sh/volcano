@@ -20,6 +20,7 @@ CRD_OPTIONS ?= "crd:crdVersions=v1,generateEmbeddedObjectMeta=true"
 CC ?= "gcc"
 SUPPORT_PLUGINS ?= "no"
 CRD_VERSION ?= v1
+BUILDX_OUTPUT_TYPE ?= "docker"
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -52,6 +53,9 @@ else
 REL_OSARCH=linux/$(OSARCH)
 endif
 
+# Run `make images DOCKER_PLATFORMS="linux/amd64,linux/arm64" BUILDX_OUTPUT_TYPE=registry IMAGE_PREFIX=[yourregistry]/vc` to push multi-platform
+DOCKER_PLATFORMS ?= "${REL_OSARCH}"
+
 include Makefile.def
 
 .EXPORT_ALL_VARIABLES:
@@ -63,16 +67,24 @@ init:
 	mkdir -p ${RELEASE_DIR}
 
 vc-scheduler: init
-	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vc-scheduler ./cmd/scheduler
+	GO111MODULE=off go get github.com/mitchellh/gox
+	if [ ${SUPPORT_PLUGINS} = "yes" ];then\
+		CC=${CC} CGO_ENABLED=1 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/vc-scheduler ./cmd/scheduler;\
+	else\
+		CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/vc-scheduler ./cmd/scheduler;\
+	fi;
 
 vc-controller-manager: init
-	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vc-controller-manager ./cmd/controller-manager
+	GO111MODULE=off go get github.com/mitchellh/gox
+	CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/vc-controller-manager ./cmd/controller-manager
 
 vc-webhook-manager: init
-	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vc-webhook-manager ./cmd/webhook-manager
+	GO111MODULE=off go get github.com/mitchellh/gox
+	CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/vc-webhook-manager ./cmd/webhook-manager
 
 vcctl: init
-	go build -ldflags ${LD_FLAGS} -o=${BIN_DIR}/vcctl ./cmd/cli
+	GO111MODULE=off go get github.com/mitchellh/gox
+	CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/vcctl ./cmd/cli
 
 image_bins: init
 	GO111MODULE=off go get github.com/mitchellh/gox
@@ -84,30 +96,13 @@ image_bins: init
 	if [ ${SUPPORT_PLUGINS} = "yes" ];then\
 		CC=${CC} CGO_ENABLED=1 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-scheduler ./cmd/scheduler;\
 	else\
-	 	CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-scheduler ./cmd/scheduler;\
+		CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-scheduler ./cmd/scheduler;\
   	fi;
 
-images: image_bins
+images:
 	for name in controller-manager scheduler webhook-manager; do\
-		cp ${BIN_DIR}/${REL_OSARCH}/vc-$$name ./installer/dockerfile/$$name/;\
-		if [ ${REL_OSARCH} = linux/amd64 ];then\
-			docker build --no-cache -t $(IMAGE_PREFIX)-$$name:$(TAG) ./installer/dockerfile/$$name;\
-		elif [ ${REL_OSARCH} = linux/arm64 ];then\
-			docker build --no-cache -t $(IMAGE_PREFIX)-$$name-arm64:$(TAG) -f ./installer/dockerfile/$$name/Dockerfile.arm64 ./installer/dockerfile/$$name;\
-		else\
-			echo "only support x86_64 and arm64. Please build image according to your architecture";\
-		fi;\
-		rm installer/dockerfile/$$name/vc-$$name;\
+		docker buildx build -t "${IMAGE_PREFIX}-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type="${BUILDX_OUTPUT_TYPE}" --platform "${DOCKER_PLATFORMS}"; \
 	done
-
-webhook-manager-base-image:
-	if [ ${REL_OSARCH} = linux/amd64 ];then\
-		docker build --no-cache -t $(IMAGE_PREFIX)-webhook-manager-base:$(TAG) ./installer/dockerfile/webhook-manager/ -f ./installer/dockerfile/webhook-manager/Dockerfile.base;\
-	elif [ ${REL_OSARCH} = linux/arm64 ];then\
-		docker build --no-cache -t $(IMAGE_PREFIX)-webhook-manager-base-arm64:$(TAG) ./installer/dockerfile/webhook-manager/ -f ./installer/dockerfile/webhook-manager/Dockerfile.base.arm64;\
-	else\
-		echo "only support x86_64 and arm64. Please build webhook-manager-base-image according to your architecture";\
-	fi
 
 generate-code:
 	./hack/update-gencode.sh
@@ -197,6 +192,4 @@ endif
 
 update-development-yaml:
 	make generate-yaml TAG=latest RELEASE_DIR=installer
-	cp installer/volcano-latest.yaml installer/volcano-development-arm64.yaml
-	sed -r -i 's#(.*)image:([^:]*):(.*)#\1image:\2-arm64:\3#'  installer/volcano-development-arm64.yaml
 	mv installer/volcano-latest.yaml installer/volcano-development.yaml
