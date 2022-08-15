@@ -160,20 +160,29 @@ func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {
 }
 
 // GetGPUIndex returns the ID of the GPU
-func GetGPUIndex(pod *v1.Pod) int {
+//return the gpu index list
+func GetGPUIndex(pod *v1.Pod) []int {
 	if len(pod.Annotations) > 0 {
 		value, found := pod.Annotations[GPUIndex]
 		if found {
-			id, err := strconv.Atoi(value)
-			if err != nil {
-				klog.Errorf("invalid %s=%s", GPUIndex, value)
-				return -1
+			ids := strings.Split(value, ",")
+			if len(ids) == 0 {
+				klog.Errorf("invalid gpu index annotation %s=%s", GPUIndex, value)
 			}
-			return id
+			idSlice := make([]int, len(ids))
+			for idx, id := range ids {
+				j, err := strconv.Atoi(id)
+				if err != nil {
+					klog.Errorf("invalid %s=%s", GPUIndex, value)
+					return nil
+				}
+				idSlice[idx] = j
+			}
+			return idSlice
 		}
 	}
 
-	return -1
+	return nil
 }
 
 func escapeJSONPointer(p string) string {
@@ -184,11 +193,12 @@ func escapeJSONPointer(p string) string {
 }
 
 // AddGPUIndexPatch returns the patch adding GPU index
-func AddGPUIndexPatch(id int) string {
+func AddGPUIndexPatch(ids []int) string {
+	idsstring := strings.Trim(strings.Replace(fmt.Sprint(ids), " ", ",", -1), "[]")
 	return fmt.Sprintf(`[{"op": "add", "path": "/metadata/annotations/%s", "value":"%d"},`+
-		`{"op": "add", "path": "/metadata/annotations/%s", "value": "%d"}]`,
+		`{"op": "add", "path": "/metadata/annotations/%s", "value": "%s"}]`,
 		escapeJSONPointer(PredicateTime), time.Now().UnixNano(),
-		escapeJSONPointer(GPUIndex), id)
+		escapeJSONPointer(GPUIndex), idsstring)
 }
 
 // RemoveGPUIndexPatch returns the patch removing GPU index
