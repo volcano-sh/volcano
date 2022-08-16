@@ -32,7 +32,7 @@ func checkNodeGPUSharingPredicate(pod *v1.Pod, nodeInfo *api.NodeInfo) (bool, er
 		return true, nil
 	}
 	ids := predicateGPUbyMemory(pod, nodeInfo)
-	if ids == nil {
+	if len(ids) == 0 {
 		return false, fmt.Errorf("no enough gpu memory on node %s", nodeInfo.Name)
 	}
 	return true, nil
@@ -44,7 +44,7 @@ func checkNodeGPUNumberPredicate(pod *v1.Pod, nodeInfo *api.NodeInfo) (bool, err
 		return true, nil
 	}
 	ids := predicateGPUbyNumber(pod, nodeInfo)
-	if ids == nil {
+	if len(ids) == 0 {
 		return false, fmt.Errorf("no enough gpu number on node %s", nodeInfo.Name)
 	}
 	return true, nil

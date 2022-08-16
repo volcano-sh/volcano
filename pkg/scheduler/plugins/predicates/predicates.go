@@ -193,7 +193,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 					return
 				}
 				ids := predicateGPUbyMemory(pod, nodeInfo)
-				if ids == nil {
+				if len(ids) == 0 {
 					klog.Errorf("The node %s can't place the pod %s in ns %s", pod.Spec.NodeName, pod.Name, pod.Namespace)
 					return
 				}
@@ -222,7 +222,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 					return
 				}
 				ids := predicateGPUbyNumber(pod, nodeInfo)
-				if ids == nil {
+				if len(ids) == 0 {
 					klog.Errorf("The node %s can't place the pod %s in ns %s", pod.Spec.NodeName, pod.Name, pod.Namespace)
 					return
 				}
