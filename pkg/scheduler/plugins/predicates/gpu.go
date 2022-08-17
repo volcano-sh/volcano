@@ -32,7 +32,7 @@ func checkNodeGPUSharingPredicate(pod *v1.Pod, nodeInfo *api.NodeInfo) (bool, er
 		return true, nil
 	}
 	ids := predicateGPUbyMemory(pod, nodeInfo)
-	if ids == nil {
+	if len(ids) == 0 {
 		return false, fmt.Errorf("no enough gpu memory on node %s", nodeInfo.Name)
 	}
 	return true, nil
@@ -44,13 +44,13 @@ func checkNodeGPUNumberPredicate(pod *v1.Pod, nodeInfo *api.NodeInfo) (bool, err
 		return true, nil
 	}
 	ids := predicateGPUbyNumber(pod, nodeInfo)
-	if ids == nil {
+	if len(ids) == 0 {
 		return false, fmt.Errorf("no enough gpu number on node %s", nodeInfo.Name)
 	}
 	return true, nil
 }
 
-// predicateGPU returns the available GPU ID
+// predicateGPUbyMemory returns the available GPU ID
 func predicateGPUbyMemory(pod *v1.Pod, node *api.NodeInfo) []int {
 	gpuRequest := api.GetGPUMemoryOfPod(pod)
 	allocatableGPUs := node.GetDevicesIdleGPUMemory()
@@ -58,16 +58,11 @@ func predicateGPUbyMemory(pod *v1.Pod, node *api.NodeInfo) []int {
 	var devIDs []int
 
 	for devID := 0; devID < len(allocatableGPUs); devID++ {
-		availableGPU, ok := allocatableGPUs[devID]
-		if ok {
-			if availableGPU >= gpuRequest {
-				devIDs = append(devIDs, devID)
-				return devIDs
-			}
+		if availableGPU, ok := allocatableGPUs[devID]; ok && availableGPU >= gpuRequest {
+			devIDs = append(devIDs, devID)
 		}
 	}
-
-	return nil
+	return devIDs
 }
 
 // predicateGPU returns the available GPU IDs
@@ -75,19 +70,10 @@ func predicateGPUbyNumber(pod *v1.Pod, node *api.NodeInfo) []int {
 	gpuRequest := api.GetGPUNumberOfPod(pod)
 	allocatableGPUs := node.GetDevicesIdleGPUs()
 
-	var devIDs []int
-
 	if len(allocatableGPUs) < gpuRequest {
 		klog.Errorf("Not enough gpu cards")
 		return nil
 	}
 
-	for devID := 0; devID < len(allocatableGPUs); devID++ {
-		devIDs = append(devIDs, allocatableGPUs[devID])
-		if len(devIDs) == gpuRequest {
-			return devIDs
-		}
-	}
-
-	return nil
+	return allocatableGPUs[:gpuRequest]
 }
