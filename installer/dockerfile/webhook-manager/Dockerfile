@@ -12,11 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+FROM golang:1.18.5 AS builder
+WORKDIR /go/src/volcano.sh/
+ADD . volcano
+RUN cd volcano && make vc-webhook-manager
 
-# The base image is created via `Dockerfile.base`, the base image is cached
-# since the required packages change very rarely.
-FROM volcanosh/vc-webhook-manager-base:1.3.1
+FROM alpine:latest
+ARG KUBE_VERSION="1.16.6"
+ARG TARGETARCH
+RUN apk add --update ca-certificates && \
+    apk add --update openssl && \
+    apk add --update -t deps curl && \
+    curl -L https://storage.googleapis.com/kubernetes-release/release/v$KUBE_VERSION/bin/linux/$TARGETARCH/kubectl -o /usr/local/bin/kubectl && \
+    chmod +x /usr/local/bin/kubectl && \
+    apk del --purge deps && \
+    rm /var/cache/apk/*
 
-ADD vc-webhook-manager /vc-webhook-manager
-ADD gen-admission-secret.sh /gen-admission-secret.sh
+COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/vc-webhook-manager /vc-webhook-manager
+ADD ./installer/dockerfile/webhook-manager/gen-admission-secret.sh /gen-admission-secret.sh
 ENTRYPOINT ["/vc-webhook-manager"]

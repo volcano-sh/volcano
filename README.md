@@ -75,11 +75,7 @@ Note:
 Install Volcano on an existing Kubernetes cluster. This way is both available for x86_64 and arm64 architecture.
 
 ```
-For x86_64:
 kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/master/installer/volcano-development.yaml
-
-For arm64:
-kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/master/installer/volcano-development-arm64.yaml
 ```
 
 Enjoy! Volcano will create the following resources in `volcano-system` namespace.
