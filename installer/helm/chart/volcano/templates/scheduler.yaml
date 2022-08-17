@@ -121,7 +121,7 @@ spec:
             - --enable-metrics=true
             - -v=3
             - 2>&1
-          imagePullPolicy: "IfNotPresent"
+          imagePullPolicy: "Always"
           volumeMounts:
             - name: scheduler-config
               mountPath: /volcano.scheduler

@@ -433,7 +433,7 @@ spec:
     spec:
       containers:
         - image: quay.io/coreos/kube-state-metrics:v1.9.7
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           name: kube-state-metrics 
           ports:
             - name: http-metrics
