@@ -41,7 +41,7 @@ requirement to decide how to combine these functions. That's why `tier` is requi
 ## Tiers and Plugins
 * `Plugin` provides implementation details about scheduling algorithms by registering a series of functions. These functions
 will be called during actions are executed.
-* In general, a plugin mainly consists of 3 functions: `Name` `OnSessionOpen` `OnSession`. `Name` provides the name of the
+* In general, a plugin mainly consists of 3 functions: `Name` `OnSessionOpen` `OnSessionClose`. `Name` provides the name of the
 plugin. `OnSessionOpen` executes some operations when a session starts and register some functions about scheduling details.
 `OnSessionClose` clean up some resource when a session finishes.
 * Some plugins provide arguments for users to match their custom scenarios.
