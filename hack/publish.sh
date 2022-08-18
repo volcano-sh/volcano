@@ -65,18 +65,18 @@ if [[ "${DOCKER_USERNAME}xxx" == "xxx" ]];then
 fi
 
 echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
-echo "pushing ${IMAGE_PREFIX}-controller-manager:${VOLCANO_IMAGE_TAG}"
-docker tag ${IMAGE_PREFIX}-controller-manager:${VOLCANO_IMAGE_TAG} ${IMAGE_PREFIX}-controllers:${VOLCANO_IMAGE_TAG}
-docker push ${IMAGE_PREFIX}-controllers:${VOLCANO_IMAGE_TAG}
-docker push ${IMAGE_PREFIX}-controller-manager:${VOLCANO_IMAGE_TAG}
+echo "pushing ${IMAGE_PREFIX}/vc-controller-manager:${VOLCANO_IMAGE_TAG}"
+docker tag ${IMAGE_PREFIX}/vc-controller-manager:${VOLCANO_IMAGE_TAG} ${IMAGE_PREFIX}/vc-controllers:${VOLCANO_IMAGE_TAG}
+docker push ${IMAGE_PREFIX}/vc-controllers:${VOLCANO_IMAGE_TAG}
+docker push ${IMAGE_PREFIX}/vc-controller-manager:${VOLCANO_IMAGE_TAG}
 
-echo "pushing ${IMAGE_PREFIX}-scheduler:${VOLCANO_IMAGE_TAG}"
-docker push ${IMAGE_PREFIX}-scheduler:${VOLCANO_IMAGE_TAG}
+echo "pushing ${IMAGE_PREFIX}/vc-scheduler:${VOLCANO_IMAGE_TAG}"
+docker push ${IMAGE_PREFIX}/vc-scheduler:${VOLCANO_IMAGE_TAG}
 
-echo "pushing ${IMAGE_PREFIX}-webhook-manager:${VOLCANO_IMAGE_TAG}"
-docker tag ${IMAGE_PREFIX}-webhook-manager:${VOLCANO_IMAGE_TAG} ${IMAGE_PREFIX}-admission:${VOLCANO_IMAGE_TAG}
-docker push ${IMAGE_PREFIX}-admission:${VOLCANO_IMAGE_TAG}
-docker push ${IMAGE_PREFIX}-webhook-manager:${VOLCANO_IMAGE_TAG}
+echo "pushing ${IMAGE_PREFIX}/vc-webhook-manager:${VOLCANO_IMAGE_TAG}"
+docker tag ${IMAGE_PREFIX}/vc-webhook-manager:${VOLCANO_IMAGE_TAG} ${IMAGE_PREFIX}/vc-admission:${VOLCANO_IMAGE_TAG}
+docker push ${IMAGE_PREFIX}/vc-admission:${VOLCANO_IMAGE_TAG}
+docker push ${IMAGE_PREFIX}/vc-webhook-manager:${VOLCANO_IMAGE_TAG}
 
 echo "Generate release tar files"
 cd ${RELEASE_FOLDER}/
