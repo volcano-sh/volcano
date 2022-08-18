@@ -26,27 +26,27 @@ function kind-up-cluster {
 
   echo
   echo "Loading docker images into kind cluster"
-  kind load docker-image ${IMAGE_PREFIX}-controller-manager:${TAG} ${CLUSTER_CONTEXT}
-  kind load docker-image ${IMAGE_PREFIX}-scheduler:${TAG} ${CLUSTER_CONTEXT}
-  kind load docker-image ${IMAGE_PREFIX}-webhook-manager:${TAG} ${CLUSTER_CONTEXT}
+  kind load docker-image ${IMAGE_PREFIX}/vc-controller-manager:${TAG} ${CLUSTER_CONTEXT}
+  kind load docker-image ${IMAGE_PREFIX}/vc-scheduler:${TAG} ${CLUSTER_CONTEXT}
+  kind load docker-image ${IMAGE_PREFIX}/vc-webhook-manager:${TAG} ${CLUSTER_CONTEXT}
 }
 
 # check if the required images exist
 function check-images {
   echo "Checking whether the required images exist"
-  docker image inspect "${IMAGE_PREFIX}-controller-manager:${TAG}" > /dev/null
+  docker image inspect "${IMAGE_PREFIX}/vc-controller-manager:${TAG}" > /dev/null
   if [[ $? -ne 0 ]]; then
-    echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}-controller-manager:${TAG} does not exist"
+    echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/vc-controller-manager:${TAG} does not exist"
     exit 1
   fi
-  docker image inspect "${IMAGE_PREFIX}-scheduler:${TAG}" > /dev/null
+  docker image inspect "${IMAGE_PREFIX}/vc-scheduler:${TAG}" > /dev/null
   if [[ $? -ne 0 ]]; then
-    echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}-scheduler:${TAG} does not exist"
+    echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/vc-scheduler:${TAG} does not exist"
     exit 1
   fi
-  docker image inspect "${IMAGE_PREFIX}-webhook-manager:${TAG}" > /dev/null
+  docker image inspect "${IMAGE_PREFIX}/vc-webhook-manager:${TAG}" > /dev/null
   if [[ $? -ne 0 ]]; then
-    echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}-webhook-manager:${TAG} does not exist"
+    echo -e "\033[31mERROR\033[0m: ${IMAGE_PREFIX}/vc-webhook-manager:${TAG} does not exist"
     exit 1
   fi
 }
