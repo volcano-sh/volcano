@@ -94,7 +94,19 @@ func GetGPUNumberOfPod(pod *v1.Pod) int {
 	for _, container := range pod.Spec.Containers {
 		gpus += getGPUNumberOfContainer(container.Resources)
 	}
-	return gpus
+
+	var initGPUs int
+	for _, container := range pod.Spec.InitContainers {
+		res := getGPUNumberOfContainer(container.Resources)
+		if initGPUs < res {
+			initGPUs = res
+		}
+	}
+
+	if gpus > initGPUs {
+		return gpus
+	}
+	return initGPUs
 }
 
 // getGPUNumberOfContainer returns the number of GPUs required by the container.

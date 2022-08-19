@@ -97,3 +97,78 @@ func TestGetGPUMemoryOfPod(t *testing.T) {
 		})
 	}
 }
+
+func TestGetGPUNumberOfPod(t *testing.T) {
+	testCases := []struct {
+		name string
+		pod  *v1.Pod
+		want int
+	}{
+		{
+			name: "GPUs required only in Containers",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Resources: v1.ResourceRequirements{
+								Limits: v1.ResourceList{
+									VolcanoGPUNumber: resource.MustParse("1"),
+								},
+							},
+						},
+						{
+							Resources: v1.ResourceRequirements{
+								Limits: v1.ResourceList{
+									VolcanoGPUNumber: resource.MustParse("3"),
+								},
+							},
+						},
+					},
+				},
+			},
+			want: 4,
+		},
+		{
+			name: "GPUs required both in initContainers and Containers",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					InitContainers: []v1.Container{
+						{
+							Resources: v1.ResourceRequirements{
+								Limits: v1.ResourceList{
+									VolcanoGPUNumber: resource.MustParse("1"),
+								},
+							},
+						},
+						{
+							Resources: v1.ResourceRequirements{
+								Limits: v1.ResourceList{
+									VolcanoGPUNumber: resource.MustParse("3"),
+								},
+							},
+						},
+					},
+					Containers: []v1.Container{
+						{
+							Resources: v1.ResourceRequirements{
+								Limits: v1.ResourceList{
+									VolcanoGPUNumber: resource.MustParse("2"),
+								},
+							},
+						},
+					},
+				},
+			},
+			want: 3,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := GetGPUNumberOfPod(tc.pod)
+			if tc.want != got {
+				t.Errorf("unexpected result, want: %v, got: %v", tc.want, got)
+			}
+		})
+	}
+}

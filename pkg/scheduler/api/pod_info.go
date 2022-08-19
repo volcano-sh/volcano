@@ -159,30 +159,33 @@ func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {
 	return result
 }
 
-// GetGPUIndex returns the ID of the GPU
-//return the gpu index list
+// GetGPUIndex returns the index list of gpu cards
 func GetGPUIndex(pod *v1.Pod) []int {
-	if len(pod.Annotations) > 0 {
-		value, found := pod.Annotations[GPUIndex]
-		if found {
-			ids := strings.Split(value, ",")
-			if len(ids) == 0 {
-				klog.Errorf("invalid gpu index annotation %s=%s", GPUIndex, value)
-			}
-			idSlice := make([]int, len(ids))
-			for idx, id := range ids {
-				j, err := strconv.Atoi(id)
-				if err != nil {
-					klog.Errorf("invalid %s=%s", GPUIndex, value)
-					return nil
-				}
-				idSlice[idx] = j
-			}
-			return idSlice
-		}
+	if len(pod.Annotations) == 0 {
+		return nil
 	}
 
-	return nil
+	value, found := pod.Annotations[GPUIndex]
+	if !found {
+		return nil
+	}
+
+	ids := strings.Split(value, ",")
+	if len(ids) == 0 {
+		klog.Errorf("invalid gpu index annotation %s=%s", GPUIndex, value)
+		return nil
+	}
+
+	idSlice := make([]int, len(ids))
+	for idx, id := range ids {
+		j, err := strconv.Atoi(id)
+		if err != nil {
+			klog.Errorf("invalid %s=%s", GPUIndex, value)
+			return nil
+		}
+		idSlice[idx] = j
+	}
+	return idSlice
 }
 
 func escapeJSONPointer(p string) string {
