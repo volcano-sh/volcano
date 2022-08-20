@@ -30,21 +30,11 @@ set -o pipefail
 #   7. generate zip file
 
 VK_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
-BINARY_FOLDER=${VK_ROOT}/${BIN_DIR}/${REL_OSARCH}
 RELEASE_FOLDER=${VK_ROOT}/${RELEASE_DIR}
-RELEASE_BINARY=${RELEASE_FOLDER}/bin
 README_FILE=${VK_ROOT}/installer/README.md
 HELM_FOLDER=${VK_ROOT}/installer/helm
 VOLCANO_IMAGE_TAG=${TAG:-"latest"}
-DOCKER_PASSWORD=${DOCKER_PASSWORD:-""}
-DOCKER_USERNAME=${DOCKER_USERNAME:-""}
 LICENSE_FILE=${VK_ROOT}/LICENSE
-
-if [[ ! -d ${RELEASE_BINARY} ]];then
-    mkdir ${RELEASE_BINARY}
-fi
-
-cp -r ${BINARY_FOLDER} ${RELEASE_BINARY}
 
 cp ${README_FILE} ${RELEASE_FOLDER}
 
@@ -56,27 +46,6 @@ fi
 
 # overwrite the tag name into values yaml
 sed -i "s/latest/${VOLCANO_IMAGE_TAG}/g" ${RELEASE_FOLDER}/helm/chart/volcano/values.yaml
-
-if [[ "${DOCKER_USERNAME}xxx" == "xxx" ]];then
-  if [[ "${DOCKER_PASSWORD}xxx" == "xxx" ]];then
-    echo "docker username or password not found, quit uploading images"
-    exit 0
-  fi
-fi
-
-echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
-echo "pushing ${IMAGE_PREFIX}/vc-controller-manager:${VOLCANO_IMAGE_TAG}"
-docker tag ${IMAGE_PREFIX}/vc-controller-manager:${VOLCANO_IMAGE_TAG} ${IMAGE_PREFIX}/vc-controllers:${VOLCANO_IMAGE_TAG}
-docker push ${IMAGE_PREFIX}/vc-controllers:${VOLCANO_IMAGE_TAG}
-docker push ${IMAGE_PREFIX}/vc-controller-manager:${VOLCANO_IMAGE_TAG}
-
-echo "pushing ${IMAGE_PREFIX}/vc-scheduler:${VOLCANO_IMAGE_TAG}"
-docker push ${IMAGE_PREFIX}/vc-scheduler:${VOLCANO_IMAGE_TAG}
-
-echo "pushing ${IMAGE_PREFIX}/vc-webhook-manager:${VOLCANO_IMAGE_TAG}"
-docker tag ${IMAGE_PREFIX}/vc-webhook-manager:${VOLCANO_IMAGE_TAG} ${IMAGE_PREFIX}/vc-admission:${VOLCANO_IMAGE_TAG}
-docker push ${IMAGE_PREFIX}/vc-admission:${VOLCANO_IMAGE_TAG}
-docker push ${IMAGE_PREFIX}/vc-webhook-manager:${VOLCANO_IMAGE_TAG}
 
 echo "Generate release tar files"
 cd ${RELEASE_FOLDER}/
