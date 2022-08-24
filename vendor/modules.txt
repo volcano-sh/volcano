@@ -993,6 +993,7 @@ k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeports
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/noderesources
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeunschedulable
+k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding/metrics
