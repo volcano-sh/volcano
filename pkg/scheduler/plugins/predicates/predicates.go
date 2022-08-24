@@ -32,6 +32,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeports"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeunschedulable"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -268,6 +269,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	features := feature.Features{}
 	plugin, _ = interpodaffinity.New(plArgs, handle, features)
 	podAffinityFilter := plugin.(*interpodaffinity.InterPodAffinity)
+	// 6. NodeVolumeLimits
+	plugin, _ = nodevolumelimits.NewCSI(nil, handle, features)
+	nodeVolumeLimitsCSIFilter := plugin.(*nodevolumelimits.CSILimits)
 
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
 		nodeInfo, found := nodeMap[node.Name]
@@ -343,6 +347,12 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		status = podAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 		if !status.IsSuccess() {
 			return fmt.Errorf("plugin %s predicates failed %s", interpodaffinity.Name, status.Message())
+		}
+
+		// Check NodeVolumeLimits
+		status = nodeVolumeLimitsCSIFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
+		if !status.IsSuccess() {
+			return fmt.Errorf("plugin %s predicates failed %s", nodeVolumeLimitsCSIFilter.Name(), status.Message())
 		}
 
 		if predicate.gpuSharingEnable {
