@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
+	"github.com/spf13/pflag"
+
 	apiv1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -13,6 +15,7 @@ import (
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
@@ -57,6 +60,18 @@ func TestEventHandler(t *testing.T) {
 	framework.RegisterPluginBuilder(priority.PluginName, priority.New)
 	options.ServerOpts = options.NewServerOption()
 	defer framework.CleanupPluginBuilders()
+
+	option := options.NewServerOption()
+	option.AddFlags(pflag.CommandLine)
+	option.RegisterOptions()
+
+	config, err := kube.BuildConfig(option.KubeClientOptions)
+	if err != nil {
+		return
+	}
+
+	sc := cache.New(config, option.SchedulerNames, option.DefaultQueue, option.NodeSelector)
+	schedulerCache := sc.(*cache.SchedulerCache)
 
 	// pending pods
 	w1 := util.BuildPod("ns1", "worker-1", "", apiv1.PodPending, util.BuildResourceList("3", "3k"), "pg1", map[string]string{"role": "worker"}, map[string]string{"selector": "worker"})
@@ -141,16 +156,6 @@ func TestEventHandler(t *testing.T) {
 				t.Logf("%s: [Event] %s", test.name, event)
 			}
 		}()
-		schedulerCache := &cache.SchedulerCache{
-			Nodes:           make(map[string]*api.NodeInfo),
-			Jobs:            make(map[api.JobID]*api.JobInfo),
-			PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
-			Queues:          make(map[api.QueueID]*api.QueueInfo),
-			Binder:          binder,
-			StatusUpdater:   &util.FakeStatusUpdater{},
-			VolumeBinder:    &util.FakeVolumeBinder{},
-			Recorder:        recorder,
-		}
 		for _, node := range test.nodes {
 			schedulerCache.AddNode(node)
 		}
