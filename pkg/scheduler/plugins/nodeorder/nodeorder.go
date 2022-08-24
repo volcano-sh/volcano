@@ -112,10 +112,10 @@ type priorityWeight struct {
 //	    arguments:
 //	      leastrequested.weight: 1
 //	      mostrequested.weight: 0
-//	      nodeaffinity.weight: 1
-//	      podaffinity.weight: 1
+//	      nodeaffinity.weight: 2
+//	      podaffinity.weight: 2
 //	      balancedresource.weight: 1
-//	      tainttoleration.weight: 1
+//	      tainttoleration.weight: 3
 //	      imagelocality.weight: 1
 //	      podtopologyspread.weight: 2
 func calculateWeight(args framework.Arguments) priorityWeight {
@@ -125,10 +125,10 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 	weight := priorityWeight{
 		leastReqWeight:          1,
 		mostReqWeight:           0,
-		nodeAffinityWeight:      1,
-		podAffinityWeight:       1,
+		nodeAffinityWeight:      2,
+		podAffinityWeight:       2,
 		balancedResourceWeight:  1,
-		taintTolerationWeight:   1,
+		taintTolerationWeight:   3,
 		imageLocalityWeight:     1,
 		podTopologySpreadWeight: 2, // be consistent with kubernetes default setting.
 		selectorSpreadWeight:    0,
