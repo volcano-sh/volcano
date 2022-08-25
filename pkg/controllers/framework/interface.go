@@ -31,6 +31,8 @@ type ControllerOption struct {
 	SchedulerNames        []string
 	WorkerNum             uint32
 	MaxRequeueNum         int
+
+	InheritOwnerAnnotations bool
 }
 
 // Controller is the interface of all controllers.
