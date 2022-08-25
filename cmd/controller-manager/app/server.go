@@ -126,6 +126,7 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 	controllerOpt.KubeClient = kubeclientset.NewForConfigOrDie(config)
 	controllerOpt.VolcanoClient = vcclientset.NewForConfigOrDie(config)
 	controllerOpt.SharedInformerFactory = informers.NewSharedInformerFactory(controllerOpt.KubeClient, 0)
+	controllerOpt.InheritOwnerAnnotations = opt.InheritOwnerAnnotations
 
 	return func(ctx context.Context) {
 		framework.ForeachController(func(c framework.Controller) {

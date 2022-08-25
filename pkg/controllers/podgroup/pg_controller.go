@@ -57,6 +57,9 @@ type pgcontroller struct {
 	queue workqueue.RateLimitingInterface
 
 	schedulerNames []string
+
+	// To determine whether inherit owner's annotations for pods when create podgroup
+	inheritOwnerAnnotations bool
 }
 
 func (pg *pgcontroller) Name() string {
@@ -72,6 +75,7 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 
 	pg.schedulerNames = make([]string, len(opt.SchedulerNames))
 	copy(pg.schedulerNames, opt.SchedulerNames)
+	pg.inheritOwnerAnnotations = opt.InheritOwnerAnnotations
 
 	pg.podInformer = opt.SharedInformerFactory.Core().V1().Pods()
 	pg.podLister = pg.podInformer.Lister()
