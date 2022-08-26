@@ -67,7 +67,7 @@ func Run(config *options.Config) error {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
 	recorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: commonutil.GenerateComponentName(config.SchedulerNames)})
-	router.ForEachAdmission(config, func(service *router.AdmissionService) {
+	if err := router.ForEachAdmission(config, func(service *router.AdmissionService) error {
 		if service.Config != nil {
 			service.Config.VolcanoClient = vClient
 			service.Config.KubeClient = kubeClient
@@ -78,11 +78,16 @@ func Run(config *options.Config) error {
 
 		klog.V(3).Infof("Registered '%s' as webhook.", service.Path)
 		http.HandleFunc(service.Path, service.Handler)
-	})
 
-	if err = addCaCertForWebhook(kubeClient, config.CaCertData); err != nil {
-		return fmt.Errorf("failed to add caCert for webhook %v", err)
+		klog.V(3).Infof("Add CaCert for webhook <%s>", service.Path)
+		if err = addCaCertForWebhook(kubeClient, service, config.CaCertData); err != nil {
+			return fmt.Errorf("failed to add caCert for webhook %v", err)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
+
 	klog.V(3).Infof("Successfully added caCert for all webhooks")
 
 	webhookServeError := make(chan struct{})
