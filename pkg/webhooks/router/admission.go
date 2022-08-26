@@ -22,6 +22,8 @@ import (
 	"strings"
 	"sync"
 
+	"k8s.io/klog"
+
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
 )
 
@@ -48,11 +50,15 @@ func RegisterAdmission(service *AdmissionService) error {
 	return nil
 }
 
-func ForEachAdmission(config *options.Config, handler func(*AdmissionService)) {
+func ForEachAdmission(config *options.Config, handler func(*AdmissionService) error) error {
 	admissions := strings.Split(strings.TrimSpace(config.EnabledAdmission), ",")
+	klog.V(3).Infof("Enabled admissions are: %v, registered map are: %v", admissions, admissionMap)
 	for _, admission := range admissions {
 		if service, found := admissionMap[admission]; found {
-			handler(service)
+			if err := handler(service); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
