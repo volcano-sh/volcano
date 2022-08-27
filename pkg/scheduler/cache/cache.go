@@ -353,7 +353,7 @@ func (pgb *podgroupBinder) Bind(job *schedulingapi.JobInfo, cluster string) (*sc
 		pod := task.Pod
 		pod.Annotations[batch.ForwardClusterKey] = cluster
 		pod.ResourceVersion = ""
-		_, err := pgb.kubeclient.CoreV1().Pods(pod.Namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{})
+		_, err := pgb.kubeclient.CoreV1().Pods(pod.Namespace).Update(context.TODO(), pod, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("Error while update pod annotation with error: %v", err)
 			return nil, err
