@@ -22,6 +22,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"strings"
 	"time"
 
 	v1 "k8s.io/api/admissionregistration/v1"
@@ -34,24 +35,15 @@ import (
 
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
+	"volcano.sh/volcano/pkg/webhooks/router"
 )
 
-var (
-	validatingWebhooksName = []string{
-		"volcano-admission-service-jobs-validate",
-		"volcano-admission-service-pods-validate",
-		"volcano-admission-service-queues-validate",
-	}
-	mutatingWebhooksName = []string{
-		"volcano-admission-service-pods-mutate",
-		"volcano-admission-service-queues-mutate",
-		"volcano-admission-service-podgroups-mutate",
-		"volcano-admission-service-jobs-mutate",
-	}
-)
+const volcanoAdmissionPrefix = "volcano-admission-service"
 
-func addCaCertForWebhook(kubeClient *kubernetes.Clientset, caBundle []byte) error {
-	for _, mutatingWebhookName := range mutatingWebhooksName {
+func addCaCertForWebhook(kubeClient *kubernetes.Clientset, service *router.AdmissionService, caBundle []byte) error {
+	if service.MutatingConfig != nil {
+		// update MutatingWebhookConfigurations
+		var mutatingWebhookName = volcanoAdmissionPrefix + strings.ReplaceAll(service.Path, "/", "-")
 		var mutatingWebhook *v1.MutatingWebhookConfiguration
 		webhookChanged := false
 		if err := wait.Poll(time.Second, 5*time.Minute, func() (done bool, err error) {
@@ -82,7 +74,9 @@ func addCaCertForWebhook(kubeClient *kubernetes.Clientset, caBundle []byte) erro
 		}
 	}
 
-	for _, validatingWebhookName := range validatingWebhooksName {
+	if service.ValidatingConfig != nil {
+		// update ValidatingWebhookConfigurations
+		var validatingWebhookName = volcanoAdmissionPrefix + strings.ReplaceAll(service.Path, "/", "-")
 		var validatingWebhook *v1.ValidatingWebhookConfiguration
 		webhookChanged := false
 		if err := wait.Poll(time.Second, 5*time.Minute, func() (done bool, err error) {
