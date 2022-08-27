@@ -84,6 +84,7 @@ spec:
       {{- end }}
       containers:
         - args:
+            - --enabled-admission={{ .Values.custom.enabled_admissions }}
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
             - --tls-private-key-file=/admission.local.config/certificates/tls.key
             - --ca-cert-file=/admission.local.config/certificates/ca.crt

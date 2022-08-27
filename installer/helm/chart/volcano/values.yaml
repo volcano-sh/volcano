@@ -13,10 +13,4 @@ custom:
   admission_enable: true
   controller_enable: true
   scheduler_enable: true
-  pods_mutatingwebhook_enable: true
-  queues_mutatingwebhook_enable: true
-  podgroups_mutatingwebhook_enable: true
-  jobs_mutatingwebhook_enable: true
-  jobs_validatingwebhook_enable: true
-  pods_validatingwebhook_enable: true
-  queues_validatingwebhook_enable: true
+  enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
