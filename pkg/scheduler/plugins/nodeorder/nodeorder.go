@@ -196,6 +196,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	// Initialize k8s scheduling plugins
 	handle := k8s.NewFrameworkHandle(nodeMap, ssn.KubeClient(), ssn.InformerFactory())
+
 	// 1. NodeResourcesLeastAllocated
 	leastAllocatedArgs := &config.NodeResourcesFitArgs{
 		ScoringStrategy: &config.ScoringStrategy{
@@ -213,7 +214,6 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			Resources: []config.ResourceSpec{{Name: "cpu", Weight: 1}, {Name: "memory", Weight: 1}},
 		},
 	}
-	noderesources.NewFit(mostAllocatedArgs, handle, fts)
 	p, _ = noderesources.NewFit(mostAllocatedArgs, handle, fts)
 	mostAllocation := p.(*noderesources.Fit)
 
@@ -368,6 +368,8 @@ func interPodAffinityScore(
 	workerNum := 16
 	errCh := make(chan error, workerNum)
 	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
+	defer parallelizeCancel()
+
 	workqueue.ParallelizeUntil(parallelizeContext, workerNum, len(nodes), func(index int) {
 		nodeName := nodes[index].Name
 		ctx, cancel := context.WithCancel(context.Background())
@@ -424,6 +426,8 @@ func taintTolerationScore(
 	workerNum := 16
 	errCh := make(chan error, workerNum)
 	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
+	defer parallelizeCancel()
+
 	workqueue.ParallelizeUntil(parallelizeContext, workerNum, len(nodes), func(index int) {
 		nodeName := nodes[index].Name
 		ctx, cancel := context.WithCancel(context.Background())
