@@ -57,7 +57,7 @@ func predicateGPUbyMemory(pod *v1.Pod, node *api.NodeInfo) []int {
 
 	var devIDs []int
 
-	for devID := 0; devID < len(allocatableGPUs); devID++ {
+	for devID := range allocatableGPUs {
 		if availableGPU, ok := allocatableGPUs[devID]; ok && availableGPU >= gpuRequest {
 			devIDs = append(devIDs, devID)
 		}
