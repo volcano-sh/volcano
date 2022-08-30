@@ -80,7 +80,7 @@ type VolumeSpec struct {
 - By default, this is empty. The task instance will use volumes defined in `JobSpec.Volumes` and `TaskSpec.Template`.
 
 - If `Volumes` are specified, these pvcs are referenced by all the pods of the task.
-  If the the VolumeSpec specifies the `GenerateName` while the `VolumeClaimName` left empty,  the pvc name is generated with task index suffixed by job controller.
+  If the VolumeSpec specifies the `GenerateName` while the `VolumeClaimName` left empty,  the pvc name is generated with task index suffixed by job controller.
   Otherwise, the explicitly declared pvc will be shared by all pods of a task.
 
 - If the pvcs does not exist, job controller will create them.

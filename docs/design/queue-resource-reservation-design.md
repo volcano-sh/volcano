@@ -121,7 +121,7 @@ lokced,The smaller the impact on the cluster.
 ##### Lock Strategy
 * schedule relock
 
-for every 5s or 10s. the worker in the  queueController  will find the best combination nodes for a a queue.
+for every 5s or 10s. the worker in the  queueController  will find the best combination nodes for a queue.
 and update the queue's locked nodes,and caculate the idle resources on the locked nodes.
 
 
