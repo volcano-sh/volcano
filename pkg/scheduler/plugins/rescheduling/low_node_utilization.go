@@ -196,7 +196,7 @@ func isContinueEvictPods(usage *NodeUtilization, totalAllocatableResource map[v1
 	}
 
 	for _, amount := range totalAllocatableResource {
-		if amount.CmpInt64(0) == 0 {
+		if amount.CmpInt64(0) <= 0 {
 			return false
 		}
 	}
