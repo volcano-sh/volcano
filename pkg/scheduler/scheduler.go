@@ -121,6 +121,11 @@ func (pc *Scheduler) runOnce() {
 
 func (pc *Scheduler) loadSchedulerConf() {
 	klog.V(4).Infof("Start loadSchedulerConf ...")
+	defer func() {
+		actions, plugins := pc.getSchedulerConf()
+		klog.V(4).Infof("Successfully loaded scheduler conf, actions: %v, plugins: %v", actions, plugins)
+	}()
+
 	var err error
 	pc.once.Do(func() {
 		pc.actions, pc.plugins, pc.configurations, pc.metricsConf, err = unmarshalSchedulerConf(defaultSchedulerConf)
@@ -152,6 +157,18 @@ func (pc *Scheduler) loadSchedulerConf() {
 	pc.configurations = configurations
 	pc.metricsConf = metricsConf
 	pc.mutex.Unlock()
+}
+
+func (pc *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
+	for _, action := range pc.actions {
+		actions = append(actions, action.Name())
+	}
+	for _, tier := range pc.plugins {
+		for _, plugin := range tier.Plugins {
+			plugins = append(plugins, plugin.Name)
+		}
+	}
+	return
 }
 
 func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
