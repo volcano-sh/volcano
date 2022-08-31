@@ -198,20 +198,19 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 					klog.Errorf("The node %s can't place the pod %s in ns %s", pod.Spec.NodeName, pod.Name, pod.Namespace)
 					return
 				}
-				patch := api.AddGPUIndexPatch(ids)
+				id := ids[0]
+				patch := api.AddGPUIndexPatch([]int{id})
 				pod, err := kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType, []byte(patch), metav1.PatchOptions{})
 				if err != nil {
 					klog.Errorf("Patch pod %s failed with patch %s: %v", pod.Name, patch, err)
 					return
 				}
-				for _, id := range ids {
-					dev, ok := nodeInfo.GPUDevices[id]
-					if !ok {
-						klog.Errorf("Failed to get GPU %d from node %s", id, nodeName)
-						return
-					}
-					dev.PodMap[string(pod.UID)] = pod
+				dev, ok := nodeInfo.GPUDevices[id]
+				if !ok {
+					klog.Errorf("Failed to get GPU %d from node %s", id, nodeName)
+					return
 				}
+				dev.PodMap[string(pod.UID)] = pod
 				klog.V(4).Infof("predicates with gpu sharing, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
 			}
 
