@@ -54,7 +54,7 @@ const (
 	BalancedResourceWeight = "balancedresource.weight"
 	// MostRequestedWeight is the key for providing Most Requested Priority Weight in YAML
 	MostRequestedWeight = "mostrequested.weight"
-	// TaintTolerationWeight is the key for providing Most Requested Priority Weight in YAML
+	// TaintTolerationWeight is the key for providing Taint Toleration Priority Weight in YAML
 	TaintTolerationWeight = "tainttoleration.weight"
 	// ImageLocalityWeight is the key for providing Image Locality Priority Weight in YAML
 	ImageLocalityWeight = "imagelocality.weight"
@@ -65,7 +65,7 @@ type nodeOrderPlugin struct {
 	pluginArguments framework.Arguments
 }
 
-// New function returns prioritize plugin object.
+// New function returns nodeorder plugin object.
 func New(arguments framework.Arguments) framework.Plugin {
 	return &nodeOrderPlugin{pluginArguments: arguments}
 }
@@ -87,7 +87,7 @@ type priorityWeight struct {
 // calculateWeight from the provided arguments.
 //
 // Currently only supported priorities are nodeaffinity, podaffinity, leastrequested,
-// mostrequested, balancedresouce, imagelocality.
+// mostrequested, balancedresouce, imagelocality, tainttoleration.
 //
 // User should specify priority weights in the config in this format:
 //
