@@ -34,6 +34,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeunschedulable"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -309,9 +310,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	plugin, _ = tainttoleration.New(nil, handle)
 	tolerationFilter := plugin.(*tainttoleration.TaintToleration)
 	// 5. InterPodAffinity
-	plArgs := &config.InterPodAffinityArgs{}
+	interPodAffinityArgs := &config.InterPodAffinityArgs{}
 	features := feature.Features{}
-	plugin, _ = interpodaffinity.New(plArgs, handle, features)
+	plugin, _ = interpodaffinity.New(interPodAffinityArgs, handle, features)
 	podAffinityFilter := plugin.(*interpodaffinity.InterPodAffinity)
 	// 6. NodeVolumeLimits
 	plugin, _ = nodevolumelimits.NewCSI(nil, handle, features)
@@ -319,6 +320,14 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	// 7. VolumeZone
 	plugin, _ = volumezone.New(nil, handle)
 	volumeZoneFilter := plugin.(*volumezone.VolumeZone)
+	// 8. VolumeBinding
+	volumeBindingArgs := &config.VolumeBindingArgs{
+		TypeMeta:           metav1.TypeMeta{},
+		BindTimeoutSeconds: volumebinding.DefaultBindTimeoutSeconds,
+		Shape:              nil,
+	}
+	plugin, _ = volumebinding.New(volumeBindingArgs, handle, features)
+	volumebindingFilter := plugin.(*volumebinding.VolumeBinding)
 
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
 		nodeInfo, found := nodeMap[node.Name]
@@ -404,6 +413,17 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		status = volumeZoneFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 		if !status.IsSuccess() {
 			return fmt.Errorf("plugin %s predicates failed %s", volumeZoneFilter.Name(), status.Message())
+		}
+
+		// Check VolumeBinding
+		status = volumebindingFilter.PreFilter(context.TODO(), state, task.Pod)
+		if !status.IsSuccess() {
+			return fmt.Errorf("plugin %s pre-predicates failed %s", volumebindingFilter.Name(), status.Message())
+		}
+
+		status = volumebindingFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
+		if !status.IsSuccess() {
+			return fmt.Errorf("plugin %s predicates failed %s", volumebindingFilter.Name(), status.Message())
 		}
 
 		if predicate.gpuSharingEnable {
