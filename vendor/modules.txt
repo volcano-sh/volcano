@@ -862,6 +862,8 @@ k8s.io/client-go/util/workqueue
 # k8s.io/cloud-provider v0.23.0 => k8s.io/cloud-provider v0.23.0
 ## explicit; go 1.16
 k8s.io/cloud-provider
+k8s.io/cloud-provider/volume
+k8s.io/cloud-provider/volume/helpers
 # k8s.io/code-generator v0.23.0 => k8s.io/code-generator v0.23.0
 ## explicit; go 1.16
 k8s.io/code-generator
@@ -997,6 +999,7 @@ k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding/metrics
+k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone
 k8s.io/kubernetes/pkg/scheduler/util
 k8s.io/kubernetes/pkg/security/apparmor
 k8s.io/kubernetes/pkg/securitycontext
