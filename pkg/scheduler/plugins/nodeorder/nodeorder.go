@@ -33,6 +33,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/noderesources"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/selectorspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
@@ -65,6 +66,8 @@ const (
 	selectorSpreadWeight = "selectorspread.weight"
 	// VolumeBinding is the key for providing Volume Binding Priority Weight in YAML
 	volumeBindingWeight = "volumebinding.weight"
+	// PodTopologySpreadWeight is the key for providing Pod Topology Spread Priority Weight in YAML
+	PodTopologySpreadWeight = "podtopologyspread.weight"
 )
 
 type nodeOrderPlugin struct {
@@ -82,15 +85,16 @@ func (pp *nodeOrderPlugin) Name() string {
 }
 
 type priorityWeight struct {
-	leastReqWeight         int
-	mostReqWeight          int
-	nodeAffinityWeight     int
-	podAffinityWeight      int
-	balancedResourceWeight int
-	taintTolerationWeight  int
-	imageLocalityWeight    int
-	selectorSpreadWeight   int
-	volumeBindingWeight    int
+	leastReqWeight          int
+	mostReqWeight           int
+	nodeAffinityWeight      int
+	podAffinityWeight       int
+	balancedResourceWeight  int
+	taintTolerationWeight   int
+	imageLocalityWeight     int
+	selectorSpreadWeight    int
+	volumeBindingWeight     int
+	podTopologySpreadWeight int
 }
 
 // calculateWeight from the provided arguments.
@@ -100,39 +104,41 @@ type priorityWeight struct {
 //
 // User should specify priority weights in the config in this format:
 //
-//  actions: "reclaim, allocate, backfill, preempt"
-//  tiers:
-//  - plugins:
-//    - name: priority
-//    - name: gang
-//    - name: conformance
-//  - plugins:
-//    - name: drf
-//    - name: predicates
-//    - name: proportion
-//    - name: nodeorder
-//      arguments:
-//        leastrequested.weight: 1
-//        mostrequested.weight: 0
-//        nodeaffinity.weight: 1
-//        podaffinity.weight: 1
-//        balancedresource.weight: 1
-//        tainttoleration.weight: 1
-//        imagelocality.weight: 1
+//	actions: "reclaim, allocate, backfill, preempt"
+//	tiers:
+//	- plugins:
+//	  - name: priority
+//	  - name: gang
+//	  - name: conformance
+//	- plugins:
+//	  - name: drf
+//	  - name: predicates
+//	  - name: proportion
+//	  - name: nodeorder
+//	    arguments:
+//	      leastrequested.weight: 1
+//	      mostrequested.weight: 0
+//	      nodeaffinity.weight: 1
+//	      podaffinity.weight: 1
+//	      balancedresource.weight: 1
+//	      tainttoleration.weight: 1
+//	      imagelocality.weight: 1
+//	      podtopologyspread.weight: 2
 func calculateWeight(args framework.Arguments) priorityWeight {
 	// Initial values for weights.
 	// By default, for backward compatibility and for reasonable scores,
 	// least requested priority is enabled and most requested priority is disabled.
 	weight := priorityWeight{
-		leastReqWeight:         1,
-		mostReqWeight:          0,
-		nodeAffinityWeight:     1,
-		podAffinityWeight:      1,
-		balancedResourceWeight: 1,
-		taintTolerationWeight:  1,
-		imageLocalityWeight:    1,
-		selectorSpreadWeight:   0,
-		volumeBindingWeight:    1,
+		leastReqWeight:          1,
+		mostReqWeight:           0,
+		nodeAffinityWeight:      1,
+		podAffinityWeight:       1,
+		balancedResourceWeight:  1,
+		taintTolerationWeight:   1,
+		imageLocalityWeight:     1,
+		selectorSpreadWeight:    0,
+		volumeBindingWeight:     1,
+		podTopologySpreadWeight: 2, // be consistent with kubernetes default setting.
 	}
 
 	// Checks whether nodeaffinity.weight is provided or not, if given, modifies the value in weight struct.
@@ -162,6 +168,8 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 	// Checks whether volumebinding.weight is provided or not, if given, modifies the value in weight struct.
 	args.GetInt(&weight.volumeBindingWeight, volumeBindingWeight)
 
+	// Checks whether podtopologyspread.weight is provided or not, if given, modifies the value in weight struct.
+	args.GetInt(&weight.podTopologySpreadWeight, PodTopologySpreadWeight)
 	return weight
 }
 
@@ -362,6 +370,12 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	p, _ = selectorspread.New(nil, handle)
 	selectorSpread := p.(*selectorspread.SelectorSpread)
 
+	ptsArgs := &config.PodTopologySpreadArgs{
+		DefaultingType: config.SystemDefaulting,
+	}
+	p, _ = podtopologyspread.New(ptsArgs, handle)
+	podTopologySpread := p.(*podtopologyspread.PodTopologySpread)
+
 	batchNodeOrderFn := func(task *api.TaskInfo, nodeInfo []*api.NodeInfo) (map[string]float64, error) {
 		// InterPodAffinity
 		state := k8sframework.NewCycleState()
@@ -386,8 +400,13 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			return nil, err
 		}
 
+		podTopologySpreadScores, err := podTopologySpreadScore(podTopologySpread, state, task.Pod, nodes, weight.podTopologySpreadWeight)
+		if err != nil {
+			return nil, err
+		}
+
 		for _, node := range nodes {
-			nodeScores[node.Name] = podAffinityScores[node.Name] + nodeTolerationScores[node.Name] + selectorSpreadScores[node.Name]
+			nodeScores[node.Name] = podAffinityScores[node.Name] + nodeTolerationScores[node.Name] + selectorSpreadScores[node.Name] + podTopologySpreadScores[node.Name]
 		}
 
 		klog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, nodeScores)
@@ -408,7 +427,7 @@ func interPodAffinityScore(
 		return nil, preScoreStatus.AsError()
 	}
 
-	nodescoreList := make(k8sframework.NodeScoreList, len(nodes))
+	nodeScoreList := make(k8sframework.NodeScoreList, len(nodes))
 	// the default parallelization worker number is 16.
 	// the whole scoring will fail if one of the processes failed.
 	// so just create a parallelizeContext to control the whole ParallelizeUntil process.
@@ -430,7 +449,7 @@ func interPodAffinityScore(
 			errCh <- fmt.Errorf("calculate inter pod affinity priority failed %v", status.Message())
 			return
 		}
-		nodescoreList[index] = k8sframework.NodeScore{
+		nodeScoreList[index] = k8sframework.NodeScore{
 			Name:  nodeName,
 			Score: s,
 		}
@@ -442,16 +461,16 @@ func interPodAffinityScore(
 	default:
 	}
 
-	interPodAffinity.NormalizeScore(context.TODO(), state, pod, nodescoreList)
+	interPodAffinity.NormalizeScore(context.TODO(), state, pod, nodeScoreList)
 
 	nodeScores := make(map[string]float64, len(nodes))
-	for i, nodeScore := range nodescoreList {
+	for i, nodeScore := range nodeScoreList {
 		// return error if score plugin returns invalid score.
 		if nodeScore.Score > k8sframework.MaxNodeScore || nodeScore.Score < k8sframework.MinNodeScore {
 			return nil, fmt.Errorf("inter pod affinity returns an invalid score %v for node %s", nodeScore.Score, nodeScore.Name)
 		}
 		nodeScore.Score *= int64(podAffinityWeight)
-		nodescoreList[i] = nodeScore
+		nodeScoreList[i] = nodeScore
 		nodeScores[nodeScore.Name] = float64(nodeScore.Score)
 	}
 
@@ -471,7 +490,7 @@ func taintTolerationScore(
 		return nil, preScoreStatus.AsError()
 	}
 
-	nodescoreList := make(k8sframework.NodeScoreList, len(nodes))
+	nodeScoreList := make(k8sframework.NodeScoreList, len(nodes))
 	// size of errCh should be no less than parallelization number, see interPodAffinityScore.
 	workerNum := 16
 	errCh := make(chan error, workerNum)
@@ -486,7 +505,7 @@ func taintTolerationScore(
 			errCh <- fmt.Errorf("calculate taint toleration priority failed %v", status.Message())
 			return
 		}
-		nodescoreList[index] = k8sframework.NodeScore{
+		nodeScoreList[index] = k8sframework.NodeScore{
 			Name:  nodeName,
 			Score: s,
 		}
@@ -498,16 +517,16 @@ func taintTolerationScore(
 	default:
 	}
 
-	taintToleration.NormalizeScore(context.TODO(), cycleState, pod, nodescoreList)
+	taintToleration.NormalizeScore(context.TODO(), cycleState, pod, nodeScoreList)
 
 	nodeScores := make(map[string]float64, len(nodes))
-	for i, nodeScore := range nodescoreList {
+	for i, nodeScore := range nodeScoreList {
 		// return error if score plugin returns invalid score.
 		if nodeScore.Score > k8sframework.MaxNodeScore || nodeScore.Score < k8sframework.MinNodeScore {
 			return nil, fmt.Errorf("taint toleration returns an invalid score %v for node %s", nodeScore.Score, nodeScore.Name)
 		}
 		nodeScore.Score *= int64(taintTolerationWeight)
-		nodescoreList[i] = nodeScore
+		nodeScoreList[i] = nodeScore
 		nodeScores[nodeScore.Name] = float64(nodeScore.Score)
 	}
 
@@ -568,6 +587,62 @@ func selectorSpreadScore(
 	}
 
 	klog.V(4).Infof("selector spread Score for task %s/%s is: %v", pod.Namespace, pod.Name, nodeScores)
+	return nodeScores, nil
+}
+
+func podTopologySpreadScore(
+	podTopologySpread *podtopologyspread.PodTopologySpread,
+	cycleState *k8sframework.CycleState,
+	pod *v1.Pod,
+	nodes []*v1.Node,
+	podTopologySpreadWeight int,
+) (map[string]float64, error) {
+	preScoreStatus := podTopologySpread.PreScore(context.TODO(), cycleState, pod, nodes)
+	if !preScoreStatus.IsSuccess() {
+		return nil, preScoreStatus.AsError()
+	}
+
+	nodeScoreList := make(k8sframework.NodeScoreList, len(nodes))
+	// size of errCh should be no less than parallelization number, see interPodAffinityScore.
+	workerNum := 16
+	errCh := make(chan error, workerNum)
+	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
+	workqueue.ParallelizeUntil(parallelizeContext, workerNum, len(nodes), func(index int) {
+		nodeName := nodes[index].Name
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		s, status := podTopologySpread.Score(ctx, cycleState, pod, nodeName)
+		if !status.IsSuccess() {
+			parallelizeCancel()
+			errCh <- fmt.Errorf("calculate pod topology spread priority failed %v", status.Message())
+			return
+		}
+		nodeScoreList[index] = k8sframework.NodeScore{
+			Name:  nodeName,
+			Score: s,
+		}
+	})
+
+	select {
+	case err := <-errCh:
+		return nil, err
+	default:
+	}
+
+	podTopologySpread.NormalizeScore(context.TODO(), cycleState, pod, nodeScoreList)
+
+	nodeScores := make(map[string]float64, len(nodes))
+	for i, nodeScore := range nodeScoreList {
+		// return error if score plugin returns invalid score.
+		if nodeScore.Score > k8sframework.MaxNodeScore || nodeScore.Score < k8sframework.MinNodeScore {
+			return nil, fmt.Errorf("pod topology spread returns an invalid score %v for node %s", nodeScore.Score, nodeScore.Name)
+		}
+		nodeScore.Score *= int64(podTopologySpreadWeight)
+		nodeScoreList[i] = nodeScore
+		nodeScores[nodeScore.Name] = float64(nodeScore.Score)
+	}
+
+	klog.V(4).Infof("pod topology spread Score for task %s/%s is: %v", pod.Namespace, pod.Name, nodeScores)
 	return nodeScores, nil
 }
 
