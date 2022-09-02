@@ -96,7 +96,7 @@ func (ni *NodeInfo) GetNodeAllocatable() *Resource {
 // NodeState defines the current state of node.
 type NodeState struct {
 	Phase  NodePhase
-	Reason string
+	Reason NodePhaseReason
 }
 
 // NodeUsage defines the real load usage of node
@@ -268,22 +268,33 @@ func (ni *NodeInfo) setOversubscription(node *v1.Node) {
 	}
 }
 
+// SetOutOfSync sets state of nodeInfo to `OutOfSync`
+func (ni *NodeInfo) SetOutOfSync() {
+	state := NodeState{
+		Phase:  NotReady,
+		Reason: ReasonOutOfSync,
+	}
+	ni.State = state
+}
+
+// IsOutOfSync determines if state of nodeInfo is `OutOfSync`
+func (ni *NodeInfo) IsOutOfSync() bool {
+	return !ni.Ready() && ni.State.Reason == ReasonOutOfSync
+}
+
 func (ni *NodeInfo) setNodeState(node *v1.Node) {
 	// If node is nil, the node is un-initialized in cache
 	if node == nil {
 		ni.State = NodeState{
 			Phase:  NotReady,
-			Reason: "UnInitialized",
+			Reason: ReasonUnInitialized,
 		}
 		return
 	}
 
 	// set NodeState according to resources
 	if !ni.Used.LessEqual(ni.Allocatable, Zero) {
-		ni.State = NodeState{
-			Phase:  NotReady,
-			Reason: "OutOfSync",
-		}
+		ni.SetOutOfSync()
 		return
 	}
 
@@ -292,11 +303,18 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 		if cond.Type == v1.NodeReady && cond.Status != v1.ConditionTrue {
 			ni.State = NodeState{
 				Phase:  NotReady,
-				Reason: "NotReady",
+				Reason: ReasonNotReady,
 			}
 			klog.Warningf("set the node %s status to %s.", node.Name, NotReady.String())
 			return
 		}
+	}
+
+	// If node is `OutOfSync` previously, it will need further re-synchronization to become `Ready`
+	// Resync is needed because there might be tasks which were not added to this node due to `AllocateFailError`
+	if ni.IsOutOfSync() {
+		klog.Warningf("node %s is still %s waiting to resync", ni.Name, ni.State.Reason)
+		return
 	}
 
 	// Node is ready (ignore node conditions because of taint/toleration)

@@ -75,10 +75,7 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 		if !isTerminated(pi.Status) {
 			if err := node.AddTask(pi); err != nil {
 				if _, outOfSync := err.(*schedulingapi.AllocateFailError); outOfSync {
-					node.State = schedulingapi.NodeState{
-						Phase:  schedulingapi.NotReady,
-						Reason: "OutOfSync",
-					}
+					node.SetOutOfSync()
 				}
 				return err
 			}
@@ -180,6 +177,8 @@ func (sc *SchedulerCache) deleteTask(pi *schedulingapi.TaskInfo) error {
 		node := sc.Nodes[pi.NodeName]
 		if node != nil {
 			nodeErr = node.RemoveTask(pi)
+			// resync node because the deletion of task may cause to an `OutOfSync` node being recovered
+			sc.resyncNode(node)
 		}
 	}
 
@@ -302,6 +301,8 @@ func (sc *SchedulerCache) addNode(node *v1.Node) error {
 func (sc *SchedulerCache) updateNode(oldNode, newNode *v1.Node) error {
 	if sc.Nodes[newNode.Name] != nil {
 		sc.Nodes[newNode.Name].SetNode(newNode)
+		// resync node because the change of node resources may cause to this `OutOfSync` node being recovered
+		sc.resyncNode(sc.Nodes[newNode.Name])
 		return nil
 	}
 
@@ -324,8 +325,80 @@ func (sc *SchedulerCache) deleteNode(node *v1.Node) error {
 	}
 
 	delete(sc.Nodes, node.Name)
+	// the deletion of this node should stop the synchronization for this node
+	if sc.notReadyNodes != nil {
+		sc.notReadyNodes.Forget(node.Name)
+	}
 
 	return nil
+}
+
+// Assumes that lock is already acquired.
+func (sc *SchedulerCache) syncNode(nodeInfo *schedulingapi.NodeInfo) error {
+	newNode, err := sc.getNode(nodeInfo.Name)
+	if err != nil || newNode == nil {
+		return err
+	}
+	tasks, err := sc.getTasksOnNode(nodeInfo.Name)
+	if err != nil {
+		return err
+	}
+	nodeInfo.State = schedulingapi.NodeState{Phase: schedulingapi.Ready}
+	nodeInfo.SetNode(newNode)
+	// remove unwanted tasks
+	for taskID, task := range nodeInfo.Tasks {
+		if _, exists := tasks[taskID]; exists {
+			continue
+		}
+		if err := sc.deleteTask(task); err != nil {
+			klog.Errorf("failed to remove task <%s/%s> from node <%s> while synchronizing: %v", task.Namespace, task.Name, nodeInfo.Name, err)
+			return err
+		}
+	}
+	// add missing tasks
+	for taskID, task := range tasks {
+		if _, exists := nodeInfo.Tasks[taskID]; exists {
+			continue
+		}
+		if err := sc.addTask(task); err != nil {
+			klog.Warningf("failed to add task <%s/%s> to node <%s> while synchronizing: %v", task.Namespace, task.Name, nodeInfo.Name, err)
+			// It's ok to silence error because `AllocateFailError` may still occur
+			return nil
+		}
+	}
+	return nil
+}
+
+// getNode gets node by its name from informer
+func (sc *SchedulerCache) getNode(nodeName string) (*v1.Node, error) {
+	item, exists, err := sc.nodeInformer.Informer().GetStore().GetByKey(nodeName)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		klog.Warningf("node <%s> does not exist", nodeName)
+		return nil, nil
+	}
+	node, ok := item.(*v1.Node)
+	if !ok {
+		return nil, nil
+	}
+	return node, nil
+}
+
+// getPodsOnNode gets tasks which located on specific node `nodeName` from informer
+func (sc *SchedulerCache) getTasksOnNode(nodeName string) (map[schedulingapi.TaskID]*schedulingapi.TaskInfo, error) {
+	items, err := sc.podInformer.Informer().GetIndexer().ByIndex(IndexNameNodeName, nodeName)
+	if err != nil {
+		return nil, err
+	}
+	tasks := map[schedulingapi.TaskID]*schedulingapi.TaskInfo{}
+	for _, item := range items {
+		pod := item.(*v1.Pod)
+		task := schedulingapi.NewTaskInfo(pod)
+		tasks[schedulingapi.PodKey(pod)] = task
+	}
+	return tasks, nil
 }
 
 // AddNode add node to scheduler cache

@@ -187,7 +187,8 @@ func TestNodeInfo_SetNode(t *testing.T) {
 		expected *NodeInfo
 	}{
 		{
-			name:    "add 3 running non-owner pod",
+			// OutOfSync. e.g.: nvidia-device-plugin is down causes gpus turn from 8 to 0 (node.status.allocatable."nvidia.com/gpu": 0)
+			name:    "OutOfSync: 10 -> 8",
 			node:    case01Node1,
 			updated: case01Node2,
 			pods:    []*v1.Pod{case01Pod1, case01Pod2, case01Pod3},
@@ -202,11 +203,37 @@ func TestNodeInfo_SetNode(t *testing.T) {
 				Allocatable:              buildResource("10", "10G"),
 				Capability:               buildResource("10", "10G"),
 				ResourceUsage:            &NodeUsage{},
-				State:                    NodeState{Phase: NotReady, Reason: "OutOfSync"},
+				State:                    NodeState{Phase: NotReady, Reason: ReasonOutOfSync},
 				Tasks: map[TaskID]*TaskInfo{
 					"c1/p1": NewTaskInfo(case01Pod1),
 					"c1/p2": NewTaskInfo(case01Pod2),
 					"c1/p3": NewTaskInfo(case01Pod3),
+				},
+				GPUDevices: make(map[int]*GPUDevice),
+			},
+		},
+		{
+			// Recover. e.g.: nvidia-device-plugin is restarted successfully
+			name:    "Recover: 8 -> 10",
+			node:    case01Node2,
+			updated: case01Node1,
+			pods:    []*v1.Pod{case01Pod1, case01Pod2, case01Pod3},
+			expected: &NodeInfo{
+				Name:                     "n1",
+				Node:                     case01Node2,
+				Idle:                     buildResource("5", "5G"),
+				Used:                     buildResource("3", "3G"),
+				OversubscriptionResource: EmptyResource(),
+				Releasing:                EmptyResource(),
+				Pipelined:                EmptyResource(),
+				Allocatable:              buildResource("8", "8G"),
+				Capability:               buildResource("8", "8G"),
+				ResourceUsage:            &NodeUsage{},
+				State:                    NodeState{Phase: NotReady, Reason: ReasonOutOfSync},
+				Tasks: map[TaskID]*TaskInfo{
+					"c1/p1": NewTaskInfo(case01Pod1),
+					"c1/p2": NewTaskInfo(case01Pod2),
+					// task `c1/p3` is missing due to previous `AllocateFailError`, so node is still `OutOfSync`
 				},
 				GPUDevices: make(map[int]*GPUDevice),
 			},
@@ -217,23 +244,17 @@ func TestNodeInfo_SetNode(t *testing.T) {
 		ni := NewNodeInfo(test.node)
 		for _, pod := range test.pods {
 			pi := NewTaskInfo(pod)
-			ni.AddTask(pi)
+			if err := ni.AddTask(pi); err != nil {
+				t.Logf("failed to add task: %v", err)
+				ni.State = NodeState{Phase: NotReady, Reason: ReasonOutOfSync}
+			}
 			ni.Name = pod.Spec.NodeName
 		}
 
-		// OutOfSync. e.g.: nvidia-device-plugin is down causes gpus turn from 8 to 0 (node.status.allocatable."nvidia.com/gpu": 0)
 		ni.SetNode(test.updated)
 		if !nodeInfoEqual(ni, test.expected) {
-			t.Errorf("node info %d: \n expected\t%v, \n got\t\t%v \n",
-				i, test.expected, ni)
-		}
-
-		// Recover. e.g.: nvidia-device-plugin is restarted successfully
-		ni.SetNode(test.node)
-		test.expected.State = NodeState{Phase: Ready}
-		if !nodeInfoEqual(ni, test.expected) {
-			t.Errorf("recovered %d: \n expected\t%v, \n got\t\t%v \n",
-				i, test.expected, ni)
+			t.Errorf("case[%d](%s): nodeInfo: \n expected\t%v, \n got\t\t%v \n",
+				i, test.name, test.expected, ni)
 		}
 	}
 }

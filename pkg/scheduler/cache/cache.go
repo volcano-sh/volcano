@@ -135,8 +135,9 @@ type SchedulerCache struct {
 
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
-	errTasks    workqueue.RateLimitingInterface
-	DeletedJobs workqueue.RateLimitingInterface
+	errTasks      workqueue.RateLimitingInterface
+	DeletedJobs   workqueue.RateLimitingInterface
+	notReadyNodes workqueue.RateLimitingInterface
 
 	informerFactory   informers.SharedInformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
@@ -426,6 +427,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		PriorityClasses:     make(map[string]*schedulingv1.PriorityClass),
 		errTasks:            workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		DeletedJobs:         workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		notReadyNodes:       workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		kubeClient:          kubeClient,
 		vcClient:            vcClient,
 		restConfig:          config,
@@ -523,7 +525,9 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		0,
 	)
 
-	sc.podInformer = informerFactory.Core().V1().Pods()
+	podInformer := informerFactory.Core().V1().Pods()
+	podInformer.Informer().GetIndexer().AddIndexers(cache.Indexers{IndexNameNodeName: IndexNodeName})
+	sc.podInformer = podInformer
 	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
 	sc.pvInformer = informerFactory.Core().V1().PersistentVolumes()
 	sc.scInformer = informerFactory.Storage().V1().StorageClasses()
@@ -652,6 +656,8 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 
 	// Cleanup jobs.
 	go wait.Until(sc.processCleanupJob, 0, stopCh)
+	// Re-sync notReady nodes.
+	go wait.Until(sc.processNotReadyNodes, 0, stopCh)
 
 	go wait.Until(sc.processBindTask, time.Millisecond*20, stopCh)
 
@@ -914,6 +920,51 @@ func (sc *SchedulerCache) processResyncTask() {
 	if err := sc.syncTask(task); err != nil {
 		klog.Errorf("Failed to sync pod <%v/%v>, retry it.", task.Namespace, task.Name)
 		sc.resyncTask(task)
+	}
+}
+
+// resyncNode adds name of nodeInfo to queue which is not ready waiting for resync
+func (sc *SchedulerCache) resyncNode(nodeInfo *schedulingapi.NodeInfo) {
+	if nodeInfo.IsOutOfSync() {
+		sc.notReadyNodes.AddRateLimited(nodeInfo.Name)
+	}
+}
+
+// processNotReadyNodes resyncs nodeInfo and tries to recover it
+func (sc *SchedulerCache) processNotReadyNodes() {
+	obj, shutdown := sc.notReadyNodes.Get()
+	if shutdown {
+		return
+	}
+	defer sc.notReadyNodes.Done(obj)
+	nodeName, ok := obj.(string)
+	if !ok {
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+	nodeInfo, exists := sc.Nodes[nodeName]
+	if !exists {
+		klog.Errorf("failed to find NodeInfo for <%s>", nodeName)
+		return
+	}
+
+	klog.V(4).Infof("trying to synchronize node <%s>: state=<%+v>, node=%v", nodeInfo.Name, nodeInfo.State, nodeInfo)
+	if !nodeInfo.IsOutOfSync() {
+		klog.Warningf("node <%s> is no longer `%s` now, skip it: %+v", nodeInfo.Name, schedulingapi.ReasonOutOfSync, nodeInfo.State)
+		return
+	}
+	if err := sc.syncNode(nodeInfo); err != nil {
+		klog.Errorf("failed to sync node <%s>, retry it: %v", nodeInfo.Name, err)
+		sc.notReadyNodes.AddRateLimited(nodeName)
+		return
+	}
+	if !nodeInfo.IsOutOfSync() {
+		sc.notReadyNodes.Forget(nodeName)
+		klog.Infof("node <%s> is now recovered from `%s`: %v", nodeInfo.Name, schedulingapi.ReasonOutOfSync, nodeInfo)
+	} else {
+		klog.V(4).Infof("finish to synchronize node <%s>: state=<%+v>, node=%v", nodeInfo.Name, nodeInfo.State, nodeInfo)
 	}
 }
 

@@ -103,6 +103,15 @@ func (np NodePhase) String() string {
 	return "Unknown"
 }
 
+// NodePhaseReason defines the reason why node is in this phase
+type NodePhaseReason string
+
+const (
+	ReasonUnInitialized NodePhaseReason = "UnInitialized" // node is uninitialized
+	ReasonOutOfSync     NodePhaseReason = "OutOfSync"     // e.g.: lost of GPU
+	ReasonNotReady      NodePhaseReason = "NotReady"      // e.g.: power off
+)
+
 // validateStatusUpdate validates whether the status transfer is valid.
 func validateStatusUpdate(oldStatus, newStatus TaskStatus) error {
 	return nil

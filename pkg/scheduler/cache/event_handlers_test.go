@@ -18,11 +18,14 @@ package cache
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -636,6 +639,112 @@ func TestSchedulerCache_DeleteQueueV1beta1(t *testing.T) {
 
 		if test.Expected != nil && queue != nil && queue.Queue != nil && (queue.Queue.Namespace != test.Expected.Namespace || queue.Queue.Name != test.Expected.Name) {
 			t.Errorf("Expected: %v but got: %v in case %d", test.Expected, queue.Queue, i)
+		}
+	}
+}
+
+func TestSchedulerCache_syncNode(t *testing.T) {
+	case01Node1 := buildNode("n1", buildResourceList("10", "10G"))
+	case01Node2 := buildNode("n1", buildResourceList("8", "8G"))
+	case01Pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, buildResourceList("1", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+	case01Pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("2", "2G"), []metav1.OwnerReference{}, make(map[string]string))
+	case01Pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("6", "6G"), []metav1.OwnerReference{}, make(map[string]string))
+
+	var tests = []struct {
+		name     string
+		node     *v1.Node
+		updated  *v1.Node
+		pods     []*v1.Pod
+		expected *api.NodeInfo
+	}{
+		{
+			name:    "Recover: 8 -> 10",
+			node:    case01Node2,
+			updated: case01Node1,
+			pods:    []*v1.Pod{case01Pod1, case01Pod2, case01Pod3},
+			expected: &api.NodeInfo{
+				Name:                     "n1",
+				Node:                     case01Node1,
+				Idle:                     api.NewResource(buildResourceList("1", "1G")),
+				Used:                     api.NewResource(buildResourceList("9", "9G")),
+				OversubscriptionResource: api.EmptyResource(),
+				Releasing:                api.EmptyResource(),
+				Pipelined:                api.EmptyResource(),
+				Allocatable:              api.NewResource(buildResourceList("10", "10G")),
+				Capability:               api.NewResource(buildResourceList("10", "10G")),
+				ResourceUsage:            &api.NodeUsage{},
+				State:                    api.NodeState{Phase: api.Ready}, // expected Ready
+				Tasks: map[api.TaskID]*api.TaskInfo{
+					"c1/p1": api.NewTaskInfo(case01Pod1),
+					"c1/p2": api.NewTaskInfo(case01Pod2),
+					"c1/p3": api.NewTaskInfo(case01Pod3),
+				},
+				GPUDevices: make(map[int]*api.GPUDevice),
+			},
+		},
+		{
+			name:    "OutOfSync: 10 -> 8",
+			node:    case01Node1,
+			updated: case01Node2,
+			pods:    []*v1.Pod{case01Pod1, case01Pod2, case01Pod3},
+			expected: &api.NodeInfo{
+				Name:                     "n1",
+				Node:                     case01Node1,
+				Idle:                     api.NewResource(buildResourceList("1", "1G")), // expected other fields are untouched
+				Used:                     api.NewResource(buildResourceList("9", "9G")),
+				OversubscriptionResource: api.EmptyResource(),
+				Releasing:                api.EmptyResource(),
+				Pipelined:                api.EmptyResource(),
+				Allocatable:              api.NewResource(buildResourceList("10", "10G")),
+				Capability:               api.NewResource(buildResourceList("10", "10G")),
+				ResourceUsage:            &api.NodeUsage{},
+				State:                    api.NodeState{Phase: api.NotReady, Reason: api.ReasonOutOfSync}, // expected OutOfSync
+				Tasks: map[api.TaskID]*api.TaskInfo{
+					"c1/p1": api.NewTaskInfo(case01Pod1),
+					"c1/p2": api.NewTaskInfo(case01Pod2),
+					"c1/p3": api.NewTaskInfo(case01Pod3),
+				},
+				GPUDevices: make(map[int]*api.GPUDevice),
+			},
+		},
+	}
+	for i, test := range tests {
+		// build SchedulerCache
+		f := informers.NewSharedInformerFactory(nil, 0)
+		podInformer := f.Core().V1().Pods()
+		podInformer.Informer().GetIndexer().AddIndexers(cache.Indexers{IndexNameNodeName: IndexNodeName})
+		for _, pod := range test.pods {
+			podInformer.Informer().GetIndexer().Add(pod)
+		}
+		nodeInformer := f.Core().V1().Nodes()
+		nodeInformer.Informer().GetIndexer().Add(test.updated) // actual node in informer
+		sc := &SchedulerCache{
+			podInformer:   podInformer,
+			nodeInformer:  nodeInformer,
+			Jobs:          make(map[api.JobID]*api.JobInfo),
+			Nodes:         make(map[string]*api.NodeInfo),
+			notReadyNodes: workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		}
+		sc.AddNode(test.node) // cached node
+		for _, pod := range test.pods {
+			sc.AddPod(pod)
+		}
+		ni := sc.Nodes[test.node.Name]
+		sc.notReadyNodes.Add(ni.Name)
+		t.Logf("case[%d]: current node info: %s", i, ni)
+
+		// execute
+		err := sc.syncNode(ni)
+		if err != nil {
+			t.Errorf("failed to sync node: %v", err)
+		}
+
+		// assert
+		if !reflect.DeepEqual(ni, test.expected) {
+			t.Errorf("case[%d]: nodeInfo: \n expected\t%v, \n got\t\t%v \n",
+				i, test.expected, ni)
+		} else {
+			t.Logf("synchronized node: %v", ni)
 		}
 	}
 }
