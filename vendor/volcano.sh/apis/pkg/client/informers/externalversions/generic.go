@@ -22,7 +22,8 @@ import (
 
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
-	v1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	v1alpha1 "volcano.sh/apis/pkg/apis/autoscaling/v1alpha1"
+	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	flowv1alpha1 "volcano.sh/apis/pkg/apis/flow/v1alpha1"
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
@@ -55,8 +56,12 @@ func (f *genericInformer) Lister() cache.GenericLister {
 // TODO extend this to unknown resources with a client pool
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
-	// Group=batch.volcano.sh, Version=v1alpha1
-	case v1alpha1.SchemeGroupVersion.WithResource("jobs"):
+	// Group=autoscaling.volcano.sh, Version=v1alpha1
+	case v1alpha1.SchemeGroupVersion.WithResource("verticalqueueautoscalers"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Autoscaling().V1alpha1().VerticalQueueAutoscalers().Informer()}, nil
+
+		// Group=batch.volcano.sh, Version=v1alpha1
+	case batchv1alpha1.SchemeGroupVersion.WithResource("jobs"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Batch().V1alpha1().Jobs().Informer()}, nil
 
 		// Group=bus.volcano.sh, Version=v1alpha1

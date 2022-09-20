@@ -24,6 +24,8 @@ import (
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	"k8s.io/client-go/testing"
 	clientset "volcano.sh/apis/pkg/client/clientset/versioned"
+	autoscalingv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/autoscaling/v1alpha1"
+	fakeautoscalingv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/autoscaling/v1alpha1/fake"
 	batchv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/batch/v1alpha1"
 	fakebatchv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/batch/v1alpha1/fake"
 	busv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/bus/v1alpha1"
@@ -85,6 +87,11 @@ var (
 	_ clientset.Interface = &Clientset{}
 	_ testing.FakeClient  = &Clientset{}
 )
+
+// AutoscalingV1alpha1 retrieves the AutoscalingV1alpha1Client
+func (c *Clientset) AutoscalingV1alpha1() autoscalingv1alpha1.AutoscalingV1alpha1Interface {
+	return &fakeautoscalingv1alpha1.FakeAutoscalingV1alpha1{Fake: &c.Fake}
+}
 
 // BatchV1alpha1 retrieves the BatchV1alpha1Client
 func (c *Clientset) BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface {

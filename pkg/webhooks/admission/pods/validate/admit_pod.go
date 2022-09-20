@@ -19,9 +19,6 @@ package validate
 import (
 	"context"
 	"fmt"
-	"strconv"
-	"strings"
-
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/core/v1"
@@ -29,8 +26,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog"
-
+	"strconv"
+	"strings"
 	"volcano.sh/apis/pkg/apis/helpers"
+
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	commonutil "volcano.sh/volcano/pkg/util"
 	"volcano.sh/volcano/pkg/webhooks/router"
@@ -112,7 +111,7 @@ func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) str
 		pgName = pod.Annotations[vcv1beta1.KubeGroupNameAnnotationKey]
 	}
 	if pgName != "" {
-		if err := checkPG(pod, pgName, true); err != nil {
+		if err := checkPG(pod, pgName, util.BelongToVcJob(pod)); err != nil {
 			msg = err.Error()
 			reviewResponse.Allowed = false
 		} else if err := checkPGQueueState(pod, pgName); err != nil {

@@ -78,12 +78,14 @@ HELM_CRD_DIR=${VK_ROOT}/installer/helm/chart/volcano/crd
 echo Updating templates in $HELM_TEMPLATES_DIR
 # use tail because we should skip top two line
 # sync bases
+tail -n +3 ${VK_ROOT}/config/crd/bases/autoscaling.volcano.sh_verticalqueueautoscalers.yaml > ${HELM_CRD_DIR}/bases/autoscaling.volcano.sh_verticalqueueautoscalers.yaml
 tail -n +3 ${VK_ROOT}/config/crd/bases/batch.volcano.sh_jobs.yaml > ${HELM_CRD_DIR}/bases/batch.volcano.sh_jobs.yaml
 tail -n +3 ${VK_ROOT}/config/crd/bases/bus.volcano.sh_commands.yaml > ${HELM_CRD_DIR}/bases/bus.volcano.sh_commands.yaml
 tail -n +3 ${VK_ROOT}/config/crd/bases/scheduling.volcano.sh_podgroups.yaml > ${HELM_CRD_DIR}/bases/scheduling.volcano.sh_podgroups.yaml
 tail -n +3 ${VK_ROOT}/config/crd/bases/scheduling.volcano.sh_queues.yaml > ${HELM_CRD_DIR}/bases/scheduling.volcano.sh_queues.yaml
 tail -n +3 ${VK_ROOT}/config/crd/bases/nodeinfo.volcano.sh_numatopologies.yaml > ${HELM_CRD_DIR}/bases/nodeinfo.volcano.sh_numatopologies.yaml
 # sync v1beta1
+tail -n +3 ${VK_ROOT}/config/crd/v1beta1/autoscaling.volcano.sh_verticalqueueautoscalers.yaml > ${HELM_CRD_DIR}/v1beta1/autoscaling.volcano.sh_verticalqueueautoscalers.yaml
 tail -n +3 ${VK_ROOT}/config/crd/v1beta1/batch.volcano.sh_jobs.yaml > ${HELM_CRD_DIR}/v1beta1/batch.volcano.sh_jobs.yaml
 tail -n +3 ${VK_ROOT}/config/crd/v1beta1/bus.volcano.sh_commands.yaml > ${HELM_CRD_DIR}/v1beta1/bus.volcano.sh_commands.yaml
 tail -n +3 ${VK_ROOT}/config/crd/v1beta1/scheduling.volcano.sh_podgroups.yaml > ${HELM_CRD_DIR}/v1beta1/scheduling.volcano.sh_podgroups.yaml
@@ -118,6 +120,7 @@ ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespac
       -s templates/scheduling_v1beta1_podgroup.yaml \
       -s templates/scheduling_v1beta1_queue.yaml \
       -s templates/nodeinfo_v1alpha1_numatopologies.yaml \
+      -s templates/autoscaling_v1alpha1_verticalqueueautoscalers.yaml \
       -s templates/webhooks.yaml \
       >> ${DEPLOYMENT_FILE}
 

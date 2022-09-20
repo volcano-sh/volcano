@@ -20,6 +20,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"volcano.sh/apis/pkg/apis/scheduling"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/api/core/v1"
@@ -33,6 +34,7 @@ func TestValidatePod(t *testing.T) {
 
 	namespace := "test"
 	pgName := "podgroup-p1"
+	ownerReferenceController := true
 
 	testCases := []struct {
 		Name           string
@@ -77,6 +79,13 @@ func TestValidatePod(t *testing.T) {
 					Namespace:   namespace,
 					Name:        "volcano-pod-2",
 					Annotations: map[string]string{vcschedulingv1.KubeGroupNameAnnotationKey: pgName},
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: scheduling.GroupName + "/v1beta1",
+							Kind:       "Job",
+							Controller: &ownerReferenceController,
+						},
+					},
 				},
 				Spec: v1.PodSpec{
 					SchedulerName: "volcano",
@@ -228,6 +237,32 @@ func TestValidatePod(t *testing.T) {
 			ret:            "",
 			ExpectErr:      false,
 			queueName:      "",
+		},
+		// validate volcano pod when pg is assigned manually
+		{
+			Name: "validate volcano pod when pg is assigned manually",
+			Pod: v1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "volcano-pod-2",
+					Annotations: map[string]string{
+						vcschedulingv1.KubeGroupNameAnnotationKey:            pgName,
+						vcschedulingv1.VolcanoGroupMinResourcesAnnotationKey: "{\"cpu\":\"200m\",\"memory\":\"128Mi\"}",
+					},
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "volcano",
+				},
+			},
+
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+			disabledPG:     true,
 		},
 	}
 

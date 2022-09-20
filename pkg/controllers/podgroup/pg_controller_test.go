@@ -18,6 +18,7 @@ package podgroup
 
 import (
 	"context"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"reflect"
 	"testing"
 
@@ -54,6 +55,7 @@ func TestAddPodGroup(t *testing.T) {
 	namespace := "test"
 	isController := true
 	blockOwnerDeletion := true
+	pgName := "podgroup-p1"
 
 	testCases := []struct {
 		name             string
@@ -142,6 +144,51 @@ func TestAddPodGroup(t *testing.T) {
 				},
 				Spec: scheduling.PodGroupSpec{
 					MinMember: 1,
+				},
+			},
+		},
+		{
+			name: "AddPodGroup: pod has no ownerReferences, has pod group name and min resources annotations",
+			pod: &v1.Pod{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Pod",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pod1",
+					Namespace: namespace,
+					UID:       types.UID("7a09885b-b753-4924-9fba-77c0836bac20"),
+					Annotations: map[string]string{
+						scheduling.KubeGroupNameAnnotationKey:            pgName,
+						scheduling.VolcanoGroupMinResourcesAnnotationKey: "{\"cpu\":\"200m\",\"memory\":\"128Mi\"}",
+					},
+				},
+			},
+			expectedPodGroup: &scheduling.PodGroup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "scheduling.volcano.sh/v1beta1",
+					Kind:       "PodGroup",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      pgName,
+					Namespace: namespace,
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion:         "v1",
+							Kind:               "Pod",
+							Name:               "pod1",
+							UID:                "7a09885b-b753-4924-9fba-77c0836bac20",
+							Controller:         &isController,
+							BlockOwnerDeletion: &blockOwnerDeletion,
+						},
+					},
+				},
+				Spec: scheduling.PodGroupSpec{
+					MinMember: 1,
+					MinResources: &v1.ResourceList{
+						"cpu":    resource.MustParse("200m"),
+						"memory": resource.MustParse("128Mi"),
+					},
 				},
 			},
 		},

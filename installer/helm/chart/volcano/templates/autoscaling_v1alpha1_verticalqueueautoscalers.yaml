@@ -1,0 +1,1 @@
+{{- tpl ($.Files.Get (printf "crd/%s/autoscaling.volcano.sh_verticalqueueautoscalers.yaml" (include "crd_version" .))) . }}

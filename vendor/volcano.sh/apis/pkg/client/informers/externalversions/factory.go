@@ -27,6 +27,7 @@ import (
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
 	versioned "volcano.sh/apis/pkg/client/clientset/versioned"
+	autoscaling "volcano.sh/apis/pkg/client/informers/externalversions/autoscaling"
 	batch "volcano.sh/apis/pkg/client/informers/externalversions/batch"
 	bus "volcano.sh/apis/pkg/client/informers/externalversions/bus"
 	flow "volcano.sh/apis/pkg/client/informers/externalversions/flow"
@@ -175,11 +176,16 @@ type SharedInformerFactory interface {
 	ForResource(resource schema.GroupVersionResource) (GenericInformer, error)
 	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
 
+	Autoscaling() autoscaling.Interface
 	Batch() batch.Interface
 	Bus() bus.Interface
 	Flow() flow.Interface
 	Nodeinfo() nodeinfo.Interface
 	Scheduling() scheduling.Interface
+}
+
+func (f *sharedInformerFactory) Autoscaling() autoscaling.Interface {
+	return autoscaling.New(f, f.namespace, f.tweakListOptions)
 }
 
 func (f *sharedInformerFactory) Batch() batch.Interface {

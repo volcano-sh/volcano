@@ -1,5 +1,10 @@
 package util
 
+import (
+	"fmt"
+	v1 "k8s.io/api/core/v1"
+)
+
 const (
 	defaultSchedulerName = "volcano"
 )
@@ -31,4 +36,14 @@ func GenerateSchedulerName(schedulerNames []string) string {
 	}
 
 	return defaultSchedulerName
+}
+
+func V1ResourceListToString(resourceList v1.ResourceList) string {
+	resourceListStr := ""
+	for key, quantity := range resourceList {
+		if key == v1.ResourceCPU || key == v1.ResourceMemory {
+			resourceListStr += fmt.Sprintf("{%s: %s}", key, quantity.String())
+		}
+	}
+	return resourceListStr
 }

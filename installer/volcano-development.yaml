@@ -8526,6 +8526,12 @@ rules:
   - apiGroups: ["batch.volcano.sh"]
     resources: ["jobs/status", "jobs/finalizers"]
     verbs: ["update", "patch"]
+  - apiGroups: ["autoscaling.volcano.sh"]
+    resources: ["verticalqueueautoscalers"]
+    verbs: ["get", "list", "watch", "update", "delete"]
+  - apiGroups: ["autoscaling.volcano.sh"]
+    resources: ["verticalqueueautoscalers/status"]
+    verbs: ["update", "patch"]
   - apiGroups: ["bus.volcano.sh"]
     resources: ["commands"]
     verbs: ["get", "list", "watch", "delete"]
@@ -9203,6 +9209,484 @@ spec:
         type: object
     served: true
     storage: true
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
+---
+# Source: volcano/templates/autoscaling_v1alpha1_verticalqueueautoscalers.yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.6.0
+  creationTimestamp: null
+  name: verticalqueueautoscalers.autoscaling.volcano.sh
+spec:
+  group: autoscaling.volcano.sh
+  names:
+    kind: VerticalQueueAutoscaler
+    listKind: VerticalQueueAutoscalerList
+    plural: verticalqueueautoscalers
+    shortNames:
+    - vqa
+    - vqas
+    singular: verticalqueueautoscaler
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.lastScaleTime
+      name: Last Scale
+      type: date
+    - jsonPath: .status.lastScaleSuccessTime
+      name: Last Successful
+      type: date
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    - jsonPath: .spec.queue
+      name: QUEUE
+      priority: 1
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: VerticalQueueAutoscaler defines the volcano vertical queue autoscaler.
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Specification of the desired behavior of the volcano verticalqueueautoscaler,
+              including tidal and metrics
+            properties:
+              metricSpec:
+                description: TidalSpec define metrics autoscaling configuration
+                items:
+                  properties:
+                    metricRules:
+                      properties:
+                        scaleDown:
+                          description: ScaleUp  rule of scale down
+                          properties:
+                            condition:
+                              type: string
+                            metricSources:
+                              items:
+                                properties:
+                                  metric:
+                                    description: Metric identifies the target metric
+                                      by name and selector
+                                    properties:
+                                      name:
+                                        description: name is the name of the given
+                                          metric
+                                        type: string
+                                      selector:
+                                        description: selector is the string-encoded
+                                          form of a standard kubernetes label selector
+                                          for the given metric When set, it is passed
+                                          as an additional parameter to the metrics
+                                          server for more specific metrics scoping.
+                                          When unset, just the metricName will be
+                                          used to gather metrics.
+                                        properties:
+                                          matchExpressions:
+                                            description: matchExpressions is a list
+                                              of label selector requirements. The
+                                              requirements are ANDed.
+                                            items:
+                                              description: A label selector requirement
+                                                is a selector that contains values,
+                                                a key, and an operator that relates
+                                                the key and values.
+                                              properties:
+                                                key:
+                                                  description: key is the label key
+                                                    that the selector applies to.
+                                                  type: string
+                                                operator:
+                                                  description: operator represents
+                                                    a key's relationship to a set
+                                                    of values. Valid operators are
+                                                    In, NotIn, Exists and DoesNotExist.
+                                                  type: string
+                                                values:
+                                                  description: values is an array
+                                                    of string values. If the operator
+                                                    is In or NotIn, the values array
+                                                    must be non-empty. If the operator
+                                                    is Exists or DoesNotExist, the
+                                                    values array must be empty. This
+                                                    array is replaced during a strategic
+                                                    merge patch.
+                                                  items:
+                                                    type: string
+                                                  type: array
+                                              required:
+                                              - key
+                                              - operator
+                                              type: object
+                                            type: array
+                                          matchLabels:
+                                            additionalProperties:
+                                              type: string
+                                            description: matchLabels is a map of {key,value}
+                                              pairs. A single {key,value} in the matchLabels
+                                              map is equivalent to an element of matchExpressions,
+                                              whose key field is "key", the operator
+                                              is "In", and the values array contains
+                                              only "value". The requirements are ANDed.
+                                            type: object
+                                        type: object
+                                    required:
+                                    - name
+                                    type: object
+                                  periodSeconds:
+                                    description: PeriodSeconds specifies the window
+                                      of time for which the policy should hold true.
+                                      PeriodSeconds must be greater than zero and
+                                      less than or equal to 1800 (30 min).
+                                    format: int32
+                                    type: integer
+                                  target:
+                                    description: Target specifies the target value
+                                      for the given metric
+                                    properties:
+                                      averageUtilization:
+                                        description: averageUtilization is the target
+                                          value of the average of the resource metric
+                                          across all relevant pods, represented as
+                                          a percentage of the requested value of the
+                                          resource for the pods. Currently only valid
+                                          for Resource metric source type
+                                        format: int32
+                                        type: integer
+                                      averageValue:
+                                        anyOf:
+                                        - type: integer
+                                        - type: string
+                                        description: averageValue is the target value
+                                          of the average of the metric across all
+                                          relevant pods (as a quantity)
+                                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                        x-kubernetes-int-or-string: true
+                                      type:
+                                        description: type represents whether the metric
+                                          type is Utilization, Value, or AverageValue
+                                        type: string
+                                      value:
+                                        anyOf:
+                                        - type: integer
+                                        - type: string
+                                        description: value is the target value of
+                                          the metric (as a quantity).
+                                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                        x-kubernetes-int-or-string: true
+                                    required:
+                                    - type
+                                    type: object
+                                type: object
+                              type: array
+                            stabilizationWindowSeconds:
+                              description: 'StabilizationWindowSeconds is the number
+                                of seconds for which past recommendations should be
+                                considered while scaling up or scaling down. StabilizationWindowSeconds
+                                must be greater than or equal to zero and less than
+                                or equal to 3600 (one hour). If not set, use the default
+                                values: - For scale up: 0 (i.e. no stabilization is
+                                done). - For scale down: 300 (i.e. the stabilization
+                                window is 300 seconds long).'
+                              format: int32
+                              type: integer
+                          type: object
+                        scaleUp:
+                          description: ScaleUp  rule of scale up
+                          properties:
+                            condition:
+                              type: string
+                            metricSources:
+                              items:
+                                properties:
+                                  metric:
+                                    description: Metric identifies the target metric
+                                      by name and selector
+                                    properties:
+                                      name:
+                                        description: name is the name of the given
+                                          metric
+                                        type: string
+                                      selector:
+                                        description: selector is the string-encoded
+                                          form of a standard kubernetes label selector
+                                          for the given metric When set, it is passed
+                                          as an additional parameter to the metrics
+                                          server for more specific metrics scoping.
+                                          When unset, just the metricName will be
+                                          used to gather metrics.
+                                        properties:
+                                          matchExpressions:
+                                            description: matchExpressions is a list
+                                              of label selector requirements. The
+                                              requirements are ANDed.
+                                            items:
+                                              description: A label selector requirement
+                                                is a selector that contains values,
+                                                a key, and an operator that relates
+                                                the key and values.
+                                              properties:
+                                                key:
+                                                  description: key is the label key
+                                                    that the selector applies to.
+                                                  type: string
+                                                operator:
+                                                  description: operator represents
+                                                    a key's relationship to a set
+                                                    of values. Valid operators are
+                                                    In, NotIn, Exists and DoesNotExist.
+                                                  type: string
+                                                values:
+                                                  description: values is an array
+                                                    of string values. If the operator
+                                                    is In or NotIn, the values array
+                                                    must be non-empty. If the operator
+                                                    is Exists or DoesNotExist, the
+                                                    values array must be empty. This
+                                                    array is replaced during a strategic
+                                                    merge patch.
+                                                  items:
+                                                    type: string
+                                                  type: array
+                                              required:
+                                              - key
+                                              - operator
+                                              type: object
+                                            type: array
+                                          matchLabels:
+                                            additionalProperties:
+                                              type: string
+                                            description: matchLabels is a map of {key,value}
+                                              pairs. A single {key,value} in the matchLabels
+                                              map is equivalent to an element of matchExpressions,
+                                              whose key field is "key", the operator
+                                              is "In", and the values array contains
+                                              only "value". The requirements are ANDed.
+                                            type: object
+                                        type: object
+                                    required:
+                                    - name
+                                    type: object
+                                  periodSeconds:
+                                    description: PeriodSeconds specifies the window
+                                      of time for which the policy should hold true.
+                                      PeriodSeconds must be greater than zero and
+                                      less than or equal to 1800 (30 min).
+                                    format: int32
+                                    type: integer
+                                  target:
+                                    description: Target specifies the target value
+                                      for the given metric
+                                    properties:
+                                      averageUtilization:
+                                        description: averageUtilization is the target
+                                          value of the average of the resource metric
+                                          across all relevant pods, represented as
+                                          a percentage of the requested value of the
+                                          resource for the pods. Currently only valid
+                                          for Resource metric source type
+                                        format: int32
+                                        type: integer
+                                      averageValue:
+                                        anyOf:
+                                        - type: integer
+                                        - type: string
+                                        description: averageValue is the target value
+                                          of the average of the metric across all
+                                          relevant pods (as a quantity)
+                                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                        x-kubernetes-int-or-string: true
+                                      type:
+                                        description: type represents whether the metric
+                                          type is Utilization, Value, or AverageValue
+                                        type: string
+                                      value:
+                                        anyOf:
+                                        - type: integer
+                                        - type: string
+                                        description: value is the target value of
+                                          the metric (as a quantity).
+                                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                        x-kubernetes-int-or-string: true
+                                    required:
+                                    - type
+                                    type: object
+                                type: object
+                              type: array
+                            stabilizationWindowSeconds:
+                              description: 'StabilizationWindowSeconds is the number
+                                of seconds for which past recommendations should be
+                                considered while scaling up or scaling down. StabilizationWindowSeconds
+                                must be greater than or equal to zero and less than
+                                or equal to 3600 (one hour). If not set, use the default
+                                values: - For scale up: 0 (i.e. no stabilization is
+                                done). - For scale down: 300 (i.e. the stabilization
+                                window is 300 seconds long).'
+                              format: int32
+                              type: integer
+                          type: object
+                      type: object
+                    resourceLimit:
+                      description: ResourceLimit resources limit of queue
+                      properties:
+                        max:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: Max  maximum of queue.spec.capacity or guarantee
+                          type: object
+                        min:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: Min  minimum of queue.spec.capacity or guarantee
+                          type: object
+                      type: object
+                    scaleBehavior:
+                      description: ScaleBehavior define scale behavior of metrics
+                        type
+                      properties:
+                        stepRatio:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          description: StepRatio ratio of scale step
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        stepResources:
+                          description: StepResources resources of scale step
+                          properties:
+                            capability:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: Capability  queue.spec.capability, it's
+                                a increment
+                              type: object
+                            guarantee:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: Guarantee  queue.spec.guarantee.resource,
+                                it's a increment
+                              type: object
+                            weight:
+                              description: Weight  queue.spec.weight, it's a increment
+                              format: int32
+                              type: integer
+                          type: object
+                        stepType:
+                          description: StepType scale step type
+                          enum:
+                          - Delete
+                          - Orphan
+                          type: string
+                      type: object
+                  type: object
+                type: array
+              queue:
+                description: Specifies the queue that will be used in the scheduler,
+                  "default" queue is used this leaves empty.
+                type: string
+              tidalSpec:
+                description: TidalSpec define tidal autoscaling configuration
+                properties:
+                  startingDeadlineSeconds:
+                    description: StartingDeadlineSeconds Optional deadline in seconds
+                      for starting the job if it misses scheduled time for any reason.  Missed
+                      jobs executions will be counted as failed ones.
+                    format: int64
+                    type: integer
+                  tidal:
+                    description: Tidal define arrays of tidal configuration
+                    items:
+                      properties:
+                        capability:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: Capability  queue.spec.capability
+                          type: object
+                        guarantee:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          description: Guarantee  queue.spec.guarantee.resource
+                          type: object
+                        schedule:
+                          description: Schedule The schedule in Cron format, see https://en.wikipedia.org/wiki/Cron
+                          type: string
+                        weight:
+                          description: Weight  queue.spec.weight
+                          format: int32
+                          type: integer
+                      type: object
+                    type: array
+                type: object
+              type:
+                description: Type is the behavior type of VQA.
+                enum:
+                - tidal
+                - metrics
+                type: string
+            type: object
+          status:
+            description: Current status of the volcano verticalqueueautoscaler
+            properties:
+              lastScaleSuccessTime:
+                description: LastScaleSuccessTime is the last time the VerticalQueueAutoscaler
+                  scaled the capacity of queue Successful,
+                format: date-time
+                type: string
+              lastScaleTime:
+                description: LastScaleTime is the last time the VerticalQueueAutoscaler
+                  scaled the capacity of queue,
+                format: date-time
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
 status:
   acceptedNames:
     kind: ""

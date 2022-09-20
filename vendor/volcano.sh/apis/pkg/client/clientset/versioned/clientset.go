@@ -24,6 +24,7 @@ import (
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
+	autoscalingv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/autoscaling/v1alpha1"
 	batchv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/bus/v1alpha1"
 	flowv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/flow/v1alpha1"
@@ -33,6 +34,7 @@ import (
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
+	AutoscalingV1alpha1() autoscalingv1alpha1.AutoscalingV1alpha1Interface
 	BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface
 	BusV1alpha1() busv1alpha1.BusV1alpha1Interface
 	FlowV1alpha1() flowv1alpha1.FlowV1alpha1Interface
@@ -44,11 +46,17 @@ type Interface interface {
 // version included in a Clientset.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	batchV1alpha1     *batchv1alpha1.BatchV1alpha1Client
-	busV1alpha1       *busv1alpha1.BusV1alpha1Client
-	flowV1alpha1      *flowv1alpha1.FlowV1alpha1Client
-	nodeinfoV1alpha1  *nodeinfov1alpha1.NodeinfoV1alpha1Client
-	schedulingV1beta1 *schedulingv1beta1.SchedulingV1beta1Client
+	autoscalingV1alpha1 *autoscalingv1alpha1.AutoscalingV1alpha1Client
+	batchV1alpha1       *batchv1alpha1.BatchV1alpha1Client
+	busV1alpha1         *busv1alpha1.BusV1alpha1Client
+	flowV1alpha1        *flowv1alpha1.FlowV1alpha1Client
+	nodeinfoV1alpha1    *nodeinfov1alpha1.NodeinfoV1alpha1Client
+	schedulingV1beta1   *schedulingv1beta1.SchedulingV1beta1Client
+}
+
+// AutoscalingV1alpha1 retrieves the AutoscalingV1alpha1Client
+func (c *Clientset) AutoscalingV1alpha1() autoscalingv1alpha1.AutoscalingV1alpha1Interface {
+	return c.autoscalingV1alpha1
 }
 
 // BatchV1alpha1 retrieves the BatchV1alpha1Client
@@ -116,6 +124,10 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 
 	var cs Clientset
 	var err error
+	cs.autoscalingV1alpha1, err = autoscalingv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
 	cs.batchV1alpha1, err = batchv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
@@ -157,6 +169,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
+	cs.autoscalingV1alpha1 = autoscalingv1alpha1.New(c)
 	cs.batchV1alpha1 = batchv1alpha1.New(c)
 	cs.busV1alpha1 = busv1alpha1.New(c)
 	cs.flowV1alpha1 = flowv1alpha1.New(c)
