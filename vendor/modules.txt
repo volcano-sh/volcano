@@ -912,6 +912,7 @@ k8s.io/component-base/metrics/testutil
 k8s.io/component-base/version
 # k8s.io/component-helpers v0.23.0 => k8s.io/component-helpers v0.23.0
 ## explicit; go 1.16
+k8s.io/component-helpers/node/topology
 k8s.io/component-helpers/node/util/sysctl
 k8s.io/component-helpers/scheduling/corev1
 k8s.io/component-helpers/scheduling/corev1/nodeaffinity
@@ -996,6 +997,7 @@ k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeports
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/noderesources
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeunschedulable
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits
+k8s.io/kubernetes/pkg/scheduler/framework/plugins/selectorspread
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding
 k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding/metrics

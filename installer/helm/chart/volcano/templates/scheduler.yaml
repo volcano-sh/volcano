@@ -43,8 +43,8 @@ rules:
     resources: ["persistentvolumes"]
     verbs: ["list", "watch"]
   - apiGroups: [""]
-    resources: ["namespaces"]
-    verbs: ["list", "watch"]
+    resources: ["namespaces", "services", "replicationcontrollers"]
+    verbs: ["list", "watch", "get"]
   - apiGroups: [""]
     resources: ["resourcequotas"]
     verbs: ["list", "watch"]
@@ -72,6 +72,9 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "create", "delete", "update"]
+  - apiGroups: ["apps"]
+    resources: ["daemonsets", "replicasets", "statefulsets"]
+    verbs: ["list", "watch", "get"]
 
 ---
 kind: ClusterRoleBinding
@@ -138,7 +141,7 @@ metadata:
     prometheus.io/port: "8080"
     prometheus.io/scrape: "true"
   name: {{ .Release.Name }}-scheduler-service
-  namespace: {{ .Release.Namespace }} 
+  namespace: {{ .Release.Namespace }}
 spec:
   ports:
   - port: 8080
