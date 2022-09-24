@@ -123,7 +123,7 @@ func (pc *Scheduler) loadSchedulerConf() {
 	klog.V(4).Infof("Start loadSchedulerConf ...")
 	defer func() {
 		actions, plugins := pc.getSchedulerConf()
-		klog.V(4).Infof("Successfully loaded scheduler conf, actions: %v, plugins: %v", actions, plugins)
+		klog.V(2).Infof("Successfully loaded scheduler conf, actions: %v, plugins: %v", actions, plugins)
 	}()
 
 	var err error
