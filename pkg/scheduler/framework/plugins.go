@@ -40,7 +40,6 @@ func RegisterPluginBuilder(name string, pc PluginBuilder) {
 	defer pluginMutex.Unlock()
 
 	pluginBuilders[name] = pc
-	klog.V(2).Infof("Successfully registered plugin: %s", name)
 }
 
 // CleanupPluginBuilders cleans up all the plugin
@@ -108,7 +107,6 @@ func RegisterAction(act Action) {
 	defer pluginMutex.Unlock()
 
 	actionMap[act.Name()] = act
-	klog.V(2).Infof("Successfully registered action: %s", act.Name())
 }
 
 // GetAction get the action by name
