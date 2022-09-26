@@ -41,7 +41,7 @@ rules:
     verbs: ["list", "watch", "update"]
   - apiGroups: [""]
     resources: ["persistentvolumes"]
-    verbs: ["list", "watch"]
+    verbs: ["list", "watch", "update"]
   - apiGroups: [""]
     resources: ["namespaces", "services", "replicationcontrollers"]
     verbs: ["list", "watch", "get"]
