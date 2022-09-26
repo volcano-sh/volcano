@@ -134,6 +134,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - args:
+            - --enabled-admission=/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
             - --tls-private-key-file=/admission.local.config/certificates/tls.key
             - --ca-cert-file=/admission.local.config/certificates/ca.crt
@@ -8565,8 +8566,8 @@ rules:
     resources: ["persistentvolumes"]
     verbs: ["list", "watch"]
   - apiGroups: [""]
-    resources: ["namespaces"]
-    verbs: ["list", "watch"]
+    resources: ["namespaces", "services", "replicationcontrollers"]
+    verbs: ["list", "watch", "get"]
   - apiGroups: [""]
     resources: ["resourcequotas"]
     verbs: ["list", "watch"]
@@ -8594,6 +8595,9 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "create", "delete", "update"]
+  - apiGroups: ["apps"]
+    resources: ["daemonsets", "replicasets", "statefulsets"]
+    verbs: ["list", "watch", "get"]
 ---
 # Source: volcano/templates/scheduler.yaml
 kind: ClusterRoleBinding
@@ -8618,7 +8622,7 @@ metadata:
     prometheus.io/port: "8080"
     prometheus.io/scrape: "true"
   name: volcano-scheduler-service
-  namespace: volcano-system 
+  namespace: volcano-system
 spec:
   ports:
   - port: 8080
