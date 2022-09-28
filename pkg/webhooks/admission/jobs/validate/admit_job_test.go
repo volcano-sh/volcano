@@ -1477,32 +1477,6 @@ func TestValidateTaskTopoPolicy(t *testing.T) {
 			},
 			expect: "the cpu request isn't  an integer",
 		},
-		{
-			name: "test-3",
-			taskSpec: v1alpha1.TaskSpec{
-				Name:           "task-3",
-				Replicas:       5,
-				TopologyPolicy: v1alpha1.Restricted,
-				Template: v1.PodTemplateSpec{
-					ObjectMeta: metav1.ObjectMeta{
-						Labels: map[string]string{"name": "test"},
-					},
-					Spec: v1.PodSpec{
-						Containers: []v1.Container{
-							{
-								Resources: v1.ResourceRequirements{
-									Requests: v1.ResourceList{
-										v1.ResourceCPU:    *resource.NewQuantity(1, ""),
-										v1.ResourceMemory: *resource.NewQuantity(2000, resource.BinarySI),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			expect: "isn't Guaranteed pod",
-		},
 	}
 
 	for _, testcase := range testCases {
