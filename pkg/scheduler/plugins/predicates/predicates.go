@@ -33,6 +33,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeports"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeunschedulable"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
@@ -285,6 +286,11 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	// 8. VolumeZone
 	plugin, _ = volumezone.New(nil, handle)
 	volumeZoneFilter := plugin.(*volumezone.VolumeZone)
+	// 9. PodTopologySpread
+	// Setting cluster level default constraints is not support for now.
+	ptsArgs := &config.PodTopologySpreadArgs{DefaultingType: config.SystemDefaulting}
+	plugin, _ = podtopologyspread.New(ptsArgs, handle)
+	podTopologySpreadFilter := plugin.(*podtopologyspread.PodTopologySpread)
 
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
 		nodeInfo, found := nodeMap[node.Name]
@@ -384,6 +390,16 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		status = volumeZoneFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 		if !status.IsSuccess() {
 			return fmt.Errorf("plugin %s predicates failed %s", volumeZoneFilter.Name(), status.Message())
+		}
+
+		// Check PodTopologySpread
+		status = podTopologySpreadFilter.PreFilter(context.TODO(), state, task.Pod)
+		if !status.IsSuccess() {
+			return fmt.Errorf("plugin %s pre-predicates failed %s", podTopologySpreadFilter.Name(), status.Message())
+		}
+		status = podTopologySpreadFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
+		if !status.IsSuccess() {
+			return fmt.Errorf("plugin %s predicates failed %s", podTopologySpreadFilter.Name(), status.Message())
 		}
 
 		if predicate.gpuSharingEnable {
