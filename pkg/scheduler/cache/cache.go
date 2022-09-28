@@ -1038,6 +1038,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		CSINodesStatus: make(map[string]*schedulingapi.CSINodeStatusInfo),
 	}
 
+
 	copy(snapshot.NodeList, sc.NodeList)
 	for _, value := range sc.Nodes {
 		value.RefreshNumaSchedulerInfoByCrd()
