@@ -35,6 +35,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	infov1 "k8s.io/client-go/informers/core/v1"
@@ -144,6 +145,15 @@ type SchedulerCache struct {
 	BindFlowChannel chan *schedulingapi.TaskInfo
 	bindCache       []*schedulingapi.TaskInfo
 	batchNum        int
+	// A map from image name to its imageState.
+	imageStates map[string]*imageState
+}
+
+type imageState struct {
+	// Size of the image
+	size int64
+	// A set of node names for nodes having this image present
+	nodes sets.String
 }
 
 type DefaultBinder struct {
@@ -435,7 +445,8 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
 		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
 
-		NodeList: []string{},
+		NodeList:    []string{},
+		imageStates: make(map[string]*imageState),
 	}
 	if len(nodeSelectors) > 0 {
 		for _, nodeSelectorLabel := range nodeSelectors {
@@ -1027,6 +1038,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		CSINodesStatus: make(map[string]*schedulingapi.CSINodeStatusInfo),
 	}
 
+
 	copy(snapshot.NodeList, sc.NodeList)
 	for _, value := range sc.Nodes {
 		value.RefreshNumaSchedulerInfoByCrd()
@@ -1045,6 +1057,15 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 
 		if value.RevocableZone != "" {
 			snapshot.RevocableNodes[value.Name] = snapshot.Nodes[value.Name]
+		}
+
+		//clone imageState
+		for imagenm, summary := range value.ImageStates {
+			newImageSummary := &schedulingapi.ImageStateSummary{
+				Size:     summary.Size,
+				NumNodes: summary.NumNodes,
+			}
+			snapshot.Nodes[value.Name].ImageStates[imagenm] = newImageSummary
 		}
 	}
 
@@ -1119,8 +1140,8 @@ func (sc *SchedulerCache) String() string {
 	if len(sc.Nodes) != 0 {
 		str += "Nodes:\n"
 		for _, n := range sc.Nodes {
-			str += fmt.Sprintf("\t %s: idle(%v) used(%v) allocatable(%v) pods(%d)\n",
-				n.Name, n.Idle, n.Used, n.Allocatable, len(n.Tasks))
+			str += fmt.Sprintf("\t %s: idle(%v) used(%v) allocatable(%v) pods(%d) Imageofnode(%v)\n",
+				n.Name, n.Idle, n.Used, n.Allocatable, len(n.Tasks), n.ImageStates)
 
 			i := 0
 			for _, p := range n.Tasks {

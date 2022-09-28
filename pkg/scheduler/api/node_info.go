@@ -40,6 +40,14 @@ type CSINodeStatusInfo struct {
 	DriverStatus map[string]bool
 }
 
+// ImageStateSummary provides summarized information about the state of an image.
+type ImageStateSummary struct {
+	// Size of the image
+	Size int64
+	// Used to track how many nodes have this image
+	NumNodes int
+}
+
 // NodeInfo is node level aggregated information.
 type NodeInfo struct {
 	Name string
@@ -79,6 +87,11 @@ type NodeInfo struct {
 
 	// Resource Oversubscription feature: the Oversubscription Resource reported in annotation
 	OversubscriptionResource *Resource
+
+	// ImageStates holds the entry of an image if and only if this image is on the node. The entry can be used for
+	// checking an image's existence and advanced usage (e.g., image locality scheduling policy) based on the image
+	// state information.
+	ImageStates map[string]*ImageStateSummary
 }
 
 // FutureIdle returns resources that will be idle in the future:
@@ -135,6 +148,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		Tasks:                    make(map[TaskID]*TaskInfo),
 
 		GPUDevices: make(map[int]*GPUDevice),
+		ImageStates: make(map[string]*ImageStateSummary),
 	}
 
 	nodeInfo.setOversubscription(node)
@@ -526,7 +540,7 @@ func (ni NodeInfo) String() string {
 	}
 
 	return fmt.Sprintf("Node (%s): allocatable<%v> idle <%v>, used <%v>, releasing <%v>, oversubscribution <%v>, "+
-		"state <phase %s, reaseon %s>, oversubscributionNode <%v>, offlineJobEvicting <%v>,taints <%v>%s",
+		"state <phase %s, reason %s>, oversubscributionNode <%v>, offlineJobEvicting <%v>,taints <%v>%s",
 		ni.Name, ni.Allocatable, ni.Idle, ni.Used, ni.Releasing, ni.OversubscriptionResource, ni.State.Phase, ni.State.Reason, ni.OversubscriptionNode, ni.OfflineJobEvicting, ni.Node.Spec.Taints, tasks)
 }
 
