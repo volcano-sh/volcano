@@ -61,5 +61,5 @@ const NumaPolicyKey = "volcano.sh/numa-topology-policy"
 // TopologyDecisionAnnotation is the key of topology decision about pod request resource
 const TopologyDecisionAnnotation = "volcano.sh/topology-decision"
 
-// JobDisableGangMinavailablePreemptCheck is the key for disable-gang-minavailable-preempt-check
-const JobDisableGangMinavailablePreemptCheck = "volcano.sh/disable-gang-minavailable-preempt-check"
+// JobDisableGangMinavailablePreemptCheck is the key for disable-gang-min-available-preempt-check
+const JobDisableGangMinAvailablePreemptCheck = "volcano.sh/disable-gang-min-available-preempt-check"

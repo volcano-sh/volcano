@@ -10,7 +10,7 @@ In current behavior, gang job will not return resources if it's allocated resour
 As [issue 2321](https://github.com/volcano-sh/volcano/issues/2321) mentioned, Gang job reclaim/preempt behavior should support configure even it's allocated resources equal or less than MinAvailable.
 
 ## Design
-Add a job level new boolean flag `volcano.sh/disable-gang-minavailable-preempt-check` to support bypass MinAvailable check during gang job preempt check.
+Add a job level new boolean flag `volcano.sh/disable-gang-min-available-preempt-check` to support bypass MinAvailable check during gang job preempt check.
 The default value is `false`
 
 ```yaml
@@ -18,6 +18,6 @@ apiVersion: batch.volcano.sh/v1alpha1
 kind: Job
 metadata:
   annotations:
-    volcano.sh/disable-gang-minavailable-preempt-check: true
+    volcano.sh/disable-gang-min-available-preempt-check: true
 ```
 

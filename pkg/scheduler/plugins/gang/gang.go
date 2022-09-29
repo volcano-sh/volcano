@@ -90,7 +90,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 				jobOccupiedMap[job.UID] = job.ReadyTaskNum()
 			}
 
-			if job.DisableGangMinavailablePreemptCheck || jobOccupiedMap[job.UID] > job.MinAvailable {
+			if job.DisableGangMinAvailablePreemptCheck || jobOccupiedMap[job.UID] > job.MinAvailable {
 				jobOccupiedMap[job.UID]--
 				victims = append(victims, preemptee)
 			} else {
