@@ -163,7 +163,6 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 	nodeInfo.setNodeGPUInfo(node)
 	nodeInfo.setNodeState(node)
 	nodeInfo.setRevocableZone(node)
-
 	return nodeInfo
 }
 
