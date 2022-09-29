@@ -147,7 +147,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		OversubscriptionResource: EmptyResource(),
 		Tasks:                    make(map[TaskID]*TaskInfo),
 
-		GPUDevices: make(map[int]*GPUDevice),
+		GPUDevices:  make(map[int]*GPUDevice),
 		ImageStates: make(map[string]*ImageStateSummary),
 	}
 
