@@ -38,6 +38,7 @@ import (
 
 	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	flow "volcano.sh/apis/pkg/apis/flow/v1alpha1"
 	schedulerv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
@@ -49,6 +50,12 @@ var CommandKind = vcbus.SchemeGroupVersion.WithKind("Command")
 
 // V1beta1QueueKind is queue kind with v1alpha2 version.
 var V1beta1QueueKind = schedulerv1beta1.SchemeGroupVersion.WithKind("Queue")
+
+// JobFlowKind creates jobflow GroupVersionKind.
+var JobFlowKind = flow.SchemeGroupVersion.WithKind("JobFlow")
+
+// JobTemplateKind creates jobtemplate GroupVersionKind.
+var JobTemplateKind = flow.SchemeGroupVersion.WithKind("JobTemplate")
 
 // CreateOrUpdateConfigMap creates config map if not present or updates config map if necessary.
 func CreateOrUpdateConfigMap(job *vcbatch.Job, kubeClients kubernetes.Interface, data map[string]string, cmName string) error {

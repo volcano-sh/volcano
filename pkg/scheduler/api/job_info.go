@@ -60,7 +60,7 @@ func (db *DisruptionBudget) Clone() *DisruptionBudget {
 }
 
 // JobWaitingTime is maximum waiting time that a job could stay Pending in service level agreement
-// when job waits longer than waiting time, it should be inqueue at once, and cluster should reserve resources for it
+// when job waits longer than waiting time, it should enqueue at once, and cluster should reserve resources for it
 const JobWaitingTime = "sla-waiting-time"
 
 // TaskID is UID type for Task
@@ -72,7 +72,7 @@ type TransactionContext struct {
 	Status   TaskStatus
 }
 
-// Clone return a clone of TransactionContext
+// Clone returns a clone of TransactionContext
 func (ctx *TransactionContext) Clone() *TransactionContext {
 	if ctx == nil {
 		return nil
@@ -121,8 +121,8 @@ type TaskInfo struct {
 	Preemptable bool
 	BestEffort  bool
 
-	// RevocableZone support set volcano.sh/revocable-zone annotaion or label for pod/podgroup
-	// we only support empty value or * value for this version and we will support specify revocable zone name for futrue release
+	// RevocableZone supports setting volcano.sh/revocable-zone annotation or label for pod/podgroup
+	// we only support empty value or * value for this version and we will support specify revocable zone name for future releases
 	// empty value means workload can not use revocable node
 	// * value means workload can use all the revocable node for during node active revocable time.
 	RevocableZone string
@@ -268,17 +268,16 @@ func (ti *TaskInfo) GetTaskSpecKey() TaskID {
 
 // String returns the taskInfo details in a string
 func (ti TaskInfo) String() string {
-	if ti.NumaInfo == nil {
-		return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v"+
-			"resreq %v, preemptable %v, revocableZone %v",
-			ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority,
-			ti.Resreq, ti.Preemptable, ti.RevocableZone)
+	res := fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v"+
+		"resreq %v, preemptable %v, revocableZone %v",
+		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority,
+		ti.Resreq, ti.Preemptable, ti.RevocableZone)
+
+	if ti.NumaInfo != nil {
+		res += fmt.Sprintf(", numaInfo %v", *ti.NumaInfo)
 	}
 
-	return fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v"+
-		"resreq %v, preemptable %v, revocableZone %v, numaInfo %v",
-		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority,
-		ti.Resreq, ti.Preemptable, ti.RevocableZone, *ti.NumaInfo)
+	return res
 }
 
 // JobID is the type of JobInfo's ID.
@@ -842,7 +841,7 @@ func (ji *JobInfo) CheckTaskStarving() bool {
 	}
 	for taskID, minNum := range ji.TaskMinAvailable {
 		if occupiedMap[taskID] < minNum {
-			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskID, occupiedMap[taskID])
+			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min available", ji.Namespace, ji.Name, taskID, occupiedMap[taskID])
 			return true
 		}
 	}
@@ -873,9 +872,7 @@ func (ji *JobInfo) Ready() bool {
 
 // IsPending returns whether job is in pending status
 func (ji *JobInfo) IsPending() bool {
-	if ji.PodGroup == nil || ji.PodGroup.Status.Phase == scheduling.PodGroupPending || ji.PodGroup.Status.Phase == "" {
-		return true
-	}
-
-	return false
+	return ji.PodGroup == nil ||
+		ji.PodGroup.Status.Phase == scheduling.PodGroupPending ||
+		ji.PodGroup.Status.Phase == ""
 }

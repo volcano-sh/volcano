@@ -35,6 +35,11 @@ func (o *AllocateFailError) Error() string {
 	return o.Reason
 }
 
+type CSINodeStatusInfo struct {
+	CSINodeName  string
+	DriverStatus map[string]bool
+}
+
 // NodeInfo is node level aggregated information.
 type NodeInfo struct {
 	Name string
@@ -565,24 +570,39 @@ func (ni *NodeInfo) getDevicesAllGPUMemory() map[int]uint {
 	return res
 }
 
+// GetDevicesIdleGPU returns all the idle gpu card.
+func (ni *NodeInfo) GetDevicesIdleGPUs() []int {
+	res := []int{}
+	for _, device := range ni.GPUDevices {
+		if device.isIdleGPU() {
+			res = append(res, device.ID)
+		}
+	}
+	return res
+}
+
 // AddGPUResource adds the pod to GPU pool if it is assigned
 func (ni *NodeInfo) AddGPUResource(pod *v1.Pod) {
-	gpuRes := GetGPUResourceOfPod(pod)
+	gpuRes := GetGPUMemoryOfPod(pod)
 	if gpuRes > 0 {
-		id := GetGPUIndex(pod)
-		if dev := ni.GPUDevices[id]; dev != nil {
-			dev.PodMap[string(pod.UID)] = pod
+		ids := GetGPUIndex(pod)
+		for _, id := range ids {
+			if dev := ni.GPUDevices[id]; dev != nil {
+				dev.PodMap[string(pod.UID)] = pod
+			}
 		}
 	}
 }
 
 // SubGPUResource frees the gpu hold by the pod
 func (ni *NodeInfo) SubGPUResource(pod *v1.Pod) {
-	gpuRes := GetGPUResourceOfPod(pod)
+	gpuRes := GetGPUMemoryOfPod(pod)
 	if gpuRes > 0 {
-		id := GetGPUIndex(pod)
-		if dev := ni.GPUDevices[id]; dev != nil {
-			delete(dev.PodMap, string(pod.UID))
+		ids := GetGPUIndex(pod)
+		for _, id := range ids {
+			if dev := ni.GPUDevices[id]; dev != nil {
+				delete(dev.PodMap, string(pod.UID))
+			}
 		}
 	}
 }
@@ -606,4 +626,15 @@ func (ni *NodeInfo) getUnhealthyGPUs(node *v1.Node) (unhealthyGPUs []int) {
 		}
 	}
 	return
+}
+
+func (cs *CSINodeStatusInfo) Clone() *CSINodeStatusInfo {
+	newcs := &CSINodeStatusInfo{
+		CSINodeName:  cs.CSINodeName,
+		DriverStatus: make(map[string]bool),
+	}
+	for k, v := range cs.DriverStatus {
+		newcs.DriverStatus[k] = v
+	}
+	return newcs
 }

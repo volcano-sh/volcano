@@ -38,6 +38,7 @@ import (
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	versionedscheme "volcano.sh/apis/pkg/client/clientset/versioned/scheme"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
+	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	busv1alpha1informer "volcano.sh/apis/pkg/client/informers/externalversions/bus/v1alpha1"
 	schedulinginformer "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 	busv1alpha1lister "volcano.sh/apis/pkg/client/listers/bus/v1alpha1"
@@ -71,6 +72,8 @@ type queuecontroller struct {
 	cmdInformer busv1alpha1informer.CommandInformer
 	cmdLister   busv1alpha1lister.CommandLister
 	cmdSynced   cache.InformerSynced
+
+	vcInformerFactory vcinformer.SharedInformerFactory
 
 	// queues that need to be updated.
 	queue        workqueue.RateLimitingInterface
@@ -106,6 +109,7 @@ func (c *queuecontroller) Initialize(opt *framework.ControllerOption) error {
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: c.kubeClient.CoreV1().Events("")})
 
+	c.vcInformerFactory = factory
 	c.queueInformer = queueInformer
 	c.pgInformer = pgInformer
 	c.queueLister = queueInformer.Lister()
@@ -133,7 +137,7 @@ func (c *queuecontroller) Initialize(opt *framework.ControllerOption) error {
 		DeleteFunc: c.deletePodGroup,
 	})
 
-	c.cmdInformer = informerfactory.NewSharedInformerFactory(c.vcClient, 0).Bus().V1alpha1().Commands()
+	c.cmdInformer = factory.Bus().V1alpha1().Commands()
 	c.cmdInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
 			switch v := obj.(type) {
@@ -171,13 +175,13 @@ func (c *queuecontroller) Run(stopCh <-chan struct{}) {
 	klog.Infof("Starting queue controller.")
 	defer klog.Infof("Shutting down queue controller.")
 
-	go c.queueInformer.Informer().Run(stopCh)
-	go c.pgInformer.Informer().Run(stopCh)
-	go c.cmdInformer.Informer().Run(stopCh)
+	c.vcInformerFactory.Start(stopCh)
 
-	if !cache.WaitForCacheSync(stopCh, c.queueSynced, c.pgSynced, c.cmdSynced) {
-		klog.Errorf("unable to sync caches for queue controller.")
-		return
+	for informerType, ok := range c.vcInformerFactory.WaitForCacheSync(stopCh) {
+		if !ok {
+			klog.Errorf("caches failed to sync: %v", informerType)
+			return
+		}
 	}
 
 	go wait.Until(c.worker, 0, stopCh)

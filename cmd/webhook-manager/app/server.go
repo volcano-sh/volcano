@@ -32,6 +32,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling/scheme"
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
 	"volcano.sh/volcano/pkg/kube"
+	commonutil "volcano.sh/volcano/pkg/util"
 	"volcano.sh/volcano/pkg/version"
 	wkconfig "volcano.sh/volcano/pkg/webhooks/config"
 	"volcano.sh/volcano/pkg/webhooks/router"
@@ -65,12 +66,12 @@ func Run(config *options.Config) error {
 
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
-	recorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: config.SchedulerName})
-	router.ForEachAdmission(config, func(service *router.AdmissionService) {
+	recorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: commonutil.GenerateComponentName(config.SchedulerNames)})
+	if err := router.ForEachAdmission(config, func(service *router.AdmissionService) error {
 		if service.Config != nil {
 			service.Config.VolcanoClient = vClient
 			service.Config.KubeClient = kubeClient
-			service.Config.SchedulerName = config.SchedulerName
+			service.Config.SchedulerNames = config.SchedulerNames
 			service.Config.Recorder = recorder
 			service.Config.ConfigData = admissionConf
 		}
@@ -78,9 +79,16 @@ func Run(config *options.Config) error {
 		klog.V(3).Infof("Registered '%s' as webhook.", service.Path)
 		http.HandleFunc(service.Path, service.Handler)
 
-		klog.V(3).Infof("Registered configuration for webhook <%s>", service.Path)
-		registerWebhookConfig(kubeClient, config, service, config.CaCertData)
-	})
+		klog.V(3).Infof("Add CaCert for webhook <%s>", service.Path)
+		if err = addCaCertForWebhook(kubeClient, service, config.CaCertData); err != nil {
+			return fmt.Errorf("failed to add caCert for webhook %v", err)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	klog.V(3).Infof("Successfully added caCert for all webhooks")
 
 	webhookServeError := make(chan struct{})
 	stopChannel := make(chan os.Signal, 1)

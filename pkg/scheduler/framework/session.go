@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -45,6 +46,7 @@ type Session struct {
 	kubeClient      kubernetes.Interface
 	recorder        record.EventRecorder
 	cache           cache.Cache
+	restConfig      *rest.Config
 	informerFactory informers.SharedInformerFactory
 
 	TotalResource *api.Resource
@@ -54,6 +56,7 @@ type Session struct {
 
 	Jobs           map[api.JobID]*api.JobInfo
 	Nodes          map[string]*api.NodeInfo
+	CSINodesStatus map[string]*api.CSINodeStatusInfo
 	RevocableNodes map[string]*api.NodeInfo
 	Queues         map[api.QueueID]*api.QueueInfo
 	NamespaceInfo  map[api.NamespaceName]*api.NamespaceInfo
@@ -94,6 +97,7 @@ func openSession(cache cache.Cache) *Session {
 	ssn := &Session{
 		UID:             uuid.NewUUID(),
 		kubeClient:      cache.Client(),
+		restConfig:      cache.ClientConfig(),
 		recorder:        cache.EventRecorder(),
 		cache:           cache,
 		informerFactory: cache.SharedInformerFactory(),
@@ -103,6 +107,7 @@ func openSession(cache cache.Cache) *Session {
 
 		Jobs:           map[api.JobID]*api.JobInfo{},
 		Nodes:          map[string]*api.NodeInfo{},
+		CSINodesStatus: map[string]*api.CSINodeStatusInfo{},
 		RevocableNodes: map[string]*api.NodeInfo{},
 		Queues:         map[api.QueueID]*api.QueueInfo{},
 
@@ -163,6 +168,7 @@ func openSession(cache cache.Cache) *Session {
 	}
 	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
 	ssn.Nodes = snapshot.Nodes
+	ssn.CSINodesStatus = snapshot.CSINodesStatus
 	ssn.RevocableNodes = snapshot.RevocableNodes
 	ssn.Queues = snapshot.Queues
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
@@ -464,6 +470,11 @@ func (ssn *Session) UpdateSchedulerNumaInfo(AllocatedSets map[string]api.ResNuma
 // KubeClient returns the kubernetes client
 func (ssn Session) KubeClient() kubernetes.Interface {
 	return ssn.kubeClient
+}
+
+// ClientConfig returns the rest client
+func (ssn Session) ClientConfig() *rest.Config {
+	return ssn.restConfig
 }
 
 // InformerFactory returns the scheduler ShareInformerFactory

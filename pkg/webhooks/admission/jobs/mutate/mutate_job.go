@@ -27,7 +27,10 @@ import (
 	"k8s.io/klog"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	controllerMpi "volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/mpi"
+	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/mpi"
+	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/pytorch"
+	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/tensorflow"
+	commonutil "volcano.sh/volcano/pkg/util"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -39,8 +42,6 @@ const (
 	// DefaultMaxRetry is the default number of retries.
 	DefaultMaxRetry = 3
 
-	defaultSchedulerName = "volcano"
-
 	defaultMaxRetry int32 = 3
 )
 
@@ -51,6 +52,8 @@ func init() {
 var service = &router.AdmissionService{
 	Path: "/jobs/mutate",
 	Func: Jobs,
+
+	Config: config,
 
 	MutatingConfig: &whv1.MutatingWebhookConfiguration{
 		Webhooks: []whv1.MutatingWebhook{{
@@ -68,6 +71,8 @@ var service = &router.AdmissionService{
 		}},
 	},
 }
+
+var config = &router.AdmissionServiceConfig{}
 
 type patchOperation struct {
 	Op    string      `json:"op"`
@@ -147,7 +152,7 @@ func patchDefaultQueue(job *v1alpha1.Job) *patchOperation {
 func patchDefaultScheduler(job *v1alpha1.Job) *patchOperation {
 	// Add default scheduler name if not specified.
 	if job.Spec.SchedulerName == "" {
-		return &patchOperation{Op: "add", Path: "/spec/schedulerName", Value: defaultSchedulerName}
+		return &patchOperation{Op: "add", Path: "/spec/schedulerName", Value: commonutil.GenerateSchedulerName(config.SchedulerNames)}
 	}
 	return nil
 }
@@ -179,7 +184,7 @@ func patchDefaultMinAvailable(job *v1alpha1.Job) *patchOperation {
 
 func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string, job *v1alpha1.Job) *patchOperation {
 	// TODO: Enable this configuration when dependOn supports coexistence with the gang plugin
-	// if _, ok := job.Spec.Plugins[controllerMpi.MpiPluginName]; ok {
+	// if _, ok := job.Spec.Plugins[mpi.MpiPluginName]; ok {
 	// 	mpi.AddDependsOn(job)
 	// }
 	patched := false
@@ -228,9 +233,10 @@ func patchDefaultPlugins(job *v1alpha1.Job) *patchOperation {
 
 	// Because the tensorflow-plugin and mpi-plugin depends on svc-plugin.
 	// If the svc-plugin is not defined, we should add it.
-	_, hasTf := job.Spec.Plugins["tensorflow"]
-	_, hasMPI := job.Spec.Plugins[controllerMpi.MPIPluginName]
-	if hasTf || hasMPI {
+	_, hasTf := job.Spec.Plugins[tensorflow.TFPluginName]
+	_, hasMPI := job.Spec.Plugins[mpi.MPIPluginName]
+	_, hasPytorch := job.Spec.Plugins[pytorch.PytorchPluginName]
+	if hasTf || hasMPI || hasPytorch {
 		if _, ok := plugins["svc"]; !ok {
 			plugins["svc"] = []string{}
 		}

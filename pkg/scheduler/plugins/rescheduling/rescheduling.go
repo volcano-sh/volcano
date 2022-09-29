@@ -97,11 +97,13 @@ func (rp *reschedulingPlugin) OnSessionOpen(ssn *framework.Session) {
 		return
 	}
 
-	// Get all strategies and register the victim functions
+	// Get all strategies and register the victim functions for each strategy.
 	victimFns := make([]api.VictimTasksFn, 0)
 	for _, strategy := range configs.strategies {
-		klog.V(4).Infof("strategy: %s\n", strategy.Name)
-		victimFns = append(victimFns, VictimFn[strategy.Name])
+		if VictimFn[strategy.Name] != nil {
+			klog.V(4).Infof("strategy: %s\n", strategy.Name)
+			victimFns = append(victimFns, VictimFn[strategy.Name])
+		}
 	}
 	ssn.AddVictimTasksFns(rp.Name(), victimFns)
 }

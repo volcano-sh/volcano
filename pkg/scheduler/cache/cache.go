@@ -46,6 +46,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
@@ -63,6 +64,7 @@ import (
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 const (
@@ -83,8 +85,8 @@ func init() {
 }
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerName string, defaultQueue string, nodeSelectors []string) Cache {
-	return newSchedulerCache(config, schedulerName, defaultQueue, nodeSelectors)
+func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string) Cache {
+	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors)
 }
 
 // SchedulerCache cache for the kube batch
@@ -92,10 +94,11 @@ type SchedulerCache struct {
 	sync.Mutex
 
 	kubeClient   *kubernetes.Clientset
+	restConfig   *rest.Config
 	vcClient     *vcclient.Clientset
 	defaultQueue string
 	// schedulerName is the name for volcano scheduler
-	schedulerName      string
+	schedulerNames     []string
 	nodeSelectorLabels map[string]string
 	metricsConf        map[string]string
 
@@ -128,6 +131,7 @@ type SchedulerCache struct {
 	NodeList             []string
 	defaultPriorityClass *schedulingv1.PriorityClass
 	defaultPriority      int32
+	CSINodesStatus       map[string]*schedulingapi.CSINodeStatusInfo
 
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
@@ -146,7 +150,7 @@ type DefaultBinder struct {
 	// kubeclient *kubernetes.Clientset
 }
 
-//Bind will send bind request to api server
+// Bind will send bind request to api server
 func (db *DefaultBinder) Bind(kubeClient *kubernetes.Clientset, tasks []*schedulingapi.TaskInfo) ([]*schedulingapi.TaskInfo, error) {
 	var errTasks []*schedulingapi.TaskInfo
 	for _, task := range tasks {
@@ -373,7 +377,7 @@ func (pgb *podgroupBinder) Bind(job *schedulingapi.JobInfo, cluster string) (*sc
 	return job, nil
 }
 
-func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue string, nodeSelectors []string) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -398,9 +402,22 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 			Weight:      1,
 		},
 	}
-	if _, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultQue, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
-		panic(fmt.Sprintf("failed init default queue, with err: %v", err))
+
+	err = retry.OnError(wait.Backoff{
+		Steps:    60,
+		Duration: time.Second,
+		Factor:   1,
+		Jitter:   0.1,
+	}, func(err error) bool {
+		return !apierrors.IsAlreadyExists(err)
+	}, func() error {
+		_, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultQue, metav1.CreateOptions{})
+		return err
+	})
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		panic(fmt.Errorf("failed init default queue, with err: %v", err))
 	}
+	klog.Infof("Create init queue named default")
 
 	sc := &SchedulerCache{
 		Jobs:                make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
@@ -411,10 +428,12 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 		DeletedJobs:         workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		kubeClient:          kubeClient,
 		vcClient:            vcClient,
+		restConfig:          config,
 		defaultQueue:        defaultQueue,
-		schedulerName:       schedulerName,
+		schedulerNames:      schedulerNames,
 		nodeSelectorLabels:  make(map[string]string),
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
+		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
 
 		NodeList: []string{},
 	}
@@ -438,7 +457,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: eventClient.CoreV1().Events("")})
-	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: schedulerName})
+	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: commonutil.GenerateComponentName(sc.schedulerNames)})
 
 	sc.BindFlowChannel = make(chan *schedulingapi.TaskInfo, 5000)
 	sc.Binder = GetBindMethod()
@@ -509,6 +528,13 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 	sc.pvInformer = informerFactory.Core().V1().PersistentVolumes()
 	sc.scInformer = informerFactory.Storage().V1().StorageClasses()
 	sc.csiNodeInformer = informerFactory.Storage().V1().CSINodes()
+	sc.csiNodeInformer.Informer().AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.AddOrUpdateCSINode,
+			UpdateFunc: sc.UpdateCSINode,
+			DeleteFunc: sc.DeleteCSINode,
+		},
+	)
 	sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
 	sc.csiStorageCapacityInformer = informerFactory.Storage().V1beta1().CSIStorageCapacities()
 
@@ -542,7 +568,7 @@ func newSchedulerCache(config *rest.Config, schedulerName string, defaultQueue s
 			FilterFunc: func(obj interface{}) bool {
 				switch v := obj.(type) {
 				case *v1.Pod:
-					if !responsibleForPod(v, schedulerName, mySchedulerPodName, c) {
+					if !responsibleForPod(v, schedulerNames, mySchedulerPodName, c) {
 						if len(v.Spec.NodeName) == 0 {
 							return false
 						}
@@ -771,6 +797,11 @@ func (sc *SchedulerCache) Client() kubernetes.Interface {
 	return sc.kubeClient
 }
 
+// ClientConfig returns the rest config
+func (sc *SchedulerCache) ClientConfig() *rest.Config {
+	return sc.restConfig
+}
+
 // SharedInformerFactory returns the scheduler SharedInformerFactory
 func (sc *SchedulerCache) SharedInformerFactory() informers.SharedInformerFactory {
 	return sc.informerFactory
@@ -993,11 +1024,16 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		NamespaceInfo:  make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
 		RevocableNodes: make(map[string]*schedulingapi.NodeInfo),
 		NodeList:       make([]string, len(sc.NodeList)),
+		CSINodesStatus: make(map[string]*schedulingapi.CSINodeStatusInfo),
 	}
 
 	copy(snapshot.NodeList, sc.NodeList)
 	for _, value := range sc.Nodes {
 		value.RefreshNumaSchedulerInfoByCrd()
+	}
+
+	for _, value := range sc.CSINodesStatus {
+		snapshot.CSINodesStatus[value.CSINodeName] = value.Clone()
 	}
 
 	for _, value := range sc.Nodes {

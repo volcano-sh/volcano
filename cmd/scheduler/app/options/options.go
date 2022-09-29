@@ -45,7 +45,7 @@ const (
 // ServerOption is the main context object for the controller manager.
 type ServerOption struct {
 	KubeClientOptions    kube.ClientOptions
-	SchedulerName        string
+	SchedulerNames       []string
 	SchedulerConf        string
 	SchedulePeriod       time.Duration
 	EnableLeaderElection bool
@@ -83,7 +83,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.KubeClientOptions.Master, "master", s.KubeClientOptions.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 	fs.StringVar(&s.KubeClientOptions.KubeConfig, "kubeconfig", s.KubeClientOptions.KubeConfig, "Path to kubeconfig file with authorization and master location information")
 	// volcano scheduler will ignore pods with scheduler names other than specified with the option
-	fs.StringVar(&s.SchedulerName, "scheduler-name", defaultSchedulerName, "vc-scheduler will handle pods whose .spec.SchedulerName is same as scheduler-name")
+	fs.StringArrayVar(&s.SchedulerNames, "scheduler-name", []string{defaultSchedulerName}, "vc-scheduler will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.StringVar(&s.SchedulerConf, "scheduler-conf", "", "The absolute path of scheduler configuration file")
 	fs.DurationVar(&s.SchedulePeriod, "schedule-period", defaultSchedulerPeriod, "The period between each scheduling cycle")
 	fs.StringVar(&s.DefaultQueue, "default-queue", defaultQueue, "The default queue name of the job")

@@ -46,27 +46,74 @@ func (g *GPUDevice) getUsedGPUMemory() uint {
 		if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
 			continue
 		} else {
-			gpuRequest := GetGPUResourceOfPod(pod)
+			gpuRequest := GetGPUMemoryOfPod(pod)
 			res += gpuRequest
 		}
 	}
 	return res
 }
 
-// GetGPUResourceOfPod returns the GPU resource required by the pod.
-func GetGPUResourceOfPod(pod *v1.Pod) uint {
+// isIdleGPU check if the device is idled.
+func (g *GPUDevice) isIdleGPU() bool {
+	return g.PodMap == nil || len(g.PodMap) == 0
+}
+
+// GetGPUMemoryPod returns the GPU memory required by the pod.
+func GetGPUMemoryOfPod(pod *v1.Pod) uint {
+	var initMem uint
+	for _, container := range pod.Spec.InitContainers {
+		res := getGPUMemoryOfContainer(container.Resources)
+		if initMem < res {
+			initMem = res
+		}
+	}
+
 	var mem uint
 	for _, container := range pod.Spec.Containers {
-		mem += getGPUResourceOfContainer(&container)
+		mem += getGPUMemoryOfContainer(container.Resources)
+	}
+
+	if mem > initMem {
+		return mem
+	}
+	return initMem
+}
+
+// getGPUMemoryOfContainer returns the GPU memory required by the container.
+func getGPUMemoryOfContainer(resources v1.ResourceRequirements) uint {
+	var mem uint
+	if val, ok := resources.Limits[VolcanoGPUResource]; ok {
+		mem = uint(val.Value())
 	}
 	return mem
 }
 
-// getGPUResourceOfPod returns the GPU resource required by the container.
-func getGPUResourceOfContainer(container *v1.Container) uint {
-	var mem uint
-	if val, ok := container.Resources.Limits[VolcanoGPUResource]; ok {
-		mem = uint(val.Value())
+// GetGPUNumberOfPod returns the number of GPUs required by the pod.
+func GetGPUNumberOfPod(pod *v1.Pod) int {
+	var gpus int
+	for _, container := range pod.Spec.Containers {
+		gpus += getGPUNumberOfContainer(container.Resources)
 	}
-	return mem
+
+	var initGPUs int
+	for _, container := range pod.Spec.InitContainers {
+		res := getGPUNumberOfContainer(container.Resources)
+		if initGPUs < res {
+			initGPUs = res
+		}
+	}
+
+	if gpus > initGPUs {
+		return gpus
+	}
+	return initGPUs
+}
+
+// getGPUNumberOfContainer returns the number of GPUs required by the container.
+func getGPUNumberOfContainer(resources v1.ResourceRequirements) int {
+	var gpus int
+	if val, ok := resources.Limits[VolcanoGPUNumber]; ok {
+		gpus = int(val.Value())
+	}
+	return gpus
 }

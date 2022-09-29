@@ -20,8 +20,10 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestGetPodResourceRequest(t *testing.T) {
@@ -183,5 +185,59 @@ func TestGetPodResourceWithoutInitContainers(t *testing.T) {
 			t.Errorf("case %d(%s) failed: \n expected %v, \n got: %v \n",
 				i, test.name, test.expectedResource, req)
 		}
+	}
+}
+
+func TestGetGPUIndex(t *testing.T) {
+	testCases := []struct {
+		name string
+		pod  *v1.Pod
+		want []int
+	}{
+		{
+			name: "pod without GPUIndex annotation",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: nil,
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "pod with empty GPUIndex annotation",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{GPUIndex: ""},
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "pod with single GPUIndex annotation",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{GPUIndex: "0"},
+				},
+			},
+			want: []int{0},
+		},
+		{
+			name: "pod with multiple GPUIndexes annotation",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{GPUIndex: "0,1,3"},
+				},
+			},
+			want: []int{0, 1, 3},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := GetGPUIndex(tc.pod)
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Errorf("Unexpected result (-want +got):\n%s", diff)
+			}
+		})
 	}
 }

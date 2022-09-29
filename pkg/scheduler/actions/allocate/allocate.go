@@ -21,7 +21,9 @@ import (
 
 	"k8s.io/klog"
 
+	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -58,11 +60,17 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	jobsMap := map[api.NamespaceName]map[api.QueueID]*util.PriorityQueue{}
 
 	for _, job := range ssn.Jobs {
-		if job.IsPending() {
-			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: job status is pending.",
-				job.Namespace, job.Name, job.Queue)
-			continue
+		// If not config enqueue action, change Pending pg into Inqueue statue to avoid blocking job scheduling.
+		if !conf.EnabledActionMap["enqueue"] {
+			job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
+		} else {
+			if job.IsPending() {
+				klog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: job status is pending.",
+					job.Namespace, job.Name, job.Queue)
+				continue
+			}
 		}
+
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
 			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
 			continue

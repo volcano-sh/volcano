@@ -31,6 +31,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/signals"
+	commonutil "volcano.sh/volcano/pkg/util"
 	"volcano.sh/volcano/pkg/version"
 
 	v1 "k8s.io/api/core/v1"
@@ -74,7 +75,7 @@ func Run(opt *options.ServerOption) error {
 	}
 
 	sched, err := scheduler.NewScheduler(config,
-		opt.SchedulerName,
+		opt.SchedulerNames,
 		opt.SchedulerConf,
 		opt.SchedulePeriod,
 		opt.DefaultQueue,
@@ -115,7 +116,7 @@ func Run(opt *options.ServerOption) error {
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: leaderElectionClient.CoreV1().Events(opt.LockObjectNamespace)})
-	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: opt.SchedulerName})
+	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: commonutil.GenerateComponentName(opt.SchedulerNames)})
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -126,7 +127,7 @@ func Run(opt *options.ServerOption) error {
 
 	rl, err := resourcelock.New(resourcelock.ConfigMapsResourceLock,
 		opt.LockObjectNamespace,
-		opt.SchedulerName,
+		commonutil.GenerateComponentName(opt.SchedulerNames),
 		leaderElectionClient.CoreV1(),
 		leaderElectionClient.CoordinationV1(),
 		resourcelock.ResourceLockConfig{

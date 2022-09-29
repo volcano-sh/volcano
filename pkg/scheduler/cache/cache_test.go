@@ -105,9 +105,9 @@ func TestGetOrCreateJob(t *testing.T) {
 	pi3 := api.NewTaskInfo(pod3)
 
 	cache := &SchedulerCache{
-		Nodes:         make(map[string]*api.NodeInfo),
-		Jobs:          make(map[api.JobID]*api.JobInfo),
-		schedulerName: "volcano",
+		Nodes:          make(map[string]*api.NodeInfo),
+		Jobs:           make(map[api.JobID]*api.JobInfo),
+		schedulerNames: []string{"volcano"},
 	}
 
 	tests := []struct {

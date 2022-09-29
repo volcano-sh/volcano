@@ -61,7 +61,7 @@ With the introduction of distributed pattern in various frameworks, we can imple
 
 The key implementation of tensorflow plugin is that how to set correct `TF_CONFIG` environment variable for every pod.
 
-Firstly, we must known the cluster role of task in volcano job, and the port to be exposed. And this information can be passed by plugin arguments, which is defined in job spec.
+Firstly, we must know the cluster role of task in volcano job, and the port to be exposed. And this information can be passed by plugin arguments, which is defined in job spec.
 
 ```yaml
 spec:
@@ -69,8 +69,6 @@ spec:
     # set tensorflow plugin
     tensorflow: ["--port=5000", "--worker=worker", "--ps=ps"]
 ```
-
-
 
 In the implementation of `tensorflowPlugin`, these arguments will be parsed.
 
@@ -99,8 +97,6 @@ func (tp *tensorflowPlugin) addFlags() {
 }
 ```
 
-
-
 And then patch the pod spec in method `OnPodCreate`.
 
 ```go
@@ -128,8 +124,6 @@ func (tp *tensorflowPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	return nil
 }
 ```
-
-
 
 Here is the structure of  `TF_CONFIG`:
 
@@ -198,6 +192,37 @@ func (tp *tensorflowPlugin) getClusterInfo(job *batch.Job) clusterInfo {
 	return cluster
 }
 ```
+
+#### Pytorch Plugin
+
+Similar to the tensorflow plugin, firstly we must know the cluster role of task in volcano job, and the port to be exposed. And this information can be passed by plugin arguments, which is defined in job spec.
+
+```yaml
+spec:
+  plugins:
+    # set pytorch plugin
+    pytorch: ["--master=master","--worker=worker","--port=23456"]
+```
+
+In the implementation of `pytorchPlugin`, these arguments will be parsed.
+
+```go
+// pytorchPlugin is plugin for pytorch framework
+type pytorchPlugin struct {
+	pytorchArguments []string
+	clientset        pluginsinterface.PluginClientset
+	masterName       string
+	workerName       string
+	port             int
+}
+```
+
+Then we patch pytorch-distributed-training related environment variables to container envs in method `OnPodCreate`.
+The main environment variables are:
+* `MASTER_ADDR`: master address
+* `MASTER_PORT`: master port
+* `WORLD_SIZE`: total node number
+* `RANK`: current node index
 
 #### Other Framework
 

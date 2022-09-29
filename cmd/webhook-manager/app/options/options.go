@@ -47,7 +47,7 @@ type Config struct {
 	PrintVersion      bool
 	WebhookName       string
 	WebhookNamespace  string
-	SchedulerName     string
+	SchedulerNames    []string
 	WebhookURL        string
 	ConfigPath        string
 	EnabledAdmission  string
@@ -79,8 +79,8 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.WebhookNamespace, "webhook-namespace", "", "The namespace of this webhook")
 	fs.StringVar(&c.WebhookName, "webhook-service-name", "", "The name of this webhook")
 	fs.StringVar(&c.WebhookURL, "webhook-url", "", "The url of this webhook")
-	fs.StringVar(&c.EnabledAdmission, "enabled-admission", defaultEnabledAdmission, "enabled admission webhooks")
-	fs.StringVar(&c.SchedulerName, "scheduler-name", defaultSchedulerName, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
+	fs.StringVar(&c.EnabledAdmission, "enabled-admission", defaultEnabledAdmission, "enabled admission webhooks, if this parameter is modified, make sure corresponding webhook configurations are the same.")
+	fs.StringArrayVar(&c.SchedulerNames, "scheduler-name", []string{defaultSchedulerName}, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.StringVar(&c.ConfigPath, "admission-conf", "", "The configmap file of this webhook")
 	fs.StringVar(&c.IgnoredNamespaces, "ignored-namespaces", defaultIgnoredNamespaces, "Comma-separated list of namespaces to be ignored by admission webhooks")
 }

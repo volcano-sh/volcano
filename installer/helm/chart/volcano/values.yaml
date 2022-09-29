@@ -13,3 +13,4 @@ custom:
   admission_enable: true
   controller_enable: true
   scheduler_enable: true
+  enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"

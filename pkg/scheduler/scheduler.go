@@ -53,7 +53,7 @@ type Scheduler struct {
 // NewScheduler returns a scheduler
 func NewScheduler(
 	config *rest.Config,
-	schedulerName string,
+	schedulerNames []string,
 	schedulerConf string,
 	period time.Duration,
 	defaultQueue string,
@@ -72,7 +72,7 @@ func NewScheduler(
 	scheduler := &Scheduler{
 		schedulerConf:  schedulerConf,
 		fileWatcher:    watcher,
-		cache:          schedcache.New(config, schedulerName, defaultQueue, nodeSelectors),
+		cache:          schedcache.New(config, schedulerNames, defaultQueue, nodeSelectors),
 		schedulePeriod: period,
 	}
 
@@ -85,7 +85,7 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	go pc.watchSchedulerConf(stopCh)
 	// Start cache for policy.
 	pc.cache.SetMetricsConf(pc.metricsConf)
-	go pc.cache.Run(stopCh)
+	pc.cache.Run(stopCh)
 	pc.cache.WaitForCacheSync(stopCh)
 	klog.V(2).Infof("scheduler completes Initialization and start to run")
 	go wait.Until(pc.runOnce, pc.schedulePeriod, stopCh)
@@ -121,6 +121,11 @@ func (pc *Scheduler) runOnce() {
 
 func (pc *Scheduler) loadSchedulerConf() {
 	klog.V(4).Infof("Start loadSchedulerConf ...")
+	defer func() {
+		actions, plugins := pc.getSchedulerConf()
+		klog.V(2).Infof("Successfully loaded scheduler conf, actions: %v, plugins: %v", actions, plugins)
+	}()
+
 	var err error
 	pc.once.Do(func() {
 		pc.actions, pc.plugins, pc.configurations, pc.metricsConf, err = unmarshalSchedulerConf(defaultSchedulerConf)
@@ -152,6 +157,18 @@ func (pc *Scheduler) loadSchedulerConf() {
 	pc.configurations = configurations
 	pc.metricsConf = metricsConf
 	pc.mutex.Unlock()
+}
+
+func (pc *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
+	for _, action := range pc.actions {
+		actions = append(actions, action.Name())
+	}
+	for _, tier := range pc.plugins {
+		for _, plugin := range tier.Plugins {
+			plugins = append(plugins, plugin.Name)
+		}
+	}
+	return
 }
 
 func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {

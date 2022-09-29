@@ -19,6 +19,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strconv"
 
 	v1 "k8s.io/api/core/v1"
@@ -30,6 +31,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 
+	sv1 "k8s.io/api/storage/v1"
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/scheme"
@@ -37,6 +39,7 @@ import (
 	"volcano.sh/apis/pkg/apis/utils"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 func isTerminated(status schedulingapi.TaskStatus) bool {
@@ -47,9 +50,9 @@ func isTerminated(status schedulingapi.TaskStatus) bool {
 // pi.Pod.Spec.SchedulerName is same as volcano scheduler's name, otherwise it will return nil.
 func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *schedulingapi.JobInfo {
 	if len(pi.Job) == 0 {
-		if pi.Pod.Spec.SchedulerName != sc.schedulerName {
-			klog.V(4).Infof("Pod %s/%s will not scheduled by %s, skip creating PodGroup and Job for it",
-				pi.Pod.Namespace, pi.Pod.Name, sc.schedulerName)
+		if !commonutil.Contains(sc.schedulerNames, pi.Pod.Spec.SchedulerName) {
+			klog.V(4).Infof("Pod %s/%s will not scheduled by %#v, skip creating PodGroup and Job for it",
+				pi.Pod.Namespace, pi.Pod.Name, sc.schedulerNames)
 		}
 		return nil
 	}
@@ -400,6 +403,69 @@ func (sc *SchedulerCache) DeleteNode(obj interface{}) {
 			break
 		}
 	}
+}
+
+func (sc *SchedulerCache) AddOrUpdateCSINode(obj interface{}) {
+	csiNode, ok := obj.(*sv1.CSINode)
+	if !ok {
+		return
+	}
+
+	var csiNodeStatus *schedulingapi.CSINodeStatusInfo
+	var found bool
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+	// update nodeVolumeCount
+
+	if csiNodeStatus, found = sc.CSINodesStatus[csiNode.Name]; !found {
+		csiNodeStatus = &schedulingapi.CSINodeStatusInfo{
+			CSINodeName:  csiNode.Name,
+			DriverStatus: make(map[string]bool),
+		}
+		sc.CSINodesStatus[csiNode.Name] = csiNodeStatus
+	}
+
+	for i := range csiNode.Spec.Drivers {
+		d := csiNode.Spec.Drivers[i]
+		csiNodeStatus.DriverStatus[d.Name] = d.Allocatable != nil && d.Allocatable.Count != nil
+	}
+}
+
+func (sc *SchedulerCache) UpdateCSINode(oldObj, newObj interface{}) {
+	oldCSINode, ok := oldObj.(*sv1.CSINode)
+	if !ok {
+		return
+	}
+	newCSINode, ok := newObj.(*sv1.CSINode)
+	if !ok {
+		return
+	}
+	if reflect.DeepEqual(oldCSINode.Spec, newCSINode.Spec) {
+		return
+	}
+	sc.AddOrUpdateCSINode(newObj)
+}
+
+func (sc *SchedulerCache) DeleteCSINode(obj interface{}) {
+	var csiNode *sv1.CSINode
+	switch t := obj.(type) {
+	case *sv1.CSINode:
+		csiNode = obj.(*sv1.CSINode)
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		csiNode, ok = t.Obj.(*sv1.CSINode)
+		if !ok {
+			klog.Errorf("Cannot convert to *sv1.CSINode: %v", obj)
+			return
+		}
+	default:
+		klog.Errorf("Cannot convert to *sv1.CSINode: %v", obj)
+		return
+	}
+
+	sc.Mutex.Lock()
+	delete(sc.CSINodesStatus, csiNode.Name)
+	sc.Mutex.Unlock()
 }
 
 func getJobID(pg *schedulingapi.PodGroup) schedulingapi.JobID {

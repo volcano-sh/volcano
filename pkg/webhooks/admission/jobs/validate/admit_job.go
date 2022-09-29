@@ -31,7 +31,6 @@ import (
 	"k8s.io/klog"
 	k8score "k8s.io/kubernetes/pkg/apis/core"
 	k8scorev1 "k8s.io/kubernetes/pkg/apis/core/v1"
-	v1qos "k8s.io/kubernetes/pkg/apis/core/v1/helper/qos"
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
 	"k8s.io/kubernetes/pkg/capabilities"
 
@@ -365,14 +364,6 @@ func validateTaskTopoPolicy(task v1alpha1.TaskSpec, index int) string {
 		if len(container.Resources.Requests) == 0 {
 			template.Spec.InitContainers[id].Resources.Requests = container.Resources.Limits.DeepCopy()
 		}
-	}
-
-	pod := &v1.Pod{
-		Spec: template.Spec,
-	}
-
-	if v1qos.GetPodQOS(pod) != v1.PodQOSGuaranteed {
-		return fmt.Sprintf("spec.task[%d] isn't Guaranteed pod, kind=%v", index, v1qos.GetPodQOS(pod))
 	}
 
 	for id, container := range append(template.Spec.Containers, template.Spec.InitContainers...) {
