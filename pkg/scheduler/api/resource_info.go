@@ -76,6 +76,8 @@ func NewResource(rl v1.ResourceList) *Resource {
 			r.Memory += float64(rQuant.Value())
 		case v1.ResourcePods:
 			r.MaxTaskNum += int(rQuant.Value())
+		case v1.ResourceEphemeralStorage:
+			r.AddScalar(rName, float64(rQuant.MilliValue()))
 		default:
 			if IsCountQuota(rName) {
 				continue
