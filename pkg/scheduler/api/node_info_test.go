@@ -64,7 +64,8 @@ func TestNodeInfo_AddPod(t *testing.T) {
 					"c1/p1": NewTaskInfo(case01Pod1),
 					"c1/p2": NewTaskInfo(case01Pod2),
 				},
-				GPUDevices: make(map[int]*GPUDevice),
+				GPUDevices:  make(map[int]*GPUDevice),
+                                ImageStates: make(map[string]*ImageStateSummary),
 			},
 		},
 		{
@@ -85,6 +86,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				State:                    NodeState{Phase: Ready},
 				Tasks:                    map[TaskID]*TaskInfo{},
 				GPUDevices:               make(map[int]*GPUDevice),
+                                ImageStates:              make(map[string]*ImageStateSummary),
 			},
 			expectedFailure: true,
 		},
@@ -146,7 +148,8 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 					"c1/p1": NewTaskInfo(case01Pod1),
 					"c1/p3": NewTaskInfo(case01Pod3),
 				},
-				GPUDevices: make(map[int]*GPUDevice),
+				GPUDevices:  make(map[int]*GPUDevice),
+                                ImageStates: make(map[string]*ImageStateSummary),
 			},
 		},
 	}
@@ -208,7 +211,8 @@ func TestNodeInfo_SetNode(t *testing.T) {
 					"c1/p2": NewTaskInfo(case01Pod2),
 					"c1/p3": NewTaskInfo(case01Pod3),
 				},
-				GPUDevices: make(map[int]*GPUDevice),
+				GPUDevices:  make(map[int]*GPUDevice),
+                                ImageStates: make(map[string]*ImageStateSummary),
 			},
 		},
 	}
