@@ -82,7 +82,7 @@ metadata:
   labels:
     app: volcano-controller
 spec:
-  replicas: 1
+  replicas: {{ .Values.custom.controller_replicas }}
   selector:
     matchLabels:
       app: volcano-controller

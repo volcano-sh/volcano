@@ -11,6 +11,9 @@ basic:
 custom:
   metrics_enable: false
   admission_enable: true
+  admission_replicas: 1
   controller_enable: true
+  controller_replicas: 1
   scheduler_enable: true
+  scheduler_replicas: 1
   enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
