@@ -28,7 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	schedulingv1alpha2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	schedulingapi "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
@@ -39,7 +39,7 @@ func TestKillJobFunc(t *testing.T) {
 	testcases := []struct {
 		Name           string
 		Job            *v1alpha1.Job
-		PodGroup       *schedulingv1alpha2.PodGroup
+		PodGroup       *schedulingapi.PodGroup
 		PodRetainPhase state.PhaseMap
 		UpdateStatus   state.UpdateStatusFn
 		JobInfo        *apis.JobInfo
@@ -60,7 +60,7 @@ func TestKillJobFunc(t *testing.T) {
 					ResourceVersion: "100",
 				},
 			},
-			PodGroup: &schedulingv1alpha2.PodGroup{
+			PodGroup: &schedulingapi.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1-e7f18111-1cec-11ea-b688-fa163ec79500",
 					Namespace: namespace,
@@ -183,7 +183,7 @@ func TestSyncJobFunc(t *testing.T) {
 	testcases := []struct {
 		Name           string
 		Job            *v1alpha1.Job
-		PodGroup       *schedulingv1alpha2.PodGroup
+		PodGroup       *schedulingapi.PodGroup
 		PodRetainPhase state.PhaseMap
 		UpdateStatus   state.UpdateStatusFn
 		JobInfo        *apis.JobInfo
@@ -228,17 +228,17 @@ func TestSyncJobFunc(t *testing.T) {
 					},
 				},
 			},
-			PodGroup: &schedulingv1alpha2.PodGroup{
+			PodGroup: &schedulingapi.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "job1-e7f18111-1cec-11ea-b688-fa163ec79500",
 					Namespace: namespace,
 				},
-				Spec: schedulingv1alpha2.PodGroupSpec{
+				Spec: schedulingapi.PodGroupSpec{
 					MinResources:  &v1.ResourceList{},
 					MinTaskMember: map[string]int32{},
 				},
-				Status: schedulingv1alpha2.PodGroupStatus{
-					Phase: schedulingv1alpha2.PodGroupInqueue,
+				Status: schedulingapi.PodGroupStatus{
+					Phase: schedulingapi.PodGroupInqueue,
 				},
 			},
 			PodRetainPhase: state.PodRetainPhaseNone,
@@ -267,8 +267,8 @@ func TestSyncJobFunc(t *testing.T) {
 		t.Run(testcase.Name, func(t *testing.T) {
 			fakeController := newFakeController()
 
-			patches := gomonkey.ApplyMethod(reflect.TypeOf(fakeController), "GetQueueInfo", func(_ *jobcontroller, _ string) (*schedulingv1alpha2.Queue, error) {
-				return &schedulingv1alpha2.Queue{}, nil
+			patches := gomonkey.ApplyMethod(reflect.TypeOf(fakeController), "GetQueueInfo", func(_ *jobcontroller, _ string) (*schedulingapi.Queue, error) {
+				return &schedulingapi.Queue{}, nil
 			})
 
 			defer patches.Reset()
@@ -454,18 +454,18 @@ func TestUpdatePodGroupIfJobUpdateFunc(t *testing.T) {
 
 	testcases := []struct {
 		Name      string
-		PodGroup  *schedulingv1alpha2.PodGroup
+		PodGroup  *schedulingapi.PodGroup
 		Job       *v1alpha1.Job
 		ExpectVal error
 	}{
 		{
 			Name: "UpdatePodGroup success Case",
-			PodGroup: &schedulingv1alpha2.PodGroup{
+			PodGroup: &schedulingapi.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: namespace,
 					Name:      "job1-e7f18111-1cec-11ea-b688-fa163ec79500",
 				},
-				Spec: schedulingv1alpha2.PodGroupSpec{
+				Spec: schedulingapi.PodGroupSpec{
 					MinResources: &v1.ResourceList{},
 				},
 			},

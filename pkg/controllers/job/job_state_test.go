@@ -28,7 +28,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
-	schedulingv1alpha2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	schedulingapi "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
@@ -699,8 +699,8 @@ func TestPendingState_Execute(t *testing.T) {
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
 
-			patches := gomonkey.ApplyMethod(reflect.TypeOf(fakecontroller), "GetQueueInfo", func(_ *jobcontroller, _ string) (*schedulingv1alpha2.Queue, error) {
-				return &schedulingv1alpha2.Queue{}, nil
+			patches := gomonkey.ApplyMethod(reflect.TypeOf(fakecontroller), "GetQueueInfo", func(_ *jobcontroller, _ string) (*schedulingapi.Queue, error) {
+				return &schedulingapi.Queue{}, nil
 			})
 
 			defer patches.Reset()
@@ -1180,8 +1180,8 @@ func TestRunningState_Execute(t *testing.T) {
 			fakecontroller := newFakeController()
 			state.KillJob = fakecontroller.killJob
 
-			patches := gomonkey.ApplyMethod(reflect.TypeOf(fakecontroller), "GetQueueInfo", func(_ *jobcontroller, _ string) (*schedulingv1alpha2.Queue, error) {
-				return &schedulingv1alpha2.Queue{}, nil
+			patches := gomonkey.ApplyMethod(reflect.TypeOf(fakecontroller), "GetQueueInfo", func(_ *jobcontroller, _ string) (*schedulingapi.Queue, error) {
+				return &schedulingapi.Queue{}, nil
 			})
 
 			defer patches.Reset()
