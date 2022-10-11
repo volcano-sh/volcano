@@ -80,7 +80,7 @@ func (g ginkgoErrors) PushingNodeInRunPhase(nodeType NodeType, cl CodeLocation) 
 to the Ginkgo spec tree in a leaf node {{bold}}after{{/}} the specs started running.
 
 To enable randomization and parallelization Ginkgo requires the spec tree
-to be fully construted up front.  In practice, this means that you can
+to be fully constructed up front.  In practice, this means that you can
 only create nodes like {{bold}}[%s]{{/}} at the top-level or within the
 body of a {{bold}}Describe{{/}}, {{bold}}Context{{/}}, or {{bold}}When{{/}}.`, nodeType, nodeType),
 		CodeLocation: cl,
@@ -182,8 +182,8 @@ func (g ginkgoErrors) InvalidDeclarationOfFocusedAndPending(cl CodeLocation, nod
 
 func (g ginkgoErrors) UnknownDecorator(cl CodeLocation, nodeType NodeType, decorator interface{}) error {
 	return GinkgoError{
-		Heading:      "Unkown Decorator",
-		Message:      formatter.F(`[%s] node was passed an unkown decorator: '%#v'`, nodeType, decorator),
+		Heading:      "Unknown Decorator",
+		Message:      formatter.F(`[%s] node was passed an unknown decorator: '%#v'`, nodeType, decorator),
 		CodeLocation: cl,
 		DocLink:      "node-decorators-overview",
 	}
@@ -292,6 +292,16 @@ func (g ginkgoErrors) AddReportEntryNotDuringRunPhase(cl CodeLocation) error {
 	}
 }
 
+/* By errors */
+func (g ginkgoErrors) ByNotDuringRunPhase(cl CodeLocation) error {
+	return GinkgoError{
+		Heading:      "Ginkgo detected an issue with your spec structure",
+		Message:      formatter.F(`It looks like you are calling {{bold}}By{{/}} outside of a running spec.  Make sure you call {{bold}}By{{/}} inside a runnable node such as It or BeforeEach and not inside the body of a container such as Describe or Context.`),
+		CodeLocation: cl,
+		DocLink:      "documenting-complex-specs-by",
+	}
+}
+
 /* FileFilter and SkipFilter errors */
 func (g ginkgoErrors) InvalidFileFilter(filter string) error {
 	return GinkgoError{
@@ -370,6 +380,15 @@ func (g ginkgoErrors) InvalidEntryDescription(cl CodeLocation) error {
 	}
 }
 
+func (g ginkgoErrors) IncorrectParameterTypeForTable(i int, name string, cl CodeLocation) error {
+	return GinkgoError{
+		Heading:      "DescribeTable passed incorrect parameter type",
+		Message:      fmt.Sprintf("Parameter #%d passed to DescribeTable is of incorrect type <%s>", i, name),
+		CodeLocation: cl,
+		DocLink:      "table-specs",
+	}
+}
+
 func (g ginkgoErrors) TooFewParametersToTableFunction(expected, actual int, kind string, cl CodeLocation) error {
 	return GinkgoError{
 		Heading:      fmt.Sprintf("Too few parameters passed in to %s", kind),
@@ -424,16 +443,16 @@ func (g ginkgoErrors) SynchronizedBeforeSuiteFailedOnProc1() error {
 
 func (g ginkgoErrors) SynchronizedBeforeSuiteDisappearedOnProc1() error {
 	return GinkgoError{
-		Heading: "Process #1 disappeard before SynchronizedBeforeSuite could report back",
+		Heading: "Process #1 disappeared before SynchronizedBeforeSuite could report back",
 		Message: "Ginkgo parallel process #1 disappeared before the first SynchronizedBeforeSuite function completed.  This suite will now abort.",
 	}
 }
 
 /* Configuration errors */
 
-func (g ginkgoErrors) UnkownTypePassedToRunSpecs(value interface{}) error {
+func (g ginkgoErrors) UnknownTypePassedToRunSpecs(value interface{}) error {
 	return GinkgoError{
-		Heading: "Unkown Type pased to RunSpecs",
+		Heading: "Unknown Type passed to RunSpecs",
 		Message: fmt.Sprintf("RunSpecs() accepts labels, and configuration of type types.SuiteConfig and/or types.ReporterConfig.\n You passed in: %v", value),
 	}
 }

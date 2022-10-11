@@ -86,6 +86,11 @@ func (s *Snapshot) NodeInfos() framework.NodeInfoLister {
 	return s
 }
 
+// StorageInfos returns a StorageInfoLister.
+func (s *Snapshot) StorageInfos() framework.StorageInfoLister {
+	return s
+}
+
 type podLister []*framework.NodeInfo
 
 // List returns the list of pods in the snapshot.
@@ -135,4 +140,9 @@ func (s *Snapshot) Get(nodeName string) (*framework.NodeInfo, error) {
 		return v, nil
 	}
 	return nil, fmt.Errorf("nodeinfo not found for node name %q", nodeName)
+}
+
+func (s *Snapshot) IsPVCUsedByPods(key string) bool {
+	// TODO s.usedPVCSet.Has(key)
+	return false
 }

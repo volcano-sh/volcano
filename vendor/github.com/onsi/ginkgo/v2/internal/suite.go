@@ -85,6 +85,10 @@ func (suite *Suite) Run(description string, suiteLabels Labels, suitePath string
 	return success, hasProgrammaticFocus
 }
 
+func (suite *Suite) InRunPhase() bool {
+	return suite.phase == PhaseRun
+}
+
 /*
   Tree Construction methods
 
@@ -296,7 +300,7 @@ func (suite *Suite) runSpecs(description string, suiteLabels Labels, suitePath s
 			// the complexity for running groups of specs is very high because of Ordered containers and FlakeAttempts
 			// we encapsulate that complexity in the notion of a Group that can run
 			// Group is really just an extension of suite so it gets passed a suite and has access to all its internals
-			// Note that group is stateful and intedned for single use!
+			// Note that group is stateful and intended for single use!
 			newGroup(suite).run(specs.AtIndices(groupedSpecIndices[groupedSpecIdx]))
 		}
 
@@ -389,10 +393,6 @@ func (suite *Suite) runReportAfterSuite() {
 }
 
 func (suite *Suite) reportEach(spec Spec, nodeType types.NodeType) {
-	if suite.config.DryRun {
-		return
-	}
-
 	nodes := spec.Nodes.WithType(nodeType)
 	if nodeType == types.NodeTypeReportAfterEach {
 		nodes = nodes.SortedByDescendingNestingLevel()
@@ -521,11 +521,6 @@ func (suite *Suite) runSuiteNode(node Node, interruptChannel chan interface{}) {
 }
 
 func (suite *Suite) runReportAfterSuiteNode(node Node, report types.Report) {
-	if suite.config.DryRun {
-		suite.currentSpecReport.State = types.SpecStatePassed
-		return
-	}
-
 	suite.writer.Truncate()
 	suite.outputInterceptor.StartInterceptingOutput()
 	suite.currentSpecReport.StartTime = time.Now()

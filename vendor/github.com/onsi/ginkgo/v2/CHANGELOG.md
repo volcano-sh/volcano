@@ -1,3 +1,45 @@
+## 2.1.4
+
+### Fixes
+- Numerous documentation typos
+- Prepend `when` when using `When` (this behavior was in 1.x but unintentionally lost during the 2.0 rewrite) [efce903]
+- improve error message when a parallel process fails to report back [a7bd1fe]
+- guard against concurrent map writes in DeprecationTracker [0976569]
+- Invoke reporting nodes during dry-run (fixes #956 and #935) [aae4480]
+- Fix ginkgo import circle [f779385]
+
+## 2.1.3
+
+See [https://onsi.github.io/ginkgo/MIGRATING_TO_V2](https://onsi.github.io/ginkgo/MIGRATING_TO_V2) for details on V2.
+
+### Fixes
+- Calling By in a container node now emits a useful error. [ff12cee]
+
+## 2.1.2
+
+### Fixes
+
+- Track location of focused specs correctly in `ginkgo unfocus` [a612ff1]
+- Profiling suites with focused specs no longer generates an erroneous failure message [8fbfa02]
+- Several documentation typos fixed.  Big thanks to everyone who helped catch them and report/fix them!
+
+## 2.1.1
+
+See [https://onsi.github.io/ginkgo/MIGRATING_TO_V2](https://onsi.github.io/ginkgo/MIGRATING_TO_V2) for details on V2.
+
+### Fixes
+- Suites that only import the new dsl packages are now correctly identified as Ginkgo suites [ec17e17]
+
+## 2.1.0
+
+See [https://onsi.github.io/ginkgo/MIGRATING_TO_V2](https://onsi.github.io/ginkgo/MIGRATING_TO_V2) for details on V2.
+
+2.1.0 is a minor release with a few tweaks:
+
+- Introduce new DSL packages to enable users to pick-and-choose which portions of the DSL to dot-import. [90868e2]  More details [here](https://onsi.github.io/ginkgo/#alternatives-to-dot-importing-ginkgo).
+- Add error check for invalid/nil parameters to DescribeTable [6f8577e]
+- Myriad docs typos fixed (thanks everyone!) [718542a, ecb7098, 146654c, a8f9913, 6bdffde, 03dcd7e]
+
 ## 2.0.0
 
 See [https://onsi.github.io/ginkgo/MIGRATING_TO_V2](https://onsi.github.io/ginkgo/MIGRATING_TO_V2)
@@ -27,7 +69,7 @@ You can silence the RC advertisement by setting an `ACK_GINKG_RC=true` environme
 ## 1.16.1
 
 ### Fixes
-- Supress --stream deprecation warning on windows (#793)
+- Suppress --stream deprecation warning on windows (#793)
 
 ## 1.16.0
 
@@ -205,7 +247,7 @@ You can silence the RC advertisement by setting an `ACK_GINKG_RC=true` environme
 - fix: for `go vet` to pass [69338ec]
 - docs: fix for contributing instructions [7004cb1]
 - consolidate and streamline contribution docs (#494) [d848015]
-- Make generated Junit file compatable with "Maven Surefire" (#488) [e51bee6]
+- Make generated Junit file compatible with "Maven Surefire" (#488) [e51bee6]
 - all: gofmt [000d317]
 - Increase eventually timeout to 30s [c73579c]
 - Clarify asynchronous test behaviour [294d8f4]
@@ -317,7 +359,7 @@ Bug Fixes:
 - Fix incorrect failure message when a panic occurs during a parallel test run
 - Fixed an issue where a pending test within a focused context (or a focused test within a pending context) would skip all other tests.
 - Be more consistent about handling SIGTERM as well as SIGINT
-- When interupted while concurrently compiling test suites in the background, Ginkgo now cleans up the compiled artifacts.
+- When interrupted while concurrently compiling test suites in the background, Ginkgo now cleans up the compiled artifacts.
 - Fixed a long standing bug where `ginkgo -p` would hang if a process spawned by one of the Ginkgo parallel nodes does not exit. (Hooray!)
 
 ## 1.1.0 (8/2/2014)

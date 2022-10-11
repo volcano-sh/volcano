@@ -40,7 +40,6 @@ import (
 	infov1 "k8s.io/client-go/informers/core/v1"
 	schedv1 "k8s.io/client-go/informers/scheduling/v1"
 	storagev1 "k8s.io/client-go/informers/storage/v1"
-	storagev1beta1 "k8s.io/client-go/informers/storage/v1beta1"
 	"k8s.io/client-go/kubernetes"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
@@ -113,7 +112,7 @@ type SchedulerCache struct {
 	quotaInformer              infov1.ResourceQuotaInformer
 	csiNodeInformer            storagev1.CSINodeInformer
 	csiDriverInformer          storagev1.CSIDriverInformer
-	csiStorageCapacityInformer storagev1beta1.CSIStorageCapacityInformer
+	csiStorageCapacityInformer storagev1.CSIStorageCapacityInformer
 	cpuInformer                cpuinformerv1.NumatopologyInformer
 
 	Binder         Binder
@@ -335,7 +334,7 @@ func (dvb *defaultVolumeBinder) BindVolumes(task *schedulingapi.TaskInfo, podVol
 		return nil
 	}
 
-	return dvb.volumeBinder.BindPodVolumes(task.Pod, podVolumes)
+	return dvb.volumeBinder.BindPodVolumes(context.TODO(), task.Pod, podVolumes)
 }
 
 type podgroupBinder struct {
@@ -536,16 +535,10 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		},
 	)
 	sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
-	sc.csiStorageCapacityInformer = informerFactory.Storage().V1beta1().CSIStorageCapacities()
-
-	var capacityCheck *volumescheduling.CapacityCheck
-	if options.ServerOpts.EnableCSIStorage {
-		capacityCheck = &volumescheduling.CapacityCheck{
-			CSIDriverInformer:          sc.csiDriverInformer,
-			CSIStorageCapacityInformer: sc.csiStorageCapacityInformer,
-		}
-	} else {
-		capacityCheck = nil
+	sc.csiStorageCapacityInformer = informerFactory.Storage().V1().CSIStorageCapacities()
+	capacityCheck := volumescheduling.CapacityCheck{
+		CSIDriverInformer:          sc.csiDriverInformer,
+		CSIStorageCapacityInformer: sc.csiStorageCapacityInformer,
 	}
 
 	sc.VolumeBinder = &defaultVolumeBinder{

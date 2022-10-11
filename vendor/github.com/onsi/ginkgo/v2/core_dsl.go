@@ -115,7 +115,7 @@ The first return value is the SuiteConfig which controls aspects of how the suit
 the second return value is the ReporterConfig which controls aspects of how Ginkgo's default
 reporter emits output.
 
-Mutating the returned configurations has no effect.  To reconfigure Ginkgo programatically you need
+Mutating the returned configurations has no effect.  To reconfigure Ginkgo programmatically you need
 to pass in your mutated copies into RunSpecs().
 
 You can learn more at https://onsi.github.io/ginkgo/#overriding-ginkgos-command-line-configuration-in-the-suite
@@ -184,7 +184,7 @@ If you bootstrapped your suite with "ginkgo bootstrap" this is already
 done for you.
 
 Ginkgo is typically configured via command-line flags.  This configuration
-can be overriden, however, and passed into RunSpecs as optional arguments:
+can be overridden, however, and passed into RunSpecs as optional arguments:
 
 	func TestMySuite(t *testing.T)  {
 		RegisterFailHandler(gomega.Fail)
@@ -221,7 +221,7 @@ func RunSpecs(t GinkgoTestingT, description string, args ...interface{}) bool {
 		case Labels:
 			suiteLabels = append(suiteLabels, arg...)
 		default:
-			configErrors = append(configErrors, types.GinkgoErrors.UnkownTypePassedToRunSpecs(arg))
+			configErrors = append(configErrors, types.GinkgoErrors.UnknownTypePassedToRunSpecs(arg))
 		}
 	}
 	exitIfErrors(configErrors)
@@ -421,7 +421,23 @@ var XDescribe = PDescribe
 var Context, FContext, PContext, XContext = Describe, FDescribe, PDescribe, XDescribe
 
 /* When is an alias for Describe - it generates the exact same kind of Container node */
-var When, FWhen, PWhen, XWhen = Describe, FDescribe, PDescribe, XDescribe
+func When(text string, args ...interface{}) bool {
+	return pushNode(internal.NewNode(deprecationTracker, types.NodeTypeContainer, "when "+text, args...))
+}
+
+/* When is an alias for Describe - it generates the exact same kind of Container node */
+func FWhen(text string, args ...interface{}) bool {
+	args = append(args, internal.Focus)
+	return pushNode(internal.NewNode(deprecationTracker, types.NodeTypeContainer, "when "+text, args...))
+}
+
+/* When is an alias for Describe - it generates the exact same kind of Container node */
+func PWhen(text string, args ...interface{}) bool {
+	args = append(args, internal.Pending)
+	return pushNode(internal.NewNode(deprecationTracker, types.NodeTypeContainer, "when "+text, args...))
+}
+
+var XWhen = PWhen
 
 /*
 It nodes are Subject nodes that contain your spec code and assertions.
@@ -478,6 +494,9 @@ Note that By does not generate a new Ginkgo node - rather it is simply synctacti
 You can learn more about By here: https://onsi.github.io/ginkgo/#documenting-complex-specs-by
 */
 func By(text string, callback ...func()) {
+	if !global.Suite.InRunPhase() {
+		exitIfErr(types.GinkgoErrors.ByNotDuringRunPhase(types.NewCodeLocation(1)))
+	}
 	value := struct {
 		Text     string
 		Duration time.Duration
