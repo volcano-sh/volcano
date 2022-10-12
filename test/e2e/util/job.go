@@ -413,7 +413,7 @@ func WaitJobPhases(ctx *TestContext, job *batchv1alpha1.Job, phases []batchv1alp
 
 	ch := w.ResultChan()
 	index := 0
-	timeout := time.After(FiveMinute)
+	timeout := time.After(TenMinute)
 
 	for index < len(phases) {
 		select {
@@ -461,7 +461,7 @@ func WaitJobPhases(ctx *TestContext, job *batchv1alpha1.Job, phases []batchv1alp
 			}
 
 			index++
-			timeout = time.After(FiveMinute)
+			timeout = time.After(TenMinute)
 
 		case <-timeout:
 			return fmt.Errorf("[Wait time out]: %s", additionalError)

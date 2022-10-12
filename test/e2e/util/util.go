@@ -47,6 +47,7 @@ var (
 	OneMinute  = 1 * time.Minute
 	TwoMinute  = 2 * time.Minute
 	FiveMinute = 5 * time.Minute
+	TenMinute  = 10 * time.Minute
 	OneCPU     = v1.ResourceList{"cpu": resource.MustParse("1000m")}
 	TwoCPU     = v1.ResourceList{"cpu": resource.MustParse("2000m")}
 	ThreeCPU   = v1.ResourceList{"cpu": resource.MustParse("3000m")}
