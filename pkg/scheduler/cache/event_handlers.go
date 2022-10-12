@@ -306,7 +306,7 @@ func (sc *SchedulerCache) addNode(node *v1.Node) error {
 func (sc *SchedulerCache) updateNode(oldNode, newNode *v1.Node) error {
 	if sc.Nodes[newNode.Name] != nil {
 		sc.removeNodeImageStates(newNode)
-		//add images
+		//add image
 		sc.addNodeImageStates(newNode, sc.Nodes[newNode.Name])
 		sc.Nodes[newNode.Name].SetNode(newNode)
 		return nil
