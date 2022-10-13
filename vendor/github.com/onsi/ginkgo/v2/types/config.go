@@ -28,8 +28,12 @@ type SuiteConfig struct {
 	FlakeAttempts         int
 	EmitSpecProgress      bool
 	DryRun                bool
+	PollProgressAfter     time.Duration
+	PollProgressInterval  time.Duration
 	Timeout               time.Duration
 	OutputInterceptorMode string
+	SourceRoots           []string
+	GracePeriod           time.Duration
 
 	ParallelProcess int
 	ParallelTotal   int
@@ -42,6 +46,7 @@ func NewDefaultSuiteConfig() SuiteConfig {
 		Timeout:         time.Hour,
 		ParallelProcess: 1,
 		ParallelTotal:   1,
+		GracePeriod:     30 * time.Second,
 	}
 }
 
@@ -168,7 +173,7 @@ func (g CLIConfig) ComputedNumCompilers() int {
 }
 
 // Configuration for the Ginkgo CLI capturing available go flags
-// A subset of Go flags are exposed by Ginkgo.  Some are avaiable at compile time (e.g. ginkgo build) and others only at run time (e.g. ginkgo run - which has both build and run time flags).
+// A subset of Go flags are exposed by Ginkgo.  Some are available at compile time (e.g. ginkgo build) and others only at run time (e.g. ginkgo run - which has both build and run time flags).
 // More details can be found at:
 // https://docs.google.com/spreadsheets/d/1zkp-DS4hU4sAJl5eHh1UmgwxCPQhf3s5a8fbiOI8tJU/
 type GoFlagsConfig struct {
@@ -272,13 +277,21 @@ var SuiteConfigFlags = GinkgoFlags{
 		Usage: "If set, ginkgo will walk the test hierarchy without actually running anything.  Best paired with -v."},
 	{KeyPath: "S.EmitSpecProgress", Name: "progress", SectionKey: "debug",
 		Usage: "If set, ginkgo will emit progress information as each spec runs to the GinkgoWriter."},
+	{KeyPath: "S.PollProgressAfter", Name: "poll-progress-after", SectionKey: "debug", UsageDefaultValue: "0",
+		Usage: "Emit node progress reports periodically if node hasn't completed after this duration."},
+	{KeyPath: "S.PollProgressInterval", Name: "poll-progress-interval", SectionKey: "debug", UsageDefaultValue: "10s",
+		Usage: "The rate at which to emit node progress reports after poll-progress-after has elapsed."},
+	{KeyPath: "S.SourceRoots", Name: "source-root", SectionKey: "debug",
+		Usage: "The location to look for source code when generating progress reports.  You can pass multiple --source-root flags."},
 	{KeyPath: "S.Timeout", Name: "timeout", SectionKey: "debug", UsageDefaultValue: "1h",
 		Usage: "Test suite fails if it does not complete within the specified timeout."},
+	{KeyPath: "S.GracePeriod", Name: "grace-period", SectionKey: "debug", UsageDefaultValue: "30s",
+		Usage: "When interrupted, Ginkgo will wait for GracePeriod for the current running node to exit before moving on to the next one."},
 	{KeyPath: "S.OutputInterceptorMode", Name: "output-interceptor-mode", SectionKey: "debug", UsageArgument: "dup, swap, or none",
 		Usage: "If set, ginkgo will use the specified output interception strategy when running in parallel.  Defaults to dup on unix and swap on windows."},
 
 	{KeyPath: "S.LabelFilter", Name: "label-filter", SectionKey: "filter", UsageArgument: "expression",
-		Usage: "If set, ginkgo will only run specs with labels that match the label-filter.  The passed-in expression can include boolean operations (!, &&, ||, ','), groupings via '()', and regular expresions '/regexp/'.  e.g. '(cat || dog) && !fruit'"},
+		Usage: "If set, ginkgo will only run specs with labels that match the label-filter.  The passed-in expression can include boolean operations (!, &&, ||, ','), groupings via '()', and regular expressions '/regexp/'.  e.g. '(cat || dog) && !fruit'"},
 	{KeyPath: "S.FocusStrings", Name: "focus", SectionKey: "filter",
 		Usage: "If set, ginkgo will only run specs that match this regular expression. Can be specified multiple times, values are ORed."},
 	{KeyPath: "S.SkipStrings", Name: "skip", SectionKey: "filter",
@@ -379,6 +392,10 @@ func VetConfig(flagSet GinkgoFlagSet, suiteConfig SuiteConfig, reporterConfig Re
 
 	if suiteConfig.DryRun && suiteConfig.ParallelTotal > 1 {
 		errors = append(errors, GinkgoErrors.DryRunInParallelConfiguration())
+	}
+
+	if suiteConfig.GracePeriod <= 0 {
+		errors = append(errors, GinkgoErrors.GracePeriodCannotBeZero())
 	}
 
 	if len(suiteConfig.FocusFiles) > 0 {
@@ -555,7 +572,7 @@ var GoRunFlags = GinkgoFlags{
 }
 
 // VetAndInitializeCLIAndGoConfig validates that the Ginkgo CLI's configuration is sound
-// It returns a potentially mutated copy of the config that rationalizes the configuraiton to ensure consistency for downstream consumers
+// It returns a potentially mutated copy of the config that rationalizes the configuration to ensure consistency for downstream consumers
 func VetAndInitializeCLIAndGoConfig(cliConfig CLIConfig, goFlagsConfig GoFlagsConfig) (CLIConfig, GoFlagsConfig, []error) {
 	errors := []error{}
 

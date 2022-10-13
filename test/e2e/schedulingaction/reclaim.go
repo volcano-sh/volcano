@@ -180,7 +180,6 @@ var _ = Describe("Reclaim E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
 		for _, pod := range job3pods.Items {
-			fmt.Println(pod.Name)
 			err = ctx.Kubeclient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Failed to delete pod %s", pod.Name)
 		}

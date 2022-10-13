@@ -1,3 +1,110 @@
+## v1.21.1
+
+### Features
+- Eventually and Consistently that are passed a SpecContext can provide reports when an interrupt occurs [0d063c9]
+
+## 1.21.0
+
+### Features
+- Eventually and Consistently can take a context.Context [65c01bc]
+  This enables integration with Ginkgo 2.3.0's interruptible nodes and node timeouts.
+- Introduces Eventually.Within.ProbeEvery with tests and documentation (#591) [f633800]
+- New BeKeyOf matcher with documentation and unit tests (#590) [fb586b3]
+    
+## Fixes
+- Cover the entire gmeasure suite with leak detection [8c54344]
+- Fix gmeasure leak [119d4ce]
+- Ignore new Ginkgo ProgressSignal goroutine in gleak [ba548e2]
+
+## Maintenance
+
+- Fixes crashes on newer Ruby 3 installations by upgrading github-pages gem dependency (#596) [12469a0]
+
+
+## 1.20.2
+
+## Fixes
+- label specs that rely on remote access; bump timeout on short-circuit test to make it less flaky [35eeadf]
+- gexec: allow more headroom for SIGABRT-related unit tests (#581) [5b78f40]
+- Enable reading from a closed gbytes.Buffer (#575) [061fd26]
+
+## Maintenance
+- Bump github.com/onsi/ginkgo/v2 from 2.1.5 to 2.1.6 (#583) [55d895b]
+- Bump github.com/onsi/ginkgo/v2 from 2.1.4 to 2.1.5 (#582) [346de7c]
+
+## 1.20.1
+
+## Fixes
+- fix false positive gleaks when using ginkgo -p (#577) [cb46517]
+- Fix typos in gomega_dsl.go (#569) [5f71ed2]
+- don't panic on Eventually(nil), fixing #555 (#567) [9d1186f]
+- vet optional description args in assertions, fixing #560 (#566) [8e37808]
+
+## Maintenance
+- test: add new Go 1.19 to test matrix (#571) [40d7efe]
+- Bump tzinfo from 1.2.9 to 1.2.10 in /docs (#564) [5f26371]
+
+## 1.20.0
+
+## Features
+- New [`gleak`](https://onsi.github.io/gomega/#codegleakcode-finding-leaked-goroutines) experimental goroutine leak detection package! (#538) [85ba7bc]
+- New `BeComparableTo` matcher(#546) that uses `gocmp` to make comparisons [e77ea75]
+- New `HaveExistingField` matcher (#553) [fd130e1]
+- Document how to wrap Gomega (#539) [56714a4]
+
+## Fixes
+- Support pointer receivers in HaveField; fixes #543 (#544) [8dab36e]
+
+## Maintenance
+- Bump various dependencies:
+    - Upgrade to yaml.v3 (#556) [f5a83b1]
+    - Bump github/codeql-action from 1 to 2 (#549) [52f5adf]
+    - Bump github.com/google/go-cmp from 0.5.7 to 0.5.8 (#551) [5f3942d]
+    - Bump nokogiri from 1.13.4 to 1.13.6 in /docs (#554) [eb4b4c2]
+    - Use latest ginkgo (#535) [1c29028]
+    - Bump nokogiri from 1.13.3 to 1.13.4 in /docs (#541) [1ce84d5]
+    - Bump actions/setup-go from 2 to 3 (#540) [755485e]
+    - Bump nokogiri from 1.12.5 to 1.13.3 in /docs (#522) [4fbb0dc]
+    - Bump actions/checkout from 2 to 3 (#526) [ac49202]
+
+## 1.19.0
+
+## Features
+- New [`HaveEach`](https://onsi.github.io/gomega/#haveeachelement-interface) matcher to ensure that each and every element in an `array`, `slice`, or `map` satisfies the passed in matcher. (#523) [9fc2ae2] (#524) [c8ba582]
+- Users can now wrap the `Gomega` interface to implement custom behavior on each assertion. (#521) [1f2e714]
+- [`ContainElement`](https://onsi.github.io/gomega/#containelementelement-interface) now accepts an additional pointer argument.  Elements that satisfy the matcher are stored in the pointer enabling developers to easily add subsequent, more detailed, assertions against the matching element. (#527) [1a4e27f]
+
+## Fixes
+- update RELEASING instructions to match ginkgo [0917cde]
+- Bump github.com/onsi/ginkgo/v2 from 2.0.0 to 2.1.3 (#519) [49ab4b0]
+- Fix CVE-2021-38561 (#534) [f1b4456]
+- Fix max number of samples in experiments on non-64-bit systems. (#528) [1c84497]
+- Remove dependency on ginkgo v1.16.4 (#530) [4dea8d5]
+- Fix for Go 1.18 (#532) [56d2a29]
+- Document precendence of timeouts (#533) [b607941]
+
+## 1.18.1
+
+## Fixes
+- Add pointer support to HaveField matcher (#495) [79e41a3]
+
+## 1.18.0
+
+## Features
+- Docs now live on the master branch in the docs folder which will make for easier PRs.  The docs also use Ginkgo 2.0's new docs html/css/js. [2570272]
+- New HaveValue matcher can handle actuals that are either values (in which case they are passed on unscathed) or pointers (in which case they are indirected).  [Docs here.](https://onsi.github.io/gomega/#working-with-values) (#485) [bdc087c]
+- Gmeasure has been declared GA [360db9d]
+
+## Fixes
+- Gomega now uses ioutil for Go 1.15 and lower (#492) - official support is only for the most recent two major versions of Go but this will unblock users who need to stay on older unsupported versions of Go. [c29c1c0]
+
+## Maintenace
+- Remove Travis workflow (#491) [72e6040]
+- Upgrade to Ginkgo 2.0.0 GA [f383637]
+- chore: fix description of HaveField matcher (#487) [2b4b2c0]
+- use tools.go to ensure Ginkgo cli dependencies are included [f58a52b]
+- remove dockerfile and simplify github actions to match ginkgo's actions [3f8160d]
+
 ## 1.17.0
 
 ### Features

@@ -42,7 +42,7 @@ func (rev ReportEntryValue) String() string {
 }
 
 func (rev ReportEntryValue) MarshalJSON() ([]byte, error) {
-	//All this to capture the representaiton at encoding-time, not creating time
+	//All this to capture the representation at encoding-time, not creating time
 	//This way users can Report on pointers and get their final values at reporting-time
 	out := struct {
 		AsJSON         string
@@ -50,7 +50,6 @@ func (rev ReportEntryValue) MarshalJSON() ([]byte, error) {
 	}{
 		Representation: rev.String(),
 	}
-
 	asJSON, err := json.Marshal(rev.raw)
 	if err != nil {
 		return nil, err
@@ -98,7 +97,7 @@ type ReportEntry struct {
 	Value ReportEntryValue
 }
 
-// ColorableStringer is an interface that ReportEntry values can satisfy.  If they do then ColorableStirng() is used to generate their representation.
+// ColorableStringer is an interface that ReportEntry values can satisfy.  If they do then ColorableString() is used to generate their representation.
 type ColorableStringer interface {
 	ColorableString() string
 }
@@ -120,6 +119,8 @@ func (entry ReportEntry) StringRepresentation() string {
 func (entry ReportEntry) GetRawValue() interface{} {
 	return entry.Value.GetRawValue()
 }
+
+
 
 type ReportEntries []ReportEntry
 
