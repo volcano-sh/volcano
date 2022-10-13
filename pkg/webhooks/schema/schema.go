@@ -37,8 +37,8 @@ func init() {
 
 var scheme = runtime.NewScheme()
 
-//Codecs is for retrieving serializers for the supported wire formats
-//and conversion wrappers to define preferred internal and external versions.
+// Codecs is for retrieving serializers for the supported wire formats
+// and conversion wrappers to define preferred internal and external versions.
 var Codecs = serializer.NewCodecFactory(scheme)
 
 func addToScheme(scheme *runtime.Scheme) {
@@ -46,7 +46,7 @@ func addToScheme(scheme *runtime.Scheme) {
 	admissionv1.AddToScheme(scheme)
 }
 
-//DecodeJob decodes the job using deserializer from the raw object.
+// DecodeJob decodes the job using deserializer from the raw object.
 func DecodeJob(object runtime.RawExtension, resource metav1.GroupVersionResource) (*batchv1alpha1.Job, error) {
 	jobResource := metav1.GroupVersionResource{Group: batchv1alpha1.SchemeGroupVersion.Group, Version: batchv1alpha1.SchemeGroupVersion.Version, Resource: "jobs"}
 	raw := object.Raw

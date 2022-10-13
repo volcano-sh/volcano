@@ -291,7 +291,7 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	return nil
 }
 
-//Allocate the task to the node in the session
+// Allocate the task to the node in the session
 func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err error) {
 	podVolumes, err := ssn.cache.GetPodVolumes(task, nodeInfo.Node)
 	if err != nil {
@@ -387,7 +387,7 @@ func (ssn *Session) dispatch(task *api.TaskInfo) error {
 	return nil
 }
 
-//Evict the task in the session
+// Evict the task in the session
 func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 	if err := ssn.cache.Evict(reclaimee, reason); err != nil {
 		return err
@@ -496,7 +496,7 @@ func (ssn Session) RecordPodGroupEvent(podGroup *schedulingapi.PodGroup, eventTy
 	ssn.recorder.Eventf(pg, eventType, reason, msg)
 }
 
-//String return nodes and jobs information in the session
+// String return nodes and jobs information in the session
 func (ssn Session) String() string {
 	msg := fmt.Sprintf("Session %v: \n", ssn.UID)
 

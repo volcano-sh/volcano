@@ -22,7 +22,7 @@ import (
 	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
 )
 
-//Request struct.
+// Request struct.
 type Request struct {
 	Namespace string
 	JobName   string

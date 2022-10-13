@@ -43,17 +43,17 @@ func keyFn(ns, name string) string {
 	return fmt.Sprintf("%s/%s", ns, name)
 }
 
-//JobKeyByName gets the key for the job name.
+// JobKeyByName gets the key for the job name.
 func JobKeyByName(namespace string, name string) string {
 	return keyFn(namespace, name)
 }
 
-//JobKeyByReq gets the key for the job request.
+// JobKeyByReq gets the key for the job request.
 func JobKeyByReq(req *apis.Request) string {
 	return keyFn(req.Namespace, req.JobName)
 }
 
-//JobKey gets the "ns"/"name" format of the given job.
+// JobKey gets the "ns"/"name" format of the given job.
 func JobKey(job *v1alpha1.Job) string {
 	return keyFn(job.Namespace, job.Name)
 }
