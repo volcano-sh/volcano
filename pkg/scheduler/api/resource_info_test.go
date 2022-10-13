@@ -40,11 +40,15 @@ func TestNewResource(t *testing.T) {
 				v1.ResourceMemory:                   *resource.NewQuantity(2000, resource.BinarySI),
 				"scalar.test/" + "scalar1":          *resource.NewQuantity(1, resource.DecimalSI),
 				v1.ResourceHugePagesPrefix + "test": *resource.NewQuantity(2, resource.BinarySI),
+				v1.ResourceEphemeralStorage:         *resource.NewQuantity(3, resource.BinarySI),
 			},
 			expected: &Resource{
-				MilliCPU:        4,
-				Memory:          2000,
-				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+				MilliCPU: 4,
+				Memory:   2000,
+				ScalarResources: map[v1.ResourceName]float64{
+					"scalar.test/scalar1":       1000,
+					"hugepages-test":            2000,
+					v1.ResourceEphemeralStorage: 3000},
 			},
 		},
 	}
