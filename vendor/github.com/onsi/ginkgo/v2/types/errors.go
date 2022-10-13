@@ -80,7 +80,7 @@ func (g ginkgoErrors) PushingNodeInRunPhase(nodeType NodeType, cl CodeLocation) 
 to the Ginkgo spec tree in a leaf node {{bold}}after{{/}} the specs started running.
 
 To enable randomization and parallelization Ginkgo requires the spec tree
-to be fully construted up front.  In practice, this means that you can
+to be fully constructed up front.  In practice, this means that you can
 only create nodes like {{bold}}[%s]{{/}} at the top-level or within the
 body of a {{bold}}Describe{{/}}, {{bold}}Context{{/}}, or {{bold}}When{{/}}.`, nodeType, nodeType),
 		CodeLocation: cl,
@@ -182,18 +182,53 @@ func (g ginkgoErrors) InvalidDeclarationOfFocusedAndPending(cl CodeLocation, nod
 
 func (g ginkgoErrors) UnknownDecorator(cl CodeLocation, nodeType NodeType, decorator interface{}) error {
 	return GinkgoError{
-		Heading:      "Unkown Decorator",
-		Message:      formatter.F(`[%s] node was passed an unkown decorator: '%#v'`, nodeType, decorator),
+		Heading:      "Unknown Decorator",
+		Message:      formatter.F(`[%s] node was passed an unknown decorator: '%#v'`, nodeType, decorator),
+		CodeLocation: cl,
+		DocLink:      "node-decorators-overview",
+	}
+}
+
+func (g ginkgoErrors) InvalidBodyTypeForContainer(t reflect.Type, cl CodeLocation, nodeType NodeType) error {
+	return GinkgoError{
+		Heading:      "Invalid Function",
+		Message:      formatter.F(`[%s] node must be passed {{bold}}func(){{/}} - i.e. functions that take nothing and return nothing.  You passed {{bold}}%s{{/}} instead.`, nodeType, t),
 		CodeLocation: cl,
 		DocLink:      "node-decorators-overview",
 	}
 }
 
 func (g ginkgoErrors) InvalidBodyType(t reflect.Type, cl CodeLocation, nodeType NodeType) error {
+	mustGet := "{{bold}}func(){{/}}, {{bold}}func(ctx SpecContext){{/}}, or {{bold}}func(ctx context.Context){{/}}"
+	if nodeType.Is(NodeTypeContainer) {
+		mustGet = "{{bold}}func(){{/}}"
+	}
 	return GinkgoError{
 		Heading: "Invalid Function",
-		Message: formatter.F(`[%s] node must be passed {{bold}}func(){{/}} - i.e. functions that take nothing and return nothing.
+		Message: formatter.F(`[%s] node must be passed `+mustGet+`.
 You passed {{bold}}%s{{/}} instead.`, nodeType, t),
+		CodeLocation: cl,
+		DocLink:      "node-decorators-overview",
+	}
+}
+
+func (g ginkgoErrors) InvalidBodyTypeForSynchronizedBeforeSuiteProc1(t reflect.Type, cl CodeLocation) error {
+	mustGet := "{{bold}}func() []byte{{/}}, {{bold}}func(ctx SpecContext) []byte{{/}}, or {{bold}}func(ctx context.Context) []byte{{/}}, {{bold}}func(){{/}}, {{bold}}func(ctx SpecContext){{/}}, or {{bold}}func(ctx context.Context){{/}}"
+	return GinkgoError{
+		Heading: "Invalid Function",
+		Message: formatter.F(`[SynchronizedBeforeSuite] node must be passed `+mustGet+` for its first function.
+You passed {{bold}}%s{{/}} instead.`, t),
+		CodeLocation: cl,
+		DocLink:      "node-decorators-overview",
+	}
+}
+
+func (g ginkgoErrors) InvalidBodyTypeForSynchronizedBeforeSuiteAllProcs(t reflect.Type, cl CodeLocation) error {
+	mustGet := "{{bold}}func(){{/}}, {{bold}}func(ctx SpecContext){{/}}, or {{bold}}func(ctx context.Context){{/}}, {{bold}}func([]byte){{/}}, {{bold}}func(ctx SpecContext, []byte){{/}}, or {{bold}}func(ctx context.Context, []byte){{/}}"
+	return GinkgoError{
+		Heading: "Invalid Function",
+		Message: formatter.F(`[SynchronizedBeforeSuite] node must be passed `+mustGet+` for its second function.
+You passed {{bold}}%s{{/}} instead.`, t),
 		CodeLocation: cl,
 		DocLink:      "node-decorators-overview",
 	}
@@ -202,7 +237,7 @@ You passed {{bold}}%s{{/}} instead.`, nodeType, t),
 func (g ginkgoErrors) MultipleBodyFunctions(cl CodeLocation, nodeType NodeType) error {
 	return GinkgoError{
 		Heading:      "Multiple Functions",
-		Message:      formatter.F(`[%s] node must be passed a single {{bold}}func(){{/}} - but more than one was passed in.`, nodeType),
+		Message:      formatter.F(`[%s] node must be passed a single function - but more than one was passed in.`, nodeType),
 		CodeLocation: cl,
 		DocLink:      "node-decorators-overview",
 	}
@@ -211,9 +246,27 @@ func (g ginkgoErrors) MultipleBodyFunctions(cl CodeLocation, nodeType NodeType) 
 func (g ginkgoErrors) MissingBodyFunction(cl CodeLocation, nodeType NodeType) error {
 	return GinkgoError{
 		Heading:      "Missing Functions",
-		Message:      formatter.F(`[%s] node must be passed a single {{bold}}func(){{/}} - but none was passed in.`, nodeType),
+		Message:      formatter.F(`[%s] node must be passed a single function - but none was passed in.`, nodeType),
 		CodeLocation: cl,
 		DocLink:      "node-decorators-overview",
+	}
+}
+
+func (g ginkgoErrors) InvalidTimeoutOrGracePeriodForNonContextNode(cl CodeLocation, nodeType NodeType) error {
+	return GinkgoError{
+		Heading:      "Invalid NodeTimeout SpecTimeout, or GracePeriod",
+		Message:      formatter.F(`[%s] was passed NodeTimeout, SpecTimeout, or GracePeriod but does not have a callback that accepts a {{bold}}SpecContext{{/}} or {{bold}}context.Context{{/}}.  You must accept a context to enable timeouts and grace periods`, nodeType),
+		CodeLocation: cl,
+		DocLink:      "spec-timeouts-and-interruptible-nodes",
+	}
+}
+
+func (g ginkgoErrors) InvalidTimeoutOrGracePeriodForNonContextCleanupNode(cl CodeLocation) error {
+	return GinkgoError{
+		Heading:      "Invalid NodeTimeout SpecTimeout, or GracePeriod",
+		Message:      formatter.F(`[DeferCleanup] was passed NodeTimeout or GracePeriod but does not have a callback that accepts a {{bold}}SpecContext{{/}} or {{bold}}context.Context{{/}}.  You must accept a context to enable timeouts and grace periods`),
+		CodeLocation: cl,
+		DocLink:      "spec-timeouts-and-interruptible-nodes",
 	}
 }
 
@@ -289,6 +342,16 @@ func (g ginkgoErrors) AddReportEntryNotDuringRunPhase(cl CodeLocation) error {
 		Message:      formatter.F(`It looks like you are calling {{bold}}AddGinkgoReport{{/}} outside of a running spec.  Make sure you call {{bold}}AddGinkgoReport{{/}} inside a runnable node such as It or BeforeEach and not inside the body of a container such as Describe or Context.`),
 		CodeLocation: cl,
 		DocLink:      "attaching-data-to-reports",
+	}
+}
+
+/* By errors */
+func (g ginkgoErrors) ByNotDuringRunPhase(cl CodeLocation) error {
+	return GinkgoError{
+		Heading:      "Ginkgo detected an issue with your spec structure",
+		Message:      formatter.F(`It looks like you are calling {{bold}}By{{/}} outside of a running spec.  Make sure you call {{bold}}By{{/}} inside a runnable node such as It or BeforeEach and not inside the body of a container such as Describe or Context.`),
+		CodeLocation: cl,
+		DocLink:      "documenting-complex-specs-by",
 	}
 }
 
@@ -370,6 +433,24 @@ func (g ginkgoErrors) InvalidEntryDescription(cl CodeLocation) error {
 	}
 }
 
+func (g ginkgoErrors) MissingParametersForTableFunction(cl CodeLocation) error {
+	return GinkgoError{
+		Heading:      fmt.Sprintf("No parameters have been passed to the Table Function"),
+		Message:      fmt.Sprintf("The Table Function expected at least 1 parameter"),
+		CodeLocation: cl,
+		DocLink:      "table-specs",
+	}
+}
+
+func (g ginkgoErrors) IncorrectParameterTypeForTable(i int, name string, cl CodeLocation) error {
+	return GinkgoError{
+		Heading:      "DescribeTable passed incorrect parameter type",
+		Message:      fmt.Sprintf("Parameter #%d passed to DescribeTable is of incorrect type <%s>", i, name),
+		CodeLocation: cl,
+		DocLink:      "table-specs",
+	}
+}
+
 func (g ginkgoErrors) TooFewParametersToTableFunction(expected, actual int, kind string, cl CodeLocation) error {
 	return GinkgoError{
 		Heading:      fmt.Sprintf("Too few parameters passed in to %s", kind),
@@ -424,16 +505,16 @@ func (g ginkgoErrors) SynchronizedBeforeSuiteFailedOnProc1() error {
 
 func (g ginkgoErrors) SynchronizedBeforeSuiteDisappearedOnProc1() error {
 	return GinkgoError{
-		Heading: "Process #1 disappeard before SynchronizedBeforeSuite could report back",
+		Heading: "Process #1 disappeared before SynchronizedBeforeSuite could report back",
 		Message: "Ginkgo parallel process #1 disappeared before the first SynchronizedBeforeSuite function completed.  This suite will now abort.",
 	}
 }
 
 /* Configuration errors */
 
-func (g ginkgoErrors) UnkownTypePassedToRunSpecs(value interface{}) error {
+func (g ginkgoErrors) UnknownTypePassedToRunSpecs(value interface{}) error {
 	return GinkgoError{
-		Heading: "Unkown Type pased to RunSpecs",
+		Heading: "Unknown Type passed to RunSpecs",
 		Message: fmt.Sprintf("RunSpecs() accepts labels, and configuration of type types.SuiteConfig and/or types.ReporterConfig.\n You passed in: %v", value),
 	}
 }
@@ -479,6 +560,13 @@ func (g ginkgoErrors) DryRunInParallelConfiguration() error {
 	}
 }
 
+func (g ginkgoErrors) GracePeriodCannotBeZero() error {
+	return GinkgoError{
+		Heading: "Ginkgo requires a positive --grace-period.",
+		Message: "Please set --grace-period to a positive duration.  The default is 30s.",
+	}
+}
+
 func (g ginkgoErrors) ConflictingVerbosityConfiguration() error {
 	return GinkgoError{
 		Heading: "Conflicting reporter verbosity settings.",
@@ -511,5 +599,14 @@ func (g ginkgoErrors) BothRepeatAndUntilItFails() error {
 	return GinkgoError{
 		Heading: "--repeat and --until-it-fails are both set",
 		Message: "--until-it-fails directs Ginkgo to rerun specs indefinitely until they fail.  --repeat directs Ginkgo to rerun specs a set number of times.  You can't set both... which would you like?",
+	}
+}
+
+/* Stack-Trace parsing errors */
+
+func (g ginkgoErrors) FailedToParseStackTrace(message string) error {
+	return GinkgoError{
+		Heading: "Failed to Parse Stack Trace",
+		Message: message,
 	}
 }
