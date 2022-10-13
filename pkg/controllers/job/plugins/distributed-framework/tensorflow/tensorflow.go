@@ -170,16 +170,17 @@ func (tp *tensorflowPlugin) getTaskType(taskKey string) tfTaskType {
 // TfClusterSpec is the spec of a tensorflow cluster
 // It will be injected into container's environment variables, and be used by tensorflow framework.
 // e.g.
-// {
-//    "cluster": {
-//      "worker": ["worker-0:2222", "worker-1:2222"],
-//      "ps": ["ps-0:2222"]
-//    },
-//    "task": {
-//      "type": "worker",
-//      "index": 0
-//    }
-// }
+//
+//	{
+//	   "cluster": {
+//	     "worker": ["worker-0:2222", "worker-1:2222"],
+//	     "ps": ["ps-0:2222"]
+//	   },
+//	   "task": {
+//	     "type": "worker",
+//	     "index": 0
+//	   }
+//	}
 type tfClusterSpec struct {
 	Cluster clusterInfo `json:"cluster"`
 	Task    taskInfo    `json:"task"`

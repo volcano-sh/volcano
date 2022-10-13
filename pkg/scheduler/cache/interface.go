@@ -94,7 +94,7 @@ type VolumeBinder interface {
 	BindVolumes(task *api.TaskInfo, podVolumes *scheduling.PodVolumes) error
 }
 
-//Binder interface for binding task and hostname
+// Binder interface for binding task and hostname
 type Binder interface {
 	Bind(kubeClient *kubernetes.Clientset, tasks []*api.TaskInfo) ([]*api.TaskInfo, error)
 }

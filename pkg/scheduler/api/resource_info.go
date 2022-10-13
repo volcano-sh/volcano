@@ -288,10 +288,10 @@ func (r *Resource) SetMaxResource(rr *Resource) {
 	}
 }
 
-//FitDelta Computes the delta between a resource object representing available
-//resources an operand representing resources being requested.  Any
-//field that is less than 0 after the operation represents an
-//insufficient resource.
+// FitDelta Computes the delta between a resource object representing available
+// resources an operand representing resources being requested.  Any
+// field that is less than 0 after the operation represents an
+// insufficient resource.
 func (r *Resource) FitDelta(rr *Resource) *Resource {
 	if rr.MilliCPU > 0 {
 		r.MilliCPU -= rr.MilliCPU + minResource

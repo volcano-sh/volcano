@@ -22,7 +22,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
-//PriorityQueue implements a scheduling queue.
+// PriorityQueue implements a scheduling queue.
 type PriorityQueue struct {
 	queue priorityQueue
 }

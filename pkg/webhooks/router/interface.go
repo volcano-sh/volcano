@@ -26,7 +26,7 @@ import (
 	"volcano.sh/volcano/pkg/webhooks/config"
 )
 
-//The AdmitFunc returns response.
+// The AdmitFunc returns response.
 type AdmitFunc func(admissionv1.AdmissionReview) *admissionv1.AdmissionResponse
 
 type AdmissionServiceConfig struct {
