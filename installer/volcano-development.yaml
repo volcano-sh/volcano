@@ -8954,6 +8954,9 @@ spec:
                 description: Reclaimable indicate whether the queue can be reclaimed
                   by other queue
                 type: boolean
+              type:
+                description: Type define the type of queue
+                type: string
               weight:
                 format: int32
                 type: integer
