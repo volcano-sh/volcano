@@ -101,13 +101,14 @@ func (jm *JobManager) MarkTaskHasTopology(taskName string, topoType topologyType
 // ApplyTaskTopology transforms taskTopology to matrix
 // affinity: [[a, b], [c]]
 // interAffinity:
-//      a   b   c
-//  a   -   x   -
-//  b   x   -   -
-//  c   -   -   -
-//  selfAffinity:
-//      a   b   c
-//      -   -   x
+//
+//	    a   b   c
+//	a   -   x   -
+//	b   x   -   -
+//	c   -   -   -
+//	selfAffinity:
+//	    a   b   c
+//	    -   -   x
 func (jm *JobManager) ApplyTaskTopology(topo *TaskTopology) {
 	for _, aff := range topo.Affinity {
 		if len(aff) == 1 {

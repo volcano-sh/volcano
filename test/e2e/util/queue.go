@@ -18,8 +18,9 @@ package util
 
 import (
 	"context"
-	v1 "k8s.io/api/core/v1"
 	"time"
+
+	v1 "k8s.io/api/core/v1"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -119,7 +120,7 @@ func SetQueueReclaimable(ctx *TestContext, queues []string, reclaimable bool) {
 }
 
 func WaitQueueStatus(condition func() (bool, error)) error {
-	return wait.Poll(100*time.Millisecond, FiveMinute, condition)
+	return wait.Poll(100*time.Millisecond, TenMinute, condition)
 }
 
 // queueClosed returns whether the Queue is closed

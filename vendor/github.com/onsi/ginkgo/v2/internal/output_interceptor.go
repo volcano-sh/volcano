@@ -29,7 +29,7 @@ You have several options to fix this.  In preferred order they are:
 2. Ensure your process exits before the current spec completes.  If your
 process is long-lived and must cross spec boundaries, this option won't
 work for you.
-3. Pause Ginkgo's output interceptor befor starting your process and then
+3. Pause Ginkgo's output interceptor before starting your process and then
 resume it after.  Use PauseOutputInterception() and ResumeOutputInterception()
 to do this.
 4. Set --output-interceptor-mode=none when running your Ginkgo suite.  This will
@@ -143,7 +143,7 @@ func (interceptor *genericOutputInterceptor) ResumeIntercepting() {
 		go startPipeFactory(interceptor.pipeChannel, interceptor.shutdown)
 	}
 
-	// Now we make a pipe, we'll use this to redirect the input to the 1 and 2 file descriptors (this is how everything else in the world is tring to log to stdout and stderr)
+	// Now we make a pipe, we'll use this to redirect the input to the 1 and 2 file descriptors (this is how everything else in the world is string to log to stdout and stderr)
 	// we get the pipe from our pipe factory.  it runs in the background so we can request the next pipe while the spec being intercepted is running
 	interceptor.pipe = <-interceptor.pipeChannel
 
@@ -192,7 +192,7 @@ func (interceptor *genericOutputInterceptor) PauseIntercepting() {
 			should eventually receive an EOF and exit.
 
 			**However**, if the user has spun up an external process and passed in os.Stdout/os.Stderr to cmd.Stdout/cmd.Stderr then the external process
-			will have a file descriptor pointing to the pipe writer's file desription and it will not close until the external process exits.
+			will have a file descriptor pointing to the pipe writer's file description and it will not close until the external process exits.
 
 			That would leave us hanging here waiting for the io.Copy to close forever.  Instead we invoke this emergency escape valve.  This returns whatever
 			content we've got but leaves the io.Copy running.  This ensures the external process can continue writing without hanging at the cost of leaking a goroutine

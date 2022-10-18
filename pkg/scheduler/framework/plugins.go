@@ -26,7 +26,7 @@ import (
 	"k8s.io/klog"
 )
 
-var pluginMutex sync.Mutex
+var pluginMutex sync.RWMutex
 
 // PluginBuilder plugin management
 type PluginBuilder = func(Arguments) Plugin
@@ -52,8 +52,8 @@ func CleanupPluginBuilders() {
 
 // GetPluginBuilder get the pluginbuilder by name
 func GetPluginBuilder(name string) (PluginBuilder, bool) {
-	pluginMutex.Lock()
-	defer pluginMutex.Unlock()
+	pluginMutex.RLock()
+	defer pluginMutex.RUnlock()
 
 	pb, found := pluginBuilders[name]
 	return pb, found
@@ -111,8 +111,8 @@ func RegisterAction(act Action) {
 
 // GetAction get the action by name
 func GetAction(name string) (Action, bool) {
-	pluginMutex.Lock()
-	defer pluginMutex.Unlock()
+	pluginMutex.RLock()
+	defer pluginMutex.RUnlock()
 
 	act, found := actionMap[name]
 	return act, found

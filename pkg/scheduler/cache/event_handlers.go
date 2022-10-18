@@ -688,7 +688,7 @@ func (sc *SchedulerCache) deleteQueue(id schedulingapi.QueueID) {
 	}
 }
 
-//DeletePriorityClass delete priorityclass from the scheduler cache
+// DeletePriorityClass delete priorityclass from the scheduler cache
 func (sc *SchedulerCache) DeletePriorityClass(obj interface{}) {
 	var ss *schedulingv1.PriorityClass
 	switch t := obj.(type) {
@@ -712,7 +712,7 @@ func (sc *SchedulerCache) DeletePriorityClass(obj interface{}) {
 	sc.deletePriorityClass(ss)
 }
 
-//UpdatePriorityClass update priorityclass to scheduler cache
+// UpdatePriorityClass update priorityclass to scheduler cache
 func (sc *SchedulerCache) UpdatePriorityClass(oldObj, newObj interface{}) {
 	oldSS, ok := oldObj.(*schedulingv1.PriorityClass)
 	if !ok {
@@ -734,7 +734,7 @@ func (sc *SchedulerCache) UpdatePriorityClass(oldObj, newObj interface{}) {
 	sc.addPriorityClass(newSS)
 }
 
-//AddPriorityClass add priorityclass to scheduler cache
+// AddPriorityClass add priorityclass to scheduler cache
 func (sc *SchedulerCache) AddPriorityClass(obj interface{}) {
 	ss, ok := obj.(*schedulingv1.PriorityClass)
 	if !ok {

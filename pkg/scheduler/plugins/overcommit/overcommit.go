@@ -60,14 +60,14 @@ func (op *overcommitPlugin) Name() string {
 }
 
 /*
-   User should give overcommit-factor through overcommit plugin arguments as format below:
+User should give overcommit-factor through overcommit plugin arguments as format below:
 
-   actions: "enqueue, allocate, backfill"
-   tiers:
-   - plugins:
-     - name: overcommit
-       arguments:
-         overcommit-factor: 1.0
+actions: "enqueue, allocate, backfill"
+tiers:
+- plugins:
+  - name: overcommit
+    arguments:
+    overcommit-factor: 1.0
 */
 func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 	klog.V(4).Infof("Enter overcommit plugin ...")

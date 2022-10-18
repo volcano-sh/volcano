@@ -85,7 +85,7 @@ type binpackPlugin struct {
 	weight priorityWeight
 }
 
-//New function returns prioritizePlugin object
+// New function returns prioritizePlugin object
 func New(aruguments framework.Arguments) framework.Plugin {
 	weight := calculateWeight(aruguments)
 	return &binpackPlugin{weight: weight}

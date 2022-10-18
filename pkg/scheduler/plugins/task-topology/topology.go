@@ -53,13 +53,18 @@ func (p *taskTopologyPlugin) Name() string {
 //
 // for example:
 // A:
-//  | bucket1   | bucket2   | out of bucket
-//  | a1 a3     | a2        | a4
+//
+//	| bucket1   | bucket2   | out of bucket
+//	| a1 a3     | a2        | a4
+//
 // B:
-//  | bucket1   | out of bucket
-//  | b1 b2     | b3
+//
+//	| bucket1   | out of bucket
+//	| b1 b2     | b3
+//
 // the right task order should be:
-//   a1 a3 a2 b1 b2 a4 b3
+//
+//	a1 a3 a2 b1 b2 a4 b3
 func (p *taskTopologyPlugin) TaskOrderFn(l interface{}, r interface{}) int {
 	lv, ok := l.(*api.TaskInfo)
 	if !ok {
