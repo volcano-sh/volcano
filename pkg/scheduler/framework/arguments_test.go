@@ -116,6 +116,15 @@ func TestArgumentsGetFloat64(t *testing.T) {
 			baseValue:   1.2,
 			expectValue: 1.2,
 		},
+		{
+			name: "int value",
+			arg: Arguments{
+				key1: 15,
+			},
+			key:         key1,
+			baseValue:   1.2,
+			expectValue: 15,
+		},
 	}
 
 	for index, c := range cases {

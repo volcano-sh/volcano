@@ -58,6 +58,10 @@ func (a Arguments) GetFloat64(ptr *float64, key string) {
 
 	value, ok := argv.(float64)
 	if !ok {
+		if intVal, ok := argv.(int); ok {
+			*ptr = float64(intVal)
+			return
+		}
 		klog.Warningf("Could not parse argument: %v for key %s to float64", argv, key)
 		return
 	}
