@@ -35,6 +35,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	infov1 "k8s.io/client-go/informers/core/v1"
@@ -144,6 +145,15 @@ type SchedulerCache struct {
 	BindFlowChannel chan *schedulingapi.TaskInfo
 	bindCache       []*schedulingapi.TaskInfo
 	batchNum        int
+	// A map from image name to its imageState.
+	imageStates map[string]*imageState
+}
+
+type imageState struct {
+	// Size of the image
+	size int64
+	// A set of node names for nodes having this image present
+	nodes sets.String
 }
 
 type DefaultBinder struct {
@@ -436,6 +446,8 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
 
 		NodeList: []string{},
+
+		imageStates: make(map[string]*imageState),
 	}
 	if len(nodeSelectors) > 0 {
 		for _, nodeSelectorLabel := range nodeSelectors {
@@ -1045,6 +1057,15 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 
 		if value.RevocableZone != "" {
 			snapshot.RevocableNodes[value.Name] = snapshot.Nodes[value.Name]
+		}
+
+		//clone imageState
+		for imagenm, summary := range value.ImageStates {
+			newImageSummary := &schedulingapi.ImageStateSummary{
+				Size:     summary.Size,
+				NumNodes: summary.NumNodes,
+			}
+			snapshot.Nodes[value.Name].ImageStates[imagenm] = newImageSummary
 		}
 	}
 
