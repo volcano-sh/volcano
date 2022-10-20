@@ -477,24 +477,18 @@ func (sc *SchedulerCache) AddOrUpdateCSINode(obj interface{}) {
 		return
 	}
 
-	var csiNodeStatus *schedulingapi.CSINodeStatusInfo
-	var found bool
+	csiNodeStatus := &schedulingapi.CSINodeStatusInfo{
+		CSINodeName:  csiNode.Name,
+		DriverStatus: make(map[string]bool),
+	}
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
-	// update nodeVolumeCount
-
-	if csiNodeStatus, found = sc.CSINodesStatus[csiNode.Name]; !found {
-		csiNodeStatus = &schedulingapi.CSINodeStatusInfo{
-			CSINodeName:  csiNode.Name,
-			DriverStatus: make(map[string]bool),
-		}
-		sc.CSINodesStatus[csiNode.Name] = csiNodeStatus
-	}
 
 	for i := range csiNode.Spec.Drivers {
 		d := csiNode.Spec.Drivers[i]
 		csiNodeStatus.DriverStatus[d.Name] = d.Allocatable != nil && d.Allocatable.Count != nil
 	}
+	sc.CSINodesStatus[csiNode.Name] = csiNodeStatus
 }
 
 func (sc *SchedulerCache) UpdateCSINode(oldObj, newObj interface{}) {

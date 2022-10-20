@@ -57,6 +57,8 @@ type ServerOption struct {
 	// For dependent tasks, there is a detection cycle inside volcano
 	// It indicates how often to detect the status of dependent tasks
 	DetectionPeriodOfDependsOntask time.Duration
+	// To determine whether inherit owner's annotations for pods when create podgroup
+	InheritOwnerAnnotations bool
 }
 
 // NewServerOption creates a new CMServer with a default config.
@@ -82,6 +84,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.DurationVar(&s.DetectionPeriodOfDependsOntask, "detection-period-of-dependson-task", defaultDetectionPeriodOfDependsOntask, "It indicates how often to detect the status of dependent tasks."+
 		"e.g. --detection-period-of-dependson-task=1s")
+	fs.BoolVar(&s.InheritOwnerAnnotations, "inherit-owner-annotations", true, "Enable inherit owner annotations for pods when create podgroup; it is enabled by default")
 }
 
 // CheckOptionOrDie checks the LockObjectNamespace.

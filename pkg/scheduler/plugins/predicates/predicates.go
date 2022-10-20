@@ -35,6 +35,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -316,7 +317,15 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	// 6. NodeVolumeLimits
 	plugin, _ = nodevolumelimits.NewCSI(nil, handle, features)
 	nodeVolumeLimitsCSIFilter := plugin.(*nodevolumelimits.CSILimits)
-	// 7. VolumeZone
+	// 7. VolumeBinding
+	volumeBindingArgs := &config.VolumeBindingArgs{
+		TypeMeta:           metav1.TypeMeta{},
+		BindTimeoutSeconds: volumebinding.DefaultBindTimeoutSeconds,
+		Shape:              nil,
+	}
+	plugin, _ = volumebinding.New(volumeBindingArgs, handle, features)
+	volumebindingFilter := plugin.(*volumebinding.VolumeBinding)
+	// 8. VolumeZone
 	plugin, _ = volumezone.New(nil, handle)
 	volumeZoneFilter := plugin.(*volumezone.VolumeZone)
 	// 8. PodTopologySpread
@@ -403,6 +412,18 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		status = nodeVolumeLimitsCSIFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 		if !status.IsSuccess() {
 			return fmt.Errorf("plugin %s predicates failed %s", nodeVolumeLimitsCSIFilter.Name(), status.Message())
+		}
+
+		// Check VolumeBinding: handle immediate claims unbounded case
+		status = volumebindingFilter.PreFilter(context.TODO(), state, task.Pod)
+		if !status.IsSuccess() {
+			return fmt.Errorf("plugin %s pre-predicates failed %s", volumebindingFilter.Name(), status.Message())
+		}
+
+		// handle both bound(check node affinity) and unbound(find available PVs and check node affinity) PVCs
+		status = volumebindingFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
+		if !status.IsSuccess() {
+			return fmt.Errorf("plugin %s predicates failed %s", volumebindingFilter.Name(), status.Message())
 		}
 
 		// Check VolumeZone
