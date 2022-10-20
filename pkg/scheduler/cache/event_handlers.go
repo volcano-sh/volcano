@@ -297,7 +297,7 @@ func (sc *SchedulerCache) addNode(node *v1.Node) error {
 	} else {
 		sc.Nodes[node.Name] = schedulingapi.NewNodeInfo(node)
 	}
-	//add image
+	//add image states
 	sc.addNodeImageStates(node, sc.Nodes[node.Name])
 	return nil
 }
