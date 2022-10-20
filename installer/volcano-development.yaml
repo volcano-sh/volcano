@@ -8568,10 +8568,10 @@ rules:
     verbs: ["list", "watch", "update"]
   - apiGroups: [""]
     resources: ["persistentvolumes"]
-    verbs: ["list", "watch"]
+    verbs: ["list", "watch", "update"]
   - apiGroups: [""]
-    resources: ["namespaces"]
-    verbs: ["list", "watch"]
+    resources: ["namespaces", "services", "replicationcontrollers"]
+    verbs: ["list", "watch", "get"]
   - apiGroups: [""]
     resources: ["resourcequotas"]
     verbs: ["list", "watch"]
@@ -8599,6 +8599,9 @@ rules:
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "create", "delete", "update"]
+  - apiGroups: ["apps"]
+    resources: ["daemonsets", "replicasets", "statefulsets"]
+    verbs: ["list", "watch", "get"]
 ---
 # Source: volcano/templates/scheduler.yaml
 kind: ClusterRoleBinding
@@ -8623,7 +8626,7 @@ metadata:
     prometheus.io/port: "8080"
     prometheus.io/scrape: "true"
   name: volcano-scheduler-service
-  namespace: volcano-system 
+  namespace: volcano-system
 spec:
   ports:
   - port: 8080

@@ -489,6 +489,15 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	sc.informerFactory = informerFactory
 	mySchedulerPodName, c := getMultiSchedulerInfo()
 
+	// explictly register informers to the factory, otherwise resources listers cannot get anything
+	// even with no erorr returned. `Namespace` informer is used by `InterPodAffinity` plugin,
+	// `SelectorSpread` and `PodTopologySpread` plugins uses the following four so far.
+	informerFactory.Core().V1().Namespaces().Informer()
+	informerFactory.Core().V1().Services().Informer()
+	informerFactory.Core().V1().ReplicationControllers().Informer()
+	informerFactory.Apps().V1().ReplicaSets().Informer()
+	informerFactory.Apps().V1().StatefulSets().Informer()
+
 	// create informer for node information
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
 	sc.nodeInformer.Informer().AddEventHandlerWithResyncPeriod(
@@ -990,22 +999,26 @@ func (sc *SchedulerCache) processBindTask() {
 
 func (sc *SchedulerCache) BindTask() {
 	klog.V(5).Infof("batch bind task count %d", len(sc.bindCache))
+	successfulTasks := make([]*schedulingapi.TaskInfo, 0)
 	for _, task := range sc.bindCache {
 		if err := sc.VolumeBinder.BindVolumes(task, task.PodVolumes); err != nil {
 			klog.Errorf("task %s/%s bind Volumes failed: %#v", task.Namespace, task.Name, err)
 			sc.VolumeBinder.RevertVolumes(task, task.PodVolumes)
 			sc.resyncTask(task)
-			return
+		} else {
+			successfulTasks = append(successfulTasks, task)
+			klog.V(5).Infof("task %s/%s bind Volumes done", task.Namespace, task.Name)
 		}
 	}
 
-	bindTasks := make([]*schedulingapi.TaskInfo, len(sc.bindCache))
-	copy(bindTasks, sc.bindCache)
+	bindTasks := make([]*schedulingapi.TaskInfo, len(successfulTasks))
+	copy(bindTasks, successfulTasks)
 	if err := sc.Bind(bindTasks); err != nil {
+		klog.Errorf("failed to bind task count %d: %#v", len(bindTasks), err)
 		return
 	}
 
-	for _, task := range sc.bindCache {
+	for _, task := range successfulTasks {
 		metrics.UpdateTaskScheduleDuration(metrics.Duration(task.Pod.CreationTimestamp.Time))
 	}
 
