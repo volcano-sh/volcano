@@ -330,6 +330,9 @@ func Test_TDM_victimsFn(t *testing.T) {
 	p2.Annotations[schedulingv2.PodPreemptable] = "true"
 	p3.Annotations[schedulingv2.PodPreemptable] = "true"
 
+	p4.Annotations[schedulingv2.PodPreemptable] = "false"
+	p5.Annotations[schedulingv2.PodPreemptable] = "false"
+
 	p6.Annotations[schedulingv2.PodPreemptable] = "true"
 	p7.Annotations[schedulingv2.PodPreemptable] = "true"
 	p8.Annotations[schedulingv2.PodPreemptable] = "true"
