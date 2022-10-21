@@ -311,10 +311,10 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	tolerationFilter := plugin.(*tainttoleration.TaintToleration)
 	// 5. InterPodAffinity
 	plArgs := &config.InterPodAffinityArgs{}
-	features := feature.Features{}
-	plugin, _ = interpodaffinity.New(plArgs, handle, features)
+	plugin, _ = interpodaffinity.New(plArgs, handle)
 	podAffinityFilter := plugin.(*interpodaffinity.InterPodAffinity)
 	// 6. NodeVolumeLimits
+	features := feature.Features{}
 	plugin, _ = nodevolumelimits.NewCSI(nil, handle, features)
 	nodeVolumeLimitsCSIFilter := plugin.(*nodevolumelimits.CSILimits)
 	// 7. VolumeBinding
@@ -331,7 +331,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	// 8. PodTopologySpread
 	// Setting cluster level default constraints is not support for now.
 	ptsArgs := &config.PodTopologySpreadArgs{DefaultingType: config.SystemDefaulting}
-	plugin, _ = podtopologyspread.New(ptsArgs, handle)
+	plugin, _ = podtopologyspread.New(ptsArgs, handle, features)
 	podTopologySpreadFilter := plugin.(*podtopologyspread.PodTopologySpread)
 
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
@@ -398,7 +398,8 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		// InterPodAffinity Predicate
-		status = podAffinityFilter.PreFilter(context.TODO(), state, task.Pod)
+		// TODO use framework.PreFilterResult
+		_, status = podAffinityFilter.PreFilter(context.TODO(), state, task.Pod)
 		if !status.IsSuccess() {
 			return fmt.Errorf("plugin %s pre-predicates failed %s", interpodaffinity.Name, status.Message())
 		}
@@ -415,7 +416,8 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		// Check VolumeBinding: handle immediate claims unbounded case
-		status = volumebindingFilter.PreFilter(context.TODO(), state, task.Pod)
+		// TODO use framework.PreFilterResult
+		_, status = volumebindingFilter.PreFilter(context.TODO(), state, task.Pod)
 		if !status.IsSuccess() {
 			return fmt.Errorf("plugin %s pre-predicates failed %s", volumebindingFilter.Name(), status.Message())
 		}
@@ -433,7 +435,8 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		// Check PodTopologySpread
-		status = podTopologySpreadFilter.PreFilter(context.TODO(), state, task.Pod)
+		// TODO use framework.PreFilterResult
+		_, status = podTopologySpreadFilter.PreFilter(context.TODO(), state, task.Pod)
 		if !status.IsSuccess() {
 			return fmt.Errorf("plugin %s pre-predicates failed %s", podTopologySpreadFilter.Name(), status.Message())
 		}

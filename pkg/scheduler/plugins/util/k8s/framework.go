@@ -95,7 +95,7 @@ func (f *Framework) EventRecorder() events.EventRecorder {
 	return nil
 }
 
-func (f *Framework) AddNominatedPod(pod *framework.PodInfo, nodeName string) {
+func (f *Framework) AddNominatedPod(pod *framework.PodInfo, nominatingInfo *framework.NominatingInfo) {
 	panic("implement me")
 }
 
