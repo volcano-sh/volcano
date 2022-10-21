@@ -92,7 +92,7 @@ func Run(opt *options.ServerOption) error {
 	}
 
 	if opt.EnableHealthz {
-		if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-scheduler"); err != nil {
+		if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-scheduler", opt.CertData, opt.KeyData); err != nil {
 			return err
 		}
 	}

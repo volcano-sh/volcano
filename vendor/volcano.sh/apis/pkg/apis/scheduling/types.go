@@ -295,7 +295,6 @@ type Cluster struct {
 	Capacity v1.ResourceList
 }
 
-
 // Affinity is a group of affinity scheduling rules.
 type Affinity struct {
 	// Describes nodegroup affinity scheduling rules for the queue.
@@ -309,16 +308,16 @@ type Affinity struct {
 
 type NodeGroupAffinity struct {
 	// +optional
-	RequiredDuringSchedulingIgnoredDuringExecution  []string `json:"requiredDuringSchedulingIgnoredDuringExecution,omitempty" protobuf:"bytes,1,opt,name=requiredDuringSchedulingIgnoredDuringExecution"`
+	RequiredDuringSchedulingIgnoredDuringExecution []string `json:"requiredDuringSchedulingIgnoredDuringExecution,omitempty" protobuf:"bytes,1,opt,name=requiredDuringSchedulingIgnoredDuringExecution"`
 	// +optional
-	PreferredDuringSchedulingIgnoredDuringExecution  []string `json:"preferredDuringSchedulingIgnoredDuringExecution,omitempty" protobuf:"bytes,2,rep,name=preferredDuringSchedulingIgnoredDuringExecution"`
+	PreferredDuringSchedulingIgnoredDuringExecution []string `json:"preferredDuringSchedulingIgnoredDuringExecution,omitempty" protobuf:"bytes,2,rep,name=preferredDuringSchedulingIgnoredDuringExecution"`
 }
 
 type NodeGroupAntiAffinity struct {
 	// +optional
-	RequiredDuringSchedulingIgnoredDuringExecution  []string `json:"requiredDuringSchedulingIgnoredDuringExecution,omitempty" protobuf:"bytes,1,opt,name=requiredDuringSchedulingIgnoredDuringExecution"`
+	RequiredDuringSchedulingIgnoredDuringExecution []string `json:"requiredDuringSchedulingIgnoredDuringExecution,omitempty" protobuf:"bytes,1,opt,name=requiredDuringSchedulingIgnoredDuringExecution"`
 	// +optional
-	PreferredDuringSchedulingIgnoredDuringExecution  []string `json:"preferredDuringSchedulingIgnoredDuringExecution,omitempty" protobuf:"bytes,2,rep,name=preferredDuringSchedulingIgnoredDuringExecution"`
+	PreferredDuringSchedulingIgnoredDuringExecution []string `json:"preferredDuringSchedulingIgnoredDuringExecution,omitempty" protobuf:"bytes,2,rep,name=preferredDuringSchedulingIgnoredDuringExecution"`
 }
 
 // QueueSpec represents the template of Queue.
@@ -340,6 +339,9 @@ type QueueSpec struct {
 	// If specified, the queue's scheduling constraints
 	// +optional
 	Affinity *Affinity `json:"affinity,omitempty" protobuf:"bytes,6,opt,name=affinity"`
+
+	// Type define the type of queue
+	Type string `json:"type,omitempty" protobuf:"bytes,7,opt,name=type"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
