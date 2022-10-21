@@ -1052,7 +1052,7 @@ sigs.k8s.io/yaml
 # stathat.com/c/consistent v1.0.0
 ## explicit
 stathat.com/c/consistent
-# volcano.sh/apis v1.6.0-alpha.0.0.20220712043845-8d8aa5aecbd2
+# volcano.sh/apis v1.6.0-alpha.0.0.20221012070524-685db38b4fae
 ## explicit; go 1.17
 volcano.sh/apis/pkg/apis/batch/v1alpha1
 volcano.sh/apis/pkg/apis/bus/v1alpha1
