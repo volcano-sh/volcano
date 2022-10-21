@@ -25,6 +25,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	storagev1beta1 "k8s.io/api/storage/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -34,9 +35,11 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	storageinformers "k8s.io/client-go/informers/storage/v1"
+	storageinformersv1beta1 "k8s.io/client-go/informers/storage/v1beta1"
 	clientset "k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	storagelisters "k8s.io/client-go/listers/storage/v1"
+	storagelistersv1beta1 "k8s.io/client-go/listers/storage/v1beta1"
 	"k8s.io/component-helpers/storage/ephemeral"
 	"k8s.io/component-helpers/storage/volume"
 	csitrans "k8s.io/csi-translation-lib"
@@ -204,8 +207,9 @@ type volumeBinder struct {
 
 	translator InTreeToCSITranslator
 
+	capacityCheckEnabled     bool
 	csiDriverLister          storagelisters.CSIDriverLister
-	csiStorageCapacityLister storagelisters.CSIStorageCapacityLister
+	csiStorageCapacityLister storagelistersv1beta1.CSIStorageCapacityLister
 }
 
 // CapacityCheck contains additional parameters for NewVolumeBinder that
@@ -213,7 +217,7 @@ type volumeBinder struct {
 // capacity is desired.
 type CapacityCheck struct {
 	CSIDriverInformer          storageinformers.CSIDriverInformer
-	CSIStorageCapacityInformer storageinformers.CSIStorageCapacityInformer
+	CSIStorageCapacityInformer storageinformersv1beta1.CSIStorageCapacityInformer
 }
 
 // NewVolumeBinder sets up all the caches needed for the scheduler to make volume binding decisions.
@@ -227,7 +231,7 @@ func NewVolumeBinder(
 	pvcInformer coreinformers.PersistentVolumeClaimInformer,
 	pvInformer coreinformers.PersistentVolumeInformer,
 	storageClassInformer storageinformers.StorageClassInformer,
-	capacityCheck CapacityCheck,
+	capacityCheck *CapacityCheck,
 	bindTimeout time.Duration) SchedulerVolumeBinder {
 	b := &volumeBinder{
 		kubeClient:    kubeClient,
@@ -241,8 +245,11 @@ func NewVolumeBinder(
 		translator:    csitrans.New(),
 	}
 
-	b.csiDriverLister = capacityCheck.CSIDriverInformer.Lister()
-	b.csiStorageCapacityLister = capacityCheck.CSIStorageCapacityInformer.Lister()
+	if capacityCheck != nil {
+		b.capacityCheckEnabled = true
+		b.csiDriverLister = capacityCheck.CSIDriverInformer.Lister()
+		b.csiStorageCapacityLister = capacityCheck.CSIStorageCapacityInformer.Lister()
+	}
 
 	return b
 }
@@ -891,7 +898,6 @@ func (b *volumeBinder) checkVolumeProvisions(pod *v1.Pod, claimsToProvision []*v
 		}
 
 		dynamicProvisions = append(dynamicProvisions, claim)
-
 	}
 	klog.V(4).InfoS("Provisioning for claims of pod that has no matching volumes...", "claimCount", len(claimsToProvision), "pod", klog.KObj(pod), "node", klog.KObj(node))
 
@@ -913,6 +919,12 @@ func (b *volumeBinder) revertAssumedPVCs(claims []*v1.PersistentVolumeClaim) {
 // hasEnoughCapacity checks whether the provisioner has enough capacity left for a new volume of the given size
 // that is available from the node.
 func (b *volumeBinder) hasEnoughCapacity(provisioner string, claim *v1.PersistentVolumeClaim, storageClass *storagev1.StorageClass, node *v1.Node) (bool, error) {
+	// This is an optional feature. If disabled, we assume that
+	// there is enough storage.
+	if !b.capacityCheckEnabled {
+		return true, nil
+	}
+
 	quantity, ok := claim.Spec.Resources.Requests[v1.ResourceStorage]
 	if !ok {
 		// No capacity to check for.
@@ -958,7 +970,7 @@ func (b *volumeBinder) hasEnoughCapacity(provisioner string, claim *v1.Persisten
 	return false, nil
 }
 
-func capacitySufficient(capacity *storagev1.CSIStorageCapacity, sizeInBytes int64) bool {
+func capacitySufficient(capacity *storagev1beta1.CSIStorageCapacity, sizeInBytes int64) bool {
 	limit := capacity.Capacity
 	if capacity.MaximumVolumeSize != nil {
 		// Prefer MaximumVolumeSize if available, it is more precise.
@@ -967,7 +979,7 @@ func capacitySufficient(capacity *storagev1.CSIStorageCapacity, sizeInBytes int6
 	return limit != nil && limit.Value() >= sizeInBytes
 }
 
-func (b *volumeBinder) nodeHasAccess(node *v1.Node, capacity *storagev1.CSIStorageCapacity) bool {
+func (b *volumeBinder) nodeHasAccess(node *v1.Node, capacity *storagev1beta1.CSIStorageCapacity) bool {
 	if capacity.NodeTopology == nil {
 		// Unavailable
 		return false

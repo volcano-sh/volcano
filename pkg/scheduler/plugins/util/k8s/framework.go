@@ -28,7 +28,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/parallelize"
-	scheduling "k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
+	scheduling "volcano.sh/volcano/pkg/scheduler/plugins/volumebinding"
 )
 
 // Framework is a K8S framework who mainly provides some methods

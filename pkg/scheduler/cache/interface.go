@@ -22,7 +22,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
-	scheduling "k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
+	scheduling "volcano.sh/volcano/pkg/scheduler/plugins/volumebinding"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )

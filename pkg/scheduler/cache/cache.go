@@ -40,6 +40,7 @@ import (
 	infov1 "k8s.io/client-go/informers/core/v1"
 	schedv1 "k8s.io/client-go/informers/scheduling/v1"
 	storagev1 "k8s.io/client-go/informers/storage/v1"
+	storagev1beta1 "k8s.io/client-go/informers/storage/v1beta1"
 	"k8s.io/client-go/kubernetes"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
@@ -49,7 +50,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
-	volumescheduling "k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
+	volumescheduling "volcano.sh/volcano/pkg/scheduler/plugins/volumebinding"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -112,7 +113,7 @@ type SchedulerCache struct {
 	quotaInformer              infov1.ResourceQuotaInformer
 	csiNodeInformer            storagev1.CSINodeInformer
 	csiDriverInformer          storagev1.CSIDriverInformer
-	csiStorageCapacityInformer storagev1.CSIStorageCapacityInformer
+	csiStorageCapacityInformer storagev1beta1.CSIStorageCapacityInformer
 	cpuInformer                cpuinformerv1.NumatopologyInformer
 
 	Binder         Binder
@@ -544,10 +545,16 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		},
 	)
 	sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
-	sc.csiStorageCapacityInformer = informerFactory.Storage().V1().CSIStorageCapacities()
-	capacityCheck := volumescheduling.CapacityCheck{
-		CSIDriverInformer:          sc.csiDriverInformer,
-		CSIStorageCapacityInformer: sc.csiStorageCapacityInformer,
+	sc.csiStorageCapacityInformer = informerFactory.Storage().V1beta1().CSIStorageCapacities()
+
+	var capacityCheck *volumescheduling.CapacityCheck
+	if options.ServerOpts.EnableCSIStorage {
+		capacityCheck = &volumescheduling.CapacityCheck{
+			CSIDriverInformer:          sc.csiDriverInformer,
+			CSIStorageCapacityInformer: sc.csiStorageCapacityInformer,
+		}
+	} else {
+		capacityCheck = nil
 	}
 
 	sc.VolumeBinder = &defaultVolumeBinder{
