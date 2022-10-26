@@ -50,6 +50,7 @@ const (
 
 	// GPUSharingPredicate is the key for enabling GPU Sharing Predicate in YAML
 	GPUSharingPredicate = "predicate.GPUSharingEnable"
+	NodeLockEnable      = "predicate.NodeLockEnable"
 	GPUNumberPredicate  = "predicate.GPUNumberEnable"
 
 	// CachePredicate control cache predicate feature
@@ -84,6 +85,7 @@ type baseResource struct {
 
 type predicateEnable struct {
 	gpuSharingEnable   bool
+	nodeLockEnable     bool
 	gpuNumberEnable    bool
 	cacheEnable        bool
 	proportionalEnable bool
@@ -118,6 +120,7 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 
 	predicate := predicateEnable{
 		gpuSharingEnable:   false,
+		nodeLockEnable:     false,
 		gpuNumberEnable:    false,
 		cacheEnable:        false,
 		proportionalEnable: false,
@@ -126,6 +129,7 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	// Checks whether predicate.GPUSharingEnable is provided or not, if given, modifies the value in predicateEnable struct.
 	args.GetBool(&predicate.gpuSharingEnable, GPUSharingPredicate)
 	args.GetBool(&predicate.gpuNumberEnable, GPUNumberPredicate)
+	args.GetBool(&predicate.nodeLockEnable, NodeLockEnable)
 
 	if predicate.gpuSharingEnable && predicate.gpuNumberEnable {
 		klog.Fatal("can not define true in both gpu sharing and gpu number")
@@ -181,7 +185,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
 			pod := pl.UpdateTask(event.Task, event.Task.NodeName)
-
 			nodeName := event.Task.NodeName
 			node, found := nodeMap[nodeName]
 			if !found {
@@ -191,6 +194,16 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			//predicate gpu sharing
 			if predicate.gpuSharingEnable && api.GetGPUMemoryOfPod(pod) > 0 {
+
+				if predicate.nodeLockEnable {
+					util.UseClient(ssn.KubeClient())
+					err := util.LockNode(nodeName, "gpu")
+					if err != nil {
+						klog.Errorf("node %s locked for lockname gpushare %s\n", nodeName, err.Error())
+						return
+					}
+				}
+
 				nodeInfo, ok := ssn.Nodes[nodeName]
 				if !ok {
 					klog.Errorf("Failed to get node %s info from cache", nodeName)
