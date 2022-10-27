@@ -2,14 +2,14 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ .Release.Name }}-controllers
+  name: {{ .Release.Name }}-controller
   namespace: {{ .Release.Namespace }}
 
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: {{ .Release.Name }}-controllers
+  name: {{ .Release.Name }}-controller
 rules:
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
@@ -63,21 +63,21 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: {{ .Release.Name }}-controllers-role
+  name: {{ .Release.Name }}-controller-role
 subjects:
   - kind: ServiceAccount
-    name: {{ .Release.Name }}-controllers
+    name: {{ .Release.Name }}-controller
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: {{ .Release.Name }}-controllers
+  name: {{ .Release.Name }}-controller
   apiGroup: rbac.authorization.k8s.io
 
 ---
 kind: Deployment
 apiVersion: apps/v1
 metadata:
-  name: {{ .Release.Name }}-controllers
+  name: {{ .Release.Name }}-controller
   namespace: {{ .Release.Namespace }}
   labels:
     app: volcano-controller
@@ -91,14 +91,14 @@ spec:
       labels:
         app: volcano-controller
     spec:
-      serviceAccount: {{ .Release.Name }}-controllers
+      serviceAccount: {{ .Release.Name }}-controller
       priorityClassName: system-cluster-critical
       {{- if .Values.basic.image_pull_secret }}
       imagePullSecrets:
           - name: {{ .Values.basic.image_pull_secret }}
       {{- end }}
       containers:
-          - name: {{ .Release.Name }}-controllers
+          - name: {{ .Release.Name }}-controller
             image: {{.Values.basic.controller_image_name}}:{{.Values.basic.image_tag_version}}
             args:
               - --logtostderr

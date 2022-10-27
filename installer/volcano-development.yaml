@@ -8408,14 +8408,14 @@ status:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: volcano-controllers
+  name: volcano-controller
   namespace: volcano-system
 ---
 # Source: volcano/templates/controllers.yaml
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: volcano-controllers
+  name: volcano-controller
 rules:
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
@@ -8470,21 +8470,21 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: volcano-controllers-role
+  name: volcano-controller-role
 subjects:
   - kind: ServiceAccount
-    name: volcano-controllers
+    name: volcano-controller
     namespace: volcano-system
 roleRef:
   kind: ClusterRole
-  name: volcano-controllers
+  name: volcano-controller
   apiGroup: rbac.authorization.k8s.io
 ---
 # Source: volcano/templates/controllers.yaml
 kind: Deployment
 apiVersion: apps/v1
 metadata:
-  name: volcano-controllers
+  name: volcano-controller
   namespace: volcano-system
   labels:
     app: volcano-controller
@@ -8498,10 +8498,10 @@ spec:
       labels:
         app: volcano-controller
     spec:
-      serviceAccount: volcano-controllers
+      serviceAccount: volcano-controller
       priorityClassName: system-cluster-critical
       containers:
-          - name: volcano-controllers
+          - name: volcano-controller
             image: volcanosh/vc-controller-manager:latest
             args:
               - --logtostderr
