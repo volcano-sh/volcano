@@ -216,6 +216,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			attr.deserved.MinDimensionResource(attr.request, api.Zero)
 
+			attr.deserved = helpers.Max(attr.deserved, attr.guarantee)
+			pp.updateShare(attr)
 			klog.V(4).Infof("Format queue <%s> deserved resource to <%v>", attr.name, attr.deserved)
 
 			if attr.request.LessEqual(attr.deserved, api.Zero) {
@@ -225,8 +227,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				meet[attr.queueID] = struct{}{}
 				klog.V(4).Infof("queue <%s> is meet cause of the capability", attr.name)
 			}
-			attr.deserved = helpers.Max(attr.deserved, attr.guarantee)
-			pp.updateShare(attr)
 
 			klog.V(4).Infof("The attributes of queue <%s> in proportion: deserved <%v>, realCapability <%v>, allocate <%v>, request <%v>, elastic <%v>, share <%0.2f>",
 				attr.name, attr.deserved, attr.realCapability, attr.allocated, attr.request, attr.elastic, attr.share)
