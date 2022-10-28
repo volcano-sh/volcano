@@ -24,7 +24,9 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilFeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog"
+	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
@@ -36,9 +38,9 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
-	"volcano.sh/volcano/pkg/scheduler/plugins/volumebinding"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
@@ -291,6 +293,13 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		},
 	})
 
+	features := feature.Features{
+		EnableReadWriteOncePod:                       utilFeature.DefaultFeatureGate.Enabled(features.ReadWriteOncePod),
+		EnableVolumeCapacityPriority:                 utilFeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority),
+		EnableMinDomainsInPodTopologySpread:          utilFeature.DefaultFeatureGate.Enabled(features.MinDomainsInPodTopologySpread),
+		EnableNodeInclusionPolicyInPodTopologySpread: utilFeature.DefaultFeatureGate.Enabled(features.NodeInclusionPolicyInPodTopologySpread),
+		EnableMatchLabelKeysInPodTopologySpread:      utilFeature.DefaultFeatureGate.Enabled(features.MatchLabelKeysInPodTopologySpread),
+	}
 	// Initialize k8s plugins
 	// TODO: Add more predicates, k8s.io/kubernetes/pkg/scheduler/framework/plugins/legacy_registry.go
 	handle := k8s.NewFrameworkHandle(nodeMap, ssn.KubeClient(), ssn.InformerFactory())
@@ -314,7 +323,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	plugin, _ = interpodaffinity.New(plArgs, handle)
 	podAffinityFilter := plugin.(*interpodaffinity.InterPodAffinity)
 	// 6. NodeVolumeLimits
-	features := feature.Features{}
 	plugin, _ = nodevolumelimits.NewCSI(nil, handle, features)
 	nodeVolumeLimitsCSIFilter := plugin.(*nodevolumelimits.CSILimits)
 	// 7. VolumeBinding
@@ -398,7 +406,15 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		// InterPodAffinity Predicate
-		// TODO use framework.PreFilterResult
+		// TODO: Update the node information to be processed by the filer based on the node list returned by the prefilter.
+		// In K8S V1.25, the return value result is added to the Prefile interface,
+		// indicating the list of nodes that meet filtering conditions.
+		// If the value of result is nil, all nodes meet the conditions.
+		// If the specified node information exists, only the node information in result meets the conditions.
+		// The value of Prefile in the current InterPodAffinity package always returns nil.
+		// The outer layer does not need to be processed temporarily.
+		// If the filtering logic is added to the Prefile node in the Volumebinding package in the future,
+		// the processing logic needs to be added to the return value result.
 		_, status = podAffinityFilter.PreFilter(context.TODO(), state, task.Pod)
 		if !status.IsSuccess() {
 			return fmt.Errorf("plugin %s pre-predicates failed %s", interpodaffinity.Name, status.Message())
@@ -416,7 +432,15 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		// Check VolumeBinding: handle immediate claims unbounded case
-		// TODO use framework.PreFilterResult
+		// TODO: Update the node information to be processed by the filer based on the node list returned by the prefilter.
+		// In K8S V1.25, the return value result is added to the Prefile interface,
+		// indicating the list of nodes that meet filtering conditions.
+		// If the value of result is nil, all nodes meet the conditions.
+		// If the specified node information exists, only the node information in result meets the conditions.
+		// The value of Prefile in the current Volumebinding package always returns nil.
+		// The outer layer does not need to be processed temporarily.
+		// If the filtering logic is added to the Prefile node in the Volumebinding package in the future,
+		// the processing logic needs to be added to the return value result.
 		_, status = volumebindingFilter.PreFilter(context.TODO(), state, task.Pod)
 		if !status.IsSuccess() {
 			return fmt.Errorf("plugin %s pre-predicates failed %s", volumebindingFilter.Name(), status.Message())
@@ -435,7 +459,15 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		// Check PodTopologySpread
-		// TODO use framework.PreFilterResult
+		// TODO: Update the node information to be processed by the filer based on the node list returned by the prefilter.
+		// In K8S V1.25, the return value result is added to the Prefile interface,
+		// indicating the list of nodes that meet filtering conditions.
+		// If the value of result is nil, all nodes meet the conditions.
+		// If the specified node information exists, only the node information in result meets the conditions.
+		// The value of Prefile in the current PodTopologySpread package always returns nil.
+		// The outer layer does not need to be processed temporarily.
+		// If the filtering logic is added to the Prefile node in the Volumebinding package in the future,
+		// the processing logic needs to be added to the return value result.
 		_, status = podTopologySpreadFilter.PreFilter(context.TODO(), state, task.Pod)
 		if !status.IsSuccess() {
 			return fmt.Errorf("plugin %s pre-predicates failed %s", podTopologySpreadFilter.Name(), status.Message())

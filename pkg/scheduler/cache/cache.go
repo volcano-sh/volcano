@@ -50,7 +50,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
-	volumescheduling "volcano.sh/volcano/pkg/scheduler/plugins/volumebinding"
+	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
