@@ -52,6 +52,7 @@ func TestAddFlags(t *testing.T) {
 		MaxRequeueNum:                  defaultMaxRequeueNum,
 		HealthzBindAddress:             ":11251",
 		DetectionPeriodOfDependsOntask: defaultDetectionPeriodOfDependsOntask,
+		InheritOwnerAnnotations:        true,
 	}
 
 	if !reflect.DeepEqual(expected, s) {
