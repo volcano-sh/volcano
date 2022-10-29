@@ -21,7 +21,6 @@ import (
 	"fmt"
 
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilFeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
@@ -38,7 +37,6 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
-	"volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
@@ -66,8 +64,6 @@ const (
 	PodTopologySpreadWeight = "podtopologyspread.weight"
 	// SelectorSpreadWeight is the key for providing Selector Spread Priority Weight in YAML
 	selectorSpreadWeight = "selectorspread.weight"
-	// VolumeBinding is the key for providing Volume Binding Priority Weight in YAML
-	volumeBindingWeight = "volumebinding.weight"
 )
 
 type nodeOrderPlugin struct {
@@ -94,7 +90,6 @@ type priorityWeight struct {
 	imageLocalityWeight     int
 	podTopologySpreadWeight int
 	selectorSpreadWeight    int
-	volumeBindingWeight     int
 }
 
 // calculateWeight from the provided arguments.
@@ -138,7 +133,6 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 		imageLocalityWeight:     1,
 		podTopologySpreadWeight: 2, // be consistent with kubernetes default setting.
 		selectorSpreadWeight:    0,
-		volumeBindingWeight:     1,
 	}
 
 	// Checks whether nodeaffinity.weight is provided or not, if given, modifies the value in weight struct.
@@ -167,9 +161,6 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 
 	// Checks whether selectorspread.weight is provided or not, if given, modifies the value in weight struct.
 	args.GetInt(&weight.selectorSpreadWeight, selectorSpreadWeight)
-
-	// Checks whether volumebinding.weight is provided or not, if given, modifies the value in weight struct.
-	args.GetInt(&weight.volumeBindingWeight, volumeBindingWeight)
 
 	return weight
 }
@@ -264,15 +255,6 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	p, _ = imagelocality.New(nil, handle)
 	imageLocality := p.(*imagelocality.ImageLocality)
 
-	// 6. VolumeBinding
-	volumeBindingArgs := &config.VolumeBindingArgs{
-		TypeMeta:           metav1.TypeMeta{},
-		BindTimeoutSeconds: volumebinding.DefaultBindTimeoutSeconds,
-		Shape:              nil,
-	}
-	p, _ = volumebinding.New(volumeBindingArgs, handle, fts)
-	volumeBinding := p.(*volumebinding.VolumeBinding)
-
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 		var nodeScore = 0.0
 
@@ -340,19 +322,6 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			// If nodeAffinityWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
 			nodeScore += float64(score) * float64(weight.nodeAffinityWeight)
 			klog.V(4).Infof("Node Affinity score: %f", nodeScore)
-		}
-
-		// VolumeBinding
-		if weight.volumeBindingWeight != 0 {
-			score, status := volumeBinding.Score(context.TODO(), state, task.Pod, node.Name)
-			if !status.IsSuccess() {
-				klog.Warningf("Volume Binding Priority Failed because of Error: %v", status.AsError())
-				return 0, status.AsError()
-			}
-
-			// If volumeBindingWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-			nodeScore += float64(score) * float64(weight.volumeBindingWeight)
-			klog.V(4).Infof("Volume Binding score: %f", nodeScore)
 		}
 
 		klog.V(4).Infof("Total Score for task %s/%s on node %s is: %f", task.Namespace, task.Name, node.Name, nodeScore)
