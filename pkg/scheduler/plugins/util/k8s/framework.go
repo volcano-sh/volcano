@@ -28,7 +28,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/parallelize"
-	scheduling "k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
+	scheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
 
 // Framework is a K8S framework who mainly provides some methods
@@ -95,7 +95,7 @@ func (f *Framework) EventRecorder() events.EventRecorder {
 	return nil
 }
 
-func (f *Framework) AddNominatedPod(pod *framework.PodInfo, nodeName string) {
+func (f *Framework) AddNominatedPod(pod *framework.PodInfo, nominatingInfo *framework.NominatingInfo) {
 	panic("implement me")
 }
 

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.18.5 AS builder
+FROM golang:1.19.1 AS builder
 WORKDIR /go/src/volcano.sh/
 ADD . volcano
 RUN cd volcano && make vc-controller-manager
