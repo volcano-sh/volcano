@@ -45,7 +45,7 @@ func TestCreateJob(t *testing.T) {
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
-	fileName := time.Now().String() + "testCreateJob.yaml"
+	fileName := time.Now().Format("20060102150405999") + "testCreateJob.yaml"
 	val, err := json.Marshal(response)
 	if err != nil {
 		panic(err)

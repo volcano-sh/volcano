@@ -36,9 +36,9 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/selectorspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
-	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
@@ -212,12 +212,11 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	fts := feature.Features{
-		EnablePodAffinityNamespaceSelector: utilFeature.DefaultFeatureGate.Enabled(features.PodAffinityNamespaceSelector),
-		EnablePodDisruptionBudget:          utilFeature.DefaultFeatureGate.Enabled(features.PodDisruptionBudget),
-		EnablePodOverhead:                  utilFeature.DefaultFeatureGate.Enabled(features.PodOverhead),
-		EnableReadWriteOncePod:             utilFeature.DefaultFeatureGate.Enabled(features.ReadWriteOncePod),
-		EnableVolumeCapacityPriority:       utilFeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority),
-		EnableCSIStorageCapacity:           utilFeature.DefaultFeatureGate.Enabled(features.CSIStorageCapacity),
+		EnableReadWriteOncePod:                       utilFeature.DefaultFeatureGate.Enabled(features.ReadWriteOncePod),
+		EnableVolumeCapacityPriority:                 utilFeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority),
+		EnableMinDomainsInPodTopologySpread:          utilFeature.DefaultFeatureGate.Enabled(features.MinDomainsInPodTopologySpread),
+		EnableNodeInclusionPolicyInPodTopologySpread: utilFeature.DefaultFeatureGate.Enabled(features.NodeInclusionPolicyInPodTopologySpread),
+		EnableMatchLabelKeysInPodTopologySpread:      utilFeature.DefaultFeatureGate.Enabled(features.MatchLabelKeysInPodTopologySpread),
 	}
 
 	// Initialize k8s scheduling plugins
@@ -362,7 +361,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddNodeOrderFn(pp.Name(), nodeOrderFn)
 
 	plArgs := &config.InterPodAffinityArgs{}
-	p, _ = interpodaffinity.New(plArgs, handle, fts)
+	p, _ = interpodaffinity.New(plArgs, handle)
 	interPodAffinity := p.(*interpodaffinity.InterPodAffinity)
 
 	p, _ = tainttoleration.New(nil, handle)
@@ -371,7 +370,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	ptsArgs := &config.PodTopologySpreadArgs{
 		DefaultingType: config.SystemDefaulting,
 	}
-	p, _ = podtopologyspread.New(ptsArgs, handle)
+	p, _ = podtopologyspread.New(ptsArgs, handle, fts)
 	podTopologySpread := p.(*podtopologyspread.PodTopologySpread)
 
 	p, _ = selectorspread.New(nil, handle)

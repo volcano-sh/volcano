@@ -51,7 +51,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
-	volumescheduling "k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding"
+	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -345,7 +345,7 @@ func (dvb *defaultVolumeBinder) BindVolumes(task *schedulingapi.TaskInfo, podVol
 		return nil
 	}
 
-	return dvb.volumeBinder.BindPodVolumes(task.Pod, podVolumes)
+	return dvb.volumeBinder.BindPodVolumes(context.TODO(), task.Pod, podVolumes)
 }
 
 type podgroupBinder struct {
