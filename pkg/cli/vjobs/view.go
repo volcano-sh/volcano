@@ -150,7 +150,6 @@ func PrintJobInfo(job *v1alpha1.Job, writer io.Writer) {
 	WriteLine(writer, Level1, "Generate Name:     \t%s\n", job.GenerateName)
 	WriteLine(writer, Level1, "Generation:        \t%d\n", job.Generation)
 	WriteLine(writer, Level1, "Resource Version:  \t%s\n", job.ResourceVersion)
-	WriteLine(writer, Level1, "Self Link:         \t%s\n", job.SelfLink)
 	WriteLine(writer, Level1, "UID:               \t%s\n", job.UID)
 
 	WriteLine(writer, Level0, "Spec:\n")

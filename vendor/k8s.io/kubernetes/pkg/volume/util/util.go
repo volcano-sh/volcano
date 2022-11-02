@@ -35,12 +35,13 @@ import (
 	utypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/component-helpers/scheduling/corev1"
 	storagehelpers "k8s.io/component-helpers/storage/volume"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
+	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/securitycontext"
 	"k8s.io/kubernetes/pkg/volume"
 	"k8s.io/kubernetes/pkg/volume/util/types"
@@ -162,30 +163,6 @@ func GetClassForVolume(kubeClient clientset.Interface, pv *v1.PersistentVolume) 
 		return nil, err
 	}
 	return class, nil
-}
-
-// CheckNodeAffinity looks at the PV node affinity, and checks if the node has the same corresponding labels
-// This ensures that we don't mount a volume that doesn't belong to this node
-func CheckNodeAffinity(pv *v1.PersistentVolume, nodeLabels map[string]string) error {
-	return checkVolumeNodeAffinity(pv, &v1.Node{ObjectMeta: metav1.ObjectMeta{Labels: nodeLabels}})
-}
-
-func checkVolumeNodeAffinity(pv *v1.PersistentVolume, node *v1.Node) error {
-	if pv.Spec.NodeAffinity == nil {
-		return nil
-	}
-
-	if pv.Spec.NodeAffinity.Required != nil {
-		terms := pv.Spec.NodeAffinity.Required
-		klog.V(10).Infof("Match for Required node selector terms %+v", terms)
-		if matches, err := corev1.MatchNodeSelectorTerms(node, terms); err != nil {
-			return err
-		} else if !matches {
-			return fmt.Errorf("no matching NodeSelectorTerms")
-		}
-	}
-
-	return nil
 }
 
 // LoadPodFromFile will read, decode, and return a Pod from a file.
@@ -597,15 +574,29 @@ func IsLocalEphemeralVolume(volume v1.Volume) bool {
 }
 
 // GetPodVolumeNames returns names of volumes that are used in a pod,
-// either as filesystem mount or raw block device.
-func GetPodVolumeNames(pod *v1.Pod) (mounts sets.String, devices sets.String) {
+// either as filesystem mount or raw block device, together with list
+// of all SELinux contexts of all containers that use the volumes.
+func GetPodVolumeNames(pod *v1.Pod) (mounts sets.String, devices sets.String, seLinuxContainerContexts map[string][]*v1.SELinuxOptions) {
 	mounts = sets.NewString()
 	devices = sets.NewString()
+	seLinuxContainerContexts = make(map[string][]*v1.SELinuxOptions)
 
 	podutil.VisitContainers(&pod.Spec, podutil.AllFeatureEnabledContainers(), func(container *v1.Container, containerType podutil.ContainerType) bool {
+		var seLinuxOptions *v1.SELinuxOptions
+		if utilfeature.DefaultFeatureGate.Enabled(features.SELinuxMountReadWriteOncePod) {
+			effectiveContainerSecurity := securitycontext.DetermineEffectiveSecurityContext(pod, container)
+			if effectiveContainerSecurity != nil {
+				// No DeepCopy, SELinuxOptions is already a copy of Pod's or container's SELinuxOptions
+				seLinuxOptions = effectiveContainerSecurity.SELinuxOptions
+			}
+		}
+
 		if container.VolumeMounts != nil {
 			for _, mount := range container.VolumeMounts {
 				mounts.Insert(mount.Name)
+				if seLinuxOptions != nil {
+					seLinuxContainerContexts[mount.Name] = append(seLinuxContainerContexts[mount.Name], seLinuxOptions.DeepCopy())
+				}
 			}
 		}
 		if container.VolumeDevices != nil {
@@ -656,7 +647,7 @@ func HasMountRefs(mountPath string, mountRefs []string) bool {
 	return false
 }
 
-//WriteVolumeCache flush disk data given the spcified mount path
+// WriteVolumeCache flush disk data given the spcified mount path
 func WriteVolumeCache(deviceMountPath string, exec utilexec.Interface) error {
 	// If runtime os is windows, execute Write-VolumeCache powershell command on the disk
 	if runtime.GOOS == "windows" {

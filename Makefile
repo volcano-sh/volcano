@@ -114,7 +114,7 @@ manifests: controller-gen
 
 unit-test:
 	go clean -testcache
-	go test -p 8 -race $$(find pkg -type f -name '*_test.go' | sed -r 's|/[^/]+$$||' | sort | uniq | sed "s|^|volcano.sh/volcano/|")
+	go test -p 8 -race $$(find pkg cmd -type f -name '*_test.go' | sed -r 's|/[^/]+$$||' | sort | uniq | sed "s|^|volcano.sh/volcano/|")
 
 e2e: images
 	./hack/run-e2e-kind.sh

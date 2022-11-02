@@ -18,6 +18,7 @@ package options
 
 import (
 	"fmt"
+	"io/ioutil"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -38,6 +39,10 @@ const (
 // ServerOption is the main context object for the controllers.
 type ServerOption struct {
 	KubeClientOptions    kube.ClientOptions
+	CertFile             string
+	KeyFile              string
+	CertData             []byte
+	KeyData              []byte
 	EnableLeaderElection bool
 	LockObjectNamespace  string
 	PrintVersion         bool
@@ -57,7 +62,11 @@ type ServerOption struct {
 	// For dependent tasks, there is a detection cycle inside volcano
 	// It indicates how often to detect the status of dependent tasks
 	DetectionPeriodOfDependsOntask time.Duration
+	// To determine whether inherit owner's annotations for pods when create podgroup
+	InheritOwnerAnnotations bool
 }
+
+type DecryptFunc func(c *ServerOption) error
 
 // NewServerOption creates a new CMServer with a default config.
 func NewServerOption() *ServerOption {
@@ -68,6 +77,10 @@ func NewServerOption() *ServerOption {
 func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.KubeClientOptions.Master, "master", s.KubeClientOptions.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 	fs.StringVar(&s.KubeClientOptions.KubeConfig, "kubeconfig", s.KubeClientOptions.KubeConfig, "Path to kubeconfig file with authorization and master location information.")
+	fs.StringVar(&s.CertFile, "tls-cert-file", s.CertFile, ""+
+		"File containing the default x509 Certificate for HTTPS. (CA cert, if any, concatenated "+
+		"after server cert).")
+	fs.StringVar(&s.KeyFile, "tls-private-key-file", s.KeyFile, "File containing the default x509 private key matching --tls-cert-file.")
 	fs.BoolVar(&s.EnableLeaderElection, "leader-elect", s.EnableLeaderElection, "Start a leader election client and gain leadership before "+
 		"executing the main loop. Enable this when running replicated vc-controller-manager for high availability.")
 	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", s.LockObjectNamespace, "Define the namespace of the lock object.")
@@ -82,6 +95,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.DurationVar(&s.DetectionPeriodOfDependsOntask, "detection-period-of-dependson-task", defaultDetectionPeriodOfDependsOntask, "It indicates how often to detect the status of dependent tasks."+
 		"e.g. --detection-period-of-dependson-task=1s")
+	fs.BoolVar(&s.InheritOwnerAnnotations, "inherit-owner-annotations", true, "Enable inherit owner annotations for pods when create podgroup; it is enabled by default")
 }
 
 // CheckOptionOrDie checks the LockObjectNamespace.
@@ -89,5 +103,36 @@ func (s *ServerOption) CheckOptionOrDie() error {
 	if s.EnableLeaderElection && s.LockObjectNamespace == "" {
 		return fmt.Errorf("lock-object-namespace must not be nil when LeaderElection is enabled")
 	}
+	return nil
+}
+
+// readCAFiles read data from ca file path
+func (s *ServerOption) readCAFiles() error {
+	var err error
+
+	s.CertData, err = ioutil.ReadFile(s.CertFile)
+	if err != nil {
+		return fmt.Errorf("failed to read cert file (%s): %v", s.CertFile, err)
+	}
+
+	s.KeyData, err = ioutil.ReadFile(s.KeyFile)
+	if err != nil {
+		return fmt.Errorf("failed to read key file (%s): %v", s.KeyFile, err)
+	}
+
+	return nil
+}
+
+// ParseCAFiles parse ca file by decryptFunc
+func (s *ServerOption) ParseCAFiles(decryptFunc DecryptFunc) error {
+	if err := s.readCAFiles(); err != nil {
+		return err
+	}
+
+	// users can add one function to decrypt tha data by their own way if CA data is encrypted
+	if decryptFunc != nil {
+		return decryptFunc(s)
+	}
+
 	return nil
 }

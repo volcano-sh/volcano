@@ -353,6 +353,9 @@ type QueueSpec struct {
 	// If specified, the pod owned by the queue will be scheduled with constraint
 	// +optional
 	Affinity *Affinity `json:"affinity,omitempty" protobuf:"bytes,6,opt,name=affinity"`
+
+	// Type define the type of queue
+	Type string `json:"type,omitempty" protobuf:"bytes,7,opt,name=type"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

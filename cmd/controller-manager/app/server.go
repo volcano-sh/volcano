@@ -56,7 +56,7 @@ func Run(opt *options.ServerOption) error {
 	}
 
 	if opt.EnableHealthz {
-		if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-controller"); err != nil {
+		if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-controller", opt.CertData, opt.KeyData); err != nil {
 			return err
 		}
 	}
@@ -87,7 +87,7 @@ func Run(opt *options.ServerOption) error {
 	// add a uniquifier so that two processes on the same host don't accidentally both become active
 	id := hostname + "_" + string(uuid.NewUUID())
 
-	rl, err := resourcelock.New(resourcelock.ConfigMapsResourceLock,
+	rl, err := resourcelock.New(resourcelock.ConfigMapsLeasesResourceLock,
 		opt.LockObjectNamespace,
 		"vc-controller-manager",
 		leaderElectionClient.CoreV1(),
@@ -126,6 +126,7 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 	controllerOpt.KubeClient = kubeclientset.NewForConfigOrDie(config)
 	controllerOpt.VolcanoClient = vcclientset.NewForConfigOrDie(config)
 	controllerOpt.SharedInformerFactory = informers.NewSharedInformerFactory(controllerOpt.KubeClient, 0)
+	controllerOpt.InheritOwnerAnnotations = opt.InheritOwnerAnnotations
 
 	return func(ctx context.Context) {
 		framework.ForeachController(func(c framework.Controller) {

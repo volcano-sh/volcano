@@ -18,6 +18,7 @@ package helpers
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -188,7 +189,7 @@ func GeneratePodgroupName(pod *v1.Pod) string {
 }
 
 // StartHealthz register healthz interface.
-func StartHealthz(healthzBindAddress, name string) error {
+func StartHealthz(healthzBindAddress, name string, certData, certKeyData []byte) error {
 	listener, err := net.Listen("tcp", healthzBindAddress)
 	if err != nil {
 		return fmt.Errorf("failed to create listener: %v", err)
@@ -201,6 +202,15 @@ func StartHealthz(healthzBindAddress, name string) error {
 		Addr:           listener.Addr().String(),
 		Handler:        pathRecorderMux,
 		MaxHeaderBytes: 1 << 20,
+	}
+	if len(certData) != 0 && len(certKeyData) != 0 {
+		sCert, err := tls.X509KeyPair(certData, certKeyData)
+		if err != nil {
+			return fmt.Errorf("failed to parse certData: %v", err)
+		}
+		server.TLSConfig = &tls.Config{
+			Certificates: []tls.Certificate{sCert},
+		}
 	}
 
 	return runServer(server, listener)
@@ -226,7 +236,12 @@ func runServer(server *http.Server, ln net.Listener) error {
 
 		listener := tcpKeepAliveListener{ln.(*net.TCPListener)}
 
-		err := server.Serve(listener)
+		var err error
+		if server.TLSConfig != nil {
+			err = server.ServeTLS(listener, "", "")
+		} else {
+			err = server.Serve(listener)
+		}
 		msg := fmt.Sprintf("Stopped listening on %s", listener.Addr().String())
 		select {
 		case <-stopCh:

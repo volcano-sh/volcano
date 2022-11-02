@@ -129,6 +129,22 @@ func (pg *pgcontroller) getAnnotationsFromUpperRes(kind string, name string, nam
 	}
 }
 
+// Inherit annotations from upper resources.
+func (pg *pgcontroller) inheritUpperAnnotations(pod *v1.Pod, obj *scheduling.PodGroup) {
+	if pg.inheritOwnerAnnotations {
+		for _, reference := range pod.OwnerReferences {
+			if reference.Kind != "" && reference.Name != "" {
+				var upperAnnotations = pg.getAnnotationsFromUpperRes(reference.Kind, reference.Name, pod.Namespace)
+				for k, v := range upperAnnotations {
+					if strings.HasPrefix(k, scheduling.AnnotationPrefix) {
+						obj.Annotations[k] = v
+					}
+				}
+			}
+		}
+	}
+}
+
 func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 	pgName := helpers.GeneratePodgroupName(pod)
 
@@ -157,18 +173,7 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 			},
 		}
 
-		// Inherit annotations from upper resources.
-		for _, reference := range pod.OwnerReferences {
-			if reference.Kind != "" && reference.Name != "" {
-				var upperAnnotations = pg.getAnnotationsFromUpperRes(reference.Kind, reference.Name, pod.Namespace)
-				for k, v := range upperAnnotations {
-					if strings.HasPrefix(k, scheduling.AnnotationPrefix) {
-						obj.Annotations[k] = v
-					}
-				}
-			}
-		}
-
+		pg.inheritUpperAnnotations(pod, obj)
 		// Individual annotations on pods would overwrite annotations inherited from upper resources.
 		if queueName, ok := pod.Annotations[scheduling.QueueNameAnnotationKey]; ok {
 			obj.Spec.Queue = queueName

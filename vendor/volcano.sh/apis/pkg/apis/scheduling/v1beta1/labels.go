@@ -35,6 +35,10 @@ const KubeGroupNameAnnotationKey = "scheduling.k8s.io/group-name"
 // which PodGroup it belongs to.
 const VolcanoGroupNameAnnotationKey = GroupName + "/group-name"
 
+// VolcanoGroupMinResourcesAnnotationKey is the annotation key of PodGroup's PodGroup.Spec.MinResources
+// which PodGroup it belongs to.
+const VolcanoGroupMinResourcesAnnotationKey = GroupName + "/group-min-resources"
+
 // QueueNameAnnotationKey is the annotation key of Pod to identify
 // which queue it belongs to.
 const QueueNameAnnotationKey = GroupName + "/queue-name"

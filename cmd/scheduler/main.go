@@ -59,6 +59,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	if s.CertFile != "" && s.KeyFile != "" {
+		if err := s.ParseCAFiles(nil); err != nil {
+			klog.Fatalf("Failed to parse CA file: %v", err)
+		}
+	}
+
 	go wait.Until(klog.Flush, *logFlushFreq, wait.NeverStop)
 	defer klog.Flush()
 

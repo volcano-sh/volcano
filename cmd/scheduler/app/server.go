@@ -92,7 +92,7 @@ func Run(opt *options.ServerOption) error {
 	}
 
 	if opt.EnableHealthz {
-		if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-scheduler"); err != nil {
+		if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-scheduler", opt.CertData, opt.KeyData); err != nil {
 			return err
 		}
 	}
@@ -125,7 +125,7 @@ func Run(opt *options.ServerOption) error {
 	// add a uniquifier so that two processes on the same host don't accidentally both become active
 	id := hostname + "_" + string(uuid.NewUUID())
 
-	rl, err := resourcelock.New(resourcelock.ConfigMapsResourceLock,
+	rl, err := resourcelock.New(resourcelock.ConfigMapsLeasesResourceLock,
 		opt.LockObjectNamespace,
 		commonutil.GenerateComponentName(opt.SchedulerNames),
 		leaderElectionClient.CoreV1(),
