@@ -1073,13 +1073,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		}
 
 		//clone imageState
-		for imagenm, summary := range value.ImageStates {
-			newImageSummary := &schedulingapi.ImageStateSummary{
-				Size:     summary.Size,
-				NumNodes: summary.NumNodes,
-			}
-			snapshot.Nodes[value.Name].ImageStates[imagenm] = newImageSummary
-		}
+		snapshot.Nodes[value.Name].ImageStates = value.CloneImageSumary()
 	}
 
 	for _, value := range sc.Queues {

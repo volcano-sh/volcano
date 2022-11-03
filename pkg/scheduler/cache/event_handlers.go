@@ -33,6 +33,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 
 	sv1 "k8s.io/api/storage/v1"
+	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/framework"
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/scheme"
@@ -336,8 +337,8 @@ func (sc *SchedulerCache) deleteNode(node *v1.Node) error {
 	return nil
 }
 
-func (sc *SchedulerCache) createImageStateSummary(state *imageState) *schedulingapi.ImageStateSummary {
-	return &schedulingapi.ImageStateSummary{
+func (sc *SchedulerCache) createImageStateSummary(state *imageState) *schedulernodeinfo.ImageStateSummary {
+	return &schedulernodeinfo.ImageStateSummary{
 		Size:     state.size,
 		NumNodes: len(state.nodes),
 	}
@@ -346,7 +347,7 @@ func (sc *SchedulerCache) createImageStateSummary(state *imageState) *scheduling
 // addNodeImageStates adds states of the images on given node to the given nodeInfo and update the imageStates in
 // scheduler cache. This function assumes the lock to scheduler cache has been acquired.
 func (sc *SchedulerCache) addNodeImageStates(node *v1.Node, nodeInfo *schedulingapi.NodeInfo) {
-	newSum := make(map[string]*schedulingapi.ImageStateSummary)
+	newSum := make(map[string]*schedulernodeinfo.ImageStateSummary)
 
 	for _, image := range node.Status.Images {
 		for _, name := range image.Names {

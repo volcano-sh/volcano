@@ -240,14 +240,8 @@ func GenerateNodeMapAndSlice(nodes map[string]*api.NodeInfo) map[string]*schedul
 		nodeInfo.SetNode(node.Node)
 		nodeMap[node.Name] = nodeInfo
 
-		// add imagestate into nodeMap
-		for imagenm, summary := range node.ImageStates {
-			newImageSummary := &schedulernodeinfo.ImageStateSummary{
-				Size:     summary.Size,
-				NumNodes: summary.NumNodes,
-			}
-			nodeMap[node.Name].ImageStates[imagenm] = newImageSummary
-		}
+		// add imagestate into nodeinfo
+		nodeMap[node.Name].ImageStates = node.CloneImageSumary()
 	}
 	return nodeMap
 }

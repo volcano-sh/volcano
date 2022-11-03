@@ -25,6 +25,8 @@ import (
 	"k8s.io/klog"
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
+	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
 type AllocateFailError struct {
@@ -38,14 +40,6 @@ func (o *AllocateFailError) Error() string {
 type CSINodeStatusInfo struct {
 	CSINodeName  string
 	DriverStatus map[string]bool
-}
-
-// ImageStateSummary provides summarized information about the state of an image.
-type ImageStateSummary struct {
-	// Size of the image
-	Size int64
-	// Used to track how many nodes have this image
-	NumNodes int
 }
 
 // NodeInfo is node level aggregated information.
@@ -91,7 +85,7 @@ type NodeInfo struct {
 	// ImageStates holds the entry of an image if and only if this image is on the node. The entry can be used for
 	// checking an image's existence and advanced usage (e.g., image locality scheduling policy) based on the image
 	// state information.
-	ImageStates map[string]*ImageStateSummary
+	ImageStates map[string]*schedulernodeinfo.ImageStateSummary
 }
 
 // FutureIdle returns resources that will be idle in the future:
@@ -149,7 +143,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 
 		GPUDevices: make(map[int]*GPUDevice),
 
-		ImageStates: make(map[string]*ImageStateSummary),
+		ImageStates: make(map[string]*schedulernodeinfo.ImageStateSummary),
 	}
 
 	nodeInfo.setOversubscription(node)
@@ -217,6 +211,7 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 		klog.V(5).Infof("current Policies : %v", res.NumaSchedulerInfo.Policies)
 	}
 
+	res.ImageStates = ni.ImageStates
 	res.Others = ni.Others
 	return res
 }
@@ -541,8 +536,8 @@ func (ni NodeInfo) String() string {
 	}
 
 	return fmt.Sprintf("Node (%s): allocatable<%v> idle <%v>, used <%v>, releasing <%v>, oversubscribution <%v>, "+
-		"state <phase %s, reason %s>, oversubscributionNode <%v>, offlineJobEvicting <%v>,taints <%v>%s",
-		ni.Name, ni.Allocatable, ni.Idle, ni.Used, ni.Releasing, ni.OversubscriptionResource, ni.State.Phase, ni.State.Reason, ni.OversubscriptionNode, ni.OfflineJobEvicting, ni.Node.Spec.Taints, tasks)
+		"state <phase %s, reason %s>, oversubscributionNode <%v>, offlineJobEvicting <%v>,taints <%v>%s, imageStates %v",
+		ni.Name, ni.Allocatable, ni.Idle, ni.Used, ni.Releasing, ni.OversubscriptionResource, ni.State.Phase, ni.State.Reason, ni.OversubscriptionNode, ni.OfflineJobEvicting, ni.Node.Spec.Taints, tasks, ni.ImageStates)
 }
 
 // Pods returns all pods running in that node
@@ -641,6 +636,19 @@ func (ni *NodeInfo) getUnhealthyGPUs(node *v1.Node) (unhealthyGPUs []int) {
 		}
 	}
 	return
+}
+
+// Clone Image State
+func (ni *NodeInfo) CloneImageSumary() map[string]*schedulernodeinfo.ImageStateSummary {
+	nodeImageStates := make(map[string]*schedulernodeinfo.ImageStateSummary)
+	for imagenm, summary := range ni.ImageStates {
+		newImageSummary := &schedulernodeinfo.ImageStateSummary{
+			Size:     summary.Size,
+			NumNodes: summary.NumNodes,
+		}
+		nodeImageStates[imagenm] = newImageSummary
+	}
+	return nodeImageStates
 }
 
 func (cs *CSINodeStatusInfo) Clone() *CSINodeStatusInfo {
