@@ -268,7 +268,7 @@ func (ti *TaskInfo) GetTaskSpecKey() TaskID {
 
 // String returns the taskInfo details in a string
 func (ti TaskInfo) String() string {
-	res := fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v"+
+	res := fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v, "+
 		"resreq %v, preemptable %v, revocableZone %v",
 		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority,
 		ti.Resreq, ti.Preemptable, ti.RevocableZone)
