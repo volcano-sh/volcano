@@ -21,10 +21,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"k8s.io/klog"
 	"net/http"
 	"strings"
 	"time"
+
+	"k8s.io/klog"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
@@ -236,7 +237,7 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 		ssn.AddJobEnqueueableFn(ep.Name(), func(obj interface{}) int {
 			job := obj.(*api.JobInfo)
 			resp := &JobEnqueueableResponse{}
-			err := ep.send(ep.config.reclaimableVerb, &JobEnqueueableRequest{Job: job}, resp)
+			err := ep.send(ep.config.jobEnqueueableVerb, &JobEnqueueableRequest{Job: job}, resp)
 			if err != nil {
 				klog.Warningf("JobEnqueueable failed with error %v", err)
 
@@ -254,7 +255,7 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 		ssn.AddOverusedFn(ep.Name(), func(obj interface{}) bool {
 			queue := obj.(*api.QueueInfo)
 			resp := &QueueOverusedResponse{}
-			err := ep.send(ep.config.reclaimableVerb, &QueueOverusedRequest{Queue: queue}, resp)
+			err := ep.send(ep.config.queueOverusedVerb, &QueueOverusedRequest{Queue: queue}, resp)
 			if err != nil {
 				klog.Warningf("QueueOverused failed with error %v", err)
 
