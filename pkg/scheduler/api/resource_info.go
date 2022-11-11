@@ -260,6 +260,31 @@ func (r *Resource) Multi(ratio float64) *Resource {
 	return r
 }
 
+func (r *Resource) MaxWeight(rr *Resource) int32 {
+	weight := 1
+	if r.MilliCPU != 0 {
+		weightTmp := int(math.Ceil(r.MilliCPU / rr.MilliCPU))
+		if weightTmp > weight {
+			weight = weightTmp
+		}
+	}
+	if r.Memory != 0 {
+		weightTmp := int(math.Ceil(r.Memory / rr.Memory))
+		if weightTmp > weight {
+			weight = weightTmp
+		}
+	}
+	for rName, rQuant := range rr.ScalarResources {
+		if rQuant != 0 {
+			weightTmp := int(math.Ceil(r.ScalarResources[rName] / rQuant))
+			if weightTmp > weight {
+				weight = weightTmp
+			}
+		}
+	}
+	return int32(weight)
+}
+
 // SetMaxResource compares with ResourceList and takes max value for each Resource.
 func (r *Resource) SetMaxResource(rr *Resource) {
 	if r == nil || rr == nil {

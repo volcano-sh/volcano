@@ -23,6 +23,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto" // auto-registry collectors in default registry
 )
 
+type denominator string
+
 const (
 	// VolcanoNamespace - namespace in prometheus used by volcano
 	VolcanoNamespace = "volcano"
@@ -32,6 +34,10 @@ const (
 
 	// OnSessionClose label
 	OnSessionClose = "OnSessionClose"
+
+	CapacityDenominator     denominator = "capacity"
+	GuaranteeDenominator    denominator = "guarantee"
+	RealCapacityDenominator denominator = "real_capacity"
 )
 
 var (

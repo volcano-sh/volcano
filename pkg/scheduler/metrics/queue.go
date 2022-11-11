@@ -19,6 +19,9 @@ package metrics
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto" // auto-registry collectors in default registry
+	"math"
+	"volcano.sh/apis/pkg/apis/scheduling"
+	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 var (
@@ -30,12 +33,28 @@ var (
 		}, []string{"queue_name"},
 	)
 
+	queueAllocatedCPUPercentage = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "queue_allocated_cpu_percentage",
+			Help:      "Allocated CPU percentage for one queue",
+		}, []string{"queue_name", "denominator"},
+	)
+
 	queueAllocatedMemory = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoNamespace,
 			Name:      "queue_allocated_memory_bytes",
 			Help:      "Allocated memory for one queue",
 		}, []string{"queue_name"},
+	)
+
+	queueAllocatedMemoryPercentage = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "queue_allocated_memory_percentage",
+			Help:      "Allocated memory percentage for one queue",
+		}, []string{"queue_name", "denominator"},
 	)
 
 	queueRequestMilliCPU = promauto.NewGaugeVec(
@@ -133,6 +152,12 @@ func UpdateQueueAllocated(queueName string, milliCPU, memory float64) {
 	queueAllocatedMemory.WithLabelValues(queueName).Set(memory)
 }
 
+// UpdateQueueAllocatedPercentage records allocated resources percentage for one queue
+func UpdateQueueAllocatedPercentage(queueName string, cpuPercentage, memoryPercentage float64, denominator string) {
+	queueAllocatedCPUPercentage.WithLabelValues(queueName, denominator).Set(cpuPercentage)
+	queueAllocatedMemoryPercentage.WithLabelValues(queueName, denominator).Set(memoryPercentage)
+}
+
 // UpdateQueueRequest records request resources for one queue
 func UpdateQueueRequest(queueName string, milliCPU, memory float64) {
 	queueRequestMilliCPU.WithLabelValues(queueName).Set(milliCPU)
@@ -166,6 +191,13 @@ func UpdateQueueOverused(queueName string, overused bool) {
 	queueOverused.WithLabelValues(queueName).Set(value)
 }
 
+func UpdateQueuePodGroupStatusCount(queueName string, status scheduling.QueueStatus) {
+	UpdateQueuePodGroupInqueueCount(queueName, status.Inqueue)
+	UpdateQueuePodGroupPendingCount(queueName, status.Pending)
+	UpdateQueuePodGroupRunningCount(queueName, status.Running)
+	UpdateQueuePodGroupUnknownCount(queueName, status.Unknown)
+}
+
 // UpdateQueuePodGroupInqueueCount records the number of Inqueue PodGroup in this queue
 func UpdateQueuePodGroupInqueueCount(queueName string, count int32) {
 	queuePodGroupInqueue.WithLabelValues(queueName).Set(float64(count))
@@ -190,6 +222,8 @@ func UpdateQueuePodGroupUnknownCount(queueName string, count int32) {
 func DeleteQueueMetrics(queueName string) {
 	queueAllocatedMilliCPU.DeleteLabelValues(queueName)
 	queueAllocatedMemory.DeleteLabelValues(queueName)
+	queueAllocatedCPUPercentage.DeleteLabelValues(queueName)
+	queueAllocatedMemoryPercentage.DeleteLabelValues(queueName)
 	queueRequestMilliCPU.DeleteLabelValues(queueName)
 	queueRequestMemory.DeleteLabelValues(queueName)
 	queueDeservedMilliCPU.DeleteLabelValues(queueName)
@@ -201,4 +235,51 @@ func DeleteQueueMetrics(queueName string) {
 	queuePodGroupPending.DeleteLabelValues(queueName)
 	queuePodGroupRunning.DeleteLabelValues(queueName)
 	queuePodGroupUnknown.DeleteLabelValues(queueName)
+}
+
+// UpdateQueueAllocatedMetrics records all metrics of allocated resources for one queue
+func UpdateQueueAllocatedMetrics(queueName string, allocated *api.Resource, capacity *api.Resource, guarantee *api.Resource, realcapacity *api.Resource) {
+	cpuCapacityPercentage := 0.0
+	memoryCapacityPercentage := 0.0
+	cpuGuaranteePercentage := 0.0
+	memoryGuaranteePercentage := 0.0
+	cpuRealcapacityPercentage := 0.0
+	memoryRealcapacityPercentage := 0.0
+	if capacity.MilliCPU == 0 {
+		cpuCapacityPercentage = 0.0
+	} else {
+		cpuCapacityPercentage = allocated.MilliCPU * 100 / capacity.MilliCPU
+	}
+	if capacity.Memory == 0 {
+		memoryCapacityPercentage = 0.0
+	} else {
+		memoryCapacityPercentage = allocated.Memory * 100 / capacity.Memory
+	}
+	if guarantee.Memory == 0 {
+		cpuGuaranteePercentage = 0.0
+	} else {
+		cpuGuaranteePercentage = allocated.MilliCPU * 100 / guarantee.MilliCPU
+	}
+	if guarantee.Memory == 0 {
+		memoryGuaranteePercentage = 0.0
+	} else {
+		memoryGuaranteePercentage = allocated.Memory * 100 / guarantee.Memory
+	}
+	if realcapacity.Memory == 0 {
+		cpuRealcapacityPercentage = 0.0
+	} else {
+		cpuRealcapacityPercentage = allocated.MilliCPU * 100 / realcapacity.MilliCPU
+	}
+	if realcapacity.Memory == 0 {
+		memoryRealcapacityPercentage = 0.0
+	} else {
+		memoryRealcapacityPercentage = allocated.Memory * 100 / realcapacity.Memory
+	}
+	UpdateQueueAllocated(queueName, allocated.MilliCPU, allocated.Memory)
+	UpdateQueueAllocatedPercentage(queueName, math.Ceil((cpuCapacityPercentage)*10)/10,
+		math.Ceil((memoryCapacityPercentage)*10)/10, string(CapacityDenominator))
+	UpdateQueueAllocatedPercentage(queueName, math.Ceil((cpuGuaranteePercentage)*10)/10,
+		math.Ceil((memoryGuaranteePercentage)*10)/10, string(GuaranteeDenominator))
+	UpdateQueueAllocatedPercentage(queueName, math.Ceil((cpuRealcapacityPercentage)*10)/10,
+		math.Ceil((memoryRealcapacityPercentage)*10)/10, string(RealCapacityDenominator))
 }
