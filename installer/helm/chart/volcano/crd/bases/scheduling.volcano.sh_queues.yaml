@@ -131,6 +131,15 @@ spec:
           status:
             description: The status of queue.
             properties:
+              allocated:
+                additionalProperties:
+                  anyOf:
+                  - type: integer
+                  - type: string
+                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                  x-kubernetes-int-or-string: true
+                description: Allocated is allocated resources in queue
+                type: object
               completed:
                 description: The number of `Completed` PodGroup in this queue.
                 format: int32
@@ -174,6 +183,8 @@ spec:
                 description: The number of 'Unknown' PodGroup in this queue.
                 format: int32
                 type: integer
+            required:
+            - allocated
             type: object
         type: object
     served: true
