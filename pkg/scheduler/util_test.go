@@ -61,6 +61,7 @@ tiers:
 					EnabledJobEnqueued:    &trueValue,
 					EnabledVictim:         &trueValue,
 					EnabledJobStarving:    &trueValue,
+					EnabledOverused:       &trueValue,
 				},
 				{
 					Name:                  "gang",
@@ -80,6 +81,7 @@ tiers:
 					EnabledJobEnqueued:    &trueValue,
 					EnabledVictim:         &trueValue,
 					EnabledJobStarving:    &trueValue,
+					EnabledOverused:       &trueValue,
 				},
 				{
 					Name:                  "conformance",
@@ -99,6 +101,7 @@ tiers:
 					EnabledJobEnqueued:    &trueValue,
 					EnabledVictim:         &trueValue,
 					EnabledJobStarving:    &trueValue,
+					EnabledOverused:       &trueValue,
 				},
 			},
 		},
@@ -122,6 +125,7 @@ tiers:
 					EnabledJobEnqueued:    &trueValue,
 					EnabledVictim:         &trueValue,
 					EnabledJobStarving:    &trueValue,
+					EnabledOverused:       &trueValue,
 				},
 				{
 					Name:                  "predicates",
@@ -141,6 +145,7 @@ tiers:
 					EnabledJobEnqueued:    &trueValue,
 					EnabledVictim:         &trueValue,
 					EnabledJobStarving:    &trueValue,
+					EnabledOverused:       &trueValue,
 				},
 				{
 					Name:                  "proportion",
@@ -160,6 +165,7 @@ tiers:
 					EnabledJobEnqueued:    &trueValue,
 					EnabledVictim:         &trueValue,
 					EnabledJobStarving:    &trueValue,
+					EnabledOverused:       &trueValue,
 				},
 				{
 					Name:                  "nodeorder",
@@ -179,6 +185,7 @@ tiers:
 					EnabledJobEnqueued:    &trueValue,
 					EnabledVictim:         &trueValue,
 					EnabledJobStarving:    &trueValue,
+					EnabledOverused:       &trueValue,
 				},
 			},
 		},

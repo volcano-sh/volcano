@@ -70,4 +70,7 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	if option.EnabledJobStarving == nil {
 		option.EnabledJobStarving = &t
 	}
+	if option.EnabledOverused == nil {
+		option.EnabledOverused = &t
+	}
 }
