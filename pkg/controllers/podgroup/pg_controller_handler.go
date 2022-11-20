@@ -25,13 +25,12 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/klog"
-	quotacore "k8s.io/kubernetes/pkg/quota/v1/evaluator/core"
-	"k8s.io/utils/clock"
-
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog"
 	"volcano.sh/apis/pkg/apis/helpers"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
+	"volcano.sh/volcano/pkg/controllers/util"
 )
 
 type podRequest struct {
@@ -166,7 +165,7 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 			Spec: scheduling.PodGroupSpec{
 				MinMember:         1,
 				PriorityClassName: pod.Spec.PriorityClassName,
-				MinResources:      calcPGMinResources(pod),
+				MinResources:      util.GetPodQuotaUsage(pod),
 			},
 			Status: scheduling.PodGroupStatus{
 				Phase: scheduling.PodGroupPending,
@@ -227,11 +226,4 @@ func newPGOwnerReferences(pod *v1.Pod) []metav1.OwnerReference {
 	}
 	ref := metav1.NewControllerRef(pod, gvk)
 	return []metav1.OwnerReference{*ref}
-}
-
-// calcPGMinResources calculate podgroup minimum resource
-func calcPGMinResources(pod *v1.Pod) *v1.ResourceList {
-	pgMinRes, _ := quotacore.PodUsageFunc(pod, clock.RealClock{})
-
-	return &pgMinRes
 }
