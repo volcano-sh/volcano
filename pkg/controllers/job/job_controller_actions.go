@@ -31,15 +31,14 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	quotav1 "k8s.io/apiserver/pkg/quota/v1"
 	"k8s.io/klog"
-	quotacore "k8s.io/kubernetes/pkg/quota/v1/evaluator/core"
-	"k8s.io/utils/clock"
-
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/helpers"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
+	"volcano.sh/volcano/pkg/controllers/util"
 )
 
 var calMutex sync.Mutex
@@ -671,7 +670,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 			pg := &scheduling.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: job.Namespace,
-					//add job.UID into its name when create new PodGroup
+					// add job.UID into its name when create new PodGroup
 					Name:        pgName,
 					Annotations: job.Annotations,
 					Labels:      job.Labels,
@@ -791,8 +790,7 @@ func (cc *jobcontroller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 			pod := &v1.Pod{
 				Spec: task.Template.Spec,
 			}
-			res, _ := quotacore.PodUsageFunc(pod, clock.RealClock{})
-			minReq = quotav1.Add(minReq, res)
+			minReq = quotav1.Add(minReq, *util.GetPodQuotaUsage(pod))
 		}
 	}
 
