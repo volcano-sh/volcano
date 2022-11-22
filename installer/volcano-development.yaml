@@ -8630,12 +8630,14 @@ data:
     - plugins:
       - name: priority
       - name: gang
+        enablePreemptable: false
       - name: conformance
     - plugins:
       - name: overcommit
       - name: drf
       - name: predicates
       - name: proportion
+        enableJobEnqueued: false
       - name: nodeorder
       - name: binpack
 ---
