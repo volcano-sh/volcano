@@ -98,7 +98,7 @@ func GetPodPreemptable(pod *v1.Pod) bool {
 		}
 	}
 
-	return false
+	return true
 }
 
 // GetPodRevocableZone return volcano.sh/revocable-zone value for pod/podgroup
