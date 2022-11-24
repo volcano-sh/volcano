@@ -18,6 +18,7 @@ package predicates
 
 import (
 	"fmt"
+	"sort"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
@@ -62,6 +63,7 @@ func predicateGPUbyMemory(pod *v1.Pod, node *api.NodeInfo) []int {
 			devIDs = append(devIDs, devID)
 		}
 	}
+	sort.Ints(devIDs)
 	return devIDs
 }
 
