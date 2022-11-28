@@ -198,6 +198,16 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 			klog.V(3).Infof("There are <%d> nodes for Job <%v/%v>", len(ssn.Nodes), job.Namespace, job.Name)
 
+			if err := ssn.PrePredicateFn(task); err != nil {
+				klog.V(3).Infof("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
+				fitErrors := api.NewFitErrors()
+				for _, ni := range allNodes {
+					fitErrors.SetNodeError(ni.Name, err)
+				}
+				job.NodesFitErrors[task.UID] = fitErrors
+				break
+			}
+
 			predicateNodes, fitErrors := ph.PredicateNodes(task, allNodes, predicateFn)
 			if len(predicateNodes) == 0 {
 				job.NodesFitErrors[task.UID] = fitErrors

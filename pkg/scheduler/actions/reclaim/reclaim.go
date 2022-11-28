@@ -116,6 +116,11 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 
+		if err := ssn.PrePredicateFn(task); err != nil {
+			klog.V(3).Infof("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
+			continue
+		}
+
 		assigned := false
 		for _, n := range ssn.Nodes {
 			// If predicates failed, next node.
