@@ -136,6 +136,9 @@ type JobEnqueuedFn func(interface{})
 // PredicateFn is the func declaration used to predicate node for task.
 type PredicateFn func(*TaskInfo, *NodeInfo) error
 
+// PrePredicateFn is the func declaration used to pre-predicate node for task.
+type PrePredicateFn func(*TaskInfo) error
+
 // BestNodeFn is the func declaration used to return the nodeScores to plugins.
 type BestNodeFn func(*TaskInfo, map[float64][]*NodeInfo) *NodeInfo
 
