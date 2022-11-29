@@ -74,6 +74,11 @@ func (ssn *Session) AddPredicateFn(name string, pf api.PredicateFn) {
 	ssn.predicateFns[name] = pf
 }
 
+// AddPredicateFn add Predicate function
+func (ssn *Session) AddPrePredicateFn(name string, pf api.PrePredicateFn) {
+	ssn.prePredicateFns[name] = pf
+}
+
 // AddBestNodeFn add BestNode function
 func (ssn *Session) AddBestNodeFn(name string, pf api.BestNodeFn) {
 	ssn.bestNodeFns[name] = pf
@@ -631,6 +636,27 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 				continue
 			}
 			err := pfn(task, node)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// PrePredicateFn invoke predicate function of the plugins
+func (ssn *Session) PrePredicateFn(task *api.TaskInfo) error {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			// we use same option as predicates for they are
+			if !isEnabled(plugin.EnabledPredicate) {
+				continue
+			}
+			pfn, found := ssn.prePredicateFns[plugin.Name]
+			if !found {
+				continue
+			}
+			err := pfn(task)
 			if err != nil {
 				return err
 			}
