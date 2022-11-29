@@ -20,6 +20,7 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -45,7 +46,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 	defer klog.V(3).Infof("Leaving Enqueue ...")
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
-	queueMap := map[api.QueueID]*api.QueueInfo{}
+	queueSet := sets.NewString()
 	jobsMap := map[api.QueueID]*util.PriorityQueue{}
 
 	for _, job := range ssn.Jobs {
@@ -58,11 +59,11 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 			klog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
 				job.Queue, job.Namespace, job.Name)
 			continue
-		} else if _, existed := queueMap[queue.UID]; !existed {
+		} else if !queueSet.Has(string(queue.UID)) {
 			klog.V(5).Infof("Added Queue <%s> for Job <%s/%s>",
 				queue.Name, job.Namespace, job.Name)
 
-			queueMap[queue.UID] = queue
+			queueSet.Insert(string(queue.UID))
 			queues.Push(queue)
 		}
 
@@ -84,7 +85,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 
 		queue := queues.Pop().(*api.QueueInfo)
 
-		// Found "high" priority job
+		// skip the Queue that has no pending job
 		jobs, found := jobsMap[queue.UID]
 		if !found || jobs.Empty() {
 			continue
