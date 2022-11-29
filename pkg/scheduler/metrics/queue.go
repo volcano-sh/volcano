@@ -19,9 +19,16 @@ package metrics
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto" // auto-registry collectors in default registry
+	"k8s.io/klog"
 	"math"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
+)
+
+// Keys use to get labels
+const (
+	TenantKey string = "kyligence.io/xuanwu.tenant"
+	RPKey     string = "kyligence.io/xuanwu.rp"
 )
 
 var (
@@ -144,6 +151,27 @@ var (
 			Help:      "The number of Unknown PodGroup in this queue",
 		}, []string{"queue_name"},
 	)
+
+	queuePendingNumber = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "queue_pending_task_number",
+			Help: "The number of queues in pending",
+		}, []string{"queue_name", "tenant_name", "rp_name"},
+	)
+
+	queuePendingCpuRate = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "queue_pending_cpu_rate",
+			Help: "The rate of pending queues cpu",
+		}, []string{"queue_name", "tenant_name", "rp_name", "denominator"},
+	)
+
+	queuePendingMemRate = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "queue_pending_mem_rate",
+			Help: "The rate of pending queues mem",
+		}, []string{"queue_name", "tenant_name", "rp_name", "denominator"},
+	)
 )
 
 // UpdateQueueAllocated records allocated resources for one queue
@@ -216,6 +244,32 @@ func UpdateQueuePodGroupRunningCount(queueName string, count int32) {
 // UpdateQueuePodGroupUnknownCount records the number of Unknown PodGroup in this queue
 func UpdateQueuePodGroupUnknownCount(queueName string, count int32) {
 	queuePodGroupUnknown.WithLabelValues(queueName).Set(float64(count))
+}
+
+// UpdateQueuePendingTaskNumber records number of pending task for one queue
+func UpdateQueuePendingTaskNumber(queueName, tenantName, rpName string, x float64) {
+	queuePendingNumber.WithLabelValues(queueName, tenantName, rpName).Set(x)
+}
+
+// UpdateQueuePendingRate records ratio of pending task resources to "denominator" for one queue
+func UpdateQueuePendingRate(queueName, tenantName, rpName string, denominatorName denominator, cpu, mem, denominatorCpu, denominatorMem float64) {
+	var cpuRate, memRate float64
+	if denominatorCpu == 0 || denominatorMem == 0 {
+		klog.V(4).Infof("skip metric of %s as it is nil", string(denominatorName))
+		return
+	}
+	cpuRate = cpu / denominatorCpu
+	memRate = mem / denominatorMem
+	queuePendingCpuRate.WithLabelValues(queueName, tenantName, rpName, string(denominatorName)).Set(cpuRate)
+	queuePendingMemRate.WithLabelValues(queueName, tenantName, rpName, string(denominatorName)).Set(memRate)
+}
+
+// DeleteQueueTaskMetrics delete all queue pending task metrics
+func DeleteQueueTaskMetrics(queueName, tenantName, rpName string, denominatorName denominator) {
+	queuePendingNumber.DeleteLabelValues(queueName, tenantName, rpName, string(denominatorName))
+	queuePendingCpuRate.DeleteLabelValues(queueName, tenantName, rpName, string(denominatorName))
+	queuePendingMemRate.DeleteLabelValues(queueName, tenantName, rpName, string(denominatorName))
+	queuePendingNumber.DeleteLabelValues()
 }
 
 // DeleteQueueMetrics delete all metrics related to the queue

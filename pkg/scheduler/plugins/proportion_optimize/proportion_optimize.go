@@ -102,6 +102,7 @@ func (pp *proportionOptimizePlugin) OnSessionOpen(ssn *framework.Session) {
 
 	// Record metrics
 	common.RecordMetrics(ssn.Queues, pp.queueOpts)
+	common.UpdateQueuePendingTaskMetric(ssn, pp.queueOpts)
 
 	meet := map[api.QueueID]struct{}{}
 	for {
@@ -302,6 +303,8 @@ func (pp *proportionOptimizePlugin) OnSessionOpen(ssn *framework.Session) {
 
 			common.UpdateShare(attr)
 
+			common.UpdateQueuePendingTaskMetric(ssn, pp.queueOpts)
+
 			klog.V(4).Infof("proportion_optimize AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.Share)
 		},
@@ -312,6 +315,8 @@ func (pp *proportionOptimizePlugin) OnSessionOpen(ssn *framework.Session) {
 			metrics.UpdateQueueAllocated(attr.Name, attr.Allocated.MilliCPU, attr.Allocated.Memory)
 
 			common.UpdateShare(attr)
+
+			common.UpdateQueuePendingTaskMetric(ssn, pp.queueOpts)
 
 			klog.V(4).Infof("proportion_optimize EvictFunc: task <%v/%v>, resreq <%v>,  share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.Share)

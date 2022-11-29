@@ -97,6 +97,7 @@ func (pp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	// Record metrics
 	common.RecordMetrics(ssn.Queues, pp.queueOpts)
+	common.UpdateQueuePendingTaskMetric(ssn, pp.queueOpts)
 
 	// generate deserved resource for queue
 	for _, attr := range pp.queueOpts {
@@ -227,6 +228,8 @@ func (pp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			common.UpdateShare(attr)
 
+			common.UpdateQueuePendingTaskMetric(ssn, pp.queueOpts)
+
 			klog.V(4).Infof("Capacity AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.Share)
 		},
@@ -237,6 +240,8 @@ func (pp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			metrics.UpdateQueueAllocatedMetrics(attr.Name, attr.Allocated, attr.Capability, attr.Guarantee, attr.RealCapability)
 
 			common.UpdateShare(attr)
+
+			common.UpdateQueuePendingTaskMetric(ssn, pp.queueOpts)
 
 			klog.V(4).Infof("Capacity EvictFunc: task <%v/%v>, resreq <%v>,  share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.Share)

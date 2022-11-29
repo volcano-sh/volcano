@@ -10,6 +10,7 @@ import (
 	"time"
 	"volcano.sh/apis/pkg/apis/autoscaling/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
 func (v *vqacontroller) addVQA(obj interface{}) {
@@ -70,6 +71,7 @@ func (v *vqacontroller) deleteVQA(obj interface{}) {
 		QueueName: vqa.Spec.Queue,
 	}
 	v.tidalQueue.Done(req)
+	metrics.DeleteVqaMetrics(vqa.Name, vqa.Labels[metrics.TenantKey])
 }
 
 func (v *vqacontroller) enqueue(obj *apis.Request) {

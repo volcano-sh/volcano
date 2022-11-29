@@ -165,3 +165,31 @@ func RecordMetrics(queues map[api.QueueID]*api.QueueInfo, queueAttrs map[api.Que
 		}
 	}
 }
+
+func UpdateQueuePendingTaskMetric(ssn *framework.Session, queueOpts map[api.QueueID]*QueueAttr) {
+	queuePendingTaskNum := make(map[api.QueueID]float64)
+	queuePendingTaskMilliCpu := make(map[api.QueueID]float64)
+	queuePendingTaskMem := make(map[api.QueueID]float64)
+	for _, job := range ssn.Jobs {
+		for _, task := range job.TaskStatusIndex[api.Pending] {
+			q := ssn.Queues[job.Queue]
+			queuePendingTaskNum[q.UID] += 1
+			queuePendingTaskMilliCpu[q.UID] += task.Resreq.MilliCPU
+			queuePendingTaskMem[q.UID] += task.Resreq.Memory
+		}
+	}
+	for _, queue := range ssn.Queues {
+		attr := queueOpts[queue.UID]
+		if attr == nil {
+			continue
+		}
+		tenantName := queue.Queue.Labels[metrics.TenantKey]
+		rpName := queue.Queue.Labels[metrics.RPKey]
+		metrics.UpdateQueuePendingTaskNumber(queue.Name, tenantName, rpName, queuePendingTaskNum[queue.UID])
+		if attr.Capability != nil {
+			metrics.UpdateQueuePendingRate(attr.Name, tenantName, rpName, metrics.CapacityDenominator, queuePendingTaskMilliCpu[attr.QueueID], queuePendingTaskMem[attr.QueueID], attr.Capability.MilliCPU, attr.Capability.Memory)
+		}
+		metrics.UpdateQueuePendingRate(attr.Name, tenantName, rpName, metrics.RealCapacityDenominator, queuePendingTaskMilliCpu[attr.QueueID], queuePendingTaskMem[attr.QueueID], attr.RealCapability.MilliCPU, attr.RealCapability.Memory)
+		metrics.UpdateQueuePendingRate(attr.Name, tenantName, rpName, metrics.GuaranteeDenominator, queuePendingTaskMilliCpu[attr.QueueID], queuePendingTaskMem[attr.QueueID], attr.Guarantee.MilliCPU, attr.Guarantee.Memory)
+	}
+}

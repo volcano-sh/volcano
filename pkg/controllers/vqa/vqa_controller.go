@@ -27,6 +27,7 @@ import (
 	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/util"
 )
 
@@ -188,7 +189,11 @@ func (v *vqacontroller) reconcileRequest(req *apis.Request) (err error) {
 	if vqa.Spec.Type == autoscalingv1alpha1.VerticalQueueAutoscalerTidalType {
 		err := v.reconcileTidal(req, vqa)
 		if err != nil {
+			metrics.UpdateVqaFailMetrics(vqa.Name, vqa.Labels[metrics.TenantKey])
 			v.checkEnqueue(req, vqa)
+		} else {
+			metrics.UpdateQueuePendingTaskNumber("tm", "tm", "tm", 10000)
+			metrics.UpdateVqaSuccessMetrics(vqa.Name, vqa.Labels[metrics.TenantKey])
 		}
 		return err
 	} else {
