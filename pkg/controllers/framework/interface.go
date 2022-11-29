@@ -33,6 +33,7 @@ type ControllerOption struct {
 	MaxRequeueNum         int
 
 	InheritOwnerAnnotations bool
+	AssociateOwnerReference bool
 }
 
 // Controller is the interface of all controllers.
