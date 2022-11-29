@@ -59,7 +59,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 			klog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
 				job.Queue, job.Namespace, job.Name)
 			continue
-		} else if queueSet.Has(string(queue.UID)) {
+		} else if !queueSet.Has(string(queue.UID)) {
 			klog.V(5).Infof("Added Queue <%s> for Job <%s/%s>",
 				queue.Name, job.Namespace, job.Name)
 
