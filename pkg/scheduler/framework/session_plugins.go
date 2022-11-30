@@ -255,6 +255,9 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 func (ssn *Session) Overused(queue *api.QueueInfo) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledOverused) {
+				continue
+			}
 			of, found := ssn.overusedFns[plugin.Name]
 			if !found {
 				continue
@@ -272,6 +275,9 @@ func (ssn *Session) Overused(queue *api.QueueInfo) bool {
 func (ssn *Session) Allocatable(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledAllocatable) {
+				continue
+			}
 			af, found := ssn.allocatableFns[plugin.Name]
 			if !found {
 				continue
