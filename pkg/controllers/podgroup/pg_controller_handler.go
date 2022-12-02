@@ -21,12 +21,14 @@ import (
 	"encoding/json"
 	"strings"
 
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
+	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 
 	"volcano.sh/apis/pkg/apis/helpers"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -59,6 +61,26 @@ func (pg *pgcontroller) addPod(obj interface{}) {
 	}
 
 	pg.queue.Add(req)
+}
+
+func (pg *pgcontroller) addReplicaSet(obj interface{}) {
+	rs, ok := obj.(*appsv1.ReplicaSet)
+	if !ok {
+		klog.Errorf("Failed to convert %v to appsv1.ReplicaSet", obj)
+		return
+	}
+
+	if *rs.Spec.Replicas == 0 {
+		pgName := batchv1alpha1.PodgroupNamePrefix + string(rs.UID)
+		err := pg.vcClient.SchedulingV1beta1().PodGroups(rs.Namespace).Delete(context.TODO(), pgName, metav1.DeleteOptions{})
+		if err != nil && !apierrors.IsNotFound(err) {
+			klog.Errorf("Failed to delete PodGroup <%s/%s>: %v", rs.Namespace, pgName, err)
+		}
+	}
+}
+
+func (pg *pgcontroller) updateReplicaSet(oldObj, newObj interface{}) {
+	pg.addReplicaSet(newObj)
 }
 
 func (pg *pgcontroller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
